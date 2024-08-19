@@ -9,8 +9,16 @@ import {
   PerformanceEntry,
 } from "ext:deno_web/15_performance.js";
 
-// FIXME(bartlomieju)
-const PerformanceObserver = undefined;
+class PerformanceObserver {
+  static supportedEntryTypes: string[] = [];
+  observe() {
+    // todo(lucacasonato): actually implement this
+  }
+  disconnect() {
+    // todo(lucacasonato): actually implement this
+  }
+}
+
 const constants = {};
 
 const performance:
@@ -19,8 +27,11 @@ const performance:
     "clearMeasures" | "getEntries"
   >
   & {
-    // deno-lint-ignore no-explicit-any
-    eventLoopUtilization: any;
+    eventLoopUtilization(): {
+      idle: number;
+      active: number;
+      utilization: number;
+    };
     nodeTiming: Record<string, string>;
     // deno-lint-ignore no-explicit-any
     timerify: any;
@@ -30,8 +41,10 @@ const performance:
     markResourceTiming: any;
   } = {
     clearMarks: (markName: string) => shimPerformance.clearMarks(markName),
-    eventLoopUtilization: () =>
-      notImplemented("eventLoopUtilization from performance"),
+    eventLoopUtilization: () => {
+      // TODO(@marvinhagemeister): Return actual non-stubbed values
+      return { idle: 0, active: 0, utilization: 0 };
+    },
     mark: (markName: string) => shimPerformance.mark(markName),
     measure: (
       measureName: string,

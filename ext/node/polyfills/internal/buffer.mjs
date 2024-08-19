@@ -1,4 +1,4 @@
-// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 // Copyright Joyent and Node contributors. All rights reserved. MIT license.
 // Copyright Feross Aboukhadijeh, and other contributors. All rights reserved. MIT license.
 
@@ -6,6 +6,7 @@
 // deno-lint-ignore-file prefer-primordials
 
 import { core } from "ext:core/mod.js";
+import { op_is_ascii, op_is_utf8 } from "ext:core/ops";
 
 import { TextDecoder, TextEncoder } from "ext:deno_web/08_text_encoding.js";
 import { codes } from "ext:deno_node/internal/error_codes.ts";
@@ -26,10 +27,12 @@ import {
 import {
   isAnyArrayBuffer,
   isArrayBufferView,
+  isTypedArray,
 } from "ext:deno_node/internal/util/types.ts";
 import { normalizeEncoding } from "ext:deno_node/internal/util.mjs";
 import { validateBuffer } from "ext:deno_node/internal/validators.mjs";
 import { isUint8Array } from "ext:deno_node/internal/util/types.ts";
+import { ERR_INVALID_STATE, NodeError } from "ext:deno_node/internal/errors.ts";
 import {
   forgivingBase64Encode,
   forgivingBase64UrlEncode,
@@ -164,10 +167,7 @@ Object.setPrototypeOf(Buffer.prototype, Uint8Array.prototype);
 Object.setPrototypeOf(Buffer, Uint8Array);
 
 function assertSize(size) {
-  validateNumber(size, "size");
-  if (!(size >= 0 && size <= kMaxLength)) {
-    throw new codes.ERR_INVALID_ARG_VALUE.RangeError("size", size);
-  }
+  validateNumber(size, "size", 0, kMaxLength);
 }
 
 function _alloc(size, fill, encoding) {
@@ -220,12 +220,9 @@ function fromString(string, encoding) {
   return buf;
 }
 
-function fromArrayLike(array) {
-  const length = array.length < 0 ? 0 : checked(array.length) | 0;
-  const buf = createBuffer(length);
-  for (let i = 0; i < length; i += 1) {
-    buf[i] = array[i] & 255;
-  }
+function fromArrayLike(obj) {
+  const buf = new Uint8Array(obj);
+  Object.setPrototypeOf(buf, Buffer.prototype);
   return buf;
 }
 
@@ -234,6 +231,7 @@ function fromObject(obj) {
     if (typeof obj.length !== "number") {
       return createBuffer(0);
     }
+
     return fromArrayLike(obj);
   }
 
@@ -849,7 +847,14 @@ function _base64Slice(buf, start, end) {
 const decoder = new TextDecoder();
 
 function _utf8Slice(buf, start, end) {
-  return decoder.decode(buf.slice(start, end));
+  try {
+    return decoder.decode(buf.slice(start, end));
+  } catch (err) {
+    if (err instanceof TypeError) {
+      throw new NodeError("ERR_STRING_TOO_LONG", "String too long");
+    }
+    throw err;
+  }
 }
 
 function _latin1Slice(buf, start, end) {
@@ -2294,9 +2299,22 @@ export function boundsError(value, length, type) {
   );
 }
 
-export function validateNumber(value, name) {
+export function validateNumber(value, name, min = undefined, max) {
   if (typeof value !== "number") {
     throw new codes.ERR_INVALID_ARG_TYPE(name, "number", value);
+  }
+
+  if (
+    (min != null && value < min) || (max != null && value > max) ||
+    ((min != null || max != null) && Number.isNaN(value))
+  ) {
+    throw new codes.ERR_OUT_OF_RANGE(
+      name,
+      `${min != null ? `>= ${min}` : ""}${
+        min != null && max != null ? " && " : ""
+      }${max != null ? `<= ${max}` : ""}`,
+      value,
+    );
   }
 }
 
@@ -2536,12 +2554,58 @@ export function writeU_Int24LE(buf, value, offset, min, max) {
   return offset;
 }
 
+export function isUtf8(input) {
+  if (isTypedArray(input)) {
+    if (input.buffer.detached) {
+      throw new ERR_INVALID_STATE("Cannot validate on a detached buffer");
+    }
+    return op_is_utf8(input);
+  }
+
+  if (isAnyArrayBuffer(input)) {
+    if (input.detached) {
+      throw new ERR_INVALID_STATE("Cannot validate on a detached buffer");
+    }
+    return op_is_utf8(new Uint8Array(input));
+  }
+
+  throw new codes.ERR_INVALID_ARG_TYPE("input", [
+    "ArrayBuffer",
+    "Buffer",
+    "TypedArray",
+  ], input);
+}
+
+export function isAscii(input) {
+  if (isTypedArray(input)) {
+    if (input.buffer.detached) {
+      throw new ERR_INVALID_STATE("Cannot validate on a detached buffer");
+    }
+    return op_is_ascii(input);
+  }
+
+  if (isAnyArrayBuffer(input)) {
+    if (input.detached) {
+      throw new ERR_INVALID_STATE("Cannot validate on a detached buffer");
+    }
+    return op_is_ascii(new Uint8Array(input));
+  }
+
+  throw new codes.ERR_INVALID_ARG_TYPE("input", [
+    "ArrayBuffer",
+    "Buffer",
+    "TypedArray",
+  ], input);
+}
+
 export default {
   atob,
   btoa,
   Blob,
   Buffer,
   constants,
+  isAscii,
+  isUtf8,
   kMaxLength,
   kStringMaxLength,
   SlowBuffer,

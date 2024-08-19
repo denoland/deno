@@ -6,16 +6,35 @@ use crate::shared::maybe_transpile_source;
 use crate::shared::runtime;
 use deno_cache::SqliteBackedCache;
 use deno_core::error::AnyError;
-use deno_core::snapshot_util::*;
+use deno_core::snapshot::*;
 use deno_core::v8;
 use deno_core::Extension;
 use deno_http::DefaultHttpPropertyExtractor;
+use deno_io::fs::FsError;
+use std::io::Write;
 use std::path::Path;
 use std::path::PathBuf;
+use std::rc::Rc;
 use std::sync::Arc;
 
 #[derive(Clone)]
 struct Permissions;
+
+impl deno_websocket::WebSocketPermissions for Permissions {
+  fn check_net_url(
+    &mut self,
+    _url: &deno_core::url::Url,
+    _api_name: &str,
+  ) -> Result<(), deno_core::error::AnyError> {
+    unreachable!("snapshotting!")
+  }
+}
+
+impl deno_web::TimersPermission for Permissions {
+  fn allow_hrtime(&mut self) -> bool {
+    unreachable!("snapshotting!")
+  }
+}
 
 impl deno_fetch::FetchPermissions for Permissions {
   fn check_net_url(
@@ -31,22 +50,6 @@ impl deno_fetch::FetchPermissions for Permissions {
     _p: &Path,
     _api_name: &str,
   ) -> Result<(), deno_core::error::AnyError> {
-    unreachable!("snapshotting!")
-  }
-}
-
-impl deno_websocket::WebSocketPermissions for Permissions {
-  fn check_net_url(
-    &mut self,
-    _url: &deno_core::url::Url,
-    _api_name: &str,
-  ) -> Result<(), deno_core::error::AnyError> {
-    unreachable!("snapshotting!")
-  }
-}
-
-impl deno_web::TimersPermission for Permissions {
-  fn allow_hrtime(&mut self) -> bool {
     unreachable!("snapshotting!")
   }
 }
@@ -78,21 +81,21 @@ impl deno_node::NodePermissions for Permissions {
     unreachable!("snapshotting!")
   }
   fn check_read_with_api_name(
-    &self,
+    &mut self,
     _p: &Path,
     _api_name: Option<&str>,
   ) -> Result<(), deno_core::error::AnyError> {
     unreachable!("snapshotting!")
   }
   fn check_write_with_api_name(
-    &self,
+    &mut self,
     _p: &Path,
     _api_name: Option<&str>,
   ) -> Result<(), deno_core::error::AnyError> {
     unreachable!("snapshotting!")
   }
   fn check_sys(
-    &self,
+    &mut self,
     _kind: &str,
     _api_name: &str,
   ) -> Result<(), deno_core::error::AnyError> {
@@ -127,6 +130,17 @@ impl deno_net::NetPermissions for Permissions {
 }
 
 impl deno_fs::FsPermissions for Permissions {
+  fn check_open<'a>(
+    &mut self,
+    _resolved: bool,
+    _read: bool,
+    _write: bool,
+    _path: &'a Path,
+    _api_name: &str,
+  ) -> Result<std::borrow::Cow<'a, Path>, FsError> {
+    unreachable!("snapshotting!")
+  }
+
   fn check_read(
     &mut self,
     _path: &Path,
@@ -199,6 +213,8 @@ impl deno_kv::sqlite::SqliteDbHandlerPermissions for Permissions {
 pub fn create_runtime_snapshot(
   snapshot_path: PathBuf,
   snapshot_options: SnapshotOptions,
+  // NOTE: For embedders that wish to add additional extensions to the snapshot
+  custom_extensions: Vec<Extension>,
 ) {
   // NOTE(bartlomieju): ordering is important here, keep it in sync with
   // `runtime/worker.rs`, `runtime/web_worker.rs` and `runtime/snapshot.rs`!
@@ -212,6 +228,7 @@ pub fn create_runtime_snapshot(
       Default::default(),
     ),
     deno_webgpu::deno_webgpu::init_ops_and_esm(),
+    deno_canvas::deno_canvas::init_ops_and_esm(),
     deno_fetch::deno_fetch::init_ops_and_esm::<Permissions>(Default::default()),
     deno_cache::deno_cache::init_ops_and_esm::<SqliteBackedCache>(None),
     deno_websocket::deno_websocket::init_ops_and_esm::<Permissions>(
@@ -252,32 +269,43 @@ pub fn create_runtime_snapshot(
     ops::tty::deno_tty::init_ops(),
     ops::http::deno_http_runtime::init_ops(),
     ops::bootstrap::deno_bootstrap::init_ops(Some(snapshot_options)),
+    ops::web_worker::deno_web_worker::init_ops(),
   ];
+  extensions.extend(custom_extensions);
 
-  for extension in &mut extensions {
-    for source in extension.esm_files.to_mut() {
-      maybe_transpile_source(source).unwrap();
-    }
-    for source in extension.js_files.to_mut() {
-      maybe_transpile_source(source).unwrap();
-    }
-  }
+  let output = create_snapshot(
+    CreateSnapshotOptions {
+      cargo_manifest_dir: env!("CARGO_MANIFEST_DIR"),
+      startup_snapshot: None,
+      extensions,
+      extension_transpiler: Some(Rc::new(|specifier, source| {
+        maybe_transpile_source(specifier, source)
+      })),
+      with_runtime_cb: Some(Box::new(|rt| {
+        let isolate = rt.v8_isolate();
+        let scope = &mut v8::HandleScope::new(isolate);
 
-  let output = create_snapshot(CreateSnapshotOptions {
-    cargo_manifest_dir: env!("CARGO_MANIFEST_DIR"),
-    snapshot_path,
-    startup_snapshot: None,
-    extensions,
-    compression_cb: None,
-    with_runtime_cb: Some(Box::new(|rt| {
-      let isolate = rt.v8_isolate();
-      let scope = &mut v8::HandleScope::new(isolate);
+        let tmpl = deno_node::init_global_template(
+          scope,
+          deno_node::ContextInitMode::ForSnapshot,
+        );
+        let ctx = deno_node::create_v8_context(
+          scope,
+          tmpl,
+          deno_node::ContextInitMode::ForSnapshot,
+          std::ptr::null_mut(),
+        );
+        assert_eq!(scope.add_context(ctx), deno_node::VM_CONTEXT_INDEX);
+      })),
+      skip_op_registration: false,
+    },
+    None,
+  )
+  .unwrap();
+  let mut snapshot = std::fs::File::create(snapshot_path).unwrap();
+  snapshot.write_all(&output.output).unwrap();
 
-      let ctx = v8::Context::new(scope);
-      assert_eq!(scope.add_context(ctx), deno_node::VM_CONTEXT_INDEX);
-    })),
-    skip_op_registration: false,
-  });
+  #[allow(clippy::print_stdout)]
   for path in output.files_loaded_during_snapshot {
     println!("cargo:rerun-if-changed={}", path.display());
   }

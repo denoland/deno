@@ -1,0 +1,14 @@
+✅ Project initialized
+
+Run these commands to get started
+
+  cd project
+
+  # Run the tests
+  deno test
+
+  # Run the tests and watch for file changes
+  deno task dev
+
+  # Publish to JSR (dry run)
+  deno publish --dry-run

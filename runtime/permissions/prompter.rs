@@ -1,8 +1,8 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
-use crate::colors;
 use deno_core::error::AnyError;
 use deno_core::parking_lot::Mutex;
+use deno_terminal::colors;
 use once_cell::sync::Lazy;
 use std::fmt::Write;
 use std::io::BufRead;
@@ -11,12 +11,24 @@ use std::io::StderrLock;
 use std::io::StdinLock;
 use std::io::Write as IoWrite;
 
-/// Helper function to strip ansi codes and ASCII control characters.
-fn strip_ansi_codes_and_ascii_control(s: &str) -> std::borrow::Cow<str> {
-  console_static_text::ansi::strip_ansi_codes(s)
-    .chars()
-    .filter(|c| !c.is_ascii_control())
-    .collect()
+/// Helper function to make control characters visible so users can see the underlying filename.
+fn escape_control_characters(s: &str) -> std::borrow::Cow<str> {
+  if !s.contains(|c: char| c.is_ascii_control() || c.is_control()) {
+    return std::borrow::Cow::Borrowed(s);
+  }
+  let mut output = String::with_capacity(s.len() * 2);
+  for c in s.chars() {
+    match c {
+      c if c.is_ascii_control() => output.push_str(
+        &colors::white_bold_on_red(c.escape_debug().to_string()).to_string(),
+      ),
+      c if c.is_control() => output.push_str(
+        &colors::white_bold_on_red(c.escape_debug().to_string()).to_string(),
+      ),
+      c => output.push(c),
+    }
+  }
+  output.into()
 }
 
 pub const PERMISSION_EMOJI: &str = "⚠️";
@@ -79,16 +91,58 @@ pub trait PermissionPrompter: Send + Sync {
 }
 
 pub struct TtyPrompter;
-
 #[cfg(unix)]
 fn clear_stdin(
   _stdin_lock: &mut StdinLock,
   _stderr_lock: &mut StderrLock,
 ) -> Result<(), AnyError> {
-  // TODO(bartlomieju):
-  #[allow(clippy::undocumented_unsafe_blocks)]
-  let r = unsafe { libc::tcflush(0, libc::TCIFLUSH) };
-  assert_eq!(r, 0);
+  use deno_core::anyhow::bail;
+  use std::mem::MaybeUninit;
+
+  const STDIN_FD: i32 = 0;
+
+  // SAFETY: use libc to flush stdin
+  unsafe {
+    // Create fd_set for select
+    let mut raw_fd_set = MaybeUninit::<libc::fd_set>::uninit();
+    libc::FD_ZERO(raw_fd_set.as_mut_ptr());
+    libc::FD_SET(STDIN_FD, raw_fd_set.as_mut_ptr());
+
+    loop {
+      let r = libc::tcflush(STDIN_FD, libc::TCIFLUSH);
+      if r != 0 {
+        bail!("clear_stdin failed (tcflush)");
+      }
+
+      // Initialize timeout for select to be 100ms
+      let mut timeout = libc::timeval {
+        tv_sec: 0,
+        tv_usec: 100_000,
+      };
+
+      // Call select with the stdin file descriptor set
+      let r = libc::select(
+        STDIN_FD + 1, // nfds should be set to the highest-numbered file descriptor in any of the three sets, plus 1.
+        raw_fd_set.as_mut_ptr(),
+        std::ptr::null_mut(),
+        std::ptr::null_mut(),
+        &mut timeout,
+      );
+
+      // Check if select returned an error
+      if r < 0 {
+        bail!("clear_stdin failed (select)");
+      }
+
+      // Check if select returned due to timeout (stdin is quiescent)
+      if r == 0 {
+        break; // Break out of the loop as stdin is quiescent
+      }
+
+      // If select returned due to data available on stdin, clear it by looping around to flush
+    }
+  }
+
   Ok(())
 }
 
@@ -226,6 +280,7 @@ impl PermissionPrompter for TtyPrompter {
       return PromptResponse::Deny;
     };
 
+    #[allow(clippy::print_stderr)]
     if message.len() > MAX_PERMISSION_PROMPT_LENGTH {
       eprintln!("❌ Permission prompt length ({} bytes) was larger than the configured maximum length ({} bytes): denying request.", message.len(), MAX_PERMISSION_PROMPT_LENGTH);
       eprintln!("❌ WARNING: This may indicate that code is trying to bypass or hide permission check requests.");
@@ -244,14 +299,15 @@ impl PermissionPrompter for TtyPrompter {
 
     // For security reasons we must consume everything in stdin so that previously
     // buffered data cannot affect the prompt.
+    #[allow(clippy::print_stderr)]
     if let Err(err) = clear_stdin(&mut stdin_lock, &mut stderr_lock) {
       eprintln!("Error clearing stdin for permission prompt. {err:#}");
       return PromptResponse::Deny; // don't grant permission if this fails
     }
 
-    let message = strip_ansi_codes_and_ascii_control(message);
-    let name = strip_ansi_codes_and_ascii_control(name);
-    let api_name = api_name.map(strip_ansi_codes_and_ascii_control);
+    let message = escape_control_characters(message);
+    let name = escape_control_characters(name);
+    let api_name = api_name.map(escape_control_characters);
 
     // print to stderr so that if stdout is piped this is still displayed.
     let opts: String = if is_unary {
@@ -263,45 +319,65 @@ impl PermissionPrompter for TtyPrompter {
     // output everything in one shot to make the tests more reliable
     {
       let mut output = String::new();
-      write!(&mut output, "┌ {PERMISSION_EMOJI}  ").unwrap();
+      write!(&mut output, "┏ {PERMISSION_EMOJI}  ").unwrap();
       write!(&mut output, "{}", colors::bold("Deno requests ")).unwrap();
       write!(&mut output, "{}", colors::bold(message.clone())).unwrap();
       writeln!(&mut output, "{}", colors::bold(".")).unwrap();
       if let Some(api_name) = api_name.clone() {
-        writeln!(&mut output, "├ Requested by `{api_name}` API.").unwrap();
+        writeln!(
+          &mut output,
+          "┠─ Requested by `{}` API.",
+          colors::bold(api_name)
+        )
+        .unwrap();
       }
+      let msg = format!(
+        "Learn more at: {}",
+        colors::cyan_with_underline(&format!(
+          "https://docs.deno.com/go/--allow-{}",
+          name
+        ))
+      );
+      writeln!(&mut output, "┠─ {}", colors::italic(&msg)).unwrap();
       let msg = format!("Run again with --allow-{name} to bypass this prompt.");
-      writeln!(&mut output, "├ {}", colors::italic(&msg)).unwrap();
-      write!(&mut output, "└ {}", colors::bold("Allow?")).unwrap();
+      writeln!(&mut output, "┠─ {}", colors::italic(&msg)).unwrap();
+      write!(&mut output, "┗ {}", colors::bold("Allow?")).unwrap();
       write!(&mut output, " {opts} > ").unwrap();
 
       stderr_lock.write_all(output.as_bytes()).unwrap();
     }
 
     let value = loop {
+      // Clear stdin each time we loop around in case the user accidentally pasted
+      // multiple lines or otherwise did something silly to generate a torrent of
+      // input. This doesn't work on Windows because `clear_stdin` has other side-effects.
+      #[allow(clippy::print_stderr)]
+      #[cfg(unix)]
+      if let Err(err) = clear_stdin(&mut stdin_lock, &mut stderr_lock) {
+        eprintln!("Error clearing stdin for permission prompt. {err:#}");
+        return PromptResponse::Deny; // don't grant permission if this fails
+      }
+
       let mut input = String::new();
       let result = stdin_lock.read_line(&mut input);
-      if result.is_err() {
+      let input = input.trim_end_matches(|c| c == '\r' || c == '\n');
+      if result.is_err() || input.len() != 1 {
         break PromptResponse::Deny;
       };
-      let ch = match input.chars().next() {
-        None => break PromptResponse::Deny,
-        Some(v) => v,
-      };
-      match ch {
+      match input.as_bytes()[0] as char {
         'y' | 'Y' => {
           clear_n_lines(
             &mut stderr_lock,
-            if api_name.is_some() { 4 } else { 3 },
+            if api_name.is_some() { 5 } else { 4 },
           );
           let msg = format!("Granted {message}.");
           writeln!(stderr_lock, "✅ {}", colors::bold(&msg)).unwrap();
           break PromptResponse::Allow;
         }
-        'n' | 'N' => {
+        'n' | 'N' | '\x1b' => {
           clear_n_lines(
             &mut stderr_lock,
-            if api_name.is_some() { 4 } else { 3 },
+            if api_name.is_some() { 5 } else { 4 },
           );
           let msg = format!("Denied {message}.");
           writeln!(stderr_lock, "❌ {}", colors::bold(&msg)).unwrap();
@@ -310,7 +386,7 @@ impl PermissionPrompter for TtyPrompter {
         'A' if is_unary => {
           clear_n_lines(
             &mut stderr_lock,
-            if api_name.is_some() { 4 } else { 3 },
+            if api_name.is_some() { 5 } else { 4 },
           );
           let msg = format!("Granted all {name} access.");
           writeln!(stderr_lock, "✅ {}", colors::bold(&msg)).unwrap();
@@ -321,7 +397,7 @@ impl PermissionPrompter for TtyPrompter {
           clear_n_lines(&mut stderr_lock, 1);
           write!(
             stderr_lock,
-            "└ {} {opts} > ",
+            "┗ {} {opts} > ",
             colors::bold("Unrecognized option. Allow?")
           )
           .unwrap();

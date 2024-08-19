@@ -1,7 +1,0 @@
-{
-  "name": "qwerqwer",
-  "version": "0.0.0",
-  "imports": {
-    "~/": "./"
-  }
-}

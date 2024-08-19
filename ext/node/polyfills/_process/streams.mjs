@@ -1,8 +1,17 @@
-// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 // Copyright Joyent, Inc. and Node.js contributors. All rights reserved. MIT license.
 
-// TODO(petamoriken): enable prefer-primordials for node polyfills
-// deno-lint-ignore-file prefer-primordials
+import { primordials } from "ext:core/mod.js";
+const {
+  Uint8ArrayPrototype,
+  Error,
+  ObjectDefineProperties,
+  ObjectDefineProperty,
+  TypedArrayPrototypeSlice,
+  PromisePrototypeThen,
+  ObjectValues,
+  ObjectPrototypeIsPrototypeOf,
+} = primordials;
 
 import { Buffer } from "node:buffer";
 import {
@@ -16,7 +25,7 @@ import * as io from "ext:deno_io/12_io.js";
 import { guessHandleType } from "ext:deno_node/internal_binding/util.ts";
 
 // https://github.com/nodejs/node/blob/00738314828074243c9a52a228ab4c68b04259ef/lib/internal/bootstrap/switches/is_main_thread.js#L41
-export function createWritableStdioStream(writer, name) {
+export function createWritableStdioStream(writer, name, warmup = false) {
   const stream = new Writable({
     emitClose: false,
     write(buf, enc, cb) {
@@ -26,7 +35,11 @@ export function createWritableStdioStream(writer, name) {
         );
         return;
       }
-      writer.writeSync(buf instanceof Uint8Array ? buf : Buffer.from(buf, enc));
+      writer.writeSync(
+        ObjectPrototypeIsPrototypeOf(Uint8ArrayPrototype, buf)
+          ? buf
+          : Buffer.from(buf, enc),
+      );
       cb();
     },
     destroy(err, cb) {
@@ -37,39 +50,47 @@ export function createWritableStdioStream(writer, name) {
       }
     },
   });
-  stream.fd = writer?.rid ?? -1;
+  let fd = -1;
+
+  // deno-lint-ignore prefer-primordials
+  if (writer instanceof io.Stdout) {
+    fd = io.STDOUT_RID;
+    // deno-lint-ignore prefer-primordials
+  } else if (writer instanceof io.Stderr) {
+    fd = io.STDERR_RID;
+  }
+  stream.fd = fd;
   stream.destroySoon = stream.destroy;
   stream._isStdio = true;
   stream.once("close", () => writer?.close());
-  Object.defineProperties(stream, {
+  ObjectDefineProperties(stream, {
     columns: {
       enumerable: true,
       configurable: true,
       get: () =>
-        Deno.isatty?.(writer?.rid) ? Deno.consoleSize?.().columns : undefined,
+        writer?.isTerminal() ? Deno.consoleSize?.().columns : undefined,
     },
     rows: {
       enumerable: true,
       configurable: true,
-      get: () =>
-        Deno.isatty?.(writer?.rid) ? Deno.consoleSize?.().rows : undefined,
+      get: () => writer?.isTerminal() ? Deno.consoleSize?.().rows : undefined,
     },
     isTTY: {
       enumerable: true,
       configurable: true,
-      get: () => Deno.isatty?.(writer?.rid),
+      get: () => writer?.isTerminal(),
     },
     getWindowSize: {
       enumerable: true,
       configurable: true,
       value: () =>
-        Deno.isatty?.(writer?.rid)
-          ? Object.values(Deno.consoleSize?.())
-          : undefined,
+        writer?.isTerminal() ? ObjectValues(Deno.consoleSize?.()) : undefined,
     },
   });
 
-  if (Deno.isatty?.(writer?.rid)) {
+  // If we're warming up, create a stdout/stderr stream that assumes a terminal (the most likely case).
+  // If we're wrong at boot time, we'll recreate it.
+  if (warmup || writer?.isTerminal()) {
     // These belong on tty.WriteStream(), but the TTY streams currently have
     // following problems:
     // 1. Using them here introduces a circular dependency.
@@ -101,14 +122,12 @@ function _guessStdinType(fd) {
 
 const _read = function (size) {
   const p = Buffer.alloc(size || 16 * 1024);
-  io.stdin?.read(p).then(
-    (length) => {
-      this.push(length === null ? null : p.slice(0, length));
-    },
-    (error) => {
-      this.destroy(error);
-    },
-  );
+  PromisePrototypeThen(io.stdin?.read(p), (length) => {
+    // deno-lint-ignore prefer-primordials
+    this.push(length === null ? null : TypedArrayPrototypeSlice(p, 0, length));
+  }, (error) => {
+    this.destroy(error);
+  });
 };
 
 let readStream;
@@ -119,10 +138,11 @@ export function setReadStream(s) {
 /** https://nodejs.org/api/process.html#process_process_stdin */
 // https://github.com/nodejs/node/blob/v18.12.1/lib/internal/bootstrap/switches/is_main_thread.js#L189
 /** Create process.stdin */
-export const initStdin = () => {
-  const fd = io.stdin?.rid;
+export const initStdin = (warmup = false) => {
+  const fd = io.stdin ? io.STDIN_RID : undefined;
   let stdin;
-  const stdinType = _guessStdinType(fd);
+  // Warmup assumes a TTY for all stdio
+  const stdinType = warmup ? "TTY" : _guessStdinType(fd);
 
   switch (stdinType) {
     case "FILE": {
@@ -138,6 +158,11 @@ export const initStdin = () => {
       break;
     }
     case "TTY": {
+      // If it's a TTY, we know that the stdin we created during warmup is the correct one and
+      // just return null to re-use it.
+      if (!warmup) {
+        return null;
+      }
       stdin = new readStream(fd);
       break;
     }
@@ -170,17 +195,18 @@ export const initStdin = () => {
       // Provide a dummy contentless input for e.g. non-console
       // Windows applications.
       stdin = new Readable({ read() {} });
+      // deno-lint-ignore prefer-primordials
       stdin.push(null);
     }
   }
 
   stdin.on("close", () => io.stdin?.close());
-  stdin.fd = io.stdin?.rid ?? -1;
-  Object.defineProperty(stdin, "isTTY", {
+  stdin.fd = io.stdin ? io.STDIN_RID : -1;
+  ObjectDefineProperty(stdin, "isTTY", {
     enumerable: true,
     configurable: true,
     get() {
-      return Deno.isatty?.(io.stdin.rid);
+      return io.stdin.isTerminal();
     },
   });
   stdin._isRawMode = false;
@@ -189,7 +215,7 @@ export const initStdin = () => {
     stdin._isRawMode = enable;
     return stdin;
   };
-  Object.defineProperty(stdin, "isRaw", {
+  ObjectDefineProperty(stdin, "isRaw", {
     enumerable: true,
     configurable: true,
     get() {

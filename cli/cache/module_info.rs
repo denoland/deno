@@ -6,15 +6,15 @@ use deno_ast::MediaType;
 use deno_ast::ModuleSpecifier;
 use deno_core::error::AnyError;
 use deno_core::serde_json;
-use deno_graph::DefaultModuleAnalyzer;
 use deno_graph::ModuleInfo;
-use deno_graph::ModuleParser;
+use deno_graph::ParserModuleAnalyzer;
 use deno_runtime::deno_webstorage::rusqlite::params;
 
 use super::cache_db::CacheDB;
 use super::cache_db::CacheDBConfiguration;
+use super::cache_db::CacheDBHash;
 use super::cache_db::CacheFailure;
-use super::FastInsecureHasher;
+use super::ParsedSourceCache;
 
 const SELECT_MODULE_INFO: &str = "
 SELECT
@@ -28,32 +28,18 @@ WHERE
 LIMIT 1";
 
 pub static MODULE_INFO_CACHE_DB: CacheDBConfiguration = CacheDBConfiguration {
-  table_initializer: "CREATE TABLE IF NOT EXISTS moduleinfocache (
-      specifier TEXT PRIMARY KEY,
-      media_type TEXT NOT NULL,
-      source_hash TEXT NOT NULL,
-      module_info TEXT NOT NULL
-    );",
+  table_initializer: concat!(
+    "CREATE TABLE IF NOT EXISTS moduleinfocache (",
+    "specifier TEXT PRIMARY KEY,",
+    "media_type INTEGER NOT NULL,",
+    "source_hash INTEGER NOT NULL,",
+    "module_info TEXT NOT NULL",
+    ");"
+  ),
   on_version_change: "DELETE FROM moduleinfocache;",
   preheat_queries: &[SELECT_MODULE_INFO],
   on_failure: CacheFailure::InMemory,
 };
-
-pub struct ModuleInfoCacheSourceHash(String);
-
-impl ModuleInfoCacheSourceHash {
-  pub fn new(hash: u64) -> Self {
-    Self(hash.to_string())
-  }
-
-  pub fn from_source(source: &[u8]) -> Self {
-    Self::new(FastInsecureHasher::hash(source))
-  }
-
-  pub fn as_str(&self) -> &str {
-    &self.0
-  }
-}
 
 /// A cache of `deno_graph::ModuleInfo` objects. Using this leads to a considerable
 /// performance improvement because when it exists we can skip parsing a module for
@@ -84,7 +70,7 @@ impl ModuleInfoCache {
     &self,
     specifier: &ModuleSpecifier,
     media_type: MediaType,
-    expected_source_hash: &ModuleInfoCacheSourceHash,
+    expected_source_hash: CacheDBHash,
   ) -> Result<Option<ModuleInfo>, AnyError> {
     let query = SELECT_MODULE_INFO;
     let res = self.conn.query_row(
@@ -92,7 +78,7 @@ impl ModuleInfoCache {
       params![
         &specifier.as_str(),
         serialize_media_type(media_type),
-        expected_source_hash.as_str(),
+        expected_source_hash,
       ],
       |row| {
         let module_info: String = row.get(0)?;
@@ -107,7 +93,7 @@ impl ModuleInfoCache {
     &self,
     specifier: &ModuleSpecifier,
     media_type: MediaType,
-    source_hash: &ModuleInfoCacheSourceHash,
+    source_hash: CacheDBHash,
     module_info: &ModuleInfo,
   ) -> Result<(), AnyError> {
     let sql = "
@@ -120,7 +106,7 @@ impl ModuleInfoCache {
       params![
         specifier.as_str(),
         serialize_media_type(media_type),
-        source_hash.as_str(),
+        source_hash,
         &serde_json::to_string(&module_info)?,
       ],
     )?;
@@ -129,33 +115,34 @@ impl ModuleInfoCache {
 
   pub fn as_module_analyzer<'a>(
     &'a self,
-    parser: &'a dyn ModuleParser,
+    parsed_source_cache: &'a Arc<ParsedSourceCache>,
   ) -> ModuleInfoCacheModuleAnalyzer<'a> {
     ModuleInfoCacheModuleAnalyzer {
       module_info_cache: self,
-      parser,
+      parsed_source_cache,
     }
   }
 }
 
 pub struct ModuleInfoCacheModuleAnalyzer<'a> {
   module_info_cache: &'a ModuleInfoCache,
-  parser: &'a dyn ModuleParser,
+  parsed_source_cache: &'a Arc<ParsedSourceCache>,
 }
 
+#[async_trait::async_trait(?Send)]
 impl<'a> deno_graph::ModuleAnalyzer for ModuleInfoCacheModuleAnalyzer<'a> {
-  fn analyze(
+  async fn analyze(
     &self,
     specifier: &ModuleSpecifier,
     source: Arc<str>,
     media_type: MediaType,
-  ) -> Result<ModuleInfo, deno_ast::Diagnostic> {
+  ) -> Result<ModuleInfo, deno_ast::ParseDiagnostic> {
     // attempt to load from the cache
-    let source_hash = ModuleInfoCacheSourceHash::from_source(source.as_bytes());
+    let source_hash = CacheDBHash::from_source(&source);
     match self.module_info_cache.get_module_info(
       specifier,
       media_type,
-      &source_hash,
+      source_hash,
     ) {
       Ok(Some(info)) => return Ok(info),
       Ok(None) => {}
@@ -169,14 +156,23 @@ impl<'a> deno_graph::ModuleAnalyzer for ModuleInfoCacheModuleAnalyzer<'a> {
     }
 
     // otherwise, get the module info from the parsed source cache
-    let analyzer = DefaultModuleAnalyzer::new(self.parser);
-    let module_info = analyzer.analyze(specifier, source, media_type)?;
+    let module_info = deno_core::unsync::spawn_blocking({
+      let cache = self.parsed_source_cache.clone();
+      let specifier = specifier.clone();
+      move || {
+        let parser = cache.as_capturing_parser();
+        let analyzer = ParserModuleAnalyzer::new(&parser);
+        analyzer.analyze_sync(&specifier, source, media_type)
+      }
+    })
+    .await
+    .unwrap()?;
 
     // then attempt to cache it
     if let Err(err) = self.module_info_cache.set_module_info(
       specifier,
       media_type,
-      &source_hash,
+      source_hash,
       &module_info,
     ) {
       log::debug!(
@@ -190,27 +186,25 @@ impl<'a> deno_graph::ModuleAnalyzer for ModuleInfoCacheModuleAnalyzer<'a> {
   }
 }
 
-// todo(dsherret): change this to be stored as an integer next time
-// the cache version is bumped
-fn serialize_media_type(media_type: MediaType) -> &'static str {
+fn serialize_media_type(media_type: MediaType) -> i64 {
   use MediaType::*;
   match media_type {
-    JavaScript => "1",
-    Jsx => "2",
-    Mjs => "3",
-    Cjs => "4",
-    TypeScript => "5",
-    Mts => "6",
-    Cts => "7",
-    Dts => "8",
-    Dmts => "9",
-    Dcts => "10",
-    Tsx => "11",
-    Json => "12",
-    Wasm => "13",
-    TsBuildInfo => "14",
-    SourceMap => "15",
-    Unknown => "16",
+    JavaScript => 1,
+    Jsx => 2,
+    Mjs => 3,
+    Cjs => 4,
+    TypeScript => 5,
+    Mts => 6,
+    Cts => 7,
+    Dts => 8,
+    Dmts => 9,
+    Dcts => 10,
+    Tsx => 11,
+    Json => 12,
+    Wasm => 13,
+    TsBuildInfo => 14,
+    SourceMap => 15,
+    Unknown => 16,
   }
 }
 
@@ -233,7 +227,7 @@ mod test {
         .get_module_info(
           &specifier1,
           MediaType::JavaScript,
-          &ModuleInfoCacheSourceHash::new(1)
+          CacheDBHash::new(1)
         )
         .unwrap(),
       None
@@ -257,7 +251,7 @@ mod test {
       .set_module_info(
         &specifier1,
         MediaType::JavaScript,
-        &ModuleInfoCacheSourceHash::new(1),
+        CacheDBHash::new(1),
         &module_info,
       )
       .unwrap();
@@ -266,7 +260,7 @@ mod test {
         .get_module_info(
           &specifier1,
           MediaType::JavaScript,
-          &ModuleInfoCacheSourceHash::new(1)
+          CacheDBHash::new(1)
         )
         .unwrap(),
       Some(module_info.clone())
@@ -276,7 +270,7 @@ mod test {
         .get_module_info(
           &specifier2,
           MediaType::JavaScript,
-          &ModuleInfoCacheSourceHash::new(1)
+          CacheDBHash::new(1)
         )
         .unwrap(),
       None,
@@ -287,7 +281,7 @@ mod test {
         .get_module_info(
           &specifier1,
           MediaType::TypeScript,
-          &ModuleInfoCacheSourceHash::new(1)
+          CacheDBHash::new(1)
         )
         .unwrap(),
       None,
@@ -298,7 +292,7 @@ mod test {
         .get_module_info(
           &specifier1,
           MediaType::JavaScript,
-          &ModuleInfoCacheSourceHash::new(2)
+          CacheDBHash::new(2)
         )
         .unwrap(),
       None,
@@ -313,7 +307,7 @@ mod test {
         .get_module_info(
           &specifier1,
           MediaType::JavaScript,
-          &ModuleInfoCacheSourceHash::new(1)
+          CacheDBHash::new(1)
         )
         .unwrap(),
       Some(module_info)
@@ -328,7 +322,7 @@ mod test {
         .get_module_info(
           &specifier1,
           MediaType::JavaScript,
-          &ModuleInfoCacheSourceHash::new(1)
+          CacheDBHash::new(1)
         )
         .unwrap(),
       None,

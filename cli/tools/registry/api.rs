@@ -1,9 +1,13 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
+use crate::http_util;
 use deno_core::error::AnyError;
 use deno_core::serde_json;
-use deno_runtime::deno_fetch::reqwest;
+use deno_runtime::deno_fetch;
+use lsp_types::Url;
 use serde::de::DeserializeOwned;
+
+use crate::http_util::HttpClient;
 
 #[derive(serde::Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -36,6 +40,7 @@ pub struct OidcTokenResponse {
 #[derive(serde::Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct PublishingTaskError {
+  #[allow(dead_code)]
   pub code: String,
   pub message: String,
 }
@@ -78,7 +83,7 @@ impl std::fmt::Debug for ApiError {
 impl std::error::Error for ApiError {}
 
 pub async fn parse_response<T: DeserializeOwned>(
-  response: reqwest::Response,
+  response: http::Response<deno_fetch::ResBody>,
 ) -> Result<T, ApiError> {
   let status = response.status();
   let x_deno_ray = response
@@ -86,7 +91,7 @@ pub async fn parse_response<T: DeserializeOwned>(
     .get("x-deno-ray")
     .and_then(|value| value.to_str().ok())
     .map(|s| s.to_string());
-  let text = response.text().await.unwrap();
+  let text = http_util::body_to_string(response).await.unwrap();
 
   if !status.is_success() {
     match serde_json::from_str::<ApiError>(&text) {
@@ -115,17 +120,17 @@ pub async fn parse_response<T: DeserializeOwned>(
 }
 
 pub async fn get_scope(
-  client: &reqwest::Client,
-  registry_api_url: &str,
+  client: &HttpClient,
+  registry_api_url: &Url,
   scope: &str,
-) -> Result<reqwest::Response, AnyError> {
+) -> Result<http::Response<deno_fetch::ResBody>, AnyError> {
   let scope_url = format!("{}scopes/{}", registry_api_url, scope);
-  let response = client.get(&scope_url).send().await?;
+  let response = client.get(scope_url.parse()?)?.send().await?;
   Ok(response)
 }
 
 pub fn get_package_api_url(
-  registry_api_url: &str,
+  registry_api_url: &Url,
   scope: &str,
   package: &str,
 ) -> String {
@@ -133,12 +138,73 @@ pub fn get_package_api_url(
 }
 
 pub async fn get_package(
-  client: &reqwest::Client,
-  registry_api_url: &str,
+  client: &HttpClient,
+  registry_api_url: &Url,
   scope: &str,
   package: &str,
-) -> Result<reqwest::Response, AnyError> {
+) -> Result<http::Response<deno_fetch::ResBody>, AnyError> {
   let package_url = get_package_api_url(registry_api_url, scope, package);
-  let response = client.get(&package_url).send().await?;
+  let response = client.get(package_url.parse()?)?.send().await?;
   Ok(response)
+}
+
+pub fn get_jsr_alternative(imported: &Url) -> Option<String> {
+  if matches!(imported.host_str(), Some("esm.sh")) {
+    let mut segments = imported.path_segments()?;
+    match segments.next()? {
+      "gh" => None,
+      module => Some(format!("\"npm:{module}\"")),
+    }
+  } else if imported.as_str().starts_with("https://deno.land/") {
+    let mut segments = imported.path_segments()?;
+    let maybe_std = segments.next()?;
+    if maybe_std != "std" && !maybe_std.starts_with("std@") {
+      return None;
+    }
+    let module = segments.next()?;
+    let export = segments
+      .next()
+      .filter(|s| *s != "mod.ts")
+      .map(|s| s.strip_suffix(".ts").unwrap_or(s).replace("_", "-"));
+    Some(format!(
+      "\"jsr:@std/{}@1{}\"",
+      module,
+      export.map(|s| format!("/{}", s)).unwrap_or_default()
+    ))
+  } else {
+    None
+  }
+}
+
+#[cfg(test)]
+mod test {
+  use super::*;
+
+  #[test]
+  fn test_jsr_alternative() {
+    #[track_caller]
+    fn run_test(imported: &str, output: Option<&str>) {
+      let imported = Url::parse(imported).unwrap();
+      let output = output.map(|s| s.to_string());
+      assert_eq!(get_jsr_alternative(&imported), output);
+    }
+
+    run_test("https://esm.sh/ts-morph", Some("\"npm:ts-morph\""));
+    run_test(
+      "https://deno.land/std/path/mod.ts",
+      Some("\"jsr:@std/path@1\""),
+    );
+    run_test(
+      "https://deno.land/std/path/join.ts",
+      Some("\"jsr:@std/path@1/join\""),
+    );
+    run_test(
+      "https://deno.land/std@0.229.0/path/join.ts",
+      Some("\"jsr:@std/path@1/join\""),
+    );
+    run_test(
+      "https://deno.land/std@0.229.0/path/something_underscore.ts",
+      Some("\"jsr:@std/path@1/something-underscore\""),
+    );
+  }
 }

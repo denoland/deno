@@ -1,8 +1,0 @@
-Checking fast check type graph for errors...
-
-Missing explicit return type in the public API.
-    at file:///[WILDCARD]/publish/invalid_fast_check/mod.ts:2:17
-
-Fixing these fast check errors is required to make the code fast check compatible which enables type checking your package's TypeScript code with the same performance as if you had distributed declaration files. Do any of these errors seem too restrictive or incorrect? Please open an issue if so to help us improve: https://github.com/denoland/deno/issues
-
-error: Had 1 fast check error.

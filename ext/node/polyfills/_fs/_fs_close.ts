@@ -5,13 +5,16 @@
 
 import type { CallbackWithError } from "ext:deno_node/_fs/_fs_common.ts";
 import { getValidatedFd } from "ext:deno_node/internal/fs/utils.mjs";
+import { core } from "ext:core/mod.js";
 
 export function close(fd: number, callback: CallbackWithError) {
   fd = getValidatedFd(fd);
   setTimeout(() => {
     let error = null;
     try {
-      Deno.close(fd);
+      // TODO(@littledivy): Treat `fd` as real file descriptor. `rid` is an
+      // implementation detail and may change.
+      core.close(fd);
     } catch (err) {
       error = err instanceof Error ? err : new Error("[non-error thrown]");
     }
@@ -21,5 +24,7 @@ export function close(fd: number, callback: CallbackWithError) {
 
 export function closeSync(fd: number) {
   fd = getValidatedFd(fd);
-  Deno.close(fd);
+  // TODO(@littledivy): Treat `fd` as real file descriptor. `rid` is an
+  // implementation detail and may change.
+  core.close(fd);
 }

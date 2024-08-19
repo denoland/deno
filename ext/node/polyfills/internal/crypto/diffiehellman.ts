@@ -4,17 +4,16 @@
 // TODO(petamoriken): enable prefer-primordials for node polyfills
 // deno-lint-ignore-file prefer-primordials
 
-import { core } from "ext:core/mod.js";
-const {
+import {
   op_node_dh_compute_secret,
-  op_node_dh_generate2,
-  op_node_ecdh_compute_secret,
-  op_node_ecdh_generate_keys,
+  op_node_dh_keys_generate_and_export,
+  op_node_diffie_hellman,
   op_node_ecdh_compute_public_key,
-} = core.ensureFastOps();
-const {
+  op_node_ecdh_compute_secret,
+  op_node_ecdh_encode_pubkey,
+  op_node_ecdh_generate_keys,
   op_node_gen_prime,
-} = core.ensureFastOps(true);
+} from "ext:core/ops";
 
 import { notImplemented } from "ext:deno_node/_utils.ts";
 import {
@@ -42,7 +41,12 @@ import type {
   BinaryToTextEncoding,
   ECDHKeyFormat,
 } from "ext:deno_node/internal/crypto/types.ts";
-import { KeyObject } from "ext:deno_node/internal/crypto/keys.ts";
+import {
+  getKeyObjectHandle,
+  kConsumePrivate,
+  kConsumePublic,
+  KeyObject,
+} from "ext:deno_node/internal/crypto/keys.ts";
 import type { BufferEncoding } from "ext:deno_node/_global.d.ts";
 
 const DH_GENERATOR = 2;
@@ -200,7 +204,7 @@ export class DiffieHellman {
   generateKeys(encoding: BinaryToTextEncoding): string;
   generateKeys(_encoding?: BinaryToTextEncoding): Buffer | string {
     const generator = this.#checkGenerator();
-    const [privateKey, publicKey] = op_node_dh_generate2(
+    const [privateKey, publicKey] = op_node_dh_keys_generate_and_export(
       this.#prime,
       this.#primeLength ?? 0,
       generator,
@@ -1239,12 +1243,18 @@ export class ECDH {
   generateKeys(encoding: BinaryToTextEncoding, format?: ECDHKeyFormat): string;
   generateKeys(
     encoding?: BinaryToTextEncoding,
-    _format?: ECDHKeyFormat,
+    format: ECDHKeyFormat = "uncompressed",
   ): Buffer | string {
+    this.#pubbuf = Buffer.alloc(
+      format == "compressed"
+        ? this.#curve.publicKeySizeCompressed
+        : this.#curve.publicKeySize,
+    );
     op_node_ecdh_generate_keys(
       this.#curve.name,
       this.#pubbuf,
       this.#privbuf,
+      format,
     );
 
     if (encoding !== undefined) {
@@ -1266,12 +1276,17 @@ export class ECDH {
   getPublicKey(encoding: BinaryToTextEncoding, format?: ECDHKeyFormat): string;
   getPublicKey(
     encoding?: BinaryToTextEncoding,
-    _format?: ECDHKeyFormat,
+    format: ECDHKeyFormat = "uncompressed",
   ): Buffer | string {
+    const pubbuf = Buffer.from(op_node_ecdh_encode_pubkey(
+      this.#curve.name,
+      this.#pubbuf,
+      format == "compressed",
+    ));
     if (encoding !== undefined) {
-      return this.#pubbuf.toString(encoding);
+      return pubbuf.toString(encoding);
     }
-    return this.#pubbuf;
+    return pubbuf;
   }
 
   setPrivateKey(privateKey: ArrayBufferView): void;
@@ -1296,11 +1311,14 @@ export class ECDH {
   }
 }
 
-export function diffieHellman(_options: {
+export function diffieHellman(options: {
   privateKey: KeyObject;
   publicKey: KeyObject;
 }): Buffer {
-  notImplemented("crypto.diffieHellman");
+  const privateKey = getKeyObjectHandle(options.privateKey, kConsumePrivate);
+  const publicKey = getKeyObjectHandle(options.publicKey, kConsumePublic);
+  const bytes = op_node_diffie_hellman(privateKey, publicKey);
+  return Buffer.from(bytes);
 }
 
 export default {

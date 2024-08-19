@@ -2,11 +2,11 @@
 
 use deno_core::error::AnyError;
 use deno_core::unsync::spawn;
-use tokio_util::sync::CancellationToken;
 use tower_lsp::LspService;
 use tower_lsp::Server;
 
 use crate::lsp::language_server::LanguageServer;
+use crate::util::sync::AsyncFlag;
 pub use repl::ReplCompletionItem;
 pub use repl::ReplLanguageServer;
 
@@ -21,6 +21,7 @@ mod completions;
 mod config;
 mod diagnostics;
 mod documents;
+mod jsr;
 pub mod language_server;
 mod logging;
 mod lsp_custom;
@@ -31,6 +32,8 @@ mod performance;
 mod refactor;
 mod registries;
 mod repl;
+mod resolver;
+mod search;
 mod semantic_tokens;
 mod testing;
 mod text;
@@ -41,26 +44,16 @@ pub async fn start() -> Result<(), AnyError> {
   let stdin = tokio::io::stdin();
   let stdout = tokio::io::stdout();
 
-  let token = CancellationToken::new();
+  let shutdown_flag = AsyncFlag::default();
   let builder = LspService::build(|client| {
     language_server::LanguageServer::new(
       client::Client::from_tower(client),
-      token.clone(),
+      shutdown_flag.clone(),
     )
   })
-  // TODO(nayeemrmn): The extension has replaced this with the `deno.cache`
-  // command as of vscode_deno 3.21.0 / 2023.09.05. Remove this eventually.
-  .custom_method(lsp_custom::CACHE_REQUEST, LanguageServer::cache_request)
   .custom_method(
     lsp_custom::PERFORMANCE_REQUEST,
     LanguageServer::performance_request,
-  )
-  // TODO(nayeemrmn): The extension has replaced this with the
-  // `deno.reloadImportRegistries` command as of vscode_deno
-  // 3.26.0 / 2023.10.10. Remove this eventually.
-  .custom_method(
-    lsp_custom::RELOAD_IMPORT_REGISTRIES_REQUEST,
-    LanguageServer::reload_import_registries_request,
   )
   .custom_method(lsp_custom::TASK_REQUEST, LanguageServer::task_definitions)
   // TODO(nayeemrmn): Rename this to `deno/taskDefinitions` in vscode_deno and
@@ -87,7 +80,7 @@ pub async fn start() -> Result<(), AnyError> {
 
   let (service, socket) = builder.finish();
 
-  // TODO(nayeemrmn): This cancellation token is a workaround for
+  // TODO(nayeemrmn): This shutdown flag is a workaround for
   // https://github.com/denoland/deno/issues/20700. Remove when
   // https://github.com/ebkalderon/tower-lsp/issues/399 is fixed.
   // Force end the server 8 seconds after receiving a shutdown request.
@@ -95,7 +88,7 @@ pub async fn start() -> Result<(), AnyError> {
     biased;
     _ = Server::new(stdin, stdout, socket).serve(service) => {}
     _ = spawn(async move {
-      token.cancelled().await;
+      shutdown_flag.wait_raised().await;
       tokio::time::sleep(std::time::Duration::from_secs(8)).await;
     }) => {}
   }

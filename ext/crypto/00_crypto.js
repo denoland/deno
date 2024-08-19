@@ -12,7 +12,7 @@ const {
   isTypedArray,
   isDataView,
 } = core;
-const {
+import {
   op_crypto_base64url_decode,
   op_crypto_base64url_encode,
   op_crypto_decrypt,
@@ -42,7 +42,7 @@ const {
   op_crypto_verify_ed25519,
   op_crypto_verify_key,
   op_crypto_wrap_key,
-} = core.ensureFastOps();
+} from "ext:core/ops";
 const {
   ArrayBufferIsView,
   ArrayBufferPrototypeGetByteLength,
@@ -1131,10 +1131,10 @@ class SubtleCrypto {
    * @param {number | null} length
    * @returns {Promise<ArrayBuffer>}
    */
-  async deriveBits(algorithm, baseKey, length) {
+  async deriveBits(algorithm, baseKey, length = null) {
     webidl.assertBranded(this, SubtleCryptoPrototype);
     const prefix = "Failed to execute 'deriveBits' on 'SubtleCrypto'";
-    webidl.requiredArguments(arguments.length, 3, prefix);
+    webidl.requiredArguments(arguments.length, 2, prefix);
     algorithm = webidl.converters.AlgorithmIdentifier(
       algorithm,
       prefix,

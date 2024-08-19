@@ -1,4 +1,4 @@
-#!/usr/bin/env -S deno run --unstable --allow-read=. --allow-run=git
+#!/usr/bin/env -S deno run --allow-read=. --allow-run=git --config=tests/config/deno.json
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
 import { getSources, ROOT_PATH } from "./util.js";
@@ -22,22 +22,30 @@ export async function checkCopyright() {
   const sourceFiles = await getSources(ROOT_PATH, [
     // js and ts
     "*.js",
+    "*.mjs",
+    "*.jsx",
     "*.ts",
+    "*.tsx",
     ":!:.github/mtime_cache/action.js",
-    ":!:cli/tests/testdata/**",
     ":!:cli/bench/testdata/**",
-    ":!:cli/tsc/dts/**",
+    ":!:cli/tools/bench/mitata.rs",
+    ":!:cli/tools/init/templates/**",
     ":!:cli/tsc/*typescript.js",
     ":!:cli/tsc/compiler.d.ts",
-    ":!:test_util/wpt/**",
-    ":!:cli/tools/init/templates/**",
-    ":!:cli/tests/unit_node/testdata/**",
-    ":!:cli/tests/node_compat/test/**",
-    ":!:cli/tools/bench/mitata.rs",
+    ":!:cli/tsc/dts/**",
+    ":!:tests/node_compat/test/**",
+    ":!:tests/registry/**",
+    ":!:tests/specs/**",
+    ":!:tests/testdata/**",
+    ":!:tests/unit_node/testdata/**",
+    ":!:tests/wpt/suite/**",
 
     // rust
     "*.rs",
     ":!:ops/optimizer_tests/**",
+
+    // c
+    "*.c",
 
     // toml
     "*Cargo.toml",
@@ -70,7 +78,7 @@ export async function checkCopyright() {
       !fileText.startsWith(C_STYLE_COPYRIGHT_LINE)
     ) {
       let trimmedText = fileText;
-      // Attempt to trim accceptable lines
+      // Attempt to trim acceptable lines
       while (
         ACCEPTABLE_LINES.test(trimmedText) &&
         !trimmedText.startsWith(C_STYLE_COPYRIGHT_LINE)
@@ -101,6 +109,7 @@ export async function checkCopyright() {
     // show all the errors at the same time to prevent overlap with
     // other running scripts that may be outputting
     console.error(errors.join("\n"));
+    console.error(`Expected copyright:\n\`\`\`\n${COPYRIGHT_LINE}\n\`\`\``);
     throw new Error(`Copyright checker had ${errors.length} errors.`);
   }
 }

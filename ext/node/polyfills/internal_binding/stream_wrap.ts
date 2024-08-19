@@ -31,10 +31,8 @@
 // deno-lint-ignore-file prefer-primordials
 
 import { core } from "ext:core/mod.js";
-const {
-  op_can_write_vectored,
-  op_raw_write_vectored,
-} = core.ensureFastOps();
+const { internalRidSymbol } = core;
+import { op_can_write_vectored, op_raw_write_vectored } from "ext:core/ops";
 
 import { TextEncoder } from "ext:deno_web/08_text_encoding.js";
 import { Buffer } from "node:buffer";
@@ -46,11 +44,11 @@ import {
 } from "ext:deno_node/internal_binding/async_wrap.ts";
 import { codeMap } from "ext:deno_node/internal_binding/uv.ts";
 
-interface Reader {
+export interface Reader {
   read(p: Uint8Array): Promise<number | null>;
 }
 
-interface Writer {
+export interface Writer {
   write(p: Uint8Array): Promise<number>;
 }
 
@@ -58,7 +56,12 @@ export interface Closer {
   close(): void;
 }
 
-type Ref = { ref(): void; unref(): void };
+export interface Ref {
+  ref(): void;
+  unref(): void;
+}
+
+export interface StreamBase extends Reader, Writer, Closer, Ref {}
 
 const enum StreamBaseStateFields {
   kReadBytesOrError,
@@ -203,7 +206,7 @@ export class LibuvStreamWrap extends HandleWrap {
     allBuffers: boolean,
   ): number {
     const supportsWritev = this.provider === providerType.TCPSERVERWRAP;
-    const rid = this[kStreamBaseField]!.rid;
+    const rid = this[kStreamBaseField]![internalRidSymbol];
     // Fast case optimization: two chunks, and all buffers.
     if (
       chunks.length === 2 && allBuffers && supportsWritev &&
@@ -317,13 +320,15 @@ export class LibuvStreamWrap extends HandleWrap {
   async #read() {
     let buf = this.#buf;
     let nread: number | null;
-    const ridBefore = this[kStreamBaseField]!.rid;
+    const ridBefore = this[kStreamBaseField]![internalRidSymbol];
     try {
       nread = await this[kStreamBaseField]!.read(buf);
     } catch (e) {
       // Try to read again if the underlying stream resource
       // changed. This can happen during TLS upgrades (eg. STARTTLS)
-      if (ridBefore != this[kStreamBaseField]!.rid) {
+      if (
+        ridBefore != this[kStreamBaseField]![internalRidSymbol]
+      ) {
         return this.#read();
       }
 
@@ -373,7 +378,7 @@ export class LibuvStreamWrap extends HandleWrap {
   async #write(req: WriteWrap<LibuvStreamWrap>, data: Uint8Array) {
     const { byteLength } = data;
 
-    const ridBefore = this[kStreamBaseField]!.rid;
+    const ridBefore = this[kStreamBaseField]![internalRidSymbol];
 
     let nwritten = 0;
     try {
@@ -386,7 +391,9 @@ export class LibuvStreamWrap extends HandleWrap {
     } catch (e) {
       // Try to read again if the underlying stream resource
       // changed. This can happen during TLS upgrades (eg. STARTTLS)
-      if (ridBefore != this[kStreamBaseField]!.rid) {
+      if (
+        ridBefore != this[kStreamBaseField]![internalRidSymbol]
+      ) {
         return this.#write(req, data.subarray(nwritten));
       }
 

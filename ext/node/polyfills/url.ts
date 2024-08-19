@@ -70,7 +70,10 @@ import {
   CHAR_ZERO_WIDTH_NOBREAK_SPACE,
 } from "ext:deno_node/path/_constants.ts";
 import * as path from "node:path";
-import { toASCII, toUnicode } from "node:punycode";
+import {
+  domainToASCII as idnaToASCII,
+  domainToUnicode as idnaToUnicode,
+} from "ext:deno_node/internal/idna.ts";
 import { isWindows, osType } from "ext:deno_node/_util/os.ts";
 import { encodeStr, hexTable } from "ext:deno_node/internal/querystring.ts";
 import querystring from "node:querystring";
@@ -813,7 +816,7 @@ export class Url {
 
           // Use lenient mode (`true`) to try to support even non-compliant
           // URLs.
-          this.hostname = toASCII(this.hostname);
+          this.hostname = idnaToASCII(this.hostname);
 
           // Prevent two potential routes of hostname spoofing.
           // 1. If this.hostname is empty, it must have become empty due to toASCII
@@ -1251,7 +1254,7 @@ export function resolveObject(source: string | Url, relative: string) {
  * @see https://www.rfc-editor.org/rfc/rfc3490#section-4
  */
 export function domainToASCII(domain: string) {
-  return toASCII(domain);
+  return idnaToASCII(domain);
 }
 
 /**
@@ -1261,7 +1264,7 @@ export function domainToASCII(domain: string) {
  * @see https://www.rfc-editor.org/rfc/rfc3490#section-4
  */
 export function domainToUnicode(domain: string) {
-  return toUnicode(domain);
+  return idnaToUnicode(domain);
 }
 
 /**
@@ -1349,12 +1352,16 @@ function getPathFromURLPosix(url: URL): string {
  *        setter.
  *  - TAB: The tab character is also stripped out by the `pathname` setter.
  */
-function encodePathChars(filepath: string): string {
+function encodePathChars(
+  filepath: string,
+  options: { windows?: boolean },
+): string {
+  const windows = options.windows;
   if (filepath.includes("%")) {
     filepath = filepath.replace(percentRegEx, "%25");
   }
   // In posix, backslash is a valid character in paths:
-  if (!isWindows && filepath.includes("\\")) {
+  if (!(windows ?? isWindows) && filepath.includes("\\")) {
     filepath = filepath.replace(backslashRegEx, "%5C");
   }
   if (filepath.includes("\n")) {
@@ -1373,11 +1380,17 @@ function encodePathChars(filepath: string): string {
  * This function ensures that `filepath` is resolved absolutely, and that the URL control characters are correctly encoded when converting into a File URL.
  * @see Tested in `parallel/test-url-pathtofileurl.js`.
  * @param filepath The file path string to convert to a file URL.
+ * @param options The options.
  * @returns The file URL object.
  */
-export function pathToFileURL(filepath: string): URL {
+export function pathToFileURL(
+  filepath: string,
+  options: { windows?: boolean } = {},
+): URL {
+  validateString(filepath, "path");
+  const windows = options?.windows;
   const outURL = new URL("file://");
-  if (isWindows && filepath.startsWith("\\\\")) {
+  if ((windows ?? isWindows) && filepath.startsWith("\\\\")) {
     // UNC path format: \\server\share\resource
     const paths = filepath.split("\\");
     if (paths.length <= 3) {
@@ -1396,21 +1409,23 @@ export function pathToFileURL(filepath: string): URL {
       );
     }
 
-    outURL.hostname = domainToASCII(hostname);
-    outURL.pathname = encodePathChars(paths.slice(3).join("/"));
+    outURL.hostname = idnaToASCII(hostname);
+    outURL.pathname = encodePathChars(paths.slice(3).join("/"), { windows });
   } else {
-    let resolved = path.resolve(filepath);
+    let resolved = (windows ?? isWindows)
+      ? path.win32.resolve(filepath)
+      : path.posix.resolve(filepath);
     // path.resolve strips trailing slashes so we must add them back
     const filePathLast = filepath.charCodeAt(filepath.length - 1);
     if (
       (filePathLast === CHAR_FORWARD_SLASH ||
-        (isWindows && filePathLast === CHAR_BACKWARD_SLASH)) &&
+        ((windows ?? isWindows) && filePathLast === CHAR_BACKWARD_SLASH)) &&
       resolved[resolved.length - 1] !== path.sep
     ) {
       resolved += "/";
     }
 
-    outURL.pathname = encodePathChars(resolved);
+    outURL.pathname = encodePathChars(resolved, { windows });
   }
   return outURL;
 }

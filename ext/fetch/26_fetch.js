@@ -11,12 +11,12 @@
 /// <reference lib="esnext" />
 
 import { core, primordials } from "ext:core/mod.js";
-const {
+import {
   op_fetch,
   op_fetch_send,
   op_wasm_streaming_feed,
   op_wasm_streaming_set_url,
-} = core.ensureFastOps();
+} from "ext:core/ops";
 const {
   ArrayPrototypePush,
   ArrayPrototypeSplice,
@@ -65,7 +65,7 @@ const REQUEST_BODY_HEADER_NAMES = [
 
 /**
  * @param {number} rid
- * @returns {Promise<{ status: number, statusText: string, headers: [string, string][], url: string, responseRid: number, error: string? }>}
+ * @returns {Promise<{ status: number, statusText: string, headers: [string, string][], url: string, responseRid: number, error: [string, string]? }>}
  */
 function opFetchSend(rid) {
   return op_fetch_send(rid);
@@ -169,7 +169,7 @@ async function mainFetch(req, recursive, terminator) {
   try {
     resp = await opFetchSend(requestRid);
   } catch (err) {
-    if (terminator.aborted) return;
+    if (terminator.aborted) return abortedNetworkError();
     throw err;
   } finally {
     if (cancelHandleRid !== null) {
@@ -177,8 +177,9 @@ async function mainFetch(req, recursive, terminator) {
     }
   }
   // Re-throw any body errors
-  if (resp.error) {
-    throw new TypeError("body failed", { cause: new Error(resp.error) });
+  if (resp.error !== null) {
+    const { 0: message, 1: cause } = resp.error;
+    throw new TypeError(message, { cause: new Error(cause) });
   }
   if (terminator.aborted) return abortedNetworkError();
 
@@ -305,7 +306,7 @@ function httpRedirectFetch(request, response, terminator) {
  * @param {RequestInfo} input
  * @param {RequestInit} init
  */
-function fetch(input, init = {}) {
+function fetch(input, init = { __proto__: null }) {
   // There is an async dispatch later that causes a stack trace disconnect.
   // We reconnect it by assigning the result of that dispatch to `opPromise`,
   // awaiting `opPromise` in an inner function also named `fetch()` and
@@ -313,7 +314,7 @@ function fetch(input, init = {}) {
   let opPromise = undefined;
   // 1.
   const result = new Promise((resolve, reject) => {
-    const prefix = "Failed to call 'fetch'";
+    const prefix = "Failed to execute 'fetch'";
     webidl.requiredArguments(arguments.length, 1, prefix);
     // 2.
     const requestObject = new Request(input, init);
@@ -425,7 +426,7 @@ function handleWasmStreaming(source, rid) {
   try {
     const res = webidl.converters["Response"](
       source,
-      "Failed to call 'WebAssembly.compileStreaming'",
+      "Failed to execute 'WebAssembly.compileStreaming'",
       "Argument 1",
     );
 

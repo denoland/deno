@@ -10,11 +10,11 @@
 gclient_config.py_entries
 /target/
 /std/hash/_wasm/target
-/tools/wpt/manifest.json
+/tests/wpt/runner/manifest.json
 /third_party/
-/test_napi/node_modules
-/test_napi/build
-/test_napi/third_party_tests/node_modules
+/tests/napi/node_modules
+/tests/napi/build
+/tests/napi/third_party_tests/node_modules
 
 # MacOS generated files
 .DS_Store
@@ -25,8 +25,8 @@ gclient_config.py_entries
 /flamegraph*.svg
 
 # WPT generated cert files
-/tools/wpt/certs/index.txt*
-/tools/wpt/certs/serial*
+/tests/wpt/runner/certs/index.txt*
+/tests/wpt/runner/certs/serial*
 
 /ext/websocket/autobahn/reports
 

@@ -1,82 +1,169 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
+use async_trait::async_trait;
+use dashmap::DashMap;
+use dashmap::DashSet;
 use deno_ast::MediaType;
+use deno_config::workspace::MappedResolution;
+use deno_config::workspace::MappedResolutionError;
+use deno_config::workspace::WorkspaceResolver;
 use deno_core::anyhow::anyhow;
+use deno_core::anyhow::Context;
 use deno_core::error::AnyError;
-use deno_core::futures::future;
-use deno_core::futures::future::LocalBoxFuture;
-use deno_core::futures::FutureExt;
-use deno_core::parking_lot::Mutex;
+use deno_core::ModuleSourceCode;
 use deno_core::ModuleSpecifier;
-use deno_graph::source::NpmPackageReqResolution;
-use deno_graph::source::NpmResolver;
 use deno_graph::source::ResolutionMode;
 use deno_graph::source::ResolveError;
 use deno_graph::source::Resolver;
 use deno_graph::source::UnknownBuiltInNodeModuleError;
 use deno_graph::source::DEFAULT_JSX_IMPORT_SOURCE_MODULE;
+use deno_graph::NpmLoadError;
+use deno_graph::NpmResolvePkgReqsResult;
+use deno_npm::resolution::NpmResolutionError;
+use deno_package_json::PackageJsonDepValue;
+use deno_runtime::deno_fs;
 use deno_runtime::deno_fs::FileSystem;
 use deno_runtime::deno_node::is_builtin_node_module;
-use deno_runtime::deno_node::parse_npm_pkg_name;
-use deno_runtime::deno_node::NodeResolution;
-use deno_runtime::deno_node::NodeResolutionMode;
 use deno_runtime::deno_node::NodeResolver;
-use deno_runtime::deno_node::NpmResolver as DenoNodeNpmResolver;
-use deno_runtime::permissions::PermissionsContainer;
+use deno_runtime::fs_util::specifier_to_file_path;
 use deno_semver::npm::NpmPackageReqReference;
 use deno_semver::package::PackageReq;
-use import_map::ImportMap;
+use node_resolver::errors::ClosestPkgJsonError;
+use node_resolver::errors::NodeResolveError;
+use node_resolver::errors::NodeResolveErrorKind;
+use node_resolver::errors::PackageFolderResolveErrorKind;
+use node_resolver::errors::PackageFolderResolveIoError;
+use node_resolver::errors::PackageNotFoundError;
+use node_resolver::errors::PackageResolveErrorKind;
+use node_resolver::errors::UrlToNodeResolutionError;
+use node_resolver::NodeModuleKind;
+use node_resolver::NodeResolution;
+use node_resolver::NodeResolutionMode;
+use node_resolver::PackageJson;
 use std::borrow::Cow;
-use std::collections::HashMap;
 use std::path::Path;
 use std::path::PathBuf;
 use std::sync::Arc;
 
-use crate::args::package_json::PackageJsonDeps;
 use crate::args::JsxImportSourceConfig;
-use crate::args::PackageJsonDepsProvider;
-use crate::graph_util::format_range_with_colors;
-use crate::module_loader::CjsResolutionStore;
-use crate::npm::ByonmCliNpmResolver;
+use crate::args::DENO_DISABLE_PEDANTIC_NODE_WARNINGS;
+use crate::node::CliNodeCodeTranslator;
 use crate::npm::CliNpmResolver;
 use crate::npm::InnerCliNpmResolverRef;
-use crate::util::path::specifier_to_file_path;
 use crate::util::sync::AtomicFlag;
 
-/// Result of checking if a specifier is mapped via
-/// an import map or package.json.
-pub enum MappedResolution {
-  None,
-  PackageJson(ModuleSpecifier),
-  ImportMap(ModuleSpecifier),
+pub struct ModuleCodeStringSource {
+  pub code: ModuleSourceCode,
+  pub found_url: ModuleSpecifier,
+  pub media_type: MediaType,
 }
 
-impl MappedResolution {
-  pub fn into_specifier(self) -> Option<ModuleSpecifier> {
-    match self {
-      MappedResolution::None => Option::None,
-      MappedResolution::PackageJson(specifier) => Some(specifier),
-      MappedResolution::ImportMap(specifier) => Some(specifier),
-    }
-  }
-}
-
-/// Resolver for specifiers that could be mapped via an
-/// import map or package.json.
 #[derive(Debug)]
-pub struct MappedSpecifierResolver {
-  maybe_import_map: Option<Arc<ImportMap>>,
-  package_json_deps_provider: Arc<PackageJsonDepsProvider>,
+pub struct CliNodeResolver {
+  cjs_resolutions: Arc<CjsResolutionStore>,
+  fs: Arc<dyn deno_fs::FileSystem>,
+  node_resolver: Arc<NodeResolver>,
+  // todo(dsherret): remove this pub(crate)
+  pub(crate) npm_resolver: Arc<dyn CliNpmResolver>,
 }
 
-impl MappedSpecifierResolver {
+impl CliNodeResolver {
   pub fn new(
-    maybe_import_map: Option<Arc<ImportMap>>,
-    package_json_deps_provider: Arc<PackageJsonDepsProvider>,
+    cjs_resolutions: Arc<CjsResolutionStore>,
+    fs: Arc<dyn deno_fs::FileSystem>,
+    node_resolver: Arc<NodeResolver>,
+    npm_resolver: Arc<dyn CliNpmResolver>,
   ) -> Self {
     Self {
-      maybe_import_map,
-      package_json_deps_provider,
+      cjs_resolutions,
+      fs,
+      node_resolver,
+      npm_resolver,
+    }
+  }
+
+  pub fn in_npm_package(&self, specifier: &ModuleSpecifier) -> bool {
+    self.npm_resolver.in_npm_package(specifier)
+  }
+
+  pub fn get_closest_package_json(
+    &self,
+    referrer: &ModuleSpecifier,
+  ) -> Result<Option<Arc<PackageJson>>, ClosestPkgJsonError> {
+    self.node_resolver.get_closest_package_json(referrer)
+  }
+
+  pub fn resolve_if_for_npm_pkg(
+    &self,
+    specifier: &str,
+    referrer: &ModuleSpecifier,
+    mode: NodeResolutionMode,
+  ) -> Result<Option<NodeResolution>, AnyError> {
+    let resolution_result = self.resolve(specifier, referrer, mode);
+    match resolution_result {
+      Ok(res) => Ok(Some(res)),
+      Err(err) => {
+        let err = err.into_kind();
+        match err {
+          NodeResolveErrorKind::RelativeJoin(_)
+          | NodeResolveErrorKind::PackageImportsResolve(_)
+          | NodeResolveErrorKind::UnsupportedEsmUrlScheme(_)
+          | NodeResolveErrorKind::DataUrlReferrer(_)
+          | NodeResolveErrorKind::TypesNotFound(_)
+          | NodeResolveErrorKind::FinalizeResolution(_)
+          | NodeResolveErrorKind::UrlToNodeResolution(_) => Err(err.into()),
+          NodeResolveErrorKind::PackageResolve(err) => {
+            let err = err.into_kind();
+            match err {
+              PackageResolveErrorKind::ClosestPkgJson(_)
+              | PackageResolveErrorKind::InvalidModuleSpecifier(_)
+              | PackageResolveErrorKind::ExportsResolve(_)
+              | PackageResolveErrorKind::SubpathResolve(_) => Err(err.into()),
+              PackageResolveErrorKind::PackageFolderResolve(err) => {
+                match err.as_kind() {
+                  PackageFolderResolveErrorKind::Io(
+                    PackageFolderResolveIoError { package_name, .. },
+                  )
+                  | PackageFolderResolveErrorKind::PackageNotFound(
+                    PackageNotFoundError { package_name, .. },
+                  ) => {
+                    if self.in_npm_package(referrer) {
+                      return Err(err.into());
+                    }
+                    if let Some(byonm_npm_resolver) =
+                      self.npm_resolver.as_byonm()
+                    {
+                      if byonm_npm_resolver
+                        .find_ancestor_package_json_with_dep(
+                          package_name,
+                          referrer,
+                        )
+                        .is_some()
+                      {
+                        return Err(anyhow!(
+                        concat!(
+                        "Could not resolve \"{}\", but found it in a package.json. ",
+                        "Deno expects the node_modules/ directory to be up to date. ",
+                        "Did you forget to run `npm install`?"
+                      ),
+                        specifier
+                      ));
+                      }
+                    }
+                    Ok(None)
+                  }
+                  PackageFolderResolveErrorKind::ReferrerNotFound(_) => {
+                    if self.in_npm_package(referrer) {
+                      return Err(err.into());
+                    }
+                    Ok(None)
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
     }
   }
 
@@ -84,31 +171,252 @@ impl MappedSpecifierResolver {
     &self,
     specifier: &str,
     referrer: &ModuleSpecifier,
-  ) -> Result<MappedResolution, AnyError> {
-    // attempt to resolve with the import map first
-    let maybe_import_map_err = match self
-      .maybe_import_map
-      .as_ref()
-      .map(|import_map| import_map.resolve(specifier, referrer))
-    {
-      Some(Ok(value)) => return Ok(MappedResolution::ImportMap(value)),
-      Some(Err(err)) => Some(err),
-      None => None,
+    mode: NodeResolutionMode,
+  ) -> Result<NodeResolution, NodeResolveError> {
+    let referrer_kind = if self.cjs_resolutions.contains(referrer) {
+      NodeModuleKind::Cjs
+    } else {
+      NodeModuleKind::Esm
     };
 
-    // then with package.json
-    if let Some(deps) = self.package_json_deps_provider.deps() {
-      if let Some(specifier) = resolve_package_json_dep(specifier, deps)? {
-        return Ok(MappedResolution::PackageJson(specifier));
+    let res =
+      self
+        .node_resolver
+        .resolve(specifier, referrer, referrer_kind, mode)?;
+    Ok(self.handle_node_resolution(res))
+  }
+
+  pub fn resolve_req_reference(
+    &self,
+    req_ref: &NpmPackageReqReference,
+    referrer: &ModuleSpecifier,
+    mode: NodeResolutionMode,
+  ) -> Result<NodeResolution, AnyError> {
+    self.resolve_req_with_sub_path(
+      req_ref.req(),
+      req_ref.sub_path(),
+      referrer,
+      mode,
+    )
+  }
+
+  pub fn resolve_req_with_sub_path(
+    &self,
+    req: &PackageReq,
+    sub_path: Option<&str>,
+    referrer: &ModuleSpecifier,
+    mode: NodeResolutionMode,
+  ) -> Result<NodeResolution, AnyError> {
+    let package_folder = self
+      .npm_resolver
+      .resolve_pkg_folder_from_deno_module_req(req, referrer)?;
+    let resolution_result = self.resolve_package_sub_path_from_deno_module(
+      &package_folder,
+      sub_path,
+      Some(referrer),
+      mode,
+    );
+    match resolution_result {
+      Ok(resolution) => Ok(resolution),
+      Err(err) => {
+        if self.npm_resolver.as_byonm().is_some() {
+          let package_json_path = package_folder.join("package.json");
+          if !self.fs.exists_sync(&package_json_path) {
+            return Err(anyhow!(
+              "Could not find '{}'. Deno expects the node_modules/ directory to be up to date. Did you forget to run `{}`?",
+              package_json_path.display(),
+              if *crate::args::DENO_FUTURE {
+                "deno install"
+              } else {
+                "npm install"
+              },
+            ));
+          }
+        }
+        Err(err)
+      }
+    }
+  }
+
+  pub fn resolve_package_sub_path_from_deno_module(
+    &self,
+    package_folder: &Path,
+    sub_path: Option<&str>,
+    maybe_referrer: Option<&ModuleSpecifier>,
+    mode: NodeResolutionMode,
+  ) -> Result<NodeResolution, AnyError> {
+    let res = self
+      .node_resolver
+      .resolve_package_subpath_from_deno_module(
+        package_folder,
+        sub_path,
+        maybe_referrer,
+        mode,
+      )?;
+    Ok(self.handle_node_resolution(res))
+  }
+
+  pub fn handle_if_in_node_modules(
+    &self,
+    specifier: &ModuleSpecifier,
+  ) -> Result<Option<ModuleSpecifier>, AnyError> {
+    // skip canonicalizing if we definitely know it's unnecessary
+    if specifier.scheme() == "file"
+      && specifier.path().contains("/node_modules/")
+    {
+      // Specifiers in the node_modules directory are canonicalized
+      // so canoncalize then check if it's in the node_modules directory.
+      // If so, check if we need to store this specifier as being a CJS
+      // resolution.
+      let specifier =
+        crate::node::resolve_specifier_into_node_modules(specifier);
+      if self.in_npm_package(&specifier) {
+        let resolution =
+          self.node_resolver.url_to_node_resolution(specifier)?;
+        if let NodeResolution::CommonJs(specifier) = &resolution {
+          self.cjs_resolutions.insert(specifier.clone());
+        }
+        return Ok(Some(resolution.into_url()));
       }
     }
 
-    // otherwise, surface the import map error or try resolving when has no import map
-    if let Some(err) = maybe_import_map_err {
-      Err(err.into())
-    } else {
-      Ok(MappedResolution::None)
+    Ok(None)
+  }
+
+  pub fn url_to_node_resolution(
+    &self,
+    specifier: ModuleSpecifier,
+  ) -> Result<NodeResolution, UrlToNodeResolutionError> {
+    self.node_resolver.url_to_node_resolution(specifier)
+  }
+
+  fn handle_node_resolution(
+    &self,
+    resolution: NodeResolution,
+  ) -> NodeResolution {
+    if let NodeResolution::CommonJs(specifier) = &resolution {
+      // remember that this was a common js resolution
+      self.cjs_resolutions.insert(specifier.clone());
     }
+    resolution
+  }
+}
+
+#[derive(Clone)]
+pub struct NpmModuleLoader {
+  cjs_resolutions: Arc<CjsResolutionStore>,
+  node_code_translator: Arc<CliNodeCodeTranslator>,
+  fs: Arc<dyn deno_fs::FileSystem>,
+  node_resolver: Arc<CliNodeResolver>,
+}
+
+impl NpmModuleLoader {
+  pub fn new(
+    cjs_resolutions: Arc<CjsResolutionStore>,
+    node_code_translator: Arc<CliNodeCodeTranslator>,
+    fs: Arc<dyn deno_fs::FileSystem>,
+    node_resolver: Arc<CliNodeResolver>,
+  ) -> Self {
+    Self {
+      cjs_resolutions,
+      node_code_translator,
+      fs,
+      node_resolver,
+    }
+  }
+
+  pub async fn load_if_in_npm_package(
+    &self,
+    specifier: &ModuleSpecifier,
+    maybe_referrer: Option<&ModuleSpecifier>,
+  ) -> Option<Result<ModuleCodeStringSource, AnyError>> {
+    if self.node_resolver.in_npm_package(specifier) {
+      Some(self.load(specifier, maybe_referrer).await)
+    } else {
+      None
+    }
+  }
+
+  pub async fn load(
+    &self,
+    specifier: &ModuleSpecifier,
+    maybe_referrer: Option<&ModuleSpecifier>,
+  ) -> Result<ModuleCodeStringSource, AnyError> {
+    let file_path = specifier.to_file_path().unwrap();
+    let code = self
+      .fs
+      .read_file_async(file_path.clone(), None)
+      .await
+      .map_err(AnyError::from)
+      .with_context(|| {
+        if file_path.is_dir() {
+          // directory imports are not allowed when importing from an
+          // ES module, so provide the user with a helpful error message
+          let dir_path = file_path;
+          let mut msg = "Directory import ".to_string();
+          msg.push_str(&dir_path.to_string_lossy());
+          if let Some(referrer) = &maybe_referrer {
+            msg.push_str(" is not supported resolving import from ");
+            msg.push_str(referrer.as_str());
+            let entrypoint_name = ["index.mjs", "index.js", "index.cjs"]
+              .iter()
+              .find(|e| dir_path.join(e).is_file());
+            if let Some(entrypoint_name) = entrypoint_name {
+              msg.push_str("\nDid you mean to import ");
+              msg.push_str(entrypoint_name);
+              msg.push_str(" within the directory?");
+            }
+          }
+          msg
+        } else {
+          let mut msg = "Unable to load ".to_string();
+          msg.push_str(&file_path.to_string_lossy());
+          if let Some(referrer) = &maybe_referrer {
+            msg.push_str(" imported from ");
+            msg.push_str(referrer.as_str());
+          }
+          msg
+        }
+      })?;
+
+    let code = if self.cjs_resolutions.contains(specifier) {
+      // translate cjs to esm if it's cjs and inject node globals
+      let code = match String::from_utf8_lossy(&code) {
+        Cow::Owned(code) => code,
+        // SAFETY: `String::from_utf8_lossy` guarantees that the result is valid
+        // UTF-8 if `Cow::Borrowed` is returned.
+        Cow::Borrowed(_) => unsafe { String::from_utf8_unchecked(code) },
+      };
+      ModuleSourceCode::String(
+        self
+          .node_code_translator
+          .translate_cjs_to_esm(specifier, Some(code))
+          .await?
+          .into(),
+      )
+    } else {
+      // esm and json code is untouched
+      ModuleSourceCode::Bytes(code.into_boxed_slice().into())
+    };
+    Ok(ModuleCodeStringSource {
+      code,
+      found_url: specifier.clone(),
+      media_type: MediaType::from_specifier(specifier),
+    })
+  }
+}
+
+/// Keeps track of what module specifiers were resolved as CJS.
+#[derive(Debug, Default)]
+pub struct CjsResolutionStore(DashSet<ModuleSpecifier>);
+
+impl CjsResolutionStore {
+  pub fn contains(&self, specifier: &ModuleSpecifier) -> bool {
+    self.0.contains(specifier)
+  }
+
+  pub fn insert(&self, specifier: ModuleSpecifier) {
+    self.0.insert(specifier);
   }
 }
 
@@ -116,64 +424,49 @@ impl MappedSpecifierResolver {
 /// import map, JSX settings.
 #[derive(Debug)]
 pub struct CliGraphResolver {
-  fs: Arc<dyn FileSystem>,
-  sloppy_imports_resolver: Option<SloppyImportsResolver>,
-  mapped_specifier_resolver: MappedSpecifierResolver,
+  node_resolver: Option<Arc<CliNodeResolver>>,
+  npm_resolver: Option<Arc<dyn CliNpmResolver>>,
+  sloppy_imports_resolver: Option<Arc<SloppyImportsResolver>>,
+  workspace_resolver: Arc<WorkspaceResolver>,
   maybe_default_jsx_import_source: Option<String>,
+  maybe_default_jsx_import_source_types: Option<String>,
   maybe_jsx_import_source_module: Option<String>,
   maybe_vendor_specifier: Option<ModuleSpecifier>,
-  cjs_resolutions: Option<Arc<CjsResolutionStore>>,
-  node_resolver: Option<Arc<NodeResolver>>,
-  npm_resolver: Option<Arc<dyn CliNpmResolver>>,
-  found_package_json_dep_flag: Arc<AtomicFlag>,
+  found_package_json_dep_flag: AtomicFlag,
   bare_node_builtins_enabled: bool,
 }
 
 pub struct CliGraphResolverOptions<'a> {
-  pub fs: Arc<dyn FileSystem>,
-  pub cjs_resolutions: Option<Arc<CjsResolutionStore>>,
-  pub sloppy_imports_resolver: Option<SloppyImportsResolver>,
-  pub node_resolver: Option<Arc<NodeResolver>>,
+  pub node_resolver: Option<Arc<CliNodeResolver>>,
   pub npm_resolver: Option<Arc<dyn CliNpmResolver>>,
-  pub package_json_deps_provider: Arc<PackageJsonDepsProvider>,
-  pub maybe_jsx_import_source_config: Option<JsxImportSourceConfig>,
-  pub maybe_import_map: Option<Arc<ImportMap>>,
-  pub maybe_vendor_dir: Option<&'a PathBuf>,
+  pub sloppy_imports_resolver: Option<Arc<SloppyImportsResolver>>,
+  pub workspace_resolver: Arc<WorkspaceResolver>,
   pub bare_node_builtins_enabled: bool,
+  pub maybe_jsx_import_source_config: Option<JsxImportSourceConfig>,
+  pub maybe_vendor_dir: Option<&'a PathBuf>,
 }
 
 impl CliGraphResolver {
   pub fn new(options: CliGraphResolverOptions) -> Self {
-    let is_byonm = options
-      .npm_resolver
-      .as_ref()
-      .map(|n| n.as_byonm().is_some())
-      .unwrap_or(false);
     Self {
-      fs: options.fs,
-      cjs_resolutions: options.cjs_resolutions,
+      node_resolver: options.node_resolver,
+      npm_resolver: options.npm_resolver,
       sloppy_imports_resolver: options.sloppy_imports_resolver,
-      mapped_specifier_resolver: MappedSpecifierResolver::new(
-        options.maybe_import_map,
-        if is_byonm {
-          // don't resolve from the root package.json deps for byonm
-          Arc::new(PackageJsonDepsProvider::new(None))
-        } else {
-          options.package_json_deps_provider
-        },
-      ),
+      workspace_resolver: options.workspace_resolver,
       maybe_default_jsx_import_source: options
         .maybe_jsx_import_source_config
         .as_ref()
         .and_then(|c| c.default_specifier.clone()),
+      maybe_default_jsx_import_source_types: options
+        .maybe_jsx_import_source_config
+        .as_ref()
+        .and_then(|c| c.default_types_specifier.clone()),
       maybe_jsx_import_source_module: options
         .maybe_jsx_import_source_config
         .map(|c| c.module),
       maybe_vendor_specifier: options
         .maybe_vendor_dir
         .and_then(|v| ModuleSpecifier::from_directory_path(v).ok()),
-      node_resolver: options.node_resolver,
-      npm_resolver: options.npm_resolver,
       found_package_json_dep_flag: Default::default(),
       bare_node_builtins_enabled: options.bare_node_builtins_enabled,
     }
@@ -183,53 +476,22 @@ impl CliGraphResolver {
     self
   }
 
-  pub fn as_graph_npm_resolver(&self) -> &dyn NpmResolver {
-    self
-  }
-
-  pub fn found_package_json_dep(&self) -> bool {
-    self.found_package_json_dep_flag.is_raised()
-  }
-
-  fn check_surface_byonm_node_error(
-    &self,
-    specifier: &str,
-    referrer: &ModuleSpecifier,
-    mode: NodeResolutionMode,
-    original_err: AnyError,
-    resolver: &ByonmCliNpmResolver,
-  ) -> Result<(), AnyError> {
-    if let Ok((pkg_name, _, _)) = parse_npm_pkg_name(specifier, referrer) {
-      match resolver
-        .resolve_package_folder_from_package(&pkg_name, referrer, mode)
-      {
-        Ok(_) => {
-          return Err(original_err);
-        }
-        Err(_) => {
-          if resolver
-            .find_ancestor_package_json_with_dep(&pkg_name, referrer)
-            .is_some()
-          {
-            return Err(anyhow!(
-              concat!(
-                "Could not resolve \"{}\", but found it in a package.json. ",
-                "Deno expects the node_modules/ directory to be up to date. ",
-                "Did you forget to run `npm install`?"
-              ),
-              specifier
-            ));
-          }
-        }
-      }
+  pub fn create_graph_npm_resolver(&self) -> WorkerCliNpmGraphResolver {
+    WorkerCliNpmGraphResolver {
+      npm_resolver: self.npm_resolver.as_ref(),
+      found_package_json_dep_flag: &self.found_package_json_dep_flag,
+      bare_node_builtins_enabled: self.bare_node_builtins_enabled,
     }
-    Ok(())
   }
 }
 
 impl Resolver for CliGraphResolver {
   fn default_jsx_import_source(&self) -> Option<String> {
     self.maybe_default_jsx_import_source.clone()
+  }
+
+  fn default_jsx_import_source_types(&self) -> Option<String> {
+    self.maybe_default_jsx_import_source_types.clone()
   }
 
   fn jsx_import_source_module(&self) -> &str {
@@ -253,37 +515,114 @@ impl Resolver for CliGraphResolver {
     }
 
     let referrer = &referrer_range.specifier;
-    let result = self
-      .mapped_specifier_resolver
+
+    // Use node resolution if we're in an npm package
+    if let Some(node_resolver) = self.node_resolver.as_ref() {
+      if referrer.scheme() == "file" && node_resolver.in_npm_package(referrer) {
+        return node_resolver
+          .resolve(specifier, referrer, to_node_mode(mode))
+          .map(|res| res.into_url())
+          .map_err(|e| ResolveError::Other(e.into()));
+      }
+    }
+
+    // Attempt to resolve with the workspace resolver
+    let result: Result<_, ResolveError> = self
+      .workspace_resolver
       .resolve(specifier, referrer)
-      .map_err(|err| err.into())
-      .and_then(|resolution| match resolution {
-        MappedResolution::ImportMap(specifier) => Ok(specifier),
-        MappedResolution::PackageJson(specifier) => {
+      .map_err(|err| match err {
+        MappedResolutionError::Specifier(err) => ResolveError::Specifier(err),
+        MappedResolutionError::ImportMap(err) => {
+          ResolveError::Other(err.into())
+        }
+        MappedResolutionError::Workspace(err) => {
+          ResolveError::Other(err.into())
+        }
+      });
+    let result = match result {
+      Ok(resolution) => match resolution {
+        MappedResolution::Normal(specifier)
+        | MappedResolution::ImportMap(specifier) => {
+          // do sloppy imports resolution if enabled
+          if let Some(sloppy_imports_resolver) = &self.sloppy_imports_resolver {
+            Ok(
+              sloppy_imports_resolver
+                .resolve(&specifier, mode)
+                .map(|s| s.into_specifier())
+                .unwrap_or(specifier),
+            )
+          } else {
+            Ok(specifier)
+          }
+        }
+        MappedResolution::WorkspaceJsrPackage { specifier, .. } => {
+          Ok(specifier)
+        }
+        MappedResolution::WorkspaceNpmPackage {
+          target_pkg_json: pkg_json,
+          sub_path,
+          ..
+        } => self
+          .node_resolver
+          .as_ref()
+          .unwrap()
+          .resolve_package_sub_path_from_deno_module(
+            pkg_json.dir_path(),
+            sub_path.as_deref(),
+            Some(referrer),
+            to_node_mode(mode),
+          )
+          .map_err(ResolveError::Other)
+          .map(|res| res.into_url()),
+        MappedResolution::PackageJson {
+          dep_result,
+          alias,
+          sub_path,
+          ..
+        } => {
           // found a specifier in the package.json, so mark that
           // we need to do an "npm install" later
           self.found_package_json_dep_flag.raise();
-          Ok(specifier)
-        }
-        MappedResolution::None => {
-          deno_graph::resolve_import(specifier, &referrer_range.specifier)
-            .map_err(|err| err.into())
-        }
-      });
 
-    // do sloppy imports resolution if enabled
-    let result =
-      if let Some(sloppy_imports_resolver) = &self.sloppy_imports_resolver {
-        result.map(|specifier| {
-          sloppy_imports_resolve(
-            sloppy_imports_resolver,
-            specifier,
-            referrer_range,
-          )
-        })
-      } else {
-        result
-      };
+          dep_result
+            .as_ref()
+            .map_err(|e| ResolveError::Other(e.clone().into()))
+            .and_then(|dep| match dep {
+              PackageJsonDepValue::Req(req) => {
+                ModuleSpecifier::parse(&format!(
+                  "npm:{}{}",
+                  req,
+                  sub_path.map(|s| format!("/{}", s)).unwrap_or_default()
+                ))
+                .map_err(|e| ResolveError::Other(e.into()))
+              }
+              PackageJsonDepValue::Workspace(version_req) => self
+                .workspace_resolver
+                .resolve_workspace_pkg_json_folder_for_pkg_json_dep(
+                  alias,
+                  version_req,
+                )
+                .map_err(|e| ResolveError::Other(e.into()))
+                .and_then(|pkg_folder| {
+                  Ok(
+                    self
+                      .node_resolver
+                      .as_ref()
+                      .unwrap()
+                      .resolve_package_sub_path_from_deno_module(
+                        pkg_folder,
+                        sub_path.as_deref(),
+                        Some(referrer),
+                        to_node_mode(mode),
+                      )?
+                      .into_url(),
+                  )
+                }),
+            })
+        }
+      },
+      Err(err) => Err(err),
+    };
 
     // When the user is vendoring, don't allow them to import directly from the vendor/ directory
     // as it might cause them confusion or duplicate dependencies. Additionally, this folder has
@@ -297,177 +636,78 @@ impl Resolver for CliGraphResolver {
       }
     }
 
-    if let Some(resolver) =
-      self.npm_resolver.as_ref().and_then(|r| r.as_byonm())
-    {
-      match &result {
-        Ok(specifier) => {
-          if let Ok(npm_req_ref) =
-            NpmPackageReqReference::from_specifier(specifier)
+    let Some(node_resolver) = &self.node_resolver else {
+      return result;
+    };
+
+    let is_byonm = self
+      .npm_resolver
+      .as_ref()
+      .is_some_and(|r| r.as_byonm().is_some());
+    match result {
+      Ok(specifier) => {
+        if let Ok(npm_req_ref) =
+          NpmPackageReqReference::from_specifier(&specifier)
+        {
+          // check if the npm specifier resolves to a workspace member
+          if let Some(pkg_folder) = self
+            .workspace_resolver
+            .resolve_workspace_pkg_json_folder_for_npm_specifier(
+              npm_req_ref.req(),
+            )
           {
-            let package_folder = resolver
-              .resolve_pkg_folder_from_deno_module_req(
-                npm_req_ref.req(),
-                referrer,
-              )?;
-            let node_resolver = self.node_resolver.as_ref().unwrap();
-            let package_json_path = package_folder.join("package.json");
-            if !self.fs.exists_sync(&package_json_path) {
-              return Err(ResolveError::Other(anyhow!(
-                "Could not find '{}'. Deno expects the node_modules/ directory to be up to date. Did you forget to run `npm install`?",
-                package_json_path.display()
-              )));
-            }
-            let maybe_resolution = node_resolver
-              .resolve_package_subpath_from_deno_module(
-                &package_folder,
-                npm_req_ref.sub_path(),
-                referrer,
-                to_node_mode(mode),
-                &PermissionsContainer::allow_all(),
-              )?;
-            match maybe_resolution {
-              Some(resolution) => {
-                if let Some(cjs_resolutions) = &self.cjs_resolutions {
-                  if let NodeResolution::CommonJs(specifier) = &resolution {
-                    // remember that this was a common js resolution
-                    cjs_resolutions.insert(specifier.clone());
-                  }
-                }
+            return Ok(
+              node_resolver
+                .resolve_package_sub_path_from_deno_module(
+                  pkg_folder,
+                  npm_req_ref.sub_path(),
+                  Some(referrer),
+                  to_node_mode(mode),
+                )?
+                .into_url(),
+            );
+          }
 
-                return Ok(resolution.into_url());
-              }
-              None => {
-                return Err(ResolveError::Other(anyhow!(
-                  "Failed resolving package subpath for '{}' in '{}'.",
-                  npm_req_ref,
-                  package_folder.display()
-                )));
-              }
-            }
+          // do npm resolution for byonm
+          if is_byonm {
+            return node_resolver
+              .resolve_req_reference(&npm_req_ref, referrer, to_node_mode(mode))
+              .map(|res| res.into_url())
+              .map_err(|err| err.into());
           }
         }
-        Err(_) => {
-          if referrer.scheme() == "file" {
-            if let Some(node_resolver) = &self.node_resolver {
-              let node_result = node_resolver.resolve(
-                specifier,
-                referrer,
-                to_node_mode(mode),
-                &PermissionsContainer::allow_all(),
-              );
-              match node_result {
-                Ok(Some(resolution)) => {
-                  if let Some(cjs_resolutions) = &self.cjs_resolutions {
-                    if let NodeResolution::CommonJs(specifier) = &resolution {
-                      // remember that this was a common js resolution
-                      cjs_resolutions.insert(specifier.clone());
-                    }
-                  }
-                  return Ok(resolution.into_url());
-                }
-                Ok(None) => {
-                  self
-                    .check_surface_byonm_node_error(
-                      specifier,
-                      referrer,
-                      to_node_mode(mode),
-                      anyhow!("Cannot find \"{}\"", specifier),
-                      resolver,
-                    )
-                    .map_err(ResolveError::Other)?;
-                }
-                Err(err) => {
-                  self
-                    .check_surface_byonm_node_error(
-                      specifier,
-                      referrer,
-                      to_node_mode(mode),
-                      err,
-                      resolver,
-                    )
-                    .map_err(ResolveError::Other)?;
-                }
-              }
-            }
-          }
-        }
+
+        Ok(match node_resolver.handle_if_in_node_modules(&specifier)? {
+          Some(specifier) => specifier,
+          None => specifier,
+        })
       }
-    }
+      Err(err) => {
+        // If byonm, check if the bare specifier resolves to an npm package
+        if is_byonm && referrer.scheme() == "file" {
+          let maybe_resolution = node_resolver
+            .resolve_if_for_npm_pkg(specifier, referrer, to_node_mode(mode))
+            .map_err(ResolveError::Other)?;
+          if let Some(res) = maybe_resolution {
+            return Ok(res.into_url());
+          }
+        }
 
-    result
-  }
-}
-
-fn sloppy_imports_resolve(
-  resolver: &SloppyImportsResolver,
-  specifier: ModuleSpecifier,
-  referrer_range: &deno_graph::Range,
-) -> ModuleSpecifier {
-  let resolution = resolver.resolve(&specifier);
-  let hint_message = match &resolution {
-    SloppyImportsResolution::JsToTs(to_specifier) => {
-      let from_media_type = MediaType::from_specifier(&specifier);
-      let to_media_type = MediaType::from_specifier(to_specifier);
-      format!(
-        "update {} extension to {}",
-        from_media_type.as_ts_extension(),
-        to_media_type.as_ts_extension()
-      )
-    }
-    SloppyImportsResolution::NoExtension(to_specifier) => {
-      let to_media_type = MediaType::from_specifier(to_specifier);
-      format!("add {} extension", to_media_type.as_ts_extension())
-    }
-    SloppyImportsResolution::Directory(to_specifier) => {
-      let file_name = to_specifier
-        .path()
-        .rsplit_once('/')
-        .map(|(_, file_name)| file_name)
-        .unwrap_or(to_specifier.path());
-      format!("specify path to {} file in directory instead", file_name)
-    }
-    SloppyImportsResolution::None(_) => return specifier,
-  };
-  // show a warning when this happens in order to drive
-  // the user towards correcting these specifiers
-  log::warn!(
-    "{} Sloppy module resolution {}\n    at {}",
-    crate::colors::yellow("Warning"),
-    crate::colors::gray(format!("(hint: {})", hint_message)),
-    if referrer_range.end == deno_graph::Position::zeroed() {
-      // not worth showing the range in this case
-      crate::colors::cyan(referrer_range.specifier.as_str()).to_string()
-    } else {
-      format_range_with_colors(referrer_range)
-    },
-  );
-  resolution.into_specifier().into_owned()
-}
-
-fn resolve_package_json_dep(
-  specifier: &str,
-  deps: &PackageJsonDeps,
-) -> Result<Option<ModuleSpecifier>, AnyError> {
-  for (bare_specifier, req_result) in deps {
-    if specifier.starts_with(bare_specifier) {
-      let path = &specifier[bare_specifier.len()..];
-      if path.is_empty() || path.starts_with('/') {
-        let req = req_result.as_ref().map_err(|err| {
-          anyhow!(
-            "Parsing version constraints in the application-level package.json is more strict at the moment.\n\n{:#}",
-            err.clone()
-          )
-        })?;
-        return Ok(Some(ModuleSpecifier::parse(&format!("npm:{req}{path}"))?));
+        Err(err)
       }
     }
   }
-
-  Ok(None)
 }
 
-impl NpmResolver for CliGraphResolver {
+#[derive(Debug)]
+pub struct WorkerCliNpmGraphResolver<'a> {
+  npm_resolver: Option<&'a Arc<dyn CliNpmResolver>>,
+  found_package_json_dep_flag: &'a AtomicFlag,
+  bare_node_builtins_enabled: bool,
+}
+
+#[async_trait(?Send)]
+impl<'a> deno_graph::source::NpmResolver for WorkerCliNpmGraphResolver<'a> {
   fn resolve_builtin_node_module(
     &self,
     specifier: &ModuleSpecifier,
@@ -494,82 +734,91 @@ impl NpmResolver for CliGraphResolver {
     } = range;
     let line = start.line + 1;
     let column = start.character + 1;
-    log::warn!("Warning: Resolving \"{module_name}\" as \"node:{module_name}\" at {specifier}:{line}:{column}. If you want to use a built-in Node module, add a \"node:\" prefix.")
-  }
-
-  fn load_and_cache_npm_package_info(
-    &self,
-    package_name: &str,
-  ) -> LocalBoxFuture<'static, Result<(), AnyError>> {
-    match &self.npm_resolver {
-      Some(npm_resolver) if npm_resolver.as_managed().is_some() => {
-        let package_name = package_name.to_string();
-        let npm_resolver = npm_resolver.clone();
-        async move {
-          if let Some(managed) = npm_resolver.as_managed() {
-            managed.cache_package_info(&package_name).await?;
-          }
-          Ok(())
-        }
-        .boxed()
-      }
-      _ => {
-        // return it succeeded and error at the import site below
-        Box::pin(future::ready(Ok(())))
-      }
+    if !*DENO_DISABLE_PEDANTIC_NODE_WARNINGS {
+      log::warn!("Warning: Resolving \"{module_name}\" as \"node:{module_name}\" at {specifier}:{line}:{column}. If you want to use a built-in Node module, add a \"node:\" prefix.")
     }
   }
 
-  fn resolve_npm(&self, package_req: &PackageReq) -> NpmPackageReqResolution {
+  fn load_and_cache_npm_package_info(&self, package_name: &str) {
+    match self.npm_resolver {
+      Some(npm_resolver) if npm_resolver.as_managed().is_some() => {
+        let npm_resolver = npm_resolver.clone();
+        let package_name = package_name.to_string();
+        deno_core::unsync::spawn(async move {
+          if let Some(managed) = npm_resolver.as_managed() {
+            let _ignore = managed.cache_package_info(&package_name).await;
+          }
+        });
+      }
+      _ => {}
+    }
+  }
+
+  async fn resolve_pkg_reqs(
+    &self,
+    package_reqs: &[PackageReq],
+  ) -> NpmResolvePkgReqsResult {
     match &self.npm_resolver {
-      Some(npm_resolver) => match npm_resolver.as_inner() {
-        InnerCliNpmResolverRef::Managed(npm_resolver) => {
-          npm_resolver.resolve_npm_for_deno_graph(package_req)
+      Some(npm_resolver) => {
+        let npm_resolver = match npm_resolver.as_inner() {
+          InnerCliNpmResolverRef::Managed(npm_resolver) => npm_resolver,
+          // if we are using byonm, then this should never be called because
+          // we don't use deno_graph's npm resolution in this case
+          InnerCliNpmResolverRef::Byonm(_) => unreachable!(),
+        };
+
+        let top_level_result = if self.found_package_json_dep_flag.is_raised() {
+          npm_resolver
+            .ensure_top_level_package_json_install()
+            .await
+            .map(|_| ())
+        } else {
+          Ok(())
+        };
+
+        let result = npm_resolver.add_package_reqs_raw(package_reqs).await;
+
+        NpmResolvePkgReqsResult {
+          results: result
+            .results
+            .into_iter()
+            .map(|r| {
+              r.map_err(|err| match err {
+                NpmResolutionError::Registry(e) => {
+                  NpmLoadError::RegistryInfo(Arc::new(e.into()))
+                }
+                NpmResolutionError::Resolution(e) => {
+                  NpmLoadError::PackageReqResolution(Arc::new(e.into()))
+                }
+                NpmResolutionError::DependencyEntry(e) => {
+                  NpmLoadError::PackageReqResolution(Arc::new(e.into()))
+                }
+              })
+            })
+            .collect(),
+          dep_graph_result: match top_level_result {
+            Ok(()) => result.dependencies_result.map_err(Arc::new),
+            Err(err) => Err(Arc::new(err)),
+          },
         }
-        // if we are using byonm, then this should never be called because
-        // we don't use deno_graph's npm resolution in this case
-        InnerCliNpmResolverRef::Byonm(_) => unreachable!(),
-      },
-      None => NpmPackageReqResolution::Err(anyhow!(
-        "npm specifiers were requested; but --no-npm is specified"
-      )),
+      }
+      None => {
+        let err = Arc::new(anyhow!(
+          "npm specifiers were requested; but --no-npm is specified"
+        ));
+        NpmResolvePkgReqsResult {
+          results: package_reqs
+            .iter()
+            .map(|_| Err(NpmLoadError::RegistryInfo(err.clone())))
+            .collect(),
+          dep_graph_result: Err(err),
+        }
+      }
     }
   }
 
   fn enables_bare_builtin_node_module(&self) -> bool {
     self.bare_node_builtins_enabled
-  }
-}
-
-#[derive(Debug)]
-struct SloppyImportsStatCache {
-  fs: Arc<dyn FileSystem>,
-  cache: Mutex<HashMap<PathBuf, Option<SloppyImportsFsEntry>>>,
-}
-
-impl SloppyImportsStatCache {
-  pub fn new(fs: Arc<dyn FileSystem>) -> Self {
-    Self {
-      fs,
-      cache: Default::default(),
-    }
-  }
-
-  pub fn stat_sync(&self, path: &Path) -> Option<SloppyImportsFsEntry> {
-    // there will only ever be one thread in here at a
-    // time, so it's ok to hold the lock for so long
-    let mut cache = self.cache.lock();
-    if let Some(entry) = cache.get(path) {
-      return *entry;
-    }
-
-    let entry = self
-      .fs
-      .stat_sync(path)
-      .ok()
-      .and_then(|stat| SloppyImportsFsEntry::from_fs_stat(&stat));
-    cache.insert(path.to_owned(), entry);
-    entry
   }
 }
 
@@ -593,10 +842,8 @@ impl SloppyImportsFsEntry {
   }
 }
 
-#[derive(Debug, PartialEq, Eq)]
-pub enum SloppyImportsResolution<'a> {
-  /// No sloppy resolution was found.
-  None(&'a ModuleSpecifier),
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum SloppyImportsResolution {
   /// Ex. `./file.js` to `./file.ts`
   JsToTs(ModuleSpecifier),
   /// Ex. `./file` to `./file.ts`
@@ -605,55 +852,46 @@ pub enum SloppyImportsResolution<'a> {
   Directory(ModuleSpecifier),
 }
 
-impl<'a> SloppyImportsResolution<'a> {
+impl SloppyImportsResolution {
   pub fn as_specifier(&self) -> &ModuleSpecifier {
     match self {
-      Self::None(specifier) => specifier,
       Self::JsToTs(specifier) => specifier,
       Self::NoExtension(specifier) => specifier,
       Self::Directory(specifier) => specifier,
     }
   }
 
-  pub fn into_specifier(self) -> Cow<'a, ModuleSpecifier> {
+  pub fn into_specifier(self) -> ModuleSpecifier {
     match self {
-      Self::None(specifier) => Cow::Borrowed(specifier),
-      Self::JsToTs(specifier) => Cow::Owned(specifier),
-      Self::NoExtension(specifier) => Cow::Owned(specifier),
-      Self::Directory(specifier) => Cow::Owned(specifier),
+      Self::JsToTs(specifier) => specifier,
+      Self::NoExtension(specifier) => specifier,
+      Self::Directory(specifier) => specifier,
     }
   }
 
-  pub fn as_suggestion_message(&self) -> Option<String> {
-    Some(format!("Maybe {}", self.as_base_message()?))
+  pub fn as_suggestion_message(&self) -> String {
+    format!("Maybe {}", self.as_base_message())
   }
 
-  pub fn as_lsp_quick_fix_message(&self) -> Option<String> {
-    let message = self.as_base_message()?;
+  pub fn as_quick_fix_message(&self) -> String {
+    let message = self.as_base_message();
     let mut chars = message.chars();
-    Some(format!(
+    format!(
       "{}{}.",
       chars.next().unwrap().to_uppercase(),
       chars.as_str()
-    ))
+    )
   }
 
-  fn as_base_message(&self) -> Option<String> {
+  fn as_base_message(&self) -> String {
     match self {
-      SloppyImportsResolution::None(_) => None,
       SloppyImportsResolution::JsToTs(specifier) => {
         let media_type = MediaType::from_specifier(specifier);
-        Some(format!(
-          "change the extension to '{}'",
-          media_type.as_ts_extension()
-        ))
+        format!("change the extension to '{}'", media_type.as_ts_extension())
       }
       SloppyImportsResolution::NoExtension(specifier) => {
         let media_type = MediaType::from_specifier(specifier);
-        Some(format!(
-          "add a '{}' extension",
-          media_type.as_ts_extension()
-        ))
+        format!("add a '{}' extension", media_type.as_ts_extension())
       }
       SloppyImportsResolution::Directory(specifier) => {
         let file_name = specifier
@@ -661,10 +899,7 @@ impl<'a> SloppyImportsResolution<'a> {
           .rsplit_once('/')
           .map(|(_, file_name)| file_name)
           .unwrap_or(specifier.path());
-        Some(format!(
-          "specify path to '{}' file in directory instead",
-          file_name
-        ))
+        format!("specify path to '{}' file in directory instead", file_name)
       }
     }
   }
@@ -672,219 +907,317 @@ impl<'a> SloppyImportsResolution<'a> {
 
 #[derive(Debug)]
 pub struct SloppyImportsResolver {
-  stat_cache: SloppyImportsStatCache,
+  fs: Arc<dyn FileSystem>,
+  cache: Option<DashMap<PathBuf, Option<SloppyImportsFsEntry>>>,
 }
 
 impl SloppyImportsResolver {
   pub fn new(fs: Arc<dyn FileSystem>) -> Self {
     Self {
-      stat_cache: SloppyImportsStatCache::new(fs),
+      fs,
+      cache: Some(Default::default()),
     }
   }
 
-  pub fn resolve_with_fs<'a>(
-    fs: &dyn FileSystem,
-    specifier: &'a ModuleSpecifier,
-  ) -> SloppyImportsResolution<'a> {
-    Self::resolve_with_stat_sync(specifier, |path| {
-      fs.stat_sync(path)
-        .ok()
-        .and_then(|stat| SloppyImportsFsEntry::from_fs_stat(&stat))
-    })
+  pub fn new_without_stat_cache(fs: Arc<dyn FileSystem>) -> Self {
+    Self { fs, cache: None }
   }
 
-  pub fn resolve_with_stat_sync(
+  pub fn resolve(
+    &self,
     specifier: &ModuleSpecifier,
-    stat_sync: impl Fn(&Path) -> Option<SloppyImportsFsEntry>,
-  ) -> SloppyImportsResolution {
-    if specifier.scheme() != "file" {
-      return SloppyImportsResolution::None(specifier);
+    mode: ResolutionMode,
+  ) -> Option<SloppyImportsResolution> {
+    fn path_without_ext(
+      path: &Path,
+      media_type: MediaType,
+    ) -> Option<Cow<str>> {
+      let old_path_str = path.to_string_lossy();
+      match media_type {
+        MediaType::Unknown => Some(old_path_str),
+        _ => old_path_str
+          .strip_suffix(media_type.as_ts_extension())
+          .map(|s| Cow::Owned(s.to_string())),
+      }
     }
 
-    let Ok(path) = specifier_to_file_path(specifier) else {
-      return SloppyImportsResolution::None(specifier);
-    };
-    let mut is_dir_resolution = false;
-    let mut is_no_ext_resolution = false;
-    let probe_paths = match (stat_sync)(&path) {
-      Some(SloppyImportsFsEntry::File) => {
-        return SloppyImportsResolution::None(specifier);
-      }
-      Some(SloppyImportsFsEntry::Dir) => {
-        is_dir_resolution = true;
-        // try to resolve at the index file
-        vec![
-          path.join("index.ts"),
-          path.join("index.js"),
-          path.join("index.mts"),
-          path.join("index.mjs"),
-          path.join("index.tsx"),
-          path.join("index.jsx"),
-        ]
-      }
-      None => {
-        let media_type = MediaType::from_specifier(specifier);
-        let probe_media_type_types = match media_type {
-          MediaType::JavaScript => vec![MediaType::TypeScript, MediaType::Tsx],
-          MediaType::Jsx => vec![MediaType::Tsx],
-          MediaType::Mjs => vec![MediaType::Mts],
-          MediaType::Cjs => vec![MediaType::Cts],
-          MediaType::TypeScript
-          | MediaType::Mts
-          | MediaType::Cts
-          | MediaType::Dts
-          | MediaType::Dmts
-          | MediaType::Dcts
-          | MediaType::Tsx
-          | MediaType::Json
-          | MediaType::Wasm
-          | MediaType::TsBuildInfo
-          | MediaType::SourceMap => {
-            return SloppyImportsResolution::None(specifier)
-          }
-          MediaType::Unknown => {
-            is_no_ext_resolution = true;
-            vec![
-              MediaType::TypeScript,
-              MediaType::JavaScript,
-              MediaType::Tsx,
-              MediaType::Jsx,
-              MediaType::Mts,
-              MediaType::Mjs,
-            ]
-          }
-        };
-        let old_path_str = path.to_string_lossy();
-        let old_path_str = match media_type {
-          MediaType::Unknown => old_path_str,
-          _ => match old_path_str.strip_suffix(media_type.as_ts_extension()) {
-            Some(s) => Cow::Borrowed(s),
-            None => return SloppyImportsResolution::None(specifier),
-          },
-        };
-        probe_media_type_types
-          .into_iter()
-          .map(|media_type| {
+    fn media_types_to_paths(
+      path_no_ext: &str,
+      original_media_type: MediaType,
+      probe_media_type_types: Vec<MediaType>,
+      reason: SloppyImportsResolutionReason,
+    ) -> Vec<(PathBuf, SloppyImportsResolutionReason)> {
+      probe_media_type_types
+        .into_iter()
+        .filter(|media_type| *media_type != original_media_type)
+        .map(|media_type| {
+          (
             PathBuf::from(format!(
               "{}{}",
-              old_path_str,
+              path_no_ext,
               media_type.as_ts_extension()
-            ))
-          })
-          .collect::<Vec<_>>()
-      }
-    };
+            )),
+            reason,
+          )
+        })
+        .collect::<Vec<_>>()
+    }
 
-    for probe_path in probe_paths {
-      if (stat_sync)(&probe_path) == Some(SloppyImportsFsEntry::File) {
-        if let Ok(specifier) = ModuleSpecifier::from_file_path(probe_path) {
-          if is_dir_resolution {
-            return SloppyImportsResolution::Directory(specifier);
-          } else if is_no_ext_resolution {
-            return SloppyImportsResolution::NoExtension(specifier);
+    if specifier.scheme() != "file" {
+      return None;
+    }
+
+    let path = specifier_to_file_path(specifier).ok()?;
+
+    #[derive(Clone, Copy)]
+    enum SloppyImportsResolutionReason {
+      JsToTs,
+      NoExtension,
+      Directory,
+    }
+
+    let probe_paths: Vec<(PathBuf, SloppyImportsResolutionReason)> =
+      match self.stat_sync(&path) {
+        Some(SloppyImportsFsEntry::File) => {
+          if mode.is_types() {
+            let media_type = MediaType::from_specifier(specifier);
+            // attempt to resolve the .d.ts file before the .js file
+            let probe_media_type_types = match media_type {
+              MediaType::JavaScript => {
+                vec![(MediaType::Dts), MediaType::JavaScript]
+              }
+              MediaType::Mjs => {
+                vec![MediaType::Dmts, MediaType::Dts, MediaType::Mjs]
+              }
+              MediaType::Cjs => {
+                vec![MediaType::Dcts, MediaType::Dts, MediaType::Cjs]
+              }
+              _ => return None,
+            };
+            let path_no_ext = path_without_ext(&path, media_type)?;
+            media_types_to_paths(
+              &path_no_ext,
+              media_type,
+              probe_media_type_types,
+              SloppyImportsResolutionReason::JsToTs,
+            )
           } else {
-            return SloppyImportsResolution::JsToTs(specifier);
+            return None;
+          }
+        }
+        entry @ None | entry @ Some(SloppyImportsFsEntry::Dir) => {
+          let media_type = MediaType::from_specifier(specifier);
+          let probe_media_type_types = match media_type {
+            MediaType::JavaScript => (
+              if mode.is_types() {
+                vec![MediaType::TypeScript, MediaType::Tsx, MediaType::Dts]
+              } else {
+                vec![MediaType::TypeScript, MediaType::Tsx]
+              },
+              SloppyImportsResolutionReason::JsToTs,
+            ),
+            MediaType::Jsx => {
+              (vec![MediaType::Tsx], SloppyImportsResolutionReason::JsToTs)
+            }
+            MediaType::Mjs => (
+              if mode.is_types() {
+                vec![MediaType::Mts, MediaType::Dmts, MediaType::Dts]
+              } else {
+                vec![MediaType::Mts]
+              },
+              SloppyImportsResolutionReason::JsToTs,
+            ),
+            MediaType::Cjs => (
+              if mode.is_types() {
+                vec![MediaType::Cts, MediaType::Dcts, MediaType::Dts]
+              } else {
+                vec![MediaType::Cts]
+              },
+              SloppyImportsResolutionReason::JsToTs,
+            ),
+            MediaType::TypeScript
+            | MediaType::Mts
+            | MediaType::Cts
+            | MediaType::Dts
+            | MediaType::Dmts
+            | MediaType::Dcts
+            | MediaType::Tsx
+            | MediaType::Json
+            | MediaType::Wasm
+            | MediaType::TsBuildInfo
+            | MediaType::SourceMap => {
+              return None;
+            }
+            MediaType::Unknown => (
+              if mode.is_types() {
+                vec![
+                  MediaType::TypeScript,
+                  MediaType::Tsx,
+                  MediaType::Mts,
+                  MediaType::Dts,
+                  MediaType::Dmts,
+                  MediaType::Dcts,
+                  MediaType::JavaScript,
+                  MediaType::Jsx,
+                  MediaType::Mjs,
+                ]
+              } else {
+                vec![
+                  MediaType::TypeScript,
+                  MediaType::JavaScript,
+                  MediaType::Tsx,
+                  MediaType::Jsx,
+                  MediaType::Mts,
+                  MediaType::Mjs,
+                ]
+              },
+              SloppyImportsResolutionReason::NoExtension,
+            ),
+          };
+          let mut probe_paths = match path_without_ext(&path, media_type) {
+            Some(path_no_ext) => media_types_to_paths(
+              &path_no_ext,
+              media_type,
+              probe_media_type_types.0,
+              probe_media_type_types.1,
+            ),
+            None => vec![],
+          };
+
+          if matches!(entry, Some(SloppyImportsFsEntry::Dir)) {
+            // try to resolve at the index file
+            if mode.is_types() {
+              probe_paths.push((
+                path.join("index.ts"),
+                SloppyImportsResolutionReason::Directory,
+              ));
+
+              probe_paths.push((
+                path.join("index.mts"),
+                SloppyImportsResolutionReason::Directory,
+              ));
+              probe_paths.push((
+                path.join("index.d.ts"),
+                SloppyImportsResolutionReason::Directory,
+              ));
+              probe_paths.push((
+                path.join("index.d.mts"),
+                SloppyImportsResolutionReason::Directory,
+              ));
+              probe_paths.push((
+                path.join("index.js"),
+                SloppyImportsResolutionReason::Directory,
+              ));
+              probe_paths.push((
+                path.join("index.mjs"),
+                SloppyImportsResolutionReason::Directory,
+              ));
+              probe_paths.push((
+                path.join("index.tsx"),
+                SloppyImportsResolutionReason::Directory,
+              ));
+              probe_paths.push((
+                path.join("index.jsx"),
+                SloppyImportsResolutionReason::Directory,
+              ));
+            } else {
+              probe_paths.push((
+                path.join("index.ts"),
+                SloppyImportsResolutionReason::Directory,
+              ));
+              probe_paths.push((
+                path.join("index.mts"),
+                SloppyImportsResolutionReason::Directory,
+              ));
+              probe_paths.push((
+                path.join("index.tsx"),
+                SloppyImportsResolutionReason::Directory,
+              ));
+              probe_paths.push((
+                path.join("index.js"),
+                SloppyImportsResolutionReason::Directory,
+              ));
+              probe_paths.push((
+                path.join("index.mjs"),
+                SloppyImportsResolutionReason::Directory,
+              ));
+              probe_paths.push((
+                path.join("index.jsx"),
+                SloppyImportsResolutionReason::Directory,
+              ));
+            }
+          }
+          if probe_paths.is_empty() {
+            return None;
+          }
+          probe_paths
+        }
+      };
+
+    for (probe_path, reason) in probe_paths {
+      if self.stat_sync(&probe_path) == Some(SloppyImportsFsEntry::File) {
+        if let Ok(specifier) = ModuleSpecifier::from_file_path(probe_path) {
+          match reason {
+            SloppyImportsResolutionReason::JsToTs => {
+              return Some(SloppyImportsResolution::JsToTs(specifier));
+            }
+            SloppyImportsResolutionReason::NoExtension => {
+              return Some(SloppyImportsResolution::NoExtension(specifier));
+            }
+            SloppyImportsResolutionReason::Directory => {
+              return Some(SloppyImportsResolution::Directory(specifier));
+            }
           }
         }
       }
     }
 
-    SloppyImportsResolution::None(specifier)
+    None
   }
 
-  pub fn resolve<'a>(
-    &self,
-    specifier: &'a ModuleSpecifier,
-  ) -> SloppyImportsResolution<'a> {
-    Self::resolve_with_stat_sync(specifier, |path| {
-      self.stat_cache.stat_sync(path)
-    })
+  fn stat_sync(&self, path: &Path) -> Option<SloppyImportsFsEntry> {
+    if let Some(cache) = &self.cache {
+      if let Some(entry) = cache.get(path) {
+        return *entry;
+      }
+    }
+
+    let entry = self
+      .fs
+      .stat_sync(path)
+      .ok()
+      .and_then(|stat| SloppyImportsFsEntry::from_fs_stat(&stat));
+    if let Some(cache) = &self.cache {
+      cache.insert(path.to_owned(), entry);
+    }
+    entry
   }
 }
 
 #[cfg(test)]
 mod test {
-  use std::collections::BTreeMap;
-
-  use deno_runtime::deno_fs::RealFs;
   use test_util::TestContext;
 
   use super::*;
 
   #[test]
-  fn test_resolve_package_json_dep() {
-    fn resolve(
-      specifier: &str,
-      deps: &BTreeMap<String, PackageReq>,
-    ) -> Result<Option<String>, String> {
-      let deps = deps
-        .iter()
-        .map(|(key, value)| (key.to_string(), Ok(value.clone())))
-        .collect();
-      resolve_package_json_dep(specifier, &deps)
-        .map(|s| s.map(|s| s.to_string()))
-        .map_err(|err| err.to_string())
+  fn test_unstable_sloppy_imports() {
+    fn resolve(specifier: &ModuleSpecifier) -> Option<SloppyImportsResolution> {
+      resolve_with_mode(specifier, ResolutionMode::Execution)
     }
 
-    let deps = BTreeMap::from([
-      (
-        "package".to_string(),
-        PackageReq::from_str("package@1.0").unwrap(),
-      ),
-      (
-        "package-alias".to_string(),
-        PackageReq::from_str("package@^1.2").unwrap(),
-      ),
-      (
-        "@deno/test".to_string(),
-        PackageReq::from_str("@deno/test@~0.2").unwrap(),
-      ),
-    ]);
+    fn resolve_types(
+      specifier: &ModuleSpecifier,
+    ) -> Option<SloppyImportsResolution> {
+      resolve_with_mode(specifier, ResolutionMode::Types)
+    }
 
-    assert_eq!(
-      resolve("package", &deps).unwrap(),
-      Some("npm:package@1.0".to_string()),
-    );
-    assert_eq!(
-      resolve("package/some_path.ts", &deps).unwrap(),
-      Some("npm:package@1.0/some_path.ts".to_string()),
-    );
-
-    assert_eq!(
-      resolve("@deno/test", &deps).unwrap(),
-      Some("npm:@deno/test@~0.2".to_string()),
-    );
-    assert_eq!(
-      resolve("@deno/test/some_path.ts", &deps).unwrap(),
-      Some("npm:@deno/test@~0.2/some_path.ts".to_string()),
-    );
-    // matches the start, but doesn't have the same length or a path
-    assert_eq!(resolve("@deno/testing", &deps).unwrap(), None,);
-
-    // alias
-    assert_eq!(
-      resolve("package-alias", &deps).unwrap(),
-      Some("npm:package@^1.2".to_string()),
-    );
-
-    // non-existent bare specifier
-    assert_eq!(resolve("non-existent", &deps).unwrap(), None);
-  }
-
-  #[test]
-  fn test_unstable_sloppy_imports() {
-    fn resolve(specifier: &ModuleSpecifier) -> SloppyImportsResolution {
-      SloppyImportsResolver::resolve_with_stat_sync(specifier, |path| {
-        RealFs.stat_sync(path).ok().and_then(|stat| {
-          if stat.is_file {
-            Some(SloppyImportsFsEntry::File)
-          } else if stat.is_directory {
-            Some(SloppyImportsFsEntry::Dir)
-          } else {
-            None
-          }
-        })
-      })
+    fn resolve_with_mode(
+      specifier: &ModuleSpecifier,
+      mode: ResolutionMode,
+    ) -> Option<SloppyImportsResolution> {
+      SloppyImportsResolver::new(Arc::new(deno_fs::RealFs))
+        .resolve(specifier, mode)
     }
 
     let context = TestContext::default();
@@ -894,11 +1227,7 @@ mod test {
     for (ext_from, ext_to) in [("js", "ts"), ("js", "tsx"), ("mjs", "mts")] {
       let ts_file = temp_dir.join(format!("file.{}", ext_to));
       ts_file.write("");
-      let ts_file_uri = ts_file.uri_file();
-      assert_eq!(
-        resolve(&ts_file.uri_file()),
-        SloppyImportsResolution::None(&ts_file_uri),
-      );
+      assert_eq!(resolve(&ts_file.uri_file()), None);
       assert_eq!(
         resolve(
           &temp_dir
@@ -906,7 +1235,7 @@ mod test {
             .join(&format!("file.{}", ext_from))
             .unwrap()
         ),
-        SloppyImportsResolution::JsToTs(ts_file.uri_file()),
+        Some(SloppyImportsResolution::JsToTs(ts_file.uri_file())),
       );
       ts_file.remove_file();
     }
@@ -922,7 +1251,7 @@ mod test {
             .join("file") // no ext
             .unwrap()
         ),
-        SloppyImportsResolution::NoExtension(file.uri_file()),
+        Some(SloppyImportsResolution::NoExtension(file.uri_file()))
       );
       file.remove_file();
     }
@@ -933,11 +1262,15 @@ mod test {
       ts_file.write("");
       let js_file = temp_dir.join("file.js");
       js_file.write("");
-      let js_file_uri = js_file.uri_file();
-      assert_eq!(
-        resolve(&js_file.uri_file()),
-        SloppyImportsResolution::None(&js_file_uri),
-      );
+      assert_eq!(resolve(&js_file.uri_file()), None);
+    }
+
+    // only js exists, .js specified
+    {
+      let js_only_file = temp_dir.join("js_only.js");
+      js_only_file.write("");
+      assert_eq!(resolve(&js_only_file.uri_file()), None);
+      assert_eq!(resolve_types(&js_only_file.uri_file()), None);
     }
 
     // resolving a directory to an index file
@@ -948,26 +1281,33 @@ mod test {
       index_file.write("");
       assert_eq!(
         resolve(&routes_dir.uri_file()),
-        SloppyImportsResolution::Directory(index_file.uri_file()),
+        Some(SloppyImportsResolution::Directory(index_file.uri_file())),
+      );
+    }
+
+    // both a directory and a file with specifier is present
+    {
+      let api_dir = temp_dir.join("api");
+      api_dir.create_dir_all();
+      let bar_file = api_dir.join("bar.ts");
+      bar_file.write("");
+      let api_file = temp_dir.join("api.ts");
+      api_file.write("");
+      assert_eq!(
+        resolve(&api_dir.uri_file()),
+        Some(SloppyImportsResolution::NoExtension(api_file.uri_file())),
       );
     }
   }
 
   #[test]
   fn test_sloppy_import_resolution_suggestion_message() {
-    // none
-    let url = ModuleSpecifier::parse("file:///dir/index.js").unwrap();
-    assert_eq!(
-      SloppyImportsResolution::None(&url).as_suggestion_message(),
-      None,
-    );
     // directory
     assert_eq!(
       SloppyImportsResolution::Directory(
         ModuleSpecifier::parse("file:///dir/index.js").unwrap()
       )
-      .as_suggestion_message()
-      .unwrap(),
+      .as_suggestion_message(),
       "Maybe specify path to 'index.js' file in directory instead"
     );
     // no ext
@@ -975,8 +1315,7 @@ mod test {
       SloppyImportsResolution::NoExtension(
         ModuleSpecifier::parse("file:///dir/index.mjs").unwrap()
       )
-      .as_suggestion_message()
-      .unwrap(),
+      .as_suggestion_message(),
       "Maybe add a '.mjs' extension"
     );
     // js to ts
@@ -984,8 +1323,7 @@ mod test {
       SloppyImportsResolution::JsToTs(
         ModuleSpecifier::parse("file:///dir/index.mts").unwrap()
       )
-      .as_suggestion_message()
-      .unwrap(),
+      .as_suggestion_message(),
       "Maybe change the extension to '.mts'"
     );
   }

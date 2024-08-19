@@ -5,15 +5,15 @@
 /// <reference path="../../core/lib.deno_core.d.ts" />
 /// <reference path="../webidl/internal.d.ts" />
 
-import { core, primordials } from "ext:core/mod.js";
-const {
+import { primordials } from "ext:core/mod.js";
+import {
   op_url_get_serialization,
   op_url_parse,
   op_url_parse_search_params,
   op_url_parse_with_base,
   op_url_reparse,
   op_url_stringify_search_params,
-} = core.ensureFastOps();
+} from "ext:core/ops";
 const {
   ArrayIsArray,
   ArrayPrototypeMap,
@@ -351,17 +351,29 @@ function trim(s) {
 // Represents a "no port" value. A port in URL cannot be greater than 2^16 - 1
 const NO_PORT = 65536;
 
+const skipInit = Symbol();
 const componentsBuf = new Uint32Array(8);
+
 class URL {
+  /** @type {URLSearchParams|null} */
   #queryObject = null;
+  /** @type {string} */
   #serialization;
+  /** @type {number} */
   #schemeEnd;
+  /** @type {number} */
   #usernameEnd;
+  /** @type {number} */
   #hostStart;
+  /** @type {number} */
   #hostEnd;
+  /** @type {number} */
   #port;
+  /** @type {number} */
   #pathStart;
+  /** @type {number} */
   #queryStart;
+  /** @type {number} */
   #fragmentStart;
 
   [_updateUrlSearch](value) {
@@ -378,14 +390,18 @@ class URL {
    * @param {string} [base]
    */
   constructor(url, base = undefined) {
+    // skip initialization for URL.parse
+    if (url === skipInit) {
+      return;
+    }
     const prefix = "Failed to construct 'URL'";
     webidl.requiredArguments(arguments.length, 1, prefix);
     url = webidl.converters.DOMString(url, prefix, "Argument 1");
     if (base !== undefined) {
       base = webidl.converters.DOMString(base, prefix, "Argument 2");
     }
-    this[webidl.brand] = webidl.brand;
     const status = opUrlParse(url, base);
+    this[webidl.brand] = webidl.brand;
     this.#serialization = getSerialization(status, url, base);
     this.#updateComponents();
   }
@@ -394,8 +410,32 @@ class URL {
    * @param {string} url
    * @param {string} [base]
    */
+  static parse(url, base = undefined) {
+    const prefix = "Failed to execute 'URL.parse'";
+    webidl.requiredArguments(arguments.length, 1, prefix);
+    url = webidl.converters.DOMString(url, prefix, "Argument 1");
+    if (base !== undefined) {
+      base = webidl.converters.DOMString(base, prefix, "Argument 2");
+    }
+    const status = opUrlParse(url, base);
+    if (status !== 0 && status !== 1) {
+      return null;
+    }
+    // If initialized with webidl.createBranded, private properties are not be accessible,
+    // so it is passed through the constructor
+    const self = new this(skipInit);
+    self[webidl.brand] = webidl.brand;
+    self.#serialization = getSerialization(status, url, base);
+    self.#updateComponents();
+    return self;
+  }
+
+  /**
+   * @param {string} url
+   * @param {string} [base]
+   */
   static canParse(url, base = undefined) {
-    const prefix = "Failed to call 'URL.canParse'";
+    const prefix = "Failed to execute 'URL.canParse'";
     webidl.requiredArguments(arguments.length, 1, prefix);
     url = webidl.converters.DOMString(url, prefix, "Argument 1");
     if (base !== undefined) {
@@ -799,7 +839,7 @@ class URL {
     }
   }
 
-  /** @return {string} */
+  /** @return {URLSearchParams} */
   get searchParams() {
     if (this.#queryObject == null) {
       this.#queryObject = new URLSearchParams(this.search);

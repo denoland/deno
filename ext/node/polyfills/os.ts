@@ -23,17 +23,17 @@
 // TODO(petamoriken): enable prefer-primordials for node polyfills
 // deno-lint-ignore-file prefer-primordials
 
-import { core } from "ext:core/mod.js";
-const {
+import {
   op_cpus,
+  op_homedir,
   op_node_os_get_priority,
   op_node_os_set_priority,
   op_node_os_username,
-} = core.ensureFastOps();
+} from "ext:core/ops";
 
 import { validateIntegerRange } from "ext:deno_node/_utils.ts";
 import process from "node:process";
-import { isWindows, osType } from "ext:deno_node/_util/os.ts";
+import { isWindows } from "ext:deno_node/_util/os.ts";
 import { ERR_OS_NO_HOMEDIR } from "ext:deno_node/internal/errors.ts";
 import { os } from "ext:deno_node/internal_binding/constants.ts";
 import { osUptime } from "ext:runtime/30_os.js";
@@ -174,21 +174,7 @@ export function getPriority(pid = 0): number {
 
 /** Returns the string path of the current user's home directory. */
 export function homedir(): string | null {
-  // Note: Node/libuv calls getpwuid() / GetUserProfileDirectory() when the
-  // environment variable isn't set but that's the (very uncommon) fallback
-  // path. IMO, it's okay to punt on that for now.
-  switch (osType) {
-    case "windows":
-      return Deno.env.get("USERPROFILE") || null;
-    case "linux":
-    case "android":
-    case "darwin":
-    case "freebsd":
-    case "openbsd":
-      return Deno.env.get("HOME") || null;
-    default:
-      throw Error("unreachable");
-  }
+  return op_homedir();
 }
 
 /** Returns the host name of the operating system as a string. */
@@ -354,7 +340,7 @@ export function userInfo(
   if (!_homedir) {
     throw new ERR_OS_NO_HOMEDIR();
   }
-  let shell = isWindows ? (Deno.env.get("SHELL") || null) : null;
+  let shell = isWindows ? null : (Deno.env.get("SHELL") || null);
   let username = op_node_os_username();
 
   if (options?.encoding === "buffer") {

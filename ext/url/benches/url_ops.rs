@@ -6,28 +6,24 @@ use deno_bench_util::bencher::benchmark_group;
 use deno_bench_util::bencher::Bencher;
 
 use deno_core::Extension;
-use deno_core::ExtensionFileSource;
-use deno_core::ExtensionFileSourceCode;
 
 fn setup() -> Vec<Extension> {
+  deno_core::extension!(
+    bench_setup,
+    esm_entry_point = "ext:bench_setup/setup",
+    esm = ["ext:bench_setup/setup" = {
+      source = r#"
+        import { URL } from "ext:deno_url/00_url.js";
+        globalThis.URL = URL;
+      "#
+    }]
+  );
+
   vec![
     deno_webidl::deno_webidl::init_ops_and_esm(),
     deno_console::deno_console::init_ops_and_esm(),
     deno_url::deno_url::init_ops_and_esm(),
-    Extension {
-      name: "bench_setup",
-      esm_files: std::borrow::Cow::Borrowed(&[ExtensionFileSource {
-        specifier: "ext:bench_setup/setup",
-        code: ExtensionFileSourceCode::IncludedInBinary(
-          r#"
-          import { URL } from "ext:deno_url/00_url.js";
-          globalThis.URL = URL;
-        "#,
-        ),
-      }]),
-      esm_entry_point: Some("ext:bench_setup/setup"),
-      ..Default::default()
-    },
+    bench_setup::init_ops_and_esm(),
   ]
 }
 

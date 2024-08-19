@@ -1,0 +1,5 @@
+{
+  "args": "publish --token 'sadfasdf' --dry-run",
+  "output": "invalid_import_esm_sh_suggestion.out",
+  "exitCode": 1
+}

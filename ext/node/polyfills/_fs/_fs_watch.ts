@@ -10,7 +10,6 @@ import { promisify } from "node:util";
 import { getValidatedPath } from "ext:deno_node/internal/fs/utils.mjs";
 import { validateFunction } from "ext:deno_node/internal/validators.mjs";
 import { stat, Stats } from "ext:deno_node/_fs/_fs_stat.ts";
-import { Stats as StatsClass } from "ext:deno_node/internal/fs/utils.mjs";
 import { Buffer } from "node:buffer";
 import { delay } from "ext:deno_node/_util/async.ts";
 
@@ -22,7 +21,7 @@ const statAsync = async (filename: string): Promise<Stats | null> => {
     return emptyStats;
   }
 };
-const emptyStats = new StatsClass(
+const emptyStats = new Stats(
   0,
   0,
   0,
@@ -147,7 +146,7 @@ export function watch(
       }
       throw e;
     }
-  });
+  }, () => iterator);
 
   if (listener) {
     fsWatcher.on("change", listener.bind({ _handle: fsWatcher }));
@@ -156,22 +155,43 @@ export function watch(
   return fsWatcher;
 }
 
-export const watchPromise = promisify(watch) as (
-  & ((
-    filename: string | URL,
-    options: watchOptions,
-    listener: watchListener,
-  ) => Promise<FSWatcher>)
-  & ((
-    filename: string | URL,
-    listener: watchListener,
-  ) => Promise<FSWatcher>)
-  & ((
-    filename: string | URL,
-    options: watchOptions,
-  ) => Promise<FSWatcher>)
-  & ((filename: string | URL) => Promise<FSWatcher>)
-);
+export function watchPromise(
+  filename: string | Buffer | URL,
+  options?: {
+    persistent?: boolean;
+    recursive?: boolean;
+    encoding?: string;
+    signal?: AbortSignal;
+  },
+): AsyncIterable<{ eventType: string; filename: string | Buffer | null }> {
+  const watchPath = getValidatedPath(filename).toString();
+
+  const watcher = Deno.watchFs(watchPath, {
+    recursive: options?.recursive ?? false,
+  });
+
+  if (options?.signal) {
+    options?.signal.addEventListener("abort", () => watcher.close());
+  }
+
+  const fsIterable = watcher[Symbol.asyncIterator]();
+  const iterable = {
+    async next() {
+      const result = await fsIterable.next();
+      if (result.done) return result;
+
+      const eventType = convertDenoFsEventToNodeFsEvent(result.value.kind);
+      return {
+        value: { eventType, filename: basename(result.value.paths[0]) },
+        done: result.done,
+      };
+    },
+  };
+
+  return {
+    [Symbol.asyncIterator]: () => iterable,
+  };
+}
 
 type WatchFileListener = (curr: Stats, prev: Stats) => void;
 type WatchFileOptions = {
@@ -212,7 +232,7 @@ export function watchFile(
     statWatchers.set(watchPath, stat);
   }
 
-  stat.addListener("change", listener!);
+  stat.addListener("change", handler);
   return stat;
 }
 
@@ -253,6 +273,7 @@ class StatWatcher extends EventEmitter {
   #bigint: boolean;
   #refCount = 0;
   #abortController = new AbortController();
+
   constructor(bigint: boolean) {
     super();
     this.#bigint = bigint;
@@ -307,19 +328,22 @@ class StatWatcher extends EventEmitter {
     this.emit("stop");
   }
   ref() {
-    notImplemented("FSWatcher.ref() is not implemented");
+    notImplemented("StatWatcher.ref() is not implemented");
   }
   unref() {
-    notImplemented("FSWatcher.unref() is not implemented");
+    notImplemented("StatWatcher.unref() is not implemented");
   }
 }
 
 class FSWatcher extends EventEmitter {
   #closer: () => void;
   #closed = false;
-  constructor(closer: () => void) {
+  #watcher: () => Deno.FsWatcher;
+
+  constructor(closer: () => void, getter: () => Deno.FsWatcher) {
     super();
     this.#closer = closer;
+    this.#watcher = getter;
   }
   close() {
     if (this.#closed) {
@@ -330,10 +354,10 @@ class FSWatcher extends EventEmitter {
     this.#closer();
   }
   ref() {
-    notImplemented("FSWatcher.ref() is not implemented");
+    this.#watcher().ref();
   }
   unref() {
-    notImplemented("FSWatcher.unref() is not implemented");
+    this.#watcher().unref();
   }
 }
 
@@ -343,6 +367,8 @@ function convertDenoFsEventToNodeFsEvent(
   kind: Deno.FsEvent["kind"],
 ): NodeFsEventType {
   if (kind === "create" || kind === "remove") {
+    return "rename";
+  } else if (kind === "rename") {
     return "rename";
   } else {
     return "change";

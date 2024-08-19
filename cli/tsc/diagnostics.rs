@@ -2,7 +2,7 @@
 
 use deno_ast::ModuleSpecifier;
 use deno_graph::ModuleGraph;
-use deno_runtime::colors;
+use deno_terminal::colors;
 
 use deno_core::serde::Deserialize;
 use deno_core::serde::Deserializer;
@@ -136,6 +136,13 @@ pub struct Diagnostic {
 }
 
 impl Diagnostic {
+  /// If this diagnostic should be included when it comes from a remote module.
+  pub fn include_when_remote(&self) -> bool {
+    /// TS6133: value is declared but its value is never read (noUnusedParameters and noUnusedLocals)
+    const TS6133: u64 = 6133;
+    self.code != TS6133
+  }
+
   fn fmt_category_and_code(&self, f: &mut fmt::Formatter) -> fmt::Result {
     let category = match self.category {
       DiagnosticCategory::Error => "ERROR",
@@ -275,11 +282,11 @@ impl Diagnostics {
 
   /// Return a set of diagnostics where only the values where the predicate
   /// returns `true` are included.
-  pub fn filter<P>(&self, predicate: P) -> Self
+  pub fn filter<P>(self, predicate: P) -> Self
   where
-    P: FnMut(&Diagnostic) -> Option<Diagnostic>,
+    P: FnMut(&Diagnostic) -> bool,
   {
-    let diagnostics = self.0.iter().filter_map(predicate).collect();
+    let diagnostics = self.0.into_iter().filter(predicate).collect();
     Self(diagnostics)
   }
 
@@ -298,7 +305,7 @@ impl Diagnostics {
       {
         if let Ok(Some(module)) = graph.try_get_prefer_types(&specifier) {
           if let Some(fast_check_module) =
-            module.esm().and_then(|m| m.fast_check_module())
+            module.js().and_then(|m| m.fast_check_module())
           {
             // todo(dsherret): use a short lived cache to prevent parsing
             // source maps so often

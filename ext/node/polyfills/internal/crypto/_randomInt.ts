@@ -3,10 +3,7 @@
 // TODO(petamoriken): enable prefer-primordials for node polyfills
 // deno-lint-ignore-file prefer-primordials
 
-import { core } from "ext:core/mod.js";
-const {
-  op_node_random_int,
-} = core.ensureFastOps();
+import { op_node_random_int } from "ext:core/ops";
 
 export default function randomInt(max: number): number;
 export default function randomInt(min: number, max: number): number;

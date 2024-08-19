@@ -4,7 +4,7 @@ import { core, primordials } from "ext:core/mod.js";
 const {
   isPromise,
 } = core;
-const {
+import {
   op_kv_atomic_write,
   op_kv_database_open,
   op_kv_dequeue_next_message,
@@ -13,7 +13,7 @@ const {
   op_kv_snapshot_read,
   op_kv_watch,
   op_kv_watch_next,
-} = core.ensureFastOps();
+} from "ext:core/ops";
 const {
   ArrayFrom,
   ArrayPrototypeMap,
@@ -210,7 +210,7 @@ class Kv {
       cursor?: string;
       reverse?: boolean;
       consistency?: Deno.KvConsistencyLevel;
-    } = {},
+    } = { __proto__: null },
   ): KvListIterator {
     if (options.limit !== undefined && options.limit <= 0) {
       throw new Error("limit must be positive");
@@ -340,7 +340,7 @@ class Kv {
     finishMessageOps.clear();
   }
 
-  watch(keys: Deno.KvKey[], options = {}) {
+  watch(keys: Deno.KvKey[], options = { __proto__: null }) {
     const raw = options.raw ?? false;
     const rid = op_kv_watch(this.#rid, keys);
     const lastEntries: (Deno.KvEntryMaybe<unknown> | undefined)[] = ArrayFrom(

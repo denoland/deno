@@ -3,7 +3,8 @@
 // deno-lint-ignore-file
 
 import { core, internals, primordials } from "ext:core/mod.js";
-const {
+import {
+  op_napi_open,
   op_require_as_file_path,
   op_require_break_on_next_statement,
   op_require_init_paths,
@@ -16,6 +17,7 @@ const {
   op_require_path_is_absolute,
   op_require_path_resolve,
   op_require_proxy_path,
+  op_require_read_closest_package_json,
   op_require_read_file,
   op_require_read_package_scope,
   op_require_real_path,
@@ -25,11 +27,7 @@ const {
   op_require_stat,
   op_require_try_self,
   op_require_try_self_parent_path,
-} = core.ensureFastOps();
-const {
-  op_napi_open,
-  op_require_read_closest_package_json,
-} = core.ensureFastOps(true);
+} from "ext:core/ops";
 const {
   ArrayIsArray,
   ArrayPrototypeIncludes,
@@ -94,7 +92,7 @@ import fsPromises from "node:fs/promises";
 import http from "node:http";
 import http2 from "node:http2";
 import https from "node:https";
-import inspector from "ext:deno_node/inspector.ts";
+import inspector from "node:inspector";
 import internalCp from "ext:deno_node/internal/child_process.ts";
 import internalCryptoCertificate from "ext:deno_node/internal/crypto/certificate.ts";
 import internalCryptoCipher from "ext:deno_node/internal/crypto/cipher.ts";
@@ -134,7 +132,7 @@ import punycode from "node:punycode";
 import process from "node:process";
 import querystring from "node:querystring";
 import readline from "node:readline";
-import readlinePromises from "ext:deno_node/readline/promises.ts";
+import readlinePromises from "node:readline/promises";
 import repl from "node:repl";
 import stream from "node:stream";
 import streamConsumers from "node:stream/consumers";
@@ -220,6 +218,7 @@ function setupBuiltinModules() {
     "internal/util/inspect": internalUtilInspect,
     "internal/util": internalUtil,
     net,
+    module: Module,
     os,
     "path/posix": pathPosix,
     "path/win32": pathWin32,
@@ -266,9 +265,6 @@ function setupBuiltinModules() {
 }
 setupBuiltinModules();
 
-// Map used to store CJS parsing data.
-const cjsParseCache = new SafeWeakMap();
-
 function pathDirname(filepath) {
   if (filepath == null) {
     throw new Error("Empty filepath.");
@@ -287,11 +283,10 @@ const nativeModulePolyfill = new SafeMap();
 const relativeResolveCache = ObjectCreate(null);
 let requireDepth = 0;
 let statCache = null;
-let isPreloading = false;
 let mainModule = null;
 let hasBrokenOnInspectBrk = false;
 let hasInspectBrk = false;
-// Are we running with --node-modules-dir flag?
+// Are we running with --node-modules-dir flag or byonm?
 let usesLocalNodeModulesDir = false;
 
 function stat(filename) {
@@ -480,6 +475,7 @@ function Module(id = "", parent) {
   updateChildren(parent, this, false);
   this.filename = null;
   this.loaded = false;
+  this.parent = parent;
   this.children = [];
 }
 
@@ -493,31 +489,6 @@ Module.globalPaths = modulePaths;
 
 const CHAR_FORWARD_SLASH = 47;
 const TRAILING_SLASH_REGEX = /(?:^|\/)\.?\.$/;
-const encodedSepRegEx = /%2F|%2C/i;
-
-function finalizeEsmResolution(
-  resolved,
-  parentPath,
-  pkgPath,
-) {
-  if (RegExpPrototypeTest(encodedSepRegEx, resolved)) {
-    throw new ERR_INVALID_MODULE_SPECIFIER(
-      resolved,
-      'must not include encoded "/" or "\\" characters',
-      parentPath,
-    );
-  }
-  // const filename = fileURLToPath(resolved);
-  const filename = resolved;
-  const actual = tryFile(filename, false);
-  if (actual) {
-    return actual;
-  }
-  throw new ERR_MODULE_NOT_FOUND(
-    filename,
-    path.resolve(pkgPath, "package.json"),
-  );
-}
 
 // This only applies to requests of a specific form:
 // 1. name/.*
@@ -792,9 +763,7 @@ Module._resolveFilename = function (
 
   if (typeof options === "object" && options !== null) {
     if (ArrayIsArray(options.paths)) {
-      const isRelative = op_require_is_request_relative(
-        request,
-      );
+      const isRelative = op_require_is_request_relative(request);
 
       if (isRelative) {
         paths = options.paths;
@@ -874,6 +843,29 @@ Module._resolveFilename = function (
   const err = new Error(message);
   err.code = "MODULE_NOT_FOUND";
   err.requireStack = requireStack;
+
+  // fallback and attempt to resolve bare specifiers using
+  // the global cache when not using --node-modules-dir
+  if (
+    !usesLocalNodeModulesDir &&
+    ArrayIsArray(options?.paths) &&
+    request[0] !== "." &&
+    request[0] !== "#" &&
+    !request.startsWith("file:///") &&
+    !op_require_is_request_relative(request) &&
+    !op_require_path_is_absolute(request)
+  ) {
+    try {
+      return Module._resolveFilename(request, parent, isMain, {
+        ...options,
+        paths: undefined,
+      });
+    } catch {
+      // ignore
+    }
+  }
+
+  // throw the original error
   throw err;
 };
 
@@ -984,9 +976,14 @@ function wrapSafe(
   filename,
   content,
   cjsModuleInstance,
+  format,
 ) {
   const wrapper = Module.wrap(content);
-  const [f, err] = core.evalContext(wrapper, `file://${filename}`);
+  const [f, err] = core.evalContext(
+    wrapper,
+    url.pathToFileURL(filename).toString(),
+    [format !== "module"],
+  );
   if (err) {
     if (process.mainModule === cjsModuleInstance) {
       enrichCJSError(err.thrown);
@@ -1003,8 +1000,16 @@ function wrapSafe(
   return f;
 }
 
-Module.prototype._compile = function (content, filename) {
-  const compiledWrapper = wrapSafe(filename, content, this);
+Module.prototype._compile = function (content, filename, format) {
+  const compiledWrapper = wrapSafe(filename, content, this, format);
+
+  if (format === "module") {
+    // TODO(https://github.com/denoland/deno/issues/24822): implement require esm
+    throw createRequireEsmError(
+      filename,
+      moduleParentCache.get(module)?.filename,
+    );
+  }
 
   const dirname = pathDirname(filename);
   const require = makeRequireFunction(this);
@@ -1061,17 +1066,24 @@ Module.prototype._compile = function (content, filename) {
 Module._extensions[".js"] = function (module, filename) {
   const content = op_require_read_file(filename);
 
+  let format;
   if (StringPrototypeEndsWith(filename, ".js")) {
     const pkg = op_require_read_closest_package_json(filename);
-    if (pkg && pkg.exists && pkg.typ === "module") {
+    if (pkg?.typ === "module") {
+      // TODO(https://github.com/denoland/deno/issues/24822): implement require esm
+      format = "module";
       throw createRequireEsmError(
         filename,
         moduleParentCache.get(module)?.filename,
       );
+    } else if (pkg?.type === "commonjs") {
+      format = "commonjs";
     }
+  } else if (StringPrototypeEndsWith(filename, ".cjs")) {
+    format = "commonjs";
   }
 
-  module._compile(content, filename);
+  module._compile(content, filename, format);
 };
 
 function createRequireEsmError(filename, parent) {
@@ -1109,10 +1121,12 @@ Module._extensions[".json"] = function (module, filename) {
 
 // Native extension for .node
 Module._extensions[".node"] = function (module, filename) {
-  if (filename.endsWith("fsevents.node")) {
-    throw new Error("Using fsevents module is currently not supported");
-  }
-  module.exports = op_napi_open(filename, globalThis);
+  module.exports = op_napi_open(
+    filename,
+    globalThis,
+    nodeGlobals.Buffer,
+    reportError,
+  );
 };
 
 function createRequireFromPath(filename) {
@@ -1183,6 +1197,25 @@ function createRequire(filenameOrUrl) {
   return createRequireFromPath(filename);
 }
 
+function isBuiltin(moduleName) {
+  if (typeof moduleName !== "string") {
+    return false;
+  }
+
+  if (StringPrototypeStartsWith(moduleName, "node:")) {
+    moduleName = StringPrototypeSlice(moduleName, 5);
+  } else if (moduleName === "test") {
+    // test is only a builtin if it has the "node:" scheme
+    // see https://github.com/nodejs/node/blob/73025c4dec042e344eeea7912ed39f7b7c4a3991/test/parallel/test-module-isBuiltin.js#L14
+    return false;
+  }
+
+  return moduleName in nativeModuleExports &&
+    !StringPrototypeStartsWith(moduleName, "internal/");
+}
+
+Module.isBuiltin = isBuiltin;
+
 Module.createRequire = createRequire;
 
 Module._initPaths = function () {
@@ -1251,7 +1284,29 @@ internals.requireImpl = {
   nativeModuleExports,
 };
 
-export { builtinModules, createRequire, Module };
+/**
+ * @param {string} path
+ * @returns {SourceMap | undefined}
+ */
+export function findSourceMap(_path) {
+  // TODO(@marvinhagemeister): Stub implementation for now to unblock ava
+  return undefined;
+}
+
+/**
+ * @param {string | URL} _specifier
+ * @param {string | URL} _parentUrl
+ * @param {{ parentURL: string | URL, data: any, transferList: any[] }} [_options]
+ */
+export function register(_specifier, _parentUrl, _options) {
+  // TODO(@marvinhagemeister): Stub implementation for programs registering
+  // TypeScript loaders. We don't support registering loaders for file
+  // types that Deno itself doesn't support at the moment.
+
+  return undefined;
+}
+
+export { builtinModules, createRequire, isBuiltin, Module };
 export const _cache = Module._cache;
 export const _extensions = Module._extensions;
 export const _findPath = Module._findPath;

@@ -1,140 +1,130 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
+use std::ops::Range;
+
 use base64::prelude::BASE64_STANDARD;
 use base64::Engine;
-use deno_core::ModuleCodeString;
-use encoding_rs::*;
-use std::borrow::Cow;
-use std::io::Error;
-use std::io::ErrorKind;
-
-pub const BOM_CHAR: char = '\u{FEFF}';
-
-/// Attempts to detect the character encoding of the provided bytes.
-///
-/// Supports UTF-8, UTF-16 Little Endian and UTF-16 Big Endian.
-pub fn detect_charset(bytes: &'_ [u8]) -> &'static str {
-  const UTF16_LE_BOM: &[u8] = b"\xFF\xFE";
-  const UTF16_BE_BOM: &[u8] = b"\xFE\xFF";
-
-  if bytes.starts_with(UTF16_LE_BOM) {
-    "utf-16le"
-  } else if bytes.starts_with(UTF16_BE_BOM) {
-    "utf-16be"
-  } else {
-    // Assume everything else is utf-8
-    "utf-8"
-  }
-}
-
-/// Attempts to convert the provided bytes to a UTF-8 string.
-///
-/// Supports all encodings supported by the encoding_rs crate, which includes
-/// all encodings specified in the WHATWG Encoding Standard, and only those
-/// encodings (see: <https://encoding.spec.whatwg.org/>).
-pub fn convert_to_utf8<'a>(
-  bytes: &'a [u8],
-  charset: &'_ str,
-) -> Result<Cow<'a, str>, Error> {
-  match Encoding::for_label(charset.as_bytes()) {
-    Some(encoding) => encoding
-      .decode_without_bom_handling_and_without_replacement(bytes)
-      .ok_or_else(|| ErrorKind::InvalidData.into()),
-    None => Err(Error::new(
-      ErrorKind::InvalidInput,
-      format!("Unsupported charset: {charset}"),
-    )),
-  }
-}
-
-/// Strips the byte order mark from the provided text if it exists.
-pub fn strip_bom(text: &str) -> &str {
-  if text.starts_with(BOM_CHAR) {
-    &text[BOM_CHAR.len_utf8()..]
-  } else {
-    text
-  }
-}
+use deno_core::ModuleSourceCode;
 
 static SOURCE_MAP_PREFIX: &[u8] =
   b"//# sourceMappingURL=data:application/json;base64,";
 
-pub fn source_map_from_code(code: &ModuleCodeString) -> Option<Vec<u8>> {
-  let bytes = code.as_bytes();
-  let last_line = bytes.rsplit(|u| *u == b'\n').next()?;
-  if last_line.starts_with(SOURCE_MAP_PREFIX) {
-    let input = last_line.split_at(SOURCE_MAP_PREFIX.len()).1;
-    let decoded_map = BASE64_STANDARD
-      .decode(input)
-      .expect("Unable to decode source map from emitted file.");
-    Some(decoded_map)
+pub fn source_map_from_code(code: &[u8]) -> Option<Vec<u8>> {
+  let range = find_source_map_range(code)?;
+  let source_map_range = &code[range];
+  let input = source_map_range.split_at(SOURCE_MAP_PREFIX.len()).1;
+  let decoded_map = BASE64_STANDARD.decode(input).ok()?;
+  Some(decoded_map)
+}
+
+/// Truncate the source code before the source map.
+pub fn code_without_source_map(code: ModuleSourceCode) -> ModuleSourceCode {
+  use deno_core::ModuleCodeBytes;
+
+  match code {
+    ModuleSourceCode::String(mut code) => {
+      if let Some(range) = find_source_map_range(code.as_bytes()) {
+        code.truncate(range.start);
+      }
+      ModuleSourceCode::String(code)
+    }
+    ModuleSourceCode::Bytes(code) => {
+      if let Some(range) = find_source_map_range(code.as_bytes()) {
+        let source_map_index = range.start;
+        ModuleSourceCode::Bytes(match code {
+          ModuleCodeBytes::Static(bytes) => {
+            ModuleCodeBytes::Static(&bytes[..source_map_index])
+          }
+          ModuleCodeBytes::Boxed(bytes) => {
+            // todo(dsherret): should be possible without cloning
+            ModuleCodeBytes::Boxed(
+              bytes[..source_map_index].to_vec().into_boxed_slice(),
+            )
+          }
+          ModuleCodeBytes::Arc(bytes) => ModuleCodeBytes::Boxed(
+            bytes[..source_map_index].to_vec().into_boxed_slice(),
+          ),
+        })
+      } else {
+        ModuleSourceCode::Bytes(code)
+      }
+    }
+  }
+}
+
+fn find_source_map_range(code: &[u8]) -> Option<Range<usize>> {
+  fn last_non_blank_line_range(code: &[u8]) -> Option<Range<usize>> {
+    let mut hit_non_whitespace = false;
+    let mut range_end = code.len();
+    for i in (0..code.len()).rev() {
+      match code[i] {
+        b' ' | b'\t' => {
+          if !hit_non_whitespace {
+            range_end = i;
+          }
+        }
+        b'\n' | b'\r' => {
+          if hit_non_whitespace {
+            return Some(i + 1..range_end);
+          }
+          range_end = i;
+        }
+        _ => {
+          hit_non_whitespace = true;
+        }
+      }
+    }
+    None
+  }
+
+  let range = last_non_blank_line_range(code)?;
+  if code[range.start..range.end].starts_with(SOURCE_MAP_PREFIX) {
+    Some(range)
   } else {
     None
   }
 }
 
-/// Truncate the source code before the source map.
-pub fn code_without_source_map(mut code: ModuleCodeString) -> ModuleCodeString {
-  let bytes = code.as_bytes();
-  for i in (0..bytes.len()).rev() {
-    if bytes[i] == b'\n' {
-      if bytes[i + 1..].starts_with(SOURCE_MAP_PREFIX) {
-        code.truncate(i + 1);
-      }
-      return code;
-    }
-  }
-  code
-}
-
 #[cfg(test)]
 mod tests {
+  use std::sync::Arc;
+
+  use deno_core::ModuleCodeBytes;
+  use deno_core::ModuleCodeString;
+
   use super::*;
 
-  fn test_detection(test_data: &[u8], expected_charset: &str) {
-    let detected_charset = detect_charset(test_data);
+  #[test]
+  fn test_source_map_from_code() {
+    let to_string =
+      |bytes: Vec<u8>| -> String { String::from_utf8(bytes).unwrap() };
     assert_eq!(
-      expected_charset.to_lowercase(),
-      detected_charset.to_lowercase()
+      source_map_from_code(
+        b"test\n//# sourceMappingURL=data:application/json;base64,dGVzdGluZ3Rlc3Rpbmc=",
+      ).map(to_string),
+      Some("testingtesting".to_string())
     );
-  }
+    assert_eq!(
+      source_map_from_code(
+        b"test\n//# sourceMappingURL=data:application/json;base64,dGVzdGluZ3Rlc3Rpbmc=\n  \n",
+      ).map(to_string),
+      Some("testingtesting".to_string())
+    );
+    assert_eq!(
+      source_map_from_code(
+        b"test\n//# sourceMappingURL=data:application/json;base64,dGVzdGluZ3Rlc3Rpbmc=\n  test\n",
+      ),
+      None
+    );
+    assert_eq!(
+      source_map_from_code(
+        b"\"use strict\";
 
-  #[test]
-  fn test_detection_utf8_no_bom() {
-    let test_data = "Hello UTF-8 it is \u{23F0} for Deno!"
-      .to_owned()
-      .into_bytes();
-    test_detection(&test_data, "utf-8");
-  }
-
-  #[test]
-  fn test_detection_utf16_little_endian() {
-    let test_data = b"\xFF\xFEHello UTF-16LE".to_owned().to_vec();
-    test_detection(&test_data, "utf-16le");
-  }
-
-  #[test]
-  fn test_detection_utf16_big_endian() {
-    let test_data = b"\xFE\xFFHello UTF-16BE".to_owned().to_vec();
-    test_detection(&test_data, "utf-16be");
-  }
-
-  #[test]
-  fn test_decoding_unsupported_charset() {
-    let test_data = Vec::new();
-    let result = convert_to_utf8(&test_data, "utf-32le");
-    assert!(result.is_err());
-    let err = result.expect_err("Err expected");
-    assert!(err.kind() == ErrorKind::InvalidInput);
-  }
-
-  #[test]
-  fn test_decoding_invalid_utf8() {
-    let test_data = b"\xFE\xFE\xFF\xFF".to_vec();
-    let result = convert_to_utf8(&test_data, "utf-8");
-    assert!(result.is_err());
-    let err = result.expect_err("Err expected");
-    assert!(err.kind() == ErrorKind::InvalidData);
+throw new Error(\"Hello world!\");
+//# sourceMappingURL=data:application/json;base64,{",
+      ),
+      None
+    );
   }
 
   #[test]
@@ -160,14 +150,39 @@ mod tests {
       "\n//# sourceMappingURL=data:application/json;base64,test",
       "\n",
     );
+    run_test(
+      "test\n//# sourceMappingURL=data:application/json;base64,test\n\n",
+      "test\n",
+    );
+    run_test(
+      "test\n//# sourceMappingURL=data:application/json;base64,test\n   \n  ",
+      "test\n",
+    );
 
     fn run_test(input: &'static str, output: &'static str) {
-      assert_eq!(
-        code_without_source_map(ModuleCodeString::from_static(input))
-          .as_str()
-          .to_owned(),
-        output
-      );
+      let forms = [
+        ModuleSourceCode::String(ModuleCodeString::from_static(input)),
+        ModuleSourceCode::String({
+          let text: Arc<str> = input.into();
+          text.into()
+        }),
+        ModuleSourceCode::String({
+          let text: String = input.into();
+          text.into()
+        }),
+        ModuleSourceCode::Bytes(ModuleCodeBytes::Static(input.as_bytes())),
+        ModuleSourceCode::Bytes(ModuleCodeBytes::Boxed(
+          input.as_bytes().to_vec().into_boxed_slice(),
+        )),
+        ModuleSourceCode::Bytes(ModuleCodeBytes::Arc(
+          input.as_bytes().to_vec().into(),
+        )),
+      ];
+      for form in forms {
+        let result = code_without_source_map(form);
+        let bytes = result.as_bytes();
+        assert_eq!(bytes, output.as_bytes());
+      }
     }
   }
 }

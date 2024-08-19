@@ -51,6 +51,11 @@
 
 "use strict";
 
+import {
+  op_node_idna_domain_to_ascii,
+  op_node_idna_domain_to_unicode,
+} from "ext:core/ops";
+
 /**
  * Creates an array containing the numeric code points of each Unicode
  * character in the string. While JavaScript uses UCS-2 internally,
@@ -105,3 +110,17 @@ export const ucs2 = {
   decode: ucs2decode,
   encode: ucs2encode,
 };
+
+/**
+ *  Converts a domain to ASCII as per the IDNA spec
+ */
+export function domainToASCII(domain: string) {
+  return op_node_idna_domain_to_ascii(domain);
+}
+
+/**
+ *  Converts a domain to Unicode as per the IDNA spec
+ */
+export function domainToUnicode(domain: string) {
+  return op_node_idna_domain_to_unicode(domain);
+}

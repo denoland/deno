@@ -5,17 +5,15 @@ use std::sync::atomic::Ordering;
 use std::time;
 
 use deno_core::error::generic_error;
+use deno_core::error::type_error;
 use deno_core::error::AnyError;
 use deno_core::op2;
-use deno_core::serde_v8;
 use deno_core::v8;
 use deno_core::ModuleSpecifier;
 use deno_core::OpState;
-use deno_runtime::permissions::create_child_permissions;
-use deno_runtime::permissions::ChildPermissionsArg;
-use deno_runtime::permissions::PermissionsContainer;
-use serde::Deserialize;
-use serde::Serialize;
+use deno_runtime::deno_permissions::create_child_permissions;
+use deno_runtime::deno_permissions::ChildPermissionsArg;
+use deno_runtime::deno_permissions::PermissionsContainer;
 use tokio::sync::mpsc::UnboundedSender;
 use uuid::Uuid;
 
@@ -32,6 +30,7 @@ deno_core::extension!(deno_bench,
     op_pledge_test_permissions,
     op_restore_test_permissions,
     op_register_bench,
+    op_bench_get_origin,
     op_dispatch_bench_event,
     op_bench_now,
   ],
@@ -43,6 +42,12 @@ deno_core::extension!(deno_bench,
     state.put(BenchContainer::default());
   },
 );
+
+#[op2]
+#[string]
+fn op_bench_get_origin(state: &mut OpState) -> String {
+  state.borrow::<ModuleSpecifier>().to_string()
+}
 
 #[derive(Clone)]
 struct PermissionsHolder(Uuid, PermissionsContainer);
@@ -69,6 +74,7 @@ pub fn op_pledge_test_permissions(
   state.put::<PermissionsHolder>(PermissionsHolder(token, parent_permissions));
 
   // NOTE: This call overrides current permission set for the worker
+  state.put(worker_permissions.0.clone());
   state.put::<PermissionsContainer>(worker_permissions);
 
   Ok(token)
@@ -85,6 +91,7 @@ pub fn op_restore_test_permissions(
     }
 
     let permissions = permissions_holder.1;
+    state.put(permissions.0.clone());
     state.put::<PermissionsContainer>(permissions);
     Ok(())
   } else {
@@ -92,57 +99,47 @@ pub fn op_restore_test_permissions(
   }
 }
 
-#[derive(Deserialize)]
-#[serde(rename_all = "camelCase")]
-struct BenchInfo<'s> {
-  #[serde(rename = "fn")]
-  function: serde_v8::Value<'s>,
-  name: String,
-  baseline: bool,
-  group: Option<String>,
-  ignore: bool,
-  only: bool,
-  #[serde(default)]
-  warmup: bool,
-}
-
-#[derive(Debug, Serialize)]
-#[serde(rename_all = "camelCase")]
-struct BenchRegisterResult {
-  id: usize,
-  origin: String,
-}
-
 static NEXT_ID: AtomicUsize = AtomicUsize::new(0);
 
+#[allow(clippy::too_many_arguments)]
 #[op2]
-#[serde]
-fn op_register_bench<'a>(
-  scope: &mut v8::HandleScope<'a>,
+fn op_register_bench(
   state: &mut OpState,
-  #[serde] info: BenchInfo<'a>,
-) -> Result<BenchRegisterResult, AnyError> {
+  #[global] function: v8::Global<v8::Function>,
+  #[string] name: String,
+  baseline: bool,
+  #[string] group: Option<String>,
+  ignore: bool,
+  only: bool,
+  warmup: bool,
+  #[buffer] ret_buf: &mut [u8],
+) -> Result<(), AnyError> {
+  if ret_buf.len() != 4 {
+    return Err(type_error(format!(
+      "Invalid ret_buf length: {}",
+      ret_buf.len()
+    )));
+  }
   let id = NEXT_ID.fetch_add(1, Ordering::SeqCst);
   let origin = state.borrow::<ModuleSpecifier>().to_string();
   let description = BenchDescription {
     id,
-    name: info.name,
+    name,
     origin: origin.clone(),
-    baseline: info.baseline,
-    group: info.group,
-    ignore: info.ignore,
-    only: info.only,
-    warmup: info.warmup,
+    baseline,
+    group,
+    ignore,
+    only,
+    warmup,
   };
-  let function: v8::Local<v8::Function> = info.function.v8_value.try_into()?;
-  let function = v8::Global::new(scope, function);
   state
     .borrow_mut::<BenchContainer>()
     .0
     .push((description.clone(), function));
   let sender = state.borrow::<UnboundedSender<BenchEvent>>().clone();
   sender.send(BenchEvent::Register(description)).ok();
-  Ok(BenchRegisterResult { id, origin })
+  ret_buf.copy_from_slice(&(id as u32).to_le_bytes());
+  Ok(())
 }
 
 #[op2]

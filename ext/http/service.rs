@@ -150,7 +150,7 @@ impl std::ops::Deref for HttpServerState {
 
 enum RequestBodyState {
   Incoming(Incoming),
-  Resource(HttpRequestBodyAutocloser),
+  Resource(#[allow(dead_code)] HttpRequestBodyAutocloser),
 }
 
 impl From<Incoming> for RequestBodyState {
@@ -482,12 +482,13 @@ impl HttpRecord {
     HttpRecordReady(self)
   }
 
-  /// Resolves when response body has finished streaming.
-  pub fn response_body_finished(&self) -> impl Future<Output = ()> + '_ {
+  /// Resolves when response body has finished streaming. Returns true if the
+  /// response completed.
+  pub fn response_body_finished(&self) -> impl Future<Output = bool> + '_ {
     struct HttpRecordFinished<'a>(&'a HttpRecord);
 
     impl<'a> Future for HttpRecordFinished<'a> {
-      type Output = ();
+      type Output = bool;
 
       fn poll(
         self: Pin<&mut Self>,
@@ -495,7 +496,10 @@ impl HttpRecord {
       ) -> Poll<Self::Output> {
         let mut mut_self = self.0.self_mut();
         if mut_self.response_body_finished {
-          return Poll::Ready(());
+          // If we sent the response body and the trailers, this body completed successfully
+          return Poll::Ready(
+            mut_self.response_body.is_complete() && mut_self.trailers.is_none(),
+          );
         }
         mut_self.response_body_waker = Some(cx.waker().clone());
         Poll::Pending
@@ -541,10 +545,10 @@ impl Body for HttpRecordResponse {
           ready!(Pin::new(stm).poll_frame(cx))
         }
         ResponseBytesInner::GZipStream(stm) => {
-          ready!(Pin::new(stm).poll_frame(cx))
+          ready!(Pin::new(stm.as_mut()).poll_frame(cx))
         }
         ResponseBytesInner::BrotliStream(stm) => {
-          ready!(Pin::new(stm).poll_frame(cx))
+          ready!(Pin::new(stm.as_mut()).poll_frame(cx))
         }
       };
       // This is where we retry the NoData response

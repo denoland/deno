@@ -5,7 +5,7 @@
 /// <reference no-default-lib="true" />
 /// <reference lib="esnext" />
 
-/** @category Console and Debugging */
+/** @category I/O */
 declare interface Console {
   assert(condition?: boolean, ...data: any[]): void;
   clear(): void;

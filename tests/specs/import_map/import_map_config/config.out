@@ -1,0 +1,9 @@
+Warning "importMap" field is ignored when "imports" or "scopes" are specified in the config file.
+    at file:///[WILDLINE]/import_map_config/config.json
+Hello from remapped moment!
+Hello from remapped moment dir!
+Hello from remapped lodash!
+Hello from remapped lodash dir!
+Hello from remapped Vue!
+Hello from scoped moment!
+Hello from scoped!

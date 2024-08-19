@@ -26,6 +26,7 @@ const {
   Float32Array,
   Float64Array,
   FunctionPrototypeBind,
+  FunctionPrototypeCall,
   Int16Array,
   Int32Array,
   Int8Array,
@@ -77,6 +78,7 @@ const {
   StringPrototypeToWellFormed,
   Symbol,
   SymbolIterator,
+  SymbolAsyncIterator,
   SymbolToStringTag,
   TypedArrayPrototypeGetBuffer,
   TypedArrayPrototypeGetSymbolToStringTag,
@@ -192,7 +194,12 @@ function createIntegerConversion(bitLength, typeOpts) {
   const twoToTheBitLength = MathPow(2, bitLength);
   const twoToOneLessThanTheBitLength = MathPow(2, bitLength - 1);
 
-  return (V, prefix = undefined, context = undefined, opts = {}) => {
+  return (
+    V,
+    prefix = undefined,
+    context = undefined,
+    opts = { __proto__: null },
+  ) => {
     let x = toNumber(V);
     x = censorNegativeZero(x);
 
@@ -251,7 +258,12 @@ function createLongLongConversion(bitLength, { unsigned }) {
   const lowerBound = unsigned ? 0 : NumberMIN_SAFE_INTEGER;
   const asBigIntN = unsigned ? BigIntAsUintN : BigIntAsIntN;
 
-  return (V, prefix = undefined, context = undefined, opts = {}) => {
+  return (
+    V,
+    prefix = undefined,
+    context = undefined,
+    opts = { __proto__: null },
+  ) => {
     let x = toNumber(V);
     x = censorNegativeZero(x);
 
@@ -386,7 +398,12 @@ converters["unrestricted double"] = (V, _prefix, _context, _opts) => {
   return x;
 };
 
-converters.DOMString = function (V, prefix, context, opts = {}) {
+converters.DOMString = function (
+  V,
+  prefix,
+  context,
+  opts = { __proto__: null },
+) {
   if (typeof V === "string") {
     return V;
   } else if (V === null && opts.treatNullAsEmptyString) {
@@ -464,7 +481,7 @@ converters.ArrayBuffer = (
   V,
   prefix = undefined,
   context = undefined,
-  opts = {},
+  opts = { __proto__: null },
 ) => {
   if (!isArrayBuffer(V)) {
     if (opts.allowShared && !isSharedArrayBuffer(V)) {
@@ -490,7 +507,7 @@ converters.DataView = (
   V,
   prefix = undefined,
   context = undefined,
-  opts = {},
+  opts = { __proto__: null },
 ) => {
   if (!isDataView(V)) {
     throw makeException(
@@ -525,6 +542,8 @@ ArrayPrototypeForEach(
     Uint16Array,
     Uint32Array,
     Uint8ClampedArray,
+    // TODO(petamoriken): add Float16Array converter
+    // Float16Array,
     Float32Array,
     Float64Array,
   ],
@@ -537,7 +556,7 @@ ArrayPrototypeForEach(
       V,
       prefix = undefined,
       context = undefined,
-      opts = {},
+      opts = { __proto__: null },
     ) => {
       if (TypedArrayPrototypeGetSymbolToStringTag(V) !== name) {
         throw makeException(
@@ -570,7 +589,7 @@ converters.ArrayBufferView = (
   V,
   prefix = undefined,
   context = undefined,
-  opts = {},
+  opts = { __proto__: null },
 ) => {
   if (!ArrayBufferIsView(V)) {
     throw makeException(
@@ -602,7 +621,7 @@ converters.BufferSource = (
   V,
   prefix = undefined,
   context = undefined,
-  opts = {},
+  opts = { __proto__: null },
 ) => {
   if (ArrayBufferIsView(V)) {
     let buffer;
@@ -720,7 +739,7 @@ function createDictionaryConverter(name, ...dictionaries) {
     return a.key < b.key ? -1 : 1;
   });
 
-  const defaultValues = {};
+  const defaultValues = { __proto__: null };
   for (let i = 0; i < allMembers.length; ++i) {
     const member = allMembers[i];
     if (ReflectHas(member, "defaultValue")) {
@@ -745,7 +764,12 @@ function createDictionaryConverter(name, ...dictionaries) {
     }
   }
 
-  return function (V, prefix = undefined, context = undefined, opts = {}) {
+  return function (
+    V,
+    prefix = undefined,
+    context = undefined,
+    opts = { __proto__: null },
+  ) {
     const typeV = type(V);
     switch (typeV) {
       case "Undefined":
@@ -810,7 +834,12 @@ function createDictionaryConverter(name, ...dictionaries) {
 function createEnumConverter(name, values) {
   const E = new SafeSet(values);
 
-  return function (V, prefix = undefined, _context = undefined, _opts = {}) {
+  return function (
+    V,
+    prefix = undefined,
+    _context = undefined,
+    _opts = { __proto__: null },
+  ) {
     const S = String(V);
 
     if (!E.has(S)) {
@@ -826,7 +855,12 @@ function createEnumConverter(name, values) {
 }
 
 function createNullableConverter(converter) {
-  return (V, prefix = undefined, context = undefined, opts = {}) => {
+  return (
+    V,
+    prefix = undefined,
+    context = undefined,
+    opts = { __proto__: null },
+  ) => {
     // FIXME: If Type(V) is not Object, and the conversion to an IDL value is
     // being performed due to V being assigned to an attribute whose type is a
     // nullable callback function that is annotated with
@@ -840,7 +874,12 @@ function createNullableConverter(converter) {
 
 // https://heycam.github.io/webidl/#es-sequence
 function createSequenceConverter(converter) {
-  return function (V, prefix = undefined, context = undefined, opts = {}) {
+  return function (
+    V,
+    prefix = undefined,
+    context = undefined,
+    opts = { __proto__: null },
+  ) {
     if (type(V) !== "Object") {
       throw makeException(
         TypeError,
@@ -882,6 +921,127 @@ function createSequenceConverter(converter) {
   };
 }
 
+function isAsyncIterator(obj) {
+  if (obj[SymbolAsyncIterator] === undefined) {
+    if (obj[SymbolIterator] === undefined) {
+      return false;
+    }
+  }
+
+  return true;
+}
+
+const AsyncIterable = Symbol("[[asyncIterable]]");
+
+function createAsyncIterableConverter(converter) {
+  return function (
+    V,
+    prefix = undefined,
+    context = undefined,
+    opts = { __proto__: null },
+  ) {
+    if (type(V) !== "Object") {
+      throw makeException(
+        TypeError,
+        "can not be converted to async iterable.",
+        prefix,
+        context,
+      );
+    }
+
+    let isAsync = true;
+    let method = V[SymbolAsyncIterator];
+    if (method === undefined) {
+      method = V[SymbolIterator];
+
+      if (method === undefined) {
+        throw makeException(
+          TypeError,
+          "is not iterable.",
+          prefix,
+          context,
+        );
+      }
+
+      isAsync = false;
+    }
+
+    return {
+      value: V,
+      [AsyncIterable]: AsyncIterable,
+      open(context) {
+        const iter = FunctionPrototypeCall(method, V);
+        if (type(iter) !== "Object") {
+          throw new TypeError(
+            `${context} could not be iterated because iterator method did not return object, but ${
+              type(iter)
+            }.`,
+          );
+        }
+
+        let asyncIterator = iter;
+
+        if (!isAsync) {
+          asyncIterator = {
+            // deno-lint-ignore require-await
+            async next() {
+              // deno-lint-ignore prefer-primordials
+              return iter.next();
+            },
+          };
+        }
+
+        return {
+          async next() {
+            // deno-lint-ignore prefer-primordials
+            const iterResult = await asyncIterator.next();
+            if (type(iterResult) !== "Object") {
+              throw TypeError(
+                `${context} failed to iterate next value because the next() method did not return an object, but ${
+                  type(iterResult)
+                }.`,
+              );
+            }
+
+            if (iterResult.done) {
+              return { done: true };
+            }
+
+            const iterValue = converter(
+              iterResult.value,
+              `${context} failed to iterate next value`,
+              `The value returned from the next() method`,
+              opts,
+            );
+
+            return { done: false, value: iterValue };
+          },
+          async return(reason) {
+            if (asyncIterator.return === undefined) {
+              return undefined;
+            }
+
+            // deno-lint-ignore prefer-primordials
+            const returnPromiseResult = await asyncIterator.return(reason);
+            if (type(returnPromiseResult) !== "Object") {
+              throw TypeError(
+                `${context} failed to close iterator because the return() method did not return an object, but ${
+                  type(returnPromiseResult)
+                }.`,
+              );
+            }
+
+            return undefined;
+          },
+          [SymbolAsyncIterator]() {
+            return this;
+          },
+        };
+      },
+    };
+  };
+}
+
 function createRecordConverter(keyConverter, valueConverter) {
   return (V, prefix, context, opts) => {
     if (type(V) !== "Object") {
@@ -892,7 +1052,7 @@ function createRecordConverter(keyConverter, valueConverter) {
         context,
       );
     }
-    const result = {};
+    const result = { __proto__: null };
     // Fast path for common case (not a Proxy)
     if (!core.isProxy(V)) {
       for (const key in V) {
@@ -1250,9 +1410,11 @@ function setlike(obj, objPrototype, readonly) {
 
 export {
   assertBranded,
+  AsyncIterable,
   brand,
   configureInterface,
   converters,
+  createAsyncIterableConverter,
   createBranded,
   createDictionaryConverter,
   createEnumConverter,
@@ -1263,6 +1425,7 @@ export {
   createSequenceConverter,
   illegalConstructor,
   invokeCallbackFunction,
+  isAsyncIterator,
   makeException,
   mixinPairIterable,
   requiredArguments,

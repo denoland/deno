@@ -110,8 +110,10 @@ declare module "ext:deno_web/13_message_port.js" {
     data: Uint8Array;
     transferables: Transferable[];
   }
-}
-
-declare module "ext:deno_web/16_image_data.js" {
-  const ImageData: typeof ImageData;
+  const MessageChannel: typeof MessageChannel;
+  const MessagePort: typeof MessagePort;
+  const MessagePortIdSymbol: typeof MessagePortIdSymbol;
+  function deserializeJsMessageData(
+    messageData: messagePort.MessageData,
+  ): [object, object[]];
 }

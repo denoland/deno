@@ -1,4 +1,4 @@
-// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
 // deno-lint-ignore-file
 
@@ -43,16 +43,15 @@ export const DEFLATERAW = 5;
 export const INFLATERAW = 6;
 export const UNZIP = 7;
 
-import { core } from "ext:core/mod.js";
-const {
+import {
   op_zlib_close,
   op_zlib_close_if_pending,
   op_zlib_init,
   op_zlib_new,
   op_zlib_reset,
   op_zlib_write,
-  op_zlib_write_async,
-} = core.ensureFastOps();
+} from "ext:core/ops";
+import process from "node:process";
 
 const writeResult = new Uint32Array(2);
 
@@ -125,18 +124,20 @@ class Zlib {
     out_off,
     out_len,
   ) {
-    op_zlib_write_async(
-      this.#handle,
-      flush ?? Z_NO_FLUSH,
-      input,
-      in_off,
-      in_len,
-      out,
-      out_off,
-      out_len,
-    ).then(([err, availOut, availIn]) => {
-      if (this.#checkError(err)) {
-        this.callback(availIn, availOut);
+    process.nextTick(() => {
+      const res = this.writeSync(
+        flush ?? Z_NO_FLUSH,
+        input,
+        in_off,
+        in_len,
+        out,
+        out_off,
+        out_len,
+      );
+
+      if (res) {
+        const [availOut, availIn] = res;
+        this.callback(availOut, availIn);
       }
     });
 

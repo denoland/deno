@@ -28,7 +28,7 @@ const {
 } = primordials;
 
 import { promisify } from "ext:deno_node/internal/util.mjs";
-import { callbackify } from "ext:deno_node/_util/_util_callbackify.ts";
+import { callbackify } from "ext:deno_node/_util/_util_callbackify.js";
 import { debuglog } from "ext:deno_node/internal/util/debuglog.ts";
 import {
   format,
@@ -47,6 +47,7 @@ import { parseArgs } from "ext:deno_node/internal/util/parse_args/parse_args.js"
 export {
   callbackify,
   debuglog,
+  debuglog as debug,
   format,
   formatWithOptions,
   inspect,
@@ -321,5 +322,6 @@ export default {
   toUSVString,
   log,
   debuglog,
+  debug: debuglog,
   isDeepStrictEqual,
 };

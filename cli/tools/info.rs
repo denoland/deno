@@ -4,8 +4,10 @@ use std::collections::HashMap;
 use std::collections::HashSet;
 use std::fmt;
 use std::fmt::Write;
+use std::sync::Arc;
 
 use deno_ast::ModuleSpecifier;
+use deno_core::anyhow::bail;
 use deno_core::error::AnyError;
 use deno_core::resolve_url_or_path;
 use deno_core::serde_json;
@@ -19,40 +21,45 @@ use deno_graph::Resolution;
 use deno_npm::resolution::NpmResolutionSnapshot;
 use deno_npm::NpmPackageId;
 use deno_npm::NpmResolutionPackage;
-use deno_runtime::colors;
 use deno_semver::npm::NpmPackageNvReference;
 use deno_semver::npm::NpmPackageReqReference;
 use deno_semver::package::PackageNv;
+use deno_terminal::colors;
 
 use crate::args::Flags;
 use crate::args::InfoFlags;
 use crate::display;
 use crate::factory::CliFactory;
-use crate::graph_util::graph_lock_or_exit;
+use crate::graph_util::graph_exit_lock_errors;
 use crate::npm::CliNpmResolver;
 use crate::npm::ManagedCliNpmResolver;
 use crate::util::checksum;
 
-pub async fn info(flags: Flags, info_flags: InfoFlags) -> Result<(), AnyError> {
-  let factory = CliFactory::from_flags(flags).await?;
-  let cli_options = factory.cli_options();
+pub async fn info(
+  flags: Arc<Flags>,
+  info_flags: InfoFlags,
+) -> Result<(), AnyError> {
+  let factory = CliFactory::from_flags(flags);
+  let cli_options = factory.cli_options()?;
   if let Some(specifier) = info_flags.file {
     let module_graph_builder = factory.module_graph_builder().await?;
+    let module_graph_creator = factory.module_graph_creator().await?;
     let npm_resolver = factory.npm_resolver().await?;
-    let maybe_lockfile = factory.maybe_lockfile();
-    let maybe_imports_map = factory.maybe_import_map().await?;
+    let maybe_lockfile = cli_options.maybe_lockfile();
+    let resolver = factory.workspace_resolver().await?;
 
-    let maybe_import_specifier = if let Some(imports_map) = maybe_imports_map {
-      if let Ok(imports_specifier) =
-        imports_map.resolve(&specifier, imports_map.base_url())
-      {
-        Some(imports_specifier)
+    let maybe_import_specifier =
+      if let Some(import_map) = resolver.maybe_import_map() {
+        if let Ok(imports_specifier) =
+          import_map.resolve(&specifier, import_map.base_url())
+        {
+          Some(imports_specifier)
+        } else {
+          None
+        }
       } else {
         None
-      }
-    } else {
-      None
-    };
+      };
 
     let specifier = match maybe_import_specifier {
       Some(specifier) => specifier,
@@ -61,12 +68,14 @@ pub async fn info(flags: Flags, info_flags: InfoFlags) -> Result<(), AnyError> {
 
     let mut loader = module_graph_builder.create_graph_loader();
     loader.enable_loading_cache_info(); // for displaying the cache information
-    let graph = module_graph_builder
+    let graph = module_graph_creator
       .create_graph_with_loader(GraphKind::All, vec![specifier], &mut loader)
       .await?;
 
-    if let Some(lockfile) = maybe_lockfile {
-      graph_lock_or_exit(&graph, &mut lockfile.lock());
+    // write out the lockfile if there is one
+    if let Some(lockfile) = &maybe_lockfile {
+      graph_exit_lock_errors(&graph);
+      lockfile.write_if_changed()?;
     }
 
     if info_flags.json {
@@ -89,6 +98,7 @@ pub async fn info(flags: Flags, info_flags: InfoFlags) -> Result<(), AnyError> {
   Ok(())
 }
 
+#[allow(clippy::print_stdout)]
 fn print_cache_info(
   factory: &CliFactory,
   json: bool,
@@ -283,7 +293,7 @@ fn print_tree_node<TWrite: Write>(
   fn print_children<TWrite: Write>(
     writer: &mut TWrite,
     prefix: &str,
-    children: &Vec<TreeNode>,
+    children: &[TreeNode],
   ) -> fmt::Result {
     const SIBLING_CONNECTOR: char = '├';
     const LAST_SIBLING_CONNECTOR: char = '└';
@@ -405,7 +415,7 @@ impl<'a> GraphDisplayContext<'a> {
     graph: &'a ModuleGraph,
     npm_resolver: &'a dyn CliNpmResolver,
     writer: &mut TWrite,
-  ) -> fmt::Result {
+  ) -> Result<(), AnyError> {
     let npm_info = match npm_resolver.as_managed() {
       Some(npm_resolver) => {
         let npm_snapshot = npm_resolver.snapshot();
@@ -421,20 +431,19 @@ impl<'a> GraphDisplayContext<'a> {
     .into_writer(writer)
   }
 
-  fn into_writer<TWrite: Write>(mut self, writer: &mut TWrite) -> fmt::Result {
+  fn into_writer<TWrite: Write>(
+    mut self,
+    writer: &mut TWrite,
+  ) -> Result<(), AnyError> {
     if self.graph.roots.is_empty() || self.graph.roots.len() > 1 {
-      return writeln!(
-        writer,
-        "{} displaying graphs that have multiple roots is not supported.",
-        colors::red("error:")
-      );
+      bail!("displaying graphs that have multiple roots is not supported.");
     }
 
     let root_specifier = self.graph.resolve(&self.graph.roots[0]);
     match self.graph.try_get(&root_specifier) {
       Ok(Some(root)) => {
         let maybe_cache_info = match root {
-          Module::Esm(module) => module.maybe_cache_info.as_ref(),
+          Module::Js(module) => module.maybe_cache_info.as_ref(),
           Module::Json(module) => module.maybe_cache_info.as_ref(),
           Module::Node(_) | Module::Npm(_) | Module::External(_) => None,
         };
@@ -464,7 +473,7 @@ impl<'a> GraphDisplayContext<'a> {
             )?;
           }
         }
-        if let Some(module) = root.esm() {
+        if let Some(module) = root.js() {
           writeln!(writer, "{} {}", colors::bold("type:"), module.media_type)?;
         }
         let total_modules_size = self
@@ -472,7 +481,7 @@ impl<'a> GraphDisplayContext<'a> {
           .modules()
           .map(|m| {
             let size = match m {
-              Module::Esm(module) => module.size(),
+              Module::Js(module) => module.size(),
               Module::Json(module) => module.size(),
               Module::Node(_) | Module::Npm(_) | Module::External(_) => 0,
             };
@@ -508,21 +517,13 @@ impl<'a> GraphDisplayContext<'a> {
       }
       Err(err) => {
         if let ModuleError::Missing(_, _) = *err {
-          writeln!(
-            writer,
-            "{} module could not be found",
-            colors::red("error:")
-          )
+          bail!("module could not be found");
         } else {
-          writeln!(writer, "{} {:#}", colors::red("error:"), err)
+          bail!("{:#}", err);
         }
       }
       Ok(None) => {
-        writeln!(
-          writer,
-          "{} an internal error occurred",
-          colors::red("error:")
-        )
+        bail!("an internal error occurred");
       }
     }
   }
@@ -579,7 +580,7 @@ impl<'a> GraphDisplayContext<'a> {
           self.npm_info.package_sizes.get(&package.id).copied()
         }
         Specifier(_) => match module {
-          Module::Esm(module) => Some(module.size() as u64),
+          Module::Js(module) => Some(module.size() as u64),
           Module::Json(module) => Some(module.size() as u64),
           Module::Node(_) | Module::Npm(_) | Module::External(_) => None,
         },
@@ -595,7 +596,7 @@ impl<'a> GraphDisplayContext<'a> {
           tree_node.children.extend(self.build_npm_deps(package));
         }
         Specifier(_) => {
-          if let Some(module) = module.esm() {
+          if let Some(module) = module.js() {
             if let Some(types_dep) = &module.maybe_types_dependency {
               if let Some(child) =
                 self.build_resolved_info(&types_dep.dependency, true)
@@ -668,18 +669,6 @@ impl<'a> GraphDisplayContext<'a> {
       }
       ModuleError::Missing(_, _) | ModuleError::MissingDynamic(_, _) => {
         self.build_error_msg(specifier, "(missing)")
-      }
-      ModuleError::MissingWorkspaceMemberExports { .. } => {
-        self.build_error_msg(specifier, "(missing exports)")
-      }
-      ModuleError::UnknownExport { .. } => {
-        self.build_error_msg(specifier, "(unknown export)")
-      }
-      ModuleError::UnknownPackage { .. } => {
-        self.build_error_msg(specifier, "(unknown package)")
-      }
-      ModuleError::UnknownPackageReq { .. } => {
-        self.build_error_msg(specifier, "(unknown package constraint)")
       }
     }
   }

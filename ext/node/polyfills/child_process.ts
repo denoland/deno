@@ -6,13 +6,12 @@
 // TODO(petamoriken): enable prefer-primordials for node polyfills
 // deno-lint-ignore-file prefer-primordials
 
-import { core, internals } from "ext:core/mod.js";
-const {
+import { internals } from "ext:core/mod.js";
+import {
+  op_bootstrap_unstable_args,
   op_node_child_ipc_pipe,
-} = core.ensureFastOps();
-const {
   op_npm_process_state,
-} = core.ensureFastOps(true);
+} from "ext:core/ops";
 
 import {
   ChildProcess,
@@ -116,21 +115,36 @@ export function fork(
   // more
   const v8Flags: string[] = [];
   if (Array.isArray(execArgv)) {
-    for (let index = 0; index < execArgv.length; index++) {
+    let index = 0;
+    while (index < execArgv.length) {
       const flag = execArgv[index];
       if (flag.startsWith("--max-old-space-size")) {
         execArgv.splice(index, 1);
         v8Flags.push(flag);
+      } else if (flag.startsWith("--enable-source-maps")) {
+        // https://github.com/denoland/deno/issues/21750
+        execArgv.splice(index, 1);
+      } else if (flag.startsWith("-C") || flag.startsWith("--conditions")) {
+        let rm = 1;
+        if (flag.indexOf("=") === -1) {
+          // --conditions foo
+          // so remove the next argument as well.
+          rm = 2;
+        }
+        execArgv.splice(index, rm);
+      } else {
+        index++;
       }
     }
   }
+
   const stringifiedV8Flags: string[] = [];
   if (v8Flags.length > 0) {
     stringifiedV8Flags.push("--v8-flags=" + v8Flags.join(","));
   }
   args = [
     "run",
-    "--unstable", // TODO(kt3k): Remove when npm: is stable
+    ...op_bootstrap_unstable_args(),
     "--node-modules-dir",
     "-A",
     ...stringifiedV8Flags,
@@ -437,15 +451,7 @@ export function execFile(
     shell: false,
     ...options,
   };
-  if (!Number.isInteger(execOptions.timeout) || execOptions.timeout < 0) {
-    // In Node source, the first argument to error constructor is "timeout" instead of "options.timeout".
-    // timeout is indeed a member of options object.
-    throw new ERR_OUT_OF_RANGE(
-      "timeout",
-      "an unsigned integer",
-      execOptions.timeout,
-    );
-  }
+  validateTimeout(execOptions.timeout);
   if (execOptions.maxBuffer < 0) {
     throw new ERR_OUT_OF_RANGE(
       "options.maxBuffer",
@@ -830,7 +836,17 @@ export function execFileSync(
 function setupChildProcessIpcChannel() {
   const fd = op_node_child_ipc_pipe();
   if (typeof fd != "number" || fd < 0) return;
-  setupChannel(process, fd);
+  const control = setupChannel(process, fd);
+  process.on("newListener", (name: string) => {
+    if (name === "message" || name === "disconnect") {
+      control.refCounted();
+    }
+  });
+  process.on("removeListener", (name: string) => {
+    if (name === "message" || name === "disconnect") {
+      control.unrefCounted();
+    }
+  });
 }
 
 internals.__setupChildProcessIpcChannel = setupChildProcessIpcChannel;

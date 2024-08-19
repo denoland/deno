@@ -1,16 +1,20 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 // Copyright Joyent and Node contributors. All rights reserved. MIT license.
 
+/// <reference path="../../core/internal.d.ts" />
+
 // TODO(petamoriken): enable prefer-primordials for node polyfills
 // deno-lint-ignore-file prefer-primordials
 
 import { core } from "ext:core/mod.js";
-const {
+import {
   op_v8_cached_data_version_tag,
   op_v8_get_heap_statistics,
-} = core.ensureFastOps();
+} from "ext:core/ops";
 
-import { notImplemented } from "ext:deno_node/_utils.ts";
+import { Buffer } from "node:buffer";
+
+import { notImplemented, warnNotImplemented } from "ext:deno_node/_utils.ts";
 
 export function cachedDataVersionTag() {
   return op_v8_cached_data_version_tag();
@@ -67,15 +71,49 @@ export function takeCoverage() {
 export function writeHeapSnapshot() {
   notImplemented("v8.writeHeapSnapshot");
 }
-export function serialize() {
-  notImplemented("v8.serialize");
+export function serialize(value) {
+  return Buffer.from(core.serialize(value));
 }
-export function deserialize() {
-  notImplemented("v8.deserialize");
+export function deserialize(data) {
+  return core.deserialize(data);
 }
 export class Serializer {
   constructor() {
-    notImplemented("v8.Serializer.prototype.constructor");
+    warnNotImplemented("v8.Serializer.prototype.constructor");
+  }
+
+  releaseBuffer(): Buffer {
+    warnNotImplemented("v8.DefaultSerializer.prototype.releaseBuffer");
+    return Buffer.from("");
+  }
+
+  transferArrayBuffer(_id: number, _arrayBuffer: ArrayBuffer): void {
+    warnNotImplemented("v8.DefaultSerializer.prototype.transferArrayBuffer");
+  }
+
+  writeDouble(_value: number): void {
+    warnNotImplemented("v8.DefaultSerializer.prototype.writeDouble");
+  }
+
+  writeHeader(): void {
+    warnNotImplemented("v8.DefaultSerializer.prototype.writeHeader");
+  }
+
+  writeRawBytes(_value: ArrayBufferView): void {
+    warnNotImplemented("v8.DefaultSerializer.prototype.writeRawBytes");
+  }
+
+  writeUint32(_value: number): void {
+    warnNotImplemented("v8.DefaultSerializer.prototype.writeUint32");
+  }
+
+  writeUint64(_hi: number, _lo: number): void {
+    warnNotImplemented("v8.DefaultSerializer.prototype.writeUint64");
+  }
+
+  // deno-lint-ignore no-explicit-any
+  writeValue(_value: any): void {
+    warnNotImplemented("v8.DefaultSerializer.prototype.writeValue");
   }
 }
 export class Deserializer {
@@ -83,9 +121,10 @@ export class Deserializer {
     notImplemented("v8.Deserializer.prototype.constructor");
   }
 }
-export class DefaultSerializer {
+export class DefaultSerializer extends Serializer {
   constructor() {
-    notImplemented("v8.DefaultSerializer.prototype.constructor");
+    warnNotImplemented("v8.DefaultSerializer.prototype.constructor");
+    super();
   }
 }
 export class DefaultDeserializer {

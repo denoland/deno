@@ -18,7 +18,7 @@ import {
   Encodings,
   TextEncodings,
 } from "ext:deno_node/_utils.ts";
-import { promisify } from "ext:deno_node/internal/util.mjs";
+import { FsFile } from "ext:deno_fs/30_fs.js";
 
 function maybeDecode(data: Uint8Array, encoding: TextEncodings): string;
 function maybeDecode(
@@ -73,7 +73,7 @@ export function readFile(
 
   let p: Promise<Uint8Array>;
   if (path instanceof FileHandle) {
-    const fsFile = new Deno.FsFile(path.fd);
+    const fsFile = new FsFile(path.fd, Symbol.for("Deno.internal.FsFile"));
     p = readAll(fsFile);
   } else {
     p = Deno.readFile(path);
@@ -91,11 +91,18 @@ export function readFile(
   }
 }
 
-export const readFilePromise = promisify(readFile) as (
-  & ((path: Path, opt: TextOptionsArgument) => Promise<string>)
-  & ((path: Path, opt?: BinaryOptionsArgument) => Promise<Buffer>)
-  & ((path: Path, opt?: FileOptionsArgument) => Promise<Buffer>)
-);
+export function readFilePromise(
+  path: Path,
+  options?: FileOptionsArgument | null | undefined,
+  // deno-lint-ignore no-explicit-any
+): Promise<any> {
+  return new Promise((resolve, reject) => {
+    readFile(path, options, (err, data) => {
+      if (err) reject(err);
+      else resolve(data);
+    });
+  });
+}
 
 export function readFileSync(
   path: string | URL,

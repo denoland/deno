@@ -9,12 +9,12 @@
 
 import { primordials } from "ext:core/mod.js";
 const {
-  ArrayPrototypeSlice,
-  Error,
   ErrorPrototype,
+  ErrorCaptureStackTrace,
   ObjectDefineProperty,
   ObjectCreate,
   ObjectEntries,
+  ObjectHasOwn,
   ObjectPrototypeIsPrototypeOf,
   ObjectSetPrototypeOf,
   Symbol,
@@ -27,7 +27,6 @@ import { createFilteredInspectProxy } from "ext:deno_console/01_console.js";
 const _name = Symbol("name");
 const _message = Symbol("message");
 const _code = Symbol("code");
-const _error = Symbol("error");
 
 // Defined in WebIDL 4.3.
 // https://webidl.spec.whatwg.org/#idl-DOMException
@@ -113,8 +112,7 @@ class DOMException {
     this[_code] = code;
     this[webidl.brand] = webidl.brand;
 
-    this[_error] = new Error(message);
-    this[_error].name = "DOMException";
+    ErrorCaptureStackTrace(this, DOMException);
   }
 
   get message() {
@@ -133,44 +131,26 @@ class DOMException {
   }
 
   [SymbolFor("Deno.privateCustomInspect")](inspect, inspectOptions) {
-    if (ObjectPrototypeIsPrototypeOf(DOMExceptionPrototype, this)) {
-      return this[_error].stack;
-    } else {
-      return inspect(
-        createFilteredInspectProxy({
-          object: this,
-          evaluate: false,
-          keys: [
-            "message",
-            "name",
-            "code",
-          ],
-        }),
-        inspectOptions,
-      );
+    if (ObjectHasOwn(this, "stack")) {
+      const stack = this.stack;
+      if (typeof stack === "string") {
+        return stack;
+      }
     }
+    return inspect(
+      createFilteredInspectProxy({
+        object: this,
+        evaluate: ObjectPrototypeIsPrototypeOf(DOMExceptionPrototype, this),
+        keys: [
+          "message",
+          "name",
+          "code",
+        ],
+      }),
+      inspectOptions,
+    );
   }
 }
-
-ObjectDefineProperty(DOMException.prototype, "stack", {
-  get() {
-    return this[_error].stack;
-  },
-  set(value) {
-    this[_error].stack = value;
-  },
-  configurable: true,
-});
-
-// `DOMException` isn't a native error, so `Error.prepareStackTrace()` is
-// not called when accessing `.stack`, meaning our structured stack trace
-// hack doesn't apply. This patches it in.
-ObjectDefineProperty(DOMException.prototype, "__callSiteEvals", {
-  get() {
-    return ArrayPrototypeSlice(this[_error].__callSiteEvals, 1);
-  },
-  configurable: true,
-});
 
 ObjectSetPrototypeOf(DOMException.prototype, ErrorPrototype);
 

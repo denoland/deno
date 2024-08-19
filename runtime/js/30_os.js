@@ -1,12 +1,13 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
-import { core, primordials } from "ext:core/mod.js";
-const {
+import { primordials } from "ext:core/mod.js";
+import {
   op_delete_env,
   op_env,
   op_exec_path,
   op_exit,
   op_get_env,
+  op_get_exit_code,
   op_gid,
   op_hostname,
   op_loadavg,
@@ -14,16 +15,17 @@ const {
   op_os_release,
   op_os_uptime,
   op_set_env,
+  op_set_exit_code,
   op_system_memory_info,
   op_uid,
-} = core.ensureFastOps();
-const {
-  op_set_exit_code,
-} = core.ensureFastOps(true);
+} from "ext:core/ops";
 const {
   Error,
   FunctionPrototypeBind,
+  NumberIsInteger,
+  RangeError,
   SymbolFor,
+  TypeError,
 } = primordials;
 
 import { Event, EventTarget } from "ext:deno_web/02_event.js";
@@ -77,7 +79,7 @@ function exit(code) {
   if (typeof code === "number") {
     op_set_exit_code(code);
   } else {
-    code = 0;
+    code = op_get_exit_code();
   }
 
   // Dispatches `unload` only when it's not dispatched yet.
@@ -94,6 +96,24 @@ function exit(code) {
 
   op_exit();
   throw new Error("Code not reachable");
+}
+
+function getExitCode() {
+  return op_get_exit_code();
+}
+
+function setExitCode(value) {
+  if (typeof value !== "number") {
+    throw new TypeError(
+      `Exit code must be a number, got: ${value} (${typeof value})`,
+    );
+  }
+  if (!NumberIsInteger(value)) {
+    throw new RangeError(
+      `Exit code must be an integer, got: ${value}`,
+    );
+  }
+  op_set_exit_code(value);
 }
 
 function setEnv(key, value) {
@@ -128,12 +148,14 @@ export {
   env,
   execPath,
   exit,
+  getExitCode,
   gid,
   hostname,
   loadavg,
   networkInterfaces,
   osRelease,
   osUptime,
+  setExitCode,
   setExitHandler,
   systemMemoryInfo,
   uid,

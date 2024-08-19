@@ -1,0 +1,13 @@
+{
+  "envs": {
+    "DENO_FUTURE": "1"
+  },
+  "tempDir": true,
+  "steps": [{
+    "args": "install",
+    "output": "install.out"
+  }, {
+    "args": "run -A main.js",
+    "output": "main.out"
+  }]
+}

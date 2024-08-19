@@ -4,13 +4,16 @@
 // TODO(petamoriken): enable prefer-primordials for node polyfills
 // deno-lint-ignore-file prefer-primordials
 
-import { core } from "ext:core/mod.js";
-const {
+import {
+  op_node_create_private_key,
+  op_node_create_public_key,
+  op_node_get_asymmetric_key_type,
   op_node_sign,
+  op_node_sign_ed25519,
   op_node_verify,
-} = core.ensureFastOps();
+  op_node_verify_ed25519,
+} from "ext:core/ops";
 
-import { notImplemented } from "ext:deno_node/_utils.ts";
 import {
   validateFunction,
   validateString,
@@ -26,12 +29,14 @@ import type {
   PublicKeyInput,
 } from "ext:deno_node/internal/crypto/types.ts";
 import {
+  kConsumePrivate,
+  kConsumePublic,
   KeyObject,
   prepareAsymmetricKey,
+  PrivateKeyObject,
+  PublicKeyObject,
 } from "ext:deno_node/internal/crypto/keys.ts";
-import { createHash, Hash } from "ext:deno_node/internal/crypto/hash.ts";
-import { KeyFormat, KeyType } from "ext:deno_node/internal/crypto/types.ts";
-import { isArrayBufferView } from "ext:deno_node/internal/util/types.ts";
+import { createHash } from "ext:deno_node/internal/crypto/hash.ts";
 import { ERR_CRYPTO_SIGN_KEY_REQUIRED } from "ext:deno_node/internal/errors.ts";
 
 export type DSAEncoding = "der" | "ieee-p1363";
@@ -53,6 +58,35 @@ export interface VerifyKeyObjectInput extends SigningOptions {
   key: KeyObject;
 }
 
+function getSaltLength(options) {
+  return getIntOption("saltLength", options);
+}
+
+function getDSASignatureEncoding(options) {
+  if (typeof options === "object") {
+    const { dsaEncoding = "der" } = options;
+    if (dsaEncoding === "der") {
+      return 0;
+    } else if (dsaEncoding === "ieee-p1363") {
+      return 1;
+    }
+    throw new ERR_INVALID_ARG_VALUE("options.dsaEncoding", dsaEncoding);
+  }
+
+  return 0;
+}
+
+function getIntOption(name, options) {
+  const value = options[name];
+  if (value !== undefined) {
+    if (value === value >> 0) {
+      return value;
+    }
+    throw new ERR_INVALID_ARG_VALUE(`options.${name}`, value);
+  }
+  return undefined;
+}
+
 export type KeyLike = string | Buffer | KeyObject;
 
 export class SignImpl extends Writable {
@@ -71,25 +105,40 @@ export class SignImpl extends Writable {
 
     algorithm = algorithm.toLowerCase();
 
-    if (algorithm.startsWith("rsa-")) {
-      // Allows RSA-[digest_algorithm] as a valid algorithm
-      algorithm = algorithm.slice(4);
-    }
     this.#digestType = algorithm;
     this.hash = createHash(this.#digestType);
   }
 
   sign(
-    privateKey: BinaryLike | SignKeyObjectInput | SignPrivateKeyInput,
+    // deno-lint-ignore no-explicit-any
+    privateKey: any,
     encoding?: BinaryToTextEncoding,
   ): Buffer | string {
-    const { data, format, type } = prepareAsymmetricKey(privateKey);
+    const res = prepareAsymmetricKey(privateKey, kConsumePrivate);
+
+    // Options specific to RSA-PSS
+    const pssSaltLength = getSaltLength(privateKey);
+
+    // Options specific to (EC)DSA
+    const dsaSigEnc = getDSASignatureEncoding(privateKey);
+
+    let handle;
+    if ("handle" in res) {
+      handle = res.handle;
+    } else {
+      handle = op_node_create_private_key(
+        res.data,
+        res.format,
+        res.type ?? "",
+        res.passphrase,
+      );
+    }
     const ret = Buffer.from(op_node_sign(
+      handle,
       this.hash.digest(),
       this.#digestType,
-      data!,
-      type,
-      format,
+      pssSaltLength,
+      dsaSigEnc,
     ));
     return encoding ? ret.toString(encoding) : ret;
   }
@@ -125,11 +174,6 @@ export class VerifyImpl extends Writable {
 
     algorithm = algorithm.toLowerCase();
 
-    if (algorithm.startsWith("rsa-")) {
-      // Allows RSA-[digest_algorithm] as a valid algorithm
-      algorithm = algorithm.slice(4);
-    }
-
     this.#digestType = algorithm;
     this.hash = createHash(this.#digestType);
   }
@@ -140,33 +184,37 @@ export class VerifyImpl extends Writable {
   }
 
   verify(
-    publicKey: BinaryLike | VerifyKeyObjectInput | VerifyPublicKeyInput,
+    // deno-lint-ignore no-explicit-any
+    publicKey: any,
     signature: BinaryLike,
     encoding?: BinaryToTextEncoding,
   ): boolean {
-    let keyData: BinaryLike;
-    let keyType: KeyType;
-    let keyFormat: KeyFormat;
-    if (typeof publicKey === "string" || isArrayBufferView(publicKey)) {
-      // if the key is BinaryLike, interpret it as a PEM encoded RSA key
-      // deno-lint-ignore no-explicit-any
-      keyData = publicKey as any;
-      keyType = "rsa";
-      keyFormat = "pem";
+    const res = prepareAsymmetricKey(publicKey, kConsumePublic);
+
+    // Options specific to RSA-PSS
+    const pssSaltLength = getSaltLength(publicKey);
+
+    // Options specific to (EC)DSA
+    const dsaSigEnc = getDSASignatureEncoding(publicKey);
+
+    let handle;
+    if ("handle" in res) {
+      handle = res.handle;
     } else {
-      // TODO(kt3k): Add support for the case when publicKey is a KeyObject,
-      // CryptoKey, etc
-      notImplemented(
-        "crypto.Verify.prototype.verify with non BinaryLike input",
+      handle = op_node_create_public_key(
+        res.data,
+        res.format,
+        res.type ?? "",
+        res.passphrase,
       );
     }
     return op_node_verify(
+      handle,
       this.hash.digest(),
       this.#digestType,
-      keyData!,
-      keyType,
-      keyFormat,
       Buffer.from(signature, encoding),
+      pssSaltLength,
+      dsaSigEnc,
     );
   }
 }
@@ -195,7 +243,34 @@ export function signOneShot(
     throw new ERR_CRYPTO_SIGN_KEY_REQUIRED();
   }
 
-  const result = Sign(algorithm!).update(data).sign(key);
+  const res = prepareAsymmetricKey(key, kConsumePrivate);
+  let handle;
+  if ("handle" in res) {
+    handle = res.handle;
+  } else {
+    handle = op_node_create_private_key(
+      res.data,
+      res.format,
+      res.type ?? "",
+      res.passphrase,
+    );
+  }
+
+  let result: Buffer;
+  if (op_node_get_asymmetric_key_type(handle) === "ed25519") {
+    if (algorithm != null && algorithm !== "sha512") {
+      throw new TypeError("Only 'sha512' is supported for Ed25519 keys");
+    }
+    result = new Buffer(64);
+    op_node_sign_ed25519(handle, data, result);
+  } else if (algorithm == null) {
+    throw new TypeError(
+      "Algorithm must be specified when using non-Ed25519 keys",
+    );
+  } else {
+    result = Sign(algorithm!).update(data)
+      .sign(new PrivateKeyObject(handle));
+  }
 
   if (callback) {
     setTimeout(() => callback(null, result));
@@ -223,7 +298,33 @@ export function verifyOneShot(
     throw new ERR_CRYPTO_SIGN_KEY_REQUIRED();
   }
 
-  const result = Verify(algorithm!).update(data).verify(key, signature);
+  const res = prepareAsymmetricKey(key, kConsumePublic);
+  let handle;
+  if ("handle" in res) {
+    handle = res.handle;
+  } else {
+    handle = op_node_create_public_key(
+      res.data,
+      res.format,
+      res.type ?? "",
+      res.passphrase,
+    );
+  }
+
+  let result: boolean;
+  if (op_node_get_asymmetric_key_type(handle) === "ed25519") {
+    if (algorithm != null && algorithm !== "sha512") {
+      throw new TypeError("Only 'sha512' is supported for Ed25519 keys");
+    }
+    result = op_node_verify_ed25519(handle, data, signature);
+  } else if (algorithm == null) {
+    throw new TypeError(
+      "Algorithm must be specified when using non-Ed25519 keys",
+    );
+  } else {
+    result = Verify(algorithm!).update(data)
+      .verify(new PublicKeyObject(handle), signature);
+  }
 
   if (callback) {
     setTimeout(() => callback(null, result));

@@ -1,0 +1,15 @@
+{
+  "tempDir": true,
+  "envs": {
+    "DISABLE_JSR_PROVENANCE": "true",
+    "DENO_TESTING_DISABLE_GIT_CHECK": "1"
+  },
+  "steps": [{
+    "args": ["eval", "Deno.symlinkSync('./mod.ts', './symlink');"],
+    "output": "[WILDCARD]"
+  }, {
+    "args": "publish --token 'sadfasdf' --dry-run",
+    "output": "symlink.out",
+    "exitCode": 0
+  }]
+}

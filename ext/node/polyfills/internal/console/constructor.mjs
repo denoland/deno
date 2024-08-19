@@ -1,13 +1,10 @@
-// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 // Copyright Joyent and Node contributors. All rights reserved. MIT license.
 
 // TODO(petamoriken): enable prefer-primordials for node polyfills
 // deno-lint-ignore-file prefer-primordials
 
-import { core } from "ext:core/mod.js";
-const {
-  op_preview_entries,
-} = core.ensureFastOps(true);
+import { op_preview_entries } from "ext:core/ops";
 
 // Mock trace for now
 const trace = () => {};

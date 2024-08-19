@@ -1,12 +1,7 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
-use deno_core::error::bad_resource_id;
 use deno_core::error::AnyError;
 use deno_core::op2;
-use deno_core::OpState;
-use deno_core::Resource;
-
-use std::borrow::Cow;
 
 use x509_parser::der_parser::asn1_rs::Any;
 use x509_parser::der_parser::asn1_rs::Tag;
@@ -15,17 +10,33 @@ use x509_parser::extensions;
 use x509_parser::pem;
 use x509_parser::prelude::*;
 
+use super::KeyObjectHandle;
+
+use std::ops::Deref;
+use yoke::Yoke;
+use yoke::Yokeable;
+
 use digest::Digest;
 
-struct Certificate {
-  _buf: Vec<u8>,
-  pem: Option<pem::Pem>,
-  cert: X509Certificate<'static>,
+enum CertificateSources {
+  Der(Box<[u8]>),
+  Pem(pem::Pem),
 }
+
+#[derive(Yokeable)]
+struct CertificateView<'a> {
+  cert: X509Certificate<'a>,
+}
+
+pub(crate) struct Certificate {
+  inner: Yoke<CertificateView<'static>, Box<CertificateSources>>,
+}
+
+impl deno_core::GarbageCollected for Certificate {}
 
 impl Certificate {
   fn fingerprint<D: Digest>(&self) -> Option<String> {
-    self.pem.as_ref().map(|pem| {
+    if let CertificateSources::Pem(pem) = self.inner.backing_cart().as_ref() {
       let mut hasher = D::new();
       hasher.update(&pem.contents);
       let bytes = hasher.finalize();
@@ -35,74 +46,60 @@ impl Certificate {
         hex.push_str(&format!("{:02X}:", byte));
       }
       hex.pop();
-      hex
-    })
+      Some(hex)
+    } else {
+      None
+    }
   }
 }
 
-impl std::ops::Deref for Certificate {
-  type Target = X509Certificate<'static>;
+impl<'a> Deref for CertificateView<'a> {
+  type Target = X509Certificate<'a>;
 
   fn deref(&self) -> &Self::Target {
     &self.cert
   }
 }
 
-impl Resource for Certificate {
-  fn name(&self) -> Cow<str> {
-    "x509Certificate".into()
-  }
-}
-
-#[op2(fast)]
+#[op2]
+#[cppgc]
 pub fn op_node_x509_parse(
-  state: &mut OpState,
   #[buffer] buf: &[u8],
-) -> Result<u32, AnyError> {
-  let pem = match pem::parse_x509_pem(buf) {
-    Ok((_, pem)) => Some(pem),
-    Err(_) => None,
+) -> Result<Certificate, AnyError> {
+  let source = match pem::parse_x509_pem(buf) {
+    Ok((_, pem)) => CertificateSources::Pem(pem),
+    Err(_) => CertificateSources::Der(buf.to_vec().into_boxed_slice()),
   };
 
-  let cert = pem
-    .as_ref()
-    .map(|pem| pem.parse_x509())
-    .unwrap_or_else(|| X509Certificate::from_der(buf).map(|(_, cert)| cert))?;
+  let inner =
+    Yoke::<CertificateView<'static>, Box<CertificateSources>>::try_attach_to_cart(
+      Box::new(source),
+      |source| {
+        let cert = match source {
+          CertificateSources::Pem(pem) => pem.parse_x509()?,
+          CertificateSources::Der(buf) => {
+            X509Certificate::from_der(buf).map(|(_, cert)| cert)?
+          }
+        };
+        Ok::<_, AnyError>(CertificateView { cert })
+      },
+    )?;
 
-  let cert = Certificate {
-    _buf: buf.to_vec(),
-    // SAFETY: Extending the lifetime of the certificate. Backing buffer is
-    // owned by the resource.
-    cert: unsafe { std::mem::transmute(cert) },
-    pem,
-  };
-  let rid = state.resource_table.add(cert);
-  Ok(rid)
+  Ok(Certificate { inner })
 }
 
 #[op2(fast)]
-pub fn op_node_x509_ca(
-  state: &mut OpState,
-  rid: u32,
-) -> Result<bool, AnyError> {
-  let cert = state
-    .resource_table
-    .get::<Certificate>(rid)
-    .map_err(|_| bad_resource_id())?;
+pub fn op_node_x509_ca(#[cppgc] cert: &Certificate) -> Result<bool, AnyError> {
+  let cert = cert.inner.get().deref();
   Ok(cert.is_ca())
 }
 
 #[op2(fast)]
 pub fn op_node_x509_check_email(
-  state: &mut OpState,
-  rid: u32,
+  #[cppgc] cert: &Certificate,
   #[string] email: &str,
 ) -> Result<bool, AnyError> {
-  let cert = state
-    .resource_table
-    .get::<Certificate>(rid)
-    .map_err(|_| bad_resource_id())?;
-
+  let cert = cert.inner.get().deref();
   let subject = cert.subject();
   if subject
     .iter_email()
@@ -122,7 +119,6 @@ pub fn op_node_x509_check_email(
 
   if let Some(subject_alt) = subject_alt {
     for name in &subject_alt.general_names {
-      dbg!(name);
       if let extensions::GeneralName::RFC822Name(n) = name {
         if *n == email {
           return Ok(true);
@@ -137,66 +133,54 @@ pub fn op_node_x509_check_email(
 #[op2]
 #[string]
 pub fn op_node_x509_fingerprint(
-  state: &mut OpState,
-  rid: u32,
+  #[cppgc] cert: &Certificate,
 ) -> Result<Option<String>, AnyError> {
-  let cert = state
-    .resource_table
-    .get::<Certificate>(rid)
-    .map_err(|_| bad_resource_id())?;
   Ok(cert.fingerprint::<sha1::Sha1>())
 }
 
 #[op2]
 #[string]
 pub fn op_node_x509_fingerprint256(
-  state: &mut OpState,
-  rid: u32,
+  #[cppgc] cert: &Certificate,
 ) -> Result<Option<String>, AnyError> {
-  let cert = state
-    .resource_table
-    .get::<Certificate>(rid)
-    .map_err(|_| bad_resource_id())?;
   Ok(cert.fingerprint::<sha2::Sha256>())
 }
 
 #[op2]
 #[string]
 pub fn op_node_x509_fingerprint512(
-  state: &mut OpState,
-  rid: u32,
+  #[cppgc] cert: &Certificate,
 ) -> Result<Option<String>, AnyError> {
-  let cert = state
-    .resource_table
-    .get::<Certificate>(rid)
-    .map_err(|_| bad_resource_id())?;
   Ok(cert.fingerprint::<sha2::Sha512>())
 }
 
 #[op2]
 #[string]
 pub fn op_node_x509_get_issuer(
-  state: &mut OpState,
-  rid: u32,
+  #[cppgc] cert: &Certificate,
 ) -> Result<String, AnyError> {
-  let cert = state
-    .resource_table
-    .get::<Certificate>(rid)
-    .map_err(|_| bad_resource_id())?;
+  let cert = cert.inner.get().deref();
   Ok(x509name_to_string(cert.issuer(), oid_registry())?)
 }
 
 #[op2]
 #[string]
 pub fn op_node_x509_get_subject(
-  state: &mut OpState,
-  rid: u32,
+  #[cppgc] cert: &Certificate,
 ) -> Result<String, AnyError> {
-  let cert = state
-    .resource_table
-    .get::<Certificate>(rid)
-    .map_err(|_| bad_resource_id())?;
+  let cert = cert.inner.get().deref();
   Ok(x509name_to_string(cert.subject(), oid_registry())?)
+}
+
+#[op2]
+#[cppgc]
+pub fn op_node_x509_public_key(
+  #[cppgc] cert: &Certificate,
+) -> Result<KeyObjectHandle, AnyError> {
+  let cert = cert.inner.get().deref();
+  let public_key = &cert.tbs_certificate.subject_pki;
+
+  KeyObjectHandle::new_x509_public_key(public_key)
 }
 
 // Attempt to convert attribute to string. If type is not a string, return value is the hex
@@ -262,39 +246,27 @@ fn x509name_to_string(
 #[op2]
 #[string]
 pub fn op_node_x509_get_valid_from(
-  state: &mut OpState,
-  rid: u32,
+  #[cppgc] cert: &Certificate,
 ) -> Result<String, AnyError> {
-  let cert = state
-    .resource_table
-    .get::<Certificate>(rid)
-    .map_err(|_| bad_resource_id())?;
+  let cert = cert.inner.get().deref();
   Ok(cert.validity().not_before.to_string())
 }
 
 #[op2]
 #[string]
 pub fn op_node_x509_get_valid_to(
-  state: &mut OpState,
-  rid: u32,
+  #[cppgc] cert: &Certificate,
 ) -> Result<String, AnyError> {
-  let cert = state
-    .resource_table
-    .get::<Certificate>(rid)
-    .map_err(|_| bad_resource_id())?;
+  let cert = cert.inner.get().deref();
   Ok(cert.validity().not_after.to_string())
 }
 
 #[op2]
 #[string]
 pub fn op_node_x509_get_serial_number(
-  state: &mut OpState,
-  rid: u32,
+  #[cppgc] cert: &Certificate,
 ) -> Result<String, AnyError> {
-  let cert = state
-    .resource_table
-    .get::<Certificate>(rid)
-    .map_err(|_| bad_resource_id())?;
+  let cert = cert.inner.get().deref();
   let mut s = cert.serial.to_str_radix(16);
   s.make_ascii_uppercase();
   Ok(s)
@@ -302,14 +274,9 @@ pub fn op_node_x509_get_serial_number(
 
 #[op2(fast)]
 pub fn op_node_x509_key_usage(
-  state: &mut OpState,
-  rid: u32,
+  #[cppgc] cert: &Certificate,
 ) -> Result<u16, AnyError> {
-  let cert = state
-    .resource_table
-    .get::<Certificate>(rid)
-    .map_err(|_| bad_resource_id())?;
-
+  let cert = cert.inner.get().deref();
   let key_usage = cert
     .extensions()
     .iter()

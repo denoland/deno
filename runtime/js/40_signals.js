@@ -1,11 +1,7 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
 import { core, primordials } from "ext:core/mod.js";
-const {
-  op_signal_bind,
-  op_signal_poll,
-  op_signal_unbind,
-} = core.ensureFastOps();
+import { op_signal_bind, op_signal_poll, op_signal_unbind } from "ext:core/ops";
 const {
   SafeSet,
   SafeSetIterator,
@@ -30,7 +26,7 @@ function unbindSignal(rid) {
 
 // Stores signal listeners and resource data. This has type of
 // `Record<string, { rid: number | undefined, listeners: Set<() => void> }`
-const signalData = {};
+const signalData = { __proto__: null };
 
 /** Gets the signal handlers and resource data of the given signal */
 function getSignalData(signo) {

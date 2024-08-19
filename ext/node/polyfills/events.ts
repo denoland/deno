@@ -6,6 +6,7 @@ export {
   defaultMaxListeners,
   errorMonitor,
   EventEmitter,
+  EventEmitterAsyncResource,
   getEventListeners,
   listenerCount,
   on,

@@ -23,11 +23,10 @@
 // TODO(petamoriken): enable prefer-primordials for node polyfills
 // deno-lint-ignore-file prefer-primordials
 
-import { core } from "ext:core/mod.js";
-const {
+import {
   op_node_unstable_net_listen_udp,
   op_node_unstable_net_listen_unixpacket,
-} = core.ensureFastOps();
+} from "ext:core/ops";
 
 import {
   AsyncWrap,

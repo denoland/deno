@@ -4,11 +4,7 @@
 // TODO(petamoriken): enable prefer-primordials for node polyfills
 // deno-lint-ignore-file prefer-primordials
 
-import { core } from "ext:core/mod.js";
-const {
-  op_node_hkdf,
-  op_node_hkdf_async,
-} = core.ensureFastOps();
+import { op_node_hkdf, op_node_hkdf_async } from "ext:core/ops";
 
 import {
   validateFunction,
@@ -22,12 +18,12 @@ import {
   hideStackFrames,
 } from "ext:deno_node/internal/errors.ts";
 import {
+  kHandle,
   toBuf,
   validateByteSource,
 } from "ext:deno_node/internal/crypto/util.ts";
 import {
   createSecretKey,
-  isKeyObject,
   KeyObject,
 } from "ext:deno_node/internal/crypto/keys.ts";
 import type { BinaryLike } from "ext:deno_node/internal/crypto/types.ts";
@@ -36,10 +32,11 @@ import {
   isAnyArrayBuffer,
   isArrayBufferView,
 } from "ext:deno_node/internal/util/types.ts";
+import { isKeyObject } from "ext:deno_node/internal/crypto/_keys.ts";
 
 const validateParameters = hideStackFrames((hash, key, salt, info, length) => {
   validateString(hash, "digest");
-  key = new Uint8Array(prepareKey(key));
+  key = prepareKey(key);
   validateByteSource(salt, "salt");
   validateByteSource(info, "info");
 
@@ -112,7 +109,9 @@ export function hkdf(
 
   validateFunction(callback, "callback");
 
-  op_node_hkdf_async(hash, key, salt, info, length)
+  hash = hash.toLowerCase();
+
+  op_node_hkdf_async(hash, key[kHandle], salt, info, length)
     .then((okm) => callback(null, okm.buffer))
     .catch((err) => callback(new ERR_CRYPTO_INVALID_DIGEST(err), undefined));
 }
@@ -132,9 +131,11 @@ export function hkdfSync(
     length,
   ));
 
+  hash = hash.toLowerCase();
+
   const okm = new Uint8Array(length);
   try {
-    op_node_hkdf(hash, key, salt, info, okm);
+    op_node_hkdf(hash, key[kHandle], salt, info, okm);
   } catch (e) {
     throw new ERR_CRYPTO_INVALID_DIGEST(e);
   }

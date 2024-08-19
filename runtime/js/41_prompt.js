@@ -1,21 +1,19 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 import { core, primordials } from "ext:core/mod.js";
+import { op_read_line_prompt } from "ext:core/ops";
 const {
   ArrayPrototypePush,
   StringPrototypeCharCodeAt,
   Uint8Array,
 } = primordials;
 
-import { isatty } from "ext:runtime/40_tty.js";
 import { stdin } from "ext:deno_io/12_io.js";
-
-const ops = core.ops;
 
 const LF = StringPrototypeCharCodeAt("\n", 0);
 const CR = StringPrototypeCharCodeAt("\r", 0);
 
 function alert(message = "Alert") {
-  if (!isatty(stdin.rid)) {
+  if (!stdin.isTerminal()) {
     return;
   }
 
@@ -25,7 +23,7 @@ function alert(message = "Alert") {
 }
 
 function confirm(message = "Confirm") {
-  if (!isatty(stdin.rid)) {
+  if (!stdin.isTerminal()) {
     return false;
   }
 
@@ -39,11 +37,11 @@ function confirm(message = "Confirm") {
 function prompt(message = "Prompt", defaultValue) {
   defaultValue ??= "";
 
-  if (!isatty(stdin.rid)) {
+  if (!stdin.isTerminal()) {
     return null;
   }
 
-  return ops.op_read_line_prompt(
+  return op_read_line_prompt(
     `${message} `,
     `${defaultValue}`,
   );

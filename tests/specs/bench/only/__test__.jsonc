@@ -1,0 +1,5 @@
+{
+  "args": "bench only.ts",
+  "output": "only.out",
+  "exitCode": 1
+}

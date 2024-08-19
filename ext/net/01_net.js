@@ -1,11 +1,13 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
-import { core, primordials } from "ext:core/mod.js";
+import { core, internals, primordials } from "ext:core/mod.js";
 const {
   BadResourcePrototype,
   InterruptedPrototype,
+  internalRidSymbol,
+  createCancelHandle,
 } = core;
-const {
+import {
   op_dns_resolve,
   op_net_accept_tcp,
   op_net_accept_unix,
@@ -25,14 +27,14 @@ const {
   op_net_set_multi_ttl_udp,
   op_set_keepalive,
   op_set_nodelay,
-} = core.ensureFastOps();
-const {
-  op_cancel_handle,
-} = core.ensureFastOps(true);
+} from "ext:core/ops";
+const UDP_DGRAM_MAXSIZE = 65507;
+
 const {
   Error,
   Number,
   ObjectPrototypeIsPrototypeOf,
+  ObjectDefineProperty,
   PromiseResolve,
   SafeSet,
   SetPrototypeAdd,
@@ -67,7 +69,7 @@ async function resolveDns(query, recordType, options) {
   let abortHandler;
   if (options?.signal) {
     options.signal.throwIfAborted();
-    cancelRid = op_cancel_handle();
+    cancelRid = createCancelHandle();
     abortHandler = () => core.tryClose(cancelRid);
     options.signal[abortSignal.add](abortHandler);
   }
@@ -100,12 +102,27 @@ class Conn {
   #writable;
 
   constructor(rid, remoteAddr, localAddr) {
+    if (internals.future) {
+      ObjectDefineProperty(this, "rid", {
+        enumerable: false,
+        value: undefined,
+      });
+    }
+    ObjectDefineProperty(this, internalRidSymbol, {
+      enumerable: false,
+      value: rid,
+    });
     this.#rid = rid;
     this.#remoteAddr = remoteAddr;
     this.#localAddr = localAddr;
   }
 
   get rid() {
+    internals.warnOnDeprecatedApi(
+      "Deno.Conn.rid",
+      new Error().stack,
+      "Use `Deno.Conn` instance methods instead.",
+    );
     return this.#rid;
   }
 
@@ -118,14 +135,14 @@ class Conn {
   }
 
   write(p) {
-    return write(this.rid, p);
+    return write(this.#rid, p);
   }
 
   async read(buffer) {
     if (buffer.length === 0) {
       return 0;
     }
-    const promise = core.read(this.rid, buffer);
+    const promise = core.read(this.#rid, buffer);
     if (this.#unref) core.unrefOpPromise(promise);
     SetPrototypeAdd(this.#pendingReadPromises, promise);
     let nread;
@@ -140,16 +157,16 @@ class Conn {
   }
 
   close() {
-    core.close(this.rid);
+    core.close(this.#rid);
   }
 
   closeWrite() {
-    return shutdown(this.rid);
+    return shutdown(this.#rid);
   }
 
   get readable() {
     if (this.#readable === undefined) {
-      this.#readable = readableStreamForRidUnrefable(this.rid);
+      this.#readable = readableStreamForRidUnrefable(this.#rid);
       if (this.#unref) {
         readableStreamForRidUnrefableUnref(this.#readable);
       }
@@ -159,7 +176,7 @@ class Conn {
 
   get writable() {
     if (this.#writable === undefined) {
-      this.#writable = writableStreamForRid(this.rid);
+      this.#writable = writableStreamForRid(this.#rid);
     }
     return this.#writable;
   }
@@ -193,16 +210,56 @@ class Conn {
 }
 
 class TcpConn extends Conn {
+  #rid = 0;
+
+  constructor(rid, remoteAddr, localAddr) {
+    super(rid, remoteAddr, localAddr);
+    ObjectDefineProperty(this, internalRidSymbol, {
+      enumerable: false,
+      value: rid,
+    });
+    this.#rid = rid;
+  }
+
+  get rid() {
+    internals.warnOnDeprecatedApi(
+      "Deno.TcpConn.rid",
+      new Error().stack,
+      "Use `Deno.TcpConn` instance methods instead.",
+    );
+    return this.#rid;
+  }
+
   setNoDelay(noDelay = true) {
-    return op_set_nodelay(this.rid, noDelay);
+    return op_set_nodelay(this.#rid, noDelay);
   }
 
   setKeepAlive(keepAlive = true) {
-    return op_set_keepalive(this.rid, keepAlive);
+    return op_set_keepalive(this.#rid, keepAlive);
   }
 }
 
-class UnixConn extends Conn {}
+class UnixConn extends Conn {
+  #rid = 0;
+
+  constructor(rid, remoteAddr, localAddr) {
+    super(rid, remoteAddr, localAddr);
+    ObjectDefineProperty(this, internalRidSymbol, {
+      enumerable: false,
+      value: rid,
+    });
+    this.#rid = rid;
+  }
+
+  get rid() {
+    internals.warnOnDeprecatedApi(
+      "Deno.UnixConn.rid",
+      new Error().stack,
+      "Use `Deno.UnixConn` instance methods instead.",
+    );
+    return this.#rid;
+  }
+}
 
 class Listener {
   #rid = 0;
@@ -211,11 +268,26 @@ class Listener {
   #promise = null;
 
   constructor(rid, addr) {
+    if (internals.future) {
+      ObjectDefineProperty(this, "rid", {
+        enumerable: false,
+        value: undefined,
+      });
+    }
+    ObjectDefineProperty(this, internalRidSymbol, {
+      enumerable: false,
+      value: rid,
+    });
     this.#rid = rid;
     this.#addr = addr;
   }
 
   get rid() {
+    internals.warnOnDeprecatedApi(
+      "Deno.Listener.rid",
+      new Error().stack,
+      "Use `Deno.Listener` instance methods instead.",
+    );
     return this.#rid;
   }
 
@@ -227,10 +299,10 @@ class Listener {
     let promise;
     switch (this.addr.transport) {
       case "tcp":
-        promise = op_net_accept_tcp(this.rid);
+        promise = op_net_accept_tcp(this.#rid);
         break;
       case "unix":
-        promise = op_net_accept_unix(this.rid);
+        promise = op_net_accept_unix(this.#rid);
         break;
       default:
         throw new Error(`Unsupported transport: ${this.addr.transport}`);
@@ -276,7 +348,7 @@ class Listener {
   }
 
   close() {
-    core.close(this.rid);
+    core.close(this.#rid);
   }
 
   [SymbolDispose]() {
@@ -302,20 +374,16 @@ class Listener {
   }
 }
 
-class Datagram {
+class DatagramConn {
   #rid = 0;
   #addr = null;
   #unref = false;
   #promise = null;
 
-  constructor(rid, addr, bufSize = 1024) {
+  constructor(rid, addr, bufSize = UDP_DGRAM_MAXSIZE) {
     this.#rid = rid;
     this.#addr = addr;
     this.bufSize = bufSize;
-  }
-
-  get rid() {
-    return this.#rid;
   }
 
   get addr() {
@@ -324,7 +392,7 @@ class Datagram {
 
   async joinMulticastV4(addr, multiInterface) {
     await op_net_join_multi_v4_udp(
-      this.rid,
+      this.#rid,
       addr,
       multiInterface,
     );
@@ -332,19 +400,19 @@ class Datagram {
     return {
       leave: () =>
         op_net_leave_multi_v4_udp(
-          this.rid,
+          this.#rid,
           addr,
           multiInterface,
         ),
       setLoopback: (loopback) =>
         op_net_set_multi_loopback_udp(
-          this.rid,
+          this.#rid,
           true,
           loopback,
         ),
       setTTL: (ttl) =>
         op_net_set_multi_ttl_udp(
-          this.rid,
+          this.#rid,
           ttl,
         ),
     };
@@ -352,7 +420,7 @@ class Datagram {
 
   async joinMulticastV6(addr, multiInterface) {
     await op_net_join_multi_v6_udp(
-      this.rid,
+      this.#rid,
       addr,
       multiInterface,
     );
@@ -360,13 +428,13 @@ class Datagram {
     return {
       leave: () =>
         op_net_leave_multi_v6_udp(
-          this.rid,
+          this.#rid,
           addr,
           multiInterface,
         ),
       setLoopback: (loopback) =>
         op_net_set_multi_loopback_udp(
-          this.rid,
+          this.#rid,
           false,
           loopback,
         ),
@@ -380,7 +448,7 @@ class Datagram {
     switch (this.addr.transport) {
       case "udp": {
         this.#promise = op_net_recv_udp(
-          this.rid,
+          this.#rid,
           buf,
         );
         if (this.#unref) core.unrefOpPromise(this.#promise);
@@ -391,7 +459,7 @@ class Datagram {
       case "unixpacket": {
         let path;
         ({ 0: nread, 1: path } = await op_net_recv_unixpacket(
-          this.rid,
+          this.#rid,
           buf,
         ));
         remoteAddr = { transport: "unixpacket", path };
@@ -408,13 +476,13 @@ class Datagram {
     switch (this.addr.transport) {
       case "udp":
         return await op_net_send_udp(
-          this.rid,
+          this.#rid,
           { hostname: opts.hostname ?? "127.0.0.1", port: opts.port },
           p,
         );
       case "unixpacket":
         return await op_net_send_unixpacket(
-          this.rid,
+          this.#rid,
           opts.path,
           p,
         );
@@ -424,7 +492,7 @@ class Datagram {
   }
 
   close() {
-    core.close(this.rid);
+    core.close(this.#rid);
   }
 
   ref() {
@@ -463,10 +531,14 @@ const listenOptionApiName = Symbol("listenOptionApiName");
 function listen(args) {
   switch (args.transport ?? "tcp") {
     case "tcp": {
-      const { 0: rid, 1: addr } = op_net_listen_tcp({
-        hostname: args.hostname ?? "0.0.0.0",
-        port: Number(args.port),
-      }, args.reusePort);
+      const { 0: rid, 1: addr } = op_net_listen_tcp(
+        {
+          hostname: args.hostname ?? "0.0.0.0",
+          port: Number(args.port),
+        },
+        args.reusePort,
+        args.loadBalanced ?? false,
+      );
       addr.transport = "tcp";
       return new Listener(rid, addr);
     }
@@ -499,7 +571,7 @@ function createListenDatagram(udpOpFn, unixOpFn) {
           args.loopback ?? false,
         );
         addr.transport = "udp";
-        return new Datagram(rid, addr);
+        return new DatagramConn(rid, addr);
       }
       case "unixpacket": {
         const { 0: rid, 1: path } = unixOpFn(args.path);
@@ -507,7 +579,7 @@ function createListenDatagram(udpOpFn, unixOpFn) {
           transport: "unixpacket",
           path,
         };
-        return new Datagram(rid, addr);
+        return new DatagramConn(rid, addr);
       }
       default:
         throw new TypeError(`Unsupported transport: '${transport}'`);
@@ -547,7 +619,6 @@ export {
   Conn,
   connect,
   createListenDatagram,
-  Datagram,
   listen,
   Listener,
   listenOptionApiName,

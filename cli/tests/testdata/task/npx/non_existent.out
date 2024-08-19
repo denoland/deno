@@ -1,2 +1,0 @@
-Task non-existent npx this-command-should-not-exist-for-you
-npx: could not resolve command 'this-command-should-not-exist-for-you'

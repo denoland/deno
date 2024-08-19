@@ -1,4 +1,4 @@
-// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
 // deno-lint-ignore-file prefer-primordials
 
@@ -12,6 +12,7 @@ export const ArrayPrototypeSlice = (that, ...args) => that.slice(...args);
 export const ArrayPrototypeSome = (that, ...args) => that.some(...args);
 export const ArrayPrototypeSort = (that, ...args) => that.sort(...args);
 export const ArrayPrototypeUnshift = (that, ...args) => that.unshift(...args);
+export const BigInt = globalThis.BigInt;
 export const ObjectAssign = Object.assign;
 export const ObjectCreate = Object.create;
 export const ObjectHasOwn = Object.hasOwn;

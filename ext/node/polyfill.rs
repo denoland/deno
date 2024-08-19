@@ -1,24 +1,10 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
-use deno_core::ModuleSpecifier;
-
 /// e.g. `is_builtin_node_module("assert")`
 pub fn is_builtin_node_module(module_name: &str) -> bool {
   SUPPORTED_BUILTIN_NODE_MODULES
     .iter()
     .any(|m| *m == module_name)
-}
-
-/// Ex. returns `fs` for `node:fs`
-pub fn get_module_name_from_builtin_node_module_specifier(
-  specifier: &ModuleSpecifier,
-) -> Option<&str> {
-  if specifier.scheme() != "node" {
-    return None;
-  }
-
-  let (_, specifier) = specifier.as_str().split_once(':')?;
-  Some(specifier)
 }
 
 macro_rules! generate_builtin_node_module_lists {
@@ -59,6 +45,7 @@ generate_builtin_node_module_lists! {
   "http",
   "http2",
   "https",
+  "inspector",
   "module",
   "net",
   "os",
@@ -71,6 +58,7 @@ generate_builtin_node_module_lists! {
   "querystring",
   "repl",
   "readline",
+  "readline/promises",
   "stream",
   "stream/consumers",
   "stream/promises",

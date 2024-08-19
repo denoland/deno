@@ -3,6 +3,7 @@
 use super::definitions::TestDefinition;
 use super::definitions::TestModule;
 use super::lsp_custom;
+use super::server::TestServerTests;
 
 use crate::args::flags_from_vec;
 use crate::args::DenoSubcommand;
@@ -12,8 +13,8 @@ use crate::lsp::client::TestingNotification;
 use crate::lsp::config;
 use crate::lsp::logging::lsp_log;
 use crate::tools::test;
+use crate::tools::test::create_test_event_channel;
 use crate::tools::test::FailFastTracker;
-use crate::tools::test::TestEventSender;
 
 use deno_core::anyhow::anyhow;
 use deno_core::error::AnyError;
@@ -21,12 +22,11 @@ use deno_core::error::JsError;
 use deno_core::futures::future;
 use deno_core::futures::stream;
 use deno_core::futures::StreamExt;
-use deno_core::parking_lot::Mutex;
 use deno_core::parking_lot::RwLock;
 use deno_core::unsync::spawn;
 use deno_core::unsync::spawn_blocking;
 use deno_core::ModuleSpecifier;
-use deno_runtime::permissions::Permissions;
+use deno_runtime::deno_permissions::Permissions;
 use deno_runtime::tokio_util::create_and_run_current_thread;
 use indexmap::IndexMap;
 use std::collections::HashMap;
@@ -35,7 +35,6 @@ use std::num::NonZeroUsize;
 use std::sync::Arc;
 use std::time::Duration;
 use std::time::Instant;
-use tokio::sync::mpsc;
 use tokio_util::sync::CancellationToken;
 use tower_lsp::lsp_types as lsp;
 
@@ -43,7 +42,7 @@ use tower_lsp::lsp_types as lsp;
 /// any filters to be applied to those tests
 fn as_queue_and_filters(
   params: &lsp_custom::TestRunRequestParams,
-  tests: &HashMap<ModuleSpecifier, TestModule>,
+  tests: &HashMap<ModuleSpecifier, (TestModule, String)>,
 ) -> (
   HashSet<ModuleSpecifier>,
   HashMap<ModuleSpecifier, LspTestFilter>,
@@ -53,7 +52,7 @@ fn as_queue_and_filters(
 
   if let Some(include) = &params.include {
     for item in include {
-      if let Some(test_definitions) = tests.get(&item.text_document.uri) {
+      if let Some((test_definitions, _)) = tests.get(&item.text_document.uri) {
         queue.insert(item.text_document.uri.clone());
         if let Some(id) = &item.id {
           if let Some(test) = test_definitions.get(id) {
@@ -75,7 +74,7 @@ fn as_queue_and_filters(
   }
 
   for item in &params.exclude {
-    if let Some(test_definitions) = tests.get(&item.text_document.uri) {
+    if let Some((test_definitions, _)) = tests.get(&item.text_document.uri) {
       if let Some(id) = &item.id {
         // there is no way to exclude a test step
         if item.step_id.is_none() {
@@ -92,7 +91,7 @@ fn as_queue_and_filters(
     }
   }
 
-  queue.retain(|s| !tests.get(s).unwrap().is_empty());
+  queue.retain(|s| !tests.get(s).unwrap().0.is_empty());
 
   (queue, filters)
 }
@@ -148,19 +147,19 @@ pub struct TestRun {
   kind: lsp_custom::TestRunKind,
   filters: HashMap<ModuleSpecifier, LspTestFilter>,
   queue: HashSet<ModuleSpecifier>,
-  tests: Arc<Mutex<HashMap<ModuleSpecifier, TestModule>>>,
+  tests: TestServerTests,
   token: CancellationToken,
   workspace_settings: config::WorkspaceSettings,
 }
 
 impl TestRun {
-  pub fn new(
+  pub async fn init(
     params: &lsp_custom::TestRunRequestParams,
-    tests: Arc<Mutex<HashMap<ModuleSpecifier, TestModule>>>,
+    tests: TestServerTests,
     workspace_settings: config::WorkspaceSettings,
   ) -> Self {
     let (queue, filters) = {
-      let tests = tests.lock();
+      let tests = tests.lock().await;
       as_queue_and_filters(params, &tests)
     };
 
@@ -177,13 +176,13 @@ impl TestRun {
 
   /// Provide the tests of a test run as an enqueued module which can be sent
   /// to the client to indicate tests are enqueued for testing.
-  pub fn as_enqueued(&self) -> Vec<lsp_custom::EnqueuedTestModule> {
-    let tests = self.tests.lock();
+  pub async fn as_enqueued(&self) -> Vec<lsp_custom::EnqueuedTestModule> {
+    let tests = self.tests.lock().await;
     self
       .queue
       .iter()
       .map(|s| {
-        let ids = if let Some(test_module) = tests.get(s) {
+        let ids = if let Some((test_module, _)) = tests.get(s) {
           if let Some(filter) = self.filters.get(s) {
             filter.as_ids(test_module)
           } else {
@@ -213,17 +212,19 @@ impl TestRun {
   ) -> Result<(), AnyError> {
     let args = self.get_args();
     lsp_log!("Executing test run with arguments: {}", args.join(" "));
-    let flags = flags_from_vec(args.into_iter().map(String::from).collect())?;
-    let factory = CliFactory::from_flags(flags).await?;
+    let flags =
+      Arc::new(flags_from_vec(args.into_iter().map(From::from).collect())?);
+    let factory = CliFactory::from_flags(flags);
+    let cli_options = factory.cli_options()?;
     // Various test files should not share the same permissions in terms of
     // `PermissionsContainer` - otherwise granting/revoking permissions in one
     // file would have impact on other files, which is undesirable.
     let permissions =
-      Permissions::from_options(&factory.cli_options().permissions_options())?;
+      Permissions::from_options(&cli_options.permissions_options()?)?;
+    let main_graph_container = factory.main_module_graph_container().await?;
     test::check_specifiers(
-      factory.cli_options(),
       factory.file_fetcher()?,
-      factory.module_load_preparer().await?,
+      main_graph_container,
       self
         .queue
         .iter()
@@ -232,22 +233,27 @@ impl TestRun {
     )
     .await?;
 
-    let (concurrent_jobs, fail_fast) = if let DenoSubcommand::Test(test_flags) =
-      factory.cli_options().sub_command()
-    {
-      (
-        test_flags
-          .concurrent_jobs
-          .unwrap_or_else(|| NonZeroUsize::new(1).unwrap())
-          .into(),
-        test_flags.fail_fast,
-      )
-    } else {
-      unreachable!("Should always be Test subcommand.");
-    };
+    let (concurrent_jobs, fail_fast) =
+      if let DenoSubcommand::Test(test_flags) = cli_options.sub_command() {
+        (
+          test_flags
+            .concurrent_jobs
+            .unwrap_or_else(|| NonZeroUsize::new(1).unwrap())
+            .into(),
+          test_flags.fail_fast,
+        )
+      } else {
+        unreachable!("Should always be Test subcommand.");
+      };
 
-    let (sender, mut receiver) = mpsc::unbounded_channel::<test::TestEvent>();
-    let sender = TestEventSender::new(sender);
+    // TODO(mmastrac): Temporarily limit concurrency in windows testing to avoid named pipe issue:
+    // *** Unexpected server pipe failure '"\\\\.\\pipe\\deno_pipe_e30f45c9df61b1e4.1198.222\\0"': 3
+    // This is likely because we're hitting some sort of invisible resource limit
+    // This limit is both in cli/lsp/testing/execution.rs and cli/tools/test/mod.rs
+    #[cfg(windows)]
+    let concurrent_jobs = std::cmp::min(concurrent_jobs, 4);
+
+    let (test_event_sender_factory, mut receiver) = create_test_event_channel();
     let fail_fast_tracker = FailFastTracker::new(fail_fast);
 
     let mut queue = self.queue.iter().collect::<Vec<&ModuleSpecifier>>();
@@ -263,7 +269,7 @@ impl TestRun {
       let specifier = specifier.clone();
       let worker_factory = worker_factory.clone();
       let permissions = permissions.clone();
-      let mut sender = sender.clone();
+      let worker_sender = test_event_sender_factory.worker();
       let fail_fast_tracker = fail_fast_tracker.clone();
       let lsp_filter = self.filters.get(&specifier);
       let filter = test::TestFilter {
@@ -284,34 +290,24 @@ impl TestRun {
         if fail_fast_tracker.should_stop() {
           return Ok(());
         }
-        let origin = specifier.to_string();
-        let file_result = if token.is_cancelled() {
+        if token.is_cancelled() {
           Ok(())
         } else {
+          // All JsErrors are handled by test_specifier and piped into the test
+          // channel.
           create_and_run_current_thread(test::test_specifier(
             worker_factory,
             permissions,
             specifier,
-            sender.clone(),
+            worker_sender,
             fail_fast_tracker,
             test::TestSpecifierOptions {
               filter,
               shuffle: None,
-              trace_ops: false,
+              trace_leaks: false,
             },
           ))
-        };
-        if let Err(error) = file_result {
-          if error.is::<JsError>() {
-            sender.send(test::TestEvent::UncaughtError(
-              origin,
-              Box::new(error.downcast::<JsError>().unwrap()),
-            ))?;
-          } else {
-            return Err(error);
-          }
         }
-        Ok(())
       })
     });
 
@@ -333,11 +329,14 @@ impl TestRun {
         let mut tests_with_result = HashSet::new();
         let mut used_only = false;
 
-        while let Some(event) = receiver.recv().await {
+        while let Some((_, event)) = receiver.recv().await {
           match event {
             test::TestEvent::Register(description) => {
-              reporter.report_register(&description);
-              tests.write().insert(description.id, description);
+              for (_, description) in description.into_iter() {
+                reporter.report_register(description).await;
+                // TODO(mmastrac): we shouldn't need to clone here - we can re-use the descriptions
+                tests.write().insert(description.id, description.clone());
+              }
             }
             test::TestEvent::Plan(plan) => {
               summary.total += plan.total;
@@ -355,6 +354,9 @@ impl TestRun {
             test::TestEvent::Output(output) => {
               reporter.report_output(&output);
             }
+            test::TestEvent::Slow(id, elapsed) => {
+              reporter.report_slow(tests.read().get(&id).unwrap(), elapsed);
+            }
             test::TestEvent::Result(id, result, elapsed) => {
               if tests_with_result.insert(id) {
                 let description = tests.read().get(&id).unwrap().clone();
@@ -363,7 +365,9 @@ impl TestRun {
                   test::TestResult::Ignored => summary.ignored += 1,
                   test::TestResult::Failed(error) => {
                     summary.failed += 1;
-                    summary.failures.push((description.clone(), error.clone()));
+                    summary
+                      .failures
+                      .push(((&description).into(), error.clone()));
                   }
                   test::TestResult::Cancelled => {
                     summary.failed += 1;
@@ -378,7 +382,7 @@ impl TestRun {
               summary.uncaught_errors.push((origin, error));
             }
             test::TestEvent::StepRegister(description) => {
-              reporter.report_step_register(&description);
+              reporter.report_step_register(&description).await;
               test_steps.insert(description.id, description);
             }
             test::TestEvent::StepWait(id) => {
@@ -403,6 +407,9 @@ impl TestRun {
                   duration,
                 );
               }
+            }
+            test::TestEvent::Completed => {
+              reporter.report_completed();
             }
             test::TestEvent::ForceEndReport => {}
             test::TestEvent::Sigint => {}
@@ -448,7 +455,7 @@ impl TestRun {
         .iter()
         .map(|s| s.as_str()),
     );
-    args.push("--trace-ops");
+    args.push("--trace-leaks");
     if self.workspace_settings.unstable && !args.contains(&"--unstable") {
       args.push("--unstable");
     }
@@ -538,7 +545,7 @@ struct LspTestReporter {
   client: Client,
   id: u32,
   maybe_root_uri: Option<ModuleSpecifier>,
-  files: Arc<Mutex<HashMap<ModuleSpecifier, TestModule>>>,
+  files: TestServerTests,
   tests: IndexMap<usize, LspTestDescription>,
   current_test: Option<usize>,
 }
@@ -548,7 +555,7 @@ impl LspTestReporter {
     run: &TestRun,
     client: Client,
     maybe_root_uri: Option<&ModuleSpecifier>,
-    files: Arc<Mutex<HashMap<ModuleSpecifier, TestModule>>>,
+    files: TestServerTests,
   ) -> Self {
     Self {
       client,
@@ -573,12 +580,12 @@ impl LspTestReporter {
 
   fn report_plan(&mut self, _plan: &test::TestPlan) {}
 
-  fn report_register(&mut self, desc: &test::TestDescription) {
-    let mut files = self.files.lock();
+  async fn report_register(&mut self, desc: &test::TestDescription) {
+    let mut files = self.files.lock().await;
     let specifier = ModuleSpecifier::parse(&desc.location.file_name).unwrap();
-    let test_module = files
+    let (test_module, _) = files
       .entry(specifier.clone())
-      .or_insert_with(|| TestModule::new(specifier, "1".to_string()));
+      .or_insert_with(|| (TestModule::new(specifier), "1".to_string()));
     let (static_id, is_new) = test_module.register_dynamic(desc);
     self.tests.insert(
       desc.id,
@@ -606,6 +613,8 @@ impl LspTestReporter {
     let test = desc.as_test_identifier(&self.tests);
     self.progress(lsp_custom::TestRunProgressMessage::Started { test });
   }
+
+  fn report_slow(&mut self, _desc: &test::TestDescription, _elapsed: u64) {}
 
   fn report_output(&mut self, output: &[u8]) {
     let test = self
@@ -678,12 +687,12 @@ impl LspTestReporter {
     }
   }
 
-  fn report_step_register(&mut self, desc: &test::TestStepDescription) {
-    let mut files = self.files.lock();
+  async fn report_step_register(&mut self, desc: &test::TestStepDescription) {
+    let mut files = self.files.lock().await;
     let specifier = ModuleSpecifier::parse(&desc.location.file_name).unwrap();
-    let test_module = files
+    let (test_module, _) = files
       .entry(specifier.clone())
-      .or_insert_with(|| TestModule::new(specifier, "1".to_string()));
+      .or_insert_with(|| (TestModule::new(specifier), "1".to_string()));
     let (static_id, is_new) = test_module.register_step_dynamic(
       desc,
       self.tests.get(&desc.parent_id).unwrap().static_id(),
@@ -747,6 +756,10 @@ impl LspTestReporter {
         })
       }
     }
+  }
+
+  fn report_completed(&mut self) {
+    // there is nothing to do on report_completed
   }
 
   fn report_summary(
@@ -821,7 +834,6 @@ mod tests {
     };
     let test_module = TestModule {
       specifier: specifier.clone(),
-      script_version: "1".to_string(),
       defs: vec![
         (test_def_a.id.clone(), test_def_a.clone()),
         (test_def_b.id.clone(), test_def_b.clone()),
@@ -829,10 +841,10 @@ mod tests {
       .into_iter()
       .collect(),
     };
-    tests.insert(specifier.clone(), test_module.clone());
+    tests.insert(specifier.clone(), (test_module.clone(), "1".to_string()));
     tests.insert(
       non_test_specifier.clone(),
-      TestModule::new(non_test_specifier, "1".to_string()),
+      (TestModule::new(non_test_specifier), "1".to_string()),
     );
     let (queue, filters) = as_queue_and_filters(&params, &tests);
     assert_eq!(json!(queue), json!([specifier]));

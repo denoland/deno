@@ -27,8 +27,18 @@ import { fstat, fstatSync } from "ext:deno_node/_fs/_fs_fstat.ts";
 import { fsync, fsyncSync } from "ext:deno_node/_fs/_fs_fsync.ts";
 import { ftruncate, ftruncateSync } from "ext:deno_node/_fs/_fs_ftruncate.ts";
 import { futimes, futimesSync } from "ext:deno_node/_fs/_fs_futimes.ts";
+import {
+  lchown,
+  lchownPromise,
+  lchownSync,
+} from "ext:deno_node/_fs/_fs_lchown.ts";
 import { link, linkPromise, linkSync } from "ext:deno_node/_fs/_fs_link.ts";
 import { lstat, lstatPromise, lstatSync } from "ext:deno_node/_fs/_fs_lstat.ts";
+import {
+  lutimes,
+  lutimesPromise,
+  lutimesSync,
+} from "ext:deno_node/_fs/_fs_lutimes.ts";
 import { mkdir, mkdirPromise, mkdirSync } from "ext:deno_node/_fs/_fs_mkdir.ts";
 import {
   mkdtemp,
@@ -69,7 +79,17 @@ import {
 } from "ext:deno_node/_fs/_fs_rename.ts";
 import { rmdir, rmdirPromise, rmdirSync } from "ext:deno_node/_fs/_fs_rmdir.ts";
 import { rm, rmPromise, rmSync } from "ext:deno_node/_fs/_fs_rm.ts";
-import { stat, statPromise, statSync } from "ext:deno_node/_fs/_fs_stat.ts";
+import {
+  stat,
+  statPromise,
+  Stats,
+  statSync,
+} from "ext:deno_node/_fs/_fs_stat.ts";
+import {
+  statfs,
+  statfsPromise,
+  statfsSync,
+} from "ext:deno_node/_fs/_fs_statfs.js";
 import {
   symlink,
   symlinkPromise,
@@ -100,12 +120,12 @@ import {
 import { write, writeSync } from "ext:deno_node/_fs/_fs_write.mjs";
 // @deno-types="./_fs/_fs_writev.d.ts"
 import { writev, writevSync } from "ext:deno_node/_fs/_fs_writev.mjs";
+import { readv, readvSync } from "ext:deno_node/_fs/_fs_readv.ts";
 import {
   writeFile,
   writeFilePromise,
   writeFileSync,
 } from "ext:deno_node/_fs/_fs_writeFile.ts";
-import { Stats } from "ext:deno_node/internal/fs/utils.mjs";
 // @deno-types="./internal/fs/streams.d.ts"
 import {
   createReadStream,
@@ -113,6 +133,7 @@ import {
   ReadStream,
   WriteStream,
 } from "ext:deno_node/internal/fs/streams.mjs";
+import { toUnixTimestamp as _toUnixTimestamp } from "ext:deno_node/internal/fs/utils.mjs";
 
 const {
   F_OK,
@@ -137,6 +158,7 @@ const {
 
 const promises = {
   access: accessPromise,
+  constants,
   copyFile: copyFilePromise,
   cp: cpPromise,
   open: openPromise,
@@ -151,14 +173,15 @@ const promises = {
   symlink: symlinkPromise,
   lstat: lstatPromise,
   stat: statPromise,
+  statfs: statfsPromise,
   link: linkPromise,
   unlink: unlinkPromise,
   chmod: chmodPromise,
   // lchmod: promisify(lchmod),
-  // lchown: promisify(lchown),
+  lchown: lchownPromise,
   chown: chownPromise,
   utimes: utimesPromise,
-  // lutimes = promisify(lutimes),
+  lutimes: lutimesPromise,
   realpath: realpathPromise,
   mkdtemp: mkdtempPromise,
   writeFile: writeFilePromise,
@@ -200,10 +223,14 @@ export default {
   ftruncateSync,
   futimes,
   futimesSync,
+  lchown,
+  lchownSync,
   link,
   linkSync,
   lstat,
   lstatSync,
+  lutimes,
+  lutimesSync,
   mkdir,
   mkdirSync,
   mkdtemp,
@@ -239,6 +266,8 @@ export default {
   ReadStream,
   realpath,
   realpathSync,
+  readv,
+  readvSync,
   rename,
   renameSync,
   rmdir,
@@ -248,6 +277,8 @@ export default {
   stat,
   Stats,
   statSync,
+  statfs,
+  statfsSync,
   symlink,
   symlinkSync,
   truncate,
@@ -268,9 +299,13 @@ export default {
   WriteStream,
   writeSync,
   X_OK,
+  // For tests
+  _toUnixTimestamp,
 };
 
 export {
+  // For tests
+  _toUnixTimestamp,
   access,
   accessSync,
   appendFile,
@@ -307,6 +342,8 @@ export {
   linkSync,
   lstat,
   lstatSync,
+  lutimes,
+  lutimesSync,
   mkdir,
   mkdirSync,
   mkdtemp,
@@ -340,6 +377,8 @@ export {
   readlinkSync,
   ReadStream,
   readSync,
+  readv,
+  readvSync,
   realpath,
   realpathSync,
   rename,
@@ -349,6 +388,8 @@ export {
   rmdirSync,
   rmSync,
   stat,
+  statfs,
+  statfsSync,
   Stats,
   statSync,
   symlink,

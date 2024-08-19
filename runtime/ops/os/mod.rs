@@ -1,25 +1,24 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
 use super::utils::into_string;
-use crate::permissions::PermissionsContainer;
 use crate::worker::ExitCode;
 use deno_core::error::type_error;
 use deno_core::error::AnyError;
+use deno_core::normalize_path;
 use deno_core::op2;
-use deno_core::url::Url;
 use deno_core::v8;
-use deno_core::Op;
 use deno_core::OpState;
 use deno_node::NODE_ENV_VAR_ALLOWLIST;
+use deno_permissions::PermissionsContainer;
 use serde::Serialize;
 use std::collections::HashMap;
 use std::env;
 
 mod sys_info;
 
-deno_core::ops!(
-  deno_ops,
-  [
+deno_core::extension!(
+  deno_os,
+  ops = [
     op_env,
     op_exec_path,
     op_exit,
@@ -33,15 +32,11 @@ deno_core::ops!(
     op_os_uptime,
     op_set_env,
     op_set_exit_code,
+    op_get_exit_code,
     op_system_memory_info,
     op_uid,
     op_runtime_memory_usage,
-  ]
-);
-
-deno_core::extension!(
-  deno_os,
-  ops_fn = deno_ops,
+  ],
   options = {
     exit_code: ExitCode,
   },
@@ -52,10 +47,28 @@ deno_core::extension!(
 
 deno_core::extension!(
   deno_os_worker,
-  ops_fn = deno_ops,
+  ops = [
+    op_env,
+    op_exec_path,
+    op_exit,
+    op_delete_env,
+    op_get_env,
+    op_gid,
+    op_hostname,
+    op_loadavg,
+    op_network_interfaces,
+    op_os_release,
+    op_os_uptime,
+    op_set_env,
+    op_set_exit_code,
+    op_get_exit_code,
+    op_system_memory_info,
+    op_uid,
+    op_runtime_memory_usage,
+  ],
   middleware = |op| match op.name {
-    "op_exit" | "op_set_exit_code" =>
-      op.with_implementation_from(&deno_core::op_void_sync::DECL),
+    "op_exit" | "op_set_exit_code" | "op_get_exit_code" =>
+      op.with_implementation_from(&deno_core::op_void_sync()),
     _ => op,
   },
 );
@@ -67,10 +80,8 @@ fn op_exec_path(state: &mut OpState) -> Result<String, AnyError> {
   state
     .borrow_mut::<PermissionsContainer>()
     .check_read_blind(&current_exe, "exec_path", "Deno.execPath()")?;
-  // Now apply URL parser to current exe to get fully resolved path, otherwise
-  // we might get `./` and `../` bits in `exec_path`
-  let exe_url = Url::from_file_path(current_exe).unwrap();
-  let path = exe_url.to_file_path().unwrap();
+  // normalize path so it doesn't include '.' or '..' components
+  let path = normalize_path(current_exe);
 
   into_string(path.into_os_string())
 }
@@ -151,6 +162,12 @@ fn op_delete_env(
 #[op2(fast)]
 fn op_set_exit_code(state: &mut OpState, #[smi] code: i32) {
   state.borrow_mut::<ExitCode>().set(code);
+}
+
+#[op2(fast)]
+#[smi]
+fn op_get_exit_code(state: &mut OpState) -> i32 {
+  state.borrow_mut::<ExitCode>().get()
 }
 
 #[op2(fast)]

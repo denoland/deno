@@ -1,0 +1,10 @@
+{
+  "steps": [{
+    "args": "check index.ts",
+    "output": "check.out",
+    "exitCode": 1
+  }, {
+    "args": "run index.ts",
+    "output": "run.out"
+  }]
+}
