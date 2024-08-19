@@ -3,7 +3,6 @@ import {
   assert,
   assertEquals,
   assertNotEquals,
-  assertStringIncludes,
   assertThrows,
 } from "./test_util.ts";
 
