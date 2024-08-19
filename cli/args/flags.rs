@@ -296,6 +296,7 @@ pub struct LintFlags {
   pub json: bool,
   pub compact: bool,
   pub watch: Option<WatchFlags>,
+  pub ext: Option<String>,
 }
 
 impl LintFlags {
@@ -2610,6 +2611,16 @@ Ignore linting a file by adding an ignore comment at the top of the file:
           .help_heading(LINT_HEADING),
       )
       .arg(
+            Arg::new("ext")
+                .long("ext")
+                .require_equals(true)
+                .value_name("EXT")
+                .help("Specify the file extension to lint when reading from stdin.\
+  For example, use `jsx` to lint JSX files or `tsx` for TSX files.\
+  This argument is necessary because stdin input does not automatically infer the file type.\
+  Example usage: `cat file.jsx | deno lint - --ext=jsx`."),
+        )
+        .arg(
         Arg::new("rules")
           .long("rules")
           .help("List available rules")
@@ -4570,6 +4581,8 @@ fn lint_parse(flags: &mut Flags, matches: &mut ArgMatches) {
 
   let json = matches.get_flag("json");
   let compact = matches.get_flag("compact");
+  let ext = matches.remove_one::<String>("ext");
+
   flags.subcommand = DenoSubcommand::Lint(LintFlags {
     files: FileFlags {
       include: files,
@@ -4583,6 +4596,7 @@ fn lint_parse(flags: &mut Flags, matches: &mut ArgMatches) {
     json,
     compact,
     watch: watch_arg_parse(matches),
+    ext,
   });
 }
 
@@ -6568,6 +6582,7 @@ mod tests {
           json: false,
           compact: false,
           watch: Default::default(),
+          ext: None,
         }),
         ..Flags::default()
       }
@@ -6596,6 +6611,7 @@ mod tests {
           json: false,
           compact: false,
           watch: Some(Default::default()),
+          ext: None,
         }),
         ..Flags::default()
       }
@@ -6628,7 +6644,8 @@ mod tests {
             hmr: false,
             no_clear_screen: true,
             exclude: vec![],
-          })
+          }),
+          ext: None,
         }),
         ..Flags::default()
       }
@@ -6656,6 +6673,7 @@ mod tests {
           json: false,
           compact: false,
           watch: Default::default(),
+          ext: None,
         }),
         ..Flags::default()
       }
@@ -6678,6 +6696,7 @@ mod tests {
           json: false,
           compact: false,
           watch: Default::default(),
+          ext: None,
         }),
         ..Flags::default()
       }
@@ -6705,6 +6724,7 @@ mod tests {
           json: false,
           compact: false,
           watch: Default::default(),
+          ext: None,
         }),
         ..Flags::default()
       }
@@ -6733,6 +6753,7 @@ mod tests {
           json: false,
           compact: false,
           watch: Default::default(),
+          ext: None,
         }),
         ..Flags::default()
       }
@@ -6755,6 +6776,7 @@ mod tests {
           json: true,
           compact: false,
           watch: Default::default(),
+          ext: None,
         }),
         ..Flags::default()
       }
@@ -6784,6 +6806,7 @@ mod tests {
           json: true,
           compact: false,
           watch: Default::default(),
+          ext: None,
         }),
         config_flag: ConfigFlag::Path("Deno.jsonc".to_string()),
         ..Flags::default()
@@ -6814,6 +6837,7 @@ mod tests {
           json: false,
           compact: true,
           watch: Default::default(),
+          ext: None,
         }),
         config_flag: ConfigFlag::Path("Deno.jsonc".to_string()),
         ..Flags::default()
