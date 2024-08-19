@@ -4361,8 +4361,12 @@ fn broken_stdout_repl() {
 
   assert!(!output.status.success());
   let stderr = std::str::from_utf8(output.stderr.as_ref()).unwrap().trim();
-  assert!(stderr.contains("Broken pipe (os error 32)"));
-  assert!(!stderr.contains("panic"));
+  if cfg!(windows) {
+    assert_contains!(stderr, "The pipe is being closed. (os error 232)");
+  } else {
+    assert_contains!(stderr, "Broken pipe (os error 32)");
+  }
+  assert_not_contains!(stderr, "panic");
 }
 
 itest!(error_cause {
