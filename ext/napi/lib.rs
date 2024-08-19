@@ -345,7 +345,7 @@ impl EnvShared {
 #[repr(C)]
 pub struct Env {
   context: NonNull<v8::Context>,
-  pub isolate_ptr: *mut v8::OwnedIsolate,
+  pub isolate_ptr: *mut v8::Isolate,
   pub open_handle_scopes: usize,
   pub shared: *mut EnvShared,
   pub async_work_sender: V8CrossThreadTaskSpawner,
@@ -364,7 +364,7 @@ unsafe impl Sync for Env {}
 impl Env {
   #[allow(clippy::too_many_arguments)]
   pub fn new(
-    isolate_ptr: *mut v8::OwnedIsolate,
+    isolate_ptr: *mut v8::Isolate,
     context: v8::Global<v8::Context>,
     global: v8::Global<v8::Object>,
     buffer_constructor: v8::Global<v8::Function>,
@@ -409,8 +409,8 @@ impl Env {
   }
 
   #[inline]
-  pub fn isolate(&mut self) -> &mut v8::OwnedIsolate {
-    // SAFETY: Lifetime of `OwnedIsolate` is longer than `Env`.
+  pub fn isolate(&mut self) -> &mut v8::Isolate {
+    // SAFETY: Lifetime of `Isolate` is longer than `Env`.
     unsafe { &mut *self.isolate_ptr }
   }
 
@@ -496,6 +496,7 @@ impl NapiPermissions for deno_permissions::PermissionsContainer {
 #[op2(reentrant)]
 fn op_napi_open<NP, 'scope>(
   scope: &mut v8::HandleScope<'scope>,
+  isolate: *mut v8::Isolate,
   op_state: Rc<RefCell<OpState>>,
   #[string] path: String,
   global: v8::Local<'scope, v8::Object>,
@@ -507,15 +508,13 @@ where
 {
   // We must limit the OpState borrow because this function can trigger a
   // re-borrow through the NAPI module.
-  let (async_work_sender, isolate_ptr, cleanup_hooks, external_ops_tracker) = {
+  let (async_work_sender, cleanup_hooks, external_ops_tracker) = {
     let mut op_state = op_state.borrow_mut();
     let permissions = op_state.borrow_mut::<NP>();
     permissions.check(Some(&PathBuf::from(&path)))?;
     let napi_state = op_state.borrow::<NapiState>();
-    let isolate_ptr = op_state.borrow::<*mut v8::OwnedIsolate>();
     (
       op_state.borrow::<V8CrossThreadTaskSpawner>().clone(),
-      *isolate_ptr,
       napi_state.env_cleanup_hooks.clone(),
       op_state.external_ops_tracker.clone(),
     )
@@ -536,7 +535,7 @@ where
 
   let ctx = scope.get_current_context();
   let mut env = Env::new(
-    isolate_ptr,
+    isolate,
     v8::Global::new(scope, ctx),
     v8::Global::new(scope, global),
     v8::Global::new(scope, buffer_constructor),

@@ -332,7 +332,7 @@ fn create_cli_snapshot(snapshot_path: PathBuf) {
 
   let snapshot_options = SnapshotOptions {
     ts_version: ts::version(),
-    v8_version: deno_core::v8_version(),
+    v8_version: deno_core::v8::VERSION_STRING,
     target: std::env::var("TARGET").unwrap(),
   };
 
