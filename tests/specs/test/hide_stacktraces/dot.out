@@ -2,7 +2,7 @@
 
  ERRORS 
 
-assert a b => ./main.js:3:6
+assert a b => ./main.js:1:6
 error: AssertionError: Values are not equal.
 
 
@@ -16,7 +16,7 @@ error: AssertionError: Values are not equal.
 
  FAILURES 
 
-assert a b => ./main.js:3:6
+assert a b => ./main.js:1:6
 
 FAILED | 0 passed | 1 failed ([WILDCARD])
 

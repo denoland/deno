@@ -1,5 +1,8 @@
-import { assertEquals } from "../../../util/std/assert/mod.ts";
-
 Deno.test("assert a b", () => {
-  assertEquals("foo", "bar");
+  class AssertionError extends Error {
+    name = "AssertionError";
+  }
+  throw new AssertionError(
+    "Values are not equal.\n\n\n    [Diff] Actual / Expected\n\n\n-   foo\n+   bar\n\n",
+  );
 });

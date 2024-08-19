@@ -1,8 +1,7 @@
-Check [WILDCARD]/main.js
 <?xml version="1.0" encoding="UTF-8"?>
 <testsuites name="deno test" tests="1" failures="1" errors="0" time="[WILDCARD]">
     <testsuite name="./main.js" tests="1" disabled="0" errors="0" failures="1">
-        <testcase name="assert a b" classname="./main.js" time="[WILDCARD]" line="3" col="6">
+        <testcase name="assert a b" classname="./main.js" time="[WILDCARD]" line="1" col="6">
             <failure message="Uncaught AssertionError: Values are not equal.
 
 
