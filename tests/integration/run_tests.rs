@@ -4343,7 +4343,6 @@ fn broken_stdout() {
   assert!(!stderr.contains("panic"));
 }
 
-
 #[test]
 fn broken_stdout_repl() {
   let (reader, writer) = os_pipe::pipe().unwrap();

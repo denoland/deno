@@ -244,7 +244,7 @@ pub async fn run(
 
   // Doing this manually, instead of using `log::info!` because these messages
   // are supposed to go to stdout, not stderr.
-  // Using writeln, because println panics in certain cases 
+  // Using writeln, because println panics in certain cases
   // (eg: broken pipes - https://github.com/denoland/deno/issues/21861)
   if !cli_options.is_quiet() {
     let mut handle = io::stdout().lock();
