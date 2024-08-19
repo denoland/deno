@@ -434,7 +434,7 @@
       "type": "boolean"
     },
     "vendor": {
-      "description": "UNSTABLE: Enables or disables the use of a local vendor folder as a local cache for remote modules and node_modules folder for npm packages. Alternatively, use the `--vendor` flag or override the config via `--vendor=false`. Requires Deno 1.36.1 or later.",
+      "description": "Enables or disables the use of a local vendor folder as a local cache for remote modules and node_modules folder for npm packages. Alternatively, use the `--vendor` flag or override the config via `--vendor=false`. Requires Deno 1.36.1 or later.",
       "type": "boolean"
     },
     "tasks": {
@@ -545,6 +545,10 @@
           }
         }
       }
+    },
+    "license": {
+      "description": "The SPDX license identifier if this is a JSR package. Specify this or add a license file to the package.",
+      "type": ["string"]
     },
     "lock": {
       "description": "Whether to use a lock file or the path to use for the lock file. Can be overridden by CLI arguments.",

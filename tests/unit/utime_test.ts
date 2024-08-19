@@ -6,12 +6,11 @@ import {
   assertEquals,
   assertRejects,
   assertThrows,
-  DENO_FUTURE,
   pathToAbsoluteFileUrl,
 } from "./test_util.ts";
 
 Deno.test(
-  { ignore: DENO_FUTURE, permissions: { read: true, write: true } },
+  { permissions: { read: true, write: true } },
   async function futimeSyncSuccess() {
     const testDir = await Deno.makeTempDir();
     const filename = testDir + "/file.txt";
@@ -53,7 +52,7 @@ Deno.test(
 );
 
 Deno.test(
-  { ignore: DENO_FUTURE, permissions: { read: true, write: true } },
+  { permissions: { read: true, write: true } },
   function futimeSyncSuccess() {
     const testDir = Deno.makeTempDirSync();
     const filename = testDir + "/file.txt";

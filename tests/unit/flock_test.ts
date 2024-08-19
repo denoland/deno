@@ -1,15 +1,15 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
-import { assertEquals, DENO_FUTURE } from "./test_util.ts";
+import { assertEquals } from "./test_util.ts";
 
 Deno.test(
-  { ignore: DENO_FUTURE, permissions: { read: true, run: true, hrtime: true } },
+  { permissions: { read: true, run: true, hrtime: true } },
   async function flockFileSync() {
     await runFlockTests({ sync: true });
   },
 );
 
 Deno.test(
-  { ignore: DENO_FUTURE, permissions: { read: true, run: true, hrtime: true } },
+  { permissions: { read: true, run: true, hrtime: true } },
   async function flockFileAsync() {
     await runFlockTests({ sync: false });
   },

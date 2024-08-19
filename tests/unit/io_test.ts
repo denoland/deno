@@ -1,5 +1,5 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
-import { assertEquals, DENO_FUTURE } from "./test_util.ts";
+import { assertEquals } from "./test_util.ts";
 import { Buffer } from "@std/io/buffer";
 
 const DEFAULT_BUF_SIZE = 32 * 1024;
@@ -28,7 +28,7 @@ function spyRead(obj: Buffer): Spy {
   return spy;
 }
 
-Deno.test({ ignore: DENO_FUTURE }, async function copyWithDefaultBufferSize() {
+Deno.test(async function copyWithDefaultBufferSize() {
   const xBytes = repeat("b", DEFAULT_BUF_SIZE);
   const reader = new Buffer(xBytes.buffer as ArrayBuffer);
   const write = new Buffer();
@@ -43,7 +43,7 @@ Deno.test({ ignore: DENO_FUTURE }, async function copyWithDefaultBufferSize() {
   assertEquals(readSpy.calls, 2); // read with DEFAULT_BUF_SIZE bytes + read with 0 bytes
 });
 
-Deno.test({ ignore: DENO_FUTURE }, async function copyWithCustomBufferSize() {
+Deno.test(async function copyWithCustomBufferSize() {
   const bufSize = 1024;
   const xBytes = repeat("b", DEFAULT_BUF_SIZE);
   const reader = new Buffer(xBytes.buffer as ArrayBuffer);
@@ -59,22 +59,19 @@ Deno.test({ ignore: DENO_FUTURE }, async function copyWithCustomBufferSize() {
   assertEquals(readSpy.calls, DEFAULT_BUF_SIZE / bufSize + 1);
 });
 
-Deno.test(
-  { ignore: DENO_FUTURE, permissions: { write: true } },
-  async function copyBufferToFile() {
-    const filePath = "test-file.txt";
-    // bigger than max File possible buffer 16kb
-    const bufSize = 32 * 1024;
-    const xBytes = repeat("b", bufSize);
-    const reader = new Buffer(xBytes.buffer as ArrayBuffer);
-    const write = await Deno.open(filePath, { write: true, create: true });
+Deno.test({ permissions: { write: true } }, async function copyBufferToFile() {
+  const filePath = "test-file.txt";
+  // bigger than max File possible buffer 16kb
+  const bufSize = 32 * 1024;
+  const xBytes = repeat("b", bufSize);
+  const reader = new Buffer(xBytes.buffer as ArrayBuffer);
+  const write = await Deno.open(filePath, { write: true, create: true });
 
-    // deno-lint-ignore no-deprecated-deno-api
-    const n = await Deno.copy(reader, write, { bufSize });
+  // deno-lint-ignore no-deprecated-deno-api
+  const n = await Deno.copy(reader, write, { bufSize });
 
-    assertEquals(n, xBytes.length);
+  assertEquals(n, xBytes.length);
 
-    write.close();
-    await Deno.remove(filePath);
-  },
-);
+  write.close();
+  await Deno.remove(filePath);
+});

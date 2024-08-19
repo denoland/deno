@@ -2,7 +2,7 @@
 
 // deno-lint-ignore-file no-deprecated-deno-api
 
-import { assert, DENO_FUTURE } from "./test_util.ts";
+import { assert } from "./test_util.ts";
 
 // Note tests for Deno.stdin.setRaw is in integration tests.
 
@@ -15,15 +15,12 @@ Deno.test(function consoleSize() {
   assert(typeof result.rows !== "undefined");
 });
 
-Deno.test(
-  { ignore: DENO_FUTURE, permissions: { read: true } },
-  function isatty() {
-    // CI not under TTY, so cannot test stdin/stdout/stderr.
-    const f = Deno.openSync("tests/testdata/assets/hello.txt");
-    assert(!Deno.isatty(f.rid));
-    f.close();
-  },
-);
+Deno.test({ permissions: { read: true } }, function isatty() {
+  // CI not under TTY, so cannot test stdin/stdout/stderr.
+  const f = Deno.openSync("tests/testdata/assets/hello.txt");
+  assert(!Deno.isatty(f.rid));
+  f.close();
+});
 
 Deno.test(function isattyError() {
   let caught = false;

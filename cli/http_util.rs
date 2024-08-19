@@ -2,7 +2,7 @@
 
 use crate::auth_tokens::AuthToken;
 use crate::util::progress_bar::UpdateGuard;
-use crate::version::get_user_agent;
+use crate::version;
 
 use cache_control::Cachability;
 use cache_control::CacheControl;
@@ -248,7 +248,7 @@ impl HttpClientProvider {
       Entry::Occupied(entry) => Ok(HttpClient::new(entry.get().clone())),
       Entry::Vacant(entry) => {
         let client = create_http_client(
-          get_user_agent(),
+          version::DENO_VERSION_INFO.user_agent,
           CreateHttpClientOptions {
             root_cert_store: match &self.root_cert_store_provider {
               Some(provider) => Some(provider.get_or_try_init()?.clone()),
@@ -948,7 +948,7 @@ mod test {
 
     let client = HttpClient::new(
       create_http_client(
-        version::get_user_agent(),
+        version::DENO_VERSION_INFO.user_agent,
         CreateHttpClientOptions {
           ca_certs: vec![std::fs::read(
             test_util::testdata_path().join("tls/RootCA.pem"),
@@ -1000,7 +1000,7 @@ mod test {
 
       let client = HttpClient::new(
         create_http_client(
-          version::get_user_agent(),
+          version::DENO_VERSION_INFO.user_agent,
           CreateHttpClientOptions::default(),
         )
         .unwrap(),
@@ -1059,7 +1059,7 @@ mod test {
 
     let client = HttpClient::new(
       create_http_client(
-        version::get_user_agent(),
+        version::DENO_VERSION_INFO.user_agent,
         CreateHttpClientOptions {
           root_cert_store: Some(root_cert_store),
           ..Default::default()
@@ -1108,7 +1108,7 @@ mod test {
         .unwrap();
     let client = HttpClient::new(
       create_http_client(
-        version::get_user_agent(),
+        version::DENO_VERSION_INFO.user_agent,
         CreateHttpClientOptions {
           ca_certs: vec![std::fs::read(
             test_util::testdata_path()
@@ -1149,7 +1149,7 @@ mod test {
     let url = Url::parse("https://localhost:5545/etag_script.ts").unwrap();
     let client = HttpClient::new(
       create_http_client(
-        version::get_user_agent(),
+        version::DENO_VERSION_INFO.user_agent,
         CreateHttpClientOptions {
           ca_certs: vec![std::fs::read(
             test_util::testdata_path()
@@ -1205,7 +1205,7 @@ mod test {
         .unwrap();
     let client = HttpClient::new(
       create_http_client(
-        version::get_user_agent(),
+        version::DENO_VERSION_INFO.user_agent,
         CreateHttpClientOptions {
           ca_certs: vec![std::fs::read(
             test_util::testdata_path()
