@@ -1170,7 +1170,7 @@ dependencies = [
  "deno_graph",
  "deno_lint",
  "deno_lockfile",
- "deno_npm",
+ "deno_npm 0.22.0",
  "deno_package_json",
  "deno_runtime",
  "deno_semver",
@@ -1389,9 +1389,9 @@ dependencies = [
 
 [[package]]
 name = "deno_core"
-version = "0.303.0"
+version = "0.304.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "a9cd2cc931f61dee2db67ce9d032d229dda981be29d68dfd530a3dc1187ddd6b"
+checksum = "bcb02f25a743fe58a117ed5cfd47c4e640761926e294a1f4ba964a0e2c68b4dc"
 dependencies = [
  "anyhow",
  "bincode",
@@ -1721,9 +1721,9 @@ dependencies = [
 
 [[package]]
 name = "deno_lockfile"
-version = "0.20.0"
+version = "0.21.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "23120f905aec2deed858820113e089551025b74e261c5c404812cd8e61421379"
+checksum = "b01138860cdf20cfca4c9e6bcda2bbe577f0c784f6f6938205d522ee2b6327ed"
 dependencies = [
  "serde",
  "serde_json",
@@ -1869,9 +1869,28 @@ dependencies = [
 
 [[package]]
 name = "deno_npm"
-version = "0.21.4"
+version = "0.22.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "9812c781ff6b2e0e45c32ccba9983bce84ecccf6f6a7006b750f8c5c9ac15e30"
+checksum = "01fd279be9f522ebfaabce7ff0f4b069c2c1d737946ba57456b579f9246669e8"
+dependencies = [
+ "anyhow",
+ "async-trait",
+ "deno_lockfile",
+ "deno_semver",
+ "futures",
+ "log",
+ "monch",
+ "serde",
+ "serde_json",
+ "thiserror",
+ "url",
+]
+
+[[package]]
+name = "deno_npm"
+version = "0.23.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "ceef28152643a021fc3487a3ec93ae83996972c087547d97f425c83e15dca932"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -1888,9 +1907,9 @@ dependencies = [
 
 [[package]]
 name = "deno_ops"
-version = "0.179.0"
+version = "0.180.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "1dbb9802b8b976e73872ae6e03303532e6056236467053aa6df02f7deb33488c"
+checksum = "8bbba184551dfe009836a42c0268fea6b4ad036b5154aec5a7625e7a7ce4e315"
 dependencies = [
  "proc-macro-rules",
  "proc-macro2",
@@ -2778,14 +2797,14 @@ dependencies = [
 
 [[package]]
 name = "eszip"
-version = "0.73.0"
+version = "0.74.0"
 dependencies = [
  "anyhow",
  "async-trait",
  "base64 0.21.7",
  "deno_ast",
  "deno_graph",
- "deno_npm",
+ "deno_npm 0.23.0",
  "deno_semver",
  "futures",
  "hashlink",
@@ -6250,9 +6269,9 @@ dependencies = [
 
 [[package]]
 name = "serde_v8"
-version = "0.212.0"
+version = "0.213.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "bf9a8693e4e54bf21fe51b953b10f98a0e32040671f18c4065f6014f0317ae80"
+checksum = "1831a65bad8086cfc993eaead4cbcb00579c085e43b4952a90024e1243f23b4e"
 dependencies = [
  "num-bigint",
  "serde",
@@ -7908,9 +7927,9 @@ dependencies = [
 
 [[package]]
 name = "v8"
-version = "0.102.0"
+version = "0.103.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "88a710d5b95bff79a90708203cf9f74384e080d21fc6664aa4df463f2c66ac83"
+checksum = "56d72310e5b559c0a8165a5d6bdf4c975ba77c61461039ccf615ce3bbe489ca5"
 dependencies = [
  "bindgen",
  "bitflags 2.5.0",
@@ -8135,7 +8154,7 @@ dependencies = [
  "log",
  "naga",
  "once_cell",
- "parking_lot 0.11.2",
+ "parking_lot 0.12.3",
  "profiling",
  "raw-window-handle",
  "ron",
@@ -8177,7 +8196,7 @@ dependencies = [
  "ndk-sys",
  "objc",
  "once_cell",
- "parking_lot 0.11.2",
+ "parking_lot 0.12.3",
  "profiling",
  "range-alloc",
  "raw-window-handle",

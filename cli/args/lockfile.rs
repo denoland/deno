@@ -210,22 +210,41 @@ impl CliLockfile {
     Ok(Some(lockfile))
   }
   pub fn read_from_path(
-    filename: PathBuf,
+    file_path: PathBuf,
     frozen: bool,
   ) -> Result<CliLockfile, AnyError> {
-    match std::fs::read_to_string(&filename) {
+    match std::fs::read_to_string(&file_path) {
       Ok(text) => Ok(CliLockfile::new(
-        Lockfile::with_lockfile_content(filename, &text, false)?,
+        Lockfile::new(deno_lockfile::NewLockfileOptions {
+          file_path,
+          content: &text,
+          overwrite: false,
+          is_deno_future: *super::DENO_FUTURE,
+        })?,
         frozen,
       )),
-      Err(err) if err.kind() == std::io::ErrorKind::NotFound => Ok(
-        CliLockfile::new(Lockfile::new_empty(filename, false), frozen),
-      ),
+      Err(err) if err.kind() == std::io::ErrorKind::NotFound => {
+        Ok(CliLockfile::new(
+          if *super::DENO_FUTURE {
+            // force version 4 for deno future
+            Lockfile::new(deno_lockfile::NewLockfileOptions {
+              file_path,
+              content: r#"{"version":"4"}"#,
+              overwrite: false,
+              is_deno_future: true,
+            })?
+          } else {
+            Lockfile::new_empty(file_path, false)
+          },
+          frozen,
+        ))
+      }
       Err(err) => Err(err).with_context(|| {
-        format!("Failed reading lockfile '{}'", filename.display())
+        format!("Failed reading lockfile '{}'", file_path.display())
       }),
     }
   }
+
   pub fn error_if_changed(&self) -> Result<(), AnyError> {
     if !self.frozen {
       return Ok(());
