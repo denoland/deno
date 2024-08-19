@@ -105,12 +105,12 @@ pub async fn load_top_level_deps(factory: &CliFactory) -> Result<(), AnyError> {
     factory
       .module_load_preparer()
       .await?
-      .prepare_module_load(
+      .cache_module_graph(
         graph,
         &roots,
         false,
-        factory.cli_options()?.ts_type_lib_window(),
         deno_runtime::deno_permissions::PermissionsContainer::allow_all(),
+        true,
       )
       .await?;
   }
@@ -144,25 +144,19 @@ impl ModuleLoadPreparer {
     }
   }
 
-  /// This method must be called for a module or a static importer of that
-  /// module before attempting to `load()` it from a `JsRuntime`. It will
-  /// populate the graph data in memory with the necessary source code, write
-  /// emits where necessary or report any module graph / type checking errors.
-  #[allow(clippy::too_many_arguments)]
-  pub async fn prepare_module_load(
+  async fn cache_module_graph(
     &self,
     graph: &mut ModuleGraph,
     roots: &[ModuleSpecifier],
     is_dynamic: bool,
-    lib: TsTypeLib,
     permissions: PermissionsContainer,
+    ignore_root_export_errors: bool,
   ) -> Result<(), AnyError> {
     log::debug!("Preparing module load.");
     let _pb_clear_guard = self.progress_bar.clear_guard();
 
     let mut cache = self.module_graph_builder.create_fetch_cacher(permissions);
     log::debug!("Building module graph.");
-    let has_type_checked = !graph.roots.is_empty();
 
     self
       .module_graph_builder
@@ -177,7 +171,11 @@ impl ModuleLoadPreparer {
       )
       .await?;
 
-    self.graph_roots_valid(graph, roots)?;
+    self.module_graph_builder.graph_roots_valid(
+      graph,
+      roots,
+      ignore_root_export_errors,
+    )?;
 
     // write the lockfile if there is one
     if let Some(lockfile) = &self.lockfile {
@@ -185,6 +183,28 @@ impl ModuleLoadPreparer {
     }
 
     drop(_pb_clear_guard);
+
+    Ok(())
+  }
+
+  /// This method must be called for a module or a static importer of that
+  /// module before attempting to `load()` it from a `JsRuntime`. It will
+  /// populate the graph data in memory with the necessary source code, write
+  /// emits where necessary or report any module graph / type checking errors.
+  #[allow(clippy::too_many_arguments)]
+  pub async fn prepare_module_load(
+    &self,
+    graph: &mut ModuleGraph,
+    roots: &[ModuleSpecifier],
+    is_dynamic: bool,
+    lib: TsTypeLib,
+    permissions: PermissionsContainer,
+  ) -> Result<(), AnyError> {
+    let has_type_checked = !graph.roots.is_empty();
+
+    self
+      .cache_module_graph(graph, roots, is_dynamic, permissions, false)
+      .await?;
 
     // type check if necessary
     if self.options.type_check_mode().is_true() && !has_type_checked {
@@ -217,7 +237,9 @@ impl ModuleLoadPreparer {
     graph: &ModuleGraph,
     roots: &[ModuleSpecifier],
   ) -> Result<(), AnyError> {
-    self.module_graph_builder.graph_roots_valid(graph, roots)
+    self
+      .module_graph_builder
+      .graph_roots_valid(graph, roots, false)
   }
 }
 

@@ -59,6 +59,9 @@ pub struct GraphValidOptions {
   /// Whether to exit the process for lockfile errors.
   /// Otherwise, surfaces lockfile errors as errors.
   pub exit_lockfile_errors: bool,
+  /// Whether to ignore errors for missing root exports.
+  /// This can happen when we attempt to cache import map entries.
+  pub ignore_root_export_errors: bool,
 }
 
 /// Check if `roots` and their deps are available. Returns `Ok(())` if
@@ -97,6 +100,25 @@ pub fn graph_valid(
           roots.contains(error.specifier())
         }
       };
+
+      if is_root
+        && options.ignore_root_export_errors
+        && matches!(
+          &error,
+          ModuleGraphError::ModuleError(ModuleError::LoadingErr(
+            _,
+            _,
+            ModuleLoadError::Jsr(JsrLoadError::UnknownExport {
+              export_name,
+              ..
+            }),
+          )) if export_name == "."
+        )
+      {
+        log::debug!("Ignoring: {}", error);
+        return None;
+      }
+
       let mut message = match &error {
         ModuleGraphError::ResolutionError(resolution_error) => {
           enhanced_resolution_error_message(resolution_error)
@@ -685,6 +707,7 @@ impl ModuleGraphBuilder {
     self.graph_roots_valid(
       graph,
       &graph.roots.iter().cloned().collect::<Vec<_>>(),
+      false,
     )
   }
 
@@ -692,6 +715,7 @@ impl ModuleGraphBuilder {
     &self,
     graph: &ModuleGraph,
     roots: &[ModuleSpecifier],
+    ignore_root_export_errors: bool,
   ) -> Result<(), AnyError> {
     graph_valid(
       graph,
@@ -702,6 +726,7 @@ impl ModuleGraphBuilder {
         follow_type_only: self.options.type_check_mode().is_true(),
         check_js: self.options.check_js(),
         exit_lockfile_errors: true,
+        ignore_root_export_errors,
       },
     )
   }

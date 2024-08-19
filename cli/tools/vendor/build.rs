@@ -124,6 +124,7 @@ pub async fn build<
       check_js: true,
       follow_type_only: true,
       exit_lockfile_errors: true,
+      ignore_root_export_errors: false,
     },
   )?;
 

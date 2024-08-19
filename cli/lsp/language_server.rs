@@ -275,6 +275,7 @@ impl LanguageServer {
           follow_type_only: true,
           check_js: false,
           exit_lockfile_errors: false,
+          ignore_root_export_errors: false,
         },
       )?;
 
