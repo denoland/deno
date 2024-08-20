@@ -1200,7 +1200,7 @@ fn lock_file_missing_top_level_package() {
       "error: failed reading lockfile 'deno.lock'\n",
       "\n",
       "Caused by:\n",
-      "    0: The lockfile is corrupt. You can recreate it with --lock-write\n",
+      "    0: The lockfile is corrupt. Remove the lockfile to regenerate it.\n",
       "    1: Could not find 'cowsay@1.5.0' in the list of packages.\n"
     )
   );
@@ -1483,7 +1483,7 @@ This could be caused by:
   * the lock file may be corrupt
   * the source itself may be corrupt
 
-Investigate the lockfile; delete it regenerate the lockfile at "[WILDCARD]deno.lock".
+Investigate the lockfile; delete it to regenerate the lockfile at "[WILDCARD]deno.lock".
 "#)
     .assert_exit_code(10);
 }
