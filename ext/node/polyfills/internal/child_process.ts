@@ -55,7 +55,6 @@ import process from "node:process";
 import { StringPrototypeSlice } from "ext:deno_node/internal/primordials.mjs";
 import { StreamBase } from "ext:deno_node/internal_binding/stream_wrap.ts";
 import { Pipe, socketType } from "ext:deno_node/internal_binding/pipe_wrap.ts";
-import console from "node:console";
 import { Socket } from "node:net";
 
 export function mapValues<T, O>(
