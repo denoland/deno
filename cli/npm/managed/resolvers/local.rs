@@ -515,11 +515,12 @@ async fn sync_resolution_with_fs(
             .add(package.clone(), package_path);
         }
 
-        if package.deprecated.is_some() {
+        if let Some(deprecated) = &package.deprecated {
           log::info!(
-            "{} {:?} is deprecated",
+            "{} {:?} is deprecated: {}",
             crate::colors::yellow("Warning"),
-            package.id
+            package.id,
+            crate::colors::gray(deprecated),
           );
         }
 
