@@ -12,12 +12,12 @@
     {
       "args": " run --allow-net=*.amazon.com  host.js",
       "output": "err_i.out",
-      "exitCode": 2
+      "exitCode": 1
     },
     {
       "args": " run --allow-net=[::1]:  host.js",
       "output": "error: invalid port in '[::1]:': ''\n",
-      "exitCode": 2
+      "exitCode": 1
     },
     {
       "args": " run --allow-net=[::1*]:1  host.js",
