@@ -1144,7 +1144,7 @@ dependencies = [
 
 [[package]]
 name = "deno"
-version = "1.46.0-rc.2"
+version = "1.46.0-rc.3"
 dependencies = [
  "async-trait",
  "base32",
