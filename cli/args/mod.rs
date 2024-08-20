@@ -1453,16 +1453,6 @@ impl CliOptions {
     Ok(result)
   }
 
-  pub fn resolve_deno_graph_workspace_members(
-    &self,
-  ) -> Result<Vec<deno_graph::WorkspaceMember>, AnyError> {
-    self
-      .workspace()
-      .jsr_packages()
-      .map(|pkg| config_to_deno_graph_workspace_member(&pkg.config_file))
-      .collect::<Result<Vec<_>, _>>()
-  }
-
   /// Vector of user script CLI arguments.
   pub fn argv(&self) -> &Vec<String> {
     &self.flags.argv
@@ -1549,10 +1539,6 @@ impl CliOptions {
 
   pub fn location_flag(&self) -> &Option<Url> {
     &self.flags.location
-  }
-
-  pub fn maybe_custom_root(&self) -> &Option<PathBuf> {
-    &self.flags.cache_path
   }
 
   pub fn no_remote(&self) -> bool {
