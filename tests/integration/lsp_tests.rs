@@ -5221,9 +5221,9 @@ fn lsp_code_actions_deno_cache_jsr() {
           "end": { "line": 1, "character": 49 },
         },
         "severity": 1,
-        "code": "no-cache-jsr",
+        "code": "not-installed-jsr",
         "source": "deno",
-        "message": "Uncached or missing jsr package: @denotest/add@1",
+        "message": "JSR package \"@denotest/add@1\" is not installed or doesn't exist.",
         "data": { "specifier": "jsr:@denotest/add@1" },
       }],
       "version": 1,
@@ -5244,9 +5244,9 @@ fn lsp_code_actions_deno_cache_jsr() {
             "end": { "line": 1, "character": 49 },
           },
           "severity": 1,
-          "code": "no-cache-jsr",
+          "code": "not-installed-jsr",
           "source": "deno",
-          "message": "Uncached or missing jsr package: @denotest/add@1",
+          "message": "JSR package \"@denotest/add@1\" is not installed or doesn't exist.",
           "data": { "specifier": "jsr:@denotest/add@1" },
         }],
         "only": ["quickfix"],
@@ -5256,7 +5256,7 @@ fn lsp_code_actions_deno_cache_jsr() {
   assert_eq!(
     res,
     json!([{
-      "title": "Cache \"jsr:@denotest/add@1\" and its dependencies.",
+      "title": "Install \"jsr:@denotest/add@1\" and its dependencies.",
       "kind": "quickfix",
       "diagnostics": [{
         "range": {
@@ -5264,9 +5264,9 @@ fn lsp_code_actions_deno_cache_jsr() {
           "end": { "line": 1, "character": 49 },
         },
         "severity": 1,
-        "code": "no-cache-jsr",
+        "code": "not-installed-jsr",
         "source": "deno",
-        "message": "Uncached or missing jsr package: @denotest/add@1",
+        "message": "JSR package \"@denotest/add@1\" is not installed or doesn't exist.",
         "data": { "specifier": "jsr:@denotest/add@1" },
       }],
       "command": {
@@ -5710,9 +5710,9 @@ fn lsp_code_actions_deno_cache_npm() {
           "end": { "line": 0, "character": 29 }
         },
         "severity": 1,
-        "code": "no-cache-npm",
+        "code": "not-installed-npm",
         "source": "deno",
-        "message": "Uncached or missing npm package: chalk",
+        "message": "NPM package \"chalk\" is not installed or doesn't exist.",
         "data": { "specifier": "npm:chalk" }
       }],
       "version": 1
@@ -5737,9 +5737,9 @@ fn lsp_code_actions_deno_cache_npm() {
             "end": { "line": 0, "character": 29 }
           },
           "severity": 1,
-          "code": "no-cache-npm",
+          "code": "not-installed-npm",
           "source": "deno",
-          "message": "Uncached or missing npm package: chalk",
+          "message": "NPM package \"chalk\" is not installed or doesn't exist.",
           "data": { "specifier": "npm:chalk" }
         }],
         "only": ["quickfix"]
@@ -5749,7 +5749,7 @@ fn lsp_code_actions_deno_cache_npm() {
   assert_eq!(
     res,
     json!([{
-      "title": "Cache \"npm:chalk\" and its dependencies.",
+      "title": "Install \"npm:chalk\" and its dependencies.",
       "kind": "quickfix",
       "diagnostics": [{
         "range": {
@@ -5757,9 +5757,9 @@ fn lsp_code_actions_deno_cache_npm() {
           "end": { "line": 0, "character": 29 }
         },
         "severity": 1,
-        "code": "no-cache-npm",
+        "code": "not-installed-npm",
         "source": "deno",
-        "message": "Uncached or missing npm package: chalk",
+        "message": "NPM package \"chalk\" is not installed or doesn't exist.",
         "data": { "specifier": "npm:chalk" }
       }],
       "command": {
@@ -5812,9 +5812,9 @@ fn lsp_code_actions_deno_cache_all() {
             "end": { "line": 2, "character": 37 },
           },
           "severity": 1,
-          "code": "no-cache-npm",
+          "code": "not-installed-npm",
           "source": "deno",
-          "message": "Uncached or missing npm package: chalk",
+          "message": "NPM package \"chalk\" is not installed or doesn't exist.",
           "data": { "specifier": "npm:chalk" },
         },
       ],
@@ -5900,9 +5900,9 @@ fn lsp_code_actions_deno_cache_all() {
               "end": { "line": 2, "character": 37 },
             },
             "severity": 1,
-            "code": "no-cache-npm",
+            "code": "not-installed-npm",
             "source": "deno",
-            "message": "Uncached or missing npm package: chalk",
+            "message": "NPM package \"chalk\" is not installed or doesn't exist.",
             "data": { "specifier": "npm:chalk" },
           },
         ],
@@ -8956,7 +8956,7 @@ fn lsp_completions_node_builtin() {
     .diagnostics
     .into_iter()
     .filter(|d| {
-      d.code == Some(lsp::NumberOrString::String("no-cache-npm".to_string()))
+      d.code == Some(lsp::NumberOrString::String("not-installed-npm".to_string()))
     })
     .collect::<Vec<_>>();
 
@@ -8972,9 +8972,9 @@ fn lsp_completions_node_builtin() {
           "specifier": "npm:@types/node",
         },
         "severity": 1,
-        "code": "no-cache-npm",
+        "code": "not-installed-npm",
         "source": "deno",
-        "message": "Uncached or missing npm package: @types/node"
+        "message": "NPM package \"@types/node\" is not installed or doesn't exist."
       }
     ])
   );
