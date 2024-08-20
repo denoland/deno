@@ -164,6 +164,7 @@ function resolvePromiseWith(value) {
 function rethrowAssertionErrorRejection(e) {
   if (e && ObjectPrototypeIsPrototypeOf(AssertionError.prototype, e)) {
     queueMicrotask(() => {
+      // deno-lint-ignore no-console
       console.error(`Internal Error: ${e.stack}`);
     });
   }

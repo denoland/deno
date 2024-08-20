@@ -1,0 +1,25 @@
+{
+  "tempDir": true,
+  "tests": {
+    "matching_version": {
+      "cwd": "./my-pkg",
+      "steps": [{
+        "args": "test",
+        "output": "test.out"
+      }, {
+        "args": "lint",
+        "output": "Checked 2 files\n"
+      }]
+    },
+    "not_matching_version": {
+      "steps": [{
+        "args": "run --allow-read=. --allow-write=. modify_version.ts",
+        "output": "[WILDCARD]"
+      }, {
+        "cwd": "./my-pkg",
+        "args": "test",
+        "output": "not_matching_version.out"
+      }]
+    }
+  }
+}

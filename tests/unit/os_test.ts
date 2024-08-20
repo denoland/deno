@@ -197,6 +197,22 @@ Deno.test({ permissions: { read: false } }, function execPathPerm() {
 });
 
 Deno.test(
+  {
+    ignore: Deno.build.os !== "linux",
+    permissions: { read: true, run: false },
+  },
+  function procRequiresAllowAll() {
+    assertThrows(
+      () => {
+        Deno.readTextFileSync("/proc/net/dev");
+      },
+      Deno.errors.PermissionDenied,
+      `Requires all access to "/proc/net/dev", run again with the --allow-all flag`,
+    );
+  },
+);
+
+Deno.test(
   { permissions: { sys: ["loadavg"] } },
   function loadavgSuccess() {
     const load = Deno.loadavg();

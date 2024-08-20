@@ -1,5 +1,7 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
+// deno-lint-ignore-file no-console
+
 import EventEmitter from "node:events";
 import http, { type RequestOptions, type ServerResponse } from "node:http";
 import url from "node:url";
@@ -1538,4 +1540,22 @@ Deno.test("[node/http] ClientRequest PUT subarray", async () => {
   req.end(payload);
   await promise;
   assertEquals(body, "world");
+});
+
+Deno.test("[node/http] req.url equals pathname + search", async () => {
+  const { promise, resolve } = Promise.withResolvers<void>();
+
+  const server = http.createServer((req, res) => res.end(req.url));
+  server.listen(async () => {
+    const { port } = server.address() as net.AddressInfo;
+    const res = await fetch(`http://localhost:${port}/foo/bar?baz=1`);
+    const text = await res.text();
+    assertEquals(text, "/foo/bar?baz=1");
+
+    server.close(() => {
+      resolve();
+    });
+  });
+
+  await promise;
 });

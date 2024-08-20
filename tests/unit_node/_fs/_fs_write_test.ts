@@ -1,4 +1,7 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
+
+// deno-lint-ignore-file no-console
+
 import { write, writeSync } from "node:fs";
 import { assertEquals } from "@std/assert";
 import { Buffer } from "node:buffer";
@@ -75,7 +78,7 @@ Deno.test({
 });
 
 Deno.test({
-  name: "Accepts non Uint8Array buffer",
+  name: "write with offset TypedArray buffers",
   async fn() {
     const tempFile: string = Deno.makeTempFileSync();
     using file = Deno.openSync(tempFile, {
@@ -83,32 +86,56 @@ Deno.test({
       write: true,
       read: true,
     });
+    const arrayBuffer = new ArrayBuffer(128);
+    const resetBuffer = () => {
+      new Uint8Array(arrayBuffer).fill(0);
+    };
+    const bufConstructors = [
+      Int8Array,
+      Uint8Array,
+    ];
+    const offsets = [0, 24, 48];
     const bytes = [0, 1, 2, 3, 4];
-    const buffer = new Int8Array(bytes);
-    for (let i = 0; i < buffer.length; i++) {
-      buffer[i] = i;
+    for (const constr of bufConstructors) {
+      // test combinations of buffers internally offset from their backing array buffer,
+      // and also offset in the write call
+      for (const innerOffset of offsets) {
+        for (const offset of offsets) {
+          resetBuffer();
+          const buffer = new constr(
+            arrayBuffer,
+            innerOffset,
+            offset + bytes.length,
+          );
+          for (let i = 0; i < bytes.length; i++) {
+            buffer[offset + i] = i;
+          }
+          let nWritten = writeSync(file.rid, buffer, offset, bytes.length, 0);
+
+          let data = Deno.readFileSync(tempFile);
+
+          assertEquals(nWritten, bytes.length);
+          console.log(constr, innerOffset, offset);
+          assertEquals(data, new Uint8Array(bytes));
+          nWritten = await new Promise((resolve, reject) =>
+            write(
+              file.rid,
+              buffer,
+              offset,
+              bytes.length,
+              0,
+              (err: unknown, nwritten: number) => {
+                if (err) return reject(err);
+                resolve(nwritten);
+              },
+            )
+          );
+
+          data = Deno.readFileSync(tempFile);
+          assertEquals(nWritten, 5);
+          assertEquals(data, new Uint8Array(bytes));
+        }
+      }
     }
-    let nWritten = writeSync(file.rid, buffer);
-
-    const data = Deno.readFileSync(tempFile);
-
-    assertEquals(nWritten, 5);
-    assertEquals(data, new Uint8Array(bytes));
-
-    nWritten = await new Promise((resolve, reject) =>
-      write(
-        file.rid,
-        buffer,
-        0,
-        5,
-        (err: unknown, nwritten: number) => {
-          if (err) return reject(err);
-          resolve(nwritten);
-        },
-      )
-    );
-
-    assertEquals(nWritten, 5);
-    assertEquals(data, new Uint8Array(bytes));
   },
 });
