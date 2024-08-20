@@ -4,6 +4,7 @@ use super::flags_net;
 use super::DENO_FUTURE;
 use crate::args::resolve_no_prompt;
 use crate::util::fs::canonicalize_path;
+use crate::util::logger;
 use clap::builder::styling::AnsiColor;
 use clap::builder::FalseyValueParser;
 use clap::value_parser;
@@ -24,7 +25,9 @@ use deno_core::url::Url;
 use deno_graph::GraphKind;
 use deno_runtime::deno_permissions::parse_sys_kind;
 use deno_runtime::deno_permissions::PermissionsOptions;
+use deno_terminal::colors;
 use log::debug;
+use log::log;
 use log::Level;
 use serde::Deserialize;
 use serde::Serialize;
@@ -1180,7 +1183,7 @@ static DENO_HELP: &str = color_print::cstr!(
 ");
 
 /// Main entry point for parsing deno's command line flags.
-pub fn flags_from_vec(args: Vec<OsString>) -> Result<Flags, AnyError> {
+pub fn flags_from_vec(args: Vec<OsString>) -> clap::error::Result<Flags> {
   let mut app = clap_root();
   let mut matches = app.try_get_matches_from_mut(&args)?;
 
@@ -1250,29 +1253,29 @@ pub fn flags_from_vec(args: Vec<OsString>) -> Result<Flags, AnyError> {
     match subcommand.as_str() {
       "add" => add_parse(&mut flags, &mut m),
       "remove" => remove_parse(&mut flags, &mut m),
-      "bench" => bench_parse(&mut flags, &mut m)?,
+      "bench" => bench_parse(&mut flags, &mut m),
       "bundle" => bundle_parse(&mut flags, &mut m),
       "cache" => cache_parse(&mut flags, &mut m),
       "check" => check_parse(&mut flags, &mut m),
       "clean" => clean_parse(&mut flags, &mut m),
-      "compile" => compile_parse(&mut flags, &mut m)?,
+      "compile" => compile_parse(&mut flags, &mut m),
       "completions" => completions_parse(&mut flags, &mut m, app),
       "coverage" => coverage_parse(&mut flags, &mut m),
       "doc" => doc_parse(&mut flags, &mut m),
-      "eval" => eval_parse(&mut flags, &mut m)?,
+      "eval" => eval_parse(&mut flags, &mut m),
       "fmt" => fmt_parse(&mut flags, &mut m),
       "init" => init_parse(&mut flags, &mut m),
       "info" => info_parse(&mut flags, &mut m),
-      "install" => install_parse(&mut flags, &mut m)?,
+      "install" => install_parse(&mut flags, &mut m),
       "json_reference" => json_reference_parse(&mut flags, &mut m, app),
       "jupyter" => jupyter_parse(&mut flags, &mut m),
       "lint" => lint_parse(&mut flags, &mut m),
       "lsp" => lsp_parse(&mut flags, &mut m),
-      "repl" => repl_parse(&mut flags, &mut m)?,
+      "repl" => repl_parse(&mut flags, &mut m),
       "run" => run_parse(&mut flags, &mut m, app, false)?,
       "serve" => serve_parse(&mut flags, &mut m, app)?,
       "task" => task_parse(&mut flags, &mut m),
-      "test" => test_parse(&mut flags, &mut m)?,
+      "test" => test_parse(&mut flags, &mut m),
       "types" => types_parse(&mut flags, &mut m),
       "uninstall" => uninstall_parse(&mut flags, &mut m),
       "upgrade" => upgrade_parse(&mut flags, &mut m),
@@ -4028,13 +4031,10 @@ fn remove_parse(flags: &mut Flags, matches: &mut ArgMatches) {
   });
 }
 
-fn bench_parse(
-  flags: &mut Flags,
-  matches: &mut ArgMatches,
-) -> Result<(), AnyError> {
+fn bench_parse(flags: &mut Flags, matches: &mut ArgMatches) {
   flags.type_check_mode = TypeCheckMode::Local;
 
-  runtime_args_parse(flags, matches, true, false)?;
+  runtime_args_parse(flags, matches, true, false);
 
   // NOTE: `deno bench` always uses `--no-prompt`, tests shouldn't ever do
   // interactive prompts, unless done by user code
@@ -4070,8 +4070,6 @@ fn bench_parse(
     no_run,
     watch: watch_arg_parse(matches),
   });
-
-  Ok(())
 }
 
 fn bundle_parse(flags: &mut Flags, matches: &mut ArgMatches) {
@@ -4123,12 +4121,9 @@ fn clean_parse(flags: &mut Flags, _matches: &mut ArgMatches) {
   flags.subcommand = DenoSubcommand::Clean;
 }
 
-fn compile_parse(
-  flags: &mut Flags,
-  matches: &mut ArgMatches,
-) -> Result<(), AnyError> {
+fn compile_parse(flags: &mut Flags, matches: &mut ArgMatches) {
   flags.type_check_mode = TypeCheckMode::Local;
-  runtime_args_parse(flags, matches, true, false)?;
+  runtime_args_parse(flags, matches, true, false);
 
   let mut script = matches.remove_many::<String>("script_arg").unwrap();
   let source_file = script.next().unwrap();
@@ -4152,7 +4147,6 @@ fn compile_parse(
     icon,
     include,
   });
-  Ok(())
 }
 
 fn completions_parse(
@@ -4287,11 +4281,8 @@ fn doc_parse(flags: &mut Flags, matches: &mut ArgMatches) {
   });
 }
 
-fn eval_parse(
-  flags: &mut Flags,
-  matches: &mut ArgMatches,
-) -> Result<(), AnyError> {
-  runtime_args_parse(flags, matches, false, true)?;
+fn eval_parse(flags: &mut Flags, matches: &mut ArgMatches) {
+  runtime_args_parse(flags, matches, false, true);
   unstable_args_parse(flags, matches, UnstableArgsConfig::ResolutionAndRuntime);
   flags.allow_all();
 
@@ -4318,7 +4309,6 @@ fn eval_parse(
   flags.argv.extend(code_args);
 
   flags.subcommand = DenoSubcommand::Eval(EvalFlags { print, code });
-  Ok(())
 }
 
 fn fmt_parse(flags: &mut Flags, matches: &mut ArgMatches) {
@@ -4389,11 +4379,8 @@ fn info_parse(flags: &mut Flags, matches: &mut ArgMatches) {
   });
 }
 
-fn install_parse(
-  flags: &mut Flags,
-  matches: &mut ArgMatches,
-) -> Result<(), AnyError> {
-  runtime_args_parse(flags, matches, true, true)?;
+fn install_parse(flags: &mut Flags, matches: &mut ArgMatches) {
+  runtime_args_parse(flags, matches, true, true);
 
   let global = matches.get_flag("global");
   if global || !*DENO_FUTURE {
@@ -4427,7 +4414,6 @@ fn install_parse(
       kind: InstallKind::Local(local_flags),
     })
   }
-  Ok(())
 }
 
 fn json_reference_parse(
@@ -4574,11 +4560,8 @@ fn lint_parse(flags: &mut Flags, matches: &mut ArgMatches) {
   });
 }
 
-fn repl_parse(
-  flags: &mut Flags,
-  matches: &mut ArgMatches,
-) -> Result<(), AnyError> {
-  runtime_args_parse(flags, matches, true, true)?;
+fn repl_parse(flags: &mut Flags, matches: &mut ArgMatches) {
+  runtime_args_parse(flags, matches, true, true);
   unsafely_ignore_certificate_errors_parse(flags, matches);
 
   let eval_files = matches
@@ -4593,7 +4576,6 @@ fn repl_parse(
       is_default_command: false,
     },
   );
-  Ok(())
 }
 
 fn run_parse(
@@ -4601,7 +4583,7 @@ fn run_parse(
   matches: &mut ArgMatches,
   mut app: Command,
   bare: bool,
-) -> Result<(), AnyError> {
+) -> clap::error::Result<()> {
   // todo(dsherret): remove this in Deno 2.0
   // This is a hack to make https://github.com/netlify/build/pull/5767 work
   // for old versions of @netlify/edge-bundler with new versions of Deno
@@ -4649,7 +4631,7 @@ fn run_parse(
     }
   }
 
-  runtime_args_parse(flags, matches, true, true)?;
+  runtime_args_parse(flags, matches, true, true);
 
   flags.code_cache_enabled = !matches.get_flag("no-code-cache");
 
@@ -4687,7 +4669,7 @@ fn serve_parse(
   flags: &mut Flags,
   matches: &mut ArgMatches,
   app: Command,
-) -> Result<(), AnyError> {
+) -> clap::error::Result<()> {
   // deno serve implies --allow-net=host:port
   let port = matches.remove_one::<u16>("port").unwrap_or(8000);
   let host = matches
@@ -4696,7 +4678,7 @@ fn serve_parse(
 
   let worker_count = parallel_arg_parse(matches, false).map(|v| v.get());
 
-  runtime_args_parse(flags, matches, true, true)?;
+  runtime_args_parse(flags, matches, true, true);
   // If the user didn't pass --allow-net, add this port to the network
   // allowlist. If the host is 0.0.0.0, we add :{port} and allow the same network perms
   // as if it was passed to --allow-net directly.
@@ -4805,12 +4787,9 @@ fn parallel_arg_parse(
   }
 }
 
-fn test_parse(
-  flags: &mut Flags,
-  matches: &mut ArgMatches,
-) -> Result<(), AnyError> {
+fn test_parse(flags: &mut Flags, matches: &mut ArgMatches) {
   flags.type_check_mode = TypeCheckMode::Local;
-  runtime_args_parse(flags, matches, true, true)?;
+  runtime_args_parse(flags, matches, true, true);
   // NOTE: `deno test` always uses `--no-prompt`, tests shouldn't ever do
   // interactive prompts, unless done by user code
   flags.permissions.no_prompt = true;
@@ -4917,7 +4896,6 @@ fn test_parse(
     reporter,
     junit_path,
   });
-  Ok(())
 }
 
 fn types_parse(flags: &mut Flags, _matches: &mut ArgMatches) {
@@ -5001,10 +4979,7 @@ fn compile_args_without_check_parse(
   unsafely_ignore_certificate_errors_parse(flags, matches);
 }
 
-fn permission_args_parse(
-  flags: &mut Flags,
-  matches: &mut ArgMatches,
-) -> Result<(), AnyError> {
+fn permission_args_parse(flags: &mut Flags, matches: &mut ArgMatches) {
   if let Some(read_wl) = matches.remove_many::<String>("allow-read") {
     flags.permissions.allow_read = Some(read_wl.collect());
   }
@@ -5022,8 +4997,22 @@ fn permission_args_parse(
   }
 
   if let Some(net_wl) = matches.remove_many::<String>("allow-net") {
-    let net_allowlist = flags_net::parse(net_wl.collect())?;
-    flags.permissions.allow_net = Some(net_allowlist);
+    match flags_net::parse(net_wl.collect()) {
+      Ok(net_allowlist) => {
+        flags.permissions.allow_net = Some(net_allowlist);
+      }
+      Err(e) => {
+        logger::init(Option::from(Level::Error));
+        let msg: String = e.to_string();
+        log!(
+          Level::Error,
+          "{}: {}",
+          colors::red_bold("error"),
+          msg.trim_start_matches("error: ")
+        );
+        std::process::exit(e.exit_code())
+      }
+    }
   }
 
   if let Some(net_wl) = matches.remove_many::<String>("deny-net") {
@@ -5086,8 +5075,6 @@ fn permission_args_parse(
   if matches.get_flag("no-prompt") {
     flags.permissions.no_prompt = true;
   }
-
-  Ok(())
 }
 
 fn unsafely_ignore_certificate_errors_parse(
@@ -5107,13 +5094,13 @@ fn runtime_args_parse(
   matches: &mut ArgMatches,
   include_perms: bool,
   include_inspector: bool,
-) -> Result<(), AnyError> {
+) {
   unstable_args_parse(flags, matches, UnstableArgsConfig::ResolutionAndRuntime);
   compile_args_parse(flags, matches);
   cached_only_arg_parse(flags, matches);
   frozen_lockfile_arg_parse(flags, matches);
   if include_perms {
-    permission_args_parse(flags, matches)?;
+    permission_args_parse(flags, matches);
   }
   if include_inspector {
     inspect_arg_parse(flags, matches);
@@ -5124,8 +5111,6 @@ fn runtime_args_parse(
   enable_testing_features_arg_parse(flags, matches);
   env_file_arg_parse(flags, matches);
   strace_ops_parse(flags, matches);
-
-  Ok(())
 }
 
 fn inspect_arg_parse(flags: &mut Flags, matches: &mut ArgMatches) {
@@ -5484,25 +5469,17 @@ mod tests {
   #[test]
   fn version() {
     let r = flags_from_vec(svec!["deno", "--version"]);
-    if let Err(err) = r {
-      let clap_error = err
-        .downcast_ref::<clap::Error>()
-        .expect("Expected clap::Error");
-      assert_eq!(clap_error.kind(), clap::error::ErrorKind::DisplayVersion);
-    } else {
-      panic!("Expected an error with --version flag, but got Ok instead");
-    }
-
+    assert_eq!(
+      r.unwrap_err().kind(),
+      clap::error::ErrorKind::DisplayVersion
+    );
     let r = flags_from_vec(svec!["deno", "-V"]);
-    if let Err(err) = r {
-      let clap_error = err
-        .downcast_ref::<clap::Error>()
-        .expect("Expected clap::Error");
-      assert_eq!(clap_error.kind(), clap::error::ErrorKind::DisplayVersion);
-    } else {
-      panic!("Expected an error with -V flag, but got Ok instead");
-    }
+    assert_eq!(
+      r.unwrap_err().kind(),
+      clap::error::ErrorKind::DisplayVersion
+    );
   }
+
   #[test]
   fn run_reload() {
     let r = flags_from_vec(svec!["deno", "run", "-r", "script.ts"]);
@@ -6883,14 +6860,9 @@ mod tests {
         "--no-remote",
         "script.ts"
       ]);
-      let err = r.unwrap_err();
-      let clap_error = err.downcast_ref::<clap::Error>();
-      assert!(
-        clap_error.is_some()
-          && clap_error.as_ref().unwrap().kind()
-            == clap::error::ErrorKind::ArgumentConflict,
-        "Expected ArgumentConflict error, but got: {:?}",
-        err
+      assert_eq!(
+        r.unwrap_err().kind(),
+        clap::error::ErrorKind::ArgumentConflict
       );
     }
   }
@@ -10306,18 +10278,10 @@ mod tests {
   #[test]
   fn task_subcommand_noconfig_invalid() {
     let r = flags_from_vec(svec!["deno", "task", "--no-config"]);
-    if let Err(err) = r {
-      if let Some(clap_error) = err.downcast_ref::<clap::Error>() {
-        assert_eq!(clap_error.kind(), clap::error::ErrorKind::UnknownArgument);
-      } else {
-        panic!(
-          "Expected a clap::Error, but got a different error: {:?}",
-          err
-        );
-      }
-    } else {
-      panic!("Expected an error with --no-config flag, but got Ok instead");
-    }
+    assert_eq!(
+      r.unwrap_err().kind(),
+      clap::error::ErrorKind::UnknownArgument
+    );
   }
 
   #[test]

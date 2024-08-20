@@ -401,14 +401,12 @@ fn resolve_flags_and_init(
 ) -> Result<Flags, AnyError> {
   let flags = match flags_from_vec(args) {
     Ok(flags) => flags,
-    Err(err) if err.is::<clap::Error>() => {
-      let clap_err = err.downcast_ref::<clap::Error>().unwrap();
-      if clap_err.kind() == clap::error::ErrorKind::DisplayVersion {
-        // Ignore results to avoid BrokenPipe errors.
-        let _ = clap_err.print();
-        std::process::exit(0);
-      }
-      exit_for_error(AnyError::from(err));
+    Err(err @ clap::Error { .. })
+      if err.kind() == clap::error::ErrorKind::DisplayVersion =>
+    {
+      // Ignore results to avoid BrokenPipe errors.
+      let _ = err.print();
+      std::process::exit(0);
     }
     Err(err) => exit_for_error(AnyError::from(err)),
   };
