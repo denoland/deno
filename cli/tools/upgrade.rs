@@ -1504,6 +1504,46 @@ mod test {
       ),
       "https://dl.deno.land/release-rc-latest.txt?lsp"
     );
+    assert_eq!(
+      get_latest_version_url(
+        ReleaseChannel::Lts,
+        "x86_64-pc-windows-msvc",
+        UpgradeCheckKind::Lsp
+      ),
+      "https://dl.deno.land/release-lts-latest.txt?lsp"
+    );
+    assert_eq!(
+      get_latest_version_url(
+        ReleaseChannel::Lts,
+        "aarch64-apple-darwin",
+        UpgradeCheckKind::Execution
+      ),
+      "https://dl.deno.land/release-lts-latest.txt"
+    );
+    assert_eq!(
+      get_latest_version_url(
+        ReleaseChannel::Lts,
+        "aarch64-apple-darwin",
+        UpgradeCheckKind::Lsp
+      ),
+      "https://dl.deno.land/release-lts-latest.txt?lsp"
+    );
+    assert_eq!(
+      get_latest_version_url(
+        ReleaseChannel::Lts,
+        "x86_64-pc-windows-msvc",
+        UpgradeCheckKind::Execution
+      ),
+      "https://dl.deno.land/release-lts-latest.txt"
+    );
+    assert_eq!(
+      get_latest_version_url(
+        ReleaseChannel::Lts,
+        "x86_64-pc-windows-msvc",
+        UpgradeCheckKind::Lsp
+      ),
+      "https://dl.deno.land/release-lts-latest.txt?lsp"
+    );
   }
 
   #[test]
