@@ -879,7 +879,7 @@ Deno.test({ permissions: { net: true } }, function invalidPortFloat() {
         port: 45.1,
       }),
     TypeError,
-    `Invalid port: '45.1'`,
+    `Invalid port: 45.1`,
   );
 });
 
@@ -891,7 +891,19 @@ Deno.test({ permissions: { net: true } }, function invalidPortNaN() {
         port: NaN,
       }),
     TypeError,
-    `Invalid port: 'NaN'`,
+    `Invalid port: NaN`,
+  );
+});
+
+Deno.test({ permissions: { net: true } }, function invalidPortString() {
+  assertThrows(
+    () =>
+      Deno.serve({
+        handler: (_request) => new Response(),
+        port: "some-non-number-string" as unknown as number,
+      }),
+    TypeError,
+    `Invalid port: 'some-non-number-string'`,
   );
 });
 
@@ -903,7 +915,7 @@ Deno.test({ permissions: { net: true } }, function invalidPortTooSmall() {
         port: -111,
       }),
     RangeError,
-    `Invalid port (out of range): '-111'`,
+    `Invalid port (out of range): -111`,
   );
 });
 
@@ -915,7 +927,7 @@ Deno.test({ permissions: { net: true } }, function invalidPortTooLarge() {
         port: 100000,
       }),
     RangeError,
-    `Invalid port (out of range): '100000'`,
+    `Invalid port (out of range): 100000`,
   );
 });
 
@@ -927,7 +939,7 @@ Deno.test({ permissions: { net: true } }, function invalidPortType() {
         port: true as unknown as number,
       }),
     TypeError,
-    `Invalid port (expected number): 'true'`,
+    `Invalid port (expected number): true`,
   );
 });
 

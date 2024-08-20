@@ -564,15 +564,18 @@ function listen(args) {
 
 function validatePort(maybePort) {
   if (typeof maybePort !== "number" && typeof maybePort !== "string") {
-    throw new TypeError(`Invalid port (expected number): '${maybePort}'`);
+    throw new TypeError(`Invalid port (expected number): ${maybePort}`);
   }
   if (maybePort === "") throw new TypeError("Invalid port: ''");
   const port = Number(maybePort);
-  if (NumberIsNaN(port) || !NumberIsInteger(port)) {
-    throw new TypeError(`Invalid port: '${maybePort}'`);
-  }
-  if (port < 0 || port > 65535) {
-    throw new RangeError(`Invalid port (out of range): '${maybePort}'`);
+  if (!NumberIsInteger(port)) {
+    if (NumberIsNaN(port) && !NumberIsNaN(maybePort)) {
+      throw new TypeError(`Invalid port: '${maybePort}'`);
+    } else {
+      throw new TypeError(`Invalid port: ${maybePort}`);
+    }
+  } else if (port < 0 || port > 65535) {
+    throw new RangeError(`Invalid port (out of range): ${maybePort}`);
   }
   return port;
 }
