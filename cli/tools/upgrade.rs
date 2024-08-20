@@ -336,7 +336,7 @@ pub fn check_for_upgrades(
           colors::green("A new LTS release of Deno is available:"),
           colors::cyan(version::DENO_VERSION_INFO.deno),
           colors::cyan(&upgrade_version),
-          colors::italic_gray("Run `deno upgrade` to install it.")
+          colors::italic_gray("Run `deno upgrade lts` to install it.")
         );
       }
     }
