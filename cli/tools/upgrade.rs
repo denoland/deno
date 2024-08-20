@@ -547,7 +547,7 @@ pub async fn upgrade(
   Ok(())
 }
 
-#[derive(Debug)]
+#[derive(Debug, PartialEq)]
 enum RequestedVersion {
   Latest(ReleaseChannel),
   SpecificVersion(ReleaseChannel, String),
@@ -556,20 +556,34 @@ enum RequestedVersion {
 impl RequestedVersion {
   fn from_upgrade_flags(upgrade_flags: UpgradeFlags) -> Result<Self, AnyError> {
     let is_canary = upgrade_flags.canary;
-    let is_release_candidate = upgrade_flags.release_candidate;
+    let re_hash = lazy_regex::regex!("^[0-9a-f]{40}$");
+    let channel = if is_canary {
+      ReleaseChannel::Canary
+    } else if upgrade_flags.release_candidate {
+      ReleaseChannel::Rc
+    } else {
+      ReleaseChannel::Stable
+    };
+    let mut maybe_passed_version = upgrade_flags.version.clone();
 
-    let Some(passed_version) = upgrade_flags.version else {
-      let channel = if is_canary {
-        ReleaseChannel::Canary
-      } else if is_release_candidate {
-        ReleaseChannel::Rc
+    if let Some(val) = &upgrade_flags.version_or_hash_or_channel {
+      if let Ok(channel) = ReleaseChannel::deserialize(&val.to_lowercase()) {
+        // TODO(bartlomieju): print error if any other flags passed?
+        return Ok(Self::Latest(channel));
+      } else if re_hash.is_match(val) {
+        return Ok(Self::SpecificVersion(
+          ReleaseChannel::Canary,
+          val.to_string(),
+        ));
       } else {
-        ReleaseChannel::Stable
-      };
+        maybe_passed_version = Some(val.to_string());
+      }
+    }
+
+    let Some(passed_version) = maybe_passed_version else {
       return Ok(Self::Latest(channel));
     };
 
-    let re_hash = lazy_regex::regex!("^[0-9a-f]{40}$");
     let passed_version = passed_version
       .strip_prefix('v')
       .unwrap_or(&passed_version)
@@ -1038,6 +1052,104 @@ mod test {
   use std::rc::Rc;
 
   use super::*;
+
+  #[test]
+  fn test_requested_version() {
+    let mut upgrade_flags = UpgradeFlags {
+      dry_run: false,
+      force: false,
+      release_candidate: false,
+      canary: false,
+      version: None,
+      output: None,
+      version_or_hash_or_channel: None,
+    };
+
+    let req_ver =
+      RequestedVersion::from_upgrade_flags(upgrade_flags.clone()).unwrap();
+    assert_eq!(req_ver, RequestedVersion::Latest(ReleaseChannel::Stable));
+
+    upgrade_flags.version = Some("1.46.0".to_string());
+    let req_ver =
+      RequestedVersion::from_upgrade_flags(upgrade_flags.clone()).unwrap();
+    assert_eq!(
+      req_ver,
+      RequestedVersion::SpecificVersion(
+        ReleaseChannel::Stable,
+        "1.46.0".to_string()
+      )
+    );
+
+    upgrade_flags.version = None;
+    upgrade_flags.canary = true;
+    let req_ver =
+      RequestedVersion::from_upgrade_flags(upgrade_flags.clone()).unwrap();
+    assert_eq!(req_ver, RequestedVersion::Latest(ReleaseChannel::Canary));
+
+    upgrade_flags.version =
+      Some("5c69b4861b52ab406e73b9cd85c254f0505cb20f".to_string());
+    let req_ver =
+      RequestedVersion::from_upgrade_flags(upgrade_flags.clone()).unwrap();
+    assert_eq!(
+      req_ver,
+      RequestedVersion::SpecificVersion(
+        ReleaseChannel::Canary,
+        "5c69b4861b52ab406e73b9cd85c254f0505cb20f".to_string()
+      )
+    );
+
+    upgrade_flags.version = None;
+    upgrade_flags.canary = false;
+    upgrade_flags.release_candidate = true;
+    let req_ver =
+      RequestedVersion::from_upgrade_flags(upgrade_flags.clone()).unwrap();
+    assert_eq!(req_ver, RequestedVersion::Latest(ReleaseChannel::Rc));
+
+    upgrade_flags.release_candidate = false;
+    upgrade_flags.version_or_hash_or_channel = Some("v1.46.5".to_string());
+    let req_ver =
+      RequestedVersion::from_upgrade_flags(upgrade_flags.clone()).unwrap();
+    assert_eq!(
+      req_ver,
+      RequestedVersion::SpecificVersion(
+        ReleaseChannel::Stable,
+        "1.46.5".to_string()
+      )
+    );
+
+    upgrade_flags.version_or_hash_or_channel = Some("2.0.0-rc.0".to_string());
+    let req_ver =
+      RequestedVersion::from_upgrade_flags(upgrade_flags.clone()).unwrap();
+    assert_eq!(
+      req_ver,
+      RequestedVersion::SpecificVersion(
+        ReleaseChannel::Rc,
+        "2.0.0-rc.0".to_string()
+      )
+    );
+
+    upgrade_flags.version_or_hash_or_channel = Some("canary".to_string());
+    let req_ver =
+      RequestedVersion::from_upgrade_flags(upgrade_flags.clone()).unwrap();
+    assert_eq!(req_ver, RequestedVersion::Latest(ReleaseChannel::Canary,));
+
+    upgrade_flags.version_or_hash_or_channel = Some("rc".to_string());
+    let req_ver =
+      RequestedVersion::from_upgrade_flags(upgrade_flags.clone()).unwrap();
+    assert_eq!(req_ver, RequestedVersion::Latest(ReleaseChannel::Rc,));
+
+    upgrade_flags.version_or_hash_or_channel =
+      Some("5c69b4861b52ab406e73b9cd85c254f0505cb20f".to_string());
+    let req_ver =
+      RequestedVersion::from_upgrade_flags(upgrade_flags.clone()).unwrap();
+    assert_eq!(
+      req_ver,
+      RequestedVersion::SpecificVersion(
+        ReleaseChannel::Canary,
+        "5c69b4861b52ab406e73b9cd85c254f0505cb20f".to_string()
+      )
+    );
+  }
 
   #[test]
   fn test_parse_upgrade_check_file() {

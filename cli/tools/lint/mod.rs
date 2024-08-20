@@ -151,7 +151,10 @@ pub async fn lint(
           lint_options.rules,
           start_dir.maybe_deno_json().map(|c| c.as_ref()),
         )?;
-      let file_path = cli_options.initial_cwd().join(STDIN_FILE_NAME);
+      let mut file_path = cli_options.initial_cwd().join(STDIN_FILE_NAME);
+      if let Some(ext) = &lint_flags.ext {
+        file_path.set_extension(ext);
+      }
       let r = lint_stdin(&file_path, lint_rules, deno_lint_config);
       let success = handle_lint_result(
         &file_path.to_string_lossy(),

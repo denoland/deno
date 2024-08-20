@@ -100,6 +100,8 @@ pub struct SerializedWorkspaceResolver {
   pub pkg_json_resolution: PackageJsonDepResolution,
 }
 
+// Note: Don't use hashmaps/hashsets. Ensure the serialization
+// is deterministic.
 #[derive(Deserialize, Serialize)]
 pub struct Metadata {
   pub argv: Vec<String>,
@@ -111,7 +113,7 @@ pub struct Metadata {
   pub ca_stores: Option<Vec<String>>,
   pub ca_data: Option<Vec<u8>>,
   pub unsafely_ignore_certificate_errors: Option<Vec<String>>,
-  pub env_vars_from_env_file: HashMap<String, String>,
+  pub env_vars_from_env_file: IndexMap<String, String>,
   pub workspace_resolver: SerializedWorkspaceResolver,
   pub entrypoint_key: String,
   pub node_modules: Option<NodeModules>,
@@ -667,8 +669,10 @@ impl<'a> DenoCompileBinaryWriter<'a> {
           // but also don't make this dependent on the registry url
           let root_path = npm_resolver.global_cache_root_folder();
           let mut builder = VfsBuilder::new(root_path)?;
-          for package in npm_resolver.all_system_packages(&self.npm_system_info)
-          {
+          let mut packages =
+            npm_resolver.all_system_packages(&self.npm_system_info);
+          packages.sort_by(|a, b| a.id.cmp(&b.id)); // determinism
+          for package in packages {
             let folder =
               npm_resolver.resolve_pkg_folder_from_pkg_id(&package.id)?;
             builder.add_dir_recursive(&folder)?;
@@ -729,11 +733,13 @@ impl<'a> DenoCompileBinaryWriter<'a> {
           cli_options.workspace().root_dir().to_file_path().unwrap(),
         );
         while let Some(pending_dir) = pending_dirs.pop_front() {
-          let entries = fs::read_dir(&pending_dir).with_context(|| {
-            format!("Failed reading: {}", pending_dir.display())
-          })?;
+          let mut entries = fs::read_dir(&pending_dir)
+            .with_context(|| {
+              format!("Failed reading: {}", pending_dir.display())
+            })?
+            .collect::<Result<Vec<_>, _>>()?;
+          entries.sort_by_cached_key(|entry| entry.file_name()); // determinism
           for entry in entries {
-            let entry = entry?;
             let path = entry.path();
             if !path.is_dir() {
               continue;
@@ -755,8 +761,8 @@ impl<'a> DenoCompileBinaryWriter<'a> {
 /// in the passed environment file.
 fn get_file_env_vars(
   filename: String,
-) -> Result<HashMap<String, String>, dotenvy::Error> {
-  let mut file_env_vars = HashMap::new();
+) -> Result<IndexMap<String, String>, dotenvy::Error> {
+  let mut file_env_vars = IndexMap::new();
   for item in dotenvy::from_filename_iter(filename)? {
     let Ok((key, val)) = item else {
       continue; // this failure will be warned about on load

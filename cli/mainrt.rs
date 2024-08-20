@@ -31,6 +31,7 @@ use deno_runtime::fmt_errors::format_js_error;
 use deno_runtime::tokio_util::create_and_run_current_thread_with_maybe_metrics;
 pub use deno_runtime::UNSTABLE_GRANULAR_FLAGS;
 use deno_terminal::colors;
+use indexmap::IndexMap;
 
 use deno_runtime::deno_permissions::IsStandaloneBinary;
 use std::borrow::Cow;
@@ -74,7 +75,7 @@ fn unwrap_or_exit<T>(result: Result<T, AnyError>) -> T {
   }
 }
 
-fn load_env_vars(env_vars: &HashMap<String, String>) {
+fn load_env_vars(env_vars: &IndexMap<String, String>) {
   env_vars.iter().for_each(|env_var| {
     if env::var(env_var.0).is_err() {
       std::env::set_var(env_var.0, env_var.1);
