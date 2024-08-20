@@ -11,6 +11,7 @@ use crate::tools::repl;
 use crate::tools::test::create_single_test_event_channel;
 use crate::tools::test::reporters::PrettyTestReporter;
 use crate::tools::test::TestEventWorkerSender;
+use crate::tools::test::TestFailureFormatOptions;
 use crate::CliFactory;
 use deno_core::anyhow::bail;
 use deno_core::anyhow::Context;
@@ -142,8 +143,15 @@ pub async fn kernel(
     })?;
   repl_session.set_test_reporter_factory(Box::new(move || {
     Box::new(
-      PrettyTestReporter::new(false, true, false, true, cwd_url.clone())
-        .with_writer(Box::new(TestWriter(stdio_tx.clone()))),
+      PrettyTestReporter::new(
+        false,
+        true,
+        false,
+        true,
+        cwd_url.clone(),
+        TestFailureFormatOptions::default(),
+      )
+      .with_writer(Box::new(TestWriter(stdio_tx.clone()))),
     )
   }));
 

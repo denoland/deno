@@ -11,6 +11,8 @@ use std::io::StderrLock;
 use std::io::StdinLock;
 use std::io::Write as IoWrite;
 
+use crate::is_standalone;
+
 /// Helper function to make control characters visible so users can see the underlying filename.
 fn escape_control_characters(s: &str) -> std::borrow::Cow<str> {
   if !s.contains(|c: char| c.is_ascii_control() || c.is_control()) {
@@ -339,7 +341,11 @@ impl PermissionPrompter for TtyPrompter {
         ))
       );
       writeln!(&mut output, "┠─ {}", colors::italic(&msg)).unwrap();
-      let msg = format!("Run again with --allow-{name} to bypass this prompt.");
+      let msg = if is_standalone() {
+        format!("Specify the required permissions during compile time using `deno compile --allow-{name}`.")
+      } else {
+        format!("Run again with --allow-{name} to bypass this prompt.")
+      };
       writeln!(&mut output, "┠─ {}", colors::italic(&msg)).unwrap();
       write!(&mut output, "┗ {}", colors::bold("Allow?")).unwrap();
       write!(&mut output, " {opts} > ").unwrap();
