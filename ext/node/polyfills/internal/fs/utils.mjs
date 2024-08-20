@@ -1,4 +1,4 @@
-// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
 // TODO(petamoriken): enable prefer-primordials for node polyfills
 // deno-lint-ignore-file prefer-primordials
@@ -985,6 +985,20 @@ export const validatePosition = hideStackFrames((position) => {
     throw new ERR_INVALID_ARG_TYPE("position", ["integer", "bigint"], position);
   }
 });
+
+/** @type {(buffer: ArrayBufferView) => Uint8Array} */
+export const arrayBufferViewToUint8Array = hideStackFrames(
+  (buffer) => {
+    if (!(buffer instanceof Uint8Array)) {
+      return new Uint8Array(
+        buffer.buffer,
+        buffer.byteOffset,
+        buffer.byteLength,
+      );
+    }
+    return buffer;
+  },
+);
 
 export const realpathCacheKey = Symbol("realpathCacheKey");
 export const constants = {

@@ -858,8 +858,8 @@ mod tests {
         .global()
         .set(&specifier, HashMap::default(), source.as_bytes())
         .expect("could not cache file");
-      let document =
-        documents.get_or_load(&specifier, &temp_dir.uri().join("$").unwrap());
+      let document = documents
+        .get_or_load(&specifier, Some(&temp_dir.uri().join("$").unwrap()));
       assert!(document.is_some(), "source could not be setup");
     }
     documents

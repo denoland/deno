@@ -8,6 +8,7 @@ use crate::colors;
 use crate::factory::CliFactory;
 use crate::http_util::HttpClient;
 use crate::http_util::HttpClientProvider;
+use crate::shared::ReleaseChannel;
 use crate::util::archive;
 use crate::util::progress_bar::ProgressBar;
 use crate::util::progress_bar::ProgressBarStyle;
@@ -34,6 +35,7 @@ use std::time::Duration;
 
 const RELEASE_URL: &str = "https://github.com/denoland/deno/releases";
 const CANARY_URL: &str = "https://dl.deno.land/canary";
+const RC_URL: &str = "https://dl.deno.land/release";
 
 pub static ARCHIVE_NAME: Lazy<String> =
   Lazy::new(|| format!("deno-{}.zip", env!("TARGET")));
@@ -93,15 +95,14 @@ trait VersionProvider: Clone {
   async fn latest_version(
     &self,
     release_channel: ReleaseChannel,
-  ) -> Result<String, AnyError>;
+  ) -> Result<AvailableVersion, AnyError>;
 
-  // TODO(bartlomieju): what this one actually returns?
+  /// Returns either a semver or git hash. It's up to implementor to
+  /// decide which one is appropriate, but in general only "stable"
+  /// and "lts" versions use semver.
   fn current_version(&self) -> Cow<str>;
 
-  // TODO(bartlomieju): update to handle `Lts` and `Rc` channels
-  async fn get_current_exe_release_channel(
-    &self,
-  ) -> Result<ReleaseChannel, AnyError>;
+  fn get_current_exe_release_channel(&self) -> ReleaseChannel;
 }
 
 #[derive(Clone)]
@@ -127,7 +128,7 @@ impl VersionProvider for RealVersionProvider {
   async fn latest_version(
     &self,
     release_channel: ReleaseChannel,
-  ) -> Result<String, AnyError> {
+  ) -> Result<AvailableVersion, AnyError> {
     fetch_latest_version(
       &self.http_client_provider.get_or_create()?,
       release_channel,
@@ -137,18 +138,11 @@ impl VersionProvider for RealVersionProvider {
   }
 
   fn current_version(&self) -> Cow<str> {
-    Cow::Borrowed(version::release_version_or_canary_commit_hash())
+    Cow::Borrowed(version::DENO_VERSION_INFO.version_or_git_hash())
   }
 
-  // TODO(bartlomieju): update to handle `Lts` and `Rc` channels
-  async fn get_current_exe_release_channel(
-    &self,
-  ) -> Result<ReleaseChannel, AnyError> {
-    if version::is_canary() {
-      Ok(ReleaseChannel::Canary)
-    } else {
-      Ok(ReleaseChannel::Stable)
-    }
+  fn get_current_exe_release_channel(&self) -> ReleaseChannel {
+    version::DENO_VERSION_INFO.release_channel
   }
 }
 
@@ -176,20 +170,19 @@ impl<
   }
 
   pub fn should_check_for_new_version(&self) -> bool {
-    match &self.maybe_file {
-      Some(file) => {
-        let last_check_age = self
-          .env
-          .current_time()
-          .signed_duration_since(file.last_checked);
-        last_check_age > chrono::Duration::hours(UPGRADE_CHECK_INTERVAL)
-      }
-      None => true,
-    }
+    let Some(file) = &self.maybe_file else {
+      return true;
+    };
+
+    let last_check_age = self
+      .env
+      .current_time()
+      .signed_duration_since(file.last_checked);
+    last_check_age > chrono::Duration::hours(UPGRADE_CHECK_INTERVAL)
   }
 
-  /// Returns the version if a new one is available and it should be prompted about.
-  pub fn should_prompt(&self) -> Option<String> {
+  /// Returns the current exe release channel and a version if a new one is available and it should be prompted about.
+  pub fn should_prompt(&self) -> Option<(ReleaseChannel, String)> {
     let file = self.maybe_file.as_ref()?;
     // If the current version saved is not the actually current version of the binary
     // It means
@@ -217,7 +210,7 @@ impl<
       .current_time()
       .signed_duration_since(file.last_prompt);
     if last_prompt_age > chrono::Duration::hours(UPGRADE_CHECK_INTERVAL) {
-      Some(file.latest_version.clone())
+      Some((file.current_release_channel, file.latest_version.clone()))
     } else {
       None
     }
@@ -238,19 +231,24 @@ fn get_minor_version(version: &str) -> &str {
 }
 
 fn print_release_notes(current_version: &str, new_version: &str) {
+  // TODO(bartlomieju): we might want to reconsider this one for RC releases.
+  // TODO(bartlomieju): also maybe just parse using `Version::standard` instead
+  // of using `get_minor_version`?
   if get_minor_version(current_version) == get_minor_version(new_version) {
     return;
   }
 
   log::info!(
-    "Release notes:\n\n  {}\n",
+    "{}\n\n  {}\n",
+    colors::gray("Release notes:"),
     colors::bold(format!(
       "https://github.com/denoland/deno/releases/tag/v{}",
       &new_version,
     ))
   );
   log::info!(
-    "Blog post:\n\n  {}\n",
+    "{}\n\n  {}\n",
+    colors::gray("Blog post:"),
     colors::bold(format!(
       "https://deno.com/blog/v{}",
       get_minor_version(new_version)
@@ -274,8 +272,10 @@ pub fn check_for_upgrades(
   }
 
   let env = RealUpdateCheckerEnvironment::new(cache_file_path);
-  let version_provider =
-    RealVersionProvider::new(http_client_provider, UpgradeCheckKind::Execution);
+  let version_provider = RealVersionProvider::new(
+    http_client_provider.clone(),
+    UpgradeCheckKind::Execution,
+  );
   let update_checker = UpdateChecker::new(env, version_provider);
 
   if update_checker.should_check_for_new_version() {
@@ -294,34 +294,53 @@ pub fn check_for_upgrades(
     });
   }
 
+  // Don't bother doing any more computation if we're not in TTY environment.
+  let should_prompt =
+    log::log_enabled!(log::Level::Info) && std::io::stderr().is_terminal();
+
+  if !should_prompt {
+    return;
+  }
+
   // Print a message if an update is available
-  if let Some(upgrade_version) = update_checker.should_prompt() {
-    if log::log_enabled!(log::Level::Info) && std::io::stderr().is_terminal() {
-      if version::is_canary() {
+  if let Some((release_channel, upgrade_version)) =
+    update_checker.should_prompt()
+  {
+    match release_channel {
+      ReleaseChannel::Stable => {
+        log::info!(
+          "{} {} → {} {}",
+          colors::green("A new release of Deno is available:"),
+          colors::cyan(version::DENO_VERSION_INFO.deno),
+          colors::cyan(&upgrade_version),
+          colors::italic_gray("Run `deno upgrade` to install it.")
+        );
+      }
+      ReleaseChannel::Canary => {
         log::info!(
           "{} {}",
           colors::green("A new canary release of Deno is available."),
           colors::italic_gray("Run `deno upgrade --canary` to install it.")
         );
-      } else {
+      }
+      ReleaseChannel::Rc => {
         log::info!(
-          "{} {} → {} {}",
-          colors::green("A new release of Deno is available:"),
-          colors::cyan(version::deno()),
-          colors::cyan(&upgrade_version),
-          colors::italic_gray("Run `deno upgrade` to install it.")
+          "{} {}",
+          colors::green("A new release candidate of Deno is available."),
+          colors::italic_gray("Run `deno upgrade --rc` to install it.")
         );
       }
-
-      update_checker.store_prompted();
+      // TODO(bartlomieju)
+      ReleaseChannel::Lts => unreachable!(),
     }
+
+    update_checker.store_prompted();
   }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct LspVersionUpgradeInfo {
   pub latest_version: String,
-  // TODO(bartlomieju): use `ReleaseChannel` instead
   pub is_canary: bool,
 }
 
@@ -340,40 +359,39 @@ pub async fn check_for_upgrades_for_lsp(
 async fn check_for_upgrades_for_lsp_with_provider(
   version_provider: &impl VersionProvider,
 ) -> Result<Option<LspVersionUpgradeInfo>, AnyError> {
-  let release_channel =
-    version_provider.get_current_exe_release_channel().await?;
+  let release_channel = version_provider.get_current_exe_release_channel();
   let latest_version = version_provider.latest_version(release_channel).await?;
   let current_version = version_provider.current_version();
 
   // Nothing to upgrade
-  if current_version == latest_version {
+  if current_version == latest_version.version_or_hash {
     return Ok(None);
   }
 
   match release_channel {
-    ReleaseChannel::Stable => {
+    ReleaseChannel::Stable | ReleaseChannel::Rc => {
       if let Ok(current) = Version::parse_standard(&current_version) {
-        if let Ok(latest) = Version::parse_standard(&latest_version) {
+        if let Ok(latest) =
+          Version::parse_standard(&latest_version.version_or_hash)
+        {
           if current >= latest {
             return Ok(None); // nothing to upgrade
           }
         }
       }
       Ok(Some(LspVersionUpgradeInfo {
-        latest_version,
+        latest_version: latest_version.version_or_hash,
         is_canary: false,
       }))
     }
 
     ReleaseChannel::Canary => Ok(Some(LspVersionUpgradeInfo {
-      latest_version,
+      latest_version: latest_version.version_or_hash,
       is_canary: true,
     })),
 
     // TODO(bartlomieju)
     ReleaseChannel::Lts => unreachable!(),
-    // TODO(bartlomieju)
-    ReleaseChannel::Rc => unreachable!(),
   }
 }
 
@@ -384,30 +402,25 @@ async fn fetch_and_store_latest_version<
   env: &TEnvironment,
   version_provider: &TVersionProvider,
 ) {
-  // Fetch latest version or commit hash from server.
-  let Ok(release_channel) =
-    version_provider.get_current_exe_release_channel().await
-  else {
-    return;
-  };
+  let release_channel = version_provider.get_current_exe_release_channel();
   let Ok(latest_version) =
     version_provider.latest_version(release_channel).await
   else {
     return;
   };
 
-  env.write_check_file(
-    &CheckVersionFile {
-      // put a date in the past here so that prompt can be shown on next run
-      last_prompt: env
-        .current_time()
-        .sub(chrono::Duration::hours(UPGRADE_CHECK_INTERVAL + 1)),
-      last_checked: env.current_time(),
-      current_version: version_provider.current_version().to_string(),
-      latest_version,
-    }
-    .serialize(),
-  );
+  let version_file = CheckVersionFile {
+    // put a date in the past here so that prompt can be shown on next run
+    last_prompt: env
+      .current_time()
+      .sub(chrono::Duration::hours(UPGRADE_CHECK_INTERVAL + 1)),
+    last_checked: env.current_time(),
+    current_version: version_provider.current_version().to_string(),
+    latest_version: latest_version.version_or_hash,
+    current_release_channel: release_channel,
+  };
+
+  env.write_check_file(&version_file.serialize());
 }
 
 pub async fn upgrade(
@@ -437,29 +450,35 @@ pub async fn upgrade(
   let requested_version =
     RequestedVersion::from_upgrade_flags(upgrade_flags.clone())?;
 
-  let maybe_install_version = match requested_version {
+  log::info!("Current Deno version: v{}", version::DENO_VERSION_INFO.deno);
+
+  let maybe_selected_version_to_upgrade = match &requested_version {
     RequestedVersion::Latest(channel) => {
       find_latest_version_to_upgrade(
         http_client_provider.clone(),
-        channel,
+        *channel,
         force_selection_of_new_version,
       )
       .await?
     }
     RequestedVersion::SpecificVersion(channel, version) => {
       select_specific_version_for_upgrade(
-        channel,
-        version,
+        *channel,
+        version.clone(),
         force_selection_of_new_version,
       )?
     }
   };
 
-  let Some(install_version) = maybe_install_version else {
+  let Some(selected_version_to_upgrade) = maybe_selected_version_to_upgrade
+  else {
     return Ok(());
   };
 
-  let download_url = get_download_url(&install_version, upgrade_flags.canary)?;
+  let download_url = get_download_url(
+    &selected_version_to_upgrade.version_or_hash,
+    requested_version.release_channel(),
+  )?;
   log::info!("{}", colors::gray(format!("Downloading {}", &download_url)));
   let Some(archive_data) = download_package(&client, download_url).await?
   else {
@@ -469,7 +488,10 @@ pub async fn upgrade(
 
   log::info!(
     "{}",
-    colors::gray(format!("Deno is upgrading to version {}", &install_version))
+    colors::gray(format!(
+      "Deno is upgrading to version {}",
+      &selected_version_to_upgrade.version_or_hash
+    ))
   );
 
   let temp_dir = tempfile::TempDir::new()?;
@@ -486,8 +508,11 @@ pub async fn upgrade(
   if upgrade_flags.dry_run {
     fs::remove_file(&new_exe_path)?;
     log::info!("Upgraded successfully (dry run)");
-    if !upgrade_flags.canary {
-      print_release_notes(version::deno(), &install_version);
+    if requested_version.release_channel() == ReleaseChannel::Stable {
+      print_release_notes(
+        version::DENO_VERSION_INFO.deno,
+        &selected_version_to_upgrade.version_or_hash,
+      );
     }
     drop(temp_dir);
     return Ok(());
@@ -504,20 +529,25 @@ pub async fn upgrade(
   check_windows_access_denied_error(output_result, output_exe_path)?;
 
   log::info!(
-    "{}",
-    colors::green(format!(
-      "\nUpgraded successfully to Deno v{}\n",
-      install_version
+    "\nUpgraded successfully to Deno {} {}\n",
+    colors::green(selected_version_to_upgrade.display()),
+    colors::gray(&format!(
+      "({})",
+      selected_version_to_upgrade.release_channel.name()
     ))
   );
-  if !upgrade_flags.canary {
-    print_release_notes(version::deno(), &install_version);
+  if requested_version.release_channel() == ReleaseChannel::Stable {
+    print_release_notes(
+      version::DENO_VERSION_INFO.deno,
+      &selected_version_to_upgrade.version_or_hash,
+    );
   }
 
   drop(temp_dir); // delete the temp dir
   Ok(())
 }
 
+#[derive(Debug, PartialEq)]
 enum RequestedVersion {
   Latest(ReleaseChannel),
   SpecificVersion(ReleaseChannel, String),
@@ -526,17 +556,34 @@ enum RequestedVersion {
 impl RequestedVersion {
   fn from_upgrade_flags(upgrade_flags: UpgradeFlags) -> Result<Self, AnyError> {
     let is_canary = upgrade_flags.canary;
+    let re_hash = lazy_regex::regex!("^[0-9a-f]{40}$");
+    let channel = if is_canary {
+      ReleaseChannel::Canary
+    } else if upgrade_flags.release_candidate {
+      ReleaseChannel::Rc
+    } else {
+      ReleaseChannel::Stable
+    };
+    let mut maybe_passed_version = upgrade_flags.version.clone();
 
-    let Some(passed_version) = upgrade_flags.version else {
-      let channel = if is_canary {
-        ReleaseChannel::Canary
+    if let Some(val) = &upgrade_flags.version_or_hash_or_channel {
+      if let Ok(channel) = ReleaseChannel::deserialize(&val.to_lowercase()) {
+        // TODO(bartlomieju): print error if any other flags passed?
+        return Ok(Self::Latest(channel));
+      } else if re_hash.is_match(val) {
+        return Ok(Self::SpecificVersion(
+          ReleaseChannel::Canary,
+          val.to_string(),
+        ));
       } else {
-        ReleaseChannel::Stable
-      };
+        maybe_passed_version = Some(val.to_string());
+      }
+    }
+
+    let Some(passed_version) = maybe_passed_version else {
       return Ok(Self::Latest(channel));
     };
 
-    let re_hash = lazy_regex::regex!("^[0-9a-f]{40}$");
     let passed_version = passed_version
       .strip_prefix('v')
       .unwrap_or(&passed_version)
@@ -548,13 +595,26 @@ impl RequestedVersion {
       }
       (ReleaseChannel::Canary, passed_version)
     } else {
-      if Version::parse_standard(&passed_version).is_err() {
+      let Ok(semver) = Version::parse_standard(&passed_version) else {
         bail!("Invalid version passed");
       };
-      (ReleaseChannel::Stable, passed_version)
+
+      if semver.pre.contains(&"rc".to_string()) {
+        (ReleaseChannel::Rc, passed_version)
+      } else {
+        (ReleaseChannel::Stable, passed_version)
+      }
     };
 
     Ok(RequestedVersion::SpecificVersion(channel, passed_version))
+  }
+
+  /// Channels that use Git hashes as versions are considered canary.
+  pub fn release_channel(&self) -> ReleaseChannel {
+    match self {
+      Self::Latest(channel) => *channel,
+      Self::SpecificVersion(channel, _) => *channel,
+    }
   }
 }
 
@@ -562,33 +622,63 @@ fn select_specific_version_for_upgrade(
   release_channel: ReleaseChannel,
   version: String,
   force: bool,
-) -> Result<Option<String>, AnyError> {
+) -> Result<Option<AvailableVersion>, AnyError> {
   match release_channel {
     ReleaseChannel::Stable => {
-      let current_is_passed = if !version::is_canary() {
-        version::deno() == version
+      let current_is_passed = if version::DENO_VERSION_INFO.release_channel
+        != ReleaseChannel::Canary
+      {
+        version::DENO_VERSION_INFO.deno == version
       } else {
         false
       };
 
       if !force && current_is_passed {
-        log::info!("Version {} is already installed", version::deno());
+        log::info!(
+          "Version {} is already installed",
+          version::DENO_VERSION_INFO.deno
+        );
         return Ok(None);
       }
 
-      Ok(Some(version))
+      Ok(Some(AvailableVersion {
+        version_or_hash: version,
+        release_channel,
+      }))
     }
     ReleaseChannel::Canary => {
-      let current_is_passed = version::GIT_COMMIT_HASH == version;
+      let current_is_passed = version::DENO_VERSION_INFO.git_hash == version;
       if !force && current_is_passed {
-        log::info!("Version {} is already installed", version::deno());
+        log::info!(
+          "Version {} is already installed",
+          version::DENO_VERSION_INFO.deno
+        );
         return Ok(None);
       }
 
-      Ok(Some(version))
+      Ok(Some(AvailableVersion {
+        version_or_hash: version,
+        release_channel,
+      }))
     }
-    // TODO(bartlomieju)
-    ReleaseChannel::Rc => unreachable!(),
+    ReleaseChannel::Rc => {
+      let current_is_passed = version::DENO_VERSION_INFO.release_channel
+        == ReleaseChannel::Rc
+        && version::DENO_VERSION_INFO.deno == version;
+
+      if !force && current_is_passed {
+        log::info!(
+          "Version {} is already installed",
+          version::DENO_VERSION_INFO.deno
+        );
+        return Ok(None);
+      }
+
+      Ok(Some(AvailableVersion {
+        version_or_hash: version,
+        release_channel,
+      }))
+    }
     // TODO(bartlomieju)
     ReleaseChannel::Lts => unreachable!(),
   }
@@ -598,46 +688,70 @@ async fn find_latest_version_to_upgrade(
   http_client_provider: Arc<HttpClientProvider>,
   release_channel: ReleaseChannel,
   force: bool,
-) -> Result<Option<String>, AnyError> {
+) -> Result<Option<AvailableVersion>, AnyError> {
   log::info!(
     "{}",
     colors::gray(&format!("Looking up {} version", release_channel.name()))
   );
 
   let client = http_client_provider.get_or_create()?;
-  let latest_version =
+  let latest_version_found =
     fetch_latest_version(&client, release_channel, UpgradeCheckKind::Execution)
       .await?;
 
   let (maybe_newer_latest_version, current_version) = match release_channel {
     ReleaseChannel::Stable => {
-      let current_version = version::deno();
-      let current_is_most_recent = if !version::is_canary() {
-        let current = Version::parse_standard(current_version).unwrap();
-        let latest = Version::parse_standard(&latest_version).unwrap();
-        current >= latest
-      } else {
-        false
-      };
+      let current_version = version::DENO_VERSION_INFO.deno;
 
-      if !force && current_is_most_recent {
-        (None, current_version)
+      // If the current binary is not a stable channel, we can skip
+      // computation if we're on a newer release - we're not.
+      if version::DENO_VERSION_INFO.release_channel != ReleaseChannel::Stable {
+        (Some(latest_version_found), current_version)
       } else {
-        (Some(latest_version), current_version)
+        let current = Version::parse_standard(current_version).unwrap();
+        let latest =
+          Version::parse_standard(&latest_version_found.version_or_hash)
+            .unwrap();
+        let current_is_most_recent = current >= latest;
+
+        if !force && current_is_most_recent {
+          (None, current_version)
+        } else {
+          (Some(latest_version_found), current_version)
+        }
+      }
+    }
+    ReleaseChannel::Rc => {
+      let current_version = version::DENO_VERSION_INFO.deno;
+
+      // If the current binary is not an rc channel, we can skip
+      // computation if we're on a newer release - we're not.
+      if version::DENO_VERSION_INFO.release_channel != ReleaseChannel::Rc {
+        (Some(latest_version_found), current_version)
+      } else {
+        let current = Version::parse_standard(current_version).unwrap();
+        let latest =
+          Version::parse_standard(&latest_version_found.version_or_hash)
+            .unwrap();
+        let current_is_most_recent = current >= latest;
+        if !force && current_is_most_recent {
+          (None, current_version)
+        } else {
+          (Some(latest_version_found), current_version)
+        }
       }
     }
     ReleaseChannel::Canary => {
-      let current_version = version::GIT_COMMIT_HASH;
-      let current_is_most_recent = current_version == latest_version;
+      let current_version = version::DENO_VERSION_INFO.git_hash;
+      let current_is_most_recent =
+        current_version == latest_version_found.version_or_hash;
 
       if !force && current_is_most_recent {
         (None, current_version)
       } else {
-        (Some(latest_version), current_version)
+        (Some(latest_version_found), current_version)
       }
     }
-    // TODO(bartlomieju)
-    ReleaseChannel::Rc => unreachable!(),
     // TODO(bartlomieju)
     ReleaseChannel::Lts => unreachable!(),
   };
@@ -645,19 +759,14 @@ async fn find_latest_version_to_upgrade(
   log::info!("");
   if let Some(newer_latest_version) = maybe_newer_latest_version.as_ref() {
     log::info!(
-      "{}",
-      color_print::cformat!(
-        "<g>Found latest version {}</>",
-        newer_latest_version
-      )
+      "Found latest {} version {}",
+      newer_latest_version.release_channel.name(),
+      color_print::cformat!("<g>{}</>", newer_latest_version.display())
     );
   } else {
     log::info!(
-      "{}",
-      color_print::cformat!(
-        "<g>Local deno version {} is the most recent release</>",
-        current_version
-      )
+      "Local deno version {} is the most recent release",
+      color_print::cformat!("<g>{}</>", current_version)
     );
   }
   log::info!("");
@@ -665,30 +774,19 @@ async fn find_latest_version_to_upgrade(
   Ok(maybe_newer_latest_version)
 }
 
-#[derive(Debug, Clone, Copy)]
-enum ReleaseChannel {
-  /// Stable version, eg. 1.45.4, 2.0.0, 2.1.0
-  Stable,
-
-  /// Pointing to a git hash
-  Canary,
-
-  /// Long term support release
-  #[allow(unused)]
-  Lts,
-
-  /// Release candidate
-  #[allow(unused)]
-  Rc,
+#[derive(Debug, Clone, PartialEq)]
+struct AvailableVersion {
+  version_or_hash: String,
+  release_channel: ReleaseChannel,
 }
 
-impl ReleaseChannel {
-  fn name(&self) -> &str {
-    match self {
-      Self::Stable => "latest",
-      Self::Canary => "canary",
-      Self::Rc => "release candidate",
-      Self::Lts => "LTS (long term support)",
+impl AvailableVersion {
+  /// Format display version, appending `v` before version number
+  /// for non-canary releases.
+  fn display(&self) -> Cow<str> {
+    match self.release_channel {
+      ReleaseChannel::Canary => Cow::Borrowed(&self.version_or_hash),
+      _ => Cow::Owned(format!("v{}", self.version_or_hash)),
     }
   }
 }
@@ -697,21 +795,30 @@ async fn fetch_latest_version(
   client: &HttpClient,
   release_channel: ReleaseChannel,
   check_kind: UpgradeCheckKind,
-) -> Result<String, AnyError> {
+) -> Result<AvailableVersion, AnyError> {
   let url = get_latest_version_url(release_channel, env!("TARGET"), check_kind);
   let text = client.download_text(url.parse()?).await?;
-  Ok(normalize_version_from_server(release_channel, &text))
+  let version = normalize_version_from_server(release_channel, &text)?;
+  Ok(version)
 }
 
 fn normalize_version_from_server(
   release_channel: ReleaseChannel,
   text: &str,
-) -> String {
+) -> Result<AvailableVersion, AnyError> {
   let text = text.trim();
   match release_channel {
-    ReleaseChannel::Stable => text.trim_start_matches('v').to_string(),
-    ReleaseChannel::Canary => text.to_string(),
-    _ => unreachable!(),
+    ReleaseChannel::Stable | ReleaseChannel::Rc | ReleaseChannel::Lts => {
+      let v = text.trim_start_matches('v').to_string();
+      Ok(AvailableVersion {
+        version_or_hash: v.to_string(),
+        release_channel,
+      })
+    }
+    ReleaseChannel::Canary => Ok(AvailableVersion {
+      version_or_hash: text.to_string(),
+      release_channel,
+    }),
   }
 }
 
@@ -725,6 +832,7 @@ fn get_latest_version_url(
     ReleaseChannel::Canary => {
       Cow::Owned(format!("canary-{target_tuple}-latest.txt"))
     }
+    ReleaseChannel::Rc => Cow::Borrowed("release-rc-latest.txt"),
     _ => unreachable!(),
   };
   let query_param = match check_kind {
@@ -743,11 +851,21 @@ fn base_upgrade_url() -> Cow<'static, str> {
   }
 }
 
-fn get_download_url(version: &str, is_canary: bool) -> Result<Url, AnyError> {
-  let download_url = if is_canary {
-    format!("{}/{}/{}", CANARY_URL, version, *ARCHIVE_NAME)
-  } else {
-    format!("{}/download/v{}/{}", RELEASE_URL, version, *ARCHIVE_NAME)
+fn get_download_url(
+  version: &str,
+  release_channel: ReleaseChannel,
+) -> Result<Url, AnyError> {
+  let download_url = match release_channel {
+    ReleaseChannel::Stable => {
+      format!("{}/download/v{}/{}", RELEASE_URL, version, *ARCHIVE_NAME)
+    }
+    ReleaseChannel::Rc => {
+      format!("{}/v{}/{}", RC_URL, version, *ARCHIVE_NAME)
+    }
+    ReleaseChannel::Canary => {
+      format!("{}/{}/{}", CANARY_URL, version, *ARCHIVE_NAME)
+    }
+    ReleaseChannel::Lts => unreachable!(),
   };
 
   Url::parse(&download_url).with_context(|| {
@@ -864,13 +982,14 @@ struct CheckVersionFile {
   pub last_checked: chrono::DateTime<chrono::Utc>,
   pub current_version: String,
   pub latest_version: String,
+  pub current_release_channel: ReleaseChannel,
 }
 
 impl CheckVersionFile {
   pub fn parse(content: String) -> Option<Self> {
     let split_content = content.split('!').collect::<Vec<_>>();
 
-    if split_content.len() != 4 {
+    if split_content.len() != 5 {
       return None;
     }
 
@@ -882,6 +1001,15 @@ impl CheckVersionFile {
     if current_version.is_empty() {
       return None;
     }
+    let current_release_channel = split_content[4].trim().to_owned();
+    if current_release_channel.is_empty() {
+      return None;
+    }
+    let Ok(current_release_channel) =
+      ReleaseChannel::deserialize(&current_release_channel)
+    else {
+      return None;
+    };
 
     let last_prompt = chrono::DateTime::parse_from_rfc3339(split_content[0])
       .map(|dt| dt.with_timezone(&chrono::Utc))
@@ -895,16 +1023,18 @@ impl CheckVersionFile {
       last_checked,
       current_version,
       latest_version,
+      current_release_channel,
     })
   }
 
   fn serialize(&self) -> String {
     format!(
-      "{}!{}!{}!{}",
+      "{}!{}!{}!{}!{}",
       self.last_prompt.to_rfc3339(),
       self.last_checked.to_rfc3339(),
       self.latest_version,
       self.current_version,
+      self.current_release_channel.serialize()
     )
   }
 
@@ -924,9 +1054,114 @@ mod test {
   use super::*;
 
   #[test]
+  fn test_requested_version() {
+    let mut upgrade_flags = UpgradeFlags {
+      dry_run: false,
+      force: false,
+      release_candidate: false,
+      canary: false,
+      version: None,
+      output: None,
+      version_or_hash_or_channel: None,
+    };
+
+    let req_ver =
+      RequestedVersion::from_upgrade_flags(upgrade_flags.clone()).unwrap();
+    assert_eq!(req_ver, RequestedVersion::Latest(ReleaseChannel::Stable));
+
+    upgrade_flags.version = Some("1.46.0".to_string());
+    let req_ver =
+      RequestedVersion::from_upgrade_flags(upgrade_flags.clone()).unwrap();
+    assert_eq!(
+      req_ver,
+      RequestedVersion::SpecificVersion(
+        ReleaseChannel::Stable,
+        "1.46.0".to_string()
+      )
+    );
+
+    upgrade_flags.version = None;
+    upgrade_flags.canary = true;
+    let req_ver =
+      RequestedVersion::from_upgrade_flags(upgrade_flags.clone()).unwrap();
+    assert_eq!(req_ver, RequestedVersion::Latest(ReleaseChannel::Canary));
+
+    upgrade_flags.version =
+      Some("5c69b4861b52ab406e73b9cd85c254f0505cb20f".to_string());
+    let req_ver =
+      RequestedVersion::from_upgrade_flags(upgrade_flags.clone()).unwrap();
+    assert_eq!(
+      req_ver,
+      RequestedVersion::SpecificVersion(
+        ReleaseChannel::Canary,
+        "5c69b4861b52ab406e73b9cd85c254f0505cb20f".to_string()
+      )
+    );
+
+    upgrade_flags.version = None;
+    upgrade_flags.canary = false;
+    upgrade_flags.release_candidate = true;
+    let req_ver =
+      RequestedVersion::from_upgrade_flags(upgrade_flags.clone()).unwrap();
+    assert_eq!(req_ver, RequestedVersion::Latest(ReleaseChannel::Rc));
+
+    upgrade_flags.release_candidate = false;
+    upgrade_flags.version_or_hash_or_channel = Some("v1.46.5".to_string());
+    let req_ver =
+      RequestedVersion::from_upgrade_flags(upgrade_flags.clone()).unwrap();
+    assert_eq!(
+      req_ver,
+      RequestedVersion::SpecificVersion(
+        ReleaseChannel::Stable,
+        "1.46.5".to_string()
+      )
+    );
+
+    upgrade_flags.version_or_hash_or_channel = Some("2.0.0-rc.0".to_string());
+    let req_ver =
+      RequestedVersion::from_upgrade_flags(upgrade_flags.clone()).unwrap();
+    assert_eq!(
+      req_ver,
+      RequestedVersion::SpecificVersion(
+        ReleaseChannel::Rc,
+        "2.0.0-rc.0".to_string()
+      )
+    );
+
+    upgrade_flags.version_or_hash_or_channel = Some("canary".to_string());
+    let req_ver =
+      RequestedVersion::from_upgrade_flags(upgrade_flags.clone()).unwrap();
+    assert_eq!(req_ver, RequestedVersion::Latest(ReleaseChannel::Canary,));
+
+    upgrade_flags.version_or_hash_or_channel = Some("rc".to_string());
+    let req_ver =
+      RequestedVersion::from_upgrade_flags(upgrade_flags.clone()).unwrap();
+    assert_eq!(req_ver, RequestedVersion::Latest(ReleaseChannel::Rc,));
+
+    upgrade_flags.version_or_hash_or_channel =
+      Some("5c69b4861b52ab406e73b9cd85c254f0505cb20f".to_string());
+    let req_ver =
+      RequestedVersion::from_upgrade_flags(upgrade_flags.clone()).unwrap();
+    assert_eq!(
+      req_ver,
+      RequestedVersion::SpecificVersion(
+        ReleaseChannel::Canary,
+        "5c69b4861b52ab406e73b9cd85c254f0505cb20f".to_string()
+      )
+    );
+  }
+
+  #[test]
   fn test_parse_upgrade_check_file() {
-    let file = CheckVersionFile::parse(
+    // NOTE(bartlomieju): pre-1.46 format
+    let maybe_file = CheckVersionFile::parse(
       "2020-01-01T00:00:00+00:00!2020-01-01T00:00:00+00:00!1.2.3!1.2.2"
+        .to_string(),
+    );
+    assert!(maybe_file.is_none());
+    // NOTE(bartlomieju): post-1.46 format
+    let file = CheckVersionFile::parse(
+      "2020-01-01T00:00:00+00:00!2020-01-01T00:00:00+00:00!1.2.3!1.2.2!stable"
         .to_string(),
     )
     .unwrap();
@@ -940,6 +1175,7 @@ mod test {
     );
     assert_eq!(file.latest_version, "1.2.3".to_string());
     assert_eq!(file.current_version, "1.2.2".to_string());
+    assert_eq!(file.current_release_channel, ReleaseChannel::Stable);
 
     let result =
       CheckVersionFile::parse("2020-01-01T00:00:00+00:00!".to_string());
@@ -954,7 +1190,7 @@ mod test {
 
   #[test]
   fn test_serialize_upgrade_check_file() {
-    let file = CheckVersionFile {
+    let mut file = CheckVersionFile {
       last_prompt: chrono::DateTime::parse_from_rfc3339("2020-01-01T00:00:00Z")
         .unwrap()
         .with_timezone(&chrono::Utc),
@@ -965,19 +1201,35 @@ mod test {
       .with_timezone(&chrono::Utc),
       latest_version: "1.2.3".to_string(),
       current_version: "1.2.2".to_string(),
+      current_release_channel: ReleaseChannel::Stable,
     };
     assert_eq!(
       file.serialize(),
-      "2020-01-01T00:00:00+00:00!2020-01-01T00:00:00+00:00!1.2.3!1.2.2"
+      "2020-01-01T00:00:00+00:00!2020-01-01T00:00:00+00:00!1.2.3!1.2.2!stable"
+    );
+    file.current_release_channel = ReleaseChannel::Canary;
+    assert_eq!(
+      file.serialize(),
+      "2020-01-01T00:00:00+00:00!2020-01-01T00:00:00+00:00!1.2.3!1.2.2!canary"
+    );
+    file.current_release_channel = ReleaseChannel::Rc;
+    assert_eq!(
+      file.serialize(),
+      "2020-01-01T00:00:00+00:00!2020-01-01T00:00:00+00:00!1.2.3!1.2.2!rc"
+    );
+    file.current_release_channel = ReleaseChannel::Lts;
+    assert_eq!(
+      file.serialize(),
+      "2020-01-01T00:00:00+00:00!2020-01-01T00:00:00+00:00!1.2.3!1.2.2!lts"
     );
   }
 
   #[derive(Clone)]
   struct TestUpdateCheckerEnvironment {
     file_text: Rc<RefCell<String>>,
-    is_canary: Rc<RefCell<bool>>,
+    release_channel: Rc<RefCell<ReleaseChannel>>,
     current_version: Rc<RefCell<String>>,
-    latest_version: Rc<RefCell<Result<String, String>>>,
+    latest_version: Rc<RefCell<Result<AvailableVersion, String>>>,
     time: Rc<RefCell<chrono::DateTime<chrono::Utc>>>,
   }
 
@@ -986,8 +1238,11 @@ mod test {
       Self {
         file_text: Default::default(),
         current_version: Default::default(),
-        is_canary: Default::default(),
-        latest_version: Rc::new(RefCell::new(Ok("".to_string()))),
+        release_channel: Rc::new(RefCell::new(ReleaseChannel::Stable)),
+        latest_version: Rc::new(RefCell::new(Ok(AvailableVersion {
+          version_or_hash: "".to_string(),
+          release_channel: ReleaseChannel::Stable,
+        }))),
         time: Rc::new(RefCell::new(chrono::Utc::now())),
       }
     }
@@ -1007,16 +1262,23 @@ mod test {
       *self.current_version.borrow_mut() = version.to_string();
     }
 
-    pub fn set_latest_version(&self, version: &str) {
-      *self.latest_version.borrow_mut() = Ok(version.to_string());
+    pub fn set_latest_version(
+      &self,
+      version: &str,
+      release_channel: ReleaseChannel,
+    ) {
+      *self.latest_version.borrow_mut() = Ok(AvailableVersion {
+        version_or_hash: version.to_string(),
+        release_channel,
+      });
     }
 
     pub fn set_latest_version_err(&self, err: &str) {
       *self.latest_version.borrow_mut() = Err(err.to_string());
     }
 
-    pub fn set_is_canary(&self, is_canary: bool) {
-      *self.is_canary.borrow_mut() = is_canary;
+    pub fn set_release_channel(&self, channel: ReleaseChannel) {
+      *self.release_channel.borrow_mut() = channel;
     }
   }
 
@@ -1026,7 +1288,7 @@ mod test {
     async fn latest_version(
       &self,
       _release_channel: ReleaseChannel,
-    ) -> Result<String, AnyError> {
+    ) -> Result<AvailableVersion, AnyError> {
       match self.latest_version.borrow().clone() {
         Ok(result) => Ok(result),
         Err(err) => bail!("{}", err),
@@ -1037,15 +1299,8 @@ mod test {
       Cow::Owned(self.current_version.borrow().clone())
     }
 
-    // TODO(bartlomieju): update to handle `Lts` and `Rc` channels
-    async fn get_current_exe_release_channel(
-      &self,
-    ) -> Result<ReleaseChannel, AnyError> {
-      if *self.is_canary.borrow() {
-        Ok(ReleaseChannel::Canary)
-      } else {
-        Ok(ReleaseChannel::Stable)
-      }
+    fn get_current_exe_release_channel(&self) -> ReleaseChannel {
+      *self.release_channel.borrow()
     }
   }
 
@@ -1067,7 +1322,7 @@ mod test {
   async fn test_update_checker() {
     let env = TestUpdateCheckerEnvironment::new();
     env.set_current_version("1.0.0");
-    env.set_latest_version("1.1.0");
+    env.set_latest_version("1.1.0", ReleaseChannel::Stable);
     let checker = UpdateChecker::new(env.clone(), env.clone());
 
     // no version, so we should check, but not prompt
@@ -1083,25 +1338,37 @@ mod test {
     // should not check for latest version because we just did
     assert!(!checker.should_check_for_new_version());
     // but should prompt
-    assert_eq!(checker.should_prompt(), Some("1.1.0".to_string()));
+    assert_eq!(
+      checker.should_prompt(),
+      Some((ReleaseChannel::Stable, "1.1.0".to_string()))
+    );
 
     // fast forward an hour and bump the latest version
     env.add_hours(1);
-    env.set_latest_version("1.2.0");
+    env.set_latest_version("1.2.0", ReleaseChannel::Stable);
     assert!(!checker.should_check_for_new_version());
-    assert_eq!(checker.should_prompt(), Some("1.1.0".to_string()));
+    assert_eq!(
+      checker.should_prompt(),
+      Some((ReleaseChannel::Stable, "1.1.0".to_string()))
+    );
 
     // fast forward again and it should check for a newer version
     env.add_hours(UPGRADE_CHECK_INTERVAL);
     assert!(checker.should_check_for_new_version());
-    assert_eq!(checker.should_prompt(), Some("1.1.0".to_string()));
+    assert_eq!(
+      checker.should_prompt(),
+      Some((ReleaseChannel::Stable, "1.1.0".to_string()))
+    );
 
     fetch_and_store_latest_version(&env, &env).await;
 
     // reload and store that we prompted
     let checker = UpdateChecker::new(env.clone(), env.clone());
     assert!(!checker.should_check_for_new_version());
-    assert_eq!(checker.should_prompt(), Some("1.2.0".to_string()));
+    assert_eq!(
+      checker.should_prompt(),
+      Some((ReleaseChannel::Stable, "1.2.0".to_string()))
+    );
     checker.store_prompted();
 
     // reload and it should now say not to prompt
@@ -1112,7 +1379,10 @@ mod test {
     // but if we fast forward past the upgrade interval it should prompt again
     env.add_hours(UPGRADE_CHECK_INTERVAL + 1);
     assert!(checker.should_check_for_new_version());
-    assert_eq!(checker.should_prompt(), Some("1.2.0".to_string()));
+    assert_eq!(
+      checker.should_prompt(),
+      Some((ReleaseChannel::Stable, "1.2.0".to_string()))
+    );
 
     // upgrade the version and it should stop prompting
     env.set_current_version("1.2.0");
@@ -1122,12 +1392,27 @@ mod test {
     // now try failing when fetching the latest version
     env.add_hours(UPGRADE_CHECK_INTERVAL + 1);
     env.set_latest_version_err("Failed");
-    env.set_latest_version("1.3.0");
+    env.set_latest_version("1.3.0", ReleaseChannel::Stable);
 
     // this will silently fail
     fetch_and_store_latest_version(&env, &env).await;
     assert!(checker.should_check_for_new_version());
     assert_eq!(checker.should_prompt(), None);
+
+    // now switch to RC release
+    env.set_release_channel(ReleaseChannel::Rc);
+    env.set_current_version("1.46.0-rc.0");
+    env.set_latest_version("1.46.0-rc.1", ReleaseChannel::Rc);
+    fetch_and_store_latest_version(&env, &env).await;
+    env.add_hours(UPGRADE_CHECK_INTERVAL + 1);
+
+    // We should check for new version and prompt
+    let checker = UpdateChecker::new(env.clone(), env.clone());
+    assert!(checker.should_check_for_new_version());
+    assert_eq!(
+      checker.should_prompt(),
+      Some((ReleaseChannel::Rc, "1.46.0-rc.1".to_string()))
+    );
   }
 
   #[tokio::test]
@@ -1140,11 +1425,12 @@ mod test {
       last_checked: env.current_time(),
       latest_version: "1.26.2".to_string(),
       current_version: "1.27.0".to_string(),
+      current_release_channel: ReleaseChannel::Stable,
     }
     .serialize();
     env.write_check_file(&file_content);
     env.set_current_version("1.27.0");
-    env.set_latest_version("1.26.2");
+    env.set_latest_version("1.26.2", ReleaseChannel::Stable);
     let checker = UpdateChecker::new(env.clone(), env);
 
     // since currently running version is newer than latest available (eg. CDN
@@ -1162,6 +1448,7 @@ mod test {
       last_checked: env.current_time(),
       latest_version: "1.26.2".to_string(),
       current_version: "1.25.0".to_string(),
+      current_release_channel: ReleaseChannel::Stable,
     }
     .serialize();
     env.write_check_file(&file_content);
@@ -1231,11 +1518,43 @@ mod test {
     );
     assert_eq!(
       get_latest_version_url(
-        ReleaseChannel::Stable,
+        ReleaseChannel::Rc,
         "x86_64-pc-windows-msvc",
         UpgradeCheckKind::Lsp
       ),
-      "https://dl.deno.land/release-latest.txt?lsp"
+      "https://dl.deno.land/release-rc-latest.txt?lsp"
+    );
+    assert_eq!(
+      get_latest_version_url(
+        ReleaseChannel::Rc,
+        "aarch64-apple-darwin",
+        UpgradeCheckKind::Execution
+      ),
+      "https://dl.deno.land/release-rc-latest.txt"
+    );
+    assert_eq!(
+      get_latest_version_url(
+        ReleaseChannel::Rc,
+        "aarch64-apple-darwin",
+        UpgradeCheckKind::Lsp
+      ),
+      "https://dl.deno.land/release-rc-latest.txt?lsp"
+    );
+    assert_eq!(
+      get_latest_version_url(
+        ReleaseChannel::Rc,
+        "x86_64-pc-windows-msvc",
+        UpgradeCheckKind::Execution
+      ),
+      "https://dl.deno.land/release-rc-latest.txt"
+    );
+    assert_eq!(
+      get_latest_version_url(
+        ReleaseChannel::Rc,
+        "x86_64-pc-windows-msvc",
+        UpgradeCheckKind::Lsp
+      ),
+      "https://dl.deno.land/release-rc-latest.txt?lsp"
     );
   }
 
@@ -1243,24 +1562,43 @@ mod test {
   fn test_normalize_version_server() {
     // should strip v for stable
     assert_eq!(
-      normalize_version_from_server(ReleaseChannel::Stable, "v1.0.0"),
-      "1.0.0"
+      normalize_version_from_server(ReleaseChannel::Stable, "v1.0.0").unwrap(),
+      AvailableVersion {
+        version_or_hash: "1.0.0".to_string(),
+        release_channel: ReleaseChannel::Stable,
+      },
     );
     // should not replace v after start
     assert_eq!(
       normalize_version_from_server(
         ReleaseChannel::Stable,
         "  v1.0.0-test-v\n\n  "
-      ),
-      "1.0.0-test-v"
+      )
+      .unwrap(),
+      AvailableVersion {
+        version_or_hash: "1.0.0-test-v".to_string(),
+        release_channel: ReleaseChannel::Stable,
+      }
     );
     // should not strip v for canary
     assert_eq!(
       normalize_version_from_server(
         ReleaseChannel::Canary,
         "  v1452345asdf   \n\n   "
-      ),
-      "v1452345asdf"
+      )
+      .unwrap(),
+      AvailableVersion {
+        version_or_hash: "v1452345asdf".to_string(),
+        release_channel: ReleaseChannel::Canary,
+      }
+    );
+    assert_eq!(
+      normalize_version_from_server(ReleaseChannel::Rc, "v1.46.0-rc.0\n\n")
+        .unwrap(),
+      AvailableVersion {
+        version_or_hash: "1.46.0-rc.0".to_string(),
+        release_channel: ReleaseChannel::Rc,
+      },
     );
   }
 
@@ -1268,7 +1606,7 @@ mod test {
   async fn test_upgrades_lsp() {
     let env = TestUpdateCheckerEnvironment::new();
     env.set_current_version("1.0.0");
-    env.set_latest_version("2.0.0");
+    env.set_latest_version("2.0.0", ReleaseChannel::Stable);
 
     // greater
     {
@@ -1285,7 +1623,7 @@ mod test {
     }
     // equal
     {
-      env.set_latest_version("1.0.0");
+      env.set_latest_version("1.0.0", ReleaseChannel::Stable);
       let maybe_info = check_for_upgrades_for_lsp_with_provider(&env)
         .await
         .unwrap();
@@ -1293,7 +1631,7 @@ mod test {
     }
     // less
     {
-      env.set_latest_version("0.9.0");
+      env.set_latest_version("0.9.0", ReleaseChannel::Stable);
       let maybe_info = check_for_upgrades_for_lsp_with_provider(&env)
         .await
         .unwrap();
@@ -1302,8 +1640,8 @@ mod test {
     // canary equal
     {
       env.set_current_version("123");
-      env.set_latest_version("123");
-      env.set_is_canary(true);
+      env.set_latest_version("123", ReleaseChannel::Stable);
+      env.set_release_channel(ReleaseChannel::Canary);
       let maybe_info = check_for_upgrades_for_lsp_with_provider(&env)
         .await
         .unwrap();
@@ -1311,7 +1649,7 @@ mod test {
     }
     // canary different
     {
-      env.set_latest_version("1234");
+      env.set_latest_version("1234", ReleaseChannel::Stable);
       let maybe_info = check_for_upgrades_for_lsp_with_provider(&env)
         .await
         .unwrap();
@@ -1320,6 +1658,31 @@ mod test {
         Some(LspVersionUpgradeInfo {
           latest_version: "1234".to_string(),
           is_canary: true,
+        })
+      );
+    }
+    // rc equal
+    {
+      env.set_release_channel(ReleaseChannel::Rc);
+      env.set_current_version("1.2.3-rc.0");
+      env.set_latest_version("1.2.3-rc.0", ReleaseChannel::Rc);
+      let maybe_info = check_for_upgrades_for_lsp_with_provider(&env)
+        .await
+        .unwrap();
+      assert_eq!(maybe_info, None);
+    }
+    // canary different
+    {
+      env.set_latest_version("1.2.3-rc.0", ReleaseChannel::Rc);
+      env.set_latest_version("1.2.3-rc.1", ReleaseChannel::Rc);
+      let maybe_info = check_for_upgrades_for_lsp_with_provider(&env)
+        .await
+        .unwrap();
+      assert_eq!(
+        maybe_info,
+        Some(LspVersionUpgradeInfo {
+          latest_version: "1.2.3-rc.1".to_string(),
+          is_canary: false,
         })
       );
     }

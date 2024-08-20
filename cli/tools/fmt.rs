@@ -36,6 +36,7 @@ use deno_core::unsync::spawn_blocking;
 use log::debug;
 use log::info;
 use log::warn;
+use std::borrow::Cow;
 use std::fs;
 use std::io::stdin;
 use std::io::stdout;
@@ -248,6 +249,10 @@ fn format_markdown(
           | "scss"
           | "sass"
           | "less"
+          | "html"
+          | "svelte"
+          | "vue"
+          | "astro"
           | "yml"
           | "yaml"
       ) {
@@ -270,6 +275,20 @@ fn format_markdown(
           "css" | "scss" | "sass" | "less" => {
             if unstable_options.css {
               format_css(&fake_filename, text, fmt_options)
+            } else {
+              Ok(None)
+            }
+          }
+          "html" => {
+            if unstable_options.html {
+              format_html(&fake_filename, text, fmt_options)
+            } else {
+              Ok(None)
+            }
+          }
+          "svelte" | "vue" | "astro" => {
+            if unstable_options.component {
+              format_html(&fake_filename, text, fmt_options)
             } else {
               Ok(None)
             }
@@ -330,6 +349,107 @@ pub fn format_css(
   .map_err(AnyError::from)
 }
 
+pub fn format_html(
+  file_path: &Path,
+  file_text: &str,
+  fmt_options: &FmtOptionsConfig,
+) -> Result<Option<String>, AnyError> {
+  markup_fmt::format_text(
+    file_text,
+    markup_fmt::detect_language(file_path)
+      .unwrap_or(markup_fmt::Language::Html),
+    &get_resolved_markup_fmt_config(fmt_options),
+    |text, hints| {
+      let mut file_name =
+        file_path.file_name().expect("missing file name").to_owned();
+      file_name.push(".");
+      file_name.push(hints.ext);
+      let path = file_path.with_file_name(file_name);
+      match hints.ext {
+        "css" | "scss" | "sass" | "less" => {
+          let mut malva_config = get_resolved_malva_config(fmt_options);
+          malva_config.layout.print_width = hints.print_width;
+          if hints.attr {
+            malva_config.language.quotes =
+              if let Some(true) = fmt_options.single_quote {
+                malva::config::Quotes::AlwaysDouble
+              } else {
+                malva::config::Quotes::AlwaysSingle
+              };
+            malva_config.language.single_line_top_level_declarations = true;
+          }
+          malva::format_text(
+            text,
+            malva::detect_syntax(path).unwrap_or(malva::Syntax::Css),
+            &malva_config,
+          )
+          .map(Cow::from)
+          .map_err(AnyError::from)
+        }
+        "json" | "jsonc" => {
+          let mut json_config = get_resolved_json_config(fmt_options);
+          json_config.line_width = hints.print_width as u32;
+          dprint_plugin_json::format_text(&path, text, &json_config).map(
+            |formatted| {
+              if let Some(formatted) = formatted {
+                Cow::from(formatted)
+              } else {
+                Cow::from(text)
+              }
+            },
+          )
+        }
+        _ => {
+          let mut typescript_config =
+            get_resolved_typescript_config(fmt_options);
+          typescript_config.line_width = hints.print_width as u32;
+          if hints.attr {
+            typescript_config.quote_style = if let Some(true) =
+              fmt_options.single_quote
+            {
+              dprint_plugin_typescript::configuration::QuoteStyle::AlwaysDouble
+            } else {
+              dprint_plugin_typescript::configuration::QuoteStyle::AlwaysSingle
+            };
+          }
+          dprint_plugin_typescript::format_text(
+            &path,
+            text.to_string(),
+            &typescript_config,
+          )
+          .map(|formatted| {
+            if let Some(formatted) = formatted {
+              Cow::from(formatted)
+            } else {
+              Cow::from(text)
+            }
+          })
+        }
+      }
+    },
+  )
+  .map(Some)
+  .map_err(|error| match error {
+    markup_fmt::FormatError::Syntax(error) => AnyError::from(error),
+    markup_fmt::FormatError::External(errors) => {
+      let last = errors.len() - 1;
+      AnyError::msg(
+        errors
+          .into_iter()
+          .enumerate()
+          .map(|(i, error)| {
+            if i == last {
+              format!("{error}")
+            } else {
+              format!("{error}\n\n")
+            }
+          })
+          .collect::<String>(),
+      )
+    }
+  })
+}
+
 /// Formats a single TS, TSX, JS, JSX, JSONC, JSON, MD, or IPYNB file.
 pub fn format_file(
   file_path: &Path,
@@ -347,6 +467,20 @@ pub fn format_file(
     "css" | "scss" | "sass" | "less" => {
       if unstable_options.css {
         format_css(file_path, file_text, fmt_options)
+      } else {
+        Ok(None)
+      }
+    }
+    "html" => {
+      if unstable_options.html {
+        format_html(file_path, file_text, fmt_options)
+      } else {
+        Ok(None)
+      }
+    }
+    "svelte" | "vue" | "astro" => {
+      if unstable_options.component {
+        format_html(file_path, file_text, fmt_options)
       } else {
         Ok(None)
       }
@@ -810,8 +944,66 @@ fn get_resolved_malva_config(
     less_import_options_prefer_single_line: None,
     less_mixin_args_prefer_single_line: None,
     less_mixin_params_prefer_single_line: None,
-    top_level_declarations_prefer_single_line: None,
+    single_line_top_level_declarations: false,
     selector_override_comment_directive: "deno-fmt-selector-override".into(),
+    ignore_comment_directive: "deno-fmt-ignore".into(),
+  };
+
+  FormatOptions {
+    layout: layout_options,
+    language: language_options,
+  }
+}
+
+fn get_resolved_markup_fmt_config(
+  options: &FmtOptionsConfig,
+) -> markup_fmt::config::FormatOptions {
+  use markup_fmt::config::*;
+
+  let layout_options = LayoutOptions {
+    print_width: options.line_width.unwrap_or(80) as usize,
+    use_tabs: options.use_tabs.unwrap_or_default(),
+    indent_width: options.indent_width.unwrap_or(2) as usize,
+    line_break: LineBreak::Lf,
+  };
+
+  let language_options = LanguageOptions {
+    quotes: Quotes::Double,
+    format_comments: false,
+    script_indent: true,
+    html_script_indent: None,
+    vue_script_indent: Some(false),
+    svelte_script_indent: None,
+    astro_script_indent: None,
+    style_indent: true,
+    html_style_indent: None,
+    vue_style_indent: Some(false),
+    svelte_style_indent: None,
+    astro_style_indent: None,
+    closing_bracket_same_line: false,
+    closing_tag_line_break_for_empty: ClosingTagLineBreakForEmpty::Fit,
+    max_attrs_per_line: None,
+    prefer_attrs_single_line: false,
+    html_normal_self_closing: None,
+    html_void_self_closing: Some(true),
+    component_self_closing: None,
+    svg_self_closing: None,
+    mathml_self_closing: None,
+    whitespace_sensitivity: WhitespaceSensitivity::Css,
+    component_whitespace_sensitivity: None,
+    doctype_keyword_case: DoctypeKeywordCase::Upper,
+    v_bind_style: None,
+    v_on_style: None,
+    v_for_delimiter_style: None,
+    v_slot_style: None,
+    component_v_slot_style: None,
+    default_v_slot_style: None,
+    named_v_slot_style: None,
+    v_bind_same_name_short_hand: None,
+    strict_svelte_attr: false,
+    svelte_attr_shorthand: Some(true),
+    svelte_directive_shorthand: Some(true),
+    astro_attr_shorthand: Some(true),
     ignore_comment_directive: "deno-fmt-ignore".into(),
   };
 
@@ -952,6 +1144,10 @@ fn is_supported_ext_fmt(path: &Path) -> bool {
         | "scss"
         | "sass"
         | "less"
+        | "html"
+        | "svelte"
+        | "vue"
+        | "astro"
         | "md"
         | "mkd"
         | "mkdn"
@@ -1002,6 +1198,14 @@ mod test {
     assert!(is_supported_ext_fmt(Path::new("foo.Sass")));
     assert!(is_supported_ext_fmt(Path::new("foo.less")));
     assert!(is_supported_ext_fmt(Path::new("foo.LeSS")));
+    assert!(is_supported_ext_fmt(Path::new("foo.html")));
+    assert!(is_supported_ext_fmt(Path::new("foo.HTML")));
+    assert!(is_supported_ext_fmt(Path::new("foo.svelte")));
+    assert!(is_supported_ext_fmt(Path::new("foo.Svelte")));
+    assert!(is_supported_ext_fmt(Path::new("foo.vue")));
+    assert!(is_supported_ext_fmt(Path::new("foo.VUE")));
+    assert!(is_supported_ext_fmt(Path::new("foo.astro")));
+    assert!(is_supported_ext_fmt(Path::new("foo.AsTrO")));
     assert!(is_supported_ext_fmt(Path::new("foo.yml")));
     assert!(is_supported_ext_fmt(Path::new("foo.Yml")));
     assert!(is_supported_ext_fmt(Path::new("foo.yaml")));

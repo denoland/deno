@@ -3,6 +3,7 @@
 use flaky_test::flaky_test;
 use test_util as util;
 use test_util::assert_contains;
+use test_util::env_vars_for_npm_tests;
 use test_util::TempDir;
 use tokio::io::AsyncBufReadExt;
 use util::DenoChild;
@@ -322,7 +323,6 @@ async fn lint_all_files_on_each_change_test() {
     .arg("lint")
     .arg(t.path())
     .arg("--watch")
-    .arg("--unstable")
     .piped_output()
     .spawn()
     .unwrap();
@@ -469,7 +469,6 @@ async fn fmt_check_all_files_on_each_change_test() {
     .arg(t.path())
     .arg("--watch")
     .arg("--check")
-    .arg("--unstable")
     .piped_output()
     .spawn()
     .unwrap();
@@ -704,6 +703,42 @@ async fn run_watch_no_dynamic() {
   wait_contains("Restarting", &mut stderr_lines).await;
   wait_contains("modified!", &mut stdout_lines).await;
   wait_contains("Watching paths", &mut stderr_lines).await;
+  check_alive_then_kill(child);
+}
+
+#[flaky_test(tokio)]
+async fn run_watch_npm_specifier() {
+  let _g = util::http_server();
+  let t = TempDir::new();
+
+  let file_to_watch = t.path().join("file_to_watch.txt");
+  file_to_watch.write("Hello world");
+
+  let mut child = util::deno_cmd()
+    .current_dir(t.path())
+    .envs(env_vars_for_npm_tests())
+    .arg("run")
+    .arg("--watch=file_to_watch.txt")
+    .arg("-L")
+    .arg("debug")
+    .arg("npm:@denotest/bin/cli-cjs")
+    .arg("Hello world")
+    .env("NO_COLOR", "1")
+    .piped_output()
+    .spawn()
+    .unwrap();
+  let (mut stdout_lines, mut stderr_lines) = child_lines(&mut child);
+
+  wait_contains("Hello world", &mut stdout_lines).await;
+  wait_for_watcher("file_to_watch.txt", &mut stderr_lines).await;
+
+  // Change content of the file
+  file_to_watch.write("Hello world2");
+
+  wait_contains("Restarting", &mut stderr_lines).await;
+  wait_contains("Hello world", &mut stdout_lines).await;
+  wait_for_watcher("file_to_watch.txt", &mut stderr_lines).await;
+
   check_alive_then_kill(child);
 }
 
@@ -1675,7 +1710,7 @@ console.log("Listening...")
   let mut child = util::deno_cmd()
     .current_dir(t.path())
     .arg("run")
-    .arg("--unstable-hmr")
+    .arg("--watch-hmr")
     .arg("--allow-net")
     .arg("-L")
     .arg("debug")
@@ -1748,7 +1783,7 @@ export function foo() {
   let mut child = util::deno_cmd()
     .current_dir(t.path())
     .arg("run")
-    .arg("--unstable-hmr")
+    .arg("--watch-hmr")
     .arg("-L")
     .arg("debug")
     .arg(&file_to_watch)
@@ -1806,7 +1841,7 @@ export function foo() {
   let mut child = util::deno_cmd()
     .current_dir(t.path())
     .arg("run")
-    .arg("--unstable-hmr")
+    .arg("--watch-hmr")
     .arg("-L")
     .arg("debug")
     .arg(&file_to_watch)
@@ -1871,7 +1906,7 @@ export function foo() {
   let mut child = util::deno_cmd()
     .current_dir(t.path())
     .arg("run")
-    .arg("--unstable-hmr")
+    .arg("--watch-hmr")
     .arg("-L")
     .arg("debug")
     .arg(&file_to_watch)
