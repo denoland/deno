@@ -1,4 +1,7 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
+
+// deno-lint-ignore-file no-console
+
 import {
   assert,
   assertEquals,
@@ -2030,7 +2033,6 @@ Deno.test(
         try {
           controller.abort();
         } catch (e) {
-          // deno-lint-ignore no-console
           console.log(e);
           fail("abort should not throw");
         }
