@@ -8956,7 +8956,8 @@ fn lsp_completions_node_builtin() {
     .diagnostics
     .into_iter()
     .filter(|d| {
-      d.code == Some(lsp::NumberOrString::String("not-installed-npm".to_string()))
+      d.code
+        == Some(lsp::NumberOrString::String("not-installed-npm".to_string()))
     })
     .collect::<Vec<_>>();
 
