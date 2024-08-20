@@ -51,6 +51,7 @@ pub fn init(maybe_level: Option<log::Level>) {
   // https://github.com/swc-project/swc/blob/74d6478be1eb8cdf1df096c360c159db64b64d8a/crates/swc_ecma_codegen/src/macros.rs#L112
   // We suppress them here to avoid flooding our CI logs in integration tests.
   .filter_module("swc_ecma_codegen", log::LevelFilter::Off)
+  .filter_module("swc_ecma_transforms_optimization", log::LevelFilter::Off)
   // Suppress span lifecycle logs since they are too verbose
   .filter_module("tracing::span", log::LevelFilter::Off)
   .format(|buf, record| {
