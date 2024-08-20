@@ -12,6 +12,7 @@ use deno_core::serde::Deserialize;
 use deno_core::serde::Deserializer;
 use deno_core::serde::Serialize;
 use deno_core::serde_json;
+use deno_core::unsync::sync::AtomicFlag;
 use deno_core::url;
 use deno_core::url::Url;
 use deno_core::ModuleSpecifier;
@@ -132,14 +133,20 @@ impl PermissionState {
   }
 
   fn error(name: &str, info: impl FnOnce() -> Option<String>) -> AnyError {
-    custom_error(
-      "PermissionDenied",
+    let msg = if is_standalone() {
+      format!(
+        "Requires {}, specify the required permissions during compilation using `deno compile --allow-{}`",
+        Self::fmt_access(name, info),
+        name
+      )
+    } else {
       format!(
         "Requires {}, run again with the --allow-{} flag",
         Self::fmt_access(name, info),
         name
-      ),
-    )
+      )
+    };
+    custom_error("PermissionDenied", msg)
   }
 
   /// Check the permission state. bool is whether a prompt was issued.
@@ -2311,6 +2318,16 @@ pub fn create_child_permissions(
     .create_child_permissions(child_permissions_arg.hrtime)?;
 
   Ok(worker_perms)
+}
+
+static IS_STANDALONE: AtomicFlag = AtomicFlag::lowered();
+
+pub fn mark_standalone() {
+  IS_STANDALONE.raise();
+}
+
+pub fn is_standalone() -> bool {
+  IS_STANDALONE.is_raised()
 }
 
 #[cfg(test)]
