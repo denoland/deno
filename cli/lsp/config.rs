@@ -1491,7 +1491,7 @@ impl ConfigData {
       }
     };
     let resolver = deno_core::unsync::spawn({
-      let workspace = member_dir.clone();
+      let workspace = member_dir.workspace.clone();
       let file_fetcher = file_fetcher.cloned();
       async move {
         workspace
