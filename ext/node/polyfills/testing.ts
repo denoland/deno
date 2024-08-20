@@ -28,6 +28,7 @@ class NodeTestContext {
   }
 
   diagnostic(message) {
+    // deno-lint-ignore no-console
     console.log("DIAGNOSTIC:", message);
   }
 

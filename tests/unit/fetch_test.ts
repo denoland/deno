@@ -2030,6 +2030,7 @@ Deno.test(
         try {
           controller.abort();
         } catch (e) {
+          // deno-lint-ignore no-console
           console.log(e);
           fail("abort should not throw");
         }

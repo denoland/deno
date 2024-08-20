@@ -1,5 +1,7 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
+// deno-lint-ignore-file no-console
+
 import EventEmitter from "node:events";
 import http, { type RequestOptions, type ServerResponse } from "node:http";
 import url from "node:url";

@@ -8,6 +8,8 @@
 // std/fmt/colors auto determines whether to put colors in or not. We need
 // better infrastructure here so we can properly test the colors.
 
+// deno-lint-ignore-file no-console
+
 import {
   assert,
   assertEquals,
