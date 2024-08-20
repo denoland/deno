@@ -1387,7 +1387,6 @@ export function setupChannel(target: any, ipc: number) {
     if (!target.connected) {
       const err = new ERR_IPC_CHANNEL_CLOSED();
       if (typeof callback === "function") {
-        console.error("ChildProcess.send with callback");
         process.nextTick(callback, err);
       } else {
         nextTick(() => target.emit("error", err));
