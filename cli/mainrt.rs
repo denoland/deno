@@ -33,7 +33,6 @@ pub use deno_runtime::UNSTABLE_GRANULAR_FLAGS;
 use deno_terminal::colors;
 use indexmap::IndexMap;
 
-use deno_runtime::deno_permissions::IsStandaloneBinary;
 use std::borrow::Cow;
 use std::collections::HashMap;
 use std::env;
@@ -84,7 +83,7 @@ fn load_env_vars(env_vars: &IndexMap<String, String>) {
 }
 
 fn main() {
-  IsStandaloneBinary::get_instance(true).is_standalone_binary();
+  deno_runtime::deno_permissions::mark_standalone();
   let args: Vec<_> = env::args_os().collect();
   let standalone = standalone::extract_standalone(Cow::Owned(args));
   let future = async move {

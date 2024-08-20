@@ -48,7 +48,6 @@ use deno_core::error::JsError;
 use deno_core::futures::FutureExt;
 use deno_core::unsync::JoinHandle;
 use deno_npm::resolution::SnapshotFromLockfileError;
-use deno_runtime::deno_permissions::IsStandaloneBinary;
 use deno_runtime::fmt_errors::format_js_error;
 use deno_runtime::tokio_util::create_and_run_current_thread_with_maybe_metrics;
 use deno_terminal::colors;
@@ -371,7 +370,6 @@ pub(crate) fn unstable_warn_cb(feature: &str, api_name: &str) {
 }
 
 pub fn main() {
-  IsStandaloneBinary::get_instance(false).is_standalone_binary();
   setup_panic_hook();
 
   util::unix::raise_fd_limit();

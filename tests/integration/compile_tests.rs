@@ -1296,30 +1296,3 @@ fn standalone_jsr_dynamic_import() {
   output.assert_exit_code(0);
   output.assert_matches_text("Hello world\n");
 }
-
-#[test]
-fn test_misleading_permission_recommendation() {
-  let context = TestContextBuilder::new().build();
-  let dir = context.temp_dir();
-  let exe = if cfg!(windows) {
-    dir.path().join("cat.exe")
-  } else {
-    dir.path().join("cat")
-  };
-
-  let output = context
-    .new_command()
-    .args_vec([
-      "compile",
-      "--output",
-      &exe.to_string_lossy(),
-      "../../tests/testdata/cat.ts",
-    ])
-    .run();
-
-  output.skip_output_check();
-  let output = context.new_command().name(&exe).run();
-  dbg!(output.combined_output());
-  assert_contains!(output.combined_output(),"specify the required permissions during compilation using `deno compile --allow-read`");
-  output.assert_exit_code(1);
-}

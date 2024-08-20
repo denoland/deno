@@ -1,6 +1,5 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
-use crate::IsStandaloneBinary;
 use deno_core::error::AnyError;
 use deno_core::parking_lot::Mutex;
 use deno_terminal::colors;
@@ -11,6 +10,8 @@ use std::io::IsTerminal;
 use std::io::StderrLock;
 use std::io::StdinLock;
 use std::io::Write as IoWrite;
+
+use crate::is_standalone;
 
 /// Helper function to make control characters visible so users can see the underlying filename.
 fn escape_control_characters(s: &str) -> std::borrow::Cow<str> {
@@ -275,10 +276,8 @@ impl PermissionPrompter for TtyPrompter {
     message: &str,
     name: &str,
     api_name: Option<&str>,
-    mut is_unary: bool,
+    is_unary: bool,
   ) -> PromptResponse {
-    is_unary = is_unary
-      && !IsStandaloneBinary::get_instance(false).is_standalone_binary();
     if !std::io::stdin().is_terminal() || !std::io::stderr().is_terminal() {
       return PromptResponse::Deny;
     };
@@ -342,7 +341,7 @@ impl PermissionPrompter for TtyPrompter {
         ))
       );
       writeln!(&mut output, "┠─ {}", colors::italic(&msg)).unwrap();
-      let msg = if !is_unary {
+      let msg = if is_standalone() {
         format!("Specify the required permissions during compile time using `deno compile --allow-{name}`.")
       } else {
         format!("Run again with --allow-{name} to bypass this prompt.")
