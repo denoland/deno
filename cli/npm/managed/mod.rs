@@ -324,7 +324,7 @@ impl ManagedCliNpmResolver {
     Ok(path)
   }
 
-  /// Resolves the package nv from the provided specifier.
+  /// Resolves the package id from the provided specifier.
   pub fn resolve_pkg_id_from_specifier(
     &self,
     specifier: &ModuleSpecifier,
