@@ -33,7 +33,6 @@ use crate::args::flags_from_vec;
 use crate::args::DenoSubcommand;
 use crate::args::Flags;
 use crate::args::DENO_FUTURE;
-use crate::graph_container::collect_check_files;
 use crate::graph_container::ModuleGraphContainer;
 use crate::util::display;
 use crate::util::v8::get_v8_flags_from_env;
@@ -43,14 +42,11 @@ use args::TaskFlags;
 use deno_runtime::WorkerExecutionMode;
 pub use deno_runtime::UNSTABLE_GRANULAR_FLAGS;
 
-use deno_config::glob::FilePatterns;
-use deno_config::glob::PathOrPatternSet;
 use deno_core::anyhow::Context;
 use deno_core::error::AnyError;
 use deno_core::error::JsError;
 use deno_core::futures::FutureExt;
 use deno_core::unsync::JoinHandle;
-use deno_core::url::Url;
 use deno_npm::resolution::SnapshotFromLockfileError;
 use deno_runtime::fmt_errors::format_js_error;
 use deno_runtime::tokio_util::create_and_run_current_thread_with_maybe_metrics;
@@ -135,30 +131,10 @@ async fn run_subcommand(flags: Arc<Flags>) -> Result<i32, AnyError> {
     }),
     DenoSubcommand::Check(check_flags) => spawn_subcommand(async move {
       let factory = CliFactory::from_flags(flags);
-      let main_graph_container = factory.main_module_graph_container().await?;
-
-      let cli_options = factory.cli_options().expect("Failed to get CLI options");
-
-      let base_path = cli_options.initial_cwd().to_path_buf();
-      let include_patterns = PathOrPatternSet::from_include_relative_path_or_patterns(&base_path, &check_flags.files)?;
-
-      let mut file_patterns  = FilePatterns::new_with_base(base_path);
-      file_patterns.include=Some(include_patterns);
-      let collected_files  = collect_check_files(cli_options, file_patterns )?;
-
-      let mut file_paths = collected_files
-          .into_iter()
-          .map(|path| path.to_string_lossy().into_owned())
-          .collect::<Vec<String>>();
-
-      for pattern in check_flags.files.iter() {
-        if let Ok(url) = Url::parse(pattern){
-          file_paths.push(url.to_string());
-        }
-      }
-
+      let main_graph_container =
+        factory.main_module_graph_container().await?;
       main_graph_container
-        .load_and_type_check_files(&file_paths)
+        .load_and_type_check_files(&check_flags.files)
         .await
     }),
     DenoSubcommand::Clean => spawn_subcommand(async move {

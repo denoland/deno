@@ -1,20 +1,19 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
-use std::path::PathBuf;
 use std::sync::Arc;
 
 use deno_ast::ModuleSpecifier;
-use deno_config::glob::FileCollector;
 use deno_config::glob::FilePatterns;
+use deno_config::glob::PathOrPatternSet;
 use deno_core::error::AnyError;
 use deno_core::parking_lot::RwLock;
-use deno_core::resolve_url_or_path;
 use deno_graph::ModuleGraph;
 use deno_runtime::colors;
 use deno_runtime::deno_permissions::PermissionsContainer;
 
 use crate::args::CliOptions;
 use crate::module_loader::ModuleLoadPreparer;
+use crate::util::fs::collect_specifiers;
 use crate::util::path::is_script_ext;
 
 pub trait ModuleGraphContainer: Clone + 'static {
@@ -103,24 +102,20 @@ impl MainModuleGraphContainer {
     files: &[String],
   ) -> Result<Vec<ModuleSpecifier>, AnyError> {
     let excludes = self.cli_options.workspace().resolve_config_excludes()?;
-    Ok(
-      files
-        .iter()
-        .filter_map(|file| {
-          let file_url =
-            resolve_url_or_path(file, self.cli_options.initial_cwd()).ok()?;
-          if file_url.scheme() != "file" {
-            return Some(file_url);
-          }
-          // ignore local files that match any of files listed in `exclude` option
-          let file_path = file_url.to_file_path().ok()?;
-          if excludes.matches_path(&file_path) {
-            None
-          } else {
-            Some(file_url)
-          }
-        })
-        .collect::<Vec<_>>(),
+    let include_patterns =
+      PathOrPatternSet::from_include_relative_path_or_patterns(
+        self.cli_options.initial_cwd(),
+        files,
+      )?;
+    let file_patterns = FilePatterns {
+      base: self.cli_options.initial_cwd().to_path_buf(),
+      include: Some(include_patterns),
+      exclude: excludes,
+    };
+    collect_specifiers(
+      file_patterns,
+      self.cli_options.vendor_dir_path().map(ToOwned::to_owned),
+      |e| is_script_ext(e.path),
     )
   }
 }
@@ -158,15 +153,4 @@ impl<'a> ModuleGraphUpdatePermit for MainModuleGraphUpdatePermit<'a> {
     *self.inner.write() = Arc::new(self.graph);
     drop(self.permit); // explicit drop for clarity
   }
-}
-
-pub fn collect_check_files(
-  cli_options: &CliOptions,
-  files: FilePatterns,
-) -> Result<Vec<PathBuf>, AnyError> {
-  FileCollector::new(|e| is_script_ext(e.path))
-    .ignore_git_folder()
-    .ignore_node_modules()
-    .set_vendor_folder(cli_options.vendor_dir_path().map(ToOwned::to_owned))
-    .collect_file_patterns(&deno_config::fs::RealDenoConfigFs, files)
 }
