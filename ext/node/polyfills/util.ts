@@ -234,6 +234,7 @@ function timestamp(): string {
  */
 // deno-lint-ignore no-explicit-any
 export function log(...args: any[]) {
+  // deno-lint-ignore no-console
   console.log("%s - %s", timestamp(), ReflectApply(format, undefined, args));
 }
 

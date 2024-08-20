@@ -525,6 +525,7 @@ function mapToCallback(context, callback, onError) {
           );
         }
       } catch (error) {
+        // deno-lint-ignore no-console
         console.error("Exception in onError while handling exception", error);
         response = internalServerError();
       }
@@ -533,6 +534,7 @@ function mapToCallback(context, callback, onError) {
     if (innerRequest?.[_upgraded]) {
       // We're done here as the connection has been upgraded during the callback and no longer requires servicing.
       if (response !== UPGRADE_RESPONSE_SENTINEL) {
+        // deno-lint-ignore no-console
         console.error("Upgrade response was not returned from callback");
         context.close();
       }
@@ -612,6 +614,7 @@ function serve(arg1, arg2) {
   const wantsUnix = ObjectHasOwn(options, "path");
   const signal = options.signal;
   const onError = options.onError ?? function (error) {
+    // deno-lint-ignore no-console
     console.error(error);
     return internalServerError();
   };
@@ -627,6 +630,7 @@ function serve(arg1, arg2) {
       if (options.onListen) {
         options.onListen(listener.addr);
       } else {
+        // deno-lint-ignore no-console
         console.log(`Listening on ${path}`);
       }
     });
@@ -684,6 +688,7 @@ function serve(arg1, arg2) {
       const host = StringPrototypeIncludes(addr.hostname, ":")
         ? `[${addr.hostname}]`
         : addr.hostname;
+      // deno-lint-ignore no-console
       console.log(`Listening on ${scheme}${host}:${addr.port}/`);
     }
   };
@@ -729,6 +734,7 @@ function serveHttpOn(context, addr, callback) {
 
   const promiseErrorHandler = (error) => {
     // Abnormal exit
+    // deno-lint-ignore no-console
     console.error(
       "Terminating Deno.serve loop due to unexpected error",
       error,
@@ -856,6 +862,7 @@ function registerDeclarativeServer(exports) {
             const nThreads = serveWorkerCount > 1
               ? ` with ${serveWorkerCount} threads`
               : "";
+            // deno-lint-ignore no-console
             console.debug(
               `%cdeno serve%c: Listening on %chttp://${hostname}:${port}/%c${nThreads}`,
               "color: green",

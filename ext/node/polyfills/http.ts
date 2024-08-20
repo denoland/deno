@@ -1836,6 +1836,7 @@ export class ServerImpl extends EventEmitter {
   }
 
   setTimeout() {
+    // deno-lint-ignore no-console
     console.error("Not implemented: Server.setTimeout()");
   }
 

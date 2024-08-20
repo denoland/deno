@@ -1,6 +1,8 @@
 #!/usr/bin/env -S deno run -A --lock=tools/deno.lock.json
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
+// deno-lint-ignore-file no-console
+
 import { $ } from "jsr:@david/dax@0.41.0";
 import { gray } from "jsr:@std/fmt@1/colors";
 import { patchver } from "jsr:@deno/patchver@0.1.0";

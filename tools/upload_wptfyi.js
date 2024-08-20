@@ -4,6 +4,8 @@
 // passed, will automatically add a status check to the commit with a link to
 // the wpt.fyi page.
 
+// deno-lint-ignore-file no-console
+
 import { gzip } from "https://deno.land/x/compress@v0.4.1/gzip/mod.ts";
 
 const user = Deno.env.get("WPT_FYI_USER");
