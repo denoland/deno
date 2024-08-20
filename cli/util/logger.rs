@@ -52,6 +52,7 @@ pub fn init(maybe_level: Option<log::Level>) {
   // We suppress them here to avoid flooding our CI logs in integration tests.
   .filter_module("swc_ecma_codegen", log::LevelFilter::Off)
   .filter_module("swc_ecma_transforms_optimization", log::LevelFilter::Off)
+  .filter_module("swc_ecma_parser", log::LevelFilter::Error)
   // Suppress span lifecycle logs since they are too verbose
   .filter_module("tracing::span", log::LevelFilter::Off)
   .format(|buf, record| {
