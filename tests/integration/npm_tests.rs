@@ -1483,7 +1483,7 @@ This could be caused by:
   * the lock file may be corrupt
   * the source itself may be corrupt
 
-Use the --lock-write flag to regenerate the lockfile at "[WILDCARD]deno.lock".
+Investigate the lockfile; delete it regenerate the lockfile at "[WILDCARD]deno.lock".
 "#)
     .assert_exit_code(10);
 }
