@@ -9,6 +9,7 @@ use clap::ArgMatches;
 use clap::ColorChoice;
 use clap::Command;
 use clap::ValueHint;
+use color_print::cstr;
 use deno_config::glob::FilePatterns;
 use deno_config::glob::PathOrPatternSet;
 use deno_core::anyhow::bail;
@@ -1104,7 +1105,7 @@ impl Flags {
   }
 }
 
-static ENV_VARIABLES_HELP: &str = color_print::cstr!(
+static ENV_VARIABLES_HELP: &str = cstr!(
   r#"<y>Environment variables:</>
   <g>DENO_AUTH_TOKENS</>      A semi-colon separated list of bearer tokens and hostnames
                         to use when fetching remote modules from private repositories
@@ -1129,7 +1130,7 @@ static ENV_VARIABLES_HELP: &str = color_print::cstr!(
   <g>NPM_CONFIG_REGISTRY</>   URL to use for the npm registry."#
 );
 
-static DENO_HELP: &str = color_print::cstr!(
+static DENO_HELP: &str = cstr!(
   "Deno: <g>A modern JavaScript and TypeScript runtime</>
 
 <p(245)>Usage:</> <g>{usage}</>
@@ -1246,6 +1247,19 @@ pub fn flags_from_vec(args: Vec<OsString>) -> clap::error::Result<Flags> {
 
     help_parse(&mut flags, subcommand);
     return Ok(flags);
+  } else if let Some(help_subcommand_matches) =
+    matches.subcommand_matches("help")
+  {
+    app.build();
+    let subcommand =
+      if let Some(sub) = help_subcommand_matches.subcommand_name() {
+        app.find_subcommand(sub).unwrap().clone()
+      } else {
+        app
+      };
+
+    help_parse(&mut flags, subcommand);
+    return Ok(flags);
   }
 
   if let Some((subcommand, mut m)) = matches.remove_subcommand() {
@@ -1280,15 +1294,6 @@ pub fn flags_from_vec(args: Vec<OsString>) -> clap::error::Result<Flags> {
       "upgrade" => upgrade_parse(&mut flags, &mut m),
       "vendor" => vendor_parse(&mut flags, &mut m),
       "publish" => publish_parse(&mut flags, &mut m),
-      "help" => {
-        let subcommand = if let Some((sub, _)) = matches.remove_subcommand() {
-          app.find_subcommand(sub).unwrap().clone()
-        } else {
-          app
-        };
-
-        help_parse(&mut flags, subcommand)
-      }
       _ => unreachable!(),
     }
   } else {
@@ -1370,12 +1375,7 @@ fn help_parse(flags: &mut Flags, mut subcommand: Command) {
   for (mut i, (arg, heading)) in args.into_iter().enumerate() {
     if let Some(heading) = heading {
       let heading_i = HEADING_ORDER.iter().position(|h| h == &heading).unwrap();
-      i += (if heading == UNSTABLE_HEADING {
-        // ensures the unstable section is always last
-        50
-      } else {
-        heading_i
-      }) * 100;
+      i += heading_i * 100;
     }
 
     subcommand = subcommand.mut_arg(arg, |arg| arg.display_order(i));
@@ -1543,11 +1543,10 @@ fn command(
 
 fn help_subcommand(app: &Command) -> Command {
   command("help", None, UnstableArgsConfig::None)
-    .hide(true)
+    .disable_version_flag(true)
     .disable_help_subcommand(true)
     .subcommands(app.get_subcommands().map(|command| {
       Command::new(command.get_name().to_owned())
-        .hide(true)
         .disable_help_flag(true)
         .disable_version_flag(true)
     }))
@@ -1579,13 +1578,15 @@ You can add multiple dependencies at once:
 fn remove_subcommand() -> Command {
   command(
     "remove",
-    "Remove dependencies from the configuration file.
+    cstr!(
+      "Remove dependencies from the configuration file.
 
   deno remove @std/path
 
 You can remove multiple dependencies at once:
   <p(245)>deno remove @std/path @std/assert</>
-",
+"
+    ),
     UnstableArgsConfig::None,
   )
   .defer(|cmd| {
@@ -1634,7 +1635,9 @@ glob {*_,*.,}bench.{js,mjs,ts,mts,jsx,tsx}:
         Arg::new("filter")
           .long("filter")
           .allow_hyphen_values(true)
-          .help("Run benchmarks with this string or pattern in the bench name"),
+          .help(
+          "Run benchmarks with this string or regexp pattern in the bench name",
+        ),
       )
       .arg(
         Arg::new("files")
@@ -1740,7 +1743,7 @@ Unless --reload is specified, this command will not re-download already cached d
           // past alias for --all
           Arg::new("remote")
             .long("remote")
-            .help("Type-check all modules, including remote")
+            .help("Type-check all modules, including remote ones")
             .action(ArgAction::SetTrue)
             .conflicts_with("no-remote")
             .hide(true)
@@ -1787,11 +1790,11 @@ supported in canary.
         Arg::new("include")
           .long("include")
           .help(
-            "Includes an additional module in the compiled executable's module
-  graph. Use this flag if a dynamically imported module or a web worker main
-  module fails to load in the executable. This flag can be passed multiple
-  times, to include multiple additional modules.",
-          )
+            cstr!("Includes an additional module in the compiled executable's module graph.
+  <p(245)>Use this flag if a dynamically imported module or a web worker main module
+  fails to load in the executable. This flag can be passed multiple times,
+  to include multiple additional modules.</>",
+          ))
           .action(ArgAction::Append)
           .value_hint(ValueHint::FilePath)
           .help_heading(COMPILE_HEADING),
@@ -1801,7 +1804,7 @@ supported in canary.
           .long("output")
           .short('o')
           .value_parser(value_parser!(String))
-          .help("Output file (defaults to $PWD/<inferred-name>)")
+          .help(cstr!("Output file <p(245)>(defaults to $PWD/<<inferred-name>>)</>"))
           .value_hint(ValueHint::FilePath)
           .help_heading(COMPILE_HEADING),
       )
@@ -1933,10 +1936,9 @@ Generate html reports from lcov:
           .long("output")
           .value_parser(value_parser!(String))
           .help(
-            "Exports the coverage report in lcov format to the given file.
-  Filename should be passed along with '=' For example '--output=foo.lcov'
-  If no --output arg is specified then the report is written to stdout.",
-          )
+            cstr!("Exports the coverage report in lcov format to the given file.
+  <p(245)>If no --output arg is specified then the report is written to stdout.</>",
+          ))
           .require_equals(true)
           .value_hint(ValueHint::FilePath),
       )
@@ -1949,7 +1951,7 @@ Generate html reports from lcov:
       .arg(
         Arg::new("detailed")
           .long("detailed")
-          .help("Output coverage report in detailed format in the terminal.")
+          .help("Output coverage report in detailed format in the terminal")
           .action(ArgAction::SetTrue),
       )
       .arg(
@@ -2016,7 +2018,7 @@ Show documentation for runtime built-ins:
         .arg(
           Arg::new("name")
             .long("name")
-            .help("The name that will be displayed in the docs")
+            .help("The name that will be used in the docs (ie for breadcrumbs)")
             .action(ArgAction::Set)
             .require_equals(true).help_heading(DOC_HEADING)
         )
@@ -2039,14 +2041,14 @@ Show documentation for runtime built-ins:
         .arg(
           Arg::new("strip-trailing-html")
             .long("strip-trailing-html")
-            .help("Remove trailing .html from various links. Will still generate files with a .html extension.")
+            .help("Remove trailing .html from various links. Will still generate files with a .html extension")
             .requires("html")
             .action(ArgAction::SetTrue).help_heading(DOC_HEADING)
         )
         .arg(
           Arg::new("default-symbol-map")
             .long("default-symbol-map")
-            .help("Uses the provided mapping of default name to wanted name for usage blocks.")
+            .help("Uses the provided mapping of default name to wanted name for usage blocks")
             .requires("html")
             .action(ArgAction::Set)
             .require_equals(true).help_heading(DOC_HEADING)
@@ -2132,7 +2134,7 @@ This command has implicit access to all permissions (--allow-all).",
           Arg::new("code_arg")
             .num_args(1..)
             .action(ArgAction::Append)
-            .help("Code arg")
+            .help("Code to evaluate")
             .value_name("CODE_ARG")
             .required_unless_present("help"),
         )
@@ -2164,7 +2166,7 @@ Ignore formatting a file by adding an ignore comment at the top of the file:
       .arg(config_arg())
       .arg(no_config_arg())
       .arg(
-        Arg::new("check")
+         Arg::new("check")
           .long("check")
           .help("Check if the source files are formatted")
           .num_args(0)
@@ -2211,7 +2213,7 @@ Ignore formatting a file by adding an ignore comment at the top of the file:
           .default_missing_value("true")
           .require_equals(true)
           .help(
-            "Use tabs instead of spaces for indentation. Defaults to false.",
+          cstr!(  "Use tabs instead of spaces for indentation <p(245)>[default: false]</>"),
           )
           .help_heading(FMT_HEADING),
       )
@@ -2219,7 +2221,7 @@ Ignore formatting a file by adding an ignore comment at the top of the file:
         Arg::new("line-width")
           .long("line-width")
           .alias("options-line-width")
-          .help("Define maximum line width. Defaults to 80.")
+          .help(cstr!("Define maximum line width <p(245)>[default: 80]</>"))
           .value_parser(value_parser!(NonZeroU32))
           .help_heading(FMT_HEADING),
       )
@@ -2227,7 +2229,7 @@ Ignore formatting a file by adding an ignore comment at the top of the file:
         Arg::new("indent-width")
           .long("indent-width")
           .alias("options-indent-width")
-          .help("Define indentation width. Defaults to 2.")
+          .help(cstr!("Define indentation width <p(245)>[default: 2]</>"))
           .value_parser(value_parser!(NonZeroU8))
           .help_heading(FMT_HEADING),
       )
@@ -2239,7 +2241,7 @@ Ignore formatting a file by adding an ignore comment at the top of the file:
           .value_parser(value_parser!(bool))
           .default_missing_value("true")
           .require_equals(true)
-          .help("Use single quotes. Defaults to false.")
+          .help(cstr!("Use single quotes <p(245)>[default: false]</>"))
           .help_heading(FMT_HEADING),
       )
       .arg(
@@ -2247,7 +2249,7 @@ Ignore formatting a file by adding an ignore comment at the top of the file:
           .long("prose-wrap")
           .alias("options-prose-wrap")
           .value_parser(["always", "never", "preserve"])
-          .help("Define how prose should be wrapped. Defaults to always.")
+          .help(cstr!("Define how prose should be wrapped <p(245)>[default: always]</>"))
           .help_heading(FMT_HEADING),
       )
       .arg(
@@ -2259,14 +2261,14 @@ Ignore formatting a file by adding an ignore comment at the top of the file:
           .default_missing_value("true")
           .require_equals(true)
           .help(
-            "Don't use semicolons except where necessary. Defaults to false.",
+           cstr!("Don't use semicolons except where necessary <p(245)>[default: false]</>"),
           )
           .help_heading(FMT_HEADING),
       )
       .arg(
         Arg::new("unstable-css")
           .long("unstable-css")
-          .help("Enable formatting CSS, SCSS, Sass and Less files.")
+          .help("Enable formatting CSS, SCSS, Sass and Less files")
           .value_parser(FalseyValueParser::new())
           .action(ArgAction::SetTrue)
           .help_heading(FMT_HEADING),
@@ -2274,21 +2276,21 @@ Ignore formatting a file by adding an ignore comment at the top of the file:
       .arg(
         Arg::new("unstable-html")
           .long("unstable-html")
-          .help("Enable formatting HTML files.")
+          .help("Enable formatting HTML files")
           .value_parser(FalseyValueParser::new())
           .action(ArgAction::SetTrue),
       )
       .arg(
         Arg::new("unstable-component")
           .long("unstable-component")
-          .help("Enable formatting Svelte, Vue, Astro and Angular files.")
+          .help("Enable formatting Svelte, Vue, Astro and Angular files")
           .value_parser(FalseyValueParser::new())
           .action(ArgAction::SetTrue),
       )
       .arg(
         Arg::new("unstable-yaml")
           .long("unstable-yaml")
-          .help("Enable formatting YAML files.")
+          .help("Enable formatting YAML files")
           .value_parser(FalseyValueParser::new())
           .action(ArgAction::SetTrue)
           .help_heading(FMT_HEADING),
@@ -2301,7 +2303,12 @@ fn init_subcommand() -> Command {
     |cmd| {
       cmd
         .arg(Arg::new("dir").value_hint(ValueHint::DirPath))
-        .arg(Arg::new("lib").long("lib").action(ArgAction::SetTrue))
+        .arg(
+          Arg::new("lib")
+            .long("lib")
+            .help("Generate an example library project")
+            .action(ArgAction::SetTrue),
+        )
         .arg(
           Arg::new("serve")
             .long("serve")
@@ -2694,18 +2701,18 @@ fn repl_subcommand() -> Command {
           .num_args(1..)
           .use_value_delimiter(true)
           .require_equals(true)
-          .help("Evaluates the provided file(s) as scripts when the REPL starts. Accepts file paths and URLs.")
+          .help("Evaluates the provided file(s) as scripts when the REPL starts. Accepts file paths and URLs")
           .value_hint(ValueHint::AnyPath),
       )
       .arg(
         Arg::new("eval")
           .long("eval")
-          .help("Evaluates the provided code when the REPL starts.")
+          .help("Evaluates the provided code when the REPL starts")
           .value_name("code"),
       )
-      .after_help(color_print::cstr!("<y>Environment variables:</>
+      .after_help(cstr!("<y>Environment variables:</>
   <g>DENO_REPL_HISTORY</>  Set REPL history file path. History file is disabled when the value is empty.
-                       <p(245)>(defaults to $DENO_DIR/deno_history.txt)</>"))
+                       <p(245)>[default: $DENO_DIR/deno_history.txt]</>"))
     )
     .arg(env_file_arg())
 }
@@ -2721,16 +2728,14 @@ fn run_args(command: Command, top_level: bool) -> Command {
     .arg(if top_level {
       script_arg().trailing_var_arg(true).hide(true)
     } else {
-      script_arg()
-        .required_unless_present_any(["help", "v8-flags"])
-        .trailing_var_arg(true)
+      script_arg().trailing_var_arg(true)
     })
     .arg(env_file_arg())
     .arg(no_code_cache_arg())
 }
 
 fn run_subcommand() -> Command {
-  run_args(command("run", color_print::cstr!("Run a JavaScript or TypeScript program, or a task or script.
+  run_args(command("run", cstr!("Run a JavaScript or TypeScript program, or a task or script.
 
 By default all programs are run in sandbox without access to disk, network or ability to spawn subprocesses.
   <p(245)>deno run https://examples.deno.land/hello-world.ts</>
@@ -2761,13 +2766,13 @@ fn serve_subcommand() -> Command {
     .arg(
       Arg::new("port")
         .long("port")
-        .help("The TCP port to serve on, defaulting to 8000. Pass 0 to pick a random free port.")
+        .help("The TCP port to serve on, defaulting to 8000. Pass 0 to pick a random free port")
         .value_parser(value_parser!(u16)),
     )
     .arg(
       Arg::new("host")
         .long("host")
-        .help("The TCP address to serve on, defaulting to 0.0.0.0 (all interfaces).")
+        .help("The TCP address to serve on, defaulting to 0.0.0.0 (all interfaces)")
         .value_parser(serve_host_validator),
     )
     .arg(
@@ -2861,7 +2866,7 @@ Directory arguments are expanded to all contained files matching the glob
       .arg(
         Arg::new("trace-ops")
           .long("trace-ops")
-          .help("Deprecated alias for --trace-leaks.")
+          .help("Deprecated alias for --trace-leaks")
           .hide(true)
           .action(ArgAction::SetTrue)
           .help_heading(TEST_HEADING),
@@ -2869,7 +2874,7 @@ Directory arguments are expanded to all contained files matching the glob
       .arg(
         Arg::new("trace-leaks")
           .long("trace-leaks")
-          .help("Enable tracing of leaks. Useful when debugging leaking ops in test, but impacts test execution time.")
+          .help("Enable tracing of leaks. Useful when debugging leaking ops in test, but impacts test execution time")
           .action(ArgAction::SetTrue)
           .help_heading(TEST_HEADING),
       )
@@ -2884,7 +2889,7 @@ Directory arguments are expanded to all contained files matching the glob
         Arg::new("fail-fast")
           .long("fail-fast")
           .alias("failfast")
-          .help("Stop after N errors. Defaults to stopping after first failure.")
+          .help("Stop after N errors. Defaults to stopping after first failure")
           .num_args(0..=1)
           .require_equals(true)
           .value_name("N")
@@ -2910,7 +2915,7 @@ Directory arguments are expanded to all contained files matching the glob
         Arg::new("filter")
           .allow_hyphen_values(true)
           .long("filter")
-          .help("Run tests with this string or pattern in the test name")
+          .help("Run tests with this string or regexp pattern in the test name")
           .help_heading(TEST_HEADING),
       )
       .arg(
@@ -2933,14 +2938,14 @@ Directory arguments are expanded to all contained files matching the glob
           .conflicts_with("inspect")
           .conflicts_with("inspect-wait")
           .conflicts_with("inspect-brk")
-          .help("Collect coverage profile data into DIR. If DIR is not specified, it uses 'coverage/'.")
+          .help("Collect coverage profile data into DIR. If DIR is not specified, it uses 'coverage/'")
           .help_heading(TEST_HEADING),
       )
       .arg(
         Arg::new("clean")
           .long("clean")
-          .help("Empty the temporary coverage profile data directory before running tests.
-  Note: running multiple `deno test --clean` calls in series or parallel for the same coverage directory may cause race conditions.")
+          .help(cstr!("Empty the temporary coverage profile data directory before running tests.
+  <p(245)>Note: running multiple `deno test --clean` calls in series or parallel for the same coverage directory may cause race conditions.</>"))
           .action(ArgAction::SetTrue)
           .help_heading(TEST_HEADING),
       )
@@ -2977,13 +2982,13 @@ Directory arguments are expanded to all contained files matching the glob
           .long("junit-path")
           .value_name("PATH")
           .value_hint(ValueHint::FilePath)
-          .help("Write a JUnit XML test report to PATH. Use '-' to write to stdout which is the default when PATH is not provided.")
+          .help("Write a JUnit XML test report to PATH. Use '-' to write to stdout which is the default when PATH is not provided")
           .help_heading(TEST_HEADING)
       )
       .arg(
         Arg::new("reporter")
           .long("reporter")
-          .help("Select reporter to use. Default to 'pretty'.")
+          .help("Select reporter to use. Default to 'pretty'")
           .value_parser(["pretty", "dot", "junit", "tap"])
           .help_heading(TEST_HEADING)
       )
@@ -2994,7 +2999,7 @@ Directory arguments are expanded to all contained files matching the glob
 fn parallel_arg(descr: &str, jobs_fallback: bool) -> Arg {
   let arg = Arg::new("parallel")
     .long("parallel")
-    .help(format!("Run {descr} in parallel. Parallelism defaults to the number of available CPUs or the value of the DENO_JOBS environment variable."))
+    .help(format!("Run {descr} in parallel. Parallelism defaults to the number of available CPUs or the value of the DENO_JOBS environment variable"))
     .action(ArgAction::SetTrue);
   if jobs_fallback {
     arg.conflicts_with("jobs")
@@ -3171,7 +3176,8 @@ fn publish_subcommand() -> Command {
         ).arg(
         Arg::new("no-provenance")
           .long("no-provenance")
-          .help("Disable provenance attestation. Enabled by default on Github actions, publicly links the package to where it was built and published from.")
+          .help(cstr!("Disable provenance attestation.
+  <p(245)>Enabled by default on Github actions, publicly links the package to where it was built and published from.</>"))
           .action(ArgAction::SetTrue)
         .help_heading(PUBLISH_HEADING)
       )
@@ -3203,33 +3209,49 @@ fn compile_args_without_check_args(app: Command) -> Command {
 
 fn permission_args(app: Command) -> Command {
   app
-    .after_help(color_print::cstr!(r#"<y>Permission options:</>
+    .after_help(cstr!(r#"<y>Permission options:</>
 Docs: https://docs.deno.com/go/permissions
 
-  <g>-A, --allow-all</>                               Allow all permissions.
-  <g>-R, --{allow,deny}-read[=<<PATH>...]</>           Allow / deny file system read access. Optionally specify allowed / denied paths.
-                                                  <p(245)>--allow-read  |  --allow-read="/etc,/var/log.txt"  |  --deny-read="/etc/hosts"</>
-  <g>-W, --{allow,write}-read[=<<PATH>...]</>          Allow / deny file system write access. Optionally specify allowed / denied paths.
-                                                  <p(245)>--allow-write  |  --allow-write="/etc,/var/log.txt"  |  --deny-write="/etc/hosts"</>
-  <g>-N, --{allow,deny}-net[=<<IP_OR_HOSTNAME>...]</>  Allow / deny network access. Optionally specify allowed IP addresses and host names, with ports as necessary.
-                                                  <p(245)>--allow-net  |  --allow-net="localhost:8080,deno.land"  |  --deny-net="deno.com"</>
-  <g>-E --{allow,deny}-env[=<<VARIABLE_NAME>...]</>    Allow / deny access to environment variables. Optionally specify accessible / inacessible environment variables.
-                                                  <p(245)>--allow-env  |  --allow-env="PORT,HOME,PATH"  |  --deny-env="ACCESS_TOKEN"</>
-  <g>-S --{allow,deny}-sys[=<<API_NAME>...]</>         Allow / deny access to OS information. Optionally allow / deny specific APIs by function name.
-                                                  <p(245)>--allow-sys  |  --allow-sys="systemMemoryInfo,osRelease"  |  --deny-sys="hostname"</>
-      <g>--{allow,deny}-run[=<<PROGRAM_NAME>...]</>    Allow / deny running subprocesses. Optionally specify allowed / denied runnable program names.
-                                                  <p(245)>--allow-run  |  --allow-run="whoami,ps"  |  --deny-run="cat"</>
-      <g>--{allow,deny}-ffi[=<<PATH>...]</>            (Unstable) Allow / deny loading dynamic libraries. Optionally specify allowed / denied directories or files.
-                                                  <p(245)>--allow-ffi  |  --allow-ffi="./libfoo.so"  |  --deny-ffi="./libfoo.so"</>
-      <g>--{allow,deny}-hrtime</>                     Allow / deny high-resolution time measurement. Note: this can enable timing attacks and fingerprinting.
-      <g>--no-prompt</>                               Always throw if required permission wasn't passed. Can also be set via the DENO_NO_PROMPT environment variable.
+  <g>-A, --allow-all</>                        Allow all permissions.
+  <g>--no-prompt</>                        Always throw if required permission wasn't passed.
+                                           <p(245)>Can also be set via the DENO_NO_PROMPT environment variable.</>
+  <g>-R, --allow-read[=<<PATH>...]</>           Allow file system read access. Optionally specify allowed paths.
+                                           <p(245)>--allow-read  |  --allow-read="/etc,/var/log.txt"</>
+  <g>-W, --allow-write[=<<PATH>...]</>          Allow file system write access. Optionally specify allowed paths.
+                                           <p(245)>--allow-write  |  --allow-write="/etc,/var/log.txt"</>
+  <g>-N, --allow-net[=<<IP_OR_HOSTNAME>...]</>  Allow network access. Optionally specify allowed IP addresses and host names, with ports as necessary.
+                                           <p(245)>--allow-net  |  --allow-net="localhost:8080,deno.land"</>
+  <g>-E, --allow-env[=<<VARIABLE_NAME>...]</>   Allow access to environment variables. Optionally specify accessible environment variables.
+                                           <p(245)>--allow-env  |  --allow-env="PORT,HOME,PATH"</>
+  <g>-S, --allow-sys[=<<API_NAME>...]</>        Allow access to OS information. Optionally allow specific APIs by function name.
+                                           <p(245)>--allow-sys  |  --allow-sys="systemMemoryInfo,osRelease"</>
+      <g>--allow-run[=<<PROGRAM_NAME>...]</>    Allow running subprocesses. Optionally specify allowed runnable program names.
+                                           <p(245)>--allow-run  |  --allow-run="whoami,ps"</>
+      <g>--allow-ffi[=<<PATH>...]</>            (Unstable) Allow loading dynamic libraries. Optionally specify allowed directories or files.
+                                           <p(245)>--allow-ffi  |  --allow-ffi="./libfoo.so"</>
+      <g>--allow-hrtime</>                     Allow high-resolution time measurement. Note: this can enable timing attacks and fingerprinting.
+  <g>    --deny-read[=<<PATH>...]</>            Deny file system read access. Optionally specify denied paths.
+                                           <p(245)>--deny-read  |  --deny-read="/etc,/var/log.txt"</>
+  <g>    --deny-write[=<<PATH>...]</>           Deny file system write access. Optionally specify denied paths.
+                                           <p(245)>--deny-write  |  --deny-write="/etc,/var/log.txt"</>
+  <g>    --deny-net[=<<IP_OR_HOSTNAME>...]</>   Deny network access. Optionally specify defined IP addresses and host names, with ports as necessary.
+                                           <p(245)>--deny-net  |  --deny-net="localhost:8080,deno.land"</>
+  <g>    --deny-env[=<<VARIABLE_NAME>...]</>    Deny access to environment variables. Optionally specify inacessible environment variables.
+                                           <p(245)>--deny-env  |  --deny-env="PORT,HOME,PATH"</>
+  <g>-S, --deny-sys[=<<API_NAME>...]</>         Deny access to OS information. Optionally deny specific APIs by function name.
+                                           <p(245)>--deny-sys  |  --deny-sys="systemMemoryInfo,osRelease"</>
+      <g>--deny-run[=<<PROGRAM_NAME>...]</>     Deny running subprocesses. Optionally specify denied runnable program names.
+                                           <p(245)>--deny-run  |  --deny-run="whoami,ps"</>
+      <g>--deny-ffi[=<<PATH>...]</>             (Unstable) Deny loading dynamic libraries. Optionally specify denied directories or files.
+                                           <p(245)>--deny-ffi  |  --deny-ffi="./libfoo.so"</>
+      <g>--deny-hrtime</>                      Deny high-resolution time measurement.
 "#))
     .arg(
       Arg::new("allow-all")
         .short('A')
         .long("allow-all")
         .action(ArgAction::SetTrue)
-        .help("Allow all permissions.")
+        .help("Allow all permissions")
         .hide(true),
     )
     .arg(
@@ -3240,7 +3262,7 @@ Docs: https://docs.deno.com/go/permissions
         .use_value_delimiter(true)
         .require_equals(true)
         .value_name("PATH")
-        .help("Allow file system read access. Optionally specify allowed paths.")
+        .help("Allow file system read access. Optionally specify allowed paths")
         .value_parser(value_parser!(String))
         .value_hint(ValueHint::AnyPath)
         .hide(true),
@@ -3252,7 +3274,7 @@ Docs: https://docs.deno.com/go/permissions
         .use_value_delimiter(true)
         .require_equals(true)
         .value_name("PATH")
-        .help("Deny file system read access. Optionally specify denied paths.")
+        .help("Deny file system read access. Optionally specify denied paths")
         .value_parser(value_parser!(String))
         .value_hint(ValueHint::AnyPath)
         .hide(true),
@@ -3265,7 +3287,7 @@ Docs: https://docs.deno.com/go/permissions
         .use_value_delimiter(true)
         .require_equals(true)
         .value_name("PATH")
-        .help("Allow file system write access. Optionally specify allowed paths.")
+        .help("Allow file system write access. Optionally specify allowed paths")
         .value_parser(value_parser!(String))
         .value_hint(ValueHint::AnyPath)
         .hide(true),
@@ -3277,7 +3299,7 @@ Docs: https://docs.deno.com/go/permissions
         .use_value_delimiter(true)
         .require_equals(true)
         .value_name("PATH")
-        .help("Deny file system write access. Optionally specify denied paths.")
+        .help("Deny file system write access. Optionally specify denied paths")
         .value_parser(value_parser!(String))
         .value_hint(ValueHint::AnyPath)
         .hide(true),
@@ -3290,7 +3312,7 @@ Docs: https://docs.deno.com/go/permissions
         .use_value_delimiter(true)
         .require_equals(true)
         .value_name("IP_OR_HOSTNAME")
-        .help("Allow network access. Optionally specify allowed IP addresses and host names, with ports as necessary.")
+        .help("Allow network access. Optionally specify allowed IP addresses and host names, with ports as necessary")
         .value_parser(flags_net::validator)
         .hide(true),
     )
@@ -3301,7 +3323,7 @@ Docs: https://docs.deno.com/go/permissions
         .use_value_delimiter(true)
         .require_equals(true)
         .value_name("IP_OR_HOSTNAME")
-        .help("Deny network access. Optionally specify denied IP addresses and host names, with ports as necessary.")
+        .help("Deny network access. Optionally specify denied IP addresses and host names, with ports as necessary")
         .value_parser(flags_net::validator)
         .hide(true),
     )
@@ -3313,7 +3335,7 @@ Docs: https://docs.deno.com/go/permissions
         .use_value_delimiter(true)
         .require_equals(true)
         .value_name("VARIABLE_NAME")
-        .help("Allow access to system environment information. Optionally specify accessible environment variables.")
+        .help("Allow access to system environment information. Optionally specify accessible environment variables")
         .value_parser(|key: &str| {
           if key.is_empty() || key.contains(&['=', '\0'] as &[char]) {
             return Err(format!("invalid key \"{key}\""));
@@ -3334,7 +3356,7 @@ Docs: https://docs.deno.com/go/permissions
         .use_value_delimiter(true)
         .require_equals(true)
         .value_name("VARIABLE_NAME")
-        .help("Deny access to system environment information. Optionally specify accessible environment variables.")
+        .help("Deny access to system environment information. Optionally specify accessible environment variables")
         .value_parser(|key: &str| {
           if key.is_empty() || key.contains(&['=', '\0'] as &[char]) {
             return Err(format!("invalid key \"{key}\""));
@@ -3356,7 +3378,7 @@ Docs: https://docs.deno.com/go/permissions
         .use_value_delimiter(true)
         .require_equals(true)
         .value_name("API_NAME")
-        .help("Allow access to OS information. Optionally allow specific APIs by function name.")
+        .help("Allow access to OS information. Optionally allow specific APIs by function name")
         .value_parser(|key: &str| parse_sys_kind(key).map(ToString::to_string))
         .hide(true),
     )
@@ -3367,7 +3389,7 @@ Docs: https://docs.deno.com/go/permissions
         .use_value_delimiter(true)
         .require_equals(true)
         .value_name("API_NAME")
-        .help("Deny access to OS information. Optionally deny specific APIs by function name.")
+        .help("Deny access to OS information. Optionally deny specific APIs by function name")
         .value_parser(|key: &str| parse_sys_kind(key).map(ToString::to_string))
         .hide(true),
     )
@@ -3378,7 +3400,7 @@ Docs: https://docs.deno.com/go/permissions
         .use_value_delimiter(true)
         .require_equals(true)
         .value_name("PROGRAM_NAME")
-        .help("Allow running subprocesses. Optionally specify allowed runnable program names.")
+        .help("Allow running subprocesses. Optionally specify allowed runnable program names")
         .hide(true),
     )
     .arg(
@@ -3388,7 +3410,7 @@ Docs: https://docs.deno.com/go/permissions
         .use_value_delimiter(true)
         .require_equals(true)
         .value_name("PROGRAM_NAME")
-        .help("Deny running subprocesses. Optionally specify denied runnable program names.")
+        .help("Deny running subprocesses. Optionally specify denied runnable program names")
         .hide(true),
     )
     .arg(
@@ -3398,7 +3420,7 @@ Docs: https://docs.deno.com/go/permissions
         .use_value_delimiter(true)
         .require_equals(true)
         .value_name("PATH")
-        .help("(Unstable) Allow loading dynamic libraries. Optionally specify allowed directories or files.")
+        .help("(Unstable) Allow loading dynamic libraries. Optionally specify allowed directories or files")
         .value_parser(value_parser!(String))
         .value_hint(ValueHint::AnyPath)
         .hide(true),
@@ -3410,7 +3432,7 @@ Docs: https://docs.deno.com/go/permissions
         .use_value_delimiter(true)
         .require_equals(true)
         .value_name("PATH")
-        .help("(Unstable) Deny loading dynamic libraries. Optionally specify denied directories or files.")
+        .help("(Unstable) Deny loading dynamic libraries. Optionally specify denied directories or files")
         .value_parser(value_parser!(String))
         .value_hint(ValueHint::AnyPath)
         .hide(true),
@@ -3419,14 +3441,14 @@ Docs: https://docs.deno.com/go/permissions
       Arg::new("allow-hrtime")
         .long("allow-hrtime")
         .action(ArgAction::SetTrue)
-        .help("Allow high-resolution time measurement. Note: this can enable timing attacks and fingerprinting.")
+        .help("Allow high-resolution time measurement. Note: this can enable timing attacks and fingerprinting")
         .hide(true),
     )
     .arg(
       Arg::new("deny-hrtime")
         .long("deny-hrtime")
         .action(ArgAction::SetTrue)
-        .help("Deny high-resolution time measurement. Note: this can prevent timing attacks and fingerprinting.")
+        .help("Deny high-resolution time measurement. Note: this can prevent timing attacks and fingerprinting")
         .hide(true),
     )
     .arg(
@@ -3470,7 +3492,8 @@ fn inspect_args(app: Command) -> Command {
       Arg::new("inspect")
         .long("inspect")
         .value_name("HOST_AND_PORT")
-        .help("Activate inspector on host:port (default: 127.0.0.1:9229)")
+        .default_missing_value("127.0.0.1:9229")
+        .help(cstr!("Activate inspector on host:port <p(245)>[default: 127.0.0.1:9229]</>"))
         .num_args(0..=1)
         .require_equals(true)
         .value_parser(value_parser!(SocketAddr))
@@ -3480,6 +3503,7 @@ fn inspect_args(app: Command) -> Command {
       Arg::new("inspect-brk")
         .long("inspect-brk")
         .value_name("HOST_AND_PORT")
+        .default_missing_value("127.0.0.1:9229")
         .help(
           "Activate inspector on host:port, wait for debugger to connect and break at the start of user script",
         )
@@ -3492,6 +3516,7 @@ fn inspect_args(app: Command) -> Command {
       Arg::new("inspect-wait")
         .long("inspect-wait")
         .value_name("HOST_AND_PORT")
+        .default_missing_value("127.0.0.1:9229")
         .help(
           "Activate inspector on host:port and wait for debugger to connect before running user code",
         )
@@ -3507,10 +3532,10 @@ fn import_map_arg() -> Arg {
     .long("import-map")
     .alias("importmap")
     .value_name("FILE")
-    .help(
-      "Load import map file from local file or remote URL.
-  Docs: https://docs.deno.com/runtime/manual/basics/import_maps",
-    )
+    .help(cstr!(
+      "Load import map file from local file or remote URL
+  <p(245)>Docs: https://docs.deno.com/runtime/manual/basics/import_maps</>",
+    ))
     .value_hint(ValueHint::FilePath)
     .help_heading(DEPENDENCY_MANAGEMENT_HEADING)
 }
@@ -3520,11 +3545,11 @@ fn env_file_arg() -> Arg {
     .long("env-file")
     .alias("env")
     .value_name("FILE")
-    .help(
-      "Load environment variables from local file.
-  Only the first environment variable with a given key is used.
-  Existing process environment variables are not overwritten.",
-    )
+    .help(cstr!(
+      "Load environment variables from local file
+  <p(245)>Only the first environment variable with a given key is used.
+  Existing process environment variables are not overwritten.</>"
+    ))
     .value_hint(ValueHint::FilePath)
     .default_missing_value(".env")
     .require_equals(true)
@@ -3540,7 +3565,7 @@ fn reload_arg() -> Arg {
     .long("reload")
     .value_name("CACHE_BLOCKLIST")
     .help(
-      color_print::cstr!("Reload source code cache (recompile TypeScript)
+      cstr!("Reload source code cache (recompile TypeScript)
   <p(245)>no value                                                 Reload everything
   jsr:@std/http/file-server,jsr:@std/assert/assert-equals  Reloads specific modules
   npm:                                                     Reload all npm modules
@@ -3638,9 +3663,9 @@ fn v8_flags_arg() -> Arg {
     .use_value_delimiter(true)
     .require_equals(true)
     .value_name("V8_FLAGS")
-    .help("To see a list of all available flags use --v8-flags=--help.
-  Flags can also be set via the DENO_V8_FLAGS environment variable.
-  Any flags set with this flag are appended after the DENO_V8_FLAGS environment variable")
+    .help( cstr!("To see a list of all available flags use --v8-flags=--help
+  <p(245)>Flags can also be set via the DENO_V8_FLAGS environment variable.
+  Any flags set with this flag are appended after the DENO_V8_FLAGS environment variable</>"))
 }
 
 fn seed_arg() -> Arg {
@@ -3668,14 +3693,14 @@ fn hmr_arg(takes_files: bool) -> Arg {
       .use_value_delimiter(true)
       .require_equals(true)
       .help(
-        color_print::cstr!(
+        cstr!(
         "Watch for file changes and restart process automatically.
   <p(245)>Local files from entry point module graph are watched by default.
   Additional paths might be watched by passing them as arguments to this flag.</>"),
       )
       .value_hint(ValueHint::AnyPath)
   } else {
-    arg.action(ArgAction::SetTrue).help(color_print::cstr!(
+    arg.action(ArgAction::SetTrue).help(cstr!(
       "Watch for file changes and restart process automatically.
   <p(245)>Only local files from entry point module graph are watched.</>"
     ))
@@ -3695,14 +3720,14 @@ fn watch_arg(takes_files: bool) -> Arg {
       .use_value_delimiter(true)
       .require_equals(true)
       .help(
-        color_print::cstr!(
+        cstr!(
         "Watch for file changes and restart process automatically.
   <p(245)>Local files from entry point module graph are watched by default.
   Additional paths might be watched by passing them as arguments to this flag.</>"),
       )
       .value_hint(ValueHint::AnyPath)
   } else {
-    arg.action(ArgAction::SetTrue).help(color_print::cstr!(
+    arg.action(ArgAction::SetTrue).help(cstr!(
       "Watch for file changes and restart process automatically.
   <p(245)>Only local files from entry point module graph are watched.</>"
     ))
@@ -3744,10 +3769,7 @@ fn no_check_arg() -> Arg {
     .require_equals(true)
     .value_name("NO_CHECK_TYPE")
     .long("no-check")
-    .help(
-      "Skip type-checking. If the value of '--no-check=remote' is supplied,
-  diagnostic errors from remote modules will be ignored.",
-    )
+    .help("Skip type-checking. If the value of \"remote\" is supplied, diagnostic errors from remote modules will be ignored")
     .help_heading(TYPE_CHECKING_HEADING)
 }
 
@@ -3762,17 +3784,16 @@ fn check_arg(checks_local_by_default: bool) -> Arg {
 
   if checks_local_by_default {
     arg.help(
-      "Set type-checking behavior. This subcommand type-checks local modules by
-  default, so adding --check is redundant.
-  If the value of \"all\" is supplied, remote modules will be included.
-  Alternatively, the 'deno check' subcommand can be used.",
-    )
+      cstr!("Set type-checking behavior. This subcommand type-checks local modules by default, so adding --check is redundant
+  <p(245)>If the value of \"all\" is supplied, remote modules will be included.
+  Alternatively, the 'deno check' subcommand can be used</>",
+    ))
   } else {
-    arg.help(
-      "Enable type-checking. This subcommand does not type-check by default.
-  If the value of \"all\" is supplied, remote modules will be included.
-  Alternatively, the 'deno check' subcommand can be used.",
-    )
+    arg.help(cstr!(
+      "Enable type-checking. This subcommand does not type-check by default
+  <p(245)>If the value of \"all\" is supplied, remote modules will be included.
+  Alternatively, the 'deno check' subcommand can be used</>"
+    ))
   }
 }
 
@@ -3809,7 +3830,7 @@ fn lock_write_arg() -> Arg {
   Arg::new("lock-write")
     .action(ArgAction::SetTrue)
     .long("lock-write")
-    .help("Force overwriting the lock file.")
+    .help("Force overwriting the lock file")
     .conflicts_with("no-lock")
     .hide(true)
 }
@@ -3828,10 +3849,10 @@ fn config_arg() -> Arg {
     .short('c')
     .long("config")
     .value_name("FILE")
-    .help("Configure different aspects of deno including TypeScript, linting, and code formatting.
-  Typically the configuration file will be called `deno.json` or `deno.jsonc` and
+    .help(cstr!("Configure different aspects of deno including TypeScript, linting, and code formatting
+  <p(245)>Typically the configuration file will be called `deno.json` or `deno.jsonc` and
   automatically detected; in that case this flag is not necessary.
-  Docs: https://docs.deno.com/go/config")
+  Docs: https://docs.deno.com/go/config</>"))
     .value_hint(ValueHint::FilePath)
 }
 
@@ -3839,7 +3860,7 @@ fn no_config_arg() -> Arg {
   Arg::new("no-config")
     .long("no-config")
     .action(ArgAction::SetTrue)
-    .help("Disable automatic loading of the configuration file.")
+    .help("Disable automatic loading of the configuration file")
     .conflicts_with("config")
 }
 
@@ -3878,10 +3899,7 @@ fn vendor_arg() -> Arg {
     .value_parser(value_parser!(bool))
     .default_missing_value("true")
     .require_equals(true)
-    .help(
-      "Enables or disables the use of a local vendor folder
-  for remote modules and node_modules folder for npm packages",
-    )
+    .help("Toggles local vendor folder usage for remote modules and a node_modules folder for npm packages")
     .help_heading(DEPENDENCY_MANAGEMENT_HEADING)
 }
 
@@ -3905,7 +3923,8 @@ fn allow_scripts_arg() -> Arg {
     .require_equals(true)
     .value_name("PACKAGE")
     .value_parser(parse_packages_allowed_scripts)
-    .help("Allow running npm lifecycle scripts for the given packages. Note: Scripts will only be executed when using a node_modules directory (`--node-modules-dir`)")
+    .help(cstr!("Allow running npm lifecycle scripts for the given packages
+  <p(245)>Note: Scripts will only be executed when using a node_modules directory (`--node-modules-dir`)</>"))
 }
 
 enum UnstableArgsConfig {
@@ -3927,7 +3946,8 @@ impl Iterator for UnstableArgsIter {
     let arg = if self.idx == 0 {
       Arg::new("unstable")
         .long("unstable")
-        .help("Enable all unstable features and APIs. Instead of using this flag, consider enabling individual unstable features.\n  To view the list of individual unstable feature flags, run this command again with --help=unstable.")
+        .help(cstr!("Enable all unstable features and APIs. Instead of using this flag, consider enabling individual unstable features
+  <p(245)>To view the list of individual unstable feature flags, run this command again with --help=unstable</>"))
         .action(ArgAction::SetTrue)
         .hide(matches!(self.cfg, UnstableArgsConfig::None))
     } else if self.idx == 1 {
@@ -3961,9 +3981,7 @@ impl Iterator for UnstableArgsIter {
     } else if self.idx == 3 {
       Arg::new("unstable-sloppy-imports")
       .long("unstable-sloppy-imports")
-      .help(
-        "Enable unstable resolving of specifiers by extension probing, .js to .ts, and directory probing.",
-      )
+      .help("Enable unstable resolving of specifiers by extension probing, .js to .ts, and directory probing")
       .env("DENO_UNSTABLE_SLOPPY_IMPORTS")
       .value_parser(FalseyValueParser::new())
       .action(ArgAction::SetTrue)
@@ -4580,7 +4598,7 @@ fn repl_parse(flags: &mut Flags, matches: &mut ArgMatches) {
 fn run_parse(
   flags: &mut Flags,
   matches: &mut ArgMatches,
-  mut app: Command,
+  app: Command,
   bare: bool,
 ) -> clap::error::Result<()> {
   // todo(dsherret): remove this in Deno 2.0
@@ -4631,35 +4649,30 @@ fn run_parse(
   }
 
   runtime_args_parse(flags, matches, true, true);
+  ext_arg_parse(flags, matches);
 
   flags.code_cache_enabled = !matches.get_flag("no-code-cache");
 
-  let mut script_arg =
-    matches.remove_many::<String>("script_arg").ok_or_else(|| {
-      if bare {
-        app.override_usage("deno [OPTIONS] [COMMAND] [SCRIPT_ARG]...").error(
-          clap::error::ErrorKind::MissingRequiredArgument,
-          "[SCRIPT_ARG] may only be omitted with --v8-flags=--help, else to use the repl with arguments, please use the `deno repl` subcommand",
-        )
-      } else {
-        app.find_subcommand_mut("run").unwrap().error(
-          clap::error::ErrorKind::MissingRequiredArgument,
-          "[SCRIPT_ARG] may only be omitted with --v8-flags=--help",
-        )
-      }
-    })?;
-
-  let script = script_arg.next().unwrap();
-  flags.argv.extend(script_arg);
-
-  ext_arg_parse(flags, matches);
-  temp_netlify_deno_1_hack(flags, &script);
-
-  flags.subcommand = DenoSubcommand::Run(RunFlags {
-    script,
-    watch: watch_arg_parse_with_paths(matches),
-    bare,
-  });
+  if let Some(mut script_arg) = matches.remove_many::<String>("script_arg") {
+    let script = script_arg.next().unwrap();
+    flags.argv.extend(script_arg);
+    temp_netlify_deno_1_hack(flags, &script);
+    flags.subcommand = DenoSubcommand::Run(RunFlags {
+      script,
+      watch: watch_arg_parse_with_paths(matches),
+      bare,
+    });
+  } else if bare {
+    return Err(app.override_usage("deno [OPTIONS] [COMMAND] [SCRIPT_ARG]...").error(
+      clap::error::ErrorKind::MissingRequiredArgument,
+      "[SCRIPT_ARG] may only be omitted with --v8-flags=--help, else to use the repl with arguments, please use the `deno repl` subcommand",
+    ));
+  } else {
+    flags.subcommand = DenoSubcommand::Task(TaskFlags {
+      cwd: None,
+      task: None,
+    });
+  }
 
   Ok(())
 }
@@ -5099,34 +5112,9 @@ fn runtime_args_parse(
 }
 
 fn inspect_arg_parse(flags: &mut Flags, matches: &mut ArgMatches) {
-  let default = || "127.0.0.1:9229".parse::<SocketAddr>().unwrap();
-  flags.inspect = if matches.contains_id("inspect") {
-    Some(
-      matches
-        .remove_one::<SocketAddr>("inspect")
-        .unwrap_or_else(default),
-    )
-  } else {
-    None
-  };
-  flags.inspect_brk = if matches.contains_id("inspect-brk") {
-    Some(
-      matches
-        .remove_one::<SocketAddr>("inspect-brk")
-        .unwrap_or_else(default),
-    )
-  } else {
-    None
-  };
-  flags.inspect_wait = if matches.contains_id("inspect-wait") {
-    Some(
-      matches
-        .remove_one::<SocketAddr>("inspect-wait")
-        .unwrap_or_else(default),
-    )
-  } else {
-    None
-  };
+  flags.inspect = matches.remove_one::<SocketAddr>("inspect");
+  flags.inspect_brk = matches.remove_one::<SocketAddr>("inspect-brk");
+  flags.inspect_wait = matches.remove_one::<SocketAddr>("inspect-wait");
 }
 
 fn import_map_arg_parse(flags: &mut Flags, matches: &mut ArgMatches) {
@@ -5826,10 +5814,7 @@ mod tests {
     );
 
     let r = flags_from_vec(svec!["deno", "run", "--v8-flags=--expose-gc"]);
-    assert!(r
-      .unwrap_err()
-      .to_string()
-      .contains("[SCRIPT_ARG] may only be omitted with --v8-flags=--help"));
+    assert!(r.is_ok());
   }
 
   #[test]
@@ -10785,5 +10770,44 @@ mod tests {
     assert!(err
       .to_string()
       .contains("Usage: deno [OPTIONS] [COMMAND] [SCRIPT_ARG]..."));
+  }
+
+  #[test]
+  fn equal_help_output() {
+    for command in clap_root().get_subcommands() {
+      if command.get_name() == "help" {
+        continue;
+      }
+
+      let long_flag = if let DenoSubcommand::Help(help) =
+        flags_from_vec(svec!["deno", command.get_name(), "--help"])
+          .unwrap()
+          .subcommand
+      {
+        help.help.to_string()
+      } else {
+        unreachable!()
+      };
+      let short_flag = if let DenoSubcommand::Help(help) =
+        flags_from_vec(svec!["deno", command.get_name(), "-h"])
+          .unwrap()
+          .subcommand
+      {
+        help.help.to_string()
+      } else {
+        unreachable!()
+      };
+      let subcommand = if let DenoSubcommand::Help(help) =
+        flags_from_vec(svec!["deno", "help", command.get_name()])
+          .unwrap()
+          .subcommand
+      {
+        help.help.to_string()
+      } else {
+        unreachable!()
+      };
+      assert_eq!(long_flag, short_flag, "{} subcommand", command.get_name());
+      assert_eq!(long_flag, subcommand, "{} subcommand", command.get_name());
+    }
   }
 }
