@@ -101,6 +101,13 @@ Deno.test(async function imageBitmapFromBlob() {
     assertEquals(Deno[Deno.internal].getBitmapData(imageBitmap), new Uint8Array([255, 0, 0, 255]));
   }
   {
+    const imageData = new Blob([await Deno.readFile(`${prefix}/1x1-red8.jpeg`)], { type: "image/jpeg" });
+    const imageBitmap = await createImageBitmap(imageData);
+    // @ts-ignore: Deno[Deno.internal].core allowed
+    // deno-fmt-ignore
+    assertEquals(Deno[Deno.internal].getBitmapData(imageBitmap), new Uint8Array([254, 0, 0]));
+  }
+  {
     const imageData = new Blob([await Deno.readFile(`${prefix}/1x1-red8.bmp`)], { type: "image/bmp" });
     const imageBitmap = await createImageBitmap(imageData);
     // @ts-ignore: Deno[Deno.internal].core allowed

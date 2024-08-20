@@ -18,6 +18,8 @@ const {
   PromiseResolve,
   PromiseReject,
   RangeError,
+  ObjectAssign,
+  ArrayPrototypeJoin,
 } = primordials;
 import {
   _data,
@@ -164,6 +166,11 @@ function createImageBitmap(
   options = undefined,
 ) {
   const prefix = "Failed to execute 'createImageBitmap'";
+  // Add the value when implementing to add support for ImageBitmapSource
+  const imageBitmapSources = [
+    "Blob",
+    "ImageData",
+  ];
 
   // Overload: createImageBitmap(image [, options ])
   if (arguments.length < 3) {
@@ -212,6 +219,16 @@ function createImageBitmap(
 
   const imageBitmap = webidl.createBranded(ImageBitmap);
 
+  // 6. Switch on image:
+  let imageBitmapSource;
+  if (ObjectPrototypeIsPrototypeOf(BlobPrototype, image)) {
+    imageBitmapSource = imageBitmapSources[0];
+  }
+  if (ObjectPrototypeIsPrototypeOf(ImageDataPrototype, image)) {
+    imageBitmapSource = imageBitmapSources[1];
+  }
+  const _options = ObjectAssign(options, { imageBitmapSource });
+
   if (ObjectPrototypeIsPrototypeOf(ImageDataPrototype, image)) {
     const processedImage = processImage(
       image[_data],
@@ -221,7 +238,7 @@ function createImageBitmap(
       sy,
       sw,
       sh,
-      options,
+      _options,
     );
     imageBitmap[_bitmapData] = processedImage.data;
     imageBitmap[_width] = processedImage.outputWidth;
@@ -230,23 +247,23 @@ function createImageBitmap(
   }
   if (ObjectPrototypeIsPrototypeOf(BlobPrototype, image)) {
     return (async () => {
-      const data = await image.arrayBuffer();
+      const data = new Uint8Array(await image.arrayBuffer());
       const mimeType = sniffImage(image.type);
-      const { data: imageData, width, height } = op_image_decode(
-        new Uint8Array(data),
+      const { width, height } = op_image_decode(
+        data,
         {
           mimeType,
         },
       );
       const processedImage = processImage(
-        imageData,
+        data,
         width,
         height,
         sxOrOptions,
         sy,
         sw,
         sh,
-        options,
+        _options,
       );
       imageBitmap[_bitmapData] = processedImage.data;
       imageBitmap[_width] = processedImage.outputWidth;
@@ -254,7 +271,13 @@ function createImageBitmap(
       return imageBitmap;
     })();
   } else {
-    return PromiseReject(new TypeError("Invalid or unsupported image value"));
+    return PromiseReject(
+      new TypeError(
+        `${prefix}: The provided value is not of type '(${
+          ArrayPrototypeJoin(imageBitmapSources, " or ")
+        })'.`,
+      ),
+    );
   }
 }
 
@@ -332,6 +355,7 @@ function processImage(input, width, height, sx, sy, sw, sh, options) {
       premultiply: options.premultiplyAlpha === "default"
         ? null
         : (options.premultiplyAlpha === "premultiply"),
+      imageBitmapSource: options.imageBitmapSource,
     },
   );
 

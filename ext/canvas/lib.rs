@@ -6,9 +6,9 @@ use deno_core::ToJsBuffer;
 use image::imageops::FilterType;
 use image::GenericImageView;
 use image::Pixel;
-use image::RgbaImage;
 use serde::Deserialize;
 use serde::Serialize;
+use std::io::Cursor;
 use std::path::PathBuf;
 
 #[derive(Debug, Deserialize)]
@@ -34,6 +34,14 @@ struct ImageProcessArgs {
   resize_quality: ImageResizeQuality,
   flip_y: bool,
   premultiply: Option<bool>,
+  image_bitmap_source: ImageBitmapSource,
+}
+
+#[derive(Debug, Deserialize)]
+// Follow the cases defined in the spec
+enum ImageBitmapSource {
+  Blob,
+  ImageData,
 }
 
 #[op2]
@@ -42,16 +50,31 @@ fn op_image_process(
   #[buffer] buf: &[u8],
   #[serde] args: ImageProcessArgs,
 ) -> Result<ToJsBuffer, AnyError> {
-  let view =
-    RgbaImage::from_vec(args.width, args.height, buf.to_vec()).unwrap();
+  let view = match args.image_bitmap_source {
+    ImageBitmapSource::Blob => image::ImageReader::new(Cursor::new(buf))
+      .with_guessed_format()?
+      .decode()?,
+    ImageBitmapSource::ImageData => {
+      // > 4.12.5.1.15 Pixel manipulation
+      // > imagedata.data
+      // >   Returns the one-dimensional array containing the data in RGBA order, as integers in the range 0 to 255.
+      // https://html.spec.whatwg.org/multipage/canvas.html#pixel-manipulation
+      let image: image::DynamicImage =
+        image::RgbaImage::from_raw(args.width, args.height, buf.into())
+          .expect("Invalid ImageData.")
+          .into();
+      image
+    }
+  };
+  let color = view.color();
 
   let surface = if !(args.width == args.surface_width
     && args.height == args.surface_height
     && args.input_x == 0
     && args.input_y == 0)
   {
-    let mut surface = RgbaImage::new(args.surface_width, args.surface_height);
-
+    let mut surface =
+      image::DynamicImage::new(args.surface_width, args.surface_height, color);
     image::imageops::overlay(&mut surface, &view, args.input_x, args.input_y);
 
     surface
@@ -66,12 +89,10 @@ fn op_image_process(
     ImageResizeQuality::High => FilterType::Lanczos3,
   };
 
-  let mut image_out = image::imageops::resize(
-    &surface,
-    args.output_width,
-    args.output_height,
-    filter_type,
-  );
+  // should use resize_exact
+  // https://github.com/image-rs/image/issues/1220#issuecomment-632060015
+  let mut image_out =
+    surface.resize_exact(args.output_width, args.output_height, filter_type);
 
   if args.flip_y {
     image::imageops::flip_vertical_in_place(&mut image_out);
@@ -79,36 +100,37 @@ fn op_image_process(
 
   // ignore 9.
 
-  if let Some(premultiply) = args.premultiply {
-    let is_not_premultiplied = image_out.pixels().any(|pixel| {
-      (pixel.0[0].max(pixel.0[1]).max(pixel.0[2])) > (255 * pixel.0[3])
-    });
+  if color.has_alpha() {
+    if let Some(premultiply) = args.premultiply {
+      let is_not_premultiplied = image_out.pixels().any(|(_, _, pixel)| {
+        (pixel[0].max(pixel[1]).max(pixel[2])) > (255 * pixel[3])
+      });
 
-    if premultiply {
-      if is_not_premultiplied {
-        for pixel in image_out.pixels_mut() {
-          let alpha = pixel.0[3];
+      if premultiply {
+        if is_not_premultiplied {
+          for (_, _, mut pixel) in &mut image_out.pixels() {
+            let alpha = pixel[3];
+            pixel.apply_without_alpha(|channel| {
+              (channel as f32 * (alpha as f32 / 255.0)) as u8
+            })
+          }
+        }
+      } else if !is_not_premultiplied {
+        for (_, _, mut pixel) in &mut image_out.pixels() {
+          let alpha = pixel[3];
           pixel.apply_without_alpha(|channel| {
-            (channel as f32 * (alpha as f32 / 255.0)) as u8
+            (channel as f32 / (alpha as f32 / 255.0)) as u8
           })
         }
-      }
-    } else if !is_not_premultiplied {
-      for pixel in image_out.pixels_mut() {
-        let alpha = pixel.0[3];
-        pixel.apply_without_alpha(|channel| {
-          (channel as f32 / (alpha as f32 / 255.0)) as u8
-        })
       }
     }
   }
 
-  Ok(image_out.to_vec().into())
+  Ok(image_out.into_bytes().into())
 }
 
 #[derive(Debug, Serialize)]
 struct DecodedImage {
-  data: ToJsBuffer,
   width: u32,
   height: u32,
 }
@@ -125,7 +147,7 @@ fn op_image_decode(
   #[buffer] buf: &[u8],
   #[serde] options: ImageDecodeOptions,
 ) -> Result<DecodedImage, AnyError> {
-  let reader = std::io::BufReader::new(std::io::Cursor::new(buf));
+  let reader = std::io::BufReader::new(Cursor::new(buf));
   let image = match &*options.mime_type {
     "image/png" => {
       let decoder = image::codecs::png::PngDecoder::new(reader)?;
@@ -155,11 +177,7 @@ fn op_image_decode(
   };
   let (width, height) = image.dimensions();
 
-  Ok(DecodedImage {
-    data: image.into_bytes().into(),
-    width,
-    height,
-  })
+  Ok(DecodedImage { width, height })
 }
 
 deno_core::extension!(
