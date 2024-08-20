@@ -289,6 +289,10 @@ pub async fn add(
     _ => bail!("Failed updating config file due to no object."),
   };
 
+  if obj.get_string("importMap").is_some() {
+    bail!("`deno add` is not supported when configuration file contains an \"importMap\" field.\n    at {}", config_specifier);
+  }
+
   let mut existing_imports = config_file.existing_imports()?;
 
   let is_npm = config_file.is_npm();

@@ -1,0 +1,2 @@
+error: `deno add` is not supported when configuration file contains an "importMap" field.
+    at file:///[WILDLINE]/deno.json
