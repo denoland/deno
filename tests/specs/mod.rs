@@ -53,6 +53,8 @@ struct MultiTestMetaData {
   #[serde(default)]
   pub envs: HashMap<String, String>,
   #[serde(default)]
+  pub cwd: Option<String>,
+  #[serde(default)]
   pub tests: BTreeMap<String, JsonMap>,
 }
 
@@ -72,6 +74,10 @@ impl MultiTestMetaData {
       }
       if multi_test_meta_data.temp_dir && !value.contains_key("tempDir") {
         value.insert("tempDir".to_string(), true.into());
+      }
+      if multi_test_meta_data.cwd.is_some() && !value.contains_key("cwd") {
+        value
+          .insert("cwd".to_string(), multi_test_meta_data.cwd.clone().into());
       }
       if !multi_test_meta_data.envs.is_empty() {
         if !value.contains_key("envs") {
@@ -112,6 +118,8 @@ struct MultiStepMetaData {
   #[serde(default)]
   pub base: Option<String>,
   #[serde(default)]
+  pub cwd: Option<String>,
+  #[serde(default)]
   pub envs: HashMap<String, String>,
   #[serde(default)]
   pub repeat: Option<usize>,
@@ -136,6 +144,7 @@ impl SingleTestMetaData {
   pub fn into_multi(self) -> MultiStepMetaData {
     MultiStepMetaData {
       base: self.base,
+      cwd: None,
       temp_dir: self.temp_dir,
       repeat: self.repeat,
       envs: Default::default(),
@@ -371,7 +380,7 @@ fn run_step(
     VecOrString::Vec(args) => command.args_vec(args),
     VecOrString::String(text) => command.args(text),
   };
-  let command = match &step.cwd {
+  let command = match step.cwd.as_ref().or(metadata.cwd.as_ref()) {
     Some(cwd) => command.current_dir(cwd),
     None => command,
   };
