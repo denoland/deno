@@ -4,6 +4,7 @@ use deno_core::serde_json::json;
 use test_util::assert_contains;
 use test_util::assert_not_contains;
 use test_util::itest;
+use test_util::TestContext;
 use test_util::TestContextBuilder;
 
 itest!(ignore_unexplicit_files {
@@ -234,4 +235,33 @@ fn opt_out_top_level_exclude_via_lint_unexclude() {
   assert_contains!(output, "main.ts");
   assert_contains!(output, "excluded.ts");
   assert_not_contains!(output, "actually_excluded.ts");
+}
+
+#[test]
+fn lint_stdin_jsx() {
+  TestContext::default()
+    .new_command()
+    .args("lint --ext=jsx -")
+    .stdin_text(
+      r#"
+const data = <div>hello</div>;
+"#,
+    )
+    .run()
+    .assert_matches_text(
+      r#"error[no-unused-vars]: `data` is never used
+ --> [WILDLINE]$deno$stdin.jsx:2:7
+  | 
+2 | const data = <div>hello</div>;
+  |       ^^^^
+  = hint: If this is intentional, prefix it with an underscore like `_data`
+
+  docs: https://lint.deno.land/rules/no-unused-vars
+
+
+Found 1 problem
+Checked 1 file
+"#,
+    )
+    .assert_exit_code(1);
 }

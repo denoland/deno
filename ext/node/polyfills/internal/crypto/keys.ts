@@ -14,16 +14,24 @@ const {
 import {
   op_node_create_private_key,
   op_node_create_public_key,
-  op_node_export_rsa_public_pem,
-  op_node_export_rsa_spki_der,
+  op_node_create_secret_key,
+  op_node_derive_public_key_from_private_key,
+  op_node_export_private_key_der,
+  op_node_export_private_key_pem,
+  op_node_export_public_key_der,
+  op_node_export_public_key_pem,
+  op_node_export_secret_key,
+  op_node_export_secret_key_b64url,
+  op_node_get_asymmetric_key_details,
+  op_node_get_asymmetric_key_type,
+  op_node_get_symmetric_key_size,
+  op_node_key_type,
 } from "ext:core/ops";
 
-import {
-  kHandle,
-  kKeyObject,
-} from "ext:deno_node/internal/crypto/constants.ts";
+import { kHandle } from "ext:deno_node/internal/crypto/constants.ts";
 import { isStringOrBuffer } from "ext:deno_node/internal/crypto/cipher.ts";
 import {
+  ERR_CRYPTO_INCOMPATIBLE_KEY_OPTIONS,
   ERR_CRYPTO_INVALID_KEY_OBJECT_TYPE,
   ERR_INVALID_ARG_TYPE,
   ERR_INVALID_ARG_VALUE,
@@ -41,23 +49,21 @@ import {
 } from "ext:deno_node/internal/util/types.ts";
 import { hideStackFrames } from "ext:deno_node/internal/errors.ts";
 import {
-  isCryptoKey as isCryptoKey_,
-  isKeyObject as isKeyObject_,
+  isCryptoKey,
+  isKeyObject,
   kKeyType,
 } from "ext:deno_node/internal/crypto/_keys.ts";
 import {
   validateObject,
   validateOneOf,
 } from "ext:deno_node/internal/validators.mjs";
-import {
-  forgivingBase64UrlEncode as encodeToBase64Url,
-} from "ext:deno_web/00_infra.js";
+import { BufferEncoding } from "ext:deno_node/_global.d.ts";
 
 export const getArrayBufferOrView = hideStackFrames(
   (
-    buffer,
-    name,
-    encoding,
+    buffer: ArrayBufferView | ArrayBuffer | string | Buffer,
+    name: string,
+    encoding?: BufferEncoding | "buffer",
   ):
     | ArrayBuffer
     | SharedArrayBuffer
@@ -144,32 +150,30 @@ export interface JwkKeyExportOptions {
   format: "jwk";
 }
 
-export function isKeyObject(obj: unknown): obj is KeyObject {
-  return isKeyObject_(obj);
+export enum KeyHandleContext {
+  kConsumePublic = 0,
+  kConsumePrivate = 1,
+  kCreatePublic = 2,
+  kCreatePrivate = 3,
 }
 
-export function isCryptoKey(
-  obj: unknown,
-): obj is { type: string; [kKeyObject]: KeyObject } {
-  return isCryptoKey_(obj);
+export const kConsumePublic = KeyHandleContext.kConsumePublic;
+export const kConsumePrivate = KeyHandleContext.kConsumePrivate;
+export const kCreatePublic = KeyHandleContext.kCreatePublic;
+export const kCreatePrivate = KeyHandleContext.kCreatePrivate;
+
+function isJwk(obj: unknown): obj is { kty: unknown } {
+  // @ts-ignore this is fine
+  return typeof obj === "object" && obj != null && obj.kty !== undefined;
 }
 
-function copyBuffer(input: string | Buffer | ArrayBufferView) {
-  if (typeof input === "string") return Buffer.from(input);
-  return (
-    (ArrayBuffer.isView(input)
-      ? new Uint8Array(input.buffer, input.byteOffset, input.byteLength)
-      : new Uint8Array(input)).slice()
-  );
-}
-
-const KEY_STORE = new WeakMap();
+export type KeyObjectHandle = { ___keyObjectHandle: true };
 
 export class KeyObject {
   [kKeyType]: KeyObjectType;
-  [kHandle]: unknown;
+  [kHandle]: KeyObjectHandle;
 
-  constructor(type: KeyObjectType, handle: unknown) {
+  constructor(type: KeyObjectType, handle: KeyObjectHandle) {
     if (type !== "secret" && type !== "public" && type !== "private") {
       throw new ERR_INVALID_ARG_VALUE("type", type);
     }
@@ -184,7 +188,6 @@ export class KeyObject {
 
   get symmetricKeySize(): number | undefined {
     notImplemented("crypto.KeyObject.prototype.symmetricKeySize");
-
     return undefined;
   }
 
@@ -192,7 +195,6 @@ export class KeyObject {
     if (!isCryptoKey(key)) {
       throw new ERR_INVALID_ARG_TYPE("key", "CryptoKey", key);
     }
-
     notImplemented("crypto.KeyObject.prototype.from");
   }
 
@@ -212,12 +214,13 @@ export class KeyObject {
   export(options?: KeyExportOptions<"der">): Buffer;
   export(options?: JwkKeyExportOptions): JsonWebKey;
   export(_options?: unknown): string | Buffer | JsonWebKey {
-    notImplemented("crypto.KeyObject.prototype.asymmetricKeyType");
+    notImplemented("crypto.KeyObject.prototype.export");
   }
 }
 
 ObjectDefineProperties(KeyObject.prototype, {
   [SymbolToStringTag]: {
+    // @ts-expect-error __proto__ is magic
     __proto__: null,
     configurable: true,
     value: "KeyObject",
@@ -229,48 +232,356 @@ export interface JsonWebKeyInput {
   format: "jwk";
 }
 
-export function prepareAsymmetricKey(key) {
-  if (isStringOrBuffer(key)) {
-    return { format: "pem", data: getArrayBufferOrView(key, "key") };
-  } else if (isKeyObject(key)) {
-    return {
-      // Assumes that asymmetric keys are stored as PEM.
-      format: "pem",
-      data: getKeyMaterial(key),
-    };
-  } else if (typeof key == "object") {
-    const { key: data, encoding, format, type } = key;
-    if (!isStringOrBuffer(data)) {
-      throw new TypeError("Invalid key type");
-    }
-
-    return {
-      data: getArrayBufferOrView(data, "key", encoding),
-      format: format ?? "pem",
-      encoding,
-      type,
-    };
+export function getKeyObjectHandle(key: KeyObject, ctx: KeyHandleContext) {
+  if (ctx === kCreatePrivate) {
+    throw new ERR_INVALID_ARG_TYPE(
+      "key",
+      ["string", "ArrayBuffer", "Buffer", "TypedArray", "DataView"],
+      key,
+    );
   }
 
-  throw new TypeError("Invalid key type");
+  if (key.type !== "private") {
+    if (ctx === kConsumePrivate || ctx === kCreatePublic) {
+      throw new ERR_CRYPTO_INVALID_KEY_OBJECT_TYPE(key.type, "private");
+    }
+    if (key.type !== "public") {
+      throw new ERR_CRYPTO_INVALID_KEY_OBJECT_TYPE(
+        key.type,
+        "private or public",
+      );
+    }
+  }
+
+  return key[kHandle];
+}
+
+export function prepareAsymmetricKey(
+  key:
+    | string
+    | ArrayBuffer
+    | Buffer
+    | ArrayBufferView
+    | KeyObject
+    | CryptoKey
+    | PrivateKeyInput
+    | PublicKeyInput
+    | JsonWebKeyInput,
+  ctx: KeyHandleContext,
+):
+  | { handle: KeyObjectHandle; format?: "jwk" }
+  | {
+    data: ArrayBuffer | ArrayBufferView;
+    format: KeyFormat;
+    type: "pkcs1" | "spki" | "pkcs8" | "sec1" | undefined;
+    passphrase: Buffer | ArrayBuffer | ArrayBufferView | undefined;
+  } {
+  if (isKeyObject(key)) {
+    // Best case: A key object, as simple as that.
+    return {
+      // @ts-ignore __proto__ is magic
+      __proto__: null,
+      handle: getKeyObjectHandle(key, ctx),
+    };
+  } else if (isCryptoKey(key)) {
+    notImplemented("using CryptoKey as input");
+  } else if (isStringOrBuffer(key)) {
+    // Expect PEM by default, mostly for backward compatibility.
+    return {
+      // @ts-ignore __proto__ is magic
+      __proto__: null,
+      format: "pem",
+      data: getArrayBufferOrView(key, "key"),
+    };
+  } else if (typeof key === "object") {
+    const { key: data, format } = key;
+    // The 'key' property can be a KeyObject as well to allow specifying
+    // additional options such as padding along with the key.
+    if (isKeyObject(data)) {
+      return {
+        // @ts-ignore __proto__ is magic
+        __proto__: null,
+        handle: getKeyObjectHandle(data, ctx),
+      };
+    } else if (isCryptoKey(data)) {
+      notImplemented("using CryptoKey as input");
+    } else if (isJwk(data) && format === "jwk") {
+      notImplemented("using JWK as input");
+    }
+    // Either PEM or DER using PKCS#1 or SPKI.
+    if (!isStringOrBuffer(data)) {
+      throw new ERR_INVALID_ARG_TYPE(
+        "key.key",
+        getKeyTypes(ctx !== kCreatePrivate),
+        data,
+      );
+    }
+
+    const isPublic = (ctx === kConsumePrivate || ctx === kCreatePrivate)
+      ? false
+      : undefined;
+    return {
+      data: getArrayBufferOrView(
+        data,
+        "key",
+        (key as PrivateKeyInput | PublicKeyInput).encoding,
+      ),
+      ...parseKeyEncoding(key, undefined, isPublic),
+    };
+  }
+  throw new ERR_INVALID_ARG_TYPE(
+    "key",
+    getKeyTypes(ctx !== kCreatePrivate),
+    key,
+  );
+}
+
+function parseKeyEncoding(
+  enc: {
+    cipher?: string;
+    passphrase?: string | Buffer | ArrayBuffer | ArrayBufferView;
+    encoding?: BufferEncoding | "buffer";
+    format?: string;
+    type?: string;
+  },
+  keyType: string | undefined,
+  isPublic: boolean | undefined,
+  objName?: string,
+): {
+  format: KeyFormat;
+  type: "pkcs1" | "spki" | "pkcs8" | "sec1" | undefined;
+  passphrase: Buffer | ArrayBuffer | ArrayBufferView | undefined;
+  cipher: string | undefined;
+} {
+  if (enc === null || typeof enc !== "object") {
+    throw new ERR_INVALID_ARG_TYPE("options", "object", enc);
+  }
+
+  const isInput = keyType === undefined;
+
+  const {
+    format,
+    type,
+  } = parseKeyFormatAndType(enc, keyType, isPublic, objName);
+
+  let cipher, passphrase, encoding;
+  if (isPublic !== true) {
+    ({ cipher, passphrase, encoding } = enc);
+
+    if (!isInput) {
+      if (cipher != null) {
+        if (typeof cipher !== "string") {
+          throw new ERR_INVALID_ARG_VALUE(option("cipher", objName), cipher);
+        }
+        if (
+          format === "der" &&
+          (type === "pkcs1" || type === "sec1")
+        ) {
+          throw new ERR_CRYPTO_INCOMPATIBLE_KEY_OPTIONS(
+            type,
+            "does not support encryption",
+          );
+        }
+      } else if (passphrase !== undefined) {
+        throw new ERR_INVALID_ARG_VALUE(option("cipher", objName), cipher);
+      }
+    }
+
+    if (
+      (isInput && passphrase !== undefined &&
+        !isStringOrBuffer(passphrase)) ||
+      (!isInput && cipher != null && !isStringOrBuffer(passphrase))
+    ) {
+      throw new ERR_INVALID_ARG_VALUE(
+        option("passphrase", objName),
+        passphrase,
+      );
+    }
+  }
+
+  if (passphrase !== undefined) {
+    passphrase = getArrayBufferOrView(passphrase, "key.passphrase", encoding);
+  }
+
+  return {
+    // @ts-ignore __proto__ is magic
+    __proto__: null,
+    format,
+    type,
+    cipher,
+    passphrase,
+  };
+}
+
+function option(name: string, objName?: string) {
+  return objName === undefined
+    ? `options.${name}`
+    : `options.${objName}.${name}`;
+}
+
+function parseKeyFormatAndType(
+  enc: { format?: string; type?: string },
+  keyType: string | undefined,
+  isPublic: boolean | undefined,
+  objName?: string,
+): {
+  format: KeyFormat;
+  type: "pkcs1" | "spki" | "pkcs8" | "sec1" | undefined;
+} {
+  const { format: formatStr, type: typeStr } = enc;
+
+  const isInput = keyType === undefined;
+  const format = parseKeyFormat(
+    formatStr,
+    isInput ? "pem" : undefined,
+    option("format", objName),
+  );
+
+  const type = parseKeyType(
+    typeStr,
+    !isInput || format === "der",
+    keyType,
+    isPublic,
+    option("type", objName),
+  );
+
+  return {
+    // @ts-ignore __proto__ is magic
+    __proto__: null,
+    format,
+    type,
+  };
+}
+
+function parseKeyFormat(
+  formatStr: string | undefined,
+  defaultFormat: KeyFormat | undefined,
+  optionName: string,
+): KeyFormat {
+  if (formatStr === undefined && defaultFormat !== undefined) {
+    return defaultFormat;
+  } else if (formatStr === "pem") {
+    return "pem";
+  } else if (formatStr === "der") {
+    return "der";
+  }
+  throw new ERR_INVALID_ARG_VALUE(optionName, formatStr);
+}
+
+function parseKeyType(
+  typeStr: string | undefined,
+  required: boolean,
+  keyType: string | undefined,
+  isPublic: boolean | undefined,
+  optionName: string,
+): "pkcs1" | "spki" | "pkcs8" | "sec1" | undefined {
+  if (typeStr === undefined && !required) {
+    return undefined;
+  } else if (typeStr === "pkcs1") {
+    if (keyType !== undefined && keyType !== "rsa") {
+      throw new ERR_CRYPTO_INCOMPATIBLE_KEY_OPTIONS(
+        typeStr,
+        "can only be used for RSA keys",
+      );
+    }
+    return "pkcs1";
+  } else if (typeStr === "spki" && isPublic !== false) {
+    return "spki";
+  } else if (typeStr === "pkcs8" && isPublic !== true) {
+    return "pkcs8";
+  } else if (typeStr === "sec1" && isPublic !== true) {
+    if (keyType !== undefined && keyType !== "ec") {
+      throw new ERR_CRYPTO_INCOMPATIBLE_KEY_OPTIONS(
+        typeStr,
+        "can only be used for EC keys",
+      );
+    }
+    return "sec1";
+  }
+  throw new ERR_INVALID_ARG_VALUE(optionName, typeStr);
+}
+
+// Parses the public key encoding based on an object. keyType must be undefined
+// when this is used to parse an input encoding and must be a valid key type if
+// used to parse an output encoding.
+function parsePublicKeyEncoding(
+  enc: {
+    cipher?: string;
+    passphrase?: string | Buffer | ArrayBuffer | ArrayBufferView;
+    encoding?: BufferEncoding | "buffer";
+    format?: string;
+    type?: string;
+  },
+  keyType: string | undefined,
+  objName?: string,
+) {
+  return parseKeyEncoding(enc, keyType, keyType ? true : undefined, objName);
+}
+
+// Parses the private key encoding based on an object. keyType must be undefined
+// when this is used to parse an input encoding and must be a valid key type if
+// used to parse an output encoding.
+function parsePrivateKeyEncoding(
+  enc: {
+    cipher?: string;
+    passphrase?: string | Buffer | ArrayBuffer | ArrayBufferView;
+    encoding?: BufferEncoding | "buffer";
+    format?: string;
+    type?: string;
+  },
+  keyType: string | undefined,
+  objName?: string,
+) {
+  return parseKeyEncoding(enc, keyType, false, objName);
 }
 
 export function createPrivateKey(
   key: PrivateKeyInput | string | Buffer | JsonWebKeyInput,
 ): PrivateKeyObject {
-  const { data, format, type } = prepareAsymmetricKey(key);
-  const details = op_node_create_private_key(data, format, type);
-  const handle = setOwnedKey(copyBuffer(data));
-  return new PrivateKeyObject(handle, details);
+  const res = prepareAsymmetricKey(key, kCreatePrivate);
+  if ("handle" in res) {
+    const type = op_node_key_type(res.handle);
+    if (type === "private") {
+      return new PrivateKeyObject(res.handle);
+    } else {
+      throw new TypeError(`Can not create private key from ${type} key`);
+    }
+  } else {
+    const handle = op_node_create_private_key(
+      res.data,
+      res.format,
+      res.type ?? "",
+      res.passphrase,
+    );
+    return new PrivateKeyObject(handle);
+  }
 }
 
 export function createPublicKey(
   key: PublicKeyInput | string | Buffer | JsonWebKeyInput,
 ): PublicKeyObject {
-  const { data, format, type } = prepareAsymmetricKey(key);
-  const details = op_node_create_public_key(data, format, type);
-  const handle = setOwnedKey(copyBuffer(data));
-  return new PublicKeyObject(handle, details);
+  const res = prepareAsymmetricKey(
+    key,
+    kCreatePublic,
+  );
+  if ("handle" in res) {
+    const type = op_node_key_type(res.handle);
+    if (type === "private") {
+      const handle = op_node_derive_public_key_from_private_key(res.handle);
+      return new PublicKeyObject(handle);
+    } else if (type === "public") {
+      return new PublicKeyObject(res.handle);
+    } else {
+      throw new TypeError(`Can not create private key from ${type} key`);
+    }
+  } else {
+    const handle = op_node_create_public_key(
+      res.data,
+      res.format,
+      res.type ?? "",
+    );
+    return new PublicKeyObject(handle);
+  }
 }
 
 function getKeyTypes(allowKeyObject: boolean, bufferOnly = false) {
@@ -292,10 +603,10 @@ function getKeyTypes(allowKeyObject: boolean, bufferOnly = false) {
 }
 
 export function prepareSecretKey(
-  key: string | ArrayBufferView | ArrayBuffer | KeyObject,
+  key: string | ArrayBufferView | ArrayBuffer | KeyObject | CryptoKey,
   encoding: string | undefined,
   bufferOnly = false,
-) {
+): Buffer | ArrayBuffer | ArrayBufferView | KeyObjectHandle {
   if (!bufferOnly) {
     if (isKeyObject(key)) {
       if (key.type !== "secret") {
@@ -303,10 +614,7 @@ export function prepareSecretKey(
       }
       return key[kHandle];
     } else if (isCryptoKey(key)) {
-      if (key.type !== "secret") {
-        throw new ERR_CRYPTO_INVALID_KEY_OBJECT_TYPE(key.type, "secret");
-      }
-      return key[kKeyObject][kHandle];
+      notImplemented("using CryptoKey as input");
     }
   }
   if (
@@ -325,21 +633,20 @@ export function prepareSecretKey(
 }
 
 export class SecretKeyObject extends KeyObject {
-  constructor(handle: unknown) {
+  constructor(handle: KeyObjectHandle) {
     super("secret", handle);
   }
 
   get symmetricKeySize() {
-    return KEY_STORE.get(this[kHandle]).byteLength;
+    return op_node_get_symmetric_key_size(this[kHandle]);
   }
 
   get asymmetricKeyType() {
     return undefined;
   }
 
-  export(): Buffer;
-  export(options?: JwkKeyExportOptions): JsonWebKey {
-    const key = KEY_STORE.get(this[kHandle]);
+  export(options?: { format?: "buffer" | "jwk" }): Buffer | JsonWebKey {
+    let format: "buffer" | "jwk" = "buffer";
     if (options !== undefined) {
       validateObject(options, "options");
       validateOneOf(
@@ -347,111 +654,102 @@ export class SecretKeyObject extends KeyObject {
         "options.format",
         [undefined, "buffer", "jwk"],
       );
-      if (options.format === "jwk") {
+      format = options.format ?? "buffer";
+    }
+    switch (format) {
+      case "buffer":
+        return Buffer.from(op_node_export_secret_key(this[kHandle]));
+      case "jwk":
         return {
           kty: "oct",
-          k: encodeToBase64Url(key),
+          k: op_node_export_secret_key_b64url(this[kHandle]),
         };
-      }
     }
-    return key.slice();
   }
 }
 
-const kAsymmetricKeyType = Symbol("kAsymmetricKeyType");
-const kAsymmetricKeyDetails = Symbol("kAsymmetricKeyDetails");
-
 class AsymmetricKeyObject extends KeyObject {
-  constructor(type: KeyObjectType, handle: unknown, details: unknown) {
+  constructor(type: KeyObjectType, handle: KeyObjectHandle) {
     super(type, handle);
-    this[kAsymmetricKeyType] = details.type;
-    this[kAsymmetricKeyDetails] = { ...details };
   }
 
   get asymmetricKeyType() {
-    return this[kAsymmetricKeyType];
+    return op_node_get_asymmetric_key_type(this[kHandle]);
   }
 
   get asymmetricKeyDetails() {
-    return this[kAsymmetricKeyDetails];
+    return op_node_get_asymmetric_key_details(this[kHandle]);
   }
 }
 
 export class PrivateKeyObject extends AsymmetricKeyObject {
-  constructor(handle: unknown, details: unknown) {
-    super("private", handle, details);
+  constructor(handle: KeyObjectHandle) {
+    super("private", handle);
   }
 
-  export(_options: unknown) {
-    notImplemented("crypto.PrivateKeyObject.prototype.export");
-  }
-}
+  export(options: JwkKeyExportOptions | KeyExportOptions<KeyFormat>) {
+    if (options && options.format === "jwk") {
+      notImplemented("jwk private key export not implemented");
+    }
+    const {
+      format,
+      type,
+    } = parsePrivateKeyEncoding(options, this.asymmetricKeyType);
 
-export class PublicKeyObject extends AsymmetricKeyObject {
-  constructor(handle: unknown, details: unknown) {
-    super("public", handle, details);
-  }
-
-  export(options: unknown) {
-    const key = KEY_STORE.get(this[kHandle]);
-    switch (this.asymmetricKeyType) {
-      case "rsa":
-      case "rsa-pss": {
-        switch (options.format) {
-          case "pem":
-            return op_node_export_rsa_public_pem(key);
-          case "der": {
-            if (options.type == "pkcs1") {
-              return key;
-            } else {
-              return op_node_export_rsa_spki_der(key);
-            }
-          }
-          default:
-            throw new TypeError(`exporting ${options.type} is not implemented`);
-        }
-      }
-      default:
-        throw new TypeError(
-          `exporting ${this.asymmetricKeyType} is not implemented`,
-        );
+    if (format === "pem") {
+      return op_node_export_private_key_pem(this[kHandle], type);
+    } else {
+      return Buffer.from(op_node_export_private_key_der(this[kHandle], type));
     }
   }
 }
 
-export function setOwnedKey(key: Uint8Array): unknown {
-  const handle = {};
-  KEY_STORE.set(handle, key);
-  return handle;
+export class PublicKeyObject extends AsymmetricKeyObject {
+  constructor(handle: KeyObjectHandle) {
+    super("public", handle);
+  }
+
+  export(options: JwkKeyExportOptions | KeyExportOptions<KeyFormat>) {
+    if (options && options.format === "jwk") {
+      notImplemented("jwk public key export not implemented");
+    }
+    const {
+      format,
+      type,
+    } = parsePublicKeyEncoding(options, this.asymmetricKeyType);
+
+    if (format === "pem") {
+      return op_node_export_public_key_pem(this[kHandle], type);
+    } else {
+      return Buffer.from(op_node_export_public_key_der(this[kHandle], type));
+    }
+  }
 }
 
-export function getKeyMaterial(key: KeyObject): Uint8Array {
-  return KEY_STORE.get(key[kHandle]);
-}
-
-export function createSecretKey(key: ArrayBufferView): KeyObject;
 export function createSecretKey(
-  key: string,
-  encoding: string,
-): KeyObject;
-export function createSecretKey(
-  key: string | ArrayBufferView,
+  key: string | ArrayBufferView | ArrayBuffer | KeyObject | CryptoKey,
   encoding?: string,
 ): KeyObject {
-  key = prepareSecretKey(key, encoding, true);
-  const handle = setOwnedKey(copyBuffer(key));
-  return new SecretKeyObject(handle);
+  const preparedKey = prepareSecretKey(key, encoding, true);
+  if (isArrayBufferView(preparedKey) || isAnyArrayBuffer(preparedKey)) {
+    const handle = op_node_create_secret_key(preparedKey);
+    return new SecretKeyObject(handle);
+  } else {
+    const type = op_node_key_type(preparedKey);
+    if (type === "secret") {
+      return new SecretKeyObject(preparedKey);
+    } else {
+      throw new TypeError(`can not create secret key from ${type} key`);
+    }
+  }
 }
 
 export default {
   createPrivateKey,
   createPublicKey,
   createSecretKey,
-  isKeyObject,
-  isCryptoKey,
   KeyObject,
   prepareSecretKey,
-  setOwnedKey,
   SecretKeyObject,
   PrivateKeyObject,
   PublicKeyObject,

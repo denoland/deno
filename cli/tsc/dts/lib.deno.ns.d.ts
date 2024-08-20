@@ -4149,7 +4149,14 @@ declare namespace Deno {
    * @category File System */
   export interface FsEvent {
     /** The kind/type of the file system event. */
-    kind: "any" | "access" | "create" | "modify" | "remove" | "other";
+    kind:
+      | "any"
+      | "access"
+      | "create"
+      | "modify"
+      | "rename"
+      | "remove"
+      | "other";
     /** An array of paths that are associated with the file system event. */
     paths: string[];
     /** Any additional flags associated with the event. */
@@ -6255,6 +6262,35 @@ declare namespace Deno {
     request: Request,
     info: ServeHandlerInfo,
   ) => Response | Promise<Response>;
+
+  /** Interface that module run with `deno serve` subcommand must conform to.
+   *
+   * To ensure your code is type-checked properly, make sure to add `satisfies Deno.ServeDefaultExport`
+   * to the `export default { ... }` like so:
+   *
+   * ```ts
+   * export default {
+   *   fetch(req) {
+   *     return new Response("Hello world");
+   *   }
+   * } satisfies Deno.ServeDefaultExport;
+   * ```
+   *
+   * @category HTTP Server
+   */
+  export interface ServeDefaultExport {
+    /** A handler for HTTP requests. Consumes a request and returns a response.
+     *
+     * If a handler throws, the server calling the handler will assume the impact
+     * of the error is isolated to the individual request. It will catch the error
+     * and if necessary will close the underlying connection.
+     *
+     * @category HTTP Server
+     */
+    fetch: (
+      request: Request,
+    ) => Response | Promise<Response>;
+  }
 
   /** Options which can be set when calling {@linkcode Deno.serve}.
    *

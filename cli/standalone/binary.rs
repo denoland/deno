@@ -19,6 +19,7 @@ use std::process::Command;
 
 use deno_ast::ModuleSpecifier;
 use deno_config::workspace::PackageJsonDepResolution;
+use deno_config::workspace::ResolverWorkspaceJsrPackage;
 use deno_config::workspace::Workspace;
 use deno_config::workspace::WorkspaceResolver;
 use deno_core::anyhow::bail;
@@ -33,6 +34,7 @@ use deno_npm::NpmSystemInfo;
 use deno_runtime::deno_node::PackageJson;
 use deno_semver::npm::NpmVersionReqParseError;
 use deno_semver::package::PackageReq;
+use deno_semver::Version;
 use deno_semver::VersionReqSpecifierParseError;
 use eszip::EszipRelativeFileBaseUrl;
 use indexmap::IndexMap;
@@ -51,7 +53,9 @@ use crate::file_fetcher::FileFetcher;
 use crate::http_util::HttpClientProvider;
 use crate::npm::CliNpmResolver;
 use crate::npm::InnerCliNpmResolverRef;
+use crate::shared::ReleaseChannel;
 use crate::standalone::virtual_fs::VfsEntry;
+use crate::util::archive;
 use crate::util::fs::canonicalize_path_maybe_not_exists;
 use crate::util::progress_bar::ProgressBar;
 use crate::util::progress_bar::ProgressBarStyle;
@@ -80,13 +84,24 @@ pub struct SerializedWorkspaceResolverImportMap {
   pub json: String,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct SerializedResolverWorkspaceJsrPackage {
+  pub relative_base: String,
+  pub name: String,
+  pub version: Option<Version>,
+  pub exports: IndexMap<String, String>,
+}
+
 #[derive(Deserialize, Serialize)]
 pub struct SerializedWorkspaceResolver {
   pub import_map: Option<SerializedWorkspaceResolverImportMap>,
+  pub jsr_pkgs: Vec<SerializedResolverWorkspaceJsrPackage>,
   pub package_jsons: BTreeMap<String, serde_json::Value>,
   pub pkg_json_resolution: PackageJsonDepResolution,
 }
 
+// Note: Don't use hashmaps/hashsets. Ensure the serialization
+// is deterministic.
 #[derive(Deserialize, Serialize)]
 pub struct Metadata {
   pub argv: Vec<String>,
@@ -98,7 +113,7 @@ pub struct Metadata {
   pub ca_stores: Option<Vec<String>>,
   pub ca_data: Option<Vec<u8>>,
   pub unsafely_ignore_certificate_errors: Option<Vec<String>>,
-  pub env_vars_from_env_file: HashMap<String, String>,
+  pub env_vars_from_env_file: IndexMap<String, String>,
   pub workspace_resolver: SerializedWorkspaceResolver,
   pub entrypoint_key: String,
   pub node_modules: Option<NodeModules>,
@@ -175,10 +190,19 @@ fn write_binary_bytes(
 
   let target = compile_flags.resolve_target();
   if target.contains("linux") {
-    libsui::Elf::new(&original_bin).append(&writer, &mut file_writer)?;
+    libsui::Elf::new(&original_bin).append(
+      "d3n0l4nd",
+      &writer,
+      &mut file_writer,
+    )?;
   } else if target.contains("windows") {
-    libsui::PortableExecutable::from(&original_bin)?
-      .write_resource("d3n0l4nd", writer)?
+    let mut pe = libsui::PortableExecutable::from(&original_bin)?;
+    if let Some(icon) = compile_flags.icon.as_ref() {
+      let icon = std::fs::read(icon)?;
+      pe = pe.set_icon(&icon)?;
+    }
+
+    pe.write_resource("d3n0l4nd", writer)?
       .build(&mut file_writer)?;
   } else if target.contains("darwin") {
     libsui::Macho::from(original_bin)?
@@ -307,72 +331,6 @@ fn u64_from_bytes(arr: &[u8]) -> Result<u64, AnyError> {
   Ok(u64::from_be_bytes(*fixed_arr))
 }
 
-pub fn unpack_into_dir(
-  exe_name: &str,
-  archive_name: &str,
-  archive_data: Vec<u8>,
-  is_windows: bool,
-  temp_dir: &tempfile::TempDir,
-) -> Result<PathBuf, AnyError> {
-  let temp_dir_path = temp_dir.path();
-  let exe_ext = if is_windows { "exe" } else { "" };
-  let archive_path = temp_dir_path.join(exe_name).with_extension("zip");
-  let exe_path = temp_dir_path.join(exe_name).with_extension(exe_ext);
-  assert!(!exe_path.exists());
-
-  let archive_ext = Path::new(archive_name)
-    .extension()
-    .and_then(|ext| ext.to_str())
-    .unwrap();
-  let unpack_status = match archive_ext {
-    "zip" if cfg!(windows) => {
-      fs::write(&archive_path, &archive_data)?;
-      Command::new("tar.exe")
-        .arg("xf")
-        .arg(&archive_path)
-        .arg("-C")
-        .arg(temp_dir_path)
-        .spawn()
-        .map_err(|err| {
-          if err.kind() == std::io::ErrorKind::NotFound {
-            std::io::Error::new(
-              std::io::ErrorKind::NotFound,
-              "`tar.exe` was not found in your PATH",
-            )
-          } else {
-            err
-          }
-        })?
-        .wait()?
-    }
-    "zip" => {
-      fs::write(&archive_path, &archive_data)?;
-      Command::new("unzip")
-        .current_dir(temp_dir_path)
-        .arg(&archive_path)
-        .spawn()
-        .map_err(|err| {
-          if err.kind() == std::io::ErrorKind::NotFound {
-            std::io::Error::new(
-              std::io::ErrorKind::NotFound,
-              "`unzip` was not found in your PATH, please install `unzip`",
-            )
-          } else {
-            err
-          }
-        })?
-        .wait()?
-    }
-    ext => bail!("Unsupported archive type: '{ext}'"),
-  };
-  if !unpack_status.success() {
-    bail!("Failed to unpack archive.");
-  }
-  assert!(exe_path.exists());
-  fs::remove_file(&archive_path)?;
-  Ok(exe_path)
-}
-
 pub struct DenoCompileBinaryWriter<'a> {
   deno_dir: &'a DenoDir,
   file_fetcher: &'a FileFetcher,
@@ -424,6 +382,15 @@ impl<'a> DenoCompileBinaryWriter<'a> {
       }
       set_windows_binary_to_gui(&mut original_binary)?;
     }
+    if compile_flags.icon.is_some() {
+      let target = compile_flags.resolve_target();
+      if !target.contains("windows") {
+        bail!(
+          "The `--icon` flag is only available when targeting Windows (current: {})",
+          target,
+        )
+      }
+    }
     self.write_standalone_binary(
       writer,
       original_binary,
@@ -452,11 +419,23 @@ impl<'a> DenoCompileBinaryWriter<'a> {
     let target = compile_flags.resolve_target();
     let binary_name = format!("denort-{target}.zip");
 
-    let binary_path_suffix = if crate::version::is_canary() {
-      format!("canary/{}/{}", crate::version::GIT_COMMIT_HASH, binary_name)
-    } else {
-      format!("release/v{}/{}", env!("CARGO_PKG_VERSION"), binary_name)
-    };
+    let binary_path_suffix =
+      match crate::version::DENO_VERSION_INFO.release_channel {
+        ReleaseChannel::Canary => {
+          format!(
+            "canary/{}/{}",
+            crate::version::DENO_VERSION_INFO.git_hash,
+            binary_name
+          )
+        }
+        ReleaseChannel::Stable => {
+          format!("release/v{}/{}", env!("CARGO_PKG_VERSION"), binary_name)
+        }
+        _ => bail!(
+          "`deno compile` current doesn't support {} release channel",
+          crate::version::DENO_VERSION_INFO.release_channel.name()
+        ),
+      };
 
     let download_directory = self.deno_dir.dl_folder_path();
     let binary_path = download_directory.join(&binary_path_suffix);
@@ -469,13 +448,13 @@ impl<'a> DenoCompileBinaryWriter<'a> {
 
     let archive_data = std::fs::read(binary_path)?;
     let temp_dir = tempfile::TempDir::new()?;
-    let base_binary_path = unpack_into_dir(
-      "denort",
-      &binary_name,
-      archive_data,
-      target.contains("windows"),
-      &temp_dir,
-    )?;
+    let base_binary_path = archive::unpack_into_dir(archive::UnpackArgs {
+      exe_name: "denort",
+      archive_name: &binary_name,
+      archive_data: &archive_data,
+      is_windows: target.contains("windows"),
+      dest_path: temp_dir.path(),
+    })?;
     let base_binary = std::fs::read(base_binary_path)?;
     drop(temp_dir); // delete the temp dir
     Ok(base_binary)
@@ -620,6 +599,16 @@ impl<'a> DenoCompileBinaryWriter<'a> {
             json: i.to_json(),
           }
         }),
+        jsr_pkgs: self
+          .workspace_resolver
+          .jsr_packages()
+          .map(|pkg| SerializedResolverWorkspaceJsrPackage {
+            relative_base: root_dir_url.specifier_key(&pkg.base).into_owned(),
+            name: pkg.name.clone(),
+            version: pkg.version.clone(),
+            exports: pkg.exports.clone(),
+          })
+          .collect(),
         package_jsons: self
           .workspace_resolver
           .package_jsons()
@@ -680,8 +669,10 @@ impl<'a> DenoCompileBinaryWriter<'a> {
           // but also don't make this dependent on the registry url
           let root_path = npm_resolver.global_cache_root_folder();
           let mut builder = VfsBuilder::new(root_path)?;
-          for package in npm_resolver.all_system_packages(&self.npm_system_info)
-          {
+          let mut packages =
+            npm_resolver.all_system_packages(&self.npm_system_info);
+          packages.sort_by(|a, b| a.id.cmp(&b.id)); // determinism
+          for package in packages {
             let folder =
               npm_resolver.resolve_pkg_folder_from_pkg_id(&package.id)?;
             builder.add_dir_recursive(&folder)?;
@@ -742,11 +733,13 @@ impl<'a> DenoCompileBinaryWriter<'a> {
           cli_options.workspace().root_dir().to_file_path().unwrap(),
         );
         while let Some(pending_dir) = pending_dirs.pop_front() {
-          let entries = fs::read_dir(&pending_dir).with_context(|| {
-            format!("Failed reading: {}", pending_dir.display())
-          })?;
+          let mut entries = fs::read_dir(&pending_dir)
+            .with_context(|| {
+              format!("Failed reading: {}", pending_dir.display())
+            })?
+            .collect::<Result<Vec<_>, _>>()?;
+          entries.sort_by_cached_key(|entry| entry.file_name()); // determinism
           for entry in entries {
-            let entry = entry?;
             let path = entry.path();
             if !path.is_dir() {
               continue;
@@ -768,8 +761,8 @@ impl<'a> DenoCompileBinaryWriter<'a> {
 /// in the passed environment file.
 fn get_file_env_vars(
   filename: String,
-) -> Result<HashMap<String, String>, dotenvy::Error> {
-  let mut file_env_vars = HashMap::new();
+) -> Result<IndexMap<String, String>, dotenvy::Error> {
+  let mut file_env_vars = IndexMap::new();
   for item in dotenvy::from_filename_iter(filename)? {
     let Ok((key, val)) = item else {
       continue; // this failure will be warned about on load

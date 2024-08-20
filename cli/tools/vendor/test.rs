@@ -300,6 +300,7 @@ fn build_resolver(
       Arc::new(ModuleSpecifier::from_directory_path(root_dir).unwrap()),
       maybe_original_import_map,
       Vec::new(),
+      Vec::new(),
       deno_config::workspace::PackageJsonDepResolution::Enabled,
     )),
     maybe_jsx_import_source_config,

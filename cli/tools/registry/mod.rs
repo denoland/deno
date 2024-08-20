@@ -64,6 +64,8 @@ mod unfurl;
 use auth::get_auth_method;
 use auth::AuthMethod;
 pub use pm::add;
+pub use pm::remove;
+pub use pm::AddCommandName;
 use publish_order::PublishOrderGraph;
 use unfurl::SpecifierUnfurler;
 
@@ -165,7 +167,7 @@ pub async fn publish(
         log::info!("   {} ({})", file.specifier, human_size(file.size as f64),);
       }
     }
-    log::warn!("{} Aborting due to --dry-run", colors::yellow("Warning"));
+    log::warn!("{} Dry run complete", colors::green("Success"));
     return Ok(());
   }
 
@@ -447,6 +449,8 @@ impl PublishPreparer {
       let cli_options = self.cli_options.clone();
       let source_cache = self.source_cache.clone();
       let config_path = config_path.clone();
+      let config_url = deno_json.specifier.clone();
+      let has_license_field = package.license.is_some();
       move || {
         let root_specifier =
           ModuleSpecifier::from_directory_path(&root_dir).unwrap();
@@ -465,7 +469,9 @@ impl PublishPreparer {
           &diagnostics_collector,
         );
 
-        if !has_license_file(publish_paths.iter().map(|p| &p.specifier)) {
+        if !has_license_field
+          && !has_license_file(publish_paths.iter().map(|p| &p.specifier))
+        {
           if let Some(license_path) =
             resolve_license_file(&root_dir, cli_options.workspace())
           {
@@ -481,7 +487,7 @@ impl PublishPreparer {
             });
           } else {
             diagnostics_collector.push(PublishDiagnostic::MissingLicense {
-              expected_path: root_dir.join("LICENSE"),
+              config_specifier: config_url,
             });
           }
         }

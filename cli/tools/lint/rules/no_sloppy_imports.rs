@@ -189,24 +189,30 @@ impl<'a> deno_graph::source::Resolver for SloppyImportCaptureResolver<'a> {
       .map_err(|err| ResolveError::Other(err.into()))?;
 
     match resolution {
-      deno_config::workspace::MappedResolution::Normal(specifier)
-      | deno_config::workspace::MappedResolution::ImportMap(specifier) => {
-        match self.sloppy_imports_resolver.resolve(&specifier, mode) {
-          Some(res) => {
-            self
-              .captures
-              .borrow_mut()
-              .entry(referrer_range.clone())
-              .or_insert_with(|| res.clone());
-            Ok(res.into_specifier())
-          }
-          None => Ok(specifier),
-        }
+      deno_config::workspace::MappedResolution::Normal {
+        specifier, ..
       }
-      deno_config::workspace::MappedResolution::WorkspaceNpmPackage {
+      | deno_config::workspace::MappedResolution::ImportMap {
+        specifier, ..
+      } => match self.sloppy_imports_resolver.resolve(&specifier, mode) {
+        Some(res) => {
+          self
+            .captures
+            .borrow_mut()
+            .entry(referrer_range.clone())
+            .or_insert_with(|| res.clone());
+          Ok(res.into_specifier())
+        }
+        None => Ok(specifier),
+      },
+      deno_config::workspace::MappedResolution::WorkspaceJsrPackage {
+        ..
+      }
+      | deno_config::workspace::MappedResolution::WorkspaceNpmPackage {
         ..
       }
       | deno_config::workspace::MappedResolution::PackageJson { .. } => {
+        // this error is ignored
         Err(ResolveError::Other(anyhow!("")))
       }
     }

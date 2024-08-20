@@ -1,5 +1,7 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
+// deno-lint-ignore-file no-console
+
 import { assertMatch, assertRejects } from "@std/assert";
 import { Buffer, BufReader, BufWriter } from "@std/io";
 import { TextProtoReader } from "../testdata/run/textproto.ts";

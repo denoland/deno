@@ -42,6 +42,7 @@ export function warnNotImplemented(msg?: string) {
   const message = msg
     ? `Warning: Not implemented: ${msg}`
     : "Warning: Not implemented";
+  // deno-lint-ignore no-console
   console.warn(message);
 }
 

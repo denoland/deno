@@ -2,7 +2,7 @@
 
 [package]
 name = "deno"
-version = "1.45.5"
+version = "1.46.0-rc.3"
 authors.workspace = true
 default-run = "deno"
 edition.workspace = true
@@ -65,21 +65,21 @@ winres.workspace = true
 [dependencies]
 deno_ast = { workspace = true, features = ["bundler", "cjs", "codegen", "proposal", "react", "sourcemap", "transforms", "typescript", "view", "visit"] }
 deno_cache_dir = { workspace = true }
-deno_config = { version = "=0.26.1", features = ["workspace", "sync"] }
+deno_config = { version = "=0.30.1", features = ["workspace", "sync"] }
 deno_core = { workspace = true, features = ["include_js_files_for_snapshotting"] }
-deno_doc = { version = "0.145.0", features = ["html", "syntect"] }
+deno_doc = { version = "0.146.0", features = ["html", "syntect"] }
 deno_emit = "=0.44.0"
-deno_graph = { version = "=0.81.0" }
-deno_lint = { version = "=0.62.0", features = ["docs"] }
+deno_graph = { version = "=0.81.2" }
+deno_lint = { version = "=0.63.1", features = ["docs"] }
 deno_lockfile.workspace = true
-deno_npm = "=0.21.4"
+deno_npm = "=0.23.1"
 deno_package_json.workspace = true
 deno_runtime = { workspace = true, features = ["include_js_files_for_snapshotting"] }
-deno_semver = "=0.5.7"
+deno_semver = "=0.5.10"
 deno_task_shell = "=0.17.0"
 deno_terminal.workspace = true
-eszip = "=0.73.0"
-libsui = "0.1.0"
+eszip = "=0.75.0"
+libsui = "0.3.0"
 napi_sym.workspace = true
 node_resolver.workspace = true
 
@@ -90,9 +90,9 @@ bincode = "=1.3.3"
 bytes.workspace = true
 cache_control.workspace = true
 chrono = { workspace = true, features = ["now"] }
-clap = { version = "=4.4.17", features = ["env", "string"] }
-clap_complete = "=4.4.7"
-clap_complete_fig = "=4.4.2"
+clap = { version = "=4.5.13", features = ["env", "string", "wrap_help"] }
+clap_complete = "=4.5.12"
+clap_complete_fig = "=4.5.2"
 color-print = "0.3.5"
 console_static_text.workspace = true
 dashmap = "5.5.3"
@@ -101,7 +101,7 @@ dissimilar = "=1.0.4"
 dotenvy = "0.15.7"
 dprint-plugin-json = "=0.19.3"
 dprint-plugin-jupyter = "=0.1.3"
-dprint-plugin-markdown = "=0.17.2"
+dprint-plugin-markdown = "=0.17.5"
 dprint-plugin-typescript = "=0.91.6"
 env_logger = "=0.10.0"
 fancy-regex = "=0.10.0"
@@ -123,6 +123,8 @@ libc.workspace = true
 libz-sys.workspace = true
 log = { workspace = true, features = ["serde"] }
 lsp-types.workspace = true
+malva = "=0.9.0"
+markup_fmt = "=0.12.0"
 memmem.workspace = true
 monch.workspace = true
 notify.workspace = true
@@ -144,6 +146,7 @@ serde_repr.workspace = true
 sha2.workspace = true
 shell-escape = "=0.1.5"
 spki = { version = "0.7", features = ["pem"] }
+strsim = "0.11.1"
 tar.workspace = true
 tempfile.workspace = true
 text-size = "=1.1.0"
@@ -153,10 +156,12 @@ tokio.workspace = true
 tokio-util.workspace = true
 tower-lsp.workspace = true
 twox-hash.workspace = true
-typed-arena = "=2.0.1"
+typed-arena = "=2.0.2"
 uuid = { workspace = true, features = ["serde"] }
+walkdir = "=2.3.2"
 which.workspace = true
 zeromq.workspace = true
+zip = { version = "2.1.6", default-features = false, features = ["deflate-flate2"] }
 zstd.workspace = true
 
 [target.'cfg(windows)'.dependencies]
@@ -170,7 +175,6 @@ nix.workspace = true
 deno_bench_util.workspace = true
 pretty_assertions.workspace = true
 test_util.workspace = true
-walkdir = "=2.3.2"
 
 [package.metadata.winres]
 # This section defines the metadata that appears in the deno.exe PE header.

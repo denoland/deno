@@ -19,7 +19,7 @@ fn add_basic() {
   let output = context.new_command().args("add @denotest/add").run();
   output.assert_exit_code(0);
   let output = output.combined_output();
-  assert_contains!(output, "Add @denotest/add");
+  assert_contains!(output, "Add jsr:@denotest/add");
   temp_dir.join("deno.json").assert_matches_json(json!({
     "name": "@foo/bar",
     "version": "1.0.0",
@@ -38,7 +38,7 @@ fn add_basic_no_deno_json() {
   let output = context.new_command().args("add @denotest/add").run();
   output.assert_exit_code(0);
   let output = output.combined_output();
-  assert_contains!(output, "Add @denotest/add");
+  assert_contains!(output, "Add jsr:@denotest/add");
   // Don't use `assert_matches_json` to ensure the file is properly formatted.
   let expected = r#"{
   "imports": {
@@ -58,7 +58,7 @@ fn add_basic_with_empty_deno_json() {
   let output = context.new_command().args("add @denotest/add").run();
   output.assert_exit_code(0);
   let output = output.combined_output();
-  assert_contains!(output, "Add @denotest/add");
+  assert_contains!(output, "Add jsr:@denotest/add");
   temp_dir
     .path()
     .join("deno.json")
@@ -77,7 +77,7 @@ fn add_version_contraint() {
   let output = context.new_command().args("add @denotest/add@1").run();
   output.assert_exit_code(0);
   let output = output.combined_output();
-  assert_contains!(output, "Add @denotest/add");
+  assert_contains!(output, "Add jsr:@denotest/add");
   temp_dir.join("deno.json").assert_matches_json(json!({
     "imports": {
       "@denotest/add": "jsr:@denotest/add@^1.0.0"
@@ -93,7 +93,7 @@ fn add_tilde() {
   let output = context.new_command().args("add @denotest/add@~1").run();
   output.assert_exit_code(0);
   let output = output.combined_output();
-  assert_contains!(output, "Add @denotest/add");
+  assert_contains!(output, "Add jsr:@denotest/add");
   temp_dir.join("deno.json").assert_matches_json(json!({
     "imports": {
       "@denotest/add": "jsr:@denotest/add@~1.0.0"
@@ -118,7 +118,7 @@ fn add_multiple() {
     .run();
   output.assert_exit_code(0);
   let output = output.combined_output();
-  assert_contains!(output, "Add @denotest/add");
+  assert_contains!(output, "Add jsr:@denotest/add");
   temp_dir.join("deno.json").assert_matches_json(json!({
     "name": "@foo/bar",
     "version": "1.0.0",
@@ -138,7 +138,7 @@ fn add_npm() {
   let output = context.new_command().args("add npm:chalk@4.1").run();
   output.assert_exit_code(0);
   let output = output.combined_output();
-  assert_contains!(output, "Add chalk");
+  assert_contains!(output, "Add npm:chalk");
   temp_dir.join("deno.json").assert_matches_json(json!({
     "imports": {
       "chalk": "npm:chalk@^4.1.2"

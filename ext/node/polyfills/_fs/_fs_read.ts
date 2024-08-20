@@ -9,6 +9,7 @@ import * as io from "ext:deno_io/12_io.js";
 import * as fs from "ext:deno_fs/30_fs.js";
 import { ReadOptions } from "ext:deno_node/_fs/_fs_common.ts";
 import {
+  arrayBufferViewToUint8Array,
   validateOffsetLengthRead,
   validatePosition,
 } from "ext:deno_node/internal/fs/utils.mjs";
@@ -16,6 +17,7 @@ import {
   validateBuffer,
   validateInteger,
 } from "ext:deno_node/internal/validators.mjs";
+import { isArrayBufferView } from "ext:deno_node/internal/util/types.ts";
 
 type readSyncOptions = {
   offset: number;
@@ -26,7 +28,7 @@ type readSyncOptions = {
 type BinaryCallback = (
   err: Error | null,
   bytesRead: number | null,
-  data?: Buffer,
+  data?: ArrayBufferView,
 ) => void;
 type Callback = BinaryCallback;
 
@@ -38,7 +40,7 @@ export function read(
 ): void;
 export function read(
   fd: number,
-  buffer: Buffer | Uint8Array,
+  buffer: ArrayBufferView,
   offset: number,
   length: number,
   position: number | null,
@@ -46,7 +48,7 @@ export function read(
 ): void;
 export function read(
   fd: number,
-  optOrBufferOrCb?: Buffer | Uint8Array | ReadOptions | Callback,
+  optOrBufferOrCb?: ArrayBufferView | ReadOptions | Callback,
   offsetOrCallback?: number | Callback,
   length?: number,
   position?: number | null,
@@ -54,7 +56,7 @@ export function read(
 ) {
   let cb: Callback | undefined;
   let offset = 0,
-    buffer: Buffer | Uint8Array;
+    buffer: ArrayBufferView;
 
   if (typeof fd !== "number") {
     throw new ERR_INVALID_ARG_TYPE("fd", "number", fd);
@@ -75,7 +77,7 @@ export function read(
   }
 
   if (
-    optOrBufferOrCb instanceof Buffer || optOrBufferOrCb instanceof Uint8Array
+    isArrayBufferView(optOrBufferOrCb)
   ) {
     buffer = optOrBufferOrCb;
   } else if (typeof optOrBufferOrCb === "function") {
@@ -86,7 +88,7 @@ export function read(
   } else {
     const opt = optOrBufferOrCb as ReadOptions;
     if (
-      !(opt.buffer instanceof Buffer) && !(opt.buffer instanceof Uint8Array)
+      !isArrayBufferView(opt.buffer)
     ) {
       throw new ERR_INVALID_ARG_TYPE("buffer", [
         "Buffer",
@@ -94,9 +96,13 @@ export function read(
         "DataView",
       ], optOrBufferOrCb);
     }
+    if (opt.buffer === undefined) {
+      buffer = Buffer.alloc(16384);
+    } else {
+      buffer = opt.buffer;
+    }
     offset = opt.offset ?? 0;
-    buffer = opt.buffer ?? Buffer.alloc(16384);
-    length = opt.length ?? buffer.byteLength;
+    length = opt.length ?? buffer.byteLength - offset;
     position = opt.position ?? null;
   }
 
@@ -117,12 +123,18 @@ export function read(
         // We use sync calls below to avoid being affected by others during
         // these calls.
         fs.seekSync(fd, position, io.SeekMode.Start);
-        nread = io.readSync(fd, buffer);
+        nread = io.readSync(
+          fd,
+          arrayBufferViewToUint8Array(buffer).subarray(offset, offset + length),
+        );
         fs.seekSync(fd, currentPosition, io.SeekMode.Start);
       } else {
-        nread = await io.read(fd, buffer);
+        nread = await io.read(
+          fd,
+          arrayBufferViewToUint8Array(buffer).subarray(offset, offset + length),
+        );
       }
-      cb(null, nread ?? 0, Buffer.from(buffer.buffer, offset, length));
+      cb(null, nread ?? 0, buffer);
     } catch (error) {
       cb(error as Error, null);
     }
@@ -131,19 +143,19 @@ export function read(
 
 export function readSync(
   fd: number,
-  buffer: Buffer | Uint8Array,
+  buffer: ArrayBufferView,
   offset: number,
   length: number,
   position: number | null,
 ): number;
 export function readSync(
   fd: number,
-  buffer: Buffer | Uint8Array,
+  buffer: ArrayBufferView,
   opt: readSyncOptions,
 ): number;
 export function readSync(
   fd: number,
-  buffer: Buffer | Uint8Array,
+  buffer: ArrayBufferView,
   offsetOrOpt?: number | readSyncOptions,
   length?: number,
   position?: number | null,
@@ -166,7 +178,7 @@ export function readSync(
   } else if (offsetOrOpt !== undefined) {
     const opt = offsetOrOpt as readSyncOptions;
     offset = opt.offset ?? 0;
-    length = opt.length ?? buffer.byteLength;
+    length = opt.length ?? buffer.byteLength - offset;
     position = opt.position ?? null;
   }
 
@@ -183,7 +195,10 @@ export function readSync(
     fs.seekSync(fd, position, io.SeekMode.Start);
   }
 
-  const numberOfBytesRead = io.readSync(fd, buffer);
+  const numberOfBytesRead = io.readSync(
+    fd,
+    arrayBufferViewToUint8Array(buffer).subarray(offset, offset + length),
+  );
 
   if (typeof position === "number" && position >= 0) {
     fs.seekSync(fd, currentPosition, io.SeekMode.Start);

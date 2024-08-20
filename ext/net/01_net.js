@@ -535,10 +535,14 @@ function listen(args) {
   switch (args.transport ?? "tcp") {
     case "tcp": {
       const port = validatePort(args.port);
-      const { 0: rid, 1: addr } = op_net_listen_tcp({
-        hostname: args.hostname ?? "0.0.0.0",
-        port,
-      }, args.reusePort);
+      const { 0: rid, 1: addr } = op_net_listen_tcp(
+        {
+          hostname: args.hostname ?? "0.0.0.0",
+          port,
+        },
+        args.reusePort,
+        args.loadBalanced ?? false,
+      );
       addr.transport = "tcp";
       return new Listener(rid, addr);
     }

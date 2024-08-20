@@ -266,7 +266,12 @@ async fn install_local(
   maybe_add_flags: Option<AddFlags>,
 ) -> Result<(), AnyError> {
   if let Some(add_flags) = maybe_add_flags {
-    return super::registry::add(flags, add_flags).await;
+    return super::registry::add(
+      flags,
+      add_flags,
+      super::registry::AddCommandName::Install,
+    )
+    .await;
   }
 
   let factory = CliFactory::from_flags(flags);
@@ -467,7 +472,7 @@ async fn resolve_shim_data(
     executable_args.push("--cached-only".to_string());
   }
 
-  if flags.frozen_lockfile {
+  if flags.frozen_lockfile.unwrap_or(false) {
     executable_args.push("--frozen".to_string());
   }
 

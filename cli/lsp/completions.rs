@@ -18,6 +18,7 @@ use crate::util::path::is_importable_ext;
 use crate::util::path::relative_specifier;
 use deno_graph::source::ResolutionMode;
 use deno_graph::Range;
+use deno_runtime::deno_node::SUPPORTED_BUILTIN_NODE_MODULES;
 use deno_runtime::fs_util::specifier_to_file_path;
 
 use deno_ast::LineAndColumnIndex;
@@ -192,6 +193,8 @@ pub async fn get_import_completions(
     get_npm_completions(specifier, &text, &range, npm_search_api).await
   {
     Some(lsp::CompletionResponse::List(completion_list))
+  } else if let Some(completion_list) = get_node_completions(&text, &range) {
+    Some(lsp::CompletionResponse::List(completion_list))
   } else if let Some(completion_list) =
     get_import_map_completions(specifier, &text, &range, maybe_import_map)
   {
@@ -246,7 +249,7 @@ pub async fn get_import_completions(
       .collect();
     let mut is_incomplete = false;
     if let Some(import_map) = maybe_import_map {
-      items.extend(get_base_import_map_completions(import_map));
+      items.extend(get_base_import_map_completions(import_map, specifier));
     }
     if let Some(origin_items) =
       module_registries.get_origin_completions(&text, &range)
@@ -265,20 +268,20 @@ pub async fn get_import_completions(
 /// map as completion items.
 fn get_base_import_map_completions(
   import_map: &ImportMap,
+  referrer: &ModuleSpecifier,
 ) -> Vec<lsp::CompletionItem> {
   import_map
-    .imports()
-    .keys()
-    .map(|key| {
+    .entries_for_referrer(referrer)
+    .map(|entry| {
       // for some strange reason, keys that start with `/` get stored in the
       // import map as `file:///`, and so when we pull the keys out, we need to
       // change the behavior
-      let mut label = if key.starts_with("file://") {
-        FILE_PROTO_RE.replace(key, "").to_string()
+      let mut label = if entry.key.starts_with("file://") {
+        FILE_PROTO_RE.replace(entry.key, "").to_string()
       } else {
-        key.to_string()
+        entry.key.to_string()
       };
-      let kind = if key.ends_with('/') {
+      let kind = if entry.key.ends_with('/') {
         label.pop();
         Some(lsp::CompletionItemKind::FOLDER)
       } else {
@@ -732,6 +735,40 @@ async fn get_npm_completions(
   })
 }
 
+/// Get completions for `node:` specifiers.
+fn get_node_completions(
+  specifier: &str,
+  range: &lsp::Range,
+) -> Option<CompletionList> {
+  if !specifier.starts_with("node:") {
+    return None;
+  }
+  let items = SUPPORTED_BUILTIN_NODE_MODULES
+    .iter()
+    .map(|name| {
+      let specifier = format!("node:{}", name);
+      let text_edit = Some(lsp::CompletionTextEdit::Edit(lsp::TextEdit {
+        range: *range,
+        new_text: specifier.clone(),
+      }));
+      lsp::CompletionItem {
+        label: specifier,
+        kind: Some(lsp::CompletionItemKind::FILE),
+        detail: Some("(node)".to_string()),
+        text_edit,
+        commit_characters: Some(
+          IMPORT_COMMIT_CHARS.iter().map(|&c| c.into()).collect(),
+        ),
+        ..Default::default()
+      }
+    })
+    .collect();
+  Some(CompletionList {
+    is_incomplete: false,
+    items,
+  })
+}
+
 /// Get workspace completions that include modules in the Deno cache which match
 /// the current specifier string.
 fn get_workspace_completions(
@@ -821,8 +858,8 @@ mod tests {
         .global()
         .set(&specifier, HashMap::default(), source.as_bytes())
         .expect("could not cache file");
-      let document =
-        documents.get_or_load(&specifier, &temp_dir.uri().join("$").unwrap());
+      let document = documents
+        .get_or_load(&specifier, Some(&temp_dir.uri().join("$").unwrap()));
       assert!(document.is_some(), "source could not be setup");
     }
     documents
