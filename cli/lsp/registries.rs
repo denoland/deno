@@ -32,11 +32,12 @@ use deno_core::ModuleSpecifier;
 use deno_graph::Dependency;
 use deno_runtime::deno_permissions::PermissionsContainer;
 use log::error;
-use once_cell::sync::Lazy;
+use regex::Regex;
 use std::borrow::Cow;
 use std::collections::HashMap;
 use std::path::PathBuf;
 use std::sync::Arc;
+use std::sync::LazyLock;
 use tower_lsp::lsp_types as lsp;
 
 const CONFIG_PATH: &str = "/.well-known/deno-import-intellisense.json";
@@ -67,8 +68,8 @@ const COMPONENT: &percent_encoding::AsciiSet = &percent_encoding::CONTROLS
 
 const REGISTRY_IMPORT_COMMIT_CHARS: &[&str] = &["\"", "'"];
 
-static REPLACEMENT_VARIABLE_RE: Lazy<regex::Regex> =
-  lazy_regex::lazy_regex!(r"\$\{\{?(\w+)\}?\}");
+static REPLACEMENT_VARIABLE_RE: LazyLock<Regex> =
+  LazyLock::new(|| Regex::new(r"\$\{\{?(\w+)\}?\}").unwrap());
 
 fn base_url(url: &Url) -> String {
   url.origin().ascii_serialization()

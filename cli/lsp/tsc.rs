@@ -65,9 +65,7 @@ use deno_runtime::inspector_server::InspectorServer;
 use deno_runtime::tokio_util::create_basic_runtime;
 use indexmap::IndexMap;
 use indexmap::IndexSet;
-use lazy_regex::lazy_regex;
 use log::error;
-use once_cell::sync::Lazy;
 use regex::Captures;
 use regex::Regex;
 use serde_repr::Deserialize_repr;
@@ -83,6 +81,7 @@ use std::ops::Range;
 use std::path::Path;
 use std::rc::Rc;
 use std::sync::Arc;
+use std::sync::LazyLock;
 use std::thread;
 use text_size::TextRange;
 use text_size::TextSize;
@@ -94,19 +93,28 @@ use tower_lsp::jsonrpc::Error as LspError;
 use tower_lsp::jsonrpc::Result as LspResult;
 use tower_lsp::lsp_types as lsp;
 
-static BRACKET_ACCESSOR_RE: Lazy<Regex> =
-  lazy_regex!(r#"^\[['"](.+)[\['"]\]$"#);
-static CAPTION_RE: Lazy<Regex> =
-  lazy_regex!(r"<caption>(.*?)</caption>\s*\r?\n((?:\s|\S)*)");
-static CODEBLOCK_RE: Lazy<Regex> = lazy_regex!(r"^\s*[~`]{3}"m);
-static EMAIL_MATCH_RE: Lazy<Regex> = lazy_regex!(r"(.+)\s<([-.\w]+@[-.\w]+)>");
-static HTTP_RE: Lazy<Regex> = lazy_regex!(r#"(?i)^https?:"#);
-static JSDOC_LINKS_RE: Lazy<Regex> = lazy_regex!(
+static BRACKET_ACCESSOR_RE: LazyLock<Regex> =
+  LazyLock::new(|| Regex::new(r#"^\[['"](.+)[\['"]\]$"#).unwrap());
+static CAPTION_RE: LazyLock<Regex> = LazyLock::new(|| {
+  Regex::new(r"<caption>(.*?)</caption>\s*\r?\n((?:\s|\S)*)").unwrap()
+});
+static CODEBLOCK_RE: LazyLock<Regex> =
+  LazyLock::new(|| Regex::new(r#"(?m)^\s*[~`]{3}"#).unwrap());
+static EMAIL_MATCH_RE: LazyLock<Regex> =
+  LazyLock::new(|| Regex::new(r"(.+)\s<([-.\w]+@[-.\w]+)>").unwrap());
+static HTTP_RE: LazyLock<Regex> =
+  LazyLock::new(|| Regex::new(r#"(?i)^https?:"#).unwrap());
+static JSDOC_LINKS_RE: LazyLock<Regex> = LazyLock::new(|| {
+  Regex::new(
   r"(?i)\{@(link|linkplain|linkcode) (https?://[^ |}]+?)(?:[| ]([^{}\n]+?))?\}"
-);
-static PART_KIND_MODIFIER_RE: Lazy<Regex> = lazy_regex!(r",|\s+");
-static PART_RE: Lazy<Regex> = lazy_regex!(r"^(\S+)\s*-?\s*");
-static SCOPE_RE: Lazy<Regex> = lazy_regex!(r"scope_(\d)");
+).unwrap()
+});
+static PART_KIND_MODIFIER_RE: LazyLock<Regex> =
+  LazyLock::new(|| Regex::new(r",|\s+").unwrap());
+static PART_RE: LazyLock<Regex> =
+  LazyLock::new(|| Regex::new(r"^(\S+)\s*-?\s*").unwrap());
+static SCOPE_RE: LazyLock<Regex> =
+  LazyLock::new(|| Regex::new(r"scope_(\d)").unwrap());
 
 const FILE_EXTENSION_KIND_MODIFIERS: &[&str] =
   &[".d.ts", ".ts", ".tsx", ".js", ".jsx", ".json"];

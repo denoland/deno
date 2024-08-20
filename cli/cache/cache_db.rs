@@ -8,11 +8,11 @@ use deno_runtime::deno_webstorage::rusqlite;
 use deno_runtime::deno_webstorage::rusqlite::Connection;
 use deno_runtime::deno_webstorage::rusqlite::OptionalExtension;
 use deno_runtime::deno_webstorage::rusqlite::Params;
-use once_cell::sync::OnceCell;
 use std::io::IsTerminal;
 use std::path::Path;
 use std::path::PathBuf;
 use std::sync::Arc;
+use std::sync::OnceLock;
 
 use super::FastInsecureHasher;
 
@@ -109,7 +109,7 @@ enum ConnectionState {
 #[derive(Clone)]
 pub struct CacheDB {
   // TODO(mmastrac): We can probably simplify our thread-safe implementation here
-  conn: Arc<Mutex<OnceCell<ConnectionState>>>,
+  conn: Arc<Mutex<OnceLock<ConnectionState>>>,
   path: Option<PathBuf>,
   config: &'static CacheDBConfiguration,
   version: &'static str,
@@ -153,7 +153,7 @@ impl CacheDB {
     version: &'static str,
   ) -> Self {
     CacheDB {
-      conn: Arc::new(Mutex::new(OnceCell::new())),
+      conn: Arc::new(Mutex::new(OnceLock::new())),
       path: None,
       config,
       version,
@@ -167,7 +167,7 @@ impl CacheDB {
   ) -> Self {
     log::debug!("Opening cache {}...", path.to_string_lossy());
     let new = Self {
-      conn: Arc::new(Mutex::new(OnceCell::new())),
+      conn: Arc::new(Mutex::new(OnceLock::new())),
       path: Some(path),
       config,
       version,
@@ -194,7 +194,7 @@ impl CacheDB {
 
     Self::initialize_connection(self.config, &conn, version).unwrap();
 
-    let cell = OnceCell::new();
+    let cell = OnceLock::new();
     _ = cell.set(ConnectionState::Connected(conn));
     Self {
       conn: Arc::new(Mutex::new(cell)),
@@ -279,7 +279,7 @@ impl CacheDB {
 
   fn initialize<'a>(
     &self,
-    lock: &'a MutexGuard<OnceCell<ConnectionState>>,
+    lock: &'a MutexGuard<OnceLock<ConnectionState>>,
   ) -> &'a ConnectionState {
     lock.get_or_init(|| match self.open_connection() {
       Ok(conn) => conn,

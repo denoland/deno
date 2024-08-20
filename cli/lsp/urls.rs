@@ -6,16 +6,16 @@ use deno_core::parking_lot::Mutex;
 use deno_core::url::Position;
 use deno_core::url::Url;
 use deno_core::ModuleSpecifier;
-use once_cell::sync::Lazy;
 use std::collections::HashMap;
 use std::sync::Arc;
+use std::sync::LazyLock;
 
 use super::cache::LspCache;
 
 /// Used in situations where a default URL needs to be used where otherwise a
 /// panic is undesired.
-pub static INVALID_SPECIFIER: Lazy<ModuleSpecifier> =
-  Lazy::new(|| ModuleSpecifier::parse("deno://invalid").unwrap());
+pub static INVALID_SPECIFIER: LazyLock<ModuleSpecifier> =
+  LazyLock::new(|| ModuleSpecifier::parse("deno://invalid").unwrap());
 
 /// Matches the `encodeURIComponent()` encoding from JavaScript, which matches
 /// the component percent encoding set.

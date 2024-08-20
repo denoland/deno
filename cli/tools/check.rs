@@ -11,8 +11,8 @@ use deno_graph::Module;
 use deno_graph::ModuleGraph;
 use deno_runtime::deno_node::NodeResolver;
 use deno_terminal::colors;
-use once_cell::sync::Lazy;
 use regex::Regex;
+use std::sync::LazyLock;
 
 use crate::args::CliOptions;
 use crate::args::TsConfig;
@@ -468,8 +468,8 @@ fn get_tsc_roots(
 }
 
 /// Matches the `@ts-check` pragma.
-static TS_CHECK_RE: Lazy<Regex> =
-  lazy_regex::lazy_regex!(r#"(?i)^\s*@ts-check(?:\s+|$)"#);
+static TS_CHECK_RE: LazyLock<Regex> =
+  LazyLock::new(|| Regex::new(r#"(?i)^\s*@ts-check(?:\s+|$)"#).unwrap());
 
 fn has_ts_check(media_type: MediaType, file_text: &str) -> bool {
   match &media_type {

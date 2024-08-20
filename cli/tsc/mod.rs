@@ -38,13 +38,13 @@ use node_resolver::errors::NodeJsErrorCoded;
 use node_resolver::NodeModuleKind;
 use node_resolver::NodeResolution;
 use node_resolver::NodeResolutionMode;
-use once_cell::sync::Lazy;
 use std::borrow::Cow;
 use std::collections::HashMap;
 use std::fmt;
 use std::path::Path;
 use std::path::PathBuf;
 use std::sync::Arc;
+use std::sync::LazyLock;
 
 mod diagnostics;
 
@@ -53,7 +53,7 @@ pub use self::diagnostics::DiagnosticCategory;
 pub use self::diagnostics::Diagnostics;
 pub use self::diagnostics::Position;
 
-pub static COMPILER_SNAPSHOT: Lazy<Box<[u8]>> = Lazy::new(
+pub static COMPILER_SNAPSHOT: LazyLock<Box<[u8]>> = LazyLock::new(
   #[cold]
   #[inline(never)]
   || {
@@ -154,9 +154,9 @@ macro_rules! inc {
 ///
 /// We lazily load these because putting them in the compiler snapshot will
 /// increase memory usage when not used (last time checked by about 0.5MB).
-pub static LAZILY_LOADED_STATIC_ASSETS: Lazy<
+pub static LAZILY_LOADED_STATIC_ASSETS: LazyLock<
   HashMap<&'static str, &'static str>,
-> = Lazy::new(|| {
+> = LazyLock::new(|| {
   ([
     (
       "lib.dom.asynciterable.d.ts",

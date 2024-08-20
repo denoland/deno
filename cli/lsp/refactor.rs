@@ -6,7 +6,7 @@
 use deno_core::serde::Deserialize;
 use deno_core::serde::Serialize;
 use deno_core::ModuleSpecifier;
-use once_cell::sync::Lazy;
+use std::sync::LazyLock;
 use tower_lsp::lsp_types as lsp;
 
 pub struct RefactorCodeActionKind {
@@ -20,24 +20,24 @@ impl RefactorCodeActionKind {
   }
 }
 
-pub static EXTRACT_FUNCTION: Lazy<RefactorCodeActionKind> =
-  Lazy::new(|| RefactorCodeActionKind {
+pub static EXTRACT_FUNCTION: LazyLock<RefactorCodeActionKind> =
+  LazyLock::new(|| RefactorCodeActionKind {
     kind: [lsp::CodeActionKind::REFACTOR_EXTRACT.as_str(), "function"]
       .join(".")
       .into(),
     matches_callback: Box::new(|tag: &str| tag.starts_with("function_")),
   });
 
-pub static EXTRACT_CONSTANT: Lazy<RefactorCodeActionKind> =
-  Lazy::new(|| RefactorCodeActionKind {
+pub static EXTRACT_CONSTANT: LazyLock<RefactorCodeActionKind> =
+  LazyLock::new(|| RefactorCodeActionKind {
     kind: [lsp::CodeActionKind::REFACTOR_EXTRACT.as_str(), "constant"]
       .join(".")
       .into(),
     matches_callback: Box::new(|tag: &str| tag.starts_with("constant_")),
   });
 
-pub static EXTRACT_TYPE: Lazy<RefactorCodeActionKind> =
-  Lazy::new(|| RefactorCodeActionKind {
+pub static EXTRACT_TYPE: LazyLock<RefactorCodeActionKind> =
+  LazyLock::new(|| RefactorCodeActionKind {
     kind: [lsp::CodeActionKind::REFACTOR_EXTRACT.as_str(), "type"]
       .join(".")
       .into(),
@@ -46,8 +46,8 @@ pub static EXTRACT_TYPE: Lazy<RefactorCodeActionKind> =
     }),
   });
 
-pub static EXTRACT_INTERFACE: Lazy<RefactorCodeActionKind> =
-  Lazy::new(|| RefactorCodeActionKind {
+pub static EXTRACT_INTERFACE: LazyLock<RefactorCodeActionKind> =
+  LazyLock::new(|| RefactorCodeActionKind {
     kind: [lsp::CodeActionKind::REFACTOR_EXTRACT.as_str(), "interface"]
       .join(".")
       .into(),
@@ -56,8 +56,8 @@ pub static EXTRACT_INTERFACE: Lazy<RefactorCodeActionKind> =
     }),
   });
 
-pub static MOVE_NEWFILE: Lazy<RefactorCodeActionKind> =
-  Lazy::new(|| RefactorCodeActionKind {
+pub static MOVE_NEWFILE: LazyLock<RefactorCodeActionKind> =
+  LazyLock::new(|| RefactorCodeActionKind {
     kind: [lsp::CodeActionKind::REFACTOR.as_str(), "move", "newFile"]
       .join(".")
       .into(),
@@ -66,8 +66,8 @@ pub static MOVE_NEWFILE: Lazy<RefactorCodeActionKind> =
     }),
   });
 
-pub static REWRITE_IMPORT: Lazy<RefactorCodeActionKind> =
-  Lazy::new(|| RefactorCodeActionKind {
+pub static REWRITE_IMPORT: LazyLock<RefactorCodeActionKind> =
+  LazyLock::new(|| RefactorCodeActionKind {
     kind: [lsp::CodeActionKind::REFACTOR_REWRITE.as_str(), "import"]
       .join(".")
       .into(),
@@ -77,8 +77,8 @@ pub static REWRITE_IMPORT: Lazy<RefactorCodeActionKind> =
     }),
   });
 
-pub static REWRITE_EXPORT: Lazy<RefactorCodeActionKind> =
-  Lazy::new(|| RefactorCodeActionKind {
+pub static REWRITE_EXPORT: LazyLock<RefactorCodeActionKind> =
+  LazyLock::new(|| RefactorCodeActionKind {
     kind: [lsp::CodeActionKind::REFACTOR_REWRITE.as_str(), "export"]
       .join(".")
       .into(),
@@ -88,8 +88,8 @@ pub static REWRITE_EXPORT: Lazy<RefactorCodeActionKind> =
     }),
   });
 
-pub static REWRITE_ARROW_BRACES: Lazy<RefactorCodeActionKind> =
-  Lazy::new(|| RefactorCodeActionKind {
+pub static REWRITE_ARROW_BRACES: LazyLock<RefactorCodeActionKind> =
+  LazyLock::new(|| RefactorCodeActionKind {
     kind: [
       lsp::CodeActionKind::REFACTOR_REWRITE.as_str(),
       "arrow",
@@ -102,37 +102,39 @@ pub static REWRITE_ARROW_BRACES: Lazy<RefactorCodeActionKind> =
     }),
   });
 
-pub static REWRITE_PARAMETERS_TO_DESTRUCTURED: Lazy<RefactorCodeActionKind> =
-  Lazy::new(|| RefactorCodeActionKind {
-    kind: [
-      lsp::CodeActionKind::REFACTOR_REWRITE.as_str(),
-      "parameters",
-      "toDestructured",
-    ]
-    .join(".")
-    .into(),
-    matches_callback: Box::new(|tag: &str| {
-      tag.starts_with("Convert parameters to destructured object")
-    }),
-  });
+pub static REWRITE_PARAMETERS_TO_DESTRUCTURED: LazyLock<
+  RefactorCodeActionKind,
+> = LazyLock::new(|| RefactorCodeActionKind {
+  kind: [
+    lsp::CodeActionKind::REFACTOR_REWRITE.as_str(),
+    "parameters",
+    "toDestructured",
+  ]
+  .join(".")
+  .into(),
+  matches_callback: Box::new(|tag: &str| {
+    tag.starts_with("Convert parameters to destructured object")
+  }),
+});
 
-pub static REWRITE_PROPERTY_GENERATEACCESSORS: Lazy<RefactorCodeActionKind> =
-  Lazy::new(|| RefactorCodeActionKind {
-    kind: [
-      lsp::CodeActionKind::REFACTOR_REWRITE.as_str(),
-      "property",
-      "generateAccessors",
-    ]
-    .join(".")
-    .into(),
-    matches_callback: Box::new(|tag: &str| {
-      tag.starts_with("Generate 'get' and 'set' accessors")
-    }),
-  });
+pub static REWRITE_PROPERTY_GENERATEACCESSORS: LazyLock<
+  RefactorCodeActionKind,
+> = LazyLock::new(|| RefactorCodeActionKind {
+  kind: [
+    lsp::CodeActionKind::REFACTOR_REWRITE.as_str(),
+    "property",
+    "generateAccessors",
+  ]
+  .join(".")
+  .into(),
+  matches_callback: Box::new(|tag: &str| {
+    tag.starts_with("Generate 'get' and 'set' accessors")
+  }),
+});
 
-pub static ALL_KNOWN_REFACTOR_ACTION_KINDS: Lazy<
+pub static ALL_KNOWN_REFACTOR_ACTION_KINDS: LazyLock<
   Vec<&'static RefactorCodeActionKind>,
-> = Lazy::new(|| {
+> = LazyLock::new(|| {
   vec![
     &EXTRACT_FUNCTION,
     &EXTRACT_CONSTANT,

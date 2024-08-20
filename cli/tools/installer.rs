@@ -22,7 +22,6 @@ use deno_core::resolve_url_or_path;
 use deno_core::url::Url;
 use deno_semver::npm::NpmPackageReqReference;
 use log::Level;
-use once_cell::sync::Lazy;
 use regex::Regex;
 use regex::RegexBuilder;
 use std::env;
@@ -32,12 +31,13 @@ use std::io;
 use std::io::Write;
 use std::path::Path;
 use std::path::PathBuf;
+use std::sync::LazyLock;
 
 #[cfg(not(windows))]
 use std::os::unix::fs::PermissionsExt;
 use std::sync::Arc;
 
-static EXEC_NAME_RE: Lazy<Regex> = Lazy::new(|| {
+static EXEC_NAME_RE: LazyLock<Regex> = LazyLock::new(|| {
   RegexBuilder::new(r"^[a-z0-9][\w-]*$")
     .case_insensitive(true)
     .build()

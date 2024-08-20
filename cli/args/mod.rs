@@ -60,7 +60,6 @@ use deno_runtime::deno_tls::webpki_roots;
 use deno_runtime::inspector_server::InspectorServer;
 use deno_terminal::colors;
 use dotenvy::from_filename;
-use once_cell::sync::Lazy;
 use serde::Deserialize;
 use serde::Serialize;
 use std::collections::HashMap;
@@ -72,6 +71,7 @@ use std::num::NonZeroUsize;
 use std::path::Path;
 use std::path::PathBuf;
 use std::sync::Arc;
+use std::sync::LazyLock;
 use thiserror::Error;
 
 use crate::cache;
@@ -85,7 +85,7 @@ use deno_config::deno_json::LintConfig;
 use deno_config::deno_json::TestConfig;
 
 pub fn npm_registry_url() -> &'static Url {
-  static NPM_REGISTRY_DEFAULT_URL: Lazy<Url> = Lazy::new(|| {
+  static NPM_REGISTRY_DEFAULT_URL: LazyLock<Url> = LazyLock::new(|| {
     let env_var_name = "NPM_CONFIG_REGISTRY";
     if let Ok(registry_url) = std::env::var(env_var_name) {
       // ensure there is a trailing slash for the directory
@@ -110,17 +110,18 @@ pub fn npm_registry_url() -> &'static Url {
   &NPM_REGISTRY_DEFAULT_URL
 }
 
-pub static DENO_DISABLE_PEDANTIC_NODE_WARNINGS: Lazy<bool> = Lazy::new(|| {
-  std::env::var("DENO_DISABLE_PEDANTIC_NODE_WARNINGS")
-    .ok()
-    .is_some()
-});
+pub static DENO_DISABLE_PEDANTIC_NODE_WARNINGS: LazyLock<bool> =
+  LazyLock::new(|| {
+    std::env::var("DENO_DISABLE_PEDANTIC_NODE_WARNINGS")
+      .ok()
+      .is_some()
+  });
 
-pub static DENO_FUTURE: Lazy<bool> =
-  Lazy::new(|| std::env::var("DENO_FUTURE").ok().is_some());
+pub static DENO_FUTURE: LazyLock<bool> =
+  LazyLock::new(|| std::env::var("DENO_FUTURE").ok().is_some());
 
 pub fn jsr_url() -> &'static Url {
-  static JSR_URL: Lazy<Url> = Lazy::new(|| {
+  static JSR_URL: LazyLock<Url> = LazyLock::new(|| {
     let env_var_name = "JSR_URL";
     if let Ok(registry_url) = std::env::var(env_var_name) {
       // ensure there is a trailing slash for the directory
@@ -146,7 +147,7 @@ pub fn jsr_url() -> &'static Url {
 }
 
 pub fn jsr_api_url() -> &'static Url {
-  static JSR_API_URL: Lazy<Url> = Lazy::new(|| {
+  static JSR_API_URL: LazyLock<Url> = LazyLock::new(|| {
     let mut jsr_api_url = jsr_url().clone();
     jsr_api_url.set_path("api/");
     jsr_api_url
@@ -750,14 +751,15 @@ pub enum NpmProcessStateKind {
 pub(crate) const NPM_RESOLUTION_STATE_ENV_VAR_NAME: &str =
   "DENO_DONT_USE_INTERNAL_NODE_COMPAT_STATE";
 
-static NPM_PROCESS_STATE: Lazy<Option<NpmProcessState>> = Lazy::new(|| {
-  let state = std::env::var(NPM_RESOLUTION_STATE_ENV_VAR_NAME).ok()?;
-  let state: NpmProcessState = serde_json::from_str(&state).ok()?;
-  // remove the environment variable so that sub processes
-  // that are spawned do not also use this.
-  std::env::remove_var(NPM_RESOLUTION_STATE_ENV_VAR_NAME);
-  Some(state)
-});
+static NPM_PROCESS_STATE: LazyLock<Option<NpmProcessState>> =
+  LazyLock::new(|| {
+    let state = std::env::var(NPM_RESOLUTION_STATE_ENV_VAR_NAME).ok()?;
+    let state: NpmProcessState = serde_json::from_str(&state).ok()?;
+    // remove the environment variable so that sub processes
+    // that are spawned do not also use this.
+    std::env::remove_var(NPM_RESOLUTION_STATE_ENV_VAR_NAME);
+    Some(state)
+  });
 
 /// Overrides for the options below that when set will
 /// use these values over the values derived from the

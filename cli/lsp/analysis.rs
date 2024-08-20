@@ -34,25 +34,27 @@ use deno_semver::package::PackageReqReference;
 use deno_semver::Version;
 use import_map::ImportMap;
 use node_resolver::NpmResolver;
-use once_cell::sync::Lazy;
 use regex::Regex;
 use std::cmp::Ordering;
 use std::collections::HashMap;
 use std::collections::HashSet;
 use std::path::Path;
+use std::sync::LazyLock;
 use tower_lsp::lsp_types as lsp;
 use tower_lsp::lsp_types::Position;
 use tower_lsp::lsp_types::Range;
 
 /// Diagnostic error codes which actually are the same, and so when grouping
 /// fixes we treat them the same.
-static FIX_ALL_ERROR_CODES: Lazy<HashMap<&'static str, &'static str>> =
-  Lazy::new(|| ([("2339", "2339"), ("2345", "2339")]).into_iter().collect());
+static FIX_ALL_ERROR_CODES: LazyLock<HashMap<&'static str, &'static str>> =
+  LazyLock::new(|| {
+    ([("2339", "2339"), ("2345", "2339")]).into_iter().collect()
+  });
 
 /// Fixes which help determine if there is a preferred fix when there are
 /// multiple fixes available.
-static PREFERRED_FIXES: Lazy<HashMap<&'static str, (u32, bool)>> =
-  Lazy::new(|| {
+static PREFERRED_FIXES: LazyLock<HashMap<&'static str, (u32, bool)>> =
+  LazyLock::new(|| {
     ([
       ("annotateWithTypeFromJSDoc", (1, false)),
       ("constructorForDerivedNeedSuperCall", (1, false)),
@@ -71,9 +73,10 @@ static PREFERRED_FIXES: Lazy<HashMap<&'static str, (u32, bool)>> =
     .collect()
   });
 
-static IMPORT_SPECIFIER_RE: Lazy<Regex> = lazy_regex::lazy_regex!(
-  r#"\sfrom\s+["']([^"']*)["']|import\s*\(\s*["']([^"']*)["']\s*\)"#
-);
+static IMPORT_SPECIFIER_RE: LazyLock<Regex> = LazyLock::new(|| {
+  Regex::new(r#"\sfrom\s+["']([^"']*)["']|import\s*\(\s*["']([^"']*)["']\s*\)"#)
+    .unwrap()
+});
 
 const SUPPORTED_EXTENSIONS: &[&str] = &[
   ".ts", ".tsx", ".js", ".jsx", ".mjs", ".mts", ".cjs", ".cts", ".d.ts",
