@@ -54,7 +54,7 @@ impl Default for SnapshotOptions {
 
     Self {
       ts_version: "n/a".to_owned(),
-      v8_version: deno_core::v8_version(),
+      v8_version: deno_core::v8::VERSION_STRING,
       target,
     }
   }

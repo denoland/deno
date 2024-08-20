@@ -377,6 +377,7 @@ pub struct WorkspaceTestOptions {
   pub trace_leaks: bool,
   pub reporter: TestReporterConfig,
   pub junit_path: Option<String>,
+  pub hide_stacktraces: bool,
 }
 
 impl WorkspaceTestOptions {
@@ -394,6 +395,7 @@ impl WorkspaceTestOptions {
       trace_leaks: test_flags.trace_leaks,
       reporter: test_flags.reporter,
       junit_path: test_flags.junit_path.clone(),
+      hide_stacktraces: test_flags.hide_stacktraces,
     }
   }
 }

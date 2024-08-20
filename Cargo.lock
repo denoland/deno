@@ -1144,7 +1144,7 @@ dependencies = [
 
 [[package]]
 name = "deno"
-version = "1.46.0-rc.1"
+version = "1.46.0-rc.2"
 dependencies = [
  "async-trait",
  "base32",
@@ -1390,9 +1390,9 @@ dependencies = [
 
 [[package]]
 name = "deno_core"
-version = "0.303.0"
+version = "0.304.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "a9cd2cc931f61dee2db67ce9d032d229dda981be29d68dfd530a3dc1187ddd6b"
+checksum = "bcb02f25a743fe58a117ed5cfd47c4e640761926e294a1f4ba964a0e2c68b4dc"
 dependencies = [
  "anyhow",
  "bincode",
@@ -1870,9 +1870,9 @@ dependencies = [
 
 [[package]]
 name = "deno_npm"
-version = "0.22.0"
+version = "0.23.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "01fd279be9f522ebfaabce7ff0f4b069c2c1d737946ba57456b579f9246669e8"
+checksum = "ceef28152643a021fc3487a3ec93ae83996972c087547d97f425c83e15dca932"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -1889,9 +1889,9 @@ dependencies = [
 
 [[package]]
 name = "deno_ops"
-version = "0.179.0"
+version = "0.180.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "1dbb9802b8b976e73872ae6e03303532e6056236467053aa6df02f7deb33488c"
+checksum = "8bbba184551dfe009836a42c0268fea6b4ad036b5154aec5a7625e7a7ce4e315"
 dependencies = [
  "proc-macro-rules",
  "proc-macro2",
@@ -2061,9 +2061,9 @@ dependencies = [
 
 [[package]]
 name = "deno_unsync"
-version = "0.4.0"
+version = "0.4.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "03ee1607db298c8f12124b345a52d5f2f504a7504c9d535f1d8f07127b237010"
+checksum = "2f36b4ef61a04ce201b925a5dffa90f88437d37fee4836c758470dd15ba7f05e"
 dependencies = [
  "parking_lot 0.12.3",
  "tokio",
@@ -2482,9 +2482,9 @@ dependencies = [
 
 [[package]]
 name = "dprint-plugin-markdown"
-version = "0.17.4"
+version = "0.17.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "8b2748618896a9206d21762a64a1d57be380f13e3e6774163d42395ca5bdf2f1"
+checksum = "2f1d74e1b3481450e956c35a68e0a5e795796adb13e100d19b6971b9cb531824"
 dependencies = [
  "anyhow",
  "dprint-core",
@@ -2779,9 +2779,9 @@ dependencies = [
 
 [[package]]
 name = "eszip"
-version = "0.74.0"
+version = "0.75.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "a74ab660df48e00a4582f6ca506b3cfc5683ce80e73158c9e4dbf84341bb3aea"
+checksum = "67ab3253e0e6a99b79ffc6d7a6243ad541f54543768cecd2198b64476a5971f8"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -6253,9 +6253,9 @@ dependencies = [
 
 [[package]]
 name = "serde_v8"
-version = "0.212.0"
+version = "0.213.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "bf9a8693e4e54bf21fe51b953b10f98a0e32040671f18c4065f6014f0317ae80"
+checksum = "1831a65bad8086cfc993eaead4cbcb00579c085e43b4952a90024e1243f23b4e"
 dependencies = [
  "num-bigint",
  "serde",
@@ -7912,9 +7912,9 @@ dependencies = [
 
 [[package]]
 name = "v8"
-version = "0.102.0"
+version = "0.103.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "88a710d5b95bff79a90708203cf9f74384e080d21fc6664aa4df463f2c66ac83"
+checksum = "56d72310e5b559c0a8165a5d6bdf4c975ba77c61461039ccf615ce3bbe489ca5"
 dependencies = [
  "bindgen",
  "bitflags 2.5.0",

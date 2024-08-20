@@ -9,11 +9,15 @@ pub struct DotTestReporter {
   width: usize,
   cwd: Url,
   summary: TestSummary,
+  failure_format_options: TestFailureFormatOptions,
 }
 
 #[allow(clippy::print_stdout)]
 impl DotTestReporter {
-  pub fn new(cwd: Url) -> DotTestReporter {
+  pub fn new(
+    cwd: Url,
+    failure_format_options: TestFailureFormatOptions,
+  ) -> DotTestReporter {
     let console_width = if let Some(size) = crate::util::console::console_size()
     {
       size.cols as usize
@@ -26,6 +30,7 @@ impl DotTestReporter {
       width: console_width,
       cwd,
       summary: TestSummary::new(),
+      failure_format_options,
     }
   }
 
@@ -190,6 +195,7 @@ impl TestReporter for DotTestReporter {
       &self.cwd,
       &self.summary,
       elapsed,
+      &self.failure_format_options,
     );
     println!();
   }
