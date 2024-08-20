@@ -1,12 +1,10 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
-use deno_core::error::type_error;
 use deno_core::error::AnyError;
 use deno_core::op2;
 use deno_core::ToJsBuffer;
 use image::imageops::FilterType;
-use image::ColorType;
-use image::ImageDecoder;
+use image::GenericImageView;
 use image::Pixel;
 use image::RgbaImage;
 use serde::Deserialize;
@@ -109,34 +107,56 @@ fn op_image_process(
 }
 
 #[derive(Debug, Serialize)]
-struct DecodedPng {
+struct DecodedImage {
   data: ToJsBuffer,
   width: u32,
   height: u32,
 }
 
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct ImageDecodeOptions {
+  mime_type: String,
+}
+
 #[op2]
 #[serde]
-fn op_image_decode_png(#[buffer] buf: &[u8]) -> Result<DecodedPng, AnyError> {
-  let png = image::codecs::png::PngDecoder::new(buf)?;
+fn op_image_decode(
+  #[buffer] buf: &[u8],
+  #[serde] options: ImageDecodeOptions,
+) -> Result<DecodedImage, AnyError> {
+  let reader = std::io::BufReader::new(std::io::Cursor::new(buf));
+  let image = match &*options.mime_type {
+    "image/png" => {
+      let decoder = image::codecs::png::PngDecoder::new(reader)?;
+      image::DynamicImage::from_decoder(decoder)?
+    }
+    "image/jpeg" => {
+      let decoder = image::codecs::jpeg::JpegDecoder::new(reader)?;
+      image::DynamicImage::from_decoder(decoder)?
+    }
+    "image/gif" => {
+      let decoder = image::codecs::gif::GifDecoder::new(reader)?;
+      image::DynamicImage::from_decoder(decoder)?
+    }
+    "image/bmp" => {
+      let decoder = image::codecs::bmp::BmpDecoder::new(reader)?;
+      image::DynamicImage::from_decoder(decoder)?
+    }
+    "image/x-icon" => {
+      let decoder = image::codecs::ico::IcoDecoder::new(reader)?;
+      image::DynamicImage::from_decoder(decoder)?
+    }
+    "image/webp" => {
+      let decoder = image::codecs::webp::WebPDecoder::new(reader)?;
+      image::DynamicImage::from_decoder(decoder)?
+    }
+    _ => unreachable!(),
+  };
+  let (width, height) = image.dimensions();
 
-  let (width, height) = png.dimensions();
-
-  // TODO(@crowlKats): maybe use DynamicImage https://docs.rs/image/0.24.7/image/enum.DynamicImage.html ?
-  if png.color_type() != ColorType::Rgba8 {
-    return Err(type_error(format!(
-      "Color type '{:?}' not supported",
-      png.color_type()
-    )));
-  }
-
-  // read_image will assert that the buffer is the correct size, so we need to fill it with zeros
-  let mut png_data = vec![0_u8; png.total_bytes() as usize];
-
-  png.read_image(&mut png_data)?;
-
-  Ok(DecodedPng {
-    data: png_data.into(),
+  Ok(DecodedImage {
+    data: image.into_bytes().into(),
     width,
     height,
   })
@@ -145,7 +165,7 @@ fn op_image_decode_png(#[buffer] buf: &[u8]) -> Result<DecodedPng, AnyError> {
 deno_core::extension!(
   deno_canvas,
   deps = [deno_webidl, deno_web, deno_webgpu],
-  ops = [op_image_process, op_image_decode_png],
+  ops = [op_image_process, op_image_decode],
   lazy_loaded_esm = ["01_image.js"],
 );
 

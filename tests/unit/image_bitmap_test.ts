@@ -92,12 +92,40 @@ Deno.test(async function imageBitmapFlipY() {
 });
 
 Deno.test(async function imageBitmapFromBlob() {
-  const path = "tests/testdata/image/1x1-white.png";
-  const imageData = new Blob([await Deno.readFile(path)], {
-    type: "image/png",
-  });
-  const imageBitmap = await createImageBitmap(imageData);
-  // @ts-ignore: Deno[Deno.internal].core allowed
-  // deno-fmt-ignore
-  assertEquals(Deno[Deno.internal].getBitmapData(imageBitmap), new Uint8Array([255,255,255,255]));
+  const prefix = "tests/testdata/image";
+  {
+    const imageData = new Blob([await Deno.readFile(`${prefix}/1x1-red8.png`)], { type: "image/png" });
+    const imageBitmap = await createImageBitmap(imageData);
+    // @ts-ignore: Deno[Deno.internal].core allowed
+    // deno-fmt-ignore
+    assertEquals(Deno[Deno.internal].getBitmapData(imageBitmap), new Uint8Array([255, 0, 0, 255]));
+  }
+  {
+    const imageData = new Blob([await Deno.readFile(`${prefix}/1x1-red8.bmp`)], { type: "image/bmp" });
+    const imageBitmap = await createImageBitmap(imageData);
+    // @ts-ignore: Deno[Deno.internal].core allowed
+    // deno-fmt-ignore
+    assertEquals(Deno[Deno.internal].getBitmapData(imageBitmap), new Uint8Array([255, 0, 0, 255]));
+  }
+  {
+    const imageData = new Blob([await Deno.readFile(`${prefix}/1x1-red8.gif`)], { type: "image/gif" });
+    const imageBitmap = await createImageBitmap(imageData);
+    // @ts-ignore: Deno[Deno.internal].core allowed
+    // deno-fmt-ignore
+    assertEquals(Deno[Deno.internal].getBitmapData(imageBitmap), new Uint8Array([255, 0, 0, 255]));
+  }
+  {
+    const imageData = new Blob([await Deno.readFile(`${prefix}/1x1-red8.webp`)], { type: "image/webp" });
+    const imageBitmap = await createImageBitmap(imageData);
+    // @ts-ignore: Deno[Deno.internal].core allowed
+    // deno-fmt-ignore
+    assertEquals(Deno[Deno.internal].getBitmapData(imageBitmap), new Uint8Array([255, 0, 0, 255]));
+  }
+  {
+    const imageData = new Blob([await Deno.readFile(`${prefix}/1x1-red8.ico`)], { type: "image/x-icon" });
+    const imageBitmap = await createImageBitmap(imageData);
+    // @ts-ignore: Deno[Deno.internal].core allowed
+    // deno-fmt-ignore
+    assertEquals(Deno[Deno.internal].getBitmapData(imageBitmap), new Uint8Array([255, 0, 0, 255]));
+  }
 });

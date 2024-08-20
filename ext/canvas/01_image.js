@@ -1,7 +1,7 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
 import { internals, primordials } from "ext:core/mod.js";
-import { op_image_decode_png, op_image_process } from "ext:core/ops";
+import { op_image_decode, op_image_process } from "ext:core/ops";
 import * as webidl from "ext:deno_webidl/00_webidl.js";
 import { DOMException } from "ext:deno_web/01_dom_exception.js";
 import { createFilteredInspectProxy } from "ext:deno_console/01_console.js";
@@ -204,7 +204,7 @@ function createImageBitmap(
   if (options.resizeHeight === 0) {
     return PromiseReject(
       new DOMException(
-        "options.resizeWidth has to be greater than 0",
+        "options.resizeHeight has to be greater than 0",
         "InvalidStateError",
       ),
     );
@@ -231,15 +231,12 @@ function createImageBitmap(
   if (ObjectPrototypeIsPrototypeOf(BlobPrototype, image)) {
     return (async () => {
       const data = await image.arrayBuffer();
-      const mimetype = sniffImage(image.type);
-      if (mimetype !== "image/png") {
-        throw new DOMException(
-          `Unsupported type '${image.type}'`,
-          "InvalidStateError",
-        );
-      }
-      const { data: imageData, width, height } = op_image_decode_png(
+      const mimeType = sniffImage(image.type);
+      const { data: imageData, width, height } = op_image_decode(
         new Uint8Array(data),
+        {
+          mimeType,
+        },
       );
       const processedImage = processImage(
         imageData,
