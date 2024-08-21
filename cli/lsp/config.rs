@@ -1491,7 +1491,7 @@ impl ConfigData {
       }
     };
     let resolver = deno_core::unsync::spawn({
-      let workspace = member_dir.clone();
+      let workspace = member_dir.workspace.clone();
       let file_fetcher = file_fetcher.cloned();
       async move {
         workspace
@@ -1846,7 +1846,12 @@ fn resolve_lockfile_from_workspace(
       return None;
     }
   };
-  resolve_lockfile_from_path(lockfile_path)
+  let frozen = workspace
+    .workspace
+    .root_deno_json()
+    .and_then(|c| c.to_lock_config().ok().flatten().map(|c| c.frozen()))
+    .unwrap_or(false);
+  resolve_lockfile_from_path(lockfile_path, frozen)
 }
 
 fn resolve_node_modules_dir(
@@ -1875,8 +1880,11 @@ fn resolve_node_modules_dir(
   canonicalize_path_maybe_not_exists(&node_modules_dir).ok()
 }
 
-fn resolve_lockfile_from_path(lockfile_path: PathBuf) -> Option<CliLockfile> {
-  match CliLockfile::read_from_path(lockfile_path, false) {
+fn resolve_lockfile_from_path(
+  lockfile_path: PathBuf,
+  frozen: bool,
+) -> Option<CliLockfile> {
+  match CliLockfile::read_from_path(lockfile_path, frozen) {
     Ok(value) => {
       if value.filename.exists() {
         if let Ok(specifier) = ModuleSpecifier::from_file_path(&value.filename)

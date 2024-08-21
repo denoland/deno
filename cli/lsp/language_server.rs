@@ -691,7 +691,7 @@ impl Inner {
 
     let version = format!(
       "{} ({}, {})",
-      crate::version::deno(),
+      crate::version::DENO_VERSION_INFO.deno,
       env!("PROFILE"),
       env!("TARGET")
     );
@@ -1333,8 +1333,9 @@ impl Inner {
     {
       return Ok(None);
     }
-    let document =
-      file_referrer.and_then(|r| self.documents.get_or_load(&specifier, &r));
+    let document = self
+      .documents
+      .get_or_load(&specifier, file_referrer.as_ref());
     let Some(document) = document else {
       return Ok(None);
     };
@@ -1370,6 +1371,12 @@ impl Inner {
       let unstable_options = UnstableFmtOptions {
         css: maybe_workspace
           .map(|w| w.has_unstable("fmt-css"))
+          .unwrap_or(false),
+        html: maybe_workspace
+          .map(|w| w.has_unstable("fmt-html"))
+          .unwrap_or(false),
+        component: maybe_workspace
+          .map(|w| w.has_unstable("fmt-component"))
           .unwrap_or(false),
         yaml: maybe_workspace
           .map(|w| w.has_unstable("fmt-yaml"))
@@ -1448,7 +1455,7 @@ impl Inner {
     {
       let dep_doc = dep
         .get_code()
-        .and_then(|s| self.documents.get_or_load(s, &specifier));
+        .and_then(|s| self.documents.get_or_load(s, file_referrer));
       let dep_maybe_types_dependency =
         dep_doc.as_ref().map(|d| d.maybe_types_dependency());
       let value = match (dep.maybe_code.is_none(), dep.maybe_type.is_none(), &dep_maybe_types_dependency) {

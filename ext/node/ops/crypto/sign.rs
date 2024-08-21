@@ -17,12 +17,36 @@ use super::keys::EcPrivateKey;
 use super::keys::EcPublicKey;
 use super::keys::KeyObjectHandle;
 use super::keys::RsaPssHashAlgorithm;
+use core::ops::Add;
+use ecdsa::der::MaxOverhead;
+use ecdsa::der::MaxSize;
+use elliptic_curve::generic_array::ArrayLength;
+use elliptic_curve::FieldBytesSize;
+
+fn dsa_signature<C: elliptic_curve::PrimeCurve>(
+  encoding: u32,
+  signature: ecdsa::Signature<C>,
+) -> Result<Box<[u8]>, AnyError>
+where
+  MaxSize<C>: ArrayLength<u8>,
+  <FieldBytesSize<C> as Add>::Output: Add<MaxOverhead> + ArrayLength<u8>,
+{
+  match encoding {
+    // DER
+    0 => Ok(signature.to_der().to_bytes().to_vec().into_boxed_slice()),
+    // IEEE P1363
+    1 => Ok(signature.to_bytes().to_vec().into_boxed_slice()),
+    _ => Err(type_error("invalid DSA signature encoding")),
+  }
+}
 
 impl KeyObjectHandle {
   pub fn sign_prehashed(
     &self,
     digest_type: &str,
     digest: &[u8],
+    pss_salt_length: Option<u32>,
+    dsa_signature_encoding: u32,
   ) -> Result<Box<[u8]>, AnyError> {
     let private_key = self
       .as_private_key()
@@ -67,6 +91,9 @@ impl KeyObjectHandle {
           }
           None => {}
         };
+        if let Some(s) = pss_salt_length {
+          salt_length = Some(s as usize);
+        }
         let pss = match_fixed_digest_with_oid!(
           digest_type,
           fn <D>(algorithm: Option<RsaPssHashAlgorithm>) {
@@ -120,21 +147,24 @@ impl KeyObjectHandle {
           let signature: p224::ecdsa::Signature = signing_key
             .sign_prehash(digest)
             .map_err(|_| type_error("failed to sign digest"))?;
-          Ok(signature.to_der().to_bytes())
+
+          dsa_signature(dsa_signature_encoding, signature)
         }
         EcPrivateKey::P256(key) => {
           let signing_key = p256::ecdsa::SigningKey::from(key);
           let signature: p256::ecdsa::Signature = signing_key
             .sign_prehash(digest)
             .map_err(|_| type_error("failed to sign digest"))?;
-          Ok(signature.to_der().to_bytes())
+
+          dsa_signature(dsa_signature_encoding, signature)
         }
         EcPrivateKey::P384(key) => {
           let signing_key = p384::ecdsa::SigningKey::from(key);
           let signature: p384::ecdsa::Signature = signing_key
             .sign_prehash(digest)
             .map_err(|_| type_error("failed to sign digest"))?;
-          Ok(signature.to_der().to_bytes())
+
+          dsa_signature(dsa_signature_encoding, signature)
         }
       },
       AsymmetricPrivateKey::X25519(_) => {
@@ -154,6 +184,8 @@ impl KeyObjectHandle {
     digest_type: &str,
     digest: &[u8],
     signature: &[u8],
+    pss_salt_length: Option<u32>,
+    dsa_signature_encoding: u32,
   ) -> Result<bool, AnyError> {
     let public_key = self
       .as_public_key()
@@ -195,6 +227,9 @@ impl KeyObjectHandle {
           }
           None => {}
         };
+        if let Some(s) = pss_salt_length {
+          salt_length = Some(s as usize);
+        }
         let pss = match_fixed_digest_with_oid!(
           digest_type,
           fn <D>(algorithm: Option<RsaPssHashAlgorithm>) {
@@ -229,20 +264,38 @@ impl KeyObjectHandle {
       AsymmetricPublicKey::Ec(key) => match key {
         EcPublicKey::P224(key) => {
           let verifying_key = p224::ecdsa::VerifyingKey::from(key);
-          let signature = p224::ecdsa::Signature::from_der(signature)
-            .map_err(|_| type_error("Invalid ECDSA signature"))?;
+          let signature = if dsa_signature_encoding == 0 {
+            p224::ecdsa::Signature::from_der(signature)
+          } else {
+            p224::ecdsa::Signature::from_bytes(signature.into())
+          };
+          let Ok(signature) = signature else {
+            return Ok(false);
+          };
           Ok(verifying_key.verify_prehash(digest, &signature).is_ok())
         }
         EcPublicKey::P256(key) => {
           let verifying_key = p256::ecdsa::VerifyingKey::from(key);
-          let signature = p256::ecdsa::Signature::from_der(signature)
-            .map_err(|_| type_error("Invalid ECDSA signature"))?;
+          let signature = if dsa_signature_encoding == 0 {
+            p256::ecdsa::Signature::from_der(signature)
+          } else {
+            p256::ecdsa::Signature::from_bytes(signature.into())
+          };
+          let Ok(signature) = signature else {
+            return Ok(false);
+          };
           Ok(verifying_key.verify_prehash(digest, &signature).is_ok())
         }
         EcPublicKey::P384(key) => {
           let verifying_key = p384::ecdsa::VerifyingKey::from(key);
-          let signature = p384::ecdsa::Signature::from_der(signature)
-            .map_err(|_| type_error("Invalid ECDSA signature"))?;
+          let signature = if dsa_signature_encoding == 0 {
+            p384::ecdsa::Signature::from_der(signature)
+          } else {
+            p384::ecdsa::Signature::from_bytes(signature.into())
+          };
+          let Ok(signature) = signature else {
+            return Ok(false);
+          };
           Ok(verifying_key.verify_prehash(digest, &signature).is_ok())
         }
       },

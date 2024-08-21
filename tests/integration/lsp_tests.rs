@@ -1346,23 +1346,27 @@ fn lsp_import_map_import_completions() {
   let context = TestContextBuilder::new().use_temp_cwd().build();
   let temp_dir = context.temp_dir();
   temp_dir.write(
-    "import-map.json",
-    r#"{
-  "imports": {
-    "/~/": "./lib/",
-    "/#/": "./src/",
-    "fs": "https://example.com/fs/index.js",
-    "std/": "https://example.com/std@0.123.0/"
-  }
-}"#,
+    "deno.json",
+    json!({
+      "imports": {
+        "/~/": "./lib/",
+        "/#/": "./src/",
+        "fs": "https://example.com/fs/index.js",
+        "std/": "https://example.com/std@0.123.0/",
+      },
+      "scopes": {
+        "file:///": {
+          "file": "./file.ts",
+        },
+      },
+    })
+    .to_string(),
   );
   temp_dir.create_dir_all("lib");
   temp_dir.write("lib/b.ts", r#"export const b = "b";"#);
 
   let mut client = context.new_lsp_command().build();
-  client.initialize(|builder| {
-    builder.set_import_map("import-map.json");
-  });
+  client.initialize_default();
 
   let uri = temp_dir.uri().join("a.ts").unwrap();
 
@@ -1403,6 +1407,13 @@ fn lsp_import_map_import_completions() {
           "insertText": "..",
           "commitCharacters": ["\"", "'"],
         }, {
+          "label": "file",
+          "kind": 17,
+          "detail": "(import map)",
+          "sortText": "file",
+          "insertText": "file",
+          "commitCharacters": ["\"", "'"],
+        },  {
           "label": "std",
           "kind": 19,
           "detail": "(import map)",
@@ -5483,6 +5494,80 @@ fn lsp_jsr_auto_import_completion_import_map() {
 }
 
 #[test]
+fn lsp_jsr_auto_import_completion_import_map_sub_path() {
+  let context = TestContextBuilder::new()
+    .use_http_server()
+    .use_temp_cwd()
+    .build();
+  let temp_dir = context.temp_dir();
+  temp_dir.write(
+    "deno.json",
+    json!({
+      "imports": {
+        "@std/path": "jsr:@std/path@^0.220.1",
+      },
+    })
+    .to_string(),
+  );
+  let file = source_file(
+    temp_dir.path().join("file.ts"),
+    r#"
+      // Adds jsr:@std/path@^0.220.1/normalize to the module graph.
+      import "jsr:@std/url@^0.220.1/normalize";
+      normalize
+    "#,
+  );
+  let mut client = context.new_lsp_command().build();
+  client.initialize_default();
+  client.write_request(
+    "workspace/executeCommand",
+    json!({
+      "command": "deno.cache",
+      "arguments": [[], file.uri()],
+    }),
+  );
+  client.read_diagnostics();
+  client.did_open_file(&file);
+  let list = client.get_completion_list(
+    file.uri(),
+    (3, 15),
+    json!({ "triggerKind": 1 }),
+  );
+  let item = list
+    .items
+    .iter()
+    .find(|i| {
+      i.label == "normalize"
+        && json!(&i.label_details)
+          .to_string()
+          .contains("\"@std/path/posix/normalize\"")
+    })
+    .unwrap();
+  let res = client.write_request("completionItem/resolve", json!(item));
+  assert_eq!(
+    res,
+    json!({
+      "label": "normalize",
+      "labelDetails": { "description": "@std/path/posix/normalize" },
+      "kind": 3,
+      "detail": "function normalize(path: string): string",
+      "documentation": { "kind": "markdown", "value": "Normalize the `path`, resolving `'..'` and `'.'` segments.\nNote that resolving these segments does not necessarily mean that all will be eliminated.\nA `'..'` at the top-level will be preserved, and an empty path is canonically `'.'`.\n\n*@param* - path to be normalized" },
+      "sortText": "\u{ffff}16_0",
+      "additionalTextEdits": [
+        {
+          "range": {
+            "start": { "line": 2, "character": 6 },
+            "end": { "line": 2, "character": 6 },
+          },
+          "newText": "import { normalize } from \"@std/path/posix/normalize\";\n",
+        },
+      ],
+    }),
+  );
+  client.shutdown();
+}
+
+#[test]
 fn lsp_jsr_code_action_missing_declaration() {
   let context = TestContextBuilder::new()
     .use_http_server()
@@ -7548,6 +7633,7 @@ fn lsp_completions_node_specifier() {
       "node:http",
       "node:http2",
       "node:https",
+      "node:inspector",
       "node:module",
       "node:net",
       "node:os",

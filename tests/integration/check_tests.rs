@@ -1,5 +1,6 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
+use deno_lockfile::NewLockfileOptions;
 use test_util as util;
 use test_util::itest;
 use util::env_vars_for_npm_tests;
@@ -361,16 +362,21 @@ fn npm_module_check_then_error() {
     ])
     .run()
     .skip_output_check();
-  let lockfile = temp_dir.path().join("deno.lock");
-  let mut lockfile_content =
-    lockfile.read_json::<deno_lockfile::LockfileContent>();
+  let lockfile_path = temp_dir.path().join("deno.lock");
+  let mut lockfile = deno_lockfile::Lockfile::new(NewLockfileOptions {
+    file_path: lockfile_path.to_path_buf(),
+    content: &lockfile_path.read_to_string(),
+    overwrite: false,
+    is_deno_future: false,
+  })
+  .unwrap();
 
   // make the specifier resolve to version 1
-  lockfile_content.packages.specifiers.insert(
+  lockfile.content.packages.specifiers.insert(
     "npm:@denotest/breaking-change-between-versions".to_string(),
     "npm:@denotest/breaking-change-between-versions@1.0.0".to_string(),
   );
-  lockfile.write_json(&lockfile_content);
+  lockfile_path.write(lockfile.as_json_string());
   temp_dir.write(
     "main.ts",
     "import { oldName } from 'npm:@denotest/breaking-change-between-versions'; console.log(oldName());\n",
@@ -381,11 +387,11 @@ fn npm_module_check_then_error() {
 
   // now update the lockfile to use version 2 instead, which should cause a
   // type checking error because the oldName no longer exists
-  lockfile_content.packages.specifiers.insert(
+  lockfile.content.packages.specifiers.insert(
     "npm:@denotest/breaking-change-between-versions".to_string(),
     "npm:@denotest/breaking-change-between-versions@2.0.0".to_string(),
   );
-  lockfile.write_json(&lockfile_content);
+  lockfile_path.write(lockfile.as_json_string());
 
   check_command
     .run()

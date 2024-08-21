@@ -1,5 +1,7 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
+// deno-lint-ignore-file no-console
+
 import EventEmitter from "node:events";
 import http, { type RequestOptions, type ServerResponse } from "node:http";
 import url from "node:url";
@@ -1118,6 +1120,27 @@ Deno.test("[node/http] ServerResponse appendHeader", async () => {
   await promise;
 });
 
+Deno.test("[node/http] ServerResponse appendHeader set-cookie", async () => {
+  const { promise, resolve } = Promise.withResolvers<void>();
+  const server = http.createServer((_req, res) => {
+    res.appendHeader("Set-Cookie", "a=b");
+    res.appendHeader("Set-Cookie", "c=d");
+    res.end("Hello World");
+  });
+
+  server.listen(async () => {
+    const { port } = server.address() as { port: number };
+    const res = await fetch(`http://localhost:${port}`);
+    assertEquals(res.headers.getSetCookie(), ["a=b", "c=d"]);
+    assertEquals(await res.text(), "Hello World");
+    server.close(() => {
+      resolve();
+    });
+  });
+
+  await promise;
+});
+
 Deno.test("[node/http] IncomingMessage override", () => {
   const req = new http.IncomingMessage(new net.Socket());
   // https://github.com/dougmoscrop/serverless-http/blob/3aaa6d0fe241109a8752efb011c242d249f32368/lib/request.js#L20-L30
@@ -1517,4 +1540,22 @@ Deno.test("[node/http] ClientRequest PUT subarray", async () => {
   req.end(payload);
   await promise;
   assertEquals(body, "world");
+});
+
+Deno.test("[node/http] req.url equals pathname + search", async () => {
+  const { promise, resolve } = Promise.withResolvers<void>();
+
+  const server = http.createServer((req, res) => res.end(req.url));
+  server.listen(async () => {
+    const { port } = server.address() as net.AddressInfo;
+    const res = await fetch(`http://localhost:${port}/foo/bar?baz=1`);
+    const text = await res.text();
+    assertEquals(text, "/foo/bar?baz=1");
+
+    server.close(() => {
+      resolve();
+    });
+  });
+
+  await promise;
 });
