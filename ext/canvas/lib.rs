@@ -6,6 +6,7 @@ use deno_core::op2;
 use deno_core::ToJsBuffer;
 use image::imageops::FilterType;
 use image::AnimationDecoder;
+use image::GenericImage;
 use image::GenericImageView;
 use image::Pixel;
 use serde::Deserialize;
@@ -26,11 +27,19 @@ enum ImageResizeQuality {
   High,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, PartialEq)]
 // Follow the cases defined in the spec
 enum ImageBitmapSource {
   Blob,
   ImageData,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "snake_case")]
+enum PremultiplyAlpha {
+  Default,
+  Premultiply,
+  None,
 }
 
 #[derive(Debug, Deserialize)]
@@ -46,7 +55,7 @@ struct ImageProcessArgs {
   output_height: u32,
   resize_quality: ImageResizeQuality,
   flip_y: bool,
-  premultiply: Option<bool>,
+  premultiply_alpha: PremultiplyAlpha,
   image_bitmap_source: ImageBitmapSource,
 }
 
@@ -106,27 +115,56 @@ fn op_image_process(
 
   // ignore 9.
 
+  // 10.
   if color.has_alpha() {
-    if let Some(premultiply) = args.premultiply {
-      let is_not_premultiplied = image_out.pixels().any(|(_, _, pixel)| {
-        (pixel[0].max(pixel[1]).max(pixel[2])) > (255 * pixel[3])
-      });
+    match args.premultiply_alpha {
+      // 1.
+      PremultiplyAlpha::Default => { /* noop */ }
 
-      if premultiply {
-        if is_not_premultiplied {
-          for (_, _, mut pixel) in &mut image_out.pixels() {
-            let alpha = pixel[3];
-            pixel.apply_without_alpha(|channel| {
-              (channel as f32 * (alpha as f32 / 255.0)) as u8
-            })
-          }
-        }
-      } else if !is_not_premultiplied {
-        for (_, _, mut pixel) in &mut image_out.pixels() {
+      // https://html.spec.whatwg.org/multipage/canvas.html#convert-from-premultiplied
+
+      // 2.
+      PremultiplyAlpha::Premultiply => {
+        for (x, y, mut pixel) in image_out.clone().pixels() {
           let alpha = pixel[3];
-          pixel.apply_without_alpha(|channel| {
-            (channel as f32 / (alpha as f32 / 255.0)) as u8
-          })
+          let normalized_alpha = alpha as f64 / u8::MAX as f64;
+          pixel.apply_without_alpha(|rgb| {
+            (rgb as f64 * normalized_alpha).round() as u8
+          });
+          // FIXME: Looking at the API, put_pixel doesn't seem to be necessary,
+          // but apply_without_alpha with DynamicImage doesn't seem to work as expected.
+          image_out.put_pixel(x, y, pixel);
+        }
+      }
+      // 3.
+      PremultiplyAlpha::None => {
+        // NOTE: It's not clear how to handle the case of ImageData.
+        // https://issues.chromium.org/issues/339759426
+        // https://github.com/whatwg/html/issues/5365
+        if args.image_bitmap_source == ImageBitmapSource::ImageData {
+          return Ok(image_out.into_bytes().into());
+        }
+
+        // To determine if the image is premultiplied alpha,
+        // checking premultiplied RGBA value is one where any of the R/G/B channel values exceeds the alpha channel value.
+        // https://www.w3.org/TR/webgpu/#color-spaces
+        let is_not_premultiplied = image_out.pixels().any(|(_, _, pixel)| {
+          let [r, g, b] = [pixel[0], pixel[1], pixel[2]];
+          let alpha = pixel[3];
+          (r.max(g).max(b)) > u8::MAX.saturating_mul(alpha)
+        });
+        if is_not_premultiplied {
+          return Ok(image_out.into_bytes().into());
+        }
+
+        for (x, y, mut pixel) in image_out.clone().pixels() {
+          let alpha = pixel[3];
+          pixel.apply_without_alpha(|rgb| {
+            (rgb as f64 / (alpha as f64 / u8::MAX as f64)).round() as u8
+          });
+          // FIXME: Looking at the API, put_pixel doesn't seem to be necessary,
+          // but apply_without_alpha with DynamicImage doesn't seem to work as expected.
+          image_out.put_pixel(x, y, pixel);
         }
       }
     }

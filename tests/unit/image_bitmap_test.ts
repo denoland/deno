@@ -2,6 +2,8 @@
 
 import { assertEquals, assertRejects } from "./test_util.ts";
 
+const prefix = "tests/testdata/image";
+
 function generateNumberedData(n: number): Uint8ClampedArray {
   return new Uint8ClampedArray(
     Array.from({ length: n }, (_, i) => [i + 1, 0, 0, 1]).flat(),
@@ -91,8 +93,65 @@ Deno.test(async function imageBitmapFlipY() {
   ]));
 });
 
+Deno.test(async function imageBitmapPremultiplyAlpha() {
+  const imageData = new ImageData(
+    new Uint8ClampedArray([
+      255,
+      255,
+      0,
+      153,
+    ]),
+    1,
+    1,
+  );
+  {
+    const imageBitmap = await createImageBitmap(imageData, {
+      premultiplyAlpha: "default",
+    });
+    // @ts-ignore: Deno[Deno.internal].core allowed
+    // deno-fmt-ignore
+    assertEquals(Deno[Deno.internal].getBitmapData(imageBitmap), new Uint8Array([
+      255, 255, 0, 153,
+    ]));
+  }
+  {
+    const imageBitmap = await createImageBitmap(imageData, {
+      premultiplyAlpha: "premultiply",
+    });
+    // @ts-ignore: Deno[Deno.internal].core allowed
+    // deno-fmt-ignore
+    assertEquals(Deno[Deno.internal].getBitmapData(imageBitmap), new Uint8Array([
+      153, 153, 0, 153
+    ]));
+  }
+  {
+    const imageBitmap = await createImageBitmap(imageData, {
+      premultiplyAlpha: "none",
+    });
+    // @ts-ignore: Deno[Deno.internal].core allowed
+    // deno-fmt-ignore
+    assertEquals(Deno[Deno.internal].getBitmapData(imageBitmap), new Uint8Array([
+      255, 255, 0, 153,
+    ]));
+  }
+  {
+    const imageData = new Blob(
+      [await Deno.readFile(`${prefix}/2x2-transparent8.png`)],
+      { type: "image/png" },
+    );
+    const imageBitmap = await createImageBitmap(imageData, {
+      premultiplyAlpha: "none",
+    });
+    // @ts-ignore: Deno[Deno.internal].core allowed
+    // deno-fmt-ignore
+    assertEquals(Deno[Deno.internal].getBitmapData(imageBitmap), new Uint8Array([
+      255, 0, 0, 255,   0, 255, 0, 255,
+      0, 0, 255, 255,   255, 0, 0, 127
+    ]));
+  }
+});
+
 Deno.test(async function imageBitmapFromBlob() {
-  const prefix = "tests/testdata/image";
   {
     const imageData = new Blob(
       [await Deno.readFile(`${prefix}/1x1-red8.png`)],

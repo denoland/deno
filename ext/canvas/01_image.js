@@ -352,9 +352,7 @@ function processImage(input, width, height, sx, sy, sw, sh, options) {
       outputHeight,
       resizeQuality: options.resizeQuality,
       flipY: options.imageOrientation === "flipY",
-      premultiply: options.premultiplyAlpha === "default"
-        ? null
-        : (options.premultiplyAlpha === "premultiply"),
+      premultiplyAlpha: options.premultiplyAlpha,
       imageBitmapSource: options.imageBitmapSource,
     },
   );
