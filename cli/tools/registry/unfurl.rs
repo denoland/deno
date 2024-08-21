@@ -73,8 +73,8 @@ impl SpecifierUnfurler {
       self.workspace_resolver.resolve(specifier, referrer)
     {
       match resolved {
-        MappedResolution::Normal(specifier)
-        | MappedResolution::ImportMap(specifier) => Some(specifier),
+        MappedResolution::Normal { specifier, .. }
+        | MappedResolution::ImportMap { specifier, .. } => Some(specifier),
         MappedResolution::WorkspaceJsrPackage { pkg_req_ref, .. } => {
           Some(ModuleSpecifier::parse(&pkg_req_ref.to_string()).unwrap())
         }
@@ -443,6 +443,7 @@ mod tests {
       Arc::new(ModuleSpecifier::from_directory_path(&cwd).unwrap()),
       Some(import_map),
       vec![ResolverWorkspaceJsrPackage {
+        is_patch: false,
         base: ModuleSpecifier::from_directory_path(cwd.join("jsr-package"))
           .unwrap(),
         name: "@denotest/example".to_string(),

@@ -2,7 +2,7 @@
 
 [package]
 name = "deno"
-version = "1.46.0-rc.2"
+version = "1.46.0-rc.3"
 authors.workspace = true
 default-run = "deno"
 edition.workspace = true
@@ -65,14 +65,14 @@ winres.workspace = true
 [dependencies]
 deno_ast = { workspace = true, features = ["bundler", "cjs", "codegen", "proposal", "react", "sourcemap", "transforms", "typescript", "view", "visit"] }
 deno_cache_dir = { workspace = true }
-deno_config = { version = "=0.29.0", features = ["workspace", "sync"] }
+deno_config = { version = "=0.30.1", features = ["workspace", "sync"] }
 deno_core = { workspace = true, features = ["include_js_files_for_snapshotting"] }
 deno_doc = { version = "0.146.0", features = ["html", "syntect"] }
 deno_emit = "=0.44.0"
 deno_graph = { version = "=0.81.2" }
 deno_lint = { version = "=0.63.1", features = ["docs"] }
 deno_lockfile.workspace = true
-deno_npm = "=0.23.0"
+deno_npm = "=0.23.1"
 deno_package_json.workspace = true
 deno_runtime = { workspace = true, features = ["include_js_files_for_snapshotting"] }
 deno_semver = "=0.5.10"
