@@ -1823,6 +1823,7 @@ impl PermissionsContainer {
 
         // Check if the path is a UNC path (e.g., \\Server\Share\Folder)
         // UNC paths typically contain "\\" at the start or somewhere in the middle
+        #[cfg(windows)]
         if s.windows(2).any(|window| window == b"\\\\") {
           return true;
         }
