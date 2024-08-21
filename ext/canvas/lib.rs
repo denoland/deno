@@ -1,15 +1,21 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
+use deno_core::error::type_error;
 use deno_core::error::AnyError;
 use deno_core::op2;
 use deno_core::ToJsBuffer;
 use image::imageops::FilterType;
+use image::AnimationDecoder;
 use image::GenericImageView;
 use image::Pixel;
 use serde::Deserialize;
 use serde::Serialize;
+use std::io::BufReader;
 use std::io::Cursor;
 use std::path::PathBuf;
+
+pub mod error;
+use error::DOMExceptionInvalidStateError;
 
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "snake_case")]
@@ -18,6 +24,13 @@ enum ImageResizeQuality {
   Low,
   Medium,
   High,
+}
+
+#[derive(Debug, Deserialize)]
+// Follow the cases defined in the spec
+enum ImageBitmapSource {
+  Blob,
+  ImageData,
 }
 
 #[derive(Debug, Deserialize)]
@@ -35,13 +48,6 @@ struct ImageProcessArgs {
   flip_y: bool,
   premultiply: Option<bool>,
   image_bitmap_source: ImageBitmapSource,
-}
-
-#[derive(Debug, Deserialize)]
-// Follow the cases defined in the spec
-enum ImageBitmapSource {
-  Blob,
-  ImageData,
 }
 
 #[op2]
@@ -147,10 +153,25 @@ fn op_image_decode(
   #[buffer] buf: &[u8],
   #[serde] options: ImageDecodeOptions,
 ) -> Result<DecodedImage, AnyError> {
-  let reader = std::io::BufReader::new(Cursor::new(buf));
+  let reader = BufReader::new(Cursor::new(buf));
+  //
+  // TODO: support animated images
+  // It's a little hard to implement animated images along spec because of the complexity.
+  //
+  // > If this is an animated image, imageBitmap's bitmap data must only be taken from
+  // > the default image of the animation (the one that the format defines is to be used when animation is
+  // > not supported or is disabled), or, if there is no such image, the first frame of the animation.
+  // https://html.spec.whatwg.org/multipage/imagebitmap-and-animations.html
+  //
+  // see also browser implementations: (The implementation of Gecko and WebKit is hard to read.)
+  // https://source.chromium.org/chromium/chromium/src/+/bdbc054a6cabbef991904b5df9066259505cc686:third_party/blink/renderer/platform/image-decoders/image_decoder.h;l=175-189
+  //
   let image = match &*options.mime_type {
     "image/png" => {
       let decoder = image::codecs::png::PngDecoder::new(reader)?;
+      if decoder.is_apng()? {
+        return Err(type_error("Animation image is not supported."));
+      }
       image::DynamicImage::from_decoder(decoder)?
     }
     "image/jpeg" => {
@@ -158,6 +179,11 @@ fn op_image_decode(
       image::DynamicImage::from_decoder(decoder)?
     }
     "image/gif" => {
+      let decoder = image::codecs::gif::GifDecoder::new(reader)?;
+      if decoder.into_frames().count() > 1 {
+        return Err(type_error("Animation image is not supported."));
+      }
+      let reader = BufReader::new(Cursor::new(buf));
       let decoder = image::codecs::gif::GifDecoder::new(reader)?;
       image::DynamicImage::from_decoder(decoder)?
     }
@@ -171,9 +197,21 @@ fn op_image_decode(
     }
     "image/webp" => {
       let decoder = image::codecs::webp::WebPDecoder::new(reader)?;
+      if decoder.has_animation() {
+        return Err(type_error("Animation image is not supported."));
+      }
       image::DynamicImage::from_decoder(decoder)?
     }
-    _ => unreachable!(),
+    // return an error if the mime type is not supported in the variable list of ImageTypePatternTable below
+    // ext/web/01_mimesniff.js
+    _ => {
+      return Err(
+        DOMExceptionInvalidStateError::new(
+          "The source image is not a supported format.",
+        )
+        .into(),
+      )
+    }
   };
   let (width, height) = image.dimensions();
 

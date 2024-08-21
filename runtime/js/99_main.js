@@ -453,6 +453,12 @@ core.registerErrorBuilder(
     return new DOMException(msg, "DataError");
   },
 );
+core.registerErrorBuilder(
+  "DOMExceptionInvalidStateError",
+  function DOMExceptionInvalidStateError(msg) {
+    return new DOMException(msg, "InvalidStateError");
+  },
+);
 
 function runtimeStart(
   denoVersion,
