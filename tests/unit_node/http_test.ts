@@ -1559,3 +1559,30 @@ Deno.test("[node/http] req.url equals pathname + search", async () => {
 
   await promise;
 });
+
+Deno.test("[node/http] ClientRequest content-disposition header works", async () => {
+  const payload = Buffer.from("hello world");
+  let body = "";
+  let headers = {} as http.IncomingHttpHeaders;
+  const { promise, resolve, reject } = Promise.withResolvers<void>();
+  const req = http.request("http://localhost:4545/echo_server", {
+    method: "PUT",
+    headers: {
+      "content-disposition": "attachment",
+    },
+  }, (resp) => {
+    headers = resp.headers;
+    resp.on("data", (chunk) => {
+      body += chunk;
+    });
+
+    resp.on("end", () => {
+      resolve();
+    });
+  });
+  req.once("error", (e) => reject(e));
+  req.end(payload);
+  await promise;
+  assertEquals(body, "hello world");
+  assertEquals(headers["content-disposition"], "attachment");
+});
