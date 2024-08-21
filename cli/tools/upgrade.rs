@@ -628,15 +628,11 @@ fn select_specific_version_for_upgrade(
   force: bool,
 ) -> Result<Option<AvailableVersion>, AnyError> {
   let current_is_passed = match release_channel {
-    ReleaseChannel::Stable | ReleaseChannel::Lts => {
-      version::DENO_VERSION_INFO.release_channel != ReleaseChannel::Canary
+    ReleaseChannel::Stable | ReleaseChannel::Rc | ReleaseChannel::Lts => {
+      version::DENO_VERSION_INFO.release_channel == release_channel
         && version::DENO_VERSION_INFO.deno == version
     }
     ReleaseChannel::Canary => version::DENO_VERSION_INFO.git_hash == version,
-    ReleaseChannel::Rc => {
-      version::DENO_VERSION_INFO.release_channel == ReleaseChannel::Rc
-        && version::DENO_VERSION_INFO.deno == version
-    }
   };
 
   if !force && current_is_passed {
