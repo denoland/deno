@@ -40,6 +40,8 @@ pub async fn cache_top_level_deps(
 
     let mut info_futures = FuturesUnordered::new();
 
+    let mut seen_reqs = std::collections::HashSet::new();
+
     for entry in import_map.imports().entries() {
       let Some(specifier) = entry.value else {
         continue;
@@ -51,6 +53,9 @@ pub async fn cache_top_level_deps(
           let specifier_str =
             specifier_str.strip_prefix("jsr:").unwrap_or(specifier_str);
           if let Ok(req) = PackageReq::from_str(specifier_str) {
+            if !seen_reqs.insert(req.clone()) {
+              continue;
+            }
             let jsr_resolver = jsr_resolver.clone();
             info_futures.push(async move {
               if let Some(nv) = jsr_resolver.req_to_nv(&req).await {
