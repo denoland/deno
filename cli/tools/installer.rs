@@ -275,7 +275,7 @@ async fn install_local(
   }
 
   let factory = CliFactory::from_flags(flags);
-  crate::module_loader::load_top_level_deps(&factory).await?;
+  crate::tools::registry::cache_top_level_deps(&factory, None).await?;
 
   if let Some(lockfile) = factory.cli_options()?.maybe_lockfile() {
     lockfile.write_if_changed()?;

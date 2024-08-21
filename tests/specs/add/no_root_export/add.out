@@ -1,0 +1,6 @@
+Add jsr:@std/testing@1.0.0
+Download [WILDCARD]/@std/testing/1.0.0_meta.json
+[UNORDERED_START]
+Download·http://127.0.0.1:4250/@std/testing/1.0.0/bdd.ts
+Download·http://127.0.0.1:4250/@std/testing/1.0.0/types.ts
+[UNORDERED_END]
