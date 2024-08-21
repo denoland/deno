@@ -29,7 +29,6 @@ use std::sync::Arc;
 pub async fn execute_script(
   flags: Arc<Flags>,
   task_flags: TaskFlags,
-  using_run: bool,
 ) -> Result<i32, AnyError> {
   let factory = CliFactory::from_flags(flags);
   let cli_options = factory.cli_options()?;
@@ -154,7 +153,7 @@ See https://docs.deno.com/go/config"#
       }
     },
     None => {
-      if using_run {
+      if task_flags.is_run {
         return Err(anyhow!("Task not found: {}", task_name));
       }
       log::error!("Task not found: {}", task_name);
