@@ -47,6 +47,7 @@ import { parseArgs } from "ext:deno_node/internal/util/parse_args/parse_args.js"
 export {
   callbackify,
   debuglog,
+  debuglog as debug,
   format,
   formatWithOptions,
   inspect,
@@ -233,6 +234,7 @@ function timestamp(): string {
  */
 // deno-lint-ignore no-explicit-any
 export function log(...args: any[]) {
+  // deno-lint-ignore no-console
   console.log("%s - %s", timestamp(), ReflectApply(format, undefined, args));
 }
 
@@ -321,5 +323,6 @@ export default {
   toUSVString,
   log,
   debuglog,
+  debug: debuglog,
   isDeepStrictEqual,
 };

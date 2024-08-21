@@ -511,19 +511,21 @@ fn _090_run_permissions_request() {
     .args_vec(["run", "--quiet", "run/090_run_permissions_request.ts"])
     .with_pty(|mut console| {
       console.expect(concat!(
-        "┌ ⚠️  Deno requests run access to \"ls\".\r\n",
-        "├ Requested by `Deno.permissions.request()` API.\r\n",
-        "├ Run again with --allow-run to bypass this prompt.\r\n",
-        "└ Allow? [y/n/A] (y = yes, allow; n = no, deny; A = allow all run permissions)",
+        "┏ ⚠️  Deno requests run access to \"ls\".\r\n",
+        "┠─ Requested by `Deno.permissions.request()` API.\r\n",
+        "┠─ Learn more at: https://docs.deno.com/go/--allow-run\r\n",
+        "┠─ Run again with --allow-run to bypass this prompt.\r\n",
+        "┗ Allow? [y/n/A] (y = yes, allow; n = no, deny; A = allow all run permissions)",
       ));
       console.human_delay();
       console.write_line_raw("y");
       console.expect("Granted run access to \"ls\".");
       console.expect(concat!(
-        "┌ ⚠️  Deno requests run access to \"cat\".\r\n",
-        "├ Requested by `Deno.permissions.request()` API.\r\n",
-        "├ Run again with --allow-run to bypass this prompt.\r\n",
-        "└ Allow? [y/n/A] (y = yes, allow; n = no, deny; A = allow all run permissions)",
+        "┏ ⚠️  Deno requests run access to \"cat\".\r\n",
+        "┠─ Requested by `Deno.permissions.request()` API.\r\n",
+        "┠─ Learn more at: https://docs.deno.com/go/--allow-run\r\n",
+        "┠─ Run again with --allow-run to bypass this prompt.\r\n",
+        "┗ Allow? [y/n/A] (y = yes, allow; n = no, deny; A = allow all run permissions)",
       ));
       console.human_delay();
       console.write_line_raw("n");
@@ -540,19 +542,21 @@ fn _090_run_permissions_request_sync() {
     .args_vec(["run", "--quiet", "run/090_run_permissions_request_sync.ts"])
     .with_pty(|mut console| {
       console.expect(concat!(
-        "┌ ⚠️  Deno requests run access to \"ls\".\r\n",
-        "├ Requested by `Deno.permissions.request()` API.\r\n",
-        "├ Run again with --allow-run to bypass this prompt.\r\n",
-        "└ Allow? [y/n/A] (y = yes, allow; n = no, deny; A = allow all run permissions)",
+        "┏ ⚠️  Deno requests run access to \"ls\".\r\n",
+        "┠─ Requested by `Deno.permissions.request()` API.\r\n",
+        "┠─ Learn more at: https://docs.deno.com/go/--allow-run\r\n",
+        "┠─ Run again with --allow-run to bypass this prompt.\r\n",
+        "┗ Allow? [y/n/A] (y = yes, allow; n = no, deny; A = allow all run permissions)",
       ));
       console.human_delay();
       console.write_line_raw("y");
       console.expect("Granted run access to \"ls\".");
       console.expect(concat!(
-        "┌ ⚠️  Deno requests run access to \"cat\".\r\n",
-        "├ Requested by `Deno.permissions.request()` API.\r\n",
-        "├ Run again with --allow-run to bypass this prompt.\r\n",
-        "└ Allow? [y/n/A] (y = yes, allow; n = no, deny; A = allow all run permissions)",
+        "┏ ⚠️  Deno requests run access to \"cat\".\r\n",
+        "┠─ Requested by `Deno.permissions.request()` API.\r\n",
+        "┠─ Learn more at: https://docs.deno.com/go/--allow-run\r\n",
+        "┠─ Run again with --allow-run to bypass this prompt.\r\n",
+        "┗ Allow? [y/n/A] (y = yes, allow; n = no, deny; A = allow all run permissions)",
       ));
       console.human_delay();
       console.write_line_raw("n");
@@ -570,70 +574,77 @@ fn permissions_prompt_allow_all() {
     .with_pty(|mut console| {
       // "run" permissions
       console.expect(concat!(
-        "┌ ⚠️  Deno requests run access to \"FOO\".\r\n",
-        "├ Requested by `Deno.permissions.request()` API.\r\n",
-        "├ Run again with --allow-run to bypass this prompt.\r\n",
-        "└ Allow? [y/n/A] (y = yes, allow; n = no, deny; A = allow all run permissions)",
+        "┏ ⚠️  Deno requests run access to \"FOO\".\r\n",
+        "┠─ Requested by `Deno.permissions.request()` API.\r\n",
+        "┠─ Learn more at: https://docs.deno.com/go/--allow-run\r\n",
+        "┠─ Run again with --allow-run to bypass this prompt.\r\n",
+        "┗ Allow? [y/n/A] (y = yes, allow; n = no, deny; A = allow all run permissions)",
       ));
       console.human_delay();
       console.write_line_raw("A");
       console.expect("✅ Granted all run access.");
       // "read" permissions
       console.expect(concat!(
-        "┌ ⚠️  Deno requests read access to \"FOO\".\r\n",
-        "├ Requested by `Deno.permissions.request()` API.\r\n",
-        "├ Run again with --allow-read to bypass this prompt.\r\n",
-        "└ Allow? [y/n/A] (y = yes, allow; n = no, deny; A = allow all read permissions)",
+        "┏ ⚠️  Deno requests read access to \"FOO\".\r\n",
+        "┠─ Requested by `Deno.permissions.request()` API.\r\n",
+        "┠─ Learn more at: https://docs.deno.com/go/--allow-read\r\n",
+        "┠─ Run again with --allow-read to bypass this prompt.\r\n",
+        "┗ Allow? [y/n/A] (y = yes, allow; n = no, deny; A = allow all read permissions)",
       ));
       console.human_delay();
       console.write_line_raw("A");
       console.expect("✅ Granted all read access.");
       // "write" permissions
       console.expect(concat!(
-        "┌ ⚠️  Deno requests write access to \"FOO\".\r\n",
-        "├ Requested by `Deno.permissions.request()` API.\r\n",
-        "├ Run again with --allow-write to bypass this prompt.\r\n",
-        "└ Allow? [y/n/A] (y = yes, allow; n = no, deny; A = allow all write permissions)",
+        "┏ ⚠️  Deno requests write access to \"FOO\".\r\n",
+        "┠─ Requested by `Deno.permissions.request()` API.\r\n",
+        "┠─ Learn more at: https://docs.deno.com/go/--allow-write\r\n",
+        "┠─ Run again with --allow-write to bypass this prompt.\r\n",
+        "┗ Allow? [y/n/A] (y = yes, allow; n = no, deny; A = allow all write permissions)",
       ));
       console.human_delay();
       console.write_line_raw("A");
       console.expect("✅ Granted all write access.");
       // "net" permissions
       console.expect(concat!(
-        "┌ ⚠️  Deno requests net access to \"foo\".\r\n",
-        "├ Requested by `Deno.permissions.request()` API.\r\n",
-        "├ Run again with --allow-net to bypass this prompt.\r\n",
-        "└ Allow? [y/n/A] (y = yes, allow; n = no, deny; A = allow all net permissions)",
+        "┏ ⚠️  Deno requests net access to \"foo\".\r\n",
+        "┠─ Requested by `Deno.permissions.request()` API.\r\n",
+        "┠─ Learn more at: https://docs.deno.com/go/--allow-net\r\n",
+        "┠─ Run again with --allow-net to bypass this prompt.\r\n",
+        "┗ Allow? [y/n/A] (y = yes, allow; n = no, deny; A = allow all net permissions)",
       ));
       console.human_delay();
       console.write_line_raw("A");
       console.expect("✅ Granted all net access.");
       // "env" permissions
       console.expect(concat!(
-        "┌ ⚠️  Deno requests env access to \"FOO\".\r\n",
-        "├ Requested by `Deno.permissions.request()` API.\r\n",
-        "├ Run again with --allow-env to bypass this prompt.\r\n",
-        "└ Allow? [y/n/A] (y = yes, allow; n = no, deny; A = allow all env permissions)",
+        "┏ ⚠️  Deno requests env access to \"FOO\".\r\n",
+        "┠─ Requested by `Deno.permissions.request()` API.\r\n",
+        "┠─ Learn more at: https://docs.deno.com/go/--allow-env\r\n",
+        "┠─ Run again with --allow-env to bypass this prompt.\r\n",
+        "┗ Allow? [y/n/A] (y = yes, allow; n = no, deny; A = allow all env permissions)",
       ));
       console.human_delay();
       console.write_line_raw("A");
       console.expect("✅ Granted all env access.");
       // "sys" permissions
       console.expect(concat!(
-        "┌ ⚠️  Deno requests sys access to \"loadavg\".\r\n",
-        "├ Requested by `Deno.permissions.request()` API.\r\n",
-        "├ Run again with --allow-sys to bypass this prompt.\r\n",
-        "└ Allow? [y/n/A] (y = yes, allow; n = no, deny; A = allow all sys permissions)",
+        "┏ ⚠️  Deno requests sys access to \"loadavg\".\r\n",
+        "┠─ Requested by `Deno.permissions.request()` API.\r\n",
+        "┠─ Learn more at: https://docs.deno.com/go/--allow-sys\r\n",
+        "┠─ Run again with --allow-sys to bypass this prompt.\r\n",
+        "┗ Allow? [y/n/A] (y = yes, allow; n = no, deny; A = allow all sys permissions)",
       ));
       console.human_delay();
       console.write_line_raw("A");
       console.expect("✅ Granted all sys access.");
       // "ffi" permissions
       console.expect(concat!(
-        "┌ ⚠️  Deno requests ffi access to \"FOO\".\r\n",
-        "├ Requested by `Deno.permissions.request()` API.\r\n",
-        "├ Run again with --allow-ffi to bypass this prompt.\r\n",
-        "└ Allow? [y/n/A] (y = yes, allow; n = no, deny; A = allow all ffi permissions)",
+        "┏ ⚠️  Deno requests ffi access to \"FOO\".\r\n",
+        "┠─ Requested by `Deno.permissions.request()` API.\r\n",
+        "┠─ Learn more at: https://docs.deno.com/go/--allow-ffi\r\n",
+        "┠─ Run again with --allow-ffi to bypass this prompt.\r\n",
+        "┗ Allow? [y/n/A] (y = yes, allow; n = no, deny; A = allow all ffi permissions)",
       ));
       console.human_delay();
       console.write_line_raw("A");
@@ -650,9 +661,10 @@ fn permissions_prompt_allow_all_2() {
     .with_pty(|mut console| {
       // "env" permissions
       console.expect(concat!(
-        "┌ ⚠️  Deno requests env access to \"FOO\".\r\n",
-        "├ Run again with --allow-env to bypass this prompt.\r\n",
-        "└ Allow? [y/n/A] (y = yes, allow; n = no, deny; A = allow all env permissions)",
+        "┏ ⚠️  Deno requests env access to \"FOO\".\r\n",
+        "┠─ Learn more at: https://docs.deno.com/go/--allow-env\r\n",
+        "┠─ Run again with --allow-env to bypass this prompt.\r\n",
+        "┗ Allow? [y/n/A] (y = yes, allow; n = no, deny; A = allow all env permissions)",
       ));
       console.human_delay();
       console.write_line_raw("A");
@@ -660,10 +672,11 @@ fn permissions_prompt_allow_all_2() {
 
       // "sys" permissions
       console.expect(concat!(
-        "┌ ⚠️  Deno requests sys access to \"loadavg\".\r\n",
-        "├ Requested by `Deno.loadavg()` API.\r\n",
-        "├ Run again with --allow-sys to bypass this prompt.\r\n",
-        "└ Allow? [y/n/A] (y = yes, allow; n = no, deny; A = allow all sys permissions)",
+        "┏ ⚠️  Deno requests sys access to \"loadavg\".\r\n",
+        "┠─ Requested by `Deno.loadavg()` API.\r\n",
+        "┠─ Learn more at: https://docs.deno.com/go/--allow-sys\r\n",
+        "┠─ Run again with --allow-sys to bypass this prompt.\r\n",
+        "┗ Allow? [y/n/A] (y = yes, allow; n = no, deny; A = allow all sys permissions)",
       ));
       console.human_delay();
       console.write_line_raw("A");
@@ -671,10 +684,11 @@ fn permissions_prompt_allow_all_2() {
 
       // "read" permissions
       console.expect(concat!(
-        "┌ ⚠️  Deno requests read access to <CWD>.\r\n",
-        "├ Requested by `Deno.cwd()` API.\r\n",
-        "├ Run again with --allow-read to bypass this prompt.\r\n",
-        "└ Allow? [y/n/A] (y = yes, allow; n = no, deny; A = allow all read permissions)",
+        "┏ ⚠️  Deno requests read access to <CWD>.\r\n",
+        "┠─ Requested by `Deno.cwd()` API.\r\n",
+        "┠─ Learn more at: https://docs.deno.com/go/--allow-read\r\n",
+        "┠─ Run again with --allow-read to bypass this prompt.\r\n",
+        "┗ Allow? [y/n/A] (y = yes, allow; n = no, deny; A = allow all read permissions)",
       ));
       console.human_delay();
       console.write_line_raw("A");
@@ -690,10 +704,11 @@ fn permissions_prompt_allow_all_lowercase_a() {
     .with_pty(|mut console| {
       // "run" permissions
       console.expect(concat!(
-        "┌ ⚠️  Deno requests run access to \"FOO\".\r\n",
-        "├ Requested by `Deno.permissions.request()` API.\r\n",
-        "├ Run again with --allow-run to bypass this prompt.\r\n",
-        "└ Allow? [y/n/A] (y = yes, allow; n = no, deny; A = allow all run permissions)",
+        "┏ ⚠️  Deno requests run access to \"FOO\".\r\n",
+        "┠─ Requested by `Deno.permissions.request()` API.\r\n",
+        "┠─ Learn more at: https://docs.deno.com/go/--allow-run\r\n",
+        "┠─ Run again with --allow-run to bypass this prompt.\r\n",
+        "┗ Allow? [y/n/A] (y = yes, allow; n = no, deny; A = allow all run permissions)",
       ));
       console.human_delay();
       console.write_line_raw("a");
@@ -733,10 +748,11 @@ fn permissions_cache() {
     .with_pty(|mut console| {
       console.expect(concat!(
         "prompt\r\n",
-        "┌ ⚠️  Deno requests read access to \"foo\".\r\n",
-        "├ Requested by `Deno.permissions.request()` API.\r\n",
-        "├ Run again with --allow-read to bypass this prompt.\r\n",
-        "└ Allow? [y/n/A] (y = yes, allow; n = no, deny; A = allow all read permissions)",
+        "┏ ⚠️  Deno requests read access to \"foo\".\r\n",
+        "┠─ Requested by `Deno.permissions.request()` API.\r\n",
+        "┠─ Learn more at: https://docs.deno.com/go/--allow-read\r\n",
+        "┠─ Run again with --allow-read to bypass this prompt.\r\n",
+        "┗ Allow? [y/n/A] (y = yes, allow; n = no, deny; A = allow all read permissions)",
       ));
       console.human_delay();
       console.write_line_raw("y");
@@ -2621,7 +2637,7 @@ mod permissions {
   fn with_allow() {
     for permission in &util::PERMISSION_VARIANTS {
       let status = util::deno_cmd()
-        .current_dir(&util::testdata_path())
+        .current_dir(util::testdata_path())
         .arg("run")
         .arg("--unstable")
         .arg(format!("--allow-{permission}"))
@@ -2655,7 +2671,7 @@ mod permissions {
     const PERMISSION_VARIANTS: [&str; 2] = ["read", "write"];
     for permission in &PERMISSION_VARIANTS {
       let status = util::deno_cmd()
-        .current_dir(&util::testdata_path())
+        .current_dir(util::testdata_path())
         .arg("run")
         .arg(format!(
           "--allow-{0}={1}",
@@ -2698,7 +2714,7 @@ mod permissions {
     const PERMISSION_VARIANTS: [&str; 2] = ["read", "write"];
     for permission in &PERMISSION_VARIANTS {
       let status = util::deno_cmd()
-        .current_dir(&util::testdata_path())
+        .current_dir(util::testdata_path())
         .arg("run")
         .arg(format!(
           "--allow-{0}={1}",
@@ -2746,7 +2762,7 @@ mod permissions {
     let js_dir = util::root_path().join("js");
     for permission in &PERMISSION_VARIANTS {
       let status = util::deno_cmd()
-        .current_dir(&util::testdata_path())
+        .current_dir(util::testdata_path())
         .arg("run")
         .arg(format!("--allow-{permission}={test_dir},{js_dir}"))
         .arg("run/complex_permissions_test.ts")
@@ -2765,7 +2781,7 @@ mod permissions {
     const PERMISSION_VARIANTS: [&str; 2] = ["read", "write"];
     for permission in &PERMISSION_VARIANTS {
       let status = util::deno_cmd()
-        .current_dir(&util::testdata_path())
+        .current_dir(util::testdata_path())
         .arg("run")
         .arg(format!("--allow-{permission}=."))
         .arg("run/complex_permissions_test.ts")
@@ -2784,7 +2800,7 @@ mod permissions {
     const PERMISSION_VARIANTS: [&str; 2] = ["read", "write"];
     for permission in &PERMISSION_VARIANTS {
       let status = util::deno_cmd()
-        .current_dir(&util::testdata_path())
+        .current_dir(util::testdata_path())
         .arg("run")
         .arg(format!("--allow-{permission}=tls/../"))
         .arg("run/complex_permissions_test.ts")
@@ -2965,18 +2981,20 @@ mod permissions {
       .args_vec(["run", "--quiet", "run/061_permissions_request.ts"])
       .with_pty(|mut console| {
         console.expect(concat!(
-          "┌ ⚠️  Deno requests read access to \"foo\".\r\n",
-          "├ Requested by `Deno.permissions.request()` API.\r\n",
-          "├ Run again with --allow-read to bypass this prompt.\r\n",
-          "└ Allow? [y/n/A] (y = yes, allow; n = no, deny; A = allow all read permissions)",
+          "┏ ⚠️  Deno requests read access to \"foo\".\r\n",
+          "┠─ Requested by `Deno.permissions.request()` API.\r\n",
+          "┠─ Learn more at: https://docs.deno.com/go/--allow-read\r\n",
+          "┠─ Run again with --allow-read to bypass this prompt.\r\n",
+          "┗ Allow? [y/n/A] (y = yes, allow; n = no, deny; A = allow all read permissions)",
         ));
         console.human_delay();
         console.write_line_raw("y");
         console.expect(concat!(
-          "┌ ⚠️  Deno requests read access to \"bar\".\r\n",
-          "├ Requested by `Deno.permissions.request()` API.\r\n",
-          "├ Run again with --allow-read to bypass this prompt.\r\n",
-          "└ Allow? [y/n/A] (y = yes, allow; n = no, deny; A = allow all read permissions)",
+          "┏ ⚠️  Deno requests read access to \"bar\".\r\n",
+          "┠─ Requested by `Deno.permissions.request()` API.\r\n",
+          "┠─ Learn more at: https://docs.deno.com/go/--allow-read\r\n",
+          "┠─ Run again with --allow-read to bypass this prompt.\r\n",
+          "┗ Allow? [y/n/A] (y = yes, allow; n = no, deny; A = allow all read permissions)",
         ));
         console.human_delay();
         console.write_line_raw("n");
@@ -2993,18 +3011,20 @@ mod permissions {
       .args_vec(["run", "--quiet", "run/061_permissions_request_sync.ts"])
       .with_pty(|mut console| {
         console.expect(concat!(
-          "┌ ⚠️  Deno requests read access to \"foo\".\r\n",
-          "├ Requested by `Deno.permissions.request()` API.\r\n",
-          "├ Run again with --allow-read to bypass this prompt.\r\n",
-          "└ Allow? [y/n/A] (y = yes, allow; n = no, deny; A = allow all read permissions)",
+          "┏ ⚠️  Deno requests read access to \"foo\".\r\n",
+          "┠─ Requested by `Deno.permissions.request()` API.\r\n",
+          "┠─ Learn more at: https://docs.deno.com/go/--allow-read\r\n",
+          "┠─ Run again with --allow-read to bypass this prompt.\r\n",
+          "┗ Allow? [y/n/A] (y = yes, allow; n = no, deny; A = allow all read permissions)",
         ));
         console.human_delay();
         console.write_line_raw("y");
         console.expect(concat!(
-          "┌ ⚠️  Deno requests read access to \"bar\".\r\n",
-          "├ Requested by `Deno.permissions.request()` API.\r\n",
-          "├ Run again with --allow-read to bypass this prompt.\r\n",
-          "└ Allow? [y/n/A] (y = yes, allow; n = no, deny; A = allow all read permissions)",
+          "┏ ⚠️  Deno requests read access to \"bar\".\r\n",
+          "┠─ Requested by `Deno.permissions.request()` API.\r\n",
+          "┠─ Learn more at: https://docs.deno.com/go/--allow-read\r\n",
+          "┠─ Run again with --allow-read to bypass this prompt.\r\n",
+          "┗ Allow? [y/n/A] (y = yes, allow; n = no, deny; A = allow all read permissions)",
         ));
         console.human_delay();
         console.write_line_raw("n");
@@ -3021,10 +3041,11 @@ mod permissions {
       .args_vec(["run", "--quiet", "run/062_permissions_request_global.ts"])
       .with_pty(|mut console| {
         console.expect(concat!(
-          "┌ ⚠️  Deno requests read access.\r\n",
-          "├ Requested by `Deno.permissions.request()` API.\r\n",
-          "├ Run again with --allow-read to bypass this prompt.\r\n",
-          "└ Allow? [y/n/A] (y = yes, allow; n = no, deny; A = allow all read permissions)",
+          "┏ ⚠️  Deno requests read access.\r\n",
+          "┠─ Requested by `Deno.permissions.request()` API.\r\n",
+          "┠─ Learn more at: https://docs.deno.com/go/--allow-read\r\n",
+          "┠─ Run again with --allow-read to bypass this prompt.\r\n",
+          "┗ Allow? [y/n/A] (y = yes, allow; n = no, deny; A = allow all read permissions)",
         ));
         console.human_delay();
         console.write_line_raw("y\n");
@@ -3044,10 +3065,11 @@ mod permissions {
       .args_vec(["run", "--quiet", "run/062_permissions_request_global_sync.ts"])
       .with_pty(|mut console| {
         console.expect(concat!(
-          "┌ ⚠️  Deno requests read access.\r\n",
-          "├ Requested by `Deno.permissions.request()` API.\r\n",
-          "├ Run again with --allow-read to bypass this prompt.\r\n",
-          "└ Allow? [y/n/A] (y = yes, allow; n = no, deny; A = allow all read permissions)",
+          "┏ ⚠️  Deno requests read access.\r\n",
+          "┠─ Requested by `Deno.permissions.request()` API.\r\n",
+          "┠─ Learn more at: https://docs.deno.com/go/--allow-read\r\n",
+          "┠─ Run again with --allow-read to bypass this prompt.\r\n",
+          "┗ Allow? [y/n/A] (y = yes, allow; n = no, deny; A = allow all read permissions)",
         ));
         console.human_delay();
         console.write_line_raw("y");
@@ -3200,18 +3222,20 @@ fn issue9750() {
       console.expect("Enter 'yy':");
       console.write_line_raw("yy");
       console.expect(concat!(
-        "┌ ⚠️  Deno requests env access.\r\n",
-        "├ Requested by `Deno.permissions.request()` API.\r\n",
-        "├ Run again with --allow-env to bypass this prompt.\r\n",
-        "└ Allow? [y/n/A] (y = yes, allow; n = no, deny; A = allow all env permissions)",
+        "┏ ⚠️  Deno requests env access.\r\n",
+        "┠─ Requested by `Deno.permissions.request()` API.\r\n",
+        "┠─ Learn more at: https://docs.deno.com/go/--allow-env\r\n",
+        "┠─ Run again with --allow-env to bypass this prompt.\r\n",
+        "┗ Allow? [y/n/A] (y = yes, allow; n = no, deny; A = allow all env permissions)",
       ));
       console.human_delay();
       console.write_line_raw("n");
       console.expect("Denied env access.");
       console.expect(concat!(
-        "┌ ⚠️  Deno requests env access to \"SECRET\".\r\n",
-        "├ Run again with --allow-env to bypass this prompt.\r\n",
-        "└ Allow? [y/n/A] (y = yes, allow; n = no, deny; A = allow all env permissions)",
+        "┏ ⚠️  Deno requests env access to \"SECRET\".\r\n",
+        "┠─ Learn more at: https://docs.deno.com/go/--allow-env\r\n",
+        "┠─ Run again with --allow-env to bypass this prompt.\r\n",
+        "┗ Allow? [y/n/A] (y = yes, allow; n = no, deny; A = allow all env permissions)",
       ));
       console.human_delay();
       console.write_line_raw("n");
@@ -4319,6 +4343,32 @@ fn broken_stdout() {
   assert!(!stderr.contains("panic"));
 }
 
+#[test]
+fn broken_stdout_repl() {
+  let (reader, writer) = os_pipe::pipe().unwrap();
+  // drop the reader to create a broken pipe
+  drop(reader);
+
+  let output = util::deno_cmd()
+    .current_dir(util::testdata_path())
+    .arg("repl")
+    .stdout(writer)
+    .stderr_piped()
+    .spawn()
+    .unwrap()
+    .wait_with_output()
+    .unwrap();
+
+  assert!(!output.status.success());
+  let stderr = std::str::from_utf8(output.stderr.as_ref()).unwrap().trim();
+  if cfg!(windows) {
+    assert_contains!(stderr, "The pipe is being closed. (os error 232)");
+  } else {
+    assert_contains!(stderr, "Broken pipe (os error 32)");
+  }
+  assert_not_contains!(stderr, "panic");
+}
+
 itest!(error_cause {
   args: "run run/error_cause.ts",
   output: "run/error_cause.ts.out",
@@ -4618,11 +4668,11 @@ fn stdio_streams_are_locked_in_permission_prompt() {
       } else {
         "\r\n"
       };
-      console.expect_raw_next(format!("i{newline}\u{1b}[1A\u{1b}[0J└ Unrecognized option. Allow? [y/n/A] (y = yes, allow; n = no, deny; A = allow all read permissions) > "));
+      console.expect_raw_next(format!("i{newline}\u{1b}[1A\u{1b}[0J┗ Unrecognized option. Allow? [y/n/A] (y = yes, allow; n = no, deny; A = allow all read permissions) > "));
       console.human_delay();
       console.write_line_raw("y");
       // We ensure that nothing gets written here between the permission prompt and this text, despire the delay
-      console.expect_raw_next(format!("y{newline}\x1b[4A\x1b[0J✅ Granted read access to \""));
+      console.expect_raw_next(format!("y{newline}\x1b[5A\x1b[0J✅ Granted read access to \""));
 
       // Back to spamming!
       console.expect(malicious_output);
@@ -4642,7 +4692,7 @@ fn permission_prompt_escapes_ansi_codes_and_control_chars() {
       "\\rDo you like ice cream? y/n"
     };
     console.expect(format!(
-      "\u{250c} \u{26a0}\u{fe0f}  Deno requests env access to \"{}\".",
+      "\u{250f} \u{26a0}\u{fe0f}  Deno requests env access to \"{}\".",
       env_name
     ))
   });
@@ -4655,7 +4705,7 @@ fn permission_prompt_escapes_ansi_codes_and_control_chars() {
     console.write_line_raw(
       r#"new Deno.Command(`${boldANSI}cat${unboldANSI}`).spawn();"#,
     );
-    console.expect("\u{250c} \u{26a0}\u{fe0f}  Deno requests run access to \"\\u{1b}[1mcat\\u{1b}[22m\".");
+    console.expect("\u{250f} \u{26a0}\u{fe0f}  Deno requests run access to \"\\u{1b}[1mcat\\u{1b}[22m\".");
   });
 }
 
@@ -5341,4 +5391,21 @@ async fn listen_tls_alpn_fail() {
 
   let status = child.wait().unwrap();
   assert!(status.success());
+}
+
+// Couldn't get the directory readonly on windows on the CI
+// so gave up because this being tested on unix is good enough
+#[cfg(unix)]
+#[test]
+fn emit_failed_readonly_file_system() {
+  let context = TestContextBuilder::default().use_temp_cwd().build();
+  context.deno_dir().path().canonicalize().make_dir_readonly();
+  let temp_dir = context.temp_dir().path().canonicalize();
+  temp_dir.join("main.ts").write("import './other.ts';");
+  temp_dir.join("other.ts").write("console.log('hi');");
+  let output = context
+    .new_command()
+    .args("run --log-level=debug main.ts")
+    .run();
+  output.assert_matches_text("[WILDCARD]Error saving emit data ([WILDLINE]main.ts)[WILDCARD]Skipped emit cache save of [WILDLINE]other.ts[WILDCARD]hi[WILDCARD]");
 }

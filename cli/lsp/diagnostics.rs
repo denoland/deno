@@ -1367,21 +1367,20 @@ fn diagnose_resolution(
   let mut diagnostics = vec![];
   match resolution {
     Resolution::Ok(resolved) => {
+      let file_referrer = referrer_doc.file_referrer();
       let specifier = &resolved.specifier;
-      let managed_npm_resolver = snapshot
-        .resolver
-        .maybe_managed_npm_resolver(referrer_doc.file_referrer());
+      let managed_npm_resolver =
+        snapshot.resolver.maybe_managed_npm_resolver(file_referrer);
       for (_, headers) in snapshot
         .resolver
-        .redirect_chain_headers(specifier, referrer_doc.file_referrer())
+        .redirect_chain_headers(specifier, file_referrer)
       {
         if let Some(message) = headers.get("x-deno-warning") {
           diagnostics.push(DenoDiagnostic::DenoWarn(message.clone()));
         }
       }
-      if let Some(doc) = snapshot
-        .documents
-        .get_or_load(specifier, referrer_doc.specifier())
+      if let Some(doc) =
+        snapshot.documents.get_or_load(specifier, file_referrer)
       {
         if let Some(headers) = doc.maybe_headers() {
           if let Some(message) = headers.get("x-deno-warning") {
@@ -1532,7 +1531,7 @@ fn diagnose_dependency(
         // If not @deno-types, diagnose the types if the code errored because
         // it's likely resolving into the node_modules folder, which might be
         // erroring correctly due to resolution only being for bundlers. Let this
-        // fail at runtime if necesarry, but don't bother erroring in the editor
+        // fail at runtime if necessary, but don't bother erroring in the editor
         || !is_types_deno_types && matches!(dependency.maybe_type, Resolution::Ok(_))
           && matches!(dependency.maybe_code, Resolution::Err(_))
       {

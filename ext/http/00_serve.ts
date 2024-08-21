@@ -436,6 +436,11 @@ function fastSyncResponseOrStream(
 
   const stream = respBody.streamOrStatic;
   const body = stream.body;
+  if (body !== undefined) {
+    // We ensure the response has not been consumed yet in the caller of this
+    // function.
+    stream.consumed = true;
+  }
 
   if (TypedArrayPrototypeGetSymbolToStringTag(body) === "Uint8Array") {
     innerRequest?.close();
@@ -505,6 +510,12 @@ function mapToCallback(context, callback, onError) {
           "Return value from serve handler must be a response or a promise resolving to a response",
         );
       }
+
+      if (response.bodyUsed) {
+        throw TypeError(
+          "The body of the Response returned from the serve handler has already been consumed.",
+        );
+      }
     } catch (error) {
       try {
         response = await onError(error);
@@ -514,6 +525,7 @@ function mapToCallback(context, callback, onError) {
           );
         }
       } catch (error) {
+        // deno-lint-ignore no-console
         console.error("Exception in onError while handling exception", error);
         response = internalServerError();
       }
@@ -522,6 +534,7 @@ function mapToCallback(context, callback, onError) {
     if (innerRequest?.[_upgraded]) {
       // We're done here as the connection has been upgraded during the callback and no longer requires servicing.
       if (response !== UPGRADE_RESPONSE_SENTINEL) {
+        // deno-lint-ignore no-console
         console.error("Upgrade response was not returned from callback");
         context.close();
       }
@@ -568,6 +581,8 @@ type RawServeOptions = {
   handler?: RawHandler;
 };
 
+const kLoadBalanced = Symbol("kLoadBalanced");
+
 function serve(arg1, arg2) {
   let options: RawServeOptions | undefined;
   let handler: RawHandler | undefined;
@@ -599,6 +614,7 @@ function serve(arg1, arg2) {
   const wantsUnix = ObjectHasOwn(options, "path");
   const signal = options.signal;
   const onError = options.onError ?? function (error) {
+    // deno-lint-ignore no-console
     console.error(error);
     return internalServerError();
   };
@@ -614,6 +630,7 @@ function serve(arg1, arg2) {
       if (options.onListen) {
         options.onListen(listener.addr);
       } else {
+        // deno-lint-ignore no-console
         console.log(`Listening on ${path}`);
       }
     });
@@ -623,6 +640,7 @@ function serve(arg1, arg2) {
     hostname: options.hostname ?? "0.0.0.0",
     port: options.port ?? 8000,
     reusePort: options.reusePort ?? false,
+    loadBalanced: options[kLoadBalanced] ?? false,
   };
 
   if (options.certFile || options.keyFile) {
@@ -670,6 +688,7 @@ function serve(arg1, arg2) {
       const host = StringPrototypeIncludes(addr.hostname, ":")
         ? `[${addr.hostname}]`
         : addr.hostname;
+      // deno-lint-ignore no-console
       console.log(`Listening on ${scheme}${host}:${addr.port}/`);
     }
   };
@@ -715,6 +734,7 @@ function serveHttpOn(context, addr, callback) {
 
   const promiseErrorHandler = (error) => {
     // Abnormal exit
+    // deno-lint-ignore no-console
     console.error(
       "Terminating Deno.serve loop due to unexpected error",
       error,
@@ -831,18 +851,26 @@ function registerDeclarativeServer(exports) {
         "Invalid type for fetch: must be a function with a single or no parameter",
       );
     }
-    return ({ servePort, serveHost }) => {
+    return ({ servePort, serveHost, serveIsMain, serveWorkerCount }) => {
       Deno.serve({
         port: servePort,
         hostname: serveHost,
+        [kLoadBalanced]: (serveIsMain && serveWorkerCount > 1) ||
+          (serveWorkerCount !== null),
         onListen: ({ port, hostname }) => {
-          console.debug(
-            `%cdeno serve%c: Listening on %chttp://${hostname}:${port}/%c`,
-            "color: green",
-            "color: inherit",
-            "color: yellow",
-            "color: inherit",
-          );
+          if (serveIsMain) {
+            const nThreads = serveWorkerCount > 1
+              ? ` with ${serveWorkerCount} threads`
+              : "";
+            // deno-lint-ignore no-console
+            console.debug(
+              `%cdeno serve%c: Listening on %chttp://${hostname}:${port}/%c${nThreads}`,
+              "color: green",
+              "color: inherit",
+              "color: yellow",
+              "color: inherit",
+            );
+          }
         },
         handler: (req) => {
           return exports.fetch(req);

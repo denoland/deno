@@ -2,7 +2,7 @@
 
 use crate::auth_tokens::AuthToken;
 use crate::util::progress_bar::UpdateGuard;
-use crate::version::get_user_agent;
+use crate::version;
 
 use cache_control::Cachability;
 use cache_control::CacheControl;
@@ -23,6 +23,7 @@ use http::header::HeaderName;
 use http::header::HeaderValue;
 use http::header::ACCEPT;
 use http::header::AUTHORIZATION;
+use http::header::CONTENT_LENGTH;
 use http::header::IF_NONE_MATCH;
 use http::header::LOCATION;
 use http::StatusCode;
@@ -247,7 +248,7 @@ impl HttpClientProvider {
       Entry::Occupied(entry) => Ok(HttpClient::new(entry.get().clone())),
       Entry::Vacant(entry) => {
         let client = create_http_client(
-          get_user_agent(),
+          version::DENO_VERSION_INFO.user_agent,
           CreateHttpClientOptions {
             root_cert_store: match &self.root_cert_store_provider {
               Some(provider) => Some(provider.get_or_try_init()?.clone()),
@@ -389,10 +390,10 @@ impl HttpClient {
     let response = match self.client.clone().send(request).await {
       Ok(resp) => resp,
       Err(err) => {
-        if is_error_connect(&err) {
+        if err.is_connect_error() {
           return Ok(FetchOnceResult::RequestError(err.to_string()));
         }
-        return Err(err);
+        return Err(err.into());
       }
     };
 
@@ -530,7 +531,7 @@ impl HttpClient {
       .clone()
       .send(req)
       .await
-      .map_err(DownloadError::Fetch)?;
+      .map_err(|e| DownloadError::Fetch(e.into()))?;
     let status = response.status();
     if status.is_redirection() {
       for _ in 0..5 {
@@ -550,7 +551,7 @@ impl HttpClient {
           .clone()
           .send(req)
           .await
-          .map_err(DownloadError::Fetch)?;
+          .map_err(|e| DownloadError::Fetch(e.into()))?;
         let status = new_response.status();
         if status.is_redirection() {
           response = new_response;
@@ -566,20 +567,21 @@ impl HttpClient {
   }
 }
 
-fn is_error_connect(err: &AnyError) -> bool {
-  err
-    .downcast_ref::<hyper_util::client::legacy::Error>()
-    .map(|err| err.is_connect())
-    .unwrap_or(false)
-}
-
 async fn get_response_body_with_progress(
   response: http::Response<deno_fetch::ResBody>,
   progress_guard: Option<&UpdateGuard>,
 ) -> Result<Vec<u8>, AnyError> {
   use http_body::Body as _;
   if let Some(progress_guard) = progress_guard {
-    if let Some(total_size) = response.body().size_hint().exact() {
+    let mut total_size = response.body().size_hint().exact();
+    if total_size.is_none() {
+      total_size = response
+        .headers()
+        .get(CONTENT_LENGTH)
+        .and_then(|val| val.to_str().ok())
+        .and_then(|s| s.parse::<u64>().ok());
+    }
+    if let Some(total_size) = total_size {
       progress_guard.set_total_size(total_size);
       let mut current_size = 0;
       let mut data = Vec::with_capacity(total_size as usize);
@@ -676,7 +678,7 @@ impl RequestBuilder {
   pub async fn send(
     self,
   ) -> Result<http::Response<deno_fetch::ResBody>, AnyError> {
-    self.client.send(self.req).await
+    self.client.send(self.req).await.map_err(Into::into)
   }
 
   pub fn build(self) -> http::Request<deno_fetch::ReqBody> {
@@ -946,7 +948,7 @@ mod test {
 
     let client = HttpClient::new(
       create_http_client(
-        version::get_user_agent(),
+        version::DENO_VERSION_INFO.user_agent,
         CreateHttpClientOptions {
           ca_certs: vec![std::fs::read(
             test_util::testdata_path().join("tls/RootCA.pem"),
@@ -998,7 +1000,7 @@ mod test {
 
       let client = HttpClient::new(
         create_http_client(
-          version::get_user_agent(),
+          version::DENO_VERSION_INFO.user_agent,
           CreateHttpClientOptions::default(),
         )
         .unwrap(),
@@ -1057,7 +1059,7 @@ mod test {
 
     let client = HttpClient::new(
       create_http_client(
-        version::get_user_agent(),
+        version::DENO_VERSION_INFO.user_agent,
         CreateHttpClientOptions {
           root_cert_store: Some(root_cert_store),
           ..Default::default()
@@ -1106,7 +1108,7 @@ mod test {
         .unwrap();
     let client = HttpClient::new(
       create_http_client(
-        version::get_user_agent(),
+        version::DENO_VERSION_INFO.user_agent,
         CreateHttpClientOptions {
           ca_certs: vec![std::fs::read(
             test_util::testdata_path()
@@ -1147,7 +1149,7 @@ mod test {
     let url = Url::parse("https://localhost:5545/etag_script.ts").unwrap();
     let client = HttpClient::new(
       create_http_client(
-        version::get_user_agent(),
+        version::DENO_VERSION_INFO.user_agent,
         CreateHttpClientOptions {
           ca_certs: vec![std::fs::read(
             test_util::testdata_path()
@@ -1203,7 +1205,7 @@ mod test {
         .unwrap();
     let client = HttpClient::new(
       create_http_client(
-        version::get_user_agent(),
+        version::DENO_VERSION_INFO.user_agent,
         CreateHttpClientOptions {
           ca_certs: vec![std::fs::read(
             test_util::testdata_path()

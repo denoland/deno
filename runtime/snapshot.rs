@@ -293,6 +293,7 @@ pub fn create_runtime_snapshot(
           scope,
           tmpl,
           deno_node::ContextInitMode::ForSnapshot,
+          std::ptr::null_mut(),
         );
         assert_eq!(scope.add_context(ctx), deno_node::VM_CONTEXT_INDEX);
       })),

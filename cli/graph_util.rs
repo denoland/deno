@@ -364,7 +364,7 @@ pub struct ModuleGraphBuilder {
   parsed_source_cache: Arc<ParsedSourceCache>,
   lockfile: Option<Arc<CliLockfile>>,
   maybe_file_watcher_reporter: Option<FileWatcherReporter>,
-  emit_cache: cache::EmitCache,
+  emit_cache: Arc<cache::EmitCache>,
   file_fetcher: Arc<FileFetcher>,
   global_http_cache: Arc<GlobalHttpCache>,
 }
@@ -381,7 +381,7 @@ impl ModuleGraphBuilder {
     parsed_source_cache: Arc<ParsedSourceCache>,
     lockfile: Option<Arc<CliLockfile>>,
     maybe_file_watcher_reporter: Option<FileWatcherReporter>,
-    emit_cache: cache::EmitCache,
+    emit_cache: Arc<cache::EmitCache>,
     file_fetcher: Arc<FileFetcher>,
     global_http_cache: Arc<GlobalHttpCache>,
   ) -> Self {
@@ -500,8 +500,6 @@ impl ModuleGraphBuilder {
       .maybe_file_watcher_reporter
       .as_ref()
       .map(|r| r.as_reporter());
-    let workspace_members =
-      self.options.resolve_deno_graph_workspace_members()?;
     let mut locker = self
       .lockfile
       .as_ref()
@@ -515,7 +513,6 @@ impl ModuleGraphBuilder {
           imports: maybe_imports,
           is_dynamic: options.is_dynamic,
           passthrough_jsr_specifiers: false,
-          workspace_members: &workspace_members,
           executor: Default::default(),
           file_system: &DenoGraphFsAdapter(self.fs.as_ref()),
           jsr_url_provider: &CliJsrUrlProvider,
@@ -806,7 +803,7 @@ fn enhanced_lockfile_error_message(err: &ModuleError) -> Option<String> {
           "This could be caused by:\n",
           "  * the lock file may be corrupt\n",
           "  * the source itself may be corrupt\n\n",
-          "Use the --lock-write flag to regenerate the lockfile or --reload to reload the source code from the server."
+          "Investigate the lockfile; delete it to regenerate the lockfile or --reload to reload the source code from the server."
         ),
         package_nv,
         checksum_err.actual,
@@ -827,7 +824,7 @@ fn enhanced_lockfile_error_message(err: &ModuleError) -> Option<String> {
           "This could be caused by:\n",
           "  * the lock file may be corrupt\n",
           "  * the source itself may be corrupt\n\n",
-          "Use the --lock-write flag to regenerate the lockfile or --reload to reload the source code from the server."
+          "Investigate the lockfile; delete it to regenerate the lockfile or --reload to reload the source code from the server."
         ),
         specifier,
         checksum_err.actual,

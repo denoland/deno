@@ -123,10 +123,10 @@ declare type GPUPowerPreference = "low-power" | "high-performance";
 declare class GPUAdapter {
   readonly features: GPUSupportedFeatures;
   readonly limits: GPUSupportedLimits;
+  readonly info: GPUAdapterInfo;
   readonly isFallbackAdapter: boolean;
 
   requestDevice(descriptor?: GPUDeviceDescriptor): Promise<GPUDevice>;
-  requestAdapterInfo(): Promise<GPUAdapterInfo>;
 }
 
 /**

@@ -5,6 +5,7 @@ use dashmap::DashMap;
 use dashmap::DashSet;
 use deno_ast::MediaType;
 use deno_config::workspace::MappedResolution;
+use deno_config::workspace::MappedResolutionDiagnostic;
 use deno_config::workspace::MappedResolutionError;
 use deno_config::workspace::WorkspaceResolver;
 use deno_core::anyhow::anyhow;
@@ -21,6 +22,7 @@ use deno_graph::NpmLoadError;
 use deno_graph::NpmResolvePkgReqsResult;
 use deno_npm::resolution::NpmResolutionError;
 use deno_package_json::PackageJsonDepValue;
+use deno_runtime::colors;
 use deno_runtime::deno_fs;
 use deno_runtime::deno_fs::FileSystem;
 use deno_runtime::deno_node::is_builtin_node_module;
@@ -434,6 +436,7 @@ pub struct CliGraphResolver {
   maybe_vendor_specifier: Option<ModuleSpecifier>,
   found_package_json_dep_flag: AtomicFlag,
   bare_node_builtins_enabled: bool,
+  warned_pkgs: DashSet<PackageReq>,
 }
 
 pub struct CliGraphResolverOptions<'a> {
@@ -469,6 +472,7 @@ impl CliGraphResolver {
         .and_then(|v| ModuleSpecifier::from_directory_path(v).ok()),
       found_package_json_dep_flag: Default::default(),
       bare_node_builtins_enabled: options.bare_node_builtins_enabled,
+      warned_pkgs: Default::default(),
     }
   }
 
@@ -535,11 +539,29 @@ impl Resolver for CliGraphResolver {
         MappedResolutionError::ImportMap(err) => {
           ResolveError::Other(err.into())
         }
+        MappedResolutionError::Workspace(err) => {
+          ResolveError::Other(err.into())
+        }
       });
     let result = match result {
       Ok(resolution) => match resolution {
-        MappedResolution::Normal(specifier)
-        | MappedResolution::ImportMap(specifier) => {
+        MappedResolution::Normal {
+          specifier,
+          maybe_diagnostic,
+        }
+        | MappedResolution::ImportMap {
+          specifier,
+          maybe_diagnostic,
+        } => {
+          if let Some(diagnostic) = maybe_diagnostic {
+            match &*diagnostic {
+              MappedResolutionDiagnostic::ConstraintNotMatchedLocalVersion { reference, .. } => {
+                if self.warned_pkgs.insert(reference.req().clone()) {
+                  log::warn!("{} {}\n    at {}", colors::yellow("Warning"), diagnostic, referrer_range);
+                }
+              }
+            }
+          }
           // do sloppy imports resolution if enabled
           if let Some(sloppy_imports_resolver) = &self.sloppy_imports_resolver {
             Ok(
@@ -551,6 +573,9 @@ impl Resolver for CliGraphResolver {
           } else {
             Ok(specifier)
           }
+        }
+        MappedResolution::WorkspaceJsrPackage { specifier, .. } => {
+          Ok(specifier)
         }
         MappedResolution::WorkspaceNpmPackage {
           target_pkg_json: pkg_json,

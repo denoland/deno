@@ -2,6 +2,7 @@
 
 use std::borrow::Cow;
 use std::cell::RefCell;
+use std::collections::HashSet;
 use std::path::PathBuf;
 use std::pin::Pin;
 use std::rc::Rc;
@@ -35,7 +36,6 @@ use crate::util::text_encoding::code_without_source_map;
 use crate::util::text_encoding::source_map_from_code;
 use crate::worker::ModuleLoaderAndSourceMapGetter;
 use crate::worker::ModuleLoaderFactory;
-
 use deno_ast::MediaType;
 use deno_core::anyhow::anyhow;
 use deno_core::anyhow::bail;
@@ -45,6 +45,7 @@ use deno_core::error::generic_error;
 use deno_core::error::AnyError;
 use deno_core::futures::future::FutureExt;
 use deno_core::futures::Future;
+use deno_core::parking_lot::Mutex;
 use deno_core::resolve_url;
 use deno_core::ModuleCodeString;
 use deno_core::ModuleLoader;
@@ -64,6 +65,7 @@ use deno_graph::Module;
 use deno_graph::ModuleGraph;
 use deno_graph::Resolution;
 use deno_runtime::code_cache;
+use deno_runtime::deno_node::create_host_defined_options;
 use deno_runtime::deno_permissions::PermissionsContainer;
 use deno_semver::npm::NpmPackageReqReference;
 use node_resolver::NodeResolutionMode;
@@ -291,6 +293,7 @@ impl CliModuleLoaderFactory {
       emitter: self.shared.emitter.clone(),
       parsed_source_cache: self.shared.parsed_source_cache.clone(),
       shared: self.shared.clone(),
+      prevent_v8_code_cache: Default::default(),
     })));
     ModuleLoaderAndSourceMapGetter {
       module_loader: loader,
@@ -342,6 +345,10 @@ struct CliModuleLoaderInner<TGraphContainer: ModuleGraphContainer> {
   emitter: Arc<Emitter>,
   parsed_source_cache: Arc<ParsedSourceCache>,
   graph_container: TGraphContainer,
+  // NOTE(bartlomieju): this is temporary, for deprecated import assertions.
+  // Should be removed in Deno 2.
+  // Modules stored here should not be V8 code-cached.
+  prevent_v8_code_cache: Arc<Mutex<HashSet<String>>>,
 }
 
 impl<TGraphContainer: ModuleGraphContainer>
@@ -725,6 +732,19 @@ impl<TGraphContainer: ModuleGraphContainer> ModuleLoader
     Ok(specifier)
   }
 
+  fn get_host_defined_options<'s>(
+    &self,
+    scope: &mut deno_core::v8::HandleScope<'s>,
+    name: &str,
+  ) -> Option<deno_core::v8::Local<'s, deno_core::v8::Data>> {
+    let name = deno_core::ModuleSpecifier::parse(name).ok()?;
+    if self.0.shared.node_resolver.in_npm_package(&name) {
+      Some(create_host_defined_options(scope))
+    } else {
+      None
+    }
+  }
+
   fn load(
     &self,
     specifier: &ModuleSpecifier,
@@ -814,6 +834,14 @@ impl<TGraphContainer: ModuleGraphContainer> ModuleLoader
     code_cache: &[u8],
   ) -> Pin<Box<dyn Future<Output = ()>>> {
     if let Some(cache) = self.0.shared.code_cache.as_ref() {
+      if self
+        .0
+        .prevent_v8_code_cache
+        .lock()
+        .contains(specifier.as_str())
+      {
+        return std::future::ready(()).boxed_local();
+      }
       // This log line is also used by tests.
       log::debug!(
         "Updating V8 code cache for ES module: {specifier}, [{source_hash:?}]"
@@ -826,6 +854,19 @@ impl<TGraphContainer: ModuleGraphContainer> ModuleLoader
       );
     }
     std::future::ready(()).boxed_local()
+  }
+
+  fn purge_and_prevent_code_cache(&self, specifier: &str) {
+    if let Some(cache) = self.0.shared.code_cache.as_ref() {
+      // This log line is also used by tests.
+      log::debug!("Remove V8 code cache for ES module: {specifier}");
+      cache.remove_code_cache(specifier);
+      self
+        .0
+        .prevent_v8_code_cache
+        .lock()
+        .insert(specifier.to_string());
+    }
   }
 
   fn get_source_map(&self, file_name: &str) -> Option<Vec<u8>> {

@@ -1,5 +1,7 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
+// deno-lint-ignore-file no-console
+
 import { assertMatch, assertRejects } from "@std/assert";
 import { Buffer, BufReader, BufWriter } from "@std/io";
 import { TextProtoReader } from "../testdata/run/textproto.ts";
@@ -631,6 +633,51 @@ Deno.test(
   },
 );
 
+Deno.test(
+  { permissions: { net: true } },
+  async function httpServerMultipleResponseBodyConsume() {
+    const ac = new AbortController();
+    const { promise, resolve } = Promise.withResolvers<void>();
+    const response = new Response("Hello World");
+    let hadError = false;
+    const server = Deno.serve({
+      handler: () => {
+        return response;
+      },
+      port: servePort,
+      signal: ac.signal,
+      onListen: onListen(resolve),
+      onError: () => {
+        hadError = true;
+        return new Response("Internal Server Error", { status: 500 });
+      },
+    });
+
+    await promise;
+    assert(!response.bodyUsed);
+
+    const resp = await fetch(`http://127.0.0.1:${servePort}/`, {
+      headers: { "connection": "close" },
+    });
+    assertEquals(resp.status, 200);
+    const text = await resp.text();
+    assertEquals(text, "Hello World");
+    assert(response.bodyUsed);
+
+    const resp2 = await fetch(`http://127.0.0.1:${servePort}/`, {
+      headers: { "connection": "close" },
+    });
+    assertEquals(resp2.status, 500);
+    const text2 = await resp2.text();
+    assertEquals(text2, "Internal Server Error");
+    assert(hadError);
+    assert(response.bodyUsed);
+
+    ac.abort();
+    await server.finished;
+  },
+);
+
 Deno.test({ permissions: { net: true } }, async function httpServerOverload1() {
   const ac = new AbortController();
   const deferred = Promise.withResolvers<void>();
@@ -813,6 +860,88 @@ Deno.test(
     await server.finished;
   },
 );
+
+Deno.test({ permissions: { net: true } }, async function validPortString() {
+  const server = Deno.serve({
+    handler: (_request) => new Response(),
+    port: "4501" as unknown as number,
+  });
+  assertEquals(server.addr.transport, "tcp");
+  assertEquals(server.addr.port, 4501);
+  await server.shutdown();
+});
+
+Deno.test({ permissions: { net: true } }, function invalidPortFloat() {
+  assertThrows(
+    () =>
+      Deno.serve({
+        handler: (_request) => new Response(),
+        port: 45.1,
+      }),
+    TypeError,
+    `Invalid port: 45.1`,
+  );
+});
+
+Deno.test({ permissions: { net: true } }, function invalidPortNaN() {
+  assertThrows(
+    () =>
+      Deno.serve({
+        handler: (_request) => new Response(),
+        port: NaN,
+      }),
+    TypeError,
+    `Invalid port: NaN`,
+  );
+});
+
+Deno.test({ permissions: { net: true } }, function invalidPortString() {
+  assertThrows(
+    () =>
+      Deno.serve({
+        handler: (_request) => new Response(),
+        port: "some-non-number-string" as unknown as number,
+      }),
+    TypeError,
+    `Invalid port: 'some-non-number-string'`,
+  );
+});
+
+Deno.test({ permissions: { net: true } }, function invalidPortTooSmall() {
+  assertThrows(
+    () =>
+      Deno.serve({
+        handler: (_request) => new Response(),
+        port: -111,
+      }),
+    RangeError,
+    `Invalid port (out of range): -111`,
+  );
+});
+
+Deno.test({ permissions: { net: true } }, function invalidPortTooLarge() {
+  assertThrows(
+    () =>
+      Deno.serve({
+        handler: (_request) => new Response(),
+        port: 100000,
+      }),
+    RangeError,
+    `Invalid port (out of range): 100000`,
+  );
+});
+
+Deno.test({ permissions: { net: true } }, function invalidPortType() {
+  assertThrows(
+    () =>
+      Deno.serve({
+        handler: (_request) => new Response(),
+        port: true as unknown as number,
+      }),
+    TypeError,
+    `Invalid port (expected number): true`,
+  );
+});
 
 function createUrlTest(
   name: string,

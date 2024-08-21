@@ -75,6 +75,7 @@ use std::sync::Arc;
 use thiserror::Error;
 
 use crate::cache;
+use crate::cache::DenoDirProvider;
 use crate::file_fetcher::FileFetcher;
 use crate::util::fs::canonicalize_path_maybe_not_exists;
 use crate::version;
@@ -202,6 +203,7 @@ pub fn ts_config_to_transpile_and_emit_options(
       inline_sources: options.inline_sources,
       remove_comments: false,
       source_map,
+      source_map_base: None,
       source_map_file: None,
     },
   ))
@@ -278,9 +280,18 @@ impl BenchOptions {
   }
 }
 
+#[derive(Clone, Debug, Default, PartialEq, Eq, Hash)]
+pub struct UnstableFmtOptions {
+  pub css: bool,
+  pub html: bool,
+  pub component: bool,
+  pub yaml: bool,
+}
+
 #[derive(Clone, Debug)]
 pub struct FmtOptions {
   pub options: FmtOptionsConfig,
+  pub unstable: UnstableFmtOptions,
   pub files: FilePatterns,
 }
 
@@ -294,13 +305,24 @@ impl FmtOptions {
   pub fn new_with_base(base: PathBuf) -> Self {
     Self {
       options: FmtOptionsConfig::default(),
+      unstable: Default::default(),
       files: FilePatterns::new_with_base(base),
     }
   }
 
-  pub fn resolve(fmt_config: FmtConfig, fmt_flags: &FmtFlags) -> Self {
+  pub fn resolve(
+    fmt_config: FmtConfig,
+    unstable: UnstableFmtOptions,
+    fmt_flags: &FmtFlags,
+  ) -> Self {
     Self {
       options: resolve_fmt_options(fmt_flags, fmt_config.options),
+      unstable: UnstableFmtOptions {
+        css: unstable.css || fmt_flags.unstable_css,
+        html: unstable.html || fmt_flags.unstable_html,
+        component: unstable.component || fmt_flags.unstable_component,
+        yaml: unstable.yaml || fmt_flags.unstable_yaml,
+      },
       files: fmt_config.files,
     }
   }
@@ -355,6 +377,7 @@ pub struct WorkspaceTestOptions {
   pub trace_leaks: bool,
   pub reporter: TestReporterConfig,
   pub junit_path: Option<String>,
+  pub hide_stacktraces: bool,
 }
 
 impl WorkspaceTestOptions {
@@ -372,6 +395,7 @@ impl WorkspaceTestOptions {
       trace_leaks: test_flags.trace_leaks,
       reporter: test_flags.reporter,
       junit_path: test_flags.junit_path.clone(),
+      hide_stacktraces: test_flags.hide_stacktraces,
     }
   }
 }
@@ -656,9 +680,19 @@ pub fn get_root_cert_store(
       "system" => {
         let roots = load_native_certs().expect("could not load platform certs");
         for root in roots {
-          root_cert_store
-            .add(rustls::pki_types::CertificateDer::from(root.0))
-            .expect("Failed to add platform cert to root cert store");
+          if let Err(err) = root_cert_store
+            .add(rustls::pki_types::CertificateDer::from(root.0.clone()))
+          {
+            log::error!(
+              "{}",
+              colors::yellow(&format!(
+                "Unable to add system certificate to certificate store: {:?}",
+                err
+              ))
+            );
+            let hex_encoded_root = faster_hex::hex_string(&root.0);
+            log::error!("{}", colors::gray(&hex_encoded_root));
+          }
         }
       }
       _ => {
@@ -749,6 +783,7 @@ pub struct CliOptions {
   pub start_dir: Arc<WorkspaceDirectory>,
   pub disable_deprecated_api_warning: bool,
   pub verbose_deprecated_api_warning: bool,
+  pub deno_dir_provider: Arc<DenoDirProvider>,
 }
 
 impl CliOptions {
@@ -779,11 +814,14 @@ impl CliOptions {
 
     let maybe_lockfile = maybe_lockfile.filter(|_| !force_global_cache);
     let root_folder = start_dir.workspace.root_folder_configs();
+    let deno_dir_provider =
+      Arc::new(DenoDirProvider::new(flags.cache_path.clone()));
     let maybe_node_modules_folder = resolve_node_modules_folder(
       &initial_cwd,
       &flags,
       root_folder.deno_json.as_deref(),
       root_folder.pkg_json.as_deref(),
+      &deno_dir_provider,
     )
     .with_context(|| "Resolving node_modules folder.")?;
 
@@ -806,6 +844,7 @@ impl CliOptions {
       start_dir,
       disable_deprecated_api_warning,
       verbose_deprecated_api_warning,
+      deno_dir_provider,
     })
   }
 
@@ -1046,7 +1085,7 @@ impl CliOptions {
     };
     Ok(
       self
-        .start_dir
+        .workspace()
         .create_resolver(
           CreateResolverOptions {
             pkg_json_dep_resolution,
@@ -1068,10 +1107,10 @@ impl CliOptions {
   }
 
   pub fn node_ipc_fd(&self) -> Option<i64> {
-    let maybe_node_channel_fd = std::env::var("DENO_CHANNEL_FD").ok();
+    let maybe_node_channel_fd = std::env::var("NODE_CHANNEL_FD").ok();
     if let Some(node_channel_fd) = maybe_node_channel_fd {
       // Remove so that child processes don't inherit this environment variable.
-      std::env::remove_var("DENO_CHANNEL_FD");
+      std::env::remove_var("NODE_CHANNEL_FD");
       node_channel_fd.parse::<i64>().ok()
     } else {
       None
@@ -1124,8 +1163,6 @@ impl CliOptions {
               resolve_url_or_path("./$deno$stdin.ts", &cwd)
                 .map_err(AnyError::from)
             })?
-        } else if run_flags.watch.is_some() {
-          resolve_url_or_path(&run_flags.script, self.initial_cwd())?
         } else if NpmPackageReqReference::from_str(&run_flags.script).is_ok() {
           ModuleSpecifier::parse(&run_flags.script)?
         } else {
@@ -1214,6 +1251,7 @@ impl CliOptions {
       overrides: self.overrides.clone(),
       disable_deprecated_api_warning: self.disable_deprecated_api_warning,
       verbose_deprecated_api_warning: self.verbose_deprecated_api_warning,
+      deno_dir_provider: self.deno_dir_provider.clone(),
     }
   }
 
@@ -1264,7 +1302,10 @@ impl CliOptions {
       return Ok(None);
     };
 
-    Ok(Some(InspectorServer::new(host, version::get_user_agent())?))
+    Ok(Some(InspectorServer::new(
+      host,
+      version::DENO_VERSION_INFO.user_agent,
+    )?))
   }
 
   pub fn maybe_lockfile(&self) -> Option<&Arc<CliLockfile>> {
@@ -1301,12 +1342,23 @@ impl CliOptions {
     let member_configs = self
       .workspace()
       .resolve_fmt_config_for_members(&cli_arg_patterns)?;
+    let unstable = self.resolve_config_unstable_fmt_options();
     let mut result = Vec::with_capacity(member_configs.len());
     for (ctx, config) in member_configs {
-      let options = FmtOptions::resolve(config, fmt_flags);
+      let options = FmtOptions::resolve(config, unstable.clone(), fmt_flags);
       result.push((ctx, options));
     }
     Ok(result)
+  }
+
+  pub fn resolve_config_unstable_fmt_options(&self) -> UnstableFmtOptions {
+    let workspace = self.workspace();
+    UnstableFmtOptions {
+      css: workspace.has_unstable("fmt-css"),
+      html: workspace.has_unstable("fmt-html"),
+      component: workspace.has_unstable("fmt-component"),
+      yaml: workspace.has_unstable("fmt-yaml"),
+    }
   }
 
   pub fn resolve_workspace_lint_options(
@@ -1403,17 +1455,6 @@ impl CliOptions {
     Ok(result)
   }
 
-  pub fn resolve_deno_graph_workspace_members(
-    &self,
-  ) -> Result<Vec<deno_graph::WorkspaceMember>, AnyError> {
-    self
-      .workspace()
-      .jsr_packages()
-      .into_iter()
-      .map(|pkg| config_to_deno_graph_workspace_member(&pkg.config_file))
-      .collect::<Result<Vec<_>, _>>()
-  }
-
   /// Vector of user script CLI arguments.
   pub fn argv(&self) -> &Vec<String> {
     &self.flags.argv
@@ -1500,10 +1541,6 @@ impl CliOptions {
 
   pub fn location_flag(&self) -> &Option<Url> {
     &self.flags.location
-  }
-
-  pub fn maybe_custom_root(&self) -> &Option<PathBuf> {
-    &self.flags.cache_path
   }
 
   pub fn no_remote(&self) -> bool {
@@ -1635,8 +1672,15 @@ impl CliOptions {
           .map(|granular_flag| granular_flag.0)
           .collect();
 
-      let mut another_unstable_flags =
-        Vec::from(["sloppy-imports", "byonm", "bare-node-builtins"]);
+      let mut another_unstable_flags = Vec::from([
+        "sloppy-imports",
+        "byonm",
+        "bare-node-builtins",
+        "fmt-css",
+        "fmt-html",
+        "fmt-component",
+        "fmt-yaml",
+      ]);
       // add more unstable flags to the same vector holding granular flags
       all_valid_unstable_flags.append(&mut another_unstable_flags);
 
@@ -1719,6 +1763,7 @@ fn resolve_node_modules_folder(
   flags: &Flags,
   maybe_config_file: Option<&ConfigFile>,
   maybe_package_json: Option<&PackageJson>,
+  deno_dir_provider: &Arc<DenoDirProvider>,
 ) -> Result<Option<PathBuf>, AnyError> {
   let use_node_modules_dir = flags
     .node_modules_dir
@@ -1730,7 +1775,18 @@ fn resolve_node_modules_folder(
   } else if let Some(state) = &*NPM_PROCESS_STATE {
     return Ok(state.local_node_modules_path.as_ref().map(PathBuf::from));
   } else if let Some(package_json_path) = maybe_package_json.map(|c| &c.path) {
-    // always auto-discover the local_node_modules_folder when a package.json exists
+    if let Ok(deno_dir) = deno_dir_provider.get_or_create() {
+      // `deno_dir.root` can be symlink in macOS
+      if let Ok(root) = canonicalize_path_maybe_not_exists(&deno_dir.root) {
+        if package_json_path.starts_with(root) {
+          // if the package.json is in deno_dir, then do not use node_modules
+          // next to it as local node_modules dir
+          return Ok(None);
+        }
+      }
+    }
+    // auto-discover the local_node_modules_folder when a package.json exists
+    // and it's not in deno_dir
     package_json_path.parent().unwrap().join("node_modules")
   } else if use_node_modules_dir.is_none() {
     return Ok(None);
@@ -1856,7 +1912,7 @@ fn load_env_variables_from_env_file(filename: Option<&String>) {
     Err(error) => {
       match error {
           dotenvy::Error::LineParse(line, index)=> log::info!("{} Parsing failed within the specified environment file: {} at index: {} of the value: {}",colors::yellow("Warning"), env_file_name, index, line),
-          dotenvy::Error::Io(_)=> log::info!("{} The `--env` flag was used, but the environment file specified '{}' was not found.",colors::yellow("Warning"),env_file_name),
+          dotenvy::Error::Io(_)=> log::info!("{} The `--env-file` flag was used, but the environment file specified '{}' was not found.",colors::yellow("Warning"),env_file_name),
           dotenvy::Error::EnvVar(_)=> log::info!("{} One or more of the environment variables isn't present or not unicode within the specified environment file: {}",colors::yellow("Warning"),env_file_name),
           _ => log::info!("{} Unknown failure occurred with the specified environment file: {}", colors::yellow("Warning"), env_file_name),
         }

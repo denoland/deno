@@ -3,6 +3,7 @@
 use flaky_test::flaky_test;
 use test_util as util;
 use test_util::assert_contains;
+use test_util::env_vars_for_npm_tests;
 use test_util::TempDir;
 use tokio::io::AsyncBufReadExt;
 use util::DenoChild;
@@ -192,8 +193,7 @@ fn child_lines(
   (stdout_lines, stderr_lines)
 }
 
-#[flaky_test]
-#[tokio::main]
+#[flaky_test(tokio)]
 async fn lint_watch_test() {
   let t = TempDir::new();
   let badly_linted_original =
@@ -248,8 +248,7 @@ async fn lint_watch_test() {
   child.kill().unwrap();
 }
 
-#[flaky_test]
-#[tokio::main]
+#[flaky_test(tokio)]
 async fn lint_watch_without_args_test() {
   let t = TempDir::new();
   let badly_linted_original =
@@ -304,8 +303,7 @@ async fn lint_watch_without_args_test() {
   drop(t);
 }
 
-#[flaky_test]
-#[tokio::main]
+#[flaky_test(tokio)]
 async fn lint_all_files_on_each_change_test() {
   let t = TempDir::new();
   let badly_linted_fixed0 =
@@ -325,7 +323,6 @@ async fn lint_all_files_on_each_change_test() {
     .arg("lint")
     .arg(t.path())
     .arg("--watch")
-    .arg("--unstable")
     .piped_output()
     .spawn()
     .unwrap();
@@ -349,8 +346,7 @@ async fn lint_all_files_on_each_change_test() {
   drop(t);
 }
 
-#[flaky_test]
-#[tokio::main]
+#[flaky_test(tokio)]
 async fn fmt_watch_test() {
   let fmt_testdata_path = util::testdata_path().join("fmt");
   let t = TempDir::new();
@@ -405,8 +401,7 @@ async fn fmt_watch_test() {
   check_alive_then_kill(child);
 }
 
-#[flaky_test]
-#[tokio::main]
+#[flaky_test(tokio)]
 async fn fmt_watch_without_args_test() {
   let fmt_testdata_path = util::testdata_path().join("fmt");
   let t = TempDir::new();
@@ -458,8 +453,7 @@ async fn fmt_watch_without_args_test() {
   check_alive_then_kill(child);
 }
 
-#[flaky_test]
-#[tokio::main]
+#[flaky_test(tokio)]
 async fn fmt_check_all_files_on_each_change_test() {
   let t = TempDir::new();
   let fmt_testdata_path = util::testdata_path().join("fmt");
@@ -475,7 +469,6 @@ async fn fmt_check_all_files_on_each_change_test() {
     .arg(t.path())
     .arg("--watch")
     .arg("--check")
-    .arg("--unstable")
     .piped_output()
     .spawn()
     .unwrap();
@@ -498,8 +491,7 @@ async fn fmt_check_all_files_on_each_change_test() {
   check_alive_then_kill(child);
 }
 
-#[flaky_test]
-#[tokio::main]
+#[flaky_test(tokio)]
 async fn bundle_js_watch() {
   use std::path::PathBuf;
   // Test strategy extends this of test bundle_js by adding watcher
@@ -573,8 +565,7 @@ async fn bundle_js_watch() {
 }
 
 /// Confirm that the watcher continues to work even if module resolution fails at the *first* attempt
-#[flaky_test]
-#[tokio::main]
+#[flaky_test(tokio)]
 async fn bundle_watch_not_exit() {
   let t = TempDir::new();
   let file_to_watch = t.path().join("file_to_watch.ts");
@@ -637,8 +628,7 @@ async fn bundle_watch_not_exit() {
   check_alive_then_kill(deno);
 }
 
-#[flaky_test]
-#[tokio::main]
+#[flaky_test(tokio)]
 async fn run_watch_no_dynamic() {
   let t = TempDir::new();
   let file_to_watch = t.path().join("file_to_watch.js");
@@ -716,12 +706,47 @@ async fn run_watch_no_dynamic() {
   check_alive_then_kill(child);
 }
 
+#[flaky_test(tokio)]
+async fn run_watch_npm_specifier() {
+  let _g = util::http_server();
+  let t = TempDir::new();
+
+  let file_to_watch = t.path().join("file_to_watch.txt");
+  file_to_watch.write("Hello world");
+
+  let mut child = util::deno_cmd()
+    .current_dir(t.path())
+    .envs(env_vars_for_npm_tests())
+    .arg("run")
+    .arg("--watch=file_to_watch.txt")
+    .arg("-L")
+    .arg("debug")
+    .arg("npm:@denotest/bin/cli-cjs")
+    .arg("Hello world")
+    .env("NO_COLOR", "1")
+    .piped_output()
+    .spawn()
+    .unwrap();
+  let (mut stdout_lines, mut stderr_lines) = child_lines(&mut child);
+
+  wait_contains("Hello world", &mut stdout_lines).await;
+  wait_for_watcher("file_to_watch.txt", &mut stderr_lines).await;
+
+  // Change content of the file
+  file_to_watch.write("Hello world2");
+
+  wait_contains("Restarting", &mut stderr_lines).await;
+  wait_contains("Hello world", &mut stdout_lines).await;
+  wait_for_watcher("file_to_watch.txt", &mut stderr_lines).await;
+
+  check_alive_then_kill(child);
+}
+
 // TODO(bartlomieju): this test became flaky on macOS runner; it is unclear
 // if that's because of a bug in code or the runner itself. We should reenable
 // it once we upgrade to XL runners for macOS.
 #[cfg(not(target_os = "macos"))]
-#[flaky_test]
-#[tokio::main]
+#[flaky_test(tokio)]
 async fn run_watch_external_watch_files() {
   let t = TempDir::new();
   let file_to_watch = t.path().join("file_to_watch.js");
@@ -764,8 +789,7 @@ async fn run_watch_external_watch_files() {
   check_alive_then_kill(child);
 }
 
-#[flaky_test]
-#[tokio::main]
+#[flaky_test(tokio)]
 async fn run_watch_load_unload_events() {
   let t = TempDir::new();
   let file_to_watch = t.path().join("file_to_watch.js");
@@ -828,8 +852,7 @@ async fn run_watch_load_unload_events() {
 }
 
 /// Confirm that the watcher continues to work even if module resolution fails at the *first* attempt
-#[flaky_test]
-#[tokio::main]
+#[flaky_test(tokio)]
 async fn run_watch_not_exit() {
   let t = TempDir::new();
   let file_to_watch = t.path().join("file_to_watch.js");
@@ -862,8 +885,7 @@ async fn run_watch_not_exit() {
   check_alive_then_kill(child);
 }
 
-#[flaky_test]
-#[tokio::main]
+#[flaky_test(tokio)]
 async fn run_watch_with_import_map_and_relative_paths() {
   fn create_relative_tmp_file(
     directory: &TempDir,
@@ -916,8 +938,7 @@ async fn run_watch_with_import_map_and_relative_paths() {
   check_alive_then_kill(child);
 }
 
-#[flaky_test]
-#[tokio::main]
+#[flaky_test(tokio)]
 async fn run_watch_with_ext_flag() {
   let t = TempDir::new();
   let file_to_watch = t.path().join("file_to_watch");
@@ -953,8 +974,7 @@ async fn run_watch_with_ext_flag() {
   check_alive_then_kill(child);
 }
 
-#[flaky_test]
-#[tokio::main]
+#[flaky_test(tokio)]
 async fn run_watch_error_messages() {
   let t = TempDir::new();
   let file_to_watch = t.path().join("file_to_watch.js");
@@ -984,8 +1004,7 @@ async fn run_watch_error_messages() {
   check_alive_then_kill(child);
 }
 
-#[flaky_test]
-#[tokio::main]
+#[flaky_test(tokio)]
 async fn test_watch_basic() {
   let t = TempDir::new();
 
@@ -1140,8 +1159,7 @@ async fn test_watch_basic() {
   check_alive_then_kill(child);
 }
 
-#[flaky_test]
-#[tokio::main]
+#[flaky_test(tokio)]
 async fn test_watch_doc() {
   let t = TempDir::new();
 
@@ -1189,8 +1207,7 @@ async fn test_watch_doc() {
   check_alive_then_kill(child);
 }
 
-#[flaky_test]
-#[tokio::main]
+#[flaky_test(tokio)]
 async fn test_watch_module_graph_error_referrer() {
   let t = TempDir::new();
   let file_to_watch = t.path().join("file_to_watch.js");
@@ -1218,8 +1235,7 @@ async fn test_watch_module_graph_error_referrer() {
 }
 
 // Regression test for https://github.com/denoland/deno/issues/15428.
-#[flaky_test]
-#[tokio::main]
+#[flaky_test(tokio)]
 async fn test_watch_unload_handler_error_on_drop() {
   let t = TempDir::new();
   let file_to_watch = t.path().join("file_to_watch.js");
@@ -1249,8 +1265,7 @@ async fn test_watch_unload_handler_error_on_drop() {
   check_alive_then_kill(child);
 }
 
-#[flaky_test]
-#[tokio::main]
+#[flaky_test(tokio)]
 async fn run_watch_blob_urls_reset() {
   let _g = util::http_server();
   let t = TempDir::new();
@@ -1291,8 +1306,7 @@ async fn run_watch_blob_urls_reset() {
 }
 
 #[cfg(unix)]
-#[flaky_test]
-#[tokio::main]
+#[flaky_test(tokio)]
 async fn test_watch_sigint() {
   use nix::sys::signal;
   use nix::sys::signal::Signal;
@@ -1317,8 +1331,7 @@ async fn test_watch_sigint() {
   assert_eq!(exit_status.code(), Some(130));
 }
 
-#[flaky_test]
-#[tokio::main]
+#[flaky_test(tokio)]
 async fn bench_watch_basic() {
   let t = TempDir::new();
 
@@ -1431,8 +1444,7 @@ async fn bench_watch_basic() {
 }
 
 // Regression test for https://github.com/denoland/deno/issues/15465.
-#[flaky_test]
-#[tokio::main]
+#[flaky_test(tokio)]
 async fn run_watch_reload_once() {
   let _g = util::http_server();
   let t = TempDir::new();
@@ -1470,8 +1482,7 @@ async fn run_watch_reload_once() {
 
 /// Regression test for https://github.com/denoland/deno/issues/18960. Ensures that Deno.serve
 /// operates properly after a watch restart.
-#[flaky_test]
-#[tokio::main]
+#[flaky_test(tokio)]
 async fn test_watch_serve() {
   let t = TempDir::new();
   let file_to_watch = t.path().join("file_to_watch.js");
@@ -1507,8 +1518,7 @@ async fn test_watch_serve() {
   check_alive_then_kill(child);
 }
 
-#[flaky_test]
-#[tokio::main]
+#[flaky_test(tokio)]
 async fn run_watch_dynamic_imports() {
   let t = TempDir::new();
   let file_to_watch = t.path().join("file_to_watch.js");
@@ -1594,8 +1604,7 @@ async fn run_watch_dynamic_imports() {
   check_alive_then_kill(child);
 }
 
-#[flaky_test]
-#[tokio::main]
+#[flaky_test(tokio)]
 async fn run_watch_inspect() {
   let t = TempDir::new();
   let file_to_watch = t.path().join("file_to_watch.js");
@@ -1636,8 +1645,7 @@ async fn run_watch_inspect() {
   check_alive_then_kill(child);
 }
 
-#[flaky_test]
-#[tokio::main]
+#[flaky_test(tokio)]
 async fn run_watch_with_excluded_paths() {
   let t = TempDir::new();
 
@@ -1676,8 +1684,7 @@ async fn run_watch_with_excluded_paths() {
   check_alive_then_kill(child);
 }
 
-#[flaky_test]
-#[tokio::main]
+#[flaky_test(tokio)]
 async fn run_hmr_server() {
   let t = TempDir::new();
   let file_to_watch = t.path().join("file_to_watch.js");
@@ -1703,7 +1710,7 @@ console.log("Listening...")
   let mut child = util::deno_cmd()
     .current_dir(t.path())
     .arg("run")
-    .arg("--unstable-hmr")
+    .arg("--watch-hmr")
     .arg("--allow-net")
     .arg("-L")
     .arg("debug")
@@ -1750,8 +1757,7 @@ console.log("Listening...")
   check_alive_then_kill(child);
 }
 
-#[flaky_test]
-#[tokio::main]
+#[flaky_test(tokio)]
 async fn run_hmr_jsx() {
   let t = TempDir::new();
   let file_to_watch = t.path().join("file_to_watch.js");
@@ -1762,7 +1768,7 @@ import { foo } from "./foo.jsx";
 let i = 0;
 setInterval(() => {
   console.log(i++, foo());
-}, 100);    
+}, 100);
 "#,
   );
   let file_to_watch2 = t.path().join("foo.jsx");
@@ -1777,7 +1783,7 @@ export function foo() {
   let mut child = util::deno_cmd()
     .current_dir(t.path())
     .arg("run")
-    .arg("--unstable-hmr")
+    .arg("--watch-hmr")
     .arg("-L")
     .arg("debug")
     .arg(&file_to_watch)
@@ -1806,8 +1812,7 @@ export function foo() {
   check_alive_then_kill(child);
 }
 
-#[flaky_test]
-#[tokio::main]
+#[flaky_test(tokio)]
 async fn run_hmr_uncaught_error() {
   let t = TempDir::new();
   let file_to_watch = t.path().join("file_to_watch.js");
@@ -1836,7 +1841,7 @@ export function foo() {
   let mut child = util::deno_cmd()
     .current_dir(t.path())
     .arg("run")
-    .arg("--unstable-hmr")
+    .arg("--watch-hmr")
     .arg("-L")
     .arg("debug")
     .arg(&file_to_watch)
@@ -1867,8 +1872,7 @@ export function foo() {
   check_alive_then_kill(child);
 }
 
-#[flaky_test]
-#[tokio::main]
+#[flaky_test(tokio)]
 async fn run_hmr_unhandled_rejection() {
   let t = TempDir::new();
   let file_to_watch = t.path().join("file_to_watch.js");
@@ -1902,7 +1906,7 @@ export function foo() {
   let mut child = util::deno_cmd()
     .current_dir(t.path())
     .arg("run")
-    .arg("--unstable-hmr")
+    .arg("--watch-hmr")
     .arg("-L")
     .arg("debug")
     .arg(&file_to_watch)

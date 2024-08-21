@@ -60,10 +60,16 @@
     "error_when_package_json_changed": {
       "steps": [
         {
+          "envs": {
+            "DENO_FUTURE": "1"
+          },
           "args": "cache add.ts",
           "output": "[WILDCARD]"
         },
         {
+          "envs": {
+            "DENO_FUTURE": "1"
+          },
           "args": [
             "eval",
             "Deno.writeTextFileSync(\"package.json\", JSON.stringify({ dependencies: { \"@denotest/bin\": \"0.7.0\" } }))"
@@ -71,6 +77,9 @@
           "output": ""
         },
         {
+          "envs": {
+            "DENO_FUTURE": "1"
+          },
           "args": "cache --frozen add.ts",
           "output": "frozen_package_json_changed.out",
           "exitCode": 1
@@ -114,6 +123,35 @@
         }
       ]
     },
+
+    "lockfile_config": {
+      "steps": [
+        {
+          "args": [
+            "eval",
+            "Deno.writeTextFileSync('deno.json', JSON.stringify({ lock: { frozen: true }, ...JSON.parse(Deno.readTextFileSync('deno.json')) }))"
+          ],
+          "output": ""
+        },
+        {
+          "args": "cache --frozen=false add.ts",
+          "output": "[WILDCARD]"
+        },
+        {
+          // sub.ts imports from an npm package
+          // that's not in the lockfile
+          "args": "run sub.ts",
+          "output": "frozen_new_dep_run.out",
+          "exitCode": 1
+        },
+        {
+          "args": "cache sub.ts",
+          "output": "frozen_new_dep_cache.out",
+          "exitCode": 1
+        }
+      ]
+    },
+
     "non_analyzable_dynamic_npm": {
       "steps": [
         {

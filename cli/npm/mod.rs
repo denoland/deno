@@ -124,6 +124,10 @@ impl NpmFetchResolver {
     let maybe_get_nv = || async {
       let name = req.name.clone();
       let package_info = self.package_info(&name).await?;
+      if let Some(dist_tag) = req.version_req.tag() {
+        let version = package_info.dist_tags.get(dist_tag)?.clone();
+        return Some(PackageNv { name, version });
+      }
       // Find the first matching version of the package.
       let mut versions = package_info.versions.keys().collect::<Vec<_>>();
       versions.sort();

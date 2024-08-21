@@ -8,6 +8,8 @@
 // std/fmt/colors auto determines whether to put colors in or not. We need
 // better infrastructure here so we can properly test the colors.
 
+// deno-lint-ignore-file no-console
+
 import {
   assert,
   assertEquals,
@@ -518,8 +520,8 @@ Deno.test(function consoleTestStringifyFunctionWithProperties() {
   ],
   [isArray]: [Function: isArray] { [length]: 1, [name]: "isArray" },
   [from]: [Function: from] { [length]: 1, [name]: "from" },
-  [of]: [Function: of] { [length]: 0, [name]: "of" },
   [fromAsync]: [Function: fromAsync] { [length]: 1, [name]: "fromAsync" },
+  [of]: [Function: of] { [length]: 0, [name]: "of" },
   [Symbol(Symbol.species)]: [Getter]
 }`,
   );
@@ -1064,6 +1066,24 @@ Deno.test(async function consoleTestStringifyPromises() {
   const strLines = stringify(rejectedPromise).split("\n");
   assertEquals(strLines[0], "Promise {");
   assertEquals(strLines[1], "  <rejected> Error: Whoops");
+});
+
+Deno.test(function consoleTestStringifyIntlLocale() {
+  assertEquals(
+    stringify(new Intl.Locale("zh-Hant-TW", { hourCycle: "h12" })),
+    `Locale [Intl.Locale] {
+  baseName: "zh-Hant-TW",
+  calendar: undefined,
+  caseFirst: undefined,
+  collation: undefined,
+  hourCycle: "h12",
+  language: "zh",
+  numberingSystem: undefined,
+  numeric: false,
+  region: "TW",
+  script: "Hant"
+}`,
+  );
 });
 
 Deno.test(function consoleTestWithCustomInspector() {

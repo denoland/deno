@@ -92,6 +92,7 @@ use crate::args::CaData;
 use crate::args::CacheSetting;
 use crate::args::CliOptions;
 use crate::args::Flags;
+use crate::args::UnstableFmtOptions;
 use crate::factory::CliFactory;
 use crate::file_fetcher::FileFetcher;
 use crate::graph_util;
@@ -690,7 +691,7 @@ impl Inner {
 
     let version = format!(
       "{} ({}, {})",
-      crate::version::deno(),
+      crate::version::DENO_VERSION_INFO.deno,
       env!("PROFILE"),
       env!("TARGET")
     );
@@ -1332,8 +1333,9 @@ impl Inner {
     {
       return Ok(None);
     }
-    let document =
-      file_referrer.and_then(|r| self.documents.get_or_load(&specifier, &r));
+    let document = self
+      .documents
+      .get_or_load(&specifier, file_referrer.as_ref());
     let Some(document) = document else {
       return Ok(None);
     };
@@ -1361,6 +1363,25 @@ impl Inner {
         .clone();
       fmt_options.use_tabs = Some(!params.options.insert_spaces);
       fmt_options.indent_width = Some(params.options.tab_size as u8);
+      let maybe_workspace = self
+        .config
+        .tree
+        .data_for_specifier(&specifier)
+        .map(|d| &d.member_dir.workspace);
+      let unstable_options = UnstableFmtOptions {
+        css: maybe_workspace
+          .map(|w| w.has_unstable("fmt-css"))
+          .unwrap_or(false),
+        html: maybe_workspace
+          .map(|w| w.has_unstable("fmt-html"))
+          .unwrap_or(false),
+        component: maybe_workspace
+          .map(|w| w.has_unstable("fmt-component"))
+          .unwrap_or(false),
+        yaml: maybe_workspace
+          .map(|w| w.has_unstable("fmt-yaml"))
+          .unwrap_or(false),
+      };
       let document = document.clone();
       move || {
         let format_result = match document.maybe_parsed_source() {
@@ -1378,7 +1399,12 @@ impl Inner {
               .map(|ext| file_path.with_extension(ext))
               .unwrap_or(file_path);
             // it's not a js/ts file, so attempt to format its contents
-            format_file(&file_path, document.content(), &fmt_options)
+            format_file(
+              &file_path,
+              document.content(),
+              &fmt_options,
+              &unstable_options,
+            )
           }
         };
         match format_result {
@@ -1429,7 +1455,7 @@ impl Inner {
     {
       let dep_doc = dep
         .get_code()
-        .and_then(|s| self.documents.get_or_load(s, &specifier));
+        .and_then(|s| self.documents.get_or_load(s, file_referrer));
       let dep_maybe_types_dependency =
         dep_doc.as_ref().map(|d| d.maybe_types_dependency());
       let value = match (dep.maybe_code.is_none(), dep.maybe_type.is_none(), &dep_maybe_types_dependency) {

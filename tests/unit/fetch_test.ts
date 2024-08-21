@@ -1,8 +1,12 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
+
+// deno-lint-ignore-file no-console
+
 import {
   assert,
   assertEquals,
   assertRejects,
+  assertStringIncludes,
   assertThrows,
   delay,
   fail,
@@ -1976,14 +1980,27 @@ Deno.test(
       },
     });
 
+    const url = `http://localhost:${listenPort}/`;
     const err = await assertRejects(() =>
-      fetch(`http://localhost:${listenPort}/`, {
+      fetch(url, {
         body: stream,
         method: "POST",
       })
     );
 
-    assert(err instanceof TypeError, `err was not a TypeError ${err}`);
+    assert(err instanceof TypeError, `err was ${err}`);
+
+    assertStringIncludes(
+      err.message,
+      "error sending request from 127.0.0.1:",
+      `err.message was ${err.message}`,
+    );
+    assertStringIncludes(
+      err.message,
+      ` for http://localhost:${listenPort}/ (127.0.0.1:${listenPort}): client error (SendRequest): error from user's Body stream`,
+      `err.message was ${err.message}`,
+    );
+
     assert(err.cause, `err.cause was null ${err}`);
     assert(
       err.cause instanceof Error,
@@ -2060,3 +2077,44 @@ Deno.test("URL authority is used as 'Authorization' header", async () => {
   await server.finished;
   assertEquals(authHeader, "Basic ZGVubzpsYW5k");
 });
+
+Deno.test(
+  { permissions: { net: true } },
+  async function errorMessageIncludesUrlAndDetailsWithNoTcpInfo() {
+    await assertRejects(
+      () => fetch("http://example.invalid"),
+      TypeError,
+      "error sending request for url (http://example.invalid/): client error (Connect): dns error: ",
+    );
+  },
+);
+
+Deno.test(
+  { permissions: { net: true } },
+  async function errorMessageIncludesUrlAndDetailsWithTcpInfo() {
+    const listener = Deno.listen({ port: listenPort });
+    const server = (async () => {
+      const conn = await listener.accept();
+      listener.close();
+      // Immediately close the connection to simulate a connection error
+      conn.close();
+    })();
+
+    const url = `http://localhost:${listenPort}`;
+    const err = await assertRejects(() => fetch(url));
+
+    assert(err instanceof TypeError, `${err}`);
+    assertStringIncludes(
+      err.message,
+      "error sending request from 127.0.0.1:",
+      `${err.message}`,
+    );
+    assertStringIncludes(
+      err.message,
+      ` for http://localhost:${listenPort}/ (127.0.0.1:${listenPort}): client error (SendRequest): `,
+      `${err.message}`,
+    );
+
+    await server;
+  },
+);

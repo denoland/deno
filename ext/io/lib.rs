@@ -60,11 +60,20 @@ mod pipe;
 #[cfg(windows)]
 mod winpipe;
 
+mod bi_pipe;
+
 pub use pipe::pipe;
 pub use pipe::AsyncPipeRead;
 pub use pipe::AsyncPipeWrite;
 pub use pipe::PipeRead;
 pub use pipe::PipeWrite;
+
+pub use bi_pipe::bi_pipe_pair_raw;
+pub use bi_pipe::BiPipe;
+pub use bi_pipe::BiPipeRead;
+pub use bi_pipe::BiPipeResource;
+pub use bi_pipe::BiPipeWrite;
+pub use bi_pipe::RawBiPipeHandle;
 
 // Store the stdio fd/handles in global statics in order to keep them
 // alive for the duration of the application since the last handle/fd

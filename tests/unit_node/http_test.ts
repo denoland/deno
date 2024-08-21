@@ -1,5 +1,7 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
+// deno-lint-ignore-file no-console
+
 import EventEmitter from "node:events";
 import http, { type RequestOptions, type ServerResponse } from "node:http";
 import url from "node:url";
@@ -1118,6 +1120,27 @@ Deno.test("[node/http] ServerResponse appendHeader", async () => {
   await promise;
 });
 
+Deno.test("[node/http] ServerResponse appendHeader set-cookie", async () => {
+  const { promise, resolve } = Promise.withResolvers<void>();
+  const server = http.createServer((_req, res) => {
+    res.appendHeader("Set-Cookie", "a=b");
+    res.appendHeader("Set-Cookie", "c=d");
+    res.end("Hello World");
+  });
+
+  server.listen(async () => {
+    const { port } = server.address() as { port: number };
+    const res = await fetch(`http://localhost:${port}`);
+    assertEquals(res.headers.getSetCookie(), ["a=b", "c=d"]);
+    assertEquals(await res.text(), "Hello World");
+    server.close(() => {
+      resolve();
+    });
+  });
+
+  await promise;
+});
+
 Deno.test("[node/http] IncomingMessage override", () => {
   const req = new http.IncomingMessage(new net.Socket());
   // https://github.com/dougmoscrop/serverless-http/blob/3aaa6d0fe241109a8752efb011c242d249f32368/lib/request.js#L20-L30
@@ -1308,6 +1331,86 @@ Deno.test("[node/http] client closing a streaming response doesn't terminate ser
   clearInterval(interval!);
 });
 
+Deno.test("[node/http] client closing a streaming request doesn't terminate server", async () => {
+  let interval: number;
+  let uploadedData = "";
+  let requestError: Error | null = null;
+  const server = http.createServer((req, res) => {
+    res.writeHead(200, { "Content-Type": "text/plain" });
+    interval = setInterval(() => {
+      res.write("Hello, world!\n");
+    }, 100);
+    req.on("data", (chunk) => {
+      uploadedData += chunk.toString();
+    });
+    req.on("end", () => {
+      clearInterval(interval);
+    });
+    req.on("error", (err) => {
+      requestError = err;
+      clearInterval(interval);
+      res.end();
+    });
+  });
+
+  const deferred1 = Promise.withResolvers<void>();
+  server.listen(0, () => {
+    // deno-lint-ignore no-explicit-any
+    const port = (server.address() as any).port;
+
+    // Create a client connection to the server
+    const client = net.createConnection({ port }, () => {
+      const headers = [
+        "POST /upload HTTP/1.1",
+        "Host: localhost",
+        "Content-Type: text/plain",
+        "Transfer-Encoding: chunked",
+        "",
+        "",
+      ].join("\r\n");
+
+      client.write(headers);
+
+      const chunk = "A".repeat(100);
+      let sentChunks = 0;
+
+      function writeChunk() {
+        const chunkHeader = `${chunk.length.toString(16)}\r\n`;
+        client.write(chunkHeader);
+        client.write(chunk);
+        client.write("\r\n");
+        sentChunks++;
+
+        if (sentChunks >= 3) {
+          client.destroy();
+          setTimeout(() => {
+            deferred1.resolve();
+          }, 40);
+        } else {
+          setTimeout(writeChunk, 10);
+        }
+      }
+      writeChunk();
+    });
+  });
+
+  await deferred1.promise;
+  assert(requestError !== null, "Server should have received an error");
+  assert(
+    (requestError! as Error)?.name === "Http",
+    `Expected Http error, got ${(requestError! as Error)?.name}`,
+  );
+  assert(
+    (requestError! as Error)?.message.includes(
+      "error reading a body from connection",
+    ),
+  );
+  assertEquals(server.listening, true);
+  server.close();
+  assertEquals(server.listening, false);
+  clearInterval(interval!);
+});
+
 Deno.test("[node/http] http.request() post streaming body works", async () => {
   const server = http.createServer((req, res) => {
     if (req.method === "POST") {
@@ -1437,4 +1540,49 @@ Deno.test("[node/http] ClientRequest PUT subarray", async () => {
   req.end(payload);
   await promise;
   assertEquals(body, "world");
+});
+
+Deno.test("[node/http] req.url equals pathname + search", async () => {
+  const { promise, resolve } = Promise.withResolvers<void>();
+
+  const server = http.createServer((req, res) => res.end(req.url));
+  server.listen(async () => {
+    const { port } = server.address() as net.AddressInfo;
+    const res = await fetch(`http://localhost:${port}/foo/bar?baz=1`);
+    const text = await res.text();
+    assertEquals(text, "/foo/bar?baz=1");
+
+    server.close(() => {
+      resolve();
+    });
+  });
+
+  await promise;
+});
+
+Deno.test("[node/http] ClientRequest content-disposition header works", async () => {
+  const payload = Buffer.from("hello world");
+  let body = "";
+  let headers = {} as http.IncomingHttpHeaders;
+  const { promise, resolve, reject } = Promise.withResolvers<void>();
+  const req = http.request("http://localhost:4545/echo_server", {
+    method: "PUT",
+    headers: {
+      "content-disposition": "attachment",
+    },
+  }, (resp) => {
+    headers = resp.headers;
+    resp.on("data", (chunk) => {
+      body += chunk;
+    });
+
+    resp.on("end", () => {
+      resolve();
+    });
+  });
+  req.once("error", (e) => reject(e));
+  req.end(payload);
+  await promise;
+  assertEquals(body, "hello world");
+  assertEquals(headers["content-disposition"], "attachment");
 });

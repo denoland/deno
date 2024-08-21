@@ -8,6 +8,7 @@
 use deno_ast::MediaType;
 use deno_config::workspace::MappedResolution;
 use deno_config::workspace::MappedResolutionError;
+use deno_config::workspace::ResolverWorkspaceJsrPackage;
 use deno_config::workspace::WorkspaceResolver;
 use deno_core::anyhow::Context;
 use deno_core::error::generic_error;
@@ -25,6 +26,7 @@ use deno_core::ResolutionKind;
 use deno_npm::npm_rc::ResolvedNpmRc;
 use deno_package_json::PackageJsonDepValue;
 use deno_runtime::deno_fs;
+use deno_runtime::deno_node::create_host_defined_options;
 use deno_runtime::deno_node::NodeResolver;
 use deno_runtime::deno_permissions::Permissions;
 use deno_runtime::deno_permissions::PermissionsContainer;
@@ -130,6 +132,8 @@ struct EmbeddedModuleLoader {
   dynamic_permissions: PermissionsContainer,
 }
 
+pub const MODULE_NOT_FOUND: &str = "Module not found";
+
 impl ModuleLoader for EmbeddedModuleLoader {
   fn resolve(
     &self,
@@ -166,6 +170,9 @@ impl ModuleLoader for EmbeddedModuleLoader {
       self.shared.workspace_resolver.resolve(specifier, &referrer);
 
     match mapped_resolution {
+      Ok(MappedResolution::WorkspaceJsrPackage { specifier, .. }) => {
+        Ok(specifier)
+      }
       Ok(MappedResolution::WorkspaceNpmPackage {
         target_pkg_json: pkg_json,
         sub_path,
@@ -220,8 +227,8 @@ impl ModuleLoader for EmbeddedModuleLoader {
           )
         }
       },
-      Ok(MappedResolution::Normal(specifier))
-      | Ok(MappedResolution::ImportMap(specifier)) => {
+      Ok(MappedResolution::Normal { specifier, .. })
+      | Ok(MappedResolution::ImportMap { specifier, .. }) => {
         if let Ok(reference) =
           NpmPackageReqReference::from_specifier(&specifier)
         {
@@ -264,6 +271,19 @@ impl ModuleLoader for EmbeddedModuleLoader {
         Err(err.into())
       }
       Err(err) => Err(err.into()),
+    }
+  }
+
+  fn get_host_defined_options<'s>(
+    &self,
+    scope: &mut deno_core::v8::HandleScope<'s>,
+    name: &str,
+  ) -> Option<deno_core::v8::Local<'s, deno_core::v8::Data>> {
+    let name = deno_core::ModuleSpecifier::parse(name).ok()?;
+    if self.shared.node_resolver.in_npm_package(&name) {
+      Some(create_host_defined_options(scope))
+    } else {
+      None
     }
   }
 
@@ -322,7 +342,7 @@ impl ModuleLoader for EmbeddedModuleLoader {
 
     let Some(module) = self.shared.eszip.get_module(original_specifier) else {
       return deno_core::ModuleLoadResponse::Sync(Err(type_error(format!(
-        "Module not found: {}",
+        "{MODULE_NOT_FOUND}: {}",
         original_specifier
       ))));
     };
@@ -597,6 +617,18 @@ pub async fn run(
     WorkspaceResolver::new_raw(
       root_dir_url.clone(),
       import_map,
+      metadata
+        .workspace_resolver
+        .jsr_pkgs
+        .iter()
+        .map(|pkg| ResolverWorkspaceJsrPackage {
+          is_patch: false, // only used for enhancing the diagnostic, which isn't shown in deno compile
+          base: root_dir_url.join(&pkg.relative_base).unwrap(),
+          name: pkg.name.clone(),
+          version: pkg.version.clone(),
+          exports: pkg.exports.clone(),
+        })
+        .collect(),
       pkg_jsons,
       metadata.workspace_resolver.pkg_json_resolution,
     )
@@ -714,7 +746,8 @@ pub async fn run(
 
   // Initialize v8 once from the main thread.
   v8_set_flags(construct_v8_flags(&[], &metadata.v8_flags, vec![]));
-  deno_core::JsRuntime::init_platform(None);
+  // TODO(bartlomieju): remove last argument in Deno 2.
+  deno_core::JsRuntime::init_platform(None, true);
 
   let mut worker = worker_factory
     .create_main_worker(WorkerExecutionMode::Run, main_module, permissions)

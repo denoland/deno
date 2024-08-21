@@ -1346,23 +1346,27 @@ fn lsp_import_map_import_completions() {
   let context = TestContextBuilder::new().use_temp_cwd().build();
   let temp_dir = context.temp_dir();
   temp_dir.write(
-    "import-map.json",
-    r#"{
-  "imports": {
-    "/~/": "./lib/",
-    "/#/": "./src/",
-    "fs": "https://example.com/fs/index.js",
-    "std/": "https://example.com/std@0.123.0/"
-  }
-}"#,
+    "deno.json",
+    json!({
+      "imports": {
+        "/~/": "./lib/",
+        "/#/": "./src/",
+        "fs": "https://example.com/fs/index.js",
+        "std/": "https://example.com/std@0.123.0/",
+      },
+      "scopes": {
+        "file:///": {
+          "file": "./file.ts",
+        },
+      },
+    })
+    .to_string(),
   );
   temp_dir.create_dir_all("lib");
   temp_dir.write("lib/b.ts", r#"export const b = "b";"#);
 
   let mut client = context.new_lsp_command().build();
-  client.initialize(|builder| {
-    builder.set_import_map("import-map.json");
-  });
+  client.initialize_default();
 
   let uri = temp_dir.uri().join("a.ts").unwrap();
 
@@ -1403,6 +1407,13 @@ fn lsp_import_map_import_completions() {
           "insertText": "..",
           "commitCharacters": ["\"", "'"],
         }, {
+          "label": "file",
+          "kind": 17,
+          "detail": "(import map)",
+          "sortText": "file",
+          "insertText": "file",
+          "commitCharacters": ["\"", "'"],
+        },  {
           "label": "std",
           "kind": 19,
           "detail": "(import map)",
@@ -5483,6 +5494,80 @@ fn lsp_jsr_auto_import_completion_import_map() {
 }
 
 #[test]
+fn lsp_jsr_auto_import_completion_import_map_sub_path() {
+  let context = TestContextBuilder::new()
+    .use_http_server()
+    .use_temp_cwd()
+    .build();
+  let temp_dir = context.temp_dir();
+  temp_dir.write(
+    "deno.json",
+    json!({
+      "imports": {
+        "@std/path": "jsr:@std/path@^0.220.1",
+      },
+    })
+    .to_string(),
+  );
+  let file = source_file(
+    temp_dir.path().join("file.ts"),
+    r#"
+      // Adds jsr:@std/path@^0.220.1/normalize to the module graph.
+      import "jsr:@std/url@^0.220.1/normalize";
+      normalize
+    "#,
+  );
+  let mut client = context.new_lsp_command().build();
+  client.initialize_default();
+  client.write_request(
+    "workspace/executeCommand",
+    json!({
+      "command": "deno.cache",
+      "arguments": [[], file.uri()],
+    }),
+  );
+  client.read_diagnostics();
+  client.did_open_file(&file);
+  let list = client.get_completion_list(
+    file.uri(),
+    (3, 15),
+    json!({ "triggerKind": 1 }),
+  );
+  let item = list
+    .items
+    .iter()
+    .find(|i| {
+      i.label == "normalize"
+        && json!(&i.label_details)
+          .to_string()
+          .contains("\"@std/path/posix/normalize\"")
+    })
+    .unwrap();
+  let res = client.write_request("completionItem/resolve", json!(item));
+  assert_eq!(
+    res,
+    json!({
+      "label": "normalize",
+      "labelDetails": { "description": "@std/path/posix/normalize" },
+      "kind": 3,
+      "detail": "function normalize(path: string): string",
+      "documentation": { "kind": "markdown", "value": "Normalize the `path`, resolving `'..'` and `'.'` segments.\nNote that resolving these segments does not necessarily mean that all will be eliminated.\nA `'..'` at the top-level will be preserved, and an empty path is canonically `'.'`.\n\n*@param* - path to be normalized" },
+      "sortText": "\u{ffff}16_0",
+      "additionalTextEdits": [
+        {
+          "range": {
+            "start": { "line": 2, "character": 6 },
+            "end": { "line": 2, "character": 6 },
+          },
+          "newText": "import { normalize } from \"@std/path/posix/normalize\";\n",
+        },
+      ],
+    }),
+  );
+  client.shutdown();
+}
+
+#[test]
 fn lsp_jsr_code_action_missing_declaration() {
   let context = TestContextBuilder::new()
     .use_http_server()
@@ -7499,6 +7584,112 @@ fn lsp_npm_completions_auto_import_and_quick_fix_no_import_map() {
 }
 
 #[test]
+fn lsp_completions_node_specifier() {
+  let context = TestContextBuilder::new().use_temp_cwd().build();
+  let temp_dir = context.temp_dir();
+  let mut client = context.new_lsp_command().build();
+  client.initialize_default();
+  client.did_open(json!({
+    "textDocument": {
+      "uri": temp_dir.uri().join("file.ts").unwrap(),
+      "languageId": "typescript",
+      "version": 1,
+      "text": "import fs from \"node:as\";\n",
+    },
+  }));
+  let list = client.get_completion_list(
+    temp_dir.uri().join("file.ts").unwrap(),
+    (0, 23),
+    json!({
+      "triggerKind": 2,
+      "triggerCharacter": ".",
+    }),
+  );
+  assert!(!list.is_incomplete);
+  assert_eq!(
+    list
+      .items
+      .iter()
+      .map(|i| i.label.as_str())
+      .collect::<Vec<_>>(),
+    vec![
+      "node:assert",
+      "node:assert/strict",
+      "node:async_hooks",
+      "node:buffer",
+      "node:child_process",
+      "node:cluster",
+      "node:console",
+      "node:constants",
+      "node:crypto",
+      "node:dgram",
+      "node:diagnostics_channel",
+      "node:dns",
+      "node:dns/promises",
+      "node:domain",
+      "node:events",
+      "node:fs",
+      "node:fs/promises",
+      "node:http",
+      "node:http2",
+      "node:https",
+      "node:inspector",
+      "node:module",
+      "node:net",
+      "node:os",
+      "node:path",
+      "node:path/posix",
+      "node:path/win32",
+      "node:perf_hooks",
+      "node:process",
+      "node:punycode",
+      "node:querystring",
+      "node:repl",
+      "node:readline",
+      "node:readline/promises",
+      "node:stream",
+      "node:stream/consumers",
+      "node:stream/promises",
+      "node:stream/web",
+      "node:string_decoder",
+      "node:sys",
+      "node:test",
+      "node:timers",
+      "node:timers/promises",
+      "node:tls",
+      "node:tty",
+      "node:url",
+      "node:util",
+      "node:util/types",
+      "node:v8",
+      "node:vm",
+      "node:worker_threads",
+      "node:zlib",
+    ],
+  );
+  for item in &list.items {
+    let specifier = item.label.as_str();
+    assert_eq!(
+      json!(item),
+      json!({
+        "label": specifier,
+        "kind": 17,
+        "detail": "(node)",
+        "textEdit": {
+          "range": {
+            "start": { "line": 0, "character": 16 },
+            "end": { "line": 0, "character": 23 },
+          },
+          "newText": specifier,
+        },
+        "commitCharacters": ["\"", "'"],
+      }),
+    );
+  }
+  client.shutdown();
+}
+
+#[test]
 fn lsp_infer_return_type() {
   let context = TestContextBuilder::new().use_temp_cwd().build();
   let temp_dir = context.temp_dir();
@@ -8614,7 +8805,7 @@ fn lsp_npm_specifier_unopened_file() {
 }
 
 #[test]
-fn lsp_completions_node_specifier() {
+fn lsp_completions_node_builtin() {
   let context = TestContextBuilder::new()
     .use_http_server()
     .use_temp_cwd()
@@ -14093,7 +14284,10 @@ fn lsp_deno_json_workspace_jsr_resolution() {
     json!({
       "contents": {
         "kind": "markdown",
-        "value": format!("**Resolved Dependency**\n\n**Code**: jsr&#8203;:&#8203;@org/project1&#8203;@^1.0.0 (<{}project1/mod.ts>)\n", temp_dir.uri()),
+        "value": format!(
+          "**Resolved Dependency**\n\n**Code**: file&#8203;://{}\n",
+          temp_dir.uri().join("project1/mod.ts").unwrap().path(),
+        ),
       },
       "range": {
         "start": { "line": 0, "character": 7 },

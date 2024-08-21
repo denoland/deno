@@ -215,6 +215,8 @@ pub enum SemicolonPreference {
   Remove,
 }
 
+// Allow due to false positive https://github.com/rust-lang/rust-clippy/issues/13170
+#[allow(clippy::needless_borrows_for_generic_args)]
 fn normalize_diagnostic(
   diagnostic: &mut crate::tsc::Diagnostic,
   specifier_map: &TscSpecifierMap,
@@ -2041,12 +2043,10 @@ impl DocumentSpan {
     let target_asset_or_doc =
       language_server.get_maybe_asset_or_document(&target_specifier)?;
     let target_line_index = target_asset_or_doc.line_index();
-    let file_referrer = language_server
-      .documents
-      .get_file_referrer(&target_specifier);
+    let file_referrer = target_asset_or_doc.file_referrer();
     let target_uri = language_server
       .url_map
-      .normalize_specifier(&target_specifier, file_referrer.as_deref())
+      .normalize_specifier(&target_specifier, file_referrer)
       .ok()?;
     let (target_range, target_selection_range) =
       if let Some(context_span) = &self.context_span {
@@ -2090,10 +2090,10 @@ impl DocumentSpan {
       language_server.get_maybe_asset_or_document(&specifier)?;
     let line_index = asset_or_doc.line_index();
     let range = self.text_span.to_range(line_index);
-    let file_referrer = language_server.documents.get_file_referrer(&specifier);
+    let file_referrer = asset_or_doc.file_referrer();
     let mut target = language_server
       .url_map
-      .normalize_specifier(&specifier, file_referrer.as_deref())
+      .normalize_specifier(&specifier, file_referrer)
       .ok()?
       .into_url();
     target.set_fragment(Some(&format!(
@@ -2151,10 +2151,10 @@ impl NavigateToItem {
     let asset_or_doc =
       language_server.get_asset_or_document(&specifier).ok()?;
     let line_index = asset_or_doc.line_index();
-    let file_referrer = language_server.documents.get_file_referrer(&specifier);
+    let file_referrer = asset_or_doc.file_referrer();
     let uri = language_server
       .url_map
-      .normalize_specifier(&specifier, file_referrer.as_deref())
+      .normalize_specifier(&specifier, file_referrer)
       .ok()?;
     let range = self.text_span.to_range(line_index);
     let location = lsp::Location {
@@ -4230,14 +4230,10 @@ impl State {
   }
 
   fn get_document(&self, specifier: &ModuleSpecifier) -> Option<Arc<Document>> {
-    if let Some(scope) = &self.last_scope {
-      self.state_snapshot.documents.get_or_load(specifier, scope)
-    } else {
-      self
-        .state_snapshot
-        .documents
-        .get_or_load(specifier, &ModuleSpecifier::parse("file:///").unwrap())
-    }
+    self
+      .state_snapshot
+      .documents
+      .get_or_load(specifier, self.last_scope.as_ref())
   }
 
   fn get_asset_or_document(
@@ -4559,7 +4555,7 @@ fn op_script_names(state: &mut OpState) -> ScriptNames {
           specifier,
           doc.file_referrer(),
         )?;
-        let types_doc = documents.get_or_load(&types, specifier)?;
+        let types_doc = documents.get_or_load(&types, doc.file_referrer())?;
         Some(types_doc.specifier().clone())
       })();
       // If there is a types dep, use that as the root instead. But if the doc
