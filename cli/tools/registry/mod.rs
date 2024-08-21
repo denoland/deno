@@ -52,7 +52,6 @@ use crate::util::display::human_size;
 
 mod api;
 mod auth;
-mod deps;
 
 mod diagnostics;
 mod graph;
