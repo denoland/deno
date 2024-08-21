@@ -1301,6 +1301,8 @@ impl SourceFile {
     let lang = match path.as_path().extension().unwrap().to_str().unwrap() {
       "js" => "javascript",
       "ts" | "d.ts" => "typescript",
+      "jsx" => "javascriptreact",
+      "tsx" => "typescriptreact",
       "json" => "json",
       "md" => "markdown",
       other => panic!("unsupported file extension: {other}"),
