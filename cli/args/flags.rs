@@ -376,6 +376,7 @@ pub struct WatchFlagsWithPaths {
 pub struct TaskFlags {
   pub cwd: Option<String>,
   pub task: Option<String>,
+  pub is_run: bool,
 }
 
 #[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
@@ -3210,7 +3211,7 @@ fn compile_args_without_check_args(app: Command) -> Command {
 fn permission_args(app: Command) -> Command {
   app
     .after_help(cstr!(r#"<y>Permission options:</>
-Docs: https://docs.deno.com/go/permissions
+Docs: <c>https://docs.deno.com/go/permissions</>
 
   <g>-A, --allow-all</>                        Allow all permissions.
   <g>--no-prompt</>                        Always throw if required permission wasn't passed.
@@ -3230,6 +3231,7 @@ Docs: https://docs.deno.com/go/permissions
       <g>--allow-ffi[=<<PATH>...]</>            (Unstable) Allow loading dynamic libraries. Optionally specify allowed directories or files.
                                            <p(245)>--allow-ffi  |  --allow-ffi="./libfoo.so"</>
       <g>--allow-hrtime</>                     Allow high-resolution time measurement. Note: this can enable timing attacks and fingerprinting.
+                                           <p(245)>--allow-hrtime</>
   <g>    --deny-read[=<<PATH>...]</>            Deny file system read access. Optionally specify denied paths.
                                            <p(245)>--deny-read  |  --deny-read="/etc,/var/log.txt"</>
   <g>    --deny-write[=<<PATH>...]</>           Deny file system write access. Optionally specify denied paths.
@@ -3245,6 +3247,7 @@ Docs: https://docs.deno.com/go/permissions
       <g>--deny-ffi[=<<PATH>...]</>             (Unstable) Deny loading dynamic libraries. Optionally specify denied directories or files.
                                            <p(245)>--deny-ffi  |  --deny-ffi="./libfoo.so"</>
       <g>--deny-hrtime</>                      Deny high-resolution time measurement.
+                                           <p(245)>--deny-hrtime</>
 "#))
     .arg(
       Arg::new("allow-all")
@@ -4671,6 +4674,7 @@ fn run_parse(
     flags.subcommand = DenoSubcommand::Task(TaskFlags {
       cwd: None,
       task: None,
+      is_run: true,
     });
   }
 
@@ -4746,6 +4750,7 @@ fn task_parse(flags: &mut Flags, matches: &mut ArgMatches) {
   let mut task_flags = TaskFlags {
     cwd: matches.remove_one::<String>("cwd"),
     task: None,
+    is_run: false,
   };
 
   if let Some((task, mut matches)) = matches.remove_subcommand() {
@@ -10060,6 +10065,7 @@ mod tests {
         subcommand: DenoSubcommand::Task(TaskFlags {
           cwd: None,
           task: Some("build".to_string()),
+          is_run: false,
         }),
         argv: svec!["hello", "world"],
         ..Flags::default()
@@ -10073,6 +10079,7 @@ mod tests {
         subcommand: DenoSubcommand::Task(TaskFlags {
           cwd: None,
           task: Some("build".to_string()),
+          is_run: false,
         }),
         ..Flags::default()
       }
@@ -10085,6 +10092,7 @@ mod tests {
         subcommand: DenoSubcommand::Task(TaskFlags {
           cwd: Some("foo".to_string()),
           task: Some("build".to_string()),
+          is_run: false,
         }),
         ..Flags::default()
       }
@@ -10109,6 +10117,7 @@ mod tests {
         subcommand: DenoSubcommand::Task(TaskFlags {
           cwd: None,
           task: Some("build".to_string()),
+          is_run: false,
         }),
         argv: svec!["--", "hello", "world"],
         config_flag: ConfigFlag::Path("deno.json".to_owned()),
@@ -10125,6 +10134,7 @@ mod tests {
         subcommand: DenoSubcommand::Task(TaskFlags {
           cwd: Some("foo".to_string()),
           task: Some("build".to_string()),
+          is_run: false,
         }),
         argv: svec!["--", "hello", "world"],
         ..Flags::default()
@@ -10142,6 +10152,7 @@ mod tests {
         subcommand: DenoSubcommand::Task(TaskFlags {
           cwd: None,
           task: Some("build".to_string()),
+          is_run: false,
         }),
         argv: svec!["--"],
         ..Flags::default()
@@ -10158,6 +10169,7 @@ mod tests {
         subcommand: DenoSubcommand::Task(TaskFlags {
           cwd: None,
           task: Some("build".to_string()),
+          is_run: false,
         }),
         argv: svec!["-1", "--test"],
         ..Flags::default()
@@ -10174,6 +10186,7 @@ mod tests {
         subcommand: DenoSubcommand::Task(TaskFlags {
           cwd: None,
           task: Some("build".to_string()),
+          is_run: false,
         }),
         argv: svec!["--test"],
         ..Flags::default()
@@ -10191,6 +10204,7 @@ mod tests {
         subcommand: DenoSubcommand::Task(TaskFlags {
           cwd: None,
           task: Some("build".to_string()),
+          is_run: false,
         }),
         log_level: Some(log::Level::Error),
         ..Flags::default()
@@ -10207,6 +10221,7 @@ mod tests {
         subcommand: DenoSubcommand::Task(TaskFlags {
           cwd: None,
           task: None,
+          is_run: false,
         }),
         ..Flags::default()
       }
@@ -10222,6 +10237,7 @@ mod tests {
         subcommand: DenoSubcommand::Task(TaskFlags {
           cwd: None,
           task: None,
+          is_run: false,
         }),
         config_flag: ConfigFlag::Path("deno.jsonc".to_string()),
         ..Flags::default()
@@ -10238,6 +10254,7 @@ mod tests {
         subcommand: DenoSubcommand::Task(TaskFlags {
           cwd: None,
           task: None,
+          is_run: false,
         }),
         config_flag: ConfigFlag::Path("deno.jsonc".to_string()),
         ..Flags::default()
