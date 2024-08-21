@@ -2279,14 +2279,16 @@ Ignore formatting a file by adding an ignore comment at the top of the file:
           .long("unstable-html")
           .help("Enable formatting HTML files")
           .value_parser(FalseyValueParser::new())
-          .action(ArgAction::SetTrue),
+          .action(ArgAction::SetTrue)
+          .help_heading(FMT_HEADING),
       )
       .arg(
         Arg::new("unstable-component")
           .long("unstable-component")
           .help("Enable formatting Svelte, Vue, Astro and Angular files")
           .value_parser(FalseyValueParser::new())
-          .action(ArgAction::SetTrue),
+          .action(ArgAction::SetTrue)
+          .help_heading(FMT_HEADING),
       )
       .arg(
         Arg::new("unstable-yaml")
