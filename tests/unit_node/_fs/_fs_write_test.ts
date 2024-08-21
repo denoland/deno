@@ -1,4 +1,7 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
+
+// deno-lint-ignore-file no-console
+
 import { write, writeSync } from "node:fs";
 import { assertEquals } from "@std/assert";
 import { Buffer } from "node:buffer";

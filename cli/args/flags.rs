@@ -589,7 +589,7 @@ pub struct Flags {
   pub argv: Vec<String>,
   pub subcommand: DenoSubcommand,
 
-  pub frozen_lockfile: bool,
+  pub frozen_lockfile: Option<bool>,
   pub ca_stores: Option<Vec<String>>,
   pub ca_data: Option<CaData>,
   pub cache_blocklist: Vec<String>,
@@ -5231,7 +5231,7 @@ fn cached_only_arg_parse(flags: &mut Flags, matches: &mut ArgMatches) {
 
 fn frozen_lockfile_arg_parse(flags: &mut Flags, matches: &mut ArgMatches) {
   if let Some(&v) = matches.get_one::<bool>("frozen") {
-    flags.frozen_lockfile = v;
+    flags.frozen_lockfile = Some(v);
   }
 }
 
@@ -10923,10 +10923,10 @@ mod tests {
   #[test]
   fn run_with_frozen_lockfile() {
     let cases = [
-      (Some("--frozen"), true),
-      (Some("--frozen=true"), true),
-      (Some("--frozen=false"), false),
-      (None, false),
+      (Some("--frozen"), Some(true)),
+      (Some("--frozen=true"), Some(true)),
+      (Some("--frozen=false"), Some(false)),
+      (None, None),
     ];
     for (flag, frozen) in cases {
       let mut args = svec!["deno", "run"];
