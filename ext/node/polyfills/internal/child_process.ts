@@ -469,7 +469,7 @@ export class ChildProcess extends EventEmitter {
   }
 
   #closePipes() {
-    if (this.stdin) {
+    if (this.stdin && !this.stdin.destroyed && this.stdin !== process.stdin) {
       assert(this.stdin);
       this.stdin.destroy();
     }
