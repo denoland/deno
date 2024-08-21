@@ -1820,6 +1820,14 @@ impl PermissionsContainer {
 
       fn is_normalized_windows_drive_path(path: &Path) -> bool {
         let s = path.as_os_str().as_encoded_bytes();
+
+        // Check if the path is a UNC path (e.g., \\Server\Share\Folder)
+        // UNC paths typically contain "\\" at the start or somewhere in the middle
+        if s.windows(2).any(|window| window == b"\\\\") {
+          return true;
+        }
+
+        // Original check for normalized drive paths (e.g., \\?\C:\)
         // \\?\X:\
         if s.len() < 7 {
           false
