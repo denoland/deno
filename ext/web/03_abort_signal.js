@@ -160,7 +160,7 @@ class AbortSignal extends EventTarget {
 
         if (!dependentSignal.aborted) {
           dependentSignal[setAbortReason](reason);
-          dependentSignalsToAbort.push(dependentSignal);
+          ArrayPrototypePush(dependentSignalsToAbortm, dependentSignal);
         }
       }
     }
