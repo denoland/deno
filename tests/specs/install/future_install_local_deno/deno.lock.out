@@ -19,10 +19,10 @@
     }
   },
   "remote": {
-    "http://localhost:4545/subdir/mod1.ts": "bfc1037b02c99abc20367f739bca7455813a5950066abd77965bff33b6eece0f",
-    "http://localhost:4545/subdir/print_hello.ts": "fa6692c8f9ff3fb107e773c3ece5274e9d08be282867a1e3ded1d9c00fcaa63c",
-    "http://localhost:4545/subdir/subdir2/mod2.ts": "8b3b670d25d238dfa72df119140406b96766a00fee635f3606429fe065b18fd1",
-    "http://localhost:4545/v1/extensionless": "414562d4bbc267d00f9a81323a7ae889e64b07d316d4451945a11ffcd628079e"
+    "http://localhost:4545/subdir/mod1.ts": "[WILDCARD]",
+    "http://localhost:4545/subdir/print_hello.ts": "[WILDCARD]",
+    "http://localhost:4545/subdir/subdir2/mod2.ts": "[WILDCARD]",
+    "http://localhost:4545/v1/extensionless": "[WILDCARD]"
   },
   "workspace": {
     "dependencies": [
