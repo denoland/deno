@@ -62,3 +62,22 @@ Deno.test(function abortReason() {
   assertEquals(signal.aborted, true);
   assertEquals(signal.reason, "hey!");
 });
+
+Deno.test(function dependentSignalsAborted() {
+  const controller = new AbortController();
+  const signal1 = AbortSignal.any([controller.signal]);
+  const signal2 = AbortSignal.any([signal1]);
+  let eventFired = false;
+
+  controller.signal.addEventListener("abort", () => {
+    const signal3 = AbortSignal.any([signal2]);
+    assert(controller.signal.aborted);
+    assert(signal1.aborted);
+    assert(signal2.aborted);
+    assert(signal3.aborted);
+    eventFired = true;
+  });
+
+  controller.abort();
+  assert(eventFired, "event fired");
+});

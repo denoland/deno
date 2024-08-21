@@ -69,6 +69,7 @@ class WeakRefSet {
 }
 
 const add = Symbol("[[add]]");
+const setAbortReason = Symbol("[[setAbortReason]]");
 const signalAbort = Symbol("[[signalAbort]]");
 const remove = Symbol("[[remove]]");
 const abortReason = Symbol("[[abortReason]]");
@@ -148,7 +149,22 @@ class AbortSignal extends EventTarget {
     if (this.aborted) {
       return;
     }
-    this[abortReason] = reason;
+
+    this[setAbortReason](reason);
+
+    const dependentSignalsToAbort = [];
+    if (this[dependentSignals] !== null) {
+      const dependentSignalArray = this[dependentSignals].toArray();
+      for (let i = 0; i < dependentSignalArray.length; ++i) {
+        const dependentSignal = dependentSignalArray[i];
+
+        if (!dependentSignal.aborted) {
+          dependentSignal[setAbortReason](reason);
+          dependentSignalsToAbort.push(dependentSignal);
+        }
+      }
+    }
+
     const algos = this[abortAlgos];
     this[abortAlgos] = null;
 
@@ -163,13 +179,17 @@ class AbortSignal extends EventTarget {
       }
     }
 
-    if (this[dependentSignals] !== null) {
-      const dependentSignalArray = this[dependentSignals].toArray();
-      for (let i = 0; i < dependentSignalArray.length; ++i) {
-        const dependentSignal = dependentSignalArray[i];
-        dependentSignal[signalAbort](reason);
-      }
+    for (let i = 0; i < dependentSignalsToAbort.length; ++i) {
+      const dependentSignal = dependentSignalsToAbort[i];
+      dependentSignal[signalAbort](reason);
     }
+  }
+
+  [setAbortReason](reason) {
+    if (this.aborted) {
+      return;
+    }
+    this[abortReason] = reason;
   }
 
   [remove](algorithm) {
