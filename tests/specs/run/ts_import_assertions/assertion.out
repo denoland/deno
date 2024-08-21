@@ -1,0 +1,7 @@
+⚠️  Import assertions are deprecated. Use `with` keyword, instead of 'assert' keyword.
+
+import test from "./data.json" assert { type: "json" };
+
+  at file:///[WILDLINE]/assertion.ts:1:1
+
+{ prop: "data" }

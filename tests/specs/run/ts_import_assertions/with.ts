@@ -1,2 +1,2 @@
-import test from "./deno.json" with { type: "json" };
+import test from "./data.json" with { type: "json" };
 console.log(test);
