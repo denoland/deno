@@ -83,6 +83,7 @@ libsui = "0.3.0"
 napi_sym.workspace = true
 node_resolver.workspace = true
 
+anstream = "0.6.14"
 async-trait.workspace = true
 base32.workspace = true
 base64.workspace = true
