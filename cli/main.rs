@@ -218,9 +218,10 @@ async fn run_subcommand(flags: Arc<Flags>) -> Result<i32, AnyError> {
                 let task_flags = TaskFlags {
                   cwd: None,
                   task: Some(run_flags.script.clone()),
+                  is_run: true,
                 };
                 new_flags.subcommand = DenoSubcommand::Task(task_flags.clone());
-                let result = tools::task::execute_script(Arc::new(new_flags), task_flags.clone(), true).await;
+                let result = tools::task::execute_script(Arc::new(new_flags), task_flags.clone()).await;
                 match result {
                   Ok(v) => Ok(v),
                   Err(_) => {
@@ -240,7 +241,7 @@ async fn run_subcommand(flags: Arc<Flags>) -> Result<i32, AnyError> {
       tools::serve::serve(flags, serve_flags).await
     }),
     DenoSubcommand::Task(task_flags) => spawn_subcommand(async {
-      tools::task::execute_script(flags, task_flags, false).await
+      tools::task::execute_script(flags, task_flags).await
     }),
     DenoSubcommand::Test(test_flags) => {
       spawn_subcommand(async {
@@ -290,7 +291,21 @@ async fn run_subcommand(flags: Arc<Flags>) -> Result<i32, AnyError> {
       tools::registry::publish(flags, publish_flags).await
     }),
     DenoSubcommand::Help(help_flags) => spawn_subcommand(async move {
-      display::write_to_stdout_ignore_sigpipe(help_flags.help.ansi().to_string().as_bytes())
+      use std::io::Write;
+
+      let mut stream = anstream::AutoStream::new(std::io::stdout(), if colors::use_color() {
+        anstream::ColorChoice::Auto
+      } else {
+        anstream::ColorChoice::Never
+      });
+
+      match stream.write_all(help_flags.help.ansi().to_string().as_bytes()) {
+        Ok(()) => Ok(()),
+        Err(e) => match e.kind() {
+          std::io::ErrorKind::BrokenPipe => Ok(()),
+          _ => Err(e),
+        },
+      }
     }),
   };
 

@@ -1667,9 +1667,9 @@ impl Inner {
             if diagnostic.code
               == Some(NumberOrString::String("no-cache".to_string()))
               || diagnostic.code
-                == Some(NumberOrString::String("no-cache-jsr".to_string()))
+                == Some(NumberOrString::String("not-installed-jsr".to_string()))
               || diagnostic.code
-                == Some(NumberOrString::String("no-cache-npm".to_string()))
+                == Some(NumberOrString::String("not-installed-npm".to_string()))
             {
               includes_no_cache = true;
             }

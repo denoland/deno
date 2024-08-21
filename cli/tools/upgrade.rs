@@ -972,8 +972,13 @@ fn check_exe(exe_path: &Path) -> Result<(), AnyError> {
     .arg("-V")
     .stderr(std::process::Stdio::inherit())
     .output()?;
-  assert!(output.status.success());
-  Ok(())
+  if !output.status.success() {
+    bail!(
+      "Failed to validate Deno executable. This may be because your OS is unsupported or the executable is corrupted"
+    )
+  } else {
+    Ok(())
+  }
 }
 
 #[derive(Debug)]
