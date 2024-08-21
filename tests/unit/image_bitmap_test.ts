@@ -94,35 +94,50 @@ Deno.test(async function imageBitmapFlipY() {
 Deno.test(async function imageBitmapFromBlob() {
   const prefix = "tests/testdata/image";
   {
-    const imageData = new Blob([await Deno.readFile(`${prefix}/1x1-red8.png`)], { type: "image/png" });
+    const imageData = new Blob(
+      [await Deno.readFile(`${prefix}/1x1-red8.png`)],
+      { type: "image/png" },
+    );
     const imageBitmap = await createImageBitmap(imageData);
     // @ts-ignore: Deno[Deno.internal].core allowed
     // deno-fmt-ignore
     assertEquals(Deno[Deno.internal].getBitmapData(imageBitmap), new Uint8Array([255, 0, 0, 255]));
   }
   {
-    const imageData = new Blob([await Deno.readFile(`${prefix}/1x1-red8.jpeg`)], { type: "image/jpeg" });
+    const imageData = new Blob(
+      [await Deno.readFile(`${prefix}/1x1-red8.jpeg`)],
+      { type: "image/jpeg" },
+    );
     const imageBitmap = await createImageBitmap(imageData);
     // @ts-ignore: Deno[Deno.internal].core allowed
     // deno-fmt-ignore
     assertEquals(Deno[Deno.internal].getBitmapData(imageBitmap), new Uint8Array([254, 0, 0]));
   }
   {
-    const imageData = new Blob([await Deno.readFile(`${prefix}/1x1-red8.bmp`)], { type: "image/bmp" });
+    const imageData = new Blob(
+      [await Deno.readFile(`${prefix}/1x1-red8.bmp`)],
+      { type: "image/bmp" },
+    );
     const imageBitmap = await createImageBitmap(imageData);
     // @ts-ignore: Deno[Deno.internal].core allowed
     // deno-fmt-ignore
     assertEquals(Deno[Deno.internal].getBitmapData(imageBitmap), new Uint8Array([255, 0, 0, 255]));
   }
   {
-    const imageData = new Blob([await Deno.readFile(`${prefix}/1x1-red8.gif`)], { type: "image/gif" });
+    const imageData = new Blob(
+      [await Deno.readFile(`${prefix}/1x1-red8.gif`)],
+      { type: "image/gif" },
+    );
     const imageBitmap = await createImageBitmap(imageData);
     // @ts-ignore: Deno[Deno.internal].core allowed
     // deno-fmt-ignore
     assertEquals(Deno[Deno.internal].getBitmapData(imageBitmap), new Uint8Array([255, 0, 0, 255]));
   }
   {
-    const imageData = new Blob([await Deno.readFile(`${prefix}/1x1-red8.webp`)], { type: "image/webp" });
+    const imageData = new Blob(
+      [await Deno.readFile(`${prefix}/1x1-red8.webp`)],
+      { type: "image/webp" },
+    );
     const imageBitmap = await createImageBitmap(imageData);
     // @ts-ignore: Deno[Deno.internal].core allowed
     // deno-fmt-ignore
@@ -133,11 +148,16 @@ Deno.test(async function imageBitmapFromBlob() {
     // [ 255, 0, 0, 127,
     //   0, 255, 0, 127,
     //   0, 0, 255, 127 ]
-    const imageData = new Blob([await Deno.readFile(`${prefix}/1x1-animation-rgba8.webp`)], { type: "image/webp" });
+    const imageData = new Blob([
+      await Deno.readFile(`${prefix}/1x1-animation-rgba8.webp`),
+    ], { type: "image/webp" });
     await assertRejects(() => createImageBitmap(imageData), TypeError);
   }
   {
-    const imageData = new Blob([await Deno.readFile(`${prefix}/1x1-red8.ico`)], { type: "image/x-icon" });
+    const imageData = new Blob(
+      [await Deno.readFile(`${prefix}/1x1-red8.ico`)],
+      { type: "image/x-icon" },
+    );
     const imageBitmap = await createImageBitmap(imageData);
     // @ts-ignore: Deno[Deno.internal].core allowed
     // deno-fmt-ignore
@@ -146,7 +166,9 @@ Deno.test(async function imageBitmapFromBlob() {
   {
     // image/x-exr is a known mimetype for OpenEXR
     // https://www.digipres.org/formats/sources/fdd/formats/#fdd000583
-    const imageData = new Blob([await Deno.readFile(`${prefix}/1x1-red32f.exr`)], { type: "image/x-exr" });
+    const imageData = new Blob([
+      await Deno.readFile(`${prefix}/1x1-red32f.exr`),
+    ], { type: "image/x-exr" });
     await assertRejects(() => createImageBitmap(imageData), DOMException);
   }
 });
