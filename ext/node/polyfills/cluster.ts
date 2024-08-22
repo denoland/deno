@@ -15,7 +15,7 @@ export class Worker {
 }
 /** Calls .disconnect() on each worker in cluster.workers. */
 export function disconnect() {
-  notImplemented("cluster.disconnected");
+  notImplemented("cluster.disconnect");
 }
 /** Spawn a new worker process. */
 // deno-lint-ignore no-explicit-any
