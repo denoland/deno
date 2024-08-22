@@ -15,13 +15,11 @@
       "output": "5\n"
     },
     {
-      "if": "unix",
       "commandName": "mv",
       "args": "test-project test-project-moved",
       "output": ""
     },
     {
-      "if": "unix",
       "cwd": "./test-project-moved",
       "args": "run -A main.mjs",
       "output": "5\n"
