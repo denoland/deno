@@ -4720,7 +4720,7 @@ fn run_parse(
   }
 
   runtime_args_parse(flags, matches, true, true)?;
-    ext_arg_parse(flags, matches);
+  ext_arg_parse(flags, matches);
 
   flags.code_cache_enabled = !matches.get_flag("no-code-cache");
 
