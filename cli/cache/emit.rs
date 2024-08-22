@@ -127,7 +127,7 @@ impl EmitFileSerializer {
     }
     let emit_hash = emit_hash.parse::<u64>().ok()?;
     // prevent using an emit from a different cli version or emits that were tampered with
-    if emit_hash != self.compute_emit_hash(&content) {
+    if emit_hash != self.compute_emit_hash(content) {
       return None;
     }
 
