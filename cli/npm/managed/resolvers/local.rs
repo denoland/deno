@@ -1048,6 +1048,7 @@ fn symlink_package_dir(
   // need to delete the previous symlink before creating a new one
   let _ignore = fs::remove_dir_all(new_path);
 
+  #[cfg(unix)]
   let old_path = crate::util::path::relative_path(new_parent, old_path)
     .unwrap_or_else(|| old_path.to_path_buf());
 
