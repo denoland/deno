@@ -1,14 +1,11 @@
 {
-  "version": "3",
-  "packages": {
-    "specifiers": {
-      "npm:@denotest/esm-basic": "npm:@denotest/esm-basic@1.0.0"
-    },
-    "npm": {
-      "@denotest/esm-basic@1.0.0": [WILDCARD]
-    }
+  "version": "4",
+  "specifiers": {
+    "npm:@denotest/esm-basic": "npm:@denotest/esm-basic@1.0.0"
   },
-  "remote": {},
+  "npm": {
+    "@denotest/esm-basic@1.0.0": [WILDCARD]
+  },
   "workspace": {
     "packageJson": {
       "dependencies": [
