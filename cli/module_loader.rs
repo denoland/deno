@@ -2,6 +2,7 @@
 
 use std::borrow::Cow;
 use std::cell::RefCell;
+use std::collections::HashSet;
 use std::path::PathBuf;
 use std::pin::Pin;
 use std::rc::Rc;
@@ -17,7 +18,6 @@ use crate::cache::CodeCache;
 use crate::cache::FastInsecureHasher;
 use crate::cache::ParsedSourceCache;
 use crate::emit::Emitter;
-use crate::factory::CliFactory;
 use crate::graph_container::MainModuleGraphContainer;
 use crate::graph_container::ModuleGraphContainer;
 use crate::graph_container::ModuleGraphUpdatePermit;
@@ -44,6 +44,7 @@ use deno_core::error::generic_error;
 use deno_core::error::AnyError;
 use deno_core::futures::future::FutureExt;
 use deno_core::futures::Future;
+use deno_core::parking_lot::Mutex;
 use deno_core::resolve_url;
 use deno_core::ModuleCodeString;
 use deno_core::ModuleLoader;
@@ -67,54 +68,6 @@ use deno_runtime::deno_node::create_host_defined_options;
 use deno_runtime::deno_permissions::PermissionsContainer;
 use deno_semver::npm::NpmPackageReqReference;
 use node_resolver::NodeResolutionMode;
-
-pub async fn load_top_level_deps(factory: &CliFactory) -> Result<(), AnyError> {
-  let npm_resolver = factory.npm_resolver().await?;
-  let cli_options = factory.cli_options()?;
-  if let Some(npm_resolver) = npm_resolver.as_managed() {
-    if !npm_resolver.ensure_top_level_package_json_install().await? {
-      if let Some(lockfile) = cli_options.maybe_lockfile() {
-        lockfile.error_if_changed()?;
-      }
-
-      npm_resolver.cache_packages().await?;
-    }
-  }
-  // cache as many entries in the import map as we can
-  let resolver = factory.workspace_resolver().await?;
-  if let Some(import_map) = resolver.maybe_import_map() {
-    let roots = import_map
-      .imports()
-      .entries()
-      .filter_map(|entry| {
-        if entry.key.ends_with('/') {
-          None
-        } else {
-          entry.value.cloned()
-        }
-      })
-      .collect::<Vec<_>>();
-    let mut graph_permit = factory
-      .main_module_graph_container()
-      .await?
-      .acquire_update_permit()
-      .await;
-    let graph = graph_permit.graph_mut();
-    factory
-      .module_load_preparer()
-      .await?
-      .prepare_module_load(
-        graph,
-        &roots,
-        false,
-        factory.cli_options()?.ts_type_lib_window(),
-        deno_runtime::deno_permissions::PermissionsContainer::allow_all(),
-      )
-      .await?;
-  }
-
-  Ok(())
-}
 
 pub struct ModuleLoadPreparer {
   options: Arc<CliOptions>,
@@ -291,6 +244,7 @@ impl CliModuleLoaderFactory {
       emitter: self.shared.emitter.clone(),
       parsed_source_cache: self.shared.parsed_source_cache.clone(),
       shared: self.shared.clone(),
+      prevent_v8_code_cache: Default::default(),
     })));
     ModuleLoaderAndSourceMapGetter {
       module_loader: loader,
@@ -342,6 +296,10 @@ struct CliModuleLoaderInner<TGraphContainer: ModuleGraphContainer> {
   emitter: Arc<Emitter>,
   parsed_source_cache: Arc<ParsedSourceCache>,
   graph_container: TGraphContainer,
+  // NOTE(bartlomieju): this is temporary, for deprecated import assertions.
+  // Should be removed in Deno 2.
+  // Modules stored here should not be V8 code-cached.
+  prevent_v8_code_cache: Arc<Mutex<HashSet<String>>>,
 }
 
 impl<TGraphContainer: ModuleGraphContainer>
@@ -827,6 +785,14 @@ impl<TGraphContainer: ModuleGraphContainer> ModuleLoader
     code_cache: &[u8],
   ) -> Pin<Box<dyn Future<Output = ()>>> {
     if let Some(cache) = self.0.shared.code_cache.as_ref() {
+      if self
+        .0
+        .prevent_v8_code_cache
+        .lock()
+        .contains(specifier.as_str())
+      {
+        return std::future::ready(()).boxed_local();
+      }
       // This log line is also used by tests.
       log::debug!(
         "Updating V8 code cache for ES module: {specifier}, [{source_hash:?}]"
@@ -839,6 +805,19 @@ impl<TGraphContainer: ModuleGraphContainer> ModuleLoader
       );
     }
     std::future::ready(()).boxed_local()
+  }
+
+  fn purge_and_prevent_code_cache(&self, specifier: &str) {
+    if let Some(cache) = self.0.shared.code_cache.as_ref() {
+      // This log line is also used by tests.
+      log::debug!("Remove V8 code cache for ES module: {specifier}");
+      cache.remove_code_cache(specifier);
+      self
+        .0
+        .prevent_v8_code_cache
+        .lock()
+        .insert(specifier.to_string());
+    }
   }
 
   fn get_source_map(&self, file_name: &str) -> Option<Vec<u8>> {

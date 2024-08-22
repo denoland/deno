@@ -67,7 +67,14 @@ fn map_permission_error(
       } else {
         (path.as_str(), "")
       };
-      custom_error("PermissionDenied", format!("Requires {err} access to {path}{truncated}, run again with the --allow-{err} flag"))
+      let msg = if deno_permissions::is_standalone() {
+        format!(
+          "Requires {err} access to {path}{truncated}, specify the required permissions during compilation using `deno compile --allow-{err}`")
+      } else {
+        format!(
+          "Requires {err} access to {path}{truncated}, run again with the --allow-{err} flag")
+      };
+      custom_error("PermissionDenied", msg)
     }
     err => Err::<(), _>(err)
       .context_path(operation, path)

@@ -151,7 +151,7 @@ import util from "node:util";
 import v8 from "node:v8";
 import vm from "node:vm";
 import workerThreads from "node:worker_threads";
-import wasi from "ext:deno_node/wasi.ts";
+import wasi from "node:wasi";
 import zlib from "node:zlib";
 
 const nativeModuleExports = ObjectCreate(null);

@@ -227,8 +227,8 @@ impl ModuleLoader for EmbeddedModuleLoader {
           )
         }
       },
-      Ok(MappedResolution::Normal(specifier))
-      | Ok(MappedResolution::ImportMap(specifier)) => {
+      Ok(MappedResolution::Normal { specifier, .. })
+      | Ok(MappedResolution::ImportMap { specifier, .. }) => {
         if let Ok(reference) =
           NpmPackageReqReference::from_specifier(&specifier)
         {
@@ -622,6 +622,7 @@ pub async fn run(
         .jsr_pkgs
         .iter()
         .map(|pkg| ResolverWorkspaceJsrPackage {
+          is_patch: false, // only used for enhancing the diagnostic, which isn't shown in deno compile
           base: root_dir_url.join(&pkg.relative_base).unwrap(),
           name: pkg.name.clone(),
           version: pkg.version.clone(),
@@ -745,6 +746,7 @@ pub async fn run(
 
   // Initialize v8 once from the main thread.
   v8_set_flags(construct_v8_flags(&[], &metadata.v8_flags, vec![]));
+  // TODO(bartlomieju): remove last argument in Deno 2.
   deno_core::JsRuntime::init_platform(None, true);
 
   let mut worker = worker_factory

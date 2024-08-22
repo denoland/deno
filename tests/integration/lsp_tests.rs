@@ -1346,23 +1346,27 @@ fn lsp_import_map_import_completions() {
   let context = TestContextBuilder::new().use_temp_cwd().build();
   let temp_dir = context.temp_dir();
   temp_dir.write(
-    "import-map.json",
-    r#"{
-  "imports": {
-    "/~/": "./lib/",
-    "/#/": "./src/",
-    "fs": "https://example.com/fs/index.js",
-    "std/": "https://example.com/std@0.123.0/"
-  }
-}"#,
+    "deno.json",
+    json!({
+      "imports": {
+        "/~/": "./lib/",
+        "/#/": "./src/",
+        "fs": "https://example.com/fs/index.js",
+        "std/": "https://example.com/std@0.123.0/",
+      },
+      "scopes": {
+        "file:///": {
+          "file": "./file.ts",
+        },
+      },
+    })
+    .to_string(),
   );
   temp_dir.create_dir_all("lib");
   temp_dir.write("lib/b.ts", r#"export const b = "b";"#);
 
   let mut client = context.new_lsp_command().build();
-  client.initialize(|builder| {
-    builder.set_import_map("import-map.json");
-  });
+  client.initialize_default();
 
   let uri = temp_dir.uri().join("a.ts").unwrap();
 
@@ -1403,6 +1407,13 @@ fn lsp_import_map_import_completions() {
           "insertText": "..",
           "commitCharacters": ["\"", "'"],
         }, {
+          "label": "file",
+          "kind": 17,
+          "detail": "(import map)",
+          "sortText": "file",
+          "insertText": "file",
+          "commitCharacters": ["\"", "'"],
+        },  {
           "label": "std",
           "kind": 19,
           "detail": "(import map)",
@@ -5210,9 +5221,9 @@ fn lsp_code_actions_deno_cache_jsr() {
           "end": { "line": 1, "character": 49 },
         },
         "severity": 1,
-        "code": "no-cache-jsr",
+        "code": "not-installed-jsr",
         "source": "deno",
-        "message": "Uncached or missing jsr package: @denotest/add@1",
+        "message": "JSR package \"@denotest/add@1\" is not installed or doesn't exist.",
         "data": { "specifier": "jsr:@denotest/add@1" },
       }],
       "version": 1,
@@ -5233,9 +5244,9 @@ fn lsp_code_actions_deno_cache_jsr() {
             "end": { "line": 1, "character": 49 },
           },
           "severity": 1,
-          "code": "no-cache-jsr",
+          "code": "not-installed-jsr",
           "source": "deno",
-          "message": "Uncached or missing jsr package: @denotest/add@1",
+          "message": "JSR package \"@denotest/add@1\" is not installed or doesn't exist.",
           "data": { "specifier": "jsr:@denotest/add@1" },
         }],
         "only": ["quickfix"],
@@ -5245,7 +5256,7 @@ fn lsp_code_actions_deno_cache_jsr() {
   assert_eq!(
     res,
     json!([{
-      "title": "Cache \"jsr:@denotest/add@1\" and its dependencies.",
+      "title": "Install \"jsr:@denotest/add@1\" and its dependencies.",
       "kind": "quickfix",
       "diagnostics": [{
         "range": {
@@ -5253,9 +5264,9 @@ fn lsp_code_actions_deno_cache_jsr() {
           "end": { "line": 1, "character": 49 },
         },
         "severity": 1,
-        "code": "no-cache-jsr",
+        "code": "not-installed-jsr",
         "source": "deno",
-        "message": "Uncached or missing jsr package: @denotest/add@1",
+        "message": "JSR package \"@denotest/add@1\" is not installed or doesn't exist.",
         "data": { "specifier": "jsr:@denotest/add@1" },
       }],
       "command": {
@@ -5483,6 +5494,80 @@ fn lsp_jsr_auto_import_completion_import_map() {
 }
 
 #[test]
+fn lsp_jsr_auto_import_completion_import_map_sub_path() {
+  let context = TestContextBuilder::new()
+    .use_http_server()
+    .use_temp_cwd()
+    .build();
+  let temp_dir = context.temp_dir();
+  temp_dir.write(
+    "deno.json",
+    json!({
+      "imports": {
+        "@std/path": "jsr:@std/path@^0.220.1",
+      },
+    })
+    .to_string(),
+  );
+  let file = source_file(
+    temp_dir.path().join("file.ts"),
+    r#"
+      // Adds jsr:@std/path@^0.220.1/normalize to the module graph.
+      import "jsr:@std/url@^0.220.1/normalize";
+      normalize
+    "#,
+  );
+  let mut client = context.new_lsp_command().build();
+  client.initialize_default();
+  client.write_request(
+    "workspace/executeCommand",
+    json!({
+      "command": "deno.cache",
+      "arguments": [[], file.uri()],
+    }),
+  );
+  client.read_diagnostics();
+  client.did_open_file(&file);
+  let list = client.get_completion_list(
+    file.uri(),
+    (3, 15),
+    json!({ "triggerKind": 1 }),
+  );
+  let item = list
+    .items
+    .iter()
+    .find(|i| {
+      i.label == "normalize"
+        && json!(&i.label_details)
+          .to_string()
+          .contains("\"@std/path/posix/normalize\"")
+    })
+    .unwrap();
+  let res = client.write_request("completionItem/resolve", json!(item));
+  assert_eq!(
+    res,
+    json!({
+      "label": "normalize",
+      "labelDetails": { "description": "@std/path/posix/normalize" },
+      "kind": 3,
+      "detail": "function normalize(path: string): string",
+      "documentation": { "kind": "markdown", "value": "Normalize the `path`, resolving `'..'` and `'.'` segments.\nNote that resolving these segments does not necessarily mean that all will be eliminated.\nA `'..'` at the top-level will be preserved, and an empty path is canonically `'.'`.\n\n*@param* - path to be normalized" },
+      "sortText": "\u{ffff}16_0",
+      "additionalTextEdits": [
+        {
+          "range": {
+            "start": { "line": 2, "character": 6 },
+            "end": { "line": 2, "character": 6 },
+          },
+          "newText": "import { normalize } from \"@std/path/posix/normalize\";\n",
+        },
+      ],
+    }),
+  );
+  client.shutdown();
+}
+
+#[test]
 fn lsp_jsr_code_action_missing_declaration() {
   let context = TestContextBuilder::new()
     .use_http_server()
@@ -5625,9 +5710,9 @@ fn lsp_code_actions_deno_cache_npm() {
           "end": { "line": 0, "character": 29 }
         },
         "severity": 1,
-        "code": "no-cache-npm",
+        "code": "not-installed-npm",
         "source": "deno",
-        "message": "Uncached or missing npm package: chalk",
+        "message": "NPM package \"chalk\" is not installed or doesn't exist.",
         "data": { "specifier": "npm:chalk" }
       }],
       "version": 1
@@ -5652,9 +5737,9 @@ fn lsp_code_actions_deno_cache_npm() {
             "end": { "line": 0, "character": 29 }
           },
           "severity": 1,
-          "code": "no-cache-npm",
+          "code": "not-installed-npm",
           "source": "deno",
-          "message": "Uncached or missing npm package: chalk",
+          "message": "NPM package \"chalk\" is not installed or doesn't exist.",
           "data": { "specifier": "npm:chalk" }
         }],
         "only": ["quickfix"]
@@ -5664,7 +5749,7 @@ fn lsp_code_actions_deno_cache_npm() {
   assert_eq!(
     res,
     json!([{
-      "title": "Cache \"npm:chalk\" and its dependencies.",
+      "title": "Install \"npm:chalk\" and its dependencies.",
       "kind": "quickfix",
       "diagnostics": [{
         "range": {
@@ -5672,9 +5757,9 @@ fn lsp_code_actions_deno_cache_npm() {
           "end": { "line": 0, "character": 29 }
         },
         "severity": 1,
-        "code": "no-cache-npm",
+        "code": "not-installed-npm",
         "source": "deno",
-        "message": "Uncached or missing npm package: chalk",
+        "message": "NPM package \"chalk\" is not installed or doesn't exist.",
         "data": { "specifier": "npm:chalk" }
       }],
       "command": {
@@ -5727,9 +5812,9 @@ fn lsp_code_actions_deno_cache_all() {
             "end": { "line": 2, "character": 37 },
           },
           "severity": 1,
-          "code": "no-cache-npm",
+          "code": "not-installed-npm",
           "source": "deno",
-          "message": "Uncached or missing npm package: chalk",
+          "message": "NPM package \"chalk\" is not installed or doesn't exist.",
           "data": { "specifier": "npm:chalk" },
         },
       ],
@@ -5815,9 +5900,9 @@ fn lsp_code_actions_deno_cache_all() {
               "end": { "line": 2, "character": 37 },
             },
             "severity": 1,
-            "code": "no-cache-npm",
+            "code": "not-installed-npm",
             "source": "deno",
-            "message": "Uncached or missing npm package: chalk",
+            "message": "NPM package \"chalk\" is not installed or doesn't exist.",
             "data": { "specifier": "npm:chalk" },
           },
         ],
@@ -7578,6 +7663,7 @@ fn lsp_completions_node_specifier() {
       "node:util/types",
       "node:v8",
       "node:vm",
+      "node:wasi",
       "node:worker_threads",
       "node:zlib",
     ],
@@ -8871,7 +8957,8 @@ fn lsp_completions_node_builtin() {
     .diagnostics
     .into_iter()
     .filter(|d| {
-      d.code == Some(lsp::NumberOrString::String("no-cache-npm".to_string()))
+      d.code
+        == Some(lsp::NumberOrString::String("not-installed-npm".to_string()))
     })
     .collect::<Vec<_>>();
 
@@ -8887,9 +8974,9 @@ fn lsp_completions_node_builtin() {
           "specifier": "npm:@types/node",
         },
         "severity": 1,
-        "code": "no-cache-npm",
+        "code": "not-installed-npm",
         "source": "deno",
-        "message": "Uncached or missing npm package: @types/node"
+        "message": "NPM package \"@types/node\" is not installed or doesn't exist."
       }
     ])
   );
@@ -11635,6 +11722,66 @@ fn lsp_jsx_import_source_config_file_automatic_cache() {
     }));
   }
   assert_eq!(diagnostics.all(), vec![]);
+  client.shutdown();
+}
+
+#[test]
+fn lsp_jsx_import_source_byonm_preact() {
+  let context = TestContextBuilder::new()
+    .use_http_server()
+    .use_temp_cwd()
+    .add_npm_env_vars()
+    .build();
+  let temp_dir = context.temp_dir();
+  temp_dir.write(
+    "deno.json",
+    json!({
+      "compilerOptions": {
+        "jsx": "react-jsx",
+        "jsxImportSource": "npm:preact@^10.19.6"
+      },
+      "unstable": ["byonm"],
+    })
+    .to_string(),
+  );
+  temp_dir.write(
+    "package.json",
+    json!({
+      "dependencies": {
+        "preact": "^10.19.6",
+      },
+    })
+    .to_string(),
+  );
+  let file = source_file(temp_dir.path().join("file.tsx"), r#"<div></div>;"#);
+  context.run_npm("install");
+  let mut client = context.new_lsp_command().build();
+  client.initialize_default();
+  let diagnostics = client.did_open_file(&file);
+  assert_eq!(json!(diagnostics.all()), json!([]));
+  let res = client.write_request(
+    "textDocument/hover",
+    json!({
+      "textDocument": { "uri": file.uri() },
+      "position": { "line": 0, "character": 1 },
+    }),
+  );
+  assert_eq!(
+    res,
+    json!({
+      "contents": [
+        {
+          "language": "typescript",
+          "value": "(property) JSXInternal.IntrinsicElements.div: JSXInternal.HTMLAttributes<HTMLDivElement>",
+        },
+        "",
+      ],
+      "range": {
+        "start": { "line": 0, "character": 1 },
+        "end": { "line": 0, "character": 4 },
+      },
+    }),
+  );
   client.shutdown();
 }
 

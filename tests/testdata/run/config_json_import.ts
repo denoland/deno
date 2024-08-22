@@ -1,2 +1,2 @@
-import config from "../jsx/deno-jsx.json" assert { type: "json" };
+import config from "../jsx/deno-jsx.json" with { type: "json" };
 console.log(config);

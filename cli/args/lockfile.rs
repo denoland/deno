@@ -147,22 +147,28 @@ impl CliLockfile {
       },
     };
 
+    let root_folder = workspace.root_folder_configs();
+    // CLI flag takes precedence over the config
+    let frozen = flags.frozen_lockfile.unwrap_or_else(|| {
+      root_folder
+        .deno_json
+        .as_ref()
+        .and_then(|c| c.to_lock_config().ok().flatten().map(|c| c.frozen()))
+        .unwrap_or(false)
+    });
+
     let lockfile = if flags.lock_write {
       log::warn!(
         "{} \"--lock-write\" flag is deprecated and will be removed in Deno 2.",
         crate::colors::yellow("Warning")
       );
-      CliLockfile::new(
-        Lockfile::new_empty(filename, true),
-        flags.frozen_lockfile,
-      )
+      CliLockfile::new(Lockfile::new_empty(filename, true), frozen)
     } else {
-      Self::read_from_path(filename, flags.frozen_lockfile)?
+      Self::read_from_path(filename, frozen)?
     };
 
     // initialize the lockfile with the workspace's configuration
     let root_url = workspace.root_dir();
-    let root_folder = workspace.root_folder_configs();
     let config = deno_lockfile::WorkspaceConfig {
       root: WorkspaceMemberConfig {
         package_json_deps: pkg_json_deps(root_folder.pkg_json.as_deref()),
@@ -210,22 +216,41 @@ impl CliLockfile {
     Ok(Some(lockfile))
   }
   pub fn read_from_path(
-    filename: PathBuf,
+    file_path: PathBuf,
     frozen: bool,
   ) -> Result<CliLockfile, AnyError> {
-    match std::fs::read_to_string(&filename) {
+    match std::fs::read_to_string(&file_path) {
       Ok(text) => Ok(CliLockfile::new(
-        Lockfile::with_lockfile_content(filename, &text, false)?,
+        Lockfile::new(deno_lockfile::NewLockfileOptions {
+          file_path,
+          content: &text,
+          overwrite: false,
+          is_deno_future: *super::DENO_FUTURE,
+        })?,
         frozen,
       )),
-      Err(err) if err.kind() == std::io::ErrorKind::NotFound => Ok(
-        CliLockfile::new(Lockfile::new_empty(filename, false), frozen),
-      ),
+      Err(err) if err.kind() == std::io::ErrorKind::NotFound => {
+        Ok(CliLockfile::new(
+          if *super::DENO_FUTURE {
+            // force version 4 for deno future
+            Lockfile::new(deno_lockfile::NewLockfileOptions {
+              file_path,
+              content: r#"{"version":"4"}"#,
+              overwrite: false,
+              is_deno_future: true,
+            })?
+          } else {
+            Lockfile::new_empty(file_path, false)
+          },
+          frozen,
+        ))
+      }
       Err(err) => Err(err).with_context(|| {
-        format!("Failed reading lockfile '{}'", filename.display())
+        format!("Failed reading lockfile '{}'", file_path.display())
       }),
     }
   }
+
   pub fn error_if_changed(&self) -> Result<(), AnyError> {
     if !self.frozen {
       return Ok(());

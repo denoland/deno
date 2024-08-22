@@ -5,6 +5,9 @@ use crate::cache::FastInsecureHasher;
 use crate::cache::ParsedSourceCache;
 
 use deno_ast::SourceMapOption;
+use deno_ast::SourceRange;
+use deno_ast::SourceRanged;
+use deno_ast::SourceRangedForSpanned;
 use deno_ast::TranspileResult;
 use deno_core::error::AnyError;
 use deno_core::futures::stream::FuturesUnordered;
@@ -109,26 +112,28 @@ impl Emitter {
         let parsed_source_cache = self.parsed_source_cache.clone();
         let transpile_and_emit_options =
           self.transpile_and_emit_options.clone();
-        let transpile_result = deno_core::unsync::spawn_blocking({
-          let specifier = specifier.clone();
-          let source = source.clone();
-          move || -> Result<_, AnyError> {
-            EmitParsedSourceHelper::transpile(
-              &parsed_source_cache,
-              &specifier,
-              source.clone(),
-              media_type,
-              &transpile_and_emit_options.0,
-              &transpile_and_emit_options.1,
-            )
-          }
-        })
-        .await
-        .unwrap()?;
+        let (should_cache, transpile_result) =
+          deno_core::unsync::spawn_blocking({
+            let specifier = specifier.clone();
+            let source = source.clone();
+            move || -> Result<_, AnyError> {
+              EmitParsedSourceHelper::transpile(
+                &parsed_source_cache,
+                &specifier,
+                source.clone(),
+                media_type,
+                &transpile_and_emit_options.0,
+                &transpile_and_emit_options.1,
+              )
+            }
+          })
+          .await
+          .unwrap()?;
         Ok(helper.post_emit_parsed_source(
           specifier,
           transpile_result,
           source_hash,
+          should_cache,
         ))
       }
     }
@@ -145,18 +150,20 @@ impl Emitter {
     match helper.pre_emit_parsed_source(specifier, source) {
       PreEmitResult::Cached(emitted_text) => Ok(emitted_text),
       PreEmitResult::NotCached { source_hash } => {
-        let transpile_result = EmitParsedSourceHelper::transpile(
-          &self.parsed_source_cache,
-          specifier,
-          source.clone(),
-          media_type,
-          &self.transpile_and_emit_options.0,
-          &self.transpile_and_emit_options.1,
-        )?;
+        let (should_cache, transpile_result) =
+          EmitParsedSourceHelper::transpile(
+            &self.parsed_source_cache,
+            specifier,
+            source.clone(),
+            media_type,
+            &self.transpile_and_emit_options.0,
+            &self.transpile_and_emit_options.1,
+          )?;
         Ok(helper.post_emit_parsed_source(
           specifier,
           transpile_result,
           source_hash,
+          should_cache,
         ))
       }
     }
@@ -254,12 +261,16 @@ impl<'a> EmitParsedSourceHelper<'a> {
     media_type: MediaType,
     transpile_options: &deno_ast::TranspileOptions,
     emit_options: &deno_ast::EmitOptions,
-  ) -> Result<TranspileResult, AnyError> {
+  ) -> Result<(bool, TranspileResult), AnyError> {
     // nothing else needs the parsed source at this point, so remove from
     // the cache in order to not transpile owned
     let parsed_source = parsed_source_cache
       .remove_or_parse_module(specifier, source, media_type)?;
-    Ok(parsed_source.transpile(transpile_options, emit_options)?)
+    let should_cache = !has_import_assertion(&parsed_source);
+    Ok((
+      should_cache,
+      parsed_source.transpile(transpile_options, emit_options)?,
+    ))
   }
 
   pub fn post_emit_parsed_source(
@@ -267,6 +278,8 @@ impl<'a> EmitParsedSourceHelper<'a> {
     specifier: &ModuleSpecifier,
     transpile_result: TranspileResult,
     source_hash: u64,
+    // todo(dsherret): remove after Deno 2.0
+    should_cache: bool,
   ) -> ModuleCodeBytes {
     let transpiled_source = match transpile_result {
       TranspileResult::Owned(source) => source,
@@ -276,11 +289,80 @@ impl<'a> EmitParsedSourceHelper<'a> {
       }
     };
     debug_assert!(transpiled_source.source_map.is_none());
-    self.0.emit_cache.set_emit_code(
-      specifier,
-      source_hash,
-      &transpiled_source.source,
-    );
+    if should_cache {
+      self.0.emit_cache.set_emit_code(
+        specifier,
+        source_hash,
+        &transpiled_source.source,
+      );
+    }
     transpiled_source.source.into_boxed_slice().into()
   }
+}
+
+fn has_import_assertion(parsed_source: &deno_ast::ParsedSource) -> bool {
+  fn has_import_assertion(text: &str) -> bool {
+    // good enough
+    text.contains(" assert ") && !text.contains(" with ")
+  }
+
+  fn warn_import_attribute(
+    parsed_source: &deno_ast::ParsedSource,
+    range: SourceRange,
+  ) {
+    let text_info = parsed_source.text_info_lazy();
+    let loc = text_info.line_and_column_display(range.start);
+    deno_runtime::import_assertion_callback(
+      deno_core::ImportAssertionsSupportCustomCallbackArgs {
+        maybe_specifier: Some(parsed_source.specifier().to_string()),
+        maybe_line_number: Some(loc.line_number),
+        column_number: loc.column_number,
+        maybe_source_line: Some(range.text_fast(text_info).to_string()),
+      },
+    )
+  }
+
+  let Some(module) = parsed_source.program_ref().as_module() else {
+    return false;
+  };
+
+  let mut had_import_assertion = false;
+  for item in &module.body {
+    match item {
+      deno_ast::swc::ast::ModuleItem::ModuleDecl(decl) => match decl {
+        deno_ast::swc::ast::ModuleDecl::Import(n) => {
+          if n.with.is_some()
+            && has_import_assertion(n.text_fast(parsed_source.text_info_lazy()))
+          {
+            had_import_assertion = true;
+            warn_import_attribute(parsed_source, n.range());
+          }
+        }
+        deno_ast::swc::ast::ModuleDecl::ExportAll(n) => {
+          if n.with.is_some()
+            && has_import_assertion(n.text_fast(parsed_source.text_info_lazy()))
+          {
+            had_import_assertion = true;
+            warn_import_attribute(parsed_source, n.range());
+          }
+        }
+        deno_ast::swc::ast::ModuleDecl::ExportNamed(n) => {
+          if n.with.is_some()
+            && has_import_assertion(n.text_fast(parsed_source.text_info_lazy()))
+          {
+            had_import_assertion = true;
+            warn_import_attribute(parsed_source, n.range());
+          }
+        }
+        deno_ast::swc::ast::ModuleDecl::ExportDecl(_)
+        | deno_ast::swc::ast::ModuleDecl::ExportDefaultDecl(_)
+        | deno_ast::swc::ast::ModuleDecl::ExportDefaultExpr(_)
+        | deno_ast::swc::ast::ModuleDecl::TsImportEquals(_)
+        | deno_ast::swc::ast::ModuleDecl::TsExportAssignment(_)
+        | deno_ast::swc::ast::ModuleDecl::TsNamespaceExport(_) => {}
+      },
+      deno_ast::swc::ast::ModuleItem::Stmt(_) => {}
+    }
+  }
+  had_import_assertion
 }
