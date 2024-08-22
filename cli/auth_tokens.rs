@@ -123,19 +123,19 @@ impl AuthTokens {
   pub fn new(maybe_tokens_str: Option<String>) -> Self {
     let mut tokens = Vec::new();
     if let Some(tokens_str) = maybe_tokens_str {
-      for token_str in tokens_str.split(';') {
+      for token_str in tokens_str.trim().split(';') {
         if token_str.contains('@') {
-          let pair: Vec<&str> = token_str.rsplitn(2, '@').collect();
-          let token = pair[1];
-          let host = AuthDomain::from(pair[0]);
+          let mut iter = token_str.rsplitn(2, '@');
+          let host = AuthDomain::from(iter.next().unwrap());
+          let token = iter.next().unwrap();
           if token.contains(':') {
-            let pair: Vec<&str> = token.rsplitn(2, ':').collect();
-            let username = pair[1].to_string();
-            let password = pair[0].to_string();
+            let mut iter = token.rsplitn(2, ':');
+            let password = iter.next().unwrap().to_owned();
+            let username = iter.next().unwrap().to_owned();
             tokens.push(AuthToken {
               host,
               token: AuthTokenData::Basic { username, password },
-            })
+            });
           } else {
             tokens.push(AuthToken {
               host,
@@ -199,6 +199,23 @@ mod tests {
   fn test_auth_tokens_multiple() {
     let auth_tokens =
       AuthTokens::new(Some("abc123@deno.land;def456@example.com".to_string()));
+    let fixture = resolve_url("https://deno.land/x/mod.ts").unwrap();
+    assert_eq!(
+      auth_tokens.get(&fixture).unwrap().to_string(),
+      "Bearer abc123".to_string()
+    );
+    let fixture = resolve_url("http://example.com/a/file.ts").unwrap();
+    assert_eq!(
+      auth_tokens.get(&fixture).unwrap().to_string(),
+      "Bearer def456".to_string()
+    );
+  }
+
+  #[test]
+  fn test_auth_tokens_space() {
+    let auth_tokens = AuthTokens::new(Some(
+      " abc123@deno.land;def456@example.com\t".to_string(),
+    ));
     let fixture = resolve_url("https://deno.land/x/mod.ts").unwrap();
     assert_eq!(
       auth_tokens.get(&fixture).unwrap().to_string(),
