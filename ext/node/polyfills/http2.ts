@@ -513,6 +513,7 @@ export class ClientHttp2Session extends Http2Session {
           this.emit("error", e);
         }
       })();
+      this[kState].flags |= SESSION_FLAGS_READY;
       this.emit("connect", this, {});
     })();
   }
