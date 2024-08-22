@@ -229,6 +229,23 @@ mod tests {
   }
 
   #[test]
+  fn test_auth_tokens_newline() {
+    let auth_tokens = AuthTokens::new(Some(
+      "\nabc123@deno.land;def456@example.com\n".to_string(),
+    ));
+    let fixture = resolve_url("https://deno.land/x/mod.ts").unwrap();
+    assert_eq!(
+      auth_tokens.get(&fixture).unwrap().to_string(),
+      "Bearer abc123".to_string()
+    );
+    let fixture = resolve_url("http://example.com/a/file.ts").unwrap();
+    assert_eq!(
+      auth_tokens.get(&fixture).unwrap().to_string(),
+      "Bearer def456".to_string()
+    );
+  }
+
+  #[test]
   fn test_auth_tokens_port() {
     let auth_tokens =
       AuthTokens::new(Some("abc123@deno.land:8080".to_string()));
