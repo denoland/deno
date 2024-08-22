@@ -164,6 +164,13 @@ Deno.test(async function imageBitmapFromBlob() {
   }
   {
     const imageData = new Blob(
+      [await Deno.readFile(`${prefix}/1x1-red16.png`)],
+      { type: "image/png" },
+    );
+    await assertRejects(() => createImageBitmap(imageData), TypeError);
+  }
+  {
+    const imageData = new Blob(
       [await Deno.readFile(`${prefix}/1x1-red8.jpeg`)],
       { type: "image/jpeg" },
     );

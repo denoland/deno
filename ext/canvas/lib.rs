@@ -8,6 +8,7 @@ use image::imageops::FilterType;
 use image::AnimationDecoder;
 use image::GenericImage;
 use image::GenericImageView;
+use image::ImageDecoder;
 use image::Pixel;
 use serde::Deserialize;
 use serde::Serialize;
@@ -210,10 +211,16 @@ fn op_image_decode(
       if decoder.is_apng()? {
         return Err(type_error("Animation image is not supported."));
       }
+      if decoder.color_type() != image::ColorType::Rgba8 {
+        return Err(type_error("Supports 8-bit RGBA only."));
+      }
       image::DynamicImage::from_decoder(decoder)?
     }
     "image/jpeg" => {
       let decoder = image::codecs::jpeg::JpegDecoder::new(reader)?;
+      if decoder.color_type() != image::ColorType::Rgb8 {
+        return Err(type_error("Supports 8-bit RGB only."));
+      }
       image::DynamicImage::from_decoder(decoder)?
     }
     "image/gif" => {
@@ -227,10 +234,16 @@ fn op_image_decode(
     }
     "image/bmp" => {
       let decoder = image::codecs::bmp::BmpDecoder::new(reader)?;
+      if decoder.color_type() != image::ColorType::Rgba8 {
+        return Err(type_error("Supports 8-bit RGBA only."));
+      }
       image::DynamicImage::from_decoder(decoder)?
     }
     "image/x-icon" => {
       let decoder = image::codecs::ico::IcoDecoder::new(reader)?;
+      if decoder.color_type() != image::ColorType::Rgba8 {
+        return Err(type_error("Supports 8-bit RGBA only."));
+      }
       image::DynamicImage::from_decoder(decoder)?
     }
     "image/webp" => {
