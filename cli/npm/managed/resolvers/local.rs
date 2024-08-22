@@ -1089,8 +1089,7 @@ fn junction_or_symlink_dir(
       junction::create(old_path, new_path).map_err(Into::into)
     }
     Err(symlink_err) => Err(
-      symlink_err
-        .map_err(AnyError::from)
+      AnyError::from(symlink_err)
         .context("Failed creating symlink in node_modules folder"),
     ),
   }
