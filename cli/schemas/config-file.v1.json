@@ -552,8 +552,20 @@
     },
     "lock": {
       "description": "Whether to use a lock file or the path to use for the lock file. Can be overridden by CLI arguments.",
-      "type": ["string", "boolean"],
-      "default": true
+      "type": ["string", "boolean", "object"],
+      "default": true,
+      "properties": {
+        "path": {
+          "type": "string",
+          "description": "The path to use for the lock file.",
+          "default": "deno.lock"
+        },
+        "frozen": {
+          "type": "boolean",
+          "description": "Whether to exit with an error if lock file is out of date.",
+          "default": false
+        }
+      }
     },
     "unstable": {
       "type": "array",
@@ -607,6 +619,13 @@
           "examples": [{ ".": "./mod.ts" }]
         }
       ]
+    },
+    "patch": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "description": "UNSTABLE: List of relative paths to folders containing JSR packages to use local versions of."
     },
     "workspace": {
       "oneOf": [

@@ -1,5 +1,8 @@
 #!/usr/bin/env -S deno run --allow-write --allow-read --allow-run --allow-net --config=tests/config/deno.json
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
+
+// deno-lint-ignore-file no-console
+
 import { buildMode, getPrebuilt, getSources, join, ROOT_PATH } from "./util.js";
 import { checkCopyright } from "./copyright_checker.js";
 import * as ciFile from "../.github/workflows/ci.generate.ts";
@@ -44,27 +47,19 @@ async function dlint() {
     "*.js",
     "*.ts",
     ":!:.github/mtime_cache/action.js",
-    ":!:tests/testdata/swc_syntax_error.ts",
-    ":!:tests/testdata/error_008_checkjs.js",
     ":!:cli/bench/testdata/npm/*",
     ":!:cli/bench/testdata/express-router.js",
     ":!:cli/bench/testdata/react-dom.js",
     ":!:cli/compilers/wasm_wrap.js",
     ":!:cli/tsc/dts/**",
+    ":!:cli/tsc/*typescript.js",
+    ":!:cli/tsc/compiler.d.ts",
+    ":!:runtime/examples/",
     ":!:target/",
     ":!:tests/registry/**",
     ":!:tests/specs/**",
-    ":!:tests/testdata/encoding/**",
-    ":!:tests/testdata/error_syntax.js",
-    ":!:tests/testdata/file_extensions/ts_with_js_extension.js",
-    ":!:tests/testdata/fmt/**",
-    ":!:tests/testdata/lint/**",
-    ":!:tests/testdata/npm/**",
-    ":!:tests/testdata/run/**",
-    ":!:tests/testdata/tsc/**",
-    ":!:tests/testdata/test/glob/**",
-    ":!:cli/tsc/*typescript.js",
-    ":!:cli/tsc/compiler.d.ts",
+    ":!:tests/testdata/**",
+    ":!:tests/unit_node/testdata/**",
     ":!:tests/wpt/suite/**",
     ":!:tests/wpt/runner/**",
   ]);
@@ -93,7 +88,7 @@ async function dlint() {
       }),
     );
   }
-  await Promise.all(pending);
+  await Promise.allSettled(pending);
 }
 
 // `prefer-primordials` has to apply only to files related to bootstrapping,

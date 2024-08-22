@@ -1074,7 +1074,7 @@ pub fn op_vm_script_run_in_context<'a>(
   )
 }
 
-#[op2]
+#[op2(fast)]
 pub fn op_vm_create_context(
   scope: &mut v8::HandleScope,
   sandbox_obj: v8::Local<v8::Object>,
@@ -1101,7 +1101,7 @@ pub fn op_vm_create_context(
   );
 }
 
-#[op2]
+#[op2(fast)]
 pub fn op_vm_is_context(
   scope: &mut v8::HandleScope,
   sandbox_obj: v8::Local<v8::Value>,

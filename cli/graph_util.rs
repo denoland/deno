@@ -803,7 +803,7 @@ fn enhanced_lockfile_error_message(err: &ModuleError) -> Option<String> {
           "This could be caused by:\n",
           "  * the lock file may be corrupt\n",
           "  * the source itself may be corrupt\n\n",
-          "Use the --lock-write flag to regenerate the lockfile or --reload to reload the source code from the server."
+          "Investigate the lockfile; delete it to regenerate the lockfile or --reload to reload the source code from the server."
         ),
         package_nv,
         checksum_err.actual,
@@ -824,7 +824,7 @@ fn enhanced_lockfile_error_message(err: &ModuleError) -> Option<String> {
           "This could be caused by:\n",
           "  * the lock file may be corrupt\n",
           "  * the source itself may be corrupt\n\n",
-          "Use the --lock-write flag to regenerate the lockfile or --reload to reload the source code from the server."
+          "Investigate the lockfile; delete it to regenerate the lockfile or --reload to reload the source code from the server."
         ),
         specifier,
         checksum_err.actual,

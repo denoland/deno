@@ -125,12 +125,15 @@ function warnOnDeprecatedApi(apiName, stack, ...suggestions) {
     return;
   }
 
+  // deno-lint-ignore no-console
+  const logError = console.error;
+
   if (!verboseDeprecatedApiWarning) {
     if (ALREADY_WARNED_DEPRECATED.has(apiName)) {
       return;
     }
     ALREADY_WARNED_DEPRECATED.add(apiName);
-    console.error(
+    logError(
       `%cwarning: %cUse of deprecated "${apiName}" API. This API will be removed in Deno 2. Run again with DENO_VERBOSE_WARNINGS=1 to get more details.`,
       "color: yellow;",
       "font-weight: bold;",
@@ -176,40 +179,40 @@ function warnOnDeprecatedApi(apiName, stack, ...suggestions) {
   }
 
   ALREADY_WARNED_DEPRECATED.add(apiName + stack);
-  console.error(
+  logError(
     `%cwarning: %cUse of deprecated "${apiName}" API. This API will be removed in Deno 2.`,
     "color: yellow;",
     "font-weight: bold;",
   );
 
-  console.error();
-  console.error(
+  logError();
+  logError(
     "See the Deno 1 to 2 Migration Guide for more information at https://docs.deno.com/runtime/manual/advanced/migrate_deprecations",
   );
-  console.error();
+  logError();
   if (stackLines.length > 0) {
-    console.error("Stack trace:");
+    logError("Stack trace:");
     for (let i = 0; i < stackLines.length; i++) {
-      console.error(`  ${StringPrototypeTrim(stackLines[i])}`);
+      logError(`  ${StringPrototypeTrim(stackLines[i])}`);
     }
-    console.error();
+    logError();
   }
 
   for (let i = 0; i < suggestions.length; i++) {
     const suggestion = suggestions[i];
-    console.error(
+    logError(
       `%chint: ${suggestion}`,
       "font-weight: bold;",
     );
   }
 
   if (isFromRemoteDependency) {
-    console.error(
+    logError(
       `%chint: It appears this API is used by a remote dependency. Try upgrading to the latest version of that dependency.`,
       "font-weight: bold;",
     );
   }
-  console.error();
+  logError();
 }
 
 function windowClose() {
@@ -716,25 +719,33 @@ function bootstrapMainRuntime(runtimeOptions, warmup = false) {
 
     if (mode === executionModes.serve) {
       if (serveIsMain && serveWorkerCount) {
+        // deno-lint-ignore no-console
         const origLog = console.log;
+        // deno-lint-ignore no-console
         const origError = console.error;
         const prefix = `[serve-worker-0 ]`;
+        // deno-lint-ignore no-console
         console.log = (...args) => {
           return origLog(prefix, ...new primordials.SafeArrayIterator(args));
         };
+        // deno-lint-ignore no-console
         console.error = (...args) => {
           return origError(prefix, ...new primordials.SafeArrayIterator(args));
         };
       } else if (serveWorkerCount !== null) {
+        // deno-lint-ignore no-console
         const origLog = console.log;
+        // deno-lint-ignore no-console
         const origError = console.error;
         const base = `serve-worker-${serveWorkerCount + 1}`;
         // 15 = "serve-worker-nn".length, assuming
         // serveWorkerCount < 100
         const prefix = `[${StringPrototypePadEnd(base, 15, " ")}]`;
+        // deno-lint-ignore no-console
         console.log = (...args) => {
           return origLog(prefix, ...new primordials.SafeArrayIterator(args));
         };
+        // deno-lint-ignore no-console
         console.error = (...args) => {
           return origError(prefix, ...new primordials.SafeArrayIterator(args));
         };
@@ -757,6 +768,7 @@ function bootstrapMainRuntime(runtimeOptions, warmup = false) {
         if (mode === executionModes.serve && !serve) {
           if (serveIsMain) {
             // Only error if main worker
+            // deno-lint-ignore no-console
             console.error(
               `%cerror: %cdeno serve requires %cexport default { fetch }%c in the main module, did you mean to run \"deno run\"?`,
               "color: yellow;",
@@ -770,6 +782,7 @@ function bootstrapMainRuntime(runtimeOptions, warmup = false) {
 
         if (serve) {
           if (mode === executionModes.run) {
+            // deno-lint-ignore no-console
             console.error(
               `%cwarning: %cDetected %cexport default { fetch }%c, did you mean to run \"deno serve\"?`,
               "color: yellow;",
