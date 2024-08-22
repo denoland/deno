@@ -1684,7 +1684,6 @@ dependencies = [
  "chrono",
  "deno_core",
  "deno_fetch",
- "deno_node",
  "deno_permissions",
  "deno_tls",
  "denokv_proto",
