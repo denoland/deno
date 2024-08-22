@@ -21,7 +21,6 @@ bytes.workspace = true
 chrono = { workspace = true, features = ["now"] }
 deno_core.workspace = true
 deno_fetch.workspace = true
-deno_node.workspace = true
 deno_permissions.workspace = true
 deno_tls.workspace = true
 denokv_proto.workspace = true
