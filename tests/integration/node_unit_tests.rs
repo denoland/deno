@@ -57,6 +57,7 @@ util::unit_test_factory!(
     assertion_error_test,
     buffer_test,
     child_process_test,
+    cluster_test,
     console_test,
     crypto_cipher_gcm_test = crypto / crypto_cipher_gcm_test,
     crypto_cipher_test = crypto / crypto_cipher_test,
