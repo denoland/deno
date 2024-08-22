@@ -6,6 +6,13 @@ https://github.com/denoland/deno/releases
 We also have one-line install commands at:
 https://github.com/denoland/deno_install
 
+### 1.46.1 / 2024.08.22
+
+- fix(ext/node): http2session ready state (#25143)
+- fix(ext/node): register `node:wasi` built-in (#25134)
+- fix(urlpattern): fallback to empty string for undefined group values (#25151)
+- fix: trim space around DENO_AUTH_TOKENS (#25147)
+
 ### 1.46.0 / 2024.08.22
 
 - BREAKING(temporal/unstable): Remove obsoleted Temporal APIs (#24836)
