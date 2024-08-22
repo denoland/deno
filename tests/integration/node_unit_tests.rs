@@ -96,6 +96,7 @@ util::unit_test_factory!(
     util_test,
     v8_test,
     vm_test,
+    wasi_test,
     worker_threads_test,
     zlib_test
   ]
