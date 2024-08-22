@@ -1068,14 +1068,14 @@ fn junction_or_symlink_dir(
   old_path: &Path,
   new_path: &Path,
 ) -> Result<(), AnyError> {
-  use deno_core::anyhow::bail;
   static USE_JUNCTIONS: std::sync::atomic::AtomicBool =
     std::sync::atomic::AtomicBool::new(false);
 
   if USE_JUNCTIONS.load(std::sync::atomic::Ordering::Relaxed) {
     // Use junctions because they're supported on ntfs file systems without
-    // needing to elevate privileges on Windows
-
+    // needing to elevate privileges on Windows.
+    // Note: junctions don't support relative paths, so we need to use the
+    // absolute path here.
     return junction::create(old_path, new_path)
       .context("Failed creating junction in node_modules folder");
   }
@@ -1088,9 +1088,11 @@ fn junction_or_symlink_dir(
       USE_JUNCTIONS.store(true, std::sync::atomic::Ordering::Relaxed);
       junction::create(old_path, new_path).map_err(Into::into)
     }
-    Err(symlink_err) => {
-      Err(symlink_err.context("Failed creating symlink in node_modules folder"))
-    }
+    Err(symlink_err) => Err(
+      symlink_err
+        .map_err(AnyError::from)
+        .context("Failed creating symlink in node_modules folder"),
+    ),
   }
 }
 
