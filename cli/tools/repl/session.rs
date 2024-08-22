@@ -41,6 +41,7 @@ use deno_core::serde_json::Value;
 use deno_core::unsync::spawn;
 use deno_core::url::Url;
 use deno_core::LocalInspectorSession;
+use deno_core::LocalInspectorSessionOptions;
 use deno_core::PollEventLoopOptions;
 use deno_graph::source::ResolutionMode;
 use deno_graph::source::Resolver;
@@ -204,7 +205,10 @@ impl ReplSession {
     test_event_receiver: TestEventReceiver,
   ) -> Result<Self, AnyError> {
     let language_server = ReplLanguageServer::new_initialized().await?;
-    let mut session = worker.create_inspector_session();
+    let mut session =
+      worker.create_inspector_session(LocalInspectorSessionOptions {
+        kind: deno_core::InspectorSessionKind::LocalBlocking,
+      });
 
     worker
       .js_runtime

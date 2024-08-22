@@ -23,6 +23,7 @@ use deno_core::FsModuleLoader;
 use deno_core::GetErrorClassFn;
 use deno_core::JsRuntime;
 use deno_core::LocalInspectorSession;
+use deno_core::LocalInspectorSessionOptions;
 use deno_core::ModuleCodeString;
 use deno_core::ModuleId;
 use deno_core::ModuleLoader;
@@ -484,6 +485,7 @@ impl MainWorker {
       ))
     };
 
+    eprintln!("inspector {}", options.maybe_inspector_server.is_some());
     let mut js_runtime = JsRuntime::new(RuntimeOptions {
       module_loader: Some(options.module_loader.clone()),
       startup_snapshot: options.startup_snapshot,
@@ -696,19 +698,23 @@ impl MainWorker {
       }
     }
 
-    {
-      self.js_runtime.maybe_init_inspector();
-      let mut session =
-        self.js_runtime.inspector().borrow().create_local_session();
-      let recv = session.take_notification_rx();
-      let op_state = self.js_runtime.op_state();
-      op_state
-        .borrow_mut()
-        .put(Arc::new(tokio::sync::Mutex::new(recv)));
-      op_state
-        .borrow_mut()
-        .put(Arc::new(tokio::sync::Mutex::new(session)));
-    }
+    // {
+    //   self.js_runtime.maybe_init_inspector();
+    //   let mut session =
+    //     self.js_runtime.inspector().borrow().create_local_session(
+    //       LocalInspectorSessionOptions {
+    //         kind: deno_core::InspectorSessionKind::LocalNonblocking,
+    //       },
+    //     );
+    //   let recv = session.take_notification_rx();
+    //   let op_state = self.js_runtime.op_state();
+    //   op_state
+    //     .borrow_mut()
+    //     .put(Arc::new(tokio::sync::Mutex::new(recv)));
+    //   op_state
+    //     .borrow_mut()
+    //     .put(Arc::new(tokio::sync::Mutex::new(session)));
+    // }
   }
 
   /// See [JsRuntime::execute_script](deno_core::JsRuntime::execute_script)
@@ -814,9 +820,16 @@ impl MainWorker {
 
   /// Create new inspector session. This function panics if Worker
   /// was not configured to create inspector.
-  pub fn create_inspector_session(&mut self) -> LocalInspectorSession {
+  pub fn create_inspector_session(
+    &mut self,
+    options: LocalInspectorSessionOptions,
+  ) -> LocalInspectorSession {
     self.js_runtime.maybe_init_inspector();
-    self.js_runtime.inspector().borrow().create_local_session()
+    self
+      .js_runtime
+      .inspector()
+      .borrow()
+      .create_local_session(options)
   }
 
   pub async fn run_event_loop(
