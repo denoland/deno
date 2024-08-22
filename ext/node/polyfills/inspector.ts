@@ -1,7 +1,11 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 // Copyright Joyent and Node contributors. All rights reserved. MIT license.
 
-import { op_inspector_get_notification, op_inspector_post } from "ext:core/ops";
+import {
+  op_create_inspector_session,
+  op_inspector_get_notification,
+  op_inspector_post,
+} from "ext:core/ops";
 import { EventEmitter } from "node:events";
 import { notImplemented } from "ext:deno_node/_utils.ts";
 import { core, primordials } from "ext:core/mod.js";
@@ -18,6 +22,13 @@ class Session extends EventEmitter {
   /** Connects the session to the inspector back-end. */
   connect(): void {
     // notImplemented("inspector.Session.prototype.connect");
+    if (this.#connection) {
+      throw new Error("TODO");
+    }
+
+    // this.#connection = TODO;
+    op_create_inspector_session();
+
     (async () => {
       while (true) {
         let notification;
