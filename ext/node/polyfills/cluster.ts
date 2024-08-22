@@ -25,7 +25,8 @@ export function fork(_env?: any): Worker {
 /** True if the process is a primary. This is determined by
  * the process.env.NODE_UNIQUE_ID. If process.env.NODE_UNIQUE_ID is undefined,
  * then isPrimary is true. */
-// TODO
+// TODO(@marvinhagemeister): Replace this with an env check once
+// we properly set NODE_UNIQUE_ID
 export const isPrimary = true;
 /** True if the process is not a primary (it is the negation of
  * cluster.isPrimary). */

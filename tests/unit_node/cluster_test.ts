@@ -1,3 +1,4 @@
+// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 import { assertEquals } from "@std/assert";
 import cluster from "node:cluster";
 import * as clusterNamed from "node:cluster";
