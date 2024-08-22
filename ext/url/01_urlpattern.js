@@ -349,7 +349,7 @@ class URLPattern {
           const groups = res.groups;
           for (let i = 0; i < groupList.length; ++i) {
             // TODO(lucacasonato): this is vulnerable to override mistake
-            groups[groupList[i]] = match[i + 1];
+            groups[groupList[i]] = match[i + 1] ?? ""; // TODO(@crowlKats): remove fallback for 2.0
           }
           break;
         }
