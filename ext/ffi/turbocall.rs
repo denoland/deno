@@ -40,26 +40,39 @@ pub(crate) fn compile_trampoline(sym: &Symbol) -> Trampoline {
   }
 }
 
-pub(crate) fn make_template(
-  sym: &Symbol,
-  trampoline: &Trampoline,
-) -> fast_api::FastFunction {
-  let params = once(fast_api::Type::V8Value) // Receiver
+pub(crate) struct Turbocall {
+  pub trampoline: Trampoline,
+  // Held in a box to keep the memory alive for CFunctionInfo
+  #[allow(unused)]
+  pub param_info: Box<[fast_api::CTypeInfo]>,
+  // Held in a box to keep the memory alive for V8
+  #[allow(unused)]
+  pub c_function_info: Box<fast_api::CFunctionInfo>,
+}
+
+pub(crate) fn make_template(sym: &Symbol, trampoline: Trampoline) -> Turbocall {
+  let param_info = once(fast_api::Type::V8Value.scalar()) // Receiver
     .chain(sym.parameter_types.iter().map(|t| t.into()))
-    .collect::<Vec<_>>();
+    .collect::<Box<_>>();
 
   let ret = if sym.result_type == NativeType::Buffer {
     // Buffer can be used as a return type and converts differently than in parameters.
-    fast_api::CType::Pointer
+    fast_api::Type::Pointer.scalar()
   } else {
-    fast_api::CType::from(&fast_api::Type::from(&sym.result_type))
+    (&sym.result_type).into()
   };
 
-  fast_api::FastFunction::new_with_bigint(
-    Box::leak(params.into_boxed_slice()),
+  let c_function_info = Box::new(fast_api::CFunctionInfo::new(
     ret,
-    trampoline.ptr(),
-  )
+    &param_info,
+    fast_api::Int64Representation::BigInt,
+  ));
+
+  Turbocall {
+    trampoline,
+    param_info,
+    c_function_info,
+  }
 }
 
 /// Trampoline for fast-call FFI functions
@@ -68,33 +81,33 @@ pub(crate) fn make_template(
 pub(crate) struct Trampoline(ExecutableBuffer);
 
 impl Trampoline {
-  fn ptr(&self) -> *const c_void {
+  pub(crate) fn ptr(&self) -> *const c_void {
     &self.0[0] as *const u8 as *const c_void
   }
 }
 
-impl From<&NativeType> for fast_api::Type {
+impl From<&NativeType> for fast_api::CTypeInfo {
   fn from(native_type: &NativeType) -> Self {
     match native_type {
-      NativeType::Bool => fast_api::Type::Bool,
+      NativeType::Bool => fast_api::Type::Bool.scalar(),
       NativeType::U8 | NativeType::U16 | NativeType::U32 => {
-        fast_api::Type::Uint32
+        fast_api::Type::Uint32.scalar()
       }
       NativeType::I8 | NativeType::I16 | NativeType::I32 => {
-        fast_api::Type::Int32
+        fast_api::Type::Int32.scalar()
       }
-      NativeType::F32 => fast_api::Type::Float32,
-      NativeType::F64 => fast_api::Type::Float64,
-      NativeType::Void => fast_api::Type::Void,
-      NativeType::I64 => fast_api::Type::Int64,
-      NativeType::U64 => fast_api::Type::Uint64,
-      NativeType::ISize => fast_api::Type::Int64,
-      NativeType::USize => fast_api::Type::Uint64,
-      NativeType::Pointer | NativeType::Function => fast_api::Type::Pointer,
-      NativeType::Buffer => fast_api::Type::TypedArray(fast_api::CType::Uint8),
-      NativeType::Struct(_) => {
-        fast_api::Type::TypedArray(fast_api::CType::Uint8)
+      NativeType::F32 => fast_api::Type::Float32.scalar(),
+      NativeType::F64 => fast_api::Type::Float64.scalar(),
+      NativeType::Void => fast_api::Type::Void.scalar(),
+      NativeType::I64 => fast_api::Type::Int64.scalar(),
+      NativeType::U64 => fast_api::Type::Uint64.scalar(),
+      NativeType::ISize => fast_api::Type::Int64.scalar(),
+      NativeType::USize => fast_api::Type::Uint64.scalar(),
+      NativeType::Pointer | NativeType::Function => {
+        fast_api::Type::Pointer.scalar()
       }
+      NativeType::Buffer => fast_api::Type::Uint8.typed_array(),
+      NativeType::Struct(_) => fast_api::Type::Uint8.typed_array(),
     }
   }
 }

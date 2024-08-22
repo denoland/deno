@@ -47,7 +47,7 @@ const {
 const debugWorkerThreads = false;
 function debugWT(...args) {
   if (debugWorkerThreads) {
-    // deno-lint-ignore prefer-primordials
+    // deno-lint-ignore prefer-primordials no-console
     console.log(...args);
   }
 }

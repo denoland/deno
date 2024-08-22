@@ -691,7 +691,7 @@ impl Inner {
 
     let version = format!(
       "{} ({}, {})",
-      crate::version::deno(),
+      crate::version::DENO_VERSION_INFO.deno,
       env!("PROFILE"),
       env!("TARGET")
     );
@@ -956,31 +956,27 @@ impl Inner {
       .refresh(&self.config.settings, &self.workspace_files, &file_fetcher)
       .await;
     for config_file in self.config.tree.config_files() {
-      if let Ok((compiler_options, _)) = config_file.to_compiler_options() {
-        if let Some(compiler_options_obj) = compiler_options.as_object() {
-          if let Some(jsx_import_source) =
-            compiler_options_obj.get("jsxImportSource")
-          {
-            if let Some(jsx_import_source) = jsx_import_source.as_str() {
-              let specifiers = vec![Url::parse(&format!(
-                "data:application/typescript;base64,{}",
-                base64::engine::general_purpose::STANDARD
-                  .encode(format!("import '{jsx_import_source}/jsx-runtime';"))
-              ))
-              .unwrap()];
-              let referrer = config_file.specifier.clone();
-              self.task_queue.queue_task(Box::new(|ls: LanguageServer| {
-                spawn(async move {
-                  if let Err(err) = ls.cache(specifiers, referrer, false).await
-                  {
-                    lsp_warn!("{:#}", err);
-                  }
-                });
-              }));
+      (|| {
+        let compiler_options = config_file.to_compiler_options().ok()?.0;
+        let compiler_options_obj = compiler_options.as_object()?;
+        let jsx_import_source = compiler_options_obj.get("jsxImportSource")?;
+        let jsx_import_source = jsx_import_source.as_str()?;
+        let referrer = config_file.specifier.clone();
+        let specifier = Url::parse(&format!(
+          "data:application/typescript;base64,{}",
+          base64::engine::general_purpose::STANDARD
+            .encode(format!("import '{jsx_import_source}/jsx-runtime';"))
+        ))
+        .unwrap();
+        self.task_queue.queue_task(Box::new(|ls: LanguageServer| {
+          spawn(async move {
+            if let Err(err) = ls.cache(vec![specifier], referrer, false).await {
+              lsp_warn!("{:#}", err);
             }
-          }
-        }
-      }
+          });
+        }));
+        Some(())
+      })();
     }
   }
 
@@ -1333,8 +1329,9 @@ impl Inner {
     {
       return Ok(None);
     }
-    let document =
-      file_referrer.and_then(|r| self.documents.get_or_load(&specifier, &r));
+    let document = self
+      .documents
+      .get_or_load(&specifier, file_referrer.as_ref());
     let Some(document) = document else {
       return Ok(None);
     };
@@ -1370,6 +1367,12 @@ impl Inner {
       let unstable_options = UnstableFmtOptions {
         css: maybe_workspace
           .map(|w| w.has_unstable("fmt-css"))
+          .unwrap_or(false),
+        html: maybe_workspace
+          .map(|w| w.has_unstable("fmt-html"))
+          .unwrap_or(false),
+        component: maybe_workspace
+          .map(|w| w.has_unstable("fmt-component"))
           .unwrap_or(false),
         yaml: maybe_workspace
           .map(|w| w.has_unstable("fmt-yaml"))
@@ -1448,7 +1451,7 @@ impl Inner {
     {
       let dep_doc = dep
         .get_code()
-        .and_then(|s| self.documents.get_or_load(s, &specifier));
+        .and_then(|s| self.documents.get_or_load(s, file_referrer));
       let dep_maybe_types_dependency =
         dep_doc.as_ref().map(|d| d.maybe_types_dependency());
       let value = match (dep.maybe_code.is_none(), dep.maybe_type.is_none(), &dep_maybe_types_dependency) {
@@ -1660,9 +1663,9 @@ impl Inner {
             if diagnostic.code
               == Some(NumberOrString::String("no-cache".to_string()))
               || diagnostic.code
-                == Some(NumberOrString::String("no-cache-jsr".to_string()))
+                == Some(NumberOrString::String("not-installed-jsr".to_string()))
               || diagnostic.code
-                == Some(NumberOrString::String("no-cache-npm".to_string()))
+                == Some(NumberOrString::String("not-installed-npm".to_string()))
             {
               includes_no_cache = true;
             }
@@ -3526,19 +3529,22 @@ impl Inner {
     force_global_cache: bool,
   ) -> Result<PrepareCacheResult, AnyError> {
     let config_data = self.config.tree.data_for_specifier(&referrer);
+    let byonm = config_data.map(|d| d.byonm).unwrap_or(false);
     let mut roots = if !specifiers.is_empty() {
       specifiers
     } else {
       vec![referrer.clone()]
     };
 
-    // always include the npm packages since resolution of one npm package
-    // might affect the resolution of other npm packages
-    if let Some(npm_reqs) = self
+    if byonm {
+      roots.retain(|s| s.scheme() != "npm");
+    } else if let Some(npm_reqs) = self
       .documents
       .npm_reqs_by_scope()
       .get(&config_data.map(|d| d.scope.as_ref().clone()))
     {
+      // always include the npm packages since resolution of one npm package
+      // might affect the resolution of other npm packages
       roots.extend(
         npm_reqs
           .iter()

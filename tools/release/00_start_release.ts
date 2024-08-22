@@ -1,5 +1,8 @@
 #!/usr/bin/env -S deno run -A --quiet --lock=tools/deno.lock.json
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
+
+// deno-lint-ignore-file no-console
+
 import { $, createOctoKit, semver } from "./deps.ts";
 
 const currentDirPath = $.path(import.meta).parentOrThrow();

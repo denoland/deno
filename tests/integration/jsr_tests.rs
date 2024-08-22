@@ -3,6 +3,7 @@
 use deno_core::serde_json::json;
 use deno_core::serde_json::Value;
 use deno_lockfile::Lockfile;
+use deno_lockfile::NewLockfileOptions;
 use test_util as util;
 use url::Url;
 use util::assert_contains;
@@ -141,11 +142,12 @@ console.log(version);"#,
     .assert_matches_text("0.1.1\n");
 
   let lockfile_path = temp_dir.path().join("deno.lock");
-  let mut lockfile = Lockfile::with_lockfile_content(
-    lockfile_path.to_path_buf(),
-    &lockfile_path.read_to_string(),
-    false,
-  )
+  let mut lockfile = Lockfile::new(NewLockfileOptions {
+    file_path: lockfile_path.to_path_buf(),
+    content: &lockfile_path.read_to_string(),
+    overwrite: false,
+    is_deno_future: false,
+  })
   .unwrap();
   *lockfile
     .content
@@ -256,11 +258,12 @@ console.log(version);"#,
     .assert_matches_text("0.1.1\n");
 
   let lockfile_path = temp_dir.path().join("deno.lock");
-  let mut lockfile = Lockfile::with_lockfile_content(
-    lockfile_path.to_path_buf(),
-    &lockfile_path.read_to_string(),
-    false,
-  )
+  let mut lockfile = Lockfile::new(NewLockfileOptions {
+    file_path: lockfile_path.to_path_buf(),
+    content: &lockfile_path.read_to_string(),
+    overwrite: false,
+    is_deno_future: false,
+  })
   .unwrap();
   let pkg_name = "@denotest/no-module-graph@0.1.1";
   let original_integrity = get_lockfile_pkg_integrity(&lockfile, pkg_name);
@@ -279,7 +282,7 @@ This could be caused by:
   * the lock file may be corrupt
   * the source itself may be corrupt
 
-Use the --lock-write flag to regenerate the lockfile or --reload to reload the source code from the server.
+Investigate the lockfile; delete it to regenerate the lockfile or --reload to reload the source code from the server.
 ", actual_integrity);
   test_context
     .new_command()

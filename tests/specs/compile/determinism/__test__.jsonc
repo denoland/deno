@@ -1,0 +1,28 @@
+{
+  "tempDir": true,
+  "steps": [{
+    "if": "unix",
+    "args": "compile --output main1 main.ts",
+    "output": "[WILDCARD]"
+  }, {
+    "if": "unix",
+    "args": "compile --output main2 main.ts",
+    "output": "[WILDCARD]"
+  }, {
+    "if": "unix",
+    "args": "run --allow-read=. assert_equal.ts main1 main2",
+    "output": "Same\n"
+  }, {
+    "if": "windows",
+    "args": "compile --output main1.exe main.ts",
+    "output": "[WILDCARD]"
+  }, {
+    "if": "windows",
+    "args": "compile --output main2.exe main.ts",
+    "output": "[WILDCARD]"
+  }, {
+    "if": "windows",
+    "args": "run --allow-read=. assert_equal.ts main1.exe main2.exe",
+    "output": "Same\n"
+  }]
+}

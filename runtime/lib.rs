@@ -44,6 +44,7 @@ pub use worker_bootstrap::WorkerExecutionMode;
 pub use worker_bootstrap::WorkerLogLevel;
 
 mod shared;
+pub use shared::import_assertion_callback;
 pub use shared::runtime;
 
 // NOTE(bartlomieju): keep IDs in sync with `runtime/90_deno_ns.js` (search for `unstableFeatures`)

@@ -12,6 +12,7 @@ use deno_core::serde::Deserialize;
 use deno_core::serde::Deserializer;
 use deno_core::serde::Serialize;
 use deno_core::serde_json;
+use deno_core::unsync::sync::AtomicFlag;
 use deno_core::url;
 use deno_core::url::Url;
 use deno_core::ModuleSpecifier;
@@ -132,14 +133,20 @@ impl PermissionState {
   }
 
   fn error(name: &str, info: impl FnOnce() -> Option<String>) -> AnyError {
-    custom_error(
-      "PermissionDenied",
+    let msg = if is_standalone() {
+      format!(
+        "Requires {}, specify the required permissions during compilation using `deno compile --allow-{}`",
+        Self::fmt_access(name, info),
+        name
+      )
+    } else {
       format!(
         "Requires {}, run again with the --allow-{} flag",
         Self::fmt_access(name, info),
         name
-      ),
-    )
+      )
+    };
+    custom_error("PermissionDenied", msg)
   }
 
   /// Check the permission state. bool is whether a prompt was issued.
@@ -2241,7 +2248,50 @@ pub fn create_child_permissions(
   main_perms: &mut Permissions,
   child_permissions_arg: ChildPermissionsArg,
 ) -> Result<Permissions, AnyError> {
+  fn is_granted_unary(arg: &ChildUnaryPermissionArg) -> bool {
+    match arg {
+      ChildUnaryPermissionArg::Inherit | ChildUnaryPermissionArg::Granted => {
+        true
+      }
+      ChildUnaryPermissionArg::NotGranted
+      | ChildUnaryPermissionArg::GrantedList(_) => false,
+    }
+  }
+
+  fn is_granted_unit(arg: &ChildUnitPermissionArg) -> bool {
+    match arg {
+      ChildUnitPermissionArg::Inherit | ChildUnitPermissionArg::Granted => true,
+      ChildUnitPermissionArg::NotGranted => false,
+    }
+  }
+
   let mut worker_perms = Permissions::none_without_prompt();
+
+  worker_perms.all = main_perms
+    .all
+    .create_child_permissions(ChildUnitPermissionArg::Inherit)?;
+
+  // downgrade the `worker_perms.all` based on the other values
+  if worker_perms.all.query() == PermissionState::Granted {
+    let unary_perms = [
+      &child_permissions_arg.read,
+      &child_permissions_arg.write,
+      &child_permissions_arg.net,
+      &child_permissions_arg.env,
+      &child_permissions_arg.sys,
+      &child_permissions_arg.run,
+      &child_permissions_arg.ffi,
+    ];
+    let unit_perms = [&child_permissions_arg.hrtime];
+    let allow_all = unary_perms.into_iter().all(is_granted_unary)
+      && unit_perms.into_iter().all(is_granted_unit);
+    if !allow_all {
+      worker_perms.all.revoke();
+    }
+  }
+
+  // WARNING: When adding a permission here, ensure it is handled
+  // in the worker_perms.all block above
   worker_perms.read = main_perms
     .read
     .create_child_permissions(child_permissions_arg.read)?;
@@ -2266,11 +2316,18 @@ pub fn create_child_permissions(
   worker_perms.hrtime = main_perms
     .hrtime
     .create_child_permissions(child_permissions_arg.hrtime)?;
-  worker_perms.all = main_perms
-    .all
-    .create_child_permissions(ChildUnitPermissionArg::Inherit)?;
 
   Ok(worker_perms)
+}
+
+static IS_STANDALONE: AtomicFlag = AtomicFlag::lowered();
+
+pub fn mark_standalone() {
+  IS_STANDALONE.raise();
+}
+
+pub fn is_standalone() -> bool {
+  IS_STANDALONE.is_raised()
 }
 
 #[cfg(test)]

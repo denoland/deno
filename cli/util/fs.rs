@@ -509,7 +509,7 @@ pub fn hard_link_dir_recursive(from: &Path, to: &Path) -> Result<(), AnyError> {
   Ok(())
 }
 
-pub fn symlink_dir(oldpath: &Path, newpath: &Path) -> Result<(), AnyError> {
+pub fn symlink_dir(oldpath: &Path, newpath: &Path) -> Result<(), Error> {
   let err_mapper = |err: Error| {
     Error::new(
       err.kind(),

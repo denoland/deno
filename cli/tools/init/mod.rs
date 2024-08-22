@@ -138,6 +138,7 @@ Deno.test(function addTest() {
         "tasks": {
           "dev": "deno test --watch mod.ts"
         },
+        "license": "MIT",
         "imports": {
           "@std/assert": "jsr:@std/assert@1"
         },

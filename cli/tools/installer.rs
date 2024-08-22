@@ -275,7 +275,7 @@ async fn install_local(
   }
 
   let factory = CliFactory::from_flags(flags);
-  crate::module_loader::load_top_level_deps(&factory).await?;
+  crate::tools::registry::cache_top_level_deps(&factory, None).await?;
 
   if let Some(lockfile) = factory.cli_options()?.maybe_lockfile() {
     lockfile.write_if_changed()?;
@@ -472,7 +472,7 @@ async fn resolve_shim_data(
     executable_args.push("--cached-only".to_string());
   }
 
-  if flags.frozen_lockfile {
+  if flags.frozen_lockfile.unwrap_or(false) {
     executable_args.push("--frozen".to_string());
   }
 
