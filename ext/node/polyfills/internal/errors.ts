@@ -927,6 +927,12 @@ export class ERR_CRYPTO_INVALID_KEY_OBJECT_TYPE extends NodeTypeError {
   }
 }
 
+export class ERR_CRYPTO_INVALID_JWK extends NodeError {
+  constructor() {
+    super("ERR_CRYPTO_INVALID_JWK", "Invalid JWK");
+  }
+}
+
 export class ERR_CRYPTO_INVALID_STATE extends NodeError {
   constructor(x: string) {
     super("ERR_CRYPTO_INVALID_STATE", `Invalid state for operation ${x}`);
@@ -2733,6 +2739,7 @@ export default {
   ERR_CRYPTO_INCOMPATIBLE_KEY_OPTIONS,
   ERR_CRYPTO_INVALID_DIGEST,
   ERR_CRYPTO_INVALID_KEY_OBJECT_TYPE,
+  ERR_CRYPTO_INVALID_JWK,
   ERR_CRYPTO_INVALID_STATE,
   ERR_CRYPTO_PBKDF2_ERROR,
   ERR_CRYPTO_SCRYPT_INVALID_PARAMETER,
