@@ -203,7 +203,7 @@ impl SpecifierUnfurler {
   /// or `false` when the import was not analyzable.
   fn try_unfurl_dynamic_dep(
     &self,
-    module_url: &lsp_types::Url,
+    module_url: &ModuleSpecifier,
     text_info: &SourceTextInfo,
     dep: &deno_graph::DynamicDependencyDescriptor,
     text_changes: &mut Vec<deno_ast::TextChange>,

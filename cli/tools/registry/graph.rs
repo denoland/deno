@@ -8,13 +8,13 @@ use deno_ast::ParsedSource;
 use deno_ast::SourceRangedForSpanned;
 use deno_ast::SourceTextInfo;
 use deno_core::error::AnyError;
+use deno_core::url::Url;
 use deno_graph::ModuleEntryRef;
 use deno_graph::ModuleGraph;
 use deno_graph::ResolutionResolved;
 use deno_graph::WalkOptions;
 use deno_semver::jsr::JsrPackageReqReference;
 use deno_semver::npm::NpmPackageReqReference;
-use lsp_types::Url;
 
 use crate::cache::ParsedSourceCache;
 

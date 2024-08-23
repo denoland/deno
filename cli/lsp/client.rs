@@ -58,7 +58,7 @@ impl Client {
   ) {
     self
       .0
-      .publish_diagnostics(uri.into_url(), diags, version)
+      .publish_diagnostics(uri.to_uri(), diags, version)
       .await;
   }
 
@@ -149,7 +149,7 @@ impl OutsideLockClient {
 
   pub async fn workspace_configuration(
     &self,
-    scopes: Vec<Option<lsp::Url>>,
+    scopes: Vec<Option<lsp::Uri>>,
   ) -> Result<Vec<WorkspaceSettings>, AnyError> {
     self.0.workspace_configuration(scopes).await
   }
@@ -159,7 +159,7 @@ impl OutsideLockClient {
 trait ClientTrait: Send + Sync {
   async fn publish_diagnostics(
     &self,
-    uri: lsp::Url,
+    uri: lsp::Uri,
     diagnostics: Vec<lsp::Diagnostic>,
     version: Option<i32>,
   );
@@ -182,7 +182,7 @@ trait ClientTrait: Send + Sync {
   );
   async fn workspace_configuration(
     &self,
-    scopes: Vec<Option<lsp::Url>>,
+    scopes: Vec<Option<lsp::Uri>>,
   ) -> Result<Vec<WorkspaceSettings>, AnyError>;
   async fn show_message(&self, message_type: lsp::MessageType, text: String);
   async fn register_capability(
@@ -198,7 +198,7 @@ struct TowerClient(tower_lsp::Client);
 impl ClientTrait for TowerClient {
   async fn publish_diagnostics(
     &self,
-    uri: lsp::Url,
+    uri: lsp::Uri,
     diagnostics: Vec<lsp::Diagnostic>,
     version: Option<i32>,
   ) {
@@ -276,7 +276,7 @@ impl ClientTrait for TowerClient {
 
   async fn workspace_configuration(
     &self,
-    scopes: Vec<Option<lsp::Url>>,
+    scopes: Vec<Option<lsp::Uri>>,
   ) -> Result<Vec<WorkspaceSettings>, AnyError> {
     let config_response = self
       .0
@@ -349,7 +349,7 @@ struct ReplClient;
 impl ClientTrait for ReplClient {
   async fn publish_diagnostics(
     &self,
-    _uri: lsp::Url,
+    _uri: lsp::Uri,
     _diagnostics: Vec<lsp::Diagnostic>,
     _version: Option<i32>,
   ) {
@@ -383,7 +383,7 @@ impl ClientTrait for ReplClient {
 
   async fn workspace_configuration(
     &self,
-    scopes: Vec<Option<lsp::Url>>,
+    scopes: Vec<Option<lsp::Uri>>,
   ) -> Result<Vec<WorkspaceSettings>, AnyError> {
     Ok(vec![get_repl_workspace_settings(); scopes.len()])
   }

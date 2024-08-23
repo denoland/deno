@@ -2090,7 +2090,7 @@ fn top_level_install_package_json_explicit_opt_in() {
   rm_created_files();
   let mut client = test_context.new_lsp_command().build();
   client.initialize_default();
-  let file_uri = temp_dir.uri().join("file.ts").unwrap();
+  let file_uri = temp_dir.url().join("file.ts").unwrap();
   client.did_open(json!({
     "textDocument": {
       "uri": file_uri,

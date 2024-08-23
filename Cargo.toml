@@ -43,6 +43,9 @@ edition = "2021"
 license = "MIT"
 repository = "https://github.com/denoland/deno"
 
+[patch.crates-io]
+tower-lsp = { git = 'https://github.com/zebreus/tower-lsp.git' }
+
 [workspace.dependencies]
 deno_ast = { version = "=0.41.2", features = ["transpiling"] }
 deno_core = { version = "0.306.0" }
@@ -133,7 +136,7 @@ lazy-regex = "3"
 libc = "0.2.126"
 libz-sys = { version = "1.1", default-features = false }
 log = "0.4.20"
-lsp-types = "=0.94.1" # used by tower-lsp and "proposed" feature is unstable in patch releases
+lsp-types = "=0.97.0" # used by tower-lsp and "proposed" feature is unstable in patch releases
 memmem = "0.1.1"
 monch = "=0.5.0"
 notify = "=6.1.1"

@@ -154,5 +154,8 @@ pub fn server_capabilities(
     // TODO(nayeemrmn): Support pull-based diagnostics.
     diagnostic_provider: None,
     inline_value_provider: None,
+    inline_completion_provider: None,
+    // TODO(nayeemrmn); Provide!
+    notebook_document_sync: None,
   }
 }
