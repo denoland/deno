@@ -315,3 +315,66 @@ Deno.test("[node/http2 ClientHttp2Session.socket]", async () => {
   client.socket.setTimeout(0);
   assertEquals(receivedData, "hello world\n");
 });
+
+Deno.test("[node/http2 client] connection states", async () => {
+  const expected = {
+    beforeConnect: { connecting: true, closed: false, destroyed: false },
+    afterConnect: { connecting: false, closed: false, destroyed: false },
+    afterClose: { connecting: false, closed: true, destroyed: false },
+    afterDestroy: { connecting: false, closed: true, destroyed: true },
+  };
+  const actual: Partial<typeof expected> = {};
+
+  const url = "http://127.0.0.1:4246";
+  const connectPromise = Promise.withResolvers<void>();
+  const client = http2.connect(url, {}, () => {
+    connectPromise.resolve();
+  });
+  client.on("error", (err) => console.error(err));
+
+  // close event happens after destory has been called
+  const destroyPromise = Promise.withResolvers<void>();
+  client.on("close", () => {
+    destroyPromise.resolve();
+  });
+
+  actual.beforeConnect = {
+    connecting: client.connecting,
+    closed: client.closed,
+    destroyed: client.destroyed,
+  };
+
+  await connectPromise.promise;
+  actual.afterConnect = {
+    connecting: client.connecting,
+    closed: client.closed,
+    destroyed: client.destroyed,
+  };
+
+  // leave a request open to prevent immediate destroy
+  const req = client.request();
+  req.on("data", () => {});
+  req.on("error", (err) => console.error(err));
+  const reqClosePromise = Promise.withResolvers<void>();
+  req.on("close", () => {
+    reqClosePromise.resolve();
+  });
+
+  client.close();
+  actual.afterClose = {
+    connecting: client.connecting,
+    closed: client.closed,
+    destroyed: client.destroyed,
+  };
+
+  await destroyPromise.promise;
+  actual.afterDestroy = {
+    connecting: client.connecting,
+    closed: client.closed,
+    destroyed: client.destroyed,
+  };
+
+  await reqClosePromise.promise;
+
+  assertEquals(actual, expected);
+});
