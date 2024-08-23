@@ -752,6 +752,7 @@ dependencies = [
  "deno_lockfile",
  "deno_terminal 0.2.0",
  "deno_tls",
+ "deno_tower_lsp",
  "fastwebsockets",
  "file_test_runner",
  "flaky_test",
@@ -768,7 +769,6 @@ dependencies = [
  "serde",
  "test_server",
  "tokio",
- "tower-lsp",
  "trust-dns-client",
  "trust-dns-server",
  "url",
@@ -1178,6 +1178,7 @@ dependencies = [
  "deno_semver",
  "deno_task_shell",
  "deno_terminal 0.2.0",
+ "deno_tower_lsp",
  "dissimilar",
  "dotenvy",
  "dprint-plugin-json",
@@ -1244,7 +1245,6 @@ dependencies = [
  "thiserror",
  "tokio",
  "tokio-util",
- "tower-lsp",
  "tracing",
  "twox-hash",
  "typed-arena",
@@ -1256,6 +1256,17 @@ dependencies = [
  "zeromq",
  "zip",
  "zstd",
+]
+
+[[package]]
+name = "deno-tower-lsp-macros"
+version = "0.9.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "05d59a1cfd445fd86f63616127a434aabca000e03d963b01b03ce813520565b9"
+dependencies = [
+ "proc-macro2",
+ "quote",
+ "syn 2.0.72",
 ]
 
 [[package]]
@@ -2058,6 +2069,29 @@ dependencies = [
  "serde",
  "tokio",
  "webpki-roots",
+]
+
+[[package]]
+name = "deno_tower_lsp"
+version = "0.1.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "d7afb4d257c084fd889e8cf1ba3ad58db0002428c819cc7717815f996f97777a"
+dependencies = [
+ "async-trait",
+ "auto_impl",
+ "bytes",
+ "dashmap",
+ "deno-tower-lsp-macros",
+ "futures",
+ "httparse",
+ "lsp-types",
+ "memchr",
+ "serde",
+ "serde_json",
+ "tokio",
+ "tokio-util",
+ "tower",
+ "tracing",
 ]
 
 [[package]]
@@ -7543,38 +7577,6 @@ name = "tower-layer"
 version = "0.3.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "c20c8dbed6283a09604c3e69b4b7eeb54e298b8a600d4d5ecb5ad39de609f1d0"
-
-[[package]]
-name = "tower-lsp"
-version = "0.20.0"
-source = "git+https://github.com/denoland/tower-lsp.git?rev=910e0f8#910e0f82f2b7d767b97ed51ccf3146e3c6794924"
-dependencies = [
- "async-trait",
- "auto_impl",
- "bytes",
- "dashmap",
- "futures",
- "httparse",
- "lsp-types",
- "memchr",
- "serde",
- "serde_json",
- "tokio",
- "tokio-util",
- "tower",
- "tower-lsp-macros",
- "tracing",
-]
-
-[[package]]
-name = "tower-lsp-macros"
-version = "0.9.0"
-source = "git+https://github.com/denoland/tower-lsp.git?rev=910e0f8#910e0f82f2b7d767b97ed51ccf3146e3c6794924"
-dependencies = [
- "proc-macro2",
- "quote",
- "syn 2.0.72",
-]
 
 [[package]]
 name = "tower-service"

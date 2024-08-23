@@ -184,7 +184,7 @@ tokio-socks = "0.5.1"
 tokio-util = "0.7.4"
 tower = { version = "0.4.13", default-features = false, features = ["util"] }
 tower-http = { version = "0.5.2", features = ["decompression-br", "decompression-gzip"] }
-tower-lsp = { version = "=0.20.0", features = ["proposed"] }
+tower-lsp = { package = "deno_tower_lsp", version = "0.1.0", features = ["proposed"] }
 tower-service = "0.3.2"
 twox-hash = "=1.6.3"
 # Upgrading past 2.4.1 may cause WPT failures
@@ -394,8 +394,3 @@ opt-level = 3
 opt-level = 3
 [profile.release.package.zstd-sys]
 opt-level = 3
-
-# Until https://github.com/ebkalderon/tower-lsp/pull/401 gets landed, we're
-# patching it in.
-[patch.crates-io]
-tower-lsp = { git = "https://github.com/denoland/tower-lsp.git", rev = "910e0f8" }
