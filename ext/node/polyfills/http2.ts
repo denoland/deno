@@ -127,6 +127,7 @@ type Http2Headers = Record<string, string | string[]>;
 const debugHttp2Enabled = false;
 function debugHttp2(...args) {
   if (debugHttp2Enabled) {
+    // deno-lint-ignore no-console
     console.log(...args);
   }
 }
@@ -512,6 +513,7 @@ export class ClientHttp2Session extends Http2Session {
           this.emit("error", e);
         }
       })();
+      this[kState].flags |= SESSION_FLAGS_READY;
       this.emit("connect", this, {});
     })();
   }
@@ -1636,16 +1638,19 @@ export class Http2Server extends Server {
                 this.emit("stream", stream, headers);
                 return await stream._deferred.promise;
               } catch (e) {
+                // deno-lint-ignore no-console
                 console.log(">>> Error in serveHttpOnConnection", e);
               }
               return new Response("");
             },
             () => {
+              // deno-lint-ignore no-console
               console.log(">>> error");
             },
             () => {},
           );
         } catch (e) {
+          // deno-lint-ignore no-console
           console.log(">>> Error in Http2Server", e);
         }
       },

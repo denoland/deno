@@ -66,39 +66,6 @@ pub trait NodePermissions {
   ) -> Result<(), AnyError>;
 }
 
-pub struct AllowAllNodePermissions;
-
-impl NodePermissions for AllowAllNodePermissions {
-  fn check_net_url(
-    &mut self,
-    _url: &Url,
-    _api_name: &str,
-  ) -> Result<(), AnyError> {
-    Ok(())
-  }
-  fn check_read_with_api_name(
-    &mut self,
-    _path: &Path,
-    _api_name: Option<&str>,
-  ) -> Result<(), AnyError> {
-    Ok(())
-  }
-  fn check_write_with_api_name(
-    &mut self,
-    _path: &Path,
-    _api_name: Option<&str>,
-  ) -> Result<(), AnyError> {
-    Ok(())
-  }
-  fn check_sys(
-    &mut self,
-    _kind: &str,
-    _api_name: &str,
-  ) -> Result<(), AnyError> {
-    Ok(())
-  }
-}
-
 impl NodePermissions for deno_permissions::PermissionsContainer {
   #[inline(always)]
   fn check_net_url(
@@ -594,7 +561,6 @@ deno_core::extension!(deno_node,
     "path/mod.ts",
     "path/separator.ts",
     "readline/promises.ts",
-    "wasi.ts",
     "node:assert" = "assert.ts",
     "node:assert/strict" = "assert/strict.ts",
     "node:async_hooks" = "async_hooks.ts",
@@ -645,6 +611,7 @@ deno_core::extension!(deno_node,
     "node:util/types" = "util/types.ts",
     "node:v8" = "v8.ts",
     "node:vm" = "vm.js",
+    "node:wasi" = "wasi.ts",
     "node:worker_threads" = "worker_threads.ts",
     "node:zlib" = "zlib.ts",
   ],

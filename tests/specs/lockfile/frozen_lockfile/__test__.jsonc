@@ -123,6 +123,35 @@
         }
       ]
     },
+
+    "lockfile_config": {
+      "steps": [
+        {
+          "args": [
+            "eval",
+            "Deno.writeTextFileSync('deno.json', JSON.stringify({ lock: { frozen: true }, ...JSON.parse(Deno.readTextFileSync('deno.json')) }))"
+          ],
+          "output": ""
+        },
+        {
+          "args": "cache --frozen=false add.ts",
+          "output": "[WILDCARD]"
+        },
+        {
+          // sub.ts imports from an npm package
+          // that's not in the lockfile
+          "args": "run sub.ts",
+          "output": "frozen_new_dep_run.out",
+          "exitCode": 1
+        },
+        {
+          "args": "cache sub.ts",
+          "output": "frozen_new_dep_cache.out",
+          "exitCode": 1
+        }
+      ]
+    },
+
     "non_analyzable_dynamic_npm": {
       "steps": [
         {

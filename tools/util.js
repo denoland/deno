@@ -1,4 +1,7 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
+
+// deno-lint-ignore-file no-console
+
 import { dirname, fromFileUrl, join, resolve, toFileUrl } from "@std/path";
 import { wait } from "https://deno.land/x/wait@0.1.13/mod.ts";
 export { dirname, fromFileUrl, join, resolve, toFileUrl };

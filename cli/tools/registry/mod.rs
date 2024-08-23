@@ -52,6 +52,7 @@ use crate::util::display::human_size;
 
 mod api;
 mod auth;
+
 mod diagnostics;
 mod graph;
 mod paths;
@@ -64,6 +65,7 @@ mod unfurl;
 use auth::get_auth_method;
 use auth::AuthMethod;
 pub use pm::add;
+pub use pm::cache_top_level_deps;
 pub use pm::remove;
 pub use pm::AddCommandName;
 use publish_order::PublishOrderGraph;

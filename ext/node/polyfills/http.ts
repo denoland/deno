@@ -906,7 +906,7 @@ class ClientRequest extends OutgoingMessage {
     // https://www.rfc-editor.org/rfc/rfc6266#section-4.3
     // Refs: https://github.com/nodejs/node/pull/46528
     if (isContentDispositionField(key) && this._contentLength) {
-      value = Buffer.from(value, "latin1");
+      value = Buffer.from(value).toString("latin1");
     }
 
     if (Array.isArray(value)) {
@@ -1836,6 +1836,7 @@ export class ServerImpl extends EventEmitter {
   }
 
   setTimeout() {
+    // deno-lint-ignore no-console
     console.error("Not implemented: Server.setTimeout()");
   }
 

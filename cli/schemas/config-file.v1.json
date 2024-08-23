@@ -41,10 +41,10 @@
           "markdownDescription": "Differentiate between undefined and not present when type checking\n\nSee more: https://www.typescriptlang.org/tsconfig#exactOptionalPropertyTypes"
         },
         "experimentalDecorators": {
-          "description": "Enable experimental support for TC39 stage 2 draft decorators.",
+          "description": "Enable experimental support for legacy experimental decorators.",
           "type": "boolean",
-          "default": true,
-          "markdownDescription": "Enable experimental support for TC39 stage 2 draft decorators.\n\nSee more: https://www.typescriptlang.org/tsconfig#experimentalDecorators"
+          "default": false,
+          "markdownDescription": "Enable experimental support for legacy experimental decorators.\n\nSee more: https://www.typescriptlang.org/tsconfig#experimentalDecorators"
         },
         "jsx": {
           "description": "Specify what JSX code is generated.",
@@ -119,10 +119,10 @@
           "markdownDescription": "Enable error reporting for fallthrough cases in switch statements.\n\nSee more: https://www.typescriptlang.org/tsconfig#noFallthroughCasesInSwitch"
         },
         "noImplicitAny": {
-          "description": "Enable error reporting for expressions and declarations with an implied `any` type..",
+          "description": "Enable error reporting for expressions and declarations with an implied `any` type.",
           "type": "boolean",
           "default": true,
-          "markdownDescription": "Enable error reporting for expressions and declarations with an implied `any` type..\n\nSee more: https://www.typescriptlang.org/tsconfig#noImplicitAny"
+          "markdownDescription": "Enable error reporting for expressions and declarations with an implied `any` type.\n\nSee more: https://www.typescriptlang.org/tsconfig#noImplicitAny"
         },
         "noImplicitOverride": {
           "description": "Ensure overriding members in derived classes are marked with an override modifier.",
@@ -147,6 +147,12 @@
           "type": "boolean",
           "default": true,
           "markdownDescription": "Disable adding 'use strict' directives in emitted JavaScript files.\n\nSee more: https://www.typescriptlang.org/tsconfig#noImplicitUseStrict"
+        },
+        "noPropertyAccessFromIndexSignature": {
+          "description": "Enforces using indexed accessors for keys declared using an indexed type.",
+          "type": "boolean",
+          "default": false,
+          "markdownDescription": "Enforces using indexed accessors for keys declared using an indexed type.\n\nSee more: https://www.typescriptlang.org/tsconfig#noPropertyAccessFromIndexSignature"
         },
         "noStrictGenericChecks": {
           "description": "Disable strict checking of generic signatures in function types.",
@@ -213,6 +219,12 @@
           "type": "boolean",
           "default": false,
           "markdownDescription": "Suppress `noImplicitAny` errors when indexing objects that lack index signatures.\n\nSee more: https://www.typescriptlang.org/tsconfig#suppressImplicitAnyIndexErrors"
+        },
+        "useUnknownInCatchVariables": {
+          "description": "Default catch clause variables as `unknown` instead of `any`.",
+          "type": "boolean",
+          "default": false,
+          "markdownDescription": "Default catch clause variables as `unknown` instead of `any`.\n\nSee more: https://www.typescriptlang.org/tsconfig#useUnknownInCatchVariables"
         }
       }
     },
@@ -552,8 +564,20 @@
     },
     "lock": {
       "description": "Whether to use a lock file or the path to use for the lock file. Can be overridden by CLI arguments.",
-      "type": ["string", "boolean"],
-      "default": true
+      "type": ["string", "boolean", "object"],
+      "default": true,
+      "properties": {
+        "path": {
+          "type": "string",
+          "description": "The path to use for the lock file.",
+          "default": "deno.lock"
+        },
+        "frozen": {
+          "type": "boolean",
+          "description": "Whether to exit with an error if lock file is out of date.",
+          "default": false
+        }
+      }
     },
     "unstable": {
       "type": "array",
@@ -607,6 +631,13 @@
           "examples": [{ ".": "./mod.ts" }]
         }
       ]
+    },
+    "patch": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "description": "UNSTABLE: List of relative paths to folders containing JSR packages to use local versions of."
     },
     "workspace": {
       "oneOf": [

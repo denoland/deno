@@ -7,7 +7,7 @@ pub fn op_v8_cached_data_version_tag() -> u32 {
   v8::script_compiler::cached_data_version_tag()
 }
 
-#[op2]
+#[op2(fast)]
 pub fn op_v8_get_heap_statistics(
   scope: &mut v8::HandleScope,
   #[buffer] buffer: &mut [f64],

@@ -1,6 +1,8 @@
 #!/usr/bin/env -S deno run --allow-read=. --allow-write=. --allow-run=git --config=tests/config/deno.json
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
+// deno-lint-ignore-file no-console
+
 /** This copies the test files according to the config file `tests/node_compat/config.jsonc` */
 
 import { walk } from "@std/fs/walk";
