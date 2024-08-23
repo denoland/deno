@@ -43,11 +43,6 @@ edition = "2021"
 license = "MIT"
 repository = "https://github.com/denoland/deno"
 
-# Until https://github.com/ebkalderon/tower-lsp/pull/401 gets landed, we're
-# patching it in.
-[patch.crates-io]
-tower-lsp = { git = "https://github.com/denoland/tower-lsp.git", rev = "910e0f8" }
-
 [workspace.dependencies]
 deno_ast = { version = "=0.41.2", features = ["transpiling"] }
 deno_core = { version = "0.306.0" }
@@ -399,3 +394,8 @@ opt-level = 3
 opt-level = 3
 [profile.release.package.zstd-sys]
 opt-level = 3
+
+# Until https://github.com/ebkalderon/tower-lsp/pull/401 gets landed, we're
+# patching it in.
+[patch.crates-io]
+tower-lsp = { git = "https://github.com/denoland/tower-lsp.git", rev = "910e0f8" }

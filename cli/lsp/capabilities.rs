@@ -155,7 +155,6 @@ pub fn server_capabilities(
     diagnostic_provider: None,
     inline_value_provider: None,
     inline_completion_provider: None,
-    // TODO(nayeemrmn); Provide!
     notebook_document_sync: None,
   }
 }
