@@ -233,7 +233,7 @@ pub mod reporter {
     let mut s = String::new();
 
     s.push_str(&format!("{:<size$}", n));
-    s.push_str(&format!("{}: {}", colors::red("error"), e.message));
+    s.push_str(&format!(" {}: {}", colors::red("error"), e.message));
 
     if let Some(ref stack) = e.stack {
       s.push('\n');
