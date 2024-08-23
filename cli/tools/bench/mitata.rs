@@ -47,55 +47,34 @@ fn human_readable_decimal_with_fractional(
     .unwrap()
     .join(",");
 
-  format!("{}.{}", fmt_decimal, fractional)
+  if fmt_decimal.len() >= 4 {
+    format!("{:>13}", fmt_decimal)
+  } else {
+    format!("{:>11}.{}", fmt_decimal, fractional)
+  }
 }
 
 pub fn fmt_duration(time: f64) -> String {
-  // SAFETY: this is safe since its just reformatting numbers
-  unsafe {
-    if time < 1e0 {
-      return format!(
-        "{} ps",
-        f64::from_str(&format!("{:.2}", time * 1e3)).unwrap_unchecked()
-      );
-    }
-
-    if time < 1e3 {
-      return format!(
-        "{} ns",
-        f64::from_str(&format!("{:.2}", time)).unwrap_unchecked()
-      );
-    }
-    if time < 1e6 {
-      return format!(
-        "{} µs",
-        f64::from_str(&format!("{:.2}", time / 1e3)).unwrap_unchecked()
-      );
-    }
-    if time < 1e9 {
-      return format!(
-        "{} ms",
-        f64::from_str(&format!("{:.2}", time / 1e6)).unwrap_unchecked()
-      );
-    }
-    if time < 1e12 {
-      return format!(
-        "{} s",
-        f64::from_str(&format!("{:.2}", time / 1e9)).unwrap_unchecked()
-      );
-    }
-    if time < 36e11 {
-      return format!(
-        "{} m",
-        f64::from_str(&format!("{:.2}", time / 60e9)).unwrap_unchecked()
-      );
-    }
-
-    format!(
-      "{} h",
-      f64::from_str(&format!("{:.2}", time / 36e11)).unwrap_unchecked()
-    )
+  if time < 1e0 {
+    return format!("{:.1} ps", time * 1e3);
   }
+  if time < 1e3 {
+    return format!("{:.1} ns", time);
+  }
+  if time < 1e6 {
+    return format!("{:.1} µs", time / 1e3);
+  }
+  if time < 1e9 {
+    return format!("{:.1} ms", time / 1e6);
+  }
+  if time < 1e12 {
+    return format!("{:.1} s", time / 1e9);
+  }
+  if time < 36e11 {
+    return format!("{:.1} m", time / 60e9);
+  }
+
+  format!("{:.1} h", time / 36e11)
 }
 
 pub mod cpu {
@@ -231,16 +210,19 @@ pub mod reporter {
   pub fn br(options: &Options) -> String {
     let mut s = String::new();
 
-    s.push_str(&"-".repeat(
-      options.size
-        + 14 * options.avg as usize
-        + 14 * options.avg as usize
-        + 24 * options.min_max as usize,
-    ));
+    s.push_str(&"-".repeat(options.size));
 
+    if options.avg {
+      s.push(' ');
+      s.push_str(&"-".repeat(13 + 1 + 13));
+    }
+    if options.min_max {
+      s.push(' ');
+      s.push_str(&"-".repeat(21));
+    }
     if options.percentiles {
       s.push(' ');
-      s.push_str(&"-".repeat(9 + 10 + 10));
+      s.push_str(&"-".repeat(8 + 1 + 8 + 1 + 8));
     }
 
     s
@@ -268,14 +250,14 @@ pub mod reporter {
 
     s.push_str(&format!("{:<size$}", "benchmark"));
     if options.avg {
-      s.push_str(&format!("{:>14}", "time (avg)"));
-      s.push_str(&format!("{:>14}", "iter/s"));
+      s.push_str(&format!(" {:<13}", "time (avg)"));
+      s.push_str(&format!(" {:>13}", "iter/s"));
     }
     if options.min_max {
-      s.push_str(&format!("{:>24}", "(min … max)"));
+      s.push_str(&format!(" {:^21}", "(min … max)"));
     }
     if options.percentiles {
-      s.push_str(&format!(" {:>9} {:>9} {:>9}", "p75", "p99", "p995"));
+      s.push_str(&format!(" {:>8} {:>8} {:>8}", "p75", "p99", "p995"));
     }
 
     s
@@ -293,28 +275,28 @@ pub mod reporter {
 
     if options.avg {
       s.push_str(&format!(
-        "{:>30}",
-        format!("{}/iter", colors::yellow(fmt_duration(stats.avg)))
+        " {}/iter",
+        colors::yellow(&format!("{:>8}", fmt_duration(stats.avg)))
       ));
-      s.push_str(&format!("{:>14}", avg_to_iter_per_s(stats.avg)));
+      s.push_str(&format!(" {}", &avg_to_iter_per_s(stats.avg)));
     }
     if options.min_max {
       s.push_str(&format!(
-        "{:>50}",
-        format!(
-          "({} … {})",
-          colors::cyan(fmt_duration(stats.min)),
-          colors::magenta(fmt_duration(stats.max))
-        )
+        " ({} … {})",
+        colors::cyan(format!("{:>8}", fmt_duration(stats.min))),
+        colors::magenta(format!("{:>8}", fmt_duration(stats.max)))
       ));
     }
     if options.percentiles {
-      s.push_str(&format!(
-        " {:>22} {:>22} {:>22}",
-        colors::magenta(fmt_duration(stats.p75)),
-        colors::magenta(fmt_duration(stats.p99)),
-        colors::magenta(fmt_duration(stats.p995))
-      ));
+      s.push_str(
+        &colors::magenta(format!(
+          " {:>8} {:>8} {:>8}",
+          fmt_duration(stats.p75),
+          fmt_duration(stats.p99),
+          fmt_duration(stats.p995)
+        ))
+        .to_string(),
+      );
     }
 
     s
