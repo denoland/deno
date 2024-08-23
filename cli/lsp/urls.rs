@@ -384,7 +384,7 @@ mod tests {
   #[test]
   fn test_normalize_windows_path() {
     let map = LspUrlMap::default();
-    let fixture = resolve_url(
+    let fixture = Uri::from_str(
       "file:///c%3A/Users/deno/Desktop/file%20with%20spaces%20in%20name.txt",
     )
     .unwrap();
