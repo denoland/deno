@@ -2,6 +2,8 @@
 
 use std::io::Write;
 
+use super::draw_thread::DrawThread;
+
 struct CliLogger(env_logger::Logger);
 
 impl CliLogger {
@@ -21,7 +23,13 @@ impl log::Log for CliLogger {
 
   fn log(&self, record: &log::Record) {
     if self.enabled(record.metadata()) {
+      // it was considered to hold the draw thread's internal lock
+      // across logging, but if outputting to stderr blocks then that
+      // could potentially block other threads that access the draw
+      // thread's state
+      DrawThread::hide();
       self.0.log(record);
+      DrawThread::show();
     }
   }
 
