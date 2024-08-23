@@ -46,7 +46,7 @@ repository = "https://github.com/denoland/deno"
 # Until https://github.com/ebkalderon/tower-lsp/pull/401 gets landed, we're
 # patching it in.
 [patch.crates-io]
-tower-lsp = { git = "https://github.com/zebreus/tower-lsp.git", rev = "910e0f8" }
+tower-lsp = { git = "https://github.com/denoland/tower-lsp.git", rev = "910e0f8" }
 
 [workspace.dependencies]
 deno_ast = { version = "=0.41.2", features = ["transpiling"] }

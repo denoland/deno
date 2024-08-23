@@ -7546,7 +7546,7 @@ checksum = "c20c8dbed6283a09604c3e69b4b7eeb54e298b8a600d4d5ecb5ad39de609f1d0"
 [[package]]
 name = "tower-lsp"
 version = "0.20.0"
-source = "git+https://github.com/zebreus/tower-lsp.git?rev=910e0f8#910e0f82f2b7d767b97ed51ccf3146e3c6794924"
+source = "git+https://github.com/denoland/tower-lsp.git?rev=910e0f8#910e0f82f2b7d767b97ed51ccf3146e3c6794924"
 dependencies = [
  "async-trait",
  "auto_impl",
@@ -7568,7 +7568,7 @@ dependencies = [
 [[package]]
 name = "tower-lsp-macros"
 version = "0.9.0"
-source = "git+https://github.com/zebreus/tower-lsp.git?rev=910e0f8#910e0f82f2b7d767b97ed51ccf3146e3c6794924"
+source = "git+https://github.com/denoland/tower-lsp.git?rev=910e0f8#910e0f82f2b7d767b97ed51ccf3146e3c6794924"
 dependencies = [
  "proc-macro2",
  "quote",
