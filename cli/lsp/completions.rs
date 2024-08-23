@@ -35,12 +35,12 @@ use deno_semver::package::PackageNv;
 use import_map::ImportMap;
 use indexmap::IndexSet;
 use lsp_types::CompletionList;
-use once_cell::sync::Lazy;
 use regex::Regex;
+use std::sync::LazyLock;
 use tower_lsp::lsp_types as lsp;
 
-static FILE_PROTO_RE: Lazy<Regex> =
-  lazy_regex::lazy_regex!(r#"^file:/{2}(?:/[A-Za-z]:)?"#);
+static FILE_PROTO_RE: LazyLock<Regex> =
+  LazyLock::new(|| Regex::new(r#"^file:/{2}(?:/[A-Za-z]:)?"#).unwrap());
 
 const CURRENT_PATH: &str = ".";
 const PARENT_PATH: &str = "..";

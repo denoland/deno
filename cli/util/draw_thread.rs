@@ -4,9 +4,9 @@ use console_static_text::ConsoleStaticText;
 use deno_core::parking_lot::Mutex;
 use deno_core::unsync::spawn_blocking;
 use deno_runtime::ops::tty::ConsoleSize;
-use once_cell::sync::Lazy;
 use std::io::IsTerminal;
 use std::sync::Arc;
+use std::sync::LazyLock;
 use std::time::Duration;
 
 use crate::util::console::console_size;
@@ -53,24 +53,25 @@ impl InternalState {
   }
 }
 
-static INTERNAL_STATE: Lazy<Arc<Mutex<InternalState>>> = Lazy::new(|| {
-  Arc::new(Mutex::new(InternalState {
-    drawer_id: 0,
-    hide: false,
-    has_draw_thread: false,
-    entries: Vec::new(),
-    next_entry_id: 0,
-    static_text: ConsoleStaticText::new(|| {
-      let size = console_size().unwrap();
-      console_static_text::ConsoleSize {
-        cols: Some(size.cols as u16),
-        rows: Some(size.rows as u16),
-      }
-    }),
-  }))
-});
+static INTERNAL_STATE: LazyLock<Arc<Mutex<InternalState>>> =
+  LazyLock::new(|| {
+    Arc::new(Mutex::new(InternalState {
+      drawer_id: 0,
+      hide: false,
+      has_draw_thread: false,
+      entries: Vec::new(),
+      next_entry_id: 0,
+      static_text: ConsoleStaticText::new(|| {
+        let size = console_size().unwrap();
+        console_static_text::ConsoleSize {
+          cols: Some(size.cols as u16),
+          rows: Some(size.rows as u16),
+        }
+      }),
+    }))
+  });
 
-static IS_TTY_WITH_CONSOLE_SIZE: Lazy<bool> = Lazy::new(|| {
+static IS_TTY_WITH_CONSOLE_SIZE: LazyLock<bool> = LazyLock::new(|| {
   std::io::stderr().is_terminal()
     && console_size()
       .map(|s| s.cols > 0 && s.rows > 0)

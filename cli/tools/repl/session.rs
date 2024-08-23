@@ -49,9 +49,9 @@ use deno_graph::PositionRange;
 use deno_graph::SpecifierWithRange;
 use deno_runtime::worker::MainWorker;
 use deno_semver::npm::NpmPackageReqReference;
-use once_cell::sync::Lazy;
 use regex::Match;
 use regex::Regex;
+use std::sync::LazyLock;
 use tokio::sync::Mutex;
 
 fn comment_source_to_position_range(
@@ -79,7 +79,7 @@ fn comment_source_to_position_range(
 
 /// We store functions used in the repl on this object because
 /// the user might modify the `Deno` global or delete it outright.
-pub static REPL_INTERNALS_NAME: Lazy<String> = Lazy::new(|| {
+pub static REPL_INTERNALS_NAME: LazyLock<String> = LazyLock::new(|| {
   let now = std::time::SystemTime::now();
   let seconds = now
     .duration_since(std::time::SystemTime::UNIX_EPOCH)
@@ -838,14 +838,14 @@ fn parse_source_as(
 
 // TODO(bartlomieju): remove these and use regexes from `deno_graph`
 /// Matches the `@jsxImportSource` pragma.
-static JSX_IMPORT_SOURCE_RE: Lazy<Regex> =
-  Lazy::new(|| Regex::new(r"(?i)^[\s*]*@jsxImportSource\s+(\S+)").unwrap());
+static JSX_IMPORT_SOURCE_RE: LazyLock<Regex> =
+  LazyLock::new(|| Regex::new(r"(?i)^[\s*]*@jsxImportSource\s+(\S+)").unwrap());
 /// Matches the `@jsx` pragma.
-static JSX_RE: Lazy<Regex> =
-  Lazy::new(|| Regex::new(r"(?i)^[\s*]*@jsx\s+(\S+)").unwrap());
+static JSX_RE: LazyLock<Regex> =
+  LazyLock::new(|| Regex::new(r"(?i)^[\s*]*@jsx\s+(\S+)").unwrap());
 /// Matches the `@jsxFrag` pragma.
-static JSX_FRAG_RE: Lazy<Regex> =
-  Lazy::new(|| Regex::new(r"(?i)^[\s*]*@jsxFrag\s+(\S+)").unwrap());
+static JSX_FRAG_RE: LazyLock<Regex> =
+  LazyLock::new(|| Regex::new(r"(?i)^[\s*]*@jsxFrag\s+(\S+)").unwrap());
 
 #[derive(Default, Debug)]
 struct AnalyzedJsxPragmas {

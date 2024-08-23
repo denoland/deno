@@ -2,8 +2,7 @@
 
 use std::path::PathBuf;
 use std::sync::Arc;
-
-use once_cell::sync::OnceCell;
+use std::sync::OnceLock;
 
 use super::cache_db::CacheDB;
 use super::cache_db::CacheDBConfiguration;
@@ -17,13 +16,13 @@ use super::node::NODE_ANALYSIS_CACHE_DB;
 
 pub struct Caches {
   dir_provider: Arc<DenoDirProvider>,
-  fmt_incremental_cache_db: OnceCell<CacheDB>,
-  lint_incremental_cache_db: OnceCell<CacheDB>,
-  dep_analysis_db: OnceCell<CacheDB>,
-  fast_check_db: OnceCell<CacheDB>,
-  node_analysis_db: OnceCell<CacheDB>,
-  type_checking_cache_db: OnceCell<CacheDB>,
-  code_cache_db: OnceCell<CacheDB>,
+  fmt_incremental_cache_db: OnceLock<CacheDB>,
+  lint_incremental_cache_db: OnceLock<CacheDB>,
+  dep_analysis_db: OnceLock<CacheDB>,
+  fast_check_db: OnceLock<CacheDB>,
+  node_analysis_db: OnceLock<CacheDB>,
+  type_checking_cache_db: OnceLock<CacheDB>,
+  code_cache_db: OnceLock<CacheDB>,
 }
 
 impl Caches {
@@ -41,7 +40,7 @@ impl Caches {
   }
 
   fn make_db(
-    cell: &OnceCell<CacheDB>,
+    cell: &OnceLock<CacheDB>,
     config: &'static CacheDBConfiguration,
     path: Option<PathBuf>,
   ) -> CacheDB {
