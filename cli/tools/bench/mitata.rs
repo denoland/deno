@@ -214,7 +214,7 @@ pub mod reporter {
 
     if options.avg {
       s.push(' ');
-      s.push_str(&"-".repeat(13 + 1 + 13));
+      s.push_str(&"-".repeat(15 + 1 + 13));
     }
     if options.min_max {
       s.push(' ');
@@ -250,7 +250,7 @@ pub mod reporter {
 
     s.push_str(&format!("{:<size$}", "benchmark"));
     if options.avg {
-      s.push_str(&format!(" {:<13}", "time (avg)"));
+      s.push_str(&format!(" {:<15}", "time/iter (avg)"));
       s.push_str(&format!(" {:>13}", "iter/s"));
     }
     if options.min_max {
@@ -275,8 +275,8 @@ pub mod reporter {
 
     if options.avg {
       s.push_str(&format!(
-        " {}/iter",
-        colors::yellow(&format!("{:>8}", fmt_duration(stats.avg)))
+        " {}",
+        colors::yellow(&format!("{:>15}", fmt_duration(stats.avg)))
       ));
       s.push_str(&format!(" {}", &avg_to_iter_per_s(stats.avg)));
     }
