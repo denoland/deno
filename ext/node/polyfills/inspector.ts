@@ -2,12 +2,14 @@
 // Copyright Joyent and Node contributors. All rights reserved. MIT license.
 
 import {
-  op_create_inspector_session,
+  op_create_inspector_session2,
+  op_inspector_disconnect,
   op_inspector_get_message_from_v8,
   op_inspector_post,
 } from "ext:core/ops";
 import {
   ERR_INSPECTOR_ALREADY_CONNECTED,
+  ERR_INSPECTOR_CLOSED,
   ERR_INSPECTOR_COMMAND,
   ERR_INSPECTOR_NOT_CONNECTED,
 } from "ext:deno_node/internal/errors.ts";
@@ -16,6 +18,7 @@ import {
   validateObject,
   validateString,
 } from "ext:deno_node/internal/validators.mjs";
+import { nextTick } from "ext:deno_node/_next_tick.ts";
 import { EventEmitter } from "node:events";
 import { emitWarning } from "node:process";
 import { notImplemented } from "ext:deno_node/_utils.ts";
@@ -27,7 +30,7 @@ const {
 } = primordials;
 
 class Session extends EventEmitter {
-  #connection: number | null = null;
+  #connection: any = null;
   #nextId = 1;
   #messageCallbacks = new SafeMap();
 
@@ -38,8 +41,7 @@ class Session extends EventEmitter {
     }
 
     // this.#connection = TODO;
-    this.#connection = 1;
-    op_create_inspector_session();
+    this.#connection = op_create_inspector_session2();
 
     // Start listening for messages - this is using "unrefed" op
     // so that listening for notifications doesn't block the event loop.
@@ -54,7 +56,7 @@ class Session extends EventEmitter {
   async #listenForMessage(unref: boolean) {
     let message: string;
     try {
-      const opPromise = op_inspector_get_message_from_v8();
+      const opPromise = op_inspector_get_message_from_v8(this.#connection);
       if (unref) {
         core.unrefOpPromise(opPromise);
       }
@@ -117,9 +119,8 @@ class Session extends EventEmitter {
     if (callback) {
       this.#messageCallbacks.set(id, callback);
     }
-    console.log("posting message");
-    // TODO(bartlomieju): Ignore errors?
-    op_inspector_post(id, method, params);
+    // TODO(bartlomieju): Should this ignore errors? Check with Node impl
+    op_inspector_post(this.#connection, id, method, params);
     this.#listenForMessage(false);
   }
 
@@ -128,7 +129,17 @@ class Session extends EventEmitter {
    * error.
    */
   disconnect() {
-    notImplemented("inspector.Session.prototype.disconnect");
+    if (!this.#connection) {
+      return;
+    }
+    op_inspector_disconnect(this.#connection);
+    this.#connection = null;
+    const remainingCallbacks = this.#messageCallbacks.values();
+    for (const callback of remainingCallbacks) {
+      nextTick(callback, new ERR_INSPECTOR_CLOSED());
+    }
+    this.#messageCallbacks.clear();
+    this.#nextId = 1;
   }
 }
 
