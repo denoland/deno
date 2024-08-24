@@ -8,8 +8,20 @@
 
 use crate::colors;
 
+/// Taken from https://stackoverflow.com/a/76572321
+fn precision_f64(x: f64, decimals: u32) -> f64 {
+  if x == 0. || decimals == 0 {
+    0.
+  } else {
+    let shift = decimals as i32 - x.abs().log10().ceil() as i32;
+    let shift_factor = 10_f64.powi(shift);
+
+    (x * shift_factor).round() / shift_factor
+  }
+}
+
 fn avg_to_iter_per_s(time: f64) -> String {
-  let iter_per_s = 1e9 / time;
+  let iter_per_s = precision_f64(1e9 / time, 4);
   let (decimals, fractional) = into_decimal_and_fractional_parts(iter_per_s);
   human_readable_decimal_with_fractional(decimals, fractional)
 }
@@ -315,17 +327,6 @@ pub mod reporter {
       colors::gray("summary"),
       colors::cyan_bold(&baseline.name)
     ));
-
-    fn precision_f64(x: f64, decimals: u32) -> f64 {
-      if x == 0. || decimals == 0 {
-        0.
-      } else {
-        let shift = decimals as i32 - x.abs().log10().ceil() as i32;
-        let shift_factor = 10_f64.powi(shift);
-
-        (x * shift_factor).round() / shift_factor
-      }
-    }
 
     for b in benchmarks.iter().filter(|b| *b != baseline) {
       let faster = b.stats.avg >= baseline.stats.avg;
