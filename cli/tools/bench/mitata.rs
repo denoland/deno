@@ -59,9 +59,9 @@ fn human_readable_decimal_with_fractional(
     .join(",");
 
   if fmt_decimal.len() >= 4 {
-    format!("{:>13}", fmt_decimal)
+    format!("{}", fmt_decimal)
   } else {
-    format!("{:>11}.{}", fmt_decimal, fractional)
+    format!("{}.{}", fmt_decimal, fractional)
   }
 }
 
@@ -289,7 +289,7 @@ pub mod reporter {
         " {}",
         colors::yellow(&format!("{:>15}", fmt_duration(stats.avg)))
       ));
-      s.push_str(&format!(" {}", &avg_to_iter_per_s(stats.avg)));
+      s.push_str(&format!(" {:>13}", &avg_to_iter_per_s(stats.avg)));
     }
     if options.min_max {
       s.push_str(&format!(
@@ -380,14 +380,14 @@ mod tests {
 
   #[test]
   fn test_avg_to_iter_per_s() {
-    assert_eq!(avg_to_iter_per_s(55.85), "   17,910,000");
-    assert_eq!(avg_to_iter_per_s(64_870_000.0), "         15.4");
-    assert_eq!(avg_to_iter_per_s(104_370_000.0), "          9.6");
-    assert_eq!(avg_to_iter_per_s(640_000.0), "        1,563");
-    assert_eq!(avg_to_iter_per_s(6_400_000.0), "        156.3");
-    assert_eq!(avg_to_iter_per_s(46_890_000.0), "         21.3");
-    assert_eq!(avg_to_iter_per_s(100_000_000.0), "         10.0");
-    assert_eq!(avg_to_iter_per_s(1_000_000_000.0), "          1.0");
-    assert_eq!(avg_to_iter_per_s(5_920_000_000.0), "          0.2");
+    assert_eq!(avg_to_iter_per_s(55.85), "17,910,000");
+    assert_eq!(avg_to_iter_per_s(64_870_000.0), "15.4");
+    assert_eq!(avg_to_iter_per_s(104_370_000.0), "9.6");
+    assert_eq!(avg_to_iter_per_s(640_000.0), "1,563");
+    assert_eq!(avg_to_iter_per_s(6_400_000.0), "156.3");
+    assert_eq!(avg_to_iter_per_s(46_890_000.0), "21.3");
+    assert_eq!(avg_to_iter_per_s(100_000_000.0), "10.0");
+    assert_eq!(avg_to_iter_per_s(1_000_000_000.0), "1.0");
+    assert_eq!(avg_to_iter_per_s(5_920_000_000.0), "0.2");
   }
 }
