@@ -379,7 +379,7 @@ deno_core::extension!(deno_node,
     ops::inspector::op_inspector_connect,
     ops::inspector::op_inspector_disconnect,
     ops::inspector::op_inspector_post,
-    ops::inspector::op_inspector_get_notification,
+    ops::inspector::op_inspector_get_message_from_v8,
   ],
   esm_entry_point = "ext:deno_node/02_init.js",
   esm = [

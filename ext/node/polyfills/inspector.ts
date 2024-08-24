@@ -3,47 +3,80 @@
 
 import {
   op_create_inspector_session,
-  op_inspector_get_notification,
+  op_inspector_get_message_from_v8,
   op_inspector_post,
 } from "ext:core/ops";
+import {
+  ERR_INSPECTOR_ALREADY_CONNECTED,
+  ERR_INSPECTOR_COMMAND,
+  ERR_INSPECTOR_NOT_CONNECTED,
+} from "ext:deno_node/internal/errors.ts";
+import {
+  validateFunction,
+  validateObject,
+  validateString,
+} from "ext:deno_node/internal/validators.mjs";
 import { EventEmitter } from "node:events";
+import { emitWarning } from "node:process";
 import { notImplemented } from "ext:deno_node/_utils.ts";
 import { core, primordials } from "ext:core/mod.js";
 
 const {
   SafeMap,
+  JSONParse,
 } = primordials;
 
 class Session extends EventEmitter {
-  #connection = null;
+  #connection: number | null = null;
   #nextId = 1;
   #messageCallbacks = new SafeMap();
 
   /** Connects the session to the inspector back-end. */
   connect(): void {
-    // notImplemented("inspector.Session.prototype.connect");
     if (this.#connection) {
-      throw new Error("TODO");
+      throw new ERR_INSPECTOR_ALREADY_CONNECTED("The inspector session");
     }
 
     // this.#connection = TODO;
+    this.#connection = 1;
     op_create_inspector_session();
 
     (async () => {
       while (true) {
-        let notification;
+        let message: string;
         try {
-          const opPromise = op_inspector_get_notification();
-          core.unrefOpPromise(opPromise);
-          notification = await opPromise;
-        } catch (_e) {
-          console.log("notification error", _e);
-          break;
+          const opPromise = op_inspector_get_message_from_v8();
+          // if (this.#messageCallbacks.size === 0) {
+          //   core.unrefOpPromise(opPromise);
+          // }
+          message = await opPromise;
+          this.#onMessage(message);
+        } catch (e) {
+          emitWarning(e);
         }
-        this.emit(notification.method, notification);
-        this.emit("inspectorNotification", notification);
       }
     })();
+  }
+
+  #onMessage(message: string) {
+    core.print("received message" + message + "\n", true);
+    const parsed = JSONParse(message);
+    if (parsed.id) {
+      const callback = this.#messageCallbacks.get(parsed.id);
+      this.#messageCallbacks.delete(parsed.id);
+      if (callback) {
+        if (parsed.error) {
+          return callback(
+            new ERR_INSPECTOR_COMMAND(parsed.error.code, parsed.error.message),
+          );
+        }
+
+        callback(null, parsed.result);
+      }
+    } else {
+      this.emit(parsed.method, parsed);
+      this.emit("inspectorNotification", parsed);
+    }
   }
 
   /** Connects the session to the main thread
@@ -55,14 +88,34 @@ class Session extends EventEmitter {
   /** Posts a message to the inspector back-end. */
   post(
     method: string,
-    params?: Record<string, unknown>,
+    params: Record<string, unknown> | null,
     callback?: (...args: unknown[]) => void,
   ): void {
-    op_inspector_post(method, params).then((
-      response,
-    ) => {
-      callback?.(response);
-    });
+    validateString(method, "method");
+    if (!callback && typeof params === "function") {
+      callback = params;
+      params = null;
+    }
+    if (params) {
+      validateObject(params, "params");
+    }
+    if (callback) {
+      validateFunction(callback, "callback");
+    }
+
+    if (!this.#connection) {
+      throw new ERR_INSPECTOR_NOT_CONNECTED();
+    }
+    const id = this.#nextId++;
+    if (callback) {
+      this.#messageCallbacks.set(id, callback);
+    }
+    console.log("posting message");
+    const opPromise = op_inspector_post(id, method, params);
+    core.unrefOpPromise(opPromise);
+    // TODO(bartlomieju): this should be fully sync
+    // Ignore errors
+    opPromise.catch(() => {});
   }
 
   /** Immediately closes the session, all pending

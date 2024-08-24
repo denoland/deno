@@ -4,12 +4,15 @@ use deno_core::futures::StreamExt as _;
 use deno_core::op2;
 use deno_core::serde_json;
 use deno_core::LocalInspectorSession;
+use deno_core::LocalInspectorSessionRaw;
 use deno_core::OpState;
 use std::cell::RefCell;
 use std::rc::Rc;
 use std::sync::Arc;
 use tokio::sync::Mutex;
 
+type InspectorMessageReceiver =
+  Arc<Mutex<UnboundedReceiver<deno_core::InspectorMsg>>>;
 type NotificationReceiver = Arc<Mutex<UnboundedReceiver<serde_json::Value>>>;
 
 #[op2(fast)]
@@ -25,28 +28,29 @@ pub fn op_inspector_disconnect() {}
 #[serde]
 pub async fn op_inspector_post(
   state: Rc<RefCell<OpState>>,
+  #[smi] id: i32,
   #[string] method: String,
   #[serde] params: Option<serde_json::Value>,
-) -> Result<serde_json::Value, AnyError> {
+) -> Result<(), AnyError> {
   let session = {
     let s = state.borrow();
-    s.borrow::<Arc<Mutex<LocalInspectorSession>>>().clone()
+    s.borrow::<Rc<LocalInspectorSessionRaw>>().clone()
   };
-  let mut session = session.lock().await;
-  session.post_message(&method, params).await
+  session.post_message(id, &method, params);
+  Ok(())
 }
 
 #[op2(async)]
-#[serde]
-pub async fn op_inspector_get_notification(
+#[string]
+pub async fn op_inspector_get_message_from_v8(
   state: Rc<RefCell<OpState>>,
-) -> Option<serde_json::Value> {
-  let receiver = {
+) -> Option<String> {
+  let session = {
     let s = state.borrow();
-    s.borrow::<NotificationReceiver>().clone()
+    s.borrow::<Rc<LocalInspectorSessionRaw>>().clone()
   };
-
-  let mut receiver = receiver.lock().await;
-  let maybe_msg = receiver.next().await;
-  maybe_msg
+  eprintln!("waiting for message");
+  let maybe_inspector_message = session.receive_from_v8_session().await;
+  eprintln!("waited for message");
+  maybe_inspector_message.map(|msg| msg.content)
 }

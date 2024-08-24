@@ -697,24 +697,6 @@ impl MainWorker {
         panic!("Bootstrap exception: {error}");
       }
     }
-
-    // {
-    //   self.js_runtime.maybe_init_inspector();
-    //   let mut session =
-    //     self.js_runtime.inspector().borrow().create_local_session(
-    //       LocalInspectorSessionOptions {
-    //         kind: deno_core::InspectorSessionKind::LocalNonblocking,
-    //       },
-    //     );
-    //   let recv = session.take_notification_rx();
-    //   let op_state = self.js_runtime.op_state();
-    //   op_state
-    //     .borrow_mut()
-    //     .put(Arc::new(tokio::sync::Mutex::new(recv)));
-    //   op_state
-    //     .borrow_mut()
-    //     .put(Arc::new(tokio::sync::Mutex::new(session)));
-    // }
   }
 
   /// See [JsRuntime::execute_script](deno_core::JsRuntime::execute_script)

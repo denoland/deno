@@ -72,14 +72,14 @@ pub trait ModuleLoaderFactory: Send + Sync {
 }
 
 #[async_trait::async_trait(?Send)]
-pub trait HmrRunner: Send + Sync {
+pub trait HmrRunner {
   async fn start(&mut self) -> Result<(), AnyError>;
   async fn stop(&mut self) -> Result<(), AnyError>;
   async fn run(&mut self) -> Result<(), AnyError>;
 }
 
 #[async_trait::async_trait(?Send)]
-pub trait CoverageCollector: Send + Sync {
+pub trait CoverageCollector {
   async fn start_collecting(&mut self) -> Result<(), AnyError>;
   async fn stop_collecting(&mut self) -> Result<(), AnyError>;
 }
