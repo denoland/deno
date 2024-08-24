@@ -3,8 +3,8 @@
 use crate::http_util;
 use deno_core::error::AnyError;
 use deno_core::serde_json;
+use deno_core::url::Url;
 use deno_runtime::deno_fetch;
-use lsp_types::Url;
 use serde::de::DeserializeOwned;
 
 use crate::http_util::HttpClient;
