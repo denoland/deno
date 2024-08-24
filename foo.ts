@@ -3,6 +3,7 @@ import inspector from "node:inspector";
 const session = new inspector.Session();
 session.connect();
 
+console.log("asdf");
 session.on("inspectorNotification", (ev) => {
   console.log("Received notification", ev);
 });

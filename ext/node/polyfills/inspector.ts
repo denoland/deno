@@ -41,21 +41,28 @@ class Session extends EventEmitter {
     this.#connection = 1;
     op_create_inspector_session();
 
+    // Start listening for messages - this is using "unrefed" op
+    // so that listening for notifications doesn't block the event loop.
+    // When posting a message another promise should be started that is refed.
     (async () => {
       while (true) {
-        let message: string;
-        try {
-          const opPromise = op_inspector_get_message_from_v8();
-          // if (this.#messageCallbacks.size === 0) {
-          //   core.unrefOpPromise(opPromise);
-          // }
-          message = await opPromise;
-          this.#onMessage(message);
-        } catch (e) {
-          emitWarning(e);
-        }
+        await this.#listenForMessage(true);
       }
     })();
+  }
+
+  async #listenForMessage(unref: boolean) {
+    let message: string;
+    try {
+      const opPromise = op_inspector_get_message_from_v8();
+      if (unref) {
+        core.unrefOpPromise(opPromise);
+      }
+      message = await opPromise;
+      this.#onMessage(message);
+    } catch (e) {
+      emitWarning(e);
+    }
   }
 
   #onMessage(message: string) {
@@ -111,11 +118,9 @@ class Session extends EventEmitter {
       this.#messageCallbacks.set(id, callback);
     }
     console.log("posting message");
-    const opPromise = op_inspector_post(id, method, params);
-    core.unrefOpPromise(opPromise);
-    // TODO(bartlomieju): this should be fully sync
-    // Ignore errors
-    opPromise.catch(() => {});
+    // TODO(bartlomieju): Ignore errors?
+    op_inspector_post(id, method, params);
+    this.#listenForMessage(false);
   }
 
   /** Immediately closes the session, all pending
