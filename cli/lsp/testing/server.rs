@@ -10,6 +10,7 @@ use crate::lsp::config;
 use crate::lsp::documents::DocumentsFilter;
 use crate::lsp::language_server::StateSnapshot;
 use crate::lsp::performance::Performance;
+use crate::lsp::urls::url_to_uri;
 
 use deno_core::error::AnyError;
 use deno_core::parking_lot::Mutex;
@@ -26,10 +27,12 @@ use tower_lsp::jsonrpc::Error as LspError;
 use tower_lsp::jsonrpc::Result as LspResult;
 use tower_lsp::lsp_types as lsp;
 
-fn as_delete_notification(uri: ModuleSpecifier) -> TestingNotification {
+fn as_delete_notification(url: ModuleSpecifier) -> TestingNotification {
   TestingNotification::DeleteModule(
     lsp_custom::TestModuleDeleteNotificationParams {
-      text_document: lsp::TextDocumentIdentifier { uri },
+      text_document: lsp::TextDocumentIdentifier {
+        uri: url_to_uri(&url),
+      },
     },
   )
 }

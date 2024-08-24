@@ -12,6 +12,7 @@ use deno_core::serde_json::json;
 use deno_core::serde_json::Value;
 use deno_core::unsync::spawn;
 use deno_core::url;
+use deno_core::url::Url;
 use deno_core::ModuleSpecifier;
 use deno_graph::GraphKind;
 use deno_graph::Resolution;
@@ -85,6 +86,8 @@ use super::tsc::ChangeKind;
 use super::tsc::GetCompletionDetailsArgs;
 use super::tsc::TsServer;
 use super::urls;
+use super::urls::uri_to_url;
+use super::urls::url_to_uri;
 use crate::args::create_default_npmrc;
 use crate::args::get_root_cert_store;
 use crate::args::has_flag_env_var;
@@ -728,14 +731,17 @@ impl Inner {
       }
       // rootUri is deprecated by the LSP spec. If it's specified, merge it into
       // workspace_folders.
+      #[allow(deprecated)]
       if let Some(root_uri) = params.root_uri {
         if !workspace_folders.iter().any(|(_, f)| f.uri == root_uri) {
-          let name = root_uri.path_segments().and_then(|s| s.last());
+          let root_url =
+            self.url_map.normalize_url(&root_uri, LspUrlKind::Folder);
+          let name = root_url.path_segments().and_then(|s| s.last());
           let name = name.unwrap_or_default().to_string();
           workspace_folders.insert(
             0,
             (
-              self.url_map.normalize_url(&root_uri, LspUrlKind::Folder),
+              root_url,
               WorkspaceFolder {
                 uri: root_uri,
                 name,
@@ -1008,7 +1014,10 @@ impl Inner {
 
   async fn did_open(&mut self, params: DidOpenTextDocumentParams) {
     let mark = self.performance.mark_with_args("lsp.did_open", &params);
-    if params.text_document.uri.scheme() == "deno" {
+    let Some(scheme) = params.text_document.uri.scheme() else {
+      return;
+    };
+    if scheme.as_str() == "deno" {
       // we can ignore virtual text documents opening, as they don't need to
       // be tracked in memory, as they are static assets that won't change
       // already managed by the language service
@@ -1027,13 +1036,11 @@ impl Inner {
       lsp_warn!(
         "Unsupported language id \"{}\" received for document \"{}\".",
         params.text_document.language_id,
-        params.text_document.uri
+        params.text_document.uri.as_str()
       );
     }
-    let file_referrer = (self
-      .documents
-      .is_valid_file_referrer(&params.text_document.uri))
-    .then(|| params.text_document.uri.clone());
+    let file_referrer = Some(uri_to_url(&params.text_document.uri))
+      .filter(|s| self.documents.is_valid_file_referrer(s));
     let specifier = self
       .url_map
       .normalize_url(&params.text_document.uri, LspUrlKind::File);
@@ -1130,8 +1137,10 @@ impl Inner {
 
   async fn did_close(&mut self, params: DidCloseTextDocumentParams) {
     let mark = self.performance.mark_with_args("lsp.did_close", &params);
-    self.diagnostics_state.clear(&params.text_document.uri);
-    if params.text_document.uri.scheme() == "deno" {
+    let Some(scheme) = params.text_document.uri.scheme() else {
+      return;
+    };
+    if scheme.as_str() == "deno" {
       // we can ignore virtual text documents closing, as they don't need to
       // be tracked in memory, as they are static assets that won't change
       // already managed by the language service
@@ -1140,6 +1149,7 @@ impl Inner {
     let specifier = self
       .url_map
       .normalize_url(&params.text_document.uri, LspUrlKind::File);
+    self.diagnostics_state.clear(&specifier);
     if self.is_diagnosable(&specifier) {
       self.refresh_npm_specifiers().await;
       self.diagnostics_server.invalidate(&[specifier.clone()]);
@@ -1211,7 +1221,7 @@ impl Inner {
             _ => return None,
           };
           Some(lsp_custom::DenoConfigurationChangeEvent {
-            scope_uri: t.0.clone(),
+            scope_uri: url_to_uri(t.0),
             file_uri: e.uri.clone(),
             typ: lsp_custom::DenoConfigurationChangeType::from_file_change_type(
               e.typ,
@@ -1246,7 +1256,7 @@ impl Inner {
             _ => return None,
           };
           Some(lsp_custom::DenoConfigurationChangeEvent {
-            scope_uri: t.0.clone(),
+            scope_uri: url_to_uri(t.0),
             file_uri: e.uri.clone(),
             typ: lsp_custom::DenoConfigurationChangeType::from_file_change_type(
               e.typ,
@@ -1312,10 +1322,8 @@ impl Inner {
     &self,
     params: DocumentFormattingParams,
   ) -> LspResult<Option<Vec<TextEdit>>> {
-    let file_referrer = (self
-      .documents
-      .is_valid_file_referrer(&params.text_document.uri))
-    .then(|| params.text_document.uri.clone());
+    let file_referrer = Some(uri_to_url(&params.text_document.uri))
+      .filter(|s| self.documents.is_valid_file_referrer(s));
     let mut specifier = self
       .url_map
       .normalize_url(&params.text_document.uri, LspUrlKind::File);
@@ -1339,9 +1347,9 @@ impl Inner {
     // counterparts, but for formatting we want to favour the file URL.
     // TODO(nayeemrmn): Implement `Document::file_resource_path()` or similar.
     if specifier.scheme() != "file"
-      && params.text_document.uri.scheme() == "file"
+      && params.text_document.uri.scheme().map(|s| s.as_str()) == Some("file")
     {
-      specifier = params.text_document.uri.clone();
+      specifier = uri_to_url(&params.text_document.uri);
     }
     let file_path = specifier_to_file_path(&specifier).map_err(|err| {
       error!("{:#}", err);
@@ -2870,7 +2878,7 @@ impl Inner {
     let mut changes = vec![];
     for rename in params.files {
       let old_specifier = self.url_map.normalize_url(
-        &resolve_url(&rename.old_uri).unwrap(),
+        &url_to_uri(&resolve_url(&rename.old_uri).unwrap()),
         LspUrlKind::File,
       );
       let options = self
@@ -2896,7 +2904,7 @@ impl Inner {
             self.snapshot(),
             old_specifier,
             self.url_map.normalize_url(
-              &resolve_url(&rename.new_uri).unwrap(),
+              &url_to_uri(&resolve_url(&rename.new_uri).unwrap()),
               LspUrlKind::File,
             ),
             format_code_settings,
@@ -3494,19 +3502,20 @@ impl Inner {
     }
 
     let mut config_events = vec![];
-    for (scope_uri, config_data) in self.config.tree.data_by_scope().iter() {
+    for (scope_url, config_data) in self.config.tree.data_by_scope().iter() {
+      let scope_uri = url_to_uri(scope_url);
       if let Some(config_file) = config_data.maybe_deno_json() {
         config_events.push(lsp_custom::DenoConfigurationChangeEvent {
           scope_uri: scope_uri.clone(),
-          file_uri: config_file.specifier.clone(),
+          file_uri: url_to_uri(&config_file.specifier),
           typ: lsp_custom::DenoConfigurationChangeType::Added,
           configuration_type: lsp_custom::DenoConfigurationType::DenoJson,
         });
       }
       if let Some(package_json) = config_data.maybe_pkg_json() {
         config_events.push(lsp_custom::DenoConfigurationChangeEvent {
-          scope_uri: scope_uri.clone(),
-          file_uri: package_json.specifier(),
+          scope_uri,
+          file_uri: url_to_uri(&package_json.specifier()),
           typ: lsp_custom::DenoConfigurationChangeType::Added,
           configuration_type: lsp_custom::DenoConfigurationType::PackageJson,
         });
@@ -3715,7 +3724,7 @@ impl Inner {
           result.push(TaskDefinition {
             name: name.clone(),
             command: command.to_string(),
-            source_uri: config_file.specifier.clone(),
+            source_uri: url_to_uri(&config_file.specifier),
           });
         }
       };
@@ -3726,7 +3735,7 @@ impl Inner {
           result.push(TaskDefinition {
             name: name.clone(),
             command: command.clone(),
-            source_uri: package_json.specifier(),
+            source_uri: url_to_uri(&package_json.specifier()),
           });
         }
       }
@@ -3956,11 +3965,11 @@ mod tests {
     temp_dir.write("root4_parent/root4/main.ts", ""); // yes, enabled
 
     let mut config = Config::new_with_roots(vec![
-      temp_dir.uri().join("root1/").unwrap(),
-      temp_dir.uri().join("root2/").unwrap(),
-      temp_dir.uri().join("root2/root2.1/").unwrap(),
-      temp_dir.uri().join("root3/").unwrap(),
-      temp_dir.uri().join("root4_parent/root4/").unwrap(),
+      temp_dir.url().join("root1/").unwrap(),
+      temp_dir.url().join("root2/").unwrap(),
+      temp_dir.url().join("root2/root2.1/").unwrap(),
+      temp_dir.url().join("root3/").unwrap(),
+      temp_dir.url().join("root4_parent/root4/").unwrap(),
     ]);
     config.set_client_capabilities(ClientCapabilities {
       workspace: Some(Default::default()),
@@ -3970,14 +3979,14 @@ mod tests {
       Default::default(),
       vec![
         (
-          temp_dir.uri().join("root1/").unwrap(),
+          temp_dir.url().join("root1/").unwrap(),
           WorkspaceSettings {
             enable: Some(true),
             ..Default::default()
           },
         ),
         (
-          temp_dir.uri().join("root2/").unwrap(),
+          temp_dir.url().join("root2/").unwrap(),
           WorkspaceSettings {
             enable: Some(true),
             enable_paths: Some(vec![
@@ -3989,21 +3998,21 @@ mod tests {
           },
         ),
         (
-          temp_dir.uri().join("root2/root2.1/").unwrap(),
+          temp_dir.url().join("root2/root2.1/").unwrap(),
           WorkspaceSettings {
             enable: Some(true),
             ..Default::default()
           },
         ),
         (
-          temp_dir.uri().join("root3/").unwrap(),
+          temp_dir.url().join("root3/").unwrap(),
           WorkspaceSettings {
             enable: Some(false),
             ..Default::default()
           },
         ),
         (
-          temp_dir.uri().join("root4_parent/root4/").unwrap(),
+          temp_dir.url().join("root4_parent/root4/").unwrap(),
           WorkspaceSettings {
             enable: Some(true),
             ..Default::default()
@@ -4017,22 +4026,22 @@ mod tests {
     assert_eq!(
       json!(workspace_files),
       json!([
-        temp_dir.uri().join("root4_parent/deno.json").unwrap(),
-        temp_dir.uri().join("root1/mod0.ts").unwrap(),
-        temp_dir.uri().join("root1/mod1.js").unwrap(),
-        temp_dir.uri().join("root1/mod2.tsx").unwrap(),
-        temp_dir.uri().join("root1/mod3.d.ts").unwrap(),
-        temp_dir.uri().join("root1/mod4.jsx").unwrap(),
-        temp_dir.uri().join("root1/mod5.mjs").unwrap(),
-        temp_dir.uri().join("root1/mod6.mts").unwrap(),
-        temp_dir.uri().join("root1/mod7.d.mts").unwrap(),
-        temp_dir.uri().join("root1/mod8.json").unwrap(),
-        temp_dir.uri().join("root1/mod9.jsonc").unwrap(),
-        temp_dir.uri().join("root2/file1.ts").unwrap(),
-        temp_dir.uri().join("root4_parent/root4/main.ts").unwrap(),
-        temp_dir.uri().join("root1/folder/mod.ts").unwrap(),
-        temp_dir.uri().join("root2/folder/main.ts").unwrap(),
-        temp_dir.uri().join("root2/root2.1/main.ts").unwrap(),
+        temp_dir.url().join("root4_parent/deno.json").unwrap(),
+        temp_dir.url().join("root1/mod0.ts").unwrap(),
+        temp_dir.url().join("root1/mod1.js").unwrap(),
+        temp_dir.url().join("root1/mod2.tsx").unwrap(),
+        temp_dir.url().join("root1/mod3.d.ts").unwrap(),
+        temp_dir.url().join("root1/mod4.jsx").unwrap(),
+        temp_dir.url().join("root1/mod5.mjs").unwrap(),
+        temp_dir.url().join("root1/mod6.mts").unwrap(),
+        temp_dir.url().join("root1/mod7.d.mts").unwrap(),
+        temp_dir.url().join("root1/mod8.json").unwrap(),
+        temp_dir.url().join("root1/mod9.jsonc").unwrap(),
+        temp_dir.url().join("root2/file1.ts").unwrap(),
+        temp_dir.url().join("root4_parent/root4/main.ts").unwrap(),
+        temp_dir.url().join("root1/folder/mod.ts").unwrap(),
+        temp_dir.url().join("root2/folder/main.ts").unwrap(),
+        temp_dir.url().join("root2/root2.1/main.ts").unwrap(),
       ])
     );
   }

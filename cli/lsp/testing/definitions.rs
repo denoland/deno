@@ -5,6 +5,7 @@ use super::lsp_custom::TestData;
 
 use crate::lsp::client::TestingNotification;
 use crate::lsp::logging::lsp_warn;
+use crate::lsp::urls::url_to_uri;
 use crate::tools::test::TestDescription;
 use crate::tools::test::TestStepDescription;
 use crate::util::checksum;
@@ -147,7 +148,7 @@ impl TestModule {
     let label = self.label(maybe_root_uri);
     TestingNotification::Module(lsp_custom::TestModuleNotificationParams {
       text_document: lsp::TextDocumentIdentifier {
-        uri: self.specifier.clone(),
+        uri: url_to_uri(&self.specifier),
       },
       kind: lsp_custom::TestModuleNotificationKind::Replace,
       label,
