@@ -59,7 +59,7 @@ fn human_readable_decimal_with_fractional(
     .join(",");
 
   if fmt_decimal.len() >= 4 {
-    format!("{}", fmt_decimal)
+    fmt_decimal
   } else {
     format!("{}.{}", fmt_decimal, fractional)
   }
