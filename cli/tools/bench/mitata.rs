@@ -7,7 +7,6 @@
 // THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
 use crate::colors;
-use std::str::FromStr;
 
 fn avg_to_iter_per_s(time: f64) -> String {
   let iter_per_s = 1e9 / time;
@@ -317,24 +316,38 @@ pub mod reporter {
       colors::cyan_bold(&baseline.name)
     ));
 
+    fn precision_f64(x: f64, decimals: u32) -> f64 {
+      if x == 0. || decimals == 0 {
+        0.
+      } else {
+        let shift = decimals as i32 - x.abs().log10().ceil() as i32;
+        let shift_factor = 10_f64.powi(shift);
+
+        (x * shift_factor).round() / shift_factor
+      }
+    }
+
     for b in benchmarks.iter().filter(|b| *b != baseline) {
       let faster = b.stats.avg >= baseline.stats.avg;
-      let diff = f64::from_str(&format!(
-        "{:.2}",
-        1.0 / baseline.stats.avg * b.stats.avg
-      ))
-      .unwrap();
-      let inv_diff = f64::from_str(&format!(
-        "{:.2}",
-        1.0 / b.stats.avg * baseline.stats.avg
-      ))
-      .unwrap();
-      s.push_str(&format!(
-        "\n   {}x {} than {}",
+      let x_faster = precision_f64(
         if faster {
-          colors::green(diff.to_string()).to_string()
+          b.stats.avg / baseline.stats.avg
         } else {
-          colors::red(inv_diff.to_string()).to_string()
+          baseline.stats.avg / b.stats.avg
+        },
+        4,
+      );
+      let diff = if x_faster > 1000. {
+        &format!("{:>9.0}", x_faster)
+      } else {
+        &format!("{:>9.2}", x_faster)
+      };
+      s.push_str(&format!(
+        "\n{}x {} than {}",
+        if faster {
+          colors::green(diff)
+        } else {
+          colors::red(diff)
         },
         if faster { "faster" } else { "slower" },
         colors::cyan_bold(&b.name)
