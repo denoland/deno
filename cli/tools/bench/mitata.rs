@@ -383,7 +383,7 @@ mod tests {
     assert_eq!(avg_to_iter_per_s(55.85), "   17,910,000");
     assert_eq!(avg_to_iter_per_s(64_870_000.0), "         15.4");
     assert_eq!(avg_to_iter_per_s(104_370_000.0), "          9.6");
-    assert_eq!(avg_to_iter_per_s(640_000.0), "        1,562");
+    assert_eq!(avg_to_iter_per_s(640_000.0), "        1,563");
     assert_eq!(avg_to_iter_per_s(6_400_000.0), "        156.3");
     assert_eq!(avg_to_iter_per_s(46_890_000.0), "         21.3");
     assert_eq!(avg_to_iter_per_s(100_000_000.0), "         10.0");
