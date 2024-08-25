@@ -739,7 +739,11 @@ mod tests {
       },
     };
     let slsa = ProvenanceAttestation::new_github_actions(vec![subject]);
-    assert_eq!(slsa.subject.len(), 1, "Subject should be an array per the in-toto specification");
+    assert_eq!(
+      slsa.subject.len(),
+      1,
+      "Subject should be an array per the in-toto specification"
+    );
     assert_eq!(slsa.subject[0].name, "jsr:@divy/sdl2@0.0.1");
     assert_eq!(slsa.subject[0].digest.sha256, "yourmom");
   }
