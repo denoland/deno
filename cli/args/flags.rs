@@ -8233,13 +8233,9 @@ mod tests {
       r.unwrap(),
       Flags {
         subcommand: DenoSubcommand::Install(InstallFlags {
-          kind: InstallKind::Global(InstallFlagsGlobal {
-            name: None,
-            module_url: "jsr:@std/http/file-server".to_string(),
-            args: vec![],
-            root: None,
-            force: false,
-          }),
+          kind: InstallKind::Local(Some(AddFlags {
+            packages: vec!["jsr:@std/http/file-server".to_string(),]
+          })),
           global: false,
         }),
         ..Flags::default()
@@ -8278,13 +8274,13 @@ mod tests {
       r.unwrap(),
       Flags {
         subcommand: DenoSubcommand::Install(InstallFlags {
-          kind: InstallKind::Global(InstallFlagsGlobal {
-            name: Some("file_server".to_string()),
-            module_url: "jsr:@std/http/file-server".to_string(),
-            args: svec!["foo", "bar"],
-            root: Some("/foo".to_string()),
-            force: true,
-          }),
+          kind: InstallKind::Local(Some(AddFlags {
+            packages: vec![
+              "jsr:@std/http/file-server".to_string(),
+              "foo".to_string(),
+              "bar".to_string(),
+            ]
+          })),
           global: false,
         }),
         import_map_path: Some("import_map.json".to_string()),
