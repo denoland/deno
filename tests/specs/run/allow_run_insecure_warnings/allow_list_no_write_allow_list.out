@@ -1,0 +1,1 @@
+Warning --allow-run= with --allow-write without an allow list is insecure (https://docs.deno.com/runtime/tutorials/subprocess/#security)

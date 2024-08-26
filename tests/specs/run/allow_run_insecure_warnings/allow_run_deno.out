@@ -1,0 +1,1 @@
+Warning --allow-run=deno is insecure as the Deno binary can be executed to do anything (https://docs.deno.com/runtime/tutorials/subprocess/#security)
