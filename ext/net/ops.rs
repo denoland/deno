@@ -6,9 +6,8 @@ use crate::resolve_addr::resolve_addr;
 use crate::resolve_addr::resolve_addr_sync;
 use crate::tcp::TcpListener;
 use crate::NetPermissions;
-use deno_core::error::bad_resource;
-use deno_core::error::custom_error;
-use deno_core::error::generic_error;
+use deno_core::error::JsNativeError;
+use deno_core::error::ResourceError;
 use deno_core::error::AnyError;
 use deno_core::op2;
 use deno_core::CancelFuture;
@@ -71,7 +70,7 @@ impl From<SocketAddr> for IpAddr {
 pub(crate) fn accept_err(e: std::io::Error) -> AnyError {
   // FIXME(bartlomieju): compatibility with current JS implementation
   if let std::io::ErrorKind::Interrupted = e.kind() {
-    bad_resource("Listener has been closed")
+    ResourceError::Other("Listener has been closed".to_string()).into()
   } else {
     e.into()
   }
@@ -87,10 +86,10 @@ pub async fn op_net_accept_tcp(
     .borrow()
     .resource_table
     .get::<NetworkListenerResource<TcpListener>>(rid)
-    .map_err(|_| bad_resource("Listener has been closed"))?;
+    .map_err(|_| ResourceError::Other("Listener has been closed".to_string()))?;
   let listener = RcRef::map(&resource, |r| &r.listener)
     .try_borrow_mut()
-    .ok_or_else(|| custom_error("Busy", "Another accept task is ongoing"))?;
+    .ok_or_else(|| JsNativeError::new("Busy", "Another accept task is ongoing"))?;
   let cancel = RcRef::map(resource, |r| &r.cancel);
   let (tcp_stream, _socket_addr) = listener
     .accept()
@@ -118,7 +117,7 @@ pub async fn op_net_recv_udp(
     .borrow_mut()
     .resource_table
     .get::<UdpSocketResource>(rid)
-    .map_err(|_| bad_resource("Socket has been closed"))?;
+    .map_err(|_| ResourceError::Other("Socket has been closed".to_string()))?;
   let socket = RcRef::map(&resource, |r| &r.socket).borrow().await;
   let cancel_handle = RcRef::map(&resource, |r| &r.cancel);
   let (nread, remote_addr) = socket
@@ -149,13 +148,13 @@ where
   let addr = resolve_addr(&addr.hostname, addr.port)
     .await?
     .next()
-    .ok_or_else(|| generic_error("No resolved address found"))?;
+    .ok_or_else(|| JsNativeError::generic("No resolved address found"))?;
 
   let resource = state
     .borrow_mut()
     .resource_table
     .get::<UdpSocketResource>(rid)
-    .map_err(|_| bad_resource("Socket has been closed"))?;
+    .map_err(|_|ResourceError::Other("Socket has been closed".to_string()))?;
   let socket = RcRef::map(&resource, |r| &r.socket).borrow().await;
   let nwritten = socket.send_to(&zero_copy, &addr).await?;
 
@@ -173,7 +172,7 @@ pub async fn op_net_join_multi_v4_udp(
     .borrow_mut()
     .resource_table
     .get::<UdpSocketResource>(rid)
-    .map_err(|_| bad_resource("Socket has been closed"))?;
+    .map_err(|_| ResourceError::Other("Socket has been closed".to_string()))?;
   let socket = RcRef::map(&resource, |r| &r.socket).borrow().await;
 
   let addr = Ipv4Addr::from_str(address.as_str())?;
@@ -195,7 +194,7 @@ pub async fn op_net_join_multi_v6_udp(
     .borrow_mut()
     .resource_table
     .get::<UdpSocketResource>(rid)
-    .map_err(|_| bad_resource("Socket has been closed"))?;
+    .map_err(|_| ResourceError::Other("Socket has been closed".to_string()))?;
   let socket = RcRef::map(&resource, |r| &r.socket).borrow().await;
 
   let addr = Ipv6Addr::from_str(address.as_str())?;
@@ -216,7 +215,7 @@ pub async fn op_net_leave_multi_v4_udp(
     .borrow_mut()
     .resource_table
     .get::<UdpSocketResource>(rid)
-    .map_err(|_| bad_resource("Socket has been closed"))?;
+    .map_err(|_| ResourceError::Other("Socket has been closed".to_string()))?;
   let socket = RcRef::map(&resource, |r| &r.socket).borrow().await;
 
   let addr = Ipv4Addr::from_str(address.as_str())?;
@@ -238,7 +237,7 @@ pub async fn op_net_leave_multi_v6_udp(
     .borrow_mut()
     .resource_table
     .get::<UdpSocketResource>(rid)
-    .map_err(|_| bad_resource("Socket has been closed"))?;
+    .map_err(|_| ResourceError::Other("Socket has been closed".to_string()))?;
   let socket = RcRef::map(&resource, |r| &r.socket).borrow().await;
 
   let addr = Ipv6Addr::from_str(address.as_str())?;
@@ -259,7 +258,7 @@ pub async fn op_net_set_multi_loopback_udp(
     .borrow_mut()
     .resource_table
     .get::<UdpSocketResource>(rid)
-    .map_err(|_| bad_resource("Socket has been closed"))?;
+    .map_err(|_| ResourceError::Other("Socket has been closed".to_string()))?;
   let socket = RcRef::map(&resource, |r| &r.socket).borrow().await;
 
   if is_v4_membership {
@@ -281,7 +280,7 @@ pub async fn op_net_set_multi_ttl_udp(
     .borrow_mut()
     .resource_table
     .get::<UdpSocketResource>(rid)
-    .map_err(|_| bad_resource("Socket has been closed"))?;
+    .map_err(|_| ResourceError::Other("Socket has been closed".to_string()))?;
   let socket = RcRef::map(&resource, |r| &r.socket).borrow().await;
 
   socket.set_multicast_ttl_v4(ttl)?;
@@ -319,7 +318,7 @@ where
   let addr = resolve_addr(&addr.hostname, addr.port)
     .await?
     .next()
-    .ok_or_else(|| generic_error("No resolved address found"))?;
+    .ok_or_else(|| JsNativeError::generic("No resolved address found"))?;
   let tcp_stream = TcpStream::connect(&addr).await?;
   let local_addr = tcp_stream.local_addr()?;
   let remote_addr = tcp_stream.peer_addr()?;
@@ -366,7 +365,7 @@ where
     .check_net(&(&addr.hostname, Some(addr.port)), "Deno.listen()")?;
   let addr = resolve_addr_sync(&addr.hostname, addr.port)?
     .next()
-    .ok_or_else(|| generic_error("No resolved address found"))?;
+    .ok_or_else(|| JsNativeError::generic("No resolved address found"))?;
 
   let listener = if load_balanced {
     TcpListener::bind_load_balanced(addr)
@@ -394,7 +393,7 @@ where
     .check_net(&(&addr.hostname, Some(addr.port)), "Deno.listenDatagram()")?;
   let addr = resolve_addr_sync(&addr.hostname, addr.port)?
     .next()
-    .ok_or_else(|| generic_error("No resolved address found"))?;
+    .ok_or_else(|| JsNativeError::generic("No resolved address found"))?;
 
   let domain = if addr.is_ipv4() {
     Domain::IPV4
@@ -623,13 +622,13 @@ where
       let message = format!("{e}");
       match e.kind() {
         ResolveErrorKind::NoRecordsFound { .. } => {
-          custom_error("NotFound", message)
+          JsNativeError::new("NotFound", message)
         }
         ResolveErrorKind::Message("No connections available") => {
-          custom_error("NotConnected", message)
+          JsNativeError::new("NotConnected", message)
         }
-        ResolveErrorKind::Timeout => custom_error("TimedOut", message),
-        _ => generic_error(message),
+        ResolveErrorKind::Timeout => JsNativeError::new("TimedOut", message),
+        _ => JsNativeError::generic(message),
       }
     })?
     .iter()
@@ -763,10 +762,10 @@ fn rdata_to_return_record(
         DnsReturnRecord::Txt(texts)
       }),
       _ => {
-        return Err(custom_error(
+        return Err(JsNativeError::new(
           "NotSupported",
           "Provided record type is not supported",
-        ))
+        ).into())
       }
     };
     Ok(record)

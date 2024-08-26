@@ -11,8 +11,7 @@ use deno_config::workspace::MappedResolutionError;
 use deno_config::workspace::ResolverWorkspaceJsrPackage;
 use deno_config::workspace::WorkspaceResolver;
 use deno_core::anyhow::Context;
-use deno_core::error::generic_error;
-use deno_core::error::type_error;
+use deno_core::error::{JsNativeError, ModuleLoaderError};
 use deno_core::error::AnyError;
 use deno_core::futures::FutureExt;
 use deno_core::v8_set_flags;
@@ -140,19 +139,19 @@ impl ModuleLoader for EmbeddedModuleLoader {
     specifier: &str,
     referrer: &str,
     kind: ResolutionKind,
-  ) -> Result<ModuleSpecifier, AnyError> {
+  ) -> Result<ModuleSpecifier, ModuleLoaderError> {
     let referrer = if referrer == "." {
       if kind != ResolutionKind::MainModule {
-        return Err(generic_error(format!(
+        return Err(AnyError::new(JsNativeError::generic(format!(
           "Expected to resolve main module, got {:?} instead.",
           kind
-        )));
+        ))).into());
       }
       let current_dir = std::env::current_dir().unwrap();
       deno_core::resolve_path(".", &current_dir)?
     } else {
       ModuleSpecifier::parse(referrer).map_err(|err| {
-        type_error(format!("Referrer uses invalid specifier: {}", err))
+        AnyError::new(JsNativeError::type_error(format!("Referrer uses invalid specifier: {}", err)))
       })?
     };
 
@@ -161,7 +160,7 @@ impl ModuleLoader for EmbeddedModuleLoader {
         self
           .shared
           .node_resolver
-          .resolve(specifier, &referrer, NodeResolutionMode::Execution)?
+          .resolve(specifier, &referrer, NodeResolutionMode::Execution).map_err(AnyError::new)?
           .into_url(),
       );
     }
@@ -204,7 +203,8 @@ impl ModuleLoader for EmbeddedModuleLoader {
             &referrer,
             NodeResolutionMode::Execution,
           )
-          .map(|res| res.into_url()),
+          .map(|res| res.into_url())
+          .map_err(Into::into),
         PackageJsonDepValue::Workspace(version_req) => {
           let pkg_folder = self
             .shared
@@ -212,7 +212,7 @@ impl ModuleLoader for EmbeddedModuleLoader {
             .resolve_workspace_pkg_json_folder_for_pkg_json_dep(
               alias,
               version_req,
-            )?;
+            ).map_err(AnyError::new)?;
           Ok(
             self
               .shared
@@ -240,7 +240,8 @@ impl ModuleLoader for EmbeddedModuleLoader {
               &referrer,
               NodeResolutionMode::Execution,
             )
-            .map(|res| res.into_url());
+            .map(|res| res.into_url())
+            .map_err(Into::into);
         }
 
         if specifier.scheme() == "jsr" {
@@ -268,9 +269,9 @@ impl ModuleLoader for EmbeddedModuleLoader {
         if let Some(res) = maybe_res {
           return Ok(res.into_url());
         }
-        Err(err.into())
+        Err(AnyError::new(err).into())
       }
-      Err(err) => Err(err.into()),
+      Err(err) => Err(AnyError::new(err).into()),
     }
   }
 
@@ -301,9 +302,9 @@ impl ModuleLoader for EmbeddedModuleLoader {
         {
           Ok(response) => response,
           Err(err) => {
-            return deno_core::ModuleLoadResponse::Sync(Err(type_error(
+            return deno_core::ModuleLoadResponse::Sync(Err(AnyError::new(JsNativeError::type_error(
               format!("{:#}", err),
-            )));
+            )).into()));
           }
         };
       return deno_core::ModuleLoadResponse::Sync(Ok(
@@ -341,26 +342,26 @@ impl ModuleLoader for EmbeddedModuleLoader {
     }
 
     let Some(module) = self.shared.eszip.get_module(original_specifier) else {
-      return deno_core::ModuleLoadResponse::Sync(Err(type_error(format!(
+      return deno_core::ModuleLoadResponse::Sync(Err(AnyError::new(JsNativeError::type_error(format!(
         "{MODULE_NOT_FOUND}: {}",
         original_specifier
-      ))));
+      ))).into()));
     };
     let original_specifier = original_specifier.clone();
 
     deno_core::ModuleLoadResponse::Async(
       async move {
         let code = module.inner.source().await.ok_or_else(|| {
-          type_error(format!("Module not found: {}", original_specifier))
+          AnyError::new(JsNativeError::type_error(format!("Module not found: {}", original_specifier)))
         })?;
         let code = arc_u8_to_arc_str(code)
-          .map_err(|_| type_error("Module source is not utf-8"))?;
+          .map_err(|_| AnyError::new(JsNativeError::type_error("Module source is not utf-8")))?;
         Ok(deno_core::ModuleSource::new_with_redirect(
           match module.inner.kind {
             eszip::ModuleKind::JavaScript => ModuleType::JavaScript,
             eszip::ModuleKind::Json => ModuleType::Json,
             eszip::ModuleKind::Jsonc => {
-              return Err(type_error("jsonc modules not supported"))
+              return Err(AnyError::new(JsNativeError::type_error("jsonc modules not supported")).into())
             }
             eszip::ModuleKind::OpaqueData => {
               unreachable!();

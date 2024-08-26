@@ -9,7 +9,7 @@ use crate::DatabaseHandler;
 use anyhow::Context;
 use async_trait::async_trait;
 use bytes::Bytes;
-use deno_core::error::type_error;
+use deno_core::error::JsNativeError;
 use deno_core::error::AnyError;
 use deno_core::futures::Stream;
 use deno_core::OpState;
@@ -162,11 +162,11 @@ impl<P: RemoteDbHandlerPermissions + 'static> DatabaseHandler
     const ENV_VAR_NAME: &str = "DENO_KV_ACCESS_TOKEN";
 
     let Some(url) = path else {
-      return Err(type_error("Missing database url"));
+      return Err(JsNativeError::type_error("Missing database url").into());
     };
 
     let Ok(parsed_url) = Url::parse(&url) else {
-      return Err(type_error(format!("Invalid database url: {}", url)));
+      return Err(JsNativeError::type_error(format!("Invalid database url: {}", url)).into());
     };
 
     {

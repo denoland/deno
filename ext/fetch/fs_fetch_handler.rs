@@ -4,7 +4,7 @@ use crate::CancelHandle;
 use crate::CancelableResponseFuture;
 use crate::FetchHandler;
 
-use deno_core::error::type_error;
+use deno_core::error::JsNativeError;
 use deno_core::futures::FutureExt;
 use deno_core::futures::TryFutureExt;
 use deno_core::futures::TryStreamExt;
@@ -43,7 +43,7 @@ impl FetchHandler for FsFetchHandler {
       Ok::<_, ()>(response)
     }
     .map_err(move |_| {
-      type_error("NetworkError when attempting to fetch resource.")
+      JsNativeError::type_error("NetworkError when attempting to fetch resource.").into()
     })
     .or_cancel(&cancel_handle)
     .boxed_local();

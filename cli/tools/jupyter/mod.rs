@@ -15,7 +15,7 @@ use crate::tools::test::TestFailureFormatOptions;
 use crate::CliFactory;
 use deno_core::anyhow::bail;
 use deno_core::anyhow::Context;
-use deno_core::error::generic_error;
+use deno_core::error::JsNativeError;
 use deno_core::error::AnyError;
 use deno_core::futures::FutureExt;
 use deno_core::located_script_name;
@@ -136,7 +136,7 @@ pub async fn kernel(
   }
   let cwd_url =
     Url::from_directory_path(cli_options.initial_cwd()).map_err(|_| {
-      generic_error(format!(
+      JsNativeError::generic(format!(
         "Unable to construct URL from the path of cwd: {}",
         cli_options.initial_cwd().to_string_lossy(),
       ))

@@ -4,7 +4,7 @@ use crate::cdp;
 use crate::emit::Emitter;
 use crate::util::file_watcher::WatcherCommunicator;
 use crate::util::file_watcher::WatcherRestartMode;
-use deno_core::error::generic_error;
+use deno_core::error::JsNativeError;
 use deno_core::error::AnyError;
 use deno_core::futures::StreamExt;
 use deno_core::serde_json::json;
@@ -89,7 +89,7 @@ impl crate::worker::HmrRunner for HmrRunner {
           if notification.method == "Runtime.exceptionThrown" {
             let exception_thrown = serde_json::from_value::<cdp::ExceptionThrown>(notification.params)?;
             let (message, description) = exception_thrown.exception_details.get_message_and_description();
-            break Err(generic_error(format!("{} {}", message, description)));
+            break Err(JsNativeError::generic(format!("{} {}", message, description)).into());
           } else if notification.method == "Debugger.scriptParsed" {
             let params = serde_json::from_value::<cdp::ScriptParsed>(notification.params)?;
             if params.url.starts_with("file://") {

@@ -1,7 +1,6 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
-use deno_core::anyhow::Error;
-use deno_core::error::range_error;
+use deno_core::error::JsNativeError;
 use deno_core::op2;
 
 use std::borrow::Cow;
@@ -11,12 +10,12 @@ use std::borrow::Cow;
 
 const PUNY_PREFIX: &str = "xn--";
 
-fn invalid_input_err() -> Error {
-  range_error("Invalid input")
+fn invalid_input_err() -> JsNativeError {
+  JsNativeError::range_error("Invalid input")
 }
 
-fn not_basic_err() -> Error {
-  range_error("Illegal input >= 0x80 (not a basic code point)")
+fn not_basic_err() -> JsNativeError {
+  JsNativeError::range_error("Illegal input >= 0x80 (not a basic code point)")
 }
 
 /// map a domain by mapping each label with the given function
@@ -48,7 +47,7 @@ fn map_domain<E>(
 /// Maps a unicode domain to ascii by punycode encoding each label
 ///
 /// Note this is not IDNA2003 or IDNA2008 compliant, rather it matches node.js's punycode implementation
-fn to_ascii(input: &str) -> Result<String, Error> {
+fn to_ascii(input: &str) -> Result<String, JsNativeError> {
   if input.is_ascii() {
     return Ok(input.into());
   }
@@ -62,7 +61,7 @@ fn to_ascii(input: &str) -> Result<String, Error> {
       idna::punycode::encode_str(label)
         .map(|encoded| [PUNY_PREFIX, &encoded].join("").into()) // add the prefix
         .ok_or_else(|| {
-          Error::msg("Input would take more than 63 characters to encode") // only error possible per the docs
+          JsNativeError::generic("Input would take more than 63 characters to encode") // only error possible per the docs
         })
     }
   })?;
@@ -74,7 +73,7 @@ fn to_ascii(input: &str) -> Result<String, Error> {
 /// Maps an ascii domain to unicode by punycode decoding each label
 ///
 /// Note this is not IDNA2003 or IDNA2008 compliant, rather it matches node.js's punycode implementation
-fn to_unicode(input: &str) -> Result<String, Error> {
+fn to_unicode(input: &str) -> Result<String, JsNativeError> {
   map_domain(input, |s| {
     if let Some(puny) = s.strip_prefix(PUNY_PREFIX) {
       // it's a punycode encoded label
@@ -95,7 +94,7 @@ fn to_unicode(input: &str) -> Result<String, Error> {
 #[string]
 pub fn op_node_idna_punycode_to_ascii(
   #[string] domain: String,
-) -> Result<String, Error> {
+) -> Result<String, JsNativeError> {
   to_ascii(&domain)
 }
 
@@ -105,7 +104,7 @@ pub fn op_node_idna_punycode_to_ascii(
 #[string]
 pub fn op_node_idna_punycode_to_unicode(
   #[string] domain: String,
-) -> Result<String, Error> {
+) -> Result<String, JsNativeError> {
   to_unicode(&domain)
 }
 
@@ -115,7 +114,7 @@ pub fn op_node_idna_punycode_to_unicode(
 #[string]
 pub fn op_node_idna_domain_to_ascii(
   #[string] domain: String,
-) -> Result<String, Error> {
+) -> Result<String, deno_core::anyhow::Error> {
   idna::domain_to_ascii(&domain).map_err(|e| e.into())
 }
 
@@ -131,7 +130,7 @@ pub fn op_node_idna_domain_to_unicode(#[string] domain: String) -> String {
 #[string]
 pub fn op_node_idna_punycode_decode(
   #[string] domain: String,
-) -> Result<String, Error> {
+) -> Result<String, JsNativeError> {
   if domain.is_empty() {
     return Ok(domain);
   }
@@ -151,7 +150,7 @@ pub fn op_node_idna_punycode_decode(
   }
 
   idna::punycode::decode_to_string(&domain)
-    .ok_or_else(|| deno_core::error::range_error("Invalid input"))
+    .ok_or_else(|| JsNativeError::range_error("Invalid input"))
 }
 
 #[op2]

@@ -2,8 +2,7 @@
 use crate::stream::WebSocketStream;
 use bytes::Bytes;
 use deno_core::anyhow::bail;
-use deno_core::error::invalid_hostname;
-use deno_core::error::type_error;
+use deno_core::error::JsNativeError;
 use deno_core::error::AnyError;
 use deno_core::futures::TryFutureExt;
 use deno_core::op2;
@@ -64,6 +63,10 @@ use fastwebsockets::WebSocket;
 use fastwebsockets::WebSocketWrite;
 
 mod stream;
+
+deno_core::js_error_wrapper!(http::header::InvalidHeaderName, JsInvalidHeaderName, "TypeError");
+deno_core::js_error_wrapper!(http::header::InvalidHeaderValue, JsInvalidHeaderValue, "TypeError");
+deno_core::js_error_wrapper!(fastwebsockets::WebSocketError, JsWebSocketError, "TypeError");
 
 static USE_WRITEV: Lazy<bool> = Lazy::new(|| {
   let enable = std::env::var("DENO_USE_WRITEV").ok();
@@ -172,7 +175,7 @@ async fn handshake_websocket(
   let mut request = Request::builder().method(Method::GET).uri(
     uri
       .path_and_query()
-      .ok_or(type_error("Missing path in url".to_string()))?
+      .ok_or(JsNativeError::type_error("Missing path in url".to_string()))?
       .as_str(),
   );
 
@@ -245,7 +248,7 @@ async fn handshake_http1_wss(
   let tcp_socket = TcpStream::connect(addr).await?;
   let tls_config = create_ws_client_config(state, SocketUse::Http1Only)?;
   let dnsname = ServerName::try_from(domain.to_string())
-    .map_err(|_| invalid_hostname(domain))?;
+    .map_err(|_| JsNativeError::type_error(format!("Invalid hostname: '{domain}'")))?;
   let mut tls_connector = TlsStream::new_client_side(
     tcp_socket,
     ClientConnection::new(tls_config.into(), dnsname)?,
@@ -270,7 +273,7 @@ async fn handshake_http2_wss(
   let tcp_socket = TcpStream::connect(addr).await?;
   let tls_config = create_ws_client_config(state, SocketUse::Http2Only)?;
   let dnsname = ServerName::try_from(domain.to_string())
-    .map_err(|_| invalid_hostname(domain))?;
+    .map_err(|_| JsNativeError::type_error(format!("Invalid hostname: '{domain}'")))?;
   // We need to better expose the underlying errors here
   let mut tls_connector = TlsStream::new_client_side(
     tcp_socket,
@@ -369,9 +372,9 @@ fn populate_common_request_headers(
   if let Some(headers) = headers {
     for (key, value) in headers {
       let name = HeaderName::from_bytes(key)
-        .map_err(|err| type_error(err.to_string()))?;
+        .map_err(JsInvalidHeaderName)?;
       let v = HeaderValue::from_bytes(value)
-        .map_err(|err| type_error(err.to_string()))?;
+        .map_err(JsInvalidHeaderValue)?;
 
       let is_disallowed_header = matches!(
         name,
@@ -527,7 +530,7 @@ impl ServerWebSocket {
     }
     ws.write_frame(frame)
       .await
-      .map_err(|err| type_error(err.to_string()))?;
+      .map_err(JsWebSocketError)?;
     Ok(())
   }
 }
@@ -888,9 +891,10 @@ impl fmt::Display for DomExceptionNetworkError {
 
 impl std::error::Error for DomExceptionNetworkError {}
 
-pub fn get_network_error_class_name(e: &AnyError) -> Option<&'static str> {
-  e.downcast_ref::<DomExceptionNetworkError>()
-    .map(|_| "DOMExceptionNetworkError")
+impl deno_core::error::JsErrorClass for DomExceptionNetworkError {
+  fn get_class(&self) -> &'static str {
+    "DOMExceptionNetworkError"
+  }
 }
 
 // Needed so hyper can use non Send futures

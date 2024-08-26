@@ -1,6 +1,6 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
-use deno_core::error::custom_error;
+use deno_core::error::JsNativeError;
 use deno_core::error::AnyError;
 use dissimilar::diff;
 use dissimilar::Chunk;
@@ -136,7 +136,7 @@ impl LineIndex {
     if let Some(line_offset) = self.utf8_offsets.get(position.line as usize) {
       Ok(line_offset + col)
     } else {
-      Err(custom_error("OutOfRange", "The position is out of range."))
+      Err(JsNativeError::new("OutOfRange", "The position is out of range.").into())
     }
   }
 
@@ -156,7 +156,7 @@ impl LineIndex {
     if let Some(line_offset) = self.utf16_offsets.get(position.line as usize) {
       Ok(line_offset + TextSize::from(position.character))
     } else {
-      Err(custom_error("OutOfRange", "The position is out of range."))
+      Err(JsNativeError::new("OutOfRange", "The position is out of range.").into())
     }
   }
 

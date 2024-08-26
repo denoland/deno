@@ -9,8 +9,7 @@ use crate::tools::test::TestLocation;
 use crate::tools::test::TestStepDescription;
 use crate::tools::test::TestStepResult;
 
-use deno_core::error::generic_error;
-use deno_core::error::type_error;
+use deno_core::error::JsNativeError;
 use deno_core::error::AnyError;
 use deno_core::op2;
 use deno_core::v8;
@@ -89,7 +88,7 @@ pub fn op_restore_test_permissions(
     state.put::<PermissionsContainer>(permissions);
     Ok(())
   } else {
-    Err(generic_error("no permissions to restore"))
+    Err(JsNativeError::generic("no permissions to restore").into())
   }
 }
 
@@ -111,10 +110,10 @@ fn op_register_test(
   #[buffer] ret_buf: &mut [u8],
 ) -> Result<(), AnyError> {
   if ret_buf.len() != 4 {
-    return Err(type_error(format!(
+    return Err(JsNativeError::type_error(format!(
       "Invalid ret_buf length: {}",
       ret_buf.len()
-    )));
+    )).into());
   }
   let id = NEXT_ID.fetch_add(1, Ordering::SeqCst);
   let origin = state.borrow::<ModuleSpecifier>().to_string();

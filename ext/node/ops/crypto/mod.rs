@@ -1,6 +1,5 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
-use deno_core::error::generic_error;
-use deno_core::error::type_error;
+use deno_core::error::JsNativeError;
 use deno_core::error::AnyError;
 use deno_core::op2;
 use deno_core::unsync::spawn_blocking;
@@ -172,7 +171,7 @@ pub fn op_node_private_encrypt(
         .encrypt(&mut rng, Oaep::new::<sha1::Sha1>(), &msg)?
         .into(),
     ),
-    _ => Err(type_error("Unknown padding")),
+    _ => Err(JsNativeError::type_error("Unknown padding").into()),
   }
 }
 
@@ -188,7 +187,7 @@ pub fn op_node_private_decrypt(
   match padding {
     1 => Ok(key.decrypt(Pkcs1v15Encrypt, &msg)?.into()),
     4 => Ok(key.decrypt(Oaep::new::<sha1::Sha1>(), &msg)?.into()),
-    _ => Err(type_error("Unknown padding")),
+    _ => Err(JsNativeError::type_error("Unknown padding").into()),
   }
 }
 
@@ -209,7 +208,7 @@ pub fn op_node_public_encrypt(
         .encrypt(&mut rng, Oaep::new::<sha1::Sha1>(), &msg)?
         .into(),
     ),
-    _ => Err(type_error("Unknown padding")),
+    _ => Err(JsNativeError::type_error("Unknown padding").into()),
   }
 }
 
@@ -269,7 +268,7 @@ pub fn op_node_cipheriv_final(
 ) -> Result<Option<Vec<u8>>, AnyError> {
   let context = state.resource_table.take::<cipher::CipherContext>(rid)?;
   let context = Rc::try_unwrap(context)
-    .map_err(|_| type_error("Cipher context is already in use"))?;
+    .map_err(|_| JsNativeError::type_error("Cipher context is already in use"))?;
   context.r#final(auto_pad, input, output)
 }
 
@@ -281,7 +280,7 @@ pub fn op_node_cipheriv_take(
 ) -> Result<Option<Vec<u8>>, AnyError> {
   let context = state.resource_table.take::<cipher::CipherContext>(rid)?;
   let context = Rc::try_unwrap(context)
-    .map_err(|_| type_error("Cipher context is already in use"))?;
+    .map_err(|_| JsNativeError::type_error("Cipher context is already in use"))?;
   Ok(context.take_tag())
 }
 
@@ -337,7 +336,7 @@ pub fn op_node_decipheriv_take(
 ) -> Result<(), AnyError> {
   let context = state.resource_table.take::<cipher::DecipherContext>(rid)?;
   Rc::try_unwrap(context)
-    .map_err(|_| type_error("Cipher context is already in use"))?;
+    .map_err(|_| JsNativeError::type_error("Cipher context is already in use"))?;
   Ok(())
 }
 
@@ -352,7 +351,7 @@ pub fn op_node_decipheriv_final(
 ) -> Result<(), AnyError> {
   let context = state.resource_table.take::<cipher::DecipherContext>(rid)?;
   let context = Rc::try_unwrap(context)
-    .map_err(|_| type_error("Cipher context is already in use"))?;
+    .map_err(|_| JsNativeError::type_error("Cipher context is already in use"))?;
   context.r#final(auto_pad, input, output, auth_tag)
 }
 
@@ -405,10 +404,10 @@ fn pbkdf2_sync(
       Ok(())
     },
     _ => {
-      Err(type_error(format!(
+      Err(JsNativeError::type_error(format!(
         "unsupported digest: {}",
         algorithm_name
-      )))
+      )).into())
     }
   )
 }
@@ -466,7 +465,7 @@ fn hkdf_sync(
   okm: &mut [u8],
 ) -> Result<(), AnyError> {
   let Some(ikm) = handle.as_secret_key() else {
-    return Err(type_error("expected secret key"));
+    return Err(JsNativeError::type_error("expected secret key").into());
   };
 
   match_fixed_digest_with_eager_block_buffer!(
@@ -474,10 +473,10 @@ fn hkdf_sync(
     fn <D>() {
       let hk = Hkdf::<D>::new(Some(salt), ikm);
       hk.expand(info, okm)
-        .map_err(|_| type_error("HKDF-Expand failed"))
+        .map_err(|_| JsNativeError::type_error("HKDF-Expand failed").into())
     },
     _ => {
-      Err(type_error(format!("Unsupported digest: {}", digest_algorithm)))
+      Err(JsNativeError::type_error(format!("Unsupported digest: {}", digest_algorithm)).into())
     }
   )
 }
@@ -566,7 +565,7 @@ fn scrypt(
     Ok(())
   } else {
     // TODO(lev): key derivation failed, so what?
-    Err(generic_error("scrypt key derivation failed"))
+    Err(JsNativeError::generic("scrypt key derivation failed").into())
   }
 }
 
@@ -622,7 +621,7 @@ pub async fn op_node_scrypt_async(
       Ok(output_buffer.into())
     } else {
       // TODO(lev): rethrow the error?
-      Err(generic_error("scrypt failure"))
+      Err(JsNativeError::generic("scrypt failure").into())
     }
   })
   .await?
@@ -647,7 +646,7 @@ pub fn op_node_ecdh_encode_pubkey(
         );
       // CtOption does not expose its variants.
       if pubkey.is_none().into() {
-        return Err(type_error("Invalid public key"));
+        return Err(JsNativeError::type_error("Invalid public key").into());
       }
 
       let pubkey = pubkey.unwrap();
@@ -660,7 +659,7 @@ pub fn op_node_ecdh_encode_pubkey(
       );
       // CtOption does not expose its variants.
       if pubkey.is_none().into() {
-        return Err(type_error("Invalid public key"));
+        return Err(JsNativeError::type_error("Invalid public key").into());
       }
 
       let pubkey = pubkey.unwrap();
@@ -673,7 +672,7 @@ pub fn op_node_ecdh_encode_pubkey(
       );
       // CtOption does not expose its variants.
       if pubkey.is_none().into() {
-        return Err(type_error("Invalid public key"));
+        return Err(JsNativeError::type_error("Invalid public key").into());
       }
 
       let pubkey = pubkey.unwrap();
@@ -686,14 +685,14 @@ pub fn op_node_ecdh_encode_pubkey(
       );
       // CtOption does not expose its variants.
       if pubkey.is_none().into() {
-        return Err(type_error("Invalid public key"));
+        return Err(JsNativeError::type_error("Invalid public key").into());
       }
 
       let pubkey = pubkey.unwrap();
 
       Ok(pubkey.to_encoded_point(compress).as_ref().to_vec())
     }
-    &_ => Err(type_error("Unsupported curve")),
+    &_ => Err(JsNativeError::type_error("Unsupported curve").into()),
   }
 }
 
@@ -740,7 +739,7 @@ pub fn op_node_ecdh_generate_keys(
 
       Ok(())
     }
-    &_ => Err(type_error(format!("Unsupported curve: {}", curve))),
+    &_ => Err(JsNativeError::type_error(format!("Unsupported curve: {}", curve)).into()),
   }
 }
 
@@ -894,10 +893,10 @@ pub fn op_node_diffie_hellman(
 ) -> Result<Box<[u8]>, AnyError> {
   let private = private
     .as_private_key()
-    .ok_or_else(|| type_error("Expected private key"))?;
+    .ok_or_else(|| JsNativeError::type_error("Expected private key"))?;
   let public = public
     .as_public_key()
-    .ok_or_else(|| type_error("Expected public key"))?;
+    .ok_or_else(|| JsNativeError::type_error("Expected public key"))?;
 
   let res = match (private, &*public) {
     (
@@ -942,7 +941,7 @@ pub fn op_node_diffie_hellman(
       if private.params.prime != public.params.prime
         || private.params.base != public.params.base
       {
-        return Err(type_error("DH parameters mismatch"));
+        return Err(JsNativeError::type_error("DH parameters mismatch").into());
       }
 
       // OSIP - Octet-String-to-Integer primitive
@@ -958,9 +957,9 @@ pub fn op_node_diffie_hellman(
       shared_secret.to_bytes_be().into()
     }
     _ => {
-      return Err(type_error(
+      return Err(JsNativeError::type_error(
         "Unsupported key type for diffie hellman, or key type  mismatch",
-      ))
+      ).into())
     }
   };
 
@@ -975,15 +974,15 @@ pub fn op_node_sign_ed25519(
 ) -> Result<(), AnyError> {
   let private = key
     .as_private_key()
-    .ok_or_else(|| type_error("Expected private key"))?;
+    .ok_or_else(|| JsNativeError::type_error("Expected private key"))?;
 
   let ed25519 = match private {
     AsymmetricPrivateKey::Ed25519(private) => private,
-    _ => return Err(type_error("Expected Ed25519 private key")),
+    _ => return Err(JsNativeError::type_error("Expected Ed25519 private key").into()),
   };
 
   let pair = Ed25519KeyPair::from_seed_unchecked(ed25519.as_bytes().as_slice())
-    .map_err(|_| type_error("Invalid Ed25519 private key"))?;
+    .map_err(|_| JsNativeError::type_error("Invalid Ed25519 private key"))?;
   signature.copy_from_slice(pair.sign(data).as_ref());
 
   Ok(())
@@ -997,11 +996,11 @@ pub fn op_node_verify_ed25519(
 ) -> Result<bool, AnyError> {
   let public = key
     .as_public_key()
-    .ok_or_else(|| type_error("Expected public key"))?;
+    .ok_or_else(|| JsNativeError::type_error("Expected public key"))?;
 
   let ed25519 = match &*public {
     AsymmetricPublicKey::Ed25519(public) => public,
-    _ => return Err(type_error("Expected Ed25519 public key")),
+    _ => return Err(JsNativeError::type_error("Expected Ed25519 public key").into()),
   };
 
   let verified = ring::signature::UnparsedPublicKey::new(

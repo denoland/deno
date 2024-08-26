@@ -1,6 +1,6 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
-use deno_core::error::type_error;
+use deno_core::error::JsNativeError;
 use deno_core::error::AnyError;
 use deno_core::op2;
 use deno_core::OpState;
@@ -25,7 +25,7 @@ pub fn op_webgpu_surface_create(
   p2: *const c_void,
 ) -> Result<ResourceId, AnyError> {
   let instance = state.try_borrow::<super::Instance>().ok_or_else(|| {
-    type_error("Cannot create surface outside of WebGPU context. Did you forget to call `navigator.gpu.requestAdapter()`?")
+    JsNativeError::type_error("Cannot create surface outside of WebGPU context. Did you forget to call `navigator.gpu.requestAdapter()`?")
   })?;
   // Security note:
   //
@@ -41,7 +41,7 @@ pub fn op_webgpu_surface_create(
   //
   // - Only FFI can export v8::External to user code.
   if p1.is_null() {
-    return Err(type_error("Invalid parameters"));
+    return Err(JsNativeError::type_error("Invalid parameters").into());
   }
 
   let (win_handle, display_handle) = raw_window(system, p1, p2)?;
@@ -68,13 +68,13 @@ fn raw_window(
   ns_view: *const c_void,
 ) -> Result<RawHandles, AnyError> {
   if system != "cocoa" {
-    return Err(type_error("Invalid system on macOS"));
+    return Err(JsNativeError::type_error("Invalid system on macOS").into());
   }
 
   let win_handle = raw_window_handle::RawWindowHandle::AppKit(
     raw_window_handle::AppKitWindowHandle::new(
       NonNull::new(ns_view as *mut c_void)
-        .ok_or(type_error("ns_view is null"))?,
+        .ok_or(JsNativeError::type_error("ns_view is null"))?,
     ),
   );
 
@@ -92,13 +92,13 @@ fn raw_window(
 ) -> Result<RawHandles, AnyError> {
   use raw_window_handle::WindowsDisplayHandle;
   if system != "win32" {
-    return Err(type_error("Invalid system on Windows"));
+    return Err(JsNativeError::type_error("Invalid system on Windows").into());
   }
 
   let win_handle = {
     let mut handle = raw_window_handle::Win32WindowHandle::new(
       std::num::NonZeroIsize::new(window as isize)
-        .ok_or(type_error("window is null"))?,
+        .ok_or(JsNativeError::type_error("window is null"))?,
     );
     handle.hinstance = std::num::NonZeroIsize::new(hinstance as isize);
 
@@ -132,18 +132,18 @@ fn raw_window(
     win_handle = raw_window_handle::RawWindowHandle::Wayland(
       raw_window_handle::WaylandWindowHandle::new(
         NonNull::new(window as *mut c_void)
-          .ok_or(type_error("window is null"))?,
+          .ok_or(JsNativeError::type_error("window is null"))?,
       ),
     );
 
     display_handle = raw_window_handle::RawDisplayHandle::Wayland(
       raw_window_handle::WaylandDisplayHandle::new(
         NonNull::new(display as *mut c_void)
-          .ok_or(type_error("display is null"))?,
+          .ok_or(JsNativeError::type_error("display is null"))?,
       ),
     );
   } else {
-    return Err(type_error("Invalid system on Linux/BSD"));
+    return Err(JsNativeError::type_error("Invalid system on Linux/BSD").into());
   }
 
   Ok((win_handle, display_handle))

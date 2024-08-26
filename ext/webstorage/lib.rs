@@ -254,9 +254,8 @@ impl fmt::Display for DomExceptionNotSupportedError {
 
 impl std::error::Error for DomExceptionNotSupportedError {}
 
-pub fn get_not_supported_error_class_name(
-  e: &AnyError,
-) -> Option<&'static str> {
-  e.downcast_ref::<DomExceptionNotSupportedError>()
-    .map(|_| "DOMExceptionNotSupportedError")
+impl deno_core::error::JsErrorClass for DomExceptionNotSupportedError {
+  fn get_class(&self) -> &'static str {
+    "DOMExceptionNotSupportedError"
+  }
 }

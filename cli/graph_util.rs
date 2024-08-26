@@ -10,7 +10,6 @@ use crate::cache::GlobalHttpCache;
 use crate::cache::ModuleInfoCache;
 use crate::cache::ParsedSourceCache;
 use crate::colors;
-use crate::errors::get_error_class_name;
 use crate::file_fetcher::FileFetcher;
 use crate::npm::CliNpmResolver;
 use crate::resolver::CliGraphResolver;
@@ -27,7 +26,7 @@ use deno_graph::WorkspaceFastCheckOption;
 use deno_runtime::fs_util::specifier_to_file_path;
 
 use deno_core::anyhow::bail;
-use deno_core::error::custom_error;
+use deno_core::error::{JsErrorClass, JsNativeError};
 use deno_core::error::AnyError;
 use deno_core::parking_lot::Mutex;
 use deno_core::ModuleSpecifier;
@@ -50,6 +49,71 @@ use import_map::ImportMapError;
 use std::collections::HashSet;
 use std::path::PathBuf;
 use std::sync::Arc;
+
+deno_core::js_error_wrapper!(deno_ast::ParseDiagnostic, JsParseDiagnostic, "TypeError");
+
+deno_core::js_error_wrapper!(ResolutionError, JsResolutionError, |error| {
+  match error {
+    ResolutionError::ResolverError { error, .. } => {
+      use ResolveError::*;
+      match error.as_ref() {
+        Specifier(_) => "TypeError",
+        Other(e) => e.get_class(),
+      }
+    }
+    _ => "TypeError",
+  }
+});
+
+deno_core::js_error_wrapper!(ModuleGraphError, JsModuleGraphError, |error| {
+  use deno_graph::JsrLoadError;
+  use deno_graph::NpmLoadError;
+
+  match error {
+    ModuleGraphError::ResolutionError(err)
+    | ModuleGraphError::TypesResolutionError(err) => {
+      JsResolutionError(err.clone()).get_class()
+    }
+    ModuleGraphError::ModuleError(err) => match err {
+      ModuleError::InvalidTypeAssertion { .. } => "SyntaxError",
+      ModuleError::ParseErr(_, diagnostic) => JsParseDiagnostic(diagnostic.clone()).get_class(),
+      ModuleError::UnsupportedMediaType { .. }
+      | ModuleError::UnsupportedImportAttributeType { .. } => "TypeError",
+      ModuleError::Missing(_, _) | ModuleError::MissingDynamic(_, _) => {
+        "NotFound"
+      }
+      ModuleError::LoadingErr(_, _, err) => match err {
+        ModuleLoadError::Loader(err) => err.get_class(),
+        ModuleLoadError::HttpsChecksumIntegrity(_)
+        | ModuleLoadError::TooManyRedirects => "Error",
+        ModuleLoadError::NodeUnknownBuiltinModule(_) => "NotFound",
+        ModuleLoadError::Decode(_) => "TypeError",
+        ModuleLoadError::Npm(err) => match err {
+          NpmLoadError::NotSupportedEnvironment
+          | NpmLoadError::PackageReqResolution(_)
+          | NpmLoadError::RegistryInfo(_) => "Error",
+          NpmLoadError::PackageReqReferenceParse(_) => "TypeError",
+        },
+        ModuleLoadError::Jsr(err) => match err {
+          JsrLoadError::UnsupportedManifestChecksum
+          | JsrLoadError::PackageFormat(_) => "TypeError",
+          JsrLoadError::ContentLoadExternalSpecifier
+          | JsrLoadError::ContentLoad(_)
+          | JsrLoadError::ContentChecksumIntegrity(_)
+          | JsrLoadError::PackageManifestLoad(_, _)
+          | JsrLoadError::PackageVersionManifestChecksumIntegrity(..)
+          | JsrLoadError::PackageVersionManifestLoad(_, _)
+          | JsrLoadError::RedirectInPackage(_) => "Error",
+          JsrLoadError::PackageNotFound(_)
+          | JsrLoadError::PackageReqNotFound(_)
+          | JsrLoadError::PackageVersionNotFound(_)
+          | JsrLoadError::UnknownExport { .. } => "NotFound",
+        },
+      },
+    },
+  }
+});
+
 
 #[derive(Clone, Copy)]
 pub struct GraphValidOptions {
@@ -157,14 +221,14 @@ pub fn graph_valid(
         }
       }
 
-      Some(custom_error(get_error_class_name(&error.into()), message))
+      Some(JsNativeError::new(JsModuleGraphError(error).get_class(), message).into())
     });
   if let Some(error) = errors.next() {
     Err(error)
   } else {
     // finally surface the npm resolution result
     if let Err(err) = &graph.npm_dep_graph_result {
-      return Err(custom_error(get_error_class_name(err), format!("{}", err)));
+      return Err(JsNativeError::new(err.get_class(), format!("{}", err)).into());
     }
     Ok(())
   }

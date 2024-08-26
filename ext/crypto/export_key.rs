@@ -4,7 +4,7 @@ use base64::prelude::BASE64_URL_SAFE_NO_PAD;
 use base64::Engine;
 use const_oid::AssociatedOid;
 use const_oid::ObjectIdentifier;
-use deno_core::error::custom_error;
+use deno_core::error::JsNativeError;
 use deno_core::error::AnyError;
 use deno_core::op2;
 use deno_core::ToJsBuffer;
@@ -182,7 +182,7 @@ fn export_key_rsa(
       let public_key = key_data.as_rsa_public_key()?;
       let public_key = rsa::pkcs1::RsaPublicKey::from_der(&public_key)
         .map_err(|_| {
-          custom_error(
+          JsNativeError::new(
             "DOMExceptionOperationError",
             "failed to decode public key",
           )
@@ -197,7 +197,7 @@ fn export_key_rsa(
       let private_key = key_data.as_rsa_private_key()?;
       let private_key = rsa::pkcs1::RsaPrivateKey::from_der(private_key)
         .map_err(|_| {
-          custom_error(
+          JsNativeError::new(
             "DOMExceptionOperationError",
             "failed to decode private key",
           )
@@ -327,10 +327,10 @@ fn export_key_ec(
             y: bytes_to_b64(y),
           })
         } else {
-          Err(custom_error(
+          Err(JsNativeError::new(
             "DOMExceptionOperationError",
             "failed to decode public key",
-          ))
+          ).into())
         }
       }
       EcNamedCurve::P384 => {
@@ -345,10 +345,10 @@ fn export_key_ec(
             y: bytes_to_b64(y),
           })
         } else {
-          Err(custom_error(
+          Err(JsNativeError::new(
             "DOMExceptionOperationError",
             "failed to decode public key",
-          ))
+          ).into())
         }
       }
       EcNamedCurve::P521 => Err(data_error("Unsupported named curve")),
@@ -360,7 +360,7 @@ fn export_key_ec(
         EcNamedCurve::P256 => {
           let ec_key =
             p256::SecretKey::from_pkcs8_der(private_key).map_err(|_| {
-              custom_error(
+              JsNativeError::new(
                 "DOMExceptionOperationError",
                 "failed to decode private key",
               )
@@ -383,7 +383,7 @@ fn export_key_ec(
         EcNamedCurve::P384 => {
           let ec_key =
             p384::SecretKey::from_pkcs8_der(private_key).map_err(|_| {
-              custom_error(
+              JsNativeError::new(
                 "DOMExceptionOperationError",
                 "failed to decode private key",
               )

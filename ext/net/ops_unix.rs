@@ -3,8 +3,7 @@
 use crate::io::UnixStreamResource;
 use crate::raw::NetworkListenerResource;
 use crate::NetPermissions;
-use deno_core::error::bad_resource;
-use deno_core::error::custom_error;
+use deno_core::error::{JsNativeError, ResourceError};
 use deno_core::error::AnyError;
 use deno_core::op2;
 use deno_core::AsyncRefCell;
@@ -29,7 +28,7 @@ pub use tokio::net::UnixStream;
 pub fn into_string(s: std::ffi::OsString) -> Result<String, AnyError> {
   s.into_string().map_err(|s| {
     let message = format!("File name or path {s:?} is not valid UTF-8");
-    custom_error("InvalidData", message)
+    JsNativeError::new("InvalidData", message).into()
   })
 }
 
@@ -68,10 +67,10 @@ pub async fn op_net_accept_unix(
     .borrow()
     .resource_table
     .get::<NetworkListenerResource<UnixListener>>(rid)
-    .map_err(|_| bad_resource("Listener has been closed"))?;
+    .map_err(|_| ResourceError::Other("Listener has been closed".to_string()))?;
   let listener = RcRef::map(&resource, |r| &r.listener)
     .try_borrow_mut()
-    .ok_or_else(|| custom_error("Busy", "Listener already in use"))?;
+    .ok_or_else(|| JsNativeError::new("Busy", "Listener already in use"))?;
   let cancel = RcRef::map(resource, |r| &r.cancel);
   let (unix_stream, _socket_addr) = listener
     .accept()
@@ -132,10 +131,10 @@ pub async fn op_net_recv_unixpacket(
     .borrow()
     .resource_table
     .get::<UnixDatagramResource>(rid)
-    .map_err(|_| bad_resource("Socket has been closed"))?;
+    .map_err(|_| ResourceError::Other("Socket has been closed".to_string()))?;
   let socket = RcRef::map(&resource, |r| &r.socket)
     .try_borrow_mut()
-    .ok_or_else(|| custom_error("Busy", "Socket already in use"))?;
+    .ok_or_else(|| JsNativeError::new("Busy", "Socket already in use"))?;
   let cancel = RcRef::map(resource, |r| &r.cancel);
   let (nread, remote_addr) =
     socket.recv_from(&mut buf).try_or_cancel(cancel).await?;
@@ -165,10 +164,10 @@ where
     .borrow()
     .resource_table
     .get::<UnixDatagramResource>(rid)
-    .map_err(|_| custom_error("NotConnected", "Socket has been closed"))?;
+    .map_err(|_| JsNativeError::new("NotConnected", "Socket has been closed"))?;
   let socket = RcRef::map(&resource, |r| &r.socket)
     .try_borrow_mut()
-    .ok_or_else(|| custom_error("Busy", "Socket already in use"))?;
+    .ok_or_else(|| JsNativeError::new("Busy", "Socket already in use"))?;
   let nwritten = socket.send_to(&zero_copy, address_path).await?;
 
   Ok(nwritten)

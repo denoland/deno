@@ -1,6 +1,6 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 use bytes::BytesMut;
-use deno_core::error::type_error;
+use deno_core::error::JsNativeError;
 use deno_core::error::AnyError;
 use deno_core::external;
 use deno_core::op2;
@@ -550,7 +550,7 @@ pub fn op_readable_stream_resource_write_error(
 ) -> bool {
   let sender = get_sender(sender);
   // We can always write an error, no polling required
-  sender.write_error(type_error(Cow::Owned(error)));
+  sender.write_error(JsNativeError::type_error(Cow::Owned(error)).into());
   !sender.closed()
 }
 

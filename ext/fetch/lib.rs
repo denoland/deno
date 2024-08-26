@@ -19,7 +19,7 @@ use std::task::Poll;
 
 use deno_core::anyhow::anyhow;
 use deno_core::anyhow::Error;
-use deno_core::error::type_error;
+use deno_core::error::JsNativeError;
 use deno_core::error::AnyError;
 use deno_core::futures::stream::Peekable;
 use deno_core::futures::Future;
@@ -84,6 +84,9 @@ pub use data_url;
 pub use proxy::basic_auth;
 
 pub use fs_fetch_handler::FsFetchHandler;
+
+deno_core::js_error_wrapper!(http::header::InvalidHeaderName, JsInvalidHeaderName, "TypeError");
+deno_core::js_error_wrapper!(http::header::InvalidHeaderValue, JsInvalidHeaderValue, "TypeError");
 
 #[derive(Clone)]
 pub struct Options {
@@ -176,9 +179,9 @@ impl FetchHandler for DefaultFileFetchHandler {
     _url: &Url,
   ) -> (CancelableResponseFuture, Option<Rc<CancelHandle>>) {
     let fut = async move {
-      Ok(Err(type_error(
+      Ok(Err(JsNativeError::type_error(
         "NetworkError when attempting to fetch resource.",
-      )))
+      ).into()))
     };
     (Box::pin(fut), None)
   }
@@ -361,15 +364,15 @@ where
   let (request_rid, cancel_handle_rid) = match scheme {
     "file" => {
       let path = url.to_file_path().map_err(|_| {
-        type_error("NetworkError when attempting to fetch resource.")
+        JsNativeError::type_error("NetworkError when attempting to fetch resource.")
       })?;
       let permissions = state.borrow_mut::<FP>();
       permissions.check_read(&path, "fetch()")?;
 
       if method != Method::GET {
-        return Err(type_error(format!(
+        return Err(JsNativeError::type_error(format!(
           "Fetching files only supports the GET method. Received {method}."
-        )));
+        )).into());
       }
 
       let Options {
@@ -394,7 +397,7 @@ where
       let uri = url
         .as_str()
         .parse::<Uri>()
-        .map_err(|_| type_error("Invalid URL"))?;
+        .map_err(|_| JsNativeError::type_error("Invalid URL"))?;
 
       let mut con_len = None;
       let body = if has_body {
@@ -446,9 +449,9 @@ where
 
       for (key, value) in headers {
         let name = HeaderName::from_bytes(&key)
-          .map_err(|err| type_error(err.to_string()))?;
+          .map_err(JsInvalidHeaderName)?;
         let v = HeaderValue::from_bytes(&value)
-          .map_err(|err| type_error(err.to_string()))?;
+          .map_err(JsInvalidHeaderValue)?;
 
         if (name != HOST || allow_host) && name != CONTENT_LENGTH {
           request.headers_mut().append(name, v);
@@ -466,7 +469,7 @@ where
       let options = state.borrow::<Options>();
       if let Some(request_builder_hook) = options.request_builder_hook {
         request_builder_hook(&mut request)
-          .map_err(|err| type_error(err.to_string()))?;
+          .map_err(|err| JsNativeError::type_error(err.to_string()))?;
       }
 
       let cancel_handle = CancelHandle::new_rc();
@@ -494,11 +497,11 @@ where
     }
     "data" => {
       let data_url = DataUrl::process(url.as_str())
-        .map_err(|e| type_error(format!("{e:?}")))?;
+        .map_err(|e| JsNativeError::type_error(format!("{e:?}")))?;
 
       let (body, _) = data_url
         .decode_to_vec()
-        .map_err(|e| type_error(format!("{e:?}")))?;
+        .map_err(|e| JsNativeError::type_error(format!("{e:?}")))?;
       let body = http_body_util::Full::new(body.into())
         .map_err(|never| match never {})
         .boxed();
@@ -520,9 +523,9 @@ where
     "blob" => {
       // Blob URL resolution happens in the JS side of fetch. If we got here is
       // because the URL isn't an object URL.
-      return Err(type_error("Blob for the given URL not found."));
+      return Err(JsNativeError::type_error("Blob for the given URL not found.").into());
     }
-    _ => return Err(type_error(format!("scheme '{scheme}' not supported"))),
+    _ => return Err(JsNativeError::type_error(format!("scheme '{scheme}' not supported")).into()),
   };
 
   Ok(FetchReturn {
@@ -584,9 +587,9 @@ pub async fn op_fetch_send(
         err_ref = err_src;
       }
 
-      return Err(type_error(err.to_string()));
+      return Err(JsNativeError::type_error(err.to_string()).into());
     }
-    Err(_) => return Err(type_error("request was cancelled")),
+    Err(_) => return Err(JsNativeError::type_error("request was cancelled").into()),
   };
 
   let status = res.status();
@@ -844,7 +847,7 @@ impl Resource for FetchResponseResource {
             // safely call `await` on it without creating a race condition.
             Some(_) => match reader.as_mut().next().await.unwrap() {
               Ok(chunk) => assert!(chunk.is_empty()),
-              Err(err) => break Err(type_error(err.to_string())),
+              Err(err) => break Err(JsNativeError::type_error(err.to_string()).into()),
             },
             None => break Ok(BufView::empty()),
           }
@@ -1018,7 +1021,7 @@ pub fn create_http_client(
 
   let user_agent = user_agent
     .parse::<HeaderValue>()
-    .map_err(|_| type_error("illegal characters in User-Agent"))?;
+    .map_err(|_| JsNativeError::type_error("illegal characters in User-Agent"))?;
 
   let mut builder =
     hyper_util::client::legacy::Builder::new(TokioExecutor::new());
@@ -1028,7 +1031,7 @@ pub fn create_http_client(
   let mut proxies = proxy::from_env();
   if let Some(proxy) = options.proxy {
     let mut intercept = proxy::Intercept::all(&proxy.url)
-      .ok_or_else(|| type_error("invalid proxy url"))?;
+      .ok_or_else(|| JsNativeError::type_error("invalid proxy url"))?;
     if let Some(basic_auth) = &proxy.basic_auth {
       intercept.set_auth(&basic_auth.username, &basic_auth.password);
     }
@@ -1060,7 +1063,7 @@ pub fn create_http_client(
     }
     (true, true) => {}
     (false, false) => {
-      return Err(type_error("Either `http1` or `http2` needs to be true"))
+      return Err(JsNativeError::type_error("Either `http1` or `http2` needs to be true").into())
     }
   }
 
@@ -1145,6 +1148,12 @@ impl std::fmt::Display for ClientSendError {
 impl std::error::Error for ClientSendError {
   fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
     Some(&self.source)
+  }
+}
+
+impl deno_core::error::JsErrorClass for ClientSendError {
+  fn get_class(&self) -> &'static str {
+    "TypeError"
   }
 }
 

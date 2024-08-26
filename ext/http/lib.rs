@@ -6,7 +6,7 @@ use async_compression::Level;
 use base64::prelude::BASE64_STANDARD;
 use base64::Engine;
 use cache_control::CacheControl;
-use deno_core::error::custom_error;
+use deno_core::error::JsNativeError;
 use deno_core::error::AnyError;
 use deno_core::futures::channel::mpsc;
 use deno_core::futures::channel::oneshot;
@@ -94,6 +94,10 @@ pub use request_properties::HttpConnectionProperties;
 pub use request_properties::HttpListenProperties;
 pub use request_properties::HttpPropertyExtractor;
 pub use request_properties::HttpRequestProperties;
+
+deno_core::js_error_wrapper!(hyper_v014::Error, JsHyperV014Error, "Http");
+deno_core::js_error_wrapper!(Arc<hyper_v014::Error>, JsHyperV014ArcError, "Http");
+
 
 deno_core::extension!(
   deno_http,
@@ -251,7 +255,7 @@ impl HttpConnResource {
       match fut.await {
         Some(stream) => Ok(Some(stream)),
         // Return the connection error, if any.
-        None => self.closed().map_ok(|_| None).await,
+        None => self.closed().map_ok(|_| None).map_err(AnyError::from).await,
       }
     }
     .try_or_cancel(&self.cancel_handle)
@@ -259,8 +263,8 @@ impl HttpConnResource {
   }
 
   /// A future that completes when this HTTP connection is closed or errors.
-  async fn closed(&self) -> Result<(), AnyError> {
-    self.closed_fut.clone().map_err(AnyError::from).await
+  async fn closed(&self) -> Result<(), JsHyperV014ArcError> {
+    self.closed_fut.clone().map_err(JsHyperV014ArcError).await
   }
 }
 
@@ -1083,7 +1087,7 @@ where
 }
 
 fn http_error(message: &'static str) -> AnyError {
-  custom_error("Http", message)
+  JsNativeError::new("Http", message).into()
 }
 
 /// Filters out the ever-surprising 'shutdown ENOTCONN' errors.

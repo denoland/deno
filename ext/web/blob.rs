@@ -7,7 +7,7 @@ use std::rc::Rc;
 use std::sync::Arc;
 
 use async_trait::async_trait;
-use deno_core::error::type_error;
+use deno_core::error::JsNativeError;
 use deno_core::error::AnyError;
 use deno_core::op2;
 use deno_core::parking_lot::Mutex;
@@ -193,15 +193,15 @@ pub fn op_blob_slice_part(
   let blob_store = state.borrow::<Arc<BlobStore>>();
   let part = blob_store
     .get_part(&id)
-    .ok_or_else(|| type_error("Blob part not found"))?;
+    .ok_or_else(|| JsNativeError::type_error("Blob part not found"))?;
 
   let SliceOptions { start, len } = options;
 
   let size = part.size();
   if start + len > size {
-    return Err(type_error(
+    return Err(JsNativeError::type_error(
       "start + len can not be larger than blob part size",
-    ));
+    ).into());
   }
 
   let sliced_part = SlicedBlobPart { part, start, len };
@@ -221,7 +221,7 @@ pub async fn op_blob_read_part(
     let blob_store = state.borrow::<Arc<BlobStore>>();
     blob_store.get_part(&id)
   }
-  .ok_or_else(|| type_error("Blob part not found"))?;
+  .ok_or_else(|| JsNativeError::type_error("Blob part not found"))?;
   let buf = part.read().await?;
   Ok(ToJsBuffer::from(buf.to_vec()))
 }
@@ -244,7 +244,7 @@ pub fn op_blob_create_object_url(
   for part_id in part_ids {
     let part = blob_store
       .get_part(&part_id)
-      .ok_or_else(|| type_error("Blob part not found"))?;
+      .ok_or_else(|| JsNativeError::type_error("Blob part not found"))?;
     parts.push(part);
   }
 
@@ -294,7 +294,7 @@ pub fn op_blob_from_object_url(
   }
 
   let blob_store = state.try_borrow::<Arc<BlobStore>>().ok_or_else(|| {
-    type_error("Blob URLs are not supported in this context.")
+    JsNativeError::type_error("Blob URLs are not supported in this context.")
   })?;
   if let Some(blob) = blob_store.get_object_url(url) {
     let parts = blob

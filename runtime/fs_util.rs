@@ -2,7 +2,7 @@
 
 use deno_ast::ModuleSpecifier;
 use deno_core::anyhow::Context;
-use deno_core::error::uri_error;
+use deno_core::error::JsNativeError;
 use deno_core::error::AnyError;
 pub use deno_core::normalize_path;
 use std::path::Path;
@@ -57,9 +57,9 @@ pub fn specifier_to_file_path(
   };
   match result {
     Ok(path) => Ok(path),
-    Err(()) => Err(uri_error(format!(
+    Err(()) => Err(JsNativeError::uri_error( format!(
       "Invalid file path.\n  Specifier: {specifier}"
-    ))),
+    )).into()),
   }
 }
 

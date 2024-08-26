@@ -1,7 +1,7 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
 use crate::symbol::NativeType;
-use deno_core::error::type_error;
+use deno_core::error::JsNativeError;
 use deno_core::error::AnyError;
 use deno_core::v8;
 use libffi::middle::Arg;
@@ -128,7 +128,7 @@ pub fn ffi_parse_bool_arg(
   arg: v8::Local<v8::Value>,
 ) -> Result<NativeValue, AnyError> {
   let bool_value = v8::Local::<v8::Boolean>::try_from(arg)
-    .map_err(|_| type_error("Invalid FFI u8 type, expected boolean"))?
+    .map_err(|_| JsNativeError::type_error("Invalid FFI u8 type, expected boolean"))?
     .is_true();
   Ok(NativeValue { bool_value })
 }
@@ -138,7 +138,7 @@ pub fn ffi_parse_u8_arg(
   arg: v8::Local<v8::Value>,
 ) -> Result<NativeValue, AnyError> {
   let u8_value = v8::Local::<v8::Uint32>::try_from(arg)
-    .map_err(|_| type_error("Invalid FFI u8 type, expected unsigned integer"))?
+    .map_err(|_| JsNativeError::type_error("Invalid FFI u8 type, expected unsigned integer"))?
     .value() as u8;
   Ok(NativeValue { u8_value })
 }
@@ -148,7 +148,7 @@ pub fn ffi_parse_i8_arg(
   arg: v8::Local<v8::Value>,
 ) -> Result<NativeValue, AnyError> {
   let i8_value = v8::Local::<v8::Int32>::try_from(arg)
-    .map_err(|_| type_error("Invalid FFI i8 type, expected integer"))?
+    .map_err(|_| JsNativeError::type_error("Invalid FFI i8 type, expected integer"))?
     .value() as i8;
   Ok(NativeValue { i8_value })
 }
@@ -158,7 +158,7 @@ pub fn ffi_parse_u16_arg(
   arg: v8::Local<v8::Value>,
 ) -> Result<NativeValue, AnyError> {
   let u16_value = v8::Local::<v8::Uint32>::try_from(arg)
-    .map_err(|_| type_error("Invalid FFI u16 type, expected unsigned integer"))?
+    .map_err(|_| JsNativeError::type_error("Invalid FFI u16 type, expected unsigned integer"))?
     .value() as u16;
   Ok(NativeValue { u16_value })
 }
@@ -168,7 +168,7 @@ pub fn ffi_parse_i16_arg(
   arg: v8::Local<v8::Value>,
 ) -> Result<NativeValue, AnyError> {
   let i16_value = v8::Local::<v8::Int32>::try_from(arg)
-    .map_err(|_| type_error("Invalid FFI i16 type, expected integer"))?
+    .map_err(|_| JsNativeError::type_error("Invalid FFI i16 type, expected integer"))?
     .value() as i16;
   Ok(NativeValue { i16_value })
 }
@@ -178,7 +178,7 @@ pub fn ffi_parse_u32_arg(
   arg: v8::Local<v8::Value>,
 ) -> Result<NativeValue, AnyError> {
   let u32_value = v8::Local::<v8::Uint32>::try_from(arg)
-    .map_err(|_| type_error("Invalid FFI u32 type, expected unsigned integer"))?
+    .map_err(|_| JsNativeError::type_error("Invalid FFI u32 type, expected unsigned integer"))?
     .value();
   Ok(NativeValue { u32_value })
 }
@@ -188,7 +188,7 @@ pub fn ffi_parse_i32_arg(
   arg: v8::Local<v8::Value>,
 ) -> Result<NativeValue, AnyError> {
   let i32_value = v8::Local::<v8::Int32>::try_from(arg)
-    .map_err(|_| type_error("Invalid FFI i32 type, expected integer"))?
+    .map_err(|_| JsNativeError::type_error("Invalid FFI i32 type, expected integer"))?
     .value();
   Ok(NativeValue { i32_value })
 }
@@ -207,9 +207,9 @@ pub fn ffi_parse_u64_arg(
   } else if let Ok(value) = v8::Local::<v8::Number>::try_from(arg) {
     value.integer_value(scope).unwrap() as u64
   } else {
-    return Err(type_error(
+    return Err(JsNativeError::type_error(
       "Invalid FFI u64 type, expected unsigned integer",
-    ));
+    ).into());
   };
   Ok(NativeValue { u64_value })
 }
@@ -228,7 +228,7 @@ pub fn ffi_parse_i64_arg(
   } else if let Ok(value) = v8::Local::<v8::Number>::try_from(arg) {
     value.integer_value(scope).unwrap()
   } else {
-    return Err(type_error("Invalid FFI i64 type, expected integer"));
+    return Err(JsNativeError::type_error("Invalid FFI i64 type, expected integer").into());
   };
   Ok(NativeValue { i64_value })
 }
@@ -247,7 +247,7 @@ pub fn ffi_parse_usize_arg(
     } else if let Ok(value) = v8::Local::<v8::Number>::try_from(arg) {
       value.integer_value(scope).unwrap() as usize
     } else {
-      return Err(type_error("Invalid FFI usize type, expected integer"));
+      return Err(JsNativeError::type_error("Invalid FFI usize type, expected integer").into());
     };
   Ok(NativeValue { usize_value })
 }
@@ -266,7 +266,7 @@ pub fn ffi_parse_isize_arg(
     } else if let Ok(value) = v8::Local::<v8::Number>::try_from(arg) {
       value.integer_value(scope).unwrap() as isize
     } else {
-      return Err(type_error("Invalid FFI isize type, expected integer"));
+      return Err(JsNativeError::type_error("Invalid FFI isize type, expected integer").into());
     };
   Ok(NativeValue { isize_value })
 }
@@ -276,7 +276,7 @@ pub fn ffi_parse_f32_arg(
   arg: v8::Local<v8::Value>,
 ) -> Result<NativeValue, AnyError> {
   let f32_value = v8::Local::<v8::Number>::try_from(arg)
-    .map_err(|_| type_error("Invalid FFI f32 type, expected number"))?
+    .map_err(|_| JsNativeError::type_error("Invalid FFI f32 type, expected number"))?
     .value() as f32;
   Ok(NativeValue { f32_value })
 }
@@ -286,7 +286,7 @@ pub fn ffi_parse_f64_arg(
   arg: v8::Local<v8::Value>,
 ) -> Result<NativeValue, AnyError> {
   let f64_value = v8::Local::<v8::Number>::try_from(arg)
-    .map_err(|_| type_error("Invalid FFI f64 type, expected number"))?
+    .map_err(|_| JsNativeError::type_error("Invalid FFI f64 type, expected number"))?
     .value();
   Ok(NativeValue { f64_value })
 }
@@ -301,9 +301,9 @@ pub fn ffi_parse_pointer_arg(
   } else if arg.is_null() {
     ptr::null_mut()
   } else {
-    return Err(type_error(
+    return Err(JsNativeError::type_error(
       "Invalid FFI pointer type, expected null, or External",
-    ));
+    ).into());
   };
   Ok(NativeValue { pointer })
 }
@@ -329,7 +329,7 @@ pub fn ffi_parse_buffer_arg(
     let pointer = value
       .buffer(scope)
       .ok_or_else(|| {
-        type_error("Invalid FFI ArrayBufferView, expected data in the buffer")
+        JsNativeError::type_error("Invalid FFI ArrayBufferView, expected data in the buffer")
       })?
       .data();
     if let Some(non_null) = pointer {
@@ -342,9 +342,9 @@ pub fn ffi_parse_buffer_arg(
   } else if arg.is_null() {
     ptr::null_mut()
   } else {
-    return Err(type_error(
+    return Err(JsNativeError::type_error(
       "Invalid FFI buffer type, expected null, ArrayBuffer, or ArrayBufferView",
-    ));
+    ).into());
   };
   Ok(NativeValue { pointer })
 }
@@ -362,16 +362,16 @@ pub fn ffi_parse_struct_arg(
     if let Some(non_null) = value.data() {
       non_null.as_ptr()
     } else {
-      return Err(type_error(
+      return Err(JsNativeError::type_error(
         "Invalid FFI ArrayBuffer, expected data in buffer",
-      ));
+      ).into());
     }
   } else if let Ok(value) = v8::Local::<v8::ArrayBufferView>::try_from(arg) {
     let byte_offset = value.byte_offset();
     let pointer = value
       .buffer(scope)
       .ok_or_else(|| {
-        type_error("Invalid FFI ArrayBufferView, expected data in the buffer")
+        JsNativeError::type_error("Invalid FFI ArrayBufferView, expected data in the buffer")
       })?
       .data();
     if let Some(non_null) = pointer {
@@ -379,14 +379,14 @@ pub fn ffi_parse_struct_arg(
       // is within the buffer backing store.
       unsafe { non_null.as_ptr().add(byte_offset) }
     } else {
-      return Err(type_error(
+      return Err(JsNativeError::type_error(
         "Invalid FFI ArrayBufferView, expected data in buffer",
-      ));
+      ).into());
     }
   } else {
-    return Err(type_error(
+    return Err(JsNativeError::type_error(
       "Invalid FFI struct type, expected ArrayBuffer, or ArrayBufferView",
-    ));
+    ).into());
   };
   Ok(NativeValue { pointer })
 }
@@ -401,9 +401,9 @@ pub fn ffi_parse_function_arg(
   } else if arg.is_null() {
     ptr::null_mut()
   } else {
-    return Err(type_error(
+    return Err(JsNativeError::type_error(
       "Invalid FFI function type, expected null, or External",
-    ));
+    ).into());
   };
   Ok(NativeValue { pointer })
 }

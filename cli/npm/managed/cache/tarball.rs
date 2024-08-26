@@ -6,7 +6,7 @@ use std::sync::Arc;
 use deno_core::anyhow::anyhow;
 use deno_core::anyhow::bail;
 use deno_core::anyhow::Context;
-use deno_core::error::custom_error;
+use deno_core::error::JsNativeError;
 use deno_core::error::AnyError;
 use deno_core::futures::future::LocalBoxFuture;
 use deno_core::futures::FutureExt;
@@ -148,13 +148,13 @@ impl TarballCache {
       if should_use_cache && package_folder_exists {
         return Ok(());
       } else if tarball_cache.cache.cache_setting() == &CacheSetting::Only {
-        return Err(custom_error(
+        return Err(JsNativeError::new(
           "NotCached",
           format!(
             "An npm specifier not found in cache: \"{}\", --cached-only is specified.",
             &package_nv.name
           )
-        )
+        ).into()
         );
       }
 

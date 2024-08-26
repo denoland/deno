@@ -6,7 +6,7 @@ use std::rc::Rc;
 use std::sync::Arc;
 
 use async_trait::async_trait;
-use deno_core::error::type_error;
+use deno_core::error::JsNativeError;
 use deno_core::error::AnyError;
 use deno_core::op2;
 use deno_core::serde::Deserialize;
@@ -211,7 +211,7 @@ where
     state.put(cache);
     Ok(state.borrow::<CA>().clone())
   } else {
-    Err(type_error("CacheStorage is not available in this context."))
+    Err(JsNativeError::type_error("CacheStorage is not available in this context.").into())
   }
 }
 

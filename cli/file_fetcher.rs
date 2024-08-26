@@ -13,9 +13,7 @@ use crate::util::progress_bar::ProgressBar;
 use deno_ast::MediaType;
 use deno_core::anyhow::bail;
 use deno_core::anyhow::Context;
-use deno_core::error::custom_error;
-use deno_core::error::generic_error;
-use deno_core::error::uri_error;
+use deno_core::error::JsNativeError;
 use deno_core::error::AnyError;
 use deno_core::parking_lot::Mutex;
 use deno_core::url::Url;
@@ -118,7 +116,7 @@ impl MemoryFiles {
 /// Fetch a source file from the local file system.
 fn fetch_local(specifier: &ModuleSpecifier) -> Result<File, AnyError> {
   let local = specifier.to_file_path().map_err(|_| {
-    uri_error(format!("Invalid file path.\n  Specifier: {specifier}"))
+    JsNativeError::uri_error(format!("Invalid file path.\n  Specifier: {specifier}"))
   })?;
   let bytes = fs::read(local)?;
 
@@ -135,9 +133,9 @@ fn get_validated_scheme(
 ) -> Result<String, AnyError> {
   let scheme = specifier.scheme();
   if !SUPPORTED_SCHEMES.contains(&scheme) {
-    Err(generic_error(format!(
+    Err(JsNativeError::generic(format!(
       "Unsupported scheme \"{scheme}\" for module \"{specifier}\". Supported schemes: {SUPPORTED_SCHEMES:#?}"
-    )))
+    )).into())
   } else {
     Ok(scheme.to_string())
   }
@@ -224,7 +222,7 @@ impl FileFetcher {
         }
       }
     }
-    Err(custom_error("Http", "Too many redirects."))
+    Err(JsNativeError::new("Http", "Too many redirects.").into())
   }
 
   fn fetch_cached_no_follow(
@@ -305,7 +303,7 @@ impl FileFetcher {
       .blob_store
       .get_object_url(specifier.clone())
       .ok_or_else(|| {
-        custom_error(
+        JsNativeError::new(
           "NotFound",
           format!("Blob URL not found: \"{specifier}\"."),
         )
@@ -343,12 +341,12 @@ impl FileFetcher {
     }
 
     if *cache_setting == CacheSetting::Only {
-      return Err(custom_error(
+      return Err(JsNativeError::new(
         "NotCached",
         format!(
           "Specifier not found in cache: \"{specifier}\", --cached-only is specified."
         ),
-      ));
+      ).into());
     }
 
     let mut maybe_progress_guard = None;
@@ -383,10 +381,10 @@ impl FileFetcher {
         tokio::time::sleep(std::time::Duration::from_millis(50)).await;
         Ok(())
       } else {
-        Err(generic_error(format!(
+        Err(JsNativeError::generic(format!(
           "Import '{}' failed: {}",
           specifier, err_str
-        )))
+        )).into())
       }
     }
 
@@ -558,7 +556,7 @@ impl FileFetcher {
       }
     }
 
-    Err(custom_error("Http", "Too many redirects."))
+    Err(JsNativeError::new("Http", "Too many redirects.").into())
   }
 
   /// Fetches without following redirects.
@@ -590,10 +588,10 @@ impl FileFetcher {
         .await
         .map(FileOrRedirect::File)
     } else if !self.allow_remote {
-      Err(custom_error(
+      Err(JsNativeError::new(
         "NoRemote",
         format!("A remote specifier was requested: \"{specifier}\", but --no-remote is specified."),
-      ))
+      ).into())
     } else {
       self
         .fetch_remote_no_follow(
@@ -636,12 +634,12 @@ impl FileFetcher {
 
 #[cfg(test)]
 mod tests {
+  use deno_core::error::JsErrorClass;
   use crate::cache::GlobalHttpCache;
   use crate::cache::RealDenoCacheEnv;
   use crate::http_util::HttpClientProvider;
 
   use super::*;
-  use deno_core::error::get_custom_error_class;
   use deno_core::resolve_url;
   use deno_runtime::deno_web::Blob;
   use deno_runtime::deno_web::InMemoryBlobPart;
@@ -1307,7 +1305,7 @@ mod tests {
       .await;
     assert!(result.is_err());
     let err = result.unwrap_err();
-    assert_eq!(get_custom_error_class(&err), Some("NoRemote"));
+    assert_eq!(err.get_class(), "NoRemote");
     assert_eq!(err.to_string(), "A remote specifier was requested: \"http://localhost:4545/run/002_hello.ts\", but --no-remote is specified.");
   }
 
@@ -1340,8 +1338,8 @@ mod tests {
       .await;
     assert!(result.is_err());
     let err = result.unwrap_err();
+    assert_eq!(err.get_class(), "NotCached");
     assert_eq!(err.to_string(), "Specifier not found in cache: \"http://localhost:4545/run/002_hello.ts\", --cached-only is specified.");
-    assert_eq!(get_custom_error_class(&err), Some("NotCached"));
 
     let result = file_fetcher_02
       .fetch(&specifier, &PermissionsContainer::allow_all())

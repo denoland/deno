@@ -6,7 +6,7 @@ use std::sync::Arc;
 use deno_core::anyhow::anyhow;
 use deno_core::anyhow::bail;
 use deno_core::anyhow::Context;
-use deno_core::error::custom_error;
+use deno_core::error::JsNativeError;
 use deno_core::error::AnyError;
 use deno_core::futures::future::LocalBoxFuture;
 use deno_core::futures::FutureExt;
@@ -95,12 +95,12 @@ impl RegistryInfoDownloader {
     name: &str,
   ) -> Result<Option<Arc<NpmPackageInfo>>, AnyError> {
     if *self.cache.cache_setting() == CacheSetting::Only {
-      return Err(custom_error(
+      return Err(JsNativeError::new(
         "NotCached",
         format!(
           "An npm specifier not found in cache: \"{name}\", --cached-only is specified."
         )
-      ));
+      ).into());
     }
 
     let cache_item = {

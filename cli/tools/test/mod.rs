@@ -29,7 +29,8 @@ use deno_config::glob::WalkEntry;
 use deno_core::anyhow;
 use deno_core::anyhow::bail;
 use deno_core::anyhow::Context as _;
-use deno_core::error::generic_error;
+use deno_core::error::{CoreError};
+use deno_core::error::{JsNativeError};
 use deno_core::error::AnyError;
 use deno_core::error::JsError;
 use deno_core::futures::future;
@@ -621,24 +622,20 @@ async fn configure_main_worker(
   }
   let res = worker.execute_side_module_possibly_with_npm().await;
   let mut worker = worker.into_main_worker();
-  match res {
-    Ok(()) => Ok(()),
-    Err(error) => {
-      // TODO(mmastrac): It would be nice to avoid having this error pattern repeated
-      if error.is::<JsError>() {
+  if let Err(error) = res {
+    match error {
+      CoreError::TLA(js_error) | CoreError::Js(js_error) => {
         send_test_event(
           &worker.js_runtime.op_state(),
           TestEvent::UncaughtError(
             specifier.to_string(),
-            Box::new(error.downcast::<JsError>().unwrap()),
+            Box::new(js_error),
           ),
         )?;
-        Ok(())
-      } else {
-        Err(error)
       }
+      error => return Err(error.into()),
     }
-  }?;
+  }
   Ok((coverage_collector, worker))
 }
 
@@ -748,7 +745,7 @@ pub fn worker_has_tests(worker: &mut MainWorker) -> bool {
 /// Yields to tokio to allow async work to process, and then polls
 /// the event loop once.
 #[must_use = "The event loop result should be checked"]
-pub async fn poll_event_loop(worker: &mut MainWorker) -> Result<(), AnyError> {
+pub async fn poll_event_loop(worker: &mut MainWorker) -> Result<(), CoreError> {
   // Allow any ops that to do work in the tokio event loop to do so
   tokio::task::yield_now().await;
   // Spin the event loop once
@@ -969,23 +966,24 @@ async fn run_tests_for_worker_inner(
     let result = match result {
       Ok(r) => r,
       Err(error) => {
-        if error.is::<JsError>() {
-          send_test_event(
-            &state_rc,
-            TestEvent::UncaughtError(
-              specifier.to_string(),
-              Box::new(error.downcast::<JsError>().unwrap()),
-            ),
-          )?;
-          fail_fast_tracker.add_failure();
-          send_test_event(
-            &state_rc,
-            TestEvent::Result(desc.id, TestResult::Cancelled, 0),
-          )?;
-          had_uncaught_error = true;
-          continue;
-        } else {
-          return Err(error);
+        match error {
+          CoreError::TLA(js_error) | CoreError::Js(js_error) => {
+            send_test_event(
+              &state_rc,
+              TestEvent::UncaughtError(
+                specifier.to_string(),
+                Box::new(js_error),
+              ),
+            )?;
+            fail_fast_tracker.add_failure();
+            send_test_event(
+              &state_rc,
+              TestEvent::Result(desc.id, TestResult::Cancelled, 0),
+            )?;
+            had_uncaught_error = true;
+            continue;
+          }
+          error => return Err(error.into()),
         }
       }
     };
@@ -1580,25 +1578,25 @@ pub async fn report_tests(
   reporter.report_summary(&elapsed, &tests, &test_steps);
   if let Err(err) = reporter.flush_report(&elapsed, &tests, &test_steps) {
     return (
-      Err(generic_error(format!(
+      Err(JsNativeError::generic(format!(
         "Test reporter failed to flush: {}",
         err
-      ))),
+      )).into()),
       receiver,
     );
   }
 
   if used_only {
     return (
-      Err(generic_error(
+      Err(JsNativeError::generic(
         "Test failed because the \"only\" option was used",
-      )),
+      ).into()),
       receiver,
     );
   }
 
   if failed {
-    return (Err(generic_error("Test failed")), receiver);
+    return (Err(JsNativeError::generic("Test failed").into()), receiver);
   }
 
   (Ok(()), receiver)
@@ -1779,7 +1777,7 @@ pub async fn run_tests(
   .await?;
 
   if !workspace_test_options.allow_none && specifiers_with_mode.is_empty() {
-    return Err(generic_error("No test modules found"));
+    return Err(JsNativeError::generic("No test modules found").into());
   }
 
   let main_graph_container = factory.main_module_graph_container().await?;
@@ -1811,7 +1809,7 @@ pub async fn run_tests(
     TestSpecifiersOptions {
       cwd: Url::from_directory_path(cli_options.initial_cwd()).map_err(
         |_| {
-          generic_error(format!(
+          JsNativeError::generic(format!(
             "Unable to construct URL from the path of cwd: {}",
             cli_options.initial_cwd().to_string_lossy(),
           ))
@@ -1978,7 +1976,7 @@ pub async fn run_tests_with_watch(
           TestSpecifiersOptions {
             cwd: Url::from_directory_path(cli_options.initial_cwd()).map_err(
               |_| {
-                generic_error(format!(
+                JsNativeError::generic(format!(
                   "Unable to construct URL from the path of cwd: {}",
                   cli_options.initial_cwd().to_string_lossy(),
                 ))

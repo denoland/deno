@@ -1,6 +1,6 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
-use deno_core::error::type_error;
+use deno_core::error::JsNativeError;
 use deno_core::error::AnyError;
 
 /// Defines the accepted types that can be used as
@@ -56,7 +56,7 @@ impl TryFrom<NativeType> for libffi::middle::Type {
             .map(|field| field.clone().try_into())
             .collect::<Result<Vec<_>, _>>()?,
           false => {
-            return Err(type_error("Struct must have at least one field"))
+            return Err(JsNativeError::type_error("Struct must have at least one field").into())
           }
         })
       }

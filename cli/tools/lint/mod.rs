@@ -10,7 +10,7 @@ use deno_config::glob::FileCollector;
 use deno_config::glob::FilePatterns;
 use deno_config::workspace::WorkspaceDirectory;
 use deno_core::anyhow::anyhow;
-use deno_core::error::generic_error;
+use deno_core::error::JsNativeError;
 use deno_core::error::AnyError;
 use deno_core::futures::future::LocalBoxFuture;
 use deno_core::futures::FutureExt;
@@ -68,9 +68,9 @@ pub async fn lint(
 ) -> Result<(), AnyError> {
   if let Some(watch_flags) = &lint_flags.watch {
     if lint_flags.is_stdin() {
-      return Err(generic_error(
+      return Err(JsNativeError::generic(
         "Lint watch on standard input is not supported.",
-      ));
+      ).into());
     }
     file_watcher::watch_func(
       flags,
@@ -218,7 +218,7 @@ fn resolve_paths_with_options_batches(
     }
   }
   if paths_with_options_batches.is_empty() {
-    return Err(generic_error("No target files found."));
+    return Err(JsNativeError::generic("No target files found.").into());
   }
   Ok(paths_with_options_batches)
 }
@@ -482,7 +482,7 @@ fn lint_stdin(
 ) -> Result<(ParsedSource, Vec<LintDiagnostic>), AnyError> {
   let mut source_code = String::new();
   if stdin().read_to_string(&mut source_code).is_err() {
-    return Err(generic_error("Failed to read from stdin"));
+    return Err(JsNativeError::generic("Failed to read from stdin").into());
   }
 
   let linter = CliLinter::new(CliLinterOptions {

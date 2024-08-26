@@ -4,8 +4,7 @@ use std::borrow::Cow;
 use std::cell::RefCell;
 
 use base64::Engine;
-use deno_core::error::generic_error;
-use deno_core::error::type_error;
+use deno_core::error::JsNativeError;
 use deno_core::error::AnyError;
 use deno_core::op2;
 use deno_core::serde_v8::BigInt as V8BigInt;
@@ -362,7 +361,7 @@ impl KeyObjectHandle {
     let document = match format {
       "pem" => {
         let pem = std::str::from_utf8(key).map_err(|err| {
-          type_error(format!(
+          JsNativeError::type_error(format!(
             "invalid PEM private key: not valid utf8 starting at byte {}",
             err.valid_up_to()
           ))
@@ -370,31 +369,31 @@ impl KeyObjectHandle {
 
         if let Some(passphrase) = passphrase {
           SecretDocument::from_pkcs8_encrypted_pem(pem, passphrase)
-            .map_err(|_| type_error("invalid encrypted PEM private key"))?
+            .map_err(|_| JsNativeError::type_error("invalid encrypted PEM private key"))?
         } else {
           let (label, doc) = SecretDocument::from_pem(pem)
-            .map_err(|_| type_error("invalid PEM private key"))?;
+            .map_err(|_| JsNativeError::type_error("invalid PEM private key"))?;
 
           match label {
             EncryptedPrivateKeyInfo::PEM_LABEL => {
-              return Err(type_error(
+              return Err(JsNativeError::type_error(
                 "encrypted private key requires a passphrase to decrypt",
-              ))
+              ).into())
             }
             PrivateKeyInfo::PEM_LABEL => doc,
             rsa::pkcs1::RsaPrivateKey::PEM_LABEL => {
               SecretDocument::from_pkcs1_der(doc.as_bytes())
-                .map_err(|_| type_error("invalid PKCS#1 private key"))?
+                .map_err(|_| JsNativeError::type_error("invalid PKCS#1 private key"))?
             }
             sec1::EcPrivateKey::PEM_LABEL => {
               SecretDocument::from_sec1_der(doc.as_bytes())
-                .map_err(|_| type_error("invalid SEC1 private key"))?
+                .map_err(|_| JsNativeError::type_error("invalid SEC1 private key"))?
             }
             _ => {
-              return Err(type_error(format!(
+              return Err(JsNativeError::type_error(format!(
                 "unsupported PEM label: {}",
                 label
-              )))
+              )).into())
             }
           }
         }
@@ -403,53 +402,53 @@ impl KeyObjectHandle {
         "pkcs8" => {
           if let Some(passphrase) = passphrase {
             SecretDocument::from_pkcs8_encrypted_der(key, passphrase)
-              .map_err(|_| type_error("invalid encrypted PKCS#8 private key"))?
+              .map_err(|_| JsNativeError::type_error("invalid encrypted PKCS#8 private key"))?
           } else {
             SecretDocument::from_pkcs8_der(key)
-              .map_err(|_| type_error("invalid PKCS#8 private key"))?
+              .map_err(|_| JsNativeError::type_error("invalid PKCS#8 private key"))?
           }
         }
         "pkcs1" => {
           if passphrase.is_some() {
-            return Err(type_error(
+            return Err(JsNativeError::type_error(
               "PKCS#1 private key does not support encryption with passphrase",
-            ));
+            ).into());
           }
           SecretDocument::from_pkcs1_der(key)
-            .map_err(|_| type_error("invalid PKCS#1 private key"))?
+            .map_err(|_| JsNativeError::type_error("invalid PKCS#1 private key"))?
         }
         "sec1" => {
           if passphrase.is_some() {
-            return Err(type_error(
+            return Err(JsNativeError::type_error(
               "SEC1 private key does not support encryption with passphrase",
-            ));
+            ).into());
           }
           SecretDocument::from_sec1_der(key)
-            .map_err(|_| type_error("invalid SEC1 private key"))?
+            .map_err(|_| JsNativeError::type_error("invalid SEC1 private key"))?
         }
-        _ => return Err(type_error(format!("unsupported key type: {}", typ))),
+        _ => return Err(JsNativeError::type_error(format!("unsupported key type: {}", typ)).into()),
       },
       _ => {
-        return Err(type_error(format!("unsupported key format: {}", format)))
+        return Err(JsNativeError::type_error(format!("unsupported key format: {}", format)).into())
       }
     };
 
     let pk_info = PrivateKeyInfo::try_from(document.as_bytes())
-      .map_err(|_| type_error("invalid private key"))?;
+      .map_err(|_| JsNativeError::type_error("invalid private key"))?;
 
     let alg = pk_info.algorithm.oid;
     let private_key = match alg {
       RSA_ENCRYPTION_OID => {
         let private_key =
           rsa::RsaPrivateKey::from_pkcs1_der(pk_info.private_key)
-            .map_err(|_| type_error("invalid PKCS#1 private key"))?;
+            .map_err(|_| JsNativeError::type_error("invalid PKCS#1 private key"))?;
         AsymmetricPrivateKey::Rsa(private_key)
       }
       RSASSA_PSS_OID => {
         let details = parse_rsa_pss_params(pk_info.algorithm.parameters)?;
         let private_key =
           rsa::RsaPrivateKey::from_pkcs1_der(pk_info.private_key)
-            .map_err(|_| type_error("invalid PKCS#1 private key"))?;
+            .map_err(|_| JsNativeError::type_error("invalid PKCS#1 private key"))?;
         AsymmetricPrivateKey::RsaPss(RsaPssPrivateKey {
           key: private_key,
           details,
@@ -457,40 +456,40 @@ impl KeyObjectHandle {
       }
       DSA_OID => {
         let private_key = dsa::SigningKey::try_from(pk_info)
-          .map_err(|_| type_error("invalid DSA private key"))?;
+          .map_err(|_| JsNativeError::type_error("invalid DSA private key"))?;
         AsymmetricPrivateKey::Dsa(private_key)
       }
       EC_OID => {
         let named_curve = pk_info.algorithm.parameters_oid().map_err(|_| {
-          type_error("malformed or missing named curve in ec parameters")
+          JsNativeError::type_error("malformed or missing named curve in ec parameters")
         })?;
         match named_curve {
           ID_SECP224R1_OID => {
             let secret_key =
               p224::SecretKey::from_sec1_der(pk_info.private_key)
-                .map_err(|_| type_error("invalid SEC1 private key"))?;
+                .map_err(|_| JsNativeError::type_error("invalid SEC1 private key"))?;
             AsymmetricPrivateKey::Ec(EcPrivateKey::P224(secret_key))
           }
           ID_SECP256R1_OID => {
             let secret_key =
               p256::SecretKey::from_sec1_der(pk_info.private_key)
-                .map_err(|_| type_error("invalid SEC1 private key"))?;
+                .map_err(|_| JsNativeError::type_error("invalid SEC1 private key"))?;
             AsymmetricPrivateKey::Ec(EcPrivateKey::P256(secret_key))
           }
           ID_SECP384R1_OID => {
             let secret_key =
               p384::SecretKey::from_sec1_der(pk_info.private_key)
-                .map_err(|_| type_error("invalid SEC1 private key"))?;
+                .map_err(|_| JsNativeError::type_error("invalid SEC1 private key"))?;
             AsymmetricPrivateKey::Ec(EcPrivateKey::P384(secret_key))
           }
-          _ => return Err(type_error("unsupported ec named curve")),
+          _ => return Err(JsNativeError::type_error("unsupported ec named curve").into()),
         }
       }
       X25519_OID => {
         let string_ref = OctetStringRef::from_der(pk_info.private_key)
-          .map_err(|_| type_error("invalid x25519 private key"))?;
+          .map_err(|_| JsNativeError::type_error("invalid x25519 private key"))?;
         if string_ref.as_bytes().len() != 32 {
-          return Err(type_error("x25519 private key is the wrong length"));
+          return Err(JsNativeError::type_error("x25519 private key is the wrong length").into());
         }
         let mut bytes = [0; 32];
         bytes.copy_from_slice(string_ref.as_bytes());
@@ -498,22 +497,22 @@ impl KeyObjectHandle {
       }
       ED25519_OID => {
         let signing_key = ed25519_dalek::SigningKey::try_from(pk_info)
-          .map_err(|_| type_error("invalid Ed25519 private key"))?;
+          .map_err(|_| JsNativeError::type_error("invalid Ed25519 private key"))?;
         AsymmetricPrivateKey::Ed25519(signing_key)
       }
       DH_KEY_AGREEMENT_OID => {
         let params = pk_info
           .algorithm
           .parameters
-          .ok_or_else(|| type_error("missing dh parameters"))?;
+          .ok_or_else(|| JsNativeError::type_error("missing dh parameters"))?;
         let params = pkcs3::DhParameter::from_der(&params.to_der().unwrap())
-          .map_err(|_| type_error("malformed dh parameters"))?;
+          .map_err(|_| JsNativeError::type_error("malformed dh parameters"))?;
         AsymmetricPrivateKey::Dh(DhPrivateKey {
           key: dh::PrivateKey::from_bytes(pk_info.private_key),
           params,
         })
       }
-      _ => return Err(type_error("unsupported private key oid")),
+      _ => return Err(JsNativeError::type_error("unsupported private key oid").into()),
     };
 
     Ok(KeyObjectHandle::AsymmetricPrivate(private_key))
@@ -554,18 +553,18 @@ impl KeyObjectHandle {
               let public_key = p384::PublicKey::from_sec1_bytes(data)?;
               AsymmetricPublicKey::Ec(EcPublicKey::P384(public_key))
             }
-            _ => return Err(type_error("unsupported ec named curve")),
+            _ => return Err(JsNativeError::type_error("unsupported ec named curve").into()),
           }
         } else {
-          return Err(type_error("missing ec parameters"));
+          return Err(JsNativeError::type_error("missing ec parameters").into());
         }
       }
       PublicKey::DSA(_) => {
         let verifying_key = dsa::VerifyingKey::from_public_key_der(spki.raw)
-          .map_err(|_| type_error("malformed DSS public key"))?;
+          .map_err(|_| JsNativeError::type_error("malformed DSS public key"))?;
         AsymmetricPublicKey::Dsa(verifying_key)
       }
-      _ => return Err(type_error("unsupported x509 public key type")),
+      _ => return Err(JsNativeError::type_error("unsupported x509 public key type").into()),
     };
 
     Ok(KeyObjectHandle::AsymmetricPublic(key))
@@ -580,7 +579,7 @@ impl KeyObjectHandle {
       "Ed25519" => {
         let data = data
           .try_into()
-          .map_err(|_| type_error("invalid Ed25519 key"))?;
+          .map_err(|_| JsNativeError::type_error("invalid Ed25519 key"))?;
         if !is_public {
           Ok(KeyObjectHandle::AsymmetricPrivate(
             AsymmetricPrivateKey::Ed25519(
@@ -598,7 +597,7 @@ impl KeyObjectHandle {
       "X25519" => {
         let data: [u8; 32] = data
           .try_into()
-          .map_err(|_| type_error("invalid x25519 key"))?;
+          .map_err(|_| JsNativeError::type_error("invalid x25519 key"))?;
         if !is_public {
           Ok(KeyObjectHandle::AsymmetricPrivate(
             AsymmetricPrivateKey::X25519(x25519_dalek::StaticSecret::from(
@@ -611,7 +610,7 @@ impl KeyObjectHandle {
           ))
         }
       }
-      _ => Err(type_error("unsupported curve")),
+      _ => Err(JsNativeError::type_error("unsupported curve").into()),
     }
   }
 
@@ -624,20 +623,20 @@ impl KeyObjectHandle {
     let document = match format {
       "pem" => {
         let pem = std::str::from_utf8(key).map_err(|err| {
-          type_error(format!(
+          JsNativeError::type_error(format!(
             "invalid PEM public key: not valid utf8 starting at byte {}",
             err.valid_up_to()
           ))
         })?;
 
         let (label, document) = Document::from_pem(pem)
-          .map_err(|_| type_error("invalid PEM public key"))?;
+          .map_err(|_| JsNativeError::type_error("invalid PEM public key"))?;
 
         match label {
           SubjectPublicKeyInfoRef::PEM_LABEL => document,
           rsa::pkcs1::RsaPublicKey::PEM_LABEL => {
             Document::from_pkcs1_der(document.as_bytes())
-              .map_err(|_| type_error("invalid PKCS#1 public key"))?
+              .map_err(|_| JsNativeError::type_error("invalid PKCS#1 public key"))?
           }
           EncryptedPrivateKeyInfo::PEM_LABEL
           | PrivateKeyInfo::PEM_LABEL
@@ -658,19 +657,19 @@ impl KeyObjectHandle {
           }
           // TODO: handle x509 certificates as public keys
           _ => {
-            return Err(type_error(format!("unsupported PEM label: {}", label)))
+            return Err(JsNativeError::type_error(format!("unsupported PEM label: {}", label)).into())
           }
         }
       }
       "der" => match typ {
         "pkcs1" => Document::from_pkcs1_der(key)
-          .map_err(|_| type_error("invalid PKCS#1 public key"))?,
+          .map_err(|_| JsNativeError::type_error("invalid PKCS#1 public key"))?,
         "spki" => Document::from_public_key_der(key)
-          .map_err(|_| type_error("invalid SPKI public key"))?,
-        _ => return Err(type_error(format!("unsupported key type: {}", typ))),
+          .map_err(|_| JsNativeError::type_error("invalid SPKI public key"))?,
+        _ => return Err(JsNativeError::type_error(format!("unsupported key type: {}", typ)).into()),
       },
       _ => {
-        return Err(type_error(format!("unsupported key format: {}", format)))
+        return Err(JsNativeError::type_error(format!("unsupported key format: {}", format)).into())
       }
     };
 
@@ -695,15 +694,15 @@ impl KeyObjectHandle {
       }
       DSA_OID => {
         let verifying_key = dsa::VerifyingKey::try_from(spki)
-          .map_err(|_| type_error("malformed DSS public key"))?;
+          .map_err(|_| JsNativeError::type_error("malformed DSS public key"))?;
         AsymmetricPublicKey::Dsa(verifying_key)
       }
       EC_OID => {
         let named_curve = spki.algorithm.parameters_oid().map_err(|_| {
-          type_error("malformed or missing named curve in ec parameters")
+          JsNativeError::type_error("malformed or missing named curve in ec parameters")
         })?;
         let data = spki.subject_public_key.as_bytes().ok_or_else(|| {
-          type_error("malformed or missing public key in ec spki")
+          JsNativeError::type_error("malformed or missing public key in ec spki")
         })?;
 
         match named_curve {
@@ -719,42 +718,42 @@ impl KeyObjectHandle {
             let public_key = p384::PublicKey::from_sec1_bytes(data)?;
             AsymmetricPublicKey::Ec(EcPublicKey::P384(public_key))
           }
-          _ => return Err(type_error("unsupported ec named curve")),
+          _ => return Err(JsNativeError::type_error("unsupported ec named curve").into()),
         }
       }
       X25519_OID => {
         let mut bytes = [0; 32];
         let data = spki.subject_public_key.as_bytes().ok_or_else(|| {
-          type_error("malformed or missing public key in x25519 spki")
+          JsNativeError::type_error("malformed or missing public key in x25519 spki")
         })?;
         if data.len() < 32 {
-          return Err(type_error("x25519 public key is too short"));
+          return Err(JsNativeError::type_error("x25519 public key is too short").into());
         }
         bytes.copy_from_slice(&data[0..32]);
         AsymmetricPublicKey::X25519(x25519_dalek::PublicKey::from(bytes))
       }
       ED25519_OID => {
         let verifying_key = ed25519_dalek::VerifyingKey::try_from(spki)
-          .map_err(|_| type_error("invalid Ed25519 private key"))?;
+          .map_err(|_| JsNativeError::type_error("invalid Ed25519 private key"))?;
         AsymmetricPublicKey::Ed25519(verifying_key)
       }
       DH_KEY_AGREEMENT_OID => {
         let params = spki
           .algorithm
           .parameters
-          .ok_or_else(|| type_error("missing dh parameters"))?;
+          .ok_or_else(|| JsNativeError::type_error("missing dh parameters"))?;
         let params = pkcs3::DhParameter::from_der(&params.to_der().unwrap())
-          .map_err(|_| type_error("malformed dh parameters"))?;
+          .map_err(|_| JsNativeError::type_error("malformed dh parameters"))?;
         let Some(subject_public_key) = spki.subject_public_key.as_bytes()
         else {
-          return Err(type_error("malformed or missing public key in dh spki"));
+          return Err(JsNativeError::type_error("malformed or missing public key in dh spki").into());
         };
         AsymmetricPublicKey::Dh(DhPublicKey {
           key: dh::PublicKey::from_bytes(subject_public_key),
           params,
         })
       }
-      _ => return Err(type_error("unsupported public key oid")),
+      _ => return Err(JsNativeError::type_error("unsupported public key oid").into()),
     };
 
     Ok(KeyObjectHandle::AsymmetricPublic(public_key))
@@ -766,7 +765,7 @@ fn parse_rsa_pss_params(
 ) -> Result<Option<RsaPssDetails>, deno_core::anyhow::Error> {
   let details = if let Some(parameters) = parameters {
     let params = RsaPssParameters::try_from(parameters)
-      .map_err(|_| type_error("malformed pss private key parameters"))?;
+      .map_err(|_| JsNativeError::type_error("malformed pss private key parameters"))?;
 
     let hash_algorithm = match params.hash_algorithm.map(|k| k.oid) {
       Some(ID_SHA1_OID) => RsaPssHashAlgorithm::Sha1,
@@ -777,16 +776,16 @@ fn parse_rsa_pss_params(
       Some(ID_SHA512_224_OID) => RsaPssHashAlgorithm::Sha512_224,
       Some(ID_SHA512_256_OID) => RsaPssHashAlgorithm::Sha512_256,
       None => RsaPssHashAlgorithm::Sha1,
-      _ => return Err(type_error("unsupported pss hash algorithm")),
+      _ => return Err(JsNativeError::type_error("unsupported pss hash algorithm").into()),
     };
 
     let mf1_hash_algorithm = match params.mask_gen_algorithm {
       Some(alg) => {
         if alg.oid != ID_MFG1 {
-          return Err(type_error("unsupported pss mask gen algorithm"));
+          return Err(JsNativeError::type_error("unsupported pss mask gen algorithm").into());
         }
         let params = alg.parameters_oid().map_err(|_| {
-          type_error("malformed or missing pss mask gen algorithm parameters")
+          JsNativeError::type_error("malformed or missing pss mask gen algorithm parameters")
         })?;
         match params {
           ID_SHA1_OID => RsaPssHashAlgorithm::Sha1,
@@ -796,7 +795,7 @@ fn parse_rsa_pss_params(
           ID_SHA512_OID => RsaPssHashAlgorithm::Sha512,
           ID_SHA512_224_OID => RsaPssHashAlgorithm::Sha512_224,
           ID_SHA512_256_OID => RsaPssHashAlgorithm::Sha512_256,
-          _ => return Err(type_error("unsupported pss mask gen algorithm")),
+          _ => return Err(JsNativeError::type_error("unsupported pss mask gen algorithm").into()),
         }
       }
       None => hash_algorithm,
@@ -824,30 +823,30 @@ impl AsymmetricPublicKey {
         AsymmetricPublicKey::Rsa(key) => {
           let der = key
             .to_pkcs1_der()
-            .map_err(|_| type_error("invalid RSA public key"))?
+            .map_err(|_| JsNativeError::type_error("invalid RSA public key"))?
             .into_vec()
             .into_boxed_slice();
           Ok(der)
         }
-        _ => Err(type_error(
+        _ => Err(JsNativeError::type_error(
           "exporting non-RSA public key as PKCS#1 is not supported",
-        )),
+        ).into()),
       },
       "spki" => {
         let der = match self {
           AsymmetricPublicKey::Rsa(key) => key
             .to_public_key_der()
-            .map_err(|_| type_error("invalid RSA public key"))?
+            .map_err(|_| JsNativeError::type_error("invalid RSA public key"))?
             .into_vec()
             .into_boxed_slice(),
           AsymmetricPublicKey::RsaPss(_key) => {
-            return Err(generic_error(
+            return Err(JsNativeError::generic(
               "exporting RSA-PSS public key as SPKI is not supported yet",
-            ))
+            ).into())
           }
           AsymmetricPublicKey::Dsa(key) => key
             .to_public_key_der()
-            .map_err(|_| type_error("invalid DSA public key"))?
+            .map_err(|_| JsNativeError::type_error("invalid DSA public key"))?
             .into_vec()
             .into_boxed_slice(),
           AsymmetricPublicKey::Ec(key) => {
@@ -863,12 +862,12 @@ impl AsymmetricPublicKey {
                 parameters: Some(asn1::AnyRef::from(&oid)),
               },
               subject_public_key: BitStringRef::from_bytes(&sec1)
-                .map_err(|_| type_error("invalid EC public key"))?,
+                .map_err(|_| JsNativeError::type_error("invalid EC public key"))?,
             };
 
             spki
               .to_der()
-              .map_err(|_| type_error("invalid EC public key"))?
+              .map_err(|_| JsNativeError::type_error("invalid EC public key"))?
               .into_boxed_slice()
           }
           AsymmetricPublicKey::X25519(key) => {
@@ -878,12 +877,12 @@ impl AsymmetricPublicKey {
                 parameters: None,
               },
               subject_public_key: BitStringRef::from_bytes(key.as_bytes())
-                .map_err(|_| type_error("invalid X25519 public key"))?,
+                .map_err(|_| JsNativeError::type_error("invalid X25519 public key"))?,
             };
 
             spki
               .to_der()
-              .map_err(|_| type_error("invalid X25519 public key"))?
+              .map_err(|_| JsNativeError::type_error("invalid X25519 public key"))?
               .into_boxed_slice()
           }
           AsymmetricPublicKey::Ed25519(key) => {
@@ -893,12 +892,12 @@ impl AsymmetricPublicKey {
                 parameters: None,
               },
               subject_public_key: BitStringRef::from_bytes(key.as_bytes())
-                .map_err(|_| type_error("invalid Ed25519 public key"))?,
+                .map_err(|_| JsNativeError::type_error("invalid Ed25519 public key"))?,
             };
 
             spki
               .to_der()
-              .map_err(|_| type_error("invalid Ed25519 public key"))?
+              .map_err(|_| JsNativeError::type_error("invalid Ed25519 public key"))?
               .into_boxed_slice()
           }
           AsymmetricPublicKey::Dh(key) => {
@@ -911,18 +910,18 @@ impl AsymmetricPublicKey {
               },
               subject_public_key: BitStringRef::from_bytes(&public_key_bytes)
                 .map_err(|_| {
-                type_error("invalid DH public key")
+                JsNativeError::type_error("invalid DH public key")
               })?,
             };
             spki
               .to_der()
-              .map_err(|_| type_error("invalid DH public key"))?
+              .map_err(|_| JsNativeError::type_error("invalid DH public key"))?
               .into_boxed_slice()
           }
         };
         Ok(der)
       }
-      _ => Err(type_error(format!("unsupported key type: {}", typ))),
+      _ => Err(JsNativeError::type_error(format!("unsupported key type: {}", typ)).into()),
     }
   }
 }
@@ -939,15 +938,15 @@ impl AsymmetricPrivateKey {
         AsymmetricPrivateKey::Rsa(key) => {
           let der = key
             .to_pkcs1_der()
-            .map_err(|_| type_error("invalid RSA private key"))?
+            .map_err(|_| JsNativeError::type_error("invalid RSA private key"))?
             .to_bytes()
             .to_vec()
             .into_boxed_slice();
           Ok(der)
         }
-        _ => Err(type_error(
+        _ => Err(JsNativeError::type_error(
           "exporting non-RSA private key as PKCS#1 is not supported",
-        )),
+        ).into()),
       },
       "sec1" => match self {
         AsymmetricPrivateKey::Ec(key) => {
@@ -956,30 +955,30 @@ impl AsymmetricPrivateKey {
             EcPrivateKey::P256(key) => key.to_sec1_der(),
             EcPrivateKey::P384(key) => key.to_sec1_der(),
           }
-          .map_err(|_| type_error("invalid EC private key"))?;
+          .map_err(|_| JsNativeError::type_error("invalid EC private key"))?;
           Ok(sec1.to_vec().into_boxed_slice())
         }
-        _ => Err(type_error(
+        _ => Err(JsNativeError::type_error(
           "exporting non-EC private key as SEC1 is not supported",
-        )),
+        ).into()),
       },
       "pkcs8" => {
         let der = match self {
           AsymmetricPrivateKey::Rsa(key) => {
             let document = key
               .to_pkcs8_der()
-              .map_err(|_| type_error("invalid RSA private key"))?;
+              .map_err(|_| JsNativeError::type_error("invalid RSA private key"))?;
             document.to_bytes().to_vec().into_boxed_slice()
           }
           AsymmetricPrivateKey::RsaPss(_key) => {
-            return Err(generic_error(
+            return Err(JsNativeError::generic(
               "exporting RSA-PSS private key as PKCS#8 is not supported yet",
-            ))
+            ).into())
           }
           AsymmetricPrivateKey::Dsa(key) => {
             let document = key
               .to_pkcs8_der()
-              .map_err(|_| type_error("invalid DSA private key"))?;
+              .map_err(|_| JsNativeError::type_error("invalid DSA private key"))?;
             document.to_bytes().to_vec().into_boxed_slice()
           }
           AsymmetricPrivateKey::Ec(key) => {
@@ -988,14 +987,14 @@ impl AsymmetricPrivateKey {
               EcPrivateKey::P256(key) => key.to_pkcs8_der(),
               EcPrivateKey::P384(key) => key.to_pkcs8_der(),
             }
-            .map_err(|_| type_error("invalid EC private key"))?;
+            .map_err(|_| JsNativeError::type_error("invalid EC private key"))?;
             document.to_bytes().to_vec().into_boxed_slice()
           }
           AsymmetricPrivateKey::X25519(key) => {
             let private_key = OctetStringRef::new(key.as_bytes())
-              .map_err(|_| type_error("invalid X25519 private key"))?
+              .map_err(|_| JsNativeError::type_error("invalid X25519 private key"))?
               .to_der()
-              .map_err(|_| type_error("invalid X25519 private key"))?;
+              .map_err(|_| JsNativeError::type_error("invalid X25519 private key"))?;
 
             let private_key = PrivateKeyInfo {
               algorithm: rsa::pkcs8::AlgorithmIdentifierRef {
@@ -1008,15 +1007,15 @@ impl AsymmetricPrivateKey {
 
             let der = private_key
               .to_der()
-              .map_err(|_| type_error("invalid X25519 private key"))?
+              .map_err(|_| JsNativeError::type_error("invalid X25519 private key"))?
               .into_boxed_slice();
             return Ok(der);
           }
           AsymmetricPrivateKey::Ed25519(key) => {
             let private_key = OctetStringRef::new(key.as_bytes())
-              .map_err(|_| type_error("invalid Ed25519 private key"))?
+              .map_err(|_| JsNativeError::type_error("invalid Ed25519 private key"))?
               .to_der()
-              .map_err(|_| type_error("invalid Ed25519 private key"))?;
+              .map_err(|_| JsNativeError::type_error("invalid Ed25519 private key"))?;
 
             let private_key = PrivateKeyInfo {
               algorithm: rsa::pkcs8::AlgorithmIdentifierRef {
@@ -1029,7 +1028,7 @@ impl AsymmetricPrivateKey {
 
             private_key
               .to_der()
-              .map_err(|_| type_error("invalid ED25519 private key"))?
+              .map_err(|_| JsNativeError::type_error("invalid ED25519 private key"))?
               .into_boxed_slice()
           }
           AsymmetricPrivateKey::Dh(key) => {
@@ -1046,14 +1045,14 @@ impl AsymmetricPrivateKey {
 
             private_key
               .to_der()
-              .map_err(|_| type_error("invalid DH private key"))?
+              .map_err(|_| JsNativeError::type_error("invalid DH private key"))?
               .into_boxed_slice()
           }
         };
 
         Ok(der)
       }
-      _ => Err(type_error(format!("unsupported key type: {}", typ))),
+      _ => Err(JsNativeError::type_error(format!("unsupported key type: {}", typ)).into()),
     }
   }
 }
@@ -1133,7 +1132,7 @@ pub fn op_node_get_asymmetric_key_type(
     KeyObjectHandle::AsymmetricPrivate(AsymmetricPrivateKey::Dh(_))
     | KeyObjectHandle::AsymmetricPublic(AsymmetricPublicKey::Dh(_)) => Ok("dh"),
     KeyObjectHandle::Secret(_) => {
-      Err(type_error("symmetric key is not an asymmetric key"))
+      Err(JsNativeError::type_error("symmetric key is not an asymmetric key").into())
     }
   }
 }
@@ -1286,7 +1285,7 @@ pub fn op_node_get_asymmetric_key_details(
       AsymmetricPublicKey::Dh(_) => Ok(AsymmetricKeyDetails::Dh),
     },
     KeyObjectHandle::Secret(_) => {
-      Err(type_error("symmetric key is not an asymmetric key"))
+      Err(JsNativeError::type_error("symmetric key is not an asymmetric key").into())
     }
   }
 }
@@ -1298,10 +1297,10 @@ pub fn op_node_get_symmetric_key_size(
 ) -> Result<usize, AnyError> {
   match handle {
     KeyObjectHandle::AsymmetricPrivate(_) => {
-      Err(type_error("asymmetric key is not a symmetric key"))
+      Err(JsNativeError::type_error("asymmetric key is not a symmetric key").into())
     }
     KeyObjectHandle::AsymmetricPublic(_) => {
-      Err(type_error("asymmetric key is not a symmetric key"))
+      Err(JsNativeError::type_error("asymmetric key is not a symmetric key").into())
     }
     KeyObjectHandle::Secret(key) => Ok(key.len() * 8),
   }
@@ -1430,25 +1429,25 @@ fn generate_rsa_pss(
     let hash_algorithm = match_fixed_digest_with_oid!(
       hash_algorithm,
       fn (algorithm: Option<RsaPssHashAlgorithm>) {
-        algorithm.ok_or_else(|| type_error("digest not allowed for RSA-PSS keys: {}"))?
+        algorithm.ok_or_else(|| JsNativeError::type_error("digest not allowed for RSA-PSS keys: {}"))?
       },
       _ => {
-        return Err(type_error(format!(
+        return Err(JsNativeError::type_error(format!(
           "digest not allowed for RSA-PSS keys: {}",
           hash_algorithm
-        )))
+        )).into())
       }
     );
     let mf1_hash_algorithm = match_fixed_digest_with_oid!(
       mf1_hash_algorithm,
       fn (algorithm: Option<RsaPssHashAlgorithm>) {
-        algorithm.ok_or_else(|| type_error("digest not allowed for RSA-PSS keys: {}"))?
+        algorithm.ok_or_else(|| JsNativeError::type_error("digest not allowed for RSA-PSS keys: {}"))?
       },
       _ => {
-        return Err(type_error(format!(
+        return Err(JsNativeError::type_error(format!(
           "digest not allowed for RSA-PSS keys: {}",
           mf1_hash_algorithm
-        )))
+        )).into())
       }
     );
     let salt_length =
@@ -1524,9 +1523,9 @@ fn dsa_generate(
     (2048, 256) => KeySize::DSA_2048_256,
     (3072, 256) => KeySize::DSA_3072_256,
     _ => {
-      return Err(type_error(
+      return Err(JsNativeError::type_error(
         "Invalid modulusLength+divisorLength combination",
-      ))
+      ).into())
     }
   };
   let components = Components::generate(&mut rng, key_size);
@@ -1575,10 +1574,10 @@ fn ec_generate(named_curve: &str) -> Result<KeyObjectHandlePair, AnyError> {
       AsymmetricPrivateKey::Ec(EcPrivateKey::P384(key))
     }
     _ => {
-      return Err(type_error(format!(
+      return Err(JsNativeError::type_error(format!(
         "unsupported named curve: {}",
         named_curve
-      )))
+      )).into())
     }
   };
   let public_key = private_key.to_public_key();
@@ -1685,7 +1684,7 @@ fn dh_group_generate(
       dh::Modp8192::MODULUS,
       dh::Modp8192::GENERATOR,
     ),
-    _ => return Err(type_error("Unsupported group name")),
+    _ => return Err(JsNativeError::type_error("Unsupported group name").into()),
   };
   let params = DhParameter {
     prime: asn1::Int::new(u32_slice_to_u8_slice(prime)).unwrap(),
@@ -1793,7 +1792,7 @@ pub fn op_node_export_secret_key(
 ) -> Result<Box<[u8]>, AnyError> {
   let key = handle
     .as_secret_key()
-    .ok_or_else(|| type_error("key is not a secret key"))?;
+    .ok_or_else(|| JsNativeError::type_error("key is not a secret key"))?;
   Ok(key.to_vec().into_boxed_slice())
 }
 
@@ -1804,7 +1803,7 @@ pub fn op_node_export_secret_key_b64url(
 ) -> Result<String, AnyError> {
   let key = handle
     .as_secret_key()
-    .ok_or_else(|| type_error("key is not a secret key"))?;
+    .ok_or_else(|| JsNativeError::type_error("key is not a secret key"))?;
   Ok(base64::engine::general_purpose::URL_SAFE_NO_PAD.encode(key))
 }
 
@@ -1816,7 +1815,7 @@ pub fn op_node_export_public_key_pem(
 ) -> Result<String, AnyError> {
   let public_key = handle
     .as_public_key()
-    .ok_or_else(|| type_error("key is not an asymmetric public key"))?;
+    .ok_or_else(|| JsNativeError::type_error("key is not an asymmetric public key"))?;
   let data = public_key.export_der(typ)?;
 
   let label = match typ {
@@ -1842,7 +1841,7 @@ pub fn op_node_export_public_key_der(
 ) -> Result<Box<[u8]>, AnyError> {
   let public_key = handle
     .as_public_key()
-    .ok_or_else(|| type_error("key is not an asymmetric public key"))?;
+    .ok_or_else(|| JsNativeError::type_error("key is not an asymmetric public key"))?;
   public_key.export_der(typ)
 }
 
@@ -1854,7 +1853,7 @@ pub fn op_node_export_private_key_pem(
 ) -> Result<String, AnyError> {
   let private_key = handle
     .as_private_key()
-    .ok_or_else(|| type_error("key is not an asymmetric private key"))?;
+    .ok_or_else(|| JsNativeError::type_error("key is not an asymmetric private key"))?;
   let data = private_key.export_der(typ)?;
 
   let label = match typ {
@@ -1881,7 +1880,7 @@ pub fn op_node_export_private_key_der(
 ) -> Result<Box<[u8]>, AnyError> {
   let private_key = handle
     .as_private_key()
-    .ok_or_else(|| type_error("key is not an asymmetric private key"))?;
+    .ok_or_else(|| JsNativeError::type_error("key is not an asymmetric private key"))?;
   private_key.export_der(typ)
 }
 
@@ -1901,7 +1900,7 @@ pub fn op_node_derive_public_key_from_private_key(
   #[cppgc] handle: &KeyObjectHandle,
 ) -> Result<KeyObjectHandle, AnyError> {
   let Some(private_key) = handle.as_private_key() else {
-    return Err(type_error("expected private key"));
+    return Err(JsNativeError::type_error("expected private key").into());
   };
 
   Ok(KeyObjectHandle::AsymmetricPublic(

@@ -2,7 +2,7 @@
 
 mod urlpattern;
 
-use deno_core::error::type_error;
+use deno_core::error::JsNativeError;
 use deno_core::error::AnyError;
 use deno_core::op2;
 use deno_core::url::form_urlencoded;
@@ -228,7 +228,7 @@ pub fn op_url_parse_search_params(
       .into_iter()
       .map(|(k, v)| (k.as_ref().to_owned(), v.as_ref().to_owned()))
       .collect(),
-    _ => return Err(type_error("invalid parameters")),
+    _ => return Err(JsNativeError::type_error("invalid parameters").into()),
   };
   Ok(params)
 }

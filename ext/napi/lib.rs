@@ -6,7 +6,7 @@
 #![deny(clippy::missing_safety_doc)]
 
 use core::ptr::NonNull;
-use deno_core::error::type_error;
+use deno_core::error::JsNativeError;
 use deno_core::error::AnyError;
 use deno_core::op2;
 use deno_core::url::Url;
@@ -18,6 +18,8 @@ use std::path::Path;
 use std::path::PathBuf;
 use std::rc::Rc;
 use std::thread_local;
+
+deno_core::js_error_wrapper!(libloading::Error, JsLibloadingError, "TypeError");
 
 #[cfg(unix)]
 use libloading::os::unix::*;
@@ -529,7 +531,7 @@ where
   let type_tag = v8::Global::new(scope, type_tag);
 
   let url_filename =
-    Url::from_file_path(&path).map_err(|_| type_error("Invalid path"))?;
+    Url::from_file_path(&path).map_err(|_| JsNativeError::type_error("Invalid path"))?;
   let env_shared =
     EnvShared::new(napi_wrap, type_tag, format!("{url_filename}\0"));
 
@@ -554,17 +556,11 @@ where
 
   // SAFETY: opening a DLL calls dlopen
   #[cfg(unix)]
-  let library = match unsafe { Library::open(Some(&path), flags) } {
-    Ok(lib) => lib,
-    Err(e) => return Err(type_error(e.to_string())),
-  };
+  let library = unsafe { Library::open(Some(&path), flags) }.map_err(crate::JsLibloadingError)?;
 
   // SAFETY: opening a DLL calls dlopen
   #[cfg(not(unix))]
-  let library = match unsafe { Library::load_with_flags(&path, flags) } {
-    Ok(lib) => lib,
-    Err(e) => return Err(type_error(e.to_string())),
-  };
+  let library = unsafe { Library::load_with_flags(&path, flags) }.map_err(JsLibloadingError)?;
 
   let maybe_module = MODULE_TO_REGISTER.with(|cell| {
     let mut slot = cell.borrow_mut();
@@ -587,10 +583,10 @@ where
     // SAFETY: we are going blind, calling the register function on the other side.
     unsafe { init(env_ptr, exports.into()) }
   } else {
-    return Err(type_error(format!(
+    return Err(JsNativeError::type_error(format!(
       "Unable to find register Node-API module at {}",
       path
-    )));
+    )).into());
   };
 
   let exports = maybe_exports.unwrap_or(exports.into());

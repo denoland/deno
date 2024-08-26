@@ -1,7 +1,7 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
 use deno_core::anyhow::anyhow;
-use deno_core::error::AnyError;
+use deno_core::error::{AnyError, CoreError};
 use deno_core::serde_json;
 use deno_core::serde_json::Value;
 use std::cell::RefCell;
@@ -46,7 +46,7 @@ pub enum RustylineSyncMessage {
 }
 
 pub enum RustylineSyncResponse {
-  PostMessage(Result<Value, AnyError>),
+  PostMessage(Result<Value, CoreError>),
   LspCompletions(Vec<ReplCompletionItem>),
 }
 
@@ -74,7 +74,7 @@ impl RustylineSyncMessageSender {
       Err(anyhow!("{}", err))
     } else {
       match self.response_rx.borrow_mut().blocking_recv().unwrap() {
-        RustylineSyncResponse::PostMessage(result) => result,
+        RustylineSyncResponse::PostMessage(result) => result.map_err(AnyError::new),
         RustylineSyncResponse::LspCompletions(_) => unreachable!(),
       }
     }

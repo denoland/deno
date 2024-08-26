@@ -4,7 +4,7 @@ use std::sync::Arc;
 
 use crate::web_worker::WebWorkerInternalHandle;
 use crate::web_worker::WebWorkerType;
-use deno_core::error::type_error;
+use deno_core::error::JsNativeError;
 use deno_core::error::AnyError;
 use deno_core::futures::StreamExt;
 use deno_core::op2;
@@ -54,7 +54,7 @@ pub fn op_worker_sync_fetch(
   // Also, in which contexts are blob URLs not supported?
   let blob_store = state
     .try_borrow::<Arc<BlobStore>>()
-    .ok_or_else(|| type_error("Blob URLs are not supported in this context."))?
+    .ok_or_else(|| JsNativeError::type_error("Blob URLs are not supported in this context."))?
     .clone();
 
   // TODO(andreubotella): make the below thread into a resource that can be
@@ -74,7 +74,7 @@ pub fn op_worker_sync_fetch(
           let blob_store = blob_store.clone();
           deno_core::unsync::spawn(async move {
             let script_url = Url::parse(&script)
-              .map_err(|_| type_error("Invalid script URL"))?;
+              .map_err(|_| JsNativeError::type_error("Invalid script URL"))?;
             let mut loose_mime_checks = loose_mime_checks;
 
             let (body, mime_type, res_url) = match script_url.scheme() {
@@ -91,10 +91,10 @@ pub fn op_worker_sync_fetch(
                 if resp.status().is_client_error()
                   || resp.status().is_server_error()
                 {
-                  return Err(type_error(format!(
+                  return Err(deno_core::anyhow::Error::new(JsNativeError::type_error(format!(
                     "http status error: {}",
                     resp.status()
-                  )));
+                  ))));
                 }
 
                 // TODO(andreubotella) Properly run fetch's "extract a MIME type".
@@ -113,7 +113,7 @@ pub fn op_worker_sync_fetch(
               }
               "data" => {
                 let data_url = DataUrl::process(&script)
-                  .map_err(|e| type_error(format!("{e:?}")))?;
+                  .map_err(|e| JsNativeError::type_error(format!("{e:?}")))?;
 
                 let mime_type = {
                   let mime = data_url.mime_type();
@@ -122,14 +122,14 @@ pub fn op_worker_sync_fetch(
 
                 let (body, _) = data_url
                   .decode_to_vec()
-                  .map_err(|e| type_error(format!("{e:?}")))?;
+                  .map_err(|e| JsNativeError::type_error(format!("{e:?}")))?;
 
                 (Bytes::from(body), Some(mime_type), script)
               }
               "blob" => {
                 let blob =
                   blob_store.get_object_url(script_url).ok_or_else(|| {
-                    type_error("Blob for the given URL not found.")
+                    JsNativeError::type_error("Blob for the given URL not found.")
                   })?;
 
                 let mime_type = mime_type_essence(&blob.media_type);
@@ -139,10 +139,10 @@ pub fn op_worker_sync_fetch(
                 (Bytes::from(body), Some(mime_type), script)
               }
               _ => {
-                return Err(type_error(format!(
+                return Err(JsNativeError::type_error(format!(
               "Classic scripts with scheme {}: are not supported in workers.",
               script_url.scheme()
-            )))
+            )).into())
               }
             };
 

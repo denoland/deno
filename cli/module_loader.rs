@@ -39,8 +39,7 @@ use deno_ast::MediaType;
 use deno_core::anyhow::anyhow;
 use deno_core::anyhow::bail;
 use deno_core::anyhow::Context;
-use deno_core::error::custom_error;
-use deno_core::error::generic_error;
+use deno_core::error::{JsNativeError, ModuleLoaderError};
 use deno_core::error::AnyError;
 use deno_core::futures::future::FutureExt;
 use deno_core::futures::Future;
@@ -339,7 +338,7 @@ impl<TGraphContainer: ModuleGraphContainer>
     if module_type == ModuleType::Json
       && requested_module_type != RequestedModuleType::Json
     {
-      return Err(generic_error("Attempted to load JSON module without specifying \"type\": \"json\" attribute in the import statement."));
+      return Err(JsNativeError::generic("Attempted to load JSON module without specifying \"type\": \"json\" attribute in the import statement.").into());
     }
 
     let code_cache = if module_type == ModuleType::JavaScript {
@@ -427,10 +426,10 @@ impl<TGraphContainer: ModuleGraphContainer>
     let specifier = match resolution {
       Resolution::Ok(resolved) => Cow::Borrowed(&resolved.specifier),
       Resolution::Err(err) => {
-        return Err(custom_error(
+        return Err(JsNativeError::new(
           "TypeError",
           format!("{}\n", err.to_string_with_range()),
-        ));
+        ).into());
       }
       Resolution::None => Cow::Owned(self.shared.resolver.resolve(
         specifier,
@@ -663,7 +662,7 @@ impl<TGraphContainer: ModuleGraphContainer> ModuleLoader
     specifier: &str,
     referrer: &str,
     _kind: ResolutionKind,
-  ) -> Result<ModuleSpecifier, AnyError> {
+  ) -> Result<ModuleSpecifier, ModuleLoaderError> {
     fn ensure_not_jsr_non_jsr_remote_import(
       specifier: &ModuleSpecifier,
       referrer: &ModuleSpecifier,
@@ -715,6 +714,7 @@ impl<TGraphContainer: ModuleGraphContainer> ModuleLoader
             requested_module_type,
           )
           .await
+          .map_err(Into::into)
       }
       .boxed_local(),
     )
@@ -725,7 +725,7 @@ impl<TGraphContainer: ModuleGraphContainer> ModuleLoader
     specifier: &ModuleSpecifier,
     _maybe_referrer: Option<String>,
     is_dynamic: bool,
-  ) -> Pin<Box<dyn Future<Output = Result<(), AnyError>>>> {
+  ) -> Pin<Box<dyn Future<Output = Result<(), ModuleLoaderError>>>> {
     if self.0.shared.node_resolver.in_npm_package(specifier) {
       return Box::pin(deno_core::futures::future::ready(Ok(())));
     }

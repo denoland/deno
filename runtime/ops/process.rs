@@ -2,7 +2,7 @@
 
 use super::check_unstable;
 use deno_core::anyhow::Context;
-use deno_core::error::type_error;
+use deno_core::error::JsNativeError;
 use deno_core::error::AnyError;
 use deno_core::op2;
 use deno_core::serde_json;
@@ -579,7 +579,7 @@ fn op_spawn_kill(
     deprecated::kill(child_resource.1 as i32, &signal)?;
     return Ok(());
   }
-  Err(type_error("Child process has already terminated."))
+  Err(JsNativeError::type_error("Child process has already terminated.").into())
 }
 
 mod deprecated {
@@ -808,9 +808,9 @@ mod deprecated {
     use winapi::um::winnt::PROCESS_TERMINATE;
 
     if !matches!(signal, "SIGKILL" | "SIGTERM") {
-      Err(type_error(format!("Invalid signal: {signal}")))
+      Err(JsNativeError::type_error(format!("Invalid signal: {signal}")).into())
     } else if pid <= 0 {
-      Err(type_error("Invalid pid"))
+      Err(JsNativeError::type_error("Invalid pid").into())
     } else {
       let handle =
         // SAFETY: winapi call

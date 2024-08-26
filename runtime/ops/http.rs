@@ -2,8 +2,7 @@
 
 use std::rc::Rc;
 
-use deno_core::error::bad_resource;
-use deno_core::error::bad_resource_id;
+use deno_core::error::ResourceError;
 use deno_core::error::AnyError;
 use deno_core::op2;
 use deno_core::OpState;
@@ -30,7 +29,7 @@ fn op_http_start(
     // process of starting a HTTP server on top of this TCP connection, so we just return a bad
     // resource error. See also: https://github.com/denoland/deno/pull/16242
     let resource = Rc::try_unwrap(resource_rc)
-      .map_err(|_| bad_resource("TCP stream is currently in use"))?;
+      .map_err(|_| ResourceError::Other("TCP stream is currently in use".to_string()))?;
     let (read_half, write_half) = resource.into_inner();
     let tcp_stream = read_half.reunite(write_half)?;
     let addr = tcp_stream.local_addr()?;
@@ -45,7 +44,7 @@ fn op_http_start(
     // process of starting a HTTP server on top of this TLS connection, so we just return a bad
     // resource error. See also: https://github.com/denoland/deno/pull/16242
     let resource = Rc::try_unwrap(resource_rc)
-      .map_err(|_| bad_resource("TLS stream is currently in use"))?;
+      .map_err(|_| ResourceError::Other("TLS stream is currently in use".to_string()))?;
     let (read_half, write_half) = resource.into_inner();
     let tls_stream = read_half.unsplit(write_half);
     let addr = tls_stream.local_addr()?;
@@ -63,12 +62,12 @@ fn op_http_start(
     // process of starting a HTTP server on top of this UNIX socket, so we just return a bad
     // resource error. See also: https://github.com/denoland/deno/pull/16242
     let resource = Rc::try_unwrap(resource_rc)
-      .map_err(|_| bad_resource("UNIX stream is currently in use"))?;
+      .map_err(|_| ResourceError::Other("UNIX stream is currently in use".to_string()))?;
     let (read_half, write_half) = resource.into_inner();
     let unix_stream = read_half.reunite(write_half)?;
     let addr = unix_stream.local_addr()?;
     return http_create_conn_resource(state, unix_stream, addr, "http+unix");
   }
 
-  Err(bad_resource_id())
+  Err(ResourceError::BadResourceId.into())
 }

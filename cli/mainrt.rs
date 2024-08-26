@@ -24,7 +24,6 @@ mod util;
 mod version;
 mod worker;
 
-use deno_core::error::generic_error;
 use deno_core::error::AnyError;
 use deno_core::error::JsError;
 use deno_runtime::fmt_errors::format_js_error;

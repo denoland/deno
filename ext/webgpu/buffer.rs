@@ -1,6 +1,6 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
-use deno_core::error::type_error;
+use deno_core::error::JsNativeError;
 use deno_core::error::AnyError;
 use deno_core::op2;
 use deno_core::OpState;
@@ -57,7 +57,7 @@ pub fn op_webgpu_create_buffer(
     label: Some(label),
     size,
     usage: wgpu_types::BufferUsages::from_bits(usage)
-      .ok_or_else(|| type_error("usage is not valid"))?,
+      .ok_or_else(|| JsNativeError::type_error("usage is not valid"))?,
     mapped_at_creation,
   };
 

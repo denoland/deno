@@ -1,7 +1,7 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
 use deno_core::anyhow::Context;
-use deno_core::error::generic_error;
+use deno_core::error::JsNativeError;
 use deno_core::error::AnyError;
 use deno_core::normalize_path;
 use deno_core::op2;
@@ -319,12 +319,12 @@ pub fn op_require_path_resolve(#[serde] parts: Vec<String>) -> String {
 #[string]
 pub fn op_require_path_dirname(
   #[string] request: String,
-) -> Result<String, AnyError> {
+) -> Result<String, JsNativeError> {
   let p = PathBuf::from(request);
   if let Some(parent) = p.parent() {
     Ok(parent.to_string_lossy().to_string())
   } else {
-    Err(generic_error("Path doesn't have a parent"))
+    Err(JsNativeError::generic("Path doesn't have a parent"))
   }
 }
 
@@ -332,12 +332,12 @@ pub fn op_require_path_dirname(
 #[string]
 pub fn op_require_path_basename(
   #[string] request: String,
-) -> Result<String, AnyError> {
+) -> Result<String, JsNativeError> {
   let p = PathBuf::from(request);
   if let Some(path) = p.file_name() {
     Ok(path.to_string_lossy().to_string())
   } else {
-    Err(generic_error("Path doesn't have a file name"))
+    Err(JsNativeError::generic("Path doesn't have a file name"))
   }
 }
 

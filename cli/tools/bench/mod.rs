@@ -16,7 +16,7 @@ use crate::util::path::matches_pattern_or_exact_path;
 use crate::worker::CliMainWorkerFactory;
 
 use deno_config::glob::WalkEntry;
-use deno_core::error::generic_error;
+use deno_core::error::JsNativeError;
 use deno_core::error::AnyError;
 use deno_core::error::JsError;
 use deno_core::futures::future;
@@ -349,13 +349,13 @@ async fn bench_specifiers(
       reporter.report_end(&report);
 
       if used_only {
-        return Err(generic_error(
+        return Err(AnyError::new(JsNativeError::generic(
           "Bench failed because the \"only\" option was used",
-        ));
+        )));
       }
 
       if report.failed > 0 {
-        return Err(generic_error("Bench failed"));
+        return Err(JsNativeError::generic("Bench failed").into());
       }
 
       Ok(())
@@ -430,7 +430,7 @@ pub async fn run_benchmarks(
     .collect::<Vec<_>>();
 
   if specifiers.is_empty() {
-    return Err(generic_error("No bench modules found"));
+    return Err(JsNativeError::generic("No bench modules found").into());
   }
 
   let main_graph_container = factory.main_module_graph_container().await?;

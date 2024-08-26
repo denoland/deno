@@ -2,7 +2,7 @@
 
 use base64::prelude::BASE64_URL_SAFE_NO_PAD;
 use base64::Engine;
-use deno_core::error::custom_error;
+use deno_core::error::JsNativeError;
 use deno_core::error::AnyError;
 use deno_core::op2;
 use deno_core::ToJsBuffer;
@@ -129,7 +129,7 @@ pub fn op_crypto_export_spki_ed25519(
     key_info
       .to_der()
       .map_err(|_| {
-        custom_error("DOMExceptionOperationError", "Failed to export key")
+        JsNativeError::new("DOMExceptionOperationError", "Failed to export key")
       })?
       .into(),
   )

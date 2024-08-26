@@ -9,8 +9,8 @@ mod shared;
 
 mod ts {
   use super::*;
-  use deno_core::error::custom_error;
-  use deno_core::error::AnyError;
+  use deno_core::error::{AnyError};
+  use deno_core::error::{JsNativeError};
   use deno_core::op2;
   use deno_core::OpState;
   use deno_runtime::deno_node::SUPPORTED_BUILTIN_NODE_MODULES;
@@ -111,16 +111,16 @@ mod ts {
           script_kind: 3,
         })
       } else {
-        Err(custom_error(
+        Err(JsNativeError::new(
           "InvalidSpecifier",
           format!("An invalid specifier was requested: {}", load_specifier),
-        ))
+        ).into())
       }
     } else {
-      Err(custom_error(
+      Err(JsNativeError::new(
         "InvalidSpecifier",
         format!("An invalid specifier was requested: {}", load_specifier),
-      ))
+      ).into())
     }
   }
 

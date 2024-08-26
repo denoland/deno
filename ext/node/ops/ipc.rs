@@ -17,7 +17,8 @@ mod impl_ {
   use std::task::Context;
   use std::task::Poll;
 
-  use deno_core::error::bad_resource_id;
+  use deno_core::error::{JsNativeError};
+  use deno_core::error::{ResourceError};
   use deno_core::error::AnyError;
   use deno_core::op2;
   use deno_core::serde;
@@ -82,7 +83,7 @@ mod impl_ {
     } else if value.is_string_object() {
       let str = deno_core::serde_v8::to_utf8(
         value.to_string(scope).ok_or_else(|| {
-          S::Error::custom(deno_core::error::generic_error(
+          S::Error::custom(JsNativeError::generic(
             "toString on string object failed",
           ))
         })?,
@@ -155,7 +156,7 @@ mod impl_ {
       map.end()
     } else {
       // TODO(nathanwhit): better error message
-      Err(S::Error::custom(deno_core::error::type_error(format!(
+      Err(S::Error::custom(JsNativeError::type_error(format!(
         "Unsupported type: {}",
         value.type_repr()
       ))))
@@ -196,7 +197,7 @@ mod impl_ {
     let mut serialized = Vec::with_capacity(64);
     let mut ser = serde_json::Serializer::new(&mut serialized);
     serialize_v8_value(scope, value, &mut ser).map_err(|e| {
-      deno_core::error::type_error(format!(
+      JsNativeError::type_error(format!(
         "failed to serialize json value: {e}"
       ))
     })?;
@@ -206,7 +207,7 @@ mod impl_ {
       .borrow()
       .resource_table
       .get::<IpcJsonStreamResource>(rid)
-      .map_err(|_| bad_resource_id())?;
+      .map_err(|_| ResourceError::BadResourceId)?;
     let old = stream
       .queued_bytes
       .fetch_add(serialized.len(), std::sync::atomic::Ordering::Relaxed);
@@ -244,7 +245,7 @@ mod impl_ {
       .borrow()
       .resource_table
       .get::<IpcJsonStreamResource>(rid)
-      .map_err(|_| bad_resource_id())?;
+      .map_err(|_| ResourceError::BadResourceId)?;
 
     let cancel = stream.cancel.clone();
     let mut stream = RcRef::map(stream, |r| &r.read_half).borrow_mut().await;

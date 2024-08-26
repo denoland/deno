@@ -1,6 +1,6 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
-use deno_core::error::type_error;
+use deno_core::error::JsNativeError;
 use deno_core::error::AnyError;
 use deno_core::op2;
 use deno_core::OpState;
@@ -345,7 +345,7 @@ pub fn op_webgpu_render_pass_set_index_buffer(
   let size = if let Some(size) = size {
     Some(
       std::num::NonZeroU64::new(size)
-        .ok_or_else(|| type_error("size must be larger than 0"))?,
+        .ok_or_else(|| JsNativeError::type_error("size must be larger than 0"))?,
     )
   } else {
     None
@@ -381,7 +381,7 @@ pub fn op_webgpu_render_pass_set_vertex_buffer(
   let size = if let Some(size) = size {
     Some(
       std::num::NonZeroU64::new(size)
-        .ok_or_else(|| type_error("size must be larger than 0"))?,
+        .ok_or_else(|| JsNativeError::type_error("size must be larger than 0"))?,
     )
   } else {
     None

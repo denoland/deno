@@ -1,5 +1,5 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
-use deno_core::error::type_error;
+use deno_core::error::JsNativeError;
 use deno_core::error::AnyError;
 use deno_core::op2;
 use deno_core::AsyncRefCell;
@@ -419,7 +419,7 @@ pub fn signal_str_to_int(s: &str) -> Result<libc::c_int, AnyError> {
     "SIGINFO" => Ok(29),
     "SIGUSR1" => Ok(30),
     "SIGUSR2" => Ok(31),
-    _ => Err(type_error(format!("Invalid signal: {s}"))),
+    _ => Err(JsNativeError::type_error(format!("Invalid signal: {s}")).into()),
   }
 }
 
@@ -457,7 +457,7 @@ pub fn signal_int_to_str(s: libc::c_int) -> Result<&'static str, AnyError> {
     29 => Ok("SIGINFO"),
     30 => Ok("SIGUSR1"),
     31 => Ok("SIGUSR2"),
-    _ => Err(type_error(format!("Invalid signal: {s}"))),
+    _ => Err(JsNativeError::type_error(format!("Invalid signal: {s}")).into()),
   }
 }
 
@@ -563,9 +563,9 @@ pub fn signal_str_to_int(s: &str) -> Result<libc::c_int, AnyError> {
   match s {
     "SIGINT" => Ok(2),
     "SIGBREAK" => Ok(21),
-    _ => Err(type_error(
+    _ => Err(JsNativeError::type_error(
       "Windows only supports ctrl-c (SIGINT) and ctrl-break (SIGBREAK).",
-    )),
+    ).into()),
   }
 }
 
@@ -574,9 +574,9 @@ pub fn signal_int_to_str(s: libc::c_int) -> Result<&'static str, AnyError> {
   match s {
     2 => Ok("SIGINT"),
     21 => Ok("SIGBREAK"),
-    _ => Err(type_error(
+    _ => Err(JsNativeError::type_error(
       "Windows only supports ctrl-c (SIGINT) and ctrl-break (SIGBREAK).",
-    )),
+    ).into()),
   }
 }
 
@@ -589,9 +589,9 @@ fn op_signal_bind(
 ) -> Result<ResourceId, AnyError> {
   let signo = signal_str_to_int(sig)?;
   if signal_hook_registry::FORBIDDEN.contains(&signo) {
-    return Err(type_error(format!(
+    return Err(JsNativeError::type_error(format!(
       "Binding to signal '{sig}' is not allowed",
-    )));
+    )).into());
   }
 
   let signal = AsyncRefCell::new(signal(SignalKind::from_raw(signo))?);

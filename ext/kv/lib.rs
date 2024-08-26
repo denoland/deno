@@ -17,8 +17,7 @@ use base64::Engine;
 use chrono::DateTime;
 use chrono::Utc;
 use deno_core::anyhow::Context;
-use deno_core::error::get_custom_error_class;
-use deno_core::error::type_error;
+use deno_core::error::{JsErrorClass, JsNativeError};
 use deno_core::error::AnyError;
 use deno_core::futures::StreamExt;
 use deno_core::op2;
@@ -283,10 +282,10 @@ where
   };
 
   if ranges.len() > MAX_READ_RANGES {
-    return Err(type_error(format!(
+    return Err(JsNativeError::type_error(format!(
       "too many ranges (max {})",
       MAX_READ_RANGES
-    )));
+    )).into());
   }
 
   let mut total_entries = 0usize;
@@ -313,10 +312,10 @@ where
     .collect::<Result<Vec<_>, AnyError>>()?;
 
   if total_entries > MAX_READ_ENTRIES {
-    return Err(type_error(format!(
+    return Err(JsNativeError::type_error(format!(
       "too many entries (max {})",
       MAX_READ_ENTRIES
-    )));
+    )).into());
   }
 
   let opts = SnapshotReadOptions {
@@ -360,10 +359,10 @@ where
       match state.resource_table.get::<DatabaseResource<DBH::DB>>(rid) {
         Ok(resource) => resource,
         Err(err) => {
-          if get_custom_error_class(&err) == Some("BadResource") {
+          if err.get_class() == "BadResource" {
             return Ok(None);
           } else {
-            return Err(err);
+            return Err(err.into());
           }
         }
       };
@@ -394,10 +393,10 @@ where
   let resource = state.resource_table.get::<DatabaseResource<DBH::DB>>(rid)?;
 
   if keys.len() > MAX_WATCHED_KEYS {
-    return Err(type_error(format!(
+    return Err(JsNativeError::type_error(format!(
       "too many keys (max {})",
       MAX_WATCHED_KEYS
-    )));
+    )).into());
   }
 
   let keys: Vec<Vec<u8>> = keys
@@ -491,9 +490,9 @@ where
     let handle = state
       .resource_table
       .take::<QueueMessageResource<<<DBH>::DB as Database>::QMH>>(handle_rid)
-      .map_err(|_| type_error("Queue message not found"))?;
+      .map_err(|_| JsNativeError::type_error("Queue message not found"))?;
     Rc::try_unwrap(handle)
-      .map_err(|_| type_error("Queue message not found"))?
+      .map_err(|_| JsNativeError::type_error("Queue message not found"))?
       .handle
   };
   // if we fail to finish the message, there is not much we can do and the
@@ -511,10 +510,10 @@ fn check_from_v8(value: V8KvCheck) -> Result<Check, AnyError> {
     Some(data) => {
       let mut out = [0u8; 10];
       if data.len() != out.len() * 2 {
-        bail!(type_error("invalid versionstamp"));
+        bail!(JsNativeError::type_error("invalid versionstamp"));
       }
       faster_hex::hex_decode(&data, &mut out)
-        .map_err(|_| type_error("invalid versionstamp"))?;
+        .map_err(|_| JsNativeError::type_error("invalid versionstamp"))?;
       Some(out)
     }
     None => None,
@@ -546,10 +545,10 @@ fn mutation_from_v8(
       MutationKind::SetSuffixVersionstampedKey(value.try_into()?)
     }
     (op, Some(_)) => {
-      return Err(type_error(format!("invalid mutation '{op}' with value")))
+      return Err(JsNativeError::type_error(format!("invalid mutation '{op}' with value")).into())
     }
     (op, None) => {
-      return Err(type_error(format!("invalid mutation '{op}' without value")))
+      return Err(JsNativeError::type_error(format!("invalid mutation '{op}' without value")).into())
     }
   };
   Ok(Mutation {
@@ -614,9 +613,9 @@ impl RawSelector {
       }),
       (Some(prefix), Some(start), None) => {
         if !start.starts_with(&prefix) || start.len() == prefix.len() {
-          return Err(type_error(
+          return Err(JsNativeError::type_error(
             "start key is not in the keyspace defined by prefix",
-          ));
+          ).into());
         }
         Ok(Self::Prefixed {
           prefix,
@@ -626,9 +625,9 @@ impl RawSelector {
       }
       (Some(prefix), None, Some(end)) => {
         if !end.starts_with(&prefix) || end.len() == prefix.len() {
-          return Err(type_error(
+          return Err(JsNativeError::type_error(
             "end key is not in the keyspace defined by prefix",
-          ));
+          ).into());
         }
         Ok(Self::Prefixed {
           prefix,
@@ -638,7 +637,7 @@ impl RawSelector {
       }
       (None, Some(start), Some(end)) => {
         if start > end {
-          return Err(type_error("start key is greater than end key"));
+          return Err(JsNativeError::type_error("start key is greater than end key").into());
         }
         Ok(Self::Range { start, end })
       }
@@ -646,7 +645,7 @@ impl RawSelector {
         let end = start.iter().copied().chain(Some(0)).collect();
         Ok(Self::Range { start, end })
       }
-      _ => Err(type_error("invalid range")),
+      _ => Err(JsNativeError::type_error("invalid range").into()),
     }
   }
 
@@ -708,7 +707,7 @@ fn encode_cursor(
 ) -> Result<String, AnyError> {
   let common_prefix = selector.common_prefix();
   if !boundary_key.starts_with(common_prefix) {
-    return Err(type_error("invalid boundary key"));
+    return Err(JsNativeError::type_error("invalid boundary key").into());
   }
   Ok(BASE64_URL_SAFE.encode(&boundary_key[common_prefix.len()..]))
 }
@@ -725,7 +724,7 @@ fn decode_selector_and_cursor(
   let common_prefix = selector.common_prefix();
   let cursor = BASE64_URL_SAFE
     .decode(cursor)
-    .map_err(|_| type_error("invalid cursor"))?;
+    .map_err(|_| JsNativeError::type_error("invalid cursor"))?;
 
   let first_key: Vec<u8>;
   let last_key: Vec<u8>;
@@ -750,13 +749,13 @@ fn decode_selector_and_cursor(
   // Defend against out-of-bounds reading
   if let Some(start) = selector.start() {
     if &first_key[..] < start {
-      return Err(type_error("cursor out of bounds"));
+      return Err(JsNativeError::type_error("cursor out of bounds").into());
     }
   }
 
   if let Some(end) = selector.end() {
     if &last_key[..] > end {
-      return Err(type_error("cursor out of bounds"));
+      return Err(JsNativeError::type_error("cursor out of bounds").into());
     }
   }
 
@@ -784,14 +783,14 @@ where
   };
 
   if checks.len() > MAX_CHECKS {
-    return Err(type_error(format!("too many checks (max {})", MAX_CHECKS)));
+    return Err(JsNativeError::type_error(format!("too many checks (max {})", MAX_CHECKS)).into());
   }
 
   if mutations.len() + enqueues.len() > MAX_MUTATIONS {
-    return Err(type_error(format!(
+    return Err(JsNativeError::type_error(format!(
       "too many mutations (max {})",
       MAX_MUTATIONS
-    )));
+    )).into());
   }
 
   let checks = checks
@@ -819,7 +818,7 @@ where
     .chain(mutations.iter().map(|m| &m.key))
   {
     if key.is_empty() {
-      return Err(type_error("key cannot be empty"));
+      return Err(JsNativeError::type_error("key cannot be empty").into());
     }
 
     total_payload_size += check_write_key_size(key)?;
@@ -842,17 +841,17 @@ where
   }
 
   if total_payload_size > MAX_TOTAL_MUTATION_SIZE_BYTES {
-    return Err(type_error(format!(
+    return Err(JsNativeError::type_error(format!(
       "total mutation size too large (max {} bytes)",
       MAX_TOTAL_MUTATION_SIZE_BYTES
-    )));
+    )).into());
   }
 
   if total_key_size > MAX_TOTAL_KEY_SIZE_BYTES {
-    return Err(type_error(format!(
+    return Err(JsNativeError::type_error(format!(
       "total key size too large (max {} bytes)",
       MAX_TOTAL_KEY_SIZE_BYTES
-    )));
+    )).into());
   }
 
   let atomic_write = AtomicWrite {
@@ -883,10 +882,10 @@ fn op_kv_encode_cursor(
 
 fn check_read_key_size(key: &[u8]) -> Result<(), AnyError> {
   if key.len() > MAX_READ_KEY_SIZE_BYTES {
-    Err(type_error(format!(
+    Err(JsNativeError::type_error(format!(
       "key too large for read (max {} bytes)",
       MAX_READ_KEY_SIZE_BYTES
-    )))
+    )).into())
   } else {
     Ok(())
   }
@@ -894,10 +893,10 @@ fn check_read_key_size(key: &[u8]) -> Result<(), AnyError> {
 
 fn check_write_key_size(key: &[u8]) -> Result<usize, AnyError> {
   if key.len() > MAX_WRITE_KEY_SIZE_BYTES {
-    Err(type_error(format!(
+    Err(JsNativeError::type_error(format!(
       "key too large for write (max {} bytes)",
       MAX_WRITE_KEY_SIZE_BYTES
-    )))
+    )).into())
   } else {
     Ok(key.len())
   }
@@ -911,10 +910,10 @@ fn check_value_size(value: &KvValue) -> Result<usize, AnyError> {
   };
 
   if payload.len() > MAX_VALUE_SIZE_BYTES {
-    Err(type_error(format!(
+    Err(JsNativeError::type_error(format!(
       "value too large (max {} bytes)",
       MAX_VALUE_SIZE_BYTES
-    )))
+    )).into())
   } else {
     Ok(payload.len())
   }
@@ -922,10 +921,10 @@ fn check_value_size(value: &KvValue) -> Result<usize, AnyError> {
 
 fn check_enqueue_payload_size(payload: &[u8]) -> Result<usize, AnyError> {
   if payload.len() > MAX_VALUE_SIZE_BYTES {
-    Err(type_error(format!(
+    Err(JsNativeError::type_error(format!(
       "enqueue payload too large (max {} bytes)",
       MAX_VALUE_SIZE_BYTES
-    )))
+    )).into())
   } else {
     Ok(payload.len())
   }

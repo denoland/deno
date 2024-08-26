@@ -28,7 +28,7 @@ use deno_config::glob::FilePatterns;
 use deno_core::anyhow::anyhow;
 use deno_core::anyhow::bail;
 use deno_core::anyhow::Context;
-use deno_core::error::generic_error;
+use deno_core::error::JsNativeError;
 use deno_core::error::AnyError;
 use deno_core::futures;
 use deno_core::parking_lot::Mutex;
@@ -165,7 +165,7 @@ fn resolve_paths_with_options_batches(
     }
   }
   if paths_with_options_batches.is_empty() {
-    return Err(generic_error("No target files found."));
+    return Err(JsNativeError::generic("No target files found.").into());
   }
   Ok(paths_with_options_batches)
 }
@@ -628,9 +628,9 @@ impl Formatter for CheckFormatter {
       Ok(())
     } else {
       let not_formatted_files_str = files_str(not_formatted_files_count);
-      Err(generic_error(format!(
+      Err(JsNativeError::generic(format!(
         "Found {not_formatted_files_count} not formatted {not_formatted_files_str} in {checked_files_str}",
-      )))
+      )).into())
     }
   }
 }

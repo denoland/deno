@@ -8,7 +8,7 @@ use crate::standalone::is_standalone_binary;
 use deno_ast::ModuleSpecifier;
 use deno_core::anyhow::bail;
 use deno_core::anyhow::Context;
-use deno_core::error::generic_error;
+use deno_core::error::JsNativeError;
 use deno_core::error::AnyError;
 use deno_core::resolve_url_or_path;
 use deno_graph::GraphKind;
@@ -257,9 +257,9 @@ async fn resolve_compile_executable_output_path(
       .map(PathBuf::from)
   }
 
-  output_path.ok_or_else(|| generic_error(
+  output_path.ok_or_else(|| JsNativeError::generic(
     "An executable name was not provided. One could not be inferred from the URL. Aborting.",
-  )).map(|output_path| {
+  ).into()).map(|output_path| {
     get_os_specific_filepath(output_path, &compile_flags.target)
   })
 }

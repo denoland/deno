@@ -1,5 +1,5 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
-use deno_core::error::generic_error;
+use deno_core::error::JsNativeError;
 use deno_core::error::AnyError;
 use deno_core::GarbageCollected;
 use digest::Digest;
@@ -197,17 +197,17 @@ impl Hash {
         let digest: D = Digest::new();
         if let Some(length) = output_length {
           if length != digest.output_size() {
-            return Err(generic_error(
+            return Err(JsNativeError::generic(
               "Output length mismatch for non-extendable algorithm",
-            ));
+            ).into());
           }
         }
         FixedSize(Box::new(digest))
       },
       _ => {
-        return Err(generic_error(format!(
+        return Err(JsNativeError::generic(format!(
           "Digest method not supported: {algorithm_name}"
-        )))
+        )).into())
       }
     );
 
@@ -244,9 +244,9 @@ impl Hash {
       FixedSize(context) => {
         if let Some(length) = output_length {
           if length != context.output_size() {
-            return Err(generic_error(
+            return Err(JsNativeError::generic(
               "Output length mismatch for non-extendable algorithm",
-            ));
+            ).into());
           }
         }
         FixedSize(context.box_clone())

@@ -19,7 +19,7 @@ use deno_ast::swc::visit::VisitWith;
 use deno_ast::MediaType;
 use deno_ast::ParsedSource;
 use deno_ast::SourceTextInfo;
-use deno_core::error::custom_error;
+use deno_core::error::JsNativeError;
 use deno_core::error::AnyError;
 use deno_core::futures::future;
 use deno_core::futures::future::Shared;
@@ -1002,7 +1002,7 @@ impl Documents {
       .or_else(|| self.file_system_docs.remove_document(specifier))
       .map(Ok)
       .unwrap_or_else(|| {
-        Err(custom_error(
+        Err(JsNativeError::new(
           "NotFound",
           format!("The specifier \"{specifier}\" was not found."),
         ))

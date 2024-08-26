@@ -7,8 +7,7 @@ use crate::version;
 use cache_control::Cachability;
 use cache_control::CacheControl;
 use chrono::DateTime;
-use deno_core::error::custom_error;
-use deno_core::error::generic_error;
+use deno_core::error::JsNativeError;
 use deno_core::error::AnyError;
 use deno_core::futures::StreamExt;
 use deno_core::parking_lot::Mutex;
@@ -436,18 +435,18 @@ impl HttpClient {
 
     if status.is_client_error() {
       let err = if response.status() == StatusCode::NOT_FOUND {
-        custom_error(
+        JsNativeError::new(
           "NotFound",
           format!("Import '{}' failed, not found.", args.url),
         )
       } else {
-        generic_error(format!(
+        JsNativeError::generic(format!(
           "Import '{}' failed: {}",
           args.url,
           response.status()
         ))
       };
-      return Err(err);
+      return Err(err.into());
     }
 
     let body =
@@ -466,7 +465,7 @@ impl HttpClient {
     let maybe_bytes = self.download_inner(url, None, None).await?;
     match maybe_bytes {
       Some(bytes) => Ok(bytes),
-      None => Err(custom_error("Http", "Not found.")),
+      None => Err(JsNativeError::new("Http", "Not found.").into()),
     }
   }
 

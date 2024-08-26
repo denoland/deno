@@ -4,7 +4,7 @@ use std::borrow::Cow;
 use std::cell::RefCell;
 use std::rc::Rc;
 
-use deno_core::error::type_error;
+use deno_core::error::JsNativeError;
 use deno_core::error::AnyError;
 use deno_core::op2;
 
@@ -155,10 +155,10 @@ pub fn deserialize_js_transferables(
         let resource = state
           .resource_table
           .take::<MessagePortResource>(id)
-          .map_err(|_| type_error("Invalid message port transfer"))?;
+          .map_err(|_| JsNativeError::type_error("Invalid message port transfer"))?;
         resource.cancel.cancel();
         let resource = Rc::try_unwrap(resource)
-          .map_err(|_| type_error("Message port is not ready for transfer"))?;
+          .map_err(|_| JsNativeError::type_error("Message port is not ready for transfer"))?;
         transferables.push(Transferable::MessagePort(resource.port));
       }
       JsTransferable::ArrayBuffer(id) => {
@@ -206,7 +206,7 @@ pub fn op_message_port_post_message(
   for js_transferable in &data.transferables {
     if let JsTransferable::MessagePort(id) = js_transferable {
       if *id == rid {
-        return Err(type_error("Can not transfer self message port"));
+        return Err(JsNativeError::type_error("Can not transfer self message port").into());
       }
     }
   }

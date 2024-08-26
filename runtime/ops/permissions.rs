@@ -3,7 +3,7 @@
 use ::deno_permissions::parse_sys_kind;
 use ::deno_permissions::PermissionState;
 use ::deno_permissions::PermissionsContainer;
-use deno_core::error::custom_error;
+use deno_core::error::JsNativeError;
 use deno_core::error::AnyError;
 use deno_core::op2;
 use deno_core::OpState;
@@ -75,10 +75,10 @@ pub fn op_query_permission(
     "ffi" => permissions.ffi.query(args.path.as_deref().map(Path::new)),
     "hrtime" => permissions.hrtime.query(),
     n => {
-      return Err(custom_error(
+      return Err(JsNativeError::new(
         "ReferenceError",
         format!("No such permission name: {n}"),
-      ))
+      ).into())
     }
   };
   Ok(PermissionStatus::from(perm))
@@ -110,10 +110,10 @@ pub fn op_revoke_permission(
     "ffi" => permissions.ffi.revoke(args.path.as_deref().map(Path::new)),
     "hrtime" => permissions.hrtime.revoke(),
     n => {
-      return Err(custom_error(
+      return Err(JsNativeError::new(
         "ReferenceError",
         format!("No such permission name: {n}"),
-      ))
+      ).into())
     }
   };
   Ok(PermissionStatus::from(perm))
@@ -145,10 +145,10 @@ pub fn op_request_permission(
     "ffi" => permissions.ffi.request(args.path.as_deref().map(Path::new)),
     "hrtime" => permissions.hrtime.request(),
     n => {
-      return Err(custom_error(
+      return Err(JsNativeError::new(
         "ReferenceError",
         format!("No such permission name: {n}"),
-      ))
+      ).into())
     }
   };
   Ok(PermissionStatus::from(perm))

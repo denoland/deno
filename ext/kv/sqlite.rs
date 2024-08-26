@@ -13,7 +13,7 @@ use std::sync::Mutex;
 use std::sync::OnceLock;
 
 use async_trait::async_trait;
-use deno_core::error::type_error;
+use deno_core::error::JsNativeError;
 use deno_core::error::AnyError;
 use deno_core::normalize_path;
 use deno_core::unsync::spawn_blocking;
@@ -28,6 +28,8 @@ use crate::DatabaseHandler;
 
 static SQLITE_NOTIFIERS_MAP: OnceLock<Mutex<HashMap<PathBuf, SqliteNotifier>>> =
   OnceLock::new();
+
+deno_core::js_error_wrapper!(SqliteBackendError, JsSqliteBackendError, "TypeError");
 
 pub struct SqliteDbHandler<P: SqliteDbHandlerPermissions + 'static> {
   pub default_storage_dir: Option<PathBuf>,
@@ -78,12 +80,12 @@ impl<P: SqliteDbHandlerPermissions> DatabaseHandler for SqliteDbHandler<P> {
     if let Some(path) = &path {
       if path != ":memory:" {
         if path.is_empty() {
-          return Err(type_error("Filename cannot be empty"));
+          return Err(JsNativeError::type_error("Filename cannot be empty").into());
         }
         if path.starts_with(':') {
-          return Err(type_error(
+          return Err(JsNativeError::type_error(
             "Filename cannot start with ':' unless prefixed with './'",
-          ));
+          ).into());
         }
         let path = Path::new(path);
         {
@@ -135,7 +137,7 @@ impl<P: SqliteDbHandlerPermissions> DatabaseHandler for SqliteDbHandler<P> {
       })
     })
     .await
-    .unwrap()?;
+    .unwrap().map_err(JsSqliteBackendError)?;
 
     let notifier = if let Some(notifier_key) = notifier_key {
       SQLITE_NOTIFIERS_MAP

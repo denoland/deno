@@ -16,7 +16,7 @@ use crate::http_util::HttpClientProvider;
 use crate::util::fs::canonicalize_path_maybe_not_exists;
 
 use deno_core::anyhow::Context;
-use deno_core::error::generic_error;
+use deno_core::error::JsNativeError;
 use deno_core::error::AnyError;
 use deno_core::resolve_url_or_path;
 use deno_core::url::Url;
@@ -48,9 +48,9 @@ fn validate_name(exec_name: &str) -> Result<(), AnyError> {
   if EXEC_NAME_RE.is_match(exec_name) {
     Ok(())
   } else {
-    Err(generic_error(format!(
+    Err(JsNativeError::generic(format!(
       "Invalid executable name: {exec_name}"
-    )))
+    )).into())
   }
 }
 
@@ -216,7 +216,7 @@ pub fn uninstall(uninstall_flags: UninstallFlags) -> Result<(), AnyError> {
   // ensure directory exists
   if let Ok(metadata) = fs::metadata(&installation_dir) {
     if !metadata.is_dir() {
-      return Err(generic_error("Installation path is not a directory"));
+      return Err(JsNativeError::generic("Installation path is not a directory").into());
     }
   }
 
@@ -240,10 +240,10 @@ pub fn uninstall(uninstall_flags: UninstallFlags) -> Result<(), AnyError> {
   }
 
   if !removed {
-    return Err(generic_error(format!(
+    return Err(JsNativeError::generic(format!(
       "No installation found for {}",
       uninstall_flags.name
-    )));
+    )).into());
   }
 
   // There might be some extra files to delete
@@ -331,16 +331,16 @@ async fn create_install_shim(
   // ensure directory exists
   if let Ok(metadata) = fs::metadata(&shim_data.installation_dir) {
     if !metadata.is_dir() {
-      return Err(generic_error("Installation path is not a directory"));
+      return Err(JsNativeError::generic("Installation path is not a directory").into());
     }
   } else {
     fs::create_dir_all(&shim_data.installation_dir)?;
   };
 
   if shim_data.file_path.exists() && !install_flags_global.force {
-    return Err(generic_error(
+    return Err(JsNativeError::generic(
       "Existing installation found. Aborting (Use -f to overwrite).",
-    ));
+    ).into());
   };
 
   generate_executable_file(&shim_data)?;
@@ -400,9 +400,9 @@ async fn resolve_shim_data(
 
   let name = match name {
     Some(name) => name,
-    None => return Err(generic_error(
+    None => return Err(JsNativeError::generic(
       "An executable name was not provided. One could not be inferred from the URL. Aborting.",
-    )),
+    ).into()),
   };
 
   validate_name(name.as_str())?;
@@ -433,7 +433,7 @@ async fn resolve_shim_data(
         Level::Debug => "debug",
         Level::Info => "info",
         _ => {
-          return Err(generic_error(format!("invalid log level {log_level}")))
+          return Err(JsNativeError::generic(format!("invalid log level {log_level}")).into())
         }
       };
       executable_args.push(log_level.to_string());

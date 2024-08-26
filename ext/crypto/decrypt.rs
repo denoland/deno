@@ -16,8 +16,7 @@ use ctr::cipher::StreamCipher;
 use ctr::Ctr128BE;
 use ctr::Ctr32BE;
 use ctr::Ctr64BE;
-use deno_core::error::custom_error;
-use deno_core::error::type_error;
+use deno_core::error::JsNativeError;
 use deno_core::error::AnyError;
 use deno_core::op2;
 use deno_core::unsync::spawn_blocking;
@@ -139,7 +138,7 @@ fn decrypt_rsa_oaep(
 
   private_key
     .decrypt(padding, data)
-    .map_err(|e| custom_error("DOMExceptionOperationError", e.to_string()))
+    .map_err(|e| JsNativeError::new("DOMExceptionOperationError", e.to_string()).into())
 }
 
 fn decrypt_aes_cbc(
@@ -156,14 +155,14 @@ fn decrypt_aes_cbc(
       // Section 10.3 Step 2 of RFC 2315 https://www.rfc-editor.org/rfc/rfc2315
       type Aes128CbcDec = cbc::Decryptor<aes::Aes128>;
       let cipher = Aes128CbcDec::new_from_slices(key, &iv).map_err(|_| {
-        custom_error(
+        JsNativeError::new(
           "DOMExceptionOperationError",
           "Invalid key or iv".to_string(),
         )
       })?;
 
       cipher.decrypt_padded_vec_mut::<Pkcs7>(data).map_err(|_| {
-        custom_error(
+        JsNativeError::new(
           "DOMExceptionOperationError",
           "Decryption failed".to_string(),
         )
@@ -173,14 +172,14 @@ fn decrypt_aes_cbc(
       // Section 10.3 Step 2 of RFC 2315 https://www.rfc-editor.org/rfc/rfc2315
       type Aes192CbcDec = cbc::Decryptor<aes::Aes192>;
       let cipher = Aes192CbcDec::new_from_slices(key, &iv).map_err(|_| {
-        custom_error(
+        JsNativeError::new(
           "DOMExceptionOperationError",
           "Invalid key or iv".to_string(),
         )
       })?;
 
       cipher.decrypt_padded_vec_mut::<Pkcs7>(data).map_err(|_| {
-        custom_error(
+        JsNativeError::new(
           "DOMExceptionOperationError",
           "Decryption failed".to_string(),
         )
@@ -190,14 +189,14 @@ fn decrypt_aes_cbc(
       // Section 10.3 Step 2 of RFC 2315 https://www.rfc-editor.org/rfc/rfc2315
       type Aes256CbcDec = cbc::Decryptor<aes::Aes256>;
       let cipher = Aes256CbcDec::new_from_slices(key, &iv).map_err(|_| {
-        custom_error(
+        JsNativeError::new(
           "DOMExceptionOperationError",
           "Invalid key or iv".to_string(),
         )
       })?;
 
       cipher.decrypt_padded_vec_mut::<Pkcs7>(data).map_err(|_| {
-        custom_error(
+        JsNativeError::new(
           "DOMExceptionOperationError",
           "Decryption failed".to_string(),
         )
@@ -274,7 +273,7 @@ fn decrypt_aes_gcm_gen<N: ArrayLength<u8>>(
         )
         .map_err(|_| operation_error("Decryption failed"))?
     }
-    _ => return Err(type_error("invalid length")),
+    _ => return Err(JsNativeError::type_error("invalid length").into()),
   };
 
   Ok(())
@@ -294,23 +293,23 @@ fn decrypt_aes_ctr(
       128 => decrypt_aes_ctr_gen::<Ctr32BE<aes::Aes128>>(key, counter, data),
       192 => decrypt_aes_ctr_gen::<Ctr32BE<aes::Aes192>>(key, counter, data),
       256 => decrypt_aes_ctr_gen::<Ctr32BE<aes::Aes256>>(key, counter, data),
-      _ => Err(type_error("invalid length")),
+      _ => Err(JsNativeError::type_error("invalid length").into()),
     },
     64 => match key_length {
       128 => decrypt_aes_ctr_gen::<Ctr64BE<aes::Aes128>>(key, counter, data),
       192 => decrypt_aes_ctr_gen::<Ctr64BE<aes::Aes192>>(key, counter, data),
       256 => decrypt_aes_ctr_gen::<Ctr64BE<aes::Aes256>>(key, counter, data),
-      _ => Err(type_error("invalid length")),
+      _ => Err(JsNativeError::type_error("invalid length").into()),
     },
     128 => match key_length {
       128 => decrypt_aes_ctr_gen::<Ctr128BE<aes::Aes128>>(key, counter, data),
       192 => decrypt_aes_ctr_gen::<Ctr128BE<aes::Aes192>>(key, counter, data),
       256 => decrypt_aes_ctr_gen::<Ctr128BE<aes::Aes256>>(key, counter, data),
-      _ => Err(type_error("invalid length")),
+      _ => Err(JsNativeError::type_error("invalid length").into()),
     },
-    _ => Err(type_error(
+    _ => Err(JsNativeError::type_error(
       "invalid counter length. Currently supported 32/64/128 bits",
-    )),
+    ).into()),
   }
 }
 
@@ -330,7 +329,7 @@ fn decrypt_aes_gcm(
   // Note that encryption won't fail, it instead truncates the tag
   // to the specified tag length as specified in the spec.
   if tag_length != 128 {
-    return Err(type_error("tag length not equal to 128"));
+    return Err(JsNativeError::type_error("tag length not equal to 128").into());
   }
 
   let sep = data.len() - (tag_length / 8);
@@ -357,7 +356,7 @@ fn decrypt_aes_gcm(
       additional_data,
       &mut plaintext,
     )?,
-    _ => return Err(type_error("iv length not equal to 12 or 16")),
+    _ => return Err(JsNativeError::type_error("iv length not equal to 12 or 16").into()),
   }
 
   Ok(plaintext)

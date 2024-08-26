@@ -9,7 +9,7 @@ use brotli::BrotliDecompressStream;
 use brotli::BrotliResult;
 use brotli::BrotliState;
 use brotli::Decompressor;
-use deno_core::error::type_error;
+use deno_core::error::JsNativeError;
 use deno_core::error::AnyError;
 use deno_core::op2;
 use deno_core::JsBuffer;
@@ -28,7 +28,7 @@ fn encoder_mode(mode: u32) -> Result<BrotliEncoderMode, AnyError> {
     4 => BrotliEncoderMode::BROTLI_FORCE_MSB_PRIOR,
     5 => BrotliEncoderMode::BROTLI_FORCE_UTF8_PRIOR,
     6 => BrotliEncoderMode::BROTLI_FORCE_SIGNED_PRIOR,
-    _ => return Err(type_error("Invalid encoder mode")),
+    _ => return Err(JsNativeError::type_error("Invalid encoder mode").into()),
   })
 }
 
@@ -57,7 +57,7 @@ pub fn op_brotli_compress(
     &mut |_, _, _, _| (),
   );
   if result != 1 {
-    return Err(type_error("Failed to compress"));
+    return Err(JsNativeError::type_error("Failed to compress").into());
   }
 
   Ok(out_size)
@@ -107,7 +107,7 @@ pub async fn op_brotli_compress_async(
       &mut |_, _, _, _| (),
     );
     if result != 1 {
-      return Err(type_error("Failed to compress"));
+      return Err(JsNativeError::type_error("Failed to compress").into());
     }
 
     out.truncate(out_size);
@@ -168,7 +168,7 @@ pub fn op_brotli_compress_stream(
     &mut |_, _, _, _| (),
   );
   if !result {
-    return Err(type_error("Failed to compress"));
+    return Err(JsNativeError::type_error("Failed to compress").into());
   }
 
   Ok(output_offset)
@@ -197,7 +197,7 @@ pub fn op_brotli_compress_stream_end(
     &mut |_, _, _, _| (),
   );
   if !result {
-    return Err(type_error("Failed to compress"));
+    return Err(JsNativeError::type_error("Failed to compress").into());
   }
 
   Ok(output_offset)
@@ -268,7 +268,7 @@ pub fn op_brotli_decompress_stream(
     &mut inst,
   );
   if matches!(result, BrotliResult::ResultFailure) {
-    return Err(type_error("Failed to decompress"));
+    return Err(JsNativeError::type_error("Failed to decompress").into());
   }
 
   Ok(output_offset)
@@ -296,7 +296,7 @@ pub fn op_brotli_decompress_stream_end(
     &mut inst,
   );
   if matches!(result, BrotliResult::ResultFailure) {
-    return Err(type_error("Failed to decompress"));
+    return Err(JsNativeError::type_error("Failed to decompress").into());
   }
 
   Ok(output_offset)

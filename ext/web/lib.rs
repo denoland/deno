@@ -6,8 +6,7 @@ mod message_port;
 mod stream_resource;
 mod timers;
 
-use deno_core::error::range_error;
-use deno_core::error::type_error;
+use deno_core::error::JsNativeError;
 use deno_core::error::AnyError;
 use deno_core::op2;
 use deno_core::url::Url;
@@ -180,7 +179,7 @@ fn op_encoding_normalize_label(
 ) -> Result<String, AnyError> {
   let encoding = Encoding::for_label_no_replacement(label.as_bytes())
     .ok_or_else(|| {
-      range_error(format!(
+      JsNativeError::range_error(format!(
         "The encoding label provided ('{label}') is invalid."
       ))
     })?;
@@ -216,7 +215,7 @@ fn op_encoding_decode_utf8<'a>(
   // - https://github.com/v8/v8/blob/d68fb4733e39525f9ff0a9222107c02c28096e2a/include/v8.h#L3277-L3278
   match v8::String::new_from_utf8(scope, buf, v8::NewStringType::Normal) {
     Some(text) => Ok(text),
-    None => Err(type_error("buffer exceeds maximum length")),
+    None => Err(JsNativeError::type_error("buffer exceeds maximum length").into()),
   }
 }
 
@@ -229,7 +228,7 @@ fn op_encoding_decode_single(
   ignore_bom: bool,
 ) -> Result<U16String, AnyError> {
   let encoding = Encoding::for_label(label.as_bytes()).ok_or_else(|| {
-    range_error(format!(
+    JsNativeError::range_error(format!(
       "The encoding label provided ('{label}') is invalid."
     ))
   })?;
@@ -242,7 +241,7 @@ fn op_encoding_decode_single(
 
   let max_buffer_length = decoder
     .max_utf16_buffer_length(data.len())
-    .ok_or_else(|| range_error("Value too large to decode."))?;
+    .ok_or_else(|| JsNativeError::range_error("Value too large to decode."))?;
 
   let mut output = vec![0; max_buffer_length];
 
@@ -255,10 +254,10 @@ fn op_encoding_decode_single(
         Ok(output.into())
       }
       DecoderResult::OutputFull => {
-        Err(range_error("Provided buffer too small."))
+        Err(JsNativeError::range_error("Provided buffer too small.").into())
       }
       DecoderResult::Malformed(_, _) => {
-        Err(type_error("The encoded data is not valid."))
+        Err(JsNativeError::type_error("The encoded data is not valid.").into())
       }
     }
   } else {
@@ -269,7 +268,7 @@ fn op_encoding_decode_single(
         output.truncate(written);
         Ok(output.into())
       }
-      CoderResult::OutputFull => Err(range_error("Provided buffer too small.")),
+      CoderResult::OutputFull => Err(JsNativeError::range_error("Provided buffer too small.").into()),
     }
   }
 }
@@ -282,7 +281,7 @@ fn op_encoding_new_decoder(
   ignore_bom: bool,
 ) -> Result<TextDecoderResource, AnyError> {
   let encoding = Encoding::for_label(label.as_bytes()).ok_or_else(|| {
-    range_error(format!(
+    JsNativeError::range_error(format!(
       "The encoding label provided ('{label}') is invalid."
     ))
   })?;
@@ -311,7 +310,7 @@ fn op_encoding_decode(
 
   let max_buffer_length = decoder
     .max_utf16_buffer_length(data.len())
-    .ok_or_else(|| range_error("Value too large to decode."))?;
+    .ok_or_else(|| JsNativeError::range_error("Value too large to decode."))?;
 
   let mut output = vec![0; max_buffer_length];
 
@@ -324,10 +323,10 @@ fn op_encoding_decode(
         Ok(output.into())
       }
       DecoderResult::OutputFull => {
-        Err(range_error("Provided buffer too small."))
+        Err(JsNativeError::range_error("Provided buffer too small.").into())
       }
       DecoderResult::Malformed(_, _) => {
-        Err(type_error("The encoded data is not valid."))
+        Err(JsNativeError::type_error("The encoded data is not valid.").into())
       }
     }
   } else {
@@ -338,7 +337,7 @@ fn op_encoding_decode(
         output.truncate(written);
         Ok(output.into())
       }
-      CoderResult::OutputFull => Err(range_error("Provided buffer too small.")),
+      CoderResult::OutputFull => Err(JsNativeError::range_error("Provided buffer too small.").into()),
     }
   }
 }
@@ -455,12 +454,16 @@ impl std::error::Error for DomExceptionQuotaExceededError {}
 
 impl std::error::Error for DomExceptionInvalidCharacterError {}
 
-pub fn get_error_class_name(e: &AnyError) -> Option<&'static str> {
-  e.downcast_ref::<DomExceptionQuotaExceededError>()
-    .map(|_| "DOMExceptionQuotaExceededError")
-    .or_else(|| {
-      e.downcast_ref::<DomExceptionInvalidCharacterError>()
-        .map(|_| "DOMExceptionInvalidCharacterError")
-    })
+impl deno_core::error::JsErrorClass for DomExceptionQuotaExceededError {
+  fn get_class(&self) -> &'static str {
+    "DOMExceptionQuotaExceededError"
+  }
 }
+
+impl deno_core::error::JsErrorClass for DomExceptionInvalidCharacterError {
+  fn get_class(&self) -> &'static str {
+    "DOMExceptionInvalidCharacterError"
+  }
+}
+
 pub struct Location(pub Url);

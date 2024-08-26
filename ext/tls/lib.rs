@@ -10,7 +10,7 @@ pub use webpki;
 pub use webpki_roots;
 
 use deno_core::anyhow::anyhow;
-use deno_core::error::custom_error;
+use deno_core::error::JsNativeError;
 use deno_core::error::AnyError;
 
 use rustls::client::danger::HandshakeSignatureValid;
@@ -259,7 +259,7 @@ pub fn load_certs(
   let certs: Result<Vec<_>, _> = certs(reader).collect();
 
   let certs = certs
-    .map_err(|_| custom_error("InvalidData", "Unable to decode certificate"))?;
+    .map_err(|_| JsNativeError::new("InvalidData", "Unable to decode certificate"))?;
 
   if certs.is_empty() {
     return Err(cert_not_found_err());
@@ -269,15 +269,15 @@ pub fn load_certs(
 }
 
 fn key_decode_err() -> AnyError {
-  custom_error("InvalidData", "Unable to decode key")
+  JsNativeError::new("InvalidData", "Unable to decode key").into()
 }
 
 fn key_not_found_err() -> AnyError {
-  custom_error("InvalidData", "No keys found in key data")
+  JsNativeError::new("InvalidData", "No keys found in key data").into()
 }
 
 fn cert_not_found_err() -> AnyError {
-  custom_error("InvalidData", "No certificates found in certificate data")
+  JsNativeError::new("InvalidData", "No certificates found in certificate data").into()
 }
 
 /// Starts with -----BEGIN RSA PRIVATE KEY-----

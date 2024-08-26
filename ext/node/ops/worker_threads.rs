@@ -1,6 +1,6 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
-use deno_core::error::generic_error;
+use deno_core::error::JsNativeError;
 use deno_core::error::AnyError;
 use deno_core::op2;
 use deno_core::url::Url;
@@ -43,30 +43,30 @@ where
   } else {
     let path = PathBuf::from(&specifier);
     if path.is_relative() && !specifier.starts_with('.') {
-      return Err(generic_error(
+      return Err(JsNativeError::generic(
         "Relative path entries must start with '.' or '..'",
-      ));
+      ).into());
     }
     ensure_read_permission::<P>(state, &path)?;
     let fs = state.borrow::<FileSystemRc>();
     let canonicalized_path =
       deno_core::strip_unc_prefix(fs.realpath_sync(&path)?);
     Url::from_file_path(canonicalized_path)
-      .map_err(|e| generic_error(format!("URL from Path-String: {:#?}", e)))?
+      .map_err(|e| JsNativeError::generic(format!("URL from Path-String: {:#?}", e)))?
   };
   let url_path = url
     .to_file_path()
-    .map_err(|e| generic_error(format!("URL to Path-String: {:#?}", e)))?;
+    .map_err(|e| JsNativeError::generic(format!("URL to Path-String: {:#?}", e)))?;
   ensure_read_permission::<P>(state, &url_path)?;
   let fs = state.borrow::<FileSystemRc>();
   if !fs.exists_sync(&url_path) {
-    return Err(generic_error(format!("File not found [{:?}]", url_path)));
+    return Err(JsNativeError::generic(format!("File not found [{:?}]", url_path)).into());
   }
   let node_resolver = state.borrow::<NodeResolverRc>();
   match node_resolver.url_to_node_resolution(url)? {
     NodeResolution::Esm(u) => Ok(u.to_string()),
     NodeResolution::CommonJs(u) => wrap_cjs(u),
-    NodeResolution::BuiltIn(_) => Err(generic_error("Neither ESM nor CJS")),
+    NodeResolution::BuiltIn(_) => Err(JsNativeError::generic("Neither ESM nor CJS").into()),
   }
 }
 
@@ -76,7 +76,7 @@ where
 fn wrap_cjs(url: Url) -> Result<String, AnyError> {
   let path = url
     .to_file_path()
-    .map_err(|e| generic_error(format!("URL to Path: {:#?}", e)))?;
+    .map_err(|e| JsNativeError::generic(format!("URL to Path: {:#?}", e)))?;
   let filename = path.file_name().unwrap().to_string_lossy();
   Ok(format!(
     "data:text/javascript,import {{ createRequire }} from \"node:module\";\

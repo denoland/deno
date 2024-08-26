@@ -2,7 +2,7 @@
 
 use super::utils::into_string;
 use crate::worker::ExitCode;
-use deno_core::error::type_error;
+use deno_core::error::{JsNativeError};
 use deno_core::error::AnyError;
 use deno_core::normalize_path;
 use deno_core::op2;
@@ -94,17 +94,17 @@ fn op_set_env(
 ) -> Result<(), AnyError> {
   state.borrow_mut::<PermissionsContainer>().check_env(key)?;
   if key.is_empty() {
-    return Err(type_error("Key is an empty string."));
+    return Err(JsNativeError::type_error("Key is an empty string.").into());
   }
   if key.contains(&['=', '\0'] as &[char]) {
-    return Err(type_error(format!(
+    return Err(JsNativeError::type_error(format!(
       "Key contains invalid characters: {key:?}"
-    )));
+    )).into());
   }
   if value.contains('\0') {
-    return Err(type_error(format!(
+    return Err(JsNativeError::type_error(format!(
       "Value contains invalid characters: {value:?}"
-    )));
+    )).into());
   }
   env::set_var(key, value);
   Ok(())
@@ -130,13 +130,13 @@ fn op_get_env(
   }
 
   if key.is_empty() {
-    return Err(type_error("Key is an empty string."));
+    return Err(JsNativeError::type_error("Key is an empty string.").into());
   }
 
   if key.contains(&['=', '\0'] as &[char]) {
-    return Err(type_error(format!(
+    return Err(JsNativeError::type_error(format!(
       "Key contains invalid characters: {key:?}"
-    )));
+    )).into());
   }
 
   let r = match env::var(key) {
@@ -153,7 +153,7 @@ fn op_delete_env(
 ) -> Result<(), AnyError> {
   state.borrow_mut::<PermissionsContainer>().check_env(&key)?;
   if key.is_empty() || key.contains(&['=', '\0'] as &[char]) {
-    return Err(type_error("Key contains invalid characters."));
+    return Err(JsNativeError::type_error("Key contains invalid characters.").into());
   }
   env::remove_var(key);
   Ok(())

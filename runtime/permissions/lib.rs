@@ -1,9 +1,7 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
 use deno_core::anyhow::Context;
-use deno_core::error::custom_error;
-use deno_core::error::type_error;
-use deno_core::error::uri_error;
+use deno_core::error::JsNativeError;
 use deno_core::error::AnyError;
 use deno_core::normalize_path;
 use deno_core::parking_lot::Mutex;
@@ -146,7 +144,7 @@ impl PermissionState {
         name
       )
     };
-    custom_error("PermissionDenied", msg)
+    JsNativeError::new("PermissionDenied", msg).into()
   }
 
   /// Check the permission state. bool is whether a prompt was issued.
@@ -711,16 +709,16 @@ impl FromStr for Host {
     if s.starts_with('[') && s.ends_with(']') {
       let ip = s[1..s.len() - 1]
         .parse::<Ipv6Addr>()
-        .map_err(|_| uri_error(format!("invalid IPv6 address: '{s}'")))?;
+        .map_err(|_| JsNativeError::new("URIError", format!("invalid IPv6 address: '{s}'")))?;
       return Ok(Host::Ip(IpAddr::V6(ip)));
     }
     let (without_trailing_dot, has_trailing_dot) =
       s.strip_suffix('.').map_or((s, false), |s| (s, true));
     if let Ok(ip) = without_trailing_dot.parse::<IpAddr>() {
       if has_trailing_dot {
-        return Err(uri_error(format!(
+        return Err(JsNativeError::new("URIError", format!(
           "invalid host: '{without_trailing_dot}'"
-        )));
+        )).into());
       }
       Ok(Host::Ip(ip))
     } else {
@@ -732,7 +730,7 @@ impl FromStr for Host {
       let fqdn = FQDN::from_str(&lower)
         .with_context(|| format!("invalid host: '{s}'"))?;
       if fqdn.is_root() {
-        return Err(uri_error(format!("invalid empty host: '{s}'")));
+        return Err(JsNativeError::new("URIError", format!("invalid empty host: '{s}'")).into());
       }
       Ok(Host::Fqdn(fqdn))
     }
@@ -779,28 +777,28 @@ impl FromStr for NetDescriptor {
     if hostname.starts_with('[') {
       if let Some((ip, after)) = hostname.split_once(']') {
         let ip = ip[1..].parse::<Ipv6Addr>().map_err(|_| {
-          uri_error(format!("invalid IPv6 address in '{hostname}': '{ip}'"))
+          JsNativeError::new("URIError", format!("invalid IPv6 address in '{hostname}': '{ip}'"))
         })?;
         let port = if let Some(port) = after.strip_prefix(':') {
           let port = port.parse::<u16>().map_err(|_| {
-            uri_error(format!("invalid port in '{hostname}': '{port}'"))
+            JsNativeError::new("URIError", format!("invalid port in '{hostname}': '{port}'"))
           })?;
           Some(port)
         } else if after.is_empty() {
           None
         } else {
-          return Err(uri_error(format!("invalid host: '{hostname}'")));
+          return Err(JsNativeError::new("URIError", format!("invalid host: '{hostname}'")).into());
         };
         return Ok(NetDescriptor(Host::Ip(IpAddr::V6(ip)), port));
       } else {
-        return Err(uri_error(format!("invalid host: '{hostname}'")));
+        return Err(JsNativeError::new("URIError", format!("invalid host: '{hostname}'")).into());
       }
     }
 
     // Otherwise it is an IPv4 address or a FQDN with an optional port.
     let (host, port) = match hostname.split_once(':') {
       Some((_, "")) => {
-        return Err(uri_error(format!("invalid empty port in '{hostname}'")));
+        return Err(JsNativeError::new("URIError", format!("invalid empty port in '{hostname}'")).into());
       }
       Some((host, port)) => (host, port),
       None => (hostname, ""),
@@ -815,11 +813,11 @@ impl FromStr for NetDescriptor {
         // should give them a hint. There are always at least two colons in an
         // IPv6 address, so this heuristic finds likely a bare IPv6 address.
         if port.contains(':') {
-          uri_error(format!(
+          JsNativeError::new("URIError", format!(
             "ipv6 addresses must be enclosed in square brackets: '{hostname}'"
           ))
         } else {
-          uri_error(format!("invalid port in '{hostname}': '{port}'"))
+          JsNativeError::new("URIError", format!("invalid port in '{hostname}': '{port}'"))
         }
       })?;
       Some(port)
@@ -1006,7 +1004,7 @@ pub fn parse_sys_kind(kind: &str) -> Result<&str, AnyError> {
     "hostname" | "osRelease" | "osUptime" | "loadavg" | "networkInterfaces"
     | "systemMemoryInfo" | "uid" | "gid" | "cpus" | "homedir" | "getegid"
     | "username" | "statfs" | "getPriority" | "setPriority" => Ok(kind),
-    _ => Err(type_error(format!("unknown system info kind \"{kind}\""))),
+    _ => Err(JsNativeError::type_error(format!("unknown system info kind \"{kind}\"")).into()),
   }
 }
 
@@ -1224,7 +1222,7 @@ impl UnaryPermission<NetDescriptor> {
     skip_check_if_is_permission_fully_granted!(self);
     let host = url
       .host_str()
-      .ok_or_else(|| type_error(format!("Missing host in url: '{}'", url)))?;
+      .ok_or_else(|| JsNativeError::type_error(format!("Missing host in url: '{}'", url)))?;
     let host = host.parse::<Host>()?;
     let port = url.port_or_known_default();
     let descriptor = NetDescriptor(host, port);
@@ -1573,9 +1571,9 @@ impl Permissions {
     match specifier.scheme() {
       "file" => match specifier.to_file_path() {
         Ok(path) => self.read.check(&path, Some("import()")),
-        Err(_) => Err(uri_error(format!(
+        Err(_) => Err(JsNativeError::new("URIError", format!(
           "Invalid file path.\n  Specifier: {specifier}"
-        ))),
+        )).into()),
       },
       "data" => Ok(()),
       "blob" => Ok(()),
@@ -1986,10 +1984,10 @@ fn parse_run_list(
 }
 
 fn escalation_error() -> AnyError {
-  custom_error(
+  JsNativeError::new(
     "PermissionDenied",
     "Can't escalate parent thread permissions",
-  )
+  ).into()
 }
 
 #[derive(Debug, Eq, PartialEq)]

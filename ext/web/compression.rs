@@ -1,6 +1,6 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
-use deno_core::error::type_error;
+use deno_core::error::JsNativeError;
 use deno_core::error::AnyError;
 use deno_core::op2;
 use flate2::write::DeflateDecoder;
@@ -49,7 +49,7 @@ pub fn op_compression_new(
     ("gzip", false) => {
       Inner::GzEncoder(GzEncoder::new(w, Compression::default()))
     }
-    _ => return Err(type_error("Unsupported format")),
+    _ => return Err(JsNativeError::type_error("Unsupported format").into()),
   };
   Ok(CompressionResource(RefCell::new(Some(inner))))
 }
@@ -63,35 +63,35 @@ pub fn op_compression_write(
   let mut inner = resource.0.borrow_mut();
   let inner = inner
     .as_mut()
-    .ok_or_else(|| type_error("resource is closed"))?;
+    .ok_or_else(|| JsNativeError::type_error("resource is closed"))?;
   let out: Vec<u8> = match &mut *inner {
     Inner::DeflateDecoder(d) => {
-      d.write_all(input).map_err(|e| type_error(e.to_string()))?;
+      d.write_all(input).map_err(|e| JsNativeError::type_error(e.to_string()))?;
       d.flush()?;
       d.get_mut().drain(..)
     }
     Inner::DeflateEncoder(d) => {
-      d.write_all(input).map_err(|e| type_error(e.to_string()))?;
+      d.write_all(input).map_err(|e| JsNativeError::type_error(e.to_string()))?;
       d.flush()?;
       d.get_mut().drain(..)
     }
     Inner::DeflateRawDecoder(d) => {
-      d.write_all(input).map_err(|e| type_error(e.to_string()))?;
+      d.write_all(input).map_err(|e| JsNativeError::type_error(e.to_string()))?;
       d.flush()?;
       d.get_mut().drain(..)
     }
     Inner::DeflateRawEncoder(d) => {
-      d.write_all(input).map_err(|e| type_error(e.to_string()))?;
+      d.write_all(input).map_err(|e| JsNativeError::type_error(e.to_string()))?;
       d.flush()?;
       d.get_mut().drain(..)
     }
     Inner::GzDecoder(d) => {
-      d.write_all(input).map_err(|e| type_error(e.to_string()))?;
+      d.write_all(input).map_err(|e| JsNativeError::type_error(e.to_string()))?;
       d.flush()?;
       d.get_mut().drain(..)
     }
     Inner::GzEncoder(d) => {
-      d.write_all(input).map_err(|e| type_error(e.to_string()))?;
+      d.write_all(input).map_err(|e| JsNativeError::type_error(e.to_string()))?;
       d.flush()?;
       d.get_mut().drain(..)
     }
@@ -110,27 +110,27 @@ pub fn op_compression_finish(
     .0
     .borrow_mut()
     .take()
-    .ok_or_else(|| type_error("resource is closed"))?;
+    .ok_or_else(|| JsNativeError::type_error("resource is closed"))?;
   let out = match inner {
     Inner::DeflateDecoder(d) => {
-      d.finish().map_err(|e| type_error(e.to_string()))
+      d.finish().map_err(|e| JsNativeError::type_error(e.to_string()))
     }
     Inner::DeflateEncoder(d) => {
-      d.finish().map_err(|e| type_error(e.to_string()))
+      d.finish().map_err(|e| JsNativeError::type_error(e.to_string()))
     }
     Inner::DeflateRawDecoder(d) => {
-      d.finish().map_err(|e| type_error(e.to_string()))
+      d.finish().map_err(|e| JsNativeError::type_error(e.to_string()))
     }
     Inner::DeflateRawEncoder(d) => {
-      d.finish().map_err(|e| type_error(e.to_string()))
+      d.finish().map_err(|e| JsNativeError::type_error(e.to_string()))
     }
-    Inner::GzDecoder(d) => d.finish().map_err(|e| type_error(e.to_string())),
-    Inner::GzEncoder(d) => d.finish().map_err(|e| type_error(e.to_string())),
+    Inner::GzDecoder(d) => d.finish().map_err(|e| JsNativeError::type_error(e.to_string())),
+    Inner::GzEncoder(d) => d.finish().map_err(|e| JsNativeError::type_error(e.to_string())),
   };
   match out {
     Err(err) => {
       if report_errors {
-        Err(err)
+        Err(err.into())
       } else {
         Ok(Vec::with_capacity(0))
       }

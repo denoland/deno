@@ -1,6 +1,6 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
-use deno_core::error::type_error;
+use deno_core::error::JsNativeError;
 use deno_core::error::AnyError;
 use deno_core::op2;
 use deno_core::ToJsBuffer;
@@ -124,10 +124,10 @@ fn op_image_decode_png(#[buffer] buf: &[u8]) -> Result<DecodedPng, AnyError> {
 
   // TODO(@crowlKats): maybe use DynamicImage https://docs.rs/image/0.24.7/image/enum.DynamicImage.html ?
   if png.color_type() != ColorType::Rgba8 {
-    return Err(type_error(format!(
+    return Err(JsNativeError::type_error(format!(
       "Color type '{:?}' not supported",
       png.color_type()
-    )));
+    )).into());
   }
 
   // read_image will assert that the buffer is the correct size, so we need to fill it with zeros

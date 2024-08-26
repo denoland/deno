@@ -8,8 +8,7 @@ use std::path::PathBuf;
 use std::rc::Rc;
 
 use deno_core::anyhow::bail;
-use deno_core::error::custom_error;
-use deno_core::error::type_error;
+use deno_core::error::JsNativeError;
 use deno_core::error::AnyError;
 use deno_core::op2;
 use deno_core::CancelFuture;
@@ -74,7 +73,7 @@ fn map_permission_error(
         format!(
           "Requires {err} access to {path}{truncated}, run again with the --allow-{err} flag")
       };
-      custom_error("PermissionDenied", msg)
+      JsNativeError::new("PermissionDenied", msg).into()
     }
     err => Err::<(), _>(err)
       .context_path(operation, path)
@@ -1395,7 +1394,7 @@ fn to_seek_from(offset: i64, whence: i32) -> Result<SeekFrom, AnyError> {
     1 => SeekFrom::Current(offset),
     2 => SeekFrom::End(offset),
     _ => {
-      return Err(type_error(format!("Invalid seek mode: {whence}")));
+      return Err(JsNativeError::type_error(format!("Invalid seek mode: {whence}")).into());
     }
   };
   Ok(seek_from)
@@ -1715,7 +1714,7 @@ impl<T> MapErrContext for Result<T, FsError> {
 fn path_into_string(s: std::ffi::OsString) -> Result<String, AnyError> {
   s.into_string().map_err(|s| {
     let message = format!("File name or path {s:?} is not valid UTF-8");
-    custom_error("InvalidData", message)
+    JsNativeError::new("InvalidData", message).into()
   })
 }
 

@@ -2,8 +2,7 @@
 
 use crate::check_unstable;
 use crate::FfiPermissions;
-use deno_core::error::range_error;
-use deno_core::error::type_error;
+use deno_core::error::JsNativeError;
 use deno_core::error::AnyError;
 use deno_core::op2;
 use deno_core::v8;
@@ -94,7 +93,7 @@ where
   permissions.check_partial(None)?;
 
   if ptr.is_null() {
-    return Err(type_error("Invalid pointer to offset, pointer is null"));
+    return Err(JsNativeError::type_error("Invalid pointer to offset, pointer is null").into());
   }
 
   // TODO(mmastrac): Create a RawPointer that can safely do pointer math.
@@ -144,7 +143,7 @@ where
   permissions.check_partial(None)?;
 
   if ptr.is_null() {
-    return Err(type_error("Invalid ArrayBuffer pointer, pointer is null"));
+    return Err(JsNativeError::type_error("Invalid ArrayBuffer pointer, pointer is null").into());
   }
 
   // SAFETY: Trust the user to have provided a real pointer, offset, and a valid matching size to it. Since this is a foreign pointer, we should not do any deletion.
@@ -178,11 +177,11 @@ where
   permissions.check_partial(None)?;
 
   if src.is_null() {
-    Err(type_error("Invalid ArrayBuffer pointer, pointer is null"))
+    Err(JsNativeError::type_error("Invalid ArrayBuffer pointer, pointer is null").into())
   } else if dst.len() < len {
-    Err(range_error(
+    Err(JsNativeError::range_error(
       "Destination length is smaller than source length",
-    ))
+    ).into())
   } else {
     let src = src as *const c_void;
 
@@ -211,7 +210,7 @@ where
   permissions.check_partial(None)?;
 
   if ptr.is_null() {
-    return Err(type_error("Invalid CString pointer, pointer is null"));
+    return Err(JsNativeError::type_error("Invalid CString pointer, pointer is null").into());
   }
 
   let cstr =
@@ -219,7 +218,7 @@ where
     unsafe { CStr::from_ptr(ptr.offset(offset) as *const c_char) }.to_bytes();
   let value = v8::String::new_from_utf8(scope, cstr, v8::NewStringType::Normal)
     .ok_or_else(|| {
-      type_error("Invalid CString pointer, string exceeds max length")
+      JsNativeError::type_error("Invalid CString pointer, string exceeds max length")
     })?;
   Ok(value)
 }
@@ -239,7 +238,7 @@ where
   permissions.check_partial(None)?;
 
   if ptr.is_null() {
-    return Err(type_error("Invalid bool pointer, pointer is null"));
+    return Err(JsNativeError::type_error("Invalid bool pointer, pointer is null").into());
   }
 
   // SAFETY: ptr and offset are user provided.
@@ -261,7 +260,7 @@ where
   permissions.check_partial(None)?;
 
   if ptr.is_null() {
-    return Err(type_error("Invalid u8 pointer, pointer is null"));
+    return Err(JsNativeError::type_error("Invalid u8 pointer, pointer is null").into());
   }
 
   // SAFETY: ptr and offset are user provided.
@@ -285,7 +284,7 @@ where
   permissions.check_partial(None)?;
 
   if ptr.is_null() {
-    return Err(type_error("Invalid i8 pointer, pointer is null"));
+    return Err(JsNativeError::type_error("Invalid i8 pointer, pointer is null").into());
   }
 
   // SAFETY: ptr and offset are user provided.
@@ -309,7 +308,7 @@ where
   permissions.check_partial(None)?;
 
   if ptr.is_null() {
-    return Err(type_error("Invalid u16 pointer, pointer is null"));
+    return Err(JsNativeError::type_error("Invalid u16 pointer, pointer is null").into());
   }
 
   // SAFETY: ptr and offset are user provided.
@@ -333,7 +332,7 @@ where
   permissions.check_partial(None)?;
 
   if ptr.is_null() {
-    return Err(type_error("Invalid i16 pointer, pointer is null"));
+    return Err(JsNativeError::type_error("Invalid i16 pointer, pointer is null").into());
   }
 
   // SAFETY: ptr and offset are user provided.
@@ -357,7 +356,7 @@ where
   permissions.check_partial(None)?;
 
   if ptr.is_null() {
-    return Err(type_error("Invalid u32 pointer, pointer is null"));
+    return Err(JsNativeError::type_error("Invalid u32 pointer, pointer is null").into());
   }
 
   // SAFETY: ptr and offset are user provided.
@@ -379,7 +378,7 @@ where
   permissions.check_partial(None)?;
 
   if ptr.is_null() {
-    return Err(type_error("Invalid i32 pointer, pointer is null"));
+    return Err(JsNativeError::type_error("Invalid i32 pointer, pointer is null").into());
   }
 
   // SAFETY: ptr and offset are user provided.
@@ -404,7 +403,7 @@ where
   permissions.check_partial(None)?;
 
   if ptr.is_null() {
-    return Err(type_error("Invalid u64 pointer, pointer is null"));
+    return Err(JsNativeError::type_error("Invalid u64 pointer, pointer is null").into());
   }
 
   let value =
@@ -432,7 +431,7 @@ where
   permissions.check_partial(None)?;
 
   if ptr.is_null() {
-    return Err(type_error("Invalid i64 pointer, pointer is null"));
+    return Err(JsNativeError::type_error("Invalid i64 pointer, pointer is null").into());
   }
 
   let value =
@@ -457,7 +456,7 @@ where
   permissions.check_partial(None)?;
 
   if ptr.is_null() {
-    return Err(type_error("Invalid f32 pointer, pointer is null"));
+    return Err(JsNativeError::type_error("Invalid f32 pointer, pointer is null").into());
   }
 
   // SAFETY: ptr and offset are user provided.
@@ -479,7 +478,7 @@ where
   permissions.check_partial(None)?;
 
   if ptr.is_null() {
-    return Err(type_error("Invalid f64 pointer, pointer is null"));
+    return Err(JsNativeError::type_error("Invalid f64 pointer, pointer is null").into());
   }
 
   // SAFETY: ptr and offset are user provided.
@@ -501,7 +500,7 @@ where
   permissions.check_partial(None)?;
 
   if ptr.is_null() {
-    return Err(type_error("Invalid pointer pointer, pointer is null"));
+    return Err(JsNativeError::type_error("Invalid pointer pointer, pointer is null").into());
   }
 
   // SAFETY: ptr and offset are user provided.

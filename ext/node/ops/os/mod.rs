@@ -1,7 +1,7 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
 use crate::NodePermissions;
-use deno_core::error::type_error;
+use deno_core::error::JsNativeError;
 use deno_core::error::AnyError;
 use deno_core::op2;
 use deno_core::OpState;
@@ -105,7 +105,7 @@ where
     permissions.check_sys("cpus", "node:os.cpus()")?;
   }
 
-  cpus::cpu_info().ok_or_else(|| type_error("Failed to get cpu info"))
+  cpus::cpu_info().ok_or_else(|| JsNativeError::type_error("Failed to get cpu info").into())
 }
 
 #[op2]

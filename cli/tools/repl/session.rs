@@ -31,7 +31,8 @@ use deno_ast::ParsedSource;
 use deno_ast::SourcePos;
 use deno_ast::SourceRangedForSpanned;
 use deno_ast::SourceTextInfo;
-use deno_core::error::generic_error;
+use deno_core::error::{CoreError};
+use deno_core::error::{JsNativeError};
 use deno_core::error::AnyError;
 use deno_core::futures::channel::mpsc::UnboundedReceiver;
 use deno_core::futures::FutureExt;
@@ -249,7 +250,7 @@ impl ReplSession {
 
     let cwd_url =
       Url::from_directory_path(cli_options.initial_cwd()).map_err(|_| {
-        generic_error(format!(
+        JsNativeError::generic(format!(
           "Unable to construct URL from the path of cwd: {}",
           cli_options.initial_cwd().to_string_lossy(),
         ))
@@ -321,7 +322,7 @@ impl ReplSession {
     &mut self,
     method: &str,
     params: Option<T>,
-  ) -> Result<Value, AnyError> {
+  ) -> Result<Value, CoreError> {
     self
       .worker
       .js_runtime
@@ -338,7 +339,7 @@ impl ReplSession {
       .await
   }
 
-  pub async fn run_event_loop(&mut self) -> Result<(), AnyError> {
+  pub async fn run_event_loop(&mut self) -> Result<(), CoreError> {
     self.worker.run_event_loop(true).await
   }
 
@@ -735,7 +736,7 @@ impl ReplSession {
   async fn evaluate_expression(
     &mut self,
     expression: &str,
-  ) -> Result<cdp::EvaluateResponse, AnyError> {
+  ) -> Result<cdp::EvaluateResponse, CoreError> {
     self
       .post_message_with_event_loop(
         "Runtime.evaluate",
@@ -758,7 +759,7 @@ impl ReplSession {
         }),
       )
       .await
-      .and_then(|res| serde_json::from_value(res).map_err(|e| e.into()))
+      .and_then(|res| serde_json::from_value(res).map_err(|e| AnyError::new(e).into()))
   }
 }
 

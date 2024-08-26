@@ -7,7 +7,7 @@ use std::sync::Arc;
 
 use deno_ast::ModuleSpecifier;
 use deno_core::anyhow::bail;
-use deno_core::error::AnyError;
+use deno_core::error::{AnyError, CoreError};
 use deno_core::futures::FutureExt;
 use deno_core::url::Url;
 use deno_core::v8;
@@ -46,7 +46,6 @@ use tokio::select;
 use crate::args::CliLockfile;
 use crate::args::DenoSubcommand;
 use crate::args::StorageKeyResolver;
-use crate::errors;
 use crate::npm::CliNpmResolver;
 use crate::util::checksum;
 use crate::util::file_watcher::WatcherCommunicator;
@@ -209,7 +208,7 @@ impl CliMainWorker {
             result = hmr_result;
           },
           event_loop_result = event_loop_future => {
-            result = event_loop_result;
+            result = event_loop_result.map_err(AnyError::new);
           }
         }
         if let Err(e) = result {
@@ -338,14 +337,14 @@ impl CliMainWorker {
 
   pub async fn execute_main_module_possibly_with_npm(
     &mut self,
-  ) -> Result<(), AnyError> {
+  ) -> Result<(), CoreError> {
     let id = self.worker.preload_main_module(&self.main_module).await?;
     self.evaluate_module_possibly_with_npm(id).await
   }
 
   pub async fn execute_side_module_possibly_with_npm(
     &mut self,
-  ) -> Result<(), AnyError> {
+  ) -> Result<(), CoreError> {
     let id = self.worker.preload_side_module(&self.main_module).await?;
     self.evaluate_module_possibly_with_npm(id).await
   }
@@ -353,13 +352,13 @@ impl CliMainWorker {
   async fn evaluate_module_possibly_with_npm(
     &mut self,
     id: ModuleId,
-  ) -> Result<(), AnyError> {
+  ) -> Result<(), CoreError> {
     self.worker.evaluate_module(id).await
   }
 
   pub async fn maybe_setup_hmr_runner(
     &mut self,
-  ) -> Result<Option<Box<dyn HmrRunner>>, AnyError> {
+  ) -> Result<Option<Box<dyn HmrRunner>>, CoreError> {
     if !self.shared.options.hmr {
       return Ok(None);
     }
@@ -385,7 +384,7 @@ impl CliMainWorker {
 
   pub async fn maybe_setup_coverage_collector(
     &mut self,
-  ) -> Result<Option<Box<dyn CoverageCollector>>, AnyError> {
+  ) -> Result<Option<Box<dyn CoverageCollector>>, CoreError> {
     let Some(create_coverage_collector) =
       self.shared.options.create_coverage_collector.as_ref()
     else {
@@ -409,7 +408,7 @@ impl CliMainWorker {
     &mut self,
     name: &'static str,
     source_code: &'static str,
-  ) -> Result<v8::Global<v8::Value>, AnyError> {
+  ) -> Result<v8::Global<v8::Value>, CoreError> {
     self.worker.js_runtime.execute_script(name, source_code)
   }
 }
@@ -628,7 +627,6 @@ impl CliMainWorkerFactory {
       module_loader,
       fs: shared.fs.clone(),
       node_services: Some(shared.create_node_init_services()),
-      get_error_class_fn: Some(&errors::get_error_class_name),
       cache_storage_dir,
       origin_storage_dir,
       blob_store: shared.blob_store.clone(),
@@ -823,7 +821,6 @@ fn create_web_worker_callback(
       node_services: Some(shared.create_node_init_services()),
       worker_type: args.worker_type,
       maybe_inspector_server,
-      get_error_class_fn: Some(&errors::get_error_class_name),
       blob_store: shared.blob_store.clone(),
       broadcast_channel: shared.broadcast_channel.clone(),
       shared_array_buffer_store: Some(shared.shared_array_buffer_store.clone()),

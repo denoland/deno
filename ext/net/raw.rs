@@ -1,8 +1,7 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 use crate::io::TcpStreamResource;
 use crate::ops_tls::TlsStreamResource;
-use deno_core::error::bad_resource;
-use deno_core::error::bad_resource_id;
+use deno_core::error::ResourceError;
 use deno_core::error::AnyError;
 use deno_core::AsyncRefCell;
 use deno_core::CancelHandle;
@@ -70,7 +69,7 @@ impl<T: NetworkStreamListenerTrait + 'static> NetworkListenerResource<T> {
   ) -> Result<Option<NetworkStreamListener>, AnyError> {
     if let Ok(resource_rc) = resource_table.take::<Self>(listener_rid) {
       let resource = Rc::try_unwrap(resource_rc)
-        .map_err(|_| bad_resource("Listener is currently in use"))?;
+        .map_err(|_| ResourceError::Other("Listener is currently in use".to_string()))?;
       return Ok(Some(resource.listener.into_inner().into()));
     }
     Ok(None)
@@ -247,7 +246,7 @@ macro_rules! network_stream {
             return Ok(resource)
           }
         )*
-        Err(bad_resource_id())
+        Err(ResourceError::BadResourceId.into())
       }
     }
   };
@@ -334,7 +333,7 @@ pub fn take_network_stream_resource(
   {
     // This TCP connection might be used somewhere else.
     let resource = Rc::try_unwrap(resource_rc)
-      .map_err(|_| bad_resource("TCP stream is currently in use"))?;
+      .map_err(|_| ResourceError::Other("TCP stream is currently in use".into()))?;
     let (read_half, write_half) = resource.into_inner();
     let tcp_stream = read_half.reunite(write_half)?;
     return Ok(NetworkStream::Tcp(tcp_stream));
@@ -344,7 +343,7 @@ pub fn take_network_stream_resource(
   {
     // This TLS connection might be used somewhere else.
     let resource = Rc::try_unwrap(resource_rc)
-      .map_err(|_| bad_resource("TLS stream is currently in use"))?;
+      .map_err(|_| ResourceError::Other("TLS stream is currently in use".into()))?;
     let (read_half, write_half) = resource.into_inner();
     let tls_stream = read_half.unsplit(write_half);
     return Ok(NetworkStream::Tls(tls_stream));
@@ -356,13 +355,13 @@ pub fn take_network_stream_resource(
   {
     // This UNIX socket might be used somewhere else.
     let resource = Rc::try_unwrap(resource_rc)
-      .map_err(|_| bad_resource("UNIX stream is currently in use"))?;
+      .map_err(|_| ResourceError::Other("UNIX stream is currently in use".to_string()))?;
     let (read_half, write_half) = resource.into_inner();
     let unix_stream = read_half.reunite(write_half)?;
     return Ok(NetworkStream::Unix(unix_stream));
   }
 
-  Err(bad_resource_id())
+  Err(ResourceError::BadResourceId.into())
 }
 
 /// In some cases it may be more efficient to extract the resource from the resource table and use it directly (for example, an HTTP server).

@@ -7,7 +7,7 @@ use crate::symbol::Symbol;
 use crate::turbocall;
 use crate::turbocall::Turbocall;
 use crate::FfiPermissions;
-use deno_core::error::generic_error;
+use deno_core::error::{JsErrorClass, JsNativeError};
 use deno_core::error::AnyError;
 use deno_core::op2;
 use deno_core::v8;
@@ -22,6 +22,16 @@ use std::collections::HashMap;
 use std::ffi::c_void;
 use std::path::PathBuf;
 use std::rc::Rc;
+
+deno_core::js_error_wrapper!(dlopen2::Error, JsDlopenError, |error| {
+   match error {
+    dlopen2::Error::NullCharacter(_) => "InvalidData",
+    dlopen2::Error::OpeningLibraryError(e) => e.get_class(),
+    dlopen2::Error::SymbolGettingError(e) => e.get_class(),
+    dlopen2::Error::AddrNotMatchingDll(e) => e.get_class(),
+    dlopen2::Error::NullSymbol => "NotFound",
+  }
+});
 
 pub struct DynamicLibraryResource {
   lib: Library,
@@ -47,7 +57,7 @@ impl DynamicLibraryResource {
     // SAFETY: The obtained T symbol is the size of a pointer.
     match unsafe { self.lib.symbol::<*mut c_void>(&symbol) } {
       Ok(value) => Ok(Ok(value)),
-      Err(err) => Err(generic_error(format!(
+      Err(err) => Err(JsNativeError::generic(format!(
         "Failed to register symbol {symbol}: {err}"
       ))),
     }?
@@ -129,10 +139,10 @@ where
   permissions.check_partial(Some(&PathBuf::from(&path)))?;
 
   let lib = Library::open(&path).map_err(|e| {
-    dlopen2::Error::OpeningLibraryError(std::io::Error::new(
+    JsDlopenError(dlopen2::Error::OpeningLibraryError(std::io::Error::new(
       std::io::ErrorKind::Other,
       format_error(e, path),
-    ))
+    )))
   })?;
   let mut resource = DynamicLibraryResource {
     lib,
@@ -163,7 +173,7 @@ where
               obj.set(scope, func_key.into(), null);
               break 'register_symbol;
             } else {
-              Err(generic_error(format!(
+              Err(JsNativeError::generic(format!(
                 "Failed to register symbol {symbol}: {err}"
               )))
             },
@@ -285,7 +295,7 @@ fn sync_fn_impl<'s>(
       rv.set(result);
     }
     Err(err) => {
-      deno_core::_ops::throw_type_error(scope, err.to_string());
+      err.throw(scope);
     }
   };
 }

@@ -6,12 +6,11 @@ use std::rc::Rc;
 use std::time::SystemTime;
 use std::time::UNIX_EPOCH;
 
-use deno_core::error::custom_error;
-use deno_core::error::not_supported;
-use deno_core::error::resource_unavailable;
+use deno_core::error::ResourceError;
 use deno_core::error::AnyError;
 use deno_core::BufMutView;
 use deno_core::BufView;
+use deno_core::error::JsNativeError;
 use deno_core::OpState;
 use deno_core::ResourceHandleFd;
 use deno_core::ResourceId;
@@ -63,10 +62,10 @@ impl From<FsError> for AnyError {
   fn from(err: FsError) -> Self {
     match err {
       FsError::Io(err) => AnyError::from(err),
-      FsError::FileBusy => resource_unavailable(),
-      FsError::NotSupported => not_supported(),
+      FsError::FileBusy => ResourceError::Unavailable.into(),
+      FsError::NotSupported => JsNativeError::not_supported().into(),
       FsError::PermissionDenied(err) => {
-        custom_error("PermissionDenied", format!("permission denied: {err}"))
+        JsNativeError::new("PermissionDenied", format!("permission denied: {err}")).into()
       }
     }
   }

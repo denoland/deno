@@ -1,6 +1,5 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
-use deno_core::error::AnyError;
 use deno_core::ResourceId;
 use serde::Serialize;
 use std::convert::From;
@@ -308,7 +307,8 @@ impl fmt::Display for DomExceptionOperationError {
 
 impl std::error::Error for DomExceptionOperationError {}
 
-pub fn get_error_class_name(e: &AnyError) -> Option<&'static str> {
-  e.downcast_ref::<DomExceptionOperationError>()
-    .map(|_| "DOMExceptionOperationError")
+impl deno_core::error::JsErrorClass for DomExceptionOperationError {
+  fn get_class(&self) -> &'static str {
+    "DOMExceptionOperationError"
+  }
 }

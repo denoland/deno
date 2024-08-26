@@ -16,7 +16,7 @@ use aes_gcm::Nonce;
 use ctr::Ctr128BE;
 use ctr::Ctr32BE;
 use ctr::Ctr64BE;
-use deno_core::error::type_error;
+use deno_core::error::JsNativeError;
 use deno_core::error::AnyError;
 use deno_core::op2;
 use deno_core::unsync::spawn_blocking;
@@ -175,7 +175,7 @@ fn encrypt_aes_cbc(
         .map_err(|_| operation_error("invalid key or iv".to_string()))?;
       cipher.encrypt_padded_vec_mut::<Pkcs7>(data)
     }
-    _ => return Err(type_error("invalid length")),
+    _ => return Err(JsNativeError::type_error("invalid length").into()),
   };
   Ok(ciphertext)
 }
@@ -210,7 +210,7 @@ fn encrypt_aes_gcm_general<N: ArrayLength<u8>>(
         .encrypt_in_place_detached(nonce, &additional_data, ciphertext)
         .map_err(|_| operation_error("Encryption failed"))?
     }
-    _ => return Err(type_error("invalid length")),
+    _ => return Err(JsNativeError::type_error("invalid length").into()),
   };
 
   Ok(tag)
@@ -244,7 +244,7 @@ fn encrypt_aes_gcm(
       &mut ciphertext,
       additional_data,
     )?,
-    _ => return Err(type_error("iv length not equal to 12 or 16")),
+    _ => return Err(JsNativeError::type_error("iv length not equal to 12 or 16").into()),
   };
 
   // Truncated tag to the specified tag length.
@@ -289,22 +289,22 @@ fn encrypt_aes_ctr(
       128 => encrypt_aes_ctr_gen::<Ctr32BE<aes::Aes128>>(key, counter, data),
       192 => encrypt_aes_ctr_gen::<Ctr32BE<aes::Aes192>>(key, counter, data),
       256 => encrypt_aes_ctr_gen::<Ctr32BE<aes::Aes256>>(key, counter, data),
-      _ => Err(type_error("invalid length")),
+      _ => Err(JsNativeError::type_error("invalid length").into()),
     },
     64 => match key_length {
       128 => encrypt_aes_ctr_gen::<Ctr64BE<aes::Aes128>>(key, counter, data),
       192 => encrypt_aes_ctr_gen::<Ctr64BE<aes::Aes192>>(key, counter, data),
       256 => encrypt_aes_ctr_gen::<Ctr64BE<aes::Aes256>>(key, counter, data),
-      _ => Err(type_error("invalid length")),
+      _ => Err(JsNativeError::type_error("invalid length").into()),
     },
     128 => match key_length {
       128 => encrypt_aes_ctr_gen::<Ctr128BE<aes::Aes128>>(key, counter, data),
       192 => encrypt_aes_ctr_gen::<Ctr128BE<aes::Aes192>>(key, counter, data),
       256 => encrypt_aes_ctr_gen::<Ctr128BE<aes::Aes256>>(key, counter, data),
-      _ => Err(type_error("invalid length")),
+      _ => Err(JsNativeError::type_error("invalid length").into()),
     },
-    _ => Err(type_error(
+    _ => Err(JsNativeError::type_error(
       "invalid counter length. Currently supported 32/64/128 bits",
-    )),
+    ).into()),
   }
 }

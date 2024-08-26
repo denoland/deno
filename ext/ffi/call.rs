@@ -9,7 +9,7 @@ use crate::symbol::Symbol;
 use crate::FfiPermissions;
 use crate::ForeignFunction;
 use deno_core::anyhow::anyhow;
-use deno_core::error::type_error;
+use deno_core::error::JsNativeError;
 use deno_core::error::AnyError;
 use deno_core::op2;
 use deno_core::serde_json::Value;
@@ -334,7 +334,7 @@ pub fn op_ffi_call_nonblocking(
     let symbols = &resource.symbols;
     *symbols
       .get(&symbol)
-      .ok_or_else(|| type_error("Invalid FFI symbol name"))?
+      .ok_or_else(|| JsNativeError::type_error("Invalid FFI symbol name"))?
       .clone()
   };
 

@@ -15,7 +15,6 @@ use deno_core::op2;
 use deno_permissions::PermissionsContainer;
 use notify::event::Event as NotifyEvent;
 use notify::event::ModifyKind;
-use notify::Error as NotifyError;
 use notify::EventKind;
 use notify::RecommendedWatcher;
 use notify::RecursiveMode;
@@ -29,6 +28,18 @@ use std::path::PathBuf;
 use std::rc::Rc;
 use tokio::sync::mpsc;
 
+deno_core::js_error_wrapper!(notify::Error, JsNotifyError, |error| {
+  match error.kind {
+    notify::ErrorKind::Generic(_) => "Error",
+    notify::ErrorKind::Io(ref e) => e.get_class(),
+    notify::ErrorKind::PathNotFound => "NotFound",
+    notify::ErrorKind::WatchNotFound => "NotFound",
+    notify::ErrorKind::InvalidConfig(_) => "InvalidData",
+    notify::ErrorKind::MaxFilesWatch => "Error",
+  }
+});
+
+
 deno_core::extension!(
   deno_fs_events,
   ops = [op_fs_events_open, op_fs_events_poll],
@@ -37,7 +48,7 @@ deno_core::extension!(
 struct FsEventsResource {
   #[allow(unused)]
   watcher: RecommendedWatcher,
-  receiver: AsyncRefCell<mpsc::Receiver<Result<FsEvent, AnyError>>>,
+  receiver: AsyncRefCell<mpsc::Receiver<Result<FsEvent, JsNotifyError>>>,
   cancel: CancelHandle,
 }
 
@@ -105,18 +116,18 @@ fn op_fs_events_open(
   state: &mut OpState,
   #[serde] args: OpenArgs,
 ) -> Result<ResourceId, AnyError> {
-  let (sender, receiver) = mpsc::channel::<Result<FsEvent, AnyError>>(16);
+  let (sender, receiver) = mpsc::channel::<Result<FsEvent, JsNotifyError>>(16);
   let sender = Mutex::new(sender);
   let mut watcher: RecommendedWatcher = Watcher::new(
-    move |res: Result<NotifyEvent, NotifyError>| {
-      let res2 = res.map(FsEvent::from).map_err(AnyError::from);
+    move |res: Result<NotifyEvent, notify::Error>| {
+      let res2 = res.map(FsEvent::from).map_err(JsNotifyError);
       let sender = sender.lock();
       // Ignore result, if send failed it means that watcher was already closed,
       // but not all messages have been flushed.
       let _ = sender.try_send(res2);
     },
     Default::default(),
-  )?;
+  ).map_err(JsNotifyError)?;
   let recursive_mode = if args.recursive {
     RecursiveMode::Recursive
   } else {
@@ -127,7 +138,7 @@ fn op_fs_events_open(
     state
       .borrow_mut::<PermissionsContainer>()
       .check_read(&path, "Deno.watchFs()")?;
-    watcher.watch(&path, recursive_mode)?;
+    watcher.watch(&path, recursive_mode).map_err(JsNotifyError)?;
   }
   let resource = FsEventsResource {
     watcher,
@@ -150,7 +161,7 @@ async fn op_fs_events_poll(
   let maybe_result = receiver.recv().or_cancel(cancel).await?;
   match maybe_result {
     Some(Ok(value)) => Ok(Some(value)),
-    Some(Err(err)) => Err(err),
+    Some(Err(err)) => Err(err.into()),
     None => Ok(None),
   }
 }

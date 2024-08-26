@@ -9,7 +9,7 @@ use std::task::Poll;
 
 use bytes::Bytes;
 use deno_core::anyhow;
-use deno_core::error::type_error;
+use deno_core::error::JsNativeError;
 use deno_core::error::AnyError;
 use deno_core::futures::stream::Peekable;
 use deno_core::futures::Future;
@@ -31,7 +31,7 @@ use deno_core::OpState;
 use deno_core::RcRef;
 use deno_core::Resource;
 use deno_core::ResourceId;
-use deno_fetch::get_or_create_client_from_state;
+use deno_fetch::{get_or_create_client_from_state};
 use deno_fetch::FetchCancelHandle;
 use deno_fetch::FetchRequestResource;
 use deno_fetch::FetchReturn;
@@ -82,9 +82,9 @@ where
   let mut header_map = HeaderMap::new();
   for (key, value) in headers {
     let name = HeaderName::from_bytes(&key)
-      .map_err(|err| type_error(err.to_string()))?;
+      .map_err(deno_fetch::JsInvalidHeaderName)?;
     let v = HeaderValue::from_bytes(&value)
-      .map_err(|err| type_error(err.to_string()))?;
+      .map_err(deno_fetch::JsInvalidHeaderValue)?;
 
     header_map.append(name, v);
   }
@@ -117,7 +117,7 @@ where
   *request.uri_mut() = url
     .as_str()
     .parse()
-    .map_err(|_| type_error("Invalid URL"))?;
+    .map_err(|_| JsNativeError::type_error("Invalid URL"))?;
   *request.headers_mut() = header_map;
 
   if let Some((username, password)) = maybe_authority {
@@ -138,7 +138,7 @@ where
       .send(request)
       .or_cancel(cancel_handle_)
       .await
-      .map(|res| res.map_err(|err| type_error(err.to_string())))
+      .map(|res| res.map_err(|err| err.into()))
   };
 
   let request_rid = state.resource_table.add(FetchRequestResource {
@@ -204,9 +204,9 @@ pub async fn op_node_http_fetch_send(
         err_ref = err;
       }
 
-      return Err(type_error(err.to_string()));
+      return Err(JsNativeError::type_error(err.to_string()).into());
     }
-    Err(_) => return Err(type_error("request was cancelled")),
+    Err(_) => return Err(JsNativeError::type_error("request was cancelled").into()),
   };
 
   let status = res.status();
@@ -444,7 +444,7 @@ impl Resource for NodeHttpFetchResponseResource {
             // safely call `await` on it without creating a race condition.
             Some(_) => match reader.as_mut().next().await.unwrap() {
               Ok(chunk) => assert!(chunk.is_empty()),
-              Err(err) => break Err(type_error(err.to_string())),
+              Err(err) => break Err(JsNativeError::type_error(err.to_string()).into()),
             },
             None => break Ok(BufView::empty()),
           }

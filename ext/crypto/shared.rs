@@ -2,8 +2,7 @@
 
 use std::borrow::Cow;
 
-use deno_core::error::custom_error;
-use deno_core::error::type_error;
+use deno_core::error::JsNativeError;
 use deno_core::error::AnyError;
 use deno_core::JsBuffer;
 use deno_core::ToJsBuffer;
@@ -69,30 +68,30 @@ impl V8RawKeyData {
       V8RawKeyData::Public(data) => Ok(Cow::Borrowed(data)),
       V8RawKeyData::Private(data) => {
         let private_key = RsaPrivateKey::from_pkcs1_der(data)
-          .map_err(|_| type_error("expected valid private key"))?;
+          .map_err(|_| JsNativeError::type_error("expected valid private key"))?;
 
         let public_key_doc = private_key
           .to_public_key()
           .to_pkcs1_der()
-          .map_err(|_| type_error("expected valid public key"))?;
+          .map_err(|_| JsNativeError::type_error("expected valid public key"))?;
 
         Ok(Cow::Owned(public_key_doc.as_bytes().into()))
       }
-      _ => Err(type_error("expected public key")),
+      _ => Err(JsNativeError::type_error("expected public key").into()),
     }
   }
 
   pub fn as_rsa_private_key(&self) -> Result<&[u8], AnyError> {
     match self {
       V8RawKeyData::Private(data) => Ok(data),
-      _ => Err(type_error("expected private key")),
+      _ => Err(JsNativeError::type_error("expected private key").into()),
     }
   }
 
   pub fn as_secret_key(&self) -> Result<&[u8], AnyError> {
     match self {
       V8RawKeyData::Secret(data) => Ok(data),
-      _ => Err(type_error("expected secret key")),
+      _ => Err(JsNativeError::type_error("expected secret key").into()),
     }
   }
 
@@ -101,11 +100,11 @@ impl V8RawKeyData {
       V8RawKeyData::Public(data) => {
         // public_key is a serialized EncodedPoint
         p256::EncodedPoint::from_bytes(data)
-          .map_err(|_| type_error("expected valid public EC key"))
+          .map_err(|_| JsNativeError::type_error("expected valid public EC key").into())
       }
       V8RawKeyData::Private(data) => {
         let signing_key = p256::SecretKey::from_pkcs8_der(data)
-          .map_err(|_| type_error("expected valid private EC key"))?;
+          .map_err(|_| JsNativeError::type_error("expected valid private EC key"))?;
         Ok(signing_key.public_key().to_encoded_point(false))
       }
       // Should never reach here.
@@ -118,11 +117,11 @@ impl V8RawKeyData {
       V8RawKeyData::Public(data) => {
         // public_key is a serialized EncodedPoint
         p384::EncodedPoint::from_bytes(data)
-          .map_err(|_| type_error("expected valid public EC key"))
+          .map_err(|_| JsNativeError::type_error("expected valid public EC key").into())
       }
       V8RawKeyData::Private(data) => {
         let signing_key = p384::SecretKey::from_pkcs8_der(data)
-          .map_err(|_| type_error("expected valid private EC key"))?;
+          .map_err(|_| JsNativeError::type_error("expected valid private EC key"))?;
         Ok(signing_key.public_key().to_encoded_point(false))
       }
       // Should never reach here.
@@ -133,21 +132,21 @@ impl V8RawKeyData {
   pub fn as_ec_private_key(&self) -> Result<&[u8], AnyError> {
     match self {
       V8RawKeyData::Private(data) => Ok(data),
-      _ => Err(type_error("expected private key")),
+      _ => Err(JsNativeError::type_error("expected private key").into()),
     }
   }
 }
 
 pub fn data_error(msg: impl Into<Cow<'static, str>>) -> AnyError {
-  custom_error("DOMExceptionDataError", msg)
+  JsNativeError::new("DOMExceptionDataError", msg).into()
 }
 
 pub fn not_supported_error(msg: impl Into<Cow<'static, str>>) -> AnyError {
-  custom_error("DOMExceptionNotSupportedError", msg)
+  JsNativeError::new("DOMExceptionNotSupportedError", msg).into()
 }
 
 pub fn operation_error(msg: impl Into<Cow<'static, str>>) -> AnyError {
-  custom_error("DOMExceptionOperationError", msg)
+  JsNativeError::new("DOMExceptionOperationError", msg).into()
 }
 
 pub fn unsupported_format() -> AnyError {

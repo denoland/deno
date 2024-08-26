@@ -1,6 +1,5 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
-use deno_core::error::generic_error;
-use deno_core::error::type_error;
+use deno_core::error::JsNativeError;
 use deno_core::error::AnyError;
 use rand::rngs::OsRng;
 use rsa::signature::hazmat::PrehashSigner as _;
@@ -36,7 +35,7 @@ where
     0 => Ok(signature.to_der().to_bytes().to_vec().into_boxed_slice()),
     // IEEE P1363
     1 => Ok(signature.to_bytes().to_vec().into_boxed_slice()),
-    _ => Err(type_error("invalid DSA signature encoding")),
+    _ => Err(JsNativeError::type_error("invalid DSA signature encoding").into()),
   }
 }
 
@@ -50,7 +49,7 @@ impl KeyObjectHandle {
   ) -> Result<Box<[u8]>, AnyError> {
     let private_key = self
       .as_private_key()
-      .ok_or_else(|| type_error("key is not a private key"))?;
+      .ok_or_else(|| JsNativeError::type_error("key is not a private key"))?;
 
     match private_key {
       AsymmetricPrivateKey::Rsa(key) => {
@@ -63,17 +62,17 @@ impl KeyObjectHandle {
               rsa::pkcs1v15::Pkcs1v15Sign::new::<D>()
             },
             _ => {
-              return Err(type_error(format!(
+              return Err(JsNativeError::type_error(format!(
                 "digest not allowed for RSA signature: {}",
                 digest_type
-              )))
+              )).into())
             }
           )
         };
 
         let signature = signer
           .sign(Some(&mut OsRng), key, digest)
-          .map_err(|_| generic_error("failed to sign digest with RSA"))?;
+          .map_err(|_| JsNativeError::generic("failed to sign digest with RSA"))?;
         Ok(signature.into())
       }
       AsymmetricPrivateKey::RsaPss(key) => {
@@ -82,9 +81,9 @@ impl KeyObjectHandle {
         match &key.details {
           Some(details) => {
             if details.hash_algorithm != details.mf1_hash_algorithm {
-              return Err(type_error(
+              return Err(JsNativeError::type_error(
                 "rsa-pss with different mf1 hash algorithm and hash algorithm is not supported",
-              ));
+              ).into());
             }
             hash_algorithm = Some(details.hash_algorithm);
             salt_length = Some(details.salt_length as usize);
@@ -99,10 +98,10 @@ impl KeyObjectHandle {
           fn <D>(algorithm: Option<RsaPssHashAlgorithm>) {
             if let Some(hash_algorithm) = hash_algorithm.take() {
               if Some(hash_algorithm) != algorithm {
-                return Err(type_error(format!(
+                return Err(JsNativeError::type_error(format!(
                   "private key does not allow {} to be used, expected {}",
                   digest_type, hash_algorithm.as_str()
-                )));
+                )).into());
               }
             }
             if let Some(salt_length) = salt_length {
@@ -112,15 +111,15 @@ impl KeyObjectHandle {
             }
           },
           _ => {
-            return Err(type_error(format!(
+            return Err(JsNativeError::type_error(format!(
               "digest not allowed for RSA-PSS signature: {}",
               digest_type
-            )))
+            )).into())
           }
         );
         let signature = pss
           .sign(Some(&mut OsRng), &key.key, digest)
-          .map_err(|_| generic_error("failed to sign digest with RSA-PSS"))?;
+          .map_err(|_| JsNativeError::generic("failed to sign digest with RSA-PSS"))?;
         Ok(signature.into())
       }
       AsymmetricPrivateKey::Dsa(key) => {
@@ -130,15 +129,15 @@ impl KeyObjectHandle {
             key.sign_prehashed_rfc6979::<D>(digest)
           },
           _ => {
-            return Err(type_error(format!(
+            return Err(JsNativeError::type_error(format!(
               "digest not allowed for RSA signature: {}",
               digest_type
-            )))
+            )).into())
           }
         );
 
         let signature =
-          res.map_err(|_| generic_error("failed to sign digest with DSA"))?;
+          res.map_err(|_| JsNativeError::generic("failed to sign digest with DSA"))?;
         Ok(signature.into())
       }
       AsymmetricPrivateKey::Ec(key) => match key {
@@ -146,7 +145,7 @@ impl KeyObjectHandle {
           let signing_key = p224::ecdsa::SigningKey::from(key);
           let signature: p224::ecdsa::Signature = signing_key
             .sign_prehash(digest)
-            .map_err(|_| type_error("failed to sign digest"))?;
+            .map_err(|_| JsNativeError::type_error("failed to sign digest"))?;
 
           dsa_signature(dsa_signature_encoding, signature)
         }
@@ -154,7 +153,7 @@ impl KeyObjectHandle {
           let signing_key = p256::ecdsa::SigningKey::from(key);
           let signature: p256::ecdsa::Signature = signing_key
             .sign_prehash(digest)
-            .map_err(|_| type_error("failed to sign digest"))?;
+            .map_err(|_| JsNativeError::type_error("failed to sign digest"))?;
 
           dsa_signature(dsa_signature_encoding, signature)
         }
@@ -162,19 +161,19 @@ impl KeyObjectHandle {
           let signing_key = p384::ecdsa::SigningKey::from(key);
           let signature: p384::ecdsa::Signature = signing_key
             .sign_prehash(digest)
-            .map_err(|_| type_error("failed to sign digest"))?;
+            .map_err(|_| JsNativeError::type_error("failed to sign digest"))?;
 
           dsa_signature(dsa_signature_encoding, signature)
         }
       },
       AsymmetricPrivateKey::X25519(_) => {
-        Err(type_error("x25519 key cannot be used for signing"))
+        Err(JsNativeError::type_error("x25519 key cannot be used for signing").into())
       }
-      AsymmetricPrivateKey::Ed25519(_) => Err(type_error(
+      AsymmetricPrivateKey::Ed25519(_) => Err(JsNativeError::type_error(
         "Ed25519 key cannot be used for prehashed signing",
-      )),
+      ).into()),
       AsymmetricPrivateKey::Dh(_) => {
-        Err(type_error("DH key cannot be used for signing"))
+        Err(JsNativeError::type_error("DH key cannot be used for signing").into())
       }
     }
   }
@@ -189,7 +188,7 @@ impl KeyObjectHandle {
   ) -> Result<bool, AnyError> {
     let public_key = self
       .as_public_key()
-      .ok_or_else(|| type_error("key is not a public or private key"))?;
+      .ok_or_else(|| JsNativeError::type_error("key is not a public or private key"))?;
 
     match &*public_key {
       AsymmetricPublicKey::Rsa(key) => {
@@ -202,10 +201,10 @@ impl KeyObjectHandle {
               rsa::pkcs1v15::Pkcs1v15Sign::new::<D>()
             },
             _ => {
-              return Err(type_error(format!(
+              return Err(JsNativeError::type_error(format!(
                 "digest not allowed for RSA signature: {}",
                 digest_type
-              )))
+              )).into())
             }
           )
         };
@@ -218,9 +217,9 @@ impl KeyObjectHandle {
         match &key.details {
           Some(details) => {
             if details.hash_algorithm != details.mf1_hash_algorithm {
-              return Err(type_error(
+              return Err(JsNativeError::type_error(
                 "rsa-pss with different mf1 hash algorithm and hash algorithm is not supported",
-              ));
+              ).into());
             }
             hash_algorithm = Some(details.hash_algorithm);
             salt_length = Some(details.salt_length as usize);
@@ -235,10 +234,10 @@ impl KeyObjectHandle {
           fn <D>(algorithm: Option<RsaPssHashAlgorithm>) {
             if let Some(hash_algorithm) = hash_algorithm.take() {
               if Some(hash_algorithm) != algorithm {
-                return Err(type_error(format!(
+                return Err(JsNativeError::type_error(format!(
                   "private key does not allow {} to be used, expected {}",
                   digest_type, hash_algorithm.as_str()
-                )));
+                )).into());
               }
             }
             if let Some(salt_length) = salt_length {
@@ -248,17 +247,17 @@ impl KeyObjectHandle {
             }
           },
           _ => {
-            return Err(type_error(format!(
+            return Err(JsNativeError::type_error(format!(
               "digest not allowed for RSA-PSS signature: {}",
               digest_type
-            )))
+            )).into())
           }
         );
         Ok(pss.verify(&key.key, digest, signature).is_ok())
       }
       AsymmetricPublicKey::Dsa(key) => {
         let signature = dsa::Signature::from_der(signature)
-          .map_err(|_| type_error("Invalid DSA signature"))?;
+          .map_err(|_| JsNativeError::type_error("Invalid DSA signature"))?;
         Ok(key.verify_prehash(digest, &signature).is_ok())
       }
       AsymmetricPublicKey::Ec(key) => match key {
@@ -300,13 +299,13 @@ impl KeyObjectHandle {
         }
       },
       AsymmetricPublicKey::X25519(_) => {
-        Err(type_error("x25519 key cannot be used for verification"))
+        Err(JsNativeError::type_error("x25519 key cannot be used for verification").into())
       }
-      AsymmetricPublicKey::Ed25519(_) => Err(type_error(
+      AsymmetricPublicKey::Ed25519(_) => Err(JsNativeError::type_error(
         "Ed25519 key cannot be used for prehashed verification",
-      )),
+      ).into()),
       AsymmetricPublicKey::Dh(_) => {
-        Err(type_error("DH key cannot be used for verification"))
+        Err(JsNativeError::type_error("DH key cannot be used for verification").into())
       }
     }
   }

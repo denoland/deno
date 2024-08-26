@@ -2,7 +2,7 @@
 
 use crate::dlfcn::DynamicLibraryResource;
 use crate::symbol::NativeType;
-use deno_core::error::type_error;
+use deno_core::error::JsNativeError;
 use deno_core::error::AnyError;
 use deno_core::op2;
 use deno_core::v8;
@@ -35,7 +35,7 @@ pub fn op_ffi_get_static<'scope>(
 
   Ok(match static_type {
     NativeType::Void => {
-      return Err(type_error("Invalid FFI static type 'void'"));
+      return Err(JsNativeError::type_error("Invalid FFI static type 'void'").into());
     }
     NativeType::Bool => {
       // SAFETY: ptr is user provided
@@ -132,7 +132,7 @@ pub fn op_ffi_get_static<'scope>(
       external
     }
     NativeType::Struct(_) => {
-      return Err(type_error("Invalid FFI static type 'struct'"));
+      return Err(JsNativeError::type_error("Invalid FFI static type 'struct'").into());
     }
   })
 }

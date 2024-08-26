@@ -10,7 +10,7 @@ use std::rc::Weak;
 use std::sync::Arc;
 
 use async_trait::async_trait;
-use deno_core::error::type_error;
+use deno_core::error::JsNativeError;
 use deno_core::error::AnyError;
 use deno_core::futures;
 use deno_core::futures::FutureExt;
@@ -208,17 +208,17 @@ impl CronHandler for LocalCronHandler {
     let mut runtime_state = self.runtime_state.borrow_mut();
 
     if runtime_state.crons.len() > MAX_CRONS {
-      return Err(type_error("Too many crons"));
+      return Err(JsNativeError::type_error("Too many crons").into());
     }
     if runtime_state.crons.contains_key(&spec.name) {
-      return Err(type_error("Cron with this name already exists"));
+      return Err(JsNativeError::type_error("Cron with this name already exists").into());
     }
 
     // Validate schedule expression.
     spec
       .cron_schedule
       .parse::<saffron::Cron>()
-      .map_err(|_| type_error("Invalid cron schedule"))?;
+      .map_err(|_| JsNativeError::type_error("Invalid cron schedule"))?;
 
     // Validate backoff_schedule.
     if let Some(backoff_schedule) = &spec.backoff_schedule {
@@ -320,10 +320,10 @@ fn compute_next_deadline(cron_expression: &str) -> Result<u64, AnyError> {
 
 fn validate_backoff_schedule(backoff_schedule: &[u32]) -> Result<(), AnyError> {
   if backoff_schedule.len() > MAX_BACKOFF_COUNT {
-    return Err(type_error("Invalid backoff schedule"));
+    return Err(JsNativeError::type_error("Invalid backoff schedule").into());
   }
   if backoff_schedule.iter().any(|s| *s > MAX_BACKOFF_MS) {
-    return Err(type_error("Invalid backoff schedule"));
+    return Err(JsNativeError::type_error("Invalid backoff schedule").into());
   }
   Ok(())
 }

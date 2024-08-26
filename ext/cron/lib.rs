@@ -7,8 +7,8 @@ use std::borrow::Cow;
 use std::cell::RefCell;
 use std::rc::Rc;
 
-use deno_core::error::get_custom_error_class;
-use deno_core::error::type_error;
+use deno_core::error::JsErrorClass;
+use deno_core::error::JsNativeError;
 use deno_core::error::AnyError;
 use deno_core::op2;
 use deno_core::OpState;
@@ -101,10 +101,10 @@ where
     let resource = match state.resource_table.get::<CronResource<C::EH>>(rid) {
       Ok(resource) => resource,
       Err(err) => {
-        if get_custom_error_class(&err) == Some("BadResource") {
+        if err.get_class() == "BadResource" {
           return Ok(false);
         } else {
-          return Err(err);
+          return Err(err.into());
         }
       }
     };
@@ -116,12 +116,12 @@ where
 
 fn validate_cron_name(name: &str) -> Result<(), AnyError> {
   if name.len() > 64 {
-    return Err(type_error("Cron name is too long"));
+    return Err(JsNativeError::type_error("Cron name is too long").into());
   }
   if !name.chars().all(|c| {
     c.is_ascii_whitespace() || c.is_ascii_alphanumeric() || c == '_' || c == '-'
   }) {
-    return Err(type_error("Invalid cron name. Only alphanumeric characters, whitespace, hyphens, and underscores are allowed"));
+    return Err(JsNativeError::type_error("Invalid cron name. Only alphanumeric characters, whitespace, hyphens, and underscores are allowed").into());
   }
   Ok(())
 }

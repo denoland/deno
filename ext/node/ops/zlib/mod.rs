@@ -1,5 +1,5 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
-use deno_core::error::type_error;
+use deno_core::error::JsNativeError;
 use deno_core::error::AnyError;
 use deno_core::op2;
 use std::borrow::Cow;
@@ -21,7 +21,7 @@ fn check(condition: bool, msg: &str) -> Result<(), AnyError> {
   if condition {
     Ok(())
   } else {
-    Err(type_error(msg.to_string()))
+    Err(JsNativeError::type_error(msg.to_string()).into())
   }
 }
 
@@ -65,11 +65,11 @@ impl ZlibInner {
 
     let next_in = input
       .get(in_off as usize..in_off as usize + in_len as usize)
-      .ok_or_else(|| type_error("invalid input range"))?
+      .ok_or_else(|| JsNativeError::type_error("invalid input range"))?
       .as_ptr() as *mut _;
     let next_out = out
       .get_mut(out_off as usize..out_off as usize + out_len as usize)
-      .ok_or_else(|| type_error("invalid output range"))?
+      .ok_or_else(|| JsNativeError::type_error("invalid output range"))?
       .as_mut_ptr();
 
     self.strm.avail_in = in_len;
@@ -127,9 +127,9 @@ impl ZlibInner {
             self.mode = Mode::Inflate;
           }
         } else if next_expected_header_byte.is_some() {
-          return Err(type_error(
+          return Err(JsNativeError::type_error(
             "invalid number of gzip magic number bytes read",
-          ));
+          ).into());
         }
       }
       _ => {}
@@ -199,7 +199,7 @@ impl ZlibInner {
       Mode::Inflate | Mode::Gunzip | Mode::InflateRaw | Mode::Unzip => {
         self.strm.inflate_init(self.window_bits)
       }
-      Mode::None => return Err(type_error("Unknown mode")),
+      Mode::None => return Err(JsNativeError::type_error("Unknown mode").into()),
     };
 
     self.write_in_progress = false;
@@ -261,7 +261,7 @@ pub fn op_zlib_close(#[cppgc] resource: &Zlib) -> Result<(), AnyError> {
   let mut resource = resource.inner.borrow_mut();
   let zlib = resource
     .as_mut()
-    .ok_or_else(|| type_error("zlib not initialized"))?;
+    .ok_or_else(|| JsNativeError::type_error("zlib not initialized"))?;
 
   // If there is a pending write, defer the close until the write is done.
   zlib.close()?;
@@ -286,7 +286,7 @@ pub fn op_zlib_write(
   let mut zlib = resource.inner.borrow_mut();
   let zlib = zlib
     .as_mut()
-    .ok_or_else(|| type_error("zlib not initialized"))?;
+    .ok_or_else(|| JsNativeError::type_error("zlib not initialized"))?;
 
   let flush = Flush::try_from(flush)?;
   zlib.start_write(input, in_off, in_len, out, out_off, out_len, flush)?;
@@ -311,7 +311,7 @@ pub fn op_zlib_init(
   let mut zlib = resource.inner.borrow_mut();
   let zlib = zlib
     .as_mut()
-    .ok_or_else(|| type_error("zlib not initialized"))?;
+    .ok_or_else(|| JsNativeError::type_error("zlib not initialized"))?;
 
   check((8..=15).contains(&window_bits), "invalid windowBits")?;
   check((-1..=9).contains(&level), "invalid level")?;
@@ -352,7 +352,7 @@ pub fn op_zlib_reset(#[cppgc] resource: &Zlib) -> Result<i32, AnyError> {
   let mut zlib = resource.inner.borrow_mut();
   let zlib = zlib
     .as_mut()
-    .ok_or_else(|| type_error("zlib not initialized"))?;
+    .ok_or_else(|| JsNativeError::type_error("zlib not initialized"))?;
 
   zlib.reset_stream()?;
 
@@ -367,7 +367,7 @@ pub fn op_zlib_close_if_pending(
     let mut zlib = resource.inner.borrow_mut();
     let zlib = zlib
       .as_mut()
-      .ok_or_else(|| type_error("zlib not initialized"))?;
+      .ok_or_else(|| JsNativeError::type_error("zlib not initialized"))?;
 
     zlib.write_in_progress = false;
     zlib.pending_close

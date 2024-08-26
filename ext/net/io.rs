@@ -1,6 +1,6 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
-use deno_core::error::generic_error;
+use deno_core::error::JsNativeError;
 use deno_core::error::AnyError;
 use deno_core::AsyncMutFuture;
 use deno_core::AsyncRefCell;
@@ -133,7 +133,7 @@ impl TcpStreamResource {
       return map(socket);
     }
 
-    Err(generic_error("Unable to get resources"))
+    Err(JsNativeError::generic("Unable to get resources").into())
   }
 }
 

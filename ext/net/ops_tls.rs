@@ -12,10 +12,8 @@ use crate::NetPermissions;
 use crate::UnsafelyIgnoreCertificateErrors;
 use deno_core::anyhow::anyhow;
 use deno_core::anyhow::bail;
-use deno_core::error::bad_resource;
-use deno_core::error::custom_error;
-use deno_core::error::generic_error;
-use deno_core::error::invalid_hostname;
+use deno_core::error::{ResourceError};
+use deno_core::error::{JsNativeError};
 use deno_core::error::AnyError;
 use deno_core::op2;
 use deno_core::v8;
@@ -310,7 +308,7 @@ where
     .collect::<Vec<_>>();
 
   let hostname_dns = ServerName::try_from(hostname.to_string())
-    .map_err(|_| invalid_hostname(&hostname))?;
+    .map_err(|_| JsNativeError::type_error(format!("Invalid hostname: '{hostname}'")))?;
 
   let unsafely_ignore_certificate_errors = state
     .borrow()
@@ -330,7 +328,7 @@ where
   // process of starting a TLS connection on top of this TCP connection, so we just return a bad
   // resource error. See also: https://github.com/denoland/deno/pull/16242
   let resource = Rc::try_unwrap(resource_rc)
-    .map_err(|_| bad_resource("TCP stream is currently in use"))?;
+    .map_err(|_| ResourceError::Other("TCP stream is currently in use".to_string()))?;
   let (read_half, write_half) = resource.into_inner();
   let tcp_stream = read_half.reunite(write_half)?;
 
@@ -415,11 +413,11 @@ where
   } else {
     ServerName::try_from(addr.hostname.clone())
   }
-  .map_err(|_| invalid_hostname(&addr.hostname))?;
+  .map_err(|_| JsNativeError::type_error(format!("Invalid hostname: '{}'", addr.hostname)))?;
   let connect_addr = resolve_addr(&addr.hostname, addr.port)
     .await?
     .next()
-    .ok_or_else(|| generic_error("No resolved address found"))?;
+    .ok_or_else(|| JsNativeError::generic("No resolved address found"))?;
   let tcp_stream = TcpStream::connect(connect_addr).await?;
   let local_addr = tcp_stream.local_addr()?;
   let remote_addr = tcp_stream.peer_addr()?;
@@ -502,7 +500,7 @@ where
 
   let bind_addr = resolve_addr_sync(&addr.hostname, addr.port)?
     .next()
-    .ok_or_else(|| generic_error("No resolved address found"))?;
+    .ok_or_else(|| JsNativeError::generic("No resolved address found"))?;
 
   let tcp_listener = if args.load_balanced {
     TcpListener::bind_load_balanced(bind_addr)
@@ -537,7 +535,7 @@ where
     }),
   }
   .map_err(|e| {
-    custom_error("InvalidData", "Error creating TLS certificate").context(e)
+    deno_core::anyhow::Error::new(JsNativeError::new("InvalidData", "Error creating TLS certificate")).context(e)
   })?;
 
   let tls_listener_resource = NetworkListenerResource::new(listener);
@@ -557,19 +555,19 @@ pub async fn op_net_accept_tls(
     .borrow()
     .resource_table
     .get::<NetworkListenerResource<TlsListener>>(rid)
-    .map_err(|_| bad_resource("Listener has been closed"))?;
+    .map_err(|_| ResourceError::Other("Listener has been closed".to_string()))?;
 
   let cancel_handle = RcRef::map(&resource, |r| &r.cancel);
   let listener = RcRef::map(&resource, |r| &r.listener)
     .try_borrow_mut()
-    .ok_or_else(|| custom_error("Busy", "Another accept task is ongoing"))?;
+    .ok_or_else(|| JsNativeError::new("Busy", "Another accept task is ongoing"))?;
 
   let (tls_stream, remote_addr) =
     match listener.accept().try_or_cancel(&cancel_handle).await {
       Ok(tuple) => tuple,
       Err(err) if err.kind() == ErrorKind::Interrupted => {
         // FIXME(bartlomieju): compatibility with current JS implementation.
-        return Err(bad_resource("Listener has been closed"));
+        return Err(ResourceError::Other("Listener has been closed".to_string()).into());
       }
       Err(err) => return Err(err.into()),
     };
@@ -595,6 +593,6 @@ pub async fn op_tls_handshake(
     .borrow()
     .resource_table
     .get::<TlsStreamResource>(rid)
-    .map_err(|_| bad_resource("Listener has been closed"))?;
+    .map_err(|_| ResourceError::Other("Listener has been closed".to_string()))?;
   resource.handshake().await
 }
