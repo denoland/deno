@@ -586,7 +586,9 @@ pub async fn upgrade(
     print_release_notes(
       version::DENO_VERSION_INFO.deno,
       &selected_version_to_upgrade.version_or_hash,
-    );
+      &client,
+    )
+    .await;
   }
 
   drop(temp_dir); // delete the temp dir
