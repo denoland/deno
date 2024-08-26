@@ -1,0 +1,5 @@
+{
+  "args": "test --doc markdown_full_block_names.md",
+  "exitCode": 1,
+  "output": "markdown_full_block_names.out"
+}

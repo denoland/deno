@@ -178,48 +178,6 @@ itest!(interval {
   output: "test/interval.out",
 });
 
-itest!(doc_success {
-  args: "test --doc --config ../config/deno.json test/doc_success.ts",
-  exit_code: 0,
-  output: "test/doc_success.out",
-});
-
-itest!(doc_failure {
-  args: "test --doc --config ../config/deno.json test/doc_failure.ts",
-  exit_code: 1,
-  output: "test/doc_failure.out",
-});
-
-itest!(doc_only {
-  args: "test --doc --allow-all test/doc_only",
-  exit_code: 0,
-  output: "test/doc_only.out",
-});
-
-itest!(markdown {
-  args: "test --doc --allow-all test/markdown.md",
-  exit_code: 1,
-  output: "test/markdown.out",
-});
-
-itest!(markdown_windows {
-  args: "test --doc --allow-all test/markdown_windows.md",
-  exit_code: 1,
-  output: "test/markdown_windows.out",
-});
-
-itest!(markdown_full_block_names {
-  args: "test --doc --allow-all test/markdown_full_block_names.md",
-  exit_code: 1,
-  output: "test/markdown_full_block_names.out",
-});
-
-itest!(markdown_ignore_html_comment {
-  args: "test --doc --allow-all test/markdown_with_comment.md",
-  exit_code: 1,
-  output: "test/markdown_with_comment.out",
-});
-
 itest!(text {
   args: "test --doc --allow-all test/text.md",
   exit_code: 0,

@@ -1,0 +1,5 @@
+{
+  "args": "test --doc markdown_windows.md",
+  "exitCode": 1,
+  "output": "markdown_windows.out"
+}

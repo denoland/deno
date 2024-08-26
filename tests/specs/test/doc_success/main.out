@@ -1,0 +1,19 @@
+Check [WILDCARD]/specs/test/doc_success/main.ts$8-13.js
+Check [WILDCARD]/specs/test/doc_success/main.ts$14-19.jsx
+Check [WILDCARD]/specs/test/doc_success/main.ts$20-25.ts
+Check [WILDCARD]/specs/test/doc_success/main.ts$26-31.tsx
+Check [WILDCARD]/specs/test/doc_success/main.ts$42-47.ts
+running 0 tests from ./main.ts
+running 1 test from ./main.ts$8-13.js
+[WILDCARD]/specs/test/doc_success/main.ts$8-13.js ... ok ([WILDCARD]ms)
+running 1 test from ./main.ts$14-19.jsx
+[WILDCARD]/specs/test/doc_success/main.ts$14-19.jsx ... ok ([WILDCARD]ms)
+running 1 test from ./main.ts$20-25.ts
+[WILDCARD]/specs/test/doc_success/main.ts$20-25.ts ... ok ([WILDCARD]ms)
+running 1 test from ./main.ts$26-31.tsx
+[WILDCARD]/specs/test/doc_success/main.ts$26-31.tsx ... ok ([WILDCARD]ms)
+running 1 test from ./main.ts$42-47.ts
+[WILDCARD]/specs/test/doc_success/main.ts$42-47.ts ... ok ([WILDCARD]ms)
+
+ok | 5 passed | 0 failed ([WILDCARD]ms)
+

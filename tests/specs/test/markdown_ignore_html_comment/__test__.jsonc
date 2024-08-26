@@ -1,0 +1,5 @@
+{
+  "args": "test --doc markdown_with_comment.md",
+  "exitCode": 1,
+  "output": "markdown_with_comment.out"
+}
