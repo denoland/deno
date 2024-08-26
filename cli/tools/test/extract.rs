@@ -984,5 +984,3 @@ export { default as myDefault } from "./module5.ts";
     }
   }
 }
-
-// TODO(magurotuna): add tests for the transformer
