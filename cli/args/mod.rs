@@ -812,6 +812,23 @@ impl CliOptions {
       }
     }
 
+    // discourage using --allow-run without an allow list
+    let has_empty_allow_run_flag = flags
+      .permissions
+      .allow_run
+      .as_ref()
+      .map(|r| r.is_empty())
+      .unwrap_or(false);
+    if has_empty_allow_run_flag
+      && !flags.permissions.allow_all
+      && flags.permissions.deny_run.is_none()
+    {
+      log::warn!(
+        "{} --allow-run without an allow list is insecure",
+        colors::yellow("Warning")
+      );
+    }
+
     let maybe_lockfile = maybe_lockfile.filter(|_| !force_global_cache);
     let root_folder = start_dir.workspace.root_folder_configs();
     let deno_dir_provider =

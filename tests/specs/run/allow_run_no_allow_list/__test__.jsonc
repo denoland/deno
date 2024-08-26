@@ -1,0 +1,4 @@
+{
+  "args": "run --allow-run main.ts",
+  "output": "main.out"
+}
