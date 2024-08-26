@@ -156,6 +156,7 @@ pub struct SpawnArgs {
   stdio: ChildStdio,
 
   extra_stdio: Vec<Stdio>,
+  detached: bool,
 }
 
 #[derive(Deserialize)]
@@ -236,12 +237,20 @@ fn create_command(
   let mut command = std::process::Command::new(args.cmd);
 
   #[cfg(windows)]
-  if args.windows_raw_arguments {
-    for arg in args.args.iter() {
-      command.raw_arg(arg);
+  {
+    if args.detached {
+      command.creation_flags(
+        windows_sys::Win32::System::Threading::DETACHED_PROCESS
+          | windows_sys::Win32::System::Threading::CREATE_NEW_PROCESS_GROUP,
+      );
     }
-  } else {
-    command.args(args.args);
+    if args.windows_raw_arguments {
+      for arg in args.args.iter() {
+        command.raw_arg(arg);
+      }
+    } else {
+      command.args(args.args);
+    }
   }
 
   #[cfg(not(windows))]
@@ -334,7 +343,11 @@ fn create_command(
       }
     }
 
+    let detached = args.detached;
     command.pre_exec(move || {
+      if detached {
+        libc::setsid();
+      }
       for &(src, dst) in &fds_to_dup {
         if src >= 0 && dst >= 0 {
           let _fd = libc::dup2(src, dst);

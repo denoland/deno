@@ -56,6 +56,11 @@ import { StringPrototypeSlice } from "ext:deno_node/internal/primordials.mjs";
 import { StreamBase } from "ext:deno_node/internal_binding/stream_wrap.ts";
 import { Pipe, socketType } from "ext:deno_node/internal_binding/pipe_wrap.ts";
 import { Socket } from "node:net";
+import { 
+  kIpc,
+  kExtraStdio,
+  kDetached,
+} from "ext:runtime/40_process.js";
 
 export function mapValues<T, O>(
   record: Readonly<Record<string, T>>,
@@ -238,6 +243,7 @@ export class ChildProcess extends EventEmitter {
       shell = false,
       signal,
       windowsVerbatimArguments = false,
+      detached,
     } = options || {};
     const normalizedStdio = normalizeStdioOption(stdio);
     const [
@@ -275,8 +281,9 @@ export class ChildProcess extends EventEmitter {
         stdout: toDenoStdio(stdout),
         stderr: toDenoStdio(stderr),
         windowsRawArguments: windowsVerbatimArguments,
-        ipc, // internal
-        extraStdio: extraStdioNormalized,
+        [kIpc]: ipc, // internal
+        [kExtraStdio]: extraStdioNormalized,
+        [kDetached]: detached,
       }).spawn();
       this.pid = this.#process.pid;
 
@@ -552,7 +559,7 @@ export interface ChildProcessOptions {
   stdio?: Array<NodeStdio | number | Stream | null | undefined> | NodeStdio;
 
   /**
-   * NOTE: This option is not yet implemented.
+   * Whether to spawn the process in a detached state.
    */
   detached?: boolean;
 

@@ -166,6 +166,10 @@ function run({
   return new Process(res);
 }
 
+export const kExtraStdio = Symbol("extraStdio");
+export const kIpc = Symbol("ipc");
+export const kDetached = Symbol("detached");
+
 const illegalConstructorKey = Symbol("illegalConstructorKey");
 
 function spawnChildInner(command, apiName, {
@@ -175,13 +179,14 @@ function spawnChildInner(command, apiName, {
   env = { __proto__: null },
   uid = undefined,
   gid = undefined,
+  signal = undefined,
   stdin = "null",
   stdout = "piped",
   stderr = "piped",
-  signal = undefined,
   windowsRawArguments = false,
-  ipc = -1,
-  extraStdio = [],
+  [kDetached]: detached = false,
+  [kExtraStdio]: extraStdio = [],
+  [kIpc]: ipc = -1,
 } = { __proto__: null }) {
   const child = op_spawn_child({
     cmd: pathFromURL(command),
@@ -197,6 +202,7 @@ function spawnChildInner(command, apiName, {
     windowsRawArguments,
     ipc,
     extraStdio,
+    detached,
   }, apiName);
   return new ChildProcess(illegalConstructorKey, {
     ...child,
