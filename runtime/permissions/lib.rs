@@ -192,6 +192,9 @@ impl PermissionState {
             (Ok(()), true, true)
           }
           PromptResponse::Deny => (Err(Self::error(name, info)), true, false),
+          PromptResponse::DenyAll => {
+            (Err(Self::error(name, info)), true, false)
+          }
         }
       }
       _ => (Err(Self::error(name, info)), false, false),
@@ -504,6 +507,10 @@ impl<T: Descriptor + Hash> UnaryPermission<T> {
       PromptResponse::AllowAll => {
         self.insert_granted(None);
         PermissionState::Granted
+      }
+      PromptResponse::DenyAll => {
+        self.insert_granted(None);
+        PermissionState::Denied
       }
     }
   }

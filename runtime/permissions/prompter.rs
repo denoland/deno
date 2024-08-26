@@ -43,6 +43,7 @@ pub enum PromptResponse {
   Allow,
   Deny,
   AllowAll,
+  DenyAll,
 }
 
 static PERMISSION_PROMPTER: Lazy<Mutex<Box<dyn PermissionPrompter>>> =
@@ -313,7 +314,7 @@ impl PermissionPrompter for TtyPrompter {
 
     // print to stderr so that if stdout is piped this is still displayed.
     let opts: String = if is_unary {
-      format!("[y/n/A] (y = yes, allow; n = no, deny; A = allow all {name} permissions)")
+      format!("[y/n/A] (y = yes, allow; n = no, deny; A = allow all {name} permissions;  D = deny all env permissions)")
     } else {
       "[y/n] (y = yes, allow; n = no, deny)".to_string()
     };
@@ -397,6 +398,15 @@ impl PermissionPrompter for TtyPrompter {
           let msg = format!("Granted all {name} access.");
           writeln!(stderr_lock, "✅ {}", colors::bold(&msg)).unwrap();
           break PromptResponse::AllowAll;
+        }
+        'D' if is_unary => {
+          clear_n_lines(
+            &mut stderr_lock,
+            if api_name.is_some() { 5 } else { 4 },
+          );
+          let msg = format!("Denied all {name} access.");
+          writeln!(stderr_lock, "❌ {}", colors::bold(&msg)).unwrap();
+          break PromptResponse::DenyAll;
         }
         _ => {
           // If we don't get a recognized option try again.
