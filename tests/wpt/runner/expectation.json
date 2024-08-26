@@ -4007,14 +4007,8 @@
       "owning-type-message-port.any.worker.html": false,
       "owning-type.any.html": false,
       "owning-type.any.worker.html": false,
-      "from.any.html": [
-        "ReadableStream.from ignores a null @@asyncIterator",
-        "ReadableStream.from accepts a string"
-      ],
-      "from.any.worker.html": [
-        "ReadableStream.from ignores a null @@asyncIterator",
-        "ReadableStream.from accepts a string"
-      ]
+      "from.any.html": true,
+      "from.any.worker.html": true
     },
     "transform-streams": {
       "backpressure.any.html": true,
