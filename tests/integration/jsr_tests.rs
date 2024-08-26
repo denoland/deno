@@ -148,7 +148,6 @@ console.log(version);"#,
     file_path: lockfile_path.to_path_buf(),
     content: &lockfile_path.read_to_string(),
     overwrite: false,
-    is_deno_future: false,
   })
   .unwrap();
   *lockfile
@@ -202,7 +201,7 @@ fn reload_info_not_found_cache_but_exists_remote() {
       .set(
         &specifier,
         entry.metadata.headers.clone(),
-        &registry_json.to_string().as_bytes(),
+        registry_json.to_string().as_bytes(),
       )
       .unwrap();
   }
@@ -275,7 +274,6 @@ console.log(version);"#,
     file_path: lockfile_path.to_path_buf(),
     content: &lockfile_path.read_to_string(),
     overwrite: false,
-    is_deno_future: false,
   })
   .unwrap();
   let pkg_name = "@denotest/no-module-graph@0.1.1";
