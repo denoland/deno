@@ -860,7 +860,7 @@ fn lock_no_declaration_files() {
     .build();
   let output = context
     .new_command()
-    .args("cache --lock --lock-write $TESTDATA/lockfile/no_dts/main.ts")
+    .args("cache --lock $TESTDATA/lockfile/no_dts/main.ts")
     .run();
   output.assert_matches_file("lockfile/no_dts/main.cache.out");
   let lockfile = context.temp_dir().path().join("deno.lock");
