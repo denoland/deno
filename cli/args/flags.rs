@@ -4050,9 +4050,15 @@ impl Iterator for UnstableArgsIter {
         .hide(true)
         .help_heading(UNSTABLE_HEADING)
         // we don't render long help, so using it here as a sort of metadata
-        .long_help(match self.cfg {
-          UnstableArgsConfig::None | UnstableArgsConfig::ResolutionOnly => None,
-          UnstableArgsConfig::ResolutionAndRuntime => Some("true"),
+        .long_help(if granular_flag.show_in_help {
+          match self.cfg {
+            UnstableArgsConfig::None | UnstableArgsConfig::ResolutionOnly => {
+              None
+            }
+            UnstableArgsConfig::ResolutionAndRuntime => Some("true"),
+          }
+        } else {
+          None
         })
     } else {
       return None;
