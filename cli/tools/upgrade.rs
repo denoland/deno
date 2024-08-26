@@ -274,8 +274,8 @@ async fn print_release_notes(
     return;
   }
 
-  let should_print = !(current_semver.major == new_semver.major
-    || current_semver.major == new_semver.major);
+  let should_print = current_semver.major != new_semver.major
+    || current_semver.minor != new_semver.minor;
 
   if !should_print {
     return;
