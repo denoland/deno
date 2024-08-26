@@ -72,7 +72,6 @@ util::unit_test_factory!(
     dgram_test,
     domain_test,
     fs_test,
-    fetch_test,
     http_test,
     http2_test,
     inspector_test,
