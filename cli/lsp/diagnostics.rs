@@ -1044,6 +1044,9 @@ impl DenoDiagnostic {
               }
               SpecifierError::InvalidUrl(_) => "invalid-url",
             },
+            ResolutionError::InconsistentImportAttribute { .. } => {
+              "inconsistent-import-attribute"
+            }
             ResolutionError::ResolverError { .. } => "resolver-error",
           }
         }

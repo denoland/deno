@@ -1,6 +1,7 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
 use deno_ast::MediaType;
+use deno_cache_dir::RequestDestination;
 use deno_core::error::AnyError;
 use deno_core::parking_lot::Mutex;
 use deno_core::url::Position;
@@ -257,6 +258,33 @@ impl LspUrlMap {
     let specifier = specifier.unwrap_or_else(|| url.clone());
     inner.put(specifier.clone(), LspClientUrl(url));
     specifier
+  }
+}
+
+// In the LSP, we store the request destination in the url for simplicity.
+pub fn resolve_destination_from_lsp_url(url: &Url) -> RequestDestination {
+  match url.scheme() {
+    "file" => {
+      let Some(ext) = url.path().rsplit_once(".").map(|(_, ext)| ext) else {
+        return RequestDestination::Script;
+      };
+      return match ext.to_lowercase().as_str() {
+        "json" => RequestDestination::Json,
+        _ => RequestDestination::Script,
+      };
+    }
+    "http" | "https" => {
+      let Some(fragment) = url.fragment() else {
+        return RequestDestination::Script;
+      };
+      // good enough
+      if fragment.contains("destination=json") {
+        RequestDestination::Json
+      } else {
+        RequestDestination::Script
+      }
+    }
+    _ => RequestDestination::Script,
   }
 }
 

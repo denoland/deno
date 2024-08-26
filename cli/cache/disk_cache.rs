@@ -4,6 +4,7 @@ use super::CACHE_PERM;
 use crate::util::fs::atomic_write_file_with_retries;
 
 use deno_cache_dir::url_to_filename;
+use deno_cache_dir::RequestDestination;
 use deno_core::url::Host;
 use deno_core::url::Url;
 use std::ffi::OsStr;
@@ -28,7 +29,11 @@ impl DiskCache {
     }
   }
 
-  fn get_cache_filename(&self, url: &Url) -> Option<PathBuf> {
+  fn get_cache_filename(
+    &self,
+    url: &Url,
+    destination: RequestDestination,
+  ) -> Option<PathBuf> {
     let mut out = PathBuf::new();
 
     let scheme = url.scheme();
@@ -49,7 +54,9 @@ impl DiskCache {
           out.push(path_seg);
         }
       }
-      "http" | "https" | "data" | "blob" => out = url_to_filename(url).ok()?,
+      "http" | "https" | "data" | "blob" => {
+        out = url_to_filename(url, destination).ok()?
+      }
       "file" => {
         let path = match url.to_file_path() {
           Ok(path) => path,
@@ -99,9 +106,10 @@ impl DiskCache {
   pub fn get_cache_filename_with_extension(
     &self,
     url: &Url,
+    destination: RequestDestination,
     extension: &str,
   ) -> Option<PathBuf> {
-    let base = self.get_cache_filename(url)?;
+    let base = self.get_cache_filename(url, destination)?;
 
     match base.extension() {
       None => Some(base.with_extension(extension)),
@@ -190,8 +198,10 @@ mod tests {
     }
 
     for test_case in &test_cases {
-      let cache_filename =
-        cache.get_cache_filename(&Url::parse(test_case.0).unwrap());
+      let cache_filename = cache.get_cache_filename(
+        &Url::parse(test_case.0).unwrap(),
+        RequestDestination::Script,
+      );
       assert_eq!(cache_filename, Some(PathBuf::from(test_case.1)));
     }
   }
@@ -236,6 +246,7 @@ mod tests {
       assert_eq!(
         cache.get_cache_filename_with_extension(
           &Url::parse(test_case.0).unwrap(),
+          RequestDestination::Script,
           test_case.1
         ),
         Some(PathBuf::from(test_case.2))
@@ -261,8 +272,10 @@ mod tests {
     }
 
     for test_case in &test_cases {
-      let cache_filename =
-        cache.get_cache_filename(&Url::parse(test_case).unwrap());
+      let cache_filename = cache.get_cache_filename(
+        &Url::parse(test_case).unwrap(),
+        RequestDestination::Script,
+      );
       assert_eq!(cache_filename, None);
     }
   }

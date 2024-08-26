@@ -11,6 +11,7 @@ use super::path_to_regex::Matcher;
 use super::path_to_regex::StringOrNumber;
 use super::path_to_regex::StringOrVec;
 use super::path_to_regex::Token;
+use super::urls::resolve_destination_from_lsp_url;
 
 use crate::args::CacheSetting;
 use crate::cache::GlobalHttpCache;
@@ -497,7 +498,10 @@ impl ModuleRegistry {
         "cache-control".to_string(),
         "max-age=604800, immutable".to_string(),
       );
-      self.http_cache.set(specifier, headers_map, &[])?;
+      let destination = resolve_destination_from_lsp_url(specifier);
+      self
+        .http_cache
+        .set(specifier, destination, headers_map, &[])?;
     }
     let file = fetch_result?.into_text_decoded()?;
     let config: RegistryConfigurationJson = serde_json::from_str(&file.source)?;

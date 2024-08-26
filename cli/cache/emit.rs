@@ -3,6 +3,7 @@
 use std::path::PathBuf;
 
 use deno_ast::ModuleSpecifier;
+use deno_cache_dir::RequestDestination;
 use deno_core::anyhow::anyhow;
 use deno_core::error::AnyError;
 use deno_core::unsync::sync::AtomicFlag;
@@ -95,10 +96,16 @@ impl EmitCache {
     )
   }
 
-  fn get_emit_filename(&self, specifier: &ModuleSpecifier) -> Option<PathBuf> {
-    self
-      .disk_cache
-      .get_cache_filename_with_extension(specifier, "js")
+  fn get_emit_filename(
+    &self,
+    specifier: &ModuleSpecifier,
+    destination: RequestDestination,
+  ) -> Option<PathBuf> {
+    self.disk_cache.get_cache_filename_with_extension(
+      specifier,
+      destination,
+      "js",
+    )
   }
 }
 

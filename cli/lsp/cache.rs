@@ -17,6 +17,8 @@ use std::path::Path;
 use std::sync::Arc;
 use std::time::SystemTime;
 
+use super::urls::resolve_destination_from_lsp_url;
+
 pub fn calculate_fs_version(
   cache: &LspCache,
   specifier: &ModuleSpecifier,
@@ -51,7 +53,9 @@ fn calculate_fs_version_in_cache(
   file_referrer: Option<&ModuleSpecifier>,
 ) -> Option<String> {
   let http_cache = cache.for_specifier(file_referrer);
-  let Ok(cache_key) = http_cache.cache_item_key(specifier) else {
+  let Ok(cache_key) = http_cache
+    .cache_item_key(specifier, resolve_destination_from_lsp_url(specifier))
+  else {
     return Some("1".to_string());
   };
   match http_cache.read_modified_time(&cache_key) {
@@ -158,7 +162,7 @@ impl LspCache {
       .rfind(|(s, _)| file_referrer.as_str().starts_with(s.as_str()))?
       .1
       .as_ref()?;
-    vendor.get_file_url(specifier)
+    vendor.get_file_url(specifier, resolve_destination_from_lsp_url(specifier))
   }
 
   pub fn unvendored_specifier(

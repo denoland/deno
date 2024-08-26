@@ -9,6 +9,7 @@ use super::testing::TestModule;
 use super::text::LineIndex;
 use super::tsc;
 use super::tsc::AssetDocument;
+use super::urls::resolve_destination_from_lsp_url;
 
 use crate::graph_util::CliJsrUrlProvider;
 use deno_runtime::fs_util::specifier_to_file_path;
@@ -870,7 +871,9 @@ impl FileSystemDocuments {
       )
     } else {
       let http_cache = cache.for_specifier(file_referrer);
-      let cache_key = http_cache.cache_item_key(specifier).ok()?;
+      let cache_key = http_cache
+        .cache_item_key(specifier, resolve_destination_from_lsp_url(specifier))
+        .ok()?;
       let cached_file = http_cache.get(&cache_key, None).ok()??;
       let (_, maybe_charset) =
         deno_graph::source::resolve_media_type_and_charset_from_headers(
@@ -1128,7 +1131,11 @@ impl Documents {
           .map(|p| p.is_file())
           .unwrap_or(false);
       }
-      if self.cache.for_specifier(file_referrer).contains(&specifier) {
+      if self
+        .cache
+        .for_specifier(file_referrer)
+        .contains(&specifier, resolve_destination_from_lsp_url(&specifier))
+      {
         return true;
       }
     }

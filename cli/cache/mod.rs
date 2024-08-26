@@ -17,6 +17,7 @@ use deno_graph::source::CacheInfo;
 use deno_graph::source::LoadFuture;
 use deno_graph::source::LoadResponse;
 use deno_graph::source::Loader;
+use deno_graph::source::RequestDestination;
 use deno_runtime::deno_permissions::PermissionsContainer;
 use std::collections::HashMap;
 use std::path::Path;
@@ -167,7 +168,11 @@ impl FetchCacher {
 }
 
 impl Loader for FetchCacher {
-  fn get_cache_info(&self, specifier: &ModuleSpecifier) -> Option<CacheInfo> {
+  fn get_cache_info(
+    &self,
+    specifier: &ModuleSpecifier,
+    destination: RequestDestination,
+  ) -> Option<CacheInfo> {
     if !self.cache_info_enabled {
       return None;
     }

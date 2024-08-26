@@ -25,6 +25,7 @@ use std::sync::Arc;
 
 use super::config::ConfigData;
 use super::search::PackageSearchApi;
+use super::urls::resolve_destination_from_lsp_url;
 
 /// Keep in sync with `JsrFetchResolver`!
 #[derive(Debug)]
@@ -258,7 +259,12 @@ fn read_cached_url(
   cache: &Arc<dyn HttpCache>,
 ) -> Option<Vec<u8>> {
   cache
-    .get(&cache.cache_item_key(url).ok()?, None)
+    .get(
+      &cache
+        .cache_item_key(url, resolve_destination_from_lsp_url(url))
+        .ok()?,
+      None,
+    )
     .ok()?
     .map(|f| f.content)
 }

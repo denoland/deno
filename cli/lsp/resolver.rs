@@ -55,6 +55,7 @@ use std::sync::Arc;
 
 use super::cache::LspCache;
 use super::jsr::JsrCacheResolver;
+use super::urls::resolve_destination_from_lsp_url;
 
 #[derive(Debug, Clone)]
 struct LspScopeResolver {
@@ -594,7 +595,12 @@ impl RedirectResolver {
     }
     Self {
       get_headers: Box::new(move |specifier| {
-        let cache_key = cache.cache_item_key(specifier).ok()?;
+        let cache_key = cache
+          .cache_item_key(
+            specifier,
+            resolve_destination_from_lsp_url(specifier),
+          )
+          .ok()?;
         cache.read_headers(&cache_key).ok().flatten()
       }),
       entries,
