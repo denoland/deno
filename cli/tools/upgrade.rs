@@ -230,7 +230,11 @@ fn get_minor_version(version: &str) -> &str {
   version.rsplitn(2, '.').collect::<Vec<&str>>()[1]
 }
 
-fn print_release_notes(current_version: &str, new_version: &str) {
+async fn print_release_notes(
+  current_version: &str,
+  new_version: &str,
+  client: &HttpClient,
+) {
   let Ok(current_semver) = Version::parse_standard(current_version) else {
     return;
   };
@@ -256,6 +260,17 @@ fn print_release_notes(current_version: &str, new_version: &str) {
       colors::gray("If you find a bug, please report to:"),
       colors::bold("https://github.com/denoland/deno/issues/new")
     );
+
+    // Check if there's blog post entry for this release
+    let blog_url_str = format!("https://deno.com/blog/v{}", new_version);
+    let blog_url = Url::parse(&blog_url_str).unwrap();
+    if client.download(blog_url).await.is_ok() {
+      log::info!(
+        "{}\n\n  {}\n",
+        colors::gray("Blog post:"),
+        colors::bold(blog_url_str)
+      );
+    }
     return;
   }
 
@@ -541,7 +556,9 @@ pub async fn upgrade(
       print_release_notes(
         version::DENO_VERSION_INFO.deno,
         &selected_version_to_upgrade.version_or_hash,
-      );
+        &client,
+      )
+      .await;
     }
     drop(temp_dir);
     return Ok(());
