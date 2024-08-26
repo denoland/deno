@@ -1734,9 +1734,9 @@ dependencies = [
 
 [[package]]
 name = "deno_lockfile"
-version = "0.21.2"
+version = "0.22.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "04beb67705d894d688e818870a701829223f6f485ef3ce0b8b2a7adac98d9583"
+checksum = "92d4e132d2930cf5fbbec8323f4ac98952ca3d1c4ff74d770bbdd7c2588b1783"
 dependencies = [
  "serde",
  "serde_json",
@@ -1882,9 +1882,9 @@ dependencies = [
 
 [[package]]
 name = "deno_npm"
-version = "0.23.1"
+version = "0.24.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "96d72068f4292455d48ac3b90c644ebf3150fb78c26a480cfb235a9642afe95c"
+checksum = "cafaa830cea11b37ad838ed9508c9cc00ac0235fdd42b3b31aa74d5cd6fe3d92"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -2517,9 +2517,9 @@ dependencies = [
 
 [[package]]
 name = "dprint-plugin-markdown"
-version = "0.17.6"
+version = "0.17.8"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "6ef42762177b1a74b52b98fe946cb88fa4a01f149b56208de72b43d2be0a54c6"
+checksum = "934a8e33f6f373b2fb66c288a468e3dae9a56a6c66bfecd5504fe566131afd3f"
 dependencies = [
  "anyhow",
  "dprint-core",
@@ -2814,9 +2814,9 @@ dependencies = [
 
 [[package]]
 name = "eszip"
-version = "0.75.0"
+version = "0.76.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "67ab3253e0e6a99b79ffc6d7a6243ad541f54543768cecd2198b64476a5971f8"
+checksum = "7b3a54eb4f58493897fc2627e76e6714c9b52c84213c923ab1601a5daf722b00"
 dependencies = [
  "anyhow",
  "async-trait",

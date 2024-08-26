@@ -148,7 +148,6 @@ console.log(version);"#,
     file_path: lockfile_path.to_path_buf(),
     content: &lockfile_path.read_to_string(),
     overwrite: false,
-    is_deno_future: false,
   })
   .unwrap();
   *lockfile
@@ -275,7 +274,6 @@ console.log(version);"#,
     file_path: lockfile_path.to_path_buf(),
     content: &lockfile_path.read_to_string(),
     overwrite: false,
-    is_deno_future: false,
   })
   .unwrap();
   let pkg_name = "@denotest/no-module-graph@0.1.1";
