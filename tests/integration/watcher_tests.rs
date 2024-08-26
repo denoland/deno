@@ -1278,7 +1278,7 @@ async fn test_watch_doc() {
   "#,
   );
 
-  wait_contains(&format!("running 1 test from"), &mut stdout_lines).await;
+  wait_contains("running 1 test from", &mut stdout_lines).await;
   assert_contains!(
     next_line(&mut stdout_lines).await.unwrap(),
     &format!("file://{foo_file}$3-8.ts ... ok")

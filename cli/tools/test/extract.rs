@@ -56,14 +56,12 @@ pub(super) fn extract_doc_tests(file: File) -> Result<Vec<File>, AnyError> {
     )?
   };
 
-  Ok(
-    extracted_files
-      .into_iter()
-      .map(|extracted_file| {
-        generate_pseudo_test_file(extracted_file, &file.specifier, &exports)
-      })
-      .collect::<Result<_, _>>()?,
-  )
+  extracted_files
+    .into_iter()
+    .map(|extracted_file| {
+      generate_pseudo_test_file(extracted_file, &file.specifier, &exports)
+    })
+    .collect::<Result<_, _>>()
 }
 
 fn extract_files_from_fenced_blocks(
@@ -350,12 +348,12 @@ fn extract_sym_from_pat(pat: &ast::Pat) -> Vec<Atom> {
         atoms.push(binding_ident.sym.clone());
       }
       ast::Pat::Array(array_pat) => {
-        for elem in array_pat.elems.iter().cloned().filter_map(|e| e) {
-          rec(&elem, atoms);
+        for elem in array_pat.elems.iter().flatten() {
+          rec(elem, atoms);
         }
       }
       ast::Pat::Rest(rest_pat) => {
-        rec(&*rest_pat.arg, atoms);
+        rec(&rest_pat.arg, atoms);
       }
       ast::Pat::Object(object_pat) => {
         for prop in &object_pat.props {
@@ -367,13 +365,13 @@ fn extract_sym_from_pat(pat: &ast::Pat) -> Vec<Atom> {
               rec(&key_value_pat_prop.value, atoms);
             }
             ast::ObjectPatProp::Rest(rest_pat) => {
-              rec(&*rest_pat.arg, atoms);
+              rec(&rest_pat.arg, atoms);
             }
           }
         }
       }
       ast::Pat::Assign(assign_pat) => {
-        rec(&*assign_pat.left, atoms);
+        rec(&assign_pat.left, atoms);
       }
       ast::Pat::Invalid(_) | ast::Pat::Expr(_) => {}
     }

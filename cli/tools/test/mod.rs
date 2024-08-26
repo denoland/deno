@@ -1568,12 +1568,13 @@ pub async fn run_tests(
     // Specifiers to extract doc tests from
     let specifiers_needing_extraction = specifiers_with_mode
       .iter()
-      .filter_map(|(s, mode)| mode.needs_test_extraction().then(|| s.clone()))
+      .filter(|(_, mode)| mode.needs_test_extraction())
+      .map(|(s, _)| s.clone())
       .collect::<Vec<_>>();
 
     let mut final_specifiers = specifiers_with_mode
       .into_iter()
-      .filter_map(|(s, mode)| mode.needs_test_run().then(|| s))
+      .filter_map(|(s, mode)| mode.needs_test_run().then_some(s))
       .collect::<Vec<_>>();
 
     // Extract doc tests, add them to the file fetcher as in-memory files,
@@ -1757,14 +1758,13 @@ pub async fn run_tests_with_watch(
           // Specifiers to extract doc tests from
           let specifiers_needing_extraction = specifiers_with_mode
             .iter()
-            .filter_map(|(s, mode)| {
-              mode.needs_test_extraction().then(|| s.clone())
-            })
+            .filter(|(_, mode)| mode.needs_test_extraction())
+            .map(|(s, _)| s.clone())
             .collect::<Vec<_>>();
 
           let mut final_specifiers = specifiers_with_mode
             .into_iter()
-            .filter_map(|(s, mode)| mode.needs_test_run().then(|| s))
+            .filter_map(|(s, mode)| mode.needs_test_run().then_some(s))
             .collect::<Vec<_>>();
 
           // Extract doc tests, add them to the file fetcher as in-memory files,
