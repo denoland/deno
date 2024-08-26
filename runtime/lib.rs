@@ -77,6 +77,11 @@ pub static UNSTABLE_GRANULAR_FLAGS: &[(
     4,
   ),
   (
+    ops::http::UNSTABLE_FEATURE_NAME,
+    "Enable unstable HTTP APIs",
+    5,
+  ),
+  (
     deno_kv::UNSTABLE_FEATURE_NAME,
     "Enable unstable Key-Value store APIs",
     6,
