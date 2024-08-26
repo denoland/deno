@@ -2,7 +2,7 @@
 // Copyright Joyent and Node contributors. All rights reserved. MIT license.
 
 import {
-  op_create_inspector_session2,
+  op_create_inspector_session,
   op_inspector_disconnect,
   op_inspector_get_message_from_v8,
   op_inspector_post,
@@ -30,6 +30,7 @@ const {
 } = primordials;
 
 class Session extends EventEmitter {
+  // TODO(bartlomieju): how do we type CppGc objects?
   #connection: any = null;
   #nextId = 1;
   #messageCallbacks = new SafeMap();
@@ -40,8 +41,7 @@ class Session extends EventEmitter {
       throw new ERR_INSPECTOR_ALREADY_CONNECTED("The inspector session");
     }
 
-    // this.#connection = TODO;
-    this.#connection = op_create_inspector_session2();
+    this.#connection = op_create_inspector_session();
 
     // Start listening for messages - this is using "unrefed" op
     // so that listening for notifications doesn't block the event loop.
