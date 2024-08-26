@@ -231,10 +231,39 @@ fn get_minor_version(version: &str) -> &str {
 }
 
 fn print_release_notes(current_version: &str, new_version: &str) {
-  // TODO(bartlomieju): we might want to reconsider this one for RC releases.
-  // TODO(bartlomieju): also maybe just parse using `Version::standard` instead
-  // of using `get_minor_version`?
-  if get_minor_version(current_version) == get_minor_version(new_version) {
+  let Ok(current_semver) = Version::parse_standard(current_version) else {
+    return;
+  };
+  let Ok(new_semver) = Version::parse_standard(new_version) else {
+    return;
+  };
+
+  let is_deno_2_rc = new_semver.major == 2
+    && new_semver.minor == 0
+    && new_semver.patch == 0
+    && new_semver.pre.contains(&"rc".to_string());
+
+  if is_deno_2_rc {
+    log::info!(
+      "{}\n\n  {}\n",
+      colors::gray("Migration guide:"),
+      colors::bold(
+        "https://docs.deno.com/runtime/manual/advanced/migrate_deprecations/"
+      )
+    );
+    log::info!(
+      "{}\n\n  {}\n",
+      colors::gray("If you find a bug, please report to:"),
+      colors::bold("https://github.com/denoland/deno/issues/new")
+    );
+    return;
+  }
+
+  let should_print = current_semver.major != new_semver.major
+    || (current_semver.major == new_semver.major
+      && current_semver.minor != new_semver.minor);
+
+  if !should_print {
     return;
   }
 
