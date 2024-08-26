@@ -3446,6 +3446,7 @@ Docs: <c>https://docs.deno.com/go/permissions</>
     .arg(
       Arg::new("allow-run")
         .long("allow-run")
+        .short('X')
         .num_args(0..)
         .use_value_delimiter(true)
         .require_equals(true)
