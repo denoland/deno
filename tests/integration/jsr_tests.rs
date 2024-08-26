@@ -201,7 +201,7 @@ fn reload_info_not_found_cache_but_exists_remote() {
       .set(
         &specifier,
         entry.metadata.headers.clone(),
-        &registry_json.to_string().as_bytes(),
+        registry_json.to_string().as_bytes(),
       )
       .unwrap();
   }
