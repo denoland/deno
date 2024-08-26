@@ -1346,7 +1346,9 @@ dependencies = [
 
 [[package]]
 name = "deno_cache_dir"
-version = "0.10.2"
+version = "0.11.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "405790fa1fa5f05c2e7dca817f820dc1c950ea846f47212ed6d670a3023cb4fe"
 dependencies = [
  "deno_media_type",
  "indexmap",
