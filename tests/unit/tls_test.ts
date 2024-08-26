@@ -6,6 +6,7 @@ import {
   assertRejects,
   assertStrictEquals,
   assertThrows,
+  DENO_FUTURE,
 } from "./test_util.ts";
 import { BufReader, BufWriter } from "@std/io";
 import { readAll } from "@std/io/read-all";
@@ -67,7 +68,7 @@ Deno.test(
 );
 
 Deno.test(
-  { permissions: { net: true, read: false } },
+  { permissions: { net: true, read: false }, ignore: DENO_FUTURE },
   async function connectTLSCertFileNoReadPerm() {
     await assertRejects(async () => {
       await Deno.connectTls({
@@ -80,7 +81,7 @@ Deno.test(
 );
 
 Deno.test(
-  { permissions: { read: true, net: true } },
+  { permissions: { read: true, net: true }, ignore: DENO_FUTURE },
   function listenTLSNonExistentCertKeyFiles() {
     const options = {
       hostname: "localhost",
@@ -106,7 +107,7 @@ Deno.test(
 );
 
 Deno.test(
-  { permissions: { net: true, read: false } },
+  { permissions: { net: true, read: false }, ignore: DENO_FUTURE },
   function listenTLSNoReadPerm() {
     assertThrows(() => {
       Deno.listenTls({
@@ -122,6 +123,7 @@ Deno.test(
 Deno.test(
   {
     permissions: { read: true, write: true, net: true },
+    ignore: DENO_FUTURE,
   },
   function listenTLSEmptyKeyFile() {
     const options = {
@@ -219,7 +221,7 @@ Deno.test(
     );
 
     const conn = await Deno.connectTls({ hostname, port, caCerts });
-    assert(conn.rid > 0);
+    assert(DENO_FUTURE || conn.rid > 0);
     const w = new BufWriter(conn);
     const r = new BufReader(conn);
     const body = `GET / HTTP/1.1\r\nHost: ${hostname}:${port}\r\n\r\n`;
@@ -271,7 +273,7 @@ Deno.test(
     );
 
     const conn = await Deno.connectTls({ hostname, port, caCerts });
-    assert(conn.rid > 0);
+    assert(DENO_FUTURE || conn.rid > 0);
     const w = new BufWriter(conn);
     const r = new BufReader(conn);
     const body = `GET / HTTP/1.1\r\nHost: ${hostname}:${port}\r\n\r\n`;
@@ -1146,7 +1148,7 @@ Deno.test(
 );
 
 Deno.test(
-  { permissions: { read: true, net: true } },
+  { permissions: { read: true, net: true }, ignore: DENO_FUTURE },
   async function connectTLSBadClientCertPrivateKey(): Promise<void> {
     await assertRejects(async () => {
       await Deno.connectTls({
@@ -1162,7 +1164,7 @@ Deno.test(
 );
 
 Deno.test(
-  { permissions: { read: true, net: true } },
+  { permissions: { read: true, net: true }, ignore: DENO_FUTURE },
   async function connectTLSBadCertKey(): Promise<void> {
     await assertRejects(async () => {
       await Deno.connectTls({
@@ -1178,7 +1180,7 @@ Deno.test(
 );
 
 Deno.test(
-  { permissions: { read: true, net: true } },
+  { permissions: { read: true, net: true }, ignore: DENO_FUTURE },
   async function connectTLSBadPrivateKey(): Promise<void> {
     await assertRejects(async () => {
       await Deno.connectTls({
@@ -1210,7 +1212,7 @@ Deno.test(
 );
 
 Deno.test(
-  { permissions: { read: true, net: true } },
+  { permissions: { read: true, net: true }, ignore: DENO_FUTURE },
   async function connectTLSNotPrivateKey(): Promise<void> {
     await assertRejects(async () => {
       await Deno.connectTls({
@@ -1226,7 +1228,7 @@ Deno.test(
 );
 
 Deno.test(
-  { permissions: { read: true, net: true } },
+  { permissions: { read: true, net: true }, ignore: DENO_FUTURE },
   async function connectTLSNotKey(): Promise<void> {
     await assertRejects(async () => {
       await Deno.connectTls({
@@ -1242,7 +1244,7 @@ Deno.test(
 );
 
 Deno.test(
-  { permissions: { read: true, net: true } },
+  { permissions: { read: true, net: true }, ignore: DENO_FUTURE },
   async function connectWithClientCert() {
     // The test_server running on port 4552 responds with 'PASS' if client
     // authentication was successful. Try it by running test_server and
@@ -1292,7 +1294,7 @@ Deno.test(
 );
 
 Deno.test(
-  { permissions: { read: true, net: true } },
+  { permissions: { read: true, net: true }, ignore: DENO_FUTURE },
   async function connectTlsConflictingCertOptions(): Promise<void> {
     await assertRejects(
       async () => {
@@ -1317,7 +1319,7 @@ Deno.test(
 );
 
 Deno.test(
-  { permissions: { read: true, net: true } },
+  { permissions: { read: true, net: true }, ignore: DENO_FUTURE },
   async function connectTlsConflictingKeyOptions(): Promise<void> {
     await assertRejects(
       async () => {
@@ -1635,7 +1637,7 @@ Deno.test(
 );
 
 Deno.test(
-  { permissions: { net: true, read: true } },
+  { ignore: DENO_FUTURE, permissions: { net: true, read: true } },
   function listenTLSEcKey() {
     const listener = Deno.listenTls({
       hostname: "localhost",
