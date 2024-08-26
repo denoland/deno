@@ -9,6 +9,7 @@ import {
   assertStringIncludes,
   assertThrows,
   delay,
+  DENO_FUTURE,
   fail,
   unimplemented,
 } from "./test_util.ts";
@@ -1358,7 +1359,7 @@ Deno.test(
 );
 
 Deno.test(
-  { permissions: { read: true, net: true } },
+  { permissions: { read: true, net: true }, ignore: DENO_FUTURE },
   async function fetchCustomClientPrivateKey(): Promise<
     void
   > {
