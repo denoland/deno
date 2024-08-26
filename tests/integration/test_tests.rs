@@ -178,10 +178,16 @@ itest!(interval {
   output: "test/interval.out",
 });
 
-itest!(doc {
-  args: "test --doc --allow-all test/doc.ts",
+itest!(doc_success {
+  args: "test --doc --config ../config/deno.json test/doc_success.ts",
+  exit_code: 0,
+  output: "test/doc_success.out",
+});
+
+itest!(doc_failure {
+  args: "test --doc --config ../config/deno.json test/doc_failure.ts",
   exit_code: 1,
-  output: "test/doc.out",
+  output: "test/doc_failure.out",
 });
 
 itest!(doc_only {
