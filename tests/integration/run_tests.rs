@@ -515,7 +515,7 @@ fn _090_run_permissions_request() {
         "┠─ Requested by `Deno.permissions.request()` API.\r\n",
         "┠─ Learn more at: https://docs.deno.com/go/--allow-run\r\n",
         "┠─ Run again with --allow-run to bypass this prompt.\r\n",
-        "┗ Allow? [y/n/A] (y = yes, allow; n = no, deny; A = allow all run permissions)",
+        "┗ Allow? [y/n/A] (y = yes, allow; n = no, deny; A = allow all run permissions; D = deny all run permissions)",
       ));
       console.human_delay();
       console.write_line_raw("y");
@@ -525,7 +525,7 @@ fn _090_run_permissions_request() {
         "┠─ Requested by `Deno.permissions.request()` API.\r\n",
         "┠─ Learn more at: https://docs.deno.com/go/--allow-run\r\n",
         "┠─ Run again with --allow-run to bypass this prompt.\r\n",
-        "┗ Allow? [y/n/A] (y = yes, allow; n = no, deny; A = allow all run permissions)",
+        "┗ Allow? [y/n/A] (y = yes, allow; n = no, deny; A = allow all run permissions; D = deny all run permissions)",
       ));
       console.human_delay();
       console.write_line_raw("n");
@@ -546,7 +546,7 @@ fn _090_run_permissions_request_sync() {
         "┠─ Requested by `Deno.permissions.request()` API.\r\n",
         "┠─ Learn more at: https://docs.deno.com/go/--allow-run\r\n",
         "┠─ Run again with --allow-run to bypass this prompt.\r\n",
-        "┗ Allow? [y/n/A] (y = yes, allow; n = no, deny; A = allow all run permissions)",
+        "┗ Allow? [y/n/A] (y = yes, allow; n = no, deny; A = allow all run permissions; D = deny all run permissions)",
       ));
       console.human_delay();
       console.write_line_raw("y");
@@ -556,7 +556,7 @@ fn _090_run_permissions_request_sync() {
         "┠─ Requested by `Deno.permissions.request()` API.\r\n",
         "┠─ Learn more at: https://docs.deno.com/go/--allow-run\r\n",
         "┠─ Run again with --allow-run to bypass this prompt.\r\n",
-        "┗ Allow? [y/n/A] (y = yes, allow; n = no, deny; A = allow all run permissions)",
+        "┗ Allow? [y/n/A] (y = yes, allow; n = no, deny; A = allow all run permissions; D = deny all run permissions)",
       ));
       console.human_delay();
       console.write_line_raw("n");
@@ -578,7 +578,7 @@ fn permissions_prompt_allow_all() {
         "┠─ Requested by `Deno.permissions.request()` API.\r\n",
         "┠─ Learn more at: https://docs.deno.com/go/--allow-run\r\n",
         "┠─ Run again with --allow-run to bypass this prompt.\r\n",
-        "┗ Allow? [y/n/A] (y = yes, allow; n = no, deny; A = allow all run permissions)",
+        "┗ Allow? [y/n/A] (y = yes, allow; n = no, deny; A = allow all run permissions; D = deny all run permissions)",
       ));
       console.human_delay();
       console.write_line_raw("A");
@@ -589,7 +589,7 @@ fn permissions_prompt_allow_all() {
         "┠─ Requested by `Deno.permissions.request()` API.\r\n",
         "┠─ Learn more at: https://docs.deno.com/go/--allow-read\r\n",
         "┠─ Run again with --allow-read to bypass this prompt.\r\n",
-        "┗ Allow? [y/n/A] (y = yes, allow; n = no, deny; A = allow all read permissions)",
+        "┗ Allow? [y/n/A] (y = yes, allow; n = no, deny; A = allow all read permissions; D = deny all read permissions)",
       ));
       console.human_delay();
       console.write_line_raw("A");
@@ -600,7 +600,7 @@ fn permissions_prompt_allow_all() {
         "┠─ Requested by `Deno.permissions.request()` API.\r\n",
         "┠─ Learn more at: https://docs.deno.com/go/--allow-write\r\n",
         "┠─ Run again with --allow-write to bypass this prompt.\r\n",
-        "┗ Allow? [y/n/A] (y = yes, allow; n = no, deny; A = allow all write permissions)",
+        "┗ Allow? [y/n/A] (y = yes, allow; n = no, deny; A = allow all write permissions; D = deny all write permissions)",
       ));
       console.human_delay();
       console.write_line_raw("A");
@@ -611,7 +611,7 @@ fn permissions_prompt_allow_all() {
         "┠─ Requested by `Deno.permissions.request()` API.\r\n",
         "┠─ Learn more at: https://docs.deno.com/go/--allow-net\r\n",
         "┠─ Run again with --allow-net to bypass this prompt.\r\n",
-        "┗ Allow? [y/n/A] (y = yes, allow; n = no, deny; A = allow all net permissions)",
+        "┗ Allow? [y/n/A] (y = yes, allow; n = no, deny; A = allow all net permissions; D = deny all net permissions)",
       ));
       console.human_delay();
       console.write_line_raw("A");
@@ -622,7 +622,7 @@ fn permissions_prompt_allow_all() {
         "┠─ Requested by `Deno.permissions.request()` API.\r\n",
         "┠─ Learn more at: https://docs.deno.com/go/--allow-env\r\n",
         "┠─ Run again with --allow-env to bypass this prompt.\r\n",
-        "┗ Allow? [y/n/A] (y = yes, allow; n = no, deny; A = allow all env permissions)",
+        "┗ Allow? [y/n/A] (y = yes, allow; n = no, deny; A = allow all env permissions; D = deny all env permissions)",
       ));
       console.human_delay();
       console.write_line_raw("A");
@@ -633,7 +633,7 @@ fn permissions_prompt_allow_all() {
         "┠─ Requested by `Deno.permissions.request()` API.\r\n",
         "┠─ Learn more at: https://docs.deno.com/go/--allow-sys\r\n",
         "┠─ Run again with --allow-sys to bypass this prompt.\r\n",
-        "┗ Allow? [y/n/A] (y = yes, allow; n = no, deny; A = allow all sys permissions)",
+        "┗ Allow? [y/n/A] (y = yes, allow; n = no, deny; A = allow all sys permissions; D = deny all sys permissions)",
       ));
       console.human_delay();
       console.write_line_raw("A");
@@ -644,7 +644,7 @@ fn permissions_prompt_allow_all() {
         "┠─ Requested by `Deno.permissions.request()` API.\r\n",
         "┠─ Learn more at: https://docs.deno.com/go/--allow-ffi\r\n",
         "┠─ Run again with --allow-ffi to bypass this prompt.\r\n",
-        "┗ Allow? [y/n/A] (y = yes, allow; n = no, deny; A = allow all ffi permissions)",
+        "┗ Allow? [y/n/A] (y = yes, allow; n = no, deny; A = allow all ffi permissions; D = deny all ffi permissions)",
       ));
       console.human_delay();
       console.write_line_raw("A");
@@ -664,7 +664,7 @@ fn permissions_prompt_allow_all_2() {
         "┏ ⚠️  Deno requests env access to \"FOO\".\r\n",
         "┠─ Learn more at: https://docs.deno.com/go/--allow-env\r\n",
         "┠─ Run again with --allow-env to bypass this prompt.\r\n",
-        "┗ Allow? [y/n/A] (y = yes, allow; n = no, deny; A = allow all env permissions)",
+        "┗ Allow? [y/n/A] (y = yes, allow; n = no, deny; A = allow all env permissions; D = deny all env permissions)",
       ));
       console.human_delay();
       console.write_line_raw("A");
@@ -676,7 +676,7 @@ fn permissions_prompt_allow_all_2() {
         "┠─ Requested by `Deno.loadavg()` API.\r\n",
         "┠─ Learn more at: https://docs.deno.com/go/--allow-sys\r\n",
         "┠─ Run again with --allow-sys to bypass this prompt.\r\n",
-        "┗ Allow? [y/n/A] (y = yes, allow; n = no, deny; A = allow all sys permissions)",
+        "┗ Allow? [y/n/A] (y = yes, allow; n = no, deny; A = allow all sys permissions; D = deny all sys permissions)",
       ));
       console.human_delay();
       console.write_line_raw("A");
@@ -688,7 +688,7 @@ fn permissions_prompt_allow_all_2() {
         "┠─ Requested by `Deno.cwd()` API.\r\n",
         "┠─ Learn more at: https://docs.deno.com/go/--allow-read\r\n",
         "┠─ Run again with --allow-read to bypass this prompt.\r\n",
-        "┗ Allow? [y/n/A] (y = yes, allow; n = no, deny; A = allow all read permissions)",
+        "┗ Allow? [y/n/A] (y = yes, allow; n = no, deny; A = allow all read permissions; D = deny all read permissions)",
       ));
       console.human_delay();
       console.write_line_raw("A");
@@ -708,7 +708,7 @@ fn permissions_prompt_allow_all_lowercase_a() {
         "┠─ Requested by `Deno.permissions.request()` API.\r\n",
         "┠─ Learn more at: https://docs.deno.com/go/--allow-run\r\n",
         "┠─ Run again with --allow-run to bypass this prompt.\r\n",
-        "┗ Allow? [y/n/A] (y = yes, allow; n = no, deny; A = allow all run permissions)",
+        "┗ Allow? [y/n/A] (y = yes, allow; n = no, deny; A = allow all run permissions; D = deny all run permissions)",
       ));
       console.human_delay();
       console.write_line_raw("a");
@@ -752,7 +752,7 @@ fn permissions_cache() {
         "┠─ Requested by `Deno.permissions.request()` API.\r\n",
         "┠─ Learn more at: https://docs.deno.com/go/--allow-read\r\n",
         "┠─ Run again with --allow-read to bypass this prompt.\r\n",
-        "┗ Allow? [y/n/A] (y = yes, allow; n = no, deny; A = allow all read permissions)",
+        "┗ Allow? [y/n/A] (y = yes, allow; n = no, deny; A = allow all read permissions; D = deny all read permissions)",
       ));
       console.human_delay();
       console.write_line_raw("y");
@@ -2985,7 +2985,7 @@ mod permissions {
           "┠─ Requested by `Deno.permissions.request()` API.\r\n",
           "┠─ Learn more at: https://docs.deno.com/go/--allow-read\r\n",
           "┠─ Run again with --allow-read to bypass this prompt.\r\n",
-          "┗ Allow? [y/n/A] (y = yes, allow; n = no, deny; A = allow all read permissions)",
+          "┗ Allow? [y/n/A] (y = yes, allow; n = no, deny; A = allow all read permissions; D = deny all read permissions)",
         ));
         console.human_delay();
         console.write_line_raw("y");
@@ -2994,7 +2994,7 @@ mod permissions {
           "┠─ Requested by `Deno.permissions.request()` API.\r\n",
           "┠─ Learn more at: https://docs.deno.com/go/--allow-read\r\n",
           "┠─ Run again with --allow-read to bypass this prompt.\r\n",
-          "┗ Allow? [y/n/A] (y = yes, allow; n = no, deny; A = allow all read permissions)",
+          "┗ Allow? [y/n/A] (y = yes, allow; n = no, deny; A = allow all read permissions; D = deny all read permissions)",
         ));
         console.human_delay();
         console.write_line_raw("n");
@@ -3015,7 +3015,7 @@ mod permissions {
           "┠─ Requested by `Deno.permissions.request()` API.\r\n",
           "┠─ Learn more at: https://docs.deno.com/go/--allow-read\r\n",
           "┠─ Run again with --allow-read to bypass this prompt.\r\n",
-          "┗ Allow? [y/n/A] (y = yes, allow; n = no, deny; A = allow all read permissions)",
+          "┗ Allow? [y/n/A] (y = yes, allow; n = no, deny; A = allow all read permissions; D = deny all read permissions)",
         ));
         console.human_delay();
         console.write_line_raw("y");
@@ -3024,7 +3024,7 @@ mod permissions {
           "┠─ Requested by `Deno.permissions.request()` API.\r\n",
           "┠─ Learn more at: https://docs.deno.com/go/--allow-read\r\n",
           "┠─ Run again with --allow-read to bypass this prompt.\r\n",
-          "┗ Allow? [y/n/A] (y = yes, allow; n = no, deny; A = allow all read permissions)",
+          "┗ Allow? [y/n/A] (y = yes, allow; n = no, deny; A = allow all read permissions; D = deny all read permissions)",
         ));
         console.human_delay();
         console.write_line_raw("n");
@@ -3045,7 +3045,7 @@ mod permissions {
           "┠─ Requested by `Deno.permissions.request()` API.\r\n",
           "┠─ Learn more at: https://docs.deno.com/go/--allow-read\r\n",
           "┠─ Run again with --allow-read to bypass this prompt.\r\n",
-          "┗ Allow? [y/n/A] (y = yes, allow; n = no, deny; A = allow all read permissions)",
+          "┗ Allow? [y/n/A] (y = yes, allow; n = no, deny; A = allow all read permissions; D = deny all read permissions)",
         ));
         console.human_delay();
         console.write_line_raw("y\n");
@@ -3069,7 +3069,7 @@ mod permissions {
           "┠─ Requested by `Deno.permissions.request()` API.\r\n",
           "┠─ Learn more at: https://docs.deno.com/go/--allow-read\r\n",
           "┠─ Run again with --allow-read to bypass this prompt.\r\n",
-          "┗ Allow? [y/n/A] (y = yes, allow; n = no, deny; A = allow all read permissions)",
+          "┗ Allow? [y/n/A] (y = yes, allow; n = no, deny; A = allow all read permissions; D = deny all read permissions)",
         ));
         console.human_delay();
         console.write_line_raw("y");
@@ -3226,7 +3226,7 @@ fn issue9750() {
         "┠─ Requested by `Deno.permissions.request()` API.\r\n",
         "┠─ Learn more at: https://docs.deno.com/go/--allow-env\r\n",
         "┠─ Run again with --allow-env to bypass this prompt.\r\n",
-        "┗ Allow? [y/n/A] (y = yes, allow; n = no, deny; A = allow all env permissions)",
+        "┗ Allow? [y/n/A] (y = yes, allow; n = no, deny; A = allow all env permissions; D = deny all env permissions)",
       ));
       console.human_delay();
       console.write_line_raw("n");
@@ -3235,7 +3235,7 @@ fn issue9750() {
         "┏ ⚠️  Deno requests env access to \"SECRET\".\r\n",
         "┠─ Learn more at: https://docs.deno.com/go/--allow-env\r\n",
         "┠─ Run again with --allow-env to bypass this prompt.\r\n",
-        "┗ Allow? [y/n/A] (y = yes, allow; n = no, deny; A = allow all env permissions)",
+        "┗ Allow? [y/n/A] (y = yes, allow; n = no, deny; A = allow all env permissions; D = deny all env permissions)",
       ));
       console.human_delay();
       console.write_line_raw("n");
@@ -4668,7 +4668,7 @@ fn stdio_streams_are_locked_in_permission_prompt() {
       } else {
         "\r\n"
       };
-      console.expect_raw_next(format!("i{newline}\u{1b}[1A\u{1b}[0J┗ Unrecognized option. Allow? [y/n/A] (y = yes, allow; n = no, deny; A = allow all read permissions) > "));
+      console.expect_raw_next(format!("i{newline}\u{1b}[1A\u{1b}[0J┗ Unrecognized option. Allow? [y/n/A] (y = yes, allow; n = no, deny; A = allow all read permissions; D = deny all read permissions) > "));
       console.human_delay();
       console.write_line_raw("y");
       // We ensure that nothing gets written here between the permission prompt and this text, despire the delay
