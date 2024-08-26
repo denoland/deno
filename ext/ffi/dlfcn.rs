@@ -5,11 +5,13 @@ use crate::ir::out_buffer_as_ptr;
 use crate::symbol::NativeType;
 use crate::symbol::Symbol;
 use crate::turbocall;
+use crate::turbocall::Turbocall;
 use crate::FfiPermissions;
 use deno_core::error::generic_error;
 use deno_core::error::AnyError;
 use deno_core::op2;
 use deno_core::v8;
+use deno_core::GarbageCollected;
 use deno_core::OpState;
 use deno_core::Resource;
 use dlopen2::raw::Library;
@@ -208,84 +210,84 @@ where
   Ok(out.into())
 }
 
+struct FunctionData {
+  // Held in a box to keep memory while function is alive.
+  #[allow(unused)]
+  symbol: Box<Symbol>,
+  // Held in a box to keep inner data alive while function is alive.
+  #[allow(unused)]
+  turbocall: Option<Turbocall>,
+}
+
+impl GarbageCollected for FunctionData {}
+
 // Create a JavaScript function for synchronous FFI call to
 // the given symbol.
 fn make_sync_fn<'s>(
   scope: &mut v8::HandleScope<'s>,
-  sym: Box<Symbol>,
+  symbol: Box<Symbol>,
 ) -> v8::Local<'s, v8::Function> {
-  let sym = Box::leak(sym);
-  let builder = v8::FunctionTemplate::builder(
-    |scope: &mut v8::HandleScope,
-     args: v8::FunctionCallbackArguments,
-     mut rv: v8::ReturnValue| {
-      let external: v8::Local<v8::External> = args.data().try_into().unwrap();
-      // SAFETY: The pointer will not be deallocated until the function is
-      // garbage collected.
-      let symbol = unsafe { &*(external.value() as *const Symbol) };
-      let out_buffer = match symbol.result_type {
-        NativeType::Struct(_) => {
-          let argc = args.length();
-          out_buffer_as_ptr(
-            scope,
-            Some(
-              v8::Local::<v8::TypedArray>::try_from(args.get(argc - 1))
-                .unwrap(),
-            ),
-          )
-        }
-        _ => None,
-      };
-      match crate::call::ffi_call_sync(scope, args, symbol, out_buffer) {
-        Ok(result) => {
-          let result =
-            // SAFETY: Same return type declared to libffi; trust user to have it right beyond that.
-            unsafe { result.to_v8(scope, symbol.result_type.clone()) };
-          rv.set(result);
-        }
-        Err(err) => {
-          deno_core::_ops::throw_type_error(scope, err.to_string());
-        }
-      };
-    },
-  )
-  .data(v8::External::new(scope, sym as *mut Symbol as *mut _).into());
+  let turbocall = if turbocall::is_compatible(&symbol) {
+    let trampoline = turbocall::compile_trampoline(&symbol);
+    let turbocall = turbocall::make_template(&symbol, trampoline);
+    Some(turbocall)
+  } else {
+    None
+  };
 
-  let mut fast_call_alloc = None;
+  let c_function = turbocall.as_ref().map(|turbocall| {
+    v8::fast_api::CFunction::new(
+      turbocall.trampoline.ptr(),
+      &turbocall.c_function_info,
+    )
+  });
 
-  let func = if turbocall::is_compatible(sym) {
-    let trampoline = turbocall::compile_trampoline(sym);
-    let func = builder.build_fast(
-      scope,
-      &turbocall::make_template(sym, &trampoline),
-      None,
-      None,
-      None,
-    );
-    fast_call_alloc = Some(Box::into_raw(Box::new(trampoline)));
-    func
+  let data = FunctionData { symbol, turbocall };
+  let data = deno_core::cppgc::make_cppgc_object(scope, data);
+
+  let builder = v8::FunctionTemplate::builder(sync_fn_impl).data(data.into());
+
+  let func = if let Some(c_function) = c_function {
+    builder.build_fast(scope, &[c_function])
   } else {
     builder.build(scope)
   };
-  let func = func.get_function(scope).unwrap();
+  func.get_function(scope).unwrap()
+}
 
-  let weak = v8::Weak::with_finalizer(
+fn sync_fn_impl<'s>(
+  scope: &mut v8::HandleScope<'s>,
+  args: v8::FunctionCallbackArguments<'s>,
+  mut rv: v8::ReturnValue,
+) {
+  let data = deno_core::cppgc::try_unwrap_cppgc_object::<FunctionData>(
     scope,
-    func,
-    Box::new(move |_| {
-      // SAFETY: This is never called twice. pointer obtained
-      // from Box::into_raw, hence, satisfies memory layout requirements.
-      let _ = unsafe { Box::from_raw(sym) };
-      if let Some(fast_call_ptr) = fast_call_alloc {
-        // fast-call compiled trampoline is unmapped when the MMAP handle is dropped
-        // SAFETY: This is never called twice. pointer obtained
-        // from Box::into_raw, hence, satisfies memory layout requirements.
-        let _ = unsafe { Box::from_raw(fast_call_ptr) };
-      }
-    }),
-  );
-
-  weak.to_local(scope).unwrap()
+    args.data(),
+  )
+  .unwrap();
+  let out_buffer = match data.symbol.result_type {
+    NativeType::Struct(_) => {
+      let argc = args.length();
+      out_buffer_as_ptr(
+        scope,
+        Some(
+          v8::Local::<v8::TypedArray>::try_from(args.get(argc - 1)).unwrap(),
+        ),
+      )
+    }
+    _ => None,
+  };
+  match crate::call::ffi_call_sync(scope, args, &data.symbol, out_buffer) {
+    Ok(result) => {
+      let result =
+            // SAFETY: Same return type declared to libffi; trust user to have it right beyond that.
+            unsafe { result.to_v8(scope, data.symbol.result_type.clone()) };
+      rv.set(result);
+    }
+    Err(err) => {
+      deno_core::_ops::throw_type_error(scope, err.to_string());
+    }
+  };
 }
 
 // `path` is only used on Windows.

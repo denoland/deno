@@ -5,6 +5,7 @@ use dashmap::DashMap;
 use dashmap::DashSet;
 use deno_ast::MediaType;
 use deno_config::workspace::MappedResolution;
+use deno_config::workspace::MappedResolutionDiagnostic;
 use deno_config::workspace::MappedResolutionError;
 use deno_config::workspace::WorkspaceResolver;
 use deno_core::anyhow::anyhow;
@@ -21,6 +22,7 @@ use deno_graph::NpmLoadError;
 use deno_graph::NpmResolvePkgReqsResult;
 use deno_npm::resolution::NpmResolutionError;
 use deno_package_json::PackageJsonDepValue;
+use deno_runtime::colors;
 use deno_runtime::deno_fs;
 use deno_runtime::deno_fs::FileSystem;
 use deno_runtime::deno_node::is_builtin_node_module;
@@ -434,6 +436,7 @@ pub struct CliGraphResolver {
   maybe_vendor_specifier: Option<ModuleSpecifier>,
   found_package_json_dep_flag: AtomicFlag,
   bare_node_builtins_enabled: bool,
+  warned_pkgs: DashSet<PackageReq>,
 }
 
 pub struct CliGraphResolverOptions<'a> {
@@ -469,6 +472,7 @@ impl CliGraphResolver {
         .and_then(|v| ModuleSpecifier::from_directory_path(v).ok()),
       found_package_json_dep_flag: Default::default(),
       bare_node_builtins_enabled: options.bare_node_builtins_enabled,
+      warned_pkgs: Default::default(),
     }
   }
 
@@ -541,8 +545,23 @@ impl Resolver for CliGraphResolver {
       });
     let result = match result {
       Ok(resolution) => match resolution {
-        MappedResolution::Normal(specifier)
-        | MappedResolution::ImportMap(specifier) => {
+        MappedResolution::Normal {
+          specifier,
+          maybe_diagnostic,
+        }
+        | MappedResolution::ImportMap {
+          specifier,
+          maybe_diagnostic,
+        } => {
+          if let Some(diagnostic) = maybe_diagnostic {
+            match &*diagnostic {
+              MappedResolutionDiagnostic::ConstraintNotMatchedLocalVersion { reference, .. } => {
+                if self.warned_pkgs.insert(reference.req().clone()) {
+                  log::warn!("{} {}\n    at {}", colors::yellow("Warning"), diagnostic, referrer_range);
+                }
+              }
+            }
+          }
           // do sloppy imports resolution if enabled
           if let Some(sloppy_imports_resolver) = &self.sloppy_imports_resolver {
             Ok(
@@ -1227,15 +1246,15 @@ mod test {
     for (ext_from, ext_to) in [("js", "ts"), ("js", "tsx"), ("mjs", "mts")] {
       let ts_file = temp_dir.join(format!("file.{}", ext_to));
       ts_file.write("");
-      assert_eq!(resolve(&ts_file.uri_file()), None);
+      assert_eq!(resolve(&ts_file.url_file()), None);
       assert_eq!(
         resolve(
           &temp_dir
-            .uri_dir()
+            .url_dir()
             .join(&format!("file.{}", ext_from))
             .unwrap()
         ),
-        Some(SloppyImportsResolution::JsToTs(ts_file.uri_file())),
+        Some(SloppyImportsResolution::JsToTs(ts_file.url_file())),
       );
       ts_file.remove_file();
     }
@@ -1247,11 +1266,11 @@ mod test {
       assert_eq!(
         resolve(
           &temp_dir
-            .uri_dir()
+            .url_dir()
             .join("file") // no ext
             .unwrap()
         ),
-        Some(SloppyImportsResolution::NoExtension(file.uri_file()))
+        Some(SloppyImportsResolution::NoExtension(file.url_file()))
       );
       file.remove_file();
     }
@@ -1262,15 +1281,15 @@ mod test {
       ts_file.write("");
       let js_file = temp_dir.join("file.js");
       js_file.write("");
-      assert_eq!(resolve(&js_file.uri_file()), None);
+      assert_eq!(resolve(&js_file.url_file()), None);
     }
 
     // only js exists, .js specified
     {
       let js_only_file = temp_dir.join("js_only.js");
       js_only_file.write("");
-      assert_eq!(resolve(&js_only_file.uri_file()), None);
-      assert_eq!(resolve_types(&js_only_file.uri_file()), None);
+      assert_eq!(resolve(&js_only_file.url_file()), None);
+      assert_eq!(resolve_types(&js_only_file.url_file()), None);
     }
 
     // resolving a directory to an index file
@@ -1280,8 +1299,8 @@ mod test {
       let index_file = routes_dir.join("index.ts");
       index_file.write("");
       assert_eq!(
-        resolve(&routes_dir.uri_file()),
-        Some(SloppyImportsResolution::Directory(index_file.uri_file())),
+        resolve(&routes_dir.url_file()),
+        Some(SloppyImportsResolution::Directory(index_file.url_file())),
       );
     }
 
@@ -1294,8 +1313,8 @@ mod test {
       let api_file = temp_dir.join("api.ts");
       api_file.write("");
       assert_eq!(
-        resolve(&api_dir.uri_file()),
-        Some(SloppyImportsResolution::NoExtension(api_file.uri_file())),
+        resolve(&api_dir.url_file()),
+        Some(SloppyImportsResolution::NoExtension(api_file.url_file())),
       );
     }
   }

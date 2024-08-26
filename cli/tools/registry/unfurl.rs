@@ -73,8 +73,8 @@ impl SpecifierUnfurler {
       self.workspace_resolver.resolve(specifier, referrer)
     {
       match resolved {
-        MappedResolution::Normal(specifier)
-        | MappedResolution::ImportMap(specifier) => Some(specifier),
+        MappedResolution::Normal { specifier, .. }
+        | MappedResolution::ImportMap { specifier, .. } => Some(specifier),
         MappedResolution::WorkspaceJsrPackage { pkg_req_ref, .. } => {
           Some(ModuleSpecifier::parse(&pkg_req_ref.to_string()).unwrap())
         }
@@ -203,7 +203,7 @@ impl SpecifierUnfurler {
   /// or `false` when the import was not analyzable.
   fn try_unfurl_dynamic_dep(
     &self,
-    module_url: &lsp_types::Url,
+    module_url: &ModuleSpecifier,
     text_info: &SourceTextInfo,
     dep: &deno_graph::DynamicDependencyDescriptor,
     text_changes: &mut Vec<deno_ast::TextChange>,
@@ -443,6 +443,7 @@ mod tests {
       Arc::new(ModuleSpecifier::from_directory_path(&cwd).unwrap()),
       Some(import_map),
       vec![ResolverWorkspaceJsrPackage {
+        is_patch: false,
         base: ModuleSpecifier::from_directory_path(cwd.join("jsr-package"))
           .unwrap(),
         name: "@denotest/example".to_string(),

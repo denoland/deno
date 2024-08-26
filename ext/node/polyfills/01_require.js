@@ -92,7 +92,7 @@ import fsPromises from "node:fs/promises";
 import http from "node:http";
 import http2 from "node:http2";
 import https from "node:https";
-import inspector from "ext:deno_node/inspector.ts";
+import inspector from "node:inspector";
 import internalCp from "ext:deno_node/internal/child_process.ts";
 import internalCryptoCertificate from "ext:deno_node/internal/crypto/certificate.ts";
 import internalCryptoCipher from "ext:deno_node/internal/crypto/cipher.ts";
@@ -151,7 +151,7 @@ import util from "node:util";
 import v8 from "node:v8";
 import vm from "node:vm";
 import workerThreads from "node:worker_threads";
-import wasi from "ext:deno_node/wasi.ts";
+import wasi from "node:wasi";
 import zlib from "node:zlib";
 
 const nativeModuleExports = ObjectCreate(null);

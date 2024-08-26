@@ -4007,14 +4007,8 @@
       "owning-type-message-port.any.worker.html": false,
       "owning-type.any.html": false,
       "owning-type.any.worker.html": false,
-      "from.any.html": [
-        "ReadableStream.from ignores a null @@asyncIterator",
-        "ReadableStream.from accepts a string"
-      ],
-      "from.any.worker.html": [
-        "ReadableStream.from ignores a null @@asyncIterator",
-        "ReadableStream.from accepts a string"
-      ]
+      "from.any.html": true,
+      "from.any.worker.html": true
     },
     "transform-streams": {
       "backpressure.any.html": true,
@@ -12915,8 +12909,18 @@
       "Component: hash Left: {\"hash\":\"a\"} Right: {\"hash\":\"b\"}"
     ],
     "urlpattern.any.html": [
+      "Pattern: [{\"pathname\":\"/foo/:bar?\"}] Inputs: [{\"pathname\":\"/foo\"}]",
+      "Pattern: [{\"pathname\":\"/foo/:bar*\"}] Inputs: [{\"pathname\":\"/foo\"}]",
+      "Pattern: [{\"pathname\":\"/foo/(.*)?\"}] Inputs: [{\"pathname\":\"/foo\"}]",
+      "Pattern: [{\"pathname\":\"/foo/*?\"}] Inputs: [{\"pathname\":\"/foo\"}]",
+      "Pattern: [{\"pathname\":\"/foo/(.*)*\"}] Inputs: [{\"pathname\":\"/foo\"}]",
+      "Pattern: [{\"pathname\":\"/foo/**\"}] Inputs: [{\"pathname\":\"/foo\"}]",
+      "Pattern: [\"https://(sub.)?example.com/foo\"] Inputs: [\"https://example.com/foo\"]",
+      "Pattern: [\"https://(sub(?:.))?example.com/foo\"] Inputs: [\"https://example.com/foo\"]",
+      "Pattern: [\"data\\\\:text/javascript,let x = 100/:tens?5;\"] Inputs: [\"data:text/javascript,let x = 100/5;\"]",
       "Pattern: [{\"hostname\":\"bad\\\\:hostname\"}] Inputs: undefined",
       "Pattern: [] Inputs: []",
+      "Pattern: [{\"pathname\":\"*{}**?\"}] Inputs: [{\"pathname\":\"foobar\"}]",
       "Pattern: [{\"pathname\":\"/foo/bar\"},{\"ignoreCase\":true}] Inputs: [{\"pathname\":\"/FOO/BAR\"}]",
       "Pattern: [\"https://example.com:8080/foo?bar#baz\",{\"ignoreCase\":true}] Inputs: [{\"pathname\":\"/FOO\",\"search\":\"BAR\",\"hash\":\"BAZ\",\"baseURL\":\"https://example.com:8080\"}]",
       "Pattern: [{\"pathname\":\"/([[a-z]--a])\"}] Inputs: [{\"pathname\":\"/a\"}]",
@@ -12925,8 +12929,18 @@
       "Pattern: [{\"pathname\":\"/([\\\\d&&[0-1]])\"}] Inputs: [{\"pathname\":\"/3\"}]"
     ],
     "urlpattern.any.worker.html": [
+      "Pattern: [{\"pathname\":\"/foo/:bar?\"}] Inputs: [{\"pathname\":\"/foo\"}]",
+      "Pattern: [{\"pathname\":\"/foo/:bar*\"}] Inputs: [{\"pathname\":\"/foo\"}]",
+      "Pattern: [{\"pathname\":\"/foo/(.*)?\"}] Inputs: [{\"pathname\":\"/foo\"}]",
+      "Pattern: [{\"pathname\":\"/foo/*?\"}] Inputs: [{\"pathname\":\"/foo\"}]",
+      "Pattern: [{\"pathname\":\"/foo/(.*)*\"}] Inputs: [{\"pathname\":\"/foo\"}]",
+      "Pattern: [{\"pathname\":\"/foo/**\"}] Inputs: [{\"pathname\":\"/foo\"}]",
+      "Pattern: [\"https://(sub.)?example.com/foo\"] Inputs: [\"https://example.com/foo\"]",
+      "Pattern: [\"https://(sub(?:.))?example.com/foo\"] Inputs: [\"https://example.com/foo\"]",
+      "Pattern: [\"data\\\\:text/javascript,let x = 100/:tens?5;\"] Inputs: [\"data:text/javascript,let x = 100/5;\"]",
       "Pattern: [{\"hostname\":\"bad\\\\:hostname\"}] Inputs: undefined",
       "Pattern: [] Inputs: []",
+      "Pattern: [{\"pathname\":\"*{}**?\"}] Inputs: [{\"pathname\":\"foobar\"}]",
       "Pattern: [{\"pathname\":\"/foo/bar\"},{\"ignoreCase\":true}] Inputs: [{\"pathname\":\"/FOO/BAR\"}]",
       "Pattern: [\"https://example.com:8080/foo?bar#baz\",{\"ignoreCase\":true}] Inputs: [{\"pathname\":\"/FOO\",\"search\":\"BAR\",\"hash\":\"BAZ\",\"baseURL\":\"https://example.com:8080\"}]",
       "Pattern: [{\"pathname\":\"/([[a-z]--a])\"}] Inputs: [{\"pathname\":\"/a\"}]",
@@ -12935,8 +12949,18 @@
       "Pattern: [{\"pathname\":\"/([\\\\d&&[0-1]])\"}] Inputs: [{\"pathname\":\"/3\"}]"
     ],
     "urlpattern.https.any.html": [
+      "Pattern: [{\"pathname\":\"/foo/:bar?\"}] Inputs: [{\"pathname\":\"/foo\"}]",
+      "Pattern: [{\"pathname\":\"/foo/:bar*\"}] Inputs: [{\"pathname\":\"/foo\"}]",
+      "Pattern: [{\"pathname\":\"/foo/(.*)?\"}] Inputs: [{\"pathname\":\"/foo\"}]",
+      "Pattern: [{\"pathname\":\"/foo/*?\"}] Inputs: [{\"pathname\":\"/foo\"}]",
+      "Pattern: [{\"pathname\":\"/foo/(.*)*\"}] Inputs: [{\"pathname\":\"/foo\"}]",
+      "Pattern: [{\"pathname\":\"/foo/**\"}] Inputs: [{\"pathname\":\"/foo\"}]",
+      "Pattern: [\"https://(sub.)?example.com/foo\"] Inputs: [\"https://example.com/foo\"]",
+      "Pattern: [\"https://(sub(?:.))?example.com/foo\"] Inputs: [\"https://example.com/foo\"]",
+      "Pattern: [\"data\\\\:text/javascript,let x = 100/:tens?5;\"] Inputs: [\"data:text/javascript,let x = 100/5;\"]",
       "Pattern: [{\"hostname\":\"bad\\\\:hostname\"}] Inputs: undefined",
       "Pattern: [] Inputs: []",
+      "Pattern: [{\"pathname\":\"*{}**?\"}] Inputs: [{\"pathname\":\"foobar\"}]",
       "Pattern: [{\"pathname\":\"/foo/bar\"},{\"ignoreCase\":true}] Inputs: [{\"pathname\":\"/FOO/BAR\"}]",
       "Pattern: [\"https://example.com:8080/foo?bar#baz\",{\"ignoreCase\":true}] Inputs: [{\"pathname\":\"/FOO\",\"search\":\"BAR\",\"hash\":\"BAZ\",\"baseURL\":\"https://example.com:8080\"}]",
       "Pattern: [{\"pathname\":\"/([[a-z]--a])\"}] Inputs: [{\"pathname\":\"/a\"}]",
@@ -12945,8 +12969,18 @@
       "Pattern: [{\"pathname\":\"/([\\\\d&&[0-1]])\"}] Inputs: [{\"pathname\":\"/3\"}]"
     ],
     "urlpattern.https.any.worker.html": [
+      "Pattern: [{\"pathname\":\"/foo/:bar?\"}] Inputs: [{\"pathname\":\"/foo\"}]",
+      "Pattern: [{\"pathname\":\"/foo/:bar*\"}] Inputs: [{\"pathname\":\"/foo\"}]",
+      "Pattern: [{\"pathname\":\"/foo/(.*)?\"}] Inputs: [{\"pathname\":\"/foo\"}]",
+      "Pattern: [{\"pathname\":\"/foo/*?\"}] Inputs: [{\"pathname\":\"/foo\"}]",
+      "Pattern: [{\"pathname\":\"/foo/(.*)*\"}] Inputs: [{\"pathname\":\"/foo\"}]",
+      "Pattern: [{\"pathname\":\"/foo/**\"}] Inputs: [{\"pathname\":\"/foo\"}]",
+      "Pattern: [\"https://(sub.)?example.com/foo\"] Inputs: [\"https://example.com/foo\"]",
+      "Pattern: [\"https://(sub(?:.))?example.com/foo\"] Inputs: [\"https://example.com/foo\"]",
+      "Pattern: [\"data\\\\:text/javascript,let x = 100/:tens?5;\"] Inputs: [\"data:text/javascript,let x = 100/5;\"]",
       "Pattern: [{\"hostname\":\"bad\\\\:hostname\"}] Inputs: undefined",
       "Pattern: [] Inputs: []",
+      "Pattern: [{\"pathname\":\"*{}**?\"}] Inputs: [{\"pathname\":\"foobar\"}]",
       "Pattern: [{\"pathname\":\"/foo/bar\"},{\"ignoreCase\":true}] Inputs: [{\"pathname\":\"/FOO/BAR\"}]",
       "Pattern: [\"https://example.com:8080/foo?bar#baz\",{\"ignoreCase\":true}] Inputs: [{\"pathname\":\"/FOO\",\"search\":\"BAR\",\"hash\":\"BAZ\",\"baseURL\":\"https://example.com:8080\"}]",
       "Pattern: [{\"pathname\":\"/([[a-z]--a])\"}] Inputs: [{\"pathname\":\"/a\"}]",

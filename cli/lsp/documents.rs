@@ -1176,11 +1176,10 @@ impl Documents {
   pub fn get_or_load(
     &self,
     specifier: &ModuleSpecifier,
-    referrer: &ModuleSpecifier,
+    file_referrer: Option<&ModuleSpecifier>,
   ) -> Option<Arc<Document>> {
-    let file_referrer = self.get_file_referrer(referrer);
     let specifier =
-      self.resolve_document_specifier(specifier, file_referrer.as_deref())?;
+      self.resolve_document_specifier(specifier, file_referrer)?;
     if let Some(document) = self.open_docs.get(&specifier) {
       Some(document.clone())
     } else {
@@ -1189,7 +1188,7 @@ impl Documents {
         &self.resolver,
         &self.config,
         &self.cache,
-        file_referrer.as_deref(),
+        file_referrer,
       )
     }
   }
@@ -1460,7 +1459,7 @@ impl Documents {
       specifier = s;
       media_type = Some(mt);
     }
-    let Some(doc) = self.get_or_load(&specifier, referrer) else {
+    let Some(doc) = self.get_or_load(&specifier, file_referrer) else {
       let media_type =
         media_type.unwrap_or_else(|| MediaType::from_specifier(&specifier));
       return Some((specifier, media_type));
@@ -1604,7 +1603,7 @@ mod tests {
   async fn setup() -> (Documents, LspCache, TempDir) {
     let temp_dir = TempDir::new();
     temp_dir.create_dir_all(".deno_dir");
-    let cache = LspCache::new(Some(temp_dir.uri().join(".deno_dir").unwrap()));
+    let cache = LspCache::new(Some(temp_dir.url().join(".deno_dir").unwrap()));
     let config = Config::default();
     let resolver =
       Arc::new(LspResolver::from_config(&config, &cache, None).await);
@@ -1687,7 +1686,7 @@ console.log(b, "hello deno");
     // but we'll guard against it anyway
     let (mut documents, _, temp_dir) = setup().await;
     let file_path = temp_dir.path().join("file.ts");
-    let file_specifier = temp_dir.uri().join("file.ts").unwrap();
+    let file_specifier = temp_dir.url().join("file.ts").unwrap();
     file_path.write("");
 
     // open the document
@@ -1715,18 +1714,18 @@ console.log(b, "hello deno");
     let (mut documents, cache, temp_dir) = setup().await;
 
     let file1_path = temp_dir.path().join("file1.ts");
-    let file1_specifier = temp_dir.uri().join("file1.ts").unwrap();
+    let file1_specifier = temp_dir.url().join("file1.ts").unwrap();
     fs::write(&file1_path, "").unwrap();
 
     let file2_path = temp_dir.path().join("file2.ts");
-    let file2_specifier = temp_dir.uri().join("file2.ts").unwrap();
+    let file2_specifier = temp_dir.url().join("file2.ts").unwrap();
     fs::write(&file2_path, "").unwrap();
 
     let file3_path = temp_dir.path().join("file3.ts");
-    let file3_specifier = temp_dir.uri().join("file3.ts").unwrap();
+    let file3_specifier = temp_dir.url().join("file3.ts").unwrap();
     fs::write(&file3_path, "").unwrap();
 
-    let mut config = Config::new_with_roots([temp_dir.uri()]);
+    let mut config = Config::new_with_roots([temp_dir.url()]);
     let workspace_settings =
       serde_json::from_str(r#"{ "enable": true }"#).unwrap();
     config.set_workspace_settings(workspace_settings, vec![]);

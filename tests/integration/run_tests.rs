@@ -4343,6 +4343,32 @@ fn broken_stdout() {
   assert!(!stderr.contains("panic"));
 }
 
+#[test]
+fn broken_stdout_repl() {
+  let (reader, writer) = os_pipe::pipe().unwrap();
+  // drop the reader to create a broken pipe
+  drop(reader);
+
+  let output = util::deno_cmd()
+    .current_dir(util::testdata_path())
+    .arg("repl")
+    .stdout(writer)
+    .stderr_piped()
+    .spawn()
+    .unwrap()
+    .wait_with_output()
+    .unwrap();
+
+  assert!(!output.status.success());
+  let stderr = std::str::from_utf8(output.stderr.as_ref()).unwrap().trim();
+  if cfg!(windows) {
+    assert_contains!(stderr, "The pipe is being closed. (os error 232)");
+  } else {
+    assert_contains!(stderr, "Broken pipe (os error 32)");
+  }
+  assert_not_contains!(stderr, "panic");
+}
+
 itest!(error_cause {
   args: "run run/error_cause.ts",
   output: "run/error_cause.ts.out",

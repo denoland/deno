@@ -12,6 +12,7 @@ use deno_core::serde_json::json;
 use deno_core::serde_json::Value;
 use deno_core::unsync::spawn;
 use deno_core::url;
+use deno_core::url::Url;
 use deno_core::ModuleSpecifier;
 use deno_graph::GraphKind;
 use deno_graph::Resolution;
@@ -85,6 +86,8 @@ use super::tsc::ChangeKind;
 use super::tsc::GetCompletionDetailsArgs;
 use super::tsc::TsServer;
 use super::urls;
+use super::urls::uri_to_url;
+use super::urls::url_to_uri;
 use crate::args::create_default_npmrc;
 use crate::args::get_root_cert_store;
 use crate::args::has_flag_env_var;
@@ -691,7 +694,7 @@ impl Inner {
 
     let version = format!(
       "{} ({}, {})",
-      crate::version::deno(),
+      crate::version::DENO_VERSION_INFO.deno,
       env!("PROFILE"),
       env!("TARGET")
     );
@@ -728,14 +731,17 @@ impl Inner {
       }
       // rootUri is deprecated by the LSP spec. If it's specified, merge it into
       // workspace_folders.
+      #[allow(deprecated)]
       if let Some(root_uri) = params.root_uri {
         if !workspace_folders.iter().any(|(_, f)| f.uri == root_uri) {
-          let name = root_uri.path_segments().and_then(|s| s.last());
+          let root_url =
+            self.url_map.normalize_url(&root_uri, LspUrlKind::Folder);
+          let name = root_url.path_segments().and_then(|s| s.last());
           let name = name.unwrap_or_default().to_string();
           workspace_folders.insert(
             0,
             (
-              self.url_map.normalize_url(&root_uri, LspUrlKind::Folder),
+              root_url,
               WorkspaceFolder {
                 uri: root_uri,
                 name,
@@ -956,31 +962,27 @@ impl Inner {
       .refresh(&self.config.settings, &self.workspace_files, &file_fetcher)
       .await;
     for config_file in self.config.tree.config_files() {
-      if let Ok((compiler_options, _)) = config_file.to_compiler_options() {
-        if let Some(compiler_options_obj) = compiler_options.as_object() {
-          if let Some(jsx_import_source) =
-            compiler_options_obj.get("jsxImportSource")
-          {
-            if let Some(jsx_import_source) = jsx_import_source.as_str() {
-              let specifiers = vec![Url::parse(&format!(
-                "data:application/typescript;base64,{}",
-                base64::engine::general_purpose::STANDARD
-                  .encode(format!("import '{jsx_import_source}/jsx-runtime';"))
-              ))
-              .unwrap()];
-              let referrer = config_file.specifier.clone();
-              self.task_queue.queue_task(Box::new(|ls: LanguageServer| {
-                spawn(async move {
-                  if let Err(err) = ls.cache(specifiers, referrer, false).await
-                  {
-                    lsp_warn!("{:#}", err);
-                  }
-                });
-              }));
+      (|| {
+        let compiler_options = config_file.to_compiler_options().ok()?.0;
+        let compiler_options_obj = compiler_options.as_object()?;
+        let jsx_import_source = compiler_options_obj.get("jsxImportSource")?;
+        let jsx_import_source = jsx_import_source.as_str()?;
+        let referrer = config_file.specifier.clone();
+        let specifier = Url::parse(&format!(
+          "data:application/typescript;base64,{}",
+          base64::engine::general_purpose::STANDARD
+            .encode(format!("import '{jsx_import_source}/jsx-runtime';"))
+        ))
+        .unwrap();
+        self.task_queue.queue_task(Box::new(|ls: LanguageServer| {
+          spawn(async move {
+            if let Err(err) = ls.cache(vec![specifier], referrer, false).await {
+              lsp_warn!("{:#}", err);
             }
-          }
-        }
-      }
+          });
+        }));
+        Some(())
+      })();
     }
   }
 
@@ -1012,7 +1014,10 @@ impl Inner {
 
   async fn did_open(&mut self, params: DidOpenTextDocumentParams) {
     let mark = self.performance.mark_with_args("lsp.did_open", &params);
-    if params.text_document.uri.scheme() == "deno" {
+    let Some(scheme) = params.text_document.uri.scheme() else {
+      return;
+    };
+    if scheme.as_str() == "deno" {
       // we can ignore virtual text documents opening, as they don't need to
       // be tracked in memory, as they are static assets that won't change
       // already managed by the language service
@@ -1031,13 +1036,11 @@ impl Inner {
       lsp_warn!(
         "Unsupported language id \"{}\" received for document \"{}\".",
         params.text_document.language_id,
-        params.text_document.uri
+        params.text_document.uri.as_str()
       );
     }
-    let file_referrer = (self
-      .documents
-      .is_valid_file_referrer(&params.text_document.uri))
-    .then(|| params.text_document.uri.clone());
+    let file_referrer = Some(uri_to_url(&params.text_document.uri))
+      .filter(|s| self.documents.is_valid_file_referrer(s));
     let specifier = self
       .url_map
       .normalize_url(&params.text_document.uri, LspUrlKind::File);
@@ -1134,8 +1137,10 @@ impl Inner {
 
   async fn did_close(&mut self, params: DidCloseTextDocumentParams) {
     let mark = self.performance.mark_with_args("lsp.did_close", &params);
-    self.diagnostics_state.clear(&params.text_document.uri);
-    if params.text_document.uri.scheme() == "deno" {
+    let Some(scheme) = params.text_document.uri.scheme() else {
+      return;
+    };
+    if scheme.as_str() == "deno" {
       // we can ignore virtual text documents closing, as they don't need to
       // be tracked in memory, as they are static assets that won't change
       // already managed by the language service
@@ -1144,6 +1149,7 @@ impl Inner {
     let specifier = self
       .url_map
       .normalize_url(&params.text_document.uri, LspUrlKind::File);
+    self.diagnostics_state.clear(&specifier);
     if self.is_diagnosable(&specifier) {
       self.refresh_npm_specifiers().await;
       self.diagnostics_server.invalidate(&[specifier.clone()]);
@@ -1215,7 +1221,7 @@ impl Inner {
             _ => return None,
           };
           Some(lsp_custom::DenoConfigurationChangeEvent {
-            scope_uri: t.0.clone(),
+            scope_uri: url_to_uri(t.0),
             file_uri: e.uri.clone(),
             typ: lsp_custom::DenoConfigurationChangeType::from_file_change_type(
               e.typ,
@@ -1250,7 +1256,7 @@ impl Inner {
             _ => return None,
           };
           Some(lsp_custom::DenoConfigurationChangeEvent {
-            scope_uri: t.0.clone(),
+            scope_uri: url_to_uri(t.0),
             file_uri: e.uri.clone(),
             typ: lsp_custom::DenoConfigurationChangeType::from_file_change_type(
               e.typ,
@@ -1316,10 +1322,8 @@ impl Inner {
     &self,
     params: DocumentFormattingParams,
   ) -> LspResult<Option<Vec<TextEdit>>> {
-    let file_referrer = (self
-      .documents
-      .is_valid_file_referrer(&params.text_document.uri))
-    .then(|| params.text_document.uri.clone());
+    let file_referrer = Some(uri_to_url(&params.text_document.uri))
+      .filter(|s| self.documents.is_valid_file_referrer(s));
     let mut specifier = self
       .url_map
       .normalize_url(&params.text_document.uri, LspUrlKind::File);
@@ -1333,8 +1337,9 @@ impl Inner {
     {
       return Ok(None);
     }
-    let document =
-      file_referrer.and_then(|r| self.documents.get_or_load(&specifier, &r));
+    let document = self
+      .documents
+      .get_or_load(&specifier, file_referrer.as_ref());
     let Some(document) = document else {
       return Ok(None);
     };
@@ -1342,9 +1347,9 @@ impl Inner {
     // counterparts, but for formatting we want to favour the file URL.
     // TODO(nayeemrmn): Implement `Document::file_resource_path()` or similar.
     if specifier.scheme() != "file"
-      && params.text_document.uri.scheme() == "file"
+      && params.text_document.uri.scheme().map(|s| s.as_str()) == Some("file")
     {
-      specifier = params.text_document.uri.clone();
+      specifier = uri_to_url(&params.text_document.uri);
     }
     let file_path = specifier_to_file_path(&specifier).map_err(|err| {
       error!("{:#}", err);
@@ -1370,6 +1375,12 @@ impl Inner {
       let unstable_options = UnstableFmtOptions {
         css: maybe_workspace
           .map(|w| w.has_unstable("fmt-css"))
+          .unwrap_or(false),
+        html: maybe_workspace
+          .map(|w| w.has_unstable("fmt-html"))
+          .unwrap_or(false),
+        component: maybe_workspace
+          .map(|w| w.has_unstable("fmt-component"))
           .unwrap_or(false),
         yaml: maybe_workspace
           .map(|w| w.has_unstable("fmt-yaml"))
@@ -1448,7 +1459,7 @@ impl Inner {
     {
       let dep_doc = dep
         .get_code()
-        .and_then(|s| self.documents.get_or_load(s, &specifier));
+        .and_then(|s| self.documents.get_or_load(s, file_referrer));
       let dep_maybe_types_dependency =
         dep_doc.as_ref().map(|d| d.maybe_types_dependency());
       let value = match (dep.maybe_code.is_none(), dep.maybe_type.is_none(), &dep_maybe_types_dependency) {
@@ -1660,9 +1671,9 @@ impl Inner {
             if diagnostic.code
               == Some(NumberOrString::String("no-cache".to_string()))
               || diagnostic.code
-                == Some(NumberOrString::String("no-cache-jsr".to_string()))
+                == Some(NumberOrString::String("not-installed-jsr".to_string()))
               || diagnostic.code
-                == Some(NumberOrString::String("no-cache-npm".to_string()))
+                == Some(NumberOrString::String("not-installed-npm".to_string()))
             {
               includes_no_cache = true;
             }
@@ -2867,7 +2878,7 @@ impl Inner {
     let mut changes = vec![];
     for rename in params.files {
       let old_specifier = self.url_map.normalize_url(
-        &resolve_url(&rename.old_uri).unwrap(),
+        &url_to_uri(&resolve_url(&rename.old_uri).unwrap()),
         LspUrlKind::File,
       );
       let options = self
@@ -2893,7 +2904,7 @@ impl Inner {
             self.snapshot(),
             old_specifier,
             self.url_map.normalize_url(
-              &resolve_url(&rename.new_uri).unwrap(),
+              &url_to_uri(&resolve_url(&rename.new_uri).unwrap()),
               LspUrlKind::File,
             ),
             format_code_settings,
@@ -3491,19 +3502,20 @@ impl Inner {
     }
 
     let mut config_events = vec![];
-    for (scope_uri, config_data) in self.config.tree.data_by_scope().iter() {
+    for (scope_url, config_data) in self.config.tree.data_by_scope().iter() {
+      let scope_uri = url_to_uri(scope_url);
       if let Some(config_file) = config_data.maybe_deno_json() {
         config_events.push(lsp_custom::DenoConfigurationChangeEvent {
           scope_uri: scope_uri.clone(),
-          file_uri: config_file.specifier.clone(),
+          file_uri: url_to_uri(&config_file.specifier),
           typ: lsp_custom::DenoConfigurationChangeType::Added,
           configuration_type: lsp_custom::DenoConfigurationType::DenoJson,
         });
       }
       if let Some(package_json) = config_data.maybe_pkg_json() {
         config_events.push(lsp_custom::DenoConfigurationChangeEvent {
-          scope_uri: scope_uri.clone(),
-          file_uri: package_json.specifier(),
+          scope_uri,
+          file_uri: url_to_uri(&package_json.specifier()),
           typ: lsp_custom::DenoConfigurationChangeType::Added,
           configuration_type: lsp_custom::DenoConfigurationType::PackageJson,
         });
@@ -3526,19 +3538,22 @@ impl Inner {
     force_global_cache: bool,
   ) -> Result<PrepareCacheResult, AnyError> {
     let config_data = self.config.tree.data_for_specifier(&referrer);
+    let byonm = config_data.map(|d| d.byonm).unwrap_or(false);
     let mut roots = if !specifiers.is_empty() {
       specifiers
     } else {
       vec![referrer.clone()]
     };
 
-    // always include the npm packages since resolution of one npm package
-    // might affect the resolution of other npm packages
-    if let Some(npm_reqs) = self
+    if byonm {
+      roots.retain(|s| s.scheme() != "npm");
+    } else if let Some(npm_reqs) = self
       .documents
       .npm_reqs_by_scope()
       .get(&config_data.map(|d| d.scope.as_ref().clone()))
     {
+      // always include the npm packages since resolution of one npm package
+      // might affect the resolution of other npm packages
       roots.extend(
         npm_reqs
           .iter()
@@ -3709,7 +3724,7 @@ impl Inner {
           result.push(TaskDefinition {
             name: name.clone(),
             command: command.to_string(),
-            source_uri: config_file.specifier.clone(),
+            source_uri: url_to_uri(&config_file.specifier),
           });
         }
       };
@@ -3720,7 +3735,7 @@ impl Inner {
           result.push(TaskDefinition {
             name: name.clone(),
             command: command.clone(),
-            source_uri: package_json.specifier(),
+            source_uri: url_to_uri(&package_json.specifier()),
           });
         }
       }
@@ -3950,11 +3965,11 @@ mod tests {
     temp_dir.write("root4_parent/root4/main.ts", ""); // yes, enabled
 
     let mut config = Config::new_with_roots(vec![
-      temp_dir.uri().join("root1/").unwrap(),
-      temp_dir.uri().join("root2/").unwrap(),
-      temp_dir.uri().join("root2/root2.1/").unwrap(),
-      temp_dir.uri().join("root3/").unwrap(),
-      temp_dir.uri().join("root4_parent/root4/").unwrap(),
+      temp_dir.url().join("root1/").unwrap(),
+      temp_dir.url().join("root2/").unwrap(),
+      temp_dir.url().join("root2/root2.1/").unwrap(),
+      temp_dir.url().join("root3/").unwrap(),
+      temp_dir.url().join("root4_parent/root4/").unwrap(),
     ]);
     config.set_client_capabilities(ClientCapabilities {
       workspace: Some(Default::default()),
@@ -3964,14 +3979,14 @@ mod tests {
       Default::default(),
       vec![
         (
-          temp_dir.uri().join("root1/").unwrap(),
+          temp_dir.url().join("root1/").unwrap(),
           WorkspaceSettings {
             enable: Some(true),
             ..Default::default()
           },
         ),
         (
-          temp_dir.uri().join("root2/").unwrap(),
+          temp_dir.url().join("root2/").unwrap(),
           WorkspaceSettings {
             enable: Some(true),
             enable_paths: Some(vec![
@@ -3983,21 +3998,21 @@ mod tests {
           },
         ),
         (
-          temp_dir.uri().join("root2/root2.1/").unwrap(),
+          temp_dir.url().join("root2/root2.1/").unwrap(),
           WorkspaceSettings {
             enable: Some(true),
             ..Default::default()
           },
         ),
         (
-          temp_dir.uri().join("root3/").unwrap(),
+          temp_dir.url().join("root3/").unwrap(),
           WorkspaceSettings {
             enable: Some(false),
             ..Default::default()
           },
         ),
         (
-          temp_dir.uri().join("root4_parent/root4/").unwrap(),
+          temp_dir.url().join("root4_parent/root4/").unwrap(),
           WorkspaceSettings {
             enable: Some(true),
             ..Default::default()
@@ -4011,22 +4026,22 @@ mod tests {
     assert_eq!(
       json!(workspace_files),
       json!([
-        temp_dir.uri().join("root4_parent/deno.json").unwrap(),
-        temp_dir.uri().join("root1/mod0.ts").unwrap(),
-        temp_dir.uri().join("root1/mod1.js").unwrap(),
-        temp_dir.uri().join("root1/mod2.tsx").unwrap(),
-        temp_dir.uri().join("root1/mod3.d.ts").unwrap(),
-        temp_dir.uri().join("root1/mod4.jsx").unwrap(),
-        temp_dir.uri().join("root1/mod5.mjs").unwrap(),
-        temp_dir.uri().join("root1/mod6.mts").unwrap(),
-        temp_dir.uri().join("root1/mod7.d.mts").unwrap(),
-        temp_dir.uri().join("root1/mod8.json").unwrap(),
-        temp_dir.uri().join("root1/mod9.jsonc").unwrap(),
-        temp_dir.uri().join("root2/file1.ts").unwrap(),
-        temp_dir.uri().join("root4_parent/root4/main.ts").unwrap(),
-        temp_dir.uri().join("root1/folder/mod.ts").unwrap(),
-        temp_dir.uri().join("root2/folder/main.ts").unwrap(),
-        temp_dir.uri().join("root2/root2.1/main.ts").unwrap(),
+        temp_dir.url().join("root4_parent/deno.json").unwrap(),
+        temp_dir.url().join("root1/mod0.ts").unwrap(),
+        temp_dir.url().join("root1/mod1.js").unwrap(),
+        temp_dir.url().join("root1/mod2.tsx").unwrap(),
+        temp_dir.url().join("root1/mod3.d.ts").unwrap(),
+        temp_dir.url().join("root1/mod4.jsx").unwrap(),
+        temp_dir.url().join("root1/mod5.mjs").unwrap(),
+        temp_dir.url().join("root1/mod6.mts").unwrap(),
+        temp_dir.url().join("root1/mod7.d.mts").unwrap(),
+        temp_dir.url().join("root1/mod8.json").unwrap(),
+        temp_dir.url().join("root1/mod9.jsonc").unwrap(),
+        temp_dir.url().join("root2/file1.ts").unwrap(),
+        temp_dir.url().join("root4_parent/root4/main.ts").unwrap(),
+        temp_dir.url().join("root1/folder/mod.ts").unwrap(),
+        temp_dir.url().join("root2/folder/main.ts").unwrap(),
+        temp_dir.url().join("root2/root2.1/main.ts").unwrap(),
       ])
     );
   }

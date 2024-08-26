@@ -1,0 +1,18 @@
+{
+  "tests": {
+    "assertion": {
+      "steps": [{
+        "args": "run assertion.ts",
+        "output": "assertion.out"
+      }, {
+        // should output the same because the emit won't be cached
+        "args": "run assertion.ts",
+        "output": "assertion.out"
+      }]
+    },
+    "with": {
+      "args": "run with.ts",
+      "output": "with.out"
+    }
+  }
+}

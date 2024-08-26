@@ -2,6 +2,9 @@
 
 use serde::Serialize;
 
+use crate::tools::test::TestFailureFormatOptions;
+use crate::version;
+
 use super::*;
 
 pub trait BenchReporter {
@@ -25,7 +28,11 @@ struct JsonReporterOutput {
 impl Default for JsonReporterOutput {
   fn default() -> Self {
     Self {
-      runtime: format!("{} {}", get_user_agent(), env!("TARGET")),
+      runtime: format!(
+        "{} {}",
+        version::DENO_VERSION_INFO.user_agent,
+        env!("TARGET")
+      ),
       cpu: mitata::cpu::name(),
       benches: vec![],
     }
@@ -145,12 +152,15 @@ impl BenchReporter for ConsoleReporter {
       .compare_exchange(true, false, Ordering::SeqCst, Ordering::SeqCst)
       .is_ok()
     {
-      println!("{}", colors::gray(format!("cpu: {}", mitata::cpu::name())));
+      println!(
+        "{}",
+        colors::gray(format!("    CPU | {}", mitata::cpu::name()))
+      );
       println!(
         "{}\n",
         colors::gray(format!(
-          "runtime: deno {} ({})",
-          crate::version::deno(),
+          "Runtime | Deno {} ({})",
+          crate::version::DENO_VERSION_INFO.deno,
           env!("TARGET")
         ))
       );
@@ -159,7 +169,7 @@ impl BenchReporter for ConsoleReporter {
     }
 
     println!(
-      "{}\n{}\n{}",
+      "{}\n\n{}\n{}",
       colors::gray(&plan.origin),
       mitata::reporter::header(options),
       mitata::reporter::br(options)
@@ -237,7 +247,10 @@ impl BenchReporter for ConsoleReporter {
             &desc.name,
             &mitata::reporter::Error {
               stack: None,
-              message: format_test_error(js_error),
+              message: format_test_error(
+                js_error,
+                &TestFailureFormatOptions::default()
+              ),
             },
             options
           )
@@ -292,7 +305,7 @@ impl BenchReporter for ConsoleReporter {
     println!(
       "{}: {}",
       colors::red_bold("error"),
-      format_test_error(&error)
+      format_test_error(&error, &TestFailureFormatOptions::default())
     );
     println!("This error was not caught from a benchmark and caused the bench runner to fail on the referenced module.");
     println!("It most likely originated from a dangling promise, event/timeout handler or top-level code.");

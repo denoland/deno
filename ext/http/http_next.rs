@@ -466,7 +466,7 @@ pub fn op_http_set_response_header(
   response_parts.headers.append(name, value);
 }
 
-#[op2]
+#[op2(fast)]
 pub fn op_http_set_response_headers(
   scope: &mut v8::HandleScope,
   external: *const c_void,

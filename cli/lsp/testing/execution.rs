@@ -12,9 +12,12 @@ use crate::lsp::client::Client;
 use crate::lsp::client::TestingNotification;
 use crate::lsp::config;
 use crate::lsp::logging::lsp_log;
+use crate::lsp::urls::uri_to_url;
+use crate::lsp::urls::url_to_uri;
 use crate::tools::test;
 use crate::tools::test::create_test_event_channel;
 use crate::tools::test::FailFastTracker;
+use crate::tools::test::TestFailureFormatOptions;
 
 use deno_core::anyhow::anyhow;
 use deno_core::error::AnyError;
@@ -29,9 +32,11 @@ use deno_core::ModuleSpecifier;
 use deno_runtime::deno_permissions::Permissions;
 use deno_runtime::tokio_util::create_and_run_current_thread;
 use indexmap::IndexMap;
+use lsp_types::Uri;
 use std::collections::HashMap;
 use std::collections::HashSet;
 use std::num::NonZeroUsize;
+use std::str::FromStr;
 use std::sync::Arc;
 use std::time::Duration;
 use std::time::Instant;
@@ -52,12 +57,12 @@ fn as_queue_and_filters(
 
   if let Some(include) = &params.include {
     for item in include {
-      if let Some((test_definitions, _)) = tests.get(&item.text_document.uri) {
-        queue.insert(item.text_document.uri.clone());
+      let url = uri_to_url(&item.text_document.uri);
+      if let Some((test_definitions, _)) = tests.get(&url) {
+        queue.insert(url.clone());
         if let Some(id) = &item.id {
           if let Some(test) = test_definitions.get(id) {
-            let filter =
-              filters.entry(item.text_document.uri.clone()).or_default();
+            let filter = filters.entry(url).or_default();
             if let Some(include) = filter.include.as_mut() {
               include.insert(test.id.clone(), test.clone());
             } else {
@@ -74,19 +79,19 @@ fn as_queue_and_filters(
   }
 
   for item in &params.exclude {
-    if let Some((test_definitions, _)) = tests.get(&item.text_document.uri) {
+    let url = uri_to_url(&item.text_document.uri);
+    if let Some((test_definitions, _)) = tests.get(&url) {
       if let Some(id) = &item.id {
         // there is no way to exclude a test step
         if item.step_id.is_none() {
           if let Some(test) = test_definitions.get(id) {
-            let filter =
-              filters.entry(item.text_document.uri.clone()).or_default();
+            let filter = filters.entry(url.clone()).or_default();
             filter.exclude.insert(test.id.clone(), test.clone());
           }
         }
       } else {
         // the entire test module is excluded
-        queue.remove(&item.text_document.uri);
+        queue.remove(&url);
       }
     }
   }
@@ -192,7 +197,7 @@ impl TestRun {
           Vec::new()
         };
         lsp_custom::EnqueuedTestModule {
-          text_document: lsp::TextDocumentIdentifier { uri: s.clone() },
+          text_document: lsp::TextDocumentIdentifier { uri: url_to_uri(s) },
           ids,
         }
       })
@@ -522,7 +527,7 @@ impl LspTestDescription {
     &self,
     tests: &IndexMap<usize, LspTestDescription>,
   ) -> lsp_custom::TestIdentifier {
-    let uri = ModuleSpecifier::parse(&self.location().file_name).unwrap();
+    let uri = Uri::from_str(&self.location().file_name).unwrap();
     let static_id = self.static_id();
     let mut root_desc = self;
     while let Some(parent_id) = root_desc.parent_id() {
@@ -597,7 +602,7 @@ impl LspTestReporter {
         .send_test_notification(TestingNotification::Module(
           lsp_custom::TestModuleNotificationParams {
             text_document: lsp::TextDocumentIdentifier {
-              uri: test_module.specifier.clone(),
+              uri: url_to_uri(&test_module.specifier),
             },
             kind: lsp_custom::TestModuleNotificationKind::Insert,
             label: test_module.label(self.maybe_root_uri.as_ref()),
@@ -655,7 +660,10 @@ impl LspTestReporter {
         let desc = self.tests.get(&desc.id).unwrap();
         self.progress(lsp_custom::TestRunProgressMessage::Failed {
           test: desc.as_test_identifier(&self.tests),
-          messages: as_test_messages(failure.to_string(), false),
+          messages: as_test_messages(
+            failure.format(&TestFailureFormatOptions::default()),
+            false,
+          ),
           duration: Some(elapsed as u32),
         })
       }
@@ -675,7 +683,7 @@ impl LspTestReporter {
     let err_string = format!(
       "Uncaught error from {}: {}\nThis error was not caught from a test and caused the test runner to fail on the referenced module.\nIt most likely originated from a dangling promise, event/timeout handler or top-level code.",
       origin,
-      test::fmt::format_test_error(js_error)
+      test::fmt::format_test_error(js_error, &TestFailureFormatOptions::default())
     );
     let messages = as_test_messages(err_string, false);
     for desc in self.tests.values().filter(|d| d.origin() == origin) {
@@ -707,7 +715,7 @@ impl LspTestReporter {
         .send_test_notification(TestingNotification::Module(
           lsp_custom::TestModuleNotificationParams {
             text_document: lsp::TextDocumentIdentifier {
-              uri: test_module.specifier.clone(),
+              uri: url_to_uri(&test_module.specifier),
             },
             kind: lsp_custom::TestModuleNotificationKind::Insert,
             label: test_module.label(self.maybe_root_uri.as_ref()),
@@ -751,7 +759,10 @@ impl LspTestReporter {
       test::TestStepResult::Failed(failure) => {
         self.progress(lsp_custom::TestRunProgressMessage::Failed {
           test: desc.as_test_identifier(&self.tests),
-          messages: as_test_messages(failure.to_string(), false),
+          messages: as_test_messages(
+            failure.format(&TestFailureFormatOptions::default()),
+            false,
+          ),
           duration: Some(elapsed as u32),
         })
       }
@@ -789,14 +800,14 @@ mod tests {
       include: Some(vec![
         lsp_custom::TestIdentifier {
           text_document: lsp::TextDocumentIdentifier {
-            uri: specifier.clone(),
+            uri: url_to_uri(&specifier),
           },
           id: None,
           step_id: None,
         },
         lsp_custom::TestIdentifier {
           text_document: lsp::TextDocumentIdentifier {
-            uri: non_test_specifier.clone(),
+            uri: url_to_uri(&non_test_specifier),
           },
           id: None,
           step_id: None,
@@ -804,7 +815,7 @@ mod tests {
       ]),
       exclude: vec![lsp_custom::TestIdentifier {
         text_document: lsp::TextDocumentIdentifier {
-          uri: specifier.clone(),
+          uri: url_to_uri(&specifier),
         },
         id: Some(
           "69d9fe87f64f5b66cb8b631d4fd2064e8224b8715a049be54276c42189ff8f9f"

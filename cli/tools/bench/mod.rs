@@ -13,7 +13,6 @@ use crate::util::file_watcher;
 use crate::util::fs::collect_specifiers;
 use crate::util::path::is_script_ext;
 use crate::util::path::matches_pattern_or_exact_path;
-use crate::version::get_user_agent;
 use crate::worker::CliMainWorkerFactory;
 
 use deno_config::glob::WalkEntry;

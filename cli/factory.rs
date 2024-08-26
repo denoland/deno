@@ -158,7 +158,6 @@ impl<T> Deferred<T> {
 #[derive(Default)]
 struct CliFactoryServices {
   cli_options: Deferred<Arc<CliOptions>>,
-  deno_dir_provider: Deferred<Arc<DenoDirProvider>>,
   caches: Deferred<Arc<Caches>>,
   file_fetcher: Deferred<Arc<FileFetcher>>,
   global_http_cache: Deferred<Arc<GlobalHttpCache>>,
@@ -236,11 +235,7 @@ impl CliFactory {
   }
 
   pub fn deno_dir_provider(&self) -> Result<&Arc<DenoDirProvider>, AnyError> {
-    self.services.deno_dir_provider.get_or_try_init(|| {
-      Ok(Arc::new(DenoDirProvider::new(
-        self.cli_options()?.maybe_custom_root().clone(),
-      )))
-    })
+    Ok(&self.cli_options()?.deno_dir_provider)
   }
 
   pub fn deno_dir(&self) -> Result<&DenoDir, AnyError> {
@@ -358,7 +353,7 @@ impl CliFactory {
         let fs = self.fs();
         let cli_options = self.cli_options()?;
         // For `deno install` we want to force the managed resolver so it can set up `node_modules/` directory.
-        create_cli_npm_resolver(if cli_options.use_byonm() && !matches!(cli_options.sub_command(), DenoSubcommand::Install(_) | DenoSubcommand::Add(_)) {
+        create_cli_npm_resolver(if cli_options.use_byonm() && !matches!(cli_options.sub_command(), DenoSubcommand::Install(_) | DenoSubcommand::Add(_) | DenoSubcommand::Remove(_)) {
           CliNpmResolverCreateOptions::Byonm(CliNpmResolverByonmCreateOptions {
             fs: fs.clone(),
             root_node_modules_dir: Some(match cli_options.node_modules_dir_path() {
