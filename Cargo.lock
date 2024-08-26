@@ -752,6 +752,7 @@ dependencies = [
  "deno_lockfile",
  "deno_terminal 0.2.0",
  "deno_tls",
+ "deno_tower_lsp",
  "fastwebsockets",
  "file_test_runner",
  "flaky_test",
@@ -768,7 +769,6 @@ dependencies = [
  "serde",
  "test_server",
  "tokio",
- "tower-lsp",
  "trust-dns-client",
  "trust-dns-server",
  "url",
@@ -1178,6 +1178,7 @@ dependencies = [
  "deno_semver",
  "deno_task_shell",
  "deno_terminal 0.2.0",
+ "deno_tower_lsp",
  "dissimilar",
  "dotenvy",
  "dprint-plugin-json",
@@ -1244,7 +1245,7 @@ dependencies = [
  "thiserror",
  "tokio",
  "tokio-util",
- "tower-lsp",
+ "tracing",
  "twox-hash",
  "typed-arena",
  "uuid",
@@ -1255,6 +1256,17 @@ dependencies = [
  "zeromq",
  "zip",
  "zstd",
+]
+
+[[package]]
+name = "deno-tower-lsp-macros"
+version = "0.9.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "05d59a1cfd445fd86f63616127a434aabca000e03d963b01b03ce813520565b9"
+dependencies = [
+ "proc-macro2",
+ "quote",
+ "syn 2.0.72",
 ]
 
 [[package]]
@@ -2060,6 +2072,29 @@ dependencies = [
 ]
 
 [[package]]
+name = "deno_tower_lsp"
+version = "0.1.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "d7afb4d257c084fd889e8cf1ba3ad58db0002428c819cc7717815f996f97777a"
+dependencies = [
+ "async-trait",
+ "auto_impl",
+ "bytes",
+ "dashmap",
+ "deno-tower-lsp-macros",
+ "futures",
+ "httparse",
+ "lsp-types",
+ "memchr",
+ "serde",
+ "serde_json",
+ "tokio",
+ "tokio-util",
+ "tower",
+ "tracing",
+]
+
+[[package]]
 name = "deno_unsync"
 version = "0.4.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2482,9 +2517,9 @@ dependencies = [
 
 [[package]]
 name = "dprint-plugin-markdown"
-version = "0.17.6"
+version = "0.17.8"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "6ef42762177b1a74b52b98fe946cb88fa4a01f149b56208de72b43d2be0a54c6"
+checksum = "934a8e33f6f373b2fb66c288a468e3dae9a56a6c66bfecd5504fe566131afd3f"
 dependencies = [
  "anyhow",
  "dprint-core",
@@ -2978,6 +3013,15 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "98de4bbd547a563b716d8dfa9aad1cb19bfab00f4fa09a6a4ed21dbcf44ce9c4"
 dependencies = [
  "num-traits",
+]
+
+[[package]]
+name = "fluent-uri"
+version = "0.1.4"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "17c704e9dbe1ddd863da1e6ff3567795087b1eb201ce80d8fa81162e1516500d"
+dependencies = [
+ "bitflags 1.3.2",
 ]
 
 [[package]]
@@ -4253,15 +4297,15 @@ dependencies = [
 
 [[package]]
 name = "lsp-types"
-version = "0.94.1"
+version = "0.97.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "c66bfd44a06ae10647fe3f8214762e9369fd4248df1350924b4ef9e770a85ea1"
+checksum = "53353550a17c04ac46c585feb189c2db82154fc84b79c7a66c96c2c644f66071"
 dependencies = [
  "bitflags 1.3.2",
+ "fluent-uri",
  "serde",
  "serde_json",
  "serde_repr",
- "url",
 ]
 
 [[package]]
@@ -7535,40 +7579,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "c20c8dbed6283a09604c3e69b4b7eeb54e298b8a600d4d5ecb5ad39de609f1d0"
 
 [[package]]
-name = "tower-lsp"
-version = "0.20.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "d4ba052b54a6627628d9b3c34c176e7eda8359b7da9acd497b9f20998d118508"
-dependencies = [
- "async-trait",
- "auto_impl",
- "bytes",
- "dashmap",
- "futures",
- "httparse",
- "lsp-types",
- "memchr",
- "serde",
- "serde_json",
- "tokio",
- "tokio-util",
- "tower",
- "tower-lsp-macros",
- "tracing",
-]
-
-[[package]]
-name = "tower-lsp-macros"
-version = "0.9.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "84fd902d4e0b9a4b27f2f440108dc034e1758628a9b702f8ec61ad66355422fa"
-dependencies = [
- "proc-macro2",
- "quote",
- "syn 2.0.72",
-]
-
-[[package]]
 name = "tower-service"
 version = "0.3.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -7580,6 +7590,7 @@ version = "0.1.40"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "c3523ab5a71916ccf420eebdf5521fcef02141234bbc0b8a49f2fdc4544364ef"
 dependencies = [
+ "log",
  "pin-project-lite",
  "tracing-attributes",
  "tracing-core",

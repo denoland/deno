@@ -12,6 +12,7 @@ use super::language_server::StateSnapshot;
 use super::performance::Performance;
 use super::tsc;
 use super::tsc::TsServer;
+use super::urls::url_to_uri;
 use super::urls::LspClientUrl;
 use super::urls::LspUrlMap;
 
@@ -37,6 +38,7 @@ use deno_core::serde_json::json;
 use deno_core::unsync::spawn;
 use deno_core::unsync::spawn_blocking;
 use deno_core::unsync::JoinHandle;
+use deno_core::url::Url;
 use deno_core::ModuleSpecifier;
 use deno_graph::source::ResolutionMode;
 use deno_graph::source::ResolveError;
@@ -52,9 +54,11 @@ use deno_semver::package::PackageReq;
 use import_map::ImportMap;
 use import_map::ImportMapError;
 use log::error;
+use lsp_types::Uri;
 use std::collections::HashMap;
 use std::collections::HashSet;
 use std::path::PathBuf;
+use std::str::FromStr;
 use std::sync::atomic::AtomicUsize;
 use std::sync::Arc;
 use std::thread;
@@ -737,7 +741,7 @@ fn to_lsp_related_information(
         if let (Some(file_name), Some(start), Some(end)) =
           (&ri.file_name, &ri.start, &ri.end)
         {
-          let uri = lsp::Url::parse(file_name).unwrap();
+          let uri = Uri::from_str(file_name).unwrap();
           Some(lsp::DiagnosticRelatedInformation {
             location: lsp::Location {
               uri,
@@ -1070,7 +1074,7 @@ impl DenoDiagnostic {
             diagnostics: Some(vec![diagnostic.clone()]),
             edit: Some(lsp::WorkspaceEdit {
               changes: Some(HashMap::from([(
-                specifier.clone(),
+                url_to_uri(specifier),
                 vec![lsp::TextEdit {
                   new_text: format!("\"{to}\""),
                   range: diagnostic.range,
@@ -1087,7 +1091,7 @@ impl DenoDiagnostic {
           diagnostics: Some(vec![diagnostic.clone()]),
           edit: Some(lsp::WorkspaceEdit {
             changes: Some(HashMap::from([(
-              specifier.clone(),
+              url_to_uri(specifier),
               vec![lsp::TextEdit {
                 new_text: " with { type: \"json\" }".to_string(),
                 range: lsp::Range {
@@ -1138,7 +1142,7 @@ impl DenoDiagnostic {
             diagnostics: Some(vec![diagnostic.clone()]),
             edit: Some(lsp::WorkspaceEdit {
               changes: Some(HashMap::from([(
-                specifier.clone(),
+                url_to_uri(specifier),
                 vec![lsp::TextEdit {
                   new_text: format!(
                     "\"{}\"",
@@ -1164,7 +1168,7 @@ impl DenoDiagnostic {
             diagnostics: Some(vec![diagnostic.clone()]),
             edit: Some(lsp::WorkspaceEdit {
               changes: Some(HashMap::from([(
-                specifier.clone(),
+                url_to_uri(specifier),
                 vec![lsp::TextEdit {
                   new_text: format!(
                     "\"{}\"",
@@ -1190,7 +1194,7 @@ impl DenoDiagnostic {
             diagnostics: Some(vec![diagnostic.clone()]),
             edit: Some(lsp::WorkspaceEdit {
               changes: Some(HashMap::from([(
-                specifier.clone(),
+                url_to_uri(specifier),
                 vec![lsp::TextEdit {
                   new_text: format!("\"node:{}\"", data.specifier),
                   range: diagnostic.range,
@@ -1308,10 +1312,7 @@ impl DenoDiagnostic {
   }
 }
 
-fn specifier_text_for_redirected(
-  redirect: &lsp::Url,
-  referrer: &lsp::Url,
-) -> String {
+fn specifier_text_for_redirected(redirect: &Url, referrer: &Url) -> String {
   if redirect.scheme() == "file" && referrer.scheme() == "file" {
     // use a relative specifier when it's going to a file url
     relative_specifier(redirect, referrer)
@@ -1320,7 +1321,7 @@ fn specifier_text_for_redirected(
   }
 }
 
-fn relative_specifier(specifier: &lsp::Url, referrer: &lsp::Url) -> String {
+fn relative_specifier(specifier: &Url, referrer: &Url) -> String {
   match referrer.make_relative(specifier) {
     Some(relative) => {
       if relative.starts_with('.') {
@@ -1640,7 +1641,8 @@ mod tests {
   use test_util::TempDir;
 
   fn mock_config() -> Config {
-    let root_uri = resolve_url("file:///").unwrap();
+    let root_url = resolve_url("file:///").unwrap();
+    let root_uri = url_to_uri(&root_url);
     Config {
       settings: Arc::new(Settings {
         unscoped: Arc::new(WorkspaceSettings {
@@ -1651,7 +1653,7 @@ mod tests {
         ..Default::default()
       }),
       workspace_folders: Arc::new(vec![(
-        root_uri.clone(),
+        root_url,
         lsp::WorkspaceFolder {
           uri: root_uri,
           name: "".to_string(),
@@ -1666,7 +1668,7 @@ mod tests {
     maybe_import_map: Option<(&str, &str)>,
   ) -> (TempDir, StateSnapshot) {
     let temp_dir = TempDir::new();
-    let root_uri = temp_dir.uri();
+    let root_uri = temp_dir.url();
     let cache = LspCache::new(Some(root_uri.join(".deno_dir").unwrap()));
     let mut config = Config::new_with_roots([root_uri.clone()]);
     if let Some((relative_path, json_string)) = maybe_import_map {
@@ -1833,7 +1835,7 @@ let c: number = "a";
     assert_eq!(actual.len(), 2);
     for record in actual {
       let relative_specifier =
-        temp_dir.uri().make_relative(&record.specifier).unwrap();
+        temp_dir.url().make_relative(&record.specifier).unwrap();
       match relative_specifier.as_str() {
         "std/assert/mod.ts" => {
           assert_eq!(json!(record.versioned.diagnostics), json!([]))
@@ -2052,7 +2054,7 @@ let c: number = "a";
           "source": "deno",
           "message": format!(
             "Unable to load a local module: {}🦕.ts\nPlease check the file path.",
-            temp_dir.uri(),
+            temp_dir.url(),
           ),
         }
       ])

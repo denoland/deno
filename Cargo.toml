@@ -133,7 +133,7 @@ lazy-regex = "3"
 libc = "0.2.126"
 libz-sys = { version = "1.1", default-features = false }
 log = "0.4.20"
-lsp-types = "=0.94.1" # used by tower-lsp and "proposed" feature is unstable in patch releases
+lsp-types = "=0.97.0" # used by tower-lsp and "proposed" feature is unstable in patch releases
 memmem = "0.1.1"
 monch = "=0.5.0"
 notify = "=6.1.1"
@@ -184,7 +184,7 @@ tokio-socks = "0.5.1"
 tokio-util = "0.7.4"
 tower = { version = "0.4.13", default-features = false, features = ["util"] }
 tower-http = { version = "0.5.2", features = ["decompression-br", "decompression-gzip"] }
-tower-lsp = { version = "=0.20.0", features = ["proposed"] }
+tower-lsp = { package = "deno_tower_lsp", version = "0.1.0", features = ["proposed"] }
 tower-service = "0.3.2"
 twox-hash = "=1.6.3"
 # Upgrading past 2.4.1 may cause WPT failures
