@@ -1,3 +1,5 @@
+⚠️ Warning: `deno cache` is deprecated and will be removed in Deno 2.1.
+Use `deno install` instead.
 Download http://localhost:4260/fsevents
 Download http://localhost:4260/fsevents/fsevents-2.3.3.tgz
 Initialize fsevents@2.3.3

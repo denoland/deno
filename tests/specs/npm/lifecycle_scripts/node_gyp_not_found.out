@@ -1,4 +1,6 @@
 [UNORDERED_START]
+⚠️ Warning: `deno cache` is deprecated and will be removed in Deno 2.1.
+Use `deno install` instead.
 Download http://localhost:4260/@denotest/node-addon-implicit-node-gyp
 Download http://localhost:4260/@denotest/node-addon-implicit-node-gyp/1.0.0.tgz
 Initialize @denotest/node-addon-implicit-node-gyp@1.0.0

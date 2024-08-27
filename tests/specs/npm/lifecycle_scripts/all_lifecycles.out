@@ -1,3 +1,5 @@
+⚠️ Warning: `deno cache` is deprecated and will be removed in Deno 2.1.
+Use `deno install` instead.
 preinstall
 deno preinstall.js
 node preinstall.js
