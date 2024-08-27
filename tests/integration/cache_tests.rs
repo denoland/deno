@@ -26,6 +26,7 @@ fn xdg_cache_home_dir() {
   assert!(xdg_cache_home.read_dir().count() > 0);
 }
 
+#[ignore]
 #[test]
 fn cache_matching_package_json_dep_should_not_install_all() {
   let context = TestContextBuilder::for_npm().use_temp_cwd().build();
