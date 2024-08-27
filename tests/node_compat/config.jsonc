@@ -135,8 +135,8 @@
     ],
     "fixtures": [
       "a.js",
-      "child-process-persistent.js",
       "child_process_should_emit_error.js",
+      "child-process-persistent.js",
       "child-process-spawn-node.js",
       "echo.js",
       "elipses.txt",
