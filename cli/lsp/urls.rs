@@ -352,7 +352,7 @@ mod tests {
       "file:///c%3A/Users/deno/Desktop/file%20with%20spaces%20in%20name.txt",
     )
     .unwrap();
-    let actual = map.normalize_url(&fixture, LspUrlKind::File);
+    let actual = map.uri_to_specifier(&fixture, LspUrlKind::File);
     let expected =
       Url::parse("file:///C:/Users/deno/Desktop/file with spaces in name.txt")
         .unwrap();
