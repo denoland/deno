@@ -1,3 +1,5 @@
+⚠️ Warning: `deno cache` is deprecated and will be removed in Deno 2.1.
+Use `deno install` instead.
 Download http://localhost:4548/subdir/redirects/a.ts
 Download http://localhost:4546/subdir/redirects/a.ts
 Download http://localhost:4545/subdir/redirects/a.ts

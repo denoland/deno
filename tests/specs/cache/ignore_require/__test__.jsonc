@@ -1,4 +1,4 @@
 {
   "args": "cache --reload --no-check ignore_require.js",
-  "output": ""
+  "output": "⚠️ Warning: `deno cache` is deprecated and will be removed in Deno 2.1.\nUse `deno install` instead.\n"
 }
