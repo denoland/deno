@@ -19,6 +19,7 @@ use deno_core::normalize_path;
 use deno_core::resolve_url_or_path;
 use deno_core::url::Url;
 use deno_graph::GraphKind;
+use deno_runtime::colors;
 use deno_runtime::deno_permissions::parse_sys_kind;
 use deno_runtime::deno_permissions::PermissionsOptions;
 use log::debug;
@@ -1693,7 +1694,10 @@ If no output file is given, the output is written to standard output:
 fn cache_subcommand() -> Command {
   command(
     "cache",
-    "Cache and compile remote dependencies recursively.
+    "⚠️ Warning: `deno cache` is deprecated and will be removed in Deno 2.1.
+Use `deno install` instead.
+    
+Cache and compile remote dependencies recursively.
 
 Download and compile a module with all of its static dependencies and save
 them in the local cache, without running any code:
@@ -1703,6 +1707,7 @@ Future runs of this module will trigger no downloads or compilation unless
 --reload is specified.",
     UnstableArgsConfig::ResolutionOnly,
   )
+  .hide(true)
   .defer(|cmd| {
     compile_args(cmd)
       .arg(check_arg(false))
@@ -4165,6 +4170,7 @@ fn bundle_parse(flags: &mut Flags, matches: &mut ArgMatches) {
 }
 
 fn cache_parse(flags: &mut Flags, matches: &mut ArgMatches) {
+  log::info!("{}", colors::yellow("⚠️ Warning: `deno cache` is deprecated and will be removed in Deno 2.1.\nUse `deno install` instead."));
   compile_args_parse(flags, matches);
   unstable_args_parse(flags, matches, UnstableArgsConfig::ResolutionOnly);
   frozen_lockfile_arg_parse(flags, matches);
