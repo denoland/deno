@@ -429,6 +429,7 @@ function spawnSync(command, {
     stderr,
     windowsRawArguments,
     extraStdio: [],
+    detached: false,
   });
   return {
     success: result.status.success,
