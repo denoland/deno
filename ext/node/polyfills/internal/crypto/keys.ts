@@ -20,6 +20,7 @@ import {
   op_node_export_private_key_der,
   op_node_export_private_key_pem,
   op_node_export_public_key_der,
+  op_node_export_public_key_jwk,
   op_node_export_public_key_pem,
   op_node_export_secret_key,
   op_node_export_secret_key_b64url,
@@ -777,8 +778,9 @@ export class PublicKeyObject extends AsymmetricKeyObject {
 
   export(options: JwkKeyExportOptions | KeyExportOptions<KeyFormat>) {
     if (options && options.format === "jwk") {
-      notImplemented("jwk public key export not implemented");
+      return op_node_export_public_key_jwk(this[kHandle]);
     }
+
     const {
       format,
       type,
