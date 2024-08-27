@@ -1669,7 +1669,7 @@ impl CliOptions {
       let mut all_valid_unstable_flags: Vec<&str> =
         crate::UNSTABLE_GRANULAR_FLAGS
           .iter()
-          .map(|granular_flag| granular_flag.0)
+          .map(|granular_flag| granular_flag.name)
           .collect();
 
       let mut another_unstable_flags = Vec::from([
