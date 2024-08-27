@@ -262,7 +262,7 @@ memoryUsage.rss = function (): number {
   return memoryUsage().rss;
 };
 
-// Returns a negative error code than can be recognized by errnoException
+// Returns a system error code than can be recognized by errnoException
 function _kill(pid: number, sig: number): number {
   // signal 0 does not exist in constants.os.signals, thats why it have to be handled explicitly
   if (sig === 0) {
@@ -304,7 +304,7 @@ export function kill(pid: number, sig: string | number = "SIGTERM") {
   }
 
   if (err) {
-    throw errnoException(err, "kill");
+    throw errnoException(err, "kill", undefined, "sys");
   }
 
   return true;
