@@ -57,8 +57,9 @@ interface WorkerOnlineMsg {
 }
 
 function isWorkerOnlineMsg(data: unknown): data is WorkerOnlineMsg {
-  return typeof data === "object" && data !== null && "type" in data &&
-    data["type"] === "WORKER_ONLINE";
+  return typeof data === "object" && data !== null &&
+    ObjectHasOwn(data, "type") &&
+    (data as { "type": unknown })["type"] === "WORKER_ONLINE";
 }
 
 export interface WorkerOptions {
