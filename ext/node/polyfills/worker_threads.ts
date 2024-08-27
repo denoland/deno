@@ -52,6 +52,15 @@ function debugWT(...args) {
   }
 }
 
+interface WorkerOnlineMsg {
+  type: "WORKER_ONLINE";
+}
+
+function isWorkerOnlineMsg(data: unknown): data is WorkerOnlineMsg {
+  return typeof data === "object" && data !== null && "type" in data &&
+    data["type"] === "WORKER_ONLINE";
+}
+
 export interface WorkerOptions {
   // only for typings
   argv?: unknown[];
@@ -81,6 +90,7 @@ class NodeWorker extends EventEmitter {
   #refCount = 1;
   #messagePromise = undefined;
   #controlPromise = undefined;
+  #workerOnline = false;
   // "RUNNING" | "CLOSED" | "TERMINATED"
   // "TERMINATED" means that any controls or messages received will be
   // discarded. "CLOSED" means that we have received a control
@@ -159,8 +169,6 @@ class NodeWorker extends EventEmitter {
     this.threadId = id;
     this.#pollControl();
     this.#pollMessages();
-    // https://nodejs.org/api/worker_threads.html#event-online
-    this.emit("online");
   }
 
   [privateWorkerRef](ref) {
@@ -243,7 +251,17 @@ class NodeWorker extends EventEmitter {
         this.emit("messageerror", err);
         return;
       }
-      this.emit("message", message);
+      if (
+        // only emit "online" event once, and since the message
+        // has to come before user messages, we are safe to assume
+        // it came from us
+        !this.#workerOnline && isWorkerOnlineMsg(message)
+      ) {
+        this.#workerOnline = true;
+        this.emit("online");
+      } else {
+        this.emit("message", message);
+      }
     }
   };
 
@@ -425,6 +443,12 @@ internals.__initWorkerThreads = (
     parentPort.ref = () => {
       parentPort[unrefPollForMessages] = false;
     };
+
+    parentPort.postMessage(
+      {
+        type: "WORKER_ONLINE",
+      } satisfies WorkerOnlineMsg,
+    );
   }
 };
 
