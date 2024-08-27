@@ -404,6 +404,7 @@ impl MainWorker {
             proxy: None,
           },
         ),
+        deno_kv::KvConfig::builder().build(),
       ),
       deno_cron::deno_cron::init_ops_and_esm(LocalCronHandler::new()),
       deno_napi::deno_napi::init_ops_and_esm::<PermissionsContainer>(),

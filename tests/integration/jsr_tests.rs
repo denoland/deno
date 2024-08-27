@@ -1,5 +1,7 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
+use deno_cache_dir::HttpCache;
+use deno_core::serde_json;
 use deno_core::serde_json::json;
 use deno_core::serde_json::Value;
 use deno_lockfile::Lockfile;
@@ -184,13 +186,24 @@ fn reload_info_not_found_cache_but_exists_remote() {
     let specifier =
       Url::parse(&format!("http://127.0.0.1:4250/{}/meta.json", package))
         .unwrap();
-    let registry_json_path = deno_dir
-      .path()
-      .join("deps")
-      .join(deno_cache_dir::url_to_filename(&specifier).unwrap());
-    let mut registry_json = registry_json_path.read_json_value();
+    let cache = deno_cache_dir::GlobalHttpCache::new(
+      deno_dir.path().join("deps").to_path_buf(),
+      deno_cache_dir::TestRealDenoCacheEnv,
+    );
+    let entry = cache
+      .get(&cache.cache_item_key(&specifier).unwrap(), None)
+      .unwrap()
+      .unwrap();
+    let mut registry_json: serde_json::Value =
+      serde_json::from_slice(&entry.content).unwrap();
     remove_version(&mut registry_json, version);
-    registry_json_path.write_json(&registry_json);
+    cache
+      .set(
+        &specifier,
+        entry.metadata.headers.clone(),
+        registry_json.to_string().as_bytes(),
+      )
+      .unwrap();
   }
 
   // This tests that when a local machine doesn't have a version
