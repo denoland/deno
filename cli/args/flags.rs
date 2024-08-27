@@ -19,7 +19,6 @@ use deno_core::normalize_path;
 use deno_core::resolve_url_or_path;
 use deno_core::url::Url;
 use deno_graph::GraphKind;
-use deno_runtime::colors;
 use deno_runtime::deno_permissions::parse_sys_kind;
 use deno_runtime::deno_permissions::PermissionsOptions;
 use log::debug;
@@ -4170,7 +4169,6 @@ fn bundle_parse(flags: &mut Flags, matches: &mut ArgMatches) {
 }
 
 fn cache_parse(flags: &mut Flags, matches: &mut ArgMatches) {
-  log::info!("{}", colors::yellow("⚠️ Warning: `deno cache` is deprecated and will be removed in Deno 2.1.\nUse `deno install` instead."));
   compile_args_parse(flags, matches);
   unstable_args_parse(flags, matches, UnstableArgsConfig::ResolutionOnly);
   frozen_lockfile_arg_parse(flags, matches);

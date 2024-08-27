@@ -120,6 +120,7 @@ async fn run_subcommand(flags: Arc<Flags>) -> Result<i32, AnyError> {
       tools::run::eval_command(flags, eval_flags).await
     }),
     DenoSubcommand::Cache(cache_flags) => spawn_subcommand(async move {
+      log::info!("{}", colors::yellow("⚠️ Warning: `deno cache` is deprecated and will be removed in Deno 2.1.\nUse `deno install` instead."));
       let factory = CliFactory::from_flags(flags);
       let emitter = factory.emitter()?;
       let main_graph_container =
