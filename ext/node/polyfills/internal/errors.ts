@@ -173,21 +173,16 @@ export const uvExceptionWithHostPort = hideStackFrames(
 /**
  * This used to be `util._errnoException()`.
  *
- * @param err An error number
+ * @param err A libuv error number
  * @param syscall
  * @param original
- * @param errnoKind Either "uv" or "sys", defaults to "uv"
  * @return A `ErrnoException`
  */
 export const errnoException = hideStackFrames(function errnoException(
   err,
   syscall,
   original?,
-  errnoKind: "uv" | "sys" = "uv",
 ): ErrnoException {
-  if (errnoKind === "sys") {
-    err = mapSysErrnoToUvErrno(err);
-  }
   const code = getSystemErrorName(err);
   const message = original
     ? `${syscall} ${code} ${original}`
