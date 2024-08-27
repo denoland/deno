@@ -397,6 +397,7 @@ Deno.test(
 
     assertStringIncludes(text, "error");
     assertStringIncludes(text, "output");
+    // deno-lint-ignore no-console
     console.log("finished tgis test");
   },
 );
