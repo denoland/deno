@@ -4042,18 +4042,23 @@ impl Iterator for UnstableArgsIter {
       })
       .help_heading(UNSTABLE_HEADING)
     } else if self.idx > 3 {
-      let (flag_name, help, _) =
-        crate::UNSTABLE_GRANULAR_FLAGS.get(self.idx - 4)?;
-      Arg::new(format!("unstable-{}", flag_name))
-        .long(format!("unstable-{}", flag_name))
-        .help(help)
+      let granular_flag = crate::UNSTABLE_GRANULAR_FLAGS.get(self.idx - 4)?;
+      Arg::new(format!("unstable-{}", granular_flag.name))
+        .long(format!("unstable-{}", granular_flag.name))
+        .help(granular_flag.help_text)
         .action(ArgAction::SetTrue)
         .hide(true)
         .help_heading(UNSTABLE_HEADING)
         // we don't render long help, so using it here as a sort of metadata
-        .long_help(match self.cfg {
-          UnstableArgsConfig::None | UnstableArgsConfig::ResolutionOnly => None,
-          UnstableArgsConfig::ResolutionAndRuntime => Some("true"),
+        .long_help(if granular_flag.show_in_help {
+          match self.cfg {
+            UnstableArgsConfig::None | UnstableArgsConfig::ResolutionOnly => {
+              None
+            }
+            UnstableArgsConfig::ResolutionAndRuntime => Some("true"),
+          }
+        } else {
+          None
         })
     } else {
       return None;
@@ -5405,9 +5410,12 @@ fn unstable_args_parse(
     matches.get_flag("unstable-sloppy-imports");
 
   if matches!(cfg, UnstableArgsConfig::ResolutionAndRuntime) {
-    for (name, _, _) in crate::UNSTABLE_GRANULAR_FLAGS {
-      if matches.get_flag(&format!("unstable-{}", name)) {
-        flags.unstable_config.features.push(name.to_string());
+    for granular_flag in crate::UNSTABLE_GRANULAR_FLAGS {
+      if matches.get_flag(&format!("unstable-{}", granular_flag.name)) {
+        flags
+          .unstable_config
+          .features
+          .push(granular_flag.name.to_string());
       }
     }
   }
