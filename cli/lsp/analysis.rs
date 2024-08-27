@@ -751,7 +751,7 @@ impl CodeActionCollection {
       .as_ref()
       .and_then(|d| serde_json::from_value::<Vec<DataQuickFix>>(d.clone()).ok())
     {
-      let uri = url_to_uri(specifier);
+      let uri = url_to_uri(specifier)?;
       for quick_fix in data_quick_fixes {
         let mut changes = HashMap::new();
         changes.insert(
@@ -797,7 +797,7 @@ impl CodeActionCollection {
     maybe_text_info: Option<&SourceTextInfo>,
     maybe_parsed_source: Option<&deno_ast::ParsedSource>,
   ) -> Result<(), AnyError> {
-    let uri = url_to_uri(specifier);
+    let uri = url_to_uri(specifier)?;
     let code = diagnostic
       .code
       .as_ref()
