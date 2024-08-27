@@ -1,1 +1,1 @@
-Warning --allow-run without an allow list is insecure (https://docs.deno.com/runtime/tutorials/subprocess/#security)
+Warning --allow-run can be trivially exploited. Prefer specifying an allow list (https://docs.deno.com/runtime/tutorials/subprocess/#security)

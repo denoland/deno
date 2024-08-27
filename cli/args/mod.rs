@@ -1774,7 +1774,7 @@ fn warn_insecure_allow_run_flags(flags: &Flags) {
   // discourage using --allow-run without an allow list
   if allow_run_list.is_empty() && permissions.deny_run.is_none() {
     log::warn!(
-      "{} --allow-run without an allow list is insecure (https://docs.deno.com/runtime/tutorials/subprocess/#security)",
+      "{} --allow-run can be trivially exploited. Prefer specifying an allow list (https://docs.deno.com/runtime/tutorials/subprocess/#security)",
       colors::yellow("Warning")
     );
   }
@@ -1782,7 +1782,7 @@ fn warn_insecure_allow_run_flags(flags: &Flags) {
   // discourage using --allow-run with deno
   if allow_run_list.iter().any(|d| d == "deno") {
     log::warn!(
-      "{} --allow-run=deno is insecure as the Deno binary can be executed to do anything (https://docs.deno.com/runtime/tutorials/subprocess/#security)",
+      "{} --allow-run=deno can be trivially exploited. The Deno binary can be executed to do anything (https://docs.deno.com/runtime/tutorials/subprocess/#security)",
       colors::yellow("Warning")
     );
   }
