@@ -26,7 +26,6 @@
     },
     "not_installed": {
       "envs": {
-        "DENO_FUTURE": "0",
         "DENO_UNSTABLE_BYONM": "1"
       },
       "steps": [{

@@ -8235,16 +8235,24 @@ mod tests {
 
   #[test]
   fn install() {
-    let r =
-      flags_from_vec(svec!["deno", "install", "jsr:@std/http/file-server"]);
+    let r = flags_from_vec(svec![
+      "deno",
+      "install",
+      "-g",
+      "jsr:@std/http/file-server"
+    ]);
     assert_eq!(
       r.unwrap(),
       Flags {
         subcommand: DenoSubcommand::Install(InstallFlags {
-          kind: InstallKind::Local(Some(AddFlags {
-            packages: vec!["jsr:@std/http/file-server".to_string(),]
-          })),
-          global: false,
+          kind: InstallKind::Global(InstallFlagsGlobal {
+            name: None,
+            module_url: "jsr:@std/http/file-server".to_string(),
+            args: vec![],
+            root: None,
+            force: false,
+          }),
+          global: true,
         }),
         ..Flags::default()
       }
@@ -8277,19 +8285,19 @@ mod tests {
   #[test]
   fn install_with_flags() {
     #[rustfmt::skip]
-    let r = flags_from_vec(svec!["deno", "install", "--import-map", "import_map.json", "--no-remote", "--config", "tsconfig.json", "--no-check", "--unsafely-ignore-certificate-errors", "--reload", "--lock", "lock.json", "--lock-write", "--cert", "example.crt", "--cached-only", "--allow-read", "--allow-net", "--v8-flags=--help", "--seed", "1", "--inspect=127.0.0.1:9229", "--name", "file_server", "--root", "/foo", "--force", "--env=.example.env", "jsr:@std/http/file-server", "foo", "bar"]);
+    let r = flags_from_vec(svec!["deno", "install", "--global", "--import-map", "import_map.json", "--no-remote", "--config", "tsconfig.json", "--no-check", "--unsafely-ignore-certificate-errors", "--reload", "--lock", "lock.json", "--lock-write", "--cert", "example.crt", "--cached-only", "--allow-read", "--allow-net", "--v8-flags=--help", "--seed", "1", "--inspect=127.0.0.1:9229", "--name", "file_server", "--root", "/foo", "--force", "--env=.example.env", "jsr:@std/http/file-server", "foo", "bar"]);
     assert_eq!(
       r.unwrap(),
       Flags {
         subcommand: DenoSubcommand::Install(InstallFlags {
-          kind: InstallKind::Local(Some(AddFlags {
-            packages: vec![
-              "jsr:@std/http/file-server".to_string(),
-              "foo".to_string(),
-              "bar".to_string(),
-            ]
-          })),
-          global: false,
+          kind: InstallKind::Global(InstallFlagsGlobal {
+            name: Some("file_server".to_string()),
+            module_url: "jsr:@std/http/file-server".to_string(),
+            args: svec!["foo", "bar"],
+            root: Some("/foo".to_string()),
+            force: true,
+          }),
+          global: true,
         }),
         import_map_path: Some("import_map.json".to_string()),
         no_remote: true,

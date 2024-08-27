@@ -1797,10 +1797,11 @@ itest!(top_level_for_await_ts {
   output: "run/top_level_await/top_level_for_await.out",
 });
 
-itest!(unstable_disabled_js {
-  args: "run --reload run/unstable.js",
-  output: "run/unstable_disabled_js.out",
-});
+// TODO(bartlomieju): remove, `Deno.umask` is enabled by default with Deno 2.
+// itest!(unstable_disabled_js {
+//   args: "run --reload run/unstable.js",
+//   output: "run/unstable_disabled_js.out",
+// });
 
 itest!(unstable_enabled_js {
   args: "run --quiet --reload --unstable-fs run/unstable.ts",
@@ -1844,25 +1845,29 @@ itest!(unstable_cron_enabled {
   output: "run/unstable_cron.enabled.out",
 });
 
-itest!(unstable_ffi_disabled {
-  args: "run --quiet --reload --allow-read run/unstable_ffi.js",
-  output: "run/unstable_ffi.disabled.out",
-});
+// TODO(bartlomieju): remove, FFI is stable by default with Deno 2.
+// itest!(unstable_ffi_disabled {
+//   args: "run --quiet --reload --allow-read run/unstable_ffi.js",
+//   output: "run/unstable_ffi.disabled.out",
+// });
 
-itest!(unstable_ffi_enabled {
-  args: "run --quiet --reload --allow-read --unstable-ffi run/unstable_ffi.js",
-  output: "run/unstable_ffi.enabled.out",
-});
+// TODO(bartlomieju): remove, FFI is stable by default with Deno 2.
+// itest!(unstable_ffi_enabled {
+//   args: "run --quiet --reload --allow-read --unstable-ffi run/unstable_ffi.js",
+//   output: "run/unstable_ffi.enabled.out",
+// });
 
-itest!(unstable_fs_disabled {
-  args: "run --quiet --reload --allow-read run/unstable_fs.js",
-  output: "run/unstable_fs.disabled.out",
-});
+// TODO(bartlomieju): remove, FS APIs are stable by default with Deno 2.
+// itest!(unstable_fs_disabled {
+//   args: "run --quiet --reload --allow-read run/unstable_fs.js",
+//   output: "run/unstable_fs.disabled.out",
+// });
 
-itest!(unstable_fs_enabled {
-  args: "run --quiet --reload --allow-read --unstable-fs run/unstable_fs.js",
-  output: "run/unstable_fs.enabled.out",
-});
+// TODO(bartlomieju): remove, FS APIs are stable by default with Deno 2.
+// itest!(unstable_fs_enabled {
+//   args: "run --quiet --reload --allow-read --unstable-fs run/unstable_fs.js",
+//   output: "run/unstable_fs.enabled.out",
+// });
 
 itest!(unstable_http_disabled {
   args: "run --quiet --reload --allow-read run/unstable_http.js",
@@ -1895,16 +1900,18 @@ itest!(unstable_kv_enabled {
   output: "run/unstable_kv.enabled.out",
 });
 
-itest!(unstable_webgpu_disabled {
-  args: "run --quiet --reload --allow-read run/unstable_webgpu.js",
-  output: "run/unstable_webgpu.disabled.out",
-});
+// TODO(bartlomieju): remove, WebGPU is enabled by default with Deno 2.
+// itest!(unstable_webgpu_disabled {
+//   args: "run --quiet --reload --allow-read run/unstable_webgpu.js",
+//   output: "run/unstable_webgpu.disabled.out",
+// });
 
-itest!(unstable_webgpu_enabled {
-  args:
-    "run --quiet --reload --allow-read --unstable-webgpu run/unstable_webgpu.js",
-  output: "run/unstable_webgpu.enabled.out",
-});
+// TODO(bartlomieju): remove, WebGPU is enabled by default with Deno 2.
+// itest!(unstable_webgpu_enabled {
+//   args:
+//     "run --quiet --reload --allow-read --unstable-webgpu run/unstable_webgpu.js",
+//   output: "run/unstable_webgpu.enabled.out",
+// });
 
 itest!(import_compression {
   args: "run --quiet --reload --allow-net run/import_compression/main.ts",

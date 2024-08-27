@@ -113,6 +113,8 @@ util::unit_test_factory!(
   ]
 );
 
+// TODO(bartlomieju): remove this, since `js_unit_tests.rs` covers all cases
+// in Deno 2.
 fn js_unit_test_future(test: String) {
   js_unit_test_inner(test, true);
 }
