@@ -413,12 +413,15 @@ fn spawn_child(
   command: std::process::Command,
   ipc_pipe_rid: Option<ResourceId>,
   extra_pipe_rids: Vec<Option<ResourceId>>,
+  detached: bool,
 ) -> Result<Child, AnyError> {
   let mut command = tokio::process::Command::from(command);
   // TODO(@crowlkats): allow detaching processes.
   //  currently deno will orphan a process when exiting with an error or Deno.exit()
   // We want to kill child when it's closed
-  command.kill_on_drop(true);
+  if !detached {
+    command.kill_on_drop(true);
+  }
 
   let mut child = match command.spawn() {
     Ok(child) => child,
@@ -523,9 +526,10 @@ fn op_spawn_child(
   #[serde] args: SpawnArgs,
   #[string] api_name: String,
 ) -> Result<Child, AnyError> {
+  let detached = args.detached;
   let (command, pipe_rid, extra_pipe_rids, handles_to_close) =
     create_command(state, args, &api_name)?;
-  let child = spawn_child(state, command, pipe_rid, extra_pipe_rids);
+  let child = spawn_child(state, command, pipe_rid, extra_pipe_rids, detached);
   for handle in handles_to_close {
     close_raw_handle(handle);
   }
