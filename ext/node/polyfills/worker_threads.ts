@@ -151,6 +151,7 @@ class NodeWorker extends EventEmitter {
       workerData: options?.workerData,
       environmentData: environmentData,
       env: env_,
+      isWorkerThread: true,
     }, options?.transferList ?? []);
     const id = op_create_worker(
       {
@@ -376,10 +377,12 @@ internals.__initWorkerThreads = (
 
     parentPort = globalThis as ParentPort;
     threadId = workerId;
+    let isWorkerThread = false;
     if (maybeWorkerMetadata) {
       const { 0: metadata, 1: _ } = maybeWorkerMetadata;
       workerData = metadata.workerData;
       environmentData = metadata.environmentData;
+      isWorkerThread = metadata.isWorkerThread;
       const env = metadata.env;
       if (env) {
         process.env = env;
@@ -444,11 +447,14 @@ internals.__initWorkerThreads = (
       parentPort[unrefPollForMessages] = false;
     };
 
-    parentPort.postMessage(
-      {
-        type: "WORKER_ONLINE",
-      } satisfies WorkerOnlineMsg,
-    );
+    if (isWorkerThread) {
+      // Notify the host that the worker is online
+      parentPort.postMessage(
+        {
+          type: "WORKER_ONLINE",
+        } satisfies WorkerOnlineMsg,
+      );
+    }
   }
 };
 
