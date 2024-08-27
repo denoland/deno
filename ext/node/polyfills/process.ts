@@ -266,7 +266,7 @@ memoryUsage.rss = function (): number {
 function _kill(pid: number, sig: number): number {
   // signal 0 does not exist in constants.os.signals, thats why it have to be handled explicitly
   if (sig === 0) {
-    return op_node_process_kill(pid, 0);
+    return uv.mapSysErrnoToUvErrno(op_node_process_kill(pid, 0));
   }
   const maybeSignal = Object.entries(constants.os.signals).find((
     [_, numericCode],
@@ -275,7 +275,7 @@ function _kill(pid: number, sig: number): number {
   if (!maybeSignal) {
     return uv.codeMap.get("EINVAL");
   }
-  return op_node_process_kill(pid, sig);
+  return uv.mapSysErrnoToUvErrno(op_node_process_kill(pid, sig));
 }
 
 export function dlopen(module, filename, _flags) {
