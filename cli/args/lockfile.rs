@@ -157,15 +157,7 @@ impl CliLockfile {
         .unwrap_or(false)
     });
 
-    let lockfile = if flags.lock_write {
-      log::warn!(
-        "{} \"--lock-write\" flag is deprecated and will be removed in Deno 2.",
-        crate::colors::yellow("Warning")
-      );
-      CliLockfile::new(Lockfile::new_empty(filename, true), frozen)
-    } else {
-      Self::read_from_path(filename, frozen)?
-    };
+    let lockfile = Self::read_from_path(filename, frozen)?;
 
     // initialize the lockfile with the workspace's configuration
     let root_url = workspace.root_dir();
@@ -225,26 +217,12 @@ impl CliLockfile {
           file_path,
           content: &text,
           overwrite: false,
-          is_deno_future: *super::DENO_FUTURE,
         })?,
         frozen,
       )),
-      Err(err) if err.kind() == std::io::ErrorKind::NotFound => {
-        Ok(CliLockfile::new(
-          if *super::DENO_FUTURE {
-            // force version 4 for deno future
-            Lockfile::new(deno_lockfile::NewLockfileOptions {
-              file_path,
-              content: r#"{"version":"4"}"#,
-              overwrite: false,
-              is_deno_future: true,
-            })?
-          } else {
-            Lockfile::new_empty(file_path, false)
-          },
-          frozen,
-        ))
-      }
+      Err(err) if err.kind() == std::io::ErrorKind::NotFound => Ok(
+        CliLockfile::new(Lockfile::new_empty(file_path, false), frozen),
+      ),
       Err(err) => Err(err).with_context(|| {
         format!("Failed reading lockfile '{}'", file_path.display())
       }),

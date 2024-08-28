@@ -186,7 +186,7 @@ impl TestRun {
     self
       .queue
       .iter()
-      .map(|s| {
+      .filter_map(|s| {
         let ids = if let Some((test_module, _)) = tests.get(s) {
           if let Some(filter) = self.filters.get(s) {
             filter.as_ids(test_module)
@@ -196,10 +196,12 @@ impl TestRun {
         } else {
           Vec::new()
         };
-        lsp_custom::EnqueuedTestModule {
-          text_document: lsp::TextDocumentIdentifier { uri: url_to_uri(s) },
+        Some(lsp_custom::EnqueuedTestModule {
+          text_document: lsp::TextDocumentIdentifier {
+            uri: url_to_uri(s).ok()?,
+          },
           ids,
-        }
+        })
       })
       .collect()
   }
@@ -584,6 +586,9 @@ impl LspTestReporter {
     let (test_module, _) = files
       .entry(specifier.clone())
       .or_insert_with(|| (TestModule::new(specifier), "1".to_string()));
+    let Ok(uri) = url_to_uri(&test_module.specifier) else {
+      return;
+    };
     let (static_id, is_new) = test_module.register_dynamic(desc);
     self.tests.insert(
       desc.id,
@@ -594,9 +599,7 @@ impl LspTestReporter {
         .client
         .send_test_notification(TestingNotification::Module(
           lsp_custom::TestModuleNotificationParams {
-            text_document: lsp::TextDocumentIdentifier {
-              uri: url_to_uri(&test_module.specifier),
-            },
+            text_document: lsp::TextDocumentIdentifier { uri },
             kind: lsp_custom::TestModuleNotificationKind::Insert,
             label: test_module.label(self.maybe_root_uri.as_ref()),
             tests: vec![test_module.get_test_data(&static_id)],
@@ -694,6 +697,9 @@ impl LspTestReporter {
     let (test_module, _) = files
       .entry(specifier.clone())
       .or_insert_with(|| (TestModule::new(specifier), "1".to_string()));
+    let Ok(uri) = url_to_uri(&test_module.specifier) else {
+      return;
+    };
     let (static_id, is_new) = test_module.register_step_dynamic(
       desc,
       self.tests.get(&desc.parent_id).unwrap().static_id(),
@@ -707,9 +713,7 @@ impl LspTestReporter {
         .client
         .send_test_notification(TestingNotification::Module(
           lsp_custom::TestModuleNotificationParams {
-            text_document: lsp::TextDocumentIdentifier {
-              uri: url_to_uri(&test_module.specifier),
-            },
+            text_document: lsp::TextDocumentIdentifier { uri },
             kind: lsp_custom::TestModuleNotificationKind::Insert,
             label: test_module.label(self.maybe_root_uri.as_ref()),
             tests: vec![test_module.get_test_data(&static_id)],
@@ -793,14 +797,14 @@ mod tests {
       include: Some(vec![
         lsp_custom::TestIdentifier {
           text_document: lsp::TextDocumentIdentifier {
-            uri: url_to_uri(&specifier),
+            uri: url_to_uri(&specifier).unwrap(),
           },
           id: None,
           step_id: None,
         },
         lsp_custom::TestIdentifier {
           text_document: lsp::TextDocumentIdentifier {
-            uri: url_to_uri(&non_test_specifier),
+            uri: url_to_uri(&non_test_specifier).unwrap(),
           },
           id: None,
           step_id: None,
@@ -808,7 +812,7 @@ mod tests {
       ]),
       exclude: vec![lsp_custom::TestIdentifier {
         text_document: lsp::TextDocumentIdentifier {
-          uri: url_to_uri(&specifier),
+          uri: url_to_uri(&specifier).unwrap(),
         },
         id: Some(
           "69d9fe87f64f5b66cb8b631d4fd2064e8224b8715a049be54276c42189ff8f9f"
