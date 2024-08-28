@@ -613,8 +613,6 @@ pub struct Flags {
   pub inspect_wait: Option<SocketAddr>,
   pub inspect: Option<SocketAddr>,
   pub location: Option<Url>,
-  // TODO(bartlomieju): deprecated, to be removed in Deno 2.
-  pub lock_write: bool,
   pub lock: Option<String>,
   pub log_level: Option<Level>,
   pub no_remote: bool,
@@ -2362,7 +2360,6 @@ TypeScript compiler cache: Subdirectory containing TS compiler output.",
       .arg(no_remote_arg())
       .arg(no_npm_arg())
       .arg(lock_arg())
-      .arg(lock_write_arg())
       .arg(no_lock_arg())
       .arg(config_arg())
       .arg(import_map_arg())
@@ -3249,7 +3246,6 @@ fn compile_args_without_check_args(app: Command) -> Command {
     .arg(no_config_arg())
     .arg(reload_arg())
     .arg(lock_arg())
-    .arg(lock_write_arg())
     .arg(no_lock_arg())
     .arg(ca_file_arg())
     .arg(unsafely_ignore_certificate_errors_arg())
@@ -3873,16 +3869,6 @@ fn lock_arg() -> Arg {
     .value_parser(value_parser!(String))
     .value_hint(ValueHint::FilePath)
     .help_heading(DEPENDENCY_MANAGEMENT_HEADING)
-}
-
-// TODO(bartlomieju): deprecated, to be removed in Deno 2.
-fn lock_write_arg() -> Arg {
-  Arg::new("lock-write")
-    .action(ArgAction::SetTrue)
-    .long("lock-write")
-    .help("Force overwriting the lock file")
-    .conflicts_with("no-lock")
-    .hide(true)
 }
 
 fn no_lock_arg() -> Arg {
@@ -5288,10 +5274,6 @@ fn check_arg_parse(flags: &mut Flags, matches: &mut ArgMatches) {
 fn lock_args_parse(flags: &mut Flags, matches: &mut ArgMatches) {
   lock_arg_parse(flags, matches);
   no_lock_arg_parse(flags, matches);
-  // TODO(bartlomieju): deprecated, to be removed in Deno 2.
-  if matches.get_flag("lock-write") {
-    flags.lock_write = true;
-  }
 }
 
 fn lock_arg_parse(flags: &mut Flags, matches: &mut ArgMatches) {
@@ -7111,7 +7093,7 @@ mod tests {
   #[test]
   fn eval_with_flags() {
     #[rustfmt::skip]
-    let r = flags_from_vec(svec!["deno", "eval", "--import-map", "import_map.json", "--no-remote", "--config", "tsconfig.json", "--no-check", "--reload", "--lock", "lock.json", "--lock-write", "--cert", "example.crt", "--cached-only", "--location", "https:foo", "--v8-flags=--help", "--seed", "1", "--inspect=127.0.0.1:9229", "--env=.example.env", "42"]);
+    let r = flags_from_vec(svec!["deno", "eval", "--import-map", "import_map.json", "--no-remote", "--config", "tsconfig.json", "--no-check", "--reload", "--lock", "lock.json", "--cert", "example.crt", "--cached-only", "--location", "https:foo", "--v8-flags=--help", "--seed", "1", "--inspect=127.0.0.1:9229", "--env=.example.env", "42"]);
     assert_eq!(
       r.unwrap(),
       Flags {
@@ -7125,7 +7107,6 @@ mod tests {
         type_check_mode: TypeCheckMode::None,
         reload: true,
         lock: Some(String::from("lock.json")),
-        lock_write: true,
         ca_data: Some(CaData::File("example.crt".to_string())),
         cached_only: true,
         location: Some(Url::parse("https://foo/").unwrap()),
@@ -7234,7 +7215,7 @@ mod tests {
   #[test]
   fn repl_with_flags() {
     #[rustfmt::skip]
-    let r = flags_from_vec(svec!["deno", "repl", "-A", "--import-map", "import_map.json", "--no-remote", "--config", "tsconfig.json", "--no-check", "--reload", "--lock", "lock.json", "--lock-write", "--cert", "example.crt", "--cached-only", "--location", "https:foo", "--v8-flags=--help", "--seed", "1", "--inspect=127.0.0.1:9229", "--unsafely-ignore-certificate-errors", "--env=.example.env"]);
+    let r = flags_from_vec(svec!["deno", "repl", "-A", "--import-map", "import_map.json", "--no-remote", "--config", "tsconfig.json", "--no-check", "--reload", "--lock", "lock.json", "--cert", "example.crt", "--cached-only", "--location", "https:foo", "--v8-flags=--help", "--seed", "1", "--inspect=127.0.0.1:9229", "--unsafely-ignore-certificate-errors", "--env=.example.env"]);
     assert_eq!(
       r.unwrap(),
       Flags {
@@ -7249,7 +7230,6 @@ mod tests {
         type_check_mode: TypeCheckMode::None,
         reload: true,
         lock: Some(String::from("lock.json")),
-        lock_write: true,
         ca_data: Some(CaData::File("example.crt".to_string())),
         cached_only: true,
         location: Some(Url::parse("https://foo/").unwrap()),
@@ -7901,13 +7881,8 @@ mod tests {
 
   #[test]
   fn bundle_with_lock() {
-    let r = flags_from_vec(svec![
-      "deno",
-      "bundle",
-      "--lock-write",
-      "--lock=lock.json",
-      "source.ts"
-    ]);
+    let r =
+      flags_from_vec(svec!["deno", "bundle", "--lock=lock.json", "source.ts"]);
     assert_eq!(
       r.unwrap(),
       Flags {
@@ -7917,7 +7892,6 @@ mod tests {
           watch: Default::default(),
         }),
         type_check_mode: TypeCheckMode::Local,
-        lock_write: true,
         lock: Some(String::from("lock.json")),
         ..Flags::default()
       }
@@ -8305,7 +8279,6 @@ mod tests {
         type_check_mode: TypeCheckMode::None,
         reload: true,
         lock: Some(String::from("lock.json")),
-        lock_write: true,
         ca_data: Some(CaData::File("example.crt".to_string())),
         cached_only: true,
         v8_flags: svec!["--help", "--random-seed=1"],
@@ -8880,111 +8853,6 @@ mod tests {
         ..Flags::default()
       }
     );
-  }
-
-  #[test]
-  fn lock_write() {
-    let r = flags_from_vec(svec![
-      "deno",
-      "run",
-      "--lock-write",
-      "--lock=lock.json",
-      "script.ts"
-    ]);
-    assert_eq!(
-      r.unwrap(),
-      Flags {
-        subcommand: DenoSubcommand::Run(RunFlags::new_default(
-          "script.ts".to_string(),
-        )),
-        lock_write: true,
-        lock: Some(String::from("lock.json")),
-        code_cache_enabled: true,
-        ..Flags::default()
-      }
-    );
-
-    let r = flags_from_vec(svec!["deno", "--no-lock", "script.ts"]);
-    assert_eq!(
-      r.unwrap(),
-      Flags {
-        subcommand: DenoSubcommand::Run(RunFlags {
-          script: "script.ts".to_string(),
-          watch: None,
-          bare: true,
-        }),
-        no_lock: true,
-        code_cache_enabled: true,
-        ..Flags::default()
-      }
-    );
-
-    let r = flags_from_vec(svec![
-      "deno",
-      "run",
-      "--lock",
-      "--lock-write",
-      "script.ts"
-    ]);
-    assert_eq!(
-      r.unwrap(),
-      Flags {
-        subcommand: DenoSubcommand::Run(RunFlags::new_default(
-          "script.ts".to_string(),
-        )),
-        lock_write: true,
-        lock: Some(String::from("./deno.lock")),
-        code_cache_enabled: true,
-        ..Flags::default()
-      }
-    );
-
-    let r = flags_from_vec(svec![
-      "deno",
-      "run",
-      "--lock-write",
-      "--lock",
-      "lock.json",
-      "script.ts"
-    ]);
-    assert_eq!(
-      r.unwrap(),
-      Flags {
-        subcommand: DenoSubcommand::Run(RunFlags::new_default(
-          "script.ts".to_string(),
-        )),
-        lock_write: true,
-        lock: Some(String::from("lock.json")),
-        code_cache_enabled: true,
-        ..Flags::default()
-      }
-    );
-
-    let r = flags_from_vec(svec!["deno", "run", "--lock-write", "script.ts"]);
-    assert_eq!(
-      r.unwrap(),
-      Flags {
-        subcommand: DenoSubcommand::Run(RunFlags::new_default(
-          "script.ts".to_string(),
-        )),
-        lock_write: true,
-        code_cache_enabled: true,
-        ..Flags::default()
-      }
-    );
-
-    let r =
-      flags_from_vec(svec!["deno", "run", "--lock", "--no-lock", "script.ts"]);
-    assert!(r.is_err(),);
-
-    let r = flags_from_vec(svec![
-      "deno",
-      "run",
-      "--lock-write",
-      "--no-lock",
-      "script.ts"
-    ]);
-    assert!(r.is_err(),);
   }
 
   #[test]
@@ -10112,7 +9980,7 @@ mod tests {
   #[test]
   fn compile_with_flags() {
     #[rustfmt::skip]
-    let r = flags_from_vec(svec!["deno", "compile", "--import-map", "import_map.json", "--no-remote", "--config", "tsconfig.json", "--no-check", "--unsafely-ignore-certificate-errors", "--reload", "--lock", "lock.json", "--lock-write", "--cert", "example.crt", "--cached-only", "--location", "https:foo", "--allow-read", "--allow-net", "--v8-flags=--help", "--seed", "1", "--no-terminal", "--icon", "favicon.ico", "--output", "colors", "--env=.example.env", "https://examples.deno.land/color-logging.ts", "foo", "bar", "-p", "8080"]);
+    let r = flags_from_vec(svec!["deno", "compile", "--import-map", "import_map.json", "--no-remote", "--config", "tsconfig.json", "--no-check", "--unsafely-ignore-certificate-errors", "--reload", "--lock", "lock.json", "--cert", "example.crt", "--cached-only", "--location", "https:foo", "--allow-read", "--allow-net", "--v8-flags=--help", "--seed", "1", "--no-terminal", "--icon", "favicon.ico", "--output", "colors", "--env=.example.env", "https://examples.deno.land/color-logging.ts", "foo", "bar", "-p", "8080"]);
     assert_eq!(
       r.unwrap(),
       Flags {
@@ -10132,7 +10000,6 @@ mod tests {
         type_check_mode: TypeCheckMode::None,
         reload: true,
         lock: Some(String::from("lock.json")),
-        lock_write: true,
         ca_data: Some(CaData::File("example.crt".to_string())),
         cached_only: true,
         location: Some(Url::parse("https://foo/").unwrap()),
