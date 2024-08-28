@@ -19,6 +19,9 @@ import {
   Transform,
   Writable,
 } from "ext:deno_node/_stream.mjs";
+import {
+  getDefaultHighWaterMark,
+} from "ext:deno_node/internal/streams/state.mjs";
 
 export {
   _isUint8Array,
@@ -26,6 +29,7 @@ export {
   addAbortSignal,
   Duplex,
   finished,
+  getDefaultHighWaterMark,
   PassThrough,
   pipeline,
   Readable,
