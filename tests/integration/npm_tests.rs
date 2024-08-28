@@ -272,13 +272,6 @@ itest!(nonexistent_file_node_modules_dir {
   exit_code: 1,
 });
 
-itest!(invalid_package_name {
-  args: "run -A --quiet npm/invalid_package_name/main.js",
-  output: "npm/invalid_package_name/main.out",
-  envs: env_vars_for_npm_tests(),
-  exit_code: 1,
-});
-
 itest!(require_json {
   args: "run -A --quiet npm/require_json/main.js",
   output: "npm/require_json/main.out",

@@ -115,7 +115,7 @@ http.workspace = true
 http-body.workspace = true
 http-body-util.workspace = true
 hyper-util.workspace = true
-import_map = { version = "=0.20.0", features = ["ext"] }
+import_map = { version = "=0.20.1", features = ["ext"] }
 indexmap.workspace = true
 jsonc-parser.workspace = true
 jupyter_runtime = { package = "runtimelib", version = "=0.14.0" }

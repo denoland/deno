@@ -49,6 +49,8 @@ use deno_semver::package::PackageNv;
 use deno_semver::Version;
 use import_map::ImportMapError;
 use std::collections::HashSet;
+use std::error::Error;
+use std::ops::Deref;
 use std::path::PathBuf;
 use std::sync::Arc;
 
@@ -111,7 +113,7 @@ pub fn graph_valid(
         ModuleGraphError::ModuleError(error) => {
           enhanced_lockfile_error_message(error)
             .or_else(|| enhanced_sloppy_imports_error_message(fs, error))
-            .unwrap_or_else(|| format!("{}", error))
+            .unwrap_or_else(|| format_deno_graph_error(error))
         }
       };
 
@@ -165,7 +167,10 @@ pub fn graph_valid(
   } else {
     // finally surface the npm resolution result
     if let Err(err) = &graph.npm_dep_graph_result {
-      return Err(custom_error(get_error_class_name(err), format!("{}", err)));
+      return Err(custom_error(
+        get_error_class_name(err),
+        format_deno_graph_error(err.as_ref().deref()),
+      ));
     }
     Ok(())
   }
@@ -731,7 +736,7 @@ pub fn error_for_any_npm_specifier(
 
 /// Adds more explanatory information to a resolution error.
 pub fn enhanced_resolution_error_message(error: &ResolutionError) -> String {
-  let mut message = format!("{error}");
+  let mut message = format_deno_graph_error(error);
 
   if let Some(specifier) = get_resolution_error_bare_node_specifier(error) {
     if !*DENO_DISABLE_PEDANTIC_NODE_WARNINGS {
@@ -1025,6 +1030,49 @@ impl deno_graph::source::JsrUrlProvider for CliJsrUrlProvider {
   fn url(&self) -> &'static ModuleSpecifier {
     jsr_url()
   }
+}
+
+// todo(dsherret): We should change ModuleError to use thiserror so that
+// we don't need to do this.
+fn format_deno_graph_error(err: &dyn Error) -> String {
+  use std::fmt::Write;
+
+  let mut message = format!("{}", err);
+  let mut maybe_source = err.source();
+
+  if maybe_source.is_some() {
+    let mut past_message = message.clone();
+    let mut count = 0;
+    let mut display_count = 0;
+    while let Some(source) = maybe_source {
+      let current_message = format!("{}", source);
+      maybe_source = source.source();
+
+      // sometimes an error might be repeated due to
+      // being boxed multiple times in another AnyError
+      if current_message != past_message {
+        write!(message, "\n    {}: ", display_count,).unwrap();
+        for (i, line) in current_message.lines().enumerate() {
+          if i > 0 {
+            write!(message, "\n       {}", line).unwrap();
+          } else {
+            write!(message, "{}", line).unwrap();
+          }
+        }
+        display_count += 1;
+      }
+
+      if count > 8 {
+        write!(message, "\n    {}: ...", count).unwrap();
+        break;
+      }
+
+      past_message = current_message;
+      count += 1;
+    }
+  }
+
+  message
 }
 
 #[cfg(test)]

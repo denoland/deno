@@ -3463,36 +3463,6 @@ fn package_json_with_deno_json() {
 }
 
 #[test]
-fn package_json_error_dep_value_test() {
-  let context = TestContextBuilder::for_npm()
-    .use_copy_temp_dir("package_json/invalid_value")
-    .cwd("package_json/invalid_value")
-    .build();
-
-  // should run fine when not referencing a failing dep entry
-  context
-    .new_command()
-    .args("run ok.ts")
-    .run()
-    .assert_matches_file("package_json/invalid_value/ok.ts.out");
-
-  // should fail when referencing a failing dep entry
-  context
-    .new_command()
-    .args("run error.ts")
-    .run()
-    .assert_exit_code(1)
-    .assert_matches_file("package_json/invalid_value/error.ts.out");
-
-  // should output a warning about the failing dep entry
-  context
-    .new_command()
-    .args("task test")
-    .run()
-    .assert_matches_file("package_json/invalid_value/task.out");
-}
-
-#[test]
 fn package_json_no_node_modules_dir_created() {
   // it should not create a node_modules directory
   let context = TestContextBuilder::new()

@@ -3787,15 +3787,16 @@ dependencies = [
 
 [[package]]
 name = "import_map"
-version = "0.20.0"
+version = "0.20.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "373b8288ad259df0d1314e3e8b2fff0e5e63f22e01bc54ecd2c3c7ad77b9200c"
+checksum = "351a787decc56f38d65d16d32687265045d6d6a4531b4a0e1b649def3590354e"
 dependencies = [
  "indexmap",
  "log",
  "percent-encoding",
  "serde",
  "serde_json",
+ "thiserror",
  "url",
 ]
 
