@@ -2237,8 +2237,8 @@
       "AbortSignal.any.worker.html": true,
       "event.any.html": true,
       "event.any.worker.html": true,
-      "abort-signal-any.any.html": false,
-      "abort-signal-any.any.worker.html": false,
+      "abort-signal-any.any.html": true,
+      "abort-signal-any.any.worker.html": true,
       "abort-signal-timeout.html": false,
       "reason-constructor.html": false
     },
