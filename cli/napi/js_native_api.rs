@@ -3321,9 +3321,15 @@ fn napi_resolve_deferred(
     .resolve(&mut env.scope(), result.unwrap())
     .unwrap_or(false)
   {
+    env
+      .scope()
+      .set_microtasks_policy(v8::MicrotasksPolicy::Auto);
     return napi_generic_failure;
   }
 
+  env
+    .scope()
+    .set_microtasks_policy(v8::MicrotasksPolicy::Auto);
   napi_ok
 }
 
