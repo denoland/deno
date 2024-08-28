@@ -244,7 +244,10 @@ deno_core::extension!(deno_fs,
     op_fs_funlock_async,
     op_fs_funlock_sync,
     op_fs_ftruncate_sync,
-    op_fs_ftruncate_async
+    op_fs_ftruncate_async,
+    op_fs_futime_sync,
+    op_fs_futime_async,
+
   ],
   esm = [ "30_fs.js" ],
   options = {
