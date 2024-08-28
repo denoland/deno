@@ -1219,7 +1219,7 @@ fn lock_file_lock_write() {
   let lock_file_content = r#"{
   "version": "4",
   "specifiers": {
-    "npm:cowsay@1.5.0": "npm:cowsay@1.5.0"
+    "npm:cowsay@1.5.0": "1.5.0"
   },
   "npm": {
     "ansi-regex@3.0.1": {
@@ -1430,7 +1430,7 @@ fn auto_discover_lock_file() {
   let lock_file_content = r#"{
     "version": "4",
     "specifiers": {
-      "npm:@denotest/bin": "npm:@denotest/bin@1.0.0"
+      "npm:@denotest/bin": "1.0.0"
     },
     "npm": {
       "@denotest/bin@1.0.0": {

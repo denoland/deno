@@ -750,6 +750,7 @@ dependencies = [
  "deno_core",
  "deno_fetch",
  "deno_lockfile",
+ "deno_semver",
  "deno_terminal 0.2.0",
  "deno_tls",
  "deno_tower_lsp",
@@ -1172,7 +1173,7 @@ dependencies = [
  "deno_graph",
  "deno_lint",
  "deno_lockfile",
- "deno_npm",
+ "deno_npm 0.24.0",
  "deno_package_json",
  "deno_runtime",
  "deno_semver",
@@ -1734,10 +1735,11 @@ dependencies = [
 
 [[package]]
 name = "deno_lockfile"
-version = "0.22.0"
+version = "0.23.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "92d4e132d2930cf5fbbec8323f4ac98952ca3d1c4ff74d770bbdd7c2588b1783"
+checksum = "fb68a4a666c69eabd8fe505d6fdc4ed4a2d962fe1680dbfa8b0c8a2975d58ed0"
 dependencies = [
+ "deno_semver",
  "serde",
  "serde_json",
  "thiserror",
@@ -1883,8 +1885,25 @@ dependencies = [
 [[package]]
 name = "deno_npm"
 version = "0.24.0"
+dependencies = [
+ "anyhow",
+ "async-trait",
+ "deno_lockfile",
+ "deno_semver",
+ "futures",
+ "log",
+ "monch",
+ "serde",
+ "serde_json",
+ "thiserror",
+ "url",
+]
+
+[[package]]
+name = "deno_npm"
+version = "0.25.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "cafaa830cea11b37ad838ed9508c9cc00ac0235fdd42b3b31aa74d5cd6fe3d92"
+checksum = "efb2dd7efaf478d780a6ca43e6127667d5329ed9a5ff89f42cec0dc21ee58342"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -2008,9 +2027,9 @@ dependencies = [
 
 [[package]]
 name = "deno_semver"
-version = "0.5.10"
+version = "0.5.12"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "56feaf035e29320d11adf89eafa14f5447d3089deb1ce7de61ba7969195f5ff1"
+checksum = "eef522937758930b9d6897631fa94bc69bcbbe78613c939ab2054ca96191afbd"
 dependencies = [
  "monch",
  "once_cell",
@@ -2815,15 +2834,13 @@ dependencies = [
 [[package]]
 name = "eszip"
 version = "0.76.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "7b3a54eb4f58493897fc2627e76e6714c9b52c84213c923ab1601a5daf722b00"
 dependencies = [
  "anyhow",
  "async-trait",
  "base64 0.21.7",
  "deno_ast",
  "deno_graph",
- "deno_npm",
+ "deno_npm 0.25.0",
  "deno_semver",
  "futures",
  "hashlink",

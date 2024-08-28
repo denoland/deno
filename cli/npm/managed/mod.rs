@@ -406,8 +406,7 @@ impl ManagedCliNpmResolver {
       }
     }
     if result.dependencies_result.is_ok() {
-      result.dependencies_result =
-        self.cache_packages().await.map_err(AnyError::from);
+      result.dependencies_result = self.cache_packages().await;
     }
 
     result

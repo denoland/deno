@@ -22,6 +22,7 @@ use deno_npm::NpmPackageCacheFolderId;
 use deno_npm::NpmPackageId;
 use deno_npm::NpmResolutionPackage;
 use deno_npm::NpmSystemInfo;
+use deno_semver::jsr::JsrDepPackageReq;
 use deno_semver::package::PackageNv;
 use deno_semver::package::PackageReq;
 use deno_semver::VersionReq;
@@ -329,16 +330,10 @@ fn populate_lockfile_from_snapshot(
 ) {
   let mut lockfile = lockfile.lock();
   for (package_req, nv) in snapshot.package_reqs() {
+    let id = &snapshot.resolve_package_from_deno_module(nv).unwrap().id;
     lockfile.insert_package_specifier(
-      format!("npm:{}", package_req),
-      format!(
-        "npm:{}",
-        snapshot
-          .resolve_package_from_deno_module(nv)
-          .unwrap()
-          .id
-          .as_serialized()
-      ),
+      JsrDepPackageReq::npm(package_req.clone()),
+      format!("{}{}", id.nv.version, id.peer_deps_serialized()),
     );
   }
   for package in snapshot.all_packages_for_every_system() {

@@ -923,7 +923,7 @@ fn lock_redirects() {
     r#"{
   "version": "4",
   "specifiers": {
-    "npm:@denotest/esm-basic": "npm:@denotest/esm-basic@1.0.0"
+    "npm:@denotest/esm-basic@*": "1.0.0"
   },
   "npm": {
     "@denotest/esm-basic@1.0.0": {
@@ -974,8 +974,8 @@ fn lock_deno_json_package_json_deps() {
   lockfile.assert_matches_json(json!({
     "version": "4",
     "specifiers": {
-      "jsr:@denotest/module-graph@1.4": "jsr:@denotest/module-graph@1.4.0",
-      "npm:@denotest/esm-basic": "npm:@denotest/esm-basic@1.0.0"
+      "jsr:@denotest/module-graph@1.4": "1.4.0",
+      "npm:@denotest/esm-basic@*": "1.0.0"
     },
     "jsr": {
       "@denotest/module-graph@1.4.0": {
@@ -990,7 +990,7 @@ fn lock_deno_json_package_json_deps() {
     "workspace": {
       "dependencies": [
         "jsr:@denotest/module-graph@1.4",
-        "npm:@denotest/esm-basic"
+        "npm:@denotest/esm-basic@*"
       ]
     }
   }));
@@ -1022,8 +1022,8 @@ fn lock_deno_json_package_json_deps() {
   lockfile.assert_matches_json(json!({
     "version": "4",
     "specifiers": {
-      "jsr:@denotest/module-graph@1.4": "jsr:@denotest/module-graph@1.4.0",
-      "npm:@denotest/esm-basic": "npm:@denotest/esm-basic@1.0.0"
+      "jsr:@denotest/module-graph@1.4": "1.4.0",
+      "npm:@denotest/esm-basic@*": "1.0.0"
     },
     "jsr": {
       "@denotest/module-graph@1.4.0": {
@@ -1041,7 +1041,7 @@ fn lock_deno_json_package_json_deps() {
       ],
       "packageJson": {
         "dependencies": [
-          "npm:@denotest/esm-basic"
+          "npm:@denotest/esm-basic@*"
         ]
       }
     }
@@ -1059,7 +1059,7 @@ fn lock_deno_json_package_json_deps() {
   lockfile.assert_matches_json(json!({
     "version": "4",
     "specifiers": {
-      "jsr:@denotest/module-graph@1.4": "jsr:@denotest/module-graph@1.4.0",
+      "jsr:@denotest/module-graph@1.4": "1.4.0",
     },
     "jsr": {
       "@denotest/module-graph@1.4.0": {
@@ -1143,8 +1143,8 @@ fn lock_deno_json_package_json_deps_workspace() {
   lockfile.assert_matches_json(json!({
     "version": "4",
     "specifiers": {
-      "npm:@denotest/cjs-default-export@1": "npm:@denotest/cjs-default-export@1.0.0",
-      "npm:@denotest/esm-basic@1": "npm:@denotest/esm-basic@1.0.0"
+      "npm:@denotest/cjs-default-export@1": "1.0.0",
+      "npm:@denotest/esm-basic@1": "1.0.0"
     },
     "npm": {
       "@denotest/cjs-default-export@1.0.0": {
@@ -1186,8 +1186,8 @@ fn lock_deno_json_package_json_deps_workspace() {
   let expected_lockfile = json!({
     "version": "4",
     "specifiers": {
-      "npm:@denotest/cjs-default-export@1": "npm:@denotest/cjs-default-export@1.0.0",
-      "npm:@denotest/esm-basic@1": "npm:@denotest/esm-basic@1.0.0"
+      "npm:@denotest/cjs-default-export@1": "1.0.0",
+      "npm:@denotest/esm-basic@1": "1.0.0"
     },
     "npm": {
       "@denotest/cjs-default-export@1.0.0": {

@@ -44,8 +44,9 @@ use deno_graph::SpecifierError;
 use deno_runtime::deno_fs::FileSystem;
 use deno_runtime::deno_node;
 use deno_runtime::deno_permissions::PermissionsContainer;
+use deno_semver::jsr::JsrDepPackageReq;
 use deno_semver::package::PackageNv;
-use deno_semver::package::PackageReq;
+use deno_semver::Version;
 use import_map::ImportMapError;
 use std::collections::HashSet;
 use std::path::PathBuf;
@@ -463,7 +464,7 @@ impl ModuleGraphBuilder {
           .content
           .packages
           .jsr
-          .get(&package_nv.to_string())
+          .get(package_nv)
           .map(|s| LoaderChecksum::new(s.integrity.clone()))
       }
 
@@ -477,7 +478,7 @@ impl ModuleGraphBuilder {
         self
           .0
           .lock()
-          .insert_package(package_nv.to_string(), checksum.into_string());
+          .insert_package(package_nv.clone(), checksum.into_string());
       }
     }
 
@@ -556,16 +557,21 @@ impl ModuleGraphBuilder {
             }
           }
         }
-        for (key, value) in &lockfile.content.packages.specifiers {
-          if let Some(key) = key
-            .strip_prefix("jsr:")
-            .and_then(|key| PackageReq::from_str(key).ok())
-          {
-            if let Some(value) = value
-              .strip_prefix("jsr:")
-              .and_then(|value| PackageNv::from_str(value).ok())
-            {
-              graph.packages.add_nv(key, value);
+        for (req_dep, value) in &lockfile.content.packages.specifiers {
+          match req_dep.kind {
+            deno_semver::package::PackageKind::Jsr => {
+              if let Ok(version) = Version::parse_standard(&value) {
+                graph.packages.add_nv(
+                  req_dep.req.clone(),
+                  PackageNv {
+                    name: req_dep.req.name.clone(),
+                    version,
+                  },
+                );
+              }
+            }
+            deno_semver::package::PackageKind::Npm => {
+              // ignore
             }
           }
         }
@@ -603,16 +609,15 @@ impl ModuleGraphBuilder {
         if has_jsr_package_mappings_changed {
           for (from, to) in graph.packages.mappings() {
             lockfile.insert_package_specifier(
-              format!("jsr:{}", from),
-              format!("jsr:{}", to),
+              JsrDepPackageReq::jsr(from.clone()),
+              to.version.to_string(),
             );
           }
         }
         // jsr packages
         if has_jsr_package_deps_changed {
-          for (name, deps) in graph.packages.packages_with_deps() {
-            lockfile
-              .add_package_deps(&name.to_string(), deps.map(|s| s.to_string()));
+          for (nv, deps) in graph.packages.packages_with_deps() {
+            lockfile.add_package_deps(&nv, deps.cloned());
           }
         }
       }
