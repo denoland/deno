@@ -1,12 +1,9 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
-// deno-lint-ignore-file no-deprecated-deno-api
-
 import {
   assertEquals,
   assertRejects,
   assertThrows,
-  DENO_FUTURE,
   pathToAbsoluteFileUrl,
 } from "./test_util.ts";
 
