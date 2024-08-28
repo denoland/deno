@@ -988,8 +988,6 @@ export {
   ftruncateSync,
   funlock,
   funlockSync,
-  futime,
-  futimeSync,
   link,
   linkSync,
   lstat,
