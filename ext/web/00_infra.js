@@ -133,7 +133,7 @@ function regexMatcher(chars) {
       );
       return `\\u${a}-\\u${b}`;
     } else {
-      throw TypeError("unreachable");
+      throw new TypeError("unreachable");
     }
   });
   return ArrayPrototypeJoin(matchers, "");
