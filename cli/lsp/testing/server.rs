@@ -27,14 +27,16 @@ use tower_lsp::jsonrpc::Error as LspError;
 use tower_lsp::jsonrpc::Result as LspResult;
 use tower_lsp::lsp_types as lsp;
 
-fn as_delete_notification(url: ModuleSpecifier) -> TestingNotification {
-  TestingNotification::DeleteModule(
+fn as_delete_notification(
+  url: &ModuleSpecifier,
+) -> Result<TestingNotification, AnyError> {
+  Ok(TestingNotification::DeleteModule(
     lsp_custom::TestModuleDeleteNotificationParams {
       text_document: lsp::TextDocumentIdentifier {
-        uri: url_to_uri(&url),
+        uri: url_to_uri(url)?,
       },
     },
-  )
+  ))
 }
 
 pub type TestServerTests =
@@ -126,20 +128,24 @@ impl TestServer {
                     .map(|tm| tm.as_ref().clone())
                     .unwrap_or_else(|| TestModule::new(specifier.clone()));
                   if !test_module.is_empty() {
-                    client.send_test_notification(
-                      test_module.as_replace_notification(mru.as_ref()),
-                    );
+                    if let Ok(params) =
+                      test_module.as_replace_notification(mru.as_ref())
+                    {
+                      client.send_test_notification(params);
+                    }
                   } else if !was_empty {
-                    client.send_test_notification(as_delete_notification(
-                      specifier.clone(),
-                    ));
+                    if let Ok(params) = as_delete_notification(specifier) {
+                      client.send_test_notification(params);
+                    }
                   }
                   tests
                     .insert(specifier.clone(), (test_module, script_version));
                 }
               }
-              for key in keys {
-                client.send_test_notification(as_delete_notification(key));
+              for key in &keys {
+                if let Ok(params) = as_delete_notification(key) {
+                  client.send_test_notification(params);
+                }
               }
               performance.measure(mark);
             }

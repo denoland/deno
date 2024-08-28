@@ -10402,6 +10402,11 @@
                 "import.meta.resolve is not a constructor"
               ]
             }
+          },
+          "import-attributes": {
+            "dynamic-import-with-attributes-argument.any.html": true,
+            "dynamic-import-with-attributes-argument.any.sharedworker.html": false,
+            "dynamic-import-with-attributes-argument.any.worker.html": true
           }
         }
       },
