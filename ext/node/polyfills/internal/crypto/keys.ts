@@ -12,6 +12,7 @@ const {
 } = primordials;
 
 import {
+  op_node_create_ec_jwk,
   op_node_create_ed_raw,
   op_node_create_private_key,
   op_node_create_public_key,
@@ -312,7 +313,15 @@ function getKeyObjectHandleFromJwk(key, ctx) {
   }
 
   if (key.kty === "EC") {
-    throw new TypeError("ec jwk imports not implemented");
+    validateString(key.crv, "key.crv");
+    validateString(key.x, "key.x");
+    validateString(key.y, "key.y");
+
+    if (!isPublic) {
+      validateString(key.d, "key.d");
+    }
+
+    return op_node_create_ec_jwk(key, isPublic);
   }
 
   // RSA

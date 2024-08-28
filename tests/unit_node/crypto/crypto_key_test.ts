@@ -474,7 +474,7 @@ nse0Qk4vDc2fc+sbnQ1jPiECAwEAAQ==
   assertEquals(pem, expectedPem);
 });
 
-Deno.test("Ed25519 jwk public key #1", function () {
+Deno.test("Ed25519 import jwk public key #1", function () {
   const key = {
     "kty": "OKP",
     "crv": "Ed25519",
@@ -494,7 +494,7 @@ MCowBQYDK2VwAyEA11qYAYKxCrfVS/7TyWQHOg7hcvPapiMlrwIaaPcHURo=
   assertEquals(spkiActual, spkiExpected);
 });
 
-Deno.test("Ed25519 jwk public key #2", function () {
+Deno.test("Ed25519 import jwk public key #2", function () {
   const key = {
     "kty": "OKP",
     "crv": "Ed25519",
@@ -512,7 +512,7 @@ MCowBQYDK2VwAyEA11qYAYKxCrfVS/7TyWQHOg7hcvPapiMlrwIaaPcHURo=
   assertEquals(spki, spkiExpected);
 });
 
-Deno.test("Ed25519 jwk private key", function () {
+Deno.test("Ed25519 import jwk private key", function () {
   const key = {
     "kty": "OKP",
     "crv": "Ed25519",
@@ -530,4 +530,49 @@ MC4CAQAwBQYDK2VwBCIEIJ1hsZ3v/VpguoRK9JLsLMREScVpezJpGXA7rAMcrn9g
 `;
 
   assertEquals(pkcs8Actual, pkcs8Expected);
+});
+
+Deno.test("EC import jwk public key", function () {
+  const publicKey = createPublicKey({
+    key: {
+      kty: "EC",
+      x: "_GGuz19zab5J70zyiUK6sAM5mHqUbsY8H6U2TnVlt-k",
+      y: "TcZG5efXZDIhNGDp6XuujoJqOEJU2D2ckjG9nOnSPIQ",
+      crv: "P-256",
+    },
+    format: "jwk",
+  });
+
+  const publicSpki = publicKey.export({ type: "spki", format: "pem" });
+  const spkiExpected = `-----BEGIN PUBLIC KEY-----
+MFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAE/GGuz19zab5J70zyiUK6sAM5mHqU
+bsY8H6U2TnVlt+lNxkbl59dkMiE0YOnpe66Ogmo4QlTYPZySMb2c6dI8hA==
+-----END PUBLIC KEY-----
+`;
+
+  assertEquals(publicSpki, spkiExpected);
+});
+
+Deno.test("EC import jwk private key", function () {
+  const privateKey = createPrivateKey({
+    key: {
+      kty: "EC",
+      x: "_GGuz19zab5J70zyiUK6sAM5mHqUbsY8H6U2TnVlt-k",
+      y: "TcZG5efXZDIhNGDp6XuujoJqOEJU2D2ckjG9nOnSPIQ",
+      crv: "P-256",
+      d: "Wobjne0GqlB_1NynKu19rsw7zBHa94tKcWIxwIb88m8",
+    },
+    format: "jwk",
+  });
+
+  const privatePkcs8 = privateKey.export({ type: "pkcs8", format: "pem" });
+
+  const pkcs8Expected = `-----BEGIN PRIVATE KEY-----
+MIGHAgEAMBMGByqGSM49AgEGCCqGSM49AwEHBG0wawIBAQQgWobjne0GqlB/1Nyn
+Ku19rsw7zBHa94tKcWIxwIb88m+hRANCAAT8Ya7PX3NpvknvTPKJQrqwAzmYepRu
+xjwfpTZOdWW36U3GRuXn12QyITRg6el7ro6CajhCVNg9nJIxvZzp0jyE
+-----END PRIVATE KEY-----
+`;
+
+  assertEquals(privatePkcs8, pkcs8Expected);
 });
