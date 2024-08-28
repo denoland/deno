@@ -13,6 +13,7 @@ use deno_core::unsync::spawn_blocking;
 use deno_core::GarbageCollected;
 use deno_core::ToJsBuffer;
 use ed25519_dalek::pkcs8::BitStringRef;
+use elliptic_curve::JwkEcKey;
 use num_bigint::BigInt;
 use num_traits::FromPrimitive as _;
 use pkcs8::DecodePrivateKey as _;
@@ -581,6 +582,36 @@ impl KeyObjectHandle {
     Ok(KeyObjectHandle::AsymmetricPublic(key))
   }
 
+  pub fn new_ec_jwk(
+    jwk: &JwkEcKey,
+    is_public: bool,
+  ) -> Result<KeyObjectHandle, AnyError> {
+    //  https://datatracker.ietf.org/doc/html/rfc7518#section-6.2.1.1
+    let handle = match jwk.crv() {
+      "P-256" if is_public => {
+        KeyObjectHandle::AsymmetricPublic(AsymmetricPublicKey::Ec(
+          EcPublicKey::P256(p256::PublicKey::from_jwk(jwk)?),
+        ))
+      }
+      "P-256" => KeyObjectHandle::AsymmetricPrivate(AsymmetricPrivateKey::Ec(
+        EcPrivateKey::P256(p256::SecretKey::from_jwk(jwk)?),
+      )),
+      "P-384" if is_public => {
+        KeyObjectHandle::AsymmetricPublic(AsymmetricPublicKey::Ec(
+          EcPublicKey::P384(p384::PublicKey::from_jwk(jwk)?),
+        ))
+      }
+      "P-384" => KeyObjectHandle::AsymmetricPrivate(AsymmetricPrivateKey::Ec(
+        EcPrivateKey::P384(p384::SecretKey::from_jwk(jwk)?),
+      )),
+      _ => {
+        return Err(type_error(format!("unsupported curve: {}", jwk.crv())));
+      }
+    };
+
+    Ok(handle)
+  }
+
   pub fn new_ed_raw(
     curve: &str,
     data: &[u8],
@@ -1145,6 +1176,15 @@ pub fn op_node_create_ed_raw(
   is_public: bool,
 ) -> Result<KeyObjectHandle, AnyError> {
   KeyObjectHandle::new_ed_raw(curve, key, is_public)
+}
+
+#[op2]
+#[cppgc]
+pub fn op_node_create_ec_jwk(
+  #[serde] jwk: elliptic_curve::JwkEcKey,
+  is_public: bool,
+) -> Result<KeyObjectHandle, AnyError> {
+  KeyObjectHandle::new_ec_jwk(&jwk, is_public)
 }
 
 #[op2]
