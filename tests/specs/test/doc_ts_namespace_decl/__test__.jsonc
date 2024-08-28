@@ -1,0 +1,5 @@
+{
+  "args": "test --doc --config ../../../config/deno.json lib.d.ts",
+  "exitCode": 0,
+  "output": "lib.d.ts.out"
+}
