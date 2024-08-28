@@ -234,15 +234,15 @@ fn create_command(
     permissions.check_run(&args.cmd, api_name)?;
     // error the same on all platforms
     if permissions.check_run_all(api_name).is_err()
-      && (args.env.iter().any(|(k, _)| k.trim() == "LD_PRELOAD")
+      && (args.env.iter().any(|(k, _)| k.trim().starts_with("LD_"))
         || !args.clear_env
-          && std::env::vars().any(|(k, _)| k.trim() == "LD_PRELOAD"))
+          && std::env::vars().any(|(k, _)| k.trim().starts_with("LD_")))
     {
-      // we don't allow users to launch subprocesses with the LD_PRELOAD
-      // env var set because this allows executing any code
+      // we don't allow users to launch subprocesses with any LD_ env var set
+      // because this allows executing code (ex. LD_PRELOAD)
       return Err(deno_core::error::custom_error(
           "PermissionDenied",
-          "Requires --allow-all permissions to spawn subprocess with LD_PRELOAD environment variable."
+          "Requires --allow-all permissions to spawn subprocess with any LD_* environment variable."
         ));
     }
   }
