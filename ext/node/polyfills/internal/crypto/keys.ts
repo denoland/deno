@@ -16,6 +16,7 @@ import {
   op_node_create_ed_raw,
   op_node_create_private_key,
   op_node_create_public_key,
+  op_node_create_rsa_jwk,
   op_node_create_secret_key,
   op_node_derive_public_key_from_private_key,
   op_node_export_private_key_der,
@@ -324,7 +325,32 @@ function getKeyObjectHandleFromJwk(key, ctx) {
     return op_node_create_ec_jwk(key, isPublic);
   }
 
-  throw new TypeError("rsa jwk imports not implemented");
+  // RSA
+  validateString(key.n, "key.n");
+  validateString(key.e, "key.e");
+
+  const jwk = {
+    kty: key.kty,
+    n: key.n,
+    e: key.e,
+  };
+
+  if (!isPublic) {
+    validateString(key.d, "key.d");
+    validateString(key.p, "key.p");
+    validateString(key.q, "key.q");
+    validateString(key.dp, "key.dp");
+    validateString(key.dq, "key.dq");
+    validateString(key.qi, "key.qi");
+    jwk.d = key.d;
+    jwk.p = key.p;
+    jwk.q = key.q;
+    jwk.dp = key.dp;
+    jwk.dq = key.dq;
+    jwk.qi = key.qi;
+  }
+
+  return op_node_create_rsa_jwk(jwk, isPublic);
 }
 
 export function prepareAsymmetricKey(
