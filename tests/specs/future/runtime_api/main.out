@@ -22,7 +22,6 @@ Deno.readSync is undefined
 Deno.resources is undefined
 Deno.seek is undefined
 Deno.seekSync is undefined
-Deno.shutdown is undefined
 Deno.writeAll is undefined
 Deno.writeAllSync is undefined
 Deno.write is undefined
