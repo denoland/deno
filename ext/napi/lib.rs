@@ -584,7 +584,7 @@ where
 
   // The `module.exports` object.
   let exports = v8::Object::new(scope);
-  
+
   let maybe_exports = if let Some(module_to_register) = maybe_module {
     NAPI_LOADED_MODULES
       .write()
