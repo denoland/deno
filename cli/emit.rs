@@ -306,7 +306,7 @@ fn ensure_no_import_assertion(
     let loc = text_info.line_and_column_display(range.start);
     let mut msg = "Import assertions are deprecated. Use `with` keyword, instead of 'assert' keyword.".to_string();
     msg.push_str("\n\n");
-    msg.push_str(&range.text_fast(text_info).to_string());
+    msg.push_str(range.text_fast(text_info));
     msg.push_str("\n\n");
     msg.push_str(&format!(
       "  at {}:{}:{}\n",
