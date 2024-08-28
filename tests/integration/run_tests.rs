@@ -501,7 +501,10 @@ itest!(_088_dynamic_import_already_evaluating {
 // TODO(bartlomieju): remove --unstable once Deno.Command is stabilized
 itest!(_089_run_allow_list {
   args: "run --unstable --allow-run=curl run/089_run_allow_list.ts",
-  envs: vec![("LD_LIBRARY_PATH".to_string(), "".to_string())],
+  envs: vec![
+    ("LD_LIBRARY_PATH".to_string(), "".to_string()),
+    ("DYLD_FALLBACK_LIBRARY_PATH".to_string(), "".to_string())
+  ],
   output: "run/089_run_allow_list.ts.out",
 });
 
@@ -3739,7 +3742,10 @@ itest!(test_and_bench_are_noops_in_run {
 #[cfg(not(target_os = "windows"))]
 itest!(spawn_kill_permissions {
   args: "run --quiet --allow-run=cat spawn_kill_permissions.ts",
-  envs: vec![("LD_LIBRARY_PATH".to_string(), "".to_string())],
+  envs: vec![
+    ("LD_LIBRARY_PATH".to_string(), "".to_string()),
+    ("DYLD_FALLBACK_LIBRARY_PATH".to_string(), "".to_string())
+  ],
   output_str: Some(""),
 });
 
