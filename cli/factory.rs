@@ -304,8 +304,11 @@ impl CliFactory {
       let global_cache = self.global_http_cache()?.clone();
       match self.cli_options()?.vendor_dir_path() {
         Some(local_path) => {
-          let local_cache =
-            LocalHttpCache::new(local_path.clone(), global_cache);
+          let local_cache = LocalHttpCache::new(
+            local_path.clone(),
+            global_cache,
+            deno_cache_dir::GlobalToLocalCopy::Allow,
+          );
           Ok(Arc::new(local_cache))
         }
         None => Ok(global_cache),
@@ -720,9 +723,9 @@ impl CliFactory {
         checker.warn_on_legacy_unstable();
       }
       let unstable_features = cli_options.unstable_features();
-      for (flag_name, _, _) in crate::UNSTABLE_GRANULAR_FLAGS {
-        if unstable_features.contains(&flag_name.to_string()) {
-          checker.enable_feature(flag_name);
+      for granular_flag in crate::UNSTABLE_GRANULAR_FLAGS {
+        if unstable_features.contains(&granular_flag.name.to_string()) {
+          checker.enable_feature(granular_flag.name);
         }
       }
 

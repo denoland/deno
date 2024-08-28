@@ -11,7 +11,6 @@ use crate::http_util::HttpClientProvider;
 use crate::util::progress_bar::ProgressBar;
 
 use deno_ast::MediaType;
-use deno_core::anyhow::bail;
 use deno_core::anyhow::Context;
 use deno_core::error::custom_error;
 use deno_core::error::generic_error;
@@ -50,6 +49,25 @@ pub struct TextDecodedFile {
 pub enum FileOrRedirect {
   File(File),
   Redirect(ModuleSpecifier),
+}
+
+impl FileOrRedirect {
+  fn from_deno_cache_entry(
+    specifier: &ModuleSpecifier,
+    cache_entry: deno_cache_dir::CacheEntry,
+  ) -> Result<Self, AnyError> {
+    if let Some(redirect_to) = cache_entry.metadata.headers.get("location") {
+      let redirect =
+        deno_core::resolve_import(redirect_to, specifier.as_str())?;
+      Ok(FileOrRedirect::Redirect(redirect))
+    } else {
+      Ok(FileOrRedirect::File(File {
+        specifier: specifier.clone(),
+        maybe_headers: Some(cache_entry.metadata.headers),
+        source: Arc::from(cache_entry.content),
+      }))
+    }
+  }
 }
 
 /// A structure representing a source file.
@@ -238,45 +256,32 @@ impl FileFetcher {
     );
 
     let cache_key = self.http_cache.cache_item_key(specifier)?; // compute this once
-    let Some(headers) = self.http_cache.read_headers(&cache_key)? else {
-      return Ok(None);
-    };
-    if let Some(redirect_to) = headers.get("location") {
-      let redirect =
-        deno_core::resolve_import(redirect_to, specifier.as_str())?;
-      return Ok(Some(FileOrRedirect::Redirect(redirect)));
-    }
-    let result = self.http_cache.read_file_bytes(
+    let result = self.http_cache.get(
       &cache_key,
       maybe_checksum
         .as_ref()
         .map(|c| deno_cache_dir::Checksum::new(c.as_str())),
-      deno_cache_dir::GlobalToLocalCopy::Allow,
     );
-    let bytes = match result {
-      Ok(Some(bytes)) => bytes,
-      Ok(None) => return Ok(None),
+    match result {
+      Ok(Some(cache_data)) => Ok(Some(FileOrRedirect::from_deno_cache_entry(
+        specifier, cache_data,
+      )?)),
+      Ok(None) => Ok(None),
       Err(err) => match err {
-        deno_cache_dir::CacheReadFileError::Io(err) => return Err(err.into()),
+        deno_cache_dir::CacheReadFileError::Io(err) => Err(err.into()),
         deno_cache_dir::CacheReadFileError::ChecksumIntegrity(err) => {
           // convert to the equivalent deno_graph error so that it
           // enhances it if this is passed to deno_graph
-          return Err(
+          Err(
             deno_graph::source::ChecksumIntegrityError {
               actual: err.actual,
               expected: err.expected,
             }
             .into(),
-          );
+          )
         }
       },
-    };
-
-    Ok(Some(FileOrRedirect::File(File {
-      specifier: specifier.clone(),
-      maybe_headers: Some(headers),
-      source: Arc::from(bytes),
-    })))
+    }
   }
 
   /// Convert a data URL into a file, resulting in an error if the URL is
@@ -363,12 +368,30 @@ impl FileFetcher {
       );
     }
 
-    let maybe_etag = self
+    let maybe_etag_cache_entry = self
       .http_cache
       .cache_item_key(specifier)
       .ok()
-      .and_then(|key| self.http_cache.read_headers(&key).ok().flatten())
-      .and_then(|headers| headers.get("etag").cloned());
+      .and_then(|key| {
+        self
+          .http_cache
+          .get(
+            &key,
+            maybe_checksum
+              .as_ref()
+              .map(|c| deno_cache_dir::Checksum::new(c.as_str())),
+          )
+          .ok()
+          .flatten()
+      })
+      .and_then(|cache_entry| {
+        cache_entry
+          .metadata
+          .headers
+          .get("etag")
+          .cloned()
+          .map(|etag| (cache_entry, etag))
+      });
     let maybe_auth_token = self.auth_tokens.get(specifier);
 
     async fn handle_request_or_server_error(
@@ -390,7 +413,6 @@ impl FileFetcher {
       }
     }
 
-    let mut maybe_etag = maybe_etag;
     let mut retried = false; // retry intermittent failures
     let result = loop {
       let result = match self
@@ -399,31 +421,17 @@ impl FileFetcher {
         .fetch_no_follow(FetchOnceArgs {
           url: specifier.clone(),
           maybe_accept: maybe_accept.map(ToOwned::to_owned),
-          maybe_etag: maybe_etag.clone(),
+          maybe_etag: maybe_etag_cache_entry
+            .as_ref()
+            .map(|(_, etag)| etag.clone()),
           maybe_auth_token: maybe_auth_token.clone(),
           maybe_progress_guard: maybe_progress_guard.as_ref(),
         })
         .await?
       {
         FetchOnceResult::NotModified => {
-          let file_or_redirect =
-            self.fetch_cached_no_follow(specifier, maybe_checksum)?;
-          match file_or_redirect {
-            Some(file_or_redirect) => Ok(file_or_redirect),
-            None => {
-              // Someone may have deleted the body from the cache since
-              // it's currently stored in a separate file from the headers,
-              // so delete the etag and try again
-              if maybe_etag.is_some() {
-                debug!("Cache body not found. Trying again without etag.");
-                maybe_etag = None;
-                continue;
-              } else {
-                // should never happen
-                bail!("Your deno cache directory is in an unrecoverable state. Please delete it and try again.")
-              }
-            }
-          }
+          let (cache_entry, _) = maybe_etag_cache_entry.unwrap();
+          FileOrRedirect::from_deno_cache_entry(specifier, cache_entry)
         }
         FetchOnceResult::Redirect(redirect_url, headers) => {
           self.http_cache.set(specifier, headers, &[])?;
@@ -1480,13 +1488,10 @@ mod tests {
     let cache_key = file_fetcher.http_cache.cache_item_key(url).unwrap();
     let bytes = file_fetcher
       .http_cache
-      .read_file_bytes(
-        &cache_key,
-        None,
-        deno_cache_dir::GlobalToLocalCopy::Allow,
-      )
+      .get(&cache_key, None)
       .unwrap()
-      .unwrap();
+      .unwrap()
+      .content;
     String::from_utf8(bytes).unwrap()
   }
 

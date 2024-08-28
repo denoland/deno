@@ -217,26 +217,12 @@ impl CliLockfile {
           file_path,
           content: &text,
           overwrite: false,
-          is_deno_future: *super::DENO_FUTURE,
         })?,
         frozen,
       )),
-      Err(err) if err.kind() == std::io::ErrorKind::NotFound => {
-        Ok(CliLockfile::new(
-          if *super::DENO_FUTURE {
-            // force version 4 for deno future
-            Lockfile::new(deno_lockfile::NewLockfileOptions {
-              file_path,
-              content: r#"{"version":"4"}"#,
-              overwrite: false,
-              is_deno_future: true,
-            })?
-          } else {
-            Lockfile::new_empty(file_path, false)
-          },
-          frozen,
-        ))
-      }
+      Err(err) if err.kind() == std::io::ErrorKind::NotFound => Ok(
+        CliLockfile::new(Lockfile::new_empty(file_path, false), frozen),
+      ),
       Err(err) => Err(err).with_context(|| {
         format!("Failed reading lockfile '{}'", file_path.display())
       }),

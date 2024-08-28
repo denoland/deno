@@ -853,21 +853,6 @@ itest!(lock_v2_check_ok2 {
 });
 
 #[test]
-fn lock_no_declaration_files() {
-  let context = TestContextBuilder::new()
-    .use_temp_cwd()
-    .use_http_server()
-    .build();
-  let output = context
-    .new_command()
-    .args("cache --lock deno.lock $TESTDATA/lockfile/no_dts/main.ts")
-    .run();
-  output.assert_matches_file("lockfile/no_dts/main.cache.out");
-  let lockfile = context.temp_dir().path().join("deno.lock");
-  lockfile.assert_matches_file("lockfile/no_dts/deno.lock.out");
-}
-
-#[test]
 fn lock_redirects() {
   let context = TestContextBuilder::new()
     .use_temp_cwd()
@@ -886,7 +871,7 @@ fn lock_redirects() {
     .run()
     .skip_output_check();
   let initial_lockfile_text = r#"{
-  "version": "3",
+  "version": "4",
   "redirects": {
     "http://localhost:4546/run/001_hello.js": "http://localhost:4545/run/001_hello.js"
   },
@@ -905,7 +890,7 @@ fn lock_redirects() {
 
   // now try changing where the redirect occurs in the lockfile
   temp_dir.write("deno.lock", r#"{
-  "version": "3",
+  "version": "4",
   "redirects": {
     "http://localhost:4546/run/001_hello.js": "http://localhost:4545/echo.ts"
   },
@@ -936,16 +921,13 @@ fn lock_redirects() {
   util::assertions::assert_wildcard_match(
     &temp_dir.read_to_string("deno.lock"),
     r#"{
-  "version": "3",
-  "packages": {
-    "specifiers": {
-      "npm:@denotest/esm-basic": "npm:@denotest/esm-basic@1.0.0"
-    },
-    "npm": {
-      "@denotest/esm-basic@1.0.0": {
-        "integrity": "sha512-[WILDCARD]",
-        "dependencies": {}
-      }
+  "version": "4",
+  "specifiers": {
+    "npm:@denotest/esm-basic": "npm:@denotest/esm-basic@1.0.0"
+  },
+  "npm": {
+    "@denotest/esm-basic@1.0.0": {
+      "integrity": "sha512-[WILDCARD]"
     }
   },
   "redirects": {
@@ -990,25 +972,21 @@ fn lock_deno_json_package_json_deps() {
   let esm_basic_integrity =
     get_lockfile_npm_package_integrity(&lockfile, "@denotest/esm-basic@1.0.0");
   lockfile.assert_matches_json(json!({
-    "version": "3",
-    "packages": {
-      "specifiers": {
-        "jsr:@denotest/module-graph@1.4": "jsr:@denotest/module-graph@1.4.0",
-        "npm:@denotest/esm-basic": "npm:@denotest/esm-basic@1.0.0"
-      },
-      "jsr": {
-        "@denotest/module-graph@1.4.0": {
-          "integrity": "32de0973c5fa55772326fcd504a757f386d2b010db3e13e78f3bcf851e69473d"
-        }
-      },
-      "npm": {
-        "@denotest/esm-basic@1.0.0": {
-          "integrity": esm_basic_integrity,
-          "dependencies": {}
-        }
+    "version": "4",
+    "specifiers": {
+      "jsr:@denotest/module-graph@1.4": "jsr:@denotest/module-graph@1.4.0",
+      "npm:@denotest/esm-basic": "npm:@denotest/esm-basic@1.0.0"
+    },
+    "jsr": {
+      "@denotest/module-graph@1.4.0": {
+        "integrity": "32de0973c5fa55772326fcd504a757f386d2b010db3e13e78f3bcf851e69473d"
       }
     },
-    "remote": {},
+    "npm": {
+      "@denotest/esm-basic@1.0.0": {
+        "integrity": esm_basic_integrity
+      }
+    },
     "workspace": {
       "dependencies": [
         "jsr:@denotest/module-graph@1.4",
@@ -1042,25 +1020,21 @@ fn lock_deno_json_package_json_deps() {
     .run()
     .skip_output_check();
   lockfile.assert_matches_json(json!({
-    "version": "3",
-    "packages": {
-      "specifiers": {
-        "jsr:@denotest/module-graph@1.4": "jsr:@denotest/module-graph@1.4.0",
-        "npm:@denotest/esm-basic": "npm:@denotest/esm-basic@1.0.0"
-      },
-      "jsr": {
-        "@denotest/module-graph@1.4.0": {
-          "integrity": "32de0973c5fa55772326fcd504a757f386d2b010db3e13e78f3bcf851e69473d"
-        }
-      },
-      "npm": {
-        "@denotest/esm-basic@1.0.0": {
-          "integrity": esm_basic_integrity,
-          "dependencies": {}
-        }
+    "version": "4",
+    "specifiers": {
+      "jsr:@denotest/module-graph@1.4": "jsr:@denotest/module-graph@1.4.0",
+      "npm:@denotest/esm-basic": "npm:@denotest/esm-basic@1.0.0"
+    },
+    "jsr": {
+      "@denotest/module-graph@1.4.0": {
+        "integrity": "32de0973c5fa55772326fcd504a757f386d2b010db3e13e78f3bcf851e69473d"
       }
     },
-    "remote": {},
+    "npm": {
+      "@denotest/esm-basic@1.0.0": {
+        "integrity": esm_basic_integrity
+      }
+    },
     "workspace": {
       "dependencies": [
         "jsr:@denotest/module-graph@1.4"
@@ -1083,18 +1057,15 @@ fn lock_deno_json_package_json_deps() {
     .run()
     .skip_output_check();
   lockfile.assert_matches_json(json!({
-    "version": "3",
-    "packages": {
-      "specifiers": {
-        "jsr:@denotest/module-graph@1.4": "jsr:@denotest/module-graph@1.4.0",
-      },
-      "jsr": {
-        "@denotest/module-graph@1.4.0": {
-          "integrity": "32de0973c5fa55772326fcd504a757f386d2b010db3e13e78f3bcf851e69473d"
-        }
+    "version": "4",
+    "specifiers": {
+      "jsr:@denotest/module-graph@1.4": "jsr:@denotest/module-graph@1.4.0",
+    },
+    "jsr": {
+      "@denotest/module-graph@1.4.0": {
+        "integrity": "32de0973c5fa55772326fcd504a757f386d2b010db3e13e78f3bcf851e69473d"
       }
     },
-    "remote": {},
     "workspace": {
       "dependencies": [
         "jsr:@denotest/module-graph@1.4"
@@ -1112,8 +1083,7 @@ fn lock_deno_json_package_json_deps() {
     .skip_output_check();
 
   lockfile.assert_matches_json(json!({
-    "version": "3",
-    "remote": {}
+    "version": "4"
   }));
 }
 
@@ -1171,24 +1141,19 @@ fn lock_deno_json_package_json_deps_workspace() {
   );
 
   lockfile.assert_matches_json(json!({
-    "version": "3",
-    "packages": {
-      "specifiers": {
-        "npm:@denotest/cjs-default-export@1": "npm:@denotest/cjs-default-export@1.0.0",
-        "npm:@denotest/esm-basic@1": "npm:@denotest/esm-basic@1.0.0"
+    "version": "4",
+    "specifiers": {
+      "npm:@denotest/cjs-default-export@1": "npm:@denotest/cjs-default-export@1.0.0",
+      "npm:@denotest/esm-basic@1": "npm:@denotest/esm-basic@1.0.0"
+    },
+    "npm": {
+      "@denotest/cjs-default-export@1.0.0": {
+        "integrity": cjs_default_export_integrity
       },
-      "npm": {
-        "@denotest/cjs-default-export@1.0.0": {
-          "integrity": cjs_default_export_integrity,
-          "dependencies": {}
-        },
-        "@denotest/esm-basic@1.0.0": {
-          "integrity": esm_basic_integrity,
-          "dependencies": {}
-        }
+      "@denotest/esm-basic@1.0.0": {
+        "integrity": esm_basic_integrity
       }
     },
-    "remote": {},
     "workspace": {
       "packageJson": {
         "dependencies": [
@@ -1219,24 +1184,19 @@ fn lock_deno_json_package_json_deps_workspace() {
     "@denotest/cjs-default-export@1.0.0",
   );
   let expected_lockfile = json!({
-    "version": "3",
-    "packages": {
-      "specifiers": {
-        "npm:@denotest/cjs-default-export@1": "npm:@denotest/cjs-default-export@1.0.0",
-        "npm:@denotest/esm-basic@1": "npm:@denotest/esm-basic@1.0.0"
+    "version": "4",
+    "specifiers": {
+      "npm:@denotest/cjs-default-export@1": "npm:@denotest/cjs-default-export@1.0.0",
+      "npm:@denotest/esm-basic@1": "npm:@denotest/esm-basic@1.0.0"
+    },
+    "npm": {
+      "@denotest/cjs-default-export@1.0.0": {
+        "integrity": cjs_default_export_integrity
       },
-      "npm": {
-        "@denotest/cjs-default-export@1.0.0": {
-          "integrity": cjs_default_export_integrity,
-          "dependencies": {}
-        },
-        "@denotest/esm-basic@1.0.0": {
-          "integrity": esm_basic_integrity,
-          "dependencies": {}
-        }
+      "@denotest/esm-basic@1.0.0": {
+        "integrity": esm_basic_integrity
       }
     },
-    "remote": {},
     "workspace": {
       "packageJson": {
         "dependencies": [
@@ -1275,8 +1235,6 @@ fn get_lockfile_npm_package_integrity(
   // different hashes depending on what operating system it's running on
   lockfile
     .read_json_value()
-    .get("packages")
-    .unwrap()
     .get("npm")
     .unwrap()
     .get(package_name)
@@ -5012,39 +4970,6 @@ console.log(add(3, 4));
   );
   let output = test_context.new_command().args("run main.ts").run();
   output.assert_matches_text("[WILDCARD]5\n7\n");
-}
-
-#[test]
-fn run_etag_delete_source_cache() {
-  let test_context = TestContextBuilder::new()
-    .use_temp_cwd()
-    .use_http_server()
-    .build();
-  test_context
-    .temp_dir()
-    .write("main.ts", "import 'http://localhost:4545/etag_script.ts'");
-  test_context
-    .new_command()
-    .args("cache main.ts")
-    .run()
-    .skip_output_check();
-
-  // The cache is currently stored unideally in two files where one file has the headers
-  // and the other contains the body. An issue can happen with the etag header where the
-  // headers file exists, but the body was deleted. We need to get the cache to gracefully
-  // handle this scenario.
-  let deno_dir = test_context.deno_dir().path();
-  let etag_script_path = deno_dir.join("deps/http/localhost_PORT4545/26110db7d42c9bad32386735cbc05c301f83e4393963deb8da14fec3b4202a13");
-  assert!(etag_script_path.exists());
-  etag_script_path.remove_file();
-
-  test_context
-    .new_command()
-    .args("cache --reload --log-level=debug main.ts")
-    .run()
-    .assert_matches_text(
-      "[WILDCARD]Cache body not found. Trying again without etag.[WILDCARD]",
-    );
 }
 
 #[test]
