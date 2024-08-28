@@ -6,6 +6,7 @@ use crate::args::TestFlags;
 use crate::args::TestReporterConfig;
 use crate::colors;
 use crate::display;
+use crate::extract::extract_doc_tests;
 use crate::factory::CliFactory;
 use crate::file_fetcher::FileFetcher;
 use crate::graph_util::has_graph_root_local_dependent_changed;
@@ -84,7 +85,6 @@ use std::time::Instant;
 use tokio::signal;
 
 mod channel;
-mod extract;
 pub mod fmt;
 pub mod reporters;
 
@@ -1583,7 +1583,7 @@ pub async fn run_tests(
       let file = file_fetcher
         .fetch(s, &PermissionsContainer::allow_all())
         .await?;
-      let doc_tests = extract::extract_doc_tests(file)?;
+      let doc_tests = extract_doc_tests(file)?;
       for doc_test in doc_tests {
         final_specifiers.push(doc_test.specifier.clone());
         file_fetcher.insert_memory_files(doc_test);
@@ -1774,7 +1774,7 @@ pub async fn run_tests_with_watch(
             let file = file_fetcher
               .fetch(s, &PermissionsContainer::allow_all())
               .await?;
-            let doc_tests = extract::extract_doc_tests(file)?;
+            let doc_tests = extract_doc_tests(file)?;
             for doc_test in doc_tests {
               final_specifiers.push(doc_test.specifier.clone());
               file_fetcher.insert_memory_files(doc_test);

@@ -24,7 +24,26 @@ use crate::util::path::mapped_specifier_for_tsc;
 /// Extracts doc tests from a given file, transforms them into pseudo test
 /// files by wrapping the content of the doc tests in a `Deno.test` call, and
 /// returns a list of the pseudo test files.
-pub(super) fn extract_doc_tests(file: File) -> Result<Vec<File>, AnyError> {
+///
+/// The difference from [`extract_snippet_files`] is that this function wraps
+/// extracted code snippets in a `Deno.test` call.
+pub fn extract_doc_tests(file: File) -> Result<Vec<File>, AnyError> {
+  extract_inner(file, true)
+}
+
+/// Extracts code snippets from a given file and returns a list of the extracted
+/// files.
+///
+/// The difference from [`extract_doc_tests`] is that this function does *not*
+/// wrap extracted code snippets in a `Deno.test` call.
+pub fn extract_snippet_files(file: File) -> Result<Vec<File>, AnyError> {
+  extract_inner(file, false)
+}
+
+fn extract_inner(
+  file: File,
+  wrap_in_deno_test: bool,
+) -> Result<Vec<File>, AnyError> {
   let file = file.into_text_decoded()?;
 
   let exports = match deno_ast::parse_program(deno_ast::ParseParams {
@@ -60,7 +79,12 @@ pub(super) fn extract_doc_tests(file: File) -> Result<Vec<File>, AnyError> {
   extracted_files
     .into_iter()
     .map(|extracted_file| {
-      generate_pseudo_test_file(extracted_file, &file.specifier, &exports)
+      generate_pseudo_file(
+        extracted_file,
+        &file.specifier,
+        &exports,
+        wrap_in_deno_test,
+      )
     })
     .collect::<Result<_, _>>()
 }
@@ -437,11 +461,11 @@ impl Visit for ImportedIdentifierCollector {
   }
 }
 
-/// Generates a "pseudo" test file from a given file by applying the following
+/// Generates a "pseudo" file from a given file by applying the following
 /// transformations:
 ///
 /// 1. Injects `import` statements for expoted items from the base file
-/// 2. Wraps the content of the file in a `Deno.test` call
+/// 2. Wraps the content of the file in a `Deno.test` call (if `wrap_in_deno_test` is `true`)
 ///
 /// For example, given a file that looks like:
 ///
@@ -455,20 +479,20 @@ impl Visit for ImportedIdentifierCollector {
 ///
 /// ```ts
 /// export function increment(n: number): number {
-///  return n + 1;
+///   return n + 1;
 /// }
 ///
 /// export const SOME_CONST = "HELLO";
 /// ```
 ///
-/// The generated pseudo test file would look like:
+/// The generated pseudo test file would look like (if `wrap_in_deno_test` is enabled):
 ///
 /// ```ts
 /// import { assertEquals } from "@std/assert/equals";
 /// import { increment, SOME_CONST } from "./base.ts";
 ///
 /// Deno.test("./base.ts$1-3.ts", async () => {
-///  assertEquals(increment(1), 2);
+///   assertEquals(increment(1), 2);
 /// });
 /// ```
 ///
@@ -491,10 +515,11 @@ impl Visit for ImportedIdentifierCollector {
 ///   assertEquals(doSomething(1), 2);
 /// });
 /// ```
-fn generate_pseudo_test_file(
+fn generate_pseudo_file(
   file: File,
   base_file_specifier: &ModuleSpecifier,
   exports: &ExportCollector,
+  wrap_in_deno_test: bool,
 ) -> Result<File, AnyError> {
   let file = file.into_text_decoded()?;
 
@@ -523,6 +548,7 @@ fn generate_pseudo_test_file(
           .into_iter()
           .map(|i| i.sym)
           .collect(),
+        wrap_in_deno_test,
       }));
 
   Ok(File {
@@ -539,6 +565,7 @@ struct Transform<'a> {
   base_file_specifier: &'a ModuleSpecifier,
   exports_from_base: &'a ExportCollector,
   explicit_imports: HashSet<Atom>,
+  wrap_in_deno_test: bool,
 }
 
 impl<'a> VisitMut for Transform<'a> {
@@ -581,10 +608,15 @@ impl<'a> VisitMut for Transform<'a> {
             }),
           ));
         }
-        transformed_items.push(ast::ModuleItem::Stmt(wrap_in_deno_test(
-          stmts,
-          self.specifier.to_string().into(),
-        )));
+        if self.wrap_in_deno_test {
+          transformed_items.push(ast::ModuleItem::Stmt(wrap_in_deno_test(
+            stmts,
+            self.specifier.to_string().into(),
+          )));
+        } else {
+          transformed_items
+            .extend(stmts.into_iter().map(ast::ModuleItem::Stmt));
+        }
 
         transformed_items
       }
@@ -613,10 +645,15 @@ impl<'a> VisitMut for Transform<'a> {
           ));
         }
 
-        transformed_items.push(ast::ModuleItem::Stmt(wrap_in_deno_test(
-          script.body.clone(),
-          self.specifier.to_string().into(),
-        )));
+        if self.wrap_in_deno_test {
+          transformed_items.push(ast::ModuleItem::Stmt(wrap_in_deno_test(
+            script.body.clone(),
+            self.specifier.to_string().into(),
+          )));
+        } else {
+          transformed_items
+            .extend(script.body.clone().into_iter().map(ast::ModuleItem::Stmt));
+        }
 
         transformed_items
       }
@@ -934,6 +971,135 @@ Deno.test("file:///README.md$6-12.js", async ()=>{
         source: test.input.source.as_bytes().into(),
       };
       let got_decoded = extract_doc_tests(file)
+        .unwrap()
+        .into_iter()
+        .map(|f| f.into_text_decoded().unwrap())
+        .collect::<Vec<_>>();
+      let expected = test
+        .expected
+        .iter()
+        .map(|e| TextDecodedFile {
+          specifier: ModuleSpecifier::parse(e.specifier).unwrap(),
+          media_type: e.media_type,
+          source: e.source.into(),
+        })
+        .collect::<Vec<_>>();
+      assert_eq!(got_decoded, expected);
+    }
+  }
+
+  #[test]
+  fn test_extract_snippet_files() {
+    struct Input {
+      source: &'static str,
+      specifier: &'static str,
+    }
+    struct Expected {
+      source: &'static str,
+      specifier: &'static str,
+      media_type: MediaType,
+    }
+    struct Test {
+      input: Input,
+      expected: Vec<Expected>,
+    }
+
+    let tests = [
+      Test {
+        input: Input {
+          source: r#""#,
+          specifier: "file:///main.ts",
+        },
+        expected: vec![],
+      },
+      Test {
+        input: Input {
+          source: r#"
+/**
+ * ```ts
+ * import { assertEquals } from "@std/assert/equals";
+ *
+ * assertEquals(add(1, 2), 3);
+ * ```
+ */
+export function add(a: number, b: number): number {
+  return a + b;
+}
+"#,
+          specifier: "file:///main.ts",
+        },
+        expected: vec![Expected {
+          source: r#"import { assertEquals } from "@std/assert/equals";
+import { add } from "file:///main.ts";
+assertEquals(add(1, 2), 3);
+"#,
+          specifier: "file:///main.ts$3-8.ts",
+          media_type: MediaType::TypeScript,
+        }],
+      },
+      Test {
+        input: Input {
+          source: r#"
+/**
+ * ```ts
+ * import { assertEquals } from "@std/assert/equals";
+ * import { DUPLICATE } from "./other.ts";
+ *
+ * assertEquals(add(1, 2), 3);
+ * ```
+ */
+export function add(a: number, b: number): number {
+  return a + b;
+}
+
+export const DUPLICATE = "dup";
+"#,
+          specifier: "file:///main.ts",
+        },
+        expected: vec![Expected {
+          source: r#"import { assertEquals } from "@std/assert/equals";
+import { DUPLICATE } from "./other.ts";
+import { add } from "file:///main.ts";
+assertEquals(add(1, 2), 3);
+"#,
+          specifier: "file:///main.ts$3-9.ts",
+          media_type: MediaType::TypeScript,
+        }],
+      },
+      Test {
+        input: Input {
+          source: r#"
+# Header
+
+This is a *markdown*.
+
+```js
+import { assertEquals } from "@std/assert/equal";
+import { add } from "jsr:@deno/non-existent";
+
+assertEquals(add(1, 2), 3);
+```
+"#,
+          specifier: "file:///README.md",
+        },
+        expected: vec![Expected {
+          source: r#"import { assertEquals } from "@std/assert/equal";
+import { add } from "jsr:@deno/non-existent";
+assertEquals(add(1, 2), 3);
+"#,
+          specifier: "file:///README.md$6-12.js",
+          media_type: MediaType::JavaScript,
+        }],
+      },
+    ];
+
+    for test in tests {
+      let file = File {
+        specifier: ModuleSpecifier::parse(test.input.specifier).unwrap(),
+        maybe_headers: None,
+        source: test.input.source.as_bytes().into(),
+      };
+      let got_decoded = extract_snippet_files(file)
         .unwrap()
         .into_iter()
         .map(|f| f.into_text_decoded().unwrap())
