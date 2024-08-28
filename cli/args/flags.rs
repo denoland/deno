@@ -2894,7 +2894,7 @@ Directory arguments are expanded to all contained files matching the glob
       .arg(
         Arg::new("doc")
           .long("doc")
-          .help("Type-check code blocks in JSDoc and Markdown")
+          .help("Evaluate code blocks in JSDoc and Markdown")
           .action(ArgAction::SetTrue)
           .help_heading(TEST_HEADING),
       )
