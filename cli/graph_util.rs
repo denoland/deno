@@ -560,7 +560,7 @@ impl ModuleGraphBuilder {
         for (req_dep, value) in &lockfile.content.packages.specifiers {
           match req_dep.kind {
             deno_semver::package::PackageKind::Jsr => {
-              if let Ok(version) = Version::parse_standard(&value) {
+              if let Ok(version) = Version::parse_standard(value) {
                 graph.packages.add_nv(
                   req_dep.req.clone(),
                   PackageNv {
@@ -617,7 +617,7 @@ impl ModuleGraphBuilder {
         // jsr packages
         if has_jsr_package_deps_changed {
           for (nv, deps) in graph.packages.packages_with_deps() {
-            lockfile.add_package_deps(&nv, deps.cloned());
+            lockfile.add_package_deps(nv, deps.cloned());
           }
         }
       }

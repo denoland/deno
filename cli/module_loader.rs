@@ -771,8 +771,7 @@ impl<TGraphContainer: ModuleGraphContainer> ModuleLoader
           lib,
           root_permissions,
         )
-        .await
-        .inspect_err(|err| eprintln!("FOUND: {:?}", err))?;
+        .await?;
       update_permit.commit();
       Ok(())
     }
