@@ -850,7 +850,7 @@ impl Config {
     let mut config = Self::default();
     let mut folders = vec![];
     for root_url in root_urls {
-      let root_uri = url_to_uri(&root_url);
+      let root_uri = url_to_uri(&root_url).unwrap();
       let name = root_url.path_segments().and_then(|s| s.last());
       let name = name.unwrap_or_default().to_string();
       folders.push((
