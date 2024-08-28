@@ -252,7 +252,7 @@ async fn print_release_notes(
       "{}\n\n  {}\n",
       colors::gray("Migration guide:"),
       colors::bold(
-        "https://docs.deno.com/runtime/manual/advanced/migrate_deprecations/"
+        "https://docs.deno.com/runtime/manual/advanced/migrate_deprecations"
       )
     );
     log::info!(
