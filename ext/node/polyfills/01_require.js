@@ -890,7 +890,7 @@ Module._preloadModules = function (requests) {
 
 Module.prototype.load = function (filename) {
   if (this.loaded) {
-    throw Error("Module already loaded");
+    throw new Error("Module already loaded");
   }
 
   // Canonicalize the path so it's not pointing to the symlinked directory

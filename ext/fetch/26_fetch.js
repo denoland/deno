@@ -145,7 +145,7 @@ async function mainFetch(req, recursive, terminator) {
         reqRid = resourceForReadableStream(stream, req.body.length);
       }
     } else {
-      throw TypeError("invalid body");
+      throw new TypeError("invalid body");
     }
   }
 
