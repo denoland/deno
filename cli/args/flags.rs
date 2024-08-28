@@ -113,6 +113,7 @@ pub struct CacheFlags {
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct CheckFlags {
   pub files: Vec<String>,
+  pub doc: bool,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -1749,6 +1750,12 @@ Unless --reload is specified, this command will not re-download already cached d
             .action(ArgAction::SetTrue)
             .conflicts_with("no-remote")
             .hide(true)
+        )
+        .arg(
+          Arg::new("doc")
+            .long("doc")
+            .help("Type-check code blocks in JSDoc and Markdown")
+            .action(ArgAction::SetTrue)
         )
         .arg(
           Arg::new("file")
@@ -4172,7 +4179,10 @@ fn check_parse(flags: &mut Flags, matches: &mut ArgMatches) {
   if matches.get_flag("all") || matches.get_flag("remote") {
     flags.type_check_mode = TypeCheckMode::All;
   }
-  flags.subcommand = DenoSubcommand::Check(CheckFlags { files });
+  flags.subcommand = DenoSubcommand::Check(CheckFlags {
+    files,
+    doc: matches.get_flag("doc"),
+  });
 }
 
 fn clean_parse(flags: &mut Flags, _matches: &mut ArgMatches) {
@@ -6871,6 +6881,20 @@ mod tests {
       Flags {
         subcommand: DenoSubcommand::Check(CheckFlags {
           files: svec!["script.ts"],
+          doc: false,
+        }),
+        type_check_mode: TypeCheckMode::Local,
+        ..Flags::default()
+      }
+    );
+
+    let r = flags_from_vec(svec!["deno", "check", "--doc", "script.ts"]);
+    assert_eq!(
+      r.unwrap(),
+      Flags {
+        subcommand: DenoSubcommand::Check(CheckFlags {
+          files: svec!["script.ts"],
+          doc: true,
         }),
         type_check_mode: TypeCheckMode::Local,
         ..Flags::default()
@@ -6884,6 +6908,7 @@ mod tests {
         Flags {
           subcommand: DenoSubcommand::Check(CheckFlags {
             files: svec!["script.ts"],
+            doc: false,
           }),
           type_check_mode: TypeCheckMode::All,
           ..Flags::default()

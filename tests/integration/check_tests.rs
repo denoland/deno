@@ -194,7 +194,7 @@ fn reload_flag() {
 fn typecheck_declarations_ns() {
   let context = TestContextBuilder::for_jsr().build();
   let args = vec![
-    "test".to_string(),
+    "check".to_string(),
     "--doc".to_string(),
     util::root_path()
       .join("cli/tsc/dts/lib.deno.ns.d.ts")
@@ -217,9 +217,8 @@ fn typecheck_declarations_ns() {
 fn typecheck_declarations_unstable() {
   let context = TestContext::default();
   let args = vec![
-    "test".to_string(),
+    "check".to_string(),
     "--doc".to_string(),
-    "--unstable".to_string(),
     util::root_path()
       .join("cli/tsc/dts/lib.deno.unstable.d.ts")
       .to_string_lossy()

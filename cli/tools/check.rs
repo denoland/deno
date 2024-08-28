@@ -10,11 +10,14 @@ use deno_core::error::AnyError;
 use deno_graph::Module;
 use deno_graph::ModuleGraph;
 use deno_runtime::deno_node::NodeResolver;
+use deno_runtime::deno_permissions::PermissionsContainer;
 use deno_terminal::colors;
 use once_cell::sync::Lazy;
 use regex::Regex;
 
+use crate::args::CheckFlags;
 use crate::args::CliOptions;
+use crate::args::Flags;
 use crate::args::TsConfig;
 use crate::args::TsConfigType;
 use crate::args::TsTypeLib;
@@ -23,12 +26,64 @@ use crate::cache::CacheDBHash;
 use crate::cache::Caches;
 use crate::cache::FastInsecureHasher;
 use crate::cache::TypeCheckCache;
+use crate::extract;
+use crate::factory::CliFactory;
 use crate::graph_util::BuildFastCheckGraphOptions;
 use crate::graph_util::ModuleGraphBuilder;
 use crate::npm::CliNpmResolver;
 use crate::tsc;
 use crate::tsc::Diagnostics;
 use crate::util::path::to_percent_decoded_str;
+
+pub async fn check(
+  flags: Arc<Flags>,
+  check_flags: CheckFlags,
+) -> Result<(), AnyError> {
+  let factory = CliFactory::from_flags(flags);
+
+  let main_graph_container = factory.main_module_graph_container().await?;
+
+  let specifiers =
+    main_graph_container.collect_specifiers(&check_flags.files)?;
+  if specifiers.is_empty() {
+    log::warn!("{} No matching files found.", colors::yellow("Warning"));
+  }
+
+  let specifiers_for_typecheck = if check_flags.doc {
+    let file_fetcher = factory.file_fetcher()?;
+
+    let mut specifiers_for_typecheck = specifiers
+      .iter()
+      .filter(|specifier| {
+        use MediaType::*;
+        matches!(
+          MediaType::from_specifier(specifier),
+          TypeScript | JavaScript | Tsx | Jsx | Mts | Mjs | Cts | Cjs
+        )
+      })
+      .cloned()
+      .collect::<Vec<_>>();
+
+    for s in &specifiers {
+      let file = file_fetcher
+        .fetch(s, &PermissionsContainer::allow_all())
+        .await?;
+      let snippet_files = extract::extract_snippet_files(file)?;
+      for snippet_file in snippet_files {
+        specifiers_for_typecheck.push(snippet_file.specifier.clone());
+        file_fetcher.insert_memory_files(snippet_file);
+      }
+    }
+
+    specifiers_for_typecheck
+  } else {
+    specifiers
+  };
+
+  main_graph_container
+    .check_specifiers(&specifiers_for_typecheck)
+    .await
+}
 
 /// Options for performing a check of a module graph. Note that the decision to
 /// emit or not is determined by the `ts_config` settings.
