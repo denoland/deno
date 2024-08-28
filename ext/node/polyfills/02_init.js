@@ -22,7 +22,7 @@ function initialize(args) {
   } = args;
   if (!warmup) {
     if (initialized) {
-      throw Error("Node runtime already initialized");
+      throw new Error("Node runtime already initialized");
     }
     initialized = true;
     if (usesLocalNodeModulesDir) {
