@@ -10,7 +10,7 @@ const CARGO_PKG_VERSION: &str = env!("CARGO_PKG_VERSION");
 // TODO(bartlomieju): ideally we could remove this const.
 const IS_CANARY: bool = option_env!("DENO_CANARY").is_some();
 // TODO(bartlomieju): this is temporary, to allow Homebrew to cut RC releases as well
-const IS_RC: bool = option_env!("DENO_CANARY").is_some();
+const IS_RC: bool = option_env!("DENO_RC").is_some();
 
 pub static DENO_VERSION_INFO: Lazy<DenoVersionInfo> = Lazy::new(|| {
   let release_channel = libsui::find_section("denover")
