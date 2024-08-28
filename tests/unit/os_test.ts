@@ -239,6 +239,7 @@ Deno.test(
   async function hostnameWithoutOtherNetworkUsages() {
     const { stdout } = await new Deno.Command(Deno.execPath(), {
       args: ["eval", "-p", "Deno.hostname()"],
+      env: { LD_PRELOAD: "", LD_LIBRARY_PATH: "" },
     }).output();
     const hostname = new TextDecoder().decode(stdout).trim();
     assert(hostname.length > 0);

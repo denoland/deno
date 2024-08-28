@@ -1,4 +1,8 @@
 {
+  "envs": {
+    "LD_LIBRARY_PATH": "",
+    "LD_PRELOAD": ""
+  },
   "tests": {
     "env_arg": {
       "args": "run --allow-run=echo env_arg.ts",

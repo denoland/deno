@@ -1,4 +1,4 @@
-error: Uncaught (in promise) PermissionDenied: Requires --allow-all permissions to spawn subprocess with any LD_* environment variable.
+error: Uncaught (in promise) PermissionDenied: Requires --allow-all permissions to spawn subprocess with LD_PRELOAD environment variable.
 const output = new Deno.Command("echo").spawn();
                                         ^
     at [WILDCARD]

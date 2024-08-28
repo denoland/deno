@@ -501,6 +501,7 @@ itest!(_088_dynamic_import_already_evaluating {
 // TODO(bartlomieju): remove --unstable once Deno.Command is stabilized
 itest!(_089_run_allow_list {
   args: "run --unstable --allow-run=curl run/089_run_allow_list.ts",
+  envs: vec![("LD_LIBRARY_PATH".to_string(), "".to_string())],
   output: "run/089_run_allow_list.ts.out",
 });
 
