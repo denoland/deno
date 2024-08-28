@@ -890,7 +890,7 @@ Module._preloadModules = function (requests) {
 
 Module.prototype.load = function (filename) {
   if (this.loaded) {
-    throw Error("Module already loaded");
+    throw new Error("Module already loaded");
   }
 
   // Canonicalize the path so it's not pointing to the symlinked directory
@@ -945,7 +945,7 @@ Module.prototype.require = function (id) {
 // The only observable difference is that in Deno `arguments.callee` is not
 // null.
 Module.wrapper = [
-  "(function (exports, require, module, __filename, __dirname, Buffer, clearImmediate, clearInterval, clearTimeout, console, global, process, setImmediate, setInterval, setTimeout, performance) { (function (exports, require, module, __filename, __dirname) {",
+  "(function (exports, require, module, __filename, __dirname, Buffer, clearImmediate, clearInterval, clearTimeout, global, process, setImmediate, setInterval, setTimeout, performance) { (function (exports, require, module, __filename, __dirname) {",
   "\n}).call(this, exports, require, module, __filename, __dirname); })",
 ];
 Module.wrap = function (script) {
@@ -1029,7 +1029,6 @@ Module.prototype._compile = function (content, filename, format) {
     clearImmediate,
     clearInterval,
     clearTimeout,
-    console,
     global,
     process,
     setImmediate,
@@ -1049,7 +1048,6 @@ Module.prototype._compile = function (content, filename, format) {
     clearImmediate,
     clearInterval,
     clearTimeout,
-    console,
     global,
     process,
     setImmediate,

@@ -1,8 +1,8 @@
 error: The lockfile is out of date. Run `deno cache --frozen=false` or rerun with `--frozen=false` to update it.
 changes:
- 4 | -    "npm:@denotest/add@1": "npm:@denotest/add@1.0.0"
- 4 | +    "npm:@denotest/add@1": "npm:@denotest/add@1.0.0",
- 5 | +    "npm:@denotest/subtract@1": "npm:@denotest/subtract@1.0.0"
+ 4 | -    "npm:@denotest/add@1": "1.0.0"
+ 4 | +    "npm:@denotest/add@1": "1.0.0",
+ 5 | +    "npm:@denotest/subtract@1": "1.0.0"
  9 | -    }
 10 | +    },
 11 | +    "@denotest/subtract@1.0.0": {
