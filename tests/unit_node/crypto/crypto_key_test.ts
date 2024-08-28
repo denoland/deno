@@ -498,6 +498,61 @@ MC4CAQAwBQYDK2VwBCIEIJ1hsZ3v/VpguoRK9JLsLMREScVpezJpGXA7rAMcrn9g
   assertEquals(pkcs8Actual, pkcs8Expected);
 });
 
+Deno.test("RSA export public JWK", async function () {
+  const importKey = "-----BEGIN PUBLIC KEY-----\n" +
+    "MIICIjANBgkqhkiG9w0BAQEFAAOCAg8AMIICCgKCAgEAqF66soiDvuqUB7ufWtuV\n" +
+    "5a1nZIw90m9qHEl2MeNt66HeEjG2GeHDfF5a4uplutnAh3dwpFweHqGIyB16POTI\n" +
+    "YysJ/rMPKoWZFQ1LEcr23rSgmL49YpifDetl5V/UR+zEygL3UzzZmbdjuyZz+Sjt\n" +
+    "FY+SAoZ9XPCqIaNha9uVFcurW44MvAkhzQR/yy5NWPaJ/yv4oI/exvuZnUwwBHvH\n" +
+    "gwVchfr7Jh5LRmYTPeyuI1lUOovVzE+0Ty/2tFfrm2hpedqYXvEuVu+yJzfuNoLf\n" +
+    "TGfz15J76eoRdFTCTdaG/MQnrzxZnIlmIpdpTPl0xVOwjKRpeYK06GS7EAa7cS9D\n" +
+    "dnsHkF/Mr9Yys5jw/49fXqh9BH3Iy0p5YmeQIMep04CUDFj7MZ+3SK8b0mA4SscH\n" +
+    "dIraZZynLZ1crM0ECAJBldM4TKqIDACYGU7XyRV+419cPJvYybHys5m7thS3QI7E\n" +
+    "LTpMV+WoYtZ5xeBCm7z5i3iPY6eSh2JtTu6oa3ALwwnXPAaZqDIFer8SoQNyVb0v\n" +
+    "EU8bVDeGXm1ha5gcC5KxqqnadO/WDD6Jke79Ji04sBEKTTodSOARyTGpGFEcC3Nn\n" +
+    "xSSScGCxMrGJuTDtnz+Eh6l6ysT+Nei9ZRMxNu8sZKAR43XkVXxF/OdSCbftFOAs\n" +
+    "wyPJtyhQALGPcK5cWPQS2sUCAwEAAQ==\n" +
+    "-----END PUBLIC KEY-----\n";
+  const publicKey = createPublicKey(importKey);
+
+  const jwk = publicKey.export({ format: "jwk" });
+  assertEquals(jwk, {
+    kty: "RSA",
+    n: "qF66soiDvuqUB7ufWtuV5a1nZIw90m9qHEl2MeNt66HeEjG2GeHDfF5a4uplutnAh3dwpFweHqGIyB16POTIYysJ_rMPKoWZFQ1LEcr23rSgmL49YpifDetl5V_UR-zEygL3UzzZmbdjuyZz-SjtFY-SAoZ9XPCqIaNha9uVFcurW44MvAkhzQR_yy5NWPaJ_yv4oI_exvuZnUwwBHvHgwVchfr7Jh5LRmYTPeyuI1lUOovVzE-0Ty_2tFfrm2hpedqYXvEuVu-yJzfuNoLfTGfz15J76eoRdFTCTdaG_MQnrzxZnIlmIpdpTPl0xVOwjKRpeYK06GS7EAa7cS9DdnsHkF_Mr9Yys5jw_49fXqh9BH3Iy0p5YmeQIMep04CUDFj7MZ-3SK8b0mA4SscHdIraZZynLZ1crM0ECAJBldM4TKqIDACYGU7XyRV-419cPJvYybHys5m7thS3QI7ELTpMV-WoYtZ5xeBCm7z5i3iPY6eSh2JtTu6oa3ALwwnXPAaZqDIFer8SoQNyVb0vEU8bVDeGXm1ha5gcC5KxqqnadO_WDD6Jke79Ji04sBEKTTodSOARyTGpGFEcC3NnxSSScGCxMrGJuTDtnz-Eh6l6ysT-Nei9ZRMxNu8sZKAR43XkVXxF_OdSCbftFOAswyPJtyhQALGPcK5cWPQS2sU",
+    e: "AQAB",
+  });
+});
+
+Deno.test("EC export public jwk", async function () {
+  const key = "-----BEGIN PUBLIC KEY-----\n" +
+    "MFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAEVEEIrFEZ+40Pk90LtKBQ3r7FGAPl\n" +
+    "v4bvX9grC8bNiNiVAcyEKs+QZKQj/0/CUPJV10AmavrUoPk/7Wy0sejopQ==\n" +
+    "-----END PUBLIC KEY-----\n";
+  const publicKey = createPublicKey(key);
+
+  const jwk = publicKey.export({ format: "jwk" });
+  assertEquals(jwk, {
+    kty: "EC",
+    x: "VEEIrFEZ-40Pk90LtKBQ3r7FGAPlv4bvX9grC8bNiNg",
+    y: "lQHMhCrPkGSkI_9PwlDyVddAJmr61KD5P-1stLHo6KU",
+    crv: "P-256",
+  });
+});
+
+Deno.test("Ed25519 export public jwk", async function () {
+  const key = "-----BEGIN PUBLIC KEY-----\n" +
+    "MCowBQYDK2VwAyEAKCVFOD6Le61XM7HbN/MB/N06mX5bti2p50qjLvT1mzE=\n" +
+    "-----END PUBLIC KEY-----\n";
+  const publicKey = createPublicKey(key);
+
+  const jwk = publicKey.export({ format: "jwk" });
+  assertEquals(jwk, {
+    crv: "Ed25519",
+    x: "KCVFOD6Le61XM7HbN_MB_N06mX5bti2p50qjLvT1mzE",
+    kty: "OKP",
+  });
+});
+
 Deno.test("EC import jwk public key", function () {
   const publicKey = createPublicKey({
     key: {
