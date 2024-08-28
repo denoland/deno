@@ -439,3 +439,61 @@ Deno.test("create private key with invalid utf-8 string", function () {
     "not valid utf8",
   );
 });
+
+Deno.test("Ed25519 jwk public key #1", function () {
+  const key = {
+    "kty": "OKP",
+    "crv": "Ed25519",
+    "d": "nWGxne_9WmC6hEr0kuwsxERJxWl7MmkZcDusAxyuf2A",
+    "x": "11qYAYKxCrfVS_7TyWQHOg7hcvPapiMlrwIaaPcHURo",
+  };
+  const keyObject = createPublicKey({ key, format: "jwk" });
+
+  assertEquals(keyObject.type, "public");
+  const spkiActual = keyObject.export({ type: "spki", format: "pem" });
+
+  const spkiExpected = `-----BEGIN PUBLIC KEY-----
+MCowBQYDK2VwAyEA11qYAYKxCrfVS/7TyWQHOg7hcvPapiMlrwIaaPcHURo=
+-----END PUBLIC KEY-----
+`;
+
+  assertEquals(spkiActual, spkiExpected);
+});
+
+Deno.test("Ed25519 jwk public key #2", function () {
+  const key = {
+    "kty": "OKP",
+    "crv": "Ed25519",
+    "x": "11qYAYKxCrfVS_7TyWQHOg7hcvPapiMlrwIaaPcHURo",
+  };
+
+  const keyObject = createPublicKey({ key, format: "jwk" });
+  assertEquals(keyObject.type, "public");
+
+  const spki = keyObject.export({ type: "spki", format: "pem" });
+  const spkiExpected = `-----BEGIN PUBLIC KEY-----
+MCowBQYDK2VwAyEA11qYAYKxCrfVS/7TyWQHOg7hcvPapiMlrwIaaPcHURo=
+-----END PUBLIC KEY-----
+`;
+  assertEquals(spki, spkiExpected);
+});
+
+Deno.test("Ed25519 jwk private key", function () {
+  const key = {
+    "kty": "OKP",
+    "crv": "Ed25519",
+    "d": "nWGxne_9WmC6hEr0kuwsxERJxWl7MmkZcDusAxyuf2A",
+    "x": "11qYAYKxCrfVS_7TyWQHOg7hcvPapiMlrwIaaPcHURo",
+  };
+
+  const keyObject = createPrivateKey({ key, format: "jwk" });
+  assertEquals(keyObject.type, "private");
+
+  const pkcs8Actual = keyObject.export({ type: "pkcs8", format: "pem" });
+  const pkcs8Expected = `-----BEGIN PRIVATE KEY-----
+MC4CAQAwBQYDK2VwBCIEIJ1hsZ3v/VpguoRK9JLsLMREScVpezJpGXA7rAMcrn9g
+-----END PRIVATE KEY-----
+`;
+
+  assertEquals(pkcs8Actual, pkcs8Expected);
+});

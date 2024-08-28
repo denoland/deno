@@ -571,6 +571,50 @@ impl KeyObjectHandle {
     Ok(KeyObjectHandle::AsymmetricPublic(key))
   }
 
+  pub fn new_ed_raw(
+    curve: &str,
+    data: &[u8],
+    is_public: bool,
+  ) -> Result<KeyObjectHandle, AnyError> {
+    match curve {
+      "Ed25519" => {
+        let data = data
+          .try_into()
+          .map_err(|_| type_error("invalid Ed25519 key"))?;
+        if !is_public {
+          Ok(KeyObjectHandle::AsymmetricPrivate(
+            AsymmetricPrivateKey::Ed25519(
+              ed25519_dalek::SigningKey::from_bytes(data),
+            ),
+          ))
+        } else {
+          Ok(KeyObjectHandle::AsymmetricPublic(
+            AsymmetricPublicKey::Ed25519(
+              ed25519_dalek::VerifyingKey::from_bytes(data)?,
+            ),
+          ))
+        }
+      }
+      "X25519" => {
+        let data: [u8; 32] = data
+          .try_into()
+          .map_err(|_| type_error("invalid x25519 key"))?;
+        if !is_public {
+          Ok(KeyObjectHandle::AsymmetricPrivate(
+            AsymmetricPrivateKey::X25519(x25519_dalek::StaticSecret::from(
+              data,
+            )),
+          ))
+        } else {
+          Ok(KeyObjectHandle::AsymmetricPublic(
+            AsymmetricPublicKey::X25519(x25519_dalek::PublicKey::from(data)),
+          ))
+        }
+      }
+      _ => Err(type_error("unsupported curve")),
+    }
+  }
+
   pub fn new_asymmetric_public_key_from_js(
     key: &[u8],
     format: &str,
@@ -1025,6 +1069,16 @@ pub fn op_node_create_private_key(
   KeyObjectHandle::new_asymmetric_private_key_from_js(
     key, format, typ, passphrase,
   )
+}
+
+#[op2]
+#[cppgc]
+pub fn op_node_create_ed_raw(
+  #[string] curve: &str,
+  #[buffer] key: &[u8],
+  is_public: bool,
+) -> Result<KeyObjectHandle, AnyError> {
+  KeyObjectHandle::new_ed_raw(curve, key, is_public)
 }
 
 #[op2]

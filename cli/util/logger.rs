@@ -2,6 +2,8 @@
 
 use std::io::Write;
 
+use super::draw_thread::DrawThread;
+
 struct CliLogger(env_logger::Logger);
 
 impl CliLogger {
@@ -21,7 +23,13 @@ impl log::Log for CliLogger {
 
   fn log(&self, record: &log::Record) {
     if self.enabled(record.metadata()) {
+      // it was considered to hold the draw thread's internal lock
+      // across logging, but if outputting to stderr blocks then that
+      // could potentially block other threads that access the draw
+      // thread's state
+      DrawThread::hide();
       self.0.log(record);
+      DrawThread::show();
     }
   }
 
@@ -46,6 +54,15 @@ pub fn init(maybe_level: Option<log::Level>) {
   // in the cli logger
   .filter_module("deno::lsp::performance", log::LevelFilter::Debug)
   .filter_module("rustls", log::LevelFilter::Off)
+  // swc_ecma_codegen's `srcmap!` macro emits error-level spans only on debug
+  // build:
+  // https://github.com/swc-project/swc/blob/74d6478be1eb8cdf1df096c360c159db64b64d8a/crates/swc_ecma_codegen/src/macros.rs#L112
+  // We suppress them here to avoid flooding our CI logs in integration tests.
+  .filter_module("swc_ecma_codegen", log::LevelFilter::Off)
+  .filter_module("swc_ecma_transforms_optimization", log::LevelFilter::Off)
+  .filter_module("swc_ecma_parser", log::LevelFilter::Error)
+  // Suppress span lifecycle logs since they are too verbose
+  .filter_module("tracing::span", log::LevelFilter::Off)
   .format(|buf, record| {
     let mut target = record.target().to_string();
     if let Some(line_no) = record.line() {

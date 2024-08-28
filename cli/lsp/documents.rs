@@ -2,7 +2,6 @@
 
 use super::cache::calculate_fs_version;
 use super::cache::LspCache;
-use super::cache::LSP_DISALLOW_GLOBAL_TO_LOCAL_COPY;
 use super::config::Config;
 use super::resolver::LspResolver;
 use super::testing::TestCollector;
@@ -872,22 +871,19 @@ impl FileSystemDocuments {
     } else {
       let http_cache = cache.for_specifier(file_referrer);
       let cache_key = http_cache.cache_item_key(specifier).ok()?;
-      let bytes = http_cache
-        .read_file_bytes(&cache_key, None, LSP_DISALLOW_GLOBAL_TO_LOCAL_COPY)
-        .ok()??;
-      let specifier_headers = http_cache.read_headers(&cache_key).ok()??;
+      let cached_file = http_cache.get(&cache_key, None).ok()??;
       let (_, maybe_charset) =
         deno_graph::source::resolve_media_type_and_charset_from_headers(
           specifier,
-          Some(&specifier_headers),
+          Some(&cached_file.metadata.headers),
         );
       let content = deno_graph::source::decode_owned_source(
         specifier,
-        bytes,
+        cached_file.content,
         maybe_charset,
       )
       .ok()?;
-      let maybe_headers = Some(specifier_headers);
+      let maybe_headers = Some(cached_file.metadata.headers);
       Document::new(
         specifier.clone(),
         content.into(),
@@ -1607,7 +1603,7 @@ mod tests {
   async fn setup() -> (Documents, LspCache, TempDir) {
     let temp_dir = TempDir::new();
     temp_dir.create_dir_all(".deno_dir");
-    let cache = LspCache::new(Some(temp_dir.uri().join(".deno_dir").unwrap()));
+    let cache = LspCache::new(Some(temp_dir.url().join(".deno_dir").unwrap()));
     let config = Config::default();
     let resolver =
       Arc::new(LspResolver::from_config(&config, &cache, None).await);
@@ -1690,7 +1686,7 @@ console.log(b, "hello deno");
     // but we'll guard against it anyway
     let (mut documents, _, temp_dir) = setup().await;
     let file_path = temp_dir.path().join("file.ts");
-    let file_specifier = temp_dir.uri().join("file.ts").unwrap();
+    let file_specifier = temp_dir.url().join("file.ts").unwrap();
     file_path.write("");
 
     // open the document
@@ -1718,18 +1714,18 @@ console.log(b, "hello deno");
     let (mut documents, cache, temp_dir) = setup().await;
 
     let file1_path = temp_dir.path().join("file1.ts");
-    let file1_specifier = temp_dir.uri().join("file1.ts").unwrap();
+    let file1_specifier = temp_dir.url().join("file1.ts").unwrap();
     fs::write(&file1_path, "").unwrap();
 
     let file2_path = temp_dir.path().join("file2.ts");
-    let file2_specifier = temp_dir.uri().join("file2.ts").unwrap();
+    let file2_specifier = temp_dir.url().join("file2.ts").unwrap();
     fs::write(&file2_path, "").unwrap();
 
     let file3_path = temp_dir.path().join("file3.ts");
-    let file3_specifier = temp_dir.uri().join("file3.ts").unwrap();
+    let file3_specifier = temp_dir.url().join("file3.ts").unwrap();
     fs::write(&file3_path, "").unwrap();
 
-    let mut config = Config::new_with_roots([temp_dir.uri()]);
+    let mut config = Config::new_with_roots([temp_dir.url()]);
     let workspace_settings =
       serde_json::from_str(r#"{ "enable": true }"#).unwrap();
     config.set_workspace_settings(workspace_settings, vec![]);

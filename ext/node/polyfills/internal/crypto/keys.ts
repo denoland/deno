@@ -12,6 +12,7 @@ const {
 } = primordials;
 
 import {
+  op_node_create_ed_raw,
   op_node_create_private_key,
   op_node_create_public_key,
   op_node_create_secret_key,
@@ -32,6 +33,7 @@ import { kHandle } from "ext:deno_node/internal/crypto/constants.ts";
 import { isStringOrBuffer } from "ext:deno_node/internal/crypto/cipher.ts";
 import {
   ERR_CRYPTO_INCOMPATIBLE_KEY_OPTIONS,
+  ERR_CRYPTO_INVALID_JWK,
   ERR_CRYPTO_INVALID_KEY_OBJECT_TYPE,
   ERR_INVALID_ARG_TYPE,
   ERR_INVALID_ARG_VALUE,
@@ -56,6 +58,7 @@ import {
 import {
   validateObject,
   validateOneOf,
+  validateString,
 } from "ext:deno_node/internal/validators.mjs";
 import { BufferEncoding } from "ext:deno_node/_global.d.ts";
 
@@ -256,6 +259,64 @@ export function getKeyObjectHandle(key: KeyObject, ctx: KeyHandleContext) {
   return key[kHandle];
 }
 
+function getKeyObjectHandleFromJwk(key, ctx) {
+  validateObject(key, "key");
+  validateOneOf(
+    key.kty,
+    "key.kty",
+    ["RSA", "EC", "OKP"],
+  );
+  const isPublic = ctx === kConsumePublic || ctx === kCreatePublic;
+
+  if (key.kty === "OKP") {
+    validateString(key.crv, "key.crv");
+    validateOneOf(
+      key.crv,
+      "key.crv",
+      ["Ed25519", "Ed448", "X25519", "X448"],
+    );
+    validateString(key.x, "key.x");
+
+    if (!isPublic) {
+      validateString(key.d, "key.d");
+    }
+
+    let keyData;
+    if (isPublic) {
+      keyData = Buffer.from(key.x, "base64");
+    } else {
+      keyData = Buffer.from(key.d, "base64");
+    }
+
+    switch (key.crv) {
+      case "Ed25519":
+      case "X25519":
+        if (keyData.byteLength !== 32) {
+          throw new ERR_CRYPTO_INVALID_JWK();
+        }
+        break;
+      case "Ed448":
+        if (keyData.byteLength !== 57) {
+          throw new ERR_CRYPTO_INVALID_JWK();
+        }
+        break;
+      case "X448":
+        if (keyData.byteLength !== 56) {
+          throw new ERR_CRYPTO_INVALID_JWK();
+        }
+        break;
+    }
+
+    return op_node_create_ed_raw(key.crv, keyData, isPublic);
+  }
+
+  if (key.kty === "EC") {
+    throw new TypeError("ec jwk imports not implemented");
+  }
+
+  throw new TypeError("rsa jwk imports not implemented");
+}
+
 export function prepareAsymmetricKey(
   key:
     | string
@@ -306,7 +367,12 @@ export function prepareAsymmetricKey(
     } else if (isCryptoKey(data)) {
       notImplemented("using CryptoKey as input");
     } else if (isJwk(data) && format === "jwk") {
-      notImplemented("using JWK as input");
+      return {
+        // @ts-ignore __proto__ is magic
+        __proto__: null,
+        handle: getKeyObjectHandleFromJwk(data, ctx),
+        format,
+      };
     }
     // Either PEM or DER using PKCS#1 or SPKI.
     if (!isStringOrBuffer(data)) {

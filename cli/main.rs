@@ -53,6 +53,7 @@ use deno_runtime::tokio_util::create_and_run_current_thread_with_maybe_metrics;
 use deno_terminal::colors;
 use factory::CliFactory;
 use standalone::MODULE_NOT_FOUND;
+use standalone::UNSUPPORTED_SCHEME;
 use std::env;
 use std::future::Future;
 use std::ops::Deref;
@@ -196,7 +197,8 @@ async fn run_subcommand(flags: Arc<Flags>) -> Result<i32, AnyError> {
         match result {
           Ok(v) => Ok(v),
           Err(script_err) => {
-            if script_err.to_string().starts_with(MODULE_NOT_FOUND) {
+            let script_err_msg = script_err.to_string();
+            if script_err_msg.starts_with(MODULE_NOT_FOUND) || script_err_msg.starts_with(UNSUPPORTED_SCHEME) {
               if run_flags.bare {
                 let mut cmd = args::clap_root();
                 cmd.build();
