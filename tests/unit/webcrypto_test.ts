@@ -9,7 +9,7 @@ import {
 
 // https://github.com/denoland/deno/issues/11664
 Deno.test(async function testImportArrayBufferKey() {
-  const subtle = globalThis.crypto.subtle;
+  const subtle = window.crypto.subtle;
   assert(subtle);
 
   // deno-fmt-ignore
@@ -29,7 +29,7 @@ Deno.test(async function testImportArrayBufferKey() {
 });
 
 Deno.test(async function testSignVerify() {
-  const subtle = globalThis.crypto.subtle;
+  const subtle = window.crypto.subtle;
   assert(subtle);
   for (const algorithm of ["RSA-PSS", "RSASSA-PKCS1-v1_5"]) {
     for (
@@ -101,7 +101,7 @@ const hashPlainTextVector = [
 ];
 
 Deno.test(async function testEncryptDecrypt() {
-  const subtle = globalThis.crypto.subtle;
+  const subtle = window.crypto.subtle;
   assert(subtle);
   for (
     const { hash, plainText } of hashPlainTextVector
@@ -154,7 +154,7 @@ Deno.test(async function testEncryptDecrypt() {
 });
 
 Deno.test(async function testGenerateRSAKey() {
-  const subtle = globalThis.crypto.subtle;
+  const subtle = window.crypto.subtle;
   assert(subtle);
 
   const keyPair = await subtle.generateKey(
@@ -175,7 +175,7 @@ Deno.test(async function testGenerateRSAKey() {
 });
 
 Deno.test(async function testGenerateHMACKey() {
-  const key = await globalThis.crypto.subtle.generateKey(
+  const key = await window.crypto.subtle.generateKey(
     {
       name: "HMAC",
       hash: "SHA-512",
@@ -190,7 +190,7 @@ Deno.test(async function testGenerateHMACKey() {
 });
 
 Deno.test(async function testECDSASignVerify() {
-  const key = await globalThis.crypto.subtle.generateKey(
+  const key = await window.crypto.subtle.generateKey(
     {
       name: "ECDSA",
       namedCurve: "P-384",
@@ -201,7 +201,7 @@ Deno.test(async function testECDSASignVerify() {
 
   const encoder = new TextEncoder();
   const encoded = encoder.encode("Hello, World!");
-  const signature = await globalThis.crypto.subtle.sign(
+  const signature = await window.crypto.subtle.sign(
     { name: "ECDSA", hash: "SHA-384" },
     key.privateKey,
     encoded,
@@ -210,7 +210,7 @@ Deno.test(async function testECDSASignVerify() {
   assert(signature);
   assert(signature instanceof ArrayBuffer);
 
-  const verified = await globalThis.crypto.subtle.verify(
+  const verified = await window.crypto.subtle.verify(
     { hash: { name: "SHA-384" }, name: "ECDSA" },
     key.publicKey,
     signature,
@@ -221,7 +221,7 @@ Deno.test(async function testECDSASignVerify() {
 
 // Tests the "bad paths" as a temporary replacement for sign_verify/ecdsa WPT.
 Deno.test(async function testECDSASignVerifyFail() {
-  const key = await globalThis.crypto.subtle.generateKey(
+  const key = await window.crypto.subtle.generateKey(
     {
       name: "ECDSA",
       namedCurve: "P-384",
@@ -233,7 +233,7 @@ Deno.test(async function testECDSASignVerifyFail() {
   const encoded = new Uint8Array([1]);
   // Signing with a public key (InvalidAccessError)
   await assertRejects(async () => {
-    await globalThis.crypto.subtle.sign(
+    await window.crypto.subtle.sign(
       { name: "ECDSA", hash: "SHA-384" },
       key.publicKey,
       new Uint8Array([1]),
@@ -242,7 +242,7 @@ Deno.test(async function testECDSASignVerifyFail() {
   }, DOMException);
 
   // Do a valid sign for later verifying.
-  const signature = await globalThis.crypto.subtle.sign(
+  const signature = await window.crypto.subtle.sign(
     { name: "ECDSA", hash: "SHA-384" },
     key.privateKey,
     encoded,
@@ -250,7 +250,7 @@ Deno.test(async function testECDSASignVerifyFail() {
 
   // Verifying with a private key (InvalidAccessError)
   await assertRejects(async () => {
-    await globalThis.crypto.subtle.verify(
+    await window.crypto.subtle.verify(
       { hash: { name: "SHA-384" }, name: "ECDSA" },
       key.privateKey,
       signature,
@@ -262,7 +262,7 @@ Deno.test(async function testECDSASignVerifyFail() {
 
 // https://github.com/denoland/deno/issues/11313
 Deno.test(async function testSignRSASSAKey() {
-  const subtle = globalThis.crypto.subtle;
+  const subtle = window.crypto.subtle;
   assert(subtle);
 
   const keyPair = await subtle.generateKey(
@@ -284,7 +284,7 @@ Deno.test(async function testSignRSASSAKey() {
   const encoder = new TextEncoder();
   const encoded = encoder.encode("Hello, World!");
 
-  const signature = await globalThis.crypto.subtle.sign(
+  const signature = await window.crypto.subtle.sign(
     { name: "RSASSA-PKCS1-v1_5" },
     keyPair.privateKey,
     encoded,
@@ -1056,7 +1056,7 @@ const jwtRSAKeys = {
 };
 
 Deno.test(async function testImportRsaJwk() {
-  const subtle = globalThis.crypto.subtle;
+  const subtle = window.crypto.subtle;
   assert(subtle);
 
   for (const [_key, jwkData] of Object.entries(jwtRSAKeys)) {
@@ -1496,7 +1496,7 @@ const ecTestKeys = [
 ];
 
 Deno.test(async function testImportEcSpkiPkcs8() {
-  const subtle = globalThis.crypto.subtle;
+  const subtle = window.crypto.subtle;
   assert(subtle);
 
   for (

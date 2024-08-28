@@ -12,7 +12,6 @@ import {
   assertThrows,
   curlRequest,
   curlRequestWithStdErr,
-  DENO_FUTURE,
   execCode,
   execCode3,
   fail,
@@ -20,7 +19,7 @@ import {
 } from "./test_util.ts";
 
 // Since these tests may run in parallel, ensure this port is unique to this file
-const servePort = DENO_FUTURE ? 4511 : 4502;
+const servePort = 4502;
 
 const {
   upgradeHttpRaw,

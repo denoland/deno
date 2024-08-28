@@ -7,7 +7,6 @@ import {
   assertEquals,
   assertNotEquals,
   delay,
-  DENO_FUTURE,
   execCode,
   unreachable,
 } from "./test_util.ts";
@@ -312,63 +311,11 @@ Deno.test(async function timeoutCallbackThis() {
   };
   setTimeout(obj.foo, 1);
   await promise;
-  if (!DENO_FUTURE) {
-    assertEquals(capturedThis, window);
-  } else {
-    assertEquals(capturedThis, globalThis);
-  }
+  assertEquals(capturedThis, window);
 });
 
-Deno.test({ ignore: DENO_FUTURE }, async function timeoutBindThis() {
-  const thisCheckPassed = [null, undefined, globalThis, window];
-
-  const thisCheckFailed = [
-    0,
-    "",
-    true,
-    false,
-    {},
-    [],
-    "foo",
-    () => {},
-    Object.prototype,
-  ];
-
-  for (const thisArg of thisCheckPassed) {
-    const { promise, resolve } = Promise.withResolvers<void>();
-    let hasThrown = 0;
-    try {
-      setTimeout.call(thisArg, () => resolve(), 1);
-      hasThrown = 1;
-    } catch (err) {
-      if (err instanceof TypeError) {
-        hasThrown = 2;
-      } else {
-        hasThrown = 3;
-      }
-    }
-    await promise;
-    assertEquals(hasThrown, 1);
-  }
-
-  for (const thisArg of thisCheckFailed) {
-    let hasThrown = 0;
-    try {
-      setTimeout.call(thisArg, () => {}, 1);
-      hasThrown = 1;
-    } catch (err) {
-      if (err instanceof TypeError) {
-        hasThrown = 2;
-      } else {
-        hasThrown = 3;
-      }
-    }
-    assertEquals(hasThrown, 2);
-  }
-});
-
-Deno.test({ ignore: !DENO_FUTURE }, async function timeoutBindThis() {
-  const thisCheckPassed = [null, undefined, globalThis];
+Deno.test(async function timeoutBindThis() {
+  const thisCheckPassed = [null, undefined, window, globalThis];
 
   const thisCheckFailed = [
     0,
