@@ -146,7 +146,7 @@ impl CliNodeResolver {
                         concat!(
                         "Could not resolve \"{}\", but found it in a package.json. ",
                         "Deno expects the node_modules/ directory to be up to date. ",
-                        "Did you forget to run `npm install`?"
+                        "Did you forget to run `deno install`?"
                       ),
                         specifier
                       ));
