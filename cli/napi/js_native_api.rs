@@ -3317,20 +3317,20 @@ fn napi_resolve_deferred(
   let global = unsafe { v8::Global::from_raw(env.isolate(), deferred_ptr) };
   let resolver = v8::Local::new(&mut env.scope(), global);
 
-  if !resolver
+  let success = resolver
     .resolve(&mut env.scope(), result.unwrap())
-    .unwrap_or(false)
-  {
-    env
-      .scope()
-      .set_microtasks_policy(v8::MicrotasksPolicy::Auto);
-    return napi_generic_failure;
-  }
+    .unwrap_or(false);
 
+  // Restore policy
   env
     .scope()
     .set_microtasks_policy(v8::MicrotasksPolicy::Auto);
-  napi_ok
+
+  if success {
+    napi_ok
+  } else {
+    napi_generic_failure
+  }
 }
 
 #[napi_sym]
