@@ -440,6 +440,40 @@ Deno.test("create private key with invalid utf-8 string", function () {
   );
 });
 
+Deno.test("RSA JWK import public key", function () {
+  const key = {
+    "kty": "RSA",
+    "alg": "RS256",
+    "n":
+      "5Ddosh0Bze5zy-nQ6gAJFpBfL13muCXrTyKYTps61bmnUxpp3bJnt_2N2MXGfuxBENO0Rbc8DhVPd-lNa4H3XjMwIBdxDAwW32z3pfVr8pHyWxeFtK4SCbvX8B0C6n8ZHigJsvdiCNmoj7_LO_QUzIXmXLFvEXtAqzD_hCr0pJxRIr0BrBjYwL23PkxOYzBR-URcd4Ilji6410Eh9NXycyFzKOcqZ7rjG_PnRyUX1EBZH_PN4RExjJuXYgiqhtU-tDjQFzXLhvwAd5s3ThP9lax27A6MUpjLSKkNy-dG5tlaA0QvECfDzA-5eQjcL_OfvbHlKHQH9zPh-U9Q8gsf3iXmbJrypkalUiTCqnzJu5TgZORSg6zmxNyOCz53YxBHEEaF8yROPwxWDylZfC4fxCRTdoAyFgmFLfMbiepV7AZ24KLj4jfMbGfKpkbPq0xirnSAS-3vbOfkgko5X420AttP8Z1ZBbFSD20Ath_TA9PSHiRCak4AXvOoCZg0t-WuMwzkd_B2V_JZZSTb1yBWrKTL1QzUamqlufjdWuz7M-O2Wkb2cyDSESVNuQyJgDkYb0AOWo0BaN3wbOeT_D4cSrjQoo01xQQCZHQ9SVR4QzUQNAiQcSriqEiptHYhbi6R5_GfGAeMHmlJa4atO2hense0Qk4vDc2fc-sbnQ1jPiE",
+    "e": "AQAB",
+    "key_ops": [
+      "verify",
+    ],
+    "ext": true,
+  };
+
+  const keyObject = createPublicKey({ key, format: "jwk" });
+  const expectedPem = `-----BEGIN PUBLIC KEY-----
+MIICIjANBgkqhkiG9w0BAQEFAAOCAg8AMIICCgKCAgEA5Ddosh0Bze5zy+nQ6gAJ
+FpBfL13muCXrTyKYTps61bmnUxpp3bJnt/2N2MXGfuxBENO0Rbc8DhVPd+lNa4H3
+XjMwIBdxDAwW32z3pfVr8pHyWxeFtK4SCbvX8B0C6n8ZHigJsvdiCNmoj7/LO/QU
+zIXmXLFvEXtAqzD/hCr0pJxRIr0BrBjYwL23PkxOYzBR+URcd4Ilji6410Eh9NXy
+cyFzKOcqZ7rjG/PnRyUX1EBZH/PN4RExjJuXYgiqhtU+tDjQFzXLhvwAd5s3ThP9
+lax27A6MUpjLSKkNy+dG5tlaA0QvECfDzA+5eQjcL/OfvbHlKHQH9zPh+U9Q8gsf
+3iXmbJrypkalUiTCqnzJu5TgZORSg6zmxNyOCz53YxBHEEaF8yROPwxWDylZfC4f
+xCRTdoAyFgmFLfMbiepV7AZ24KLj4jfMbGfKpkbPq0xirnSAS+3vbOfkgko5X420
+AttP8Z1ZBbFSD20Ath/TA9PSHiRCak4AXvOoCZg0t+WuMwzkd/B2V/JZZSTb1yBW
+rKTL1QzUamqlufjdWuz7M+O2Wkb2cyDSESVNuQyJgDkYb0AOWo0BaN3wbOeT/D4c
+SrjQoo01xQQCZHQ9SVR4QzUQNAiQcSriqEiptHYhbi6R5/GfGAeMHmlJa4atO2he
+nse0Qk4vDc2fc+sbnQ1jPiECAwEAAQ==
+-----END PUBLIC KEY-----
+`;
+
+  const pem = keyObject.export({ format: "pem", type: "spki" });
+  assertEquals(pem, expectedPem);
+});
+
 Deno.test("Ed25519 jwk public key #1", function () {
   const key = {
     "kty": "OKP",
