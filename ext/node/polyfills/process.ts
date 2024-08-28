@@ -351,6 +351,7 @@ export let execPath: string = Object.freeze({
   [Symbol.for("Deno.customInspect")](inspect, options) {
     return inspect(this.toString(), options);
   },
+  // deno-lint-ignore no-explicit-any
 }) as any as string;
 
 // The process class needs to be an ES5 class because it can be instantiated
