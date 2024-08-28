@@ -110,6 +110,7 @@ export function stdioStringToArray(
 
 const kClosesNeeded = Symbol("_closesNeeded");
 const kClosesReceived = Symbol("_closesReceived");
+const kCanDisconnect = Symbol("_canDisconnect");
 
 // We only want to emit a close event for the child process when all of
 // the writable streams have closed. The value of `child[kClosesNeeded]` should be 1 +
@@ -223,7 +224,7 @@ export class ChildProcess extends EventEmitter {
   #spawned = Promise.withResolvers<void>();
   [kClosesNeeded] = 1;
   [kClosesReceived] = 0;
-  canDisconnect = false;
+  [kCanDisconnect] = false;
 
   constructor(
     command: string,
@@ -390,8 +391,8 @@ export class ChildProcess extends EventEmitter {
           this.emit("exit", exitCode, signalCode);
           await this.#_waitForChildStreamsToClose();
           this.#closePipes();
-          maybeClose(this);
           nextTick(flushStdio, this);
+          maybeClose(this);
         });
       })();
     } catch (err) {
@@ -1420,7 +1421,7 @@ export function setupChannel(target: any, ipc: number) {
     }
 
     target.connected = false;
-    target.canDisconnect = false;
+    target[kCanDisconnect] = false;
     control[kControlDisconnect]();
     process.nextTick(() => {
       target.channel = null;
@@ -1428,7 +1429,7 @@ export function setupChannel(target: any, ipc: number) {
       target.emit("disconnect");
     });
   };
-  target.canDisconnect = true;
+  target[kCanDisconnect] = true;
 
   // Start reading messages from the channel.
   readLoop();
