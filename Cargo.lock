@@ -39,9 +39,9 @@ dependencies = [
 
 [[package]]
 name = "aead-gcm-stream"
-version = "0.1.0"
+version = "0.3.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "4a09ecb526d53de2842cc876ee5c9b51161ee60399edeca4cf74892a01b48177"
+checksum = "4947a169074c7e038fa43051d1c4e073f4488b0e4b0a30658f1e1a1b06449ce8"
 dependencies = [
  "aead",
  "aes",
