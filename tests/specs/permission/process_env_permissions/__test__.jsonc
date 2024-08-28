@@ -1,0 +1,34 @@
+{
+  "tempDir": true,
+  "tests": {
+    "deno_env_wildcard_tests": {
+      "envs": {
+        "MYAPP_HELLO": "Hello\tworld,",
+        "MYAPP_GOODBYE": "farewell",
+        "OTHER_VAR": "ignore"
+      },
+      "steps": [
+        {
+          "args": "run --allow-env=MYAPP_* main.js",
+          "output": "Hello\tworld,\nfarewell\n"
+        },
+        {
+          "args": "run --allow-env=*_HELLO,*_GOODBYE main.js",
+          "output": "Hello\tworld,\nfarewell\n"
+        },
+        {
+          "args": "run --allow-env=* main.js",
+          "output": "Hello\tworld,\nfarewell\n"
+        },
+        {
+          "args": "run --allow-env main.js",
+          "output": "Hello\tworld,\nfarewell\n"
+        },
+        {
+          "args": "run --allow-env=MYAPP_HELLO,MYAPP_GOODBYE main.js",
+          "output": "Hello\tworld,\nfarewell\n"
+        }
+      ]
+    }
+  }
+}
