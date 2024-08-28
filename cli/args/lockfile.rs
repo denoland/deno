@@ -160,15 +160,7 @@ impl CliLockfile {
         .unwrap_or(false)
     });
 
-    let lockfile = if flags.lock_write {
-      log::warn!(
-        "{} \"--lock-write\" flag is deprecated and will be removed in Deno 2.",
-        crate::colors::yellow("Warning")
-      );
-      CliLockfile::new(Lockfile::new_empty(filename, true), frozen)
-    } else {
-      Self::read_from_path(filename, frozen)?
-    };
+    let lockfile = Self::read_from_path(filename, frozen)?;
 
     // initialize the lockfile with the workspace's configuration
     let root_url = workspace.root_dir();

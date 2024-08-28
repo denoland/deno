@@ -107,7 +107,7 @@ deno_cache_dir = "=0.11.0"
 deno_package_json = { version = "=0.1.1", default-features = false }
 dlopen2 = "0.6.1"
 ecb = "=0.1.2"
-elliptic-curve = { version = "0.13.4", features = ["alloc", "arithmetic", "ecdh", "std", "pem"] }
+elliptic-curve = { version = "0.13.4", features = ["alloc", "arithmetic", "ecdh", "std", "pem", "jwk"] }
 encoding_rs = "=0.8.33"
 fast-socks5 = "0.9.6"
 faster-hex = "0.9"
@@ -142,8 +142,8 @@ num-bigint = { version = "0.4", features = ["rand"] }
 once_cell = "1.17.1"
 os_pipe = { version = "=1.1.5", features = ["io_safety"] }
 p224 = { version = "0.13.0", features = ["ecdh"] }
-p256 = { version = "0.13.2", features = ["ecdh"] }
-p384 = { version = "0.13.0", features = ["ecdh"] }
+p256 = { version = "0.13.2", features = ["ecdh", "jwk"] }
+p384 = { version = "0.13.0", features = ["ecdh", "jwk"] }
 parking_lot = "0.12.0"
 percent-encoding = "2.3.0"
 phf = { version = "0.11", features = ["macros"] }
