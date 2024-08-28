@@ -1173,7 +1173,7 @@ dependencies = [
  "deno_graph",
  "deno_lint",
  "deno_lockfile",
- "deno_npm 0.24.0",
+ "deno_npm",
  "deno_package_json",
  "deno_runtime",
  "deno_semver",
@@ -1880,23 +1880,6 @@ dependencies = [
  "x25519-dalek",
  "x509-parser",
  "yoke",
-]
-
-[[package]]
-name = "deno_npm"
-version = "0.24.0"
-dependencies = [
- "anyhow",
- "async-trait",
- "deno_lockfile",
- "deno_semver",
- "futures",
- "log",
- "monch",
- "serde",
- "serde_json",
- "thiserror",
- "url",
 ]
 
 [[package]]
@@ -2833,14 +2816,16 @@ dependencies = [
 
 [[package]]
 name = "eszip"
-version = "0.76.0"
+version = "0.77.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "d14989a45cef01c2dd79546bec3c392a7bbb3e9928bbf71acae5551bb4e71be9"
 dependencies = [
  "anyhow",
  "async-trait",
  "base64 0.21.7",
  "deno_ast",
  "deno_graph",
- "deno_npm 0.25.0",
+ "deno_npm",
  "deno_semver",
  "futures",
  "hashlink",
