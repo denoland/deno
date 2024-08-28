@@ -239,7 +239,7 @@ fn extract_files_from_regex_blocks(
 
 #[derive(Default)]
 struct ExportCollector {
-  named_exports: Vec<Atom>,
+  named_exports: HashSet<Atom>,
   default_export: Option<Atom>,
 }
 
@@ -302,10 +302,10 @@ impl Visit for ExportCollector {
   fn visit_export_decl(&mut self, export_decl: &ast::ExportDecl) {
     match &export_decl.decl {
       ast::Decl::Class(class) => {
-        self.named_exports.push(class.ident.sym.clone());
+        self.named_exports.insert(class.ident.sym.clone());
       }
       ast::Decl::Fn(func) => {
-        self.named_exports.push(func.ident.sym.clone());
+        self.named_exports.insert(func.ident.sym.clone());
       }
       ast::Decl::Var(var) => {
         for var_decl in &var.decls {
@@ -314,7 +314,7 @@ impl Visit for ExportCollector {
         }
       }
       ast::Decl::TsEnum(ts_enum) => {
-        self.named_exports.push(ts_enum.id.sym.clone());
+        self.named_exports.insert(ts_enum.id.sym.clone());
       }
       ast::Decl::TsModule(ts_module) => {
         if ts_module.declare {
@@ -323,18 +323,18 @@ impl Visit for ExportCollector {
 
         match &ts_module.id {
           ast::TsModuleName::Ident(ident) => {
-            self.named_exports.push(ident.sym.clone());
+            self.named_exports.insert(ident.sym.clone());
           }
           ast::TsModuleName::Str(s) => {
-            self.named_exports.push(s.value.clone());
+            self.named_exports.insert(s.value.clone());
           }
         }
       }
       ast::Decl::TsTypeAlias(ts_type_alias) => {
-        self.named_exports.push(ts_type_alias.id.sym.clone());
+        self.named_exports.insert(ts_type_alias.id.sym.clone());
       }
       ast::Decl::TsInterface(ts_interface) => {
-        self.named_exports.push(ts_interface.id.sym.clone());
+        self.named_exports.insert(ts_interface.id.sym.clone());
       }
       ast::Decl::Using(_) => {}
     }
@@ -372,12 +372,12 @@ impl Visit for ExportCollector {
 
     match &export_named_specifier.exported {
       Some(exported) => {
-        self.named_exports.push(get_atom(exported));
+        self.named_exports.insert(get_atom(exported));
       }
       None => {
         self
           .named_exports
-          .push(get_atom(&export_named_specifier.orig));
+          .insert(get_atom(&export_named_specifier.orig));
       }
     }
   }
@@ -1137,109 +1137,115 @@ assertEquals(add(1, 2), 3);
 
     struct Test {
       input: &'static str,
-      named_expected: Vec<Atom>,
+      named_expected: HashSet<Atom>,
       default_expected: Option<Atom>,
+    }
+
+    macro_rules! atom_set {
+      ($( $x:expr ),*) => {
+        [$( Atom::from($x) ),*].into_iter().collect::<HashSet<_>>()
+      };
     }
 
     let tests = [
       Test {
         input: r#"export const foo = 42;"#,
-        named_expected: vec!["foo".into()],
+        named_expected: atom_set!("foo"),
         default_expected: None,
       },
       Test {
         input: r#"export let foo = 42;"#,
-        named_expected: vec!["foo".into()],
+        named_expected: atom_set!("foo"),
         default_expected: None,
       },
       Test {
         input: r#"export var foo = 42;"#,
-        named_expected: vec!["foo".into()],
+        named_expected: atom_set!("foo"),
         default_expected: None,
       },
       Test {
         input: r#"export const foo = () => {};"#,
-        named_expected: vec!["foo".into()],
+        named_expected: atom_set!("foo"),
         default_expected: None,
       },
       Test {
         input: r#"export function foo() {}"#,
-        named_expected: vec!["foo".into()],
+        named_expected: atom_set!("foo"),
         default_expected: None,
       },
       Test {
         input: r#"export class Foo {}"#,
-        named_expected: vec!["Foo".into()],
+        named_expected: atom_set!("Foo"),
         default_expected: None,
       },
       Test {
         input: r#"export enum Foo {}"#,
-        named_expected: vec!["Foo".into()],
+        named_expected: atom_set!("Foo"),
         default_expected: None,
       },
       Test {
         input: r#"export module Foo {}"#,
-        named_expected: vec!["Foo".into()],
+        named_expected: atom_set!("Foo"),
         default_expected: None,
       },
       Test {
         input: r#"export module "foo" {}"#,
-        named_expected: vec!["foo".into()],
+        named_expected: atom_set!("foo"),
         default_expected: None,
       },
       Test {
         input: r#"export namespace Foo {}"#,
-        named_expected: vec!["Foo".into()],
+        named_expected: atom_set!("Foo"),
         default_expected: None,
       },
       Test {
         input: r#"export type Foo = string;"#,
-        named_expected: vec!["Foo".into()],
+        named_expected: atom_set!("Foo"),
         default_expected: None,
       },
       Test {
         input: r#"export interface Foo {};"#,
-        named_expected: vec!["Foo".into()],
+        named_expected: atom_set!("Foo"),
         default_expected: None,
       },
       Test {
         input: r#"export let name1, name2;"#,
-        named_expected: vec!["name1".into(), "name2".into()],
+        named_expected: atom_set!("name1", "name2"),
         default_expected: None,
       },
       Test {
         input: r#"export const name1 = 1, name2 = 2;"#,
-        named_expected: vec!["name1".into(), "name2".into()],
+        named_expected: atom_set!("name1", "name2"),
         default_expected: None,
       },
       Test {
         input: r#"export function* generatorFunc() {}"#,
-        named_expected: vec!["generatorFunc".into()],
+        named_expected: atom_set!("generatorFunc"),
         default_expected: None,
       },
       Test {
         input: r#"export const { name1, name2: bar } = obj;"#,
-        named_expected: vec!["name1".into(), "bar".into()],
+        named_expected: atom_set!("name1", "bar"),
         default_expected: None,
       },
       Test {
         input: r#"export const [name1, name2] = arr;"#,
-        named_expected: vec!["name1".into(), "name2".into()],
+        named_expected: atom_set!("name1", "name2"),
         default_expected: None,
       },
       Test {
         input: r#"export const { name1 = 42 } = arr;"#,
-        named_expected: vec!["name1".into()],
+        named_expected: atom_set!("name1"),
         default_expected: None,
       },
       Test {
         input: r#"export default function foo() {}"#,
-        named_expected: vec![],
+        named_expected: atom_set!(),
         default_expected: Some("foo".into()),
       },
       Test {
         input: r#"export { foo, bar as barAlias };"#,
-        named_expected: vec!["foo".into(), "barAlias".into()],
+        named_expected: atom_set!("foo", "barAlias"),
         default_expected: None,
       },
       Test {
@@ -1254,8 +1260,20 @@ const value3 = "World";
 
 export { value2 };
 "#,
-        named_expected: vec!["value1".into(), "value2".into()],
+        named_expected: atom_set!("value1", "value2"),
         default_expected: Some("Foo".into()),
+      },
+      // overloaded function
+      Test {
+        input: r#"
+export function foo(a: number): boolean;
+export function foo(a: boolean): string;
+export function foo(a: number | boolean): boolean | string {
+  return typeof a === "number" ? true : "hello";
+}
+"#,
+        named_expected: atom_set!("foo"),
+        default_expected: None,
       },
       // The collector deliberately does not handle re-exports, because from
       // doc reader's perspective, an example code would become hard to follow
@@ -1270,7 +1288,7 @@ export { name2, name3 as N3 } from "./module3.js";
 export { default } from "./module4.ts";
 export { default as myDefault } from "./module5.ts";
 "#,
-        named_expected: vec![],
+        named_expected: atom_set!(),
         default_expected: None,
       },
       Test {
@@ -1281,7 +1299,7 @@ export namespace Foo {
   export function myFunc(): boolean;
 }
 "#,
-        named_expected: vec!["Foo".into()],
+        named_expected: atom_set!("Foo"),
         default_expected: None,
       },
       Test {
@@ -1292,7 +1310,7 @@ declare namespace Foo {
   export function myFunc(): boolean;
 }
 "#,
-        named_expected: vec![],
+        named_expected: atom_set!(),
         default_expected: None,
       },
       Test {
@@ -1303,7 +1321,7 @@ declare module Foo {
   export function myFunc(): boolean;
 }
 "#,
-        named_expected: vec![],
+        named_expected: atom_set!(),
         default_expected: None,
       },
       Test {
@@ -1314,7 +1332,7 @@ declare global {
   export function myFunc(): boolean;
 }
 "#,
-        named_expected: vec![],
+        named_expected: atom_set!(),
         default_expected: None,
       },
     ];
