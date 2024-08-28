@@ -140,12 +140,12 @@ export async function checkPy3Available() {
   }).output();
   assert(success, "failed to run python --version");
   const output = new TextDecoder().decode(stdout);
-  // assert(
-  //   output.includes("Python 3.11"),
-  //   `The ${
-  //     Deno.build.os == "windows" ? "python.exe" : "python3"
-  //   } in your path is not Python 3.11.x. See https://github.com/web-platform-tests/wpt/issues/44427 for more details.`,
-  // );
+  assert(
+    output.includes("Python 3.11"),
+    `The ${
+      Deno.build.os == "windows" ? "python.exe" : "python3"
+    } in your path is not Python 3.11.x. See https://github.com/web-platform-tests/wpt/issues/44427 for more details.`,
+  );
 }
 
 export async function cargoBuild() {
