@@ -3739,6 +3739,7 @@ itest!(test_and_bench_are_noops_in_run {
 #[cfg(not(target_os = "windows"))]
 itest!(spawn_kill_permissions {
   args: "run --quiet --allow-run=cat spawn_kill_permissions.ts",
+  envs: vec![("LD_LIBRARY_PATH".to_string(), "".to_string())],
   output_str: Some(""),
 });
 
