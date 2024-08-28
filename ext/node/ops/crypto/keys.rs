@@ -582,6 +582,61 @@ impl KeyObjectHandle {
     Ok(KeyObjectHandle::AsymmetricPublic(key))
   }
 
+  pub fn new_rsa_jwk(
+    jwk: RsaJwkKey,
+    is_public: bool,
+  ) -> Result<KeyObjectHandle, AnyError> {
+    use base64::prelude::BASE64_URL_SAFE_NO_PAD;
+
+    let n = BASE64_URL_SAFE_NO_PAD.decode(jwk.n.as_bytes())?;
+    let e = BASE64_URL_SAFE_NO_PAD.decode(jwk.e.as_bytes())?;
+
+    if is_public {
+      let public_key = RsaPublicKey::new(
+        rsa::BigUint::from_bytes_be(&n),
+        rsa::BigUint::from_bytes_be(&e),
+      )?;
+
+      Ok(KeyObjectHandle::AsymmetricPublic(AsymmetricPublicKey::Rsa(
+        public_key,
+      )))
+    } else {
+      let d = BASE64_URL_SAFE_NO_PAD.decode(
+        jwk
+          .d
+          .ok_or_else(|| type_error("missing RSA private component"))?
+          .as_bytes(),
+      )?;
+      let p = BASE64_URL_SAFE_NO_PAD.decode(
+        jwk
+          .p
+          .ok_or_else(|| type_error("missing RSA private component"))?
+          .as_bytes(),
+      )?;
+      let q = BASE64_URL_SAFE_NO_PAD.decode(
+        jwk
+          .q
+          .ok_or_else(|| type_error("missing RSA private component"))?
+          .as_bytes(),
+      )?;
+
+      let mut private_key = RsaPrivateKey::from_components(
+        rsa::BigUint::from_bytes_be(&n),
+        rsa::BigUint::from_bytes_be(&e),
+        rsa::BigUint::from_bytes_be(&d),
+        vec![
+          rsa::BigUint::from_bytes_be(&p),
+          rsa::BigUint::from_bytes_be(&q),
+        ],
+      )?;
+      private_key.precompute()?; // precompute CRT params
+
+      Ok(KeyObjectHandle::AsymmetricPrivate(
+        AsymmetricPrivateKey::Rsa(private_key),
+      ))
+    }
+  }
+
   pub fn new_ec_jwk(
     jwk: &JwkEcKey,
     is_public: bool,
@@ -1176,6 +1231,24 @@ pub fn op_node_create_ed_raw(
   is_public: bool,
 ) -> Result<KeyObjectHandle, AnyError> {
   KeyObjectHandle::new_ed_raw(curve, key, is_public)
+}
+
+#[derive(serde::Deserialize)]
+pub struct RsaJwkKey {
+  n: String,
+  e: String,
+  d: Option<String>,
+  p: Option<String>,
+  q: Option<String>,
+}
+
+#[op2]
+#[cppgc]
+pub fn op_node_create_rsa_jwk(
+  #[serde] jwk: RsaJwkKey,
+  is_public: bool,
+) -> Result<KeyObjectHandle, AnyError> {
+  KeyObjectHandle::new_rsa_jwk(jwk, is_public)
 }
 
 #[op2]
