@@ -1121,6 +1121,9 @@ Module._extensions[".json"] = function (module, filename) {
 
 // Native extension for .node
 Module._extensions[".node"] = function (module, filename) {
+  if (filename.endsWith("cpufeatures.node")) {
+    throw new Error("Using cpu-features module is currently not supported");
+  }
   module.exports = op_napi_open(
     filename,
     globalThis,
