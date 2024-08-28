@@ -14,6 +14,7 @@ use deno_ast::SourceRangedForSpanned as _;
 use deno_core::error::AnyError;
 use deno_core::ModuleSpecifier;
 use regex::Regex;
+use std::collections::HashSet;
 use std::fmt::Write as _;
 use std::sync::Arc;
 
@@ -219,22 +220,33 @@ struct ExportCollector {
 }
 
 impl ExportCollector {
-  fn to_import_specifiers(&self) -> Vec<ast::ImportSpecifier> {
+  fn to_import_specifiers(
+    &self,
+    symbols_to_exclude: &HashSet<Atom>,
+  ) -> Vec<ast::ImportSpecifier> {
     let mut import_specifiers = vec![];
+
     if let Some(default_export) = &self.default_export {
-      import_specifiers.push(ast::ImportSpecifier::Default(
-        ast::ImportDefaultSpecifier {
-          span: DUMMY_SP,
-          local: ast::Ident {
+      if !symbols_to_exclude.contains(default_export) {
+        import_specifiers.push(ast::ImportSpecifier::Default(
+          ast::ImportDefaultSpecifier {
             span: DUMMY_SP,
-            ctxt: Default::default(),
-            sym: default_export.clone(),
-            optional: false,
+            local: ast::Ident {
+              span: DUMMY_SP,
+              ctxt: Default::default(),
+              sym: default_export.clone(),
+              optional: false,
+            },
           },
-        },
-      ));
+        ));
+      }
     }
+
     for named_export in &self.named_exports {
+      if symbols_to_exclude.contains(named_export) {
+        continue;
+      }
+
       import_specifiers.push(ast::ImportSpecifier::Named(
         ast::ImportNamedSpecifier {
           span: DUMMY_SP,
@@ -249,6 +261,7 @@ impl ExportCollector {
         },
       ));
     }
+
     import_specifiers
   }
 }
@@ -258,6 +271,8 @@ impl Visit for ExportCollector {
     if ts_module_decl.declare {
       return;
     }
+
+    ts_module_decl.visit_children_with(self);
   }
 
   fn visit_export_decl(&mut self, export_decl: &ast::ExportDecl) {
@@ -394,6 +409,34 @@ fn extract_sym_from_pat(pat: &ast::Pat) -> Vec<Atom> {
   atoms
 }
 
+#[derive(Default)]
+struct ImportedIdentifierCollector {
+  idents: Vec<ast::Ident>,
+}
+
+impl Visit for ImportedIdentifierCollector {
+  fn visit_import_named_specifier(
+    &mut self,
+    import_named_specifier: &ast::ImportNamedSpecifier,
+  ) {
+    self.idents.push(import_named_specifier.local.clone());
+  }
+
+  fn visit_import_default_specifier(
+    &mut self,
+    import_default_specifier: &ast::ImportDefaultSpecifier,
+  ) {
+    self.idents.push(import_default_specifier.local.clone());
+  }
+
+  fn visit_import_star_as_specifier(
+    &mut self,
+    import_star_as_specifier: &ast::ImportStarAsSpecifier,
+  ) {
+    self.idents.push(import_star_as_specifier.local.clone());
+  }
+}
+
 /// Generates a "pseudo" test file from a given file by applying the following
 /// transformations:
 ///
@@ -401,8 +444,9 @@ fn extract_sym_from_pat(pat: &ast::Pat) -> Vec<Atom> {
 /// 2. Wraps the content of the file in a `Deno.test` call
 ///
 /// For example, given a file that looks like:
+///
 /// ```ts
-/// import { assertEquals } from "@std/assert/equal";
+/// import { assertEquals } from "@std/assert/equals";
 ///
 /// assertEquals(increment(1), 2);
 /// ```
@@ -420,11 +464,31 @@ fn extract_sym_from_pat(pat: &ast::Pat) -> Vec<Atom> {
 /// The generated pseudo test file would look like:
 ///
 /// ```ts
-/// import { assertEquals } from "@std/assert/equal";
+/// import { assertEquals } from "@std/assert/equals";
 /// import { increment, SOME_CONST } from "./base.ts";
 ///
 /// Deno.test("./base.ts$1-3.ts", async () => {
 ///  assertEquals(increment(1), 2);
+/// });
+/// ```
+///
+/// # Edge case - duplicate identifier
+///
+/// If a given file imports, say, `doSomething` from an external module while
+/// the base file exports `doSomething` as well, the generated pseudo test file
+/// would end up having two duplciate imports for `doSomething`, causing the
+/// duplicate identifier error.
+///
+/// To avoid this issue, when a given file imports `doSomething`, this takes
+/// precedence over the automatic import injection for the base file's
+/// `doSomething`. So the generated pseudo test file would look like:
+///
+/// ```ts
+/// import { assertEquals } from "@std/assert/equals";
+/// import { doSomething } from "./some_external_module.ts";
+///
+/// Deno.test("./base.ts$1-3.ts", async () => {
+///   assertEquals(doSomething(1), 2);
 /// });
 /// ```
 fn generate_pseudo_test_file(
@@ -443,6 +507,9 @@ fn generate_pseudo_test_file(
     maybe_syntax: None,
   })?;
 
+  let mut import_collector = ImportedIdentifierCollector::default();
+  import_collector.visit_program(parsed.program_ref());
+
   let transformed =
     parsed
       .program_ref()
@@ -450,7 +517,12 @@ fn generate_pseudo_test_file(
       .fold_with(&mut as_folder(Transform {
         specifier: &file.specifier,
         base_file_specifier,
-        exports,
+        exports_from_base: exports,
+        explicit_imports: import_collector
+          .idents
+          .into_iter()
+          .map(|i| i.sym)
+          .collect(),
       }));
 
   Ok(File {
@@ -465,7 +537,8 @@ fn generate_pseudo_test_file(
 struct Transform<'a> {
   specifier: &'a ModuleSpecifier,
   base_file_specifier: &'a ModuleSpecifier,
-  exports: &'a ExportCollector,
+  exports_from_base: &'a ExportCollector,
+  explicit_imports: HashSet<Atom>,
 }
 
 impl<'a> VisitMut for Transform<'a> {
@@ -489,7 +562,9 @@ impl<'a> VisitMut for Transform<'a> {
         let mut transformed_items = vec![];
         transformed_items
           .extend(module_decls.into_iter().map(ast::ModuleItem::ModuleDecl));
-        let import_specifiers = self.exports.to_import_specifiers();
+        let import_specifiers = self
+          .exports_from_base
+          .to_import_specifiers(&self.explicit_imports);
         if !import_specifiers.is_empty() {
           transformed_items.push(ast::ModuleItem::ModuleDecl(
             ast::ModuleDecl::Import(ast::ImportDecl {
@@ -516,12 +591,16 @@ impl<'a> VisitMut for Transform<'a> {
       ast::Program::Script(script) => {
         let mut transformed_items = vec![];
 
-        let import_specifiers = self.exports.to_import_specifiers();
+        let import_specifiers = self
+          .exports_from_base
+          .to_import_specifiers(&self.explicit_imports);
         if !import_specifiers.is_empty() {
           transformed_items.push(ast::ModuleItem::ModuleDecl(
             ast::ModuleDecl::Import(ast::ImportDecl {
               span: DUMMY_SP,
-              specifiers: self.exports.to_import_specifiers(),
+              specifiers: self
+                .exports_from_base
+                .to_import_specifiers(&self.explicit_imports),
               src: Box::new(ast::Str {
                 span: DUMMY_SP,
                 value: self.base_file_specifier.to_string().into(),
@@ -782,6 +861,42 @@ Deno.test("file:///main.ts$13-16.ts", async ()=>{
             media_type: MediaType::TypeScript,
           },
         ],
+      },
+      // Avoid duplicate imports
+      Test {
+        input: Input {
+          source: r#"
+/**
+ * ```ts
+ * import { DUPLICATE1 } from "./other1.ts";
+ * import * as DUPLICATE2 from "./other2.js";
+ * import { foo as DUPLICATE3 } from "./other3.tsx";
+ *
+ * foo();
+ * ```
+ */
+export function foo() {}
+
+export const DUPLICATE1 = "dup1";
+const DUPLICATE2 = "dup2";
+export default DUPLICATE2;
+const DUPLICATE3 = "dup3";
+export { DUPLICATE3 };
+"#,
+          specifier: "file:///main.ts",
+        },
+        expected: vec![Expected {
+          source: r#"import { DUPLICATE1 } from "./other1.ts";
+import * as DUPLICATE2 from "./other2.js";
+import { foo as DUPLICATE3 } from "./other3.tsx";
+import { foo } from "file:///main.ts";
+Deno.test("file:///main.ts$3-10.ts", async ()=>{
+    foo();
+});
+"#,
+          specifier: "file:///main.ts$3-10.ts",
+          media_type: MediaType::TypeScript,
+        }],
       },
       Test {
         input: Input {
