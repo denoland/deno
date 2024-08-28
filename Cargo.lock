@@ -1347,9 +1347,9 @@ dependencies = [
 
 [[package]]
 name = "deno_cache_dir"
-version = "0.11.0"
+version = "0.11.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "405790fa1fa5f05c2e7dca817f820dc1c950ea846f47212ed6d670a3023cb4fe"
+checksum = "6df43311cb7703fa3242c282823a850e4c8d0c06b9527d8209b55bd695452ea5"
 dependencies = [
  "deno_media_type",
  "indexmap",
@@ -2010,9 +2010,9 @@ dependencies = [
 
 [[package]]
 name = "deno_semver"
-version = "0.5.12"
+version = "0.5.13"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "eef522937758930b9d6897631fa94bc69bcbbe78613c939ab2054ca96191afbd"
+checksum = "6657fecb9ac6a7a71f552c95e8cc492466a75f5660224577e2226bcf30db9768"
 dependencies = [
  "monch",
  "once_cell",
