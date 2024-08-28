@@ -137,16 +137,22 @@ impl Cipher {
       "aes-192-ecb" => Aes192Ecb(Box::new(ecb::Encryptor::new(key.into()))),
       "aes-256-ecb" => Aes256Ecb(Box::new(ecb::Encryptor::new(key.into()))),
       "aes-128-gcm" => {
-        let mut cipher =
-          aead_gcm_stream::AesGcm::<aes::Aes128>::new(key.into());
-        cipher.init(iv.try_into()?);
+        if iv.len() != 12 {
+          return Err(type_error("IV length must be 12 bytes"));
+        }
+
+        let cipher =
+          aead_gcm_stream::AesGcm::<aes::Aes128>::new(key.into(), iv);
 
         Aes128Gcm(Box::new(cipher))
       }
       "aes-256-gcm" => {
-        let mut cipher =
-          aead_gcm_stream::AesGcm::<aes::Aes256>::new(key.into());
-        cipher.init(iv.try_into()?);
+        if iv.len() != 12 {
+          return Err(type_error("IV length must be 12 bytes"));
+        }
+
+        let cipher =
+          aead_gcm_stream::AesGcm::<aes::Aes256>::new(key.into(), iv);
 
         Aes256Gcm(Box::new(cipher))
       }
@@ -320,16 +326,22 @@ impl Decipher {
       "aes-192-ecb" => Aes192Ecb(Box::new(ecb::Decryptor::new(key.into()))),
       "aes-256-ecb" => Aes256Ecb(Box::new(ecb::Decryptor::new(key.into()))),
       "aes-128-gcm" => {
-        let mut decipher =
-          aead_gcm_stream::AesGcm::<aes::Aes128>::new(key.into());
-        decipher.init(iv.try_into()?);
+        if iv.len() != 12 {
+          return Err(type_error("IV length must be 12 bytes"));
+        }
+
+        let decipher =
+          aead_gcm_stream::AesGcm::<aes::Aes128>::new(key.into(), iv);
 
         Aes128Gcm(Box::new(decipher))
       }
       "aes-256-gcm" => {
-        let mut decipher =
-          aead_gcm_stream::AesGcm::<aes::Aes256>::new(key.into());
-        decipher.init(iv.try_into()?);
+        if iv.len() != 12 {
+          return Err(type_error("IV length must be 12 bytes"));
+        }
+
+        let decipher =
+          aead_gcm_stream::AesGcm::<aes::Aes256>::new(key.into(), iv);
 
         Aes256Gcm(Box::new(decipher))
       }
