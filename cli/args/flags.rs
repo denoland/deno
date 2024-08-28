@@ -1327,6 +1327,63 @@ pub fn flags_from_vec(args: Vec<OsString>) -> clap::error::Result<Flags> {
   Ok(flags)
 }
 
+fn process_env_permissions(allowed_env_vars: Vec<String>) -> Vec<String> {
+  let mut env_permissions = Vec::new();
+
+  for env_var in allowed_env_vars {
+    let (pattern, match_type) = if env_var.contains('*') {
+      if env_var.starts_with('*') {
+        let suffix = &env_var[1..];
+        (suffix.to_string(), MatchType::Suffix)
+      } else if env_var.ends_with('*') {
+        let prefix = &env_var[..env_var.len() - 1];
+        (prefix.to_string(), MatchType::Prefix)
+      } else {
+        let pattern = env_var.replace('*', "");
+        (pattern, MatchType::Wildcard)
+      }
+    } else {
+      (env_var, MatchType::Exact)
+    };
+
+    match match_type {
+      MatchType::Prefix => {
+        for (key, _value) in std::env::vars() {
+          if key.starts_with(&pattern) {
+            env_permissions.push(key);
+          }
+        }
+      }
+      MatchType::Suffix => {
+        for (key, _value) in std::env::vars() {
+          if key.ends_with(&pattern) {
+            env_permissions.push(key);
+          }
+        }
+      }
+      MatchType::Wildcard => {
+        for (key, _value) in std::env::vars() {
+          if key.contains(&pattern) {
+            env_permissions.push(key);
+          }
+        }
+      }
+      MatchType::Exact => {
+        env_permissions.push(pattern);
+      }
+    }
+  }
+
+  env_permissions
+}
+
+enum MatchType {
+  Prefix,
+  Suffix,
+  Wildcard,
+  Exact,
+}
+
 macro_rules! heading {
     ($($name:ident = $title:expr),+; $total:literal) => {
       $(const $name: &str = $title;)+
@@ -5085,7 +5142,8 @@ fn permission_args_parse(flags: &mut Flags, matches: &mut ArgMatches) {
   }
 
   if let Some(env_wl) = matches.remove_many::<String>("allow-env") {
-    flags.permissions.allow_env = Some(env_wl.collect());
+    let env_permissions = process_env_permissions(env_wl.collect());
+    flags.permissions.allow_env = Some(env_permissions);
     debug!("env allowlist: {:#?}", &flags.permissions.allow_env);
   }
 
