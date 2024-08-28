@@ -4098,36 +4098,6 @@ declare namespace Deno {
   export function metrics(): Metrics;
 
   /**
-   * A map of open resources that Deno is tracking. The key is the resource ID
-   * (_rid_) and the value is its representation.
-   *
-   * @deprecated This will be removed in Deno 2.0.
-   *
-   * @category Runtime */
-  export interface ResourceMap {
-    [rid: number]: unknown;
-  }
-
-  /** Returns a map of open resource IDs (_rid_) along with their string
-   * representations. This is an internal API and as such resource
-   * representation has `unknown` type; that means it can change any time and
-   * should not be depended upon.
-   *
-   * ```ts
-   * console.log(Deno.resources());
-   * // { 0: "stdin", 1: "stdout", 2: "stderr" }
-   * Deno.openSync('../test.file');
-   * console.log(Deno.resources());
-   * // { 0: "stdin", 1: "stdout", 2: "stderr", 3: "fsFile" }
-   * ```
-   *
-   * @deprecated This will be removed in Deno 2.0.
-   *
-   * @category Runtime
-   */
-  export function resources(): ResourceMap;
-
-  /**
    * Additional information for FsEvent objects with the "other" kind.
    *
    * - `"rescan"`: rescan notices indicate either a lapse in the events or a

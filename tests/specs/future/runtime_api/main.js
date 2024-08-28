@@ -22,7 +22,6 @@ console.log("Deno.readAll is", Deno.readAll);
 console.log("Deno.readAllSync is", Deno.readAllSync);
 console.log("Deno.read is", Deno.read);
 console.log("Deno.readSync is", Deno.readSync);
-console.log("Deno.resources is", Deno.resources);
 console.log("Deno.seek is", Deno.seek);
 console.log("Deno.seekSync is", Deno.seekSync);
 console.log("Deno.shutdown is", Deno.shutdown);
