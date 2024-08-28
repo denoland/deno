@@ -1,7 +1,8 @@
 {
   "envs": {
     "LD_LIBRARY_PATH": "",
-    "LD_PRELOAD": ""
+    "LD_PRELOAD": "",
+    "DYLD_FALLBACK_LIBRARY_PATH": ""
   },
   "tests": {
     "env_arg": {
