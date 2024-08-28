@@ -254,6 +254,12 @@ impl ExportCollector {
 }
 
 impl Visit for ExportCollector {
+  fn visit_ts_module_decl(&mut self, ts_module_decl: &ast::TsModuleDecl) {
+    if ts_module_decl.declare {
+      return;
+    }
+  }
+
   fn visit_export_decl(&mut self, export_decl: &ast::ExportDecl) {
     match &export_decl.decl {
       ast::Decl::Class(class) => {
@@ -271,14 +277,20 @@ impl Visit for ExportCollector {
       ast::Decl::TsEnum(ts_enum) => {
         self.named_exports.push(ts_enum.id.sym.clone());
       }
-      ast::Decl::TsModule(ts_module) => match &ts_module.id {
-        ast::TsModuleName::Ident(ident) => {
-          self.named_exports.push(ident.sym.clone());
+      ast::Decl::TsModule(ts_module) => {
+        if ts_module.declare {
+          return;
         }
-        ast::TsModuleName::Str(s) => {
-          self.named_exports.push(s.value.clone());
+
+        match &ts_module.id {
+          ast::TsModuleName::Ident(ident) => {
+            self.named_exports.push(ident.sym.clone());
+          }
+          ast::TsModuleName::Str(s) => {
+            self.named_exports.push(s.value.clone());
+          }
         }
-      },
+      }
       ast::Decl::TsTypeAlias(ts_type_alias) => {
         self.named_exports.push(ts_type_alias.id.sym.clone());
       }
@@ -895,6 +907,11 @@ Deno.test("file:///README.md$6-12.js", async ()=>{
         default_expected: None,
       },
       Test {
+        input: r#"export namespace Foo {}"#,
+        named_expected: vec!["Foo".into()],
+        default_expected: None,
+      },
+      Test {
         input: r#"export type Foo = string;"#,
         named_expected: vec!["Foo".into()],
         default_expected: None,
@@ -971,6 +988,50 @@ export * as name1 from "./module2.ts";
 export { name2, name3 as N3 } from "./module3.js";
 export { default } from "./module4.ts";
 export { default as myDefault } from "./module5.ts";
+"#,
+        named_expected: vec![],
+        default_expected: None,
+      },
+      Test {
+        input: r#"
+export namespace Foo {
+  export type MyType = string;
+  export const myValue = 42;
+  export function myFunc(): boolean;
+}
+"#,
+        named_expected: vec!["Foo".into()],
+        default_expected: None,
+      },
+      Test {
+        input: r#"
+declare namespace Foo {
+  export type MyType = string;
+  export const myValue = 42;
+  export function myFunc(): boolean;
+}
+"#,
+        named_expected: vec![],
+        default_expected: None,
+      },
+      Test {
+        input: r#"
+declare module Foo {
+  export type MyType = string;
+  export const myValue = 42;
+  export function myFunc(): boolean;
+}
+"#,
+        named_expected: vec![],
+        default_expected: None,
+      },
+      Test {
+        input: r#"
+declare global {
+  export type MyType = string;
+  export const myValue = 42;
+  export function myFunc(): boolean;
+}
 "#,
         named_expected: vec![],
         default_expected: None,
