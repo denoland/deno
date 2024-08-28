@@ -1209,7 +1209,6 @@ fn lock_file_missing_top_level_package() {
 #[test]
 fn lock_file_lock_write() {
   // https://github.com/denoland/deno/issues/16666
-  // Ensure that --lock-write still adds npm packages to the lockfile
   let _server = http_server();
 
   let deno_dir = util::new_deno_dir();
@@ -1396,7 +1395,6 @@ fn lock_file_lock_write() {
   let deno = util::deno_cmd_with_deno_dir(&deno_dir)
     .current_dir(temp_dir.path())
     .arg("cache")
-    .arg("--lock-write")
     .arg("--quiet")
     .arg("npm:cowsay@1.5.0")
     .envs(env_vars_for_npm_tests())
