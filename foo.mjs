@@ -20,7 +20,7 @@ session.post("Runtime.enable", undefined, (err, params) => {
 session.post(
   "Runtime.evaluate",
   {
-    contextId: 1,
+    // contextId: 1,
     expression: "new Promise(resolve => setTimeout(resolve, 1000))",
     awaitPromise: true,
   },
@@ -35,18 +35,18 @@ session.disconnect();
 session.disconnect();
 
 session.connect();
-console.log("Connected again");
-session.post("Runtime.enable", undefined, (err, params) => {
-  console.log("Runtime.enable, err:", err, "params:", params);
-});
+// console.log("Connected again");
+// session.post("Runtime.enable", undefined, (err, params) => {
+//   console.log("Runtime.enable, err:", err, "params:", params);
+// });
 
-session.post(
-  "Runtime.evaluate",
-  {
-    contextId: 1,
-    expression: "1 + 2",
-  },
-  (err, params) => {
-    console.log("Runtime.evaluate, err:", err, "params:", params);
-  },
-);
+// session.post(
+//   "Runtime.evaluate",
+//   {
+//     // contextId: 1,
+//     expression: "1 + 2",
+//   },
+//   (err, params) => {
+//     console.log("Runtime.evaluate, err:", err, "params:", params);
+//   },
+// );
