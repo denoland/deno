@@ -249,12 +249,14 @@ async fn print_release_notes(
     return;
   };
 
+  let is_switching_from_deno1_to_deno2 =
+    new_semver.major == 2 && current_semver.major == 1;
   let is_deno_2_rc = new_semver.major == 2
     && new_semver.minor == 0
     && new_semver.patch == 0
     && new_semver.pre.first() == Some(&"rc".to_string());
 
-  if is_deno_2_rc {
+  if is_deno_2_rc || is_switching_from_deno1_to_deno2 {
     log::info!(
       "{}\n\n  {}\n",
       colors::gray("Migration guide:"),
@@ -262,6 +264,9 @@ async fn print_release_notes(
         "https://docs.deno.com/runtime/manual/advanced/migrate_deprecations"
       )
     );
+  }
+
+  if is_deno_2_rc {
     log::info!(
       "{}\n\n  {}\n",
       colors::gray("If you find a bug, please report to:"),
