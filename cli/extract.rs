@@ -2,8 +2,10 @@
 
 use deno_ast::swc::ast;
 use deno_ast::swc::atoms::Atom;
+use deno_ast::swc::common::collections::AHashSet;
 use deno_ast::swc::common::comments::CommentKind;
 use deno_ast::swc::common::DUMMY_SP;
+use deno_ast::swc::utils as swc_utils;
 use deno_ast::swc::visit::as_folder;
 use deno_ast::swc::visit::FoldWith as _;
 use deno_ast::swc::visit::Visit;
@@ -14,7 +16,7 @@ use deno_ast::SourceRangedForSpanned as _;
 use deno_core::error::AnyError;
 use deno_core::ModuleSpecifier;
 use regex::Regex;
-use std::collections::HashSet;
+use std::collections::BTreeSet;
 use std::fmt::Write as _;
 use std::sync::Arc;
 
@@ -28,7 +30,7 @@ use crate::util::path::mapped_specifier_for_tsc;
 /// The difference from [`extract_snippet_files`] is that this function wraps
 /// extracted code snippets in a `Deno.test` call.
 pub fn extract_doc_tests(file: File) -> Result<Vec<File>, AnyError> {
-  extract_inner(file, true)
+  extract_inner(file, WrapKind::DenoTest)
 }
 
 /// Extracts code snippets from a given file and returns a list of the extracted
@@ -37,12 +39,18 @@ pub fn extract_doc_tests(file: File) -> Result<Vec<File>, AnyError> {
 /// The difference from [`extract_doc_tests`] is that this function does *not*
 /// wrap extracted code snippets in a `Deno.test` call.
 pub fn extract_snippet_files(file: File) -> Result<Vec<File>, AnyError> {
-  extract_inner(file, false)
+  extract_inner(file, WrapKind::NoWrap)
+}
+
+#[derive(Clone, Copy)]
+enum WrapKind {
+  DenoTest,
+  NoWrap,
 }
 
 fn extract_inner(
   file: File,
-  wrap_in_deno_test: bool,
+  wrap_kind: WrapKind,
 ) -> Result<Vec<File>, AnyError> {
   let file = file.into_text_decoded()?;
 
@@ -79,12 +87,7 @@ fn extract_inner(
   extracted_files
     .into_iter()
     .map(|extracted_file| {
-      generate_pseudo_file(
-        extracted_file,
-        &file.specifier,
-        &exports,
-        wrap_in_deno_test,
-      )
+      generate_pseudo_file(extracted_file, &file.specifier, &exports, wrap_kind)
     })
     .collect::<Result<_, _>>()
 }
@@ -239,14 +242,14 @@ fn extract_files_from_regex_blocks(
 
 #[derive(Default)]
 struct ExportCollector {
-  named_exports: HashSet<Atom>,
+  named_exports: BTreeSet<Atom>,
   default_export: Option<Atom>,
 }
 
 impl ExportCollector {
   fn to_import_specifiers(
     &self,
-    symbols_to_exclude: &HashSet<Atom>,
+    symbols_to_exclude: &AHashSet<Atom>,
   ) -> Vec<ast::ImportSpecifier> {
     let mut import_specifiers = vec![];
 
@@ -465,7 +468,8 @@ impl Visit for ImportedIdentifierCollector {
 /// transformations:
 ///
 /// 1. Injects `import` statements for expoted items from the base file
-/// 2. Wraps the content of the file in a `Deno.test` call (if `wrap_in_deno_test` is `true`)
+/// 2. If `wrap_kind` is [`WrapKind::DenoTest`], wraps the content of the file
+///    in a `Deno.test` call.
 ///
 /// For example, given a file that looks like:
 ///
@@ -519,7 +523,7 @@ fn generate_pseudo_file(
   file: File,
   base_file_specifier: &ModuleSpecifier,
   exports: &ExportCollector,
-  wrap_in_deno_test: bool,
+  wrap_kind: WrapKind,
 ) -> Result<File, AnyError> {
   let file = file.into_text_decoded()?;
 
@@ -528,12 +532,14 @@ fn generate_pseudo_file(
     text: file.source,
     media_type: file.media_type,
     capture_tokens: false,
-    scope_analysis: false,
+    scope_analysis: true,
     maybe_syntax: None,
   })?;
 
-  let mut import_collector = ImportedIdentifierCollector::default();
-  import_collector.visit_program(parsed.program_ref());
+  let top_level_atoms = swc_utils::collect_decls_with_ctxt::<Atom, _>(
+    parsed.program_ref(),
+    parsed.top_level_context(),
+  );
 
   let transformed =
     parsed
@@ -543,20 +549,18 @@ fn generate_pseudo_file(
         specifier: &file.specifier,
         base_file_specifier,
         exports_from_base: exports,
-        explicit_imports: import_collector
-          .idents
-          .into_iter()
-          .map(|i| i.sym)
-          .collect(),
-        wrap_in_deno_test,
+        atoms_to_be_excluded_from_import: top_level_atoms,
+        wrap_kind,
       }));
+
+  let source = deno_ast::swc::codegen::to_code(&transformed);
+
+  log::debug!("{}:\n{}", file.specifier, source);
 
   Ok(File {
     specifier: file.specifier,
     maybe_headers: None,
-    source: deno_ast::swc::codegen::to_code(&transformed)
-      .into_bytes()
-      .into(),
+    source: source.into_bytes().into(),
   })
 }
 
@@ -564,8 +568,8 @@ struct Transform<'a> {
   specifier: &'a ModuleSpecifier,
   base_file_specifier: &'a ModuleSpecifier,
   exports_from_base: &'a ExportCollector,
-  explicit_imports: HashSet<Atom>,
-  wrap_in_deno_test: bool,
+  atoms_to_be_excluded_from_import: AHashSet<Atom>,
+  wrap_kind: WrapKind,
 }
 
 impl<'a> VisitMut for Transform<'a> {
@@ -591,7 +595,7 @@ impl<'a> VisitMut for Transform<'a> {
           .extend(module_decls.into_iter().map(ast::ModuleItem::ModuleDecl));
         let import_specifiers = self
           .exports_from_base
-          .to_import_specifiers(&self.explicit_imports);
+          .to_import_specifiers(&self.atoms_to_be_excluded_from_import);
         if !import_specifiers.is_empty() {
           transformed_items.push(ast::ModuleItem::ModuleDecl(
             ast::ModuleDecl::Import(ast::ImportDecl {
@@ -608,14 +612,17 @@ impl<'a> VisitMut for Transform<'a> {
             }),
           ));
         }
-        if self.wrap_in_deno_test {
-          transformed_items.push(ast::ModuleItem::Stmt(wrap_in_deno_test(
-            stmts,
-            self.specifier.to_string().into(),
-          )));
-        } else {
-          transformed_items
-            .extend(stmts.into_iter().map(ast::ModuleItem::Stmt));
+        match self.wrap_kind {
+          WrapKind::DenoTest => {
+            transformed_items.push(ast::ModuleItem::Stmt(wrap_in_deno_test(
+              stmts,
+              self.specifier.to_string().into(),
+            )));
+          }
+          WrapKind::NoWrap => {
+            transformed_items
+              .extend(stmts.into_iter().map(ast::ModuleItem::Stmt));
+          }
         }
 
         transformed_items
@@ -625,14 +632,12 @@ impl<'a> VisitMut for Transform<'a> {
 
         let import_specifiers = self
           .exports_from_base
-          .to_import_specifiers(&self.explicit_imports);
+          .to_import_specifiers(&self.atoms_to_be_excluded_from_import);
         if !import_specifiers.is_empty() {
           transformed_items.push(ast::ModuleItem::ModuleDecl(
             ast::ModuleDecl::Import(ast::ImportDecl {
               span: DUMMY_SP,
-              specifiers: self
-                .exports_from_base
-                .to_import_specifiers(&self.explicit_imports),
+              specifiers: import_specifiers,
               src: Box::new(ast::Str {
                 span: DUMMY_SP,
                 value: self.base_file_specifier.to_string().into(),
@@ -645,14 +650,18 @@ impl<'a> VisitMut for Transform<'a> {
           ));
         }
 
-        if self.wrap_in_deno_test {
-          transformed_items.push(ast::ModuleItem::Stmt(wrap_in_deno_test(
-            script.body.clone(),
-            self.specifier.to_string().into(),
-          )));
-        } else {
-          transformed_items
-            .extend(script.body.clone().into_iter().map(ast::ModuleItem::Stmt));
+        match self.wrap_kind {
+          WrapKind::DenoTest => {
+            transformed_items.push(ast::ModuleItem::Stmt(wrap_in_deno_test(
+              script.body.clone(),
+              self.specifier.to_string().into(),
+            )));
+          }
+          WrapKind::NoWrap => {
+            transformed_items.extend(
+              script.body.clone().into_iter().map(ast::ModuleItem::Stmt),
+            );
+          }
         }
 
         transformed_items
@@ -816,7 +825,7 @@ export type Args = { a: number };
           specifier: "file:///main.ts",
         },
         expected: vec![Expected {
-          source: r#"import { foo, Args } from "file:///main.ts";
+          source: r#"import { Args, foo } from "file:///main.ts";
 Deno.test("file:///main.ts$3-7.ts", async ()=>{
     const input = {
         a: 42
@@ -932,6 +941,35 @@ Deno.test("file:///main.ts$3-10.ts", async ()=>{
 });
 "#,
           specifier: "file:///main.ts$3-10.ts",
+          media_type: MediaType::TypeScript,
+        }],
+      },
+      // duplication of imported identifier and local identifier is fine
+      Test {
+        input: Input {
+          source: r#"
+/**
+ * ```ts
+ * const foo = createFoo();
+ * foo();
+ * ```
+ */
+export function createFoo() {
+  return () => "created foo";
+}
+
+export const foo = () => "foo";
+"#,
+          specifier: "file:///main.ts",
+        },
+        expected: vec![Expected {
+          source: r#"import { createFoo } from "file:///main.ts";
+Deno.test("file:///main.ts$3-7.ts", async ()=>{
+    const foo = createFoo();
+    foo();
+});
+"#,
+          specifier: "file:///main.ts$3-7.ts",
           media_type: MediaType::TypeScript,
         }],
       },
@@ -1066,6 +1104,37 @@ assertEquals(add(1, 2), 3);
           media_type: MediaType::TypeScript,
         }],
       },
+      // duplication of imported identifier and local identifier is fine, since
+      // we wrap the snippet in a block.
+      // This would be a problem if the local one is declared with `var`, as
+      // `var` is not block scoped but function scoped. For now we don't handle
+      // this case assuming that `var` is not used in modern code.
+      Test {
+        input: Input {
+          source: r#"
+        /**
+         * ```ts
+         * const foo = createFoo();
+         * foo();
+         * ```
+         */
+        export function createFoo() {
+          return () => "created foo";
+        }
+
+        export const foo = () => "foo";
+        "#,
+          specifier: "file:///main.ts",
+        },
+        expected: vec![Expected {
+          source: r#"import { createFoo } from "file:///main.ts";
+const foo = createFoo();
+foo();
+"#,
+          specifier: "file:///main.ts$3-7.ts",
+          media_type: MediaType::TypeScript,
+        }],
+      },
       Test {
         input: Input {
           source: r#"
@@ -1137,13 +1206,13 @@ assertEquals(add(1, 2), 3);
 
     struct Test {
       input: &'static str,
-      named_expected: HashSet<Atom>,
+      named_expected: BTreeSet<Atom>,
       default_expected: Option<Atom>,
     }
 
     macro_rules! atom_set {
       ($( $x:expr ),*) => {
-        [$( Atom::from($x) ),*].into_iter().collect::<HashSet<_>>()
+        [$( Atom::from($x) ),*].into_iter().collect::<BTreeSet<_>>()
       };
     }
 
@@ -1251,13 +1320,9 @@ assertEquals(add(1, 2), 3);
       Test {
         input: r#"
 export default class Foo {}
-
 export let value1 = 42;
-
 const value2 = "Hello";
-
 const value3 = "World";
-
 export { value2 };
 "#,
         named_expected: atom_set!("value1", "value2"),
