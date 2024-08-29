@@ -153,7 +153,11 @@ impl NpmFetchResolver {
       // spawn due to the lsp's `Send` requirement
       let file = deno_core::unsync::spawn(async move {
         file_fetcher
-          .fetch(&info_url, &PermissionsContainer::allow_all())
+          .fetch(
+            &info_url,
+            deno_cache_dir::RequestDestination::Json,
+            &PermissionsContainer::allow_all(),
+          )
           .await
           .ok()
       })

@@ -3,6 +3,7 @@
 use crate::args::jsr_url;
 use crate::file_fetcher::FileFetcher;
 use dashmap::DashMap;
+use deno_cache_dir::RequestDestination;
 use deno_core::serde_json;
 use deno_graph::packages::JsrPackageInfo;
 use deno_graph::packages::JsrPackageVersionInfo;
@@ -69,7 +70,11 @@ impl JsrFetchResolver {
       // spawn due to the lsp's `Send` requirement
       let file = deno_core::unsync::spawn(async move {
         file_fetcher
-          .fetch(&meta_url, &PermissionsContainer::allow_all())
+          .fetch(
+            &meta_url,
+            RequestDestination::Json,
+            &PermissionsContainer::allow_all(),
+          )
           .await
           .ok()
       })
@@ -97,7 +102,11 @@ impl JsrFetchResolver {
       // spawn due to the lsp's `Send` requirement
       let file = deno_core::unsync::spawn(async move {
         file_fetcher
-          .fetch(&meta_url, &PermissionsContainer::allow_all())
+          .fetch(
+            &meta_url,
+            RequestDestination::Json,
+            &PermissionsContainer::allow_all(),
+          )
           .await
           .ok()
       })

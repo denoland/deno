@@ -96,14 +96,10 @@ impl EmitCache {
     )
   }
 
-  fn get_emit_filename(
-    &self,
-    specifier: &ModuleSpecifier,
-    destination: RequestDestination,
-  ) -> Option<PathBuf> {
+  fn get_emit_filename(&self, specifier: &ModuleSpecifier) -> Option<PathBuf> {
     self.disk_cache.get_cache_filename_with_extension(
       specifier,
-      destination,
+      RequestDestination::Script,
       "js",
     )
   }

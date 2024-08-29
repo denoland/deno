@@ -545,7 +545,11 @@ pub async fn cover_files(
       file_fetcher.get_source(&module_specifier)
     } else {
       file_fetcher
-        .fetch_cached(&module_specifier, 10)
+        .fetch_cached(
+          &module_specifier,
+          deno_cache_dir::RequestDestination::Script,
+          10,
+        )
         .with_context(|| {
           format!("Failed to fetch \"{module_specifier}\" from cache.")
         })?

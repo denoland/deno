@@ -24,6 +24,7 @@ use crate::worker::CoverageCollector;
 use deno_ast::swc::common::comments::CommentKind;
 use deno_ast::MediaType;
 use deno_ast::SourceRangedForSpanned;
+use deno_cache_dir::RequestDestination;
 use deno_config::glob::FilePatterns;
 use deno_config::glob::WalkEntry;
 use deno_core::anyhow;
@@ -1329,7 +1330,7 @@ async fn fetch_inline_files(
   for specifier in specifiers {
     let fetch_permissions = PermissionsContainer::allow_all();
     let file = file_fetcher
-      .fetch(&specifier, &fetch_permissions)
+      .fetch(&specifier, RequestDestination::Script, &fetch_permissions)
       .await?
       .into_text_decoded()?;
 
@@ -1740,7 +1741,11 @@ async fn fetch_specifiers_with_test_mode(
 
   for (specifier, mode) in &mut specifiers_with_mode {
     let file = file_fetcher
-      .fetch(specifier, &PermissionsContainer::allow_all())
+      .fetch(
+        specifier,
+        RequestDestination::Script,
+        &PermissionsContainer::allow_all(),
+      )
       .await?;
 
     let (media_type, _) = file.resolve_media_type_and_charset();

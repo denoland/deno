@@ -17,7 +17,6 @@ use deno_graph::source::CacheInfo;
 use deno_graph::source::LoadFuture;
 use deno_graph::source::LoadResponse;
 use deno_graph::source::Loader;
-use deno_graph::source::RequestDestination;
 use deno_runtime::deno_permissions::PermissionsContainer;
 use std::collections::HashMap;
 use std::path::Path;
@@ -154,7 +153,11 @@ impl FetchCacher {
   #[deprecated(
     note = "There should not be a way to do this because the file may not be cached at a local path in the future."
   )]
-  fn get_local_path(&self, specifier: &ModuleSpecifier) -> Option<PathBuf> {
+  fn get_local_path(
+    &self,
+    specifier: &ModuleSpecifier,
+    destination: deno_graph::source::RequestDestination,
+  ) -> Option<PathBuf> {
     // TODO(@kitsonk) fix when deno_graph does not query cache for synthetic
     // modules
     if specifier.scheme() == "flags" {
@@ -165,7 +168,10 @@ impl FetchCacher {
       #[allow(deprecated)]
       self
         .global_http_cache
-        .get_global_cache_filepath(specifier)
+        .get_global_cache_filepath(
+          specifier,
+          deno_graph_to_cache_destination(destination),
+        )
         .ok()
     }
   }
@@ -175,14 +181,14 @@ impl Loader for FetchCacher {
   fn get_cache_info(
     &self,
     specifier: &ModuleSpecifier,
-    destination: RequestDestination,
+    destination: deno_graph::source::RequestDestination,
   ) -> Option<CacheInfo> {
     if !self.cache_info_enabled {
       return None;
     }
 
     #[allow(deprecated)]
-    let local = self.get_local_path(specifier)?;
+    let local = self.get_local_path(specifier, destination)?;
     if local.is_file() {
       let emit = self
         .emit_cache
@@ -226,6 +232,7 @@ impl Loader for FetchCacher {
     let file_header_overrides = self.file_header_overrides.clone();
     let permissions = self.permissions.clone();
     let specifier = specifier.clone();
+    let destination = deno_graph_to_cache_destination(options.destination);
 
     async move {
       let maybe_cache_setting = match options.cache_setting {
@@ -244,6 +251,7 @@ impl Loader for FetchCacher {
         .fetch_no_follow_with_options(FetchNoFollowOptions {
           fetch_options: FetchOptions {
             specifier: &specifier,
+            destination,
             permissions: &permissions,
             maybe_accept: None,
             maybe_cache_setting: maybe_cache_setting.as_ref(),
@@ -315,6 +323,20 @@ impl Loader for FetchCacher {
         specifier,
         err
       );
+    }
+  }
+}
+
+// todo(dsherret): move this to deno_media_type?
+fn deno_graph_to_cache_destination(
+  destination: deno_graph::source::RequestDestination,
+) -> deno_cache_dir::RequestDestination {
+  match destination {
+    deno_graph::source::RequestDestination::Script => {
+      deno_cache_dir::RequestDestination::Script
+    }
+    deno_graph::source::RequestDestination::Json => {
+      deno_cache_dir::RequestDestination::Json
     }
   }
 }

@@ -11,6 +11,7 @@ use crate::http_util::HttpClientProvider;
 use crate::util::progress_bar::ProgressBar;
 
 use deno_ast::MediaType;
+use deno_cache_dir::RequestDestination;
 use deno_core::anyhow::Context;
 use deno_core::error::custom_error;
 use deno_core::error::generic_error;
@@ -163,6 +164,7 @@ fn get_validated_scheme(
 
 pub struct FetchOptions<'a> {
   pub specifier: &'a ModuleSpecifier,
+  pub destination: RequestDestination,
   pub permissions: &'a PermissionsContainer,
   pub maybe_accept: Option<&'a str>,
   pub maybe_cache_setting: Option<&'a CacheSetting>,
@@ -226,11 +228,12 @@ impl FileFetcher {
   pub fn fetch_cached(
     &self,
     specifier: &ModuleSpecifier,
+    destination: RequestDestination,
     redirect_limit: i64,
   ) -> Result<Option<File>, AnyError> {
     let mut specifier = Cow::Borrowed(specifier);
     for _ in 0..=redirect_limit {
-      match self.fetch_cached_no_follow(&specifier, None)? {
+      match self.fetch_cached_no_follow(&specifier, destination, None)? {
         Some(FileOrRedirect::File(file)) => {
           return Ok(Some(file));
         }
@@ -248,6 +251,7 @@ impl FileFetcher {
   fn fetch_cached_no_follow(
     &self,
     specifier: &ModuleSpecifier,
+    destination: RequestDestination,
     maybe_checksum: Option<&LoaderChecksum>,
   ) -> Result<Option<FileOrRedirect>, AnyError> {
     debug!(
@@ -255,7 +259,7 @@ impl FileFetcher {
       specifier
     );
 
-    let cache_key = self.http_cache.cache_item_key(specifier)?; // compute this once
+    let cache_key = self.http_cache.cache_item_key(specifier, destination)?; // compute this once
     let result = self.http_cache.get(
       &cache_key,
       maybe_checksum
@@ -330,6 +334,7 @@ impl FileFetcher {
   async fn fetch_remote_no_follow(
     &self,
     specifier: &ModuleSpecifier,
+    destination: RequestDestination,
     maybe_accept: Option<&str>,
     cache_setting: &CacheSetting,
     maybe_checksum: Option<&LoaderChecksum>,
@@ -339,9 +344,9 @@ impl FileFetcher {
       specifier
     );
 
-    if self.should_use_cache(specifier, cache_setting) {
+    if self.should_use_cache(specifier, destination, cache_setting) {
       if let Some(file_or_redirect) =
-        self.fetch_cached_no_follow(specifier, maybe_checksum)?
+        self.fetch_cached_no_follow(specifier, destination, maybe_checksum)?
       {
         return Ok(file_or_redirect);
       }
@@ -370,7 +375,7 @@ impl FileFetcher {
 
     let maybe_etag_cache_entry = self
       .http_cache
-      .cache_item_key(specifier)
+      .cache_item_key(specifier, destination)
       .ok()
       .and_then(|key| {
         self
@@ -434,11 +439,16 @@ impl FileFetcher {
           FileOrRedirect::from_deno_cache_entry(specifier, cache_entry)
         }
         FetchOnceResult::Redirect(redirect_url, headers) => {
-          self.http_cache.set(specifier, headers, &[])?;
+          self.http_cache.set(specifier, destination, headers, &[])?;
           Ok(FileOrRedirect::Redirect(redirect_url))
         }
         FetchOnceResult::Code(bytes, headers) => {
-          self.http_cache.set(specifier, headers.clone(), &bytes)?;
+          self.http_cache.set(
+            specifier,
+            destination,
+            headers.clone(),
+            &bytes,
+          )?;
           if let Some(checksum) = &maybe_checksum {
             checksum.check_source(&bytes)?;
           }
@@ -473,13 +483,16 @@ impl FileFetcher {
   fn should_use_cache(
     &self,
     specifier: &ModuleSpecifier,
+    destination: RequestDestination,
     cache_setting: &CacheSetting,
   ) -> bool {
     match cache_setting {
       CacheSetting::ReloadAll => false,
       CacheSetting::Use | CacheSetting::Only => true,
       CacheSetting::RespectHeaders => {
-        let Ok(cache_key) = self.http_cache.cache_item_key(specifier) else {
+        let Ok(cache_key) =
+          self.http_cache.cache_item_key(specifier, destination)
+        else {
           return false;
         };
         let Ok(Some(headers)) = self.http_cache.read_headers(&cache_key) else {
@@ -519,11 +532,13 @@ impl FileFetcher {
   pub async fn fetch(
     &self,
     specifier: &ModuleSpecifier,
+    destination: RequestDestination,
     permissions: &PermissionsContainer,
   ) -> Result<File, AnyError> {
     self
       .fetch_with_options(FetchOptions {
         specifier,
+        destination,
         permissions,
         maybe_accept: None,
         maybe_cache_setting: None,
@@ -549,6 +564,7 @@ impl FileFetcher {
         .fetch_no_follow_with_options(FetchNoFollowOptions {
           fetch_options: FetchOptions {
             specifier: &specifier,
+            destination: options.destination,
             permissions: options.permissions,
             maybe_accept: options.maybe_accept,
             maybe_cache_setting: options.maybe_cache_setting,
@@ -606,6 +622,7 @@ impl FileFetcher {
       self
         .fetch_remote_no_follow(
           specifier,
+          options.destination,
           options.maybe_accept,
           options.maybe_cache_setting.unwrap_or(&self.cache_setting),
           maybe_checksum,
@@ -682,10 +699,13 @@ mod tests {
     (file_fetcher, temp_dir, blob_store)
   }
 
-  async fn test_fetch(specifier: &ModuleSpecifier) -> (File, FileFetcher) {
+  async fn test_fetch(
+    specifier: &ModuleSpecifier,
+    destination: RequestDestination,
+  ) -> (File, FileFetcher) {
     let (file_fetcher, _) = setup(CacheSetting::ReloadAll, None);
     let result = file_fetcher
-      .fetch(specifier, &PermissionsContainer::allow_all())
+      .fetch(specifier, destination, &PermissionsContainer::allow_all())
       .await;
     assert!(result.is_ok());
     (result.unwrap(), file_fetcher)
@@ -693,6 +713,7 @@ mod tests {
 
   async fn test_fetch_options_remote(
     specifier: &ModuleSpecifier,
+    destination: RequestDestination,
   ) -> (File, HashMap<String, String>) {
     let _http_server_guard = test_util::http_server();
     let (file_fetcher, _) = setup(CacheSetting::ReloadAll, None);
@@ -700,6 +721,7 @@ mod tests {
       .fetch_with_options_and_max_redirect(
         FetchOptions {
           specifier,
+          destination,
           permissions: &PermissionsContainer::allow_all(),
           maybe_accept: None,
           maybe_cache_setting: Some(&file_fetcher.cache_setting),
@@ -707,7 +729,10 @@ mod tests {
         1,
       )
       .await;
-    let cache_key = file_fetcher.http_cache.cache_item_key(specifier).unwrap();
+    let cache_key = file_fetcher
+      .http_cache
+      .cache_item_key(specifier, destination)
+      .unwrap();
     (
       result.unwrap(),
       file_fetcher
@@ -728,7 +753,8 @@ mod tests {
   ) {
     let url_str = format!("http://127.0.0.1:4545/encoding/{fixture}");
     let specifier = resolve_url(&url_str).unwrap();
-    let (file, headers) = test_fetch_options_remote(&specifier).await;
+    let (file, headers) =
+      test_fetch_options_remote(&specifier, RequestDestination::Script).await;
     let (media_type, maybe_charset) =
       deno_graph::source::resolve_media_type_and_charset_from_headers(
         &specifier,
@@ -750,7 +776,7 @@ mod tests {
   async fn test_fetch_local_encoded(charset: &str, expected: String) {
     let p = test_util::testdata_path().join(format!("encoding/{charset}.ts"));
     let specifier = ModuleSpecifier::from_file_path(p).unwrap();
-    let (file, _) = test_fetch(&specifier).await;
+    let (file, _) = test_fetch(&specifier, RequestDestination::Script).await;
     assert_eq!(
       deno_graph::source::decode_source(&specifier, file.source, None)
         .unwrap()
@@ -797,7 +823,11 @@ mod tests {
     file_fetcher.insert_memory_files(file.clone());
 
     let result = file_fetcher
-      .fetch(&specifier, &PermissionsContainer::allow_all())
+      .fetch(
+        &specifier,
+        RequestDestination::Script,
+        &PermissionsContainer::allow_all(),
+      )
       .await;
     assert!(result.is_ok());
     let result_file = result.unwrap();
@@ -810,7 +840,11 @@ mod tests {
     let specifier = resolve_url("data:application/typescript;base64,ZXhwb3J0IGNvbnN0IGEgPSAiYSI7CgpleHBvcnQgZW51bSBBIHsKICBBLAogIEIsCiAgQywKfQo=").unwrap();
 
     let result = file_fetcher
-      .fetch(&specifier, &PermissionsContainer::allow_all())
+      .fetch(
+        &specifier,
+        RequestDestination::Script,
+        &PermissionsContainer::allow_all(),
+      )
       .await;
     assert!(result.is_ok());
     let file = result.unwrap().into_text_decoded().unwrap();
@@ -841,7 +875,11 @@ mod tests {
     );
 
     let result = file_fetcher
-      .fetch(&specifier, &PermissionsContainer::allow_all())
+      .fetch(
+        &specifier,
+        RequestDestination::Script,
+        &PermissionsContainer::allow_all(),
+      )
       .await;
     assert!(result.is_ok());
     let file = result.unwrap().into_text_decoded().unwrap();
@@ -863,7 +901,11 @@ mod tests {
       ModuleSpecifier::parse("http://localhost:4545/subdir/mod2.ts").unwrap();
 
     let result = file_fetcher
-      .fetch(&specifier, &PermissionsContainer::allow_all())
+      .fetch(
+        &specifier,
+        RequestDestination::Script,
+        &PermissionsContainer::allow_all(),
+      )
       .await;
     assert!(result.is_ok());
     let file = result.unwrap().into_text_decoded().unwrap();
@@ -873,17 +915,28 @@ mod tests {
     );
     assert_eq!(file.media_type, MediaType::TypeScript);
 
-    let cache_item_key =
-      file_fetcher.http_cache.cache_item_key(&specifier).unwrap();
+    let cache_item_key = file_fetcher
+      .http_cache
+      .cache_item_key(&specifier, RequestDestination::Script)
+      .unwrap();
     let mut headers = HashMap::new();
     headers.insert("content-type".to_string(), "text/javascript".to_string());
     file_fetcher
       .http_cache
-      .set(&specifier, headers.clone(), file.source.as_bytes())
+      .set(
+        &specifier,
+        RequestDestination::Script,
+        headers.clone(),
+        file.source.as_bytes(),
+      )
       .unwrap();
 
     let result = file_fetcher_01
-      .fetch(&specifier, &PermissionsContainer::allow_all())
+      .fetch(
+        &specifier,
+        RequestDestination::Script,
+        &PermissionsContainer::allow_all(),
+      )
       .await;
     assert!(result.is_ok());
     let file = result.unwrap().into_text_decoded().unwrap();
@@ -905,11 +958,20 @@ mod tests {
     headers.insert("content-type".to_string(), "application/json".to_string());
     file_fetcher_02
       .http_cache
-      .set(&specifier, headers.clone(), file.source.as_bytes())
+      .set(
+        &specifier,
+        RequestDestination::Script,
+        headers.clone(),
+        file.source.as_bytes(),
+      )
       .unwrap();
 
     let result = file_fetcher_02
-      .fetch(&specifier, &PermissionsContainer::allow_all())
+      .fetch(
+        &specifier,
+        RequestDestination::Script,
+        &PermissionsContainer::allow_all(),
+      )
       .await;
     assert!(result.is_ok());
     let file = result.unwrap().into_text_decoded().unwrap();
@@ -934,7 +996,11 @@ mod tests {
       None,
     );
     let result = file_fetcher
-      .fetch(&specifier, &PermissionsContainer::allow_all())
+      .fetch(
+        &specifier,
+        RequestDestination::Script,
+        &PermissionsContainer::allow_all(),
+      )
       .await;
     assert!(result.is_ok());
     let file = result.unwrap().into_text_decoded().unwrap();
@@ -967,11 +1033,17 @@ mod tests {
       );
 
       let result = file_fetcher
-        .fetch(&specifier, &PermissionsContainer::allow_all())
+        .fetch(
+          &specifier,
+          RequestDestination::Script,
+          &PermissionsContainer::allow_all(),
+        )
         .await;
       assert!(result.is_ok());
-      let cache_key =
-        file_fetcher.http_cache.cache_item_key(&specifier).unwrap();
+      let cache_key = file_fetcher
+        .http_cache
+        .cache_item_key(&specifier, RequestDestination::Script)
+        .unwrap();
       (
         file_fetcher
           .http_cache
@@ -1003,12 +1075,18 @@ mod tests {
         None,
       );
       let result = file_fetcher
-        .fetch(&specifier, &PermissionsContainer::allow_all())
+        .fetch(
+          &specifier,
+          RequestDestination::Script,
+          &PermissionsContainer::allow_all(),
+        )
         .await;
       assert!(result.is_ok());
 
-      let cache_key =
-        file_fetcher.http_cache.cache_item_key(&specifier).unwrap();
+      let cache_key = file_fetcher
+        .http_cache
+        .cache_item_key(&specifier, RequestDestination::Script)
+        .unwrap();
       (
         file_fetcher
           .http_cache
@@ -1042,7 +1120,11 @@ mod tests {
         .unwrap();
 
     let result = file_fetcher
-      .fetch(&specifier, &PermissionsContainer::allow_all())
+      .fetch(
+        &specifier,
+        RequestDestination::Script,
+        &PermissionsContainer::allow_all(),
+      )
       .await;
     assert!(result.is_ok());
     let file = result.unwrap();
@@ -1083,7 +1165,11 @@ mod tests {
         .unwrap();
 
     let result = file_fetcher
-      .fetch(&specifier, &PermissionsContainer::allow_all())
+      .fetch(
+        &specifier,
+        RequestDestination::Script,
+        &PermissionsContainer::allow_all(),
+      )
       .await;
     assert!(result.is_ok());
     let file = result.unwrap();
@@ -1143,13 +1229,17 @@ mod tests {
       );
 
       let result = file_fetcher
-        .fetch(&specifier, &PermissionsContainer::allow_all())
+        .fetch(
+          &specifier,
+          RequestDestination::Script,
+          &PermissionsContainer::allow_all(),
+        )
         .await;
       assert!(result.is_ok());
 
       let cache_key = file_fetcher
         .http_cache
-        .cache_item_key(&redirected_specifier)
+        .cache_item_key(&redirected_specifier, RequestDestination::Script)
         .unwrap();
       (
         file_fetcher
@@ -1182,13 +1272,17 @@ mod tests {
         None,
       );
       let result = file_fetcher
-        .fetch(&redirected_specifier, &PermissionsContainer::allow_all())
+        .fetch(
+          &redirected_specifier,
+          RequestDestination::Script,
+          &PermissionsContainer::allow_all(),
+        )
         .await;
       assert!(result.is_ok());
 
       let cache_key = file_fetcher
         .http_cache
-        .cache_item_key(&redirected_specifier)
+        .cache_item_key(&redirected_specifier, RequestDestination::Script)
         .unwrap();
       (
         file_fetcher
@@ -1223,6 +1317,7 @@ mod tests {
       .fetch_with_options_and_max_redirect(
         FetchOptions {
           specifier: &specifier,
+          destination: RequestDestination::Script,
           permissions: &PermissionsContainer::allow_all(),
           maybe_accept: None,
           maybe_cache_setting: Some(&file_fetcher.cache_setting),
@@ -1236,6 +1331,7 @@ mod tests {
       .fetch_with_options_and_max_redirect(
         FetchOptions {
           specifier: &specifier,
+          destination: RequestDestination::Script,
           permissions: &PermissionsContainer::allow_all(),
           maybe_accept: None,
           maybe_cache_setting: Some(&file_fetcher.cache_setting),
@@ -1245,10 +1341,12 @@ mod tests {
       .await;
     assert!(result.is_err());
 
-    let result = file_fetcher.fetch_cached(&specifier, 2);
+    let result =
+      file_fetcher.fetch_cached(&specifier, RequestDestination::Script, 2);
     assert!(result.is_ok());
 
-    let result = file_fetcher.fetch_cached(&specifier, 1);
+    let result =
+      file_fetcher.fetch_cached(&specifier, RequestDestination::Script, 1);
     assert!(result.is_err());
   }
 
@@ -1265,7 +1363,11 @@ mod tests {
         .unwrap();
 
     let result = file_fetcher
-      .fetch(&specifier, &PermissionsContainer::allow_all())
+      .fetch(
+        &specifier,
+        RequestDestination::Script,
+        &PermissionsContainer::allow_all(),
+      )
       .await;
     assert!(result.is_ok());
     let file = result.unwrap();
@@ -1311,7 +1413,11 @@ mod tests {
       resolve_url("http://localhost:4545/run/002_hello.ts").unwrap();
 
     let result = file_fetcher
-      .fetch(&specifier, &PermissionsContainer::allow_all())
+      .fetch(
+        &specifier,
+        RequestDestination::Script,
+        &PermissionsContainer::allow_all(),
+      )
       .await;
     assert!(result.is_err());
     let err = result.unwrap_err();
@@ -1344,7 +1450,11 @@ mod tests {
       resolve_url("http://localhost:4545/run/002_hello.ts").unwrap();
 
     let result = file_fetcher_01
-      .fetch(&specifier, &PermissionsContainer::allow_all())
+      .fetch(
+        &specifier,
+        RequestDestination::Script,
+        &PermissionsContainer::allow_all(),
+      )
       .await;
     assert!(result.is_err());
     let err = result.unwrap_err();
@@ -1352,12 +1462,20 @@ mod tests {
     assert_eq!(get_custom_error_class(&err), Some("NotCached"));
 
     let result = file_fetcher_02
-      .fetch(&specifier, &PermissionsContainer::allow_all())
+      .fetch(
+        &specifier,
+        RequestDestination::Script,
+        &PermissionsContainer::allow_all(),
+      )
       .await;
     assert!(result.is_ok());
 
     let result = file_fetcher_01
-      .fetch(&specifier, &PermissionsContainer::allow_all())
+      .fetch(
+        &specifier,
+        RequestDestination::Script,
+        &PermissionsContainer::allow_all(),
+      )
       .await;
     assert!(result.is_ok());
   }
@@ -1369,7 +1487,11 @@ mod tests {
     let specifier = ModuleSpecifier::from_file_path(&fixture_path).unwrap();
     fs::write(fixture_path.clone(), r#"console.log("hello deno");"#).unwrap();
     let result = file_fetcher
-      .fetch(&specifier, &PermissionsContainer::allow_all())
+      .fetch(
+        &specifier,
+        RequestDestination::Script,
+        &PermissionsContainer::allow_all(),
+      )
       .await;
     assert!(result.is_ok());
     let file = result.unwrap().into_text_decoded().unwrap();
@@ -1377,7 +1499,11 @@ mod tests {
 
     fs::write(fixture_path, r#"console.log("goodbye deno");"#).unwrap();
     let result = file_fetcher
-      .fetch(&specifier, &PermissionsContainer::allow_all())
+      .fetch(
+        &specifier,
+        RequestDestination::Script,
+        &PermissionsContainer::allow_all(),
+      )
       .await;
     assert!(result.is_ok());
     let file = result.unwrap().into_text_decoded().unwrap();
@@ -1393,7 +1519,11 @@ mod tests {
     let specifier =
       ModuleSpecifier::parse("http://localhost:4545/dynamic").unwrap();
     let result = file_fetcher
-      .fetch(&specifier, &PermissionsContainer::allow_all())
+      .fetch(
+        &specifier,
+        RequestDestination::Script,
+        &PermissionsContainer::allow_all(),
+      )
       .await;
     assert!(result.is_ok());
     let file = result.unwrap();
@@ -1402,7 +1532,11 @@ mod tests {
     let (file_fetcher, _) =
       setup(CacheSetting::RespectHeaders, Some(temp_dir.clone()));
     let result = file_fetcher
-      .fetch(&specifier, &PermissionsContainer::allow_all())
+      .fetch(
+        &specifier,
+        RequestDestination::Script,
+        &PermissionsContainer::allow_all(),
+      )
       .await;
     assert!(result.is_ok());
     let file = result.unwrap();
@@ -1420,7 +1554,11 @@ mod tests {
     let specifier =
       ModuleSpecifier::parse("http://localhost:4545/dynamic_cache").unwrap();
     let result = file_fetcher
-      .fetch(&specifier, &PermissionsContainer::allow_all())
+      .fetch(
+        &specifier,
+        RequestDestination::Script,
+        &PermissionsContainer::allow_all(),
+      )
       .await;
     assert!(result.is_ok());
     let file = result.unwrap();
@@ -1429,7 +1567,11 @@ mod tests {
     let (file_fetcher, _) =
       setup(CacheSetting::RespectHeaders, Some(temp_dir.clone()));
     let result = file_fetcher
-      .fetch(&specifier, &PermissionsContainer::allow_all())
+      .fetch(
+        &specifier,
+        RequestDestination::Script,
+        &PermissionsContainer::allow_all(),
+      )
       .await;
     assert!(result.is_ok());
     let file = result.unwrap();
@@ -1485,7 +1627,10 @@ mod tests {
     file_fetcher: &FileFetcher,
     url: &ModuleSpecifier,
   ) -> String {
-    let cache_key = file_fetcher.http_cache.cache_item_key(url).unwrap();
+    let cache_key = file_fetcher
+      .http_cache
+      .cache_item_key(url, RequestDestination::Script)
+      .unwrap();
     let bytes = file_fetcher
       .http_cache
       .get(&cache_key, None)
@@ -1500,7 +1645,10 @@ mod tests {
     file_fetcher: &FileFetcher,
     url: &ModuleSpecifier,
   ) -> Option<String> {
-    let cache_key = file_fetcher.http_cache.cache_item_key(url).unwrap();
+    let cache_key = file_fetcher
+      .http_cache
+      .cache_item_key(url, RequestDestination::Script)
+      .unwrap();
     file_fetcher
       .http_cache
       .read_headers(&cache_key)

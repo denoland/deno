@@ -1348,8 +1348,6 @@ dependencies = [
 [[package]]
 name = "deno_cache_dir"
 version = "0.11.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "6df43311cb7703fa3242c282823a850e4c8d0c06b9527d8209b55bd695452ea5"
 dependencies = [
  "deno_media_type",
  "indexmap",
@@ -1488,8 +1486,6 @@ dependencies = [
 [[package]]
 name = "deno_doc"
 version = "0.147.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "d876971414230c7837bb4dc3557be99265558e1f43d2b6092f90e8b5f45e1984"
 dependencies = [
  "ammonia",
  "anyhow",
@@ -8177,7 +8173,7 @@ dependencies = [
  "log",
  "naga",
  "once_cell",
- "parking_lot 0.12.3",
+ "parking_lot 0.11.2",
  "profiling",
  "raw-window-handle",
  "ron",
@@ -8219,7 +8215,7 @@ dependencies = [
  "ndk-sys",
  "objc",
  "once_cell",
- "parking_lot 0.12.3",
+ "parking_lot 0.11.2",
  "profiling",
  "range-alloc",
  "raw-window-handle",
@@ -8764,11 +8760,3 @@ dependencies = [
  "cc",
  "pkg-config",
 ]
-
-[[patch.unused]]
-name = "deno_cache_dir"
-version = "0.11.0"
-
-[[patch.unused]]
-name = "deno_doc"
-version = "0.146.0"

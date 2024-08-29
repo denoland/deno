@@ -152,7 +152,11 @@ async fn read_eval_file(
     deno_core::resolve_url_or_path(eval_file, cli_options.initial_cwd())?;
 
   let file = file_fetcher
-    .fetch(&specifier, &PermissionsContainer::allow_all())
+    .fetch(
+      &specifier,
+      deno_cache_dir::RequestDestination::Script,
+      &PermissionsContainer::allow_all(),
+    )
     .await?;
 
   Ok(file.into_text_decoded()?.source)

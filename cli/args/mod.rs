@@ -1095,7 +1095,11 @@ impl CliOptions {
             let specifier = specifier.clone();
             async move {
               let file = file_fetcher
-                .fetch(&specifier, &PermissionsContainer::allow_all())
+                .fetch(
+                  &specifier,
+                  deno_cache_dir::RequestDestination::Json,
+                  &PermissionsContainer::allow_all(),
+                )
                 .await?
                 .into_text_decoded()?;
               Ok(file.source.to_string())
@@ -1887,19 +1891,18 @@ pub fn npm_pkg_req_ref_to_binary_command(
 pub fn config_to_deno_graph_workspace_member(
   config: &ConfigFile,
 ) -> Result<deno_graph::WorkspaceMember, AnyError> {
-  let nv = deno_semver::package::PackageNv {
-    name: match &config.json.name {
-      Some(name) => name.clone(),
-      None => bail!("Missing 'name' field in config file."),
-    },
-    version: match &config.json.version {
-      Some(name) => deno_semver::Version::parse_standard(name)?,
-      None => bail!("Missing 'version' field in config file."),
-    },
+  let name = match &config.json.name {
+    Some(name) => name.clone(),
+    None => bail!("Missing 'name' field in config file."),
+  };
+  let version = match &config.json.version {
+    Some(name) => Some(deno_semver::Version::parse_standard(name)?),
+    None => None,
   };
   Ok(deno_graph::WorkspaceMember {
     base: config.specifier.join("./").unwrap(),
-    nv,
+    name,
+    version,
     exports: config.to_exports_config()?.into_map(),
   })
 }
