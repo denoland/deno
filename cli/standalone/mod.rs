@@ -133,6 +133,7 @@ struct EmbeddedModuleLoader {
 }
 
 pub const MODULE_NOT_FOUND: &str = "Module not found";
+pub const UNSUPPORTED_SCHEME: &str = "Unsupported scheme";
 
 impl ModuleLoader for EmbeddedModuleLoader {
   fn resolve(

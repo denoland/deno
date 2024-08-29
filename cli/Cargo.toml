@@ -72,13 +72,13 @@ deno_emit = "=0.44.0"
 deno_graph = { version = "=0.81.3" }
 deno_lint = { version = "=0.63.1", features = ["docs"] }
 deno_lockfile.workspace = true
-deno_npm = "=0.23.1"
+deno_npm = "=0.25.0"
 deno_package_json.workspace = true
 deno_runtime = { workspace = true, features = ["include_js_files_for_snapshotting"] }
-deno_semver = "=0.5.10"
+deno_semver.workspace = true
 deno_task_shell = "=0.17.0"
 deno_terminal.workspace = true
-eszip = "=0.75.0"
+eszip = "=0.77.0"
 libsui = "0.3.0"
 napi_sym.workspace = true
 node_resolver.workspace = true
@@ -115,7 +115,7 @@ http.workspace = true
 http-body.workspace = true
 http-body-util.workspace = true
 hyper-util.workspace = true
-import_map = { version = "=0.20.0", features = ["ext"] }
+import_map = { version = "=0.20.1", features = ["ext"] }
 indexmap.workspace = true
 jsonc-parser.workspace = true
 jupyter_runtime = { package = "runtimelib", version = "=0.14.0" }

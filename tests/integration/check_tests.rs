@@ -1,6 +1,7 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
 use deno_lockfile::NewLockfileOptions;
+use deno_semver::jsr::JsrDepPackageReq;
 use test_util as util;
 use test_util::itest;
 use util::env_vars_for_npm_tests;
@@ -367,14 +368,16 @@ fn npm_module_check_then_error() {
     file_path: lockfile_path.to_path_buf(),
     content: &lockfile_path.read_to_string(),
     overwrite: false,
-    is_deno_future: false,
   })
   .unwrap();
 
   // make the specifier resolve to version 1
   lockfile.content.packages.specifiers.insert(
-    "npm:@denotest/breaking-change-between-versions".to_string(),
-    "npm:@denotest/breaking-change-between-versions@1.0.0".to_string(),
+    JsrDepPackageReq::from_str(
+      "npm:@denotest/breaking-change-between-versions",
+    )
+    .unwrap(),
+    "1.0.0".to_string(),
   );
   lockfile_path.write(lockfile.as_json_string());
   temp_dir.write(
@@ -388,8 +391,11 @@ fn npm_module_check_then_error() {
   // now update the lockfile to use version 2 instead, which should cause a
   // type checking error because the oldName no longer exists
   lockfile.content.packages.specifiers.insert(
-    "npm:@denotest/breaking-change-between-versions".to_string(),
-    "npm:@denotest/breaking-change-between-versions@2.0.0".to_string(),
+    JsrDepPackageReq::from_str(
+      "npm:@denotest/breaking-change-between-versions",
+    )
+    .unwrap(),
+    "2.0.0".to_string(),
   );
   lockfile_path.write(lockfile.as_json_string());
 

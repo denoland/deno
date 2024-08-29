@@ -13,7 +13,6 @@ use super::performance::Performance;
 use super::tsc;
 use super::tsc::TsServer;
 use super::urls::url_to_uri;
-use super::urls::LspClientUrl;
 use super::urls::LspUrlMap;
 
 use crate::graph_util;
@@ -164,15 +163,14 @@ impl DiagnosticsPublisher {
         .state
         .update(&record.specifier, version, &all_specifier_diagnostics);
       let file_referrer = documents.get_file_referrer(&record.specifier);
+      let Ok(uri) =
+        url_map.specifier_to_uri(&record.specifier, file_referrer.as_deref())
+      else {
+        continue;
+      };
       self
         .client
-        .publish_diagnostics(
-          url_map
-            .normalize_specifier(&record.specifier, file_referrer.as_deref())
-            .unwrap_or(LspClientUrl::new(record.specifier)),
-          all_specifier_diagnostics,
-          version,
-        )
+        .publish_diagnostics(uri, all_specifier_diagnostics, version)
         .await;
       messages_sent += 1;
     }
@@ -195,15 +193,14 @@ impl DiagnosticsPublisher {
           // clear out any diagnostics for this specifier
           self.state.update(specifier, removed_value.version, &[]);
           let file_referrer = documents.get_file_referrer(specifier);
+          let Ok(uri) =
+            url_map.specifier_to_uri(specifier, file_referrer.as_deref())
+          else {
+            continue;
+          };
           self
             .client
-            .publish_diagnostics(
-              url_map
-                .normalize_specifier(specifier, file_referrer.as_deref())
-                .unwrap_or_else(|_| LspClientUrl::new(specifier.clone())),
-              Vec::new(),
-              removed_value.version,
-            )
+            .publish_diagnostics(uri, Vec::new(), removed_value.version)
             .await;
           messages_sent += 1;
         }
@@ -1074,7 +1071,7 @@ impl DenoDiagnostic {
             diagnostics: Some(vec![diagnostic.clone()]),
             edit: Some(lsp::WorkspaceEdit {
               changes: Some(HashMap::from([(
-                url_to_uri(specifier),
+                url_to_uri(specifier)?,
                 vec![lsp::TextEdit {
                   new_text: format!("\"{to}\""),
                   range: diagnostic.range,
@@ -1091,7 +1088,7 @@ impl DenoDiagnostic {
           diagnostics: Some(vec![diagnostic.clone()]),
           edit: Some(lsp::WorkspaceEdit {
             changes: Some(HashMap::from([(
-              url_to_uri(specifier),
+              url_to_uri(specifier)?,
               vec![lsp::TextEdit {
                 new_text: " with { type: \"json\" }".to_string(),
                 range: lsp::Range {
@@ -1142,7 +1139,7 @@ impl DenoDiagnostic {
             diagnostics: Some(vec![diagnostic.clone()]),
             edit: Some(lsp::WorkspaceEdit {
               changes: Some(HashMap::from([(
-                url_to_uri(specifier),
+                url_to_uri(specifier)?,
                 vec![lsp::TextEdit {
                   new_text: format!(
                     "\"{}\"",
@@ -1168,7 +1165,7 @@ impl DenoDiagnostic {
             diagnostics: Some(vec![diagnostic.clone()]),
             edit: Some(lsp::WorkspaceEdit {
               changes: Some(HashMap::from([(
-                url_to_uri(specifier),
+                url_to_uri(specifier)?,
                 vec![lsp::TextEdit {
                   new_text: format!(
                     "\"{}\"",
@@ -1194,7 +1191,7 @@ impl DenoDiagnostic {
             diagnostics: Some(vec![diagnostic.clone()]),
             edit: Some(lsp::WorkspaceEdit {
               changes: Some(HashMap::from([(
-                url_to_uri(specifier),
+                url_to_uri(specifier)?,
                 vec![lsp::TextEdit {
                   new_text: format!("\"node:{}\"", data.specifier),
                   range: diagnostic.range,
@@ -1642,7 +1639,7 @@ mod tests {
 
   fn mock_config() -> Config {
     let root_url = resolve_url("file:///").unwrap();
-    let root_uri = url_to_uri(&root_url);
+    let root_uri = url_to_uri(&root_url).unwrap();
     Config {
       settings: Arc::new(Settings {
         unscoped: Arc::new(WorkspaceSettings {

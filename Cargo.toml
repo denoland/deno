@@ -48,10 +48,11 @@ deno_ast = { version = "=0.41.2", features = ["transpiling"] }
 deno_core = { version = "0.306.0" }
 
 deno_bench_util = { version = "0.160.0", path = "./bench_util" }
-deno_lockfile = "0.21.2"
+deno_lockfile = "=0.23.0"
 deno_media_type = { version = "0.1.4", features = ["module_specifier"] }
 deno_permissions = { version = "0.26.0", path = "./runtime/permissions" }
 deno_runtime = { version = "0.175.0", path = "./runtime" }
+deno_semver = "=0.5.13"
 deno_terminal = "0.2.0"
 napi_sym = { version = "0.96.0", path = "./cli/napi/sym" }
 test_util = { package = "test_server", path = "./tests/util/server" }
@@ -102,11 +103,11 @@ chrono = { version = "0.4", default-features = false, features = ["std", "serde"
 console_static_text = "=0.8.1"
 data-encoding = "2.3.3"
 data-url = "=0.3.0"
-deno_cache_dir = "=0.10.2"
+deno_cache_dir = "=0.11.1"
 deno_package_json = { version = "=0.1.1", default-features = false }
 dlopen2 = "0.6.1"
 ecb = "=0.1.2"
-elliptic-curve = { version = "0.13.4", features = ["alloc", "arithmetic", "ecdh", "std", "pem"] }
+elliptic-curve = { version = "0.13.4", features = ["alloc", "arithmetic", "ecdh", "std", "pem", "jwk"] }
 encoding_rs = "=0.8.33"
 fast-socks5 = "0.9.6"
 faster-hex = "0.9"
@@ -141,8 +142,8 @@ num-bigint = { version = "0.4", features = ["rand"] }
 once_cell = "1.17.1"
 os_pipe = { version = "=1.1.5", features = ["io_safety"] }
 p224 = { version = "0.13.0", features = ["ecdh"] }
-p256 = { version = "0.13.2", features = ["ecdh"] }
-p384 = { version = "0.13.0", features = ["ecdh"] }
+p256 = { version = "0.13.2", features = ["ecdh", "jwk"] }
+p384 = { version = "0.13.0", features = ["ecdh", "jwk"] }
 parking_lot = "0.12.0"
 percent-encoding = "2.3.0"
 phf = { version = "0.11", features = ["macros"] }
