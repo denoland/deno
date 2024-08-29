@@ -7,7 +7,6 @@ use std::fmt::Write as _;
 use std::path::PathBuf;
 use test_util as util;
 use test_util::itest;
-use test_util::PathRef;
 use test_util::TempDir;
 use util::http_server;
 use util::new_deno_dir;
@@ -602,25 +601,15 @@ fn vendor_npm_node_specifiers() {
     success_text_updated_deno_json("vendor/")
   ));
   let output = context.new_command().args("run -A my_app.ts").run();
-  output.assert_matches_text(format!(
-    "{}true 5\n",
-    node_modules_dir_deprecated_text(
-      "local-auto",
-      temp_dir.path().join("deno.json")
-    )
-  ));
+  output.assert_matches_text("true 5\n");
   assert!(temp_dir.path().join("node_modules").exists());
   assert!(temp_dir.path().join("deno.lock").exists());
 
   // now try re-vendoring with a lockfile
   let output = context.new_command().args("vendor --force my_app.ts").run();
   output.assert_matches_text(format!(
-    "{}{}{}\n{}\n\n{}\n",
+    "{}{}\n{}\n\n{}\n",
     &DEPRECATION_NOTICE,
-    node_modules_dir_deprecated_text(
-      "local-auto",
-      temp_dir.path().join("deno.json")
-    ),
     ignoring_import_map_text(),
     vendored_text("1 module", "vendor/"),
     success_text_updated_deno_json("vendor/"),
@@ -635,12 +624,8 @@ fn vendor_npm_node_specifiers() {
     .args("vendor --node-modules-dir=false --force my_app.ts")
     .run();
   output.assert_matches_text(format!(
-    "{}{}{}\n{}\n\n{}\n",
+    "{}{}\n{}\n\n{}\n",
     &DEPRECATION_NOTICE,
-    node_modules_dir_deprecated_text(
-      "local-auto",
-      temp_dir.path().join("deno.json")
-    ),
     ignoring_import_map_text(),
     vendored_text("1 module", "vendor/"),
     success_text_updated_deno_json("vendor/")
@@ -760,17 +745,5 @@ fn ignoring_import_map_text() -> String {
       "directory.",
     ),
     PathBuf::from("vendor").join("import_map.json").display(),
-  )
-}
-
-fn node_modules_dir_deprecated_text(suggest: &str, path: PathRef) -> String {
-  format!(
-    concat!(
-      "Warning \"nodeModulesDir\" field is deprecated in deno 2.0. Use ",
-      "`\"nodeModules\": \"{}\"` instead\n",
-      "    at {}\n",
-    ),
-    suggest,
-    path.canonicalize().url_file(),
   )
 }

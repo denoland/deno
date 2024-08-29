@@ -11,7 +11,6 @@ use url::Url;
 use util::assert_contains;
 use util::env_vars_for_npm_tests;
 use util::http_server;
-use util::PathRef;
 use util::TestContextBuilder;
 
 // NOTE: See how to make test npm packages at ./testdata/npm/README.md
@@ -2025,17 +2024,10 @@ fn top_level_install_package_json_explicit_opt_in() {
 
   temp_dir.write("main.ts", "console.log(5);");
   let output = test_context.new_command().args("cache main.ts").run();
-  output.assert_matches_text(format!(
-    concat!(
-      "{}",
-      "Download http://localhost:4260/@denotest/esm-basic\n",
-      "Download http://localhost:4260/@denotest/esm-basic/1.0.0.tgz\n",
-      "Initialize @denotest/esm-basic@1.0.0\n",
-    ),
-    node_modules_dir_deprecated_text(
-      "local-auto",
-      temp_dir.path().join("deno.json")
-    )
+  output.assert_matches_text(concat!(
+    "Download http://localhost:4260/@denotest/esm-basic\n",
+    "Download http://localhost:4260/@denotest/esm-basic/1.0.0.tgz\n",
+    "Initialize @denotest/esm-basic@1.0.0\n",
   ));
 
   rm_created_files();
@@ -2043,12 +2035,9 @@ fn top_level_install_package_json_explicit_opt_in() {
     .new_command()
     .args_vec(["eval", "console.log(5)"])
     .run();
-  output.assert_matches_text(format!(
-    concat!("{}", "Initialize @denotest/esm-basic@1.0.0\n", "5\n"),
-    node_modules_dir_deprecated_text(
-      "local-auto",
-      temp_dir.path().join("deno.json")
-    )
+  output.assert_matches_text(concat!(
+    "Initialize @denotest/esm-basic@1.0.0\n",
+    "5\n"
   ));
 
   rm_created_files();
@@ -2057,12 +2046,9 @@ fn top_level_install_package_json_explicit_opt_in() {
     .args("run -")
     .stdin_text("console.log(5)")
     .run();
-  output.assert_matches_text(format!(
-    concat!("{}", "Initialize @denotest/esm-basic@1.0.0\n", "5\n"),
-    node_modules_dir_deprecated_text(
-      "local-auto",
-      temp_dir.path().join("deno.json")
-    )
+  output.assert_matches_text(concat!(
+    "Initialize @denotest/esm-basic@1.0.0\n",
+    "5\n"
   ));
 
   // now ensure this is cached in the lsp
@@ -2908,16 +2894,4 @@ async fn test_private_npm_registry() {
   );
   let resp = client.execute(req).await.unwrap();
   assert_eq!(resp.status(), reqwest::StatusCode::OK);
-}
-
-fn node_modules_dir_deprecated_text(suggest: &str, path: PathRef) -> String {
-  format!(
-    concat!(
-      "Warning \"nodeModulesDir\" field is deprecated in deno 2.0. Use ",
-      "`\"nodeModules\": \"{}\"` instead\n",
-      "    at {}\n",
-    ),
-    suggest,
-    path.canonicalize().url_file(),
-  )
 }
