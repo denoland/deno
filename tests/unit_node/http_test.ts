@@ -1597,9 +1597,8 @@ Deno.test("[node/http] In ClientRequest, option.hostname has precedence over opt
     port: 4545,
     path: "/http_version",
   }).on("response", async (res) => {
-    const resText = await text(res)
     assertEquals(res.statusCode, 200);
-    assertEquals(resText, "HTTP/1.1");
+    assertEquals(await text(res), "HTTP/1.1");
     responseReceived.resolve();
   }).end();
 
