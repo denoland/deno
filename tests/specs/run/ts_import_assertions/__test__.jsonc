@@ -1,7 +1,7 @@
 {
   "tests": {
     "assertion": {
-      // TODO(bartlomieju): disable import assertion support in TS.
+      // TODO(2.0): disable import assertion support in TS.
       "ignore": true,
       "steps": [{
         "args": "run assertion.ts",

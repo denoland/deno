@@ -135,7 +135,7 @@ itest!(with_config_override {
   output: "info/with_config/with_config.out",
 });
 
-// TODO(bartlomieju): this test should be a spec test and first run `deno install`
+// TODO(2.0): this test should be a spec test and first run `deno install`
 // itest!(package_json_basic {
 //   args: "info --quiet main.ts",
 //   output: "package_json/basic/main.info.out",

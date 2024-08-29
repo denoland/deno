@@ -2,13 +2,13 @@
   "tempDir": true,
   "tests": {
     "member": {
-      // TODO(bartlomieju): this test appears legitimately broken
+      // TODO(2.0): this test appears legitimately broken
       "ignore": true,
       "args": "run --allow-read member/main.ts",
       "output": "member.out"
     },
     "member_with_deno_json": {
-      // TODO(bartlomieju): this test appears legitimately broken
+      // TODO(2.0): this test appears legitimately broken
       "ignore": true,
       "args": "run --allow-read member_with_deno_json/main.ts",
       "output": "member.out"

@@ -148,7 +148,7 @@ itest!(mixed_case_package_name_local_dir {
   temp_cwd: true,
 });
 
-// TODO(bartlomieju): this should be rewritten to a spec test and first run `deno install`
+// TODO(2.0): this should be rewritten to a spec test and first run `deno install`
 // itest!(local_dir_resolves_symlinks {
 //   args: "run -A index.js",
 //   output: "npm/local_dir_resolves_symlinks/index.out",
@@ -1564,7 +1564,7 @@ itest!(create_require {
   http_server: true,
 });
 
-// TODO(bartlomieju): this should be rewritten to a spec test and first run `deno install`
+// TODO(2.0): this should be rewritten to a spec test and first run `deno install`
 // itest!(node_modules_import_run {
 //   args: "run --quiet main.ts",
 //   output: "npm/node_modules_import/main.out",
@@ -1575,7 +1575,7 @@ itest!(create_require {
 //   exit_code: 0,
 // });
 
-// TODO(bartlomieju): this should be rewritten to a spec test and first run `deno install`
+// TODO(2.0): this should be rewritten to a spec test and first run `deno install`
 // itest!(node_modules_import_check {
 //   args: "check --quiet main.ts",
 //   output: "npm/node_modules_import/main_check.out",
@@ -1614,7 +1614,7 @@ itest!(non_existent_dep_version {
   )),
 });
 
-// TODO(bartlomieju): this should be rewritten to a spec test and first run `deno install`
+// TODO(2.0): this should be rewritten to a spec test and first run `deno install`
 #[test]
 #[ignore]
 fn reload_info_not_found_cache_but_exists_remote() {

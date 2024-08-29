@@ -1,5 +1,5 @@
 {
-  // TODO(bartlomieju): these tests are actually broken now, some code needs
+  // TODO(2.0): these tests are actually broken now, some code needs
   // to be updated to make them work
   "ignore": true,
   "tests": {

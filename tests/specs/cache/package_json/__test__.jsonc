@@ -1,6 +1,6 @@
 {
   "tempDir": true,
-  // TODO(bartlomieju): decide if this test should be fixed or removed
+  // TODO(2.0): decide if this test should be fixed or removed
   "ignore": true,
   "args": "cache main.ts",
   "output": "main.cache.out"

@@ -26,14 +26,14 @@
       }]
     },
     "exports_sub_path_not_exists": {
-      // TODO(bartlomieju): this test appears legitimately broken
+      // TODO(2.0): this test appears legitimately broken
       "ignore": true,
       "args": "run b/exports-sub-path-not-exists.ts",
       "output": "b/exports-sub-path-not-exists.out",
       "exitCode": 1
     },
     "no_exports_sub_path_not_exists": {
-      // TODO(bartlomieju): this test appears legitimately broken
+      // TODO(2.0): this test appears legitimately broken
       "ignore": true,
       "args": "run b/no-exports-sub-path-not-exists.ts",
       "output": "b/no-exports-sub-path-not-exists.out",

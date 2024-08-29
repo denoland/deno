@@ -1,6 +1,6 @@
 {
   "tempDir": true,
-  // TODO(bartlomieju): re-enable after DENO_FUTURE=1 by default lands
+  // TODO(2.0): re-enable after DENO_FUTURE=1 by default lands
   "ignore": true,
   "tests": {
     "error_with_new_npm_dep": {

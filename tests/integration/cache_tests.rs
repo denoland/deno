@@ -26,6 +26,7 @@ fn xdg_cache_home_dir() {
   assert!(xdg_cache_home.read_dir().count() > 0);
 }
 
+// TODO(2.0): reenable
 #[ignore]
 #[test]
 fn cache_matching_package_json_dep_should_not_install_all() {

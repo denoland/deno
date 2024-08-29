@@ -167,7 +167,7 @@ itest!(task_package_json_echo {
   http_server: true,
 });
 
-// TODO(bartlomieju): this should first run `deno install`
+// TODO(2.0): this should first run `deno install`
 // itest!(task_package_json_npm_bin {
 //   args: "task bin extra",
 //   cwd: Some("task/package_json/"),
@@ -208,7 +208,7 @@ itest!(task_both_deno_json_selected {
   http_server: true,
 });
 
-// TODO(bartlomieju): not entirely clear what's wrong with this test
+// TODO(2.0): not entirely clear what's wrong with this test
 // itest!(task_both_package_json_selected {
 //   args: "task bin asdf",
 //   cwd: Some("task/both/"),
@@ -239,7 +239,7 @@ itest!(task_npx_non_existent {
   http_server: true,
 });
 
-// TODO(bartlomieju): not entirely clear what's wrong with this test but it hangs for more than 60s
+// TODO(2.0): not entirely clear what's wrong with this test but it hangs for more than 60s
 // itest!(task_npx_on_own {
 //   args: "task on-own",
 //   cwd: Some("task/npx/"),

@@ -29,7 +29,7 @@
       "cwd": "code"
     },
     "auto_discovered": {
-      // TODO(bartlomieju): most likely needs to change output to not expect auto-install
+      // TODO(2.0): most likely needs to change output to not expect auto-install
       "ignore": true,
       // auto-discovered node_modules relative package.json
       "args": "run -A main.js",
@@ -37,7 +37,7 @@
       "cwd": "code/sub_dir"
     },
     "auto_discovered_arg": {
-      // TODO(bartlomieju): most likely needs to change output to not expect auto-install
+      // TODO(2.0): most likely needs to change output to not expect auto-install
       "ignore": true,
       // auto-discovered for local script arg
       "args": "run -L debug -A code/main.ts", // notice this is not in the sub dir

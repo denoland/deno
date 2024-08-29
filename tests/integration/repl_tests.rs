@@ -1040,7 +1040,7 @@ fn pty_tab_indexable_props() {
   });
 }
 
-// TODO(bartlomieju): this should first run `deno install`
+// TODO(2.0): this should first run `deno install`
 #[flaky_test::flaky_test]
 #[ignore]
 fn package_json_uncached_no_error() {

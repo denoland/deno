@@ -257,7 +257,7 @@ itest!(check_dts {
   exit_code: 1,
 });
 
-// TODO(bartlomieju): this should be rewritten to a spec test and first run `deno install`
+// TODO(2.0): this should be rewritten to a spec test and first run `deno install`
 // itest!(package_json_basic {
 //   args: "check main.ts",
 //   output: "package_json/basic/main.check.out",
@@ -268,7 +268,7 @@ itest!(check_dts {
 //   exit_code: 0,
 // });
 
-// TODO(bartlomieju): this should be rewritten to a spec test and first run `deno install`
+// TODO(2.0): this should be rewritten to a spec test and first run `deno install`
 // itest!(package_json_fail_check {
 //   args: "check --quiet fail_check.ts",
 //   output: "package_json/basic/fail_check.check.out",
@@ -279,7 +279,7 @@ itest!(check_dts {
 //   exit_code: 1,
 // });
 
-// TODO(bartlomieju): this should be rewritten to a spec test and first run `deno install`
+// TODO(2.0): this should be rewritten to a spec test and first run `deno install`
 // itest!(package_json_with_deno_json {
 //   args: "check --quiet main.ts",
 //   output: "package_json/deno_json/main.check.out",

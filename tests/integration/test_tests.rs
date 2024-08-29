@@ -617,7 +617,7 @@ fn sigint_with_hanging_test() {
   );
 }
 
-// TODO(bartlomieju): this should be rewritten to a spec test and first run `deno install`
+// TODO(2.0): this should be rewritten to a spec test and first run `deno install`
 // itest!(package_json_basic {
 //   args: "test",
 //   output: "package_json/basic/lib.test.out",
