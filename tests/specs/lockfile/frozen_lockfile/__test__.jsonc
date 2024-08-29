@@ -58,18 +58,22 @@
       ]
     },
     "error_when_package_json_changed": {
+      "envs": {
+        "DENO_FUTURE": "1"
+      },
       "steps": [
         {
-          "envs": {
-            "DENO_FUTURE": "1"
-          },
+          "args": [
+            "eval",
+            "Deno.writeTextFileSync('deno.json', `{ \"nodeModules\": \"local-auto\" }`)"
+          ],
+          "output": "[WILDCARD]"
+        },
+        {
           "args": "cache add.ts",
           "output": "[WILDCARD]"
         },
         {
-          "envs": {
-            "DENO_FUTURE": "1"
-          },
           "args": [
             "eval",
             "Deno.writeTextFileSync(\"package.json\", JSON.stringify({ dependencies: { \"@denotest/bin\": \"0.7.0\" } }))"
@@ -77,17 +81,11 @@
           "output": ""
         },
         {
-          "envs": {
-            "DENO_FUTURE": "1"
-          },
           "args": "cache --frozen add.ts",
           "output": "frozen_package_json_changed.out",
           "exitCode": 1
         },
         {
-          "envs": {
-            "DENO_FUTURE": "1"
-          },
           "args": "install --frozen",
           "output": "frozen_package_json_changed_install.out",
           "exitCode": 1
