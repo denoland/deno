@@ -3920,9 +3920,8 @@ fn no_npm_arg() -> Arg {
 
 fn node_modules_arg_parse(flags: &mut Flags, matches: &mut ArgMatches) {
   if *DENO_FUTURE {
-    let s = matches.remove_one::<String>("node-modules");
-    if let Some(s) = s {
-      let mode = NodeModulesMode::parse(&s).unwrap();
+    let value = matches.remove_one::<NodeModulesMode>("node-modules");
+    if let Some(mode) = value {
       flags.node_modules_mode = Some(mode);
     }
   } else {
@@ -3936,9 +3935,7 @@ fn node_modules_args() -> Vec<Arg> {
       Arg::new("node-modules")
         .long("node-modules")
         .num_args(0..=1)
-        .value_parser(|s: &str| {
-          NodeModulesMode::parse(s).map(|_| s.to_string())
-        })
+        .value_parser(NodeModulesMode::parse)
         .value_name("MODE")
         .require_equals(true)
         .help("Sets the node modules management mode for npm packages")
