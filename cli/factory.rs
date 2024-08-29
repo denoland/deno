@@ -723,9 +723,9 @@ impl CliFactory {
         checker.warn_on_legacy_unstable();
       }
       let unstable_features = cli_options.unstable_features();
-      for (flag_name, _, _) in crate::UNSTABLE_GRANULAR_FLAGS {
-        if unstable_features.contains(&flag_name.to_string()) {
-          checker.enable_feature(flag_name);
+      for granular_flag in crate::UNSTABLE_GRANULAR_FLAGS {
+        if unstable_features.contains(&granular_flag.name.to_string()) {
+          checker.enable_feature(granular_flag.name);
         }
       }
 

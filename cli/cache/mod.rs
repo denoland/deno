@@ -75,6 +75,10 @@ impl deno_cache_dir::DenoCacheEnv for RealDenoCacheEnv {
     atomic_write_file_with_retries(path, bytes, CACHE_PERM)
   }
 
+  fn remove_file(&self, path: &Path) -> std::io::Result<()> {
+    std::fs::remove_file(path)
+  }
+
   fn modified(&self, path: &Path) -> std::io::Result<Option<SystemTime>> {
     match std::fs::metadata(path) {
       Ok(metadata) => Ok(Some(

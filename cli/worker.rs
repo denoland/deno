@@ -573,9 +573,9 @@ impl CliMainWorkerFactory {
     let feature_checker = shared.feature_checker.clone();
     let mut unstable_features =
       Vec::with_capacity(crate::UNSTABLE_GRANULAR_FLAGS.len());
-    for (feature_name, _, id) in crate::UNSTABLE_GRANULAR_FLAGS {
-      if feature_checker.check(feature_name) {
-        unstable_features.push(*id);
+    for granular_flag in crate::UNSTABLE_GRANULAR_FLAGS {
+      if feature_checker.check(granular_flag.name) {
+        unstable_features.push(granular_flag.id);
       }
     }
 
@@ -771,9 +771,9 @@ fn create_web_worker_callback(
     let feature_checker = shared.feature_checker.clone();
     let mut unstable_features =
       Vec::with_capacity(crate::UNSTABLE_GRANULAR_FLAGS.len());
-    for (feature_name, _, id) in crate::UNSTABLE_GRANULAR_FLAGS {
-      if feature_checker.check(feature_name) {
-        unstable_features.push(*id);
+    for granular_flag in crate::UNSTABLE_GRANULAR_FLAGS {
+      if feature_checker.check(granular_flag.name) {
+        unstable_features.push(granular_flag.id);
       }
     }
 

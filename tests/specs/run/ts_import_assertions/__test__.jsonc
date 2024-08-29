@@ -3,10 +3,12 @@
     "assertion": {
       "steps": [{
         "args": "run assertion.ts",
+        "exitCode": 1,
         "output": "assertion.out"
       }, {
         // should output the same because the emit won't be cached
         "args": "run assertion.ts",
+        "exitCode": 1,
         "output": "assertion.out"
       }]
     },

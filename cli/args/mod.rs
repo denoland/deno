@@ -1614,6 +1614,7 @@ impl CliOptions {
   pub fn use_byonm(&self) -> bool {
     if self.enable_future_features()
       && self.node_modules_dir_enablement().is_none()
+      && self.maybe_node_modules_folder.is_some()
       && self
         .workspace()
         .config_folders()
@@ -1669,7 +1670,7 @@ impl CliOptions {
       let mut all_valid_unstable_flags: Vec<&str> =
         crate::UNSTABLE_GRANULAR_FLAGS
           .iter()
-          .map(|granular_flag| granular_flag.0)
+          .map(|granular_flag| granular_flag.name)
           .collect();
 
       let mut another_unstable_flags = Vec::from([

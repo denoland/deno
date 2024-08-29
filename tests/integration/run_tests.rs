@@ -501,6 +501,10 @@ itest!(_088_dynamic_import_already_evaluating {
 // TODO(bartlomieju): remove --unstable once Deno.Command is stabilized
 itest!(_089_run_allow_list {
   args: "run --unstable --allow-run=curl run/089_run_allow_list.ts",
+  envs: vec![
+    ("LD_LIBRARY_PATH".to_string(), "".to_string()),
+    ("DYLD_FALLBACK_LIBRARY_PATH".to_string(), "".to_string())
+  ],
   output: "run/089_run_allow_list.ts.out",
 });
 
@@ -923,7 +927,7 @@ fn lock_redirects() {
     r#"{
   "version": "4",
   "specifiers": {
-    "npm:@denotest/esm-basic": "npm:@denotest/esm-basic@1.0.0"
+    "npm:@denotest/esm-basic@*": "1.0.0"
   },
   "npm": {
     "@denotest/esm-basic@1.0.0": {
@@ -974,8 +978,8 @@ fn lock_deno_json_package_json_deps() {
   lockfile.assert_matches_json(json!({
     "version": "4",
     "specifiers": {
-      "jsr:@denotest/module-graph@1.4": "jsr:@denotest/module-graph@1.4.0",
-      "npm:@denotest/esm-basic": "npm:@denotest/esm-basic@1.0.0"
+      "jsr:@denotest/module-graph@1.4": "1.4.0",
+      "npm:@denotest/esm-basic@*": "1.0.0"
     },
     "jsr": {
       "@denotest/module-graph@1.4.0": {
@@ -990,7 +994,7 @@ fn lock_deno_json_package_json_deps() {
     "workspace": {
       "dependencies": [
         "jsr:@denotest/module-graph@1.4",
-        "npm:@denotest/esm-basic"
+        "npm:@denotest/esm-basic@*"
       ]
     }
   }));
@@ -1022,8 +1026,8 @@ fn lock_deno_json_package_json_deps() {
   lockfile.assert_matches_json(json!({
     "version": "4",
     "specifiers": {
-      "jsr:@denotest/module-graph@1.4": "jsr:@denotest/module-graph@1.4.0",
-      "npm:@denotest/esm-basic": "npm:@denotest/esm-basic@1.0.0"
+      "jsr:@denotest/module-graph@1.4": "1.4.0",
+      "npm:@denotest/esm-basic@*": "1.0.0"
     },
     "jsr": {
       "@denotest/module-graph@1.4.0": {
@@ -1041,7 +1045,7 @@ fn lock_deno_json_package_json_deps() {
       ],
       "packageJson": {
         "dependencies": [
-          "npm:@denotest/esm-basic"
+          "npm:@denotest/esm-basic@*"
         ]
       }
     }
@@ -1059,7 +1063,7 @@ fn lock_deno_json_package_json_deps() {
   lockfile.assert_matches_json(json!({
     "version": "4",
     "specifiers": {
-      "jsr:@denotest/module-graph@1.4": "jsr:@denotest/module-graph@1.4.0",
+      "jsr:@denotest/module-graph@1.4": "1.4.0",
     },
     "jsr": {
       "@denotest/module-graph@1.4.0": {
@@ -1143,8 +1147,8 @@ fn lock_deno_json_package_json_deps_workspace() {
   lockfile.assert_matches_json(json!({
     "version": "4",
     "specifiers": {
-      "npm:@denotest/cjs-default-export@1": "npm:@denotest/cjs-default-export@1.0.0",
-      "npm:@denotest/esm-basic@1": "npm:@denotest/esm-basic@1.0.0"
+      "npm:@denotest/cjs-default-export@1": "1.0.0",
+      "npm:@denotest/esm-basic@1": "1.0.0"
     },
     "npm": {
       "@denotest/cjs-default-export@1.0.0": {
@@ -1186,8 +1190,8 @@ fn lock_deno_json_package_json_deps_workspace() {
   let expected_lockfile = json!({
     "version": "4",
     "specifiers": {
-      "npm:@denotest/cjs-default-export@1": "npm:@denotest/cjs-default-export@1.0.0",
-      "npm:@denotest/esm-basic@1": "npm:@denotest/esm-basic@1.0.0"
+      "npm:@denotest/cjs-default-export@1": "1.0.0",
+      "npm:@denotest/esm-basic@1": "1.0.0"
     },
     "npm": {
       "@denotest/cjs-default-export@1.0.0": {
@@ -3463,36 +3467,6 @@ fn package_json_with_deno_json() {
 }
 
 #[test]
-fn package_json_error_dep_value_test() {
-  let context = TestContextBuilder::for_npm()
-    .use_copy_temp_dir("package_json/invalid_value")
-    .cwd("package_json/invalid_value")
-    .build();
-
-  // should run fine when not referencing a failing dep entry
-  context
-    .new_command()
-    .args("run ok.ts")
-    .run()
-    .assert_matches_file("package_json/invalid_value/ok.ts.out");
-
-  // should fail when referencing a failing dep entry
-  context
-    .new_command()
-    .args("run error.ts")
-    .run()
-    .assert_exit_code(1)
-    .assert_matches_file("package_json/invalid_value/error.ts.out");
-
-  // should output a warning about the failing dep entry
-  context
-    .new_command()
-    .args("task test")
-    .run()
-    .assert_matches_file("package_json/invalid_value/task.out");
-}
-
-#[test]
 fn package_json_no_node_modules_dir_created() {
   // it should not create a node_modules directory
   let context = TestContextBuilder::new()
@@ -3738,6 +3712,10 @@ itest!(test_and_bench_are_noops_in_run {
 #[cfg(not(target_os = "windows"))]
 itest!(spawn_kill_permissions {
   args: "run --quiet --allow-run=cat spawn_kill_permissions.ts",
+  envs: vec![
+    ("LD_LIBRARY_PATH".to_string(), "".to_string()),
+    ("DYLD_FALLBACK_LIBRARY_PATH".to_string(), "".to_string())
+  ],
   output_str: Some(""),
 });
 

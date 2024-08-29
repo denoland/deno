@@ -93,20 +93,23 @@ impl JsrCacheResolver {
       }
     }
     if let Some(lockfile) = config_data.and_then(|d| d.lockfile.as_ref()) {
-      for (req_url, nv_url) in &lockfile.lock().content.packages.specifiers {
-        let Some(req) = req_url.strip_prefix("jsr:") else {
+      for (dep_req, version) in &lockfile.lock().content.packages.specifiers {
+        let req = match dep_req.kind {
+          deno_semver::package::PackageKind::Jsr => &dep_req.req,
+          deno_semver::package::PackageKind::Npm => {
+            continue;
+          }
+        };
+        let Ok(version) = Version::parse_standard(version) else {
           continue;
         };
-        let Some(nv) = nv_url.strip_prefix("jsr:") else {
-          continue;
-        };
-        let Ok(req) = PackageReq::from_str(req) else {
-          continue;
-        };
-        let Ok(nv) = PackageNv::from_str(nv) else {
-          continue;
-        };
-        nv_by_req.insert(req, Some(nv));
+        nv_by_req.insert(
+          req.clone(),
+          Some(PackageNv {
+            name: req.name.clone(),
+            version,
+          }),
+        );
       }
     }
     Self {

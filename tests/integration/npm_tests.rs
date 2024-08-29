@@ -272,13 +272,6 @@ itest!(nonexistent_file_node_modules_dir {
   exit_code: 1,
 });
 
-itest!(invalid_package_name {
-  args: "run -A --quiet npm/invalid_package_name/main.js",
-  output: "npm/invalid_package_name/main.out",
-  envs: env_vars_for_npm_tests(),
-  exit_code: 1,
-});
-
 itest!(require_json {
   args: "run -A --quiet npm/require_json/main.js",
   output: "npm/require_json/main.out",
@@ -1209,7 +1202,6 @@ fn lock_file_missing_top_level_package() {
 #[test]
 fn lock_file_lock_write() {
   // https://github.com/denoland/deno/issues/16666
-  // Ensure that --lock-write still adds npm packages to the lockfile
   let _server = http_server();
 
   let deno_dir = util::new_deno_dir();
@@ -1219,7 +1211,7 @@ fn lock_file_lock_write() {
   let lock_file_content = r#"{
   "version": "4",
   "specifiers": {
-    "npm:cowsay@1.5.0": "npm:cowsay@1.5.0"
+    "npm:cowsay@1.5.0": "1.5.0"
   },
   "npm": {
     "ansi-regex@3.0.1": {
@@ -1396,7 +1388,6 @@ fn lock_file_lock_write() {
   let deno = util::deno_cmd_with_deno_dir(&deno_dir)
     .current_dir(temp_dir.path())
     .arg("cache")
-    .arg("--lock-write")
     .arg("--quiet")
     .arg("npm:cowsay@1.5.0")
     .envs(env_vars_for_npm_tests())
@@ -1430,7 +1421,7 @@ fn auto_discover_lock_file() {
   let lock_file_content = r#"{
     "version": "4",
     "specifiers": {
-      "npm:@denotest/bin": "npm:@denotest/bin@1.0.0"
+      "npm:@denotest/bin": "1.0.0"
     },
     "npm": {
       "@denotest/bin@1.0.0": {
@@ -2404,7 +2395,7 @@ fn byonm_package_specifier_not_installed_and_invalid_subpath() {
   // no npm install has been run, so this should give an informative error
   let output = test_context.new_command().args("run main.ts").run();
   output.assert_matches_text(
-    r#"error: Could not resolve "chalk", but found it in a package.json. Deno expects the node_modules/ directory to be up to date. Did you forget to run `npm install`?
+    r#"error: Could not resolve "chalk", but found it in a package.json. Deno expects the node_modules/ directory to be up to date. Did you forget to run `deno install`?
     at file:///[WILDCARD]/main.ts:1:19
 "#,
   );
