@@ -230,6 +230,17 @@ fn get_minor_version(version: &str) -> &str {
   version.rsplitn(2, '.').collect::<Vec<&str>>()[1]
 }
 
+fn get_minor_version_blog_post_url(semver: &Version) -> String {
+  format!("https://deno.com/blog/v{}.{}", semver.major, semver.minor)
+}
+
+fn get_rc_version_blog_post_url(semver: &Version) -> String {
+  format!(
+    "https://deno.com/blog/v{}.{}-rc.{}",
+    semver.major, semver.minor, semver.build[0]
+  )
+}
+
 async fn print_release_notes(
   current_version: &str,
   new_version: &str,
@@ -1738,5 +1749,36 @@ mod test {
         })
       );
     }
+  }
+
+  #[test]
+  fn blog_post_links() {
+    let version = Version::parse_standard("1.46.0").unwrap();
+    eprintln!("version {:#?}", version);
+    assert_eq!(
+      get_minor_version_blog_post_url(&version),
+      "https://deno.com/blog/v1.46"
+    );
+
+    let version = Version::parse_standard("2.1.1").unwrap();
+    eprintln!("version {:#?}", version);
+    assert_eq!(
+      get_minor_version_blog_post_url(&version),
+      "https://deno.com/blog/v2.1"
+    );
+
+    let version = Version::parse_standard("2.0.0-rc.0").unwrap();
+    eprintln!("version {:#?}", version);
+    assert_eq!(
+      get_rc_version_blog_post_url(&version),
+      "https://deno.com/blog/v2.0-rc-0"
+    );
+
+    let version = Version::parse_standard("2.0.0-rc.2").unwrap();
+    eprintln!("version {:#?}", version);
+    assert_eq!(
+      get_rc_version_blog_post_url(&version),
+      "https://deno.com/blog/v2.0-rc-2"
+    );
   }
 }
