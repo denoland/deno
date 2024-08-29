@@ -19,7 +19,7 @@ use image::ColorType;
 use image::DynamicImage;
 use image::GenericImageView;
 use image::ImageBuffer;
-use image::ImageDecoder;
+use image::ImageError;
 use image::LumaA;
 use image::Pixel;
 use image::Primitive;
@@ -338,15 +338,35 @@ struct ImageProcessResult {
   height: u32,
 }
 
+//
+// About the animated image
+// > Blob .4
+// > ... If this is an animated image, imageBitmap's bitmap data must only be taken from
+// > the default image of the animation (the one that the format defines is to be used when animation is
+// > not supported or is disabled), or, if there is no such image, the first frame of the animation.
+// https://html.spec.whatwg.org/multipage/imagebitmap-and-animations.html
+//
+// see also browser implementations: (The implementation of Gecko and WebKit is hard to read.)
+// https://source.chromium.org/chromium/chromium/src/+/bdbc054a6cabbef991904b5df9066259505cc686:third_party/blink/renderer/platform/image-decoders/image_decoder.h;l=175-189
+//
+
 trait ImageDecoderFromReader<'a, R: BufRead + Seek> {
   fn to_decoder(reader: R) -> Result<Self, AnyError>
   where
     Self: Sized;
+  fn to_intermediate_image(self) -> Result<DynamicImage, AnyError>;
 }
 
 type ImageDecoderFromReaderType<'a> = BufReader<Cursor<&'a [u8]>>;
 
-macro_rules! impl_image_decoder_converter {
+fn image_decoding_error(error: ImageError) -> DOMExceptionInvalidStateError {
+  DOMExceptionInvalidStateError::new(&image_error_message(
+    "decoding",
+    &error.to_string(),
+  ))
+}
+
+macro_rules! impl_image_decoder_from_reader {
   ($decoder:ty, $reader:ty) => {
     impl<'a, R: BufRead + Seek> ImageDecoderFromReader<'a, R> for $decoder {
       fn to_decoder(reader: R) -> Result<Self, AnyError>
@@ -355,42 +375,26 @@ macro_rules! impl_image_decoder_converter {
       {
         match <$decoder>::new(reader) {
           Ok(decoder) => Ok(decoder),
-          Err(err) => {
-            return Err(
-              DOMExceptionInvalidStateError::new(&image_error_message(
-                "decoding",
-                &err.to_string(),
-              ))
-              .into(),
-            )
-          }
+          Err(err) => return Err(image_decoding_error(err).into()),
+        }
+      }
+      fn to_intermediate_image(self) -> Result<DynamicImage, AnyError> {
+        match DynamicImage::from_decoder(self) {
+          Ok(image) => Ok(image),
+          Err(err) => Err(image_decoding_error(err).into()),
         }
       }
     }
   };
 }
 
-impl_image_decoder_converter!(PngDecoder<R>, ImageDecoderFromReaderType);
-impl_image_decoder_converter!(JpegDecoder<R>, ImageDecoderFromReaderType);
-impl_image_decoder_converter!(GifDecoder<R>, ImageDecoderFromReaderType);
-impl_image_decoder_converter!(BmpDecoder<R>, ImageDecoderFromReaderType);
-impl_image_decoder_converter!(IcoDecoder<R>, ImageDecoderFromReaderType);
-impl_image_decoder_converter!(WebPDecoder<R>, ImageDecoderFromReaderType);
-
-fn decoder_to_intermediate_image(
-  decoder: impl ImageDecoder,
-) -> Result<DynamicImage, AnyError> {
-  match DynamicImage::from_decoder(decoder) {
-    Ok(image) => Ok(image),
-    Err(err) => Err(
-      DOMExceptionInvalidStateError::new(&image_error_message(
-        "decoding",
-        &err.to_string(),
-      ))
-      .into(),
-    ),
-  }
-}
+// If PngDecoder decodes an animated image, it returns the default image if one is set, or the first frame if not.
+impl_image_decoder_from_reader!(PngDecoder<R>, ImageDecoderFromReaderType);
+impl_image_decoder_from_reader!(JpegDecoder<R>, ImageDecoderFromReaderType);
+impl_image_decoder_from_reader!(GifDecoder<R>, ImageDecoderFromReaderType);
+impl_image_decoder_from_reader!(BmpDecoder<R>, ImageDecoderFromReaderType);
+impl_image_decoder_from_reader!(IcoDecoder<R>, ImageDecoderFromReaderType);
+impl_image_decoder_from_reader!(WebPDecoder<R>, ImageDecoderFromReaderType);
 
 fn decode_bitmap_data(
   buf: &[u8],
@@ -402,39 +406,20 @@ fn decode_bitmap_data(
   let (view, width, height) = match image_bitmap_source {
     ImageBitmapSource::Blob => {
       let image = match &*mime_type {
-        //
-        // TODO: support animated images
-        // It's a little hard to implement animated images along spec because of the complexity.
-        //
-        // > If this is an animated image, imageBitmap's bitmap data must only be taken from
-        // > the default image of the animation (the one that the format defines is to be used when animation is
-        // > not supported or is disabled), or, if there is no such image, the first frame of the animation.
-        // https://html.spec.whatwg.org/multipage/imagebitmap-and-animations.html
-        //
-        // see also browser implementations: (The implementation of Gecko and WebKit is hard to read.)
-        // https://source.chromium.org/chromium/chromium/src/+/bdbc054a6cabbef991904b5df9066259505cc686:third_party/blink/renderer/platform/image-decoders/image_decoder.h;l=175-189
-        //
+        // Should we support the "image/apng" MIME type here?
         "image/png" => {
           let decoder: PngDecoder<ImageDecoderFromReaderType> =
             ImageDecoderFromReader::to_decoder(BufReader::new(Cursor::new(
               buf,
             )))?;
-          if decoder.is_apng()? {
-            return Err(
-              DOMExceptionInvalidStateError::new(
-                "Animation image is not supported.",
-              )
-              .into(),
-            );
-          }
-          decoder_to_intermediate_image(decoder)?
+          decoder.to_intermediate_image()?
         }
         "image/jpeg" => {
           let decoder: JpegDecoder<ImageDecoderFromReaderType> =
             ImageDecoderFromReader::to_decoder(BufReader::new(Cursor::new(
               buf,
             )))?;
-          decoder_to_intermediate_image(decoder)?
+          decoder.to_intermediate_image()?
         }
         "image/gif" => {
           let decoder: GifDecoder<ImageDecoderFromReaderType> =
@@ -453,21 +438,21 @@ fn decode_bitmap_data(
             ImageDecoderFromReader::to_decoder(BufReader::new(Cursor::new(
               buf,
             )))?;
-          decoder_to_intermediate_image(decoder)?
+          decoder.to_intermediate_image()?
         }
         "image/bmp" => {
           let decoder: BmpDecoder<ImageDecoderFromReaderType> =
             ImageDecoderFromReader::to_decoder(BufReader::new(Cursor::new(
               buf,
             )))?;
-          decoder_to_intermediate_image(decoder)?
+          decoder.to_intermediate_image()?
         }
         "image/x-icon" => {
           let decoder: IcoDecoder<ImageDecoderFromReaderType> =
             ImageDecoderFromReader::to_decoder(BufReader::new(Cursor::new(
               buf,
             )))?;
-          decoder_to_intermediate_image(decoder)?
+          decoder.to_intermediate_image()?
         }
         "image/webp" => {
           let decoder: WebPDecoder<ImageDecoderFromReaderType> =
@@ -482,7 +467,7 @@ fn decode_bitmap_data(
               .into(),
             );
           }
-          decoder_to_intermediate_image(decoder)?
+          decoder.to_intermediate_image()?
         }
         "" => {
           return Err(

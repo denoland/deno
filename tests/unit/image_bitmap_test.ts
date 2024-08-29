@@ -222,16 +222,6 @@ Deno.test(async function imageBitmapFromBlob() {
     assertEquals(Deno[Deno.internal].getBitmapData(imageBitmap), new Uint8Array([255, 0, 0, 255]));
   }
   {
-    // the chunk of animation webp is below (3 frames, 1x1, 8-bit, RGBA)
-    // [ 255, 0, 0, 127,
-    //   0, 255, 0, 127,
-    //   0, 0, 255, 127 ]
-    const imageData = new Blob([
-      await Deno.readFile(`${prefix}/1x1-animation-rgba8.webp`),
-    ], { type: "image/webp" });
-    await assertRejects(() => createImageBitmap(imageData), DOMException);
-  }
-  {
     const imageData = new Blob(
       [await Deno.readFile(`${prefix}/1x1-red8.ico`)],
       { type: "image/x-icon" },
@@ -247,6 +237,44 @@ Deno.test(async function imageBitmapFromBlob() {
     const imageData = new Blob([
       await Deno.readFile(`${prefix}/1x1-red32f.exr`),
     ], { type: "image/x-exr" });
+    await assertRejects(() => createImageBitmap(imageData), DOMException);
+  }
+});
+
+Deno.test(async function imageBitmapFromBlobAnimatedImage() {
+  {
+    // the chunk of animated apng is below (2 frames, 1x1, 8-bit, RGBA), has default [255, 0, 0, 255] image
+    // [ 0, 255, 0, 255,
+    //   0, 0, 255, 255 ]
+    const imageData = new Blob([
+      await Deno.readFile(`${prefix}/1x1-2f-animated-has-def.png`),
+    ], { type: "image/png" });
+    const imageBitmap = await createImageBitmap(imageData);
+    // @ts-ignore: Deno[Deno.internal].core allowed
+    // deno-fmt-ignore
+    assertEquals(Deno[Deno.internal].getBitmapData(imageBitmap), new Uint8Array([255, 0, 0, 255]));
+  }
+  {
+    // the chunk of animated apng is below (3 frames, 1x1, 8-bit, RGBA), no default image
+    // [ 255, 0, 0, 255,
+    //   0, 255, 0, 255,
+    //   0, 0, 255, 255 ]
+    const imageData = new Blob([
+      await Deno.readFile(`${prefix}/1x1-3f-animated-no-def.png`),
+    ], { type: "image/png" });
+    const imageBitmap = await createImageBitmap(imageData);
+    // @ts-ignore: Deno[Deno.internal].core allowed
+    // deno-fmt-ignore
+    assertEquals(Deno[Deno.internal].getBitmapData(imageBitmap), new Uint8Array([255, 0, 0, 255]));
+  }
+  {
+    // the chunk of animation webp is below (3 frames, 1x1, 8-bit, RGBA)
+    // [ 255, 0, 0, 127,
+    //   0, 255, 0, 127,
+    //   0, 0, 255, 127 ]
+    const imageData = new Blob([
+      await Deno.readFile(`${prefix}/1x1-animation-rgba8.webp`),
+    ], { type: "image/webp" });
     await assertRejects(() => createImageBitmap(imageData), DOMException);
   }
 });
