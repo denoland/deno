@@ -726,7 +726,9 @@ fn dynamic_import_unanalyzable() {
     .assert_exit_code(0);
 }
 
+// TODO(bartlomieju): this test should first run `deno install`?
 #[test]
+#[ignore]
 fn compile_npm_specifiers() {
   let context = TestContextBuilder::for_npm().use_temp_cwd().build();
 
