@@ -167,7 +167,19 @@ Deno.test(async function imageBitmapFromBlob() {
       [await Deno.readFile(`${prefix}/1x1-red16.png`)],
       { type: "image/png" },
     );
-    await assertRejects(() => createImageBitmap(imageData), TypeError);
+    const imageBitmap = await createImageBitmap(imageData);
+    // @ts-ignore: Deno[Deno.internal].core allowed
+    // deno-fmt-ignore
+    assertEquals(Deno[Deno.internal].getBitmapData(imageBitmap),
+      new Uint8Array(
+        [
+          255, 255, // R
+            0,   0, // G
+            0,   0, // B
+          255, 255  // A
+        ]
+      )
+    );
   }
   {
     const imageData = new Blob(
@@ -217,7 +229,7 @@ Deno.test(async function imageBitmapFromBlob() {
     const imageData = new Blob([
       await Deno.readFile(`${prefix}/1x1-animation-rgba8.webp`),
     ], { type: "image/webp" });
-    await assertRejects(() => createImageBitmap(imageData), TypeError);
+    await assertRejects(() => createImageBitmap(imageData), DOMException);
   }
   {
     const imageData = new Blob(

@@ -1373,8 +1373,10 @@ name = "deno_canvas"
 version = "0.35.0"
 dependencies = [
  "deno_core",
+ "deno_terminal 0.2.0",
  "deno_webgpu",
  "image",
+ "num-traits",
  "serde",
 ]
 
@@ -4756,9 +4758,9 @@ dependencies = [
 
 [[package]]
 name = "num-traits"
-version = "0.2.18"
+version = "0.2.19"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "da0df0e5185db44f69b44f26786fe401b6c293d1907744beaa7fa62b2e5a517a"
+checksum = "071dfc062690e90b734c0b2273ce72ad0ffa95f0c74596bc250dcfd960262841"
 dependencies = [
  "autocfg",
  "libm",

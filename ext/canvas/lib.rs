@@ -3,24 +3,277 @@
 use deno_core::error::type_error;
 use deno_core::error::AnyError;
 use deno_core::op2;
+use deno_core::JsBuffer;
 use deno_core::ToJsBuffer;
+use deno_terminal::colors::cyan;
+use image::codecs::bmp::BmpDecoder;
+use image::codecs::gif::GifDecoder;
+use image::codecs::ico::IcoDecoder;
+use image::codecs::jpeg::JpegDecoder;
+use image::codecs::png::PngDecoder;
+use image::codecs::webp::WebPDecoder;
+use image::imageops::overlay;
 use image::imageops::FilterType;
 use image::AnimationDecoder;
-use image::GenericImage;
+use image::ColorType;
+use image::DynamicImage;
 use image::GenericImageView;
+use image::ImageBuffer;
 use image::ImageDecoder;
+use image::LumaA;
 use image::Pixel;
+use image::Primitive;
+use image::Rgba;
+use image::RgbaImage;
+use num_traits::NumCast;
+use num_traits::SaturatingMul;
 use serde::Deserialize;
 use serde::Serialize;
+use std::borrow::Cow;
+use std::io::BufRead;
 use std::io::BufReader;
 use std::io::Cursor;
+use std::io::Seek;
 use std::path::PathBuf;
 
 pub mod error;
 use error::DOMExceptionInvalidStateError;
 
-#[derive(Debug, Deserialize)]
-#[serde(rename_all = "snake_case")]
+fn to_js_buffer(image: &DynamicImage) -> ToJsBuffer {
+  image.as_bytes().to_vec().into()
+}
+
+fn image_error_message<'a, T: Into<Cow<'a, str>>>(
+  opreation: T,
+  reason: T,
+) -> String {
+  format!(
+    "An error has occurred while {}.
+reason: {}",
+    opreation.into(),
+    reason.into(),
+  )
+}
+
+// reference
+// https://github.com/image-rs/image/blob/6d19ffa72756c1b00e7979a90f8794a0ef847b88/src/color.rs#L739
+trait ProcessPremultiplyAlpha {
+  fn premultiply_alpha(&self) -> Self;
+}
+
+impl<T: Primitive> ProcessPremultiplyAlpha for LumaA<T> {
+  fn premultiply_alpha(&self) -> Self {
+    let max_t = T::DEFAULT_MAX_VALUE;
+
+    let mut pixel = [self.0[0], self.0[1]];
+    let alpha_index = pixel.len() - 1;
+    let alpha = pixel[alpha_index];
+    let normalized_alpha = alpha.to_f32().unwrap() / max_t.to_f32().unwrap();
+
+    if normalized_alpha == 0.0 {
+      return LumaA::<T>([pixel[0], pixel[alpha_index]]);
+    }
+
+    for rgb in pixel.iter_mut().take(alpha_index) {
+      *rgb = NumCast::from((rgb.to_f32().unwrap() * normalized_alpha).round())
+        .unwrap()
+    }
+
+    LumaA::<T>([pixel[0], pixel[alpha_index]])
+  }
+}
+
+impl<T: Primitive> ProcessPremultiplyAlpha for Rgba<T> {
+  fn premultiply_alpha(&self) -> Self {
+    let max_t = T::DEFAULT_MAX_VALUE;
+
+    let mut pixel = [self.0[0], self.0[1], self.0[2], self.0[3]];
+    let alpha_index = pixel.len() - 1;
+    let alpha = pixel[alpha_index];
+    let normalized_alpha = alpha.to_f32().unwrap() / max_t.to_f32().unwrap();
+
+    if normalized_alpha == 0.0 {
+      return Rgba::<T>([pixel[0], pixel[1], pixel[2], pixel[alpha_index]]);
+    }
+
+    for rgb in pixel.iter_mut().take(alpha_index) {
+      *rgb = NumCast::from((rgb.to_f32().unwrap() * normalized_alpha).round())
+        .unwrap()
+    }
+
+    Rgba::<T>([pixel[0], pixel[1], pixel[2], pixel[alpha_index]])
+  }
+}
+
+fn process_premultiply_alpha<I, P, S>(image: &I) -> ImageBuffer<P, Vec<S>>
+where
+  I: GenericImageView<Pixel = P>,
+  P: Pixel<Subpixel = S> + ProcessPremultiplyAlpha + 'static,
+  S: Primitive + 'static,
+{
+  let (width, height) = image.dimensions();
+  let mut out = ImageBuffer::new(width, height);
+
+  for (x, y, pixel) in image.pixels() {
+    let pixel = pixel.premultiply_alpha();
+
+    out.put_pixel(x, y, pixel);
+  }
+
+  out
+}
+
+fn apply_premultiply_alpha(
+  image: &DynamicImage,
+) -> Result<DynamicImage, AnyError> {
+  match image.color() {
+    ColorType::La8 => Ok(DynamicImage::ImageLumaA8(process_premultiply_alpha(
+      &image.to_luma_alpha8(),
+    ))),
+    ColorType::Rgba8 => Ok(DynamicImage::ImageRgba8(
+      process_premultiply_alpha(&image.to_rgba8()),
+    )),
+    ColorType::La16 => Ok(DynamicImage::ImageLumaA16(
+      process_premultiply_alpha(&image.to_luma_alpha16()),
+    )),
+    ColorType::Rgba16 => Ok(DynamicImage::ImageRgba16(
+      process_premultiply_alpha(&image.to_rgba16()),
+    )),
+    _ => Err(type_error(image_error_message(
+      "apply premultiplyAlpha: premultiply",
+      "The color type is not supported.",
+    ))),
+  }
+}
+
+trait ProcessUnpremultiplyAlpha {
+  /// To determine if the image is premultiplied alpha,
+  /// checking premultiplied RGBA value is one where any of the R/G/B channel values exceeds the alpha channel value.\
+  /// https://www.w3.org/TR/webgpu/#color-spaces
+  fn is_premultiplied_alpha(&self) -> bool;
+  fn unpremultiply_alpha(&self) -> Self;
+}
+
+impl<T: Primitive + SaturatingMul + Ord> ProcessUnpremultiplyAlpha for Rgba<T> {
+  fn is_premultiplied_alpha(&self) -> bool {
+    let max_t = T::DEFAULT_MAX_VALUE;
+
+    let pixel = [self.0[0], self.0[1], self.0[2]];
+    let alpha_index = self.0.len() - 1;
+    let alpha = self.0[alpha_index];
+
+    match pixel.iter().max() {
+      Some(rgb_max) => rgb_max < &max_t.saturating_mul(&alpha),
+      // usually doesn't reach here
+      None => false,
+    }
+  }
+
+  fn unpremultiply_alpha(&self) -> Self {
+    let max_t = T::DEFAULT_MAX_VALUE;
+
+    let mut pixel = [self.0[0], self.0[1], self.0[2], self.0[3]];
+    let alpha_index = pixel.len() - 1;
+    let alpha = pixel[alpha_index];
+
+    for rgb in pixel.iter_mut().take(alpha_index) {
+      *rgb = NumCast::from(
+        (rgb.to_f32().unwrap()
+          / (alpha.to_f32().unwrap() / max_t.to_f32().unwrap()))
+        .round(),
+      )
+      .unwrap();
+    }
+
+    Rgba::<T>([pixel[0], pixel[1], pixel[2], pixel[alpha_index]])
+  }
+}
+
+impl<T: Primitive + SaturatingMul + Ord> ProcessUnpremultiplyAlpha
+  for LumaA<T>
+{
+  fn is_premultiplied_alpha(&self) -> bool {
+    let max_t = T::DEFAULT_MAX_VALUE;
+
+    let pixel = [self.0[0]];
+    let alpha_index = self.0.len() - 1;
+    let alpha = self.0[alpha_index];
+
+    pixel[0] < max_t.saturating_mul(&alpha)
+  }
+
+  fn unpremultiply_alpha(&self) -> Self {
+    let max_t = T::DEFAULT_MAX_VALUE;
+
+    let mut pixel = [self.0[0], self.0[1]];
+    let alpha_index = pixel.len() - 1;
+    let alpha = pixel[alpha_index];
+
+    for rgb in pixel.iter_mut().take(alpha_index) {
+      *rgb = NumCast::from(
+        (rgb.to_f32().unwrap()
+          / (alpha.to_f32().unwrap() / max_t.to_f32().unwrap()))
+        .round(),
+      )
+      .unwrap();
+    }
+
+    LumaA::<T>([pixel[0], pixel[alpha_index]])
+  }
+}
+
+fn process_unpremultiply_alpha<I, P, S>(image: &I) -> ImageBuffer<P, Vec<S>>
+where
+  I: GenericImageView<Pixel = P>,
+  P: Pixel<Subpixel = S> + ProcessUnpremultiplyAlpha + 'static,
+  S: Primitive + 'static,
+{
+  let (width, height) = image.dimensions();
+  let mut out = ImageBuffer::new(width, height);
+
+  let is_premultiplied_alpha = image
+    .pixels()
+    .any(|(_, _, pixel)| pixel.is_premultiplied_alpha());
+
+  for (x, y, pixel) in image.pixels() {
+    let pixel = if is_premultiplied_alpha {
+      pixel.unpremultiply_alpha()
+    } else {
+      // return the original
+      pixel
+    };
+
+    out.put_pixel(x, y, pixel);
+  }
+
+  out
+}
+
+fn apply_unpremultiply_alpha(
+  image: &DynamicImage,
+) -> Result<DynamicImage, AnyError> {
+  match image.color() {
+    ColorType::La8 => Ok(DynamicImage::ImageLumaA8(
+      process_unpremultiply_alpha(&image.to_luma_alpha8()),
+    )),
+    ColorType::Rgba8 => Ok(DynamicImage::ImageRgba8(
+      process_unpremultiply_alpha(&image.to_rgba8()),
+    )),
+    ColorType::La16 => Ok(DynamicImage::ImageLumaA16(
+      process_unpremultiply_alpha(&image.to_luma_alpha16()),
+    )),
+    ColorType::Rgba16 => Ok(DynamicImage::ImageRgba16(
+      process_unpremultiply_alpha(&image.to_rgba16()),
+    )),
+    _ => Err(type_error(image_error_message(
+      "apply premultiplyAlpha: none",
+      "The color type is not supported.",
+    ))),
+  }
+}
+
+#[derive(Debug, Deserialize, PartialEq)]
+#[serde(rename_all = "camelCase")]
 enum ImageResizeQuality {
   Pixelated,
   Low,
@@ -35,12 +288,27 @@ enum ImageBitmapSource {
   ImageData,
 }
 
-#[derive(Debug, Deserialize)]
-#[serde(rename_all = "snake_case")]
+#[derive(Debug, Deserialize, PartialEq)]
+#[serde(rename_all = "camelCase")]
 enum PremultiplyAlpha {
   Default,
   Premultiply,
   None,
+}
+
+#[derive(Debug, Deserialize, PartialEq)]
+#[serde(rename_all = "camelCase")]
+enum ColorSpaceConversion {
+  Default,
+  None,
+}
+
+#[derive(Debug, Deserialize, PartialEq)]
+#[serde(rename_all = "camelCase")]
+enum ImageOrientation {
+  FlipY,
+  #[serde(rename = "from-image")]
+  FromImage,
 }
 
 #[derive(Debug, Deserialize)]
@@ -48,57 +316,342 @@ enum PremultiplyAlpha {
 struct ImageProcessArgs {
   width: u32,
   height: u32,
-  surface_width: u32,
-  surface_height: u32,
-  input_x: i64,
-  input_y: i64,
-  output_width: u32,
-  output_height: u32,
-  resize_quality: ImageResizeQuality,
-  flip_y: bool,
+  sx: Option<i32>,
+  sy: Option<i32>,
+  sw: Option<i32>,
+  sh: Option<i32>,
+  image_orientation: ImageOrientation,
   premultiply_alpha: PremultiplyAlpha,
+  color_space_conversion: ColorSpaceConversion,
+  resize_width: Option<u32>,
+  resize_height: Option<u32>,
+  resize_quality: ImageResizeQuality,
   image_bitmap_source: ImageBitmapSource,
+  mime_type: String,
 }
 
-#[op2]
-#[serde]
-fn op_image_process(
-  #[buffer] buf: &[u8],
-  #[serde] args: ImageProcessArgs,
-) -> Result<ToJsBuffer, AnyError> {
-  let view = match args.image_bitmap_source {
-    ImageBitmapSource::Blob => image::ImageReader::new(Cursor::new(buf))
-      .with_guessed_format()?
-      .decode()?,
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct ImageProcessResult {
+  data: ToJsBuffer,
+  width: u32,
+  height: u32,
+}
+
+trait ImageDecoderFromReader<'a, R: BufRead + Seek> {
+  fn to_decoder(reader: R) -> Result<Self, AnyError>
+  where
+    Self: Sized;
+}
+
+type ImageDecoderFromReaderType<'a> = BufReader<Cursor<&'a [u8]>>;
+
+macro_rules! impl_image_decoder_converter {
+  ($decoder:ty, $reader:ty) => {
+    impl<'a, R: BufRead + Seek> ImageDecoderFromReader<'a, R> for $decoder {
+      fn to_decoder(reader: R) -> Result<Self, AnyError>
+      where
+        Self: Sized,
+      {
+        match <$decoder>::new(reader) {
+          Ok(decoder) => Ok(decoder),
+          Err(err) => {
+            return Err(
+              DOMExceptionInvalidStateError::new(&image_error_message(
+                "decoding",
+                &err.to_string(),
+              ))
+              .into(),
+            )
+          }
+        }
+      }
+    }
+  };
+}
+
+impl_image_decoder_converter!(PngDecoder<R>, ImageDecoderFromReaderType);
+impl_image_decoder_converter!(JpegDecoder<R>, ImageDecoderFromReaderType);
+impl_image_decoder_converter!(GifDecoder<R>, ImageDecoderFromReaderType);
+impl_image_decoder_converter!(BmpDecoder<R>, ImageDecoderFromReaderType);
+impl_image_decoder_converter!(IcoDecoder<R>, ImageDecoderFromReaderType);
+impl_image_decoder_converter!(WebPDecoder<R>, ImageDecoderFromReaderType);
+
+fn decoder_to_intermediate_image(
+  decoder: impl ImageDecoder,
+) -> Result<DynamicImage, AnyError> {
+  match DynamicImage::from_decoder(decoder) {
+    Ok(image) => Ok(image),
+    Err(err) => Err(
+      DOMExceptionInvalidStateError::new(&image_error_message(
+        "decoding",
+        &err.to_string(),
+      ))
+      .into(),
+    ),
+  }
+}
+
+fn decode_bitmap_data(
+  buf: &[u8],
+  width: u32,
+  height: u32,
+  image_bitmap_source: &ImageBitmapSource,
+  mime_type: String,
+) -> Result<(DynamicImage, u32, u32), AnyError> {
+  let (view, width, height) = match image_bitmap_source {
+    ImageBitmapSource::Blob => {
+      let image = match &*mime_type {
+        //
+        // TODO: support animated images
+        // It's a little hard to implement animated images along spec because of the complexity.
+        //
+        // > If this is an animated image, imageBitmap's bitmap data must only be taken from
+        // > the default image of the animation (the one that the format defines is to be used when animation is
+        // > not supported or is disabled), or, if there is no such image, the first frame of the animation.
+        // https://html.spec.whatwg.org/multipage/imagebitmap-and-animations.html
+        //
+        // see also browser implementations: (The implementation of Gecko and WebKit is hard to read.)
+        // https://source.chromium.org/chromium/chromium/src/+/bdbc054a6cabbef991904b5df9066259505cc686:third_party/blink/renderer/platform/image-decoders/image_decoder.h;l=175-189
+        //
+        "image/png" => {
+          let decoder: PngDecoder<ImageDecoderFromReaderType> =
+            ImageDecoderFromReader::to_decoder(BufReader::new(Cursor::new(
+              buf,
+            )))?;
+          if decoder.is_apng()? {
+            return Err(
+              DOMExceptionInvalidStateError::new(
+                "Animation image is not supported.",
+              )
+              .into(),
+            );
+          }
+          decoder_to_intermediate_image(decoder)?
+        }
+        "image/jpeg" => {
+          let decoder: JpegDecoder<ImageDecoderFromReaderType> =
+            ImageDecoderFromReader::to_decoder(BufReader::new(Cursor::new(
+              buf,
+            )))?;
+          decoder_to_intermediate_image(decoder)?
+        }
+        "image/gif" => {
+          let decoder: GifDecoder<ImageDecoderFromReaderType> =
+            ImageDecoderFromReader::to_decoder(BufReader::new(Cursor::new(
+              buf,
+            )))?;
+          if decoder.into_frames().count() > 1 {
+            return Err(
+              DOMExceptionInvalidStateError::new(
+                "Animation image is not supported.",
+              )
+              .into(),
+            );
+          }
+          let decoder: GifDecoder<ImageDecoderFromReaderType> =
+            ImageDecoderFromReader::to_decoder(BufReader::new(Cursor::new(
+              buf,
+            )))?;
+          decoder_to_intermediate_image(decoder)?
+        }
+        "image/bmp" => {
+          let decoder: BmpDecoder<ImageDecoderFromReaderType> =
+            ImageDecoderFromReader::to_decoder(BufReader::new(Cursor::new(
+              buf,
+            )))?;
+          decoder_to_intermediate_image(decoder)?
+        }
+        "image/x-icon" => {
+          let decoder: IcoDecoder<ImageDecoderFromReaderType> =
+            ImageDecoderFromReader::to_decoder(BufReader::new(Cursor::new(
+              buf,
+            )))?;
+          decoder_to_intermediate_image(decoder)?
+        }
+        "image/webp" => {
+          let decoder: WebPDecoder<ImageDecoderFromReaderType> =
+            ImageDecoderFromReader::to_decoder(BufReader::new(Cursor::new(
+              buf,
+            )))?;
+          if decoder.has_animation() {
+            return Err(
+              DOMExceptionInvalidStateError::new(
+                "Animation image is not supported.",
+              )
+              .into(),
+            );
+          }
+          decoder_to_intermediate_image(decoder)?
+        }
+        "" => {
+          return Err(
+            DOMExceptionInvalidStateError::new(
+              &format!("The MIME type of source image is not specified.
+INFO: The behavior of the Blob constructor in browsers is different from the spec.
+It needs to specify the MIME type like {} that works well between Deno and browsers.
+See: https://developer.mozilla.org/en-US/docs/Web/API/Blob/type\n",
+              cyan("new Blob([blobParts], { type: 'image/png' })")
+            )).into(),
+          )
+        }
+        // return an error if the MIME type is not supported in the variable list of ImageTypePatternTable below
+        // ext/web/01_mimesniff.js
+        //
+        // NOTE: Chromium supports AVIF
+        // https://source.chromium.org/chromium/chromium/src/+/ef3f4e4ed97079dc57861d1195fb2389483bc195:third_party/blink/renderer/platform/image-decoders/image_decoder.cc;l=311
+        x => {
+          return Err(
+            DOMExceptionInvalidStateError::new(
+              &format!("The the MIME type {} of source image is not a supported format.
+INFO: The following MIME types are supported:
+See: https://mimesniff.spec.whatwg.org/#image-type-pattern-matching-algorithm\n",
+              x
+            )).into()
+          )
+        }
+      };
+
+      let width = image.width();
+      let height = image.height();
+
+      (image, width, height)
+    }
     ImageBitmapSource::ImageData => {
       // > 4.12.5.1.15 Pixel manipulation
       // > imagedata.data
       // >   Returns the one-dimensional array containing the data in RGBA order, as integers in the range 0 to 255.
       // https://html.spec.whatwg.org/multipage/canvas.html#pixel-manipulation
-      let image: image::DynamicImage =
-        image::RgbaImage::from_raw(args.width, args.height, buf.into())
-          .expect("Invalid ImageData.")
-          .into();
-      image
+      let image = match RgbaImage::from_raw(width, height, buf.into()) {
+        Some(image) => image.into(),
+        None => {
+          return Err(type_error(image_error_message(
+            "decoding",
+            "The Chunk Data is not big enough with the specified width and height.",
+          )))
+        }
+      };
+
+      (image, width, height)
     }
   };
+
+  Ok((view, width, height))
+}
+
+#[op2]
+#[serde]
+fn op_image_process(
+  #[buffer] zero_copy: JsBuffer,
+  #[serde] args: ImageProcessArgs,
+) -> Result<ImageProcessResult, AnyError> {
+  let buf = &*zero_copy;
+  let ImageProcessArgs {
+    width,
+    height,
+    sh,
+    sw,
+    sx,
+    sy,
+    image_orientation,
+    premultiply_alpha,
+    color_space_conversion,
+    resize_width,
+    resize_height,
+    resize_quality,
+    image_bitmap_source,
+    mime_type,
+  } = ImageProcessArgs {
+    width: args.width,
+    height: args.height,
+    sx: args.sx,
+    sy: args.sy,
+    sw: args.sw,
+    sh: args.sh,
+    image_orientation: args.image_orientation,
+    premultiply_alpha: args.premultiply_alpha,
+    color_space_conversion: args.color_space_conversion,
+    resize_width: args.resize_width,
+    resize_height: args.resize_height,
+    resize_quality: args.resize_quality,
+    image_bitmap_source: args.image_bitmap_source,
+    mime_type: args.mime_type,
+  };
+
+  let (view, width, height) =
+    decode_bitmap_data(buf, width, height, &image_bitmap_source, mime_type)?;
+
+  #[rustfmt::skip]
+  let source_rectangle: [[i32; 2]; 4] =
+    if let (Some(sx), Some(sy), Some(sw), Some(sh)) = (sx, sy, sw, sh) {
+    [
+      [sx, sy],
+      [sx + sw, sy],
+      [sx + sw, sy + sh],
+      [sx, sy + sh]
+    ]
+  } else {
+    [
+      [0, 0],
+      [width as i32, 0],
+      [width as i32, height as i32],
+      [0, height as i32],
+    ]
+  };
+
+  /*
+   * The cropping works differently than the spec specifies:
+   * The spec states to create an infinite surface and place the top-left corner
+   * of the image a 0,0 and crop based on sourceRectangle.
+   *
+   * We instead create a surface the size of sourceRectangle, and position
+   * the image at the correct location, which is the inverse of the x & y of
+   * sourceRectangle's top-left corner.
+   */
+  let input_x = -(source_rectangle[0][0] as i64);
+  let input_y = -(source_rectangle[0][1] as i64);
+
+  let surface_width = (source_rectangle[1][0] - source_rectangle[0][0]) as u32;
+  let surface_height = (source_rectangle[3][1] - source_rectangle[0][1]) as u32;
+
+  let output_width = if let Some(resize_width) = resize_width {
+    resize_width
+  } else if let Some(resize_height) = resize_height {
+    (surface_width * resize_height).div_ceil(surface_height)
+  } else {
+    surface_width
+  };
+
+  let output_height = if let Some(resize_height) = resize_height {
+    resize_height
+  } else if let Some(resize_width) = resize_width {
+    (surface_height * resize_width).div_ceil(surface_width)
+  } else {
+    surface_height
+  };
+
+  if color_space_conversion == ColorSpaceConversion::None {
+    return Err(type_error(
+      "options.colorSpaceConversion 'none' is not supported",
+    ));
+  }
+
   let color = view.color();
 
-  let surface = if !(args.width == args.surface_width
-    && args.height == args.surface_height
-    && args.input_x == 0
-    && args.input_y == 0)
+  let surface = if !(width == surface_width
+    && height == surface_height
+    && input_x == 0
+    && input_y == 0)
   {
-    let mut surface =
-      image::DynamicImage::new(args.surface_width, args.surface_height, color);
-    image::imageops::overlay(&mut surface, &view, args.input_x, args.input_y);
+    let mut surface = DynamicImage::new(surface_width, surface_height, color);
+    overlay(&mut surface, &view, input_x, input_y);
 
     surface
   } else {
     view
   };
 
-  let filter_type = match args.resize_quality {
+  let filter_type = match resize_quality {
     ImageResizeQuality::Pixelated => FilterType::Nearest,
     ImageResizeQuality::Low => FilterType::Triangle,
     ImageResizeQuality::Medium => FilterType::CatmullRom,
@@ -107,18 +660,28 @@ fn op_image_process(
 
   // should use resize_exact
   // https://github.com/image-rs/image/issues/1220#issuecomment-632060015
-  let mut image_out =
-    surface.resize_exact(args.output_width, args.output_height, filter_type);
+  let image_out =
+    surface.resize_exact(output_width, output_height, filter_type);
 
-  if args.flip_y {
-    image::imageops::flip_vertical_in_place(&mut image_out);
-  }
+  //
+  // FIXME: It also need to fix about orientation when the spec is updated.
+  //
+  // > Multiple browser vendors discussed this a while back and (99% sure, from recollection)
+  // > agreed to change createImageBitmap's behavior.
+  // > The HTML spec should be updated to say:
+  // > first EXIF orientation is applied, and then if imageOrientation is flipY, the image is flipped vertically
+  // https://github.com/whatwg/html/issues/8085#issuecomment-2204696312
+  let image_out = if image_orientation == ImageOrientation::FlipY {
+    image_out.flipv()
+  } else {
+    image_out
+  };
 
   // ignore 9.
 
   // 10.
   if color.has_alpha() {
-    match args.premultiply_alpha {
+    match premultiply_alpha {
       // 1.
       PremultiplyAlpha::Default => { /* noop */ }
 
@@ -126,153 +689,49 @@ fn op_image_process(
 
       // 2.
       PremultiplyAlpha::Premultiply => {
-        for (x, y, mut pixel) in image_out.clone().pixels() {
-          let alpha = pixel[3];
-          let normalized_alpha = alpha as f64 / u8::MAX as f64;
-          pixel.apply_without_alpha(|rgb| {
-            (rgb as f64 * normalized_alpha).round() as u8
-          });
-          // FIXME: Looking at the API, put_pixel doesn't seem to be necessary,
-          // but apply_without_alpha with DynamicImage doesn't seem to work as expected.
-          image_out.put_pixel(x, y, pixel);
-        }
+        let result = apply_premultiply_alpha(&image_out)?;
+        let data = to_js_buffer(&result);
+        return Ok(ImageProcessResult {
+          data,
+          width: output_width,
+          height: output_height,
+        });
       }
       // 3.
       PremultiplyAlpha::None => {
         // NOTE: It's not clear how to handle the case of ImageData.
         // https://issues.chromium.org/issues/339759426
         // https://github.com/whatwg/html/issues/5365
-        if args.image_bitmap_source == ImageBitmapSource::ImageData {
-          return Ok(image_out.into_bytes().into());
-        }
-
-        // To determine if the image is premultiplied alpha,
-        // checking premultiplied RGBA value is one where any of the R/G/B channel values exceeds the alpha channel value.
-        // https://www.w3.org/TR/webgpu/#color-spaces
-        let is_not_premultiplied = image_out.pixels().any(|(_, _, pixel)| {
-          let [r, g, b] = [pixel[0], pixel[1], pixel[2]];
-          let alpha = pixel[3];
-          (r.max(g).max(b)) > u8::MAX.saturating_mul(alpha)
-        });
-        if is_not_premultiplied {
-          return Ok(image_out.into_bytes().into());
-        }
-
-        for (x, y, mut pixel) in image_out.clone().pixels() {
-          let alpha = pixel[3];
-          pixel.apply_without_alpha(|rgb| {
-            (rgb as f64 / (alpha as f64 / u8::MAX as f64)).round() as u8
+        if image_bitmap_source == ImageBitmapSource::ImageData {
+          return Ok(ImageProcessResult {
+            data: image_out.clone().into_bytes().into(),
+            width: output_width,
+            height: output_height,
           });
-          // FIXME: Looking at the API, put_pixel doesn't seem to be necessary,
-          // but apply_without_alpha with DynamicImage doesn't seem to work as expected.
-          image_out.put_pixel(x, y, pixel);
         }
+
+        let result = apply_unpremultiply_alpha(&image_out)?;
+        let data = to_js_buffer(&result);
+        return Ok(ImageProcessResult {
+          data,
+          width: output_width,
+          height: output_height,
+        });
       }
     }
   }
 
-  Ok(image_out.into_bytes().into())
-}
-
-#[derive(Debug, Serialize)]
-struct DecodedImage {
-  width: u32,
-  height: u32,
-}
-
-#[derive(Debug, Deserialize)]
-#[serde(rename_all = "camelCase")]
-struct ImageDecodeOptions {
-  mime_type: String,
-}
-
-#[op2]
-#[serde]
-fn op_image_decode(
-  #[buffer] buf: &[u8],
-  #[serde] options: ImageDecodeOptions,
-) -> Result<DecodedImage, AnyError> {
-  let reader = BufReader::new(Cursor::new(buf));
-  //
-  // TODO: support animated images
-  // It's a little hard to implement animated images along spec because of the complexity.
-  //
-  // > If this is an animated image, imageBitmap's bitmap data must only be taken from
-  // > the default image of the animation (the one that the format defines is to be used when animation is
-  // > not supported or is disabled), or, if there is no such image, the first frame of the animation.
-  // https://html.spec.whatwg.org/multipage/imagebitmap-and-animations.html
-  //
-  // see also browser implementations: (The implementation of Gecko and WebKit is hard to read.)
-  // https://source.chromium.org/chromium/chromium/src/+/bdbc054a6cabbef991904b5df9066259505cc686:third_party/blink/renderer/platform/image-decoders/image_decoder.h;l=175-189
-  //
-  let image = match &*options.mime_type {
-    "image/png" => {
-      let decoder = image::codecs::png::PngDecoder::new(reader)?;
-      if decoder.is_apng()? {
-        return Err(type_error("Animation image is not supported."));
-      }
-      if decoder.color_type() != image::ColorType::Rgba8 {
-        return Err(type_error("Supports 8-bit RGBA only."));
-      }
-      image::DynamicImage::from_decoder(decoder)?
-    }
-    "image/jpeg" => {
-      let decoder = image::codecs::jpeg::JpegDecoder::new(reader)?;
-      if decoder.color_type() != image::ColorType::Rgb8 {
-        return Err(type_error("Supports 8-bit RGB only."));
-      }
-      image::DynamicImage::from_decoder(decoder)?
-    }
-    "image/gif" => {
-      let decoder = image::codecs::gif::GifDecoder::new(reader)?;
-      if decoder.into_frames().count() > 1 {
-        return Err(type_error("Animation image is not supported."));
-      }
-      let reader = BufReader::new(Cursor::new(buf));
-      let decoder = image::codecs::gif::GifDecoder::new(reader)?;
-      image::DynamicImage::from_decoder(decoder)?
-    }
-    "image/bmp" => {
-      let decoder = image::codecs::bmp::BmpDecoder::new(reader)?;
-      if decoder.color_type() != image::ColorType::Rgba8 {
-        return Err(type_error("Supports 8-bit RGBA only."));
-      }
-      image::DynamicImage::from_decoder(decoder)?
-    }
-    "image/x-icon" => {
-      let decoder = image::codecs::ico::IcoDecoder::new(reader)?;
-      if decoder.color_type() != image::ColorType::Rgba8 {
-        return Err(type_error("Supports 8-bit RGBA only."));
-      }
-      image::DynamicImage::from_decoder(decoder)?
-    }
-    "image/webp" => {
-      let decoder = image::codecs::webp::WebPDecoder::new(reader)?;
-      if decoder.has_animation() {
-        return Err(type_error("Animation image is not supported."));
-      }
-      image::DynamicImage::from_decoder(decoder)?
-    }
-    // return an error if the mime type is not supported in the variable list of ImageTypePatternTable below
-    // ext/web/01_mimesniff.js
-    _ => {
-      return Err(
-        DOMExceptionInvalidStateError::new(
-          "The source image is not a supported format.",
-        )
-        .into(),
-      )
-    }
-  };
-  let (width, height) = image.dimensions();
-
-  Ok(DecodedImage { width, height })
+  Ok(ImageProcessResult {
+    data: image_out.clone().into_bytes().into(),
+    width: output_width,
+    height: output_height,
+  })
 }
 
 deno_core::extension!(
   deno_canvas,
   deps = [deno_webidl, deno_web, deno_webgpu],
-  ops = [op_image_process, op_image_decode],
+  ops = [op_image_process],
   lazy_loaded_esm = ["01_image.js"],
 );
 

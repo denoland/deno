@@ -1,7 +1,7 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
 import { internals, primordials } from "ext:core/mod.js";
-import { op_image_decode, op_image_process } from "ext:core/ops";
+import { op_image_process } from "ext:core/ops";
 import * as webidl from "ext:deno_webidl/00_webidl.js";
 import { DOMException } from "ext:deno_web/01_dom_exception.js";
 import { createFilteredInspectProxy } from "ext:deno_console/01_console.js";
@@ -14,11 +14,8 @@ const {
   TypeError,
   TypedArrayPrototypeGetBuffer,
   Uint8Array,
-  MathCeil,
-  PromiseResolve,
   PromiseReject,
   RangeError,
-  ObjectAssign,
   ArrayPrototypeJoin,
 } = primordials;
 import {
@@ -219,55 +216,57 @@ function createImageBitmap(
 
   const imageBitmap = webidl.createBranded(ImageBitmap);
 
-  // 6. Switch on image:
-  let imageBitmapSource;
-  if (ObjectPrototypeIsPrototypeOf(BlobPrototype, image)) {
-    imageBitmapSource = imageBitmapSources[0];
-  }
-  if (ObjectPrototypeIsPrototypeOf(ImageDataPrototype, image)) {
-    imageBitmapSource = imageBitmapSources[1];
-  }
-  const _options = ObjectAssign(options, { imageBitmapSource });
-
-  if (ObjectPrototypeIsPrototypeOf(ImageDataPrototype, image)) {
-    const processedImage = processImage(
-      image[_data],
-      image[_width],
-      image[_height],
-      sxOrOptions,
-      sy,
-      sw,
-      sh,
-      _options,
-    );
-    imageBitmap[_bitmapData] = processedImage.data;
-    imageBitmap[_width] = processedImage.outputWidth;
-    imageBitmap[_height] = processedImage.outputHeight;
-    return PromiseResolve(imageBitmap);
-  }
-  if (ObjectPrototypeIsPrototypeOf(BlobPrototype, image)) {
+  // 6. Switch on image
+  const isBlob = ObjectPrototypeIsPrototypeOf(BlobPrototype, image);
+  const isImageData = ObjectPrototypeIsPrototypeOf(ImageDataPrototype, image);
+  if (
+    isImageData ||
+    isBlob
+  ) {
     return (async () => {
-      const data = new Uint8Array(await image.arrayBuffer());
-      const mimeType = sniffImage(image.type);
-      const { width, height } = op_image_decode(
-        data,
+      let width = 0;
+      let height = 0;
+      let mimeType = "";
+      let imageBitmapSource, buf;
+      if (isBlob) {
+        imageBitmapSource = imageBitmapSources[0];
+        buf = new Uint8Array(await image.arrayBuffer());
+        mimeType = sniffImage(image.type);
+      }
+      if (isImageData) {
+        width = image[_width];
+        height = image[_height];
+        imageBitmapSource = imageBitmapSources[1];
+        buf = new Uint8Array(TypedArrayPrototypeGetBuffer(image[_data]));
+      }
+
+      let sx;
+      if (typeof sxOrOptions === "number") {
+        sx = sxOrOptions;
+      }
+
+      const processedImage = op_image_process(
+        buf,
         {
+          width,
+          height,
+          sx,
+          sy,
+          sw,
+          sh,
+          imageOrientation: options.imageOrientation ?? "from-image",
+          premultiplyAlpha: options.premultiplyAlpha ?? "default",
+          colorSpaceConversion: options.colorSpaceConversion ?? "default",
+          resizeWidth: options.resizeWidth,
+          resizeHeight: options.resizeHeight,
+          resizeQuality: options.resizeQuality ?? "low",
+          imageBitmapSource,
           mimeType,
         },
       );
-      const processedImage = processImage(
-        data,
-        width,
-        height,
-        sxOrOptions,
-        sy,
-        sw,
-        sh,
-        _options,
-      );
       imageBitmap[_bitmapData] = processedImage.data;
-      imageBitmap[_width] = processedImage.outputWidth;
-      imageBitmap[_height] = processedImage.outputHeight;
+      imageBitmap[_width] = processedImage.width;
+      imageBitmap[_height] = processedImage.height;
       return imageBitmap;
     })();
   } else {
@@ -279,89 +278,6 @@ function createImageBitmap(
       ),
     );
   }
-}
-
-function processImage(input, width, height, sx, sy, sw, sh, options) {
-  let sourceRectangle;
-
-  if (
-    sx !== undefined && sy !== undefined && sw !== undefined && sh !== undefined
-  ) {
-    sourceRectangle = [
-      [sx, sy],
-      [sx + sw, sy],
-      [sx + sw, sy + sh],
-      [sx, sy + sh],
-    ];
-  } else {
-    sourceRectangle = [
-      [0, 0],
-      [width, 0],
-      [width, height],
-      [0, height],
-    ];
-  }
-  const widthOfSourceRect = sourceRectangle[1][0] - sourceRectangle[0][0];
-  const heightOfSourceRect = sourceRectangle[3][1] - sourceRectangle[0][1];
-
-  let outputWidth;
-  if (options.resizeWidth !== undefined) {
-    outputWidth = options.resizeWidth;
-  } else if (options.resizeHeight !== undefined) {
-    outputWidth = MathCeil(
-      (widthOfSourceRect * options.resizeHeight) / heightOfSourceRect,
-    );
-  } else {
-    outputWidth = widthOfSourceRect;
-  }
-
-  let outputHeight;
-  if (options.resizeHeight !== undefined) {
-    outputHeight = options.resizeHeight;
-  } else if (options.resizeWidth !== undefined) {
-    outputHeight = MathCeil(
-      (heightOfSourceRect * options.resizeWidth) / widthOfSourceRect,
-    );
-  } else {
-    outputHeight = heightOfSourceRect;
-  }
-
-  if (options.colorSpaceConversion === "none") {
-    throw new TypeError("options.colorSpaceConversion 'none' is not supported");
-  }
-
-  /*
-   * The cropping works differently than the spec specifies:
-   * The spec states to create an infinite surface and place the top-left corner
-   * of the image a 0,0 and crop based on sourceRectangle.
-   *
-   * We instead create a surface the size of sourceRectangle, and position
-   * the image at the correct location, which is the inverse of the x & y of
-   * sourceRectangle's top-left corner.
-   */
-  const data = op_image_process(
-    new Uint8Array(TypedArrayPrototypeGetBuffer(input)),
-    {
-      width,
-      height,
-      surfaceWidth: widthOfSourceRect,
-      surfaceHeight: heightOfSourceRect,
-      inputX: sourceRectangle[0][0] * -1, // input_x
-      inputY: sourceRectangle[0][1] * -1, // input_y
-      outputWidth,
-      outputHeight,
-      resizeQuality: options.resizeQuality,
-      flipY: options.imageOrientation === "flipY",
-      premultiplyAlpha: options.premultiplyAlpha,
-      imageBitmapSource: options.imageBitmapSource,
-    },
-  );
-
-  return {
-    data,
-    outputWidth,
-    outputHeight,
-  };
 }
 
 function getBitmapData(imageBitmap) {
