@@ -919,6 +919,10 @@ impl CliOptions {
     };
 
     for diagnostic in start_dir.workspace.diagnostics() {
+      // TODO(2.0): remove
+      if matches!(diagnostic.kind, deno_config::workspace::WorkspaceDiagnosticKind::DeprecatedNodeModulesDirOption(_)) && !*DENO_FUTURE {
+        continue;
+      }
       log::warn!("{} {}", colors::yellow("Warning"), diagnostic);
     }
 
