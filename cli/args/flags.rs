@@ -10,6 +10,7 @@ use clap::ColorChoice;
 use clap::Command;
 use clap::ValueHint;
 use color_print::cstr;
+use deno_config::deno_json::NodeModulesMode;
 use deno_config::glob::FilePatterns;
 use deno_config::glob::PathOrPatternSet;
 use deno_core::anyhow::bail;
@@ -602,6 +603,7 @@ pub struct Flags {
   pub type_check_mode: TypeCheckMode,
   pub config_flag: ConfigFlag,
   pub node_modules_dir: Option<bool>,
+  pub node_modules_mode: Option<NodeModulesMode>,
   pub vendor: Option<bool>,
   pub enable_op_summary_metrics: bool,
   pub enable_testing_features: bool,
@@ -2363,7 +2365,7 @@ TypeScript compiler cache: Subdirectory containing TS compiler output.",
       .arg(no_lock_arg())
       .arg(config_arg())
       .arg(import_map_arg())
-      .arg(node_modules_dir_arg())
+      .args(node_modules_args())
       .arg(vendor_arg())
       .arg(
         Arg::new("json")
@@ -3178,7 +3180,7 @@ Remote modules and multiple modules may also be specified:
       .arg(config_arg())
       .arg(import_map_arg())
       .arg(lock_arg())
-      .arg(node_modules_dir_arg())
+      .args(node_modules_args())
       .arg(vendor_arg())
       .arg(reload_arg())
       .arg(ca_file_arg())
@@ -3240,7 +3242,7 @@ fn compile_args_without_check_args(app: Command) -> Command {
     .arg(import_map_arg())
     .arg(no_remote_arg())
     .arg(no_npm_arg())
-    .arg(node_modules_dir_arg())
+    .args(node_modules_args())
     .arg(vendor_arg())
     .arg(config_arg())
     .arg(no_config_arg())
@@ -3916,16 +3918,49 @@ fn no_npm_arg() -> Arg {
     .help_heading(DEPENDENCY_MANAGEMENT_HEADING)
 }
 
-fn node_modules_dir_arg() -> Arg {
-  Arg::new("node-modules-dir")
-    .long("node-modules-dir")
-    .num_args(0..=1)
-    .value_parser(value_parser!(bool))
-    .value_name("DIRECTORY")
-    .default_missing_value("true")
-    .require_equals(true)
-    .help("Enables or disables the use of a local node_modules folder for npm packages")
-    .help_heading(DEPENDENCY_MANAGEMENT_HEADING)
+fn node_modules_arg_parse(flags: &mut Flags, matches: &mut ArgMatches) {
+  if *DENO_FUTURE {
+    let value = matches.remove_one::<NodeModulesMode>("node-modules");
+    if let Some(mode) = value {
+      flags.node_modules_mode = Some(mode);
+    }
+  } else {
+    flags.node_modules_dir = matches.remove_one::<bool>("node-modules-dir");
+  }
+}
+
+fn node_modules_args() -> Vec<Arg> {
+  if *DENO_FUTURE {
+    vec![
+      Arg::new("node-modules")
+        .long("node-modules")
+        .num_args(0..=1)
+        .value_parser(NodeModulesMode::parse)
+        .value_name("MODE")
+        .require_equals(true)
+        .help("Sets the node modules management mode for npm packages")
+        .help_heading(DEPENDENCY_MANAGEMENT_HEADING),
+      Arg::new("node-modules-dir")
+        .long("node-modules-dir")
+        .num_args(0..=1)
+        .value_parser(clap::builder::UnknownArgumentValueParser::suggest_arg(
+          "--node-modules",
+        ))
+        .require_equals(true),
+    ]
+  } else {
+    vec![
+      Arg::new("node-modules-dir")
+        .long("node-modules-dir")
+        .num_args(0..=1)
+        .value_parser(value_parser!(bool))
+        .value_name("ENABLED")
+        .default_missing_value("true")
+        .require_equals(true)
+        .help("Enables or disables the use of a local node_modules folder for npm packages")
+        .help_heading(DEPENDENCY_MANAGEMENT_HEADING)
+    ]
+  }
 }
 
 fn vendor_arg() -> Arg {
@@ -5315,7 +5350,7 @@ fn node_modules_and_vendor_dir_arg_parse(
   flags: &mut Flags,
   matches: &mut ArgMatches,
 ) {
-  flags.node_modules_dir = matches.remove_one::<bool>("node-modules-dir");
+  node_modules_arg_parse(flags, matches);
   flags.vendor = matches.remove_one::<bool>("vendor");
 }
 

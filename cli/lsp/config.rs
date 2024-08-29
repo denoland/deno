@@ -5,6 +5,7 @@ use deno_config::deno_json::DenoJsonCache;
 use deno_config::deno_json::FmtConfig;
 use deno_config::deno_json::FmtOptionsConfig;
 use deno_config::deno_json::LintConfig;
+use deno_config::deno_json::NodeModulesMode;
 use deno_config::deno_json::TestConfig;
 use deno_config::deno_json::TsConfig;
 use deno_config::fs::DenoConfigFs;
@@ -1390,8 +1391,16 @@ impl ConfigData {
     let byonm = std::env::var("DENO_UNSTABLE_BYONM").is_ok()
       || member_dir.workspace.has_unstable("byonm")
       || (*DENO_FUTURE
-        && member_dir.workspace.package_jsons().next().is_some()
-        && member_dir.workspace.node_modules_dir().is_none());
+        && matches!(
+          member_dir.workspace.node_modules_mode().unwrap_or_default(),
+          Some(NodeModulesMode::LocalManual)
+        ))
+      || (
+        *DENO_FUTURE
+          && member_dir.workspace.package_jsons().next().is_some()
+          && member_dir.workspace.node_modules_dir().is_none()
+        // TODO(2.0): remove
+      );
     if byonm {
       lsp_log!("  Enabled 'bring your own node_modules'.");
     }
