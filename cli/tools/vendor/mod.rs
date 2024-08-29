@@ -88,7 +88,10 @@ pub async fn vendor(
   let graph = output.graph;
   let npm_package_count = graph.npm_packages.len();
   let try_add_node_modules_dir = npm_package_count > 0
-    && cli_options.node_modules_dir_enablement().unwrap_or(true);
+    && cli_options
+      .node_modules_mode()
+      .map(|m| m.uses_node_modules_dir())
+      .unwrap_or(true);
 
   log::info!(
     concat!("Vendored {} {} into {} directory.",),

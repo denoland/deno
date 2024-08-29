@@ -19,6 +19,7 @@ use crate::tools::check;
 use crate::tools::check::TypeChecker;
 use crate::util::file_watcher::WatcherCommunicator;
 use crate::util::fs::canonicalize_path;
+use deno_config::deno_json::NodeModulesMode;
 use deno_config::workspace::JsrPackageConfig;
 use deno_emit::LoaderChecksum;
 use deno_graph::JsrLoadError;
@@ -541,7 +542,10 @@ impl ModuleGraphBuilder {
   ) -> Result<(), AnyError> {
     // ensure an "npm install" is done if the user has explicitly
     // opted into using a node_modules directory
-    if self.options.node_modules_dir_enablement() == Some(true) {
+    if matches!(
+      self.options.node_modules_mode(),
+      Some(NodeModulesMode::LocalAuto | NodeModulesMode::LocalManual)
+    ) {
       if let Some(npm_resolver) = self.npm_resolver.as_managed() {
         npm_resolver.ensure_top_level_package_json_install().await?;
       }
