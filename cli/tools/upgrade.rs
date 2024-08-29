@@ -226,18 +226,14 @@ impl<
   }
 }
 
-fn get_minor_version(version: &str) -> &str {
-  version.rsplitn(2, '.').collect::<Vec<&str>>()[1]
-}
-
 fn get_minor_version_blog_post_url(semver: &Version) -> String {
   format!("https://deno.com/blog/v{}.{}", semver.major, semver.minor)
 }
 
 fn get_rc_version_blog_post_url(semver: &Version) -> String {
   format!(
-    "https://deno.com/blog/v{}.{}-rc.{}",
-    semver.major, semver.minor, semver.build[0]
+    "https://deno.com/blog/v{}.{}-rc-{}",
+    semver.major, semver.minor, semver.pre[1]
   )
 }
 
@@ -256,7 +252,7 @@ async fn print_release_notes(
   let is_deno_2_rc = new_semver.major == 2
     && new_semver.minor == 0
     && new_semver.patch == 0
-    && new_semver.pre.contains(&"rc".to_string());
+    && new_semver.pre.get(0) == Some(&"rc".to_string());
 
   if is_deno_2_rc {
     log::info!(
@@ -273,7 +269,7 @@ async fn print_release_notes(
     );
 
     // Check if there's blog post entry for this release
-    let blog_url_str = format!("https://deno.com/blog/v{}", new_version);
+    let blog_url_str = get_rc_version_blog_post_url(&new_semver);
     let blog_url = Url::parse(&blog_url_str).unwrap();
     if client.download(blog_url).await.is_ok() {
       log::info!(
@@ -303,10 +299,7 @@ async fn print_release_notes(
   log::info!(
     "{}\n\n  {}\n",
     colors::gray("Blog post:"),
-    colors::bold(format!(
-      "https://deno.com/blog/v{}",
-      get_minor_version(new_version)
-    ))
+    colors::bold(get_minor_version_blog_post_url(&new_semver))
   );
 }
 
@@ -1754,28 +1747,24 @@ mod test {
   #[test]
   fn blog_post_links() {
     let version = Version::parse_standard("1.46.0").unwrap();
-    eprintln!("version {:#?}", version);
     assert_eq!(
       get_minor_version_blog_post_url(&version),
       "https://deno.com/blog/v1.46"
     );
 
     let version = Version::parse_standard("2.1.1").unwrap();
-    eprintln!("version {:#?}", version);
     assert_eq!(
       get_minor_version_blog_post_url(&version),
       "https://deno.com/blog/v2.1"
     );
 
     let version = Version::parse_standard("2.0.0-rc.0").unwrap();
-    eprintln!("version {:#?}", version);
     assert_eq!(
       get_rc_version_blog_post_url(&version),
       "https://deno.com/blog/v2.0-rc-0"
     );
 
     let version = Version::parse_standard("2.0.0-rc.2").unwrap();
-    eprintln!("version {:#?}", version);
     assert_eq!(
       get_rc_version_blog_post_url(&version),
       "https://deno.com/blog/v2.0-rc-2"
