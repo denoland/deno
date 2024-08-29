@@ -8686,25 +8686,7 @@ mod tests {
           watch: None,
           bare: true,
         }),
-        node_modules_dir: Some(true),
-        code_cache_enabled: true,
-        ..Flags::default()
-      }
-    );
-
-    let r = flags_from_vec(svec![
-      "deno",
-      "run",
-      "--node-modules-dir=false",
-      "script.ts"
-    ]);
-    assert_eq!(
-      r.unwrap(),
-      Flags {
-        subcommand: DenoSubcommand::Run(RunFlags::new_default(
-          "script.ts".to_string(),
-        )),
-        node_modules_dir: Some(false),
+        node_modules_dir: None,
         code_cache_enabled: true,
         ..Flags::default()
       }
