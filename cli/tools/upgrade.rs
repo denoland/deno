@@ -252,7 +252,7 @@ async fn print_release_notes(
   let is_deno_2_rc = new_semver.major == 2
     && new_semver.minor == 0
     && new_semver.patch == 0
-    && new_semver.pre.get(0) == Some(&"rc".to_string());
+    && new_semver.pre.first() == Some(&"rc".to_string());
 
   if is_deno_2_rc {
     log::info!(
