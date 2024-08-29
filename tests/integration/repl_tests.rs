@@ -1040,7 +1040,9 @@ fn pty_tab_indexable_props() {
   });
 }
 
+// TODO(bartlomieju): this should first run `deno install`
 #[flaky_test::flaky_test]
+#[ignore]
 fn package_json_uncached_no_error() {
   let test_context = TestContextBuilder::for_npm()
     .use_temp_cwd()

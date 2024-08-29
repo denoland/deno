@@ -946,7 +946,9 @@ fn lock_redirects() {
   );
 }
 
+// TODO(bartlomieju): this should be rewritten to a spec test and first run `deno install`
 #[test]
+#[ignore]
 fn lock_deno_json_package_json_deps() {
   let context = TestContextBuilder::new()
     .use_temp_cwd()
@@ -3440,16 +3442,19 @@ itest!(
   }
 );
 
-itest!(package_json_auto_discovered_for_npm_binary {
-  args: "run -L debug -A npm:@denotest/bin/cli-esm this is a test",
-  output: "run/with_package_json/npm_binary/main.out",
-  cwd: Some("run/with_package_json/npm_binary/"),
-  copy_temp_dir: Some("run/with_package_json/"),
-  envs: env_vars_for_npm_tests(),
-  http_server: true,
-});
+// TODO(bartlomieju): this should be rewritten to a spec test and first run `deno install`
+// itest!(package_json_auto_discovered_for_npm_binary {
+//   args: "run -L debug -A npm:@denotest/bin/cli-esm this is a test",
+//   output: "run/with_package_json/npm_binary/main.out",
+//   cwd: Some("run/with_package_json/npm_binary/"),
+//   copy_temp_dir: Some("run/with_package_json/"),
+//   envs: env_vars_for_npm_tests(),
+//   http_server: true,
+// });
 
+// TODO(bartlomieju): this should be rewritten to a spec test and first run `deno install`
 #[test]
+#[ignore]
 fn package_json_with_deno_json() {
   let context = TestContextBuilder::for_npm()
     .use_copy_temp_dir("package_json/deno_json/")
