@@ -1,0 +1,28 @@
+{
+  "tempDir": true,
+  "envs": {
+    "DENO_FUTURE": "1"
+  },
+  "steps": [
+    {
+      "cwd": "./test-project",
+      "args": "install",
+      "output": "[WILDCARD]"
+    },
+    {
+      "cwd": "./test-project",
+      "args": "run -A main.mjs",
+      "output": "5\n"
+    },
+    {
+      "commandName": "mv",
+      "args": "test-project test-project-moved",
+      "output": ""
+    },
+    {
+      "cwd": "./test-project-moved",
+      "args": "run -A main.mjs",
+      "output": "5\n"
+    }
+  ]
+}

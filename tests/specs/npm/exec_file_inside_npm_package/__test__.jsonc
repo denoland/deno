@@ -1,4 +1,7 @@
 {
   "args": "run -A main.ts",
-  "output": "main.out"
+  "output": "main.out",
+  "envs": {
+    "DENO_FUTURE": "1"
+  }
 }

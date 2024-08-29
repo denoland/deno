@@ -148,15 +148,6 @@ fn op_node_build_os() -> String {
   env!("TARGET").split('-').nth(2).unwrap().to_string()
 }
 
-#[op2(fast)]
-fn op_node_is_promise_rejected(value: v8::Local<v8::Value>) -> bool {
-  let Ok(promise) = v8::Local::<v8::Promise>::try_from(value) else {
-    return false;
-  };
-
-  promise.state() == v8::PromiseState::Rejected
-}
-
 #[op2]
 #[string]
 fn op_npm_process_state(state: &mut OpState) -> Result<String, AnyError> {
@@ -232,6 +223,9 @@ deno_core::extension!(deno_node,
     ops::crypto::op_node_verify,
     ops::crypto::op_node_verify_ed25519,
     ops::crypto::keys::op_node_create_private_key,
+    ops::crypto::keys::op_node_create_ed_raw,
+    ops::crypto::keys::op_node_create_rsa_jwk,
+    ops::crypto::keys::op_node_create_ec_jwk,
     ops::crypto::keys::op_node_create_public_key,
     ops::crypto::keys::op_node_create_secret_key,
     ops::crypto::keys::op_node_derive_public_key_from_private_key,
@@ -240,6 +234,7 @@ deno_core::extension!(deno_node,
     ops::crypto::keys::op_node_export_private_key_pem,
     ops::crypto::keys::op_node_export_public_key_der,
     ops::crypto::keys::op_node_export_public_key_pem,
+    ops::crypto::keys::op_node_export_public_key_jwk,
     ops::crypto::keys::op_node_export_secret_key_b64url,
     ops::crypto::keys::op_node_export_secret_key,
     ops::crypto::keys::op_node_generate_dh_group_key_async,
@@ -343,7 +338,6 @@ deno_core::extension!(deno_node,
     ops::os::op_cpus<P>,
     ops::os::op_homedir<P>,
     op_node_build_os,
-    op_node_is_promise_rejected,
     op_npm_process_state,
     ops::require::op_require_init_paths,
     ops::require::op_require_node_module_paths<P>,
@@ -635,115 +629,116 @@ deno_core::extension!(deno_node,
   global_template_middleware = global_template_middleware,
   global_object_middleware = global_object_middleware,
   customizer = |ext: &mut deno_core::Extension| {
-    let mut external_references = Vec::with_capacity(14);
+    let external_references = [
+      vm::QUERY_MAP_FN.with(|query| {
+        ExternalReference {
+          named_query: *query,
+        }
+      }),
+      vm::GETTER_MAP_FN.with(|getter| {
+        ExternalReference {
+          named_getter: *getter,
+        }
+      }),
+      vm::SETTER_MAP_FN.with(|setter| {
+        ExternalReference {
+          named_setter: *setter,
+        }
+      }),
+      vm::DESCRIPTOR_MAP_FN.with(|descriptor| {
+        ExternalReference {
+          named_getter: *descriptor,
+        }
+      }),
+      vm::DELETER_MAP_FN.with(|deleter| {
+        ExternalReference {
+          named_deleter: *deleter,
+        }
+      }),
+      vm::ENUMERATOR_MAP_FN.with(|enumerator| {
+        ExternalReference {
+          enumerator: *enumerator,
+        }
+      }),
+      vm::DEFINER_MAP_FN.with(|definer| {
+        ExternalReference {
+          named_definer: *definer,
+        }
+      }),
 
-    vm::QUERY_MAP_FN.with(|query| {
-      external_references.push(ExternalReference {
-        named_query: *query,
-      });
-    });
-    vm::GETTER_MAP_FN.with(|getter| {
-      external_references.push(ExternalReference {
-        named_getter: *getter,
-      });
-    });
-    vm::SETTER_MAP_FN.with(|setter| {
-      external_references.push(ExternalReference {
-        named_setter: *setter,
-      });
-    });
-    vm::DESCRIPTOR_MAP_FN.with(|descriptor| {
-      external_references.push(ExternalReference {
-        named_getter: *descriptor,
-      });
-    });
-    vm::DELETER_MAP_FN.with(|deleter| {
-      external_references.push(ExternalReference {
-        named_deleter: *deleter,
-      });
-    });
-    vm::ENUMERATOR_MAP_FN.with(|enumerator| {
-      external_references.push(ExternalReference {
-        enumerator: *enumerator,
-      });
-    });
-    vm::DEFINER_MAP_FN.with(|definer| {
-      external_references.push(ExternalReference {
-        named_definer: *definer,
-      });
-    });
+      vm::INDEXED_QUERY_MAP_FN.with(|query| {
+        ExternalReference {
+          indexed_query: *query,
+        }
+      }),
+      vm::INDEXED_GETTER_MAP_FN.with(|getter| {
+        ExternalReference {
+          indexed_getter: *getter,
+        }
+      }),
+      vm::INDEXED_SETTER_MAP_FN.with(|setter| {
+        ExternalReference {
+          indexed_setter: *setter,
+        }
+      }),
+      vm::INDEXED_DESCRIPTOR_MAP_FN.with(|descriptor| {
+        ExternalReference {
+          indexed_getter: *descriptor,
+        }
+      }),
+      vm::INDEXED_DELETER_MAP_FN.with(|deleter| {
+        ExternalReference {
+          indexed_deleter: *deleter,
+        }
+      }),
+      vm::INDEXED_DEFINER_MAP_FN.with(|definer| {
+        ExternalReference {
+          indexed_definer: *definer,
+        }
+      }),
+      vm::INDEXED_ENUMERATOR_MAP_FN.with(|enumerator| {
+        ExternalReference {
+          enumerator: *enumerator,
+        }
+      }),
 
-    vm::INDEXED_QUERY_MAP_FN.with(|query| {
-      external_references.push(ExternalReference {
-        indexed_query: *query,
-      });
-    });
-    vm::INDEXED_GETTER_MAP_FN.with(|getter| {
-      external_references.push(ExternalReference {
-        indexed_getter: *getter,
-      });
-    });
-    vm::INDEXED_SETTER_MAP_FN.with(|setter| {
-      external_references.push(ExternalReference {
-        indexed_setter: *setter,
-      });
-    });
-    vm::INDEXED_DESCRIPTOR_MAP_FN.with(|descriptor| {
-      external_references.push(ExternalReference {
-        indexed_getter: *descriptor,
-      });
-    });
-    vm::INDEXED_DELETER_MAP_FN.with(|deleter| {
-      external_references.push(ExternalReference {
-        indexed_deleter: *deleter,
-      });
-    });
-    vm::INDEXED_DEFINER_MAP_FN.with(|definer| {
-      external_references.push(ExternalReference {
-        indexed_definer: *definer,
-      });
-    });
-    vm::INDEXED_ENUMERATOR_MAP_FN.with(|enumerator| {
-      external_references.push(ExternalReference {
-        enumerator: *enumerator,
-      });
-    });
+      global::GETTER_MAP_FN.with(|getter| {
+        ExternalReference {
+          named_getter: *getter,
+        }
+      }),
+      global::SETTER_MAP_FN.with(|setter| {
+        ExternalReference {
+          named_setter: *setter,
+        }
+      }),
+      global::QUERY_MAP_FN.with(|query| {
+        ExternalReference {
+          named_query: *query,
+        }
+      }),
+      global::DELETER_MAP_FN.with(|deleter| {
+        ExternalReference {
+          named_deleter: *deleter,
+        }
+      }),
+      global::ENUMERATOR_MAP_FN.with(|enumerator| {
+        ExternalReference {
+          enumerator: *enumerator,
+        }
+      }),
+      global::DEFINER_MAP_FN.with(|definer| {
+        ExternalReference {
+          named_definer: *definer,
+        }
+      }),
+      global::DESCRIPTOR_MAP_FN.with(|descriptor| {
+        ExternalReference {
+          named_getter: *descriptor,
+        }
+      }),
+    ];
 
-    global::GETTER_MAP_FN.with(|getter| {
-      external_references.push(ExternalReference {
-        named_getter: *getter,
-      });
-    });
-    global::SETTER_MAP_FN.with(|setter| {
-      external_references.push(ExternalReference {
-        named_setter: *setter,
-      });
-    });
-    global::QUERY_MAP_FN.with(|query| {
-      external_references.push(ExternalReference {
-        named_query: *query,
-      });
-    });
-    global::DELETER_MAP_FN.with(|deleter| {
-      external_references.push(ExternalReference {
-        named_deleter: *deleter,
-      });
-    });
-    global::ENUMERATOR_MAP_FN.with(|enumerator| {
-      external_references.push(ExternalReference {
-        enumerator: *enumerator,
-      });
-    });
-    global::DEFINER_MAP_FN.with(|definer| {
-      external_references.push(ExternalReference {
-        named_definer: *definer,
-      });
-    });
-    global::DESCRIPTOR_MAP_FN.with(|descriptor| {
-      external_references.push(ExternalReference {
-        named_getter: *descriptor,
-      });
-    });
     ext.external_references.to_mut().extend(external_references);
   },
 );

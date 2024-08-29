@@ -3684,7 +3684,6 @@
       "Range-intersectsNode-binding.html": false,
       "Range-intersectsNode-shadow.html": false,
       "Range-intersectsNode.html": false,
-      "Range-isPointInRange-shadowdom.tentative.html": false,
       "Range-isPointInRange.html": false,
       "Range-mutations-appendChild.html": false,
       "Range-mutations-appendData.html": false,
@@ -4007,14 +4006,8 @@
       "owning-type-message-port.any.worker.html": false,
       "owning-type.any.html": false,
       "owning-type.any.worker.html": false,
-      "from.any.html": [
-        "ReadableStream.from ignores a null @@asyncIterator",
-        "ReadableStream.from accepts a string"
-      ],
-      "from.any.worker.html": [
-        "ReadableStream.from ignores a null @@asyncIterator",
-        "ReadableStream.from accepts a string"
-      ]
+      "from.any.html": true,
+      "from.any.worker.html": true
     },
     "transform-streams": {
       "backpressure.any.html": true,
@@ -10286,10 +10279,6 @@
     "semantics": {
       "scripting-1": {
         "the-script-element": {
-          "import-assertions": {
-            "dynamic-import-with-assertion-argument.any.html": true,
-            "dynamic-import-with-assertion-argument.any.worker.html": true
-          },
           "json-module": {
             "charset-bom.any.html": true,
             "charset-bom.any.worker.html": true,
@@ -10347,6 +10336,11 @@
                 "import.meta.resolve is not a constructor"
               ]
             }
+          },
+          "import-attributes": {
+            "dynamic-import-with-attributes-argument.any.html": true,
+            "dynamic-import-with-attributes-argument.any.sharedworker.html": false,
+            "dynamic-import-with-attributes-argument.any.worker.html": true
           }
         }
       },
@@ -10730,7 +10724,6 @@
       "localStorage: defineProperty not configurable",
       "sessionStorage: defineProperty not configurable"
     ],
-    "localstorage-cross-origin-iframe.tentative.https.window.html": false,
     "storage_local_window_open.window.html": false,
     "storage_session_window_noopener.window.html": false,
     "storage_session_window_open.window.html": false,
@@ -10752,10 +10745,7 @@
     "event_session_removeitem.html": false,
     "event_session_storagearea.html": false,
     "event_session_url.html": false,
-    "event_setattribute.html": false,
-    "localstorage-about-blank-3P-iframe-opens-3P-window.partitioned.tentative.html": false,
-    "localstorage-basic-partitioned.tentative.sub.html": false,
-    "sessionStorage-basic-partitioned.tentative.sub.html": false
+    "event_setattribute.html": false
   },
   "webmessaging": {
     "broadcastchannel": {

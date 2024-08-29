@@ -30,6 +30,7 @@ use deno_core::serde::Serialize;
 use deno_core::serde_json;
 use deno_core::serde_json::json;
 use deno_core::serde_json::Value;
+use deno_core::url::Url;
 use deno_core::ModuleSpecifier;
 use deno_lint::linter::LintConfig as DenoLintConfig;
 use deno_npm::npm_rc::ResolvedNpmRc;
@@ -38,7 +39,6 @@ use deno_runtime::deno_node::PackageJson;
 use deno_runtime::deno_permissions::PermissionsContainer;
 use deno_runtime::fs_util::specifier_to_file_path;
 use indexmap::IndexSet;
-use lsp::Url;
 use lsp_types::ClientCapabilities;
 use std::collections::BTreeMap;
 use std::collections::HashMap;
@@ -844,14 +844,17 @@ pub struct Config {
 
 impl Config {
   #[cfg(test)]
-  pub fn new_with_roots(root_uris: impl IntoIterator<Item = Url>) -> Self {
+  pub fn new_with_roots(root_urls: impl IntoIterator<Item = Url>) -> Self {
+    use super::urls::url_to_uri;
+
     let mut config = Self::default();
     let mut folders = vec![];
-    for root_uri in root_uris {
-      let name = root_uri.path_segments().and_then(|s| s.last());
+    for root_url in root_urls {
+      let root_uri = url_to_uri(&root_url).unwrap();
+      let name = root_url.path_segments().and_then(|s| s.last());
       let name = name.unwrap_or_default().to_string();
       folders.push((
-        root_uri.clone(),
+        root_url,
         lsp::WorkspaceFolder {
           uri: root_uri,
           name,

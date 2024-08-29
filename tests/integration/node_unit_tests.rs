@@ -57,6 +57,7 @@ util::unit_test_factory!(
     assertion_error_test,
     buffer_test,
     child_process_test,
+    cluster_test,
     console_test,
     crypto_cipher_gcm_test = crypto / crypto_cipher_gcm_test,
     crypto_cipher_test = crypto / crypto_cipher_test,
@@ -71,7 +72,6 @@ util::unit_test_factory!(
     dgram_test,
     domain_test,
     fs_test,
-    fetch_test,
     http_test,
     http2_test,
     inspector_test,
@@ -107,6 +107,7 @@ fn node_unit_test(test: String) {
 
   let mut deno = util::deno_cmd()
     .current_dir(util::root_path())
+    .env("DENO_FUTURE", "1")
     .arg("test")
     .arg("--config")
     .arg(deno_config_path())
