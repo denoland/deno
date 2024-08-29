@@ -5388,6 +5388,7 @@ mod tests {
   use crate::lsp::documents::LanguageId;
   use crate::lsp::resolver::LspResolver;
   use crate::lsp::text::LineIndex;
+  use deno_cache_dir::RequestDestination;
   use pretty_assertions::assert_eq;
   use test_util::TempDir;
 
@@ -5823,6 +5824,7 @@ mod tests {
       .global()
       .set(
         &specifier_dep,
+        RequestDestination::Script,
         HeadersMap::default(),
         b"export const b = \"b\";\n",
       )
@@ -5862,6 +5864,7 @@ mod tests {
       .global()
       .set(
         &specifier_dep,
+        RequestDestination::Script,
         HeadersMap::default(),
         b"export const b = \"b\";\n\nexport const a = \"b\";\n",
       )

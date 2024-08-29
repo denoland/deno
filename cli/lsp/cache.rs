@@ -17,6 +17,8 @@ use std::path::Path;
 use std::sync::Arc;
 use std::time::SystemTime;
 
+use super::urls::resolve_destination_from_lsp_url;
+
 pub fn calculate_fs_version(
   cache: &LspCache,
   specifier: &ModuleSpecifier,

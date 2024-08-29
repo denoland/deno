@@ -1,6 +1,7 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
 use deno_ast::MediaType;
+use deno_cache_dir::RequestDestination;
 use deno_config::deno_json::DenoJsonCache;
 use deno_config::deno_json::FmtConfig;
 use deno_config::deno_json::FmtOptionsConfig;
@@ -1464,7 +1465,11 @@ impl ConfigData {
           let import_map_url = import_map_url.clone();
           async move {
             file_fetcher
-              .fetch(&import_map_url, &PermissionsContainer::allow_all())
+              .fetch(
+                &import_map_url,
+                RequestDestination::Json,
+                &PermissionsContainer::allow_all(),
+              )
               .await
           }
         })
@@ -1508,7 +1513,11 @@ impl ConfigData {
               let file_fetcher = file_fetcher.clone().unwrap();
               async move {
                 let file = file_fetcher
-                  .fetch(&specifier, &PermissionsContainer::allow_all())
+                  .fetch(
+                    &specifier,
+                    RequestDestination::Json,
+                    &PermissionsContainer::allow_all(),
+                  )
                   .await?
                   .into_text_decoded()?;
                 Ok(file.source.to_string())

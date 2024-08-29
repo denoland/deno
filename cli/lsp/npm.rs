@@ -1,6 +1,7 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
 use dashmap::DashMap;
+use deno_cache_dir::RequestDestination;
 use deno_core::anyhow::anyhow;
 use deno_core::error::AnyError;
 use deno_core::serde_json;
@@ -55,7 +56,11 @@ impl PackageSearchApi for CliNpmSearchApi {
     let file_fetcher = self.file_fetcher.clone();
     let file = deno_core::unsync::spawn(async move {
       file_fetcher
-        .fetch(&search_url, &PermissionsContainer::allow_all())
+        .fetch(
+          &search_url,
+          RequestDestination::Json,
+          &PermissionsContainer::allow_all(),
+        )
         .await?
         .into_text_decoded()
     })

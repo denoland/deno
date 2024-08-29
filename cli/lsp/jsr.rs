@@ -7,6 +7,7 @@ use crate::jsr::partial_jsr_package_version_info_from_slice;
 use crate::jsr::JsrFetchResolver;
 use dashmap::DashMap;
 use deno_cache_dir::HttpCache;
+use deno_cache_dir::RequestDestination;
 use deno_core::anyhow::anyhow;
 use deno_core::error::AnyError;
 use deno_core::serde_json;
@@ -317,7 +318,11 @@ impl PackageSearchApi for CliJsrSearchApi {
     // spawn due to the lsp's `Send` requirement
     let file = deno_core::unsync::spawn(async move {
       file_fetcher
-        .fetch(&search_url, &PermissionsContainer::allow_all())
+        .fetch(
+          &search_url,
+          RequestDestination::Json,
+          &PermissionsContainer::allow_all(),
+        )
         .await?
         .into_text_decoded()
     })

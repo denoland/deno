@@ -20,6 +20,7 @@ use crate::file_fetcher::FetchOptions;
 use crate::file_fetcher::FileFetcher;
 use crate::http_util::HttpClientProvider;
 
+use deno_cache_dir::RequestDestination;
 use deno_core::anyhow::anyhow;
 use deno_core::error::AnyError;
 use deno_core::serde::Deserialize;
@@ -482,6 +483,7 @@ impl ModuleRegistry {
         file_fetcher
         .fetch_with_options(FetchOptions {
           specifier: &specifier,
+          destination: RequestDestination::Json,
           permissions: &PermissionsContainer::allow_all(),
           maybe_accept: Some("application/vnd.deno.reg.v2+json, application/vnd.deno.reg.v1+json;q=0.9, application/json;q=0.8"),
           maybe_cache_setting: None,
@@ -588,7 +590,11 @@ impl ModuleRegistry {
         let file = deno_core::unsync::spawn({
           async move {
             file_fetcher
-              .fetch(&endpoint, &PermissionsContainer::allow_all())
+              .fetch(
+                &endpoint,
+                RequestDestination::Json,
+                &PermissionsContainer::allow_all(),
+              )
               .await
               .ok()?
               .into_text_decoded()
@@ -987,7 +993,11 @@ impl ModuleRegistry {
     // spawn due to the lsp's `Send` requirement
     let file = deno_core::unsync::spawn(async move {
       file_fetcher
-        .fetch(&specifier, &PermissionsContainer::allow_all())
+        .fetch(
+          &specifier,
+          RequestDestination::Json,
+          &PermissionsContainer::allow_all(),
+        )
         .await
         .ok()?
         .into_text_decoded()
@@ -1053,7 +1063,11 @@ impl ModuleRegistry {
       let specifier = specifier.clone();
       async move {
         file_fetcher
-          .fetch(&specifier, &PermissionsContainer::allow_all())
+          .fetch(
+            &specifier,
+            RequestDestination::Json,
+            &PermissionsContainer::allow_all(),
+          )
           .await
           .map_err(|err| {
             error!(
@@ -1099,7 +1113,11 @@ impl ModuleRegistry {
       let specifier = specifier.clone();
       async move {
         file_fetcher
-          .fetch(&specifier, &PermissionsContainer::allow_all())
+          .fetch(
+            &specifier,
+            RequestDestination::Json,
+            &PermissionsContainer::allow_all(),
+          )
           .await
           .map_err(|err| {
             error!(
@@ -1133,6 +1151,7 @@ impl ModuleRegistry {
 #[cfg(test)]
 mod tests {
   use super::*;
+  use test_util::assert_contains;
   use test_util::TempDir;
 
   #[test]
@@ -1776,6 +1795,6 @@ mod tests {
     let result = module_registry.check_origin("https://example.com").await;
     assert!(result.is_err());
     let err = result.unwrap_err().to_string();
-    assert!(err.contains("EOF while parsing a value at line 1 column 0"));
+    assert_contains!(err, "EOF while parsing a value at line 1 column 0");
   }
 }

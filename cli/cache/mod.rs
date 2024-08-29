@@ -327,7 +327,6 @@ impl Loader for FetchCacher {
   }
 }
 
-// todo(dsherret): move this to deno_media_type?
 fn deno_graph_to_cache_destination(
   destination: deno_graph::source::RequestDestination,
 ) -> deno_cache_dir::RequestDestination {

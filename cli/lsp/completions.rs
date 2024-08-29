@@ -827,6 +827,7 @@ mod tests {
   use crate::lsp::documents::Documents;
   use crate::lsp::documents::LanguageId;
   use crate::lsp::search::tests::TestPackageSearchApi;
+  use deno_cache_dir::RequestDestination;
   use deno_core::resolve_url;
   use deno_graph::Range;
   use pretty_assertions::assert_eq;
@@ -856,7 +857,12 @@ mod tests {
         resolve_url(specifier).expect("failed to create specifier");
       cache
         .global()
-        .set(&specifier, HashMap::default(), source.as_bytes())
+        .set(
+          &specifier,
+          RequestDestination::Script,
+          HashMap::default(),
+          source.as_bytes(),
+        )
         .expect("could not cache file");
       let document = documents
         .get_or_load(&specifier, Some(&temp_dir.url().join("$").unwrap()));
