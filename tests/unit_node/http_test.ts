@@ -8,6 +8,7 @@ import url from "node:url";
 import https from "node:https";
 import net from "node:net";
 import fs from "node:fs";
+import { text } from "node:stream/consumers";
 
 import { assert, assertEquals, fail } from "@std/assert";
 import { assertSpyCalls, spy } from "@std/testing/mock";
@@ -1585,4 +1586,22 @@ Deno.test("[node/http] ClientRequest content-disposition header works", async ()
   await promise;
   assertEquals(body, "hello world");
   assertEquals(headers["content-disposition"], "attachment");
+});
+
+Deno.test("[node/http] In ClientRequest, option.hostname has precedence over options.host", async () => {
+  const responseReceived = Promise.withResolvers<void>();
+
+  new http.ClientRequest({
+    hostname: "localhost",
+    host: "invalid-hostname.test",
+    port: 4545,
+    path: "/http_version",
+  }).on("response", async (res) => {
+    const resText = await text(res)
+    assertEquals(res.statusCode, 200);
+    assertEquals(resText, "HTTP/1.1");
+    responseReceived.resolve();
+  }).end();
+
+  await responseReceived.promise;
 });
