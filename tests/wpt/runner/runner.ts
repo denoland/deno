@@ -209,23 +209,25 @@ async function generateBundle(location: URL): Promise<string> {
   }
   for (const script of scripts) {
     const src = script.getAttribute("src");
-    scriptContents.push([url.href, "const window = globalThis;"]);
     if (src === "/resources/testharnessreport.js") {
       const url = toFileUrl(
         join(ROOT_PATH, "./tests/wpt/runner/testharnessreport.js"),
       );
       const contents = await Deno.readTextFile(url);
+      scriptContents.push([url.href, "globalThis.window = globalThis;"]);
       scriptContents.push([url.href, contents]);
     } else if (src) {
       const url = new URL(src, location);
       const res = await fetch(url);
       if (res.ok) {
         const contents = await res.text();
+        scriptContents.push([url.href, "globalThis.window = globalThis;"]);
         scriptContents.push([url.href, contents]);
       }
     } else {
       const url = new URL(`#${inlineScriptCount}`, location);
       inlineScriptCount++;
+      scriptContents.push([url.href, "globalThis.window = globalThis;"]);
       scriptContents.push([url.href, script.textContent]);
     }
   }
