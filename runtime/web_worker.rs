@@ -505,7 +505,13 @@ impl WebWorker {
       ops::signal::deno_signal::init_ops_and_esm(),
       ops::tty::deno_tty::init_ops_and_esm(),
       ops::http::deno_http_runtime::init_ops_and_esm(),
-      ops::bootstrap::deno_bootstrap::init_ops_and_esm(None),
+      ops::bootstrap::deno_bootstrap::init_ops_and_esm(
+        if options.startup_snapshot.is_some() {
+          None
+        } else {
+          Some(Default::default())
+        },
+      ),
       deno_permissions_web_worker::init_ops_and_esm(
         permissions,
         enable_testing_features,
