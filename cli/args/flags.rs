@@ -2365,7 +2365,7 @@ TypeScript compiler cache: Subdirectory containing TS compiler output.",
       .arg(no_lock_arg())
       .arg(config_arg())
       .arg(import_map_arg())
-      .arg(node_modules_arg())
+      .args(node_modules_args())
       .arg(vendor_arg())
       .arg(
         Arg::new("json")
@@ -3180,7 +3180,7 @@ Remote modules and multiple modules may also be specified:
       .arg(config_arg())
       .arg(import_map_arg())
       .arg(lock_arg())
-      .arg(node_modules_arg())
+      .args(node_modules_args())
       .arg(vendor_arg())
       .arg(reload_arg())
       .arg(ca_file_arg())
@@ -3242,7 +3242,7 @@ fn compile_args_without_check_args(app: Command) -> Command {
     .arg(import_map_arg())
     .arg(no_remote_arg())
     .arg(no_npm_arg())
-    .arg(node_modules_arg())
+    .args(node_modules_args())
     .arg(vendor_arg())
     .arg(config_arg())
     .arg(no_config_arg())
@@ -3930,26 +3930,39 @@ fn node_modules_arg_parse(flags: &mut Flags, matches: &mut ArgMatches) {
   }
 }
 
-fn node_modules_arg() -> Arg {
+fn node_modules_args() -> Vec<Arg> {
   if *DENO_FUTURE {
-    Arg::new("node-modules")
-      .long("node-modules")
-      .num_args(0..=1)
-      .value_parser(|s: &str| NodeModulesMode::parse(s).map(|_| s.to_string()))
-      .value_name("MODE")
-      .require_equals(true)
-      .help("Sets the node modules management mode for npm packages")
-      .help_heading(DEPENDENCY_MANAGEMENT_HEADING)
+    vec![
+      Arg::new("node-modules")
+        .long("node-modules")
+        .num_args(0..=1)
+        .value_parser(|s: &str| {
+          NodeModulesMode::parse(s).map(|_| s.to_string())
+        })
+        .value_name("MODE")
+        .require_equals(true)
+        .help("Sets the node modules management mode for npm packages")
+        .help_heading(DEPENDENCY_MANAGEMENT_HEADING),
+      Arg::new("node-modules-dir")
+        .long("node-modules-dir")
+        .num_args(0..=1)
+        .value_parser(clap::builder::UnknownArgumentValueParser::suggest_arg(
+          "--node-modules",
+        ))
+        .require_equals(true),
+    ]
   } else {
-    Arg::new("node-modules-dir")
-      .long("node-modules-dir")
-      .num_args(0..=1)
-      .value_parser(value_parser!(bool))
-      .value_name("ENABLED")
-      .default_missing_value("true")
-      .require_equals(true)
-      .help("Enables or disables the use of a local node_modules folder for npm packages")
-      .help_heading(DEPENDENCY_MANAGEMENT_HEADING)
+    vec![
+      Arg::new("node-modules-dir")
+        .long("node-modules-dir")
+        .num_args(0..=1)
+        .value_parser(value_parser!(bool))
+        .value_name("ENABLED")
+        .default_missing_value("true")
+        .require_equals(true)
+        .help("Enables or disables the use of a local node_modules folder for npm packages")
+        .help_heading(DEPENDENCY_MANAGEMENT_HEADING)
+    ]
   }
 }
 
