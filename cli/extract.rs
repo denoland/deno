@@ -945,6 +945,33 @@ Deno.test("file:///main.ts$3-7.ts", async ()=>{
           media_type: MediaType::TypeScript,
         }],
       },
+      // example code has an exported item `foo` - because `export` must be at
+      // the top level, `foo` is "hoisted" to the top level instead of being
+      // wrapped in `Deno.test`.
+      Test {
+        input: Input {
+          source: r#"
+/**
+ * ```ts
+ * doSomething();
+ * export const foo = 42;
+ * ```
+ */
+export function doSomething() {}
+"#,
+          specifier: "file:///main.ts",
+        },
+        expected: vec![Expected {
+          source: r#"export const foo = 42;
+import { doSomething } from "file:///main.ts";
+Deno.test("file:///main.ts$3-7.ts", async ()=>{
+    doSomething();
+});
+"#,
+          specifier: "file:///main.ts$3-7.ts",
+          media_type: MediaType::TypeScript,
+        }],
+      },
       Test {
         input: Input {
           source: r#"
