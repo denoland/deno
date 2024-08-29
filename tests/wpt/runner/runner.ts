@@ -209,6 +209,7 @@ async function generateBundle(location: URL): Promise<string> {
   }
   for (const script of scripts) {
     const src = script.getAttribute("src");
+    scriptContents.push([url.href, "const window = globalThis;"]),
     if (src === "/resources/testharnessreport.js") {
       const url = toFileUrl(
         join(ROOT_PATH, "./tests/wpt/runner/testharnessreport.js"),
