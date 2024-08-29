@@ -59,7 +59,7 @@ test_util = { package = "test_server", path = "./tests/util/server" }
 denokv_proto = "0.8.1"
 denokv_remote = "0.8.1"
 # denokv_sqlite brings in bundled sqlite if we don't disable the default features
-denokv_sqlite = { default-features = false, version = "0.8.1" }
+denokv_sqlite = { default-features = false, version = "0.8.2" }
 
 # exts
 deno_broadcast_channel = { version = "0.160.0", path = "./ext/broadcast_channel" }
@@ -154,7 +154,7 @@ rand = "=0.8.5"
 regex = "^1.7.0"
 reqwest = { version = "=0.12.5", default-features = false, features = ["rustls-tls", "stream", "gzip", "brotli", "socks", "json", "http2"] } # pinned because of https://github.com/seanmonstar/reqwest/pull/1955
 ring = "^0.17.0"
-rusqlite = { version = "=0.29.0", features = ["unlock_notify", "bundled"] }
+rusqlite = { version = "0.32.0", features = ["unlock_notify", "bundled"] }
 rustls = { version = "0.23.11", default-features = false, features = ["logging", "std", "tls12", "ring"] }
 rustls-pemfile = "2"
 rustls-tokio-stream = "=0.3.0"
