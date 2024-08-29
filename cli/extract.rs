@@ -436,34 +436,6 @@ fn extract_sym_from_pat(pat: &ast::Pat) -> Vec<Atom> {
   atoms
 }
 
-#[derive(Default)]
-struct ImportedIdentifierCollector {
-  idents: Vec<ast::Ident>,
-}
-
-impl Visit for ImportedIdentifierCollector {
-  fn visit_import_named_specifier(
-    &mut self,
-    import_named_specifier: &ast::ImportNamedSpecifier,
-  ) {
-    self.idents.push(import_named_specifier.local.clone());
-  }
-
-  fn visit_import_default_specifier(
-    &mut self,
-    import_default_specifier: &ast::ImportDefaultSpecifier,
-  ) {
-    self.idents.push(import_default_specifier.local.clone());
-  }
-
-  fn visit_import_star_as_specifier(
-    &mut self,
-    import_star_as_specifier: &ast::ImportStarAsSpecifier,
-  ) {
-    self.idents.push(import_star_as_specifier.local.clone());
-  }
-}
-
 /// Generates a "pseudo" file from a given file by applying the following
 /// transformations:
 ///
