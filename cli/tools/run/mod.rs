@@ -196,7 +196,7 @@ pub async fn maybe_npm_install(factory: &CliFactory) -> Result<(), AnyError> {
   // opted into using a managed node_modules directory
   if factory
     .cli_options()?
-    .node_modules_mode()
+    .node_modules_mode()?
     .map(|m| m.uses_node_modules_dir())
     .unwrap_or(false)
   {

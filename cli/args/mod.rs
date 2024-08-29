@@ -1257,26 +1257,28 @@ impl CliOptions {
     }
   }
 
-  pub fn node_modules_mode(&self) -> Option<NodeModulesMode> {
+  pub fn node_modules_mode(&self) -> Result<Option<NodeModulesMode>, AnyError> {
     if *DENO_FUTURE {
-      self
-        .flags
-        .node_modules_mode
-        .or_else(|| self.workspace().node_modules_mode().ok().flatten())
+      if let Some(flag) = self.flags.node_modules_mode {
+        return Ok(Some(flag));
+      }
+      self.workspace().node_modules_mode().map_err(Into::into)
     } else {
-      self
-        .flags
-        .node_modules_dir
-        .or_else(|| self.workspace().node_modules_dir())
-        .map(|enabled| {
-          if enabled && self.byonm_enabled() {
-            NodeModulesMode::LocalManual
-          } else if enabled {
-            NodeModulesMode::LocalAuto
-          } else {
-            NodeModulesMode::GlobalAuto
-          }
-        })
+      Ok(
+        self
+          .flags
+          .node_modules_dir
+          .or_else(|| self.workspace().node_modules_dir())
+          .map(|enabled| {
+            if enabled && self.byonm_enabled() {
+              NodeModulesMode::LocalManual
+            } else if enabled {
+              NodeModulesMode::LocalAuto
+            } else {
+              NodeModulesMode::GlobalAuto
+            }
+          }),
+      )
     }
   }
 
@@ -1641,7 +1643,7 @@ impl CliOptions {
 
   pub fn use_byonm(&self) -> bool {
     if self.enable_future_features()
-      && self.node_modules_mode().is_none()
+      && self.node_modules_mode().ok().flatten().is_none()
       && self.maybe_node_modules_folder.is_some()
       && self
         .workspace()
@@ -1790,12 +1792,15 @@ fn resolve_node_modules_folder(
   deno_dir_provider: &Arc<DenoDirProvider>,
 ) -> Result<Option<PathBuf>, AnyError> {
   let use_node_modules_dir = if *DENO_FUTURE {
-    flags
-      .node_modules_mode
-      .or_else(|| workspace.node_modules_mode().ok().flatten())
-      .map(|m| m.uses_node_modules_dir())
-      .or(flags.vendor)
-      .or_else(|| maybe_config_file.and_then(|c| c.json.vendor))
+    if let Some(mode) = flags.node_modules_mode {
+      Some(mode.uses_node_modules_dir())
+    } else {
+      workspace
+        .node_modules_mode()?
+        .map(|m| m.uses_node_modules_dir())
+        .or(flags.vendor)
+        .or_else(|| maybe_config_file.and_then(|c| c.json.vendor))
+    }
   } else {
     flags
       .node_modules_dir
