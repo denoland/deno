@@ -9,7 +9,9 @@ import { windowOrWorkerGlobalScope } from "ext:runtime/98_global_scope_shared.js
 // to native `console` object provided by V8.
 const console = windowOrWorkerGlobalScope.console.value;
 
-export default Object.assign({}, console, { Console });
+Object.assign(console, { Console });
+
+export default console;
 
 export { Console };
 export const {

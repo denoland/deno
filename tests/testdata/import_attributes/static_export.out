@@ -1,7 +1,1 @@
-⚠️  Import assertions are deprecated. Use `with` keyword, instead of 'assert' keyword.
-
-export { default } from "./data.json" assert { type: "json" };
-
-  at file:///[WILDLINE]
-
 { a: "b", c: { d: 10 } }

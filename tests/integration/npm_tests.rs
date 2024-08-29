@@ -272,13 +272,6 @@ itest!(nonexistent_file_node_modules_dir {
   exit_code: 1,
 });
 
-itest!(invalid_package_name {
-  args: "run -A --quiet npm/invalid_package_name/main.js",
-  output: "npm/invalid_package_name/main.out",
-  envs: env_vars_for_npm_tests(),
-  exit_code: 1,
-});
-
 itest!(require_json {
   args: "run -A --quiet npm/require_json/main.js",
   output: "npm/require_json/main.out",
@@ -1218,7 +1211,7 @@ fn lock_file_lock_write() {
   let lock_file_content = r#"{
   "version": "4",
   "specifiers": {
-    "npm:cowsay@1.5.0": "npm:cowsay@1.5.0"
+    "npm:cowsay@1.5.0": "1.5.0"
   },
   "npm": {
     "ansi-regex@3.0.1": {
@@ -1428,7 +1421,7 @@ fn auto_discover_lock_file() {
   let lock_file_content = r#"{
     "version": "4",
     "specifiers": {
-      "npm:@denotest/bin": "npm:@denotest/bin@1.0.0"
+      "npm:@denotest/bin": "1.0.0"
     },
     "npm": {
       "@denotest/bin@1.0.0": {
