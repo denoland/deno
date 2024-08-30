@@ -88,10 +88,10 @@ async function dlint() {
       }),
     );
   }
-  await Promise.allSettled(pending);
-  for (const p of pending) {
-    if (p.status === "rejected") {
-      throw p.reason;
+  const results = await Promise.allSettled(pending);
+  for (const result of results) {
+    if (result.status === "rejected") {
+      throw new Error(result.reason);
     }
   }
 }
