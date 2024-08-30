@@ -1,7 +1,7 @@
 {
   "tempDir": true,
   "steps": [{
-    "args": "cache --lock --lock-write main.ts",
+    "args": "cache --lock --frozen=false main.ts",
     "output": "main.cache.out"
   }, {
     "args": [

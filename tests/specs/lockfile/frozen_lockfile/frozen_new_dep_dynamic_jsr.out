@@ -3,9 +3,9 @@ Download http://127.0.0.1:4250/@denotest/add/1.0.0_meta.json
 Download http://127.0.0.1:4250/@denotest/add/1.0.0/mod.ts
 error: Uncaught (in promise) TypeError: The lockfile is out of date. Run `deno cache --frozen=false` or rerun with `--frozen=false` to update it.
 changes:
- 4 | -    "npm:@denotest/add@1": "npm:@denotest/add@1.0.0"
- 4 | +    "jsr:@denotest/add@1": "jsr:@denotest/add@1.0.0",
- 5 | +    "npm:@denotest/add@1": "npm:@denotest/add@1.0.0"
+ 4 | -    "npm:@denotest/add@1": "1.0.0"
+ 4 | +    "jsr:@denotest/add@1": "1.0.0",
+ 5 | +    "npm:@denotest/add@1": "1.0.0"
  6 | +  },
  7 | +  "jsr": {
  8 | +    "@denotest/add@1.0.0": {

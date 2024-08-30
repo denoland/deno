@@ -76,7 +76,7 @@ impl ReplLanguageServer {
       .initialize(InitializeParams {
         process_id: None,
         root_path: None,
-        root_uri: Some(url_to_uri(&cwd_uri)),
+        root_uri: Some(url_to_uri(&cwd_uri).unwrap()),
         initialization_options: Some(
           serde_json::to_value(get_repl_workspace_settings()).unwrap(),
         ),
