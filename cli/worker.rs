@@ -116,6 +116,11 @@ pub struct CliMainWorkerOptions {
   pub skip_op_registration: bool,
   pub create_hmr_runner: Option<CreateHmrRunnerCb>,
   pub create_coverage_collector: Option<CreateCoverageCollectorCb>,
+  pub node_ipc: Option<i64>,
+  pub serve_port: Option<u16>,
+  pub serve_host: Option<String>,
+  pub disable_deprecated_api_warning: bool,
+  pub verbose_deprecated_api_warning: bool,
 }
 
 struct SharedWorkerState {
@@ -135,13 +140,8 @@ struct SharedWorkerState {
   maybe_inspector_server: Option<Arc<InspectorServer>>,
   maybe_lockfile: Option<Arc<CliLockfile>>,
   feature_checker: Arc<FeatureChecker>,
-  node_ipc: Option<i64>,
   enable_future_features: bool,
-  disable_deprecated_api_warning: bool,
-  verbose_deprecated_api_warning: bool,
   code_cache: Option<Arc<dyn code_cache::CodeCache>>,
-  serve_port: Option<u16>,
-  serve_host: Option<String>,
 }
 
 impl SharedWorkerState {
@@ -434,14 +434,8 @@ impl CliMainWorkerFactory {
     maybe_inspector_server: Option<Arc<InspectorServer>>,
     maybe_lockfile: Option<Arc<CliLockfile>>,
     feature_checker: Arc<FeatureChecker>,
-    options: CliMainWorkerOptions,
-    node_ipc: Option<i64>,
-    serve_port: Option<u16>,
-    serve_host: Option<String>,
-    enable_future_features: bool,
-    disable_deprecated_api_warning: bool,
-    verbose_deprecated_api_warning: bool,
     code_cache: Option<Arc<dyn code_cache::CodeCache>>,
+    options: CliMainWorkerOptions,
   ) -> Self {
     Self {
       shared: Arc::new(SharedWorkerState {
@@ -461,12 +455,8 @@ impl CliMainWorkerFactory {
         maybe_inspector_server,
         maybe_lockfile,
         feature_checker,
-        node_ipc,
-        serve_port,
-        serve_host,
-        enable_future_features,
-        disable_deprecated_api_warning,
-        verbose_deprecated_api_warning,
+        // TODO(2.0): remove?
+        enable_future_features: true,
         code_cache,
       }),
     }
@@ -602,13 +592,17 @@ impl CliMainWorkerFactory {
         has_node_modules_dir: shared.options.has_node_modules_dir,
         argv0: shared.options.argv0.clone(),
         node_debug: shared.options.node_debug.clone(),
-        node_ipc_fd: shared.node_ipc,
-        disable_deprecated_api_warning: shared.disable_deprecated_api_warning,
-        verbose_deprecated_api_warning: shared.verbose_deprecated_api_warning,
+        node_ipc_fd: shared.options.node_ipc,
+        disable_deprecated_api_warning: shared
+          .options
+          .disable_deprecated_api_warning,
+        verbose_deprecated_api_warning: shared
+          .options
+          .verbose_deprecated_api_warning,
         future: shared.enable_future_features,
         mode,
-        serve_port: shared.serve_port,
-        serve_host: shared.serve_host.clone(),
+        serve_port: shared.options.serve_port,
+        serve_host: shared.options.serve_host.clone(),
       },
       extensions: custom_extensions,
       startup_snapshot: crate::js::deno_isolate_init(),
@@ -801,12 +795,16 @@ fn create_web_worker_callback(
         argv0: shared.options.argv0.clone(),
         node_debug: shared.options.node_debug.clone(),
         node_ipc_fd: None,
-        disable_deprecated_api_warning: shared.disable_deprecated_api_warning,
-        verbose_deprecated_api_warning: shared.verbose_deprecated_api_warning,
+        disable_deprecated_api_warning: shared
+          .options
+          .disable_deprecated_api_warning,
+        verbose_deprecated_api_warning: shared
+          .options
+          .verbose_deprecated_api_warning,
         future: shared.enable_future_features,
         mode: WorkerExecutionMode::Worker,
-        serve_port: shared.serve_port,
-        serve_host: shared.serve_host.clone(),
+        serve_port: shared.options.serve_port,
+        serve_host: shared.options.serve_host.clone(),
       },
       extensions: vec![],
       startup_snapshot: crate::js::deno_isolate_init(),

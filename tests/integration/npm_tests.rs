@@ -2121,10 +2121,7 @@ itest!(require_resolve_url_paths {
 
 #[test]
 fn byonm_cjs_esm_packages() {
-  let test_context = TestContextBuilder::for_npm()
-    .env("DENO_UNSTABLE_BYONM", "1")
-    .use_temp_cwd()
-    .build();
+  let test_context = TestContextBuilder::for_npm().use_temp_cwd().build();
   let dir = test_context.temp_dir();
 
   test_context.run_npm("init -y");
@@ -2206,10 +2203,7 @@ console.log(getKind());
 
 #[test]
 fn future_byonm_cjs_esm_packages() {
-  let test_context = TestContextBuilder::for_npm()
-    .env("DENO_FUTURE", "1")
-    .use_temp_cwd()
-    .build();
+  let test_context = TestContextBuilder::for_npm().use_temp_cwd().build();
   let dir = test_context.temp_dir();
 
   test_context.run_npm("init -y");
@@ -2290,59 +2284,13 @@ console.log(getKind());
 }
 
 #[test]
-fn byonm_import_map() {
+fn node_modules_dir_manual_import_map() {
   let test_context = TestContextBuilder::for_npm().use_temp_cwd().build();
   let dir = test_context.temp_dir();
   dir.write(
     "deno.json",
     r#"{
-    "imports": {
-      "basic": "npm:@denotest/esm-basic"
-    },
-    "unstable": [ "byonm" ]
-}"#,
-  );
-  dir.write(
-    "package.json",
-    r#"{
-    "name": "my-project",
-    "version": "1.0.0",
-    "type": "module",
-    "dependencies": {
-      "@denotest/esm-basic": "^1.0"
-    }
-}"#,
-  );
-  test_context.run_npm("install");
-
-  dir.write(
-    "main.ts",
-    r#"
-// import map should resolve
-import { getValue } from "basic";
-// and resolving via node resolution
-import { setValue } from "@denotest/esm-basic";
-
-setValue(5);
-console.log(getValue());
-"#,
-  );
-  let output = test_context.new_command().args("run main.ts").run();
-  output.assert_matches_text("5\n");
-  let output = test_context.new_command().args("check main.ts").run();
-  output.assert_matches_text("Check file:///[WILDCARD]/main.ts\n");
-}
-
-#[test]
-fn future_byonm_import_map() {
-  let test_context = TestContextBuilder::for_npm()
-    .env("DENO_FUTURE", "1")
-    .use_temp_cwd()
-    .build();
-  let dir = test_context.temp_dir();
-  dir.write(
-    "deno.json",
-    r#"{
+    "nodeModulesDir": "manual",
     "imports": {
       "basic": "npm:@denotest/esm-basic"
     }
@@ -2381,10 +2329,7 @@ console.log(getValue());
 
 #[test]
 fn byonm_package_specifier_not_installed_and_invalid_subpath() {
-  let test_context = TestContextBuilder::for_npm()
-    .env("DENO_UNSTABLE_BYONM", "1")
-    .use_temp_cwd()
-    .build();
+  let test_context = TestContextBuilder::for_npm().use_temp_cwd().build();
   let dir = test_context.temp_dir();
   dir.path().join("package.json").write_json(&json!({
     "dependencies": {
@@ -2525,10 +2470,7 @@ console.log(getValue());
 
 #[test]
 fn future_byonm_npm_workspaces() {
-  let test_context = TestContextBuilder::for_npm()
-    .env("DENO_FUTURE", "1")
-    .use_temp_cwd()
-    .build();
+  let test_context = TestContextBuilder::for_npm().use_temp_cwd().build();
   let dir = test_context.temp_dir();
 
   dir.write(
@@ -2848,11 +2790,7 @@ fn different_nested_dep_byonm_future() {
 
   test_context.run_npm("install");
 
-  let output = test_context
-    .new_command()
-    .args("run main.js")
-    .env("DENO_FUTURE", "1")
-    .run();
+  let output = test_context.new_command().args("run main.js").run();
   output.assert_matches_file("npm/different_nested_dep/main.out");
 }
 

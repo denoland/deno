@@ -706,6 +706,8 @@ pub async fn run(
     None,
     None,
     feature_checker,
+    // Code cache is not supported for standalone binary yet.
+    None,
     CliMainWorkerOptions {
       argv: metadata.argv,
       log_level: WorkerLogLevel::Info,
@@ -732,17 +734,13 @@ pub async fn run(
       unstable: metadata.unstable_config.legacy_flag_enabled,
       create_hmr_runner: None,
       create_coverage_collector: None,
+      node_ipc: None,
+      serve_port: None,
+      serve_host: None,
+      // TODO(bartlomieju): temporarily disabled
+      disable_deprecated_api_warning: true,
+      verbose_deprecated_api_warning: false,
     },
-    None,
-    None,
-    None,
-    false,
-    // TODO(bartlomieju): temporarily disabled
-    // metadata.disable_deprecated_api_warning,
-    true,
-    false,
-    // Code cache is not supported for standalone binary yet.
-    None,
   );
 
   // Initialize v8 once from the main thread.

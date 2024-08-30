@@ -5,7 +5,7 @@ use deno_config::deno_json::DenoJsonCache;
 use deno_config::deno_json::FmtConfig;
 use deno_config::deno_json::FmtOptionsConfig;
 use deno_config::deno_json::LintConfig;
-use deno_config::deno_json::NodeModulesMode;
+use deno_config::deno_json::NodeModulesDirMode;
 use deno_config::deno_json::TestConfig;
 use deno_config::deno_json::TsConfig;
 use deno_config::fs::DenoConfigFs;
@@ -55,7 +55,6 @@ use crate::args::CliLockfile;
 use crate::args::ConfigFile;
 use crate::args::LintFlags;
 use crate::args::LintOptions;
-use crate::args::DENO_FUTURE;
 use crate::cache::FastInsecureHasher;
 use crate::file_fetcher::FileFetcher;
 use crate::lsp::logging::lsp_warn;
@@ -1388,24 +1387,11 @@ impl ConfigData {
       }
     }
 
-    let byonm = std::env::var("DENO_UNSTABLE_BYONM").is_ok()
-      || member_dir.workspace.has_unstable("byonm")
-      || (*DENO_FUTURE
-        && matches!(
-          member_dir.workspace.node_modules_mode().unwrap_or_default(),
-          Some(NodeModulesMode::LocalManual)
-        ))
-      || (
-        *DENO_FUTURE
-          && member_dir.workspace.package_jsons().next().is_some()
-          && member_dir
-            .workspace
-            .node_modules_mode()
-            .ok()
-            .flatten()
-            .is_none()
-        // TODO(2.0): remove
-      );
+    let node_modules_dir =
+      member_dir.workspace.node_modules_dir().unwrap_or_default();
+    let byonm = matches!(node_modules_dir, Some(NodeModulesDirMode::Manual))
+      || (member_dir.workspace.package_jsons().next().is_some()
+        && node_modules_dir.is_none());
     if byonm {
       lsp_log!("  Enabled 'bring your own node_modules'.");
     }
@@ -1879,27 +1865,16 @@ fn resolve_node_modules_dir(
   // `nodeModulesDir: true` setting in the deno.json file. This is to
   // reduce the chance of modifying someone's node_modules directory
   // without them having asked us to do so.
-  let node_modules_mode = workspace.node_modules_mode().ok().flatten();
-  let node_modules_dir_option = workspace.node_modules_dir();
-  let explicitly_disabled = if *DENO_FUTURE {
-    node_modules_mode == Some(NodeModulesMode::GlobalAuto)
-  } else {
-    node_modules_dir_option == Some(false)
-  };
+  let node_modules_mode = workspace.node_modules_dir().ok().flatten();
+  let explicitly_disabled = node_modules_mode == Some(NodeModulesDirMode::None);
   if explicitly_disabled {
     return None;
   }
-  let enabled = if *DENO_FUTURE {
-    byonm
-      || node_modules_mode
-        .map(|m| m.uses_node_modules_dir())
-        .unwrap_or(false)
-      || workspace.vendor_dir_path().is_some()
-  } else {
-    byonm
-      || workspace.node_modules_dir() == Some(true)
-      || workspace.vendor_dir_path().is_some()
-  };
+  let enabled = byonm
+    || node_modules_mode
+      .map(|m| m.uses_node_modules_dir())
+      .unwrap_or(false)
+    || workspace.vendor_dir_path().is_some();
 
   if !enabled {
     return None;

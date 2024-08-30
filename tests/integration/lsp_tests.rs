@@ -14625,11 +14625,8 @@ fn lsp_jupyter_byonm_diagnostics() {
 }
 
 #[test]
-fn lsp_deno_future_env_byonm() {
-  let context = TestContextBuilder::for_npm()
-    .env("DENO_FUTURE", "1")
-    .use_temp_cwd()
-    .build();
+fn lsp_byonm() {
+  let context = TestContextBuilder::for_npm().use_temp_cwd().build();
   let temp_dir = context.temp_dir();
   temp_dir.path().join("package.json").write_json(&json!({
     "dependencies": {
@@ -15187,7 +15184,6 @@ fn lsp_cjs_internal_types_default_export() {
     .use_http_server()
     .use_temp_cwd()
     .add_npm_env_vars()
-    .env("DENO_FUTURE", "1")
     .build();
   let temp_dir = context.temp_dir();
   temp_dir.write("deno.json", r#"{}"#);
@@ -15236,7 +15232,6 @@ fn lsp_cjs_import_dual() {
     .use_http_server()
     .use_temp_cwd()
     .add_npm_env_vars()
-    .env("DENO_FUTURE", "1")
     .build();
   let temp_dir = context.temp_dir();
   temp_dir.write("deno.json", r#"{}"#);
