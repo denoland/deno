@@ -1398,7 +1398,12 @@ impl ConfigData {
       || (
         *DENO_FUTURE
           && member_dir.workspace.package_jsons().next().is_some()
-          && member_dir.workspace.node_modules_dir().is_none()
+          && member_dir
+            .workspace
+            .node_modules_mode()
+            .ok()
+            .flatten()
+            .is_none()
         // TODO(2.0): remove
       );
     if byonm {
@@ -1874,13 +1879,28 @@ fn resolve_node_modules_dir(
   // `nodeModulesDir: true` setting in the deno.json file. This is to
   // reduce the chance of modifying someone's node_modules directory
   // without them having asked us to do so.
-  let explicitly_disabled = workspace.node_modules_dir() == Some(false);
+  let node_modules_mode = workspace.node_modules_mode().ok().flatten();
+  let node_modules_dir_option = workspace.node_modules_dir();
+  let explicitly_disabled = if *DENO_FUTURE {
+    node_modules_mode == Some(NodeModulesMode::GlobalAuto)
+  } else {
+    node_modules_dir_option == Some(false)
+  };
   if explicitly_disabled {
     return None;
   }
-  let enabled = byonm
-    || workspace.node_modules_dir() == Some(true)
-    || workspace.vendor_dir_path().is_some();
+  let enabled = if *DENO_FUTURE {
+    byonm
+      || node_modules_mode
+        .map(|m| m.uses_node_modules_dir())
+        .unwrap_or(false)
+      || workspace.vendor_dir_path().is_some()
+  } else {
+    byonm
+      || workspace.node_modules_dir() == Some(true)
+      || workspace.vendor_dir_path().is_some()
+  };
+
   if !enabled {
     return None;
   }
