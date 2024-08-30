@@ -10,6 +10,7 @@ use clap::ColorChoice;
 use clap::Command;
 use clap::ValueHint;
 use color_print::cstr;
+use deno_config::deno_json::NodeModulesMode;
 use deno_config::glob::FilePatterns;
 use deno_config::glob::PathOrPatternSet;
 use deno_core::anyhow::bail;
@@ -602,6 +603,7 @@ pub struct Flags {
   pub type_check_mode: TypeCheckMode,
   pub config_flag: ConfigFlag,
   pub node_modules_dir: Option<bool>,
+  pub node_modules_mode: Option<NodeModulesMode>,
   pub vendor: Option<bool>,
   pub enable_op_summary_metrics: bool,
   pub enable_testing_features: bool,
@@ -2363,7 +2365,7 @@ TypeScript compiler cache: Subdirectory containing TS compiler output.",
       .arg(no_lock_arg())
       .arg(config_arg())
       .arg(import_map_arg())
-      .arg(node_modules_dir_arg())
+      .args(node_modules_args())
       .arg(vendor_arg())
       .arg(
         Arg::new("json")
@@ -3178,7 +3180,7 @@ Remote modules and multiple modules may also be specified:
       .arg(config_arg())
       .arg(import_map_arg())
       .arg(lock_arg())
-      .arg(node_modules_dir_arg())
+      .args(node_modules_args())
       .arg(vendor_arg())
       .arg(reload_arg())
       .arg(ca_file_arg())
@@ -3240,7 +3242,7 @@ fn compile_args_without_check_args(app: Command) -> Command {
     .arg(import_map_arg())
     .arg(no_remote_arg())
     .arg(no_npm_arg())
-    .arg(node_modules_dir_arg())
+    .args(node_modules_args())
     .arg(vendor_arg())
     .arg(config_arg())
     .arg(no_config_arg())
@@ -3916,16 +3918,49 @@ fn no_npm_arg() -> Arg {
     .help_heading(DEPENDENCY_MANAGEMENT_HEADING)
 }
 
-fn node_modules_dir_arg() -> Arg {
-  Arg::new("node-modules-dir")
-    .long("node-modules-dir")
-    .num_args(0..=1)
-    .value_parser(value_parser!(bool))
-    .value_name("DIRECTORY")
-    .default_missing_value("true")
-    .require_equals(true)
-    .help("Enables or disables the use of a local node_modules folder for npm packages")
-    .help_heading(DEPENDENCY_MANAGEMENT_HEADING)
+fn node_modules_arg_parse(flags: &mut Flags, matches: &mut ArgMatches) {
+  if *DENO_FUTURE {
+    let value = matches.remove_one::<NodeModulesMode>("node-modules");
+    if let Some(mode) = value {
+      flags.node_modules_mode = Some(mode);
+    }
+  } else {
+    flags.node_modules_dir = matches.remove_one::<bool>("node-modules-dir");
+  }
+}
+
+fn node_modules_args() -> Vec<Arg> {
+  if *DENO_FUTURE {
+    vec![
+      Arg::new("node-modules")
+        .long("node-modules")
+        .num_args(0..=1)
+        .value_parser(NodeModulesMode::parse)
+        .value_name("MODE")
+        .require_equals(true)
+        .help("Sets the node modules management mode for npm packages")
+        .help_heading(DEPENDENCY_MANAGEMENT_HEADING),
+      Arg::new("node-modules-dir")
+        .long("node-modules-dir")
+        .num_args(0..=1)
+        .value_parser(clap::builder::UnknownArgumentValueParser::suggest_arg(
+          "--node-modules",
+        ))
+        .require_equals(true),
+    ]
+  } else {
+    vec![
+      Arg::new("node-modules-dir")
+        .long("node-modules-dir")
+        .num_args(0..=1)
+        .value_parser(value_parser!(bool))
+        .value_name("ENABLED")
+        .default_missing_value("true")
+        .require_equals(true)
+        .help("Enables or disables the use of a local node_modules folder for npm packages")
+        .help_heading(DEPENDENCY_MANAGEMENT_HEADING)
+    ]
+  }
 }
 
 fn vendor_arg() -> Arg {
@@ -5315,7 +5350,7 @@ fn node_modules_and_vendor_dir_arg_parse(
   flags: &mut Flags,
   matches: &mut ArgMatches,
 ) {
-  flags.node_modules_dir = matches.remove_one::<bool>("node-modules-dir");
+  node_modules_arg_parse(flags, matches);
   flags.vendor = matches.remove_one::<bool>("vendor");
 }
 
@@ -8209,8 +8244,12 @@ mod tests {
 
   #[test]
   fn install() {
-    let r =
-      flags_from_vec(svec!["deno", "install", "jsr:@std/http/file-server"]);
+    let r = flags_from_vec(svec![
+      "deno",
+      "install",
+      "-g",
+      "jsr:@std/http/file-server"
+    ]);
     assert_eq!(
       r.unwrap(),
       Flags {
@@ -8222,7 +8261,7 @@ mod tests {
             root: None,
             force: false,
           }),
-          global: false,
+          global: true,
         }),
         ..Flags::default()
       }
@@ -8255,7 +8294,7 @@ mod tests {
   #[test]
   fn install_with_flags() {
     #[rustfmt::skip]
-    let r = flags_from_vec(svec!["deno", "install", "--import-map", "import_map.json", "--no-remote", "--config", "tsconfig.json", "--no-check", "--unsafely-ignore-certificate-errors", "--reload", "--lock", "lock.json", "--cert", "example.crt", "--cached-only", "--allow-read", "--allow-net", "--v8-flags=--help", "--seed", "1", "--inspect=127.0.0.1:9229", "--name", "file_server", "--root", "/foo", "--force", "--env=.example.env", "jsr:@std/http/file-server", "foo", "bar"]);
+    let r = flags_from_vec(svec!["deno", "install", "--global", "--import-map", "import_map.json", "--no-remote", "--config", "tsconfig.json", "--no-check", "--unsafely-ignore-certificate-errors", "--reload", "--lock", "lock.json", "--cert", "example.crt", "--cached-only", "--allow-read", "--allow-net", "--v8-flags=--help", "--seed", "1", "--inspect=127.0.0.1:9229", "--name", "file_server", "--root", "/foo", "--force", "--env=.example.env", "jsr:@std/http/file-server", "foo", "bar"]);
     assert_eq!(
       r.unwrap(),
       Flags {
@@ -8267,7 +8306,7 @@ mod tests {
             root: Some("/foo".to_string()),
             force: true,
           }),
-          global: false,
+          global: true,
         }),
         import_map_path: Some("import_map.json".to_string()),
         no_remote: true,
@@ -8647,25 +8686,7 @@ mod tests {
           watch: None,
           bare: true,
         }),
-        node_modules_dir: Some(true),
-        code_cache_enabled: true,
-        ..Flags::default()
-      }
-    );
-
-    let r = flags_from_vec(svec![
-      "deno",
-      "run",
-      "--node-modules-dir=false",
-      "script.ts"
-    ]);
-    assert_eq!(
-      r.unwrap(),
-      Flags {
-        subcommand: DenoSubcommand::Run(RunFlags::new_default(
-          "script.ts".to_string(),
-        )),
-        node_modules_dir: Some(false),
+        node_modules_dir: None,
         code_cache_enabled: true,
         ..Flags::default()
       }

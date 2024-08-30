@@ -8,6 +8,7 @@ use deno_core::anyhow::bail;
 use deno_core::error::AnyError;
 use deno_core::serde_json::json;
 use deno_core::unsync::spawn;
+use lsp_types::Uri;
 use tower_lsp::lsp_types as lsp;
 use tower_lsp::lsp_types::ConfigurationItem;
 
@@ -17,7 +18,6 @@ use super::config::WorkspaceSettings;
 use super::config::SETTINGS_SECTION;
 use super::lsp_custom;
 use super::testing::lsp_custom as testing_lsp_custom;
-use super::urls::LspClientUrl;
 
 #[derive(Debug)]
 pub enum TestingNotification {
@@ -52,14 +52,11 @@ impl Client {
 
   pub async fn publish_diagnostics(
     &self,
-    uri: LspClientUrl,
+    uri: Uri,
     diags: Vec<lsp::Diagnostic>,
     version: Option<i32>,
   ) {
-    self
-      .0
-      .publish_diagnostics(uri.to_uri(), diags, version)
-      .await;
+    self.0.publish_diagnostics(uri, diags, version).await;
   }
 
   pub fn send_registry_state_notification(

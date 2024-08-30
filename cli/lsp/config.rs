@@ -5,6 +5,7 @@ use deno_config::deno_json::DenoJsonCache;
 use deno_config::deno_json::FmtConfig;
 use deno_config::deno_json::FmtOptionsConfig;
 use deno_config::deno_json::LintConfig;
+use deno_config::deno_json::NodeModulesMode;
 use deno_config::deno_json::TestConfig;
 use deno_config::deno_json::TsConfig;
 use deno_config::fs::DenoConfigFs;
@@ -850,7 +851,7 @@ impl Config {
     let mut config = Self::default();
     let mut folders = vec![];
     for root_url in root_urls {
-      let root_uri = url_to_uri(&root_url);
+      let root_uri = url_to_uri(&root_url).unwrap();
       let name = root_url.path_segments().and_then(|s| s.last());
       let name = name.unwrap_or_default().to_string();
       folders.push((
@@ -1390,8 +1391,21 @@ impl ConfigData {
     let byonm = std::env::var("DENO_UNSTABLE_BYONM").is_ok()
       || member_dir.workspace.has_unstable("byonm")
       || (*DENO_FUTURE
-        && member_dir.workspace.package_jsons().next().is_some()
-        && member_dir.workspace.node_modules_dir().is_none());
+        && matches!(
+          member_dir.workspace.node_modules_mode().unwrap_or_default(),
+          Some(NodeModulesMode::LocalManual)
+        ))
+      || (
+        *DENO_FUTURE
+          && member_dir.workspace.package_jsons().next().is_some()
+          && member_dir
+            .workspace
+            .node_modules_mode()
+            .ok()
+            .flatten()
+            .is_none()
+        // TODO(2.0): remove
+      );
     if byonm {
       lsp_log!("  Enabled 'bring your own node_modules'.");
     }
@@ -1865,13 +1879,28 @@ fn resolve_node_modules_dir(
   // `nodeModulesDir: true` setting in the deno.json file. This is to
   // reduce the chance of modifying someone's node_modules directory
   // without them having asked us to do so.
-  let explicitly_disabled = workspace.node_modules_dir() == Some(false);
+  let node_modules_mode = workspace.node_modules_mode().ok().flatten();
+  let node_modules_dir_option = workspace.node_modules_dir();
+  let explicitly_disabled = if *DENO_FUTURE {
+    node_modules_mode == Some(NodeModulesMode::GlobalAuto)
+  } else {
+    node_modules_dir_option == Some(false)
+  };
   if explicitly_disabled {
     return None;
   }
-  let enabled = byonm
-    || workspace.node_modules_dir() == Some(true)
-    || workspace.vendor_dir_path().is_some();
+  let enabled = if *DENO_FUTURE {
+    byonm
+      || node_modules_mode
+        .map(|m| m.uses_node_modules_dir())
+        .unwrap_or(false)
+      || workspace.vendor_dir_path().is_some()
+  } else {
+    byonm
+      || workspace.node_modules_dir() == Some(true)
+      || workspace.vendor_dir_path().is_some()
+  };
+
   if !enabled {
     return None;
   }

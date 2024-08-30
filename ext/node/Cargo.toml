@@ -2,7 +2,7 @@
 
 [package]
 name = "deno_node"
-version = "0.103.0"
+version = "0.104.0"
 authors.workspace = true
 edition.workspace = true
 license.workspace = true
@@ -17,7 +17,7 @@ path = "lib.rs"
 sync_fs = ["deno_package_json/sync", "node_resolver/sync"]
 
 [dependencies]
-aead-gcm-stream = "0.1"
+aead-gcm-stream = "0.3"
 aes.workspace = true
 async-trait.workspace = true
 base64.workspace = true
