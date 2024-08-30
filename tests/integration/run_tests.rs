@@ -1106,7 +1106,7 @@ fn lock_deno_json_package_json_deps_workspace() {
   // deno.json
   let deno_json = temp_dir.join("deno.json");
   deno_json.write_json(&json!({
-    "nodeModulesDir": true
+    "nodeModules": "local-auto"
   }));
 
   // package.json
