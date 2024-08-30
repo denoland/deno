@@ -394,6 +394,7 @@ impl_image_decoder_from_reader!(JpegDecoder<R>, ImageDecoderFromReaderType);
 impl_image_decoder_from_reader!(GifDecoder<R>, ImageDecoderFromReaderType);
 impl_image_decoder_from_reader!(BmpDecoder<R>, ImageDecoderFromReaderType);
 impl_image_decoder_from_reader!(IcoDecoder<R>, ImageDecoderFromReaderType);
+// The WebPDecoder decodes the first frame.
 impl_image_decoder_from_reader!(WebPDecoder<R>, ImageDecoderFromReaderType);
 
 fn decode_bitmap_data(
@@ -459,14 +460,6 @@ fn decode_bitmap_data(
             ImageDecoderFromReader::to_decoder(BufReader::new(Cursor::new(
               buf,
             )))?;
-          if decoder.has_animation() {
-            return Err(
-              DOMExceptionInvalidStateError::new(
-                "Animation image is not supported.",
-              )
-              .into(),
-            );
-          }
           decoder.to_intermediate_image()?
         }
         "" => {

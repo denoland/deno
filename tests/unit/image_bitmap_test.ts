@@ -268,13 +268,82 @@ Deno.test(async function imageBitmapFromBlobAnimatedImage() {
     assertEquals(Deno[Deno.internal].getBitmapData(imageBitmap), new Uint8Array([255, 0, 0, 255]));
   }
   {
-    // the chunk of animation webp is below (3 frames, 1x1, 8-bit, RGBA)
+    // the chunk of animated webp is below (3 frames, 1x1, 8-bit, RGBA)
+    //
     // [ 255, 0, 0, 127,
     //   0, 255, 0, 127,
     //   0, 0, 255, 127 ]
+
+    // the command to generate the webp file
+    // % img2webp -loop 0 0.png 1.png 2.png -o out.webp -o out.webp
+    // https://developers.google.com/speed/webp/docs/img2webp
+
+    // deno % webpinfo tests/testdata/image/1x1-3f-lossless-animated-semi-transparent.webp
+    // File: tests/testdata/image/1x1-3f-lossless-animated-semi-transparent.webp
+    // RIFF HEADER:
+    //   File size:    188
+    // Chunk VP8X at offset     12, length     18
+    //   ICCP: 0
+    //   Alpha: 1
+    //   EXIF: 0
+    //   XMP: 0
+    //   Animation: 1
+    //   Canvas size 1 x 1
+    // Chunk ANIM at offset     30, length     14
+    //   Background color:(ARGB) ff ff ff ff
+    //   Loop count      : 0
+    // Chunk ANMF at offset     44, length     48
+    //   Offset_X: 0
+    //   Offset_Y: 0
+    //   Width: 1
+    //   Height: 1
+    //   Duration: 100
+    //   Dispose: 0
+    //   Blend: 1
+    // Chunk VP8L at offset     68, length     24
+    //   Width: 1
+    //   Height: 1
+    //   Alpha: 1
+    //   Animation: 0
+    //   Format: Lossless (2)
+    // Chunk ANMF at offset     92, length     48
+    //   Offset_X: 0
+    //   Offset_Y: 0
+    //   Width: 1
+    //   Height: 1
+    //   Duration: 100
+    //   Dispose: 0
+    //   Blend: 1
+    // Chunk VP8L at offset    116, length     24
+    //   Width: 1
+    //   Height: 1
+    //   Alpha: 1
+    //   Animation: 0
+    //   Format: Lossless (2)
+    // Chunk ANMF at offset    140, length     48
+    //   Offset_X: 0
+    //   Offset_Y: 0
+    //   Width: 1
+    //   Height: 1
+    //   Duration: 100
+    //   Dispose: 0
+    //   Blend: 1
+    // Chunk VP8L at offset    164, length     24
+    //   Width: 1
+    //   Height: 1
+    //   Alpha: 1
+    //   Animation: 0
+    //   Format: Lossless (2)
+    // No error detected.
+
     const imageData = new Blob([
-      await Deno.readFile(`${prefix}/1x1-animation-rgba8.webp`),
+      await Deno.readFile(
+        `${prefix}/1x1-3f-lossless-animated-semi-transparent.webp`,
+      ),
     ], { type: "image/webp" });
-    await assertRejects(() => createImageBitmap(imageData), DOMException);
+    const imageBitmap = await createImageBitmap(imageData);
+    // @ts-ignore: Deno[Deno.internal].core allowed
+    // deno-fmt-ignore
+    assertEquals(Deno[Deno.internal].getBitmapData(imageBitmap), new Uint8Array([255, 0, 0, 127]));
   }
 });
