@@ -9,7 +9,7 @@ setTimeout(() => {
 Promise.resolve().then(() => {
   console.log("promise 1");
 });
-window.close();
+globalThis.close();
 console.log("sync 2");
 setTimeout(() => {
   console.log("setTimeout 2");

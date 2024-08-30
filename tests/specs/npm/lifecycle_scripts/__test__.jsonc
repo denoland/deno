@@ -81,6 +81,13 @@
         {
           "args": [
             "eval",
+            "Deno.removeSync('./deno.json')"
+          ],
+          "output": "[WILDCARD]"
+        },
+        {
+          "args": [
+            "eval",
             "Deno.writeTextFileSync('package.json', '{\"dependencies\":{ \"@denotest/node-lifecycle-scripts\": \"*\" } }')"
           ],
           "output": ""
@@ -128,7 +135,7 @@
           "output": ""
         },
         {
-          "args": "cache --allow-scripts --node-modules-dir=true no_deno_json.js",
+          "args": "cache --allow-scripts --node-modules=local-auto no_deno_json.js",
           "output": "no_deno_json.out"
         }
       ]
@@ -141,7 +148,7 @@
           "output": ""
         },
         {
-          "args": "cache --allow-scripts --node-modules-dir=true conflicting_bin.js",
+          "args": "cache --allow-scripts --node-modules=local-auto conflicting_bin.js",
           "output": "conflicting_bin.out"
         }
       ]
