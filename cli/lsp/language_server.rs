@@ -3611,11 +3611,6 @@ impl Inner {
             .as_ref()
             .map(|url| url.to_string())
         }),
-        node_modules_dir: Some(
-          config_data
-            .and_then(|d| d.node_modules_dir.as_ref())
-            .is_some(),
-        ),
         // bit of a hack to force the lsp to cache the @types/node package
         type_check_mode: crate::args::TypeCheckMode::Local,
         ..Default::default()

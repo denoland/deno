@@ -117,8 +117,8 @@ pub static DENO_DISABLE_PEDANTIC_NODE_WARNINGS: Lazy<bool> = Lazy::new(|| {
     .is_some()
 });
 
-pub static DENO_FUTURE: Lazy<bool> =
-  Lazy::new(|| std::env::var("DENO_FUTURE").ok().is_some());
+// TODO(2.0): remove this in a follow up.
+pub static DENO_FUTURE: Lazy<bool> = Lazy::new(|| true);
 
 pub fn jsr_url() -> &'static Url {
   static JSR_URL: Lazy<Url> = Lazy::new(|| {
@@ -1680,6 +1680,7 @@ impl CliOptions {
         }
       });
 
+    // TODO(2.0): remove this conditional and enable these features in `99_main.js` by default.
     if *DENO_FUTURE {
       let future_features = [
         deno_runtime::deno_ffi::UNSTABLE_FEATURE_NAME.to_string(),

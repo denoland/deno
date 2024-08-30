@@ -8757,9 +8757,9 @@ fn lsp_npm_specifier_unopened_file() {
   assert_eq!(output.status.code(), Some(0));
 
   let stdout = String::from_utf8(output.stdout).unwrap();
-  assert!(stdout.is_empty());
+  assert_eq!(stdout.as_str(), "");
   let stderr = String::from_utf8(output.stderr).unwrap();
-  assert!(stderr.is_empty());
+  assert_eq!(stderr.as_str(), "");
 
   // open main.ts, which imports other.ts (unopened)
   client.did_open(json!({
@@ -9442,7 +9442,7 @@ fn lsp_npmrc() {
   temp_dir.write(
     temp_dir.path().join("deno.json"),
     json!({
-      "nodeModulesDir": true,
+      "nodeModules": "local-auto",
     })
     .to_string(),
   );
@@ -12369,6 +12369,13 @@ fn lsp_node_modules_dir() {
     .use_temp_cwd()
     .build();
   let temp_dir = context.temp_dir();
+  temp_dir.write(
+    "deno.json",
+    json!({
+      "nodeModules": "global-auto",
+    })
+    .to_string(),
+  );
 
   // having a package.json should have no effect on whether
   // a node_modules dir is created
@@ -12406,7 +12413,7 @@ fn lsp_node_modules_dir() {
 
   temp_dir.write(
     temp_dir.path().join("deno.json"),
-    "{ \"nodeModulesDir\": true, \"lock\": false }\n",
+    "{ \"nodeModules\": \"local-auto\", \"lock\": false }\n",
   );
   let refresh_config = |client: &mut LspClient| {
     client.change_configuration(json!({ "deno": {
@@ -12442,7 +12449,7 @@ fn lsp_node_modules_dir() {
   // now add a lockfile and cache
   temp_dir.write(
     temp_dir.path().join("deno.json"),
-    "{ \"nodeModulesDir\": true }\n",
+    "{ \"nodeModules\": \"local-auto\" }\n",
   );
   refresh_config(&mut client);
   cache(&mut client);
@@ -13049,21 +13056,21 @@ fn lsp_deno_json_scopes_node_modules_dir() {
   temp_dir.write(
     "project1/deno.json",
     json!({
-      "nodeModulesDir": true,
+      "nodeModules": "local-auto",
     })
     .to_string(),
   );
   temp_dir.write(
     "project2/deno.json",
     json!({
-      "nodeModulesDir": true,
+      "nodeModules": "local-auto",
     })
     .to_string(),
   );
   temp_dir.write(
     "project2/project3/deno.json",
     json!({
-      "nodeModulesDir": true,
+      "nodeModules": "local-auto",
     })
     .to_string(),
   );
@@ -14240,7 +14247,7 @@ fn lsp_deno_json_workspace_node_modules_dir() {
     "project1/deno.json",
     json!({
       "workspace": ["project2"],
-      "nodeModulesDir": true,
+      "nodeModules": "local-auto",
     })
     .to_string(),
   );
@@ -14371,6 +14378,15 @@ fn lsp_npm_workspace() {
     .use_temp_cwd()
     .build();
   let temp_dir = context.temp_dir();
+  // TODO(nayeemrmn): Goto definition for local npm package imports should work
+  // even with byonm. Remove this when fixed.
+  temp_dir.write(
+    "deno.json",
+    json!({
+      "nodeModules": "local-auto",
+    })
+    .to_string(),
+  );
   temp_dir.write(
     "package.json",
     json!({
