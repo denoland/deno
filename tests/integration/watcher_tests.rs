@@ -1184,9 +1184,7 @@ async fn test_watch_doc() {
   wait_contains("Test finished", &mut stderr_lines).await;
 
   let foo_file = t.path().join("foo.ts");
-  // For windows
-  let foo_file_path_for_display =
-    foo_file.to_string().replace(std::path::MAIN_SEPARATOR, "/");
+  let foo_file_url = foo_file.url_file();
   foo_file.write(
     r#"
     export function add(a: number, b: number) {
@@ -1214,7 +1212,7 @@ async fn test_watch_doc() {
 
   assert_eq!(
     skip_restarting_line(&mut stderr_lines).await,
-    format!("Check file://{foo_file_path_for_display}$3-6.ts")
+    format!("Check {foo_file_url}$3-6.ts")
   );
   assert_eq!(
     next_line(&mut stderr_lines).await.unwrap(),
@@ -1227,7 +1225,7 @@ async fn test_watch_doc() {
   assert_eq!(next_line(&mut stderr_lines).await.unwrap(), "          ~~~");
   assert_eq!(
     next_line(&mut stderr_lines).await.unwrap(),
-    format!("    at file://{foo_file_path_for_display}$3-6.ts:3:11")
+    format!("    at {foo_file_url}$3-6.ts:3:11")
   );
   wait_contains("Test failed", &mut stderr_lines).await;
 
@@ -1250,7 +1248,7 @@ async fn test_watch_doc() {
   wait_contains("running 1 test from", &mut stdout_lines).await;
   assert_contains!(
     next_line(&mut stdout_lines).await.unwrap(),
-    &format!("{foo_file_path_for_display}$3-8.ts ... FAILED")
+    &format!("{foo_file_url}$3-8.ts ... FAILED")
   );
   wait_contains("ERRORS", &mut stdout_lines).await;
   wait_contains(
@@ -1284,7 +1282,7 @@ async fn test_watch_doc() {
   wait_contains("running 1 test from", &mut stdout_lines).await;
   assert_contains!(
     next_line(&mut stdout_lines).await.unwrap(),
-    &format!("file://{foo_file_path_for_display}$3-8.ts ... ok")
+    &format!("{foo_file_url}$3-8.ts ... ok")
   );
   wait_contains("ok | 1 passed | 0 failed", &mut stdout_lines).await;
 
