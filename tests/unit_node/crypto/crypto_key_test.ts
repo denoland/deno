@@ -532,7 +532,7 @@ MC4CAQAwBQYDK2VwBCIEIJ1hsZ3v/VpguoRK9JLsLMREScVpezJpGXA7rAMcrn9g
   assertEquals(pkcs8Actual, pkcs8Expected);
 });
 
-Deno.test("RSA export public JWK", async function () {
+Deno.test("RSA export public JWK", function () {
   const importKey = "-----BEGIN PUBLIC KEY-----\n" +
     "MIICIjANBgkqhkiG9w0BAQEFAAOCAg8AMIICCgKCAgEAqF66soiDvuqUB7ufWtuV\n" +
     "5a1nZIw90m9qHEl2MeNt66HeEjG2GeHDfF5a4uplutnAh3dwpFweHqGIyB16POTI\n" +
@@ -557,7 +557,7 @@ Deno.test("RSA export public JWK", async function () {
   });
 });
 
-Deno.test("EC export public jwk", async function () {
+Deno.test("EC export public jwk", function () {
   const key = "-----BEGIN PUBLIC KEY-----\n" +
     "MFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAEVEEIrFEZ+40Pk90LtKBQ3r7FGAPl\n" +
     "v4bvX9grC8bNiNiVAcyEKs+QZKQj/0/CUPJV10AmavrUoPk/7Wy0sejopQ==\n" +
@@ -573,7 +573,7 @@ Deno.test("EC export public jwk", async function () {
   });
 });
 
-Deno.test("Ed25519 export public jwk", async function () {
+Deno.test("Ed25519 export public jwk", function () {
   const key = "-----BEGIN PUBLIC KEY-----\n" +
     "MCowBQYDK2VwAyEAKCVFOD6Le61XM7HbN/MB/N06mX5bti2p50qjLvT1mzE=\n" +
     "-----END PUBLIC KEY-----\n";

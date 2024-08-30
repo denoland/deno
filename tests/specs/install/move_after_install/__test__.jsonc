@@ -15,8 +15,10 @@
       "output": "5\n"
     },
     {
-      "commandName": "mv",
-      "args": "test-project test-project-moved",
+      "args": [
+        "eval",
+        "Deno.renameSync('test-project', 'test-project-moved')"
+      ],
       "output": ""
     },
     {
