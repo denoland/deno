@@ -10,6 +10,7 @@ mod package_json;
 use deno_ast::SourceMapOption;
 use deno_config::deno_json::NodeModulesDirMode;
 use deno_config::workspace::CreateResolverOptions;
+use deno_config::workspace::FolderConfigs;
 use deno_config::workspace::PackageJsonDepResolution;
 use deno_config::workspace::VendorEnablement;
 use deno_config::workspace::Workspace;
@@ -51,7 +52,6 @@ use deno_core::anyhow::Context;
 use deno_core::error::AnyError;
 use deno_core::serde_json;
 use deno_core::url::Url;
-use deno_runtime::deno_node::PackageJson;
 use deno_runtime::deno_permissions::PermissionsOptions;
 use deno_runtime::deno_tls::deno_native_certs::load_native_certs;
 use deno_runtime::deno_tls::rustls;
@@ -64,6 +64,7 @@ use dotenvy::from_filename;
 use once_cell::sync::Lazy;
 use serde::Deserialize;
 use serde::Serialize;
+use std::borrow::Cow;
 use std::collections::HashMap;
 use std::env;
 use std::io::BufReader;
@@ -811,15 +812,12 @@ impl CliOptions {
     }
 
     let maybe_lockfile = maybe_lockfile.filter(|_| !force_global_cache);
-    let root_folder = start_dir.workspace.root_folder_configs();
     let deno_dir_provider =
       Arc::new(DenoDirProvider::new(flags.cache_path.clone()));
     let maybe_node_modules_folder = resolve_node_modules_folder(
       &initial_cwd,
       &flags,
       &start_dir.workspace,
-      root_folder.deno_json.as_deref(),
-      root_folder.pkg_json.as_deref(),
       &deno_dir_provider,
     )
     .with_context(|| "Resolving node_modules folder.")?;
@@ -1256,7 +1254,7 @@ impl CliOptions {
     if let Some(flag) = self.flags.node_modules_dir {
       return Ok(Some(flag));
     }
-    self.workspace().node_modules_dir().map_err(Into::into)
+    self.workspace().node_modules_dir_mode().map_err(Into::into)
   }
 
   pub fn vendor_dir_path(&self) -> Option<&PathBuf> {
@@ -1761,46 +1759,54 @@ fn resolve_node_modules_folder(
   cwd: &Path,
   flags: &Flags,
   workspace: &Workspace,
-  maybe_config_file: Option<&ConfigFile>,
-  maybe_package_json: Option<&PackageJson>,
   deno_dir_provider: &Arc<DenoDirProvider>,
 ) -> Result<Option<PathBuf>, AnyError> {
+  fn resolve_from_root(root_folder: &FolderConfigs, cwd: &Path) -> PathBuf {
+    root_folder
+      .deno_json
+      .as_ref()
+      .map(|c| Cow::Owned(c.dir_path()))
+      .or_else(|| {
+        root_folder
+          .pkg_json
+          .as_ref()
+          .map(|c| Cow::Borrowed(c.dir_path()))
+      })
+      .unwrap_or(Cow::Borrowed(cwd))
+      .join("node_modules")
+  }
+
+  let root_folder = workspace.root_folder_configs();
   let use_node_modules_dir = if let Some(mode) = flags.node_modules_dir {
     Some(mode.uses_node_modules_dir())
   } else {
     workspace
-      .node_modules_dir()?
+      .node_modules_dir_mode()?
       .map(|m| m.uses_node_modules_dir())
       .or(flags.vendor)
-      .or_else(|| maybe_config_file.and_then(|c| c.json.vendor))
+      .or_else(|| root_folder.deno_json.as_ref().and_then(|c| c.json.vendor))
   };
   let path = if use_node_modules_dir == Some(false) {
     return Ok(None);
   } else if let Some(state) = &*NPM_PROCESS_STATE {
     return Ok(state.local_node_modules_path.as_ref().map(PathBuf::from));
-  } else if let Some(package_json_path) = maybe_package_json.map(|c| &c.path) {
+  } else if workspace.package_jsons().next().is_some() {
+    let node_modules_dir = resolve_from_root(&root_folder, cwd);
     if let Ok(deno_dir) = deno_dir_provider.get_or_create() {
       // `deno_dir.root` can be symlink in macOS
       if let Ok(root) = canonicalize_path_maybe_not_exists(&deno_dir.root) {
-        if package_json_path.starts_with(root) {
+        if node_modules_dir.starts_with(root) {
           // if the package.json is in deno_dir, then do not use node_modules
           // next to it as local node_modules dir
           return Ok(None);
         }
       }
     }
-    // auto-discover the local_node_modules_folder when a package.json exists
-    // and it's not in deno_dir
-    package_json_path.parent().unwrap().join("node_modules")
+    node_modules_dir
   } else if use_node_modules_dir.is_none() {
     return Ok(None);
-  } else if let Some(config_path) = maybe_config_file
-    .as_ref()
-    .and_then(|c| c.specifier.to_file_path().ok())
-  {
-    config_path.parent().unwrap().join("node_modules")
   } else {
-    cwd.join("node_modules")
+    resolve_from_root(&root_folder, cwd)
   };
   Ok(Some(canonicalize_path_maybe_not_exists(&path)?))
 }
