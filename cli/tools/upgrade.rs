@@ -15,6 +15,7 @@ use crate::util::progress_bar::ProgressBarStyle;
 use crate::version;
 
 use async_trait::async_trait;
+use color_print::cstr;
 use deno_core::anyhow::bail;
 use deno_core::anyhow::Context;
 use deno_core::error::AnyError;
@@ -36,6 +37,8 @@ use std::time::Duration;
 const RELEASE_URL: &str = "https://github.com/denoland/deno/releases";
 const CANARY_URL: &str = "https://dl.deno.land/canary";
 const RC_URL: &str = "https://dl.deno.land/release";
+
+static EXAMPLE_USAGE: &str = cstr!("Example usage:\n  <p(245)>deno upgrade | deno upgrade 1.46 | deno upgrade canary</>");
 
 pub static ARCHIVE_NAME: Lazy<String> =
   Lazy::new(|| format!("deno-{}.zip", env!("TARGET")));
@@ -372,14 +375,14 @@ pub fn check_for_upgrades(
         log::info!(
           "{} {}",
           colors::green("A new canary release of Deno is available."),
-          colors::italic_gray("Run `deno upgrade --canary` to install it.")
+          colors::italic_gray("Run `deno upgrade canary` to install it.")
         );
       }
       ReleaseChannel::Rc => {
         log::info!(
           "{} {}",
           colors::green("A new release candidate of Deno is available."),
-          colors::italic_gray("Run `deno upgrade --rc` to install it.")
+          colors::italic_gray("Run `deno upgrade rc` to install it.")
         );
       }
       // TODO(bartlomieju)
@@ -647,12 +650,20 @@ impl RequestedVersion {
 
     let (channel, passed_version) = if is_canary {
       if !re_hash.is_match(&passed_version) {
-        bail!("Invalid commit hash passed");
+        bail!(
+          "Invalid commit hash passed ({})\n\n{}",
+          colors::gray(passed_version),
+          EXAMPLE_USAGE
+        );
       }
       (ReleaseChannel::Canary, passed_version)
     } else {
       let Ok(semver) = Version::parse_standard(&passed_version) else {
-        bail!("Invalid version passed");
+        bail!(
+          "Invalid version passed ({})\n\n{}",
+          colors::gray(passed_version),
+          EXAMPLE_USAGE
+        );
       };
 
       if semver.pre.contains(&"rc".to_string()) {

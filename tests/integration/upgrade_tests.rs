@@ -251,7 +251,7 @@ fn upgrade_prompt() {
     pty.expect_any(&[
       " 99999.99.99 Run `deno upgrade` to install it.",
       // it builds canary releases on main, so check for this in that case
-      "Run `deno upgrade --canary` to install it.",
+      "Run `deno upgrade canary` to install it.",
     ]);
   });
 }
