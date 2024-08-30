@@ -1,25 +1,5 @@
 {
-  "steps": [
-    {
-      "args": "run main.js",
-      "output": "error.out",
-      "exitCode": 1,
-      "envs": {
-        "DENO_FUTURE": "1"
-      }
-    },
-    // Running the same multiple times, should warn each time.
-    {
-      "args": "run main.js",
-      "output": "error.out",
-      "exitCode": 1,
-      "envs": {
-        "DENO_FUTURE": "1"
-      }
-    },
-    {
-      "args": "run main.js",
-      "output": "success.out"
-    }
-  ]
+  "args": "run main.js",
+  "output": "error.out",
+  "exitCode": 1
 }

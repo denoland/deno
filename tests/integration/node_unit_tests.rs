@@ -107,6 +107,7 @@ fn node_unit_test(test: String) {
 
   let mut deno = util::deno_cmd()
     .current_dir(util::root_path())
+    .env("DENO_FUTURE", "1")
     .arg("test")
     .arg("--config")
     .arg(deno_config_path())

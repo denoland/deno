@@ -9,11 +9,13 @@ use core::ptr::NonNull;
 use deno_core::error::type_error;
 use deno_core::error::AnyError;
 use deno_core::op2;
+use deno_core::parking_lot::RwLock;
 use deno_core::url::Url;
 use deno_core::ExternalOpsTracker;
 use deno_core::OpState;
 use deno_core::V8CrossThreadTaskSpawner;
 use std::cell::RefCell;
+use std::collections::HashMap;
 use std::path::Path;
 use std::path::PathBuf;
 use std::rc::Rc;
@@ -493,6 +495,15 @@ impl NapiPermissions for deno_permissions::PermissionsContainer {
   }
 }
 
+unsafe impl Sync for NapiModuleHandle {}
+unsafe impl Send for NapiModuleHandle {}
+#[derive(Clone, Copy)]
+struct NapiModuleHandle(*const NapiModule);
+
+static NAPI_LOADED_MODULES: std::sync::LazyLock<
+  RwLock<HashMap<String, NapiModuleHandle>>,
+> = std::sync::LazyLock::new(|| RwLock::new(HashMap::new()));
+
 #[op2(reentrant)]
 fn op_napi_open<NP, 'scope>(
   scope: &mut v8::HandleScope<'scope>,
@@ -575,8 +586,20 @@ where
   let exports = v8::Object::new(scope);
 
   let maybe_exports = if let Some(module_to_register) = maybe_module {
+    NAPI_LOADED_MODULES
+      .write()
+      .insert(path, NapiModuleHandle(module_to_register));
     // SAFETY: napi_register_module guarantees that `module_to_register` is valid.
     let nm = unsafe { &*module_to_register };
+    assert_eq!(nm.nm_version, 1);
+    // SAFETY: we are going blind, calling the register function on the other side.
+    unsafe { (nm.nm_register_func)(env_ptr, exports.into()) }
+  } else if let Some(module_to_register) =
+    { NAPI_LOADED_MODULES.read().get(&path).copied() }
+  {
+    // SAFETY: this originated from `napi_register_module`, so the
+    // pointer should still be valid.
+    let nm = unsafe { &*module_to_register.0 };
     assert_eq!(nm.nm_version, 1);
     // SAFETY: we are going blind, calling the register function on the other side.
     unsafe { (nm.nm_register_func)(env_ptr, exports.into()) }

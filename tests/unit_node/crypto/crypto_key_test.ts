@@ -440,7 +440,41 @@ Deno.test("create private key with invalid utf-8 string", function () {
   );
 });
 
-Deno.test("Ed25519 jwk public key #1", function () {
+Deno.test("RSA JWK import public key", function () {
+  const key = {
+    "kty": "RSA",
+    "alg": "RS256",
+    "n":
+      "5Ddosh0Bze5zy-nQ6gAJFpBfL13muCXrTyKYTps61bmnUxpp3bJnt_2N2MXGfuxBENO0Rbc8DhVPd-lNa4H3XjMwIBdxDAwW32z3pfVr8pHyWxeFtK4SCbvX8B0C6n8ZHigJsvdiCNmoj7_LO_QUzIXmXLFvEXtAqzD_hCr0pJxRIr0BrBjYwL23PkxOYzBR-URcd4Ilji6410Eh9NXycyFzKOcqZ7rjG_PnRyUX1EBZH_PN4RExjJuXYgiqhtU-tDjQFzXLhvwAd5s3ThP9lax27A6MUpjLSKkNy-dG5tlaA0QvECfDzA-5eQjcL_OfvbHlKHQH9zPh-U9Q8gsf3iXmbJrypkalUiTCqnzJu5TgZORSg6zmxNyOCz53YxBHEEaF8yROPwxWDylZfC4fxCRTdoAyFgmFLfMbiepV7AZ24KLj4jfMbGfKpkbPq0xirnSAS-3vbOfkgko5X420AttP8Z1ZBbFSD20Ath_TA9PSHiRCak4AXvOoCZg0t-WuMwzkd_B2V_JZZSTb1yBWrKTL1QzUamqlufjdWuz7M-O2Wkb2cyDSESVNuQyJgDkYb0AOWo0BaN3wbOeT_D4cSrjQoo01xQQCZHQ9SVR4QzUQNAiQcSriqEiptHYhbi6R5_GfGAeMHmlJa4atO2hense0Qk4vDc2fc-sbnQ1jPiE",
+    "e": "AQAB",
+    "key_ops": [
+      "verify",
+    ],
+    "ext": true,
+  };
+
+  const keyObject = createPublicKey({ key, format: "jwk" });
+  const expectedPem = `-----BEGIN PUBLIC KEY-----
+MIICIjANBgkqhkiG9w0BAQEFAAOCAg8AMIICCgKCAgEA5Ddosh0Bze5zy+nQ6gAJ
+FpBfL13muCXrTyKYTps61bmnUxpp3bJnt/2N2MXGfuxBENO0Rbc8DhVPd+lNa4H3
+XjMwIBdxDAwW32z3pfVr8pHyWxeFtK4SCbvX8B0C6n8ZHigJsvdiCNmoj7/LO/QU
+zIXmXLFvEXtAqzD/hCr0pJxRIr0BrBjYwL23PkxOYzBR+URcd4Ilji6410Eh9NXy
+cyFzKOcqZ7rjG/PnRyUX1EBZH/PN4RExjJuXYgiqhtU+tDjQFzXLhvwAd5s3ThP9
+lax27A6MUpjLSKkNy+dG5tlaA0QvECfDzA+5eQjcL/OfvbHlKHQH9zPh+U9Q8gsf
+3iXmbJrypkalUiTCqnzJu5TgZORSg6zmxNyOCz53YxBHEEaF8yROPwxWDylZfC4f
+xCRTdoAyFgmFLfMbiepV7AZ24KLj4jfMbGfKpkbPq0xirnSAS+3vbOfkgko5X420
+AttP8Z1ZBbFSD20Ath/TA9PSHiRCak4AXvOoCZg0t+WuMwzkd/B2V/JZZSTb1yBW
+rKTL1QzUamqlufjdWuz7M+O2Wkb2cyDSESVNuQyJgDkYb0AOWo0BaN3wbOeT/D4c
+SrjQoo01xQQCZHQ9SVR4QzUQNAiQcSriqEiptHYhbi6R5/GfGAeMHmlJa4atO2he
+nse0Qk4vDc2fc+sbnQ1jPiECAwEAAQ==
+-----END PUBLIC KEY-----
+`;
+
+  const pem = keyObject.export({ format: "pem", type: "spki" });
+  assertEquals(pem, expectedPem);
+});
+
+Deno.test("Ed25519 import jwk public key #1", function () {
   const key = {
     "kty": "OKP",
     "crv": "Ed25519",
@@ -460,7 +494,7 @@ MCowBQYDK2VwAyEA11qYAYKxCrfVS/7TyWQHOg7hcvPapiMlrwIaaPcHURo=
   assertEquals(spkiActual, spkiExpected);
 });
 
-Deno.test("Ed25519 jwk public key #2", function () {
+Deno.test("Ed25519 import jwk public key #2", function () {
   const key = {
     "kty": "OKP",
     "crv": "Ed25519",
@@ -478,7 +512,7 @@ MCowBQYDK2VwAyEA11qYAYKxCrfVS/7TyWQHOg7hcvPapiMlrwIaaPcHURo=
   assertEquals(spki, spkiExpected);
 });
 
-Deno.test("Ed25519 jwk private key", function () {
+Deno.test("Ed25519 import jwk private key", function () {
   const key = {
     "kty": "OKP",
     "crv": "Ed25519",
@@ -496,4 +530,104 @@ MC4CAQAwBQYDK2VwBCIEIJ1hsZ3v/VpguoRK9JLsLMREScVpezJpGXA7rAMcrn9g
 `;
 
   assertEquals(pkcs8Actual, pkcs8Expected);
+});
+
+Deno.test("RSA export public JWK", function () {
+  const importKey = "-----BEGIN PUBLIC KEY-----\n" +
+    "MIICIjANBgkqhkiG9w0BAQEFAAOCAg8AMIICCgKCAgEAqF66soiDvuqUB7ufWtuV\n" +
+    "5a1nZIw90m9qHEl2MeNt66HeEjG2GeHDfF5a4uplutnAh3dwpFweHqGIyB16POTI\n" +
+    "YysJ/rMPKoWZFQ1LEcr23rSgmL49YpifDetl5V/UR+zEygL3UzzZmbdjuyZz+Sjt\n" +
+    "FY+SAoZ9XPCqIaNha9uVFcurW44MvAkhzQR/yy5NWPaJ/yv4oI/exvuZnUwwBHvH\n" +
+    "gwVchfr7Jh5LRmYTPeyuI1lUOovVzE+0Ty/2tFfrm2hpedqYXvEuVu+yJzfuNoLf\n" +
+    "TGfz15J76eoRdFTCTdaG/MQnrzxZnIlmIpdpTPl0xVOwjKRpeYK06GS7EAa7cS9D\n" +
+    "dnsHkF/Mr9Yys5jw/49fXqh9BH3Iy0p5YmeQIMep04CUDFj7MZ+3SK8b0mA4SscH\n" +
+    "dIraZZynLZ1crM0ECAJBldM4TKqIDACYGU7XyRV+419cPJvYybHys5m7thS3QI7E\n" +
+    "LTpMV+WoYtZ5xeBCm7z5i3iPY6eSh2JtTu6oa3ALwwnXPAaZqDIFer8SoQNyVb0v\n" +
+    "EU8bVDeGXm1ha5gcC5KxqqnadO/WDD6Jke79Ji04sBEKTTodSOARyTGpGFEcC3Nn\n" +
+    "xSSScGCxMrGJuTDtnz+Eh6l6ysT+Nei9ZRMxNu8sZKAR43XkVXxF/OdSCbftFOAs\n" +
+    "wyPJtyhQALGPcK5cWPQS2sUCAwEAAQ==\n" +
+    "-----END PUBLIC KEY-----\n";
+  const publicKey = createPublicKey(importKey);
+
+  const jwk = publicKey.export({ format: "jwk" });
+  assertEquals(jwk, {
+    kty: "RSA",
+    n: "qF66soiDvuqUB7ufWtuV5a1nZIw90m9qHEl2MeNt66HeEjG2GeHDfF5a4uplutnAh3dwpFweHqGIyB16POTIYysJ_rMPKoWZFQ1LEcr23rSgmL49YpifDetl5V_UR-zEygL3UzzZmbdjuyZz-SjtFY-SAoZ9XPCqIaNha9uVFcurW44MvAkhzQR_yy5NWPaJ_yv4oI_exvuZnUwwBHvHgwVchfr7Jh5LRmYTPeyuI1lUOovVzE-0Ty_2tFfrm2hpedqYXvEuVu-yJzfuNoLfTGfz15J76eoRdFTCTdaG_MQnrzxZnIlmIpdpTPl0xVOwjKRpeYK06GS7EAa7cS9DdnsHkF_Mr9Yys5jw_49fXqh9BH3Iy0p5YmeQIMep04CUDFj7MZ-3SK8b0mA4SscHdIraZZynLZ1crM0ECAJBldM4TKqIDACYGU7XyRV-419cPJvYybHys5m7thS3QI7ELTpMV-WoYtZ5xeBCm7z5i3iPY6eSh2JtTu6oa3ALwwnXPAaZqDIFer8SoQNyVb0vEU8bVDeGXm1ha5gcC5KxqqnadO_WDD6Jke79Ji04sBEKTTodSOARyTGpGFEcC3NnxSSScGCxMrGJuTDtnz-Eh6l6ysT-Nei9ZRMxNu8sZKAR43XkVXxF_OdSCbftFOAswyPJtyhQALGPcK5cWPQS2sU",
+    e: "AQAB",
+  });
+});
+
+Deno.test("EC export public jwk", function () {
+  const key = "-----BEGIN PUBLIC KEY-----\n" +
+    "MFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAEVEEIrFEZ+40Pk90LtKBQ3r7FGAPl\n" +
+    "v4bvX9grC8bNiNiVAcyEKs+QZKQj/0/CUPJV10AmavrUoPk/7Wy0sejopQ==\n" +
+    "-----END PUBLIC KEY-----\n";
+  const publicKey = createPublicKey(key);
+
+  const jwk = publicKey.export({ format: "jwk" });
+  assertEquals(jwk, {
+    kty: "EC",
+    x: "VEEIrFEZ-40Pk90LtKBQ3r7FGAPlv4bvX9grC8bNiNg",
+    y: "lQHMhCrPkGSkI_9PwlDyVddAJmr61KD5P-1stLHo6KU",
+    crv: "P-256",
+  });
+});
+
+Deno.test("Ed25519 export public jwk", function () {
+  const key = "-----BEGIN PUBLIC KEY-----\n" +
+    "MCowBQYDK2VwAyEAKCVFOD6Le61XM7HbN/MB/N06mX5bti2p50qjLvT1mzE=\n" +
+    "-----END PUBLIC KEY-----\n";
+  const publicKey = createPublicKey(key);
+
+  const jwk = publicKey.export({ format: "jwk" });
+  assertEquals(jwk, {
+    crv: "Ed25519",
+    x: "KCVFOD6Le61XM7HbN_MB_N06mX5bti2p50qjLvT1mzE",
+    kty: "OKP",
+  });
+});
+
+Deno.test("EC import jwk public key", function () {
+  const publicKey = createPublicKey({
+    key: {
+      kty: "EC",
+      x: "_GGuz19zab5J70zyiUK6sAM5mHqUbsY8H6U2TnVlt-k",
+      y: "TcZG5efXZDIhNGDp6XuujoJqOEJU2D2ckjG9nOnSPIQ",
+      crv: "P-256",
+    },
+    format: "jwk",
+  });
+
+  const publicSpki = publicKey.export({ type: "spki", format: "pem" });
+  const spkiExpected = `-----BEGIN PUBLIC KEY-----
+MFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAE/GGuz19zab5J70zyiUK6sAM5mHqU
+bsY8H6U2TnVlt+lNxkbl59dkMiE0YOnpe66Ogmo4QlTYPZySMb2c6dI8hA==
+-----END PUBLIC KEY-----
+`;
+
+  assertEquals(publicSpki, spkiExpected);
+});
+
+Deno.test("EC import jwk private key", function () {
+  const privateKey = createPrivateKey({
+    key: {
+      kty: "EC",
+      x: "_GGuz19zab5J70zyiUK6sAM5mHqUbsY8H6U2TnVlt-k",
+      y: "TcZG5efXZDIhNGDp6XuujoJqOEJU2D2ckjG9nOnSPIQ",
+      crv: "P-256",
+      d: "Wobjne0GqlB_1NynKu19rsw7zBHa94tKcWIxwIb88m8",
+    },
+    format: "jwk",
+  });
+
+  const privatePkcs8 = privateKey.export({ type: "pkcs8", format: "pem" });
+
+  const pkcs8Expected = `-----BEGIN PRIVATE KEY-----
+MIGHAgEAMBMGByqGSM49AgEGCCqGSM49AwEHBG0wawIBAQQgWobjne0GqlB/1Nyn
+Ku19rsw7zBHa94tKcWIxwIb88m+hRANCAAT8Ya7PX3NpvknvTPKJQrqwAzmYepRu
+xjwfpTZOdWW36U3GRuXn12QyITRg6el7ro6CajhCVNg9nJIxvZzp0jyE
+-----END PRIVATE KEY-----
+`;
+
+  assertEquals(privatePkcs8, pkcs8Expected);
 });

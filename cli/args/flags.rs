@@ -10,6 +10,7 @@ use clap::ColorChoice;
 use clap::Command;
 use clap::ValueHint;
 use color_print::cstr;
+use deno_config::deno_json::NodeModulesMode;
 use deno_config::glob::FilePatterns;
 use deno_config::glob::PathOrPatternSet;
 use deno_core::anyhow::bail;
@@ -602,6 +603,7 @@ pub struct Flags {
   pub type_check_mode: TypeCheckMode,
   pub config_flag: ConfigFlag,
   pub node_modules_dir: Option<bool>,
+  pub node_modules_mode: Option<NodeModulesMode>,
   pub vendor: Option<bool>,
   pub enable_op_summary_metrics: bool,
   pub enable_testing_features: bool,
@@ -613,8 +615,6 @@ pub struct Flags {
   pub inspect_wait: Option<SocketAddr>,
   pub inspect: Option<SocketAddr>,
   pub location: Option<Url>,
-  // TODO(bartlomieju): deprecated, to be removed in Deno 2.
-  pub lock_write: bool,
   pub lock: Option<String>,
   pub log_level: Option<Level>,
   pub no_remote: bool,
@@ -2362,11 +2362,10 @@ TypeScript compiler cache: Subdirectory containing TS compiler output.",
       .arg(no_remote_arg())
       .arg(no_npm_arg())
       .arg(lock_arg())
-      .arg(lock_write_arg())
       .arg(no_lock_arg())
       .arg(config_arg())
       .arg(import_map_arg())
-      .arg(node_modules_dir_arg())
+      .args(node_modules_args())
       .arg(vendor_arg())
       .arg(
         Arg::new("json")
@@ -3181,7 +3180,7 @@ Remote modules and multiple modules may also be specified:
       .arg(config_arg())
       .arg(import_map_arg())
       .arg(lock_arg())
-      .arg(node_modules_dir_arg())
+      .args(node_modules_args())
       .arg(vendor_arg())
       .arg(reload_arg())
       .arg(ca_file_arg())
@@ -3243,13 +3242,12 @@ fn compile_args_without_check_args(app: Command) -> Command {
     .arg(import_map_arg())
     .arg(no_remote_arg())
     .arg(no_npm_arg())
-    .arg(node_modules_dir_arg())
+    .args(node_modules_args())
     .arg(vendor_arg())
     .arg(config_arg())
     .arg(no_config_arg())
     .arg(reload_arg())
     .arg(lock_arg())
-    .arg(lock_write_arg())
     .arg(no_lock_arg())
     .arg(ca_file_arg())
     .arg(unsafely_ignore_certificate_errors_arg())
@@ -3875,16 +3873,6 @@ fn lock_arg() -> Arg {
     .help_heading(DEPENDENCY_MANAGEMENT_HEADING)
 }
 
-// TODO(bartlomieju): deprecated, to be removed in Deno 2.
-fn lock_write_arg() -> Arg {
-  Arg::new("lock-write")
-    .action(ArgAction::SetTrue)
-    .long("lock-write")
-    .help("Force overwriting the lock file")
-    .conflicts_with("no-lock")
-    .hide(true)
-}
-
 fn no_lock_arg() -> Arg {
   Arg::new("no-lock")
     .long("no-lock")
@@ -3930,16 +3918,49 @@ fn no_npm_arg() -> Arg {
     .help_heading(DEPENDENCY_MANAGEMENT_HEADING)
 }
 
-fn node_modules_dir_arg() -> Arg {
-  Arg::new("node-modules-dir")
-    .long("node-modules-dir")
-    .num_args(0..=1)
-    .value_parser(value_parser!(bool))
-    .value_name("DIRECTORY")
-    .default_missing_value("true")
-    .require_equals(true)
-    .help("Enables or disables the use of a local node_modules folder for npm packages")
-    .help_heading(DEPENDENCY_MANAGEMENT_HEADING)
+fn node_modules_arg_parse(flags: &mut Flags, matches: &mut ArgMatches) {
+  if *DENO_FUTURE {
+    let value = matches.remove_one::<NodeModulesMode>("node-modules");
+    if let Some(mode) = value {
+      flags.node_modules_mode = Some(mode);
+    }
+  } else {
+    flags.node_modules_dir = matches.remove_one::<bool>("node-modules-dir");
+  }
+}
+
+fn node_modules_args() -> Vec<Arg> {
+  if *DENO_FUTURE {
+    vec![
+      Arg::new("node-modules")
+        .long("node-modules")
+        .num_args(0..=1)
+        .value_parser(NodeModulesMode::parse)
+        .value_name("MODE")
+        .require_equals(true)
+        .help("Sets the node modules management mode for npm packages")
+        .help_heading(DEPENDENCY_MANAGEMENT_HEADING),
+      Arg::new("node-modules-dir")
+        .long("node-modules-dir")
+        .num_args(0..=1)
+        .value_parser(clap::builder::UnknownArgumentValueParser::suggest_arg(
+          "--node-modules",
+        ))
+        .require_equals(true),
+    ]
+  } else {
+    vec![
+      Arg::new("node-modules-dir")
+        .long("node-modules-dir")
+        .num_args(0..=1)
+        .value_parser(value_parser!(bool))
+        .value_name("ENABLED")
+        .default_missing_value("true")
+        .require_equals(true)
+        .help("Enables or disables the use of a local node_modules folder for npm packages")
+        .help_heading(DEPENDENCY_MANAGEMENT_HEADING)
+    ]
+  }
 }
 
 fn vendor_arg() -> Arg {
@@ -4042,18 +4063,23 @@ impl Iterator for UnstableArgsIter {
       })
       .help_heading(UNSTABLE_HEADING)
     } else if self.idx > 3 {
-      let (flag_name, help, _) =
-        crate::UNSTABLE_GRANULAR_FLAGS.get(self.idx - 4)?;
-      Arg::new(format!("unstable-{}", flag_name))
-        .long(format!("unstable-{}", flag_name))
-        .help(help)
+      let granular_flag = crate::UNSTABLE_GRANULAR_FLAGS.get(self.idx - 4)?;
+      Arg::new(format!("unstable-{}", granular_flag.name))
+        .long(format!("unstable-{}", granular_flag.name))
+        .help(granular_flag.help_text)
         .action(ArgAction::SetTrue)
         .hide(true)
         .help_heading(UNSTABLE_HEADING)
         // we don't render long help, so using it here as a sort of metadata
-        .long_help(match self.cfg {
-          UnstableArgsConfig::None | UnstableArgsConfig::ResolutionOnly => None,
-          UnstableArgsConfig::ResolutionAndRuntime => Some("true"),
+        .long_help(if granular_flag.show_in_help {
+          match self.cfg {
+            UnstableArgsConfig::None | UnstableArgsConfig::ResolutionOnly => {
+              None
+            }
+            UnstableArgsConfig::ResolutionAndRuntime => Some("true"),
+          }
+        } else {
+          None
         })
     } else {
       return None;
@@ -5283,10 +5309,6 @@ fn check_arg_parse(flags: &mut Flags, matches: &mut ArgMatches) {
 fn lock_args_parse(flags: &mut Flags, matches: &mut ArgMatches) {
   lock_arg_parse(flags, matches);
   no_lock_arg_parse(flags, matches);
-  // TODO(bartlomieju): deprecated, to be removed in Deno 2.
-  if matches.get_flag("lock-write") {
-    flags.lock_write = true;
-  }
 }
 
 fn lock_arg_parse(flags: &mut Flags, matches: &mut ArgMatches) {
@@ -5328,7 +5350,7 @@ fn node_modules_and_vendor_dir_arg_parse(
   flags: &mut Flags,
   matches: &mut ArgMatches,
 ) {
-  flags.node_modules_dir = matches.remove_one::<bool>("node-modules-dir");
+  node_modules_arg_parse(flags, matches);
   flags.vendor = matches.remove_one::<bool>("vendor");
 }
 
@@ -5405,9 +5427,12 @@ fn unstable_args_parse(
     matches.get_flag("unstable-sloppy-imports");
 
   if matches!(cfg, UnstableArgsConfig::ResolutionAndRuntime) {
-    for (name, _, _) in crate::UNSTABLE_GRANULAR_FLAGS {
-      if matches.get_flag(&format!("unstable-{}", name)) {
-        flags.unstable_config.features.push(name.to_string());
+    for granular_flag in crate::UNSTABLE_GRANULAR_FLAGS {
+      if matches.get_flag(&format!("unstable-{}", granular_flag.name)) {
+        flags
+          .unstable_config
+          .features
+          .push(granular_flag.name.to_string());
       }
     }
   }
@@ -7103,7 +7128,7 @@ mod tests {
   #[test]
   fn eval_with_flags() {
     #[rustfmt::skip]
-    let r = flags_from_vec(svec!["deno", "eval", "--import-map", "import_map.json", "--no-remote", "--config", "tsconfig.json", "--no-check", "--reload", "--lock", "lock.json", "--lock-write", "--cert", "example.crt", "--cached-only", "--location", "https:foo", "--v8-flags=--help", "--seed", "1", "--inspect=127.0.0.1:9229", "--env=.example.env", "42"]);
+    let r = flags_from_vec(svec!["deno", "eval", "--import-map", "import_map.json", "--no-remote", "--config", "tsconfig.json", "--no-check", "--reload", "--lock", "lock.json", "--cert", "example.crt", "--cached-only", "--location", "https:foo", "--v8-flags=--help", "--seed", "1", "--inspect=127.0.0.1:9229", "--env=.example.env", "42"]);
     assert_eq!(
       r.unwrap(),
       Flags {
@@ -7117,7 +7142,6 @@ mod tests {
         type_check_mode: TypeCheckMode::None,
         reload: true,
         lock: Some(String::from("lock.json")),
-        lock_write: true,
         ca_data: Some(CaData::File("example.crt".to_string())),
         cached_only: true,
         location: Some(Url::parse("https://foo/").unwrap()),
@@ -7226,7 +7250,7 @@ mod tests {
   #[test]
   fn repl_with_flags() {
     #[rustfmt::skip]
-    let r = flags_from_vec(svec!["deno", "repl", "-A", "--import-map", "import_map.json", "--no-remote", "--config", "tsconfig.json", "--no-check", "--reload", "--lock", "lock.json", "--lock-write", "--cert", "example.crt", "--cached-only", "--location", "https:foo", "--v8-flags=--help", "--seed", "1", "--inspect=127.0.0.1:9229", "--unsafely-ignore-certificate-errors", "--env=.example.env"]);
+    let r = flags_from_vec(svec!["deno", "repl", "-A", "--import-map", "import_map.json", "--no-remote", "--config", "tsconfig.json", "--no-check", "--reload", "--lock", "lock.json", "--cert", "example.crt", "--cached-only", "--location", "https:foo", "--v8-flags=--help", "--seed", "1", "--inspect=127.0.0.1:9229", "--unsafely-ignore-certificate-errors", "--env=.example.env"]);
     assert_eq!(
       r.unwrap(),
       Flags {
@@ -7241,7 +7265,6 @@ mod tests {
         type_check_mode: TypeCheckMode::None,
         reload: true,
         lock: Some(String::from("lock.json")),
-        lock_write: true,
         ca_data: Some(CaData::File("example.crt".to_string())),
         cached_only: true,
         location: Some(Url::parse("https://foo/").unwrap()),
@@ -7893,13 +7916,8 @@ mod tests {
 
   #[test]
   fn bundle_with_lock() {
-    let r = flags_from_vec(svec![
-      "deno",
-      "bundle",
-      "--lock-write",
-      "--lock=lock.json",
-      "source.ts"
-    ]);
+    let r =
+      flags_from_vec(svec!["deno", "bundle", "--lock=lock.json", "source.ts"]);
     assert_eq!(
       r.unwrap(),
       Flags {
@@ -7909,7 +7927,6 @@ mod tests {
           watch: Default::default(),
         }),
         type_check_mode: TypeCheckMode::Local,
-        lock_write: true,
         lock: Some(String::from("lock.json")),
         ..Flags::default()
       }
@@ -8227,8 +8244,12 @@ mod tests {
 
   #[test]
   fn install() {
-    let r =
-      flags_from_vec(svec!["deno", "install", "jsr:@std/http/file-server"]);
+    let r = flags_from_vec(svec![
+      "deno",
+      "install",
+      "-g",
+      "jsr:@std/http/file-server"
+    ]);
     assert_eq!(
       r.unwrap(),
       Flags {
@@ -8240,7 +8261,7 @@ mod tests {
             root: None,
             force: false,
           }),
-          global: false,
+          global: true,
         }),
         ..Flags::default()
       }
@@ -8273,7 +8294,7 @@ mod tests {
   #[test]
   fn install_with_flags() {
     #[rustfmt::skip]
-    let r = flags_from_vec(svec!["deno", "install", "--import-map", "import_map.json", "--no-remote", "--config", "tsconfig.json", "--no-check", "--unsafely-ignore-certificate-errors", "--reload", "--lock", "lock.json", "--lock-write", "--cert", "example.crt", "--cached-only", "--allow-read", "--allow-net", "--v8-flags=--help", "--seed", "1", "--inspect=127.0.0.1:9229", "--name", "file_server", "--root", "/foo", "--force", "--env=.example.env", "jsr:@std/http/file-server", "foo", "bar"]);
+    let r = flags_from_vec(svec!["deno", "install", "--global", "--import-map", "import_map.json", "--no-remote", "--config", "tsconfig.json", "--no-check", "--unsafely-ignore-certificate-errors", "--reload", "--lock", "lock.json", "--cert", "example.crt", "--cached-only", "--allow-read", "--allow-net", "--v8-flags=--help", "--seed", "1", "--inspect=127.0.0.1:9229", "--name", "file_server", "--root", "/foo", "--force", "--env=.example.env", "jsr:@std/http/file-server", "foo", "bar"]);
     assert_eq!(
       r.unwrap(),
       Flags {
@@ -8285,7 +8306,7 @@ mod tests {
             root: Some("/foo".to_string()),
             force: true,
           }),
-          global: false,
+          global: true,
         }),
         import_map_path: Some("import_map.json".to_string()),
         no_remote: true,
@@ -8293,7 +8314,6 @@ mod tests {
         type_check_mode: TypeCheckMode::None,
         reload: true,
         lock: Some(String::from("lock.json")),
-        lock_write: true,
         ca_data: Some(CaData::File("example.crt".to_string())),
         cached_only: true,
         v8_flags: svec!["--help", "--random-seed=1"],
@@ -8666,25 +8686,7 @@ mod tests {
           watch: None,
           bare: true,
         }),
-        node_modules_dir: Some(true),
-        code_cache_enabled: true,
-        ..Flags::default()
-      }
-    );
-
-    let r = flags_from_vec(svec![
-      "deno",
-      "run",
-      "--node-modules-dir=false",
-      "script.ts"
-    ]);
-    assert_eq!(
-      r.unwrap(),
-      Flags {
-        subcommand: DenoSubcommand::Run(RunFlags::new_default(
-          "script.ts".to_string(),
-        )),
-        node_modules_dir: Some(false),
+        node_modules_dir: None,
         code_cache_enabled: true,
         ..Flags::default()
       }
@@ -8868,111 +8870,6 @@ mod tests {
         ..Flags::default()
       }
     );
-  }
-
-  #[test]
-  fn lock_write() {
-    let r = flags_from_vec(svec![
-      "deno",
-      "run",
-      "--lock-write",
-      "--lock=lock.json",
-      "script.ts"
-    ]);
-    assert_eq!(
-      r.unwrap(),
-      Flags {
-        subcommand: DenoSubcommand::Run(RunFlags::new_default(
-          "script.ts".to_string(),
-        )),
-        lock_write: true,
-        lock: Some(String::from("lock.json")),
-        code_cache_enabled: true,
-        ..Flags::default()
-      }
-    );
-
-    let r = flags_from_vec(svec!["deno", "--no-lock", "script.ts"]);
-    assert_eq!(
-      r.unwrap(),
-      Flags {
-        subcommand: DenoSubcommand::Run(RunFlags {
-          script: "script.ts".to_string(),
-          watch: None,
-          bare: true,
-        }),
-        no_lock: true,
-        code_cache_enabled: true,
-        ..Flags::default()
-      }
-    );
-
-    let r = flags_from_vec(svec![
-      "deno",
-      "run",
-      "--lock",
-      "--lock-write",
-      "script.ts"
-    ]);
-    assert_eq!(
-      r.unwrap(),
-      Flags {
-        subcommand: DenoSubcommand::Run(RunFlags::new_default(
-          "script.ts".to_string(),
-        )),
-        lock_write: true,
-        lock: Some(String::from("./deno.lock")),
-        code_cache_enabled: true,
-        ..Flags::default()
-      }
-    );
-
-    let r = flags_from_vec(svec![
-      "deno",
-      "run",
-      "--lock-write",
-      "--lock",
-      "lock.json",
-      "script.ts"
-    ]);
-    assert_eq!(
-      r.unwrap(),
-      Flags {
-        subcommand: DenoSubcommand::Run(RunFlags::new_default(
-          "script.ts".to_string(),
-        )),
-        lock_write: true,
-        lock: Some(String::from("lock.json")),
-        code_cache_enabled: true,
-        ..Flags::default()
-      }
-    );
-
-    let r = flags_from_vec(svec!["deno", "run", "--lock-write", "script.ts"]);
-    assert_eq!(
-      r.unwrap(),
-      Flags {
-        subcommand: DenoSubcommand::Run(RunFlags::new_default(
-          "script.ts".to_string(),
-        )),
-        lock_write: true,
-        code_cache_enabled: true,
-        ..Flags::default()
-      }
-    );
-
-    let r =
-      flags_from_vec(svec!["deno", "run", "--lock", "--no-lock", "script.ts"]);
-    assert!(r.is_err(),);
-
-    let r = flags_from_vec(svec![
-      "deno",
-      "run",
-      "--lock-write",
-      "--no-lock",
-      "script.ts"
-    ]);
-    assert!(r.is_err(),);
   }
 
   #[test]
@@ -10100,7 +9997,7 @@ mod tests {
   #[test]
   fn compile_with_flags() {
     #[rustfmt::skip]
-    let r = flags_from_vec(svec!["deno", "compile", "--import-map", "import_map.json", "--no-remote", "--config", "tsconfig.json", "--no-check", "--unsafely-ignore-certificate-errors", "--reload", "--lock", "lock.json", "--lock-write", "--cert", "example.crt", "--cached-only", "--location", "https:foo", "--allow-read", "--allow-net", "--v8-flags=--help", "--seed", "1", "--no-terminal", "--icon", "favicon.ico", "--output", "colors", "--env=.example.env", "https://examples.deno.land/color-logging.ts", "foo", "bar", "-p", "8080"]);
+    let r = flags_from_vec(svec!["deno", "compile", "--import-map", "import_map.json", "--no-remote", "--config", "tsconfig.json", "--no-check", "--unsafely-ignore-certificate-errors", "--reload", "--lock", "lock.json", "--cert", "example.crt", "--cached-only", "--location", "https:foo", "--allow-read", "--allow-net", "--v8-flags=--help", "--seed", "1", "--no-terminal", "--icon", "favicon.ico", "--output", "colors", "--env=.example.env", "https://examples.deno.land/color-logging.ts", "foo", "bar", "-p", "8080"]);
     assert_eq!(
       r.unwrap(),
       Flags {
@@ -10120,7 +10017,6 @@ mod tests {
         type_check_mode: TypeCheckMode::None,
         reload: true,
         lock: Some(String::from("lock.json")),
-        lock_write: true,
         ca_data: Some(CaData::File("example.crt".to_string())),
         cached_only: true,
         location: Some(Url::parse("https://foo/").unwrap()),

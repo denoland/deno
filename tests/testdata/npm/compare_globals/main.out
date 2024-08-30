@@ -10,21 +10,21 @@ Check file:///[WILDCARD]/npm/compare_globals/main.ts
 true
 true
 []
-false
-function
-function
-function
-undefined
-false
-false
+setTimeout 1 false
+setTimeout 2 function
+setTimeout 3 function
+setTimeout 4 function
+setTimeout 5 undefined
+process 1 false
+process 2 false
 true
 true
-true
-true
-true
-true
+window 1 false
+window 2 false
 false
 false
+self 1 true
+self 2 true
 false
 false
 bar

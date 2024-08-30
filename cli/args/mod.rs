@@ -8,6 +8,7 @@ mod lockfile;
 mod package_json;
 
 use deno_ast::SourceMapOption;
+use deno_config::deno_json::NodeModulesMode;
 use deno_config::workspace::CreateResolverOptions;
 use deno_config::workspace::PackageJsonDepResolution;
 use deno_config::workspace::VendorEnablement;
@@ -116,8 +117,8 @@ pub static DENO_DISABLE_PEDANTIC_NODE_WARNINGS: Lazy<bool> = Lazy::new(|| {
     .is_some()
 });
 
-pub static DENO_FUTURE: Lazy<bool> =
-  Lazy::new(|| std::env::var("DENO_FUTURE").ok().is_some());
+// TODO(2.0): remove this in a follow up.
+pub static DENO_FUTURE: Lazy<bool> = Lazy::new(|| true);
 
 pub fn jsr_url() -> &'static Url {
   static JSR_URL: Lazy<Url> = Lazy::new(|| {
@@ -819,6 +820,7 @@ impl CliOptions {
     let maybe_node_modules_folder = resolve_node_modules_folder(
       &initial_cwd,
       &flags,
+      &start_dir.workspace,
       root_folder.deno_json.as_deref(),
       root_folder.pkg_json.as_deref(),
       &deno_dir_provider,
@@ -917,6 +919,10 @@ impl CliOptions {
     };
 
     for diagnostic in start_dir.workspace.diagnostics() {
+      // TODO(2.0): remove
+      if matches!(diagnostic.kind, deno_config::workspace::WorkspaceDiagnosticKind::DeprecatedNodeModulesDirOption(_)) && !*DENO_FUTURE {
+        continue;
+      }
       log::warn!("{} {}", colors::yellow("Warning"), diagnostic);
     }
 
@@ -1255,11 +1261,29 @@ impl CliOptions {
     }
   }
 
-  pub fn node_modules_dir_enablement(&self) -> Option<bool> {
-    self
-      .flags
-      .node_modules_dir
-      .or_else(|| self.workspace().node_modules_dir())
+  pub fn node_modules_mode(&self) -> Result<Option<NodeModulesMode>, AnyError> {
+    if *DENO_FUTURE {
+      if let Some(flag) = self.flags.node_modules_mode {
+        return Ok(Some(flag));
+      }
+      self.workspace().node_modules_mode().map_err(Into::into)
+    } else {
+      Ok(
+        self
+          .flags
+          .node_modules_dir
+          .or_else(|| self.workspace().node_modules_dir())
+          .map(|enabled| {
+            if enabled && self.byonm_enabled() {
+              NodeModulesMode::LocalManual
+            } else if enabled {
+              NodeModulesMode::LocalAuto
+            } else {
+              NodeModulesMode::GlobalAuto
+            }
+          }),
+      )
+    }
   }
 
   pub fn vendor_dir_path(&self) -> Option<&PathBuf> {
@@ -1611,9 +1635,20 @@ impl CliOptions {
       || self.workspace().has_unstable("bare-node-builtins")
   }
 
+  fn byonm_enabled(&self) -> bool {
+    // check if enabled via unstable
+    self.flags.unstable_config.byonm
+      || NPM_PROCESS_STATE
+        .as_ref()
+        .map(|s| matches!(s.kind, NpmProcessStateKind::Byonm))
+        .unwrap_or(false)
+      || self.workspace().has_unstable("byonm")
+  }
+
   pub fn use_byonm(&self) -> bool {
     if self.enable_future_features()
-      && self.node_modules_dir_enablement().is_none()
+      && self.node_modules_mode().ok().flatten().is_none()
+      && self.maybe_node_modules_folder.is_some()
       && self
         .workspace()
         .config_folders()
@@ -1623,13 +1658,7 @@ impl CliOptions {
       return true;
     }
 
-    // check if enabled via unstable
-    self.flags.unstable_config.byonm
-      || NPM_PROCESS_STATE
-        .as_ref()
-        .map(|s| matches!(s.kind, NpmProcessStateKind::Byonm))
-        .unwrap_or(false)
-      || self.workspace().has_unstable("byonm")
+    self.byonm_enabled()
   }
 
   pub fn unstable_sloppy_imports(&self) -> bool {
@@ -1651,6 +1680,7 @@ impl CliOptions {
         }
       });
 
+    // TODO(2.0): remove this conditional and enable these features in `99_main.js` by default.
     if *DENO_FUTURE {
       let future_features = [
         deno_runtime::deno_ffi::UNSTABLE_FEATURE_NAME.to_string(),
@@ -1669,7 +1699,7 @@ impl CliOptions {
       let mut all_valid_unstable_flags: Vec<&str> =
         crate::UNSTABLE_GRANULAR_FLAGS
           .iter()
-          .map(|granular_flag| granular_flag.0)
+          .map(|granular_flag| granular_flag.name)
           .collect();
 
       let mut another_unstable_flags = Vec::from([
@@ -1761,15 +1791,28 @@ impl CliOptions {
 fn resolve_node_modules_folder(
   cwd: &Path,
   flags: &Flags,
+  workspace: &Workspace,
   maybe_config_file: Option<&ConfigFile>,
   maybe_package_json: Option<&PackageJson>,
   deno_dir_provider: &Arc<DenoDirProvider>,
 ) -> Result<Option<PathBuf>, AnyError> {
-  let use_node_modules_dir = flags
-    .node_modules_dir
-    .or_else(|| maybe_config_file.and_then(|c| c.json.node_modules_dir))
-    .or(flags.vendor)
-    .or_else(|| maybe_config_file.and_then(|c| c.json.vendor));
+  let use_node_modules_dir = if *DENO_FUTURE {
+    if let Some(mode) = flags.node_modules_mode {
+      Some(mode.uses_node_modules_dir())
+    } else {
+      workspace
+        .node_modules_mode()?
+        .map(|m| m.uses_node_modules_dir())
+        .or(flags.vendor)
+        .or_else(|| maybe_config_file.and_then(|c| c.json.vendor))
+    }
+  } else {
+    flags
+      .node_modules_dir
+      .or_else(|| maybe_config_file.and_then(|c| c.json.node_modules_dir))
+      .or(flags.vendor)
+      .or_else(|| maybe_config_file.and_then(|c| c.json.vendor))
+  };
   let path = if use_node_modules_dir == Some(false) {
     return Ok(None);
   } else if let Some(state) = &*NPM_PROCESS_STATE {
@@ -1886,19 +1929,19 @@ pub fn npm_pkg_req_ref_to_binary_command(
 pub fn config_to_deno_graph_workspace_member(
   config: &ConfigFile,
 ) -> Result<deno_graph::WorkspaceMember, AnyError> {
-  let nv = deno_semver::package::PackageNv {
-    name: match &config.json.name {
-      Some(name) => name.clone(),
-      None => bail!("Missing 'name' field in config file."),
-    },
-    version: match &config.json.version {
-      Some(name) => deno_semver::Version::parse_standard(name)?,
-      None => bail!("Missing 'version' field in config file."),
-    },
+  let name = match &config.json.name {
+    Some(name) => name.clone(),
+    None => bail!("Missing 'name' field in config file."),
+  };
+  let version = match &config.json.version {
+    Some(name) => Some(deno_semver::Version::parse_standard(name)?),
+    // todo(#25230): remove
+    None => bail!("Missing 'version' field in config file."),
   };
   Ok(deno_graph::WorkspaceMember {
     base: config.specifier.join("./").unwrap(),
-    nv,
+    name,
+    version,
     exports: config.to_exports_config()?.into_map(),
   })
 }
