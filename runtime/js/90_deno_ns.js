@@ -186,14 +186,6 @@ const denoNs = {
   connectTls: tls.connectTls,
   listenTls: tls.listenTls,
   startTls: tls.startTls,
-  shutdown(rid) {
-    internals.warnOnDeprecatedApi(
-      "Deno.shutdown()",
-      new Error().stack,
-      "Use `Deno.Conn.closeWrite()` instead.",
-    );
-    net.shutdown(rid);
-  },
   fstatSync(rid) {
     internals.warnOnDeprecatedApi(
       "Deno.fstatSync()",
