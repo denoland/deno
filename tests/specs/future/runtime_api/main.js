@@ -17,7 +17,6 @@ console.log("Deno.funlock is", Deno.funlock);
 console.log("Deno.funlockSync is", Deno.funlockSync);
 console.log("Deno.iter is", Deno.iter);
 console.log("Deno.iterSync is", Deno.iterSync);
-console.log("Deno.metrics is", Deno.metrics);
 console.log("Deno.readAll is", Deno.readAll);
 console.log("Deno.readAllSync is", Deno.readAllSync);
 console.log("Deno.read is", Deno.read);
