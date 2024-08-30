@@ -18,7 +18,6 @@ Deno.readAll is undefined
 Deno.readAllSync is undefined
 Deno.read is undefined
 Deno.readSync is undefined
-Deno.resources is undefined
 Deno.seek is undefined
 Deno.seekSync is undefined
 Deno.shutdown is undefined
