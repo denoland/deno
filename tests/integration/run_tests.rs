@@ -501,6 +501,10 @@ itest!(_088_dynamic_import_already_evaluating {
 // TODO(bartlomieju): remove --unstable once Deno.Command is stabilized
 itest!(_089_run_allow_list {
   args: "run --unstable --allow-run=curl run/089_run_allow_list.ts",
+  envs: vec![
+    ("LD_LIBRARY_PATH".to_string(), "".to_string()),
+    ("DYLD_FALLBACK_LIBRARY_PATH".to_string(), "".to_string())
+  ],
   output: "run/089_run_allow_list.ts.out",
 });
 
@@ -942,7 +946,9 @@ fn lock_redirects() {
   );
 }
 
+// TODO(2.0): this should be rewritten to a spec test and first run `deno install`
 #[test]
+#[ignore]
 fn lock_deno_json_package_json_deps() {
   let context = TestContextBuilder::new()
     .use_temp_cwd()
@@ -1100,7 +1106,7 @@ fn lock_deno_json_package_json_deps_workspace() {
   // deno.json
   let deno_json = temp_dir.join("deno.json");
   deno_json.write_json(&json!({
-    "nodeModulesDir": true
+    "nodeModules": "local-auto"
   }));
 
   // package.json
@@ -1797,10 +1803,11 @@ itest!(top_level_for_await_ts {
   output: "run/top_level_await/top_level_for_await.out",
 });
 
-itest!(unstable_disabled_js {
-  args: "run --reload run/unstable.js",
-  output: "run/unstable_disabled_js.out",
-});
+// TODO(2.0): remove, `Deno.umask` is enabled by default with Deno 2.
+// itest!(unstable_disabled_js {
+//   args: "run --reload run/unstable.js",
+//   output: "run/unstable_disabled_js.out",
+// });
 
 itest!(unstable_enabled_js {
   args: "run --quiet --reload --unstable-fs run/unstable.ts",
@@ -1844,25 +1851,29 @@ itest!(unstable_cron_enabled {
   output: "run/unstable_cron.enabled.out",
 });
 
-itest!(unstable_ffi_disabled {
-  args: "run --quiet --reload --allow-read run/unstable_ffi.js",
-  output: "run/unstable_ffi.disabled.out",
-});
+// TODO(2.0): remove, FFI is stable by default with Deno 2.
+// itest!(unstable_ffi_disabled {
+//   args: "run --quiet --reload --allow-read run/unstable_ffi.js",
+//   output: "run/unstable_ffi.disabled.out",
+// });
 
-itest!(unstable_ffi_enabled {
-  args: "run --quiet --reload --allow-read --unstable-ffi run/unstable_ffi.js",
-  output: "run/unstable_ffi.enabled.out",
-});
+// TODO(2.0): remove, FFI is stable by default with Deno 2.
+// itest!(unstable_ffi_enabled {
+//   args: "run --quiet --reload --allow-read --unstable-ffi run/unstable_ffi.js",
+//   output: "run/unstable_ffi.enabled.out",
+// });
 
-itest!(unstable_fs_disabled {
-  args: "run --quiet --reload --allow-read run/unstable_fs.js",
-  output: "run/unstable_fs.disabled.out",
-});
+// TODO(2.0): remove, FS APIs are stable by default with Deno 2.
+// itest!(unstable_fs_disabled {
+//   args: "run --quiet --reload --allow-read run/unstable_fs.js",
+//   output: "run/unstable_fs.disabled.out",
+// });
 
-itest!(unstable_fs_enabled {
-  args: "run --quiet --reload --allow-read --unstable-fs run/unstable_fs.js",
-  output: "run/unstable_fs.enabled.out",
-});
+// TODO(2.0): remove, FS APIs are stable by default with Deno 2.
+// itest!(unstable_fs_enabled {
+//   args: "run --quiet --reload --allow-read --unstable-fs run/unstable_fs.js",
+//   output: "run/unstable_fs.enabled.out",
+// });
 
 itest!(unstable_http_disabled {
   args: "run --quiet --reload --allow-read run/unstable_http.js",
@@ -1895,16 +1906,18 @@ itest!(unstable_kv_enabled {
   output: "run/unstable_kv.enabled.out",
 });
 
-itest!(unstable_webgpu_disabled {
-  args: "run --quiet --reload --allow-read run/unstable_webgpu.js",
-  output: "run/unstable_webgpu.disabled.out",
-});
+// TODO(2.0): remove, WebGPU is enabled by default with Deno 2.
+// itest!(unstable_webgpu_disabled {
+//   args: "run --quiet --reload --allow-read run/unstable_webgpu.js",
+//   output: "run/unstable_webgpu.disabled.out",
+// });
 
-itest!(unstable_webgpu_enabled {
-  args:
-    "run --quiet --reload --allow-read --unstable-webgpu run/unstable_webgpu.js",
-  output: "run/unstable_webgpu.enabled.out",
-});
+// TODO(2.0): remove, WebGPU is enabled by default with Deno 2.
+// itest!(unstable_webgpu_enabled {
+//   args:
+//     "run --quiet --reload --allow-read --unstable-webgpu run/unstable_webgpu.js",
+//   output: "run/unstable_webgpu.enabled.out",
+// });
 
 itest!(import_compression {
   args: "run --quiet --reload --allow-net run/import_compression/main.ts",
@@ -3429,16 +3442,19 @@ itest!(
   }
 );
 
-itest!(package_json_auto_discovered_for_npm_binary {
-  args: "run -L debug -A npm:@denotest/bin/cli-esm this is a test",
-  output: "run/with_package_json/npm_binary/main.out",
-  cwd: Some("run/with_package_json/npm_binary/"),
-  copy_temp_dir: Some("run/with_package_json/"),
-  envs: env_vars_for_npm_tests(),
-  http_server: true,
-});
+// TODO(2.0): this should be rewritten to a spec test and first run `deno install`
+// itest!(package_json_auto_discovered_for_npm_binary {
+//   args: "run -L debug -A npm:@denotest/bin/cli-esm this is a test",
+//   output: "run/with_package_json/npm_binary/main.out",
+//   cwd: Some("run/with_package_json/npm_binary/"),
+//   copy_temp_dir: Some("run/with_package_json/"),
+//   envs: env_vars_for_npm_tests(),
+//   http_server: true,
+// });
 
+// TODO(2.0): this should be rewritten to a spec test and first run `deno install`
 #[test]
+#[ignore]
 fn package_json_with_deno_json() {
   let context = TestContextBuilder::for_npm()
     .use_copy_temp_dir("package_json/deno_json/")
@@ -3708,6 +3724,10 @@ itest!(test_and_bench_are_noops_in_run {
 #[cfg(not(target_os = "windows"))]
 itest!(spawn_kill_permissions {
   args: "run --quiet --allow-run=cat spawn_kill_permissions.ts",
+  envs: vec![
+    ("LD_LIBRARY_PATH".to_string(), "".to_string()),
+    ("DYLD_FALLBACK_LIBRARY_PATH".to_string(), "".to_string())
+  ],
   output_str: Some(""),
 });
 

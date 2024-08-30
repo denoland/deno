@@ -796,11 +796,11 @@ async fn run_watch_load_unload_events() {
   file_to_watch.write(
     r#"
       setInterval(() => {}, 0);
-      window.addEventListener("load", () => {
+      globalThis.addEventListener("load", () => {
         console.log("load");
       });
 
-      window.addEventListener("unload", () => {
+      globalThis.addEventListener("unload", () => {
         console.log("unload");
       });
     "#,
@@ -827,11 +827,11 @@ async fn run_watch_load_unload_events() {
   // Change content of the file, this time without an interval to keep it alive.
   file_to_watch.write(
     r#"
-      window.addEventListener("load", () => {
+      globalThis.addEventListener("load", () => {
         console.log("load");
       });
 
-      window.addEventListener("unload", () => {
+      globalThis.addEventListener("unload", () => {
         console.log("unload");
       });
     "#,
