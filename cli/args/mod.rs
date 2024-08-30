@@ -1791,7 +1791,7 @@ fn resolve_node_modules_folder(
   } else if let Some(state) = &*NPM_PROCESS_STATE {
     return Ok(state.local_node_modules_path.as_ref().map(PathBuf::from));
   } else if workspace.package_jsons().next().is_some() {
-    let node_modules_dir = resolve_from_root(&root_folder, cwd);
+    let node_modules_dir = resolve_from_root(root_folder, cwd);
     if let Ok(deno_dir) = deno_dir_provider.get_or_create() {
       // `deno_dir.root` can be symlink in macOS
       if let Ok(root) = canonicalize_path_maybe_not_exists(&deno_dir.root) {
@@ -1806,7 +1806,7 @@ fn resolve_node_modules_folder(
   } else if use_node_modules_dir.is_none() {
     return Ok(None);
   } else {
-    resolve_from_root(&root_folder, cwd)
+    resolve_from_root(root_folder, cwd)
   };
   Ok(Some(canonicalize_path_maybe_not_exists(&path)?))
 }
