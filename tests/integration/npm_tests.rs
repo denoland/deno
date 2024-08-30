@@ -140,7 +140,7 @@ itest!(mixed_case_package_name_global_dir {
 
 itest!(mixed_case_package_name_local_dir {
   args:
-    "run --node-modules=local-auto -A $TESTDATA/npm/mixed_case_package_name/local.ts",
+    "run --node-modules-dir=auto -A $TESTDATA/npm/mixed_case_package_name/local.ts",
   output: "npm/mixed_case_package_name/local.out",
   exit_code: 0,
   envs: env_vars_for_npm_tests(),
@@ -374,7 +374,7 @@ itest!(permissions_outside_package {
 });
 
 itest!(run_existing_npm_package {
-  args: "run --allow-read --node-modules=local-auto npm:@denotest/bin",
+  args: "run --allow-read --node-modules-dir=auto npm:@denotest/bin",
   output: "npm/run_existing_npm_package/main.out",
   envs: env_vars_for_npm_tests(),
   http_server: true,
@@ -385,7 +385,7 @@ itest!(run_existing_npm_package {
 
 itest!(run_existing_npm_package_with_subpath {
   args:
-    "run --allow-read --node-modules=local-auto npm:@denotest/bin/cli-esm dev --help",
+    "run --allow-read --node-modules-dir=auto npm:@denotest/bin/cli-esm dev --help",
   output: "npm/run_existing_npm_package_with_subpath/main.out",
   envs: env_vars_for_npm_tests(),
   http_server: true,
@@ -813,7 +813,7 @@ itest!(builtin_module_module {
 
 itest!(node_modules_dir_require_added_node_modules_folder {
   args:
-    "run --node-modules=local-auto -A --quiet $TESTDATA/npm/require_added_nm_folder/main.js",
+    "run --node-modules-dir=auto -A --quiet $TESTDATA/npm/require_added_nm_folder/main.js",
   output: "npm/require_added_nm_folder/main.out",
   envs: env_vars_for_npm_tests(),
   http_server: true,
@@ -831,7 +831,7 @@ itest!(node_modules_dir_require_main_entry {
 });
 
 itest!(node_modules_dir_with_deps {
-  args: "run --allow-read --allow-env --node-modules=local-auto $TESTDATA/npm/cjs_with_deps/main.js",
+  args: "run --allow-read --allow-env --node-modules-dir=auto $TESTDATA/npm/cjs_with_deps/main.js",
   output: "npm/cjs_with_deps/main_node_modules.out",
   envs: env_vars_for_npm_tests(),
   http_server: true,
@@ -839,7 +839,7 @@ itest!(node_modules_dir_with_deps {
 });
 
 itest!(node_modules_dir_yargs {
-  args: "run --allow-read --allow-env --node-modules=local-auto $TESTDATA/npm/cjs_yargs/main.js",
+  args: "run --allow-read --allow-env --node-modules-dir=auto $TESTDATA/npm/cjs_yargs/main.js",
   output: "npm/cjs_yargs/main.out",
   envs: env_vars_for_npm_tests(),
   http_server: true,
@@ -855,7 +855,7 @@ fn node_modules_dir_cache() {
   let deno = util::deno_cmd_with_deno_dir(&deno_dir)
     .current_dir(deno_dir.path())
     .arg("cache")
-    .arg("--node-modules=local-auto")
+    .arg("--node-modules-dir=auto")
     .arg("--quiet")
     .arg(util::testdata_path().join("npm/dual_cjs_esm/main.ts"))
     .envs(env_vars_for_npm_tests())
@@ -888,7 +888,7 @@ fn node_modules_dir_cache() {
   let deno = util::deno_cmd_with_deno_dir(&deno_dir)
     .current_dir(deno_dir.path())
     .arg("run")
-    .arg("--node-modules=local-auto")
+    .arg("--node-modules-dir=auto")
     .arg("--quiet")
     .arg("-A")
     .arg(util::testdata_path().join("npm/dual_cjs_esm/main.ts"))
@@ -1496,7 +1496,7 @@ fn peer_deps_with_copied_folders_and_lockfile() {
   // now run with local node modules
   let output = context
     .new_command()
-    .args("run -A --node-modules=local-auto main.ts")
+    .args("run -A --node-modules-dir=auto main.ts")
     .run();
   output.assert_exit_code(0);
   output.assert_matches_file(
@@ -1514,7 +1514,7 @@ fn peer_deps_with_copied_folders_and_lockfile() {
   // now again run with local node modules
   let output = context
     .new_command()
-    .args("run -A --node-modules=local-auto main.ts")
+    .args("run -A --node-modules-dir=auto main.ts")
     .run();
   output.assert_exit_code(0);
   output.assert_matches_text("1\n2\n");
@@ -1522,7 +1522,7 @@ fn peer_deps_with_copied_folders_and_lockfile() {
   // now ensure it works with reloading
   let output = context
     .new_command()
-    .args("run -A --reload --node-modules=local-auto main.ts")
+    .args("run -A --reload --node-modules-dir=auto main.ts")
     .run();
   output.assert_exit_code(0);
   output.assert_matches_file(
@@ -1532,7 +1532,7 @@ fn peer_deps_with_copied_folders_and_lockfile() {
   // now ensure it works with reloading and no lockfile
   let output = context
     .new_command()
-    .args("run -A --reload --node-modules=local-auto --no-lock main.ts")
+    .args("run -A --reload --node-modules-dir=auto --no-lock main.ts")
     .run();
   output.assert_exit_code(0);
   output.assert_matches_file(
@@ -1880,7 +1880,7 @@ fn binary_package_with_optional_dependencies() {
 
     let output = context
       .new_command()
-      .args("run -A --node-modules=local-auto main.js")
+      .args("run -A --node-modules-dir=auto main.js")
       .run();
 
     #[cfg(target_os = "windows")]
@@ -1971,7 +1971,7 @@ fn node_modules_dir_config_file() {
   let node_modules_dir = temp_dir.path().join("node_modules");
   let rm_node_modules = || std::fs::remove_dir_all(&node_modules_dir).unwrap();
 
-  temp_dir.write("deno.json", r#"{ "nodeModules": "local-auto" }"#);
+  temp_dir.write("deno.json", r#"{ "nodeModulesDir": "auto" }"#);
   temp_dir.write("main.ts", "import 'npm:@denotest/esm-basic';");
 
   let deno_cache_cmd = test_context.new_command().args("cache --quiet main.ts");
@@ -1985,7 +1985,7 @@ fn node_modules_dir_config_file() {
   assert!(node_modules_dir.exists());
 
   rm_node_modules();
-  temp_dir.write("deno.json", r#"{ "nodeModules": "global-auto" }"#);
+  temp_dir.write("deno.json", r#"{ "nodeModulesDir": "none" }"#);
 
   deno_cache_cmd.run();
   assert!(!node_modules_dir.exists());
@@ -1996,7 +1996,7 @@ fn node_modules_dir_config_file() {
 
   test_context
     .new_command()
-    .args("cache --quiet --node-modules=local-auto main.ts")
+    .args("cache --quiet --node-modules-dir=auto main.ts")
     .run();
   assert!(node_modules_dir.exists());
 
@@ -2004,7 +2004,7 @@ fn node_modules_dir_config_file() {
   rm_node_modules();
   test_context
     .new_command()
-    .args("cache --quiet --node-modules=global-auto --vendor main.ts")
+    .args("cache --quiet --node-modules-dir=none --vendor main.ts")
     .run();
   assert!(!node_modules_dir.exists());
 }
@@ -2021,7 +2021,7 @@ fn top_level_install_package_json_explicit_opt_in() {
 
   // when the node_modules_dir is explicitly opted into, we should always
   // ensure a top level package.json install occurs
-  temp_dir.write("deno.json", "{ \"nodeModules\": \"local-auto\" }");
+  temp_dir.write("deno.json", "{ \"nodeModulesDir\": \"auto\" }");
   temp_dir.write(
     "package.json",
     "{ \"dependencies\": { \"@denotest/esm-basic\": \"1.0\" }}",
@@ -2110,7 +2110,7 @@ itest!(check_package_file_dts_dmts_dcts {
 });
 
 itest!(require_resolve_url_paths {
-  args: "run -A --quiet --node-modules=local-auto url_paths.ts",
+  args: "run -A --quiet --node-modules-dir=auto url_paths.ts",
   output: "npm/require_resolve_url/url_paths.out",
   envs: env_vars_for_npm_tests(),
   http_server: true,
@@ -2723,7 +2723,7 @@ fn cjs_export_analysis_import_cjs_directly_relative_import() {
 
 itest!(imports_package_json {
   args:
-    "run --no-lock --node-modules=global-auto npm/imports_package_json/main.js",
+    "run --no-lock --node-modules-dir=none npm/imports_package_json/main.js",
   output: "npm/imports_package_json/main.out",
   envs: env_vars_for_npm_tests(),
   http_server: true,
@@ -2731,7 +2731,7 @@ itest!(imports_package_json {
 
 itest!(imports_package_json_import_not_defined {
   args:
-    "run --no-lock --node-modules=global-auto npm/imports_package_json/import_not_defined.js",
+    "run --no-lock --node-modules-dir=none npm/imports_package_json/import_not_defined.js",
   output: "npm/imports_package_json/import_not_defined.out",
   envs: env_vars_for_npm_tests(),
   exit_code: 1,
@@ -2740,7 +2740,7 @@ itest!(imports_package_json_import_not_defined {
 
 itest!(imports_package_json_sub_path_import_not_defined {
   args:
-    "run --no-lock --node-modules=global-auto npm/imports_package_json/sub_path_import_not_defined.js",
+    "run --no-lock --node-modules-dir=none npm/imports_package_json/sub_path_import_not_defined.js",
   output: "npm/imports_package_json/sub_path_import_not_defined.out",
   envs: env_vars_for_npm_tests(),
   exit_code: 1,
@@ -2748,7 +2748,7 @@ itest!(imports_package_json_sub_path_import_not_defined {
 });
 
 itest!(different_nested_dep_node_modules_dir_false {
-  args: "run --quiet --no-lock --node-modules=global-auto npm/different_nested_dep/main.js",
+  args: "run --quiet --no-lock --node-modules-dir=none npm/different_nested_dep/main.js",
   output: "npm/different_nested_dep/main.out",
   envs: env_vars_for_npm_tests(),
   exit_code: 0,
@@ -2756,7 +2756,7 @@ itest!(different_nested_dep_node_modules_dir_false {
 });
 
 itest!(different_nested_dep_node_modules_dir_true {
-  args: "run --no-lock --quiet --node-modules=local-auto main.js",
+  args: "run --no-lock --quiet --node-modules-dir=auto main.js",
   output: "npm/different_nested_dep/main.out",
   copy_temp_dir: Some("npm/different_nested_dep/"),
   cwd: Some("npm/different_nested_dep/"),

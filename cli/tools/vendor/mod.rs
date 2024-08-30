@@ -344,7 +344,7 @@ fn update_config_text(
       let insert_position = obj.range.end - 1;
       text_changes.push(TextChange {
         range: insert_position..insert_position,
-        new_text: r#""nodeModulesDir": true"#.to_string(),
+        new_text: r#""nodeModulesDir": "auto""#.to_string(),
       });
       should_format = true;
       modified_result.added_node_modules_dir = true;
@@ -454,7 +454,7 @@ mod internal_test {
     assert_eq!(
       result.new_text.unwrap(),
       r#"{
-  "nodeModulesDir": true,
+  "nodeModulesDir": "auto",
   "importMap": "./vendor/import_map.json"
 }
 "#
@@ -467,7 +467,7 @@ mod internal_test {
     assert_eq!(
       result.new_text.unwrap(),
       r#"{
-  "nodeModulesDir": true
+  "nodeModulesDir": "auto"
 }
 "#
     );
@@ -546,10 +546,10 @@ mod internal_test {
 
   #[test]
   fn no_update_node_modules_dir() {
-    // will not update if this is already set (even if it's false)
+    // will not update if this is already set (even if it's "none")
     let result = update_config_text(
       r#"{
-  "nodeModulesDir": false
+  "nodeModulesDir": "none"
 }
 "#,
       &Default::default(),
@@ -563,7 +563,7 @@ mod internal_test {
 
     let result = update_config_text(
       r#"{
-  "nodeModulesDir": true
+  "nodeModulesDir": "auto"
 }
 "#,
       &Default::default(),

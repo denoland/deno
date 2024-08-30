@@ -1,4 +1,4 @@
 {
-  "args": "run --node-modules=global-auto main.ts",
+  "args": "run --node-modules-dir=none main.ts",
   "output": "main.out"
 }

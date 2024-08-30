@@ -989,7 +989,7 @@ fn run_npm_bin_compile_test(opts: RunNpmBinCompileOptions) {
   args.extend(opts.compile_args.iter().map(|s| s.to_string()));
 
   if opts.node_modules_local {
-    args.push("--node-modules=local-auto".to_string());
+    args.push("--node-modules-dir=auto".to_string());
   }
 
   if let Some(bin_name) = opts.input_name {
@@ -1052,7 +1052,7 @@ fn compile_node_modules_symlink_outside() {
   // compile folder
   let output = context
     .new_command()
-    .args("compile --allow-read --node-modules=local-auto --output bin main.ts")
+    .args("compile --allow-read --node-modules-dir=auto --output bin main.ts")
     .run();
   output.assert_exit_code(0);
   output.assert_matches_file(
@@ -1075,7 +1075,7 @@ fn compile_node_modules_symlink_outside() {
   // compile
   let output = context
     .new_command()
-    .args("compile --allow-read --node-modules=local-auto --output bin main.ts")
+    .args("compile --allow-read --node-modules-dir=auto --output bin main.ts")
     .run();
   output.assert_exit_code(0);
   output.assert_matches_file(
@@ -1105,7 +1105,7 @@ console.log(getValue());"#,
   // compile folder
   let output = context
     .new_command()
-    .args("compile --allow-read --node-modules=local-auto --output bin main.ts")
+    .args("compile --allow-read --node-modules-dir=auto --output bin main.ts")
     .run();
   output.assert_exit_code(0);
   output.assert_matches_text(
