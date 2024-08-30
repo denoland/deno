@@ -1902,8 +1902,7 @@ pub fn config_to_deno_graph_workspace_member(
   };
   let version = match &config.json.version {
     Some(name) => Some(deno_semver::Version::parse_standard(name)?),
-    // todo(#25230): remove
-    None => bail!("Missing 'version' field in config file."),
+    None => None,
   };
   Ok(deno_graph::WorkspaceMember {
     base: config.specifier.join("./").unwrap(),
