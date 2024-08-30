@@ -1,4 +1,5 @@
 {
-  "args": "publish --dry-run",
-  "output": "publish.out"
+  "args": "lint",
+  "output": "lint.out",
+  "exitCode": 1
 }
