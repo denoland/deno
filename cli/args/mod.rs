@@ -8,6 +8,7 @@ mod lockfile;
 mod package_json;
 
 use deno_ast::SourceMapOption;
+use deno_config::deno_json::NodeModulesMode;
 use deno_config::workspace::CreateResolverOptions;
 use deno_config::workspace::PackageJsonDepResolution;
 use deno_config::workspace::VendorEnablement;
@@ -819,6 +820,7 @@ impl CliOptions {
     let maybe_node_modules_folder = resolve_node_modules_folder(
       &initial_cwd,
       &flags,
+      &start_dir.workspace,
       root_folder.deno_json.as_deref(),
       root_folder.pkg_json.as_deref(),
       &deno_dir_provider,
@@ -917,6 +919,10 @@ impl CliOptions {
     };
 
     for diagnostic in start_dir.workspace.diagnostics() {
+      // TODO(2.0): remove
+      if matches!(diagnostic.kind, deno_config::workspace::WorkspaceDiagnosticKind::DeprecatedNodeModulesDirOption(_)) && !*DENO_FUTURE {
+        continue;
+      }
       log::warn!("{} {}", colors::yellow("Warning"), diagnostic);
     }
 
@@ -1255,11 +1261,29 @@ impl CliOptions {
     }
   }
 
-  pub fn node_modules_dir_enablement(&self) -> Option<bool> {
-    self
-      .flags
-      .node_modules_dir
-      .or_else(|| self.workspace().node_modules_dir())
+  pub fn node_modules_mode(&self) -> Result<Option<NodeModulesMode>, AnyError> {
+    if *DENO_FUTURE {
+      if let Some(flag) = self.flags.node_modules_mode {
+        return Ok(Some(flag));
+      }
+      self.workspace().node_modules_mode().map_err(Into::into)
+    } else {
+      Ok(
+        self
+          .flags
+          .node_modules_dir
+          .or_else(|| self.workspace().node_modules_dir())
+          .map(|enabled| {
+            if enabled && self.byonm_enabled() {
+              NodeModulesMode::LocalManual
+            } else if enabled {
+              NodeModulesMode::LocalAuto
+            } else {
+              NodeModulesMode::GlobalAuto
+            }
+          }),
+      )
+    }
   }
 
   pub fn vendor_dir_path(&self) -> Option<&PathBuf> {
@@ -1611,9 +1635,19 @@ impl CliOptions {
       || self.workspace().has_unstable("bare-node-builtins")
   }
 
+  fn byonm_enabled(&self) -> bool {
+    // check if enabled via unstable
+    self.flags.unstable_config.byonm
+      || NPM_PROCESS_STATE
+        .as_ref()
+        .map(|s| matches!(s.kind, NpmProcessStateKind::Byonm))
+        .unwrap_or(false)
+      || self.workspace().has_unstable("byonm")
+  }
+
   pub fn use_byonm(&self) -> bool {
     if self.enable_future_features()
-      && self.node_modules_dir_enablement().is_none()
+      && self.node_modules_mode().ok().flatten().is_none()
       && self.maybe_node_modules_folder.is_some()
       && self
         .workspace()
@@ -1624,13 +1658,7 @@ impl CliOptions {
       return true;
     }
 
-    // check if enabled via unstable
-    self.flags.unstable_config.byonm
-      || NPM_PROCESS_STATE
-        .as_ref()
-        .map(|s| matches!(s.kind, NpmProcessStateKind::Byonm))
-        .unwrap_or(false)
-      || self.workspace().has_unstable("byonm")
+    self.byonm_enabled()
   }
 
   pub fn unstable_sloppy_imports(&self) -> bool {
@@ -1762,15 +1790,28 @@ impl CliOptions {
 fn resolve_node_modules_folder(
   cwd: &Path,
   flags: &Flags,
+  workspace: &Workspace,
   maybe_config_file: Option<&ConfigFile>,
   maybe_package_json: Option<&PackageJson>,
   deno_dir_provider: &Arc<DenoDirProvider>,
 ) -> Result<Option<PathBuf>, AnyError> {
-  let use_node_modules_dir = flags
-    .node_modules_dir
-    .or_else(|| maybe_config_file.and_then(|c| c.json.node_modules_dir))
-    .or(flags.vendor)
-    .or_else(|| maybe_config_file.and_then(|c| c.json.vendor));
+  let use_node_modules_dir = if *DENO_FUTURE {
+    if let Some(mode) = flags.node_modules_mode {
+      Some(mode.uses_node_modules_dir())
+    } else {
+      workspace
+        .node_modules_mode()?
+        .map(|m| m.uses_node_modules_dir())
+        .or(flags.vendor)
+        .or_else(|| maybe_config_file.and_then(|c| c.json.vendor))
+    }
+  } else {
+    flags
+      .node_modules_dir
+      .or_else(|| maybe_config_file.and_then(|c| c.json.node_modules_dir))
+      .or(flags.vendor)
+      .or_else(|| maybe_config_file.and_then(|c| c.json.vendor))
+  };
   let path = if use_node_modules_dir == Some(false) {
     return Ok(None);
   } else if let Some(state) = &*NPM_PROCESS_STATE {

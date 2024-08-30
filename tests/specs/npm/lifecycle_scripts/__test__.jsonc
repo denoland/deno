@@ -81,6 +81,13 @@
         {
           "args": [
             "eval",
+            "Deno.removeSync('./deno.json')"
+          ],
+          "output": "[WILDCARD]"
+        },
+        {
+          "args": [
+            "eval",
             "Deno.writeTextFileSync('package.json', '{\"dependencies\":{ \"@denotest/node-lifecycle-scripts\": \"*\" } }')"
           ],
           "output": ""
