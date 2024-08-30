@@ -1,14 +1,6 @@
-⚠️  Import assertions are deprecated. Use `with` keyword, instead of 'assert' keyword.
+error: Import assertions are deprecated. Use `with` keyword, instead of 'assert' keyword.
 
 import test from "./data.json" assert { type: "json" };
 
   at file:///[WILDLINE]/assertion.ts:1:1
 
-{ prop: "data" }
-⚠️  Import assertions are deprecated. Use `with` keyword, instead of 'assert' keyword.
-
-console.log((await import("./data.json", {
-
-  at file:///[WILDLINE]/assertion.ts:5:13
-
-{ prop: "data" }

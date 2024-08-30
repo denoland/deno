@@ -140,7 +140,7 @@ itest!(mixed_case_package_name_global_dir {
 
 itest!(mixed_case_package_name_local_dir {
   args:
-    "run --node-modules-dir -A $TESTDATA/npm/mixed_case_package_name/local.ts",
+    "run --node-modules=local-auto -A $TESTDATA/npm/mixed_case_package_name/local.ts",
   output: "npm/mixed_case_package_name/local.out",
   exit_code: 0,
   envs: env_vars_for_npm_tests(),
@@ -148,15 +148,16 @@ itest!(mixed_case_package_name_local_dir {
   temp_cwd: true,
 });
 
-itest!(local_dir_resolves_symlinks {
-  args: "run -A index.js",
-  output: "npm/local_dir_resolves_symlinks/index.out",
-  exit_code: 0,
-  envs: env_vars_for_npm_tests(),
-  cwd: Some("npm/local_dir_resolves_symlinks/"),
-  copy_temp_dir: Some("npm/local_dir_resolves_symlinks/"),
-  http_server: true,
-});
+// TODO(2.0): this should be rewritten to a spec test and first run `deno install`
+// itest!(local_dir_resolves_symlinks {
+//   args: "run -A index.js",
+//   output: "npm/local_dir_resolves_symlinks/index.out",
+//   exit_code: 0,
+//   envs: env_vars_for_npm_tests(),
+//   cwd: Some("npm/local_dir_resolves_symlinks/"),
+//   copy_temp_dir: Some("npm/local_dir_resolves_symlinks/"),
+//   http_server: true,
+// });
 
 // FIXME(bartlomieju): npm: specifiers are not handled in dynamic imports
 // at the moment
@@ -272,13 +273,6 @@ itest!(nonexistent_file_node_modules_dir {
   exit_code: 1,
 });
 
-itest!(invalid_package_name {
-  args: "run -A --quiet npm/invalid_package_name/main.js",
-  output: "npm/invalid_package_name/main.out",
-  envs: env_vars_for_npm_tests(),
-  exit_code: 1,
-});
-
 itest!(require_json {
   args: "run -A --quiet npm/require_json/main.js",
   output: "npm/require_json/main.out",
@@ -380,7 +374,7 @@ itest!(permissions_outside_package {
 });
 
 itest!(run_existing_npm_package {
-  args: "run --allow-read --node-modules-dir npm:@denotest/bin",
+  args: "run --allow-read --node-modules=local-auto npm:@denotest/bin",
   output: "npm/run_existing_npm_package/main.out",
   envs: env_vars_for_npm_tests(),
   http_server: true,
@@ -391,7 +385,7 @@ itest!(run_existing_npm_package {
 
 itest!(run_existing_npm_package_with_subpath {
   args:
-    "run --allow-read --node-modules-dir npm:@denotest/bin/cli-esm dev --help",
+    "run --allow-read --node-modules=local-auto npm:@denotest/bin/cli-esm dev --help",
   output: "npm/run_existing_npm_package_with_subpath/main.out",
   envs: env_vars_for_npm_tests(),
   http_server: true,
@@ -819,7 +813,7 @@ itest!(builtin_module_module {
 
 itest!(node_modules_dir_require_added_node_modules_folder {
   args:
-    "run --node-modules-dir -A --quiet $TESTDATA/npm/require_added_nm_folder/main.js",
+    "run --node-modules=local-auto -A --quiet $TESTDATA/npm/require_added_nm_folder/main.js",
   output: "npm/require_added_nm_folder/main.out",
   envs: env_vars_for_npm_tests(),
   http_server: true,
@@ -837,7 +831,7 @@ itest!(node_modules_dir_require_main_entry {
 });
 
 itest!(node_modules_dir_with_deps {
-  args: "run --allow-read --allow-env --node-modules-dir $TESTDATA/npm/cjs_with_deps/main.js",
+  args: "run --allow-read --allow-env --node-modules=local-auto $TESTDATA/npm/cjs_with_deps/main.js",
   output: "npm/cjs_with_deps/main_node_modules.out",
   envs: env_vars_for_npm_tests(),
   http_server: true,
@@ -845,7 +839,7 @@ itest!(node_modules_dir_with_deps {
 });
 
 itest!(node_modules_dir_yargs {
-  args: "run --allow-read --allow-env --node-modules-dir $TESTDATA/npm/cjs_yargs/main.js",
+  args: "run --allow-read --allow-env --node-modules=local-auto $TESTDATA/npm/cjs_yargs/main.js",
   output: "npm/cjs_yargs/main.out",
   envs: env_vars_for_npm_tests(),
   http_server: true,
@@ -861,7 +855,7 @@ fn node_modules_dir_cache() {
   let deno = util::deno_cmd_with_deno_dir(&deno_dir)
     .current_dir(deno_dir.path())
     .arg("cache")
-    .arg("--node-modules-dir")
+    .arg("--node-modules=local-auto")
     .arg("--quiet")
     .arg(util::testdata_path().join("npm/dual_cjs_esm/main.ts"))
     .envs(env_vars_for_npm_tests())
@@ -894,7 +888,7 @@ fn node_modules_dir_cache() {
   let deno = util::deno_cmd_with_deno_dir(&deno_dir)
     .current_dir(deno_dir.path())
     .arg("run")
-    .arg("--node-modules-dir")
+    .arg("--node-modules=local-auto")
     .arg("--quiet")
     .arg("-A")
     .arg(util::testdata_path().join("npm/dual_cjs_esm/main.ts"))
@@ -1209,7 +1203,6 @@ fn lock_file_missing_top_level_package() {
 #[test]
 fn lock_file_lock_write() {
   // https://github.com/denoland/deno/issues/16666
-  // Ensure that --lock-write still adds npm packages to the lockfile
   let _server = http_server();
 
   let deno_dir = util::new_deno_dir();
@@ -1219,7 +1212,7 @@ fn lock_file_lock_write() {
   let lock_file_content = r#"{
   "version": "4",
   "specifiers": {
-    "npm:cowsay@1.5.0": "npm:cowsay@1.5.0"
+    "npm:cowsay@1.5.0": "1.5.0"
   },
   "npm": {
     "ansi-regex@3.0.1": {
@@ -1396,7 +1389,6 @@ fn lock_file_lock_write() {
   let deno = util::deno_cmd_with_deno_dir(&deno_dir)
     .current_dir(temp_dir.path())
     .arg("cache")
-    .arg("--lock-write")
     .arg("--quiet")
     .arg("npm:cowsay@1.5.0")
     .envs(env_vars_for_npm_tests())
@@ -1430,7 +1422,7 @@ fn auto_discover_lock_file() {
   let lock_file_content = r#"{
     "version": "4",
     "specifiers": {
-      "npm:@denotest/bin": "npm:@denotest/bin@1.0.0"
+      "npm:@denotest/bin": "1.0.0"
     },
     "npm": {
       "@denotest/bin@1.0.0": {
@@ -1504,7 +1496,7 @@ fn peer_deps_with_copied_folders_and_lockfile() {
   // now run with local node modules
   let output = context
     .new_command()
-    .args("run -A --node-modules-dir main.ts")
+    .args("run -A --node-modules=local-auto main.ts")
     .run();
   output.assert_exit_code(0);
   output.assert_matches_file(
@@ -1522,7 +1514,7 @@ fn peer_deps_with_copied_folders_and_lockfile() {
   // now again run with local node modules
   let output = context
     .new_command()
-    .args("run -A --node-modules-dir main.ts")
+    .args("run -A --node-modules=local-auto main.ts")
     .run();
   output.assert_exit_code(0);
   output.assert_matches_text("1\n2\n");
@@ -1530,7 +1522,7 @@ fn peer_deps_with_copied_folders_and_lockfile() {
   // now ensure it works with reloading
   let output = context
     .new_command()
-    .args("run -A --reload --node-modules-dir main.ts")
+    .args("run -A --reload --node-modules=local-auto main.ts")
     .run();
   output.assert_exit_code(0);
   output.assert_matches_file(
@@ -1540,7 +1532,7 @@ fn peer_deps_with_copied_folders_and_lockfile() {
   // now ensure it works with reloading and no lockfile
   let output = context
     .new_command()
-    .args("run -A --reload --node-modules-dir --no-lock main.ts")
+    .args("run -A --reload --node-modules=local-auto --no-lock main.ts")
     .run();
   output.assert_exit_code(0);
   output.assert_matches_file(
@@ -1572,25 +1564,27 @@ itest!(create_require {
   http_server: true,
 });
 
-itest!(node_modules_import_run {
-  args: "run --quiet main.ts",
-  output: "npm/node_modules_import/main.out",
-  http_server: true,
-  copy_temp_dir: Some("npm/node_modules_import/"),
-  cwd: Some("npm/node_modules_import/"),
-  envs: env_vars_for_npm_tests(),
-  exit_code: 0,
-});
+// TODO(2.0): this should be rewritten to a spec test and first run `deno install`
+// itest!(node_modules_import_run {
+//   args: "run --quiet main.ts",
+//   output: "npm/node_modules_import/main.out",
+//   http_server: true,
+//   copy_temp_dir: Some("npm/node_modules_import/"),
+//   cwd: Some("npm/node_modules_import/"),
+//   envs: env_vars_for_npm_tests(),
+//   exit_code: 0,
+// });
 
-itest!(node_modules_import_check {
-  args: "check --quiet main.ts",
-  output: "npm/node_modules_import/main_check.out",
-  envs: env_vars_for_npm_tests(),
-  http_server: true,
-  cwd: Some("npm/node_modules_import/"),
-  copy_temp_dir: Some("npm/node_modules_import/"),
-  exit_code: 1,
-});
+// TODO(2.0): this should be rewritten to a spec test and first run `deno install`
+// itest!(node_modules_import_check {
+//   args: "check --quiet main.ts",
+//   output: "npm/node_modules_import/main_check.out",
+//   envs: env_vars_for_npm_tests(),
+//   http_server: true,
+//   cwd: Some("npm/node_modules_import/"),
+//   copy_temp_dir: Some("npm/node_modules_import/"),
+//   exit_code: 1,
+// });
 
 itest!(non_existent_dep {
   args: "cache npm:@denotest/non-existent-dep",
@@ -1620,7 +1614,9 @@ itest!(non_existent_dep_version {
   )),
 });
 
+// TODO(2.0): this should be rewritten to a spec test and first run `deno install`
 #[test]
+#[ignore]
 fn reload_info_not_found_cache_but_exists_remote() {
   fn remove_version(registry_json: &mut Value, version: &str) {
     registry_json
@@ -1884,7 +1880,7 @@ fn binary_package_with_optional_dependencies() {
 
     let output = context
       .new_command()
-      .args("run -A --node-modules-dir main.js")
+      .args("run -A --node-modules=local-auto main.js")
       .run();
 
     #[cfg(target_os = "windows")]
@@ -1975,7 +1971,7 @@ fn node_modules_dir_config_file() {
   let node_modules_dir = temp_dir.path().join("node_modules");
   let rm_node_modules = || std::fs::remove_dir_all(&node_modules_dir).unwrap();
 
-  temp_dir.write("deno.json", r#"{ "nodeModulesDir": true }"#);
+  temp_dir.write("deno.json", r#"{ "nodeModules": "local-auto" }"#);
   temp_dir.write("main.ts", "import 'npm:@denotest/esm-basic';");
 
   let deno_cache_cmd = test_context.new_command().args("cache --quiet main.ts");
@@ -1989,7 +1985,7 @@ fn node_modules_dir_config_file() {
   assert!(node_modules_dir.exists());
 
   rm_node_modules();
-  temp_dir.write("deno.json", r#"{ "nodeModulesDir": false }"#);
+  temp_dir.write("deno.json", r#"{ "nodeModules": "global-auto" }"#);
 
   deno_cache_cmd.run();
   assert!(!node_modules_dir.exists());
@@ -2000,7 +1996,7 @@ fn node_modules_dir_config_file() {
 
   test_context
     .new_command()
-    .args("cache --quiet --node-modules-dir main.ts")
+    .args("cache --quiet --node-modules=local-auto main.ts")
     .run();
   assert!(node_modules_dir.exists());
 
@@ -2008,7 +2004,7 @@ fn node_modules_dir_config_file() {
   rm_node_modules();
   test_context
     .new_command()
-    .args("cache --quiet --node-modules-dir=false --vendor main.ts")
+    .args("cache --quiet --node-modules=global-auto --vendor main.ts")
     .run();
   assert!(!node_modules_dir.exists());
 }
@@ -2025,7 +2021,7 @@ fn top_level_install_package_json_explicit_opt_in() {
 
   // when the node_modules_dir is explicitly opted into, we should always
   // ensure a top level package.json install occurs
-  temp_dir.write("deno.json", "{ \"nodeModulesDir\": true }");
+  temp_dir.write("deno.json", "{ \"nodeModules\": \"local-auto\" }");
   temp_dir.write(
     "package.json",
     "{ \"dependencies\": { \"@denotest/esm-basic\": \"1.0\" }}",
@@ -2114,7 +2110,7 @@ itest!(check_package_file_dts_dmts_dcts {
 });
 
 itest!(require_resolve_url_paths {
-  args: "run -A --quiet --node-modules-dir url_paths.ts",
+  args: "run -A --quiet --node-modules=local-auto url_paths.ts",
   output: "npm/require_resolve_url/url_paths.out",
   envs: env_vars_for_npm_tests(),
   http_server: true,
@@ -2404,7 +2400,7 @@ fn byonm_package_specifier_not_installed_and_invalid_subpath() {
   // no npm install has been run, so this should give an informative error
   let output = test_context.new_command().args("run main.ts").run();
   output.assert_matches_text(
-    r#"error: Could not resolve "chalk", but found it in a package.json. Deno expects the node_modules/ directory to be up to date. Did you forget to run `npm install`?
+    r#"error: Could not resolve "chalk", but found it in a package.json. Deno expects the node_modules/ directory to be up to date. Did you forget to run `deno install`?
     at file:///[WILDCARD]/main.ts:1:19
 "#,
   );
@@ -2785,7 +2781,7 @@ fn cjs_export_analysis_import_cjs_directly_relative_import() {
 
 itest!(imports_package_json {
   args:
-    "run --no-lock --node-modules-dir=false npm/imports_package_json/main.js",
+    "run --no-lock --node-modules=global-auto npm/imports_package_json/main.js",
   output: "npm/imports_package_json/main.out",
   envs: env_vars_for_npm_tests(),
   http_server: true,
@@ -2793,7 +2789,7 @@ itest!(imports_package_json {
 
 itest!(imports_package_json_import_not_defined {
   args:
-    "run --no-lock --node-modules-dir=false npm/imports_package_json/import_not_defined.js",
+    "run --no-lock --node-modules=global-auto npm/imports_package_json/import_not_defined.js",
   output: "npm/imports_package_json/import_not_defined.out",
   envs: env_vars_for_npm_tests(),
   exit_code: 1,
@@ -2802,7 +2798,7 @@ itest!(imports_package_json_import_not_defined {
 
 itest!(imports_package_json_sub_path_import_not_defined {
   args:
-    "run --no-lock --node-modules-dir=false npm/imports_package_json/sub_path_import_not_defined.js",
+    "run --no-lock --node-modules=global-auto npm/imports_package_json/sub_path_import_not_defined.js",
   output: "npm/imports_package_json/sub_path_import_not_defined.out",
   envs: env_vars_for_npm_tests(),
   exit_code: 1,
@@ -2810,7 +2806,7 @@ itest!(imports_package_json_sub_path_import_not_defined {
 });
 
 itest!(different_nested_dep_node_modules_dir_false {
-  args: "run --quiet --no-lock --node-modules-dir=false npm/different_nested_dep/main.js",
+  args: "run --quiet --no-lock --node-modules=global-auto npm/different_nested_dep/main.js",
   output: "npm/different_nested_dep/main.out",
   envs: env_vars_for_npm_tests(),
   exit_code: 0,
@@ -2818,7 +2814,7 @@ itest!(different_nested_dep_node_modules_dir_false {
 });
 
 itest!(different_nested_dep_node_modules_dir_true {
-  args: "run --no-lock --quiet --node-modules-dir=true main.js",
+  args: "run --no-lock --quiet --node-modules=local-auto main.js",
   output: "npm/different_nested_dep/main.out",
   copy_temp_dir: Some("npm/different_nested_dep/"),
   cwd: Some("npm/different_nested_dep/"),

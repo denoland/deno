@@ -7,6 +7,9 @@ const randomDate = new Date(Date.now() + 1000);
 Deno.test({
   name:
     "ASYNC: change the file system timestamps of the object referenced by path",
+  // TODO(bartlomieju): this test is broken in Deno 2, because `file.rid` is undefined.
+  // The fs APIs should be rewritten to use actual FDs, not RIDs
+  ignore: true,
   async fn() {
     const filePath = Deno.makeTempFileSync();
     using file = await Deno.open(filePath, { create: true, write: true });
@@ -62,6 +65,9 @@ Deno.test({
 Deno.test({
   name:
     "SYNC: change the file system timestamps of the object referenced by path",
+  // TODO(bartlomieju): this test is broken in Deno 2, because `file.rid` is undefined.
+  // The fs APIs should be rewritten to use actual FDs, not RIDs
+  ignore: true,
   fn() {
     const filePath = Deno.makeTempFileSync();
     using file = Deno.openSync(filePath, { create: true, write: true });

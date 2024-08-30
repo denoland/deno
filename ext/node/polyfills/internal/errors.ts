@@ -2295,10 +2295,10 @@ export class ERR_HTTP2_INVALID_SETTING_VALUE extends NodeRangeError {
 }
 export class ERR_HTTP2_STREAM_CANCEL extends NodeError {
   override cause?: Error;
-  constructor(error: Error) {
+  constructor(error?: Error) {
     super(
       "ERR_HTTP2_STREAM_CANCEL",
-      typeof error.message === "string"
+      error && typeof error.message === "string"
         ? `The pending stream has been canceled (caused by: ${error.message})`
         : "The pending stream has been canceled",
     );

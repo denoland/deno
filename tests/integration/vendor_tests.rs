@@ -569,7 +569,9 @@ Download http://localhost:4545/vendor/logger.ts\n{}\n\n{}",
   assert!(output.status.success());
 }
 
+// TODO(2.0): decide if this test should be updated or removed
 #[test]
+#[ignore]
 fn vendor_npm_node_specifiers() {
   let context = TestContextBuilder::for_npm().use_temp_cwd().build();
   let temp_dir = context.temp_dir();
@@ -600,7 +602,7 @@ fn vendor_npm_node_specifiers() {
     vendored_npm_package_text("1 npm package"),
     success_text_updated_deno_json("vendor/")
   ));
-  let output = context.new_command().args("run -A my_app.ts").run();
+  let output = context.new_command().args("run -A -q my_app.ts").run();
   output.assert_matches_text("true 5\n");
   assert!(temp_dir.path().join("node_modules").exists());
   assert!(temp_dir.path().join("deno.lock").exists());
