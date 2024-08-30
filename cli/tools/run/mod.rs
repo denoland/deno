@@ -3,6 +3,7 @@
 use std::io::Read;
 use std::sync::Arc;
 
+use deno_config::deno_json::NodeModulesDirMode;
 use deno_core::error::AnyError;
 use deno_runtime::deno_permissions::Permissions;
 use deno_runtime::deno_permissions::PermissionsContainer;
@@ -194,11 +195,8 @@ pub async fn eval_command(
 pub async fn maybe_npm_install(factory: &CliFactory) -> Result<(), AnyError> {
   // ensure an "npm install" is done if the user has explicitly
   // opted into using a managed node_modules directory
-  if factory
-    .cli_options()?
-    .node_modules_dir()?
-    .map(|m| m.uses_node_modules_dir())
-    .unwrap_or(false)
+  if factory.cli_options()?.node_modules_dir()?
+    == Some(NodeModulesDirMode::Auto)
   {
     if let Some(npm_resolver) = factory.npm_resolver().await?.as_managed() {
       npm_resolver.ensure_top_level_package_json_install().await?;
