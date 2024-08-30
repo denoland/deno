@@ -4,6 +4,7 @@ use std::process::Command;
 use std::process::Stdio;
 use std::time::Instant;
 use test_util as util;
+use test_util::assert_starts_with;
 use test_util::TempDir;
 use test_util::TestContext;
 use util::TestContextBuilder;
@@ -163,9 +164,10 @@ fn upgrade_invalid_stable_version() {
     .wait_with_output()
     .unwrap();
   assert!(!output.status.success());
-  assert_eq!(
-    "error: Invalid version passed\n",
-    util::strip_ansi_codes(&String::from_utf8(output.stderr).unwrap())
+  assert_starts_with!(
+    &util::strip_ansi_codes(&String::from_utf8(output.stderr.clone()).unwrap())
+      .to_string(),
+    "error: Invalid version passed (foobar)"
   );
 }
 
@@ -188,9 +190,10 @@ fn upgrade_invalid_canary_version() {
     .wait_with_output()
     .unwrap();
   assert!(!output.status.success());
-  assert_eq!(
-    "error: Invalid commit hash passed\n",
-    util::strip_ansi_codes(&String::from_utf8(output.stderr).unwrap())
+  assert_starts_with!(
+    &util::strip_ansi_codes(&String::from_utf8(output.stderr.clone()).unwrap())
+      .to_string(),
+    "error: Invalid commit hash passed (foobar)"
   );
 }
 
@@ -221,9 +224,10 @@ fn upgrade_invalid_lockfile() {
     .unwrap();
   assert!(!output.status.success());
   // should make it here instead of erroring on an invalid lockfile
-  assert_eq!(
-    "error: Invalid version passed\n",
-    util::strip_ansi_codes(&String::from_utf8(output.stderr).unwrap())
+  assert_starts_with!(
+    &util::strip_ansi_codes(&String::from_utf8(output.stderr.clone()).unwrap())
+      .to_string(),
+    "error: Invalid version passed (foobar)"
   );
 }
 
