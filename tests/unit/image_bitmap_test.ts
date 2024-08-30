@@ -346,4 +346,17 @@ Deno.test(async function imageBitmapFromBlobAnimatedImage() {
     // deno-fmt-ignore
     assertEquals(Deno[Deno.internal].getBitmapData(imageBitmap), new Uint8Array([255, 0, 0, 127]));
   }
+  {
+    // the chunk of animated gif is below (3 frames, 1x1, 8-bit, RGBA)
+    // [ 255, 0, 0, 255,
+    //   0, 255, 0, 255,
+    //   0, 0, 255, 255 ]
+    const imageData = new Blob([
+      await Deno.readFile(`${prefix}/1x1-3f-animated.gif`),
+    ], { type: "image/gif" });
+    const imageBitmap = await createImageBitmap(imageData);
+    // @ts-ignore: Deno[Deno.internal].core allowed
+    // deno-fmt-ignore
+    assertEquals(Deno[Deno.internal].getBitmapData(imageBitmap), new Uint8Array([255, 0, 0, 255]));
+  }
 });

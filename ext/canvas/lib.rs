@@ -14,7 +14,6 @@ use image::codecs::png::PngDecoder;
 use image::codecs::webp::WebPDecoder;
 use image::imageops::overlay;
 use image::imageops::FilterType;
-use image::AnimationDecoder;
 use image::ColorType;
 use image::DynamicImage;
 use image::GenericImageView;
@@ -391,6 +390,7 @@ macro_rules! impl_image_decoder_from_reader {
 // If PngDecoder decodes an animated image, it returns the default image if one is set, or the first frame if not.
 impl_image_decoder_from_reader!(PngDecoder<R>, ImageDecoderFromReaderType);
 impl_image_decoder_from_reader!(JpegDecoder<R>, ImageDecoderFromReaderType);
+// The GifDecoder decodes the first frame.
 impl_image_decoder_from_reader!(GifDecoder<R>, ImageDecoderFromReaderType);
 impl_image_decoder_from_reader!(BmpDecoder<R>, ImageDecoderFromReaderType);
 impl_image_decoder_from_reader!(IcoDecoder<R>, ImageDecoderFromReaderType);
@@ -423,18 +423,6 @@ fn decode_bitmap_data(
           decoder.to_intermediate_image()?
         }
         "image/gif" => {
-          let decoder: GifDecoder<ImageDecoderFromReaderType> =
-            ImageDecoderFromReader::to_decoder(BufReader::new(Cursor::new(
-              buf,
-            )))?;
-          if decoder.into_frames().count() > 1 {
-            return Err(
-              DOMExceptionInvalidStateError::new(
-                "Animation image is not supported.",
-              )
-              .into(),
-            );
-          }
           let decoder: GifDecoder<ImageDecoderFromReaderType> =
             ImageDecoderFromReader::to_decoder(BufReader::new(Cursor::new(
               buf,
