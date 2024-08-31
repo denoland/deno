@@ -1,4 +1,4 @@
 {
   // will cause a warning
-  "nodeModulesDir": true
+  "nodeModules": "local-auto"
 }

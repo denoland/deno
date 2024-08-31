@@ -88,7 +88,12 @@ async function dlint() {
       }),
     );
   }
-  await Promise.allSettled(pending);
+  const results = await Promise.allSettled(pending);
+  for (const result of results) {
+    if (result.status === "rejected") {
+      throw new Error(result.reason);
+    }
+  }
 }
 
 // `prefer-primordials` has to apply only to files related to bootstrapping,
@@ -213,7 +218,7 @@ async function ensureNoNewITests() {
     "lsp_tests.rs": 0,
     "node_compat_tests.rs": 4,
     "node_unit_tests.rs": 2,
-    "npm_tests.rs": 93,
+    "npm_tests.rs": 92,
     "pm_tests.rs": 0,
     "publish_tests.rs": 0,
     "repl_tests.rs": 0,

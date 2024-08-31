@@ -88,7 +88,10 @@ pub async fn vendor(
   let graph = output.graph;
   let npm_package_count = graph.npm_packages.len();
   let try_add_node_modules_dir = npm_package_count > 0
-    && cli_options.node_modules_dir_enablement().unwrap_or(true);
+    && cli_options
+      .node_modules_dir()?
+      .map(|m| m.uses_node_modules_dir())
+      .unwrap_or(true);
 
   log::info!(
     concat!("Vendored {} {} into {} directory.",),
@@ -341,7 +344,7 @@ fn update_config_text(
       let insert_position = obj.range.end - 1;
       text_changes.push(TextChange {
         range: insert_position..insert_position,
-        new_text: r#""nodeModulesDir": true"#.to_string(),
+        new_text: r#""nodeModulesDir": "auto""#.to_string(),
       });
       should_format = true;
       modified_result.added_node_modules_dir = true;
@@ -451,7 +454,7 @@ mod internal_test {
     assert_eq!(
       result.new_text.unwrap(),
       r#"{
-  "nodeModulesDir": true,
+  "nodeModulesDir": "auto",
   "importMap": "./vendor/import_map.json"
 }
 "#
@@ -464,7 +467,7 @@ mod internal_test {
     assert_eq!(
       result.new_text.unwrap(),
       r#"{
-  "nodeModulesDir": true
+  "nodeModulesDir": "auto"
 }
 "#
     );
@@ -543,10 +546,10 @@ mod internal_test {
 
   #[test]
   fn no_update_node_modules_dir() {
-    // will not update if this is already set (even if it's false)
+    // will not update if this is already set (even if it's "none")
     let result = update_config_text(
       r#"{
-  "nodeModulesDir": false
+  "nodeModulesDir": "none"
 }
 "#,
       &Default::default(),
@@ -560,7 +563,7 @@ mod internal_test {
 
     let result = update_config_text(
       r#"{
-  "nodeModulesDir": true
+  "nodeModulesDir": "auto"
 }
 "#,
       &Default::default(),

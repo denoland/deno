@@ -17550,7 +17550,7 @@ declare var PerformanceServerTiming: {
 };
 
 /**
- * A legacy interface kept for backwards compatibility and contains properties that offer performance timing information for various events which occur during the loading and use of the current page. You get a PerformanceTiming object describing your page using the window.performance.timing property.
+ * A legacy interface kept for backwards compatibility and contains properties that offer performance timing information for various events which occur during the loading and use of the current page. You get a PerformanceTiming object describing your page using the globalThis.performance.timing property.
  * @deprecated This interface is deprecated in the Navigation Timing Level 2 specification. Please use the PerformanceNavigationTiming interface instead.
  *
  * [MDN Reference](https://developer.mozilla.org/docs/Web/API/PerformanceTiming)
@@ -17833,7 +17833,7 @@ declare var Plugin: {
 };
 
 /**
- * Used to store a list of Plugin objects describing the available plugins; it's returned by the window.navigator.plugins property. The PluginArray is not a JavaScript array, but has the length property and supports accessing individual items using bracket notation (plugins[2]), as well as via item(index) and namedItem("name") methods.
+ * Used to store a list of Plugin objects describing the available plugins; it's returned by the globalThis.navigator.plugins property. The PluginArray is not a JavaScript array, but has the length property and supports accessing individual items using bracket notation (plugins[2]), as well as via item(index) and namedItem("name") methods.
  * @deprecated
  *
  * [MDN Reference](https://developer.mozilla.org/docs/Web/API/PluginArray)
@@ -22155,7 +22155,7 @@ declare var SubmitEvent: {
 };
 
 /**
- * This Web Crypto API interface provides a number of low-level cryptographic functions. It is accessed via the Crypto.subtle properties available in a window context (via Window.crypto).
+ * This Web Crypto API interface provides a number of low-level cryptographic functions. It is accessed via the Crypto.subtle properties available in a window context (via globalThis.crypto).
  * Available only in secure contexts.
  *
  * [MDN Reference](https://developer.mozilla.org/docs/Web/API/SubtleCrypto)

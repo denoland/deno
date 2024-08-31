@@ -3,13 +3,13 @@
   "tests": {
     "auth_success": {
       "cwd": "success",
-      "args": "run --node-modules-dir -A main.js",
+      "args": "run --node-modules-dir=auto -A main.js",
       "output": "success/main.out",
       "exitCode": 1
     },
     "auth_fail": {
       "cwd": "fail",
-      "args": "run --node-modules-dir -A main.js",
+      "args": "run --node-modules-dir=auto -A main.js",
       "output": "fail/main.out",
       "exitCode": 1
     }

@@ -1,7 +1,0 @@
-⚠️  Import assertions are deprecated. Use `with` keyword, instead of 'assert' keyword.
-
-import foo from "./main.json" assert { type: "json" };
-
-  at [WILDCARD]import_assertions/main.js:1:30
-
-{ foo: "foo" }

@@ -37,7 +37,6 @@ const conn = await Deno.connectTls({
   hostname,
   port,
 });
-assert(conn.rid > 0);
 const w = new BufWriter(conn);
 const r = new BufReader(conn);
 const body = `GET / HTTP/1.1\r\nHost: ${hostname}:${port}\r\n\r\n`;

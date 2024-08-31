@@ -63,10 +63,6 @@ async function write(rid, data) {
   return await core.write(rid, data);
 }
 
-function shutdown(rid) {
-  return core.shutdown(rid);
-}
-
 async function resolveDns(query, recordType, options) {
   let cancelRid;
   let abortHandler;
@@ -164,7 +160,7 @@ class Conn {
   }
 
   closeWrite() {
-    return shutdown(this.#rid);
+    return core.shutdown(this.#rid);
   }
 
   get readable() {
@@ -647,7 +643,6 @@ export {
   Listener,
   listenOptionApiName,
   resolveDns,
-  shutdown,
   TcpConn,
   UnixConn,
   validatePort,

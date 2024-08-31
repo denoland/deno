@@ -4060,73 +4060,6 @@ declare namespace Deno {
     bytesReceived: number;
   }
 
-  /** @category Runtime
-   *
-   * @deprecated This will be removed in Deno 2.0.
-   */
-  export interface Metrics extends OpMetrics {
-    ops: Record<string, OpMetrics>;
-  }
-
-  /** Receive metrics from the privileged side of Deno. This is primarily used
-   * in the development of Deno. _Ops_, also called _bindings_, are the
-   * go-between between Deno JavaScript sandbox and the rest of Deno.
-   *
-   * ```shell
-   * > console.table(Deno.metrics())
-   * ┌─────────────────────────┬────────┐
-   * │         (index)         │ Values │
-   * ├─────────────────────────┼────────┤
-   * │      opsDispatched      │   3    │
-   * │    opsDispatchedSync    │   2    │
-   * │   opsDispatchedAsync    │   1    │
-   * │ opsDispatchedAsyncUnref │   0    │
-   * │      opsCompleted       │   3    │
-   * │    opsCompletedSync     │   2    │
-   * │    opsCompletedAsync    │   1    │
-   * │ opsCompletedAsyncUnref  │   0    │
-   * │    bytesSentControl     │   73   │
-   * │      bytesSentData      │   0    │
-   * │      bytesReceived      │  375   │
-   * └─────────────────────────┴────────┘
-   * ```
-   *
-   * @category Runtime
-   *
-   * @deprecated This will be removed in Deno 2.0.
-   */
-  export function metrics(): Metrics;
-
-  /**
-   * A map of open resources that Deno is tracking. The key is the resource ID
-   * (_rid_) and the value is its representation.
-   *
-   * @deprecated This will be removed in Deno 2.0.
-   *
-   * @category Runtime */
-  export interface ResourceMap {
-    [rid: number]: unknown;
-  }
-
-  /** Returns a map of open resource IDs (_rid_) along with their string
-   * representations. This is an internal API and as such resource
-   * representation has `unknown` type; that means it can change any time and
-   * should not be depended upon.
-   *
-   * ```ts
-   * console.log(Deno.resources());
-   * // { 0: "stdin", 1: "stdout", 2: "stderr" }
-   * Deno.openSync('../test.file');
-   * console.log(Deno.resources());
-   * // { 0: "stdin", 1: "stdout", 2: "stderr", 3: "fsFile" }
-   * ```
-   *
-   * @deprecated This will be removed in Deno 2.0.
-   *
-   * @category Runtime
-   */
-  export function resources(): ResourceMap;
-
   /**
    * Additional information for FsEvent objects with the "other" kind.
    *
@@ -5505,50 +5438,6 @@ declare namespace Deno {
    * @category File System
    */
   export function ftruncateSync(rid: number, len?: number): void;
-
-  /**
-   * Synchronously changes the access (`atime`) and modification (`mtime`) times
-   * of a file stream resource referenced by `rid`. Given times are either in
-   * seconds (UNIX epoch time) or as `Date` objects.
-   *
-   * ```ts
-   * const file = Deno.openSync("file.txt", { create: true, write: true });
-   * Deno.futimeSync(file.rid, 1556495550, new Date());
-   * ```
-   *
-   * @deprecated This will be removed in Deno 2.0. See the
-   * {@link https://docs.deno.com/runtime/manual/advanced/migrate_deprecations | Deno 1.x to 2.x Migration Guide}
-   * for migration instructions.
-   *
-   * @category File System
-   */
-  export function futimeSync(
-    rid: number,
-    atime: number | Date,
-    mtime: number | Date,
-  ): void;
-
-  /**
-   * Changes the access (`atime`) and modification (`mtime`) times of a file
-   * stream resource referenced by `rid`. Given times are either in seconds
-   * (UNIX epoch time) or as `Date` objects.
-   *
-   * ```ts
-   * const file = await Deno.open("file.txt", { create: true, write: true });
-   * await Deno.futime(file.rid, 1556495550, new Date());
-   * ```
-   *
-   * @deprecated This will be removed in Deno 2.0. See the
-   * {@link https://docs.deno.com/runtime/manual/advanced/migrate_deprecations | Deno 1.x to 2.x Migration Guide}
-   * for migration instructions.
-   *
-   * @category File System
-   */
-  export function futime(
-    rid: number,
-    atime: number | Date,
-    mtime: number | Date,
-  ): Promise<void>;
 
   /**
    * Returns a `Deno.FileInfo` for the given file stream.
