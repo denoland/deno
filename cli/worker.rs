@@ -506,6 +506,7 @@ impl CliMainWorkerFactory {
         .npm_resolver
         .resolve_pkg_folder_from_deno_module_req(
           package_ref.req(),
+          None,
           &referrer,
         )?;
       let node_resolution = self

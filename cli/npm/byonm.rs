@@ -286,23 +286,57 @@ impl CliNpmResolver for ByonmCliNpmResolver {
   fn resolve_pkg_folder_from_deno_module_req(
     &self,
     req: &PackageReq,
+    raw_specifier: Option<&str>,
     referrer: &ModuleSpecifier,
   ) -> Result<PathBuf, AnyError> {
-    // resolve the pkg json and alias
-    let (pkg_json, alias) =
-      self.resolve_pkg_json_and_alias_for_req(req, referrer)?;
-    // now try node resolution
-    for ancestor in pkg_json.path.parent().unwrap().ancestors() {
-      let node_modules_folder = ancestor.join("node_modules");
-      let sub_dir = join_package_name(&node_modules_folder, &alias);
-      if self.fs.is_dir_sync(&sub_dir) {
-        return Ok(canonicalize_path_maybe_not_exists_with_fs(
-          &sub_dir,
-          self.fs.as_ref(),
-        )?);
+    fn node_resolve_dir(
+      fs: &dyn FileSystem,
+      alias: &str,
+      start_dir: &Path,
+    ) -> Result<Option<PathBuf>, AnyError> {
+      for ancestor in start_dir.ancestors() {
+        let node_modules_folder = ancestor.join("node_modules");
+        let sub_dir = join_package_name(&node_modules_folder, &alias);
+        if fs.is_dir_sync(&sub_dir) {
+          return Ok(Some(canonicalize_path_maybe_not_exists_with_fs(
+            &sub_dir, fs,
+          )?));
+        }
+      }
+      Ok(None)
+    }
+
+    // attempt to resolve the specifier based on its base specifier
+    if let Some(specifier) = raw_specifier.filter(|r| !r.contains(":")) {
+      // todo(dsherret): ideally this would begin searching from the deno.json
+      // or package.json that contained the bare specifier and not at the referrer
+      let referrer_path = referrer.to_file_path().ok();
+      if let Some(referrer_parent) =
+        referrer_path.as_ref().and_then(|p| p.parent())
+      {
+        if let Ok((package_name, _pkg_subpath, _is_scoped)) =
+          node_resolver::parse_npm_pkg_name(specifier, referrer)
+        {
+          if let Some(resolved) =
+            node_resolve_dir(self.fs.as_ref(), &package_name, referrer_parent)?
+          {
+            return Ok(resolved);
+          }
+        }
       }
     }
 
+    // now attempt to resolve if it's found in any package.json
+    let (pkg_json, alias) =
+      self.resolve_pkg_json_and_alias_for_req(req, referrer)?;
+    // now try node resolution
+    if let Some(resolved) =
+      node_resolve_dir(self.fs.as_ref(), &alias, pkg_json.dir_path())?
+    {
+      return Ok(resolved);
+    }
+
+    // todo(dsherret): improve this error message
     bail!(
       concat!(
         "Could not find \"{}\" in a node_modules folder. ",

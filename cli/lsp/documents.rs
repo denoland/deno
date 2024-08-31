@@ -1250,26 +1250,28 @@ impl Documents {
       .or(file_referrer);
     let dependencies = document.as_ref().map(|d| d.dependencies());
     let mut results = Vec::new();
-    for specifier in specifiers {
-      if specifier.starts_with("asset:") {
-        if let Ok(specifier) = ModuleSpecifier::parse(specifier) {
+    for raw_specifier in specifiers {
+      if raw_specifier.starts_with("asset:") {
+        if let Ok(specifier) = ModuleSpecifier::parse(raw_specifier) {
           let media_type = MediaType::from_specifier(&specifier);
           results.push(Some((specifier, media_type)));
         } else {
           results.push(None);
         }
       } else if let Some(dep) =
-        dependencies.as_ref().and_then(|d| d.get(specifier))
+        dependencies.as_ref().and_then(|d| d.get(raw_specifier))
       {
         if let Some(specifier) = dep.maybe_type.maybe_specifier() {
           results.push(self.resolve_dependency(
             specifier,
+            Some(raw_specifier),
             referrer,
             file_referrer,
           ));
         } else if let Some(specifier) = dep.maybe_code.maybe_specifier() {
           results.push(self.resolve_dependency(
             specifier,
+            Some(raw_specifier),
             referrer,
             file_referrer,
           ));
@@ -1278,7 +1280,7 @@ impl Documents {
         }
       } else if let Ok(specifier) =
         self.resolver.as_graph_resolver(file_referrer).resolve(
-          specifier,
+          raw_specifier,
           &deno_graph::Range {
             specifier: referrer.clone(),
             start: deno_graph::Position::zeroed(),
@@ -1289,6 +1291,7 @@ impl Documents {
       {
         results.push(self.resolve_dependency(
           &specifier,
+          Some(raw_specifier),
           referrer,
           file_referrer,
         ));
@@ -1436,6 +1439,7 @@ impl Documents {
   pub fn resolve_dependency(
     &self,
     specifier: &ModuleSpecifier,
+    raw_specifier: Option<&str>,
     referrer: &ModuleSpecifier,
     file_referrer: Option<&ModuleSpecifier>,
   ) -> Option<(ModuleSpecifier, MediaType)> {
@@ -1450,10 +1454,12 @@ impl Documents {
     let mut specifier = specifier.clone();
     let mut media_type = None;
     if let Ok(npm_ref) = NpmPackageReqReference::from_specifier(&specifier) {
-      let (s, mt) =
-        self
-          .resolver
-          .npm_to_file_url(&npm_ref, referrer, file_referrer)?;
+      let (s, mt) = self.resolver.npm_to_file_url(
+        &npm_ref,
+        raw_specifier,
+        referrer,
+        file_referrer,
+      )?;
       specifier = s;
       media_type = Some(mt);
     }
@@ -1463,7 +1469,7 @@ impl Documents {
       return Some((specifier, media_type));
     };
     if let Some(types) = doc.maybe_types_dependency().maybe_specifier() {
-      self.resolve_dependency(types, &specifier, file_referrer)
+      self.resolve_dependency(types, None, &specifier, file_referrer)
     } else {
       Some((doc.specifier().clone(), doc.media_type()))
     }

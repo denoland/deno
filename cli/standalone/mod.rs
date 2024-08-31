@@ -138,7 +138,7 @@ pub const UNSUPPORTED_SCHEME: &str = "Unsupported scheme";
 impl ModuleLoader for EmbeddedModuleLoader {
   fn resolve(
     &self,
-    specifier: &str,
+    raw_specifier: &str,
     referrer: &str,
     kind: ResolutionKind,
   ) -> Result<ModuleSpecifier, AnyError> {
@@ -162,13 +162,15 @@ impl ModuleLoader for EmbeddedModuleLoader {
         self
           .shared
           .node_resolver
-          .resolve(specifier, &referrer, NodeResolutionMode::Execution)?
+          .resolve(raw_specifier, &referrer, NodeResolutionMode::Execution)?
           .into_url(),
       );
     }
 
-    let mapped_resolution =
-      self.shared.workspace_resolver.resolve(specifier, &referrer);
+    let mapped_resolution = self
+      .shared
+      .workspace_resolver
+      .resolve(raw_specifier, &referrer);
 
     match mapped_resolution {
       Ok(MappedResolution::WorkspaceJsrPackage { specifier, .. }) => {
@@ -202,6 +204,7 @@ impl ModuleLoader for EmbeddedModuleLoader {
           .resolve_req_with_sub_path(
             req,
             sub_path.as_deref(),
+            Some(raw_specifier),
             &referrer,
             NodeResolutionMode::Execution,
           )
@@ -238,6 +241,7 @@ impl ModuleLoader for EmbeddedModuleLoader {
             .node_resolver
             .resolve_req_reference(
               &reference,
+              Some(raw_specifier),
               &referrer,
               NodeResolutionMode::Execution,
             )
@@ -262,7 +266,7 @@ impl ModuleLoader for EmbeddedModuleLoader {
         if err.is_unmapped_bare_specifier() && referrer.scheme() == "file" =>
       {
         let maybe_res = self.shared.node_resolver.resolve_if_for_npm_pkg(
-          specifier,
+          raw_specifier,
           &referrer,
           NodeResolutionMode::Execution,
         )?;

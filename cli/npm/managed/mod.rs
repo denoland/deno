@@ -636,6 +636,7 @@ impl CliNpmResolver for ManagedCliNpmResolver {
   fn resolve_pkg_folder_from_deno_module_req(
     &self,
     req: &PackageReq,
+    _raw_specifier: Option<&str>, // only used for byonm resolution
     _referrer: &ModuleSpecifier,
   ) -> Result<PathBuf, AnyError> {
     let pkg_id = self.resolve_pkg_id_from_pkg_req(req)?;
