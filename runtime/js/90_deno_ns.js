@@ -93,22 +93,6 @@ const denoNs = {
     );
     return fs.ftruncate(rid, len);
   },
-  async futime(rid, atime, mtime) {
-    internals.warnOnDeprecatedApi(
-      "Deno.futime()",
-      new Error().stack,
-      "Use `Deno.FsFile.utime()` instead.",
-    );
-    await fs.futime(rid, atime, mtime);
-  },
-  futimeSync(rid, atime, mtime) {
-    internals.warnOnDeprecatedApi(
-      "Deno.futimeSync()",
-      new Error().stack,
-      "Use `Deno.FsFile.utimeSync()` instead.",
-    );
-    fs.futimeSync(rid, atime, mtime);
-  },
   errors: errors.errors,
   inspect: console.inspect,
   env: os.env,

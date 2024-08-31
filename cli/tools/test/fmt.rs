@@ -326,7 +326,6 @@ pub const OP_DETAILS: phf::Map<&'static str, [&'static str; 2]> = phf_map! {
   "op_fs_ftruncate_async" => ["truncate a file", "awaiting the result of a `Deno.ftruncate` or `Deno.FsFile.truncate` call"],
   "op_fs_funlock_async_unstable" => ["unlock a file", "awaiting the result of a `Deno.funlock` call"],
   "op_fs_funlock_async" => ["unlock a file", "awaiting the result of a `Deno.FsFile.unlock` call"],
-  "op_fs_futime_async" => ["change file timestamps", "awaiting the result of a `Deno.futime` or `Deno.FsFile.utime` call"],
   "op_fs_link_async" => ["create a hard link", "awaiting the result of a `Deno.link` call"],
   "op_fs_lstat_async" => ["get file metadata", "awaiting the result of a `Deno.lstat` call"],
   "op_fs_make_temp_dir_async" => ["create a temporary directory", "awaiting the result of a `Deno.makeTempDir` call"],
