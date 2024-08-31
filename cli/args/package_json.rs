@@ -42,10 +42,14 @@ impl NpmInstallDepsProvider {
 
     for (_, folder) in workspace.config_folders() {
       let mut deno_json_aliases = HashSet::new();
+
+      // deal with the deno.json first because it takes precedence during resolution
       if let Some(deno_json) = &folder.deno_json {
-        // don't deal with externally referenced import maps
+        // don't bother with externally referenced import maps as users
+        // should inline their import map to get this behaviour
         if let Some(serde_json::Value::Object(obj)) = &deno_json.json.imports {
           deno_json_aliases.reserve(obj.len());
+          let mut pkg_pkgs = Vec::with_capacity(obj.len());
           for (alias, value) in obj {
             let serde_json::Value::String(specifier) = value else {
               continue;
@@ -64,7 +68,7 @@ impl NpmInstallDepsProvider {
                   target_dir: pkg.pkg_json.dir_path().to_path_buf(),
                 });
               } else {
-                remote_pkgs.push(InstallNpmRemotePkg {
+                pkg_pkgs.push(InstallNpmRemotePkg {
                   alias: alias.to_string(),
                   base_dir: deno_json.dir_path(),
                   req: pkg_req,
@@ -72,8 +76,13 @@ impl NpmInstallDepsProvider {
               }
             }
           }
+
+          // sort within each package
+          pkg_pkgs.sort_by(|a, b| a.alias.cmp(&b.alias));
+          remote_pkgs.extend(pkg_pkgs);
         }
       }
+
       if let Some(pkg_json) = &folder.pkg_json {
         let deps = pkg_json.resolve_local_package_json_deps();
         let mut pkg_pkgs = Vec::with_capacity(deps.len());
@@ -119,9 +128,9 @@ impl NpmInstallDepsProvider {
             }
           }
         }
+
         // sort within each package
         pkg_pkgs.sort_by(|a, b| a.alias.cmp(&b.alias));
-
         remote_pkgs.extend(pkg_pkgs);
       }
     }
