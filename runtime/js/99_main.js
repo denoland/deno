@@ -620,10 +620,6 @@ const internalSymbol = Symbol("Deno.internal");
 const finalDenoNs = {
   internal: internalSymbol,
   [internalSymbol]: internals,
-  resources() {
-    internals.warnOnDeprecatedApi("Deno.resources()", new Error().stack);
-    return core.resources();
-  },
   close(rid) {
     internals.warnOnDeprecatedApi(
       "Deno.close()",
@@ -946,15 +942,12 @@ function bootstrapMainRuntime(runtimeOptions, warmup = false) {
       delete Deno.funlockSync;
       delete Deno.iter;
       delete Deno.iterSync;
-      delete Deno.metrics;
       delete Deno.readAll;
       delete Deno.readAllSync;
       delete Deno.read;
       delete Deno.readSync;
-      delete Deno.resources;
       delete Deno.seek;
       delete Deno.seekSync;
-      delete Deno.shutdown;
       delete Deno.writeAll;
       delete Deno.writeAllSync;
       delete Deno.write;
@@ -1136,15 +1129,12 @@ function bootstrapWorkerRuntime(
       delete Deno.funlockSync;
       delete Deno.iter;
       delete Deno.iterSync;
-      delete Deno.metrics;
       delete Deno.readAll;
       delete Deno.readAllSync;
       delete Deno.read;
       delete Deno.readSync;
-      delete Deno.resources;
       delete Deno.seek;
       delete Deno.seekSync;
-      delete Deno.shutdown;
       delete Deno.writeAll;
       delete Deno.writeAllSync;
       delete Deno.write;

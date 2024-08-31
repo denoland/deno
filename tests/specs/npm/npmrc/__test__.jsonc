@@ -14,7 +14,7 @@
       }]
     },
     "run_node_modules_dir": {
-      "args": "run --node-modules-dir -A --quiet main.js",
+      "args": "run --node-modules-dir=auto -A --quiet main.js",
       "output": "main.out"
     }
   }

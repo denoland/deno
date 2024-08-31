@@ -8,8 +8,9 @@ mod lockfile;
 mod package_json;
 
 use deno_ast::SourceMapOption;
-use deno_config::deno_json::NodeModulesMode;
+use deno_config::deno_json::NodeModulesDirMode;
 use deno_config::workspace::CreateResolverOptions;
+use deno_config::workspace::FolderConfigs;
 use deno_config::workspace::PackageJsonDepResolution;
 use deno_config::workspace::VendorEnablement;
 use deno_config::workspace::Workspace;
@@ -51,7 +52,6 @@ use deno_core::anyhow::Context;
 use deno_core::error::AnyError;
 use deno_core::serde_json;
 use deno_core::url::Url;
-use deno_runtime::deno_node::PackageJson;
 use deno_runtime::deno_permissions::PermissionsOptions;
 use deno_runtime::deno_tls::deno_native_certs::load_native_certs;
 use deno_runtime::deno_tls::rustls;
@@ -64,6 +64,7 @@ use dotenvy::from_filename;
 use once_cell::sync::Lazy;
 use serde::Deserialize;
 use serde::Serialize;
+use std::borrow::Cow;
 use std::collections::HashMap;
 use std::env;
 use std::io::BufReader;
@@ -116,9 +117,6 @@ pub static DENO_DISABLE_PEDANTIC_NODE_WARNINGS: Lazy<bool> = Lazy::new(|| {
     .ok()
     .is_some()
 });
-
-pub static DENO_FUTURE: Lazy<bool> =
-  Lazy::new(|| std::env::var("DENO_FUTURE").ok().is_some());
 
 pub fn jsr_url() -> &'static Url {
   static JSR_URL: Lazy<Url> = Lazy::new(|| {
@@ -814,15 +812,12 @@ impl CliOptions {
     }
 
     let maybe_lockfile = maybe_lockfile.filter(|_| !force_global_cache);
-    let root_folder = start_dir.workspace.root_folder_configs();
     let deno_dir_provider =
       Arc::new(DenoDirProvider::new(flags.cache_path.clone()));
     let maybe_node_modules_folder = resolve_node_modules_folder(
       &initial_cwd,
       &flags,
       &start_dir.workspace,
-      root_folder.deno_json.as_deref(),
-      root_folder.pkg_json.as_deref(),
       &deno_dir_provider,
     )
     .with_context(|| "Resolving node_modules folder.")?;
@@ -919,10 +914,6 @@ impl CliOptions {
     };
 
     for diagnostic in start_dir.workspace.diagnostics() {
-      // TODO(2.0): remove
-      if matches!(diagnostic.kind, deno_config::workspace::WorkspaceDiagnosticKind::DeprecatedNodeModulesDirOption(_)) && !*DENO_FUTURE {
-        continue;
-      }
       log::warn!("{} {}", colors::yellow("Warning"), diagnostic);
     }
 
@@ -1143,10 +1134,6 @@ impl CliOptions {
     self.flags.env_file.as_ref()
   }
 
-  pub fn enable_future_features(&self) -> bool {
-    *DENO_FUTURE
-  }
-
   pub fn resolve_main_module(&self) -> Result<ModuleSpecifier, AnyError> {
     let main_module = match &self.flags.subcommand {
       DenoSubcommand::Bundle(bundle_flags) => {
@@ -1261,29 +1248,13 @@ impl CliOptions {
     }
   }
 
-  pub fn node_modules_mode(&self) -> Result<Option<NodeModulesMode>, AnyError> {
-    if *DENO_FUTURE {
-      if let Some(flag) = self.flags.node_modules_mode {
-        return Ok(Some(flag));
-      }
-      self.workspace().node_modules_mode().map_err(Into::into)
-    } else {
-      Ok(
-        self
-          .flags
-          .node_modules_dir
-          .or_else(|| self.workspace().node_modules_dir())
-          .map(|enabled| {
-            if enabled && self.byonm_enabled() {
-              NodeModulesMode::LocalManual
-            } else if enabled {
-              NodeModulesMode::LocalAuto
-            } else {
-              NodeModulesMode::GlobalAuto
-            }
-          }),
-      )
+  pub fn node_modules_dir(
+    &self,
+  ) -> Result<Option<NodeModulesDirMode>, AnyError> {
+    if let Some(flag) = self.flags.node_modules_dir {
+      return Ok(Some(flag));
     }
+    self.workspace().node_modules_dir_mode().map_err(Into::into)
   }
 
   pub fn vendor_dir_path(&self) -> Option<&PathBuf> {
@@ -1637,17 +1608,15 @@ impl CliOptions {
 
   fn byonm_enabled(&self) -> bool {
     // check if enabled via unstable
-    self.flags.unstable_config.byonm
+    self.node_modules_dir().ok().flatten() == Some(NodeModulesDirMode::Manual)
       || NPM_PROCESS_STATE
         .as_ref()
         .map(|s| matches!(s.kind, NpmProcessStateKind::Byonm))
         .unwrap_or(false)
-      || self.workspace().has_unstable("byonm")
   }
 
   pub fn use_byonm(&self) -> bool {
-    if self.enable_future_features()
-      && self.node_modules_mode().ok().flatten().is_none()
+    if self.node_modules_dir().ok().flatten().is_none()
       && self.maybe_node_modules_folder.is_some()
       && self
         .workspace()
@@ -1680,18 +1649,17 @@ impl CliOptions {
         }
       });
 
-    if *DENO_FUTURE {
-      let future_features = [
-        deno_runtime::deno_ffi::UNSTABLE_FEATURE_NAME.to_string(),
-        deno_runtime::deno_fs::UNSTABLE_FEATURE_NAME.to_string(),
-        deno_runtime::deno_webgpu::UNSTABLE_FEATURE_NAME.to_string(),
-      ];
-      future_features.iter().for_each(|future_feature| {
-        if !from_config_file.contains(future_feature) {
-          from_config_file.push(future_feature.to_string());
-        }
-      });
-    }
+    // TODO(2.0): remove this code and enable these features in `99_main.js` by default.
+    let future_features = [
+      deno_runtime::deno_ffi::UNSTABLE_FEATURE_NAME.to_string(),
+      deno_runtime::deno_fs::UNSTABLE_FEATURE_NAME.to_string(),
+      deno_runtime::deno_webgpu::UNSTABLE_FEATURE_NAME.to_string(),
+    ];
+    future_features.iter().for_each(|future_feature| {
+      if !from_config_file.contains(future_feature) {
+        from_config_file.push(future_feature.to_string());
+      }
+    });
 
     if !from_config_file.is_empty() {
       // collect unstable granular flags
@@ -1791,54 +1759,54 @@ fn resolve_node_modules_folder(
   cwd: &Path,
   flags: &Flags,
   workspace: &Workspace,
-  maybe_config_file: Option<&ConfigFile>,
-  maybe_package_json: Option<&PackageJson>,
   deno_dir_provider: &Arc<DenoDirProvider>,
 ) -> Result<Option<PathBuf>, AnyError> {
-  let use_node_modules_dir = if *DENO_FUTURE {
-    if let Some(mode) = flags.node_modules_mode {
-      Some(mode.uses_node_modules_dir())
-    } else {
-      workspace
-        .node_modules_mode()?
-        .map(|m| m.uses_node_modules_dir())
-        .or(flags.vendor)
-        .or_else(|| maybe_config_file.and_then(|c| c.json.vendor))
-    }
+  fn resolve_from_root(root_folder: &FolderConfigs, cwd: &Path) -> PathBuf {
+    root_folder
+      .deno_json
+      .as_ref()
+      .map(|c| Cow::Owned(c.dir_path()))
+      .or_else(|| {
+        root_folder
+          .pkg_json
+          .as_ref()
+          .map(|c| Cow::Borrowed(c.dir_path()))
+      })
+      .unwrap_or(Cow::Borrowed(cwd))
+      .join("node_modules")
+  }
+
+  let root_folder = workspace.root_folder_configs();
+  let use_node_modules_dir = if let Some(mode) = flags.node_modules_dir {
+    Some(mode.uses_node_modules_dir())
   } else {
-    flags
-      .node_modules_dir
-      .or_else(|| maybe_config_file.and_then(|c| c.json.node_modules_dir))
+    workspace
+      .node_modules_dir_mode()?
+      .map(|m| m.uses_node_modules_dir())
       .or(flags.vendor)
-      .or_else(|| maybe_config_file.and_then(|c| c.json.vendor))
+      .or_else(|| root_folder.deno_json.as_ref().and_then(|c| c.json.vendor))
   };
   let path = if use_node_modules_dir == Some(false) {
     return Ok(None);
   } else if let Some(state) = &*NPM_PROCESS_STATE {
     return Ok(state.local_node_modules_path.as_ref().map(PathBuf::from));
-  } else if let Some(package_json_path) = maybe_package_json.map(|c| &c.path) {
+  } else if workspace.package_jsons().next().is_some() {
+    let node_modules_dir = resolve_from_root(root_folder, cwd);
     if let Ok(deno_dir) = deno_dir_provider.get_or_create() {
       // `deno_dir.root` can be symlink in macOS
       if let Ok(root) = canonicalize_path_maybe_not_exists(&deno_dir.root) {
-        if package_json_path.starts_with(root) {
+        if node_modules_dir.starts_with(root) {
           // if the package.json is in deno_dir, then do not use node_modules
           // next to it as local node_modules dir
           return Ok(None);
         }
       }
     }
-    // auto-discover the local_node_modules_folder when a package.json exists
-    // and it's not in deno_dir
-    package_json_path.parent().unwrap().join("node_modules")
+    node_modules_dir
   } else if use_node_modules_dir.is_none() {
     return Ok(None);
-  } else if let Some(config_path) = maybe_config_file
-    .as_ref()
-    .and_then(|c| c.specifier.to_file_path().ok())
-  {
-    config_path.parent().unwrap().join("node_modules")
   } else {
-    cwd.join("node_modules")
+    resolve_from_root(root_folder, cwd)
   };
   Ok(Some(canonicalize_path_maybe_not_exists(&path)?))
 }
@@ -1928,19 +1896,18 @@ pub fn npm_pkg_req_ref_to_binary_command(
 pub fn config_to_deno_graph_workspace_member(
   config: &ConfigFile,
 ) -> Result<deno_graph::WorkspaceMember, AnyError> {
-  let nv = deno_semver::package::PackageNv {
-    name: match &config.json.name {
-      Some(name) => name.clone(),
-      None => bail!("Missing 'name' field in config file."),
-    },
-    version: match &config.json.version {
-      Some(name) => deno_semver::Version::parse_standard(name)?,
-      None => bail!("Missing 'version' field in config file."),
-    },
+  let name = match &config.json.name {
+    Some(name) => name.clone(),
+    None => bail!("Missing 'name' field in config file."),
+  };
+  let version = match &config.json.version {
+    Some(name) => Some(deno_semver::Version::parse_standard(name)?),
+    None => None,
   };
   Ok(deno_graph::WorkspaceMember {
     base: config.specifier.join("./").unwrap(),
-    nv,
+    name,
+    version,
     exports: config.to_exports_config()?.into_map(),
   })
 }

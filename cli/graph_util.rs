@@ -543,7 +543,7 @@ impl ModuleGraphBuilder {
     // opted into using a node_modules directory
     if self
       .options
-      .node_modules_mode()?
+      .node_modules_dir()?
       .map(|m| m.uses_node_modules_dir())
       .unwrap_or(false)
     {

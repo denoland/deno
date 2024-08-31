@@ -88,7 +88,12 @@ async function dlint() {
       }),
     );
   }
-  await Promise.allSettled(pending);
+  const results = await Promise.allSettled(pending);
+  for (const result of results) {
+    if (result.status === "rejected") {
+      throw new Error(result.reason);
+    }
+  }
 }
 
 // `prefer-primordials` has to apply only to files related to bootstrapping,

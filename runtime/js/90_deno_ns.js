@@ -32,10 +32,6 @@ import * as cron from "ext:deno_cron/01_cron.ts";
 import * as webgpuSurface from "ext:deno_webgpu/02_surface.js";
 
 const denoNs = {
-  metrics: () => {
-    internals.warnOnDeprecatedApi("Deno.metrics()", new Error().stack);
-    return core.metrics();
-  },
   Process: process.Process,
   run: process.run,
   isatty: tty.isatty,
@@ -190,14 +186,6 @@ const denoNs = {
   connectTls: tls.connectTls,
   listenTls: tls.listenTls,
   startTls: tls.startTls,
-  shutdown(rid) {
-    internals.warnOnDeprecatedApi(
-      "Deno.shutdown()",
-      new Error().stack,
-      "Use `Deno.Conn.closeWrite()` instead.",
-    );
-    net.shutdown(rid);
-  },
   fstatSync(rid) {
     internals.warnOnDeprecatedApi(
       "Deno.fstatSync()",
