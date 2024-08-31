@@ -1177,7 +1177,7 @@ static DENO_HELP: &str = cstr!(
                   <p(245)>deno test  |  deno test test.ts</>
     <g>publish</>      Publish the current working directory's package or workspace
     <g>upgrade</>      Upgrade deno executable to given version
-                  <p(245)>deno upgrade  |  deno upgrade --version=1.45.0  |  deno upgrade --canary</>
+                  <p(245)>deno upgrade  |  deno upgrade 1.45.0  |  deno upgrade canary</>
 {after-help}
 
 <y>Docs:</> https://docs.deno.com
