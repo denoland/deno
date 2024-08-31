@@ -2,9 +2,6 @@
   "tempDir": true,
   "tests": {
     "deno_install": {
-      "envs": {
-        "DENO_FUTURE": "1"
-      },
       "steps": [{
         "args": "install",
         "output": "install.out"

@@ -60,9 +60,6 @@
       ]
     },
     "error_when_package_json_changed": {
-      "envs": {
-        "DENO_FUTURE": "1"
-      },
       "steps": [
         {
           "args": [

@@ -74,9 +74,6 @@
     },
     "future_install_lifecycle_scripts": {
       "tempDir": true,
-      "envs": {
-        "DENO_FUTURE": "1"
-      },
       "steps": [
         {
           "args": [
