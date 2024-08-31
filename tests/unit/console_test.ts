@@ -1903,11 +1903,12 @@ Deno.test(function consoleLogWhenCauseIsAssignedShouldNotPrintCauseTwice() {
     const result = stripAnsiCode(out.toString());
     // Filter out stack trace lines, keeping only the first line and the cause line
     const filteredOutput = result
-        .split("\n")
-        .filter(line => !line.trim().startsWith("at"))
-        .join("\n");
+      .split("\n")
+      .filter((line) => !line.trim().startsWith("at"))
+      .join("\n");
 
-    const expectedResult = "TypeError: Type incorrect\nCaused by SyntaxError: Improper syntax\n";
+    const expectedResult =
+      "TypeError: Type incorrect\nCaused by SyntaxError: Improper syntax\n";
     assertEquals(filteredOutput.trim(), expectedResult.trim());
   });
 });
