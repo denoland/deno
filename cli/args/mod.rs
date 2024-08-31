@@ -44,7 +44,7 @@ pub use deno_config::deno_json::TsTypeLib;
 pub use deno_config::glob::FilePatterns;
 pub use flags::*;
 pub use lockfile::CliLockfile;
-pub use package_json::PackageJsonInstallDepsProvider;
+pub use package_json::NpmInstallDepsProvider;
 
 use deno_ast::ModuleSpecifier;
 use deno_core::anyhow::bail;

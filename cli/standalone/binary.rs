@@ -45,7 +45,7 @@ use serde::Serialize;
 use crate::args::CaData;
 use crate::args::CliOptions;
 use crate::args::CompileFlags;
-use crate::args::PackageJsonInstallDepsProvider;
+use crate::args::NpmInstallDepsProvider;
 use crate::args::PermissionFlags;
 use crate::args::UnstableConfig;
 use crate::cache::DenoDir;

@@ -5,7 +5,7 @@ use crate::args::CaData;
 use crate::args::CliOptions;
 use crate::args::DenoSubcommand;
 use crate::args::Flags;
-use crate::args::PackageJsonInstallDepsProvider;
+use crate::args::NpmInstallDepsProvider;
 use crate::args::StorageKeyResolver;
 use crate::args::TsConfigType;
 use crate::cache::Caches;
@@ -386,9 +386,7 @@ impl CliFactory {
             cache_setting: cli_options.cache_setting(),
             text_only_progress_bar: self.text_only_progress_bar().clone(),
             maybe_node_modules_path: cli_options.node_modules_dir_path().cloned(),
-            package_json_deps_provider: Arc::new(PackageJsonInstallDepsProvider::from_workspace(
-              cli_options.workspace(),
-            )),
+            npm_install_deps_provider: Arc::new(NpmInstallDepsProvider::from_workspace(cli_options.workspace())),
             npm_system_info: cli_options.npm_system_info(),
             npmrc: cli_options.npmrc().clone(),
             lifecycle_scripts: cli_options.lifecycle_scripts_config(),

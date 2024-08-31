@@ -48,7 +48,7 @@ use crate::args::get_root_cert_store;
 use crate::args::npm_pkg_req_ref_to_binary_command;
 use crate::args::CaData;
 use crate::args::CacheSetting;
-use crate::args::PackageJsonInstallDepsProvider;
+use crate::args::NpmInstallDepsProvider;
 use crate::args::StorageKeyResolver;
 use crate::cache::Caches;
 use crate::cache::DenoDirProvider;
@@ -502,9 +502,9 @@ pub async fn run(
             text_only_progress_bar: progress_bar,
             maybe_node_modules_path,
             npm_system_info: Default::default(),
-            package_json_deps_provider: Arc::new(
+            npm_install_deps_provider: Arc::new(
               // this is only used for installing packages, which isn't necessary with deno compile
-              PackageJsonInstallDepsProvider::empty(),
+              NpmInstallDepsProvider::empty(),
             ),
             // create an npmrc that uses the fake npm_registry_url to resolve packages
             npmrc: Arc::new(ResolvedNpmRc {
@@ -554,9 +554,9 @@ pub async fn run(
             text_only_progress_bar: progress_bar,
             maybe_node_modules_path: None,
             npm_system_info: Default::default(),
-            package_json_deps_provider: Arc::new(
+            npm_install_deps_provider: Arc::new(
               // this is only used for installing packages, which isn't necessary with deno compile
-              PackageJsonInstallDepsProvider::empty(),
+              NpmInstallDepsProvider::empty(),
             ),
             // Packages from different registries are already inlined in the ESZip,
             // so no need to create actual `.npmrc` configuration.
