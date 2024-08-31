@@ -10,14 +10,14 @@ use deno_package_json::PackageJsonDepValue;
 use deno_semver::npm::NpmPackageReqReference;
 use deno_semver::package::PackageReq;
 
-#[derive(Debug, PartialEq, Eq, Hash)]
+#[derive(Debug)]
 pub struct InstallNpmRemotePkg {
   pub alias: String,
   pub base_dir: PathBuf,
   pub req: PackageReq,
 }
 
-#[derive(Debug, PartialEq, Eq, Hash)]
+#[derive(Debug)]
 pub struct InstallNpmWorkspacePkg {
   pub alias: String,
   pub target_dir: PathBuf,
