@@ -296,7 +296,7 @@ impl CliNpmResolver for ByonmCliNpmResolver {
     ) -> Result<Option<PathBuf>, AnyError> {
       for ancestor in start_dir.ancestors() {
         let node_modules_folder = ancestor.join("node_modules");
-        let sub_dir = join_package_name(&node_modules_folder, &alias);
+        let sub_dir = join_package_name(&node_modules_folder, alias);
         if fs.is_dir_sync(&sub_dir) {
           return Ok(Some(canonicalize_path_maybe_not_exists_with_fs(
             &sub_dir, fs,
