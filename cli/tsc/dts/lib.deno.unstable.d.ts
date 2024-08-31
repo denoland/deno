@@ -2163,7 +2163,7 @@ declare namespace Deno {
      * @category Jupyter
      * @experimental
      */
-    export function display(obj: unknown, options?: DisplayOptions): void;
+    export function display(obj: unknown, options?: DisplayOptions): Promise<void>;
 
     /**
      * Show Markdown in Jupyter frontends with a tagged template function.
