@@ -54,26 +54,27 @@ impl NpmInstallDepsProvider {
             let serde_json::Value::String(specifier) = value else {
               continue;
             };
+            let Ok(npm_req_ref) = NpmPackageReqReference::from_str(specifier)
+            else {
+              continue;
+            };
             deno_json_aliases.insert(alias);
-            if let Ok(npm_req_ref) = NpmPackageReqReference::from_str(specifier)
-            {
-              let pkg_req = npm_req_ref.into_inner().req;
-              let workspace_pkg = workspace_npm_pkgs
-                .iter()
-                .find(|pkg| pkg.matches_req(&pkg_req));
+            let pkg_req = npm_req_ref.into_inner().req;
+            let workspace_pkg = workspace_npm_pkgs
+              .iter()
+              .find(|pkg| pkg.matches_req(&pkg_req));
 
-              if let Some(pkg) = workspace_pkg {
-                workspace_pkgs.push(InstallNpmWorkspacePkg {
-                  alias: alias.to_string(),
-                  target_dir: pkg.pkg_json.dir_path().to_path_buf(),
-                });
-              } else {
-                pkg_pkgs.push(InstallNpmRemotePkg {
-                  alias: alias.to_string(),
-                  base_dir: deno_json.dir_path(),
-                  req: pkg_req,
-                });
-              }
+            if let Some(pkg) = workspace_pkg {
+              workspace_pkgs.push(InstallNpmWorkspacePkg {
+                alias: alias.to_string(),
+                target_dir: pkg.pkg_json.dir_path().to_path_buf(),
+              });
+            } else {
+              pkg_pkgs.push(InstallNpmRemotePkg {
+                alias: alias.to_string(),
+                base_dir: deno_json.dir_path(),
+                req: pkg_req,
+              });
             }
           }
 
