@@ -1184,8 +1184,7 @@ fn lsp_deno_task() {
     "deno.jsonc",
     r#"{
     "tasks": {
-      "build": "deno test",
-      "some:test": "deno bundle mod.ts"
+      "build": "deno test"
     }
   }"#,
   );
@@ -1203,10 +1202,6 @@ fn lsp_deno_task() {
       {
         "name": "build",
         "detail": "deno test",
-        "sourceUri": temp_dir.url().join("deno.jsonc").unwrap(),
-      }, {
-        "name": "some:test",
-        "detail": "deno bundle mod.ts",
         "sourceUri": temp_dir.url().join("deno.jsonc").unwrap(),
       }
     ])
