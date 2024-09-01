@@ -99,13 +99,6 @@ pub struct BenchFlags {
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
-pub struct BundleFlags {
-  pub source_file: String,
-  pub out_file: Option<String>,
-  pub watch: Option<WatchFlags>,
-}
-
-#[derive(Clone, Debug, Eq, PartialEq)]
 pub struct CacheFlags {
   pub files: Vec<String>,
 }
@@ -445,7 +438,7 @@ pub enum DenoSubcommand {
   Add(AddFlags),
   Remove(RemoveFlags),
   Bench(BenchFlags),
-  Bundle(BundleFlags),
+  Bundle,
   Cache(CacheFlags),
   Check(CheckFlags),
   Clean,
@@ -1053,14 +1046,6 @@ impl Flags {
         }),
       ..
     })
-    | DenoSubcommand::Bundle(BundleFlags {
-      watch:
-        Some(WatchFlags {
-          exclude: excluded_paths,
-          ..
-        }),
-      ..
-    })
     | DenoSubcommand::Bench(BenchFlags {
       watch:
         Some(WatchFlags {
@@ -1656,30 +1641,9 @@ glob {*_,*.,}bench.{js,mjs,ts,mts,jsx,tsx}:
 }
 
 fn bundle_subcommand() -> Command {
-  command("bundle",  "⚠️ Warning: `deno bundle` is deprecated and will be removed in Deno 2.0.
-Use an alternative bundler like \"deno_emit\", \"esbuild\" or \"rollup\" instead.
-
-Output a single JavaScript file with all dependencies.
-  deno bundle jsr:@std/http/file-server file_server.bundle.js
-
-If no output file is given, the output is written to standard output:
-  deno bundle jsr:@std/http/file-server", UnstableArgsConfig::ResolutionOnly)
+  command("bundle",  "⚠️ `deno bundle` was removed in Deno 2.
+See the Deno 1.x to 2.x Migration Guide for migration instructions: https://docs.deno.com/runtime/manual/advanced/migrate_deprecations", UnstableArgsConfig::ResolutionOnly)
     .hide(true)
-    .defer(|cmd| {
-      compile_args(cmd)
-        .hide(true)
-        .arg(check_arg(true))
-        .arg(
-          Arg::new("source_file")
-            .required_unless_present("help")
-            .value_hint(ValueHint::FilePath),
-        )
-        .arg(Arg::new("out_file").value_hint(ValueHint::FilePath))
-        .arg(watch_arg(false))
-        .arg(watch_exclude_arg())
-        .arg(no_clear_screen_arg())
-        .arg(executable_ext_arg())
-    })
 }
 
 fn cache_subcommand() -> Command {
@@ -4101,29 +4065,8 @@ fn bench_parse(flags: &mut Flags, matches: &mut ArgMatches) {
   });
 }
 
-fn bundle_parse(flags: &mut Flags, matches: &mut ArgMatches) {
-  flags.type_check_mode = TypeCheckMode::Local;
-
-  compile_args_parse(flags, matches);
-  unstable_args_parse(flags, matches, UnstableArgsConfig::ResolutionOnly);
-
-  let source_file = matches.remove_one::<String>("source_file").unwrap();
-
-  let out_file =
-    if let Some(out_file) = matches.remove_one::<String>("out_file") {
-      flags.permissions.allow_write = Some(vec![]);
-      Some(out_file)
-    } else {
-      None
-    };
-
-  ext_arg_parse(flags, matches);
-
-  flags.subcommand = DenoSubcommand::Bundle(BundleFlags {
-    source_file,
-    out_file,
-    watch: watch_arg_parse(matches),
-  });
+fn bundle_parse(flags: &mut Flags, _matches: &mut ArgMatches) {
+  flags.subcommand = DenoSubcommand::Bundle;
 }
 
 fn cache_parse(flags: &mut Flags, matches: &mut ArgMatches) {
@@ -7781,174 +7724,6 @@ mod tests {
   }
 
   #[test]
-  fn bundle() {
-    let r = flags_from_vec(svec!["deno", "bundle", "source.ts"]);
-    assert_eq!(
-      r.unwrap(),
-      Flags {
-        subcommand: DenoSubcommand::Bundle(BundleFlags {
-          source_file: "source.ts".to_string(),
-          out_file: None,
-          watch: Default::default(),
-        }),
-        type_check_mode: TypeCheckMode::Local,
-        ..Flags::default()
-      }
-    );
-  }
-
-  #[test]
-  fn bundle_with_config() {
-    let r = flags_from_vec(svec![
-      "deno",
-      "bundle",
-      "--no-remote",
-      "--config",
-      "tsconfig.json",
-      "source.ts",
-      "bundle.js"
-    ]);
-    assert_eq!(
-      r.unwrap(),
-      Flags {
-        subcommand: DenoSubcommand::Bundle(BundleFlags {
-          source_file: "source.ts".to_string(),
-          out_file: Some("bundle.js".to_string()),
-          watch: Default::default(),
-        }),
-        permissions: PermissionFlags {
-          allow_write: Some(vec![]),
-          ..Default::default()
-        },
-        no_remote: true,
-        type_check_mode: TypeCheckMode::Local,
-        config_flag: ConfigFlag::Path("tsconfig.json".to_owned()),
-        ..Flags::default()
-      }
-    );
-  }
-
-  #[test]
-  fn bundle_with_output() {
-    let r = flags_from_vec(svec!["deno", "bundle", "source.ts", "bundle.js"]);
-    assert_eq!(
-      r.unwrap(),
-      Flags {
-        subcommand: DenoSubcommand::Bundle(BundleFlags {
-          source_file: "source.ts".to_string(),
-          out_file: Some("bundle.js".to_string()),
-          watch: Default::default(),
-        }),
-        type_check_mode: TypeCheckMode::Local,
-        permissions: PermissionFlags {
-          allow_write: Some(vec![]),
-          ..Default::default()
-        },
-        ..Flags::default()
-      }
-    );
-  }
-
-  #[test]
-  fn bundle_with_lock() {
-    let r =
-      flags_from_vec(svec!["deno", "bundle", "--lock=lock.json", "source.ts"]);
-    assert_eq!(
-      r.unwrap(),
-      Flags {
-        subcommand: DenoSubcommand::Bundle(BundleFlags {
-          source_file: "source.ts".to_string(),
-          out_file: None,
-          watch: Default::default(),
-        }),
-        type_check_mode: TypeCheckMode::Local,
-        lock: Some(String::from("lock.json")),
-        ..Flags::default()
-      }
-    );
-  }
-
-  #[test]
-  fn bundle_with_reload() {
-    let r = flags_from_vec(svec!["deno", "bundle", "--reload", "source.ts"]);
-    assert_eq!(
-      r.unwrap(),
-      Flags {
-        reload: true,
-        subcommand: DenoSubcommand::Bundle(BundleFlags {
-          source_file: "source.ts".to_string(),
-          out_file: None,
-          watch: Default::default(),
-        }),
-        type_check_mode: TypeCheckMode::Local,
-        ..Flags::default()
-      }
-    );
-  }
-
-  #[test]
-  fn bundle_nocheck() {
-    let r = flags_from_vec(svec!["deno", "bundle", "--no-check", "script.ts"])
-      .unwrap();
-    assert_eq!(
-      r,
-      Flags {
-        subcommand: DenoSubcommand::Bundle(BundleFlags {
-          source_file: "script.ts".to_string(),
-          out_file: None,
-          watch: Default::default(),
-        }),
-        type_check_mode: TypeCheckMode::None,
-        ..Flags::default()
-      }
-    );
-  }
-
-  #[test]
-  fn bundle_watch() {
-    let r = flags_from_vec(svec!["deno", "bundle", "--watch", "source.ts"]);
-    assert_eq!(
-      r.unwrap(),
-      Flags {
-        subcommand: DenoSubcommand::Bundle(BundleFlags {
-          source_file: "source.ts".to_string(),
-          out_file: None,
-          watch: Some(Default::default()),
-        }),
-        type_check_mode: TypeCheckMode::Local,
-        ..Flags::default()
-      }
-    )
-  }
-
-  #[test]
-  fn bundle_watch_with_no_clear_screen() {
-    let r = flags_from_vec(svec![
-      "deno",
-      "bundle",
-      "--watch",
-      "--no-clear-screen",
-      "source.ts"
-    ]);
-    assert_eq!(
-      r.unwrap(),
-      Flags {
-        subcommand: DenoSubcommand::Bundle(BundleFlags {
-          source_file: "source.ts".to_string(),
-          out_file: None,
-          watch: Some(WatchFlags {
-            hmr: false,
-            no_clear_screen: true,
-            exclude: vec![],
-          }),
-        }),
-        type_check_mode: TypeCheckMode::Local,
-        ..Flags::default()
-      }
-    )
-  }
-
-  #[test]
   fn run_import_map() {
     let r = flags_from_vec(svec![
       "deno",
@@ -9481,30 +9256,6 @@ mod tests {
           no_prompt: true,
           ..Default::default()
         },
-        ..Flags::default()
-      }
-    );
-  }
-
-  #[test]
-  fn bundle_with_cafile() {
-    let r = flags_from_vec(svec![
-      "deno",
-      "bundle",
-      "--cert",
-      "example.crt",
-      "source.ts"
-    ]);
-    assert_eq!(
-      r.unwrap(),
-      Flags {
-        subcommand: DenoSubcommand::Bundle(BundleFlags {
-          source_file: "source.ts".to_string(),
-          out_file: None,
-          watch: Default::default(),
-        }),
-        type_check_mode: TypeCheckMode::Local,
-        ca_data: Some(CaData::File("example.crt".to_owned())),
         ..Flags::default()
       }
     );
