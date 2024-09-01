@@ -1,37 +1,127 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 // Copyright Joyent and Node contributors. All rights reserved. MIT license.
 
+import {
+  op_create_inspector_session,
+  op_inspector_disconnect,
+  op_inspector_get_message_from_v8,
+  op_inspector_post,
+} from "ext:core/ops";
+import {
+  ERR_INSPECTOR_ALREADY_CONNECTED,
+  ERR_INSPECTOR_CLOSED,
+  ERR_INSPECTOR_COMMAND,
+  ERR_INSPECTOR_NOT_CONNECTED,
+} from "ext:deno_node/internal/errors.ts";
+import {
+  validateFunction,
+  validateObject,
+  validateString,
+} from "ext:deno_node/internal/validators.mjs";
+import { nextTick } from "ext:deno_node/_next_tick.ts";
 import { EventEmitter } from "node:events";
+import { emitWarning } from "node:process";
 import { notImplemented } from "ext:deno_node/_utils.ts";
-import { primordials } from "ext:core/mod.js";
+import { core, primordials } from "ext:core/mod.js";
 
 const {
   SafeMap,
+  JSONParse,
 } = primordials;
 
 class Session extends EventEmitter {
-  #connection = null;
+  // TODO(bartlomieju): how do we type CppGc objects?
+  #connection: any = null;
   #nextId = 1;
   #messageCallbacks = new SafeMap();
 
   /** Connects the session to the inspector back-end. */
-  connect() {
-    notImplemented("inspector.Session.prototype.connect");
+  connect(): void {
+    if (this.#connection) {
+      throw new ERR_INSPECTOR_ALREADY_CONNECTED("The inspector session");
+    }
+
+    this.#connection = op_create_inspector_session();
+
+    // Start listening for messages - this is using "unrefed" op
+    // so that listening for notifications doesn't block the event loop.
+    // When posting a message another promise should be started that is refed.
+    (async () => {
+      while (true) {
+        await this.#listenForMessage(true);
+      }
+    })();
+  }
+
+  async #listenForMessage(unref: boolean) {
+    let message: string;
+    try {
+      const opPromise = op_inspector_get_message_from_v8(this.#connection);
+      if (unref) {
+        core.unrefOpPromise(opPromise);
+      }
+      message = await opPromise;
+      this.#onMessage(message);
+    } catch (e) {
+      emitWarning(e);
+    }
+  }
+
+  #onMessage(message: string) {
+    core.print("received message" + message + "\n", true);
+    const parsed = JSONParse(message);
+    if (parsed.id) {
+      const callback = this.#messageCallbacks.get(parsed.id);
+      this.#messageCallbacks.delete(parsed.id);
+      if (callback) {
+        if (parsed.error) {
+          return callback(
+            new ERR_INSPECTOR_COMMAND(parsed.error.code, parsed.error.message),
+          );
+        }
+
+        callback(null, parsed.result);
+      }
+    } else {
+      this.emit(parsed.method, parsed);
+      this.emit("inspectorNotification", parsed);
+    }
   }
 
   /** Connects the session to the main thread
    * inspector back-end. */
-  connectToMainThread() {
+  connectToMainThread(): void {
     notImplemented("inspector.Session.prototype.connectToMainThread");
   }
 
   /** Posts a message to the inspector back-end. */
   post(
-    _method: string,
-    _params?: Record<string, unknown>,
-    _callback?: (...args: unknown[]) => void,
-  ) {
-    notImplemented("inspector.Session.prototype.post");
+    method: string,
+    params: Record<string, unknown> | null,
+    callback?: (...args: unknown[]) => void,
+  ): void {
+    validateString(method, "method");
+    if (!callback && typeof params === "function") {
+      callback = params;
+      params = null;
+    }
+    if (params) {
+      validateObject(params, "params");
+    }
+    if (callback) {
+      validateFunction(callback, "callback");
+    }
+
+    if (!this.#connection) {
+      throw new ERR_INSPECTOR_NOT_CONNECTED();
+    }
+    const id = this.#nextId++;
+    if (callback) {
+      this.#messageCallbacks.set(id, callback);
+    }
+    // TODO(bartlomieju): Should this ignore errors? Check with Node impl
+    op_inspector_post(this.#connection, id, method, params);
+    this.#listenForMessage(false);
   }
 
   /** Immediately closes the session, all pending
@@ -39,7 +129,17 @@ class Session extends EventEmitter {
    * error.
    */
   disconnect() {
-    notImplemented("inspector.Session.prototype.disconnect");
+    if (!this.#connection) {
+      return;
+    }
+    op_inspector_disconnect(this.#connection);
+    this.#connection = null;
+    const remainingCallbacks = this.#messageCallbacks.values();
+    for (const callback of remainingCallbacks) {
+      nextTick(callback, new ERR_INSPECTOR_CLOSED());
+    }
+    this.#messageCallbacks.clear();
+    this.#nextId = 1;
   }
 }
 

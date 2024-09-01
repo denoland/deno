@@ -72,14 +72,14 @@ pub trait ModuleLoaderFactory: Send + Sync {
 }
 
 #[async_trait::async_trait(?Send)]
-pub trait HmrRunner: Send + Sync {
+pub trait HmrRunner {
   async fn start(&mut self) -> Result<(), AnyError>;
   async fn stop(&mut self) -> Result<(), AnyError>;
   async fn run(&mut self) -> Result<(), AnyError>;
 }
 
 #[async_trait::async_trait(?Send)]
-pub trait CoverageCollector: Send + Sync {
+pub trait CoverageCollector {
   async fn start_collecting(&mut self) -> Result<(), AnyError>;
   async fn stop_collecting(&mut self) -> Result<(), AnyError>;
 }
@@ -368,7 +368,11 @@ impl CliMainWorker {
       return Ok(None);
     };
 
-    let session = self.worker.create_inspector_session();
+    let session = self.worker.create_inspector_session(
+      deno_core::LocalInspectorSessionOptions {
+        kind: deno_core::InspectorSessionKind::LocalBlocking,
+      },
+    );
 
     let mut hmr_runner = setup_hmr_runner(session);
 
@@ -392,7 +396,11 @@ impl CliMainWorker {
       return Ok(None);
     };
 
-    let session = self.worker.create_inspector_session();
+    let session = self.worker.create_inspector_session(
+      deno_core::LocalInspectorSessionOptions {
+        kind: deno_core::InspectorSessionKind::LocalBlocking,
+      },
+    );
     let mut coverage_collector = create_coverage_collector(session);
     self
       .worker
