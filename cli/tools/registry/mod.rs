@@ -1049,7 +1049,8 @@ async fn publish_package(
         sha256: faster_hex::hex_string(&sha2::Sha256::digest(&meta_bytes)),
       },
     };
-    let bundle = provenance::generate_provenance(http_client, subject).await?;
+    let bundle =
+      provenance::generate_provenance(http_client, vec![subject]).await?;
 
     let tlog_entry = &bundle.verification_material.tlog_entries[0];
     log::info!("{}",

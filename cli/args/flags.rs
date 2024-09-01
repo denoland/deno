@@ -10,6 +10,7 @@ use clap::ColorChoice;
 use clap::Command;
 use clap::ValueHint;
 use color_print::cstr;
+use deno_config::deno_json::NodeModulesDirMode;
 use deno_config::glob::FilePatterns;
 use deno_config::glob::PathOrPatternSet;
 use deno_core::anyhow::bail;
@@ -40,7 +41,6 @@ use crate::args::resolve_no_prompt;
 use crate::util::fs::canonicalize_path;
 
 use super::flags_net;
-use super::DENO_FUTURE;
 
 #[derive(Clone, Debug, Default, Eq, PartialEq)]
 pub enum ConfigFlag {
@@ -581,7 +581,6 @@ fn parse_packages_allowed_scripts(s: &str) -> Result<String, AnyError> {
 pub struct UnstableConfig {
   pub legacy_flag_enabled: bool, // --unstable
   pub bare_node_builtins: bool,  // --unstable-bare-node-builts
-  pub byonm: bool,
   pub sloppy_imports: bool,
   pub features: Vec<String>, // --unstabe-kv --unstable-cron
 }
@@ -603,7 +602,7 @@ pub struct Flags {
   pub cached_only: bool,
   pub type_check_mode: TypeCheckMode,
   pub config_flag: ConfigFlag,
-  pub node_modules_dir: Option<bool>,
+  pub node_modules_dir: Option<NodeModulesDirMode>,
   pub vendor: Option<bool>,
   pub enable_op_summary_metrics: bool,
   pub enable_testing_features: bool,
@@ -1114,7 +1113,6 @@ static ENV_VARIABLES_HELP: &str = cstr!(
   <g>DENO_AUTH_TOKENS</>      A semi-colon separated list of bearer tokens and hostnames
                         to use when fetching remote modules from private repositories
                          <p(245)>(e.g. "abcde12345@deno.land;54321edcba@github.com")</>
-  <g>DENO_FUTURE</>           Set to "1" to enable APIs that will take effect in Deno 2
   <g>DENO_CERT</>             Load certificate authorities from PEM encoded file
   <g>DENO_DIR</>              Set the cache directory
   <g>DENO_INSTALL_ROOT</>     Set deno install's output directory
@@ -1177,7 +1175,7 @@ static DENO_HELP: &str = cstr!(
                   <p(245)>deno test  |  deno test test.ts</>
     <g>publish</>      Publish the current working directory's package or workspace
     <g>upgrade</>      Upgrade deno executable to given version
-                  <p(245)>deno upgrade  |  deno upgrade --version=1.45.0  |  deno upgrade --canary</>
+                  <p(245)>deno upgrade  |  deno upgrade 1.45.0  |  deno upgrade canary</>
 {after-help}
 
 <y>Docs:</> https://docs.deno.com
@@ -1508,11 +1506,7 @@ pub fn clap_root() -> Command {
         .subcommand(fmt_subcommand())
         .subcommand(init_subcommand())
         .subcommand(info_subcommand())
-        .subcommand(if *DENO_FUTURE {
-          future_install_subcommand()
-        } else {
-          install_subcommand()
-        })
+        .subcommand(future_install_subcommand())
         .subcommand(json_reference_subcommand())
         .subcommand(jupyter_subcommand())
         .subcommand(uninstall_subcommand())
@@ -2375,22 +2369,13 @@ TypeScript compiler cache: Subdirectory containing TS compiler output.",
       ))
 }
 
-fn install_args(cmd: Command, deno_future: bool) -> Command {
-  let cmd = if deno_future {
-    cmd.arg(
-      Arg::new("cmd")
-        .required_if_eq("global", "true")
-        .num_args(1..)
-        .value_hint(ValueHint::FilePath),
-    )
-  } else {
-    cmd.arg(
-      Arg::new("cmd")
-        .required_unless_present("help")
-        .num_args(1..)
-        .value_hint(ValueHint::FilePath),
-    )
-  };
+fn install_args(cmd: Command) -> Command {
+  let cmd = cmd.arg(
+    Arg::new("cmd")
+      .required_if_eq("global", "true")
+      .num_args(1..)
+      .value_hint(ValueHint::FilePath),
+  );
   cmd
     .arg(
       Arg::new("name")
@@ -2466,40 +2451,7 @@ These must be added to the path manually if required.", UnstableArgsConfig::Reso
     .visible_alias("i")
     .defer(|cmd| {
       let cmd = runtime_args(cmd, true, true).arg(check_arg(true)).arg(allow_scripts_arg());
-      install_args(cmd, true)
-    })
-}
-
-fn install_subcommand() -> Command {
-  command("install",
-      "Installs a script as an executable in the installation root's bin directory.
-
-  deno install --global --allow-net --allow-read jsr:@std/http/file-server
-  deno install -g https://examples.deno.land/color-logging.ts
-
-To change the executable name, use -n/--name:
-  deno install -g --allow-net --allow-read -n serve jsr:@std/http/file-server
-
-The executable name is inferred by default:
-  - Attempt to take the file stem of the URL path. The above example would
-    become 'file_server'.
-  - If the file stem is something generic like 'main', 'mod', 'index' or 'cli',
-    and the path has no parent, take the file name of the parent path. Otherwise
-    settle with the generic name.
-  - If the resulting name has an '@...' suffix, strip it.
-
-To change the installation root, use --root:
-  deno install -g --allow-net --allow-read --root /usr/local jsr:@std/http/file-server
-
-The installation root is determined, in order of precedence:
-  - --root option
-  - DENO_INSTALL_ROOT environment variable
-  - $HOME/.deno
-
-These must be added to the path manually if required.", UnstableArgsConfig::ResolutionAndRuntime)
-    .defer(|cmd| {
-      let cmd = runtime_args(cmd, true, true).arg(check_arg(true));
-      install_args(cmd, false)
+      install_args(cmd)
     })
 }
 
@@ -3918,15 +3870,35 @@ fn no_npm_arg() -> Arg {
     .help_heading(DEPENDENCY_MANAGEMENT_HEADING)
 }
 
+fn node_modules_arg_parse(flags: &mut Flags, matches: &mut ArgMatches) {
+  let value = matches.remove_one::<NodeModulesDirMode>("node-modules-dir");
+  if let Some(mode) = value {
+    flags.node_modules_dir = Some(mode);
+  }
+}
+
 fn node_modules_dir_arg() -> Arg {
+  fn parse_node_modules_dir_mode(
+    s: &str,
+  ) -> Result<NodeModulesDirMode, String> {
+    match s {
+      "auto" | "true" => Ok(NodeModulesDirMode::Auto),
+      "manual" => Ok(NodeModulesDirMode::Manual),
+      "none" | "false" => Ok(NodeModulesDirMode::None),
+      _ => Err(format!(
+        "Invalid value '{}': expected \"auto\", \"manual\" or \"none\"",
+        s
+      )),
+    }
+  }
+
   Arg::new("node-modules-dir")
     .long("node-modules-dir")
     .num_args(0..=1)
-    .value_parser(value_parser!(bool))
-    .value_name("DIRECTORY")
-    .default_missing_value("true")
+    .value_parser(clap::builder::ValueParser::new(parse_node_modules_dir_mode))
+    .value_name("MODE")
     .require_equals(true)
-    .help("Enables or disables the use of a local node_modules folder for npm packages")
+    .help("Sets the node modules management mode for npm packages")
     .help_heading(DEPENDENCY_MANAGEMENT_HEADING)
 }
 
@@ -4006,7 +3978,6 @@ impl Iterator for UnstableArgsIter {
       Arg::new("unstable-byonm")
         .long("unstable-byonm")
         .help("Enable unstable 'bring your own node_modules' feature")
-        .env("DENO_UNSTABLE_BYONM")
         .value_parser(FalseyValueParser::new())
         .action(ArgAction::SetTrue)
         .hide(true)
@@ -4443,7 +4414,7 @@ fn install_parse(flags: &mut Flags, matches: &mut ArgMatches) {
   runtime_args_parse(flags, matches, true, true);
 
   let global = matches.get_flag("global");
-  if global || !*DENO_FUTURE {
+  if global {
     let root = matches.remove_one::<String>("root");
     let force = matches.get_flag("force");
     let name = matches.remove_one::<String>("name");
@@ -5318,7 +5289,7 @@ fn node_modules_and_vendor_dir_arg_parse(
   flags: &mut Flags,
   matches: &mut ArgMatches,
 ) {
-  flags.node_modules_dir = matches.remove_one::<bool>("node-modules-dir");
+  node_modules_arg_parse(flags, matches);
   flags.vendor = matches.remove_one::<bool>("vendor");
 }
 
@@ -5390,7 +5361,6 @@ fn unstable_args_parse(
 
   flags.unstable_config.bare_node_builtins =
     matches.get_flag("unstable-bare-node-builtins");
-  flags.unstable_config.byonm = matches.get_flag("unstable-byonm");
   flags.unstable_config.sloppy_imports =
     matches.get_flag("unstable-sloppy-imports");
 
@@ -8212,8 +8182,12 @@ mod tests {
 
   #[test]
   fn install() {
-    let r =
-      flags_from_vec(svec!["deno", "install", "jsr:@std/http/file-server"]);
+    let r = flags_from_vec(svec![
+      "deno",
+      "install",
+      "-g",
+      "jsr:@std/http/file-server"
+    ]);
     assert_eq!(
       r.unwrap(),
       Flags {
@@ -8225,7 +8199,7 @@ mod tests {
             root: None,
             force: false,
           }),
-          global: false,
+          global: true,
         }),
         ..Flags::default()
       }
@@ -8258,7 +8232,7 @@ mod tests {
   #[test]
   fn install_with_flags() {
     #[rustfmt::skip]
-    let r = flags_from_vec(svec!["deno", "install", "--import-map", "import_map.json", "--no-remote", "--config", "tsconfig.json", "--no-check", "--unsafely-ignore-certificate-errors", "--reload", "--lock", "lock.json", "--cert", "example.crt", "--cached-only", "--allow-read", "--allow-net", "--v8-flags=--help", "--seed", "1", "--inspect=127.0.0.1:9229", "--name", "file_server", "--root", "/foo", "--force", "--env=.example.env", "jsr:@std/http/file-server", "foo", "bar"]);
+    let r = flags_from_vec(svec!["deno", "install", "--global", "--import-map", "import_map.json", "--no-remote", "--config", "tsconfig.json", "--no-check", "--unsafely-ignore-certificate-errors", "--reload", "--lock", "lock.json", "--cert", "example.crt", "--cached-only", "--allow-read", "--allow-net", "--v8-flags=--help", "--seed", "1", "--inspect=127.0.0.1:9229", "--name", "file_server", "--root", "/foo", "--force", "--env=.example.env", "jsr:@std/http/file-server", "foo", "bar"]);
     assert_eq!(
       r.unwrap(),
       Flags {
@@ -8270,7 +8244,7 @@ mod tests {
             root: Some("/foo".to_string()),
             force: true,
           }),
-          global: false,
+          global: true,
         }),
         import_map_path: Some("import_map.json".to_string()),
         no_remote: true,
@@ -8650,25 +8624,7 @@ mod tests {
           watch: None,
           bare: true,
         }),
-        node_modules_dir: Some(true),
-        code_cache_enabled: true,
-        ..Flags::default()
-      }
-    );
-
-    let r = flags_from_vec(svec![
-      "deno",
-      "run",
-      "--node-modules-dir=false",
-      "script.ts"
-    ]);
-    assert_eq!(
-      r.unwrap(),
-      Flags {
-        subcommand: DenoSubcommand::Run(RunFlags::new_default(
-          "script.ts".to_string(),
-        )),
-        node_modules_dir: Some(false),
+        node_modules_dir: None,
         code_cache_enabled: true,
         ..Flags::default()
       }

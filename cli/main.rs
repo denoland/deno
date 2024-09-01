@@ -32,7 +32,6 @@ mod worker;
 use crate::args::flags_from_vec;
 use crate::args::DenoSubcommand;
 use crate::args::Flags;
-use crate::args::DENO_FUTURE;
 use crate::graph_container::ModuleGraphContainer;
 use crate::util::display;
 use crate::util::v8::get_v8_flags_from_env;
@@ -454,30 +453,19 @@ fn resolve_flags_and_init(
     // https://github.com/microsoft/vscode/blob/48d4ba271686e8072fc6674137415bc80d936bc7/extensions/typescript-language-features/src/configuration/configuration.ts#L213-L214
     DenoSubcommand::Lsp => vec!["--max-old-space-size=3072".to_string()],
     _ => {
-      if *DENO_FUTURE {
-        // TODO(bartlomieju): I think this can be removed as it's handled by `deno_core`
-        // and its settings.
-        // deno_ast removes TypeScript `assert` keywords, so this flag only affects JavaScript
-        // TODO(petamoriken): Need to check TypeScript `assert` keywords in deno_ast
-        vec!["--no-harmony-import-assertions".to_string()]
-      } else {
-        vec![
-          // TODO(bartlomieju): I think this can be removed as it's handled by `deno_core`
-          // and its settings.
-          // If we're still in v1.X version we want to support import assertions.
-          // V8 12.6 unshipped the support by default, so force it by passing a
-          // flag.
-          "--harmony-import-assertions".to_string(),
-          // Verify with DENO_FUTURE for now.
-          "--no-maglev".to_string(),
-        ]
-      }
+      // TODO(bartlomieju): I think this can be removed as it's handled by `deno_core`
+      // and its settings.
+      // deno_ast removes TypeScript `assert` keywords, so this flag only affects JavaScript
+      // TODO(petamoriken): Need to check TypeScript `assert` keywords in deno_ast
+      vec!["--no-harmony-import-assertions".to_string()]
     }
   };
 
   init_v8_flags(&default_v8_flags, &flags.v8_flags, get_v8_flags_from_env());
   // TODO(bartlomieju): remove last argument in Deno 2.
-  deno_core::JsRuntime::init_platform(None, !*DENO_FUTURE);
+  deno_core::JsRuntime::init_platform(
+    None, /* import assertions enabled */ false,
+  );
   util::logger::init(flags.log_level);
 
   Ok(flags)

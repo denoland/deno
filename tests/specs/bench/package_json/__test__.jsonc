@@ -1,5 +1,13 @@
 {
   "tempDir": true,
-  "args": "bench",
-  "output": "lib.bench.out"
+  "steps": [
+    {
+      "args": "install",
+      "output": "install.out"
+    },
+    {
+      "args": "bench",
+      "output": "lib.bench.out"
+    }
+  ]
 }

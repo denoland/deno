@@ -239,12 +239,6 @@ impl CliLockfile {
     }
     let lockfile = self.lockfile.lock();
     if lockfile.has_content_changed {
-      let suggested = if *super::DENO_FUTURE {
-        "`deno cache --frozen=false`, `deno install --frozen=false`,"
-      } else {
-        "`deno cache --frozen=false`"
-      };
-
       let contents =
         std::fs::read_to_string(&lockfile.filename).unwrap_or_default();
       let new_contents = lockfile.as_json_string();
@@ -252,7 +246,7 @@ impl CliLockfile {
       // has an extra newline at the end
       let diff = diff.trim_end();
       Err(deno_core::anyhow::anyhow!(
-        "The lockfile is out of date. Run {suggested} or rerun with `--frozen=false` to update it.\nchanges:\n{diff}"
+        "The lockfile is out of date. Run `deno cache --frozen=false`, `deno install --frozen=false`, or rerun with `--frozen=false` to update it.\nchanges:\n{diff}"
       ))
     } else {
       Ok(())
