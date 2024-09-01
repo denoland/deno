@@ -1,5 +1,16 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
+use std::collections::HashSet;
+use std::env;
+use std::ffi::OsString;
+use std::net::SocketAddr;
+use std::num::NonZeroU32;
+use std::num::NonZeroU8;
+use std::num::NonZeroUsize;
+use std::path::Path;
+use std::path::PathBuf;
+use std::str::FromStr;
+
 use clap::builder::styling::AnsiColor;
 use clap::builder::FalseyValueParser;
 use clap::value_parser;
@@ -20,22 +31,13 @@ use deno_core::normalize_path;
 use deno_core::resolve_url_or_path;
 use deno_core::url::Url;
 use deno_graph::GraphKind;
+use deno_runtime::colors;
 use deno_runtime::deno_permissions::parse_sys_kind;
 use deno_runtime::deno_permissions::PermissionsOptions;
 use log::debug;
 use log::Level;
 use serde::Deserialize;
 use serde::Serialize;
-use std::collections::HashSet;
-use std::env;
-use std::ffi::OsString;
-use std::net::SocketAddr;
-use std::num::NonZeroU32;
-use std::num::NonZeroU8;
-use std::num::NonZeroUsize;
-use std::path::Path;
-use std::path::PathBuf;
-use std::str::FromStr;
 
 use crate::args::resolve_no_prompt;
 use crate::util::fs::canonicalize_path;
@@ -700,6 +702,45 @@ impl PermissionFlags {
       Ok(Some(new_paths))
     }
 
+    fn resolve_allow_run(
+      allow_run: &[String],
+    ) -> Result<Vec<PathBuf>, AnyError> {
+      let mut new_allow_run = Vec::with_capacity(allow_run.len());
+      for command_name in allow_run {
+        if command_name.is_empty() {
+          bail!("Empty command name not allowed in --allow-run=...")
+        }
+        let command_path_result = which::which(command_name);
+        match command_path_result {
+          Ok(command_path) => new_allow_run.push(command_path),
+          Err(err) => {
+            log::info!(
+              "{} Failed to resolve '{}': {}",
+              colors::gray("Info"),
+              command_name,
+              err
+            );
+          }
+        }
+      }
+      Ok(new_allow_run)
+    }
+
+    let mut deny_write =
+      convert_option_str_to_path_buf(&self.deny_write, initial_cwd)?;
+    let allow_run = self
+      .allow_run
+      .as_ref()
+      .map(|allow_run| resolve_allow_run(allow_run))
+      .transpose()?;
+    // add the allow_run list to deno_write
+    if let Some(allow_run) = &allow_run {
+      if !allow_run.is_empty() {
+        let deno_write = deny_write.get_or_insert_with(Vec::new);
+        deno_write.extend(allow_run.iter().cloned());
+      }
+    }
+
     Ok(PermissionsOptions {
       allow_all: self.allow_all,
       allow_env: self.allow_env.clone(),
@@ -715,7 +756,7 @@ impl PermissionFlags {
         initial_cwd,
       )?,
       deny_read: convert_option_str_to_path_buf(&self.deny_read, initial_cwd)?,
-      allow_run: self.allow_run.clone(),
+      allow_run,
       deny_run: self.deny_run.clone(),
       allow_sys: self.allow_sys.clone(),
       deny_sys: self.deny_sys.clone(),
@@ -723,10 +764,7 @@ impl PermissionFlags {
         &self.allow_write,
         initial_cwd,
       )?,
-      deny_write: convert_option_str_to_path_buf(
-        &self.deny_write,
-        initial_cwd,
-      )?,
+      deny_write,
       prompt: !resolve_no_prompt(self),
     })
   }

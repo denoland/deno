@@ -317,7 +317,7 @@ pub trait Descriptor: Eq + Clone + Hash {
 
   /// Parse this descriptor from a list of Self::Arg, which may have been converted from
   /// command-line strings.
-  fn parse(list: &Option<Vec<Self::Arg>>) -> Result<HashSet<Self>, AnyError>;
+  fn parse(list: Option<&[Self::Arg]>) -> Result<HashSet<Self>, AnyError>;
 
   /// Generic check function to check this descriptor against a `UnaryPermission`.
   fn check_in_permission(
@@ -612,7 +612,7 @@ impl<T: Descriptor + Hash> UnaryPermission<T> {
       ChildUnaryPermissionArg::GrantedList(granted_list) => {
         let granted: Vec<T::Arg> =
           granted_list.into_iter().map(From::from).collect();
-        perms.granted_list = T::parse(&Some(granted))?;
+        perms.granted_list = T::parse(Some(&granted))?;
         if !perms
           .granted_list
           .iter()
@@ -649,7 +649,7 @@ impl Descriptor for ReadDescriptor {
     perm.check_desc(Some(self), true, api_name, || None)
   }
 
-  fn parse(args: &Option<Vec<Self::Arg>>) -> Result<HashSet<Self>, AnyError> {
+  fn parse(args: Option<&[Self::Arg]>) -> Result<HashSet<Self>, AnyError> {
     parse_path_list(args, ReadDescriptor)
   }
 
@@ -681,7 +681,7 @@ impl Descriptor for WriteDescriptor {
     perm.check_desc(Some(self), true, api_name, || None)
   }
 
-  fn parse(args: &Option<Vec<Self::Arg>>) -> Result<HashSet<Self>, AnyError> {
+  fn parse(args: Option<&[Self::Arg]>) -> Result<HashSet<Self>, AnyError> {
     parse_path_list(args, WriteDescriptor)
   }
 
@@ -754,7 +754,7 @@ impl Descriptor for NetDescriptor {
     perm.check_desc(Some(self), false, api_name, || None)
   }
 
-  fn parse(args: &Option<Vec<Self::Arg>>) -> Result<HashSet<Self>, AnyError> {
+  fn parse(args: Option<&[Self::Arg]>) -> Result<HashSet<Self>, AnyError> {
     parse_net_list(args)
   }
 
@@ -864,7 +864,7 @@ impl Descriptor for EnvDescriptor {
     perm.check_desc(Some(self), false, api_name, || None)
   }
 
-  fn parse(list: &Option<Vec<Self::Arg>>) -> Result<HashSet<Self>, AnyError> {
+  fn parse(list: Option<&[Self::Arg]>) -> Result<HashSet<Self>, AnyError> {
     parse_env_list(list)
   }
 
@@ -883,6 +883,11 @@ impl AsRef<str> for EnvDescriptor {
   }
 }
 
+pub enum RunDescriptorArg {
+  Name(String),
+  Path(PathBuf),
+}
+
 #[derive(Clone, Eq, PartialEq, Hash, Debug)]
 pub enum RunDescriptor {
   /// Warning: You may want to construct with `RunDescriptor::from()` for case
@@ -893,8 +898,23 @@ pub enum RunDescriptor {
   Path(PathBuf),
 }
 
+impl From<String> for RunDescriptorArg {
+  fn from(s: String) -> Self {
+    #[cfg(windows)]
+    let s = s.to_lowercase();
+    let is_path = s.contains('/');
+    #[cfg(windows)]
+    let is_path = is_path || s.contains('\\') || Path::new(&s).is_absolute();
+    if is_path {
+      Self::Path(resolve_from_cwd(Path::new(&s)).unwrap())
+    } else {
+      Self::Name(s)
+    }
+  }
+}
+
 impl Descriptor for RunDescriptor {
-  type Arg = String;
+  type Arg = RunDescriptorArg;
 
   fn check_in_permission(
     &self,
@@ -905,7 +925,7 @@ impl Descriptor for RunDescriptor {
     perm.check_desc(Some(self), false, api_name, || None)
   }
 
-  fn parse(args: &Option<Vec<Self::Arg>>) -> Result<HashSet<Self>, AnyError> {
+  fn parse(args: Option<&[Self::Arg]>) -> Result<HashSet<Self>, AnyError> {
     parse_run_list(args)
   }
 
@@ -988,7 +1008,7 @@ impl Descriptor for SysDescriptor {
     perm.check_desc(Some(self), false, api_name, || None)
   }
 
-  fn parse(list: &Option<Vec<Self::Arg>>) -> Result<HashSet<Self>, AnyError> {
+  fn parse(list: Option<&[Self::Arg]>) -> Result<HashSet<Self>, AnyError> {
     parse_sys_list(list)
   }
 
@@ -1025,7 +1045,7 @@ impl Descriptor for FfiDescriptor {
     perm.check_desc(Some(self), true, api_name, || None)
   }
 
-  fn parse(list: &Option<Vec<Self::Arg>>) -> Result<HashSet<Self>, AnyError> {
+  fn parse(list: Option<&[Self::Arg]>) -> Result<HashSet<Self>, AnyError> {
     parse_path_list(list, FfiDescriptor)
   }
 
@@ -1432,7 +1452,7 @@ pub struct PermissionsOptions {
   pub deny_ffi: Option<Vec<PathBuf>>,
   pub allow_read: Option<Vec<PathBuf>>,
   pub deny_read: Option<Vec<PathBuf>>,
-  pub allow_run: Option<Vec<String>>,
+  pub allow_run: Option<Vec<PathBuf>>,
   pub deny_run: Option<Vec<String>>,
   pub allow_sys: Option<Vec<String>>,
   pub deny_sys: Option<Vec<String>>,
@@ -1443,8 +1463,8 @@ pub struct PermissionsOptions {
 
 impl Permissions {
   pub fn new_unary<T>(
-    allow_list: &Option<Vec<T::Arg>>,
-    deny_list: &Option<Vec<T::Arg>>,
+    allow_list: Option<&[T::Arg]>,
+    deny_list: Option<&[T::Arg]>,
     prompt: bool,
   ) -> Result<UnaryPermission<T>, AnyError>
   where
@@ -1486,38 +1506,54 @@ impl Permissions {
   pub fn from_options(opts: &PermissionsOptions) -> Result<Self, AnyError> {
     Ok(Self {
       read: Permissions::new_unary(
-        &opts.allow_read,
-        &opts.deny_read,
+        opts.allow_read.as_deref(),
+        opts.deny_read.as_deref(),
         opts.prompt,
       )?,
       write: Permissions::new_unary(
-        &opts.allow_write,
-        &opts.deny_write,
+        opts.allow_write.as_deref(),
+        opts.deny_write.as_deref(),
         opts.prompt,
       )?,
       net: Permissions::new_unary(
-        &opts.allow_net,
-        &opts.deny_net,
+        opts.allow_net.as_deref(),
+        opts.deny_net.as_deref(),
         opts.prompt,
       )?,
       env: Permissions::new_unary(
-        &opts.allow_env,
-        &opts.deny_env,
+        opts.allow_env.as_deref(),
+        opts.deny_env.as_deref(),
         opts.prompt,
       )?,
       sys: Permissions::new_unary(
-        &opts.allow_sys,
-        &opts.deny_sys,
+        opts.allow_sys.as_deref(),
+        opts.deny_sys.as_deref(),
         opts.prompt,
       )?,
       run: Permissions::new_unary(
-        &opts.allow_run,
-        &opts.deny_run,
+        opts
+          .allow_run
+          .as_ref()
+          .map(|d| {
+            d.iter()
+              .map(|s| RunDescriptorArg::Path(s.clone()))
+              .collect::<Vec<_>>()
+          })
+          .as_deref(),
+        opts
+          .deny_run
+          .as_ref()
+          .map(|d| {
+            d.iter()
+              .map(|s| RunDescriptorArg::from(s.clone()))
+              .collect::<Vec<_>>()
+          })
+          .as_deref(),
         opts.prompt,
       )?,
       ffi: Permissions::new_unary(
-        &opts.allow_ffi,
-        &opts.deny_ffi,
+        opts.allow_ffi.as_deref(),
+        opts.deny_ffi.as_deref(),
         opts.prompt,
       )?,
       all: Permissions::new_all(opts.allow_all),
@@ -1552,13 +1588,13 @@ impl Permissions {
 
   fn none(prompt: bool) -> Self {
     Self {
-      read: Permissions::new_unary(&None, &None, prompt).unwrap(),
-      write: Permissions::new_unary(&None, &None, prompt).unwrap(),
-      net: Permissions::new_unary(&None, &None, prompt).unwrap(),
-      env: Permissions::new_unary(&None, &None, prompt).unwrap(),
-      sys: Permissions::new_unary(&None, &None, prompt).unwrap(),
-      run: Permissions::new_unary(&None, &None, prompt).unwrap(),
-      ffi: Permissions::new_unary(&None, &None, prompt).unwrap(),
+      read: Permissions::new_unary(None, None, prompt).unwrap(),
+      write: Permissions::new_unary(None, None, prompt).unwrap(),
+      net: Permissions::new_unary(None, None, prompt).unwrap(),
+      env: Permissions::new_unary(None, None, prompt).unwrap(),
+      sys: Permissions::new_unary(None, None, prompt).unwrap(),
+      run: Permissions::new_unary(None, None, prompt).unwrap(),
+      ffi: Permissions::new_unary(None, None, prompt).unwrap(),
       all: Permissions::new_all(false),
       hrtime: Permissions::new_hrtime(false, false),
     }
@@ -1895,12 +1931,12 @@ const fn unit_permission_from_flag_bools(
   }
 }
 
-fn global_from_option<T>(flag: &Option<Vec<T>>) -> bool {
+fn global_from_option<T>(flag: Option<&[T]>) -> bool {
   matches!(flag, Some(v) if v.is_empty())
 }
 
 fn parse_net_list(
-  list: &Option<Vec<String>>,
+  list: Option<&[String]>,
 ) -> Result<HashSet<NetDescriptor>, AnyError> {
   if let Some(v) = list {
     v.iter()
@@ -1912,7 +1948,7 @@ fn parse_net_list(
 }
 
 fn parse_env_list(
-  list: &Option<Vec<String>>,
+  list: Option<&[String]>,
 ) -> Result<HashSet<EnvDescriptor>, AnyError> {
   if let Some(v) = list {
     v.iter()
@@ -1930,7 +1966,7 @@ fn parse_env_list(
 }
 
 fn parse_path_list<T: Descriptor + Hash>(
-  list: &Option<Vec<PathBuf>>,
+  list: Option<&[PathBuf]>,
   f: fn(PathBuf) -> T,
 ) -> Result<HashSet<T>, AnyError> {
   if let Some(v) = list {
@@ -1949,7 +1985,7 @@ fn parse_path_list<T: Descriptor + Hash>(
 }
 
 fn parse_sys_list(
-  list: &Option<Vec<String>>,
+  list: Option<&[String]>,
 ) -> Result<HashSet<SysDescriptor>, AnyError> {
   if let Some(v) = list {
     v.iter()
@@ -1967,19 +2003,18 @@ fn parse_sys_list(
 }
 
 fn parse_run_list(
-  list: &Option<Vec<String>>,
+  list: Option<&[RunDescriptorArg]>,
 ) -> Result<HashSet<RunDescriptor>, AnyError> {
   let mut result = HashSet::new();
   if let Some(v) = list {
-    for s in v {
-      if s.is_empty() {
-        return Err(AnyError::msg("Empty path is not allowed"));
-      } else {
-        let desc = RunDescriptor::from(s.to_string());
-        let aliases = desc.aliases();
-        result.insert(desc);
-        result.extend(aliases);
-      }
+    for arg in v {
+      let desc = match arg {
+        RunDescriptorArg::Name(s) => RunDescriptor::Name(s.clone()),
+        RunDescriptorArg::Path(l) => RunDescriptor::Path(l.clone()),
+      };
+      let aliases = desc.aliases();
+      result.insert(desc.clone());
+      result.extend(aliases);
     }
   }
   Ok(result)
@@ -2722,96 +2757,90 @@ mod tests {
     set_prompter(Box::new(TestPrompter));
     let perms1 = Permissions::allow_all();
     let perms2 = Permissions {
-      read: Permissions::new_unary(
-        &Some(vec![PathBuf::from("/foo")]),
-        &None,
-        false,
-      )
-      .unwrap(),
+      read: Permissions::new_unary(Some(&[PathBuf::from("/foo")]), None, false)
+        .unwrap(),
       write: Permissions::new_unary(
-        &Some(vec![PathBuf::from("/foo")]),
-        &None,
+        Some(&[PathBuf::from("/foo")]),
+        None,
         false,
       )
       .unwrap(),
-      ffi: Permissions::new_unary(
-        &Some(vec![PathBuf::from("/foo")]),
-        &None,
+      ffi: Permissions::new_unary(Some(&[PathBuf::from("/foo")]), None, false)
+        .unwrap(),
+      net: Permissions::new_unary(Some(&svec!["127.0.0.1:8000"]), None, false)
+        .unwrap(),
+      env: Permissions::new_unary(Some(&svec!["HOME"]), None, false).unwrap(),
+      sys: Permissions::new_unary(Some(&svec!["hostname"]), None, false)
+        .unwrap(),
+      run: Permissions::new_unary(
+        Some(&["deno".to_string().into()]),
+        None,
         false,
       )
       .unwrap(),
-      net: Permissions::new_unary(&Some(svec!["127.0.0.1:8000"]), &None, false)
-        .unwrap(),
-      env: Permissions::new_unary(&Some(svec!["HOME"]), &None, false).unwrap(),
-      sys: Permissions::new_unary(&Some(svec!["hostname"]), &None, false)
-        .unwrap(),
-      run: Permissions::new_unary(&Some(svec!["deno"]), &None, false).unwrap(),
       all: Permissions::new_all(false),
       hrtime: Permissions::new_hrtime(false, false),
     };
     let perms3 = Permissions {
-      read: Permissions::new_unary(
-        &None,
-        &Some(vec![PathBuf::from("/foo")]),
-        false,
-      )
-      .unwrap(),
+      read: Permissions::new_unary(None, Some(&[PathBuf::from("/foo")]), false)
+        .unwrap(),
       write: Permissions::new_unary(
-        &None,
-        &Some(vec![PathBuf::from("/foo")]),
+        None,
+        Some(&[PathBuf::from("/foo")]),
         false,
       )
       .unwrap(),
-      ffi: Permissions::new_unary(
-        &None,
-        &Some(vec![PathBuf::from("/foo")]),
+      ffi: Permissions::new_unary(None, Some(&[PathBuf::from("/foo")]), false)
+        .unwrap(),
+      net: Permissions::new_unary(None, Some(&svec!["127.0.0.1:8000"]), false)
+        .unwrap(),
+      env: Permissions::new_unary(None, Some(&svec!["HOME"]), false).unwrap(),
+      sys: Permissions::new_unary(None, Some(&svec!["hostname"]), false)
+        .unwrap(),
+      run: Permissions::new_unary(
+        None,
+        Some(&["deno".to_string().into()]),
         false,
       )
       .unwrap(),
-      net: Permissions::new_unary(&None, &Some(svec!["127.0.0.1:8000"]), false)
-        .unwrap(),
-      env: Permissions::new_unary(&None, &Some(svec!["HOME"]), false).unwrap(),
-      sys: Permissions::new_unary(&None, &Some(svec!["hostname"]), false)
-        .unwrap(),
-      run: Permissions::new_unary(&None, &Some(svec!["deno"]), false).unwrap(),
       all: Permissions::new_all(false),
       hrtime: Permissions::new_hrtime(false, true),
     };
     let perms4 = Permissions {
       read: Permissions::new_unary(
-        &Some(vec![]),
-        &Some(vec![PathBuf::from("/foo")]),
+        Some(&[]),
+        Some(&[PathBuf::from("/foo")]),
         false,
       )
       .unwrap(),
       write: Permissions::new_unary(
-        &Some(vec![]),
-        &Some(vec![PathBuf::from("/foo")]),
+        Some(&[]),
+        Some(&[PathBuf::from("/foo")]),
         false,
       )
       .unwrap(),
       ffi: Permissions::new_unary(
-        &Some(vec![]),
-        &Some(vec![PathBuf::from("/foo")]),
+        Some(&[]),
+        Some(&[PathBuf::from("/foo")]),
         false,
       )
       .unwrap(),
       net: Permissions::new_unary(
-        &Some(vec![]),
-        &Some(svec!["127.0.0.1:8000"]),
+        Some(&[]),
+        Some(&svec!["127.0.0.1:8000"]),
         false,
       )
       .unwrap(),
-      env: Permissions::new_unary(&Some(vec![]), &Some(svec!["HOME"]), false)
+      env: Permissions::new_unary(Some(&[]), Some(&svec!["HOME"]), false)
         .unwrap(),
-      sys: Permissions::new_unary(
-        &Some(vec![]),
-        &Some(svec!["hostname"]),
+      sys: Permissions::new_unary(Some(&[]), Some(&svec!["hostname"]), false)
+        .unwrap(),
+      run: Permissions::new_unary(
+        Some(&[]),
+        Some(&["deno".to_string().into()]),
         false,
       )
       .unwrap(),
-      run: Permissions::new_unary(&Some(vec![]), &Some(svec!["deno"]), false)
-        .unwrap(),
       all: Permissions::new_all(false),
       hrtime: Permissions::new_hrtime(true, true),
     };
@@ -2949,33 +2978,38 @@ mod tests {
     set_prompter(Box::new(TestPrompter));
     let mut perms = Permissions {
       read: Permissions::new_unary(
-        &Some(vec![PathBuf::from("/foo"), PathBuf::from("/foo/baz")]),
-        &None,
+        Some(&[PathBuf::from("/foo"), PathBuf::from("/foo/baz")]),
+        None,
         false,
       )
       .unwrap(),
       write: Permissions::new_unary(
-        &Some(vec![PathBuf::from("/foo"), PathBuf::from("/foo/baz")]),
-        &None,
+        Some(&[PathBuf::from("/foo"), PathBuf::from("/foo/baz")]),
+        None,
         false,
       )
       .unwrap(),
       ffi: Permissions::new_unary(
-        &Some(vec![PathBuf::from("/foo"), PathBuf::from("/foo/baz")]),
-        &None,
+        Some(&[PathBuf::from("/foo"), PathBuf::from("/foo/baz")]),
+        None,
         false,
       )
       .unwrap(),
       net: Permissions::new_unary(
-        &Some(svec!["127.0.0.1", "127.0.0.1:8000"]),
-        &None,
+        Some(&svec!["127.0.0.1", "127.0.0.1:8000"]),
+        None,
         false,
       )
       .unwrap(),
-      env: Permissions::new_unary(&Some(svec!["HOME"]), &None, false).unwrap(),
-      sys: Permissions::new_unary(&Some(svec!["hostname"]), &None, false)
+      env: Permissions::new_unary(Some(&svec!["HOME"]), None, false).unwrap(),
+      sys: Permissions::new_unary(Some(&svec!["hostname"]), None, false)
         .unwrap(),
-      run: Permissions::new_unary(&Some(svec!["deno"]), &None, false).unwrap(),
+      run: Permissions::new_unary(
+        Some(&["deno".to_string().into()]),
+        None,
+        false,
+      )
+      .unwrap(),
       all: Permissions::new_all(false),
       hrtime: Permissions::new_hrtime(false, true),
     };
@@ -3198,7 +3232,7 @@ mod tests {
     let mut perms = Permissions::allow_all();
     perms.env = UnaryPermission {
       granted_global: false,
-      ..Permissions::new_unary(&Some(svec!["HOME"]), &None, false).unwrap()
+      ..Permissions::new_unary(Some(&svec!["HOME"]), None, false).unwrap()
     };
 
     prompt_value.set(true);
@@ -3214,14 +3248,14 @@ mod tests {
   fn test_check_partial_denied() {
     let mut perms = Permissions {
       read: Permissions::new_unary(
-        &Some(vec![]),
-        &Some(vec![PathBuf::from("/foo/bar")]),
+        Some(&[]),
+        Some(&[PathBuf::from("/foo/bar")]),
         false,
       )
       .unwrap(),
       write: Permissions::new_unary(
-        &Some(vec![]),
-        &Some(vec![PathBuf::from("/foo/bar")]),
+        Some(&[]),
+        Some(&[PathBuf::from("/foo/bar")]),
         false,
       )
       .unwrap(),
@@ -3239,8 +3273,8 @@ mod tests {
   fn test_net_fully_qualified_domain_name() {
     let mut perms = Permissions {
       net: Permissions::new_unary(
-        &Some(vec!["allowed.domain".to_string(), "1.1.1.1".to_string()]),
-        &Some(vec!["denied.domain".to_string(), "2.2.2.2".to_string()]),
+        Some(&["allowed.domain".to_string(), "1.1.1.1".to_string()]),
+        Some(&["denied.domain".to_string(), "2.2.2.2".to_string()]),
         false,
       )
       .unwrap(),
@@ -3430,9 +3464,9 @@ mod tests {
   fn test_create_child_permissions() {
     set_prompter(Box::new(TestPrompter));
     let mut main_perms = Permissions {
-      env: Permissions::new_unary(&Some(vec![]), &None, false).unwrap(),
+      env: Permissions::new_unary(Some(&[]), None, false).unwrap(),
       hrtime: Permissions::new_hrtime(true, false),
-      net: Permissions::new_unary(&Some(svec!["foo", "bar"]), &None, false)
+      net: Permissions::new_unary(Some(&svec!["foo", "bar"]), None, false)
         .unwrap(),
       ..Permissions::none_without_prompt()
     };
@@ -3449,8 +3483,8 @@ mod tests {
       )
       .unwrap(),
       Permissions {
-        env: Permissions::new_unary(&Some(vec![]), &None, false).unwrap(),
-        net: Permissions::new_unary(&Some(svec!["foo"]), &None, false).unwrap(),
+        env: Permissions::new_unary(Some(&[]), None, false).unwrap(),
+        net: Permissions::new_unary(Some(&svec!["foo"]), None, false).unwrap(),
         ..Permissions::none_without_prompt()
       }
     );
@@ -3536,20 +3570,20 @@ mod tests {
     set_prompter(Box::new(TestPrompter));
 
     assert!(Permissions::new_unary::<ReadDescriptor>(
-      &Some(vec![Default::default()]),
-      &None,
+      Some(&[Default::default()]),
+      None,
       false
     )
     .is_err());
     assert!(Permissions::new_unary::<EnvDescriptor>(
-      &Some(vec![Default::default()]),
-      &None,
+      Some(&[Default::default()]),
+      None,
       false
     )
     .is_err());
     assert!(Permissions::new_unary::<NetDescriptor>(
-      &Some(vec![Default::default()]),
-      &None,
+      Some(&[Default::default()]),
+      None,
       false
     )
     .is_err());
