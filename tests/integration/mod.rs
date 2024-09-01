@@ -70,8 +70,6 @@ mod task;
 mod test;
 #[path = "upgrade_tests.rs"]
 mod upgrade;
-#[path = "vendor_tests.rs"]
-mod vendor;
 #[path = "watcher_tests.rs"]
 mod watcher;
 #[path = "worker_tests.rs"]

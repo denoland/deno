@@ -145,34 +145,6 @@ pub fn relative_specifier(
   Some(to_percent_decoded_str(&text))
 }
 
-/// Gets a path with the specified file stem suffix.
-///
-/// Ex. `file.ts` with suffix `_2` returns `file_2.ts`
-pub fn path_with_stem_suffix(path: &Path, suffix: &str) -> PathBuf {
-  if let Some(file_name) = path.file_name().map(|f| f.to_string_lossy()) {
-    if let Some(file_stem) = path.file_stem().map(|f| f.to_string_lossy()) {
-      if let Some(ext) = path.extension().map(|f| f.to_string_lossy()) {
-        return if file_stem.to_lowercase().ends_with(".d") {
-          path.with_file_name(format!(
-            "{}{}.{}.{}",
-            &file_stem[..file_stem.len() - ".d".len()],
-            suffix,
-            // maintain casing
-            &file_stem[file_stem.len() - "d".len()..],
-            ext
-          ))
-        } else {
-          path.with_file_name(format!("{file_stem}{suffix}.{ext}"))
-        };
-      }
-    }
-
-    path.with_file_name(format!("{file_name}{suffix}"))
-  } else {
-    path.with_file_name(suffix)
-  }
-}
-
 #[cfg_attr(windows, allow(dead_code))]
 pub fn relative_path(from: &Path, to: &Path) -> Option<PathBuf> {
   pathdiff::diff_paths(to, from)
@@ -402,6 +374,34 @@ mod test {
         expected,
         "from: \"{from_str}\" to: \"{to_str}\""
       );
+    }
+  }
+
+  /// Gets a path with the specified file stem suffix.
+  ///
+  /// Ex. `file.ts` with suffix `_2` returns `file_2.ts`
+  pub fn path_with_stem_suffix(path: &Path, suffix: &str) -> PathBuf {
+    if let Some(file_name) = path.file_name().map(|f| f.to_string_lossy()) {
+      if let Some(file_stem) = path.file_stem().map(|f| f.to_string_lossy()) {
+        if let Some(ext) = path.extension().map(|f| f.to_string_lossy()) {
+          return if file_stem.to_lowercase().ends_with(".d") {
+            path.with_file_name(format!(
+              "{}{}.{}.{}",
+              &file_stem[..file_stem.len() - ".d".len()],
+              suffix,
+              // maintain casing
+              &file_stem[file_stem.len() - "d".len()..],
+              ext
+            ))
+          } else {
+            path.with_file_name(format!("{file_stem}{suffix}.{ext}"))
+          };
+        }
+      }
+
+      path.with_file_name(format!("{file_name}{suffix}"))
+    } else {
+      path.with_file_name(suffix)
     }
   }
 

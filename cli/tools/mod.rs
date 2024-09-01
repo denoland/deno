@@ -20,4 +20,3 @@ pub mod serve;
 pub mod task;
 pub mod test;
 pub mod upgrade;
-pub mod vendor;
