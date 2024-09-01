@@ -369,7 +369,7 @@ pub struct WorkspaceTestOptions {
   pub doc: bool,
   pub no_run: bool,
   pub fail_fast: Option<NonZeroUsize>,
-  pub allow_none: bool,
+  pub permit_no_files: bool,
   pub filter: Option<String>,
   pub shuffle: Option<u64>,
   pub concurrent_jobs: NonZeroUsize,
@@ -382,7 +382,7 @@ pub struct WorkspaceTestOptions {
 impl WorkspaceTestOptions {
   pub fn resolve(test_flags: &TestFlags) -> Self {
     Self {
-      allow_none: test_flags.allow_none,
+      permit_no_files: test_flags.permit_no_files,
       concurrent_jobs: test_flags
         .concurrent_jobs
         .unwrap_or_else(|| NonZeroUsize::new(1).unwrap()),
