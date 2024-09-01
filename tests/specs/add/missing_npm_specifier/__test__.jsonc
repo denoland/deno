@@ -17,9 +17,6 @@
       "exitCode": 1
     },
     {
-      "envs": {
-        "DENO_FUTURE": "1"
-      },
       "args": "install ajv@latest",
       "output": "error: jsr:ajv was not found, but a matching npm package exists. Did you mean `deno install npm:ajv@latest`?\n",
       "exitCode": 1

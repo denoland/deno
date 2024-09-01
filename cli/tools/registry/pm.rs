@@ -140,10 +140,10 @@ impl DenoOrPackageJson {
         ),
         factory,
       )),
-      (None, Some(package_json)) if options.enable_future_features() => {
+      (None, Some(package_json)) => {
         Ok((DenoOrPackageJson::Npm(package_json.clone(), None), factory))
       }
-      (None, Some(_) | None) => {
+      (None, None) => {
         std::fs::write(options.initial_cwd().join("deno.json"), "{}\n")
           .context("Failed to create deno.json file")?;
         drop(factory); // drop to prevent use

@@ -1,8 +1,5 @@
 {
   "tempDir": true,
-  "envs": {
-    "DENO_FUTURE": "1"
-  },
   "steps": [
     {
       "cwd": "./test-project",
@@ -15,8 +12,10 @@
       "output": "5\n"
     },
     {
-      "commandName": "mv",
-      "args": "test-project test-project-moved",
+      "args": [
+        "eval",
+        "Deno.renameSync('test-project', 'test-project-moved')"
+      ],
       "output": ""
     },
     {

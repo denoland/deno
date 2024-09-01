@@ -9035,7 +9035,7 @@ fn lsp_completions_node_specifier_node_modules_dir() {
   temp_dir.write(
     temp_dir.path().join("deno.json"),
     json!({
-      "nodeModulesDir": true,
+      "nodeModulesDir": "auto",
     })
     .to_string(),
   );
@@ -9442,7 +9442,7 @@ fn lsp_npmrc() {
   temp_dir.write(
     temp_dir.path().join("deno.json"),
     json!({
-      "nodeModules": "local-auto",
+      "nodeModulesDir": "auto",
     })
     .to_string(),
   );
@@ -12372,7 +12372,7 @@ fn lsp_node_modules_dir() {
   temp_dir.write(
     "deno.json",
     json!({
-      "nodeModules": "global-auto",
+      "nodeModulesDir": "none",
     })
     .to_string(),
   );
@@ -12413,7 +12413,7 @@ fn lsp_node_modules_dir() {
 
   temp_dir.write(
     temp_dir.path().join("deno.json"),
-    "{ \"nodeModules\": \"local-auto\", \"lock\": false }\n",
+    "{ \"nodeModulesDir\": \"auto\", \"lock\": false }\n",
   );
   let refresh_config = |client: &mut LspClient| {
     client.change_configuration(json!({ "deno": {
@@ -12449,7 +12449,7 @@ fn lsp_node_modules_dir() {
   // now add a lockfile and cache
   temp_dir.write(
     temp_dir.path().join("deno.json"),
-    "{ \"nodeModules\": \"local-auto\" }\n",
+    "{ \"nodeModulesDir\": \"auto\" }\n",
   );
   refresh_config(&mut client);
   cache(&mut client);
@@ -13056,21 +13056,21 @@ fn lsp_deno_json_scopes_node_modules_dir() {
   temp_dir.write(
     "project1/deno.json",
     json!({
-      "nodeModules": "local-auto",
+      "nodeModulesDir": "auto",
     })
     .to_string(),
   );
   temp_dir.write(
     "project2/deno.json",
     json!({
-      "nodeModules": "local-auto",
+      "nodeModulesDir": "auto",
     })
     .to_string(),
   );
   temp_dir.write(
     "project2/project3/deno.json",
     json!({
-      "nodeModules": "local-auto",
+      "nodeModulesDir": "auto",
     })
     .to_string(),
   );
@@ -14247,7 +14247,7 @@ fn lsp_deno_json_workspace_node_modules_dir() {
     "project1/deno.json",
     json!({
       "workspace": ["project2"],
-      "nodeModules": "local-auto",
+      "nodeModulesDir": "auto",
     })
     .to_string(),
   );
@@ -14383,7 +14383,7 @@ fn lsp_npm_workspace() {
   temp_dir.write(
     "deno.json",
     json!({
-      "nodeModules": "local-auto",
+      "nodeModulesDir": "auto",
     })
     .to_string(),
   );
@@ -14625,11 +14625,8 @@ fn lsp_jupyter_byonm_diagnostics() {
 }
 
 #[test]
-fn lsp_deno_future_env_byonm() {
-  let context = TestContextBuilder::for_npm()
-    .env("DENO_FUTURE", "1")
-    .use_temp_cwd()
-    .build();
+fn lsp_byonm() {
+  let context = TestContextBuilder::for_npm().use_temp_cwd().build();
   let temp_dir = context.temp_dir();
   temp_dir.path().join("package.json").write_json(&json!({
     "dependencies": {
@@ -15187,7 +15184,6 @@ fn lsp_cjs_internal_types_default_export() {
     .use_http_server()
     .use_temp_cwd()
     .add_npm_env_vars()
-    .env("DENO_FUTURE", "1")
     .build();
   let temp_dir = context.temp_dir();
   temp_dir.write("deno.json", r#"{}"#);
@@ -15236,7 +15232,6 @@ fn lsp_cjs_import_dual() {
     .use_http_server()
     .use_temp_cwd()
     .add_npm_env_vars()
-    .env("DENO_FUTURE", "1")
     .build();
   let temp_dir = context.temp_dir();
   temp_dir.write("deno.json", r#"{}"#);
