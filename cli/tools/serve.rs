@@ -50,6 +50,27 @@ pub async fn serve(
   )?);
   let worker_factory = factory.create_cli_main_worker_factory().await?;
 
+  if serve_flags.open_site {
+    let host: String;
+    if serve_flags.host == "0.0.0.0" || serve_flags.host == "127.0.0.1" {
+      host = "http://127.0.0.1".to_string();
+    } else if serve_flags.host == "localhost" {
+      host = "http://localhost".to_string();
+    } else {
+      host = format!("https://{}", serve_flags.host);
+    }
+    let port = serve_flags.port;
+    let browser_tab_open_result = open::that_detached(format!("{host}:{port}"));
+    if browser_tab_open_result.is_ok() {
+      log::info!(
+        "{}: Opened the browser on the address that the server is running on",
+        crate::colors::green("deno serve")
+      );
+    } else {
+      log::info!("{}: Couldn't open the browser on the address that the server is running on", crate::colors::red("deno serve"));
+    }
+  }
+
   do_serve(
     worker_factory,
     main_module,
