@@ -12,8 +12,6 @@ Deno.flockSync is undefined
 Deno.FsFile.prototype.rid is undefined
 Deno.funlock is undefined
 Deno.funlockSync is undefined
-Deno.iter is undefined
-Deno.iterSync is undefined
 Deno.readAll is undefined
 Deno.readAllSync is undefined
 Deno.read is undefined
