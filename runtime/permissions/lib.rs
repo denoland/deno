@@ -32,7 +32,6 @@ use std::path::PathBuf;
 use std::str::FromStr;
 use std::string::ToString;
 use std::sync::Arc;
-use which::which;
 
 pub mod prompter;
 use prompter::permission_prompt;
@@ -333,9 +332,6 @@ pub trait Descriptor: Eq + Clone + Hash {
   fn stronger_than(&self, other: &Self) -> bool {
     self == other
   }
-  fn aliases(&self) -> Vec<Self> {
-    vec![]
-  }
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -423,43 +419,34 @@ impl<T: Descriptor + Hash> UnaryPermission<T> {
     desc: Option<&T>,
     allow_partial: AllowPartial,
   ) -> PermissionState {
-    let aliases = desc.map_or(vec![], T::aliases);
-    for desc in [desc]
-      .into_iter()
-      .chain(aliases.iter().map(Some).collect::<Vec<_>>())
-    {
-      let state = if self.is_flag_denied(desc) || self.is_prompt_denied(desc) {
-        PermissionState::Denied
-      } else if self.is_granted(desc) {
-        match allow_partial {
-          AllowPartial::TreatAsGranted => PermissionState::Granted,
-          AllowPartial::TreatAsDenied => {
-            if self.is_partial_flag_denied(desc) {
-              PermissionState::Denied
-            } else {
-              PermissionState::Granted
-            }
-          }
-          AllowPartial::TreatAsPartialGranted => {
-            if self.is_partial_flag_denied(desc) {
-              PermissionState::GrantedPartial
-            } else {
-              PermissionState::Granted
-            }
+    let state = if self.is_flag_denied(desc) || self.is_prompt_denied(desc) {
+      PermissionState::Denied
+    } else if self.is_granted(desc) {
+      match allow_partial {
+        AllowPartial::TreatAsGranted => PermissionState::Granted,
+        AllowPartial::TreatAsDenied => {
+          if self.is_partial_flag_denied(desc) {
+            PermissionState::Denied
+          } else {
+            PermissionState::Granted
           }
         }
-      } else if matches!(allow_partial, AllowPartial::TreatAsDenied)
-        && self.is_partial_flag_denied(desc)
-      {
-        PermissionState::Denied
-      } else {
-        PermissionState::Prompt
-      };
-      if state != PermissionState::Prompt {
-        return state;
+        AllowPartial::TreatAsPartialGranted => {
+          if self.is_partial_flag_denied(desc) {
+            PermissionState::GrantedPartial
+          } else {
+            PermissionState::Granted
+          }
+        }
       }
-    }
-    PermissionState::Prompt
+    } else if matches!(allow_partial, AllowPartial::TreatAsDenied)
+      && self.is_partial_flag_denied(desc)
+    {
+      PermissionState::Denied
+    } else {
+      PermissionState::Prompt
+    };
+    state
   }
 
   fn request_desc(
@@ -512,9 +499,6 @@ impl<T: Descriptor + Hash> UnaryPermission<T> {
     match desc {
       Some(desc) => {
         self.granted_list.retain(|v| !v.stronger_than(desc));
-        for alias in desc.aliases() {
-          self.granted_list.retain(|v| !v.stronger_than(&alias));
-        }
       }
       None => {
         self.granted_global = false;
@@ -582,11 +566,7 @@ impl<T: Descriptor + Hash> UnaryPermission<T> {
   ) {
     match desc {
       Some(desc) => {
-        let aliases = desc.aliases();
         list.insert(desc);
-        for alias in aliases {
-          list.insert(alias);
-        }
       }
       None => *list_global = true,
     }
@@ -935,16 +915,6 @@ impl Descriptor for RunDescriptor {
 
   fn name(&self) -> Cow<str> {
     Cow::from(self.to_string())
-  }
-
-  fn aliases(&self) -> Vec<Self> {
-    match self {
-      RunDescriptor::Name(name) => match which(name) {
-        Ok(path) => vec![RunDescriptor::Path(path)],
-        Err(_) => vec![],
-      },
-      RunDescriptor::Path(_) => vec![],
-    }
   }
 }
 
@@ -1350,15 +1320,16 @@ impl UnaryPermission<RunDescriptor> {
 
   pub fn check(
     &mut self,
-    cmd: &str,
+    cmd: &Path,
     api_name: Option<&str>,
   ) -> Result<(), AnyError> {
+    debug_assert!(cmd.is_absolute());
     skip_check_if_is_permission_fully_granted!(self);
     self.check_desc(
-      Some(&RunDescriptor::from(cmd.to_string())),
+      Some(&RunDescriptor::Path(cmd.to_path_buf())),
       false,
       api_name,
-      || Some(format!("\"{}\"", cmd)),
+      || Some(format!("\"{}\"", cmd.display())),
     )
   }
 
@@ -1729,7 +1700,7 @@ impl PermissionsContainer {
   #[inline(always)]
   pub fn check_run(
     &mut self,
-    cmd: &str,
+    cmd: &Path,
     api_name: &str,
   ) -> Result<(), AnyError> {
     self.0.lock().run.check(cmd, Some(api_name))
@@ -2005,19 +1976,17 @@ fn parse_sys_list(
 fn parse_run_list(
   list: Option<&[RunDescriptorArg]>,
 ) -> Result<HashSet<RunDescriptor>, AnyError> {
-  let mut result = HashSet::new();
-  if let Some(v) = list {
-    for arg in v {
-      let desc = match arg {
+  let Some(v) = list else {
+    return Ok(HashSet::new());
+  };
+  Ok(
+    v.iter()
+      .map(|arg| match arg {
         RunDescriptorArg::Name(s) => RunDescriptor::Name(s.clone()),
         RunDescriptorArg::Path(l) => RunDescriptor::Path(l.clone()),
-      };
-      let aliases = desc.aliases();
-      result.insert(desc.clone());
-      result.extend(aliases);
-    }
-  }
-  Ok(result)
+      })
+      .collect(),
+  )
 }
 
 fn escalation_error() -> AnyError {

@@ -1,4 +1,4 @@
-const binaryName = Deno.build.os === "windows" ? "binary.exe" : "binary";
+const binaryName = Deno.build.os === "windows" ? "deno.exe" : "deno";
 Deno.copyFileSync(Deno.execPath(), binaryName);
 
 console.log("Running...");
