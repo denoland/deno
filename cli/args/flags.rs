@@ -2094,8 +2094,9 @@ Show documentation for runtime built-ins:
 }
 
 fn eval_subcommand() -> Command {
-  command("eval",
-      "Evaluate JavaScript from the command line.
+  command(
+    "eval",
+    "Evaluate JavaScript from the command line.
 
   deno eval \"console.log('hello world')\"
 
@@ -2103,39 +2104,29 @@ To evaluate as TypeScript:
   deno eval --ext=ts \"const v: string = 'hello'; console.log(v)\"
 
 This command has implicit access to all permissions (--allow-all).",
-          UnstableArgsConfig::ResolutionAndRuntime,
-    )
-    .defer(|cmd| {
-      runtime_args(cmd, false, true)
-        .arg(check_arg(false))
-        .arg(
-          // TODO(@satyarohith): remove this argument in 2.0.
-          Arg::new("ts")
-            .conflicts_with("ext")
-            .long("ts")
-            .short('T')
-            .help("deprecated: Use `--ext=ts` instead. The `--ts` and `-T` flags are deprecated and will be removed in Deno 2.0.")
-            .action(ArgAction::SetTrue)
-            .hide(true),
-        )
-        .arg(executable_ext_arg())
-        .arg(
-          Arg::new("print")
-            .long("print")
-            .short('p')
-            .help("print result to stdout")
-            .action(ArgAction::SetTrue),
-        )
-        .arg(
-          Arg::new("code_arg")
-            .num_args(1..)
-            .action(ArgAction::Append)
-            .help("Code to evaluate")
-            .value_name("CODE_ARG")
-            .required_unless_present("help"),
-        )
-        .arg(env_file_arg())
-    })
+    UnstableArgsConfig::ResolutionAndRuntime,
+  )
+  .defer(|cmd| {
+    runtime_args(cmd, false, true)
+      .arg(check_arg(false))
+      .arg(executable_ext_arg())
+      .arg(
+        Arg::new("print")
+          .long("print")
+          .short('p')
+          .help("print result to stdout")
+          .action(ArgAction::SetTrue),
+      )
+      .arg(
+        Arg::new("code_arg")
+          .num_args(1..)
+          .action(ArgAction::Append)
+          .help("Code to evaluate")
+          .value_name("CODE_ARG")
+          .required_unless_present("help"),
+      )
+      .arg(env_file_arg())
+  })
 }
 
 fn fmt_subcommand() -> Command {
@@ -4301,21 +4292,6 @@ fn eval_parse(flags: &mut Flags, matches: &mut ArgMatches) {
   flags.allow_all();
 
   ext_arg_parse(flags, matches);
-
-  // TODO(@satyarohith): remove this flag in 2.0.
-  let as_typescript = matches.get_flag("ts");
-
-  #[allow(clippy::print_stderr)]
-  if as_typescript {
-    eprintln!(
-      "⚠️ {}",
-      crate::colors::yellow(
-        "Use `--ext=ts` instead. The `--ts` and `-T` flags are deprecated and will be removed in Deno 2.0."
-      ),
-    );
-
-    flags.ext = Some("ts".to_string());
-  }
 
   let print = matches.get_flag("print");
   let mut code_args = matches.remove_many::<String>("code_arg").unwrap();
@@ -6994,8 +6970,12 @@ mod tests {
 
   #[test]
   fn eval_typescript() {
-    let r =
-      flags_from_vec(svec!["deno", "eval", "-T", "'console.log(\"hello\")'"]);
+    let r = flags_from_vec(svec![
+      "deno",
+      "eval",
+      "--ext=ts",
+      "'console.log(\"hello\")'"
+    ]);
     assert_eq!(
       r.unwrap(),
       Flags {
