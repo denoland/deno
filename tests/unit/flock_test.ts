@@ -2,14 +2,14 @@
 import { assertEquals, DENO_FUTURE } from "./test_util.ts";
 
 Deno.test(
-  { ignore: DENO_FUTURE, permissions: { read: true, run: true, hrtime: true } },
+  { ignore: DENO_FUTURE, permissions: { read: true, run: true } },
   async function flockFileSync() {
     await runFlockTests({ sync: true });
   },
 );
 
 Deno.test(
-  { ignore: DENO_FUTURE, permissions: { read: true, run: true, hrtime: true } },
+  { ignore: DENO_FUTURE, permissions: { read: true, run: true } },
   async function flockFileAsync() {
     await runFlockTests({ sync: false });
   },

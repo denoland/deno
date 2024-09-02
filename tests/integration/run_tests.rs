@@ -153,11 +153,6 @@ itest!(_023_no_ext {
   output: "run/023_no_ext.out",
 });
 
-itest!(_025_hrtime {
-  args: "run --quiet --allow-hrtime --reload run/025_hrtime.ts",
-  output: "run/025_hrtime.ts.out",
-});
-
 itest!(_025_reload_js_type_error {
   args: "run --quiet --reload run/025_reload_js_type_error.js",
   output: "run/025_reload_js_type_error.js.out",
@@ -735,12 +730,12 @@ fn permission_request_long() {
 }
 
 itest!(deny_all_permission_args {
-  args: "run --deny-env --deny-read --deny-write --deny-ffi --deny-run --deny-sys --deny-net --deny-hrtime run/deny_all_permission_args.js",
+  args: "run --deny-env --deny-read --deny-write --deny-ffi --deny-run --deny-sys --deny-net run/deny_all_permission_args.js",
   output: "run/deny_all_permission_args.out",
 });
 
 itest!(deny_some_permission_args {
-  args: "run --allow-env --deny-env=FOO --allow-read --deny-read=/foo --allow-write --deny-write=/foo --allow-ffi --deny-ffi=/foo --allow-run --deny-run=foo --allow-sys --deny-sys=hostname --allow-net --deny-net=127.0.0.1 --allow-hrtime --deny-hrtime run/deny_some_permission_args.js",
+  args: "run --allow-env --deny-env=FOO --allow-read --deny-read=/foo --allow-write --deny-write=/foo --allow-ffi --deny-ffi=/foo --allow-run --deny-run=foo --allow-sys --deny-sys=hostname --allow-net --deny-net=127.0.0.1 run/deny_some_permission_args.js",
   output: "run/deny_some_permission_args.out",
 });
 

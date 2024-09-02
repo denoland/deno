@@ -12,7 +12,5 @@ run false ... ok [WILDCARD]
 run true ... ok [WILDCARD]
 ffi false ... ok [WILDCARD]
 ffi true ... ok [WILDCARD]
-hrtime false ... ok [WILDCARD]
-hrtime true ... ok [WILDCARD]
 
 ok | 14 passed | 0 failed [WILDCARD]
