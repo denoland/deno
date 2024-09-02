@@ -5773,7 +5773,7 @@ declare namespace Deno {
    *
    * @category Network
    */
-  export interface CAARecord {
+  export interface CaaRecord {
     /** If `true`, indicates that the corresponding property tag **must** be
      * understood if the semantics of the CAA record are to be correctly
      * interpreted by an issuer.
@@ -5793,7 +5793,7 @@ declare namespace Deno {
    * specified, it will return an array of objects with this interface.
    *
    * @category Network */
-  export interface MXRecord {
+  export interface MxRecord {
     /** A priority value, which is a relative value compared to the other
      * preferences of MX records for the domain. */
     preference: number;
@@ -5805,7 +5805,7 @@ declare namespace Deno {
    * specified, it will return an array of objects with this interface.
    *
    * @category Network */
-  export interface NAPTRRecord {
+  export interface NaptrRecord {
     order: number;
     preference: number;
     flags: string;
@@ -5818,7 +5818,7 @@ declare namespace Deno {
    * specified, it will return an array of objects with this interface.
    *
    * @category Network */
-  export interface SOARecord {
+  export interface SoaRecord {
     mname: string;
     rname: string;
     serial: number;
@@ -5833,7 +5833,7 @@ declare namespace Deno {
    *
    * @category Network
    */
-  export interface SRVRecord {
+  export interface SrvRecord {
     priority: number;
     weight: number;
     port: number;
@@ -5898,7 +5898,7 @@ declare namespace Deno {
     query: string,
     recordType: "CAA",
     options?: ResolveDnsOptions,
-  ): Promise<CAARecord[]>;
+  ): Promise<CaaRecord[]>;
 
   /**
    * Performs DNS resolution against the given query, returning resolved
@@ -5928,7 +5928,7 @@ declare namespace Deno {
     query: string,
     recordType: "MX",
     options?: ResolveDnsOptions,
-  ): Promise<MXRecord[]>;
+  ): Promise<MxRecord[]>;
 
   /**
    * Performs DNS resolution against the given query, returning resolved
@@ -5958,7 +5958,7 @@ declare namespace Deno {
     query: string,
     recordType: "NAPTR",
     options?: ResolveDnsOptions,
-  ): Promise<NAPTRRecord[]>;
+  ): Promise<NaptrRecord[]>;
 
   /**
    * Performs DNS resolution against the given query, returning resolved
@@ -5988,7 +5988,7 @@ declare namespace Deno {
     query: string,
     recordType: "SOA",
     options?: ResolveDnsOptions,
-  ): Promise<SOARecord[]>;
+  ): Promise<SoaRecord[]>;
 
   /**
    * Performs DNS resolution against the given query, returning resolved
@@ -6018,7 +6018,7 @@ declare namespace Deno {
     query: string,
     recordType: "SRV",
     options?: ResolveDnsOptions,
-  ): Promise<SRVRecord[]>;
+  ): Promise<SrvRecord[]>;
 
   /**
    * Performs DNS resolution against the given query, returning resolved
@@ -6080,11 +6080,11 @@ declare namespace Deno {
     options?: ResolveDnsOptions,
   ): Promise<
     | string[]
-    | CAARecord[]
-    | MXRecord[]
-    | NAPTRRecord[]
-    | SOARecord[]
-    | SRVRecord[]
+    | CaaRecord[]
+    | MxRecord[]
+    | NaptrRecord[]
+    | SoaRecord[]
+    | SrvRecord[]
     | string[][]
   >;
 
