@@ -588,8 +588,8 @@ function mapAnyAddrToLocalhostForWindows(hostname: string) {
   // because browsers in Windows don't resolve "0.0.0.0".
   // See the discussion in https://github.com/denoland/deno_std/issues/1165
   if (
-    (hostname == "0.0.0.0" || hostname == "::") &&
-    (Deno.build.os === "windows")
+    (Deno.build.os === "windows") &&
+    (hostname == "0.0.0.0" || hostname == "::")
   ) {
     return "localhost";
   }
