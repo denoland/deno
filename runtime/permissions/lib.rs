@@ -3275,7 +3275,6 @@ mod tests {
         run: ChildUnaryPermissionArg::Granted,
         sys: ChildUnaryPermissionArg::Granted,
         write: ChildUnaryPermissionArg::Granted,
-        ..ChildPermissionsArg::none()
       }
     );
     assert_eq!(
@@ -3297,7 +3296,6 @@ mod tests {
         run: ChildUnaryPermissionArg::NotGranted,
         sys: ChildUnaryPermissionArg::NotGranted,
         write: ChildUnaryPermissionArg::NotGranted,
-        ..ChildPermissionsArg::none()
       }
     );
     assert_eq!(
@@ -3335,7 +3333,6 @@ mod tests {
           "foo",
           "file:///bar/baz"
         ]),
-        ..ChildPermissionsArg::none()
       }
     );
   }
