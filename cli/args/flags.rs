@@ -1643,7 +1643,7 @@ glob {*_,*.,}bench.{js,mjs,ts,mts,jsx,tsx}:
 fn bundle_subcommand() -> Command {
   command("bundle",  "⚠️ `deno bundle` was removed in Deno 2.
 
-  See the Deno 1.x to 2.x Migration Guide for migration instructions: https://docs.deno.com/runtime/manual/advanced/migrate_deprecations", UnstableArgsConfig::ResolutionOnly)
+See the Deno 1.x to 2.x Migration Guide for migration instructions: https://docs.deno.com/runtime/manual/advanced/migrate_deprecations", UnstableArgsConfig::ResolutionOnly)
     .hide(true)
 }
 
