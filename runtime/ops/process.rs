@@ -513,7 +513,7 @@ fn compute_run_cmd_and_check_permissions(
   state: &mut OpState,
   api_name: &str,
 ) -> Result<(PathBuf, RunEnv), AnyError> {
-  let run_env = compute_run_env(arg_cwd.as_deref(), arg_envs, arg_clear_env)?;
+  let run_env = compute_run_env(arg_cwd, arg_envs, arg_clear_env)?;
   let cmd = resolve_cmd(arg_cmd, &run_env)?;
   check_run_permission(state, &cmd, &run_env, api_name)?;
   Ok((cmd, run_env))
@@ -534,6 +534,7 @@ fn compute_run_env(
   arg_envs: &[(String, String)],
   arg_clear_env: bool,
 ) -> Result<RunEnv, AnyError> {
+  #[allow(clippy::disallowed_methods)]
   let cwd = std::env::current_dir().context("failed resolving cwd")?;
   let cwd = arg_cwd
     .map(|cwd_arg| resolve_path(cwd_arg, &cwd))
@@ -606,7 +607,7 @@ fn check_run_permission(
         )
       ));
     }
-    permissions.check_run(&cmd, api_name)?;
+    permissions.check_run(cmd, api_name)?;
   }
   Ok(())
 }
@@ -763,7 +764,7 @@ mod deprecated {
     #[serde] run_args: RunArgs,
   ) -> Result<RunInfo, AnyError> {
     let args = run_args.cmd;
-    let cmd = args.get(0).ok_or_else(|| anyhow::anyhow!("Missing cmd"))?;
+    let cmd = args.first().ok_or_else(|| anyhow::anyhow!("Missing cmd"))?;
     let (cmd, run_env) = compute_run_cmd_and_check_permissions(
       cmd,
       run_args.cwd.as_deref(),

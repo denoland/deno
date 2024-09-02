@@ -419,7 +419,7 @@ impl<T: Descriptor + Hash> UnaryPermission<T> {
     desc: Option<&T>,
     allow_partial: AllowPartial,
   ) -> PermissionState {
-    let state = if self.is_flag_denied(desc) || self.is_prompt_denied(desc) {
+    if self.is_flag_denied(desc) || self.is_prompt_denied(desc) {
       PermissionState::Denied
     } else if self.is_granted(desc) {
       match allow_partial {
@@ -445,8 +445,7 @@ impl<T: Descriptor + Hash> UnaryPermission<T> {
       PermissionState::Denied
     } else {
       PermissionState::Prompt
-    };
-    state
+    }
   }
 
   fn request_desc(
@@ -2366,6 +2365,9 @@ mod tests {
   macro_rules! svec {
       ($($x:expr),*) => (vec![$($x.to_string()),*]);
   }
+  macro_rules! sarr {
+      ($($x:expr),*) => ([$($x.to_string()),*]);
+  }
 
   #[test]
   fn check_paths() {
@@ -2756,10 +2758,10 @@ mod tests {
       .unwrap(),
       ffi: Permissions::new_unary(Some(&[PathBuf::from("/foo")]), None, false)
         .unwrap(),
-      net: Permissions::new_unary(Some(&svec!["127.0.0.1:8000"]), None, false)
+      net: Permissions::new_unary(Some(&sarr!["127.0.0.1:8000"]), None, false)
         .unwrap(),
-      env: Permissions::new_unary(Some(&svec!["HOME"]), None, false).unwrap(),
-      sys: Permissions::new_unary(Some(&svec!["hostname"]), None, false)
+      env: Permissions::new_unary(Some(&sarr!["HOME"]), None, false).unwrap(),
+      sys: Permissions::new_unary(Some(&sarr!["hostname"]), None, false)
         .unwrap(),
       run: Permissions::new_unary(
         Some(&["deno".to_string().into()]),
@@ -2781,10 +2783,10 @@ mod tests {
       .unwrap(),
       ffi: Permissions::new_unary(None, Some(&[PathBuf::from("/foo")]), false)
         .unwrap(),
-      net: Permissions::new_unary(None, Some(&svec!["127.0.0.1:8000"]), false)
+      net: Permissions::new_unary(None, Some(&sarr!["127.0.0.1:8000"]), false)
         .unwrap(),
-      env: Permissions::new_unary(None, Some(&svec!["HOME"]), false).unwrap(),
-      sys: Permissions::new_unary(None, Some(&svec!["hostname"]), false)
+      env: Permissions::new_unary(None, Some(&sarr!["HOME"]), false).unwrap(),
+      sys: Permissions::new_unary(None, Some(&sarr!["hostname"]), false)
         .unwrap(),
       run: Permissions::new_unary(
         None,
@@ -2816,13 +2818,13 @@ mod tests {
       .unwrap(),
       net: Permissions::new_unary(
         Some(&[]),
-        Some(&svec!["127.0.0.1:8000"]),
+        Some(&sarr!["127.0.0.1:8000"]),
         false,
       )
       .unwrap(),
-      env: Permissions::new_unary(Some(&[]), Some(&svec!["HOME"]), false)
+      env: Permissions::new_unary(Some(&[]), Some(&sarr!["HOME"]), false)
         .unwrap(),
-      sys: Permissions::new_unary(Some(&[]), Some(&svec!["hostname"]), false)
+      sys: Permissions::new_unary(Some(&[]), Some(&sarr!["hostname"]), false)
         .unwrap(),
       run: Permissions::new_unary(
         Some(&[]),
@@ -2985,13 +2987,13 @@ mod tests {
       )
       .unwrap(),
       net: Permissions::new_unary(
-        Some(&svec!["127.0.0.1", "127.0.0.1:8000"]),
+        Some(&sarr!["127.0.0.1", "127.0.0.1:8000"]),
         None,
         false,
       )
       .unwrap(),
-      env: Permissions::new_unary(Some(&svec!["HOME"]), None, false).unwrap(),
-      sys: Permissions::new_unary(Some(&svec!["hostname"]), None, false)
+      env: Permissions::new_unary(Some(&sarr!["HOME"]), None, false).unwrap(),
+      sys: Permissions::new_unary(Some(&sarr!["hostname"]), None, false)
         .unwrap(),
       run: Permissions::new_unary(
         Some(&["deno".to_string().into()]),
@@ -3086,6 +3088,7 @@ mod tests {
       .check(&NetDescriptor("deno.land".parse().unwrap(), None), None)
       .is_err());
 
+    #[allow(clippy::disallowed_methods)]
     let cwd = std::env::current_dir().unwrap();
     prompt_value.set(true);
     assert!(perms.run.check(&cwd.join("cat"), None).is_ok());
@@ -3185,6 +3188,7 @@ mod tests {
       .is_ok());
 
     prompt_value.set(false);
+    #[allow(clippy::disallowed_methods)]
     let cwd = std::env::current_dir().unwrap();
     assert!(perms.run.check(&cwd.join("cat"), None).is_err());
     prompt_value.set(true);
@@ -3457,7 +3461,7 @@ mod tests {
     let mut main_perms = Permissions {
       env: Permissions::new_unary(Some(&[]), None, false).unwrap(),
       hrtime: Permissions::new_hrtime(true, false),
-      net: Permissions::new_unary(Some(&svec!["foo", "bar"]), None, false)
+      net: Permissions::new_unary(Some(&sarr!["foo", "bar"]), None, false)
         .unwrap(),
       ..Permissions::none_without_prompt()
     };
@@ -3475,7 +3479,7 @@ mod tests {
       .unwrap(),
       Permissions {
         env: Permissions::new_unary(Some(&[]), None, false).unwrap(),
-        net: Permissions::new_unary(Some(&svec!["foo"]), None, false).unwrap(),
+        net: Permissions::new_unary(Some(&sarr!["foo"]), None, false).unwrap(),
         ..Permissions::none_without_prompt()
       }
     );
