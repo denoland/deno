@@ -1,0 +1,4 @@
+{
+  "args": "eval --env=missing console.log(Deno.env.get(\"Another_FOO\"))",
+  "output": "main.out"
+}

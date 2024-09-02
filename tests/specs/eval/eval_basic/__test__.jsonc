@@ -1,0 +1,4 @@
+{
+  "args": "eval console.log(\"hello\")",
+  "output": "main.out"
+}

@@ -1,0 +1,5 @@
+{
+  "args": "eval import('../../../testdata/subdir/mod4.js').then(console.log)",
+  "output": "main.out"
+}
+ 
