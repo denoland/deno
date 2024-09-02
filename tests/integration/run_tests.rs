@@ -4605,7 +4605,7 @@ fn permission_prompt_escapes_ansi_codes_and_control_chars() {
       .env("PATH", context.temp_dir().path())
       .env("DYLD_FALLBACK_LIBRARY_PATH", "")
       .env("LD_LIBRARY_PATH", "")
-      .args_vec(&["repl", "--allow-write=."])
+      .args_vec(["repl", "--allow-write=."])
       .with_pty(|mut console| {
         console.write_line_raw(r#"const boldANSI = "\u001b[1m";"#);
         console.expect("undefined");
