@@ -196,10 +196,9 @@ async function ensureNoNewITests() {
   // replace them with spec tests.
   const iTestCounts = {
     "bench_tests.rs": 0,
-    "bundle_tests.rs": 11,
     "cache_tests.rs": 0,
     "cert_tests.rs": 0,
-    "check_tests.rs": 23,
+    "check_tests.rs": 22,
     "compile_tests.rs": 0,
     "coverage_tests.rs": 0,
     "doc_tests.rs": 15,
