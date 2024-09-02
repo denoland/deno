@@ -704,40 +704,9 @@ mod tests {
   use deno_core::normalize_path;
   use deno_core::parking_lot::Mutex;
   use pretty_assertions::assert_eq;
-  use std::env::current_dir;
   use test_util::PathRef;
   use test_util::TempDir;
   use tokio::sync::Notify;
-
-  fn resolve_from_cwd(path: &Path) -> Result<PathBuf, AnyError> {
-    let resolved_path = if path.is_absolute() {
-      path.to_owned()
-    } else {
-      let cwd =
-        current_dir().context("Failed to get current working directory")?;
-      cwd.join(path)
-    };
-
-    Ok(normalize_path(resolved_path))
-  }
-
-  #[test]
-  fn resolve_from_cwd_child() {
-    let cwd = current_dir().unwrap();
-    assert_eq!(resolve_from_cwd(Path::new("a")).unwrap(), cwd.join("a"));
-  }
-
-  #[test]
-  fn resolve_from_cwd_dot() {
-    let cwd = current_dir().unwrap();
-    assert_eq!(resolve_from_cwd(Path::new(".")).unwrap(), cwd);
-  }
-
-  #[test]
-  fn resolve_from_cwd_parent() {
-    let cwd = current_dir().unwrap();
-    assert_eq!(resolve_from_cwd(Path::new("a/..")).unwrap(), cwd);
-  }
 
   #[test]
   fn test_normalize_path() {
@@ -754,14 +723,6 @@ mod tests {
         PathBuf::from("C:\\a\\c")
       );
     }
-  }
-
-  #[test]
-  fn resolve_from_cwd_absolute() {
-    let expected = Path::new("a");
-    let cwd = current_dir().unwrap();
-    let absolute_expected = cwd.join(expected);
-    assert_eq!(resolve_from_cwd(expected).unwrap(), absolute_expected);
   }
 
   #[test]
