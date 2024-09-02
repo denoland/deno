@@ -3,8 +3,6 @@ Deno.Buffer is undefined
 Deno.close is undefined
 Deno.copy is undefined
 Deno.File is undefined
-Deno.fstat is undefined
-Deno.fstatSync is undefined
 Deno.ftruncate is undefined
 Deno.ftruncateSync is undefined
 Deno.flock is undefined
