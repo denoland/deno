@@ -1700,6 +1700,7 @@ impl ConfigTree {
     if specifier.path().ends_with("/deno.json")
       || specifier.path().ends_with("/deno.jsonc")
       || specifier.path().ends_with("/package.json")
+      || specifier.path().ends_with("/.package-lock.json")
     {
       return true;
     }
