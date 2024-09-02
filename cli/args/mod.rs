@@ -669,7 +669,7 @@ pub fn get_root_cert_store(
           .collect(),
       )
     })
-    .unwrap_or_else(|| vec!["mozilla".to_string()]);
+    .unwrap_or_else(|| vec!["mozilla".to_string(), "system".to_string()]);
 
   for store in ca_stores.iter() {
     match store.as_str() {
