@@ -2265,33 +2265,6 @@ declare namespace Deno {
    */
   export function fdatasyncSync(rid: number): void;
 
-  /** Close the given resource ID (`rid`) which has been previously opened, such
-   * as via opening or creating a file. Closing a file when you are finished
-   * with it is important to avoid leaking resources.
-   *
-   * ```ts
-   * const file = await Deno.open("my_file.txt");
-   * // do work with "file" object
-   * Deno.close(file.rid);
-   * ```
-   *
-   * It is recommended to define the variable with the `using` keyword so the
-   * runtime will automatically close the resource when it goes out of scope.
-   * Doing so negates the need to manually close the resource.
-   *
-   * ```ts
-   * using file = await Deno.open("my_file.txt");
-   * // do work with "file" object
-   * ```
-   *
-   * @deprecated This will be removed in Deno 2.0. See the
-   * {@link https://docs.deno.com/runtime/manual/advanced/migrate_deprecations | Deno 1.x to 2.x Migration Guide}
-   * for migration instructions.
-   *
-   * @category I/O
-   */
-  export function close(rid: number): void;
-
   /** The Deno abstraction for reading and writing files.
    *
    * This is the most straight forward way of handling files within Deno and is

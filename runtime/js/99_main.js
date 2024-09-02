@@ -620,14 +620,6 @@ const internalSymbol = Symbol("Deno.internal");
 const finalDenoNs = {
   internal: internalSymbol,
   [internalSymbol]: internals,
-  close(rid) {
-    internals.warnOnDeprecatedApi(
-      "Deno.close()",
-      new Error().stack,
-      "Use `closer.close()` instead.",
-    );
-    core.close(rid);
-  },
   ...denoNs,
   // Deno.test and Deno.bench are noops here, but kept for compatibility; so
   // that they don't cause errors when used outside of `deno test`/`deno bench`
@@ -928,7 +920,6 @@ function bootstrapMainRuntime(runtimeOptions, warmup = false) {
     if (future) {
       delete globalThis.window;
       delete Deno.Buffer;
-      delete Deno.close;
       delete Deno.copy;
       delete Deno.File;
       delete Deno.fstat;
@@ -1115,7 +1106,6 @@ function bootstrapWorkerRuntime(
 
     if (future) {
       delete Deno.Buffer;
-      delete Deno.close;
       delete Deno.copy;
       delete Deno.File;
       delete Deno.fstat;
