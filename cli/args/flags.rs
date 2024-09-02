@@ -390,7 +390,7 @@ pub struct TestFlags {
   pub clean: bool,
   pub fail_fast: Option<NonZeroUsize>,
   pub files: FileFlags,
-  pub allow_none: bool,
+  pub permit_no_files: bool,
   pub filter: Option<String>,
   pub shuffle: Option<u64>,
   pub concurrent_jobs: Option<NonZeroUsize>,
@@ -2808,19 +2808,10 @@ Directory arguments are expanded to all contained files matching the glob
           .value_name("N")
           .value_parser(value_parser!(NonZeroUsize))
           .help_heading(TEST_HEADING))
-      // TODO(@lucacasonato): remove for Deno 2.0
-      .arg(
-        Arg::new("allow-none")
-          .long("allow-none")
-          .help("Don't return error code if no test files are found")
-          .hide(true)
-          .action(ArgAction::SetTrue),
-      )
       .arg(
         Arg::new("permit-no-files")
           .long("permit-no-files")
           .help("Don't return an error code if no test files were found")
-          .conflicts_with("allow-none")
           .action(ArgAction::SetTrue)
           .help_heading(TEST_HEADING),
       )
@@ -4657,16 +4648,7 @@ fn test_parse(flags: &mut Flags, matches: &mut ArgMatches) {
   let trace_leaks = matches.get_flag("trace-leaks");
   let doc = matches.get_flag("doc");
   #[allow(clippy::print_stderr)]
-  let allow_none = matches.get_flag("permit-no-files")
-    || if matches.get_flag("allow-none") {
-      eprintln!(
-      "⚠️ {}",
-      crate::colors::yellow("The `--allow-none` flag is deprecated and will be removed in Deno 2.0.\nUse the `--permit-no-files` flag instead."),
-    );
-      true
-    } else {
-      false
-    };
+  let permit_no_files = matches.get_flag("permit-no-files");
   let filter = matches.remove_one::<String>("filter");
   let clean = matches.get_flag("clean");
 
@@ -4732,7 +4714,7 @@ fn test_parse(flags: &mut Flags, matches: &mut ArgMatches) {
     files: FileFlags { include, ignore },
     filter,
     shuffle,
-    allow_none,
+    permit_no_files,
     concurrent_jobs,
     trace_leaks,
     watch: watch_arg_parse_with_paths(matches),
@@ -8484,7 +8466,7 @@ mod tests {
           doc: false,
           fail_fast: None,
           filter: Some("- foo".to_string()),
-          allow_none: true,
+          permit_no_files: true,
           files: FileFlags {
             include: vec!["dir1/".to_string(), "dir2/".to_string()],
             ignore: vec![],
@@ -8572,7 +8554,7 @@ mod tests {
           doc: false,
           fail_fast: Some(NonZeroUsize::new(3).unwrap()),
           filter: None,
-          allow_none: false,
+          permit_no_files: false,
           shuffle: None,
           files: FileFlags {
             include: vec![],
@@ -8615,7 +8597,7 @@ mod tests {
           doc: false,
           fail_fast: None,
           filter: None,
-          allow_none: false,
+          permit_no_files: false,
           shuffle: None,
           files: FileFlags {
             include: vec![],
@@ -8752,7 +8734,7 @@ mod tests {
           doc: false,
           fail_fast: None,
           filter: None,
-          allow_none: false,
+          permit_no_files: false,
           shuffle: Some(1),
           files: FileFlags {
             include: vec![],
@@ -8788,7 +8770,7 @@ mod tests {
           doc: false,
           fail_fast: None,
           filter: None,
-          allow_none: false,
+          permit_no_files: false,
           shuffle: None,
           files: FileFlags {
             include: vec![],
@@ -8823,7 +8805,7 @@ mod tests {
           doc: false,
           fail_fast: None,
           filter: None,
-          allow_none: false,
+          permit_no_files: false,
           shuffle: None,
           files: FileFlags {
             include: vec!["./".to_string()],
@@ -8860,7 +8842,7 @@ mod tests {
           doc: false,
           fail_fast: None,
           filter: None,
-          allow_none: false,
+          permit_no_files: false,
           shuffle: None,
           files: FileFlags {
             include: vec![],
