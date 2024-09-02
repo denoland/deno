@@ -1,0 +1,7 @@
+Running...
+error: Uncaught (in promise) PermissionDenied: Requires write access to "binary", run again with the --allow-write flag
+Deno.writeTextFileSync(binaryName, "");
+     ^
+    at writeFileSync (ext:deno_fs/30_fs.js:883:3)
+    at Object.writeTextFileSync (ext:deno_fs/30_fs.js:946:10)
+    at file:///private/var/folders/v4/3smqxpkj0dx9w4cqs40nmh3c0000gn/T/deno-cli-testsoI1KO/sub.ts:3:6
