@@ -62,7 +62,6 @@ import * as version from "ext:runtime/01_version.ts";
 import * as os from "ext:runtime/30_os.js";
 import * as timers from "ext:deno_web/02_timers.js";
 import {
-  customInspect,
   getDefaultInspectOptions,
   getStderrNoColor,
   inspectArgs,
@@ -644,18 +643,6 @@ ObjectDefineProperties(finalDenoNs, {
   noColor: core.propGetterOnly(() => op_bootstrap_no_color()),
   args: core.propGetterOnly(opArgs),
   mainModule: core.propGetterOnly(() => op_main_module()),
-  // TODO(kt3k): Remove this export at v2
-  // See https://github.com/denoland/deno/issues/9294
-  customInspect: {
-    get() {
-      warnOnDeprecatedApi(
-        "Deno.customInspect",
-        new Error().stack,
-        'Use `Symbol.for("Deno.customInspect")` instead.',
-      );
-      return internals.future ? undefined : customInspect;
-    },
-  },
   exitCode: {
     get() {
       return os.getExitCode();

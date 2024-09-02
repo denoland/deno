@@ -5273,19 +5273,6 @@ declare namespace Deno {
    */
   export const args: string[];
 
-  /**
-   * A symbol which can be used as a key for a custom method which will be
-   * called when `Deno.inspect()` is called, or when the object is logged to
-   * the console.
-   *
-   * @deprecated This will be removed in Deno 2.0. See the
-   * {@link https://docs.deno.com/runtime/manual/advanced/migrate_deprecations | Deno 1.x to 2.x Migration Guide}
-   * for migration instructions.
-   *
-   * @category I/O
-   */
-  export const customInspect: unique symbol;
-
   /** The URL of the entrypoint module entered from the command-line. It
    * requires read permission to the CWD.
    *

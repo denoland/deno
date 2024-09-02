@@ -3417,8 +3417,6 @@ class Console {
   }
 }
 
-const customInspect = SymbolFor("Deno.customInspect");
-
 function inspect(
   value,
   inspectOptions = { __proto__: null },
@@ -3511,7 +3509,6 @@ export {
   createFilteredInspectProxy,
   createStylizeWithColor,
   CSI,
-  customInspect,
   formatBigInt,
   formatNumber,
   formatValue,
