@@ -1,0 +1,13 @@
+{
+  "steps": [
+    {
+      "args": "vendor",
+      "output": "vendor.out",
+      "exitCode": 1
+    },
+    {
+      "args": "vendor --help",
+      "output": "vendor_help.out"
+    }
+  ]
+}

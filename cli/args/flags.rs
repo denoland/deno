@@ -3079,7 +3079,8 @@ update to a different location, use the --output flag:
 
 fn vendor_subcommand() -> Command {
   command("vendor",
-      "⚠️ `deno bundle` was removed in Deno 2.
+      "⚠️ `deno vendor` was removed in Deno 2.
+
 See the Deno 1.x to 2.x Migration Guide for migration instructions: https://docs.deno.com/runtime/manual/advanced/migrate_deprecations",
       UnstableArgsConfig::ResolutionOnly
     )
