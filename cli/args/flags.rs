@@ -2785,14 +2785,6 @@ Directory arguments are expanded to all contained files matching the glob
           .help_heading(TEST_HEADING),
       )
       .arg(
-        Arg::new("trace-ops")
-          .long("trace-ops")
-          .help("Deprecated alias for --trace-leaks")
-          .hide(true)
-          .action(ArgAction::SetTrue)
-          .help_heading(TEST_HEADING),
-      )
-      .arg(
         Arg::new("trace-leaks")
           .long("trace-leaks")
           .help("Enable tracing of leaks. Useful when debugging leaking ops in test, but impacts test execution time")
@@ -4662,20 +4654,7 @@ fn test_parse(flags: &mut Flags, matches: &mut ArgMatches) {
   };
 
   let no_run = matches.get_flag("no-run");
-  let trace_leaks =
-    matches.get_flag("trace-ops") || matches.get_flag("trace-leaks");
-
-  #[allow(clippy::print_stderr)]
-  if trace_leaks && matches.get_flag("trace-ops") {
-    // We can't change this to use the log crate because its not configured
-    // yet at this point since the flags haven't been parsed. This flag is
-    // deprecated though so it's not worth changing the code to use the log
-    // crate here and this is only done for testing anyway.
-    eprintln!(
-      "⚠️ {}",
-      crate::colors::yellow("The `--trace-ops` flag is deprecated and will be removed in Deno 2.0.\nUse the `--trace-leaks` flag instead."),
-    );
-  }
+  let trace_leaks = matches.get_flag("trace-leaks");
   let doc = matches.get_flag("doc");
   #[allow(clippy::print_stderr)]
   let allow_none = matches.get_flag("permit-no-files")
