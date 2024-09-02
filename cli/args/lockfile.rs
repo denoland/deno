@@ -1,6 +1,6 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
-use std::collections::BTreeSet;
+use std::collections::HashSet;
 use std::path::PathBuf;
 
 use deno_config::deno_json::ConfigFile;
@@ -12,6 +12,7 @@ use deno_core::parking_lot::MutexGuard;
 use deno_lockfile::WorkspaceMemberConfig;
 use deno_package_json::PackageJsonDepValue;
 use deno_runtime::deno_node::PackageJson;
+use deno_semver::jsr::JsrDepPackageReq;
 
 use crate::cache;
 use crate::util::fs::atomic_write_file_with_retries;
@@ -98,7 +99,9 @@ impl CliLockfile {
     flags: &Flags,
     workspace: &Workspace,
   ) -> Result<Option<CliLockfile>, AnyError> {
-    fn pkg_json_deps(maybe_pkg_json: Option<&PackageJson>) -> BTreeSet<String> {
+    fn pkg_json_deps(
+      maybe_pkg_json: Option<&PackageJson>,
+    ) -> HashSet<JsrDepPackageReq> {
       let Some(pkg_json) = maybe_pkg_json else {
         return Default::default();
       };
@@ -107,21 +110,21 @@ impl CliLockfile {
         .values()
         .filter_map(|dep| dep.as_ref().ok())
         .filter_map(|dep| match dep {
-          PackageJsonDepValue::Req(req) => Some(req),
+          PackageJsonDepValue::Req(req) => {
+            Some(JsrDepPackageReq::npm(req.clone()))
+          }
           PackageJsonDepValue::Workspace(_) => None,
         })
-        .map(|r| format!("npm:{}", r))
         .collect()
     }
 
     fn deno_json_deps(
       maybe_deno_json: Option<&ConfigFile>,
-    ) -> BTreeSet<String> {
+    ) -> HashSet<JsrDepPackageReq> {
       maybe_deno_json
         .map(|c| {
           crate::args::deno_json::deno_json_deps(c)
             .into_iter()
-            .map(|req| req.to_string())
             .collect()
         })
         .unwrap_or_default()
@@ -147,22 +150,20 @@ impl CliLockfile {
       },
     };
 
-    let lockfile = if flags.lock_write {
-      log::warn!(
-        "{} \"--lock-write\" flag is deprecated and will be removed in Deno 2.",
-        crate::colors::yellow("Warning")
-      );
-      CliLockfile::new(
-        Lockfile::new_empty(filename, true),
-        flags.frozen_lockfile,
-      )
-    } else {
-      Self::read_from_path(filename, flags.frozen_lockfile)?
-    };
+    let root_folder = workspace.root_folder_configs();
+    // CLI flag takes precedence over the config
+    let frozen = flags.frozen_lockfile.unwrap_or_else(|| {
+      root_folder
+        .deno_json
+        .as_ref()
+        .and_then(|c| c.to_lock_config().ok().flatten().map(|c| c.frozen()))
+        .unwrap_or(false)
+    });
+
+    let lockfile = Self::read_from_path(filename, frozen)?;
 
     // initialize the lockfile with the workspace's configuration
     let root_url = workspace.root_dir();
-    let root_folder = workspace.root_folder_configs();
     let config = deno_lockfile::WorkspaceConfig {
       root: WorkspaceMemberConfig {
         package_json_deps: pkg_json_deps(root_folder.pkg_json.as_deref()),
@@ -209,6 +210,7 @@ impl CliLockfile {
 
     Ok(Some(lockfile))
   }
+
   pub fn read_from_path(
     file_path: PathBuf,
     frozen: bool,
@@ -219,26 +221,12 @@ impl CliLockfile {
           file_path,
           content: &text,
           overwrite: false,
-          is_deno_future: *super::DENO_FUTURE,
         })?,
         frozen,
       )),
-      Err(err) if err.kind() == std::io::ErrorKind::NotFound => {
-        Ok(CliLockfile::new(
-          if *super::DENO_FUTURE {
-            // force version 4 for deno future
-            Lockfile::new(deno_lockfile::NewLockfileOptions {
-              file_path,
-              content: r#"{"version":"4"}"#,
-              overwrite: false,
-              is_deno_future: true,
-            })?
-          } else {
-            Lockfile::new_empty(file_path, false)
-          },
-          frozen,
-        ))
-      }
+      Err(err) if err.kind() == std::io::ErrorKind::NotFound => Ok(
+        CliLockfile::new(Lockfile::new_empty(file_path, false), frozen),
+      ),
       Err(err) => Err(err).with_context(|| {
         format!("Failed reading lockfile '{}'", file_path.display())
       }),
@@ -251,12 +239,6 @@ impl CliLockfile {
     }
     let lockfile = self.lockfile.lock();
     if lockfile.has_content_changed {
-      let suggested = if *super::DENO_FUTURE {
-        "`deno cache --frozen=false`, `deno install --frozen=false`,"
-      } else {
-        "`deno cache --frozen=false`"
-      };
-
       let contents =
         std::fs::read_to_string(&lockfile.filename).unwrap_or_default();
       let new_contents = lockfile.as_json_string();
@@ -264,7 +246,7 @@ impl CliLockfile {
       // has an extra newline at the end
       let diff = diff.trim_end();
       Err(deno_core::anyhow::anyhow!(
-        "The lockfile is out of date. Run {suggested} or rerun with `--frozen=false` to update it.\nchanges:\n{diff}"
+        "The lockfile is out of date. Run `deno cache --frozen=false`, `deno install --frozen=false`, or rerun with `--frozen=false` to update it.\nchanges:\n{diff}"
       ))
     } else {
       Ok(())

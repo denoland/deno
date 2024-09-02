@@ -689,7 +689,8 @@ fn import_key_ec(
 
         let rng = ring::rand::SystemRandom::new();
         // deserialize pkcs8 using ring crate, to VALIDATE public key
-        let _private_key = EcdsaKeyPair::from_pkcs8(signing_alg, &data, &rng)?;
+        let _private_key = EcdsaKeyPair::from_pkcs8(signing_alg, &data, &rng)
+          .map_err(|_| data_error("invalid key"))?;
 
         // 11.
         if named_curve != pk_named_curve {

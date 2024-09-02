@@ -3307,19 +3307,30 @@ fn napi_resolve_deferred(
   check_arg!(env, result);
   check_arg!(env, deferred);
 
+  // Make sure microtasks don't run and call back into JS
+  env
+    .scope()
+    .set_microtasks_policy(v8::MicrotasksPolicy::Explicit);
+
   let deferred_ptr =
     unsafe { NonNull::new_unchecked(deferred as *mut v8::PromiseResolver) };
   let global = unsafe { v8::Global::from_raw(env.isolate(), deferred_ptr) };
   let resolver = v8::Local::new(&mut env.scope(), global);
 
-  if !resolver
+  let success = resolver
     .resolve(&mut env.scope(), result.unwrap())
-    .unwrap_or(false)
-  {
-    return napi_generic_failure;
-  }
+    .unwrap_or(false);
 
-  napi_ok
+  // Restore policy
+  env
+    .scope()
+    .set_microtasks_policy(v8::MicrotasksPolicy::Auto);
+
+  if success {
+    napi_ok
+  } else {
+    napi_generic_failure
+  }
 }
 
 #[napi_sym]

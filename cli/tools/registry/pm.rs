@@ -1,5 +1,9 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
+mod cache_deps;
+
+pub use cache_deps::cache_top_level_deps;
+
 use std::borrow::Cow;
 use std::path::Path;
 use std::path::PathBuf;
@@ -136,10 +140,10 @@ impl DenoOrPackageJson {
         ),
         factory,
       )),
-      (None, Some(package_json)) if options.enable_future_features() => {
+      (None, Some(package_json)) => {
         Ok((DenoOrPackageJson::Npm(package_json.clone(), None), factory))
       }
-      (None, Some(_) | None) => {
+      (None, None) => {
         std::fs::write(options.initial_cwd().join("deno.json"), "{}\n")
           .context("Failed to create deno.json file")?;
         drop(factory); // drop to prevent use
@@ -236,13 +240,16 @@ pub async fn add(
 
   let package_futures = package_reqs
     .into_iter()
-    .map(move |package_req| {
-      find_package_and_select_version_for_req(
-        jsr_resolver.clone(),
-        npm_resolver.clone(),
-        package_req,
-      )
-      .boxed_local()
+    .map({
+      let jsr_resolver = jsr_resolver.clone();
+      move |package_req| {
+        find_package_and_select_version_for_req(
+          jsr_resolver.clone(),
+          npm_resolver.clone(),
+          package_req,
+        )
+        .boxed_local()
+      }
     })
     .collect::<Vec<_>>();
 
@@ -288,6 +295,17 @@ pub async fn add(
     Some(Value::Object(obj)) => obj,
     _ => bail!("Failed updating config file due to no object."),
   };
+
+  if obj.get_string("importMap").is_some() {
+    bail!(
+      concat!(
+        "`deno add` is not supported when configuration file contains an \"importMap\" field. ",
+        "Inline the import map into the Deno configuration file.\n",
+        "    at {}",
+      ),
+      config_specifier
+    );
+  }
 
   let mut existing_imports = config_file.existing_imports()?;
 
@@ -339,7 +357,7 @@ pub async fn add(
   // make a new CliFactory to pick up the updated config file
   let cli_factory = CliFactory::from_flags(flags);
   // cache deps
-  crate::module_loader::load_top_level_deps(&cli_factory).await?;
+  cache_deps::cache_top_level_deps(&cli_factory, Some(jsr_resolver)).await?;
 
   Ok(())
 }
@@ -586,7 +604,7 @@ pub async fn remove(
     // Update deno.lock
     node_resolver::PackageJsonThreadLocalCache::clear();
     let cli_factory = CliFactory::from_flags(flags);
-    crate::module_loader::load_top_level_deps(&cli_factory).await?;
+    cache_deps::cache_top_level_deps(&cli_factory, None).await?;
   }
 
   Ok(())

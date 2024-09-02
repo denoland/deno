@@ -324,7 +324,7 @@ impl ManagedCliNpmResolver {
     Ok(path)
   }
 
-  /// Resolves the package nv from the provided specifier.
+  /// Resolves the package id from the provided specifier.
   pub fn resolve_pkg_id_from_specifier(
     &self,
     specifier: &ModuleSpecifier,
@@ -406,8 +406,7 @@ impl ManagedCliNpmResolver {
       }
     }
     if result.dependencies_result.is_ok() {
-      result.dependencies_result =
-        self.cache_packages().await.map_err(AnyError::from);
+      result.dependencies_result = self.cache_packages().await;
     }
 
     result

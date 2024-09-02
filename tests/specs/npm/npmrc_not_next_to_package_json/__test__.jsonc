@@ -1,6 +1,5 @@
 {
   "envs": {
-    "DENO_FUTURE": "1",
     "USERPROFILE": "$DENO_DIR",
     "HOME": "$DENO_DIR"
   },

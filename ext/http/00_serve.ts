@@ -457,7 +457,7 @@ function fastSyncResponseOrStream(
   // At this point in the response it needs to be a stream
   if (!ObjectPrototypeIsPrototypeOf(ReadableStreamPrototype, stream)) {
     innerRequest?.close();
-    throw TypeError("invalid response");
+    throw new TypeError("invalid response");
   }
   const resourceBacking = getReadableStreamResourceBacking(stream);
   let rid, autoClose;
@@ -506,13 +506,13 @@ function mapToCallback(context, callback, onError) {
 
       // Throwing Error if the handler return value is not a Response class
       if (!ObjectPrototypeIsPrototypeOf(ResponsePrototype, response)) {
-        throw TypeError(
+        throw new TypeError(
           "Return value from serve handler must be a response or a promise resolving to a response",
         );
       }
 
       if (response.bodyUsed) {
-        throw TypeError(
+        throw new TypeError(
           "The body of the Response returned from the serve handler has already been consumed.",
         );
       }
@@ -520,11 +520,12 @@ function mapToCallback(context, callback, onError) {
       try {
         response = await onError(error);
         if (!ObjectPrototypeIsPrototypeOf(ResponsePrototype, response)) {
-          throw TypeError(
+          throw new TypeError(
             "Return value from onError handler must be a response or a promise resolving to a response",
           );
         }
       } catch (error) {
+        // deno-lint-ignore no-console
         console.error("Exception in onError while handling exception", error);
         response = internalServerError();
       }
@@ -533,6 +534,7 @@ function mapToCallback(context, callback, onError) {
     if (innerRequest?.[_upgraded]) {
       // We're done here as the connection has been upgraded during the callback and no longer requires servicing.
       if (response !== UPGRADE_RESPONSE_SENTINEL) {
+        // deno-lint-ignore no-console
         console.error("Upgrade response was not returned from callback");
         context.close();
       }
@@ -625,6 +627,7 @@ function serve(arg1, arg2) {
   const wantsUnix = ObjectHasOwn(options, "path");
   const signal = options.signal;
   const onError = options.onError ?? function (error) {
+    // deno-lint-ignore no-console
     console.error(error);
     return internalServerError();
   };
@@ -640,6 +643,7 @@ function serve(arg1, arg2) {
       if (options.onListen) {
         options.onListen(listener.addr);
       } else {
+        // deno-lint-ignore no-console
         console.log(`Listening on ${path}`);
       }
     });
@@ -690,6 +694,7 @@ function serve(arg1, arg2) {
       const host = StringPrototypeIncludes(hostname, ":")
         ? `[${hostname}]`
         : hostname;
+      // deno-lint-ignore no-console
       console.log(`Listening on ${scheme}${host}:${addr.port}/`);
     }
   };
@@ -735,6 +740,7 @@ function serveHttpOn(context, addr, callback) {
 
   const promiseErrorHandler = (error) => {
     // Abnormal exit
+    // deno-lint-ignore no-console
     console.error(
       "Terminating Deno.serve loop due to unexpected error",
       error,
@@ -863,6 +869,7 @@ function registerDeclarativeServer(exports) {
               ? ` with ${serveWorkerCount} threads`
               : "";
             const hostname_ = mapAnyAddrToLocalhostForWindows(hostname);
+            // deno-lint-ignore no-console
             console.debug(
               `%cdeno serve%c: Listening on %chttp://${hostname_}:${port}/%c${nThreads}`,
               "color: green",

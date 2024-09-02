@@ -133,6 +133,7 @@ struct EmbeddedModuleLoader {
 }
 
 pub const MODULE_NOT_FOUND: &str = "Module not found";
+pub const UNSUPPORTED_SCHEME: &str = "Unsupported scheme";
 
 impl ModuleLoader for EmbeddedModuleLoader {
   fn resolve(
@@ -227,8 +228,8 @@ impl ModuleLoader for EmbeddedModuleLoader {
           )
         }
       },
-      Ok(MappedResolution::Normal(specifier))
-      | Ok(MappedResolution::ImportMap(specifier)) => {
+      Ok(MappedResolution::Normal { specifier, .. })
+      | Ok(MappedResolution::ImportMap { specifier, .. }) => {
         if let Ok(reference) =
           NpmPackageReqReference::from_specifier(&specifier)
         {
@@ -622,6 +623,7 @@ pub async fn run(
         .jsr_pkgs
         .iter()
         .map(|pkg| ResolverWorkspaceJsrPackage {
+          is_patch: false, // only used for enhancing the diagnostic, which isn't shown in deno compile
           base: root_dir_url.join(&pkg.relative_base).unwrap(),
           name: pkg.name.clone(),
           version: pkg.version.clone(),
@@ -704,6 +706,8 @@ pub async fn run(
     None,
     None,
     feature_checker,
+    // Code cache is not supported for standalone binary yet.
+    None,
     CliMainWorkerOptions {
       argv: metadata.argv,
       log_level: WorkerLogLevel::Info,
@@ -730,17 +734,13 @@ pub async fn run(
       unstable: metadata.unstable_config.legacy_flag_enabled,
       create_hmr_runner: None,
       create_coverage_collector: None,
+      node_ipc: None,
+      serve_port: None,
+      serve_host: None,
+      // TODO(bartlomieju): temporarily disabled
+      disable_deprecated_api_warning: true,
+      verbose_deprecated_api_warning: false,
     },
-    None,
-    None,
-    None,
-    false,
-    // TODO(bartlomieju): temporarily disabled
-    // metadata.disable_deprecated_api_warning,
-    true,
-    false,
-    // Code cache is not supported for standalone binary yet.
-    None,
   );
 
   // Initialize v8 once from the main thread.

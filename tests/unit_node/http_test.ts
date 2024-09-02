@@ -1,11 +1,14 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
+// deno-lint-ignore-file no-console
+
 import EventEmitter from "node:events";
 import http, { type RequestOptions, type ServerResponse } from "node:http";
 import url from "node:url";
 import https from "node:https";
 import net from "node:net";
 import fs from "node:fs";
+import { text } from "node:stream/consumers";
 
 import { assert, assertEquals, fail } from "@std/assert";
 import { assertSpyCalls, spy } from "@std/testing/mock";
@@ -1556,4 +1559,48 @@ Deno.test("[node/http] req.url equals pathname + search", async () => {
   });
 
   await promise;
+});
+
+Deno.test("[node/http] ClientRequest content-disposition header works", async () => {
+  const payload = Buffer.from("hello world");
+  let body = "";
+  let headers = {} as http.IncomingHttpHeaders;
+  const { promise, resolve, reject } = Promise.withResolvers<void>();
+  const req = http.request("http://localhost:4545/echo_server", {
+    method: "PUT",
+    headers: {
+      "content-disposition": "attachment",
+    },
+  }, (resp) => {
+    headers = resp.headers;
+    resp.on("data", (chunk) => {
+      body += chunk;
+    });
+
+    resp.on("end", () => {
+      resolve();
+    });
+  });
+  req.once("error", (e) => reject(e));
+  req.end(payload);
+  await promise;
+  assertEquals(body, "hello world");
+  assertEquals(headers["content-disposition"], "attachment");
+});
+
+Deno.test("[node/http] In ClientRequest, option.hostname has precedence over options.host", async () => {
+  const responseReceived = Promise.withResolvers<void>();
+
+  new http.ClientRequest({
+    hostname: "localhost",
+    host: "invalid-hostname.test",
+    port: 4545,
+    path: "/http_version",
+  }).on("response", async (res) => {
+    assertEquals(res.statusCode, 200);
+    assertEquals(await text(res), "HTTP/1.1");
+    responseReceived.resolve();
+  }).end();
+
+  await responseReceived.promise;
 });

@@ -8,6 +8,7 @@ use deno_core::serde_json::Value;
 use deno_core::url::Url;
 use pretty_assertions::assert_eq;
 use std::fs;
+use std::str::FromStr;
 use test_util::assert_starts_with;
 use test_util::assertions::assert_json_subset;
 use test_util::deno_cmd_with_deno_dir;
@@ -91,7 +92,7 @@ fn lsp_tsconfig_types() {
 
   let diagnostics = client.did_open(json!({
     "textDocument": {
-      "uri": temp_dir.uri().join("test.ts").unwrap(),
+      "uri": temp_dir.url().join("test.ts").unwrap(),
       "languageId": "typescript",
       "version": 1,
       "text": "console.log(a);\n"
@@ -136,7 +137,7 @@ fn lsp_tsconfig_types_config_sub_dir() {
 
   let diagnostics = client.did_open(json!({
     "textDocument": {
-      "uri": temp_dir.uri().join("test.ts").unwrap(),
+      "uri": temp_dir.url().join("test.ts").unwrap(),
       "languageId": "typescript",
       "version": 1,
       "text": "console.log(a);\n"
@@ -159,7 +160,7 @@ fn lsp_triple_slash_types() {
 
   let diagnostics = client.did_open(json!({
     "textDocument": {
-      "uri": temp_dir.uri().join("test.ts").unwrap(),
+      "uri": temp_dir.url().join("test.ts").unwrap(),
       "languageId": "typescript",
       "version": 1,
       "text": "/// <reference types=\"./a.d.ts\" />\n\nconsole.log(a);\n"
@@ -206,13 +207,13 @@ fn unadded_dependency_message_with_import_map() {
     "workspace/executeCommand",
     json!({
       "command": "deno.cache",
-      "arguments": [[], temp_dir.uri().join("file.ts").unwrap()],
+      "arguments": [[], temp_dir.url().join("file.ts").unwrap()],
     }),
   );
 
   let diagnostics = client.did_open(json!({
     "textDocument": {
-      "uri": temp_dir.uri().join("file.ts").unwrap(),
+      "uri": temp_dir.url().join("file.ts").unwrap(),
       "languageId": "typescript",
       "version": 1,
       "text": temp_dir.read_to_string("file.ts"),
@@ -265,13 +266,13 @@ fn unadded_dependency_message() {
     "workspace/executeCommand",
     json!({
       "command": "deno.cache",
-      "arguments": [[], temp_dir.uri().join("file.ts").unwrap()],
+      "arguments": [[], temp_dir.url().join("file.ts").unwrap()],
     }),
   );
 
   let diagnostics = client.did_open(json!({
     "textDocument": {
-      "uri": temp_dir.uri().join("file.ts").unwrap(),
+      "uri": temp_dir.url().join("file.ts").unwrap(),
       "languageId": "typescript",
       "version": 1,
       "text": temp_dir.read_to_string("file.ts"),
@@ -314,7 +315,7 @@ fn lsp_import_map() {
     builder.set_import_map("import-map.json");
   });
 
-  let uri = temp_dir.uri().join("a.ts").unwrap();
+  let uri = temp_dir.url().join("a.ts").unwrap();
 
   let diagnostics = client.did_open(json!({
     "textDocument": {
@@ -386,13 +387,13 @@ fn lsp_import_map_remote() {
     "workspace/executeCommand",
     json!({
       "command": "deno.cache",
-      "arguments": [[], temp_dir.uri().join("file.ts").unwrap()],
+      "arguments": [[], temp_dir.url().join("file.ts").unwrap()],
     }),
   );
 
   let diagnostics = client.did_open(json!({
     "textDocument": {
-      "uri": temp_dir.uri().join("file.ts").unwrap(),
+      "uri": temp_dir.url().join("file.ts").unwrap(),
       "languageId": "typescript",
       "version": 1,
       "text": temp_dir.read_to_string("file.ts"),
@@ -412,7 +413,7 @@ fn lsp_import_map_data_url() {
   });
   let diagnostics = client.did_open(json!({
     "textDocument": {
-      "uri": temp_dir.uri().join("file.ts").unwrap(),
+      "uri": temp_dir.url().join("file.ts").unwrap(),
       "languageId": "typescript",
       "version": 1,
       "text": "import example from \"example\";\n"
@@ -454,7 +455,7 @@ fn lsp_import_map_config_file() {
     builder.set_config("./deno.import_map.jsonc");
   });
 
-  let uri = temp_dir.uri().join("a.ts").unwrap();
+  let uri = temp_dir.url().join("a.ts").unwrap();
 
   let diagnostics = client.did_open(json!({
     "textDocument": {
@@ -516,7 +517,7 @@ fn lsp_import_map_embedded_in_config_file() {
     builder.set_config("./deno.embedded_import_map.jsonc");
   });
 
-  let uri = temp_dir.uri().join("a.ts").unwrap();
+  let uri = temp_dir.url().join("a.ts").unwrap();
 
   let diagnostics = client.did_open(json!({
     "textDocument": {
@@ -570,7 +571,7 @@ fn lsp_import_map_embedded_in_config_file_after_initialize() {
     builder.set_config("./deno.embedded_import_map.jsonc");
   });
 
-  let uri = temp_dir.uri().join("a.ts").unwrap();
+  let uri = temp_dir.url().join("a.ts").unwrap();
 
   let diagnostics = client.did_open(json!({
     "textDocument": {
@@ -595,7 +596,7 @@ fn lsp_import_map_embedded_in_config_file_after_initialize() {
 
   client.did_change_watched_files(json!({
     "changes": [{
-      "uri": temp_dir.uri().join("deno.embedded_import_map.jsonc").unwrap(),
+      "uri": temp_dir.url().join("deno.embedded_import_map.jsonc").unwrap(),
       "type": 2
     }]
   }));
@@ -644,7 +645,7 @@ fn lsp_import_map_config_file_auto_discovered() {
   temp_dir.write("deno.jsonc", r#"{ "imports": { "/~/": "./lib/" } }"#);
   client.did_change_watched_files(json!({
     "changes": [{
-      "uri": temp_dir.uri().join("deno.jsonc").unwrap(),
+      "uri": temp_dir.url().join("deno.jsonc").unwrap(),
       "type": 2
     }]
   }));
@@ -652,7 +653,7 @@ fn lsp_import_map_config_file_auto_discovered() {
     line.contains("  Resolved Deno configuration file:")
   });
 
-  let uri = temp_dir.uri().join("a.ts").unwrap();
+  let uri = temp_dir.url().join("a.ts").unwrap();
 
   let diagnostics = client.did_open(json!({
     "textDocument": {
@@ -695,7 +696,7 @@ fn lsp_import_map_config_file_auto_discovered() {
   temp_dir.write("deno.jsonc", r#",,#,#,,"#);
   client.did_change_watched_files(json!({
     "changes": [{
-      "uri": temp_dir.uri().join("deno.jsonc").unwrap(),
+      "uri": temp_dir.url().join("deno.jsonc").unwrap(),
       "type": 2
     }]
   }));
@@ -705,7 +706,7 @@ fn lsp_import_map_config_file_auto_discovered() {
   temp_dir.write("deno.jsonc", r#"{ "imports": { "/~/": "./lib/" } }"#);
   client.did_change_watched_files(json!({
     "changes": [{
-      "uri": temp_dir.uri().join("deno.jsonc").unwrap(),
+      "uri": temp_dir.url().join("deno.jsonc").unwrap(),
       "type": 2
     }]
   }));
@@ -771,7 +772,7 @@ fn lsp_import_map_config_file_auto_discovered_symlink() {
   client.did_change_watched_files(json!({
     "changes": [{
       // the client will give a watched file changed event for the symlink's target
-      "uri": temp_dir.path().join("subdir/deno.json").canonicalize().uri_file(),
+      "uri": temp_dir.path().join("subdir/deno.json").canonicalize().url_file(),
       "type": 2
     }]
   }));
@@ -779,14 +780,14 @@ fn lsp_import_map_config_file_auto_discovered_symlink() {
   // this will discover the deno.json in the root
   let search_line = format!(
     "  Resolved Deno configuration file: \"{}\"",
-    temp_dir.uri().join("deno.json").unwrap().as_str()
+    temp_dir.url().join("deno.json").unwrap().as_str()
   );
   client.wait_until_stderr_line(|line| line.contains(&search_line));
 
   // now open a file which will cause a diagnostic because the import map is empty
   let diagnostics = client.did_open(json!({
     "textDocument": {
-      "uri": temp_dir.uri().join("a.ts").unwrap(),
+      "uri": temp_dir.url().join("a.ts").unwrap(),
       "languageId": "typescript",
       "version": 1,
       "text": "import { b } from \"/~/b.ts\";\n\nconsole.log(b);\n"
@@ -799,7 +800,7 @@ fn lsp_import_map_config_file_auto_discovered_symlink() {
   client.did_change_watched_files(json!({
     "changes": [{
       // now still say that the target path has changed
-      "uri": temp_dir.path().join("subdir/deno.json").canonicalize().uri_file(),
+      "uri": temp_dir.path().join("subdir/deno.json").canonicalize().url_file(),
       "type": 2
     }]
   }));
@@ -837,13 +838,13 @@ fn lsp_deno_json_imports_comments_cache() {
     "workspace/executeCommand",
     json!({
       "command": "deno.cache",
-      "arguments": [[], temp_dir.uri().join("file.ts").unwrap()],
+      "arguments": [[], temp_dir.url().join("file.ts").unwrap()],
     }),
   );
 
   let diagnostics = client.did_open(json!({
     "textDocument": {
-      "uri": temp_dir.uri().join("file.ts").unwrap(),
+      "uri": temp_dir.url().join("file.ts").unwrap(),
       "languageId": "typescript",
       "version": 1,
       "text": temp_dir.read_to_string("file.ts"),
@@ -875,7 +876,7 @@ fn lsp_import_map_node_specifiers() {
 
   let diagnostics = client.did_open(json!({
     "textDocument": {
-      "uri": temp_dir.uri().join("a.ts").unwrap(),
+      "uri": temp_dir.url().join("a.ts").unwrap(),
       "languageId": "typescript",
       "version": 1,
       "text": "import fs from \"fs\";\nconsole.log(fs);"
@@ -906,7 +907,7 @@ fn lsp_format_vendor_path() {
   client.initialize_default();
   let diagnostics = client.did_open(json!({
     "textDocument": {
-      "uri": temp_dir.uri().join("file.ts").unwrap(),
+      "uri": temp_dir.url().join("file.ts").unwrap(),
       "languageId": "typescript",
       "version": 1,
       "text": r#"import "http://localhost:4545/run/002_hello.ts";"#,
@@ -928,7 +929,7 @@ fn lsp_format_vendor_path() {
     "workspace/executeCommand",
     json!({
       "command": "deno.cache",
-      "arguments": [[], temp_dir.uri().join("file.ts").unwrap()],
+      "arguments": [[], temp_dir.url().join("file.ts").unwrap()],
     }),
   );
   assert!(temp_dir
@@ -937,7 +938,7 @@ fn lsp_format_vendor_path() {
     .exists());
   client.did_open(json!({
     "textDocument": {
-      "uri": temp_dir.uri().join("vendor/http_localhost_4545/run/002_hello.ts").unwrap(),
+      "uri": temp_dir.url().join("vendor/http_localhost_4545/run/002_hello.ts").unwrap(),
       "languageId": "typescript",
       "version": 1,
       "text": r#"console.log("Hello World");"#,
@@ -947,7 +948,7 @@ fn lsp_format_vendor_path() {
     "textDocument/formatting",
     json!({
       "textDocument": {
-        "uri": temp_dir.uri().join("vendor/http_localhost_4545/run/002_hello.ts").unwrap(),
+        "uri": temp_dir.url().join("vendor/http_localhost_4545/run/002_hello.ts").unwrap(),
       },
       "options": {
         "tabSize": 2,
@@ -993,13 +994,13 @@ fn lsp_workspace_enable_paths_no_workspace_configuration() {
       uri: temp_dir.uri(),
       name: "project".to_string(),
     }]);
-    builder.set_root_uri(temp_dir.uri());
+    builder.set_root_uri(temp_dir.url());
     builder.set_enable_paths(vec!["./main_enabled.ts".to_string()]);
   });
 
   client.did_open(json!({
     "textDocument": {
-      "uri": temp_dir.uri().join("main_disabled.ts").unwrap(),
+      "uri": temp_dir.url().join("main_disabled.ts").unwrap(),
       "languageId": "typescript",
       "version": 1,
       "text": temp_dir.read_to_string("main_disabled.ts"),
@@ -1008,7 +1009,7 @@ fn lsp_workspace_enable_paths_no_workspace_configuration() {
 
   client.did_open(json!({
     "textDocument": {
-      "uri": temp_dir.uri().join("main_enabled.ts").unwrap(),
+      "uri": temp_dir.url().join("main_enabled.ts").unwrap(),
       "languageId": "typescript",
       "version": 1,
       "text": temp_dir.read_to_string("main_enabled.ts"),
@@ -1019,7 +1020,7 @@ fn lsp_workspace_enable_paths_no_workspace_configuration() {
     "textDocument/hover",
     json!({
       "textDocument": {
-        "uri": temp_dir.uri().join("main_disabled.ts").unwrap(),
+        "uri": temp_dir.url().join("main_disabled.ts").unwrap(),
       },
       "position": { "line": 0, "character": 5 }
     }),
@@ -1030,7 +1031,7 @@ fn lsp_workspace_enable_paths_no_workspace_configuration() {
     "textDocument/hover",
     json!({
       "textDocument": {
-        "uri": temp_dir.uri().join("main_enabled.ts").unwrap(),
+        "uri": temp_dir.url().join("main_enabled.ts").unwrap(),
       },
       "position": { "line": 0, "character": 5 }
     }),
@@ -1071,14 +1072,14 @@ fn lsp_did_change_deno_configuration_notification() {
     Some(json!({
       "changes": [
         {
-          "scopeUri": temp_dir.uri(),
-          "fileUri": temp_dir.uri().join("deno.json").unwrap(),
+          "scopeUri": temp_dir.url(),
+          "fileUri": temp_dir.url().join("deno.json").unwrap(),
           "type": "added",
           "configurationType": "denoJson"
         },
         {
-          "scopeUri": temp_dir.uri(),
-          "fileUri": temp_dir.uri().join("package.json").unwrap(),
+          "scopeUri": temp_dir.url(),
+          "fileUri": temp_dir.url().join("package.json").unwrap(),
           "type": "added",
           "configurationType": "packageJson"
         },
@@ -1092,7 +1093,7 @@ fn lsp_did_change_deno_configuration_notification() {
   );
   client.did_change_watched_files(json!({
     "changes": [{
-      "uri": temp_dir.uri().join("deno.json").unwrap(),
+      "uri": temp_dir.url().join("deno.json").unwrap(),
       "type": 2,
     }],
   }));
@@ -1102,8 +1103,8 @@ fn lsp_did_change_deno_configuration_notification() {
     res,
     Some(json!({
       "changes": [{
-        "scopeUri": temp_dir.uri(),
-        "fileUri": temp_dir.uri().join("deno.json").unwrap(),
+        "scopeUri": temp_dir.url(),
+        "fileUri": temp_dir.url().join("deno.json").unwrap(),
         "type": "changed",
         "configurationType": "denoJson"
       }],
@@ -1113,7 +1114,7 @@ fn lsp_did_change_deno_configuration_notification() {
   temp_dir.remove_file("deno.json");
   client.did_change_watched_files(json!({
     "changes": [{
-      "uri": temp_dir.uri().join("deno.json").unwrap(),
+      "uri": temp_dir.url().join("deno.json").unwrap(),
       "type": 3,
     }],
   }));
@@ -1123,8 +1124,8 @@ fn lsp_did_change_deno_configuration_notification() {
     res,
     Some(json!({
       "changes": [{
-        "scopeUri": temp_dir.uri(),
-        "fileUri": temp_dir.uri().join("deno.json").unwrap(),
+        "scopeUri": temp_dir.url(),
+        "fileUri": temp_dir.url().join("deno.json").unwrap(),
         "type": "removed",
         "configurationType": "denoJson"
       }],
@@ -1134,7 +1135,7 @@ fn lsp_did_change_deno_configuration_notification() {
   temp_dir.write("package.json", json!({ "type": "module" }).to_string());
   client.did_change_watched_files(json!({
     "changes": [{
-      "uri": temp_dir.uri().join("package.json").unwrap(),
+      "uri": temp_dir.url().join("package.json").unwrap(),
       "type": 2,
     }],
   }));
@@ -1144,8 +1145,8 @@ fn lsp_did_change_deno_configuration_notification() {
     res,
     Some(json!({
       "changes": [{
-        "scopeUri": temp_dir.uri(),
-        "fileUri": temp_dir.uri().join("package.json").unwrap(),
+        "scopeUri": temp_dir.url(),
+        "fileUri": temp_dir.url().join("package.json").unwrap(),
         "type": "changed",
         "configurationType": "packageJson"
       }],
@@ -1155,7 +1156,7 @@ fn lsp_did_change_deno_configuration_notification() {
   temp_dir.remove_file("package.json");
   client.did_change_watched_files(json!({
     "changes": [{
-      "uri": temp_dir.uri().join("package.json").unwrap(),
+      "uri": temp_dir.url().join("package.json").unwrap(),
       "type": 3,
     }],
   }));
@@ -1165,8 +1166,8 @@ fn lsp_did_change_deno_configuration_notification() {
     res,
     Some(json!({
       "changes": [{
-        "scopeUri": temp_dir.uri(),
-        "fileUri": temp_dir.uri().join("package.json").unwrap(),
+        "scopeUri": temp_dir.url(),
+        "fileUri": temp_dir.url().join("package.json").unwrap(),
         "type": "removed",
         "configurationType": "packageJson"
       }],
@@ -1202,11 +1203,11 @@ fn lsp_deno_task() {
       {
         "name": "build",
         "detail": "deno test",
-        "sourceUri": temp_dir.uri().join("deno.jsonc").unwrap(),
+        "sourceUri": temp_dir.url().join("deno.jsonc").unwrap(),
       }, {
         "name": "some:test",
         "detail": "deno bundle mod.ts",
-        "sourceUri": temp_dir.uri().join("deno.jsonc").unwrap(),
+        "sourceUri": temp_dir.url().join("deno.jsonc").unwrap(),
       }
     ])
   );
@@ -1346,25 +1347,29 @@ fn lsp_import_map_import_completions() {
   let context = TestContextBuilder::new().use_temp_cwd().build();
   let temp_dir = context.temp_dir();
   temp_dir.write(
-    "import-map.json",
-    r#"{
-  "imports": {
-    "/~/": "./lib/",
-    "/#/": "./src/",
-    "fs": "https://example.com/fs/index.js",
-    "std/": "https://example.com/std@0.123.0/"
-  }
-}"#,
+    "deno.json",
+    json!({
+      "imports": {
+        "/~/": "./lib/",
+        "/#/": "./src/",
+        "fs": "https://example.com/fs/index.js",
+        "std/": "https://example.com/std@0.123.0/",
+      },
+      "scopes": {
+        "file:///": {
+          "file": "./file.ts",
+        },
+      },
+    })
+    .to_string(),
   );
   temp_dir.create_dir_all("lib");
   temp_dir.write("lib/b.ts", r#"export const b = "b";"#);
 
   let mut client = context.new_lsp_command().build();
-  client.initialize(|builder| {
-    builder.set_import_map("import-map.json");
-  });
+  client.initialize_default();
 
-  let uri = temp_dir.uri().join("a.ts").unwrap();
+  let uri = temp_dir.url().join("a.ts").unwrap();
 
   client.did_open(json!({
     "textDocument": {
@@ -1403,6 +1408,13 @@ fn lsp_import_map_import_completions() {
           "insertText": "..",
           "commitCharacters": ["\"", "'"],
         }, {
+          "label": "file",
+          "kind": 17,
+          "detail": "(import map)",
+          "sortText": "file",
+          "insertText": "file",
+          "commitCharacters": ["\"", "'"],
+        },  {
           "label": "std",
           "kind": 19,
           "detail": "(import map)",
@@ -1540,7 +1552,7 @@ fn lsp_hover_asset() {
   client.initialize_default();
   client.did_open(json!({
     "textDocument": {
-      "uri": temp_dir.uri().join("file.ts").unwrap(),
+      "uri": temp_dir.url().join("file.ts").unwrap(),
       "languageId": "typescript",
       "version": 1,
       "text": "console.log(Date.now());\n"
@@ -1550,7 +1562,7 @@ fn lsp_hover_asset() {
     "textDocument/definition",
     json!({
       "textDocument": {
-        "uri": temp_dir.uri().join("file.ts").unwrap()
+        "uri": temp_dir.url().join("file.ts").unwrap()
       },
       "position": { "line": 0, "character": 14 }
     }),
@@ -1784,7 +1796,7 @@ fn lsp_workspace_disable_enable_paths() {
     temp_dir.write("worker/other.ts", "import { a } from './shared.ts';\na;");
     temp_dir.write("worker/node.ts", "Buffer.alloc(1);");
 
-    let root_specifier = temp_dir.uri();
+    let root_specifier = temp_dir.url();
 
     let mut client = context.new_lsp_command().build();
     client.initialize_with_config(
@@ -1795,9 +1807,9 @@ fn lsp_workspace_disable_enable_paths() {
           .set_root_uri(root_specifier.clone())
           .set_workspace_folders(vec![lsp::WorkspaceFolder {
             uri: if use_trailing_slash {
-              root_specifier.clone()
+              lsp::Uri::from_str(root_specifier.as_str()).unwrap()
             } else {
-              ModuleSpecifier::parse(
+              lsp::Uri::from_str(
                 root_specifier.as_str().strip_suffix('/').unwrap(),
               )
               .unwrap()
@@ -2011,7 +2023,7 @@ fn lsp_exclude_config() {
   "exclude": ["other"],
 }"#,
   );
-  let root_specifier = temp_dir.uri();
+  let root_specifier = temp_dir.url();
 
   let mut client = context.new_lsp_command().build();
   client.initialize_default();
@@ -2287,8 +2299,8 @@ fn lsp_hover_closed_document() {
   temp_dir.write("b.ts", r#"export * from "./a.ts";"#);
   temp_dir.write("c.ts", "import { a } from \"./b.ts\";\nconsole.log(a);\n");
 
-  let b_specifier = temp_dir.uri().join("b.ts").unwrap();
-  let c_specifier = temp_dir.uri().join("c.ts").unwrap();
+  let b_specifier = temp_dir.url().join("b.ts").unwrap();
+  let c_specifier = temp_dir.url().join("c.ts").unwrap();
 
   let mut client = context.new_lsp_command().build();
   client.initialize_default();
@@ -2645,7 +2657,7 @@ fn lsp_rename_synbol_file_scheme_edits_only() {
   client.initialize_default();
   client.did_open(json!({
     "textDocument": {
-      "uri": temp_dir.uri().join("file.ts").unwrap(),
+      "uri": temp_dir.url().join("file.ts").unwrap(),
       "languageId": "typescript",
       "version": 1,
       "text": r#"
@@ -2658,7 +2670,7 @@ fn lsp_rename_synbol_file_scheme_edits_only() {
     "textDocument/rename",
     json!({
       "textDocument": {
-        "uri": temp_dir.uri().join("file.ts").unwrap(),
+        "uri": temp_dir.url().join("file.ts").unwrap(),
       },
       "position": { "line": 1, "character": 17 },
       "newName": "PATH_SEPARATOR",
@@ -2670,7 +2682,7 @@ fn lsp_rename_synbol_file_scheme_edits_only() {
       "documentChanges": [
         {
           "textDocument": {
-            "uri": temp_dir.uri().join("file.ts").unwrap(),
+            "uri": temp_dir.url().join("file.ts").unwrap(),
             "version": 1,
           },
           "edits": [
@@ -2715,8 +2727,8 @@ fn lsp_document_preload_limit_zero_deno_json_detection() {
     res,
     Some(json!({
       "changes": [{
-        "scopeUri": temp_dir.uri(),
-        "fileUri": temp_dir.uri().join("deno.json").unwrap(),
+        "scopeUri": temp_dir.url(),
+        "fileUri": temp_dir.url().join("deno.json").unwrap(),
         "type": "added",
         "configurationType": "denoJson",
       }],
@@ -2750,7 +2762,7 @@ fn lsp_import_map_setting_with_deno_json() {
   });
   let diagnostics = client.did_open(json!({
     "textDocument": {
-      "uri": temp_dir.uri().join("file.ts").unwrap(),
+      "uri": temp_dir.url().join("file.ts").unwrap(),
       "languageId": "typescript",
       "version": 1,
       "text": "import \"file2\";\n",
@@ -2824,7 +2836,7 @@ fn lsp_hover_jsr() {
   client.initialize_default();
   client.did_open(json!({
     "textDocument": {
-      "uri": temp_dir.uri().join("file.ts").unwrap(),
+      "uri": temp_dir.url().join("file.ts").unwrap(),
       "languageId": "typescript",
       "version": 1,
       "text": "import \"jsr:@denotest/add@1.0.0\";\n",
@@ -2834,14 +2846,14 @@ fn lsp_hover_jsr() {
     "workspace/executeCommand",
     json!({
       "command": "deno.cache",
-      "arguments": [[], temp_dir.uri().join("file.ts").unwrap()],
+      "arguments": [[], temp_dir.url().join("file.ts").unwrap()],
     }),
   );
   let res = client.write_request(
     "textDocument/hover",
     json!({
       "textDocument": {
-        "uri": temp_dir.uri().join("file.ts").unwrap(),
+        "uri": temp_dir.url().join("file.ts").unwrap(),
       },
       "position": { "line": 0, "character": 7 },
     }),
@@ -5191,7 +5203,7 @@ fn lsp_code_actions_deno_cache_jsr() {
   client.initialize_default();
   let diagnostics = client.did_open(json!({
     "textDocument": {
-      "uri": temp_dir.uri().join("file.ts").unwrap(),
+      "uri": temp_dir.url().join("file.ts").unwrap(),
       "languageId": "typescript",
       "version": 1,
       "text": r#"
@@ -5203,16 +5215,16 @@ fn lsp_code_actions_deno_cache_jsr() {
   assert_eq!(
     json!(diagnostics.messages_with_source("deno")),
     json!({
-      "uri": temp_dir.uri().join("file.ts").unwrap(),
+      "uri": temp_dir.url().join("file.ts").unwrap(),
       "diagnostics": [{
         "range": {
           "start": { "line": 1, "character": 28 },
           "end": { "line": 1, "character": 49 },
         },
         "severity": 1,
-        "code": "no-cache-jsr",
+        "code": "not-installed-jsr",
         "source": "deno",
-        "message": "Uncached or missing jsr package: @denotest/add@1",
+        "message": "JSR package \"@denotest/add@1\" is not installed or doesn't exist.",
         "data": { "specifier": "jsr:@denotest/add@1" },
       }],
       "version": 1,
@@ -5221,7 +5233,7 @@ fn lsp_code_actions_deno_cache_jsr() {
   let res = client.write_request(
     "textDocument/codeAction",
     json!({
-      "textDocument": { "uri": temp_dir.uri().join("file.ts").unwrap() },
+      "textDocument": { "uri": temp_dir.url().join("file.ts").unwrap() },
       "range": {
         "start": { "line": 1, "character": 28 },
         "end": { "line": 1, "character": 49 },
@@ -5233,9 +5245,9 @@ fn lsp_code_actions_deno_cache_jsr() {
             "end": { "line": 1, "character": 49 },
           },
           "severity": 1,
-          "code": "no-cache-jsr",
+          "code": "not-installed-jsr",
           "source": "deno",
-          "message": "Uncached or missing jsr package: @denotest/add@1",
+          "message": "JSR package \"@denotest/add@1\" is not installed or doesn't exist.",
           "data": { "specifier": "jsr:@denotest/add@1" },
         }],
         "only": ["quickfix"],
@@ -5245,7 +5257,7 @@ fn lsp_code_actions_deno_cache_jsr() {
   assert_eq!(
     res,
     json!([{
-      "title": "Cache \"jsr:@denotest/add@1\" and its dependencies.",
+      "title": "Install \"jsr:@denotest/add@1\" and its dependencies.",
       "kind": "quickfix",
       "diagnostics": [{
         "range": {
@@ -5253,9 +5265,9 @@ fn lsp_code_actions_deno_cache_jsr() {
           "end": { "line": 1, "character": 49 },
         },
         "severity": 1,
-        "code": "no-cache-jsr",
+        "code": "not-installed-jsr",
         "source": "deno",
-        "message": "Uncached or missing jsr package: @denotest/add@1",
+        "message": "JSR package \"@denotest/add@1\" is not installed or doesn't exist.",
         "data": { "specifier": "jsr:@denotest/add@1" },
       }],
       "command": {
@@ -5263,7 +5275,7 @@ fn lsp_code_actions_deno_cache_jsr() {
         "command": "deno.cache",
         "arguments": [
           ["jsr:@denotest/add@1"],
-          temp_dir.uri().join("file.ts").unwrap(),
+          temp_dir.url().join("file.ts").unwrap(),
         ],
       },
     }])
@@ -5274,7 +5286,7 @@ fn lsp_code_actions_deno_cache_jsr() {
       "command": "deno.cache",
       "arguments": [
         ["jsr:@denotest/add@1"],
-        temp_dir.uri().join("file.ts").unwrap(),
+        temp_dir.url().join("file.ts").unwrap(),
       ],
     }),
   );
@@ -5310,7 +5322,7 @@ fn lsp_jsr_lockfile() {
   client.initialize_default();
   client.did_open(json!({
     "textDocument": {
-      "uri": temp_dir.uri().join("file.ts").unwrap(),
+      "uri": temp_dir.url().join("file.ts").unwrap(),
       "languageId": "typescript",
       "version": 1,
       "text": r#"
@@ -5325,7 +5337,7 @@ fn lsp_jsr_lockfile() {
       "command": "deno.cache",
       "arguments": [
         [],
-        temp_dir.uri().join("file.ts").unwrap(),
+        temp_dir.url().join("file.ts").unwrap(),
       ],
     }),
   );
@@ -5355,20 +5367,20 @@ fn lsp_jsr_auto_import_completion() {
       "command": "deno.cache",
       "arguments": [
         [],
-        temp_dir.uri().join("main.ts").unwrap(),
+        temp_dir.url().join("main.ts").unwrap(),
       ],
     }),
   );
   client.did_open(json!({
     "textDocument": {
-      "uri": temp_dir.uri().join("file.ts").unwrap(),
+      "uri": temp_dir.url().join("file.ts").unwrap(),
       "languageId": "typescript",
       "version": 1,
       "text": r#"add"#,
     }
   }));
   let list = client.get_completion_list(
-    temp_dir.uri().join("file.ts").unwrap(),
+    temp_dir.url().join("file.ts").unwrap(),
     (0, 3),
     json!({ "triggerKind": 1 }),
   );
@@ -5435,20 +5447,20 @@ fn lsp_jsr_auto_import_completion_import_map() {
       "command": "deno.cache",
       "arguments": [
         [],
-        temp_dir.uri().join("main.ts").unwrap(),
+        temp_dir.url().join("main.ts").unwrap(),
       ],
     }),
   );
   client.did_open(json!({
     "textDocument": {
-      "uri": temp_dir.uri().join("file.ts").unwrap(),
+      "uri": temp_dir.url().join("file.ts").unwrap(),
       "languageId": "typescript",
       "version": 1,
       "text": r#"add"#,
     }
   }));
   let list = client.get_completion_list(
-    temp_dir.uri().join("file.ts").unwrap(),
+    temp_dir.url().join("file.ts").unwrap(),
     (0, 3),
     json!({ "triggerKind": 1 }),
   );
@@ -5512,13 +5524,13 @@ fn lsp_jsr_auto_import_completion_import_map_sub_path() {
     "workspace/executeCommand",
     json!({
       "command": "deno.cache",
-      "arguments": [[], file.uri()],
+      "arguments": [[], file.url()],
     }),
   );
   client.read_diagnostics();
   client.did_open_file(&file);
   let list = client.get_completion_list(
-    file.uri(),
+    file.url(),
     (3, 15),
     json!({ "triggerKind": 1 }),
   );
@@ -5576,7 +5588,7 @@ fn lsp_jsr_code_action_missing_declaration() {
     "workspace/executeCommand",
     json!({
       "command": "deno.cache",
-      "arguments": [[], file.uri()],
+      "arguments": [[], file.url()],
     }),
   );
   client.did_open_file(&file);
@@ -5584,7 +5596,7 @@ fn lsp_jsr_code_action_missing_declaration() {
     "textDocument/codeAction",
     json!({
       "textDocument": {
-        "uri": file.uri(),
+        "uri": file.url(),
       },
       "range": {
         "start": { "line": 2, "character": 6 },
@@ -5637,7 +5649,7 @@ fn lsp_jsr_code_action_missing_declaration() {
           "documentChanges": [
             {
               "textDocument": {
-                "uri": file.uri(),
+                "uri": file.url(),
                 "version": 1,
               },
               "edits": [
@@ -5699,9 +5711,9 @@ fn lsp_code_actions_deno_cache_npm() {
           "end": { "line": 0, "character": 29 }
         },
         "severity": 1,
-        "code": "no-cache-npm",
+        "code": "not-installed-npm",
         "source": "deno",
-        "message": "Uncached or missing npm package: chalk",
+        "message": "NPM package \"chalk\" is not installed or doesn't exist.",
         "data": { "specifier": "npm:chalk" }
       }],
       "version": 1
@@ -5726,9 +5738,9 @@ fn lsp_code_actions_deno_cache_npm() {
             "end": { "line": 0, "character": 29 }
           },
           "severity": 1,
-          "code": "no-cache-npm",
+          "code": "not-installed-npm",
           "source": "deno",
-          "message": "Uncached or missing npm package: chalk",
+          "message": "NPM package \"chalk\" is not installed or doesn't exist.",
           "data": { "specifier": "npm:chalk" }
         }],
         "only": ["quickfix"]
@@ -5738,7 +5750,7 @@ fn lsp_code_actions_deno_cache_npm() {
   assert_eq!(
     res,
     json!([{
-      "title": "Cache \"npm:chalk\" and its dependencies.",
+      "title": "Install \"npm:chalk\" and its dependencies.",
       "kind": "quickfix",
       "diagnostics": [{
         "range": {
@@ -5746,9 +5758,9 @@ fn lsp_code_actions_deno_cache_npm() {
           "end": { "line": 0, "character": 29 }
         },
         "severity": 1,
-        "code": "no-cache-npm",
+        "code": "not-installed-npm",
         "source": "deno",
-        "message": "Uncached or missing npm package: chalk",
+        "message": "NPM package \"chalk\" is not installed or doesn't exist.",
         "data": { "specifier": "npm:chalk" }
       }],
       "command": {
@@ -5801,9 +5813,9 @@ fn lsp_code_actions_deno_cache_all() {
             "end": { "line": 2, "character": 37 },
           },
           "severity": 1,
-          "code": "no-cache-npm",
+          "code": "not-installed-npm",
           "source": "deno",
-          "message": "Uncached or missing npm package: chalk",
+          "message": "NPM package \"chalk\" is not installed or doesn't exist.",
           "data": { "specifier": "npm:chalk" },
         },
       ],
@@ -5889,9 +5901,9 @@ fn lsp_code_actions_deno_cache_all() {
               "end": { "line": 2, "character": 37 },
             },
             "severity": 1,
-            "code": "no-cache-npm",
+            "code": "not-installed-npm",
             "source": "deno",
-            "message": "Uncached or missing npm package: chalk",
+            "message": "NPM package \"chalk\" is not installed or doesn't exist.",
             "data": { "specifier": "npm:chalk" },
           },
         ],
@@ -5931,7 +5943,7 @@ fn lsp_cache_on_save() {
 
   let diagnostics = client.did_open(json!({
     "textDocument": {
-      "uri": temp_dir.uri().join("file.ts").unwrap(),
+      "uri": temp_dir.url().join("file.ts").unwrap(),
       "languageId": "typescript",
       "version": 1,
       "text": temp_dir.read_to_string("file.ts"),
@@ -5940,7 +5952,7 @@ fn lsp_cache_on_save() {
   assert_eq!(
     diagnostics.messages_with_source("deno"),
     serde_json::from_value(json!({
-      "uri": temp_dir.uri().join("file.ts").unwrap(),
+      "uri": temp_dir.url().join("file.ts").unwrap(),
       "diagnostics": [{
         "range": {
           "start": { "line": 1, "character": 33 },
@@ -5957,7 +5969,7 @@ fn lsp_cache_on_save() {
     .unwrap()
   );
   client.did_save(json!({
-    "textDocument": { "uri": temp_dir.uri().join("file.ts").unwrap() },
+    "textDocument": { "uri": temp_dir.url().join("file.ts").unwrap() },
   }));
   assert_eq!(client.read_diagnostics().all(), vec![]);
 
@@ -5976,7 +5988,7 @@ fn lsp_cache_then_definition() {
   client.initialize_default();
   client.did_open(json!({
     "textDocument": {
-      "uri": temp_dir.uri().join("file.ts").unwrap(),
+      "uri": temp_dir.url().join("file.ts").unwrap(),
       "languageId": "typescript",
       "version": 1,
       "text": r#"import "http://localhost:4545/run/002_hello.ts";"#,
@@ -5992,14 +6004,14 @@ fn lsp_cache_then_definition() {
       "command": "deno.cache",
       "arguments": [
         ["http://localhost:4545/run/002_hello.ts"],
-        temp_dir.uri().join("file.ts").unwrap(),
+        temp_dir.url().join("file.ts").unwrap(),
       ],
     }),
   );
   let res = client.write_request(
     "textDocument/definition",
     json!({
-      "textDocument": { "uri": temp_dir.uri().join("file.ts").unwrap() },
+      "textDocument": { "uri": temp_dir.url().join("file.ts").unwrap() },
       "position": { "line": 0, "character": 8 },
     }),
   );
@@ -6285,7 +6297,7 @@ fn lsp_code_actions_imports_dts() {
   client.initialize_default();
   let diagnostics = client.did_open(json!({
     "textDocument": {
-      "uri": temp_dir.uri().join("file.ts").unwrap(),
+      "uri": temp_dir.url().join("file.ts").unwrap(),
       "languageId": "typescript",
       "version": 1,
       "text": r#"
@@ -6298,7 +6310,7 @@ fn lsp_code_actions_imports_dts() {
     "textDocument/codeAction",
     json!({
       "textDocument": {
-        "uri": temp_dir.uri().join("file.ts").unwrap(),
+        "uri": temp_dir.url().join("file.ts").unwrap(),
       },
       "range": {
         "start": { "line": 1, "character": 17 },
@@ -6328,7 +6340,7 @@ fn lsp_code_actions_imports_dts() {
       "edit": {
         "documentChanges": [{
           "textDocument": {
-            "uri": temp_dir.uri().join("file.ts").unwrap(),
+            "uri": temp_dir.url().join("file.ts").unwrap(),
             "version": 1,
           },
           "edits": [{
@@ -6590,7 +6602,7 @@ fn lsp_code_actions_imports_respects_fmt_config() {
   client.initialize_default();
   client.did_open(json!({
     "textDocument": {
-      "uri": temp_dir.uri().join("file00.ts").unwrap(),
+      "uri": temp_dir.url().join("file00.ts").unwrap(),
       "languageId": "typescript",
       "version": 1,
       "text": temp_dir.read_to_string("file00.ts"),
@@ -6598,7 +6610,7 @@ fn lsp_code_actions_imports_respects_fmt_config() {
   }));
   client.did_open(json!({
     "textDocument": {
-      "uri": temp_dir.uri().join("file01.ts").unwrap(),
+      "uri": temp_dir.url().join("file01.ts").unwrap(),
       "languageId": "typescript",
       "version": 1,
       "text": temp_dir.read_to_string("file01.ts"),
@@ -6609,7 +6621,7 @@ fn lsp_code_actions_imports_respects_fmt_config() {
     "textDocument/codeAction",
     json!({
       "textDocument": {
-        "uri": temp_dir.uri().join("file00.ts").unwrap()
+        "uri": temp_dir.url().join("file00.ts").unwrap()
       },
       "range": {
         "start": { "line": 0, "character": 0 },
@@ -6648,7 +6660,7 @@ fn lsp_code_actions_imports_respects_fmt_config() {
       "edit": {
         "documentChanges": [{
           "textDocument": {
-            "uri": temp_dir.uri().join("file00.ts").unwrap(),
+            "uri": temp_dir.url().join("file00.ts").unwrap(),
             "version": 1
           },
           "edits": [{
@@ -6678,7 +6690,7 @@ fn lsp_code_actions_imports_respects_fmt_config() {
         "message": "Cannot find name 'DuckConfigOptions'."
       }],
       "data": {
-        "specifier": temp_dir.uri().join("file00.ts").unwrap(),
+        "specifier": temp_dir.url().join("file00.ts").unwrap(),
         "fixId": "fixMissingImport"
       }
     }),
@@ -6701,7 +6713,7 @@ fn lsp_code_actions_imports_respects_fmt_config() {
       "edit": {
         "documentChanges": [{
           "textDocument": {
-            "uri": temp_dir.uri().join("file00.ts").unwrap(),
+            "uri": temp_dir.url().join("file00.ts").unwrap(),
             "version": 1
           },
           "edits": [{
@@ -6714,7 +6726,7 @@ fn lsp_code_actions_imports_respects_fmt_config() {
         }]
       },
       "data": {
-        "specifier": temp_dir.uri().join("file00.ts").unwrap(),
+        "specifier": temp_dir.url().join("file00.ts").unwrap(),
         "fixId": "fixMissingImport"
       }
     })
@@ -6759,7 +6771,7 @@ fn lsp_quote_style_from_workspace_settings() {
 
   let code_action_params = json!({
     "textDocument": {
-      "uri": temp_dir.uri().join("file00.ts").unwrap(),
+      "uri": temp_dir.url().join("file00.ts").unwrap(),
     },
     "range": {
       "start": { "line": 0, "character": 0 },
@@ -6801,7 +6813,7 @@ fn lsp_quote_style_from_workspace_settings() {
       "edit": {
         "documentChanges": [{
           "textDocument": {
-            "uri": temp_dir.uri().join("file00.ts").unwrap(),
+            "uri": temp_dir.url().join("file00.ts").unwrap(),
             "version": null,
           },
           "edits": [{
@@ -6820,7 +6832,7 @@ fn lsp_quote_style_from_workspace_settings() {
   temp_dir.write("./deno.json", json!({}).to_string());
   client.did_change_watched_files(json!({
     "changes": [{
-      "uri": temp_dir.uri().join("deno.json").unwrap(),
+      "uri": temp_dir.url().join("deno.json").unwrap(),
       "type": 1,
     }],
   }));
@@ -6845,7 +6857,7 @@ fn lsp_quote_style_from_workspace_settings() {
       "edit": {
         "documentChanges": [{
           "textDocument": {
-            "uri": temp_dir.uri().join("file00.ts").unwrap(),
+            "uri": temp_dir.url().join("file00.ts").unwrap(),
             "version": null,
           },
           "edits": [{
@@ -7228,7 +7240,7 @@ fn lsp_completions_auto_import() {
   client.initialize_default();
   client.did_open(json!({
     "textDocument": {
-      "uri": "file:///a/🦕.ts",
+      "uri": Url::parse("file:///a/🦕.ts").unwrap(),
       "languageId": "typescript",
       "version": 1,
       "text": "/**\n *\n * @example\n * ```ts\n * const result = add(1, 2);\n * console.log(result); // 3\n * ```\n *\n * @param {number} a - The first number\n * @param {number} b - The second number\n */\nexport function add(a: number, b: number) {\n  return a + b;\n}",
@@ -7580,14 +7592,14 @@ fn lsp_completions_node_specifier() {
   client.initialize_default();
   client.did_open(json!({
     "textDocument": {
-      "uri": temp_dir.uri().join("file.ts").unwrap(),
+      "uri": temp_dir.url().join("file.ts").unwrap(),
       "languageId": "typescript",
       "version": 1,
       "text": "import fs from \"node:as\";\n",
     },
   }));
   let list = client.get_completion_list(
-    temp_dir.uri().join("file.ts").unwrap(),
+    temp_dir.url().join("file.ts").unwrap(),
     (0, 23),
     json!({
       "triggerKind": 2,
@@ -7652,6 +7664,7 @@ fn lsp_completions_node_specifier() {
       "node:util/types",
       "node:v8",
       "node:vm",
+      "node:wasi",
       "node:worker_threads",
       "node:zlib",
     ],
@@ -7708,7 +7721,7 @@ fn lsp_infer_return_type() {
   let res = client.write_request(
     "textDocument/codeAction",
     json!({
-      "textDocument": { "uri": file.uri() },
+      "textDocument": { "uri": file.url() },
       "range": {
         "start": { "line": 1, "character": 15 },
         "end": { "line": 1, "character": 18 },
@@ -7727,7 +7740,7 @@ fn lsp_infer_return_type() {
         "kind": "refactor.rewrite.function.returnType",
         "isPreferred": false,
         "data": {
-          "specifier": file.uri(),
+          "specifier": file.url(),
           "range": {
             "start": { "line": 1, "character": 15 },
             "end": { "line": 1, "character": 18 },
@@ -7747,7 +7760,7 @@ fn lsp_infer_return_type() {
       "kind": "refactor.rewrite.function.returnType",
       "isPreferred": false,
       "data": {
-        "specifier": file.uri(),
+        "specifier": file.url(),
         "range": {
           "start": { "line": 1, "character": 15 },
           "end": { "line": 1, "character": 18 },
@@ -7758,14 +7771,14 @@ fn lsp_infer_return_type() {
       "edit": {
         "documentChanges": [
           {
-            "textDocument": { "uri": file.uri(), "version": null },
+            "textDocument": { "uri": file.url(), "version": null },
             "edits": [
               {
                 "range": {
                   "start": { "line": 1, "character": 20 },
                   "end": { "line": 1, "character": 20 },
                 },
-                "newText": format!(": import(\"{}\").SomeInterface", types_file.uri()),
+                "newText": format!(": import(\"{}\").SomeInterface", types_file.url()),
               },
             ],
           },
@@ -7798,7 +7811,7 @@ fn lsp_npm_types_nested_js_dts() {
     "workspace/executeCommand",
     json!({
       "command": "deno.cache",
-      "arguments": [[], file.uri()],
+      "arguments": [[], file.url()],
     }),
   );
   let diagnostics = client.did_open_file(&file);
@@ -7879,7 +7892,7 @@ fn lsp_npm_always_caches() {
   // create the lsp and cache a different npm specifier
   let mut client = context.new_lsp_command().build();
   client.initialize_default();
-  let opened_file_uri = temp_dir_path.join("file.ts").uri_file();
+  let opened_file_uri = temp_dir_path.join("file.ts").url_file();
   client.did_open(
     json!({
       "textDocument": {
@@ -7902,7 +7915,7 @@ fn lsp_npm_always_caches() {
   );
 
   // now open a new file and chalk should be working
-  let new_file_uri = temp_dir_path.join("new_file.ts").uri_file();
+  let new_file_uri = temp_dir_path.join("new_file.ts").url_file();
   client.did_open(json!({
     "textDocument": {
       "uri": new_file_uri,
@@ -7991,7 +8004,7 @@ fn lsp_completions_auto_import_and_quick_fix_with_import_map() {
   client.did_open(
     json!({
       "textDocument": {
-        "uri": temp_dir.uri().join("file.ts").unwrap(),
+        "uri": temp_dir.url().join("file.ts").unwrap(),
         "languageId": "typescript",
         "version": 1,
         "text": concat!(
@@ -8018,7 +8031,7 @@ fn lsp_completions_auto_import_and_quick_fix_with_import_map() {
           "npm:chalk@~5",
           "http://localhost:4545/subdir/print_hello.ts",
         ],
-        temp_dir.uri().join("file.ts").unwrap(),
+        temp_dir.url().join("file.ts").unwrap(),
       ],
     }),
   );
@@ -8026,14 +8039,14 @@ fn lsp_completions_auto_import_and_quick_fix_with_import_map() {
   // try auto-import with path
   client.did_open(json!({
     "textDocument": {
-      "uri": temp_dir.uri().join("a.ts").unwrap(),
+      "uri": temp_dir.url().join("a.ts").unwrap(),
       "languageId": "typescript",
       "version": 1,
       "text": "getClie",
     }
   }));
   let list = client.get_completion_list(
-    temp_dir.uri().join("a.ts").unwrap(),
+    temp_dir.url().join("a.ts").unwrap(),
     (0, 7),
     json!({ "triggerKind": 1 }),
   );
@@ -8074,7 +8087,7 @@ fn lsp_completions_auto_import_and_quick_fix_with_import_map() {
   // try quick fix with path
   let diagnostics = client.did_open(json!({
     "textDocument": {
-      "uri": temp_dir.uri().join("b.ts").unwrap(),
+      "uri": temp_dir.url().join("b.ts").unwrap(),
       "languageId": "typescript",
       "version": 1,
       "text": "getClient",
@@ -8082,7 +8095,7 @@ fn lsp_completions_auto_import_and_quick_fix_with_import_map() {
   }));
   let diagnostics = diagnostics
     .messages_with_file_and_source(
-      temp_dir.uri().join("b.ts").unwrap().as_str(),
+      temp_dir.url().join("b.ts").unwrap().as_str(),
       "deno-ts",
     )
     .diagnostics;
@@ -8090,7 +8103,7 @@ fn lsp_completions_auto_import_and_quick_fix_with_import_map() {
     "textDocument/codeAction",
     json!(json!({
       "textDocument": {
-        "uri": temp_dir.uri().join("b.ts").unwrap()
+        "uri": temp_dir.url().join("b.ts").unwrap()
       },
       "range": {
         "start": { "line": 0, "character": 0 },
@@ -8122,7 +8135,7 @@ fn lsp_completions_auto_import_and_quick_fix_with_import_map() {
       "edit": {
         "documentChanges": [{
             "textDocument": {
-              "uri": temp_dir.uri().join("b.ts").unwrap(),
+              "uri": temp_dir.url().join("b.ts").unwrap(),
               "version": 1,
             },
             "edits": [{
@@ -8140,7 +8153,7 @@ fn lsp_completions_auto_import_and_quick_fix_with_import_map() {
   // try auto-import without path
   client.did_open(json!({
     "textDocument": {
-      "uri": temp_dir.uri().join("c.ts").unwrap(),
+      "uri": temp_dir.url().join("c.ts").unwrap(),
       "languageId": "typescript",
       "version": 1,
       "text": "chal",
@@ -8148,7 +8161,7 @@ fn lsp_completions_auto_import_and_quick_fix_with_import_map() {
   }));
 
   let list = client.get_completion_list(
-    temp_dir.uri().join("c.ts").unwrap(),
+    temp_dir.url().join("c.ts").unwrap(),
     (0, 4),
     json!({ "triggerKind": 1 }),
   );
@@ -8187,7 +8200,7 @@ fn lsp_completions_auto_import_and_quick_fix_with_import_map() {
   // try quick fix without path
   let diagnostics = client.did_open(json!({
     "textDocument": {
-      "uri": temp_dir.uri().join("d.ts").unwrap(),
+      "uri": temp_dir.url().join("d.ts").unwrap(),
       "languageId": "typescript",
       "version": 1,
       "text": "chalk",
@@ -8195,7 +8208,7 @@ fn lsp_completions_auto_import_and_quick_fix_with_import_map() {
   }));
   let diagnostics = diagnostics
     .messages_with_file_and_source(
-      temp_dir.uri().join("d.ts").unwrap().as_str(),
+      temp_dir.url().join("d.ts").unwrap().as_str(),
       "deno-ts",
     )
     .diagnostics;
@@ -8203,7 +8216,7 @@ fn lsp_completions_auto_import_and_quick_fix_with_import_map() {
     "textDocument/codeAction",
     json!(json!({
       "textDocument": {
-        "uri": temp_dir.uri().join("d.ts").unwrap()
+        "uri": temp_dir.url().join("d.ts").unwrap()
       },
       "range": {
         "start": { "line": 0, "character": 0 },
@@ -8235,7 +8248,7 @@ fn lsp_completions_auto_import_and_quick_fix_with_import_map() {
       "edit": {
         "documentChanges": [{
             "textDocument": {
-              "uri": temp_dir.uri().join("d.ts").unwrap(),
+              "uri": temp_dir.url().join("d.ts").unwrap(),
               "version": 1,
             },
             "edits": [{
@@ -8253,7 +8266,7 @@ fn lsp_completions_auto_import_and_quick_fix_with_import_map() {
   // try auto-import with http import map
   client.did_open(json!({
     "textDocument": {
-      "uri": temp_dir.uri().join("e.ts").unwrap(),
+      "uri": temp_dir.url().join("e.ts").unwrap(),
       "languageId": "typescript",
       "version": 1,
       "text": "printH",
@@ -8261,7 +8274,7 @@ fn lsp_completions_auto_import_and_quick_fix_with_import_map() {
   }));
 
   let list = client.get_completion_list(
-    temp_dir.uri().join("e.ts").unwrap(),
+    temp_dir.url().join("e.ts").unwrap(),
     (0, 6),
     json!({ "triggerKind": 1 }),
   );
@@ -8300,7 +8313,7 @@ fn lsp_completions_auto_import_and_quick_fix_with_import_map() {
   // try quick fix with http import
   let diagnostics = client.did_open(json!({
     "textDocument": {
-      "uri": temp_dir.uri().join("f.ts").unwrap(),
+      "uri": temp_dir.url().join("f.ts").unwrap(),
       "languageId": "typescript",
       "version": 1,
       "text": "printHello",
@@ -8308,7 +8321,7 @@ fn lsp_completions_auto_import_and_quick_fix_with_import_map() {
   }));
   let diagnostics = diagnostics
     .messages_with_file_and_source(
-      temp_dir.uri().join("f.ts").unwrap().as_str(),
+      temp_dir.url().join("f.ts").unwrap().as_str(),
       "deno-ts",
     )
     .diagnostics;
@@ -8316,7 +8329,7 @@ fn lsp_completions_auto_import_and_quick_fix_with_import_map() {
     "textDocument/codeAction",
     json!(json!({
       "textDocument": {
-        "uri": temp_dir.uri().join("f.ts").unwrap()
+        "uri": temp_dir.url().join("f.ts").unwrap()
       },
       "range": {
         "start": { "line": 0, "character": 0 },
@@ -8348,7 +8361,7 @@ fn lsp_completions_auto_import_and_quick_fix_with_import_map() {
       "edit": {
         "documentChanges": [{
             "textDocument": {
-              "uri": temp_dir.uri().join("f.ts").unwrap(),
+              "uri": temp_dir.url().join("f.ts").unwrap(),
               "version": 1,
             },
             "edits": [{
@@ -8366,14 +8379,14 @@ fn lsp_completions_auto_import_and_quick_fix_with_import_map() {
   // try auto-import with npm package with sub-path on value side of import map
   client.did_open(json!({
     "textDocument": {
-      "uri": temp_dir.uri().join("nested_path.ts").unwrap(),
+      "uri": temp_dir.url().join("nested_path.ts").unwrap(),
       "languageId": "typescript",
       "version": 1,
       "text": "entry",
     }
   }));
   let list = client.get_completion_list(
-    temp_dir.uri().join("nested_path.ts").unwrap(),
+    temp_dir.url().join("nested_path.ts").unwrap(),
     (0, 5),
     json!({ "triggerKind": 1 }),
   );
@@ -8744,14 +8757,14 @@ fn lsp_npm_specifier_unopened_file() {
   assert_eq!(output.status.code(), Some(0));
 
   let stdout = String::from_utf8(output.stdout).unwrap();
-  assert!(stdout.is_empty());
+  assert_eq!(stdout.as_str(), "");
   let stderr = String::from_utf8(output.stderr).unwrap();
-  assert!(stderr.is_empty());
+  assert_eq!(stderr.as_str(), "");
 
   // open main.ts, which imports other.ts (unopened)
   client.did_open(json!({
     "textDocument": {
-      "uri": temp_dir.uri().join("main.ts").unwrap(),
+      "uri": temp_dir.url().join("main.ts").unwrap(),
       "languageId": "typescript",
       "version": 1,
       "text": "import { chalk } from './other.ts';\n\n",
@@ -8762,7 +8775,7 @@ fn lsp_npm_specifier_unopened_file() {
     "textDocument/didChange",
     json!({
       "textDocument": {
-        "uri": temp_dir.uri().join("main.ts").unwrap(),
+        "uri": temp_dir.url().join("main.ts").unwrap(),
         "version": 2
       },
       "contentChanges": [
@@ -8780,7 +8793,7 @@ fn lsp_npm_specifier_unopened_file() {
 
   // now ensure completions work
   let list = client.get_completion_list(
-    temp_dir.uri().join("main.ts").unwrap(),
+    temp_dir.url().join("main.ts").unwrap(),
     (2, 6),
     json!({
       "triggerKind": 2,
@@ -8945,7 +8958,8 @@ fn lsp_completions_node_builtin() {
     .diagnostics
     .into_iter()
     .filter(|d| {
-      d.code == Some(lsp::NumberOrString::String("no-cache-npm".to_string()))
+      d.code
+        == Some(lsp::NumberOrString::String("not-installed-npm".to_string()))
     })
     .collect::<Vec<_>>();
 
@@ -8961,9 +8975,9 @@ fn lsp_completions_node_builtin() {
           "specifier": "npm:@types/node",
         },
         "severity": 1,
-        "code": "no-cache-npm",
+        "code": "not-installed-npm",
         "source": "deno",
-        "message": "Uncached or missing npm package: @types/node"
+        "message": "NPM package \"@types/node\" is not installed or doesn't exist."
       }
     ])
   );
@@ -9021,7 +9035,7 @@ fn lsp_completions_node_specifier_node_modules_dir() {
   temp_dir.write(
     temp_dir.path().join("deno.json"),
     json!({
-      "nodeModulesDir": true,
+      "nodeModulesDir": "auto",
     })
     .to_string(),
   );
@@ -9029,7 +9043,7 @@ fn lsp_completions_node_specifier_node_modules_dir() {
   client.initialize_default();
   client.did_open(json!({
     "textDocument": {
-      "uri": temp_dir.uri().join("file.ts").unwrap(),
+      "uri": temp_dir.url().join("file.ts").unwrap(),
       "languageId": "typescript",
       "version": 1,
       "text": "import fs from \"node:fs\";\n",
@@ -9039,14 +9053,14 @@ fn lsp_completions_node_specifier_node_modules_dir() {
     "workspace/executeCommand",
     json!({
       "command": "deno.cache",
-      "arguments": [[], temp_dir.uri().join("file.ts").unwrap()],
+      "arguments": [[], temp_dir.url().join("file.ts").unwrap()],
     }),
   );
   client.write_notification(
     "textDocument/didChange",
     json!({
       "textDocument": {
-        "uri": temp_dir.uri().join("file.ts").unwrap(),
+        "uri": temp_dir.url().join("file.ts").unwrap(),
         "version": 2,
       },
       "contentChanges": [
@@ -9061,7 +9075,7 @@ fn lsp_completions_node_specifier_node_modules_dir() {
     }),
   );
   let list = client.get_completion_list(
-    temp_dir.uri().join("file.ts").unwrap(),
+    temp_dir.url().join("file.ts").unwrap(),
     (1, 3),
     json!({
       "triggerKind": 2,
@@ -9428,7 +9442,7 @@ fn lsp_npmrc() {
   temp_dir.write(
     temp_dir.path().join("deno.json"),
     json!({
-      "nodeModulesDir": true,
+      "nodeModulesDir": "auto",
     })
     .to_string(),
   );
@@ -9465,7 +9479,7 @@ fn lsp_npmrc() {
     "workspace/executeCommand",
     json!({
       "command": "deno.cache",
-      "arguments": [[], file.uri()],
+      "arguments": [[], file.url()],
     }),
   );
   let diagnostics = client.did_open_file(&file);
@@ -9525,7 +9539,7 @@ fn lsp_diagnostics_warn_redirect() {
   assert_eq!(
     diagnostics.messages_with_source("deno"),
     lsp::PublishDiagnosticsParams {
-      uri: Url::parse("file:///a/file.ts").unwrap(),
+      uri: lsp::Uri::from_str("file:///a/file.ts").unwrap(),
       diagnostics: vec![
         lsp::Diagnostic {
           range: lsp::Range {
@@ -9675,7 +9689,7 @@ fn lsp_lockfile_redirect_resolution() {
   client.initialize_default();
   client.did_open(json!({
     "textDocument": {
-      "uri": temp_dir.uri().join("file.ts").unwrap(),
+      "uri": temp_dir.url().join("file.ts").unwrap(),
       "languageId": "typescript",
       "version": 1,
       "text": "import \"http://localhost:4545/subdir/mod1.ts\";\n",
@@ -9685,14 +9699,14 @@ fn lsp_lockfile_redirect_resolution() {
     "workspace/executeCommand",
     json!({
       "command": "deno.cache",
-      "arguments": [[], temp_dir.uri().join("file.ts").unwrap()],
+      "arguments": [[], temp_dir.url().join("file.ts").unwrap()],
     }),
   );
   client.read_diagnostics();
   let res = client.write_request(
     "textDocument/definition",
     json!({
-      "textDocument": { "uri": temp_dir.uri().join("file.ts").unwrap() },
+      "textDocument": { "uri": temp_dir.url().join("file.ts").unwrap() },
       "position": { "line": 0, "character": 7 },
     }),
   );
@@ -9816,7 +9830,7 @@ fn lsp_root_with_global_reference_types() {
     "workspace/executeCommand",
     json!({
       "command": "deno.cache",
-      "arguments": [[], file2.uri()],
+      "arguments": [[], file2.url()],
     }),
   );
   let diagnostics = client.did_open_file(&file);
@@ -9909,7 +9923,7 @@ fn lsp_ts_diagnostics_refresh_on_lsp_version_reset() {
   client.initialize_default();
   let diagnostics = client.did_open(json!({
     "textDocument": {
-      "uri": temp_dir.uri().join("file.ts").unwrap(),
+      "uri": temp_dir.url().join("file.ts").unwrap(),
       "languageId": "typescript",
       "version": 1,
       "text": temp_dir.read_to_string("file.ts"),
@@ -9920,7 +9934,7 @@ fn lsp_ts_diagnostics_refresh_on_lsp_version_reset() {
     "textDocument/didClose",
     json!({
       "textDocument": {
-        "uri": temp_dir.uri().join("file.ts").unwrap(),
+        "uri": temp_dir.url().join("file.ts").unwrap(),
       },
     }),
   );
@@ -9929,7 +9943,7 @@ fn lsp_ts_diagnostics_refresh_on_lsp_version_reset() {
   // diagnostics are still refreshed.
   client.did_open_raw(json!({
     "textDocument": {
-      "uri": temp_dir.uri().join("file.ts").unwrap(),
+      "uri": temp_dir.url().join("file.ts").unwrap(),
       "languageId": "typescript",
       "version": 1,
       "text": "",
@@ -9938,7 +9952,7 @@ fn lsp_ts_diagnostics_refresh_on_lsp_version_reset() {
   temp_dir.write("file.ts", r#""#);
   client.did_save(json!({
     "textDocument": {
-      "uri": temp_dir.uri().join("file.ts").unwrap(),
+      "uri": temp_dir.url().join("file.ts").unwrap(),
     },
   }));
   let diagnostics = client.read_diagnostics();
@@ -9965,7 +9979,7 @@ fn lsp_diagnostics_none_for_resolving_types() {
   // run in Deno or Node.
   let diagnostics = client.did_open(json!({
     "textDocument": {
-      "uri": context.temp_dir().path().join("file.ts").uri_file(),
+      "uri": context.temp_dir().path().join("file.ts").url_file(),
       "languageId": "typescript",
       "version": 1,
       "text": concat!(
@@ -10279,7 +10293,7 @@ fn lsp_format_exclude_with_config() {
     builder.set_config("./deno.fmt.jsonc");
   });
 
-  let file_uri = temp_dir.uri().join("ignored.ts").unwrap();
+  let file_uri = temp_dir.url().join("ignored.ts").unwrap();
   client.did_open(json!({
     "textDocument": {
       "uri": file_uri,
@@ -10332,7 +10346,7 @@ fn lsp_format_exclude_default_config() {
     builder.set_config("./deno.fmt.jsonc");
   });
 
-  let file_uri = temp_dir.uri().join("ignored.ts").unwrap();
+  let file_uri = temp_dir.url().join("ignored.ts").unwrap();
   client.did_open(json!({
     "textDocument": {
       "uri": file_uri,
@@ -10370,7 +10384,7 @@ fn lsp_format_json() {
     "textDocument/formatting",
     json!({
       "textDocument": {
-        "uri": json_file.uri(),
+        "uri": json_file.url(),
       },
       "options": {
         "tabSize": 2,
@@ -10420,7 +10434,7 @@ fn lsp_format_editor_options() {
     "textDocument/formatting",
     json!({
       "textDocument": {
-        "uri": file.uri(),
+        "uri": file.url(),
       },
       "options": {
         "tabSize": 4,
@@ -10444,7 +10458,7 @@ fn lsp_format_editor_options() {
     "textDocument/formatting",
     json!({
       "textDocument": {
-        "uri": file.uri(),
+        "uri": file.url(),
       },
       "options": {
         "tabSize": 2,
@@ -10521,7 +10535,7 @@ fn lsp_json_import_with_query_string() {
   client.initialize_default();
   client.did_open_raw(json!({
     "textDocument": {
-      "uri": temp_dir.uri().join("data.json").unwrap(),
+      "uri": temp_dir.url().join("data.json").unwrap(),
       "languageId": "json",
       "version": 1,
       "text": temp_dir.read_to_string("data.json"),
@@ -10529,7 +10543,7 @@ fn lsp_json_import_with_query_string() {
   }));
   let diagnostics = client.did_open(json!({
     "textDocument": {
-      "uri": temp_dir.uri().join("main.ts").unwrap(),
+      "uri": temp_dir.url().join("main.ts").unwrap(),
       "languageId": "typescript",
       "version": 1,
       "text": temp_dir.read_to_string("main.ts"),
@@ -10552,7 +10566,7 @@ fn lsp_format_markdown() {
     "textDocument/formatting",
     json!({
       "textDocument": {
-        "uri": markdown_file.uri()
+        "uri": markdown_file.url()
       },
       "options": {
         "tabSize": 2,
@@ -10612,7 +10626,7 @@ fn lsp_format_with_config() {
     .did_open(
       json!({
         "textDocument": {
-          "uri": ts_file.uri_file(),
+          "uri": ts_file.url_file(),
           "languageId": "typescript",
           "version": 1,
           "text": "export async function someVeryLongFunctionName() {\nconst response = fetch(\"http://localhost:4545/some/non/existent/path.json\");\nconsole.log(response.text());\nconsole.log(\"finished!\")\n}"
@@ -10625,7 +10639,7 @@ fn lsp_format_with_config() {
     "textDocument/formatting",
     json!({
       "textDocument": {
-        "uri": ts_file.uri_file()
+        "uri": ts_file.url_file()
       },
       "options": {
         "tabSize": 2,
@@ -11535,7 +11549,7 @@ fn lsp_lint_with_config() {
 
   let diagnostics = client.did_open(json!({
     "textDocument": {
-      "uri": temp_dir.uri().join("file.ts").unwrap(),
+      "uri": temp_dir.url().join("file.ts").unwrap(),
       "languageId": "typescript",
       "version": 1,
       "text": "// TODO: fixme\nexport async function non_camel_case() {\nconsole.log(\"finished!\")\n}"
@@ -11678,7 +11692,7 @@ fn lsp_jsx_import_source_config_file_automatic_cache() {
   client.initialize_default();
   let mut diagnostics = client.did_open(json!({
     "textDocument": {
-      "uri": temp_dir.uri().join("file.tsx").unwrap(),
+      "uri": temp_dir.url().join("file.tsx").unwrap(),
       "languageId": "typescriptreact",
       "version": 1,
       "text": "
@@ -11697,7 +11711,7 @@ fn lsp_jsx_import_source_config_file_automatic_cache() {
     // reason. Force it with this notification.
     diagnostics = client.did_open(json!({
       "textDocument": {
-        "uri": temp_dir.uri().join("file.tsx").unwrap(),
+        "uri": temp_dir.url().join("file.tsx").unwrap(),
         "languageId": "typescriptreact",
         "version": 1,
         "text": "
@@ -11709,6 +11723,66 @@ fn lsp_jsx_import_source_config_file_automatic_cache() {
     }));
   }
   assert_eq!(diagnostics.all(), vec![]);
+  client.shutdown();
+}
+
+#[test]
+fn lsp_jsx_import_source_byonm_preact() {
+  let context = TestContextBuilder::new()
+    .use_http_server()
+    .use_temp_cwd()
+    .add_npm_env_vars()
+    .build();
+  let temp_dir = context.temp_dir();
+  temp_dir.write(
+    "deno.json",
+    json!({
+      "compilerOptions": {
+        "jsx": "react-jsx",
+        "jsxImportSource": "npm:preact@^10.19.6"
+      },
+      "unstable": ["byonm"],
+    })
+    .to_string(),
+  );
+  temp_dir.write(
+    "package.json",
+    json!({
+      "dependencies": {
+        "preact": "^10.19.6",
+      },
+    })
+    .to_string(),
+  );
+  let file = source_file(temp_dir.path().join("file.tsx"), r#"<div></div>;"#);
+  context.run_npm("install");
+  let mut client = context.new_lsp_command().build();
+  client.initialize_default();
+  let diagnostics = client.did_open_file(&file);
+  assert_eq!(json!(diagnostics.all()), json!([]));
+  let res = client.write_request(
+    "textDocument/hover",
+    json!({
+      "textDocument": { "uri": file.url() },
+      "position": { "line": 0, "character": 1 },
+    }),
+  );
+  assert_eq!(
+    res,
+    json!({
+      "contents": [
+        {
+          "language": "typescript",
+          "value": "(property) JSXInternal.IntrinsicElements.div: JSXInternal.HTMLAttributes<HTMLDivElement>",
+        },
+        "",
+      ],
+      "range": {
+        "start": { "line": 0, "character": 1 },
+        "end": { "line": 0, "character": 4 },
+      },
+    }),
+  );
   client.shutdown();
 }
 
@@ -11834,7 +11908,7 @@ Deno.test({
 "#;
   temp_dir.write("./test.ts", contents);
   temp_dir.write("./deno.jsonc", "{}");
-  let specifier = temp_dir.uri().join("test.ts").unwrap();
+  let specifier = temp_dir.url().join("test.ts").unwrap();
 
   let mut client = context.new_lsp_command().build();
   client.initialize_default();
@@ -11852,7 +11926,7 @@ Deno.test({
     client.read_notification_with_method::<Value>("deno/testModule");
   let params: TestModuleNotificationParams =
     serde_json::from_value(notification.unwrap()).unwrap();
-  assert_eq!(params.text_document.uri, specifier);
+  assert_eq!(params.text_document.uri.as_str(), specifier.as_str());
   assert_eq!(params.kind, TestModuleNotificationKind::Replace);
   assert_eq!(params.label, "test.ts");
   assert_eq!(params.tests.len(), 1);
@@ -11897,7 +11971,10 @@ Deno.test({
     }),
   );
   assert_eq!(res.enqueued.len(), 1);
-  assert_eq!(res.enqueued[0].text_document.uri, specifier);
+  assert_eq!(
+    res.enqueued[0].text_document.uri.as_str(),
+    specifier.as_str()
+  );
   assert_eq!(res.enqueued[0].ids.len(), 1);
   let id = res.enqueued[0].ids[0].clone();
   let notification =
@@ -12046,7 +12123,7 @@ Deno.test({
     "textDocument/didChange",
     json!({
       "textDocument": {
-        "uri": temp_dir.uri().join("test.ts").unwrap(),
+        "uri": temp_dir.url().join("test.ts").unwrap(),
         "version": 2
       },
       "contentChanges": [{ "text": "" }],
@@ -12061,7 +12138,7 @@ Deno.test({
     notification,
     Some(json!({
       "textDocument": {
-        "uri": temp_dir.uri().join("test.ts").unwrap()
+        "uri": temp_dir.url().join("test.ts").unwrap()
       }
     }))
   );
@@ -12078,7 +12155,7 @@ fn lsp_closed_file_find_references() {
     "./mod.test.ts",
     "import { a } from './mod.ts'; console.log(a);",
   );
-  let temp_dir_url = temp_dir.uri();
+  let temp_dir_url = temp_dir.url();
   let mut client = context.new_lsp_command().build();
   client.initialize_default();
   client.did_open(json!({
@@ -12133,7 +12210,7 @@ fn lsp_closed_file_find_references_low_document_pre_load() {
     "./sub_dir/mod.test.ts",
     "import { a } from './mod.ts'; console.log(a);",
   );
-  let temp_dir_url = temp_dir.uri();
+  let temp_dir_url = temp_dir.url();
   let mut client = context.new_lsp_command().build();
   client.initialize(|builder| {
     builder.set_preload_limit(1);
@@ -12191,7 +12268,7 @@ fn lsp_closed_file_find_references_excluded_path() {
   ]
 }"#,
   );
-  let temp_dir_url = temp_dir.uri();
+  let temp_dir_url = temp_dir.url();
   let mut client = context.new_lsp_command().build();
   client.initialize_default();
   client.did_open(json!({
@@ -12233,7 +12310,7 @@ fn lsp_data_urls_with_jsx_compiler_option() {
   let mut client = context.new_lsp_command().build();
   client.initialize_default();
 
-  let uri = temp_dir.uri().join("main.ts").unwrap();
+  let uri = temp_dir.url().join("main.ts").unwrap();
 
   let diagnostics = client.did_open(json!({
     "textDocument": {
@@ -12292,6 +12369,13 @@ fn lsp_node_modules_dir() {
     .use_temp_cwd()
     .build();
   let temp_dir = context.temp_dir();
+  temp_dir.write(
+    "deno.json",
+    json!({
+      "nodeModulesDir": "none",
+    })
+    .to_string(),
+  );
 
   // having a package.json should have no effect on whether
   // a node_modules dir is created
@@ -12299,7 +12383,7 @@ fn lsp_node_modules_dir() {
 
   let mut client = context.new_lsp_command().build();
   client.initialize_default();
-  let file_uri = temp_dir.uri().join("file.ts").unwrap();
+  let file_uri = temp_dir.url().join("file.ts").unwrap();
   client.did_open(json!({
     "textDocument": {
       "uri": file_uri,
@@ -12329,7 +12413,7 @@ fn lsp_node_modules_dir() {
 
   temp_dir.write(
     temp_dir.path().join("deno.json"),
-    "{ \"nodeModulesDir\": true, \"lock\": false }\n",
+    "{ \"nodeModulesDir\": \"auto\", \"lock\": false }\n",
   );
   let refresh_config = |client: &mut LspClient| {
     client.change_configuration(json!({ "deno": {
@@ -12365,7 +12449,7 @@ fn lsp_node_modules_dir() {
   // now add a lockfile and cache
   temp_dir.write(
     temp_dir.path().join("deno.json"),
-    "{ \"nodeModulesDir\": true }\n",
+    "{ \"nodeModulesDir\": \"auto\" }\n",
   );
   refresh_config(&mut client);
   cache(&mut client);
@@ -12419,7 +12503,7 @@ fn lsp_vendor_dir() {
 
   let mut client = context.new_lsp_command().build();
   client.initialize_default();
-  let local_file_uri = temp_dir.uri().join("file.ts").unwrap();
+  let local_file_uri = temp_dir.url().join("file.ts").unwrap();
   client.did_open(json!({
     "textDocument": {
       "uri": local_file_uri,
@@ -12523,7 +12607,7 @@ fn lsp_vendor_dir() {
   let file_path = temp_dir
     .path()
     .join("vendor/http_localhost_4545/subdir/mod1.ts");
-  let remote_file_uri = file_path.uri_file();
+  let remote_file_uri = file_path.url_file();
   assert_eq!(uri, remote_file_uri.as_str());
 
   let file_text = file_path.read_to_string();
@@ -12684,7 +12768,7 @@ fn lsp_deno_json_scopes_import_map() {
   client.initialize_default();
   client.did_open(json!({
     "textDocument": {
-      "uri": temp_dir.uri().join("project1/file.ts").unwrap(),
+      "uri": temp_dir.url().join("project1/file.ts").unwrap(),
       "languageId": "typescript",
       "version": 1,
       "text": "import \"foo\";\n",
@@ -12694,7 +12778,7 @@ fn lsp_deno_json_scopes_import_map() {
     "textDocument/hover",
     json!({
       "textDocument": {
-        "uri": temp_dir.uri().join("project1/file.ts").unwrap(),
+        "uri": temp_dir.url().join("project1/file.ts").unwrap(),
       },
       "position": { "line": 0, "character": 7 },
     }),
@@ -12704,7 +12788,7 @@ fn lsp_deno_json_scopes_import_map() {
     json!({
       "contents": {
         "kind": "markdown",
-        "value": format!("**Resolved Dependency**\n\n**Code**: file&#8203;{}\n", temp_dir.uri().join("project1/foo1.ts").unwrap().as_str().trim_start_matches("file")),
+        "value": format!("**Resolved Dependency**\n\n**Code**: file&#8203;{}\n", temp_dir.url().join("project1/foo1.ts").unwrap().as_str().trim_start_matches("file")),
       },
       "range": {
         "start": { "line": 0, "character": 7 },
@@ -12714,7 +12798,7 @@ fn lsp_deno_json_scopes_import_map() {
   );
   client.did_open(json!({
     "textDocument": {
-      "uri": temp_dir.uri().join("project2/file.ts").unwrap(),
+      "uri": temp_dir.url().join("project2/file.ts").unwrap(),
       "languageId": "typescript",
       "version": 1,
       "text": "import \"foo\";\n",
@@ -12724,7 +12808,7 @@ fn lsp_deno_json_scopes_import_map() {
     "textDocument/hover",
     json!({
       "textDocument": {
-        "uri": temp_dir.uri().join("project2/file.ts").unwrap(),
+        "uri": temp_dir.url().join("project2/file.ts").unwrap(),
       },
       "position": { "line": 0, "character": 7 },
     }),
@@ -12734,7 +12818,7 @@ fn lsp_deno_json_scopes_import_map() {
     json!({
       "contents": {
         "kind": "markdown",
-        "value": format!("**Resolved Dependency**\n\n**Code**: file&#8203;{}\n", temp_dir.uri().join("project2/foo2.ts").unwrap().as_str().trim_start_matches("file")),
+        "value": format!("**Resolved Dependency**\n\n**Code**: file&#8203;{}\n", temp_dir.url().join("project2/foo2.ts").unwrap().as_str().trim_start_matches("file")),
       },
       "range": {
         "start": { "line": 0, "character": 7 },
@@ -12744,7 +12828,7 @@ fn lsp_deno_json_scopes_import_map() {
   );
   client.did_open(json!({
     "textDocument": {
-      "uri": temp_dir.uri().join("project2/project3/file.ts").unwrap(),
+      "uri": temp_dir.url().join("project2/project3/file.ts").unwrap(),
       "languageId": "typescript",
       "version": 1,
       "text": "import \"foo\";\n",
@@ -12754,7 +12838,7 @@ fn lsp_deno_json_scopes_import_map() {
     "textDocument/hover",
     json!({
       "textDocument": {
-        "uri": temp_dir.uri().join("project2/project3/file.ts").unwrap(),
+        "uri": temp_dir.url().join("project2/project3/file.ts").unwrap(),
       },
       "position": { "line": 0, "character": 7 },
     }),
@@ -12764,7 +12848,7 @@ fn lsp_deno_json_scopes_import_map() {
     json!({
       "contents": {
         "kind": "markdown",
-        "value": format!("**Resolved Dependency**\n\n**Code**: file&#8203;{}\n", temp_dir.uri().join("project2/project3/foo3.ts").unwrap().as_str().trim_start_matches("file")),
+        "value": format!("**Resolved Dependency**\n\n**Code**: file&#8203;{}\n", temp_dir.url().join("project2/project3/foo3.ts").unwrap().as_str().trim_start_matches("file")),
       },
       "range": {
         "start": { "line": 0, "character": 7 },
@@ -12809,7 +12893,7 @@ fn lsp_deno_json_scopes_vendor_dir() {
   client.initialize_default();
   client.did_open(json!({
     "textDocument": {
-      "uri": temp_dir.uri().join("project1/file.ts").unwrap(),
+      "uri": temp_dir.url().join("project1/file.ts").unwrap(),
       "languageId": "typescript",
       "version": 1,
       "text": "import \"http://localhost:4545/subdir/mod1.ts\";\n",
@@ -12819,14 +12903,14 @@ fn lsp_deno_json_scopes_vendor_dir() {
     "workspace/executeCommand",
     json!({
       "command": "deno.cache",
-      "arguments": [[], temp_dir.uri().join("project1/file.ts").unwrap()],
+      "arguments": [[], temp_dir.url().join("project1/file.ts").unwrap()],
     }),
   );
   let res = client.write_request(
     "textDocument/definition",
     json!({
       "textDocument": {
-        "uri": temp_dir.uri().join("project1/file.ts").unwrap(),
+        "uri": temp_dir.url().join("project1/file.ts").unwrap(),
       },
       "position": { "line": 0, "character": 7 },
     }),
@@ -12834,7 +12918,7 @@ fn lsp_deno_json_scopes_vendor_dir() {
   assert_eq!(
     res,
     json!([{
-      "targetUri": temp_dir.uri().join("project1/vendor/http_localhost_4545/subdir/mod1.ts").unwrap(),
+      "targetUri": temp_dir.url().join("project1/vendor/http_localhost_4545/subdir/mod1.ts").unwrap(),
       "targetRange": {
         "start": {
           "line": 0,
@@ -12859,7 +12943,7 @@ fn lsp_deno_json_scopes_vendor_dir() {
   );
   client.did_open(json!({
     "textDocument": {
-      "uri": temp_dir.uri().join("project2/file.ts").unwrap(),
+      "uri": temp_dir.url().join("project2/file.ts").unwrap(),
       "languageId": "typescript",
       "version": 1,
       "text": "import \"http://localhost:4545/subdir/mod2.ts\";\n",
@@ -12869,14 +12953,14 @@ fn lsp_deno_json_scopes_vendor_dir() {
     "workspace/executeCommand",
     json!({
       "command": "deno.cache",
-      "arguments": [[], temp_dir.uri().join("project2/file.ts").unwrap()],
+      "arguments": [[], temp_dir.url().join("project2/file.ts").unwrap()],
     }),
   );
   let res = client.write_request(
     "textDocument/definition",
     json!({
       "textDocument": {
-        "uri": temp_dir.uri().join("project2/file.ts").unwrap(),
+        "uri": temp_dir.url().join("project2/file.ts").unwrap(),
       },
       "position": { "line": 0, "character": 7 },
     }),
@@ -12884,7 +12968,7 @@ fn lsp_deno_json_scopes_vendor_dir() {
   assert_eq!(
     res,
     json!([{
-      "targetUri": temp_dir.uri().join("project2/vendor/http_localhost_4545/subdir/mod2.ts").unwrap(),
+      "targetUri": temp_dir.url().join("project2/vendor/http_localhost_4545/subdir/mod2.ts").unwrap(),
       "targetRange": {
         "start": {
           "line": 0,
@@ -12909,7 +12993,7 @@ fn lsp_deno_json_scopes_vendor_dir() {
   );
   client.did_open(json!({
     "textDocument": {
-      "uri": temp_dir.uri().join("project2/project3/file.ts").unwrap(),
+      "uri": temp_dir.url().join("project2/project3/file.ts").unwrap(),
       "languageId": "typescript",
       "version": 1,
       "text": "import \"http://localhost:4545/subdir/mod3.js\";\n",
@@ -12919,14 +13003,14 @@ fn lsp_deno_json_scopes_vendor_dir() {
     "workspace/executeCommand",
     json!({
       "command": "deno.cache",
-      "arguments": [[], temp_dir.uri().join("project2/project3/file.ts").unwrap()],
+      "arguments": [[], temp_dir.url().join("project2/project3/file.ts").unwrap()],
     }),
   );
   let res = client.write_request(
     "textDocument/definition",
     json!({
       "textDocument": {
-        "uri": temp_dir.uri().join("project2/project3/file.ts").unwrap(),
+        "uri": temp_dir.url().join("project2/project3/file.ts").unwrap(),
       },
       "position": { "line": 0, "character": 7 },
     }),
@@ -12934,7 +13018,7 @@ fn lsp_deno_json_scopes_vendor_dir() {
   assert_eq!(
     res,
     json!([{
-      "targetUri": temp_dir.uri().join("project2/project3/vendor/http_localhost_4545/subdir/mod3.js").unwrap(),
+      "targetUri": temp_dir.url().join("project2/project3/vendor/http_localhost_4545/subdir/mod3.js").unwrap(),
       "targetRange": {
         "start": {
           "line": 0,
@@ -12972,21 +13056,21 @@ fn lsp_deno_json_scopes_node_modules_dir() {
   temp_dir.write(
     "project1/deno.json",
     json!({
-      "nodeModulesDir": true,
+      "nodeModulesDir": "auto",
     })
     .to_string(),
   );
   temp_dir.write(
     "project2/deno.json",
     json!({
-      "nodeModulesDir": true,
+      "nodeModulesDir": "auto",
     })
     .to_string(),
   );
   temp_dir.write(
     "project2/project3/deno.json",
     json!({
-      "nodeModulesDir": true,
+      "nodeModulesDir": "auto",
     })
     .to_string(),
   );
@@ -12994,7 +13078,7 @@ fn lsp_deno_json_scopes_node_modules_dir() {
   client.initialize_default();
   client.did_open(json!({
     "textDocument": {
-      "uri": temp_dir.uri().join("project1/file.ts").unwrap(),
+      "uri": temp_dir.url().join("project1/file.ts").unwrap(),
       "languageId": "typescript",
       "version": 1,
       "text": "import \"npm:@denotest/add@1\";\n",
@@ -13004,14 +13088,14 @@ fn lsp_deno_json_scopes_node_modules_dir() {
     "workspace/executeCommand",
     json!({
       "command": "deno.cache",
-      "arguments": [[], temp_dir.uri().join("project1/file.ts").unwrap()],
+      "arguments": [[], temp_dir.url().join("project1/file.ts").unwrap()],
     }),
   );
   let res = client.write_request(
     "textDocument/definition",
     json!({
       "textDocument": {
-        "uri": temp_dir.uri().join("project1/file.ts").unwrap(),
+        "uri": temp_dir.url().join("project1/file.ts").unwrap(),
       },
       "position": { "line": 0, "character": 7 },
     }),
@@ -13047,7 +13131,7 @@ fn lsp_deno_json_scopes_node_modules_dir() {
   );
   client.did_open(json!({
     "textDocument": {
-      "uri": temp_dir.uri().join("project2/file.ts").unwrap(),
+      "uri": temp_dir.url().join("project2/file.ts").unwrap(),
       "languageId": "typescript",
       "version": 1,
       "text": "import \"npm:@denotest/add@1\";\n",
@@ -13057,14 +13141,14 @@ fn lsp_deno_json_scopes_node_modules_dir() {
     "workspace/executeCommand",
     json!({
       "command": "deno.cache",
-      "arguments": [[], temp_dir.uri().join("project2/file.ts").unwrap()],
+      "arguments": [[], temp_dir.url().join("project2/file.ts").unwrap()],
     }),
   );
   let res = client.write_request(
     "textDocument/definition",
     json!({
       "textDocument": {
-        "uri": temp_dir.uri().join("project2/file.ts").unwrap(),
+        "uri": temp_dir.url().join("project2/file.ts").unwrap(),
       },
       "position": { "line": 0, "character": 7 },
     }),
@@ -13097,7 +13181,7 @@ fn lsp_deno_json_scopes_node_modules_dir() {
   );
   client.did_open(json!({
     "textDocument": {
-      "uri": temp_dir.uri().join("project2/project3/file.ts").unwrap(),
+      "uri": temp_dir.url().join("project2/project3/file.ts").unwrap(),
       "languageId": "typescript",
       "version": 1,
       "text": "import \"npm:@denotest/add@1\";\n",
@@ -13107,14 +13191,14 @@ fn lsp_deno_json_scopes_node_modules_dir() {
     "workspace/executeCommand",
     json!({
       "command": "deno.cache",
-      "arguments": [[], temp_dir.uri().join("project2/project3/file.ts").unwrap()],
+      "arguments": [[], temp_dir.url().join("project2/project3/file.ts").unwrap()],
     }),
   );
   let res = client.write_request(
     "textDocument/definition",
     json!({
       "textDocument": {
-        "uri": temp_dir.uri().join("project2/project3/file.ts").unwrap(),
+        "uri": temp_dir.url().join("project2/project3/file.ts").unwrap(),
       },
       "position": { "line": 0, "character": 7 },
     }),
@@ -13168,7 +13252,7 @@ fn lsp_deno_json_scopes_ts_config() {
   client.initialize_default();
   client.did_open(json!({
     "textDocument": {
-      "uri": temp_dir.uri().join("project1/file.ts").unwrap(),
+      "uri": temp_dir.url().join("project1/file.ts").unwrap(),
       "languageId": "typescript",
       "version": 1,
       "text": "Window;\nWorkerGlobalScope;\n",
@@ -13176,7 +13260,7 @@ fn lsp_deno_json_scopes_ts_config() {
   }));
   let diagnostics = client.did_open(json!({
     "textDocument": {
-      "uri": temp_dir.uri().join("project2/file.ts").unwrap(),
+      "uri": temp_dir.url().join("project2/file.ts").unwrap(),
       "languageId": "typescript",
       "version": 1,
       "text": "Window;\nWorkerGlobalScope;\n",
@@ -13186,7 +13270,7 @@ fn lsp_deno_json_scopes_ts_config() {
     json!(diagnostics.all_messages()),
     json!([
       {
-        "uri": temp_dir.uri().join("project2/file.ts").unwrap(),
+        "uri": temp_dir.url().join("project2/file.ts").unwrap(),
         "version": 1,
         "diagnostics": [
           {
@@ -13202,7 +13286,7 @@ fn lsp_deno_json_scopes_ts_config() {
         ],
       },
       {
-        "uri": temp_dir.uri().join("project1/file.ts").unwrap(),
+        "uri": temp_dir.url().join("project1/file.ts").unwrap(),
         "version": 1,
         "diagnostics": [
           {
@@ -13236,7 +13320,7 @@ fn lsp_deno_json_scopes_declaration_files() {
   client.initialize_default();
   client.did_open(json!({
     "textDocument": {
-      "uri": temp_dir.uri().join("project1/file.ts").unwrap(),
+      "uri": temp_dir.url().join("project1/file.ts").unwrap(),
       "languageId": "typescript",
       "version": 1,
       "text": "export const foo: Foo = 1;\nexport const bar: Bar = 1;\n",
@@ -13244,7 +13328,7 @@ fn lsp_deno_json_scopes_declaration_files() {
   }));
   let diagnostics = client.did_open(json!({
     "textDocument": {
-      "uri": temp_dir.uri().join("project2/file.ts").unwrap(),
+      "uri": temp_dir.url().join("project2/file.ts").unwrap(),
       "languageId": "typescript",
       "version": 1,
       "text": "export const foo: Foo = 1;\nexport const bar: Bar = 1;\n",
@@ -13254,7 +13338,7 @@ fn lsp_deno_json_scopes_declaration_files() {
     json!(diagnostics.all_messages()),
     json!([
       {
-        "uri": temp_dir.uri().join("project2/file.ts").unwrap(),
+        "uri": temp_dir.url().join("project2/file.ts").unwrap(),
         "version": 1,
         "diagnostics": [
           {
@@ -13270,7 +13354,7 @@ fn lsp_deno_json_scopes_declaration_files() {
         ],
       },
       {
-        "uri": temp_dir.uri().join("project1/file.ts").unwrap(),
+        "uri": temp_dir.url().join("project1/file.ts").unwrap(),
         "version": 1,
         "diagnostics": [
           {
@@ -13322,11 +13406,11 @@ fn lsp_deno_json_scopes_find_references() {
     res,
     json!([
       {
-        "uri": file1.uri(),
+        "uri": file1.url(),
         "range": file1.range_of("foo"),
       },
       {
-        "uri": file2.uri(),
+        "uri": file2.url(),
         "range": file2.range_of("foo"),
       },
     ]),
@@ -13354,8 +13438,8 @@ fn lsp_deno_json_scopes_file_rename_import_edits() {
     json!({
       "files": [
         {
-          "oldUri": file1.uri(),
-          "newUri": file1.uri().join("file_renamed.ts").unwrap(),
+          "oldUri": file1.url(),
+          "newUri": file1.url().join("file_renamed.ts").unwrap(),
         },
       ],
     }),
@@ -13366,7 +13450,7 @@ fn lsp_deno_json_scopes_file_rename_import_edits() {
       "documentChanges": [
         {
           "textDocument": {
-            "uri": file2.uri(),
+            "uri": file2.url(),
             "version": null,
           },
           "edits": [
@@ -13414,7 +13498,7 @@ fn lsp_deno_json_scopes_goto_implementations() {
     res,
     json!([
       {
-        "targetUri": file2.uri(),
+        "targetUri": file2.url(),
         "targetRange": file2.range_of("export class SomeFoo implements Foo {}"),
         "targetSelectionRange": file2.range_of("SomeFoo"),
       },
@@ -13471,7 +13555,7 @@ fn lsp_deno_json_scopes_call_hierarchy() {
         "name": "bar",
         "kind": 12,
         "detail": "",
-        "uri": file2.uri(),
+        "uri": file2.url(),
         "range": {
           "start": { "line": 2, "character": 6 },
           "end": { "line": 4, "character": 7 },
@@ -13491,7 +13575,7 @@ fn lsp_deno_json_scopes_call_hierarchy() {
           "name": "file.ts",
           "kind": 2,
           "detail": "project3",
-          "uri": file3.uri(),
+          "uri": file3.url(),
           "range": {
             "start": { "line": 1, "character": 6 },
             "end": { "line": 3, "character": 4 },
@@ -13520,7 +13604,7 @@ fn lsp_deno_json_scopes_call_hierarchy() {
           "name": "foo",
           "kind": 12,
           "detail": "",
-          "uri": file1.uri(),
+          "uri": file1.url(),
           "range": file1.range_of("export function foo() {}"),
           "selectionRange": file1.range_of("foo"),
         },
@@ -13568,7 +13652,7 @@ fn lsp_deno_json_scopes_rename_symbol() {
       "documentChanges": [
         {
           "textDocument": {
-            "uri": file1.uri(),
+            "uri": file1.url(),
             "version": null,
           },
           "edits": [
@@ -13580,7 +13664,7 @@ fn lsp_deno_json_scopes_rename_symbol() {
         },
         {
           "textDocument": {
-            "uri": file2.uri(),
+            "uri": file2.url(),
             "version": null,
           },
           "edits": [
@@ -13623,7 +13707,7 @@ fn lsp_deno_json_scopes_search_symbol() {
         "name": "someSymbol1",
         "kind": 13,
         "location": {
-          "uri": file1.uri(),
+          "uri": file1.url(),
           "range": file1.range_of("someSymbol1 = 1"),
         },
         "containerName": "",
@@ -13632,7 +13716,7 @@ fn lsp_deno_json_scopes_search_symbol() {
         "name": "someSymbol2",
         "kind": 13,
         "location": {
-          "uri": file2.uri(),
+          "uri": file2.url(),
           "range": file2.range_of("someSymbol2 = 2"),
         },
         "containerName": "",
@@ -13672,7 +13756,7 @@ fn lsp_deno_json_workspace_fmt_config() {
   client.initialize_default();
   client.did_open(json!({
     "textDocument": {
-      "uri": temp_dir.uri().join("file.ts").unwrap(),
+      "uri": temp_dir.url().join("file.ts").unwrap(),
       "languageId": "typescript",
       "version": 1,
       "text": "console.log(\"\");\n",
@@ -13682,7 +13766,7 @@ fn lsp_deno_json_workspace_fmt_config() {
     "textDocument/formatting",
     json!({
       "textDocument": {
-        "uri": temp_dir.uri().join("file.ts").unwrap(),
+        "uri": temp_dir.url().join("file.ts").unwrap(),
       },
       "options": {
         "tabSize": 2,
@@ -13702,7 +13786,7 @@ fn lsp_deno_json_workspace_fmt_config() {
   );
   client.did_open(json!({
     "textDocument": {
-      "uri": temp_dir.uri().join("project1/file.ts").unwrap(),
+      "uri": temp_dir.url().join("project1/file.ts").unwrap(),
       "languageId": "typescript",
       "version": 1,
       "text": "console.log(\"\");\n",
@@ -13712,7 +13796,7 @@ fn lsp_deno_json_workspace_fmt_config() {
     "textDocument/formatting",
     json!({
       "textDocument": {
-        "uri": temp_dir.uri().join("project1/file.ts").unwrap(),
+        "uri": temp_dir.url().join("project1/file.ts").unwrap(),
       },
       "options": {
         "tabSize": 2,
@@ -13734,7 +13818,7 @@ fn lsp_deno_json_workspace_fmt_config() {
   // has no fmt field.
   client.did_open(json!({
     "textDocument": {
-      "uri": temp_dir.uri().join("project2/file.ts").unwrap(),
+      "uri": temp_dir.url().join("project2/file.ts").unwrap(),
       "languageId": "typescript",
       "version": 1,
       "text": "console.log(\"\");\n",
@@ -13744,7 +13828,7 @@ fn lsp_deno_json_workspace_fmt_config() {
     "textDocument/formatting",
     json!({
       "textDocument": {
-        "uri": temp_dir.uri().join("project2/file.ts").unwrap(),
+        "uri": temp_dir.url().join("project2/file.ts").unwrap(),
       },
       "options": {
         "tabSize": 2,
@@ -13799,7 +13883,7 @@ fn lsp_deno_json_workspace_lint_config() {
   client.initialize_default();
   let diagnostics = client.did_open(json!({
     "textDocument": {
-      "uri": temp_dir.uri().join("file.ts").unwrap(),
+      "uri": temp_dir.url().join("file.ts").unwrap(),
       "languageId": "typescript",
       "version": 1,
       "text": r#"
@@ -13812,7 +13896,7 @@ fn lsp_deno_json_workspace_lint_config() {
   assert_eq!(
     json!(diagnostics.messages_with_source("deno-lint")),
     json!({
-      "uri": temp_dir.uri().join("file.ts").unwrap(),
+      "uri": temp_dir.url().join("file.ts").unwrap(),
       "diagnostics": [{
         "range": {
           "start": { "line": 2, "character": 14 },
@@ -13830,13 +13914,13 @@ fn lsp_deno_json_workspace_lint_config() {
     "textDocument/didClose",
     json!({
       "textDocument": {
-        "uri": temp_dir.uri().join("file.ts").unwrap(),
+        "uri": temp_dir.url().join("file.ts").unwrap(),
       },
     }),
   );
   let diagnostics = client.did_open(json!({
     "textDocument": {
-      "uri": temp_dir.uri().join("project1/file.ts").unwrap(),
+      "uri": temp_dir.url().join("project1/file.ts").unwrap(),
       "languageId": "typescript",
       "version": 1,
       "text": r#"
@@ -13849,7 +13933,7 @@ fn lsp_deno_json_workspace_lint_config() {
   assert_eq!(
     json!(diagnostics.messages_with_source("deno-lint")),
     json!({
-      "uri": temp_dir.uri().join("project1/file.ts").unwrap(),
+      "uri": temp_dir.url().join("project1/file.ts").unwrap(),
       "diagnostics": [{
         "range": {
           "start": { "line": 1, "character": 8 },
@@ -13876,7 +13960,7 @@ fn lsp_deno_json_workspace_lint_config() {
     "textDocument/didClose",
     json!({
       "textDocument": {
-        "uri": temp_dir.uri().join("project1/file.ts").unwrap(),
+        "uri": temp_dir.url().join("project1/file.ts").unwrap(),
       },
     }),
   );
@@ -13884,7 +13968,7 @@ fn lsp_deno_json_workspace_lint_config() {
   // has no lint field.
   let diagnostics = client.did_open(json!({
     "textDocument": {
-      "uri": temp_dir.uri().join("project2/file.ts").unwrap(),
+      "uri": temp_dir.url().join("project2/file.ts").unwrap(),
       "languageId": "typescript",
       "version": 1,
       "text": r#"
@@ -13897,7 +13981,7 @@ fn lsp_deno_json_workspace_lint_config() {
   assert_eq!(
     json!(diagnostics.messages_with_source("deno-lint")),
     json!({
-      "uri": temp_dir.uri().join("project2/file.ts").unwrap(),
+      "uri": temp_dir.url().join("project2/file.ts").unwrap(),
       "diagnostics": [{
         "range": {
           "start": { "line": 2, "character": 14 },
@@ -13948,7 +14032,7 @@ fn lsp_deno_json_workspace_import_map() {
   {
     client.did_open(json!({
       "textDocument": {
-        "uri": temp_dir.uri().join("project1/file.ts").unwrap(),
+        "uri": temp_dir.url().join("project1/file.ts").unwrap(),
         "languageId": "typescript",
         "version": 1,
         "text": "import \"foo\";\n",
@@ -13958,7 +14042,7 @@ fn lsp_deno_json_workspace_import_map() {
       "textDocument/hover",
       json!({
         "textDocument": {
-          "uri": temp_dir.uri().join("project1/file.ts").unwrap(),
+          "uri": temp_dir.url().join("project1/file.ts").unwrap(),
         },
         "position": { "line": 0, "character": 7 },
       }),
@@ -13968,7 +14052,7 @@ fn lsp_deno_json_workspace_import_map() {
       json!({
         "contents": {
           "kind": "markdown",
-          "value": format!("**Resolved Dependency**\n\n**Code**: file&#8203;{}\n", temp_dir.uri().join("project1/foo1.ts").unwrap().as_str().trim_start_matches("file")),
+          "value": format!("**Resolved Dependency**\n\n**Code**: file&#8203;{}\n", temp_dir.url().join("project1/foo1.ts").unwrap().as_str().trim_start_matches("file")),
         },
         "range": {
           "start": { "line": 0, "character": 7 },
@@ -13982,7 +14066,7 @@ fn lsp_deno_json_workspace_import_map() {
   {
     client.did_open(json!({
       "textDocument": {
-        "uri": temp_dir.uri().join("project1/project2/file.ts").unwrap(),
+        "uri": temp_dir.url().join("project1/project2/file.ts").unwrap(),
         "languageId": "typescript",
         "version": 1,
         "text": "import \"foo\";\n",
@@ -13992,7 +14076,7 @@ fn lsp_deno_json_workspace_import_map() {
       "textDocument/hover",
       json!({
         "textDocument": {
-          "uri": temp_dir.uri().join("project1/project2/file.ts").unwrap(),
+          "uri": temp_dir.url().join("project1/project2/file.ts").unwrap(),
         },
         "position": { "line": 0, "character": 7 },
       }),
@@ -14002,7 +14086,7 @@ fn lsp_deno_json_workspace_import_map() {
       json!({
         "contents": {
           "kind": "markdown",
-          "value": format!("**Resolved Dependency**\n\n**Code**: file&#8203;{}\n", temp_dir.uri().join("project1/project2/foo2.ts").unwrap().as_str().trim_start_matches("file")),
+          "value": format!("**Resolved Dependency**\n\n**Code**: file&#8203;{}\n", temp_dir.url().join("project1/project2/foo2.ts").unwrap().as_str().trim_start_matches("file")),
         },
         "range": {
           "start": { "line": 0, "character": 7 },
@@ -14041,7 +14125,7 @@ fn lsp_workspace_lockfile() {
   client.initialize_default();
   client.did_open(json!({
     "textDocument": {
-      "uri": temp_dir.uri().join("project1/project2/file.ts").unwrap(),
+      "uri": temp_dir.url().join("project1/project2/file.ts").unwrap(),
       "languageId": "typescript",
       "version": 1,
       "text": "import \"http://localhost:4545/subdir/mod1.ts\";\n",
@@ -14051,14 +14135,14 @@ fn lsp_workspace_lockfile() {
     "workspace/executeCommand",
     json!({
       "command": "deno.cache",
-      "arguments": [[], temp_dir.uri().join("project1/project2/file.ts").unwrap()],
+      "arguments": [[], temp_dir.url().join("project1/project2/file.ts").unwrap()],
     }),
   );
   client.read_diagnostics();
   let res = client.write_request(
     "textDocument/definition",
     json!({
-      "textDocument": { "uri": temp_dir.uri().join("project1/project2/file.ts").unwrap() },
+      "textDocument": { "uri": temp_dir.url().join("project1/project2/file.ts").unwrap() },
       "position": { "line": 0, "character": 7 },
     }),
   );
@@ -14100,7 +14184,7 @@ fn lsp_deno_json_workspace_vendor_dir() {
   client.initialize_default();
   client.did_open(json!({
     "textDocument": {
-      "uri": temp_dir.uri().join("project1/project2/file.ts").unwrap(),
+      "uri": temp_dir.url().join("project1/project2/file.ts").unwrap(),
       "languageId": "typescript",
       "version": 1,
       "text": "import \"http://localhost:4545/subdir/mod1.ts\";\n",
@@ -14110,14 +14194,14 @@ fn lsp_deno_json_workspace_vendor_dir() {
     "workspace/executeCommand",
     json!({
       "command": "deno.cache",
-      "arguments": [[], temp_dir.uri().join("project1/project2/file.ts").unwrap()],
+      "arguments": [[], temp_dir.url().join("project1/project2/file.ts").unwrap()],
     }),
   );
   let res = client.write_request(
     "textDocument/definition",
     json!({
       "textDocument": {
-        "uri": temp_dir.uri().join("project1/project2/file.ts").unwrap(),
+        "uri": temp_dir.url().join("project1/project2/file.ts").unwrap(),
       },
       "position": { "line": 0, "character": 7 },
     }),
@@ -14125,7 +14209,7 @@ fn lsp_deno_json_workspace_vendor_dir() {
   assert_eq!(
     res,
     json!([{
-      "targetUri": temp_dir.uri().join("project1/vendor/http_localhost_4545/subdir/mod1.ts").unwrap(),
+      "targetUri": temp_dir.url().join("project1/vendor/http_localhost_4545/subdir/mod1.ts").unwrap(),
       "targetRange": {
         "start": {
           "line": 0,
@@ -14163,7 +14247,7 @@ fn lsp_deno_json_workspace_node_modules_dir() {
     "project1/deno.json",
     json!({
       "workspace": ["project2"],
-      "nodeModulesDir": true,
+      "nodeModulesDir": "auto",
     })
     .to_string(),
   );
@@ -14172,7 +14256,7 @@ fn lsp_deno_json_workspace_node_modules_dir() {
   client.initialize_default();
   client.did_open(json!({
     "textDocument": {
-      "uri": temp_dir.uri().join("project1/project2/file.ts").unwrap(),
+      "uri": temp_dir.url().join("project1/project2/file.ts").unwrap(),
       "languageId": "typescript",
       "version": 1,
       "text": "import \"npm:@denotest/add@1\";\n",
@@ -14182,14 +14266,14 @@ fn lsp_deno_json_workspace_node_modules_dir() {
     "workspace/executeCommand",
     json!({
       "command": "deno.cache",
-      "arguments": [[], temp_dir.uri().join("project1/project2/file.ts").unwrap()],
+      "arguments": [[], temp_dir.url().join("project1/project2/file.ts").unwrap()],
     }),
   );
   let res = client.write_request(
     "textDocument/definition",
     json!({
       "textDocument": {
-        "uri": temp_dir.uri().join("project1/project2/file.ts").unwrap(),
+        "uri": temp_dir.url().join("project1/project2/file.ts").unwrap(),
       },
       "position": { "line": 0, "character": 7 },
     }),
@@ -14253,7 +14337,7 @@ fn lsp_deno_json_workspace_jsr_resolution() {
   client.initialize_default();
   client.did_open(json!({
     "textDocument": {
-      "uri": temp_dir.uri().join("file.ts").unwrap(),
+      "uri": temp_dir.url().join("file.ts").unwrap(),
       "languageId": "typescript",
       "version": 1,
       "text": "import \"jsr:@org/project1@^1.0.0\";\n",
@@ -14263,7 +14347,7 @@ fn lsp_deno_json_workspace_jsr_resolution() {
     "textDocument/hover",
     json!({
       "textDocument": {
-        "uri": temp_dir.uri().join("file.ts").unwrap(),
+        "uri": temp_dir.url().join("file.ts").unwrap(),
       },
       "position": { "line": 0, "character": 7 },
     }),
@@ -14275,7 +14359,7 @@ fn lsp_deno_json_workspace_jsr_resolution() {
         "kind": "markdown",
         "value": format!(
           "**Resolved Dependency**\n\n**Code**: file&#8203;://{}\n",
-          temp_dir.uri().join("project1/mod.ts").unwrap().path(),
+          temp_dir.url().join("project1/mod.ts").unwrap().path(),
         ),
       },
       "range": {
@@ -14294,6 +14378,15 @@ fn lsp_npm_workspace() {
     .use_temp_cwd()
     .build();
   let temp_dir = context.temp_dir();
+  // TODO(nayeemrmn): Goto definition for local npm package imports should work
+  // even with byonm. Remove this when fixed.
+  temp_dir.write(
+    "deno.json",
+    json!({
+      "nodeModulesDir": "auto",
+    })
+    .to_string(),
+  );
   temp_dir.write(
     "package.json",
     json!({
@@ -14336,7 +14429,7 @@ fn lsp_npm_workspace() {
   client.initialize_default();
   let diagnostics = client.did_open(json!({
     "textDocument": {
-      "uri": temp_dir.uri().join("packages/subtract/index.ts").unwrap(),
+      "uri": temp_dir.url().join("packages/subtract/index.ts").unwrap(),
       "languageId": "typescript",
       "version": 1,
       "text": "import { add } from 'add';\nexport function subtract(a: number, b: number): number { return add(a, -b); }",
@@ -14347,7 +14440,7 @@ fn lsp_npm_workspace() {
     "textDocument/definition",
     json!({
       "textDocument": {
-        "uri": temp_dir.uri().join("packages/subtract/index.ts").unwrap(),
+        "uri": temp_dir.url().join("packages/subtract/index.ts").unwrap(),
       },
       "position": { "line": 0, "character": 9 },
     }),
@@ -14356,7 +14449,7 @@ fn lsp_npm_workspace() {
   assert_eq!(
     res,
     json!([{
-      "targetUri": temp_dir.uri().join("packages/add/index.ts").unwrap(),
+      "targetUri": temp_dir.url().join("packages/add/index.ts").unwrap(),
       "targetRange": {
         "start": {
           "line": 0,
@@ -14390,7 +14483,7 @@ fn lsp_import_unstable_bare_node_builtins_auto_discovered() {
   let contents = r#"import path from "path";"#;
   temp_dir.write("main.ts", contents);
   temp_dir.write("deno.json", r#"{ "unstable": ["bare-node-builtins"] }"#);
-  let main_script = temp_dir.uri().join("main.ts").unwrap();
+  let main_script = temp_dir.url().join("main.ts").unwrap();
 
   let mut client = context.new_lsp_command().capture_stderr().build();
   client.initialize_default();
@@ -14486,7 +14579,7 @@ fn lsp_jupyter_byonm_diagnostics() {
   context.run_npm("install");
   let mut client = context.new_lsp_command().build();
   client.initialize_default();
-  let notebook_specifier = temp_dir.join("notebook.ipynb").uri_file();
+  let notebook_specifier = temp_dir.join("notebook.ipynb").url_file();
   let notebook_specifier = format!(
     "{}#abc",
     notebook_specifier
@@ -14532,11 +14625,8 @@ fn lsp_jupyter_byonm_diagnostics() {
 }
 
 #[test]
-fn lsp_deno_future_env_byonm() {
-  let context = TestContextBuilder::for_npm()
-    .env("DENO_FUTURE", "1")
-    .use_temp_cwd()
-    .build();
+fn lsp_byonm() {
+  let context = TestContextBuilder::for_npm().use_temp_cwd().build();
   let temp_dir = context.temp_dir();
   temp_dir.path().join("package.json").write_json(&json!({
     "dependencies": {
@@ -14548,7 +14638,7 @@ fn lsp_deno_future_env_byonm() {
   client.initialize_default();
   let diagnostics = client.did_open(json!({
     "textDocument": {
-      "uri": temp_dir.uri().join("file.ts").unwrap(),
+      "uri": temp_dir.url().join("file.ts").unwrap(),
       "languageId": "typescript",
       "version": 1,
       "text": r#"
@@ -14597,11 +14687,11 @@ fn lsp_sloppy_imports() {
   temp_dir.join("c.d.ts").write("export class C {}");
   let mut client = context.new_lsp_command().build();
   client.initialize(|builder| {
-    builder.set_root_uri(temp_dir.uri_dir());
+    builder.set_root_uri(temp_dir.url_dir());
   });
   client.did_open(json!({
     "textDocument": {
-      "uri": temp_dir.join("b.ts").uri_file(),
+      "uri": temp_dir.join("b.ts").url_file(),
       "languageId": "typescript",
       "version": 1,
       "text": "export class B {}",
@@ -14609,7 +14699,7 @@ fn lsp_sloppy_imports() {
   }));
   client.did_open(json!({
     "textDocument": {
-      "uri": temp_dir.join("c.js").uri_file(),
+      "uri": temp_dir.join("c.js").url_file(),
       "languageId": "typescript",
       "version": 1,
       "text": "export class C {}",
@@ -14617,7 +14707,7 @@ fn lsp_sloppy_imports() {
   }));
   client.did_open(json!({
     "textDocument": {
-      "uri": temp_dir.join("c.d.ts").uri_file(),
+      "uri": temp_dir.join("c.d.ts").url_file(),
       "languageId": "typescript",
       "version": 1,
       "text": "export class C {}",
@@ -14625,7 +14715,7 @@ fn lsp_sloppy_imports() {
   }));
   let diagnostics = client.did_open(json!({
     "textDocument": {
-      "uri": temp_dir.join("file.ts").uri_file(),
+      "uri": temp_dir.join("file.ts").url_file(),
       "languageId": "typescript",
       "version": 1,
       "text": concat!(
@@ -14757,7 +14847,7 @@ fn lsp_sloppy_imports_prefers_dts() {
   );
 
   let diagnostics = client.did_open_file(&a_dts);
-  assert_eq!(json!(diagnostics.for_file(&a_dts.uri())), json!([]));
+  assert_eq!(json!(diagnostics.for_file(&a_dts.url())), json!([]));
 
   let response = client.write_request(
     "textDocument/references",
@@ -14773,12 +14863,12 @@ fn lsp_sloppy_imports_prefers_dts() {
     response,
     json!([
       {
-        "uri": file.uri(),
+        "uri": file.url(),
         // the import
         "range": file.range_of("foo"),
       },
       {
-        "uri": file.uri(),
+        "uri": file.url(),
         // the usage
         "range": file.range_of_nth(1, "foo"),
       }
@@ -14798,11 +14888,11 @@ fn sloppy_imports_not_enabled() {
   temp_dir.join("a.ts").write("export class A {}");
   let mut client = context.new_lsp_command().build();
   client.initialize(|builder| {
-    builder.set_root_uri(temp_dir.uri_dir());
+    builder.set_root_uri(temp_dir.url_dir());
   });
   let diagnostics = client.did_open(json!({
     "textDocument": {
-      "uri": temp_dir.join("file.ts").uri_file(),
+      "uri": temp_dir.join("file.ts").url_file(),
       "languageId": "typescript",
       "version": 1,
       "text": "import * as a from './a';\nconsole.log(a)\n",
@@ -14828,11 +14918,11 @@ fn sloppy_imports_not_enabled() {
         source: Some("deno".to_string()),
         message: format!(
           "Unable to load a local module: {}\nMaybe add a '.ts' extension.",
-          temp_dir.join("a").uri_file(),
+          temp_dir.join("a").url_file(),
         ),
         data: Some(json!({
-          "specifier": temp_dir.join("a").uri_file(),
-          "to": temp_dir.join("a.ts").uri_file(),
+          "specifier": temp_dir.join("a").url_file(),
+          "to": temp_dir.join("a.ts").url_file(),
           "message": "Add a '.ts' extension.",
         })),
         ..Default::default()
@@ -14844,7 +14934,7 @@ fn sloppy_imports_not_enabled() {
     "textDocument/codeAction",
     json!({
       "textDocument": {
-        "uri": temp_dir.join("file.ts").uri_file()
+        "uri": temp_dir.join("file.ts").url_file()
       },
       "range": {
         "start": { "line": 0, "character": 19 },
@@ -14861,11 +14951,11 @@ fn sloppy_imports_not_enabled() {
           "source": "deno",
           "message": format!(
             "Unable to load a local module: {}\nMaybe add a '.ts' extension.",
-            temp_dir.join("a").uri_file(),
+            temp_dir.join("a").url_file(),
           ),
           "data": {
-            "specifier": temp_dir.join("a").uri_file(),
-            "to": temp_dir.join("a.ts").uri_file(),
+            "specifier": temp_dir.join("a").url_file(),
+            "to": temp_dir.join("a.ts").url_file(),
             "message": "Add a '.ts' extension.",
           },
         }],
@@ -14888,17 +14978,17 @@ fn sloppy_imports_not_enabled() {
         "source": "deno",
         "message": format!(
           "Unable to load a local module: {}\nMaybe add a '.ts' extension.",
-          temp_dir.join("a").uri_file(),
+          temp_dir.join("a").url_file(),
         ),
         "data": {
-          "specifier": temp_dir.join("a").uri_file(),
-          "to": temp_dir.join("a.ts").uri_file(),
+          "specifier": temp_dir.join("a").url_file(),
+          "to": temp_dir.join("a.ts").url_file(),
           "message": "Add a '.ts' extension.",
         },
       }],
       "edit": {
         "changes": {
-          temp_dir.join("file.ts").uri_file(): [{
+          temp_dir.join("file.ts").url_file(): [{
             "range": {
               "start": { "line": 0, "character": 19 },
               "end": { "line": 0, "character": 24 }
@@ -14942,7 +15032,7 @@ fn lsp_byonm_js_import_resolves_to_dts() {
   client.initialize_default();
   let diagnostics = client.did_open(json!({
     "textDocument": {
-      "uri": temp_dir.uri().join("node_modules/postcss/lib/comment.d.ts").unwrap(),
+      "uri": temp_dir.url().join("node_modules/postcss/lib/comment.d.ts").unwrap(),
       "languageId": "typescript",
       "version": 1,
       "text": temp_dir.path().join("node_modules/postcss/lib/comment.d.ts").read_to_string(),
@@ -14961,7 +15051,7 @@ fn decorators_tc39() {
   let mut client = context.new_lsp_command().build();
   client.initialize_default();
 
-  let uri = temp_dir.uri().join("main.ts").unwrap();
+  let uri = temp_dir.url().join("main.ts").unwrap();
 
   let diagnostics = client
     .did_open(json!({
@@ -15012,7 +15102,7 @@ fn decorators_ts() {
   let mut client = context.new_lsp_command().build();
   client.initialize_default();
 
-  let uri = temp_dir.uri().join("main.ts").unwrap();
+  let uri = temp_dir.url().join("main.ts").unwrap();
 
   let diagnostics = client
     .did_open(json!({
@@ -15094,7 +15184,6 @@ fn lsp_cjs_internal_types_default_export() {
     .use_http_server()
     .use_temp_cwd()
     .add_npm_env_vars()
-    .env("DENO_FUTURE", "1")
     .build();
   let temp_dir = context.temp_dir();
   temp_dir.write("deno.json", r#"{}"#);
@@ -15116,13 +15205,13 @@ fn lsp_cjs_internal_types_default_export() {
   );
   client.did_open(json!({
     "textDocument": {
-      "uri": node_modules_index_d_ts.uri_file(),
+      "uri": node_modules_index_d_ts.url_file(),
       "languageId": "typescript",
       "version": 1,
       "text": node_modules_index_d_ts.read_to_string(),
     }
   }));
-  let main_url = temp_dir.path().join("main.ts").uri_file();
+  let main_url = temp_dir.path().join("main.ts").url_file();
   let diagnostics = client.did_open(
     json!({
       "textDocument": {
@@ -15143,7 +15232,6 @@ fn lsp_cjs_import_dual() {
     .use_http_server()
     .use_temp_cwd()
     .add_npm_env_vars()
-    .env("DENO_FUTURE", "1")
     .build();
   let temp_dir = context.temp_dir();
   temp_dir.write("deno.json", r#"{}"#);
@@ -15159,7 +15247,7 @@ fn lsp_cjs_import_dual() {
 
   let mut client = context.new_lsp_command().build();
   client.initialize_default();
-  let main_url = temp_dir.path().join("main.ts").uri_file();
+  let main_url = temp_dir.path().join("main.ts").url_file();
   let diagnostics = client.did_open(
     json!({
       "textDocument": {
@@ -15198,7 +15286,7 @@ fn lsp_ts_code_fix_any_param() {
 
   let param_def = range_of("param", src);
 
-  let main_url = temp_dir.path().join("main.ts").uri_file();
+  let main_url = temp_dir.path().join("main.ts").url_file();
   let diagnostics = client.did_open(json!({
     "textDocument": {
       "uri": main_url,

@@ -1,4 +1,7 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
+
+// deno-lint-ignore-file no-console
+
 import {
   assert,
   assertEquals,
@@ -6,6 +9,7 @@ import {
   assertStringIncludes,
   assertThrows,
   delay,
+  DENO_FUTURE,
   fail,
   unimplemented,
 } from "./test_util.ts";
@@ -1355,7 +1359,7 @@ Deno.test(
 );
 
 Deno.test(
-  { permissions: { read: true, net: true } },
+  { permissions: { read: true, net: true }, ignore: DENO_FUTURE },
   async function fetchCustomClientPrivateKey(): Promise<
     void
   > {

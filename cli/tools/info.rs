@@ -440,7 +440,7 @@ impl<'a> GraphDisplayContext<'a> {
     }
 
     let root_specifier = self.graph.resolve(&self.graph.roots[0]);
-    match self.graph.try_get(&root_specifier) {
+    match self.graph.try_get(root_specifier) {
       Ok(Some(root)) => {
         let maybe_cache_info = match root {
           Module::Js(module) => module.maybe_cache_info.as_ref(),
@@ -694,9 +694,9 @@ impl<'a> GraphDisplayContext<'a> {
       Resolution::Ok(resolved) => {
         let specifier = &resolved.specifier;
         let resolved_specifier = self.graph.resolve(specifier);
-        Some(match self.graph.try_get(&resolved_specifier) {
+        Some(match self.graph.try_get(resolved_specifier) {
           Ok(Some(module)) => self.build_module_info(module, type_dep),
-          Err(err) => self.build_error_info(err, &resolved_specifier),
+          Err(err) => self.build_error_info(err, resolved_specifier),
           Ok(None) => TreeNode::from_text(format!(
             "{} {}",
             colors::red(specifier),

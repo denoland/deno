@@ -5,6 +5,7 @@ use deno_config::deno_json::DenoJsonCache;
 use deno_config::deno_json::FmtConfig;
 use deno_config::deno_json::FmtOptionsConfig;
 use deno_config::deno_json::LintConfig;
+use deno_config::deno_json::NodeModulesDirMode;
 use deno_config::deno_json::TestConfig;
 use deno_config::deno_json::TsConfig;
 use deno_config::fs::DenoConfigFs;
@@ -30,6 +31,7 @@ use deno_core::serde::Serialize;
 use deno_core::serde_json;
 use deno_core::serde_json::json;
 use deno_core::serde_json::Value;
+use deno_core::url::Url;
 use deno_core::ModuleSpecifier;
 use deno_lint::linter::LintConfig as DenoLintConfig;
 use deno_npm::npm_rc::ResolvedNpmRc;
@@ -38,7 +40,6 @@ use deno_runtime::deno_node::PackageJson;
 use deno_runtime::deno_permissions::PermissionsContainer;
 use deno_runtime::fs_util::specifier_to_file_path;
 use indexmap::IndexSet;
-use lsp::Url;
 use lsp_types::ClientCapabilities;
 use std::collections::BTreeMap;
 use std::collections::HashMap;
@@ -54,7 +55,6 @@ use crate::args::CliLockfile;
 use crate::args::ConfigFile;
 use crate::args::LintFlags;
 use crate::args::LintOptions;
-use crate::args::DENO_FUTURE;
 use crate::cache::FastInsecureHasher;
 use crate::file_fetcher::FileFetcher;
 use crate::lsp::logging::lsp_warn;
@@ -844,14 +844,17 @@ pub struct Config {
 
 impl Config {
   #[cfg(test)]
-  pub fn new_with_roots(root_uris: impl IntoIterator<Item = Url>) -> Self {
+  pub fn new_with_roots(root_urls: impl IntoIterator<Item = Url>) -> Self {
+    use super::urls::url_to_uri;
+
     let mut config = Self::default();
     let mut folders = vec![];
-    for root_uri in root_uris {
-      let name = root_uri.path_segments().and_then(|s| s.last());
+    for root_url in root_urls {
+      let root_uri = url_to_uri(&root_url).unwrap();
+      let name = root_url.path_segments().and_then(|s| s.last());
       let name = name.unwrap_or_default().to_string();
       folders.push((
-        root_uri.clone(),
+        root_url,
         lsp::WorkspaceFolder {
           uri: root_uri,
           name,
@@ -1384,11 +1387,14 @@ impl ConfigData {
       }
     }
 
-    let byonm = std::env::var("DENO_UNSTABLE_BYONM").is_ok()
-      || member_dir.workspace.has_unstable("byonm")
-      || (*DENO_FUTURE
-        && member_dir.workspace.package_jsons().next().is_some()
-        && member_dir.workspace.node_modules_dir().is_none());
+    let node_modules_dir = member_dir
+      .workspace
+      .node_modules_dir_mode()
+      .unwrap_or_default();
+    let byonm = match node_modules_dir {
+      Some(mode) => mode == NodeModulesDirMode::Manual,
+      None => member_dir.workspace.package_jsons().next().is_some(),
+    };
     if byonm {
       lsp_log!("  Enabled 'bring your own node_modules'.");
     }
@@ -1491,7 +1497,7 @@ impl ConfigData {
       }
     };
     let resolver = deno_core::unsync::spawn({
-      let workspace = member_dir.clone();
+      let workspace = member_dir.workspace.clone();
       let file_fetcher = file_fetcher.cloned();
       async move {
         workspace
@@ -1846,7 +1852,12 @@ fn resolve_lockfile_from_workspace(
       return None;
     }
   };
-  resolve_lockfile_from_path(lockfile_path)
+  let frozen = workspace
+    .workspace
+    .root_deno_json()
+    .and_then(|c| c.to_lock_config().ok().flatten().map(|c| c.frozen()))
+    .unwrap_or(false);
+  resolve_lockfile_from_path(lockfile_path, frozen)
 }
 
 fn resolve_node_modules_dir(
@@ -1857,13 +1868,17 @@ fn resolve_node_modules_dir(
   // `nodeModulesDir: true` setting in the deno.json file. This is to
   // reduce the chance of modifying someone's node_modules directory
   // without them having asked us to do so.
-  let explicitly_disabled = workspace.node_modules_dir() == Some(false);
+  let node_modules_mode = workspace.node_modules_dir_mode().ok().flatten();
+  let explicitly_disabled = node_modules_mode == Some(NodeModulesDirMode::None);
   if explicitly_disabled {
     return None;
   }
   let enabled = byonm
-    || workspace.node_modules_dir() == Some(true)
+    || node_modules_mode
+      .map(|m| m.uses_node_modules_dir())
+      .unwrap_or(false)
     || workspace.vendor_dir_path().is_some();
+
   if !enabled {
     return None;
   }
@@ -1875,8 +1890,11 @@ fn resolve_node_modules_dir(
   canonicalize_path_maybe_not_exists(&node_modules_dir).ok()
 }
 
-fn resolve_lockfile_from_path(lockfile_path: PathBuf) -> Option<CliLockfile> {
-  match CliLockfile::read_from_path(lockfile_path, false) {
+fn resolve_lockfile_from_path(
+  lockfile_path: PathBuf,
+  frozen: bool,
+) -> Option<CliLockfile> {
+  match CliLockfile::read_from_path(lockfile_path, frozen) {
     Ok(value) => {
       if value.filename.exists() {
         if let Ok(specifier) = ModuleSpecifier::from_file_path(&value.filename)

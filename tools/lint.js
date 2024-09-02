@@ -1,5 +1,8 @@
 #!/usr/bin/env -S deno run --allow-write --allow-read --allow-run --allow-net --config=tests/config/deno.json
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
+
+// deno-lint-ignore-file no-console
+
 import { buildMode, getPrebuilt, getSources, join, ROOT_PATH } from "./util.js";
 import { checkCopyright } from "./copyright_checker.js";
 import * as ciFile from "../.github/workflows/ci.generate.ts";
@@ -44,27 +47,19 @@ async function dlint() {
     "*.js",
     "*.ts",
     ":!:.github/mtime_cache/action.js",
-    ":!:tests/testdata/swc_syntax_error.ts",
-    ":!:tests/testdata/error_008_checkjs.js",
     ":!:cli/bench/testdata/npm/*",
     ":!:cli/bench/testdata/express-router.js",
     ":!:cli/bench/testdata/react-dom.js",
     ":!:cli/compilers/wasm_wrap.js",
     ":!:cli/tsc/dts/**",
+    ":!:cli/tsc/*typescript.js",
+    ":!:cli/tsc/compiler.d.ts",
+    ":!:runtime/examples/",
     ":!:target/",
     ":!:tests/registry/**",
     ":!:tests/specs/**",
-    ":!:tests/testdata/encoding/**",
-    ":!:tests/testdata/error_syntax.js",
-    ":!:tests/testdata/file_extensions/ts_with_js_extension.js",
-    ":!:tests/testdata/fmt/**",
-    ":!:tests/testdata/lint/**",
-    ":!:tests/testdata/npm/**",
-    ":!:tests/testdata/run/**",
-    ":!:tests/testdata/tsc/**",
-    ":!:tests/testdata/test/glob/**",
-    ":!:cli/tsc/*typescript.js",
-    ":!:cli/tsc/compiler.d.ts",
+    ":!:tests/testdata/**",
+    ":!:tests/unit_node/testdata/**",
     ":!:tests/wpt/suite/**",
     ":!:tests/wpt/runner/**",
   ]);
@@ -93,7 +88,12 @@ async function dlint() {
       }),
     );
   }
-  await Promise.all(pending);
+  const results = await Promise.allSettled(pending);
+  for (const result of results) {
+    if (result.status === "rejected") {
+      throw new Error(result.reason);
+    }
+  }
 }
 
 // `prefer-primordials` has to apply only to files related to bootstrapping,
@@ -218,11 +218,11 @@ async function ensureNoNewITests() {
     "lsp_tests.rs": 0,
     "node_compat_tests.rs": 4,
     "node_unit_tests.rs": 2,
-    "npm_tests.rs": 93,
+    "npm_tests.rs": 92,
     "pm_tests.rs": 0,
     "publish_tests.rs": 0,
     "repl_tests.rs": 0,
-    "run_tests.rs": 360,
+    "run_tests.rs": 352,
     "shared_library_tests.rs": 0,
     "task_tests.rs": 30,
     "test_tests.rs": 77,

@@ -621,7 +621,7 @@ where
   Ok(array_value)
 }
 
-#[op2]
+#[op2(fast)]
 pub fn op_ffi_unsafe_callback_close(
   state: &mut OpState,
   scope: &mut v8::HandleScope,

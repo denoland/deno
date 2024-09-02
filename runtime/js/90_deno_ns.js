@@ -32,10 +32,6 @@ import * as cron from "ext:deno_cron/01_cron.ts";
 import * as webgpuSurface from "ext:deno_webgpu/02_surface.js";
 
 const denoNs = {
-  metrics: () => {
-    internals.warnOnDeprecatedApi("Deno.metrics()", new Error().stack);
-    return core.metrics();
-  },
   Process: process.Process,
   run: process.run,
   isatty: tty.isatty,
@@ -96,22 +92,6 @@ const denoNs = {
       "Use `Deno.FsFile.truncate()` instead.",
     );
     return fs.ftruncate(rid, len);
-  },
-  async futime(rid, atime, mtime) {
-    internals.warnOnDeprecatedApi(
-      "Deno.futime()",
-      new Error().stack,
-      "Use `Deno.FsFile.utime()` instead.",
-    );
-    await fs.futime(rid, atime, mtime);
-  },
-  futimeSync(rid, atime, mtime) {
-    internals.warnOnDeprecatedApi(
-      "Deno.futimeSync()",
-      new Error().stack,
-      "Use `Deno.FsFile.utimeSync()` instead.",
-    );
-    fs.futimeSync(rid, atime, mtime);
   },
   errors: errors.errors,
   inspect: console.inspect,
@@ -190,14 +170,6 @@ const denoNs = {
   connectTls: tls.connectTls,
   listenTls: tls.listenTls,
   startTls: tls.startTls,
-  shutdown(rid) {
-    internals.warnOnDeprecatedApi(
-      "Deno.shutdown()",
-      new Error().stack,
-      "Use `Deno.Conn.closeWrite()` instead.",
-    );
-    net.shutdown(rid);
-  },
   fstatSync(rid) {
     internals.warnOnDeprecatedApi(
       "Deno.fstatSync()",
