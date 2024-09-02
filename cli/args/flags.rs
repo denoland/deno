@@ -2741,7 +2741,7 @@ fn serve_subcommand() -> Command {
         .value_parser(serve_host_validator),
     )
     .arg(
-      parallel_arg("multiple server workers", false)
+      parallel_arg("multiple server workers")
     )
     .arg(check_arg(false))
     .arg(watch_arg(true))
@@ -2915,17 +2915,7 @@ Directory arguments are expanded to all contained files matching the glob
           .help_heading(TEST_HEADING),
       )
       .arg(
-        parallel_arg("test modules", true)
-      )
-      .arg(
-        Arg::new("jobs")
-          .short('j')
-          .long("jobs")
-          .help("deprecated: The `--jobs` flag is deprecated and will be removed in Deno 2.0. Use the `--parallel` flag with possibly the `DENO_JOBS` environment variable instead.")
-          .hide(true)
-          .num_args(0..=1)
-          .value_parser(value_parser!(NonZeroUsize))
-          .help_heading(TEST_HEADING),
+        parallel_arg("test modules")
       )
       .arg(
         Arg::new("files")
@@ -2967,16 +2957,11 @@ Directory arguments are expanded to all contained files matching the glob
     )
 }
 
-fn parallel_arg(descr: &str, jobs_fallback: bool) -> Arg {
-  let arg = Arg::new("parallel")
+fn parallel_arg(descr: &str) -> Arg {
+  Arg::new("parallel")
     .long("parallel")
     .help(format!("Run {descr} in parallel. Parallelism defaults to the number of available CPUs or the value of the DENO_JOBS environment variable"))
-    .action(ArgAction::SetTrue);
-  if jobs_fallback {
-    arg.conflicts_with("jobs")
-  } else {
-    arg
-  }
+    .action(ArgAction::SetTrue)
 }
 
 fn types_subcommand() -> Command {
@@ -4704,7 +4689,7 @@ fn serve_parse(
     .remove_one::<String>("host")
     .unwrap_or_else(|| "0.0.0.0".to_owned());
 
-  let worker_count = parallel_arg_parse(matches, false).map(|v| v.get());
+  let worker_count = parallel_arg_parse(matches).map(|v| v.get());
 
   runtime_args_parse(flags, matches, true, true);
   // If the user didn't pass --allow-net, add this port to the network
@@ -4780,34 +4765,10 @@ fn task_parse(flags: &mut Flags, matches: &mut ArgMatches) {
   flags.subcommand = DenoSubcommand::Task(task_flags);
 }
 
-fn parallel_arg_parse(
-  matches: &mut ArgMatches,
-  fallback_to_jobs: bool,
-) -> Option<NonZeroUsize> {
+fn parallel_arg_parse(matches: &mut ArgMatches) -> Option<NonZeroUsize> {
   if matches.get_flag("parallel") {
     if let Ok(value) = env::var("DENO_JOBS") {
       value.parse::<NonZeroUsize>().ok()
-    } else {
-      std::thread::available_parallelism().ok()
-    }
-  } else if fallback_to_jobs && matches.contains_id("jobs") {
-    // We can't change this to use the log crate because its not configured
-    // yet at this point since the flags haven't been parsed. This flag is
-    // deprecated though so it's not worth changing the code to use the log
-    // crate here and this is only done for testing anyway.
-    #[allow(clippy::print_stderr)]
-    {
-      eprintln!(
-        "⚠️ {}",
-        crate::colors::yellow(concat!(
-          "The `--jobs` flag is deprecated and will be removed in Deno 2.0.\n",
-          "Use the `--parallel` flag with possibly the `DENO_JOBS` environment variable instead.\n",
-          "Learn more at: https://docs.deno.com/runtime/manual/basics/env_variables"
-        )),
-      );
-    }
-    if let Some(value) = matches.remove_one::<NonZeroUsize>("jobs") {
-      Some(value)
     } else {
       std::thread::available_parallelism().ok()
     }
@@ -4882,7 +4843,7 @@ fn test_parse(flags: &mut Flags, matches: &mut ArgMatches) {
     flags.argv.extend(script_arg);
   }
 
-  let concurrent_jobs = parallel_arg_parse(matches, true);
+  let concurrent_jobs = parallel_arg_parse(matches);
 
   let include = if let Some(files) = matches.remove_many::<String>("files") {
     files.collect()
@@ -8911,45 +8872,6 @@ mod tests {
         ..Flags::default()
       }
     );
-  }
-
-  #[test]
-  fn test_with_concurrent_jobs() {
-    let r = flags_from_vec(svec!["deno", "test", "--jobs=4"]);
-    assert_eq!(
-      r.unwrap(),
-      Flags {
-        subcommand: DenoSubcommand::Test(TestFlags {
-          no_run: false,
-          reporter: Default::default(),
-          doc: false,
-          fail_fast: None,
-          filter: None,
-          allow_none: false,
-          shuffle: None,
-          files: FileFlags {
-            include: vec![],
-            ignore: vec![],
-          },
-          concurrent_jobs: Some(NonZeroUsize::new(4).unwrap()),
-          trace_leaks: false,
-          coverage_dir: None,
-          clean: false,
-          watch: Default::default(),
-          junit_path: None,
-          hide_stacktraces: false,
-        }),
-        type_check_mode: TypeCheckMode::Local,
-        permissions: PermissionFlags {
-          no_prompt: true,
-          ..Default::default()
-        },
-        ..Flags::default()
-      }
-    );
-
-    let r = flags_from_vec(svec!["deno", "test", "--jobs=0"]);
-    assert!(r.is_err());
   }
 
   #[test]
