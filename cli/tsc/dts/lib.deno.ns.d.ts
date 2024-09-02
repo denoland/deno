@@ -6137,6 +6137,8 @@ declare namespace Deno {
   export interface ServeHandlerInfo<Addr extends Deno.Addr = Deno.Addr> {
     /** The remote address of the connection. */
     remoteAddr: Addr;
+    /** The completion promise */
+    completed: Promise<void>;
   }
 
   /** A handler for HTTP requests. Consumes a request and returns a response.
