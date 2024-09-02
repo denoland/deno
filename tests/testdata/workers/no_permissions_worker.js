@@ -5,7 +5,7 @@ self.onmessage = async () => {
   const run = await Deno.permissions.query({ name: "run" });
   const write = await Deno.permissions.query({ name: "write" });
   self.postMessage(
-      net.state === "prompt" &&
+    net.state === "prompt" &&
       ffi.state === "prompt" &&
       read.state === "prompt" &&
       run.state === "prompt" &&

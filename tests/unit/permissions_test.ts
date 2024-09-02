@@ -78,7 +78,9 @@ Deno.test(async function permissionQueryReturnsEventTarget() {
   });
   status.dispatchEvent(new Event("change"));
   assert(called);
-  assert(status === (await Deno.permissions.query({ name: "read", path: "." })));
+  assert(
+    status === (await Deno.permissions.query({ name: "read", path: "." })),
+  );
 });
 
 Deno.test(function permissionQueryReturnsEventTargetSync() {
