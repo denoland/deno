@@ -232,10 +232,14 @@ fn create_command(
   mut args: SpawnArgs,
   api_name: &str,
 ) -> Result<CreateCommand, AnyError> {
-  let run_env =
-    compute_run_env(args.cwd.as_deref(), &args.env, args.clear_env)?;
-  let cmd = resolve_cmd(&args.cmd, &run_env)?;
-  check_run_permission(state, &cmd, &run_env, api_name)?;
+  let (cmd, run_env) = compute_run_cmd_and_check_permissions(
+    &args.cmd,
+    args.cwd.as_deref(),
+    &args.env,
+    args.clear_env,
+    state,
+    api_name,
+  )?;
   let mut command = std::process::Command::new(cmd);
 
   #[cfg(windows)]
@@ -501,11 +505,30 @@ fn close_raw_handle(handle: deno_io::RawBiPipeHandle) {
   }
 }
 
+fn compute_run_cmd_and_check_permissions(
+  arg_cmd: &str,
+  arg_cwd: Option<&str>,
+  arg_envs: &[(String, String)],
+  arg_clear_env: bool,
+  state: &mut OpState,
+  api_name: &str,
+) -> Result<(PathBuf, RunEnv), AnyError> {
+  let run_env = compute_run_env(arg_cwd.as_deref(), arg_envs, arg_clear_env)?;
+  let cmd = resolve_cmd(arg_cmd, &run_env)?;
+  check_run_permission(state, &cmd, &run_env, api_name)?;
+  Ok((cmd, run_env))
+}
+
 struct RunEnv {
   envs: HashMap<String, String>,
   cwd: PathBuf,
 }
 
+/// Computes the current environment, which will then be used to inform
+/// permissions and finally spawning. This is very important to compute
+/// ahead of time so that the environment used to verify permissions is
+/// the same environment used to spawn the sub command. This protects against
+/// someone doing timing attacks by changing the environment on a worker.
 fn compute_run_env(
   arg_cwd: Option<&str>,
   arg_envs: &[(String, String)],
@@ -547,7 +570,13 @@ fn resolve_cmd(cmd: &str, env: &RunEnv) -> Result<PathBuf, AnyError> {
         None
       }
     });
-    Ok(which::which_in(cmd, path, &env.cwd)?)
+    match which::which_in(cmd, path, &env.cwd) {
+      Ok(cmd) => Ok(cmd),
+      Err(which::Error::CannotFindBinaryPath) => {
+        deno_core::anyhow::bail!("cannot find binary path '{}'", cmd)
+      }
+      Err(err) => Err(err.into()),
+    }
   }
 }
 
@@ -562,8 +591,7 @@ fn check_run_permission(
   api_name: &str,
 ) -> Result<(), AnyError> {
   let permissions = state.borrow_mut::<PermissionsContainer>();
-  permissions.check_run(&cmd, api_name)?;
-  if permissions.check_run_all(api_name).is_err() {
+  if !permissions.query_run_all(api_name) {
     // error the same on all platforms
     let env_var_names = get_requires_allow_all_env_vars(run_env);
     if !env_var_names.is_empty() {
@@ -578,6 +606,7 @@ fn check_run_permission(
         )
       ));
     }
+    permissions.check_run(&cmd, api_name)?;
   }
   Ok(())
 }
@@ -735,19 +764,19 @@ mod deprecated {
   ) -> Result<RunInfo, AnyError> {
     let args = run_args.cmd;
     let cmd = args.get(0).ok_or_else(|| anyhow::anyhow!("Missing cmd"))?;
-    let run_env = compute_run_env(
+    let (cmd, run_env) = compute_run_cmd_and_check_permissions(
+      cmd,
       run_args.cwd.as_deref(),
       &run_args.env,
       run_args.clear_env,
+      state,
+      "Deno.run()",
     )?;
-    let cmd = resolve_cmd(cmd, &run_env)?;
-    check_run_permission(state, &cmd, &run_env, "Deno.run()")?;
 
-    let mut c = Command::new(args.first().unwrap());
-    (1..args.len()).for_each(|i| {
-      let arg = args.get(i).unwrap();
+    let mut c = Command::new(cmd);
+    for arg in args.iter().skip(1) {
       c.arg(arg);
-    });
+    }
     c.current_dir(run_env.cwd);
 
     if run_args.clear_env {

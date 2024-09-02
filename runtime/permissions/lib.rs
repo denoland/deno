@@ -1337,6 +1337,21 @@ impl UnaryPermission<RunDescriptor> {
     skip_check_if_is_permission_fully_granted!(self);
     self.check_desc(None, false, api_name, || None)
   }
+
+  /// Queries without prompting
+  pub fn query_all(&mut self, api_name: Option<&str>) -> bool {
+    if self.is_allow_all() {
+      return true;
+    }
+    let (result, _prompted, _is_allow_all) =
+      self.query_desc(None, AllowPartial::TreatAsDenied).check2(
+        RunDescriptor::flag_name(),
+        api_name,
+        || None,
+        /* no prompt */ false,
+      );
+    result.is_ok()
+  }
 }
 
 impl UnaryPermission<FfiDescriptor> {
@@ -1709,6 +1724,11 @@ impl PermissionsContainer {
   #[inline(always)]
   pub fn check_run_all(&mut self, api_name: &str) -> Result<(), AnyError> {
     self.0.lock().run.check_all(Some(api_name))
+  }
+
+  #[inline(always)]
+  pub fn query_run_all(&mut self, api_name: &str) -> bool {
+    self.0.lock().run.query_all(Some(api_name))
   }
 
   #[inline(always)]
@@ -3066,11 +3086,12 @@ mod tests {
       .check(&NetDescriptor("deno.land".parse().unwrap(), None), None)
       .is_err());
 
+    let cwd = std::env::current_dir().unwrap();
     prompt_value.set(true);
-    assert!(perms.run.check("cat", None).is_ok());
+    assert!(perms.run.check(&cwd.join("cat"), None).is_ok());
     prompt_value.set(false);
-    assert!(perms.run.check("cat", None).is_ok());
-    assert!(perms.run.check("ls", None).is_err());
+    assert!(perms.run.check(&cwd.join("cat"), None).is_ok());
+    assert!(perms.run.check(&cwd.join("ls"), None).is_err());
 
     prompt_value.set(true);
     assert!(perms.env.check("HOME", None).is_ok());
@@ -3164,12 +3185,13 @@ mod tests {
       .is_ok());
 
     prompt_value.set(false);
-    assert!(perms.run.check("cat", None).is_err());
+    let cwd = std::env::current_dir().unwrap();
+    assert!(perms.run.check(&cwd.join("cat"), None).is_err());
     prompt_value.set(true);
-    assert!(perms.run.check("cat", None).is_err());
-    assert!(perms.run.check("ls", None).is_ok());
+    assert!(perms.run.check(&cwd.join("cat"), None).is_err());
+    assert!(perms.run.check(&cwd.join("ls"), None).is_ok());
     prompt_value.set(false);
-    assert!(perms.run.check("ls", None).is_ok());
+    assert!(perms.run.check(&cwd.join("ls"), None).is_ok());
 
     prompt_value.set(false);
     assert!(perms.env.check("HOME", None).is_err());
