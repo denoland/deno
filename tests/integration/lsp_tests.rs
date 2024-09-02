@@ -10597,6 +10597,52 @@ fn lsp_format_markdown() {
 }
 
 #[test]
+fn lsp_format_css() {
+  let context = TestContextBuilder::new().use_temp_cwd().build();
+  let temp_dir = context.temp_dir();
+  temp_dir.write(
+    "deno.json",
+    json!({
+      "unstable": ["fmt-css"],
+    })
+    .to_string(),
+  );
+  let css_file = source_file(temp_dir.path().join("file.css"), "  foo {}");
+  let mut client = context.new_lsp_command().build();
+  client.initialize_default();
+  let res = client.write_request(
+    "textDocument/formatting",
+    json!({
+      "textDocument": { "uri": css_file.url() },
+      "options": {
+        "tabSize": 2,
+        "insertSpaces": true,
+      },
+    }),
+  );
+  assert_eq!(
+    res,
+    json!([
+      {
+        "range": {
+          "start": { "line": 0, "character": 0 },
+          "end": { "line": 0, "character": 2 },
+        },
+        "newText": "",
+      },
+      {
+        "range": {
+          "start": { "line": 0, "character": 8 },
+          "end": { "line": 0, "character": 8 },
+        },
+        "newText": "\n",
+      },
+    ]),
+  );
+  client.shutdown();
+}
+
+#[test]
 fn lsp_format_with_config() {
   let context = TestContextBuilder::new().use_temp_cwd().build();
   let temp_dir = context.temp_dir();
