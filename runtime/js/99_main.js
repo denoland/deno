@@ -801,7 +801,6 @@ function bootstrapMainRuntime(runtimeOptions, warmup = false) {
     if (future) {
       delete globalThis.window;
       delete Deno.Buffer;
-      delete Deno.copy;
       delete Deno.File;
       delete Deno.fstat;
       delete Deno.fstatSync;
@@ -979,7 +978,6 @@ function bootstrapWorkerRuntime(
 
     if (future) {
       delete Deno.Buffer;
-      delete Deno.copy;
       delete Deno.File;
       delete Deno.fstat;
       delete Deno.fstatSync;
