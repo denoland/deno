@@ -774,10 +774,6 @@ mod deprecated {
     }
     c.current_dir(run_env.cwd);
 
-    if run_args.clear_env {
-      super::check_unstable(state, UNSTABLE_FEATURE_NAME, "Deno.run.clearEnv");
-    }
-
     c.env_clear();
     for (key, value) in run_env.envs {
       c.env(key, value);
