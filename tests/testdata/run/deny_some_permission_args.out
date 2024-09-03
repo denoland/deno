@@ -18,3 +18,4 @@ PermissionStatus { state: "denied", onchange: null }
 PermissionStatus { state: "granted", onchange: null }
 PermissionStatus { state: "granted", onchange: null, partial: true }
 PermissionStatus { state: "denied", onchange: null }
+PermissionStatus { state: "granted", onchange: null }
