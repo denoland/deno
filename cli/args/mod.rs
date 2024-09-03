@@ -1740,7 +1740,7 @@ fn resolve_node_modules_folder(
     return Ok(None);
   } else if let Some(state) = &*NPM_PROCESS_STATE {
     return Ok(state.local_node_modules_path.as_ref().map(PathBuf::from));
-  } else if workspace.package_jsons().next().is_some() {
+  } else if root_folder.pkg_json.is_some() {
     let node_modules_dir = resolve_from_root(root_folder, cwd);
     if let Ok(deno_dir) = deno_dir_provider.get_or_create() {
       // `deno_dir.root` can be symlink in macOS
