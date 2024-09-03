@@ -130,6 +130,8 @@ class Process {
   }
 }
 
+// Note: This function was soft-removed in Deno 2. Its types have been removed,
+// but its implementation has been kept to avoid breaking changes.
 function run({
   cmd,
   cwd = undefined,
