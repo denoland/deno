@@ -1984,57 +1984,6 @@ declare namespace Deno {
    */
   export function readSync(rid: number, buffer: Uint8Array): number | null;
 
-  /** Write to the resource ID (`rid`) the contents of the array buffer (`data`).
-   *
-   * Resolves to the number of bytes written. This function is one of the lowest
-   * level APIs and most users should not work with this directly, but rather
-   * use {@linkcode WritableStream}, {@linkcode ReadableStream.from} and
-   * {@linkcode ReadableStream.pipeTo}.
-   *
-   * **It is not guaranteed that the full buffer will be written in a single
-   * call.**
-   *
-   * ```ts
-   * const encoder = new TextEncoder();
-   * const data = encoder.encode("Hello world");
-   * using file = await Deno.open("/foo/bar.txt", { write: true });
-   * const bytesWritten = await Deno.write(file.rid, data); // 11
-   * ```
-   *
-   * @deprecated This will be removed in Deno 2.0. See the
-   * {@link https://docs.deno.com/runtime/manual/advanced/migrate_deprecations | Deno 1.x to 2.x Migration Guide}
-   * for migration instructions.
-   *
-   * @category I/O
-   */
-  export function write(rid: number, data: Uint8Array): Promise<number>;
-
-  /** Synchronously write to the resource ID (`rid`) the contents of the array
-   * buffer (`data`).
-   *
-   * Returns the number of bytes written. This function is one of the lowest
-   * level APIs and most users should not work with this directly, but rather
-   * use {@linkcode WritableStream}, {@linkcode ReadableStream.from} and
-   * {@linkcode ReadableStream.pipeTo}.
-   *
-   * **It is not guaranteed that the full buffer will be written in a single
-   * call.**
-   *
-   * ```ts
-   * const encoder = new TextEncoder();
-   * const data = encoder.encode("Hello world");
-   * using file = Deno.openSync("/foo/bar.txt", { write: true });
-   * const bytesWritten = Deno.writeSync(file.rid, data); // 11
-   * ```
-   *
-   * @deprecated This will be removed in Deno 2.0. See the
-   * {@link https://docs.deno.com/runtime/manual/advanced/migrate_deprecations | Deno 1.x to 2.x Migration Guide}
-   * for migration instructions.
-   *
-   * @category I/O
-   */
-  export function writeSync(rid: number, data: Uint8Array): number;
-
   /** Seek a resource ID (`rid`) to the given `offset` under mode given by `whence`.
    * The call resolves to the new position within the resource (bytes from the start).
    *

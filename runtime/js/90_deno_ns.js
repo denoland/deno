@@ -121,22 +121,6 @@ const denoNs = {
     );
     return io.readSync(rid, buffer);
   },
-  write(rid, data) {
-    internals.warnOnDeprecatedApi(
-      "Deno.write()",
-      new Error().stack,
-      "Use `writer.write()` instead.",
-    );
-    return io.write(rid, data);
-  },
-  writeSync(rid, data) {
-    internals.warnOnDeprecatedApi(
-      "Deno.writeSync()",
-      new Error().stack,
-      "Use `writer.writeSync()` instead.",
-    );
-    return io.writeSync(rid, data);
-  },
   File: fs.File,
   FsFile: fs.FsFile,
   open: fs.open,

@@ -16,8 +16,6 @@ Deno.seek is undefined
 Deno.seekSync is undefined
 Deno.writeAll is undefined
 Deno.writeAllSync is undefined
-Deno.write is undefined
-Deno.writeSync is undefined
 Deno.Listener.prototype.rid is undefined
 Deno.Conn.prototype.rid is undefined
 Deno.UnixConn.prototype.rid is undefined

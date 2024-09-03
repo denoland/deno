@@ -19,8 +19,6 @@ console.log("Deno.seek is", Deno.seek);
 console.log("Deno.seekSync is", Deno.seekSync);
 console.log("Deno.writeAll is", Deno.writeAll);
 console.log("Deno.writeAllSync is", Deno.writeAllSync);
-console.log("Deno.write is", Deno.write);
-console.log("Deno.writeSync is", Deno.writeSync);
 
 // TCP
 // Since these tests may run in parallel, ensure this port is unique to this file
