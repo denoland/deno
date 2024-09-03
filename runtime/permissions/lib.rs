@@ -3165,7 +3165,7 @@ mod tests {
     let mut perms = Permissions::allow_all();
     perms.env = UnaryPermission {
       granted_global: false,
-      ..Permissions::new_unary(Some(&svec!["HOME"]), None, false).unwrap()
+      ..Permissions::new_unary(Some(&sarr!["HOME"]), None, false).unwrap()
     };
 
     prompt_value.set(true);
