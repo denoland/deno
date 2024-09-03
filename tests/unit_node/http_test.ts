@@ -1640,7 +1640,7 @@ Deno.test("[node/http] upgraded socket closes when the server closed without clo
     },
   };
 
-  http.request(options).on("upgrade", async (res, socket) => {
+  http.request(options).on("upgrade", (_res, socket) => {
     socket.on("close", () => {
       clientSocketClosed.resolve();
     });
