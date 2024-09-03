@@ -1,11 +1,9 @@
 {
   "tempDir": true,
-  // TODO(2.0): re-enable after DENO_FUTURE=1 by default lands
-  "ignore": true,
   "steps": [
     {
-      "args": "cache index.js",
-      "output": "cache.out"
+      "args": "install",
+      "output": "install.out"
     },
     {
       "args": [

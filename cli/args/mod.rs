@@ -780,8 +780,6 @@ pub struct CliOptions {
   maybe_lockfile: Option<Arc<CliLockfile>>,
   overrides: CliOptionOverrides,
   pub start_dir: Arc<WorkspaceDirectory>,
-  pub disable_deprecated_api_warning: bool,
-  pub verbose_deprecated_api_warning: bool,
   pub deno_dir_provider: Arc<DenoDirProvider>,
 }
 
@@ -824,13 +822,6 @@ impl CliOptions {
 
     load_env_variables_from_env_file(flags.env_file.as_ref());
 
-    let disable_deprecated_api_warning = flags.log_level
-      == Some(log::Level::Error)
-      || std::env::var("DENO_NO_DEPRECATION_WARNINGS").ok().is_some();
-
-    let verbose_deprecated_api_warning =
-      std::env::var("DENO_VERBOSE_WARNINGS").ok().is_some();
-
     Ok(Self {
       flags,
       initial_cwd,
@@ -839,8 +830,6 @@ impl CliOptions {
       maybe_node_modules_folder,
       overrides: Default::default(),
       start_dir,
-      disable_deprecated_api_warning,
-      verbose_deprecated_api_warning,
       deno_dir_provider,
     })
   }
@@ -1217,32 +1206,12 @@ impl CliOptions {
     NPM_PROCESS_STATE.is_some()
   }
 
-  /// Overrides the import map specifier to use.
-  pub fn set_import_map_specifier(&mut self, path: Option<ModuleSpecifier>) {
-    self.overrides.import_map_specifier = Some(path);
-  }
-
   pub fn has_node_modules_dir(&self) -> bool {
     self.maybe_node_modules_folder.is_some()
   }
 
   pub fn node_modules_dir_path(&self) -> Option<&PathBuf> {
     self.maybe_node_modules_folder.as_ref()
-  }
-
-  pub fn with_node_modules_dir_path(&self, path: PathBuf) -> Self {
-    Self {
-      flags: self.flags.clone(),
-      initial_cwd: self.initial_cwd.clone(),
-      maybe_node_modules_folder: Some(path),
-      npmrc: self.npmrc.clone(),
-      maybe_lockfile: self.maybe_lockfile.clone(),
-      start_dir: self.start_dir.clone(),
-      overrides: self.overrides.clone(),
-      disable_deprecated_api_warning: self.disable_deprecated_api_warning,
-      verbose_deprecated_api_warning: self.verbose_deprecated_api_warning,
-      deno_dir_provider: self.deno_dir_provider.clone(),
-    }
   }
 
   pub fn node_modules_dir(
@@ -1771,7 +1740,7 @@ fn resolve_node_modules_folder(
     return Ok(None);
   } else if let Some(state) = &*NPM_PROCESS_STATE {
     return Ok(state.local_node_modules_path.as_ref().map(PathBuf::from));
-  } else if workspace.package_jsons().next().is_some() {
+  } else if root_folder.pkg_json.is_some() {
     let node_modules_dir = resolve_from_root(root_folder, cwd);
     if let Ok(deno_dir) = deno_dir_provider.get_or_create() {
       // `deno_dir.root` can be symlink in macOS
