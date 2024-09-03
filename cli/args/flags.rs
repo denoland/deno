@@ -237,7 +237,6 @@ pub struct InstallFlagsGlobal {
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub enum InstallKind {
-  #[allow(unused)]
   Local(Option<AddFlags>),
   Global(InstallFlagsGlobal),
 }
