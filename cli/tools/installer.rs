@@ -15,6 +15,7 @@ use crate::factory::CliFactory;
 use crate::http_util::HttpClientProvider;
 use crate::util::fs::canonicalize_path_maybe_not_exists;
 
+use deno_core::anyhow::bail;
 use deno_core::anyhow::Context;
 use deno_core::error::generic_error;
 use deno_core::error::AnyError;
@@ -284,6 +285,24 @@ async fn install_local(
   Ok(())
 }
 
+fn check_if_installs_a_single_package_globally(
+  maybe_add_flags: Option<&AddFlags>,
+) -> Result<(), AnyError> {
+  let Some(add_flags) = maybe_add_flags else {
+    return Ok(());
+  };
+  if add_flags.packages.len() != 1 {
+    return Ok(());
+  }
+  let Ok(url) = Url::parse(&add_flags.packages[0]) else {
+    return Ok(());
+  };
+  if matches!(url.scheme(), "http" | "https") {
+    bail!("If you are trying to install {} globally, run again with `-g` flag:\n  deno install -g {}", url.as_str(), url.as_str());
+  }
+  Ok(())
+}
+
 pub async fn install_command(
   flags: Arc<Flags>,
   install_flags: InstallFlags,
@@ -297,6 +316,7 @@ pub async fn install_command(
       install_global(flags, global_flags).await
     }
     InstallKind::Local(maybe_add_flags) => {
+      check_if_installs_a_single_package_globally(maybe_add_flags.as_ref())?;
       install_local(flags, maybe_add_flags).await
     }
   }
