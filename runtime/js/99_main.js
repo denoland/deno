@@ -820,8 +820,6 @@ function bootstrapMainRuntime(runtimeOptions, warmup = false) {
       delete Deno.fstatSync;
       delete Deno.ftruncate;
       delete Deno.ftruncateSync;
-      delete Deno.flock;
-      delete Deno.flockSync;
       delete Deno.FsFile.prototype.rid;
       delete Deno.funlock;
       delete Deno.funlockSync;
@@ -1000,8 +998,6 @@ function bootstrapWorkerRuntime(
       delete Deno.fstatSync;
       delete Deno.ftruncate;
       delete Deno.ftruncateSync;
-      delete Deno.flock;
-      delete Deno.flockSync;
       delete Deno.FsFile.prototype.rid;
       delete Deno.funlock;
       delete Deno.funlockSync;

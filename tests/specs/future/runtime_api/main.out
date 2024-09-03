@@ -6,8 +6,6 @@ Deno.fstat is undefined
 Deno.fstatSync is undefined
 Deno.ftruncate is undefined
 Deno.ftruncateSync is undefined
-Deno.flock is undefined
-Deno.flockSync is undefined
 Deno.FsFile.prototype.rid is undefined
 Deno.funlock is undefined
 Deno.funlockSync is undefined

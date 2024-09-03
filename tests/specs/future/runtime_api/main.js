@@ -6,8 +6,6 @@ console.log("Deno.fstat is", Deno.fstat);
 console.log("Deno.fstatSync is", Deno.fstatSync);
 console.log("Deno.ftruncate is", Deno.ftruncate);
 console.log("Deno.ftruncateSync is", Deno.ftruncateSync);
-console.log("Deno.flock is", Deno.flock);
-console.log("Deno.flockSync is", Deno.flockSync);
 console.log(
   "Deno.FsFile.prototype.rid is",
   Deno.openSync(import.meta.filename).rid,
