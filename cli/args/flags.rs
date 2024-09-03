@@ -1147,25 +1147,32 @@ static DENO_HELP: &str = cstr!(
 /// Main entry point for parsing deno's command line flags.
 pub fn flags_from_vec(args: Vec<OsString>) -> clap::error::Result<Flags> {
   let mut app = clap_root();
-  let mut matches = app.try_get_matches_from_mut(&args).map_err(|mut e| {
-    match e.kind() {
-      ErrorKind::MissingRequiredArgument => {
-        if let Some(context) = e.get(clap::error::ContextKind::InvalidArg) {
-          match context {
-            clap::error::ContextValue::Strings(s) => {
-              if s.len() == 1 && s[0] == "--global" && args.iter().any(|arg| arg == "install") {
-                e.insert(clap::error::ContextKind::Usage, clap::error::ContextValue::StyledStr("Note: Permission flags can only be used in a global setting".into()));
-              }
+  let mut matches =
+    app
+      .try_get_matches_from_mut(&args)
+      .map_err(|mut e| match e.kind() {
+        ErrorKind::MissingRequiredArgument => {
+          if let Some(clap::error::ContextValue::Strings(s)) =
+            e.get(clap::error::ContextKind::InvalidArg)
+          {
+            if s.len() == 1
+              && s[0] == "--global"
+              && args.iter().any(|arg| arg == "install")
+            {
+              e.insert(
+                clap::error::ContextKind::Usage,
+                clap::error::ContextValue::StyledStr(
+                  "Note: Permission flags can only be used in a global setting"
+                    .into(),
+                ),
+              );
             }
-            _ => {}
           }
-        }
 
-        e
-      }
-      _ => e
-    }
-  })?;
+          e
+        }
+        _ => e,
+      })?;
 
   let mut flags = Flags::default();
 
