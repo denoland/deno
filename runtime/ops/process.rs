@@ -555,7 +555,7 @@ fn compute_run_env(
 fn resolve_cmd(cmd: &str, env: &RunEnv) -> Result<PathBuf, AnyError> {
   let is_path = cmd.contains('/');
   #[cfg(windows)]
-  let is_path = is_path || cmd.contains('\\') || Path::new(&s).is_absolute();
+  let is_path = is_path || cmd.contains('\\') || Path::new(&cmd).is_absolute();
   if is_path {
     Ok(resolve_path(cmd, &env.cwd))
   } else {
