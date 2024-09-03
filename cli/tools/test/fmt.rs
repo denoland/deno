@@ -320,7 +320,6 @@ pub const OP_DETAILS: phf::Map<&'static str, [&'static str; 2]> = phf_map! {
   "op_fs_events_poll" => ["get the next file system event", "breaking out of a for await loop looping over `Deno.FsEvents`"],
   "op_fs_fdatasync_async" => ["flush pending data operations for a file to disk", "awaiting the result of a `Deno.fdatasync` or `Deno.FsFile.syncData` call"],
   "op_fs_file_stat_async" => ["get file metadata", "awaiting the result of a `Deno.FsFile.prototype.stat` call"],
-  "op_fs_flock_async_unstable" => ["lock a file", "awaiting the result of a `Deno.flock` call"],
   "op_fs_flock_async" => ["lock a file", "awaiting the result of a `Deno.FsFile.lock` call"],
   "op_fs_fsync_async" => ["flush pending data operations for a file to disk", "awaiting the result of a `Deno.fsync` or `Deno.FsFile.sync` call"],
   "op_fs_ftruncate_async" => ["truncate a file", "awaiting the result of a `Deno.ftruncate` or `Deno.FsFile.truncate` call"],

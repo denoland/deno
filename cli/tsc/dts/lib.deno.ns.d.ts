@@ -553,15 +553,6 @@ declare namespace Deno {
      */
     sys?: "inherit" | boolean | string[];
 
-    /** Specifies if the `hrtime` permission should be requested or revoked.
-     * If set to `"inherit"`, the current `hrtime` permission will be inherited.
-     * If set to `true`, the global `hrtime` permission will be requested.
-     * If set to `false`, the global `hrtime` permission will be revoked.
-     *
-     * @default {false}
-     */
-    hrtime?: "inherit" | boolean;
-
     /** Specifies if the `net` permission should be requested or revoked.
      * if set to `"inherit"`, the current `net` permission will be inherited.
      * if set to `true`, the global `net` permission will be requested.
@@ -1842,57 +1833,6 @@ declare namespace Deno {
     seekSync(offset: number | bigint, whence: SeekMode): number;
   }
 
-  /**
-   * Copies from `src` to `dst` until either EOF (`null`) is read from `src` or
-   * an error occurs. It resolves to the number of bytes copied or rejects with
-   * the first error encountered while copying.
-   *
-   * @deprecated This will be removed in Deno 2.0. See the
-   * {@link https://docs.deno.com/runtime/manual/advanced/migrate_deprecations | Deno 1.x to 2.x Migration Guide}
-   * for migration instructions.
-   *
-   * @category I/O
-   *
-   * @param src The source to copy from
-   * @param dst The destination to copy to
-   * @param options Can be used to tune size of the buffer. Default size is 32kB
-   */
-  export function copy(
-    src: Reader,
-    dst: Writer,
-    options?: { bufSize?: number },
-  ): Promise<number>;
-
-  /**
-   * Turns a Reader, `r`, into an async iterator.
-   *
-   * @deprecated This will be removed in Deno 2.0. See the
-   * {@link https://docs.deno.com/runtime/manual/advanced/migrate_deprecations | Deno 1.x to 2.x Migration Guide}
-   * for migration instructions.
-   *
-   * @category I/O
-   */
-  export function iter(
-    r: Reader,
-    options?: { bufSize?: number },
-  ): AsyncIterableIterator<Uint8Array>;
-
-  /**
-   * Turns a ReaderSync, `r`, into an iterator.
-   *
-   * @deprecated This will be removed in Deno 2.0. See the
-   * {@link https://docs.deno.com/runtime/manual/advanced/migrate_deprecations | Deno 1.x to 2.x Migration Guide}
-   * for migration instructions.
-   *
-   * @category I/O
-   */
-  export function iterSync(
-    r: ReaderSync,
-    options?: {
-      bufSize?: number;
-    },
-  ): IterableIterator<Uint8Array>;
-
   /** Open a file and resolve to an instance of {@linkcode Deno.FsFile}. The
    * file does not need to previously exist if using the `create` or `createNew`
    * open options. The caller may have the resulting file automatically closed
@@ -2264,33 +2204,6 @@ declare namespace Deno {
    * @category File System
    */
   export function fdatasyncSync(rid: number): void;
-
-  /** Close the given resource ID (`rid`) which has been previously opened, such
-   * as via opening or creating a file. Closing a file when you are finished
-   * with it is important to avoid leaking resources.
-   *
-   * ```ts
-   * const file = await Deno.open("my_file.txt");
-   * // do work with "file" object
-   * Deno.close(file.rid);
-   * ```
-   *
-   * It is recommended to define the variable with the `using` keyword so the
-   * runtime will automatically close the resource when it goes out of scope.
-   * Doing so negates the need to manually close the resource.
-   *
-   * ```ts
-   * using file = await Deno.open("my_file.txt");
-   * // do work with "file" object
-   * ```
-   *
-   * @deprecated This will be removed in Deno 2.0. See the
-   * {@link https://docs.deno.com/runtime/manual/advanced/migrate_deprecations | Deno 1.x to 2.x Migration Guide}
-   * for migration instructions.
-   *
-   * @category I/O
-   */
-  export function close(rid: number): void;
 
   /** The Deno abstraction for reading and writing files.
    *
@@ -4798,8 +4711,7 @@ declare namespace Deno {
     | "net"
     | "env"
     | "sys"
-    | "ffi"
-    | "hrtime";
+    | "ffi";
 
   /** The current status of the permission:
    *
@@ -4930,17 +4842,6 @@ declare namespace Deno {
     path?: string | URL;
   }
 
-  /** The permission descriptor for the `allow-hrtime` and `deny-hrtime` permissions, which
-   * controls if the runtime code has access to high resolution time. High
-   * resolution time is considered sensitive information, because it can be used
-   * by malicious code to gain information about the host that it might not
-   * otherwise have access to.
-   *
-   * @category Permissions */
-  export interface HrtimePermissionDescriptor {
-    name: "hrtime";
-  }
-
   /** Permission descriptors which define a permission and can be queried,
    * requested, or revoked.
    *
@@ -4956,8 +4857,7 @@ declare namespace Deno {
     | NetPermissionDescriptor
     | EnvPermissionDescriptor
     | SysPermissionDescriptor
-    | FfiPermissionDescriptor
-    | HrtimePermissionDescriptor;
+    | FfiPermissionDescriptor;
 
   /** The interface which defines what event types are supported by
    * {@linkcode PermissionStatus} instances.
@@ -5272,19 +5172,6 @@ declare namespace Deno {
    * @category Runtime
    */
   export const args: string[];
-
-  /**
-   * A symbol which can be used as a key for a custom method which will be
-   * called when `Deno.inspect()` is called, or when the object is logged to
-   * the console.
-   *
-   * @deprecated This will be removed in Deno 2.0. See the
-   * {@link https://docs.deno.com/runtime/manual/advanced/migrate_deprecations | Deno 1.x to 2.x Migration Guide}
-   * for migration instructions.
-   *
-   * @category I/O
-   */
-  export const customInspect: unique symbol;
 
   /** The URL of the entrypoint module entered from the command-line. It
    * requires read permission to the CWD.
@@ -5734,7 +5621,7 @@ declare namespace Deno {
    *
    * @category Network
    */
-  export interface CAARecord {
+  export interface CaaRecord {
     /** If `true`, indicates that the corresponding property tag **must** be
      * understood if the semantics of the CAA record are to be correctly
      * interpreted by an issuer.
@@ -5754,7 +5641,7 @@ declare namespace Deno {
    * specified, it will return an array of objects with this interface.
    *
    * @category Network */
-  export interface MXRecord {
+  export interface MxRecord {
     /** A priority value, which is a relative value compared to the other
      * preferences of MX records for the domain. */
     preference: number;
@@ -5766,7 +5653,7 @@ declare namespace Deno {
    * specified, it will return an array of objects with this interface.
    *
    * @category Network */
-  export interface NAPTRRecord {
+  export interface NaptrRecord {
     order: number;
     preference: number;
     flags: string;
@@ -5779,7 +5666,7 @@ declare namespace Deno {
    * specified, it will return an array of objects with this interface.
    *
    * @category Network */
-  export interface SOARecord {
+  export interface SoaRecord {
     mname: string;
     rname: string;
     serial: number;
@@ -5794,7 +5681,7 @@ declare namespace Deno {
    *
    * @category Network
    */
-  export interface SRVRecord {
+  export interface SrvRecord {
     priority: number;
     weight: number;
     port: number;
@@ -5859,7 +5746,7 @@ declare namespace Deno {
     query: string,
     recordType: "CAA",
     options?: ResolveDnsOptions,
-  ): Promise<CAARecord[]>;
+  ): Promise<CaaRecord[]>;
 
   /**
    * Performs DNS resolution against the given query, returning resolved
@@ -5889,7 +5776,7 @@ declare namespace Deno {
     query: string,
     recordType: "MX",
     options?: ResolveDnsOptions,
-  ): Promise<MXRecord[]>;
+  ): Promise<MxRecord[]>;
 
   /**
    * Performs DNS resolution against the given query, returning resolved
@@ -5919,7 +5806,7 @@ declare namespace Deno {
     query: string,
     recordType: "NAPTR",
     options?: ResolveDnsOptions,
-  ): Promise<NAPTRRecord[]>;
+  ): Promise<NaptrRecord[]>;
 
   /**
    * Performs DNS resolution against the given query, returning resolved
@@ -5949,7 +5836,7 @@ declare namespace Deno {
     query: string,
     recordType: "SOA",
     options?: ResolveDnsOptions,
-  ): Promise<SOARecord[]>;
+  ): Promise<SoaRecord[]>;
 
   /**
    * Performs DNS resolution against the given query, returning resolved
@@ -5979,7 +5866,7 @@ declare namespace Deno {
     query: string,
     recordType: "SRV",
     options?: ResolveDnsOptions,
-  ): Promise<SRVRecord[]>;
+  ): Promise<SrvRecord[]>;
 
   /**
    * Performs DNS resolution against the given query, returning resolved
@@ -6041,11 +5928,11 @@ declare namespace Deno {
     options?: ResolveDnsOptions,
   ): Promise<
     | string[]
-    | CAARecord[]
-    | MXRecord[]
-    | NAPTRRecord[]
-    | SOARecord[]
-    | SRVRecord[]
+    | CaaRecord[]
+    | MxRecord[]
+    | NaptrRecord[]
+    | SoaRecord[]
+    | SrvRecord[]
     | string[][]
   >;
 
@@ -6095,9 +5982,11 @@ declare namespace Deno {
    *
    * @category HTTP Server
    */
-  export interface ServeHandlerInfo {
+  export interface ServeHandlerInfo<Addr extends Deno.Addr = Deno.Addr> {
     /** The remote address of the connection. */
-    remoteAddr: Deno.NetAddr;
+    remoteAddr: Addr;
+    /** The completion promise */
+    completed: Promise<void>;
   }
 
   /** A handler for HTTP requests. Consumes a request and returns a response.
@@ -6108,9 +5997,9 @@ declare namespace Deno {
    *
    * @category HTTP Server
    */
-  export type ServeHandler = (
+  export type ServeHandler<Addr extends Deno.Addr = Deno.Addr> = (
     request: Request,
-    info: ServeHandlerInfo,
+    info: ServeHandlerInfo<Addr>,
   ) => Response | Promise<Response>;
 
   /** Interface that module run with `deno serve` subcommand must conform to.
@@ -6146,7 +6035,27 @@ declare namespace Deno {
    *
    * @category HTTP Server
    */
-  export interface ServeOptions {
+  export interface ServeOptions<Addr extends Deno.Addr = Deno.Addr> {
+    /** An {@linkcode AbortSignal} to close the server and all connections. */
+    signal?: AbortSignal;
+
+    /** The handler to invoke when route handlers throw an error. */
+    onError?: (error: unknown) => Response | Promise<Response>;
+
+    /** The callback which is called when the server starts listening. */
+    onListen?: (localAddr: Addr) => void;
+  }
+
+  /**
+   * Options that can be passed to `Deno.serve` to create a server listening on
+   * a TCP port.
+   *
+   * @category HTTP Server
+   */
+  export interface ServeTcpOptions extends ServeOptions<Deno.NetAddr> {
+    /** The transport to use. */
+    transport?: "tcp";
+
     /** The port to listen on.
      *
      * Set to `0` to listen on any available port.
@@ -6164,109 +6073,37 @@ declare namespace Deno {
      * @default {"0.0.0.0"} */
     hostname?: string;
 
-    /** An {@linkcode AbortSignal} to close the server and all connections. */
-    signal?: AbortSignal;
-
     /** Sets `SO_REUSEPORT` on POSIX systems. */
     reusePort?: boolean;
-
-    /** The handler to invoke when route handlers throw an error. */
-    onError?: (error: unknown) => Response | Promise<Response>;
-
-    /** The callback which is called when the server starts listening. */
-    onListen?: (localAddr: Deno.NetAddr) => void;
   }
 
-  /** Additional options which are used when opening a TLS (HTTPS) server.
+  /**
+   * Options that can be passed to `Deno.serve` to create a server listening on
+   * a Unix domain socket.
    *
    * @category HTTP Server
    */
-  export interface ServeTlsOptions extends ServeOptions {
-    /**
-     * Server private key in PEM format. Use {@linkcode TlsCertifiedKeyOptions} instead.
-     *
-     * @deprecated This will be removed in Deno 2.0. See the
-     * {@link https://docs.deno.com/runtime/manual/advanced/migrate_deprecations | Deno 1.x to 2.x Migration Guide}
-     * for migration instructions.
-     */
-    cert?: string;
+  export interface ServeUnixOptions extends ServeOptions<Deno.UnixAddr> {
+    /** The transport to use. */
+    transport?: "unix";
 
-    /**
-     * Cert chain in PEM format.  Use {@linkcode TlsCertifiedKeyOptions} instead.
-     *
-     * @deprecated This will be removed in Deno 2.0. See the
-     * {@link https://docs.deno.com/runtime/manual/advanced/migrate_deprecations | Deno 1.x to 2.x Migration Guide}
-     * for migration instructions.
-     */
-    key?: string;
-  }
-
-  /**
-   * @category HTTP Server
-   */
-  export interface ServeInit {
-    /** The handler to invoke to process each incoming request. */
-    handler: ServeHandler;
-  }
-
-  /**
-   * @category HTTP Server
-   */
-  export interface ServeTlsInit {
-    /** The handler to invoke to process each incoming request. */
-    handler: ServeHandler;
-  }
-
-  /** @category HTTP Server */
-  export interface ServeUnixOptions {
     /** The unix domain socket path to listen on. */
     path: string;
-
-    /** An {@linkcode AbortSignal} to close the server and all connections. */
-    signal?: AbortSignal;
-
-    /** The handler to invoke when route handlers throw an error. */
-    onError?: (error: unknown) => Response | Promise<Response>;
-
-    /** The callback which is called when the server starts listening. */
-    onListen?: (localAddr: Deno.UnixAddr) => void;
   }
-
-  /** Information for a unix domain socket HTTP request.
-   *
-   * @category HTTP Server
-   */
-  export interface ServeUnixHandlerInfo {
-    /** The remote address of the connection. */
-    remoteAddr: Deno.UnixAddr;
-  }
-
-  /** A handler for unix domain socket HTTP requests. Consumes a request and returns a response.
-   *
-   * If a handler throws, the server calling the handler will assume the impact
-   * of the error is isolated to the individual request. It will catch the error
-   * and if necessary will close the underlying connection.
-   *
-   * @category HTTP Server
-   */
-  export type ServeUnixHandler = (
-    request: Request,
-    info: ServeUnixHandlerInfo,
-  ) => Response | Promise<Response>;
 
   /**
    * @category HTTP Server
    */
-  export interface ServeUnixInit {
+  export interface ServeInit<Addr extends Deno.Addr = Deno.Addr> {
     /** The handler to invoke to process each incoming request. */
-    handler: ServeUnixHandler;
+    handler: ServeHandler<Addr>;
   }
 
   /** An instance of the server created using `Deno.serve()` API.
    *
    * @category HTTP Server
    */
-  export interface HttpServer<A extends Deno.Addr = Deno.Addr>
+  export interface HttpServer<Addr extends Deno.Addr = Deno.Addr>
     extends AsyncDisposable {
     /** A promise that resolves once server finishes - eg. when aborted using
      * the signal passed to {@linkcode ServeOptions.signal}.
@@ -6274,7 +6111,7 @@ declare namespace Deno {
     finished: Promise<void>;
 
     /** The local address this server is listening on. */
-    addr: A;
+    addr: Addr;
 
     /**
      * Make the server block the event loop from finishing.
@@ -6293,15 +6130,6 @@ declare namespace Deno {
     shutdown(): Promise<void>;
   }
 
-  /**
-   * @category HTTP Server
-   *
-   * @deprecated This will be removed in Deno 2.0. See the
-   * {@link https://docs.deno.com/runtime/manual/advanced/migrate_deprecations | Deno 1.x to 2.x Migration Guide}
-   * for migration instructions.
-   */
-  export type Server = HttpServer;
-
   /** Serves HTTP requests with the given handler.
    *
    * The below example serves with the port `8000` on hostname `"127.0.0.1"`.
@@ -6312,7 +6140,9 @@ declare namespace Deno {
    *
    * @category HTTP Server
    */
-  export function serve(handler: ServeHandler): HttpServer<Deno.NetAddr>;
+  export function serve(
+    handler: ServeHandler<Deno.NetAddr>,
+  ): HttpServer<Deno.NetAddr>;
   /** Serves HTTP requests with the given option bag and handler.
    *
    * You can specify the socket path with `path` option.
@@ -6360,7 +6190,7 @@ declare namespace Deno {
    */
   export function serve(
     options: ServeUnixOptions,
-    handler: ServeUnixHandler,
+    handler: ServeHandler<Deno.UnixAddr>,
   ): HttpServer<Deno.UnixAddr>;
   /** Serves HTTP requests with the given option bag and handler.
    *
@@ -6419,70 +6249,10 @@ declare namespace Deno {
    * @category HTTP Server
    */
   export function serve(
-    options: ServeOptions,
-    handler: ServeHandler,
-  ): HttpServer<Deno.NetAddr>;
-  /** Serves HTTP requests with the given option bag and handler.
-   *
-   * You can specify an object with a port and hostname option, which is the
-   * address to listen on. The default is port `8000` on hostname `"127.0.0.1"`.
-   *
-   * You can change the address to listen on using the `hostname` and `port`
-   * options. The below example serves on port `3000` and hostname `"0.0.0.0"`.
-   *
-   * ```ts
-   * Deno.serve(
-   *   { port: 3000, hostname: "0.0.0.0" },
-   *   (_req) => new Response("Hello, world")
-   * );
-   * ```
-   *
-   * You can stop the server with an {@linkcode AbortSignal}. The abort signal
-   * needs to be passed as the `signal` option in the options bag. The server
-   * aborts when the abort signal is aborted. To wait for the server to close,
-   * await the promise returned from the `Deno.serve` API.
-   *
-   * ```ts
-   * const ac = new AbortController();
-   *
-   * const server = Deno.serve(
-   *    { signal: ac.signal },
-   *    (_req) => new Response("Hello, world")
-   * );
-   * server.finished.then(() => console.log("Server closed"));
-   *
-   * console.log("Closing server...");
-   * ac.abort();
-   * ```
-   *
-   * By default `Deno.serve` prints the message
-   * `Listening on http://<hostname>:<port>/` on listening. If you like to
-   * change this behavior, you can specify a custom `onListen` callback.
-   *
-   * ```ts
-   * Deno.serve({
-   *   onListen({ port, hostname }) {
-   *     console.log(`Server started at http://${hostname}:${port}`);
-   *     // ... more info specific to your server ..
-   *   },
-   * }, (_req) => new Response("Hello, world"));
-   * ```
-   *
-   * To enable TLS you must specify the `key` and `cert` options.
-   *
-   * ```ts
-   * const cert = "-----BEGIN CERTIFICATE-----\n...\n-----END CERTIFICATE-----\n";
-   * const key = "-----BEGIN PRIVATE KEY-----\n...\n-----END PRIVATE KEY-----\n";
-   * Deno.serve({ cert, key }, (_req) => new Response("Hello, world"));
-   * ```
-   *
-   * @category HTTP Server
-   */
-  export function serve(
     options:
-      | ServeTlsOptions
-      | (ServeTlsOptions & TlsCertifiedKeyOptions),
-    handler: ServeHandler,
+      | ServeTcpOptions
+      | (ServeTcpOptions & TlsCertifiedKeyOptions),
+    handler: ServeHandler<Deno.NetAddr>,
   ): HttpServer<Deno.NetAddr>;
   /** Serves HTTP requests with the given option bag.
    *
@@ -6509,7 +6279,7 @@ declare namespace Deno {
    * @category HTTP Server
    */
   export function serve(
-    options: ServeUnixInit & ServeUnixOptions,
+    options: ServeUnixOptions & ServeInit<Deno.UnixAddr>,
   ): HttpServer<Deno.UnixAddr>;
   /** Serves HTTP requests with the given option bag.
    *
@@ -6538,40 +6308,7 @@ declare namespace Deno {
    */
   export function serve(
     options:
-      & ServeInit
-      & ServeOptions,
-  ): HttpServer<Deno.NetAddr>;
-  /** Serves HTTP requests with the given option bag.
-   *
-   * You can specify an object with a port and hostname option, which is the
-   * address to listen on. The default is port `8000` on hostname `"127.0.0.1"`.
-   *
-   * ```ts
-   * const ac = new AbortController();
-   *
-   * const server = Deno.serve({
-   *   port: 3000,
-   *   hostname: "0.0.0.0",
-   *   handler: (_req) => new Response("Hello, world"),
-   *   signal: ac.signal,
-   *   onListen({ port, hostname }) {
-   *     console.log(`Server started at http://${hostname}:${port}`);
-   *   },
-   * });
-   * server.finished.then(() => console.log("Server closed"));
-   *
-   * console.log("Closing server...");
-   * ac.abort();
-   * ```
-   *
-   * @category HTTP Server
-   */
-  export function serve(
-    options:
-      & ServeTlsInit
-      & (
-        | ServeTlsOptions
-        | (ServeTlsOptions & TlsCertifiedKeyOptions)
-      ),
+      & (ServeTcpOptions | (ServeTcpOptions & TlsCertifiedKeyOptions))
+      & ServeInit<Deno.NetAddr>,
   ): HttpServer<Deno.NetAddr>;
 }

@@ -104,8 +104,6 @@ const denoNs = {
   writeAll: buffer.writeAll,
   writeAllSync: buffer.writeAllSync,
   copy: io.copy,
-  iter: io.iter,
-  iterSync: io.iterSync,
   SeekMode: io.SeekMode,
   read(rid, buffer) {
     internals.warnOnDeprecatedApi(
@@ -237,8 +235,6 @@ denoNsUnstableById[unstableIds.ffi] = {
 };
 
 denoNsUnstableById[unstableIds.fs] = {
-  flock: fs.flock,
-  flockSync: fs.flockSync,
   funlock: fs.funlock,
   funlockSync: fs.funlockSync,
   umask: fs.umask,
@@ -287,8 +283,6 @@ const denoNsUnstable = {
   UnsafePointerView: ffi.UnsafePointerView,
   UnsafeFnPointer: ffi.UnsafeFnPointer,
   UnsafeWindowSurface: webgpuSurface.UnsafeWindowSurface,
-  flock: fs.flock,
-  flockSync: fs.flockSync,
   funlock: fs.funlock,
   funlockSync: fs.funlockSync,
   openKv: kv.openKv,
