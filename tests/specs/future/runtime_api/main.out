@@ -1,6 +1,5 @@
 window is undefined
 Deno.Buffer is undefined
-Deno.close is undefined
 Deno.copy is undefined
 Deno.File is undefined
 Deno.fstat is undefined
