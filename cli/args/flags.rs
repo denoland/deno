@@ -1,7 +1,6 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
 use super::flags_net;
-use super::DENO_FUTURE;
 use crate::args::resolve_no_prompt;
 use crate::util::fs::canonicalize_path;
 use clap::builder::styling::AnsiColor;
@@ -40,11 +39,6 @@ use std::num::NonZeroUsize;
 use std::path::Path;
 use std::path::PathBuf;
 use std::str::FromStr;
-
-use crate::args::resolve_no_prompt;
-use crate::util::fs::canonicalize_path;
-
-use super::flags_net;
 
 #[derive(Clone, Debug, Default, Eq, PartialEq)]
 pub enum ConfigFlag {
@@ -4477,7 +4471,7 @@ fn run_parse(
   app: Command,
   bare: bool,
 ) -> clap::error::Result<()> {
-  runtime_args_parse(flags, matches, true, true);
+  runtime_args_parse(flags, matches, true, true)?;
   ext_arg_parse(flags, matches);
 
   flags.code_cache_enabled = !matches.get_flag("no-code-cache");
