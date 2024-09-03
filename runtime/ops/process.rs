@@ -33,6 +33,8 @@ use std::os::unix::prelude::ExitStatusExt;
 #[cfg(unix)]
 use std::os::unix::process::CommandExt;
 
+pub const UNSTABLE_FEATURE_NAME: &str = "process";
+
 #[derive(Copy, Clone, Eq, PartialEq, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum Stdio {
