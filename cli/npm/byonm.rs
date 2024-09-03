@@ -17,6 +17,7 @@ use deno_runtime::deno_node::NodeRequireResolver;
 use deno_runtime::deno_node::NpmProcessStateProvider;
 use deno_runtime::deno_node::PackageJson;
 use deno_semver::package::PackageReq;
+use deno_semver::Version;
 use node_resolver::errors::PackageFolderResolveError;
 use node_resolver::errors::PackageFolderResolveIoError;
 use node_resolver::errors::PackageJsonLoadError;
@@ -60,9 +61,7 @@ impl ByonmCliNpmResolver {
   ) -> Result<Option<Arc<PackageJson>>, PackageJsonLoadError> {
     load_pkg_json(&DenoPkgJsonFsAdapter(self.fs.as_ref()), path)
   }
-}
 
-impl ByonmCliNpmResolver {
   /// Finds the ancestor package.json that contains the specified dependency.
   pub fn find_ancestor_package_json_with_dep(
     &self,
@@ -98,7 +97,7 @@ impl ByonmCliNpmResolver {
     &self,
     req: &PackageReq,
     referrer: &ModuleSpecifier,
-  ) -> Result<(Arc<PackageJson>, String), AnyError> {
+  ) -> Result<Option<(Arc<PackageJson>, String)>, AnyError> {
     fn resolve_alias_from_pkg_json(
       req: &PackageReq,
       pkg_json: &PackageJson,
@@ -134,7 +133,7 @@ impl ByonmCliNpmResolver {
           if let Some(alias) =
             resolve_alias_from_pkg_json(req, pkg_json.as_ref())
           {
-            return Ok((pkg_json, alias));
+            return Ok(Some((pkg_json, alias)));
           }
         }
         current_path = dir_path;
@@ -148,19 +147,55 @@ impl ByonmCliNpmResolver {
       if let Some(pkg_json) = self.load_pkg_json(&root_pkg_json_path)? {
         if let Some(alias) = resolve_alias_from_pkg_json(req, pkg_json.as_ref())
         {
-          return Ok((pkg_json, alias));
+          return Ok(Some((pkg_json, alias)));
         }
       }
     }
 
-    bail!(
-      concat!(
-        "Could not find a matching package for 'npm:{}' in a package.json file. ",
-        "You must specify this as a package.json dependency when the ",
-        "node_modules folder is not managed by Deno.",
-      ),
-      req,
-    );
+    Ok(None)
+  }
+
+  fn resolve_folder_in_root_node_modules(
+    &self,
+    req: &PackageReq,
+  ) -> Option<PathBuf> {
+    // now check if node_modules/.deno/ matches this constraint
+    let root_node_modules_dir = self.root_node_modules_dir.as_ref()?;
+    let node_modules_deno_dir = root_node_modules_dir.join(".deno");
+    let Ok(entries) = self.fs.read_dir_sync(&node_modules_deno_dir) else {
+      return None;
+    };
+    let search_prefix = format!("{}@", req.name.replace("/", "+"));
+    let mut best_version = None;
+
+    // example entry: @denotest+add@1.0.0
+    for entry in entries {
+      if !entry.is_directory {
+        continue;
+      }
+      let Some(version) = entry.name.strip_prefix(&search_prefix) else {
+        continue;
+      };
+      let Ok(version) = Version::parse_from_npm(version) else {
+        continue;
+      };
+      if req.version_req.matches(&version) {
+        if let Some((best_version_version, _)) = &best_version {
+          if version > *best_version_version {
+            best_version = Some((version, entry.name));
+          }
+        } else {
+          best_version = Some((version, entry.name));
+        }
+      }
+    }
+
+    best_version.map(|(_version, entry_name)| {
+      join_package_name(
+        &node_modules_deno_dir.join(entry_name).join("node_modules"),
+        &req.name,
+      )
+    })
   }
 }
 
@@ -306,24 +341,44 @@ impl CliNpmResolver for ByonmCliNpmResolver {
     }
 
     // now attempt to resolve if it's found in any package.json
-    let (pkg_json, alias) =
+    let maybe_pkg_json_and_alias =
       self.resolve_pkg_json_and_alias_for_req(req, referrer)?;
-    // now try node resolution
-    if let Some(resolved) =
-      node_resolve_dir(self.fs.as_ref(), &alias, pkg_json.dir_path())?
-    {
-      return Ok(resolved);
-    }
+    match maybe_pkg_json_and_alias {
+      Some((pkg_json, alias)) => {
+        // now try node resolution
+        if let Some(resolved) =
+          node_resolve_dir(self.fs.as_ref(), &alias, pkg_json.dir_path())?
+        {
+          return Ok(resolved);
+        }
 
-    // todo(dsherret): improve this error message
-    bail!(
-      concat!(
-        "Could not find \"{}\" in a node_modules folder. ",
-        "Deno expects the node_modules/ directory to be up to date. ",
-        "Did you forget to run `deno install`?"
-      ),
-      alias,
-    );
+        bail!(
+          concat!(
+            "Could not find \"{}\" in a node_modules folder. ",
+            "Deno expects the node_modules/ directory to be up to date. ",
+            "Did you forget to run `deno install`?"
+          ),
+          alias,
+        );
+      }
+      None => {
+        // now check if node_modules/.deno/ matches this constraint
+        if let Some(folder) = self.resolve_folder_in_root_node_modules(req) {
+          return Ok(folder);
+        }
+
+        bail!(
+          concat!(
+            "Could not find a matching package for 'npm:{}' in the node_modules ",
+            "directory. Ensure you have all your JSR and npm dependencies listed ",
+            "in your deno.json or package.json, then run `deno install`. Alternatively, ",
+            "turn on auto-install by specifying `\"nodeModulesDir\": \"auto\"` in your ",
+            "deno.json file."
+          ),
+          req,
+        );
+      }
+    }
   }
 
   fn check_state_hash(&self) -> Option<u64> {
