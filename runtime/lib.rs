@@ -72,13 +72,13 @@ pub static UNSTABLE_GRANULAR_FLAGS: &[UnstableGranularFlag] = &[
   UnstableGranularFlag {
     name: deno_ffi::UNSTABLE_FEATURE_NAME,
     help_text: "Enable unstable FFI APIs",
-    show_in_help: true,
+    show_in_help: false,
     id: 3,
   },
   UnstableGranularFlag {
     name: deno_fs::UNSTABLE_FEATURE_NAME,
     help_text: "Enable unstable file system APIs",
-    show_in_help: true,
+    show_in_help: false,
     id: 4,
   },
   UnstableGranularFlag {
@@ -123,7 +123,7 @@ pub static UNSTABLE_GRANULAR_FLAGS: &[UnstableGranularFlag] = &[
   UnstableGranularFlag {
     name: deno_webgpu::UNSTABLE_FEATURE_NAME,
     help_text: "Enable unstable `WebGPU` API",
-    show_in_help: true,
+    show_in_help: false,
     id: 11,
   },
   UnstableGranularFlag {

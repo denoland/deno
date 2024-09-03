@@ -3848,15 +3848,9 @@ impl Iterator for UnstableArgsIter {
     } else if self.idx == 2 {
       Arg::new("unstable-byonm")
         .long("unstable-byonm")
-        .help("Enable unstable 'bring your own node_modules' feature")
         .value_parser(FalseyValueParser::new())
         .action(ArgAction::SetTrue)
         .hide(true)
-        .long_help(match self.cfg {
-          UnstableArgsConfig::None => None,
-          UnstableArgsConfig::ResolutionOnly
-          | UnstableArgsConfig::ResolutionAndRuntime => Some("true"),
-        })
         .help_heading(UNSTABLE_HEADING)
     } else if self.idx == 3 {
       Arg::new("unstable-sloppy-imports")
