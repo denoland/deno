@@ -26,7 +26,6 @@ use deno_graph::ModuleLoadError;
 use deno_graph::WorkspaceFastCheckOption;
 use deno_runtime::fs_util::specifier_to_file_path;
 
-use deno_core::anyhow::bail;
 use deno_core::error::custom_error;
 use deno_core::error::AnyError;
 use deno_core::parking_lot::Mutex;
@@ -35,7 +34,6 @@ use deno_graph::source::Loader;
 use deno_graph::source::ResolutionMode;
 use deno_graph::source::ResolveError;
 use deno_graph::GraphKind;
-use deno_graph::Module;
 use deno_graph::ModuleError;
 use deno_graph::ModuleGraph;
 use deno_graph::ModuleGraphError;
@@ -44,10 +42,13 @@ use deno_graph::SpecifierError;
 use deno_runtime::deno_fs::FileSystem;
 use deno_runtime::deno_node;
 use deno_runtime::deno_permissions::PermissionsContainer;
+use deno_semver::jsr::JsrDepPackageReq;
 use deno_semver::package::PackageNv;
-use deno_semver::package::PackageReq;
+use deno_semver::Version;
 use import_map::ImportMapError;
 use std::collections::HashSet;
+use std::error::Error;
+use std::ops::Deref;
 use std::path::PathBuf;
 use std::sync::Arc;
 
@@ -110,7 +111,7 @@ pub fn graph_valid(
         ModuleGraphError::ModuleError(error) => {
           enhanced_lockfile_error_message(error)
             .or_else(|| enhanced_sloppy_imports_error_message(fs, error))
-            .unwrap_or_else(|| format!("{}", error))
+            .unwrap_or_else(|| format_deno_graph_error(error))
         }
       };
 
@@ -164,7 +165,10 @@ pub fn graph_valid(
   } else {
     // finally surface the npm resolution result
     if let Err(err) = &graph.npm_dep_graph_result {
-      return Err(custom_error(get_error_class_name(err), format!("{}", err)));
+      return Err(custom_error(
+        get_error_class_name(err),
+        format_deno_graph_error(err.as_ref().deref()),
+      ));
     }
     Ok(())
   }
@@ -463,7 +467,7 @@ impl ModuleGraphBuilder {
           .content
           .packages
           .jsr
-          .get(&package_nv.to_string())
+          .get(package_nv)
           .map(|s| LoaderChecksum::new(s.integrity.clone()))
       }
 
@@ -477,7 +481,7 @@ impl ModuleGraphBuilder {
         self
           .0
           .lock()
-          .insert_package(package_nv.to_string(), checksum.into_string());
+          .insert_package(package_nv.clone(), checksum.into_string());
       }
     }
 
@@ -535,7 +539,12 @@ impl ModuleGraphBuilder {
   ) -> Result<(), AnyError> {
     // ensure an "npm install" is done if the user has explicitly
     // opted into using a node_modules directory
-    if self.options.node_modules_dir_enablement() == Some(true) {
+    if self
+      .options
+      .node_modules_dir()?
+      .map(|m| m.uses_node_modules_dir())
+      .unwrap_or(false)
+    {
       if let Some(npm_resolver) = self.npm_resolver.as_managed() {
         npm_resolver.ensure_top_level_package_json_install().await?;
       }
@@ -556,16 +565,21 @@ impl ModuleGraphBuilder {
             }
           }
         }
-        for (key, value) in &lockfile.content.packages.specifiers {
-          if let Some(key) = key
-            .strip_prefix("jsr:")
-            .and_then(|key| PackageReq::from_str(key).ok())
-          {
-            if let Some(value) = value
-              .strip_prefix("jsr:")
-              .and_then(|value| PackageNv::from_str(value).ok())
-            {
-              graph.packages.add_nv(key, value);
+        for (req_dep, value) in &lockfile.content.packages.specifiers {
+          match req_dep.kind {
+            deno_semver::package::PackageKind::Jsr => {
+              if let Ok(version) = Version::parse_standard(value) {
+                graph.packages.add_nv(
+                  req_dep.req.clone(),
+                  PackageNv {
+                    name: req_dep.req.name.clone(),
+                    version,
+                  },
+                );
+              }
+            }
+            deno_semver::package::PackageKind::Npm => {
+              // ignore
             }
           }
         }
@@ -603,16 +617,15 @@ impl ModuleGraphBuilder {
         if has_jsr_package_mappings_changed {
           for (from, to) in graph.packages.mappings() {
             lockfile.insert_package_specifier(
-              format!("jsr:{}", from),
-              format!("jsr:{}", to),
+              JsrDepPackageReq::jsr(from.clone()),
+              to.version.to_string(),
             );
           }
         }
         // jsr packages
         if has_jsr_package_deps_changed {
-          for (name, deps) in graph.packages.packages_with_deps() {
-            lockfile
-              .add_package_deps(&name.to_string(), deps.map(|s| s.to_string()));
+          for (nv, deps) in graph.packages.packages_with_deps() {
+            lockfile.add_package_deps(nv, deps.cloned());
           }
         }
       }
@@ -707,26 +720,9 @@ impl ModuleGraphBuilder {
   }
 }
 
-pub fn error_for_any_npm_specifier(
-  graph: &ModuleGraph,
-) -> Result<(), AnyError> {
-  for module in graph.modules() {
-    match module {
-      Module::Npm(module) => {
-        bail!("npm specifiers have not yet been implemented for this subcommand (https://github.com/denoland/deno/issues/15960). Found: {}", module.specifier)
-      }
-      Module::Node(module) => {
-        bail!("Node specifiers have not yet been implemented for this subcommand (https://github.com/denoland/deno/issues/15960). Found: node:{}", module.module_name)
-      }
-      Module::Js(_) | Module::Json(_) | Module::External(_) => {}
-    }
-  }
-  Ok(())
-}
-
 /// Adds more explanatory information to a resolution error.
 pub fn enhanced_resolution_error_message(error: &ResolutionError) -> String {
-  let mut message = format!("{error}");
+  let mut message = format_deno_graph_error(error);
 
   if let Some(specifier) = get_resolution_error_bare_node_specifier(error) {
     if !*DENO_DISABLE_PEDANTIC_NODE_WARNINGS {
@@ -1020,6 +1016,49 @@ impl deno_graph::source::JsrUrlProvider for CliJsrUrlProvider {
   fn url(&self) -> &'static ModuleSpecifier {
     jsr_url()
   }
+}
+
+// todo(dsherret): We should change ModuleError to use thiserror so that
+// we don't need to do this.
+fn format_deno_graph_error(err: &dyn Error) -> String {
+  use std::fmt::Write;
+
+  let mut message = format!("{}", err);
+  let mut maybe_source = err.source();
+
+  if maybe_source.is_some() {
+    let mut past_message = message.clone();
+    let mut count = 0;
+    let mut display_count = 0;
+    while let Some(source) = maybe_source {
+      let current_message = format!("{}", source);
+      maybe_source = source.source();
+
+      // sometimes an error might be repeated due to
+      // being boxed multiple times in another AnyError
+      if current_message != past_message {
+        write!(message, "\n    {}: ", display_count,).unwrap();
+        for (i, line) in current_message.lines().enumerate() {
+          if i > 0 {
+            write!(message, "\n       {}", line).unwrap();
+          } else {
+            write!(message, "{}", line).unwrap();
+          }
+        }
+        display_count += 1;
+      }
+
+      if count > 8 {
+        write!(message, "\n    {}: ...", count).unwrap();
+        break;
+      }
+
+      past_message = current_message;
+      count += 1;
+    }
+  }
+
+  message
 }
 
 #[cfg(test)]

@@ -11,7 +11,6 @@ const fetchProc = await new Deno.Command(Deno.execPath(), {
     "cache",
     "--reload",
     "--lock=lock_write_fetch.json",
-    "--lock-write",
     "--cert=tls/RootCA.pem",
     "run/https_import.ts",
   ],
@@ -40,13 +39,13 @@ const runProc = await new Deno.Command(Deno.execPath(), {
   args: [
     "run",
     "--lock=lock_write_fetch.json",
-    "--lock-write",
     "--allow-read",
-    "run/lock_write_fetch/file_exists.ts",
-    "lock_write_fetch.json",
+    "--cert=tls/RootCA.pem",
+    "run/https_import.ts",
   ],
 }).output();
 
 console.log(`run code: ${runProc.code}`);
 
+await Deno.stat("./lock_write_fetch.json");
 Deno.removeSync("./lock_write_fetch.json");

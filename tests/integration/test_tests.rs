@@ -6,7 +6,7 @@ use test_util as util;
 use test_util::itest;
 use util::assert_contains;
 use util::assert_not_contains;
-use util::env_vars_for_npm_tests;
+// use util::env_vars_for_npm_tests;
 use util::wildcard_match;
 use util::TestContext;
 use util::TestContextBuilder;
@@ -154,18 +154,6 @@ itest!(parallel_flag_with_env_variable {
   output: "test/short-pass.out",
 });
 
-itest!(jobs_flag {
-  args: "test test/short-pass.ts --jobs",
-  exit_code: 0,
-  output: "test/short-pass-jobs-flag-warning.out",
-});
-
-itest!(jobs_flag_with_numeric_value {
-  args: "test test/short-pass.ts --jobs=2",
-  exit_code: 0,
-  output: "test/short-pass-jobs-flag-warning.out",
-});
-
 itest!(load_unload {
   args: "test test/load_unload.ts",
   exit_code: 0,
@@ -263,7 +251,7 @@ itest!(allow_none {
 });
 
 itest!(ops_sanitizer_unstable {
-  args: "test --trace-ops test/sanitizer/ops_sanitizer_unstable.ts",
+  args: "test --trace-leaks test/sanitizer/ops_sanitizer_unstable.ts",
   exit_code: 1,
   output: "test/sanitizer/ops_sanitizer_unstable.out",
 });
@@ -617,15 +605,16 @@ fn sigint_with_hanging_test() {
   );
 }
 
-itest!(package_json_basic {
-  args: "test",
-  output: "package_json/basic/lib.test.out",
-  envs: env_vars_for_npm_tests(),
-  http_server: true,
-  cwd: Some("package_json/basic"),
-  copy_temp_dir: Some("package_json/basic"),
-  exit_code: 0,
-});
+// TODO(2.0): this should be rewritten to a spec test and first run `deno install`
+// itest!(package_json_basic {
+//   args: "test",
+//   output: "package_json/basic/lib.test.out",
+//   envs: env_vars_for_npm_tests(),
+//   http_server: true,
+//   cwd: Some("package_json/basic"),
+//   copy_temp_dir: Some("package_json/basic"),
+//   exit_code: 0,
+// });
 
 itest!(test_replace_timers {
   args: "test test/replace_timers.js",

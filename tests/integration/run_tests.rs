@@ -153,11 +153,6 @@ itest!(_023_no_ext {
   output: "run/023_no_ext.out",
 });
 
-itest!(_025_hrtime {
-  args: "run --quiet --allow-hrtime --reload run/025_hrtime.ts",
-  output: "run/025_hrtime.ts.out",
-});
-
 itest!(_025_reload_js_type_error {
   args: "run --quiet --reload run/025_reload_js_type_error.js",
   output: "run/025_reload_js_type_error.js.out",
@@ -501,6 +496,10 @@ itest!(_088_dynamic_import_already_evaluating {
 // TODO(bartlomieju): remove --unstable once Deno.Command is stabilized
 itest!(_089_run_allow_list {
   args: "run --unstable --allow-run=curl run/089_run_allow_list.ts",
+  envs: vec![
+    ("LD_LIBRARY_PATH".to_string(), "".to_string()),
+    ("DYLD_FALLBACK_LIBRARY_PATH".to_string(), "".to_string())
+  ],
   output: "run/089_run_allow_list.ts.out",
 });
 
@@ -731,12 +730,12 @@ fn permission_request_long() {
 }
 
 itest!(deny_all_permission_args {
-  args: "run --deny-env --deny-read --deny-write --deny-ffi --deny-run --deny-sys --deny-net --deny-hrtime run/deny_all_permission_args.js",
+  args: "run --deny-env --deny-read --deny-write --deny-ffi --deny-run --deny-sys --deny-net run/deny_all_permission_args.js",
   output: "run/deny_all_permission_args.out",
 });
 
 itest!(deny_some_permission_args {
-  args: "run --allow-env --deny-env=FOO --allow-read --deny-read=/foo --allow-write --deny-write=/foo --allow-ffi --deny-ffi=/foo --allow-run --deny-run=foo --allow-sys --deny-sys=hostname --allow-net --deny-net=127.0.0.1 --allow-hrtime --deny-hrtime run/deny_some_permission_args.js",
+  args: "run --allow-env --deny-env=FOO --allow-read --deny-read=/foo --allow-write --deny-write=/foo --allow-ffi --deny-ffi=/foo --allow-run --deny-run=foo --allow-sys --deny-sys=hostname --allow-net --deny-net=127.0.0.1 run/deny_some_permission_args.js",
   output: "run/deny_some_permission_args.out",
 });
 
@@ -853,21 +852,6 @@ itest!(lock_v2_check_ok2 {
 });
 
 #[test]
-fn lock_no_declaration_files() {
-  let context = TestContextBuilder::new()
-    .use_temp_cwd()
-    .use_http_server()
-    .build();
-  let output = context
-    .new_command()
-    .args("cache --lock --lock-write $TESTDATA/lockfile/no_dts/main.ts")
-    .run();
-  output.assert_matches_file("lockfile/no_dts/main.cache.out");
-  let lockfile = context.temp_dir().path().join("deno.lock");
-  lockfile.assert_matches_file("lockfile/no_dts/deno.lock.out");
-}
-
-#[test]
 fn lock_redirects() {
   let context = TestContextBuilder::new()
     .use_temp_cwd()
@@ -886,7 +870,7 @@ fn lock_redirects() {
     .run()
     .skip_output_check();
   let initial_lockfile_text = r#"{
-  "version": "3",
+  "version": "4",
   "redirects": {
     "http://localhost:4546/run/001_hello.js": "http://localhost:4545/run/001_hello.js"
   },
@@ -905,7 +889,7 @@ fn lock_redirects() {
 
   // now try changing where the redirect occurs in the lockfile
   temp_dir.write("deno.lock", r#"{
-  "version": "3",
+  "version": "4",
   "redirects": {
     "http://localhost:4546/run/001_hello.js": "http://localhost:4545/echo.ts"
   },
@@ -936,16 +920,13 @@ fn lock_redirects() {
   util::assertions::assert_wildcard_match(
     &temp_dir.read_to_string("deno.lock"),
     r#"{
-  "version": "3",
-  "packages": {
-    "specifiers": {
-      "npm:@denotest/esm-basic": "npm:@denotest/esm-basic@1.0.0"
-    },
-    "npm": {
-      "@denotest/esm-basic@1.0.0": {
-        "integrity": "sha512-[WILDCARD]",
-        "dependencies": {}
-      }
+  "version": "4",
+  "specifiers": {
+    "npm:@denotest/esm-basic@*": "1.0.0"
+  },
+  "npm": {
+    "@denotest/esm-basic@1.0.0": {
+      "integrity": "sha512-[WILDCARD]"
     }
   },
   "redirects": {
@@ -960,7 +941,9 @@ fn lock_redirects() {
   );
 }
 
+// TODO(2.0): this should be rewritten to a spec test and first run `deno install`
 #[test]
+#[ignore]
 fn lock_deno_json_package_json_deps() {
   let context = TestContextBuilder::new()
     .use_temp_cwd()
@@ -990,29 +973,25 @@ fn lock_deno_json_package_json_deps() {
   let esm_basic_integrity =
     get_lockfile_npm_package_integrity(&lockfile, "@denotest/esm-basic@1.0.0");
   lockfile.assert_matches_json(json!({
-    "version": "3",
-    "packages": {
-      "specifiers": {
-        "jsr:@denotest/module-graph@1.4": "jsr:@denotest/module-graph@1.4.0",
-        "npm:@denotest/esm-basic": "npm:@denotest/esm-basic@1.0.0"
-      },
-      "jsr": {
-        "@denotest/module-graph@1.4.0": {
-          "integrity": "32de0973c5fa55772326fcd504a757f386d2b010db3e13e78f3bcf851e69473d"
-        }
-      },
-      "npm": {
-        "@denotest/esm-basic@1.0.0": {
-          "integrity": esm_basic_integrity,
-          "dependencies": {}
-        }
+    "version": "4",
+    "specifiers": {
+      "jsr:@denotest/module-graph@1.4": "1.4.0",
+      "npm:@denotest/esm-basic@*": "1.0.0"
+    },
+    "jsr": {
+      "@denotest/module-graph@1.4.0": {
+        "integrity": "32de0973c5fa55772326fcd504a757f386d2b010db3e13e78f3bcf851e69473d"
       }
     },
-    "remote": {},
+    "npm": {
+      "@denotest/esm-basic@1.0.0": {
+        "integrity": esm_basic_integrity
+      }
+    },
     "workspace": {
       "dependencies": [
         "jsr:@denotest/module-graph@1.4",
-        "npm:@denotest/esm-basic"
+        "npm:@denotest/esm-basic@*"
       ]
     }
   }));
@@ -1042,32 +1021,28 @@ fn lock_deno_json_package_json_deps() {
     .run()
     .skip_output_check();
   lockfile.assert_matches_json(json!({
-    "version": "3",
-    "packages": {
-      "specifiers": {
-        "jsr:@denotest/module-graph@1.4": "jsr:@denotest/module-graph@1.4.0",
-        "npm:@denotest/esm-basic": "npm:@denotest/esm-basic@1.0.0"
-      },
-      "jsr": {
-        "@denotest/module-graph@1.4.0": {
-          "integrity": "32de0973c5fa55772326fcd504a757f386d2b010db3e13e78f3bcf851e69473d"
-        }
-      },
-      "npm": {
-        "@denotest/esm-basic@1.0.0": {
-          "integrity": esm_basic_integrity,
-          "dependencies": {}
-        }
+    "version": "4",
+    "specifiers": {
+      "jsr:@denotest/module-graph@1.4": "1.4.0",
+      "npm:@denotest/esm-basic@*": "1.0.0"
+    },
+    "jsr": {
+      "@denotest/module-graph@1.4.0": {
+        "integrity": "32de0973c5fa55772326fcd504a757f386d2b010db3e13e78f3bcf851e69473d"
       }
     },
-    "remote": {},
+    "npm": {
+      "@denotest/esm-basic@1.0.0": {
+        "integrity": esm_basic_integrity
+      }
+    },
     "workspace": {
       "dependencies": [
         "jsr:@denotest/module-graph@1.4"
       ],
       "packageJson": {
         "dependencies": [
-          "npm:@denotest/esm-basic"
+          "npm:@denotest/esm-basic@*"
         ]
       }
     }
@@ -1083,18 +1058,15 @@ fn lock_deno_json_package_json_deps() {
     .run()
     .skip_output_check();
   lockfile.assert_matches_json(json!({
-    "version": "3",
-    "packages": {
-      "specifiers": {
-        "jsr:@denotest/module-graph@1.4": "jsr:@denotest/module-graph@1.4.0",
-      },
-      "jsr": {
-        "@denotest/module-graph@1.4.0": {
-          "integrity": "32de0973c5fa55772326fcd504a757f386d2b010db3e13e78f3bcf851e69473d"
-        }
+    "version": "4",
+    "specifiers": {
+      "jsr:@denotest/module-graph@1.4": "1.4.0",
+    },
+    "jsr": {
+      "@denotest/module-graph@1.4.0": {
+        "integrity": "32de0973c5fa55772326fcd504a757f386d2b010db3e13e78f3bcf851e69473d"
       }
     },
-    "remote": {},
     "workspace": {
       "dependencies": [
         "jsr:@denotest/module-graph@1.4"
@@ -1112,8 +1084,7 @@ fn lock_deno_json_package_json_deps() {
     .skip_output_check();
 
   lockfile.assert_matches_json(json!({
-    "version": "3",
-    "remote": {}
+    "version": "4"
   }));
 }
 
@@ -1130,7 +1101,7 @@ fn lock_deno_json_package_json_deps_workspace() {
   // deno.json
   let deno_json = temp_dir.join("deno.json");
   deno_json.write_json(&json!({
-    "nodeModulesDir": true
+    "nodeModulesDir": "auto"
   }));
 
   // package.json
@@ -1171,24 +1142,19 @@ fn lock_deno_json_package_json_deps_workspace() {
   );
 
   lockfile.assert_matches_json(json!({
-    "version": "3",
-    "packages": {
-      "specifiers": {
-        "npm:@denotest/cjs-default-export@1": "npm:@denotest/cjs-default-export@1.0.0",
-        "npm:@denotest/esm-basic@1": "npm:@denotest/esm-basic@1.0.0"
+    "version": "4",
+    "specifiers": {
+      "npm:@denotest/cjs-default-export@1": "1.0.0",
+      "npm:@denotest/esm-basic@1": "1.0.0"
+    },
+    "npm": {
+      "@denotest/cjs-default-export@1.0.0": {
+        "integrity": cjs_default_export_integrity
       },
-      "npm": {
-        "@denotest/cjs-default-export@1.0.0": {
-          "integrity": cjs_default_export_integrity,
-          "dependencies": {}
-        },
-        "@denotest/esm-basic@1.0.0": {
-          "integrity": esm_basic_integrity,
-          "dependencies": {}
-        }
+      "@denotest/esm-basic@1.0.0": {
+        "integrity": esm_basic_integrity
       }
     },
-    "remote": {},
     "workspace": {
       "packageJson": {
         "dependencies": [
@@ -1219,24 +1185,19 @@ fn lock_deno_json_package_json_deps_workspace() {
     "@denotest/cjs-default-export@1.0.0",
   );
   let expected_lockfile = json!({
-    "version": "3",
-    "packages": {
-      "specifiers": {
-        "npm:@denotest/cjs-default-export@1": "npm:@denotest/cjs-default-export@1.0.0",
-        "npm:@denotest/esm-basic@1": "npm:@denotest/esm-basic@1.0.0"
+    "version": "4",
+    "specifiers": {
+      "npm:@denotest/cjs-default-export@1": "1.0.0",
+      "npm:@denotest/esm-basic@1": "1.0.0"
+    },
+    "npm": {
+      "@denotest/cjs-default-export@1.0.0": {
+        "integrity": cjs_default_export_integrity
       },
-      "npm": {
-        "@denotest/cjs-default-export@1.0.0": {
-          "integrity": cjs_default_export_integrity,
-          "dependencies": {}
-        },
-        "@denotest/esm-basic@1.0.0": {
-          "integrity": esm_basic_integrity,
-          "dependencies": {}
-        }
+      "@denotest/esm-basic@1.0.0": {
+        "integrity": esm_basic_integrity
       }
     },
-    "remote": {},
     "workspace": {
       "packageJson": {
         "dependencies": [
@@ -1275,8 +1236,6 @@ fn get_lockfile_npm_package_integrity(
   // different hashes depending on what operating system it's running on
   lockfile
     .read_json_value()
-    .get("packages")
-    .unwrap()
     .get("npm")
     .unwrap()
     .get(package_name)
@@ -1839,16 +1798,6 @@ itest!(top_level_for_await_ts {
   output: "run/top_level_await/top_level_for_await.out",
 });
 
-itest!(unstable_disabled_js {
-  args: "run --reload run/unstable.js",
-  output: "run/unstable_disabled_js.out",
-});
-
-itest!(unstable_enabled_js {
-  args: "run --quiet --reload --unstable-fs run/unstable.ts",
-  output: "run/unstable_enabled_js.out",
-});
-
 itest!(unstable_worker {
   args: "run --reload --quiet --allow-read run/unstable_worker.ts",
   output: "run/unstable_worker.ts.out",
@@ -1886,26 +1835,6 @@ itest!(unstable_cron_enabled {
   output: "run/unstable_cron.enabled.out",
 });
 
-itest!(unstable_ffi_disabled {
-  args: "run --quiet --reload --allow-read run/unstable_ffi.js",
-  output: "run/unstable_ffi.disabled.out",
-});
-
-itest!(unstable_ffi_enabled {
-  args: "run --quiet --reload --allow-read --unstable-ffi run/unstable_ffi.js",
-  output: "run/unstable_ffi.enabled.out",
-});
-
-itest!(unstable_fs_disabled {
-  args: "run --quiet --reload --allow-read run/unstable_fs.js",
-  output: "run/unstable_fs.disabled.out",
-});
-
-itest!(unstable_fs_enabled {
-  args: "run --quiet --reload --allow-read --unstable-fs run/unstable_fs.js",
-  output: "run/unstable_fs.enabled.out",
-});
-
 itest!(unstable_http_disabled {
   args: "run --quiet --reload --allow-read run/unstable_http.js",
   output: "run/unstable_http.disabled.out",
@@ -1935,17 +1864,6 @@ itest!(unstable_kv_disabled {
 itest!(unstable_kv_enabled {
   args: "run --quiet --reload --allow-read --unstable-kv run/unstable_kv.js",
   output: "run/unstable_kv.enabled.out",
-});
-
-itest!(unstable_webgpu_disabled {
-  args: "run --quiet --reload --allow-read run/unstable_webgpu.js",
-  output: "run/unstable_webgpu.disabled.out",
-});
-
-itest!(unstable_webgpu_enabled {
-  args:
-    "run --quiet --reload --allow-read --unstable-webgpu run/unstable_webgpu.js",
-  output: "run/unstable_webgpu.enabled.out",
 });
 
 itest!(import_compression {
@@ -2576,8 +2494,8 @@ fn should_not_panic_on_undefined_deno_dir_and_home_environment_variables() {
 }
 
 #[test]
-fn rust_log() {
-  // Without RUST_LOG the stderr is empty.
+fn deno_log() {
+  // Without DENO_LOG the stderr is empty.
   let output = util::deno_cmd()
     .current_dir(util::testdata_path())
     .arg("run")
@@ -2590,12 +2508,12 @@ fn rust_log() {
   assert!(output.status.success());
   assert!(output.stderr.is_empty());
 
-  // With RUST_LOG the stderr is not empty.
+  // With DENO_LOG the stderr is not empty.
   let output = util::deno_cmd()
     .current_dir(util::testdata_path())
     .arg("run")
     .arg("run/001_hello.js")
-    .env("RUST_LOG", "debug")
+    .env("DENO_LOG", "debug")
     .stderr_piped()
     .spawn()
     .unwrap()
@@ -3471,16 +3389,19 @@ itest!(
   }
 );
 
-itest!(package_json_auto_discovered_for_npm_binary {
-  args: "run -L debug -A npm:@denotest/bin/cli-esm this is a test",
-  output: "run/with_package_json/npm_binary/main.out",
-  cwd: Some("run/with_package_json/npm_binary/"),
-  copy_temp_dir: Some("run/with_package_json/"),
-  envs: env_vars_for_npm_tests(),
-  http_server: true,
-});
+// TODO(2.0): this should be rewritten to a spec test and first run `deno install`
+// itest!(package_json_auto_discovered_for_npm_binary {
+//   args: "run -L debug -A npm:@denotest/bin/cli-esm this is a test",
+//   output: "run/with_package_json/npm_binary/main.out",
+//   cwd: Some("run/with_package_json/npm_binary/"),
+//   copy_temp_dir: Some("run/with_package_json/"),
+//   envs: env_vars_for_npm_tests(),
+//   http_server: true,
+// });
 
+// TODO(2.0): this should be rewritten to a spec test and first run `deno install`
 #[test]
+#[ignore]
 fn package_json_with_deno_json() {
   let context = TestContextBuilder::for_npm()
     .use_copy_temp_dir("package_json/deno_json/")
@@ -3502,36 +3423,6 @@ fn package_json_with_deno_json() {
     .run();
   let output = output.combined_output();
   assert_contains!(output, "Skipping top level install.");
-}
-
-#[test]
-fn package_json_error_dep_value_test() {
-  let context = TestContextBuilder::for_npm()
-    .use_copy_temp_dir("package_json/invalid_value")
-    .cwd("package_json/invalid_value")
-    .build();
-
-  // should run fine when not referencing a failing dep entry
-  context
-    .new_command()
-    .args("run ok.ts")
-    .run()
-    .assert_matches_file("package_json/invalid_value/ok.ts.out");
-
-  // should fail when referencing a failing dep entry
-  context
-    .new_command()
-    .args("run error.ts")
-    .run()
-    .assert_exit_code(1)
-    .assert_matches_file("package_json/invalid_value/error.ts.out");
-
-  // should output a warning about the failing dep entry
-  context
-    .new_command()
-    .args("task test")
-    .run()
-    .assert_matches_file("package_json/invalid_value/task.out");
 }
 
 #[test]
@@ -3780,6 +3671,10 @@ itest!(test_and_bench_are_noops_in_run {
 #[cfg(not(target_os = "windows"))]
 itest!(spawn_kill_permissions {
   args: "run --quiet --allow-run=cat spawn_kill_permissions.ts",
+  envs: vec![
+    ("LD_LIBRARY_PATH".to_string(), "".to_string()),
+    ("DYLD_FALLBACK_LIBRARY_PATH".to_string(), "".to_string())
+  ],
   output_str: Some(""),
 });
 
@@ -4732,7 +4627,7 @@ itest!(node_prefix_missing {
 
 itest!(node_prefix_missing_unstable_bare_node_builtins_enbaled {
   args: "run --unstable-bare-node-builtins run/node_prefix_missing/main.ts",
-  output: "run/node_prefix_missing/main.ts.out_feature_enabled",
+  output: "run/node_prefix_missing/feature_enabled.out",
   envs: env_vars_for_npm_tests(),
   exit_code: 0,
 });
@@ -4740,7 +4635,7 @@ itest!(node_prefix_missing_unstable_bare_node_builtins_enbaled {
 itest!(
   node_prefix_missing_unstable_bare_node_builtins_enbaled_by_env {
     args: "run run/node_prefix_missing/main.ts",
-    output: "run/node_prefix_missing/main.ts.out_feature_enabled",
+    output: "run/node_prefix_missing/feature_enabled.out",
     envs: [
       env_vars_for_npm_tests(),
       vec![(
@@ -4755,14 +4650,14 @@ itest!(
 
 itest!(node_prefix_missing_unstable_bare_node_builtins_enbaled_by_config {
   args: "run --config=run/node_prefix_missing/config.json run/node_prefix_missing/main.ts",
-  output: "run/node_prefix_missing/main.ts.out_feature_enabled",
+  output: "run/node_prefix_missing/feature_enabled.out",
   envs: env_vars_for_npm_tests(),
   exit_code: 0,
 });
 
 itest!(node_prefix_missing_unstable_bare_node_builtins_enbaled_with_import_map {
   args: "run --unstable-bare-node-builtins --import-map run/node_prefix_missing/import_map.json run/node_prefix_missing/main.ts",
-  output: "run/node_prefix_missing/main.ts.out_feature_enabled",
+  output: "run/node_prefix_missing/feature_enabled.out",
   envs: env_vars_for_npm_tests(),
   exit_code: 0,
 });
@@ -5012,39 +4907,6 @@ console.log(add(3, 4));
   );
   let output = test_context.new_command().args("run main.ts").run();
   output.assert_matches_text("[WILDCARD]5\n7\n");
-}
-
-#[test]
-fn run_etag_delete_source_cache() {
-  let test_context = TestContextBuilder::new()
-    .use_temp_cwd()
-    .use_http_server()
-    .build();
-  test_context
-    .temp_dir()
-    .write("main.ts", "import 'http://localhost:4545/etag_script.ts'");
-  test_context
-    .new_command()
-    .args("cache main.ts")
-    .run()
-    .skip_output_check();
-
-  // The cache is currently stored unideally in two files where one file has the headers
-  // and the other contains the body. An issue can happen with the etag header where the
-  // headers file exists, but the body was deleted. We need to get the cache to gracefully
-  // handle this scenario.
-  let deno_dir = test_context.deno_dir().path();
-  let etag_script_path = deno_dir.join("deps/http/localhost_PORT4545/26110db7d42c9bad32386735cbc05c301f83e4393963deb8da14fec3b4202a13");
-  assert!(etag_script_path.exists());
-  etag_script_path.remove_file();
-
-  test_context
-    .new_command()
-    .args("cache --reload --log-level=debug main.ts")
-    .run()
-    .assert_matches_text(
-      "[WILDCARD]Cache body not found. Trying again without etag.[WILDCARD]",
-    );
 }
 
 #[test]

@@ -146,7 +146,7 @@ impl CliNodeResolver {
                         concat!(
                         "Could not resolve \"{}\", but found it in a package.json. ",
                         "Deno expects the node_modules/ directory to be up to date. ",
-                        "Did you forget to run `npm install`?"
+                        "Did you forget to run `deno install`?"
                       ),
                         specifier
                       ));
@@ -225,13 +225,8 @@ impl CliNodeResolver {
           let package_json_path = package_folder.join("package.json");
           if !self.fs.exists_sync(&package_json_path) {
             return Err(anyhow!(
-              "Could not find '{}'. Deno expects the node_modules/ directory to be up to date. Did you forget to run `{}`?",
+              "Could not find '{}'. Deno expects the node_modules/ directory to be up to date. Did you forget to run `deno install`?",
               package_json_path.display(),
-              if *crate::args::DENO_FUTURE {
-                "deno install"
-              } else {
-                "npm install"
-              },
             ));
           }
         }
@@ -754,7 +749,7 @@ impl<'a> deno_graph::source::NpmResolver for WorkerCliNpmGraphResolver<'a> {
     let line = start.line + 1;
     let column = start.character + 1;
     if !*DENO_DISABLE_PEDANTIC_NODE_WARNINGS {
-      log::warn!("Warning: Resolving \"{module_name}\" as \"node:{module_name}\" at {specifier}:{line}:{column}. If you want to use a built-in Node module, add a \"node:\" prefix.")
+      log::warn!("{} Resolving \"{module_name}\" as \"node:{module_name}\" at {specifier}:{line}:{column}. If you want to use a built-in Node module, add a \"node:\" prefix.", colors::yellow("Warning"))
     }
   }
 

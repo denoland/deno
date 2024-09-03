@@ -116,8 +116,6 @@ pub struct BootstrapOptions {
   pub argv0: Option<String>,
   pub node_debug: Option<String>,
   pub node_ipc_fd: Option<i64>,
-  pub disable_deprecated_api_warning: bool,
-  pub verbose_deprecated_api_warning: bool,
   pub future: bool,
   pub mode: WorkerExecutionMode,
   // Used by `deno serve`
@@ -155,8 +153,6 @@ impl Default for BootstrapOptions {
       argv0: None,
       node_debug: None,
       node_ipc_fd: None,
-      disable_deprecated_api_warning: false,
-      verbose_deprecated_api_warning: false,
       future: false,
       mode: WorkerExecutionMode::None,
       serve_port: Default::default(),
@@ -194,10 +190,6 @@ struct BootstrapV8<'a>(
   Option<&'a str>,
   // node_debug
   Option<&'a str>,
-  // disable_deprecated_api_warning,
-  bool,
-  // verbose_deprecated_api_warning
-  bool,
   // future
   bool,
   // mode
@@ -232,8 +224,6 @@ impl BootstrapOptions {
       self.has_node_modules_dir,
       self.argv0.as_deref(),
       self.node_debug.as_deref(),
-      self.disable_deprecated_api_warning,
-      self.verbose_deprecated_api_warning,
       self.future,
       self.mode.discriminant() as _,
       self.serve_port.unwrap_or_default(),

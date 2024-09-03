@@ -1184,8 +1184,7 @@ fn lsp_deno_task() {
     "deno.jsonc",
     r#"{
     "tasks": {
-      "build": "deno test",
-      "some:test": "deno bundle mod.ts"
+      "build": "deno test"
     }
   }"#,
   );
@@ -1203,10 +1202,6 @@ fn lsp_deno_task() {
       {
         "name": "build",
         "detail": "deno test",
-        "sourceUri": temp_dir.url().join("deno.jsonc").unwrap(),
-      }, {
-        "name": "some:test",
-        "detail": "deno bundle mod.ts",
         "sourceUri": temp_dir.url().join("deno.jsonc").unwrap(),
       }
     ])
@@ -8757,9 +8752,9 @@ fn lsp_npm_specifier_unopened_file() {
   assert_eq!(output.status.code(), Some(0));
 
   let stdout = String::from_utf8(output.stdout).unwrap();
-  assert!(stdout.is_empty());
+  assert_eq!(stdout.as_str(), "");
   let stderr = String::from_utf8(output.stderr).unwrap();
-  assert!(stderr.is_empty());
+  assert_eq!(stderr.as_str(), "");
 
   // open main.ts, which imports other.ts (unopened)
   client.did_open(json!({
@@ -9035,7 +9030,7 @@ fn lsp_completions_node_specifier_node_modules_dir() {
   temp_dir.write(
     temp_dir.path().join("deno.json"),
     json!({
-      "nodeModulesDir": true,
+      "nodeModulesDir": "auto",
     })
     .to_string(),
   );
@@ -9442,7 +9437,7 @@ fn lsp_npmrc() {
   temp_dir.write(
     temp_dir.path().join("deno.json"),
     json!({
-      "nodeModulesDir": true,
+      "nodeModulesDir": "auto",
     })
     .to_string(),
   );
@@ -10592,6 +10587,145 @@ fn lsp_format_markdown() {
         "newText": "\n"
       }
     ])
+  );
+  client.shutdown();
+}
+
+#[test]
+fn lsp_format_html() {
+  let context = TestContextBuilder::new().use_temp_cwd().build();
+  let temp_dir = context.temp_dir();
+  temp_dir.write(
+    "deno.json",
+    json!({
+      "unstable": ["fmt-html"],
+    })
+    .to_string(),
+  );
+  let html_file =
+    source_file(temp_dir.path().join("file.html"), "  <html></html>");
+  let mut client = context.new_lsp_command().build();
+  client.initialize_default();
+  let res = client.write_request(
+    "textDocument/formatting",
+    json!({
+      "textDocument": { "uri": html_file.url() },
+      "options": {
+        "tabSize": 2,
+        "insertSpaces": true,
+      },
+    }),
+  );
+  assert_eq!(
+    res,
+    json!([
+      {
+        "range": {
+          "start": { "line": 0, "character": 0 },
+          "end": { "line": 0, "character": 2 },
+        },
+        "newText": "",
+      },
+      {
+        "range": {
+          "start": { "line": 0, "character": 15 },
+          "end": { "line": 0, "character": 15 },
+        },
+        "newText": "\n",
+      },
+    ]),
+  );
+  client.shutdown();
+}
+
+#[test]
+fn lsp_format_css() {
+  let context = TestContextBuilder::new().use_temp_cwd().build();
+  let temp_dir = context.temp_dir();
+  temp_dir.write(
+    "deno.json",
+    json!({
+      "unstable": ["fmt-css"],
+    })
+    .to_string(),
+  );
+  let css_file = source_file(temp_dir.path().join("file.css"), "  foo {}");
+  let mut client = context.new_lsp_command().build();
+  client.initialize_default();
+  let res = client.write_request(
+    "textDocument/formatting",
+    json!({
+      "textDocument": { "uri": css_file.url() },
+      "options": {
+        "tabSize": 2,
+        "insertSpaces": true,
+      },
+    }),
+  );
+  assert_eq!(
+    res,
+    json!([
+      {
+        "range": {
+          "start": { "line": 0, "character": 0 },
+          "end": { "line": 0, "character": 2 },
+        },
+        "newText": "",
+      },
+      {
+        "range": {
+          "start": { "line": 0, "character": 8 },
+          "end": { "line": 0, "character": 8 },
+        },
+        "newText": "\n",
+      },
+    ]),
+  );
+  client.shutdown();
+}
+
+#[test]
+fn lsp_format_yaml() {
+  let context = TestContextBuilder::new().use_temp_cwd().build();
+  let temp_dir = context.temp_dir();
+  temp_dir.write(
+    "deno.json",
+    json!({
+      "unstable": ["fmt-yaml"],
+    })
+    .to_string(),
+  );
+  let yaml_file = source_file(temp_dir.path().join("file.yaml"), "  foo: 1");
+  let mut client = context.new_lsp_command().build();
+  client.initialize_default();
+  let res = client.write_request(
+    "textDocument/formatting",
+    json!({
+      "textDocument": { "uri": yaml_file.url() },
+      "options": {
+        "tabSize": 2,
+        "insertSpaces": true,
+      },
+    }),
+  );
+  assert_eq!(
+    res,
+    json!([
+      {
+        "range": {
+          "start": { "line": 0, "character": 0 },
+          "end": { "line": 0, "character": 2 },
+        },
+        "newText": "",
+      },
+      {
+        "range": {
+          "start": { "line": 0, "character": 8 },
+          "end": { "line": 0, "character": 8 },
+        },
+        "newText": "\n",
+      },
+    ]),
   );
   client.shutdown();
 }
@@ -12369,6 +12503,13 @@ fn lsp_node_modules_dir() {
     .use_temp_cwd()
     .build();
   let temp_dir = context.temp_dir();
+  temp_dir.write(
+    "deno.json",
+    json!({
+      "nodeModulesDir": "none",
+    })
+    .to_string(),
+  );
 
   // having a package.json should have no effect on whether
   // a node_modules dir is created
@@ -12406,7 +12547,7 @@ fn lsp_node_modules_dir() {
 
   temp_dir.write(
     temp_dir.path().join("deno.json"),
-    "{ \"nodeModulesDir\": true, \"lock\": false }\n",
+    "{ \"nodeModulesDir\": \"auto\", \"lock\": false }\n",
   );
   let refresh_config = |client: &mut LspClient| {
     client.change_configuration(json!({ "deno": {
@@ -12442,7 +12583,7 @@ fn lsp_node_modules_dir() {
   // now add a lockfile and cache
   temp_dir.write(
     temp_dir.path().join("deno.json"),
-    "{ \"nodeModulesDir\": true }\n",
+    "{ \"nodeModulesDir\": \"auto\" }\n",
   );
   refresh_config(&mut client);
   cache(&mut client);
@@ -13049,21 +13190,21 @@ fn lsp_deno_json_scopes_node_modules_dir() {
   temp_dir.write(
     "project1/deno.json",
     json!({
-      "nodeModulesDir": true,
+      "nodeModulesDir": "auto",
     })
     .to_string(),
   );
   temp_dir.write(
     "project2/deno.json",
     json!({
-      "nodeModulesDir": true,
+      "nodeModulesDir": "auto",
     })
     .to_string(),
   );
   temp_dir.write(
     "project2/project3/deno.json",
     json!({
-      "nodeModulesDir": true,
+      "nodeModulesDir": "auto",
     })
     .to_string(),
   );
@@ -14240,7 +14381,7 @@ fn lsp_deno_json_workspace_node_modules_dir() {
     "project1/deno.json",
     json!({
       "workspace": ["project2"],
-      "nodeModulesDir": true,
+      "nodeModulesDir": "auto",
     })
     .to_string(),
   );
@@ -14371,6 +14512,15 @@ fn lsp_npm_workspace() {
     .use_temp_cwd()
     .build();
   let temp_dir = context.temp_dir();
+  // TODO(nayeemrmn): Goto definition for local npm package imports should work
+  // even with byonm. Remove this when fixed.
+  temp_dir.write(
+    "deno.json",
+    json!({
+      "nodeModulesDir": "auto",
+    })
+    .to_string(),
+  );
   temp_dir.write(
     "package.json",
     json!({
@@ -14609,11 +14759,8 @@ fn lsp_jupyter_byonm_diagnostics() {
 }
 
 #[test]
-fn lsp_deno_future_env_byonm() {
-  let context = TestContextBuilder::for_npm()
-    .env("DENO_FUTURE", "1")
-    .use_temp_cwd()
-    .build();
+fn lsp_byonm() {
+  let context = TestContextBuilder::for_npm().use_temp_cwd().build();
   let temp_dir = context.temp_dir();
   temp_dir.path().join("package.json").write_json(&json!({
     "dependencies": {
@@ -15171,7 +15318,6 @@ fn lsp_cjs_internal_types_default_export() {
     .use_http_server()
     .use_temp_cwd()
     .add_npm_env_vars()
-    .env("DENO_FUTURE", "1")
     .build();
   let temp_dir = context.temp_dir();
   temp_dir.write("deno.json", r#"{}"#);
@@ -15220,7 +15366,6 @@ fn lsp_cjs_import_dual() {
     .use_http_server()
     .use_temp_cwd()
     .add_npm_env_vars()
-    .env("DENO_FUTURE", "1")
     .build();
   let temp_dir = context.temp_dir();
   temp_dir.write("deno.json", r#"{}"#);
