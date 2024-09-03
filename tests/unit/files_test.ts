@@ -782,14 +782,14 @@ Deno.test({ permissions: { read: true } }, function fsFileIsTerminal() {
 });
 
 Deno.test(
-  { permissions: { read: true, run: true, hrtime: true } },
+  { permissions: { read: true, run: true } },
   async function fsFileLockFileSync() {
     await runFlockTests({ sync: true });
   },
 );
 
 Deno.test(
-  { permissions: { read: true, run: true, hrtime: true } },
+  { permissions: { read: true, run: true } },
   async function fsFileLockFileAsync() {
     await runFlockTests({ sync: false });
   },

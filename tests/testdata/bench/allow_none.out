@@ -18,6 +18,4 @@ run         error: PermissionDenied: Can't escalate parent thread permissions
 [WILDCARD]
 ffi         error: PermissionDenied: Can't escalate parent thread permissions
 [WILDCARD]
-hrtime      error: PermissionDenied: Can't escalate parent thread permissions
-[WILDCARD]
 error: Bench failed
