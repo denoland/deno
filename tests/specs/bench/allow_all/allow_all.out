@@ -5,8 +5,8 @@ Runtime | Deno [WILDLINE] ([WILDLINE])
 
 [WILDLINE]/allow_all.ts
 
-benchmark      time/iter (avg)        iter/s      (min … max)           p75      p99     p995
--------------- ----------------------------- --------------------- --------------------------
+benchmark     time/iter (avg)        iter/s      (min … max)           p75      p99     p995
+------------- ----------------------------- --------------------- --------------------------
 read false [WILDLINE] [WILDLINE] [WILDLINE] ([WILDLINE] … [WILDLINE]) [WILDLINE]
 read true [WILDLINE] [WILDLINE] [WILDLINE] ([WILDLINE] … [WILDLINE]) [WILDLINE]
 write false [WILDLINE] [WILDLINE] [WILDLINE] ([WILDLINE] … [WILDLINE]) [WILDLINE]
