@@ -6064,9 +6064,11 @@ declare namespace Deno {
    *
    * @category HTTP Server
    */
-  export interface ServeHandlerInfo {
+  export interface ServeHandlerInfo<Addr extends Deno.Addr = Deno.Addr> {
     /** The remote address of the connection. */
-    remoteAddr: Deno.NetAddr;
+    remoteAddr: Addr;
+    /** The completion promise */
+    completed: Promise<void>;
   }
 
   /** A handler for HTTP requests. Consumes a request and returns a response.
@@ -6077,9 +6079,9 @@ declare namespace Deno {
    *
    * @category HTTP Server
    */
-  export type ServeHandler = (
+  export type ServeHandler<Addr extends Deno.Addr = Deno.Addr> = (
     request: Request,
-    info: ServeHandlerInfo,
+    info: ServeHandlerInfo<Addr>,
   ) => Response | Promise<Response>;
 
   /** Interface that module run with `deno serve` subcommand must conform to.
@@ -6115,7 +6117,27 @@ declare namespace Deno {
    *
    * @category HTTP Server
    */
-  export interface ServeOptions {
+  export interface ServeOptions<Addr extends Deno.Addr = Deno.Addr> {
+    /** An {@linkcode AbortSignal} to close the server and all connections. */
+    signal?: AbortSignal;
+
+    /** The handler to invoke when route handlers throw an error. */
+    onError?: (error: unknown) => Response | Promise<Response>;
+
+    /** The callback which is called when the server starts listening. */
+    onListen?: (localAddr: Addr) => void;
+  }
+
+  /**
+   * Options that can be passed to `Deno.serve` to create a server listening on
+   * a TCP port.
+   *
+   * @category HTTP Server
+   */
+  export interface ServeTcpOptions extends ServeOptions<Deno.NetAddr> {
+    /** The transport to use. */
+    transport?: "tcp";
+
     /** The port to listen on.
      *
      * Set to `0` to listen on any available port.
@@ -6133,109 +6155,37 @@ declare namespace Deno {
      * @default {"0.0.0.0"} */
     hostname?: string;
 
-    /** An {@linkcode AbortSignal} to close the server and all connections. */
-    signal?: AbortSignal;
-
     /** Sets `SO_REUSEPORT` on POSIX systems. */
     reusePort?: boolean;
-
-    /** The handler to invoke when route handlers throw an error. */
-    onError?: (error: unknown) => Response | Promise<Response>;
-
-    /** The callback which is called when the server starts listening. */
-    onListen?: (localAddr: Deno.NetAddr) => void;
   }
 
-  /** Additional options which are used when opening a TLS (HTTPS) server.
+  /**
+   * Options that can be passed to `Deno.serve` to create a server listening on
+   * a Unix domain socket.
    *
    * @category HTTP Server
    */
-  export interface ServeTlsOptions extends ServeOptions {
-    /**
-     * Server private key in PEM format. Use {@linkcode TlsCertifiedKeyOptions} instead.
-     *
-     * @deprecated This will be removed in Deno 2.0. See the
-     * {@link https://docs.deno.com/runtime/manual/advanced/migrate_deprecations | Deno 1.x to 2.x Migration Guide}
-     * for migration instructions.
-     */
-    cert?: string;
+  export interface ServeUnixOptions extends ServeOptions<Deno.UnixAddr> {
+    /** The transport to use. */
+    transport?: "unix";
 
-    /**
-     * Cert chain in PEM format.  Use {@linkcode TlsCertifiedKeyOptions} instead.
-     *
-     * @deprecated This will be removed in Deno 2.0. See the
-     * {@link https://docs.deno.com/runtime/manual/advanced/migrate_deprecations | Deno 1.x to 2.x Migration Guide}
-     * for migration instructions.
-     */
-    key?: string;
-  }
-
-  /**
-   * @category HTTP Server
-   */
-  export interface ServeInit {
-    /** The handler to invoke to process each incoming request. */
-    handler: ServeHandler;
-  }
-
-  /**
-   * @category HTTP Server
-   */
-  export interface ServeTlsInit {
-    /** The handler to invoke to process each incoming request. */
-    handler: ServeHandler;
-  }
-
-  /** @category HTTP Server */
-  export interface ServeUnixOptions {
     /** The unix domain socket path to listen on. */
     path: string;
-
-    /** An {@linkcode AbortSignal} to close the server and all connections. */
-    signal?: AbortSignal;
-
-    /** The handler to invoke when route handlers throw an error. */
-    onError?: (error: unknown) => Response | Promise<Response>;
-
-    /** The callback which is called when the server starts listening. */
-    onListen?: (localAddr: Deno.UnixAddr) => void;
   }
-
-  /** Information for a unix domain socket HTTP request.
-   *
-   * @category HTTP Server
-   */
-  export interface ServeUnixHandlerInfo {
-    /** The remote address of the connection. */
-    remoteAddr: Deno.UnixAddr;
-  }
-
-  /** A handler for unix domain socket HTTP requests. Consumes a request and returns a response.
-   *
-   * If a handler throws, the server calling the handler will assume the impact
-   * of the error is isolated to the individual request. It will catch the error
-   * and if necessary will close the underlying connection.
-   *
-   * @category HTTP Server
-   */
-  export type ServeUnixHandler = (
-    request: Request,
-    info: ServeUnixHandlerInfo,
-  ) => Response | Promise<Response>;
 
   /**
    * @category HTTP Server
    */
-  export interface ServeUnixInit {
+  export interface ServeInit<Addr extends Deno.Addr = Deno.Addr> {
     /** The handler to invoke to process each incoming request. */
-    handler: ServeUnixHandler;
+    handler: ServeHandler<Addr>;
   }
 
   /** An instance of the server created using `Deno.serve()` API.
    *
    * @category HTTP Server
    */
-  export interface HttpServer<A extends Deno.Addr = Deno.Addr>
+  export interface HttpServer<Addr extends Deno.Addr = Deno.Addr>
     extends AsyncDisposable {
     /** A promise that resolves once server finishes - eg. when aborted using
      * the signal passed to {@linkcode ServeOptions.signal}.
@@ -6243,7 +6193,7 @@ declare namespace Deno {
     finished: Promise<void>;
 
     /** The local address this server is listening on. */
-    addr: A;
+    addr: Addr;
 
     /**
      * Make the server block the event loop from finishing.
@@ -6262,15 +6212,6 @@ declare namespace Deno {
     shutdown(): Promise<void>;
   }
 
-  /**
-   * @category HTTP Server
-   *
-   * @deprecated This will be removed in Deno 2.0. See the
-   * {@link https://docs.deno.com/runtime/manual/advanced/migrate_deprecations | Deno 1.x to 2.x Migration Guide}
-   * for migration instructions.
-   */
-  export type Server = HttpServer;
-
   /** Serves HTTP requests with the given handler.
    *
    * The below example serves with the port `8000` on hostname `"127.0.0.1"`.
@@ -6281,7 +6222,9 @@ declare namespace Deno {
    *
    * @category HTTP Server
    */
-  export function serve(handler: ServeHandler): HttpServer<Deno.NetAddr>;
+  export function serve(
+    handler: ServeHandler<Deno.NetAddr>,
+  ): HttpServer<Deno.NetAddr>;
   /** Serves HTTP requests with the given option bag and handler.
    *
    * You can specify the socket path with `path` option.
@@ -6329,7 +6272,7 @@ declare namespace Deno {
    */
   export function serve(
     options: ServeUnixOptions,
-    handler: ServeUnixHandler,
+    handler: ServeHandler<Deno.UnixAddr>,
   ): HttpServer<Deno.UnixAddr>;
   /** Serves HTTP requests with the given option bag and handler.
    *
@@ -6388,70 +6331,10 @@ declare namespace Deno {
    * @category HTTP Server
    */
   export function serve(
-    options: ServeOptions,
-    handler: ServeHandler,
-  ): HttpServer<Deno.NetAddr>;
-  /** Serves HTTP requests with the given option bag and handler.
-   *
-   * You can specify an object with a port and hostname option, which is the
-   * address to listen on. The default is port `8000` on hostname `"127.0.0.1"`.
-   *
-   * You can change the address to listen on using the `hostname` and `port`
-   * options. The below example serves on port `3000` and hostname `"0.0.0.0"`.
-   *
-   * ```ts
-   * Deno.serve(
-   *   { port: 3000, hostname: "0.0.0.0" },
-   *   (_req) => new Response("Hello, world")
-   * );
-   * ```
-   *
-   * You can stop the server with an {@linkcode AbortSignal}. The abort signal
-   * needs to be passed as the `signal` option in the options bag. The server
-   * aborts when the abort signal is aborted. To wait for the server to close,
-   * await the promise returned from the `Deno.serve` API.
-   *
-   * ```ts
-   * const ac = new AbortController();
-   *
-   * const server = Deno.serve(
-   *    { signal: ac.signal },
-   *    (_req) => new Response("Hello, world")
-   * );
-   * server.finished.then(() => console.log("Server closed"));
-   *
-   * console.log("Closing server...");
-   * ac.abort();
-   * ```
-   *
-   * By default `Deno.serve` prints the message
-   * `Listening on http://<hostname>:<port>/` on listening. If you like to
-   * change this behavior, you can specify a custom `onListen` callback.
-   *
-   * ```ts
-   * Deno.serve({
-   *   onListen({ port, hostname }) {
-   *     console.log(`Server started at http://${hostname}:${port}`);
-   *     // ... more info specific to your server ..
-   *   },
-   * }, (_req) => new Response("Hello, world"));
-   * ```
-   *
-   * To enable TLS you must specify the `key` and `cert` options.
-   *
-   * ```ts
-   * const cert = "-----BEGIN CERTIFICATE-----\n...\n-----END CERTIFICATE-----\n";
-   * const key = "-----BEGIN PRIVATE KEY-----\n...\n-----END PRIVATE KEY-----\n";
-   * Deno.serve({ cert, key }, (_req) => new Response("Hello, world"));
-   * ```
-   *
-   * @category HTTP Server
-   */
-  export function serve(
     options:
-      | ServeTlsOptions
-      | (ServeTlsOptions & TlsCertifiedKeyOptions),
-    handler: ServeHandler,
+      | ServeTcpOptions
+      | (ServeTcpOptions & TlsCertifiedKeyOptions),
+    handler: ServeHandler<Deno.NetAddr>,
   ): HttpServer<Deno.NetAddr>;
   /** Serves HTTP requests with the given option bag.
    *
@@ -6478,7 +6361,7 @@ declare namespace Deno {
    * @category HTTP Server
    */
   export function serve(
-    options: ServeUnixInit & ServeUnixOptions,
+    options: ServeUnixOptions & ServeInit<Deno.UnixAddr>,
   ): HttpServer<Deno.UnixAddr>;
   /** Serves HTTP requests with the given option bag.
    *
@@ -6507,40 +6390,7 @@ declare namespace Deno {
    */
   export function serve(
     options:
-      & ServeInit
-      & ServeOptions,
-  ): HttpServer<Deno.NetAddr>;
-  /** Serves HTTP requests with the given option bag.
-   *
-   * You can specify an object with a port and hostname option, which is the
-   * address to listen on. The default is port `8000` on hostname `"127.0.0.1"`.
-   *
-   * ```ts
-   * const ac = new AbortController();
-   *
-   * const server = Deno.serve({
-   *   port: 3000,
-   *   hostname: "0.0.0.0",
-   *   handler: (_req) => new Response("Hello, world"),
-   *   signal: ac.signal,
-   *   onListen({ port, hostname }) {
-   *     console.log(`Server started at http://${hostname}:${port}`);
-   *   },
-   * });
-   * server.finished.then(() => console.log("Server closed"));
-   *
-   * console.log("Closing server...");
-   * ac.abort();
-   * ```
-   *
-   * @category HTTP Server
-   */
-  export function serve(
-    options:
-      & ServeTlsInit
-      & (
-        | ServeTlsOptions
-        | (ServeTlsOptions & TlsCertifiedKeyOptions)
-      ),
+      & (ServeTcpOptions | (ServeTcpOptions & TlsCertifiedKeyOptions))
+      & ServeInit<Deno.NetAddr>,
   ): HttpServer<Deno.NetAddr>;
 }
