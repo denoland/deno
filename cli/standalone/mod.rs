@@ -737,9 +737,6 @@ pub async fn run(
       node_ipc: None,
       serve_port: None,
       serve_host: None,
-      // TODO(bartlomieju): temporarily disabled
-      disable_deprecated_api_warning: true,
-      verbose_deprecated_api_warning: false,
     },
   );
 

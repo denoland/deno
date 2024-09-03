@@ -1854,36 +1854,6 @@ declare namespace Deno {
     options?: { bufSize?: number },
   ): Promise<number>;
 
-  /**
-   * Turns a Reader, `r`, into an async iterator.
-   *
-   * @deprecated This will be removed in Deno 2.0. See the
-   * {@link https://docs.deno.com/runtime/manual/advanced/migrate_deprecations | Deno 1.x to 2.x Migration Guide}
-   * for migration instructions.
-   *
-   * @category I/O
-   */
-  export function iter(
-    r: Reader,
-    options?: { bufSize?: number },
-  ): AsyncIterableIterator<Uint8Array>;
-
-  /**
-   * Turns a ReaderSync, `r`, into an iterator.
-   *
-   * @deprecated This will be removed in Deno 2.0. See the
-   * {@link https://docs.deno.com/runtime/manual/advanced/migrate_deprecations | Deno 1.x to 2.x Migration Guide}
-   * for migration instructions.
-   *
-   * @category I/O
-   */
-  export function iterSync(
-    r: ReaderSync,
-    options?: {
-      bufSize?: number;
-    },
-  ): IterableIterator<Uint8Array>;
-
   /** Open a file and resolve to an instance of {@linkcode Deno.FsFile}. The
    * file does not need to previously exist if using the `create` or `createNew`
    * open options. The caller may have the resulting file automatically closed
@@ -2255,33 +2225,6 @@ declare namespace Deno {
    * @category File System
    */
   export function fdatasyncSync(rid: number): void;
-
-  /** Close the given resource ID (`rid`) which has been previously opened, such
-   * as via opening or creating a file. Closing a file when you are finished
-   * with it is important to avoid leaking resources.
-   *
-   * ```ts
-   * const file = await Deno.open("my_file.txt");
-   * // do work with "file" object
-   * Deno.close(file.rid);
-   * ```
-   *
-   * It is recommended to define the variable with the `using` keyword so the
-   * runtime will automatically close the resource when it goes out of scope.
-   * Doing so negates the need to manually close the resource.
-   *
-   * ```ts
-   * using file = await Deno.open("my_file.txt");
-   * // do work with "file" object
-   * ```
-   *
-   * @deprecated This will be removed in Deno 2.0. See the
-   * {@link https://docs.deno.com/runtime/manual/advanced/migrate_deprecations | Deno 1.x to 2.x Migration Guide}
-   * for migration instructions.
-   *
-   * @category I/O
-   */
-  export function close(rid: number): void;
 
   /** The Deno abstraction for reading and writing files.
    *

@@ -64,48 +64,6 @@ async function copy(
   return n;
 }
 
-async function* iter(
-  r,
-  options,
-) {
-  internals.warnOnDeprecatedApi(
-    "Deno.iter()",
-    new Error().stack,
-    "Use `ReadableStream` instead.",
-  );
-  const bufSize = options?.bufSize ?? DEFAULT_BUFFER_SIZE;
-  const b = new Uint8Array(bufSize);
-  while (true) {
-    const result = await r.read(b);
-    if (result === null) {
-      break;
-    }
-
-    yield TypedArrayPrototypeSubarray(b, 0, result);
-  }
-}
-
-function* iterSync(
-  r,
-  options,
-) {
-  internals.warnOnDeprecatedApi(
-    "Deno.iterSync()",
-    new Error().stack,
-    "Use `ReadableStream` instead.",
-  );
-  const bufSize = options?.bufSize ?? DEFAULT_BUFFER_SIZE;
-  const b = new Uint8Array(bufSize);
-  while (true) {
-    const result = r.readSync(b);
-    if (result === null) {
-      break;
-    }
-
-    yield TypedArrayPrototypeSubarray(b, 0, result);
-  }
-}
-
 function readSync(rid, buffer) {
   if (buffer.length === 0) return 0;
   const nread = core.readSync(rid, buffer);
@@ -338,8 +296,6 @@ const stderr = new Stderr();
 
 export {
   copy,
-  iter,
-  iterSync,
   read,
   readAll,
   readAllSync,
