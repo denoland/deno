@@ -13,6 +13,7 @@ import { text } from "node:stream/consumers";
 import { assert, assertEquals, fail } from "@std/assert";
 import { assertSpyCalls, spy } from "@std/testing/mock";
 import { fromFileUrl, relative } from "@std/path";
+import { delay } from "@std/async/delay";
 
 import { gzip } from "node:zlib";
 import { Buffer } from "node:buffer";
@@ -1603,4 +1604,58 @@ Deno.test("[node/http] In ClientRequest, option.hostname has precedence over opt
   }).end();
 
   await responseReceived.promise;
+});
+
+Deno.test("[node/http] upgraded socket closes when the server closed without closing handshake", async () => {
+  const clientSocketClosed = Promise.withResolvers<void>();
+
+  // Uses the server in different process to shutdown it without closing handshake
+  const server = `
+    Deno.serve({ port: 1337 }, (req) => {
+      if (req.headers.get("upgrade") != "websocket") {
+        return new Response(null, { status: 501 });
+      }
+      console.log("upgrade on server");
+      const { socket, response } = Deno.upgradeWebSocket(req);
+      socket.addEventListener("message", (event) => {
+        console.log("server received", event.data);
+        socket.send("pong");
+      });
+      return response;
+    });
+  `;
+
+  const p = new Deno.Command("deno", { args: ["eval", server] }).spawn();
+
+  // Wait for the server to start
+  await delay(1000);
+
+  const options = {
+    port: 1337,
+    host: "127.0.0.1",
+    headers: {
+      "Connection": "Upgrade",
+      "Upgrade": "websocket",
+      "Sec-WebSocket-Key": "dGhlIHNhbXBsZSBub25jZQ==",
+    },
+  };
+
+  http.request(options).on("upgrade", async (res, socket) => {
+    socket.on("close", () => {
+      clientSocketClosed.resolve();
+    });
+    socket.on("data", async (data) => {
+      // receives pong message
+      assertEquals(data, Buffer.from("8104706f6e67", "hex"));
+
+      p.kill();
+      await p.output();
+    });
+
+    // sending ping message
+    socket.write(Buffer.from("81847de88e01", "hex"));
+    socket.write(Buffer.from("0d81e066", "hex"));
+  }).end();
+
+  await clientSocketClosed.promise;
 });
