@@ -4632,7 +4632,7 @@ itest!(node_prefix_missing {
 
 itest!(node_prefix_missing_unstable_bare_node_builtins_enbaled {
   args: "run --unstable-bare-node-builtins run/node_prefix_missing/main.ts",
-  output: "run/node_prefix_missing/main.ts.out_feature_enabled",
+  output: "run/node_prefix_missing/feature_enabled.out",
   envs: env_vars_for_npm_tests(),
   exit_code: 0,
 });
@@ -4640,7 +4640,7 @@ itest!(node_prefix_missing_unstable_bare_node_builtins_enbaled {
 itest!(
   node_prefix_missing_unstable_bare_node_builtins_enbaled_by_env {
     args: "run run/node_prefix_missing/main.ts",
-    output: "run/node_prefix_missing/main.ts.out_feature_enabled",
+    output: "run/node_prefix_missing/feature_enabled.out",
     envs: [
       env_vars_for_npm_tests(),
       vec![(
@@ -4655,14 +4655,14 @@ itest!(
 
 itest!(node_prefix_missing_unstable_bare_node_builtins_enbaled_by_config {
   args: "run --config=run/node_prefix_missing/config.json run/node_prefix_missing/main.ts",
-  output: "run/node_prefix_missing/main.ts.out_feature_enabled",
+  output: "run/node_prefix_missing/feature_enabled.out",
   envs: env_vars_for_npm_tests(),
   exit_code: 0,
 });
 
 itest!(node_prefix_missing_unstable_bare_node_builtins_enbaled_with_import_map {
   args: "run --unstable-bare-node-builtins --import-map run/node_prefix_missing/import_map.json run/node_prefix_missing/main.ts",
-  output: "run/node_prefix_missing/main.ts.out_feature_enabled",
+  output: "run/node_prefix_missing/feature_enabled.out",
   envs: env_vars_for_npm_tests(),
   exit_code: 0,
 });
