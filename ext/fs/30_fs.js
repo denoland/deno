@@ -20,9 +20,7 @@ import {
   op_fs_file_stat_async,
   op_fs_file_stat_sync,
   op_fs_flock_async,
-  op_fs_flock_async_unstable,
   op_fs_flock_sync,
-  op_fs_flock_sync_unstable,
   op_fs_fsync_async,
   op_fs_fsync_sync,
   op_fs_ftruncate_async,
@@ -554,14 +552,6 @@ async function fsync(rid) {
   await op_fs_fsync_async(rid);
 }
 
-function flockSync(rid, exclusive) {
-  op_fs_flock_sync_unstable(rid, exclusive === true);
-}
-
-async function flock(rid, exclusive) {
-  await op_fs_flock_async_unstable(rid, exclusive === true);
-}
-
 function funlockSync(rid) {
   op_fs_funlock_sync_unstable(rid);
 }
@@ -977,8 +967,6 @@ export {
   fdatasync,
   fdatasyncSync,
   File,
-  flock,
-  flockSync,
   FsFile,
   fstat,
   fstatSync,
