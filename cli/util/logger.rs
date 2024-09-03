@@ -41,8 +41,10 @@ impl log::Log for CliLogger {
 pub fn init(maybe_level: Option<log::Level>) {
   let log_level = maybe_level.unwrap_or(log::Level::Info);
   let logger = env_logger::Builder::from_env(
-    env_logger::Env::default()
-      .default_filter_or(log_level.to_level_filter().to_string()),
+    env_logger::Env::new()
+      // Use `DENO_LOG` and `DENO_LOG_STYLE` instead of `RUST_` prefix
+      .filter_or("DENO_LOG", log_level.to_level_filter().to_string())
+      .write_style("DENO_LOG_STYLE"),
   )
   // https://github.com/denoland/deno/issues/6641
   .filter_module("rustyline", log::LevelFilter::Off)

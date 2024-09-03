@@ -110,9 +110,7 @@ async fn run_subcommand(flags: Arc<Flags>) -> Result<i32, AnyError> {
         tools::bench::run_benchmarks(flags, bench_flags).await
       }
     }),
-    DenoSubcommand::Bundle(bundle_flags) => spawn_subcommand(async {
-      tools::bundle::bundle(flags, bundle_flags).await
-    }),
+    DenoSubcommand::Bundle => exit_with_message("⚠️ `deno bundle` was removed in Deno 2.\n\nSee the Deno 1.x to 2.x Migration Guide for migration instructions: https://docs.deno.com/runtime/manual/advanced/migrate_deprecations", 1),
     DenoSubcommand::Doc(doc_flags) => {
       spawn_subcommand(async { tools::doc::doc(flags, doc_flags).await })
     }
@@ -285,9 +283,7 @@ async fn run_subcommand(flags: Arc<Flags>) -> Result<i32, AnyError> {
       "This deno was built without the \"upgrade\" feature. Please upgrade using the installation method originally used to install Deno.",
       1,
     ),
-    DenoSubcommand::Vendor(vendor_flags) => spawn_subcommand(async {
-      tools::vendor::vendor(flags, vendor_flags).await
-    }),
+    DenoSubcommand::Vendor => exit_with_message("⚠️ `deno vendor` was removed in Deno 2.\n\nSee the Deno 1.x to 2.x Migration Guide for migration instructions: https://docs.deno.com/runtime/manual/advanced/migrate_deprecations", 1),
     DenoSubcommand::Publish(publish_flags) => spawn_subcommand(async {
       tools::registry::publish(flags, publish_flags).await
     }),

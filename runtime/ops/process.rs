@@ -1,6 +1,5 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
-use super::check_unstable;
 use deno_core::anyhow::Context;
 use deno_core::error::type_error;
 use deno_core::error::AnyError;
@@ -719,12 +718,7 @@ mod deprecated {
   pub struct RunArgs {
     cmd: Vec<String>,
     cwd: Option<String>,
-    clear_env: bool,
     env: Vec<(String, String)>,
-    #[cfg(unix)]
-    gid: Option<u32>,
-    #[cfg(unix)]
-    uid: Option<u32>,
     stdin: StdioOrRid,
     stdout: StdioOrRid,
     stderr: StdioOrRid,
@@ -789,16 +783,6 @@ mod deprecated {
       c.env(key, value);
     }
 
-    #[cfg(unix)]
-    if let Some(gid) = run_args.gid {
-      super::check_unstable(state, UNSTABLE_FEATURE_NAME, "Deno.run.gid");
-      c.gid(gid);
-    }
-    #[cfg(unix)]
-    if let Some(uid) = run_args.uid {
-      super::check_unstable(state, UNSTABLE_FEATURE_NAME, "Deno.run.uid");
-      c.uid(uid);
-    }
     #[cfg(unix)]
     // TODO(bartlomieju):
     #[allow(clippy::undocumented_unsafe_blocks)]
