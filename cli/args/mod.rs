@@ -369,7 +369,7 @@ pub struct WorkspaceTestOptions {
   pub doc: bool,
   pub no_run: bool,
   pub fail_fast: Option<NonZeroUsize>,
-  pub allow_none: bool,
+  pub permit_no_files: bool,
   pub filter: Option<String>,
   pub shuffle: Option<u64>,
   pub concurrent_jobs: NonZeroUsize,
@@ -382,7 +382,7 @@ pub struct WorkspaceTestOptions {
 impl WorkspaceTestOptions {
   pub fn resolve(test_flags: &TestFlags) -> Self {
     Self {
-      allow_none: test_flags.allow_none,
+      permit_no_files: test_flags.permit_no_files,
       concurrent_jobs: test_flags
         .concurrent_jobs
         .unwrap_or_else(|| NonZeroUsize::new(1).unwrap()),
@@ -1136,9 +1136,6 @@ impl CliOptions {
 
   pub fn resolve_main_module(&self) -> Result<ModuleSpecifier, AnyError> {
     let main_module = match &self.flags.subcommand {
-      DenoSubcommand::Bundle(bundle_flags) => {
-        resolve_url_or_path(&bundle_flags.source_file, self.initial_cwd())?
-      }
       DenoSubcommand::Compile(compile_flags) => {
         resolve_url_or_path(&compile_flags.source_file, self.initial_cwd())?
       }
@@ -1265,23 +1262,7 @@ impl CliOptions {
     &self,
     config_type: TsConfigType,
   ) -> Result<TsConfigForEmit, AnyError> {
-    let result = self.workspace().resolve_ts_config_for_emit(config_type);
-
-    match result {
-      Ok(mut ts_config_for_emit) => {
-        if matches!(self.flags.subcommand, DenoSubcommand::Bundle(..)) {
-          // For backwards compatibility, force `experimentalDecorators` setting
-          // to true.
-          *ts_config_for_emit
-            .ts_config
-            .0
-            .get_mut("experimentalDecorators")
-            .unwrap() = serde_json::Value::Bool(true);
-        }
-        Ok(ts_config_for_emit)
-      }
-      Err(err) => Err(err),
-    }
+    self.workspace().resolve_ts_config_for_emit(config_type)
   }
 
   pub fn resolve_inspector_server(
