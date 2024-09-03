@@ -172,7 +172,7 @@ function initializeAResponse(response, init, bodyWithType) {
   // 1.
   if ((init.status < 200 || init.status > 599) && init.status != 101) {
     throw new RangeError(
-      `The status provided (${init.status}) is not equal to 101 and outside the range [200, 599].`,
+      `The status provided (${init.status}) is not equal to 101 and outside the range [200, 599]`,
     );
   }
 
@@ -181,7 +181,7 @@ function initializeAResponse(response, init, bodyWithType) {
     init.statusText &&
     RegExpPrototypeExec(REASON_PHRASE_RE, init.statusText) === null
   ) {
-    throw new TypeError("Status text is not valid.");
+    throw new TypeError(`Status text is not valid: received "${init.statusText}"`);
   }
 
   // 3.
@@ -263,7 +263,7 @@ class Response {
     const baseURL = getLocationHref();
     const parsedURL = new URL(url, baseURL);
     if (!redirectStatus(status)) {
-      throw new RangeError("Invalid redirect status code.");
+      throw new RangeError(`Invalid redirect status code: received ${status}`);
     }
     const inner = newInnerResponse(status);
     inner.type = "default";
@@ -395,7 +395,7 @@ class Response {
   clone() {
     webidl.assertBranded(this, ResponsePrototype);
     if (this[_body] && this[_body].unusable()) {
-      throw new TypeError("Body is unusable.");
+      throw new TypeError("Body is unusable");
     }
     const second = webidl.createBranded(Response);
     const newRes = cloneInnerResponse(this[_response]);

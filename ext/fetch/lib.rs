@@ -177,7 +177,7 @@ impl FetchHandler for DefaultFileFetchHandler {
   ) -> (CancelableResponseFuture, Option<Rc<CancelHandle>>) {
     let fut = async move {
       Ok(Err(type_error(
-        "NetworkError when attempting to fetch resource.",
+        "NetworkError when attempting to fetch resource",
       )))
     };
     (Box::pin(fut), None)
@@ -361,14 +361,14 @@ where
   let (request_rid, cancel_handle_rid) = match scheme {
     "file" => {
       let path = url.to_file_path().map_err(|_| {
-        type_error("NetworkError when attempting to fetch resource.")
+        type_error("NetworkError when attempting to fetch resource")
       })?;
       let permissions = state.borrow_mut::<FP>();
       permissions.check_read(&path, "fetch()")?;
 
       if method != Method::GET {
         return Err(type_error(format!(
-          "Fetching files only supports the GET method. Received {method}."
+          "Fetching files only supports the GET method: received {method}"
         )));
       }
 
@@ -394,7 +394,7 @@ where
       let uri = url
         .as_str()
         .parse::<Uri>()
-        .map_err(|_| type_error("Invalid URL"))?;
+        .map_err(|_| type_error(format!("Invalid URL {url}")))?;
 
       let mut con_len = None;
       let body = if has_body {
@@ -522,7 +522,7 @@ where
       // because the URL isn't an object URL.
       return Err(type_error("Blob for the given URL not found."));
     }
-    _ => return Err(type_error(format!("scheme '{scheme}' not supported"))),
+    _ => return Err(type_error(format!("Url scheme '{scheme}' not supported"))),
   };
 
   Ok(FetchReturn {
@@ -586,7 +586,7 @@ pub async fn op_fetch_send(
 
       return Err(type_error(err.to_string()));
     }
-    Err(_) => return Err(type_error("request was cancelled")),
+    Err(_) => return Err(type_error("Request was cancelled")),
   };
 
   let status = res.status();
@@ -1018,7 +1018,7 @@ pub fn create_http_client(
 
   let user_agent = user_agent
     .parse::<HeaderValue>()
-    .map_err(|_| type_error("illegal characters in User-Agent"))?;
+    .map_err(|_| type_error(format!("Illegal characters in User-Agent: received {user_agent}")))?;
 
   let mut builder =
     hyper_util::client::legacy::Builder::new(TokioExecutor::new());
@@ -1060,7 +1060,7 @@ pub fn create_http_client(
     }
     (true, true) => {}
     (false, false) => {
-      return Err(type_error("Either `http1` or `http2` needs to be true"))
+      return Err(type_error("Cannot create Http Client: either `http1` or `http2` needs to be set to true"))
     }
   }
 
