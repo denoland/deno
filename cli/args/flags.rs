@@ -1,7 +1,10 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
+use crate::args::resolve_no_prompt;
+use crate::util::fs::canonicalize_path;
 use clap::builder::styling::AnsiColor;
 use clap::builder::FalseyValueParser;
+use clap::error::ErrorKind;
 use clap::value_parser;
 use clap::Arg;
 use clap::ArgAction;
@@ -36,9 +39,6 @@ use std::num::NonZeroUsize;
 use std::path::Path;
 use std::path::PathBuf;
 use std::str::FromStr;
-
-use crate::args::resolve_no_prompt;
-use crate::util::fs::canonicalize_path;
 
 use super::flags_net;
 
@@ -1185,7 +1185,25 @@ static DENO_HELP: &str = cstr!(
 /// Main entry point for parsing deno's command line flags.
 pub fn flags_from_vec(args: Vec<OsString>) -> clap::error::Result<Flags> {
   let mut app = clap_root();
-  let mut matches = app.try_get_matches_from_mut(&args)?;
+  let mut matches = app.try_get_matches_from_mut(&args).map_err(|mut e| {
+    match e.kind() {
+      ErrorKind::MissingRequiredArgument => {
+        if let Some(context) = e.get(clap::error::ContextKind::InvalidArg) {
+          match context {
+            clap::error::ContextValue::Strings(s) => {
+              if s.len() == 1 && s[0] == "--global" && args.iter().any(|arg| arg == "install") {
+                e.insert(clap::error::ContextKind::Usage, clap::error::ContextValue::StyledStr("Note: Permission flags can only be used in a global setting".into()));
+              }
+            }
+            _ => {}
+          }
+        }
+
+        e
+      }
+      _ => e
+    }
+  })?;
 
   let mut flags = Flags::default();
 
@@ -1504,7 +1522,7 @@ pub fn clap_root() -> Command {
         .subcommand(fmt_subcommand())
         .subcommand(init_subcommand())
         .subcommand(info_subcommand())
-        .subcommand(future_install_subcommand())
+        .subcommand(install_subcommand())
         .subcommand(json_reference_subcommand())
         .subcommand(jupyter_subcommand())
         .subcommand(uninstall_subcommand())
@@ -1551,11 +1569,13 @@ fn help_subcommand(app: &Command) -> Command {
 fn add_subcommand() -> Command {
   command(
     "add",
-    cstr!("Add dependencies to your configuration file.
+    cstr!(
+      "Add dependencies to your configuration file.
   <p(245)>deno add @std/path</>
 
 You can add multiple dependencies at once:
-  <p(245)>deno add @std/path @std/assert</>"),
+  <p(245)>deno add @std/path @std/assert</>"
+    ),
     UnstableArgsConfig::None,
   )
   .defer(|cmd| {
@@ -1836,10 +1856,12 @@ On the first invocation with deno will download the proper binary and cache it i
 fn completions_subcommand() -> Command {
   command(
     "completions",
-    cstr!("Output shell completion script to standard output.
+    cstr!(
+      "Output shell completion script to standard output.
 
   <p(245)>deno completions bash > /usr/local/etc/bash_completion.d/deno.bash</>
-  <p(245)>source /usr/local/etc/bash_completion.d/deno.bash</>"),
+  <p(245)>source /usr/local/etc/bash_completion.d/deno.bash</>"
+    ),
     UnstableArgsConfig::None,
   )
   .defer(|cmd| {
@@ -2350,44 +2372,7 @@ The following information is shown:
       ))
 }
 
-fn install_args(cmd: Command) -> Command {
-  let cmd = cmd.arg(
-    Arg::new("cmd")
-      .required_if_eq("global", "true")
-      .num_args(1..)
-      .value_hint(ValueHint::FilePath),
-  );
-  cmd
-    .arg(
-      Arg::new("name")
-        .long("name")
-        .short('n')
-        .help("Executable file name"),
-    )
-    .arg(
-      Arg::new("root")
-        .long("root")
-        .help("Installation root")
-        .value_hint(ValueHint::DirPath),
-    )
-    .arg(
-      Arg::new("force")
-        .long("force")
-        .short('f')
-        .help("Forcefully overwrite existing installation")
-        .action(ArgAction::SetTrue),
-    )
-    .arg(
-      Arg::new("global")
-        .long("global")
-        .short('g')
-        .help("Install a package or script as a globally available executable")
-        .action(ArgAction::SetTrue),
-    )
-    .arg(env_file_arg())
-}
-
-fn future_install_subcommand() -> Command {
+fn install_subcommand() -> Command {
   command("install", cstr!("Installs dependencies either in the local project or globally to a bin directory.
 
 Local installation
@@ -2429,8 +2414,42 @@ The installation root is determined, in order of precedence:
 These must be added to the path manually if required."), UnstableArgsConfig::ResolutionAndRuntime)
     .visible_alias("i")
     .defer(|cmd| {
-      let cmd = runtime_args(cmd, true, true).arg(check_arg(true)).arg(allow_scripts_arg());
-      install_args(cmd)
+      permission_args(runtime_args(cmd, false, true), Some("global"))
+        .arg(check_arg(true))
+        .arg(allow_scripts_arg())
+        .arg(
+          Arg::new("cmd")
+            .required_if_eq("global", "true")
+            .num_args(1..)
+            .value_hint(ValueHint::FilePath),
+        )
+        .arg(
+          Arg::new("name")
+            .long("name")
+            .short('n')
+            .help("Executable file name"),
+        )
+        .arg(
+          Arg::new("root")
+            .long("root")
+            .help("Installation root")
+            .value_hint(ValueHint::DirPath),
+        )
+        .arg(
+          Arg::new("force")
+            .long("force")
+            .short('f')
+            .help("Forcefully overwrite existing installation")
+            .action(ArgAction::SetTrue),
+        )
+        .arg(
+          Arg::new("global")
+            .long("global")
+            .short('g')
+            .help("Install a package or script as a globally available executable")
+            .action(ArgAction::SetTrue),
+        )
+        .arg(env_file_arg())
     })
 }
 
@@ -2753,9 +2772,11 @@ Start a server defined in server.ts, watching for changes and running on port 50
 fn task_subcommand() -> Command {
   command(
     "task",
-    cstr!("Run a task defined in the configuration file.
+    cstr!(
+      "Run a task defined in the configuration file.
 
-  <p(245)>deno task build</>"),
+  <p(245)>deno task build</>"
+    ),
     UnstableArgsConfig::ResolutionAndRuntime,
   )
   .defer(|cmd| {
@@ -3177,7 +3198,7 @@ fn compile_args_without_check_args(app: Command) -> Command {
     .arg(unsafely_ignore_certificate_errors_arg())
 }
 
-fn permission_args(app: Command) -> Command {
+fn permission_args(app: Command, requires: Option<&'static str>) -> Command {
   app
     .after_help(cstr!(r#"<y>Permission options:</>
 Docs: <c>https://docs.deno.com/go/permissions</>
@@ -3219,216 +3240,342 @@ Docs: <c>https://docs.deno.com/go/permissions</>
                                            <p(245)>--deny-hrtime</>
 "#))
     .arg(
-      Arg::new("allow-all")
-        .short('A')
-        .long("allow-all")
-        .action(ArgAction::SetTrue)
-        .help("Allow all permissions")
-        .hide(true),
+      {
+        let mut arg = Arg::new("allow-all")
+          .short('A')
+          .long("allow-all")
+          .action(ArgAction::SetTrue)
+          .help("Allow all permissions")
+          .hide(true)
+          ;
+        if let Some(requires) = requires {
+          arg = arg.requires(requires)
+        }
+        arg
+      }
     )
     .arg(
-      Arg::new("allow-read")
-        .long("allow-read")
-        .short('R')
-        .num_args(0..)
-        .use_value_delimiter(true)
-        .require_equals(true)
-        .value_name("PATH")
-        .help("Allow file system read access. Optionally specify allowed paths")
-        .value_parser(value_parser!(String))
-        .value_hint(ValueHint::AnyPath)
-        .hide(true),
+      {
+        let mut arg =  Arg::new("allow-read")
+          .long("allow-read")
+          .short('R')
+          .num_args(0..)
+          .use_value_delimiter(true)
+          .require_equals(true)
+          .value_name("PATH")
+          .help("Allow file system read access. Optionally specify allowed paths")
+          .value_parser(value_parser!(String))
+          .value_hint(ValueHint::AnyPath)
+          .hide(true)
+          ;
+        if let Some(requires) = requires {
+          arg = arg.requires(requires)
+        }
+        arg
+      }
     )
     .arg(
-      Arg::new("deny-read")
-        .long("deny-read")
-        .num_args(0..)
-        .use_value_delimiter(true)
-        .require_equals(true)
-        .value_name("PATH")
-        .help("Deny file system read access. Optionally specify denied paths")
-        .value_parser(value_parser!(String))
-        .value_hint(ValueHint::AnyPath)
-        .hide(true),
+      {
+        let mut arg =   Arg::new("deny-read")
+          .long("deny-read")
+          .num_args(0..)
+          .use_value_delimiter(true)
+          .require_equals(true)
+          .value_name("PATH")
+          .help("Deny file system read access. Optionally specify denied paths")
+          .value_parser(value_parser!(String))
+          .value_hint(ValueHint::AnyPath)
+          .hide(true)
+          ;
+        if let Some(requires) = requires {
+          arg = arg.requires(requires)
+        }
+        arg
+      }
     )
     .arg(
-      Arg::new("allow-write")
-        .long("allow-write")
-        .short('W')
-        .num_args(0..)
-        .use_value_delimiter(true)
-        .require_equals(true)
-        .value_name("PATH")
-        .help("Allow file system write access. Optionally specify allowed paths")
-        .value_parser(value_parser!(String))
-        .value_hint(ValueHint::AnyPath)
-        .hide(true),
+      {
+        let mut arg =   Arg::new("allow-write")
+          .long("allow-write")
+          .short('W')
+          .num_args(0..)
+          .use_value_delimiter(true)
+          .require_equals(true)
+          .value_name("PATH")
+          .help("Allow file system write access. Optionally specify allowed paths")
+          .value_parser(value_parser!(String))
+          .value_hint(ValueHint::AnyPath)
+          .hide(true)
+          ;
+        if let Some(requires) = requires {
+          arg = arg.requires(requires)
+        }
+        arg
+      }
     )
     .arg(
-      Arg::new("deny-write")
-        .long("deny-write")
-        .num_args(0..)
-        .use_value_delimiter(true)
-        .require_equals(true)
-        .value_name("PATH")
-        .help("Deny file system write access. Optionally specify denied paths")
-        .value_parser(value_parser!(String))
-        .value_hint(ValueHint::AnyPath)
-        .hide(true),
+      {
+        let mut arg =    Arg::new("deny-write")
+          .long("deny-write")
+          .num_args(0..)
+          .use_value_delimiter(true)
+          .require_equals(true)
+          .value_name("PATH")
+          .help("Deny file system write access. Optionally specify denied paths")
+          .value_parser(value_parser!(String))
+          .value_hint(ValueHint::AnyPath)
+          .hide(true)
+          ;
+        if let Some(requires) = requires {
+          arg = arg.requires(requires)
+        }
+        arg
+      }
     )
     .arg(
-      Arg::new("allow-net")
-        .long("allow-net")
-        .short('N')
-        .num_args(0..)
-        .use_value_delimiter(true)
-        .require_equals(true)
-        .value_name("IP_OR_HOSTNAME")
-        .help("Allow network access. Optionally specify allowed IP addresses and host names, with ports as necessary")
-        .value_parser(flags_net::validator)
-        .hide(true),
+      {
+        let mut arg =   Arg::new("allow-net")
+          .long("allow-net")
+          .short('N')
+          .num_args(0..)
+          .use_value_delimiter(true)
+          .require_equals(true)
+          .value_name("IP_OR_HOSTNAME")
+          .help("Allow network access. Optionally specify allowed IP addresses and host names, with ports as necessary")
+          .value_parser(flags_net::validator)
+          .hide(true)
+          ;
+        if let Some(requires) = requires {
+          arg = arg.requires(requires)
+        }
+        arg
+      }
     )
     .arg(
-      Arg::new("deny-net")
-        .long("deny-net")
-        .num_args(0..)
-        .use_value_delimiter(true)
-        .require_equals(true)
-        .value_name("IP_OR_HOSTNAME")
-        .help("Deny network access. Optionally specify denied IP addresses and host names, with ports as necessary")
-        .value_parser(flags_net::validator)
-        .hide(true),
+      {
+        let mut arg =  Arg::new("deny-net")
+          .long("deny-net")
+          .num_args(0..)
+          .use_value_delimiter(true)
+          .require_equals(true)
+          .value_name("IP_OR_HOSTNAME")
+          .help("Deny network access. Optionally specify denied IP addresses and host names, with ports as necessary")
+          .value_parser(flags_net::validator)
+          .hide(true)
+          ;
+        if let Some(requires) = requires {
+          arg = arg.requires(requires)
+        }
+        arg
+      }
     )
     .arg(
-      Arg::new("allow-env")
-        .long("allow-env")
-        .short('E')
-        .num_args(0..)
-        .use_value_delimiter(true)
-        .require_equals(true)
-        .value_name("VARIABLE_NAME")
-        .help("Allow access to system environment information. Optionally specify accessible environment variables")
-        .value_parser(|key: &str| {
-          if key.is_empty() || key.contains(&['=', '\0'] as &[char]) {
-            return Err(format!("invalid key \"{key}\""));
-          }
+      {
+        let mut arg = Arg::new("allow-env")
+          .long("allow-env")
+          .short('E')
+          .num_args(0..)
+          .use_value_delimiter(true)
+          .require_equals(true)
+          .value_name("VARIABLE_NAME")
+          .help("Allow access to system environment information. Optionally specify accessible environment variables")
+          .value_parser(|key: &str| {
+            if key.is_empty() || key.contains(&['=', '\0'] as &[char]) {
+              return Err(format!("invalid key \"{key}\""));
+            }
 
-          Ok(if cfg!(windows) {
-            key.to_uppercase()
-          } else {
-            key.to_string()
+            Ok(if cfg!(windows) {
+              key.to_uppercase()
+            } else {
+              key.to_string()
+            })
           })
-        })
-        .hide(true),
+          .hide(true)
+          ;
+        if let Some(requires) = requires {
+          arg = arg.requires(requires)
+        }
+        arg
+      }
     )
     .arg(
-      Arg::new("deny-env")
-        .long("deny-env")
-        .num_args(0..)
-        .use_value_delimiter(true)
-        .require_equals(true)
-        .value_name("VARIABLE_NAME")
-        .help("Deny access to system environment information. Optionally specify accessible environment variables")
-        .value_parser(|key: &str| {
-          if key.is_empty() || key.contains(&['=', '\0'] as &[char]) {
-            return Err(format!("invalid key \"{key}\""));
-          }
+      {
+        let mut arg = Arg::new("deny-env")
+          .long("deny-env")
+          .num_args(0..)
+          .use_value_delimiter(true)
+          .require_equals(true)
+          .value_name("VARIABLE_NAME")
+          .help("Deny access to system environment information. Optionally specify accessible environment variables")
+          .value_parser(|key: &str| {
+            if key.is_empty() || key.contains(&['=', '\0'] as &[char]) {
+              return Err(format!("invalid key \"{key}\""));
+            }
 
-          Ok(if cfg!(windows) {
-            key.to_uppercase()
-          } else {
-            key.to_string()
+            Ok(if cfg!(windows) {
+              key.to_uppercase()
+            } else {
+              key.to_string()
+            })
           })
-        })
-        .hide(true),
+          .hide(true)
+          ;
+        if let Some(requires) = requires {
+          arg = arg.requires(requires)
+        }
+        arg
+      }
     )
     .arg(
-      Arg::new("allow-sys")
-        .long("allow-sys")
-        .short('S')
-        .num_args(0..)
-        .use_value_delimiter(true)
-        .require_equals(true)
-        .value_name("API_NAME")
-        .help("Allow access to OS information. Optionally allow specific APIs by function name")
-        .value_parser(|key: &str| parse_sys_kind(key).map(ToString::to_string))
-        .hide(true),
+      {
+        let mut arg = Arg::new("allow-sys")
+          .long("allow-sys")
+          .short('S')
+          .num_args(0..)
+          .use_value_delimiter(true)
+          .require_equals(true)
+          .value_name("API_NAME")
+          .help("Allow access to OS information. Optionally allow specific APIs by function name")
+          .value_parser(|key: &str| parse_sys_kind(key).map(ToString::to_string))
+          .hide(true)
+          ;
+        if let Some(requires) = requires {
+          arg = arg.requires(requires)
+        }
+        arg
+      }
     )
     .arg(
-      Arg::new("deny-sys")
-        .long("deny-sys")
-        .num_args(0..)
-        .use_value_delimiter(true)
-        .require_equals(true)
-        .value_name("API_NAME")
-        .help("Deny access to OS information. Optionally deny specific APIs by function name")
-        .value_parser(|key: &str| parse_sys_kind(key).map(ToString::to_string))
-        .hide(true),
+      {
+        let mut arg =  Arg::new("deny-sys")
+          .long("deny-sys")
+          .num_args(0..)
+          .use_value_delimiter(true)
+          .require_equals(true)
+          .value_name("API_NAME")
+          .help("Deny access to OS information. Optionally deny specific APIs by function name")
+          .value_parser(|key: &str| parse_sys_kind(key).map(ToString::to_string))
+          .hide(true)
+          ;
+        if let Some(requires) = requires {
+          arg = arg.requires(requires)
+        }
+        arg
+      }
     )
     .arg(
-      Arg::new("allow-run")
-        .long("allow-run")
-        .num_args(0..)
-        .use_value_delimiter(true)
-        .require_equals(true)
-        .value_name("PROGRAM_NAME")
-        .help("Allow running subprocesses. Optionally specify allowed runnable program names")
-        .hide(true),
+      {
+        let mut arg = Arg::new("allow-run")
+          .long("allow-run")
+          .num_args(0..)
+          .use_value_delimiter(true)
+          .require_equals(true)
+          .value_name("PROGRAM_NAME")
+          .help("Allow running subprocesses. Optionally specify allowed runnable program names")
+          .hide(true)
+          ;
+        if let Some(requires) = requires {
+          arg = arg.requires(requires)
+        }
+        arg
+      }
     )
     .arg(
-      Arg::new("deny-run")
-        .long("deny-run")
-        .num_args(0..)
-        .use_value_delimiter(true)
-        .require_equals(true)
-        .value_name("PROGRAM_NAME")
-        .help("Deny running subprocesses. Optionally specify denied runnable program names")
-        .hide(true),
+      {
+        let mut arg =  Arg::new("deny-run")
+          .long("deny-run")
+          .num_args(0..)
+          .use_value_delimiter(true)
+          .require_equals(true)
+          .value_name("PROGRAM_NAME")
+          .help("Deny running subprocesses. Optionally specify denied runnable program names")
+          .hide(true)
+          ;
+        if let Some(requires) = requires {
+          arg = arg.requires(requires)
+        }
+        arg
+
+      }
     )
     .arg(
-      Arg::new("allow-ffi")
-        .long("allow-ffi")
-        .num_args(0..)
-        .use_value_delimiter(true)
-        .require_equals(true)
-        .value_name("PATH")
-        .help("(Unstable) Allow loading dynamic libraries. Optionally specify allowed directories or files")
-        .value_parser(value_parser!(String))
-        .value_hint(ValueHint::AnyPath)
-        .hide(true),
+      {
+        let mut arg = Arg::new("allow-ffi")
+          .long("allow-ffi")
+          .num_args(0..)
+          .use_value_delimiter(true)
+          .require_equals(true)
+          .value_name("PATH")
+          .help("(Unstable) Allow loading dynamic libraries. Optionally specify allowed directories or files")
+          .value_parser(value_parser!(String))
+          .value_hint(ValueHint::AnyPath)
+          .hide(true)
+          ;
+        if let Some(requires) = requires {
+          arg = arg.requires(requires)
+        }
+        arg
+      }
     )
     .arg(
-      Arg::new("deny-ffi")
-        .long("deny-ffi")
-        .num_args(0..)
-        .use_value_delimiter(true)
-        .require_equals(true)
-        .value_name("PATH")
-        .help("(Unstable) Deny loading dynamic libraries. Optionally specify denied directories or files")
-        .value_parser(value_parser!(String))
-        .value_hint(ValueHint::AnyPath)
-        .hide(true),
+      {
+        let mut arg = Arg::new("deny-ffi")
+          .long("deny-ffi")
+          .num_args(0..)
+          .use_value_delimiter(true)
+          .require_equals(true)
+          .value_name("PATH")
+          .help("(Unstable) Deny loading dynamic libraries. Optionally specify denied directories or files")
+          .value_parser(value_parser!(String))
+          .value_hint(ValueHint::AnyPath)
+          .hide(true)
+          ;
+        if let Some(requires) = requires {
+          arg = arg.requires(requires)
+        }
+        arg
+      }
     )
     .arg(
-      Arg::new("allow-hrtime")
-        .long("allow-hrtime")
-        .action(ArgAction::SetTrue)
-        .help("Allow high-resolution time measurement. Note: this can enable timing attacks and fingerprinting")
-        .hide(true),
+      {
+        let mut arg = Arg::new("allow-hrtime")
+          .long("allow-hrtime")
+          .action(ArgAction::SetTrue)
+          .help("Allow high-resolution time measurement. Note: this can enable timing attacks and fingerprinting")
+          .hide(true)
+          ;
+        if let Some(requires) = requires {
+          arg = arg.requires(requires)
+        }
+        arg
+      }
     )
     .arg(
-      Arg::new("deny-hrtime")
-        .long("deny-hrtime")
-        .action(ArgAction::SetTrue)
-        .help("Deny high-resolution time measurement. Note: this can prevent timing attacks and fingerprinting")
-        .hide(true),
+      {
+        let mut arg = Arg::new("deny-hrtime")
+          .long("deny-hrtime")
+          .action(ArgAction::SetTrue)
+          .help("Deny high-resolution time measurement. Note: this can prevent timing attacks and fingerprinting")
+          .hide(true)
+          ;
+        if let Some(requires) = requires {
+          arg = arg.requires(requires)
+        }
+        arg
+      }
     )
     .arg(
-      Arg::new("no-prompt")
-        .long("no-prompt")
-        .action(ArgAction::SetTrue)
-        .hide(true)
-        .help("Always throw if required permission wasn't passed"),
+      {
+        let mut arg = Arg::new("no-prompt")
+          .long("no-prompt")
+          .action(ArgAction::SetTrue)
+          .hide(true)
+          .help("Always throw if required permission wasn't passed");
+        if let Some(requires) = requires {
+          arg = arg.requires(requires)
+        }
+        arg
+      }
     )
 }
 
@@ -3439,7 +3586,7 @@ fn runtime_args(
 ) -> Command {
   let app = compile_args(app);
   let app = if include_perms {
-    permission_args(app)
+    permission_args(app, None)
   } else {
     app
   };
@@ -4599,10 +4746,7 @@ fn run_parse(
   // pinned to 1.x in old versions so we can remove this in Deno 2.0 in
   // a few months.
   fn temp_netlify_deno_1_hack(flags: &mut Flags, script_arg: &str) {
-    fn is_netlify_edge_bundler_entrypoint(
-      flags: &Flags,
-      script: &str,
-    ) -> bool {
+    fn is_netlify_edge_bundler_entrypoint(flags: &Flags, script: &str) -> bool {
       // based on diff here: https://github.com/netlify/edge-bundler/blame/f1d33b74ca7aeec19a7c2149316d4547a94e43fb/node/config.ts#L85
       if flags.permissions.allow_read.is_none()
         || flags.permissions.allow_write.is_none()
@@ -4632,7 +4776,7 @@ fn run_parse(
       false
     }
 
-    if is_netlify_edge_bundler_entrypoint(flags, script) {
+    if is_netlify_edge_bundler_entrypoint(flags, script_arg) {
       flags.config_flag = ConfigFlag::Disabled;
     }
   }
@@ -10899,5 +11043,12 @@ mod tests {
       assert_eq!(long_flag, short_flag, "{} subcommand", command.get_name());
       assert_eq!(long_flag, subcommand, "{} subcommand", command.get_name());
     }
+  }
+
+  #[test]
+  fn install_permissions_non_global() {
+    let r = flags_from_vec(svec!["deno", "install", "--allow-net", "jsr:@std/fs"]);
+
+    assert!(r.unwrap_err().to_string().contains("Note: Permission flags can only be used in a global setting"));
   }
 }
