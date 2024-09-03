@@ -1608,6 +1608,7 @@ Deno.test("[node/http] In ClientRequest, option.hostname has precedence over opt
 
 Deno.test("[node/http] upgraded socket closes when the server closed without closing handshake", async () => {
   const clientSocketClosed = Promise.withResolvers<void>();
+  const serverProcessClosed = Promise.withResolvers<void>();
 
   // Uses the server in different process to shutdown it without closing handshake
   const server = `
@@ -1650,6 +1651,7 @@ Deno.test("[node/http] upgraded socket closes when the server closed without clo
 
       p.kill();
       await p.output();
+      serverProcessClosed.resolve();
     });
 
     // sending ping message
@@ -1658,4 +1660,5 @@ Deno.test("[node/http] upgraded socket closes when the server closed without clo
   }).end();
 
   await clientSocketClosed.promise;
+  await serverProcessClosed.promise;
 });
