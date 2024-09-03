@@ -133,10 +133,7 @@ class Process {
 function run({
   cmd,
   cwd = undefined,
-  clearEnv = false,
   env = { __proto__: null },
-  gid = undefined,
-  uid = undefined,
   stdout = "inherit",
   stderr = "inherit",
   stdin = "inherit",
@@ -155,10 +152,7 @@ function run({
   const res = opRun({
     cmd: ArrayPrototypeMap(cmd, String),
     cwd,
-    clearEnv,
     env: ObjectEntries(env),
-    gid,
-    uid,
     stdin,
     stdout,
     stderr,

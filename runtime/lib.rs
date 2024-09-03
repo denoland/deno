@@ -99,10 +99,11 @@ pub static UNSTABLE_GRANULAR_FLAGS: &[UnstableGranularFlag] = &[
     show_in_help: true,
     id: 7,
   },
+  // TODO(bartlomieju): consider removing it
   UnstableGranularFlag {
     name: ops::process::UNSTABLE_FEATURE_NAME,
     help_text: "Enable unstable process APIs",
-    show_in_help: true,
+    show_in_help: false,
     id: 8,
   },
   UnstableGranularFlag {
