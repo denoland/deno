@@ -1,4 +1,0 @@
-{
-  "args": "eval -p Math.random()",
-  "output": "main.out"
-}

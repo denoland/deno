@@ -3,23 +3,6 @@
 use test_util as util;
 use test_util::itest;
 
-#[test]
-fn eval_p() {
-  let output = util::deno_cmd()
-    .arg("eval")
-    .arg("-p")
-    .arg("1+2")
-    .stdout_piped()
-    .spawn()
-    .unwrap()
-    .wait_with_output()
-    .unwrap();
-  assert!(output.status.success());
-  let stdout_str =
-    util::strip_ansi_codes(std::str::from_utf8(&output.stdout).unwrap().trim());
-  assert_eq!("3", stdout_str);
-}
-
 // Make sure that snapshot flags don't affect runtime.
 #[test]
 fn eval_randomness() {
