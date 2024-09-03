@@ -553,15 +553,6 @@ declare namespace Deno {
      */
     sys?: "inherit" | boolean | string[];
 
-    /** Specifies if the `hrtime` permission should be requested or revoked.
-     * If set to `"inherit"`, the current `hrtime` permission will be inherited.
-     * If set to `true`, the global `hrtime` permission will be requested.
-     * If set to `false`, the global `hrtime` permission will be revoked.
-     *
-     * @default {false}
-     */
-    hrtime?: "inherit" | boolean;
-
     /** Specifies if the `net` permission should be requested or revoked.
      * if set to `"inherit"`, the current `net` permission will be inherited.
      * if set to `true`, the global `net` permission will be requested.
@@ -4741,8 +4732,7 @@ declare namespace Deno {
     | "net"
     | "env"
     | "sys"
-    | "ffi"
-    | "hrtime";
+    | "ffi";
 
   /** The current status of the permission:
    *
@@ -4873,17 +4863,6 @@ declare namespace Deno {
     path?: string | URL;
   }
 
-  /** The permission descriptor for the `allow-hrtime` and `deny-hrtime` permissions, which
-   * controls if the runtime code has access to high resolution time. High
-   * resolution time is considered sensitive information, because it can be used
-   * by malicious code to gain information about the host that it might not
-   * otherwise have access to.
-   *
-   * @category Permissions */
-  export interface HrtimePermissionDescriptor {
-    name: "hrtime";
-  }
-
   /** Permission descriptors which define a permission and can be queried,
    * requested, or revoked.
    *
@@ -4899,8 +4878,7 @@ declare namespace Deno {
     | NetPermissionDescriptor
     | EnvPermissionDescriptor
     | SysPermissionDescriptor
-    | FfiPermissionDescriptor
-    | HrtimePermissionDescriptor;
+    | FfiPermissionDescriptor;
 
   /** The interface which defines what event types are supported by
    * {@linkcode PermissionStatus} instances.
