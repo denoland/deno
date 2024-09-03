@@ -1833,27 +1833,6 @@ declare namespace Deno {
     seekSync(offset: number | bigint, whence: SeekMode): number;
   }
 
-  /**
-   * Copies from `src` to `dst` until either EOF (`null`) is read from `src` or
-   * an error occurs. It resolves to the number of bytes copied or rejects with
-   * the first error encountered while copying.
-   *
-   * @deprecated This will be removed in Deno 2.0. See the
-   * {@link https://docs.deno.com/runtime/manual/advanced/migrate_deprecations | Deno 1.x to 2.x Migration Guide}
-   * for migration instructions.
-   *
-   * @category I/O
-   *
-   * @param src The source to copy from
-   * @param dst The destination to copy to
-   * @param options Can be used to tune size of the buffer. Default size is 32kB
-   */
-  export function copy(
-    src: Reader,
-    dst: Writer,
-    options?: { bufSize?: number },
-  ): Promise<number>;
-
   /** Open a file and resolve to an instance of {@linkcode Deno.FsFile}. The
    * file does not need to previously exist if using the `create` or `createNew`
    * open options. The caller may have the resulting file automatically closed

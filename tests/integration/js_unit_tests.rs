@@ -47,7 +47,6 @@ util::unit_test_factory!(
     image_data_test,
     internals_test,
     intl_test,
-    io_test,
     jupyter_test,
     kv_test,
     kv_queue_test_no_db_close,
