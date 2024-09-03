@@ -522,7 +522,9 @@ where
       // because the URL isn't an object URL.
       return Err(type_error("Blob for the given URL not found."));
     }
-    _ => return Err(type_error(format!("Url scheme '{scheme}' not supported"))),
+    _ => {
+      return Err(type_error(format!("Url scheme '{scheme}' not supported")))
+    }
   };
 
   Ok(FetchReturn {
@@ -1016,9 +1018,11 @@ pub fn create_http_client(
   let mut http_connector = HttpConnector::new();
   http_connector.enforce_http(false);
 
-  let user_agent = user_agent
-    .parse::<HeaderValue>()
-    .map_err(|_| type_error(format!("Illegal characters in User-Agent: received {user_agent}")))?;
+  let user_agent = user_agent.parse::<HeaderValue>().map_err(|_| {
+    type_error(format!(
+      "Illegal characters in User-Agent: received {user_agent}"
+    ))
+  })?;
 
   let mut builder =
     hyper_util::client::legacy::Builder::new(TokioExecutor::new());

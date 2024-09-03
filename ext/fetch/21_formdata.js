@@ -396,7 +396,9 @@ class MultipartParser {
    */
   constructor(body, boundary) {
     if (!boundary) {
-      throw new TypeError("Cannot construct MultipartParser: multipart/form-data must provide a boundary");
+      throw new TypeError(
+        "Cannot construct MultipartParser: multipart/form-data must provide a boundary",
+      );
     }
 
     this.boundary = `--${boundary}`;

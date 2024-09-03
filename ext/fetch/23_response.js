@@ -181,7 +181,9 @@ function initializeAResponse(response, init, bodyWithType) {
     init.statusText &&
     RegExpPrototypeExec(REASON_PHRASE_RE, init.statusText) === null
   ) {
-    throw new TypeError(`Status text is not valid: received "${init.statusText}"`);
+    throw new TypeError(
+      `Status text is not valid: received "${init.statusText}"`,
+    );
   }
 
   // 3.

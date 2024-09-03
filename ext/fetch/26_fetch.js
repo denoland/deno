@@ -447,7 +447,9 @@ function handleWasmStreaming(source, rid) {
 
     // 2.5.
     if (!res.ok) {
-      throw new TypeError(`Failed to receive WebAssembly content: HTTP status code ${res.status}`);
+      throw new TypeError(
+        `Failed to receive WebAssembly content: HTTP status code ${res.status}`,
+      );
     }
 
     // Pass the resolved URL to v8.
