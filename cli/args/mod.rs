@@ -780,8 +780,6 @@ pub struct CliOptions {
   maybe_lockfile: Option<Arc<CliLockfile>>,
   overrides: CliOptionOverrides,
   pub start_dir: Arc<WorkspaceDirectory>,
-  pub disable_deprecated_api_warning: bool,
-  pub verbose_deprecated_api_warning: bool,
   pub deno_dir_provider: Arc<DenoDirProvider>,
 }
 
@@ -824,13 +822,6 @@ impl CliOptions {
 
     load_env_variables_from_env_file(flags.env_file.as_ref());
 
-    let disable_deprecated_api_warning = flags.log_level
-      == Some(log::Level::Error)
-      || std::env::var("DENO_NO_DEPRECATION_WARNINGS").ok().is_some();
-
-    let verbose_deprecated_api_warning =
-      std::env::var("DENO_VERBOSE_WARNINGS").ok().is_some();
-
     Ok(Self {
       flags,
       initial_cwd,
@@ -839,8 +830,6 @@ impl CliOptions {
       maybe_node_modules_folder,
       overrides: Default::default(),
       start_dir,
-      disable_deprecated_api_warning,
-      verbose_deprecated_api_warning,
       deno_dir_provider,
     })
   }
