@@ -144,11 +144,6 @@ function run({
       ...new SafeArrayIterator(ArrayPrototypeSlice(cmd, 1)),
     ];
   }
-  internals.warnOnDeprecatedApi(
-    "Deno.run()",
-    (new Error()).stack,
-    `Use "Deno.Command()" API instead.`,
-  );
   const res = opRun({
     cmd: ArrayPrototypeMap(cmd, String),
     cwd,
