@@ -1,4 +1,4 @@
 {
-  "args": "eval --env=env console.log(Deno.env.get(\"Another_FOO\"))",
+  "args": "eval --env=./env_file console.log(Deno.env.get(\"Another_FOO\"))",
   "output": "main.out"
 }
