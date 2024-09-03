@@ -8,6 +8,10 @@
       "args": "run not_found",
       "output": "not_found.out",
       "exitCode": 1
+    },
+    "deno_run_task_colon": {
+      "args": "run main:foo",
+      "output": "main_foo.out"
     }
   }
 }

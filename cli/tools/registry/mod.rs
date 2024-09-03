@@ -25,9 +25,9 @@ use deno_core::futures::StreamExt;
 use deno_core::serde_json;
 use deno_core::serde_json::json;
 use deno_core::serde_json::Value;
+use deno_core::url::Url;
 use deno_terminal::colors;
 use http_body_util::BodyExt;
-use lsp_types::Url;
 use serde::Deserialize;
 use serde::Serialize;
 use sha2::Digest;
@@ -1049,7 +1049,8 @@ async fn publish_package(
         sha256: faster_hex::hex_string(&sha2::Sha256::digest(&meta_bytes)),
       },
     };
-    let bundle = provenance::generate_provenance(http_client, subject).await?;
+    let bundle =
+      provenance::generate_provenance(http_client, vec![subject]).await?;
 
     let tlog_entry = &bundle.verification_material.tlog_entries[0];
     log::info!("{}",

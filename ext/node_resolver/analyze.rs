@@ -1,5 +1,6 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
+use std::borrow::Cow;
 use std::collections::BTreeSet;
 use std::collections::HashSet;
 use std::path::Path;
@@ -583,9 +584,16 @@ fn not_found(path: &str, referrer: &Path) -> AnyError {
   std::io::Error::new(std::io::ErrorKind::NotFound, msg).into()
 }
 
-fn escape_for_double_quote_string(text: &str) -> String {
-  text.replace('\\', "\\\\").replace('"', "\\\"")
+fn escape_for_double_quote_string(text: &str) -> Cow<str> {
+  // this should be rare, so doing a scan first before allocating is ok
+  if text.chars().any(|c| matches!(c, '"' | '\\')) {
+    // don't bother making this more complex for perf because it's rare
+    Cow::Owned(text.replace('\\', "\\\\").replace('"', "\\\""))
+  } else {
+    Cow::Borrowed(text)
+  }
 }
+
 #[cfg(test)]
 mod tests {
   use super::*;

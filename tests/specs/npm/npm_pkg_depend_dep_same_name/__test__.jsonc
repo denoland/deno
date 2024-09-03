@@ -1,8 +1,5 @@
 {
   "tempDir": true,
-  "envs": {
-    "DENO_FUTURE": "1"
-  },
   "steps": [{
     "args": "install",
     "output": "[WILDCARD]"

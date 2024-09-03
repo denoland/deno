@@ -41,6 +41,7 @@ deno_cache_dir = { workspace = true }
 deno_core = { workspace = true, features = ["include_js_files_for_snapshotting", "unsafe_use_unprotected_platform"] }
 deno_fetch.workspace = true
 deno_lockfile.workspace = true
+deno_semver.workspace = true
 deno_terminal.workspace = true
 deno_tls.workspace = true
 fastwebsockets = { workspace = true, features = ["upgrade", "unstable-split"] }

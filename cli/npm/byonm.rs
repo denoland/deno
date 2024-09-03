@@ -307,14 +307,9 @@ impl CliNpmResolver for ByonmCliNpmResolver {
       concat!(
         "Could not find \"{}\" in a node_modules folder. ",
         "Deno expects the node_modules/ directory to be up to date. ",
-        "Did you forget to run `{}`?"
+        "Did you forget to run `deno install`?"
       ),
       alias,
-      if *crate::args::DENO_FUTURE {
-        "deno install"
-      } else {
-        "npm install"
-      }
     );
   }
 

@@ -6,6 +6,46 @@ https://github.com/denoland/deno/releases
 We also have one-line install commands at:
 https://github.com/denoland/deno_install
 
+### 1.46.2 / 2024.08.29
+
+- Revert "feat(fetch): accept async iterables for body" (#25207)
+- fix(bench): Fix table column alignments and NO_COLOR=1 (#25190)
+- fix(ext/crypto): throw DataError for invalid EC key import (#25181)
+- fix(ext/fetch): percent decode userinfo when parsing proxies (#25229)
+- fix(ext/node): emit `online` event after worker thread is initialized (#25243)
+- fix(ext/node): export JWK public key (#25239)
+- fix(ext/node): import EC JWK keys (#25266)
+- fix(ext/node): import JWK octet key pairs (#25180)
+- fix(ext/node): import RSA JWK keys (#25267)
+- fix(ext/node): throw when loading `cpu-features` module (#25257)
+- fix(ext/node): update aead-gcm-stream to 0.3 (#25261)
+- fix(ext/webgpu): allow to build on unsupported platforms (#25202)
+- fix(fmt): fix incorrect quotes in components (#25249)
+- fix(fmt/markdown): fix regression with multi-line footnotes and inline math
+  (#25222)
+- fix(install): Use relative symlinks in deno install (#25164)
+- fix(lsp): panic on url_to_uri() (#25238)
+- fix(napi): Don't run microtasks in napi_resolve_deferred (#25246)
+- fix(napi): Fix worker threads importing already-loaded NAPI addon (#25245)
+- fix(node/cluster): improve stubs to make log4js work (#25146)
+- fix(runtime/web_worker): populate `SnapshotOptions` for `WebWorker` when
+  instantiated without snapshot (#25280)
+- fix(task): support tasks with colons in name in `deno run` (#25233)
+- fix: handle showing warnings while the progress bar is shown (#25187)
+- fix: reland async context (#25140)
+- fix: removed unstable-htttp from deno help (#25216)
+- fix: replace `npm install` hint with `deno install` hint (#25244)
+- fix: update deno_doc (#25290)
+- fix: upgrade deno_core to 0.307.0 (#25287)
+- perf(ext/node): reduce some allocations in require (#25197)
+
+### 1.46.1 / 2024.08.22
+
+- fix(ext/node): http2session ready state (#25143)
+- fix(ext/node): register `node:wasi` built-in (#25134)
+- fix(urlpattern): fallback to empty string for undefined group values (#25151)
+- fix: trim space around DENO_AUTH_TOKENS (#25147)
+
 ### 1.46.0 / 2024.08.22
 
 - BREAKING(temporal/unstable): Remove obsoleted Temporal APIs (#24836)
