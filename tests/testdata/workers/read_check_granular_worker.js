@@ -3,7 +3,6 @@ postMessage({
   envGlobal: (await Deno.permissions.query({ name: "env" })).state,
   envFoo: (await Deno.permissions.query({ name: "env", variable: "foo" })).state,
   envAbsent: (await Deno.permissions.query({ name: "env", variable: "absent" })).state,
-  hrtime: (await Deno.permissions.query({ name: "hrtime" })).state,
   netGlobal: (await Deno.permissions.query({ name: "net" })).state,
   netFoo: (await Deno.permissions.query({ name: "net", host: "foo" })).state,
   netFoo8000: (await Deno.permissions.query({ name: "net", host: "foo:8000" })).state,

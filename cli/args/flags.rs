@@ -623,8 +623,6 @@ pub struct PermissionFlags {
   pub allow_all: bool,
   pub allow_env: Option<Vec<String>>,
   pub deny_env: Option<Vec<String>>,
-  pub allow_hrtime: bool,
-  pub deny_hrtime: bool,
   pub allow_ffi: Option<Vec<String>>,
   pub deny_ffi: Option<Vec<String>>,
   pub allow_net: Option<Vec<String>>,
@@ -645,8 +643,6 @@ impl PermissionFlags {
     self.allow_all
       || self.allow_env.is_some()
       || self.deny_env.is_some()
-      || self.allow_hrtime
-      || self.deny_hrtime
       || self.allow_ffi.is_some()
       || self.deny_ffi.is_some()
       || self.allow_net.is_some()
@@ -694,8 +690,6 @@ impl PermissionFlags {
       allow_all: self.allow_all,
       allow_env: self.allow_env.clone(),
       deny_env: self.deny_env.clone(),
-      allow_hrtime: self.allow_hrtime,
-      deny_hrtime: self.deny_hrtime,
       allow_net: self.allow_net.clone(),
       deny_net: self.deny_net.clone(),
       allow_ffi: convert_option_str_to_path_buf(&self.allow_ffi, initial_cwd)?,
@@ -909,14 +903,6 @@ impl Flags {
       _ => {}
     }
 
-    if self.permissions.allow_hrtime {
-      args.push("--allow-hrtime".to_string());
-    }
-
-    if self.permissions.deny_hrtime {
-      args.push("--deny-hrtime".to_string());
-    }
-
     args
   }
 
@@ -1000,8 +986,6 @@ impl Flags {
   pub fn has_permission_in_argv(&self) -> bool {
     self.argv.iter().any(|arg| {
       arg == "--allow-all"
-        || arg == "--allow-hrtime"
-        || arg == "--deny-hrtime"
         || arg.starts_with("--allow-env")
         || arg.starts_with("--deny-env")
         || arg.starts_with("--allow-ffi")
@@ -1029,7 +1013,6 @@ impl Flags {
     self.permissions.allow_write = Some(vec![]);
     self.permissions.allow_sys = Some(vec![]);
     self.permissions.allow_ffi = Some(vec![]);
-    self.permissions.allow_hrtime = true;
   }
 
   pub fn resolve_watch_exclude_set(
@@ -1397,7 +1380,6 @@ fn handle_repl_flags(flags: &mut Flags, repl_flags: ReplFlags) {
     flags.permissions.allow_sys = Some(vec![]);
     flags.permissions.allow_write = Some(vec![]);
     flags.permissions.allow_ffi = Some(vec![]);
-    flags.permissions.allow_hrtime = true;
   }
   flags.subcommand = DenoSubcommand::Repl(repl_flags);
 }
@@ -3102,8 +3084,6 @@ Docs: <c>https://docs.deno.com/go/permissions</>
                                            <p(245)>--allow-run  |  --allow-run="whoami,ps"</>
       <g>--allow-ffi[=<<PATH>...]</>            (Unstable) Allow loading dynamic libraries. Optionally specify allowed directories or files.
                                            <p(245)>--allow-ffi  |  --allow-ffi="./libfoo.so"</>
-      <g>--allow-hrtime</>                     Allow high-resolution time measurement. Note: this can enable timing attacks and fingerprinting.
-                                           <p(245)>--allow-hrtime</>
   <g>    --deny-read[=<<PATH>...]</>            Deny file system read access. Optionally specify denied paths.
                                            <p(245)>--deny-read  |  --deny-read="/etc,/var/log.txt"</>
   <g>    --deny-write[=<<PATH>...]</>           Deny file system write access. Optionally specify denied paths.
@@ -3118,8 +3098,6 @@ Docs: <c>https://docs.deno.com/go/permissions</>
                                            <p(245)>--deny-run  |  --deny-run="whoami,ps"</>
       <g>--deny-ffi[=<<PATH>...]</>             (Unstable) Deny loading dynamic libraries. Optionally specify denied directories or files.
                                            <p(245)>--deny-ffi  |  --deny-ffi="./libfoo.so"</>
-      <g>--deny-hrtime</>                      Deny high-resolution time measurement.
-                                           <p(245)>--deny-hrtime</>
 "#))
     .arg(
       Arg::new("allow-all")
@@ -3316,14 +3294,14 @@ Docs: <c>https://docs.deno.com/go/permissions</>
       Arg::new("allow-hrtime")
         .long("allow-hrtime")
         .action(ArgAction::SetTrue)
-        .help("Allow high-resolution time measurement. Note: this can enable timing attacks and fingerprinting")
+        .help("REMOVED in Deno 2.0")
         .hide(true),
     )
     .arg(
       Arg::new("deny-hrtime")
         .long("deny-hrtime")
         .action(ArgAction::SetTrue)
-        .help("Deny high-resolution time measurement. Note: this can prevent timing attacks and fingerprinting")
+        .help("REMOVED in Deno 2.0")
         .hide(true),
     )
     .arg(
@@ -3852,15 +3830,9 @@ impl Iterator for UnstableArgsIter {
     } else if self.idx == 2 {
       Arg::new("unstable-byonm")
         .long("unstable-byonm")
-        .help("Enable unstable 'bring your own node_modules' feature")
         .value_parser(FalseyValueParser::new())
         .action(ArgAction::SetTrue)
         .hide(true)
-        .long_help(match self.cfg {
-          UnstableArgsConfig::None => None,
-          UnstableArgsConfig::ResolutionOnly
-          | UnstableArgsConfig::ResolutionAndRuntime => Some("true"),
-        })
         .help_heading(UNSTABLE_HEADING)
     } else if self.idx == 3 {
       Arg::new("unstable-sloppy-imports")
@@ -4839,12 +4811,8 @@ fn permission_args_parse(
     debug!("ffi denylist: {:#?}", &flags.permissions.deny_ffi);
   }
 
-  if matches.get_flag("allow-hrtime") {
-    flags.permissions.allow_hrtime = true;
-  }
-
-  if matches.get_flag("deny-hrtime") {
-    flags.permissions.deny_hrtime = true;
+  if matches.get_flag("allow-hrtime") || matches.get_flag("deny-hrtime") {
+    log::warn!("⚠️ Warning: `allow-hrtime` and `deny-hrtime` have been removed in Deno 2, as high resolution time is now always allowed.");
   }
 
   if matches.get_flag("allow-all") {
@@ -5823,7 +5791,6 @@ mod tests {
           allow_sys: Some(vec![]),
           allow_write: Some(vec![]),
           allow_ffi: Some(vec![]),
-          allow_hrtime: true,
           ..Default::default()
         },
         code_cache_enabled: true,
@@ -5887,44 +5854,6 @@ mod tests {
         }),
         permissions: PermissionFlags {
           deny_read: Some(vec![]),
-          ..Default::default()
-        },
-        code_cache_enabled: true,
-        ..Flags::default()
-      }
-    );
-  }
-
-  #[test]
-  fn allow_hrtime() {
-    let r = flags_from_vec(svec!["deno", "run", "--allow-hrtime", "gist.ts"]);
-    assert_eq!(
-      r.unwrap(),
-      Flags {
-        subcommand: DenoSubcommand::Run(RunFlags::new_default(
-          "gist.ts".to_string(),
-        )),
-        permissions: PermissionFlags {
-          allow_hrtime: true,
-          ..Default::default()
-        },
-        code_cache_enabled: true,
-        ..Flags::default()
-      }
-    );
-  }
-
-  #[test]
-  fn deny_hrtime() {
-    let r = flags_from_vec(svec!["deno", "run", "--deny-hrtime", "gist.ts"]);
-    assert_eq!(
-      r.unwrap(),
-      Flags {
-        subcommand: DenoSubcommand::Run(RunFlags::new_default(
-          "gist.ts".to_string(),
-        )),
-        permissions: PermissionFlags {
-          deny_hrtime: true,
           ..Default::default()
         },
         code_cache_enabled: true,
@@ -6756,7 +6685,6 @@ mod tests {
           allow_sys: Some(vec![]),
           allow_write: Some(vec![]),
           allow_ffi: Some(vec![]),
-          allow_hrtime: true,
           ..Default::default()
         },
         ..Flags::default()
@@ -6783,7 +6711,6 @@ mod tests {
           allow_sys: Some(vec![]),
           allow_write: Some(vec![]),
           allow_ffi: Some(vec![]),
-          allow_hrtime: true,
           ..Default::default()
         },
         ..Flags::default()
@@ -6815,7 +6742,6 @@ mod tests {
           allow_sys: Some(vec![]),
           allow_write: Some(vec![]),
           allow_ffi: Some(vec![]),
-          allow_hrtime: true,
           ..Default::default()
         },
         ext: Some("ts".to_string()),
@@ -6856,7 +6782,6 @@ mod tests {
           allow_sys: Some(vec![]),
           allow_write: Some(vec![]),
           allow_ffi: Some(vec![]),
-          allow_hrtime: true,
           ..Default::default()
         },
         env_file: Some(".example.env".to_owned()),
@@ -6891,7 +6816,6 @@ mod tests {
           allow_sys: Some(vec![]),
           allow_write: Some(vec![]),
           allow_ffi: Some(vec![]),
-          allow_hrtime: true,
           ..Default::default()
         },
         ..Flags::default()
@@ -6925,7 +6849,6 @@ mod tests {
           deny_write: None,
           allow_ffi: Some(vec![]),
           deny_ffi: None,
-          allow_hrtime: true,
           ..Default::default()
         },
         ..Flags::default()
@@ -6979,7 +6902,6 @@ mod tests {
           allow_sys: Some(vec![]),
           allow_write: Some(vec![]),
           allow_ffi: Some(vec![]),
-          allow_hrtime: true,
           ..Default::default()
         },
         env_file: Some(".example.env".to_owned()),
@@ -10351,7 +10273,6 @@ mod tests {
           allow_sys: Some(vec![]),
           allow_write: Some(vec![]),
           allow_ffi: Some(vec![]),
-          allow_hrtime: true,
           ..Default::default()
         },
         ..Flags::default()

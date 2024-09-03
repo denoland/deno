@@ -29,4 +29,3 @@ Deno.FsFile constructor is illegal
 Deno.ConnectTlsOptions.(certFile|keyFile) do nothing
 Deno.ConnectTlsOptions.(certChain|privateKey) do nothing
 Deno.ListenTlsOptions.(keyFile|certFile) do nothing
-Deno.customInspect is undefined
