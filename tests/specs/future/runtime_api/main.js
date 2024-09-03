@@ -117,6 +117,5 @@ try {
     console.log("Deno.ListenTlsOptions.(keyFile|certFile) do nothing");
   }
 }
-console.log("Deno.customInspect is", Deno.customInspect);
 
 self.close();

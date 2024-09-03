@@ -19,4 +19,3 @@ console.log(Deno.permissions.querySync({ name: "sys", kind: "loadavg" }));
 console.log(Deno.permissions.querySync({ name: "net" }));
 console.log(Deno.permissions.querySync({ name: "net", host: "127.0.0.1" }));
 console.log(Deno.permissions.querySync({ name: "net", host: "192.168.0.1" }));
-console.log(Deno.permissions.querySync({ name: "hrtime" }));
