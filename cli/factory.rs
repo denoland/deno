@@ -866,10 +866,6 @@ impl CliFactory {
       node_ipc: cli_options.node_ipc_fd(),
       serve_port: cli_options.serve_port(),
       serve_host: cli_options.serve_host(),
-      // TODO(bartlomieju): temporarily disabled
-      disable_deprecated_api_warning: true,
-      verbose_deprecated_api_warning: cli_options
-        .verbose_deprecated_api_warning,
     })
   }
 }

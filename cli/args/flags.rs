@@ -99,13 +99,6 @@ pub struct BenchFlags {
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
-pub struct BundleFlags {
-  pub source_file: String,
-  pub out_file: Option<String>,
-  pub watch: Option<WatchFlags>,
-}
-
-#[derive(Clone, Debug, Eq, PartialEq)]
 pub struct CacheFlags {
   pub files: Vec<String>,
 }
@@ -397,7 +390,7 @@ pub struct TestFlags {
   pub clean: bool,
   pub fail_fast: Option<NonZeroUsize>,
   pub files: FileFlags,
-  pub allow_none: bool,
+  pub permit_no_files: bool,
   pub filter: Option<String>,
   pub shuffle: Option<u64>,
   pub concurrent_jobs: Option<NonZeroUsize>,
@@ -420,13 +413,6 @@ pub struct UpgradeFlags {
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
-pub struct VendorFlags {
-  pub specifiers: Vec<String>,
-  pub output_path: Option<String>,
-  pub force: bool,
-}
-
-#[derive(Clone, Debug, Eq, PartialEq)]
 pub struct PublishFlags {
   pub token: Option<String>,
   pub dry_run: bool,
@@ -445,7 +431,7 @@ pub enum DenoSubcommand {
   Add(AddFlags),
   Remove(RemoveFlags),
   Bench(BenchFlags),
-  Bundle(BundleFlags),
+  Bundle,
   Cache(CacheFlags),
   Check(CheckFlags),
   Clean,
@@ -470,7 +456,7 @@ pub enum DenoSubcommand {
   Test(TestFlags),
   Types,
   Upgrade(UpgradeFlags),
-  Vendor(VendorFlags),
+  Vendor,
   Publish(PublishFlags),
   Help(HelpFlags),
 }
@@ -633,8 +619,6 @@ pub struct PermissionFlags {
   pub allow_all: bool,
   pub allow_env: Option<Vec<String>>,
   pub deny_env: Option<Vec<String>>,
-  pub allow_hrtime: bool,
-  pub deny_hrtime: bool,
   pub allow_ffi: Option<Vec<String>>,
   pub deny_ffi: Option<Vec<String>>,
   pub allow_net: Option<Vec<String>>,
@@ -655,8 +639,6 @@ impl PermissionFlags {
     self.allow_all
       || self.allow_env.is_some()
       || self.deny_env.is_some()
-      || self.allow_hrtime
-      || self.deny_hrtime
       || self.allow_ffi.is_some()
       || self.deny_ffi.is_some()
       || self.allow_net.is_some()
@@ -704,8 +686,6 @@ impl PermissionFlags {
       allow_all: self.allow_all,
       allow_env: self.allow_env.clone(),
       deny_env: self.deny_env.clone(),
-      allow_hrtime: self.allow_hrtime,
-      deny_hrtime: self.deny_hrtime,
       allow_net: self.allow_net.clone(),
       deny_net: self.deny_net.clone(),
       allow_ffi: convert_option_str_to_path_buf(&self.allow_ffi, initial_cwd)?,
@@ -919,14 +899,6 @@ impl Flags {
       _ => {}
     }
 
-    if self.permissions.allow_hrtime {
-      args.push("--allow-hrtime".to_string());
-    }
-
-    if self.permissions.deny_hrtime {
-      args.push("--deny-hrtime".to_string());
-    }
-
     args
   }
 
@@ -1010,8 +982,6 @@ impl Flags {
   pub fn has_permission_in_argv(&self) -> bool {
     self.argv.iter().any(|arg| {
       arg == "--allow-all"
-        || arg == "--allow-hrtime"
-        || arg == "--deny-hrtime"
         || arg.starts_with("--allow-env")
         || arg.starts_with("--deny-env")
         || arg.starts_with("--allow-ffi")
@@ -1039,7 +1009,6 @@ impl Flags {
     self.permissions.allow_write = Some(vec![]);
     self.permissions.allow_sys = Some(vec![]);
     self.permissions.allow_ffi = Some(vec![]);
-    self.permissions.allow_hrtime = true;
   }
 
   pub fn resolve_watch_exclude_set(
@@ -1048,14 +1017,6 @@ impl Flags {
     if let DenoSubcommand::Run(RunFlags {
       watch:
         Some(WatchFlagsWithPaths {
-          exclude: excluded_paths,
-          ..
-        }),
-      ..
-    })
-    | DenoSubcommand::Bundle(BundleFlags {
-      watch:
-        Some(WatchFlags {
           exclude: excluded_paths,
           ..
         }),
@@ -1433,7 +1394,6 @@ fn handle_repl_flags(flags: &mut Flags, repl_flags: ReplFlags) {
     flags.permissions.allow_sys = Some(vec![]);
     flags.permissions.allow_write = Some(vec![]);
     flags.permissions.allow_ffi = Some(vec![]);
-    flags.permissions.allow_hrtime = true;
   }
   flags.subcommand = DenoSubcommand::Repl(repl_flags);
 }
@@ -1674,30 +1634,10 @@ If you specify a directory instead of a file, the path is expanded to all contai
 }
 
 fn bundle_subcommand() -> Command {
-  command("bundle",  "⚠️ Warning: `deno bundle` is deprecated and will be removed in Deno 2.0.
-Use an alternative bundler like \"deno_emit\", \"esbuild\" or \"rollup\" instead.
+  command("bundle",  "⚠️ `deno bundle` was removed in Deno 2.
 
-Output a single JavaScript file with all dependencies.
-  deno bundle jsr:@std/http/file-server file_server.bundle.js
-
-If no output file is given, the output is written to standard output:
-  deno bundle jsr:@std/http/file-server", UnstableArgsConfig::ResolutionOnly)
+See the Deno 1.x to 2.x Migration Guide for migration instructions: https://docs.deno.com/runtime/manual/advanced/migrate_deprecations", UnstableArgsConfig::ResolutionOnly)
     .hide(true)
-    .defer(|cmd| {
-      compile_args(cmd)
-        .hide(true)
-        .arg(check_arg(true))
-        .arg(
-          Arg::new("source_file")
-            .required_unless_present("help")
-            .value_hint(ValueHint::FilePath),
-        )
-        .arg(Arg::new("out_file").value_hint(ValueHint::FilePath))
-        .arg(watch_arg(false))
-        .arg(watch_exclude_arg())
-        .arg(no_clear_screen_arg())
-        .arg(executable_ext_arg())
-    })
 }
 
 fn cache_subcommand() -> Command {
@@ -2096,8 +2036,9 @@ Show documentation for runtime built-ins:
 }
 
 fn eval_subcommand() -> Command {
-  command("eval",
-      cstr!("Evaluate JavaScript from the command line.
+  command(
+    "eval",
+    cstr!("Evaluate JavaScript from the command line.
 
   <p(245)>deno eval \"console.log('hello world')\"</>
 
@@ -2107,39 +2048,29 @@ To evaluate as TypeScript:
 This command has implicit access to all permissions.
 
 <y>Read more:</> <c>https://docs.deno.com/go/cmd/eval</>"),
-          UnstableArgsConfig::ResolutionAndRuntime,
-    )
-    .defer(|cmd| {
-      runtime_args(cmd, false, true)
-        .arg(check_arg(false))
-        .arg(
-          // TODO(@satyarohith): remove this argument in 2.0.
-          Arg::new("ts")
-            .conflicts_with("ext")
-            .long("ts")
-            .short('T')
-            .help("deprecated: Use `--ext=ts` instead. The `--ts` and `-T` flags are deprecated and will be removed in Deno 2.0.")
-            .action(ArgAction::SetTrue)
-            .hide(true),
-        )
-        .arg(executable_ext_arg())
-        .arg(
-          Arg::new("print")
-            .long("print")
-            .short('p')
-            .help("print result to stdout")
-            .action(ArgAction::SetTrue),
-        )
-        .arg(
-          Arg::new("code_arg")
-            .num_args(1..)
-            .action(ArgAction::Append)
-            .help("Code to evaluate")
-            .value_name("CODE_ARG")
-            .required_unless_present("help"),
-        )
-        .arg(env_file_arg())
-    })
+    UnstableArgsConfig::ResolutionAndRuntime,
+  )
+  .defer(|cmd| {
+    runtime_args(cmd, false, true)
+      .arg(check_arg(false))
+      .arg(executable_ext_arg())
+      .arg(
+        Arg::new("print")
+          .long("print")
+          .short('p')
+          .help("print result to stdout")
+          .action(ArgAction::SetTrue),
+      )
+      .arg(
+        Arg::new("code_arg")
+          .num_args(1..)
+          .action(ArgAction::Append)
+          .help("Code to evaluate")
+          .value_name("CODE_ARG")
+          .required_unless_present("help"),
+      )
+      .arg(env_file_arg())
+  })
 }
 
 fn fmt_subcommand() -> Command {
@@ -2752,7 +2683,7 @@ Start a server defined in server.ts, watching for changes and running on port 50
         .value_parser(serve_host_validator),
     )
     .arg(
-      parallel_arg("multiple server workers", false)
+      parallel_arg("multiple server workers")
     )
     .arg(check_arg(false))
     .arg(watch_arg(true))
@@ -2827,14 +2758,6 @@ Directory arguments are expanded to all contained files matching the glob {*_,*.
           .help_heading(TEST_HEADING),
       )
       .arg(
-        Arg::new("trace-ops")
-          .long("trace-ops")
-          .help("Deprecated alias for --trace-leaks")
-          .hide(true)
-          .action(ArgAction::SetTrue)
-          .help_heading(TEST_HEADING),
-      )
-      .arg(
         Arg::new("trace-leaks")
           .long("trace-leaks")
           .help("Enable tracing of leaks. Useful when debugging leaking ops in test, but impacts test execution time")
@@ -2858,19 +2781,10 @@ Directory arguments are expanded to all contained files matching the glob {*_,*.
           .value_name("N")
           .value_parser(value_parser!(NonZeroUsize))
           .help_heading(TEST_HEADING))
-      // TODO(@lucacasonato): remove for Deno 2.0
-      .arg(
-        Arg::new("allow-none")
-          .long("allow-none")
-          .help("Don't return error code if no test files are found")
-          .hide(true)
-          .action(ArgAction::SetTrue),
-      )
       .arg(
         Arg::new("permit-no-files")
           .long("permit-no-files")
           .help("Don't return an error code if no test files were found")
-          .conflicts_with("allow-none")
           .action(ArgAction::SetTrue)
           .help_heading(TEST_HEADING),
       )
@@ -2913,17 +2827,7 @@ Directory arguments are expanded to all contained files matching the glob {*_,*.
           .help_heading(TEST_HEADING),
       )
       .arg(
-        parallel_arg("test modules", true)
-      )
-      .arg(
-        Arg::new("jobs")
-          .short('j')
-          .long("jobs")
-          .help("deprecated: The `--jobs` flag is deprecated and will be removed in Deno 2.0. Use the `--parallel` flag with possibly the `DENO_JOBS` environment variable instead.")
-          .hide(true)
-          .num_args(0..=1)
-          .value_parser(value_parser!(NonZeroUsize))
-          .help_heading(TEST_HEADING),
+        parallel_arg("test modules")
       )
       .arg(
         Arg::new("files")
@@ -2965,16 +2869,11 @@ Directory arguments are expanded to all contained files matching the glob {*_,*.
     )
 }
 
-fn parallel_arg(descr: &str, jobs_fallback: bool) -> Arg {
-  let arg = Arg::new("parallel")
+fn parallel_arg(descr: &str) -> Arg {
+  Arg::new("parallel")
     .long("parallel")
     .help(format!("Run {descr} in parallel. Parallelism defaults to the number of available CPUs or the value of the DENO_JOBS environment variable"))
-    .action(ArgAction::SetTrue);
-  if jobs_fallback {
-    arg.conflicts_with("jobs")
-  } else {
-    arg
-  }
+    .action(ArgAction::SetTrue)
 }
 
 fn types_subcommand() -> Command {
@@ -3079,58 +2978,14 @@ different location, use the --output flag:
   })
 }
 
-// TODO(bartlomieju): this subcommand is now deprecated, remove it in Deno 2.
 fn vendor_subcommand() -> Command {
   command("vendor",
-      "⚠️ Warning: `deno vendor` is deprecated and will be removed in Deno 2.0.
-Add `\"vendor\": true` to your `deno.json` or use the `--vendor` flag instead.
+      "⚠️ `deno vendor` was removed in Deno 2.
 
-Vendor remote modules into a local directory.
-
-Analyzes the provided modules along with their dependencies, downloads
-remote modules to the output directory, and produces an import map that
-maps remote specifiers to the downloaded files.
-  deno vendor main.ts
-  deno run --import-map vendor/import_map.json main.ts
-
-Remote modules and multiple modules may also be specified:
-  deno vendor main.ts test.deps.ts jsr:@std/path",
+See the Deno 1.x to 2.x Migration Guide for migration instructions: https://docs.deno.com/runtime/manual/advanced/migrate_deprecations",
       UnstableArgsConfig::ResolutionOnly
     )
     .hide(true)
-    .defer(|cmd| cmd
-      .arg(
-        Arg::new("specifiers")
-          .num_args(1..)
-          .action(ArgAction::Append)
-          .required_unless_present("help"),
-      )
-      .arg(
-        Arg::new("output")
-          .long("output")
-          .help("The directory to output the vendored modules to")
-          .value_parser(value_parser!(String))
-          .value_hint(ValueHint::DirPath),
-      )
-      .arg(
-        Arg::new("force")
-          .long("force")
-          .short('f')
-          .help(
-            "Forcefully overwrite conflicting files in existing output directory",
-          )
-          .action(ArgAction::SetTrue),
-      )
-      .arg(no_config_arg())
-      .arg(config_arg())
-      .arg(import_map_arg())
-      .arg(lock_arg())
-      .arg(node_modules_dir_arg())
-      .arg(vendor_arg())
-      .arg(reload_arg())
-      .arg(ca_file_arg())
-      .arg(unsafely_ignore_certificate_errors_arg())
-    )
 }
 
 fn publish_subcommand() -> Command {
@@ -3220,8 +3075,6 @@ Docs: <c>https://docs.deno.com/go/permissions</>
                                            <p(245)>--allow-run  |  --allow-run="whoami,ps"</>
       <g>--allow-ffi[=<<PATH>...]</>            (Unstable) Allow loading dynamic libraries. Optionally specify allowed directories or files.
                                            <p(245)>--allow-ffi  |  --allow-ffi="./libfoo.so"</>
-      <g>--allow-hrtime</>                     Allow high-resolution time measurement. Note: this can enable timing attacks and fingerprinting.
-                                           <p(245)>--allow-hrtime</>
   <g>    --deny-read[=<<PATH>...]</>            Deny file system read access. Optionally specify denied paths.
                                            <p(245)>--deny-read  |  --deny-read="/etc,/var/log.txt"</>
   <g>    --deny-write[=<<PATH>...]</>           Deny file system write access. Optionally specify denied paths.
@@ -3236,8 +3089,6 @@ Docs: <c>https://docs.deno.com/go/permissions</>
                                            <p(245)>--deny-run  |  --deny-run="whoami,ps"</>
       <g>--deny-ffi[=<<PATH>...]</>             (Unstable) Deny loading dynamic libraries. Optionally specify denied directories or files.
                                            <p(245)>--deny-ffi  |  --deny-ffi="./libfoo.so"</>
-      <g>--deny-hrtime</>                      Deny high-resolution time measurement.
-                                           <p(245)>--deny-hrtime</>
 "#))
     .arg(
       {
@@ -3541,7 +3392,7 @@ Docs: <c>https://docs.deno.com/go/permissions</>
         let mut arg = Arg::new("allow-hrtime")
           .long("allow-hrtime")
           .action(ArgAction::SetTrue)
-          .help("Allow high-resolution time measurement. Note: this can enable timing attacks and fingerprinting")
+          .help("REMOVED in Deno 2.0")
           .hide(true)
           ;
         if let Some(requires) = requires {
@@ -3555,7 +3406,7 @@ Docs: <c>https://docs.deno.com/go/permissions</>
         let mut arg = Arg::new("deny-hrtime")
           .long("deny-hrtime")
           .action(ArgAction::SetTrue)
-          .help("Deny high-resolution time measurement. Note: this can prevent timing attacks and fingerprinting")
+          .help("REMOVED in Deno 2.0")
           .hide(true)
           ;
         if let Some(requires) = requires {
@@ -4096,15 +3947,9 @@ impl Iterator for UnstableArgsIter {
     } else if self.idx == 2 {
       Arg::new("unstable-byonm")
         .long("unstable-byonm")
-        .help("Enable unstable 'bring your own node_modules' feature")
         .value_parser(FalseyValueParser::new())
         .action(ArgAction::SetTrue)
         .hide(true)
-        .long_help(match self.cfg {
-          UnstableArgsConfig::None => None,
-          UnstableArgsConfig::ResolutionOnly
-          | UnstableArgsConfig::ResolutionAndRuntime => Some("true"),
-        })
         .help_heading(UNSTABLE_HEADING)
     } else if self.idx == 3 {
       Arg::new("unstable-sloppy-imports")
@@ -4222,29 +4067,8 @@ fn bench_parse(flags: &mut Flags, matches: &mut ArgMatches) {
   });
 }
 
-fn bundle_parse(flags: &mut Flags, matches: &mut ArgMatches) {
-  flags.type_check_mode = TypeCheckMode::Local;
-
-  compile_args_parse(flags, matches);
-  unstable_args_parse(flags, matches, UnstableArgsConfig::ResolutionOnly);
-
-  let source_file = matches.remove_one::<String>("source_file").unwrap();
-
-  let out_file =
-    if let Some(out_file) = matches.remove_one::<String>("out_file") {
-      flags.permissions.allow_write = Some(vec![]);
-      Some(out_file)
-    } else {
-      None
-    };
-
-  ext_arg_parse(flags, matches);
-
-  flags.subcommand = DenoSubcommand::Bundle(BundleFlags {
-    source_file,
-    out_file,
-    watch: watch_arg_parse(matches),
-  });
+fn bundle_parse(flags: &mut Flags, _matches: &mut ArgMatches) {
+  flags.subcommand = DenoSubcommand::Bundle;
 }
 
 fn cache_parse(flags: &mut Flags, matches: &mut ArgMatches) {
@@ -4437,21 +4261,6 @@ fn eval_parse(flags: &mut Flags, matches: &mut ArgMatches) {
   flags.allow_all();
 
   ext_arg_parse(flags, matches);
-
-  // TODO(@satyarohith): remove this flag in 2.0.
-  let as_typescript = matches.get_flag("ts");
-
-  #[allow(clippy::print_stderr)]
-  if as_typescript {
-    eprintln!(
-      "⚠️ {}",
-      crate::colors::yellow(
-        "Use `--ext=ts` instead. The `--ts` and `-T` flags are deprecated and will be removed in Deno 2.0."
-      ),
-    );
-
-    flags.ext = Some("ts".to_string());
-  }
 
   let print = matches.get_flag("print");
   let mut code_args = matches.remove_many::<String>("code_arg").unwrap();
@@ -4737,50 +4546,6 @@ fn run_parse(
   app: Command,
   bare: bool,
 ) -> clap::error::Result<()> {
-  // todo(dsherret): remove this in Deno 2.0
-  // This is a hack to make https://github.com/netlify/build/pull/5767 work
-  // for old versions of @netlify/edge-bundler with new versions of Deno
-  // where Deno has gotten smarter at resolving config files.
-  //
-  // It's an unfortunate scenario, but Netlify has the version at least
-  // pinned to 1.x in old versions so we can remove this in Deno 2.0 in
-  // a few months.
-  fn temp_netlify_deno_1_hack(flags: &mut Flags, script_arg: &str) {
-    fn is_netlify_edge_bundler_entrypoint(flags: &Flags, script: &str) -> bool {
-      // based on diff here: https://github.com/netlify/edge-bundler/blame/f1d33b74ca7aeec19a7c2149316d4547a94e43fb/node/config.ts#L85
-      if flags.permissions.allow_read.is_none()
-        || flags.permissions.allow_write.is_none()
-        || flags.config_flag != ConfigFlag::Discover
-      {
-        return false;
-      }
-      if !script.contains("@netlify") {
-        return false;
-      }
-      let path = PathBuf::from(script);
-      if !path.ends_with("deno/config.ts") {
-        return false;
-      }
-      let mut found_node_modules = false;
-      for component in path.components().filter_map(|c| c.as_os_str().to_str())
-      {
-        if !found_node_modules {
-          found_node_modules = component == "node_modules";
-        } else {
-          // make this work with pnpm and other package managers
-          if component.contains("@netlify") {
-            return true;
-          }
-        }
-      }
-      false
-    }
-
-    if is_netlify_edge_bundler_entrypoint(flags, script_arg) {
-      flags.config_flag = ConfigFlag::Disabled;
-    }
-  }
-
   runtime_args_parse(flags, matches, true, true);
   ext_arg_parse(flags, matches);
 
@@ -4789,7 +4554,6 @@ fn run_parse(
   if let Some(mut script_arg) = matches.remove_many::<String>("script_arg") {
     let script = script_arg.next().unwrap();
     flags.argv.extend(script_arg);
-    temp_netlify_deno_1_hack(flags, &script);
     flags.subcommand = DenoSubcommand::Run(RunFlags {
       script,
       watch: watch_arg_parse_with_paths(matches),
@@ -4822,7 +4586,7 @@ fn serve_parse(
     .remove_one::<String>("host")
     .unwrap_or_else(|| "0.0.0.0".to_owned());
 
-  let worker_count = parallel_arg_parse(matches, false).map(|v| v.get());
+  let worker_count = parallel_arg_parse(matches).map(|v| v.get());
 
   runtime_args_parse(flags, matches, true, true);
   // If the user didn't pass --allow-net, add this port to the network
@@ -4898,34 +4662,10 @@ fn task_parse(flags: &mut Flags, matches: &mut ArgMatches) {
   flags.subcommand = DenoSubcommand::Task(task_flags);
 }
 
-fn parallel_arg_parse(
-  matches: &mut ArgMatches,
-  fallback_to_jobs: bool,
-) -> Option<NonZeroUsize> {
+fn parallel_arg_parse(matches: &mut ArgMatches) -> Option<NonZeroUsize> {
   if matches.get_flag("parallel") {
     if let Ok(value) = env::var("DENO_JOBS") {
       value.parse::<NonZeroUsize>().ok()
-    } else {
-      std::thread::available_parallelism().ok()
-    }
-  } else if fallback_to_jobs && matches.contains_id("jobs") {
-    // We can't change this to use the log crate because its not configured
-    // yet at this point since the flags haven't been parsed. This flag is
-    // deprecated though so it's not worth changing the code to use the log
-    // crate here and this is only done for testing anyway.
-    #[allow(clippy::print_stderr)]
-    {
-      eprintln!(
-        "⚠️ {}",
-        crate::colors::yellow(concat!(
-          "The `--jobs` flag is deprecated and will be removed in Deno 2.0.\n",
-          "Use the `--parallel` flag with possibly the `DENO_JOBS` environment variable instead.\n",
-          "Learn more at: https://docs.deno.com/runtime/manual/basics/env_variables"
-        )),
-      );
-    }
-    if let Some(value) = matches.remove_one::<NonZeroUsize>("jobs") {
-      Some(value)
     } else {
       std::thread::available_parallelism().ok()
     }
@@ -4947,32 +4687,10 @@ fn test_parse(flags: &mut Flags, matches: &mut ArgMatches) {
   };
 
   let no_run = matches.get_flag("no-run");
-  let trace_leaks =
-    matches.get_flag("trace-ops") || matches.get_flag("trace-leaks");
-
-  #[allow(clippy::print_stderr)]
-  if trace_leaks && matches.get_flag("trace-ops") {
-    // We can't change this to use the log crate because its not configured
-    // yet at this point since the flags haven't been parsed. This flag is
-    // deprecated though so it's not worth changing the code to use the log
-    // crate here and this is only done for testing anyway.
-    eprintln!(
-      "⚠️ {}",
-      crate::colors::yellow("The `--trace-ops` flag is deprecated and will be removed in Deno 2.0.\nUse the `--trace-leaks` flag instead."),
-    );
-  }
+  let trace_leaks = matches.get_flag("trace-leaks");
   let doc = matches.get_flag("doc");
   #[allow(clippy::print_stderr)]
-  let allow_none = matches.get_flag("permit-no-files")
-    || if matches.get_flag("allow-none") {
-      eprintln!(
-      "⚠️ {}",
-      crate::colors::yellow("The `--allow-none` flag is deprecated and will be removed in Deno 2.0.\nUse the `--permit-no-files` flag instead."),
-    );
-      true
-    } else {
-      false
-    };
+  let permit_no_files = matches.get_flag("permit-no-files");
   let filter = matches.remove_one::<String>("filter");
   let clean = matches.get_flag("clean");
 
@@ -5000,7 +4718,7 @@ fn test_parse(flags: &mut Flags, matches: &mut ArgMatches) {
     flags.argv.extend(script_arg);
   }
 
-  let concurrent_jobs = parallel_arg_parse(matches, true);
+  let concurrent_jobs = parallel_arg_parse(matches);
 
   let include = if let Some(files) = matches.remove_many::<String>("files") {
     files.collect()
@@ -5038,7 +4756,7 @@ fn test_parse(flags: &mut Flags, matches: &mut ArgMatches) {
     files: FileFlags { include, ignore },
     filter,
     shuffle,
-    allow_none,
+    permit_no_files,
     concurrent_jobs,
     trace_leaks,
     watch: watch_arg_parse_with_paths(matches),
@@ -5075,24 +4793,8 @@ fn upgrade_parse(flags: &mut Flags, matches: &mut ArgMatches) {
   });
 }
 
-fn vendor_parse(flags: &mut Flags, matches: &mut ArgMatches) {
-  unstable_args_parse(flags, matches, UnstableArgsConfig::ResolutionOnly);
-  ca_file_arg_parse(flags, matches);
-  unsafely_ignore_certificate_errors_parse(flags, matches);
-  config_args_parse(flags, matches);
-  import_map_arg_parse(flags, matches);
-  lock_arg_parse(flags, matches);
-  node_modules_and_vendor_dir_arg_parse(flags, matches);
-  reload_arg_parse(flags, matches);
-
-  flags.subcommand = DenoSubcommand::Vendor(VendorFlags {
-    specifiers: matches
-      .remove_many::<String>("specifiers")
-      .map(|p| p.collect())
-      .unwrap_or_default(),
-    output_path: matches.remove_one::<String>("output"),
-    force: matches.get_flag("force"),
-  });
+fn vendor_parse(flags: &mut Flags, _matches: &mut ArgMatches) {
+  flags.subcommand = DenoSubcommand::Vendor
 }
 
 fn publish_parse(flags: &mut Flags, matches: &mut ArgMatches) {
@@ -5199,12 +4901,8 @@ fn permission_args_parse(flags: &mut Flags, matches: &mut ArgMatches) {
     debug!("ffi denylist: {:#?}", &flags.permissions.deny_ffi);
   }
 
-  if matches.get_flag("allow-hrtime") {
-    flags.permissions.allow_hrtime = true;
-  }
-
-  if matches.get_flag("deny-hrtime") {
-    flags.permissions.deny_hrtime = true;
+  if matches.get_flag("allow-hrtime") || matches.get_flag("deny-hrtime") {
+    log::warn!("⚠️ Warning: `allow-hrtime` and `deny-hrtime` have been removed in Deno 2, as high resolution time is now always allowed.");
   }
 
   if matches.get_flag("allow-all") {
@@ -6181,7 +5879,6 @@ mod tests {
           allow_sys: Some(vec![]),
           allow_write: Some(vec![]),
           allow_ffi: Some(vec![]),
-          allow_hrtime: true,
           ..Default::default()
         },
         code_cache_enabled: true,
@@ -6245,44 +5942,6 @@ mod tests {
         }),
         permissions: PermissionFlags {
           deny_read: Some(vec![]),
-          ..Default::default()
-        },
-        code_cache_enabled: true,
-        ..Flags::default()
-      }
-    );
-  }
-
-  #[test]
-  fn allow_hrtime() {
-    let r = flags_from_vec(svec!["deno", "run", "--allow-hrtime", "gist.ts"]);
-    assert_eq!(
-      r.unwrap(),
-      Flags {
-        subcommand: DenoSubcommand::Run(RunFlags::new_default(
-          "gist.ts".to_string(),
-        )),
-        permissions: PermissionFlags {
-          allow_hrtime: true,
-          ..Default::default()
-        },
-        code_cache_enabled: true,
-        ..Flags::default()
-      }
-    );
-  }
-
-  #[test]
-  fn deny_hrtime() {
-    let r = flags_from_vec(svec!["deno", "run", "--deny-hrtime", "gist.ts"]);
-    assert_eq!(
-      r.unwrap(),
-      Flags {
-        subcommand: DenoSubcommand::Run(RunFlags::new_default(
-          "gist.ts".to_string(),
-        )),
-        permissions: PermissionFlags {
-          deny_hrtime: true,
           ..Default::default()
         },
         code_cache_enabled: true,
@@ -7114,7 +6773,6 @@ mod tests {
           allow_sys: Some(vec![]),
           allow_write: Some(vec![]),
           allow_ffi: Some(vec![]),
-          allow_hrtime: true,
           ..Default::default()
         },
         ..Flags::default()
@@ -7141,7 +6799,6 @@ mod tests {
           allow_sys: Some(vec![]),
           allow_write: Some(vec![]),
           allow_ffi: Some(vec![]),
-          allow_hrtime: true,
           ..Default::default()
         },
         ..Flags::default()
@@ -7151,8 +6808,12 @@ mod tests {
 
   #[test]
   fn eval_typescript() {
-    let r =
-      flags_from_vec(svec!["deno", "eval", "-T", "'console.log(\"hello\")'"]);
+    let r = flags_from_vec(svec![
+      "deno",
+      "eval",
+      "--ext=ts",
+      "'console.log(\"hello\")'"
+    ]);
     assert_eq!(
       r.unwrap(),
       Flags {
@@ -7169,7 +6830,6 @@ mod tests {
           allow_sys: Some(vec![]),
           allow_write: Some(vec![]),
           allow_ffi: Some(vec![]),
-          allow_hrtime: true,
           ..Default::default()
         },
         ext: Some("ts".to_string()),
@@ -7210,7 +6870,6 @@ mod tests {
           allow_sys: Some(vec![]),
           allow_write: Some(vec![]),
           allow_ffi: Some(vec![]),
-          allow_hrtime: true,
           ..Default::default()
         },
         env_file: Some(".example.env".to_owned()),
@@ -7245,7 +6904,6 @@ mod tests {
           allow_sys: Some(vec![]),
           allow_write: Some(vec![]),
           allow_ffi: Some(vec![]),
-          allow_hrtime: true,
           ..Default::default()
         },
         ..Flags::default()
@@ -7279,7 +6937,6 @@ mod tests {
           deny_write: None,
           allow_ffi: Some(vec![]),
           deny_ffi: None,
-          allow_hrtime: true,
           ..Default::default()
         },
         ..Flags::default()
@@ -7333,7 +6990,6 @@ mod tests {
           allow_sys: Some(vec![]),
           allow_write: Some(vec![]),
           allow_ffi: Some(vec![]),
-          allow_hrtime: true,
           ..Default::default()
         },
         env_file: Some(".example.env".to_owned()),
@@ -7896,174 +7552,6 @@ mod tests {
       "script.ts"
     ]);
     assert!(r.is_err(), "Should reject adjacent commas");
-  }
-
-  #[test]
-  fn bundle() {
-    let r = flags_from_vec(svec!["deno", "bundle", "source.ts"]);
-    assert_eq!(
-      r.unwrap(),
-      Flags {
-        subcommand: DenoSubcommand::Bundle(BundleFlags {
-          source_file: "source.ts".to_string(),
-          out_file: None,
-          watch: Default::default(),
-        }),
-        type_check_mode: TypeCheckMode::Local,
-        ..Flags::default()
-      }
-    );
-  }
-
-  #[test]
-  fn bundle_with_config() {
-    let r = flags_from_vec(svec![
-      "deno",
-      "bundle",
-      "--no-remote",
-      "--config",
-      "tsconfig.json",
-      "source.ts",
-      "bundle.js"
-    ]);
-    assert_eq!(
-      r.unwrap(),
-      Flags {
-        subcommand: DenoSubcommand::Bundle(BundleFlags {
-          source_file: "source.ts".to_string(),
-          out_file: Some("bundle.js".to_string()),
-          watch: Default::default(),
-        }),
-        permissions: PermissionFlags {
-          allow_write: Some(vec![]),
-          ..Default::default()
-        },
-        no_remote: true,
-        type_check_mode: TypeCheckMode::Local,
-        config_flag: ConfigFlag::Path("tsconfig.json".to_owned()),
-        ..Flags::default()
-      }
-    );
-  }
-
-  #[test]
-  fn bundle_with_output() {
-    let r = flags_from_vec(svec!["deno", "bundle", "source.ts", "bundle.js"]);
-    assert_eq!(
-      r.unwrap(),
-      Flags {
-        subcommand: DenoSubcommand::Bundle(BundleFlags {
-          source_file: "source.ts".to_string(),
-          out_file: Some("bundle.js".to_string()),
-          watch: Default::default(),
-        }),
-        type_check_mode: TypeCheckMode::Local,
-        permissions: PermissionFlags {
-          allow_write: Some(vec![]),
-          ..Default::default()
-        },
-        ..Flags::default()
-      }
-    );
-  }
-
-  #[test]
-  fn bundle_with_lock() {
-    let r =
-      flags_from_vec(svec!["deno", "bundle", "--lock=lock.json", "source.ts"]);
-    assert_eq!(
-      r.unwrap(),
-      Flags {
-        subcommand: DenoSubcommand::Bundle(BundleFlags {
-          source_file: "source.ts".to_string(),
-          out_file: None,
-          watch: Default::default(),
-        }),
-        type_check_mode: TypeCheckMode::Local,
-        lock: Some(String::from("lock.json")),
-        ..Flags::default()
-      }
-    );
-  }
-
-  #[test]
-  fn bundle_with_reload() {
-    let r = flags_from_vec(svec!["deno", "bundle", "--reload", "source.ts"]);
-    assert_eq!(
-      r.unwrap(),
-      Flags {
-        reload: true,
-        subcommand: DenoSubcommand::Bundle(BundleFlags {
-          source_file: "source.ts".to_string(),
-          out_file: None,
-          watch: Default::default(),
-        }),
-        type_check_mode: TypeCheckMode::Local,
-        ..Flags::default()
-      }
-    );
-  }
-
-  #[test]
-  fn bundle_nocheck() {
-    let r = flags_from_vec(svec!["deno", "bundle", "--no-check", "script.ts"])
-      .unwrap();
-    assert_eq!(
-      r,
-      Flags {
-        subcommand: DenoSubcommand::Bundle(BundleFlags {
-          source_file: "script.ts".to_string(),
-          out_file: None,
-          watch: Default::default(),
-        }),
-        type_check_mode: TypeCheckMode::None,
-        ..Flags::default()
-      }
-    );
-  }
-
-  #[test]
-  fn bundle_watch() {
-    let r = flags_from_vec(svec!["deno", "bundle", "--watch", "source.ts"]);
-    assert_eq!(
-      r.unwrap(),
-      Flags {
-        subcommand: DenoSubcommand::Bundle(BundleFlags {
-          source_file: "source.ts".to_string(),
-          out_file: None,
-          watch: Some(Default::default()),
-        }),
-        type_check_mode: TypeCheckMode::Local,
-        ..Flags::default()
-      }
-    )
-  }
-
-  #[test]
-  fn bundle_watch_with_no_clear_screen() {
-    let r = flags_from_vec(svec![
-      "deno",
-      "bundle",
-      "--watch",
-      "--no-clear-screen",
-      "source.ts"
-    ]);
-    assert_eq!(
-      r.unwrap(),
-      Flags {
-        subcommand: DenoSubcommand::Bundle(BundleFlags {
-          source_file: "source.ts".to_string(),
-          out_file: None,
-          watch: Some(WatchFlags {
-            hmr: false,
-            no_clear_screen: true,
-            exclude: vec![],
-          }),
-        }),
-        type_check_mode: TypeCheckMode::Local,
-        ..Flags::default()
-      }
-    )
   }
 
   #[test]
@@ -8954,7 +8442,7 @@ mod tests {
           doc: false,
           fail_fast: None,
           filter: Some("- foo".to_string()),
-          allow_none: true,
+          permit_no_files: true,
           files: FileFlags {
             include: vec!["dir1/".to_string(), "dir2/".to_string()],
             ignore: vec![],
@@ -9032,45 +8520,6 @@ mod tests {
   }
 
   #[test]
-  fn test_with_concurrent_jobs() {
-    let r = flags_from_vec(svec!["deno", "test", "--jobs=4"]);
-    assert_eq!(
-      r.unwrap(),
-      Flags {
-        subcommand: DenoSubcommand::Test(TestFlags {
-          no_run: false,
-          reporter: Default::default(),
-          doc: false,
-          fail_fast: None,
-          filter: None,
-          allow_none: false,
-          shuffle: None,
-          files: FileFlags {
-            include: vec![],
-            ignore: vec![],
-          },
-          concurrent_jobs: Some(NonZeroUsize::new(4).unwrap()),
-          trace_leaks: false,
-          coverage_dir: None,
-          clean: false,
-          watch: Default::default(),
-          junit_path: None,
-          hide_stacktraces: false,
-        }),
-        type_check_mode: TypeCheckMode::Local,
-        permissions: PermissionFlags {
-          no_prompt: true,
-          ..Default::default()
-        },
-        ..Flags::default()
-      }
-    );
-
-    let r = flags_from_vec(svec!["deno", "test", "--jobs=0"]);
-    assert!(r.is_err());
-  }
-
-  #[test]
   fn test_with_fail_fast() {
     let r = flags_from_vec(svec!["deno", "test", "--fail-fast=3"]);
     assert_eq!(
@@ -9081,7 +8530,7 @@ mod tests {
           doc: false,
           fail_fast: Some(NonZeroUsize::new(3).unwrap()),
           filter: None,
-          allow_none: false,
+          permit_no_files: false,
           shuffle: None,
           files: FileFlags {
             include: vec![],
@@ -9124,7 +8573,7 @@ mod tests {
           doc: false,
           fail_fast: None,
           filter: None,
-          allow_none: false,
+          permit_no_files: false,
           shuffle: None,
           files: FileFlags {
             include: vec![],
@@ -9261,7 +8710,7 @@ mod tests {
           doc: false,
           fail_fast: None,
           filter: None,
-          allow_none: false,
+          permit_no_files: false,
           shuffle: Some(1),
           files: FileFlags {
             include: vec![],
@@ -9297,7 +8746,7 @@ mod tests {
           doc: false,
           fail_fast: None,
           filter: None,
-          allow_none: false,
+          permit_no_files: false,
           shuffle: None,
           files: FileFlags {
             include: vec![],
@@ -9332,7 +8781,7 @@ mod tests {
           doc: false,
           fail_fast: None,
           filter: None,
-          allow_none: false,
+          permit_no_files: false,
           shuffle: None,
           files: FileFlags {
             include: vec!["./".to_string()],
@@ -9369,7 +8818,7 @@ mod tests {
           doc: false,
           fail_fast: None,
           filter: None,
-          allow_none: false,
+          permit_no_files: false,
           shuffle: None,
           files: FileFlags {
             include: vec![],
@@ -9599,30 +9048,6 @@ mod tests {
           no_prompt: true,
           ..Default::default()
         },
-        ..Flags::default()
-      }
-    );
-  }
-
-  #[test]
-  fn bundle_with_cafile() {
-    let r = flags_from_vec(svec![
-      "deno",
-      "bundle",
-      "--cert",
-      "example.crt",
-      "source.ts"
-    ]);
-    assert_eq!(
-      r.unwrap(),
-      Flags {
-        subcommand: DenoSubcommand::Bundle(BundleFlags {
-          source_file: "source.ts".to_string(),
-          out_file: None,
-          watch: Default::default(),
-        }),
-        type_check_mode: TypeCheckMode::Local,
-        ca_data: Some(CaData::File("example.crt".to_owned())),
         ..Flags::default()
       }
     );
@@ -10220,57 +9645,6 @@ mod tests {
     assert!(&error_message
       .contains("error: the following required arguments were not provided:"));
     assert!(&error_message.contains("--watch[=<FILES>...]"));
-  }
-
-  #[test]
-  fn vendor_minimal() {
-    let r = flags_from_vec(svec!["deno", "vendor", "mod.ts",]);
-    assert_eq!(
-      r.unwrap(),
-      Flags {
-        subcommand: DenoSubcommand::Vendor(VendorFlags {
-          specifiers: svec!["mod.ts"],
-          force: false,
-          output_path: None,
-        }),
-        ..Flags::default()
-      }
-    );
-  }
-
-  #[test]
-  fn vendor_all() {
-    let r = flags_from_vec(svec![
-      "deno",
-      "vendor",
-      "--config",
-      "deno.json",
-      "--import-map",
-      "import_map.json",
-      "--lock",
-      "lock.json",
-      "--force",
-      "--output",
-      "out_dir",
-      "--reload",
-      "mod.ts",
-      "deps.test.ts",
-    ]);
-    assert_eq!(
-      r.unwrap(),
-      Flags {
-        subcommand: DenoSubcommand::Vendor(VendorFlags {
-          specifiers: svec!["mod.ts", "deps.test.ts"],
-          force: true,
-          output_path: Some(String::from("out_dir")),
-        }),
-        config_flag: ConfigFlag::Path("deno.json".to_owned()),
-        import_map_path: Some("import_map.json".to_string()),
-        lock: Some(String::from("lock.json")),
-        reload: true,
-        ..Flags::default()
-      }
-    );
   }
 
   #[test]
@@ -10987,7 +10361,6 @@ mod tests {
           allow_sys: Some(vec![]),
           allow_write: Some(vec![]),
           allow_ffi: Some(vec![]),
-          allow_hrtime: true,
           ..Default::default()
         },
         ..Flags::default()
