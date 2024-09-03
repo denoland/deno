@@ -14,13 +14,13 @@ const execPathParent = execPath.replace(/[/\\][^/\\]+$/, "");
 
 const testUrl = `data:application/typescript;base64,${
   btoa(`
-  console.log(await Deno.permissions.query({ name: "run", command: "deno" }));
-  console.log(await Deno.permissions.query({ name: "run", command: "${
+  console.error(await Deno.permissions.query({ name: "run", command: "deno" }));
+  console.error(await Deno.permissions.query({ name: "run", command: "${
     execPath.replaceAll("\\", "\\\\")
   }" }));
   Deno.env.set("PATH", "");
-  console.log(await Deno.permissions.query({ name: "run", command: "deno" }));
-  console.log(await Deno.permissions.query({ name: "run", command: "${
+  console.error(await Deno.permissions.query({ name: "run", command: "deno" }));
+  console.error(await Deno.permissions.query({ name: "run", command: "${
     execPath.replaceAll("\\", "\\\\")
   }" }));
 `)
@@ -29,38 +29,39 @@ const testUrl = `data:application/typescript;base64,${
 const process1 = await new Deno.Command(Deno.execPath(), {
   args: [
     "run",
-    "--quiet",
     "--allow-env",
     "--allow-run=deno",
     testUrl,
   ],
-  stderr: "null",
+  stdout: "inherit",
+  stderr: "inherit",
   env: { "PATH": execPathParent },
 }).output();
-console.log(new TextDecoder().decode(process1.stdout));
 
-const process2 = await new Deno.Command(Deno.execPath(), {
+console.error("---");
+
+await new Deno.Command(Deno.execPath(), {
   args: [
     "run",
-    "--quiet",
     "--allow-env",
     "--allow-run=deno",
     testUrl,
   ],
-  stderr: "null",
+  stderr: "inherit",
+  stdout: "inherit",
   env: { "PATH": "" },
 }).output();
-console.log(new TextDecoder().decode(process2.stdout));
 
-const process3 = await new Deno.Command(Deno.execPath(), {
+console.error("---");
+
+await new Deno.Command(Deno.execPath(), {
   args: [
     "run",
-    "--quiet",
     "--allow-env",
     `--allow-run=${execPath}`,
     testUrl,
   ],
-  stderr: "null",
+  stderr: "inherit",
+  stdout: "inherit",
   env: { "PATH": execPathParent },
 }).output();
-console.log(new TextDecoder().decode(process3.stdout));

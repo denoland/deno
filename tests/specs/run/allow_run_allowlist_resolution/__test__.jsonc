@@ -1,0 +1,8 @@
+{
+  "args": "run --quiet -A main.ts",
+  "output": "main.out",
+  "envs": {
+    "DYLD_FALLBACK_LIBRARY_PATH": "",
+    "LD_LIBRARY_PATH": ""
+  }
+}

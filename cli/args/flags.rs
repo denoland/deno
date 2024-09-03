@@ -715,7 +715,7 @@ impl PermissionFlags {
           Ok(command_path) => new_allow_run.push(command_path),
           Err(err) => {
             log::info!(
-              "{} Failed to resolve '{}': {}",
+              "{} Failed to resolve '{}' for allow-run: {}",
               colors::gray("Info"),
               command_name,
               err
