@@ -1119,6 +1119,7 @@ static DENO_HELP: &str = cstr!(
                   <p(245)>deno bench bench.ts</>
     <g>cache</>        Cache the dependencies
     <g>check</>        Type-check the dependencies
+    <g>clean</>        Remove the cache directory
     <g>compile</>      Compile the script into a self contained executable
                   <p(245)>deno compile main.ts  |  deno compile --target=x86_64-unknown-linux-gnu</>
     <g>coverage</>     Print coverage reports
@@ -1554,7 +1555,6 @@ fn remove_subcommand() -> Command {
     "remove",
     cstr!(
       "Remove dependencies from the configuration file.
-
   <p(245)>deno remove @std/path</>
 
 You can remove multiple dependencies at once:
@@ -1670,7 +1670,7 @@ Future runs of this module will trigger no downloads or compilation unless --rel
 fn clean_subcommand() -> Command {
   command(
     "clean",
-    "Remove the cache directory ($DENO_DIR)",
+    cstr!("Remove the cache directory (<c>$DENO_DIR</>)"),
     UnstableArgsConfig::None,
   )
 }
@@ -1724,8 +1724,8 @@ fn compile_subcommand() -> Command {
 
 Any flags specified which affect runtime behavior will be applied to the resulting binary.
 
-Cross-compiling to different target architectures is supported using the `--target` flag.
-On the first invocation with deno will download the proper binary and cache it in $DENO_DIR.
+Cross-compiling to different target architectures is supported using the <c>--target</> flag.
+On the first invocation with deno will download the proper binary and cache it in <c>$DENO_DIR</>.
 
 <y>Read more:</> <c>https://docs.deno.com/go/cmd/compile</>
 "),
@@ -1824,7 +1824,7 @@ Collect a coverage profile with deno test:
 Print a report to stdout:
   <p(245)>deno coverage cov_profile</>
 
-Include urls that start with the file schema and exclude files ending with test.ts and test.js,
+Include urls that start with the file schema and exclude files ending with <c>test.ts</> and <c>test.js</>,
 for an url to match it must match the include pattern and not match the exclude pattern:
   <p(245)>deno coverage --include=\"^file:\" --exclude=\"test\\.(ts|js)\" cov_profile</>
 
@@ -2040,7 +2040,6 @@ fn eval_subcommand() -> Command {
     "eval",
     cstr!(
       "Evaluate JavaScript from the command line.
-
   <p(245)>deno eval \"console.log('hello world')\"</>
 
 To evaluate as TypeScript:
@@ -2079,13 +2078,13 @@ fn fmt_subcommand() -> Command {
   command(
     "fmt",
     cstr!("Auto-format various file types.
-
   <p(245)>deno fmt myfile1.ts myfile2.ts</>
 
 Supported file types are:
-  JavaScript, TypeScript, Markdown, JSON(C) and Jupyter Notebooks.
+  <p(245)>JavaScript, TypeScript, Markdown, JSON(C) and Jupyter Notebooks</>
+
 Supported file types which are behind corresponding unstable flags (see formatting options):
-  CSS, SCSS, SASS, LESS, HTML, YAML, Svelte, Vue, Astro and Angular.
+  <p(245)>HTML, CSS, SCSS, SASS, LESS, YAML, Svelte, Vue, Astro and Angular</>
 
 Format stdin and write to stdout:
   <p(245)>cat file.ts | deno fmt -</>
@@ -2308,19 +2307,18 @@ The following information is shown:
 fn install_subcommand() -> Command {
   command("install", cstr!("Installs dependencies either in the local project or globally to a bin directory.
 
-Local installation
--------------------
-If the --global flag is not set, adds dependencies to the local project's configuration
-(package.json / deno.json) and installs them in the package cache. If no dependency
-is specified, installs all dependencies listed in package.json.
+<g>Local installation</>
+
+Add dependencies to the local project's configuration (<p(245)>deno.json / package.json</>) and installs them 
+in the package cache. If no dependency is specified, installs all dependencies listed in the config file.
 
   <p(245)>deno install</>
   <p(245)>deno install @std/bytes</>
   <p(245)>deno install npm:chalk</>
 
-Global installation
--------------------
-If the --global flag is set, installs a script as an executable in the installation root's bin directory.
+<g>Global installation</>
+
+If the <bold>--global</> flag is set, installs a script as an executable in the installation root's bin directory.
 
   <p(245)>deno install --global --allow-net --allow-read jsr:@std/http/file-server</>
   <p(245)>deno install -g https://examples.deno.land/color-logging.ts</>
@@ -2330,19 +2328,19 @@ To change the executable name, use -n/--name:
 
 The executable name is inferred by default:
   - Attempt to take the file stem of the URL path. The above example would
-    become 'file_server'.
-  - If the file stem is something generic like 'main', 'mod', 'index' or 'cli',
+    become <p(245)>file_server</>.
+  - If the file stem is something generic like <p(245)>main</>, <p(245)>mod</>, <p(245)>index</> or <p(245)>cli</>,
     and the path has no parent, take the file name of the parent path. Otherwise
     settle with the generic name.
-  - If the resulting name has an '@...' suffix, strip it.
+  - If the resulting name has an <p(245)>@...</> suffix, strip it.
 
-To change the installation root, use --root:
+To change the installation root, use <c>--root</>:
   <p(245)>deno install -g --allow-net --allow-read --root /usr/local jsr:@std/http/file-server</>
 
 The installation root is determined, in order of precedence:
-  - --root option
-  - DENO_INSTALL_ROOT environment variable
-  - $HOME/.deno
+  - <p(245)>--root</> option
+  - <p(245)>DENO_INSTALL_ROOT</> environment variable
+  - <p(245)>$HOME/.deno</>
 
 These must be added to the path manually if required."), UnstableArgsConfig::ResolutionAndRuntime)
     .visible_alias("i")
@@ -2421,16 +2419,15 @@ fn uninstall_subcommand() -> Command {
   command(
     "uninstall",
     cstr!("Uninstalls an executable script in the installation root's bin directory.
-
   <p(245)>deno uninstall serve</>
 
-To change the installation root, use --root:
+To change the installation root, use <c>--root</> flag:
   <p(245)>deno uninstall --root /usr/local serve</>
 
 The installation root is determined, in order of precedence:
-  - --root option
-  - DENO_INSTALL_ROOT environment variable
-  - $HOME/.deno"),
+  - <p(245)>--root</> option
+  - <p(245)>DENO_INSTALL_ROOT</> environment variable
+  - <p(245)>$HOME/.deno</>"),
     UnstableArgsConfig::None,
   )
   .defer(|cmd| {
@@ -2707,8 +2704,10 @@ fn task_subcommand() -> Command {
     "task",
     cstr!(
       "Run a task defined in the configuration file.
-
-  <p(245)>deno task build</>"
+  <p(245)>deno task build</>
+  
+List all available tasks:
+  <p(245)>deno task</>"
     ),
     UnstableArgsConfig::ResolutionAndRuntime,
   )
@@ -2731,10 +2730,11 @@ fn test_subcommand() -> Command {
   command("test",
       cstr!("Run tests using Deno's built-in test runner.
 
-Evaluate the given modules, run all tests declared with 'Deno.test()' and report results to standard output:
+Evaluate the given modules, run all tests declared with <bold>Deno.</><y>test()</> and report results to standard output:
   <p(245)>deno test src/fetch_test.ts src/signal_test.ts</>
 
-Directory arguments are expanded to all contained files matching the glob {*_,*.,}test.{js,mjs,ts,mts,jsx,tsx} or **/__tests__/**:
+Directory arguments are expanded to all contained files matching the glob <c>{*_,*.,}test.{js,mjs,ts,mts,jsx,tsx}</> 
+or <c>**/__tests__/**</>:
  <p(245)>deno test src/</>
 
 <y>Read more:</> <c>https://docs.deno.com/go/cmd/test</>"),
@@ -2893,25 +2893,25 @@ The declaration file could be saved and used for typing information.",
 fn upgrade_subcommand() -> Command {
   command(
     "upgrade",
-    cstr!("<g>Upgrade</> deno executable to the given version.
+    cstr!("Upgrade deno executable to the given version.
 
 <g>Latest</>
-  deno upgrade
+  <bold>deno upgrade</>
 
 <g>Specific version</>
-  deno upgrade <p(245)>1.45.0</>
-  deno upgrade <p(245)>1.46.0-rc.1</>
-  deno upgrade <p(245)>9bc2dd29ad6ba334fd57a20114e367d3c04763d4</>
+  <bold>deno upgrade</> <p(245)>1.45.0</>
+  <bold>deno upgrade</> <p(245)>1.46.0-rc.1</>
+  <bold>deno upgrade</> <p(245)>9bc2dd29ad6ba334fd57a20114e367d3c04763d4</>
 
 <g>Channel</>
-  deno upgrade <p(245)>stable</>
-  deno upgrade <p(245)>rc</>
-  deno upgrade <p(245)>canary</>
+  <bold>deno upgrade</> <p(245)>stable</>
+  <bold>deno upgrade</> <p(245)>rc</>
+  <bold>deno upgrade</> <p(245)>canary</>
 
-The version is downloaded from https://dl.deno.land and is used to replace the current executable.
+The version is downloaded from <p(245)>https://dl.deno.land</> and is used to replace the current executable.
 
 If you want to not replace the current Deno executable but instead download an update to a
-different location, use the --output flag:
+different location, use the <c>--output</> flag:
   <p(245)>deno upgrade --output $HOME/my_deno</>
 
 <y>Read more:</> <c>https://docs.deno.com/go/cmd/upgrade</>"),
