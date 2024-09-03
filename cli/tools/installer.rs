@@ -298,7 +298,7 @@ fn check_if_installs_a_single_package_globally(
     return Ok(());
   };
   if matches!(url.scheme(), "http" | "https") {
-    bail!("If you are trying to install {} globally, run again with `-g` flag:\n  deno install -g {}", url.as_str(), url.as_str());
+    bail!("Failed to install \"{}\" specifier. If you are trying to install {} globally, run again with `-g` flag:\n  deno install -g {}", url.scheme(), url.as_str(), url.as_str());
   }
   Ok(())
 }
