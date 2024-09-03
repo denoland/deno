@@ -1719,7 +1719,7 @@ fn warn_insecure_allow_run_flags(flags: &Flags) {
   };
 
   // discourage using --allow-run without an allow list
-  if allow_run_list.is_empty() && permissions.deny_run.is_none() {
+  if allow_run_list.is_empty() {
     log::warn!(
       "{} --allow-run can be trivially exploited. Prefer specifying an allow list (https://docs.deno.com/runtime/tutorials/subprocess/#security)",
       colors::yellow("Warning")
@@ -1732,43 +1732,6 @@ fn warn_insecure_allow_run_flags(flags: &Flags) {
       "{} --allow-run=deno can be trivially exploited. The Deno binary can be executed to do anything (https://docs.deno.com/runtime/tutorials/subprocess/#security)",
       colors::yellow("Warning")
     );
-  }
-
-  // discourage using --allow-run=... with --allow-write without an allow list
-  let has_empty_allow_write_flag = permissions
-    .allow_write
-    .as_ref()
-    .map(|r| r.is_empty())
-    .unwrap_or(false);
-  if !allow_run_list.is_empty()
-    && permissions.allow_run.is_some()
-    && has_empty_allow_write_flag
-  {
-    log::warn!(
-      "{} --allow-run= with --allow-write without an allow list is insecure (https://docs.deno.com/runtime/tutorials/subprocess/#security)",
-      colors::yellow("Warning")
-    );
-  }
-
-  // discourage using --allow-run=... with --allow-env=PATH/--allow-env and any --allow-write
-  if let Some(allow_env_list) = &permissions.allow_env {
-    let allows_path_env_var = (allow_env_list.is_empty()
-      || allow_env_list.iter().any(|k| k.to_uppercase() == "PATH"))
-      && !permissions
-        .deny_env
-        .as_ref()
-        .map(|e| e.iter().any(|k| k.to_uppercase() == "PATH"))
-        .unwrap_or(false);
-    if !allow_run_list.is_empty()
-      && permissions.allow_run.is_some()
-      && allows_path_env_var
-      && permissions.allow_write.is_some()
-    {
-      log::warn!(
-        "{} --allow-run= with --allow-env=PATH and --allow-write= is insecure (https://docs.deno.com/runtime/tutorials/subprocess/#security)",
-        colors::yellow("Warning")
-      );
-    }
   }
 }
 

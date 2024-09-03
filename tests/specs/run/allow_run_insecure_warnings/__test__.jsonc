@@ -4,14 +4,6 @@
       "args": "run --allow-run main.ts",
       "output": "no_allow_list.out"
     },
-    "allow_list_no_write_allow_list": {
-      "args": "run --allow-run=git --allow-write main.ts",
-      "output": "allow_list_no_write_allow_list.out"
-    },
-    "allow_run_allow_env_path": {
-      "args": "run --allow-run=git --allow-env=path --allow-write=sub_dir main.ts",
-      "output": "allow_run_allow_env_path.out"
-    },
     "allow_run_deno": {
       "args": "run --allow-run=deno main.ts",
       "output": "allow_run_deno.out"
