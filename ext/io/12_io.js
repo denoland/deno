@@ -20,7 +20,6 @@ import {
   writableStreamForRid,
 } from "ext:deno_web/06_streams.js";
 
-const DEFAULT_BUFFER_SIZE = 32 * 1024;
 // Seek whence values.
 // https://golang.org/pkg/io/#pkg-constants
 const SeekMode = {
