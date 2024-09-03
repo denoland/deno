@@ -369,7 +369,7 @@ pub struct WorkspaceTestOptions {
   pub doc: bool,
   pub no_run: bool,
   pub fail_fast: Option<NonZeroUsize>,
-  pub allow_none: bool,
+  pub permit_no_files: bool,
   pub filter: Option<String>,
   pub shuffle: Option<u64>,
   pub concurrent_jobs: NonZeroUsize,
@@ -382,7 +382,7 @@ pub struct WorkspaceTestOptions {
 impl WorkspaceTestOptions {
   pub fn resolve(test_flags: &TestFlags) -> Self {
     Self {
-      allow_none: test_flags.allow_none,
+      permit_no_files: test_flags.permit_no_files,
       concurrent_jobs: test_flags
         .concurrent_jobs
         .unwrap_or_else(|| NonZeroUsize::new(1).unwrap()),
@@ -780,8 +780,6 @@ pub struct CliOptions {
   maybe_lockfile: Option<Arc<CliLockfile>>,
   overrides: CliOptionOverrides,
   pub start_dir: Arc<WorkspaceDirectory>,
-  pub disable_deprecated_api_warning: bool,
-  pub verbose_deprecated_api_warning: bool,
   pub deno_dir_provider: Arc<DenoDirProvider>,
 }
 
@@ -824,13 +822,6 @@ impl CliOptions {
 
     load_env_variables_from_env_file(flags.env_file.as_ref());
 
-    let disable_deprecated_api_warning = flags.log_level
-      == Some(log::Level::Error)
-      || std::env::var("DENO_NO_DEPRECATION_WARNINGS").ok().is_some();
-
-    let verbose_deprecated_api_warning =
-      std::env::var("DENO_VERBOSE_WARNINGS").ok().is_some();
-
     Ok(Self {
       flags,
       initial_cwd,
@@ -839,8 +830,6 @@ impl CliOptions {
       maybe_node_modules_folder,
       overrides: Default::default(),
       start_dir,
-      disable_deprecated_api_warning,
-      verbose_deprecated_api_warning,
       deno_dir_provider,
     })
   }
@@ -1136,9 +1125,6 @@ impl CliOptions {
 
   pub fn resolve_main_module(&self) -> Result<ModuleSpecifier, AnyError> {
     let main_module = match &self.flags.subcommand {
-      DenoSubcommand::Bundle(bundle_flags) => {
-        resolve_url_or_path(&bundle_flags.source_file, self.initial_cwd())?
-      }
       DenoSubcommand::Compile(compile_flags) => {
         resolve_url_or_path(&compile_flags.source_file, self.initial_cwd())?
       }
@@ -1220,32 +1206,12 @@ impl CliOptions {
     NPM_PROCESS_STATE.is_some()
   }
 
-  /// Overrides the import map specifier to use.
-  pub fn set_import_map_specifier(&mut self, path: Option<ModuleSpecifier>) {
-    self.overrides.import_map_specifier = Some(path);
-  }
-
   pub fn has_node_modules_dir(&self) -> bool {
     self.maybe_node_modules_folder.is_some()
   }
 
   pub fn node_modules_dir_path(&self) -> Option<&PathBuf> {
     self.maybe_node_modules_folder.as_ref()
-  }
-
-  pub fn with_node_modules_dir_path(&self, path: PathBuf) -> Self {
-    Self {
-      flags: self.flags.clone(),
-      initial_cwd: self.initial_cwd.clone(),
-      maybe_node_modules_folder: Some(path),
-      npmrc: self.npmrc.clone(),
-      maybe_lockfile: self.maybe_lockfile.clone(),
-      start_dir: self.start_dir.clone(),
-      overrides: self.overrides.clone(),
-      disable_deprecated_api_warning: self.disable_deprecated_api_warning,
-      verbose_deprecated_api_warning: self.verbose_deprecated_api_warning,
-      deno_dir_provider: self.deno_dir_provider.clone(),
-    }
   }
 
   pub fn node_modules_dir(
@@ -1265,23 +1231,7 @@ impl CliOptions {
     &self,
     config_type: TsConfigType,
   ) -> Result<TsConfigForEmit, AnyError> {
-    let result = self.workspace().resolve_ts_config_for_emit(config_type);
-
-    match result {
-      Ok(mut ts_config_for_emit) => {
-        if matches!(self.flags.subcommand, DenoSubcommand::Bundle(..)) {
-          // For backwards compatibility, force `experimentalDecorators` setting
-          // to true.
-          *ts_config_for_emit
-            .ts_config
-            .0
-            .get_mut("experimentalDecorators")
-            .unwrap() = serde_json::Value::Bool(true);
-        }
-        Ok(ts_config_for_emit)
-      }
-      Err(err) => Err(err),
-    }
+    self.workspace().resolve_ts_config_for_emit(config_type)
   }
 
   pub fn resolve_inspector_server(

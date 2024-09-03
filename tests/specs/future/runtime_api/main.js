@@ -1,6 +1,5 @@
 console.log("window is", globalThis.window);
 console.log("Deno.Buffer is", Deno.Buffer);
-console.log("Deno.close is", Deno.close);
 console.log("Deno.File is", Deno.File);
 console.log("Deno.fstat is", Deno.fstat);
 console.log("Deno.fstatSync is", Deno.fstatSync);

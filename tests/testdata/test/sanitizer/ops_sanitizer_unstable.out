@@ -1,5 +1,3 @@
-⚠️ The `--trace-ops` flag is deprecated and will be removed in Deno 2.0.
-Use the `--trace-leaks` flag instead.
 Check [WILDCARD]/ops_sanitizer_unstable.ts
 running 2 tests from [WILDCARD]/ops_sanitizer_unstable.ts
 no-op ... ok ([WILDCARD])

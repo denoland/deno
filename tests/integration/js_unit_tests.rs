@@ -77,7 +77,6 @@ util::unit_test_factory!(
     remove_test,
     rename_test,
     request_test,
-    resources_test,
     response_test,
     serve_test,
     signal_test,
