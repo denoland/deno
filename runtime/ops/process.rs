@@ -574,14 +574,9 @@ fn resolve_cmd(cmd: &str, env: &RunEnv) -> Result<PathBuf, AnyError> {
     });
     match which::which_in(cmd, path, &env.cwd) {
       Ok(cmd) => Ok(cmd),
-      Err(which::Error::CannotFindBinaryPath) => Err(
-        std::io::Error::from_raw_os_error(if cfg!(windows) {
-          -4058
-        } else {
-          2
-        })
-        .into(),
-      ),
+      Err(which::Error::CannotFindBinaryPath) => {
+        Err(std::io::Error::from(std::io::ErrorKind::NotFound).into())
+      }
       Err(err) => Err(err.into()),
     }
   }
