@@ -590,3 +590,34 @@ Deno.test({
     channel.port2.close();
   },
 });
+
+Deno.test({
+  name: "[node/worker_threads] Emits online event",
+  async fn() {
+    const worker = new workerThreads.Worker(
+      `
+      import { parentPort } from "node:worker_threads";
+      const p = Promise.withResolvers();
+      let ok = false;
+      parentPort.on("message", () => {
+        ok = true;
+        p.resolve();
+      });
+      await Promise.race([p.promise, new Promise(resolve => setTimeout(resolve, 20000))]);
+      if (ok) {
+        parentPort.postMessage("ok");
+      } else {
+        parentPort.postMessage("timed out");
+      }
+      `,
+      {
+        eval: true,
+      },
+    );
+    worker.on("online", () => {
+      worker.postMessage("ok");
+    });
+    assertEquals((await once(worker, "message"))[0], "ok");
+    worker.terminate();
+  },
+});

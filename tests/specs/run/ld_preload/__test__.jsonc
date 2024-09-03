@@ -1,0 +1,19 @@
+{
+  "envs": {
+    "LD_LIBRARY_PATH": "",
+    "LD_PRELOAD": "",
+    "DYLD_FALLBACK_LIBRARY_PATH": ""
+  },
+  "tests": {
+    "env_arg": {
+      "args": "run --allow-run=echo env_arg.ts",
+      "output": "env_arg.out",
+      "exitCode": 1
+    },
+    "set_with_allow_env": {
+      "args": "run --allow-run=echo --allow-env set_with_allow_env.ts",
+      "output": "set_with_allow_env.out",
+      "exitCode": 1
+    }
+  }
+}

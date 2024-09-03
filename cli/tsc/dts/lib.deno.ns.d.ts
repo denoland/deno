@@ -1863,36 +1863,6 @@ declare namespace Deno {
     options?: { bufSize?: number },
   ): Promise<number>;
 
-  /**
-   * Turns a Reader, `r`, into an async iterator.
-   *
-   * @deprecated This will be removed in Deno 2.0. See the
-   * {@link https://docs.deno.com/runtime/manual/advanced/migrate_deprecations | Deno 1.x to 2.x Migration Guide}
-   * for migration instructions.
-   *
-   * @category I/O
-   */
-  export function iter(
-    r: Reader,
-    options?: { bufSize?: number },
-  ): AsyncIterableIterator<Uint8Array>;
-
-  /**
-   * Turns a ReaderSync, `r`, into an iterator.
-   *
-   * @deprecated This will be removed in Deno 2.0. See the
-   * {@link https://docs.deno.com/runtime/manual/advanced/migrate_deprecations | Deno 1.x to 2.x Migration Guide}
-   * for migration instructions.
-   *
-   * @category I/O
-   */
-  export function iterSync(
-    r: ReaderSync,
-    options?: {
-      bufSize?: number;
-    },
-  ): IterableIterator<Uint8Array>;
-
   /** Open a file and resolve to an instance of {@linkcode Deno.FsFile}. The
    * file does not need to previously exist if using the `create` or `createNew`
    * open options. The caller may have the resulting file automatically closed
@@ -2264,33 +2234,6 @@ declare namespace Deno {
    * @category File System
    */
   export function fdatasyncSync(rid: number): void;
-
-  /** Close the given resource ID (`rid`) which has been previously opened, such
-   * as via opening or creating a file. Closing a file when you are finished
-   * with it is important to avoid leaking resources.
-   *
-   * ```ts
-   * const file = await Deno.open("my_file.txt");
-   * // do work with "file" object
-   * Deno.close(file.rid);
-   * ```
-   *
-   * It is recommended to define the variable with the `using` keyword so the
-   * runtime will automatically close the resource when it goes out of scope.
-   * Doing so negates the need to manually close the resource.
-   *
-   * ```ts
-   * using file = await Deno.open("my_file.txt");
-   * // do work with "file" object
-   * ```
-   *
-   * @deprecated This will be removed in Deno 2.0. See the
-   * {@link https://docs.deno.com/runtime/manual/advanced/migrate_deprecations | Deno 1.x to 2.x Migration Guide}
-   * for migration instructions.
-   *
-   * @category I/O
-   */
-  export function close(rid: number): void;
 
   /** The Deno abstraction for reading and writing files.
    *
@@ -4060,73 +4003,6 @@ declare namespace Deno {
     bytesReceived: number;
   }
 
-  /** @category Runtime
-   *
-   * @deprecated This will be removed in Deno 2.0.
-   */
-  export interface Metrics extends OpMetrics {
-    ops: Record<string, OpMetrics>;
-  }
-
-  /** Receive metrics from the privileged side of Deno. This is primarily used
-   * in the development of Deno. _Ops_, also called _bindings_, are the
-   * go-between between Deno JavaScript sandbox and the rest of Deno.
-   *
-   * ```shell
-   * > console.table(Deno.metrics())
-   * ┌─────────────────────────┬────────┐
-   * │         (index)         │ Values │
-   * ├─────────────────────────┼────────┤
-   * │      opsDispatched      │   3    │
-   * │    opsDispatchedSync    │   2    │
-   * │   opsDispatchedAsync    │   1    │
-   * │ opsDispatchedAsyncUnref │   0    │
-   * │      opsCompleted       │   3    │
-   * │    opsCompletedSync     │   2    │
-   * │    opsCompletedAsync    │   1    │
-   * │ opsCompletedAsyncUnref  │   0    │
-   * │    bytesSentControl     │   73   │
-   * │      bytesSentData      │   0    │
-   * │      bytesReceived      │  375   │
-   * └─────────────────────────┴────────┘
-   * ```
-   *
-   * @category Runtime
-   *
-   * @deprecated This will be removed in Deno 2.0.
-   */
-  export function metrics(): Metrics;
-
-  /**
-   * A map of open resources that Deno is tracking. The key is the resource ID
-   * (_rid_) and the value is its representation.
-   *
-   * @deprecated This will be removed in Deno 2.0.
-   *
-   * @category Runtime */
-  export interface ResourceMap {
-    [rid: number]: unknown;
-  }
-
-  /** Returns a map of open resource IDs (_rid_) along with their string
-   * representations. This is an internal API and as such resource
-   * representation has `unknown` type; that means it can change any time and
-   * should not be depended upon.
-   *
-   * ```ts
-   * console.log(Deno.resources());
-   * // { 0: "stdin", 1: "stdout", 2: "stderr" }
-   * Deno.openSync('../test.file');
-   * console.log(Deno.resources());
-   * // { 0: "stdin", 1: "stdout", 2: "stderr", 3: "fsFile" }
-   * ```
-   *
-   * @deprecated This will be removed in Deno 2.0.
-   *
-   * @category Runtime
-   */
-  export function resources(): ResourceMap;
-
   /**
    * Additional information for FsEvent objects with the "other" kind.
    *
@@ -5507,50 +5383,6 @@ declare namespace Deno {
   export function ftruncateSync(rid: number, len?: number): void;
 
   /**
-   * Synchronously changes the access (`atime`) and modification (`mtime`) times
-   * of a file stream resource referenced by `rid`. Given times are either in
-   * seconds (UNIX epoch time) or as `Date` objects.
-   *
-   * ```ts
-   * const file = Deno.openSync("file.txt", { create: true, write: true });
-   * Deno.futimeSync(file.rid, 1556495550, new Date());
-   * ```
-   *
-   * @deprecated This will be removed in Deno 2.0. See the
-   * {@link https://docs.deno.com/runtime/manual/advanced/migrate_deprecations | Deno 1.x to 2.x Migration Guide}
-   * for migration instructions.
-   *
-   * @category File System
-   */
-  export function futimeSync(
-    rid: number,
-    atime: number | Date,
-    mtime: number | Date,
-  ): void;
-
-  /**
-   * Changes the access (`atime`) and modification (`mtime`) times of a file
-   * stream resource referenced by `rid`. Given times are either in seconds
-   * (UNIX epoch time) or as `Date` objects.
-   *
-   * ```ts
-   * const file = await Deno.open("file.txt", { create: true, write: true });
-   * await Deno.futime(file.rid, 1556495550, new Date());
-   * ```
-   *
-   * @deprecated This will be removed in Deno 2.0. See the
-   * {@link https://docs.deno.com/runtime/manual/advanced/migrate_deprecations | Deno 1.x to 2.x Migration Guide}
-   * for migration instructions.
-   *
-   * @category File System
-   */
-  export function futime(
-    rid: number,
-    atime: number | Date,
-    mtime: number | Date,
-  ): Promise<void>;
-
-  /**
    * Returns a `Deno.FileInfo` for the given file stream.
    *
    * ```ts
@@ -5884,7 +5716,7 @@ declare namespace Deno {
    *
    * @category Network
    */
-  export interface CAARecord {
+  export interface CaaRecord {
     /** If `true`, indicates that the corresponding property tag **must** be
      * understood if the semantics of the CAA record are to be correctly
      * interpreted by an issuer.
@@ -5904,7 +5736,7 @@ declare namespace Deno {
    * specified, it will return an array of objects with this interface.
    *
    * @category Network */
-  export interface MXRecord {
+  export interface MxRecord {
     /** A priority value, which is a relative value compared to the other
      * preferences of MX records for the domain. */
     preference: number;
@@ -5916,7 +5748,7 @@ declare namespace Deno {
    * specified, it will return an array of objects with this interface.
    *
    * @category Network */
-  export interface NAPTRRecord {
+  export interface NaptrRecord {
     order: number;
     preference: number;
     flags: string;
@@ -5929,7 +5761,7 @@ declare namespace Deno {
    * specified, it will return an array of objects with this interface.
    *
    * @category Network */
-  export interface SOARecord {
+  export interface SoaRecord {
     mname: string;
     rname: string;
     serial: number;
@@ -5944,7 +5776,7 @@ declare namespace Deno {
    *
    * @category Network
    */
-  export interface SRVRecord {
+  export interface SrvRecord {
     priority: number;
     weight: number;
     port: number;
@@ -6009,7 +5841,7 @@ declare namespace Deno {
     query: string,
     recordType: "CAA",
     options?: ResolveDnsOptions,
-  ): Promise<CAARecord[]>;
+  ): Promise<CaaRecord[]>;
 
   /**
    * Performs DNS resolution against the given query, returning resolved
@@ -6039,7 +5871,7 @@ declare namespace Deno {
     query: string,
     recordType: "MX",
     options?: ResolveDnsOptions,
-  ): Promise<MXRecord[]>;
+  ): Promise<MxRecord[]>;
 
   /**
    * Performs DNS resolution against the given query, returning resolved
@@ -6069,7 +5901,7 @@ declare namespace Deno {
     query: string,
     recordType: "NAPTR",
     options?: ResolveDnsOptions,
-  ): Promise<NAPTRRecord[]>;
+  ): Promise<NaptrRecord[]>;
 
   /**
    * Performs DNS resolution against the given query, returning resolved
@@ -6099,7 +5931,7 @@ declare namespace Deno {
     query: string,
     recordType: "SOA",
     options?: ResolveDnsOptions,
-  ): Promise<SOARecord[]>;
+  ): Promise<SoaRecord[]>;
 
   /**
    * Performs DNS resolution against the given query, returning resolved
@@ -6129,7 +5961,7 @@ declare namespace Deno {
     query: string,
     recordType: "SRV",
     options?: ResolveDnsOptions,
-  ): Promise<SRVRecord[]>;
+  ): Promise<SrvRecord[]>;
 
   /**
    * Performs DNS resolution against the given query, returning resolved
@@ -6191,11 +6023,11 @@ declare namespace Deno {
     options?: ResolveDnsOptions,
   ): Promise<
     | string[]
-    | CAARecord[]
-    | MXRecord[]
-    | NAPTRRecord[]
-    | SOARecord[]
-    | SRVRecord[]
+    | CaaRecord[]
+    | MxRecord[]
+    | NaptrRecord[]
+    | SoaRecord[]
+    | SrvRecord[]
     | string[][]
   >;
 

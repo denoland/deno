@@ -32,7 +32,7 @@ export function arch(): string {
   } else if (build.arch == "riscv64gc") {
     return "riscv64";
   } else {
-    throw Error("unreachable");
+    throw new Error("unreachable");
   }
 }
 
