@@ -4547,7 +4547,6 @@ fn serve_parse(
     .unwrap_or_else(|| "0.0.0.0".to_owned());
   let open_site = matches.remove_one::<bool>("open_site").unwrap_or(false);
 
-
   let worker_count = parallel_arg_parse(matches).map(|v| v.get());
 
   runtime_args_parse(flags, matches, true, true);
