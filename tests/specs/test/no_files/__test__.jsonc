@@ -9,11 +9,6 @@
       "args": "test --permit-no-files",
       "output": "permit_no_files.out",
       "exitCode": 0
-    },
-    "allow_none": {
-      "args": "test --allow-none",
-      "output": "allow_none.out",
-      "exitCode": 0
     }
   }
 }

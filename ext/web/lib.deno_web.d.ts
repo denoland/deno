@@ -706,15 +706,6 @@ declare var ReadableStreamBYOBRequest: {
   new (): never;
 };
 
-// TODO(petamoriken): Will be removed in v2.0.
-/**
- * @deprecated use `UnderlyingByteSource["pull"]` instead.
- * @category Streams
- */
-declare interface ReadableByteStreamControllerCallback {
-  (controller: ReadableByteStreamController): void | PromiseLike<void>;
-}
-
 /** @category Streams */
 declare interface UnderlyingByteSource {
   autoAllocateChunkSize?: number;
@@ -755,13 +746,6 @@ declare interface UnderlyingSource<R = any> {
   type?: ReadableStreamType;
 }
 
-// TODO(petamoriken): Will be removed in v2.0.
-/**
- * @deprecated use `UnderlyingSourceCancelCallback` instead.
- * @category Streams
- */
-declare type ReadableStreamErrorCallback = UnderlyingSourceCancelCallback;
-
 /** @category Streams */
 declare interface UnderlyingSourceCancelCallback {
   (reason?: any): void | PromiseLike<void>;
@@ -776,15 +760,6 @@ declare interface UnderlyingSourcePullCallback<R> {
 declare interface UnderlyingSourceStartCallback<R> {
   (controller: ReadableStreamController<R>): any;
 }
-
-// TODO(petamoriken): Will be removed in v2.0.
-/**
- * @deprecated use `(controller: ReadableStreamDefaultController<R>) => void | PromiseLike<void>` type instead.
- * @category Streams
- */
-declare type ReadableStreamDefaultControllerCallback<R> = (
-  controller: ReadableStreamDefaultController<R>,
-) => void | PromiseLike<void>;
 
 /** @category Streams */
 declare interface ReadableStreamDefaultController<R = any> {
@@ -815,13 +790,6 @@ declare var ReadableByteStreamController: {
   new (): never;
 };
 
-// TODO(petamoriken): Will be removed in v2.0.
-/**
- * @deprecated use `StreamPipeOptions` instead.
- * @category Streams
- */
-declare type PipeOptions = StreamPipeOptions;
-
 /** @category Streams */
 declare interface StreamPipeOptions {
   preventAbort?: boolean;
@@ -829,13 +797,6 @@ declare interface StreamPipeOptions {
   preventClose?: boolean;
   signal?: AbortSignal;
 }
-
-// TODO(petamoriken): Will be removed in v2.0.
-/**
- * @deprecated use `QueuingStrategySize` instead.
- * @category Streams
- */
-declare type QueuingStrategySizeCallback<T = any> = QueuingStrategySize<T>;
 
 /** @category Streams */
 declare interface QueuingStrategySize<T = any> {
@@ -948,39 +909,15 @@ declare interface ReadableWritablePair<R = any, W = any> {
   writable: WritableStream<W>;
 }
 
-// TODO(petamoriken): Will be removed in v2.0.
-/**
- * @deprecated use `UnderlyingSinkCloseCallback` instead.
- * @category Streams
- */
-declare type WritableStreamDefaultControllerCloseCallback =
-  UnderlyingSinkCloseCallback;
-
 /** @category Streams */
 declare interface UnderlyingSinkCloseCallback {
   (): void | PromiseLike<void>;
 }
 
-// TODO(petamoriken): Will be removed in v2.0.
-/**
- * @deprecated use `UnderlyingSinkStartCallback` instead.
- * @category Streams
- */
-declare type WritableStreamDefaultControllerStartCallback =
-  UnderlyingSinkStartCallback;
-
 /** @category Streams */
 declare interface UnderlyingSinkStartCallback {
   (controller: WritableStreamDefaultController): any;
 }
-
-// TODO(petamoriken): Will be removed in v2.0.
-/**
- * @deprecated use `UnderlyingSinkWriteCallback` instead.
- * @category Streams
- */
-declare type WritableStreamDefaultControllerWriteCallback<W> =
-  UnderlyingSinkWriteCallback<W>;
 
 /** @category Streams */
 declare interface UnderlyingSinkWriteCallback<W> {
@@ -989,13 +926,6 @@ declare interface UnderlyingSinkWriteCallback<W> {
     controller: WritableStreamDefaultController,
   ): void | PromiseLike<void>;
 }
-
-// TODO(petamoriken): Will be removed in v2.0.
-/**
- * @deprecated use `UnderlyingSinkAbortCallback` instead.
- * @category Streams
- */
-declare type WritableStreamErrorCallback = UnderlyingSinkAbortCallback;
 
 /** @category Streams */
 declare interface UnderlyingSinkAbortCallback {
@@ -1105,14 +1035,6 @@ declare interface Transformer<I = any, O = any> {
   writableType?: undefined;
 }
 
-// TODO(petamoriken): Will be removed in v2.0.
-/**
- * @deprecated use `TransformerFlushCallback` instead.
- * @category Streams
- */
-declare type TransformStreamDefaultControllerCallback<O> =
-  TransformerFlushCallback<O>;
-
 /** @category Streams */
 declare interface TransformerFlushCallback<O> {
   (controller: TransformStreamDefaultController<O>): void | PromiseLike<void>;
@@ -1122,14 +1044,6 @@ declare interface TransformerFlushCallback<O> {
 declare interface TransformerStartCallback<O> {
   (controller: TransformStreamDefaultController<O>): any;
 }
-
-// TODO(petamoriken): Will be removed in v2.0.
-/**
- * @deprecated use `TransformerTransformCallback` instead.
- * @category Streams
- */
-declare type TransformStreamDefaultControllerTransformCallback<I, O> =
-  TransformerTransformCallback<I, O>;
 
 /** @category Streams */
 declare interface TransformerTransformCallback<I, O> {
@@ -1202,13 +1116,6 @@ declare var MessageEvent: {
 
 /** @category Events */
 declare type Transferable = MessagePort | ArrayBuffer;
-
-// TODO(petamoriken): Will be removed in v2.0.
-/**
- * @deprecated use `StructuredSerializeOptions` instead.
- * @category Events
- */
-declare type PostMessageOptions = StructuredSerializeOptions;
 
 /** @category Platform */
 declare interface StructuredSerializeOptions {

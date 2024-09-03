@@ -251,7 +251,7 @@ itest!(allow_none {
 });
 
 itest!(ops_sanitizer_unstable {
-  args: "test --trace-ops test/sanitizer/ops_sanitizer_unstable.ts",
+  args: "test --trace-leaks test/sanitizer/ops_sanitizer_unstable.ts",
   exit_code: 1,
   output: "test/sanitizer/ops_sanitizer_unstable.out",
 });
