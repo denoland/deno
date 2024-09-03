@@ -413,13 +413,6 @@ pub struct UpgradeFlags {
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
-pub struct VendorFlags {
-  pub specifiers: Vec<String>,
-  pub output_path: Option<String>,
-  pub force: bool,
-}
-
-#[derive(Clone, Debug, Eq, PartialEq)]
 pub struct PublishFlags {
   pub token: Option<String>,
   pub dry_run: bool,
@@ -463,7 +456,7 @@ pub enum DenoSubcommand {
   Test(TestFlags),
   Types,
   Upgrade(UpgradeFlags),
-  Vendor(VendorFlags),
+  Vendor,
   Publish(PublishFlags),
   Help(HelpFlags),
 }
@@ -3008,58 +3001,14 @@ update to a different location, use the --output flag:
   })
 }
 
-// TODO(bartlomieju): this subcommand is now deprecated, remove it in Deno 2.
 fn vendor_subcommand() -> Command {
   command("vendor",
-      "⚠️ Warning: `deno vendor` is deprecated and will be removed in Deno 2.0.
-Add `\"vendor\": true` to your `deno.json` or use the `--vendor` flag instead.
+      "⚠️ `deno vendor` was removed in Deno 2.
 
-Vendor remote modules into a local directory.
-
-Analyzes the provided modules along with their dependencies, downloads
-remote modules to the output directory, and produces an import map that
-maps remote specifiers to the downloaded files.
-  deno vendor main.ts
-  deno run --import-map vendor/import_map.json main.ts
-
-Remote modules and multiple modules may also be specified:
-  deno vendor main.ts test.deps.ts jsr:@std/path",
+See the Deno 1.x to 2.x Migration Guide for migration instructions: https://docs.deno.com/runtime/manual/advanced/migrate_deprecations",
       UnstableArgsConfig::ResolutionOnly
     )
     .hide(true)
-    .defer(|cmd| cmd
-      .arg(
-        Arg::new("specifiers")
-          .num_args(1..)
-          .action(ArgAction::Append)
-          .required_unless_present("help"),
-      )
-      .arg(
-        Arg::new("output")
-          .long("output")
-          .help("The directory to output the vendored modules to")
-          .value_parser(value_parser!(String))
-          .value_hint(ValueHint::DirPath),
-      )
-      .arg(
-        Arg::new("force")
-          .long("force")
-          .short('f')
-          .help(
-            "Forcefully overwrite conflicting files in existing output directory",
-          )
-          .action(ArgAction::SetTrue),
-      )
-      .arg(no_config_arg())
-      .arg(config_arg())
-      .arg(import_map_arg())
-      .arg(lock_arg())
-      .arg(node_modules_dir_arg())
-      .arg(vendor_arg())
-      .arg(reload_arg())
-      .arg(ca_file_arg())
-      .arg(unsafely_ignore_certificate_errors_arg())
-    )
 }
 
 fn publish_subcommand() -> Command {
@@ -4751,24 +4700,8 @@ fn upgrade_parse(flags: &mut Flags, matches: &mut ArgMatches) {
   });
 }
 
-fn vendor_parse(flags: &mut Flags, matches: &mut ArgMatches) {
-  unstable_args_parse(flags, matches, UnstableArgsConfig::ResolutionOnly);
-  ca_file_arg_parse(flags, matches);
-  unsafely_ignore_certificate_errors_parse(flags, matches);
-  config_args_parse(flags, matches);
-  import_map_arg_parse(flags, matches);
-  lock_arg_parse(flags, matches);
-  node_modules_and_vendor_dir_arg_parse(flags, matches);
-  reload_arg_parse(flags, matches);
-
-  flags.subcommand = DenoSubcommand::Vendor(VendorFlags {
-    specifiers: matches
-      .remove_many::<String>("specifiers")
-      .map(|p| p.collect())
-      .unwrap_or_default(),
-    output_path: matches.remove_one::<String>("output"),
-    force: matches.get_flag("force"),
-  });
+fn vendor_parse(flags: &mut Flags, _matches: &mut ArgMatches) {
+  flags.subcommand = DenoSubcommand::Vendor
 }
 
 fn publish_parse(flags: &mut Flags, matches: &mut ArgMatches) {
@@ -9669,57 +9602,6 @@ mod tests {
     assert!(&error_message
       .contains("error: the following required arguments were not provided:"));
     assert!(&error_message.contains("--watch[=<FILES>...]"));
-  }
-
-  #[test]
-  fn vendor_minimal() {
-    let r = flags_from_vec(svec!["deno", "vendor", "mod.ts",]);
-    assert_eq!(
-      r.unwrap(),
-      Flags {
-        subcommand: DenoSubcommand::Vendor(VendorFlags {
-          specifiers: svec!["mod.ts"],
-          force: false,
-          output_path: None,
-        }),
-        ..Flags::default()
-      }
-    );
-  }
-
-  #[test]
-  fn vendor_all() {
-    let r = flags_from_vec(svec![
-      "deno",
-      "vendor",
-      "--config",
-      "deno.json",
-      "--import-map",
-      "import_map.json",
-      "--lock",
-      "lock.json",
-      "--force",
-      "--output",
-      "out_dir",
-      "--reload",
-      "mod.ts",
-      "deps.test.ts",
-    ]);
-    assert_eq!(
-      r.unwrap(),
-      Flags {
-        subcommand: DenoSubcommand::Vendor(VendorFlags {
-          specifiers: svec!["mod.ts", "deps.test.ts"],
-          force: true,
-          output_path: Some(String::from("out_dir")),
-        }),
-        config_flag: ConfigFlag::Path("deno.json".to_owned()),
-        import_map_path: Some("import_map.json".to_string()),
-        lock: Some(String::from("lock.json")),
-        reload: true,
-        ..Flags::default()
-      }
-    );
   }
 
   #[test]

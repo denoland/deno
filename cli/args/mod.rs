@@ -1217,32 +1217,12 @@ impl CliOptions {
     NPM_PROCESS_STATE.is_some()
   }
 
-  /// Overrides the import map specifier to use.
-  pub fn set_import_map_specifier(&mut self, path: Option<ModuleSpecifier>) {
-    self.overrides.import_map_specifier = Some(path);
-  }
-
   pub fn has_node_modules_dir(&self) -> bool {
     self.maybe_node_modules_folder.is_some()
   }
 
   pub fn node_modules_dir_path(&self) -> Option<&PathBuf> {
     self.maybe_node_modules_folder.as_ref()
-  }
-
-  pub fn with_node_modules_dir_path(&self, path: PathBuf) -> Self {
-    Self {
-      flags: self.flags.clone(),
-      initial_cwd: self.initial_cwd.clone(),
-      maybe_node_modules_folder: Some(path),
-      npmrc: self.npmrc.clone(),
-      maybe_lockfile: self.maybe_lockfile.clone(),
-      start_dir: self.start_dir.clone(),
-      overrides: self.overrides.clone(),
-      disable_deprecated_api_warning: self.disable_deprecated_api_warning,
-      verbose_deprecated_api_warning: self.verbose_deprecated_api_warning,
-      deno_dir_provider: self.deno_dir_provider.clone(),
-    }
   }
 
   pub fn node_modules_dir(
