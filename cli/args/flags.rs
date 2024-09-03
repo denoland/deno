@@ -2038,7 +2038,8 @@ Show documentation for runtime built-ins:
 fn eval_subcommand() -> Command {
   command(
     "eval",
-    cstr!("Evaluate JavaScript from the command line.
+    cstr!(
+      "Evaluate JavaScript from the command line.
 
   <p(245)>deno eval \"console.log('hello world')\"</>
 
@@ -2047,7 +2048,8 @@ To evaluate as TypeScript:
 
 This command has implicit access to all permissions.
 
-<y>Read more:</> <c>https://docs.deno.com/go/cmd/eval</>"),
+<y>Read more:</> <c>https://docs.deno.com/go/cmd/eval</>"
+    ),
     UnstableArgsConfig::ResolutionAndRuntime,
   )
   .defer(|cmd| {
@@ -10420,8 +10422,12 @@ mod tests {
 
   #[test]
   fn install_permissions_non_global() {
-    let r = flags_from_vec(svec!["deno", "install", "--allow-net", "jsr:@std/fs"]);
+    let r =
+      flags_from_vec(svec!["deno", "install", "--allow-net", "jsr:@std/fs"]);
 
-    assert!(r.unwrap_err().to_string().contains("Note: Permission flags can only be used in a global setting"));
+    assert!(r
+      .unwrap_err()
+      .to_string()
+      .contains("Note: Permission flags can only be used in a global setting"));
   }
 }
