@@ -1,13 +1,13 @@
 // Testing the following (but with `deno` instead of `echo`):
 // | `deno run --allow-run=echo`         | `which path == "/usr/bin/echo"` at startup | `which path != "/usr/bin/echo"` at startup |
 // |-------------------------------------|--------------------------------------------|--------------------------------------------|
-// | **`Deno.Command("echo")`**          | ✅                                          | ✅                                          |
-// | **`Deno.Command("/usr/bin/echo")`** | ✅                                          | ❌                                          |
+// | **`Deno.Command("echo")`**          | ✅                                          | ✅                                         |
+// | **`Deno.Command("/usr/bin/echo")`** | ✅                                          | ❌                                         |
 
 // | `deno run --allow-run=/usr/bin/echo | `which path == "/usr/bin/echo"` at runtime | `which path != "/usr/bin/echo"` at runtime |
 // |-------------------------------------|--------------------------------------------|--------------------------------------------|
-// | **`Deno.Command("echo")`**          | ✅                                          | ❌                                          |
-// | **`Deno.Command("/usr/bin/echo")`** | ✅                                          | ✅                                          |
+// | **`Deno.Command("echo")`**          | ✅                                          | ❌                                         |
+// | **`Deno.Command("/usr/bin/echo")`** | ✅                                          | ✅                                         |
 
 const execPath = Deno.execPath();
 const execPathParent = execPath.replace(/[/\\][^/\\]+$/, "");

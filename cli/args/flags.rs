@@ -731,13 +731,22 @@ impl PermissionFlags {
     let allow_run = self
       .allow_run
       .as_ref()
-      .map(|allow_run| resolve_allow_run(allow_run))
+      .and_then(|raw_allow_run| match resolve_allow_run(raw_allow_run) {
+        Ok(resolved_allow_run) => {
+          if resolved_allow_run.is_empty() && !raw_allow_run.is_empty() {
+            None // convert to no permissions if now empty
+          } else {
+            Some(Ok(resolved_allow_run))
+          }
+        }
+        Err(err) => Some(Err(err)),
+      })
       .transpose()?;
     // add the allow_run list to deno_write
-    if let Some(allow_run) = &allow_run {
-      if !allow_run.is_empty() {
+    if let Some(allow_run_vec) = &allow_run {
+      if !allow_run_vec.is_empty() {
         let deno_write = deny_write.get_or_insert_with(Vec::new);
-        deno_write.extend(allow_run.iter().cloned());
+        deno_write.extend(allow_run_vec.iter().cloned());
       }
     }
 

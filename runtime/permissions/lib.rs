@@ -887,7 +887,10 @@ impl From<String> for RunDescriptorArg {
     if is_path {
       Self::Path(resolve_from_cwd(Path::new(&s)).unwrap())
     } else {
-      Self::Name(s)
+      match which::which(&s) {
+        Ok(path) => Self::Path(path),
+        Err(_) => Self::Name(s),
+      }
     }
   }
 }
@@ -927,7 +930,10 @@ impl From<String> for RunDescriptor {
     if is_path {
       Self::Path(resolve_from_cwd(Path::new(&s)).unwrap())
     } else {
-      Self::Name(s)
+      match which::which(&s) {
+        Ok(path) => Self::Path(path),
+        Err(_) => Self::Name(s),
+      }
     }
   }
 }
@@ -936,11 +942,7 @@ impl From<PathBuf> for RunDescriptor {
   fn from(p: PathBuf) -> Self {
     #[cfg(windows)]
     let p = PathBuf::from(p.to_string_lossy().to_string().to_lowercase());
-    if p.is_absolute() {
-      Self::Path(p)
-    } else {
-      Self::Path(resolve_from_cwd(&p).unwrap())
-    }
+    Self::Path(resolve_from_cwd(&p).unwrap())
   }
 }
 
