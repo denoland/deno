@@ -1,10 +1,10 @@
 Running...
-PermissionDenied: Requires run access to "/private/var/folders/v4/3smqxpkj0dx9w4cqs40nmh3c0000gn/T/deno-cli-test2DxZMR/subdir/deno", run again with the --allow-run flag
+PermissionDenied: Requires run access to "[WILDLINE]deno", run again with the --allow-run flag
     [WILDCARD]
     at file:///[WILDLINE]/sub.ts:15:5 {
   name: "PermissionDenied"
 }
-PermissionDenied: Requires run access to "/private/var/folders/v4/3smqxpkj0dx9w4cqs40nmh3c0000gn/T/deno-cli-test2DxZMR/subdir/deno", run again with the --allow-run flag
+PermissionDenied: Requires run access to "[WILDLINE]deno", run again with the --allow-run flag
     [WILDCARD]
     at file:///[WILDLINE]/sub.ts:23:22 {
   name: "PermissionDenied"

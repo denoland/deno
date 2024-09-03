@@ -512,8 +512,10 @@ fn compute_run_cmd_and_check_permissions(
   state: &mut OpState,
   api_name: &str,
 ) -> Result<(PathBuf, RunEnv), AnyError> {
-  let run_env = compute_run_env(arg_cwd, arg_envs, arg_clear_env)?;
-  let cmd = resolve_cmd(arg_cmd, &run_env)?;
+  let run_env = compute_run_env(arg_cwd, arg_envs, arg_clear_env)
+    .with_context(|| format!("Failed to spawn '{}'", arg_cmd))?;
+  let cmd = resolve_cmd(arg_cmd, &run_env)
+    .with_context(|| format!("Failed to spawn '{}'", arg_cmd))?;
   check_run_permission(state, &cmd, &run_env, api_name)?;
   Ok((cmd, run_env))
 }
@@ -572,9 +574,10 @@ fn resolve_cmd(cmd: &str, env: &RunEnv) -> Result<PathBuf, AnyError> {
     });
     match which::which_in(cmd, path, &env.cwd) {
       Ok(cmd) => Ok(cmd),
-      Err(which::Error::CannotFindBinaryPath) => {
-        deno_core::anyhow::bail!("cannot find binary path '{}'", cmd)
-      }
+      Err(which::Error::CannotFindBinaryPath) => Err(
+        std::io::Error::from_raw_os_error(if cfg!(windows) { 4058 } else { 2 })
+          .into(),
+      ),
       Err(err) => Err(err.into()),
     }
   }
@@ -763,7 +766,7 @@ mod deprecated {
       cmd,
       run_args.cwd.as_deref(),
       &run_args.env,
-      run_args.clear_env,
+      /* clear env */ false,
       state,
       "Deno.run()",
     )?;
