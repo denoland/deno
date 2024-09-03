@@ -16,9 +16,6 @@ async function checkAndPrintPermissions() {
 
   const ffiPerm = await Deno.permissions.query({ name: "ffi" });
   console.log(`FFI permission: ${ffiPerm.state}`);
-
-  const hrtimePerm = await Deno.permissions.query({ name: "hrtime" });
-  console.log(`HRTime permission: ${hrtimePerm.state}`);
 }
 
 checkAndPrintPermissions();

@@ -2,15 +2,15 @@
   "tests": {
     "no_permissions": {
       "args": "run test.ts",
-      "output": "Read permission: prompt\nWrite permission: prompt\nNetwork permission: prompt\nEnvironment permission: prompt\nRun permission: prompt\nFFI permission: prompt\nHRTime permission: prompt\n"
+      "output": "Read permission: prompt\nWrite permission: prompt\nNetwork permission: prompt\nEnvironment permission: prompt\nRun permission: prompt\nFFI permission: prompt\n"
     },
     "permissions_run": {
       "args": "run -X test.ts",
-      "output": "Read permission: prompt\nWrite permission: prompt\nNetwork permission: prompt\nEnvironment permission: prompt\nRun permission: granted\nFFI permission: prompt\nHRTime permission: prompt\n"
+      "output": "Read permission: prompt\nWrite permission: prompt\nNetwork permission: prompt\nEnvironment permission: prompt\nRun permission: granted\nFFI permission: prompt\n"
     },
     "permissions_read_write_run": {
       "args": "run -RWX test.ts",
-      "output": "Read permission: granted\nWrite permission: granted\nNetwork permission: prompt\nEnvironment permission: prompt\nRun permission: granted\nFFI permission: prompt\nHRTime permission: prompt\n"
+      "output": "Read permission: granted\nWrite permission: granted\nNetwork permission: prompt\nEnvironment permission: prompt\nRun permission: granted\nFFI permission: prompt\n"
     }
   }
 }
