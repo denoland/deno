@@ -1,2 +1,0 @@
-[WILDCARD]Warning: Resolving "fs" as "node:fs" at file:///[WILDCARD]/tests/testdata/run/node_prefix_missing/main.ts:1:16. If you want to use a built-in Node module, add a "node:" prefix.
-[Function: writeFile]

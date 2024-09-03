@@ -10,18 +10,6 @@
 declare namespace Deno {
   export {}; // stop default export type behavior
 
-  /** Information for a HTTP request.
-   *
-   * @category HTTP Server
-   * @experimental
-   */
-  export interface ServeHandlerInfo {
-    /** The remote address of the connection. */
-    remoteAddr: Deno.NetAddr;
-    /** The completion promise */
-    completed: Promise<void>;
-  }
-
   /** **UNSTABLE**: New API, yet to be vetted.
    *
    * Retrieve the process umask.  If `mask` is provided, sets the process umask.
@@ -1218,26 +1206,6 @@ declare namespace Deno {
 
   /** **UNSTABLE**: New API, yet to be vetted.
    *
-   * Acquire an advisory file-system lock for the provided file.
-   *
-   * @param [exclusive=false]
-   * @category File System
-   * @experimental
-   */
-  export function flock(rid: number, exclusive?: boolean): Promise<void>;
-
-  /** **UNSTABLE**: New API, yet to be vetted.
-   *
-   * Acquire an advisory file-system lock synchronously for the provided file.
-   *
-   * @param [exclusive=false]
-   * @category File System
-   * @experimental
-   */
-  export function flockSync(rid: number, exclusive?: boolean): void;
-
-  /** **UNSTABLE**: New API, yet to be vetted.
-   *
    * Release an advisory file-system lock for the provided file.
    *
    * @category File System
@@ -2163,7 +2131,10 @@ declare namespace Deno {
      * @category Jupyter
      * @experimental
      */
-    export function display(obj: unknown, options?: DisplayOptions): void;
+    export function display(
+      obj: unknown,
+      options?: DisplayOptions,
+    ): Promise<void>;
 
     /**
      * Show Markdown in Jupyter frontends with a tagged template function.
@@ -2236,12 +2207,12 @@ declare namespace Deno {
      * Format an object for displaying in Deno
      *
      * @param obj - The object to be displayed
-     * @returns MediaBundle
+     * @returns Promise<MediaBundle>
      *
      * @category Jupyter
      * @experimental
      */
-    export function format(obj: unknown): MediaBundle;
+    export function format(obj: unknown): Promise<MediaBundle>;
 
     /**
      * Broadcast a message on IO pub channel.

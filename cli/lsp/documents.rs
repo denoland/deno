@@ -60,6 +60,9 @@ pub enum LanguageId {
   Json,
   JsonC,
   Markdown,
+  Html,
+  Css,
+  Yaml,
   Unknown,
 }
 
@@ -73,6 +76,9 @@ impl LanguageId {
       LanguageId::Json => Some("json"),
       LanguageId::JsonC => Some("jsonc"),
       LanguageId::Markdown => Some("md"),
+      LanguageId::Html => Some("html"),
+      LanguageId::Css => Some("css"),
+      LanguageId::Yaml => Some("yaml"),
       LanguageId::Unknown => None,
     }
   }
@@ -85,6 +91,9 @@ impl LanguageId {
       LanguageId::Tsx => Some("text/tsx"),
       LanguageId::Json | LanguageId::JsonC => Some("application/json"),
       LanguageId::Markdown => Some("text/markdown"),
+      LanguageId::Html => Some("text/html"),
+      LanguageId::Css => Some("text/css"),
+      LanguageId::Yaml => Some("application/yaml"),
       LanguageId::Unknown => None,
     }
   }
@@ -109,6 +118,9 @@ impl FromStr for LanguageId {
       "json" => Ok(Self::Json),
       "jsonc" => Ok(Self::JsonC),
       "markdown" => Ok(Self::Markdown),
+      "html" => Ok(Self::Html),
+      "css" => Ok(Self::Css),
+      "yaml" => Ok(Self::Yaml),
       _ => Ok(Self::Unknown),
     }
   }
