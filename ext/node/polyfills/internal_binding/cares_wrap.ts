@@ -270,7 +270,7 @@ export class ChannelWrap extends AsyncWrap implements ChannelWrapQuery {
           );
         }),
         this.#query(name, "CAA").then(({ ret }) => {
-          (ret as Deno.CAARecord[]).forEach(({ critical, tag, value }) =>
+          (ret as Deno.CaaRecord[]).forEach(({ critical, tag, value }) =>
             records.push({
               type: "CAA",
               [tag]: value,
@@ -284,7 +284,7 @@ export class ChannelWrap extends AsyncWrap implements ChannelWrapQuery {
           );
         }),
         this.#query(name, "MX").then(({ ret }) => {
-          (ret as Deno.MXRecord[]).forEach(({ preference, exchange }) =>
+          (ret as Deno.MxRecord[]).forEach(({ preference, exchange }) =>
             records.push({
               type: "MX",
               priority: preference,
@@ -293,7 +293,7 @@ export class ChannelWrap extends AsyncWrap implements ChannelWrapQuery {
           );
         }),
         this.#query(name, "NAPTR").then(({ ret }) => {
-          (ret as Deno.NAPTRRecord[]).forEach(
+          (ret as Deno.NaptrRecord[]).forEach(
             ({ order, preference, flags, services, regexp, replacement }) =>
               records.push({
                 type: "NAPTR",
@@ -317,7 +317,7 @@ export class ChannelWrap extends AsyncWrap implements ChannelWrapQuery {
           );
         }),
         this.#query(name, "SOA").then(({ ret }) => {
-          (ret as Deno.SOARecord[]).forEach(
+          (ret as Deno.SoaRecord[]).forEach(
             ({ mname, rname, serial, refresh, retry, expire, minimum }) =>
               records.push({
                 type: "SOA",
@@ -332,7 +332,7 @@ export class ChannelWrap extends AsyncWrap implements ChannelWrapQuery {
           );
         }),
         this.#query(name, "SRV").then(({ ret }) => {
-          (ret as Deno.SRVRecord[]).forEach(
+          (ret as Deno.SrvRecord[]).forEach(
             ({ priority, weight, port, target }) =>
               records.push({
                 type: "SRV",
@@ -378,7 +378,7 @@ export class ChannelWrap extends AsyncWrap implements ChannelWrapQuery {
 
   queryCaa(req: QueryReqWrap, name: string): number {
     this.#query(name, "CAA").then(({ code, ret }) => {
-      const records = (ret as Deno.CAARecord[]).map(
+      const records = (ret as Deno.CaaRecord[]).map(
         ({ critical, tag, value }) => ({
           [tag]: value,
           critical: +critical && 128,
@@ -401,7 +401,7 @@ export class ChannelWrap extends AsyncWrap implements ChannelWrapQuery {
 
   queryMx(req: QueryReqWrap, name: string): number {
     this.#query(name, "MX").then(({ code, ret }) => {
-      const records = (ret as Deno.MXRecord[]).map(
+      const records = (ret as Deno.MxRecord[]).map(
         ({ preference, exchange }) => ({
           priority: preference,
           exchange: fqdnToHostname(exchange),
@@ -416,7 +416,7 @@ export class ChannelWrap extends AsyncWrap implements ChannelWrapQuery {
 
   queryNaptr(req: QueryReqWrap, name: string): number {
     this.#query(name, "NAPTR").then(({ code, ret }) => {
-      const records = (ret as Deno.NAPTRRecord[]).map(
+      const records = (ret as Deno.NaptrRecord[]).map(
         ({ order, preference, flags, services, regexp, replacement }) => ({
           flags,
           service: services,
@@ -459,7 +459,7 @@ export class ChannelWrap extends AsyncWrap implements ChannelWrapQuery {
 
       if (ret.length) {
         const { mname, rname, serial, refresh, retry, expire, minimum } =
-          ret[0] as Deno.SOARecord;
+          ret[0] as Deno.SoaRecord;
 
         record = {
           nsname: fqdnToHostname(mname),
@@ -480,7 +480,7 @@ export class ChannelWrap extends AsyncWrap implements ChannelWrapQuery {
 
   querySrv(req: QueryReqWrap, name: string): number {
     this.#query(name, "SRV").then(({ code, ret }) => {
-      const records = (ret as Deno.SRVRecord[]).map(
+      const records = (ret as Deno.SrvRecord[]).map(
         ({ priority, weight, port, target }) => ({
           priority,
           weight,

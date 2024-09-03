@@ -9,8 +9,6 @@
 
 #[path = "bench_tests.rs"]
 mod bench;
-#[path = "bundle_tests.rs"]
-mod bundle;
 #[path = "cache_tests.rs"]
 mod cache;
 #[path = "check_tests.rs"]
@@ -70,8 +68,6 @@ mod task;
 mod test;
 #[path = "upgrade_tests.rs"]
 mod upgrade;
-#[path = "vendor_tests.rs"]
-mod vendor;
 #[path = "watcher_tests.rs"]
 mod watcher;
 #[path = "worker_tests.rs"]

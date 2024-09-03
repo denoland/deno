@@ -9,20 +9,5 @@
     "http://localhost:4545/subdir/mt_text_typescript.t1.ts": "3a3e002e2f92dc8f045bd4a7c66b4791453ad0417b038dd2b2d9d0f277c44f18",
     "http://localhost:4545/subdir/mt_video_mp2t.t3.ts": "3a3e002e2f92dc8f045bd4a7c66b4791453ad0417b038dd2b2d9d0f277c44f18",
     "http://localhost:4545/subdir/mt_video_vdn.t2.ts": "3a3e002e2f92dc8f045bd4a7c66b4791453ad0417b038dd2b2d9d0f277c44f18"
-  },
-  "workspace": {
-    "packageJson": {
-      "dependencies": [
-        "npm:@jsr/denotest__add@1",
-        "npm:@jsr/std__assert@1",
-        "npm:@jsr/std__http@1",
-        "npm:@ngrx/store-devtools@^14.3.2",
-        "npm:@stripe/stripe-js@^2.1.6",
-        "npm:chalk@^4.1.2",
-        "npm:path-to-regexp@7",
-        "npm:stripe@^13.8.0",
-        "npm:uuid@^3.4.0"
-      ]
-    }
   }
 }
