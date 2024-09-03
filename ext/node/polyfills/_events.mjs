@@ -54,6 +54,11 @@ const kMaxEventTargetListenersWarned = Symbol(
   "events.maxEventTargetListenersWarned",
 );
 
+let process;
+export function setProcess(p) {
+  process = p;
+}
+
 /**
  * Creates a new `EventEmitter` instance.
  * @param {{ captureRejections?: boolean; }} [opts]
@@ -468,7 +473,7 @@ function _addListener(target, type, listener, prepend) {
       w.emitter = target;
       w.type = type;
       w.count = existing.length;
-      globalThis.process.emitWarning(w);
+      process.emitWarning(w);
     }
   }
 
