@@ -333,7 +333,7 @@ class Headers {
       throw new TypeError(`Invalid header name: "${name}"`);
     }
     if (this[_guard] == "immutable") {
-      throw new TypeError("Cannot change header: headers are immutable");
+      throw new TypeError("Cannot change headers: headers are immutable");
     }
 
     const list = this[_headerList];
@@ -422,7 +422,7 @@ class Headers {
     }
 
     if (this[_guard] == "immutable") {
-      throw new TypeError("Cannot change header: headers are immutable");
+      throw new TypeError("Cannot change headers: headers are immutable");
     }
 
     const list = this[_headerList];
