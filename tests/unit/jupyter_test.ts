@@ -6,7 +6,6 @@ import { assertEquals, assertThrows } from "./test_util.ts";
 const format = Deno[Deno.internal].jupyter.formatInner;
 
 Deno.test("Deno.jupyter is not available", () => {
-  console.log(Deno.jupyter);
   assertThrows(
     () => Deno.jupyter,
     "Deno.jupyter is only available in `deno jupyter` subcommand.",
