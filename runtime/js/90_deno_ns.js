@@ -104,8 +104,6 @@ const denoNs = {
   writeAll: buffer.writeAll,
   writeAllSync: buffer.writeAllSync,
   copy: io.copy,
-  iter: io.iter,
-  iterSync: io.iterSync,
   SeekMode: io.SeekMode,
   read(rid, buffer) {
     internals.warnOnDeprecatedApi(
