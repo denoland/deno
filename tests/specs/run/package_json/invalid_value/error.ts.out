@@ -1,0 +1,5 @@
+error: Invalid version requirement
+    0: Unexpected character.
+         invalid stuff that won't parse
+         ~
+    at file:///[WILDCARD]/error.ts:2:23

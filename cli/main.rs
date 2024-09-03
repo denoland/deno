@@ -32,7 +32,6 @@ mod worker;
 use crate::args::flags_from_vec;
 use crate::args::DenoSubcommand;
 use crate::args::Flags;
-use crate::args::DENO_FUTURE;
 use crate::graph_container::ModuleGraphContainer;
 use crate::util::display;
 use crate::util::v8::get_v8_flags_from_env;
@@ -53,6 +52,7 @@ use deno_runtime::tokio_util::create_and_run_current_thread_with_maybe_metrics;
 use deno_terminal::colors;
 use factory::CliFactory;
 use standalone::MODULE_NOT_FOUND;
+use standalone::UNSUPPORTED_SCHEME;
 use std::env;
 use std::future::Future;
 use std::ops::Deref;
@@ -110,9 +110,7 @@ async fn run_subcommand(flags: Arc<Flags>) -> Result<i32, AnyError> {
         tools::bench::run_benchmarks(flags, bench_flags).await
       }
     }),
-    DenoSubcommand::Bundle(bundle_flags) => spawn_subcommand(async {
-      tools::bundle::bundle(flags, bundle_flags).await
-    }),
+    DenoSubcommand::Bundle => exit_with_message("⚠️ `deno bundle` was removed in Deno 2.\n\nSee the Deno 1.x to 2.x Migration Guide for migration instructions: https://docs.deno.com/runtime/manual/advanced/migrate_deprecations", 1),
     DenoSubcommand::Doc(doc_flags) => {
       spawn_subcommand(async { tools::doc::doc(flags, doc_flags).await })
     }
@@ -196,7 +194,8 @@ async fn run_subcommand(flags: Arc<Flags>) -> Result<i32, AnyError> {
         match result {
           Ok(v) => Ok(v),
           Err(script_err) => {
-            if script_err.to_string().starts_with(MODULE_NOT_FOUND) {
+            let script_err_msg = script_err.to_string();
+            if script_err_msg.starts_with(MODULE_NOT_FOUND) || script_err_msg.starts_with(UNSUPPORTED_SCHEME) {
               if run_flags.bare {
                 let mut cmd = args::clap_root();
                 cmd.build();
@@ -218,9 +217,10 @@ async fn run_subcommand(flags: Arc<Flags>) -> Result<i32, AnyError> {
                 let task_flags = TaskFlags {
                   cwd: None,
                   task: Some(run_flags.script.clone()),
+                  is_run: true,
                 };
                 new_flags.subcommand = DenoSubcommand::Task(task_flags.clone());
-                let result = tools::task::execute_script(Arc::new(new_flags), task_flags.clone(), true).await;
+                let result = tools::task::execute_script(Arc::new(new_flags), task_flags.clone()).await;
                 match result {
                   Ok(v) => Ok(v),
                   Err(_) => {
@@ -240,7 +240,7 @@ async fn run_subcommand(flags: Arc<Flags>) -> Result<i32, AnyError> {
       tools::serve::serve(flags, serve_flags).await
     }),
     DenoSubcommand::Task(task_flags) => spawn_subcommand(async {
-      tools::task::execute_script(flags, task_flags, false).await
+      tools::task::execute_script(flags, task_flags).await
     }),
     DenoSubcommand::Test(test_flags) => {
       spawn_subcommand(async {
@@ -283,14 +283,26 @@ async fn run_subcommand(flags: Arc<Flags>) -> Result<i32, AnyError> {
       "This deno was built without the \"upgrade\" feature. Please upgrade using the installation method originally used to install Deno.",
       1,
     ),
-    DenoSubcommand::Vendor(vendor_flags) => spawn_subcommand(async {
-      tools::vendor::vendor(flags, vendor_flags).await
-    }),
+    DenoSubcommand::Vendor => exit_with_message("⚠️ `deno vendor` was removed in Deno 2.\n\nSee the Deno 1.x to 2.x Migration Guide for migration instructions: https://docs.deno.com/runtime/manual/advanced/migrate_deprecations", 1),
     DenoSubcommand::Publish(publish_flags) => spawn_subcommand(async {
       tools::registry::publish(flags, publish_flags).await
     }),
     DenoSubcommand::Help(help_flags) => spawn_subcommand(async move {
-      display::write_to_stdout_ignore_sigpipe(help_flags.help.ansi().to_string().as_bytes())
+      use std::io::Write;
+
+      let mut stream = anstream::AutoStream::new(std::io::stdout(), if colors::use_color() {
+        anstream::ColorChoice::Auto
+      } else {
+        anstream::ColorChoice::Never
+      });
+
+      match stream.write_all(help_flags.help.ansi().to_string().as_bytes()) {
+        Ok(()) => Ok(()),
+        Err(e) => match e.kind() {
+          std::io::ErrorKind::BrokenPipe => Ok(()),
+          _ => Err(e),
+        },
+      }
     }),
   };
 
@@ -437,30 +449,19 @@ fn resolve_flags_and_init(
     // https://github.com/microsoft/vscode/blob/48d4ba271686e8072fc6674137415bc80d936bc7/extensions/typescript-language-features/src/configuration/configuration.ts#L213-L214
     DenoSubcommand::Lsp => vec!["--max-old-space-size=3072".to_string()],
     _ => {
-      if *DENO_FUTURE {
-        // TODO(bartlomieju): I think this can be removed as it's handled by `deno_core`
-        // and its settings.
-        // deno_ast removes TypeScript `assert` keywords, so this flag only affects JavaScript
-        // TODO(petamoriken): Need to check TypeScript `assert` keywords in deno_ast
-        vec!["--no-harmony-import-assertions".to_string()]
-      } else {
-        vec![
-          // TODO(bartlomieju): I think this can be removed as it's handled by `deno_core`
-          // and its settings.
-          // If we're still in v1.X version we want to support import assertions.
-          // V8 12.6 unshipped the support by default, so force it by passing a
-          // flag.
-          "--harmony-import-assertions".to_string(),
-          // Verify with DENO_FUTURE for now.
-          "--no-maglev".to_string(),
-        ]
-      }
+      // TODO(bartlomieju): I think this can be removed as it's handled by `deno_core`
+      // and its settings.
+      // deno_ast removes TypeScript `assert` keywords, so this flag only affects JavaScript
+      // TODO(petamoriken): Need to check TypeScript `assert` keywords in deno_ast
+      vec!["--no-harmony-import-assertions".to_string()]
     }
   };
 
   init_v8_flags(&default_v8_flags, &flags.v8_flags, get_v8_flags_from_env());
   // TODO(bartlomieju): remove last argument in Deno 2.
-  deno_core::JsRuntime::init_platform(None, !*DENO_FUTURE);
+  deno_core::JsRuntime::init_platform(
+    None, /* import assertions enabled */ false,
+  );
   util::logger::init(flags.log_level);
 
   Ok(flags)

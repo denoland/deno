@@ -145,7 +145,6 @@ export function fork(
   args = [
     "run",
     ...op_bootstrap_unstable_args(),
-    "--node-modules-dir",
     "-A",
     ...stringifiedV8Flags,
     ...execArgv,

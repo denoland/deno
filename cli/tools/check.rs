@@ -427,7 +427,7 @@ fn get_tsc_roots(
 
   // now walk the graph that only includes the fast check dependencies
   while let Some(specifier) = pending.pop_front() {
-    let Some(module) = graph.get(&specifier) else {
+    let Some(module) = graph.get(specifier) else {
       continue;
     };
     if let Some(entry) = maybe_get_check_entry(module, check_js) {

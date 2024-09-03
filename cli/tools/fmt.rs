@@ -403,15 +403,6 @@ pub fn format_html(
           let mut typescript_config =
             get_resolved_typescript_config(fmt_options);
           typescript_config.line_width = hints.print_width as u32;
-          if hints.attr {
-            typescript_config.quote_style = if let Some(true) =
-              fmt_options.single_quote
-            {
-              dprint_plugin_typescript::configuration::QuoteStyle::AlwaysDouble
-            } else {
-              dprint_plugin_typescript::configuration::QuoteStyle::AlwaysSingle
-            };
-          }
           dprint_plugin_typescript::format_text(
             &path,
             text.to_string(),

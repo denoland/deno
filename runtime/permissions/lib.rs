@@ -1416,7 +1416,6 @@ pub struct Permissions {
   pub run: UnaryPermission<RunDescriptor>,
   pub ffi: UnaryPermission<FfiDescriptor>,
   pub all: UnitPermission,
-  pub hrtime: UnitPermission,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq, Default, Serialize, Deserialize)]
@@ -1424,8 +1423,6 @@ pub struct PermissionsOptions {
   pub allow_all: bool,
   pub allow_env: Option<Vec<String>>,
   pub deny_env: Option<Vec<String>>,
-  pub allow_hrtime: bool,
-  pub deny_hrtime: bool,
   pub allow_net: Option<Vec<String>>,
   pub deny_net: Option<Vec<String>>,
   pub allow_ffi: Option<Vec<PathBuf>>,
@@ -1458,19 +1455,6 @@ impl Permissions {
       prompt,
       ..Default::default()
     })
-  }
-
-  pub const fn new_hrtime(
-    allow_state: bool,
-    deny_state: bool,
-  ) -> UnitPermission {
-    unit_permission_from_flag_bools(
-      allow_state,
-      deny_state,
-      "hrtime",
-      "high precision time",
-      false, // never prompt for hrtime
-    )
   }
 
   pub const fn new_all(allow_state: bool) -> UnitPermission {
@@ -1521,7 +1505,6 @@ impl Permissions {
         opts.prompt,
       )?,
       all: Permissions::new_all(opts.allow_all),
-      hrtime: Permissions::new_hrtime(opts.allow_hrtime, opts.deny_hrtime),
     })
   }
 
@@ -1536,7 +1519,6 @@ impl Permissions {
       run: UnaryPermission::allow_all(),
       ffi: UnaryPermission::allow_all(),
       all: Permissions::new_all(true),
-      hrtime: Permissions::new_hrtime(true, false),
     }
   }
 
@@ -1560,7 +1542,6 @@ impl Permissions {
       run: Permissions::new_unary(&None, &None, prompt).unwrap(),
       ffi: Permissions::new_unary(&None, &None, prompt).unwrap(),
       all: Permissions::new_all(false),
-      hrtime: Permissions::new_hrtime(false, false),
     }
   }
 
@@ -1596,11 +1577,6 @@ pub struct PermissionsContainer(pub Arc<Mutex<Permissions>>);
 impl PermissionsContainer {
   pub fn new(perms: Permissions) -> Self {
     Self(Arc::new(Mutex::new(perms)))
-  }
-
-  #[inline(always)]
-  pub fn allow_hrtime(&mut self) -> bool {
-    self.0.lock().hrtime.check().is_ok()
   }
 
   pub fn allow_all() -> Self {
@@ -2123,7 +2099,6 @@ impl<'de> Deserialize<'de> for ChildUnaryPermissionArg {
 #[derive(Debug, Eq, PartialEq)]
 pub struct ChildPermissionsArg {
   env: ChildUnaryPermissionArg,
-  hrtime: ChildUnitPermissionArg,
   net: ChildUnaryPermissionArg,
   ffi: ChildUnaryPermissionArg,
   read: ChildUnaryPermissionArg,
@@ -2136,7 +2111,6 @@ impl ChildPermissionsArg {
   pub fn inherit() -> Self {
     ChildPermissionsArg {
       env: ChildUnaryPermissionArg::Inherit,
-      hrtime: ChildUnitPermissionArg::Inherit,
       net: ChildUnaryPermissionArg::Inherit,
       ffi: ChildUnaryPermissionArg::Inherit,
       read: ChildUnaryPermissionArg::Inherit,
@@ -2149,7 +2123,6 @@ impl ChildPermissionsArg {
   pub fn none() -> Self {
     ChildPermissionsArg {
       env: ChildUnaryPermissionArg::NotGranted,
-      hrtime: ChildUnitPermissionArg::NotGranted,
       net: ChildUnaryPermissionArg::NotGranted,
       ffi: ChildUnaryPermissionArg::NotGranted,
       read: ChildUnaryPermissionArg::NotGranted,
@@ -2206,11 +2179,6 @@ impl<'de> Deserialize<'de> for ChildPermissionsArg {
             child_permissions_arg.env = arg.map_err(|e| {
               de::Error::custom(format!("(deno.permissions.env) {e}"))
             })?;
-          } else if key == "hrtime" {
-            let arg = serde_json::from_value::<ChildUnitPermissionArg>(value);
-            child_permissions_arg.hrtime = arg.map_err(|e| {
-              de::Error::custom(format!("(deno.permissions.hrtime) {e}"))
-            })?;
           } else if key == "net" {
             let arg = serde_json::from_value::<ChildUnaryPermissionArg>(value);
             child_permissions_arg.net = arg.map_err(|e| {
@@ -2266,13 +2234,6 @@ pub fn create_child_permissions(
     }
   }
 
-  fn is_granted_unit(arg: &ChildUnitPermissionArg) -> bool {
-    match arg {
-      ChildUnitPermissionArg::Inherit | ChildUnitPermissionArg::Granted => true,
-      ChildUnitPermissionArg::NotGranted => false,
-    }
-  }
-
   let mut worker_perms = Permissions::none_without_prompt();
 
   worker_perms.all = main_perms
@@ -2290,9 +2251,7 @@ pub fn create_child_permissions(
       &child_permissions_arg.run,
       &child_permissions_arg.ffi,
     ];
-    let unit_perms = [&child_permissions_arg.hrtime];
-    let allow_all = unary_perms.into_iter().all(is_granted_unary)
-      && unit_perms.into_iter().all(is_granted_unit);
+    let allow_all = unary_perms.into_iter().all(is_granted_unary);
     if !allow_all {
       worker_perms.all.revoke();
     }
@@ -2321,9 +2280,6 @@ pub fn create_child_permissions(
   worker_perms.ffi = main_perms
     .ffi
     .create_child_permissions(child_permissions_arg.ffi)?;
-  worker_perms.hrtime = main_perms
-    .hrtime
-    .create_child_permissions(child_permissions_arg.hrtime)?;
 
   Ok(worker_perms)
 }
@@ -2755,7 +2711,6 @@ mod tests {
         .unwrap(),
       run: Permissions::new_unary(&Some(svec!["deno"]), &None, false).unwrap(),
       all: Permissions::new_all(false),
-      hrtime: Permissions::new_hrtime(false, false),
     };
     let perms3 = Permissions {
       read: Permissions::new_unary(
@@ -2783,7 +2738,6 @@ mod tests {
         .unwrap(),
       run: Permissions::new_unary(&None, &Some(svec!["deno"]), false).unwrap(),
       all: Permissions::new_all(false),
-      hrtime: Permissions::new_hrtime(false, true),
     };
     let perms4 = Permissions {
       read: Permissions::new_unary(
@@ -2821,7 +2775,6 @@ mod tests {
       run: Permissions::new_unary(&Some(vec![]), &Some(svec!["deno"]), false)
         .unwrap(),
       all: Permissions::new_all(false),
-      hrtime: Permissions::new_hrtime(true, true),
     };
     #[rustfmt::skip]
     {
@@ -2897,10 +2850,6 @@ mod tests {
       assert_eq!(perms4.run.query(None), PermissionState::GrantedPartial);
       assert_eq!(perms4.run.query(Some("deno")), PermissionState::Denied);
       assert_eq!(perms4.run.query(Some("node")), PermissionState::Granted);
-      assert_eq!(perms1.hrtime.query(), PermissionState::Granted);
-      assert_eq!(perms2.hrtime.query(), PermissionState::Prompt);
-      assert_eq!(perms3.hrtime.query(), PermissionState::Denied);
-      assert_eq!(perms4.hrtime.query(), PermissionState::Denied);
     };
   }
 
@@ -2945,10 +2894,6 @@ mod tests {
       assert_eq!(perms.run.query(None), PermissionState::Prompt);
       prompt_value.set(false);
       assert_eq!(perms.run.request(Some("deno")), PermissionState::Granted);
-      prompt_value.set(false);
-      assert_eq!(perms.hrtime.request(), PermissionState::Denied);
-      prompt_value.set(true);
-      assert_eq!(perms.hrtime.request(), PermissionState::Denied);
     };
   }
 
@@ -2985,7 +2930,6 @@ mod tests {
         .unwrap(),
       run: Permissions::new_unary(&Some(svec!["deno"]), &None, false).unwrap(),
       all: Permissions::new_all(false),
-      hrtime: Permissions::new_hrtime(false, true),
     };
     #[rustfmt::skip]
     {
@@ -3004,7 +2948,6 @@ mod tests {
       assert_eq!(perms.env.revoke(Some("HOME")), PermissionState::Prompt);
       assert_eq!(perms.env.revoke(Some("hostname")), PermissionState::Prompt);
       assert_eq!(perms.run.revoke(Some("deno")), PermissionState::Prompt);
-      assert_eq!(perms.hrtime.revoke(), PermissionState::Denied);
     };
   }
 
@@ -3088,8 +3031,6 @@ mod tests {
     prompt_value.set(false);
     assert!(perms.env.check("hostname", None).is_ok());
     assert!(perms.env.check("osRelease", None).is_err());
-
-    assert!(perms.hrtime.check().is_err());
   }
 
   #[test]
@@ -3191,11 +3132,6 @@ mod tests {
     assert!(perms.sys.check("osRelease", None).is_ok());
     prompt_value.set(false);
     assert!(perms.sys.check("osRelease", None).is_ok());
-
-    prompt_value.set(false);
-    assert!(perms.hrtime.check().is_err());
-    prompt_value.set(true);
-    assert!(perms.hrtime.check().is_err());
   }
 
   #[test]
@@ -3286,7 +3222,6 @@ mod tests {
       ChildPermissionsArg::inherit(),
       ChildPermissionsArg {
         env: ChildUnaryPermissionArg::Inherit,
-        hrtime: ChildUnitPermissionArg::Inherit,
         net: ChildUnaryPermissionArg::Inherit,
         ffi: ChildUnaryPermissionArg::Inherit,
         read: ChildUnaryPermissionArg::Inherit,
@@ -3299,7 +3234,6 @@ mod tests {
       ChildPermissionsArg::none(),
       ChildPermissionsArg {
         env: ChildUnaryPermissionArg::NotGranted,
-        hrtime: ChildUnitPermissionArg::NotGranted,
         net: ChildUnaryPermissionArg::NotGranted,
         ffi: ChildUnaryPermissionArg::NotGranted,
         read: ChildUnaryPermissionArg::NotGranted,
@@ -3332,26 +3266,6 @@ mod tests {
     );
     assert_eq!(
       serde_json::from_value::<ChildPermissionsArg>(json!({
-        "hrtime": true,
-      }))
-      .unwrap(),
-      ChildPermissionsArg {
-        hrtime: ChildUnitPermissionArg::Granted,
-        ..ChildPermissionsArg::none()
-      }
-    );
-    assert_eq!(
-      serde_json::from_value::<ChildPermissionsArg>(json!({
-        "hrtime": false,
-      }))
-      .unwrap(),
-      ChildPermissionsArg {
-        hrtime: ChildUnitPermissionArg::NotGranted,
-        ..ChildPermissionsArg::none()
-      }
-    );
-    assert_eq!(
-      serde_json::from_value::<ChildPermissionsArg>(json!({
         "env": true,
         "net": true,
         "ffi": true,
@@ -3369,7 +3283,6 @@ mod tests {
         run: ChildUnaryPermissionArg::Granted,
         sys: ChildUnaryPermissionArg::Granted,
         write: ChildUnaryPermissionArg::Granted,
-        ..ChildPermissionsArg::none()
       }
     );
     assert_eq!(
@@ -3391,7 +3304,6 @@ mod tests {
         run: ChildUnaryPermissionArg::NotGranted,
         sys: ChildUnaryPermissionArg::NotGranted,
         write: ChildUnaryPermissionArg::NotGranted,
-        ..ChildPermissionsArg::none()
       }
     );
     assert_eq!(
@@ -3429,7 +3341,6 @@ mod tests {
           "foo",
           "file:///bar/baz"
         ]),
-        ..ChildPermissionsArg::none()
       }
     );
   }
@@ -3439,7 +3350,6 @@ mod tests {
     set_prompter(Box::new(TestPrompter));
     let mut main_perms = Permissions {
       env: Permissions::new_unary(&Some(vec![]), &None, false).unwrap(),
-      hrtime: Permissions::new_hrtime(true, false),
       net: Permissions::new_unary(&Some(svec!["foo", "bar"]), &None, false)
         .unwrap(),
       ..Permissions::none_without_prompt()
@@ -3449,7 +3359,6 @@ mod tests {
         &mut main_perms.clone(),
         ChildPermissionsArg {
           env: ChildUnaryPermissionArg::Inherit,
-          hrtime: ChildUnitPermissionArg::NotGranted,
           net: ChildUnaryPermissionArg::GrantedList(svec!["foo"]),
           ffi: ChildUnaryPermissionArg::NotGranted,
           ..ChildPermissionsArg::none()

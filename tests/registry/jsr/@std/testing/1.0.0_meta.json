@@ -1,0 +1,6 @@
+{
+    "exports": {
+        "./bdd": "./bdd.ts",
+        "./types": "./types.ts"
+    }
+}

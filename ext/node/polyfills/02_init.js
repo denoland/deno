@@ -22,7 +22,7 @@ function initialize(args) {
   } = args;
   if (!warmup) {
     if (initialized) {
-      throw Error("Node runtime already initialized");
+      throw new Error("Node runtime already initialized");
     }
     initialized = true;
     if (usesLocalNodeModulesDir) {
@@ -76,7 +76,6 @@ nodeGlobals.Buffer = nativeModuleExports["buffer"].Buffer;
 nodeGlobals.clearImmediate = nativeModuleExports["timers"].clearImmediate;
 nodeGlobals.clearInterval = nativeModuleExports["timers"].clearInterval;
 nodeGlobals.clearTimeout = nativeModuleExports["timers"].clearTimeout;
-nodeGlobals.console = nativeModuleExports["console"];
 nodeGlobals.global = globalThis;
 nodeGlobals.process = nativeModuleExports["process"];
 nodeGlobals.setImmediate = nativeModuleExports["timers"].setImmediate;

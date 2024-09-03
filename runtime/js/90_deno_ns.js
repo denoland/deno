@@ -32,10 +32,6 @@ import * as cron from "ext:deno_cron/01_cron.ts";
 import * as webgpuSurface from "ext:deno_webgpu/02_surface.js";
 
 const denoNs = {
-  metrics: () => {
-    internals.warnOnDeprecatedApi("Deno.metrics()", new Error().stack);
-    return core.metrics();
-  },
   Process: process.Process,
   run: process.run,
   isatty: tty.isatty,
@@ -97,22 +93,6 @@ const denoNs = {
     );
     return fs.ftruncate(rid, len);
   },
-  async futime(rid, atime, mtime) {
-    internals.warnOnDeprecatedApi(
-      "Deno.futime()",
-      new Error().stack,
-      "Use `Deno.FsFile.utime()` instead.",
-    );
-    await fs.futime(rid, atime, mtime);
-  },
-  futimeSync(rid, atime, mtime) {
-    internals.warnOnDeprecatedApi(
-      "Deno.futimeSync()",
-      new Error().stack,
-      "Use `Deno.FsFile.utimeSync()` instead.",
-    );
-    fs.futimeSync(rid, atime, mtime);
-  },
   errors: errors.errors,
   inspect: console.inspect,
   env: os.env,
@@ -124,8 +104,6 @@ const denoNs = {
   writeAll: buffer.writeAll,
   writeAllSync: buffer.writeAllSync,
   copy: io.copy,
-  iter: io.iter,
-  iterSync: io.iterSync,
   SeekMode: io.SeekMode,
   read(rid, buffer) {
     internals.warnOnDeprecatedApi(
@@ -190,14 +168,6 @@ const denoNs = {
   connectTls: tls.connectTls,
   listenTls: tls.listenTls,
   startTls: tls.startTls,
-  shutdown(rid) {
-    internals.warnOnDeprecatedApi(
-      "Deno.shutdown()",
-      new Error().stack,
-      "Use `Deno.Conn.closeWrite()` instead.",
-    );
-    net.shutdown(rid);
-  },
   fstatSync(rid) {
     internals.warnOnDeprecatedApi(
       "Deno.fstatSync()",
@@ -281,8 +251,6 @@ denoNsUnstableById[unstableIds.ffi] = {
 };
 
 denoNsUnstableById[unstableIds.fs] = {
-  flock: fs.flock,
-  flockSync: fs.flockSync,
   funlock: fs.funlock,
   funlockSync: fs.funlockSync,
   umask: fs.umask,
@@ -331,8 +299,6 @@ const denoNsUnstable = {
   UnsafePointerView: ffi.UnsafePointerView,
   UnsafeFnPointer: ffi.UnsafeFnPointer,
   UnsafeWindowSurface: webgpuSurface.UnsafeWindowSurface,
-  flock: fs.flock,
-  flockSync: fs.flockSync,
   funlock: fs.funlock,
   funlockSync: fs.funlockSync,
   openKv: kv.openKv,

@@ -11,6 +11,10 @@ const {
   indirectEval,
   ReflectApply,
 } = primordials;
+const {
+  getAsyncContext,
+  setAsyncContext,
+} = core;
 
 import * as webidl from "ext:deno_webidl/00_webidl.js";
 
@@ -33,14 +37,16 @@ function checkThis(thisArg) {
  * Call a callback function immediately.
  */
 function setImmediate(callback, ...args) {
-  if (args.length > 0) {
-    const unboundCallback = callback;
-    callback = () => ReflectApply(unboundCallback, globalThis, args);
-  }
-
-  return core.queueImmediate(
-    callback,
-  );
+  const asyncContext = getAsyncContext();
+  return core.queueImmediate(() => {
+    const oldContext = getAsyncContext();
+    try {
+      setAsyncContext(asyncContext);
+      return ReflectApply(callback, globalThis, args);
+    } finally {
+      setAsyncContext(oldContext);
+    }
+  });
 }
 
 /**
@@ -53,10 +59,17 @@ function setTimeout(callback, timeout = 0, ...args) {
     const unboundCallback = webidl.converters.DOMString(callback);
     callback = () => indirectEval(unboundCallback);
   }
-  if (args.length > 0) {
-    const unboundCallback = callback;
-    callback = () => ReflectApply(unboundCallback, globalThis, args);
-  }
+  const unboundCallback = callback;
+  const asyncContext = getAsyncContext();
+  callback = () => {
+    const oldContext = getAsyncContext();
+    try {
+      setAsyncContext(asyncContext);
+      ReflectApply(unboundCallback, globalThis, args);
+    } finally {
+      setAsyncContext(oldContext);
+    }
+  };
   timeout = webidl.converters.long(timeout);
   return core.queueUserTimer(
     core.getTimerDepth() + 1,
@@ -75,10 +88,17 @@ function setInterval(callback, timeout = 0, ...args) {
     const unboundCallback = webidl.converters.DOMString(callback);
     callback = () => indirectEval(unboundCallback);
   }
-  if (args.length > 0) {
-    const unboundCallback = callback;
-    callback = () => ReflectApply(unboundCallback, globalThis, args);
-  }
+  const unboundCallback = callback;
+  const asyncContext = getAsyncContext();
+  callback = () => {
+    const oldContext = getAsyncContext(asyncContext);
+    try {
+      setAsyncContext(asyncContext);
+      ReflectApply(unboundCallback, globalThis, args);
+    } finally {
+      setAsyncContext(oldContext);
+    }
+  };
   timeout = webidl.converters.long(timeout);
   return core.queueUserTimer(
     core.getTimerDepth() + 1,

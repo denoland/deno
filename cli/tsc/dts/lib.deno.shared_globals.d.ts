@@ -593,16 +593,12 @@ declare interface Performance extends EventTarget {
     endMark?: string,
   ): PerformanceMeasure;
 
-  /** Returns a current time from Deno's start in milliseconds.
-   *
-   * Use the permission flag `--allow-hrtime` to return a precise value.
+  /** Returns a current time from Deno's start in fractional milliseconds.
    *
    * ```ts
    * const t = performance.now();
    * console.log(`${t} ms since start!`);
    * ```
-   *
-   * @tags allow-hrtime
    */
   now(): number;
 

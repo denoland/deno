@@ -1,0 +1,6 @@
+{
+  "version": "4",
+  "remote": {
+    "http://localhost:4545/lockfile/no_dts/mod.js": "3f576f37a301d298c3032eb1835240bd83f3762db26fc1d358c5d67088d6ffc8"
+  }
+}

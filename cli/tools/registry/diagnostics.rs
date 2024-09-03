@@ -21,9 +21,9 @@ use deno_ast::SourceRanged;
 use deno_ast::SourceTextInfo;
 use deno_core::anyhow::anyhow;
 use deno_core::error::AnyError;
+use deno_core::url::Url;
 use deno_graph::FastCheckDiagnostic;
 use deno_semver::Version;
-use lsp_types::Url;
 
 use super::unfurl::SpecifierUnfurlerDiagnostic;
 
