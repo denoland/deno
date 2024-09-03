@@ -831,22 +831,14 @@ async fn sync_resolution_with_fs(
   }
 
   if !packages_with_scripts_not_run.is_empty() {
-    let (maybe_install, maybe_install_example) = if *crate::args::DENO_FUTURE {
-      (
-        " or `deno install`",
-        " or `deno install --allow-scripts=pkg1,pkg2`",
-      )
-    } else {
-      ("", "")
-    };
     let packages = packages_with_scripts_not_run
       .iter()
       .map(|(_, p)| format!("npm:{p}"))
       .collect::<Vec<_>>()
       .join(", ");
-    log::warn!("{}: Packages contained npm lifecycle scripts (preinstall/install/postinstall) that were not executed.
-    This may cause the packages to not work correctly. To run them, use the `--allow-scripts` flag with `deno cache`{maybe_install}
-    (e.g. `deno cache --allow-scripts=pkg1,pkg2 <entrypoint>`{maybe_install_example}):\n      {packages}", crate::colors::yellow("warning"));
+    log::warn!("{} Packages contained npm lifecycle scripts (preinstall/install/postinstall) that were not executed.
+    This may cause the packages to not work correctly. To run them, use the `--allow-scripts` flag with `deno cache` or `deno install`
+    (e.g. `deno cache --allow-scripts=pkg1,pkg2 <entrypoint>` or `deno install --allow-scripts=pkg1,pkg2`):\n      {packages}", crate::colors::yellow("Warning"));
     for (scripts_warned_path, _) in packages_with_scripts_not_run {
       let _ignore_err = fs::write(scripts_warned_path, "");
     }

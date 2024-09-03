@@ -95,7 +95,7 @@ function makeException(ErrorType, message, prefix, context) {
 
 function toNumber(value) {
   if (typeof value === "bigint") {
-    throw TypeError("Cannot convert a BigInt value to a number");
+    throw new TypeError("Cannot convert a BigInt value to a number");
   }
   return Number(value);
 }

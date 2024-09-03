@@ -1,6 +1,5 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
-use super::check_unstable;
 use deno_core::anyhow::Context;
 use deno_core::error::type_error;
 use deno_core::error::AnyError;
@@ -229,21 +228,59 @@ fn create_command(
   mut args: SpawnArgs,
   api_name: &str,
 ) -> Result<CreateCommand, AnyError> {
+  fn get_requires_allow_all_env_var(args: &SpawnArgs) -> Option<Cow<str>> {
+    fn requires_allow_all(key: &str) -> bool {
+      let key = key.trim();
+      // we could be more targted here, but there are quite a lot of
+      // LD_* and DYLD_* env variables
+      key.starts_with("LD_") || key.starts_with("DYLD_")
+    }
+
+    /// Checks if the user set this env var to an empty
+    /// string in order to clear it.
+    fn args_has_empty_env_value(args: &SpawnArgs, key_name: &str) -> bool {
+      args
+        .env
+        .iter()
+        .find(|(k, _)| k == key_name)
+        .map(|(_, v)| v.trim().is_empty())
+        .unwrap_or(false)
+    }
+
+    if let Some((key, _)) = args
+      .env
+      .iter()
+      .find(|(k, v)| requires_allow_all(k) && !v.trim().is_empty())
+    {
+      return Some(key.into());
+    }
+
+    if !args.clear_env {
+      if let Some((key, _)) = std::env::vars().find(|(k, v)| {
+        requires_allow_all(k)
+          && !v.trim().is_empty()
+          && !args_has_empty_env_value(args, k)
+      }) {
+        return Some(key.into());
+      }
+    }
+
+    None
+  }
+
   {
     let permissions = state.borrow_mut::<PermissionsContainer>();
     permissions.check_run(&args.cmd, api_name)?;
-    // error the same on all platforms
-    if permissions.check_run_all(api_name).is_err()
-      && (args.env.iter().any(|(k, _)| k.trim() == "LD_PRELOAD")
-        || !args.clear_env
-          && std::env::vars().any(|(k, _)| k.trim() == "LD_PRELOAD"))
-    {
-      // we don't allow users to launch subprocesses with the LD_PRELOAD
-      // env var set because this allows executing any code
-      return Err(deno_core::error::custom_error(
+    if permissions.check_run_all(api_name).is_err() {
+      // error the same on all platforms
+      if let Some(name) = get_requires_allow_all_env_var(&args) {
+        // we don't allow users to launch subprocesses with any LD_ or DYLD_*
+        // env vars set because this allows executing code (ex. LD_PRELOAD)
+        return Err(deno_core::error::custom_error(
           "PermissionDenied",
-          "Requires --allow-all permissions to spawn subprocess with LD_PRELOAD environment variable."
+          format!("Requires --allow-all permissions to spawn subprocess with {} environment variable.", name)
         ));
+      }
     }
   }
 
@@ -604,12 +641,7 @@ mod deprecated {
   pub struct RunArgs {
     cmd: Vec<String>,
     cwd: Option<String>,
-    clear_env: bool,
     env: Vec<(String, String)>,
-    #[cfg(unix)]
-    gid: Option<u32>,
-    #[cfg(unix)]
-    uid: Option<u32>,
     stdin: StdioOrRid,
     stdout: StdioOrRid,
     stderr: StdioOrRid,
@@ -662,24 +694,10 @@ mod deprecated {
     });
     cwd.map(|d| c.current_dir(d));
 
-    if run_args.clear_env {
-      super::check_unstable(state, UNSTABLE_FEATURE_NAME, "Deno.run.clearEnv");
-      c.env_clear();
-    }
     for (key, value) in &env {
       c.env(key, value);
     }
 
-    #[cfg(unix)]
-    if let Some(gid) = run_args.gid {
-      super::check_unstable(state, UNSTABLE_FEATURE_NAME, "Deno.run.gid");
-      c.gid(gid);
-    }
-    #[cfg(unix)]
-    if let Some(uid) = run_args.uid {
-      super::check_unstable(state, UNSTABLE_FEATURE_NAME, "Deno.run.uid");
-      c.uid(uid);
-    }
     #[cfg(unix)]
     // TODO(bartlomieju):
     #[allow(clippy::undocumented_unsafe_blocks)]

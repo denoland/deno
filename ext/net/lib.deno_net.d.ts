@@ -528,22 +528,4 @@ declare namespace Deno {
     conn: TcpConn,
     options?: StartTlsOptions,
   ): Promise<TlsConn>;
-
-  /** Shutdown socket send operations.
-   *
-   * Matches behavior of POSIX shutdown(3).
-   *
-   * ```ts
-   * const listener = Deno.listen({ port: 80 });
-   * const conn = await listener.accept();
-   * Deno.shutdown(conn.rid);
-   * ```
-   *
-   * @deprecated This will be removed in Deno 2.0. See the
-   * {@link https://docs.deno.com/runtime/manual/advanced/migrate_deprecations | Deno 1.x to 2.x Migration Guide}
-   * for migration instructions.
-   *
-   * @category Network
-   */
-  export function shutdown(rid: number): Promise<void>;
 }

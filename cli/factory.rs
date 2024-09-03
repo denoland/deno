@@ -793,20 +793,12 @@ impl CliFactory {
       self.maybe_inspector_server()?.clone(),
       cli_options.maybe_lockfile().cloned(),
       self.feature_checker()?.clone(),
-      self.create_cli_main_worker_options()?,
-      cli_options.node_ipc_fd(),
-      cli_options.serve_port(),
-      cli_options.serve_host(),
-      cli_options.enable_future_features(),
-      // TODO(bartlomieju): temporarily disabled
-      // cli_options.disable_deprecated_api_warning,
-      true,
-      cli_options.verbose_deprecated_api_warning,
       if cli_options.code_cache_enabled() {
         Some(self.code_cache()?.clone())
       } else {
         None
       },
+      self.create_cli_main_worker_options()?,
     ))
   }
 
@@ -871,6 +863,9 @@ impl CliFactory {
       unstable: cli_options.legacy_unstable_flag(),
       create_hmr_runner,
       create_coverage_collector,
+      node_ipc: cli_options.node_ipc_fd(),
+      serve_port: cli_options.serve_port(),
+      serve_host: cli_options.serve_host(),
     })
   }
 }

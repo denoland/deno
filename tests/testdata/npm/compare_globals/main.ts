@@ -17,36 +17,41 @@ controller.abort("reason"); // in the NodeJS declaration it doesn't have a reaso
 
 // Some globals are not the same between Node and Deno.
 // @ts-expect-error incompatible types between Node and Deno
-console.log(globalThis.setTimeout === globals.getSetTimeout());
+console.log("setTimeout 1", globalThis.setTimeout === globals.getSetTimeout());
 
 // Super edge case where some Node code deletes a global where the
 // Node code has its own global and the Deno code has the same global,
 // but it's different. Basically if some Node code deletes
 // one of these globals then we don't want it to suddenly inherit
 // the Deno global (or touch the Deno global at all).
-console.log(typeof globalThis.setTimeout);
-console.log(typeof globals.getSetTimeout());
+console.log("setTimeout 2", typeof globalThis.setTimeout);
+console.log("setTimeout 3", typeof globals.getSetTimeout());
 globals.deleteSetTimeout();
-console.log(typeof globalThis.setTimeout);
-console.log(typeof globals.getSetTimeout());
+console.log("setTimeout 4", typeof globalThis.setTimeout);
+console.log("setTimeout 5", typeof globals.getSetTimeout());
 
 // In Deno, the process global is not defined, but in Node it is.
-console.log("process" in globalThis);
+console.log("process 1", "process" in globalThis);
 console.log(
+  "process 2",
   Object.getOwnPropertyDescriptor(globalThis, "process") !== undefined,
 );
 globals.checkProcessGlobal();
 
-// In Deno, the window and self globals are defined, but in Node they are not.
-console.log("window" in globalThis);
-console.log("self" in globalThis);
+// In Deno 2 and Node.js, the window global is not defined.
+console.log("window 1", "window" in globalThis);
 console.log(
+  "window 2",
   Object.getOwnPropertyDescriptor(globalThis, "window") !== undefined,
 );
+globals.checkWindowGlobal();
+
+// In Deno 2 self global is defined, but in Node it is not.
+console.log("self 1", "self" in globalThis);
 console.log(
+  "self 2",
   Object.getOwnPropertyDescriptor(globalThis, "self") !== undefined,
 );
-globals.checkWindowGlobal();
 globals.checkSelfGlobal();
 
 // "Non-managed" globals are shared between Node and Deno.

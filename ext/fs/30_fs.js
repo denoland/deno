@@ -20,9 +20,7 @@ import {
   op_fs_file_stat_async,
   op_fs_file_stat_sync,
   op_fs_flock_async,
-  op_fs_flock_async_unstable,
   op_fs_flock_sync,
-  op_fs_flock_sync_unstable,
   op_fs_fsync_async,
   op_fs_fsync_sync,
   op_fs_ftruncate_async,
@@ -482,32 +480,6 @@ function toUnixTimeFromEpoch(value) {
   ];
 }
 
-function futimeSync(
-  rid,
-  atime,
-  mtime,
-) {
-  const { 0: atimeSec, 1: atimeNsec } = toUnixTimeFromEpoch(atime);
-  const { 0: mtimeSec, 1: mtimeNsec } = toUnixTimeFromEpoch(mtime);
-  op_fs_futime_sync(rid, atimeSec, atimeNsec, mtimeSec, mtimeNsec);
-}
-
-async function futime(
-  rid,
-  atime,
-  mtime,
-) {
-  const { 0: atimeSec, 1: atimeNsec } = toUnixTimeFromEpoch(atime);
-  const { 0: mtimeSec, 1: mtimeNsec } = toUnixTimeFromEpoch(mtime);
-  await op_fs_futime_async(
-    rid,
-    atimeSec,
-    atimeNsec,
-    mtimeSec,
-    mtimeNsec,
-  );
-}
-
 function utimeSync(
   path,
   atime,
@@ -578,14 +550,6 @@ function fsyncSync(rid) {
 
 async function fsync(rid) {
   await op_fs_fsync_async(rid);
-}
-
-function flockSync(rid, exclusive) {
-  op_fs_flock_sync_unstable(rid, exclusive === true);
-}
-
-async function flock(rid, exclusive) {
-  await op_fs_flock_async_unstable(rid, exclusive === true);
 }
 
 function funlockSync(rid) {
@@ -766,11 +730,21 @@ class FsFile {
   }
 
   async utime(atime, mtime) {
-    await futime(this.#rid, atime, mtime);
+    const { 0: atimeSec, 1: atimeNsec } = toUnixTimeFromEpoch(atime);
+    const { 0: mtimeSec, 1: mtimeNsec } = toUnixTimeFromEpoch(mtime);
+    await op_fs_futime_async(
+      this.#rid,
+      atimeSec,
+      atimeNsec,
+      mtimeSec,
+      mtimeNsec,
+    );
   }
 
   utimeSync(atime, mtime) {
-    futimeSync(this.#rid, atime, mtime);
+    const { 0: atimeSec, 1: atimeNsec } = toUnixTimeFromEpoch(atime);
+    const { 0: mtimeSec, 1: mtimeNsec } = toUnixTimeFromEpoch(mtime);
+    op_fs_futime_sync(this.#rid, atimeSec, atimeNsec, mtimeSec, mtimeNsec);
   }
 
   isTerminal() {
@@ -993,8 +967,6 @@ export {
   fdatasync,
   fdatasyncSync,
   File,
-  flock,
-  flockSync,
   FsFile,
   fstat,
   fstatSync,
@@ -1004,8 +976,6 @@ export {
   ftruncateSync,
   funlock,
   funlockSync,
-  futime,
-  futimeSync,
   link,
   linkSync,
   lstat,

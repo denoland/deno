@@ -1,9 +1,9 @@
 {
   "version": "4",
   "specifiers": {
-    "jsr:@denotest/add": "jsr:@denotest/add@1.0.0",
-    "jsr:@std/testing": "jsr:@std/testing@1.0.0",
-    "npm:@denotest/esm-basic@^1.0.0": "npm:@denotest/esm-basic@1.0.0"
+    "jsr:@denotest/add@*": "1.0.0",
+    "jsr:@std/testing@*": "1.0.0",
+    "npm:@denotest/esm-basic@1": "1.0.0"
   },
   "jsr": {
     "@denotest/add@1.0.0": {
@@ -26,9 +26,9 @@
   },
   "workspace": {
     "dependencies": [
-      "jsr:@denotest/add",
-      "jsr:@std/testing",
-      "npm:@denotest/esm-basic@^1.0.0"
+      "jsr:@denotest/add@*",
+      "jsr:@std/testing@*",
+      "npm:@denotest/esm-basic@1"
     ]
   }
 }
