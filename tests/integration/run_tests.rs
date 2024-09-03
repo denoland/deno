@@ -2499,8 +2499,8 @@ fn should_not_panic_on_undefined_deno_dir_and_home_environment_variables() {
 }
 
 #[test]
-fn rust_log() {
-  // Without RUST_LOG the stderr is empty.
+fn deno_log() {
+  // Without DENO_LOG the stderr is empty.
   let output = util::deno_cmd()
     .current_dir(util::testdata_path())
     .arg("run")
@@ -2513,12 +2513,12 @@ fn rust_log() {
   assert!(output.status.success());
   assert!(output.stderr.is_empty());
 
-  // With RUST_LOG the stderr is not empty.
+  // With DENO_LOG the stderr is not empty.
   let output = util::deno_cmd()
     .current_dir(util::testdata_path())
     .arg("run")
     .arg("run/001_hello.js")
-    .env("RUST_LOG", "debug")
+    .env("DENO_LOG", "debug")
     .stderr_piped()
     .spawn()
     .unwrap()
