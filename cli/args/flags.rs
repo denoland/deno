@@ -240,8 +240,15 @@ pub struct InstallFlagsGlobal {
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub enum InstallKind {
-  Local(Option<AddFlags>),
+  Local(InstallFlagsLocal),
   Global(InstallFlagsGlobal),
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub enum InstallFlagsLocal {
+  Add(AddFlags),
+  TopLevel,
+  Entrypoints(Vec<String>),
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -2365,10 +2372,12 @@ fn install_subcommand() -> Command {
 
 Add dependencies to the local project's configuration (<p(245)>deno.json / package.json</>) and installs them 
 in the package cache. If no dependency is specified, installs all dependencies listed in the config file.
+If the <p(245)>--entrypoint</> flag is passed, installs the dependencies of the specified entrypoint(s).
 
   <p(245)>deno install</>
   <p(245)>deno install @std/bytes</>
   <p(245)>deno install npm:chalk</>
+  <p(245)>deno install --entrypoint entry1.ts entry2.ts</>
 
 <g>Global installation</>
 
@@ -2405,6 +2414,7 @@ These must be added to the path manually if required."), UnstableArgsConfig::Res
         .arg(
           Arg::new("cmd")
             .required_if_eq("global", "true")
+            .required_if_eq("entrypoint", "true")
             .num_args(1..)
             .value_hint(ValueHint::FilePath),
         )
@@ -2412,17 +2422,20 @@ These must be added to the path manually if required."), UnstableArgsConfig::Res
           Arg::new("name")
             .long("name")
             .short('n')
+            .requires("global")
             .help("Executable file name"),
         )
         .arg(
           Arg::new("root")
             .long("root")
+            .requires("global")
             .help("Installation root")
             .value_hint(ValueHint::DirPath),
         )
         .arg(
           Arg::new("force")
             .long("force")
+            .requires("global")
             .short('f')
             .help("Forcefully overwrite existing installation")
             .action(ArgAction::SetTrue),
@@ -2433,6 +2446,14 @@ These must be added to the path manually if required."), UnstableArgsConfig::Res
             .short('g')
             .help("Install a package or script as a globally available executable")
             .action(ArgAction::SetTrue),
+        )
+        .arg(
+          Arg::new("entrypoint")
+            .long("entrypoint")
+            .short('e')
+            .conflicts_with("global")
+            .action(ArgAction::SetTrue)
+            .help("Install dependents of the specified entrypoint(s)"),
         )
         .arg(env_file_arg())
     })
@@ -4419,15 +4440,32 @@ fn install_parse(flags: &mut Flags, matches: &mut ArgMatches) {
         force,
       }),
     });
-  } else {
-    let local_flags = matches
-      .remove_many("cmd")
-      .map(|packages| add_parse_inner(matches, Some(packages)));
-    allow_scripts_arg_parse(flags, matches);
+    return;
+  }
+
+  // allow scripts only applies to local install
+  allow_scripts_arg_parse(flags, matches);
+  if matches.get_flag("entrypoint") {
+    let entrypoints = matches.remove_many::<String>("cmd").unwrap_or_default();
     flags.subcommand = DenoSubcommand::Install(InstallFlags {
       global,
-      kind: InstallKind::Local(local_flags),
+      kind: InstallKind::Local(InstallFlagsLocal::Entrypoints(
+        entrypoints.collect(),
+      )),
+    });
+  } else if let Some(add_files) = matches
+    .remove_many("cmd")
+    .map(|packages| add_parse_inner(matches, Some(packages)))
+  {
+    flags.subcommand = DenoSubcommand::Install(InstallFlags {
+      global,
+      kind: InstallKind::Local(InstallFlagsLocal::Add(add_files)),
     })
+  } else {
+    flags.subcommand = DenoSubcommand::Install(InstallFlags {
+      global,
+      kind: InstallKind::Local(InstallFlagsLocal::TopLevel),
+    });
   }
 }
 
