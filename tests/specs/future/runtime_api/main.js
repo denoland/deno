@@ -1,8 +1,6 @@
 console.log("window is", globalThis.window);
 console.log("Deno.Buffer is", Deno.Buffer);
 console.log("Deno.File is", Deno.File);
-console.log("Deno.fstat is", Deno.fstat);
-console.log("Deno.fstatSync is", Deno.fstatSync);
 console.log(
   "Deno.FsFile.prototype.rid is",
   Deno.openSync(import.meta.filename).rid,
@@ -15,8 +13,6 @@ console.log("Deno.read is", Deno.read);
 console.log("Deno.readSync is", Deno.readSync);
 console.log("Deno.seek is", Deno.seek);
 console.log("Deno.seekSync is", Deno.seekSync);
-console.log("Deno.writeAll is", Deno.writeAll);
-console.log("Deno.writeAllSync is", Deno.writeAllSync);
 console.log("Deno.write is", Deno.write);
 console.log("Deno.writeSync is", Deno.writeSync);
 
