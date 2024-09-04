@@ -41,8 +41,8 @@ fn cache_matching_package_json_dep_should_not_install_all() {
     .args("cache npm:@types/node@18.8.2")
     .run();
   output.assert_matches_text(concat!(
-    "⚠️ Warning: `deno cache` is deprecated and will be removed in Deno 2.1.\n",
-    "Use `deno install` instead.\n",
+    "⚠️ Warning: `deno cache` is deprecated and will be removed in Deno 2.1.\n\n",
+    "Use `deno install --entrypoint` instead.\n",
     "Download http://localhost:4260/@types/node\n",
     "Download http://localhost:4260/@types/node/node-18.8.2.tgz\n",
     "Initialize @types/node@18.8.2\n",
