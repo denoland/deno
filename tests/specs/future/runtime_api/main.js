@@ -7,8 +7,6 @@ console.log(
 );
 console.log("Deno.funlock is", Deno.funlock);
 console.log("Deno.funlockSync is", Deno.funlockSync);
-console.log("Deno.read is", Deno.read);
-console.log("Deno.readSync is", Deno.readSync);
 console.log("Deno.seek is", Deno.seek);
 console.log("Deno.seekSync is", Deno.seekSync);
 
