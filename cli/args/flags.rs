@@ -1714,9 +1714,9 @@ Download and compile a module with all of its static dependencies and save them 
 
 Future runs of this module will trigger no downloads or compilation unless --reload is specified
 
-<y>Read more:</> <c>https://docs.deno.com/go/cmd/cache</>"),
+<y>Read more:</> <c>https://docs.deno.com/go/cmd/cache</>",
     UnstableArgsConfig::ResolutionOnly,
-  )
+)
   .hide(true)
   .defer(|cmd| {
     compile_args(cmd)
