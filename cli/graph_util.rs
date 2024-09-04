@@ -20,7 +20,7 @@ use crate::tools::check::TypeChecker;
 use crate::util::file_watcher::WatcherCommunicator;
 use crate::util::fs::canonicalize_path;
 use deno_config::workspace::JsrPackageConfig;
-use deno_emit::LoaderChecksum;
+use deno_graph::source::LoaderChecksum;
 use deno_graph::JsrLoadError;
 use deno_graph::ModuleLoadError;
 use deno_graph::WorkspaceFastCheckOption;

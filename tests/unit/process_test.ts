@@ -611,6 +611,6 @@ Deno.test(
     p.close();
     p.stdout.close();
     assertStrictEquals(code, 1);
-    assertStringIncludes(stderr, "Failed getting cwd.");
+    assertStringIncludes(stderr, "failed resolving cwd:");
   },
 );

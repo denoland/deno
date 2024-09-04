@@ -1569,7 +1569,7 @@ pub fn op_fs_ftruncate_sync(
 }
 
 #[op2(async)]
-pub async fn op_fs_ftruncate_async(
+pub async fn op_fs_file_truncate_async(
   state: Rc<RefCell<OpState>>,
   #[smi] rid: ResourceId,
   #[number] len: u64,
