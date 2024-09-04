@@ -18,6 +18,7 @@ use deno_core::url::Url;
 use deno_core::ModuleSpecifier;
 use deno_terminal::colors;
 use fqdn::FQDN;
+use log::error;
 use once_cell::sync::Lazy;
 use std::borrow::Cow;
 use std::collections::HashSet;
@@ -32,6 +33,7 @@ use std::path::PathBuf;
 use std::str::FromStr;
 use std::string::ToString;
 use std::sync::Arc;
+use std::sync::RwLock;
 use which::which;
 
 pub mod prompter;
@@ -182,6 +184,29 @@ impl PermissionState {
             .map(|info| { format!(" to {info}") })
             .unwrap_or_default(),
         );
+
+        if name == "env" {
+          let env_var_name = info()
+            .map(|info| {
+              let info_str = info.trim_start_matches('"').trim_end_matches('"');
+              info_str.to_string()
+            })
+            .unwrap_or_default();
+          for env_var in crate::get_wildcard_permissions() {
+            if let Some(suffix) = env_var.strip_prefix('*') {
+              if env_var_name.ends_with(suffix) {
+                return (Ok(()), true, false);
+              }
+            } else if let Some(prefix) = env_var.strip_suffix('*') {
+              if env_var_name.starts_with(prefix) {
+                return (Ok(()), true, false);
+              }
+            } else if env_var.contains('*') {
+              return (Ok(()), true, false);
+            }
+          }
+        }
+
         match permission_prompt(&msg, name, api_name, true) {
           PromptResponse::Allow => {
             Self::log_perm_access(name, info);
@@ -2284,6 +2309,36 @@ pub fn mark_standalone() {
 
 pub fn is_standalone() -> bool {
   IS_STANDALONE.is_raised()
+}
+
+static WILDCARD_PERMISSIONS: Lazy<RwLock<Vec<String>>> =
+  Lazy::new(|| RwLock::new(Vec::new()));
+
+pub fn add_wildcard_permission(permission: &str) -> Result<(), String> {
+  let mut permissions = WILDCARD_PERMISSIONS.write().map_err(|e| {
+    error!("Failed to acquire write lock: {}", e);
+    "Failed to add wildcard permission".to_string()
+  })?;
+  if !permissions.contains(&permission.to_string()) {
+    permissions.push(permission.to_string());
+  }
+  Ok(())
+}
+
+pub fn get_wildcard_permissions() -> Vec<String> {
+  let permissions = WILDCARD_PERMISSIONS
+    .read()
+    .expect("Failed to acquire read lock");
+  permissions.clone()
+}
+
+pub fn clear_wildcard_permissions() -> Result<(), String> {
+  let mut permissions = WILDCARD_PERMISSIONS.write().map_err(|e| {
+    error!("Failed to acquire write lock: {}", e);
+    "Failed to clear wildcard permissions".to_string()
+  })?;
+  permissions.clear();
+  Ok(())
 }
 
 #[cfg(test)]

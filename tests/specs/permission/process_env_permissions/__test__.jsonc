@@ -10,23 +10,23 @@
       "steps": [
         {
           "args": "run --allow-env=MYAPP_* main.js",
-          "output": "Hello\tworld,\nfarewell\n"
+          "output": "Hello\tworld,\nfarewell\ndone\n"
         },
         {
-          "args": "run --allow-env=*_HELLO,*_GOODBYE main.js",
-          "output": "Hello\tworld,\nfarewell\n"
+          "args": "run --allow-env=*_HELLO,*_GOODBYE,*_DONE,*_TEST main.js",
+          "output": "Hello\tworld,\nfarewell\ndone\n"
         },
         {
           "args": "run --allow-env=* main.js",
-          "output": "Hello\tworld,\nfarewell\n"
+          "output": "Hello\tworld,\nfarewell\ndone\n"
         },
         {
           "args": "run --allow-env main.js",
-          "output": "Hello\tworld,\nfarewell\n"
+          "output": "Hello\tworld,\nfarewell\ndone\n"
         },
         {
-          "args": "run --allow-env=MYAPP_HELLO,MYAPP_GOODBYE main.js",
-          "output": "Hello\tworld,\nfarewell\n"
+          "args": "run --allow-env=MYAPP_HELLO,MYAPP_GOODBYE,MYAPP_TEST,MYAPP_DONE main.js",
+          "output": "Hello\tworld,\nfarewell\ndone\n"
         }
       ]
     }

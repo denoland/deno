@@ -1,5 +1,6 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
+use super::flags_net;
 use crate::args::resolve_no_prompt;
 use crate::util::fs::canonicalize_path;
 use clap::builder::styling::AnsiColor;
@@ -26,6 +27,7 @@ use deno_graph::GraphKind;
 use deno_runtime::deno_permissions::parse_sys_kind;
 use deno_runtime::deno_permissions::PermissionsOptions;
 use log::debug;
+use log::error;
 use log::Level;
 use serde::Deserialize;
 use serde::Serialize;
@@ -39,8 +41,6 @@ use std::num::NonZeroUsize;
 use std::path::Path;
 use std::path::PathBuf;
 use std::str::FromStr;
-
-use super::flags_net;
 
 #[derive(Clone, Debug, Default, Eq, PartialEq)]
 pub enum ConfigFlag {
@@ -1307,35 +1307,6 @@ pub fn flags_from_vec(args: Vec<OsString>) -> clap::error::Result<Flags> {
   }
 
   Ok(flags)
-}
-
-fn process_env_permissions(allowed_env_vars: Vec<String>) -> Vec<String> {
-  let mut env_permissions = Vec::new();
-  for env_var in allowed_env_vars {
-    if let Some(suffix) = env_var.strip_prefix('*') {
-      for (key, _value) in std::env::vars() {
-        if key.ends_with(suffix) {
-          env_permissions.push(key);
-        }
-      }
-    } else if let Some(prefix) = env_var.strip_suffix('*') {
-      for (key, _value) in std::env::vars() {
-        if key.starts_with(prefix) {
-          env_permissions.push(key);
-        }
-      }
-    } else if env_var.contains('*') {
-      let pattern = env_var.replace('*', "");
-      for (key, _value) in std::env::vars() {
-        if key.contains(&pattern) {
-          env_permissions.push(key);
-        }
-      }
-    } else {
-      env_permissions.push(env_var);
-    }
-  }
-  env_permissions
 }
 
 macro_rules! heading {
@@ -4899,7 +4870,17 @@ fn permission_args_parse(flags: &mut Flags, matches: &mut ArgMatches) {
   }
 
   if let Some(env_wl) = matches.remove_many::<String>("allow-env") {
-    let env_permissions = process_env_permissions(env_wl.collect());
+    let env_permissions: Vec<String> = env_wl.collect();
+    for env_var in &env_permissions {
+      if env_var.contains('*') {
+        if let Err(e) =
+          deno_runtime::deno_permissions::add_wildcard_permission(env_var)
+        {
+          error!("Failed to add wildcard permission: {}", e);
+        }
+      }
+    }
+
     flags.permissions.allow_env = Some(env_permissions);
     debug!("env allowlist: {:#?}", &flags.permissions.allow_env);
   }
