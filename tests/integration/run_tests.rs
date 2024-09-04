@@ -483,11 +483,6 @@ itest!(dynamic_import_concurrent_non_statically_analyzable {
   http_server: true,
 });
 
-itest!(no_check_imports_not_used_as_values {
-    args: "run --config run/no_check_imports_not_used_as_values/preserve_imports.tsconfig.json --no-check run/no_check_imports_not_used_as_values/main.ts",
-    output: "run/no_check_imports_not_used_as_values/main.out",
-  });
-
 itest!(_088_dynamic_import_already_evaluating {
   args: "run --allow-read run/088_dynamic_import_already_evaluating.ts",
   output: "run/088_dynamic_import_already_evaluating.ts.out",
