@@ -3,8 +3,6 @@ Deno.Buffer is undefined
 Deno.File is undefined
 Deno.fstat is undefined
 Deno.fstatSync is undefined
-Deno.ftruncate is undefined
-Deno.ftruncateSync is undefined
 Deno.FsFile.prototype.rid is undefined
 Deno.funlock is undefined
 Deno.funlockSync is undefined

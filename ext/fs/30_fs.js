@@ -19,11 +19,11 @@ import {
   op_fs_fdatasync_sync,
   op_fs_file_stat_async,
   op_fs_file_stat_sync,
+  op_fs_file_truncate_async,
   op_fs_flock_async,
   op_fs_flock_sync,
   op_fs_fsync_async,
   op_fs_fsync_sync,
-  op_fs_ftruncate_async,
   op_fs_ftruncate_sync,
   op_fs_funlock_async,
   op_fs_funlock_async_unstable,
@@ -431,14 +431,6 @@ function coerceLen(len) {
   return len;
 }
 
-function ftruncateSync(rid, len) {
-  op_fs_ftruncate_sync(rid, coerceLen(len));
-}
-
-async function ftruncate(rid, len) {
-  await op_fs_ftruncate_async(rid, coerceLen(len));
-}
-
 function truncateSync(path, len) {
   op_fs_truncate_sync(path, coerceLen(len));
 }
@@ -664,11 +656,11 @@ class FsFile {
   }
 
   truncate(len) {
-    return ftruncate(this.#rid, len);
+    return op_fs_file_truncate_async(this.#rid, coerceLen(len));
   }
 
   truncateSync(len) {
-    return ftruncateSync(this.#rid, len);
+    return op_fs_ftruncate_sync(this.#rid, coerceLen(len));
   }
 
   read(p) {
@@ -972,8 +964,6 @@ export {
   fstatSync,
   fsync,
   fsyncSync,
-  ftruncate,
-  ftruncateSync,
   funlock,
   funlockSync,
   link,
