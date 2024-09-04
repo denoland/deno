@@ -77,22 +77,6 @@ const denoNs = {
   lstat: fs.lstat,
   truncateSync: fs.truncateSync,
   truncate: fs.truncate,
-  ftruncateSync(rid, len) {
-    internals.warnOnDeprecatedApi(
-      "Deno.ftruncateSync()",
-      new Error().stack,
-      "Use `Deno.FsFile.truncateSync()` instead.",
-    );
-    return fs.ftruncateSync(rid, len);
-  },
-  ftruncate(rid, len) {
-    internals.warnOnDeprecatedApi(
-      "Deno.ftruncate()",
-      new Error().stack,
-      "Use `Deno.FsFile.truncate()` instead.",
-    );
-    return fs.ftruncate(rid, len);
-  },
   errors: errors.errors,
   inspect: console.inspect,
   env: os.env,
@@ -118,22 +102,6 @@ const denoNs = {
       "Use `reader.readSync()` instead.",
     );
     return io.readSync(rid, buffer);
-  },
-  write(rid, data) {
-    internals.warnOnDeprecatedApi(
-      "Deno.write()",
-      new Error().stack,
-      "Use `writer.write()` instead.",
-    );
-    return io.write(rid, data);
-  },
-  writeSync(rid, data) {
-    internals.warnOnDeprecatedApi(
-      "Deno.writeSync()",
-      new Error().stack,
-      "Use `writer.writeSync()` instead.",
-    );
-    return io.writeSync(rid, data);
   },
   File: fs.File,
   FsFile: fs.FsFile,
