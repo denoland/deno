@@ -13,7 +13,7 @@ import { text } from "node:stream/consumers";
 import { assert, assertEquals, fail } from "@std/assert";
 import { assertSpyCalls, spy } from "@std/testing/mock";
 import { fromFileUrl, relative } from "@std/path";
-import { delay } from "@std/async/delay";
+import { retry } from "@std/async/retry";
 
 import { gzip } from "node:zlib";
 import { Buffer } from "node:buffer";
@@ -1614,7 +1614,7 @@ Deno.test("[node/http] upgraded socket closes when the server closed without clo
   const server = `
     Deno.serve({ port: 1337 }, (req) => {
       if (req.headers.get("upgrade") != "websocket") {
-        return new Response(null, { status: 501 });
+        return new Response("ok");
       }
       console.log("upgrade on server");
       const { socket, response } = Deno.upgradeWebSocket(req);
@@ -1628,8 +1628,11 @@ Deno.test("[node/http] upgraded socket closes when the server closed without clo
 
   const p = new Deno.Command("deno", { args: ["eval", server] }).spawn();
 
-  // Wait for the server to start
-  await delay(1000);
+  // Wait for the server to respond
+  await retry(async () => {
+    const resp = await fetch("http://localhost:1337");
+    const _text = await resp.text();
+  });
 
   const options = {
     port: 1337,
