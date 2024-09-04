@@ -1,5 +1,5 @@
 {
   "args": "cache *.ts",
-  "output": "⚠️ Warning: `deno cache` is deprecated and will be removed in Deno 2.1.\nUse `deno install` instead.\nDownload http://localhost:4545/echo.ts\n",
+  "output": "⚠️ Warning: `deno cache` is deprecated and will be removed in Deno 2.1.\n\nUse `deno install --entrypoint` instead.\nDownload http://localhost:4545/echo.ts\n",
   "exitCode": 0
 }

@@ -117,6 +117,7 @@ async fn run_subcommand(flags: Arc<Flags>) -> Result<i32, AnyError> {
       tools::run::eval_command(flags, eval_flags).await
     }),
     DenoSubcommand::Cache(cache_flags) => spawn_subcommand(async move {
+      log::info!("{}", colors::yellow("⚠️ Warning: `deno cache` is deprecated and will be removed in Deno 2.1.\n\nUse `deno install --entrypoint` instead."));
       tools::installer::install_from_entrypoints(flags, &cache_flags.files).await
     }),
     DenoSubcommand::Check(check_flags) => spawn_subcommand(async move {

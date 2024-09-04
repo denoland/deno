@@ -1705,7 +1705,8 @@ fn cache_subcommand() -> Command {
   command(
     "cache",
     "⚠️ Warning: `deno cache` is deprecated and will be removed in Deno 2.1.
-Use `deno install` instead.
+
+Use `deno install --entrypoint` instead.
     
 Cache and compile remote dependencies recursively.
 

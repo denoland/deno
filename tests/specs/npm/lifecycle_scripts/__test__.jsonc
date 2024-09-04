@@ -120,7 +120,7 @@
         {
           "if": "mac",
           "args": "cache --allow-scripts fsevents.js",
-          "output": "⚠️ Warning: `deno cache` is deprecated and will be removed in Deno 2.1.\nUse `deno install` instead.\n"
+          "output": "⚠️ Warning: `deno cache` is deprecated and will be removed in Deno 2.1.\n\nUse `deno install --entrypoint` instead.\n"
         }
       ]
     },
