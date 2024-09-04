@@ -19,6 +19,7 @@ const {
   ArrayPrototypeJoin,
 } = primordials;
 import {
+  _colorSpace,
   _data,
   _height,
   _width,
@@ -227,7 +228,7 @@ function createImageBitmap(
       let width = 0;
       let height = 0;
       let mimeType = "";
-      let imageBitmapSource, buf;
+      let imageBitmapSource, buf, predefinedColorSpace;
       if (isBlob) {
         imageBitmapSource = imageBitmapSources[0];
         buf = new Uint8Array(await image.arrayBuffer());
@@ -238,6 +239,7 @@ function createImageBitmap(
         height = image[_height];
         imageBitmapSource = imageBitmapSources[1];
         buf = new Uint8Array(TypedArrayPrototypeGetBuffer(image[_data]));
+        predefinedColorSpace = image[_colorSpace];
       }
 
       let sx;
@@ -256,6 +258,7 @@ function createImageBitmap(
           sh,
           imageOrientation: options.imageOrientation ?? "from-image",
           premultiplyAlpha: options.premultiplyAlpha ?? "default",
+          predefinedColorSpace: predefinedColorSpace ?? "srgb",
           colorSpaceConversion: options.colorSpaceConversion ?? "default",
           resizeWidth: options.resizeWidth,
           resizeHeight: options.resizeHeight,

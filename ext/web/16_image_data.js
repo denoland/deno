@@ -31,6 +31,7 @@ webidl.converters["ImageDataSettings"] = webidl.createDictionaryConverter(
 const _data = Symbol("[[data]]");
 const _width = Symbol("[[width]]");
 const _height = Symbol("[[height]]");
+const _colorSpace = Symbol("[[colorSpace]]");
 class ImageData {
   /** @type {number} */
   [_width];
@@ -39,7 +40,7 @@ class ImageData {
   /** @type {Uint8Array} */
   [_data];
   /** @type {'srgb' | 'display-p3'} */
-  #colorSpace;
+  [_colorSpace];
 
   constructor(arg0, arg1, arg2 = undefined, arg3 = undefined) {
     webidl.requiredArguments(
@@ -133,7 +134,7 @@ class ImageData {
         this[_height] = sourceHeight;
       }
 
-      this.#colorSpace = settings.colorSpace ?? "srgb";
+      this[_colorSpace] = settings.colorSpace ?? "srgb";
       this[_width] = sourceWidth;
       this[_data] = data;
       return;
@@ -171,7 +172,7 @@ class ImageData {
       );
     }
 
-    this.#colorSpace = settings.colorSpace ?? "srgb";
+    this[_colorSpace] = settings.colorSpace ?? "srgb";
     this[_width] = sourceWidth;
     this[_height] = sourceHeight;
     this[_data] = new Uint8ClampedArray(sourceWidth * sourceHeight * 4);
@@ -194,7 +195,7 @@ class ImageData {
 
   get colorSpace() {
     webidl.assertBranded(this, ImageDataPrototype);
-    return this.#colorSpace;
+    return this[_colorSpace];
   }
 
   [SymbolFor("Deno.privateCustomInspect")](inspect, inspectOptions) {
@@ -216,4 +217,4 @@ class ImageData {
 
 const ImageDataPrototype = ImageData.prototype;
 
-export { _data, _height, _width, ImageData, ImageDataPrototype };
+export { _colorSpace, _data, _height, _width, ImageData, ImageDataPrototype };

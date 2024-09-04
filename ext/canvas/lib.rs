@@ -22,6 +22,7 @@ use image::ImageError;
 use image::LumaA;
 use image::Pixel;
 use image::Primitive;
+use image::Rgb;
 use image::Rgba;
 use image::RgbaImage;
 use num_traits::NumCast;
@@ -271,6 +272,174 @@ fn apply_unpremultiply_alpha(
   }
 }
 
+// reference
+// https://www.w3.org/TR/css-color-4/#color-conversion-code
+fn srgb_to_linear<T: Primitive>(value: T) -> f32 {
+  if value.to_f32().unwrap() <= 0.04045 {
+    value.to_f32().unwrap() / 12.92
+  } else {
+    ((value.to_f32().unwrap() + 0.055) / 1.055).powf(2.4)
+  }
+}
+
+// reference
+// https://www.w3.org/TR/css-color-4/#color-conversion-code
+fn linear_to_display_p3<T: Primitive>(value: T) -> f32 {
+  if value.to_f32().unwrap() <= 0.0031308 {
+    value.to_f32().unwrap() * 12.92
+  } else {
+    1.055 * value.to_f32().unwrap().powf(1.0 / 2.4) - 0.055
+  }
+}
+
+fn normalize_value_to_0_1<T: Primitive>(value: T) -> f32 {
+  value.to_f32().unwrap() / T::DEFAULT_MAX_VALUE.to_f32().unwrap()
+}
+
+fn unnormalize_value_from_0_1<T: Primitive>(value: f32) -> T {
+  NumCast::from(
+    (value.clamp(0.0, 1.0) * T::DEFAULT_MAX_VALUE.to_f32().unwrap()).round(),
+  )
+  .unwrap()
+}
+
+fn srgb_to_display_p3<T: Primitive>(r: T, g: T, b: T) -> (T, T, T) {
+  // normalize the value to 0.0 - 1.0
+  let (r, g, b) = (
+    normalize_value_to_0_1(r),
+    normalize_value_to_0_1(g),
+    normalize_value_to_0_1(b),
+  );
+
+  // sRGB -> Linear RGB
+  let (r, g, b) = (srgb_to_linear(r), srgb_to_linear(g), srgb_to_linear(b));
+
+  // Display-P3 (RGB) -> Display-P3 (XYZ)
+  //
+  // inv[ P3-D65 (D65) to XYZ ] * [ sRGB (D65) to XYZ ]
+  // http://www.brucelindbloom.com/index.html?Eqn_RGB_XYZ_Matrix.html
+  // https://fujiwaratko.sakura.ne.jp/infosci/colorspace/colorspace2_e.html
+
+  // [ sRGB (D65) to XYZ ]
+  #[rustfmt::skip]
+    let (m1x, m1y, m1z) = (
+      [0.4124564, 0.3575761, 0.1804375],
+      [0.2126729, 0.7151522, 0.0721750],
+      [0.0193339, 0.1191920, 0.9503041],
+    );
+
+  let (r, g, b) = (
+    r * m1x[0] + g * m1x[1] + b * m1x[2],
+    r * m1y[0] + g * m1y[1] + b * m1y[2],
+    r * m1z[0] + g * m1z[1] + b * m1z[2],
+  );
+
+  // inv[ P3-D65 (D65) to XYZ ]
+  #[rustfmt::skip]
+    let (m2x, m2y, m2z) = (
+      [   2.493496911941425, -0.9313836179191239, -0.40271078445071684 ],
+      [ -0.8294889695615747,  1.7626640603183463, 0.023624685841943577 ],
+      [ 0.03584583024378447,-0.07617238926804182,   0.9568845240076872 ],
+    );
+
+  let (r, g, b) = (
+    r * m2x[0] + g * m2x[1] + b * m2x[2],
+    r * m2y[0] + g * m2y[1] + b * m2y[2],
+    r * m2z[0] + g * m2z[1] + b * m2z[2],
+  );
+
+  // This calculation is similar as above that it is a little faster, but less accurate.
+  // let r = 0.8225 * r + 0.1774 * g + 0.0000 * b;
+  // let g = 0.0332 * r + 0.9669 * g + 0.0000 * b;
+  // let b = 0.0171 * r + 0.0724 * g + 0.9108 * b;
+
+  // Display-P3 (Linear) -> Display-P3
+  let (r, g, b) = (
+    linear_to_display_p3(r),
+    linear_to_display_p3(g),
+    linear_to_display_p3(b),
+  );
+
+  // unnormalize the value from 0.0 - 1.0
+  (
+    unnormalize_value_from_0_1(r),
+    unnormalize_value_from_0_1(g),
+    unnormalize_value_from_0_1(b),
+  )
+}
+
+trait ProcessColorSpaceConversion {
+  /// Display P3 Color Encoding (v 1.0)  
+  /// https://www.color.org/chardata/rgb/DisplayP3.xalter
+  fn process_srgb_to_display_p3(&self) -> Self;
+}
+
+impl<T: Primitive> ProcessColorSpaceConversion for Rgb<T> {
+  fn process_srgb_to_display_p3(&self) -> Self {
+    let (r, g, b) = (self.0[0], self.0[1], self.0[2]);
+
+    let (r, g, b) = srgb_to_display_p3(r, g, b);
+
+    Rgb::<T>([r, g, b])
+  }
+}
+
+impl<T: Primitive> ProcessColorSpaceConversion for Rgba<T> {
+  fn process_srgb_to_display_p3(&self) -> Self {
+    let (r, g, b, a) = (self.0[0], self.0[1], self.0[2], self.0[3]);
+
+    let (r, g, b) = srgb_to_display_p3(r, g, b);
+
+    Rgba::<T>([r, g, b, a])
+  }
+}
+
+fn process_srgb_to_display_p3<I, P, S>(image: &I) -> ImageBuffer<P, Vec<S>>
+where
+  I: GenericImageView<Pixel = P>,
+  P: Pixel<Subpixel = S> + ProcessColorSpaceConversion + 'static,
+  S: Primitive + 'static,
+{
+  let (width, height) = image.dimensions();
+  let mut out = ImageBuffer::new(width, height);
+
+  for (x, y, pixel) in image.pixels() {
+    let pixel = pixel.process_srgb_to_display_p3();
+
+    out.put_pixel(x, y, pixel);
+  }
+
+  out
+}
+
+fn apply_srgb_to_display_p3(
+  image: &DynamicImage,
+) -> Result<DynamicImage, AnyError> {
+  match image.color() {
+    // The conversion of the lumincance color types to the display-p3 color space is meaningless.
+    ColorType::L8 => Ok(DynamicImage::ImageLuma8(image.to_luma8())),
+    ColorType::L16 => Ok(DynamicImage::ImageLuma16(image.to_luma16())),
+    ColorType::La8 => Ok(DynamicImage::ImageLumaA8(image.to_luma_alpha8())),
+    ColorType::La16 => Ok(DynamicImage::ImageLumaA16(image.to_luma_alpha16())),
+    ColorType::Rgb8 => Ok(DynamicImage::ImageRgb8(process_srgb_to_display_p3(
+      &image.to_rgb8(),
+    ))),
+    ColorType::Rgb16 => Ok(DynamicImage::ImageRgb16(
+      process_srgb_to_display_p3(&image.to_rgb16()),
+    )),
+    ColorType::Rgba8 => Ok(DynamicImage::ImageRgba8(
+      process_srgb_to_display_p3(&image.to_rgba8()),
+    )),
+    ColorType::Rgba16 => Ok(DynamicImage::ImageRgba16(
+      process_srgb_to_display_p3(&image.to_rgba16()),
+    )),
+    _ => Err(type_error(image_error_message(
+      "apply colorspace: display-p3",
+      "The color type is not supported.",
+    ))),
+  }
+}
+
 #[derive(Debug, Deserialize, PartialEq)]
 #[serde(rename_all = "camelCase")]
 enum ImageResizeQuality {
@@ -293,6 +462,15 @@ enum PremultiplyAlpha {
   Default,
   Premultiply,
   None,
+}
+
+// https://github.com/gfx-rs/wgpu/blob/04618b36a89721c23dc46f5844c71c0e10fc7844/wgpu-types/src/lib.rs#L6948C10-L6948C30
+#[derive(Debug, Deserialize, PartialEq)]
+#[serde(rename_all = "camelCase")]
+enum PredefinedColorSpace {
+  Srgb,
+  #[serde(rename = "display-p3")]
+  DisplayP3,
 }
 
 #[derive(Debug, Deserialize, PartialEq)]
@@ -321,6 +499,7 @@ struct ImageProcessArgs {
   sh: Option<i32>,
   image_orientation: ImageOrientation,
   premultiply_alpha: PremultiplyAlpha,
+  predefined_color_space: PredefinedColorSpace,
   color_space_conversion: ColorSpaceConversion,
   resize_width: Option<u32>,
   resize_height: Option<u32>,
@@ -521,6 +700,7 @@ fn op_image_process(
     sy,
     image_orientation,
     premultiply_alpha,
+    predefined_color_space,
     color_space_conversion,
     resize_width,
     resize_height,
@@ -536,6 +716,7 @@ fn op_image_process(
     sh: args.sh,
     image_orientation: args.image_orientation,
     premultiply_alpha: args.premultiply_alpha,
+    predefined_color_space: args.predefined_color_space,
     color_space_conversion: args.color_space_conversion,
     resize_width: args.resize_width,
     resize_height: args.resize_height,
@@ -596,12 +777,6 @@ fn op_image_process(
     surface_height
   };
 
-  if color_space_conversion == ColorSpaceConversion::None {
-    return Err(type_error(
-      "options.colorSpaceConversion 'none' is not supported",
-    ));
-  }
-
   let color = view.color();
 
   let surface = if !(width == surface_width
@@ -643,7 +818,31 @@ fn op_image_process(
     image_out
   };
 
-  // ignore 9.
+  // 9. TODO: Implement color space conversion.
+  // Currently, the behavior of the color space conversion is always 'none' due to
+  // the decoder always returning the sRGB bitmap data.
+  // We need to apply ICC color profiles within the image from Blob,
+  // or the parameter of 'settings.colorSpace' from ImageData.
+  // https://github.com/whatwg/html/issues/10578
+  // https://github.com/whatwg/html/issues/10577
+  let image_out = match color_space_conversion {
+    ColorSpaceConversion::Default => {
+      match image_bitmap_source {
+        ImageBitmapSource::Blob => {
+          // If there is no color profile information, it will use sRGB.
+          image_out
+        }
+        ImageBitmapSource::ImageData => match predefined_color_space {
+          // If the color space is sRGB, return the image as is.
+          PredefinedColorSpace::Srgb => image_out,
+          PredefinedColorSpace::DisplayP3 => {
+            apply_srgb_to_display_p3(&image_out)?
+          }
+        },
+      }
+    }
+    ColorSpaceConversion::None => image_out,
+  };
 
   // 10.
   if color.has_alpha() {

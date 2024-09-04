@@ -171,6 +171,7 @@ Deno.test(async function imageBitmapFromBlob() {
     // @ts-ignore: Deno[Deno.internal].core allowed
     // deno-fmt-ignore
     assertEquals(Deno[Deno.internal].getBitmapData(imageBitmap),
+      // deno-fmt-ignore
       new Uint8Array(
         [
           255, 255, // R
@@ -358,5 +359,27 @@ Deno.test(async function imageBitmapFromBlobAnimatedImage() {
     // @ts-ignore: Deno[Deno.internal].core allowed
     // deno-fmt-ignore
     assertEquals(Deno[Deno.internal].getBitmapData(imageBitmap), new Uint8Array([255, 0, 0, 255]));
+  }
+});
+
+Deno.test(async function imageBitmapImageDataColorspaceConversion() {
+  {
+    const imageData = new ImageData(
+      new Uint8ClampedArray([
+        255,
+        0,
+        0,
+        255,
+      ]),
+      1,
+      1,
+      {
+        colorSpace: "display-p3",
+      },
+    );
+    const imageBitmap = await createImageBitmap(imageData);
+    // @ts-ignore: Deno[Deno.internal].core allowed
+    // deno-fmt-ignore
+    assertEquals(Deno[Deno.internal].getBitmapData(imageBitmap), new Uint8Array([234, 51, 35, 255]));
   }
 });
