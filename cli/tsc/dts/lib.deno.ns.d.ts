@@ -5327,45 +5327,6 @@ declare namespace Deno {
   export function ftruncateSync(rid: number, len?: number): void;
 
   /**
-   * Returns a `Deno.FileInfo` for the given file stream.
-   *
-   * ```ts
-   * import { assert } from "jsr:@std/assert";
-   *
-   * const file = await Deno.open("file.txt", { read: true });
-   * const fileInfo = await Deno.fstat(file.rid);
-   * assert(fileInfo.isFile);
-   * ```
-   *
-   * @deprecated This will be removed in Deno 2.0. See the
-   * {@link https://docs.deno.com/runtime/manual/advanced/migrate_deprecations | Deno 1.x to 2.x Migration Guide}
-   * for migration instructions.
-   *
-   * @category File System
-   */
-  export function fstat(rid: number): Promise<FileInfo>;
-
-  /**
-   * Synchronously returns a {@linkcode Deno.FileInfo} for the given file
-   * stream.
-   *
-   * ```ts
-   * import { assert } from "jsr:@std/assert";
-   *
-   * const file = Deno.openSync("file.txt", { read: true });
-   * const fileInfo = Deno.fstatSync(file.rid);
-   * assert(fileInfo.isFile);
-   * ```
-   *
-   * @deprecated This will be removed in Deno 2.0. See the
-   * {@link https://docs.deno.com/runtime/manual/advanced/migrate_deprecations | Deno 1.x to 2.x Migration Guide}
-   * for migration instructions.
-   *
-   * @category File System
-   */
-  export function fstatSync(rid: number): FileInfo;
-
-  /**
    * Synchronously changes the access (`atime`) and modification (`mtime`) times
    * of a file system object referenced by `path`. Given times are either in
    * seconds (UNIX epoch time) or as `Date` objects.
