@@ -84,7 +84,7 @@ impl NpmInstallDepsProvider {
             }
           }
 
-          // sort within each package
+          // sort within each package (more like npm resolution)
           pkg_pkgs.sort_by(|a, b| a.alias.cmp(&b.alias));
           remote_pkgs.extend(pkg_pkgs);
         }
@@ -136,7 +136,7 @@ impl NpmInstallDepsProvider {
           }
         }
 
-        // sort within each package
+        // sort within each package as npm does
         pkg_pkgs.sort_by(|a, b| a.alias.cmp(&b.alias));
         remote_pkgs.extend(pkg_pkgs);
       }
