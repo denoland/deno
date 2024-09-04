@@ -805,8 +805,6 @@ function bootstrapMainRuntime(runtimeOptions, warmup = false) {
       delete Deno.FsFile.prototype.rid;
       delete Deno.funlock;
       delete Deno.funlockSync;
-      delete Deno.readAll;
-      delete Deno.readAllSync;
       delete Deno.read;
       delete Deno.readSync;
       delete Deno.seek;
@@ -976,8 +974,6 @@ function bootstrapWorkerRuntime(
       delete Deno.FsFile.prototype.rid;
       delete Deno.funlock;
       delete Deno.funlockSync;
-      delete Deno.readAll;
-      delete Deno.readAllSync;
       delete Deno.read;
       delete Deno.readSync;
       delete Deno.seek;
