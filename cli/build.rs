@@ -5,6 +5,7 @@ use std::path::PathBuf;
 
 use deno_core::snapshot::*;
 use deno_runtime::*;
+mod shared;
 
 mod ts {
   use super::*;
@@ -235,6 +236,7 @@ mod ts {
       "es2023",
       "es2023.array",
       "es2023.collection",
+      "es2023.intl",
       "esnext",
       "esnext.array",
       "esnext.collection",
@@ -243,6 +245,8 @@ mod ts {
       "esnext.intl",
       "esnext.object",
       "esnext.promise",
+      "esnext.regexp",
+      "esnext.string",
     ];
 
     let path_dts = cwd.join("tsc/dts");
@@ -311,7 +315,7 @@ mod ts {
 
   pub(crate) fn version() -> String {
     let file_text = std::fs::read_to_string("tsc/00_typescript.js").unwrap();
-    let version_text = "  version = \"";
+    let version_text = " version = \"";
     for line in file_text.lines() {
       if let Some(index) = line.find(version_text) {
         let remaining_line = &line[index + version_text.len()..];
@@ -322,24 +326,13 @@ mod ts {
   }
 }
 
-#[cfg(not(feature = "__runtime_js_sources"))]
+#[cfg(not(feature = "hmr"))]
 fn create_cli_snapshot(snapshot_path: PathBuf) {
   use deno_runtime::ops::bootstrap::SnapshotOptions;
 
-  // NOTE(bartlomieju): keep in sync with `cli/version.rs`.
-  // Ideally we could deduplicate that code.
-  fn deno_version() -> String {
-    if env::var("DENO_CANARY").is_ok() {
-      format!("{}+{}", env!("CARGO_PKG_VERSION"), &git_commit_hash()[..7])
-    } else {
-      env!("CARGO_PKG_VERSION").to_string()
-    }
-  }
-
   let snapshot_options = SnapshotOptions {
-    deno_version: deno_version(),
     ts_version: ts::version(),
-    v8_version: deno_core::v8_version(),
+    v8_version: deno_core::v8::VERSION_STRING,
     target: std::env::var("TARGET").unwrap(),
   };
 
@@ -453,7 +446,7 @@ fn main() {
   );
 
   let ts_version = ts::version();
-  debug_assert_eq!(ts_version, "5.4.5"); // bump this assertion when it changes
+  debug_assert_eq!(ts_version, "5.5.2"); // bump this assertion when it changes
   println!("cargo:rustc-env=TS_VERSION={}", ts_version);
   println!("cargo:rerun-if-env-changed=TS_VERSION");
 
@@ -466,7 +459,7 @@ fn main() {
   let compiler_snapshot_path = o.join("COMPILER_SNAPSHOT.bin");
   ts::create_compiler_snapshot(compiler_snapshot_path, &c);
 
-  #[cfg(not(feature = "__runtime_js_sources"))]
+  #[cfg(not(feature = "hmr"))]
   {
     let cli_snapshot_path = o.join("CLI_SNAPSHOT.bin");
     create_cli_snapshot(cli_snapshot_path);

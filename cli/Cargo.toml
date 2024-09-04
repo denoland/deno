@@ -2,7 +2,7 @@
 
 [package]
 name = "deno"
-version = "1.43.5"
+version = "2.0.0-rc.0"
 authors.workspace = true
 default-run = "deno"
 edition.workspace = true
@@ -44,7 +44,7 @@ default = ["upgrade", "__vendored_zlib_ng"]
 upgrade = []
 # A dev feature to disable creations and loading of snapshots in favor of
 # loading JS sources at runtime.
-__runtime_js_sources = ["deno_runtime/__runtime_js_sources"]
+hmr = ["deno_runtime/hmr"]
 # Vendor zlib as zlib-ng
 __vendored_zlib_ng = ["flate2/zlib-ng-compat", "libz-sys/zlib-ng"]
 
@@ -65,41 +65,45 @@ winres.workspace = true
 [dependencies]
 deno_ast = { workspace = true, features = ["bundler", "cjs", "codegen", "proposal", "react", "sourcemap", "transforms", "typescript", "view", "visit"] }
 deno_cache_dir = { workspace = true }
-deno_config = "=0.16.3"
+deno_config = { version = "=0.32.0", features = ["workspace", "sync"] }
 deno_core = { workspace = true, features = ["include_js_files_for_snapshotting"] }
-deno_doc = { version = "=0.135.0", features = ["html", "syntect"] }
-deno_emit = "=0.40.3"
-deno_graph = { version = "=0.75.2", features = ["tokio_executor"] }
-deno_lint = { version = "=0.58.4", features = ["docs"] }
+deno_doc = { version = "0.148.0", features = ["html", "syntect"] }
+deno_emit = "=0.45.0"
+deno_graph = { version = "=0.82.0" }
+deno_lint = { version = "=0.64.0", features = ["docs"] }
 deno_lockfile.workspace = true
-deno_npm = "=0.20.2"
+deno_npm = "=0.25.0"
+deno_package_json.workspace = true
 deno_runtime = { workspace = true, features = ["include_js_files_for_snapshotting"] }
-deno_semver = "=0.5.4"
-deno_task_shell = "=0.16.1"
+deno_semver.workspace = true
+deno_task_shell = "=0.17.0"
 deno_terminal.workspace = true
-eszip = "=0.69.0"
+eszip = "=0.78.0"
+libsui = "0.3.0"
 napi_sym.workspace = true
+node_resolver.workspace = true
 
+anstream = "0.6.14"
 async-trait.workspace = true
 base32.workspace = true
 base64.workspace = true
 bincode = "=1.3.3"
 bytes.workspace = true
 cache_control.workspace = true
-chrono.workspace = true
-clap = { version = "=4.4.17", features = ["env", "string"] }
-clap_complete = "=4.4.7"
-clap_complete_fig = "=4.4.2"
+chrono = { workspace = true, features = ["now"] }
+clap = { version = "=4.5.16", features = ["env", "string", "wrap_help", "error-context"] }
+clap_complete = "=4.5.24"
+clap_complete_fig = "=4.5.2"
 color-print = "0.3.5"
 console_static_text.workspace = true
 dashmap = "5.5.3"
 data-encoding.workspace = true
 dissimilar = "=1.0.4"
 dotenvy = "0.15.7"
-dprint-plugin-json = "=0.19.2"
+dprint-plugin-json = "=0.19.3"
 dprint-plugin-jupyter = "=0.1.3"
-dprint-plugin-markdown = "=0.17.0"
-dprint-plugin-typescript = "=0.90.5"
+dprint-plugin-markdown = "=0.17.8"
+dprint-plugin-typescript = "=0.91.7"
 env_logger = "=0.10.0"
 fancy-regex = "=0.10.0"
 faster-hex.workspace = true
@@ -107,29 +111,35 @@ faster-hex.workspace = true
 flate2.workspace = true
 fs3.workspace = true
 glob = "0.3.1"
-ignore = "0.4"
-import_map = { version = "=0.19.0", features = ["ext"] }
+http.workspace = true
+http-body.workspace = true
+http-body-util.workspace = true
+hyper-util.workspace = true
+import_map = { version = "=0.20.1", features = ["ext"] }
 indexmap.workspace = true
 jsonc-parser.workspace = true
+jupyter_runtime = { package = "runtimelib", version = "=0.14.0" }
 lazy-regex.workspace = true
 libc.workspace = true
 libz-sys.workspace = true
 log = { workspace = true, features = ["serde"] }
 lsp-types.workspace = true
+malva = "=0.9.0"
+markup_fmt = "=0.12.0"
 memmem.workspace = true
 monch.workspace = true
 notify.workspace = true
 once_cell.workspace = true
 open = "5.0.1"
 p256.workspace = true
+pathdiff = "0.2.1"
 percent-encoding.workspace = true
 phf.workspace = true
+pretty_yaml = "=0.4.0"
 quick-junit = "^0.3.5"
 rand = { workspace = true, features = ["small_rng"] }
 regex.workspace = true
-reqwest.workspace = true
 ring.workspace = true
-runtimelib = "=0.9.0"
 rustyline.workspace = true
 rustyline-derive = "=0.7.0"
 serde.workspace = true
@@ -137,6 +147,7 @@ serde_repr.workspace = true
 sha2.workspace = true
 shell-escape = "=0.1.5"
 spki = { version = "0.7", features = ["pem"] }
+strsim = "0.11.1"
 tar.workspace = true
 tempfile.workspace = true
 text-size = "=1.1.0"
@@ -145,11 +156,14 @@ thiserror.workspace = true
 tokio.workspace = true
 tokio-util.workspace = true
 tower-lsp.workspace = true
-twox-hash = "=1.6.3"
-typed-arena = "=2.0.1"
+tracing = { version = "0.1", features = ["log", "default"] }
+twox-hash.workspace = true
+typed-arena = "=2.0.2"
 uuid = { workspace = true, features = ["serde"] }
 walkdir = "=2.3.2"
+which.workspace = true
 zeromq.workspace = true
+zip = { version = "2.1.6", default-features = false, features = ["deflate-flate2"] }
 zstd.workspace = true
 
 [target.'cfg(windows)'.dependencies]

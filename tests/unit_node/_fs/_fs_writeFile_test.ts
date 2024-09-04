@@ -5,9 +5,9 @@ import {
   assertNotEquals,
   assertRejects,
   assertThrows,
-} from "@std/assert/mod.ts";
+} from "@std/assert";
 import { writeFile, writeFileSync } from "node:fs";
-import * as path from "@std/path/mod.ts";
+import * as path from "@std/path";
 
 type TextEncodings =
   | "ascii"
@@ -104,7 +104,12 @@ Deno.test(
 );
 
 Deno.test(
-  "Data is written to correct rid",
+  {
+    name: "Data is written to correct rid",
+    // TODO(bartlomieju): this test is broken in Deno 2, because `file.rid` is undefined.
+    // The fs APIs should be rewritten to use actual FDs, not RIDs
+    ignore: true,
+  },
   async function testCorrectWriteUsingRid() {
     const tempFile: string = await Deno.makeTempFile();
     using file = await Deno.open(tempFile, {
@@ -191,7 +196,12 @@ Deno.test("Path can be an URL", async function testCorrectWriteUsingURL() {
   assertEquals(decoder.decode(data), "hello world");
 });
 
-Deno.test("Mode is correctly set", async function testCorrectFileMode() {
+Deno.test({
+  name: "Mode is correctly set",
+  // TODO(bartlomieju): this test is broken in Deno 2, because `file.rid` is undefined.
+  // The fs APIs should be rewritten to use actual FDs, not RIDs
+  ignore: true,
+}, async function testCorrectFileMode() {
   if (Deno.build.os === "windows") return;
   const filename = "_fs_writeFile_test_file.txt";
 
@@ -207,7 +217,12 @@ Deno.test("Mode is correctly set", async function testCorrectFileMode() {
 });
 
 Deno.test(
-  "Mode is not set when rid is passed",
+  {
+    name: "Mode is not set when rid is passed",
+    // TODO(bartlomieju): this test is broken in Deno 2, because `file.rid` is undefined.
+    // The fs APIs should be rewritten to use actual FDs, not RIDs
+    ignore: true,
+  },
   async function testCorrectFileModeRid() {
     if (Deno.build.os === "windows") return;
 
@@ -259,7 +274,12 @@ Deno.test(
 );
 
 Deno.test(
-  "Data is written synchronously to correct rid",
+  {
+    name: "Data is written synchronously to correct rid",
+    // TODO(bartlomieju): this test is broken in Deno 2, because `file.rid` is undefined.
+    // The fs APIs should be rewritten to use actual FDs, not RIDs
+    ignore: true,
+  },
   function testCorrectWriteSyncUsingRid() {
     const tempFile: string = Deno.makeTempFileSync();
     using file = Deno.openSync(tempFile, {

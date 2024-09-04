@@ -26,7 +26,7 @@ function unbindSignal(rid) {
 
 // Stores signal listeners and resource data. This has type of
 // `Record<string, { rid: number | undefined, listeners: Set<() => void> }`
-const signalData = {};
+const signalData = { __proto__: null };
 
 /** Gets the signal handlers and resource data of the given signal */
 function getSignalData(signo) {

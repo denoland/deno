@@ -210,7 +210,7 @@ class Kv {
       cursor?: string;
       reverse?: boolean;
       consistency?: Deno.KvConsistencyLevel;
-    } = {},
+    } = { __proto__: null },
   ): KvListIterator {
     if (options.limit !== undefined && options.limit <= 0) {
       throw new Error("limit must be positive");
@@ -318,6 +318,7 @@ class Kv {
           const _res = isPromise(result) ? (await result) : result;
           success = true;
         } catch (error) {
+          // deno-lint-ignore no-console
           console.error("Exception in queue handler", error);
         } finally {
           const promise: Promise<void> = op_kv_finish_dequeued_message(
@@ -340,7 +341,7 @@ class Kv {
     finishMessageOps.clear();
   }
 
-  watch(keys: Deno.KvKey[], options = {}) {
+  watch(keys: Deno.KvKey[], options = { __proto__: null }) {
     const raw = options.raw ?? false;
     const rid = op_kv_watch(this.#rid, keys);
     const lastEntries: (Deno.KvEntryMaybe<unknown> | undefined)[] = ArrayFrom(

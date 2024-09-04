@@ -151,7 +151,7 @@ class InnerBody {
    * @returns {Promise<Uint8Array>}
    */
   consume() {
-    if (this.unusable()) throw new TypeError("Body already consumed.");
+    if (this.unusable()) throw new TypeError("Body already consumed");
     if (
       ObjectPrototypeIsPrototypeOf(
         ReadableStreamPrototype,
@@ -196,10 +196,23 @@ class InnerBody {
    * @returns {InnerBody}
    */
   clone() {
-    const { 0: out1, 1: out2 } = readableStreamTee(this.stream, true);
-    this.streamOrStatic = out1;
-    const second = new InnerBody(out2);
-    second.source = core.deserialize(core.serialize(this.source));
+    let second;
+    if (
+      !ObjectPrototypeIsPrototypeOf(
+        ReadableStreamPrototype,
+        this.streamOrStatic,
+      ) && !this.streamOrStatic.consumed
+    ) {
+      second = new InnerBody({
+        body: this.streamOrStatic.body,
+        consumed: false,
+      });
+    } else {
+      const { 0: out1, 1: out2 } = readableStreamTee(this.stream, true);
+      this.streamOrStatic = out1;
+      second = new InnerBody(out2);
+    }
+    second.source = this.source;
     second.length = this.length;
     return second;
   }
@@ -296,6 +309,15 @@ function mixinBody(prototype, bodySymbol, mimeTypeSymbol) {
       configurable: true,
       enumerable: true,
     },
+    bytes: {
+      /** @returns {Promise<Uint8Array>} */
+      value: function bytes() {
+        return consumeBody(this, "bytes");
+      },
+      writable: true,
+      configurable: true,
+      enumerable: true,
+    },
     formData: {
       /** @returns {Promise<FormData>} */
       value: function formData() {
@@ -330,7 +352,7 @@ function mixinBody(prototype, bodySymbol, mimeTypeSymbol) {
 /**
  * https://fetch.spec.whatwg.org/#concept-body-package-data
  * @param {Uint8Array | string} bytes
- * @param {"ArrayBuffer" | "Blob" | "FormData" | "JSON" | "text"} type
+ * @param {"ArrayBuffer" | "Blob" | "FormData" | "JSON" | "text" | "bytes"} type
  * @param {MimeType | null} [mimeType]
  */
 function packageData(bytes, type, mimeType) {
@@ -341,6 +363,8 @@ function packageData(bytes, type, mimeType) {
       return new Blob([bytes], {
         type: mimeType !== null ? mimesniff.serializeMimeType(mimeType) : "",
       });
+    case "bytes":
+      return chunkToU8(bytes);
     case "FormData": {
       if (mimeType !== null) {
         const essence = mimesniff.essence(mimeType);
@@ -348,7 +372,7 @@ function packageData(bytes, type, mimeType) {
           const boundary = mimeType.parameters.get("boundary");
           if (boundary === null) {
             throw new TypeError(
-              "Missing boundary parameter in mime type of multipart formdata.",
+              "Cannot turn into form data: missing boundary parameter in mime type of multipart form data",
             );
           }
           return parseFormData(chunkToU8(bytes), boundary);

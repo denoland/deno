@@ -78,11 +78,11 @@ enum GPUPowerPreference {
 [Exposed=(Window, Worker), SecureContext]
 interface GPUAdapter {
     [SameObject] readonly attribute GPUSupportedFeatures features;
+    [SameObject] readonly attribute GPUAdapterInfo info;
     [SameObject] readonly attribute GPUSupportedLimits limits;
     readonly attribute boolean isFallbackAdapter;
 
     Promise<GPUDevice> requestDevice(optional GPUDeviceDescriptor descriptor = {});
-    Promise<GPUAdapterInfo> requestAdapterInfo();
 };
 
 dictionary GPUDeviceDescriptor

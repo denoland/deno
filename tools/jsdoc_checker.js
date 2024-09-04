@@ -1,4 +1,4 @@
-#!/usr/bin/env -S deno run --allow-read --allow-env --allow-sys
+#!/usr/bin/env -S deno run --allow-read --allow-env --allow-sys --config=tests/config/deno.json
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 import { Node, Project, ts } from "npm:ts-morph@22.0.0";
 import { join, ROOT_PATH } from "./util.js";
@@ -70,14 +70,8 @@ for (const file of project.getSourceFiles()) {
     }
 
     if (unstableFiles.includes(file)) {
-      const tagsTag = tags.find((tag) => tag.getTagName() === "tags");
-      if (
-        !(tagsTag?.getComment() &&
-          tagsTag.getCommentText().includes("unstable"))
-      ) {
-        errors.push(
-          getErrorPrefix(node) + "JSDoc @tags tag with value 'unstable'",
-        );
+      if (!tags.find((tag) => tag.getTagName() === "experimental")) {
+        errors.push(getErrorPrefix(node) + "JSDoc @experimental tag");
       }
     }
   }

@@ -20,6 +20,7 @@ pub struct PrettyTestReporter {
     HashMap<usize, IndexMap<usize, (TestStepDescription, TestStepResult, u64)>>,
   summary: TestSummary,
   writer: Box<dyn std::io::Write>,
+  failure_format_options: TestFailureFormatOptions,
 }
 
 impl PrettyTestReporter {
@@ -29,6 +30,7 @@ impl PrettyTestReporter {
     filter: bool,
     repl: bool,
     cwd: Url,
+    failure_format_options: TestFailureFormatOptions,
   ) -> PrettyTestReporter {
     PrettyTestReporter {
       parallel,
@@ -45,6 +47,7 @@ impl PrettyTestReporter {
       child_results_buffer: Default::default(),
       summary: TestSummary::new(),
       writer: Box::new(std::io::stdout()),
+      failure_format_options,
     }
   }
 
@@ -197,6 +200,18 @@ impl TestReporter for PrettyTestReporter {
     self.started_tests = true;
   }
 
+  fn report_slow(&mut self, description: &TestDescription, elapsed: u64) {
+    writeln!(
+      &mut self.writer,
+      "{}",
+      colors::yellow_bold(format!(
+        "'{}' has been running for over {}",
+        description.name,
+        colors::gray(format!("({})", display::human_elapsed(elapsed.into()))),
+      ))
+    )
+    .unwrap();
+  }
   fn report_output(&mut self, output: &[u8]) {
     if !self.echo_output {
       return;
@@ -383,7 +398,13 @@ impl TestReporter for PrettyTestReporter {
     _test_steps: &IndexMap<usize, TestStepDescription>,
   ) {
     self.write_output_end();
-    common::report_summary(&mut self.writer, &self.cwd, &self.summary, elapsed);
+    common::report_summary(
+      &mut self.writer,
+      &self.cwd,
+      &self.summary,
+      elapsed,
+      &self.failure_format_options,
+    );
     if !self.repl {
       writeln!(&mut self.writer).unwrap();
     }

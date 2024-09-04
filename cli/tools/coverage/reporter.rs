@@ -399,7 +399,7 @@ impl CoverageReporter for HtmlCoverageReporter {
 
   fn done(&mut self, coverage_root: &Path) {
     let summary = self.collect_summary(&self.file_reports);
-    let now = crate::util::time::utc_now().to_rfc2822();
+    let now = chrono::Utc::now().to_rfc2822();
 
     for (node, stats) in &summary {
       let report_path =
@@ -475,8 +475,14 @@ impl HtmlCoverageReporter {
       format!("Coverage report for {node}")
     };
     let title = title.replace(std::path::MAIN_SEPARATOR, "/");
+    let breadcrumbs_parts = node
+      .split(std::path::MAIN_SEPARATOR)
+      .filter(|s| !s.is_empty())
+      .collect::<Vec<_>>();
     let head = self.create_html_head(&title);
-    let header = self.create_html_header(&title, stats);
+    let breadcrumb_navigation =
+      self.create_breadcrumbs_navigation(&breadcrumbs_parts, is_dir);
+    let header = self.create_html_header(&breadcrumb_navigation, stats);
     let footer = self.create_html_footer(timestamp);
     format!(
       "<!doctype html>
@@ -513,7 +519,7 @@ impl HtmlCoverageReporter {
   /// Creates header part of the contents for html report.
   pub fn create_html_header(
     &self,
-    title: &str,
+    breadcrumb_navigation: &str,
     stats: &CoverageStats,
   ) -> String {
     let CoverageStats {
@@ -531,7 +537,7 @@ impl HtmlCoverageReporter {
     format!(
       "
       <div class='pad1'>
-        <h1>{title}</h1>
+        <h1>{breadcrumb_navigation}</h1>
         <div class='clearfix'>
           <div class='fl pad1y space-right2'>
             <span class='strong'>{branch_percent:.2}%</span>
@@ -644,7 +650,7 @@ impl HtmlCoverageReporter {
           if *count == 0 {
             "<span class='cline-any cline-no'>&nbsp</span>".to_string()
           } else {
-            format!("<span class='cline-any cline-yes'>x{count}</span>")
+            format!("<span class='cline-any cline-yes' title='This line is covered {count} time{}'>x{count}</span>", if *count > 1 { "s" } else { "" })
           }
         } else {
           "<span class='cline-any cline-neutral'>&nbsp</span>".to_string()
@@ -680,5 +686,48 @@ impl HtmlCoverageReporter {
         </tr>
       </table>"
     )
+  }
+
+  pub fn create_breadcrumbs_navigation(
+    &self,
+    breadcrumbs_parts: &[&str],
+    is_dir: bool,
+  ) -> String {
+    let mut breadcrumbs_html = Vec::new();
+    let root_repeats = if is_dir {
+      breadcrumbs_parts.len()
+    } else {
+      breadcrumbs_parts.len() - 1
+    };
+
+    let mut root_url = "../".repeat(root_repeats);
+    root_url += "index.html";
+    breadcrumbs_html.push(format!("<a href='{root_url}'>All files</a>"));
+
+    for (index, breadcrumb) in breadcrumbs_parts.iter().enumerate() {
+      let mut full_url = "../".repeat(breadcrumbs_parts.len() - (index + 1));
+
+      if index == breadcrumbs_parts.len() - 1 {
+        breadcrumbs_html.push(breadcrumb.to_string());
+        continue;
+      }
+
+      if is_dir {
+        full_url += "index.html";
+      } else {
+        full_url += breadcrumb;
+        if index != breadcrumbs_parts.len() - 1 {
+          full_url += "/index.html";
+        }
+      }
+
+      breadcrumbs_html.push(format!("<a href='{full_url}'>{breadcrumb}</a>"))
+    }
+
+    if breadcrumbs_parts.is_empty() {
+      return String::from("All files");
+    }
+
+    breadcrumbs_html.into_iter().collect::<Vec<_>>().join(" / ")
   }
 }

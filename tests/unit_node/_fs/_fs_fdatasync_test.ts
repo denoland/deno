@@ -1,10 +1,13 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
-import { assertEquals, fail } from "@std/assert/mod.ts";
+import { assertEquals, fail } from "@std/assert";
 import { fdatasync, fdatasyncSync } from "node:fs";
 
 Deno.test({
   name:
     "ASYNC: flush any pending data operations of the given file stream to disk",
+  // TODO(bartlomieju): this test is broken in Deno 2, because `file.rid` is undefined.
+  // The fs APIs should be rewritten to use actual FDs, not RIDs
+  ignore: true,
   async fn() {
     const filePath = await Deno.makeTempFile();
     using file = await Deno.open(filePath, {
@@ -38,6 +41,9 @@ Deno.test({
 Deno.test({
   name:
     "SYNC: flush any pending data operations of the given file stream to disk.",
+  // TODO(bartlomieju): this test is broken in Deno 2, because `file.rid` is undefined.
+  // The fs APIs should be rewritten to use actual FDs, not RIDs
+  ignore: true,
   fn() {
     const filePath = Deno.makeTempFileSync();
     using file = Deno.openSync(filePath, {

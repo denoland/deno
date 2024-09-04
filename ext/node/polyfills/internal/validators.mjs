@@ -1,4 +1,4 @@
-// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 // Copyright Joyent and Node contributors. All rights reserved. MIT license.
 
 // TODO(petamoriken): enable prefer-primordials for node polyfills
@@ -171,9 +171,22 @@ function validateString(value, name) {
  * @param {unknown} value
  * @param {string} name
  */
-function validateNumber(value, name) {
+function validateNumber(value, name, min = undefined, max) {
   if (typeof value !== "number") {
     throw new codes.ERR_INVALID_ARG_TYPE(name, "number", value);
+  }
+
+  if (
+    (min != null && value < min) || (max != null && value > max) ||
+    ((min != null || max != null) && Number.isNaN(value))
+  ) {
+    throw new codes.ERR_OUT_OF_RANGE(
+      name,
+      `${min != null ? `>= ${min}` : ""}${
+        min != null && max != null ? " && " : ""
+      }${max != null ? `<= ${max}` : ""}`,
+      value,
+    );
   }
 }
 

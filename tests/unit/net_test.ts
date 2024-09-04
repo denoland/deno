@@ -6,6 +6,7 @@ import {
   assertRejects,
   assertThrows,
   delay,
+  DENO_FUTURE,
   execCode,
   execCode2,
   tmpUnixSocketPath,
@@ -27,7 +28,9 @@ Deno.test({ permissions: { net: true } }, function netTcpListenClose() {
   assert(listener.addr.transport === "tcp");
   assertEquals(listener.addr.hostname, "127.0.0.1");
   assertEquals(listener.addr.port, listenPort);
-  assertNotEquals(listener.rid, 0);
+  if (!DENO_FUTURE) {
+    assertNotEquals(listener.rid, 0);
+  }
   listener.close();
 });
 
@@ -233,7 +236,9 @@ Deno.test({ permissions: { net: true } }, async function netTcpDialListen() {
   assertEquals(1, buf[0]);
   assertEquals(2, buf[1]);
   assertEquals(3, buf[2]);
-  assert(conn.rid > 0);
+  if (!DENO_FUTURE) {
+    assert(conn.rid > 0);
+  }
 
   assert(readResult !== null);
 
@@ -269,7 +274,9 @@ Deno.test({ permissions: { net: true } }, async function netTcpSetNoDelay() {
   assertEquals(1, buf[0]);
   assertEquals(2, buf[1]);
   assertEquals(3, buf[2]);
-  assert(conn.rid > 0);
+  if (!DENO_FUTURE) {
+    assert(conn.rid > 0);
+  }
 
   assert(readResult !== null);
 
@@ -305,7 +312,9 @@ Deno.test({ permissions: { net: true } }, async function netTcpSetKeepAlive() {
   assertEquals(1, buf[0]);
   assertEquals(2, buf[1]);
   assertEquals(3, buf[2]);
-  assert(conn.rid > 0);
+  if (!DENO_FUTURE) {
+    assert(conn.rid > 0);
+  }
 
   assert(readResult !== null);
 
@@ -343,7 +352,9 @@ Deno.test(
     assertEquals(1, buf[0]);
     assertEquals(2, buf[1]);
     assertEquals(3, buf[2]);
-    assert(conn.rid > 0);
+    if (!DENO_FUTURE) {
+      assert(conn.rid > 0);
+    }
 
     assert(readResult !== null);
 
@@ -380,6 +391,70 @@ Deno.test(
     assertEquals(1, recvd[0]);
     assertEquals(2, recvd[1]);
     assertEquals(3, recvd[2]);
+    alice.close();
+    bob.close();
+  },
+);
+
+Deno.test(
+  { permissions: { net: true } },
+  async function netUdpSendReceiveTestSizeLimits() {
+    // Ensure payload being sent is within UDP limit, which seems to be 65507
+    // bytes
+    const alice = Deno.listenDatagram({
+      port: listenPort,
+      transport: "udp",
+      hostname: "127.0.0.1",
+    });
+    // wrap this in a try/catch so other tests can continue if we fail
+    // if we don't close here then listening on future tests fails
+    try {
+      assert(alice.addr.transport === "udp");
+      assertEquals(alice.addr.port, listenPort);
+      assertEquals(alice.addr.hostname, "127.0.0.1");
+    } catch (err) {
+      alice.close();
+      throw err;
+    }
+
+    const bob = Deno.listenDatagram({
+      port: listenPort2,
+      transport: "udp",
+      hostname: "127.0.0.1",
+    });
+    try {
+      assert(bob.addr.transport === "udp");
+      assertEquals(bob.addr.port, listenPort2);
+      assertEquals(bob.addr.hostname, "127.0.0.1");
+    } catch (err) {
+      bob.close();
+      throw err;
+    }
+
+    const sizes = [0, 1, 2, 256, 1024, 4096, 16384, 65506, 65507, 65508, 65536];
+    const rx = /.+ \(os error \d+\)/;
+
+    for (const size of sizes) {
+      const tosend = new Uint8Array(size);
+      let byteLength = 0;
+      try {
+        byteLength = await alice.send(tosend, bob.addr);
+      } catch (err) {
+        // Note: we have to do the test this way as different OS's have
+        // different UDP size limits enabled, so we will just ensure if
+        // an error is thrown it is the one we are expecting.
+        assert(err.message.match(rx));
+        alice.close();
+        bob.close();
+        return;
+      }
+      assertEquals(byteLength, size);
+      const [recvd, remote] = await bob.receive();
+      assert(remote.transport === "udp");
+      assertEquals(remote.port, listenPort);
+      assertEquals(recvd.length, size);
+    }
+
     alice.close();
     bob.close();
   },
@@ -775,7 +850,9 @@ Deno.test(
     assertEquals(1, buf[0]);
     assertEquals(2, buf[1]);
     assertEquals(3, buf[2]);
-    assert(conn.rid > 0);
+    if (!DENO_FUTURE) {
+      assert(conn.rid > 0);
+    }
 
     assert(readResult !== null);
 

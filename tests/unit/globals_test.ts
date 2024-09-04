@@ -1,6 +1,13 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
-// deno-lint-ignore-file no-window-prefix
-import { assert, assertEquals, assertRejects } from "./test_util.ts";
+
+// deno-lint-ignore-file no-window-prefix no-window
+import {
+  assert,
+  assertEquals,
+  assertRejects,
+  assertThrows,
+  DENO_FUTURE,
+} from "./test_util.ts";
 
 Deno.test(function globalThisExists() {
   assert(globalThis != null);
@@ -13,7 +20,7 @@ Deno.test(function noInternalGlobals() {
   }
 });
 
-Deno.test(function windowExists() {
+Deno.test({ ignore: DENO_FUTURE }, function windowExists() {
   assert(window != null);
 });
 
@@ -21,15 +28,15 @@ Deno.test(function selfExists() {
   assert(self != null);
 });
 
-Deno.test(function windowWindowExists() {
+Deno.test({ ignore: DENO_FUTURE }, function windowWindowExists() {
   assert(window.window === window);
 });
 
-Deno.test(function windowSelfExists() {
+Deno.test({ ignore: DENO_FUTURE }, function windowSelfExists() {
   assert(window.self === window);
 });
 
-Deno.test(function globalThisEqualsWindow() {
+Deno.test({ ignore: DENO_FUTURE }, function globalThisEqualsWindow() {
   assert(globalThis === window);
 });
 
@@ -37,7 +44,7 @@ Deno.test(function globalThisEqualsSelf() {
   assert(globalThis === self);
 });
 
-Deno.test(function globalThisInstanceofWindow() {
+Deno.test({ ignore: DENO_FUTURE }, function globalThisInstanceofWindow() {
   assert(globalThis instanceof Window);
 });
 
@@ -59,7 +66,7 @@ Deno.test(function DenoNamespaceExists() {
   assert(Deno != null);
 });
 
-Deno.test(function DenoNamespaceEqualsWindowDeno() {
+Deno.test({ ignore: DENO_FUTURE }, function DenoNamespaceEqualsWindowDeno() {
   assert(Deno === window.Deno);
 });
 
@@ -113,7 +120,11 @@ Deno.test(async function windowQueueMicrotask() {
       res();
     };
   });
-  window.queueMicrotask(resolve1!);
+  if (DENO_FUTURE) {
+    globalThis.queueMicrotask(resolve1!);
+  } else {
+    window.queueMicrotask(resolve1!);
+  }
   setTimeout(resolve2!, 0);
   await p1;
   await p2;
@@ -132,12 +143,18 @@ Deno.test(function webApiGlobalThis() {
 Deno.test(function windowNameIsDefined() {
   assertEquals(typeof globalThis.name, "string");
   assertEquals(name, "");
-  assertEquals(window.name, name);
+  if (!DENO_FUTURE) {
+    assertEquals(window.name, name);
+  }
   name = "foobar";
-  assertEquals(window.name, "foobar");
+  if (!DENO_FUTURE) {
+    assertEquals(window.name, "foobar");
+  }
   assertEquals(name, "foobar");
   name = "";
-  assertEquals(window.name, "");
+  if (!DENO_FUTURE) {
+    assertEquals(window.name, "");
+  }
   assertEquals(name, "");
 });
 
@@ -222,4 +239,11 @@ Deno.test(function mapGroupBy() {
     type: "fruit",
     quantity: 5,
   }]);
+});
+
+Deno.test(function nodeGlobalsRaise() {
+  assertThrows(() => {
+    // @ts-ignore yes that's the point
+    Buffer;
+  }, ReferenceError);
 });

@@ -1,9 +1,13 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
+
+// deno-lint-ignore-file no-console
+
 import {
   assert,
   assertEquals,
   assertNotEquals,
   delay,
+  DENO_FUTURE,
   execCode,
   unreachable,
 } from "./test_util.ts";
@@ -308,11 +312,63 @@ Deno.test(async function timeoutCallbackThis() {
   };
   setTimeout(obj.foo, 1);
   await promise;
-  assertEquals(capturedThis, window);
+  if (!DENO_FUTURE) {
+    assertEquals(capturedThis, window);
+  } else {
+    assertEquals(capturedThis, globalThis);
+  }
 });
 
-Deno.test(async function timeoutBindThis() {
-  const thisCheckPassed = [null, undefined, window, globalThis];
+Deno.test({ ignore: DENO_FUTURE }, async function timeoutBindThis() {
+  const thisCheckPassed = [null, undefined, globalThis, window];
+
+  const thisCheckFailed = [
+    0,
+    "",
+    true,
+    false,
+    {},
+    [],
+    "foo",
+    () => {},
+    Object.prototype,
+  ];
+
+  for (const thisArg of thisCheckPassed) {
+    const { promise, resolve } = Promise.withResolvers<void>();
+    let hasThrown = 0;
+    try {
+      setTimeout.call(thisArg, () => resolve(), 1);
+      hasThrown = 1;
+    } catch (err) {
+      if (err instanceof TypeError) {
+        hasThrown = 2;
+      } else {
+        hasThrown = 3;
+      }
+    }
+    await promise;
+    assertEquals(hasThrown, 1);
+  }
+
+  for (const thisArg of thisCheckFailed) {
+    let hasThrown = 0;
+    try {
+      setTimeout.call(thisArg, () => {}, 1);
+      hasThrown = 1;
+    } catch (err) {
+      if (err instanceof TypeError) {
+        hasThrown = 2;
+      } else {
+        hasThrown = 3;
+      }
+    }
+    assertEquals(hasThrown, 2);
+  }
+});
+
+Deno.test({ ignore: !DENO_FUTURE }, async function timeoutBindThis() {
+  const thisCheckPassed = [null, undefined, globalThis];
 
   const thisCheckFailed = [
     0,
@@ -765,5 +821,13 @@ Deno.test({
 
     const result = await promise;
     assert(result >= 1000);
+  },
+});
+
+// Regression test for https://github.com/denoland/deno/issues/20663
+Deno.test({
+  name: "regression for #20663",
+  fn: () => {
+    AbortSignal.timeout(2000);
   },
 });

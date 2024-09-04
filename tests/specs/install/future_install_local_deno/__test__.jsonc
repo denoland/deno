@@ -1,8 +1,5 @@
 {
   "tempDir": true,
-  "envs": {
-    "DENO_FUTURE": "1"
-  },
   "steps": [
     {
       "args": "install",
@@ -12,6 +9,14 @@
       // ensure deps are actually cached
       "args": "run --cached-only main.js",
       "output": ""
+    },
+    {
+      // check for lockfile
+      "args": [
+        "eval",
+        "console.log(Deno.readTextFileSync('./deno.lock').trim())"
+      ],
+      "output": "deno.lock.out"
     }
   ]
 }

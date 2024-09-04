@@ -17,13 +17,18 @@ use file_test_runner::collection::CollectTestsError;
 use file_test_runner::collection::CollectedCategoryOrTest;
 use file_test_runner::collection::CollectedTest;
 use file_test_runner::collection::CollectedTestCategory;
+use file_test_runner::SubTestResult;
 use file_test_runner::TestResult;
+use once_cell::sync::Lazy;
 use serde::Deserialize;
 use test_util::tests_path;
 use test_util::PathRef;
 use test_util::TestContextBuilder;
 
 const MANIFEST_FILE_NAME: &str = "__test__.jsonc";
+
+static NO_CAPTURE: Lazy<bool> =
+  Lazy::new(|| std::env::args().any(|arg| arg == "--nocapture"));
 
 #[derive(Clone, Deserialize)]
 #[serde(untagged)]
@@ -48,7 +53,11 @@ struct MultiTestMetaData {
   #[serde(default)]
   pub envs: HashMap<String, String>,
   #[serde(default)]
+  pub cwd: Option<String>,
+  #[serde(default)]
   pub tests: BTreeMap<String, JsonMap>,
+  #[serde(default)]
+  pub ignore: bool,
 }
 
 impl MultiTestMetaData {
@@ -68,6 +77,10 @@ impl MultiTestMetaData {
       if multi_test_meta_data.temp_dir && !value.contains_key("tempDir") {
         value.insert("tempDir".to_string(), true.into());
       }
+      if multi_test_meta_data.cwd.is_some() && !value.contains_key("cwd") {
+        value
+          .insert("cwd".to_string(), multi_test_meta_data.cwd.clone().into());
+      }
       if !multi_test_meta_data.envs.is_empty() {
         if !value.contains_key("envs") {
           value.insert("envs".to_string(), JsonMap::default().into());
@@ -78,6 +91,9 @@ impl MultiTestMetaData {
             envs_obj.insert(key.into(), value.clone().into());
           }
         }
+      }
+      if multi_test_meta_data.ignore && !value.contains_key("ignore") {
+        value.insert("ignore".to_string(), true.into());
       }
     }
 
@@ -107,9 +123,15 @@ struct MultiStepMetaData {
   #[serde(default)]
   pub base: Option<String>,
   #[serde(default)]
+  pub cwd: Option<String>,
+  #[serde(default)]
   pub envs: HashMap<String, String>,
   #[serde(default)]
+  pub repeat: Option<usize>,
+  #[serde(default)]
   pub steps: Vec<StepMetaData>,
+  #[serde(default)]
+  pub ignore: bool,
 }
 
 #[derive(Clone, Deserialize)]
@@ -119,17 +141,24 @@ struct SingleTestMetaData {
   pub base: Option<String>,
   #[serde(default)]
   pub temp_dir: bool,
+  #[serde(default)]
+  pub repeat: Option<usize>,
   #[serde(flatten)]
   pub step: StepMetaData,
+  #[serde(default)]
+  pub ignore: bool,
 }
 
 impl SingleTestMetaData {
   pub fn into_multi(self) -> MultiStepMetaData {
     MultiStepMetaData {
       base: self.base,
+      cwd: None,
       temp_dir: self.temp_dir,
+      repeat: self.repeat,
       envs: Default::default(),
       steps: vec![self.step],
+      ignore: self.ignore,
     }
   }
 }
@@ -172,7 +201,9 @@ pub fn main() {
   let _http_guard = test_util::http_server();
   file_test_runner::run_tests(
     &root_category,
-    file_test_runner::RunOptions { parallel: true },
+    file_test_runner::RunOptions {
+      parallel: !*NO_CAPTURE,
+    },
     run_test,
   );
 }
@@ -213,8 +244,28 @@ fn run_test(test: &CollectedTest<serde_json::Value>) -> TestResult {
   let cwd = PathRef::new(&test.path).parent();
   let metadata_value = test.data.clone();
   let diagnostic_logger = Rc::new(RefCell::new(Vec::<u8>::new()));
-  let result = TestResult::from_maybe_panic(AssertUnwindSafe(|| {
-    run_test_inner(metadata_value, &cwd, diagnostic_logger.clone())
+  let result = TestResult::from_maybe_panic_or_result(AssertUnwindSafe(|| {
+    let metadata = deserialize_value(metadata_value);
+    if metadata.ignore {
+      TestResult::Ignored
+    } else if let Some(repeat) = metadata.repeat {
+      TestResult::SubTests(
+        (0..repeat)
+          .map(|i| {
+            let diagnostic_logger = diagnostic_logger.clone();
+            SubTestResult {
+              name: format!("run {}", i + 1),
+              result: TestResult::from_maybe_panic(AssertUnwindSafe(|| {
+                run_test_inner(&metadata, &cwd, diagnostic_logger);
+              })),
+            }
+          })
+          .collect(),
+      )
+    } else {
+      run_test_inner(&metadata, &cwd, diagnostic_logger.clone());
+      TestResult::Passed
+    }
   }));
   match result {
     TestResult::Failed {
@@ -232,15 +283,13 @@ fn run_test(test: &CollectedTest<serde_json::Value>) -> TestResult {
 }
 
 fn run_test_inner(
-  metadata_value: serde_json::Value,
+  metadata: &MultiStepMetaData,
   cwd: &PathRef,
   diagnostic_logger: Rc<RefCell<Vec<u8>>>,
 ) {
-  let metadata = deserialize_value(metadata_value);
-
-  let context = test_context_from_metadata(&metadata, cwd, diagnostic_logger);
+  let context = test_context_from_metadata(metadata, cwd, diagnostic_logger);
   for step in metadata.steps.iter().filter(|s| should_run_step(s)) {
-    let run_func = || run_step(step, &metadata, cwd, &context);
+    let run_func = || run_step(step, metadata, cwd, &context);
     if step.flaky {
       run_flaky(run_func);
     } else {
@@ -343,13 +392,19 @@ fn run_step(
     VecOrString::Vec(args) => command.args_vec(args),
     VecOrString::String(text) => command.args(text),
   };
-  let command = match &step.cwd {
+  let command = match step.cwd.as_ref().or(metadata.cwd.as_ref()) {
     Some(cwd) => command.current_dir(cwd),
     None => command,
   };
   let command = match &step.command_name {
     Some(command_name) => command.name(command_name),
     None => command,
+  };
+  let command = match *NO_CAPTURE {
+    // deprecated is only to prevent use, so this is fine here
+    #[allow(deprecated)]
+    true => command.show_output(),
+    false => command,
   };
   let output = command.run();
   if step.output.ends_with(".out") {

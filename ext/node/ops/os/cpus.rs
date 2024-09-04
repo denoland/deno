@@ -106,7 +106,7 @@ pub fn cpu_info() -> Option<Vec<CpuInfo>> {
 
       cpu.times.irq = 0;
 
-      cpu.model = model.clone();
+      cpu.model.clone_from(&model);
       cpu.speed = cpu_speed / 1000000;
     }
 
@@ -122,8 +122,8 @@ pub fn cpu_info() -> Option<Vec<CpuInfo>> {
 
 #[cfg(target_os = "windows")]
 pub fn cpu_info() -> Option<Vec<CpuInfo>> {
-  use windows_sys::Win32::System::WindowsProgramming::NtQuerySystemInformation;
-  use windows_sys::Win32::System::WindowsProgramming::SystemProcessorPerformanceInformation;
+  use windows_sys::Wdk::System::SystemInformation::NtQuerySystemInformation;
+  use windows_sys::Wdk::System::SystemInformation::SystemProcessorPerformanceInformation;
   use windows_sys::Win32::System::WindowsProgramming::SYSTEM_PROCESSOR_PERFORMANCE_INFORMATION;
 
   use std::os::windows::ffi::OsStrExt;
@@ -246,12 +246,13 @@ pub fn cpu_info() -> Option<Vec<CpuInfo>> {
   let reader = std::io::BufReader::new(fp);
 
   let mut count = 0;
-  for (i, line) in reader.lines().enumerate() {
+  // Skip the first line which tracks total CPU time across all cores
+  for (i, line) in reader.lines().skip(1).enumerate() {
     let line = line.ok()?;
     if !line.starts_with("cpu") {
       break;
     }
-    count = i;
+    count = i + 1;
     let mut fields = line.split_whitespace();
     fields.next()?;
     let user = fields.next()?.parse::<u64>().ok()?;

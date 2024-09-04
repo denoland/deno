@@ -353,6 +353,7 @@ pub fn op_net_listen_tcp<NP>(
   state: &mut OpState,
   #[serde] addr: IpAddr,
   reuse_port: bool,
+  load_balanced: bool,
 ) -> Result<(ResourceId, IpAddr), AnyError>
 where
   NP: NetPermissions + 'static,
@@ -367,7 +368,11 @@ where
     .next()
     .ok_or_else(|| generic_error("No resolved address found"))?;
 
-  let listener = TcpListener::bind_direct(addr, reuse_port)?;
+  let listener = if load_balanced {
+    TcpListener::bind_load_balanced(addr)
+  } else {
+    TcpListener::bind_direct(addr, reuse_port)
+  }?;
   let local_addr = listener.local_addr()?;
   let listener_resource = NetworkListenerResource::new(listener);
   let rid = state.resource_table.add(listener_resource);
@@ -587,7 +592,7 @@ where
     }
   }
 
-  let resolver = AsyncResolver::tokio(config, opts)?;
+  let resolver = AsyncResolver::tokio(config, opts);
 
   let lookup_fut = resolver.lookup(query, record_type);
 
@@ -781,9 +786,15 @@ mod tests {
   use std::path::Path;
   use std::sync::Arc;
   use std::sync::Mutex;
+  use trust_dns_proto::rr::rdata::a::A;
+  use trust_dns_proto::rr::rdata::aaaa::AAAA;
   use trust_dns_proto::rr::rdata::caa::KeyValue;
   use trust_dns_proto::rr::rdata::caa::CAA;
   use trust_dns_proto::rr::rdata::mx::MX;
+  use trust_dns_proto::rr::rdata::name::ANAME;
+  use trust_dns_proto::rr::rdata::name::CNAME;
+  use trust_dns_proto::rr::rdata::name::NS;
+  use trust_dns_proto::rr::rdata::name::PTR;
   use trust_dns_proto::rr::rdata::naptr::NAPTR;
   use trust_dns_proto::rr::rdata::srv::SRV;
   use trust_dns_proto::rr::rdata::txt::TXT;
@@ -794,7 +805,7 @@ mod tests {
   #[test]
   fn rdata_to_return_record_a() {
     let func = rdata_to_return_record(RecordType::A);
-    let rdata = RData::A(Ipv4Addr::new(127, 0, 0, 1));
+    let rdata = RData::A(A(Ipv4Addr::new(127, 0, 0, 1)));
     assert_eq!(
       func(&rdata).unwrap(),
       Some(DnsReturnRecord::A("127.0.0.1".to_string()))
@@ -804,7 +815,7 @@ mod tests {
   #[test]
   fn rdata_to_return_record_aaaa() {
     let func = rdata_to_return_record(RecordType::AAAA);
-    let rdata = RData::AAAA(Ipv6Addr::new(0, 0, 0, 0, 0, 0, 0, 1));
+    let rdata = RData::AAAA(AAAA(Ipv6Addr::new(0, 0, 0, 0, 0, 0, 0, 1)));
     assert_eq!(
       func(&rdata).unwrap(),
       Some(DnsReturnRecord::Aaaa("::1".to_string()))
@@ -814,7 +825,7 @@ mod tests {
   #[test]
   fn rdata_to_return_record_aname() {
     let func = rdata_to_return_record(RecordType::ANAME);
-    let rdata = RData::ANAME(Name::new());
+    let rdata = RData::ANAME(ANAME(Name::new()));
     assert_eq!(
       func(&rdata).unwrap(),
       Some(DnsReturnRecord::Aname("".to_string()))
@@ -842,7 +853,7 @@ mod tests {
   #[test]
   fn rdata_to_return_record_cname() {
     let func = rdata_to_return_record(RecordType::CNAME);
-    let rdata = RData::CNAME(Name::new());
+    let rdata = RData::CNAME(CNAME(Name::new()));
     assert_eq!(
       func(&rdata).unwrap(),
       Some(DnsReturnRecord::Cname("".to_string()))
@@ -889,7 +900,7 @@ mod tests {
   #[test]
   fn rdata_to_return_record_ns() {
     let func = rdata_to_return_record(RecordType::NS);
-    let rdata = RData::NS(Name::new());
+    let rdata = RData::NS(NS(Name::new()));
     assert_eq!(
       func(&rdata).unwrap(),
       Some(DnsReturnRecord::Ns("".to_string()))
@@ -899,7 +910,7 @@ mod tests {
   #[test]
   fn rdata_to_return_record_ptr() {
     let func = rdata_to_return_record(RecordType::PTR);
-    let rdata = RData::PTR(Name::new());
+    let rdata = RData::PTR(PTR(Name::new()));
     assert_eq!(
       func(&rdata).unwrap(),
       Some(DnsReturnRecord::Ptr("".to_string()))

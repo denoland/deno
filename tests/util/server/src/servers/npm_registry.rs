@@ -33,12 +33,26 @@ pub fn public_npm_registry(port: u16) -> Vec<LocalBoxFuture<'static, ()>> {
 }
 
 const PRIVATE_NPM_REGISTRY_AUTH_TOKEN: &str = "private-reg-token";
+const PRIVATE_NPM_REGISTRY_2_AUTH_TOKEN: &str = "private-reg-token2";
+
+// `deno:land` encoded using base64
+const PRIVATE_NPM_REGISTRY_AUTH_BASE64: &str = "ZGVubzpsYW5k";
+// `deno:land2` encoded using base64
+const PRIVATE_NPM_REGISTRY_2_AUTH_BASE64: &str = "ZGVubzpsYW5kMg==";
 
 pub fn private_npm_registry1(port: u16) -> Vec<LocalBoxFuture<'static, ()>> {
   run_npm_server(
     port,
     "npm private registry server error",
     private_npm_registry1_handler,
+  )
+}
+
+pub fn private_npm_registry2(port: u16) -> Vec<LocalBoxFuture<'static, ()>> {
+  run_npm_server(
+    port,
+    "npm private registry server error",
+    private_npm_registry2_handler,
   )
 }
 
@@ -91,7 +105,9 @@ async fn private_npm_registry1_handler(
     .get("authorization")
     .and_then(|x| x.to_str().ok())
     .unwrap_or_default();
-  if auth != format!("Bearer {}", PRIVATE_NPM_REGISTRY_AUTH_TOKEN) {
+  if auth != format!("Bearer {}", PRIVATE_NPM_REGISTRY_AUTH_TOKEN)
+    && auth != format!("Basic {}", PRIVATE_NPM_REGISTRY_AUTH_BASE64)
+  {
     return Ok(
       Response::builder()
         .status(StatusCode::UNAUTHORIZED)
@@ -103,6 +119,28 @@ async fn private_npm_registry1_handler(
   handle_req_for_registry(req, &npm::PRIVATE_TEST_NPM_REGISTRY_1).await
 }
 
+async fn private_npm_registry2_handler(
+  req: Request<hyper::body::Incoming>,
+) -> Result<Response<UnsyncBoxBody<Bytes, Infallible>>, anyhow::Error> {
+  let auth = req
+    .headers()
+    .get("authorization")
+    .and_then(|x| x.to_str().ok())
+    .unwrap_or_default();
+  if auth != format!("Bearer {}", PRIVATE_NPM_REGISTRY_2_AUTH_TOKEN)
+    && auth != format!("Basic {}", PRIVATE_NPM_REGISTRY_2_AUTH_BASE64)
+  {
+    return Ok(
+      Response::builder()
+        .status(StatusCode::UNAUTHORIZED)
+        .body(empty_body())
+        .unwrap(),
+    );
+  }
+
+  handle_req_for_registry(req, &npm::PRIVATE_TEST_NPM_REGISTRY_2).await
+}
+
 async fn handle_req_for_registry(
   req: Request<Incoming>,
   test_npm_registry: &npm::TestNpmRegistry,
@@ -112,7 +150,7 @@ async fn handle_req_for_registry(
   // serve the registry package files
   let uri_path = req.uri().path();
   let mut file_path = root_dir.to_path_buf();
-  file_path.push(&uri_path[1..].replace("%2f", "/").replace("%2F", "/"));
+  file_path.push(uri_path[1..].replace("%2f", "/").replace("%2F", "/"));
 
   // serve if the filepath exists
   if let Ok(file) = tokio::fs::read(&file_path).await {
@@ -259,6 +297,7 @@ async fn download_npm_registry_file(
   testdata_file_path: &PathBuf,
   is_tarball: bool,
 ) -> Result<(), anyhow::Error> {
+  let uri_path = uri_path.trim_start_matches('/');
   let url_parts = uri_path.split('/').collect::<Vec<_>>();
   let package_name = if url_parts[0].starts_with('@') {
     url_parts.into_iter().take(2).collect::<Vec<_>>().join("/")

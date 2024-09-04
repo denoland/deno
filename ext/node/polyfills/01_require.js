@@ -92,7 +92,7 @@ import fsPromises from "node:fs/promises";
 import http from "node:http";
 import http2 from "node:http2";
 import https from "node:https";
-import inspector from "ext:deno_node/inspector.ts";
+import inspector from "node:inspector";
 import internalCp from "ext:deno_node/internal/child_process.ts";
 import internalCryptoCertificate from "ext:deno_node/internal/crypto/certificate.ts";
 import internalCryptoCipher from "ext:deno_node/internal/crypto/cipher.ts";
@@ -132,7 +132,7 @@ import punycode from "node:punycode";
 import process from "node:process";
 import querystring from "node:querystring";
 import readline from "node:readline";
-import readlinePromises from "ext:deno_node/readline/promises.ts";
+import readlinePromises from "node:readline/promises";
 import repl from "node:repl";
 import stream from "node:stream";
 import streamConsumers from "node:stream/consumers";
@@ -151,7 +151,7 @@ import util from "node:util";
 import v8 from "node:v8";
 import vm from "node:vm";
 import workerThreads from "node:worker_threads";
-import wasi from "ext:deno_node/wasi.ts";
+import wasi from "node:wasi";
 import zlib from "node:zlib";
 
 const nativeModuleExports = ObjectCreate(null);
@@ -475,6 +475,7 @@ function Module(id = "", parent) {
   updateChildren(parent, this, false);
   this.filename = null;
   this.loaded = false;
+  this.parent = parent;
   this.children = [];
 }
 
@@ -889,7 +890,7 @@ Module._preloadModules = function (requests) {
 
 Module.prototype.load = function (filename) {
   if (this.loaded) {
-    throw Error("Module already loaded");
+    throw new Error("Module already loaded");
   }
 
   // Canonicalize the path so it's not pointing to the symlinked directory
@@ -939,12 +940,11 @@ Module.prototype.require = function (id) {
 
 // The module wrapper looks slightly different to Node. Instead of using one
 // wrapper function, we use two. The first one exists to performance optimize
-// access to magic node globals, like `Buffer` or `process`. The second one
-// is the actual wrapper function we run the users code in.
-// The only observable difference is that in Deno `arguments.callee` is not
-// null.
+// access to magic node globals, like `Buffer`. The second one is the actual
+// wrapper function we run the users code in. The only observable difference is
+// that in Deno `arguments.callee` is not null.
 Module.wrapper = [
-  "(function (exports, require, module, __filename, __dirname, Buffer, clearImmediate, clearInterval, clearTimeout, console, global, process, setImmediate, setInterval, setTimeout, performance) { (function (exports, require, module, __filename, __dirname) {",
+  "(function (exports, require, module, __filename, __dirname, Buffer, clearImmediate, clearInterval, clearTimeout, global, setImmediate, setInterval, setTimeout, performance) { (function (exports, require, module, __filename, __dirname) {",
   "\n}).call(this, exports, require, module, __filename, __dirname); })",
 ];
 Module.wrap = function (script) {
@@ -975,9 +975,14 @@ function wrapSafe(
   filename,
   content,
   cjsModuleInstance,
+  format,
 ) {
   const wrapper = Module.wrap(content);
-  const [f, err] = core.evalContext(wrapper, `file://${filename}`);
+  const [f, err] = core.evalContext(
+    wrapper,
+    url.pathToFileURL(filename).toString(),
+    [format !== "module"],
+  );
   if (err) {
     if (process.mainModule === cjsModuleInstance) {
       enrichCJSError(err.thrown);
@@ -994,8 +999,16 @@ function wrapSafe(
   return f;
 }
 
-Module.prototype._compile = function (content, filename) {
-  const compiledWrapper = wrapSafe(filename, content, this);
+Module.prototype._compile = function (content, filename, format) {
+  const compiledWrapper = wrapSafe(filename, content, this, format);
+
+  if (format === "module") {
+    // TODO(https://github.com/denoland/deno/issues/24822): implement require esm
+    throw createRequireEsmError(
+      filename,
+      moduleParentCache.get(module)?.filename,
+    );
+  }
 
   const dirname = pathDirname(filename);
   const require = makeRequireFunction(this);
@@ -1015,9 +1028,7 @@ Module.prototype._compile = function (content, filename) {
     clearImmediate,
     clearInterval,
     clearTimeout,
-    console,
     global,
-    process,
     setImmediate,
     setInterval,
     setTimeout,
@@ -1035,9 +1046,7 @@ Module.prototype._compile = function (content, filename) {
     clearImmediate,
     clearInterval,
     clearTimeout,
-    console,
     global,
-    process,
     setImmediate,
     setInterval,
     setTimeout,
@@ -1052,17 +1061,24 @@ Module.prototype._compile = function (content, filename) {
 Module._extensions[".js"] = function (module, filename) {
   const content = op_require_read_file(filename);
 
+  let format;
   if (StringPrototypeEndsWith(filename, ".js")) {
     const pkg = op_require_read_closest_package_json(filename);
-    if (pkg && pkg.exists && pkg.typ === "module") {
+    if (pkg?.typ === "module") {
+      // TODO(https://github.com/denoland/deno/issues/24822): implement require esm
+      format = "module";
       throw createRequireEsmError(
         filename,
         moduleParentCache.get(module)?.filename,
       );
+    } else if (pkg?.type === "commonjs") {
+      format = "commonjs";
     }
+  } else if (StringPrototypeEndsWith(filename, ".cjs")) {
+    format = "commonjs";
   }
 
-  module._compile(content, filename);
+  module._compile(content, filename, format);
 };
 
 function createRequireEsmError(filename, parent) {
@@ -1100,10 +1116,15 @@ Module._extensions[".json"] = function (module, filename) {
 
 // Native extension for .node
 Module._extensions[".node"] = function (module, filename) {
-  if (filename.endsWith("fsevents.node")) {
-    throw new Error("Using fsevents module is currently not supported");
+  if (filename.endsWith("cpufeatures.node")) {
+    throw new Error("Using cpu-features module is currently not supported");
   }
-  module.exports = op_napi_open(filename, globalThis);
+  module.exports = op_napi_open(
+    filename,
+    globalThis,
+    nodeGlobals.Buffer,
+    reportError,
+  );
 };
 
 function createRequireFromPath(filename) {
@@ -1267,6 +1288,19 @@ internals.requireImpl = {
  */
 export function findSourceMap(_path) {
   // TODO(@marvinhagemeister): Stub implementation for now to unblock ava
+  return undefined;
+}
+
+/**
+ * @param {string | URL} _specifier
+ * @param {string | URL} _parentUrl
+ * @param {{ parentURL: string | URL, data: any, transferList: any[] }} [_options]
+ */
+export function register(_specifier, _parentUrl, _options) {
+  // TODO(@marvinhagemeister): Stub implementation for programs registering
+  // TypeScript loaders. We don't support registering loaders for file
+  // types that Deno itself doesn't support at the moment.
+
   return undefined;
 }
 

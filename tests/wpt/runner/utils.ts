@@ -1,7 +1,7 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 /// FLAGS
 
-import { parse } from "../../util/std/flags/mod.ts";
+import { parseArgs } from "@std/cli/parse-args";
 import { join, resolve, ROOT_PATH } from "../../../tools/util.js";
 
 export const {
@@ -15,7 +15,7 @@ export const {
   ["inspect-brk"]: inspectBrk,
   ["no-ignore"]: noIgnore,
   binary,
-} = parse(Deno.args, {
+} = parseArgs(Deno.args, {
   "--": true,
   boolean: ["quiet", "release", "no-interactive", "inspect-brk", "no-ignore"],
   string: ["json", "wptreport", "binary"],
@@ -79,7 +79,7 @@ export function getManifest(): Manifest {
 const EXPECTATION_PATH = join(ROOT_PATH, "./tests/wpt/runner/expectation.json");
 
 export interface Expectation {
-  [key: string]: Expectation | boolean | string[];
+  [key: string]: Expectation | boolean | string[] | { ignore: boolean };
 }
 
 export function getExpectation(): Expectation {
@@ -90,7 +90,7 @@ export function getExpectation(): Expectation {
 export function saveExpectation(expectation: Expectation) {
   Deno.writeTextFileSync(
     EXPECTATION_PATH,
-    JSON.stringify(expectation, undefined, "  "),
+    JSON.stringify(expectation, undefined, "  ") + "\n",
   );
 }
 
@@ -99,7 +99,7 @@ export function getExpectFailForCase(
   caseName: string,
 ): boolean {
   if (noIgnore) return false;
-  if (typeof expectation == "boolean") {
+  if (typeof expectation === "boolean") {
     return !expectation;
   }
   return expectation.includes(caseName);

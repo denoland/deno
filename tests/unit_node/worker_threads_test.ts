@@ -6,8 +6,8 @@ import {
   assertObjectMatch,
   assertThrows,
   fail,
-} from "@std/assert/mod.ts";
-import { fromFileUrl, relative, SEPARATOR } from "@std/path/mod.ts";
+} from "@std/assert";
+import { fromFileUrl, relative, SEPARATOR } from "@std/path";
 import * as workerThreads from "node:worker_threads";
 import { EventEmitter, once } from "node:events";
 import process from "node:process";
@@ -588,5 +588,36 @@ Deno.test({
     worker.terminate();
     channel.port1.close();
     channel.port2.close();
+  },
+});
+
+Deno.test({
+  name: "[node/worker_threads] Emits online event",
+  async fn() {
+    const worker = new workerThreads.Worker(
+      `
+      import { parentPort } from "node:worker_threads";
+      const p = Promise.withResolvers();
+      let ok = false;
+      parentPort.on("message", () => {
+        ok = true;
+        p.resolve();
+      });
+      await Promise.race([p.promise, new Promise(resolve => setTimeout(resolve, 20000))]);
+      if (ok) {
+        parentPort.postMessage("ok");
+      } else {
+        parentPort.postMessage("timed out");
+      }
+      `,
+      {
+        eval: true,
+      },
+    );
+    worker.on("online", () => {
+      worker.postMessage("ok");
+    });
+    assertEquals((await once(worker, "message"))[0], "ok");
+    worker.terminate();
   },
 });

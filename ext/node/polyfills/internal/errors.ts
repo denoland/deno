@@ -18,7 +18,7 @@
  */
 
 import { primordials } from "ext:core/mod.js";
-const { JSONStringify } = primordials;
+const { JSONStringify, SymbolFor } = primordials;
 import { format, inspect } from "ext:deno_node/internal/util/inspect.mjs";
 import { codes } from "ext:deno_node/internal/error_codes.ts";
 import {
@@ -349,9 +349,8 @@ export class NodeErrorAbstraction extends Error {
     super(message);
     this.code = code;
     this.name = name;
-    //This number changes depending on the name of this class
-    //20 characters as of now
-    this.stack = this.stack && `${name} [${this.code}]${this.stack.slice(20)}`;
+    this.stack = this.stack &&
+      `${name} [${this.code}]${this.stack.slice(this.name.length)}`;
   }
 
   override toString() {
@@ -422,8 +421,11 @@ export interface NodeSystemErrorCtx {
 // `err.info`.
 // The context passed into this error must have .code, .syscall and .message,
 // and may have .path and .dest.
-class NodeSystemError extends NodeErrorAbstraction {
+class NodeSystemError extends Error {
+  code: string;
   constructor(key: string, context: NodeSystemErrorCtx, msgPrefix: string) {
+    super();
+    this.code = key;
     let message = `${msgPrefix}: ${context.syscall} returned ` +
       `${context.code} (${context.message})`;
 
@@ -434,8 +436,6 @@ class NodeSystemError extends NodeErrorAbstraction {
       message += ` => ${context.dest}`;
     }
 
-    super("SystemError", key, message);
-
     captureLargerStackTrace(this);
 
     Object.defineProperties(this, {
@@ -443,6 +443,18 @@ class NodeSystemError extends NodeErrorAbstraction {
         value: true,
         enumerable: false,
         writable: false,
+        configurable: true,
+      },
+      name: {
+        value: "SystemError",
+        enumerable: false,
+        writable: true,
+        configurable: true,
+      },
+      message: {
+        value: message,
+        enumerable: false,
+        writable: true,
         configurable: true,
       },
       info: {
@@ -502,6 +514,15 @@ class NodeSystemError extends NodeErrorAbstraction {
 
   override toString() {
     return `${this.name} [${this.code}]: ${this.message}`;
+  }
+
+  // deno-lint-ignore no-explicit-any
+  [SymbolFor("nodejs.util.inspect.custom")](_recurseTimes: number, ctx: any) {
+    return inspect(this, {
+      ...ctx,
+      getters: true,
+      customInspect: false,
+    });
   }
 }
 
@@ -614,7 +635,6 @@ export class ERR_INVALID_ARG_TYPE_RANGE extends NodeRangeError {
 export class ERR_INVALID_ARG_TYPE extends NodeTypeError {
   constructor(name: string, expected: string | string[], actual: unknown) {
     const msg = createInvalidArgType(name, expected);
-
     super("ERR_INVALID_ARG_TYPE", `${msg}.${invalidArgTypeHelper(actual)}`);
   }
 
@@ -669,9 +689,7 @@ function invalidArgTypeHelper(input: any) {
   return ` Received type ${typeof input} (${inspected})`;
 }
 
-export class ERR_OUT_OF_RANGE extends RangeError {
-  code = "ERR_OUT_OF_RANGE";
-
+export class ERR_OUT_OF_RANGE extends NodeRangeError {
   constructor(
     str: string,
     range: string,
@@ -696,15 +714,7 @@ export class ERR_OUT_OF_RANGE extends RangeError {
     }
     msg += ` It must be ${range}. Received ${received}`;
 
-    super(msg);
-
-    const { name } = this;
-    // Add the error code to the name to include it in the stack trace.
-    this.name = `${name} [${this.code}]`;
-    // Access the stack to generate the error message including the error code from the name.
-    this.stack;
-    // Reset the name to the actual name.
-    this.name = name;
+    super("ERR_OUT_OF_RANGE", msg);
   }
 }
 
@@ -914,6 +924,12 @@ export class ERR_CRYPTO_INVALID_KEY_OBJECT_TYPE extends NodeTypeError {
       "ERR_CRYPTO_INVALID_KEY_OBJECT_TYPE",
       `Invalid key object type ${x}, expected ${y}.`,
     );
+  }
+}
+
+export class ERR_CRYPTO_INVALID_JWK extends NodeError {
+  constructor() {
+    super("ERR_CRYPTO_INVALID_JWK", "Invalid JWK");
   }
 }
 
@@ -2279,10 +2295,10 @@ export class ERR_HTTP2_INVALID_SETTING_VALUE extends NodeRangeError {
 }
 export class ERR_HTTP2_STREAM_CANCEL extends NodeError {
   override cause?: Error;
-  constructor(error: Error) {
+  constructor(error?: Error) {
     super(
       "ERR_HTTP2_STREAM_CANCEL",
-      typeof error.message === "string"
+      error && typeof error.message === "string"
         ? `The pending stream has been canceled (caused by: ${error.message})`
         : "The pending stream has been canceled",
     );
@@ -2723,6 +2739,7 @@ export default {
   ERR_CRYPTO_INCOMPATIBLE_KEY_OPTIONS,
   ERR_CRYPTO_INVALID_DIGEST,
   ERR_CRYPTO_INVALID_KEY_OBJECT_TYPE,
+  ERR_CRYPTO_INVALID_JWK,
   ERR_CRYPTO_INVALID_STATE,
   ERR_CRYPTO_PBKDF2_ERROR,
   ERR_CRYPTO_SCRYPT_INVALID_PARAMETER,

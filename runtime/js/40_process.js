@@ -133,10 +133,7 @@ class Process {
 function run({
   cmd,
   cwd = undefined,
-  clearEnv = false,
-  env = {},
-  gid = undefined,
-  uid = undefined,
+  env = { __proto__: null },
   stdout = "inherit",
   stderr = "inherit",
   stdin = "inherit",
@@ -155,10 +152,7 @@ function run({
   const res = opRun({
     cmd: ArrayPrototypeMap(cmd, String),
     cwd,
-    clearEnv,
     env: ObjectEntries(env),
-    gid,
-    uid,
     stdin,
     stdout,
     stderr,
@@ -168,11 +162,11 @@ function run({
 
 const illegalConstructorKey = Symbol("illegalConstructorKey");
 
-function spawnChildInner(opFn, command, apiName, {
+function spawnChildInner(command, apiName, {
   args = [],
   cwd = undefined,
   clearEnv = false,
-  env = {},
+  env = { __proto__: null },
   uid = undefined,
   gid = undefined,
   stdin = "null",
@@ -181,8 +175,9 @@ function spawnChildInner(opFn, command, apiName, {
   signal = undefined,
   windowsRawArguments = false,
   ipc = -1,
-} = {}) {
-  const child = opFn({
+  extraStdio = [],
+} = { __proto__: null }) {
+  const child = op_spawn_child({
     cmd: pathFromURL(command),
     args: ArrayPrototypeMap(args, String),
     cwd: pathFromURL(cwd),
@@ -195,6 +190,7 @@ function spawnChildInner(opFn, command, apiName, {
     stderr,
     windowsRawArguments,
     ipc,
+    extraStdio,
   }, apiName);
   return new ChildProcess(illegalConstructorKey, {
     ...child,
@@ -202,9 +198,8 @@ function spawnChildInner(opFn, command, apiName, {
   });
 }
 
-function spawnChild(command, options = {}) {
+function spawnChild(command, options = { __proto__: null }) {
   return spawnChildInner(
-    op_spawn_child,
     command,
     "Deno.Command().spawn()",
     options,
@@ -221,16 +216,19 @@ function collectOutput(readableStream) {
   return readableStreamCollectIntoUint8Array(readableStream);
 }
 
-const _pipeFd = Symbol("[[pipeFd]]");
+const _ipcPipeRid = Symbol("[[ipcPipeRid]]");
+const _extraPipeRids = Symbol("[[_extraPipeRids]]");
 
-internals.getPipeFd = (process) => process[_pipeFd];
+internals.getIpcPipeRid = (process) => process[_ipcPipeRid];
+internals.getExtraPipeRids = (process) => process[_extraPipeRids];
 
 class ChildProcess {
   #rid;
   #waitPromise;
   #waitComplete = false;
 
-  [_pipeFd];
+  [_ipcPipeRid];
+  [_extraPipeRids];
 
   #pid;
   get pid() {
@@ -268,7 +266,8 @@ class ChildProcess {
     stdinRid,
     stdoutRid,
     stderrRid,
-    pipeFd, // internal
+    ipcPipeRid, // internal
+    extraPipeRids,
   } = null) {
     if (key !== illegalConstructorKey) {
       throw new TypeError("Illegal constructor.");
@@ -276,7 +275,8 @@ class ChildProcess {
 
     this.#rid = rid;
     this.#pid = pid;
-    this[_pipeFd] = pipeFd;
+    this[_ipcPipeRid] = ipcPipeRid;
+    this[_extraPipeRids] = extraPipeRids;
 
     if (stdinRid !== null) {
       this.#stdin = writableStreamForRid(stdinRid);
@@ -380,7 +380,6 @@ function spawn(command, options) {
     );
   }
   return spawnChildInner(
-    op_spawn_child,
     command,
     "Deno.Command().output()",
     options,
@@ -392,14 +391,14 @@ function spawnSync(command, {
   args = [],
   cwd = undefined,
   clearEnv = false,
-  env = {},
+  env = { __proto__: null },
   uid = undefined,
   gid = undefined,
   stdin = "null",
   stdout = "piped",
   stderr = "piped",
   windowsRawArguments = false,
-} = {}) {
+} = { __proto__: null }) {
   if (stdin === "piped") {
     throw new TypeError(
       "Piped stdin is not supported for this function, use 'Deno.Command().spawn()' instead",
@@ -417,6 +416,7 @@ function spawnSync(command, {
     stdout,
     stderr,
     windowsRawArguments,
+    extraStdio: [],
   });
   return {
     success: result.status.success,

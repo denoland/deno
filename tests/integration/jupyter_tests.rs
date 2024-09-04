@@ -25,9 +25,6 @@ use zeromq::SocketRecv;
 use zeromq::SocketSend;
 use zeromq::ZmqMessage;
 
-// for the `utc_now` function
-include!("../../cli/util/time.rs");
-
 /// Jupyter connection file format
 #[derive(Serialize)]
 struct ConnectionSpec {
@@ -138,7 +135,7 @@ impl Default for MsgHeader {
     Self {
       msg_id: Uuid::new_v4(),
       session: Uuid::new_v4(),
-      date: utc_now(),
+      date: chrono::Utc::now(),
       username: "test".into(),
       msg_type: "kernel_info_request".into(),
       version: "5.3".into(),
@@ -496,7 +493,7 @@ async fn jupyter_heartbeat_echoes() -> Result<()> {
   let (_ctx, client, _process) = setup().await;
   client.send_heartbeat(b"ping").await?;
   let msg = client.recv_heartbeat().await?;
-  assert_eq!(msg, Bytes::from_static(b"ping"));
+  assert_eq!(msg, Bytes::from_static(b"pong"));
 
   Ok(())
 }

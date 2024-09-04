@@ -22,6 +22,7 @@ fn publish_non_exported_files_using_import_map() {
       "@denotest/add": "jsr:@denotest/add@1"
     }
   }));
+  temp_dir.join("LICENSE").write("");
   // file not in the graph
   let other_ts = temp_dir.join("_other.ts");
   other_ts
@@ -52,6 +53,7 @@ fn publish_warning_not_in_graph() {
     "version": "1.0.0",
     "exports": "./mod.ts",
   }));
+  temp_dir.join("LICENSE").write("");
   // file not in the graph that uses a non-analyzable dynamic import (cause a diagnostic)
   let other_ts = temp_dir.join("_other.ts");
   other_ts
@@ -92,6 +94,7 @@ fn ignores_gitignore() {
     "version": "1.0.0",
     "exports": "./main.ts"
   }));
+  temp_dir.join("LICENSE").write("");
 
   temp_dir.join("main.ts").write("import './sub_dir/b.ts';");
 
@@ -151,6 +154,7 @@ fn ignores_directories() {
   sub_dir.join("sub_included.ts").write("");
 
   temp_dir.join("main_included.ts").write("");
+  temp_dir.join("LICENSE").write("");
 
   let output = context
     .new_command()
@@ -185,6 +189,7 @@ fn not_include_gitignored_file_unless_exact_match_in_include() {
       ]
     }
   }));
+  temp_dir.join("LICENSE").write("");
 
   temp_dir
     .join(".gitignore")
@@ -217,7 +222,7 @@ fn not_include_gitignored_file_unless_exact_match_in_include() {
 }
 
 #[test]
-fn gitignore_everything_exlcuded_override() {
+fn gitignore_everything_excluded_override() {
   let context = publish_context_builder().build();
   let temp_dir = context.temp_dir().path();
 
@@ -232,6 +237,7 @@ fn gitignore_everything_exlcuded_override() {
       "exclude": ["!**"]
     }
   }));
+  temp_dir.join("LICENSE").write("");
 
   temp_dir.join("root_main.ts").write("");
   let sub_dir = temp_dir.join("sub");
@@ -257,6 +263,7 @@ fn includes_directories_with_gitignore_when_unexcluded() {
       "exclude": [ "!ignored.ts" ]
     }
   }));
+  temp_dir.join("LICENSE").write("");
 
   temp_dir.join(".gitignore").write("ignored.ts");
   temp_dir.join("main.ts").write("");
@@ -284,6 +291,7 @@ fn includes_unexcluded_sub_dir() {
       ]
     }
   }));
+  temp_dir.join("LICENSE").write("");
 
   temp_dir.join("included1.ts").write("");
   temp_dir.join("ignored/unexcluded").create_dir_all();
@@ -310,6 +318,7 @@ fn includes_directories() {
       "include": [ "deno.json", "main.ts" ]
     }
   }));
+  temp_dir.join("LICENSE").write("");
 
   temp_dir.join("main.ts").write("");
   temp_dir.join("ignored.ts").write("");
@@ -335,6 +344,7 @@ fn not_includes_gitignored_dotenv() {
     "version": "1.0.0",
     "exports": "./main.ts",
   }));
+  temp_dir.join("LICENSE").write("");
 
   temp_dir.join("main.ts").write("");
   temp_dir.join(".env").write("FOO=BAR");
@@ -356,6 +366,7 @@ fn not_includes_vendor_dir_only_when_vendor_true() {
     "version": "1.0.0",
     "exports": "./main.ts",
   }));
+  temp_dir.join("LICENSE").write("");
 
   temp_dir.join("main.ts").write("");
   let vendor_folder = temp_dir.join("vendor");
@@ -396,6 +407,7 @@ fn allow_dirty() {
     "version": "1.0.0",
     "exports": "./main.ts",
   }));
+  temp_dir.join("LICENSE").write("");
 
   temp_dir.join("main.ts").write("");
 
@@ -413,8 +425,17 @@ fn allow_dirty() {
     .arg("sadfasdf")
     .run();
   output.assert_exit_code(1);
-  let output = output.combined_output();
-  assert_contains!(output, "Aborting due to uncommitted changes. Check in source code or run with --allow-dirty");
+  output.assert_matches_text(r#"Check [WILDLINE]
+Checking for slow types in the public API...
+
+Uncommitted changes:
+
+?? LICENSE
+?? deno.json
+?? main.ts
+
+error: Aborting due to uncommitted changes. Check in source code or run with --allow-dirty
+"#);
 
   let output = context
     .new_command()
@@ -437,6 +458,7 @@ fn allow_dirty_not_in_repo() {
     "version": "1.0.0",
     "exports": "./main.ts",
   }));
+  temp_dir.join("LICENSE").write("");
 
   temp_dir.join("main.ts").write("");
   // At this point there are untracked files, but we're not in Git repo,
@@ -462,6 +484,7 @@ fn allow_dirty_dry_run() {
     "version": "1.0.0",
     "exports": "./main.ts",
   }));
+  temp_dir.join("LICENSE").write("");
 
   temp_dir.join("main.ts").write("");
 

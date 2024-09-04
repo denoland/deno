@@ -1,5 +1,8 @@
-#!/usr/bin/env -S deno run --allow-write --allow-read --allow-run --allow-net
+#!/usr/bin/env -S deno run --allow-write --allow-read --allow-run --allow-net --config=tests/config/deno.json
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
+
+// deno-lint-ignore-file no-console
+
 import { buildMode, getPrebuilt, getSources, join, ROOT_PATH } from "./util.js";
 import { checkCopyright } from "./copyright_checker.js";
 import * as ciFile from "../.github/workflows/ci.generate.ts";
@@ -44,28 +47,21 @@ async function dlint() {
     "*.js",
     "*.ts",
     ":!:.github/mtime_cache/action.js",
-    ":!:tests/testdata/swc_syntax_error.ts",
-    ":!:tests/testdata/error_008_checkjs.js",
     ":!:cli/bench/testdata/npm/*",
     ":!:cli/bench/testdata/express-router.js",
     ":!:cli/bench/testdata/react-dom.js",
     ":!:cli/compilers/wasm_wrap.js",
     ":!:cli/tsc/dts/**",
+    ":!:cli/tsc/*typescript.js",
+    ":!:cli/tsc/compiler.d.ts",
+    ":!:runtime/examples/",
     ":!:target/",
     ":!:tests/registry/**",
     ":!:tests/specs/**",
-    ":!:tests/testdata/encoding/**",
-    ":!:tests/testdata/error_syntax.js",
-    ":!:tests/testdata/file_extensions/ts_with_js_extension.js",
-    ":!:tests/testdata/fmt/**",
-    ":!:tests/testdata/lint/**",
-    ":!:tests/testdata/npm/**",
-    ":!:tests/testdata/run/**",
-    ":!:tests/testdata/tsc/**",
-    ":!:tests/testdata/test/glob/**",
-    ":!:cli/tsc/*typescript.js",
-    ":!:cli/tsc/compiler.d.ts",
+    ":!:tests/testdata/**",
+    ":!:tests/unit_node/testdata/**",
     ":!:tests/wpt/suite/**",
+    ":!:tests/wpt/runner/**",
   ]);
 
   if (!sourceFiles.length) {
@@ -92,7 +88,12 @@ async function dlint() {
       }),
     );
   }
-  await Promise.all(pending);
+  const results = await Promise.allSettled(pending);
+  for (const result of results) {
+    if (result.status === "rejected") {
+      throw new Error(result.reason);
+    }
+  }
 }
 
 // `prefer-primordials` has to apply only to files related to bootstrapping,
@@ -195,14 +196,13 @@ async function ensureNoNewITests() {
   // replace them with spec tests.
   const iTestCounts = {
     "bench_tests.rs": 0,
-    "bundle_tests.rs": 12,
     "cache_tests.rs": 0,
     "cert_tests.rs": 0,
-    "check_tests.rs": 23,
+    "check_tests.rs": 22,
     "compile_tests.rs": 0,
     "coverage_tests.rs": 0,
     "doc_tests.rs": 15,
-    "eval_tests.rs": 9,
+    "eval_tests.rs": 0,
     "flags_tests.rs": 0,
     "fmt_tests.rs": 17,
     "info_tests.rs": 18,
@@ -217,14 +217,14 @@ async function ensureNoNewITests() {
     "lsp_tests.rs": 0,
     "node_compat_tests.rs": 4,
     "node_unit_tests.rs": 2,
-    "npm_tests.rs": 98,
+    "npm_tests.rs": 92,
     "pm_tests.rs": 0,
     "publish_tests.rs": 0,
     "repl_tests.rs": 0,
-    "run_tests.rs": 372,
+    "run_tests.rs": 351,
     "shared_library_tests.rs": 0,
     "task_tests.rs": 30,
-    "test_tests.rs": 77,
+    "test_tests.rs": 75,
     "upgrade_tests.rs": 0,
     "vendor_tests.rs": 1,
     "watcher_tests.rs": 0,

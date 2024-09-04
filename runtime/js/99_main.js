@@ -26,8 +26,6 @@ const {
   ArrayPrototypeFilter,
   ArrayPrototypeIncludes,
   ArrayPrototypeMap,
-  ArrayPrototypePop,
-  ArrayPrototypeShift,
   DateNow,
   Error,
   ErrorPrototype,
@@ -43,10 +41,7 @@ const {
   ObjectValues,
   PromisePrototypeThen,
   PromiseResolve,
-  SafeSet,
-  StringPrototypeIncludes,
-  StringPrototypeSplit,
-  StringPrototypeTrim,
+  StringPrototypePadEnd,
   Symbol,
   SymbolIterator,
   TypeError,
@@ -61,7 +56,6 @@ import * as version from "ext:runtime/01_version.ts";
 import * as os from "ext:runtime/30_os.js";
 import * as timers from "ext:deno_web/02_timers.js";
 import {
-  customInspect,
   getDefaultInspectOptions,
   getStderrNoColor,
   inspectArgs,
@@ -92,17 +86,7 @@ import {
 import {
   workerRuntimeGlobalProperties,
 } from "ext:runtime/98_global_scope_worker.js";
-import {
-  SymbolAsyncDispose,
-  SymbolDispose,
-  SymbolMetadata,
-} from "ext:deno_web/00_infra.js";
-// deno-lint-ignore prefer-primordials
-if (Symbol.dispose) throw "V8 supports Symbol.dispose now, no need to shim it!";
-// deno-lint-ignore prefer-primordials
-if (Symbol.asyncDispose) {
-  throw "V8 supports Symbol.asyncDispose now, no need to shim it!";
-}
+import { SymbolDispose, SymbolMetadata } from "ext:deno_web/00_infra.js";
 // deno-lint-ignore prefer-primordials
 if (Symbol.metadata) {
   throw "V8 supports Symbol.metadata now, no need to shim it!";
@@ -110,12 +94,6 @@ if (Symbol.metadata) {
 ObjectDefineProperties(Symbol, {
   dispose: {
     value: SymbolDispose,
-    enumerable: false,
-    writable: false,
-    configurable: false,
-  },
-  asyncDispose: {
-    value: SymbolAsyncDispose,
     enumerable: false,
     writable: false,
     configurable: false,
@@ -131,101 +109,8 @@ ObjectDefineProperties(Symbol, {
 let windowIsClosing = false;
 let globalThis_;
 
-let verboseDeprecatedApiWarning = false;
-let deprecatedApiWarningDisabled = false;
-const ALREADY_WARNED_DEPRECATED = new SafeSet();
-
-function warnOnDeprecatedApi(apiName, stack, ...suggestions) {
-  if (deprecatedApiWarningDisabled) {
-    return;
-  }
-
-  if (!verboseDeprecatedApiWarning) {
-    if (ALREADY_WARNED_DEPRECATED.has(apiName)) {
-      return;
-    }
-    ALREADY_WARNED_DEPRECATED.add(apiName);
-    console.error(
-      `%cwarning: %cUse of deprecated "${apiName}" API. This API will be removed in Deno 2. Run again with DENO_VERBOSE_WARNINGS=1 to get more details.`,
-      "color: yellow;",
-      "font-weight: bold;",
-    );
-    return;
-  }
-
-  if (ALREADY_WARNED_DEPRECATED.has(apiName + stack)) {
-    return;
-  }
-
-  // If we haven't warned yet, let's do some processing of the stack trace
-  // to make it more useful.
-  const stackLines = StringPrototypeSplit(stack, "\n");
-  ArrayPrototypeShift(stackLines);
-  while (stackLines.length > 0) {
-    // Filter out internal frames at the top of the stack - they are not useful
-    // to the user.
-    if (
-      StringPrototypeIncludes(stackLines[0], "(ext:") ||
-      StringPrototypeIncludes(stackLines[0], "(node:") ||
-      StringPrototypeIncludes(stackLines[0], "<anonymous>")
-    ) {
-      ArrayPrototypeShift(stackLines);
-    } else {
-      break;
-    }
-  }
-  // Now remove the last frame if it's coming from "ext:core" - this is most likely
-  // event loop tick or promise handler calling a user function - again not
-  // useful to the user.
-  if (
-    stackLines.length > 0 &&
-    StringPrototypeIncludes(stackLines[stackLines.length - 1], "(ext:core/")
-  ) {
-    ArrayPrototypePop(stackLines);
-  }
-
-  let isFromRemoteDependency = false;
-  const firstStackLine = stackLines[0];
-  if (firstStackLine && !StringPrototypeIncludes(firstStackLine, "file:")) {
-    isFromRemoteDependency = true;
-  }
-
-  ALREADY_WARNED_DEPRECATED.add(apiName + stack);
-  console.error(
-    `%cwarning: %cUse of deprecated "${apiName}" API. This API will be removed in Deno 2.`,
-    "color: yellow;",
-    "font-weight: bold;",
-  );
-
-  console.error();
-  console.error(
-    "See the Deno 1 to 2 Migration Guide for more information at https://docs.deno.com/runtime/manual/advanced/migrate_deprecations",
-  );
-  console.error();
-  if (stackLines.length > 0) {
-    console.error("Stack trace:");
-    for (let i = 0; i < stackLines.length; i++) {
-      console.error(`  ${StringPrototypeTrim(stackLines[i])}`);
-    }
-    console.error();
-  }
-
-  for (let i = 0; i < suggestions.length; i++) {
-    const suggestion = suggestions[i];
-    console.error(
-      `%chint: ${suggestion}`,
-      "font-weight: bold;",
-    );
-  }
-
-  if (isFromRemoteDependency) {
-    console.error(
-      `%chint: It appears this API is used by a remote dependency. Try upgrading to the latest version of that dependency.`,
-      "font-weight: bold;",
-    );
-  }
-  console.error();
-}
+// TODO(2.0): remove once all deprecated APIs are removed.
+function warnOnDeprecatedApi() {}
 
 function windowClose() {
   if (!windowIsClosing) {
@@ -252,7 +137,7 @@ function workerClose() {
   op_worker_close();
 }
 
-function postMessage(message, transferOrOptions = {}) {
+function postMessage(message, transferOrOptions = { __proto__: null }) {
   const prefix =
     "Failed to execute 'postMessage' on 'DedicatedWorkerGlobalScope'";
   webidl.requiredArguments(arguments.length, 1, prefix);
@@ -403,7 +288,6 @@ function formatException(error) {
 }
 
 core.registerErrorClass("NotFound", errors.NotFound);
-core.registerErrorClass("PermissionDenied", errors.PermissionDenied);
 core.registerErrorClass("ConnectionRefused", errors.ConnectionRefused);
 core.registerErrorClass("ConnectionReset", errors.ConnectionReset);
 core.registerErrorClass("ConnectionAborted", errors.ConnectionAborted);
@@ -549,10 +433,6 @@ function dispatchUnloadEvent() {
 }
 
 let hasBootstrapped = false;
-// Delete the `console` object that V8 automaticaly adds onto the global wrapper
-// object on context creation. We don't want this console object to shadow the
-// `console` object exposed by the ext/node globalThis proxy.
-delete globalThis.console;
 // Set up global properties shared by main and worker runtime.
 ObjectDefineProperties(globalThis, windowOrWorkerGlobalScope);
 
@@ -595,6 +475,7 @@ const NOT_IMPORTED_OPS = [
 
   // Related to `Deno.jupyter` API
   "op_jupyter_broadcast",
+  "op_jupyter_input",
 
   // Related to `Deno.test()` API
   "op_test_event_step_result_failed",
@@ -636,18 +517,6 @@ const internalSymbol = Symbol("Deno.internal");
 const finalDenoNs = {
   internal: internalSymbol,
   [internalSymbol]: internals,
-  resources() {
-    internals.warnOnDeprecatedApi("Deno.resources()", new Error().stack);
-    return core.resources();
-  },
-  close(rid) {
-    internals.warnOnDeprecatedApi(
-      "Deno.close()",
-      new Error().stack,
-      "Use `closer.close()` instead.",
-    );
-    core.close(rid);
-  },
   ...denoNs,
   // Deno.test and Deno.bench are noops here, but kept for compatibility; so
   // that they don't cause errors when used outside of `deno test`/`deno bench`
@@ -664,22 +533,17 @@ ObjectDefineProperties(finalDenoNs, {
   noColor: core.propGetterOnly(() => op_bootstrap_no_color()),
   args: core.propGetterOnly(opArgs),
   mainModule: core.propGetterOnly(() => op_main_module()),
-  // TODO(kt3k): Remove this export at v2
-  // See https://github.com/denoland/deno/issues/9294
-  customInspect: {
+  exitCode: {
     get() {
-      warnOnDeprecatedApi(
-        "Deno.customInspect",
-        new Error().stack,
-        'Use `Symbol.for("Deno.customInspect")` instead.',
-      );
-      return internals.future ? undefined : customInspect;
+      return os.getExitCode();
+    },
+    set(value) {
+      os.setExitCode(value);
     },
   },
 });
 
 const {
-  denoVersion,
   tsVersion,
   v8Version,
   target,
@@ -704,20 +568,56 @@ function bootstrapMainRuntime(runtimeOptions, warmup = false) {
     }
 
     const {
-      0: location_,
-      1: unstableFlag,
-      2: unstableFeatures,
-      3: inspectFlag,
-      5: hasNodeModulesDir,
-      6: argv0,
-      7: nodeDebug,
-      8: shouldDisableDeprecatedApiWarning,
-      9: shouldUseVerboseDeprecatedApiWarning,
-      10: future,
-      11: mode,
-      12: servePort,
-      13: serveHost,
+      0: denoVersion,
+      1: location_,
+      2: unstableFlag,
+      3: unstableFeatures,
+      4: inspectFlag,
+      6: hasNodeModulesDir,
+      7: argv0,
+      8: nodeDebug,
+      9: future,
+      10: mode,
+      11: servePort,
+      12: serveHost,
+      13: serveIsMain,
+      14: serveWorkerCount,
     } = runtimeOptions;
+
+    if (mode === executionModes.serve) {
+      if (serveIsMain && serveWorkerCount) {
+        // deno-lint-ignore no-console
+        const origLog = console.log;
+        // deno-lint-ignore no-console
+        const origError = console.error;
+        const prefix = `[serve-worker-0 ]`;
+        // deno-lint-ignore no-console
+        console.log = (...args) => {
+          return origLog(prefix, ...new primordials.SafeArrayIterator(args));
+        };
+        // deno-lint-ignore no-console
+        console.error = (...args) => {
+          return origError(prefix, ...new primordials.SafeArrayIterator(args));
+        };
+      } else if (serveWorkerCount !== null) {
+        // deno-lint-ignore no-console
+        const origLog = console.log;
+        // deno-lint-ignore no-console
+        const origError = console.error;
+        const base = `serve-worker-${serveWorkerCount + 1}`;
+        // 15 = "serve-worker-nn".length, assuming
+        // serveWorkerCount < 100
+        const prefix = `[${StringPrototypePadEnd(base, 15, " ")}]`;
+        // deno-lint-ignore no-console
+        console.log = (...args) => {
+          return origLog(prefix, ...new primordials.SafeArrayIterator(args));
+        };
+        // deno-lint-ignore no-console
+        console.error = (...args) => {
+          return origError(prefix, ...new primordials.SafeArrayIterator(args));
+        };
+      }
+    }
 
     if (mode === executionModes.run || mode === executionModes.serve) {
       let serve = undefined;
@@ -733,18 +633,23 @@ function bootstrapMainRuntime(runtimeOptions, warmup = false) {
         }
 
         if (mode === executionModes.serve && !serve) {
-          console.error(
-            `%cerror: %cdeno serve requires %cexport default { fetch }%c in the main module, did you mean to run \"deno run\"?`,
-            "color: yellow;",
-            "color: inherit;",
-            "font-weight: bold;",
-            "font-weight: normal;",
-          );
+          if (serveIsMain) {
+            // Only error if main worker
+            // deno-lint-ignore no-console
+            console.error(
+              `%cerror: %cdeno serve requires %cexport default { fetch }%c in the main module, did you mean to run \"deno run\"?`,
+              "color: yellow;",
+              "color: inherit;",
+              "font-weight: bold;",
+              "font-weight: normal;",
+            );
+          }
           return;
         }
 
         if (serve) {
           if (mode === executionModes.run) {
+            // deno-lint-ignore no-console
             console.error(
               `%cwarning: %cDetected %cexport default { fetch }%c, did you mean to run \"deno serve\"?`,
               "color: yellow;",
@@ -754,7 +659,7 @@ function bootstrapMainRuntime(runtimeOptions, warmup = false) {
             );
           }
           if (mode === executionModes.serve) {
-            serve({ servePort, serveHost });
+            serve({ servePort, serveHost, serveIsMain, serveWorkerCount });
           }
         }
       });
@@ -767,8 +672,6 @@ function bootstrapMainRuntime(runtimeOptions, warmup = false) {
 
     removeImportedOps();
 
-    deprecatedApiWarningDisabled = shouldDisableDeprecatedApiWarning;
-    verboseDeprecatedApiWarning = shouldUseVerboseDeprecatedApiWarning;
     performance.setTimeOrigin(DateNow());
     globalThis_ = globalThis;
 
@@ -857,6 +760,30 @@ function bootstrapMainRuntime(runtimeOptions, warmup = false) {
       // Removes the `Temporal` API.
       delete globalThis.Temporal;
       delete globalThis.Date.prototype.toTemporalInstant;
+    } else {
+      // Removes the obsoleted `Temporal` API.
+      // https://github.com/tc39/proposal-temporal/pull/2895
+      // https://github.com/tc39/proposal-temporal/pull/2914
+      if (typeof Temporal.Instant.fromEpochSeconds === "undefined") {
+        throw "V8 removes obsoleted Temporal API now, no need to delete them!";
+      }
+      delete Temporal.Instant.fromEpochSeconds;
+      delete Temporal.Instant.fromEpochMicroseconds;
+      delete Temporal.Instant.prototype.epochSeconds;
+      delete Temporal.Instant.prototype.epochMicroseconds;
+      delete Temporal.PlainDateTime.prototype.withPlainDate;
+      delete Temporal.PlainDateTime.prototype.toPlainYearMonth;
+      delete Temporal.PlainDateTime.prototype.toPlainMonthDay;
+      delete Temporal.PlainTime.prototype.toPlainDateTime;
+      delete Temporal.PlainTime.prototype.toZonedDateTime;
+      delete Temporal.TimeZone.prototype.getNextTransition;
+      delete Temporal.TimeZone.prototype.getPreviousTransition;
+      delete Temporal.ZonedDateTime.prototype.withPlainDate;
+      delete Temporal.ZonedDateTime.prototype.toPlainYearMonth;
+      delete Temporal.ZonedDateTime.prototype.toPlainMonthDay;
+      delete Temporal.Now.zonedDateTime;
+      delete Temporal.Now.plainDateTime;
+      delete Temporal.Now.plainDate;
     }
 
     // Setup `Deno` global - we're actually overriding already existing global
@@ -874,33 +801,12 @@ function bootstrapMainRuntime(runtimeOptions, warmup = false) {
     if (future) {
       delete globalThis.window;
       delete Deno.Buffer;
-      delete Deno.close;
-      delete Deno.copy;
       delete Deno.File;
-      delete Deno.fstat;
-      delete Deno.fstatSync;
-      delete Deno.ftruncate;
-      delete Deno.ftruncateSync;
-      delete Deno.flock;
-      delete Deno.flockSync;
       delete Deno.FsFile.prototype.rid;
       delete Deno.funlock;
       delete Deno.funlockSync;
-      delete Deno.iter;
-      delete Deno.iterSync;
-      delete Deno.metrics;
-      delete Deno.readAll;
-      delete Deno.readAllSync;
-      delete Deno.read;
-      delete Deno.readSync;
-      delete Deno.resources;
       delete Deno.seek;
       delete Deno.seekSync;
-      delete Deno.shutdown;
-      delete Deno.writeAll;
-      delete Deno.writeAllSync;
-      delete Deno.write;
-      delete Deno.writeSync;
     }
   } else {
     // Warmup
@@ -921,16 +827,15 @@ function bootstrapWorkerRuntime(
     }
 
     const {
-      0: location_,
-      1: unstableFlag,
-      2: unstableFeatures,
-      4: enableTestingFeaturesFlag,
-      5: hasNodeModulesDir,
-      6: argv0,
-      7: nodeDebug,
-      8: shouldDisableDeprecatedApiWarning,
-      9: shouldUseVerboseDeprecatedApiWarning,
-      10: future,
+      0: denoVersion,
+      1: location_,
+      2: unstableFlag,
+      3: unstableFeatures,
+      5: enableTestingFeaturesFlag,
+      6: hasNodeModulesDir,
+      7: argv0,
+      8: nodeDebug,
+      9: future,
     } = runtimeOptions;
 
     // TODO(iuioiua): remove in Deno v2. This allows us to dynamically delete
@@ -938,8 +843,6 @@ function bootstrapWorkerRuntime(
     // within the Deno namespace.
     internals.future = future;
 
-    deprecatedApiWarningDisabled = shouldDisableDeprecatedApiWarning;
-    verboseDeprecatedApiWarning = shouldUseVerboseDeprecatedApiWarning;
     performance.setTimeOrigin(DateNow());
     globalThis_ = globalThis;
 
@@ -1016,6 +919,30 @@ function bootstrapWorkerRuntime(
       // Removes the `Temporal` API.
       delete globalThis.Temporal;
       delete globalThis.Date.prototype.toTemporalInstant;
+    } else {
+      // Removes the obsoleted `Temporal` API.
+      // https://github.com/tc39/proposal-temporal/pull/2895
+      // https://github.com/tc39/proposal-temporal/pull/2914
+      if (typeof Temporal.Instant.fromEpochSeconds === "undefined") {
+        throw "V8 removes obsoleted Temporal API now, no need to delete them!";
+      }
+      delete Temporal.Instant.fromEpochSeconds;
+      delete Temporal.Instant.fromEpochMicroseconds;
+      delete Temporal.Instant.prototype.epochSeconds;
+      delete Temporal.Instant.prototype.epochMicroseconds;
+      delete Temporal.PlainDateTime.prototype.withPlainDate;
+      delete Temporal.PlainDateTime.prototype.toPlainYearMonth;
+      delete Temporal.PlainDateTime.prototype.toPlainMonthDay;
+      delete Temporal.PlainTime.prototype.toPlainDateTime;
+      delete Temporal.PlainTime.prototype.toZonedDateTime;
+      delete Temporal.TimeZone.prototype.getNextTransition;
+      delete Temporal.TimeZone.prototype.getPreviousTransition;
+      delete Temporal.ZonedDateTime.prototype.withPlainDate;
+      delete Temporal.ZonedDateTime.prototype.toPlainYearMonth;
+      delete Temporal.ZonedDateTime.prototype.toPlainMonthDay;
+      delete Temporal.Now.zonedDateTime;
+      delete Temporal.Now.plainDateTime;
+      delete Temporal.Now.plainDate;
     }
 
     // Setup `Deno` global - we're actually overriding already existing global
@@ -1039,33 +966,12 @@ function bootstrapWorkerRuntime(
 
     if (future) {
       delete Deno.Buffer;
-      delete Deno.close;
-      delete Deno.copy;
       delete Deno.File;
-      delete Deno.fstat;
-      delete Deno.fstatSync;
-      delete Deno.ftruncate;
-      delete Deno.ftruncateSync;
-      delete Deno.flock;
-      delete Deno.flockSync;
       delete Deno.FsFile.prototype.rid;
       delete Deno.funlock;
       delete Deno.funlockSync;
-      delete Deno.iter;
-      delete Deno.iterSync;
-      delete Deno.metrics;
-      delete Deno.readAll;
-      delete Deno.readAllSync;
-      delete Deno.read;
-      delete Deno.readSync;
-      delete Deno.resources;
       delete Deno.seek;
       delete Deno.seekSync;
-      delete Deno.shutdown;
-      delete Deno.writeAll;
-      delete Deno.writeAllSync;
-      delete Deno.write;
-      delete Deno.writeSync;
     }
   } else {
     // Warmup

@@ -323,6 +323,8 @@ class WebSocketStream {
                   } catch (_) {
                     // needed to ignore warnings & assertions
                   }
+                }, () => {
+                  // needed to ignore warnings & assertions
                 });
 
                 PromisePrototypeThen(this[_closeSent].promise, () => {
@@ -335,7 +337,6 @@ class WebSocketStream {
               cancel: async (reason) => {
                 let closeCode = null;
                 let reasonString = "";
-
                 if (
                   ObjectPrototypeIsPrototypeOf(WebSocketErrorPrototype, reason)
                 ) {
@@ -474,7 +475,7 @@ class WebSocketError extends DOMException {
   #closeCode;
   #reason;
 
-  constructor(message = "", init = {}) {
+  constructor(message = "", init = { __proto__: null }) {
     super(message, "WebSocketError");
     this[webidl.brand] = webidl.brand;
 

@@ -21,7 +21,6 @@ use lsp_types::FoldingRangeClientCapabilities;
 use lsp_types::InitializeParams;
 use lsp_types::TextDocumentClientCapabilities;
 use lsp_types::TextDocumentSyncClientCapabilities;
-use lsp_types::Url;
 use lsp_types::WorkspaceClientCapabilities;
 use once_cell::sync::Lazy;
 use parking_lot::Condvar;
@@ -47,10 +46,12 @@ use std::process::ChildStdin;
 use std::process::ChildStdout;
 use std::process::Command;
 use std::process::Stdio;
+use std::str::FromStr;
 use std::sync::mpsc;
 use std::sync::Arc;
 use std::time::Duration;
 use std::time::Instant;
+use url::Url;
 
 static CONTENT_TYPE_REG: Lazy<Regex> =
   lazy_regex::lazy_regex!(r"(?i)^content-length:\s+(\d+)");
@@ -234,7 +235,6 @@ impl InitializeParamsBuilder {
           name: "test-harness".to_string(),
           version: Some("1.0.0".to_string()),
         }),
-        root_uri: None,
         initialization_options: Some(config_as_options),
         capabilities: ClientCapabilities {
           text_document: Some(TextDocumentClientCapabilities {
@@ -289,8 +289,10 @@ impl InitializeParamsBuilder {
     }
   }
 
+  #[allow(deprecated)]
   pub fn set_maybe_root_uri(&mut self, value: Option<Url>) -> &mut Self {
-    self.params.root_uri = value;
+    self.params.root_uri =
+      value.map(|v| lsp::Uri::from_str(v.as_str()).unwrap());
     self
   }
 
@@ -871,7 +873,7 @@ impl LspClient {
     mut config: Value,
   ) {
     let mut builder = InitializeParamsBuilder::new(config.clone());
-    builder.set_root_uri(self.root_dir.uri_dir());
+    builder.set_root_uri(self.root_dir.url_dir());
     do_build(&mut builder);
     let params: InitializeParams = builder.build();
     // `config` must be updated to account for the builder changes.
@@ -1230,6 +1232,16 @@ impl CollectedDiagnostics {
       .collect()
   }
 
+  pub fn for_file(&self, specifier: &Url) -> Vec<lsp::Diagnostic> {
+    self
+      .all_messages()
+      .iter()
+      .filter(|p| p.uri.as_str() == specifier.as_str())
+      .flat_map(|p| p.diagnostics.iter())
+      .cloned()
+      .collect()
+  }
+
   /// Gets the messages that the editor will see after all the publishes.
   pub fn all_messages(&self) -> Vec<lsp::PublishDiagnosticsParams> {
     self.0.clone()
@@ -1245,7 +1257,7 @@ impl CollectedDiagnostics {
       .find(|p| {
         p.diagnostics
           .iter()
-          .any(|d| d.source == Some(source.to_string()))
+          .any(|d| d.source.as_deref() == Some(source))
       })
       .map(ToOwned::to_owned)
       .unwrap()
@@ -1262,7 +1274,7 @@ impl CollectedDiagnostics {
       .all_messages()
       .iter()
       .find(|p| {
-        p.uri == specifier
+        p.uri.as_str() == specifier.as_str()
           && p
             .diagnostics
             .iter()
@@ -1291,7 +1303,13 @@ impl SourceFile {
     let lang = match path.as_path().extension().unwrap().to_str().unwrap() {
       "js" => "javascript",
       "ts" | "d.ts" => "typescript",
+      "jsx" => "javascriptreact",
+      "tsx" => "typescriptreact",
       "json" => "json",
+      "md" => "markdown",
+      "html" => "html",
+      "css" => "css",
+      "yaml" => "yaml",
       other => panic!("unsupported file extension: {other}"),
     };
     Self {
@@ -1310,7 +1328,11 @@ impl SourceFile {
     range_of_nth(n, text, &self.src)
   }
 
-  pub fn uri(&self) -> lsp::Url {
+  pub fn url(&self) -> Url {
+    self.path.url_file()
+  }
+
+  pub fn uri(&self) -> lsp::Uri {
     self.path.uri_file()
   }
 

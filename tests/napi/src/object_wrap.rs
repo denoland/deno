@@ -5,18 +5,46 @@ use crate::napi_get_callback_info;
 use crate::napi_new_property;
 use napi_sys::ValueType::napi_number;
 use napi_sys::*;
+use std::cell::RefCell;
+use std::collections::HashMap;
 use std::os::raw::c_char;
 use std::os::raw::c_void;
 use std::ptr;
 
 pub struct NapiObject {
   counter: i32,
-  _wrapper: napi_ref,
+}
+
+thread_local! {
+  // map from native object ptr to napi reference (this is similar to what napi-rs does)
+  static REFS: RefCell<HashMap<*mut c_void, napi_ref>> = RefCell::new(HashMap::new());
+}
+
+pub extern "C" fn finalize_napi_object(
+  env: napi_env,
+  finalize_data: *mut c_void,
+  _finalize_hint: *mut c_void,
+) {
+  let obj = unsafe { Box::from_raw(finalize_data as *mut NapiObject) };
+  drop(obj);
+  if let Some(reference) =
+    REFS.with_borrow_mut(|map| map.remove(&finalize_data))
+  {
+    unsafe { napi_delete_reference(env, reference) };
+  }
 }
 
 impl NapiObject {
-  #[allow(clippy::new_ret_no_self)]
-  pub extern "C" fn new(env: napi_env, info: napi_callback_info) -> napi_value {
+  fn new_inner(
+    env: napi_env,
+    info: napi_callback_info,
+    finalizer: napi_finalize,
+    out_ptr: Option<*mut napi_ref>,
+  ) -> napi_value {
+    assert!(matches!(
+      (finalizer, out_ptr),
+      (None, None) | (Some(_), Some(_))
+    ));
     let mut new_target: napi_value = ptr::null_mut();
     assert_napi_ok!(napi_get_new_target(env, info, &mut new_target));
     let is_constructor = !new_target.is_null();
@@ -33,24 +61,41 @@ impl NapiObject {
 
       assert_napi_ok!(napi_get_value_int32(env, args[0], &mut value));
 
-      let mut wrapper: napi_ref = ptr::null_mut();
-      let obj = Box::new(Self {
-        counter: value,
-        _wrapper: wrapper,
-      });
+      let obj = Box::new(Self { counter: value });
+      let obj_raw = Box::into_raw(obj) as *mut c_void;
       assert_napi_ok!(napi_wrap(
         env,
         this,
-        Box::into_raw(obj) as *mut c_void,
-        None,
+        obj_raw,
+        finalizer,
         ptr::null_mut(),
-        &mut wrapper,
+        out_ptr.unwrap_or(ptr::null_mut())
       ));
+
+      if let Some(p) = out_ptr {
+        if finalizer.is_some() {
+          REFS.with_borrow_mut(|map| map.insert(obj_raw, unsafe { p.read() }));
+        }
+      }
 
       return this;
     }
 
     unreachable!();
+  }
+
+  #[allow(clippy::new_ret_no_self)]
+  pub extern "C" fn new(env: napi_env, info: napi_callback_info) -> napi_value {
+    Self::new_inner(env, info, None, None)
+  }
+
+  #[allow(clippy::new_ret_no_self)]
+  pub extern "C" fn new_with_finalizer(
+    env: napi_env,
+    info: napi_callback_info,
+  ) -> napi_value {
+    let mut out = ptr::null_mut();
+    Self::new_inner(env, info, Some(finalize_napi_object), Some(&mut out))
   }
 
   pub extern "C" fn set_value(
@@ -151,6 +196,25 @@ pub fn init(env: napi_env, exports: napi_value) {
     env,
     exports,
     "NapiObject\0".as_ptr() as *const c_char,
+    cons,
+  ));
+
+  let mut cons: napi_value = ptr::null_mut();
+  assert_napi_ok!(napi_define_class(
+    env,
+    c"NapiObjectOwned".as_ptr(),
+    usize::MAX,
+    Some(NapiObject::new_with_finalizer),
+    ptr::null_mut(),
+    properties.len(),
+    properties.as_ptr(),
+    &mut cons,
+  ));
+
+  assert_napi_ok!(napi_set_named_property(
+    env,
+    exports,
+    "NapiObjectOwned\0".as_ptr() as *const c_char,
     cons,
   ));
 }

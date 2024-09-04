@@ -13,9 +13,6 @@ use deno_core::op2;
 use deno_core::url::Url;
 use deno_core::v8;
 use deno_core::ByteString;
-use deno_core::OpState;
-use deno_core::Resource;
-use deno_core::ResourceId;
 use deno_core::ToJsBuffer;
 use deno_core::U16String;
 
@@ -28,7 +25,6 @@ use std::cell::RefCell;
 use std::fmt;
 use std::path::PathBuf;
 use std::sync::Arc;
-use std::usize;
 
 use crate::blob::op_blob_create_object_url;
 use crate::blob::op_blob_create_part;
@@ -88,7 +84,6 @@ deno_core::extension!(deno_web,
     compression::op_compression_finish,
     op_now<P>,
     op_defer,
-    op_transfer_arraybuffer,
     stream_resource::op_readable_stream_resource_allocate,
     stream_resource::op_readable_stream_resource_allocate_sized,
     stream_resource::op_readable_stream_resource_get_sink,
@@ -279,14 +274,13 @@ fn op_encoding_decode_single(
   }
 }
 
-#[op2(fast)]
-#[smi]
+#[op2]
+#[cppgc]
 fn op_encoding_new_decoder(
-  state: &mut OpState,
   #[string] label: &str,
   fatal: bool,
   ignore_bom: bool,
-) -> Result<ResourceId, AnyError> {
+) -> Result<TextDecoderResource, AnyError> {
   let encoding = Encoding::for_label(label.as_bytes()).ok_or_else(|| {
     range_error(format!(
       "The encoding label provided ('{label}') is invalid."
@@ -299,24 +293,19 @@ fn op_encoding_new_decoder(
     encoding.new_decoder_with_bom_removal()
   };
 
-  let rid = state.resource_table.add(TextDecoderResource {
+  Ok(TextDecoderResource {
     decoder: RefCell::new(decoder),
     fatal,
-  });
-
-  Ok(rid)
+  })
 }
 
 #[op2]
 #[serde]
 fn op_encoding_decode(
-  state: &mut OpState,
   #[anybuffer] data: &[u8],
-  #[smi] rid: ResourceId,
+  #[cppgc] resource: &TextDecoderResource,
   stream: bool,
 ) -> Result<U16String, AnyError> {
-  let resource = state.resource_table.get::<TextDecoderResource>(rid)?;
-
   let mut decoder = resource.decoder.borrow_mut();
   let fatal = resource.fatal;
 
@@ -359,11 +348,7 @@ struct TextDecoderResource {
   fatal: bool,
 }
 
-impl Resource for TextDecoderResource {
-  fn name(&self) -> Cow<str> {
-    "textDecoder".into()
-  }
-}
+impl deno_core::GarbageCollected for TextDecoderResource {}
 
 #[op2(fast(op_encoding_encode_into_fast))]
 fn op_encoding_encode_into(
@@ -423,19 +408,6 @@ fn op_encoding_encode_into_fast(
     Cow::Owned(v) => v[..boundary].encode_utf16().count() as u32,
   };
   out_buf[1] = boundary as u32;
-}
-
-#[op2]
-fn op_transfer_arraybuffer<'a>(
-  scope: &mut v8::HandleScope<'a>,
-  ab: &v8::ArrayBuffer,
-) -> Result<v8::Local<'a, v8::ArrayBuffer>, AnyError> {
-  if !ab.is_detachable() {
-    return Err(type_error("ArrayBuffer is not detachable"));
-  }
-  let bs = ab.get_backing_store();
-  ab.detach(None);
-  Ok(v8::ArrayBuffer::with_backing_store(scope, &bs))
 }
 
 pub fn get_declaration() -> PathBuf {

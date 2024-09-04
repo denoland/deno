@@ -12,9 +12,12 @@ use crate::lsp::client::Client;
 use crate::lsp::client::TestingNotification;
 use crate::lsp::config;
 use crate::lsp::logging::lsp_log;
+use crate::lsp::urls::uri_to_url;
+use crate::lsp::urls::url_to_uri;
 use crate::tools::test;
 use crate::tools::test::create_test_event_channel;
 use crate::tools::test::FailFastTracker;
+use crate::tools::test::TestFailureFormatOptions;
 
 use deno_core::anyhow::anyhow;
 use deno_core::error::AnyError;
@@ -26,12 +29,14 @@ use deno_core::parking_lot::RwLock;
 use deno_core::unsync::spawn;
 use deno_core::unsync::spawn_blocking;
 use deno_core::ModuleSpecifier;
-use deno_runtime::permissions::Permissions;
+use deno_runtime::deno_permissions::Permissions;
 use deno_runtime::tokio_util::create_and_run_current_thread;
 use indexmap::IndexMap;
+use lsp_types::Uri;
 use std::collections::HashMap;
 use std::collections::HashSet;
 use std::num::NonZeroUsize;
+use std::str::FromStr;
 use std::sync::Arc;
 use std::time::Duration;
 use std::time::Instant;
@@ -52,12 +57,12 @@ fn as_queue_and_filters(
 
   if let Some(include) = &params.include {
     for item in include {
-      if let Some((test_definitions, _)) = tests.get(&item.text_document.uri) {
-        queue.insert(item.text_document.uri.clone());
+      let url = uri_to_url(&item.text_document.uri);
+      if let Some((test_definitions, _)) = tests.get(&url) {
+        queue.insert(url.clone());
         if let Some(id) = &item.id {
           if let Some(test) = test_definitions.get(id) {
-            let filter =
-              filters.entry(item.text_document.uri.clone()).or_default();
+            let filter = filters.entry(url).or_default();
             if let Some(include) = filter.include.as_mut() {
               include.insert(test.id.clone(), test.clone());
             } else {
@@ -74,19 +79,19 @@ fn as_queue_and_filters(
   }
 
   for item in &params.exclude {
-    if let Some((test_definitions, _)) = tests.get(&item.text_document.uri) {
+    let url = uri_to_url(&item.text_document.uri);
+    if let Some((test_definitions, _)) = tests.get(&url) {
       if let Some(id) = &item.id {
         // there is no way to exclude a test step
         if item.step_id.is_none() {
           if let Some(test) = test_definitions.get(id) {
-            let filter =
-              filters.entry(item.text_document.uri.clone()).or_default();
+            let filter = filters.entry(url.clone()).or_default();
             filter.exclude.insert(test.id.clone(), test.clone());
           }
         }
       } else {
         // the entire test module is excluded
-        queue.remove(&item.text_document.uri);
+        queue.remove(&url);
       }
     }
   }
@@ -181,7 +186,7 @@ impl TestRun {
     self
       .queue
       .iter()
-      .map(|s| {
+      .filter_map(|s| {
         let ids = if let Some((test_module, _)) = tests.get(s) {
           if let Some(filter) = self.filters.get(s) {
             filter.as_ids(test_module)
@@ -191,10 +196,12 @@ impl TestRun {
         } else {
           Vec::new()
         };
-        lsp_custom::EnqueuedTestModule {
-          text_document: lsp::TextDocumentIdentifier { uri: s.clone() },
+        Some(lsp_custom::EnqueuedTestModule {
+          text_document: lsp::TextDocumentIdentifier {
+            uri: url_to_uri(s).ok()?,
+          },
           ids,
-        }
+        })
       })
       .collect()
   }
@@ -212,13 +219,15 @@ impl TestRun {
   ) -> Result<(), AnyError> {
     let args = self.get_args();
     lsp_log!("Executing test run with arguments: {}", args.join(" "));
-    let flags = flags_from_vec(args.into_iter().map(From::from).collect())?;
-    let factory = CliFactory::from_flags(flags)?;
+    let flags =
+      Arc::new(flags_from_vec(args.into_iter().map(From::from).collect())?);
+    let factory = CliFactory::from_flags(flags);
+    let cli_options = factory.cli_options()?;
     // Various test files should not share the same permissions in terms of
     // `PermissionsContainer` - otherwise granting/revoking permissions in one
     // file would have impact on other files, which is undesirable.
     let permissions =
-      Permissions::from_options(&factory.cli_options().permissions_options()?)?;
+      Permissions::from_options(&cli_options.permissions_options()?)?;
     let main_graph_container = factory.main_module_graph_container().await?;
     test::check_specifiers(
       factory.file_fetcher()?,
@@ -231,19 +240,18 @@ impl TestRun {
     )
     .await?;
 
-    let (concurrent_jobs, fail_fast) = if let DenoSubcommand::Test(test_flags) =
-      factory.cli_options().sub_command()
-    {
-      (
-        test_flags
-          .concurrent_jobs
-          .unwrap_or_else(|| NonZeroUsize::new(1).unwrap())
-          .into(),
-        test_flags.fail_fast,
-      )
-    } else {
-      unreachable!("Should always be Test subcommand.");
-    };
+    let (concurrent_jobs, fail_fast) =
+      if let DenoSubcommand::Test(test_flags) = cli_options.sub_command() {
+        (
+          test_flags
+            .concurrent_jobs
+            .unwrap_or_else(|| NonZeroUsize::new(1).unwrap())
+            .into(),
+          test_flags.fail_fast,
+        )
+      } else {
+        unreachable!("Should always be Test subcommand.");
+      };
 
     // TODO(mmastrac): Temporarily limit concurrency in windows testing to avoid named pipe issue:
     // *** Unexpected server pipe failure '"\\\\.\\pipe\\deno_pipe_e30f45c9df61b1e4.1198.222\\0"': 3
@@ -350,8 +358,11 @@ impl TestRun {
             test::TestEvent::Wait(id) => {
               reporter.report_wait(tests.read().get(&id).unwrap());
             }
-            test::TestEvent::Output(_, output) => {
+            test::TestEvent::Output(output) => {
               reporter.report_output(&output);
+            }
+            test::TestEvent::Slow(id, elapsed) => {
+              reporter.report_slow(tests.read().get(&id).unwrap(), elapsed);
             }
             test::TestEvent::Result(id, result, elapsed) => {
               if tests_with_result.insert(id) {
@@ -518,7 +529,7 @@ impl LspTestDescription {
     &self,
     tests: &IndexMap<usize, LspTestDescription>,
   ) -> lsp_custom::TestIdentifier {
-    let uri = ModuleSpecifier::parse(&self.location().file_name).unwrap();
+    let uri = Uri::from_str(&self.location().file_name).unwrap();
     let static_id = self.static_id();
     let mut root_desc = self;
     while let Some(parent_id) = root_desc.parent_id() {
@@ -582,6 +593,9 @@ impl LspTestReporter {
     let (test_module, _) = files
       .entry(specifier.clone())
       .or_insert_with(|| (TestModule::new(specifier), "1".to_string()));
+    let Ok(uri) = url_to_uri(&test_module.specifier) else {
+      return;
+    };
     let (static_id, is_new) = test_module.register_dynamic(desc);
     self.tests.insert(
       desc.id,
@@ -592,9 +606,7 @@ impl LspTestReporter {
         .client
         .send_test_notification(TestingNotification::Module(
           lsp_custom::TestModuleNotificationParams {
-            text_document: lsp::TextDocumentIdentifier {
-              uri: test_module.specifier.clone(),
-            },
+            text_document: lsp::TextDocumentIdentifier { uri },
             kind: lsp_custom::TestModuleNotificationKind::Insert,
             label: test_module.label(self.maybe_root_uri.as_ref()),
             tests: vec![test_module.get_test_data(&static_id)],
@@ -609,6 +621,8 @@ impl LspTestReporter {
     let test = desc.as_test_identifier(&self.tests);
     self.progress(lsp_custom::TestRunProgressMessage::Started { test });
   }
+
+  fn report_slow(&mut self, _desc: &test::TestDescription, _elapsed: u64) {}
 
   fn report_output(&mut self, output: &[u8]) {
     let test = self
@@ -649,7 +663,10 @@ impl LspTestReporter {
         let desc = self.tests.get(&desc.id).unwrap();
         self.progress(lsp_custom::TestRunProgressMessage::Failed {
           test: desc.as_test_identifier(&self.tests),
-          messages: as_test_messages(failure.to_string(), false),
+          messages: as_test_messages(
+            failure.format(&TestFailureFormatOptions::default()),
+            false,
+          ),
           duration: Some(elapsed as u32),
         })
       }
@@ -669,7 +686,7 @@ impl LspTestReporter {
     let err_string = format!(
       "Uncaught error from {}: {}\nThis error was not caught from a test and caused the test runner to fail on the referenced module.\nIt most likely originated from a dangling promise, event/timeout handler or top-level code.",
       origin,
-      test::fmt::format_test_error(js_error)
+      test::fmt::format_test_error(js_error, &TestFailureFormatOptions::default())
     );
     let messages = as_test_messages(err_string, false);
     for desc in self.tests.values().filter(|d| d.origin() == origin) {
@@ -687,6 +704,9 @@ impl LspTestReporter {
     let (test_module, _) = files
       .entry(specifier.clone())
       .or_insert_with(|| (TestModule::new(specifier), "1".to_string()));
+    let Ok(uri) = url_to_uri(&test_module.specifier) else {
+      return;
+    };
     let (static_id, is_new) = test_module.register_step_dynamic(
       desc,
       self.tests.get(&desc.parent_id).unwrap().static_id(),
@@ -700,9 +720,7 @@ impl LspTestReporter {
         .client
         .send_test_notification(TestingNotification::Module(
           lsp_custom::TestModuleNotificationParams {
-            text_document: lsp::TextDocumentIdentifier {
-              uri: test_module.specifier.clone(),
-            },
+            text_document: lsp::TextDocumentIdentifier { uri },
             kind: lsp_custom::TestModuleNotificationKind::Insert,
             label: test_module.label(self.maybe_root_uri.as_ref()),
             tests: vec![test_module.get_test_data(&static_id)],
@@ -745,7 +763,10 @@ impl LspTestReporter {
       test::TestStepResult::Failed(failure) => {
         self.progress(lsp_custom::TestRunProgressMessage::Failed {
           test: desc.as_test_identifier(&self.tests),
-          messages: as_test_messages(failure.to_string(), false),
+          messages: as_test_messages(
+            failure.format(&TestFailureFormatOptions::default()),
+            false,
+          ),
           duration: Some(elapsed as u32),
         })
       }
@@ -783,14 +804,14 @@ mod tests {
       include: Some(vec![
         lsp_custom::TestIdentifier {
           text_document: lsp::TextDocumentIdentifier {
-            uri: specifier.clone(),
+            uri: url_to_uri(&specifier).unwrap(),
           },
           id: None,
           step_id: None,
         },
         lsp_custom::TestIdentifier {
           text_document: lsp::TextDocumentIdentifier {
-            uri: non_test_specifier.clone(),
+            uri: url_to_uri(&non_test_specifier).unwrap(),
           },
           id: None,
           step_id: None,
@@ -798,7 +819,7 @@ mod tests {
       ]),
       exclude: vec![lsp_custom::TestIdentifier {
         text_document: lsp::TextDocumentIdentifier {
-          uri: specifier.clone(),
+          uri: url_to_uri(&specifier).unwrap(),
         },
         id: Some(
           "69d9fe87f64f5b66cb8b631d4fd2064e8224b8715a049be54276c42189ff8f9f"

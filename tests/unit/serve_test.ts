@@ -1,7 +1,9 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
-import { assertMatch, assertRejects } from "@std/assert/mod.ts";
-import { Buffer, BufReader, BufWriter } from "@std/io/mod.ts";
+// deno-lint-ignore-file no-console
+
+import { assertMatch, assertRejects } from "@std/assert";
+import { Buffer, BufReader, BufWriter } from "@std/io";
 import { TextProtoReader } from "../testdata/run/textproto.ts";
 import {
   assert,
@@ -10,13 +12,15 @@ import {
   assertThrows,
   curlRequest,
   curlRequestWithStdErr,
+  DENO_FUTURE,
   execCode,
+  execCode3,
   fail,
   tmpUnixSocketPath,
 } from "./test_util.ts";
 
 // Since these tests may run in parallel, ensure this port is unique to this file
-const servePort = 4502;
+const servePort = DENO_FUTURE ? 4511 : 4502;
 
 const {
   upgradeHttpRaw,
@@ -340,7 +344,7 @@ Deno.test(
       });
 
       const resp = await fetch(`http://localhost:${servePort}`);
-      dataPromise = resp.arrayBuffer();
+      dataPromise = resp.bytes();
     }
 
     assertEquals((await dataPromise).byteLength, 1048576);
@@ -358,7 +362,7 @@ Deno.test(
 
     const [_, data] = await Promise.all([
       server.shutdown(),
-      resp.arrayBuffer(),
+      resp.bytes(),
     ]);
 
     assertEquals(data.byteLength, 1048576);
@@ -630,6 +634,51 @@ Deno.test(
   },
 );
 
+Deno.test(
+  { permissions: { net: true } },
+  async function httpServerMultipleResponseBodyConsume() {
+    const ac = new AbortController();
+    const { promise, resolve } = Promise.withResolvers<void>();
+    const response = new Response("Hello World");
+    let hadError = false;
+    const server = Deno.serve({
+      handler: () => {
+        return response;
+      },
+      port: servePort,
+      signal: ac.signal,
+      onListen: onListen(resolve),
+      onError: () => {
+        hadError = true;
+        return new Response("Internal Server Error", { status: 500 });
+      },
+    });
+
+    await promise;
+    assert(!response.bodyUsed);
+
+    const resp = await fetch(`http://127.0.0.1:${servePort}/`, {
+      headers: { "connection": "close" },
+    });
+    assertEquals(resp.status, 200);
+    const text = await resp.text();
+    assertEquals(text, "Hello World");
+    assert(response.bodyUsed);
+
+    const resp2 = await fetch(`http://127.0.0.1:${servePort}/`, {
+      headers: { "connection": "close" },
+    });
+    assertEquals(resp2.status, 500);
+    const text2 = await resp2.text();
+    assertEquals(text2, "Internal Server Error");
+    assert(hadError);
+    assert(response.bodyUsed);
+
+    ac.abort();
+    await server.finished;
+  },
+);
+
 Deno.test({ permissions: { net: true } }, async function httpServerOverload1() {
   const ac = new AbortController();
   const deferred = Promise.withResolvers<void>();
@@ -747,9 +796,11 @@ Deno.test(
     const consoleLog = console.log;
     console.log = (msg) => {
       try {
-        const match = msg.match(/Listening on http:\/\/localhost:(\d+)\//);
+        const match = msg.match(
+          /Listening on http:\/\/(localhost|0\.0\.0\.0):(\d+)\//,
+        );
         assert(!!match, `Didn't match ${msg}`);
-        const port = +match[1];
+        const port = +match[2];
         assert(port > 0 && port < 65536);
       } finally {
         ac.abort();
@@ -810,6 +861,88 @@ Deno.test(
     await server.finished;
   },
 );
+
+Deno.test({ permissions: { net: true } }, async function validPortString() {
+  const server = Deno.serve({
+    handler: (_request) => new Response(),
+    port: "4501" as unknown as number,
+  });
+  assertEquals(server.addr.transport, "tcp");
+  assertEquals(server.addr.port, 4501);
+  await server.shutdown();
+});
+
+Deno.test({ permissions: { net: true } }, function invalidPortFloat() {
+  assertThrows(
+    () =>
+      Deno.serve({
+        handler: (_request) => new Response(),
+        port: 45.1,
+      }),
+    TypeError,
+    `Invalid port: 45.1`,
+  );
+});
+
+Deno.test({ permissions: { net: true } }, function invalidPortNaN() {
+  assertThrows(
+    () =>
+      Deno.serve({
+        handler: (_request) => new Response(),
+        port: NaN,
+      }),
+    TypeError,
+    `Invalid port: NaN`,
+  );
+});
+
+Deno.test({ permissions: { net: true } }, function invalidPortString() {
+  assertThrows(
+    () =>
+      Deno.serve({
+        handler: (_request) => new Response(),
+        port: "some-non-number-string" as unknown as number,
+      }),
+    TypeError,
+    `Invalid port: 'some-non-number-string'`,
+  );
+});
+
+Deno.test({ permissions: { net: true } }, function invalidPortTooSmall() {
+  assertThrows(
+    () =>
+      Deno.serve({
+        handler: (_request) => new Response(),
+        port: -111,
+      }),
+    RangeError,
+    `Invalid port (out of range): -111`,
+  );
+});
+
+Deno.test({ permissions: { net: true } }, function invalidPortTooLarge() {
+  assertThrows(
+    () =>
+      Deno.serve({
+        handler: (_request) => new Response(),
+        port: 100000,
+      }),
+    RangeError,
+    `Invalid port (out of range): 100000`,
+  );
+});
+
+Deno.test({ permissions: { net: true } }, function invalidPortType() {
+  assertThrows(
+    () =>
+      Deno.serve({
+        handler: (_request) => new Response(),
+        port: true as unknown as number,
+      }),
+    TypeError,
+    `Invalid port (expected number): true`,
+  );
+});
 
 function createUrlTest(
   name: string,
@@ -1861,13 +1994,12 @@ Deno.test(
       signal: ac.signal,
     });
     const response = await fetch(`http://localhost:${servePort}/`);
-    const body = await response.arrayBuffer();
+    const body = await response.bytes();
     assertEquals(1024 * 1024, body.byteLength);
-    const buffer = new Uint8Array(body);
     for (let i = 0; i < 256; i++) {
       assertEquals(
         i,
-        buffer[i * 4096],
+        body[i * 4096],
         `sentinel mismatch at index ${i * 4096}`,
       );
     }
@@ -2078,8 +2210,8 @@ Deno.test(
     await deferred.promise;
 
     assertEquals(resp.status, 200);
-    const body = await resp.arrayBuffer();
-    assertEquals(new Uint8Array(body), new Uint8Array([128]));
+    const body = await resp.bytes();
+    assertEquals(body, new Uint8Array([128]));
 
     ac.abort();
     await server.finished;
@@ -2694,7 +2826,7 @@ for (const testCase of compressionTestCases) {
             headers: testCase.in as HeadersInit,
           });
           await deferred.promise;
-          const body = await resp.arrayBuffer();
+          const body = await resp.bytes();
           if (testCase.expect == null) {
             assertEquals(body.byteLength, testCase.length);
             assertEquals(
@@ -2731,7 +2863,7 @@ Deno.test(
     const server = Deno.serve({
       handler: async (request) => {
         assertEquals(
-          new Uint8Array(await request.arrayBuffer()),
+          await request.bytes(),
           makeTempData(70 * 1024),
         );
         deferred.resolve();
@@ -3522,11 +3654,7 @@ Deno.test(
       fail();
     } catch (clientError) {
       assert(clientError instanceof TypeError);
-      assert(
-        clientError.message.endsWith(
-          "connection closed before message completed",
-        ),
-      );
+      assert(clientError.message.includes("client error"));
     } finally {
       ac.abort();
       await server.finished;
@@ -3574,11 +3702,7 @@ Deno.test({
       fail();
     } catch (clientError) {
       assert(clientError instanceof TypeError);
-      assert(
-        clientError.message.endsWith(
-          "connection closed before message completed",
-        ),
-      );
+      assert(clientError.message.includes("client error"));
     } finally {
       ac.abort();
       await server.finished;
@@ -3986,3 +4110,84 @@ Deno.test(
     assert(respText === "Internal Server Error");
   },
 );
+
+Deno.test(
+  {
+    permissions: { net: true, run: true, read: true },
+    ignore: Deno.build.os !== "linux",
+  },
+  async function gzipFlushResponseStream() {
+    const { promise, resolve } = Promise.withResolvers<void>();
+    const ac = new AbortController();
+
+    console.log("Starting server", servePort);
+    let timer: number | undefined = undefined;
+    let _controller;
+
+    const server = Deno.serve(
+      {
+        port: servePort,
+        onListen: onListen(resolve),
+        signal: ac.signal,
+      },
+      () => {
+        const body = new ReadableStream({
+          start(controller) {
+            timer = setInterval(() => {
+              const message = `It is ${new Date().toISOString()}\n`;
+              controller.enqueue(new TextEncoder().encode(message));
+            }, 1000);
+            _controller = controller;
+          },
+          cancel() {
+            if (timer !== undefined) {
+              clearInterval(timer);
+            }
+          },
+        });
+        return new Response(body, {
+          headers: {
+            "content-type": "text/plain",
+            "x-content-type-options": "nosniff",
+          },
+        });
+      },
+    );
+    await promise;
+    const e = await execCode3("/usr/bin/sh", [
+      "-c",
+      `curl --stderr - -N --compressed --no-progress-meter http://localhost:${servePort}`,
+    ]);
+    await e.waitStdoutText("It is ");
+    clearTimeout(timer);
+    _controller!.close();
+    await e.finished();
+    ac.abort();
+    await server.finished;
+  },
+);
+
+Deno.test({
+  name: "HTTP Server test (error on non-unix platform)",
+  ignore: Deno.build.os !== "windows",
+}, async () => {
+  await assertRejects(
+    async () => {
+      const ac = new AbortController();
+      const server = Deno.serve({
+        path: "path/to/socket",
+        handler: (_req) => new Response("Hello, world"),
+        signal: ac.signal,
+        onListen({ path: _path }) {
+          console.log(`Server started at ${_path}`);
+        },
+      });
+      server.finished.then(() => console.log("Server closed"));
+      console.log("Closing server...");
+      ac.abort();
+      await new Promise((resolve) => setTimeout(resolve, 100)); // Example of awaiting something
+    },
+    Error,
+    'Operation `"op_net_listen_unix"` not supported on non-unix platforms.',
+  );
+});

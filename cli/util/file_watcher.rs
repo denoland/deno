@@ -163,6 +163,9 @@ pub struct WatcherCommunicator {
 
 impl WatcherCommunicator {
   pub fn watch_paths(&self, paths: Vec<PathBuf>) -> Result<(), AnyError> {
+    if paths.is_empty() {
+      return Ok(());
+    }
     self.paths_to_watch_tx.send(paths).map_err(AnyError::from)
   }
 
@@ -192,16 +195,16 @@ impl WatcherCommunicator {
 /// Creates a file watcher.
 ///
 /// - `operation` is the actual operation we want to run every time the watcher detects file
-/// changes. For example, in the case where we would like to bundle, then `operation` would
-/// have the logic for it like bundling the code.
+///   changes. For example, in the case where we would like to bundle, then `operation` would
+///   have the logic for it like bundling the code.
 pub async fn watch_func<O, F>(
-  flags: Flags,
+  flags: Arc<Flags>,
   print_config: PrintConfig,
   operation: O,
 ) -> Result<(), AnyError>
 where
   O: FnMut(
-    Flags,
+    Arc<Flags>,
     Arc<WatcherCommunicator>,
     Option<Vec<PathBuf>>,
   ) -> Result<F, AnyError>,
@@ -231,17 +234,17 @@ pub enum WatcherRestartMode {
 /// Creates a file watcher.
 ///
 /// - `operation` is the actual operation we want to run every time the watcher detects file
-/// changes. For example, in the case where we would like to bundle, then `operation` would
-/// have the logic for it like bundling the code.
+///    changes. For example, in the case where we would like to bundle, then `operation` would
+///    have the logic for it like bundling the code.
 pub async fn watch_recv<O, F>(
-  mut flags: Flags,
+  mut flags: Arc<Flags>,
   print_config: PrintConfig,
   restart_mode: WatcherRestartMode,
   mut operation: O,
 ) -> Result<(), AnyError>
 where
   O: FnMut(
-    Flags,
+    Arc<Flags>,
     Arc<WatcherCommunicator>,
     Option<Vec<PathBuf>>,
   ) -> Result<F, AnyError>,
@@ -278,7 +281,9 @@ where
   deno_core::unsync::spawn(async move {
     loop {
       let received_changed_paths = watcher_receiver.recv().await;
-      *changed_paths_.borrow_mut() = received_changed_paths.clone();
+      changed_paths_
+        .borrow_mut()
+        .clone_from(&received_changed_paths);
 
       match *watcher_.restart_mode.lock() {
         WatcherRestartMode::Automatic => {
@@ -316,7 +321,12 @@ where
     )?);
 
     // don't reload dependencies after the first run
-    flags.reload = false;
+    if flags.reload {
+      flags = Arc::new(Flags {
+        reload: false,
+        ..Arc::unwrap_or_clone(flags)
+      });
+    }
 
     select! {
       _ = receiver_future => {},

@@ -65,7 +65,7 @@ const REQUEST_BODY_HEADER_NAMES = [
 
 /**
  * @param {number} rid
- * @returns {Promise<{ status: number, statusText: string, headers: [string, string][], url: string, responseRid: number, error: string? }>}
+ * @returns {Promise<{ status: number, statusText: string, headers: [string, string][], url: string, responseRid: number, error: [string, string]? }>}
  */
 function opFetchSend(rid) {
   return op_fetch_send(rid);
@@ -99,7 +99,7 @@ function createResponseBodyStream(responseBodyRid, terminator) {
 async function mainFetch(req, recursive, terminator) {
   if (req.blobUrlEntry !== null) {
     if (req.method !== "GET") {
-      throw new TypeError("Blob URL fetch only supports GET method.");
+      throw new TypeError("Blob URL fetch only supports GET method");
     }
 
     const body = new InnerBody(req.blobUrlEntry.stream());
@@ -145,7 +145,7 @@ async function mainFetch(req, recursive, terminator) {
         reqRid = resourceForReadableStream(stream, req.body.length);
       }
     } else {
-      throw TypeError("invalid body");
+      throw new TypeError("Invalid body");
     }
   }
 
@@ -177,8 +177,9 @@ async function mainFetch(req, recursive, terminator) {
     }
   }
   // Re-throw any body errors
-  if (resp.error) {
-    throw new TypeError("body failed", { cause: new Error(resp.error) });
+  if (resp.error !== null) {
+    const { 0: message, 1: cause } = resp.error;
+    throw new TypeError(message, { cause: new Error(cause) });
   }
   if (terminator.aborted) return abortedNetworkError();
 
@@ -305,7 +306,7 @@ function httpRedirectFetch(request, response, terminator) {
  * @param {RequestInfo} input
  * @param {RequestInit} init
  */
-function fetch(input, init = {}) {
+function fetch(input, init = { __proto__: null }) {
   // There is an async dispatch later that causes a stack trace disconnect.
   // We reconnect it by assigning the result of that dispatch to `opPromise`,
   // awaiting `opPromise` in an inner function also named `fetch()` and
@@ -440,13 +441,15 @@ function handleWasmStreaming(source, rid) {
         typeof contentType !== "string" ||
         StringPrototypeToLowerCase(contentType) !== "application/wasm"
       ) {
-        throw new TypeError("Invalid WebAssembly content type.");
+        throw new TypeError("Invalid WebAssembly content type");
       }
     }
 
     // 2.5.
     if (!res.ok) {
-      throw new TypeError(`HTTP status code ${res.status}`);
+      throw new TypeError(
+        `Failed to receive WebAssembly content: HTTP status code ${res.status}`,
+      );
     }
 
     // Pass the resolved URL to v8.

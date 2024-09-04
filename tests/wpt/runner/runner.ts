@@ -196,7 +196,7 @@ async function generateBundle(location: URL): Promise<string> {
   const doc = new DOMParser().parseFromString(body, "text/html");
   assert(doc, "document should have been parsed");
   const scripts = doc.getElementsByTagName("script");
-  const title = doc.getElementsByTagName("title")[0]?.childNodes[0].nodeValue;
+  const title = doc.getElementsByTagName("title")[0]?.childNodes[0]?.nodeValue;
   const scriptContents = [];
   let inlineScriptCount = 0;
   if (title) {
@@ -214,17 +214,20 @@ async function generateBundle(location: URL): Promise<string> {
         join(ROOT_PATH, "./tests/wpt/runner/testharnessreport.js"),
       );
       const contents = await Deno.readTextFile(url);
+      scriptContents.push([url.href, "globalThis.window = globalThis;"]);
       scriptContents.push([url.href, contents]);
     } else if (src) {
       const url = new URL(src, location);
       const res = await fetch(url);
       if (res.ok) {
         const contents = await res.text();
+        scriptContents.push([url.href, "globalThis.window = globalThis;"]);
         scriptContents.push([url.href, contents]);
       }
     } else {
       const url = new URL(`#${inlineScriptCount}`, location);
       inlineScriptCount++;
+      scriptContents.push([url.href, "globalThis.window = globalThis;"]);
       scriptContents.push([url.href, script.textContent]);
     }
   }

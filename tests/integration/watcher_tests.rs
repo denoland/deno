@@ -3,13 +3,12 @@
 use flaky_test::flaky_test;
 use test_util as util;
 use test_util::assert_contains;
+use test_util::env_vars_for_npm_tests;
 use test_util::TempDir;
 use tokio::io::AsyncBufReadExt;
 use util::DenoChild;
 
 use util::assert_not_contains;
-
-const CLEAR_SCREEN: &str = r#"[2J"#;
 
 /// Logs to stderr every time next_line() is called
 struct LoggingLines<R>
@@ -192,8 +191,7 @@ fn child_lines(
   (stdout_lines, stderr_lines)
 }
 
-#[flaky_test]
-#[tokio::main]
+#[flaky_test(tokio)]
 async fn lint_watch_test() {
   let t = TempDir::new();
   let badly_linted_original =
@@ -248,8 +246,7 @@ async fn lint_watch_test() {
   child.kill().unwrap();
 }
 
-#[flaky_test]
-#[tokio::main]
+#[flaky_test(tokio)]
 async fn lint_watch_without_args_test() {
   let t = TempDir::new();
   let badly_linted_original =
@@ -304,8 +301,7 @@ async fn lint_watch_without_args_test() {
   drop(t);
 }
 
-#[flaky_test]
-#[tokio::main]
+#[flaky_test(tokio)]
 async fn lint_all_files_on_each_change_test() {
   let t = TempDir::new();
   let badly_linted_fixed0 =
@@ -325,7 +321,6 @@ async fn lint_all_files_on_each_change_test() {
     .arg("lint")
     .arg(t.path())
     .arg("--watch")
-    .arg("--unstable")
     .piped_output()
     .spawn()
     .unwrap();
@@ -349,8 +344,7 @@ async fn lint_all_files_on_each_change_test() {
   drop(t);
 }
 
-#[flaky_test]
-#[tokio::main]
+#[flaky_test(tokio)]
 async fn fmt_watch_test() {
   let fmt_testdata_path = util::testdata_path().join("fmt");
   let t = TempDir::new();
@@ -405,8 +399,7 @@ async fn fmt_watch_test() {
   check_alive_then_kill(child);
 }
 
-#[flaky_test]
-#[tokio::main]
+#[flaky_test(tokio)]
 async fn fmt_watch_without_args_test() {
   let fmt_testdata_path = util::testdata_path().join("fmt");
   let t = TempDir::new();
@@ -458,8 +451,7 @@ async fn fmt_watch_without_args_test() {
   check_alive_then_kill(child);
 }
 
-#[flaky_test]
-#[tokio::main]
+#[flaky_test(tokio)]
 async fn fmt_check_all_files_on_each_change_test() {
   let t = TempDir::new();
   let fmt_testdata_path = util::testdata_path().join("fmt");
@@ -475,7 +467,6 @@ async fn fmt_check_all_files_on_each_change_test() {
     .arg(t.path())
     .arg("--watch")
     .arg("--check")
-    .arg("--unstable")
     .piped_output()
     .spawn()
     .unwrap();
@@ -498,147 +489,7 @@ async fn fmt_check_all_files_on_each_change_test() {
   check_alive_then_kill(child);
 }
 
-#[flaky_test]
-#[tokio::main]
-async fn bundle_js_watch() {
-  use std::path::PathBuf;
-  // Test strategy extends this of test bundle_js by adding watcher
-  let t = TempDir::new();
-  let file_to_watch = t.path().join("file_to_watch.ts");
-  file_to_watch.write("console.log('Hello world');");
-  assert!(file_to_watch.is_file());
-  let t = TempDir::new();
-  let bundle = t.path().join("mod6.bundle.js");
-  let mut deno = util::deno_cmd()
-    .current_dir(t.path())
-    .arg("bundle")
-    .arg(&file_to_watch)
-    .arg(&bundle)
-    .arg("--watch")
-    .env("NO_COLOR", "1")
-    .piped_output()
-    .spawn()
-    .unwrap();
-
-  let (_stdout_lines, mut stderr_lines) = child_lines(&mut deno);
-
-  assert_contains!(next_line(&mut stderr_lines).await.unwrap(), "Warning");
-  assert_contains!(next_line(&mut stderr_lines).await.unwrap(), "deno_emit");
-  assert_contains!(
-    next_line(&mut stderr_lines).await.unwrap(),
-    "Bundle started"
-  );
-  let line = next_line(&mut stderr_lines).await.unwrap();
-  assert_contains!(line, "file_to_watch.ts");
-  assert_contains!(line, "Check");
-  assert_contains!(next_line(&mut stderr_lines).await.unwrap(), "Bundle");
-  assert_contains!(
-    next_line(&mut stderr_lines).await.unwrap(),
-    "mod6.bundle.js"
-  );
-  let file = PathBuf::from(&bundle);
-  assert!(file.is_file());
-
-  wait_contains("Bundle finished", &mut stderr_lines).await;
-
-  file_to_watch.write("console.log('Hello world2');");
-
-  let line = next_line(&mut stderr_lines).await.unwrap();
-  // Should not clear screen, as we are in non-TTY environment
-  assert_not_contains!(&line, CLEAR_SCREEN);
-  assert_contains!(&line, "File change detected!");
-  assert_contains!(next_line(&mut stderr_lines).await.unwrap(), "Check");
-  assert_contains!(
-    next_line(&mut stderr_lines).await.unwrap(),
-    "file_to_watch.ts"
-  );
-  assert_contains!(
-    next_line(&mut stderr_lines).await.unwrap(),
-    "mod6.bundle.js"
-  );
-  let file = PathBuf::from(&bundle);
-  assert!(file.is_file());
-  wait_contains("Bundle finished", &mut stderr_lines).await;
-
-  // Confirm that the watcher keeps on working even if the file is updated and has invalid syntax
-  file_to_watch.write("syntax error ^^");
-
-  assert_contains!(
-    next_line(&mut stderr_lines).await.unwrap(),
-    "File change detected!"
-  );
-  assert_contains!(next_line(&mut stderr_lines).await.unwrap(), "error: ");
-  wait_contains("Bundle failed", &mut stderr_lines).await;
-  check_alive_then_kill(deno);
-}
-
-/// Confirm that the watcher continues to work even if module resolution fails at the *first* attempt
-#[flaky_test]
-#[tokio::main]
-async fn bundle_watch_not_exit() {
-  let t = TempDir::new();
-  let file_to_watch = t.path().join("file_to_watch.ts");
-  file_to_watch.write("syntax error ^^");
-  let target_file = t.path().join("target.js");
-
-  let mut deno = util::deno_cmd()
-    .current_dir(t.path())
-    .arg("bundle")
-    .arg(&file_to_watch)
-    .arg(&target_file)
-    .arg("--watch")
-    .env("NO_COLOR", "1")
-    .piped_output()
-    .spawn()
-    .unwrap();
-  let (_stdout_lines, mut stderr_lines) = child_lines(&mut deno);
-
-  assert_contains!(next_line(&mut stderr_lines).await.unwrap(), "Warning");
-  assert_contains!(next_line(&mut stderr_lines).await.unwrap(), "deno_emit");
-  assert_contains!(
-    next_line(&mut stderr_lines).await.unwrap(),
-    "Bundle started"
-  );
-  assert_contains!(next_line(&mut stderr_lines).await.unwrap(), "error:");
-  assert_eq!(next_line(&mut stderr_lines).await.unwrap(), "");
-  assert_eq!(
-    next_line(&mut stderr_lines).await.unwrap(),
-    "  syntax error ^^"
-  );
-  assert_eq!(
-    next_line(&mut stderr_lines).await.unwrap(),
-    "         ~~~~~"
-  );
-  assert_contains!(
-    next_line(&mut stderr_lines).await.unwrap(),
-    "Bundle failed"
-  );
-  // the target file hasn't been created yet
-  assert!(!target_file.is_file());
-
-  // Make sure the watcher actually restarts and works fine with the proper syntax
-  file_to_watch.write("console.log(42);");
-
-  assert_contains!(
-    next_line(&mut stderr_lines).await.unwrap(),
-    "File change detected"
-  );
-  assert_contains!(next_line(&mut stderr_lines).await.unwrap(), "Check");
-  let line = next_line(&mut stderr_lines).await.unwrap();
-  // Should not clear screen, as we are in non-TTY environment
-  assert_not_contains!(&line, CLEAR_SCREEN);
-  assert_contains!(line, "file_to_watch.ts");
-  assert_contains!(next_line(&mut stderr_lines).await.unwrap(), "target.js");
-
-  wait_contains("Bundle finished", &mut stderr_lines).await;
-
-  // bundled file is created
-  assert!(target_file.is_file());
-  check_alive_then_kill(deno);
-}
-
-#[flaky_test]
-#[tokio::main]
+#[flaky_test(tokio)]
 async fn run_watch_no_dynamic() {
   let t = TempDir::new();
   let file_to_watch = t.path().join("file_to_watch.js");
@@ -716,12 +567,47 @@ async fn run_watch_no_dynamic() {
   check_alive_then_kill(child);
 }
 
+#[flaky_test(tokio)]
+async fn run_watch_npm_specifier() {
+  let _g = util::http_server();
+  let t = TempDir::new();
+
+  let file_to_watch = t.path().join("file_to_watch.txt");
+  file_to_watch.write("Hello world");
+
+  let mut child = util::deno_cmd()
+    .current_dir(t.path())
+    .envs(env_vars_for_npm_tests())
+    .arg("run")
+    .arg("--watch=file_to_watch.txt")
+    .arg("-L")
+    .arg("debug")
+    .arg("npm:@denotest/bin/cli-cjs")
+    .arg("Hello world")
+    .env("NO_COLOR", "1")
+    .piped_output()
+    .spawn()
+    .unwrap();
+  let (mut stdout_lines, mut stderr_lines) = child_lines(&mut child);
+
+  wait_contains("Hello world", &mut stdout_lines).await;
+  wait_for_watcher("file_to_watch.txt", &mut stderr_lines).await;
+
+  // Change content of the file
+  file_to_watch.write("Hello world2");
+
+  wait_contains("Restarting", &mut stderr_lines).await;
+  wait_contains("Hello world", &mut stdout_lines).await;
+  wait_for_watcher("file_to_watch.txt", &mut stderr_lines).await;
+
+  check_alive_then_kill(child);
+}
+
 // TODO(bartlomieju): this test became flaky on macOS runner; it is unclear
 // if that's because of a bug in code or the runner itself. We should reenable
 // it once we upgrade to XL runners for macOS.
 #[cfg(not(target_os = "macos"))]
-#[flaky_test]
-#[tokio::main]
+#[flaky_test(tokio)]
 async fn run_watch_external_watch_files() {
   let t = TempDir::new();
   let file_to_watch = t.path().join("file_to_watch.js");
@@ -764,19 +650,18 @@ async fn run_watch_external_watch_files() {
   check_alive_then_kill(child);
 }
 
-#[flaky_test]
-#[tokio::main]
+#[flaky_test(tokio)]
 async fn run_watch_load_unload_events() {
   let t = TempDir::new();
   let file_to_watch = t.path().join("file_to_watch.js");
   file_to_watch.write(
     r#"
       setInterval(() => {}, 0);
-      window.addEventListener("load", () => {
+      globalThis.addEventListener("load", () => {
         console.log("load");
       });
 
-      window.addEventListener("unload", () => {
+      globalThis.addEventListener("unload", () => {
         console.log("unload");
       });
     "#,
@@ -803,11 +688,11 @@ async fn run_watch_load_unload_events() {
   // Change content of the file, this time without an interval to keep it alive.
   file_to_watch.write(
     r#"
-      window.addEventListener("load", () => {
+      globalThis.addEventListener("load", () => {
         console.log("load");
       });
 
-      window.addEventListener("unload", () => {
+      globalThis.addEventListener("unload", () => {
         console.log("unload");
       });
     "#,
@@ -828,8 +713,7 @@ async fn run_watch_load_unload_events() {
 }
 
 /// Confirm that the watcher continues to work even if module resolution fails at the *first* attempt
-#[flaky_test]
-#[tokio::main]
+#[flaky_test(tokio)]
 async fn run_watch_not_exit() {
   let t = TempDir::new();
   let file_to_watch = t.path().join("file_to_watch.js");
@@ -862,8 +746,7 @@ async fn run_watch_not_exit() {
   check_alive_then_kill(child);
 }
 
-#[flaky_test]
-#[tokio::main]
+#[flaky_test(tokio)]
 async fn run_watch_with_import_map_and_relative_paths() {
   fn create_relative_tmp_file(
     directory: &TempDir,
@@ -916,8 +799,7 @@ async fn run_watch_with_import_map_and_relative_paths() {
   check_alive_then_kill(child);
 }
 
-#[flaky_test]
-#[tokio::main]
+#[flaky_test(tokio)]
 async fn run_watch_with_ext_flag() {
   let t = TempDir::new();
   let file_to_watch = t.path().join("file_to_watch");
@@ -953,8 +835,7 @@ async fn run_watch_with_ext_flag() {
   check_alive_then_kill(child);
 }
 
-#[flaky_test]
-#[tokio::main]
+#[flaky_test(tokio)]
 async fn run_watch_error_messages() {
   let t = TempDir::new();
   let file_to_watch = t.path().join("file_to_watch.js");
@@ -984,8 +865,7 @@ async fn run_watch_error_messages() {
   check_alive_then_kill(child);
 }
 
-#[flaky_test]
-#[tokio::main]
+#[flaky_test(tokio)]
 async fn test_watch_basic() {
   let t = TempDir::new();
 
@@ -1140,8 +1020,7 @@ async fn test_watch_basic() {
   check_alive_then_kill(child);
 }
 
-#[flaky_test]
-#[tokio::main]
+#[flaky_test(tokio)]
 async fn test_watch_doc() {
   let t = TempDir::new();
 
@@ -1189,8 +1068,7 @@ async fn test_watch_doc() {
   check_alive_then_kill(child);
 }
 
-#[flaky_test]
-#[tokio::main]
+#[flaky_test(tokio)]
 async fn test_watch_module_graph_error_referrer() {
   let t = TempDir::new();
   let file_to_watch = t.path().join("file_to_watch.js");
@@ -1218,8 +1096,7 @@ async fn test_watch_module_graph_error_referrer() {
 }
 
 // Regression test for https://github.com/denoland/deno/issues/15428.
-#[flaky_test]
-#[tokio::main]
+#[flaky_test(tokio)]
 async fn test_watch_unload_handler_error_on_drop() {
   let t = TempDir::new();
   let file_to_watch = t.path().join("file_to_watch.js");
@@ -1249,8 +1126,7 @@ async fn test_watch_unload_handler_error_on_drop() {
   check_alive_then_kill(child);
 }
 
-#[flaky_test]
-#[tokio::main]
+#[flaky_test(tokio)]
 async fn run_watch_blob_urls_reset() {
   let _g = util::http_server();
   let t = TempDir::new();
@@ -1291,8 +1167,7 @@ async fn run_watch_blob_urls_reset() {
 }
 
 #[cfg(unix)]
-#[flaky_test]
-#[tokio::main]
+#[flaky_test(tokio)]
 async fn test_watch_sigint() {
   use nix::sys::signal;
   use nix::sys::signal::Signal;
@@ -1317,8 +1192,7 @@ async fn test_watch_sigint() {
   assert_eq!(exit_status.code(), Some(130));
 }
 
-#[flaky_test]
-#[tokio::main]
+#[flaky_test(tokio)]
 async fn bench_watch_basic() {
   let t = TempDir::new();
 
@@ -1431,8 +1305,7 @@ async fn bench_watch_basic() {
 }
 
 // Regression test for https://github.com/denoland/deno/issues/15465.
-#[flaky_test]
-#[tokio::main]
+#[flaky_test(tokio)]
 async fn run_watch_reload_once() {
   let _g = util::http_server();
   let t = TempDir::new();
@@ -1470,8 +1343,7 @@ async fn run_watch_reload_once() {
 
 /// Regression test for https://github.com/denoland/deno/issues/18960. Ensures that Deno.serve
 /// operates properly after a watch restart.
-#[flaky_test]
-#[tokio::main]
+#[flaky_test(tokio)]
 async fn test_watch_serve() {
   let t = TempDir::new();
   let file_to_watch = t.path().join("file_to_watch.js");
@@ -1507,8 +1379,7 @@ async fn test_watch_serve() {
   check_alive_then_kill(child);
 }
 
-#[flaky_test]
-#[tokio::main]
+#[flaky_test(tokio)]
 async fn run_watch_dynamic_imports() {
   let t = TempDir::new();
   let file_to_watch = t.path().join("file_to_watch.js");
@@ -1547,7 +1418,7 @@ async fn run_watch_dynamic_imports() {
     .unwrap();
   let (mut stdout_lines, mut stderr_lines) = child_lines(&mut child);
   wait_contains("Process started", &mut stderr_lines).await;
-  wait_contains("No package.json file found", &mut stderr_lines).await;
+  wait_contains("Finished config loading.", &mut stderr_lines).await;
 
   wait_contains(
     "Hopefully dynamic import will be watched...",
@@ -1594,8 +1465,7 @@ async fn run_watch_dynamic_imports() {
   check_alive_then_kill(child);
 }
 
-#[flaky_test]
-#[tokio::main]
+#[flaky_test(tokio)]
 async fn run_watch_inspect() {
   let t = TempDir::new();
   let file_to_watch = t.path().join("file_to_watch.js");
@@ -1636,8 +1506,7 @@ async fn run_watch_inspect() {
   check_alive_then_kill(child);
 }
 
-#[flaky_test]
-#[tokio::main]
+#[flaky_test(tokio)]
 async fn run_watch_with_excluded_paths() {
   let t = TempDir::new();
 
@@ -1676,8 +1545,7 @@ async fn run_watch_with_excluded_paths() {
   check_alive_then_kill(child);
 }
 
-#[flaky_test]
-#[tokio::main]
+#[flaky_test(tokio)]
 async fn run_hmr_server() {
   let t = TempDir::new();
   let file_to_watch = t.path().join("file_to_watch.js");
@@ -1703,7 +1571,7 @@ console.log("Listening...")
   let mut child = util::deno_cmd()
     .current_dir(t.path())
     .arg("run")
-    .arg("--unstable-hmr")
+    .arg("--watch-hmr")
     .arg("--allow-net")
     .arg("-L")
     .arg("debug")
@@ -1714,7 +1582,7 @@ console.log("Listening...")
     .unwrap();
   let (mut stdout_lines, mut stderr_lines) = child_lines(&mut child);
   wait_contains("Process started", &mut stderr_lines).await;
-  wait_contains("No package.json file found", &mut stderr_lines).await;
+  wait_contains("Finished config loading.", &mut stderr_lines).await;
 
   wait_for_watcher("file_to_watch.js", &mut stderr_lines).await;
   wait_contains("Listening...", &mut stdout_lines).await;
@@ -1725,7 +1593,7 @@ globalThis.state = { i: 0 };
 
 function bar() {
   globalThis.state.i = 0;
-  console.log("got request1", globalThis.state.i);
+  console.error("got request1", globalThis.state.i);
 }
 
 function handler(_req) {
@@ -1738,14 +1606,19 @@ console.log("Listening...")
     "#,
   );
 
-  wait_contains("Failed to reload module", &mut stderr_lines).await;
-  wait_contains("File change detected", &mut stderr_lines).await;
+  wait_contains("Replaced changed module", &mut stderr_lines).await;
+  util::deno_cmd()
+    .current_dir(t.path())
+    .arg("eval")
+    .arg("await fetch('http://localhost:11111');")
+    .spawn()
+    .unwrap();
+  wait_contains("got request1", &mut stderr_lines).await;
 
   check_alive_then_kill(child);
 }
 
-#[flaky_test]
-#[tokio::main]
+#[flaky_test(tokio)]
 async fn run_hmr_jsx() {
   let t = TempDir::new();
   let file_to_watch = t.path().join("file_to_watch.js");
@@ -1756,7 +1629,7 @@ import { foo } from "./foo.jsx";
 let i = 0;
 setInterval(() => {
   console.log(i++, foo());
-}, 100);    
+}, 100);
 "#,
   );
   let file_to_watch2 = t.path().join("foo.jsx");
@@ -1771,7 +1644,7 @@ export function foo() {
   let mut child = util::deno_cmd()
     .current_dir(t.path())
     .arg("run")
-    .arg("--unstable-hmr")
+    .arg("--watch-hmr")
     .arg("-L")
     .arg("debug")
     .arg(&file_to_watch)
@@ -1781,7 +1654,7 @@ export function foo() {
     .unwrap();
   let (mut stdout_lines, mut stderr_lines) = child_lines(&mut child);
   wait_contains("Process started", &mut stderr_lines).await;
-  wait_contains("No package.json file found", &mut stderr_lines).await;
+  wait_contains("Finished config loading.", &mut stderr_lines).await;
 
   wait_for_watcher("file_to_watch.js", &mut stderr_lines).await;
   wait_contains("5 <h1>Hello</h1>", &mut stdout_lines).await;
@@ -1800,8 +1673,7 @@ export function foo() {
   check_alive_then_kill(child);
 }
 
-#[flaky_test]
-#[tokio::main]
+#[flaky_test(tokio)]
 async fn run_hmr_uncaught_error() {
   let t = TempDir::new();
   let file_to_watch = t.path().join("file_to_watch.js");
@@ -1830,7 +1702,7 @@ export function foo() {
   let mut child = util::deno_cmd()
     .current_dir(t.path())
     .arg("run")
-    .arg("--unstable-hmr")
+    .arg("--watch-hmr")
     .arg("-L")
     .arg("debug")
     .arg(&file_to_watch)
@@ -1840,7 +1712,7 @@ export function foo() {
     .unwrap();
   let (mut stdout_lines, mut stderr_lines) = child_lines(&mut child);
   wait_contains("Process started", &mut stderr_lines).await;
-  wait_contains("No package.json file found", &mut stderr_lines).await;
+  wait_contains("Finished config loading.", &mut stderr_lines).await;
 
   wait_for_watcher("file_to_watch.js", &mut stderr_lines).await;
   wait_contains("<h1>asd1</h1>", &mut stdout_lines).await;
@@ -1861,8 +1733,7 @@ export function foo() {
   check_alive_then_kill(child);
 }
 
-#[flaky_test]
-#[tokio::main]
+#[flaky_test(tokio)]
 async fn run_hmr_unhandled_rejection() {
   let t = TempDir::new();
   let file_to_watch = t.path().join("file_to_watch.js");
@@ -1896,7 +1767,7 @@ export function foo() {
   let mut child = util::deno_cmd()
     .current_dir(t.path())
     .arg("run")
-    .arg("--unstable-hmr")
+    .arg("--watch-hmr")
     .arg("-L")
     .arg("debug")
     .arg(&file_to_watch)
@@ -1906,7 +1777,7 @@ export function foo() {
     .unwrap();
   let (mut stdout_lines, mut stderr_lines) = child_lines(&mut child);
   wait_contains("Process started", &mut stderr_lines).await;
-  wait_contains("No package.json file found", &mut stderr_lines).await;
+  wait_contains("Finished config loading.", &mut stderr_lines).await;
 
   wait_for_watcher("file_to_watch.js", &mut stderr_lines).await;
   wait_contains("2 <h1>asd1</h1>", &mut stdout_lines).await;

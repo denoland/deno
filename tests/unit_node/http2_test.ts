@@ -1,8 +1,13 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
+// deno-lint-ignore-file no-console
+
 import * as http2 from "node:http2";
+import { Buffer } from "node:buffer";
+import { readFile } from "node:fs/promises";
+import { join } from "node:path";
 import * as net from "node:net";
-import { assert, assertEquals } from "@std/assert/mod.ts";
+import { assert, assertEquals } from "@std/assert";
 import { curlRequest } from "../unit/test_util.ts";
 
 for (const url of ["http://127.0.0.1:4246", "https://127.0.0.1:4247"]) {
@@ -163,4 +168,213 @@ Deno.test("[node/http2.createServer()]", {
   // https://github.com/denoland/deno/blob/749b6e45e58ac87188027f79fe403d130f86bd73/ext/node/polyfills/net.ts#L2396-L2402
   // Issue: https://github.com/denoland/deno/issues/22764
   await new Promise<void>((resolve) => server.on("close", resolve));
+});
+
+Deno.test("[node/http2 client] write image buffer on request stream works", async () => {
+  const url = "https://localhost:5545";
+  const client = http2.connect(url);
+  client.on("error", (err) => console.error(err));
+
+  const imagePath = join(import.meta.dirname!, "testdata", "green.jpg");
+  const buffer = await readFile(imagePath);
+  const req = client.request({ ":method": "POST", ":path": "/echo_server" });
+  req.write(buffer, (err) => {
+    if (err) throw err;
+  });
+
+  let receivedData: Buffer;
+  req.on("data", (chunk) => {
+    if (!receivedData) {
+      receivedData = chunk;
+    } else {
+      receivedData = Buffer.concat([receivedData, chunk]);
+    }
+  });
+  req.end();
+
+  const endPromise = Promise.withResolvers<void>();
+  setTimeout(() => {
+    try {
+      client.close();
+    } catch (_) {
+      // pass
+    }
+    endPromise.resolve();
+  }, 2000);
+
+  await endPromise.promise;
+  assertEquals(receivedData!, buffer);
+});
+
+Deno.test("[node/http2 client] write 512kb buffer on request stream works", async () => {
+  const url = "https://localhost:5545";
+  const client = http2.connect(url);
+  client.on("error", (err) => console.error(err));
+
+  const filePath = join(
+    import.meta.dirname!,
+    "testdata",
+    "lorem_ipsum_512kb.txt",
+  );
+  const buffer = await readFile(filePath);
+  const req = client.request({ ":method": "POST", ":path": "/echo_server" });
+  req.write(buffer, (err) => {
+    if (err) throw err;
+  });
+
+  let receivedData: Buffer;
+  req.on("data", (chunk) => {
+    if (!receivedData) {
+      receivedData = chunk;
+    } else {
+      receivedData = Buffer.concat([receivedData, chunk]);
+    }
+  });
+  req.end();
+
+  const endPromise = Promise.withResolvers<void>();
+  setTimeout(() => {
+    try {
+      client.close();
+    } catch (_) {
+      // pass
+    }
+    endPromise.resolve();
+  }, 2000);
+
+  await endPromise.promise;
+  assertEquals(receivedData!, buffer);
+});
+
+// https://github.com/denoland/deno/issues/24678
+Deno.test("[node/http2 client] deno doesn't panic on uppercase headers", async () => {
+  const url = "http://127.0.0.1:4246";
+  const client = http2.connect(url);
+  client.on("error", (err) => console.error(err));
+
+  // The "User-Agent" header has uppercase characters to test the panic.
+  const req = client.request({
+    ":method": "POST",
+    ":path": "/",
+    "User-Agent": "http2",
+  });
+  const endPromise = Promise.withResolvers<void>();
+
+  let receivedData = "";
+
+  req.write("hello");
+  req.setEncoding("utf8");
+
+  req.on("data", (chunk) => {
+    receivedData += chunk;
+  });
+  req.on("end", () => {
+    req.close();
+    client.close();
+    endPromise.resolve();
+  });
+  req.end();
+  await endPromise.promise;
+  assertEquals(receivedData, "hello world\n");
+});
+
+Deno.test("[node/http2 ClientHttp2Session.socket]", async () => {
+  const url = "http://127.0.0.1:4246";
+  const client = http2.connect(url);
+  client.on("error", (err) => console.error(err));
+
+  const req = client.request({ ":method": "POST", ":path": "/" });
+  const endPromise = Promise.withResolvers<void>();
+
+  // test that we can access session.socket
+  client.socket.setTimeout(10000);
+  // nodejs allows setting arbitrary properties
+  // deno-lint-ignore no-explicit-any
+  (client.socket as any).nonExistant = 9001;
+  // deno-lint-ignore no-explicit-any
+  assertEquals((client.socket as any).nonExistant, 9001);
+
+  // regular request dance to make sure it keeps working
+  let receivedData = "";
+  req.write("hello");
+  req.setEncoding("utf8");
+
+  req.on("data", (chunk) => {
+    receivedData += chunk;
+  });
+  req.on("end", () => {
+    req.close();
+    client.close();
+    endPromise.resolve();
+  });
+  req.end();
+  await endPromise.promise;
+  assertEquals(client.socket.remoteAddress, "127.0.0.1");
+  assertEquals(client.socket.remotePort, 4246);
+  assertEquals(client.socket.remoteFamily, "IPv4");
+  client.socket.setTimeout(0);
+  assertEquals(receivedData, "hello world\n");
+});
+
+Deno.test("[node/http2 client] connection states", async () => {
+  const expected = {
+    beforeConnect: { connecting: true, closed: false, destroyed: false },
+    afterConnect: { connecting: false, closed: false, destroyed: false },
+    afterClose: { connecting: false, closed: true, destroyed: false },
+    afterDestroy: { connecting: false, closed: true, destroyed: true },
+  };
+  const actual: Partial<typeof expected> = {};
+
+  const url = "http://127.0.0.1:4246";
+  const connectPromise = Promise.withResolvers<void>();
+  const client = http2.connect(url, {}, () => {
+    connectPromise.resolve();
+  });
+  client.on("error", (err) => console.error(err));
+
+  // close event happens after destory has been called
+  const destroyPromise = Promise.withResolvers<void>();
+  client.on("close", () => {
+    destroyPromise.resolve();
+  });
+
+  actual.beforeConnect = {
+    connecting: client.connecting,
+    closed: client.closed,
+    destroyed: client.destroyed,
+  };
+
+  await connectPromise.promise;
+  actual.afterConnect = {
+    connecting: client.connecting,
+    closed: client.closed,
+    destroyed: client.destroyed,
+  };
+
+  // leave a request open to prevent immediate destroy
+  const req = client.request();
+  req.on("data", () => {});
+  req.on("error", (err) => console.error(err));
+  const reqClosePromise = Promise.withResolvers<void>();
+  req.on("close", () => {
+    reqClosePromise.resolve();
+  });
+
+  client.close();
+  actual.afterClose = {
+    connecting: client.connecting,
+    closed: client.closed,
+    destroyed: client.destroyed,
+  };
+
+  await destroyPromise.promise;
+  actual.afterDestroy = {
+    connecting: client.connecting,
+    closed: client.closed,
+    destroyed: client.destroyed,
+  };
+
+  await reqClosePromise.promise;
+
+  assertEquals(actual, expected);
 });

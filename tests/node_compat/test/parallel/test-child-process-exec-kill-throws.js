@@ -7,7 +7,7 @@
 
 // TODO(PolarETech): The process.argv[3] check should be argv[2], and the
 // command passed to exec() should not need to include "run", "-A",
-// and "require.ts".
+// and "runner.ts".
 
 'use strict';
 // Flags: --expose-internals
@@ -29,7 +29,7 @@ if (process.argv[3] === 'child') {
     throw new Error('mock error');
   };
 
-  const cmd = `"${process.execPath}" run -A require.ts "${__filename}" child`;
+  const cmd = `"${process.execPath}" run -A runner.ts "${__filename}" child`;
   const options = { maxBuffer: 0, killSignal: 'SIGKILL' };
 
   const child = cp.exec(cmd, options, common.mustCall((err, stdout, stderr) => {

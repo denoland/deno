@@ -11,7 +11,7 @@ use std::sync::Arc;
 use bytes::Bytes;
 use deno_core::serde_json::json;
 use deno_core::url;
-use deno_fetch::reqwest;
+
 use deno_tls::rustls;
 use deno_tls::rustls::ClientConnection;
 use deno_tls::rustls_pemfile;
@@ -28,6 +28,8 @@ use util::env_vars_for_npm_tests;
 use util::PathRef;
 use util::TestContext;
 use util::TestContextBuilder;
+
+const CODE_CACHE_DB_FILE_NAME: &str = "v8_code_cache_v2";
 
 itest!(stdout_write_all {
   args: "run --quiet run/stdout_write_all.ts",
@@ -151,11 +153,6 @@ itest!(_023_no_ext {
   output: "run/023_no_ext.out",
 });
 
-itest!(_025_hrtime {
-  args: "run --quiet --allow-hrtime --reload run/025_hrtime.ts",
-  output: "run/025_hrtime.ts.out",
-});
-
 itest!(_025_reload_js_type_error {
   args: "run --quiet --reload run/025_reload_js_type_error.js",
   output: "run/025_reload_js_type_error.js.out",
@@ -204,7 +201,7 @@ itest!(_033_import_map_data_uri {
 });
 
 itest!(onload {
-  args: "run --quiet --reload run/onload/main.ts",
+  args: "run --quiet --reload --config ../config/deno.json run/onload/main.ts",
   output: "run/onload/main.out",
 });
 
@@ -499,6 +496,10 @@ itest!(_088_dynamic_import_already_evaluating {
 // TODO(bartlomieju): remove --unstable once Deno.Command is stabilized
 itest!(_089_run_allow_list {
   args: "run --unstable --allow-run=curl run/089_run_allow_list.ts",
+  envs: vec![
+    ("LD_LIBRARY_PATH".to_string(), "".to_string()),
+    ("DYLD_FALLBACK_LIBRARY_PATH".to_string(), "".to_string())
+  ],
   output: "run/089_run_allow_list.ts.out",
 });
 
@@ -509,19 +510,21 @@ fn _090_run_permissions_request() {
     .args_vec(["run", "--quiet", "run/090_run_permissions_request.ts"])
     .with_pty(|mut console| {
       console.expect(concat!(
-        "┌ ⚠️  Deno requests run access to \"ls\".\r\n",
-        "├ Requested by `Deno.permissions.request()` API.\r\n",
-        "├ Run again with --allow-run to bypass this prompt.\r\n",
-        "└ Allow? [y/n/A] (y = yes, allow; n = no, deny; A = allow all run permissions)",
+        "┏ ⚠️  Deno requests run access to \"ls\".\r\n",
+        "┠─ Requested by `Deno.permissions.request()` API.\r\n",
+        "┠─ Learn more at: https://docs.deno.com/go/--allow-run\r\n",
+        "┠─ Run again with --allow-run to bypass this prompt.\r\n",
+        "┗ Allow? [y/n/A] (y = yes, allow; n = no, deny; A = allow all run permissions)",
       ));
       console.human_delay();
       console.write_line_raw("y");
       console.expect("Granted run access to \"ls\".");
       console.expect(concat!(
-        "┌ ⚠️  Deno requests run access to \"cat\".\r\n",
-        "├ Requested by `Deno.permissions.request()` API.\r\n",
-        "├ Run again with --allow-run to bypass this prompt.\r\n",
-        "└ Allow? [y/n/A] (y = yes, allow; n = no, deny; A = allow all run permissions)",
+        "┏ ⚠️  Deno requests run access to \"cat\".\r\n",
+        "┠─ Requested by `Deno.permissions.request()` API.\r\n",
+        "┠─ Learn more at: https://docs.deno.com/go/--allow-run\r\n",
+        "┠─ Run again with --allow-run to bypass this prompt.\r\n",
+        "┗ Allow? [y/n/A] (y = yes, allow; n = no, deny; A = allow all run permissions)",
       ));
       console.human_delay();
       console.write_line_raw("n");
@@ -538,19 +541,21 @@ fn _090_run_permissions_request_sync() {
     .args_vec(["run", "--quiet", "run/090_run_permissions_request_sync.ts"])
     .with_pty(|mut console| {
       console.expect(concat!(
-        "┌ ⚠️  Deno requests run access to \"ls\".\r\n",
-        "├ Requested by `Deno.permissions.request()` API.\r\n",
-        "├ Run again with --allow-run to bypass this prompt.\r\n",
-        "└ Allow? [y/n/A] (y = yes, allow; n = no, deny; A = allow all run permissions)",
+        "┏ ⚠️  Deno requests run access to \"ls\".\r\n",
+        "┠─ Requested by `Deno.permissions.request()` API.\r\n",
+        "┠─ Learn more at: https://docs.deno.com/go/--allow-run\r\n",
+        "┠─ Run again with --allow-run to bypass this prompt.\r\n",
+        "┗ Allow? [y/n/A] (y = yes, allow; n = no, deny; A = allow all run permissions)",
       ));
       console.human_delay();
       console.write_line_raw("y");
       console.expect("Granted run access to \"ls\".");
       console.expect(concat!(
-        "┌ ⚠️  Deno requests run access to \"cat\".\r\n",
-        "├ Requested by `Deno.permissions.request()` API.\r\n",
-        "├ Run again with --allow-run to bypass this prompt.\r\n",
-        "└ Allow? [y/n/A] (y = yes, allow; n = no, deny; A = allow all run permissions)",
+        "┏ ⚠️  Deno requests run access to \"cat\".\r\n",
+        "┠─ Requested by `Deno.permissions.request()` API.\r\n",
+        "┠─ Learn more at: https://docs.deno.com/go/--allow-run\r\n",
+        "┠─ Run again with --allow-run to bypass this prompt.\r\n",
+        "┗ Allow? [y/n/A] (y = yes, allow; n = no, deny; A = allow all run permissions)",
       ));
       console.human_delay();
       console.write_line_raw("n");
@@ -568,70 +573,77 @@ fn permissions_prompt_allow_all() {
     .with_pty(|mut console| {
       // "run" permissions
       console.expect(concat!(
-        "┌ ⚠️  Deno requests run access to \"FOO\".\r\n",
-        "├ Requested by `Deno.permissions.request()` API.\r\n",
-        "├ Run again with --allow-run to bypass this prompt.\r\n",
-        "└ Allow? [y/n/A] (y = yes, allow; n = no, deny; A = allow all run permissions)",
+        "┏ ⚠️  Deno requests run access to \"FOO\".\r\n",
+        "┠─ Requested by `Deno.permissions.request()` API.\r\n",
+        "┠─ Learn more at: https://docs.deno.com/go/--allow-run\r\n",
+        "┠─ Run again with --allow-run to bypass this prompt.\r\n",
+        "┗ Allow? [y/n/A] (y = yes, allow; n = no, deny; A = allow all run permissions)",
       ));
       console.human_delay();
       console.write_line_raw("A");
       console.expect("✅ Granted all run access.");
       // "read" permissions
       console.expect(concat!(
-        "┌ ⚠️  Deno requests read access to \"FOO\".\r\n",
-        "├ Requested by `Deno.permissions.request()` API.\r\n",
-        "├ Run again with --allow-read to bypass this prompt.\r\n",
-        "└ Allow? [y/n/A] (y = yes, allow; n = no, deny; A = allow all read permissions)",
+        "┏ ⚠️  Deno requests read access to \"FOO\".\r\n",
+        "┠─ Requested by `Deno.permissions.request()` API.\r\n",
+        "┠─ Learn more at: https://docs.deno.com/go/--allow-read\r\n",
+        "┠─ Run again with --allow-read to bypass this prompt.\r\n",
+        "┗ Allow? [y/n/A] (y = yes, allow; n = no, deny; A = allow all read permissions)",
       ));
       console.human_delay();
       console.write_line_raw("A");
       console.expect("✅ Granted all read access.");
       // "write" permissions
       console.expect(concat!(
-        "┌ ⚠️  Deno requests write access to \"FOO\".\r\n",
-        "├ Requested by `Deno.permissions.request()` API.\r\n",
-        "├ Run again with --allow-write to bypass this prompt.\r\n",
-        "└ Allow? [y/n/A] (y = yes, allow; n = no, deny; A = allow all write permissions)",
+        "┏ ⚠️  Deno requests write access to \"FOO\".\r\n",
+        "┠─ Requested by `Deno.permissions.request()` API.\r\n",
+        "┠─ Learn more at: https://docs.deno.com/go/--allow-write\r\n",
+        "┠─ Run again with --allow-write to bypass this prompt.\r\n",
+        "┗ Allow? [y/n/A] (y = yes, allow; n = no, deny; A = allow all write permissions)",
       ));
       console.human_delay();
       console.write_line_raw("A");
       console.expect("✅ Granted all write access.");
       // "net" permissions
       console.expect(concat!(
-        "┌ ⚠️  Deno requests net access to \"foo\".\r\n",
-        "├ Requested by `Deno.permissions.request()` API.\r\n",
-        "├ Run again with --allow-net to bypass this prompt.\r\n",
-        "└ Allow? [y/n/A] (y = yes, allow; n = no, deny; A = allow all net permissions)",
+        "┏ ⚠️  Deno requests net access to \"foo\".\r\n",
+        "┠─ Requested by `Deno.permissions.request()` API.\r\n",
+        "┠─ Learn more at: https://docs.deno.com/go/--allow-net\r\n",
+        "┠─ Run again with --allow-net to bypass this prompt.\r\n",
+        "┗ Allow? [y/n/A] (y = yes, allow; n = no, deny; A = allow all net permissions)",
       ));
       console.human_delay();
       console.write_line_raw("A");
       console.expect("✅ Granted all net access.");
       // "env" permissions
       console.expect(concat!(
-        "┌ ⚠️  Deno requests env access to \"FOO\".\r\n",
-        "├ Requested by `Deno.permissions.request()` API.\r\n",
-        "├ Run again with --allow-env to bypass this prompt.\r\n",
-        "└ Allow? [y/n/A] (y = yes, allow; n = no, deny; A = allow all env permissions)",
+        "┏ ⚠️  Deno requests env access to \"FOO\".\r\n",
+        "┠─ Requested by `Deno.permissions.request()` API.\r\n",
+        "┠─ Learn more at: https://docs.deno.com/go/--allow-env\r\n",
+        "┠─ Run again with --allow-env to bypass this prompt.\r\n",
+        "┗ Allow? [y/n/A] (y = yes, allow; n = no, deny; A = allow all env permissions)",
       ));
       console.human_delay();
       console.write_line_raw("A");
       console.expect("✅ Granted all env access.");
       // "sys" permissions
       console.expect(concat!(
-        "┌ ⚠️  Deno requests sys access to \"loadavg\".\r\n",
-        "├ Requested by `Deno.permissions.request()` API.\r\n",
-        "├ Run again with --allow-sys to bypass this prompt.\r\n",
-        "└ Allow? [y/n/A] (y = yes, allow; n = no, deny; A = allow all sys permissions)",
+        "┏ ⚠️  Deno requests sys access to \"loadavg\".\r\n",
+        "┠─ Requested by `Deno.permissions.request()` API.\r\n",
+        "┠─ Learn more at: https://docs.deno.com/go/--allow-sys\r\n",
+        "┠─ Run again with --allow-sys to bypass this prompt.\r\n",
+        "┗ Allow? [y/n/A] (y = yes, allow; n = no, deny; A = allow all sys permissions)",
       ));
       console.human_delay();
       console.write_line_raw("A");
       console.expect("✅ Granted all sys access.");
       // "ffi" permissions
       console.expect(concat!(
-        "┌ ⚠️  Deno requests ffi access to \"FOO\".\r\n",
-        "├ Requested by `Deno.permissions.request()` API.\r\n",
-        "├ Run again with --allow-ffi to bypass this prompt.\r\n",
-        "└ Allow? [y/n/A] (y = yes, allow; n = no, deny; A = allow all ffi permissions)",
+        "┏ ⚠️  Deno requests ffi access to \"FOO\".\r\n",
+        "┠─ Requested by `Deno.permissions.request()` API.\r\n",
+        "┠─ Learn more at: https://docs.deno.com/go/--allow-ffi\r\n",
+        "┠─ Run again with --allow-ffi to bypass this prompt.\r\n",
+        "┗ Allow? [y/n/A] (y = yes, allow; n = no, deny; A = allow all ffi permissions)",
       ));
       console.human_delay();
       console.write_line_raw("A");
@@ -648,9 +660,10 @@ fn permissions_prompt_allow_all_2() {
     .with_pty(|mut console| {
       // "env" permissions
       console.expect(concat!(
-        "┌ ⚠️  Deno requests env access to \"FOO\".\r\n",
-        "├ Run again with --allow-env to bypass this prompt.\r\n",
-        "└ Allow? [y/n/A] (y = yes, allow; n = no, deny; A = allow all env permissions)",
+        "┏ ⚠️  Deno requests env access to \"FOO\".\r\n",
+        "┠─ Learn more at: https://docs.deno.com/go/--allow-env\r\n",
+        "┠─ Run again with --allow-env to bypass this prompt.\r\n",
+        "┗ Allow? [y/n/A] (y = yes, allow; n = no, deny; A = allow all env permissions)",
       ));
       console.human_delay();
       console.write_line_raw("A");
@@ -658,10 +671,11 @@ fn permissions_prompt_allow_all_2() {
 
       // "sys" permissions
       console.expect(concat!(
-        "┌ ⚠️  Deno requests sys access to \"loadavg\".\r\n",
-        "├ Requested by `Deno.loadavg()` API.\r\n",
-        "├ Run again with --allow-sys to bypass this prompt.\r\n",
-        "└ Allow? [y/n/A] (y = yes, allow; n = no, deny; A = allow all sys permissions)",
+        "┏ ⚠️  Deno requests sys access to \"loadavg\".\r\n",
+        "┠─ Requested by `Deno.loadavg()` API.\r\n",
+        "┠─ Learn more at: https://docs.deno.com/go/--allow-sys\r\n",
+        "┠─ Run again with --allow-sys to bypass this prompt.\r\n",
+        "┗ Allow? [y/n/A] (y = yes, allow; n = no, deny; A = allow all sys permissions)",
       ));
       console.human_delay();
       console.write_line_raw("A");
@@ -669,10 +683,11 @@ fn permissions_prompt_allow_all_2() {
 
       // "read" permissions
       console.expect(concat!(
-        "┌ ⚠️  Deno requests read access to <CWD>.\r\n",
-        "├ Requested by `Deno.cwd()` API.\r\n",
-        "├ Run again with --allow-read to bypass this prompt.\r\n",
-        "└ Allow? [y/n/A] (y = yes, allow; n = no, deny; A = allow all read permissions)",
+        "┏ ⚠️  Deno requests read access to <CWD>.\r\n",
+        "┠─ Requested by `Deno.cwd()` API.\r\n",
+        "┠─ Learn more at: https://docs.deno.com/go/--allow-read\r\n",
+        "┠─ Run again with --allow-read to bypass this prompt.\r\n",
+        "┗ Allow? [y/n/A] (y = yes, allow; n = no, deny; A = allow all read permissions)",
       ));
       console.human_delay();
       console.write_line_raw("A");
@@ -688,10 +703,11 @@ fn permissions_prompt_allow_all_lowercase_a() {
     .with_pty(|mut console| {
       // "run" permissions
       console.expect(concat!(
-        "┌ ⚠️  Deno requests run access to \"FOO\".\r\n",
-        "├ Requested by `Deno.permissions.request()` API.\r\n",
-        "├ Run again with --allow-run to bypass this prompt.\r\n",
-        "└ Allow? [y/n/A] (y = yes, allow; n = no, deny; A = allow all run permissions)",
+        "┏ ⚠️  Deno requests run access to \"FOO\".\r\n",
+        "┠─ Requested by `Deno.permissions.request()` API.\r\n",
+        "┠─ Learn more at: https://docs.deno.com/go/--allow-run\r\n",
+        "┠─ Run again with --allow-run to bypass this prompt.\r\n",
+        "┗ Allow? [y/n/A] (y = yes, allow; n = no, deny; A = allow all run permissions)",
       ));
       console.human_delay();
       console.write_line_raw("a");
@@ -714,12 +730,12 @@ fn permission_request_long() {
 }
 
 itest!(deny_all_permission_args {
-  args: "run --deny-env --deny-read --deny-write --deny-ffi --deny-run --deny-sys --deny-net --deny-hrtime run/deny_all_permission_args.js",
+  args: "run --deny-env --deny-read --deny-write --deny-ffi --deny-run --deny-sys --deny-net run/deny_all_permission_args.js",
   output: "run/deny_all_permission_args.out",
 });
 
 itest!(deny_some_permission_args {
-  args: "run --allow-env --deny-env=FOO --allow-read --deny-read=/foo --allow-write --deny-write=/foo --allow-ffi --deny-ffi=/foo --allow-run --deny-run=foo --allow-sys --deny-sys=hostname --allow-net --deny-net=127.0.0.1 --allow-hrtime --deny-hrtime run/deny_some_permission_args.js",
+  args: "run --allow-env --deny-env=FOO --allow-read --deny-read=/foo --allow-write --deny-write=/foo --allow-ffi --deny-ffi=/foo --allow-run --deny-run=foo --allow-sys --deny-sys=hostname --allow-net --deny-net=127.0.0.1 run/deny_some_permission_args.js",
   output: "run/deny_some_permission_args.out",
 });
 
@@ -731,10 +747,11 @@ fn permissions_cache() {
     .with_pty(|mut console| {
       console.expect(concat!(
         "prompt\r\n",
-        "┌ ⚠️  Deno requests read access to \"foo\".\r\n",
-        "├ Requested by `Deno.permissions.request()` API.\r\n",
-        "├ Run again with --allow-read to bypass this prompt.\r\n",
-        "└ Allow? [y/n/A] (y = yes, allow; n = no, deny; A = allow all read permissions)",
+        "┏ ⚠️  Deno requests read access to \"foo\".\r\n",
+        "┠─ Requested by `Deno.permissions.request()` API.\r\n",
+        "┠─ Learn more at: https://docs.deno.com/go/--allow-read\r\n",
+        "┠─ Run again with --allow-read to bypass this prompt.\r\n",
+        "┗ Allow? [y/n/A] (y = yes, allow; n = no, deny; A = allow all read permissions)",
       ));
       console.human_delay();
       console.write_line_raw("y");
@@ -821,40 +838,6 @@ itest!(lock_check_ok2 {
   http_server: true,
 });
 
-itest!(lock_dynamic_imports {
-  args: "run --lock=run/lock_dynamic_imports.json --allow-read --allow-net http://127.0.0.1:4545/run/013_dynamic_import.ts",
-  output: "run/lock_dynamic_imports.out",
-  exit_code: 10,
-  http_server: true,
-});
-
-itest!(lock_check_err {
-  args: "run --lock=run/lock_check_err.json http://127.0.0.1:4545/run/003_relative_import.ts",
-  output: "run/lock_check_err.out",
-  exit_code: 10,
-  http_server: true,
-});
-
-itest!(lock_check_err2 {
-  args: "run --lock=run/lock_check_err2.json run/019_media_types.ts",
-  output: "run/lock_check_err2.out",
-  exit_code: 10,
-  http_server: true,
-});
-
-itest!(config_file_lock_path {
-  args: "run --config=run/config_file_lock_path.json run/019_media_types.ts",
-  output: "run/config_file_lock_path.out",
-  exit_code: 10,
-  http_server: true,
-});
-
-itest!(lock_flag_overrides_config_file_lock_path {
-  args: "run --lock=run/lock_check_ok2.json --config=run/config_file_lock_path.json run/019_media_types.ts",
-  output: "run/019_media_types.ts.out",
-  http_server: true,
-});
-
 itest!(lock_v2_check_ok {
   args:
     "run --quiet --lock=run/lock_v2_check_ok.json http://127.0.0.1:4545/run/003_relative_import.ts",
@@ -867,48 +850,6 @@ itest!(lock_v2_check_ok2 {
   output: "run/019_media_types.ts.out",
   http_server: true,
 });
-
-itest!(lock_v2_dynamic_imports {
-  args: "run --lock=run/lock_v2_dynamic_imports.json --allow-read --allow-net http://127.0.0.1:4545/run/013_dynamic_import.ts",
-  output: "run/lock_v2_dynamic_imports.out",
-  exit_code: 10,
-  http_server: true,
-});
-
-itest!(lock_v2_check_err {
-  args: "run --lock=run/lock_v2_check_err.json http://127.0.0.1:4545/run/003_relative_import.ts",
-  output: "run/lock_v2_check_err.out",
-  exit_code: 10,
-  http_server: true,
-});
-
-itest!(lock_v2_check_err2 {
-  args: "run --lock=run/lock_v2_check_err2.json run/019_media_types.ts",
-  output: "run/lock_v2_check_err2.out",
-  exit_code: 10,
-  http_server: true,
-});
-
-itest!(lock_only_http_and_https {
-  args: "run --lock=run/lock_only_http_and_https/deno.lock run/lock_only_http_and_https/main.ts",
-  output: "run/lock_only_http_and_https/main.out",
-  http_server: true,
-});
-
-#[test]
-fn lock_no_declaration_files() {
-  let context = TestContextBuilder::new()
-    .use_temp_cwd()
-    .use_http_server()
-    .build();
-  let output = context
-    .new_command()
-    .args("cache --lock --lock-write $TESTDATA/lockfile/no_dts/main.ts")
-    .run();
-  output.assert_matches_file("lockfile/no_dts/main.cache.out");
-  let lockfile = context.temp_dir().path().join("deno.lock");
-  lockfile.assert_matches_file("lockfile/no_dts/deno.lock.out");
-}
 
 #[test]
 fn lock_redirects() {
@@ -929,7 +870,7 @@ fn lock_redirects() {
     .run()
     .skip_output_check();
   let initial_lockfile_text = r#"{
-  "version": "3",
+  "version": "4",
   "redirects": {
     "http://localhost:4546/run/001_hello.js": "http://localhost:4545/run/001_hello.js"
   },
@@ -948,7 +889,7 @@ fn lock_redirects() {
 
   // now try changing where the redirect occurs in the lockfile
   temp_dir.write("deno.lock", r#"{
-  "version": "3",
+  "version": "4",
   "redirects": {
     "http://localhost:4546/run/001_hello.js": "http://localhost:4545/echo.ts"
   },
@@ -979,16 +920,13 @@ fn lock_redirects() {
   util::assertions::assert_wildcard_match(
     &temp_dir.read_to_string("deno.lock"),
     r#"{
-  "version": "3",
-  "packages": {
-    "specifiers": {
-      "npm:@denotest/esm-basic": "npm:@denotest/esm-basic@1.0.0"
-    },
-    "npm": {
-      "@denotest/esm-basic@1.0.0": {
-        "integrity": "sha512-[WILDCARD]",
-        "dependencies": {}
-      }
+  "version": "4",
+  "specifiers": {
+    "npm:@denotest/esm-basic@*": "1.0.0"
+  },
+  "npm": {
+    "@denotest/esm-basic@1.0.0": {
+      "integrity": "sha512-[WILDCARD]"
     }
   },
   "redirects": {
@@ -1003,7 +941,9 @@ fn lock_redirects() {
   );
 }
 
+// TODO(2.0): this should be rewritten to a spec test and first run `deno install`
 #[test]
+#[ignore]
 fn lock_deno_json_package_json_deps() {
   let context = TestContextBuilder::new()
     .use_temp_cwd()
@@ -1033,29 +973,25 @@ fn lock_deno_json_package_json_deps() {
   let esm_basic_integrity =
     get_lockfile_npm_package_integrity(&lockfile, "@denotest/esm-basic@1.0.0");
   lockfile.assert_matches_json(json!({
-    "version": "3",
-    "packages": {
-      "specifiers": {
-        "jsr:@denotest/module-graph@1.4": "jsr:@denotest/module-graph@1.4.0",
-        "npm:@denotest/esm-basic": "npm:@denotest/esm-basic@1.0.0"
-      },
-      "jsr": {
-        "@denotest/module-graph@1.4.0": {
-          "integrity": "32de0973c5fa55772326fcd504a757f386d2b010db3e13e78f3bcf851e69473d"
-        }
-      },
-      "npm": {
-        "@denotest/esm-basic@1.0.0": {
-          "integrity": esm_basic_integrity,
-          "dependencies": {}
-        }
+    "version": "4",
+    "specifiers": {
+      "jsr:@denotest/module-graph@1.4": "1.4.0",
+      "npm:@denotest/esm-basic@*": "1.0.0"
+    },
+    "jsr": {
+      "@denotest/module-graph@1.4.0": {
+        "integrity": "32de0973c5fa55772326fcd504a757f386d2b010db3e13e78f3bcf851e69473d"
       }
     },
-    "remote": {},
+    "npm": {
+      "@denotest/esm-basic@1.0.0": {
+        "integrity": esm_basic_integrity
+      }
+    },
     "workspace": {
       "dependencies": [
         "jsr:@denotest/module-graph@1.4",
-        "npm:@denotest/esm-basic"
+        "npm:@denotest/esm-basic@*"
       ]
     }
   }));
@@ -1085,32 +1021,28 @@ fn lock_deno_json_package_json_deps() {
     .run()
     .skip_output_check();
   lockfile.assert_matches_json(json!({
-    "version": "3",
-    "packages": {
-      "specifiers": {
-        "jsr:@denotest/module-graph@1.4": "jsr:@denotest/module-graph@1.4.0",
-        "npm:@denotest/esm-basic": "npm:@denotest/esm-basic@1.0.0"
-      },
-      "jsr": {
-        "@denotest/module-graph@1.4.0": {
-          "integrity": "32de0973c5fa55772326fcd504a757f386d2b010db3e13e78f3bcf851e69473d"
-        }
-      },
-      "npm": {
-        "@denotest/esm-basic@1.0.0": {
-          "integrity": esm_basic_integrity,
-          "dependencies": {}
-        }
+    "version": "4",
+    "specifiers": {
+      "jsr:@denotest/module-graph@1.4": "1.4.0",
+      "npm:@denotest/esm-basic@*": "1.0.0"
+    },
+    "jsr": {
+      "@denotest/module-graph@1.4.0": {
+        "integrity": "32de0973c5fa55772326fcd504a757f386d2b010db3e13e78f3bcf851e69473d"
       }
     },
-    "remote": {},
+    "npm": {
+      "@denotest/esm-basic@1.0.0": {
+        "integrity": esm_basic_integrity
+      }
+    },
     "workspace": {
       "dependencies": [
         "jsr:@denotest/module-graph@1.4"
       ],
       "packageJson": {
         "dependencies": [
-          "npm:@denotest/esm-basic"
+          "npm:@denotest/esm-basic@*"
         ]
       }
     }
@@ -1126,18 +1058,15 @@ fn lock_deno_json_package_json_deps() {
     .run()
     .skip_output_check();
   lockfile.assert_matches_json(json!({
-    "version": "3",
-    "packages": {
-      "specifiers": {
-        "jsr:@denotest/module-graph@1.4": "jsr:@denotest/module-graph@1.4.0",
-      },
-      "jsr": {
-        "@denotest/module-graph@1.4.0": {
-          "integrity": "32de0973c5fa55772326fcd504a757f386d2b010db3e13e78f3bcf851e69473d"
-        }
+    "version": "4",
+    "specifiers": {
+      "jsr:@denotest/module-graph@1.4": "1.4.0",
+    },
+    "jsr": {
+      "@denotest/module-graph@1.4.0": {
+        "integrity": "32de0973c5fa55772326fcd504a757f386d2b010db3e13e78f3bcf851e69473d"
       }
     },
-    "remote": {},
     "workspace": {
       "dependencies": [
         "jsr:@denotest/module-graph@1.4"
@@ -1155,8 +1084,7 @@ fn lock_deno_json_package_json_deps() {
     .skip_output_check();
 
   lockfile.assert_matches_json(json!({
-    "version": "3",
-    "remote": {}
+    "version": "4"
   }));
 }
 
@@ -1172,7 +1100,9 @@ fn lock_deno_json_package_json_deps_workspace() {
 
   // deno.json
   let deno_json = temp_dir.join("deno.json");
-  deno_json.write_json(&json!({}));
+  deno_json.write_json(&json!({
+    "nodeModulesDir": "auto"
+  }));
 
   // package.json
   let package_json = temp_dir.join("package.json");
@@ -1206,23 +1136,41 @@ fn lock_deno_json_package_json_deps_workspace() {
   let lockfile = temp_dir.join("deno.lock");
   let esm_basic_integrity =
     get_lockfile_npm_package_integrity(&lockfile, "@denotest/esm-basic@1.0.0");
+  let cjs_default_export_integrity = get_lockfile_npm_package_integrity(
+    &lockfile,
+    "@denotest/cjs-default-export@1.0.0",
+  );
 
-  // no "workspace" because deno isn't smart enough to figure this out yet
-  // since it discovered the package.json in a folder different from the lockfile
   lockfile.assert_matches_json(json!({
-    "version": "3",
-    "packages": {
-      "specifiers": {
-        "npm:@denotest/esm-basic@1": "npm:@denotest/esm-basic@1.0.0"
+    "version": "4",
+    "specifiers": {
+      "npm:@denotest/cjs-default-export@1": "1.0.0",
+      "npm:@denotest/esm-basic@1": "1.0.0"
+    },
+    "npm": {
+      "@denotest/cjs-default-export@1.0.0": {
+        "integrity": cjs_default_export_integrity
       },
-      "npm": {
-        "@denotest/esm-basic@1.0.0": {
-          "integrity": esm_basic_integrity,
-          "dependencies": {}
-        }
+      "@denotest/esm-basic@1.0.0": {
+        "integrity": esm_basic_integrity
       }
     },
-    "remote": {},
+    "workspace": {
+      "packageJson": {
+        "dependencies": [
+          "npm:@denotest/cjs-default-export@1"
+        ]
+      },
+      "members": {
+        "package-a": {
+          "packageJson": {
+            "dependencies": [
+              "npm:@denotest/esm-basic@1"
+            ]
+          }
+        }
+      }
+    }
   }));
 
   // run a command that causes discovery of the root package.json beside the lockfile
@@ -1237,29 +1185,33 @@ fn lock_deno_json_package_json_deps_workspace() {
     "@denotest/cjs-default-export@1.0.0",
   );
   let expected_lockfile = json!({
-    "version": "3",
-    "packages": {
-      "specifiers": {
-        "npm:@denotest/cjs-default-export@1": "npm:@denotest/cjs-default-export@1.0.0",
-        "npm:@denotest/esm-basic@1": "npm:@denotest/esm-basic@1.0.0"
+    "version": "4",
+    "specifiers": {
+      "npm:@denotest/cjs-default-export@1": "1.0.0",
+      "npm:@denotest/esm-basic@1": "1.0.0"
+    },
+    "npm": {
+      "@denotest/cjs-default-export@1.0.0": {
+        "integrity": cjs_default_export_integrity
       },
-      "npm": {
-        "@denotest/cjs-default-export@1.0.0": {
-          "integrity": cjs_default_export_integrity,
-          "dependencies": {}
-        },
-        "@denotest/esm-basic@1.0.0": {
-          "integrity": esm_basic_integrity,
-          "dependencies": {}
-        }
+      "@denotest/esm-basic@1.0.0": {
+        "integrity": esm_basic_integrity
       }
     },
-    "remote": {},
     "workspace": {
       "packageJson": {
         "dependencies": [
           "npm:@denotest/cjs-default-export@1"
         ]
+      },
+      "members": {
+        "package-a": {
+          "packageJson": {
+            "dependencies": [
+              "npm:@denotest/esm-basic@1"
+            ]
+          }
+        }
       }
     }
   });
@@ -1284,8 +1236,6 @@ fn get_lockfile_npm_package_integrity(
   // different hashes depending on what operating system it's running on
   lockfile
     .read_json_value()
-    .get("packages")
-    .unwrap()
     .get("npm")
     .unwrap()
     .get(package_name)
@@ -1848,16 +1798,6 @@ itest!(top_level_for_await_ts {
   output: "run/top_level_await/top_level_for_await.out",
 });
 
-itest!(unstable_disabled_js {
-  args: "run --reload run/unstable.js",
-  output: "run/unstable_disabled_js.out",
-});
-
-itest!(unstable_enabled_js {
-  args: "run --quiet --reload --unstable-fs run/unstable.ts",
-  output: "run/unstable_enabled_js.out",
-});
-
 itest!(unstable_worker {
   args: "run --reload --quiet --allow-read run/unstable_worker.ts",
   output: "run/unstable_worker.ts.out",
@@ -1895,26 +1835,6 @@ itest!(unstable_cron_enabled {
   output: "run/unstable_cron.enabled.out",
 });
 
-itest!(unstable_ffi_disabled {
-  args: "run --quiet --reload --allow-read run/unstable_ffi.js",
-  output: "run/unstable_ffi.disabled.out",
-});
-
-itest!(unstable_ffi_enabled {
-  args: "run --quiet --reload --allow-read --unstable-ffi run/unstable_ffi.js",
-  output: "run/unstable_ffi.enabled.out",
-});
-
-itest!(unstable_fs_disabled {
-  args: "run --quiet --reload --allow-read run/unstable_fs.js",
-  output: "run/unstable_fs.disabled.out",
-});
-
-itest!(unstable_fs_enabled {
-  args: "run --quiet --reload --allow-read --unstable-fs run/unstable_fs.js",
-  output: "run/unstable_fs.enabled.out",
-});
-
 itest!(unstable_http_disabled {
   args: "run --quiet --reload --allow-read run/unstable_http.js",
   output: "run/unstable_http.disabled.out",
@@ -1944,17 +1864,6 @@ itest!(unstable_kv_disabled {
 itest!(unstable_kv_enabled {
   args: "run --quiet --reload --allow-read --unstable-kv run/unstable_kv.js",
   output: "run/unstable_kv.enabled.out",
-});
-
-itest!(unstable_webgpu_disabled {
-  args: "run --quiet --reload --allow-read run/unstable_webgpu.js",
-  output: "run/unstable_webgpu.disabled.out",
-});
-
-itest!(unstable_webgpu_enabled {
-  args:
-    "run --quiet --reload --allow-read --unstable-webgpu run/unstable_webgpu.js",
-  output: "run/unstable_webgpu.enabled.out",
 });
 
 itest!(import_compression {
@@ -2585,8 +2494,8 @@ fn should_not_panic_on_undefined_deno_dir_and_home_environment_variables() {
 }
 
 #[test]
-fn rust_log() {
-  // Without RUST_LOG the stderr is empty.
+fn deno_log() {
+  // Without DENO_LOG the stderr is empty.
   let output = util::deno_cmd()
     .current_dir(util::testdata_path())
     .arg("run")
@@ -2599,12 +2508,12 @@ fn rust_log() {
   assert!(output.status.success());
   assert!(output.stderr.is_empty());
 
-  // With RUST_LOG the stderr is not empty.
+  // With DENO_LOG the stderr is not empty.
   let output = util::deno_cmd()
     .current_dir(util::testdata_path())
     .arg("run")
     .arg("run/001_hello.js")
-    .env("RUST_LOG", "debug")
+    .env("DENO_LOG", "debug")
     .stderr_piped()
     .spawn()
     .unwrap()
@@ -2646,7 +2555,7 @@ mod permissions {
   fn with_allow() {
     for permission in &util::PERMISSION_VARIANTS {
       let status = util::deno_cmd()
-        .current_dir(&util::testdata_path())
+        .current_dir(util::testdata_path())
         .arg("run")
         .arg("--unstable")
         .arg(format!("--allow-{permission}"))
@@ -2680,7 +2589,7 @@ mod permissions {
     const PERMISSION_VARIANTS: [&str; 2] = ["read", "write"];
     for permission in &PERMISSION_VARIANTS {
       let status = util::deno_cmd()
-        .current_dir(&util::testdata_path())
+        .current_dir(util::testdata_path())
         .arg("run")
         .arg(format!(
           "--allow-{0}={1}",
@@ -2723,7 +2632,7 @@ mod permissions {
     const PERMISSION_VARIANTS: [&str; 2] = ["read", "write"];
     for permission in &PERMISSION_VARIANTS {
       let status = util::deno_cmd()
-        .current_dir(&util::testdata_path())
+        .current_dir(util::testdata_path())
         .arg("run")
         .arg(format!(
           "--allow-{0}={1}",
@@ -2771,7 +2680,7 @@ mod permissions {
     let js_dir = util::root_path().join("js");
     for permission in &PERMISSION_VARIANTS {
       let status = util::deno_cmd()
-        .current_dir(&util::testdata_path())
+        .current_dir(util::testdata_path())
         .arg("run")
         .arg(format!("--allow-{permission}={test_dir},{js_dir}"))
         .arg("run/complex_permissions_test.ts")
@@ -2790,7 +2699,7 @@ mod permissions {
     const PERMISSION_VARIANTS: [&str; 2] = ["read", "write"];
     for permission in &PERMISSION_VARIANTS {
       let status = util::deno_cmd()
-        .current_dir(&util::testdata_path())
+        .current_dir(util::testdata_path())
         .arg("run")
         .arg(format!("--allow-{permission}=."))
         .arg("run/complex_permissions_test.ts")
@@ -2809,7 +2718,7 @@ mod permissions {
     const PERMISSION_VARIANTS: [&str; 2] = ["read", "write"];
     for permission in &PERMISSION_VARIANTS {
       let status = util::deno_cmd()
-        .current_dir(&util::testdata_path())
+        .current_dir(util::testdata_path())
         .arg("run")
         .arg(format!("--allow-{permission}=tls/../"))
         .arg("run/complex_permissions_test.ts")
@@ -2990,18 +2899,20 @@ mod permissions {
       .args_vec(["run", "--quiet", "run/061_permissions_request.ts"])
       .with_pty(|mut console| {
         console.expect(concat!(
-          "┌ ⚠️  Deno requests read access to \"foo\".\r\n",
-          "├ Requested by `Deno.permissions.request()` API.\r\n",
-          "├ Run again with --allow-read to bypass this prompt.\r\n",
-          "└ Allow? [y/n/A] (y = yes, allow; n = no, deny; A = allow all read permissions)",
+          "┏ ⚠️  Deno requests read access to \"foo\".\r\n",
+          "┠─ Requested by `Deno.permissions.request()` API.\r\n",
+          "┠─ Learn more at: https://docs.deno.com/go/--allow-read\r\n",
+          "┠─ Run again with --allow-read to bypass this prompt.\r\n",
+          "┗ Allow? [y/n/A] (y = yes, allow; n = no, deny; A = allow all read permissions)",
         ));
         console.human_delay();
         console.write_line_raw("y");
         console.expect(concat!(
-          "┌ ⚠️  Deno requests read access to \"bar\".\r\n",
-          "├ Requested by `Deno.permissions.request()` API.\r\n",
-          "├ Run again with --allow-read to bypass this prompt.\r\n",
-          "└ Allow? [y/n/A] (y = yes, allow; n = no, deny; A = allow all read permissions)",
+          "┏ ⚠️  Deno requests read access to \"bar\".\r\n",
+          "┠─ Requested by `Deno.permissions.request()` API.\r\n",
+          "┠─ Learn more at: https://docs.deno.com/go/--allow-read\r\n",
+          "┠─ Run again with --allow-read to bypass this prompt.\r\n",
+          "┗ Allow? [y/n/A] (y = yes, allow; n = no, deny; A = allow all read permissions)",
         ));
         console.human_delay();
         console.write_line_raw("n");
@@ -3018,18 +2929,20 @@ mod permissions {
       .args_vec(["run", "--quiet", "run/061_permissions_request_sync.ts"])
       .with_pty(|mut console| {
         console.expect(concat!(
-          "┌ ⚠️  Deno requests read access to \"foo\".\r\n",
-          "├ Requested by `Deno.permissions.request()` API.\r\n",
-          "├ Run again with --allow-read to bypass this prompt.\r\n",
-          "└ Allow? [y/n/A] (y = yes, allow; n = no, deny; A = allow all read permissions)",
+          "┏ ⚠️  Deno requests read access to \"foo\".\r\n",
+          "┠─ Requested by `Deno.permissions.request()` API.\r\n",
+          "┠─ Learn more at: https://docs.deno.com/go/--allow-read\r\n",
+          "┠─ Run again with --allow-read to bypass this prompt.\r\n",
+          "┗ Allow? [y/n/A] (y = yes, allow; n = no, deny; A = allow all read permissions)",
         ));
         console.human_delay();
         console.write_line_raw("y");
         console.expect(concat!(
-          "┌ ⚠️  Deno requests read access to \"bar\".\r\n",
-          "├ Requested by `Deno.permissions.request()` API.\r\n",
-          "├ Run again with --allow-read to bypass this prompt.\r\n",
-          "└ Allow? [y/n/A] (y = yes, allow; n = no, deny; A = allow all read permissions)",
+          "┏ ⚠️  Deno requests read access to \"bar\".\r\n",
+          "┠─ Requested by `Deno.permissions.request()` API.\r\n",
+          "┠─ Learn more at: https://docs.deno.com/go/--allow-read\r\n",
+          "┠─ Run again with --allow-read to bypass this prompt.\r\n",
+          "┗ Allow? [y/n/A] (y = yes, allow; n = no, deny; A = allow all read permissions)",
         ));
         console.human_delay();
         console.write_line_raw("n");
@@ -3046,10 +2959,11 @@ mod permissions {
       .args_vec(["run", "--quiet", "run/062_permissions_request_global.ts"])
       .with_pty(|mut console| {
         console.expect(concat!(
-          "┌ ⚠️  Deno requests read access.\r\n",
-          "├ Requested by `Deno.permissions.request()` API.\r\n",
-          "├ Run again with --allow-read to bypass this prompt.\r\n",
-          "└ Allow? [y/n/A] (y = yes, allow; n = no, deny; A = allow all read permissions)",
+          "┏ ⚠️  Deno requests read access.\r\n",
+          "┠─ Requested by `Deno.permissions.request()` API.\r\n",
+          "┠─ Learn more at: https://docs.deno.com/go/--allow-read\r\n",
+          "┠─ Run again with --allow-read to bypass this prompt.\r\n",
+          "┗ Allow? [y/n/A] (y = yes, allow; n = no, deny; A = allow all read permissions)",
         ));
         console.human_delay();
         console.write_line_raw("y\n");
@@ -3069,10 +2983,11 @@ mod permissions {
       .args_vec(["run", "--quiet", "run/062_permissions_request_global_sync.ts"])
       .with_pty(|mut console| {
         console.expect(concat!(
-          "┌ ⚠️  Deno requests read access.\r\n",
-          "├ Requested by `Deno.permissions.request()` API.\r\n",
-          "├ Run again with --allow-read to bypass this prompt.\r\n",
-          "└ Allow? [y/n/A] (y = yes, allow; n = no, deny; A = allow all read permissions)",
+          "┏ ⚠️  Deno requests read access.\r\n",
+          "┠─ Requested by `Deno.permissions.request()` API.\r\n",
+          "┠─ Learn more at: https://docs.deno.com/go/--allow-read\r\n",
+          "┠─ Run again with --allow-read to bypass this prompt.\r\n",
+          "┗ Allow? [y/n/A] (y = yes, allow; n = no, deny; A = allow all read permissions)",
         ));
         console.human_delay();
         console.write_line_raw("y");
@@ -3188,12 +3103,12 @@ mod permissions {
 }
 
 itest!(tls_starttls {
-  args: "run --quiet --reload --allow-net --allow-read --cert tls/RootCA.pem run/tls_starttls.js",
+  args: "run --quiet --reload --allow-net --allow-read --cert tls/RootCA.pem --config ../config/deno.json run/tls_starttls.js",
   output: "run/tls.out",
 });
 
 itest!(tls_connecttls {
-  args: "run --quiet --reload --allow-net --allow-read --cert tls/RootCA.pem run/tls_connecttls.js",
+  args: "run --quiet --reload --allow-net --allow-read --cert tls/RootCA.pem --config ../config/deno.json run/tls_connecttls.js",
   output: "run/tls.out",
 });
 
@@ -3201,6 +3116,20 @@ itest!(byte_order_mark {
   args: "run --no-check run/byte_order_mark.ts",
   output: "run/byte_order_mark.out",
 });
+
+#[test]
+#[cfg(windows)]
+fn process_stdin_read_unblock() {
+  TestContext::default()
+    .new_command()
+    .args_vec(["run", "run/process_stdin_unblock.mjs"])
+    .with_pty(|mut console| {
+      console.write_raw("b");
+      console.human_delay();
+      console.write_line_raw("s");
+      console.expect_all(&["1", "1"]);
+    });
+}
 
 #[test]
 fn issue9750() {
@@ -3211,18 +3140,20 @@ fn issue9750() {
       console.expect("Enter 'yy':");
       console.write_line_raw("yy");
       console.expect(concat!(
-        "┌ ⚠️  Deno requests env access.\r\n",
-        "├ Requested by `Deno.permissions.request()` API.\r\n",
-        "├ Run again with --allow-env to bypass this prompt.\r\n",
-        "└ Allow? [y/n/A] (y = yes, allow; n = no, deny; A = allow all env permissions)",
+        "┏ ⚠️  Deno requests env access.\r\n",
+        "┠─ Requested by `Deno.permissions.request()` API.\r\n",
+        "┠─ Learn more at: https://docs.deno.com/go/--allow-env\r\n",
+        "┠─ Run again with --allow-env to bypass this prompt.\r\n",
+        "┗ Allow? [y/n/A] (y = yes, allow; n = no, deny; A = allow all env permissions)",
       ));
       console.human_delay();
       console.write_line_raw("n");
       console.expect("Denied env access.");
       console.expect(concat!(
-        "┌ ⚠️  Deno requests env access to \"SECRET\".\r\n",
-        "├ Run again with --allow-env to bypass this prompt.\r\n",
-        "└ Allow? [y/n/A] (y = yes, allow; n = no, deny; A = allow all env permissions)",
+        "┏ ⚠️  Deno requests env access to \"SECRET\".\r\n",
+        "┠─ Learn more at: https://docs.deno.com/go/--allow-env\r\n",
+        "┠─ Run again with --allow-env to bypass this prompt.\r\n",
+        "┗ Allow? [y/n/A] (y = yes, allow; n = no, deny; A = allow all env permissions)",
       ));
       console.human_delay();
       console.write_line_raw("n");
@@ -3458,16 +3389,19 @@ itest!(
   }
 );
 
-itest!(package_json_auto_discovered_for_npm_binary {
-  args: "run -L debug -A npm:@denotest/bin/cli-esm this is a test",
-  output: "run/with_package_json/npm_binary/main.out",
-  cwd: Some("run/with_package_json/npm_binary/"),
-  copy_temp_dir: Some("run/with_package_json/"),
-  envs: env_vars_for_npm_tests(),
-  http_server: true,
-});
+// TODO(2.0): this should be rewritten to a spec test and first run `deno install`
+// itest!(package_json_auto_discovered_for_npm_binary {
+//   args: "run -L debug -A npm:@denotest/bin/cli-esm this is a test",
+//   output: "run/with_package_json/npm_binary/main.out",
+//   cwd: Some("run/with_package_json/npm_binary/"),
+//   copy_temp_dir: Some("run/with_package_json/"),
+//   envs: env_vars_for_npm_tests(),
+//   http_server: true,
+// });
 
+// TODO(2.0): this should be rewritten to a spec test and first run `deno install`
 #[test]
+#[ignore]
 fn package_json_with_deno_json() {
   let context = TestContextBuilder::for_npm()
     .use_copy_temp_dir("package_json/deno_json/")
@@ -3489,36 +3423,6 @@ fn package_json_with_deno_json() {
     .run();
   let output = output.combined_output();
   assert_contains!(output, "Skipping top level install.");
-}
-
-#[test]
-fn package_json_error_dep_value_test() {
-  let context = TestContextBuilder::for_npm()
-    .use_copy_temp_dir("package_json/invalid_value")
-    .cwd("package_json/invalid_value")
-    .build();
-
-  // should run fine when not referencing a failing dep entry
-  context
-    .new_command()
-    .args("run ok.ts")
-    .run()
-    .assert_matches_file("package_json/invalid_value/ok.ts.out");
-
-  // should fail when referencing a failing dep entry
-  context
-    .new_command()
-    .args("run error.ts")
-    .run()
-    .assert_exit_code(1)
-    .assert_matches_file("package_json/invalid_value/error.ts.out");
-
-  // should output a warning about the failing dep entry
-  context
-    .new_command()
-    .args("task test")
-    .run()
-    .assert_matches_file("package_json/invalid_value/task.out");
 }
 
 #[test]
@@ -3767,6 +3671,10 @@ itest!(test_and_bench_are_noops_in_run {
 #[cfg(not(target_os = "windows"))]
 itest!(spawn_kill_permissions {
   args: "run --quiet --allow-run=cat spawn_kill_permissions.ts",
+  envs: vec![
+    ("LD_LIBRARY_PATH".to_string(), "".to_string()),
+    ("DYLD_FALLBACK_LIBRARY_PATH".to_string(), "".to_string())
+  ],
   output_str: Some(""),
 });
 
@@ -4056,11 +3964,8 @@ async fn test_resolve_dns() {
     )
     .unwrap();
     let lexer = Lexer::new(&zone_file);
-    let records = Parser::new().parse(
-      lexer,
-      Some(Name::from_str("example.com").unwrap()),
-      None,
-    );
+    let records =
+      Parser::new().parse(lexer, Some(Name::from_str("example.com").unwrap()));
     if records.is_err() {
       panic!("failed to parse: {:?}", records.err())
     }
@@ -4333,6 +4238,32 @@ fn broken_stdout() {
   assert!(!stderr.contains("panic"));
 }
 
+#[test]
+fn broken_stdout_repl() {
+  let (reader, writer) = os_pipe::pipe().unwrap();
+  // drop the reader to create a broken pipe
+  drop(reader);
+
+  let output = util::deno_cmd()
+    .current_dir(util::testdata_path())
+    .arg("repl")
+    .stdout(writer)
+    .stderr_piped()
+    .spawn()
+    .unwrap()
+    .wait_with_output()
+    .unwrap();
+
+  assert!(!output.status.success());
+  let stderr = std::str::from_utf8(output.stderr.as_ref()).unwrap().trim();
+  if cfg!(windows) {
+    assert_contains!(stderr, "The pipe is being closed. (os error 232)");
+  } else {
+    assert_contains!(stderr, "Broken pipe (os error 32)");
+  }
+  assert_not_contains!(stderr, "panic");
+}
+
 itest!(error_cause {
   args: "run run/error_cause.ts",
   output: "run/error_cause.ts.out",
@@ -4526,6 +4457,8 @@ async fn websocket_server_idletimeout() {
     .arg("--allow-net")
     .arg("--cert")
     .arg(root_ca)
+    .arg("--config")
+    .arg("./config/deno.json")
     .arg(script)
     .stdout_piped()
     .spawn()
@@ -4562,32 +4495,11 @@ async fn websocket_server_idletimeout() {
   assert_eq!(child.wait().unwrap().code(), Some(123));
 }
 
-itest!(auto_discover_lockfile {
-  args: "run run/auto_discover_lockfile/main.ts",
-  output: "run/auto_discover_lockfile/main.out",
-  http_server: true,
-  exit_code: 10,
-});
-
 itest!(no_lock_flag {
   args: "run --no-lock run/no_lock_flag/main.ts",
   output: "run/no_lock_flag/main.out",
   http_server: true,
   exit_code: 0,
-});
-
-itest!(config_file_lock_false {
-  args: "run --config=run/config_file_lock_boolean/false.json run/config_file_lock_boolean/main.ts",
-  output: "run/config_file_lock_boolean/false.main.out",
-  http_server: true,
-  exit_code: 0,
-});
-
-itest!(config_file_lock_true {
-  args: "run --config=run/config_file_lock_boolean/true.json run/config_file_lock_boolean/main.ts",
-  output: "run/config_file_lock_boolean/true.main.out",
-  http_server: true,
-  exit_code: 10,
 });
 
 itest!(permission_args {
@@ -4651,11 +4563,11 @@ fn stdio_streams_are_locked_in_permission_prompt() {
       } else {
         "\r\n"
       };
-      console.expect_raw_next(format!("i{newline}\u{1b}[1A\u{1b}[0J└ Unrecognized option. Allow? [y/n/A] (y = yes, allow; n = no, deny; A = allow all read permissions) > "));
+      console.expect_raw_next(format!("i{newline}\u{1b}[1A\u{1b}[0J┗ Unrecognized option. Allow? [y/n/A] (y = yes, allow; n = no, deny; A = allow all read permissions) > "));
       console.human_delay();
       console.write_line_raw("y");
       // We ensure that nothing gets written here between the permission prompt and this text, despire the delay
-      console.expect_raw_next(format!("y{newline}\x1b[4A\x1b[0J✅ Granted read access to \""));
+      console.expect_raw_next(format!("y{newline}\x1b[5A\x1b[0J✅ Granted read access to \""));
 
       // Back to spamming!
       console.expect(malicious_output);
@@ -4675,7 +4587,7 @@ fn permission_prompt_escapes_ansi_codes_and_control_chars() {
       "\\rDo you like ice cream? y/n"
     };
     console.expect(format!(
-      "\u{250c} \u{26a0}\u{fe0f}  Deno requests env access to \"{}\".",
+      "\u{250f} \u{26a0}\u{fe0f}  Deno requests env access to \"{}\".",
       env_name
     ))
   });
@@ -4688,7 +4600,7 @@ fn permission_prompt_escapes_ansi_codes_and_control_chars() {
     console.write_line_raw(
       r#"new Deno.Command(`${boldANSI}cat${unboldANSI}`).spawn();"#,
     );
-    console.expect("\u{250c} \u{26a0}\u{fe0f}  Deno requests run access to \"\\u{1b}[1mcat\\u{1b}[22m\".");
+    console.expect("\u{250f} \u{26a0}\u{fe0f}  Deno requests run access to \"\\u{1b}[1mcat\\u{1b}[22m\".");
   });
 }
 
@@ -4715,7 +4627,7 @@ itest!(node_prefix_missing {
 
 itest!(node_prefix_missing_unstable_bare_node_builtins_enbaled {
   args: "run --unstable-bare-node-builtins run/node_prefix_missing/main.ts",
-  output: "run/node_prefix_missing/main.ts.out_feature_enabled",
+  output: "run/node_prefix_missing/feature_enabled.out",
   envs: env_vars_for_npm_tests(),
   exit_code: 0,
 });
@@ -4723,7 +4635,7 @@ itest!(node_prefix_missing_unstable_bare_node_builtins_enbaled {
 itest!(
   node_prefix_missing_unstable_bare_node_builtins_enbaled_by_env {
     args: "run run/node_prefix_missing/main.ts",
-    output: "run/node_prefix_missing/main.ts.out_feature_enabled",
+    output: "run/node_prefix_missing/feature_enabled.out",
     envs: [
       env_vars_for_npm_tests(),
       vec![(
@@ -4738,14 +4650,14 @@ itest!(
 
 itest!(node_prefix_missing_unstable_bare_node_builtins_enbaled_by_config {
   args: "run --config=run/node_prefix_missing/config.json run/node_prefix_missing/main.ts",
-  output: "run/node_prefix_missing/main.ts.out_feature_enabled",
+  output: "run/node_prefix_missing/feature_enabled.out",
   envs: env_vars_for_npm_tests(),
   exit_code: 0,
 });
 
 itest!(node_prefix_missing_unstable_bare_node_builtins_enbaled_with_import_map {
   args: "run --unstable-bare-node-builtins --import-map run/node_prefix_missing/import_map.json run/node_prefix_missing/main.ts",
-  output: "run/node_prefix_missing/main.ts.out_feature_enabled",
+  output: "run/node_prefix_missing/feature_enabled.out",
   envs: env_vars_for_npm_tests(),
   exit_code: 0,
 });
@@ -4812,21 +4724,17 @@ console.log(returnsHi());"#,
     .join("mod1.ts");
   mod1_file.write("export function returnsHi() { return 'bye bye bye'; }");
 
-  // won't match the lockfile now
-  deno_run_cmd
-    .run()
-    .assert_matches_text(r#"error: The source code is invalid, as it does not match the expected hash in the lock file.
-  Specifier: http://localhost:4545/subdir/mod1.ts
-  Lock file: [WILDCARD]deno.lock
-"#)
-    .assert_exit_code(10);
+  // this is fine with a lockfile because users are supposed to be able
+  // to modify the vendor folder
+  deno_run_cmd.run().assert_matches_text("bye bye bye\n");
 
   // try updating by deleting the lockfile
   let lockfile = temp_dir.path().join("deno.lock");
   lockfile.remove_file();
   cache_command.run();
 
-  // now it should run
+  // should still run and the lockfile should be recreated
+  // (though with the checksum from the vendor folder)
   deno_run_cmd.run().assert_matches_text("bye bye bye\n");
   assert!(lockfile.exists());
 
@@ -4887,86 +4795,6 @@ itest!(unsafe_proto_flag {
   http_server: false,
   exit_code: 0,
 });
-
-#[test]
-fn test_unstable_sloppy_imports() {
-  let context = TestContextBuilder::new().use_temp_cwd().build();
-  let temp_dir = context.temp_dir();
-  temp_dir.write("a.ts", "export class A {}");
-  temp_dir.write("b.js", "export class B {}");
-  temp_dir.write("c.mts", "export class C {}");
-  temp_dir.write("d.mjs", "export class D {}");
-  temp_dir.write("e.tsx", "export class E {}");
-  temp_dir.write("f.jsx", "export class F {}");
-  let dir = temp_dir.path().join("dir");
-  dir.create_dir_all();
-  dir.join("index.tsx").write("export class G {}");
-  temp_dir.write(
-    "main.ts",
-    r#"import * as a from "./a.js";
-import * as b from "./b";
-import * as c from "./c";
-import * as d from "./d";
-import * as e from "./e";
-import * as e2 from "./e.js";
-import * as f from "./f";
-import * as g from "./dir";
-console.log(a.A);
-console.log(b.B);
-console.log(c.C);
-console.log(d.D);
-console.log(e.E);
-console.log(e2.E);
-console.log(f.F);
-console.log(g.G);
-"#,
-  );
-
-  // run without sloppy imports
-  context
-    .new_command()
-    .args("run main.ts")
-    .run()
-    .assert_matches_text(r#"error: Module not found "file:///[WILDCARD]/a.js". Maybe change the extension to '.ts' or run with --unstable-sloppy-imports
-    at file:///[WILDCARD]/main.ts:1:20
-"#)
-    .assert_exit_code(1);
-
-  // now run with sloppy imports
-  temp_dir.write("deno.json", r#"{ "unstable": ["sloppy-imports"] }"#);
-  context
-    .new_command()
-    .args("run main.ts")
-    .run()
-    .assert_matches_text(
-      "Warning Sloppy imports are not recommended and have a negative impact on performance.
-Warning Sloppy module resolution (hint: update .js extension to .ts)
-    at file:///[WILDCARD]/main.ts:1:20
-Warning Sloppy module resolution (hint: add .js extension)
-    at file:///[WILDCARD]/main.ts:2:20
-Warning Sloppy module resolution (hint: add .mts extension)
-    at file:///[WILDCARD]/main.ts:3:20
-Warning Sloppy module resolution (hint: add .mjs extension)
-    at file:///[WILDCARD]/main.ts:4:20
-Warning Sloppy module resolution (hint: add .tsx extension)
-    at file:///[WILDCARD]/main.ts:5:20
-Warning Sloppy module resolution (hint: update .js extension to .tsx)
-    at file:///[WILDCARD]/main.ts:6:21
-Warning Sloppy module resolution (hint: add .jsx extension)
-    at file:///[WILDCARD]/main.ts:7:20
-Warning Sloppy module resolution (hint: specify path to index.tsx file in directory instead)
-    at file:///[WILDCARD]/main.ts:8:20
-[class A]
-[class B]
-[class C]
-[class D]
-[class E]
-[class E]
-[class F]
-[class G]
-",
-    );
-}
 
 itest!(unstable_temporal_api {
   args: "run --no-config --unstable-temporal --check run/unstable_temporal_api/main.ts",
@@ -5082,42 +4910,9 @@ console.log(add(3, 4));
 }
 
 #[test]
-fn run_etag_delete_source_cache() {
-  let test_context = TestContextBuilder::new()
-    .use_temp_cwd()
-    .use_http_server()
-    .build();
-  test_context
-    .temp_dir()
-    .write("main.ts", "import 'http://localhost:4545/etag_script.ts'");
-  test_context
-    .new_command()
-    .args("cache main.ts")
-    .run()
-    .skip_output_check();
-
-  // The cache is currently stored unideally in two files where one file has the headers
-  // and the other contains the body. An issue can happen with the etag header where the
-  // headers file exists, but the body was deleted. We need to get the cache to gracefully
-  // handle this scenario.
-  let deno_dir = test_context.deno_dir().path();
-  let etag_script_path = deno_dir.join("deps/http/localhost_PORT4545/26110db7d42c9bad32386735cbc05c301f83e4393963deb8da14fec3b4202a13");
-  assert!(etag_script_path.exists());
-  etag_script_path.remove_file();
-
-  test_context
-    .new_command()
-    .args("cache --reload --log-level=debug main.ts")
-    .run()
-    .assert_matches_text(
-      "[WILDCARD]Cache body not found. Trying again without etag.[WILDCARD]",
-    );
-}
-
-#[test]
 fn code_cache_test() {
-  let deno_dir = TempDir::new();
   let test_context = TestContextBuilder::new().use_temp_cwd().build();
+  let deno_dir = test_context.deno_dir();
   let temp_dir = test_context.temp_dir();
   temp_dir.write("main.js", "console.log('Hello World - A');");
 
@@ -5125,20 +4920,17 @@ fn code_cache_test() {
   {
     let output = test_context
       .new_command()
-      .env("DENO_DIR", deno_dir.path())
-      .arg("run")
-      .arg("-Ldebug")
-      .arg("main.js")
+      .args("run -Ldebug main.js")
       .split_output()
       .run();
 
     output
       .assert_stdout_matches_text("Hello World - A[WILDCARD]")
       .assert_stderr_matches_text("[WILDCARD]Updating V8 code cache for ES module: file:///[WILDCARD]/main.js[WILDCARD]");
-    assert!(!output.stderr().contains("V8 code cache hit"));
+    assert_not_contains!(output.stderr(), "V8 code cache hit");
 
     // Check that the code cache database exists.
-    let code_cache_path = deno_dir.path().join("v8_code_cache_v1");
+    let code_cache_path = deno_dir.path().join(CODE_CACHE_DB_FILE_NAME);
     assert!(code_cache_path.exists());
   }
 
@@ -5146,35 +4938,28 @@ fn code_cache_test() {
   {
     let output = test_context
       .new_command()
-      .env("DENO_DIR", deno_dir.path())
-      .arg("run")
-      .arg("-Ldebug")
-      .arg("main.js")
+      .args("run -Ldebug main.js")
       .split_output()
       .run();
 
     output
       .assert_stdout_matches_text("Hello World - A[WILDCARD]")
       .assert_stderr_matches_text("[WILDCARD]V8 code cache hit for ES module: file:///[WILDCARD]/main.js[WILDCARD]");
-    assert!(!output.stderr().contains("Updating V8 code cache"));
+    assert_not_contains!(output.stderr(), "Updating V8 code cache");
   }
 
   // Rerun with --no-code-cache.
   {
     let output = test_context
       .new_command()
-      .env("DENO_DIR", deno_dir.path())
-      .arg("run")
-      .arg("-Ldebug")
-      .arg("--no-code-cache")
-      .arg("main.js")
+      .args("run -Ldebug --no-code-cache main.js")
       .split_output()
       .run();
 
     output
       .assert_stdout_matches_text("Hello World - A[WILDCARD]")
       .skip_stderr_check();
-    assert!(!output.stderr().contains("V8 code cache"));
+    assert_not_contains!(output.stderr(), "V8 code cache");
   }
 
   // Modify the script, and make sure that the cache is rejected.
@@ -5182,27 +4967,21 @@ fn code_cache_test() {
   {
     let output = test_context
       .new_command()
-      .env("DENO_DIR", deno_dir.path())
-      .arg("run")
-      .arg("-Ldebug")
-      .arg("main.js")
+      .args("run -Ldebug main.js")
       .split_output()
       .run();
 
     output
       .assert_stdout_matches_text("Hello World - B[WILDCARD]")
       .assert_stderr_matches_text("[WILDCARD]Updating V8 code cache for ES module: file:///[WILDCARD]/main.js[WILDCARD]");
-    assert!(!output.stderr().contains("V8 code cache hit"));
+    assert_not_contains!(output.stderr(), "V8 code cache hit");
   }
 }
 
 #[test]
 fn code_cache_npm_test() {
-  let deno_dir = TempDir::new();
-  let test_context = TestContextBuilder::new()
-    .use_temp_cwd()
-    .use_http_server()
-    .build();
+  let test_context = TestContextBuilder::for_npm().use_temp_cwd().build();
+  let deno_dir = test_context.deno_dir();
   let temp_dir = test_context.temp_dir();
   temp_dir.write(
     "main.js",
@@ -5213,12 +4992,7 @@ fn code_cache_npm_test() {
   {
     let output = test_context
       .new_command()
-      .env("DENO_DIR", deno_dir.path())
-      .envs(env_vars_for_npm_tests())
-      .arg("run")
-      .arg("-Ldebug")
-      .arg("-A")
-      .arg("main.js")
+      .args("run -Ldebug -A main.js")
       .split_output()
       .run();
 
@@ -5226,10 +5000,10 @@ fn code_cache_npm_test() {
       .assert_stdout_matches_text("Hello World[WILDCARD]")
       .assert_stderr_matches_text("[WILDCARD]Updating V8 code cache for ES module: file:///[WILDCARD]/main.js[WILDCARD]")
       .assert_stderr_matches_text("[WILDCARD]Updating V8 code cache for ES module: file:///[WILDCARD]/chalk/5.[WILDCARD]/source/index.js[WILDCARD]");
-    assert!(!output.stderr().contains("V8 code cache hit"));
+    assert_not_contains!(output.stderr(), "V8 code cache hit");
 
     // Check that the code cache database exists.
-    let code_cache_path = deno_dir.path().join("v8_code_cache_v1");
+    let code_cache_path = deno_dir.path().join(CODE_CACHE_DB_FILE_NAME);
     assert!(code_cache_path.exists());
   }
 
@@ -5237,12 +5011,7 @@ fn code_cache_npm_test() {
   {
     let output = test_context
       .new_command()
-      .env("DENO_DIR", deno_dir.path())
-      .envs(env_vars_for_npm_tests())
-      .arg("run")
-      .arg("-Ldebug")
-      .arg("-A")
-      .arg("main.js")
+      .args("run -Ldebug -A main.js")
       .split_output()
       .run();
 
@@ -5250,17 +5019,14 @@ fn code_cache_npm_test() {
       .assert_stdout_matches_text("Hello World[WILDCARD]")
       .assert_stderr_matches_text("[WILDCARD]V8 code cache hit for ES module: file:///[WILDCARD]/main.js[WILDCARD]")
       .assert_stderr_matches_text("[WILDCARD]V8 code cache hit for ES module: file:///[WILDCARD]/chalk/5.[WILDCARD]/source/index.js[WILDCARD]");
-    assert!(!output.stderr().contains("Updating V8 code cache"));
+    assert_not_contains!(output.stderr(), "Updating V8 code cache");
   }
 }
 
 #[test]
 fn code_cache_npm_with_require_test() {
-  let deno_dir = TempDir::new();
-  let test_context = TestContextBuilder::new()
-    .use_temp_cwd()
-    .use_http_server()
-    .build();
+  let test_context = TestContextBuilder::for_npm().use_temp_cwd().build();
+  let deno_dir = test_context.deno_dir();
   let temp_dir = test_context.temp_dir();
   temp_dir.write(
     "main.js",
@@ -5271,12 +5037,7 @@ fn code_cache_npm_with_require_test() {
   {
     let output = test_context
       .new_command()
-      .env("DENO_DIR", deno_dir.path())
-      .envs(env_vars_for_npm_tests())
-      .arg("run")
-      .arg("-Ldebug")
-      .arg("-A")
-      .arg("main.js")
+      .args("run -Ldebug -A main.js")
       .split_output()
       .run();
 
@@ -5286,10 +5047,10 @@ fn code_cache_npm_with_require_test() {
       .assert_stderr_matches_text("[WILDCARD]Updating V8 code cache for ES module: file:///[WILDCARD]/autoprefixer/[WILDCARD]/autoprefixer.js[WILDCARD]")
       .assert_stderr_matches_text("[WILDCARD]Updating V8 code cache for script: file:///[WILDCARD]/autoprefixer/[WILDCARD]/autoprefixer.js[WILDCARD]")
       .assert_stderr_matches_text("[WILDCARD]Updating V8 code cache for script: file:///[WILDCARD]/browserslist/[WILDCARD]/index.js[WILDCARD]");
-    assert!(!output.stderr().contains("V8 code cache hit"));
+    assert_not_contains!(output.stderr(), "V8 code cache hit");
 
     // Check that the code cache database exists.
-    let code_cache_path = deno_dir.path().join("v8_code_cache_v1");
+    let code_cache_path = deno_dir.path().join(CODE_CACHE_DB_FILE_NAME);
     assert!(code_cache_path.exists());
   }
 
@@ -5297,12 +5058,7 @@ fn code_cache_npm_with_require_test() {
   {
     let output = test_context
       .new_command()
-      .env("DENO_DIR", deno_dir.path())
-      .envs(env_vars_for_npm_tests())
-      .arg("run")
-      .arg("-Ldebug")
-      .arg("-A")
-      .arg("main.js")
+      .args("run -Ldebug -A main.js")
       .split_output()
       .run();
 
@@ -5312,7 +5068,54 @@ fn code_cache_npm_with_require_test() {
       .assert_stderr_matches_text("[WILDCARD]V8 code cache hit for ES module: file:///[WILDCARD]/autoprefixer/[WILDCARD]/autoprefixer.js[WILDCARD]")
       .assert_stderr_matches_text("[WILDCARD]V8 code cache hit for script: file:///[WILDCARD]/autoprefixer/[WILDCARD]/autoprefixer.js[WILDCARD]")
       .assert_stderr_matches_text("[WILDCARD]V8 code cache hit for script: file:///[WILDCARD]/browserslist/[WILDCARD]/index.js[WILDCARD]");
-    assert!(!output.stderr().contains("Updating V8 code cache"));
+    assert_not_contains!(output.stderr(), "Updating V8 code cache");
+  }
+}
+
+#[test]
+fn code_cache_npm_cjs_wrapper_module_many_exports() {
+  // The code cache was being invalidated because the CJS wrapper module
+  // had indeterministic output.
+  let test_context = TestContextBuilder::for_npm().use_temp_cwd().build();
+  let temp_dir = test_context.temp_dir();
+  temp_dir.write(
+    "main.js",
+    // this package has a few exports
+    "import { hello } from \"npm:@denotest/cjs-reexport-collision\";hello.sayHello();",
+  );
+
+  // First run with no prior cache.
+  {
+    let output = test_context
+      .new_command()
+      .args("run -Ldebug -A main.js")
+      .split_output()
+      .run();
+
+    assert_not_contains!(output.stderr(), "V8 code cache hit");
+    assert_contains!(output.stderr(), "Updating V8 code cache");
+    output.skip_stdout_check();
+  }
+
+  // 2nd run with cache.
+  {
+    let output = test_context
+      .new_command()
+      .args("run -Ldebug -A main.js")
+      .split_output()
+      .run();
+    assert_contains!(output.stderr(), "V8 code cache hit");
+    assert_not_contains!(output.stderr(), "Updating V8 code cache");
+    output.skip_stdout_check();
+
+    // should have two occurrences of this (one for entrypoint and one for wrapper module)
+    assert_eq!(
+      output
+        .stderr()
+        .split("V8 code cache hit for ES module")
+        .count(),
+      3
+    );
   }
 }
 
@@ -5368,17 +5171,19 @@ async fn listen_tls_alpn() {
   let mut reader = &mut BufReader::new(Cursor::new(include_bytes!(
     "../testdata/tls/RootCA.crt"
   )));
-  let certs = rustls_pemfile::certs(&mut reader).unwrap();
+  let certs = rustls_pemfile::certs(&mut reader)
+    .collect::<Result<Vec<_>, _>>()
+    .unwrap();
   let mut root_store = rustls::RootCertStore::empty();
-  root_store.add_parsable_certificates(&certs);
+  root_store.add_parsable_certificates(certs);
   let mut cfg = rustls::ClientConfig::builder()
-    .with_safe_defaults()
     .with_root_certificates(root_store)
     .with_no_client_auth();
   cfg.alpn_protocols.push(b"foobar".to_vec());
   let cfg = Arc::new(cfg);
 
-  let hostname = rustls::ServerName::try_from("localhost").unwrap();
+  let hostname =
+    rustls::pki_types::ServerName::try_from("localhost".to_string()).unwrap();
 
   let tcp_stream = tokio::net::TcpStream::connect("localhost:4504")
     .await
@@ -5406,6 +5211,8 @@ async fn listen_tls_alpn_fail() {
     .arg("--quiet")
     .arg("--allow-net")
     .arg("--allow-read")
+    .arg("--config")
+    .arg("../config/deno.json")
     .arg("./cert/listen_tls_alpn_fail.ts")
     .arg("4505")
     .stdout_piped()
@@ -5420,17 +5227,18 @@ async fn listen_tls_alpn_fail() {
   let mut reader = &mut BufReader::new(Cursor::new(include_bytes!(
     "../testdata/tls/RootCA.crt"
   )));
-  let certs = rustls_pemfile::certs(&mut reader).unwrap();
+  let certs = rustls_pemfile::certs(&mut reader)
+    .collect::<Result<Vec<_>, _>>()
+    .unwrap();
   let mut root_store = rustls::RootCertStore::empty();
-  root_store.add_parsable_certificates(&certs);
+  root_store.add_parsable_certificates(certs);
   let mut cfg = rustls::ClientConfig::builder()
-    .with_safe_defaults()
     .with_root_certificates(root_store)
     .with_no_client_auth();
   cfg.alpn_protocols.push(b"boofar".to_vec());
   let cfg = Arc::new(cfg);
 
-  let hostname = rustls::ServerName::try_from("localhost").unwrap();
+  let hostname = rustls::pki_types::ServerName::try_from("localhost").unwrap();
 
   let tcp_stream = tokio::net::TcpStream::connect("localhost:4505")
     .await
@@ -5445,4 +5253,21 @@ async fn listen_tls_alpn_fail() {
 
   let status = child.wait().unwrap();
   assert!(status.success());
+}
+
+// Couldn't get the directory readonly on windows on the CI
+// so gave up because this being tested on unix is good enough
+#[cfg(unix)]
+#[test]
+fn emit_failed_readonly_file_system() {
+  let context = TestContextBuilder::default().use_temp_cwd().build();
+  context.deno_dir().path().canonicalize().make_dir_readonly();
+  let temp_dir = context.temp_dir().path().canonicalize();
+  temp_dir.join("main.ts").write("import './other.ts';");
+  temp_dir.join("other.ts").write("console.log('hi');");
+  let output = context
+    .new_command()
+    .args("run --log-level=debug main.ts")
+    .run();
+  output.assert_matches_text("[WILDCARD]Error saving emit data ([WILDLINE]main.ts)[WILDCARD]Skipped emit cache save of [WILDLINE]other.ts[WILDCARD]hi[WILDCARD]");
 }

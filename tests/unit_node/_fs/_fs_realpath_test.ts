@@ -1,6 +1,6 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
-import * as path from "@std/path/mod.ts";
-import { assertEquals } from "@std/assert/mod.ts";
+import * as path from "@std/path";
+import { assertEquals } from "@std/assert";
 import { assertCallbackErrorUncaught } from "../_test_utils.ts";
 import { realpath, realpathSync } from "node:fs";
 

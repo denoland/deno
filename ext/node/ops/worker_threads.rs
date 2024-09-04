@@ -6,14 +6,13 @@ use deno_core::op2;
 use deno_core::url::Url;
 use deno_core::OpState;
 use deno_fs::FileSystemRc;
+use node_resolver::NodeResolution;
 use std::path::Path;
 use std::path::PathBuf;
-use std::rc::Rc;
 
-use crate::resolution;
 use crate::NodePermissions;
-use crate::NodeResolver;
-use crate::NpmResolverRc;
+use crate::NodeRequireResolverRc;
+use crate::NodeResolverRc;
 
 fn ensure_read_permission<P>(
   state: &mut OpState,
@@ -22,8 +21,8 @@ fn ensure_read_permission<P>(
 where
   P: NodePermissions + 'static,
 {
-  let resolver = state.borrow::<NpmResolverRc>();
-  let permissions = state.borrow::<P>();
+  let resolver = state.borrow::<NodeRequireResolverRc>().clone();
+  let permissions = state.borrow_mut::<P>();
   resolver.ensure_read_permission(permissions, file_path)
 }
 
@@ -63,11 +62,11 @@ where
   if !fs.exists_sync(&url_path) {
     return Err(generic_error(format!("File not found [{:?}]", url_path)));
   }
-  let node_resolver = state.borrow::<Rc<NodeResolver>>();
+  let node_resolver = state.borrow::<NodeResolverRc>();
   match node_resolver.url_to_node_resolution(url)? {
-    resolution::NodeResolution::Esm(u) => Ok(u.to_string()),
-    resolution::NodeResolution::CommonJs(u) => wrap_cjs(u),
-    _ => Err(generic_error("Neither ESM nor CJS")),
+    NodeResolution::Esm(u) => Ok(u.to_string()),
+    NodeResolution::CommonJs(u) => wrap_cjs(u),
+    NodeResolution::BuiltIn(_) => Err(generic_error("Neither ESM nor CJS")),
   }
 }
 

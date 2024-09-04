@@ -5,6 +5,7 @@ import {
   assertStrictEquals,
   assertStringIncludes,
   assertThrows,
+  DENO_FUTURE,
 } from "./test_util.ts";
 
 Deno.test(
@@ -363,7 +364,11 @@ Deno.test(
 );
 
 Deno.test(
-  { permissions: { run: true, write: true, read: true } },
+  {
+    // Ignoring because uses `file.rid`
+    ignore: DENO_FUTURE,
+    permissions: { run: true, write: true, read: true },
+  },
   async function runRedirectStdoutStderr() {
     const tempDir = await Deno.makeTempDir();
     const fileName = tempDir + "/redirected_stdio.txt";
@@ -392,11 +397,17 @@ Deno.test(
 
     assertStringIncludes(text, "error");
     assertStringIncludes(text, "output");
+    // deno-lint-ignore no-console
+    console.log("finished tgis test");
   },
 );
 
 Deno.test(
-  { permissions: { run: true, write: true, read: true } },
+  {
+    // Ignoring because uses `file.rid`
+    ignore: DENO_FUTURE,
+    permissions: { run: true, write: true, read: true },
+  },
   async function runRedirectStdin() {
     const tempDir = await Deno.makeTempDir();
     const fileName = tempDir + "/redirected_stdio.txt";
@@ -570,102 +581,6 @@ Deno.test({ permissions: { run: true, read: true } }, function killFailed() {
 
   p.close();
 });
-
-Deno.test(
-  { permissions: { run: true, read: true, env: true } },
-  async function clearEnv(): Promise<void> {
-    // deno-lint-ignore no-deprecated-deno-api
-    const p = Deno.run({
-      cmd: [
-        Deno.execPath(),
-        "eval",
-        "-p",
-        "JSON.stringify(Deno.env.toObject())",
-      ],
-      stdout: "piped",
-      clearEnv: true,
-      env: {
-        FOO: "23147",
-      },
-    });
-
-    const obj = JSON.parse(new TextDecoder().decode(await p.output()));
-
-    // can't check for object equality because the OS may set additional env
-    // vars for processes, so we check if PATH isn't present as that is a common
-    // env var across OS's and isn't set for processes.
-    assertEquals(obj.FOO, "23147");
-    assert(!("PATH" in obj));
-
-    p.close();
-  },
-);
-
-Deno.test(
-  {
-    permissions: { run: true, read: true },
-    ignore: Deno.build.os === "windows",
-  },
-  async function uid(): Promise<void> {
-    // deno-lint-ignore no-deprecated-deno-api
-    const p = Deno.run({
-      cmd: [
-        "id",
-        "-u",
-      ],
-      stdout: "piped",
-    });
-
-    const currentUid = new TextDecoder().decode(await p.output());
-    p.close();
-
-    if (currentUid !== "0") {
-      assertThrows(() => {
-        // deno-lint-ignore no-deprecated-deno-api
-        Deno.run({
-          cmd: [
-            "echo",
-            "fhqwhgads",
-          ],
-          uid: 0,
-        });
-      }, Deno.errors.PermissionDenied);
-    }
-  },
-);
-
-Deno.test(
-  {
-    permissions: { run: true, read: true },
-    ignore: Deno.build.os === "windows",
-  },
-  async function gid(): Promise<void> {
-    // deno-lint-ignore no-deprecated-deno-api
-    const p = Deno.run({
-      cmd: [
-        "id",
-        "-g",
-      ],
-      stdout: "piped",
-    });
-
-    const currentGid = new TextDecoder().decode(await p.output());
-    p.close();
-
-    if (currentGid !== "0") {
-      assertThrows(() => {
-        // deno-lint-ignore no-deprecated-deno-api
-        Deno.run({
-          cmd: [
-            "echo",
-            "fhqwhgads",
-          ],
-          gid: 0,
-        });
-      }, Deno.errors.PermissionDenied);
-    }
-  },
-);
 
 Deno.test(
   {

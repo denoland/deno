@@ -1,5 +1,8 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
+use std::io;
+use std::io::Write;
+
 use std::sync::Arc;
 
 use crate::args::CliOptions;
@@ -13,8 +16,8 @@ use deno_core::error::AnyError;
 use deno_core::futures::StreamExt;
 use deno_core::serde_json;
 use deno_core::unsync::spawn_blocking;
-use deno_runtime::permissions::Permissions;
-use deno_runtime::permissions::PermissionsContainer;
+use deno_runtime::deno_permissions::Permissions;
+use deno_runtime::deno_permissions::PermissionsContainer;
 use deno_runtime::WorkerExecutionMode;
 use rustyline::error::ReadlineError;
 
@@ -30,6 +33,7 @@ use editor::EditorHelper;
 use editor::ReplEditor;
 pub use session::EvaluationOutput;
 pub use session::ReplSession;
+pub use session::TsEvaluateResponse;
 pub use session::REPL_INTERNALS_NAME;
 
 use super::test::create_single_test_event_channel;
@@ -155,9 +159,12 @@ async fn read_eval_file(
 }
 
 #[allow(clippy::print_stdout)]
-pub async fn run(flags: Flags, repl_flags: ReplFlags) -> Result<i32, AnyError> {
-  let factory = CliFactory::from_flags(flags)?;
-  let cli_options = factory.cli_options();
+pub async fn run(
+  flags: Arc<Flags>,
+  repl_flags: ReplFlags,
+) -> Result<i32, AnyError> {
+  let factory = CliFactory::from_flags(flags);
+  let cli_options = factory.cli_options()?;
   let main_module = cli_options.resolve_main_module()?;
   let permissions = PermissionsContainer::new(Permissions::from_options(
     &cli_options.permissions_options()?,
@@ -237,15 +244,24 @@ pub async fn run(flags: Flags, repl_flags: ReplFlags) -> Result<i32, AnyError> {
 
   // Doing this manually, instead of using `log::info!` because these messages
   // are supposed to go to stdout, not stderr.
+  // Using writeln, because println panics in certain cases
+  // (eg: broken pipes - https://github.com/denoland/deno/issues/21861)
   if !cli_options.is_quiet() {
-    println!("Deno {}", crate::version::deno());
-    println!("exit using ctrl+d, ctrl+c, or close()");
+    let mut handle = io::stdout().lock();
+
+    writeln!(handle, "Deno {}", crate::version::DENO_VERSION_INFO.deno)?;
+    writeln!(handle, "exit using ctrl+d, ctrl+c, or close()")?;
+
     if repl_flags.is_default_command {
-      println!(
+      writeln!(
+        handle,
         "{}",
         colors::yellow("REPL is running with all permissions allowed.")
-      );
-      println!("To specify permissions, run `deno repl` with allow flags.")
+      )?;
+      writeln!(
+        handle,
+        "To specify permissions, run `deno repl` with allow flags."
+      )?;
     }
   }
 

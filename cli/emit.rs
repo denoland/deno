@@ -5,12 +5,15 @@ use crate::cache::FastInsecureHasher;
 use crate::cache::ParsedSourceCache;
 
 use deno_ast::SourceMapOption;
+use deno_ast::SourceRange;
+use deno_ast::SourceRanged;
+use deno_ast::SourceRangedForSpanned;
 use deno_ast::TranspileResult;
 use deno_core::error::AnyError;
 use deno_core::futures::stream::FuturesUnordered;
 use deno_core::futures::FutureExt;
 use deno_core::futures::StreamExt;
-use deno_core::ModuleCodeString;
+use deno_core::ModuleCodeBytes;
 use deno_core::ModuleSpecifier;
 use deno_graph::MediaType;
 use deno_graph::Module;
@@ -18,7 +21,7 @@ use deno_graph::ModuleGraph;
 use std::sync::Arc;
 
 pub struct Emitter {
-  emit_cache: EmitCache,
+  emit_cache: Arc<EmitCache>,
   parsed_source_cache: Arc<ParsedSourceCache>,
   transpile_and_emit_options:
     Arc<(deno_ast::TranspileOptions, deno_ast::EmitOptions)>,
@@ -28,13 +31,13 @@ pub struct Emitter {
 
 impl Emitter {
   pub fn new(
-    emit_cache: EmitCache,
+    emit_cache: Arc<EmitCache>,
     parsed_source_cache: Arc<ParsedSourceCache>,
     transpile_options: deno_ast::TranspileOptions,
     emit_options: deno_ast::EmitOptions,
   ) -> Self {
     let transpile_and_emit_options_hash = {
-      let mut hasher = FastInsecureHasher::default();
+      let mut hasher = FastInsecureHasher::new_without_deno_version();
       hasher.write_hashable(&transpile_options);
       hasher.write_hashable(&emit_options);
       hasher.finish()
@@ -90,7 +93,7 @@ impl Emitter {
     &self,
     specifier: &ModuleSpecifier,
     source: &str,
-  ) -> Option<String> {
+  ) -> Option<Vec<u8>> {
     let source_hash = self.get_source_hash(source);
     self.emit_cache.get_emit_code(specifier, source_hash)
   }
@@ -100,7 +103,7 @@ impl Emitter {
     specifier: &ModuleSpecifier,
     media_type: MediaType,
     source: &Arc<str>,
-  ) -> Result<ModuleCodeString, AnyError> {
+  ) -> Result<ModuleCodeBytes, AnyError> {
     // Note: keep this in sync with the sync version below
     let helper = EmitParsedSourceHelper(self);
     match helper.pre_emit_parsed_source(specifier, source) {
@@ -139,7 +142,7 @@ impl Emitter {
     specifier: &ModuleSpecifier,
     media_type: MediaType,
     source: &Arc<str>,
-  ) -> Result<ModuleCodeString, AnyError> {
+  ) -> Result<ModuleCodeBytes, AnyError> {
     // Note: keep this in sync with the async version above
     let helper = EmitParsedSourceHelper(self);
     match helper.pre_emit_parsed_source(specifier, source) {
@@ -172,23 +175,50 @@ impl Emitter {
       ModuleSpecifier::to_file_path(specifier).unwrap(),
     )
     .await?;
-    let source_arc: Arc<str> = source_code.into();
-    let parsed_source = self
-      .parsed_source_cache
-      .remove_or_parse_module(specifier, source_arc, media_type)?;
-    let mut options = self.transpile_and_emit_options.1.clone();
-    options.source_map = SourceMapOption::None;
-    let transpiled_source = parsed_source
-      .transpile(&self.transpile_and_emit_options.0, &options)?
-      .into_source();
-    Ok(transpiled_source.text)
+    match media_type {
+      MediaType::TypeScript
+      | MediaType::Mts
+      | MediaType::Cts
+      | MediaType::Jsx
+      | MediaType::Tsx => {
+        let source_arc: Arc<str> = source_code.into();
+        let parsed_source = self
+          .parsed_source_cache
+          .remove_or_parse_module(specifier, source_arc, media_type)?;
+        // HMR doesn't work with embedded source maps for some reason, so set
+        // the option to not use them (though you should test this out because
+        // this statement is probably wrong)
+        let mut options = self.transpile_and_emit_options.1.clone();
+        options.source_map = SourceMapOption::None;
+        let transpiled_source = parsed_source
+          .transpile(&self.transpile_and_emit_options.0, &options)?
+          .into_source()
+          .into_string()?;
+        Ok(transpiled_source.text)
+      }
+      MediaType::JavaScript
+      | MediaType::Mjs
+      | MediaType::Cjs
+      | MediaType::Dts
+      | MediaType::Dmts
+      | MediaType::Dcts
+      | MediaType::Json
+      | MediaType::Wasm
+      | MediaType::TsBuildInfo
+      | MediaType::SourceMap
+      | MediaType::Unknown => {
+        // clear this specifier from the parsed source cache as it's now out of date
+        self.parsed_source_cache.free(specifier);
+        Ok(source_code)
+      }
+    }
   }
 
   /// A hashing function that takes the source code and uses the global emit
   /// options then generates a string hash which can be stored to
   /// determine if the cached emit is valid or not.
   fn get_source_hash(&self, source_text: &str) -> u64 {
-    FastInsecureHasher::new()
+    FastInsecureHasher::new_without_deno_version() // stored in the transpile_and_emit_options_hash
       .write_str(source_text)
       .write_u64(self.transpile_and_emit_options_hash)
       .finish()
@@ -196,7 +226,7 @@ impl Emitter {
 }
 
 enum PreEmitResult {
-  Cached(ModuleCodeString),
+  Cached(ModuleCodeBytes),
   NotCached { source_hash: u64 },
 }
 
@@ -214,7 +244,7 @@ impl<'a> EmitParsedSourceHelper<'a> {
     if let Some(emit_code) =
       self.0.emit_cache.get_emit_code(specifier, source_hash)
     {
-      PreEmitResult::Cached(emit_code.into())
+      PreEmitResult::Cached(emit_code.into_boxed_slice().into())
     } else {
       PreEmitResult::NotCached { source_hash }
     }
@@ -232,6 +262,7 @@ impl<'a> EmitParsedSourceHelper<'a> {
     // the cache in order to not transpile owned
     let parsed_source = parsed_source_cache
       .remove_or_parse_module(specifier, source, media_type)?;
+    ensure_no_import_assertion(&parsed_source)?;
     Ok(parsed_source.transpile(transpile_options, emit_options)?)
   }
 
@@ -240,7 +271,7 @@ impl<'a> EmitParsedSourceHelper<'a> {
     specifier: &ModuleSpecifier,
     transpile_result: TranspileResult,
     source_hash: u64,
-  ) -> ModuleCodeString {
+  ) -> ModuleCodeBytes {
     let transpiled_source = match transpile_result {
       TranspileResult::Owned(source) => source,
       TranspileResult::Cloned(source) => {
@@ -252,8 +283,78 @@ impl<'a> EmitParsedSourceHelper<'a> {
     self.0.emit_cache.set_emit_code(
       specifier,
       source_hash,
-      &transpiled_source.text,
+      &transpiled_source.source,
     );
-    transpiled_source.text.into()
+    transpiled_source.source.into_boxed_slice().into()
   }
+}
+
+// todo(dsherret): this is a temporary measure until we have swc erroring for this
+fn ensure_no_import_assertion(
+  parsed_source: &deno_ast::ParsedSource,
+) -> Result<(), AnyError> {
+  fn has_import_assertion(text: &str) -> bool {
+    // good enough
+    text.contains(" assert ") && !text.contains(" with ")
+  }
+
+  fn create_err(
+    parsed_source: &deno_ast::ParsedSource,
+    range: SourceRange,
+  ) -> AnyError {
+    let text_info = parsed_source.text_info_lazy();
+    let loc = text_info.line_and_column_display(range.start);
+    let mut msg = "Import assertions are deprecated. Use `with` keyword, instead of 'assert' keyword.".to_string();
+    msg.push_str("\n\n");
+    msg.push_str(range.text_fast(text_info));
+    msg.push_str("\n\n");
+    msg.push_str(&format!(
+      "  at {}:{}:{}\n",
+      parsed_source.specifier(),
+      loc.line_number,
+      loc.column_number,
+    ));
+    deno_core::anyhow::anyhow!("{}", msg)
+  }
+
+  let Some(module) = parsed_source.program_ref().as_module() else {
+    return Ok(());
+  };
+
+  for item in &module.body {
+    match item {
+      deno_ast::swc::ast::ModuleItem::ModuleDecl(decl) => match decl {
+        deno_ast::swc::ast::ModuleDecl::Import(n) => {
+          if n.with.is_some()
+            && has_import_assertion(n.text_fast(parsed_source.text_info_lazy()))
+          {
+            return Err(create_err(parsed_source, n.range()));
+          }
+        }
+        deno_ast::swc::ast::ModuleDecl::ExportAll(n) => {
+          if n.with.is_some()
+            && has_import_assertion(n.text_fast(parsed_source.text_info_lazy()))
+          {
+            return Err(create_err(parsed_source, n.range()));
+          }
+        }
+        deno_ast::swc::ast::ModuleDecl::ExportNamed(n) => {
+          if n.with.is_some()
+            && has_import_assertion(n.text_fast(parsed_source.text_info_lazy()))
+          {
+            return Err(create_err(parsed_source, n.range()));
+          }
+        }
+        deno_ast::swc::ast::ModuleDecl::ExportDecl(_)
+        | deno_ast::swc::ast::ModuleDecl::ExportDefaultDecl(_)
+        | deno_ast::swc::ast::ModuleDecl::ExportDefaultExpr(_)
+        | deno_ast::swc::ast::ModuleDecl::TsImportEquals(_)
+        | deno_ast::swc::ast::ModuleDecl::TsExportAssignment(_)
+        | deno_ast::swc::ast::ModuleDecl::TsNamespaceExport(_) => {}
+      },
+      deno_ast::swc::ast::ModuleItem::Stmt(_) => {}
+    }
+  }
+
+  Ok(())
 }

@@ -8,6 +8,8 @@ use phf::phf_map;
 use std::borrow::Cow;
 use std::ops::AddAssign;
 
+use crate::util::path::to_percent_decoded_str;
+
 use super::*;
 
 pub fn to_relative_path_or_remote_url(cwd: &Url, path_or_url: &str) -> String {
@@ -19,7 +21,7 @@ pub fn to_relative_path_or_remote_url(cwd: &Url, path_or_url: &str) -> String {
       if !r.starts_with("../") {
         r = format!("./{r}");
       }
-      return r;
+      return to_percent_decoded_str(&r);
     }
   }
   path_or_url.to_string()
@@ -70,16 +72,24 @@ fn abbreviate_test_error(js_error: &JsError) -> JsError {
 // This function prettifies `JsError` and applies some changes specifically for
 // test runner purposes:
 //
+// - hide stack traces if `options.hide_stacktraces` is set to `true`
+//
 // - filter out stack frames:
 //   - if stack trace consists of mixed user and internal code, the frames
 //     below the first user code frame are filtered out
 //   - if stack trace consists only of internal code it is preserved as is
-pub fn format_test_error(js_error: &JsError) -> String {
+pub fn format_test_error(
+  js_error: &JsError,
+  options: &TestFailureFormatOptions,
+) -> String {
   let mut js_error = abbreviate_test_error(js_error);
   js_error.exception_message = js_error
     .exception_message
     .trim_start_matches("Uncaught ")
     .to_string();
+  if options.hide_stacktraces {
+    return js_error.exception_message;
+  }
   format_js_error(&js_error)
 }
 
@@ -308,15 +318,13 @@ pub const OP_DETAILS: phf::Map<&'static str, [&'static str; 2]> = phf_map! {
   "op_fs_chown_async" => ["change the owner of a file", "awaiting the result of a `Deno.chown` call"],
   "op_fs_copy_file_async" => ["copy a file", "awaiting the result of a `Deno.copyFile` call"],
   "op_fs_events_poll" => ["get the next file system event", "breaking out of a for await loop looping over `Deno.FsEvents`"],
-  "op_fs_fdatasync_async" => ["flush pending data operations for a file to disk", "awaiting the result of a `Deno.fdatasync` call"],
-  "op_fs_fdatasync_async_unstable" => ["flush pending data operations for a file to disk", "awaiting the result of a `Deno.FsFile.syncData` call"],
-  "op_fs_file_stat_async" => ["get file metadata", "awaiting the result of a `Deno.fstat` or `Deno.FsFile.stat` call"],
-  "op_fs_flock_async" => ["lock a file", "awaiting the result of a `Deno.flock` or `Deno.FsFile.lock` call"],
+  "op_fs_fdatasync_async" => ["flush pending data operations for a file to disk", "awaiting the result of a `Deno.fdatasync` or `Deno.FsFile.syncData` call"],
+  "op_fs_file_stat_async" => ["get file metadata", "awaiting the result of a `Deno.FsFile.prototype.stat` call"],
+  "op_fs_flock_async" => ["lock a file", "awaiting the result of a `Deno.FsFile.lock` call"],
   "op_fs_fsync_async" => ["flush pending data operations for a file to disk", "awaiting the result of a `Deno.fsync` or `Deno.FsFile.sync` call"],
-  "op_fs_fsync_async_unstable" => ["flush pending data operations for a file to disk", "awaiting the result of a `Deno.FsFile.sync` call"],
-  "op_fs_ftruncate_async" => ["truncate a file", "awaiting the result of a `Deno.ftruncate` or `Deno.FsFile.truncate` call"],
-  "op_fs_funlock_async" => ["unlock a file", "awaiting the result of a `Deno.funlock` or `Deno.FsFile.unlock` call"],
-  "op_fs_futime_async" => ["change file timestamps", "awaiting the result of a `Deno.futime` or `Deno.FsFile.utime` call"],
+  "op_fs_file_truncate_async" => ["truncate a file", "awaiting the result of a `Deno.FsFile.prototype.truncate` call"],
+  "op_fs_funlock_async_unstable" => ["unlock a file", "awaiting the result of a `Deno.funlock` call"],
+  "op_fs_funlock_async" => ["unlock a file", "awaiting the result of a `Deno.FsFile.unlock` call"],
   "op_fs_link_async" => ["create a hard link", "awaiting the result of a `Deno.link` call"],
   "op_fs_lstat_async" => ["get file metadata", "awaiting the result of a `Deno.lstat` call"],
   "op_fs_make_temp_dir_async" => ["create a temporary directory", "awaiting the result of a `Deno.makeTempDir` call"],

@@ -172,7 +172,14 @@ function getStderrNoColor() {
   return noColorStderr();
 }
 
-function assert(cond, msg = "Assertion failed.") {
+class AssertionError extends Error {
+  name = "AssertionError";
+  constructor(message) {
+    super(message);
+  }
+}
+
+function assert(cond, msg = "Assertion failed") {
   if (!cond) {
     throw new AssertionError(msg);
   }
@@ -783,6 +790,24 @@ function formatRaw(ctx, value, recurseTimes, typedArray, proxyDetails) {
             return ctx.stylize(base, "date");
           }
         }
+      } else if (
+        proxyDetails === null &&
+        ObjectPrototypeIsPrototypeOf(globalThis.Intl.Locale.prototype, value)
+      ) {
+        braces[0] = `${getPrefix(constructor, tag, "Intl.Locale")}{`;
+        ArrayPrototypeUnshift(
+          keys,
+          "baseName",
+          "calendar",
+          "caseFirst",
+          "collation",
+          "hourCycle",
+          "language",
+          "numberingSystem",
+          "numeric",
+          "region",
+          "script",
+        );
       } else if (
         proxyDetails === null &&
         typeof globalThis.Temporal !== "undefined" &&
@@ -1477,12 +1502,18 @@ function inspectError(value, ctx) {
       finalMessage += `[${stack || ErrorPrototypeToString(value)}]`;
     }
   }
+  const doubleQuoteRegExp = new SafeRegExp('"', "g");
   finalMessage += ArrayPrototypeJoin(
     ArrayPrototypeMap(
       causes,
       (cause) =>
         "\nCaused by " + (MapPrototypeGet(refMap, cause) ?? "") +
-        (cause?.stack ?? cause),
+        (cause?.stack ??
+          StringPrototypeReplace(
+            inspect(cause),
+            doubleQuoteRegExp,
+            "",
+          )),
     ),
     "",
   );
@@ -2322,7 +2353,7 @@ const denoInspectDefaultOptions = {
 
   // node only
   maxArrayLength: 100,
-  maxStringLength: 100, // deno: strAbbreviateSize: 100
+  maxStringLength: 10_000, // deno: strAbbreviateSize: 10_000
   customInspect: true,
 
   // deno only
@@ -2350,7 +2381,7 @@ function getDefaultInspectOptions() {
 
 const DEFAULT_INDENT = "  "; // Default indent string
 
-const STR_ABBREVIATE_SIZE = 100;
+const STR_ABBREVIATE_SIZE = 10_000;
 
 class CSI {
   static kClear = "\x1b[1;1H";
@@ -2930,7 +2961,7 @@ function cssToAnsi(css, prevCss = null) {
   return ansi;
 }
 
-function inspectArgs(args, inspectOptions = {}) {
+function inspectArgs(args, inspectOptions = { __proto__: null }) {
   const ctx = {
     ...getDefaultInspectOptions(),
     colors: inspectOptions.colors ?? !noColorStdout(),
@@ -3124,7 +3155,7 @@ class Console {
     );
   };
 
-  dir = (obj = undefined, options = {}) => {
+  dir = (obj = undefined, options = { __proto__: null }) => {
     this.#printFunc(
       inspectArgs([obj], {
         ...getConsoleInspectOptions(noColorStdout()),
@@ -3205,8 +3236,8 @@ class Console {
   table = (data = undefined, properties = undefined) => {
     if (properties !== undefined && !ArrayIsArray(properties)) {
       throw new Error(
-        "The 'properties' argument must be of type Array. " +
-          "Received type " + typeof properties,
+        "The 'properties' argument must be of type Array: " +
+          "received type " + typeof properties,
       );
     }
 
@@ -3232,7 +3263,7 @@ class Console {
       resultData = [...new SafeSetIterator(data)];
     } else if (isMapObject) {
       let idx = 0;
-      resultData = {};
+      resultData = { __proto__: null };
 
       MapPrototypeForEach(data, (v, k) => {
         resultData[idx] = { Key: k, Values: v };
@@ -3390,7 +3421,7 @@ const customInspect = SymbolFor("Deno.customInspect");
 
 function inspect(
   value,
-  inspectOptions = {},
+  inspectOptions = { __proto__: null },
 ) {
   // Default options
   const ctx = {

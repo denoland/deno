@@ -32,12 +32,14 @@ use deno_core::OpMetricsSummaryTracker;
 use deno_core::PollEventLoopOptions;
 use deno_core::RuntimeOptions;
 use deno_core::SharedArrayBufferStore;
-use deno_core::SourceMapGetter;
+use deno_core::SourceCodeCacheInfo;
 use deno_cron::local::LocalCronHandler;
 use deno_fs::FileSystem;
 use deno_http::DefaultHttpPropertyExtractor;
 use deno_io::Stdio;
 use deno_kv::dynamic::MultiBackendDbHandler;
+use deno_node::NodeExtInitServices;
+use deno_permissions::PermissionsContainer;
 use deno_tls::RootCertStoreProvider;
 use deno_tls::TlsKeys;
 use deno_web::BlobStore;
@@ -45,10 +47,8 @@ use log::debug;
 
 use crate::code_cache::CodeCache;
 use crate::code_cache::CodeCacheType;
-use crate::fs_util::code_timestamp;
 use crate::inspector_server::InspectorServer;
 use crate::ops;
-use crate::permissions::PermissionsContainer;
 use crate::shared::maybe_transpile_source;
 use crate::shared::runtime;
 use crate::BootstrapOptions;
@@ -156,13 +156,11 @@ pub struct WorkerOptions {
   /// If not provided runtime will error if code being
   /// executed tries to load modules.
   pub module_loader: Rc<dyn ModuleLoader>,
-  pub npm_resolver: Option<Arc<dyn deno_node::NpmResolver>>,
+  pub node_services: Option<NodeExtInitServices>,
   // Callbacks invoked when creating new instance of WebWorker
   pub create_web_worker_cb: Arc<ops::worker_host::CreateWebWorkerCb>,
   pub format_js_error_fn: Option<Arc<FormatJsErrorFn>>,
 
-  /// Source map reference for errors.
-  pub source_map_getter: Option<Rc<dyn SourceMapGetter>>,
   pub maybe_inspector_server: Option<Arc<InspectorServer>>,
   // If true, the worker will wait for inspector session and break on first
   // statement of user code. Takes higher precedence than
@@ -225,9 +223,8 @@ impl Default for WorkerOptions {
       origin_storage_dir: Default::default(),
       cache_storage_dir: Default::default(),
       broadcast_channel: Default::default(),
-      source_map_getter: Default::default(),
       root_cert_store_provider: Default::default(),
-      npm_resolver: Default::default(),
+      node_services: Default::default(),
       blob_store: Default::default(),
       extensions: Default::default(),
       startup_snapshot: Default::default(),
@@ -306,51 +303,6 @@ pub fn create_op_metrics(
   (op_summary_metrics, op_metrics_factory_fn)
 }
 
-fn get_code_cache(
-  code_cache: Arc<dyn CodeCache>,
-  specifier: &str,
-) -> Option<Vec<u8>> {
-  // Code hashes are not maintained for op_eval_context scripts. Instead we use
-  // the modified timestamp from the local file system.
-  if let Ok(code_timestamp) = code_timestamp(specifier) {
-    code_cache
-      .get_sync(
-        specifier,
-        CodeCacheType::Script,
-        code_timestamp.to_string().as_str(),
-      )
-      .inspect(|_| {
-        // This log line is also used by tests.
-        log::debug!(
-          "V8 code cache hit for script: {specifier}, [{code_timestamp}]"
-        );
-      })
-  } else {
-    None
-  }
-}
-
-fn set_code_cache(
-  code_cache: Arc<dyn CodeCache>,
-  specifier: &str,
-  data: &[u8],
-) {
-  // Code hashes are not maintained for op_eval_context scripts. Instead we use
-  // the modified timestamp from the local file system.
-  if let Ok(code_timestamp) = code_timestamp(specifier) {
-    // This log line is also used by tests.
-    log::debug!(
-      "Updating V8 code cache for script: {specifier}, [{code_timestamp}]",
-    );
-    code_cache.set_sync(
-      specifier,
-      CodeCacheType::Script,
-      code_timestamp.to_string().as_str(),
-      data,
-    );
-  }
-}
-
 impl MainWorker {
   pub fn bootstrap_from_options(
     main_module: ModuleSpecifier,
@@ -374,9 +326,6 @@ impl MainWorker {
         enable_testing_features: bool,
       },
       state = |state, options| {
-        // Save the permissions container and the wrapper.
-        state.put::<deno_permissions::PermissionsContainer>(options.permissions.0.clone());
-        // This is temporary until we migrate all exts/ to the deno_permissions crate.
         state.put::<PermissionsContainer>(options.permissions);
         state.put(ops::TestingFeaturesEnabled(options.enable_testing_features));
       },
@@ -455,6 +404,7 @@ impl MainWorker {
             proxy: None,
           },
         ),
+        deno_kv::KvConfig::builder().build(),
       ),
       deno_cron::deno_cron::init_ops_and_esm(LocalCronHandler::new()),
       deno_napi::deno_napi::init_ops_and_esm::<PermissionsContainer>(),
@@ -464,7 +414,7 @@ impl MainWorker {
         options.fs.clone(),
       ),
       deno_node::deno_node::init_ops_and_esm::<PermissionsContainer>(
-        options.npm_resolver,
+        options.node_services,
         options.fs,
       ),
       // Ops from this crate
@@ -499,8 +449,11 @@ impl MainWorker {
       ops::web_worker::deno_web_worker::init_ops_and_esm().disable(),
     ];
 
-    #[cfg(__runtime_js_sources)]
-    assert!(cfg!(not(feature = "only_snapshotted_js_sources")), "'__runtime_js_sources' is incompatible with 'only_snapshotted_js_sources'.");
+    #[cfg(feature = "hmr")]
+    assert!(
+      cfg!(not(feature = "only_snapshotted_js_sources")),
+      "'hmr' is incompatible with 'only_snapshotted_js_sources'."
+    );
 
     for extension in &mut extensions {
       if options.startup_snapshot.is_some() {
@@ -524,11 +477,18 @@ impl MainWorker {
       }
     });
 
+    let import_assertions_support = if options.bootstrap.future {
+      deno_core::ImportAssertionsSupport::Error
+    } else {
+      deno_core::ImportAssertionsSupport::CustomCallback(Box::new(
+        crate::shared::import_assertion_callback,
+      ))
+    };
+
     let mut js_runtime = JsRuntime::new(RuntimeOptions {
       module_loader: Some(options.module_loader.clone()),
       startup_snapshot: options.startup_snapshot,
       create_params: options.create_params,
-      source_map_getter: options.source_map_getter,
       skip_op_registration: options.skip_op_registration,
       get_error_class_fn: options.get_error_class_fn,
       shared_array_buffer_store: options.shared_array_buffer_store.clone(),
@@ -550,16 +510,42 @@ impl MainWorker {
       validate_import_attributes_cb: Some(Box::new(
         validate_import_attributes_callback,
       )),
-      enable_code_cache: options.v8_code_cache.is_some(),
+      import_assertions_support,
       eval_context_code_cache_cbs: options.v8_code_cache.map(|cache| {
         let cache_clone = cache.clone();
         (
-          Box::new(move |specifier: &str| {
-            Ok(get_code_cache(cache.clone(), specifier).map(Cow::Owned))
-          }) as Box<dyn Fn(&_) -> _>,
-          Box::new(move |specifier: &str, data: &[u8]| {
-            set_code_cache(cache_clone.clone(), specifier, data);
-          }) as Box<dyn Fn(&_, &_)>,
+          Box::new(move |specifier: &ModuleSpecifier, code: &v8::String| {
+            let source_hash = {
+              use std::hash::Hash;
+              use std::hash::Hasher;
+              let mut hasher = twox_hash::XxHash64::default();
+              code.hash(&mut hasher);
+              hasher.finish()
+            };
+            let data = cache
+              .get_sync(specifier, CodeCacheType::Script, source_hash)
+              .inspect(|_| {
+                // This log line is also used by tests.
+                log::debug!("V8 code cache hit for script: {specifier}, [{source_hash}]");
+              })
+              .map(Cow::Owned);
+            Ok(SourceCodeCacheInfo {
+              data,
+              hash: source_hash,
+            })
+          }) as Box<dyn Fn(&_, &_) -> _>,
+          Box::new(
+            move |specifier: ModuleSpecifier, source_hash: u64, data: &[u8]| {
+              // This log line is also used by tests.
+              log::debug!("Updating V8 code cache for script: {specifier}, [{source_hash}]");
+              cache_clone.set_sync(
+                specifier,
+                CodeCacheType::Script,
+                source_hash,
+                data,
+              );
+            },
+          ) as Box<dyn Fn(_, _, &_)>,
         )
       }),
       ..Default::default()
@@ -568,17 +554,6 @@ impl MainWorker {
     if let Some(op_summary_metrics) = op_summary_metrics {
       js_runtime.op_state().borrow_mut().put(op_summary_metrics);
     }
-    extern "C" fn message_handler(
-      _msg: v8::Local<v8::Message>,
-      _exception: v8::Local<v8::Value>,
-    ) {
-      // TODO(@littledivy): Propogate message to users.
-    }
-
-    // Register message listener
-    js_runtime
-      .v8_isolate()
-      .add_message_listener(message_handler);
 
     if let Some(server) = options.maybe_inspector_server.clone() {
       server.register_inspector(

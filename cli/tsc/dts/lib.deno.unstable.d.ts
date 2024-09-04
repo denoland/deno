@@ -10,18 +10,6 @@
 declare namespace Deno {
   export {}; // stop default export type behavior
 
-  /** Information for a HTTP request.
-   *
-   * @category HTTP Server
-   * @tags unstable
-   */
-  export interface ServeHandlerInfo {
-    /** The remote address of the connection. */
-    remoteAddr: Deno.NetAddr;
-    /** The completion promise */
-    completed: Promise<void>;
-  }
-
   /** **UNSTABLE**: New API, yet to be vetted.
    *
    * Retrieve the process umask.  If `mask` is provided, sets the process umask.
@@ -39,7 +27,7 @@ declare namespace Deno {
    * *Note*: This API is not implemented on Windows
    *
    * @category File System
-   * @tags unstable
+   * @experimental
    */
   export function umask(mask?: number): number;
 
@@ -48,7 +36,7 @@ declare namespace Deno {
    * All plain number types for interfacing with foreign functions.
    *
    * @category FFI
-   * @tags unstable
+   * @experimental
    */
   export type NativeNumberType =
     | "u8"
@@ -65,7 +53,7 @@ declare namespace Deno {
    * All BigInt number types for interfacing with foreign functions.
    *
    * @category FFI
-   * @tags unstable
+   * @experimental
    */
   export type NativeBigIntType =
     | "u64"
@@ -78,7 +66,7 @@ declare namespace Deno {
    * The native boolean type for interfacing to foreign functions.
    *
    * @category FFI
-   * @tags unstable
+   * @experimental
    */
   export type NativeBooleanType = "bool";
 
@@ -87,7 +75,7 @@ declare namespace Deno {
    * The native pointer type for interfacing to foreign functions.
    *
    * @category FFI
-   * @tags unstable
+   * @experimental
    */
   export type NativePointerType = "pointer";
 
@@ -96,7 +84,7 @@ declare namespace Deno {
    * The native buffer type for interfacing to foreign functions.
    *
    * @category FFI
-   * @tags unstable
+   * @experimental
    */
   export type NativeBufferType = "buffer";
 
@@ -105,7 +93,7 @@ declare namespace Deno {
    * The native function type for interfacing with foreign functions.
    *
    * @category FFI
-   * @tags unstable
+   * @experimental
    */
   export type NativeFunctionType = "function";
 
@@ -114,7 +102,7 @@ declare namespace Deno {
    * The native void type for interfacing with foreign functions.
    *
    * @category FFI
-   * @tags unstable
+   * @experimental
    */
   export type NativeVoidType = "void";
 
@@ -123,56 +111,56 @@ declare namespace Deno {
    * The native struct type for interfacing with foreign functions.
    *
    * @category FFI
-   * @tags unstable
+   * @experimental
    */
   export type NativeStructType = { readonly struct: readonly NativeType[] };
 
   /**
    * @category FFI
-   * @tags unstable
+   * @experimental
    */
   export const brand: unique symbol;
 
   /**
    * @category FFI
-   * @tags unstable
+   * @experimental
    */
   export type NativeU8Enum<T extends number> = "u8" & { [brand]: T };
   /**
    * @category FFI
-   * @tags unstable
+   * @experimental
    */
   export type NativeI8Enum<T extends number> = "i8" & { [brand]: T };
   /**
    * @category FFI
-   * @tags unstable
+   * @experimental
    */
   export type NativeU16Enum<T extends number> = "u16" & { [brand]: T };
   /**
    * @category FFI
-   * @tags unstable
+   * @experimental
    */
   export type NativeI16Enum<T extends number> = "i16" & { [brand]: T };
   /**
    * @category FFI
-   * @tags unstable
+   * @experimental
    */
   export type NativeU32Enum<T extends number> = "u32" & { [brand]: T };
   /**
    * @category FFI
-   * @tags unstable
+   * @experimental
    */
   export type NativeI32Enum<T extends number> = "i32" & { [brand]: T };
   /**
    * @category FFI
-   * @tags unstable
+   * @experimental
    */
   export type NativeTypedPointer<T extends PointerObject> = "pointer" & {
     [brand]: T;
   };
   /**
    * @category FFI
-   * @tags unstable
+   * @experimental
    */
   export type NativeTypedFunction<T extends UnsafeCallbackDefinition> =
     & "function"
@@ -185,7 +173,7 @@ declare namespace Deno {
    * All supported types for interfacing with foreign functions.
    *
    * @category FFI
-   * @tags unstable
+   * @experimental
    */
   export type NativeType =
     | NativeNumberType
@@ -199,7 +187,7 @@ declare namespace Deno {
   /** **UNSTABLE**: New API, yet to be vetted.
    *
    * @category FFI
-   * @tags unstable
+   * @experimental
    */
   export type NativeResultType = NativeType | NativeVoidType;
 
@@ -209,7 +197,7 @@ declare namespace Deno {
    * types.
    *
    * @category FFI
-   * @tags unstable
+   * @experimental
    */
   export type ToNativeType<T extends NativeType = NativeType> = T extends
     NativeStructType ? BufferSource
@@ -220,7 +208,7 @@ declare namespace Deno {
       : T extends NativeU32Enum<infer U> ? U
       : T extends NativeI32Enum<infer U> ? U
       : number
-    : T extends NativeBigIntType ? number | bigint
+    : T extends NativeBigIntType ? bigint
     : T extends NativeBooleanType ? boolean
     : T extends NativePointerType
       ? T extends NativeTypedPointer<infer U> ? U | null : PointerValue
@@ -235,7 +223,7 @@ declare namespace Deno {
    * Type conversion for unsafe callback return types.
    *
    * @category FFI
-   * @tags unstable
+   * @experimental
    */
   export type ToNativeResultType<
     T extends NativeResultType = NativeResultType,
@@ -247,7 +235,7 @@ declare namespace Deno {
       : T extends NativeU32Enum<infer U> ? U
       : T extends NativeI32Enum<infer U> ? U
       : number
-    : T extends NativeBigIntType ? number | bigint
+    : T extends NativeBigIntType ? bigint
     : T extends NativeBooleanType ? boolean
     : T extends NativePointerType
       ? T extends NativeTypedPointer<infer U> ? U | null : PointerValue
@@ -263,7 +251,7 @@ declare namespace Deno {
    * A utility type for conversion of parameter types of foreign functions.
    *
    * @category FFI
-   * @tags unstable
+   * @experimental
    */
   export type ToNativeParameterTypes<T extends readonly NativeType[]> =
     //
@@ -281,7 +269,7 @@ declare namespace Deno {
    * parameters.
    *
    * @category FFI
-   * @tags unstable
+   * @experimental
    */
   export type FromNativeType<T extends NativeType = NativeType> = T extends
     NativeStructType ? Uint8Array
@@ -292,7 +280,7 @@ declare namespace Deno {
       : T extends NativeU32Enum<infer U> ? U
       : T extends NativeI32Enum<infer U> ? U
       : number
-    : T extends NativeBigIntType ? number | bigint
+    : T extends NativeBigIntType ? bigint
     : T extends NativeBooleanType ? boolean
     : T extends NativePointerType
       ? T extends NativeTypedPointer<infer U> ? U | null : PointerValue
@@ -307,7 +295,7 @@ declare namespace Deno {
    * Type conversion for foreign symbol return types.
    *
    * @category FFI
-   * @tags unstable
+   * @experimental
    */
   export type FromNativeResultType<
     T extends NativeResultType = NativeResultType,
@@ -319,7 +307,7 @@ declare namespace Deno {
       : T extends NativeU32Enum<infer U> ? U
       : T extends NativeI32Enum<infer U> ? U
       : number
-    : T extends NativeBigIntType ? number | bigint
+    : T extends NativeBigIntType ? bigint
     : T extends NativeBooleanType ? boolean
     : T extends NativePointerType
       ? T extends NativeTypedPointer<infer U> ? U | null : PointerValue
@@ -333,7 +321,7 @@ declare namespace Deno {
   /** **UNSTABLE**: New API, yet to be vetted.
    *
    * @category FFI
-   * @tags unstable
+   * @experimental
    */
   export type FromNativeParameterTypes<
     T extends readonly NativeType[],
@@ -353,7 +341,7 @@ declare namespace Deno {
    * types.
    *
    * @category FFI
-   * @tags unstable
+   * @experimental
    */
   export interface ForeignFunction<
     Parameters extends readonly NativeType[] = readonly NativeType[],
@@ -371,11 +359,6 @@ declare namespace Deno {
     /** When `true`, function calls will run on a dedicated blocking thread and
      * will return a `Promise` resolving to the `result`. */
     nonblocking?: NonBlocking;
-    /** When `true`, function calls can safely callback into JavaScript or
-     * trigger a garbage collection event.
-     *
-     * @default {false} */
-    callback?: boolean;
     /** When `true`, dlopen will not fail if the symbol is not found.
      * Instead, the symbol will be set to `null`.
      *
@@ -386,7 +369,7 @@ declare namespace Deno {
   /** **UNSTABLE**: New API, yet to be vetted.
    *
    * @category FFI
-   * @tags unstable
+   * @experimental
    */
   export interface ForeignStatic<Type extends NativeType = NativeType> {
     /** Name of the symbol, defaults to the key name in symbols object. */
@@ -405,7 +388,7 @@ declare namespace Deno {
    * A foreign library interface descriptor.
    *
    * @category FFI
-   * @tags unstable
+   * @experimental
    */
   export interface ForeignLibraryInterface {
     [name: string]: ForeignFunction | ForeignStatic;
@@ -416,7 +399,7 @@ declare namespace Deno {
    * A utility type that infers a foreign symbol.
    *
    * @category FFI
-   * @tags unstable
+   * @experimental
    */
   export type StaticForeignSymbol<T extends ForeignFunction | ForeignStatic> =
     T extends ForeignFunction ? FromForeignFunction<T>
@@ -426,7 +409,7 @@ declare namespace Deno {
   /** **UNSTABLE**: New API, yet to be vetted.
    *
    *  @category FFI
-   *  @tags unstable
+   *  @experimental
    */
   export type FromForeignFunction<T extends ForeignFunction> =
     T["parameters"] extends readonly [] ? () => StaticForeignSymbolReturnType<T>
@@ -437,7 +420,7 @@ declare namespace Deno {
   /** **UNSTABLE**: New API, yet to be vetted.
    *
    * @category FFI
-   * @tags unstable
+   * @experimental
    */
   export type StaticForeignSymbolReturnType<T extends ForeignFunction> =
     ConditionalAsync<T["nonblocking"], FromNativeResultType<T["result"]>>;
@@ -445,7 +428,7 @@ declare namespace Deno {
   /** **UNSTABLE**: New API, yet to be vetted.
    *
    * @category FFI
-   * @tags unstable
+   * @experimental
    */
   export type ConditionalAsync<IsAsync extends boolean | undefined, T> =
     IsAsync extends true ? Promise<T> : T;
@@ -455,7 +438,7 @@ declare namespace Deno {
    * A utility type that infers a foreign library interface.
    *
    * @category FFI
-   * @tags unstable
+   * @experimental
    */
   export type StaticForeignLibraryInterface<T extends ForeignLibraryInterface> =
     {
@@ -478,7 +461,7 @@ declare namespace Deno {
    * {@linkcode UnsafePointer} class.
    *
    * @category FFI
-   * @tags unstable
+   * @experimental
    */
   export type PointerObject<T = unknown> = { [brand]: T };
 
@@ -488,7 +471,7 @@ declare namespace Deno {
    * object or a `null` if the pointer is null.
    *
    * @category FFI
-   * @tags unstable
+   * @experimental
    */
   export type PointerValue<T = unknown> = null | PointerObject<T>;
 
@@ -497,11 +480,11 @@ declare namespace Deno {
    * A collection of static functions for interacting with pointer objects.
    *
    * @category FFI
-   * @tags unstable
+   * @experimental
    */
   export class UnsafePointer {
     /** Create a pointer from a numeric value. This one is <i>really</i> dangerous! */
-    static create<T = unknown>(value: number | bigint): PointerValue<T>;
+    static create<T = unknown>(value: bigint): PointerValue<T>;
     /** Returns `true` if the two pointers point to the same address. */
     static equals<T = unknown>(a: PointerValue<T>, b: PointerValue<T>): boolean;
     /** Return the direct memory pointer to the typed array in memory. */
@@ -514,7 +497,7 @@ declare namespace Deno {
       offset: number,
     ): PointerValue<T>;
     /** Get the numeric value of a pointer */
-    static value(value: PointerValue): number | bigint;
+    static value(value: PointerValue): bigint;
   }
 
   /** **UNSTABLE**: New API, yet to be vetted.
@@ -525,7 +508,7 @@ declare namespace Deno {
    * location (numbers, strings and raw bytes).
    *
    * @category FFI
-   * @tags unstable
+   * @experimental
    */
   export class UnsafePointerView {
     constructor(pointer: PointerObject);
@@ -554,10 +537,10 @@ declare namespace Deno {
     getInt32(offset?: number): number;
     /** Gets an unsigned 64-bit integer at the specified byte offset from the
      * pointer. */
-    getBigUint64(offset?: number): number | bigint;
+    getBigUint64(offset?: number): bigint;
     /** Gets a signed 64-bit integer at the specified byte offset from the
      * pointer. */
-    getBigInt64(offset?: number): number | bigint;
+    getBigInt64(offset?: number): bigint;
     /** Gets a signed 32-bit float at the specified byte offset from the
      * pointer. */
     getFloat32(offset?: number): number;
@@ -609,7 +592,7 @@ declare namespace Deno {
    * as symbols.
    *
    * @category FFI
-   * @tags unstable
+   * @experimental
    */
   export class UnsafeFnPointer<const Fn extends ForeignFunction> {
     /** The pointer to the function. */
@@ -630,7 +613,7 @@ declare namespace Deno {
    * Definition of a unsafe callback function.
    *
    * @category FFI
-   * @tags unstable
+   * @experimental
    */
   export interface UnsafeCallbackDefinition<
     Parameters extends readonly NativeType[] = readonly NativeType[],
@@ -647,7 +630,7 @@ declare namespace Deno {
    * An unsafe callback function.
    *
    * @category FFI
-   * @tags unstable
+   * @experimental
    */
   export type UnsafeCallbackFunction<
     Parameters extends readonly NativeType[] = readonly NativeType[],
@@ -678,7 +661,7 @@ declare namespace Deno {
    * called from foreign threads.
    *
    * @category FFI
-   * @tags unstable
+   * @experimental
    */
   export class UnsafeCallback<
     const Definition extends UnsafeCallbackDefinition =
@@ -762,7 +745,7 @@ declare namespace Deno {
    * library and return this interface.
    *
    * @category FFI
-   * @tags unstable
+   * @experimental
    */
   export interface DynamicLibrary<S extends ForeignLibraryInterface> {
     /** All of the registered library along with functions for calling them. */
@@ -816,13 +799,14 @@ declare namespace Deno {
    * );
    *
    * // Call the symbol `add`
-   * const result = dylib.symbols.add(35, 34); // 69
+   * const result = dylib.symbols.add(35n, 34n); // 69n
    *
    * console.log(`Result from external addition of 35 and 34: ${result}`);
    * ```
    *
-   * @tags allow-ffi, unstable
+   * @tags allow-ffi
    * @category FFI
+   * @experimental
    */
   export function dlopen<const S extends ForeignLibraryInterface>(
     filename: string | URL,
@@ -844,7 +828,7 @@ declare namespace Deno {
    *  | "wayland" (Linux) | `wl_surface*` | `wl_display*`   |
    *
    * @category GPU
-   * @tags unstable
+   * @experimental
    */
   export class UnsafeWindowSurface {
     constructor(
@@ -860,8 +844,8 @@ declare namespace Deno {
    *
    * These are unstable options which can be used with {@linkcode Deno.run}.
    *
-   * @category Sub Process
-   * @tags unstable
+   * @category Subprocess
+   * @experimental
    */
   export interface UnstableRunOptions extends RunOptions {
     /** If `true`, clears the environment variables before executing the
@@ -922,8 +906,9 @@ declare namespace Deno {
    *
    * Requires `allow-run` permission.
    *
-   * @tags allow-run, unstable
-   * @category Sub Process
+   * @tags allow-run
+   * @category Subprocess
+   * @experimental
    */
   export function run<T extends UnstableRunOptions = UnstableRunOptions>(
     opt: T,
@@ -941,7 +926,7 @@ declare namespace Deno {
    * ```
    *
    * @category Fetch
-   * @tags unstable
+   * @experimental
    */
   export interface HttpClient extends Disposable {
     /** Close the HTTP client. */
@@ -953,7 +938,7 @@ declare namespace Deno {
    * The options used when creating a {@linkcode Deno.HttpClient}.
    *
    * @category Fetch
-   * @tags unstable
+   * @experimental
    */
   export interface CreateHttpClientOptions {
     /** A list of root certificates that will be used in addition to the
@@ -963,7 +948,7 @@ declare namespace Deno {
     caCerts?: string[];
     /** A HTTP proxy to use for new connections. */
     proxy?: Proxy;
-    /** Sets the maximum numer of idle connections per host allowed in the pool. */
+    /** Sets the maximum number of idle connections per host allowed in the pool. */
     poolMaxIdlePerHost?: number;
     /** Set an optional timeout for idle sockets being kept-alive.
      * Set to false to disable the timeout. */
@@ -992,7 +977,7 @@ declare namespace Deno {
    * {@linkcode Deno.CreateHttpClientOptions}.
    *
    * @category Fetch
-   * @tags unstable
+   * @experimental
    */
   export interface Proxy {
     /** The string URL of the proxy server to use. */
@@ -1007,7 +992,7 @@ declare namespace Deno {
    * server when specifying {@linkcode Deno.CreateHttpClientOptions}.
    *
    * @category Fetch
-   * @tags unstable
+   * @experimental
    */
   export interface BasicAuth {
     /** The username to be used against the proxy server. */
@@ -1036,7 +1021,7 @@ declare namespace Deno {
    * ```
    *
    * @category Fetch
-   * @tags unstable
+   * @experimental
    */
   export function createHttpClient(
     options: CreateHttpClientOptions,
@@ -1058,7 +1043,7 @@ declare namespace Deno {
    * ```
    *
    * @category Fetch
-   * @tags unstable
+   * @experimental
    */
   export function createHttpClient(
     options: CreateHttpClientOptions & TlsCertifiedKeyOptions,
@@ -1069,7 +1054,7 @@ declare namespace Deno {
    * Represents membership of a IPv4 multicast group.
    *
    * @category Network
-   * @tags unstable
+   * @experimental
    */
   export interface MulticastV4Membership {
     /** Leaves the multicast group. */
@@ -1085,7 +1070,7 @@ declare namespace Deno {
    * Represents membership of a IPv6 multicast group.
    *
    * @category Network
-   * @tags unstable
+   * @experimental
    */
   export interface MulticastV6Membership {
     /** Leaves the multicast group. */
@@ -1099,7 +1084,7 @@ declare namespace Deno {
    * A generic transport listener for message-oriented protocols.
    *
    * @category Network
-   * @tags unstable
+   * @experimental
    */
   export interface DatagramConn extends AsyncIterable<[Uint8Array, Addr]> {
     /** Joins an IPv4 multicast group. */
@@ -1133,7 +1118,7 @@ declare namespace Deno {
 
   /**
    * @category Network
-   * @tags unstable
+   * @experimental
    */
   export interface TcpListenOptions extends ListenOptions {
     /** When `true` the SO_REUSEPORT flag will be set on the listener. This
@@ -1156,7 +1141,7 @@ declare namespace Deno {
    * {@linkcode Deno.listenDatagram}.
    *
    * @category Network
-   * @tags unstable
+   * @experimental
    */
   export interface UdpListenOptions extends ListenOptions {
     /** When `true` the specified address will be reused, even if another
@@ -1190,8 +1175,9 @@ declare namespace Deno {
    *
    * Requires `allow-net` permission.
    *
-   * @tags allow-net, unstable
+   * @tags allow-net
    * @category Network
+   * @experimental
    */
   export function listenDatagram(
     options: UdpListenOptions & { transport: "udp" },
@@ -1210,8 +1196,9 @@ declare namespace Deno {
    *
    * Requires `allow-read` and `allow-write` permission.
    *
-   * @tags allow-read, allow-write, unstable
+   * @tags allow-read, allow-write
    * @category Network
+   * @experimental
    */
   export function listenDatagram(
     options: UnixListenOptions & { transport: "unixpacket" },
@@ -1219,30 +1206,10 @@ declare namespace Deno {
 
   /** **UNSTABLE**: New API, yet to be vetted.
    *
-   * Acquire an advisory file-system lock for the provided file.
-   *
-   * @param [exclusive=false]
-   * @category File System
-   * @tags unstable
-   */
-  export function flock(rid: number, exclusive?: boolean): Promise<void>;
-
-  /** **UNSTABLE**: New API, yet to be vetted.
-   *
-   * Acquire an advisory file-system lock synchronously for the provided file.
-   *
-   * @param [exclusive=false]
-   * @category File System
-   * @tags unstable
-   */
-  export function flockSync(rid: number, exclusive?: boolean): void;
-
-  /** **UNSTABLE**: New API, yet to be vetted.
-   *
    * Release an advisory file-system lock for the provided file.
    *
    * @category File System
-   * @tags unstable
+   * @experimental
    */
   export function funlock(rid: number): Promise<void>;
 
@@ -1251,7 +1218,7 @@ declare namespace Deno {
    * Release an advisory file-system lock for the provided file synchronously.
    *
    * @category File System
-   * @tags unstable
+   * @experimental
    */
   export function funlockSync(rid: number): void;
 
@@ -1268,8 +1235,9 @@ declare namespace Deno {
    * `localStorage` persistence). More information about the origin storage key
    * can be found in the Deno Manual.
    *
-   * @tags allow-read, allow-write, unstable
+   * @tags allow-read, allow-write
    * @category Cloud
+   * @experimental
    */
   export function openKv(path?: string): Promise<Deno.Kv>;
 
@@ -1278,7 +1246,7 @@ declare namespace Deno {
    * CronScheduleExpression is used as the type of `minute`, `hour`,
    * `dayOfMonth`, `month`, and `dayOfWeek` in {@linkcode CronSchedule}.
    * @category Cloud
-   * @tags unstable
+   * @experimental
    */
   export type CronScheduleExpression = number | { exact: number | number[] } | {
     start?: number;
@@ -1291,7 +1259,7 @@ declare namespace Deno {
    * CronSchedule is the interface used for JSON format
    * cron `schedule`.
    * @category Cloud
-   * @tags unstable
+   * @experimental
    */
   export interface CronSchedule {
     minute?: CronScheduleExpression;
@@ -1323,7 +1291,7 @@ declare namespace Deno {
    * using UTC time zone.
    *
    * @category Cloud
-   * @tags unstable
+   * @experimental
    */
   export function cron(
     name: string,
@@ -1355,7 +1323,7 @@ declare namespace Deno {
    * second, 5 seconds, and 10 seconds delay between each retry.
    *
    * @category Cloud
-   * @tags unstable
+   * @experimental
    */
   export function cron(
     name: string,
@@ -1380,7 +1348,7 @@ declare namespace Deno {
    * was passed to.
    *
    * @category Cloud
-   * @tags unstable
+   * @experimental
    */
   export type KvKey = readonly KvKeyPart[];
 
@@ -1417,7 +1385,7 @@ declare namespace Deno {
    * over the ordering of values within a type.
    *
    * @category Cloud
-   * @tags unstable
+   * @experimental
    */
   export type KvKeyPart =
     | Uint8Array
@@ -1435,7 +1403,7 @@ declare namespace Deno {
    * - `eventual` - Eventually-consistent behavior is allowed.
    *
    * @category Cloud
-   * @tags unstable
+   * @experimental
    */
   export type KvConsistencyLevel = "strong" | "eventual";
 
@@ -1450,7 +1418,7 @@ declare namespace Deno {
    * lexicographically between the given start and end keys.
    *
    * @category Cloud
-   * @tags unstable
+   * @experimental
    */
   export type KvListSelector =
     | { prefix: KvKey }
@@ -1489,7 +1457,7 @@ declare namespace Deno {
    *   the value is set to the given value.
    *
    * @category Cloud
-   * @tags unstable
+   * @experimental
    */
   export type KvMutation =
     & { key: KvKey }
@@ -1509,7 +1477,7 @@ declare namespace Deno {
    * iteration from the current position in the future.
    *
    * @category Cloud
-   * @tags unstable
+   * @experimental
    */
   export class KvListIterator<T> implements AsyncIterableIterator<KvEntry<T>> {
     /**
@@ -1532,7 +1500,7 @@ declare namespace Deno {
    * by passing it to the `check` method of a {@linkcode Deno.AtomicOperation}.
    *
    * @category Cloud
-   * @tags unstable
+   * @experimental
    */
   export type KvEntry<T> = { key: KvKey; value: T; versionstamp: string };
 
@@ -1545,7 +1513,7 @@ declare namespace Deno {
    * fields may be `null` if no value exists for the given key in the KV store.
    *
    * @category Cloud
-   * @tags unstable
+   * @experimental
    */
   export type KvEntryMaybe<T> = KvEntry<T> | {
     key: KvKey;
@@ -1558,7 +1526,7 @@ declare namespace Deno {
    * Options for listing key-value pairs in a {@linkcode Deno.Kv}.
    *
    * @category Cloud
-   * @tags unstable
+   * @experimental
    */
   export interface KvListOptions {
     /**
@@ -1613,7 +1581,7 @@ declare namespace Deno {
 
   /**
    * @category Cloud
-   * @tags unstable
+   * @experimental
    */
   export interface KvCommitResult {
     ok: true;
@@ -1623,7 +1591,7 @@ declare namespace Deno {
 
   /**
    * @category Cloud
-   * @tags unstable
+   * @experimental
    */
   export interface KvCommitError {
     ok: false;
@@ -1637,7 +1605,7 @@ declare namespace Deno {
    * that the key-value pair does not currently exist in the KV store.
    *
    * @category Cloud
-   * @tags unstable
+   * @experimental
    */
   export interface AtomicCheck {
     key: KvKey;
@@ -1679,7 +1647,7 @@ declare namespace Deno {
    * and the versionstamp of the value committed to KV.
    *
    * @category Cloud
-   * @tags unstable
+   * @experimental
    */
   export class AtomicOperation {
     /**
@@ -1796,7 +1764,7 @@ declare namespace Deno {
    * an exception will be thrown.
    *
    * @category Cloud
-   * @tags unstable
+   * @experimental
    */
   export class Kv implements Disposable {
     /**
@@ -2067,7 +2035,7 @@ declare namespace Deno {
    * {@linkcode Deno.Kv}.
    *
    * @category Cloud
-   * @tags unstable
+   * @experimental
    */
   export class KvU64 {
     /** Create a new `KvU64` instance from the given bigint value. If the value
@@ -2083,12 +2051,12 @@ declare namespace Deno {
    * When accessed outside of Jupyter notebook context an error will be thrown.
    *
    * @category Jupyter
-   * @tags unstable
+   * @experimental
    */
   export namespace jupyter {
     /**
      * @category Jupyter
-     * @tags unstable
+     * @experimental
      */
     export interface DisplayOptions {
       raw?: boolean;
@@ -2098,7 +2066,7 @@ declare namespace Deno {
 
     /**
      * @category Jupyter
-     * @tags unstable
+     * @experimental
      */
     export type VegaObject = {
       $schema: string;
@@ -2109,7 +2077,7 @@ declare namespace Deno {
      * A collection of supported media types and data for Jupyter frontends.
      *
      * @category Jupyter
-     * @tags unstable
+     * @experimental
      */
     export type MediaBundle = {
       "text/plain"?: string;
@@ -2141,13 +2109,13 @@ declare namespace Deno {
 
     /**
      * @category Jupyter
-     * @tags unstable
+     * @experimental
      */
     export const $display: unique symbol;
 
     /**
      * @category Jupyter
-     * @tags unstable
+     * @experimental
      */
     export type Displayable = {
       [$display]: () => MediaBundle | Promise<MediaBundle>;
@@ -2161,9 +2129,12 @@ declare namespace Deno {
      * @param obj - The object to be displayed
      * @param options - Display options with a default { raw: true }
      * @category Jupyter
-     * @tags unstable
+     * @experimental
      */
-    export function display(obj: unknown, options?: DisplayOptions): void;
+    export function display(
+      obj: unknown,
+      options?: DisplayOptions,
+    ): Promise<void>;
 
     /**
      * Show Markdown in Jupyter frontends with a tagged template function.
@@ -2186,7 +2157,7 @@ declare namespace Deno {
      * ```
      *
      * @category Jupyter
-     * @tags unstable
+     * @experimental
      */
     export function md(
       strings: TemplateStringsArray,
@@ -2206,7 +2177,7 @@ declare namespace Deno {
      * ```
      *
      * @category Jupyter
-     * @tags unstable
+     * @experimental
      */
     export function html(
       strings: TemplateStringsArray,
@@ -2225,7 +2196,7 @@ declare namespace Deno {
      *    </svg>`
      *
      * @category Jupyter
-     * @tags unstable
+     * @experimental
      */
     export function svg(
       strings: TemplateStringsArray,
@@ -2236,12 +2207,12 @@ declare namespace Deno {
      * Format an object for displaying in Deno
      *
      * @param obj - The object to be displayed
-     * @returns MediaBundle
+     * @returns Promise<MediaBundle>
      *
      * @category Jupyter
-     * @tags unstable
+     * @experimental
      */
-    export function format(obj: unknown): MediaBundle;
+    export function format(obj: unknown): Promise<MediaBundle>;
 
     /**
      * Broadcast a message on IO pub channel.
@@ -2263,7 +2234,7 @@ declare namespace Deno {
      * ```
      *
      * @category Jupyter
-     * @tags unstable
+     * @experimental
      */
     export function broadcast(
       msgType: string,
@@ -2282,8 +2253,9 @@ declare namespace Deno {
  * which also supports setting a {@linkcode Deno.HttpClient} which provides a
  * way to connect via proxies and use custom TLS certificates.
  *
- * @tags allow-net, allow-read, unstable
+ * @tags allow-net, allow-read
  * @category Fetch
+ * @experimental
  */
 declare function fetch(
   input: Request | URL | string,
@@ -2293,7 +2265,7 @@ declare function fetch(
 /** **UNSTABLE**: New API, yet to be vetted.
  *
  * @category Workers
- * @tags unstable
+ * @experimental
  */
 declare interface WorkerOptions {
   /** **UNSTABLE**: New API, yet to be vetted.
@@ -2334,7 +2306,7 @@ declare interface WorkerOptions {
 /** **UNSTABLE**: New API, yet to be vetted.
  *
  * @category WebSockets
- * @tags unstable
+ * @experimental
  */
 declare interface WebSocketStreamOptions {
   protocols?: string[];
@@ -2345,7 +2317,7 @@ declare interface WebSocketStreamOptions {
 /** **UNSTABLE**: New API, yet to be vetted.
  *
  * @category WebSockets
- * @tags unstable
+ * @experimental
  */
 declare interface WebSocketConnection {
   readable: ReadableStream<string | Uint8Array>;
@@ -2357,7 +2329,7 @@ declare interface WebSocketConnection {
 /** **UNSTABLE**: New API, yet to be vetted.
  *
  * @category WebSockets
- * @tags unstable
+ * @experimental
  */
 declare interface WebSocketCloseInfo {
   code?: number;
@@ -2366,8 +2338,9 @@ declare interface WebSocketCloseInfo {
 
 /** **UNSTABLE**: New API, yet to be vetted.
  *
- * @tags allow-net, unstable
+ * @tags allow-net
  * @category WebSockets
+ * @experimental
  */
 declare interface WebSocketStream {
   url: string;
@@ -2378,8 +2351,9 @@ declare interface WebSocketStream {
 
 /** **UNSTABLE**: New API, yet to be vetted.
  *
- * @tags allow-net, unstable
+ * @tags allow-net
  * @category WebSockets
+ * @experimental
  */
 declare var WebSocketStream: {
   readonly prototype: WebSocketStream;
@@ -2388,8 +2362,9 @@ declare var WebSocketStream: {
 
 /** **UNSTABLE**: New API, yet to be vetted.
  *
- * @tags allow-net, unstable
+ * @tags allow-net
  * @category WebSockets
+ * @experimental
  */
 declare interface WebSocketError extends DOMException {
   readonly closeCode: number;
@@ -2398,8 +2373,9 @@ declare interface WebSocketError extends DOMException {
 
 /** **UNSTABLE**: New API, yet to be vetted.
  *
- * @tags allow-net, unstable
+ * @tags allow-net
  * @category WebSockets
+ * @experimental
  */
 declare var WebSocketError: {
   readonly prototype: WebSocketError;
@@ -2412,17 +2388,17 @@ declare var WebSocketError: {
  * [Specification](https://tc39.es/proposal-temporal/docs/index.html)
  *
  * @category Temporal
- * @tags unstable
+ * @experimental
  */
 declare namespace Temporal {
   /**
    * @category Temporal
-   * @tags unstable
+   * @experimental
    */
   export type ComparisonResult = -1 | 0 | 1;
   /**
    * @category Temporal
-   * @tags unstable
+   * @experimental
    */
   export type RoundingMode =
     | "ceil"
@@ -2440,7 +2416,7 @@ declare namespace Temporal {
    * `from()`.
    *
    * @category Temporal
-   * @tags unstable
+   * @experimental
    */
   export type AssignmentOptions = {
     /**
@@ -2462,7 +2438,7 @@ declare namespace Temporal {
    * `Duration.prototype.add()` and `Duration.prototype.subtract()`.
    *
    * @category Temporal
-   * @tags unstable
+   * @experimental
    */
   export type DurationOptions = {
     /**
@@ -2482,7 +2458,7 @@ declare namespace Temporal {
    * Options for conversions of `Temporal.PlainDateTime` to `Temporal.Instant`
    *
    * @category Temporal
-   * @tags unstable
+   * @experimental
    */
   export type ToInstantOptions = {
     /**
@@ -2512,7 +2488,7 @@ declare namespace Temporal {
 
   /**
    * @category Temporal
-   * @tags unstable
+   * @experimental
    */
   export type OffsetDisambiguationOptions = {
     /**
@@ -2552,7 +2528,7 @@ declare namespace Temporal {
 
   /**
    * @category Temporal
-   * @tags unstable
+   * @experimental
    */
   export type ZonedDateTimeAssignmentOptions = Partial<
     AssignmentOptions & ToInstantOptions & OffsetDisambiguationOptions
@@ -2562,7 +2538,7 @@ declare namespace Temporal {
    * Options for arithmetic operations like `add()` and `subtract()`
    *
    * @category Temporal
-   * @tags unstable
+   * @experimental
    */
   export type ArithmeticOptions = {
     /**
@@ -2578,12 +2554,12 @@ declare namespace Temporal {
 
   /**
    * @category Temporal
-   * @tags unstable
+   * @experimental
    */
   export type DateUnit = "year" | "month" | "week" | "day";
   /**
    * @category Temporal
-   * @tags unstable
+   * @experimental
    */
   export type TimeUnit =
     | "hour"
@@ -2594,17 +2570,17 @@ declare namespace Temporal {
     | "nanosecond";
   /**
    * @category Temporal
-   * @tags unstable
+   * @experimental
    */
   export type DateTimeUnit = DateUnit | TimeUnit;
 
   /**
    * When the name of a unit is provided to a Temporal API as a string, it is
    * usually singular, e.g. 'day' or 'hour'. But plural unit names like 'days'
-   * or 'hours' are aso accepted too.
+   * or 'hours' are also accepted.
    *
    * @category Temporal
-   * @tags unstable
+   * @experimental
    */
   export type PluralUnit<T extends DateTimeUnit> = {
     year: "years";
@@ -2621,17 +2597,17 @@ declare namespace Temporal {
 
   /**
    * @category Temporal
-   * @tags unstable
+   * @experimental
    */
   export type LargestUnit<T extends DateTimeUnit> = "auto" | T | PluralUnit<T>;
   /**
    * @category Temporal
-   * @tags unstable
+   * @experimental
    */
   export type SmallestUnit<T extends DateTimeUnit> = T | PluralUnit<T>;
   /**
    * @category Temporal
-   * @tags unstable
+   * @experimental
    */
   export type TotalUnit<T extends DateTimeUnit> = T | PluralUnit<T>;
 
@@ -2639,7 +2615,7 @@ declare namespace Temporal {
    * Options for outputting precision in toString() on types with seconds
    *
    * @category Temporal
-   * @tags unstable
+   * @experimental
    */
   export type ToStringPrecisionOptions = {
     fractionalSecondDigits?: "auto" | 0 | 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9;
@@ -2666,7 +2642,7 @@ declare namespace Temporal {
 
   /**
    * @category Temporal
-   * @tags unstable
+   * @experimental
    */
   export type ShowCalendarOption = {
     calendarName?: "auto" | "always" | "never" | "critical";
@@ -2674,7 +2650,7 @@ declare namespace Temporal {
 
   /**
    * @category Temporal
-   * @tags unstable
+   * @experimental
    */
   export type CalendarTypeToStringOptions = Partial<
     ToStringPrecisionOptions & ShowCalendarOption
@@ -2682,7 +2658,7 @@ declare namespace Temporal {
 
   /**
    * @category Temporal
-   * @tags unstable
+   * @experimental
    */
   export type ZonedDateTimeToStringOptions = Partial<
     CalendarTypeToStringOptions & {
@@ -2693,7 +2669,7 @@ declare namespace Temporal {
 
   /**
    * @category Temporal
-   * @tags unstable
+   * @experimental
    */
   export type InstantToStringOptions = Partial<
     ToStringPrecisionOptions & {
@@ -2706,7 +2682,7 @@ declare namespace Temporal {
    * `Temporal` types.
    *
    * @category Temporal
-   * @tags unstable
+   * @experimental
    */
   export interface DifferenceOptions<T extends DateTimeUnit> {
     /**
@@ -2769,7 +2745,7 @@ declare namespace Temporal {
    * `smallestUnit` property value is that string.
    *
    * @category Temporal
-   * @tags unstable
+   * @experimental
    */
   export type RoundTo<T extends DateTimeUnit> =
     | SmallestUnit<T>
@@ -2815,7 +2791,7 @@ declare namespace Temporal {
    * object whose `smallestUnit` property value is that string.
    *
    * @category Temporal
-   * @tags unstable
+   * @experimental
    */
   export type DurationRoundTo =
     | SmallestUnit<DateTimeUnit>
@@ -2920,8 +2896,8 @@ declare namespace Temporal {
          * This value must be either a `Temporal.PlainDateTime`, a
          * `Temporal.ZonedDateTime`, or a string or object value that can be
          * passed to `from()` of those types. Examples:
-         * - `'2020-01'01T00:00-08:00[America/Los_Angeles]'`
-         * - `'2020-01'01'`
+         * - `'2020-01-01T00:00-08:00[America/Los_Angeles]'`
+         * - `'2020-01-01'`
          * - `Temporal.PlainDate.from('2020-01-01')`
          *
          * `Temporal.ZonedDateTime` will be tried first because it's more
@@ -2946,7 +2922,7 @@ declare namespace Temporal {
    * Options to control behavior of `Duration.prototype.total()`
    *
    * @category Temporal
-   * @tags unstable
+   * @experimental
    */
   export type DurationTotalOf =
     | TotalUnit<DateTimeUnit>
@@ -2966,8 +2942,8 @@ declare namespace Temporal {
        * This value must be either a `Temporal.PlainDateTime`, a
        * `Temporal.ZonedDateTime`, or a string or object value that can be passed
        * to `from()` of those types. Examples:
-       * - `'2020-01'01T00:00-08:00[America/Los_Angeles]'`
-       * - `'2020-01'01'`
+       * - `'2020-01-01T00:00-08:00[America/Los_Angeles]'`
+       * - `'2020-01-01'`
        * - `Temporal.PlainDate.from('2020-01-01')`
        *
        * `Temporal.ZonedDateTime` will be tried first because it's more
@@ -2991,7 +2967,7 @@ declare namespace Temporal {
    * `Duration.subtract()`
    *
    * @category Temporal
-   * @tags unstable
+   * @experimental
    */
   export interface DurationArithmeticOptions {
     /**
@@ -3002,8 +2978,8 @@ declare namespace Temporal {
      * This value must be either a `Temporal.PlainDateTime`, a
      * `Temporal.ZonedDateTime`, or a string or object value that can be passed
      * to `from()` of those types. Examples:
-     * - `'2020-01'01T00:00-08:00[America/Los_Angeles]'`
-     * - `'2020-01'01'`
+     * - `'2020-01-01T00:00-08:00[America/Los_Angeles]'`
+     * - `'2020-01-01'`
      * - `Temporal.PlainDate.from('2020-01-01')`
      *
      * `Temporal.ZonedDateTime` will be tried first because it's more
@@ -3023,8 +2999,18 @@ declare namespace Temporal {
   }
 
   /**
+   * Options to control behaviour of `ZonedDateTime.prototype.getTimeZoneTransition()`
+   *
    * @category Temporal
-   * @tags unstable
+   * @experimental
+   */
+  export type TransitionDirection = "next" | "previous" | {
+    direction: "next" | "previous";
+  };
+
+  /**
+   * @category Temporal
+   * @experimental
    */
   export type DurationLike = {
     years?: number;
@@ -3046,7 +3032,7 @@ declare namespace Temporal {
    * See https://tc39.es/proposal-temporal/docs/duration.html for more details.
    *
    * @category Temporal
-   * @tags unstable
+   * @experimental
    */
   export class Duration {
     static from(
@@ -3119,12 +3105,10 @@ declare namespace Temporal {
    * See https://tc39.es/proposal-temporal/docs/instant.html for more details.
    *
    * @category Temporal
-   * @tags unstable
+   * @experimental
    */
   export class Instant {
-    static fromEpochSeconds(epochSeconds: number): Temporal.Instant;
     static fromEpochMilliseconds(epochMilliseconds: number): Temporal.Instant;
-    static fromEpochMicroseconds(epochMicroseconds: bigint): Temporal.Instant;
     static fromEpochNanoseconds(epochNanoseconds: bigint): Temporal.Instant;
     static from(item: Temporal.Instant | string): Temporal.Instant;
     static compare(
@@ -3132,9 +3116,7 @@ declare namespace Temporal {
       two: Temporal.Instant | string,
     ): ComparisonResult;
     constructor(epochNanoseconds: bigint);
-    readonly epochSeconds: number;
     readonly epochMilliseconds: number;
-    readonly epochMicroseconds: bigint;
     readonly epochNanoseconds: bigint;
     equals(other: Temporal.Instant | string): boolean;
     add(
@@ -3201,14 +3183,14 @@ declare namespace Temporal {
 
   /**
    * @category Temporal
-   * @tags unstable
+   * @experimental
    */
   export type YearOrEraAndEraYear = { era: string; eraYear: number } | {
     year: number;
   };
   /**
    * @category Temporal
-   * @tags unstable
+   * @experimental
    */
   export type MonthCodeOrMonthAndYear =
     | (YearOrEraAndEraYear & { month: number })
@@ -3217,13 +3199,13 @@ declare namespace Temporal {
     };
   /**
    * @category Temporal
-   * @tags unstable
+   * @experimental
    */
   export type MonthOrMonthCode = { month: number } | { monthCode: string };
 
   /**
    * @category Temporal
-   * @tags unstable
+   * @experimental
    */
   export interface CalendarProtocol {
     id: string;
@@ -3295,14 +3277,14 @@ declare namespace Temporal {
         | Temporal.PlainDateTime
         | PlainDateLike
         | string,
-    ): number;
+    ): number | undefined;
     yearOfWeek(
       date:
         | Temporal.PlainDate
         | Temporal.PlainDateTime
         | PlainDateLike
         | string,
-    ): number;
+    ): number | undefined;
     daysInWeek(
       date:
         | Temporal.PlainDate
@@ -3377,7 +3359,7 @@ declare namespace Temporal {
    * Any of these types can be passed to Temporal methods instead of a Temporal.Calendar.
    *
    * @category Temporal
-   * @tags unstable
+   * @experimental
    */
   export type CalendarLike =
     | string
@@ -3397,7 +3379,7 @@ declare namespace Temporal {
    * See https://tc39.es/proposal-temporal/docs/calendar.html for more details.
    *
    * @category Temporal
-   * @tags unstable
+   * @experimental
    */
   export class Calendar implements CalendarProtocol {
     static from(item: CalendarLike): Temporal.Calendar | CalendarProtocol;
@@ -3471,14 +3453,14 @@ declare namespace Temporal {
         | Temporal.PlainDateTime
         | PlainDateLike
         | string,
-    ): number;
+    ): number | undefined;
     yearOfWeek(
       date:
         | Temporal.PlainDate
         | Temporal.PlainDateTime
         | PlainDateLike
         | string,
-    ): number;
+    ): number | undefined;
     daysInWeek(
       date:
         | Temporal.PlainDate
@@ -3552,7 +3534,7 @@ declare namespace Temporal {
 
   /**
    * @category Temporal
-   * @tags unstable
+   * @experimental
    */
   export type PlainDateLike = {
     era?: string | undefined;
@@ -3566,7 +3548,7 @@ declare namespace Temporal {
 
   /**
    * @category Temporal
-   * @tags unstable
+   * @experimental
    */
   export type PlainDateISOFields = {
     isoYear: number;
@@ -3585,7 +3567,7 @@ declare namespace Temporal {
    * See https://tc39.es/proposal-temporal/docs/date.html for more details.
    *
    * @category Temporal
-   * @tags unstable
+   * @experimental
    */
   export class PlainDate {
     static from(
@@ -3609,11 +3591,10 @@ declare namespace Temporal {
     readonly monthCode: string;
     readonly day: number;
     readonly calendarId: string;
-    getCalendar(): CalendarProtocol;
     readonly dayOfWeek: number;
     readonly dayOfYear: number;
-    readonly weekOfYear: number;
-    readonly yearOfWeek: number;
+    readonly weekOfYear: number | undefined;
+    readonly yearOfWeek: number | undefined;
     readonly daysInWeek: number;
     readonly daysInYear: number;
     readonly daysInMonth: number;
@@ -3668,7 +3649,7 @@ declare namespace Temporal {
 
   /**
    * @category Temporal
-   * @tags unstable
+   * @experimental
    */
   export type PlainDateTimeLike = {
     era?: string | undefined;
@@ -3688,7 +3669,7 @@ declare namespace Temporal {
 
   /**
    * @category Temporal
-   * @tags unstable
+   * @experimental
    */
   export type PlainDateTimeISOFields = {
     isoYear: number;
@@ -3714,7 +3695,7 @@ declare namespace Temporal {
    * See https://tc39.es/proposal-temporal/docs/datetime.html for more details.
    *
    * @category Temporal
-   * @tags unstable
+   * @experimental
    */
   export class PlainDateTime {
     static from(
@@ -3750,11 +3731,10 @@ declare namespace Temporal {
     readonly microsecond: number;
     readonly nanosecond: number;
     readonly calendarId: string;
-    getCalendar(): CalendarProtocol;
     readonly dayOfWeek: number;
     readonly dayOfYear: number;
-    readonly weekOfYear: number;
-    readonly yearOfWeek: number;
+    readonly weekOfYear: number | undefined;
+    readonly yearOfWeek: number | undefined;
     readonly daysInWeek: number;
     readonly daysInYear: number;
     readonly daysInMonth: number;
@@ -3767,9 +3747,6 @@ declare namespace Temporal {
     ): Temporal.PlainDateTime;
     withPlainTime(
       timeLike?: Temporal.PlainTime | PlainTimeLike | string,
-    ): Temporal.PlainDateTime;
-    withPlainDate(
-      dateLike: Temporal.PlainDate | PlainDateLike | string,
     ): Temporal.PlainDateTime;
     withCalendar(calendar: CalendarLike): Temporal.PlainDateTime;
     add(
@@ -3826,8 +3803,6 @@ declare namespace Temporal {
       options?: ToInstantOptions,
     ): Temporal.ZonedDateTime;
     toPlainDate(): Temporal.PlainDate;
-    toPlainYearMonth(): Temporal.PlainYearMonth;
-    toPlainMonthDay(): Temporal.PlainMonthDay;
     toPlainTime(): Temporal.PlainTime;
     getISOFields(): PlainDateTimeISOFields;
     toLocaleString(
@@ -3842,7 +3817,7 @@ declare namespace Temporal {
 
   /**
    * @category Temporal
-   * @tags unstable
+   * @experimental
    */
   export type PlainMonthDayLike = {
     era?: string | undefined;
@@ -3862,7 +3837,7 @@ declare namespace Temporal {
    * See https://tc39.es/proposal-temporal/docs/monthday.html for more details.
    *
    * @category Temporal
-   * @tags unstable
+   * @experimental
    */
   export class PlainMonthDay {
     static from(
@@ -3878,7 +3853,6 @@ declare namespace Temporal {
     readonly monthCode: string;
     readonly day: number;
     readonly calendarId: string;
-    getCalendar(): CalendarProtocol;
     equals(other: Temporal.PlainMonthDay | PlainMonthDayLike | string): boolean;
     with(
       monthDayLike: PlainMonthDayLike,
@@ -3898,7 +3872,7 @@ declare namespace Temporal {
 
   /**
    * @category Temporal
-   * @tags unstable
+   * @experimental
    */
   export type PlainTimeLike = {
     hour?: number;
@@ -3911,7 +3885,7 @@ declare namespace Temporal {
 
   /**
    * @category Temporal
-   * @tags unstable
+   * @experimental
    */
   export type PlainTimeISOFields = {
     isoHour: number;
@@ -3938,7 +3912,7 @@ declare namespace Temporal {
    * See https://tc39.es/proposal-temporal/docs/time.html for more details.
    *
    * @category Temporal
-   * @tags unstable
+   * @experimental
    */
   export class PlainTime {
     static from(
@@ -4008,13 +3982,6 @@ declare namespace Temporal {
         | "nanosecond"
       >,
     ): Temporal.PlainTime;
-    toPlainDateTime(
-      temporalDate: Temporal.PlainDate | PlainDateLike | string,
-    ): Temporal.PlainDateTime;
-    toZonedDateTime(timeZoneAndDate: {
-      timeZone: TimeZoneLike;
-      plainDate: Temporal.PlainDate | PlainDateLike | string;
-    }): Temporal.ZonedDateTime;
     getISOFields(): PlainTimeISOFields;
     toLocaleString(
       locales?: string | string[],
@@ -4030,7 +3997,7 @@ declare namespace Temporal {
    * A plain object implementing the protocol for a custom time zone.
    *
    * @category Temporal
-   * @tags unstable
+   * @experimental
    */
   export interface TimeZoneProtocol {
     id: string;
@@ -4044,12 +4011,6 @@ declare namespace Temporal {
       dateTime: Temporal.PlainDateTime | PlainDateTimeLike | string,
       options?: ToInstantOptions,
     ): Temporal.Instant;
-    getNextTransition?(
-      startingPoint: Temporal.Instant | string,
-    ): Temporal.Instant | null;
-    getPreviousTransition?(
-      startingPoint: Temporal.Instant | string,
-    ): Temporal.Instant | null;
     getPossibleInstantsFor(
       dateTime: Temporal.PlainDateTime | PlainDateTimeLike | string,
     ): Temporal.Instant[];
@@ -4061,7 +4022,7 @@ declare namespace Temporal {
    * Any of these types can be passed to Temporal methods instead of a Temporal.TimeZone.
    *
    * @category Temporal
-   * @tags unstable
+   * @experimental
    */
   export type TimeZoneLike = string | TimeZoneProtocol | ZonedDateTime;
 
@@ -4080,13 +4041,12 @@ declare namespace Temporal {
    * See https://tc39.es/proposal-temporal/docs/timezone.html for more details.
    *
    * @category Temporal
-   * @tags unstable
+   * @experimental
    */
   export class TimeZone implements TimeZoneProtocol {
     static from(timeZone: TimeZoneLike): Temporal.TimeZone | TimeZoneProtocol;
     constructor(timeZoneIdentifier: string);
     readonly id: string;
-    equals(timeZone: TimeZoneLike): boolean;
     getOffsetNanosecondsFor(instant: Temporal.Instant | string): number;
     getOffsetStringFor(instant: Temporal.Instant | string): string;
     getPlainDateTimeFor(
@@ -4097,12 +4057,6 @@ declare namespace Temporal {
       dateTime: Temporal.PlainDateTime | PlainDateTimeLike | string,
       options?: ToInstantOptions,
     ): Temporal.Instant;
-    getNextTransition(
-      startingPoint: Temporal.Instant | string,
-    ): Temporal.Instant | null;
-    getPreviousTransition(
-      startingPoint: Temporal.Instant | string,
-    ): Temporal.Instant | null;
     getPossibleInstantsFor(
       dateTime: Temporal.PlainDateTime | PlainDateTimeLike | string,
     ): Temporal.Instant[];
@@ -4113,7 +4067,7 @@ declare namespace Temporal {
 
   /**
    * @category Temporal
-   * @tags unstable
+   * @experimental
    */
   export type PlainYearMonthLike = {
     era?: string | undefined;
@@ -4132,7 +4086,7 @@ declare namespace Temporal {
    * See https://tc39.es/proposal-temporal/docs/yearmonth.html for more details.
    *
    * @category Temporal
-   * @tags unstable
+   * @experimental
    */
   export class PlainYearMonth {
     static from(
@@ -4155,7 +4109,6 @@ declare namespace Temporal {
     readonly month: number;
     readonly monthCode: string;
     readonly calendarId: string;
-    getCalendar(): CalendarProtocol;
     readonly daysInMonth: number;
     readonly daysInYear: number;
     readonly monthsInYear: number;
@@ -4197,7 +4150,7 @@ declare namespace Temporal {
 
   /**
    * @category Temporal
-   * @tags unstable
+   * @experimental
    */
   export type ZonedDateTimeLike = {
     era?: string | undefined;
@@ -4219,7 +4172,7 @@ declare namespace Temporal {
 
   /**
    * @category Temporal
-   * @tags unstable
+   * @experimental
    */
   export type ZonedDateTimeISOFields = {
     isoYear: number;
@@ -4238,7 +4191,7 @@ declare namespace Temporal {
 
   /**
    * @category Temporal
-   * @tags unstable
+   * @experimental
    */
   export class ZonedDateTime {
     static from(
@@ -4267,13 +4220,11 @@ declare namespace Temporal {
     readonly microsecond: number;
     readonly nanosecond: number;
     readonly timeZoneId: string;
-    getTimeZone(): TimeZoneProtocol;
     readonly calendarId: string;
-    getCalendar(): CalendarProtocol;
     readonly dayOfWeek: number;
     readonly dayOfYear: number;
-    readonly weekOfYear: number;
-    readonly yearOfWeek: number;
+    readonly weekOfYear: number | undefined;
+    readonly yearOfWeek: number | undefined;
     readonly hoursInDay: number;
     readonly daysInWeek: number;
     readonly daysInMonth: number;
@@ -4293,9 +4244,6 @@ declare namespace Temporal {
     ): Temporal.ZonedDateTime;
     withPlainTime(
       timeLike?: Temporal.PlainTime | PlainTimeLike | string,
-    ): Temporal.ZonedDateTime;
-    withPlainDate(
-      dateLike: Temporal.PlainDate | PlainDateLike | string,
     ): Temporal.ZonedDateTime;
     withCalendar(calendar: CalendarLike): Temporal.ZonedDateTime;
     withTimeZone(timeZone: TimeZoneLike): Temporal.ZonedDateTime;
@@ -4349,11 +4297,12 @@ declare namespace Temporal {
       >,
     ): Temporal.ZonedDateTime;
     startOfDay(): Temporal.ZonedDateTime;
+    getTimeZoneTransition(
+      direction: TransitionDirection,
+    ): Temporal.ZonedDateTime | null;
     toInstant(): Temporal.Instant;
     toPlainDateTime(): Temporal.PlainDateTime;
     toPlainDate(): Temporal.PlainDate;
-    toPlainYearMonth(): Temporal.PlainYearMonth;
-    toPlainMonthDay(): Temporal.PlainMonthDay;
     toPlainTime(): Temporal.PlainTime;
     getISOFields(): ZonedDateTimeISOFields;
     toLocaleString(
@@ -4373,7 +4322,7 @@ declare namespace Temporal {
    * See https://tc39.es/proposal-temporal/docs/now.html for more details.
    *
    * @category Temporal
-   * @tags unstable
+   * @experimental
    */
   export const Now: {
     /**
@@ -4391,29 +4340,6 @@ declare namespace Temporal {
     instant: () => Temporal.Instant;
 
     /**
-     * Get the current calendar date and clock time in a specific calendar and
-     * time zone.
-     *
-     * The `calendar` parameter is required. When using the ISO 8601 calendar or
-     * if you don't understand the need for or implications of a calendar, then
-     * a more ergonomic alternative to this method is
-     * `Temporal.Now.zonedDateTimeISO()`.
-     *
-     * @param {CalendarLike} [calendar] - calendar identifier, or
-     * a `Temporal.Calendar` instance, or an object implementing the calendar
-     * protocol.
-     * @param {TimeZoneLike} [tzLike] -
-     * {@link https://en.wikipedia.org/wiki/List_of_tz_database_time_zones|IANA time zone identifier}
-     * string (e.g. `'Europe/London'`), `Temporal.TimeZone` instance, or an
-     * object implementing the time zone protocol. If omitted, the environment's
-     * current time zone will be used.
-     */
-    zonedDateTime: (
-      calendar: CalendarLike,
-      tzLike?: TimeZoneLike,
-    ) => Temporal.ZonedDateTime;
-
-    /**
      * Get the current calendar date and clock time in a specific time zone,
      * using the ISO 8601 calendar.
      *
@@ -4424,34 +4350,6 @@ declare namespace Temporal {
      * current time zone will be used.
      */
     zonedDateTimeISO: (tzLike?: TimeZoneLike) => Temporal.ZonedDateTime;
-
-    /**
-     * Get the current calendar date and clock time in a specific calendar and
-     * time zone.
-     *
-     * The calendar is required. When using the ISO 8601 calendar or if you
-     * don't understand the need for or implications of a calendar, then a more
-     * ergonomic alternative to this method is `Temporal.Now.plainDateTimeISO`.
-     *
-     * Note that the `Temporal.PlainDateTime` type does not persist the time zone,
-     * but retaining the time zone is required for most time-zone-related use
-     * cases. Therefore, it's usually recommended to use
-     * `Temporal.Now.zonedDateTimeISO` or `Temporal.Now.zonedDateTime` instead
-     * of this function.
-     *
-     * @param {CalendarLike} [calendar] - calendar identifier, or
-     * a `Temporal.Calendar` instance, or an object implementing the calendar
-     * protocol.
-     * @param {TimeZoneLike} [tzLike] -
-     * {@link https://en.wikipedia.org/wiki/List_of_tz_database_time_zones|IANA time zone identifier}
-     * string (e.g. `'Europe/London'`), `Temporal.TimeZone` instance, or an
-     * object implementing the time zone protocol. If omitted,
-     * the environment's current time zone will be used.
-     */
-    plainDateTime: (
-      calendar: CalendarLike,
-      tzLike?: TimeZoneLike,
-    ) => Temporal.PlainDateTime;
 
     /**
      * Get the current date and clock time in a specific time zone, using the
@@ -4469,27 +4367,6 @@ declare namespace Temporal {
      * current time zone will be used.
      */
     plainDateTimeISO: (tzLike?: TimeZoneLike) => Temporal.PlainDateTime;
-
-    /**
-     * Get the current calendar date in a specific calendar and time zone.
-     *
-     * The calendar is required. When using the ISO 8601 calendar or if you
-     * don't understand the need for or implications of a calendar, then a more
-     * ergonomic alternative to this method is `Temporal.Now.plainDateISO`.
-     *
-     * @param {CalendarLike} [calendar] - calendar identifier, or
-     * a `Temporal.Calendar` instance, or an object implementing the calendar
-     * protocol.
-     * @param {TimeZoneLike} [tzLike] -
-     * {@link https://en.wikipedia.org/wiki/List_of_tz_database_time_zones|IANA time zone identifier}
-     * string (e.g. `'Europe/London'`), `Temporal.TimeZone` instance, or an
-     * object implementing the time zone protocol. If omitted,
-     * the environment's current time zone will be used.
-     */
-    plainDate: (
-      calendar: CalendarLike,
-      tzLike?: TimeZoneLike,
-    ) => Temporal.PlainDate;
 
     /**
      * Get the current date in a specific time zone, using the ISO 8601
@@ -4529,7 +4406,7 @@ declare namespace Temporal {
 
 /**
  * @category Temporal
- * @tags unstable
+ * @experimental
  */
 declare interface Date {
   toTemporalInstant(): Temporal.Instant;
@@ -4537,12 +4414,12 @@ declare interface Date {
 
 /**
  * @category Intl
- * @tags unstable
+ * @experimental
  */
 declare namespace Intl {
   /**
    * @category Intl
-   * @tags unstable
+   * @experimental
    */
   export type Formattable =
     | Date
@@ -4556,7 +4433,7 @@ declare namespace Intl {
 
   /**
    * @category Intl
-   * @tags unstable
+   * @experimental
    */
   export interface DateTimeFormatRangePart {
     source: "shared" | "startRange" | "endRange";
@@ -4564,7 +4441,7 @@ declare namespace Intl {
 
   /**
    * @category Intl
-   * @tags unstable
+   * @experimental
    */
   export interface DateTimeFormat {
     /**
@@ -4616,7 +4493,7 @@ declare namespace Intl {
 
   /**
    * @category Intl
-   * @tags unstable
+   * @experimental
    */
   export interface DateTimeFormatOptions {
     // TODO: remove the props below after TS lib declarations are updated
@@ -4631,7 +4508,7 @@ declare namespace Intl {
  * of bytes could not be allocated an exception is raised.
  *
  * @category Platform
- * @tags unstable
+ * @experimental
  */
 declare interface Float16Array {
   /**
@@ -4946,7 +4823,7 @@ declare interface Float16Array {
 
 /**
  * @category Platform
- * @tags unstable
+ * @experimental
  */
 declare interface Float16ArrayConstructor {
   readonly prototype: Float16Array;
@@ -4989,13 +4866,13 @@ declare interface Float16ArrayConstructor {
 }
 /**
  * @category Platform
- * @tags unstable
+ * @experimental
  */
 declare var Float16Array: Float16ArrayConstructor;
 
 /**
  * @category Platform
- * @tags unstable
+ * @experimental
  */
 declare interface Float16 {
   [Symbol.iterator](): IterableIterator<number>;
@@ -5015,7 +4892,7 @@ declare interface Float16 {
 
 /**
  * @category Platform
- * @tags unstable
+ * @experimental
  */
 declare interface Float16Constructor {
   new (elements: Iterable<number>): Float16;
@@ -5035,7 +4912,7 @@ declare interface Float16Constructor {
 
 /**
  * @category Platform
- * @tags unstable
+ * @experimental
  */
 declare interface Float16Array {
   readonly [Symbol.toStringTag]: "Float16Array";
@@ -5043,7 +4920,7 @@ declare interface Float16Array {
 
 /**
  * @category Platform
- * @tags unstable
+ * @experimental
  */
 declare interface Float16Array {
   /**
@@ -5056,7 +4933,7 @@ declare interface Float16Array {
 
 /**
  * @category Platform
- * @tags unstable
+ * @experimental
  */
 declare interface Float16ArrayConstructor {
   new (): Float16Array;
@@ -5064,7 +4941,7 @@ declare interface Float16ArrayConstructor {
 
 /**
  * @category Platform
- * @tags unstable
+ * @experimental
  */
 declare interface Float16Array {
   /**
@@ -5076,7 +4953,7 @@ declare interface Float16Array {
 
 /**
  * @category Platform
- * @tags unstable
+ * @experimental
  */
 declare interface Float16Array {
   /**
@@ -5152,7 +5029,7 @@ declare interface Float16Array {
 
 /**
  * @category Platform
- * @tags unstable
+ * @experimental
  */
 declare interface DataView {
   /**

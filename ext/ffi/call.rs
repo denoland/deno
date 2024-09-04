@@ -334,7 +334,9 @@ pub fn op_ffi_call_nonblocking(
     let symbols = &resource.symbols;
     *symbols
       .get(&symbol)
-      .ok_or_else(|| type_error("Invalid FFI symbol name"))?
+      .ok_or_else(|| {
+        type_error(format!("Invalid FFI symbol name: '{symbol}'"))
+      })?
       .clone()
   };
 

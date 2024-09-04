@@ -148,7 +148,7 @@ Deno.test(
 );
 
 Deno.test(
-  { permissions: { read: true }, ignore: Deno.build.os !== "linux" },
+  { ignore: Deno.build.os !== "linux" },
   async function readFileProcFs() {
     const data = await Deno.readFile("/proc/self/stat");
     assert(data.byteLength > 0);
@@ -172,11 +172,7 @@ Deno.test(
     try {
       await Deno.readFile("tests/testdata/assets/");
     } catch (e) {
-      if (Deno.build.os === "windows") {
-        assertEquals(e.code, "EPERM");
-      } else {
-        assertEquals(e.code, "EISDIR");
-      }
+      assertEquals(e.code, "EISDIR");
     }
   },
 );

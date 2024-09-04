@@ -32,10 +32,6 @@ import * as cron from "ext:deno_cron/01_cron.ts";
 import * as webgpuSurface from "ext:deno_webgpu/02_surface.js";
 
 const denoNs = {
-  metrics: () => {
-    internals.warnOnDeprecatedApi("Deno.metrics()", new Error().stack);
-    return core.metrics();
-  },
   Process: process.Process,
   run: process.run,
   isatty: tty.isatty,
@@ -81,38 +77,6 @@ const denoNs = {
   lstat: fs.lstat,
   truncateSync: fs.truncateSync,
   truncate: fs.truncate,
-  ftruncateSync(rid, len) {
-    internals.warnOnDeprecatedApi(
-      "Deno.ftruncateSync()",
-      new Error().stack,
-      "Use `Deno.FsFile.truncateSync()` instead.",
-    );
-    return fs.ftruncateSync(rid, len);
-  },
-  ftruncate(rid, len) {
-    internals.warnOnDeprecatedApi(
-      "Deno.ftruncate()",
-      new Error().stack,
-      "Use `Deno.FsFile.truncate()` instead.",
-    );
-    return fs.ftruncate(rid, len);
-  },
-  async futime(rid, atime, mtime) {
-    internals.warnOnDeprecatedApi(
-      "Deno.futime()",
-      new Error().stack,
-      "Use `Deno.FsFile.utime()` instead.",
-    );
-    await fs.futime(rid, atime, mtime);
-  },
-  futimeSync(rid, atime, mtime) {
-    internals.warnOnDeprecatedApi(
-      "Deno.futimeSync()",
-      new Error().stack,
-      "Use `Deno.FsFile.utimeSync()` instead.",
-    );
-    fs.futimeSync(rid, atime, mtime);
-  },
   errors: errors.errors,
   inspect: console.inspect,
   env: os.env,
@@ -121,44 +85,8 @@ const denoNs = {
   Buffer: buffer.Buffer,
   readAll: buffer.readAll,
   readAllSync: buffer.readAllSync,
-  writeAll: buffer.writeAll,
-  writeAllSync: buffer.writeAllSync,
   copy: io.copy,
-  iter: io.iter,
-  iterSync: io.iterSync,
   SeekMode: io.SeekMode,
-  read(rid, buffer) {
-    internals.warnOnDeprecatedApi(
-      "Deno.read()",
-      new Error().stack,
-      "Use `reader.read()` instead.",
-    );
-    return io.read(rid, buffer);
-  },
-  readSync(rid, buffer) {
-    internals.warnOnDeprecatedApi(
-      "Deno.readSync()",
-      new Error().stack,
-      "Use `reader.readSync()` instead.",
-    );
-    return io.readSync(rid, buffer);
-  },
-  write(rid, data) {
-    internals.warnOnDeprecatedApi(
-      "Deno.write()",
-      new Error().stack,
-      "Use `writer.write()` instead.",
-    );
-    return io.write(rid, data);
-  },
-  writeSync(rid, data) {
-    internals.warnOnDeprecatedApi(
-      "Deno.writeSync()",
-      new Error().stack,
-      "Use `writer.writeSync()` instead.",
-    );
-    return io.writeSync(rid, data);
-  },
   File: fs.File,
   FsFile: fs.FsFile,
   open: fs.open,
@@ -190,30 +118,6 @@ const denoNs = {
   connectTls: tls.connectTls,
   listenTls: tls.listenTls,
   startTls: tls.startTls,
-  shutdown(rid) {
-    internals.warnOnDeprecatedApi(
-      "Deno.shutdown()",
-      new Error().stack,
-      "Use `Deno.Conn.closeWrite()` instead.",
-    );
-    net.shutdown(rid);
-  },
-  fstatSync(rid) {
-    internals.warnOnDeprecatedApi(
-      "Deno.fstatSync()",
-      new Error().stack,
-      "Use `Deno.FsFile.statSync()` instead.",
-    );
-    return fs.fstatSync(rid);
-  },
-  fstat(rid) {
-    internals.warnOnDeprecatedApi(
-      "Deno.fstat()",
-      new Error().stack,
-      "Use `Deno.FsFile.stat()` instead.",
-    );
-    return fs.fstat(rid);
-  },
   fsyncSync: fs.fsyncSync,
   fsync: fs.fsync,
   fdatasyncSync: fs.fdatasyncSync,
@@ -245,7 +149,6 @@ const denoNs = {
   gid: os.gid,
   uid: os.uid,
   Command: process.Command,
-  // TODO(bartlomieju): why is this exported?
   ChildProcess: process.ChildProcess,
 };
 
@@ -258,15 +161,16 @@ const unstableIds = {
   http: 5,
   kv: 6,
   net: 7,
-  temporal: 8,
-  unsafeProto: 9,
-  webgpu: 10,
-  workerOptions: 11,
+  process: 8,
+  temporal: 9,
+  unsafeProto: 10,
+  webgpu: 11,
+  workerOptions: 12,
 };
 
-const denoNsUnstableById = {};
+const denoNsUnstableById = { __proto__: null };
 
-// denoNsUnstableById[unstableIds.broadcastChannel] = {}
+// denoNsUnstableById[unstableIds.broadcastChannel] = { __proto__: null }
 
 denoNsUnstableById[unstableIds.cron] = {
   cron: cron.cron,
@@ -281,8 +185,6 @@ denoNsUnstableById[unstableIds.ffi] = {
 };
 
 denoNsUnstableById[unstableIds.fs] = {
-  flock: fs.flock,
-  flockSync: fs.flockSync,
   funlock: fs.funlock,
   funlockSync: fs.funlockSync,
   umask: fs.umask,
@@ -308,13 +210,13 @@ denoNsUnstableById[unstableIds.net] = {
   ),
 };
 
-// denoNsUnstableById[unstableIds.unsafeProto] = {}
+// denoNsUnstableById[unstableIds.unsafeProto] = { __proto__: null }
 
 denoNsUnstableById[unstableIds.webgpu] = {
   UnsafeWindowSurface: webgpuSurface.UnsafeWindowSurface,
 };
 
-// denoNsUnstableById[unstableIds.workerOptions] = {}
+// denoNsUnstableById[unstableIds.workerOptions] = { __proto__: null }
 
 // when editing this list, also update unstableDenoProps in cli/tsc/99_main_compiler.js
 const denoNsUnstable = {
@@ -331,8 +233,6 @@ const denoNsUnstable = {
   UnsafePointerView: ffi.UnsafePointerView,
   UnsafeFnPointer: ffi.UnsafeFnPointer,
   UnsafeWindowSurface: webgpuSurface.UnsafeWindowSurface,
-  flock: fs.flock,
-  flockSync: fs.flockSync,
   funlock: fs.funlock,
   funlockSync: fs.funlockSync,
   openKv: kv.openKv,

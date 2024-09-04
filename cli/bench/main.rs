@@ -17,8 +17,6 @@ use std::process::Stdio;
 use std::time::SystemTime;
 use test_util::PathRef;
 
-include!("../util/time.rs");
-
 mod http;
 mod lsp;
 
@@ -126,6 +124,8 @@ const EXEC_TIME_BENCHMARKS: &[(&str, &[&str], Option<i32>)] = &[
       "check",
       "--reload",
       "--unstable",
+      "--config",
+      "tests/config/deno.json",
       "tests/util/std/http/file_server_test.ts",
     ],
     None,
@@ -137,25 +137,8 @@ const EXEC_TIME_BENCHMARKS: &[(&str, &[&str], Option<i32>)] = &[
       "--reload",
       "--no-check",
       "--unstable",
-      "tests/util/std/http/file_server_test.ts",
-    ],
-    None,
-  ),
-  (
-    "bundle",
-    &[
-      "bundle",
-      "--unstable",
-      "tests/util/std/http/file_server_test.ts",
-    ],
-    None,
-  ),
-  (
-    "bundle_no_check",
-    &[
-      "bundle",
-      "--no-check",
-      "--unstable",
+      "--config",
+      "tests/config/deno.json",
       "tests/util/std/http/file_server_test.ts",
     ],
     None,
@@ -308,38 +291,6 @@ fn get_binary_sizes(target_dir: &Path) -> Result<HashMap<String, i64>> {
   Ok(sizes)
 }
 
-const BUNDLES: &[(&str, &str)] = &[
-  ("file_server", "./tests/util/std/http/file_server.ts"),
-  ("welcome", "./tests/testdata/welcome.ts"),
-];
-fn bundle_benchmark(deno_exe: &Path) -> Result<HashMap<String, i64>> {
-  let mut sizes = HashMap::<String, i64>::new();
-
-  for (name, url) in BUNDLES {
-    let path = format!("{name}.bundle.js");
-    test_util::run(
-      &[
-        deno_exe.to_str().unwrap(),
-        "bundle",
-        "--unstable",
-        url,
-        &path,
-      ],
-      None,
-      None,
-      None,
-      true,
-    );
-
-    let file = PathBuf::from(path);
-    assert!(file.is_file());
-    sizes.insert(name.to_string(), file.metadata()?.len() as i64);
-    let _ = fs::remove_file(file);
-  }
-
-  Ok(sizes)
-}
-
 fn run_max_mem_benchmark(deno_exe: &Path) -> Result<HashMap<String, i64>> {
   let mut results = HashMap::<String, i64>::new();
 
@@ -407,7 +358,6 @@ async fn main() -> Result<()> {
   let mut args = env::args();
 
   let mut benchmarks = vec![
-    "bundle",
     "exec_time",
     "binary_size",
     "cargo_deps",
@@ -442,7 +392,8 @@ async fn main() -> Result<()> {
   env::set_current_dir(test_util::root_path())?;
 
   let mut new_data = BenchResult {
-    created_at: utc_now().to_rfc3339_opts(chrono::SecondsFormat::Secs, true),
+    created_at: chrono::Utc::now()
+      .to_rfc3339_opts(chrono::SecondsFormat::Secs, true),
     sha1: test_util::run_collect(
       &["git", "rev-parse", "HEAD"],
       None,
@@ -455,11 +406,6 @@ async fn main() -> Result<()> {
     .to_string(),
     ..Default::default()
   };
-
-  if benchmarks.contains(&"bundle") {
-    let bundle_size = bundle_benchmark(&deno_exe)?;
-    new_data.bundle_size = bundle_size;
-  }
 
   if benchmarks.contains(&"exec_time") {
     let exec_times = run_exec_time(&deno_exe, &target_dir)?;

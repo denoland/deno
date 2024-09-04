@@ -1,10 +1,10 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
+pub mod config;
 pub mod dynamic;
 mod interface;
 pub mod remote;
 pub mod sqlite;
-mod time;
 
 use std::borrow::Cow;
 use std::cell::RefCell;
@@ -56,23 +56,11 @@ use denokv_proto::WatchStream;
 use log::debug;
 use serde::Deserialize;
 use serde::Serialize;
-use time::utc_now;
 
+pub use crate::config::*;
 pub use crate::interface::*;
 
 pub const UNSTABLE_FEATURE_NAME: &str = "kv";
-
-const MAX_WRITE_KEY_SIZE_BYTES: usize = 2048;
-// range selectors can contain 0x00 or 0xff suffixes
-const MAX_READ_KEY_SIZE_BYTES: usize = MAX_WRITE_KEY_SIZE_BYTES + 1;
-const MAX_VALUE_SIZE_BYTES: usize = 65536;
-const MAX_READ_RANGES: usize = 10;
-const MAX_READ_ENTRIES: usize = 1000;
-const MAX_CHECKS: usize = 100;
-const MAX_MUTATIONS: usize = 1000;
-const MAX_WATCHED_KEYS: usize = 10;
-const MAX_TOTAL_MUTATION_SIZE_BYTES: usize = 800 * 1024;
-const MAX_TOTAL_KEY_SIZE_BYTES: usize = 80 * 1024;
 
 deno_core::extension!(deno_kv,
   deps = [ deno_console, deno_web ],
@@ -90,8 +78,10 @@ deno_core::extension!(deno_kv,
   esm = [ "01_db.ts" ],
   options = {
     handler: DBH,
+    config: KvConfig,
   },
   state = |state, options| {
+    state.put(Rc::new(options.config));
     state.put(Rc::new(options.handler));
   }
 );
@@ -284,10 +274,15 @@ where
     resource.db.clone()
   };
 
-  if ranges.len() > MAX_READ_RANGES {
+  let config = {
+    let state = state.borrow();
+    state.borrow::<Rc<KvConfig>>().clone()
+  };
+
+  if ranges.len() > config.max_read_ranges {
     return Err(type_error(format!(
       "too many ranges (max {})",
-      MAX_READ_RANGES
+      config.max_read_ranges
     )));
   }
 
@@ -300,8 +295,8 @@ where
 
       let (start, end) =
         decode_selector_and_cursor(&selector, reverse, cursor.as_ref())?;
-      check_read_key_size(&start)?;
-      check_read_key_size(&end)?;
+      check_read_key_size(&start, &config)?;
+      check_read_key_size(&end, &config)?;
 
       total_entries += limit as usize;
       Ok(ReadRange {
@@ -314,10 +309,10 @@ where
     })
     .collect::<Result<Vec<_>, AnyError>>()?;
 
-  if total_entries > MAX_READ_ENTRIES {
+  if total_entries > config.max_read_entries {
     return Err(type_error(format!(
       "too many entries (max {})",
-      MAX_READ_ENTRIES
+      config.max_read_entries
     )));
   }
 
@@ -394,11 +389,12 @@ where
   DBH: DatabaseHandler + 'static,
 {
   let resource = state.resource_table.get::<DatabaseResource<DBH::DB>>(rid)?;
+  let config = state.borrow::<Rc<KvConfig>>().clone();
 
-  if keys.len() > MAX_WATCHED_KEYS {
+  if keys.len() > config.max_watched_keys {
     return Err(type_error(format!(
       "too many keys (max {})",
-      MAX_WATCHED_KEYS
+      config.max_watched_keys
     )));
   }
 
@@ -408,7 +404,7 @@ where
     .collect::<std::io::Result<_>>()?;
 
   for k in &keys {
-    check_read_key_size(k)?;
+    check_read_key_size(k, &config)?;
   }
 
   let stream = resource.db.watch(keys);
@@ -536,7 +532,12 @@ fn mutation_from_v8(
   let kind = match (value.1.as_str(), value.2) {
     ("set", Some(value)) => MutationKind::Set(value.try_into()?),
     ("delete", None) => MutationKind::Delete,
-    ("sum", Some(value)) => MutationKind::Sum(value.try_into()?),
+    ("sum", Some(value)) => MutationKind::Sum {
+      value: value.try_into()?,
+      min_v8: vec![],
+      max_v8: vec![],
+      clamp: false,
+    },
     ("min", Some(value)) => MutationKind::Min(value.try_into()?),
     ("max", Some(value)) => MutationKind::Max(value.try_into()?),
     ("setSuffixVersionstampedKey", Some(value)) => {
@@ -772,7 +773,7 @@ async fn op_kv_atomic_write<DBH>(
 where
   DBH: DatabaseHandler + 'static,
 {
-  let current_timestamp = utc_now();
+  let current_timestamp = chrono::Utc::now();
   let db = {
     let state = state.borrow();
     let resource =
@@ -780,14 +781,22 @@ where
     resource.db.clone()
   };
 
-  if checks.len() > MAX_CHECKS {
-    return Err(type_error(format!("too many checks (max {})", MAX_CHECKS)));
+  let config = {
+    let state = state.borrow();
+    state.borrow::<Rc<KvConfig>>().clone()
+  };
+
+  if checks.len() > config.max_checks {
+    return Err(type_error(format!(
+      "too many checks (max {})",
+      config.max_checks
+    )));
   }
 
-  if mutations.len() + enqueues.len() > MAX_MUTATIONS {
+  if mutations.len() + enqueues.len() > config.max_mutations {
     return Err(type_error(format!(
       "too many mutations (max {})",
-      MAX_MUTATIONS
+      config.max_mutations
     )));
   }
 
@@ -819,36 +828,37 @@ where
       return Err(type_error("key cannot be empty"));
     }
 
-    total_payload_size += check_write_key_size(key)?;
+    total_payload_size += check_write_key_size(key, &config)?;
   }
 
   for (key, value) in mutations
     .iter()
     .flat_map(|m| m.kind.value().map(|x| (&m.key, x)))
   {
-    let key_size = check_write_key_size(key)?;
-    total_payload_size += check_value_size(value)? + key_size;
+    let key_size = check_write_key_size(key, &config)?;
+    total_payload_size += check_value_size(value, &config)? + key_size;
     total_key_size += key_size;
   }
 
   for enqueue in &enqueues {
-    total_payload_size += check_enqueue_payload_size(&enqueue.payload)?;
+    total_payload_size +=
+      check_enqueue_payload_size(&enqueue.payload, &config)?;
     if let Some(schedule) = enqueue.backoff_schedule.as_ref() {
       total_payload_size += 4 * schedule.len();
     }
   }
 
-  if total_payload_size > MAX_TOTAL_MUTATION_SIZE_BYTES {
+  if total_payload_size > config.max_total_mutation_size_bytes {
     return Err(type_error(format!(
       "total mutation size too large (max {} bytes)",
-      MAX_TOTAL_MUTATION_SIZE_BYTES
+      config.max_total_mutation_size_bytes
     )));
   }
 
-  if total_key_size > MAX_TOTAL_KEY_SIZE_BYTES {
+  if total_key_size > config.max_total_key_size_bytes {
     return Err(type_error(format!(
       "total key size too large (max {} bytes)",
-      MAX_TOTAL_KEY_SIZE_BYTES
+      config.max_total_key_size_bytes
     )));
   }
 
@@ -878,50 +888,59 @@ fn op_kv_encode_cursor(
   Ok(cursor)
 }
 
-fn check_read_key_size(key: &[u8]) -> Result<(), AnyError> {
-  if key.len() > MAX_READ_KEY_SIZE_BYTES {
+fn check_read_key_size(key: &[u8], config: &KvConfig) -> Result<(), AnyError> {
+  if key.len() > config.max_read_key_size_bytes {
     Err(type_error(format!(
       "key too large for read (max {} bytes)",
-      MAX_READ_KEY_SIZE_BYTES
+      config.max_read_key_size_bytes
     )))
   } else {
     Ok(())
   }
 }
 
-fn check_write_key_size(key: &[u8]) -> Result<usize, AnyError> {
-  if key.len() > MAX_WRITE_KEY_SIZE_BYTES {
+fn check_write_key_size(
+  key: &[u8],
+  config: &KvConfig,
+) -> Result<usize, AnyError> {
+  if key.len() > config.max_write_key_size_bytes {
     Err(type_error(format!(
       "key too large for write (max {} bytes)",
-      MAX_WRITE_KEY_SIZE_BYTES
+      config.max_write_key_size_bytes
     )))
   } else {
     Ok(key.len())
   }
 }
 
-fn check_value_size(value: &KvValue) -> Result<usize, AnyError> {
+fn check_value_size(
+  value: &KvValue,
+  config: &KvConfig,
+) -> Result<usize, AnyError> {
   let payload = match value {
     KvValue::Bytes(x) => x,
     KvValue::V8(x) => x,
     KvValue::U64(_) => return Ok(8),
   };
 
-  if payload.len() > MAX_VALUE_SIZE_BYTES {
+  if payload.len() > config.max_value_size_bytes {
     Err(type_error(format!(
       "value too large (max {} bytes)",
-      MAX_VALUE_SIZE_BYTES
+      config.max_value_size_bytes
     )))
   } else {
     Ok(payload.len())
   }
 }
 
-fn check_enqueue_payload_size(payload: &[u8]) -> Result<usize, AnyError> {
-  if payload.len() > MAX_VALUE_SIZE_BYTES {
+fn check_enqueue_payload_size(
+  payload: &[u8],
+  config: &KvConfig,
+) -> Result<usize, AnyError> {
+  if payload.len() > config.max_value_size_bytes {
     Err(type_error(format!(
       "enqueue payload too large (max {} bytes)",
-      MAX_VALUE_SIZE_BYTES
+      config.max_value_size_bytes
     )))
   } else {
     Ok(payload.len())

@@ -20,6 +20,11 @@ and limitations under the License.
 /// Window Iterable APIs
 /////////////////////////////
 
+interface AbortSignal {
+    /** [MDN Reference](https://developer.mozilla.org/docs/Web/API/AbortSignal/any_static) */
+    any(signals: Iterable<AbortSignal>): AbortSignal;
+}
+
 interface AudioParam {
     /** [MDN Reference](https://developer.mozilla.org/docs/Web/API/AudioParam/setValueCurveAtTime) */
     setValueCurveAtTime(values: Iterable<number>, startTime: number, duration: number): AudioParam;
@@ -81,6 +86,9 @@ interface CanvasPath {
 interface CanvasPathDrawingStyles {
     /** [MDN Reference](https://developer.mozilla.org/docs/Web/API/CanvasRenderingContext2D/setLineDash) */
     setLineDash(segments: Iterable<number>): void;
+}
+
+interface CustomStateSet extends Set<string> {
 }
 
 interface DOMRectList {

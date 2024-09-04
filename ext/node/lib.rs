@@ -5,8 +5,6 @@
 
 use std::collections::HashSet;
 use std::path::Path;
-use std::path::PathBuf;
-use std::rc::Rc;
 
 use deno_core::error::AnyError;
 use deno_core::located_script_name;
@@ -16,36 +14,31 @@ use deno_core::url::Url;
 use deno_core::v8;
 use deno_core::v8::ExternalReference;
 use deno_core::JsRuntime;
-use deno_core::ModuleSpecifier;
 use deno_core::OpState;
 use deno_fs::sync::MaybeSend;
 use deno_fs::sync::MaybeSync;
+use node_resolver::NpmResolverRc;
 use once_cell::sync::Lazy;
 
 extern crate libz_sys as zlib;
 
-pub mod analyze;
-pub mod errors;
 mod global;
 mod ops;
-mod package_json;
-mod path;
 mod polyfill;
-mod resolution;
 
+pub use deno_package_json::PackageJson;
+pub use node_resolver::PathClean;
 pub use ops::ipc::ChildPipeFd;
 pub use ops::ipc::IpcJsonStreamResource;
-pub use ops::v8::VM_CONTEXT_INDEX;
-pub use package_json::PackageJson;
-pub use path::PathClean;
+pub use ops::ipc::IpcRefTracker;
+use ops::vm;
+pub use ops::vm::create_v8_context;
+pub use ops::vm::init_global_template;
+pub use ops::vm::ContextInitMode;
+pub use ops::vm::VM_CONTEXT_INDEX;
 pub use polyfill::is_builtin_node_module;
 pub use polyfill::SUPPORTED_BUILTIN_NODE_MODULES;
 pub use polyfill::SUPPORTED_BUILTIN_NODE_MODULES_WITH_PREFIX;
-pub use resolution::parse_npm_pkg_name;
-pub use resolution::NodeModuleKind;
-pub use resolution::NodeResolution;
-pub use resolution::NodeResolutionMode;
-pub use resolution::NodeResolver;
 
 use crate::global::global_object_middleware;
 use crate::global::global_template_middleware;
@@ -57,55 +50,66 @@ pub trait NodePermissions {
     api_name: &str,
   ) -> Result<(), AnyError>;
   #[inline(always)]
-  fn check_read(&self, path: &Path) -> Result<(), AnyError> {
+  fn check_read(&mut self, path: &Path) -> Result<(), AnyError> {
     self.check_read_with_api_name(path, None)
   }
   fn check_read_with_api_name(
-    &self,
+    &mut self,
     path: &Path,
     api_name: Option<&str>,
   ) -> Result<(), AnyError>;
-  fn check_sys(&self, kind: &str, api_name: &str) -> Result<(), AnyError>;
+  fn check_sys(&mut self, kind: &str, api_name: &str) -> Result<(), AnyError>;
   fn check_write_with_api_name(
-    &self,
+    &mut self,
     path: &Path,
     api_name: Option<&str>,
   ) -> Result<(), AnyError>;
 }
 
-pub(crate) struct AllowAllNodePermissions;
-
-impl NodePermissions for AllowAllNodePermissions {
+impl NodePermissions for deno_permissions::PermissionsContainer {
+  #[inline(always)]
   fn check_net_url(
     &mut self,
-    _url: &Url,
-    _api_name: &str,
+    url: &Url,
+    api_name: &str,
   ) -> Result<(), AnyError> {
-    Ok(())
+    deno_permissions::PermissionsContainer::check_net_url(self, url, api_name)
   }
+
+  #[inline(always)]
   fn check_read_with_api_name(
-    &self,
-    _path: &Path,
-    _api_name: Option<&str>,
+    &mut self,
+    path: &Path,
+    api_name: Option<&str>,
   ) -> Result<(), AnyError> {
-    Ok(())
+    deno_permissions::PermissionsContainer::check_read_with_api_name(
+      self, path, api_name,
+    )
   }
+
+  #[inline(always)]
   fn check_write_with_api_name(
-    &self,
-    _path: &Path,
-    _api_name: Option<&str>,
+    &mut self,
+    path: &Path,
+    api_name: Option<&str>,
   ) -> Result<(), AnyError> {
-    Ok(())
+    deno_permissions::PermissionsContainer::check_write_with_api_name(
+      self, path, api_name,
+    )
   }
-  fn check_sys(&self, _kind: &str, _api_name: &str) -> Result<(), AnyError> {
-    Ok(())
+
+  fn check_sys(&mut self, kind: &str, api_name: &str) -> Result<(), AnyError> {
+    deno_permissions::PermissionsContainer::check_sys(self, kind, api_name)
   }
 }
 
 #[allow(clippy::disallowed_types)]
-pub type NpmResolverRc = deno_fs::sync::MaybeArc<dyn NpmResolver>;
+pub type NpmProcessStateProviderRc =
+  deno_fs::sync::MaybeArc<dyn NpmProcessStateProvider>;
 
-pub trait NpmResolver: std::fmt::Debug + MaybeSend + MaybeSync {
+pub trait NpmProcessStateProvider:
+  std::fmt::Debug + MaybeSend + MaybeSync
+{
   /// Gets a string containing the serialized npm state of the process.
   ///
   /// This will be set on the `DENO_DONT_USE_INTERNAL_NODE_COMPAT_STATE` environment
@@ -115,38 +119,16 @@ pub trait NpmResolver: std::fmt::Debug + MaybeSend + MaybeSync {
     // This method is only used in the CLI.
     String::new()
   }
+}
 
-  /// Resolves an npm package folder path from an npm package referrer.
-  fn resolve_package_folder_from_package(
-    &self,
-    specifier: &str,
-    referrer: &ModuleSpecifier,
-    mode: NodeResolutionMode,
-  ) -> Result<PathBuf, AnyError>;
+#[allow(clippy::disallowed_types)]
+pub type NodeRequireResolverRc =
+  deno_fs::sync::MaybeArc<dyn NodeRequireResolver>;
 
-  fn in_npm_package(&self, specifier: &ModuleSpecifier) -> bool;
-
-  fn in_npm_package_at_dir_path(&self, path: &Path) -> bool {
-    let specifier =
-      match ModuleSpecifier::from_directory_path(path.to_path_buf().clean()) {
-        Ok(p) => p,
-        Err(_) => return false,
-      };
-    self.in_npm_package(&specifier)
-  }
-
-  fn in_npm_package_at_file_path(&self, path: &Path) -> bool {
-    let specifier =
-      match ModuleSpecifier::from_file_path(path.to_path_buf().clean()) {
-        Ok(p) => p,
-        Err(_) => return false,
-      };
-    self.in_npm_package(&specifier)
-  }
-
+pub trait NodeRequireResolver: std::fmt::Debug + MaybeSend + MaybeSync {
   fn ensure_read_permission(
     &self,
-    permissions: &dyn NodePermissions,
+    permissions: &mut dyn NodePermissions,
     path: &Path,
   ) -> Result<(), AnyError>;
 }
@@ -166,85 +148,119 @@ fn op_node_build_os() -> String {
   env!("TARGET").split('-').nth(2).unwrap().to_string()
 }
 
-#[op2(fast)]
-fn op_node_is_promise_rejected(value: v8::Local<v8::Value>) -> bool {
-  let Ok(promise) = v8::Local::<v8::Promise>::try_from(value) else {
-    return false;
-  };
-
-  promise.state() == v8::PromiseState::Rejected
-}
-
 #[op2]
 #[string]
 fn op_npm_process_state(state: &mut OpState) -> Result<String, AnyError> {
-  let npm_resolver = state.borrow_mut::<NpmResolverRc>();
+  let npm_resolver = state.borrow_mut::<NpmProcessStateProviderRc>();
   Ok(npm_resolver.get_npm_process_state())
+}
+
+pub struct NodeExtInitServices {
+  pub node_require_resolver: NodeRequireResolverRc,
+  pub node_resolver: NodeResolverRc,
+  pub npm_process_state_provider: NpmProcessStateProviderRc,
+  pub npm_resolver: NpmResolverRc,
 }
 
 deno_core::extension!(deno_node,
   deps = [ deno_io, deno_fs ],
   parameters = [P: NodePermissions],
   ops = [
+    ops::blocklist::op_socket_address_parse,
+    ops::blocklist::op_socket_address_get_serialization,
+
+    ops::blocklist::op_blocklist_new,
+    ops::blocklist::op_blocklist_add_address,
+    ops::blocklist::op_blocklist_add_range,
+    ops::blocklist::op_blocklist_add_subnet,
+    ops::blocklist::op_blocklist_check,
+
     ops::buffer::op_is_ascii,
     ops::buffer::op_is_utf8,
-    ops::crypto::op_node_create_decipheriv,
+    ops::crypto::op_node_check_prime_async,
+    ops::crypto::op_node_check_prime_bytes_async,
+    ops::crypto::op_node_check_prime_bytes,
+    ops::crypto::op_node_check_prime,
     ops::crypto::op_node_cipheriv_encrypt,
     ops::crypto::op_node_cipheriv_final,
     ops::crypto::op_node_cipheriv_set_aad,
-    ops::crypto::op_node_decipheriv_set_aad,
+    ops::crypto::op_node_cipheriv_take,
     ops::crypto::op_node_create_cipheriv,
+    ops::crypto::op_node_create_decipheriv,
     ops::crypto::op_node_create_hash,
-    ops::crypto::op_node_get_hashes,
     ops::crypto::op_node_decipheriv_decrypt,
     ops::crypto::op_node_decipheriv_final,
-    ops::crypto::op_node_hash_update,
-    ops::crypto::op_node_hash_update_str,
-    ops::crypto::op_node_hash_digest,
-    ops::crypto::op_node_hash_digest_hex,
-    ops::crypto::op_node_hash_clone,
-    ops::crypto::op_node_private_encrypt,
-    ops::crypto::op_node_private_decrypt,
-    ops::crypto::op_node_public_encrypt,
-    ops::crypto::op_node_check_prime,
-    ops::crypto::op_node_check_prime_async,
-    ops::crypto::op_node_check_prime_bytes,
-    ops::crypto::op_node_check_prime_bytes_async,
-    ops::crypto::op_node_gen_prime,
-    ops::crypto::op_node_gen_prime_async,
-    ops::crypto::op_node_pbkdf2,
-    ops::crypto::op_node_pbkdf2_async,
-    ops::crypto::op_node_hkdf,
-    ops::crypto::op_node_hkdf_async,
-    ops::crypto::op_node_generate_secret,
-    ops::crypto::op_node_generate_secret_async,
-    ops::crypto::op_node_sign,
-    ops::crypto::op_node_generate_rsa,
-    ops::crypto::op_node_generate_rsa_async,
-    ops::crypto::op_node_dsa_generate,
-    ops::crypto::op_node_dsa_generate_async,
-    ops::crypto::op_node_ec_generate,
-    ops::crypto::op_node_ec_generate_async,
-    ops::crypto::op_node_ed25519_generate,
-    ops::crypto::op_node_ed25519_generate_async,
-    ops::crypto::op_node_x25519_generate,
-    ops::crypto::op_node_x25519_generate_async,
-    ops::crypto::op_node_dh_generate_group,
-    ops::crypto::op_node_dh_generate_group_async,
-    ops::crypto::op_node_dh_generate,
-    ops::crypto::op_node_dh_generate2,
+    ops::crypto::op_node_decipheriv_set_aad,
+    ops::crypto::op_node_decipheriv_take,
     ops::crypto::op_node_dh_compute_secret,
-    ops::crypto::op_node_dh_generate_async,
-    ops::crypto::op_node_verify,
-    ops::crypto::op_node_random_int,
-    ops::crypto::op_node_scrypt_sync,
-    ops::crypto::op_node_scrypt_async,
-    ops::crypto::op_node_ecdh_generate_keys,
-    ops::crypto::op_node_ecdh_compute_secret,
+    ops::crypto::op_node_diffie_hellman,
     ops::crypto::op_node_ecdh_compute_public_key,
+    ops::crypto::op_node_ecdh_compute_secret,
     ops::crypto::op_node_ecdh_encode_pubkey,
-    ops::crypto::op_node_export_rsa_public_pem,
-    ops::crypto::op_node_export_rsa_spki_der,
+    ops::crypto::op_node_ecdh_generate_keys,
+    ops::crypto::op_node_fill_random_async,
+    ops::crypto::op_node_fill_random,
+    ops::crypto::op_node_gen_prime_async,
+    ops::crypto::op_node_gen_prime,
+    ops::crypto::op_node_get_hashes,
+    ops::crypto::op_node_hash_clone,
+    ops::crypto::op_node_hash_digest_hex,
+    ops::crypto::op_node_hash_digest,
+    ops::crypto::op_node_hash_update_str,
+    ops::crypto::op_node_hash_update,
+    ops::crypto::op_node_hkdf_async,
+    ops::crypto::op_node_hkdf,
+    ops::crypto::op_node_pbkdf2_async,
+    ops::crypto::op_node_pbkdf2,
+    ops::crypto::op_node_private_decrypt,
+    ops::crypto::op_node_private_encrypt,
+    ops::crypto::op_node_public_encrypt,
+    ops::crypto::op_node_random_int,
+    ops::crypto::op_node_scrypt_async,
+    ops::crypto::op_node_scrypt_sync,
+    ops::crypto::op_node_sign,
+    ops::crypto::op_node_sign_ed25519,
+    ops::crypto::op_node_verify,
+    ops::crypto::op_node_verify_ed25519,
+    ops::crypto::keys::op_node_create_private_key,
+    ops::crypto::keys::op_node_create_ed_raw,
+    ops::crypto::keys::op_node_create_rsa_jwk,
+    ops::crypto::keys::op_node_create_ec_jwk,
+    ops::crypto::keys::op_node_create_public_key,
+    ops::crypto::keys::op_node_create_secret_key,
+    ops::crypto::keys::op_node_derive_public_key_from_private_key,
+    ops::crypto::keys::op_node_dh_keys_generate_and_export,
+    ops::crypto::keys::op_node_export_private_key_der,
+    ops::crypto::keys::op_node_export_private_key_pem,
+    ops::crypto::keys::op_node_export_public_key_der,
+    ops::crypto::keys::op_node_export_public_key_pem,
+    ops::crypto::keys::op_node_export_public_key_jwk,
+    ops::crypto::keys::op_node_export_secret_key_b64url,
+    ops::crypto::keys::op_node_export_secret_key,
+    ops::crypto::keys::op_node_generate_dh_group_key_async,
+    ops::crypto::keys::op_node_generate_dh_group_key,
+    ops::crypto::keys::op_node_generate_dh_key_async,
+    ops::crypto::keys::op_node_generate_dh_key,
+    ops::crypto::keys::op_node_generate_dsa_key_async,
+    ops::crypto::keys::op_node_generate_dsa_key,
+    ops::crypto::keys::op_node_generate_ec_key_async,
+    ops::crypto::keys::op_node_generate_ec_key,
+    ops::crypto::keys::op_node_generate_ed25519_key_async,
+    ops::crypto::keys::op_node_generate_ed25519_key,
+    ops::crypto::keys::op_node_generate_rsa_key_async,
+    ops::crypto::keys::op_node_generate_rsa_key,
+    ops::crypto::keys::op_node_generate_rsa_pss_key,
+    ops::crypto::keys::op_node_generate_rsa_pss_key_async,
+    ops::crypto::keys::op_node_generate_secret_key_async,
+    ops::crypto::keys::op_node_generate_secret_key,
+    ops::crypto::keys::op_node_generate_x25519_key_async,
+    ops::crypto::keys::op_node_generate_x25519_key,
+    ops::crypto::keys::op_node_get_asymmetric_key_details,
+    ops::crypto::keys::op_node_get_asymmetric_key_type,
+    ops::crypto::keys::op_node_get_private_key_from_pair,
+    ops::crypto::keys::op_node_get_public_key_from_pair,
+    ops::crypto::keys::op_node_get_symmetric_key_size,
+    ops::crypto::keys::op_node_key_type,
     ops::crypto::x509::op_node_x509_parse,
     ops::crypto::x509::op_node_x509_ca,
     ops::crypto::x509::op_node_x509_check_email,
@@ -257,9 +273,15 @@ deno_core::extension!(deno_node,
     ops::crypto::x509::op_node_x509_get_valid_to,
     ops::crypto::x509::op_node_x509_get_serial_number,
     ops::crypto::x509::op_node_x509_key_usage,
+    ops::crypto::x509::op_node_x509_public_key,
     ops::fs::op_node_fs_exists_sync<P>,
+    ops::fs::op_node_fs_exists<P>,
     ops::fs::op_node_cp_sync<P>,
     ops::fs::op_node_cp<P>,
+    ops::fs::op_node_lchown_sync<P>,
+    ops::fs::op_node_lchown<P>,
+    ops::fs::op_node_lutimes_sync<P>,
+    ops::fs::op_node_lutimes<P>,
     ops::fs::op_node_statfs<P>,
     ops::winerror::op_node_sys_to_uv_error,
     ops::v8::op_v8_cached_data_version_tag,
@@ -267,8 +289,10 @@ deno_core::extension!(deno_node,
     ops::vm::op_vm_create_script,
     ops::vm::op_vm_create_context,
     ops::vm::op_vm_script_run_in_context,
-    ops::vm::op_vm_script_run_in_this_context,
     ops::vm::op_vm_is_context,
+    ops::vm::op_vm_compile_function,
+    ops::vm::op_vm_script_get_source_map_url,
+    ops::vm::op_vm_script_create_cached_data,
     ops::idna::op_node_idna_domain_to_ascii,
     ops::idna::op_node_idna_domain_to_unicode,
     ops::idna::op_node_idna_punycode_to_ascii,
@@ -279,7 +303,6 @@ deno_core::extension!(deno_node,
     ops::zlib::op_zlib_close,
     ops::zlib::op_zlib_close_if_pending,
     ops::zlib::op_zlib_write,
-    ops::zlib::op_zlib_write_async,
     ops::zlib::op_zlib_init,
     ops::zlib::op_zlib_reset,
     ops::zlib::brotli::op_brotli_compress,
@@ -293,13 +316,14 @@ deno_core::extension!(deno_node,
     ops::zlib::brotli::op_brotli_decompress_stream,
     ops::zlib::brotli::op_brotli_decompress_stream_end,
     ops::http::op_node_http_request<P>,
+    ops::http::op_node_http_fetch_response_upgrade,
+    ops::http::op_node_http_fetch_send,
     ops::http2::op_http2_connect,
     ops::http2::op_http2_poll_client_connection,
     ops::http2::op_http2_client_request,
     ops::http2::op_http2_client_get_response,
     ops::http2::op_http2_client_get_response_body_chunk,
     ops::http2::op_http2_client_send_data,
-    ops::http2::op_http2_client_end_stream,
     ops::http2::op_http2_client_reset_stream,
     ops::http2::op_http2_client_send_trailers,
     ops::http2::op_http2_client_get_response_trailers,
@@ -310,10 +334,10 @@ deno_core::extension!(deno_node,
     ops::os::op_node_os_set_priority<P>,
     ops::os::op_node_os_username<P>,
     ops::os::op_geteuid<P>,
+    ops::os::op_getegid<P>,
     ops::os::op_cpus<P>,
     ops::os::op_homedir<P>,
     op_node_build_os,
-    op_node_is_promise_rejected,
     op_npm_process_state,
     ops::require::op_require_init_paths,
     ops::require::op_require_node_module_paths<P>,
@@ -339,11 +363,11 @@ deno_core::extension!(deno_node,
     ops::require::op_require_break_on_next_statement,
     ops::util::op_node_guess_handle_type,
     ops::worker_threads::op_worker_threads_filename<P>,
-    ops::crypto::op_node_create_private_key,
-    ops::crypto::op_node_create_public_key,
     ops::ipc::op_node_child_ipc_pipe,
     ops::ipc::op_node_ipc_write,
     ops::ipc::op_node_ipc_read,
+    ops::ipc::op_node_ipc_ref,
+    ops::ipc::op_node_ipc_unref,
     ops::process::op_node_process_kill,
     ops::process::op_process_abort,
   ],
@@ -371,8 +395,10 @@ deno_core::extension!(deno_node,
     "_fs/_fs_fsync.ts",
     "_fs/_fs_ftruncate.ts",
     "_fs/_fs_futimes.ts",
+    "_fs/_fs_lchown.ts",
     "_fs/_fs_link.ts",
     "_fs/_fs_lstat.ts",
+    "_fs/_fs_lutimes.ts",
     "_fs/_fs_mkdir.ts",
     "_fs/_fs_mkdtemp.ts",
     "_fs/_fs_open.ts",
@@ -418,7 +444,6 @@ deno_core::extension!(deno_node,
     "_zlib_binding.mjs",
     "_zlib.mjs",
     "assertion_error.ts",
-    "inspector.ts",
     "internal_binding/_libuv_winerror.ts",
     "internal_binding/_listen.ts",
     "internal_binding/_node.ts",
@@ -446,6 +471,7 @@ deno_core::extension!(deno_node,
     "internal_binding/uv.ts",
     "internal/assert.mjs",
     "internal/async_hooks.ts",
+    "internal/blocklist.mjs",
     "internal/buffer.mjs",
     "internal/child_process.ts",
     "internal/cli_table.ts",
@@ -529,7 +555,6 @@ deno_core::extension!(deno_node,
     "path/mod.ts",
     "path/separator.ts",
     "readline/promises.ts",
-    "wasi.ts",
     "node:assert" = "assert.ts",
     "node:assert/strict" = "assert/strict.ts",
     "node:async_hooks" = "async_hooks.ts",
@@ -540,7 +565,7 @@ deno_core::extension!(deno_node,
     "node:constants" = "constants.ts",
     "node:crypto" = "crypto.ts",
     "node:dgram" = "dgram.ts",
-    "node:diagnostics_channel" = "diagnostics_channel.ts",
+    "node:diagnostics_channel" = "diagnostics_channel.js",
     "node:dns" = "dns.ts",
     "node:dns/promises" = "dns/promises.ts",
     "node:domain" = "domain.ts",
@@ -550,6 +575,7 @@ deno_core::extension!(deno_node,
     "node:http" = "http.ts",
     "node:http2" = "http2.ts",
     "node:https" = "https.ts",
+    "node:inspector" = "inspector.ts",
     "node:module" = "01_require.js",
     "node:net" = "net.ts",
     "node:os" = "os.ts",
@@ -561,6 +587,7 @@ deno_core::extension!(deno_node,
     "node:punycode" = "punycode.ts",
     "node:querystring" = "querystring.js",
     "node:readline" = "readline.ts",
+    "node:readline/promises" = "readline/promises.ts",
     "node:repl" = "repl.ts",
     "node:stream" = "stream.ts",
     "node:stream/consumers" = "stream/consumers.mjs",
@@ -577,65 +604,138 @@ deno_core::extension!(deno_node,
     "node:util" = "util.ts",
     "node:util/types" = "util/types.ts",
     "node:v8" = "v8.ts",
-    "node:vm" = "vm.ts",
+    "node:vm" = "vm.js",
+    "node:wasi" = "wasi.ts",
     "node:worker_threads" = "worker_threads.ts",
     "node:zlib" = "zlib.ts",
   ],
   options = {
-    maybe_npm_resolver: Option<NpmResolverRc>,
+    maybe_init: Option<NodeExtInitServices>,
     fs: deno_fs::FileSystemRc,
   },
   state = |state, options| {
-    let fs = options.fs;
-    state.put(fs.clone());
-    if let Some(npm_resolver) = options.maybe_npm_resolver {
-      state.put(npm_resolver.clone());
-      state.put(Rc::new(NodeResolver::new(
-        fs,
-        npm_resolver,
-      )))
+    state.put(options.fs.clone());
+
+    if let Some(init) = &options.maybe_init {
+      state.put(init.node_require_resolver.clone());
+      state.put(init.node_resolver.clone());
+      state.put(init.npm_resolver.clone());
+      state.put(init.npm_process_state_provider.clone());
     }
   },
   global_template_middleware = global_template_middleware,
   global_object_middleware = global_object_middleware,
   customizer = |ext: &mut deno_core::Extension| {
-    let mut external_references = Vec::with_capacity(7);
+    let external_references = [
+      vm::QUERY_MAP_FN.with(|query| {
+        ExternalReference {
+          named_query: *query,
+        }
+      }),
+      vm::GETTER_MAP_FN.with(|getter| {
+        ExternalReference {
+          named_getter: *getter,
+        }
+      }),
+      vm::SETTER_MAP_FN.with(|setter| {
+        ExternalReference {
+          named_setter: *setter,
+        }
+      }),
+      vm::DESCRIPTOR_MAP_FN.with(|descriptor| {
+        ExternalReference {
+          named_getter: *descriptor,
+        }
+      }),
+      vm::DELETER_MAP_FN.with(|deleter| {
+        ExternalReference {
+          named_deleter: *deleter,
+        }
+      }),
+      vm::ENUMERATOR_MAP_FN.with(|enumerator| {
+        ExternalReference {
+          enumerator: *enumerator,
+        }
+      }),
+      vm::DEFINER_MAP_FN.with(|definer| {
+        ExternalReference {
+          named_definer: *definer,
+        }
+      }),
 
-    global::GETTER_MAP_FN.with(|getter| {
-      external_references.push(ExternalReference {
-        named_getter: *getter,
-      });
-    });
-    global::SETTER_MAP_FN.with(|setter| {
-      external_references.push(ExternalReference {
-        named_setter: *setter,
-      });
-    });
-    global::QUERY_MAP_FN.with(|query| {
-      external_references.push(ExternalReference {
-        named_getter: *query,
-      });
-    });
-    global::DELETER_MAP_FN.with(|deleter| {
-      external_references.push(ExternalReference {
-        named_getter: *deleter,
-      },);
-    });
-    global::ENUMERATOR_MAP_FN.with(|enumerator| {
-      external_references.push(ExternalReference {
-        enumerator: *enumerator,
-      });
-    });
-    global::DEFINER_MAP_FN.with(|definer| {
-      external_references.push(ExternalReference {
-        named_definer: *definer,
-      });
-    });
-    global::DESCRIPTOR_MAP_FN.with(|descriptor| {
-      external_references.push(ExternalReference {
-        named_getter: *descriptor,
-      });
-    });
+      vm::INDEXED_QUERY_MAP_FN.with(|query| {
+        ExternalReference {
+          indexed_query: *query,
+        }
+      }),
+      vm::INDEXED_GETTER_MAP_FN.with(|getter| {
+        ExternalReference {
+          indexed_getter: *getter,
+        }
+      }),
+      vm::INDEXED_SETTER_MAP_FN.with(|setter| {
+        ExternalReference {
+          indexed_setter: *setter,
+        }
+      }),
+      vm::INDEXED_DESCRIPTOR_MAP_FN.with(|descriptor| {
+        ExternalReference {
+          indexed_getter: *descriptor,
+        }
+      }),
+      vm::INDEXED_DELETER_MAP_FN.with(|deleter| {
+        ExternalReference {
+          indexed_deleter: *deleter,
+        }
+      }),
+      vm::INDEXED_DEFINER_MAP_FN.with(|definer| {
+        ExternalReference {
+          indexed_definer: *definer,
+        }
+      }),
+      vm::INDEXED_ENUMERATOR_MAP_FN.with(|enumerator| {
+        ExternalReference {
+          enumerator: *enumerator,
+        }
+      }),
+
+      global::GETTER_MAP_FN.with(|getter| {
+        ExternalReference {
+          named_getter: *getter,
+        }
+      }),
+      global::SETTER_MAP_FN.with(|setter| {
+        ExternalReference {
+          named_setter: *setter,
+        }
+      }),
+      global::QUERY_MAP_FN.with(|query| {
+        ExternalReference {
+          named_query: *query,
+        }
+      }),
+      global::DELETER_MAP_FN.with(|deleter| {
+        ExternalReference {
+          named_deleter: *deleter,
+        }
+      }),
+      global::ENUMERATOR_MAP_FN.with(|enumerator| {
+        ExternalReference {
+          enumerator: *enumerator,
+        }
+      }),
+      global::DEFINER_MAP_FN.with(|definer| {
+        ExternalReference {
+          named_definer: *definer,
+        }
+      }),
+      global::DESCRIPTOR_MAP_FN.with(|descriptor| {
+        ExternalReference {
+          named_getter: *descriptor,
+        }
+      }),
+    ];
+
     ext.external_references.to_mut().extend(external_references);
   },
 );
@@ -661,4 +761,94 @@ pub fn load_cjs_module(
 
   js_runtime.execute_script(located_script_name!(), source_code)?;
   Ok(())
+}
+
+pub type NodeResolver = node_resolver::NodeResolver<DenoFsNodeResolverEnv>;
+#[allow(clippy::disallowed_types)]
+pub type NodeResolverRc =
+  deno_fs::sync::MaybeArc<node_resolver::NodeResolver<DenoFsNodeResolverEnv>>;
+
+#[derive(Debug)]
+pub struct DenoFsNodeResolverEnv {
+  fs: deno_fs::FileSystemRc,
+}
+
+impl DenoFsNodeResolverEnv {
+  pub fn new(fs: deno_fs::FileSystemRc) -> Self {
+    Self { fs }
+  }
+}
+
+impl node_resolver::env::NodeResolverEnv for DenoFsNodeResolverEnv {
+  fn is_builtin_node_module(&self, specifier: &str) -> bool {
+    is_builtin_node_module(specifier)
+  }
+
+  fn realpath_sync(
+    &self,
+    path: &std::path::Path,
+  ) -> std::io::Result<std::path::PathBuf> {
+    self
+      .fs
+      .realpath_sync(path)
+      .map_err(|err| err.into_io_error())
+  }
+
+  fn stat_sync(
+    &self,
+    path: &std::path::Path,
+  ) -> std::io::Result<node_resolver::env::NodeResolverFsStat> {
+    self
+      .fs
+      .stat_sync(path)
+      .map(|stat| node_resolver::env::NodeResolverFsStat {
+        is_file: stat.is_file,
+        is_dir: stat.is_directory,
+        is_symlink: stat.is_symlink,
+      })
+      .map_err(|err| err.into_io_error())
+  }
+
+  fn exists_sync(&self, path: &std::path::Path) -> bool {
+    self.fs.exists_sync(path)
+  }
+
+  fn pkg_json_fs(&self) -> &dyn deno_package_json::fs::DenoPkgJsonFs {
+    self
+  }
+}
+
+impl deno_package_json::fs::DenoPkgJsonFs for DenoFsNodeResolverEnv {
+  fn read_to_string_lossy(
+    &self,
+    path: &std::path::Path,
+  ) -> Result<String, std::io::Error> {
+    self
+      .fs
+      .read_text_file_lossy_sync(path, None)
+      .map_err(|err| err.into_io_error())
+  }
+}
+
+pub struct DenoPkgJsonFsAdapter<'a>(pub &'a dyn deno_fs::FileSystem);
+
+impl<'a> deno_package_json::fs::DenoPkgJsonFs for DenoPkgJsonFsAdapter<'a> {
+  fn read_to_string_lossy(
+    &self,
+    path: &Path,
+  ) -> Result<String, std::io::Error> {
+    self
+      .0
+      .read_text_file_lossy_sync(path, None)
+      .map_err(|err| err.into_io_error())
+  }
+}
+
+pub fn create_host_defined_options<'s>(
+  scope: &mut v8::HandleScope<'s>,
+) -> v8::Local<'s, v8::Data> {
+  let host_defined_options = v8::PrimitiveArray::new(scope, 1);
+  let value = v8::Boolean::new(scope, true);
+  host_defined_options.set(scope, 0, value.into());
+  host_defined_options.into()
 }

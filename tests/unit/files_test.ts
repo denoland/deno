@@ -7,8 +7,9 @@ import {
   assertEquals,
   assertRejects,
   assertThrows,
+  DENO_FUTURE,
 } from "./test_util.ts";
-import { copy } from "@std/io/copy.ts";
+import { copy } from "@std/io/copy";
 
 // Note tests for Deno.FsFile.setRaw is in integration tests.
 
@@ -18,146 +19,19 @@ Deno.test(function filesStdioFileDescriptors() {
   assertEquals(Deno.stderr.rid, 2);
 });
 
-Deno.test({ permissions: { read: true } }, async function filesCopyToStdout() {
-  const filename = "tests/testdata/assets/fixture.json";
-  using file = await Deno.open(filename);
-  assert(file instanceof Deno.File);
-  assert(file instanceof Deno.FsFile);
-  assert(file.rid > 2);
-  const bytesWritten = await copy(file, Deno.stdout);
-  const fileSize = Deno.statSync(filename).size;
-  assertEquals(bytesWritten, fileSize);
-});
-
-Deno.test({ permissions: { read: true } }, async function filesIter() {
-  const filename = "tests/testdata/assets/hello.txt";
-  using file = await Deno.open(filename);
-
-  let totalSize = 0;
-  for await (const buf of Deno.iter(file)) {
-    totalSize += buf.byteLength;
-  }
-
-  assertEquals(totalSize, 12);
-});
-
 Deno.test(
-  { permissions: { read: true } },
-  async function filesIterCustomBufSize() {
-    const filename = "tests/testdata/assets/hello.txt";
+  { ignore: DENO_FUTURE, permissions: { read: true } },
+  async function filesCopyToStdout() {
+    const filename = "tests/testdata/assets/fixture.json";
     using file = await Deno.open(filename);
-
-    let totalSize = 0;
-    let iterations = 0;
-    for await (const buf of Deno.iter(file, { bufSize: 6 })) {
-      totalSize += buf.byteLength;
-      iterations += 1;
-    }
-
-    assertEquals(totalSize, 12);
-    assertEquals(iterations, 2);
+    assert(file instanceof Deno.File);
+    assert(file instanceof Deno.FsFile);
+    assert(file.rid > 2);
+    const bytesWritten = await copy(file, Deno.stdout);
+    const fileSize = Deno.statSync(filename).size;
+    assertEquals(bytesWritten, fileSize);
   },
 );
-
-Deno.test({ permissions: { read: true } }, function filesIterSync() {
-  const filename = "tests/testdata/assets/hello.txt";
-  using file = Deno.openSync(filename);
-
-  let totalSize = 0;
-  for (const buf of Deno.iterSync(file)) {
-    totalSize += buf.byteLength;
-  }
-
-  assertEquals(totalSize, 12);
-});
-
-Deno.test(
-  { permissions: { read: true } },
-  function filesIterSyncCustomBufSize() {
-    const filename = "tests/testdata/assets/hello.txt";
-    using file = Deno.openSync(filename);
-
-    let totalSize = 0;
-    let iterations = 0;
-    for (const buf of Deno.iterSync(file, { bufSize: 6 })) {
-      totalSize += buf.byteLength;
-      iterations += 1;
-    }
-
-    assertEquals(totalSize, 12);
-    assertEquals(iterations, 2);
-  },
-);
-
-Deno.test(async function readerIter() {
-  // ref: https://github.com/denoland/deno/issues/2330
-  const encoder = new TextEncoder();
-
-  class TestReader implements Deno.Reader {
-    #offset = 0;
-    #buf: Uint8Array;
-
-    constructor(s: string) {
-      this.#buf = new Uint8Array(encoder.encode(s));
-    }
-
-    read(p: Uint8Array): Promise<number | null> {
-      const n = Math.min(p.byteLength, this.#buf.byteLength - this.#offset);
-      p.set(this.#buf.slice(this.#offset, this.#offset + n));
-      this.#offset += n;
-
-      if (n === 0) {
-        return Promise.resolve(null);
-      }
-
-      return Promise.resolve(n);
-    }
-  }
-
-  const reader = new TestReader("hello world!");
-
-  let totalSize = 0;
-  for await (const buf of Deno.iter(reader)) {
-    totalSize += buf.byteLength;
-  }
-
-  assertEquals(totalSize, 12);
-});
-
-Deno.test(async function readerIterSync() {
-  // ref: https://github.com/denoland/deno/issues/2330
-  const encoder = new TextEncoder();
-
-  class TestReader implements Deno.ReaderSync {
-    #offset = 0;
-    #buf: Uint8Array;
-
-    constructor(s: string) {
-      this.#buf = new Uint8Array(encoder.encode(s));
-    }
-
-    readSync(p: Uint8Array): number | null {
-      const n = Math.min(p.byteLength, this.#buf.byteLength - this.#offset);
-      p.set(this.#buf.slice(this.#offset, this.#offset + n));
-      this.#offset += n;
-
-      if (n === 0) {
-        return null;
-      }
-
-      return n;
-    }
-  }
-
-  const reader = new TestReader("hello world!");
-
-  let totalSize = 0;
-  for await (const buf of Deno.iterSync(reader)) {
-    totalSize += buf.byteLength;
-  }
-
-  assertEquals(totalSize, 12);
-});
 
 Deno.test(
   {
@@ -908,14 +782,14 @@ Deno.test({ permissions: { read: true } }, function fsFileIsTerminal() {
 });
 
 Deno.test(
-  { permissions: { read: true, run: true, hrtime: true } },
+  { permissions: { read: true, run: true } },
   async function fsFileLockFileSync() {
     await runFlockTests({ sync: true });
   },
 );
 
 Deno.test(
-  { permissions: { read: true, run: true, hrtime: true } },
+  { permissions: { read: true, run: true } },
   async function fsFileLockFileAsync() {
     await runFlockTests({ sync: false });
   },

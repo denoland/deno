@@ -1,13 +1,8 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
-import {
-  assertEquals,
-  assertRejects,
-  assertThrows,
-  fail,
-} from "@std/assert/mod.ts";
+import { assertEquals, assertRejects, assertThrows, fail } from "@std/assert";
 import { rm, rmSync } from "node:fs";
 import { existsSync } from "node:fs";
-import { join } from "@std/path/mod.ts";
+import { join } from "@std/path";
 
 Deno.test({
   name: "ASYNC: removing empty folder",

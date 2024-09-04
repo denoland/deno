@@ -30,7 +30,6 @@ pub static PUBLIC_TEST_NPM_REGISTRY: Lazy<TestNpmRegistry> = Lazy::new(|| {
   )
 });
 
-// TODO: rewrite to use config
 pub static PRIVATE_TEST_NPM_REGISTRY_1: Lazy<TestNpmRegistry> =
   Lazy::new(|| {
     TestNpmRegistry::new(
@@ -40,6 +39,18 @@ pub static PRIVATE_TEST_NPM_REGISTRY_1: Lazy<TestNpmRegistry> =
         crate::servers::PRIVATE_NPM_REGISTRY_1_PORT
       ),
       "npm-private",
+    )
+  });
+
+pub static PRIVATE_TEST_NPM_REGISTRY_2: Lazy<TestNpmRegistry> =
+  Lazy::new(|| {
+    TestNpmRegistry::new(
+      NpmRegistryKind::Private,
+      &format!(
+        "http://localhost:{}",
+        crate::servers::PRIVATE_NPM_REGISTRY_2_PORT
+      ),
+      "npm-private2",
     )
   });
 
@@ -99,7 +110,12 @@ impl TestNpmRegistry {
   }
 
   pub fn package_url(&self, package_name: &str) -> String {
-    format!("http://{}/{}/", self.hostname, package_name)
+    let scheme = if self.hostname.starts_with("http://") {
+      ""
+    } else {
+      "http://"
+    };
+    format!("{}{}/{}/", scheme, self.hostname, package_name)
   }
 
   fn get_package_property<TResult>(
@@ -154,6 +170,12 @@ fn get_npm_package(
   local_path: &str,
   package_name: &str,
 ) -> Result<Option<CustomNpmPackage>> {
+  let registry_hostname = if package_name == "@denotest/tarballs-privateserver2"
+  {
+    "http://localhost:4262"
+  } else {
+    registry_hostname
+  };
   let package_folder = tests_path()
     .join("registry")
     .join(local_path)
@@ -209,10 +231,11 @@ fn get_npm_package(
 
     tarballs.insert(version.clone(), tarball_bytes);
     let package_json_path = version_folder.join("package.json");
-    let package_json_text = fs::read_to_string(&package_json_path)
-      .with_context(|| {
+    let package_json_bytes =
+      fs::read(&package_json_path).with_context(|| {
         format!("Error reading package.json at {}", package_json_path)
       })?;
+    let package_json_text = String::from_utf8_lossy(&package_json_bytes);
     let mut version_info: serde_json::Map<String, serde_json::Value> =
       serde_json::from_str(&package_json_text)?;
     version_info.insert("dist".to_string(), dist.into());

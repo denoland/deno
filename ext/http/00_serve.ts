@@ -34,6 +34,7 @@ const {
   ObjectPrototypeIsPrototypeOf,
   PromisePrototypeCatch,
   PromisePrototypeThen,
+  StringPrototypeIncludes,
   Symbol,
   TypeError,
   TypedArrayPrototypeGetSymbolToStringTag,
@@ -224,7 +225,7 @@ class InnerRequest {
           const wsRid = await wsPromise;
 
           // We have to wait for the go-ahead signal
-          await goAhead;
+          await goAhead.promise;
 
           ws[_rid] = wsRid;
           ws[_readyState] = WebSocket.OPEN;
@@ -435,6 +436,11 @@ function fastSyncResponseOrStream(
 
   const stream = respBody.streamOrStatic;
   const body = stream.body;
+  if (body !== undefined) {
+    // We ensure the response has not been consumed yet in the caller of this
+    // function.
+    stream.consumed = true;
+  }
 
   if (TypedArrayPrototypeGetSymbolToStringTag(body) === "Uint8Array") {
     innerRequest?.close();
@@ -451,7 +457,7 @@ function fastSyncResponseOrStream(
   // At this point in the response it needs to be a stream
   if (!ObjectPrototypeIsPrototypeOf(ReadableStreamPrototype, stream)) {
     innerRequest?.close();
-    throw TypeError("invalid response");
+    throw new TypeError("invalid response");
   }
   const resourceBacking = getReadableStreamResourceBacking(stream);
   let rid, autoClose;
@@ -500,19 +506,26 @@ function mapToCallback(context, callback, onError) {
 
       // Throwing Error if the handler return value is not a Response class
       if (!ObjectPrototypeIsPrototypeOf(ResponsePrototype, response)) {
-        throw TypeError(
+        throw new TypeError(
           "Return value from serve handler must be a response or a promise resolving to a response",
+        );
+      }
+
+      if (response.bodyUsed) {
+        throw new TypeError(
+          "The body of the Response returned from the serve handler has already been consumed.",
         );
       }
     } catch (error) {
       try {
         response = await onError(error);
         if (!ObjectPrototypeIsPrototypeOf(ResponsePrototype, response)) {
-          throw TypeError(
+          throw new TypeError(
             "Return value from onError handler must be a response or a promise resolving to a response",
           );
         }
       } catch (error) {
+        // deno-lint-ignore no-console
         console.error("Exception in onError while handling exception", error);
         response = internalServerError();
       }
@@ -521,6 +534,7 @@ function mapToCallback(context, callback, onError) {
     if (innerRequest?.[_upgraded]) {
       // We're done here as the connection has been upgraded during the callback and no longer requires servicing.
       if (response !== UPGRADE_RESPONSE_SENTINEL) {
+        // deno-lint-ignore no-console
         console.error("Upgrade response was not returned from callback");
         context.close();
       }
@@ -567,6 +581,8 @@ type RawServeOptions = {
   handler?: RawHandler;
 };
 
+const kLoadBalanced = Symbol("kLoadBalanced");
+
 function serve(arg1, arg2) {
   let options: RawServeOptions | undefined;
   let handler: RawHandler | undefined;
@@ -591,13 +607,14 @@ function serve(arg1, arg2) {
     throw new TypeError("A handler function must be provided.");
   }
   if (options === undefined) {
-    options = {};
+    options = { __proto__: null };
   }
 
   const wantsHttps = hasTlsKeyPairOptions(options);
   const wantsUnix = ObjectHasOwn(options, "path");
   const signal = options.signal;
   const onError = options.onError ?? function (error) {
+    // deno-lint-ignore no-console
     console.error(error);
     return internalServerError();
   };
@@ -613,6 +630,7 @@ function serve(arg1, arg2) {
       if (options.onListen) {
         options.onListen(listener.addr);
       } else {
+        // deno-lint-ignore no-console
         console.log(`Listening on ${path}`);
       }
     });
@@ -622,6 +640,7 @@ function serve(arg1, arg2) {
     hostname: options.hostname ?? "0.0.0.0",
     port: options.port ?? 8000,
     reusePort: options.reusePort ?? false,
+    loadBalanced: options[kLoadBalanced] ?? false,
   };
 
   if (options.certFile || options.keyFile) {
@@ -656,14 +675,21 @@ function serve(arg1, arg2) {
   // If the hostname is "0.0.0.0", we display "localhost" in console
   // because browsers in Windows don't resolve "0.0.0.0".
   // See the discussion in https://github.com/denoland/deno_std/issues/1165
-  const hostname = addr.hostname == "0.0.0.0" ? "localhost" : addr.hostname;
+  const hostname = (addr.hostname == "0.0.0.0" || addr.hostname == "::") &&
+      (Deno.build.os === "windows")
+    ? "localhost"
+    : addr.hostname;
   addr.hostname = hostname;
 
   const onListen = (scheme) => {
     if (options.onListen) {
       options.onListen(addr);
     } else {
-      console.log(`Listening on ${scheme}${addr.hostname}:${addr.port}/`);
+      const host = StringPrototypeIncludes(addr.hostname, ":")
+        ? `[${addr.hostname}]`
+        : addr.hostname;
+      // deno-lint-ignore no-console
+      console.log(`Listening on ${scheme}${host}:${addr.port}/`);
     }
   };
 
@@ -708,6 +734,7 @@ function serveHttpOn(context, addr, callback) {
 
   const promiseErrorHandler = (error) => {
     // Abnormal exit
+    // deno-lint-ignore no-console
     console.error(
       "Terminating Deno.serve loop due to unexpected error",
       error,
@@ -747,26 +774,52 @@ function serveHttpOn(context, addr, callback) {
       PromisePrototypeCatch(callback(req), promiseErrorHandler);
     }
 
-    if (!context.closing && !context.closed) {
-      context.closing = op_http_close(rid, false);
-      context.close();
-    }
+    try {
+      if (!context.closing && !context.closed) {
+        context.closing = await op_http_close(rid, false);
+        context.close();
+      }
 
-    await context.closing;
-    context.close();
-    context.closed = true;
+      await context.closing;
+    } catch (error) {
+      if (ObjectPrototypeIsPrototypeOf(InterruptedPrototype, error)) {
+        return;
+      }
+      if (ObjectPrototypeIsPrototypeOf(BadResourcePrototype, error)) {
+        return;
+      }
+
+      throw error;
+    } finally {
+      context.close();
+      context.closed = true;
+    }
   })();
 
   return {
     addr,
     finished,
     async shutdown() {
-      if (!context.closing && !context.closed) {
-        // Shut this HTTP server down gracefully
-        context.closing = op_http_close(context.serverRid, true);
+      try {
+        if (!context.closing && !context.closed) {
+          // Shut this HTTP server down gracefully
+          context.closing = op_http_close(context.serverRid, true);
+        }
+
+        await context.closing;
+      } catch (error) {
+        // The server was interrupted
+        if (ObjectPrototypeIsPrototypeOf(InterruptedPrototype, error)) {
+          return;
+        }
+        if (ObjectPrototypeIsPrototypeOf(BadResourcePrototype, error)) {
+          return;
+        }
+
+        throw error;
+      } finally {
+        context.closed = true;
       }
-      await context.closing;
-      context.closed = true;
     },
     ref() {
       ref = true;
@@ -798,18 +851,26 @@ function registerDeclarativeServer(exports) {
         "Invalid type for fetch: must be a function with a single or no parameter",
       );
     }
-    return ({ servePort, serveHost }) => {
+    return ({ servePort, serveHost, serveIsMain, serveWorkerCount }) => {
       Deno.serve({
         port: servePort,
         hostname: serveHost,
+        [kLoadBalanced]: (serveIsMain && serveWorkerCount > 1) ||
+          (serveWorkerCount !== null),
         onListen: ({ port, hostname }) => {
-          console.debug(
-            `%cdeno serve%c: Listening on %chttp://${hostname}:${port}/%c`,
-            "color: green",
-            "color: inherit",
-            "color: yellow",
-            "color: inherit",
-          );
+          if (serveIsMain) {
+            const nThreads = serveWorkerCount > 1
+              ? ` with ${serveWorkerCount} threads`
+              : "";
+            // deno-lint-ignore no-console
+            console.debug(
+              `%cdeno serve%c: Listening on %chttp://${hostname}:${port}/%c${nThreads}`,
+              "color: green",
+              "color: inherit",
+              "color: yellow",
+              "color: inherit",
+            );
+          }
         },
         handler: (req) => {
           return exports.fetch(req);

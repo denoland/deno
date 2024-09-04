@@ -14,6 +14,7 @@ path = "lib.rs"
 
 [features]
 run = []
+upgrade = []
 
 [[test]]
 name = "integration_tests"
@@ -33,18 +34,19 @@ required-features = ["run"]
 
 [dev-dependencies]
 bytes.workspace = true
-chrono.workspace = true
+chrono = { workspace = true, features = ["now"] }
 deno_ast.workspace = true
 deno_bench_util.workspace = true
 deno_cache_dir = { workspace = true }
 deno_core = { workspace = true, features = ["include_js_files_for_snapshotting", "unsafe_use_unprotected_platform"] }
 deno_fetch.workspace = true
 deno_lockfile.workspace = true
+deno_semver.workspace = true
 deno_terminal.workspace = true
 deno_tls.workspace = true
 fastwebsockets = { workspace = true, features = ["upgrade", "unstable-split"] }
-file_test_runner = "0.7.0"
-flaky_test = "=0.1.0"
+file_test_runner = "0.7.2"
+flaky_test = "=0.2.2"
 http.workspace = true
 http-body-util.workspace = true
 hyper.workspace = true
@@ -53,12 +55,13 @@ once_cell.workspace = true
 os_pipe.workspace = true
 pretty_assertions.workspace = true
 regex.workspace = true
+reqwest.workspace = true
 serde.workspace = true
 test_util.workspace = true
 tokio.workspace = true
 tower-lsp.workspace = true
-trust-dns-client = "=0.22.0"
-trust-dns-server = "=0.22.1"
+trust-dns-client = "=0.23.2"
+trust-dns-server = "=0.23.2"
 url.workspace = true
 uuid = { workspace = true, features = ["serde"] }
 zeromq.workspace = true

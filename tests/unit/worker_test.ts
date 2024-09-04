@@ -1,13 +1,10 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
+// deno-lint-ignore-file no-console
+
 // Requires to be run with `--allow-net` flag
 
-import {
-  assert,
-  assertEquals,
-  assertMatch,
-  assertThrows,
-} from "@std/assert/mod.ts";
+import { assert, assertEquals, assertMatch, assertThrows } from "@std/assert";
 
 function resolveWorker(worker: string): string {
   return import.meta.resolve(`../testdata/workers/${worker}`);
@@ -454,7 +451,6 @@ Deno.test("Worker limit children permissions granularly", async function () {
       deno: {
         permissions: {
           env: ["foo"],
-          hrtime: true,
           net: ["foo", "bar:8000"],
           ffi: [new URL("foo", workerUrl), "bar"],
           read: [new URL("foo", workerUrl), "bar"],
@@ -471,7 +467,6 @@ Deno.test("Worker limit children permissions granularly", async function () {
     envGlobal: "prompt",
     envFoo: "granted",
     envAbsent: "prompt",
-    hrtime: "granted",
     netGlobal: "prompt",
     netFoo: "granted",
     netFoo8000: "granted",
@@ -511,7 +506,6 @@ Deno.test("Nested worker limit children permissions", async function () {
     envGlobal: "prompt",
     envFoo: "prompt",
     envAbsent: "prompt",
-    hrtime: "prompt",
     netGlobal: "prompt",
     netFoo: "prompt",
     netFoo8000: "prompt",
@@ -589,7 +583,6 @@ Deno.test("Worker permissions are not inherited with empty permission object", a
   worker.postMessage(null);
   assertEquals(await promise, {
     env: "prompt",
-    hrtime: "prompt",
     net: "prompt",
     ffi: "prompt",
     read: "prompt",
@@ -614,7 +607,6 @@ Deno.test("Worker permissions are not inherited with single specified permission
   worker.postMessage(null);
   assertEquals(await promise, {
     env: "prompt",
-    hrtime: "prompt",
     net: "granted",
     ffi: "prompt",
     read: "prompt",
@@ -689,7 +681,7 @@ Deno.test({
 
     assert(worker);
     const response = await fetch("http://localhost:4506");
-    assert(await response.arrayBuffer());
+    assert(await response.bytes());
     worker.terminate();
   },
 });

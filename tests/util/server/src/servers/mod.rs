@@ -90,6 +90,7 @@ const JSR_REGISTRY_SERVER_PORT: u16 = 4250;
 const PROVENANCE_MOCK_SERVER_PORT: u16 = 4251;
 pub(crate) const PUBLIC_NPM_REGISTRY_PORT: u16 = 4260;
 pub(crate) const PRIVATE_NPM_REGISTRY_1_PORT: u16 = 4261;
+pub(crate) const PRIVATE_NPM_REGISTRY_2_PORT: u16 = 4262;
 
 // Use the single-threaded scheduler. The hyper server is used as a point of
 // comparison for the (single-threaded!) benchmarks in cli/bench. We're not
@@ -140,6 +141,8 @@ pub async fn run_all_servers() {
     npm_registry::public_npm_registry(PUBLIC_NPM_REGISTRY_PORT);
   let private_npm_registry_1_server_futs =
     npm_registry::private_npm_registry1(PRIVATE_NPM_REGISTRY_1_PORT);
+  let private_npm_registry_2_server_futs =
+    npm_registry::private_npm_registry2(PRIVATE_NPM_REGISTRY_2_PORT);
 
   let mut futures = vec![
     redirect_server_fut.boxed_local(),
@@ -169,6 +172,7 @@ pub async fn run_all_servers() {
   ];
   futures.extend(npm_registry_server_futs);
   futures.extend(private_npm_registry_1_server_futs);
+  futures.extend(private_npm_registry_2_server_futs);
 
   assert_eq!(futures.len(), TEST_SERVERS_COUNT);
 
@@ -1131,7 +1135,7 @@ async fn main_server(
     _ => {
       let uri_path = req.uri().path();
       let mut file_path = testdata_path().to_path_buf();
-      file_path.push(&uri_path[1..].replace("%2f", "/"));
+      file_path.push(uri_path[1..].replace("%2f", "/"));
       if let Ok(file) = tokio::fs::read(&file_path).await {
         let file_resp = custom_headers(uri_path, file);
         return Ok(file_resp);

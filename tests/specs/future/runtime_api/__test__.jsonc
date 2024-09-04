@@ -1,18 +1,12 @@
 {
   "steps": [
     {
-      "args": "run -A --unstable-fs main.js",
-      "output": "main.out",
-      "envs": {
-        "DENO_FUTURE": "1"
-      }
+      "args": "run -A --unstable-fs --config ../../../config/deno.json main.js",
+      "output": "main.out"
     },
     {
-      "args": "run -A --unstable-fs worker.js",
-      "output": "main.out",
-      "envs": {
-        "DENO_FUTURE": "1"
-      }
+      "args": "run -A --unstable-fs --config ../../../config/deno.json worker.js",
+      "output": "main.out"
     }
   ]
 }

@@ -1,0 +1,9 @@
+{
+  "tempDir": true,
+  "steps": [
+    {
+      "args": "install npm:ajv@latest",
+      "output": "install.out"
+    }
+  ]
+}

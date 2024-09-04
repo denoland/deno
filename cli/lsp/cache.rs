@@ -11,31 +11,23 @@ use deno_runtime::fs_util::specifier_to_file_path;
 
 use deno_core::url::Url;
 use deno_core::ModuleSpecifier;
+use std::collections::BTreeMap;
 use std::fs;
 use std::path::Path;
 use std::sync::Arc;
 use std::time::SystemTime;
 
-/// In the LSP, we disallow the cache from automatically copying from
-/// the global cache to the local cache for technical reasons.
-///
-/// 1. We need to verify the checksums from the lockfile are correct when
-///    moving from the global to the local cache.
-/// 2. We need to verify the checksums for JSR https specifiers match what
-///    is found in the package's manifest.
-pub const LSP_DISALLOW_GLOBAL_TO_LOCAL_COPY: deno_cache_dir::GlobalToLocalCopy =
-  deno_cache_dir::GlobalToLocalCopy::Disallow;
-
 pub fn calculate_fs_version(
   cache: &LspCache,
   specifier: &ModuleSpecifier,
+  file_referrer: Option<&ModuleSpecifier>,
 ) -> Option<String> {
   match specifier.scheme() {
     "npm" | "node" | "data" | "blob" => None,
     "file" => specifier_to_file_path(specifier)
       .ok()
       .and_then(|path| calculate_fs_version_at_path(&path)),
-    _ => calculate_fs_version_in_cache(cache, specifier),
+    _ => calculate_fs_version_in_cache(cache, specifier, file_referrer),
   }
 }
 
@@ -56,8 +48,9 @@ pub fn calculate_fs_version_at_path(path: &Path) -> Option<String> {
 fn calculate_fs_version_in_cache(
   cache: &LspCache,
   specifier: &ModuleSpecifier,
+  file_referrer: Option<&ModuleSpecifier>,
 ) -> Option<String> {
-  let http_cache = cache.root_vendor_or_global();
+  let http_cache = cache.for_specifier(file_referrer);
   let Ok(cache_key) = http_cache.cache_item_key(specifier) else {
     return Some("1".to_string());
   };
@@ -77,7 +70,7 @@ fn calculate_fs_version_in_cache(
 pub struct LspCache {
   deno_dir: DenoDir,
   global: Arc<GlobalHttpCache>,
-  root_vendor: Option<Arc<LocalLspHttpCache>>,
+  vendors_by_scope: BTreeMap<ModuleSpecifier, Option<Arc<LocalLspHttpCache>>>,
 }
 
 impl Default for LspCache {
@@ -107,18 +100,24 @@ impl LspCache {
     Self {
       deno_dir,
       global,
-      root_vendor: None,
+      vendors_by_scope: Default::default(),
     }
   }
 
   pub fn update_config(&mut self, config: &Config) {
-    self.root_vendor = config.tree.root_data().and_then(|data| {
-      let vendor_dir = data.vendor_dir.as_ref()?;
-      Some(Arc::new(LocalLspHttpCache::new(
-        vendor_dir.clone(),
-        self.global.clone(),
-      )))
-    });
+    self.vendors_by_scope = config
+      .tree
+      .data_by_scope()
+      .iter()
+      .map(|(scope, config_data)| {
+        (
+          scope.clone(),
+          config_data.vendor_dir.as_ref().map(|v| {
+            Arc::new(LocalLspHttpCache::new(v.clone(), self.global.clone()))
+          }),
+        )
+      })
+      .collect();
   }
 
   pub fn deno_dir(&self) -> &DenoDir {
@@ -129,15 +128,59 @@ impl LspCache {
     &self.global
   }
 
-  pub fn root_vendor(&self) -> Option<&Arc<LocalLspHttpCache>> {
-    self.root_vendor.as_ref()
+  pub fn for_specifier(
+    &self,
+    file_referrer: Option<&ModuleSpecifier>,
+  ) -> Arc<dyn HttpCache> {
+    let Some(file_referrer) = file_referrer else {
+      return self.global.clone();
+    };
+    self
+      .vendors_by_scope
+      .iter()
+      .rfind(|(s, _)| file_referrer.as_str().starts_with(s.as_str()))
+      .and_then(|(_, v)| v.clone().map(|v| v as _))
+      .unwrap_or(self.global.clone() as _)
   }
 
-  pub fn root_vendor_or_global(&self) -> Arc<dyn HttpCache> {
-    self
-      .root_vendor
-      .as_ref()
-      .map(|v| v.clone() as _)
-      .unwrap_or(self.global.clone() as _)
+  pub fn vendored_specifier(
+    &self,
+    specifier: &ModuleSpecifier,
+    file_referrer: Option<&ModuleSpecifier>,
+  ) -> Option<ModuleSpecifier> {
+    let file_referrer = file_referrer?;
+    if !matches!(specifier.scheme(), "http" | "https") {
+      return None;
+    }
+    let vendor = self
+      .vendors_by_scope
+      .iter()
+      .rfind(|(s, _)| file_referrer.as_str().starts_with(s.as_str()))?
+      .1
+      .as_ref()?;
+    vendor.get_file_url(specifier)
+  }
+
+  pub fn unvendored_specifier(
+    &self,
+    specifier: &ModuleSpecifier,
+  ) -> Option<ModuleSpecifier> {
+    let path = specifier_to_file_path(specifier).ok()?;
+    let vendor = self
+      .vendors_by_scope
+      .iter()
+      .rfind(|(s, _)| specifier.as_str().starts_with(s.as_str()))?
+      .1
+      .as_ref()?;
+    vendor.get_remote_url(&path)
+  }
+
+  pub fn is_valid_file_referrer(&self, specifier: &ModuleSpecifier) -> bool {
+    if let Ok(path) = specifier_to_file_path(specifier) {
+      if !path.starts_with(&self.deno_dir().root) {
+        return true;
+      }
+    }
+    false
   }
 }

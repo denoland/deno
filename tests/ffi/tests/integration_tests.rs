@@ -76,10 +76,10 @@ fn basic() {
     5\n\
     5\n\
     579\n\
-    8589934590\n\
-    -8589934590\n\
-    8589934590\n\
-    -8589934590\n\
+    8589934590n\n\
+    -8589934590n\n\
+    8589934590n\n\
+    -8589934590n\n\
     9007199254740992n\n\
     9007199254740992n\n\
     -9007199254740992n\n\
@@ -110,7 +110,7 @@ fn basic() {
     Before\n\
     After\n\
     logCallback\n\
-    1 -1 2 -2 3 -3 4 -4 0.5 -0.5 1 2 3 4 5 6 7 8\n\
+    1 -1 2 -2 3 -3 4n -4n 0.5 -0.5 1 2 3 4 5 6 7 8\n\
     u8: 8\n\
     buf: [1, 2, 3, 4, 5, 6, 7, 8]\n\
     logCallback\n\
@@ -300,6 +300,6 @@ fn ffi_callback_errors_test() {
   assert_eq!(stdout, expected);
   assert_eq!(
     stderr,
-    "Illegal unhandled exception in nonblocking callback.\n".repeat(3)
+    "Illegal unhandled exception in nonblocking callback\n".repeat(3)
   );
 }

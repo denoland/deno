@@ -1,4 +1,4 @@
-// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 // Copyright Joyent and Node contributors. All rights reserved. MIT license.
 // deno-fmt-ignore-file
 // deno-lint-ignore-file
@@ -3754,7 +3754,14 @@ var require_writable = __commonJS({
       this.destroyed = false;
       const noDecode = !!(options && options.decodeStrings === false);
       this.decodeStrings = !noDecode;
-      this.defaultEncoding = options && options.defaultEncoding || "utf8";
+      const defaultEncoding = options?.defaultEncoding;
+      if (defaultEncoding == null) {
+        this.defaultEncoding = 'utf8';
+      } else if (Buffer2.isEncoding(defaultEncoding)) {
+        this.defaultEncoding = defaultEncoding;
+      } else {
+        throw new ERR_UNKNOWN_ENCODING(defaultEncoding);
+      }
       this.length = 0;
       this.writing = false;
       this.corked = 0;
@@ -3845,10 +3852,12 @@ var require_writable = __commonJS({
       const state = stream._writableState;
       if (typeof encoding === "function") {
         cb = encoding;
-        encoding = state.defaultEncoding;
+        // Simulates https://github.com/nodejs/node/commit/dbed0319ac438dcbd6e92483f3280b1dc6767e00
+        encoding = state.objectMode ? undefined : state.defaultEncoding;
       } else {
         if (!encoding) {
-          encoding = state.defaultEncoding;
+          // Simulates https://github.com/nodejs/node/commit/dbed0319ac438dcbd6e92483f3280b1dc6767e00
+          encoding = state.objectMode ? undefined : state.defaultEncoding;
         } else if (encoding !== "buffer" && !Buffer2.isEncoding(encoding)) {
           throw new ERR_UNKNOWN_ENCODING(encoding);
         }
@@ -4031,7 +4040,7 @@ var require_writable = __commonJS({
       }
       while (count-- > 0) {
         state.pendingcb--;
-        cb();
+        cb(null);
       }
       if (state.destroyed) {
         errorBuffer(state);
@@ -4158,8 +4167,10 @@ var require_writable = __commonJS({
         err = new ERR_STREAM_DESTROYED("end");
       }
       if (typeof cb === "function") {
-        if (err || state.finished) {
+        if (err) {
           process.nextTick(cb, err);
+        } else if (state.finished) {
+          process.nextTick(cb, null);
         } else {
           state[kOnFinished].push(cb);
         }
@@ -4246,7 +4257,7 @@ var require_writable = __commonJS({
       state.finished = true;
       const onfinishCallbacks = state[kOnFinished].splice(0);
       for (let i = 0; i < onfinishCallbacks.length; i++) {
-        onfinishCallbacks[i]();
+        onfinishCallbacks[i](null);
       }
       stream.emit("finish");
       if (state.autoDestroy) {

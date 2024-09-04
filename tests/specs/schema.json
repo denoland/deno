@@ -50,6 +50,9 @@
         },
         "exitCode": {
           "type": "integer"
+        },
+        "ignore": {
+          "type": "boolean"
         }
       }
     },
@@ -69,11 +72,17 @@
               "type": "string"
             }
           },
+          "repeat": {
+            "type": "number"
+          },
           "steps": {
             "type": "array",
             "items": {
               "$ref": "#/definitions/single_test"
             }
+          },
+          "ignore": {
+            "type": "boolean"
           }
         }
       }, {
@@ -90,6 +99,9 @@
               "additionalProperties": {
                 "type": "string"
               }
+            },
+            "repeat": {
+              "type": "number"
             }
           }
         }, {
@@ -112,11 +124,17 @@
             "type": "string"
           }
         },
+        "repeat": {
+          "type": "number"
+        },
         "tests": {
           "type": "object",
           "additionalProperties": {
             "$ref": "#/definitions/single_or_multi_step_test"
           }
+        },
+        "ignore": {
+          "type": "boolean"
         }
       }
     }

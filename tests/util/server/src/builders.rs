@@ -32,6 +32,7 @@ use crate::npm_registry_unset_url;
 use crate::pty::Pty;
 use crate::strip_ansi_codes;
 use crate::testdata_path;
+use crate::tests_path;
 use crate::HttpServerGuard;
 use crate::TempDir;
 
@@ -88,6 +89,7 @@ pub struct TestContextBuilder {
   use_http_server: bool,
   use_temp_cwd: bool,
   use_symlinked_temp_dir: bool,
+  use_canonicalized_temp_dir: bool,
   /// Copies the files at the specified directory in the "testdata" directory
   /// to the temp folder and runs the test from there. This is useful when
   /// the test creates files in the testdata directory (ex. a node_modules folder)
@@ -142,6 +144,23 @@ impl TestContextBuilder {
     self
   }
 
+  /// Causes the temp directory to go to its canonicalized path instead
+  /// of being in a symlinked temp dir on the CI.
+  ///
+  /// Note: This method is not actually deprecated. It's just deprecated
+  /// to discourage its use. Use it sparingly and document why you're using
+  /// it. You better have a good reason other than being lazy!
+  ///
+  /// If your tests are failing because the temp dir is symlinked on the CI,
+  /// then it likely means your code doesn't properly handle when Deno is running
+  /// in a symlinked directory. That's a bug and you should fix it without using
+  /// this.
+  #[deprecated]
+  pub fn use_canonicalized_temp_dir(mut self) -> Self {
+    self.use_canonicalized_temp_dir = true;
+    self
+  }
+
   /// Copies the files at the specified directory in the "testdata" directory
   /// to the temp folder and runs the test from there. This is useful when
   /// the test creates files in the testdata directory (ex. a node_modules folder)
@@ -189,11 +208,6 @@ impl TestContextBuilder {
     self
   }
 
-  pub fn add_future_env_vars(mut self) -> Self {
-    self = self.env("DENO_FUTURE", "1");
-    self
-  }
-
   pub fn add_jsr_env_vars(mut self) -> Self {
     for (key, value) in env_vars_for_jsr_tests() {
       self = self.env(key, value);
@@ -206,13 +220,21 @@ impl TestContextBuilder {
       panic!("{}", err);
     }
 
-    let temp_dir_path = self
-      .temp_dir_path
-      .clone()
-      .unwrap_or_else(std::env::temp_dir);
-    let deno_dir = TempDir::new_in(&temp_dir_path);
-    let temp_dir = TempDir::new_in(&temp_dir_path);
+    let temp_dir_path = PathRef::new(
+      self
+        .temp_dir_path
+        .clone()
+        .unwrap_or_else(std::env::temp_dir),
+    );
+    let temp_dir_path = if self.use_canonicalized_temp_dir {
+      temp_dir_path.canonicalize()
+    } else {
+      temp_dir_path
+    };
+    let deno_dir = TempDir::new_in(temp_dir_path.as_path());
+    let temp_dir = TempDir::new_in(temp_dir_path.as_path());
     let temp_dir = if self.use_symlinked_temp_dir {
+      assert!(!self.use_canonicalized_temp_dir); // code doesn't handle using both of these
       TempDir::new_symlinked(temp_dir)
     } else {
       temp_dir
@@ -387,6 +409,7 @@ pub struct TestCommandBuilder {
   args_text: String,
   args_vec: Vec<String>,
   split_output: bool,
+  show_output: bool,
 }
 
 impl TestCommandBuilder {
@@ -406,6 +429,7 @@ impl TestCommandBuilder {
       command_name: "deno".to_string(),
       args_text: "".to_string(),
       args_vec: Default::default(),
+      show_output: false,
     }
   }
 
@@ -479,6 +503,16 @@ impl TestCommandBuilder {
     self
       .envs_remove
       .insert(key.as_ref().to_string_lossy().to_string());
+    self
+  }
+
+  /// Set this to enable streaming the output of the command to stderr.
+  ///
+  /// Not deprecated, this is just here so you don't accidentally
+  /// commit code with this enabled.
+  #[deprecated]
+  pub fn show_output(mut self) -> Self {
+    self.show_output = true;
     self
   }
 
@@ -606,10 +640,27 @@ impl TestCommandBuilder {
   }
 
   pub fn run(&self) -> TestCommandOutput {
-    fn read_pipe_to_string(mut pipe: os_pipe::PipeReader) -> String {
-      let mut output = String::new();
-      pipe.read_to_string(&mut output).unwrap();
-      output
+    fn read_pipe_to_string(
+      mut pipe: os_pipe::PipeReader,
+      output_to_stderr: bool,
+    ) -> String {
+      if output_to_stderr {
+        let mut buffer = vec![0; 512];
+        let mut final_data = Vec::new();
+        loop {
+          let size = pipe.read(&mut buffer).unwrap();
+          if size == 0 {
+            break;
+          }
+          final_data.extend(&buffer[..size]);
+          std::io::stderr().write_all(&buffer[..size]).unwrap();
+        }
+        String::from_utf8_lossy(&final_data).to_string()
+      } else {
+        let mut output = String::new();
+        pipe.read_to_string(&mut output).unwrap();
+        output
+      }
     }
 
     fn sanitize_output(text: String, args: &[OsString]) -> String {
@@ -633,11 +684,16 @@ impl TestCommandBuilder {
       let (stderr_reader, stderr_writer) = pipe().unwrap();
       command.stdout(stdout_writer);
       command.stderr(stderr_writer);
+      let show_output = self.show_output;
       (
         None,
         Some((
-          std::thread::spawn(move || read_pipe_to_string(stdout_reader)),
-          std::thread::spawn(move || read_pipe_to_string(stderr_reader)),
+          std::thread::spawn(move || {
+            read_pipe_to_string(stdout_reader, show_output)
+          }),
+          std::thread::spawn(move || {
+            read_pipe_to_string(stderr_reader, show_output)
+          }),
         )),
       )
     } else {
@@ -660,8 +716,9 @@ impl TestCommandBuilder {
     // and dropping it closes them.
     drop(command);
 
-    let combined = combined_reader
-      .map(|pipe| sanitize_output(read_pipe_to_string(pipe), &args));
+    let combined = combined_reader.map(|pipe| {
+      sanitize_output(read_pipe_to_string(pipe, self.show_output), &args)
+    });
 
     let status = process.wait().unwrap();
     let std_out_err = std_out_err_handle.map(|(stdout, stderr)| {
@@ -802,6 +859,7 @@ impl TestCommandBuilder {
     text
       .replace("$DENO_DIR", &self.deno_dir.path().to_string_lossy())
       .replace("$TESTDATA", &testdata_path().to_string_lossy())
+      .replace("$TESTS", &tests_path().to_string_lossy())
       .replace("$PWD", &cwd.to_string_lossy())
   }
 }
