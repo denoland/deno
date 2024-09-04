@@ -1,22 +1,14 @@
 console.log("window is", globalThis.window);
 console.log("Deno.Buffer is", Deno.Buffer);
 console.log("Deno.File is", Deno.File);
-console.log("Deno.ftruncate is", Deno.ftruncate);
-console.log("Deno.ftruncateSync is", Deno.ftruncateSync);
 console.log(
   "Deno.FsFile.prototype.rid is",
   Deno.openSync(import.meta.filename).rid,
 );
 console.log("Deno.funlock is", Deno.funlock);
 console.log("Deno.funlockSync is", Deno.funlockSync);
-console.log("Deno.readAll is", Deno.readAll);
-console.log("Deno.readAllSync is", Deno.readAllSync);
-console.log("Deno.read is", Deno.read);
-console.log("Deno.readSync is", Deno.readSync);
 console.log("Deno.seek is", Deno.seek);
 console.log("Deno.seekSync is", Deno.seekSync);
-console.log("Deno.write is", Deno.write);
-console.log("Deno.writeSync is", Deno.writeSync);
 
 // TCP
 // Since these tests may run in parallel, ensure this port is unique to this file

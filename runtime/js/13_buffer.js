@@ -234,26 +234,4 @@ class Buffer {
   }
 }
 
-async function readAll(r) {
-  internals.warnOnDeprecatedApi(
-    "Deno.readAll()",
-    new Error().stack,
-    "Use `readAll()` from `https://jsr.io/@std/io/doc/read-all/~` instead.",
-  );
-  const buf = new Buffer();
-  await buf.readFrom(r);
-  return buf.bytes();
-}
-
-function readAllSync(r) {
-  internals.warnOnDeprecatedApi(
-    "Deno.readAllSync()",
-    new Error().stack,
-    "Use `readAllSync()` from `https://jsr.io/@std/io/doc/read-all/~` instead.",
-  );
-  const buf = new Buffer();
-  buf.readFromSync(r);
-  return buf.bytes();
-}
-
-export { Buffer, readAll, readAllSync };
+export { Buffer };
