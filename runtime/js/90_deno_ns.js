@@ -101,8 +101,6 @@ const denoNs = {
   Buffer: buffer.Buffer,
   readAll: buffer.readAll,
   readAllSync: buffer.readAllSync,
-  writeAll: buffer.writeAll,
-  writeAllSync: buffer.writeAllSync,
   copy: io.copy,
   SeekMode: io.SeekMode,
   read(rid, buffer) {
@@ -152,22 +150,6 @@ const denoNs = {
   connectTls: tls.connectTls,
   listenTls: tls.listenTls,
   startTls: tls.startTls,
-  fstatSync(rid) {
-    internals.warnOnDeprecatedApi(
-      "Deno.fstatSync()",
-      new Error().stack,
-      "Use `Deno.FsFile.statSync()` instead.",
-    );
-    return fs.fstatSync(rid);
-  },
-  fstat(rid) {
-    internals.warnOnDeprecatedApi(
-      "Deno.fstat()",
-      new Error().stack,
-      "Use `Deno.FsFile.stat()` instead.",
-    );
-    return fs.fstat(rid);
-  },
   fsyncSync: fs.fsyncSync,
   fsync: fs.fsync,
   fdatasyncSync: fs.fdatasyncSync,

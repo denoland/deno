@@ -802,8 +802,6 @@ function bootstrapMainRuntime(runtimeOptions, warmup = false) {
       delete globalThis.window;
       delete Deno.Buffer;
       delete Deno.File;
-      delete Deno.fstat;
-      delete Deno.fstatSync;
       delete Deno.ftruncate;
       delete Deno.ftruncateSync;
       delete Deno.FsFile.prototype.rid;
@@ -815,8 +813,6 @@ function bootstrapMainRuntime(runtimeOptions, warmup = false) {
       delete Deno.readSync;
       delete Deno.seek;
       delete Deno.seekSync;
-      delete Deno.writeAll;
-      delete Deno.writeAllSync;
     }
   } else {
     // Warmup
@@ -977,8 +973,6 @@ function bootstrapWorkerRuntime(
     if (future) {
       delete Deno.Buffer;
       delete Deno.File;
-      delete Deno.fstat;
-      delete Deno.fstatSync;
       delete Deno.ftruncate;
       delete Deno.ftruncateSync;
       delete Deno.FsFile.prototype.rid;
@@ -990,8 +984,6 @@ function bootstrapWorkerRuntime(
       delete Deno.readSync;
       delete Deno.seek;
       delete Deno.seekSync;
-      delete Deno.writeAll;
-      delete Deno.writeAllSync;
     }
   } else {
     // Warmup
