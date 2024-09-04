@@ -406,11 +406,11 @@ Deno.test(function invalidHeadersFlaky() {
   assertThrows(
     () => new Headers([["x", "\u0000x"]]),
     TypeError,
-    "Header value is not valid.",
+    'Invalid header value: "\u0000x"',
   );
   assertThrows(
     () => new Headers([["x", "\u0000x"]]),
     TypeError,
-    "Header value is not valid.",
+    'Invalid header value: "\u0000x"',
   );
 });
