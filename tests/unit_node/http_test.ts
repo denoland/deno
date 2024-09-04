@@ -1643,6 +1643,7 @@ Deno.test("[node/http] upgraded socket closes when the server closed without clo
 
   http.request(options).on("upgrade", (_res, socket) => {
     socket.on("close", () => {
+      console.log("client socket closed");
       clientSocketClosed.resolve();
     });
     socket.on("error", (err) => {
@@ -1653,7 +1654,9 @@ Deno.test("[node/http] upgraded socket closes when the server closed without clo
       assertEquals(data, Buffer.from("8104706f6e67", "hex"));
 
       p.kill();
-      await p.output();
+      await p.status;
+
+      console.log("process closed");
       serverProcessClosed.resolve();
 
       // tries to send some data again
