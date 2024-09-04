@@ -42,6 +42,7 @@ pub use deno_config::deno_json::TsConfigForEmit;
 pub use deno_config::deno_json::TsConfigType;
 pub use deno_config::deno_json::TsTypeLib;
 pub use deno_config::glob::FilePatterns;
+pub use deno_json::check_warn_tsconfig;
 pub use flags::*;
 pub use lockfile::CliLockfile;
 pub use package_json::PackageJsonInstallDepsProvider;

@@ -1,5 +1,6 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
+use crate::args::check_warn_tsconfig;
 use crate::args::get_root_cert_store;
 use crate::args::CaData;
 use crate::args::CliOptions;
@@ -522,9 +523,7 @@ impl CliFactory {
       let cli_options = self.cli_options()?;
       let ts_config_result =
         cli_options.resolve_ts_config_for_emit(TsConfigType::Emit)?;
-      if let Some(ignored_options) = ts_config_result.maybe_ignored_options {
-        warn!("{}", ignored_options);
-      }
+      check_warn_tsconfig(&ts_config_result);
       let (transpile_options, emit_options) =
         crate::args::ts_config_to_transpile_and_emit_options(
           ts_config_result.ts_config,
