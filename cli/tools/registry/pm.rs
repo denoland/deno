@@ -3,6 +3,8 @@
 mod cache_deps;
 
 pub use cache_deps::cache_top_level_deps;
+use deno_semver::jsr::JsrPackageReqReference;
+use deno_semver::npm::NpmPackageReqReference;
 
 use std::borrow::Cow;
 use std::path::Path;
@@ -501,14 +503,18 @@ impl AddPackageReq {
 
     match prefix {
       Prefix::Jsr => {
-        let package_req = PackageReq::from_str(entry_text)?;
+        let jsr_package_req =
+          JsrPackageReqReference::from_str(&format!("jsr:{}", entry_text))?;
+        let package_req = jsr_package_req.req().clone();
         Ok(AddPackageReq {
           alias: maybe_alias.unwrap_or_else(|| package_req.name.to_string()),
           value: AddPackageReqValue::Jsr(package_req),
         })
       }
       Prefix::Npm => {
-        let package_req = PackageReq::from_str(entry_text)?;
+        let npm_package_req =
+          NpmPackageReqReference::from_str(&format!("npm:{}", entry_text))?;
+        let package_req = npm_package_req.req().clone();
         Ok(AddPackageReq {
           alias: maybe_alias.unwrap_or_else(|| package_req.name.to_string()),
           value: AddPackageReqValue::Npm(package_req),
