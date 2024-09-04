@@ -116,7 +116,6 @@ pub struct BootstrapOptions {
   pub argv0: Option<String>,
   pub node_debug: Option<String>,
   pub node_ipc_fd: Option<i64>,
-  pub future: bool,
   pub mode: WorkerExecutionMode,
   // Used by `deno serve`
   pub serve_port: Option<u16>,
@@ -153,7 +152,6 @@ impl Default for BootstrapOptions {
       argv0: None,
       node_debug: None,
       node_ipc_fd: None,
-      future: false,
       mode: WorkerExecutionMode::None,
       serve_port: Default::default(),
       serve_host: Default::default(),
@@ -190,8 +188,6 @@ struct BootstrapV8<'a>(
   Option<&'a str>,
   // node_debug
   Option<&'a str>,
-  // future
-  bool,
   // mode
   i32,
   // serve port
@@ -224,7 +220,6 @@ impl BootstrapOptions {
       self.has_node_modules_dir,
       self.argv0.as_deref(),
       self.node_debug.as_deref(),
-      self.future,
       self.mode.discriminant() as _,
       self.serve_port.unwrap_or_default(),
       self.serve_host.as_deref(),

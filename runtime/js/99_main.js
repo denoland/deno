@@ -576,12 +576,11 @@ function bootstrapMainRuntime(runtimeOptions, warmup = false) {
       6: hasNodeModulesDir,
       7: argv0,
       8: nodeDebug,
-      9: future,
-      10: mode,
-      11: servePort,
-      12: serveHost,
-      13: serveIsMain,
-      14: serveWorkerCount,
+      9: mode,
+      10: servePort,
+      11: serveHost,
+      12: serveIsMain,
+      13: serveWorkerCount,
     } = runtimeOptions;
 
     if (mode === executionModes.serve) {
@@ -668,7 +667,7 @@ function bootstrapMainRuntime(runtimeOptions, warmup = false) {
     // TODO(iuioiua): remove in Deno v2. This allows us to dynamically delete
     // class properties within constructors for classes that are not defined
     // within the Deno namespace.
-    internals.future = future;
+    internals.future = true;
 
     removeImportedOps();
 
@@ -798,7 +797,7 @@ function bootstrapMainRuntime(runtimeOptions, warmup = false) {
         nodeDebug,
       });
     }
-    if (future) {
+    if (internals.future) {
       delete globalThis.window;
       delete Deno.Buffer;
       delete Deno.File;
@@ -835,13 +834,12 @@ function bootstrapWorkerRuntime(
       6: hasNodeModulesDir,
       7: argv0,
       8: nodeDebug,
-      9: future,
     } = runtimeOptions;
 
     // TODO(iuioiua): remove in Deno v2. This allows us to dynamically delete
     // class properties within constructors for classes that are not defined
     // within the Deno namespace.
-    internals.future = future;
+    internals.future = true;
 
     performance.setTimeOrigin(DateNow());
     globalThis_ = globalThis;
@@ -964,7 +962,7 @@ function bootstrapWorkerRuntime(
       });
     }
 
-    if (future) {
+    if (internals.future) {
       delete Deno.Buffer;
       delete Deno.File;
       delete Deno.FsFile.prototype.rid;
