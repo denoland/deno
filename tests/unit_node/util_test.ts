@@ -335,7 +335,10 @@ Deno.test("[util] aborted()", async () => {
   const abortController = new AbortController();
   let done = false;
   // deno-lint-ignore no-explicit-any
-  const promise = util.aborted(abortController.signal as any, abortController.signal);
+  const promise = util.aborted(
+    abortController.signal as any,
+    abortController.signal,
+  );
   promise.then(() => {
     done = true;
   });
