@@ -1658,6 +1658,10 @@ Deno.test("[node/http] upgraded socket closes when the server closed without clo
 
       console.log("process closed");
       serverProcessClosed.resolve();
+
+      // sending some additional message
+      socket.write(Buffer.from("81847de88e01", "hex"));
+      socket.write(Buffer.from("0d81e066", "hex"));
     });
 
     // sending ping message
