@@ -330,3 +330,18 @@ Deno.test("[util] debuglog() and debug()", () => {
   assertEquals(util.debuglog, util.debug);
   assertEquals(utilDefault.debuglog, utilDefault.debug);
 });
+
+Deno.test("[util] aborted()", async () => {
+  const abortController = new AbortController();
+  let done = false;
+  // deno-lint-ignore no-explicit-any
+  const promise = util.aborted(abortController.signal as any, abortController.signal);
+  promise.then(() => {
+    done = true;
+  });
+  await new Promise((r) => setTimeout(r, 100));
+  assertEquals(done, false);
+  abortController.abort();
+  await promise;
+  assertEquals(done, true);
+});
