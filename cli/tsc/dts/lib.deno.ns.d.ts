@@ -2876,25 +2876,6 @@ declare namespace Deno {
   }
 
   /**
-   *  Check if a given resource id (`rid`) is a TTY (a terminal).
-   *
-   * ```ts
-   * // This example is system and context specific
-   * const nonTTYRid = Deno.openSync("my_file.txt").rid;
-   * const ttyRid = Deno.openSync("/dev/tty6").rid;
-   * console.log(Deno.isatty(nonTTYRid)); // false
-   * console.log(Deno.isatty(ttyRid)); // true
-   * ```
-   *
-   * @deprecated This will be soft-removed in Deno 2.0. See the
-   * {@link https://docs.deno.com/runtime/manual/advanced/migrate_deprecations | Deno 1.x to 2.x Migration Guide}
-   * for migration instructions.
-   *
-   * @category I/O
-   */
-  export function isatty(rid: number): boolean;
-
-  /**
    * A variable-sized buffer of bytes with `read()` and `write()` methods.
    *
    * @deprecated This will be removed in Deno 2.0. See the
