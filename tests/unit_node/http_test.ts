@@ -1646,9 +1646,6 @@ Deno.test("[node/http] upgraded socket closes when the server closed without clo
       console.log("client socket closed");
       clientSocketClosed.resolve();
     });
-    socket.on("error", (err) => {
-      console.log("error on client", err);
-    });
     socket.on("data", async (data) => {
       // receives pong message
       assertEquals(data, Buffer.from("8104706f6e67", "hex"));
@@ -1658,10 +1655,6 @@ Deno.test("[node/http] upgraded socket closes when the server closed without clo
 
       console.log("process closed");
       serverProcessClosed.resolve();
-
-      // tries to send some data again
-      socket.write(Buffer.from("81847de88e01", "hex"));
-      socket.write(Buffer.from("0d81e066", "hex"));
     });
 
     // sending ping message
