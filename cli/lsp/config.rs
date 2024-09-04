@@ -1387,10 +1387,8 @@ impl ConfigData {
       }
     }
 
-    let node_modules_dir = member_dir
-      .workspace
-      .node_modules_dir_mode()
-      .unwrap_or_default();
+    let node_modules_dir =
+      member_dir.workspace.node_modules_dir().unwrap_or_default();
     let byonm = match node_modules_dir {
       Some(mode) => mode == NodeModulesDirMode::Manual,
       None => member_dir.workspace.root_pkg_json().is_some(),
@@ -1873,7 +1871,7 @@ fn resolve_node_modules_dir(
   // `nodeModulesDir: true` setting in the deno.json file. This is to
   // reduce the chance of modifying someone's node_modules directory
   // without them having asked us to do so.
-  let node_modules_mode = workspace.node_modules_dir_mode().ok().flatten();
+  let node_modules_mode = workspace.node_modules_dir().ok().flatten();
   let explicitly_disabled = node_modules_mode == Some(NodeModulesDirMode::None);
   if explicitly_disabled {
     return None;
