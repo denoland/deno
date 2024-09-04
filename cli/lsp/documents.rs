@@ -1251,7 +1251,7 @@ impl Documents {
   /// tsc when type checking.
   pub fn resolve(
     &self,
-    specifiers: &[String],
+    raw_specifiers: &[String],
     referrer: &ModuleSpecifier,
     file_referrer: Option<&ModuleSpecifier>,
   ) -> Vec<Option<(ModuleSpecifier, MediaType)>> {
@@ -1262,7 +1262,7 @@ impl Documents {
       .or(file_referrer);
     let dependencies = document.as_ref().map(|d| d.dependencies());
     let mut results = Vec::new();
-    for raw_specifier in specifiers {
+    for raw_specifier in raw_specifiers {
       if raw_specifier.starts_with("asset:") {
         if let Ok(specifier) = ModuleSpecifier::parse(raw_specifier) {
           let media_type = MediaType::from_specifier(&specifier);
@@ -1276,14 +1276,12 @@ impl Documents {
         if let Some(specifier) = dep.maybe_type.maybe_specifier() {
           results.push(self.resolve_dependency(
             specifier,
-            Some(raw_specifier),
             referrer,
             file_referrer,
           ));
         } else if let Some(specifier) = dep.maybe_code.maybe_specifier() {
           results.push(self.resolve_dependency(
             specifier,
-            Some(raw_specifier),
             referrer,
             file_referrer,
           ));
@@ -1303,7 +1301,6 @@ impl Documents {
       {
         results.push(self.resolve_dependency(
           &specifier,
-          Some(raw_specifier),
           referrer,
           file_referrer,
         ));
@@ -1451,7 +1448,6 @@ impl Documents {
   pub fn resolve_dependency(
     &self,
     specifier: &ModuleSpecifier,
-    raw_specifier: Option<&str>,
     referrer: &ModuleSpecifier,
     file_referrer: Option<&ModuleSpecifier>,
   ) -> Option<(ModuleSpecifier, MediaType)> {
@@ -1466,12 +1462,10 @@ impl Documents {
     let mut specifier = specifier.clone();
     let mut media_type = None;
     if let Ok(npm_ref) = NpmPackageReqReference::from_specifier(&specifier) {
-      let (s, mt) = self.resolver.npm_to_file_url(
-        &npm_ref,
-        raw_specifier,
-        referrer,
-        file_referrer,
-      )?;
+      let (s, mt) =
+        self
+          .resolver
+          .npm_to_file_url(&npm_ref, referrer, file_referrer)?;
       specifier = s;
       media_type = Some(mt);
     }
@@ -1481,7 +1475,7 @@ impl Documents {
       return Some((specifier, media_type));
     };
     if let Some(types) = doc.maybe_types_dependency().maybe_specifier() {
-      self.resolve_dependency(types, None, &specifier, file_referrer)
+      self.resolve_dependency(types, &specifier, file_referrer)
     } else {
       Some((doc.specifier().clone(), doc.media_type()))
     }

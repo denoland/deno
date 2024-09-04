@@ -286,7 +286,6 @@ impl CliNpmResolver for ByonmCliNpmResolver {
   fn resolve_pkg_folder_from_deno_module_req(
     &self,
     req: &PackageReq,
-    raw_specifier: Option<&str>,
     referrer: &ModuleSpecifier,
   ) -> Result<PathBuf, AnyError> {
     fn node_resolve_dir(
@@ -304,26 +303,6 @@ impl CliNpmResolver for ByonmCliNpmResolver {
         }
       }
       Ok(None)
-    }
-
-    // attempt to resolve the specifier based on its base specifier
-    if let Some(specifier) = raw_specifier.filter(|r| !r.contains(":")) {
-      // todo(dsherret): ideally this would begin searching from the deno.json
-      // or package.json that contained the bare specifier and not at the referrer
-      let referrer_path = referrer.to_file_path().ok();
-      if let Some(referrer_parent) =
-        referrer_path.as_ref().and_then(|p| p.parent())
-      {
-        if let Ok((package_name, _pkg_subpath, _is_scoped)) =
-          node_resolver::parse_npm_pkg_name(specifier, referrer)
-        {
-          if let Some(resolved) =
-            node_resolve_dir(self.fs.as_ref(), &package_name, referrer_parent)?
-          {
-            return Ok(resolved);
-          }
-        }
-      }
     }
 
     // now attempt to resolve if it's found in any package.json

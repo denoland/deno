@@ -93,7 +93,6 @@ pub trait CliNpmResolver: NpmResolver {
   fn resolve_pkg_folder_from_deno_module_req(
     &self,
     req: &PackageReq,
-    raw_specifier: Option<&str>,
     referrer: &ModuleSpecifier,
   ) -> Result<PathBuf, AnyError>;
 

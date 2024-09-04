@@ -4550,7 +4550,6 @@ fn op_script_names(state: &mut OpState) -> ScriptNames {
         let types = doc.maybe_types_dependency().maybe_specifier()?;
         let (types, _) = documents.resolve_dependency(
           types,
-          None,
           specifier,
           doc.file_referrer(),
         )?;

@@ -623,6 +623,9 @@ async fn sync_resolution_with_fs(
   // 4. Create symlinks for package json dependencies
   {
     for remote in npm_install_deps_provider.remote_pkgs() {
+      let Some(alias) = &remote.alias else {
+        continue;
+      };
       let remote_pkg = if let Ok(remote_pkg) =
         snapshot.resolve_pkg_from_pkg_req(&remote.req)
       {
@@ -638,13 +641,13 @@ async fn sync_resolution_with_fs(
       } else {
         continue; // skip, package not found
       };
-      let alias_clashes = remote.req.name != remote.alias
-        && newest_packages_by_name.contains_key(&remote.alias);
+      let alias_clashes = remote.req.name != *alias
+        && newest_packages_by_name.contains_key(alias);
       let install_in_child = {
         // we'll install in the child if the alias is taken by another package, or
         // if there's already a package with the same name but different version
         // linked into the root
-        match found_names.entry(&remote.alias) {
+        match found_names.entry(alias) {
           Entry::Occupied(nv) => {
             alias_clashes
               || remote.req.name != nv.get().name // alias to a different package (in case of duplicate aliases)
@@ -667,8 +670,7 @@ async fn sync_resolution_with_fs(
       );
       if install_in_child {
         // symlink the dep into the package's child node_modules folder
-        let dest_path =
-          remote.base_dir.join("node_modules").join(&remote.alias);
+        let dest_path = remote.base_dir.join("node_modules").join(alias);
 
         symlink_package_dir(&local_registry_package_path, &dest_path)?;
       } else {
@@ -678,7 +680,7 @@ async fn sync_resolution_with_fs(
         {
           symlink_package_dir(
             &local_registry_package_path,
-            &join_package_name(root_node_modules_dir_path, &remote.alias),
+            &join_package_name(root_node_modules_dir_path, alias),
           )?;
         }
       }
@@ -763,9 +765,12 @@ async fn sync_resolution_with_fs(
     // install correctly for a workspace (potentially in sub directories),
     // but this is good enough for a first pass
     for workspace in npm_install_deps_provider.workspace_pkgs() {
+      let Some(alias) = &workspace.alias else {
+        continue;
+      };
       symlink_package_dir(
         &workspace.target_dir,
-        &root_node_modules_dir_path.join(&workspace.alias),
+        &root_node_modules_dir_path.join(alias),
       )?;
     }
   }

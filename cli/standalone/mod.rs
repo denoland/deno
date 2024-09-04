@@ -204,7 +204,6 @@ impl ModuleLoader for EmbeddedModuleLoader {
           .resolve_req_with_sub_path(
             req,
             sub_path.as_deref(),
-            Some(raw_specifier),
             &referrer,
             NodeResolutionMode::Execution,
           )
@@ -241,7 +240,6 @@ impl ModuleLoader for EmbeddedModuleLoader {
             .node_resolver
             .resolve_req_reference(
               &reference,
-              Some(raw_specifier),
               &referrer,
               NodeResolutionMode::Execution,
             )

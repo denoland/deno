@@ -451,7 +451,6 @@ impl<TGraphContainer: ModuleGraphContainer>
           .node_resolver
           .resolve_req_reference(
             &reference,
-            Some(raw_specifier),
             referrer,
             NodeResolutionMode::Execution,
           )

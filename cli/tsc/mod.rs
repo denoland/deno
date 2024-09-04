@@ -825,12 +825,9 @@ fn resolve_non_graph_specifier_types(
     // we don't need this special code here.
     // This could occur when resolving npm:@types/node when it is
     // injected and not part of the graph
-    let package_folder =
-      npm.npm_resolver.resolve_pkg_folder_from_deno_module_req(
-        npm_req_ref.req(),
-        Some(raw_specifier),
-        referrer,
-      )?;
+    let package_folder = npm
+      .npm_resolver
+      .resolve_pkg_folder_from_deno_module_req(npm_req_ref.req(), referrer)?;
     let res_result = node_resolver.resolve_package_subpath_from_deno_module(
       &package_folder,
       npm_req_ref.sub_path(),

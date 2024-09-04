@@ -191,14 +191,12 @@ impl CliNodeResolver {
   pub fn resolve_req_reference(
     &self,
     req_ref: &NpmPackageReqReference,
-    raw_specifier: Option<&str>,
     referrer: &ModuleSpecifier,
     mode: NodeResolutionMode,
   ) -> Result<NodeResolution, AnyError> {
     self.resolve_req_with_sub_path(
       req_ref.req(),
       req_ref.sub_path(),
-      raw_specifier,
       referrer,
       mode,
     )
@@ -208,13 +206,12 @@ impl CliNodeResolver {
     &self,
     req: &PackageReq,
     sub_path: Option<&str>,
-    raw_specifier: Option<&str>,
     referrer: &ModuleSpecifier,
     mode: NodeResolutionMode,
   ) -> Result<NodeResolution, AnyError> {
     let package_folder = self
       .npm_resolver
-      .resolve_pkg_folder_from_deno_module_req(req, raw_specifier, referrer)?;
+      .resolve_pkg_folder_from_deno_module_req(req, referrer)?;
     let resolution_result = self.resolve_package_sub_path_from_deno_module(
       &package_folder,
       sub_path,
@@ -688,12 +685,7 @@ impl Resolver for CliGraphResolver {
           // do npm resolution for byonm
           if is_byonm {
             return node_resolver
-              .resolve_req_reference(
-                &npm_req_ref,
-                Some(raw_specifier),
-                referrer,
-                to_node_mode(mode),
-              )
+              .resolve_req_reference(&npm_req_ref, referrer, to_node_mode(mode))
               .map(|res| res.into_url())
               .map_err(|err| err.into());
           }

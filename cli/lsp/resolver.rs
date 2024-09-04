@@ -322,7 +322,6 @@ impl LspResolver {
   pub fn npm_to_file_url(
     &self,
     req_ref: &NpmPackageReqReference,
-    raw_specifier: Option<&str>,
     referrer: &ModuleSpecifier,
     file_referrer: Option<&ModuleSpecifier>,
   ) -> Option<(ModuleSpecifier, MediaType)> {
@@ -330,12 +329,7 @@ impl LspResolver {
     let node_resolver = resolver.node_resolver.as_ref()?;
     Some(NodeResolution::into_specifier_and_media_type(
       node_resolver
-        .resolve_req_reference(
-          req_ref,
-          raw_specifier,
-          referrer,
-          NodeResolutionMode::Types,
-        )
+        .resolve_req_reference(req_ref, referrer, NodeResolutionMode::Types)
         .ok(),
     ))
   }
