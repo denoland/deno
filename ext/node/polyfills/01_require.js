@@ -940,12 +940,11 @@ Module.prototype.require = function (id) {
 
 // The module wrapper looks slightly different to Node. Instead of using one
 // wrapper function, we use two. The first one exists to performance optimize
-// access to magic node globals, like `Buffer` or `process`. The second one
-// is the actual wrapper function we run the users code in.
-// The only observable difference is that in Deno `arguments.callee` is not
-// null.
+// access to magic node globals, like `Buffer`. The second one is the actual
+// wrapper function we run the users code in. The only observable difference is
+// that in Deno `arguments.callee` is not null.
 Module.wrapper = [
-  "(function (exports, require, module, __filename, __dirname, Buffer, clearImmediate, clearInterval, clearTimeout, global, process, setImmediate, setInterval, setTimeout, performance) { (function (exports, require, module, __filename, __dirname) {",
+  "(function (exports, require, module, __filename, __dirname, Buffer, clearImmediate, clearInterval, clearTimeout, global, setImmediate, setInterval, setTimeout, performance) { (function (exports, require, module, __filename, __dirname) {",
   "\n}).call(this, exports, require, module, __filename, __dirname); })",
 ];
 Module.wrap = function (script) {
@@ -1030,7 +1029,6 @@ Module.prototype._compile = function (content, filename, format) {
     clearInterval,
     clearTimeout,
     global,
-    process,
     setImmediate,
     setInterval,
     setTimeout,
@@ -1049,7 +1047,6 @@ Module.prototype._compile = function (content, filename, format) {
     clearInterval,
     clearTimeout,
     global,
-    process,
     setImmediate,
     setInterval,
     setTimeout,
