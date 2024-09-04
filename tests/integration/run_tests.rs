@@ -3683,11 +3683,6 @@ itest!(followup_dyn_import_resolved {
   output: "run/followup_dyn_import_resolves/main.ts.out",
 });
 
-itest!(allow_run_allowlist_resolution {
-  args: "run --quiet -A allow_run_allowlist_resolution.ts",
-  output: "allow_run_allowlist_resolution.ts.out",
-});
-
 itest!(unhandled_rejection {
   args: "run --check run/unhandled_rejection.ts",
   output: "run/unhandled_rejection.ts.out",
@@ -4592,16 +4587,32 @@ fn permission_prompt_escapes_ansi_codes_and_control_chars() {
     ))
   });
 
-  util::with_pty(&["repl"], |mut console| {
-    console.write_line_raw(r#"const boldANSI = "\u001b[1m";"#);
-    console.expect("undefined");
-    console.write_line_raw(r#"const unboldANSI = "\u001b[22m";"#);
-    console.expect("undefined");
-    console.write_line_raw(
-      r#"new Deno.Command(`${boldANSI}cat${unboldANSI}`).spawn();"#,
-    );
-    console.expect("\u{250f} \u{26a0}\u{fe0f}  Deno requests run access to \"\\u{1b}[1mcat\\u{1b}[22m\".");
-  });
+  // windows doesn't support backslashes in paths, so just try this on unix
+  if cfg!(unix) {
+    let context = TestContextBuilder::default().use_temp_cwd().build();
+    context
+      .new_command()
+      .env("PATH", context.temp_dir().path())
+      .env("DYLD_FALLBACK_LIBRARY_PATH", "")
+      .env("LD_LIBRARY_PATH", "")
+      .args_vec(["repl", "--allow-write=."])
+      .with_pty(|mut console| {
+        console.write_line_raw(r#"const boldANSI = "\u001b[1m";"#);
+        console.expect("undefined");
+        console.write_line_raw(r#"const unboldANSI = "\u001b[22m";"#);
+        console.expect("undefined");
+        console.write_line_raw(
+          r#"Deno.writeTextFileSync(`${boldANSI}cat${unboldANSI}`, "");"#,
+        );
+        console.expect("undefined");
+        console.write_line_raw(
+          r#"new Deno.Command(`./${boldANSI}cat${unboldANSI}`).spawn();"#,
+        );
+        console
+          .expect("\u{250f} \u{26a0}\u{fe0f}  Deno requests run access to \"");
+        console.expect("\\u{1b}[1mcat\\u{1b}[22m\"."); // ensure escaped
+      });
+  }
 }
 
 itest!(node_builtin_modules_ts {

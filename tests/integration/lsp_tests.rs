@@ -14767,7 +14767,6 @@ fn lsp_byonm() {
       "@denotest/esm-basic": "*",
     },
   }));
-  context.run_npm("install");
   let mut client = context.new_lsp_command().build();
   client.initialize_default();
   let diagnostics = client.did_open(json!({
@@ -14799,6 +14798,51 @@ fn lsp_byonm() {
         "code": "resolver-error",
         "source": "deno",
         "message": "Could not find a matching package for 'npm:chalk' in the node_modules directory. Ensure you have all your JSR and npm dependencies listed in your deno.json or package.json, then run `deno install`. Alternatively, turn on auto-install by specifying `\"nodeModulesDir\": \"auto\"` in your deno.json file.",
+      },
+      {
+        "range": {
+          "start": {
+            "line": 2,
+            "character": 15,
+          },
+          "end": {
+            "line": 2,
+            "character": 36,
+          },
+        },
+        "severity": 1,
+        "code": "resolver-error",
+        "source": "deno",
+        "message": "Could not resolve \"@denotest/esm-basic\", but found it in a package.json. Deno expects the node_modules/ directory to be up to date. Did you forget to run `deno install`?",
+      },
+    ])
+  );
+  context.run_npm("install");
+  client.did_change_watched_files(json!({
+    "changes": [{
+      "uri": temp_dir.url().join("node_modules/.package-lock.json").unwrap(),
+      "type": 1,
+    }],
+  }));
+  let diagnostics = client.read_diagnostics();
+  assert_eq!(
+    json!(diagnostics.all()),
+    json!([
+      {
+        "range": {
+          "start": {
+            "line": 1,
+            "character": 15,
+          },
+          "end": {
+            "line": 1,
+            "character": 26,
+          },
+        },
+        "severity": 1,
+        "code": "resolver-error",
+        "source": "deno",
+        "message": "Could not find a matching package for 'npm:chalk' in a package.json file. You must specify this as a package.json dependency when the node_modules folder is not managed by Deno.",
       },
     ])
   );
