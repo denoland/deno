@@ -11,17 +11,6 @@ use std::path::Path;
 use std::path::PathBuf;
 use std::str::FromStr;
 
-use std::collections::HashSet;
-use std::env;
-use std::ffi::OsString;
-use std::net::SocketAddr;
-use std::num::NonZeroU32;
-use std::num::NonZeroU8;
-use std::num::NonZeroUsize;
-use std::path::Path;
-use std::path::PathBuf;
-use std::str::FromStr;
-
 use clap::builder::styling::AnsiColor;
 use clap::builder::FalseyValueParser;
 use clap::error::ErrorKind;
