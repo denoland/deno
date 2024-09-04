@@ -733,8 +733,12 @@ pub fn enhanced_resolution_error_message(error: &ResolutionError) -> String {
       None
     }
   } else {
-    get_import_prefix_missing_error(error)
-      .map(|specifier| format!("Try running `deno add {}`", specifier))
+    get_import_prefix_missing_error(error).map(|specifier| {
+      format!(
+        "If you want to use a JSR or npm package, try running `deno add {}`",
+        specifier
+      )
+    })
   };
 
   if let Some(hint) = maybe_hint {
@@ -900,11 +904,11 @@ fn get_import_prefix_missing_error(error: &ResolutionError) -> Option<&str> {
     }
   }
 
-  // NOTE(bartlomieju): For now, return None if a specifier contains a dot. This is because
+  // NOTE(bartlomieju): For now, return None if a specifier contains a dot or a space. This is because
   // suggesting to `deno add bad-module.ts` makes no sense and is worse than not providing
   // a suggestion at all. This should be improved further in the future
   if let Some(specifier) = maybe_specifier {
-    if specifier.contains(".") {
+    if specifier.contains('.') || specifier.contains(' ') {
       return None;
     }
   }
