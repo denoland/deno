@@ -182,7 +182,7 @@ function initializeAResponse(response, init, bodyWithType) {
     RegExpPrototypeExec(REASON_PHRASE_RE, init.statusText) === null
   ) {
     throw new TypeError(
-      `Status text is not valid: received "${init.statusText}"`,
+      `Invalid status text: "${init.statusText}"`,
     );
   }
 
@@ -265,7 +265,7 @@ class Response {
     const baseURL = getLocationHref();
     const parsedURL = new URL(url, baseURL);
     if (!redirectStatus(status)) {
-      throw new RangeError(`Invalid redirect status code: received ${status}`);
+      throw new RangeError(`Invalid redirect status code: ${status}`);
     }
     const inner = newInnerResponse(status);
     inner.type = "default";
