@@ -2087,7 +2087,6 @@ Deno.test({
     async function client() {
       const url = `http://${hostname}:${port}/`;
       const cmd = [
-        "curl",
         "-i",
         "--request",
         "GET",
@@ -2097,16 +2096,17 @@ Deno.test({
         "--header",
         "Accept-Encoding: deflate, gzip",
       ];
-      const proc = Deno.run({ cmd, stdout: "piped", stderr: "null" });
-      const status = await proc.status();
-      assert(status.success);
-      const output = decoder.decode(await proc.output());
+      const { success, stdout } = await new Deno.Command("curl", {
+        args: cmd,
+        stderr: "null",
+      }).output();
+      assert(success);
+      const output = decoder.decode(stdout);
       assert(output.includes("vary: Accept-Encoding\r\n"));
       assert(output.includes("content-encoding: gzip\r\n"));
       // Ensure the content-length header is updated.
       assert(!output.includes(`content-length: ${contentLength}\r\n`));
       assert(output.includes("content-length: "));
-      proc.close();
     }
 
     await Promise.all([server(), client()]);
@@ -2149,7 +2149,6 @@ Deno.test({
     async function client() {
       const url = `http://${hostname}:${port}/`;
       const cmd = [
-        "curl",
         "-i",
         "--request",
         "GET",
@@ -2159,13 +2158,15 @@ Deno.test({
         "--header",
         "Accept-Encoding: deflate, gzip",
       ];
-      const proc = Deno.run({ cmd, stdout: "piped", stderr: "null" });
-      const status = await proc.status();
-      assert(status.success);
-      const output = decoder.decode(await proc.output());
+      const { success, stdout } = await new Deno.Command("curl", {
+        args: cmd,
+        stderr: "null",
+        stdout: "piped",
+      }).output();
+      assert(success);
+      const output = decoder.decode(stdout);
       assert(output.includes("vary: Accept-Encoding\r\n"));
       assert(output.includes("content-encoding: arbitrary\r\n"));
-      proc.close();
     }
 
     await Promise.all([server(), client()]);

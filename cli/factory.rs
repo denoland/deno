@@ -1,11 +1,12 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
+use crate::args::check_warn_tsconfig;
 use crate::args::get_root_cert_store;
 use crate::args::CaData;
 use crate::args::CliOptions;
 use crate::args::DenoSubcommand;
 use crate::args::Flags;
-use crate::args::PackageJsonInstallDepsProvider;
+use crate::args::NpmInstallDepsProvider;
 use crate::args::StorageKeyResolver;
 use crate::args::TsConfigType;
 use crate::cache::Caches;
@@ -304,8 +305,11 @@ impl CliFactory {
       let global_cache = self.global_http_cache()?.clone();
       match self.cli_options()?.vendor_dir_path() {
         Some(local_path) => {
-          let local_cache =
-            LocalHttpCache::new(local_path.clone(), global_cache);
+          let local_cache = LocalHttpCache::new(
+            local_path.clone(),
+            global_cache,
+            deno_cache_dir::GlobalToLocalCopy::Allow,
+          );
           Ok(Arc::new(local_cache))
         }
         None => Ok(global_cache),
@@ -383,9 +387,7 @@ impl CliFactory {
             cache_setting: cli_options.cache_setting(),
             text_only_progress_bar: self.text_only_progress_bar().clone(),
             maybe_node_modules_path: cli_options.node_modules_dir_path().cloned(),
-            package_json_deps_provider: Arc::new(PackageJsonInstallDepsProvider::from_workspace(
-              cli_options.workspace(),
-            )),
+            npm_install_deps_provider: Arc::new(NpmInstallDepsProvider::from_workspace(cli_options.workspace())),
             npm_system_info: cli_options.npm_system_info(),
             npmrc: cli_options.npmrc().clone(),
             lifecycle_scripts: cli_options.lifecycle_scripts_config(),
@@ -519,9 +521,7 @@ impl CliFactory {
       let cli_options = self.cli_options()?;
       let ts_config_result =
         cli_options.resolve_ts_config_for_emit(TsConfigType::Emit)?;
-      if let Some(ignored_options) = ts_config_result.maybe_ignored_options {
-        warn!("{}", ignored_options);
-      }
+      check_warn_tsconfig(&ts_config_result);
       let (transpile_options, emit_options) =
         crate::args::ts_config_to_transpile_and_emit_options(
           ts_config_result.ts_config,
@@ -720,9 +720,9 @@ impl CliFactory {
         checker.warn_on_legacy_unstable();
       }
       let unstable_features = cli_options.unstable_features();
-      for (flag_name, _, _) in crate::UNSTABLE_GRANULAR_FLAGS {
-        if unstable_features.contains(&flag_name.to_string()) {
-          checker.enable_feature(flag_name);
+      for granular_flag in crate::UNSTABLE_GRANULAR_FLAGS {
+        if unstable_features.contains(&granular_flag.name.to_string()) {
+          checker.enable_feature(granular_flag.name);
         }
       }
 
@@ -790,20 +790,12 @@ impl CliFactory {
       self.maybe_inspector_server()?.clone(),
       cli_options.maybe_lockfile().cloned(),
       self.feature_checker()?.clone(),
-      self.create_cli_main_worker_options()?,
-      cli_options.node_ipc_fd(),
-      cli_options.serve_port(),
-      cli_options.serve_host(),
-      cli_options.enable_future_features(),
-      // TODO(bartlomieju): temporarily disabled
-      // cli_options.disable_deprecated_api_warning,
-      true,
-      cli_options.verbose_deprecated_api_warning,
       if cli_options.code_cache_enabled() {
         Some(self.code_cache()?.clone())
       } else {
         None
       },
+      self.create_cli_main_worker_options()?,
     ))
   }
 
@@ -868,6 +860,9 @@ impl CliFactory {
       unstable: cli_options.legacy_unstable_flag(),
       create_hmr_runner,
       create_coverage_collector,
+      node_ipc: cli_options.node_ipc_fd(),
+      serve_port: cli_options.serve_port(),
+      serve_host: cli_options.serve_host(),
     })
   }
 }

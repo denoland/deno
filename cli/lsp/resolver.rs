@@ -3,7 +3,7 @@
 use crate::args::create_default_npmrc;
 use crate::args::CacheSetting;
 use crate::args::CliLockfile;
-use crate::args::PackageJsonInstallDepsProvider;
+use crate::args::NpmInstallDepsProvider;
 use crate::graph_util::CliJsrUrlProvider;
 use crate::http_util::HttpClientProvider;
 use crate::lsp::config::Config;
@@ -474,9 +474,7 @@ async fn create_npm_resolver(
       maybe_node_modules_path: config_data
         .and_then(|d| d.node_modules_dir.clone()),
       // only used for top level install, so we can ignore this
-      package_json_deps_provider: Arc::new(
-        PackageJsonInstallDepsProvider::empty(),
-      ),
+      npm_install_deps_provider: Arc::new(NpmInstallDepsProvider::empty()),
       npmrc: config_data
         .and_then(|d| d.npmrc.clone())
         .unwrap_or_else(create_default_npmrc),

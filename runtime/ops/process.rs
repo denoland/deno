@@ -1,6 +1,5 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
-use super::check_unstable;
 use deno_core::anyhow::Context;
 use deno_core::error::type_error;
 use deno_core::error::AnyError;
@@ -22,6 +21,9 @@ use serde::Deserialize;
 use serde::Serialize;
 use std::borrow::Cow;
 use std::cell::RefCell;
+use std::collections::HashMap;
+use std::path::Path;
+use std::path::PathBuf;
 use std::process::ExitStatus;
 use std::rc::Rc;
 use tokio::process::Command;
@@ -229,11 +231,15 @@ fn create_command(
   mut args: SpawnArgs,
   api_name: &str,
 ) -> Result<CreateCommand, AnyError> {
-  state
-    .borrow_mut::<PermissionsContainer>()
-    .check_run(&args.cmd, api_name)?;
-
-  let mut command = std::process::Command::new(args.cmd);
+  let (cmd, run_env) = compute_run_cmd_and_check_permissions(
+    &args.cmd,
+    args.cwd.as_deref(),
+    &args.env,
+    args.clear_env,
+    state,
+    api_name,
+  )?;
+  let mut command = std::process::Command::new(cmd);
 
   #[cfg(windows)]
   if args.windows_raw_arguments {
@@ -247,14 +253,9 @@ fn create_command(
   #[cfg(not(windows))]
   command.args(args.args);
 
-  if let Some(cwd) = args.cwd {
-    command.current_dir(cwd);
-  }
-
-  if args.clear_env {
-    command.env_clear();
-  }
-  command.envs(args.env);
+  command.current_dir(run_env.cwd);
+  command.env_clear();
+  command.envs(run_env.envs);
 
   #[cfg(unix)]
   if let Some(gid) = args.gid {
@@ -503,6 +504,133 @@ fn close_raw_handle(handle: deno_io::RawBiPipeHandle) {
   }
 }
 
+fn compute_run_cmd_and_check_permissions(
+  arg_cmd: &str,
+  arg_cwd: Option<&str>,
+  arg_envs: &[(String, String)],
+  arg_clear_env: bool,
+  state: &mut OpState,
+  api_name: &str,
+) -> Result<(PathBuf, RunEnv), AnyError> {
+  let run_env = compute_run_env(arg_cwd, arg_envs, arg_clear_env)
+    .with_context(|| format!("Failed to spawn '{}'", arg_cmd))?;
+  let cmd = resolve_cmd(arg_cmd, &run_env)
+    .with_context(|| format!("Failed to spawn '{}'", arg_cmd))?;
+  check_run_permission(state, &cmd, &run_env, api_name)?;
+  Ok((cmd, run_env))
+}
+
+struct RunEnv {
+  envs: HashMap<String, String>,
+  cwd: PathBuf,
+}
+
+/// Computes the current environment, which will then be used to inform
+/// permissions and finally spawning. This is very important to compute
+/// ahead of time so that the environment used to verify permissions is
+/// the same environment used to spawn the sub command. This protects against
+/// someone doing timing attacks by changing the environment on a worker.
+fn compute_run_env(
+  arg_cwd: Option<&str>,
+  arg_envs: &[(String, String)],
+  arg_clear_env: bool,
+) -> Result<RunEnv, AnyError> {
+  #[allow(clippy::disallowed_methods)]
+  let cwd = std::env::current_dir().context("failed resolving cwd")?;
+  let cwd = arg_cwd
+    .map(|cwd_arg| resolve_path(cwd_arg, &cwd))
+    .unwrap_or(cwd);
+  let envs = if arg_clear_env {
+    arg_envs.iter().cloned().collect()
+  } else {
+    let mut envs = std::env::vars().collect::<HashMap<_, _>>();
+    for (key, value) in arg_envs {
+      envs.insert(key.clone(), value.clone());
+    }
+    envs
+  };
+  Ok(RunEnv { envs, cwd })
+}
+
+fn resolve_cmd(cmd: &str, env: &RunEnv) -> Result<PathBuf, AnyError> {
+  let is_path = cmd.contains('/');
+  #[cfg(windows)]
+  let is_path = is_path || cmd.contains('\\') || Path::new(&cmd).is_absolute();
+  if is_path {
+    Ok(resolve_path(cmd, &env.cwd))
+  } else {
+    let path = env.envs.get("PATH").or_else(|| {
+      if cfg!(windows) {
+        env.envs.iter().find_map(|(k, v)| {
+          if k.to_uppercase() == "PATH" {
+            Some(v)
+          } else {
+            None
+          }
+        })
+      } else {
+        None
+      }
+    });
+    match which::which_in(cmd, path, &env.cwd) {
+      Ok(cmd) => Ok(cmd),
+      Err(which::Error::CannotFindBinaryPath) => {
+        Err(std::io::Error::from(std::io::ErrorKind::NotFound).into())
+      }
+      Err(err) => Err(err.into()),
+    }
+  }
+}
+
+fn resolve_path(path: &str, cwd: &Path) -> PathBuf {
+  deno_core::normalize_path(cwd.join(path))
+}
+
+fn check_run_permission(
+  state: &mut OpState,
+  cmd: &Path,
+  run_env: &RunEnv,
+  api_name: &str,
+) -> Result<(), AnyError> {
+  let permissions = state.borrow_mut::<PermissionsContainer>();
+  if !permissions.query_run_all(api_name) {
+    // error the same on all platforms
+    let env_var_names = get_requires_allow_all_env_vars(run_env);
+    if !env_var_names.is_empty() {
+      // we don't allow users to launch subprocesses with any LD_ or DYLD_*
+      // env vars set because this allows executing code (ex. LD_PRELOAD)
+      return Err(deno_core::error::custom_error(
+        "PermissionDenied",
+        format!(
+          "Requires --allow-all permissions to spawn subprocess with {} environment variable{}.",
+          env_var_names.join(", "),
+          if env_var_names.len() != 1 { "s" } else { "" }
+        )
+      ));
+    }
+    permissions.check_run(cmd, api_name)?;
+  }
+  Ok(())
+}
+
+fn get_requires_allow_all_env_vars(env: &RunEnv) -> Vec<&str> {
+  fn requires_allow_all(key: &str) -> bool {
+    let key = key.trim();
+    // we could be more targted here, but there are quite a lot of
+    // LD_* and DYLD_* env variables
+    key.starts_with("LD_") || key.starts_with("DYLD_")
+  }
+
+  let mut found_envs = env
+    .envs
+    .iter()
+    .filter(|(k, v)| requires_allow_all(k) && !v.trim().is_empty())
+    .map(|(k, _)| k.as_str())
+    .collect::<Vec<_>>();
+  found_envs.sort();
+  found_envs
+}
+
 #[op2]
 #[serde]
 fn op_spawn_child(
@@ -583,6 +711,8 @@ fn op_spawn_kill(
 }
 
 mod deprecated {
+  use deno_core::anyhow;
+
   use super::*;
 
   #[derive(Deserialize)]
@@ -590,12 +720,7 @@ mod deprecated {
   pub struct RunArgs {
     cmd: Vec<String>,
     cwd: Option<String>,
-    clear_env: bool,
     env: Vec<(String, String)>,
-    #[cfg(unix)]
-    gid: Option<u32>,
-    #[cfg(unix)]
-    uid: Option<u32>,
     stdin: StdioOrRid,
     stdout: StdioOrRid,
     stderr: StdioOrRid,
@@ -635,37 +760,27 @@ mod deprecated {
     #[serde] run_args: RunArgs,
   ) -> Result<RunInfo, AnyError> {
     let args = run_args.cmd;
-    state
-      .borrow_mut::<PermissionsContainer>()
-      .check_run(&args[0], "Deno.run()")?;
-    let env = run_args.env;
-    let cwd = run_args.cwd;
+    let cmd = args.first().ok_or_else(|| anyhow::anyhow!("Missing cmd"))?;
+    let (cmd, run_env) = compute_run_cmd_and_check_permissions(
+      cmd,
+      run_args.cwd.as_deref(),
+      &run_args.env,
+      /* clear env */ false,
+      state,
+      "Deno.run()",
+    )?;
 
-    let mut c = Command::new(args.first().unwrap());
-    (1..args.len()).for_each(|i| {
-      let arg = args.get(i).unwrap();
+    let mut c = Command::new(cmd);
+    for arg in args.iter().skip(1) {
       c.arg(arg);
-    });
-    cwd.map(|d| c.current_dir(d));
-
-    if run_args.clear_env {
-      super::check_unstable(state, UNSTABLE_FEATURE_NAME, "Deno.run.clearEnv");
-      c.env_clear();
     }
-    for (key, value) in &env {
+    c.current_dir(run_env.cwd);
+
+    c.env_clear();
+    for (key, value) in run_env.envs {
       c.env(key, value);
     }
 
-    #[cfg(unix)]
-    if let Some(gid) = run_args.gid {
-      super::check_unstable(state, UNSTABLE_FEATURE_NAME, "Deno.run.gid");
-      c.gid(gid);
-    }
-    #[cfg(unix)]
-    if let Some(uid) = run_args.uid {
-      super::check_unstable(state, UNSTABLE_FEATURE_NAME, "Deno.run.uid");
-      c.uid(uid);
-    }
     #[cfg(unix)]
     // TODO(bartlomieju):
     #[allow(clippy::undocumented_unsafe_blocks)]

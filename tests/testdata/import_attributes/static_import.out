@@ -1,8 +1,2 @@
-⚠️  Import assertions are deprecated. Use `with` keyword, instead of 'assert' keyword.
-
-import data2 from "./data.json" assert { type: "json" };
-
-  at file:///[WILDLINE]
-
 { a: "b", c: { d: 10 } }
 { a: "b", c: { d: 10 } }

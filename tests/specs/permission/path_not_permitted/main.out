@@ -1,0 +1,11 @@
+Running...
+PermissionDenied: Requires run access to "[WILDLINE]deno[WILDLINE]", run again with the --allow-run flag
+    [WILDCARD]
+    at file:///[WILDLINE]/sub.ts:15:5 {
+  name: "PermissionDenied"
+}
+PermissionDenied: Requires run access to "[WILDLINE]deno[WILDLINE]", run again with the --allow-run flag
+    [WILDCARD]
+    at file:///[WILDLINE]/sub.ts:23:22 {
+  name: "PermissionDenied"
+}

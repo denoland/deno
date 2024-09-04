@@ -112,28 +112,26 @@ impl Emitter {
         let parsed_source_cache = self.parsed_source_cache.clone();
         let transpile_and_emit_options =
           self.transpile_and_emit_options.clone();
-        let (should_cache, transpile_result) =
-          deno_core::unsync::spawn_blocking({
-            let specifier = specifier.clone();
-            let source = source.clone();
-            move || -> Result<_, AnyError> {
-              EmitParsedSourceHelper::transpile(
-                &parsed_source_cache,
-                &specifier,
-                source.clone(),
-                media_type,
-                &transpile_and_emit_options.0,
-                &transpile_and_emit_options.1,
-              )
-            }
-          })
-          .await
-          .unwrap()?;
+        let transpile_result = deno_core::unsync::spawn_blocking({
+          let specifier = specifier.clone();
+          let source = source.clone();
+          move || -> Result<_, AnyError> {
+            EmitParsedSourceHelper::transpile(
+              &parsed_source_cache,
+              &specifier,
+              source.clone(),
+              media_type,
+              &transpile_and_emit_options.0,
+              &transpile_and_emit_options.1,
+            )
+          }
+        })
+        .await
+        .unwrap()?;
         Ok(helper.post_emit_parsed_source(
           specifier,
           transpile_result,
           source_hash,
-          should_cache,
         ))
       }
     }
@@ -150,20 +148,18 @@ impl Emitter {
     match helper.pre_emit_parsed_source(specifier, source) {
       PreEmitResult::Cached(emitted_text) => Ok(emitted_text),
       PreEmitResult::NotCached { source_hash } => {
-        let (should_cache, transpile_result) =
-          EmitParsedSourceHelper::transpile(
-            &self.parsed_source_cache,
-            specifier,
-            source.clone(),
-            media_type,
-            &self.transpile_and_emit_options.0,
-            &self.transpile_and_emit_options.1,
-          )?;
+        let transpile_result = EmitParsedSourceHelper::transpile(
+          &self.parsed_source_cache,
+          specifier,
+          source.clone(),
+          media_type,
+          &self.transpile_and_emit_options.0,
+          &self.transpile_and_emit_options.1,
+        )?;
         Ok(helper.post_emit_parsed_source(
           specifier,
           transpile_result,
           source_hash,
-          should_cache,
         ))
       }
     }
@@ -261,16 +257,13 @@ impl<'a> EmitParsedSourceHelper<'a> {
     media_type: MediaType,
     transpile_options: &deno_ast::TranspileOptions,
     emit_options: &deno_ast::EmitOptions,
-  ) -> Result<(bool, TranspileResult), AnyError> {
+  ) -> Result<TranspileResult, AnyError> {
     // nothing else needs the parsed source at this point, so remove from
     // the cache in order to not transpile owned
     let parsed_source = parsed_source_cache
       .remove_or_parse_module(specifier, source, media_type)?;
-    let should_cache = !has_import_assertion(&parsed_source);
-    Ok((
-      should_cache,
-      parsed_source.transpile(transpile_options, emit_options)?,
-    ))
+    ensure_no_import_assertion(&parsed_source)?;
+    Ok(parsed_source.transpile(transpile_options, emit_options)?)
   }
 
   pub fn post_emit_parsed_source(
@@ -278,8 +271,6 @@ impl<'a> EmitParsedSourceHelper<'a> {
     specifier: &ModuleSpecifier,
     transpile_result: TranspileResult,
     source_hash: u64,
-    // todo(dsherret): remove after Deno 2.0
-    should_cache: bool,
   ) -> ModuleCodeBytes {
     let transpiled_source = match transpile_result {
       TranspileResult::Owned(source) => source,
@@ -289,44 +280,47 @@ impl<'a> EmitParsedSourceHelper<'a> {
       }
     };
     debug_assert!(transpiled_source.source_map.is_none());
-    if should_cache {
-      self.0.emit_cache.set_emit_code(
-        specifier,
-        source_hash,
-        &transpiled_source.source,
-      );
-    }
+    self.0.emit_cache.set_emit_code(
+      specifier,
+      source_hash,
+      &transpiled_source.source,
+    );
     transpiled_source.source.into_boxed_slice().into()
   }
 }
 
-fn has_import_assertion(parsed_source: &deno_ast::ParsedSource) -> bool {
+// todo(dsherret): this is a temporary measure until we have swc erroring for this
+fn ensure_no_import_assertion(
+  parsed_source: &deno_ast::ParsedSource,
+) -> Result<(), AnyError> {
   fn has_import_assertion(text: &str) -> bool {
     // good enough
     text.contains(" assert ") && !text.contains(" with ")
   }
 
-  fn warn_import_attribute(
+  fn create_err(
     parsed_source: &deno_ast::ParsedSource,
     range: SourceRange,
-  ) {
+  ) -> AnyError {
     let text_info = parsed_source.text_info_lazy();
     let loc = text_info.line_and_column_display(range.start);
-    deno_runtime::import_assertion_callback(
-      deno_core::ImportAssertionsSupportCustomCallbackArgs {
-        maybe_specifier: Some(parsed_source.specifier().to_string()),
-        maybe_line_number: Some(loc.line_number),
-        column_number: loc.column_number,
-        maybe_source_line: Some(range.text_fast(text_info).to_string()),
-      },
-    )
+    let mut msg = "Import assertions are deprecated. Use `with` keyword, instead of 'assert' keyword.".to_string();
+    msg.push_str("\n\n");
+    msg.push_str(range.text_fast(text_info));
+    msg.push_str("\n\n");
+    msg.push_str(&format!(
+      "  at {}:{}:{}\n",
+      parsed_source.specifier(),
+      loc.line_number,
+      loc.column_number,
+    ));
+    deno_core::anyhow::anyhow!("{}", msg)
   }
 
   let Some(module) = parsed_source.program_ref().as_module() else {
-    return false;
+    return Ok(());
   };
 
-  let mut had_import_assertion = false;
   for item in &module.body {
     match item {
       deno_ast::swc::ast::ModuleItem::ModuleDecl(decl) => match decl {
@@ -334,24 +328,21 @@ fn has_import_assertion(parsed_source: &deno_ast::ParsedSource) -> bool {
           if n.with.is_some()
             && has_import_assertion(n.text_fast(parsed_source.text_info_lazy()))
           {
-            had_import_assertion = true;
-            warn_import_attribute(parsed_source, n.range());
+            return Err(create_err(parsed_source, n.range()));
           }
         }
         deno_ast::swc::ast::ModuleDecl::ExportAll(n) => {
           if n.with.is_some()
             && has_import_assertion(n.text_fast(parsed_source.text_info_lazy()))
           {
-            had_import_assertion = true;
-            warn_import_attribute(parsed_source, n.range());
+            return Err(create_err(parsed_source, n.range()));
           }
         }
         deno_ast::swc::ast::ModuleDecl::ExportNamed(n) => {
           if n.with.is_some()
             && has_import_assertion(n.text_fast(parsed_source.text_info_lazy()))
           {
-            had_import_assertion = true;
-            warn_import_attribute(parsed_source, n.range());
+            return Err(create_err(parsed_source, n.range()));
           }
         }
         deno_ast::swc::ast::ModuleDecl::ExportDecl(_)
@@ -364,5 +355,6 @@ fn has_import_assertion(parsed_source: &deno_ast::ParsedSource) -> bool {
       deno_ast::swc::ast::ModuleItem::Stmt(_) => {}
     }
   }
-  had_import_assertion
+
+  Ok(())
 }
