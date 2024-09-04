@@ -14797,7 +14797,7 @@ fn lsp_byonm() {
         "severity": 1,
         "code": "resolver-error",
         "source": "deno",
-        "message": "Could not find a matching package for 'npm:chalk' in a package.json file. You must specify this as a package.json dependency when the node_modules folder is not managed by Deno.",
+        "message": "Could not find a matching package for 'npm:chalk' in the node_modules directory. Ensure you have all your JSR and npm dependencies listed in your deno.json or package.json, then run `deno install`. Alternatively, turn on auto-install by specifying `\"nodeModulesDir\": \"auto\"` in your deno.json file.",
       },
       {
         "range": {
@@ -14842,7 +14842,7 @@ fn lsp_byonm() {
         "severity": 1,
         "code": "resolver-error",
         "source": "deno",
-        "message": "Could not find a matching package for 'npm:chalk' in a package.json file. You must specify this as a package.json dependency when the node_modules folder is not managed by Deno.",
+        "message": "Could not find a matching package for 'npm:chalk' in the node_modules directory. Ensure you have all your JSR and npm dependencies listed in your deno.json or package.json, then run `deno install`. Alternatively, turn on auto-install by specifying `\"nodeModulesDir\": \"auto\"` in your deno.json file.",
       },
     ])
   );
