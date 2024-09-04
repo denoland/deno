@@ -1,4 +1,8 @@
-error: Uncaught (in promise) PermissionDenied: Requires --allow-all permissions to spawn subprocess with LD_PRELOAD environment variable.
-const output = new Deno.Command("echo").spawn();
-                                        ^
-    at [WILDCARD]
+PermissionDenied: Requires --allow-all permissions to spawn subprocess with LD_PRELOAD environment variable.
+  [WILDCARD]
+  name: "PermissionDenied"
+}
+PermissionDenied: Requires --allow-all permissions to spawn subprocess with DYLD_FALLBACK_LIBRARY_PATH, LD_PRELOAD environment variables.
+  [WILDCARD]
+  name: "PermissionDenied"
+}
