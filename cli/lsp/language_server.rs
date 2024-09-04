@@ -105,6 +105,7 @@ use crate::lsp::config::ConfigWatchedFileType;
 use crate::lsp::logging::init_log_file;
 use crate::lsp::tsc::file_text_changes_to_workspace_edit;
 use crate::lsp::urls::LspUrlKind;
+use crate::lsp::urls::NotebookCellInfo;
 use crate::tools::fmt::format_file;
 use crate::tools::fmt::format_parsed_source;
 use crate::tools::upgrade::check_for_upgrades_for_lsp;
@@ -726,7 +727,8 @@ impl Inner {
             (
               self
                 .url_map
-                .uri_to_specifier(&folder.uri, LspUrlKind::Folder),
+                .uri_to_specifier2(&folder.uri, LspUrlKind::Folder)
+                .into_specifier(),
               folder,
             )
           })
@@ -737,8 +739,10 @@ impl Inner {
       #[allow(deprecated)]
       if let Some(root_uri) = params.root_uri {
         if !workspace_folders.iter().any(|(_, f)| f.uri == root_uri) {
-          let root_url =
-            self.url_map.uri_to_specifier(&root_uri, LspUrlKind::Folder);
+          let root_url = self
+            .url_map
+            .uri_to_specifier2(&root_uri, LspUrlKind::Folder)
+            .into_specifier();
           let name = root_url.path_segments().and_then(|s| s.last());
           let name = name.unwrap_or_default().to_string();
           workspace_folders.insert(
@@ -1046,7 +1050,8 @@ impl Inner {
       .filter(|s| self.documents.is_valid_file_referrer(s));
     let specifier = self
       .url_map
-      .uri_to_specifier(&params.text_document.uri, LspUrlKind::File);
+      .uri_to_specifier2(&params.text_document.uri, LspUrlKind::File)
+      .into_specifier();
     let document = self.documents.open(
       specifier.clone(),
       params.text_document.version,
@@ -1068,7 +1073,8 @@ impl Inner {
     let mark = self.performance.mark_with_args("lsp.did_change", &params);
     let specifier = self
       .url_map
-      .uri_to_specifier(&params.text_document.uri, LspUrlKind::File);
+      .uri_to_specifier2(&params.text_document.uri, LspUrlKind::File)
+      .into_specifier();
     match self.documents.change(
       &specifier,
       params.text_document.version,
@@ -1105,7 +1111,8 @@ impl Inner {
     let _mark = self.performance.measure_scope("lsp.did_save");
     let specifier = self
       .url_map
-      .uri_to_specifier(&params.text_document.uri, LspUrlKind::File);
+      .uri_to_specifier2(&params.text_document.uri, LspUrlKind::File)
+      .into_specifier();
     self.documents.save(&specifier);
     if !self
       .config
@@ -1151,7 +1158,8 @@ impl Inner {
     }
     let specifier = self
       .url_map
-      .uri_to_specifier(&params.text_document.uri, LspUrlKind::File);
+      .uri_to_specifier2(&params.text_document.uri, LspUrlKind::File)
+      .into_specifier();
     self.diagnostics_state.clear(&specifier);
     if self.is_diagnosable(&specifier) {
       self.refresh_npm_specifiers().await;
@@ -1162,6 +1170,122 @@ impl Inner {
     self.documents.close(&specifier);
     self.project_changed([(&specifier, ChangeKind::Closed)], false);
     self.performance.measure(mark);
+  }
+
+  async fn notebook_did_open(&mut self, params: DidOpenNotebookDocumentParams) {
+    dbg!(
+      "notebook_did_open",
+      params.notebook_document.uri.to_string()
+    );
+    let _mark = self.performance.measure_scope("lsp.notebook_did_open");
+    let params = lsp_types::DidOpenTextDocumentParams {
+      text_document: self.url_map.notebook_did_open(params),
+    };
+    self.did_open(params).await;
+  }
+
+  async fn notebook_did_change(
+    &mut self,
+    params: DidChangeNotebookDocumentParams,
+  ) {
+    dbg!(
+      "notebook_did_change",
+      params.notebook_document.uri.to_string()
+    );
+    let _mark = self.performance.measure_scope("lsp.notebook_did_change");
+    let item = match self.url_map.notebook_did_change(params) {
+      Ok(item) => item,
+      Err(err) => {
+        lsp_warn!("{:#}", err);
+        return;
+      }
+    };
+    let language_id = item.language_id.parse().unwrap_or_else(|err| {
+      error!("{:#}", err);
+      LanguageId::Unknown
+    });
+    if language_id == LanguageId::Unknown {
+      lsp_warn!(
+        "Unsupported language id \"{}\" received for document \"{}\".",
+        item.language_id,
+        item.uri.as_str()
+      );
+    }
+    let specifier = self
+      .url_map
+      .uri_to_specifier2(&item.uri, LspUrlKind::File)
+      .into_specifier();
+    let mut language_id_changed = false;
+    if let Some(old_document) = self.documents.close(&specifier) {
+      if let Some(old_language_id) = old_document.maybe_language_id() {
+        if language_id != old_language_id {
+          self.project_changed(
+            [(old_document.specifier(), ChangeKind::Closed)],
+            false,
+          );
+          language_id_changed = true;
+        }
+      }
+    }
+    let file_referrer = Some(uri_to_url(&item.uri))
+      .filter(|s| self.documents.is_valid_file_referrer(s));
+    let specifier = self
+      .url_map
+      .uri_to_specifier2(&item.uri, LspUrlKind::File)
+      .into_specifier();
+    self.documents.close(&specifier);
+    let document = self.documents.open(
+      specifier.clone(),
+      item.version,
+      language_id,
+      item.text.into(),
+      file_referrer,
+    );
+    if document.is_diagnosable() {
+      if language_id_changed {
+        self
+          .project_changed([(document.specifier(), ChangeKind::Opened)], false);
+      } else {
+        self.project_changed(
+          [(document.specifier(), ChangeKind::Modified)],
+          false,
+        );
+      }
+      self.refresh_npm_specifiers().await;
+      self.diagnostics_server.invalidate(&[specifier]);
+      self.send_diagnostics_update();
+      self.send_testing_update();
+    }
+  }
+
+  fn notebook_did_save(&mut self, params: DidSaveNotebookDocumentParams) {
+    dbg!(
+      "notebook_did_save",
+      params.notebook_document.uri.to_string()
+    );
+    let _mark = self.performance.measure_scope("lsp.notebook_did_save");
+    let params = DidSaveTextDocumentParams {
+      text_document: TextDocumentIdentifier {
+        uri: params.notebook_document.uri,
+      },
+      text: None,
+    };
+    self.did_save(params);
+  }
+
+  async fn notebook_did_close(
+    &mut self,
+    params: DidCloseNotebookDocumentParams,
+  ) {
+    dbg!(
+      "notebook_did_close",
+      params.notebook_document.uri.to_string()
+    );
+    let _mark = self.performance.measure_scope("lsp.notebook_did_close");
+    let params = DidCloseTextDocumentParams {
+      text_document: self.url_map.notebook_did_close(params),
+    };
+    self.did_close(params).await;
   }
 
   async fn did_change_configuration(
@@ -1205,7 +1329,15 @@ impl Inner {
     let changes = params
       .changes
       .into_iter()
-      .map(|e| (self.url_map.uri_to_specifier(&e.uri, LspUrlKind::File), e))
+      .map(|e| {
+        (
+          self
+            .url_map
+            .uri_to_specifier2(&e.uri, LspUrlKind::File)
+            .into_specifier(),
+          e,
+        )
+      })
       .collect::<Vec<_>>();
     if changes
       .iter()
@@ -1283,11 +1415,12 @@ impl Inner {
     &self,
     params: DocumentSymbolParams,
   ) -> LspResult<Option<DocumentSymbolResponse>> {
-    let specifier = self
+    let mapped_specifier = self
       .url_map
-      .uri_to_specifier(&params.text_document.uri, LspUrlKind::File);
-    if !self.is_diagnosable(&specifier)
-      || !self.config.specifier_enabled(&specifier)
+      .uri_to_specifier2(&params.text_document.uri, LspUrlKind::File);
+    let specifier = mapped_specifier.specifier();
+    if !self.is_diagnosable(specifier)
+      || !self.config.specifier_enabled(specifier)
     {
       return Ok(None);
     }
@@ -1295,11 +1428,11 @@ impl Inner {
     let mark = self
       .performance
       .mark_with_args("lsp.document_symbol", &params);
-    let asset_or_document = self.get_asset_or_document(&specifier)?;
+    let asset_or_document = self.get_asset_or_document(specifier)?;
     let line_index = asset_or_document.line_index();
 
     let navigation_tree =
-      self.get_navigation_tree(&specifier).await.map_err(|err| {
+      self.get_navigation_tree(specifier).await.map_err(|err| {
         error!(
           "Error getting document symbols for \"{}\": {:#}",
           specifier, err
@@ -1312,6 +1445,28 @@ impl Inner {
       for item in child_items {
         item
           .collect_document_symbols(line_index.clone(), &mut document_symbols);
+      }
+      if let Some(notebook_cell_info) = mapped_specifier.notebook_cell_info() {
+        fn map_to_cell_ranges(
+          mut symbol: DocumentSymbol,
+          notebook_cell_info: &NotebookCellInfo,
+        ) -> Option<DocumentSymbol> {
+          symbol.range =
+            notebook_cell_info.range_server_to_client(symbol.range)?;
+          symbol.selection_range = notebook_cell_info
+            .range_server_to_client(symbol.selection_range)?;
+          symbol.children = symbol.children.map(|children| {
+            children
+              .into_iter()
+              .filter_map(|s| map_to_cell_ranges(s, notebook_cell_info))
+              .collect()
+          });
+          Some(symbol)
+        }
+        document_symbols = document_symbols
+          .into_iter()
+          .filter_map(|s| map_to_cell_ranges(s, notebook_cell_info))
+          .collect();
       }
       Some(DocumentSymbolResponse::Nested(document_symbols))
     } else {
@@ -3123,6 +3278,34 @@ impl tower_lsp::LanguageServer for LanguageServer {
       self.init_flag.wait_raised().await;
     }
     self.inner.write().await.did_close(params).await
+  }
+
+  async fn notebook_did_open(&self, params: DidOpenNotebookDocumentParams) {
+    if !self.init_flag.is_raised() {
+      self.init_flag.wait_raised().await;
+    }
+    self.inner.write().await.notebook_did_open(params).await
+  }
+
+  async fn notebook_did_change(&self, params: DidChangeNotebookDocumentParams) {
+    if !self.init_flag.is_raised() {
+      self.init_flag.wait_raised().await;
+    }
+    self.inner.write().await.notebook_did_change(params).await
+  }
+
+  async fn notebook_did_save(&self, params: DidSaveNotebookDocumentParams) {
+    if !self.init_flag.is_raised() {
+      self.init_flag.wait_raised().await;
+    }
+    self.inner.write().await.notebook_did_save(params)
+  }
+
+  async fn notebook_did_close(&self, params: DidCloseNotebookDocumentParams) {
+    if !self.init_flag.is_raised() {
+      self.init_flag.wait_raised().await;
+    }
+    self.inner.write().await.notebook_did_close(params).await
   }
 
   async fn did_change_configuration(

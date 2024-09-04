@@ -1,19 +1,25 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
 use deno_ast::MediaType;
+use deno_core::error::custom_error;
 use deno_core::error::AnyError;
 use deno_core::parking_lot::Mutex;
 use deno_core::url::Position;
 use deno_core::url::Url;
 use deno_core::ModuleSpecifier;
+use indexmap::IndexMap;
 use lsp_types::Uri;
 use once_cell::sync::Lazy;
 use std::collections::HashMap;
+use std::ops::Range;
 use std::str::FromStr;
 use std::sync::Arc;
 
+use crate::lsp::text::IndexValid;
+
 use super::cache::LspCache;
 use super::logging::lsp_warn;
+use super::text::LineIndex;
 
 /// Used in situations where a default URL needs to be used where otherwise a
 /// panic is undesired.
@@ -101,10 +107,141 @@ fn from_deno_url(url: &Url) -> Option<Url> {
   Url::parse(&string).ok()
 }
 
+#[derive(Debug)]
+struct NotebookCell {
+  item: lsp_types::TextDocumentItem,
+}
+
+#[derive(Debug)]
+struct Notebook {
+  uri: Uri,
+  cells: IndexMap<Uri, lsp_types::TextDocumentItem>,
+  version: i32,
+  script_language_id: Option<String>,
+  script_cells: IndexMap<Uri, NotebookScriptCellInfo>,
+}
+
+impl Notebook {
+  fn new(
+    uri: Uri,
+    cells: IndexMap<Uri, lsp_types::TextDocumentItem>,
+    version: i32,
+  ) -> Self {
+    static SCRIPT_LANGUAGE_IDS: &[&str] = &[
+      "javascript",
+      "javascriptreact",
+      "jsx",
+      "typescript",
+      "typescriptreact",
+      "tsx",
+    ];
+    let script_language_id = cells.values().find_map(|i| {
+      SCRIPT_LANGUAGE_IDS
+        .contains(&i.language_id.as_str())
+        .then(|| i.language_id.clone())
+    });
+    let mut script_cells = IndexMap::new();
+    let mut script_line_offset = 0;
+    if let Some(language_id) = &script_language_id {
+      for item in cells.values() {
+        if &item.language_id != language_id {
+          continue;
+        }
+        let line_count =
+          item.text.chars().filter(|c| *c == '\n').count() as u32;
+        let cell_info = NotebookScriptCellInfo {
+          line_offset: script_line_offset,
+          line_count,
+        };
+        script_line_offset += line_count;
+        script_cells.insert(item.uri.clone(), cell_info);
+      }
+    }
+    Self {
+      uri,
+      cells,
+      version,
+      script_language_id,
+      script_cells,
+    }
+  }
+
+  fn with_change(
+    self,
+    params: lsp_types::DidChangeNotebookDocumentParams,
+  ) -> Self {
+    let mut cells = self.cells;
+    if let Some(cell_change) = params.change.cells {
+      if let Some(structure) = cell_change.structure {
+        if let Some(did_close) = structure.did_close {
+          let closed_cells =
+            did_close.into_iter().map(|i| i.uri).collect::<Vec<_>>();
+          cells.retain(|i, _| !closed_cells.contains(i));
+        }
+        if let Some(did_open) = structure.did_open {
+          cells.extend(did_open.into_iter().map(|i| (i.uri.clone(), i)));
+        }
+      }
+      if let Some(changes) = cell_change.text_content {
+        for change in changes {
+          let Some(item) =
+            cells.values_mut().find(|i| &i.uri == &change.document.uri)
+          else {
+            continue;
+          };
+          item.version = change.document.version;
+          let mut content = item.text.clone();
+          let mut line_index = LineIndex::new(&item.text);
+          let mut index_valid = IndexValid::All;
+          for change in change.changes {
+            if let Some(range) = change.range {
+              if !index_valid.covers(range.start.line) {
+                line_index = LineIndex::new(&content);
+              }
+              index_valid = IndexValid::UpTo(range.start.line);
+              let Ok(range) = line_index.get_text_range(range) else {
+                continue;
+              };
+              content.replace_range(Range::<usize>::from(range), &change.text);
+            } else {
+              content = change.text;
+              index_valid = IndexValid::UpTo(0);
+            }
+          }
+          item.text = content;
+        }
+      }
+    }
+    Self::new(self.uri, cells, params.notebook_document.version)
+  }
+
+  fn script_text_document(&self) -> lsp_types::TextDocumentItem {
+    let text = self
+      .script_cells
+      .iter()
+      .map(|(u, _)| [self.cells.get(u).unwrap().text.as_str(), "\n"])
+      .flatten()
+      .collect::<Vec<_>>()
+      .join("");
+    dbg!(self.uri.as_str(), &text);
+    lsp_types::TextDocumentItem {
+      uri: self.uri.clone(),
+      language_id: self
+        .script_language_id
+        .clone()
+        .unwrap_or_else(|| "markdown".to_string()),
+      version: self.version,
+      text,
+    }
+  }
+}
+
 #[derive(Debug, Default)]
 struct LspUrlMapInner {
   specifier_to_uri: HashMap<ModuleSpecifier, Uri>,
   uri_to_specifier: HashMap<Uri, ModuleSpecifier>,
+  notebooks: HashMap<Uri, Notebook>,
+  script_cell_to_notebook_uri: HashMap<Uri, Uri>,
 }
 
 impl LspUrlMapInner {
@@ -130,6 +267,53 @@ pub fn url_to_uri(url: &Url) -> Result<Uri, AnyError> {
 
 pub fn uri_to_url(uri: &Uri) -> Url {
   Url::parse(uri.as_str()).unwrap()
+}
+
+#[derive(Debug, Copy)]
+pub struct NotebookScriptCellInfo {
+  pub line_offset: u32,
+  pub line_count: u32,
+}
+
+impl NotebookScriptCellInfo {
+  pub fn range_server_to_client(
+    &self,
+    mut range: lsp_types::Range,
+  ) -> Option<lsp_types::Range> {
+    range.start.line = range.start.line.checked_sub(self.line_offset)?;
+    range.end.line = range.end.line.checked_sub(self.line_offset)?;
+    if range.end.line > self.line_count {
+      return None;
+    }
+    Some(range)
+  }
+}
+
+#[derive(Debug, Clone)]
+pub enum MappedSpecifier {
+  Module(ModuleSpecifier),
+  NotebookScript(ModuleSpecifier, NotebookScriptCellInfo),
+}
+
+impl MappedSpecifier {
+  pub fn specifier(&self) -> &ModuleSpecifier {
+    match self {
+      Self::Module(s) | Self::NotebookScript(s, _) => s,
+    }
+  }
+
+  pub fn into_specifier(self) -> ModuleSpecifier {
+    match self {
+      Self::Module(s) | Self::NotebookScript(s, _) => s,
+    }
+  }
+
+  pub fn notebook_cell_info(&self) -> Option<&NotebookScriptCellInfo> {
+    match self {
+      Self::NotebookScript(_, i) => Some(i),
+      _ => None,
+    }
+  }
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -234,6 +418,113 @@ impl LspUrlMap {
     let specifier = specifier.unwrap_or_else(|| url.clone());
     inner.put(specifier.clone(), uri.clone());
     specifier
+  }
+
+  pub fn uri_to_specifier2(
+    &self,
+    uri: &Uri,
+    kind: LspUrlKind,
+  ) -> MappedSpecifier {
+    let notebook_script = (|| {
+      let mut inner = self.inner.lock();
+      let notebook_uri = inner.script_cell_to_notebook_uri.get(uri)?;
+      let notebook = inner.notebooks.get(notebook_uri)?;
+      let cell_info = *notebook.script_cells.get(uri)?;
+      Some((notebook_uri.clone(), cell_info))
+    })();
+    if let Some((notebook_uri, cell_info)) = notebook_script {
+      let specifier = self.uri_to_specifier(&notebook_uri, kind);
+      return MappedSpecifier::NotebookScript(specifier, cell_info);
+    }
+    MappedSpecifier::Module(self.uri_to_specifier(uri, kind))
+  }
+
+  pub fn specifier_to_uri2(
+    &self,
+    specifier: &ModuleSpecifier,
+    _line: Option<u32>,
+    file_referrer: Option<&ModuleSpecifier>,
+  ) -> Result<(Uri, Option<NotebookScriptCellInfo>), AnyError> {
+    // TODO(nayeemrmn): Implement!
+    self
+      .specifier_to_uri(specifier, file_referrer)
+      .map(|s| (s, None))
+  }
+
+  pub fn notebook_did_open(
+    &self,
+    params: lsp_types::DidOpenNotebookDocumentParams,
+  ) -> lsp_types::TextDocumentItem {
+    let mut inner = self.inner.lock();
+    let notebook = Notebook::new(
+      params.notebook_document.uri,
+      params
+        .cell_text_documents
+        .into_iter()
+        .map(|i| (i.uri.clone(), i))
+        .collect(),
+      params.notebook_document.version,
+    );
+    for script_cell_uri in notebook.script_cells.keys() {
+      inner
+        .script_cell_to_notebook_uri
+        .insert(script_cell_uri.clone(), notebook.uri.clone());
+    }
+    let item = notebook.script_text_document();
+    inner.notebooks.insert(notebook.uri.clone(), notebook);
+    item
+  }
+
+  pub fn notebook_did_change(
+    &self,
+    params: lsp_types::DidChangeNotebookDocumentParams,
+  ) -> Result<lsp_types::TextDocumentItem, AnyError> {
+    let mut inner = self.inner.lock();
+    let Some(notebook) = inner.notebooks.remove(&params.notebook_document.uri)
+    else {
+      return Err(custom_error(
+        "NotFound",
+        format!(
+          "The notebook \"{}\" was not found.",
+          params.notebook_document.uri.as_str()
+        ),
+      ));
+    };
+    let structure_changed =
+      params.change.cells.is_some_and(|c| c.structure.is_some());
+    if structure_changed {
+      for script_cell_uri in notebook.script_cells.keys() {
+        inner.script_cell_to_notebook_uri.remove(&script_cell_uri);
+      }
+    }
+    let notebook = notebook.with_change(params);
+    if structure_changed {
+      for script_cell_uri in notebook.script_cells.keys() {
+        inner
+          .script_cell_to_notebook_uri
+          .insert(script_cell_uri.clone(), notebook.uri.clone());
+      }
+    }
+    let item = notebook.script_text_document();
+    inner.notebooks.insert(notebook.uri.clone(), notebook);
+    Ok(item)
+  }
+
+  pub fn notebook_did_close(
+    &self,
+    params: lsp_types::DidCloseNotebookDocumentParams,
+  ) -> lsp_types::TextDocumentIdentifier {
+    let mut inner = self.inner.lock();
+    if let Some(notebook) =
+      inner.notebooks.remove(&params.notebook_document.uri)
+    {
+      for script_cell_uri in notebook.script_cells.keys() {
+        inner.script_cell_to_notebook_uri.remove(&script_cell_uri);
+      }
+    }
+    lsp_types::TextDocumentIdentifier {
+      uri: params.notebook_document.uri.clone(),
+    }
   }
 }
 
