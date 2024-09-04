@@ -327,7 +327,9 @@ impl NpmModuleLoader {
     specifier: &ModuleSpecifier,
     maybe_referrer: Option<&ModuleSpecifier>,
   ) -> Option<Result<ModuleCodeStringSource, AnyError>> {
-    if self.node_resolver.in_npm_package(specifier) {
+    if self.node_resolver.in_npm_package(specifier)
+      || specifier.path().ends_with(".cjs")
+    {
       Some(self.load(specifier, maybe_referrer).await)
     } else {
       None
@@ -376,7 +378,9 @@ impl NpmModuleLoader {
         }
       })?;
 
-    let code = if self.cjs_resolutions.contains(specifier) {
+    let code = if self.cjs_resolutions.contains(specifier)
+      || specifier.path().ends_with(".cjs")
+    {
       // translate cjs to esm if it's cjs and inject node globals
       let code = match String::from_utf8_lossy(&code) {
         Cow::Owned(code) => code,
