@@ -97,9 +97,9 @@ impl NpmInstallDepsProvider {
           let Ok(dep) = dep else {
             continue;
           };
-          // aliases in deno.json take precedence over package.json, so since this can't
-          // be resolved don't bother installing it
           if deno_json_aliases.contains(&alias.to_lowercase()) {
+            // aliases in deno.json take precedence over package.json, so
+            // since this can't be resolved don't bother installing it
             continue;
           }
           match dep {
