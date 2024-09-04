@@ -10,8 +10,6 @@ Deno.funlock is undefined
 Deno.funlockSync is undefined
 Deno.readAll is undefined
 Deno.readAllSync is undefined
-Deno.read is undefined
-Deno.readSync is undefined
 Deno.seek is undefined
 Deno.seekSync is undefined
 Deno.writeAll is undefined

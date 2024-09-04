@@ -13,8 +13,6 @@ console.log("Deno.funlock is", Deno.funlock);
 console.log("Deno.funlockSync is", Deno.funlockSync);
 console.log("Deno.readAll is", Deno.readAll);
 console.log("Deno.readAllSync is", Deno.readAllSync);
-console.log("Deno.read is", Deno.read);
-console.log("Deno.readSync is", Deno.readSync);
 console.log("Deno.seek is", Deno.seek);
 console.log("Deno.seekSync is", Deno.seekSync);
 console.log("Deno.writeAll is", Deno.writeAll);

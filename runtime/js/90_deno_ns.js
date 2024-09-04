@@ -105,22 +105,6 @@ const denoNs = {
   writeAllSync: buffer.writeAllSync,
   copy: io.copy,
   SeekMode: io.SeekMode,
-  read(rid, buffer) {
-    internals.warnOnDeprecatedApi(
-      "Deno.read()",
-      new Error().stack,
-      "Use `reader.read()` instead.",
-    );
-    return io.read(rid, buffer);
-  },
-  readSync(rid, buffer) {
-    internals.warnOnDeprecatedApi(
-      "Deno.readSync()",
-      new Error().stack,
-      "Use `reader.readSync()` instead.",
-    );
-    return io.readSync(rid, buffer);
-  },
   write(rid, data) {
     internals.warnOnDeprecatedApi(
       "Deno.write()",
