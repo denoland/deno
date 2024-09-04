@@ -383,7 +383,7 @@ impl CliNpmResolver for ByonmCliNpmResolver {
             "Could not find a matching package for 'npm:{}' in the node_modules ",
             "directory. Ensure you have all your JSR and npm dependencies listed ",
             "in your deno.json or package.json, then run `deno install`. Alternatively, ",
-            "turn on auto-install by specifying `\"nodeModulesDir\": \"auto\"` in your ",
+            r#"turn on auto-install by specifying `"nodeModulesDir": "auto"` in your "#,
             "deno.json file."
           ),
           req,
