@@ -83,7 +83,7 @@ pub static UNSTABLE_GRANULAR_FLAGS: &[UnstableGranularFlag] = &[
   UnstableGranularFlag {
     name: ops::http::UNSTABLE_FEATURE_NAME,
     help_text: "Enable unstable HTTP APIs",
-    show_in_help: false,
+    show_in_help: true,
     id: 5,
   },
   UnstableGranularFlag {
