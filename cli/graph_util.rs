@@ -732,10 +732,9 @@ pub fn enhanced_resolution_error_message(error: &ResolutionError) -> String {
     } else {
       None
     }
-  } else if let Some(specifier) = get_import_prefix_missing_error(error) {
-    Some(format!("Try running `deno add {}`", specifier))
   } else {
-    None
+    get_import_prefix_missing_error(error)
+      .map(|specifier| format!("Try running `deno add {}`", specifier))
   };
 
   if let Some(hint) = maybe_hint {
@@ -892,10 +891,10 @@ fn get_import_prefix_missing_error(error: &ResolutionError) -> Option<&str> {
         }
       }
       ResolveError::Other(other_error) => {
-        if let Some(e) = other_error.downcast_ref::<SpecifierError>() {
-          if let SpecifierError::ImportPrefixMissing { specifier, .. } = e {
-            maybe_specifier = Some(specifier);
-          }
+        if let Some(SpecifierError::ImportPrefixMissing { specifier, .. }) =
+          other_error.downcast_ref::<SpecifierError>()
+        {
+          maybe_specifier = Some(specifier);
         }
       }
     }
