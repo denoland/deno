@@ -994,7 +994,7 @@ impl SetupCache {
 
 /// Normalizes a package name for use at `node_modules/.deno/<pkg-name>@<version>[_<copy_index>]`
 pub fn normalize_pkg_name_for_node_modules_deno_folder(name: &str) -> Cow<str> {
-  let name = if name.chars().all(|c| c.is_ascii_lowercase()) {
+  let name = if name.to_lowercase() == name {
     Cow::Borrowed(name)
   } else {
     Cow::Owned(format!("_{}", mixed_case_package_name_encode(name)))
