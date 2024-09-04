@@ -1700,7 +1700,16 @@ impl ConfigTree {
     if specifier.path().ends_with("/deno.json")
       || specifier.path().ends_with("/deno.jsonc")
       || specifier.path().ends_with("/package.json")
-      || specifier.path().ends_with("/.package-lock.json")
+      || specifier
+        .path()
+        .ends_with("/node_modules/.package-lock.json")
+      || specifier
+        .path()
+        .ends_with("/node_modules/.yarn-integrity.json")
+      || specifier.path().ends_with("/node_modules/.modules.yaml")
+      || specifier
+        .path()
+        .ends_with("/node_modules/.deno/.setup-cache.bin")
     {
       return true;
     }
