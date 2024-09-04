@@ -15,10 +15,6 @@ setTimeout 2 function
 setTimeout 3 function
 setTimeout 4 function
 setTimeout 5 undefined
-process 1 false
-process 2 false
-true
-true
 window 1 false
 window 2 false
 false

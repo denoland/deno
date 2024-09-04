@@ -30,14 +30,6 @@ globals.deleteSetTimeout();
 console.log("setTimeout 4", typeof globalThis.setTimeout);
 console.log("setTimeout 5", typeof globals.getSetTimeout());
 
-// In Deno, the process global is not defined, but in Node it is.
-console.log("process 1", "process" in globalThis);
-console.log(
-  "process 2",
-  Object.getOwnPropertyDescriptor(globalThis, "process") !== undefined,
-);
-globals.checkProcessGlobal();
-
 // In Deno 2 and Node.js, the window global is not defined.
 console.log("window 1", "window" in globalThis);
 console.log(
