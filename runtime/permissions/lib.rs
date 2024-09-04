@@ -1349,7 +1349,7 @@ impl UnaryPermission<RunDescriptor> {
         RunDescriptor::flag_name(),
         api_name,
         || None,
-        /* no prompt */ false,
+        /* prompt */ false,
       );
     result.is_ok()
   }
