@@ -363,7 +363,7 @@ fn exit_for_error(error: AnyError) -> ! {
       .unwrap();
     let specifier = specifier.split_once('\"').unwrap().0;
     error_string = format!(
-      "{}\n\n  {} Add this specifier to `deno.json` or run `deno add {}`",
+      "{}\n\n  {} Try adding this specifier to `deno.json` or running `deno add {}`",
       error_string,
       colors::cyan("hint:"),
       specifier,

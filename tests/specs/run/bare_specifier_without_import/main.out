@@ -1,4 +1,4 @@
 error: Relative import path "@std/dotenv/load" not prefixed with / or ./ or ../
     at [WILDCARD]bare_specifier_without_import/main.ts:1:8
 
-  hint: Add this specifier to `deno.json` or run `deno add @std/dotenv/load`
+  hint: Try adding this specifier to `deno.json` or runnning `deno add @std/dotenv/load`
