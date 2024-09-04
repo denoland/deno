@@ -1,4 +1,5 @@
 {
+  "tempDir": true,
   "args": "run --quiet -A main.ts",
   "output": "main.out",
   "envs": {
