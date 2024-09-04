@@ -503,9 +503,9 @@ impl AddPackageReq {
 
     match prefix {
       Prefix::Jsr => {
-        let jsr_package_req =
+        let req_ref =
           JsrPackageReqReference::from_str(&format!("jsr:{}", entry_text))?;
-        let package_req = jsr_package_req.req().clone();
+        let package_req = req_ref.into_inner().req;
         Ok(AddPackageReq {
           alias: maybe_alias.unwrap_or_else(|| package_req.name.to_string()),
           value: AddPackageReqValue::Jsr(package_req),
