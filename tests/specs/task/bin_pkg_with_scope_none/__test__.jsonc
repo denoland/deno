@@ -1,0 +1,5 @@
+{
+  "tempDir": true,
+  "args": "task bin extra",
+  "output": "bin_none.out"
+}
