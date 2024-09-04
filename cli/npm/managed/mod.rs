@@ -45,6 +45,7 @@ use self::cache::NpmCache;
 use self::registry::CliNpmRegistryApi;
 use self::resolution::NpmResolution;
 use self::resolvers::create_npm_fs_resolver;
+pub use self::resolvers::normalize_pkg_name_for_node_modules_deno_folder;
 use self::resolvers::NpmPackageFsResolver;
 
 use super::CliNpmResolver;

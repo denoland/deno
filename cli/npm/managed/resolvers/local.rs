@@ -992,21 +992,31 @@ impl SetupCache {
   }
 }
 
+/// Normalizes a package name for use at `node_modules/.deno/<pkg-name>@<version>[_<copy_index>]`
+pub fn normalize_pkg_name_for_node_modules_deno_folder(name: &str) -> Cow<str> {
+  let name = if name.chars().all(|c| c.is_ascii_lowercase()) {
+    Cow::Borrowed(name)
+  } else {
+    Cow::Owned(format!("_{}", mixed_case_package_name_encode(name)))
+  };
+  if name.starts_with('@') {
+    name.replace('/', "+").into()
+  } else {
+    name
+  }
+}
+
 fn get_package_folder_id_folder_name(
   folder_id: &NpmPackageCacheFolderId,
 ) -> String {
   let copy_str = if folder_id.copy_index == 0 {
-    "".to_string()
+    Cow::Borrowed("")
   } else {
-    format!("_{}", folder_id.copy_index)
+    Cow::Owned(format!("_{}", folder_id.copy_index))
   };
   let nv = &folder_id.nv;
-  let name = if nv.name.to_lowercase() == nv.name {
-    Cow::Borrowed(&nv.name)
-  } else {
-    Cow::Owned(format!("_{}", mixed_case_package_name_encode(&nv.name)))
-  };
-  format!("{}@{}{}", name, nv.version, copy_str).replace('/', "+")
+  let name = normalize_pkg_name_for_node_modules_deno_folder(&nv.name);
+  format!("{}@{}{}", name, nv.version, copy_str)
 }
 
 fn get_package_folder_id_from_folder_name(

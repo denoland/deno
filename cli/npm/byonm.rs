@@ -30,6 +30,7 @@ use crate::args::NpmProcessStateKind;
 use crate::util::fs::canonicalize_path_maybe_not_exists_with_fs;
 use deno_runtime::fs_util::specifier_to_file_path;
 
+use super::managed::normalize_pkg_name_for_node_modules_deno_folder;
 use super::CliNpmResolver;
 use super::InnerCliNpmResolverRef;
 
@@ -165,17 +166,27 @@ impl ByonmCliNpmResolver {
     let Ok(entries) = self.fs.read_dir_sync(&node_modules_deno_dir) else {
       return None;
     };
-    let search_prefix = format!("{}@", req.name.replace("/", "+"));
+    let search_prefix = format!(
+      "{}@",
+      normalize_pkg_name_for_node_modules_deno_folder(&req.name)
+    );
     let mut best_version = None;
 
-    // example entry: @denotest+add@1.0.0
+    // example entries:
+    // - @denotest+add@1.0.0
+    // - @denotest+add@1.0.0_1
     for entry in entries {
       if !entry.is_directory {
         continue;
       }
-      let Some(version) = entry.name.strip_prefix(&search_prefix) else {
+      let Some(version_and_copy_idx) = entry.name.strip_prefix(&search_prefix)
+      else {
         continue;
       };
+      let version = version_and_copy_idx
+        .rsplit_once('_')
+        .map(|(v, _)| v)
+        .unwrap_or(version_and_copy_idx);
       let Ok(version) = Version::parse_from_npm(version) else {
         continue;
       };

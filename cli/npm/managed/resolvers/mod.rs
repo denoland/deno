@@ -15,6 +15,7 @@ use crate::args::NpmInstallDepsProvider;
 use crate::util::progress_bar::ProgressBar;
 
 pub use self::common::NpmPackageFsResolver;
+pub use self::local::normalize_pkg_name_for_node_modules_deno_folder;
 
 use self::global::GlobalNpmPackageResolver;
 use self::local::LocalNpmPackageResolver;
