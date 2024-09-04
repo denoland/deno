@@ -1,0 +1,8 @@
+{
+  "steps": [
+    {
+      "args": "install --entrypoint main.ts second.ts",
+      "output": "install.out"
+    }
+  ]
+}
