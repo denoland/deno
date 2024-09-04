@@ -71,6 +71,7 @@ class WeakRefSet {
 const add = Symbol("[[add]]");
 const signalAbort = Symbol("[[signalAbort]]");
 const remove = Symbol("[[remove]]");
+const runAbortSteps = Symbol("[[runAbortSteps]]");
 const abortReason = Symbol("[[abortReason]]");
 const abortAlgos = Symbol("[[abortAlgos]]");
 const dependent = Symbol("[[dependent]]");
@@ -149,26 +150,43 @@ class AbortSignal extends EventTarget {
       return;
     }
     this[abortReason] = reason;
+
+    const dependentSignalsToAbort = [];
+    if (this[dependentSignals] !== null) {
+      const dependentSignalArray = this[dependentSignals].toArray();
+      for (let i = 0; i < dependentSignalArray.length; ++i) {
+        const dependentSignal = dependentSignalArray[i];
+        if (dependentSignal[abortReason] === undefined) {
+          dependentSignal[abortReason] = this[abortReason];
+          ArrayPrototypePush(dependentSignalsToAbort, dependentSignal);
+        }
+      }
+    }
+
+    this[runAbortSteps]();
+
+    if (dependentSignalsToAbort.length !== 0) {
+      for (let i = 0; i < dependentSignalsToAbort.length; ++i) {
+        const dependentSignal = dependentSignalsToAbort[i];
+        dependentSignal[runAbortSteps]();
+      }
+    }
+  }
+
+  [runAbortSteps]() {
     const algos = this[abortAlgos];
     this[abortAlgos] = null;
 
-    if (listenerCount(this, "abort") > 0) {
-      const event = new Event("abort");
-      setIsTrusted(event, true);
-      super.dispatchEvent(event);
-    }
     if (algos !== null) {
       for (const algorithm of new SafeSetIterator(algos)) {
         algorithm();
       }
     }
 
-    if (this[dependentSignals] !== null) {
-      const dependentSignalArray = this[dependentSignals].toArray();
-      for (let i = 0; i < dependentSignalArray.length; ++i) {
-        const dependentSignal = dependentSignalArray[i];
-        dependentSignal[signalAbort](reason);
-      }
+    if (listenerCount(this, "abort") > 0) {
+      const event = new Event("abort");
+      setIsTrusted(event, true);
+      super.dispatchEvent(event);
     }
   }
 
