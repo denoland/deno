@@ -2994,29 +2994,6 @@ declare namespace Deno {
   export function readAllSync(r: ReaderSync): Uint8Array;
 
   /**
-   * Write all the content of the array buffer (`arr`) to the writer (`w`).
-   *
-   * @deprecated This will be removed in Deno 2.0. See the
-   * {@link https://docs.deno.com/runtime/manual/advanced/migrate_deprecations | Deno 1.x to 2.x Migration Guide}
-   * for migration instructions.
-   *
-   * @category I/O
-   */
-  export function writeAll(w: Writer, arr: Uint8Array): Promise<void>;
-
-  /**
-   * Synchronously write all the content of the array buffer (`arr`) to the
-   * writer (`w`).
-   *
-   * @deprecated This will be removed in Deno 2.0. See the
-   * {@link https://docs.deno.com/runtime/manual/advanced/migrate_deprecations | Deno 1.x to 2.x Migration Guide}
-   * for migration instructions.
-   *
-   * @category I/O
-   */
-  export function writeAllSync(w: WriterSync, arr: Uint8Array): void;
-
-  /**
    * Options which can be set when using {@linkcode Deno.mkdir} and
    * {@linkcode Deno.mkdirSync}.
    *
