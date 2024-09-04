@@ -283,26 +283,29 @@ async fn install_local(
   flags: Arc<Flags>,
   install_flags: InstallFlagsLocal,
 ) -> Result<(), AnyError> {
-  if let Some(entrypoint) = install_flags.entrypoints {
-    return install_from_entrypoints(flags, &entrypoint).await;
-  }
-  if let Some(add_flags) = install_flags.add_flags {
-    return super::registry::add(
-      flags,
-      add_flags,
-      super::registry::AddCommandName::Install,
-    )
-    .await;
-  }
+  match install_flags {
+    InstallFlagsLocal::Add(add_flags) => {
+      super::registry::add(
+        flags,
+        add_flags,
+        super::registry::AddCommandName::Install,
+      )
+      .await
+    }
+    InstallFlagsLocal::Entrypoints(entrypoints) => {
+      install_from_entrypoints(flags, &entrypoints).await
+    }
+    InstallFlagsLocal::TopLevel => {
+      let factory = CliFactory::from_flags(flags);
+      crate::tools::registry::cache_top_level_deps(&factory, None).await?;
 
-  let factory = CliFactory::from_flags(flags);
-  crate::tools::registry::cache_top_level_deps(&factory, None).await?;
+      if let Some(lockfile) = factory.cli_options()?.maybe_lockfile() {
+        lockfile.write_if_changed()?;
+      }
 
-  if let Some(lockfile) = factory.cli_options()?.maybe_lockfile() {
-    lockfile.write_if_changed()?;
+      Ok(())
+    }
   }
-
-  Ok(())
 }
 
 fn check_if_installs_a_single_package_globally(
@@ -336,9 +339,9 @@ pub async fn install_command(
       install_global(flags, global_flags).await
     }
     InstallKind::Local(local_flags) => {
-      check_if_installs_a_single_package_globally(
-        local_flags.add_flags.as_ref(),
-      )?;
+      if let InstallFlagsLocal::Add(add_flags) = &local_flags {
+        check_if_installs_a_single_package_globally(Some(add_flags))?;
+      }
       install_local(flags, local_flags).await
     }
   }

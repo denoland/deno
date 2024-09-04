@@ -242,9 +242,10 @@ pub enum InstallKind {
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
-pub struct InstallFlagsLocal {
-  pub add_flags: Option<AddFlags>,
-  pub entrypoints: Option<Vec<String>>,
+pub enum InstallFlagsLocal {
+  Add(AddFlags),
+  TopLevel,
+  Entrypoints(Vec<String>),
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -4391,27 +4392,32 @@ fn install_parse(flags: &mut Flags, matches: &mut ArgMatches) {
         force,
       }),
     });
-  } else if matches.get_flag("entrypoint") {
+    return;
+  }
+
+  // allow scripts only applies to local install
+  allow_scripts_arg_parse(flags, matches);
+  if matches.get_flag("entrypoint") {
     let entrypoints = matches.remove_many::<String>("cmd").unwrap_or_default();
     flags.subcommand = DenoSubcommand::Install(InstallFlags {
       global,
-      kind: InstallKind::Local(InstallFlagsLocal {
-        add_flags: None,
-        entrypoints: Some(entrypoints.collect()),
-      }),
+      kind: InstallKind::Local(InstallFlagsLocal::Entrypoints(
+        entrypoints.collect(),
+      )),
     });
-  } else {
-    let local_flags = matches
-      .remove_many("cmd")
-      .map(|packages| add_parse_inner(matches, Some(packages)));
-    allow_scripts_arg_parse(flags, matches);
+  } else if let Some(add_files) = matches
+    .remove_many("cmd")
+    .map(|packages| add_parse_inner(matches, Some(packages)))
+  {
     flags.subcommand = DenoSubcommand::Install(InstallFlags {
       global,
-      kind: InstallKind::Local(InstallFlagsLocal {
-        add_flags: local_flags,
-        entrypoints: None,
-      }),
+      kind: InstallKind::Local(InstallFlagsLocal::Add(add_files)),
     })
+  } else {
+    flags.subcommand = DenoSubcommand::Install(InstallFlags {
+      global,
+      kind: InstallKind::Local(InstallFlagsLocal::TopLevel),
+    });
   }
 }
 
