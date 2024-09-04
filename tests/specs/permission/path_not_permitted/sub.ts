@@ -1,4 +1,4 @@
-const binaryName = Deno.build.os === "windows" ? "deno.exe" : "deno";
+const binaryName = Deno.build.os === "windows" ? "binary.exe" : "binary";
 const pathSep = Deno.build.os === "windows" ? "\\" : "/";
 
 Deno.mkdirSync("subdir");
