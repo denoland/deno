@@ -1,22 +1,14 @@
 console.log("window is", globalThis.window);
 console.log("Deno.Buffer is", Deno.Buffer);
-console.log("Deno.close is", Deno.close);
-console.log("Deno.copy is", Deno.copy);
 console.log("Deno.File is", Deno.File);
-console.log("Deno.fstat is", Deno.fstat);
-console.log("Deno.fstatSync is", Deno.fstatSync);
 console.log("Deno.ftruncate is", Deno.ftruncate);
 console.log("Deno.ftruncateSync is", Deno.ftruncateSync);
-console.log("Deno.flock is", Deno.flock);
-console.log("Deno.flockSync is", Deno.flockSync);
 console.log(
   "Deno.FsFile.prototype.rid is",
   Deno.openSync(import.meta.filename).rid,
 );
 console.log("Deno.funlock is", Deno.funlock);
 console.log("Deno.funlockSync is", Deno.funlockSync);
-console.log("Deno.iter is", Deno.iter);
-console.log("Deno.iterSync is", Deno.iterSync);
 console.log("Deno.readAll is", Deno.readAll);
 console.log("Deno.readAllSync is", Deno.readAllSync);
 console.log("Deno.read is", Deno.read);
@@ -123,6 +115,5 @@ try {
     console.log("Deno.ListenTlsOptions.(keyFile|certFile) do nothing");
   }
 }
-console.log("Deno.customInspect is", Deno.customInspect);
 
 self.close();

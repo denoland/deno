@@ -20,9 +20,7 @@ import {
   op_fs_file_stat_async,
   op_fs_file_stat_sync,
   op_fs_flock_async,
-  op_fs_flock_async_unstable,
   op_fs_flock_sync,
-  op_fs_flock_sync_unstable,
   op_fs_fsync_async,
   op_fs_fsync_sync,
   op_fs_ftruncate_async,
@@ -397,15 +395,6 @@ function parseFileInfo(response) {
   };
 }
 
-function fstatSync(rid) {
-  op_fs_file_stat_sync(rid, statBuf);
-  return statStruct(statBuf);
-}
-
-async function fstat(rid) {
-  return parseFileInfo(await op_fs_file_stat_async(rid));
-}
-
 async function lstat(path) {
   const res = await op_fs_lstat_async(pathFromURL(path));
   return parseFileInfo(res);
@@ -554,14 +543,6 @@ async function fsync(rid) {
   await op_fs_fsync_async(rid);
 }
 
-function flockSync(rid, exclusive) {
-  op_fs_flock_sync_unstable(rid, exclusive === true);
-}
-
-async function flock(rid, exclusive) {
-  await op_fs_flock_async_unstable(rid, exclusive === true);
-}
-
 function funlockSync(rid) {
   op_fs_funlock_sync_unstable(rid);
 }
@@ -697,12 +678,13 @@ class FsFile {
     return seekSync(this.#rid, offset, whence);
   }
 
-  stat() {
-    return fstat(this.#rid);
+  async stat() {
+    return parseFileInfo(await op_fs_file_stat_async(this.#rid));
   }
 
   statSync() {
-    return fstatSync(this.#rid);
+    op_fs_file_stat_sync(this.#rid, statBuf);
+    return statStruct(statBuf);
   }
 
   async syncData() {
@@ -977,11 +959,7 @@ export {
   fdatasync,
   fdatasyncSync,
   File,
-  flock,
-  flockSync,
   FsFile,
-  fstat,
-  fstatSync,
   fsync,
   fsyncSync,
   ftruncate,

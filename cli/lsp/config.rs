@@ -1393,7 +1393,7 @@ impl ConfigData {
       .unwrap_or_default();
     let byonm = match node_modules_dir {
       Some(mode) => mode == NodeModulesDirMode::Manual,
-      None => member_dir.workspace.package_jsons().next().is_some(),
+      None => member_dir.workspace.root_pkg_json().is_some(),
     };
     if byonm {
       lsp_log!("  Enabled 'bring your own node_modules'.");

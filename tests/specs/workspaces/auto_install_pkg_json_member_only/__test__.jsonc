@@ -1,0 +1,4 @@
+{
+  "args": "run -A pkg_json/main.ts",
+  "output": "pkg_json/main.out"
+}
