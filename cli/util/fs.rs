@@ -496,9 +496,9 @@ pub fn hard_link_dir_recursive(from: &Path, to: &Path) -> Result<(), AnyError> {
 }
 
 pub fn symlink_dir(oldpath: &Path, newpath: &Path) -> Result<(), Error> {
-  let err_mapper = |err: Error| {
+  let err_mapper = |err: Error, kind: Option<ErrorKind>| {
     Error::new(
-      err.kind(),
+      kind.unwrap_or_else(|| err.kind()),
       format!(
         "{}, symlink '{}' -> '{}'",
         err,
@@ -510,12 +510,19 @@ pub fn symlink_dir(oldpath: &Path, newpath: &Path) -> Result<(), Error> {
   #[cfg(unix)]
   {
     use std::os::unix::fs::symlink;
-    symlink(oldpath, newpath).map_err(err_mapper)?;
+    symlink(oldpath, newpath).map_err(|e| err_mapper(e, None))?;
   }
   #[cfg(not(unix))]
   {
     use std::os::windows::fs::symlink_dir;
-    symlink_dir(oldpath, newpath).map_err(err_mapper)?;
+    symlink_dir(oldpath, newpath).map_err(|err| {
+      if let Some(code) = err.raw_os_error() {
+        if code as u32 == winapi::shared::winerror::ERROR_PRIVILEGE_NOT_HELD {
+          return err_mapper(err, Some(ErrorKind::PermissionDenied));
+        }
+      }
+      err_mapper(err, None)
+    })?;
   }
   Ok(())
 }
