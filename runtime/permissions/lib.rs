@@ -145,7 +145,7 @@ impl PermissionState {
         name
       )
     };
-    custom_error("PermissionDenied", msg)
+    custom_error("NotCapable", msg)
   }
 
   /// Check the permission state. bool is whether a prompt was issued.
@@ -1993,10 +1993,7 @@ fn parse_run_list(
 }
 
 fn escalation_error() -> AnyError {
-  custom_error(
-    "PermissionDenied",
-    "Can't escalate parent thread permissions",
-  )
+  custom_error("NotCapable", "Can't escalate parent thread permissions")
 }
 
 #[derive(Debug, Eq, PartialEq)]

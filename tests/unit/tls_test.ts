@@ -55,7 +55,7 @@ function unreachable(): never {
 Deno.test({ permissions: { net: false } }, async function connectTLSNoPerm() {
   await assertRejects(async () => {
     await Deno.connectTls({ hostname: "deno.land", port: 443 });
-  }, Deno.errors.PermissionDenied);
+  }, Deno.errors.NotCapable);
 });
 
 Deno.test(
@@ -76,7 +76,7 @@ Deno.test(
         port: 443,
         certFile: "tests/testdata/tls/RootCA.crt",
       });
-    }, Deno.errors.PermissionDenied);
+    }, Deno.errors.NotCapable);
   },
 );
 
@@ -116,7 +116,7 @@ Deno.test(
         certFile: "tests/testdata/tls/localhost.crt",
         keyFile: "tests/testdata/tls/localhost.key",
       });
-    }, Deno.errors.PermissionDenied);
+    }, Deno.errors.NotCapable);
   },
 );
 

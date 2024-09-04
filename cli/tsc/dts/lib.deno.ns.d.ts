@@ -175,8 +175,11 @@ declare namespace Deno {
     /**
      * Raised when the underlying operating system indicates the current user
      * which the Deno process is running under does not have the appropriate
-     * permissions to a file or resource, or the user _did not_ provide required
-     * `--allow-*` flag.
+     * permissions to a file or resource.
+     *
+     * Before Deno 2.0, this error was raised when the user _did not_ provide
+     * required `--allow-*` flag. As of Deno 2.0, that case is now handled by
+     * the {@link NotCapable} error.
      *
      * @category Errors */
     export class PermissionDenied extends Error {}
@@ -314,6 +317,15 @@ declare namespace Deno {
      *
      * @category Errors */
     export class NotADirectory extends Error {}
+    /**
+     * Raised when trying to perform an operation while the relevant Deno
+     * permission (like `--allow-read`) has not been granted.
+     *
+     * Before Deno 2.0, this condition was covered by the {@link PermissionDenied}
+     * error.
+     *
+     * @category Errors */
+    export class NotCapable extends Error {}
   }
 
   /** The current process ID of this instance of the Deno CLI.

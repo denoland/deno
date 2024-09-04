@@ -1,8 +1,15 @@
-PermissionDenied: Requires --allow-all permissions to spawn subprocess with LD_PRELOAD environment variable.
+<<<<<<< HEAD
+NotCapable: Requires --allow-all permissions to spawn subprocess with LD_PRELOAD environment variable.
   [WILDCARD]
-  name: "PermissionDenied"
+  name: "NotCapable"
 }
-PermissionDenied: Requires --allow-all permissions to spawn subprocess with DYLD_FALLBACK_LIBRARY_PATH, LD_PRELOAD environment variables.
+NotCapable: Requires --allow-all permissions to spawn subprocess with DYLD_FALLBACK_LIBRARY_PATH, LD_PRELOAD environment variables.
   [WILDCARD]
-  name: "PermissionDenied"
+  name: "NotCapable"
 }
+=======
+error: Uncaught (in promise) NotCapable: Requires --allow-all permissions to spawn subprocess with LD_PRELOAD environment variable.
+const output = new Deno.Command("echo").spawn();
+                                        ^
+    at [WILDCARD]
+>>>>>>> 7c0b9992f (feat(cli): use NotCapable error for permission errors)

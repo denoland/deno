@@ -295,6 +295,7 @@ core.registerErrorClass("NotConnected", errors.NotConnected);
 core.registerErrorClass("AddrInUse", errors.AddrInUse);
 core.registerErrorClass("AddrNotAvailable", errors.AddrNotAvailable);
 core.registerErrorClass("BrokenPipe", errors.BrokenPipe);
+core.registerErrorClass("PermissionDenied", errors.PermissionDenied);
 core.registerErrorClass("AlreadyExists", errors.AlreadyExists);
 core.registerErrorClass("InvalidData", errors.InvalidData);
 core.registerErrorClass("TimedOut", errors.TimedOut);

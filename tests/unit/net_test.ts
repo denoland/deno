@@ -100,7 +100,7 @@ Deno.test(
       assert(socket.addr.transport === "unix");
       assertEquals(socket.addr.path, filePath);
       socket.close();
-    }, Deno.errors.PermissionDenied);
+    }, Deno.errors.NotCapable);
   },
 );
 
@@ -119,7 +119,7 @@ Deno.test(
       assert(socket.addr.transport === "unixpacket");
       assertEquals(socket.addr.path, filePath);
       socket.close();
-    }, Deno.errors.PermissionDenied);
+    }, Deno.errors.NotCapable);
   },
 );
 

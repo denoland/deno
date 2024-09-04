@@ -17,7 +17,7 @@ Deno.test(
       Deno.run({
         cmd: [Deno.execPath(), "eval", "console.log('hello world')"],
       });
-    }, Deno.errors.PermissionDenied);
+    }, Deno.errors.NotCapable);
   },
 );
 
@@ -517,7 +517,7 @@ Deno.test({ permissions: { run: false } }, function killPermissions() {
     // process - assuming that Deno does not have a special handler set for it
     // and will just continue even if a signal is erroneously sent.
     Deno.kill(Deno.pid, "SIGCONT");
-  }, Deno.errors.PermissionDenied);
+  }, Deno.errors.NotCapable);
 });
 
 Deno.test(
