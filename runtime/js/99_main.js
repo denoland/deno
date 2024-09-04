@@ -809,8 +809,6 @@ function bootstrapMainRuntime(runtimeOptions, warmup = false) {
       delete Deno.readSync;
       delete Deno.seek;
       delete Deno.seekSync;
-      delete Deno.write;
-      delete Deno.writeSync;
     }
   } else {
     // Warmup
@@ -978,8 +976,6 @@ function bootstrapWorkerRuntime(
       delete Deno.readSync;
       delete Deno.seek;
       delete Deno.seekSync;
-      delete Deno.write;
-      delete Deno.writeSync;
     }
   } else {
     // Warmup
