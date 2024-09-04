@@ -6195,14 +6195,14 @@ declare namespace Deno {
   /** Serves HTTP requests with the given option bag and handler.
    *
    * You can specify an object with a port and hostname option, which is the
-   * address to listen on. The default is port `8000` on hostname `"127.0.0.1"`.
+   * address to listen on. The default is port `8000` on hostname `"0.0.0.0"`.
    *
    * You can change the address to listen on using the `hostname` and `port`
-   * options. The below example serves on port `3000` and hostname `"0.0.0.0"`.
+   * options. The below example serves on port `3000` and hostname `"127.0.0.1"`.
    *
    * ```ts
    * Deno.serve(
-   *   { port: 3000, hostname: "0.0.0.0" },
+   *   { port: 3000, hostname: "127.0.0.1" },
    *   (_req) => new Response("Hello, world")
    * );
    * ```
@@ -6284,14 +6284,14 @@ declare namespace Deno {
   /** Serves HTTP requests with the given option bag.
    *
    * You can specify an object with a port and hostname option, which is the
-   * address to listen on. The default is port `8000` on hostname `"127.0.0.1"`.
+   * address to listen on. The default is port `8000` on hostname `"0.0.0.0"`.
    *
    * ```ts
    * const ac = new AbortController();
    *
    * const server = Deno.serve({
    *   port: 3000,
-   *   hostname: "0.0.0.0",
+   *   hostname: "127.0.0.1",
    *   handler: (_req) => new Response("Hello, world"),
    *   signal: ac.signal,
    *   onListen({ port, hostname }) {
