@@ -1,0 +1,4 @@
+{
+  "args": "eval import('./mod4.js').then(console.log)",
+  "output": "main.out"
+}
