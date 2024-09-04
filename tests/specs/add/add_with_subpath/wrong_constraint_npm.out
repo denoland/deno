@@ -1,0 +1,4 @@
+error: Failed to parse package required: npm:preact/hooks@10
+
+Caused by:
+    Invalid package specifier 'npm:preact/hooks@10'. Did you mean to write 'npm:preact@10/hooks'?
