@@ -355,6 +355,19 @@ fn exit_for_error(error: AnyError) -> ! {
   {
     error_string = e.to_string();
     error_code = 10;
+  } else if error_string.contains("Relative import path")
+    && error_string.contains("not prefixed with / or ./ or ../")
+  {
+    let specifier = error_string
+      .strip_prefix("Relative import path \"")
+      .unwrap();
+    let specifier = specifier.split_once('\"').unwrap().0;
+    error_string = format!(
+      "{}\n\n  {} Add this specifier to `deno.json` or run `deno add {}`",
+      error_string,
+      colors::cyan("hint:"),
+      specifier,
+    )
   }
 
   exit_with_message(&error_string, error_code);
