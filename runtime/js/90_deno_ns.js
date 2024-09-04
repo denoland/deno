@@ -77,22 +77,6 @@ const denoNs = {
   lstat: fs.lstat,
   truncateSync: fs.truncateSync,
   truncate: fs.truncate,
-  ftruncateSync(rid, len) {
-    internals.warnOnDeprecatedApi(
-      "Deno.ftruncateSync()",
-      new Error().stack,
-      "Use `Deno.FsFile.truncateSync()` instead.",
-    );
-    return fs.ftruncateSync(rid, len);
-  },
-  ftruncate(rid, len) {
-    internals.warnOnDeprecatedApi(
-      "Deno.ftruncate()",
-      new Error().stack,
-      "Use `Deno.FsFile.truncate()` instead.",
-    );
-    return fs.ftruncate(rid, len);
-  },
   errors: errors.errors,
   inspect: console.inspect,
   env: os.env,
@@ -101,8 +85,6 @@ const denoNs = {
   Buffer: buffer.Buffer,
   readAll: buffer.readAll,
   readAllSync: buffer.readAllSync,
-  writeAll: buffer.writeAll,
-  writeAllSync: buffer.writeAllSync,
   copy: io.copy,
   SeekMode: io.SeekMode,
   read(rid, buffer) {
@@ -120,22 +102,6 @@ const denoNs = {
       "Use `reader.readSync()` instead.",
     );
     return io.readSync(rid, buffer);
-  },
-  write(rid, data) {
-    internals.warnOnDeprecatedApi(
-      "Deno.write()",
-      new Error().stack,
-      "Use `writer.write()` instead.",
-    );
-    return io.write(rid, data);
-  },
-  writeSync(rid, data) {
-    internals.warnOnDeprecatedApi(
-      "Deno.writeSync()",
-      new Error().stack,
-      "Use `writer.writeSync()` instead.",
-    );
-    return io.writeSync(rid, data);
   },
   File: fs.File,
   FsFile: fs.FsFile,
@@ -168,22 +134,6 @@ const denoNs = {
   connectTls: tls.connectTls,
   listenTls: tls.listenTls,
   startTls: tls.startTls,
-  fstatSync(rid) {
-    internals.warnOnDeprecatedApi(
-      "Deno.fstatSync()",
-      new Error().stack,
-      "Use `Deno.FsFile.statSync()` instead.",
-    );
-    return fs.fstatSync(rid);
-  },
-  fstat(rid) {
-    internals.warnOnDeprecatedApi(
-      "Deno.fstat()",
-      new Error().stack,
-      "Use `Deno.FsFile.stat()` instead.",
-    );
-    return fs.fstat(rid);
-  },
   fsyncSync: fs.fsyncSync,
   fsync: fs.fsync,
   fdatasyncSync: fs.fdatasyncSync,

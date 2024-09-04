@@ -31,6 +31,7 @@ import * as webidl from "ext:deno_webidl/00_webidl.js";
 import { DOMException } from "ext:deno_web/01_dom_exception.js";
 import * as abortSignal from "ext:deno_web/03_abort_signal.js";
 import * as imageData from "ext:deno_web/16_image_data.js";
+import process from "node:process";
 import { loadWebGPU } from "ext:deno_webgpu/00_init.js";
 import * as webgpuSurface from "ext:deno_webgpu/02_surface.js";
 import { unstableIds } from "ext:runtime/90_deno_ns.js";
@@ -137,6 +138,7 @@ const windowOrWorkerGlobalScope = {
   fetch: core.propWritable(fetch.fetch),
   EventSource: core.propWritable(eventSource.EventSource),
   performance: core.propWritable(performance.performance),
+  process: core.propWritable(process),
   reportError: core.propWritable(event.reportError),
   setInterval: core.propWritable(timers.setInterval),
   setTimeout: core.propWritable(timers.setTimeout),
