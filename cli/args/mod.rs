@@ -1130,7 +1130,7 @@ impl CliOptions {
         resolve_url_or_path(&compile_flags.source_file, self.initial_cwd())?
       }
       DenoSubcommand::Eval(_) => {
-        resolve_url_or_path("./$deno$eval", self.initial_cwd())?
+        resolve_url_or_path("./$deno$eval.ts", self.initial_cwd())?
       }
       DenoSubcommand::Repl(_) => {
         resolve_url_or_path("./$deno$repl.ts", self.initial_cwd())?

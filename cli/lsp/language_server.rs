@@ -1410,6 +1410,7 @@ impl Inner {
               document.content(),
               &fmt_options,
               &unstable_options,
+              None,
             )
           }
         };

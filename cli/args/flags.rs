@@ -299,7 +299,6 @@ pub struct LintFlags {
   pub json: bool,
   pub compact: bool,
   pub watch: Option<WatchFlags>,
-  pub ext: Option<String>,
 }
 
 impl LintFlags {
@@ -2370,7 +2369,7 @@ fn install_subcommand() -> Command {
 
 <g>Local installation</>
 
-Add dependencies to the local project's configuration (<p(245)>deno.json / package.json</>) and installs them 
+Add dependencies to the local project's configuration (<p(245)>deno.json / package.json</>) and installs them
 in the package cache. If no dependency is specified, installs all dependencies listed in the config file.
 If the <p(245)>--entrypoint</> flag is passed, installs the dependencies of the specified entrypoint(s).
 
@@ -2780,7 +2779,7 @@ fn task_subcommand() -> Command {
     cstr!(
       "Run a task defined in the configuration file.
   <p(245)>deno task build</>
-  
+
 List all available tasks:
   <p(245)>deno task</>"
     ),
@@ -2808,7 +2807,7 @@ fn test_subcommand() -> Command {
 Evaluate the given modules, run all tests declared with <bold>Deno.</><y>test()</> and report results to standard output:
   <p(245)>deno test src/fetch_test.ts src/signal_test.ts</>
 
-Directory arguments are expanded to all contained files matching the glob <c>{*_,*.,}test.{js,mjs,ts,mts,jsx,tsx}</> 
+Directory arguments are expanded to all contained files matching the glob <c>{*_,*.,}test.{js,mjs,ts,mts,jsx,tsx}</>
 or <c>**/__tests__/**</>:
  <p(245)>deno test src/</>
 
@@ -4571,8 +4570,9 @@ fn lsp_parse(flags: &mut Flags, _matches: &mut ArgMatches) {
 
 fn lint_parse(flags: &mut Flags, matches: &mut ArgMatches) {
   unstable_args_parse(flags, matches, UnstableArgsConfig::ResolutionOnly);
-
+  ext_arg_parse(flags, matches);
   config_args_parse(flags, matches);
+
   let files = match matches.remove_many::<String>("files") {
     Some(f) => f.collect(),
     None => vec![],
@@ -4597,7 +4597,6 @@ fn lint_parse(flags: &mut Flags, matches: &mut ArgMatches) {
 
   let json = matches.get_flag("json");
   let compact = matches.get_flag("compact");
-  let ext = matches.remove_one::<String>("ext");
 
   flags.subcommand = DenoSubcommand::Lint(LintFlags {
     files: FileFlags {
@@ -4612,7 +4611,6 @@ fn lint_parse(flags: &mut Flags, matches: &mut ArgMatches) {
     json,
     compact,
     watch: watch_arg_parse(matches),
-    ext,
   });
 }
 
@@ -6415,7 +6413,6 @@ mod tests {
           json: false,
           compact: false,
           watch: Default::default(),
-          ext: None,
         }),
         ..Flags::default()
       }
@@ -6444,7 +6441,6 @@ mod tests {
           json: false,
           compact: false,
           watch: Some(Default::default()),
-          ext: None,
         }),
         ..Flags::default()
       }
@@ -6478,7 +6474,6 @@ mod tests {
             no_clear_screen: true,
             exclude: vec![],
           }),
-          ext: None,
         }),
         ..Flags::default()
       }
@@ -6506,7 +6501,6 @@ mod tests {
           json: false,
           compact: false,
           watch: Default::default(),
-          ext: None,
         }),
         ..Flags::default()
       }
@@ -6529,7 +6523,6 @@ mod tests {
           json: false,
           compact: false,
           watch: Default::default(),
-          ext: None,
         }),
         ..Flags::default()
       }
@@ -6557,7 +6550,6 @@ mod tests {
           json: false,
           compact: false,
           watch: Default::default(),
-          ext: None,
         }),
         ..Flags::default()
       }
@@ -6586,7 +6578,6 @@ mod tests {
           json: false,
           compact: false,
           watch: Default::default(),
-          ext: None,
         }),
         ..Flags::default()
       }
@@ -6609,7 +6600,6 @@ mod tests {
           json: true,
           compact: false,
           watch: Default::default(),
-          ext: None,
         }),
         ..Flags::default()
       }
@@ -6639,7 +6629,6 @@ mod tests {
           json: true,
           compact: false,
           watch: Default::default(),
-          ext: None,
         }),
         config_flag: ConfigFlag::Path("Deno.jsonc".to_string()),
         ..Flags::default()
@@ -6670,7 +6659,6 @@ mod tests {
           json: false,
           compact: true,
           watch: Default::default(),
-          ext: None,
         }),
         config_flag: ConfigFlag::Path("Deno.jsonc".to_string()),
         ..Flags::default()
