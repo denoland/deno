@@ -323,7 +323,6 @@ pub const OP_DETAILS: phf::Map<&'static str, [&'static str; 2]> = phf_map! {
   "op_fs_flock_async" => ["lock a file", "awaiting the result of a `Deno.FsFile.lock` call"],
   "op_fs_fsync_async" => ["flush pending data operations for a file to disk", "awaiting the result of a `Deno.fsync` or `Deno.FsFile.sync` call"],
   "op_fs_file_truncate_async" => ["truncate a file", "awaiting the result of a `Deno.FsFile.prototype.truncate` call"],
-  "op_fs_funlock_async_unstable" => ["unlock a file", "awaiting the result of a `Deno.funlock` call"],
   "op_fs_funlock_async" => ["unlock a file", "awaiting the result of a `Deno.FsFile.unlock` call"],
   "op_fs_link_async" => ["create a hard link", "awaiting the result of a `Deno.link` call"],
   "op_fs_lstat_async" => ["get file metadata", "awaiting the result of a `Deno.lstat` call"],

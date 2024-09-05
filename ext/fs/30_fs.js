@@ -26,9 +26,7 @@ import {
   op_fs_fsync_sync,
   op_fs_ftruncate_sync,
   op_fs_funlock_async,
-  op_fs_funlock_async_unstable,
   op_fs_funlock_sync,
-  op_fs_funlock_sync_unstable,
   op_fs_futime_async,
   op_fs_futime_sync,
   op_fs_link_async,
@@ -535,14 +533,6 @@ async function fsync(rid) {
   await op_fs_fsync_async(rid);
 }
 
-function funlockSync(rid) {
-  op_fs_funlock_sync_unstable(rid);
-}
-
-async function funlock(rid) {
-  await op_fs_funlock_async_unstable(rid);
-}
-
 function openSync(
   path,
   options,
@@ -935,8 +925,6 @@ export {
   FsFile,
   fsync,
   fsyncSync,
-  funlock,
-  funlockSync,
   link,
   linkSync,
   lstat,

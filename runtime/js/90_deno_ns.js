@@ -169,8 +169,6 @@ denoNsUnstableById[unstableIds.ffi] = {
 };
 
 denoNsUnstableById[unstableIds.fs] = {
-  funlock: fs.funlock,
-  funlockSync: fs.funlockSync,
   umask: fs.umask,
 };
 
@@ -217,8 +215,6 @@ const denoNsUnstable = {
   UnsafePointerView: ffi.UnsafePointerView,
   UnsafeFnPointer: ffi.UnsafeFnPointer,
   UnsafeWindowSurface: webgpuSurface.UnsafeWindowSurface,
-  funlock: fs.funlock,
-  funlockSync: fs.funlockSync,
   openKv: kv.openKv,
   AtomicOperation: kv.AtomicOperation,
   Kv: kv.Kv,
