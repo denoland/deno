@@ -222,7 +222,7 @@ impl ConfigUpdater {
     };
     let ast = Yoke::try_attach_to_cart(config_file_contents, |contents| {
       let ast = jsonc_parser::parse_to_ast(
-        &contents,
+        contents,
         &Default::default(),
         &Default::default(),
       )
@@ -391,7 +391,7 @@ fn load_configs(
     Some(config) => (cli_factory, Some(config)),
     None if npm_config.is_some() => (cli_factory, None),
     None => {
-      let factory = create_deno_json(flags, &options)?;
+      let factory = create_deno_json(flags, options)?;
       let options = factory.cli_options()?.clone();
       (
         factory,
@@ -509,12 +509,10 @@ pub async fn add(
       } else {
         deno_config.as_mut().unwrap().add(selected_package, false);
       }
+    } else if let Some(deno) = &mut deno_config {
+      deno.add(selected_package, false);
     } else {
-      if let Some(deno) = &mut deno_config {
-        deno.add(selected_package, false);
-      } else {
-        npm_config.as_mut().unwrap().add(selected_package, false);
-      }
+      npm_config.as_mut().unwrap().add(selected_package, false);
     }
   }
 
@@ -727,10 +725,8 @@ pub async fn remove(
 
   for package in &remove_flags.packages {
     let mut removed = false;
-    for config in &mut configs {
-      if let Some(config) = config {
-        removed |= config.remove(package);
-      }
+    for config in configs.iter_mut().flatten() {
+      removed |= config.remove(package);
     }
     if removed {
       removed_packages.push(package.clone());
@@ -743,10 +739,8 @@ pub async fn remove(
     for package in &removed_packages {
       log::info!("Removed {}", crate::colors::green(package));
     }
-    for config in configs {
-      if let Some(config) = config {
-        config.commit().await?;
-      }
+    for config in configs.into_iter().flatten() {
+      config.commit().await?;
     }
 
     // Update deno.lock
