@@ -6,7 +6,6 @@
 import { Buffer } from "node:buffer";
 import { ERR_INVALID_ARG_TYPE } from "ext:deno_node/internal/errors.ts";
 import * as io from "ext:deno_io/12_io.js";
-import * as fs from "ext:deno_fs/30_fs.js";
 import { ReadOptions } from "ext:deno_node/_fs/_fs_common.ts";
 import {
   arrayBufferViewToUint8Array,
@@ -196,8 +195,8 @@ export function readSync(
 
   let currentPosition = 0;
   if (typeof position === "number" && position >= 0) {
-    currentPosition = fs.seekSync(fd, 0, io.SeekMode.Current);
-    fs.seekSync(fd, position, io.SeekMode.Start);
+    currentPosition = op_fs_seek_sync(fd, 0, io.SeekMode.Current);
+    op_fs_seek_sync(fd, position, io.SeekMode.Start);
   }
 
   const numberOfBytesRead = io.readSync(
@@ -206,7 +205,7 @@ export function readSync(
   );
 
   if (typeof position === "number" && position >= 0) {
-    fs.seekSync(fd, currentPosition, io.SeekMode.Start);
+    op_fs_seek_sync(fd, currentPosition, io.SeekMode.Start);
   }
 
   return numberOfBytesRead ?? 0;
