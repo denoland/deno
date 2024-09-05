@@ -786,8 +786,6 @@ function checkOpenOptions(options) {
   }
 }
 
-const File = FsFile;
-
 function readFileSync(path) {
   return op_fs_read_file_sync(pathFromURL(path));
 }
@@ -950,7 +948,6 @@ export {
   cwd,
   fdatasync,
   fdatasyncSync,
-  File,
   FsFile,
   fsync,
   fsyncSync,
