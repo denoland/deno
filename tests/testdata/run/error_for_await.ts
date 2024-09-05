@@ -5,7 +5,6 @@ for await (const conn of listener) {
 }
 
 function handleConn(conn: Deno.Conn) {
-  // @ts-ignore `Deno.serveHttp()` was soft-removed in Deno 2.
   const httpConn = Deno.serveHttp(conn);
   for await (const event of httpConn) {
     event.respondWith(new Response("html", { status: 200 }));
