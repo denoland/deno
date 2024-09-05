@@ -151,7 +151,7 @@ class InnerBody {
    * @returns {Promise<Uint8Array>}
    */
   consume() {
-    if (this.unusable()) throw new TypeError("Body already consumed.");
+    if (this.unusable()) throw new TypeError("Body already consumed");
     if (
       ObjectPrototypeIsPrototypeOf(
         ReadableStreamPrototype,
@@ -372,7 +372,7 @@ function packageData(bytes, type, mimeType) {
           const boundary = mimeType.parameters.get("boundary");
           if (boundary === null) {
             throw new TypeError(
-              "Missing boundary parameter in mime type of multipart formdata.",
+              "Cannot turn into form data: missing boundary parameter in mime type of multipart form data",
             );
           }
           return parseFormData(chunkToU8(bytes), boundary);

@@ -1,5 +1,4 @@
 Download http://localhost:4545/run/warn_on_deprecated_api/mod.ts
-warning: Use of deprecated "Deno.run()" API. This API will be removed in Deno 2. Run again with DENO_VERBOSE_WARNINGS=1 to get more details.
 hello world
 hello world
 hello world

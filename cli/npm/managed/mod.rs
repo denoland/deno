@@ -32,9 +32,9 @@ use resolution::AddPkgReqsResult;
 
 use crate::args::CliLockfile;
 use crate::args::LifecycleScriptsConfig;
+use crate::args::NpmInstallDepsProvider;
 use crate::args::NpmProcessState;
 use crate::args::NpmProcessStateKind;
-use crate::args::PackageJsonInstallDepsProvider;
 use crate::cache::FastInsecureHasher;
 use crate::http_util::HttpClientProvider;
 use crate::util::fs::canonicalize_path_maybe_not_exists_with_fs;
@@ -45,6 +45,7 @@ use self::cache::NpmCache;
 use self::registry::CliNpmRegistryApi;
 use self::resolution::NpmResolution;
 use self::resolvers::create_npm_fs_resolver;
+pub use self::resolvers::normalize_pkg_name_for_node_modules_deno_folder;
 use self::resolvers::NpmPackageFsResolver;
 
 use super::CliNpmResolver;
@@ -71,7 +72,7 @@ pub struct CliNpmResolverManagedCreateOptions {
   pub text_only_progress_bar: crate::util::progress_bar::ProgressBar,
   pub maybe_node_modules_path: Option<PathBuf>,
   pub npm_system_info: NpmSystemInfo,
-  pub package_json_deps_provider: Arc<PackageJsonInstallDepsProvider>,
+  pub npm_install_deps_provider: Arc<NpmInstallDepsProvider>,
   pub npmrc: Arc<ResolvedNpmRc>,
   pub lifecycle_scripts: LifecycleScriptsConfig,
 }
@@ -97,7 +98,7 @@ pub async fn create_managed_npm_resolver_for_lsp(
       npm_api,
       npm_cache,
       options.npmrc,
-      options.package_json_deps_provider,
+      options.npm_install_deps_provider,
       options.text_only_progress_bar,
       options.maybe_node_modules_path,
       options.npm_system_info,
@@ -122,7 +123,7 @@ pub async fn create_managed_npm_resolver(
     npm_api,
     npm_cache,
     options.npmrc,
-    options.package_json_deps_provider,
+    options.npm_install_deps_provider,
     options.text_only_progress_bar,
     options.maybe_node_modules_path,
     options.npm_system_info,
@@ -139,7 +140,7 @@ fn create_inner(
   npm_api: Arc<CliNpmRegistryApi>,
   npm_cache: Arc<NpmCache>,
   npm_rc: Arc<ResolvedNpmRc>,
-  package_json_deps_provider: Arc<PackageJsonInstallDepsProvider>,
+  npm_install_deps_provider: Arc<NpmInstallDepsProvider>,
   text_only_progress_bar: crate::util::progress_bar::ProgressBar,
   node_modules_dir_path: Option<PathBuf>,
   npm_system_info: NpmSystemInfo,
@@ -161,7 +162,7 @@ fn create_inner(
   let fs_resolver = create_npm_fs_resolver(
     fs.clone(),
     npm_cache.clone(),
-    &package_json_deps_provider,
+    &npm_install_deps_provider,
     &text_only_progress_bar,
     resolution.clone(),
     tarball_cache.clone(),
@@ -175,7 +176,7 @@ fn create_inner(
     maybe_lockfile,
     npm_api,
     npm_cache,
-    package_json_deps_provider,
+    npm_install_deps_provider,
     resolution,
     tarball_cache,
     text_only_progress_bar,
@@ -261,7 +262,7 @@ pub struct ManagedCliNpmResolver {
   maybe_lockfile: Option<Arc<CliLockfile>>,
   npm_api: Arc<CliNpmRegistryApi>,
   npm_cache: Arc<NpmCache>,
-  package_json_deps_provider: Arc<PackageJsonInstallDepsProvider>,
+  npm_install_deps_provider: Arc<NpmInstallDepsProvider>,
   resolution: Arc<NpmResolution>,
   tarball_cache: Arc<TarballCache>,
   text_only_progress_bar: ProgressBar,
@@ -286,7 +287,7 @@ impl ManagedCliNpmResolver {
     maybe_lockfile: Option<Arc<CliLockfile>>,
     npm_api: Arc<CliNpmRegistryApi>,
     npm_cache: Arc<NpmCache>,
-    package_json_deps_provider: Arc<PackageJsonInstallDepsProvider>,
+    npm_install_deps_provider: Arc<NpmInstallDepsProvider>,
     resolution: Arc<NpmResolution>,
     tarball_cache: Arc<TarballCache>,
     text_only_progress_bar: ProgressBar,
@@ -299,7 +300,7 @@ impl ManagedCliNpmResolver {
       maybe_lockfile,
       npm_api,
       npm_cache,
-      package_json_deps_provider,
+      npm_install_deps_provider,
       text_only_progress_bar,
       resolution,
       tarball_cache,
@@ -476,7 +477,7 @@ impl ManagedCliNpmResolver {
     if !self.top_level_install_flag.raise() {
       return Ok(false); // already did this
     }
-    let pkg_json_remote_pkgs = self.package_json_deps_provider.remote_pkgs();
+    let pkg_json_remote_pkgs = self.npm_install_deps_provider.remote_pkgs();
     if pkg_json_remote_pkgs.is_empty() {
       return Ok(false);
     }
@@ -605,7 +606,7 @@ impl CliNpmResolver for ManagedCliNpmResolver {
       create_npm_fs_resolver(
         self.fs.clone(),
         self.npm_cache.clone(),
-        &self.package_json_deps_provider,
+        &self.npm_install_deps_provider,
         &self.text_only_progress_bar,
         npm_resolution.clone(),
         self.tarball_cache.clone(),
@@ -616,7 +617,7 @@ impl CliNpmResolver for ManagedCliNpmResolver {
       self.maybe_lockfile.clone(),
       self.npm_api.clone(),
       self.npm_cache.clone(),
-      self.package_json_deps_provider.clone(),
+      self.npm_install_deps_provider.clone(),
       npm_resolution,
       self.tarball_cache.clone(),
       self.text_only_progress_bar.clone(),

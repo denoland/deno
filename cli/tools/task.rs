@@ -1,13 +1,13 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
-use crate::args::CliOptions;
-use crate::args::Flags;
-use crate::args::TaskFlags;
-use crate::colors;
-use crate::factory::CliFactory;
-use crate::npm::CliNpmResolver;
-use crate::task_runner;
-use crate::util::fs::canonicalize_path;
+use std::borrow::Cow;
+use std::collections::HashMap;
+use std::collections::HashSet;
+use std::path::Path;
+use std::path::PathBuf;
+use std::rc::Rc;
+use std::sync::Arc;
+
 use deno_config::deno_json::Task;
 use deno_config::workspace::TaskOrScript;
 use deno_config::workspace::WorkspaceDirectory;
@@ -18,13 +18,15 @@ use deno_core::anyhow::Context;
 use deno_core::error::AnyError;
 use deno_core::normalize_path;
 use deno_task_shell::ShellCommand;
-use std::borrow::Cow;
-use std::collections::HashMap;
-use std::collections::HashSet;
-use std::path::Path;
-use std::path::PathBuf;
-use std::rc::Rc;
-use std::sync::Arc;
+
+use crate::args::CliOptions;
+use crate::args::Flags;
+use crate::args::TaskFlags;
+use crate::colors;
+use crate::factory::CliFactory;
+use crate::npm::CliNpmResolver;
+use crate::task_runner;
+use crate::util::fs::canonicalize_path;
 
 pub async fn execute_script(
   flags: Arc<Flags>,
@@ -106,12 +108,9 @@ See https://docs.deno.com/go/config"#
         .await
       }
       TaskOrScript::Script(scripts, _script) => {
-        // ensure the npm packages are installed if using a node_modules
-        // directory and managed resolver
-        if cli_options.has_node_modules_dir() {
-          if let Some(npm_resolver) = npm_resolver.as_managed() {
-            npm_resolver.ensure_top_level_package_json_install().await?;
-          }
+        // ensure the npm packages are installed if using a managed resolver
+        if let Some(npm_resolver) = npm_resolver.as_managed() {
+          npm_resolver.ensure_top_level_package_json_install().await?;
         }
 
         let cwd = match task_flags.cwd {
