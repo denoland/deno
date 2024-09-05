@@ -5,7 +5,6 @@ mod cache_deps;
 pub use cache_deps::cache_top_level_deps;
 
 use std::borrow::Cow;
-use std::cell::RefCell;
 use std::path::PathBuf;
 use std::sync::Arc;
 
@@ -769,14 +768,22 @@ fn update_config_file_content<
   file_name: &str,
 ) -> String {
   let mut text_changes = vec![];
-
   for (key, value) in entries {
-    match obj.get(key) {
-      Some(ObjectProp {
-        value: Value::Object(lit),
-        range,
-        ..
-      }) => {
+    match obj.properties.iter().enumerate().find_map(|(idx, k)| {
+      if k.name.as_str() == key {
+        Some((idx, k))
+      } else {
+        None
+      }
+    }) {
+      Some((
+        idx,
+        ObjectProp {
+          value: Value::Object(lit),
+          range,
+          ..
+        },
+      )) => {
         if let Some(value) = value {
           text_changes.push(TextChange {
             range: (lit.range.start + 1)..(lit.range.end - 1),
@@ -784,7 +791,13 @@ fn update_config_file_content<
           })
         } else {
           text_changes.push(TextChange {
-            range: range.start..range.end,
+            // remove field entirely, making sure to
+            // remove the comma if it's not the last field
+            range: range.start..(if idx == obj.properties.len() - 1 {
+              range.end
+            } else {
+              obj.properties[idx + 1].range.start
+            }),
             new_text: "".to_string(),
           })
         }
