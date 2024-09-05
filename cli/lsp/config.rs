@@ -1387,10 +1387,8 @@ impl ConfigData {
       }
     }
 
-    let node_modules_dir = member_dir
-      .workspace
-      .node_modules_dir_mode()
-      .unwrap_or_default();
+    let node_modules_dir =
+      member_dir.workspace.node_modules_dir().unwrap_or_default();
     let byonm = match node_modules_dir {
       Some(mode) => mode == NodeModulesDirMode::Manual,
       None => member_dir.workspace.root_pkg_json().is_some(),
@@ -1697,9 +1695,14 @@ impl ConfigTree {
   }
 
   pub fn is_watched_file(&self, specifier: &ModuleSpecifier) -> bool {
-    if specifier.path().ends_with("/deno.json")
-      || specifier.path().ends_with("/deno.jsonc")
-      || specifier.path().ends_with("/package.json")
+    let path = specifier.path();
+    if path.ends_with("/deno.json")
+      || path.ends_with("/deno.jsonc")
+      || path.ends_with("/package.json")
+      || path.ends_with("/node_modules/.package-lock.json")
+      || path.ends_with("/node_modules/.yarn-integrity.json")
+      || path.ends_with("/node_modules/.modules.yaml")
+      || path.ends_with("/node_modules/.deno/.setup-cache.bin")
     {
       return true;
     }
@@ -1868,7 +1871,7 @@ fn resolve_node_modules_dir(
   // `nodeModulesDir: true` setting in the deno.json file. This is to
   // reduce the chance of modifying someone's node_modules directory
   // without them having asked us to do so.
-  let node_modules_mode = workspace.node_modules_dir_mode().ok().flatten();
+  let node_modules_mode = workspace.node_modules_dir().ok().flatten();
   let explicitly_disabled = node_modules_mode == Some(NodeModulesDirMode::None);
   if explicitly_disabled {
     return None;

@@ -1113,7 +1113,7 @@ dependencies = [
  "hashbrown",
  "lock_api",
  "once_cell",
- "parking_lot_core 0.9.9",
+ "parking_lot_core",
 ]
 
 [[package]]
@@ -1169,7 +1169,6 @@ dependencies = [
  "deno_config",
  "deno_core",
  "deno_doc",
- "deno_emit",
  "deno_graph",
  "deno_lint",
  "deno_lockfile",
@@ -1316,7 +1315,7 @@ dependencies = [
 
 [[package]]
 name = "deno_bench_util"
-version = "0.161.0"
+version = "0.162.0"
 dependencies = [
  "bencher",
  "deno_core",
@@ -1325,7 +1324,7 @@ dependencies = [
 
 [[package]]
 name = "deno_broadcast_channel"
-version = "0.161.0"
+version = "0.162.0"
 dependencies = [
  "async-trait",
  "deno_core",
@@ -1335,7 +1334,7 @@ dependencies = [
 
 [[package]]
 name = "deno_cache"
-version = "0.99.0"
+version = "0.100.0"
 dependencies = [
  "async-trait",
  "deno_core",
@@ -1355,7 +1354,7 @@ dependencies = [
  "indexmap",
  "log",
  "once_cell",
- "parking_lot 0.12.3",
+ "parking_lot",
  "serde",
  "serde_json",
  "sha2",
@@ -1365,7 +1364,7 @@ dependencies = [
 
 [[package]]
 name = "deno_canvas"
-version = "0.36.0"
+version = "0.37.0"
 dependencies = [
  "deno_core",
  "deno_webgpu",
@@ -1375,9 +1374,9 @@ dependencies = [
 
 [[package]]
 name = "deno_config"
-version = "0.32.0"
+version = "0.33.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "c774f2e49b4ca47f1fe5c39e1775d1434280a4f168252fed8f4a3f2230868448"
+checksum = "495df7ebed4feee5c0eb7631b0b86432bb6370638cf81d5eeb5769aab55fb2de"
 dependencies = [
  "anyhow",
  "deno_package_json",
@@ -1389,6 +1388,7 @@ dependencies = [
  "jsonc-parser",
  "log",
  "percent-encoding",
+ "phf 0.11.2",
  "serde",
  "serde_json",
  "thiserror",
@@ -1397,7 +1397,7 @@ dependencies = [
 
 [[package]]
 name = "deno_console"
-version = "0.167.0"
+version = "0.168.0"
 dependencies = [
  "deno_core",
 ]
@@ -1420,7 +1420,7 @@ dependencies = [
  "futures",
  "libc",
  "memoffset 0.9.1",
- "parking_lot 0.12.3",
+ "parking_lot",
  "percent-encoding",
  "pin-project",
  "serde",
@@ -1442,7 +1442,7 @@ checksum = "a13951ea98c0a4c372f162d669193b4c9d991512de9f2381dd161027f34b26b1"
 
 [[package]]
 name = "deno_cron"
-version = "0.47.0"
+version = "0.48.0"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -1454,7 +1454,7 @@ dependencies = [
 
 [[package]]
 name = "deno_crypto"
-version = "0.181.0"
+version = "0.182.0"
 dependencies = [
  "aes",
  "aes-gcm",
@@ -1512,25 +1512,8 @@ dependencies = [
 ]
 
 [[package]]
-name = "deno_emit"
-version = "0.45.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "33aca9546e36a1b85efb630add94a4c2ac13c2333bb48df4439002c002f4c5b2"
-dependencies = [
- "anyhow",
- "base64 0.21.7",
- "deno_ast",
- "deno_graph",
- "escape8259",
- "futures",
- "import_map",
- "parking_lot 0.11.2",
- "url",
-]
-
-[[package]]
 name = "deno_fetch"
-version = "0.191.0"
+version = "0.192.0"
 dependencies = [
  "base64 0.21.7",
  "bytes",
@@ -1562,7 +1545,7 @@ dependencies = [
 
 [[package]]
 name = "deno_ffi"
-version = "0.154.0"
+version = "0.155.0"
 dependencies = [
  "deno_core",
  "deno_permissions",
@@ -1579,7 +1562,7 @@ dependencies = [
 
 [[package]]
 name = "deno_fs"
-version = "0.77.0"
+version = "0.78.0"
 dependencies = [
  "async-trait",
  "base32",
@@ -1616,7 +1599,7 @@ dependencies = [
  "log",
  "monch",
  "once_cell",
- "parking_lot 0.12.3",
+ "parking_lot",
  "regex",
  "serde",
  "serde_json",
@@ -1628,7 +1611,7 @@ dependencies = [
 
 [[package]]
 name = "deno_http"
-version = "0.165.0"
+version = "0.166.0"
 dependencies = [
  "async-compression",
  "async-trait",
@@ -1667,7 +1650,7 @@ dependencies = [
 
 [[package]]
 name = "deno_io"
-version = "0.77.0"
+version = "0.78.0"
 dependencies = [
  "async-trait",
  "deno_core",
@@ -1677,7 +1660,7 @@ dependencies = [
  "log",
  "once_cell",
  "os_pipe",
- "parking_lot 0.12.3",
+ "parking_lot",
  "pin-project",
  "rand",
  "tokio",
@@ -1688,7 +1671,7 @@ dependencies = [
 
 [[package]]
 name = "deno_kv"
-version = "0.75.0"
+version = "0.76.0"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -1758,7 +1741,7 @@ dependencies = [
 
 [[package]]
 name = "deno_napi"
-version = "0.98.0"
+version = "0.99.0"
 dependencies = [
  "deno_core",
  "deno_permissions",
@@ -1780,7 +1763,7 @@ dependencies = [
 
 [[package]]
 name = "deno_net"
-version = "0.159.0"
+version = "0.160.0"
 dependencies = [
  "deno_core",
  "deno_permissions",
@@ -1796,7 +1779,7 @@ dependencies = [
 
 [[package]]
 name = "deno_node"
-version = "0.104.0"
+version = "0.105.0"
 dependencies = [
  "aead-gcm-stream",
  "aes",
@@ -1932,7 +1915,7 @@ dependencies = [
 
 [[package]]
 name = "deno_permissions"
-version = "0.27.0"
+version = "0.28.0"
 dependencies = [
  "deno_core",
  "deno_terminal 0.2.0",
@@ -1947,7 +1930,7 @@ dependencies = [
 
 [[package]]
 name = "deno_runtime"
-version = "0.176.0"
+version = "0.177.0"
 dependencies = [
  "deno_ast",
  "deno_broadcast_channel",
@@ -2060,7 +2043,7 @@ dependencies = [
 
 [[package]]
 name = "deno_tls"
-version = "0.154.0"
+version = "0.155.0"
 dependencies = [
  "deno_core",
  "deno_native_certs",
@@ -2102,13 +2085,13 @@ version = "0.4.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "2f36b4ef61a04ce201b925a5dffa90f88437d37fee4836c758470dd15ba7f05e"
 dependencies = [
- "parking_lot 0.12.3",
+ "parking_lot",
  "tokio",
 ]
 
 [[package]]
 name = "deno_url"
-version = "0.167.0"
+version = "0.168.0"
 dependencies = [
  "deno_bench_util",
  "deno_console",
@@ -2119,7 +2102,7 @@ dependencies = [
 
 [[package]]
 name = "deno_web"
-version = "0.198.0"
+version = "0.199.0"
 dependencies = [
  "async-trait",
  "base64-simd 0.8.0",
@@ -2140,7 +2123,7 @@ dependencies = [
 
 [[package]]
 name = "deno_webgpu"
-version = "0.134.0"
+version = "0.135.0"
 dependencies = [
  "deno_core",
  "raw-window-handle",
@@ -2152,7 +2135,7 @@ dependencies = [
 
 [[package]]
 name = "deno_webidl"
-version = "0.167.0"
+version = "0.168.0"
 dependencies = [
  "deno_bench_util",
  "deno_core",
@@ -2160,7 +2143,7 @@ dependencies = [
 
 [[package]]
 name = "deno_websocket"
-version = "0.172.0"
+version = "0.173.0"
 dependencies = [
  "bytes",
  "deno_core",
@@ -2181,7 +2164,7 @@ dependencies = [
 
 [[package]]
 name = "deno_webstorage"
-version = "0.162.0"
+version = "0.163.0"
 dependencies = [
  "deno_core",
  "deno_web",
@@ -2809,15 +2792,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "31ae425815400e5ed474178a7a22e275a9687086a12ca63ec793ff292d8fdae8"
 
 [[package]]
-name = "escape8259"
-version = "0.5.2"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "ba4f4911e3666fcd7826997b4745c8224295a6f3072f1418c3067b97a67557ee"
-dependencies = [
- "rustversion",
-]
-
-[[package]]
 name = "eszip"
 version = "0.78.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2956,7 +2930,7 @@ dependencies = [
  "anyhow",
  "crossbeam-channel",
  "deno_terminal 0.1.1",
- "parking_lot 0.12.3",
+ "parking_lot",
  "regex",
  "thiserror",
 ]
@@ -2969,7 +2943,7 @@ checksum = "1ee447700ac8aa0b2f2bd7bc4462ad686ba06baa6727ac149a2d6277f0d240fd"
 dependencies = [
  "cfg-if",
  "libc",
- "redox_syscall 0.4.1",
+ "redox_syscall",
  "windows-sys 0.52.0",
 ]
 
@@ -3854,15 +3828,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "instant"
-version = "0.1.12"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "7a5bbe824c507c5da5956355e86a746d82e0e1464f65d862cc5e71da70e94b2c"
-dependencies = [
- "cfg-if",
-]
-
-[[package]]
 name = "ipconfig"
 version = "0.3.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -4208,7 +4173,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "0c2a198fb6b0eada2a8df47933734e6d35d350665a33a3593d7164fa52c75c19"
 dependencies = [
  "cfg-if",
- "windows-targets 0.48.5",
+ "windows-targets 0.52.4",
 ]
 
 [[package]]
@@ -4548,7 +4513,7 @@ dependencies = [
 
 [[package]]
 name = "napi_sym"
-version = "0.97.0"
+version = "0.98.0"
 dependencies = [
  "quote",
  "serde",
@@ -4617,7 +4582,7 @@ dependencies = [
 
 [[package]]
 name = "node_resolver"
-version = "0.6.0"
+version = "0.7.0"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -4926,37 +4891,12 @@ dependencies = [
 
 [[package]]
 name = "parking_lot"
-version = "0.11.2"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "7d17b78036a60663b797adeaee46f5c9dfebb86948d1255007a1d6be0271ff99"
-dependencies = [
- "instant",
- "lock_api",
- "parking_lot_core 0.8.6",
-]
-
-[[package]]
-name = "parking_lot"
 version = "0.12.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "f1bf18183cf54e8d6059647fc3063646a1801cf30896933ec2311622cc4b9a27"
 dependencies = [
  "lock_api",
- "parking_lot_core 0.9.9",
-]
-
-[[package]]
-name = "parking_lot_core"
-version = "0.8.6"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "60a2cfe6f0ad2bfc16aefa463b497d5c7a5ecd44a23efa72aa342d90177356dc"
-dependencies = [
- "cfg-if",
- "instant",
- "libc",
- "redox_syscall 0.2.16",
- "smallvec",
- "winapi",
+ "parking_lot_core",
 ]
 
 [[package]]
@@ -4967,7 +4907,7 @@ checksum = "4c42a9226546d68acdd9c0a280d17ce19bfe27a46bf68784e4066115788d008e"
 dependencies = [
  "cfg-if",
  "libc",
- "redox_syscall 0.4.1",
+ "redox_syscall",
  "smallvec",
  "windows-targets 0.48.5",
 ]
@@ -5683,15 +5623,6 @@ checksum = "1465873a3dfdaa8ae7cb14b4383657caab0b3e8a0aa9ae8e04b044854c8dfce2"
 dependencies = [
  "crossbeam-deque",
  "crossbeam-utils",
-]
-
-[[package]]
-name = "redox_syscall"
-version = "0.2.16"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "fb5a58c1855b4b6819d59012155603f0b22ad30cad752600aadfcb695265519a"
-dependencies = [
- "bitflags 1.3.2",
 ]
 
 [[package]]
@@ -6637,7 +6568,7 @@ checksum = "f91138e76242f575eb1d3b38b4f1362f10d3a43f47d182a5b359af488a02293b"
 dependencies = [
  "new_debug_unreachable",
  "once_cell",
- "parking_lot 0.12.3",
+ "parking_lot",
  "phf_shared 0.10.0",
  "precomputed-hash",
  "serde",
@@ -6746,7 +6677,7 @@ dependencies = [
  "indexmap",
  "is-macro",
  "once_cell",
- "parking_lot 0.12.3",
+ "parking_lot",
  "petgraph",
  "radix_fmt",
  "relative-path",
@@ -7331,7 +7262,7 @@ dependencies = [
  "nix 0.26.2",
  "once_cell",
  "os_pipe",
- "parking_lot 0.12.3",
+ "parking_lot",
  "pretty_assertions",
  "prost",
  "prost-build",
@@ -7463,7 +7394,7 @@ dependencies = [
  "libc",
  "mio",
  "num_cpus",
- "parking_lot 0.12.3",
+ "parking_lot",
  "pin-project-lite",
  "signal-hook-registry",
  "socket2",
@@ -7734,7 +7665,7 @@ dependencies = [
  "ipconfig",
  "lru-cache",
  "once_cell",
- "parking_lot 0.12.3",
+ "parking_lot",
  "rand",
  "resolv-conf",
  "serde",
@@ -8207,7 +8138,7 @@ dependencies = [
  "log",
  "naga",
  "once_cell",
- "parking_lot 0.12.3",
+ "parking_lot",
  "profiling",
  "raw-window-handle",
  "ron",
@@ -8249,7 +8180,7 @@ dependencies = [
  "ndk-sys",
  "objc",
  "once_cell",
- "parking_lot 0.12.3",
+ "parking_lot",
  "profiling",
  "range-alloc",
  "raw-window-handle",
@@ -8304,7 +8235,7 @@ version = "1.5.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "a44ab49fad634e88f55bf8f9bb3abd2f27d7204172a112c7c9987e01c1c94ea9"
 dependencies = [
- "redox_syscall 0.4.1",
+ "redox_syscall",
  "wasite",
  "web-sys",
 ]
@@ -8741,7 +8672,7 @@ dependencies = [
  "log",
  "num-traits",
  "once_cell",
- "parking_lot 0.12.3",
+ "parking_lot",
  "rand",
  "regex",
  "thiserror",
