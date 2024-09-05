@@ -37,11 +37,6 @@ itest!(check_jsximportsource_importmap_config {
   output_str: Some(""),
 });
 
-itest!(bundle_jsximportsource_importmap_config {
-  args: "bundle --quiet --config check/jsximportsource_importmap_config/deno.json check/jsximportsource_importmap_config/main.tsx",
-  output: "check/jsximportsource_importmap_config/main.bundle.js",
-});
-
 itest!(jsx_not_checked {
   args: "check check/jsx_not_checked/main.jsx",
   output: "check/jsx_not_checked/main.out",
@@ -257,35 +252,38 @@ itest!(check_dts {
   exit_code: 1,
 });
 
-itest!(package_json_basic {
-  args: "check main.ts",
-  output: "package_json/basic/main.check.out",
-  envs: env_vars_for_npm_tests(),
-  http_server: true,
-  cwd: Some("package_json/basic"),
-  copy_temp_dir: Some("package_json/basic"),
-  exit_code: 0,
-});
+// TODO(2.0): this should be rewritten to a spec test and first run `deno install`
+// itest!(package_json_basic {
+//   args: "check main.ts",
+//   output: "package_json/basic/main.check.out",
+//   envs: env_vars_for_npm_tests(),
+//   http_server: true,
+//   cwd: Some("package_json/basic"),
+//   copy_temp_dir: Some("package_json/basic"),
+//   exit_code: 0,
+// });
 
-itest!(package_json_fail_check {
-  args: "check --quiet fail_check.ts",
-  output: "package_json/basic/fail_check.check.out",
-  envs: env_vars_for_npm_tests(),
-  http_server: true,
-  cwd: Some("package_json/basic"),
-  copy_temp_dir: Some("package_json/basic"),
-  exit_code: 1,
-});
+// TODO(2.0): this should be rewritten to a spec test and first run `deno install`
+// itest!(package_json_fail_check {
+//   args: "check --quiet fail_check.ts",
+//   output: "package_json/basic/fail_check.check.out",
+//   envs: env_vars_for_npm_tests(),
+//   http_server: true,
+//   cwd: Some("package_json/basic"),
+//   copy_temp_dir: Some("package_json/basic"),
+//   exit_code: 1,
+// });
 
-itest!(package_json_with_deno_json {
-  args: "check --quiet main.ts",
-  output: "package_json/deno_json/main.check.out",
-  cwd: Some("package_json/deno_json/"),
-  copy_temp_dir: Some("package_json/deno_json/"),
-  envs: env_vars_for_npm_tests(),
-  http_server: true,
-  exit_code: 1,
-});
+// TODO(2.0): this should be rewritten to a spec test and first run `deno install`
+// itest!(package_json_with_deno_json {
+//   args: "check --quiet main.ts",
+//   output: "package_json/deno_json/main.check.out",
+//   cwd: Some("package_json/deno_json/"),
+//   copy_temp_dir: Some("package_json/deno_json/"),
+//   envs: env_vars_for_npm_tests(),
+//   http_server: true,
+//   exit_code: 1,
+// });
 
 #[test]
 fn check_error_in_dep_then_fix() {

@@ -37,7 +37,7 @@ const illegalConstructorKey = Symbol("illegalConstructorKey");
  * @property {boolean} partial
  */
 
-/** @type {ReadonlyArray<"read" | "write" | "net" | "env" | "sys" | "run" | "ffi" | "hrtime">} */
+/** @type {ReadonlyArray<"read" | "write" | "net" | "env" | "sys" | "run" | "ffi">} */
 const permissionNames = [
   "read",
   "write",
@@ -46,7 +46,6 @@ const permissionNames = [
   "sys",
   "run",
   "ffi",
-  "hrtime",
 ];
 
 /**
@@ -282,7 +281,7 @@ function serializePermissions(permissions) {
       }
     }
     for (
-      const key of new SafeArrayIterator(["env", "hrtime", "net", "sys"])
+      const key of new SafeArrayIterator(["env", "net", "sys"])
     ) {
       if (ArrayIsArray(permissions[key])) {
         serializedPermissions[key] = ArrayPrototypeSlice(permissions[key]);

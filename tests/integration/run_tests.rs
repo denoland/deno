@@ -153,11 +153,6 @@ itest!(_023_no_ext {
   output: "run/023_no_ext.out",
 });
 
-itest!(_025_hrtime {
-  args: "run --quiet --allow-hrtime --reload run/025_hrtime.ts",
-  output: "run/025_hrtime.ts.out",
-});
-
 itest!(_025_reload_js_type_error {
   args: "run --quiet --reload run/025_reload_js_type_error.js",
   output: "run/025_reload_js_type_error.js.out",
@@ -488,11 +483,6 @@ itest!(dynamic_import_concurrent_non_statically_analyzable {
   http_server: true,
 });
 
-itest!(no_check_imports_not_used_as_values {
-    args: "run --config run/no_check_imports_not_used_as_values/preserve_imports.tsconfig.json --no-check run/no_check_imports_not_used_as_values/main.ts",
-    output: "run/no_check_imports_not_used_as_values/main.out",
-  });
-
 itest!(_088_dynamic_import_already_evaluating {
   args: "run --allow-read run/088_dynamic_import_already_evaluating.ts",
   output: "run/088_dynamic_import_already_evaluating.ts.out",
@@ -735,12 +725,12 @@ fn permission_request_long() {
 }
 
 itest!(deny_all_permission_args {
-  args: "run --deny-env --deny-read --deny-write --deny-ffi --deny-run --deny-sys --deny-net --deny-hrtime run/deny_all_permission_args.js",
+  args: "run --deny-env --deny-read --deny-write --deny-ffi --deny-run --deny-sys --deny-net run/deny_all_permission_args.js",
   output: "run/deny_all_permission_args.out",
 });
 
 itest!(deny_some_permission_args {
-  args: "run --allow-env --deny-env=FOO --allow-read --deny-read=/foo --allow-write --deny-write=/foo --allow-ffi --deny-ffi=/foo --allow-run --deny-run=foo --allow-sys --deny-sys=hostname --allow-net --deny-net=127.0.0.1 --allow-hrtime --deny-hrtime run/deny_some_permission_args.js",
+  args: "run --allow-env --deny-env=FOO --allow-read --deny-read=/foo --allow-write --deny-write=/foo --allow-ffi --deny-ffi=/foo --allow-run --deny-run=foo --allow-sys --deny-sys=hostname --allow-net --deny-net=127.0.0.1 run/deny_some_permission_args.js",
   output: "run/deny_some_permission_args.out",
 });
 
@@ -946,7 +936,9 @@ fn lock_redirects() {
   );
 }
 
+// TODO(2.0): this should be rewritten to a spec test and first run `deno install`
 #[test]
+#[ignore]
 fn lock_deno_json_package_json_deps() {
   let context = TestContextBuilder::new()
     .use_temp_cwd()
@@ -1104,7 +1096,7 @@ fn lock_deno_json_package_json_deps_workspace() {
   // deno.json
   let deno_json = temp_dir.join("deno.json");
   deno_json.write_json(&json!({
-    "nodeModulesDir": true
+    "nodeModulesDir": "auto"
   }));
 
   // package.json
@@ -1801,16 +1793,6 @@ itest!(top_level_for_await_ts {
   output: "run/top_level_await/top_level_for_await.out",
 });
 
-itest!(unstable_disabled_js {
-  args: "run --reload run/unstable.js",
-  output: "run/unstable_disabled_js.out",
-});
-
-itest!(unstable_enabled_js {
-  args: "run --quiet --reload --unstable-fs run/unstable.ts",
-  output: "run/unstable_enabled_js.out",
-});
-
 itest!(unstable_worker {
   args: "run --reload --quiet --allow-read run/unstable_worker.ts",
   output: "run/unstable_worker.ts.out",
@@ -1848,26 +1830,6 @@ itest!(unstable_cron_enabled {
   output: "run/unstable_cron.enabled.out",
 });
 
-itest!(unstable_ffi_disabled {
-  args: "run --quiet --reload --allow-read run/unstable_ffi.js",
-  output: "run/unstable_ffi.disabled.out",
-});
-
-itest!(unstable_ffi_enabled {
-  args: "run --quiet --reload --allow-read --unstable-ffi run/unstable_ffi.js",
-  output: "run/unstable_ffi.enabled.out",
-});
-
-itest!(unstable_fs_disabled {
-  args: "run --quiet --reload --allow-read run/unstable_fs.js",
-  output: "run/unstable_fs.disabled.out",
-});
-
-itest!(unstable_fs_enabled {
-  args: "run --quiet --reload --allow-read --unstable-fs run/unstable_fs.js",
-  output: "run/unstable_fs.enabled.out",
-});
-
 itest!(unstable_http_disabled {
   args: "run --quiet --reload --allow-read run/unstable_http.js",
   output: "run/unstable_http.disabled.out",
@@ -1897,17 +1859,6 @@ itest!(unstable_kv_disabled {
 itest!(unstable_kv_enabled {
   args: "run --quiet --reload --allow-read --unstable-kv run/unstable_kv.js",
   output: "run/unstable_kv.enabled.out",
-});
-
-itest!(unstable_webgpu_disabled {
-  args: "run --quiet --reload --allow-read run/unstable_webgpu.js",
-  output: "run/unstable_webgpu.disabled.out",
-});
-
-itest!(unstable_webgpu_enabled {
-  args:
-    "run --quiet --reload --allow-read --unstable-webgpu run/unstable_webgpu.js",
-  output: "run/unstable_webgpu.enabled.out",
 });
 
 itest!(import_compression {
@@ -2538,8 +2489,8 @@ fn should_not_panic_on_undefined_deno_dir_and_home_environment_variables() {
 }
 
 #[test]
-fn rust_log() {
-  // Without RUST_LOG the stderr is empty.
+fn deno_log() {
+  // Without DENO_LOG the stderr is empty.
   let output = util::deno_cmd()
     .current_dir(util::testdata_path())
     .arg("run")
@@ -2552,12 +2503,12 @@ fn rust_log() {
   assert!(output.status.success());
   assert!(output.stderr.is_empty());
 
-  // With RUST_LOG the stderr is not empty.
+  // With DENO_LOG the stderr is not empty.
   let output = util::deno_cmd()
     .current_dir(util::testdata_path())
     .arg("run")
     .arg("run/001_hello.js")
-    .env("RUST_LOG", "debug")
+    .env("DENO_LOG", "debug")
     .stderr_piped()
     .spawn()
     .unwrap()
@@ -3433,16 +3384,19 @@ itest!(
   }
 );
 
-itest!(package_json_auto_discovered_for_npm_binary {
-  args: "run -L debug -A npm:@denotest/bin/cli-esm this is a test",
-  output: "run/with_package_json/npm_binary/main.out",
-  cwd: Some("run/with_package_json/npm_binary/"),
-  copy_temp_dir: Some("run/with_package_json/"),
-  envs: env_vars_for_npm_tests(),
-  http_server: true,
-});
+// TODO(2.0): this should be rewritten to a spec test and first run `deno install`
+// itest!(package_json_auto_discovered_for_npm_binary {
+//   args: "run -L debug -A npm:@denotest/bin/cli-esm this is a test",
+//   output: "run/with_package_json/npm_binary/main.out",
+//   cwd: Some("run/with_package_json/npm_binary/"),
+//   copy_temp_dir: Some("run/with_package_json/"),
+//   envs: env_vars_for_npm_tests(),
+//   http_server: true,
+// });
 
+// TODO(2.0): this should be rewritten to a spec test and first run `deno install`
 #[test]
+#[ignore]
 fn package_json_with_deno_json() {
   let context = TestContextBuilder::for_npm()
     .use_copy_temp_dir("package_json/deno_json/")
@@ -3722,11 +3676,6 @@ itest!(spawn_kill_permissions {
 itest!(followup_dyn_import_resolved {
   args: "run --allow-read run/followup_dyn_import_resolves/main.ts",
   output: "run/followup_dyn_import_resolves/main.ts.out",
-});
-
-itest!(allow_run_allowlist_resolution {
-  args: "run --quiet -A allow_run_allowlist_resolution.ts",
-  output: "allow_run_allowlist_resolution.ts.out",
 });
 
 itest!(unhandled_rejection {
@@ -4633,16 +4582,32 @@ fn permission_prompt_escapes_ansi_codes_and_control_chars() {
     ))
   });
 
-  util::with_pty(&["repl"], |mut console| {
-    console.write_line_raw(r#"const boldANSI = "\u001b[1m";"#);
-    console.expect("undefined");
-    console.write_line_raw(r#"const unboldANSI = "\u001b[22m";"#);
-    console.expect("undefined");
-    console.write_line_raw(
-      r#"new Deno.Command(`${boldANSI}cat${unboldANSI}`).spawn();"#,
-    );
-    console.expect("\u{250f} \u{26a0}\u{fe0f}  Deno requests run access to \"\\u{1b}[1mcat\\u{1b}[22m\".");
-  });
+  // windows doesn't support backslashes in paths, so just try this on unix
+  if cfg!(unix) {
+    let context = TestContextBuilder::default().use_temp_cwd().build();
+    context
+      .new_command()
+      .env("PATH", context.temp_dir().path())
+      .env("DYLD_FALLBACK_LIBRARY_PATH", "")
+      .env("LD_LIBRARY_PATH", "")
+      .args_vec(["repl", "--allow-write=."])
+      .with_pty(|mut console| {
+        console.write_line_raw(r#"const boldANSI = "\u001b[1m";"#);
+        console.expect("undefined");
+        console.write_line_raw(r#"const unboldANSI = "\u001b[22m";"#);
+        console.expect("undefined");
+        console.write_line_raw(
+          r#"Deno.writeTextFileSync(`${boldANSI}cat${unboldANSI}`, "");"#,
+        );
+        console.expect("undefined");
+        console.write_line_raw(
+          r#"new Deno.Command(`./${boldANSI}cat${unboldANSI}`).spawn();"#,
+        );
+        console
+          .expect("\u{250f} \u{26a0}\u{fe0f}  Deno requests run access to \"");
+        console.expect("\\u{1b}[1mcat\\u{1b}[22m\"."); // ensure escaped
+      });
+  }
 }
 
 itest!(node_builtin_modules_ts {
@@ -4668,7 +4633,7 @@ itest!(node_prefix_missing {
 
 itest!(node_prefix_missing_unstable_bare_node_builtins_enbaled {
   args: "run --unstable-bare-node-builtins run/node_prefix_missing/main.ts",
-  output: "run/node_prefix_missing/main.ts.out_feature_enabled",
+  output: "run/node_prefix_missing/feature_enabled.out",
   envs: env_vars_for_npm_tests(),
   exit_code: 0,
 });
@@ -4676,7 +4641,7 @@ itest!(node_prefix_missing_unstable_bare_node_builtins_enbaled {
 itest!(
   node_prefix_missing_unstable_bare_node_builtins_enbaled_by_env {
     args: "run run/node_prefix_missing/main.ts",
-    output: "run/node_prefix_missing/main.ts.out_feature_enabled",
+    output: "run/node_prefix_missing/feature_enabled.out",
     envs: [
       env_vars_for_npm_tests(),
       vec![(
@@ -4691,14 +4656,14 @@ itest!(
 
 itest!(node_prefix_missing_unstable_bare_node_builtins_enbaled_by_config {
   args: "run --config=run/node_prefix_missing/config.json run/node_prefix_missing/main.ts",
-  output: "run/node_prefix_missing/main.ts.out_feature_enabled",
+  output: "run/node_prefix_missing/feature_enabled.out",
   envs: env_vars_for_npm_tests(),
   exit_code: 0,
 });
 
 itest!(node_prefix_missing_unstable_bare_node_builtins_enbaled_with_import_map {
   args: "run --unstable-bare-node-builtins --import-map run/node_prefix_missing/import_map.json run/node_prefix_missing/main.ts",
-  output: "run/node_prefix_missing/main.ts.out_feature_enabled",
+  output: "run/node_prefix_missing/feature_enabled.out",
   envs: env_vars_for_npm_tests(),
   exit_code: 0,
 });

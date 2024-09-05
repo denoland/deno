@@ -118,7 +118,7 @@ Deno.test(async function cachePutReaderLock() {
       await response.arrayBuffer();
     },
     TypeError,
-    "Body already consumed.",
+    "Body already consumed",
   );
 
   await promise;

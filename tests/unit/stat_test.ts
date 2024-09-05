@@ -1,47 +1,12 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
-// deno-lint-ignore-file no-deprecated-deno-api
-
 import {
   assert,
   assertEquals,
   assertRejects,
   assertThrows,
-  DENO_FUTURE,
   pathToAbsoluteFileUrl,
 } from "./test_util.ts";
-
-Deno.test(
-  { ignore: DENO_FUTURE, permissions: { read: true } },
-  function fstatSyncSuccess() {
-    using file = Deno.openSync("README.md");
-    const fileInfo = Deno.fstatSync(file.rid);
-    assert(fileInfo.isFile);
-    assert(!fileInfo.isSymlink);
-    assert(!fileInfo.isDirectory);
-    assert(fileInfo.size);
-    assert(fileInfo.atime);
-    assert(fileInfo.mtime);
-    // The `birthtime` field is not available on Linux before kernel version 4.11.
-    assert(fileInfo.birthtime || Deno.build.os === "linux");
-  },
-);
-
-Deno.test(
-  { ignore: DENO_FUTURE, permissions: { read: true } },
-  async function fstatSuccess() {
-    using file = await Deno.open("README.md");
-    const fileInfo = await Deno.fstat(file.rid);
-    assert(fileInfo.isFile);
-    assert(!fileInfo.isSymlink);
-    assert(!fileInfo.isDirectory);
-    assert(fileInfo.size);
-    assert(fileInfo.atime);
-    assert(fileInfo.mtime);
-    // The `birthtime` field is not available on Linux before kernel version 4.11.
-    assert(fileInfo.birthtime || Deno.build.os === "linux");
-  },
-);
 
 Deno.test(
   { permissions: { read: true, write: true } },

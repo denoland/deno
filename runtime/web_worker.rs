@@ -545,13 +545,6 @@ impl WebWorker {
       options.bootstrap.enable_op_summary_metrics,
       options.strace_ops,
     );
-    let import_assertions_support = if options.bootstrap.future {
-      deno_core::ImportAssertionsSupport::Error
-    } else {
-      deno_core::ImportAssertionsSupport::CustomCallback(Box::new(
-        crate::shared::import_assertion_callback,
-      ))
-    };
 
     let mut js_runtime = JsRuntime::new(RuntimeOptions {
       module_loader: Some(options.module_loader.clone()),
@@ -572,7 +565,7 @@ impl WebWorker {
       validate_import_attributes_cb: Some(Box::new(
         validate_import_attributes_callback,
       )),
-      import_assertions_support,
+      import_assertions_support: deno_core::ImportAssertionsSupport::Error,
       ..Default::default()
     });
 
