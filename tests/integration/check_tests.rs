@@ -37,11 +37,6 @@ itest!(check_jsximportsource_importmap_config {
   output_str: Some(""),
 });
 
-itest!(bundle_jsximportsource_importmap_config {
-  args: "bundle --quiet --config check/jsximportsource_importmap_config/deno.json check/jsximportsource_importmap_config/main.tsx",
-  output: "check/jsximportsource_importmap_config/main.bundle.js",
-});
-
 itest!(jsx_not_checked {
   args: "check check/jsx_not_checked/main.jsx",
   output: "check/jsx_not_checked/main.out",

@@ -48,7 +48,7 @@ use crate::args::get_root_cert_store;
 use crate::args::npm_pkg_req_ref_to_binary_command;
 use crate::args::CaData;
 use crate::args::CacheSetting;
-use crate::args::PackageJsonInstallDepsProvider;
+use crate::args::NpmInstallDepsProvider;
 use crate::args::StorageKeyResolver;
 use crate::cache::Caches;
 use crate::cache::DenoDirProvider;
@@ -138,7 +138,7 @@ pub const UNSUPPORTED_SCHEME: &str = "Unsupported scheme";
 impl ModuleLoader for EmbeddedModuleLoader {
   fn resolve(
     &self,
-    specifier: &str,
+    raw_specifier: &str,
     referrer: &str,
     kind: ResolutionKind,
   ) -> Result<ModuleSpecifier, AnyError> {
@@ -162,13 +162,15 @@ impl ModuleLoader for EmbeddedModuleLoader {
         self
           .shared
           .node_resolver
-          .resolve(specifier, &referrer, NodeResolutionMode::Execution)?
+          .resolve(raw_specifier, &referrer, NodeResolutionMode::Execution)?
           .into_url(),
       );
     }
 
-    let mapped_resolution =
-      self.shared.workspace_resolver.resolve(specifier, &referrer);
+    let mapped_resolution = self
+      .shared
+      .workspace_resolver
+      .resolve(raw_specifier, &referrer);
 
     match mapped_resolution {
       Ok(MappedResolution::WorkspaceJsrPackage { specifier, .. }) => {
@@ -262,7 +264,7 @@ impl ModuleLoader for EmbeddedModuleLoader {
         if err.is_unmapped_bare_specifier() && referrer.scheme() == "file" =>
       {
         let maybe_res = self.shared.node_resolver.resolve_if_for_npm_pkg(
-          specifier,
+          raw_specifier,
           &referrer,
           NodeResolutionMode::Execution,
         )?;
@@ -502,9 +504,9 @@ pub async fn run(
             text_only_progress_bar: progress_bar,
             maybe_node_modules_path,
             npm_system_info: Default::default(),
-            package_json_deps_provider: Arc::new(
+            npm_install_deps_provider: Arc::new(
               // this is only used for installing packages, which isn't necessary with deno compile
-              PackageJsonInstallDepsProvider::empty(),
+              NpmInstallDepsProvider::empty(),
             ),
             // create an npmrc that uses the fake npm_registry_url to resolve packages
             npmrc: Arc::new(ResolvedNpmRc {
@@ -554,9 +556,9 @@ pub async fn run(
             text_only_progress_bar: progress_bar,
             maybe_node_modules_path: None,
             npm_system_info: Default::default(),
-            package_json_deps_provider: Arc::new(
+            npm_install_deps_provider: Arc::new(
               // this is only used for installing packages, which isn't necessary with deno compile
-              PackageJsonInstallDepsProvider::empty(),
+              NpmInstallDepsProvider::empty(),
             ),
             // Packages from different registries are already inlined in the ESZip,
             // so no need to create actual `.npmrc` configuration.
@@ -737,9 +739,6 @@ pub async fn run(
       node_ipc: None,
       serve_port: None,
       serve_host: None,
-      // TODO(bartlomieju): temporarily disabled
-      disable_deprecated_api_warning: true,
-      verbose_deprecated_api_warning: false,
     },
   );
 

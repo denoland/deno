@@ -502,7 +502,7 @@ impl Resolver for CliGraphResolver {
 
   fn resolve(
     &self,
-    specifier: &str,
+    raw_specifier: &str,
     referrer_range: &deno_graph::Range,
     mode: ResolutionMode,
   ) -> Result<ModuleSpecifier, ResolveError> {
@@ -519,7 +519,7 @@ impl Resolver for CliGraphResolver {
     if let Some(node_resolver) = self.node_resolver.as_ref() {
       if referrer.scheme() == "file" && node_resolver.in_npm_package(referrer) {
         return node_resolver
-          .resolve(specifier, referrer, to_node_mode(mode))
+          .resolve(raw_specifier, referrer, to_node_mode(mode))
           .map(|res| res.into_url())
           .map_err(|e| ResolveError::Other(e.into()));
       }
@@ -528,7 +528,7 @@ impl Resolver for CliGraphResolver {
     // Attempt to resolve with the workspace resolver
     let result: Result<_, ResolveError> = self
       .workspace_resolver
-      .resolve(specifier, referrer)
+      .resolve(raw_specifier, referrer)
       .map_err(|err| match err {
         MappedResolutionError::Specifier(err) => ResolveError::Specifier(err),
         MappedResolutionError::ImportMap(err) => {
@@ -700,7 +700,7 @@ impl Resolver for CliGraphResolver {
         // If byonm, check if the bare specifier resolves to an npm package
         if is_byonm && referrer.scheme() == "file" {
           let maybe_resolution = node_resolver
-            .resolve_if_for_npm_pkg(specifier, referrer, to_node_mode(mode))
+            .resolve_if_for_npm_pkg(raw_specifier, referrer, to_node_mode(mode))
             .map_err(ResolveError::Other)?;
           if let Some(res) = maybe_resolution {
             return Ok(res.into_url());
@@ -749,7 +749,7 @@ impl<'a> deno_graph::source::NpmResolver for WorkerCliNpmGraphResolver<'a> {
     let line = start.line + 1;
     let column = start.character + 1;
     if !*DENO_DISABLE_PEDANTIC_NODE_WARNINGS {
-      log::warn!("Warning: Resolving \"{module_name}\" as \"node:{module_name}\" at {specifier}:{line}:{column}. If you want to use a built-in Node module, add a \"node:\" prefix.")
+      log::warn!("{} Resolving \"{module_name}\" as \"node:{module_name}\" at {specifier}:{line}:{column}. If you want to use a built-in Node module, add a \"node:\" prefix.", colors::yellow("Warning"))
     }
   }
 
