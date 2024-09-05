@@ -12,6 +12,7 @@ use deno_core::serde::Deserialize;
 use deno_core::serde::Deserializer;
 use deno_core::serde::Serialize;
 use deno_core::serde_json;
+use deno_core::strip_unc_prefix;
 use deno_core::unsync::sync::AtomicFlag;
 use deno_core::url;
 use deno_core::url::Url;
@@ -871,16 +872,7 @@ pub struct RunPathQuery<'a> {
 pub enum RunDescriptorArg {
   Name(String),
   Path(PathBuf),
-}
-
-#[derive(Clone, Eq, PartialEq, Hash, Debug)]
-pub enum RunDescriptor {
-  /// Warning: You may want to construct with `RunDescriptor::from()` for case
-  /// handling.
-  Name(String),
-  /// Warning: You may want to construct with `RunDescriptor::from()` for case
-  /// handling.
-  Path(PathBuf),
+  NoMatch,
 }
 
 impl From<String> for RunDescriptorArg {
@@ -891,14 +883,41 @@ impl From<String> for RunDescriptorArg {
     #[cfg(windows)]
     let is_path = is_path || s.contains('\\') || Path::new(&s).is_absolute();
     if is_path {
-      Self::Path(resolve_from_cwd(Path::new(&s)).unwrap())
+      PathBuf::from(&s).into()
     } else {
       match which::which(&s) {
-        Ok(path) => Self::Path(path),
-        Err(_) => Self::Name(s),
+        Ok(path) => path.into(),
+        Err(_) => Self::NoMatch,
       }
     }
   }
+}
+
+impl From<PathBuf> for RunDescriptorArg {
+  fn from(p: PathBuf) -> Self {
+    #[cfg(windows)]
+    let p = PathBuf::from(p.to_string_lossy().to_lowercase());
+    match resolve_from_cwd(&p) {
+      // ok, won't ever get here if not using a real file system
+      #[allow(clippy::disallowed_methods)]
+      Ok(p) => match p.canonicalize() {
+        Ok(path) => Self::Path(strip_unc_prefix(path)),
+        Err(_) => Self::Path(p),
+      },
+      Err(_) => Self::NoMatch,
+    }
+  }
+}
+
+#[derive(Clone, Eq, PartialEq, Hash, Debug)]
+pub enum RunDescriptor {
+  /// Warning: You may want to construct with `RunDescriptor::from()` for case
+  /// handling.
+  Name(String),
+  /// Warning: You may want to construct with `RunDescriptor::from()` for case
+  /// handling.
+  Path(PathBuf),
+  NoMatch,
 }
 
 impl Descriptor for RunDescriptor {
@@ -928,17 +947,26 @@ impl Descriptor for RunDescriptor {
 
 impl From<String> for RunDescriptor {
   fn from(s: String) -> Self {
-    #[cfg(windows)]
-    let s = s.to_lowercase();
+    s.as_str().into()
+  }
+}
+
+impl<'a> From<&'a str> for RunDescriptor {
+  fn from(s: &'a str) -> Self {
+    let s = if cfg!(windows) {
+      Cow::Owned(s.to_lowercase())
+    } else {
+      Cow::Borrowed(s)
+    };
     let is_path = s.contains('/');
     #[cfg(windows)]
     let is_path = is_path || s.contains('\\') || Path::new(&s).is_absolute();
     if is_path {
-      Self::Path(resolve_from_cwd(Path::new(&s)).unwrap())
+      PathBuf::from(s.as_ref()).into()
     } else {
-      match which::which(&s) {
-        Ok(path) => Self::Path(path),
-        Err(_) => Self::Name(s),
+      match which::which(s.as_ref()) {
+        Ok(path) => path.into(),
+        Err(_) => Self::NoMatch,
       }
     }
   }
@@ -946,9 +974,23 @@ impl From<String> for RunDescriptor {
 
 impl From<PathBuf> for RunDescriptor {
   fn from(p: PathBuf) -> Self {
+    p.as_path().into()
+  }
+}
+
+impl<'a> From<&'a Path> for RunDescriptor {
+  fn from(p: &'a Path) -> Self {
     #[cfg(windows)]
-    let p = PathBuf::from(p.to_string_lossy().to_string().to_lowercase());
-    Self::Path(resolve_from_cwd(&p).unwrap())
+    let p = PathBuf::from(p.to_string_lossy().to_lowercase());
+    match resolve_from_cwd(p) {
+      // ok, won't ever get here if not using a real file system
+      #[allow(clippy::disallowed_methods)]
+      Ok(p) => match p.canonicalize() {
+        Ok(path) => Self::Path(strip_unc_prefix(path)),
+        Err(_) => Self::Path(p),
+      },
+      Err(_) => Self::NoMatch,
+    }
   }
 }
 
@@ -957,15 +999,7 @@ impl std::fmt::Display for RunDescriptor {
     match self {
       RunDescriptor::Name(s) => f.write_str(s),
       RunDescriptor::Path(p) => f.write_str(&p.display().to_string()),
-    }
-  }
-}
-
-impl AsRef<Path> for RunDescriptor {
-  fn as_ref(&self) -> &Path {
-    match self {
-      RunDescriptor::Name(s) => s.as_ref(),
-      RunDescriptor::Path(s) => s.as_ref(),
+      RunDescriptor::NoMatch => f.write_str("<error>"),
     }
   }
 }
@@ -1309,20 +1343,19 @@ impl UnaryPermission<SysDescriptor> {
 impl UnaryPermission<RunDescriptor> {
   pub fn query(&self, cmd: Option<&str>) -> PermissionState {
     self.query_desc(
-      cmd.map(|c| RunDescriptor::from(c.to_string())).as_ref(),
+      cmd.map(RunDescriptor::from).as_ref(),
       AllowPartial::TreatAsPartialGranted,
     )
   }
 
   pub fn request(&mut self, cmd: Option<&str>) -> PermissionState {
-    self.request_desc(
-      cmd.map(|c| RunDescriptor::from(c.to_string())).as_ref(),
-      || Some(cmd?.to_string()),
-    )
+    self.request_desc(cmd.map(RunDescriptor::from).as_ref(), || {
+      Some(cmd?.to_string())
+    })
   }
 
   pub fn revoke(&mut self, cmd: Option<&str>) -> PermissionState {
-    self.revoke_desc(cmd.map(|c| RunDescriptor::from(c.to_string())).as_ref())
+    self.revoke_desc(cmd.map(RunDescriptor::from).as_ref())
   }
 
   pub fn check(
@@ -1332,12 +1365,9 @@ impl UnaryPermission<RunDescriptor> {
   ) -> Result<(), AnyError> {
     debug_assert!(cmd.resolved.is_absolute());
     skip_check_if_is_permission_fully_granted!(self);
-    self.check_desc(
-      Some(&RunDescriptor::Path(cmd.resolved.to_path_buf())),
-      false,
-      api_name,
-      || Some(format!("\"{}\"", cmd.requested)),
-    )
+    self.check_desc(Some(&cmd.resolved.into()), false, api_name, || {
+      Some(format!("\"{}\"", cmd.requested))
+    })
   }
 
   pub fn check_all(&mut self, api_name: Option<&str>) -> Result<(), AnyError> {
@@ -1987,6 +2017,7 @@ fn parse_run_list(
       .map(|arg| match arg {
         RunDescriptorArg::Name(s) => RunDescriptor::Name(s.clone()),
         RunDescriptorArg::Path(l) => RunDescriptor::Path(l.clone()),
+        RunDescriptorArg::NoMatch => RunDescriptor::NoMatch,
       })
       .collect(),
   )

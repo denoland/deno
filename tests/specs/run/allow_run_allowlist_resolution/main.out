@@ -1,17 +1,37 @@
-Script: [WILDCARD]
----
+--- name, on PATH ---
 PermissionStatus { state: "granted", onchange: null }
 PermissionStatus { state: "granted", onchange: null }
 PermissionStatus { state: "prompt", onchange: null }
 PermissionStatus { state: "granted", onchange: null }
----
+PermissionStatus { state: "granted", onchange: null }
+--- name, no PATH ---
 Info Failed to resolve 'binary' for allow-run: cannot find binary path
 PermissionStatus { state: "prompt", onchange: null }
 PermissionStatus { state: "prompt", onchange: null }
 PermissionStatus { state: "prompt", onchange: null }
 PermissionStatus { state: "prompt", onchange: null }
----
+PermissionStatus { state: "prompt", onchange: null }
+--- path, on PATH ---
 PermissionStatus { state: "granted", onchange: null }
 PermissionStatus { state: "granted", onchange: null }
 PermissionStatus { state: "prompt", onchange: null }
+PermissionStatus { state: "granted", onchange: null }
+PermissionStatus { state: "granted", onchange: null }
+--- path, not on PATH (same as above) ---
+PermissionStatus { state: "granted", onchange: null }
+PermissionStatus { state: "granted", onchange: null }
+PermissionStatus { state: "prompt", onchange: null }
+PermissionStatus { state: "granted", onchange: null }
+PermissionStatus { state: "granted", onchange: null }
+--- path, dir symlink on PATH (same as above) ---
+PermissionStatus { state: "granted", onchange: null }
+PermissionStatus { state: "granted", onchange: null }
+PermissionStatus { state: "prompt", onchange: null }
+PermissionStatus { state: "granted", onchange: null }
+PermissionStatus { state: "granted", onchange: null }
+--- symlink path, dir symlink on PATH (same as above) ---
+PermissionStatus { state: "granted", onchange: null }
+PermissionStatus { state: "granted", onchange: null }
+PermissionStatus { state: "prompt", onchange: null }
+PermissionStatus { state: "granted", onchange: null }
 PermissionStatus { state: "granted", onchange: null }

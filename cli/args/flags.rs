@@ -699,7 +699,9 @@ impl PermissionFlags {
         if command_name.is_empty() {
           bail!("Empty command name not allowed in --allow-run=...")
         }
-        let command_path_result = which::which(command_name);
+        let command_path_result = which::which(command_name)
+          .map_err(AnyError::from)
+          .and_then(|path| canonicalize_path(&path).map_err(AnyError::from));
         match command_path_result {
           Ok(command_path) => new_allow_run.push(command_path),
           Err(err) => {

@@ -14,8 +14,12 @@ const pathSep = Deno.build.os === "windows" ? "\\" : "/";
 const cwd = Deno.cwd();
 const execPathParent = `${Deno.cwd()}${pathSep}sub`;
 const execPath = `${execPathParent}${pathSep}${binaryName}`;
+const execPathSymlinkParent = `${Deno.cwd()}${pathSep}link`;
+const execPathSymlink = `${execPathSymlinkParent}${pathSep}${binaryName}`;
 Deno.mkdirSync(execPathParent);
+Deno.mkdirSync(execPathSymlinkParent);
 Deno.copyFileSync(Deno.execPath(), execPath);
+Deno.symlinkSync(execPath, execPathSymlink, { type: "file" });
 
 const fileText = `
 console.error(await Deno.permissions.query({ name: "run", command: "binary" }));
@@ -27,14 +31,13 @@ console.error(await Deno.permissions.query({ name: "run", command: "binary" }));
 console.error(await Deno.permissions.query({ name: "run", command: "${
   execPath.replaceAll("\\", "\\\\")
 }" }));
+console.error(await Deno.permissions.query({ name: "run", command: "${
+  execPathSymlink.replaceAll("\\", "\\\\")
+}" }));
 `;
 const testUrl = `data:application/typescript;base64,${btoa(fileText)}`;
 
-// for debugging
-console.error("Script:", fileText);
-console.error("Cwd:", Deno.cwd());
-console.error("Real cwd:", Deno.realPathSync(Deno.cwd()));
-console.error("---");
+console.error("--- name, on PATH ---");
 
 const process1 = await new Deno.Command(Deno.execPath(), {
   args: [
@@ -48,7 +51,7 @@ const process1 = await new Deno.Command(Deno.execPath(), {
   env: { "PATH": execPathParent },
 }).output();
 
-console.error("---");
+console.error("--- name, no PATH ---");
 
 await new Deno.Command(Deno.execPath(), {
   args: [
@@ -62,7 +65,7 @@ await new Deno.Command(Deno.execPath(), {
   env: { "PATH": "" },
 }).output();
 
-console.error("---");
+console.error("--- path, on PATH ---");
 
 await new Deno.Command(Deno.execPath(), {
   args: [
@@ -74,4 +77,46 @@ await new Deno.Command(Deno.execPath(), {
   stderr: "inherit",
   stdout: "inherit",
   env: { "PATH": execPathParent },
+}).output();
+
+console.error("--- path, not on PATH (same as above) ---");
+
+await new Deno.Command(Deno.execPath(), {
+  args: [
+    "run",
+    "--allow-env",
+    `--allow-run=${execPath}`,
+    testUrl,
+  ],
+  stderr: "inherit",
+  stdout: "inherit",
+  env: { "PATH": execPathParent },
+}).output();
+
+console.error("--- path, dir symlink on PATH (same as above) ---");
+
+await new Deno.Command(Deno.execPath(), {
+  args: [
+    "run",
+    "--allow-env",
+    `--allow-run=${execPath}`,
+    testUrl,
+  ],
+  stderr: "inherit",
+  stdout: "inherit",
+  env: { "PATH": execPathSymlinkParent },
+}).output();
+
+console.error("--- symlink path, dir symlink on PATH (same as above) ---");
+
+await new Deno.Command(Deno.execPath(), {
+  args: [
+    "run",
+    "--allow-env",
+    `--allow-run=${execPathSymlink}`,
+    testUrl,
+  ],
+  stderr: "inherit",
+  stdout: "inherit",
+  env: { "PATH": execPathSymlinkParent },
 }).output();
