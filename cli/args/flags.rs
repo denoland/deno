@@ -43,9 +43,6 @@ use log::Level;
 use serde::Deserialize;
 use serde::Serialize;
 
-use crate::args::resolve_no_prompt;
-use crate::util::fs::canonicalize_path;
-
 #[derive(Clone, Debug, Default, Eq, PartialEq)]
 pub enum ConfigFlag {
   #[default]

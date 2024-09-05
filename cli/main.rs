@@ -395,8 +395,14 @@ pub fn main() {
   };
 
   match create_and_run_current_thread_with_maybe_metrics(future) {
-    Ok(exit_code) => std::process::exit(exit_code),
-    Err(err) => exit_for_error(err),
+    Ok(exit_code) => {
+      let _ = deno_runtime::deno_permissions::clear_wildcard_permissions();
+      std::process::exit(exit_code)
+    }
+    Err(err) => {
+      let _ = deno_runtime::deno_permissions::clear_wildcard_permissions();
+      exit_for_error(err)
+    }
   }
 }
 
