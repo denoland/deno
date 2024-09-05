@@ -15,7 +15,7 @@ Deno.test(function noNameTest() {
     // @ts-ignore test
     () => Deno.cron(),
     TypeError,
-    "Cannot create cron job, a unique name is required: received `undefined`",
+    "Cannot create cron job, a unique name is required: received 'undefined'",
   );
 });
 
@@ -24,7 +24,7 @@ Deno.test(function noSchedule() {
     // @ts-ignore test
     () => Deno.cron("foo"),
     TypeError,
-    "Cannot create cron job, a schedule is required: received `undefined`",
+    "Cannot create cron job, a schedule is required: received 'undefined'",
   );
 });
 
