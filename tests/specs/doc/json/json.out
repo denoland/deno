@@ -2,17 +2,19 @@
   "version": 1,
   "nodes": [
     {
-      "kind": "variable",
       "name": "foo",
+      "isDefault": false,
       "location": {
         "filename": "file:///[WILDCARD]/types.d.ts",
         "line": 2,
-        "col": 13
+        "col": 13,
+        "byteIndex": 39
       },
       "declarationKind": "export",
       "jsDoc": {
         "doc": "An exported value."
       },
+      "kind": "variable",
       "variableDef": {
         "tsType": {
           "repr": "string",
