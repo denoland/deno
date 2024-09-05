@@ -6,8 +6,6 @@ console.log(
 );
 console.log("Deno.funlock is", Deno.funlock);
 console.log("Deno.funlockSync is", Deno.funlockSync);
-console.log("Deno.seek is", Deno.seek);
-console.log("Deno.seekSync is", Deno.seekSync);
 
 // TCP
 // Since these tests may run in parallel, ensure this port is unique to this file

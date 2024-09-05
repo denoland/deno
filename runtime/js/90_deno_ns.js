@@ -1,6 +1,6 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
-import { core, internals } from "ext:core/mod.js";
+import { core } from "ext:core/mod.js";
 import {
   op_net_listen_udp,
   op_net_listen_unixpacket,
@@ -96,22 +96,6 @@ const denoNs = {
   stdin: io.stdin,
   stdout: io.stdout,
   stderr: io.stderr,
-  seek(rid, offset, whence) {
-    internals.warnOnDeprecatedApi(
-      "Deno.seek()",
-      new Error().stack,
-      "Use `file.seek()` instead.",
-    );
-    return fs.seek(rid, offset, whence);
-  },
-  seekSync(rid, offset, whence) {
-    internals.warnOnDeprecatedApi(
-      "Deno.seekSync()",
-      new Error().stack,
-      "Use `file.seekSync()` instead.",
-    );
-    return fs.seekSync(rid, offset, whence);
-  },
   connect: net.connect,
   listen: net.listen,
   loadavg: os.loadavg,
