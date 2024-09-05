@@ -7,9 +7,7 @@ Deno.funlockSync is undefined
 Deno.seek is undefined
 Deno.seekSync is undefined
 Deno.Listener.prototype.rid is undefined
-Deno.UnixConn.prototype.rid is undefined
 Deno.TlsListener.prototype.rid is undefined
-Deno.TlsConn.prototype.rid is undefined
 Deno.FsWatcher.prototype.rid is undefined
 Deno.FsFile constructor is illegal
 Deno.ConnectTlsOptions.(certFile|keyFile) do nothing

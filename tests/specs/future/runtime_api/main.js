@@ -17,21 +17,6 @@ const tcpListener = Deno.listen({ port: tcpPort });
 console.log("Deno.Listener.prototype.rid is", tcpListener.rid);
 tcpListener.close();
 
-// Unix
-if (Deno.build.os === "windows") {
-  console.log("Deno.UnixConn.prototype.rid is undefined");
-} else {
-  const socketPath = "./test.sock";
-  const unixListener = Deno.listen({ transport: "unix", path: socketPath });
-
-  const unixConn = await Deno.connect({ transport: "unix", path: socketPath });
-  console.log("Deno.UnixConn.prototype.rid is", unixConn.rid);
-
-  unixConn.close();
-  unixListener.close();
-  Deno.removeSync(socketPath);
-}
-
 // TLS
 // Since these tests may run in parallel, ensure this port is unique to this file
 const tlsPort = 4510;
@@ -43,11 +28,6 @@ const key = Deno.readTextFileSync(
 );
 const tlsListener = Deno.listenTls({ port: tlsPort, cert, key });
 console.log("Deno.TlsListener.prototype.rid is", tlsListener.rid);
-
-const tlsConn = await Deno.connectTls({ port: tlsPort });
-console.log("Deno.TlsConn.prototype.rid is", tlsConn.rid);
-
-tlsConn.close();
 
 const watcher = Deno.watchFs(".");
 console.log("Deno.FsWatcher.prototype.rid is", watcher.rid);

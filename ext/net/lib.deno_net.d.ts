@@ -115,14 +115,6 @@ declare namespace Deno {
      * not happened yet. Calling this method is optional; the TLS handshake
      * will be completed automatically as soon as data is sent or received. */
     handshake(): Promise<TlsHandshakeInfo>;
-    /**
-     * The resource ID of the connection.
-     *
-     * @deprecated This will be removed in Deno 2.0. See the
-     * {@link https://docs.deno.com/runtime/manual/advanced/migrate_deprecations | Deno 1.x to 2.x Migration Guide}
-     * for migration instructions.
-     */
-    readonly rid: number;
   }
 
   /** @category Network */
@@ -351,14 +343,6 @@ declare namespace Deno {
     setNoDelay(noDelay?: boolean): void;
     /** Enable/disable keep-alive functionality. */
     setKeepAlive(keepAlive?: boolean): void;
-    /**
-     * The resource ID of the connection.
-     *
-     * @deprecated This will be removed in Deno 2.0. See the
-     * {@link https://docs.deno.com/runtime/manual/advanced/migrate_deprecations | Deno 1.x to 2.x Migration Guide}
-     * for migration instructions.
-     */
-    readonly rid: number;
   }
 
   /** @category Network */
@@ -368,16 +352,7 @@ declare namespace Deno {
   }
 
   /** @category Network */
-  export interface UnixConn extends Conn<UnixAddr> {
-    /**
-     * The resource ID of the connection.
-     *
-     * @deprecated This will be removed in Deno 2.0. See the
-     * {@link https://docs.deno.com/runtime/manual/advanced/migrate_deprecations | Deno 1.x to 2.x Migration Guide}
-     * for migration instructions.
-     */
-    readonly rid: number;
-  }
+  export interface UnixConn extends Conn<UnixAddr> {}
 
   /** Connects to the hostname (default is "127.0.0.1") and port on the named
    * transport (default is "tcp"), and resolves to the connection (`Conn`).
