@@ -823,6 +823,116 @@ impl fmt::Display for NetDescriptor {
 }
 
 #[derive(Clone, Eq, PartialEq, Hash, Debug)]
+pub struct ImportDescriptor(pub Host, pub Option<u16>);
+
+impl Descriptor for ImportDescriptor {
+  type Arg = String;
+
+  fn check_in_permission(
+    &self,
+    perm: &mut UnaryPermission<Self>,
+    api_name: Option<&str>,
+  ) -> Result<(), AnyError> {
+    skip_check_if_is_permission_fully_granted!(perm);
+    perm.check_desc(Some(self), false, api_name, || None)
+  }
+
+  fn parse(args: Option<&[Self::Arg]>) -> Result<HashSet<Self>, AnyError> {
+    let l = parse_net_list(args)?;
+
+    Ok(
+      l.into_iter()
+        .map(|desc| ImportDescriptor(desc.0, desc.1))
+        .collect(),
+    )
+  }
+
+  fn flag_name() -> &'static str {
+    "import"
+  }
+
+  fn name(&self) -> Cow<str> {
+    Cow::from(format!("{}", self))
+  }
+
+  fn stronger_than(&self, other: &Self) -> bool {
+    self.0 == other.0 && (self.1.is_none() || self.1 == other.1)
+  }
+}
+
+impl FromStr for ImportDescriptor {
+  type Err = AnyError;
+
+  fn from_str(hostname: &str) -> Result<Self, Self::Err> {
+    // If this is a IPv6 address enclosed in square brackets, parse it as such.
+    if hostname.starts_with('[') {
+      if let Some((ip, after)) = hostname.split_once(']') {
+        let ip = ip[1..].parse::<Ipv6Addr>().map_err(|_| {
+          uri_error(format!("invalid IPv6 address in '{hostname}': '{ip}'"))
+        })?;
+        let port = if let Some(port) = after.strip_prefix(':') {
+          let port = port.parse::<u16>().map_err(|_| {
+            uri_error(format!("invalid port in '{hostname}': '{port}'"))
+          })?;
+          Some(port)
+        } else if after.is_empty() {
+          None
+        } else {
+          return Err(uri_error(format!("invalid host: '{hostname}'")));
+        };
+        return Ok(ImportDescriptor(Host::Ip(IpAddr::V6(ip)), port));
+      } else {
+        return Err(uri_error(format!("invalid host: '{hostname}'")));
+      }
+    }
+
+    // Otherwise it is an IPv4 address or a FQDN with an optional port.
+    let (host, port) = match hostname.split_once(':') {
+      Some((_, "")) => {
+        return Err(uri_error(format!("invalid empty port in '{hostname}'")));
+      }
+      Some((host, port)) => (host, port),
+      None => (hostname, ""),
+    };
+    let host = host.parse::<Host>()?;
+
+    let port = if port.is_empty() {
+      None
+    } else {
+      let port = port.parse::<u16>().map_err(|_| {
+        // If the user forgot to enclose an IPv6 address in square brackets, we
+        // should give them a hint. There are always at least two colons in an
+        // IPv6 address, so this heuristic finds likely a bare IPv6 address.
+        if port.contains(':') {
+          uri_error(format!(
+            "ipv6 addresses must be enclosed in square brackets: '{hostname}'"
+          ))
+        } else {
+          uri_error(format!("invalid port in '{hostname}': '{port}'"))
+        }
+      })?;
+      Some(port)
+    };
+
+    Ok(ImportDescriptor(host, port))
+  }
+}
+
+impl fmt::Display for ImportDescriptor {
+  fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+    match &self.0 {
+      Host::Fqdn(fqdn) => write!(f, "{fqdn}"),
+      Host::Ip(IpAddr::V4(ip)) => write!(f, "{ip}"),
+      Host::Ip(IpAddr::V6(ip)) => write!(f, "[{ip}]"),
+    }?;
+    if let Some(port) = self.1 {
+      write!(f, ":{}", port)?;
+    }
+    Ok(())
+  }
+}
+
+#[derive(Clone, Eq, PartialEq, Hash, Debug)]
 pub struct EnvDescriptor(EnvVarName);
 
 impl EnvDescriptor {
@@ -1191,6 +1301,54 @@ impl UnaryPermission<WriteDescriptor> {
   }
 }
 
+impl UnaryPermission<ImportDescriptor> {
+  pub fn query(&self, host: Option<&ImportDescriptor>) -> PermissionState {
+    self.query_desc(host, AllowPartial::TreatAsPartialGranted)
+  }
+
+  pub fn request(
+    &mut self,
+    host: Option<&ImportDescriptor>,
+  ) -> PermissionState {
+    self.request_desc(host, || None)
+  }
+
+  pub fn revoke(&mut self, host: Option<&ImportDescriptor>) -> PermissionState {
+    self.revoke_desc(host)
+  }
+
+  pub fn check(
+    &mut self,
+    host: &ImportDescriptor,
+    api_name: Option<&str>,
+  ) -> Result<(), AnyError> {
+    skip_check_if_is_permission_fully_granted!(self);
+    self.check_desc(Some(host), false, api_name, || None)
+  }
+
+  pub fn check_url(
+    &mut self,
+    url: &url::Url,
+    api_name: Option<&str>,
+  ) -> Result<(), AnyError> {
+    skip_check_if_is_permission_fully_granted!(self);
+    let host = url
+      .host_str()
+      .ok_or_else(|| type_error(format!("Missing host in url: '{}'", url)))?;
+    let host = host.parse::<Host>()?;
+    let port = url.port_or_known_default();
+    let descriptor = ImportDescriptor(host, port);
+    self.check_desc(Some(&descriptor), false, api_name, || {
+      Some(format!("\"{descriptor}\""))
+    })
+  }
+
+  pub fn check_all(&mut self) -> Result<(), AnyError> {
+    skip_check_if_is_permission_fully_granted!(self);
+    self.check_desc(None, false, None, || None)
+  }
+}
+
 impl UnaryPermission<NetDescriptor> {
   pub fn query(&self, host: Option<&NetDescriptor>) -> PermissionState {
     self.query_desc(host, AllowPartial::TreatAsPartialGranted)
@@ -1429,6 +1587,7 @@ pub struct Permissions {
   pub run: UnaryPermission<RunDescriptor>,
   pub ffi: UnaryPermission<FfiDescriptor>,
   pub all: UnitPermission,
+  pub import: UnaryPermission<ImportDescriptor>,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq, Default, Serialize, Deserialize)]
@@ -1534,6 +1693,7 @@ impl Permissions {
         opts.prompt,
       )?,
       all: Permissions::new_all(opts.allow_all),
+      import: Permissions::new_unary(None, None, false).unwrap(),
     })
   }
 
@@ -1548,6 +1708,7 @@ impl Permissions {
       run: UnaryPermission::allow_all(),
       ffi: UnaryPermission::allow_all(),
       all: Permissions::new_all(true),
+      import: Permissions::new_unary(None, None, false).unwrap(),
     }
   }
 
@@ -1571,6 +1732,7 @@ impl Permissions {
       run: Permissions::new_unary(None, None, prompt).unwrap(),
       ffi: Permissions::new_unary(None, None, prompt).unwrap(),
       all: Permissions::new_all(false),
+      import: Permissions::new_unary(None, None, false).unwrap(),
     }
   }
 
@@ -1589,7 +1751,14 @@ impl Permissions {
       },
       "data" => Ok(()),
       "blob" => Ok(()),
-      _ => self.net.check_url(specifier, Some("import()")),
+      _ => {
+        self.net.check_url(specifier, Some("import()"))?;
+        if let Some(host_str) = specifier.host_str() {
+          eprintln!("check_specifier::validate_host {:?}", host_str);
+        }
+        self.import.check_url(specifier, Some("import()"))?;
+        Ok(())
+      }
     }
   }
 }
@@ -2734,6 +2903,7 @@ mod tests {
       )
       .unwrap(),
       all: Permissions::new_all(false),
+      import: Permissions::new_unary(None, None, false).unwrap(),
     };
     let perms3 = Permissions {
       read: Permissions::new_unary(None, Some(&[PathBuf::from("/foo")]), false)
@@ -2758,6 +2928,7 @@ mod tests {
       )
       .unwrap(),
       all: Permissions::new_all(false),
+      import: Permissions::new_unary(None, None, false).unwrap(),
     };
     let perms4 = Permissions {
       read: Permissions::new_unary(
@@ -2795,6 +2966,7 @@ mod tests {
       )
       .unwrap(),
       all: Permissions::new_all(false),
+      import: Permissions::new_unary(None, None, false).unwrap(),
     };
     #[rustfmt::skip]
     {
@@ -2955,6 +3127,7 @@ mod tests {
       )
       .unwrap(),
       all: Permissions::new_all(false),
+      import: Permissions::new_unary(None, None, false).unwrap(),
     };
     #[rustfmt::skip]
     {
