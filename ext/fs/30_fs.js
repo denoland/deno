@@ -26,9 +26,7 @@ import {
   op_fs_fsync_sync,
   op_fs_ftruncate_sync,
   op_fs_funlock_async,
-  op_fs_funlock_async_unstable,
   op_fs_funlock_sync,
-  op_fs_funlock_sync_unstable,
   op_fs_futime_async,
   op_fs_futime_sync,
   op_fs_link_async,
@@ -535,30 +533,6 @@ async function fsync(rid) {
   await op_fs_fsync_async(rid);
 }
 
-function funlockSync(rid) {
-  op_fs_funlock_sync_unstable(rid);
-}
-
-async function funlock(rid) {
-  await op_fs_funlock_async_unstable(rid);
-}
-
-function seekSync(
-  rid,
-  offset,
-  whence,
-) {
-  return op_fs_seek_sync(rid, offset, whence);
-}
-
-function seek(
-  rid,
-  offset,
-  whence,
-) {
-  return op_fs_seek_async(rid, offset, whence);
-}
-
 function openSync(
   path,
   options,
@@ -663,11 +637,11 @@ class FsFile {
   }
 
   seek(offset, whence) {
-    return seek(this.#rid, offset, whence);
+    return op_fs_seek_async(this.#rid, offset, whence);
   }
 
   seekSync(offset, whence) {
-    return seekSync(this.#rid, offset, whence);
+    return op_fs_seek_sync(this.#rid, offset, whence);
   }
 
   async stat() {
@@ -951,8 +925,6 @@ export {
   FsFile,
   fsync,
   fsyncSync,
-  funlock,
-  funlockSync,
   link,
   linkSync,
   lstat,
@@ -979,8 +951,6 @@ export {
   removeSync,
   rename,
   renameSync,
-  seek,
-  seekSync,
   stat,
   statSync,
   symlink,
