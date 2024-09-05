@@ -19,10 +19,10 @@ import {
   op_fs_fdatasync_sync,
   op_fs_file_stat_async,
   op_fs_file_stat_sync,
+  op_fs_file_sync_async,
   op_fs_file_truncate_async,
   op_fs_flock_async,
   op_fs_flock_sync,
-  op_fs_fsync_async,
   op_fs_fsync_sync,
   op_fs_ftruncate_sync,
   op_fs_funlock_async,
@@ -527,14 +527,6 @@ async function fdatasync(rid) {
   await op_fs_fdatasync_async(rid);
 }
 
-function fsyncSync(rid) {
-  op_fs_fsync_sync(rid);
-}
-
-async function fsync(rid) {
-  await op_fs_fsync_async(rid);
-}
-
 function funlockSync(rid) {
   op_fs_funlock_sync_unstable(rid);
 }
@@ -706,7 +698,7 @@ class FsFile {
   }
 
   async sync() {
-    await op_fs_fsync_async(this.#rid);
+    await op_fs_file_sync_async(this.#rid);
   }
 
   syncSync() {
@@ -952,8 +944,6 @@ export {
   fdatasyncSync,
   File,
   FsFile,
-  fsync,
-  fsyncSync,
   funlock,
   funlockSync,
   link,

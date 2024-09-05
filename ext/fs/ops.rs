@@ -1460,7 +1460,7 @@ pub fn op_fs_fsync_sync(
 }
 
 #[op2(async)]
-pub async fn op_fs_fsync_async(
+pub async fn op_fs_file_sync_async(
   state: Rc<RefCell<OpState>>,
   #[smi] rid: ResourceId,
 ) -> Result<(), AnyError> {
