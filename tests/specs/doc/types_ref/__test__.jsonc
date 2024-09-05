@@ -1,0 +1,4 @@
+{
+  "args": "doc types_ref.js",
+  "output": "types_ref.out"
+}

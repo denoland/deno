@@ -533,22 +533,6 @@ async function fsync(rid) {
   await op_fs_fsync_async(rid);
 }
 
-function seekSync(
-  rid,
-  offset,
-  whence,
-) {
-  return op_fs_seek_sync(rid, offset, whence);
-}
-
-function seek(
-  rid,
-  offset,
-  whence,
-) {
-  return op_fs_seek_async(rid, offset, whence);
-}
-
 function openSync(
   path,
   options,
@@ -653,11 +637,11 @@ class FsFile {
   }
 
   seek(offset, whence) {
-    return seek(this.#rid, offset, whence);
+    return op_fs_seek_async(this.#rid, offset, whence);
   }
 
   seekSync(offset, whence) {
-    return seekSync(this.#rid, offset, whence);
+    return op_fs_seek_sync(this.#rid, offset, whence);
   }
 
   async stat() {
@@ -775,8 +759,6 @@ function checkOpenOptions(options) {
     );
   }
 }
-
-const File = FsFile;
 
 function readFileSync(path) {
   return op_fs_read_file_sync(pathFromURL(path));
@@ -940,7 +922,6 @@ export {
   cwd,
   fdatasync,
   fdatasyncSync,
-  File,
   FsFile,
   fsync,
   fsyncSync,
@@ -970,8 +951,6 @@ export {
   removeSync,
   rename,
   renameSync,
-  seek,
-  seekSync,
   stat,
   statSync,
   symlink,

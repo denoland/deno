@@ -1926,11 +1926,6 @@ itest!(es_private_fields {
   output: "run/es_private_fields.js.out",
 });
 
-itest!(cjs_imports {
-  args: "run --quiet --reload run/cjs_imports/main.ts",
-  output: "run/cjs_imports/main.out",
-});
-
 itest!(ts_import_from_js {
   args: "run --quiet --reload run/ts_import_from_js/main.js",
   output: "run/ts_import_from_js/main.out",
