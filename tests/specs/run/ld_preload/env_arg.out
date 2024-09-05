@@ -1,4 +1,3 @@
-<<<<<<< HEAD
 NotCapable: Requires --allow-all permissions to spawn subprocess with LD_PRELOAD environment variable.
     [WILDCARD]
   name: "NotCapable"
@@ -7,9 +6,3 @@ NotCapable: Requires --allow-all permissions to spawn subprocess with LD_PRELOAD
     [WILDCARD]
   name: "NotCapable"
 }
-=======
-error: Uncaught (in promise) NotCapable: Requires --allow-all permissions to spawn subprocess with LD_PRELOAD environment variable.
-}).spawn();
-   ^
-    at [WILDCARD]
->>>>>>> 7c0b9992f (feat(cli): use NotCapable error for permission errors)
