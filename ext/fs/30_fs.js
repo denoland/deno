@@ -543,22 +543,6 @@ async function funlock(rid) {
   await op_fs_funlock_async_unstable(rid);
 }
 
-function seekSync(
-  rid,
-  offset,
-  whence,
-) {
-  return op_fs_seek_sync(rid, offset, whence);
-}
-
-function seek(
-  rid,
-  offset,
-  whence,
-) {
-  return op_fs_seek_async(rid, offset, whence);
-}
-
 function openSync(
   path,
   options,
@@ -663,11 +647,11 @@ class FsFile {
   }
 
   seek(offset, whence) {
-    return seek(this.#rid, offset, whence);
+    return op_fs_seek_async(this.#rid, offset, whence);
   }
 
   seekSync(offset, whence) {
-    return seekSync(this.#rid, offset, whence);
+    return op_fs_seek_sync(this.#rid, offset, whence);
   }
 
   async stat() {
@@ -982,8 +966,6 @@ export {
   removeSync,
   rename,
   renameSync,
-  seek,
-  seekSync,
   stat,
   statSync,
   symlink,

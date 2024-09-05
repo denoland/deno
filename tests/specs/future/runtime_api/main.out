@@ -4,8 +4,6 @@ Deno.File is undefined
 Deno.FsFile.prototype.rid is undefined
 Deno.funlock is undefined
 Deno.funlockSync is undefined
-Deno.seek is undefined
-Deno.seekSync is undefined
 Deno.Listener.prototype.rid is undefined
 Deno.Conn.prototype.rid is undefined
 Deno.UnixConn.prototype.rid is undefined
