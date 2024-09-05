@@ -862,6 +862,12 @@ impl AsRef<str> for EnvDescriptor {
   }
 }
 
+#[derive(Clone, Eq, PartialEq, Hash, Debug, Serialize, Deserialize)]
+pub struct RunPathQuery<'a> {
+  pub requested: &'a str,
+  pub resolved: &'a Path,
+}
+
 pub enum RunDescriptorArg {
   Name(String),
   Path(PathBuf),
@@ -1321,16 +1327,16 @@ impl UnaryPermission<RunDescriptor> {
 
   pub fn check(
     &mut self,
-    cmd: &Path,
+    cmd: RunPathQuery,
     api_name: Option<&str>,
   ) -> Result<(), AnyError> {
-    debug_assert!(cmd.is_absolute());
+    debug_assert!(cmd.resolved.is_absolute());
     skip_check_if_is_permission_fully_granted!(self);
     self.check_desc(
-      Some(&RunDescriptor::Path(cmd.to_path_buf())),
+      Some(&RunDescriptor::Path(cmd.resolved.to_path_buf())),
       false,
       api_name,
-      || Some(format!("\"{}\"", cmd.display())),
+      || Some(format!("\"{}\"", cmd.requested)),
     )
   }
 
@@ -1692,7 +1698,7 @@ impl PermissionsContainer {
   #[inline(always)]
   pub fn check_run(
     &mut self,
-    cmd: &Path,
+    cmd: RunPathQuery,
     api_name: &str,
   ) -> Result<(), AnyError> {
     self.0.lock().run.check(cmd, Some(api_name))
@@ -3036,10 +3042,37 @@ mod tests {
     #[allow(clippy::disallowed_methods)]
     let cwd = std::env::current_dir().unwrap();
     prompt_value.set(true);
-    assert!(perms.run.check(&cwd.join("cat"), None).is_ok());
+    assert!(perms
+      .run
+      .check(
+        RunPathQuery {
+          requested: "cat",
+          resolved: &cwd.join("cat")
+        },
+        None
+      )
+      .is_ok());
     prompt_value.set(false);
-    assert!(perms.run.check(&cwd.join("cat"), None).is_ok());
-    assert!(perms.run.check(&cwd.join("ls"), None).is_err());
+    assert!(perms
+      .run
+      .check(
+        RunPathQuery {
+          requested: "cat",
+          resolved: &cwd.join("cat")
+        },
+        None
+      )
+      .is_ok());
+    assert!(perms
+      .run
+      .check(
+        RunPathQuery {
+          requested: "ls",
+          resolved: &cwd.join("ls")
+        },
+        None
+      )
+      .is_err());
 
     prompt_value.set(true);
     assert!(perms.env.check("HOME", None).is_ok());
@@ -3133,12 +3166,48 @@ mod tests {
     prompt_value.set(false);
     #[allow(clippy::disallowed_methods)]
     let cwd = std::env::current_dir().unwrap();
-    assert!(perms.run.check(&cwd.join("cat"), None).is_err());
+    assert!(perms
+      .run
+      .check(
+        RunPathQuery {
+          requested: "cat",
+          resolved: &cwd.join("cat")
+        },
+        None
+      )
+      .is_err());
     prompt_value.set(true);
-    assert!(perms.run.check(&cwd.join("cat"), None).is_err());
-    assert!(perms.run.check(&cwd.join("ls"), None).is_ok());
+    assert!(perms
+      .run
+      .check(
+        RunPathQuery {
+          requested: "cat",
+          resolved: &cwd.join("cat")
+        },
+        None
+      )
+      .is_err());
+    assert!(perms
+      .run
+      .check(
+        RunPathQuery {
+          requested: "ls",
+          resolved: &cwd.join("ls")
+        },
+        None
+      )
+      .is_ok());
     prompt_value.set(false);
-    assert!(perms.run.check(&cwd.join("ls"), None).is_ok());
+    assert!(perms
+      .run
+      .check(
+        RunPathQuery {
+          requested: "ls",
+          resolved: &cwd.join("ls")
+        },
+        None
+      )
+      .is_ok());
 
     prompt_value.set(false);
     assert!(perms.env.check("HOME", None).is_err());

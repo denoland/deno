@@ -724,12 +724,25 @@ impl ModuleGraphBuilder {
 pub fn enhanced_resolution_error_message(error: &ResolutionError) -> String {
   let mut message = format_deno_graph_error(error);
 
-  if let Some(specifier) = get_resolution_error_bare_node_specifier(error) {
+  let maybe_hint = if let Some(specifier) =
+    get_resolution_error_bare_node_specifier(error)
+  {
     if !*DENO_DISABLE_PEDANTIC_NODE_WARNINGS {
-      message.push_str(&format!(
-        "\nIf you want to use a built-in Node module, add a \"node:\" prefix (ex. \"node:{specifier}\")."
-      ));
+      Some(format!("If you want to use a built-in Node module, add a \"node:\" prefix (ex. \"node:{specifier}\")."))
+    } else {
+      None
     }
+  } else {
+    get_import_prefix_missing_error(error).map(|specifier| {
+      format!(
+        "If you want to use a JSR or npm package, try running `deno add jsr:{}` or `deno add npm:{}`",
+        specifier, specifier
+      )
+    })
+  };
+
+  if let Some(hint) = maybe_hint {
+    message.push_str(&format!("\n  {} {}", colors::cyan("hint:"), hint));
   }
 
   message
@@ -862,6 +875,50 @@ fn get_resolution_error_bare_specifier(
   } else {
     None
   }
+}
+
+fn get_import_prefix_missing_error(error: &ResolutionError) -> Option<&str> {
+  let mut maybe_specifier = None;
+  if let ResolutionError::InvalidSpecifier {
+    error: SpecifierError::ImportPrefixMissing { specifier, .. },
+    range,
+  } = error
+  {
+    if range.specifier.scheme() == "file" {
+      maybe_specifier = Some(specifier);
+    }
+  } else if let ResolutionError::ResolverError { error, range, .. } = error {
+    if range.specifier.scheme() == "file" {
+      match error.as_ref() {
+        ResolveError::Specifier(specifier_error) => {
+          if let SpecifierError::ImportPrefixMissing { specifier, .. } =
+            specifier_error
+          {
+            maybe_specifier = Some(specifier);
+          }
+        }
+        ResolveError::Other(other_error) => {
+          if let Some(SpecifierError::ImportPrefixMissing {
+            specifier, ..
+          }) = other_error.downcast_ref::<SpecifierError>()
+          {
+            maybe_specifier = Some(specifier);
+          }
+        }
+      }
+    }
+  }
+
+  // NOTE(bartlomieju): For now, return None if a specifier contains a dot or a space. This is because
+  // suggesting to `deno add bad-module.ts` makes no sense and is worse than not providing
+  // a suggestion at all. This should be improved further in the future
+  if let Some(specifier) = maybe_specifier {
+    if specifier.contains('.') || specifier.contains(' ') {
+      return None;
+    }
+  }
+
+  maybe_specifier.map(|s| s.as_str())
 }
 
 /// Gets if any of the specified root's "file:" dependents are in the

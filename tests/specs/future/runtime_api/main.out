@@ -1,14 +1,10 @@
 window is undefined
 Deno.Buffer is undefined
-Deno.File is undefined
 Deno.FsFile.prototype.rid is undefined
 Deno.funlock is undefined
 Deno.funlockSync is undefined
-Deno.seek is undefined
-Deno.seekSync is undefined
 Deno.Listener.prototype.rid is undefined
 Deno.TlsListener.prototype.rid is undefined
-Deno.FsWatcher.prototype.rid is undefined
 Deno.FsFile constructor is illegal
 Deno.ConnectTlsOptions.(certFile|keyFile) do nothing
 Deno.ConnectTlsOptions.(certChain|privateKey) do nothing

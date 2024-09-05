@@ -17,6 +17,7 @@ use deno_io::ChildStderrResource;
 use deno_io::ChildStdinResource;
 use deno_io::ChildStdoutResource;
 use deno_permissions::PermissionsContainer;
+use deno_permissions::RunPathQuery;
 use serde::Deserialize;
 use serde::Serialize;
 use std::borrow::Cow;
@@ -516,7 +517,15 @@ fn compute_run_cmd_and_check_permissions(
     .with_context(|| format!("Failed to spawn '{}'", arg_cmd))?;
   let cmd = resolve_cmd(arg_cmd, &run_env)
     .with_context(|| format!("Failed to spawn '{}'", arg_cmd))?;
-  check_run_permission(state, &cmd, &run_env, api_name)?;
+  check_run_permission(
+    state,
+    RunPathQuery {
+      requested: arg_cmd,
+      resolved: &cmd,
+    },
+    &run_env,
+    api_name,
+  )?;
   Ok((cmd, run_env))
 }
 
@@ -588,7 +597,7 @@ fn resolve_path(path: &str, cwd: &Path) -> PathBuf {
 
 fn check_run_permission(
   state: &mut OpState,
-  cmd: &Path,
+  cmd: RunPathQuery,
   run_env: &RunEnv,
   api_name: &str,
 ) -> Result<(), AnyError> {

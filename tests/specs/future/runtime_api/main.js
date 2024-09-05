@@ -1,14 +1,11 @@
 console.log("window is", globalThis.window);
 console.log("Deno.Buffer is", Deno.Buffer);
-console.log("Deno.File is", Deno.File);
 console.log(
   "Deno.FsFile.prototype.rid is",
   Deno.openSync(import.meta.filename).rid,
 );
 console.log("Deno.funlock is", Deno.funlock);
 console.log("Deno.funlockSync is", Deno.funlockSync);
-console.log("Deno.seek is", Deno.seek);
-console.log("Deno.seekSync is", Deno.seekSync);
 
 // TCP
 // Since these tests may run in parallel, ensure this port is unique to this file
@@ -28,10 +25,6 @@ const key = Deno.readTextFileSync(
 );
 const tlsListener = Deno.listenTls({ port: tlsPort, cert, key });
 console.log("Deno.TlsListener.prototype.rid is", tlsListener.rid);
-
-const watcher = Deno.watchFs(".");
-console.log("Deno.FsWatcher.prototype.rid is", watcher.rid);
-watcher.close();
 
 try {
   new Deno.FsFile(0);
