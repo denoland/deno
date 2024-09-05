@@ -223,7 +223,7 @@
         "useUnknownInCatchVariables": {
           "description": "Default catch clause variables as `unknown` instead of `any`.",
           "type": "boolean",
-          "default": false,
+          "default": true,
           "markdownDescription": "Default catch clause variables as `unknown` instead of `any`.\n\nSee more: https://www.typescriptlang.org/tsconfig#useUnknownInCatchVariables"
         }
       }
