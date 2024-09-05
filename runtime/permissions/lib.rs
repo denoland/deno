@@ -18,7 +18,6 @@ use deno_core::url::Url;
 use deno_core::ModuleSpecifier;
 use deno_terminal::colors;
 use fqdn::FQDN;
-use log::error;
 use once_cell::sync::Lazy;
 use std::borrow::Cow;
 use std::collections::HashSet;
@@ -33,7 +32,6 @@ use std::path::PathBuf;
 use std::str::FromStr;
 use std::string::ToString;
 use std::sync::Arc;
-use std::sync::RwLock;
 
 pub mod prompter;
 use prompter::permission_prompt;
@@ -183,27 +181,6 @@ impl PermissionState {
             .map(|info| { format!(" to {info}") })
             .unwrap_or_default(),
         );
-
-        if name == "env" {
-          let env_var_name = info()
-            .map(|info| {
-              let info_str = info.trim_start_matches('"').trim_end_matches('"');
-              info_str.to_string()
-            })
-            .unwrap_or_default();
-          for env_var in crate::get_wildcard_permissions() {
-            if let Some(suffix) = env_var.strip_prefix('*') {
-              if env_var_name.ends_with(suffix) {
-                return (Ok(()), true, false);
-              }
-            } else if let Some(prefix) = env_var.strip_suffix('*') {
-              if env_var_name.starts_with(prefix) {
-                return (Ok(()), true, false);
-              }
-            }
-          }
-        }
-
         match permission_prompt(&msg, name, api_name, true) {
           PromptResponse::Allow => {
             Self::log_perm_access(name, info);
@@ -852,6 +829,20 @@ impl EnvDescriptor {
   pub fn new(env: impl AsRef<str>) -> Self {
     Self(EnvVarName::new(env))
   }
+  pub fn matches(&self, env: &str) -> bool {
+    let pattern = self.0.as_ref();
+    if let Some(prefix) = pattern.strip_suffix('*') {
+      if env.starts_with(prefix) {
+        return true;
+      }
+    }
+    if let Some(suffix) = pattern.strip_prefix('*') {
+      if env.ends_with(suffix) {
+        return true;
+      }
+    }
+    env == pattern
+  }
 }
 
 impl Descriptor for EnvDescriptor {
@@ -1281,6 +1272,21 @@ impl UnaryPermission<EnvDescriptor> {
     api_name: Option<&str>,
   ) -> Result<(), AnyError> {
     skip_check_if_is_permission_fully_granted!(self);
+
+    let env_desc = EnvDescriptor::new(env);
+    let mut matched = false;
+
+    for desc in &self.granted_list {
+      if desc.matches(env) {
+        matched = true;
+        break;
+      }
+    }
+
+    if matched {
+      self.granted_list.insert(env_desc);
+    }
+
     self.check_desc(Some(&EnvDescriptor::new(env)), false, api_name, || None)
   }
 
@@ -2338,36 +2344,6 @@ pub fn mark_standalone() {
 
 pub fn is_standalone() -> bool {
   IS_STANDALONE.is_raised()
-}
-
-static WILDCARD_PERMISSIONS: Lazy<RwLock<Vec<String>>> =
-  Lazy::new(|| RwLock::new(Vec::new()));
-
-pub fn add_wildcard_permission(permission: &str) -> Result<(), String> {
-  let mut permissions = WILDCARD_PERMISSIONS.write().map_err(|e| {
-    error!("Failed to acquire write lock: {}", e);
-    "Failed to add wildcard permission".to_string()
-  })?;
-  if !permissions.contains(&permission.to_string()) {
-    permissions.push(permission.to_string());
-  }
-  Ok(())
-}
-
-pub fn get_wildcard_permissions() -> Vec<String> {
-  let permissions = WILDCARD_PERMISSIONS
-    .read()
-    .expect("Failed to acquire read lock");
-  permissions.clone()
-}
-
-pub fn clear_wildcard_permissions() -> Result<(), String> {
-  let mut permissions = WILDCARD_PERMISSIONS.write().map_err(|e| {
-    error!("Failed to acquire write lock: {}", e);
-    "Failed to clear wildcard permissions".to_string()
-  })?;
-  permissions.clear();
-  Ok(())
 }
 
 #[cfg(test)]

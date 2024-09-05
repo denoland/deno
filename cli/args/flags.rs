@@ -1,5 +1,6 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
-use super::flags_net;
+
+use crate::args::flags_net;
 use crate::args::resolve_no_prompt;
 use crate::util::fs::canonicalize_path;
 use std::collections::HashSet;
@@ -38,7 +39,6 @@ use deno_runtime::colors;
 use deno_runtime::deno_permissions::parse_sys_kind;
 use deno_runtime::deno_permissions::PermissionsOptions;
 use log::debug;
-use log::error;
 use log::Level;
 use serde::Deserialize;
 use serde::Serialize;
@@ -4954,18 +4954,7 @@ fn permission_args_parse(flags: &mut Flags, matches: &mut ArgMatches) {
   }
 
   if let Some(env_wl) = matches.remove_many::<String>("allow-env") {
-    let env_permissions: Vec<String> = env_wl.collect();
-    for env_var in &env_permissions {
-      if env_var.starts_with("*_") || env_var.ends_with("_*") {
-        if let Err(e) =
-          deno_runtime::deno_permissions::add_wildcard_permission(env_var)
-        {
-          error!("Failed to add wildcard permission: {}", e);
-        }
-      }
-    }
-
-    flags.permissions.allow_env = Some(env_permissions);
+    flags.permissions.allow_env = Some(env_wl.collect());
     debug!("env allowlist: {:#?}", &flags.permissions.allow_env);
   }
 
