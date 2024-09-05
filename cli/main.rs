@@ -32,7 +32,6 @@ mod worker;
 use crate::args::flags_from_vec;
 use crate::args::DenoSubcommand;
 use crate::args::Flags;
-use crate::graph_container::ModuleGraphContainer;
 use crate::util::display;
 use crate::util::v8::get_v8_flags_from_env;
 use crate::util::v8::init_v8_flags;
@@ -118,14 +117,7 @@ async fn run_subcommand(flags: Arc<Flags>) -> Result<i32, AnyError> {
       tools::run::eval_command(flags, eval_flags).await
     }),
     DenoSubcommand::Cache(cache_flags) => spawn_subcommand(async move {
-      let factory = CliFactory::from_flags(flags);
-      let emitter = factory.emitter()?;
-      let main_graph_container =
-        factory.main_module_graph_container().await?;
-      main_graph_container
-        .load_and_type_check_files(&cache_flags.files)
-        .await?;
-      emitter.cache_module_emits(&main_graph_container.graph()).await
+      tools::installer::install_from_entrypoints(flags, &cache_flags.files).await
     }),
     DenoSubcommand::Check(check_flags) => spawn_subcommand(async move {
       let factory = CliFactory::from_flags(flags);
