@@ -3849,14 +3849,6 @@ declare namespace Deno {
    * @category File System
    */
   export interface FsWatcher extends AsyncIterable<FsEvent>, Disposable {
-    /**
-     * The resource id.
-     *
-     * @deprecated This will be removed in Deno 2.0. See the
-     * {@link https://docs.deno.com/runtime/manual/advanced/migrate_deprecations | Deno 1.x to 2.x Migration Guide}
-     * for migration instructions.
-     */
-    readonly rid: number;
     /** Stops watching the file system and closes the watcher resource. */
     close(): void;
     /**
