@@ -1,5 +1,6 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
+use bytemuck::cast_slice;
 use deno_core::error::type_error;
 use deno_core::error::AnyError;
 use deno_core::op2;
@@ -18,13 +19,19 @@ use image::ColorType;
 use image::DynamicImage;
 use image::GenericImageView;
 use image::ImageBuffer;
+use image::ImageDecoder;
 use image::ImageError;
+use image::Luma;
 use image::LumaA;
 use image::Pixel;
 use image::Primitive;
 use image::Rgb;
 use image::Rgba;
 use image::RgbaImage;
+use lcms2::PixelFormat;
+use lcms2::Pod;
+use lcms2::Profile;
+use lcms2::Transform;
 use num_traits::NumCast;
 use num_traits::SaturatingMul;
 use serde::Deserialize;
@@ -322,11 +329,11 @@ fn srgb_to_display_p3<T: Primitive>(r: T, g: T, b: T) -> (T, T, T) {
 
   // [ sRGB (D65) to XYZ ]
   #[rustfmt::skip]
-    let (m1x, m1y, m1z) = (
-      [0.4124564, 0.3575761, 0.1804375],
-      [0.2126729, 0.7151522, 0.0721750],
-      [0.0193339, 0.1191920, 0.9503041],
-    );
+  let (m1x, m1y, m1z) = (
+    [0.4124564, 0.3575761, 0.1804375],
+    [0.2126729, 0.7151522, 0.0721750],
+    [0.0193339, 0.1191920, 0.9503041],
+  );
 
   let (r, g, b) = (
     r * m1x[0] + g * m1x[1] + b * m1x[2],
@@ -336,11 +343,11 @@ fn srgb_to_display_p3<T: Primitive>(r: T, g: T, b: T) -> (T, T, T) {
 
   // inv[ P3-D65 (D65) to XYZ ]
   #[rustfmt::skip]
-    let (m2x, m2y, m2z) = (
-      [   2.493496911941425, -0.9313836179191239, -0.40271078445071684 ],
-      [ -0.8294889695615747,  1.7626640603183463, 0.023624685841943577 ],
-      [ 0.03584583024378447,-0.07617238926804182,   0.9568845240076872 ],
-    );
+  let (m2x, m2y, m2z) = (
+    [   2.493496911941425, -0.9313836179191239, -0.40271078445071684 ],
+    [ -0.8294889695615747,  1.7626640603183463, 0.023624685841943577 ],
+    [ 0.03584583024378447,-0.07617238926804182,   0.9568845240076872 ],
+  );
 
   let (r, g, b) = (
     r * m2x[0] + g * m2x[1] + b * m2x[2],
@@ -412,31 +419,262 @@ where
   out
 }
 
-fn apply_srgb_to_display_p3(
+trait SliceToPixel {
+  fn slice_to_pixel(pixel: &[u8]) -> Self;
+}
+
+impl<T: Primitive + Pod> SliceToPixel for Luma<T> {
+  fn slice_to_pixel(pixel: &[u8]) -> Self {
+    let pixel: &[T] = cast_slice(pixel);
+    let pixel = [pixel[0]];
+
+    Luma::<T>(pixel)
+  }
+}
+
+impl<T: Primitive + Pod> SliceToPixel for LumaA<T> {
+  fn slice_to_pixel(pixel: &[u8]) -> Self {
+    let pixel: &[T] = cast_slice(pixel);
+    let pixel = [pixel[0], pixel[1]];
+
+    LumaA::<T>(pixel)
+  }
+}
+
+impl<T: Primitive + Pod> SliceToPixel for Rgb<T> {
+  fn slice_to_pixel(pixel: &[u8]) -> Self {
+    let pixel: &[T] = cast_slice(pixel);
+    let pixel = [pixel[0], pixel[1], pixel[2]];
+
+    Rgb::<T>(pixel)
+  }
+}
+
+impl<T: Primitive + Pod> SliceToPixel for Rgba<T> {
+  fn slice_to_pixel(pixel: &[u8]) -> Self {
+    let pixel: &[T] = cast_slice(pixel);
+    let pixel = [pixel[0], pixel[1], pixel[2], pixel[3]];
+
+    Rgba::<T>(pixel)
+  }
+}
+
+/// Convert the pixel slice to an array to avoid the copy to Vec.  
+/// I implemented this trait because of I couldn't find a way to effectively combine   
+/// the `Transform` struct of `lcms2` and `Pixel` trait of `image`.  
+/// If there is an implementation that is safer and can withstand changes, I would like to adopt it.
+trait SliceToArray<const N: usize> {
+  fn slice_to_array(pixel: &[u8]) -> [u8; N];
+}
+
+macro_rules! impl_slice_to_array {
+  ($type:ty, $n:expr) => {
+    impl<T: Primitive + Pod> SliceToArray<$n> for $type {
+      fn slice_to_array(pixel: &[u8]) -> [u8; $n] {
+        let mut dst = [0_u8; $n];
+        dst.copy_from_slice(&pixel[..$n]);
+
+        dst
+      }
+    }
+  };
+}
+
+impl_slice_to_array!(Luma<T>, 1);
+impl_slice_to_array!(Luma<T>, 2);
+impl_slice_to_array!(LumaA<T>, 2);
+impl_slice_to_array!(LumaA<T>, 4);
+impl_slice_to_array!(Rgb<T>, 3);
+impl_slice_to_array!(Rgb<T>, 6);
+impl_slice_to_array!(Rgba<T>, 4);
+impl_slice_to_array!(Rgba<T>, 8);
+
+fn process_color_space_from_icc_profile_to_srgb<P, S, const N: usize>(
   image: &DynamicImage,
+  icc_profile: Profile,
+) -> ImageBuffer<P, Vec<S>>
+where
+  P: Pixel<Subpixel = S> + SliceToPixel + SliceToArray<N> + 'static,
+  S: Primitive + 'static,
+{
+  let (width, height) = image.dimensions();
+  let mut out = ImageBuffer::new(width, height);
+  let chunk_size = image.color().bytes_per_pixel() as usize;
+  let pixel_iter = image
+    .as_bytes()
+    .chunks_exact(chunk_size)
+    .zip(image.pixels());
+  let pixel_format = match image.color() {
+    ColorType::L8 => PixelFormat::GRAY_8,
+    ColorType::L16 => PixelFormat::GRAY_16,
+    ColorType::La8 => PixelFormat::GRAYA_8,
+    ColorType::La16 => PixelFormat::GRAYA_16,
+    ColorType::Rgb8 => PixelFormat::RGB_8,
+    ColorType::Rgb16 => PixelFormat::RGB_16,
+    ColorType::Rgba8 => PixelFormat::RGBA_8,
+    ColorType::Rgba16 => PixelFormat::RGBA_16,
+    // This arm usually doesn't reach, but it should be handled with returning the original image.
+    _ => {
+      return {
+        for (pixel, (x, y, _)) in pixel_iter {
+          out.put_pixel(x, y, P::slice_to_pixel(&pixel));
+        }
+        out
+      }
+    }
+  };
+  let srgb_icc_profile = Profile::new_srgb();
+  let transformer = Transform::new(
+    &icc_profile,
+    pixel_format,
+    &srgb_icc_profile,
+    pixel_format,
+    srgb_icc_profile.header_rendering_intent(),
+  );
+
+  for (pixel, (x, y, _)) in pixel_iter {
+    let pixel = match transformer {
+      Ok(ref transformer) => {
+        let mut dst = P::slice_to_array(pixel);
+        transformer.transform_in_place(&mut dst);
+
+        dst
+      }
+      // This arm will reach when the ffi call fails.
+      Err(_) => P::slice_to_array(pixel),
+    };
+
+    out.put_pixel(x, y, P::slice_to_pixel(&pixel));
+  }
+
+  out
+}
+
+/// According to the spec, it's not clear how to handle the color space conversion.
+///
+/// Therefore, if you interpret the specification description from the implementation and wpt results, it will be as follows.
+///
+/// Let val be the value of the colorSpaceConversion member of options, and then run these substeps:
+///  1. If val is "default", to convert to the sRGB color space.
+///  2. If val is "none", to use the decoded image data as is.
+///
+/// related issue in whatwg
+/// https://github.com/whatwg/html/issues/10578
+///
+/// reference in wpt  
+/// https://github.com/web-platform-tests/wpt/blob/d575dc75ede770df322fbc5da3112dcf81f192ec/html/canvas/element/manual/imagebitmap/createImageBitmap-colorSpaceConversion.html#L18  
+/// https://wpt.live/html/canvas/element/manual/imagebitmap/createImageBitmap-colorSpaceConversion.html
+fn apply_color_space_conversion(
+  image: DynamicImage,
+  icc_profile: Option<Vec<u8>>,
+  image_bitmap_source: &ImageBitmapSource,
+  color_space_conversion: &ColorSpaceConversion,
+  predefined_color_space: &PredefinedColorSpace,
 ) -> Result<DynamicImage, AnyError> {
-  match image.color() {
-    // The conversion of the lumincance color types to the display-p3 color space is meaningless.
-    ColorType::L8 => Ok(DynamicImage::ImageLuma8(image.to_luma8())),
-    ColorType::L16 => Ok(DynamicImage::ImageLuma16(image.to_luma16())),
-    ColorType::La8 => Ok(DynamicImage::ImageLumaA8(image.to_luma_alpha8())),
-    ColorType::La16 => Ok(DynamicImage::ImageLumaA16(image.to_luma_alpha16())),
-    ColorType::Rgb8 => Ok(DynamicImage::ImageRgb8(process_srgb_to_display_p3(
-      &image.to_rgb8(),
-    ))),
-    ColorType::Rgb16 => Ok(DynamicImage::ImageRgb16(
-      process_srgb_to_display_p3(&image.to_rgb16()),
-    )),
-    ColorType::Rgba8 => Ok(DynamicImage::ImageRgba8(
-      process_srgb_to_display_p3(&image.to_rgba8()),
-    )),
-    ColorType::Rgba16 => Ok(DynamicImage::ImageRgba16(
-      process_srgb_to_display_p3(&image.to_rgba16()),
-    )),
-    _ => Err(type_error(image_error_message(
-      "apply colorspace: display-p3",
-      "The color type is not supported.",
-    ))),
+  match color_space_conversion {
+    // return the decoded image as is.
+    ColorSpaceConversion::None => Ok(image),
+    ColorSpaceConversion::Default => {
+      match image_bitmap_source {
+        ImageBitmapSource::Blob => match icc_profile {
+          // If there is no color profile information, return the image as is.
+          None => Ok(image),
+          Some(icc_profile) => match Profile::new_icc(&icc_profile) {
+            // If the color profile information is invalid, return the image as is.
+            Err(_) => Ok(image),
+            Ok(icc_profile) => match image.color() {
+              ColorType::L8 => Ok(DynamicImage::ImageLuma8(
+                process_color_space_from_icc_profile_to_srgb::<_, _, 1>(
+                  &image,
+                  icc_profile,
+                ),
+              )),
+              ColorType::L16 => Ok(DynamicImage::ImageLuma16(
+                process_color_space_from_icc_profile_to_srgb::<_, _, 2>(
+                  &image,
+                  icc_profile,
+                ),
+              )),
+              ColorType::La8 => Ok(DynamicImage::ImageLumaA8(
+                process_color_space_from_icc_profile_to_srgb::<_, _, 2>(
+                  &image,
+                  icc_profile,
+                ),
+              )),
+              ColorType::La16 => Ok(DynamicImage::ImageLumaA16(
+                process_color_space_from_icc_profile_to_srgb::<_, _, 4>(
+                  &image,
+                  icc_profile,
+                ),
+              )),
+              ColorType::Rgb8 => Ok(DynamicImage::ImageRgb8(
+                process_color_space_from_icc_profile_to_srgb::<_, _, 3>(
+                  &image,
+                  icc_profile,
+                ),
+              )),
+              ColorType::Rgb16 => Ok(DynamicImage::ImageRgb16(
+                process_color_space_from_icc_profile_to_srgb::<_, _, 6>(
+                  &image,
+                  icc_profile,
+                ),
+              )),
+              ColorType::Rgba8 => Ok(DynamicImage::ImageRgba8(
+                process_color_space_from_icc_profile_to_srgb::<_, _, 4>(
+                  &image,
+                  icc_profile,
+                ),
+              )),
+              ColorType::Rgba16 => Ok(DynamicImage::ImageRgba16(
+                process_color_space_from_icc_profile_to_srgb::<_, _, 8>(
+                  &image,
+                  icc_profile,
+                ),
+              )),
+              _ => Err(type_error(image_error_message(
+                "apply colorspaceConversion: default",
+                "The color type is not supported.",
+              ))),
+            },
+          },
+        },
+        ImageBitmapSource::ImageData => match predefined_color_space {
+          // If the color space is sRGB, return the image as is.
+          PredefinedColorSpace::Srgb => Ok(image),
+          PredefinedColorSpace::DisplayP3 => {
+            match image.color() {
+              // The conversion of the lumincance color types to the display-p3 color space is meaningless.
+              ColorType::L8 => Ok(DynamicImage::ImageLuma8(image.to_luma8())),
+              ColorType::L16 => {
+                Ok(DynamicImage::ImageLuma16(image.to_luma16()))
+              }
+              ColorType::La8 => {
+                Ok(DynamicImage::ImageLumaA8(image.to_luma_alpha8()))
+              }
+              ColorType::La16 => {
+                Ok(DynamicImage::ImageLumaA16(image.to_luma_alpha16()))
+              }
+              ColorType::Rgb8 => Ok(DynamicImage::ImageRgb8(
+                process_srgb_to_display_p3(&image.to_rgb8()),
+              )),
+              ColorType::Rgb16 => Ok(DynamicImage::ImageRgb16(
+                process_srgb_to_display_p3(&image.to_rgb16()),
+              )),
+              ColorType::Rgba8 => Ok(DynamicImage::ImageRgba8(
+                process_srgb_to_display_p3(&image.to_rgba8()),
+              )),
+              ColorType::Rgba16 => Ok(DynamicImage::ImageRgba16(
+                process_srgb_to_display_p3(&image.to_rgba16()),
+              )),
+              _ => Err(type_error(image_error_message(
+                "apply colorspace: display-p3",
+                "The color type is not supported.",
+              ))),
+            }
+          }
+        },
+      }
+    }
   }
 }
 
@@ -533,6 +771,7 @@ trait ImageDecoderFromReader<'a, R: BufRead + Seek> {
   where
     Self: Sized;
   fn to_intermediate_image(self) -> Result<DynamicImage, AnyError>;
+  fn get_icc_profile(&mut self) -> Option<Vec<u8>>;
 }
 
 type ImageDecoderFromReaderType<'a> = BufReader<Cursor<&'a [u8]>>;
@@ -562,6 +801,12 @@ macro_rules! impl_image_decoder_from_reader {
           Err(err) => Err(image_decoding_error(err).into()),
         }
       }
+      fn get_icc_profile(&mut self) -> Option<Vec<u8>> {
+        match self.icc_profile() {
+          Ok(profile) => profile,
+          Err(_) => None,
+        }
+      }
     }
   };
 }
@@ -576,58 +821,66 @@ impl_image_decoder_from_reader!(IcoDecoder<R>, ImageDecoderFromReaderType);
 // The WebPDecoder decodes the first frame.
 impl_image_decoder_from_reader!(WebPDecoder<R>, ImageDecoderFromReaderType);
 
+type DecodeBitmapDataReturn = (DynamicImage, u32, u32, Option<Vec<u8>>);
+
 fn decode_bitmap_data(
   buf: &[u8],
   width: u32,
   height: u32,
   image_bitmap_source: &ImageBitmapSource,
   mime_type: String,
-) -> Result<(DynamicImage, u32, u32), AnyError> {
-  let (view, width, height) = match image_bitmap_source {
+) -> Result<DecodeBitmapDataReturn, AnyError> {
+  let (view, width, height, icc_profile) = match image_bitmap_source {
     ImageBitmapSource::Blob => {
-      let image = match &*mime_type {
+      let (image, icc_profile) = match &*mime_type {
         // Should we support the "image/apng" MIME type here?
         "image/png" => {
-          let decoder: PngDecoder<ImageDecoderFromReaderType> =
+          let mut decoder: PngDecoder<ImageDecoderFromReaderType> =
             ImageDecoderFromReader::to_decoder(BufReader::new(Cursor::new(
               buf,
             )))?;
-          decoder.to_intermediate_image()?
+          let icc_profile = decoder.get_icc_profile();
+          (decoder.to_intermediate_image()?, icc_profile)
         }
         "image/jpeg" => {
-          let decoder: JpegDecoder<ImageDecoderFromReaderType> =
+          let mut decoder: JpegDecoder<ImageDecoderFromReaderType> =
             ImageDecoderFromReader::to_decoder(BufReader::new(Cursor::new(
               buf,
             )))?;
-          decoder.to_intermediate_image()?
+          let icc_profile = decoder.get_icc_profile();
+          (decoder.to_intermediate_image()?, icc_profile)
         }
         "image/gif" => {
-          let decoder: GifDecoder<ImageDecoderFromReaderType> =
+          let mut decoder: GifDecoder<ImageDecoderFromReaderType> =
             ImageDecoderFromReader::to_decoder(BufReader::new(Cursor::new(
               buf,
             )))?;
-          decoder.to_intermediate_image()?
+          let icc_profile = decoder.get_icc_profile();
+          (decoder.to_intermediate_image()?, icc_profile)
         }
         "image/bmp" => {
-          let decoder: BmpDecoder<ImageDecoderFromReaderType> =
+          let mut decoder: BmpDecoder<ImageDecoderFromReaderType> =
             ImageDecoderFromReader::to_decoder(BufReader::new(Cursor::new(
               buf,
             )))?;
-          decoder.to_intermediate_image()?
+          let icc_profile = decoder.get_icc_profile();
+          (decoder.to_intermediate_image()?, icc_profile)
         }
         "image/x-icon" => {
-          let decoder: IcoDecoder<ImageDecoderFromReaderType> =
+          let mut decoder: IcoDecoder<ImageDecoderFromReaderType> =
             ImageDecoderFromReader::to_decoder(BufReader::new(Cursor::new(
               buf,
             )))?;
-          decoder.to_intermediate_image()?
+          let icc_profile = decoder.get_icc_profile();
+          (decoder.to_intermediate_image()?, icc_profile)
         }
         "image/webp" => {
-          let decoder: WebPDecoder<ImageDecoderFromReaderType> =
+          let mut decoder: WebPDecoder<ImageDecoderFromReaderType> =
             ImageDecoderFromReader::to_decoder(BufReader::new(Cursor::new(
               buf,
             )))?;
-          decoder.to_intermediate_image()?
+          let icc_profile = decoder.get_icc_profile();
+          (decoder.to_intermediate_image()?, icc_profile)
         }
         "" => {
           return Err(
@@ -660,7 +913,7 @@ See: https://mimesniff.spec.whatwg.org/#image-type-pattern-matching-algorithm\n"
       let width = image.width();
       let height = image.height();
 
-      (image, width, height)
+      (image, width, height, icc_profile)
     }
     ImageBitmapSource::ImageData => {
       // > 4.12.5.1.15 Pixel manipulation
@@ -677,11 +930,11 @@ See: https://mimesniff.spec.whatwg.org/#image-type-pattern-matching-algorithm\n"
         }
       };
 
-      (image, width, height)
+      (image, width, height, None)
     }
   };
 
-  Ok((view, width, height))
+  Ok((view, width, height, icc_profile))
 }
 
 #[op2]
@@ -725,7 +978,7 @@ fn op_image_process(
     mime_type: args.mime_type,
   };
 
-  let (view, width, height) =
+  let (view, width, height, icc_profile) =
     decode_bitmap_data(buf, width, height, &image_bitmap_source, mime_type)?;
 
   #[rustfmt::skip]
@@ -818,31 +1071,14 @@ fn op_image_process(
     image_out
   };
 
-  // 9. TODO: Implement color space conversion.
-  // Currently, the behavior of the color space conversion is always 'none' due to
-  // the decoder always returning the sRGB bitmap data.
-  // We need to apply ICC color profiles within the image from Blob,
-  // or the parameter of 'settings.colorSpace' from ImageData.
-  // https://github.com/whatwg/html/issues/10578
-  // https://github.com/whatwg/html/issues/10577
-  let image_out = match color_space_conversion {
-    ColorSpaceConversion::Default => {
-      match image_bitmap_source {
-        ImageBitmapSource::Blob => {
-          // If there is no color profile information, it will use sRGB.
-          image_out
-        }
-        ImageBitmapSource::ImageData => match predefined_color_space {
-          // If the color space is sRGB, return the image as is.
-          PredefinedColorSpace::Srgb => image_out,
-          PredefinedColorSpace::DisplayP3 => {
-            apply_srgb_to_display_p3(&image_out)?
-          }
-        },
-      }
-    }
-    ColorSpaceConversion::None => image_out,
-  };
+  // 9.
+  let image_out = apply_color_space_conversion(
+    image_out,
+    icc_profile,
+    &image_bitmap_source,
+    &color_space_conversion,
+    &predefined_color_space,
+  )?;
 
   // 10.
   if color.has_alpha() {

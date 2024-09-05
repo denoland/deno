@@ -383,3 +383,44 @@ Deno.test(async function imageBitmapImageDataColorspaceConversion() {
     assertEquals(Deno[Deno.internal].getBitmapData(imageBitmap), new Uint8Array([234, 51, 35, 255]));
   }
 });
+
+/**
+ * extract high bytes from Uint16Array
+ */
+function extractHighBytes(array: Uint8Array): Uint8Array {
+  const highBytes = new Uint8Array(array.length / 2);
+  for (let i = 0, j = 1; i < array.length; i++, j += 2) {
+    highBytes[i] = array[j];
+  }
+  return highBytes;
+}
+
+Deno.test(async function imageBitmapFromBlobColorspaceConversion() {
+  // reference:
+  // https://github.com/web-platform-tests/wpt/blob/d575dc75ede770df322fbc5da3112dcf81f192ec/html/canvas/element/manual/imagebitmap/createImageBitmap-colorSpaceConversion.html#L18
+  // https://wpt.fyi/results/html/canvas/element/manual/imagebitmap/createImageBitmap-colorSpaceConversion.html?label=experimental&label=master&aligned
+  {
+    const imageData = new Blob([
+      await Deno.readFile(`${prefix}/wide-gamut-pattern.png`),
+    ], { type: "image/png" });
+    const imageBitmap = await createImageBitmap(imageData, {
+      colorSpaceConversion: "none",
+    });
+    // @ts-ignore: Deno[Deno.internal].core allowed
+    // deno-fmt-ignore
+    const firstPixel = extractHighBytes(Deno[Deno.internal].getBitmapData(imageBitmap),).slice(0, 4);
+    assertEquals(firstPixel, new Uint8Array([123, 0, 27, 255]));
+  }
+  {
+    const imageData = new Blob([
+      await Deno.readFile(`${prefix}/wide-gamut-pattern.png`),
+    ], { type: "image/png" });
+    const imageBitmap = await createImageBitmap(imageData, {
+      colorSpaceConversion: "default",
+    });
+    // @ts-ignore: Deno[Deno.internal].core allowed
+    // deno-fmt-ignore
+    const firstPixel = extractHighBytes(Deno[Deno.internal].getBitmapData(imageBitmap),).slice(0, 4);
+    assertEquals(firstPixel, new Uint8Array([255, 0, 0, 255]));
+  }
+});
