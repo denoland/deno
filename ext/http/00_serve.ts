@@ -583,6 +583,19 @@ type RawServeOptions = {
 
 const kLoadBalanced = Symbol("kLoadBalanced");
 
+function mapAnyAddrToLocalhostForWindows(hostname: string) {
+  // If the hostname is "0.0.0.0", we display "localhost" in console
+  // because browsers in Windows don't resolve "0.0.0.0".
+  // See the discussion in https://github.com/denoland/deno_std/issues/1165
+  if (
+    (Deno.build.os === "windows") &&
+    (hostname == "0.0.0.0" || hostname == "::")
+  ) {
+    return "localhost";
+  }
+  return hostname;
+}
+
 function serve(arg1, arg2) {
   let options: RawServeOptions | undefined;
   let handler: RawHandler | undefined;
@@ -672,22 +685,15 @@ function serve(arg1, arg2) {
   }
 
   const addr = listener.addr;
-  // If the hostname is "0.0.0.0", we display "localhost" in console
-  // because browsers in Windows don't resolve "0.0.0.0".
-  // See the discussion in https://github.com/denoland/deno_std/issues/1165
-  const hostname = (addr.hostname == "0.0.0.0" || addr.hostname == "::") &&
-      (Deno.build.os === "windows")
-    ? "localhost"
-    : addr.hostname;
-  addr.hostname = hostname;
 
   const onListen = (scheme) => {
     if (options.onListen) {
       options.onListen(addr);
     } else {
-      const host = StringPrototypeIncludes(addr.hostname, ":")
-        ? `[${addr.hostname}]`
-        : addr.hostname;
+      const hostname = mapAnyAddrToLocalhostForWindows(addr.hostname);
+      const host = StringPrototypeIncludes(hostname, ":")
+        ? `[${hostname}]`
+        : hostname;
       // deno-lint-ignore no-console
       console.log(`Listening on ${scheme}${host}:${addr.port}/`);
     }
@@ -862,9 +868,10 @@ function registerDeclarativeServer(exports) {
             const nThreads = serveWorkerCount > 1
               ? ` with ${serveWorkerCount} threads`
               : "";
+            const hostname_ = mapAnyAddrToLocalhostForWindows(hostname);
             // deno-lint-ignore no-console
             console.debug(
-              `%cdeno serve%c: Listening on %chttp://${hostname}:${port}/%c${nThreads}`,
+              `%cdeno serve%c: Listening on %chttp://${hostname_}:${port}/%c${nThreads}`,
               "color: green",
               "color: inherit",
               "color: yellow",
