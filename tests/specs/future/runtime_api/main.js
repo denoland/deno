@@ -54,10 +54,6 @@ console.log("Deno.TlsConn.prototype.rid is", tlsConn.rid);
 
 tlsConn.close();
 
-const watcher = Deno.watchFs(".");
-console.log("Deno.FsWatcher.prototype.rid is", watcher.rid);
-watcher.close();
-
 try {
   new Deno.FsFile(0);
 } catch (error) {
