@@ -1314,16 +1314,16 @@ pub fn flags_from_vec(args: Vec<OsString>) -> clap::error::Result<Flags> {
       "clean" => clean_parse(&mut flags, &mut m),
       "compile" => compile_parse(&mut flags, &mut m)?,
       "completions" => completions_parse(&mut flags, &mut m, app),
-      "coverage" => coverage_parse(&mut flags, &mut m),
+      "coverage" => coverage_parse(&mut flags, &mut m)?,
       "doc" => doc_parse(&mut flags, &mut m)?,
       "eval" => eval_parse(&mut flags, &mut m)?,
-      "fmt" => fmt_parse(&mut flags, &mut m),
+      "fmt" => fmt_parse(&mut flags, &mut m)?,
       "init" => init_parse(&mut flags, &mut m),
       "info" => info_parse(&mut flags, &mut m)?,
       "install" => install_parse(&mut flags, &mut m)?,
       "json_reference" => json_reference_parse(&mut flags, &mut m, app),
       "jupyter" => jupyter_parse(&mut flags, &mut m),
-      "lint" => lint_parse(&mut flags, &mut m),
+      "lint" => lint_parse(&mut flags, &mut m)?,
       "lsp" => lsp_parse(&mut flags, &mut m),
       "repl" => repl_parse(&mut flags, &mut m)?,
       "run" => run_parse(&mut flags, &mut m, app, false)?,
@@ -4056,15 +4056,23 @@ fn unstable_args(cfg: UnstableArgsConfig) -> impl IntoIterator<Item = Arg> {
   UnstableArgsIter { idx: 0, cfg }
 }
 
-fn allow_scripts_arg_parse(flags: &mut Flags, matches: &mut ArgMatches) {
+fn allow_scripts_arg_parse(
+  flags: &mut Flags,
+  matches: &mut ArgMatches,
+) -> clap::error::Result<()> {
   let Some(parts) = matches.remove_many::<String>("allow-scripts") else {
-    return;
+    return Ok(());
   };
   if parts.len() == 0 {
     flags.allow_scripts = PackagesAllowedScripts::All;
   } else {
-    flags.allow_scripts = PackagesAllowedScripts::Some(parts.flat_map(escape_and_split_commas).collect());
+    flags.allow_scripts = PackagesAllowedScripts::Some(
+      parts
+        .flat_map(flat_escape_split_commas)
+        .collect::<Result<_, _>>()?,
+    );
   }
+  Ok(())
 }
 
 fn add_parse(flags: &mut Flags, matches: &mut ArgMatches) {
@@ -4087,7 +4095,10 @@ fn remove_parse(flags: &mut Flags, matches: &mut ArgMatches) {
   });
 }
 
-fn bench_parse(flags: &mut Flags, matches: &mut ArgMatches) -> clap::error::Result<()> {
+fn bench_parse(
+  flags: &mut Flags,
+  matches: &mut ArgMatches,
+) -> clap::error::Result<()> {
   flags.type_check_mode = TypeCheckMode::Local;
 
   runtime_args_parse(flags, matches, true, false)?;
@@ -4099,7 +4110,9 @@ fn bench_parse(flags: &mut Flags, matches: &mut ArgMatches) -> clap::error::Resu
   let json = matches.get_flag("json");
 
   let ignore = match matches.remove_many::<String>("ignore") {
-    Some(f) => f.flat_map(escape_and_split_commas).collect(),
+    Some(f) => f
+      .flat_map(flat_escape_split_commas)
+      .collect::<Result<_, _>>()?,
     None => vec![],
   };
 
@@ -4124,7 +4137,7 @@ fn bench_parse(flags: &mut Flags, matches: &mut ArgMatches) -> clap::error::Resu
     filter,
     json,
     no_run,
-    watch: watch_arg_parse(matches),
+    watch: watch_arg_parse(matches)?,
   });
 
   Ok(())
@@ -4134,17 +4147,23 @@ fn bundle_parse(flags: &mut Flags, _matches: &mut ArgMatches) {
   flags.subcommand = DenoSubcommand::Bundle;
 }
 
-fn cache_parse(flags: &mut Flags, matches: &mut ArgMatches) -> clap::error::Result<()> {
+fn cache_parse(
+  flags: &mut Flags,
+  matches: &mut ArgMatches,
+) -> clap::error::Result<()> {
   compile_args_parse(flags, matches)?;
   unstable_args_parse(flags, matches, UnstableArgsConfig::ResolutionOnly);
   frozen_lockfile_arg_parse(flags, matches);
-  allow_scripts_arg_parse(flags, matches);
+  allow_scripts_arg_parse(flags, matches)?;
   let files = matches.remove_many::<String>("file").unwrap().collect();
   flags.subcommand = DenoSubcommand::Cache(CacheFlags { files });
   Ok(())
 }
 
-fn check_parse(flags: &mut Flags, matches: &mut ArgMatches) -> clap::error::Result<()> {
+fn check_parse(
+  flags: &mut Flags,
+  matches: &mut ArgMatches,
+) -> clap::error::Result<()> {
   flags.type_check_mode = TypeCheckMode::Local;
   compile_args_without_check_parse(flags, matches)?;
   unstable_args_parse(flags, matches, UnstableArgsConfig::ResolutionAndRuntime);
@@ -4160,7 +4179,10 @@ fn clean_parse(flags: &mut Flags, _matches: &mut ArgMatches) {
   flags.subcommand = DenoSubcommand::Clean;
 }
 
-fn compile_parse(flags: &mut Flags, matches: &mut ArgMatches) -> clap::error::Result<()> {
+fn compile_parse(
+  flags: &mut Flags,
+  matches: &mut ArgMatches,
+) -> clap::error::Result<()> {
   flags.type_check_mode = TypeCheckMode::Local;
   runtime_args_parse(flags, matches, true, false)?;
 
@@ -4219,13 +4241,18 @@ fn completions_parse(
   });
 }
 
-fn coverage_parse(flags: &mut Flags, matches: &mut ArgMatches) {
+fn coverage_parse(
+  flags: &mut Flags,
+  matches: &mut ArgMatches,
+) -> clap::error::Result<()> {
   let files = match matches.remove_many::<String>("files") {
     Some(f) => f.collect(),
     None => vec!["coverage".to_string()], // default
   };
   let ignore = match matches.remove_many::<String>("ignore") {
-    Some(f) => f.flat_map(escape_and_split_commas).collect(),
+    Some(f) => f
+      .flat_map(flat_escape_split_commas)
+      .collect::<Result<Vec<_>, _>>()?,
     None => vec![],
   };
   let include = match matches.remove_many::<String>("include") {
@@ -4256,9 +4283,13 @@ fn coverage_parse(flags: &mut Flags, matches: &mut ArgMatches) {
     exclude,
     r#type,
   });
+  Ok(())
 }
 
-fn doc_parse(flags: &mut Flags, matches: &mut ArgMatches) -> clap::error::Result<()> {
+fn doc_parse(
+  flags: &mut Flags,
+  matches: &mut ArgMatches,
+) -> clap::error::Result<()> {
   unstable_args_parse(flags, matches, UnstableArgsConfig::ResolutionOnly);
   import_map_arg_parse(flags, matches);
   reload_arg_parse(flags, matches)?;
@@ -4323,7 +4354,10 @@ fn doc_parse(flags: &mut Flags, matches: &mut ArgMatches) -> clap::error::Result
   Ok(())
 }
 
-fn eval_parse(flags: &mut Flags, matches: &mut ArgMatches) -> clap::error::Result<()> {
+fn eval_parse(
+  flags: &mut Flags,
+  matches: &mut ArgMatches,
+) -> clap::error::Result<()> {
   runtime_args_parse(flags, matches, false, true)?;
   unstable_args_parse(flags, matches, UnstableArgsConfig::ResolutionAndRuntime);
   flags.allow_all();
@@ -4339,7 +4373,10 @@ fn eval_parse(flags: &mut Flags, matches: &mut ArgMatches) -> clap::error::Resul
   Ok(())
 }
 
-fn fmt_parse(flags: &mut Flags, matches: &mut ArgMatches) {
+fn fmt_parse(
+  flags: &mut Flags,
+  matches: &mut ArgMatches,
+) -> clap::error::Result<()> {
   config_args_parse(flags, matches);
   ext_arg_parse(flags, matches);
 
@@ -4348,7 +4385,9 @@ fn fmt_parse(flags: &mut Flags, matches: &mut ArgMatches) {
     None => vec![],
   };
   let ignore = match matches.remove_many::<String>("ignore") {
-    Some(f) => f.flat_map(escape_and_split_commas).collect(),
+    Some(f) => f
+      .flat_map(flat_escape_split_commas)
+      .collect::<Result<Vec<_>, _>>()?,
     None => vec![],
   };
 
@@ -4372,12 +4411,13 @@ fn fmt_parse(flags: &mut Flags, matches: &mut ArgMatches) {
     single_quote,
     prose_wrap,
     no_semicolons,
-    watch: watch_arg_parse(matches),
+    watch: watch_arg_parse(matches)?,
     unstable_css,
     unstable_html,
     unstable_component,
     unstable_yaml,
   });
+  Ok(())
 }
 
 fn init_parse(flags: &mut Flags, matches: &mut ArgMatches) {
@@ -4388,7 +4428,10 @@ fn init_parse(flags: &mut Flags, matches: &mut ArgMatches) {
   });
 }
 
-fn info_parse(flags: &mut Flags, matches: &mut ArgMatches) -> clap::error::Result<()> {
+fn info_parse(
+  flags: &mut Flags,
+  matches: &mut ArgMatches,
+) -> clap::error::Result<()> {
   unstable_args_parse(flags, matches, UnstableArgsConfig::ResolutionOnly);
   reload_arg_parse(flags, matches)?;
   config_args_parse(flags, matches);
@@ -4409,7 +4452,10 @@ fn info_parse(flags: &mut Flags, matches: &mut ArgMatches) -> clap::error::Resul
   Ok(())
 }
 
-fn install_parse(flags: &mut Flags, matches: &mut ArgMatches) -> clap::error::Result<()> {
+fn install_parse(
+  flags: &mut Flags,
+  matches: &mut ArgMatches,
+) -> clap::error::Result<()> {
   runtime_args_parse(flags, matches, true, true)?;
 
   let global = matches.get_flag("global");
@@ -4434,11 +4480,11 @@ fn install_parse(flags: &mut Flags, matches: &mut ArgMatches) -> clap::error::Re
         force,
       }),
     });
-    return;
+    return Ok(());
   }
 
   // allow scripts only applies to local install
-  allow_scripts_arg_parse(flags, matches);
+  allow_scripts_arg_parse(flags, matches)?;
   if matches.get_flag("entrypoint") {
     let entrypoints = matches.remove_many::<String>("cmd").unwrap_or_default();
     flags.subcommand = DenoSubcommand::Install(InstallFlags {
@@ -4564,7 +4610,10 @@ fn lsp_parse(flags: &mut Flags, _matches: &mut ArgMatches) {
   flags.subcommand = DenoSubcommand::Lsp;
 }
 
-fn lint_parse(flags: &mut Flags, matches: &mut ArgMatches) {
+fn lint_parse(
+  flags: &mut Flags,
+  matches: &mut ArgMatches,
+) -> clap::error::Result<()> {
   unstable_args_parse(flags, matches, UnstableArgsConfig::ResolutionOnly);
 
   config_args_parse(flags, matches);
@@ -4573,7 +4622,9 @@ fn lint_parse(flags: &mut Flags, matches: &mut ArgMatches) {
     None => vec![],
   };
   let ignore = match matches.remove_many::<String>("ignore") {
-    Some(f) => f.flat_map(escape_and_split_commas).collect(),
+    Some(f) => f
+      .flat_map(flat_escape_split_commas)
+      .collect::<Result<Vec<_>, _>>()?,
     None => vec![],
   };
   let fix = matches.get_flag("fix");
@@ -4606,18 +4657,27 @@ fn lint_parse(flags: &mut Flags, matches: &mut ArgMatches) {
     maybe_rules_exclude,
     json,
     compact,
-    watch: watch_arg_parse(matches),
+    watch: watch_arg_parse(matches)?,
     ext,
   });
+  Ok(())
 }
 
-fn repl_parse(flags: &mut Flags, matches: &mut ArgMatches) -> clap::error::Result<()> {
+fn repl_parse(
+  flags: &mut Flags,
+  matches: &mut ArgMatches,
+) -> clap::error::Result<()> {
   runtime_args_parse(flags, matches, true, true)?;
   unsafely_ignore_certificate_errors_parse(flags, matches);
 
   let eval_files = matches
     .remove_many::<String>("eval-file")
-    .map(|values| values.flat_map(escape_and_split_commas).collect::<Vec<_>>());
+    .map(|values| {
+      values
+        .flat_map(flat_escape_split_commas)
+        .collect::<Result<Vec<_>, _>>()
+    })
+    .transpose()?;
 
   handle_repl_flags(
     flags,
@@ -4646,7 +4706,7 @@ fn run_parse(
     flags.argv.extend(script_arg);
     flags.subcommand = DenoSubcommand::Run(RunFlags {
       script,
-      watch: watch_arg_parse_with_paths(matches),
+      watch: watch_arg_parse_with_paths(matches)?,
       bare,
     });
   } else if bare {
@@ -4714,7 +4774,7 @@ fn serve_parse(
 
   flags.subcommand = DenoSubcommand::Serve(ServeFlags {
     script,
-    watch: watch_arg_parse_with_paths(matches),
+    watch: watch_arg_parse_with_paths(matches)?,
     port,
     host,
     worker_count,
@@ -4764,7 +4824,10 @@ fn parallel_arg_parse(matches: &mut ArgMatches) -> Option<NonZeroUsize> {
   }
 }
 
-fn test_parse(flags: &mut Flags, matches: &mut ArgMatches) -> clap::error::Result<()> {
+fn test_parse(
+  flags: &mut Flags,
+  matches: &mut ArgMatches,
+) -> clap::error::Result<()> {
   flags.type_check_mode = TypeCheckMode::Local;
   runtime_args_parse(flags, matches, true, true)?;
   // NOTE: `deno test` always uses `--no-prompt`, tests shouldn't ever do
@@ -4772,7 +4835,9 @@ fn test_parse(flags: &mut Flags, matches: &mut ArgMatches) -> clap::error::Resul
   flags.permissions.no_prompt = true;
 
   let ignore = match matches.remove_many::<String>("ignore") {
-    Some(f) => f.flat_map(escape_and_split_commas).collect(),
+    Some(f) => f
+      .flat_map(flat_escape_split_commas)
+      .collect::<Result<_, _>>()?,
     None => vec![],
   };
 
@@ -4849,7 +4914,7 @@ fn test_parse(flags: &mut Flags, matches: &mut ArgMatches) -> clap::error::Resul
     permit_no_files,
     concurrent_jobs,
     trace_leaks,
-    watch: watch_arg_parse_with_paths(matches),
+    watch: watch_arg_parse_with_paths(matches)?,
     reporter,
     junit_path,
     hide_stacktraces,
@@ -4904,7 +4969,10 @@ fn publish_parse(flags: &mut Flags, matches: &mut ArgMatches) {
   });
 }
 
-fn compile_args_parse(flags: &mut Flags, matches: &mut ArgMatches) -> clap::error::Result<()> {
+fn compile_args_parse(
+  flags: &mut Flags,
+  matches: &mut ArgMatches,
+) -> clap::error::Result<()> {
   compile_args_without_check_parse(flags, matches)?;
   no_check_arg_parse(flags, matches);
   check_arg_parse(flags, matches);
@@ -4927,7 +4995,7 @@ fn compile_args_without_check_parse(
   Ok(())
 }
 
-fn escape_and_split_commas(s: String) -> Vec<String> {
+fn escape_and_split_commas(s: String) -> Result<Vec<String>, clap::Error> {
   let mut result = vec![];
   let mut current = String::new();
   let mut chars = s.chars();
@@ -4938,44 +5006,87 @@ fn escape_and_split_commas(s: String) -> Vec<String> {
         if next == ',' {
           current.push(',');
         } else {
+          if current.is_empty() {
+            return Err(
+              std::io::Error::new(
+                std::io::ErrorKind::Other,
+                String::from("Empty values are not allowed"),
+              )
+              .into(),
+            );
+          }
+
           result.push(current.clone());
           current.clear();
           current.push(next);
         }
       } else {
-        result.push(current.clone());
-        current.clear();
+        return Err(
+          std::io::Error::new(
+            std::io::ErrorKind::Other,
+            String::from("Empty values are not allowed"),
+          )
+          .into(),
+        );
       }
     } else {
       current.push(c);
     }
   }
 
+  dbg!(&current);
+
+  if current.is_empty() {
+    return Err(
+      std::io::Error::new(
+        std::io::ErrorKind::Other,
+        String::from("Empty values are not allowed"),
+      )
+      .into(),
+    );
+  }
+
   result.push(current);
 
-  dbg!(&result);
-
-  result
+  Ok(result)
 }
 
-fn permission_args_parse(flags: &mut Flags, matches: &mut ArgMatches) -> clap::error::Result<()> {
+fn flat_escape_split_commas(str: String) -> Vec<Result<String, clap::Error>> {
+  match escape_and_split_commas(str) {
+    Ok(vec) => vec.into_iter().map(Ok).collect::<Vec<_>>(),
+    Err(e) => vec![Err(e)],
+  }
+}
+
+fn permission_args_parse(
+  flags: &mut Flags,
+  matches: &mut ArgMatches,
+) -> clap::error::Result<()> {
   if let Some(read_wl) = matches.remove_many::<String>("allow-read") {
-    let read_wl = read_wl.flat_map(escape_and_split_commas).collect::<Vec<_>>();
+    let read_wl = read_wl
+      .flat_map(flat_escape_split_commas)
+      .collect::<Result<Vec<_>, _>>()?;
     flags.permissions.allow_read = Some(read_wl);
   }
 
   if let Some(read_wl) = matches.remove_many::<String>("deny-read") {
-    let read_wl = read_wl.flat_map(escape_and_split_commas).collect::<Vec<_>>();
+    let read_wl = read_wl
+      .flat_map(flat_escape_split_commas)
+      .collect::<Result<Vec<_>, _>>()?;
     flags.permissions.deny_read = Some(read_wl);
   }
 
   if let Some(write_wl) = matches.remove_many::<String>("allow-write") {
-    let write_wl = write_wl.flat_map(escape_and_split_commas).collect::<Vec<_>>();
+    let write_wl = write_wl
+      .flat_map(flat_escape_split_commas)
+      .collect::<Result<Vec<_>, _>>()?;
     flags.permissions.allow_write = Some(write_wl);
   }
 
   if let Some(write_wl) = matches.remove_many::<String>("deny-write") {
-    let write_wl = write_wl.flat_map(escape_and_split_commas).collect::<Vec<_>>();
+    let write_wl = write_wl
+      .flat_map(flat_escape_split_commas)
+      .collect::<Result<Vec<_>, _>>()?;
     flags.permissions.deny_write = Some(write_wl);
   }
 
@@ -5020,13 +5131,17 @@ fn permission_args_parse(flags: &mut Flags, matches: &mut ArgMatches) -> clap::e
   }
 
   if let Some(ffi_wl) = matches.remove_many::<String>("allow-ffi") {
-    let ffi_wl = ffi_wl.flat_map(escape_and_split_commas).collect::<Vec<_>>();
+    let ffi_wl = ffi_wl
+      .flat_map(flat_escape_split_commas)
+      .collect::<Result<Vec<_>, _>>()?;
     flags.permissions.allow_ffi = Some(ffi_wl);
     debug!("ffi allowlist: {:#?}", &flags.permissions.allow_ffi);
   }
 
   if let Some(ffi_wl) = matches.remove_many::<String>("deny-ffi") {
-    let ffi_wl = ffi_wl.flat_map(escape_and_split_commas).collect::<Vec<_>>();
+    let ffi_wl = ffi_wl
+      .flat_map(flat_escape_split_commas)
+      .collect::<Result<Vec<_>, _>>()?;
     flags.permissions.deny_ffi = Some(ffi_wl);
     debug!("ffi denylist: {:#?}", &flags.permissions.deny_ffi);
   }
@@ -5097,9 +5212,15 @@ fn env_file_arg_parse(flags: &mut Flags, matches: &mut ArgMatches) {
   flags.env_file = matches.remove_one::<String>("env-file");
 }
 
-fn reload_arg_parse(flags: &mut Flags, matches: &mut ArgMatches) -> clap::error::Result<()> {
+fn reload_arg_parse(
+  flags: &mut Flags,
+  matches: &mut ArgMatches,
+) -> clap::error::Result<()> {
   if let Some(cache_bl) = matches.remove_many::<String>("reload") {
-    let raw_cache_blocklist: Vec<String> = cache_bl.flat_map(escape_and_split_commas).map(reload_arg_validate).collect::<Result<Vec<_>, _>>()?;
+    let raw_cache_blocklist: Vec<String> = cache_bl
+      .flat_map(flat_escape_split_commas)
+      .map(|s| s.and_then(reload_arg_validate))
+      .collect::<Result<Vec<_>, _>>()?;
     if raw_cache_blocklist.is_empty() {
       flags.reload = true;
     } else {
@@ -5243,59 +5364,88 @@ fn node_modules_and_vendor_dir_arg_parse(
 
 fn reload_arg_validate(urlstr: String) -> Result<String, clap::Error> {
   if urlstr.is_empty() {
-    return Err(std::io::Error::new(std::io::ErrorKind::Other, String::from("Missing url. Check for extra commas.")).into())
+    return Err(
+      std::io::Error::new(
+        std::io::ErrorKind::Other,
+        String::from("Missing url. Check for extra commas."),
+      )
+      .into(),
+    );
   }
   match Url::from_str(&urlstr) {
     Ok(_) => Ok(urlstr),
-    Err(e) => Err(std::io::Error::new(std::io::ErrorKind::Other, e.to_string()).into()),
+    Err(e) => {
+      Err(std::io::Error::new(std::io::ErrorKind::Other, e.to_string()).into())
+    }
   }
 }
 
-fn watch_arg_parse(matches: &mut ArgMatches) -> Option<WatchFlags> {
+fn watch_arg_parse(
+  matches: &mut ArgMatches,
+) -> clap::error::Result<Option<WatchFlags>> {
   if matches.get_flag("watch") {
-    Some(WatchFlags {
+    Ok(Some(WatchFlags {
       hmr: false,
       no_clear_screen: matches.get_flag("no-clear-screen"),
       exclude: matches
         .remove_many::<String>("watch-exclude")
-        .map(|f| f.flat_map(escape_and_split_commas).collect::<Vec<String>>())
+        .map(|f| {
+          f.flat_map(flat_escape_split_commas)
+            .collect::<Result<_, _>>()
+        })
+        .transpose()?
         .unwrap_or_default(),
-    })
+    }))
   } else {
-    None
+    Ok(None)
   }
 }
 
 fn watch_arg_parse_with_paths(
   matches: &mut ArgMatches,
-) -> Option<WatchFlagsWithPaths> {
+) -> clap::error::Result<Option<WatchFlagsWithPaths>> {
   if let Some(paths) = matches.remove_many::<String>("watch") {
-    return Some(WatchFlagsWithPaths {
-      paths: paths.flat_map(escape_and_split_commas).collect(),
+    return Ok(Some(WatchFlagsWithPaths {
+      paths: paths
+        .flat_map(flat_escape_split_commas)
+        .collect::<Result<Vec<_>, _>>()?,
       hmr: false,
       no_clear_screen: matches.get_flag("no-clear-screen"),
       exclude: matches
         .remove_many::<String>("watch-exclude")
-        .map(|f| f.flat_map(escape_and_split_commas).collect::<Vec<String>>())
+        .map(|f| {
+          f.flat_map(flat_escape_split_commas)
+            .collect::<Result<Vec<_>, _>>()
+        })
+        .transpose()?
         .unwrap_or_default(),
-    });
+    }));
   }
 
   if matches.try_contains_id("hmr").is_ok() {
-    return matches.remove_many::<String>("hmr").map(|paths| {
-      WatchFlagsWithPaths {
-        paths: paths.flat_map(escape_and_split_commas).collect(),
-        hmr: true,
-        no_clear_screen: matches.get_flag("no-clear-screen"),
-        exclude: matches
-          .remove_many::<String>("watch-exclude")
-          .map(|f| f.flat_map(escape_and_split_commas).collect::<Vec<String>>())
-          .unwrap_or_default(),
-      }
-    });
+    return matches
+      .remove_many::<String>("hmr")
+      .map(|paths| {
+        Ok(WatchFlagsWithPaths {
+          paths: paths
+            .flat_map(flat_escape_split_commas)
+            .collect::<Result<Vec<_>, _>>()?,
+          hmr: true,
+          no_clear_screen: matches.get_flag("no-clear-screen"),
+          exclude: matches
+            .remove_many::<String>("watch-exclude")
+            .map(|f| {
+              f.flat_map(flat_escape_split_commas)
+                .collect::<Result<Vec<_>, _>>()
+            })
+            .transpose()?
+            .unwrap_or_default(),
+        })
+      })
+      .transpose();
   }
 
-  None
+  Ok(None)
 }
 
 fn unstable_args_parse(
@@ -10558,13 +10708,28 @@ mod tests {
 
   #[test]
   fn escape_and_split_commas_test() {
-    assert_eq!(escape_and_split_commas("foo".to_string()), ["foo"]);
-    assert_eq!(escape_and_split_commas("foo,".to_string()), ["foo", ""]);
-    assert_eq!(escape_and_split_commas("foo,,".to_string()), ["foo,"]);
-    assert_eq!(escape_and_split_commas("foo,,,".to_string()), ["foo,", ""]);
-    assert_eq!(escape_and_split_commas("foo,bar".to_string()), ["foo", "bar"]);
-    assert_eq!(escape_and_split_commas("foo,,bar".to_string()), ["foo,bar"]);
-    assert_eq!(escape_and_split_commas("foo,,,bar".to_string()), ["foo,", "bar"]);
-    assert_eq!(escape_and_split_commas(",".to_string()), ["", ""]);
+    assert_eq!(escape_and_split_commas("foo".to_string()).unwrap(), ["foo"]);
+    assert!(escape_and_split_commas("foo,".to_string()).is_err());
+    assert_eq!(
+      escape_and_split_commas("foo,,".to_string()).unwrap(),
+      ["foo,"]
+    );
+    assert!(escape_and_split_commas("foo,,,".to_string()).is_err());
+    assert_eq!(
+      escape_and_split_commas("foo,,,,".to_string()).unwrap(),
+      ["foo,,"]
+    );
+    assert_eq!(
+      escape_and_split_commas("foo,bar".to_string()).unwrap(),
+      ["foo", "bar"]
+    );
+    assert_eq!(
+      escape_and_split_commas("foo,,bar".to_string()).unwrap(),
+      ["foo,bar"]
+    );
+    assert_eq!(
+      escape_and_split_commas("foo,,,bar".to_string()).unwrap(),
+      ["foo,", "bar"]
+    );
   }
 }
