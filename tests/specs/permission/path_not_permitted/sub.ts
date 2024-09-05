@@ -6,7 +6,7 @@ Deno.copyFileSync(binaryName, "subdir/" + binaryName);
 
 try {
   const commandResult = new Deno.Command(
-    binaryName,
+    "deno",
     {
       env: { "PATH": Deno.cwd() + pathSep + "subdir" },
       stdout: "inherit",
@@ -22,7 +22,7 @@ try {
 try {
   const child = Deno.run(
     {
-      cmd: [binaryName],
+      cmd: ["deno"],
       env: { "PATH": Deno.cwd() + pathSep + "subdir" },
       stdout: "inherit",
       stderr: "inherit",

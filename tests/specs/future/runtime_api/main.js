@@ -1,6 +1,5 @@
 console.log("window is", globalThis.window);
 console.log("Deno.Buffer is", Deno.Buffer);
-console.log("Deno.File is", Deno.File);
 console.log(
   "Deno.FsFile.prototype.rid is",
   Deno.openSync(import.meta.filename).rid,
@@ -53,10 +52,6 @@ const tlsConn = await Deno.connectTls({ port: tlsPort });
 console.log("Deno.TlsConn.prototype.rid is", tlsConn.rid);
 
 tlsConn.close();
-
-const watcher = Deno.watchFs(".");
-console.log("Deno.FsWatcher.prototype.rid is", watcher.rid);
-watcher.close();
 
 try {
   new Deno.FsFile(0);
