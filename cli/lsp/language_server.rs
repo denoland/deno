@@ -966,9 +966,8 @@ impl Inner {
       .await;
     for config_file in self.config.tree.config_files() {
       (|| {
-        let compiler_options = config_file.to_compiler_options().ok()?.0;
-        let compiler_options_obj = compiler_options.as_object()?;
-        let jsx_import_source = compiler_options_obj.get("jsxImportSource")?;
+        let compiler_options = config_file.to_compiler_options().ok()?.options;
+        let jsx_import_source = compiler_options.get("jsxImportSource")?;
         let jsx_import_source = jsx_import_source.as_str()?;
         let referrer = config_file.specifier.clone();
         let specifier = Url::parse(&format!(

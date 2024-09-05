@@ -20,13 +20,12 @@ use crate::tools::check::TypeChecker;
 use crate::util::file_watcher::WatcherCommunicator;
 use crate::util::fs::canonicalize_path;
 use deno_config::workspace::JsrPackageConfig;
-use deno_emit::LoaderChecksum;
+use deno_graph::source::LoaderChecksum;
 use deno_graph::JsrLoadError;
 use deno_graph::ModuleLoadError;
 use deno_graph::WorkspaceFastCheckOption;
 use deno_runtime::fs_util::specifier_to_file_path;
 
-use deno_core::anyhow::bail;
 use deno_core::error::custom_error;
 use deno_core::error::AnyError;
 use deno_core::parking_lot::Mutex;
@@ -35,7 +34,6 @@ use deno_graph::source::Loader;
 use deno_graph::source::ResolutionMode;
 use deno_graph::source::ResolveError;
 use deno_graph::GraphKind;
-use deno_graph::Module;
 use deno_graph::ModuleError;
 use deno_graph::ModuleGraph;
 use deno_graph::ModuleGraphError;
@@ -720,23 +718,6 @@ impl ModuleGraphBuilder {
       },
     )
   }
-}
-
-pub fn error_for_any_npm_specifier(
-  graph: &ModuleGraph,
-) -> Result<(), AnyError> {
-  for module in graph.modules() {
-    match module {
-      Module::Npm(module) => {
-        bail!("npm specifiers have not yet been implemented for this subcommand (https://github.com/denoland/deno/issues/15960). Found: {}", module.specifier)
-      }
-      Module::Node(module) => {
-        bail!("Node specifiers have not yet been implemented for this subcommand (https://github.com/denoland/deno/issues/15960). Found: node:{}", module.module_name)
-      }
-      Module::Js(_) | Module::Json(_) | Module::External(_) => {}
-    }
-  }
-  Ok(())
 }
 
 /// Adds more explanatory information to a resolution error.

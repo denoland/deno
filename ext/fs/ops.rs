@@ -1494,30 +1494,6 @@ pub async fn op_fs_file_stat_async(
 }
 
 #[op2(fast)]
-pub fn op_fs_flock_sync_unstable(
-  state: &mut OpState,
-  #[smi] rid: ResourceId,
-  exclusive: bool,
-) -> Result<(), AnyError> {
-  check_unstable(state, "Deno.flockSync");
-  let file = FileResource::get_file(state, rid)?;
-  file.lock_sync(exclusive)?;
-  Ok(())
-}
-
-#[op2(async)]
-pub async fn op_fs_flock_async_unstable(
-  state: Rc<RefCell<OpState>>,
-  #[smi] rid: ResourceId,
-  exclusive: bool,
-) -> Result<(), AnyError> {
-  check_unstable(&state.borrow(), "Deno.flock");
-  let file = FileResource::get_file(&state.borrow(), rid)?;
-  file.lock_async(exclusive).await?;
-  Ok(())
-}
-
-#[op2(fast)]
 pub fn op_fs_funlock_sync_unstable(
   state: &mut OpState,
   #[smi] rid: ResourceId,
@@ -1593,7 +1569,7 @@ pub fn op_fs_ftruncate_sync(
 }
 
 #[op2(async)]
-pub async fn op_fs_ftruncate_async(
+pub async fn op_fs_file_truncate_async(
   state: Rc<RefCell<OpState>>,
   #[smi] rid: ResourceId,
   #[number] len: u64,

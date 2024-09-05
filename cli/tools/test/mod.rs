@@ -1560,7 +1560,8 @@ pub async fn run_tests(
   )
   .await?;
 
-  if !workspace_test_options.allow_none && specifiers_with_mode.is_empty() {
+  if !workspace_test_options.permit_no_files && specifiers_with_mode.is_empty()
+  {
     return Err(generic_error("No test modules found"));
   }
 

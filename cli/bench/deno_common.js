@@ -46,8 +46,7 @@ Deno.bench("b64_rt_short", { n: 1e6 }, () => {
   const buf = new Uint8Array(100);
   const file = Deno.openSync("/dev/zero");
   Deno.bench("read_zero", { n: 5e5 }, () => {
-    // deno-lint-ignore no-deprecated-deno-api
-    Deno.readSync(file.rid, buf);
+    file.readSync(buf);
   });
 }
 

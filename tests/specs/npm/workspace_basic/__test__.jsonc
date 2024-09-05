@@ -14,9 +14,6 @@
       "output": "b/main_node_modules_dir.out"
     },
     "byonm": {
-      "envs": {
-        "DENO_FUTURE": "1"
-      },
       "steps": [{
         "args": "install",
         "output": "[WILDCARD]"
