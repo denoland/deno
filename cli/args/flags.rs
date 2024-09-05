@@ -5034,8 +5034,6 @@ fn escape_and_split_commas(s: String) -> Result<Vec<String>, clap::Error> {
     }
   }
 
-  dbg!(&current);
-
   if current.is_empty() {
     return Err(
       std::io::Error::new(
