@@ -9,7 +9,7 @@ new Deno.Command(
       "run",
       "--allow-write",
       "--allow-read",
-      `--allow-run=deno`,
+      `--allow-run=binary`,
       "sub.ts",
     ],
     env: {

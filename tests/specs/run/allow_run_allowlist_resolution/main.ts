@@ -11,24 +11,28 @@
 
 const binaryName = Deno.build.os === "windows" ? "binary.exe" : "binary";
 const pathSep = Deno.build.os === "windows" ? "\\" : "/";
+const cwd = Deno.realPathSync(Deno.cwd());
 const execPathParent = `${Deno.cwd()}${pathSep}sub`;
 const execPath = `${execPathParent}${pathSep}${binaryName}`;
 Deno.mkdirSync(execPathParent);
 Deno.copyFileSync(Deno.execPath(), execPath);
 
-const testUrl = `data:application/typescript;base64,${
-  btoa(`
-  console.error(await Deno.permissions.query({ name: "run", command: "binary" }));
-  console.error(await Deno.permissions.query({ name: "run", command: "${
-    execPath.replaceAll("\\", "\\\\")
-  }" }));
-  Deno.env.set("PATH", "");
-  console.error(await Deno.permissions.query({ name: "run", command: "binary" }));
-  console.error(await Deno.permissions.query({ name: "run", command: "${
-    execPath.replaceAll("\\", "\\\\")
-  }" }));
-`)
-}`;
+const fileText = `
+console.error(await Deno.permissions.query({ name: "run", command: "binary" }));
+console.error(await Deno.permissions.query({ name: "run", command: "${
+  execPath.replaceAll("\\", "\\\\")
+}" }));
+Deno.env.set("PATH", "");
+console.error(await Deno.permissions.query({ name: "run", command: "binary" }));
+console.error(await Deno.permissions.query({ name: "run", command: "${
+  execPath.replaceAll("\\", "\\\\")
+}" }));
+`;
+const testUrl = `data:application/typescript;base64,${btoa(fileText)}`;
+
+// for debugging
+console.error("Script:", fileText);
+console.error("---");
 
 const process1 = await new Deno.Command(Deno.execPath(), {
   args: [
