@@ -82,6 +82,8 @@ export const argv: string[] = ["", ""];
 // And retains any value as long as it's nullish or number-ish.
 let ProcessExitCode: undefined | null | string | number;
 
+export const execArgv: string[] = [];
+
 /** https://nodejs.org/api/process.html#process_process_exit_code */
 export const exit = (code?: number | string) => {
   if (code || code === 0) {
@@ -337,7 +339,20 @@ function uncaughtExceptionHandler(err: any, origin: string) {
   process.emit("uncaughtException", err, origin);
 }
 
-let execPath: string | null = null;
+export let execPath: string = Object.freeze({
+  __proto__: String.prototype,
+  toString() {
+    execPath = Deno.execPath();
+    return execPath;
+  },
+  get length() {
+    return this.toString().length;
+  },
+  [Symbol.for("Deno.customInspect")](inspect, options) {
+    return inspect(this.toString(), options);
+  },
+  // deno-lint-ignore no-explicit-any
+}) as any as string;
 
 // The process class needs to be an ES5 class because it can be instantiated
 // in Node without the `new` keyword. It's not a true class in Node. Popular
@@ -425,7 +440,7 @@ Process.prototype.cwd = cwd;
 Process.prototype.env = env;
 
 /** https://nodejs.org/api/process.html#process_process_execargv */
-Process.prototype.execArgv = [];
+Process.prototype.execArgv = execArgv;
 
 /** https://nodejs.org/api/process.html#process_process_exit_code */
 Process.prototype.exit = exit;
@@ -704,11 +719,7 @@ Process.prototype._eval = undefined;
 
 Object.defineProperty(Process.prototype, "execPath", {
   get() {
-    if (execPath) {
-      return execPath;
-    }
-    execPath = Deno.execPath();
-    return execPath;
+    return String(execPath);
   },
   set(path: string) {
     execPath = path;
