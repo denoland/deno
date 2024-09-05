@@ -7,14 +7,17 @@ use crate::args::ConfigFlag;
 use crate::args::Flags;
 use crate::args::InstallFlags;
 use crate::args::InstallFlagsGlobal;
+use crate::args::InstallFlagsLocal;
 use crate::args::InstallKind;
 use crate::args::TypeCheckMode;
 use crate::args::UninstallFlags;
 use crate::args::UninstallKind;
 use crate::factory::CliFactory;
+use crate::graph_container::ModuleGraphContainer;
 use crate::http_util::HttpClientProvider;
 use crate::util::fs::canonicalize_path_maybe_not_exists;
 
+use deno_core::anyhow::bail;
 use deno_core::anyhow::Context;
 use deno_core::error::generic_error;
 use deno_core::error::AnyError;
@@ -261,26 +264,65 @@ pub fn uninstall(uninstall_flags: UninstallFlags) -> Result<(), AnyError> {
   Ok(())
 }
 
+pub(crate) async fn install_from_entrypoints(
+  flags: Arc<Flags>,
+  entrypoints: &[String],
+) -> Result<(), AnyError> {
+  let factory = CliFactory::from_flags(flags.clone());
+  let emitter = factory.emitter()?;
+  let main_graph_container = factory.main_module_graph_container().await?;
+  main_graph_container
+    .load_and_type_check_files(entrypoints)
+    .await?;
+  emitter
+    .cache_module_emits(&main_graph_container.graph())
+    .await
+}
+
 async fn install_local(
   flags: Arc<Flags>,
-  maybe_add_flags: Option<AddFlags>,
+  install_flags: InstallFlagsLocal,
 ) -> Result<(), AnyError> {
-  if let Some(add_flags) = maybe_add_flags {
-    return super::registry::add(
-      flags,
-      add_flags,
-      super::registry::AddCommandName::Install,
-    )
-    .await;
+  match install_flags {
+    InstallFlagsLocal::Add(add_flags) => {
+      super::registry::add(
+        flags,
+        add_flags,
+        super::registry::AddCommandName::Install,
+      )
+      .await
+    }
+    InstallFlagsLocal::Entrypoints(entrypoints) => {
+      install_from_entrypoints(flags, &entrypoints).await
+    }
+    InstallFlagsLocal::TopLevel => {
+      let factory = CliFactory::from_flags(flags);
+      crate::tools::registry::cache_top_level_deps(&factory, None).await?;
+
+      if let Some(lockfile) = factory.cli_options()?.maybe_lockfile() {
+        lockfile.write_if_changed()?;
+      }
+
+      Ok(())
+    }
   }
+}
 
-  let factory = CliFactory::from_flags(flags);
-  crate::tools::registry::cache_top_level_deps(&factory, None).await?;
-
-  if let Some(lockfile) = factory.cli_options()?.maybe_lockfile() {
-    lockfile.write_if_changed()?;
+fn check_if_installs_a_single_package_globally(
+  maybe_add_flags: Option<&AddFlags>,
+) -> Result<(), AnyError> {
+  let Some(add_flags) = maybe_add_flags else {
+    return Ok(());
+  };
+  if add_flags.packages.len() != 1 {
+    return Ok(());
   }
-
+  let Ok(url) = Url::parse(&add_flags.packages[0]) else {
+    return Ok(());
+  };
+  if matches!(url.scheme(), "http" | "https") {
+    bail!("Failed to install \"{}\" specifier. If you are trying to install {} globally, run again with `-g` flag:\n  deno install -g {}", url.scheme(), url.as_str(), url.as_str());
+  }
   Ok(())
 }
 
@@ -296,8 +338,11 @@ pub async fn install_command(
 
       install_global(flags, global_flags).await
     }
-    InstallKind::Local(maybe_add_flags) => {
-      install_local(flags, maybe_add_flags).await
+    InstallKind::Local(local_flags) => {
+      if let InstallFlagsLocal::Add(add_flags) = &local_flags {
+        check_if_installs_a_single_package_globally(Some(add_flags))?;
+      }
+      install_local(flags, local_flags).await
     }
   }
 }

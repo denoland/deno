@@ -1,4 +1,0 @@
-error: Uncaught (in promise) ReferenceError: process is not defined
-const _foo = process.env.FOO;
-             ^
-    at [WILDCARD]main.ts:3:14
