@@ -2612,7 +2612,6 @@ NOTE: This file should not be manually edited. Please edit `tests/node_compat/co
 - [parallel/test-v8-flags.js](https://github.com/nodejs/node/tree/v18.12.1/test/parallel/test-v8-flags.js)
 - [parallel/test-v8-getheapsnapshot-twice.js](https://github.com/nodejs/node/tree/v18.12.1/test/parallel/test-v8-getheapsnapshot-twice.js)
 - [parallel/test-v8-global-setter.js](https://github.com/nodejs/node/tree/v18.12.1/test/parallel/test-v8-global-setter.js)
-- [parallel/test-v8-serdes.js](https://github.com/nodejs/node/tree/v18.12.1/test/parallel/test-v8-serdes.js)
 - [parallel/test-v8-serialize-leak.js](https://github.com/nodejs/node/tree/v18.12.1/test/parallel/test-v8-serialize-leak.js)
 - [parallel/test-v8-startup-snapshot-api.js](https://github.com/nodejs/node/tree/v18.12.1/test/parallel/test-v8-startup-snapshot-api.js)
 - [parallel/test-v8-stats.js](https://github.com/nodejs/node/tree/v18.12.1/test/parallel/test-v8-stats.js)
