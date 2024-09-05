@@ -105,9 +105,7 @@ impl v8::ValueSerializerImpl for SerializerDelegate {
       .into();
     if let Some(v) = obj.get(scope, key) {
       if let Ok(v) = v.try_cast::<v8::Function>() {
-        if v.call(scope, obj.into(), &[object.into()]).is_none() {
-          return None;
-        }
+        v.call(scope, obj.into(), &[object.into()])?;
         return Some(true);
       }
     }
@@ -268,8 +266,10 @@ pub fn op_v8_new_deserializer(
     generic_error("deserialization buffer has no backing store")
   })?;
   let (buf_slice, buf_ptr) = if let Some(data) = backing_store.data() {
+    // SAFETY: the offset is valid for the underlying buffer because we're getting it directly from v8
     let data_ptr = unsafe { data.as_ptr().cast::<u8>().add(offset) };
     (
+      // SAFETY: the len is valid, from v8, and the data_ptr is valid (as above)
       unsafe { std::slice::from_raw_parts(data_ptr.cast_const().cast(), len) },
       Some(data.cast()),
     )
@@ -334,8 +334,7 @@ pub fn op_v8_read_raw_bytes(
   };
   if let Some(buf) = deser.inner.read_raw_bytes(length) {
     let ptr = buf.as_ptr();
-    let offset = (ptr as usize) - (buf_ptr.as_ptr() as usize);
-    offset
+    (ptr as usize) - (buf_ptr.as_ptr() as usize)
   } else {
     0
   }

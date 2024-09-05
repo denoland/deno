@@ -300,15 +300,15 @@ export class DefaultDeserializer extends Deserializer {
       );
     }
     // Copy to an aligned buffer first.
-    const buffer_copy = Buffer.allocUnsafe(byteLength);
+    const bufferCopy = Buffer.allocUnsafe(byteLength);
     Buffer.from(
       this.buffer.buffer,
       byteOffset,
       byteLength,
-    ).copy(buffer_copy);
+    ).copy(bufferCopy);
     return new ctor(
-      buffer_copy.buffer,
-      buffer_copy.byteOffset,
+      bufferCopy.buffer,
+      bufferCopy.byteOffset,
       byteLength / BYTES_PER_ELEMENT,
     );
   }
