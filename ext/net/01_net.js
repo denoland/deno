@@ -101,10 +101,6 @@ class Conn {
   #writable;
 
   constructor(rid, remoteAddr, localAddr) {
-    ObjectDefineProperty(this, "rid", {
-      enumerable: false,
-      value: undefined,
-    });
     this.#rid = rid;
     this.#remoteAddr = remoteAddr;
     this.#localAddr = localAddr;
