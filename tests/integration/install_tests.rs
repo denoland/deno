@@ -62,7 +62,7 @@ fn install_basic() {
   // now uninstall
   context
     .new_command()
-    .args("uninstall echo_test")
+    .args("uninstall -g echo_test")
     .envs([
       ("HOME", temp_dir_str.as_str()),
       ("USERPROFILE", temp_dir_str.as_str()),
@@ -139,7 +139,7 @@ fn install_basic_global() {
   // now uninstall
   context
     .new_command()
-    .args("uninstall echo_test")
+    .args("uninstall -g echo_test")
     .envs([
       ("HOME", temp_dir_str.as_str()),
       ("USERPROFILE", temp_dir_str.as_str()),
@@ -274,7 +274,7 @@ fn installer_test_remote_module_run() {
   // now uninstall with the relative path
   context
     .new_command()
-    .args("uninstall --root ./root echo_test")
+    .args("uninstall -g --root ./root echo_test")
     .run()
     .skip_output_check()
     .assert_exit_code(0);
