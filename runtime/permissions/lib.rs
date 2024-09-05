@@ -3535,18 +3535,15 @@ mod tests {
       &mut main_perms,
       ChildPermissionsArg {
         read: ChildUnaryPermissionArg::Granted,
-        run: ChildUnaryPermissionArg::GrantedList(svec!["foo", "bar"]),
+        env: ChildUnaryPermissionArg::GrantedList(svec!["foo", "bar"]),
         ..ChildPermissionsArg::none()
       },
     )
     .unwrap();
     assert_eq!(main_perms, worker_perms);
     assert_eq!(
-      main_perms.run.granted_list,
-      HashSet::from([
-        RunDescriptor::Name("bar".to_owned()),
-        RunDescriptor::Name("foo".to_owned())
-      ])
+      main_perms.env.granted_list,
+      HashSet::from([EnvDescriptor::new("bar"), EnvDescriptor::new("foo")])
     );
   }
 
