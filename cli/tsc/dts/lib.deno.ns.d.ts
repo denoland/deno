@@ -2530,17 +2530,6 @@ declare namespace Deno {
     [Symbol.dispose](): void;
   }
 
-  /**
-   * The Deno abstraction for reading and writing files.
-   *
-   * @deprecated This will be removed in Deno 2.0. See the
-   * {@link https://docs.deno.com/runtime/manual/advanced/migrate_deprecations | Deno 1.x to 2.x Migration Guide}
-   * for migration instructions.
-   *
-   * @category File System
-   */
-  export const File: typeof FsFile;
-
   /** Gets the size of the console as columns/rows.
    *
    * ```ts
