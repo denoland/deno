@@ -576,12 +576,11 @@ function bootstrapMainRuntime(runtimeOptions, warmup = false) {
       6: hasNodeModulesDir,
       7: argv0,
       8: nodeDebug,
-      9: future,
-      10: mode,
-      11: servePort,
-      12: serveHost,
-      13: serveIsMain,
-      14: serveWorkerCount,
+      9: mode,
+      10: servePort,
+      11: serveHost,
+      12: serveIsMain,
+      13: serveWorkerCount,
     } = runtimeOptions;
 
     if (mode === executionModes.serve) {
@@ -668,7 +667,7 @@ function bootstrapMainRuntime(runtimeOptions, warmup = false) {
     // TODO(iuioiua): remove in Deno v2. This allows us to dynamically delete
     // class properties within constructors for classes that are not defined
     // within the Deno namespace.
-    internals.future = future;
+    internals.future = true;
 
     removeImportedOps();
 
@@ -723,26 +722,27 @@ function bootstrapMainRuntime(runtimeOptions, warmup = false) {
       target,
     );
 
+    // TODO(bartlomieju): this is not ideal, but because we use `ObjectAssign`
+    // above any properties that are defined elsewhere using `Object.defineProperty`
+    // are lost.
+    let jupyterNs = undefined;
+    ObjectDefineProperty(finalDenoNs, "jupyter", {
+      get() {
+        if (jupyterNs) {
+          return jupyterNs;
+        }
+        throw new Error(
+          "Deno.jupyter is only available in `deno jupyter` subcommand.",
+        );
+      },
+      set(val) {
+        jupyterNs = val;
+      },
+    });
+
     // TODO(bartlomieju): deprecate --unstable
     if (unstableFlag) {
       ObjectAssign(finalDenoNs, denoNsUnstable);
-      // TODO(bartlomieju): this is not ideal, but because we use `ObjectAssign`
-      // above any properties that are defined elsewhere using `Object.defineProperty`
-      // are lost.
-      let jupyterNs = undefined;
-      ObjectDefineProperty(finalDenoNs, "jupyter", {
-        get() {
-          if (jupyterNs) {
-            return jupyterNs;
-          }
-          throw new Error(
-            "Deno.jupyter is only available in `deno jupyter` subcommand.",
-          );
-        },
-        set(val) {
-          jupyterNs = val;
-        },
-      });
     } else {
       for (let i = 0; i <= unstableFeatures.length; i++) {
         const id = unstableFeatures[i];
@@ -798,15 +798,12 @@ function bootstrapMainRuntime(runtimeOptions, warmup = false) {
         nodeDebug,
       });
     }
-    if (future) {
+    if (internals.future) {
       delete globalThis.window;
       delete Deno.Buffer;
-      delete Deno.File;
       delete Deno.FsFile.prototype.rid;
       delete Deno.funlock;
       delete Deno.funlockSync;
-      delete Deno.read;
-      delete Deno.readSync;
       delete Deno.seek;
       delete Deno.seekSync;
     }
@@ -837,13 +834,12 @@ function bootstrapWorkerRuntime(
       6: hasNodeModulesDir,
       7: argv0,
       8: nodeDebug,
-      9: future,
     } = runtimeOptions;
 
     // TODO(iuioiua): remove in Deno v2. This allows us to dynamically delete
     // class properties within constructors for classes that are not defined
     // within the Deno namespace.
-    internals.future = future;
+    internals.future = true;
 
     performance.setTimeOrigin(DateNow());
     globalThis_ = globalThis;
@@ -966,14 +962,11 @@ function bootstrapWorkerRuntime(
       });
     }
 
-    if (future) {
+    if (internals.future) {
       delete Deno.Buffer;
-      delete Deno.File;
       delete Deno.FsFile.prototype.rid;
       delete Deno.funlock;
       delete Deno.funlockSync;
-      delete Deno.read;
-      delete Deno.readSync;
       delete Deno.seek;
       delete Deno.seekSync;
     }

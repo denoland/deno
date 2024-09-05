@@ -1,8 +1,18 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
-
 use super::flags_net;
 use crate::args::resolve_no_prompt;
 use crate::util::fs::canonicalize_path;
+use std::collections::HashSet;
+use std::env;
+use std::ffi::OsString;
+use std::net::SocketAddr;
+use std::num::NonZeroU32;
+use std::num::NonZeroU8;
+use std::num::NonZeroUsize;
+use std::path::Path;
+use std::path::PathBuf;
+use std::str::FromStr;
+
 use clap::builder::styling::AnsiColor;
 use clap::builder::FalseyValueParser;
 use clap::error::ErrorKind;
@@ -24,6 +34,7 @@ use deno_core::normalize_path;
 use deno_core::resolve_url_or_path;
 use deno_core::url::Url;
 use deno_graph::GraphKind;
+use deno_runtime::colors;
 use deno_runtime::deno_permissions::parse_sys_kind;
 use deno_runtime::deno_permissions::PermissionsOptions;
 use log::debug;
@@ -31,16 +42,9 @@ use log::error;
 use log::Level;
 use serde::Deserialize;
 use serde::Serialize;
-use std::collections::HashSet;
-use std::env;
-use std::ffi::OsString;
-use std::net::SocketAddr;
-use std::num::NonZeroU32;
-use std::num::NonZeroU8;
-use std::num::NonZeroUsize;
-use std::path::Path;
-use std::path::PathBuf;
-use std::str::FromStr;
+
+use crate::args::resolve_no_prompt;
+use crate::util::fs::canonicalize_path;
 
 #[derive(Clone, Debug, Default, Eq, PartialEq)]
 pub enum ConfigFlag {
@@ -237,8 +241,15 @@ pub struct InstallFlagsGlobal {
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub enum InstallKind {
-  Local(Option<AddFlags>),
+  Local(InstallFlagsLocal),
   Global(InstallFlagsGlobal),
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub enum InstallFlagsLocal {
+  Add(AddFlags),
+  TopLevel,
+  Entrypoints(Vec<String>),
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -681,6 +692,54 @@ impl PermissionFlags {
       Ok(Some(new_paths))
     }
 
+    fn resolve_allow_run(
+      allow_run: &[String],
+    ) -> Result<Vec<PathBuf>, AnyError> {
+      let mut new_allow_run = Vec::with_capacity(allow_run.len());
+      for command_name in allow_run {
+        if command_name.is_empty() {
+          bail!("Empty command name not allowed in --allow-run=...")
+        }
+        let command_path_result = which::which(command_name);
+        match command_path_result {
+          Ok(command_path) => new_allow_run.push(command_path),
+          Err(err) => {
+            log::info!(
+              "{} Failed to resolve '{}' for allow-run: {}",
+              colors::gray("Info"),
+              command_name,
+              err
+            );
+          }
+        }
+      }
+      Ok(new_allow_run)
+    }
+
+    let mut deny_write =
+      convert_option_str_to_path_buf(&self.deny_write, initial_cwd)?;
+    let allow_run = self
+      .allow_run
+      .as_ref()
+      .and_then(|raw_allow_run| match resolve_allow_run(raw_allow_run) {
+        Ok(resolved_allow_run) => {
+          if resolved_allow_run.is_empty() && !raw_allow_run.is_empty() {
+            None // convert to no permissions if now empty
+          } else {
+            Some(Ok(resolved_allow_run))
+          }
+        }
+        Err(err) => Some(Err(err)),
+      })
+      .transpose()?;
+    // add the allow_run list to deno_write
+    if let Some(allow_run_vec) = &allow_run {
+      if !allow_run_vec.is_empty() {
+        let deno_write = deny_write.get_or_insert_with(Vec::new);
+        deno_write.extend(allow_run_vec.iter().cloned());
+      }
+    }
+
     Ok(PermissionsOptions {
       allow_all: self.allow_all,
       allow_env: self.allow_env.clone(),
@@ -694,7 +753,7 @@ impl PermissionFlags {
         initial_cwd,
       )?,
       deny_read: convert_option_str_to_path_buf(&self.deny_read, initial_cwd)?,
-      allow_run: self.allow_run.clone(),
+      allow_run,
       deny_run: self.deny_run.clone(),
       allow_sys: self.allow_sys.clone(),
       deny_sys: self.deny_sys.clone(),
@@ -702,10 +761,7 @@ impl PermissionFlags {
         &self.allow_write,
         initial_cwd,
       )?,
-      deny_write: convert_option_str_to_path_buf(
-        &self.deny_write,
-        initial_cwd,
-      )?,
+      deny_write,
       prompt: !resolve_no_prompt(self),
     })
   }
@@ -2317,10 +2373,12 @@ fn install_subcommand() -> Command {
 
 Add dependencies to the local project's configuration (<p(245)>deno.json / package.json</>) and installs them 
 in the package cache. If no dependency is specified, installs all dependencies listed in the config file.
+If the <p(245)>--entrypoint</> flag is passed, installs the dependencies of the specified entrypoint(s).
 
   <p(245)>deno install</>
   <p(245)>deno install @std/bytes</>
   <p(245)>deno install npm:chalk</>
+  <p(245)>deno install --entrypoint entry1.ts entry2.ts</>
 
 <g>Global installation</>
 
@@ -2357,6 +2415,7 @@ These must be added to the path manually if required."), UnstableArgsConfig::Res
         .arg(
           Arg::new("cmd")
             .required_if_eq("global", "true")
+            .required_if_eq("entrypoint", "true")
             .num_args(1..)
             .value_hint(ValueHint::FilePath),
         )
@@ -2364,17 +2423,20 @@ These must be added to the path manually if required."), UnstableArgsConfig::Res
           Arg::new("name")
             .long("name")
             .short('n')
+            .requires("global")
             .help("Executable file name"),
         )
         .arg(
           Arg::new("root")
             .long("root")
+            .requires("global")
             .help("Installation root")
             .value_hint(ValueHint::DirPath),
         )
         .arg(
           Arg::new("force")
             .long("force")
+            .requires("global")
             .short('f')
             .help("Forcefully overwrite existing installation")
             .action(ArgAction::SetTrue),
@@ -2385,6 +2447,14 @@ These must be added to the path manually if required."), UnstableArgsConfig::Res
             .short('g')
             .help("Install a package or script as a globally available executable")
             .action(ArgAction::SetTrue),
+        )
+        .arg(
+          Arg::new("entrypoint")
+            .long("entrypoint")
+            .short('e')
+            .conflicts_with("global")
+            .action(ArgAction::SetTrue)
+            .help("Install dependents of the specified entrypoint(s)"),
         )
         .arg(env_file_arg())
     })
@@ -4371,15 +4441,32 @@ fn install_parse(flags: &mut Flags, matches: &mut ArgMatches) {
         force,
       }),
     });
-  } else {
-    let local_flags = matches
-      .remove_many("cmd")
-      .map(|packages| add_parse_inner(matches, Some(packages)));
-    allow_scripts_arg_parse(flags, matches);
+    return;
+  }
+
+  // allow scripts only applies to local install
+  allow_scripts_arg_parse(flags, matches);
+  if matches.get_flag("entrypoint") {
+    let entrypoints = matches.remove_many::<String>("cmd").unwrap_or_default();
     flags.subcommand = DenoSubcommand::Install(InstallFlags {
       global,
-      kind: InstallKind::Local(local_flags),
+      kind: InstallKind::Local(InstallFlagsLocal::Entrypoints(
+        entrypoints.collect(),
+      )),
+    });
+  } else if let Some(add_files) = matches
+    .remove_many("cmd")
+    .map(|packages| add_parse_inner(matches, Some(packages)))
+  {
+    flags.subcommand = DenoSubcommand::Install(InstallFlags {
+      global,
+      kind: InstallKind::Local(InstallFlagsLocal::Add(add_files)),
     })
+  } else {
+    flags.subcommand = DenoSubcommand::Install(InstallFlags {
+      global,
+      kind: InstallKind::Local(InstallFlagsLocal::TopLevel),
+    });
   }
 }
 

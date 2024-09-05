@@ -87,22 +87,6 @@ const denoNs = {
   readAllSync: buffer.readAllSync,
   copy: io.copy,
   SeekMode: io.SeekMode,
-  read(rid, buffer) {
-    internals.warnOnDeprecatedApi(
-      "Deno.read()",
-      new Error().stack,
-      "Use `reader.read()` instead.",
-    );
-    return io.read(rid, buffer);
-  },
-  readSync(rid, buffer) {
-    internals.warnOnDeprecatedApi(
-      "Deno.readSync()",
-      new Error().stack,
-      "Use `reader.readSync()` instead.",
-    );
-    return io.readSync(rid, buffer);
-  },
   File: fs.File,
   FsFile: fs.FsFile,
   open: fs.open,

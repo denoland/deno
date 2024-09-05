@@ -42,9 +42,10 @@ pub use deno_config::deno_json::TsConfigForEmit;
 pub use deno_config::deno_json::TsConfigType;
 pub use deno_config::deno_json::TsTypeLib;
 pub use deno_config::glob::FilePatterns;
+pub use deno_json::check_warn_tsconfig;
 pub use flags::*;
 pub use lockfile::CliLockfile;
-pub use package_json::PackageJsonInstallDepsProvider;
+pub use package_json::NpmInstallDepsProvider;
 
 use deno_ast::ModuleSpecifier;
 use deno_core::anyhow::bail;
@@ -1220,7 +1221,7 @@ impl CliOptions {
     if let Some(flag) = self.flags.node_modules_dir {
       return Ok(Some(flag));
     }
-    self.workspace().node_modules_dir_mode().map_err(Into::into)
+    self.workspace().node_modules_dir().map_err(Into::into)
   }
 
   pub fn vendor_dir_path(&self) -> Option<&PathBuf> {
@@ -1731,7 +1732,7 @@ fn resolve_node_modules_folder(
     Some(mode.uses_node_modules_dir())
   } else {
     workspace
-      .node_modules_dir_mode()?
+      .node_modules_dir()?
       .map(|m| m.uses_node_modules_dir())
       .or(flags.vendor)
       .or_else(|| root_folder.deno_json.as_ref().and_then(|c| c.json.vendor))

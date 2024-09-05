@@ -1,7 +1,5 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
-// deno-lint-ignore-file no-deprecated-deno-api
-
 import {
   assert,
   assertEquals,
@@ -24,7 +22,6 @@ Deno.test(
   async function filesCopyToStdout() {
     const filename = "tests/testdata/assets/fixture.json";
     using file = await Deno.open(filename);
-    assert(file instanceof Deno.File);
     assert(file instanceof Deno.FsFile);
     assert(file.rid > 2);
     const bytesWritten = await copy(file, Deno.stdout);
