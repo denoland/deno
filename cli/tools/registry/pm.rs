@@ -6,9 +6,7 @@ pub use cache_deps::cache_top_level_deps;
 
 use std::borrow::Cow;
 use std::cell::RefCell;
-use std::path::Path;
 use std::path::PathBuf;
-use std::rc::Rc;
 use std::sync::Arc;
 
 use deno_ast::TextChange;
@@ -61,28 +59,54 @@ impl DenoConfigFormat {
 struct DenoConfig {
   config: Arc<deno_config::deno_json::ConfigFile>,
   format: DenoConfigFormat,
+  imports: IndexMap<String, String>,
 }
 
+fn deno_json_imports(
+  config: &deno_config::deno_json::ConfigFile,
+) -> Result<IndexMap<String, String>, AnyError> {
+  Ok(
+    config
+      .json
+      .imports
+      .clone()
+      .map(|imports| {
+        serde_json::from_value(imports)
+          .map_err(|err| anyhow!("Malformed \"imports\" configuration: {err}"))
+      })
+      .transpose()?
+      .unwrap_or_default(),
+  )
+}
 impl DenoConfig {
   fn from_options(options: &CliOptions) -> Result<Option<Self>, AnyError> {
     let start_dir = &options.start_dir;
-    if let Some(deno) = start_dir.maybe_deno_json() {
+    if let Some(config) = start_dir.maybe_deno_json() {
       Ok(Some(Self {
-        config: deno.clone(),
-        format: DenoConfigFormat::from_specifier(&deno.specifier)?,
+        imports: deno_json_imports(config)?,
+        config: config.clone(),
+        format: DenoConfigFormat::from_specifier(&config.specifier)?,
       }))
     } else {
       Ok(None)
     }
   }
 
-  fn new(
-    config: Arc<deno_config::deno_json::ConfigFile>,
-  ) -> Result<Self, AnyError> {
-    Ok(Self {
-      format: DenoConfigFormat::from_specifier(&config.specifier)?,
-      config,
-    })
+  fn add(&mut self, selected: SelectedPackage) {
+    self.imports.insert(
+      selected.import_name,
+      format!("{}@{}", selected.package_name, selected.version_req),
+    );
+  }
+
+  fn remove(&mut self, package: &str) -> bool {
+    self.imports.shift_remove(package).is_some()
+  }
+
+  fn take_import_fields(
+    &mut self,
+  ) -> Vec<(&'static str, IndexMap<String, String>)> {
+    vec![("imports", std::mem::take(&mut self.imports))]
   }
 }
 
@@ -91,6 +115,8 @@ impl NpmConfig {
     let start_dir = &options.start_dir;
     if let Some(pkg_json) = start_dir.maybe_pkg_json() {
       Ok(Some(Self {
+        dependencies: pkg_json.dependencies.clone().unwrap_or_default(),
+        dev_dependencies: pkg_json.dev_dependencies.clone().unwrap_or_default(),
         config: pkg_json.clone(),
         fmt_options: None,
       }))
@@ -99,20 +125,39 @@ impl NpmConfig {
     }
   }
 
-  fn new(
-    config: Arc<deno_node::PackageJson>,
-    fmt_options: Option<FmtOptionsConfig>,
-  ) -> Self {
-    Self {
-      config,
-      fmt_options,
+  fn add(&mut self, selected: SelectedPackage, dev: bool) {
+    let (name, version) = package_json_dependency_entry(selected);
+    if dev {
+      self.dev_dependencies.insert(name, version);
+    } else {
+      self.dependencies.insert(name, version);
     }
+  }
+
+  fn remove(&mut self, package: &str) -> bool {
+    let in_deps = self.dependencies.shift_remove(package).is_some();
+    let in_dev_deps = self.dev_dependencies.shift_remove(package).is_some();
+    in_deps || in_dev_deps
+  }
+
+  fn take_import_fields(
+    &mut self,
+  ) -> Vec<(&'static str, IndexMap<String, String>)> {
+    vec![
+      ("dependencies", std::mem::take(&mut self.dependencies)),
+      (
+        "devDependencies",
+        std::mem::take(&mut self.dev_dependencies),
+      ),
+    ]
   }
 }
 
 struct NpmConfig {
   config: Arc<deno_node::PackageJson>,
   fmt_options: Option<FmtOptionsConfig>,
+  dependencies: IndexMap<String, String>,
+  dev_dependencies: IndexMap<String, String>,
 }
 
 enum DenoOrPackageJson {
@@ -136,13 +181,27 @@ impl From<NpmConfig> for DenoOrPackageJson {
 struct JsoncObjectView<'a>(jsonc_parser::ast::Object<'a>);
 
 struct MutConfig {
-  imports: IndexMap<String, String>,
   config: DenoOrPackageJson,
+  // the `Yoke` is so we can carry the parsed object (which borrows from
+  // the source) along with the source itself
   ast: Yoke<JsoncObjectView<'static>, String>,
   path: PathBuf,
+  modified: bool,
 }
 
 impl MutConfig {
+  fn ast(&self) -> &jsonc_parser::ast::Object<'_> {
+    &self.ast.get().0
+  }
+  async fn maybe_new(
+    config: Option<impl Into<DenoOrPackageJson>>,
+  ) -> Result<Option<Self>, AnyError> {
+    if let Some(config) = config {
+      Ok(Some(Self::new(config.into()).await?))
+    } else {
+      Ok(None)
+    }
+  }
   async fn new(config: DenoOrPackageJson) -> Result<Self, AnyError> {
     let specifier = config.specifier();
     if specifier.scheme() != "file" {
@@ -173,47 +232,56 @@ impl MutConfig {
       };
       Ok::<_, AnyError>(JsoncObjectView(obj))
     })?;
-
-    let obj: &JsoncObjectView = ast.get();
-    if obj.0.get_string("importMap").is_some() {
-      bail!(
-        concat!(
-          "`deno add` is not supported when configuration file contains an \"importMap\" field. ",
-          "Inline the import map into the Deno configuration file.\n",
-          "    at {}",
-        ),
-        specifier
-      );
-    }
-    let imports = config.existing_imports()?;
     Ok(Self {
-      imports,
       config,
       ast,
       path: config_file_path,
+      modified: false,
     })
   }
 
-  fn add(&mut self, selected: SelectedPackage) {
-    let (name, version) = self.config.import_entry(selected);
-    self.imports.insert(name, version);
+  fn add(&mut self, selected: SelectedPackage, dev: bool) {
+    match &mut self.config {
+      DenoOrPackageJson::Deno(deno) => deno.add(selected),
+      DenoOrPackageJson::Npm(npm) => npm.add(selected, dev),
+    }
+    self.modified = true;
   }
 
-  async fn commit(self) -> Result<(), AnyError> {
-    let mut import_list: Vec<(String, String)> =
-      self.imports.into_iter().collect();
+  fn remove(&mut self, package: &str) -> bool {
+    let removed = match &mut self.config {
+      DenoOrPackageJson::Deno(deno) => deno.remove(package),
+      DenoOrPackageJson::Npm(npm) => npm.remove(package),
+    };
+    if removed {
+      self.modified = true;
+    }
+    removed
+  }
 
-    import_list.sort_by(|(k1, _), (k2, _)| k1.cmp(k2));
-    let generated_imports = generate_imports(import_list);
+  async fn commit(mut self) -> Result<(), AnyError> {
+    if !self.modified {
+      return Ok(());
+    }
+
+    let import_fields = self.config.take_import_fields();
 
     let fmt_config_options = self.config.fmt_options();
 
     let new_text = update_config_file_content(
       &self.ast.get().0,
       self.ast.backing_cart(),
-      generated_imports,
       fmt_config_options,
-      self.config.imports_key(),
+      import_fields.into_iter().map(|(k, v)| {
+        (
+          k,
+          if v.is_empty() {
+            None
+          } else {
+            Some(generate_imports(v.into_iter().collect()))
+          },
+        )
+      }),
       self.config.file_name(),
     );
 
@@ -227,27 +295,6 @@ impl DenoOrPackageJson {
     match self {
       Self::Deno(d, ..) => Cow::Borrowed(&d.config.specifier),
       Self::Npm(n, ..) => Cow::Owned(n.config.specifier()),
-    }
-  }
-
-  /// Returns the existing imports/dependencies from the config.
-  fn existing_imports(&self) -> Result<IndexMap<String, String>, AnyError> {
-    match self {
-      DenoOrPackageJson::Deno(deno, ..) => {
-        if let Some(imports) = deno.config.json.imports.clone() {
-          match serde_json::from_value(imports) {
-            Ok(map) => Ok(map),
-            Err(err) => {
-              bail!("Malformed \"imports\" configuration: {err}")
-            }
-          }
-        } else {
-          Ok(Default::default())
-        }
-      }
-      DenoOrPackageJson::Npm(npm, ..) => {
-        Ok(npm.config.dependencies.clone().unwrap_or_default())
-      }
     }
   }
 
@@ -265,10 +312,12 @@ impl DenoOrPackageJson {
     }
   }
 
-  fn imports_key(&self) -> &'static str {
+  fn take_import_fields(
+    &mut self,
+  ) -> Vec<(&'static str, IndexMap<String, String>)> {
     match self {
-      DenoOrPackageJson::Deno(..) => "imports",
-      DenoOrPackageJson::Npm(..) => "dependencies",
+      Self::Deno(d) => d.take_import_fields(),
+      Self::Npm(n) => n.take_import_fields(),
     }
   }
 
@@ -279,51 +328,6 @@ impl DenoOrPackageJson {
         DenoConfigFormat::Jsonc => "deno.jsonc",
       },
       DenoOrPackageJson::Npm(..) => "package.json",
-    }
-  }
-
-  fn import_entry(&self, selected: SelectedPackage) -> (String, String) {
-    match self {
-      DenoOrPackageJson::Deno(_) => (
-        selected.import_name,
-        format!("{}@{}", selected.package_name, selected.version_req),
-      ),
-      DenoOrPackageJson::Npm(_) => package_json_dependency_entry(selected),
-    }
-  }
-
-  /// Get the preferred config file to operate on
-  /// given the flags. If no config file is present,
-  /// creates a `deno.json` file - in this case
-  /// we also return a new `CliFactory` that knows about
-  /// the new config
-  fn from_flags(flags: Arc<Flags>) -> Result<(Self, CliFactory), AnyError> {
-    let factory = CliFactory::from_flags(flags.clone());
-    let options = factory.cli_options()?;
-    let start_dir = &options.start_dir;
-
-    match (start_dir.maybe_deno_json(), start_dir.maybe_pkg_json()) {
-      // when both are present, for now,
-      // default to deno.json
-      (Some(deno), Some(_) | None) => Ok((
-        DenoOrPackageJson::Deno(DenoConfig::new(deno.clone())?),
-        factory,
-      )),
-      (None, Some(package_json)) => Ok((
-        DenoOrPackageJson::Npm(NpmConfig::new(package_json.clone(), None)),
-        factory,
-      )),
-      (None, None) => {
-        let factory = create_deno_json(&flags, options)?;
-        let options = factory.cli_options()?.clone();
-        Ok((
-          DenoOrPackageJson::Deno(
-            DenoConfig::from_options(&options)?
-              .expect("Just created deno.json"),
-          ),
-          factory,
-        ))
-      }
     }
   }
 }
@@ -371,11 +375,9 @@ impl std::fmt::Display for AddCommandName {
   }
 }
 
-pub async fn add(
-  flags: Arc<Flags>,
-  add_flags: AddFlags,
-  cmd_name: AddCommandName,
-) -> Result<(), AnyError> {
+fn load_configs(
+  flags: &Arc<Flags>,
+) -> Result<(CliFactory, Option<NpmConfig>, Option<DenoConfig>), AnyError> {
   let cli_factory = CliFactory::from_flags(flags.clone());
   let options = cli_factory.cli_options()?;
   let npm_config = NpmConfig::from_options(options)?;
@@ -383,7 +385,7 @@ pub async fn add(
     Some(config) => (cli_factory, Some(config)),
     None if npm_config.is_some() => (cli_factory, None),
     None => {
-      let factory = create_deno_json(&flags, &options)?;
+      let factory = create_deno_json(flags, &options)?;
       let options = factory.cli_options()?.clone();
       (
         factory,
@@ -394,14 +396,35 @@ pub async fn add(
     }
   };
   assert!(deno_config.is_some() || npm_config.is_some());
+  Ok((cli_factory, npm_config, deno_config))
+}
+
+pub async fn add(
+  flags: Arc<Flags>,
+  add_flags: AddFlags,
+  cmd_name: AddCommandName,
+) -> Result<(), AnyError> {
+  let (cli_factory, npm_config, deno_config) = load_configs(&flags)?;
 
   let npm_config = if let Some(config) = npm_config {
-    Some(MutConfig::new(config.into()).await?)
+    Some(RefCell::new(MutConfig::new(config.into()).await?))
   } else {
     None
   };
-  let deno_config = if let Some(config) = deno_config {
-    Some(MutConfig::new(config.into()).await?)
+  let deno_config = if let Some(deno) = deno_config {
+    let specifier = deno.config.specifier.to_string();
+    let config = MutConfig::new(deno.into()).await?;
+    if config.ast().get_string("importMap").is_some() {
+      bail!(
+        concat!(
+          "`deno add` is not supported when configuration file contains an \"importMap\" field. ",
+          "Inline the import map into the Deno configuration file.\n",
+          "    at {}",
+        ),
+        specifier
+      );
+    }
+    Some(RefCell::new(config))
   } else {
     None
   };
@@ -473,19 +496,9 @@ pub async fn add(
   }
 
   let (config_for_npm_deps, config_for_other_deps) =
-    match (npm_config, deno_config) {
-      (Some(npm), Some(deno)) => (
-        Rc::new(RefCell::new(Some(npm))),
-        Rc::new(RefCell::new(Some(deno))),
-      ),
-      (Some(npm), None) => {
-        let shared = Rc::new(RefCell::new(Some(npm)));
-        (shared.clone(), shared)
-      }
-      (None, Some(deno)) => {
-        let shared = Rc::new(RefCell::new(Some(deno)));
-        (shared.clone(), shared)
-      }
+    match (npm_config.as_ref(), deno_config.as_ref()) {
+      (Some(npm), Some(deno)) => (npm, deno),
+      (Some(config), None) | (None, Some(config)) => (config, config),
       (None, None) => unreachable!(),
     };
 
@@ -500,24 +513,20 @@ pub async fn add(
     if selected_package.package_name.starts_with("npm:") {
       config_for_npm_deps
         .borrow_mut()
-        .as_mut()
-        .unwrap()
-        .add(selected_package);
+        .add(selected_package, false);
     } else {
       config_for_other_deps
         .borrow_mut()
-        .as_mut()
-        .unwrap()
-        .add(selected_package);
+        .add(selected_package, false);
     }
   }
 
   let mut commit_futures = vec![];
-  if let Some(npm) = config_for_npm_deps.take() {
-    commit_futures.push(npm.commit());
+  if let Some(npm) = npm_config {
+    commit_futures.push(npm.into_inner().commit());
   }
-  if let Some(deno) = config_for_other_deps.take() {
-    commit_futures.push(deno.commit());
+  if let Some(deno) = deno_config {
+    commit_futures.push(deno.into_inner().commit());
   }
   let commit_futures =
     deno_core::futures::future::join_all(commit_futures).await;
@@ -692,7 +701,8 @@ impl AddPackageReq {
   }
 }
 
-fn generate_imports(packages_to_version: Vec<(String, String)>) -> String {
+fn generate_imports(mut packages_to_version: Vec<(String, String)>) -> String {
+  packages_to_version.sort_by(|(k1, _), (k2, _)| k1.cmp(k2));
   let mut contents = vec![];
   let len = packages_to_version.len();
   for (index, (package, version)) in packages_to_version.iter().enumerate() {
@@ -705,68 +715,29 @@ fn generate_imports(packages_to_version: Vec<(String, String)>) -> String {
   contents.join("\n")
 }
 
-fn remove_from_config(
-  config_path: &Path,
-  keys: &[&'static str],
-  packages_to_remove: &[String],
-  removed_packages: &mut Vec<String>,
-  fmt_options: &FmtOptionsConfig,
-) -> Result<(), AnyError> {
-  let mut json: serde_json::Value =
-    serde_json::from_slice(&std::fs::read(config_path)?)?;
-  for key in keys {
-    let Some(obj) = json.get_mut(*key).and_then(|v| v.as_object_mut()) else {
-      continue;
-    };
-    for package in packages_to_remove {
-      if obj.shift_remove(package).is_some() {
-        removed_packages.push(package.clone());
-      }
-    }
-  }
-
-  let config = serde_json::to_string_pretty(&json)?;
-  let config =
-    crate::tools::fmt::format_json(config_path, &config, fmt_options)
-      .ok()
-      .flatten()
-      .unwrap_or(config);
-
-  std::fs::write(config_path, config)
-    .context("Failed to update configuration file")?;
-
-  Ok(())
-}
-
 pub async fn remove(
   flags: Arc<Flags>,
   remove_flags: RemoveFlags,
 ) -> Result<(), AnyError> {
-  let (config_file, factory) = DenoOrPackageJson::from_flags(flags.clone())?;
-  let options = factory.cli_options()?;
-  let start_dir = &options.start_dir;
-  let fmt_config_options = config_file.fmt_options();
+  let (_, npm_config, deno_config) = load_configs(&flags)?;
 
-  let mut removed_packages = Vec::new();
+  let mut configs = [
+    MutConfig::maybe_new(npm_config).await?,
+    MutConfig::maybe_new(deno_config).await?,
+  ];
 
-  if let Some(deno_json) = start_dir.maybe_deno_json() {
-    remove_from_config(
-      &deno_json.specifier.to_file_path().unwrap(),
-      &["imports"],
-      &remove_flags.packages,
-      &mut removed_packages,
-      &fmt_config_options,
-    )?;
-  }
+  let mut removed_packages = vec![];
 
-  if let Some(pkg_json) = start_dir.maybe_pkg_json() {
-    remove_from_config(
-      &pkg_json.path,
-      &["dependencies", "devDependencies"],
-      &remove_flags.packages,
-      &mut removed_packages,
-      &fmt_config_options,
-    )?;
+  for package in &remove_flags.packages {
+    let mut removed = false;
+    for config in &mut configs {
+      if let Some(config) = config {
+        removed |= config.remove(package);
+      }
+    }
+    if removed {
+      removed_packages.push(package.clone());
+    }
   }
 
   if removed_packages.is_empty() {
@@ -775,6 +746,12 @@ pub async fn remove(
     for package in &removed_packages {
       log::info!("Removed {}", crate::colors::green(package));
     }
+    for config in configs {
+      if let Some(config) = config {
+        config.commit().await?;
+      }
+    }
+
     // Update deno.lock
     node_resolver::PackageJsonThreadLocalCache::clear();
     let cli_factory = CliFactory::from_flags(flags);
@@ -784,41 +761,58 @@ pub async fn remove(
   Ok(())
 }
 
-fn update_config_file_content(
+fn update_config_file_content<
+  I: IntoIterator<Item = (&'static str, Option<String>)>,
+>(
   obj: &jsonc_parser::ast::Object,
   config_file_contents: &str,
-  generated_imports: String,
   fmt_options: FmtOptionsConfig,
-  imports_key: &str,
+  entries: I,
   file_name: &str,
 ) -> String {
   let mut text_changes = vec![];
 
-  match obj.get(imports_key) {
-    Some(ObjectProp {
-      value: Value::Object(lit),
-      ..
-    }) => text_changes.push(TextChange {
-      range: (lit.range.start + 1)..(lit.range.end - 1),
-      new_text: generated_imports,
-    }),
-    None => {
-      let insert_position = obj.range.end - 1;
-      text_changes.push(TextChange {
-        range: insert_position..insert_position,
-        // NOTE(bartlomieju): adding `\n` here to force the formatter to always
-        // produce a config file that is multiline, like so:
-        // ```
-        // {
-        //   "imports": {
-        //     "<package_name>": "<registry>:<package_name>@<semver>"
-        //   }
-        // }
-        new_text: format!("\"{imports_key}\": {{\n {generated_imports} }}"),
-      })
+  for (key, value) in entries {
+    match obj.get(key) {
+      Some(ObjectProp {
+        value: Value::Object(lit),
+        range,
+        ..
+      }) => {
+        if let Some(value) = value {
+          text_changes.push(TextChange {
+            range: (lit.range.start + 1)..(lit.range.end - 1),
+            new_text: value,
+          })
+        } else {
+          text_changes.push(TextChange {
+            range: range.start..range.end,
+            new_text: "".to_string(),
+          })
+        }
+      }
+
+      // need to add field
+      None => {
+        if let Some(value) = value {
+          let insert_position = obj.range.end - 1;
+          text_changes.push(TextChange {
+            range: insert_position..insert_position,
+            // NOTE(bartlomieju): adding `\n` here to force the formatter to always
+            // produce a config file that is multiline, like so:
+            // ```
+            // {
+            //   "imports": {
+            //     "<package_name>": "<registry>:<package_name>@<semver>"
+            //   }
+            // }
+            new_text: format!("\"{key}\": {{\n {value} }}"),
+          })
+        }
+      }
+      // we verified the shape of `imports`/`dependencies` above
+      Some(_) => unreachable!(),
     }
-    // we verified the shape of `imports`/`dependencies` above
-    Some(_) => unreachable!(),
   }
 
   let new_text =
