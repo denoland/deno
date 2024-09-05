@@ -35,6 +35,7 @@ import {
 import { Buffer } from "node:buffer";
 
 import { notImplemented } from "ext:deno_node/_utils.ts";
+import { isArrayBufferView } from "ext:deno_node/internal/util/types.ts";
 
 export function cachedDataVersionTag() {
   return op_v8_cached_data_version_tag();
@@ -99,6 +100,11 @@ export function serialize(value: any) {
   return ser.releaseBuffer();
 }
 export function deserialize(buffer: Buffer | ArrayBufferView | DataView) {
+  if (!isArrayBufferView(buffer)) {
+    throw new TypeError(
+      "buffer must be a TypedArray or a DataView",
+    );
+  }
   const der = new DefaultDeserializer(buffer);
   der.readHeader();
   return der.readValue();
@@ -132,8 +138,13 @@ export class Serializer {
     op_v8_write_header(this[kHandle]);
   }
 
-  writeRawBytes(value: ArrayBufferView): void {
-    op_v8_write_raw_bytes(this[kHandle], value);
+  writeRawBytes(source: ArrayBufferView): void {
+    if (!isArrayBufferView(source)) {
+      throw new TypeError(
+        "source must be a TypedArray or a DataView",
+      );
+    }
+    op_v8_write_raw_bytes(this[kHandle], source);
   }
 
   writeUint32(value: number): void {
@@ -156,6 +167,11 @@ export class Deserializer {
   buffer: ArrayBufferView;
   [kHandle]: object;
   constructor(buffer: ArrayBufferView) {
+    if (!isArrayBufferView(buffer)) {
+      throw new TypeError(
+        "buffer must be a TypedArray or a DataView",
+      );
+    }
     this.buffer = buffer;
     this[kHandle] = op_v8_new_deserializer(this, buffer);
   }
@@ -287,9 +303,9 @@ export class DefaultDeserializer extends Deserializer {
     const buffer_copy = Buffer.allocUnsafe(byteLength);
     Buffer.from(
       this.buffer.buffer,
-      this.buffer.byteOffset,
-      this.buffer.byteLength,
-    ).copy(buffer_copy, 0, byteOffset, byteOffset + byteLength);
+      byteOffset,
+      byteLength,
+    ).copy(buffer_copy);
     return new ctor(
       buffer_copy.buffer,
       buffer_copy.byteOffset,

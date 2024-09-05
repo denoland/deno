@@ -1,10 +1,13 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
+use deno_core::error::generic_error;
+use deno_core::error::type_error;
+use deno_core::error::AnyError;
 use deno_core::op2;
 use deno_core::v8;
-use deno_core::v8::cppgc::Traced;
 use deno_core::FastString;
 use deno_core::GarbageCollected;
 use deno_core::ToJsBuffer;
+use std::ptr::NonNull;
 use v8::ValueDeserializerHelper;
 use v8::ValueSerializerHelper;
 
@@ -38,13 +41,7 @@ pub fn op_v8_get_heap_statistics(
 }
 
 pub struct Serializer<'a> {
-  inner: Option<v8::ValueSerializer<'a>>,
-}
-
-impl<'a> Serializer<'a> {
-  fn inner(&self) -> &v8::ValueSerializer<'a> {
-    self.inner.as_ref().unwrap()
-  }
+  inner: v8::ValueSerializer<'a>,
 }
 
 pub struct SerializerDelegate {
@@ -53,6 +50,15 @@ pub struct SerializerDelegate {
 
 impl<'a> v8::cppgc::GarbageCollected for Serializer<'a> {
   fn trace(&self, _visitor: &v8::cppgc::Visitor) {}
+}
+
+impl SerializerDelegate {
+  fn obj<'s>(
+    &self,
+    scope: &mut v8::HandleScope<'s>,
+  ) -> v8::Local<'s, v8::Object> {
+    v8::Local::new(scope, &self.obj)
+  }
 }
 
 impl v8::ValueSerializerImpl for SerializerDelegate {
@@ -71,6 +77,18 @@ impl v8::ValueSerializerImpl for SerializerDelegate {
     scope: &mut v8::HandleScope<'s>,
     message: v8::Local<'s, v8::String>,
   ) {
+    let obj = self.obj(scope);
+    let key = FastString::from_static("_getDataCloneError")
+      .v8_string(scope)
+      .into();
+    if let Some(v) = obj.get(scope, key) {
+      if let Ok(fun) = v.try_cast::<v8::Function>() {
+        if let Some(error) = fun.call(scope, obj.into(), &[message.into()]) {
+          scope.throw_exception(error);
+          return;
+        }
+      }
+    }
     let error = v8::Exception::type_error(scope, message);
     scope.throw_exception(error);
   }
@@ -116,7 +134,7 @@ pub fn op_v8_new_serializer(
   let obj = v8::Global::new(scope, obj);
   let inner =
     v8::ValueSerializer::new(scope, Box::new(SerializerDelegate { obj }));
-  Serializer { inner: Some(inner) }
+  Serializer { inner }
 }
 
 #[op2(fast)]
@@ -125,14 +143,14 @@ pub fn op_v8_set_treat_array_buffer_views_as_host_objects(
   value: bool,
 ) {
   ser
-    .inner()
+    .inner
     .set_treat_array_buffer_views_as_host_objects(value);
 }
 
 #[op2]
 #[serde]
 pub fn op_v8_release_buffer(#[cppgc] ser: &Serializer) -> ToJsBuffer {
-  ser.inner().release().into()
+  ser.inner.release().into()
 }
 
 #[op2(fast)]
@@ -141,17 +159,17 @@ pub fn op_v8_transfer_array_buffer(
   #[smi] id: u32,
   array_buffer: v8::Local<v8::ArrayBuffer>,
 ) {
-  ser.inner().transfer_array_buffer(id, array_buffer);
+  ser.inner.transfer_array_buffer(id, array_buffer);
 }
 
 #[op2(fast)]
 pub fn op_v8_write_double(#[cppgc] ser: &Serializer, double: f64) {
-  ser.inner().write_double(double);
+  ser.inner.write_double(double);
 }
 
 #[op2(fast)]
 pub fn op_v8_write_header(#[cppgc] ser: &Serializer) {
-  ser.inner().write_header();
+  ser.inner.write_header();
 }
 
 #[op2]
@@ -159,18 +177,18 @@ pub fn op_v8_write_raw_bytes(
   #[cppgc] ser: &Serializer,
   #[anybuffer] source: &[u8],
 ) {
-  ser.inner().write_raw_bytes(source);
+  ser.inner.write_raw_bytes(source);
 }
 
 #[op2(fast)]
 pub fn op_v8_write_uint32(#[cppgc] ser: &Serializer, num: u32) {
-  ser.inner().write_uint32(num);
+  ser.inner.write_uint32(num);
 }
 
 #[op2(fast)]
 pub fn op_v8_write_uint64(#[cppgc] ser: &Serializer, hi: u32, lo: u32) {
   let num = ((hi as u64) << 32) | (lo as u64);
-  ser.inner().write_uint64(num);
+  ser.inner.write_uint64(num);
 }
 
 #[op2(nofast, reentrant)]
@@ -178,32 +196,32 @@ pub fn op_v8_write_value(
   scope: &mut v8::HandleScope,
   #[cppgc] ser: &Serializer,
   value: v8::Local<v8::Value>,
-) {
+) -> Result<(), AnyError> {
   let context = scope.get_current_context();
-  ser.inner().write_value(context, value);
+  ser.inner.write_value(context, value);
+  Ok(())
+}
+
+struct DeserBuffer {
+  ptr: Option<NonNull<u8>>,
+  // Hold onto backing store to keep the underlying buffer
+  // alive while we hold a reference to it.
+  _backing_store: v8::SharedRef<v8::BackingStore>,
 }
 
 pub struct Deserializer<'a> {
-  buf_ptr: *mut u8,
-  inner: Option<v8::ValueDeserializer<'a>>,
+  buf: DeserBuffer,
+  inner: v8::ValueDeserializer<'a>,
 }
 
 impl<'a> deno_core::GarbageCollected for Deserializer<'a> {}
 
-impl<'a> Deserializer<'a> {
-  unsafe fn inner(&self) -> &v8::ValueDeserializer<'a> {
-    self.inner.as_ref().unwrap()
-  }
-}
-
 pub struct DeserializerDelegate {
-  obj: v8::TracedReference<v8::Object>,
+  obj: v8::Global<v8::Object>,
 }
 
 impl GarbageCollected for DeserializerDelegate {
-  fn trace(&self, visitor: &v8::cppgc::Visitor) {
-    self.obj.trace(visitor);
-  }
+  fn trace(&self, _visitor: &v8::cppgc::Visitor) {}
 }
 
 impl v8::ValueDeserializerImpl for DeserializerDelegate {
@@ -212,7 +230,7 @@ impl v8::ValueDeserializerImpl for DeserializerDelegate {
     scope: &mut v8::HandleScope<'s>,
     _value_deserializer: &dyn v8::ValueDeserializerHelper,
   ) -> Option<v8::Local<'s, v8::Object>> {
-    let obj = self.obj.get(scope).unwrap();
+    let obj = v8::Local::new(scope, &self.obj);
     let key = FastString::from_static("_readHostObject")
       .v8_string(scope)
       .into();
@@ -231,36 +249,6 @@ impl v8::ValueDeserializerImpl for DeserializerDelegate {
     }
     None
   }
-
-  fn get_shared_array_buffer_from_id<'s>(
-    &self,
-    scope: &mut v8::HandleScope<'s>,
-    _transfer_id: u32,
-  ) -> Option<v8::Local<'s, v8::SharedArrayBuffer>> {
-    let msg = v8::String::new(
-      scope,
-      "Deno deserializer: get_shared_array_buffer_from_id not implemented",
-    )
-    .unwrap();
-    let exc = v8::Exception::error(scope, msg);
-    scope.throw_exception(exc);
-    None
-  }
-
-  fn get_wasm_module_from_id<'s>(
-    &self,
-    scope: &mut v8::HandleScope<'s>,
-    _clone_id: u32,
-  ) -> Option<v8::Local<'s, v8::WasmModuleObject>> {
-    let msg = v8::String::new(
-      scope,
-      "Deno deserializer: get_wasm_module_from_id not implemented",
-    )
-    .unwrap();
-    let exc = v8::Exception::error(scope, msg);
-    scope.throw_exception(exc);
-    None
-  }
 }
 
 #[op2]
@@ -269,22 +257,34 @@ pub fn op_v8_new_deserializer(
   scope: &mut v8::HandleScope,
   obj: v8::Local<v8::Object>,
   buffer: v8::Local<v8::ArrayBufferView>,
-) -> Deserializer<'static> {
+) -> Result<Deserializer<'static>, AnyError> {
   let offset = buffer.byte_offset();
   let len = buffer.byte_length();
-  let buffer = buffer.buffer(scope).unwrap();
-  let data =
-    unsafe { buffer.data().unwrap().as_ptr().cast::<u8>().add(offset) };
-  let obj = v8::TracedReference::new(scope, obj);
+  let backing_store = buffer.get_backing_store().ok_or_else(|| {
+    generic_error("deserialization buffer has no backing store")
+  })?;
+  let (buf_slice, buf_ptr) = if let Some(data) = backing_store.data() {
+    let data_ptr = unsafe { data.as_ptr().cast::<u8>().add(offset) };
+    (
+      unsafe { std::slice::from_raw_parts(data_ptr.cast_const().cast(), len) },
+      Some(data.cast()),
+    )
+  } else {
+    (&[] as &[u8], None::<NonNull<u8>>)
+  };
+  let obj = v8::Global::new(scope, obj);
   let inner = v8::ValueDeserializer::new(
     scope,
     Box::new(DeserializerDelegate { obj }),
-    unsafe { std::slice::from_raw_parts(data.cast_const().cast(), len) },
+    buf_slice,
   );
-  Deserializer {
-    inner: Some(inner),
-    buf_ptr: data.cast(),
-  }
+  Ok(Deserializer {
+    inner,
+    buf: DeserBuffer {
+      _backing_store: backing_store,
+      ptr: buf_ptr,
+    },
+  })
 }
 
 #[op2(fast)]
@@ -293,18 +293,20 @@ pub fn op_v8_transfer_array_buffer_de(
   #[smi] id: u32,
   array_buffer: v8::Local<v8::ArrayBuffer>,
 ) {
-  unsafe {
-    deser.inner().transfer_array_buffer(id, array_buffer);
-  }
+  // TODO(nathanwhit): also need binding for TransferSharedArrayBuffer, then call that if
+  // array_buffer is shared
+  deser.inner.transfer_array_buffer(id, array_buffer);
 }
 
 #[op2(fast)]
-pub fn op_v8_read_double(#[cppgc] deser: &Deserializer) -> f64 {
+pub fn op_v8_read_double(
+  #[cppgc] deser: &Deserializer,
+) -> Result<f64, AnyError> {
   let mut double = 0f64;
-  unsafe {
-    deser.inner().read_double(&mut double);
+  if !deser.inner.read_double(&mut double) {
+    return Err(type_error("ReadDouble() failed"));
   }
-  double
+  Ok(double)
 }
 
 #[op2(nofast)]
@@ -313,7 +315,7 @@ pub fn op_v8_read_header(
   #[cppgc] deser: &Deserializer,
 ) -> bool {
   let context = scope.get_current_context();
-  let res = unsafe { deser.inner().read_header(context) };
+  let res = deser.inner.read_header(context);
   res.unwrap_or_default()
 }
 
@@ -323,39 +325,46 @@ pub fn op_v8_read_raw_bytes(
   #[cppgc] deser: &Deserializer,
   #[number] length: usize,
 ) -> usize {
-  unsafe {
-    if let Some(buf) = deser.inner().read_raw_bytes(length) {
-      let ptr = buf.as_ptr();
-      let offset = (ptr as usize) - (deser.buf_ptr as usize);
-      offset
-    } else {
-      0
-    }
+  let Some(buf_ptr) = deser.buf.ptr else {
+    return 0;
+  };
+  if let Some(buf) = deser.inner.read_raw_bytes(length) {
+    let ptr = buf.as_ptr();
+    let offset = (ptr as usize) - (buf_ptr.as_ptr() as usize);
+    offset
+  } else {
+    0
   }
 }
 
 #[op2(fast)]
-pub fn op_v8_read_uint32(#[cppgc] deser: &Deserializer) -> u32 {
+pub fn op_v8_read_uint32(
+  #[cppgc] deser: &Deserializer,
+) -> Result<u32, AnyError> {
   let mut value = 0;
-  unsafe {
-    deser.inner().read_uint32(&mut value);
+  if !deser.inner.read_uint32(&mut value) {
+    return Err(type_error("ReadUint32() failed"));
   }
-  value
+
+  Ok(value)
 }
 
 #[op2]
 #[serde]
-pub fn op_v8_read_uint64(#[cppgc] deser: &Deserializer) -> (u32, u32) {
+pub fn op_v8_read_uint64(
+  #[cppgc] deser: &Deserializer,
+) -> Result<(u32, u32), AnyError> {
   let mut val = 0;
-  unsafe {
-    deser.inner().read_uint64(&mut val);
+  if !deser.inner.read_uint64(&mut val) {
+    return Err(type_error("ReadUint64() failed"));
   }
-  ((val >> 32) as u32, val as u32)
+
+  Ok(((val >> 32) as u32, val as u32))
 }
 
 #[op2(fast)]
 pub fn op_v8_get_wire_format_version(#[cppgc] deser: &Deserializer) -> u32 {
-  unsafe { deser.inner().get_wire_format_version() }
+  deser.inner.get_wire_format_version()
 }
 
 #[op2(reentrant)]
@@ -364,6 +373,6 @@ pub fn op_v8_read_value<'s>(
   #[cppgc] deser: &Deserializer,
 ) -> v8::Local<'s, v8::Value> {
   let context = scope.get_current_context();
-  let val = unsafe { deser.inner().read_value(context) };
+  let val = deser.inner.read_value(context);
   val.unwrap_or_else(|| v8::null(scope).into())
 }
