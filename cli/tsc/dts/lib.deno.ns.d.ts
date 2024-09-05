@@ -3870,14 +3870,6 @@ declare namespace Deno {
     readonly rid: number;
     /** Stops watching the file system and closes the watcher resource. */
     close(): void;
-    /**
-     * Stops watching the file system and closes the watcher resource.
-     *
-     * @deprecated This will be removed in Deno 2.0. See the
-     * {@link https://docs.deno.com/runtime/manual/advanced/migrate_deprecations | Deno 1.x to 2.x Migration Guide}
-     * for migration instructions.
-     */
-    return?(value?: any): Promise<IteratorResult<FsEvent>>;
     [Symbol.asyncIterator](): AsyncIterableIterator<FsEvent>;
   }
 

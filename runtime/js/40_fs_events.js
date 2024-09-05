@@ -9,7 +9,6 @@ const {
 const {
   ArrayIsArray,
   ObjectPrototypeIsPrototypeOf,
-  PromiseResolve,
   SymbolAsyncIterator,
   ObjectDefineProperty,
 } = primordials;
@@ -63,14 +62,6 @@ class FsWatcher {
       }
       throw error;
     }
-  }
-
-  // TODO(kt3k): This is deprecated. Will be removed in v2.0.
-  // See https://github.com/denoland/deno/issues/10577 for details
-  return(value) {
-    internals.warnOnDeprecatedApi("Deno.FsWatcher.return()", new Error().stack);
-    core.close(this.#rid);
-    return PromiseResolve({ value, done: true });
   }
 
   close() {
