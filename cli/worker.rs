@@ -119,8 +119,6 @@ pub struct CliMainWorkerOptions {
   pub node_ipc: Option<i64>,
   pub serve_port: Option<u16>,
   pub serve_host: Option<String>,
-  pub disable_deprecated_api_warning: bool,
-  pub verbose_deprecated_api_warning: bool,
 }
 
 struct SharedWorkerState {
@@ -140,7 +138,6 @@ struct SharedWorkerState {
   maybe_inspector_server: Option<Arc<InspectorServer>>,
   maybe_lockfile: Option<Arc<CliLockfile>>,
   feature_checker: Arc<FeatureChecker>,
-  enable_future_features: bool,
   code_cache: Option<Arc<dyn code_cache::CodeCache>>,
 }
 
@@ -455,8 +452,6 @@ impl CliMainWorkerFactory {
         maybe_inspector_server,
         maybe_lockfile,
         feature_checker,
-        // TODO(2.0): remove?
-        enable_future_features: true,
         code_cache,
       }),
     }
@@ -593,13 +588,6 @@ impl CliMainWorkerFactory {
         argv0: shared.options.argv0.clone(),
         node_debug: shared.options.node_debug.clone(),
         node_ipc_fd: shared.options.node_ipc,
-        disable_deprecated_api_warning: shared
-          .options
-          .disable_deprecated_api_warning,
-        verbose_deprecated_api_warning: shared
-          .options
-          .verbose_deprecated_api_warning,
-        future: shared.enable_future_features,
         mode,
         serve_port: shared.options.serve_port,
         serve_host: shared.options.serve_host.clone(),
@@ -795,13 +783,6 @@ fn create_web_worker_callback(
         argv0: shared.options.argv0.clone(),
         node_debug: shared.options.node_debug.clone(),
         node_ipc_fd: None,
-        disable_deprecated_api_warning: shared
-          .options
-          .disable_deprecated_api_warning,
-        verbose_deprecated_api_warning: shared
-          .options
-          .verbose_deprecated_api_warning,
-        future: shared.enable_future_features,
         mode: WorkerExecutionMode::Worker,
         serve_port: shared.options.serve_port,
         serve_host: shared.options.serve_host.clone(),

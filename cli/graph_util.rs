@@ -20,13 +20,12 @@ use crate::tools::check::TypeChecker;
 use crate::util::file_watcher::WatcherCommunicator;
 use crate::util::fs::canonicalize_path;
 use deno_config::workspace::JsrPackageConfig;
-use deno_emit::LoaderChecksum;
+use deno_graph::source::LoaderChecksum;
 use deno_graph::JsrLoadError;
 use deno_graph::ModuleLoadError;
 use deno_graph::WorkspaceFastCheckOption;
 use deno_runtime::fs_util::specifier_to_file_path;
 
-use deno_core::anyhow::bail;
 use deno_core::error::custom_error;
 use deno_core::error::AnyError;
 use deno_core::parking_lot::Mutex;
@@ -35,7 +34,6 @@ use deno_graph::source::Loader;
 use deno_graph::source::ResolutionMode;
 use deno_graph::source::ResolveError;
 use deno_graph::GraphKind;
-use deno_graph::Module;
 use deno_graph::ModuleError;
 use deno_graph::ModuleGraph;
 use deno_graph::ModuleGraphError;
@@ -722,33 +720,29 @@ impl ModuleGraphBuilder {
   }
 }
 
-pub fn error_for_any_npm_specifier(
-  graph: &ModuleGraph,
-) -> Result<(), AnyError> {
-  for module in graph.modules() {
-    match module {
-      Module::Npm(module) => {
-        bail!("npm specifiers have not yet been implemented for this subcommand (https://github.com/denoland/deno/issues/15960). Found: {}", module.specifier)
-      }
-      Module::Node(module) => {
-        bail!("Node specifiers have not yet been implemented for this subcommand (https://github.com/denoland/deno/issues/15960). Found: node:{}", module.module_name)
-      }
-      Module::Js(_) | Module::Json(_) | Module::External(_) => {}
-    }
-  }
-  Ok(())
-}
-
 /// Adds more explanatory information to a resolution error.
 pub fn enhanced_resolution_error_message(error: &ResolutionError) -> String {
   let mut message = format_deno_graph_error(error);
 
-  if let Some(specifier) = get_resolution_error_bare_node_specifier(error) {
+  let maybe_hint = if let Some(specifier) =
+    get_resolution_error_bare_node_specifier(error)
+  {
     if !*DENO_DISABLE_PEDANTIC_NODE_WARNINGS {
-      message.push_str(&format!(
-        "\nIf you want to use a built-in Node module, add a \"node:\" prefix (ex. \"node:{specifier}\")."
-      ));
+      Some(format!("If you want to use a built-in Node module, add a \"node:\" prefix (ex. \"node:{specifier}\")."))
+    } else {
+      None
     }
+  } else {
+    get_import_prefix_missing_error(error).map(|specifier| {
+      format!(
+        "If you want to use a JSR or npm package, try running `deno add {}`",
+        specifier
+      )
+    })
+  };
+
+  if let Some(hint) = maybe_hint {
+    message.push_str(&format!("\n  {} {}", colors::cyan("hint:"), hint));
   }
 
   message
@@ -881,6 +875,45 @@ fn get_resolution_error_bare_specifier(
   } else {
     None
   }
+}
+
+fn get_import_prefix_missing_error(error: &ResolutionError) -> Option<&str> {
+  let mut maybe_specifier = None;
+  if let ResolutionError::InvalidSpecifier {
+    error: SpecifierError::ImportPrefixMissing { specifier, .. },
+    ..
+  } = error
+  {
+    maybe_specifier = Some(specifier);
+  } else if let ResolutionError::ResolverError { error, .. } = error {
+    match error.as_ref() {
+      ResolveError::Specifier(specifier_error) => {
+        if let SpecifierError::ImportPrefixMissing { specifier, .. } =
+          specifier_error
+        {
+          maybe_specifier = Some(specifier);
+        }
+      }
+      ResolveError::Other(other_error) => {
+        if let Some(SpecifierError::ImportPrefixMissing { specifier, .. }) =
+          other_error.downcast_ref::<SpecifierError>()
+        {
+          maybe_specifier = Some(specifier);
+        }
+      }
+    }
+  }
+
+  // NOTE(bartlomieju): For now, return None if a specifier contains a dot or a space. This is because
+  // suggesting to `deno add bad-module.ts` makes no sense and is worse than not providing
+  // a suggestion at all. This should be improved further in the future
+  if let Some(specifier) = maybe_specifier {
+    if specifier.contains('.') || specifier.contains(' ') {
+      return None;
+    }
+  }
+
+  maybe_specifier.map(|s| s.as_str())
 }
 
 /// Gets if any of the specified root's "file:" dependents are in the

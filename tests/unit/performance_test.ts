@@ -7,7 +7,7 @@ import {
   assertThrows,
 } from "./test_util.ts";
 
-Deno.test({ permissions: { hrtime: false } }, async function performanceNow() {
+Deno.test({ permissions: {} }, async function performanceNow() {
   const { promise, resolve } = Promise.withResolvers<void>();
   const start = performance.now();
   let totalTime = 0;

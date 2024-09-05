@@ -1,0 +1,6 @@
+{
+  "steps": [
+    { "args": "run -R index.cjs", "output": "index.out" },
+    { "args": "run -R main.ts", "output": "main.out" }
+  ]
+}

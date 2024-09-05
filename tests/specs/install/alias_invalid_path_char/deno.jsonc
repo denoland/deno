@@ -1,0 +1,7 @@
+{
+  "imports": {
+    // alias*test is an invalid path char on windows, so
+    // don't create an alias for this
+    "alias*test": "npm:@denotest/add"
+  }
+}
