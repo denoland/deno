@@ -975,3 +975,35 @@ Deno.test(
     );
   },
 );
+
+Deno.test(
+  { permissions: { write: true, run: true, read: true } },
+  async function commandWithCwdOrPath() {
+    const cwd = Deno.makeTempDirSync({ prefix: "deno_command_test" });
+    try {
+      const suffix = Deno.build.os === "windows" ? ".exe" : "";
+      Deno.mkdirSync(`${cwd}/subdir`);
+      Deno.copyFileSync(Deno.execPath(), `${cwd}/subdir/my_binary${suffix}`);
+      // cwd
+      {
+        const output = await new Deno.Command(`./my_binary${suffix}`, {
+          cwd: `${cwd}/subdir`,
+          args: ["-v"],
+        }).output();
+        assertEquals(output.success, true);
+      }
+      // path
+      {
+        const output = await new Deno.Command(`my_binary${suffix}`, {
+          env: {
+            PATH: `${cwd}/subdir`,
+          },
+          args: ["-v"],
+        }).output();
+        assertEquals(output.success, true);
+      }
+    } finally {
+      Deno.removeSync(cwd, { recursive: true });
+    }
+  },
+);

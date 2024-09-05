@@ -179,7 +179,7 @@ class AssertionError extends Error {
   }
 }
 
-function assert(cond, msg = "Assertion failed.") {
+function assert(cond, msg = "Assertion failed") {
   if (!cond) {
     throw new AssertionError(msg);
   }
@@ -3236,8 +3236,8 @@ class Console {
   table = (data = undefined, properties = undefined) => {
     if (properties !== undefined && !ArrayIsArray(properties)) {
       throw new Error(
-        "The 'properties' argument must be of type Array. " +
-          "Received type " + typeof properties,
+        "The 'properties' argument must be of type Array: " +
+          "received type " + typeof properties,
       );
     }
 

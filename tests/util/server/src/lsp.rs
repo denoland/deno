@@ -1307,6 +1307,9 @@ impl SourceFile {
       "tsx" => "typescriptreact",
       "json" => "json",
       "md" => "markdown",
+      "html" => "html",
+      "css" => "css",
+      "yaml" => "yaml",
       other => panic!("unsupported file extension: {other}"),
     };
     Self {
