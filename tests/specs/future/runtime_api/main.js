@@ -1,5 +1,4 @@
 console.log("window is", globalThis.window);
-console.log("Deno.Buffer is", Deno.Buffer);
 console.log("Deno.File is", Deno.File);
 console.log(
   "Deno.FsFile.prototype.rid is",
