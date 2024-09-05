@@ -1,8 +1,16 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
-use super::flags_net;
-use crate::args::resolve_no_prompt;
-use crate::util::fs::canonicalize_path;
+use std::collections::HashSet;
+use std::env;
+use std::ffi::OsString;
+use std::net::SocketAddr;
+use std::num::NonZeroU32;
+use std::num::NonZeroU8;
+use std::num::NonZeroUsize;
+use std::path::Path;
+use std::path::PathBuf;
+use std::str::FromStr;
+
 use clap::builder::styling::AnsiColor;
 use clap::builder::FalseyValueParser;
 use clap::error::ErrorKind;
@@ -31,16 +39,11 @@ use log::debug;
 use log::Level;
 use serde::Deserialize;
 use serde::Serialize;
-use std::collections::HashSet;
-use std::env;
-use std::ffi::OsString;
-use std::net::SocketAddr;
-use std::num::NonZeroU32;
-use std::num::NonZeroU8;
-use std::num::NonZeroUsize;
-use std::path::Path;
-use std::path::PathBuf;
-use std::str::FromStr;
+
+use crate::args::resolve_no_prompt;
+use crate::util::fs::canonicalize_path;
+
+use super::flags_net;
 
 #[derive(Clone, Debug, Default, Eq, PartialEq)]
 pub enum ConfigFlag {
