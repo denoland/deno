@@ -735,8 +735,8 @@ pub fn enhanced_resolution_error_message(error: &ResolutionError) -> String {
   } else {
     get_import_prefix_missing_error(error).map(|specifier| {
       format!(
-        "If you want to use a JSR or npm package, try running `deno add {}`",
-        specifier
+        "If you want to use a JSR or npm package, try running `deno add jsr:{}` or `deno add npm:{}`",
+        specifier, specifier
       )
     })
   };
