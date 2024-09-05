@@ -944,8 +944,6 @@ export {
   FsFile,
   fsync,
   fsyncSync,
-  funlock,
-  funlockSync,
   link,
   linkSync,
   lstat,
