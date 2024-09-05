@@ -1,0 +1,5 @@
+{
+  "args": "doc --lint --html --name=Library referenced_private_types.ts",
+  "output": "referenced_private_types_lint.out",
+  "exitCode": 1
+}
