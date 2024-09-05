@@ -7,6 +7,8 @@ import process, {
   argv,
   argv0 as importedArgv0,
   env,
+  execArgv as importedExecArgv,
+  execPath as importedExecPath,
   geteuid,
   pid as importedPid,
   platform as importedPlatform,
@@ -1120,4 +1122,12 @@ Deno.test("process.listeners - include SIG* events", () => {
 
 Deno.test(function processVersionsOwnProperty() {
   assert(Object.prototype.hasOwnProperty.call(process, "versions"));
+});
+
+Deno.test(function importedExecArgvTest() {
+  assert(Array.isArray(importedExecArgv));
+});
+
+Deno.test(function importedExecPathTest() {
+  assertEquals(importedExecPath, Deno.execPath());
 });
