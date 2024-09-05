@@ -9,6 +9,7 @@ use std::task::Poll;
 
 use bytes::Bytes;
 use deno_core::anyhow;
+use deno_core::error::bad_resource;
 use deno_core::error::type_error;
 use deno_core::error::AnyError;
 use deno_core::futures::stream::Peekable;
@@ -37,6 +38,7 @@ use deno_fetch::FetchRequestResource;
 use deno_fetch::FetchReturn;
 use deno_fetch::HttpClientResource;
 use deno_fetch::ResBody;
+use deno_net::io::TcpStreamResource;
 use http::header::HeaderMap;
 use http::header::HeaderName;
 use http::header::HeaderValue;
@@ -167,6 +169,157 @@ pub struct NodeHttpFetchResponse {
   pub remote_addr_ip: Option<String>,
   pub remote_addr_port: Option<u16>,
   pub error: Option<String>,
+}
+
+#[derive(Default, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct NodeHttpResponse {
+  pub status: u16,
+  pub status_text: String,
+  pub headers: Vec<(ByteString, ByteString)>,
+  pub url: String,
+  pub response_rid: ResourceId,
+  pub content_length: Option<u64>,
+  pub remote_addr_ip: Option<String>,
+  pub remote_addr_port: Option<u16>,
+  pub error: Option<String>,
+}
+
+#[op2(async)]
+#[serde]
+pub async fn op_node_http_request_with_conn<P>(
+  state: Rc<RefCell<OpState>>,
+  #[serde] method: ByteString,
+  #[string] url: String,
+  #[serde] headers: Vec<(ByteString, ByteString)>,
+  #[smi] body: Option<ResourceId>,
+  #[smi] conn_rid: ResourceId,
+) -> Result<NodeHttpResponse, AnyError>
+where
+  P: crate::NodePermissions + 'static,
+{
+  // Establish the connection/client.
+  let resource_rc = state
+    .borrow_mut()
+    .resource_table
+    .take::<TcpStreamResource>(conn_rid)?;
+  let resource = Rc::try_unwrap(resource_rc)
+    .map_err(|_| bad_resource("TCP stream is currently in use"))?;
+  let (read_half, write_half) = resource.into_inner();
+  let tcp_stream = read_half.reunite(write_half)?;
+  let io = TokioIo::new(tcp_stream);
+  let (mut sender, conn) = hyper::client::conn::http1::handshake(io).await?;
+
+  // Spawn a task to poll the connection, driving the HTTP state
+  let _handle = tokio::task::spawn(async move {
+    conn.await?;
+    Ok::<_, AnyError>(())
+  });
+
+  // Create the request.
+  let method = Method::from_bytes(&method)?;
+  let mut url_parsed = Url::parse(&url)?;
+  let maybe_authority = deno_fetch::extract_authority(&mut url_parsed);
+
+  {
+    let mut state_ = state.borrow_mut();
+    let permissions = state_.borrow_mut::<P>();
+    permissions.check_net_url(&url_parsed, "ClientRequest")?;
+  }
+
+  let mut header_map = HeaderMap::new();
+  for (key, value) in headers {
+    let name = HeaderName::from_bytes(&key)
+      .map_err(|err| type_error(err.to_string()))?;
+    let v = HeaderValue::from_bytes(&value)
+      .map_err(|err| type_error(err.to_string()))?;
+
+    header_map.append(name, v);
+  }
+
+  let (body, con_len) = if let Some(body) = body {
+    (
+      BodyExt::boxed(NodeHttpResourceToBodyAdapter::new(
+        state.borrow_mut().resource_table.take_any(body)?,
+      )),
+      None,
+    )
+  } else {
+    // POST and PUT requests should always have a 0 length content-length,
+    // if there is no body. https://fetch.spec.whatwg.org/#http-network-or-cache-fetch
+    let len = if matches!(method, Method::POST | Method::PUT) {
+      Some(0)
+    } else {
+      None
+    };
+    (
+      http_body_util::Empty::new()
+        .map_err(|never| match never {})
+        .boxed(),
+      len,
+    )
+  };
+
+  let mut request = http::Request::new(body);
+  *request.method_mut() = method.clone();
+  *request.uri_mut() = url_parsed
+    .path()
+    .to_string()
+    .parse()
+    .map_err(|_| type_error("Invalid URL"))?;
+  *request.headers_mut() = header_map;
+
+  if let Some((username, password)) = maybe_authority {
+    request.headers_mut().insert(
+      AUTHORIZATION,
+      deno_fetch::basic_auth(&username, password.as_deref()),
+    );
+  }
+  if let Some(len) = con_len {
+    request.headers_mut().insert(CONTENT_LENGTH, len.into());
+  }
+
+  let res = sender.send_request(request).await?;
+
+  let status = res.status();
+  let mut res_headers = Vec::new();
+  for (key, val) in res.headers().iter() {
+    res_headers.push((key.as_str().into(), val.as_bytes().into()));
+  }
+
+  let content_length = hyper::body::Body::size_hint(res.body()).exact();
+  let remote_addr = res
+    .extensions()
+    .get::<hyper_util::client::legacy::connect::HttpInfo>()
+    .map(|info| info.remote_addr());
+  let (remote_addr_ip, remote_addr_port) = if let Some(addr) = remote_addr {
+    (Some(addr.ip().to_string()), Some(addr.port()))
+  } else {
+    (None, None)
+  };
+
+  let (parts, body) = res.into_parts();
+  let body = body.map_err(deno_core::anyhow::Error::from);
+  let body = body.boxed();
+
+  let res = http::Response::from_parts(parts, body);
+
+  let response_rid = state
+    .borrow_mut()
+    .resource_table
+    .add(NodeHttpFetchResponseResource::new(res, content_length));
+
+  Ok(NodeHttpResponse {
+    status: status.as_u16(),
+    status_text: status.canonical_reason().unwrap_or("").to_string(),
+    headers: res_headers,
+    url,
+    response_rid,
+    content_length,
+    remote_addr_ip,
+    remote_addr_port,
+    error: None,
+  })
 }
 
 #[op2(async)]

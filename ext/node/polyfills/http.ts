@@ -8,6 +8,7 @@ import {
   op_node_http_fetch_response_upgrade,
   op_node_http_fetch_send,
   op_node_http_request,
+  op_node_http_request_with_conn,
 } from "ext:core/ops";
 
 import { TextEncoder } from "ext:deno_web/08_text_encoding.js";
@@ -47,7 +48,7 @@ import { kOutHeaders } from "ext:deno_node/internal/http.ts";
 import { _checkIsHttpToken as checkIsHttpToken } from "node:_http_common";
 import { Agent, globalAgent } from "node:_http_agent";
 import { urlToHttpOptions } from "ext:deno_node/internal/url.ts";
-import { kEmptyObject } from "ext:deno_node/internal/util.mjs";
+import { kEmptyObject, once } from "ext:deno_node/internal/util.mjs";
 import { constants, TCP } from "ext:deno_node/internal_binding/tcp_wrap.ts";
 import { notImplemented, warnNotImplemented } from "ext:deno_node/_utils.ts";
 import {
@@ -380,17 +381,11 @@ class ClientRequest extends OutgoingMessage {
       delete optsWithoutSignal.signal;
     }
 
-    if (options!.createConnection) {
-      warnNotImplemented("ClientRequest.options.createConnection");
-    }
-
     if (options!.lookup) {
       notImplemented("ClientRequest.options.lookup");
     }
 
-    // initiate connection
-    // TODO(crowlKats): finish this
-    /*if (this.agent) {
+    if (this.agent) {
       this.agent.addRequest(this, optsWithoutSignal);
     } else {
       // No agent, default to Connection:close.
@@ -418,13 +413,13 @@ class ClientRequest extends OutgoingMessage {
         }
       } else {
         debug("CLIENT use net.createConnection", optsWithoutSignal);
-        this.onSocket(createConnection(optsWithoutSignal));
+        this.onSocket(net.createConnection(optsWithoutSignal));
       }
-    }*/
-    this.onSocket(new FakeSocket({ encrypted: this._encrypted }));
+    }
   }
 
   _writeHeader() {
+    console.trace("writeHeader");
     const url = this._createUrlStrFromOptions();
 
     const headers = [];
@@ -453,24 +448,30 @@ class ClientRequest extends OutgoingMessage {
       this._bodyWriteRid = resourceForReadableStream(readable);
     }
 
-    this._req = op_node_http_request(
-      this.method,
-      url,
-      headers,
-      client[internalRidSymbol],
-      this._bodyWriteRid,
-    );
+    // this._req = op_node_http_request(
+    //   this.method,
+    //   url,
+    //   headers,
+    //   client[internalRidSymbol],
+    //   this._bodyWriteRid,
+    // );
 
     (async () => {
       try {
-        const res = await op_node_http_fetch_send(this._req.requestRid);
-        if (this._req.cancelHandleRid !== null) {
-          core.tryClose(this._req.cancelHandleRid);
-        }
-        if (this._timeout) {
-          this._timeout.removeEventListener("abort", this._timeoutCb);
-          webClearTimeout(this._timeout[timerId]);
-        }
+        const res = await op_node_http_request_with_conn(
+          this.method,
+          url,
+          headers,
+          this._bodyWriteRid,
+          this.socket.rid,
+        );
+        // if (this._req.cancelHandleRid !== null) {
+        //   core.tryClose(this._req.cancelHandleRid);
+        // }
+        // if (this._timeout) {
+        //   this._timeout.removeEventListener("abort", this._timeoutCb);
+        //   webClearTimeout(this._timeout[timerId]);
+        // }
         this._client.close();
         const incoming = new IncomingMessageForClient(this.socket);
         incoming.req = this;
@@ -616,9 +617,13 @@ class ClientRequest extends OutgoingMessage {
     if (chunk) {
       this.write_(chunk, encoding, null, true);
     } else if (!this._headerSent) {
-      this._contentLength = 0;
-      this._implicitHeader();
-      this._send("", "latin1");
+      this.on("socket", (socket) => {
+        socket.on("connect", () => {
+          this._contentLength = 0;
+          this._implicitHeader();
+          this._send("", "latin1");
+        });
+      });
     }
     (async () => {
       try {

@@ -107,6 +107,7 @@ import type { DuplexOptions } from "ext:deno_node/_stream.d.ts";
 import type { BufferEncoding } from "ext:deno_node/_global.d.ts";
 import type { Abortable } from "ext:deno_node/_events.d.ts";
 import { channel } from "node:diagnostics_channel";
+import console from "node:console";
 
 let debug = debuglog("net", (fn) => {
   debug = fn;
@@ -839,6 +840,10 @@ export class Socket extends Duplex {
         this.read(0);
       }
     }
+  }
+
+  get rid() {
+    return this._handle.rid;
   }
 
   /**
