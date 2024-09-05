@@ -26,6 +26,7 @@ use deno_semver::package::PackageReq;
 use indexmap::IndexMap;
 use jsonc_parser::ast::ObjectProp;
 use jsonc_parser::ast::Value;
+use yoke::Yoke;
 
 use crate::args::AddFlags;
 use crate::args::CacheSetting;
@@ -57,15 +58,6 @@ impl DenoConfigFormat {
   }
 }
 
-trait DepManifest {
-  fn specifier(&self) -> Cow<ModuleSpecifier>;
-  fn existing_imports(&self) -> Result<IndexMap<String, String>, AnyError>;
-  fn fmt_options(&self) -> FmtOptionsConfig;
-  fn imports_key(&self) -> &'static str;
-  fn file_name(&self) -> &'static str;
-  fn import_entry(&self, selected: SelectedPackage) -> (String, String);
-}
-
 struct DenoConfig {
   config: Arc<deno_config::deno_json::ConfigFile>,
   format: DenoConfigFormat,
@@ -83,6 +75,15 @@ impl DenoConfig {
       Ok(None)
     }
   }
+
+  fn new(
+    config: Arc<deno_config::deno_json::ConfigFile>,
+  ) -> Result<Self, AnyError> {
+    Ok(Self {
+      format: DenoConfigFormat::from_specifier(&config.specifier)?,
+      config,
+    })
+  }
 }
 
 impl NpmConfig {
@@ -97,6 +98,16 @@ impl NpmConfig {
       Ok(None)
     }
   }
+
+  fn new(
+    config: Arc<deno_node::PackageJson>,
+    fmt_options: Option<FmtOptionsConfig>,
+  ) -> Self {
+    Self {
+      config,
+      fmt_options,
+    }
+  }
 }
 
 struct NpmConfig {
@@ -105,150 +116,39 @@ struct NpmConfig {
 }
 
 enum DenoOrPackageJson {
-  Deno(Arc<deno_config::deno_json::ConfigFile>, DenoConfigFormat),
-  Npm(Arc<deno_node::PackageJson>, Option<FmtOptionsConfig>),
+  Deno(DenoConfig),
+  Npm(NpmConfig),
 }
 
-impl DepManifest for Box<dyn DepManifest> {
-  fn specifier(&self) -> Cow<ModuleSpecifier> {
-    (**self).specifier()
-  }
-
-  fn existing_imports(&self) -> Result<IndexMap<String, String>, AnyError> {
-    (**self).existing_imports()
-  }
-
-  fn fmt_options(&self) -> FmtOptionsConfig {
-    (**self).fmt_options()
-  }
-
-  fn imports_key(&self) -> &'static str {
-    (**self).imports_key()
-  }
-
-  fn file_name(&self) -> &'static str {
-    (**self).file_name()
-  }
-
-  fn import_entry(&self, selected: SelectedPackage) -> (String, String) {
-    (**self).import_entry(selected)
+impl From<DenoConfig> for DenoOrPackageJson {
+  fn from(config: DenoConfig) -> Self {
+    Self::Deno(config)
   }
 }
 
-impl DepManifest for DenoConfig {
-  fn specifier(&self) -> Cow<ModuleSpecifier> {
-    Cow::Borrowed(&self.config.specifier)
-  }
-
-  fn existing_imports(&self) -> Result<IndexMap<String, String>, AnyError> {
-    if let Some(imports) = self.config.json.imports.clone() {
-      match serde_json::from_value(imports) {
-        Ok(map) => Ok(map),
-        Err(err) => {
-          bail!("Malformed \"imports\" configuration: {err}")
-        }
-      }
-    } else {
-      Ok(Default::default())
-    }
-  }
-
-  fn fmt_options(&self) -> FmtOptionsConfig {
-    self
-      .config
-      .to_fmt_config()
-      .ok()
-      .map(|f| f.options)
-      .unwrap_or_default()
-  }
-
-  fn imports_key(&self) -> &'static str {
-    "imports"
-  }
-
-  fn file_name(&self) -> &'static str {
-    match self.format {
-      DenoConfigFormat::Json => "deno.json",
-      DenoConfigFormat::Jsonc => "deno.jsonc",
-    }
-  }
-
-  fn import_entry(&self, selected: SelectedPackage) -> (String, String) {
-    (
-      selected.import_name,
-      format!("{}@{}", selected.package_name, selected.version_req),
-    )
+impl From<NpmConfig> for DenoOrPackageJson {
+  fn from(config: NpmConfig) -> Self {
+    Self::Npm(config)
   }
 }
 
-impl DepManifest for NpmConfig {
-  fn specifier(&self) -> Cow<ModuleSpecifier> {
-    Cow::Owned(self.config.specifier())
-  }
+#[derive(yoke::Yokeable)]
+struct JsoncObjectView<'a>(jsonc_parser::ast::Object<'a>);
 
-  fn existing_imports(&self) -> Result<IndexMap<String, String>, AnyError> {
-    Ok(self.config.dependencies.clone().unwrap_or_default())
-  }
-
-  fn fmt_options(&self) -> FmtOptionsConfig {
-    self.fmt_options.clone().unwrap_or_default()
-  }
-
-  fn imports_key(&self) -> &'static str {
-    "dependencies"
-  }
-
-  fn file_name(&self) -> &'static str {
-    "package.json"
-  }
-
-  fn import_entry(&self, selected: SelectedPackage) -> (String, String) {
-    package_json_dependency_entry(selected)
-  }
-}
-
-struct MutableManifest<C> {
+struct MutConfig {
   imports: IndexMap<String, String>,
-  config: C,
+  config: DenoOrPackageJson,
+  ast: Yoke<JsoncObjectView<'static>, String>,
+  path: PathBuf,
 }
 
-enum CommitError {
-  HasImportMap,
-  ParseError(jsonc_parser::errors::ParseError),
-  ConfigNotObject,
-  RemoteConfig,
-  WriteFileError(std::io::Error),
-}
-
-impl<C: DepManifest + 'static> MutableManifest<C> {
-  fn into_dyn(self) -> MutableManifest<Box<dyn DepManifest>> {
-    MutableManifest {
-      imports: self.imports,
-      config: Box::new(self.config),
-    }
-  }
-}
-impl<C: DepManifest> MutableManifest<C> {
-  fn new(config: C) -> Result<Self, AnyError> {
+impl MutConfig {
+  async fn new(config: DenoOrPackageJson) -> Result<Self, AnyError> {
     let specifier = config.specifier();
     if specifier.scheme() != "file" {
       bail!("Can't add dependencies to a remote configuration file");
     }
-    let imports = config.existing_imports()?;
-    Ok(Self { imports, config })
-  }
-
-  fn add(&mut self, selected: SelectedPackage) {
-    let (name, version) = self.config.import_entry(selected);
-    self.imports.insert(name, version);
-  }
-
-  async fn commit(self) -> Result<(), CommitError> {
-    let config_specifier = self.config.specifier();
-    if config_specifier.scheme() != "file" {
-      return Err(CommitError::RemoteConfig);
-    }
-    let config_file_path = config_specifier.to_file_path().unwrap();
+    let config_file_path = specifier.to_file_path().unwrap();
     let config_file_contents = {
       let contents =
         tokio::fs::read_to_string(&config_file_path).await.unwrap();
@@ -258,22 +158,48 @@ impl<C: DepManifest> MutableManifest<C> {
         contents
       }
     };
-    let ast = jsonc_parser::parse_to_ast(
-      &config_file_contents,
-      &Default::default(),
-      &Default::default(),
-    )
-    .map_err(CommitError::ParseError)?;
+    let ast = Yoke::try_attach_to_cart(config_file_contents, |contents| {
+      let ast = jsonc_parser::parse_to_ast(
+        &contents,
+        &Default::default(),
+        &Default::default(),
+      )
+      .with_context(|| {
+        format!("Failed to parse config file at {}", specifier)
+      })?;
+      let obj = match ast.value {
+        Some(Value::Object(obj)) => obj,
+        _ => bail!("Failed updating config file because it isn't an object."),
+      };
+      Ok::<_, AnyError>(JsoncObjectView(obj))
+    })?;
 
-    let obj = match ast.value {
-      Some(Value::Object(obj)) => obj,
-      _ => return Err(CommitError::ConfigNotObject),
-    };
-
-    if obj.get_string("importMap").is_some() {
-      return Err(CommitError::HasImportMap);
+    let obj: &JsoncObjectView = ast.get();
+    if obj.0.get_string("importMap").is_some() {
+      bail!(
+        concat!(
+          "`deno add` is not supported when configuration file contains an \"importMap\" field. ",
+          "Inline the import map into the Deno configuration file.\n",
+          "    at {}",
+        ),
+        specifier
+      );
     }
+    let imports = config.existing_imports()?;
+    Ok(Self {
+      imports,
+      config,
+      ast,
+      path: config_file_path,
+    })
+  }
 
+  fn add(&mut self, selected: SelectedPackage) {
+    let (name, version) = self.config.import_entry(selected);
+    self.imports.insert(name, version);
+  }
+
+  async fn commit(self) -> Result<(), AnyError> {
     let mut import_list: Vec<(String, String)> =
       self.imports.into_iter().collect();
 
@@ -283,17 +209,15 @@ impl<C: DepManifest> MutableManifest<C> {
     let fmt_config_options = self.config.fmt_options();
 
     let new_text = update_config_file_content(
-      obj,
-      &config_file_contents,
+      &self.ast.get().0,
+      self.ast.backing_cart(),
       generated_imports,
       fmt_config_options,
       self.config.imports_key(),
       self.config.file_name(),
     );
 
-    tokio::fs::write(&config_file_path, new_text)
-      .await
-      .map_err(CommitError::WriteFileError)?;
+    tokio::fs::write(&self.path, new_text).await?;
     Ok(())
   }
 }
@@ -301,8 +225,8 @@ impl<C: DepManifest> MutableManifest<C> {
 impl DenoOrPackageJson {
   fn specifier(&self) -> Cow<ModuleSpecifier> {
     match self {
-      Self::Deno(d, ..) => Cow::Borrowed(&d.specifier),
-      Self::Npm(n, ..) => Cow::Owned(n.specifier()),
+      Self::Deno(d, ..) => Cow::Borrowed(&d.config.specifier),
+      Self::Npm(n, ..) => Cow::Owned(n.config.specifier()),
     }
   }
 
@@ -310,7 +234,7 @@ impl DenoOrPackageJson {
   fn existing_imports(&self) -> Result<IndexMap<String, String>, AnyError> {
     match self {
       DenoOrPackageJson::Deno(deno, ..) => {
-        if let Some(imports) = deno.json.imports.clone() {
+        if let Some(imports) = deno.config.json.imports.clone() {
           match serde_json::from_value(imports) {
             Ok(map) => Ok(map),
             Err(err) => {
@@ -322,7 +246,7 @@ impl DenoOrPackageJson {
         }
       }
       DenoOrPackageJson::Npm(npm, ..) => {
-        Ok(npm.dependencies.clone().unwrap_or_default())
+        Ok(npm.config.dependencies.clone().unwrap_or_default())
       }
     }
   }
@@ -330,11 +254,14 @@ impl DenoOrPackageJson {
   fn fmt_options(&self) -> FmtOptionsConfig {
     match self {
       DenoOrPackageJson::Deno(deno, ..) => deno
+        .config
         .to_fmt_config()
         .ok()
         .map(|f| f.options)
         .unwrap_or_default(),
-      DenoOrPackageJson::Npm(_, config) => config.clone().unwrap_or_default(),
+      DenoOrPackageJson::Npm(config) => {
+        config.fmt_options.clone().unwrap_or_default()
+      }
     }
   }
 
@@ -347,7 +274,7 @@ impl DenoOrPackageJson {
 
   fn file_name(&self) -> &'static str {
     match self {
-      DenoOrPackageJson::Deno(_, format) => match format {
+      DenoOrPackageJson::Deno(config) => match config.format {
         DenoConfigFormat::Json => "deno.json",
         DenoConfigFormat::Jsonc => "deno.jsonc",
       },
@@ -355,8 +282,14 @@ impl DenoOrPackageJson {
     }
   }
 
-  fn is_npm(&self) -> bool {
-    matches!(self, Self::Npm(..))
+  fn import_entry(&self, selected: SelectedPackage) -> (String, String) {
+    match self {
+      DenoOrPackageJson::Deno(_) => (
+        selected.import_name,
+        format!("{}@{}", selected.package_name, selected.version_req),
+      ),
+      DenoOrPackageJson::Npm(_) => package_json_dependency_entry(selected),
+    }
   }
 
   /// Get the preferred config file to operate on
@@ -373,29 +306,20 @@ impl DenoOrPackageJson {
       // when both are present, for now,
       // default to deno.json
       (Some(deno), Some(_) | None) => Ok((
-        DenoOrPackageJson::Deno(
-          deno.clone(),
-          DenoConfigFormat::from_specifier(&deno.specifier)?,
-        ),
+        DenoOrPackageJson::Deno(DenoConfig::new(deno.clone())?),
         factory,
       )),
-      (None, Some(package_json)) => {
-        Ok((DenoOrPackageJson::Npm(package_json.clone(), None), factory))
-      }
+      (None, Some(package_json)) => Ok((
+        DenoOrPackageJson::Npm(NpmConfig::new(package_json.clone(), None)),
+        factory,
+      )),
       (None, None) => {
-        std::fs::write(options.initial_cwd().join("deno.json"), "{}\n")
-          .context("Failed to create deno.json file")?;
-        drop(factory); // drop to prevent use
-        log::info!("Created deno.json configuration file.");
-        let factory = CliFactory::from_flags(flags.clone());
+        let factory = create_deno_json(&flags, options)?;
         let options = factory.cli_options()?.clone();
-        let start_dir = &options.start_dir;
         Ok((
           DenoOrPackageJson::Deno(
-            start_dir.maybe_deno_json().cloned().ok_or_else(|| {
-              anyhow!("config not found, but it was just created")
-            })?,
-            DenoConfigFormat::Json,
+            DenoConfig::from_options(&options)?
+              .expect("Just created deno.json"),
           ),
           factory,
         ))
@@ -447,19 +371,40 @@ impl std::fmt::Display for AddCommandName {
   }
 }
 
-pub async fn add_(
+pub async fn add(
   flags: Arc<Flags>,
   add_flags: AddFlags,
   cmd_name: AddCommandName,
 ) -> Result<(), AnyError> {
-  let (config_file, cli_factory) =
-    DenoOrPackageJson::from_flags(flags.clone())?;
+  let cli_factory = CliFactory::from_flags(flags.clone());
+  let options = cli_factory.cli_options()?;
+  let npm_config = NpmConfig::from_options(options)?;
+  let (cli_factory, deno_config) = match DenoConfig::from_options(options)? {
+    Some(config) => (cli_factory, Some(config)),
+    None if npm_config.is_some() => (cli_factory, None),
+    None => {
+      let factory = create_deno_json(&flags, &options)?;
+      let options = factory.cli_options()?.clone();
+      (
+        factory,
+        Some(
+          DenoConfig::from_options(&options)?.expect("Just created deno.json"),
+        ),
+      )
+    }
+  };
+  assert!(deno_config.is_some() || npm_config.is_some());
 
-  let config_specifier = config_file.specifier();
-  if config_specifier.scheme() != "file" {
-    bail!("Can't add dependencies to a remote configuration file");
-  }
-  let config_file_path = config_specifier.to_file_path().unwrap();
+  let npm_config = if let Some(config) = npm_config {
+    Some(MutConfig::new(config.into()).await?)
+  } else {
+    None
+  };
+  let deno_config = if let Some(config) = deno_config {
+    Some(MutConfig::new(config.into()).await?)
+  } else {
+    None
+  };
 
   let http_client = cli_factory.http_client_provider();
 
@@ -527,200 +472,18 @@ pub async fn add_(
     }
   }
 
-  let config_file_contents = {
-    let contents = tokio::fs::read_to_string(&config_file_path).await.unwrap();
-    if contents.trim().is_empty() {
-      "{}\n".into()
-    } else {
-      contents
-    }
-  };
-  let ast = jsonc_parser::parse_to_ast(
-    &config_file_contents,
-    &Default::default(),
-    &Default::default(),
-  )?;
-
-  let obj = match ast.value {
-    Some(Value::Object(obj)) => obj,
-    _ => bail!("Failed updating config file due to no object."),
-  };
-
-  if obj.get_string("importMap").is_some() {
-    bail!(
-      concat!(
-        "`deno add` is not supported when configuration file contains an \"importMap\" field. ",
-        "Inline the import map into the Deno configuration file.\n",
-        "    at {}",
-      ),
-      config_specifier
-    );
-  }
-
-  let mut existing_imports = config_file.existing_imports()?;
-
-  let is_npm = config_file.is_npm();
-  for selected_package in selected_packages {
-    log::info!(
-      "Add {}{}{}",
-      crate::colors::green(&selected_package.package_name),
-      crate::colors::gray("@"),
-      selected_package.selected_version
-    );
-
-    if is_npm {
-      let (name, version) = package_json_dependency_entry(selected_package);
-      existing_imports.insert(name, version)
-    } else {
-      existing_imports.insert(
-        selected_package.import_name,
-        format!(
-          "{}@{}",
-          selected_package.package_name, selected_package.version_req
-        ),
-      )
-    };
-  }
-  let mut import_list: Vec<(String, String)> =
-    existing_imports.into_iter().collect();
-
-  import_list.sort_by(|(k1, _), (k2, _)| k1.cmp(k2));
-  let generated_imports = generate_imports(import_list);
-
-  let fmt_config_options = config_file.fmt_options();
-
-  let new_text = update_config_file_content(
-    obj,
-    &config_file_contents,
-    generated_imports,
-    fmt_config_options,
-    config_file.imports_key(),
-    config_file.file_name(),
-  );
-
-  tokio::fs::write(&config_file_path, new_text)
-    .await
-    .context("Failed to update configuration file")?;
-
-  // clear the previously cached package.json from memory before reloading it
-  node_resolver::PackageJsonThreadLocalCache::clear();
-  // make a new CliFactory to pick up the updated config file
-  let cli_factory = CliFactory::from_flags(flags);
-  // cache deps
-  cache_deps::cache_top_level_deps(&cli_factory, Some(jsr_resolver)).await?;
-
-  Ok(())
-}
-
-pub async fn add(
-  flags: Arc<Flags>,
-  add_flags: AddFlags,
-  cmd_name: AddCommandName,
-) -> Result<(), AnyError> {
-  let cli_factory = CliFactory::from_flags(flags.clone());
-  let options = cli_factory.cli_options()?;
-  let npm_config = NpmConfig::from_options(options)?;
-  let (cli_factory, deno_config) = match DenoConfig::from_options(options)? {
-    Some(config) => (cli_factory, Some(config)),
-    None if npm_config.is_some() => (cli_factory, None),
-    None => {
-      let factory = create_deno_json(&flags, &options)?;
-      let options = factory.cli_options()?.clone();
-      (
-        factory,
-        Some(
-          DenoConfig::from_options(&options)?.expect("Just created deno.json"),
-        ),
-      )
-    }
-  };
-  assert!(deno_config.is_some() || npm_config.is_some());
-
-  let npm_config = npm_config
-    .map(|config| MutableManifest::new(config))
-    .transpose()?;
-  let deno_config = deno_config
-    .map(|config| MutableManifest::new(config))
-    .transpose()?;
-
-  let http_client = cli_factory.http_client_provider();
-
-  let mut selected_packages = Vec::with_capacity(add_flags.packages.len());
-  let mut package_reqs = Vec::with_capacity(add_flags.packages.len());
-
-  for entry_text in add_flags.packages.iter() {
-    let req = AddPackageReq::parse(entry_text).with_context(|| {
-      format!("Failed to parse package required: {}", entry_text)
-    })?;
-
-    package_reqs.push(req);
-  }
-
-  let deps_http_cache = cli_factory.global_http_cache()?;
-  let mut deps_file_fetcher = FileFetcher::new(
-    deps_http_cache.clone(),
-    CacheSetting::ReloadAll,
-    true,
-    http_client.clone(),
-    Default::default(),
-    None,
-  );
-  deps_file_fetcher.set_download_log_level(log::Level::Trace);
-  let deps_file_fetcher = Arc::new(deps_file_fetcher);
-  let jsr_resolver = Arc::new(JsrFetchResolver::new(deps_file_fetcher.clone()));
-  let npm_resolver = Arc::new(NpmFetchResolver::new(deps_file_fetcher));
-
-  let package_futures = package_reqs
-    .into_iter()
-    .map({
-      let jsr_resolver = jsr_resolver.clone();
-      move |package_req| {
-        find_package_and_select_version_for_req(
-          jsr_resolver.clone(),
-          npm_resolver.clone(),
-          package_req,
-        )
-        .boxed_local()
-      }
-    })
-    .collect::<Vec<_>>();
-
-  let stream_of_futures = deno_core::futures::stream::iter(package_futures);
-  let mut buffered = stream_of_futures.buffered(10);
-
-  while let Some(package_and_version_result) = buffered.next().await {
-    let package_and_version = package_and_version_result?;
-
-    match package_and_version {
-      PackageAndVersion::NotFound {
-        package: package_name,
-        found_npm_package,
-        package_req,
-      } => {
-        if found_npm_package {
-          log::error!("{} was not found, but a matching npm package exists. Did you mean `{}`?", crate::colors::red(package_name), crate::colors::yellow(format!("deno {cmd_name} npm:{package_req}")));
-        } else {
-          log::error!("{} was not found.", crate::colors::red(package_name));
-        }
-      }
-      PackageAndVersion::Selected(selected) => {
-        selected_packages.push(selected);
-      }
-    }
-  }
-
   let (config_for_npm_deps, config_for_other_deps) =
     match (npm_config, deno_config) {
       (Some(npm), Some(deno)) => (
-        Rc::new(RefCell::new(Some(npm.into_dyn()))),
-        Rc::new(RefCell::new(Some(deno.into_dyn()))),
+        Rc::new(RefCell::new(Some(npm))),
+        Rc::new(RefCell::new(Some(deno))),
       ),
       (Some(npm), None) => {
-        let shared = Rc::new(RefCell::new(Some(npm.into_dyn())));
+        let shared = Rc::new(RefCell::new(Some(npm)));
         (shared.clone(), shared)
       }
       (None, Some(deno)) => {
-        let shared = Rc::new(RefCell::new(Some(deno.into_dyn())));
+        let shared = Rc::new(RefCell::new(Some(deno)));
         (shared.clone(), shared)
       }
       (None, None) => unreachable!(),
@@ -760,26 +523,7 @@ pub async fn add(
     deno_core::futures::future::join_all(commit_futures).await;
 
   for result in commit_futures {
-    match result {
-      Ok(()) => {}
-      Err(CommitError::HasImportMap) => {
-        bail!(
-          "`deno add` is not supported when configuration file contains an \"importMap\" field. Inline the import map into the Deno configuration file."
-        );
-      }
-      Err(CommitError::ParseError(err)) => {
-        bail!("Failed updating config file due to parse error: {err}");
-      }
-      Err(CommitError::ConfigNotObject) => {
-        bail!("Failed updating config file because it isn't an object.");
-      }
-      Err(CommitError::RemoteConfig) => {
-        bail!("Can't add dependencies to a remote configuration file");
-      }
-      Err(CommitError::WriteFileError(err)) => {
-        bail!("Failed to update configuration file: {err}");
-      }
-    }
+    result.context("Failed to update configuration file")?;
   }
 
   // clear the previously cached package.json from memory before reloading it
@@ -1041,7 +785,7 @@ pub async fn remove(
 }
 
 fn update_config_file_content(
-  obj: jsonc_parser::ast::Object,
+  obj: &jsonc_parser::ast::Object,
   config_file_contents: &str,
   generated_imports: String,
   fmt_options: FmtOptionsConfig,

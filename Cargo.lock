@@ -1254,6 +1254,7 @@ dependencies = [
  "which 4.4.2",
  "winapi",
  "winres",
+ "yoke",
  "zeromq",
  "zip",
  "zstd",

@@ -162,6 +162,7 @@ typed-arena = "=2.0.2"
 uuid = { workspace = true, features = ["serde"] }
 walkdir = "=2.3.2"
 which.workspace = true
+yoke.workspace = true
 zeromq.workspace = true
 zip = { version = "2.1.6", default-features = false, features = ["deflate-flate2"] }
 zstd.workspace = true
