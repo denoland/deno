@@ -129,6 +129,7 @@ fn format_aggregated_error(
         index: nested_circular_reference_index,
       }),
       false,
+      vec![],
     );
 
     for line in error_string.trim_start_matches("Uncaught ").lines() {
@@ -143,6 +144,7 @@ fn format_js_error_inner(
   js_error: &JsError,
   circular: Option<IndexedErrorReference>,
   include_source_code: bool,
+  hints: Vec<String>,
 ) -> String {
   let mut s = String::new();
 
@@ -190,7 +192,7 @@ fn format_js_error_inner(
     let error_string = if is_caused_by_circular {
       cyan(format!("[Circular *{}]", circular.unwrap().index)).to_string()
     } else {
-      format_js_error_inner(cause, circular, false)
+      format_js_error_inner(cause, circular, false, vec![])
     };
 
     write!(
@@ -200,6 +202,16 @@ fn format_js_error_inner(
     )
     .unwrap();
   }
+  if !hints.is_empty() {
+    write!(s, "\n\n").unwrap();
+    for (index, hint) in hints.iter().enumerate() {
+      write!(s, "    {} {}", cyan("hint:"), hint).unwrap();
+      if index != (hints.len() - 1) {
+        writeln!(s).unwrap();
+      }
+    }
+  }
+
   s
 }
 
@@ -211,7 +223,21 @@ pub fn format_js_error(js_error: &JsError) -> String {
       index: 1,
     });
 
-  format_js_error_inner(js_error, circular, true)
+  format_js_error_inner(js_error, circular, true, vec![])
+}
+
+/// Format a [`JsError`] for terminal output, printing additional hints.
+pub fn format_js_error_with_hints(
+  js_error: &JsError,
+  hints: Vec<String>,
+) -> String {
+  let circular =
+    find_recursive_cause(js_error).map(|reference| IndexedErrorReference {
+      reference,
+      index: 1,
+    });
+
+  format_js_error_inner(js_error, circular, true, hints)
 }
 
 #[cfg(test)]

@@ -46,7 +46,7 @@ use deno_core::error::JsError;
 use deno_core::futures::FutureExt;
 use deno_core::unsync::JoinHandle;
 use deno_npm::resolution::SnapshotFromLockfileError;
-use deno_runtime::fmt_errors::format_js_error;
+use deno_runtime::fmt_errors::format_js_error_with_hints;
 use deno_runtime::tokio_util::create_and_run_current_thread_with_maybe_metrics;
 use deno_terminal::colors;
 use factory::CliFactory;
@@ -336,21 +336,23 @@ fn exit_with_message(message: &str, code: i32) -> ! {
   std::process::exit(code);
 }
 
-fn maybe_format_commonjs_error(e: &JsError) -> Option<String> {
-  if e.name == Some("ReferenceError".to_string()) {
+fn get_hints_for_commonjs_error(e: &JsError) -> Vec<String> {
+  if e.name.as_deref() == Some("ReferenceError") {
     if let Some(msg) = &e.message {
       if msg.contains("module is not defined")
         || msg.contains("exports is not defined")
       {
-        return Some(format!(
-          "{} Deno doesn't support CommonJS modules without .cjs extension. Rewrite this module to ESM or change the file extension to .cjs",
-          colors::cyan("hint:")
-        ));
+        return vec![
+          "Deno doesn't support CommonJS modules without `.cjs` extension."
+            .to_string(),
+          "Rewrite this module to ESM or change the file extension to `.cjs`."
+            .to_string(),
+        ];
       }
     }
   }
 
-  None
+  vec![]
 }
 
 fn exit_for_error(error: AnyError) -> ! {
@@ -358,11 +360,8 @@ fn exit_for_error(error: AnyError) -> ! {
   let mut error_code = 1;
 
   if let Some(e) = error.downcast_ref::<JsError>() {
-    error_string = format_js_error(e);
-    // TODO(bartlomieju): there must be a smarter way to add hint to `JsError`.
-    if let Some(commonjs_error) = maybe_format_commonjs_error(e) {
-      error_string = format!("{}\n\n    {}", error_string, commonjs_error);
-    }
+    let hints = get_hints_for_commonjs_error(e);
+    error_string = format_js_error_with_hints(e, hints);
   } else if let Some(SnapshotFromLockfileError::IntegrityCheckFailed(e)) =
     error.downcast_ref::<SnapshotFromLockfileError>()
   {
