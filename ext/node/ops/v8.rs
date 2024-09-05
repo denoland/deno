@@ -240,8 +240,12 @@ impl v8::ValueDeserializerImpl for DeserializerDelegate {
         let result = v.call(scope, obj.into(), &[])?;
         match result.try_cast() {
           Ok(res) => return Some(res),
-          Err(e) => {
-            eprintln!("bad return value: {e}");
+          Err(_) => {
+            let msg =
+              FastString::from_static("readHostObject must return an object")
+                .v8_string(scope);
+            let error = v8::Exception::type_error(scope, msg);
+            scope.throw_exception(error);
             return None;
           }
         }
