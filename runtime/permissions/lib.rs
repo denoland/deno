@@ -1331,6 +1331,7 @@ impl UnaryPermission<ImportDescriptor> {
     url: &url::Url,
     api_name: Option<&str>,
   ) -> Result<(), AnyError> {
+    eprintln!("import permission {:#?}", self);
     skip_check_if_is_permission_fully_granted!(self);
     let host = url
       .host_str()
@@ -1608,6 +1609,7 @@ pub struct PermissionsOptions {
   pub allow_write: Option<Vec<PathBuf>>,
   pub deny_write: Option<Vec<PathBuf>>,
   pub prompt: bool,
+  pub allow_imports: Option<Vec<String>>,
 }
 
 impl Permissions {
@@ -1640,6 +1642,7 @@ impl Permissions {
   }
 
   pub fn from_options(opts: &PermissionsOptions) -> Result<Self, AnyError> {
+    eprintln!("allow-imports {:#?}", opts.allow_imports);
     Ok(Self {
       read: Permissions::new_unary(
         opts.allow_read.as_deref(),
@@ -1693,7 +1696,12 @@ impl Permissions {
         opts.prompt,
       )?,
       all: Permissions::new_all(opts.allow_all),
-      import: Permissions::new_unary(None, None, false).unwrap(),
+      import: Permissions::new_unary(
+        opts.allow_imports.as_deref(),
+        None,
+        false,
+      )
+      .unwrap(),
     })
   }
 
@@ -1708,7 +1716,16 @@ impl Permissions {
       run: UnaryPermission::allow_all(),
       ffi: UnaryPermission::allow_all(),
       all: Permissions::new_all(true),
-      import: Permissions::new_unary(None, None, false).unwrap(),
+      import: Permissions::new_unary(
+        Some(&[
+          // "deno.land".to_string(),
+          // "esm.sh".to_string(),
+          // "jsr.io".to_string(),
+        ]),
+        None,
+        false,
+      )
+      .unwrap(),
     }
   }
 

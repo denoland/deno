@@ -638,6 +638,7 @@ pub struct PermissionFlags {
   pub allow_write: Option<Vec<String>>,
   pub deny_write: Option<Vec<String>>,
   pub no_prompt: bool,
+  pub allow_imports: Option<Vec<String>>,
 }
 
 impl PermissionFlags {
@@ -657,6 +658,7 @@ impl PermissionFlags {
       || self.deny_sys.is_some()
       || self.allow_write.is_some()
       || self.deny_write.is_some()
+      || self.allow_imports.is_some()
   }
 
   pub fn to_options(
@@ -759,6 +761,7 @@ impl PermissionFlags {
       )?,
       deny_write,
       prompt: !resolve_no_prompt(self),
+      allow_imports: self.allow_imports.clone(),
     })
   }
 }
@@ -3499,6 +3502,25 @@ Docs: <c>https://docs.deno.com/go/permissions</>
         arg
       }
     )
+    .arg(
+      {
+        let mut arg =   Arg::new("allow-imports")
+          .long("allow-imports")
+          .num_args(0..)
+          .use_value_delimiter(true)
+          .require_equals(true)
+          .value_name("IP_OR_HOSTNAME")
+          .help("Allow importing from remote hosts. Optionally specify allowed IP addresses and host names, with ports as necessary")
+          .value_parser(flags_net::validator)
+          .hide(true)
+          ;
+        if let Some(requires) = requires {
+          arg = arg.requires(requires)
+        }
+        arg
+      }
+      
+    )
 }
 
 fn runtime_args(
@@ -5160,6 +5182,11 @@ fn permission_args_parse(
 
   if matches.get_flag("allow-all") {
     flags.allow_all();
+  }
+
+  if let Some(imports_wl) = matches.remove_many::<String>("allow-imports") {
+    let imports_allowlist = flags_net::parse(imports_wl.collect()).unwrap();
+    flags.permissions.allow_imports = Some(imports_allowlist);
   }
 
   if matches.get_flag("no-prompt") {
