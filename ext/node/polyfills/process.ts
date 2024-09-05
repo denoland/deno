@@ -430,6 +430,14 @@ Process.prototype.config = {
   },
 };
 
+Process.prototype.cpuUsage = function () {
+  console.warn("Warning: process.cpuUsage() is not implemented yet");
+  return {
+    user: 0,
+    system: 0,
+  };
+};
+
 /** https://nodejs.org/api/process.html#process_process_cwd */
 Process.prototype.cwd = cwd;
 
