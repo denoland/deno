@@ -161,7 +161,7 @@ async fn run_subcommand(flags: Arc<Flags>) -> Result<i32, AnyError> {
       tools::jupyter::kernel(flags, jupyter_flags).await
     }),
     DenoSubcommand::Uninstall(uninstall_flags) => spawn_subcommand(async {
-      tools::installer::uninstall(uninstall_flags)
+      tools::installer::uninstall(flags, uninstall_flags).await
     }),
     DenoSubcommand::Lsp => spawn_subcommand(async { lsp::start().await }),
     DenoSubcommand::Lint(lint_flags) => spawn_subcommand(async {
