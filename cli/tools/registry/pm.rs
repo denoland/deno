@@ -180,7 +180,7 @@ impl From<NpmConfig> for DenoOrPackageJson {
 #[derive(yoke::Yokeable)]
 struct JsoncObjectView<'a>(jsonc_parser::ast::Object<'a>);
 
-struct ModifiableConfig {
+struct ConfigUpdater {
   config: DenoOrPackageJson,
   // the `Yoke` is so we can carry the parsed object (which borrows from
   // the source) along with the source itself
@@ -189,7 +189,7 @@ struct ModifiableConfig {
   modified: bool,
 }
 
-impl ModifiableConfig {
+impl ConfigUpdater {
   fn obj(&self) -> &jsonc_parser::ast::Object<'_> {
     &self.ast.get().0
   }
@@ -411,8 +411,8 @@ pub async fn add(
   cmd_name: AddCommandName,
 ) -> Result<(), AnyError> {
   let (cli_factory, npm_config, deno_config) = load_configs(&flags)?;
-  let mut npm_config = ModifiableConfig::maybe_new(npm_config).await?;
-  let mut deno_config = ModifiableConfig::maybe_new(deno_config).await?;
+  let mut npm_config = ConfigUpdater::maybe_new(npm_config).await?;
+  let mut deno_config = ConfigUpdater::maybe_new(deno_config).await?;
 
   if let Some(deno) = &deno_config {
     let specifier = deno.config.specifier();
@@ -719,8 +719,8 @@ pub async fn remove(
   let (_, npm_config, deno_config) = load_configs(&flags)?;
 
   let mut configs = [
-    ModifiableConfig::maybe_new(npm_config).await?,
-    ModifiableConfig::maybe_new(deno_config).await?,
+    ConfigUpdater::maybe_new(npm_config).await?,
+    ConfigUpdater::maybe_new(deno_config).await?,
   ];
 
   let mut removed_packages = vec![];
