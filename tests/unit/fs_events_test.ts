@@ -49,7 +49,7 @@ Deno.test(
   { permissions: { read: true, write: true } },
   async function watchFsBasic() {
     const testDir = await makeTempDir();
-    const iter = Deno.watchFs(testDir);
+    using iter = Deno.watchFs(testDir);
 
     // Asynchronously capture two fs events.
     const eventsPromise = getTwoEvents(iter);
@@ -74,7 +74,7 @@ Deno.test(
   { permissions: { read: true, write: true } },
   async function watchFsRename() {
     const testDir = await makeTempDir();
-    const watcher = Deno.watchFs(testDir);
+    using watcher = Deno.watchFs(testDir);
     async function waitForRename() {
       for await (const event of watcher) {
         if (event.kind === "rename") {
