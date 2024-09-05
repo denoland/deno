@@ -960,7 +960,8 @@ impl<'a> From<&'a str> for RunDescriptor {
     };
     let is_path = s.contains('/');
     #[cfg(windows)]
-    let is_path = is_path || s.contains('\\') || Path::new(&s).is_absolute();
+    let is_path =
+      is_path || s.contains('\\') || Path::new(s.as_ref()).is_absolute();
     if is_path {
       PathBuf::from(s.as_ref()).into()
     } else {
