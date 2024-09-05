@@ -1,5 +1,5 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
-import { core, internals, primordials } from "ext:core/mod.js";
+import { core, primordials } from "ext:core/mod.js";
 import { op_console_size } from "ext:core/ops";
 const {
   Uint32Array,
@@ -15,12 +15,9 @@ function consoleSize() {
   return { columns: size[0], rows: size[1] };
 }
 
+// Note: This function was soft-removed in Deno 2. Its types have been removed,
+// but its implementation has been kept to avoid breaking changes.
 function isatty(rid) {
-  internals.warnOnDeprecatedApi(
-    "Deno.isatty()",
-    new Error().stack,
-    "Use `Deno.stdin.isTerminal()`, `Deno.stdout.isTerminal()`, `Deno.stderr.isTerminal()` or `Deno.FsFile.isTerminal()` instead.",
-  );
   return isTerminal(rid);
 }
 

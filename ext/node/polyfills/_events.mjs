@@ -46,7 +46,6 @@ import {
 } from "ext:deno_node/internal/validators.mjs";
 import { spliceOne } from "ext:deno_node/_utils.ts";
 import { nextTick } from "ext:deno_node/_process/process.ts";
-import { nodeGlobals } from "ext:deno_node/00_globals.js";
 
 const kCapture = Symbol("kCapture");
 const kErrorMonitor = Symbol("events.errorMonitor");
@@ -54,6 +53,11 @@ const kMaxEventTargetListeners = Symbol("events.maxEventTargetListeners");
 const kMaxEventTargetListenersWarned = Symbol(
   "events.maxEventTargetListenersWarned",
 );
+
+let process;
+export function setProcess(p) {
+  process = p;
+}
 
 /**
  * Creates a new `EventEmitter` instance.
@@ -469,7 +473,7 @@ function _addListener(target, type, listener, prepend) {
       w.emitter = target;
       w.type = type;
       w.count = existing.length;
-      nodeGlobals.process.emitWarning(w);
+      process.emitWarning(w);
     }
   }
 

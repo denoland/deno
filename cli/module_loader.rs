@@ -401,7 +401,7 @@ impl<TGraphContainer: ModuleGraphContainer>
 
   fn inner_resolve(
     &self,
-    specifier: &str,
+    raw_specifier: &str,
     referrer: &ModuleSpecifier,
   ) -> Result<ModuleSpecifier, AnyError> {
     if self.shared.node_resolver.in_npm_package(referrer) {
@@ -409,7 +409,7 @@ impl<TGraphContainer: ModuleGraphContainer>
         self
           .shared
           .node_resolver
-          .resolve(specifier, referrer, NodeResolutionMode::Execution)?
+          .resolve(raw_specifier, referrer, NodeResolutionMode::Execution)?
           .into_url(),
       );
     }
@@ -418,7 +418,7 @@ impl<TGraphContainer: ModuleGraphContainer>
     let resolution = match graph.get(referrer) {
       Some(Module::Js(module)) => module
         .dependencies
-        .get(specifier)
+        .get(raw_specifier)
         .map(|d| &d.maybe_code)
         .unwrap_or(&Resolution::None),
       _ => &Resolution::None,
@@ -433,7 +433,7 @@ impl<TGraphContainer: ModuleGraphContainer>
         ));
       }
       Resolution::None => Cow::Owned(self.shared.resolver.resolve(
-        specifier,
+        raw_specifier,
         &deno_graph::Range {
           specifier: referrer.clone(),
           start: deno_graph::Position::zeroed(),
