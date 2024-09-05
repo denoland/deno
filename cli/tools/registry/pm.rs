@@ -177,10 +177,11 @@ impl From<NpmConfig> for DenoOrPackageJson {
   }
 }
 
+/// Wrapper around `jsonc_parser::ast::Object` that can be stored in a `Yoke`
 #[derive(yoke::Yokeable)]
 struct JsoncObjectView<'a>(jsonc_parser::ast::Object<'a>);
 
-struct MutConfig {
+struct ModifiableConfig {
   config: DenoOrPackageJson,
   // the `Yoke` is so we can carry the parsed object (which borrows from
   // the source) along with the source itself
@@ -189,9 +190,12 @@ struct MutConfig {
   modified: bool,
 }
 
-impl MutConfig {
-  fn ast(&self) -> &jsonc_parser::ast::Object<'_> {
+impl ModifiableConfig {
+  fn obj(&self) -> &jsonc_parser::ast::Object<'_> {
     &self.ast.get().0
+  }
+  fn contents(&self) -> &str {
+    self.ast.backing_cart()
   }
   async fn maybe_new(
     config: Option<impl Into<DenoOrPackageJson>>,
@@ -205,7 +209,7 @@ impl MutConfig {
   async fn new(config: DenoOrPackageJson) -> Result<Self, AnyError> {
     let specifier = config.specifier();
     if specifier.scheme() != "file" {
-      bail!("Can't add dependencies to a remote configuration file");
+      bail!("Can't update a remote configuration file");
     }
     let config_file_path = specifier.to_file_path().unwrap();
     let config_file_contents = {
@@ -228,9 +232,12 @@ impl MutConfig {
       })?;
       let obj = match ast.value {
         Some(Value::Object(obj)) => obj,
-        _ => bail!("Failed updating config file because it isn't an object."),
+        _ => bail!(
+          "Failed to update config file at {}, expected an object",
+          specifier
+        ),
       };
-      Ok::<_, AnyError>(JsoncObjectView(obj))
+      Ok(JsoncObjectView(obj))
     })?;
     Ok(Self {
       config,
@@ -269,8 +276,8 @@ impl MutConfig {
     let fmt_config_options = self.config.fmt_options();
 
     let new_text = update_config_file_content(
-      &self.ast.get().0,
-      self.ast.backing_cart(),
+      self.obj(),
+      self.contents(),
       fmt_config_options,
       import_fields.into_iter().map(|(k, v)| {
         (
@@ -405,29 +412,23 @@ pub async fn add(
   cmd_name: AddCommandName,
 ) -> Result<(), AnyError> {
   let (cli_factory, npm_config, deno_config) = load_configs(&flags)?;
+  let mut npm_config = ModifiableConfig::maybe_new(npm_config).await?;
+  let mut deno_config = ModifiableConfig::maybe_new(deno_config).await?;
 
-  let npm_config = if let Some(config) = npm_config {
-    Some(RefCell::new(MutConfig::new(config.into()).await?))
-  } else {
-    None
-  };
-  let deno_config = if let Some(deno) = deno_config {
-    let specifier = deno.config.specifier.to_string();
-    let config = MutConfig::new(deno.into()).await?;
-    if config.ast().get_string("importMap").is_some() {
+  if let Some(deno) = &deno_config {
+    let specifier = deno.config.specifier();
+    if deno.obj().get_string("importMap").is_some() {
       bail!(
         concat!(
-          "`deno add` is not supported when configuration file contains an \"importMap\" field. ",
+          "`deno {}` is not supported when configuration file contains an \"importMap\" field. ",
           "Inline the import map into the Deno configuration file.\n",
           "    at {}",
         ),
+        cmd_name,
         specifier
       );
     }
-    Some(RefCell::new(config))
-  } else {
-    None
-  };
+  }
 
   let http_client = cli_factory.http_client_provider();
 
@@ -495,13 +496,6 @@ pub async fn add(
     }
   }
 
-  let (config_for_npm_deps, config_for_other_deps) =
-    match (npm_config.as_ref(), deno_config.as_ref()) {
-      (Some(npm), Some(deno)) => (npm, deno),
-      (Some(config), None) | (None, Some(config)) => (config, config),
-      (None, None) => unreachable!(),
-    };
-
   for selected_package in selected_packages {
     log::info!(
       "Add {}{}{}",
@@ -511,22 +505,26 @@ pub async fn add(
     );
 
     if selected_package.package_name.starts_with("npm:") {
-      config_for_npm_deps
-        .borrow_mut()
-        .add(selected_package, false);
+      if let Some(npm) = &mut npm_config {
+        npm.add(selected_package, false);
+      } else {
+        deno_config.as_mut().unwrap().add(selected_package, false);
+      }
     } else {
-      config_for_other_deps
-        .borrow_mut()
-        .add(selected_package, false);
+      if let Some(deno) = &mut deno_config {
+        deno.add(selected_package, false);
+      } else {
+        npm_config.as_mut().unwrap().add(selected_package, false);
+      }
     }
   }
 
   let mut commit_futures = vec![];
   if let Some(npm) = npm_config {
-    commit_futures.push(npm.into_inner().commit());
+    commit_futures.push(npm.commit());
   }
   if let Some(deno) = deno_config {
-    commit_futures.push(deno.into_inner().commit());
+    commit_futures.push(deno.commit());
   }
   let commit_futures =
     deno_core::futures::future::join_all(commit_futures).await;
@@ -722,8 +720,8 @@ pub async fn remove(
   let (_, npm_config, deno_config) = load_configs(&flags)?;
 
   let mut configs = [
-    MutConfig::maybe_new(npm_config).await?,
-    MutConfig::maybe_new(deno_config).await?,
+    ModifiableConfig::maybe_new(npm_config).await?,
+    ModifiableConfig::maybe_new(deno_config).await?,
   ];
 
   let mut removed_packages = vec![];
