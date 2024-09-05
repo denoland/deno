@@ -47,6 +47,8 @@ import {
 import { spliceOne } from "ext:deno_node/_utils.ts";
 import { nextTick } from "ext:deno_node/_process/process.ts";
 
+export { addAbortListener } from "./internal/events/abort_listener.mjs";
+
 const kCapture = Symbol("kCapture");
 const kErrorMonitor = Symbol("events.errorMonitor");
 const kMaxEventTargetListeners = Symbol("events.maxEventTargetListeners");
