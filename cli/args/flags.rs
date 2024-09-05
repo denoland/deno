@@ -1347,7 +1347,7 @@ pub fn flags_from_vec(args: Vec<OsString>) -> clap::error::Result<Flags> {
           .is_some_and(|value| value != clap::parser::ValueSource::DefaultValue)
       });
 
-    if has_non_globals || matches.contains_id("script_arg") {
+    if has_non_globals || matches.contains_id("script") {
       run_parse(&mut flags, &mut matches, app, true)?;
     } else {
       handle_repl_flags(
@@ -1689,7 +1689,7 @@ If you specify a directory instead of a file, the path is expanded to all contai
       .arg(watch_arg(false))
       .arg(watch_exclude_arg())
       .arg(no_clear_screen_arg())
-      .arg(script_arg().last(true))
+      .arg(user_args_arg(true))
       .arg(env_file_arg())
   })
 }
@@ -1846,11 +1846,8 @@ On the first invocation with deno will download the proper binary and cache it i
       )
       .arg(executable_ext_arg())
       .arg(env_file_arg())
-      .arg(
-        script_arg()
-          .required_unless_present("help")
-          .trailing_var_arg(true),
-      )
+      .arg(script_arg().required_unless_present("help"))
+      .arg(user_args_arg(false))
   })
 }
 
@@ -2370,7 +2367,7 @@ fn install_subcommand() -> Command {
 
 <g>Local installation</>
 
-Add dependencies to the local project's configuration (<p(245)>deno.json / package.json</>) and installs them 
+Add dependencies to the local project's configuration (<p(245)>deno.json / package.json</>) and installs them
 in the package cache. If no dependency is specified, installs all dependencies listed in the config file.
 If the <p(245)>--entrypoint</> flag is passed, installs the dependencies of the specified entrypoint(s).
 
@@ -2693,10 +2690,11 @@ fn run_args(command: Command, top_level: bool) -> Command {
     .arg(no_clear_screen_arg())
     .arg(executable_ext_arg())
     .arg(if top_level {
-      script_arg().trailing_var_arg(true).hide(true)
+      script_arg().hide(true)
     } else {
-      script_arg().trailing_var_arg(true)
+      script_arg()
     })
+    .arg(user_args_arg(false))
     .arg(env_file_arg())
     .arg(no_code_cache_arg())
 }
@@ -2765,11 +2763,8 @@ Start a server defined in server.ts, watching for changes and running on port 50
     .arg(watch_exclude_arg())
     .arg(no_clear_screen_arg())
     .arg(executable_ext_arg())
-    .arg(
-      script_arg()
-        .required_unless_present_any(["help", "v8-flags"])
-        .trailing_var_arg(true),
-    )
+    .arg(script_arg().required_unless_present_any(["help", "v8-flags"]))
+    .arg(user_args_arg(false))
     .arg(env_file_arg())
     .arg(no_code_cache_arg())
 }
@@ -2780,7 +2775,7 @@ fn task_subcommand() -> Command {
     cstr!(
       "Run a task defined in the configuration file.
   <p(245)>deno task build</>
-  
+
 List all available tasks:
   <p(245)>deno task</>"
     ),
@@ -2808,7 +2803,7 @@ fn test_subcommand() -> Command {
 Evaluate the given modules, run all tests declared with <bold>Deno.</><y>test()</> and report results to standard output:
   <p(245)>deno test src/fetch_test.ts src/signal_test.ts</>
 
-Directory arguments are expanded to all contained files matching the glob <c>{*_,*.,}test.{js,mjs,ts,mts,jsx,tsx}</> 
+Directory arguments are expanded to all contained files matching the glob <c>{*_,*.,}test.{js,mjs,ts,mts,jsx,tsx}</>
 or <c>**/__tests__/**</>:
  <p(245)>deno test src/</>
 
@@ -2920,7 +2915,7 @@ or <c>**/__tests__/**</>:
       )
       .arg(watch_exclude_arg())
       .arg(no_clear_screen_arg())
-      .arg(script_arg().last(true))
+      .arg(user_args_arg(true))
       .arg(
         Arg::new("junit-path")
           .long("junit-path")
@@ -3845,19 +3840,25 @@ fn check_arg(checks_local_by_default: bool) -> Arg {
 }
 
 fn script_arg() -> Arg {
-  Arg::new("script_arg")
-    .num_args(0..)
-    .action(ArgAction::Append)
-    // NOTE: these defaults are provided
-    // so `deno run --v8-flags=--help` works
+  Arg::new("script")
+    .num_args(1)
+    // NOTE: these defaults are provided so `deno run --v8-flags=--help` works
     // without specifying file to run.
     .default_value_ifs([
       ("v8-flags", "--help", Some("_")),
       ("v8-flags", "-help", Some("_")),
     ])
     .help("Script arg")
-    .value_name("SCRIPT_ARG")
+    .value_name("SCRIPT")
     .value_hint(ValueHint::FilePath)
+}
+
+fn user_args_arg(last: bool) -> Arg {
+  Arg::new("user_args")
+    .num_args(0..)
+    .value_name("ARGS")
+    .trailing_var_arg(!last)
+    .last(last)
 }
 
 fn lock_arg() -> Arg {
@@ -4121,10 +4122,8 @@ fn bench_parse(flags: &mut Flags, matches: &mut ArgMatches) {
 
   let filter = matches.remove_one::<String>("filter");
 
-  if matches.contains_id("script_arg") {
-    flags
-      .argv
-      .extend(matches.remove_many::<String>("script_arg").unwrap());
+  if let Some(args) = matches.remove_many::<String>("user_args") {
+    flags.argv.extend(args);
   }
 
   let include = if let Some(files) = matches.remove_many::<String>("files") {
@@ -4176,9 +4175,8 @@ fn compile_parse(flags: &mut Flags, matches: &mut ArgMatches) {
   flags.type_check_mode = TypeCheckMode::Local;
   runtime_args_parse(flags, matches, true, false);
 
-  let mut script = matches.remove_many::<String>("script_arg").unwrap();
-  let source_file = script.next().unwrap();
-  let args = script.collect();
+  let source_file = matches.remove_one::<String>("script").unwrap();
+  let args = matches.remove_many::<String>("user_args").unwrap_or_default().collect();
   let output = matches.remove_one::<String>("output");
   let target = matches.remove_one::<String>("target");
   let icon = matches.remove_one::<String>("icon");
@@ -4645,18 +4643,20 @@ fn run_parse(
 
   flags.code_cache_enabled = !matches.get_flag("no-code-cache");
 
-  if let Some(mut script_arg) = matches.remove_many::<String>("script_arg") {
-    let script = script_arg.next().unwrap();
-    flags.argv.extend(script_arg);
+  if let Some(script) = matches.remove_one::<String>("script") {
+    if let Some(user_args) = matches.remove_many::<String>("user_args") {
+      flags.argv.extend(user_args);
+    }
+
     flags.subcommand = DenoSubcommand::Run(RunFlags {
       script,
       watch: watch_arg_parse_with_paths(matches),
       bare,
     });
   } else if bare {
-    return Err(app.override_usage("deno [OPTIONS] [COMMAND] [SCRIPT_ARG]...").error(
+    return Err(app.override_usage("deno [OPTIONS] [COMMAND] [SCRIPT] [ARGS]...").error(
       clap::error::ErrorKind::MissingRequiredArgument,
-      "[SCRIPT_ARG] may only be omitted with --v8-flags=--help, else to use the repl with arguments, please use the `deno repl` subcommand",
+      "[SCRIPT] may only be omitted with --v8-flags=--help, else to use the repl with arguments, please use the `deno repl` subcommand",
     ));
   } else {
     flags.subcommand = DenoSubcommand::Task(TaskFlags {
@@ -4701,18 +4701,19 @@ fn serve_parse(
   }
   flags.code_cache_enabled = !matches.get_flag("no-code-cache");
 
-  let mut script_arg =
-    matches.remove_many::<String>("script_arg").ok_or_else(|| {
+  let script =
+    matches.remove_one::<String>("script").ok_or_else(|| {
       let mut app = app;
       let subcommand = &mut app.find_subcommand_mut("serve").unwrap();
       subcommand.error(
         clap::error::ErrorKind::MissingRequiredArgument,
-        "[SCRIPT_ARG] may only be omitted with --v8-flags=--help",
+        "[SCRIPT] may only be omitted with --v8-flags=--help",
       )
     })?;
 
-  let script = script_arg.next().unwrap();
-  flags.argv.extend(script_arg);
+  if let Some(user_args) = matches.remove_many::<String>("user_args") {
+    flags.argv.extend(user_args);
+  }
 
   ext_arg_parse(flags, matches);
 
@@ -4808,8 +4809,8 @@ fn test_parse(flags: &mut Flags, matches: &mut ArgMatches) {
     None
   };
 
-  if let Some(script_arg) = matches.remove_many::<String>("script_arg") {
-    flags.argv.extend(script_arg);
+  if let Some(args) = matches.remove_many::<String>("user_args") {
+    flags.argv.extend(args);
   }
 
   let concurrent_jobs = parallel_arg_parse(matches);
@@ -5917,24 +5918,13 @@ mod tests {
   }
 
   #[test]
-  fn has_permission_in_argv() {
-    let r = flags_from_vec(svec!["deno", "run", "x.ts", "--allow-read"]);
-    assert_eq!(r.unwrap().has_permission_in_argv(), true);
-
-    let r = flags_from_vec(svec!["deno", "x.ts", "--deny-read"]);
-    assert_eq!(r.unwrap().has_permission_in_argv(), true);
-
-    let r = flags_from_vec(svec!["deno", "run", "x.ts"]);
-    assert_eq!(r.unwrap().has_permission_in_argv(), false);
-  }
-
-  #[test]
   fn script_args() {
     let r = flags_from_vec(svec![
       "deno",
       "run",
       "--allow-net",
       "gist.ts",
+      "--",
       "--title",
       "X"
     ]);
@@ -6064,7 +6054,7 @@ mod tests {
         subcommand: DenoSubcommand::Run(RunFlags::new_default(
           "script.ts".to_string(),
         )),
-        argv: svec!["--", "-D", "--allow-net"],
+        argv: svec!["-D", "--allow-net"],
         permissions: PermissionFlags {
           allow_write: Some(vec![]),
           ..Default::default()
@@ -8067,21 +8057,25 @@ mod tests {
         subcommand: DenoSubcommand::Run(RunFlags::new_default(
           "script.ts".to_string(),
         )),
-        argv: svec!["--allow-read", "--allow-net"],
         code_cache_enabled: true,
+        permissions: PermissionFlags {
+          allow_net: Some(vec![]),
+          allow_read: Some(vec![]),
+          ..PermissionFlags::default()
+        },
         ..Flags::default()
       }
     );
     let r = flags_from_vec(svec![
       "deno",
       "run",
+      "--allow-net",
       "--location",
       "https:foo",
       "--allow-read",
       "script.ts",
-      "--allow-net",
       "-r",
-      "--help",
+      "--",
       "--foo",
       "bar"
     ]);
@@ -8096,7 +8090,8 @@ mod tests {
           allow_read: Some(vec![]),
           ..Default::default()
         },
-        argv: svec!["--allow-net", "-r", "--help", "--foo", "bar"],
+        argv: svec!["--foo", "bar"],
+        reload: true,
         code_cache_enabled: true,
         ..Flags::default()
       }
@@ -10467,10 +10462,10 @@ mod tests {
     let r = flags_from_vec(svec!["deno", "--no-config"]);
 
     let err = r.unwrap_err();
-    assert!(err.to_string().contains("error: [SCRIPT_ARG] may only be omitted with --v8-flags=--help, else to use the repl with arguments, please use the `deno repl` subcommand"));
+    assert!(err.to_string().contains("error: [SCRIPT] may only be omitted with --v8-flags=--help, else to use the repl with arguments, please use the `deno repl` subcommand"));
     assert!(err
       .to_string()
-      .contains("Usage: deno [OPTIONS] [COMMAND] [SCRIPT_ARG]..."));
+      .contains("Usage: deno [OPTIONS] [COMMAND] [SCRIPT] [ARGS]..."));
   }
 
   #[test]
