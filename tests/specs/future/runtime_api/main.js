@@ -15,11 +15,6 @@ console.log("Deno.seekSync is", Deno.seekSync);
 const tcpPort = 4509;
 const tcpListener = Deno.listen({ port: tcpPort });
 console.log("Deno.Listener.prototype.rid is", tcpListener.rid);
-
-const tcpConn = await Deno.connect({ port: tcpPort });
-console.log("Deno.Conn.prototype.rid is", tcpConn.rid);
-
-tcpConn.close();
 tcpListener.close();
 
 // Unix

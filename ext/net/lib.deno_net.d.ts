@@ -83,14 +83,6 @@ declare namespace Deno {
     readonly localAddr: A;
     /** The remote address of the connection. */
     readonly remoteAddr: A;
-    /**
-     * The resource ID of the connection.
-     *
-     * @deprecated This will be removed in Deno 2.0. See the
-     * {@link https://docs.deno.com/runtime/manual/advanced/migrate_deprecations | Deno 1.x to 2.x Migration Guide}
-     * for migration instructions.
-     */
-    readonly rid: number;
     /** Shuts down (`shutdown(2)`) the write side of the connection. Most
      * callers should just use `close()`. */
     closeWrite(): Promise<void>;

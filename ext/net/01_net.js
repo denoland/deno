@@ -101,28 +101,13 @@ class Conn {
   #writable;
 
   constructor(rid, remoteAddr, localAddr) {
-    if (internals.future) {
-      ObjectDefineProperty(this, "rid", {
-        enumerable: false,
-        value: undefined,
-      });
-    }
-    ObjectDefineProperty(this, internalRidSymbol, {
+    ObjectDefineProperty(this, "rid", {
       enumerable: false,
-      value: rid,
+      value: undefined,
     });
     this.#rid = rid;
     this.#remoteAddr = remoteAddr;
     this.#localAddr = localAddr;
-  }
-
-  get rid() {
-    internals.warnOnDeprecatedApi(
-      "Deno.Conn.rid",
-      new Error().stack,
-      "Use `Deno.Conn` instance methods instead.",
-    );
-    return this.#rid;
   }
 
   get remoteAddr() {
