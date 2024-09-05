@@ -616,7 +616,6 @@ impl CliFactory {
           self.parsed_source_cache().clone(),
           cli_options.maybe_lockfile().cloned(),
           self.maybe_file_watcher_reporter().clone(),
-          self.emit_cache()?.clone(),
           self.file_fetcher()?.clone(),
           self.global_http_cache()?.clone(),
         )))
