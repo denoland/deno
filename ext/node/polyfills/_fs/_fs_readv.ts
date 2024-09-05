@@ -15,6 +15,7 @@ import { maybeCallback } from "ext:deno_node/_fs/_fs_common.ts";
 import { validateInteger } from "ext:deno_node/internal/validators.mjs";
 import * as io from "ext:deno_io/12_io.js";
 import * as fs from "ext:deno_fs/30_fs.js";
+import { op_fs_seek_async } from "ext:core/ops";
 
 type Callback = (
   err: ErrnoException | null,
@@ -56,7 +57,7 @@ export function readv(
     position: number | null,
   ) => {
     if (typeof position === "number") {
-      await fs.seek(fd, position, io.SeekMode.Start);
+      await op_fs_seek_async(fd, position, io.SeekMode.Start);
     }
 
     let readTotal = 0;

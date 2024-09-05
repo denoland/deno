@@ -18,6 +18,7 @@ import {
   validateInteger,
 } from "ext:deno_node/internal/validators.mjs";
 import { isArrayBufferView } from "ext:deno_node/internal/util/types.ts";
+import { op_fs_seek_async, op_fs_seek_sync } from "ext:core/ops";
 
 type readSyncOptions = {
   offset: number;
@@ -119,15 +120,19 @@ export function read(
     try {
       let nread: number | null;
       if (typeof position === "number" && position >= 0) {
-        const currentPosition = await fs.seek(fd, 0, io.SeekMode.Current);
+        const currentPosition = await op_fs_seek_async(
+          fd,
+          0,
+          io.SeekMode.Current,
+        );
         // We use sync calls below to avoid being affected by others during
         // these calls.
-        fs.seekSync(fd, position, io.SeekMode.Start);
+        op_fs_seek_sync(fd, position, io.SeekMode.Start);
         nread = io.readSync(
           fd,
           arrayBufferViewToUint8Array(buffer).subarray(offset, offset + length),
         );
-        fs.seekSync(fd, currentPosition, io.SeekMode.Start);
+        op_fs_seek_sync(fd, currentPosition, io.SeekMode.Start);
       } else {
         nread = await io.read(
           fd,

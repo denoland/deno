@@ -19,6 +19,7 @@ import {
 } from "ext:deno_node/internal/fs/utils.mjs";
 import { isArrayBufferView } from "ext:deno_node/internal/util/types.ts";
 import { maybeCallback } from "ext:deno_node/_fs/_fs_common.ts";
+import { op_fs_seek_async } from "ext:core/ops";
 
 export function writeSync(fd, buffer, offset, length, position) {
   fd = getValidatedFd(fd);
@@ -70,7 +71,7 @@ export function write(fd, buffer, offset, length, position, callback) {
   const innerWrite = async (fd, buffer, offset, length, position) => {
     buffer = arrayBufferViewToUint8Array(buffer);
     if (typeof position === "number") {
-      await fs.seek(fd, position, io.SeekMode.Start);
+      await op_fs_seek_async(fd, position, io.SeekMode.Start);
     }
     let currentOffset = offset;
     const end = offset + length;
