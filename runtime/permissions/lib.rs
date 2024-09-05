@@ -981,9 +981,12 @@ impl From<PathBuf> for RunDescriptor {
 
 impl<'a> From<&'a Path> for RunDescriptor {
   fn from(p: &'a Path) -> Self {
-    #[cfg(windows)]
-    let p = PathBuf::from(p.to_string_lossy().to_lowercase());
-    match resolve_from_cwd(p) {
+    let p = if cfg!(windows) {
+      Cow::Owned(PathBuf::from(p.to_string_lossy().to_lowercase()))
+    } else {
+      Cow::Borrowed(p)
+    };
+    match resolve_from_cwd(p.as_ref()) {
       // ok, won't ever get here if not using a real file system
       #[allow(clippy::disallowed_methods)]
       Ok(p) => match p.canonicalize() {
