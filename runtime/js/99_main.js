@@ -802,10 +802,6 @@ function bootstrapMainRuntime(runtimeOptions, warmup = false) {
       delete globalThis.window;
       delete Deno.Buffer;
       delete Deno.FsFile.prototype.rid;
-      delete Deno.funlock;
-      delete Deno.funlockSync;
-      delete Deno.seek;
-      delete Deno.seekSync;
     }
   } else {
     // Warmup
@@ -965,10 +961,6 @@ function bootstrapWorkerRuntime(
     if (internals.future) {
       delete Deno.Buffer;
       delete Deno.FsFile.prototype.rid;
-      delete Deno.funlock;
-      delete Deno.funlockSync;
-      delete Deno.seek;
-      delete Deno.seekSync;
     }
   } else {
     // Warmup

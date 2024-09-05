@@ -735,8 +735,8 @@ pub fn enhanced_resolution_error_message(error: &ResolutionError) -> String {
   } else {
     get_import_prefix_missing_error(error).map(|specifier| {
       format!(
-        "If you want to use a JSR or npm package, try running `deno add {}`",
-        specifier
+        "If you want to use a JSR or npm package, try running `deno add jsr:{}` or `deno add npm:{}`",
+        specifier, specifier
       )
     })
   };
@@ -881,24 +881,29 @@ fn get_import_prefix_missing_error(error: &ResolutionError) -> Option<&str> {
   let mut maybe_specifier = None;
   if let ResolutionError::InvalidSpecifier {
     error: SpecifierError::ImportPrefixMissing { specifier, .. },
-    ..
+    range,
   } = error
   {
-    maybe_specifier = Some(specifier);
-  } else if let ResolutionError::ResolverError { error, .. } = error {
-    match error.as_ref() {
-      ResolveError::Specifier(specifier_error) => {
-        if let SpecifierError::ImportPrefixMissing { specifier, .. } =
-          specifier_error
-        {
-          maybe_specifier = Some(specifier);
+    if range.specifier.scheme() == "file" {
+      maybe_specifier = Some(specifier);
+    }
+  } else if let ResolutionError::ResolverError { error, range, .. } = error {
+    if range.specifier.scheme() == "file" {
+      match error.as_ref() {
+        ResolveError::Specifier(specifier_error) => {
+          if let SpecifierError::ImportPrefixMissing { specifier, .. } =
+            specifier_error
+          {
+            maybe_specifier = Some(specifier);
+          }
         }
-      }
-      ResolveError::Other(other_error) => {
-        if let Some(SpecifierError::ImportPrefixMissing { specifier, .. }) =
-          other_error.downcast_ref::<SpecifierError>()
-        {
-          maybe_specifier = Some(specifier);
+        ResolveError::Other(other_error) => {
+          if let Some(SpecifierError::ImportPrefixMissing {
+            specifier, ..
+          }) = other_error.downcast_ref::<SpecifierError>()
+          {
+            maybe_specifier = Some(specifier);
+          }
         }
       }
     }
