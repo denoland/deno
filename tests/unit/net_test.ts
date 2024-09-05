@@ -443,7 +443,7 @@ Deno.test(
         // Note: we have to do the test this way as different OS's have
         // different UDP size limits enabled, so we will just ensure if
         // an error is thrown it is the one we are expecting.
-        assert(err.message.match(rx));
+        assert((err as Error).message.match(rx));
         alice.close();
         bob.close();
         return;

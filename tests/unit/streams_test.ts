@@ -298,7 +298,7 @@ for (
       await core.read(rid, new Uint8Array(1));
       fail();
     } catch (e) {
-      assertEquals(e.message, `Uh oh (${type})!`);
+      assertEquals((e as Error).message, `Uh oh (${type})!`);
     }
     core.close(rid);
   });
@@ -429,7 +429,7 @@ function createStreamTest(
           fail();
         } catch (e) {
           // We expect this to be thrown
-          assertEquals(e.message, "Expected error!");
+          assertEquals((e as Error).message, "Expected error!");
         }
       } else {
         const buffer = new Uint8Array(1);
@@ -471,7 +471,7 @@ for (const packetCount of [1, 1024]) {
       }
       fail();
     } catch (e) {
-      assertEquals(e.message, "operation canceled");
+      assertEquals((e as Error).message, "operation canceled");
     }
     assertEquals(await promise, "resource closed");
   });

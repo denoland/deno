@@ -161,7 +161,7 @@ Deno.test(
     try {
       await Deno.readFile("definitely-not-found.json");
     } catch (e) {
-      assertEquals(e.code, "ENOENT");
+      assertEquals((e as { code: string }).code, "ENOENT");
     }
   },
 );
@@ -172,7 +172,7 @@ Deno.test(
     try {
       await Deno.readFile("tests/testdata/assets/");
     } catch (e) {
-      assertEquals(e.code, "EISDIR");
+      assertEquals((e as { code: string }).code, "EISDIR");
     }
   },
 );
