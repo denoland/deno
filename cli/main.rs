@@ -46,7 +46,8 @@ use deno_core::error::JsError;
 use deno_core::futures::FutureExt;
 use deno_core::unsync::JoinHandle;
 use deno_npm::resolution::SnapshotFromLockfileError;
-use deno_runtime::fmt_errors::format_js_error_with_hints;
+use deno_runtime::fmt_errors::format_js_error_with_suggestions;
+use deno_runtime::fmt_errors::FixSuggestion;
 use deno_runtime::tokio_util::create_and_run_current_thread_with_maybe_metrics;
 use deno_terminal::colors;
 use factory::CliFactory;
@@ -336,17 +337,15 @@ fn exit_with_message(message: &str, code: i32) -> ! {
   std::process::exit(code);
 }
 
-fn get_hints_for_commonjs_error(e: &JsError) -> Vec<String> {
+fn get_suggestions_for_commonjs_error(e: &JsError) -> Vec<FixSuggestion> {
   if e.name.as_deref() == Some("ReferenceError") {
     if let Some(msg) = &e.message {
       if msg.contains("module is not defined")
         || msg.contains("exports is not defined")
       {
         return vec![
-          "Deno doesn't support CommonJS modules without `.cjs` extension."
-            .to_string(),
-          "Rewrite this module to ESM or change the file extension to `.cjs`."
-            .to_string(),
+          FixSuggestion::info("Deno does not support CommonJS modules without `.cjs` extension."),
+          FixSuggestion::hint("Rewrite this module to ESM or change the file extension to `.cjs`."),
         ];
       }
     }
@@ -360,8 +359,8 @@ fn exit_for_error(error: AnyError) -> ! {
   let mut error_code = 1;
 
   if let Some(e) = error.downcast_ref::<JsError>() {
-    let hints = get_hints_for_commonjs_error(e);
-    error_string = format_js_error_with_hints(e, hints);
+    let suggestions = get_suggestions_for_commonjs_error(e);
+    error_string = format_js_error_with_suggestions(e, suggestions);
   } else if let Some(SnapshotFromLockfileError::IntegrityCheckFailed(e)) =
     error.downcast_ref::<SnapshotFromLockfileError>()
   {
