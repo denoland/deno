@@ -19,8 +19,6 @@ mod check;
 mod compile;
 #[path = "coverage_tests.rs"]
 mod coverage;
-#[path = "doc_tests.rs"]
-mod doc;
 #[path = "eval_tests.rs"]
 mod eval;
 #[path = "flags_tests.rs"]

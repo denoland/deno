@@ -1,0 +1,5 @@
+Defined in [WILDCARD]/deno_doc.ts:2:1
+
+function foo(): void
+  Some JSDoc
+

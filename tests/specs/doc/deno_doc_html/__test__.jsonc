@@ -1,0 +1,11 @@
+{
+  "args": [
+    "doc",
+    "--html",
+    "--name=MyLib",
+    "--output=temp_dir_path_here",
+    "referenced_private_types_fixed.ts"
+  ],
+  "output": "[WILDCARD]",
+  "exitCode": 0
+}
