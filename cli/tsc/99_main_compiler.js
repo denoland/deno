@@ -1358,6 +1358,7 @@ delete Object.prototype.__proto__;
     "BufferEncoding",
     "BufferConstructor",
     "WithImplicitCoercion",
+    "Buffer",
     "Console",
     "ImportMeta",
     "setTimeout",
