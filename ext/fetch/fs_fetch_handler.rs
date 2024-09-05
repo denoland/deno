@@ -43,7 +43,7 @@ impl FetchHandler for FsFetchHandler {
       Ok::<_, ()>(response)
     }
     .map_err(move |_| {
-      type_error("NetworkError when attempting to fetch resource.")
+      type_error("NetworkError when attempting to fetch resource")
     })
     .or_cancel(&cancel_handle)
     .boxed_local();

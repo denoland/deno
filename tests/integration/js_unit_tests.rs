@@ -116,22 +116,40 @@ util::unit_test_factory!(
 fn js_unit_test(test: String) {
   let _g = util::http_server();
 
-  let deno = util::deno_cmd()
+  let mut deno = util::deno_cmd()
     .current_dir(util::root_path())
     .arg("test")
     .arg("--config")
     .arg(util::deno_config_path())
     .arg("--no-lock")
-    .arg("--unstable")
+    // TODO(bartlomieju): would be better if we could apply this unstable
+    // flag to particular files, but there's many of them that rely on unstable
+    // net APIs (`reusePort` in `listen` and `listenTls`; `listenDatagram`, `createHttpClient`)
+    .arg("--unstable-net")
+    .arg("--unstable-http")
     .arg("--location=http://127.0.0.1:4545/")
     .arg("--no-prompt");
 
+  if test == "broadcast_channel_test" {
+    deno = deno.arg("--unstable-broadcast-channel");
+  }
+
+  if test == "cron_test" {
+    deno = deno.arg("--unstable-cron");
+  }
+
+  if test.contains("kv_") {
+    deno = deno.arg("--unstable-kv");
+  }
+
+  if test == "worker_permissions_test" || test == "worker_test" {
+    deno = deno.arg("--unstable-worker-options");
+  }
+
   // TODO(mmastrac): it would be better to just load a test CA for all tests
-  let deno = if test == "websocket_test" || test == "tls_sni_test" {
-    deno.arg("--unsafely-ignore-certificate-errors")
-  } else {
-    deno
-  };
+  if test == "websocket_test" || test == "tls_sni_test" {
+    deno = deno.arg("--unsafely-ignore-certificate-errors");
+  }
 
   let mut deno = deno
     .arg("-A")
