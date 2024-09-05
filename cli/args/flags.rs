@@ -4956,7 +4956,7 @@ fn permission_args_parse(flags: &mut Flags, matches: &mut ArgMatches) {
   if let Some(env_wl) = matches.remove_many::<String>("allow-env") {
     let env_permissions: Vec<String> = env_wl.collect();
     for env_var in &env_permissions {
-      if env_var.contains('*') {
+      if env_var.starts_with("*_") || env_var.ends_with("_*") {
         if let Err(e) =
           deno_runtime::deno_permissions::add_wildcard_permission(env_var)
         {

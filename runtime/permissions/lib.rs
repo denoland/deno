@@ -200,8 +200,6 @@ impl PermissionState {
               if env_var_name.starts_with(prefix) {
                 return (Ok(()), true, false);
               }
-            } else if env_var.contains('*') {
-              return (Ok(()), true, false);
             }
           }
         }

@@ -17,10 +17,6 @@
           "output": "Hello\tworld,\nfarewell\ndone\n"
         },
         {
-          "args": "run --allow-env=* main.js",
-          "output": "Hello\tworld,\nfarewell\ndone\n"
-        },
-        {
           "args": "run --allow-env main.js",
           "output": "Hello\tworld,\nfarewell\ndone\n"
         },
