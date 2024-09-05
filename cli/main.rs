@@ -339,8 +339,13 @@ fn exit_with_message(message: &str, code: i32) -> ! {
 fn maybe_format_commonjs_error(e: &JsError) -> Option<String> {
   if e.name == Some("ReferenceError".to_string()) {
     if let Some(msg) = &e.message {
-      if msg.contains("module is not defined") {
-        return Some(format!("{} Deno doesn't support CommonJS modules, change problematic module into an ES module.", colors::cyan("hint:")));
+      if msg.contains("module is not defined")
+        || msg.contains("exports is not defined")
+      {
+        return Some(format!(
+          "{} Deno doesn't support CommonJS modules without .cjs extension. Rewrite this module to ESM or change the file extension to .cjs",
+          colors::cyan("hint:")
+        ));
       }
     }
   }
