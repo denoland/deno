@@ -431,7 +431,7 @@ Process.prototype.config = {
 };
 
 Process.prototype.cpuUsage = function () {
-  console.warn("Warning: process.cpuUsage() is not implemented yet");
+  warnNotImplemented("process.cpuUsage()");
   return {
     user: 0,
     system: 0,
