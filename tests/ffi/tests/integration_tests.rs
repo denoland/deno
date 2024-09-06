@@ -300,6 +300,6 @@ fn ffi_callback_errors_test() {
   assert_eq!(stdout, expected);
   assert_eq!(
     stderr,
-    "Illegal unhandled exception in nonblocking callback.\n".repeat(3)
+    "Illegal unhandled exception in nonblocking callback\n".repeat(3)
   );
 }

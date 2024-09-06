@@ -99,7 +99,7 @@ function createResponseBodyStream(responseBodyRid, terminator) {
 async function mainFetch(req, recursive, terminator) {
   if (req.blobUrlEntry !== null) {
     if (req.method !== "GET") {
-      throw new TypeError("Blob URL fetch only supports GET method.");
+      throw new TypeError("Blob URL fetch only supports GET method");
     }
 
     const body = new InnerBody(req.blobUrlEntry.stream());
@@ -145,7 +145,7 @@ async function mainFetch(req, recursive, terminator) {
         reqRid = resourceForReadableStream(stream, req.body.length);
       }
     } else {
-      throw TypeError("invalid body");
+      throw new TypeError("Invalid body");
     }
   }
 
@@ -441,13 +441,15 @@ function handleWasmStreaming(source, rid) {
         typeof contentType !== "string" ||
         StringPrototypeToLowerCase(contentType) !== "application/wasm"
       ) {
-        throw new TypeError("Invalid WebAssembly content type.");
+        throw new TypeError("Invalid WebAssembly content type");
       }
     }
 
     // 2.5.
     if (!res.ok) {
-      throw new TypeError(`HTTP status code ${res.status}`);
+      throw new TypeError(
+        `Failed to receive WebAssembly content: HTTP status code ${res.status}`,
+      );
     }
 
     // Pass the resolved URL to v8.

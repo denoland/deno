@@ -20,7 +20,6 @@ import {
   writableStreamForRid,
 } from "ext:deno_web/06_streams.js";
 
-const DEFAULT_BUFFER_SIZE = 32 * 1024;
 // Seek whence values.
 // https://golang.org/pkg/io/#pkg-constants
 const SeekMode = {
@@ -32,79 +31,6 @@ const SeekMode = {
   Current: 1,
   End: 2,
 };
-
-async function copy(
-  src,
-  dst,
-  options,
-) {
-  internals.warnOnDeprecatedApi(
-    "Deno.copy()",
-    new Error().stack,
-    "Use `copy()` from `https://jsr.io/@std/io/doc/copy/~` instead.",
-  );
-  let n = 0;
-  const bufSize = options?.bufSize ?? DEFAULT_BUFFER_SIZE;
-  const b = new Uint8Array(bufSize);
-  let gotEOF = false;
-  while (gotEOF === false) {
-    const result = await src.read(b);
-    if (result === null) {
-      gotEOF = true;
-    } else {
-      let nwritten = 0;
-      while (nwritten < result) {
-        nwritten += await dst.write(
-          TypedArrayPrototypeSubarray(b, nwritten, result),
-        );
-      }
-      n += nwritten;
-    }
-  }
-  return n;
-}
-
-async function* iter(
-  r,
-  options,
-) {
-  internals.warnOnDeprecatedApi(
-    "Deno.iter()",
-    new Error().stack,
-    "Use `ReadableStream` instead.",
-  );
-  const bufSize = options?.bufSize ?? DEFAULT_BUFFER_SIZE;
-  const b = new Uint8Array(bufSize);
-  while (true) {
-    const result = await r.read(b);
-    if (result === null) {
-      break;
-    }
-
-    yield TypedArrayPrototypeSubarray(b, 0, result);
-  }
-}
-
-function* iterSync(
-  r,
-  options,
-) {
-  internals.warnOnDeprecatedApi(
-    "Deno.iterSync()",
-    new Error().stack,
-    "Use `ReadableStream` instead.",
-  );
-  const bufSize = options?.bufSize ?? DEFAULT_BUFFER_SIZE;
-  const b = new Uint8Array(bufSize);
-  while (true) {
-    const result = r.readSync(b);
-    if (result === null) {
-      break;
-    }
-
-    yield TypedArrayPrototypeSubarray(b, 0, result);
-  }
-}
 
 function readSync(rid, buffer) {
   if (buffer.length === 0) return 0;
@@ -337,9 +263,6 @@ const stdout = new Stdout();
 const stderr = new Stderr();
 
 export {
-  copy,
-  iter,
-  iterSync,
   read,
   readAll,
   readAllSync,

@@ -1,5 +1,7 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
+// deno-lint-ignore-file no-console
+
 import { assertMatch, assertRejects } from "@std/assert";
 import { Buffer, BufReader, BufWriter } from "@std/io";
 import { TextProtoReader } from "../testdata/run/textproto.ts";
@@ -10,6 +12,7 @@ import {
   assertThrows,
   curlRequest,
   curlRequestWithStdErr,
+  DENO_FUTURE,
   execCode,
   execCode3,
   fail,
@@ -17,7 +20,7 @@ import {
 } from "./test_util.ts";
 
 // Since these tests may run in parallel, ensure this port is unique to this file
-const servePort = 4502;
+const servePort = DENO_FUTURE ? 4511 : 4502;
 
 const {
   upgradeHttpRaw,
@@ -858,6 +861,88 @@ Deno.test(
     await server.finished;
   },
 );
+
+Deno.test({ permissions: { net: true } }, async function validPortString() {
+  const server = Deno.serve({
+    handler: (_request) => new Response(),
+    port: "4501" as unknown as number,
+  });
+  assertEquals(server.addr.transport, "tcp");
+  assertEquals(server.addr.port, 4501);
+  await server.shutdown();
+});
+
+Deno.test({ permissions: { net: true } }, function invalidPortFloat() {
+  assertThrows(
+    () =>
+      Deno.serve({
+        handler: (_request) => new Response(),
+        port: 45.1,
+      }),
+    TypeError,
+    `Invalid port: 45.1`,
+  );
+});
+
+Deno.test({ permissions: { net: true } }, function invalidPortNaN() {
+  assertThrows(
+    () =>
+      Deno.serve({
+        handler: (_request) => new Response(),
+        port: NaN,
+      }),
+    TypeError,
+    `Invalid port: NaN`,
+  );
+});
+
+Deno.test({ permissions: { net: true } }, function invalidPortString() {
+  assertThrows(
+    () =>
+      Deno.serve({
+        handler: (_request) => new Response(),
+        port: "some-non-number-string" as unknown as number,
+      }),
+    TypeError,
+    `Invalid port: 'some-non-number-string'`,
+  );
+});
+
+Deno.test({ permissions: { net: true } }, function invalidPortTooSmall() {
+  assertThrows(
+    () =>
+      Deno.serve({
+        handler: (_request) => new Response(),
+        port: -111,
+      }),
+    RangeError,
+    `Invalid port (out of range): -111`,
+  );
+});
+
+Deno.test({ permissions: { net: true } }, function invalidPortTooLarge() {
+  assertThrows(
+    () =>
+      Deno.serve({
+        handler: (_request) => new Response(),
+        port: 100000,
+      }),
+    RangeError,
+    `Invalid port (out of range): 100000`,
+  );
+});
+
+Deno.test({ permissions: { net: true } }, function invalidPortType() {
+  assertThrows(
+    () =>
+      Deno.serve({
+        handler: (_request) => new Response(),
+        port: true as unknown as number,
+      }),
+    TypeError,
+    `Invalid port (expected number): true`,
+  );
+});
 
 function createUrlTest(
   name: string,
@@ -4105,4 +4190,20 @@ Deno.test({
     Error,
     'Operation `"op_net_listen_unix"` not supported on non-unix platforms.',
   );
+});
+
+Deno.test({
+  name: "onListen callback gets 0.0.0.0 hostname as is",
+}, async () => {
+  const { promise, resolve } = Promise.withResolvers<{ hostname: string }>();
+
+  const server = Deno.serve({
+    handler: (_) => new Response("ok"),
+    hostname: "0.0.0.0",
+    port: 0,
+    onListen: resolve,
+  });
+  const { hostname } = await promise;
+  assertEquals(hostname, "0.0.0.0");
+  await server.shutdown();
 });

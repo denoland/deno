@@ -1,0 +1,9 @@
+{
+  "tempDir": true,
+  "steps": [
+    {
+      "args": "add @std/testing",
+      "output": "add.out"
+    }
+  ]
+}

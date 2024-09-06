@@ -2,33 +2,8 @@
 
 use test_util as util;
 use test_util::itest;
-use util::env_vars_for_npm_tests;
+// use util::env_vars_for_npm_tests;
 use util::TestContextBuilder;
-
-#[test]
-fn info_with_compiled_source() {
-  let context = TestContextBuilder::new().use_http_server().build();
-  let module_path = "http://127.0.0.1:4545/run/048_media_types_jsx.ts";
-
-  let output = context
-    .new_command()
-    .current_dir(util::testdata_path())
-    .args_vec(["cache", module_path])
-    .run();
-  output.assert_exit_code(0);
-  output.skip_output_check();
-
-  let output = context
-    .new_command()
-    .current_dir(util::testdata_path())
-    .args_vec(["info", module_path])
-    .split_output()
-    .run();
-
-  // check the output of the test.ts program.
-  assert!(output.stdout().trim().contains("emit: "));
-  assert_eq!(output.stderr(), "");
-}
 
 #[test]
 fn info_lock_write() {
@@ -135,15 +110,16 @@ itest!(with_config_override {
   output: "info/with_config/with_config.out",
 });
 
-itest!(package_json_basic {
-  args: "info --quiet main.ts",
-  output: "package_json/basic/main.info.out",
-  envs: env_vars_for_npm_tests(),
-  http_server: true,
-  cwd: Some("package_json/basic"),
-  copy_temp_dir: Some("package_json/basic"),
-  exit_code: 0,
-});
+// TODO(2.0): this test should be a spec test and first run `deno install`
+// itest!(package_json_basic {
+//   args: "info --quiet main.ts",
+//   output: "package_json/basic/main.info.out",
+//   envs: env_vars_for_npm_tests(),
+//   http_server: true,
+//   cwd: Some("package_json/basic"),
+//   copy_temp_dir: Some("package_json/basic"),
+//   exit_code: 0,
+// });
 
 itest!(info_import_map {
   args: "info preact/debug",

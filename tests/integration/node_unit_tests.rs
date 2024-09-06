@@ -57,6 +57,7 @@ util::unit_test_factory!(
     assertion_error_test,
     buffer_test,
     child_process_test,
+    cluster_test,
     console_test,
     crypto_cipher_gcm_test = crypto / crypto_cipher_gcm_test,
     crypto_cipher_test = crypto / crypto_cipher_test,
@@ -71,7 +72,6 @@ util::unit_test_factory!(
     dgram_test,
     domain_test,
     fs_test,
-    fetch_test,
     http_test,
     http2_test,
     inspector_test,
@@ -96,6 +96,7 @@ util::unit_test_factory!(
     util_test,
     v8_test,
     vm_test,
+    wasi_test,
     worker_threads_test,
     zlib_test
   ]

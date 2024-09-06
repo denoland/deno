@@ -9,6 +9,8 @@ const TYPESCRIPT: &str = env!("TS_VERSION");
 const CARGO_PKG_VERSION: &str = env!("CARGO_PKG_VERSION");
 // TODO(bartlomieju): ideally we could remove this const.
 const IS_CANARY: bool = option_env!("DENO_CANARY").is_some();
+// TODO(bartlomieju): this is temporary, to allow Homebrew to cut RC releases as well
+const IS_RC: bool = option_env!("DENO_RC").is_some();
 
 pub static DENO_VERSION_INFO: Lazy<DenoVersionInfo> = Lazy::new(|| {
   let release_channel = libsui::find_section("denover")
@@ -17,14 +19,15 @@ pub static DENO_VERSION_INFO: Lazy<DenoVersionInfo> = Lazy::new(|| {
     .unwrap_or({
       if IS_CANARY {
         ReleaseChannel::Canary
+      } else if IS_RC {
+        ReleaseChannel::Rc
       } else {
         ReleaseChannel::Stable
       }
     });
 
   DenoVersionInfo {
-    // TODO(bartlomieju): fix further for RC and LTS releases
-    deno: if IS_CANARY {
+    deno: if release_channel == ReleaseChannel::Canary {
       concat!(
         env!("CARGO_PKG_VERSION"),
         "+",
@@ -39,8 +42,7 @@ pub static DENO_VERSION_INFO: Lazy<DenoVersionInfo> = Lazy::new(|| {
     git_hash: GIT_COMMIT_HASH,
 
     // Keep in sync with `deno` field.
-    // TODO(bartlomieju): fix further for RC and LTS releases
-    user_agent: if IS_CANARY {
+    user_agent: if release_channel == ReleaseChannel::Canary {
       concat!(
         "Deno/",
         env!("CARGO_PKG_VERSION"),
@@ -77,7 +79,7 @@ impl DenoVersionInfo {
   /// For stable release, a semver like, eg. `v1.46.2`.
   /// For canary release a full git hash, eg. `9bdab6fb6b93eb43b1930f40987fa4997287f9c8`.
   pub fn version_or_git_hash(&self) -> &'static str {
-    if IS_CANARY {
+    if self.release_channel == ReleaseChannel::Canary {
       self.git_hash
     } else {
       CARGO_PKG_VERSION

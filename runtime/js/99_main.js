@@ -26,8 +26,6 @@ const {
   ArrayPrototypeFilter,
   ArrayPrototypeIncludes,
   ArrayPrototypeMap,
-  ArrayPrototypePop,
-  ArrayPrototypeShift,
   DateNow,
   Error,
   ErrorPrototype,
@@ -43,11 +41,7 @@ const {
   ObjectValues,
   PromisePrototypeThen,
   PromiseResolve,
-  SafeSet,
-  StringPrototypeIncludes,
   StringPrototypePadEnd,
-  StringPrototypeSplit,
-  StringPrototypeTrim,
   Symbol,
   SymbolIterator,
   TypeError,
@@ -62,7 +56,6 @@ import * as version from "ext:runtime/01_version.ts";
 import * as os from "ext:runtime/30_os.js";
 import * as timers from "ext:deno_web/02_timers.js";
 import {
-  customInspect,
   getDefaultInspectOptions,
   getStderrNoColor,
   inspectArgs,
@@ -118,101 +111,8 @@ ObjectDefineProperties(Symbol, {
 let windowIsClosing = false;
 let globalThis_;
 
-let verboseDeprecatedApiWarning = false;
-let deprecatedApiWarningDisabled = false;
-const ALREADY_WARNED_DEPRECATED = new SafeSet();
-
-function warnOnDeprecatedApi(apiName, stack, ...suggestions) {
-  if (deprecatedApiWarningDisabled) {
-    return;
-  }
-
-  if (!verboseDeprecatedApiWarning) {
-    if (ALREADY_WARNED_DEPRECATED.has(apiName)) {
-      return;
-    }
-    ALREADY_WARNED_DEPRECATED.add(apiName);
-    console.error(
-      `%cwarning: %cUse of deprecated "${apiName}" API. This API will be removed in Deno 2. Run again with DENO_VERBOSE_WARNINGS=1 to get more details.`,
-      "color: yellow;",
-      "font-weight: bold;",
-    );
-    return;
-  }
-
-  if (ALREADY_WARNED_DEPRECATED.has(apiName + stack)) {
-    return;
-  }
-
-  // If we haven't warned yet, let's do some processing of the stack trace
-  // to make it more useful.
-  const stackLines = StringPrototypeSplit(stack, "\n");
-  ArrayPrototypeShift(stackLines);
-  while (stackLines.length > 0) {
-    // Filter out internal frames at the top of the stack - they are not useful
-    // to the user.
-    if (
-      StringPrototypeIncludes(stackLines[0], "(ext:") ||
-      StringPrototypeIncludes(stackLines[0], "(node:") ||
-      StringPrototypeIncludes(stackLines[0], "<anonymous>")
-    ) {
-      ArrayPrototypeShift(stackLines);
-    } else {
-      break;
-    }
-  }
-  // Now remove the last frame if it's coming from "ext:core" - this is most likely
-  // event loop tick or promise handler calling a user function - again not
-  // useful to the user.
-  if (
-    stackLines.length > 0 &&
-    StringPrototypeIncludes(stackLines[stackLines.length - 1], "(ext:core/")
-  ) {
-    ArrayPrototypePop(stackLines);
-  }
-
-  let isFromRemoteDependency = false;
-  const firstStackLine = stackLines[0];
-  if (firstStackLine && !StringPrototypeIncludes(firstStackLine, "file:")) {
-    isFromRemoteDependency = true;
-  }
-
-  ALREADY_WARNED_DEPRECATED.add(apiName + stack);
-  console.error(
-    `%cwarning: %cUse of deprecated "${apiName}" API. This API will be removed in Deno 2.`,
-    "color: yellow;",
-    "font-weight: bold;",
-  );
-
-  console.error();
-  console.error(
-    "See the Deno 1 to 2 Migration Guide for more information at https://docs.deno.com/runtime/manual/advanced/migrate_deprecations",
-  );
-  console.error();
-  if (stackLines.length > 0) {
-    console.error("Stack trace:");
-    for (let i = 0; i < stackLines.length; i++) {
-      console.error(`  ${StringPrototypeTrim(stackLines[i])}`);
-    }
-    console.error();
-  }
-
-  for (let i = 0; i < suggestions.length; i++) {
-    const suggestion = suggestions[i];
-    console.error(
-      `%chint: ${suggestion}`,
-      "font-weight: bold;",
-    );
-  }
-
-  if (isFromRemoteDependency) {
-    console.error(
-      `%chint: It appears this API is used by a remote dependency. Try upgrading to the latest version of that dependency.`,
-      "font-weight: bold;",
-    );
-  }
-  console.error();
-}
+// TODO(2.0): remove once all deprecated APIs are removed.
+function warnOnDeprecatedApi() {}
 
 function windowClose() {
   if (!windowIsClosing) {
@@ -535,10 +435,6 @@ function dispatchUnloadEvent() {
 }
 
 let hasBootstrapped = false;
-// Delete the `console` object that V8 automatically adds onto the global wrapper
-// object on context creation. We don't want this console object to shadow the
-// `console` object exposed by the ext/node globalThis proxy.
-delete globalThis.console;
 // Set up global properties shared by main and worker runtime.
 ObjectDefineProperties(globalThis, windowOrWorkerGlobalScope);
 
@@ -623,18 +519,6 @@ const internalSymbol = Symbol("Deno.internal");
 const finalDenoNs = {
   internal: internalSymbol,
   [internalSymbol]: internals,
-  resources() {
-    internals.warnOnDeprecatedApi("Deno.resources()", new Error().stack);
-    return core.resources();
-  },
-  close(rid) {
-    internals.warnOnDeprecatedApi(
-      "Deno.close()",
-      new Error().stack,
-      "Use `closer.close()` instead.",
-    );
-    core.close(rid);
-  },
   ...denoNs,
   // Deno.test and Deno.bench are noops here, but kept for compatibility; so
   // that they don't cause errors when used outside of `deno test`/`deno bench`
@@ -651,19 +535,6 @@ ObjectDefineProperties(finalDenoNs, {
   noColor: core.propGetterOnly(() => op_bootstrap_no_color()),
   args: core.propGetterOnly(opArgs),
   mainModule: core.propGetterOnly(() => op_main_module()),
-  // TODO(kt3k): Remove this export at v2
-  // See https://github.com/denoland/deno/issues/9294
-  customInspect: {
-    __proto__: null,
-    get() {
-      warnOnDeprecatedApi(
-        "Deno.customInspect",
-        new Error().stack,
-        'Use `Symbol.for("Deno.customInspect")` instead.',
-      );
-      return internals.future ? undefined : customInspect;
-    },
-  },
   exitCode: {
     __proto__: null,
     get() {
@@ -708,37 +579,42 @@ function bootstrapMainRuntime(runtimeOptions, warmup = false) {
       6: hasNodeModulesDir,
       7: argv0,
       8: nodeDebug,
-      9: shouldDisableDeprecatedApiWarning,
-      10: shouldUseVerboseDeprecatedApiWarning,
-      11: future,
-      12: mode,
-      13: servePort,
-      14: serveHost,
-      15: serveIsMain,
-      16: serveWorkerCount,
+      9: mode,
+      10: servePort,
+      11: serveHost,
+      12: serveIsMain,
+      13: serveWorkerCount,
     } = runtimeOptions;
 
     if (mode === executionModes.serve) {
       if (serveIsMain && serveWorkerCount) {
+        // deno-lint-ignore no-console
         const origLog = console.log;
+        // deno-lint-ignore no-console
         const origError = console.error;
         const prefix = `[serve-worker-0 ]`;
+        // deno-lint-ignore no-console
         console.log = (...args) => {
           return origLog(prefix, ...new primordials.SafeArrayIterator(args));
         };
+        // deno-lint-ignore no-console
         console.error = (...args) => {
           return origError(prefix, ...new primordials.SafeArrayIterator(args));
         };
       } else if (serveWorkerCount !== null) {
+        // deno-lint-ignore no-console
         const origLog = console.log;
+        // deno-lint-ignore no-console
         const origError = console.error;
         const base = `serve-worker-${serveWorkerCount + 1}`;
         // 15 = "serve-worker-nn".length, assuming
         // serveWorkerCount < 100
         const prefix = `[${StringPrototypePadEnd(base, 15, " ")}]`;
+        // deno-lint-ignore no-console
         console.log = (...args) => {
           return origLog(prefix, ...new primordials.SafeArrayIterator(args));
         };
+        // deno-lint-ignore no-console
         console.error = (...args) => {
           return origError(prefix, ...new primordials.SafeArrayIterator(args));
         };
@@ -761,6 +637,7 @@ function bootstrapMainRuntime(runtimeOptions, warmup = false) {
         if (mode === executionModes.serve && !serve) {
           if (serveIsMain) {
             // Only error if main worker
+            // deno-lint-ignore no-console
             console.error(
               `%cerror: %cdeno serve requires %cexport default { fetch }%c in the main module, did you mean to run \"deno run\"?`,
               "color: yellow;",
@@ -774,6 +651,7 @@ function bootstrapMainRuntime(runtimeOptions, warmup = false) {
 
         if (serve) {
           if (mode === executionModes.run) {
+            // deno-lint-ignore no-console
             console.error(
               `%cwarning: %cDetected %cexport default { fetch }%c, did you mean to run \"deno serve\"?`,
               "color: yellow;",
@@ -792,12 +670,10 @@ function bootstrapMainRuntime(runtimeOptions, warmup = false) {
     // TODO(iuioiua): remove in Deno v2. This allows us to dynamically delete
     // class properties within constructors for classes that are not defined
     // within the Deno namespace.
-    internals.future = future;
+    internals.future = true;
 
     removeImportedOps();
 
-    deprecatedApiWarningDisabled = shouldDisableDeprecatedApiWarning;
-    verboseDeprecatedApiWarning = shouldUseVerboseDeprecatedApiWarning;
     performance.setTimeOrigin(DateNow());
     globalThis_ = globalThis;
 
@@ -849,27 +725,27 @@ function bootstrapMainRuntime(runtimeOptions, warmup = false) {
       target,
     );
 
+    // TODO(bartlomieju): this is not ideal, but because we use `ObjectAssign`
+    // above any properties that are defined elsewhere using `Object.defineProperty`
+    // are lost.
+    let jupyterNs = undefined;
+    ObjectDefineProperty(finalDenoNs, "jupyter", {
+      get() {
+        if (jupyterNs) {
+          return jupyterNs;
+        }
+        throw new Error(
+          "Deno.jupyter is only available in `deno jupyter` subcommand.",
+        );
+      },
+      set(val) {
+        jupyterNs = val;
+      },
+    });
+
     // TODO(bartlomieju): deprecate --unstable
     if (unstableFlag) {
       ObjectAssign(finalDenoNs, denoNsUnstable);
-      // TODO(bartlomieju): this is not ideal, but because we use `ObjectAssign`
-      // above any properties that are defined elsewhere using `Object.defineProperty`
-      // are lost.
-      let jupyterNs = undefined;
-      ObjectDefineProperty(finalDenoNs, "jupyter", {
-        __proto__: null,
-        get() {
-          if (jupyterNs) {
-            return jupyterNs;
-          }
-          throw new Error(
-            "Deno.jupyter is only available in `deno jupyter` subcommand.",
-          );
-        },
-        set(val) {
-          jupyterNs = val;
-        },
-      });
     } else {
       for (let i = 0; i <= unstableFeatures.length; i++) {
         const id = unstableFeatures[i];
@@ -925,36 +801,10 @@ function bootstrapMainRuntime(runtimeOptions, warmup = false) {
         nodeDebug,
       });
     }
-    if (future) {
+    if (internals.future) {
       delete globalThis.window;
       delete Deno.Buffer;
-      delete Deno.close;
-      delete Deno.copy;
-      delete Deno.File;
-      delete Deno.fstat;
-      delete Deno.fstatSync;
-      delete Deno.ftruncate;
-      delete Deno.ftruncateSync;
-      delete Deno.flock;
-      delete Deno.flockSync;
       delete Deno.FsFile.prototype.rid;
-      delete Deno.funlock;
-      delete Deno.funlockSync;
-      delete Deno.iter;
-      delete Deno.iterSync;
-      delete Deno.metrics;
-      delete Deno.readAll;
-      delete Deno.readAllSync;
-      delete Deno.read;
-      delete Deno.readSync;
-      delete Deno.resources;
-      delete Deno.seek;
-      delete Deno.seekSync;
-      delete Deno.shutdown;
-      delete Deno.writeAll;
-      delete Deno.writeAllSync;
-      delete Deno.write;
-      delete Deno.writeSync;
     }
   } else {
     // Warmup
@@ -983,18 +833,13 @@ function bootstrapWorkerRuntime(
       6: hasNodeModulesDir,
       7: argv0,
       8: nodeDebug,
-      9: shouldDisableDeprecatedApiWarning,
-      10: shouldUseVerboseDeprecatedApiWarning,
-      11: future,
     } = runtimeOptions;
 
     // TODO(iuioiua): remove in Deno v2. This allows us to dynamically delete
     // class properties within constructors for classes that are not defined
     // within the Deno namespace.
-    internals.future = future;
+    internals.future = true;
 
-    deprecatedApiWarningDisabled = shouldDisableDeprecatedApiWarning;
-    verboseDeprecatedApiWarning = shouldUseVerboseDeprecatedApiWarning;
     performance.setTimeOrigin(DateNow());
     globalThis_ = globalThis;
 
@@ -1116,35 +961,9 @@ function bootstrapWorkerRuntime(
       });
     }
 
-    if (future) {
+    if (internals.future) {
       delete Deno.Buffer;
-      delete Deno.close;
-      delete Deno.copy;
-      delete Deno.File;
-      delete Deno.fstat;
-      delete Deno.fstatSync;
-      delete Deno.ftruncate;
-      delete Deno.ftruncateSync;
-      delete Deno.flock;
-      delete Deno.flockSync;
       delete Deno.FsFile.prototype.rid;
-      delete Deno.funlock;
-      delete Deno.funlockSync;
-      delete Deno.iter;
-      delete Deno.iterSync;
-      delete Deno.metrics;
-      delete Deno.readAll;
-      delete Deno.readAllSync;
-      delete Deno.read;
-      delete Deno.readSync;
-      delete Deno.resources;
-      delete Deno.seek;
-      delete Deno.seekSync;
-      delete Deno.shutdown;
-      delete Deno.writeAll;
-      delete Deno.writeAllSync;
-      delete Deno.write;
-      delete Deno.writeSync;
     }
   } else {
     // Warmup

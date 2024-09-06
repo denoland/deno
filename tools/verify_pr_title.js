@@ -1,4 +1,7 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
+
+// deno-lint-ignore-file no-console
+
 const prTitle = Deno.args[0];
 
 if (prTitle == null) {
@@ -48,9 +51,6 @@ const validPrefixes = [
   "Reland ",
   // Allow landing breaking changes that are properly marked
   "BREAKING",
-  // Allow landing breaking changes that will be applied in Deno 2, or available
-  // immediately with DENO_FUTURE=1 env var
-  "FUTURE",
 ];
 
 if (validPrefixes.some((prefix) => prTitle.startsWith(prefix))) {

@@ -26,7 +26,6 @@ const {
   Float32Array,
   Float64Array,
   FunctionPrototypeBind,
-  FunctionPrototypeCall,
   Int16Array,
   Int32Array,
   Int8Array,
@@ -78,7 +77,6 @@ const {
   StringPrototypeToWellFormed,
   Symbol,
   SymbolIterator,
-  SymbolAsyncIterator,
   SymbolToStringTag,
   TypedArrayPrototypeGetBuffer,
   TypedArrayPrototypeGetSymbolToStringTag,
@@ -97,7 +95,7 @@ function makeException(ErrorType, message, prefix, context) {
 
 function toNumber(value) {
   if (typeof value === "bigint") {
-    throw TypeError("Cannot convert a BigInt value to a number");
+    throw new TypeError("Cannot convert a BigInt value to a number");
   }
   return Number(value);
 }
@@ -922,127 +920,6 @@ function createSequenceConverter(converter) {
   };
 }
 
-function isAsyncIterator(obj) {
-  if (obj[SymbolAsyncIterator] === undefined) {
-    if (obj[SymbolIterator] === undefined) {
-      return false;
-    }
-  }
-
-  return true;
-}
-
-const AsyncIterable = Symbol("[[asyncIterable]]");
-
-function createAsyncIterableConverter(converter) {
-  return function (
-    V,
-    prefix = undefined,
-    context = undefined,
-    opts = { __proto__: null },
-  ) {
-    if (type(V) !== "Object") {
-      throw makeException(
-        TypeError,
-        "can not be converted to async iterable.",
-        prefix,
-        context,
-      );
-    }
-
-    let isAsync = true;
-    let method = V[SymbolAsyncIterator];
-    if (method === undefined) {
-      method = V[SymbolIterator];
-
-      if (method === undefined) {
-        throw makeException(
-          TypeError,
-          "is not iterable.",
-          prefix,
-          context,
-        );
-      }
-
-      isAsync = false;
-    }
-
-    return {
-      value: V,
-      [AsyncIterable]: AsyncIterable,
-      open(context) {
-        const iter = FunctionPrototypeCall(method, V);
-        if (type(iter) !== "Object") {
-          throw new TypeError(
-            `${context} could not be iterated because iterator method did not return object, but ${
-              type(iter)
-            }.`,
-          );
-        }
-
-        let asyncIterator = iter;
-
-        if (!isAsync) {
-          asyncIterator = {
-            // deno-lint-ignore require-await
-            async next() {
-              // deno-lint-ignore prefer-primordials
-              return iter.next();
-            },
-          };
-        }
-
-        return {
-          async next() {
-            // deno-lint-ignore prefer-primordials
-            const iterResult = await asyncIterator.next();
-            if (type(iterResult) !== "Object") {
-              throw TypeError(
-                `${context} failed to iterate next value because the next() method did not return an object, but ${
-                  type(iterResult)
-                }.`,
-              );
-            }
-
-            if (iterResult.done) {
-              return { done: true };
-            }
-
-            const iterValue = converter(
-              iterResult.value,
-              `${context} failed to iterate next value`,
-              `The value returned from the next() method`,
-              opts,
-            );
-
-            return { done: false, value: iterValue };
-          },
-          async return(reason) {
-            if (asyncIterator.return === undefined) {
-              return undefined;
-            }
-
-            // deno-lint-ignore prefer-primordials
-            const returnPromiseResult = await asyncIterator.return(reason);
-            if (type(returnPromiseResult) !== "Object") {
-              throw TypeError(
-                `${context} failed to close iterator because the return() method did not return an object, but ${
-                  type(returnPromiseResult)
-                }.`,
-              );
-            }
-
-            return undefined;
-          },
-          [SymbolAsyncIterator]() {
-            return this;
-          },
-        };
-      },
-    };
-  };
-}
-
 function createRecordConverter(keyConverter, valueConverter) {
   return (V, prefix, context, opts) => {
     if (type(V) !== "Object") {
@@ -1425,11 +1302,9 @@ function setlike(obj, objPrototype, readonly) {
 
 export {
   assertBranded,
-  AsyncIterable,
   brand,
   configureInterface,
   converters,
-  createAsyncIterableConverter,
   createBranded,
   createDictionaryConverter,
   createEnumConverter,
@@ -1440,7 +1315,6 @@ export {
   createSequenceConverter,
   illegalConstructor,
   invokeCallbackFunction,
-  isAsyncIterator,
   makeException,
   mixinPairIterable,
   requiredArguments,

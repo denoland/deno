@@ -89,9 +89,9 @@ impl FsPermissions for deno_permissions::PermissionsContainer {
     api_name: &str,
   ) -> Result<Cow<'a, Path>, FsError> {
     if resolved {
-      self.check_special_file(path, api_name).map_err(|_| {
-        std::io::Error::from(std::io::ErrorKind::PermissionDenied)
-      })?;
+      self
+        .check_special_file(path, api_name)
+        .map_err(FsError::PermissionDenied)?;
       return Ok(Cow::Borrowed(path));
     }
 
@@ -235,16 +235,12 @@ deno_core::extension!(deno_fs,
     op_fs_fsync_async,
     op_fs_file_stat_sync,
     op_fs_file_stat_async,
-    op_fs_flock_sync_unstable,
-    op_fs_flock_async_unstable,
-    op_fs_funlock_sync_unstable,
-    op_fs_funlock_async_unstable,
     op_fs_flock_async,
     op_fs_flock_sync,
     op_fs_funlock_async,
     op_fs_funlock_sync,
     op_fs_ftruncate_sync,
-    op_fs_ftruncate_async,
+    op_fs_file_truncate_async,
     op_fs_futime_sync,
     op_fs_futime_async,
 

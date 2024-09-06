@@ -1,0 +1,24 @@
+{
+  "tests": {
+    "reporter_dot": {
+      "args": "test --hide-stacktraces --reporter=dot main.js",
+      "output": "dot.out",
+      "exitCode": 1
+    },
+    "reporter_junit": {
+      "args": "test --hide-stacktraces --reporter=junit main.js",
+      "output": "junit.out",
+      "exitCode": 1
+    },
+    "reporter_pretty": {
+      "args": "test --hide-stacktraces main.js",
+      "output": "pretty.out",
+      "exitCode": 1
+    },
+    "reporter_tap": {
+      "args": "test --hide-stacktraces --reporter=tap main.js",
+      "output": "tap.out",
+      "exitCode": 1
+    }
+  }
+}

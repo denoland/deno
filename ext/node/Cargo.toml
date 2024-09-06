@@ -2,7 +2,7 @@
 
 [package]
 name = "deno_node"
-version = "0.101.0"
+version = "0.105.0"
 authors.workspace = true
 edition.workspace = true
 license.workspace = true
@@ -17,7 +17,7 @@ path = "lib.rs"
 sync_fs = ["deno_package_json/sync", "node_resolver/sync"]
 
 [dependencies]
-aead-gcm-stream = "0.1"
+aead-gcm-stream = "0.3"
 aes.workspace = true
 async-trait.workspace = true
 base64.workspace = true
@@ -38,7 +38,7 @@ deno_permissions.workspace = true
 deno_whoami = "0.1.0"
 der = { version = "0.7.9", features = ["derive"] }
 digest = { version = "0.10.5", features = ["core-api", "std"] }
-dsa = "0.6.1"
+dsa = "0.6.3"
 ecb.workspace = true
 ecdsa = "0.16.9"
 ed25519-dalek = { version = "2.1.1", features = ["digest", "pkcs8", "rand_core", "signature"] }

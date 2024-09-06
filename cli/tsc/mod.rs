@@ -22,6 +22,7 @@ use deno_core::serde::Serialize;
 use deno_core::serde::Serializer;
 use deno_core::serde_json::json;
 use deno_core::serde_v8;
+use deno_core::url::Url;
 use deno_core::JsRuntime;
 use deno_core::ModuleSpecifier;
 use deno_core::OpState;
@@ -32,7 +33,6 @@ use deno_graph::ModuleGraph;
 use deno_graph::ResolutionResolved;
 use deno_runtime::deno_node::NodeResolver;
 use deno_semver::npm::NpmPackageReqReference;
-use lsp_types::Url;
 use node_resolver::errors::NodeJsErrorCode;
 use node_resolver::errors::NodeJsErrorCoded;
 use node_resolver::NodeModuleKind;
@@ -795,7 +795,7 @@ fn resolve_graph_specifier_types(
 }
 
 fn resolve_non_graph_specifier_types(
-  specifier: &str,
+  raw_specifier: &str,
   referrer: &ModuleSpecifier,
   referrer_kind: NodeModuleKind,
   state: &State,
@@ -810,14 +810,16 @@ fn resolve_non_graph_specifier_types(
     Ok(Some(NodeResolution::into_specifier_and_media_type(
       node_resolver
         .resolve(
-          specifier,
+          raw_specifier,
           referrer,
           referrer_kind,
           NodeResolutionMode::Types,
         )
         .ok(),
     )))
-  } else if let Ok(npm_req_ref) = NpmPackageReqReference::from_str(specifier) {
+  } else if let Ok(npm_req_ref) =
+    NpmPackageReqReference::from_str(raw_specifier)
+  {
     debug_assert_eq!(referrer_kind, NodeModuleKind::Esm);
     // todo(dsherret): add support for injecting this in the graph so
     // we don't need this special code here.

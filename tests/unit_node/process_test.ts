@@ -1,11 +1,14 @@
-// deno-lint-ignore-file no-undef
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
+
+// deno-lint-ignore-file no-undef no-console
 
 import process, {
   arch as importedArch,
   argv,
   argv0 as importedArgv0,
   env,
+  execArgv as importedExecArgv,
+  execPath as importedExecPath,
   geteuid,
   pid as importedPid,
   platform as importedPlatform,
@@ -1119,4 +1122,18 @@ Deno.test("process.listeners - include SIG* events", () => {
 
 Deno.test(function processVersionsOwnProperty() {
   assert(Object.prototype.hasOwnProperty.call(process, "versions"));
+});
+
+Deno.test(function importedExecArgvTest() {
+  assert(Array.isArray(importedExecArgv));
+});
+
+Deno.test(function importedExecPathTest() {
+  assertEquals(importedExecPath, Deno.execPath());
+});
+
+Deno.test("process.cpuUsage()", () => {
+  const cpuUsage = process.cpuUsage();
+  assert(typeof cpuUsage.user === "number");
+  assert(typeof cpuUsage.system === "number");
 });

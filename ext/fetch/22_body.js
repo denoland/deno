@@ -151,7 +151,7 @@ class InnerBody {
    * @returns {Promise<Uint8Array>}
    */
   consume() {
-    if (this.unusable()) throw new TypeError("Body already consumed.");
+    if (this.unusable()) throw new TypeError("Body already consumed");
     if (
       ObjectPrototypeIsPrototypeOf(
         ReadableStreamPrototype,
@@ -380,7 +380,7 @@ function packageData(bytes, type, mimeType) {
           const boundary = mimeType.parameters.get("boundary");
           if (boundary === null) {
             throw new TypeError(
-              "Missing boundary parameter in mime type of multipart formdata.",
+              "Cannot turn into form data: missing boundary parameter in mime type of multipart form data",
             );
           }
           return parseFormData(chunkToU8(bytes), boundary);
@@ -466,8 +466,6 @@ function extractBody(object) {
     if (object.locked || isReadableStreamDisturbed(object)) {
       throw new TypeError("ReadableStream is locked or disturbed");
     }
-  } else if (object[webidl.AsyncIterable] === webidl.AsyncIterable) {
-    stream = ReadableStream.from(object.open());
   }
   if (typeof source === "string") {
     // WARNING: this deviates from spec (expects length to be set)
@@ -484,9 +482,6 @@ function extractBody(object) {
   body.length = length;
   return { body, contentType };
 }
-
-webidl.converters["async iterable<Uint8Array>"] = webidl
-  .createAsyncIterableConverter(webidl.converters.Uint8Array);
 
 webidl.converters["BodyInit_DOMString"] = (V, prefix, context, opts) => {
   // Union for (ReadableStream or Blob or ArrayBufferView or ArrayBuffer or FormData or URLSearchParams or USVString)
@@ -505,14 +500,6 @@ webidl.converters["BodyInit_DOMString"] = (V, prefix, context, opts) => {
     }
     if (ArrayBufferIsView(V)) {
       return webidl.converters["ArrayBufferView"](V, prefix, context, opts);
-    }
-    if (webidl.isAsyncIterator(V)) {
-      return webidl.converters["async iterable<Uint8Array>"](
-        V,
-        prefix,
-        context,
-        opts,
-      );
     }
   }
   // BodyInit conversion is passed to extractBody(), which calls core.encode().

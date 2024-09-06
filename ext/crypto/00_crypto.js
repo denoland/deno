@@ -292,7 +292,7 @@ function normalizeAlgorithm(algorithm, op) {
       normalizedAlgorithm[member] = normalizeAlgorithm(idlValue, "digest");
     } else if (idlType === "AlgorithmIdentifier") {
       // TODO(lucacasonato): implement
-      throw new TypeError("unimplemented");
+      throw new TypeError("Unimplemented");
     }
   }
 
@@ -443,7 +443,7 @@ function getKeyLength(algorithm) {
       // 1.
       if (!ArrayPrototypeIncludes([128, 192, 256], algorithm.length)) {
         throw new DOMException(
-          "length must be 128, 192, or 256",
+          `Length must be 128, 192, or 256: received ${algorithm.length}`,
           "OperationError",
         );
       }
@@ -470,14 +470,14 @@ function getKeyLength(algorithm) {
             break;
           default:
             throw new DOMException(
-              "Unrecognized hash algorithm",
+              `Unrecognized hash algorithm: ${algorithm.hash.name}`,
               "NotSupportedError",
             );
         }
       } else if (algorithm.length !== 0) {
         length = algorithm.length;
       } else {
-        throw new TypeError("Invalid length.");
+        throw new TypeError(`Invalid length: ${algorithm.length}`);
       }
 
       // 2.
@@ -492,7 +492,7 @@ function getKeyLength(algorithm) {
       return null;
     }
     default:
-      throw new TypeError("unreachable");
+      throw new TypeError("Unreachable");
   }
 }
 
@@ -556,7 +556,7 @@ class SubtleCrypto {
     // 8.
     if (normalizedAlgorithm.name !== key[_algorithm].name) {
       throw new DOMException(
-        "Encryption algorithm doesn't match key algorithm.",
+        `Encryption algorithm '${normalizedAlgorithm.name}' does not match key algorithm`,
         "InvalidAccessError",
       );
     }
@@ -564,7 +564,7 @@ class SubtleCrypto {
     // 9.
     if (!ArrayPrototypeIncludes(key[_usages], "encrypt")) {
       throw new DOMException(
-        "Key does not support the 'encrypt' operation.",
+        "Key does not support the 'encrypt' operation",
         "InvalidAccessError",
       );
     }
@@ -599,7 +599,7 @@ class SubtleCrypto {
     // 8.
     if (normalizedAlgorithm.name !== key[_algorithm].name) {
       throw new DOMException(
-        "Decryption algorithm doesn't match key algorithm.",
+        `Decryption algorithm "${normalizedAlgorithm.name}" does not match key algorithm`,
         "OperationError",
       );
     }
@@ -607,7 +607,7 @@ class SubtleCrypto {
     // 9.
     if (!ArrayPrototypeIncludes(key[_usages], "decrypt")) {
       throw new DOMException(
-        "Key does not support the 'decrypt' operation.",
+        "Key does not support the 'decrypt' operation",
         "InvalidAccessError",
       );
     }
@@ -683,7 +683,7 @@ class SubtleCrypto {
           normalizedAlgorithm.length === 0 || normalizedAlgorithm.length > 128
         ) {
           throw new DOMException(
-            "Counter length must not be 0 or greater than 128",
+            `Counter length must not be 0 or greater than 128: received ${normalizedAlgorithm.length}`,
             "OperationError",
           );
         }
@@ -713,7 +713,7 @@ class SubtleCrypto {
           )
         ) {
           throw new DOMException(
-            "Invalid tag length",
+            `Invalid tag length: ${normalizedAlgorithm.tagLength}`,
             "OperationError",
           );
         }
@@ -805,7 +805,7 @@ class SubtleCrypto {
     // 8.
     if (normalizedAlgorithm.name !== key[_algorithm].name) {
       throw new DOMException(
-        "Signing algorithm doesn't match key algorithm.",
+        "Signing algorithm does not match key algorithm",
         "InvalidAccessError",
       );
     }
@@ -813,7 +813,7 @@ class SubtleCrypto {
     // 9.
     if (!ArrayPrototypeIncludes(key[_usages], "sign")) {
       throw new DOMException(
-        "Key does not support the 'sign' operation.",
+        "Key does not support the 'sign' operation",
         "InvalidAccessError",
       );
     }
@@ -928,7 +928,7 @@ class SubtleCrypto {
       }
     }
 
-    throw new TypeError("unreachable");
+    throw new TypeError("Unreachable");
   }
 
   /**
@@ -967,11 +967,11 @@ class SubtleCrypto {
       if (ArrayBufferIsView(keyData) || isArrayBuffer(keyData)) {
         keyData = copyBuffer(keyData);
       } else {
-        throw new TypeError("keyData is a JsonWebKey");
+        throw new TypeError("Cannot import key: 'keyData' is a JsonWebKey");
       }
     } else {
       if (ArrayBufferIsView(keyData) || isArrayBuffer(keyData)) {
-        throw new TypeError("keyData is not a JsonWebKey");
+        throw new TypeError("Cannot import key: 'keyData' is not a JsonWebKey");
       }
     }
 
@@ -1156,7 +1156,7 @@ class SubtleCrypto {
     // 8.
     if (!ArrayPrototypeIncludes(baseKey[_usages], "deriveBits")) {
       throw new DOMException(
-        "baseKey usages does not contain `deriveBits`",
+        "'baseKey' usages does not contain 'deriveBits'",
         "InvalidAccessError",
       );
     }
@@ -1222,7 +1222,7 @@ class SubtleCrypto {
     // 11.
     if (normalizedAlgorithm.name !== baseKey[_algorithm].name) {
       throw new DOMException(
-        "Invalid algorithm name",
+        `Invalid algorithm name: ${normalizedAlgorithm.name}`,
         "InvalidAccessError",
       );
     }
@@ -1230,7 +1230,7 @@ class SubtleCrypto {
     // 12.
     if (!ArrayPrototypeIncludes(baseKey[_usages], "deriveKey")) {
       throw new DOMException(
-        "baseKey usages does not contain `deriveKey`",
+        "'baseKey' usages does not contain 'deriveKey'",
         "InvalidAccessError",
       );
     }
@@ -1259,7 +1259,7 @@ class SubtleCrypto {
       ArrayPrototypeIncludes(["private", "secret"], result[_type]) &&
       keyUsages.length == 0
     ) {
-      throw new SyntaxError("Invalid key usages");
+      throw new SyntaxError("Invalid key usage");
     }
     // 17.
     return result;
@@ -1298,14 +1298,14 @@ class SubtleCrypto {
 
     if (normalizedAlgorithm.name !== key[_algorithm].name) {
       throw new DOMException(
-        "Verifying algorithm doesn't match key algorithm.",
+        "Verifying algorithm does not match key algorithm",
         "InvalidAccessError",
       );
     }
 
     if (!ArrayPrototypeIncludes(key[_usages], "verify")) {
       throw new DOMException(
-        "Key does not support the 'verify' operation.",
+        "Key does not support the 'verify' operation",
         "InvalidAccessError",
       );
     }
@@ -1396,7 +1396,7 @@ class SubtleCrypto {
       }
     }
 
-    throw new TypeError("unreachable");
+    throw new TypeError("Unreachable");
   }
 
   /**
@@ -1435,7 +1435,7 @@ class SubtleCrypto {
     // 8.
     if (normalizedAlgorithm.name !== wrappingKey[_algorithm].name) {
       throw new DOMException(
-        "Wrapping algorithm doesn't match key algorithm.",
+        "Wrapping algorithm does not match key algorithm",
         "InvalidAccessError",
       );
     }
@@ -1443,7 +1443,7 @@ class SubtleCrypto {
     // 9.
     if (!ArrayPrototypeIncludes(wrappingKey[_usages], "wrapKey")) {
       throw new DOMException(
-        "Key does not support the 'wrapKey' operation.",
+        "Key does not support the 'wrapKey' operation",
         "InvalidAccessError",
       );
     }
@@ -1591,7 +1591,7 @@ class SubtleCrypto {
     // 11.
     if (normalizedAlgorithm.name !== unwrappingKey[_algorithm].name) {
       throw new DOMException(
-        "Unwrapping algorithm doesn't match key algorithm.",
+        "Unwrapping algorithm does not match key algorithm",
         "InvalidAccessError",
       );
     }
@@ -1599,7 +1599,7 @@ class SubtleCrypto {
     // 12.
     if (!ArrayPrototypeIncludes(unwrappingKey[_usages], "unwrapKey")) {
       throw new DOMException(
-        "Key does not support the 'unwrapKey' operation.",
+        "Key does not support the 'unwrapKey' operation",
         "InvalidAccessError",
       );
     }
@@ -1678,7 +1678,7 @@ class SubtleCrypto {
       (result[_type] == "secret" || result[_type] == "private") &&
       keyUsages.length == 0
     ) {
-      throw new SyntaxError("Invalid key type.");
+      throw new SyntaxError("Invalid key type");
     }
     // 17.
     result[_extractable] = extractable;
@@ -1726,13 +1726,13 @@ class SubtleCrypto {
     if (ObjectPrototypeIsPrototypeOf(CryptoKeyPrototype, result)) {
       const type = result[_type];
       if ((type === "secret" || type === "private") && usages.length === 0) {
-        throw new DOMException("Invalid key usages", "SyntaxError");
+        throw new DOMException("Invalid key usage", "SyntaxError");
       }
     } else if (
       ObjectPrototypeIsPrototypeOf(CryptoKeyPrototype, result.privateKey)
     ) {
       if (result.privateKey[_usages].length === 0) {
-        throw new DOMException("Invalid key usages", "SyntaxError");
+        throw new DOMException("Invalid key usage", "SyntaxError");
       }
     }
 
@@ -1758,7 +1758,7 @@ async function generateKey(normalizedAlgorithm, extractable, usages) {
           (u) => !ArrayPrototypeIncludes(["sign", "verify"], u),
         ) !== undefined
       ) {
-        throw new DOMException("Invalid key usages", "SyntaxError");
+        throw new DOMException("Invalid key usage", "SyntaxError");
       }
 
       // 2.
@@ -1817,7 +1817,7 @@ async function generateKey(normalizedAlgorithm, extractable, usages) {
             ], u),
         ) !== undefined
       ) {
-        throw new DOMException("Invalid key usages", "SyntaxError");
+        throw new DOMException("Invalid key usage", "SyntaxError");
       }
 
       // 2.
@@ -1873,7 +1873,7 @@ async function generateKey(normalizedAlgorithm, extractable, usages) {
           (u) => !ArrayPrototypeIncludes(["sign", "verify"], u),
         ) !== undefined
       ) {
-        throw new DOMException("Invalid key usages", "SyntaxError");
+        throw new DOMException("Invalid key usage", "SyntaxError");
       }
 
       // 2-3.
@@ -1933,7 +1933,7 @@ async function generateKey(normalizedAlgorithm, extractable, usages) {
           (u) => !ArrayPrototypeIncludes(["deriveKey", "deriveBits"], u),
         ) !== undefined
       ) {
-        throw new DOMException("Invalid key usages", "SyntaxError");
+        throw new DOMException("Invalid key usage", "SyntaxError");
       }
 
       // 2-3.
@@ -1999,7 +1999,7 @@ async function generateKey(normalizedAlgorithm, extractable, usages) {
             ], u),
         ) !== undefined
       ) {
-        throw new DOMException("Invalid key usages", "SyntaxError");
+        throw new DOMException("Invalid key usage", "SyntaxError");
       }
 
       return generateKeyAES(normalizedAlgorithm, extractable, usages);
@@ -2012,7 +2012,7 @@ async function generateKey(normalizedAlgorithm, extractable, usages) {
           (u) => !ArrayPrototypeIncludes(["wrapKey", "unwrapKey"], u),
         ) !== undefined
       ) {
-        throw new DOMException("Invalid key usages", "SyntaxError");
+        throw new DOMException("Invalid key usage", "SyntaxError");
       }
 
       return generateKeyAES(normalizedAlgorithm, extractable, usages);
@@ -2024,7 +2024,7 @@ async function generateKey(normalizedAlgorithm, extractable, usages) {
           (u) => !ArrayPrototypeIncludes(["deriveKey", "deriveBits"], u),
         ) !== undefined
       ) {
-        throw new DOMException("Invalid key usages", "SyntaxError");
+        throw new DOMException("Invalid key usage", "SyntaxError");
       }
       const privateKeyData = new Uint8Array(32);
       const publicKeyData = new Uint8Array(32);
@@ -2065,7 +2065,7 @@ async function generateKey(normalizedAlgorithm, extractable, usages) {
           (u) => !ArrayPrototypeIncludes(["sign", "verify"], u),
         ) !== undefined
       ) {
-        throw new DOMException("Invalid key usages", "SyntaxError");
+        throw new DOMException("Invalid key usage", "SyntaxError");
       }
 
       const ED25519_SEED_LEN = 32;
@@ -2114,7 +2114,7 @@ async function generateKey(normalizedAlgorithm, extractable, usages) {
           (u) => !ArrayPrototypeIncludes(["sign", "verify"], u),
         ) !== undefined
       ) {
-        throw new DOMException("Invalid key usages", "SyntaxError");
+        throw new DOMException("Invalid key usage", "SyntaxError");
       }
 
       // 2.
@@ -2178,7 +2178,7 @@ function importKeyEd25519(
           (u) => !ArrayPrototypeIncludes(["verify"], u),
         ) !== undefined
       ) {
-        throw new DOMException("Invalid key usages", "SyntaxError");
+        throw new DOMException("Invalid key usage", "SyntaxError");
       }
 
       const handle = {};
@@ -2206,7 +2206,7 @@ function importKeyEd25519(
           (u) => !ArrayPrototypeIncludes(["verify"], u),
         ) !== undefined
       ) {
-        throw new DOMException("Invalid key usages", "SyntaxError");
+        throw new DOMException("Invalid key usage", "SyntaxError");
       }
 
       const publicKeyData = new Uint8Array(32);
@@ -2237,7 +2237,7 @@ function importKeyEd25519(
           (u) => !ArrayPrototypeIncludes(["sign"], u),
         ) !== undefined
       ) {
-        throw new DOMException("Invalid key usages", "SyntaxError");
+        throw new DOMException("Invalid key usage", "SyntaxError");
       }
 
       const privateKeyData = new Uint8Array(32);
@@ -2276,7 +2276,7 @@ function importKeyEd25519(
               ),
           ) !== undefined
         ) {
-          throw new DOMException("Invalid key usages", "SyntaxError");
+          throw new DOMException("Invalid key usage", "SyntaxError");
         }
       } else {
         if (
@@ -2289,7 +2289,7 @@ function importKeyEd25519(
               ),
           ) !== undefined
         ) {
-          throw new DOMException("Invalid key usages", "SyntaxError");
+          throw new DOMException("Invalid key usage", "SyntaxError");
         }
       }
 
@@ -2349,7 +2349,7 @@ function importKeyEd25519(
         try {
           privateKeyData = op_crypto_base64url_decode(jwk.d);
         } catch (_) {
-          throw new DOMException("invalid private key data", "DataError");
+          throw new DOMException("Invalid private key data", "DataError");
         }
 
         const handle = {};
@@ -2372,7 +2372,7 @@ function importKeyEd25519(
         try {
           publicKeyData = op_crypto_base64url_decode(jwk.x);
         } catch (_) {
-          throw new DOMException("invalid public key data", "DataError");
+          throw new DOMException("Invalid public key data", "DataError");
         }
 
         const handle = {};
@@ -2406,7 +2406,7 @@ function importKeyX25519(
     case "raw": {
       // 1.
       if (keyUsages.length > 0) {
-        throw new DOMException("Invalid key usages", "SyntaxError");
+        throw new DOMException("Invalid key usage", "SyntaxError");
       }
 
       const handle = {};
@@ -2429,7 +2429,7 @@ function importKeyX25519(
     case "spki": {
       // 1.
       if (keyUsages.length > 0) {
-        throw new DOMException("Invalid key usages", "SyntaxError");
+        throw new DOMException("Invalid key usage", "SyntaxError");
       }
 
       const publicKeyData = new Uint8Array(32);
@@ -2460,7 +2460,7 @@ function importKeyX25519(
           (u) => !ArrayPrototypeIncludes(["deriveKey", "deriveBits"], u),
         ) !== undefined
       ) {
-        throw new DOMException("Invalid key usages", "SyntaxError");
+        throw new DOMException("Invalid key usage", "SyntaxError");
       }
 
       const privateKeyData = new Uint8Array(32);
@@ -2499,13 +2499,13 @@ function importKeyX25519(
               ),
           ) !== undefined
         ) {
-          throw new DOMException("Invalid key usages", "SyntaxError");
+          throw new DOMException("Invalid key usage", "SyntaxError");
         }
       }
 
       // 3.
       if (jwk.d === undefined && keyUsages.length > 0) {
-        throw new DOMException("Invalid key usages", "SyntaxError");
+        throw new DOMException("Invalid key usage", "SyntaxError");
       }
 
       // 4.
@@ -2641,7 +2641,7 @@ function exportKeyAES(
           break;
         default:
           throw new DOMException(
-            "Invalid key length",
+            `Invalid key length: ${algorithm.length}`,
             "NotSupportedError",
           );
       }
@@ -2675,7 +2675,7 @@ function importKeyAES(
       (u) => !ArrayPrototypeIncludes(supportedKeyUsages, u),
     ) !== undefined
   ) {
-    throw new DOMException("Invalid key usages", "SyntaxError");
+    throw new DOMException("Invalid key usage", "SyntaxError");
   }
 
   const algorithmName = normalizedAlgorithm.name;
@@ -2731,7 +2731,10 @@ function importKeyAES(
             jwk.alg !== undefined &&
             jwk.alg !== aesJwkAlg[algorithmName][128]
           ) {
-            throw new DOMException("Invalid algorithm", "DataError");
+            throw new DOMException(
+              `Invalid algorithm: ${jwk.alg}`,
+              "DataError",
+            );
           }
           break;
         case 192:
@@ -2739,7 +2742,10 @@ function importKeyAES(
             jwk.alg !== undefined &&
             jwk.alg !== aesJwkAlg[algorithmName][192]
           ) {
-            throw new DOMException("Invalid algorithm", "DataError");
+            throw new DOMException(
+              `Invalid algorithm: ${jwk.alg}`,
+              "DataError",
+            );
           }
           break;
         case 256:
@@ -2747,7 +2753,10 @@ function importKeyAES(
             jwk.alg !== undefined &&
             jwk.alg !== aesJwkAlg[algorithmName][256]
           ) {
-            throw new DOMException("Invalid algorithm", "DataError");
+            throw new DOMException(
+              `Invalid algorithm: ${jwk.alg}`,
+              "DataError",
+            );
           }
           break;
         default:
@@ -2761,7 +2770,7 @@ function importKeyAES(
       if (
         keyUsages.length > 0 && jwk.use !== undefined && jwk.use !== "enc"
       ) {
-        throw new DOMException("Invalid key usages", "DataError");
+        throw new DOMException("Invalid key usage", "DataError");
       }
 
       // 7.
@@ -2844,7 +2853,7 @@ function importKeyHMAC(
       (u) => !ArrayPrototypeIncludes(["sign", "verify"], u),
     ) !== undefined
   ) {
-    throw new DOMException("Invalid key usages", "SyntaxError");
+    throw new DOMException("Invalid key usage", "SyntaxError");
   }
 
   // 3.
@@ -2926,7 +2935,7 @@ function importKeyHMAC(
           break;
         }
         default:
-          throw new TypeError("unreachable");
+          throw new TypeError("Unreachable");
       }
 
       // 7.
@@ -3059,7 +3068,7 @@ function importKeyEC(
             ),
         ) !== undefined
       ) {
-        throw new DOMException("Invalid key usages", "SyntaxError");
+        throw new DOMException("Invalid key usage", "SyntaxError");
       }
 
       // 3.
@@ -3100,7 +3109,7 @@ function importKeyEC(
             ),
         ) !== undefined
       ) {
-        throw new DOMException("Invalid key usages", "SyntaxError");
+        throw new DOMException("Invalid key usage", "SyntaxError");
       }
 
       // 2-9.
@@ -3140,7 +3149,7 @@ function importKeyEC(
               ),
           ) !== undefined
         ) {
-          throw new DOMException("Invalid key usages", "SyntaxError");
+          throw new DOMException("Invalid key usage", "SyntaxError");
         }
       } else if (keyUsages.length != 0) {
         throw new DOMException("Key usage must be empty", "SyntaxError");
@@ -3183,7 +3192,7 @@ function importKeyEC(
           (u) => !ArrayPrototypeIncludes(supportedUsages[keyType], u),
         ) !== undefined
       ) {
-        throw new DOMException("Invalid key usages", "SyntaxError");
+        throw new DOMException("Invalid key usage", "SyntaxError");
       }
 
       // 3.
@@ -3391,7 +3400,7 @@ function importKeyRSA(
             ),
         ) !== undefined
       ) {
-        throw new DOMException("Invalid key usages", "SyntaxError");
+        throw new DOMException("Invalid key usage", "SyntaxError");
       }
 
       // 2-9.
@@ -3436,7 +3445,7 @@ function importKeyRSA(
             ),
         ) !== undefined
       ) {
-        throw new DOMException("Invalid key usages", "SyntaxError");
+        throw new DOMException("Invalid key usage", "SyntaxError");
       }
 
       // 2-9.
@@ -3485,7 +3494,7 @@ function importKeyRSA(
               ),
           ) !== undefined
         ) {
-          throw new DOMException("Invalid key usages", "SyntaxError");
+          throw new DOMException("Invalid key usage", "SyntaxError");
         }
       } else if (
         ArrayPrototypeFind(
@@ -3497,7 +3506,7 @@ function importKeyRSA(
             ),
         ) !== undefined
       ) {
-        throw new DOMException("Invalid key usages", "SyntaxError");
+        throw new DOMException("Invalid key usage", "SyntaxError");
       }
 
       // 3.
@@ -3579,7 +3588,7 @@ function importKeyRSA(
             break;
           default:
             throw new DOMException(
-              `'alg' property of JsonWebKey must be one of 'RS1', 'RS256', 'RS384', 'RS512'`,
+              `'alg' property of JsonWebKey must be one of 'RS1', 'RS256', 'RS384', 'RS512': received ${jwk.alg}`,
               "DataError",
             );
         }
@@ -3602,7 +3611,7 @@ function importKeyRSA(
             break;
           default:
             throw new DOMException(
-              `'alg' property of JsonWebKey must be one of 'PS1', 'PS256', 'PS384', 'PS512'`,
+              `'alg' property of JsonWebKey must be one of 'PS1', 'PS256', 'PS384', 'PS512': received ${jwk.alg}`,
               "DataError",
             );
         }
@@ -3625,7 +3634,7 @@ function importKeyRSA(
             break;
           default:
             throw new DOMException(
-              `'alg' property of JsonWebKey must be one of 'RSA-OAEP', 'RSA-OAEP-256', 'RSA-OAEP-384', or 'RSA-OAEP-512'`,
+              `'alg' property of JsonWebKey must be one of 'RSA-OAEP', 'RSA-OAEP-256', 'RSA-OAEP-384', or 'RSA-OAEP-512': received ${jwk.alg}`,
               "DataError",
             );
         }
@@ -3639,7 +3648,7 @@ function importKeyRSA(
         // 9.2.
         if (normalizedHash.name !== normalizedAlgorithm.hash.name) {
           throw new DOMException(
-            `'alg' property of JsonWebKey must be '${normalizedAlgorithm.name}'`,
+            `'alg' property of JsonWebKey must be '${normalizedAlgorithm.name}': received ${jwk.alg}`,
             "DataError",
           );
         }
@@ -3684,7 +3693,7 @@ function importKeyRSA(
           }
         } else {
           throw new DOMException(
-            "only optimized private keys are supported",
+            "Only optimized private keys are supported",
             "NotSupportedError",
           );
         }
@@ -3782,7 +3791,7 @@ function importKeyHKDF(
       (u) => !ArrayPrototypeIncludes(["deriveKey", "deriveBits"], u),
     ) !== undefined
   ) {
-    throw new DOMException("Invalid key usages", "SyntaxError");
+    throw new DOMException("Invalid key usage", "SyntaxError");
   }
 
   // 2.
@@ -3834,7 +3843,7 @@ function importKeyPBKDF2(
       (u) => !ArrayPrototypeIncludes(["deriveKey", "deriveBits"], u),
     ) !== undefined
   ) {
-    throw new DOMException("Invalid key usages", "SyntaxError");
+    throw new DOMException("Invalid key usage", "SyntaxError");
   }
 
   // 3.
@@ -3878,7 +3887,7 @@ function exportKeyHMAC(format, key, innerKey) {
     // 3.
     case "raw": {
       const bits = innerKey.data;
-      // TODO(petamoriken): Uint8Array doesn't have push method
+      // TODO(petamoriken): Uint8Array does not have push method
       // for (let _i = 7 & (8 - bits.length % 8); _i > 0; _i--) {
       //   bits.push(0);
       // }
@@ -4331,7 +4340,10 @@ async function generateKeyAES(normalizedAlgorithm, extractable, usages) {
 
   // 2.
   if (!ArrayPrototypeIncludes([128, 192, 256], normalizedAlgorithm.length)) {
-    throw new DOMException("Invalid key length", "OperationError");
+    throw new DOMException(
+      `Invalid key length: ${normalizedAlgorithm.length}`,
+      "OperationError",
+    );
   }
 
   // 3.
@@ -4417,7 +4429,7 @@ async function deriveBits(normalizedAlgorithm, baseKey, length) {
         publicKey[_algorithm].namedCurve !== baseKey[_algorithm].namedCurve
       ) {
         throw new DOMException(
-          "namedCurve mismatch",
+          "'namedCurve' mismatch",
           "InvalidAccessError",
         );
       }
@@ -4670,7 +4682,7 @@ async function encrypt(normalizedAlgorithm, key, data) {
         )
       ) {
         throw new DOMException(
-          "Invalid tag length",
+          `Invalid tag length: ${normalizedAlgorithm.tagLength}`,
           "OperationError",
         );
       }

@@ -10,8 +10,6 @@ use util::DenoChild;
 
 use util::assert_not_contains;
 
-const CLEAR_SCREEN: &str = r#"[2J"#;
-
 /// Logs to stderr every time next_line() is called
 struct LoggingLines<R>
 where
@@ -323,7 +321,6 @@ async fn lint_all_files_on_each_change_test() {
     .arg("lint")
     .arg(t.path())
     .arg("--watch")
-    .arg("--unstable")
     .piped_output()
     .spawn()
     .unwrap();
@@ -470,7 +467,6 @@ async fn fmt_check_all_files_on_each_change_test() {
     .arg(t.path())
     .arg("--watch")
     .arg("--check")
-    .arg("--unstable")
     .piped_output()
     .spawn()
     .unwrap();
@@ -491,143 +487,6 @@ async fn fmt_check_all_files_on_each_change_test() {
   );
 
   check_alive_then_kill(child);
-}
-
-#[flaky_test(tokio)]
-async fn bundle_js_watch() {
-  use std::path::PathBuf;
-  // Test strategy extends this of test bundle_js by adding watcher
-  let t = TempDir::new();
-  let file_to_watch = t.path().join("file_to_watch.ts");
-  file_to_watch.write("console.log('Hello world');");
-  assert!(file_to_watch.is_file());
-  let t = TempDir::new();
-  let bundle = t.path().join("mod6.bundle.js");
-  let mut deno = util::deno_cmd()
-    .current_dir(t.path())
-    .arg("bundle")
-    .arg(&file_to_watch)
-    .arg(&bundle)
-    .arg("--watch")
-    .env("NO_COLOR", "1")
-    .piped_output()
-    .spawn()
-    .unwrap();
-
-  let (_stdout_lines, mut stderr_lines) = child_lines(&mut deno);
-
-  assert_contains!(next_line(&mut stderr_lines).await.unwrap(), "Warning");
-  assert_contains!(next_line(&mut stderr_lines).await.unwrap(), "deno_emit");
-  assert_contains!(
-    next_line(&mut stderr_lines).await.unwrap(),
-    "Bundle started"
-  );
-  let line = next_line(&mut stderr_lines).await.unwrap();
-  assert_contains!(line, "file_to_watch.ts");
-  assert_contains!(line, "Check");
-  assert_contains!(next_line(&mut stderr_lines).await.unwrap(), "Bundle");
-  assert_contains!(
-    next_line(&mut stderr_lines).await.unwrap(),
-    "mod6.bundle.js"
-  );
-  let file = PathBuf::from(&bundle);
-  assert!(file.is_file());
-
-  wait_contains("Bundle finished", &mut stderr_lines).await;
-
-  file_to_watch.write("console.log('Hello world2');");
-
-  let line = next_line(&mut stderr_lines).await.unwrap();
-  // Should not clear screen, as we are in non-TTY environment
-  assert_not_contains!(&line, CLEAR_SCREEN);
-  assert_contains!(&line, "File change detected!");
-  assert_contains!(next_line(&mut stderr_lines).await.unwrap(), "Check");
-  assert_contains!(
-    next_line(&mut stderr_lines).await.unwrap(),
-    "file_to_watch.ts"
-  );
-  assert_contains!(
-    next_line(&mut stderr_lines).await.unwrap(),
-    "mod6.bundle.js"
-  );
-  let file = PathBuf::from(&bundle);
-  assert!(file.is_file());
-  wait_contains("Bundle finished", &mut stderr_lines).await;
-
-  // Confirm that the watcher keeps on working even if the file is updated and has invalid syntax
-  file_to_watch.write("syntax error ^^");
-
-  assert_contains!(
-    next_line(&mut stderr_lines).await.unwrap(),
-    "File change detected!"
-  );
-  assert_contains!(next_line(&mut stderr_lines).await.unwrap(), "error: ");
-  wait_contains("Bundle failed", &mut stderr_lines).await;
-  check_alive_then_kill(deno);
-}
-
-/// Confirm that the watcher continues to work even if module resolution fails at the *first* attempt
-#[flaky_test(tokio)]
-async fn bundle_watch_not_exit() {
-  let t = TempDir::new();
-  let file_to_watch = t.path().join("file_to_watch.ts");
-  file_to_watch.write("syntax error ^^");
-  let target_file = t.path().join("target.js");
-
-  let mut deno = util::deno_cmd()
-    .current_dir(t.path())
-    .arg("bundle")
-    .arg(&file_to_watch)
-    .arg(&target_file)
-    .arg("--watch")
-    .env("NO_COLOR", "1")
-    .piped_output()
-    .spawn()
-    .unwrap();
-  let (_stdout_lines, mut stderr_lines) = child_lines(&mut deno);
-
-  assert_contains!(next_line(&mut stderr_lines).await.unwrap(), "Warning");
-  assert_contains!(next_line(&mut stderr_lines).await.unwrap(), "deno_emit");
-  assert_contains!(
-    next_line(&mut stderr_lines).await.unwrap(),
-    "Bundle started"
-  );
-  assert_contains!(next_line(&mut stderr_lines).await.unwrap(), "error:");
-  assert_eq!(next_line(&mut stderr_lines).await.unwrap(), "");
-  assert_eq!(
-    next_line(&mut stderr_lines).await.unwrap(),
-    "  syntax error ^^"
-  );
-  assert_eq!(
-    next_line(&mut stderr_lines).await.unwrap(),
-    "         ~~~~~"
-  );
-  assert_contains!(
-    next_line(&mut stderr_lines).await.unwrap(),
-    "Bundle failed"
-  );
-  // the target file hasn't been created yet
-  assert!(!target_file.is_file());
-
-  // Make sure the watcher actually restarts and works fine with the proper syntax
-  file_to_watch.write("console.log(42);");
-
-  assert_contains!(
-    next_line(&mut stderr_lines).await.unwrap(),
-    "File change detected"
-  );
-  assert_contains!(next_line(&mut stderr_lines).await.unwrap(), "Check");
-  let line = next_line(&mut stderr_lines).await.unwrap();
-  // Should not clear screen, as we are in non-TTY environment
-  assert_not_contains!(&line, CLEAR_SCREEN);
-  assert_contains!(line, "file_to_watch.ts");
-  assert_contains!(next_line(&mut stderr_lines).await.unwrap(), "target.js");
-
-  wait_contains("Bundle finished", &mut stderr_lines).await;
-
-  // bundled file is created
-  assert!(target_file.is_file());
-  check_alive_then_kill(deno);
 }
 
 #[flaky_test(tokio)]
@@ -798,11 +657,11 @@ async fn run_watch_load_unload_events() {
   file_to_watch.write(
     r#"
       setInterval(() => {}, 0);
-      window.addEventListener("load", () => {
+      globalThis.addEventListener("load", () => {
         console.log("load");
       });
 
-      window.addEventListener("unload", () => {
+      globalThis.addEventListener("unload", () => {
         console.log("unload");
       });
     "#,
@@ -829,11 +688,11 @@ async fn run_watch_load_unload_events() {
   // Change content of the file, this time without an interval to keep it alive.
   file_to_watch.write(
     r#"
-      window.addEventListener("load", () => {
+      globalThis.addEventListener("load", () => {
         console.log("load");
       });
 
-      window.addEventListener("unload", () => {
+      globalThis.addEventListener("unload", () => {
         console.log("unload");
       });
     "#,

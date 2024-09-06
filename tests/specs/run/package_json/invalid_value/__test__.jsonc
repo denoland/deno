@@ -1,0 +1,23 @@
+{
+  "tempDir": true,
+  // TODO(2.0): update the tests, should probably run install first
+  "ignore": true,
+  "tests": {
+    // should run fine when not referencing a failing dep entry
+    "run_ok": {
+      "args": "run ok.ts",
+      "output": "ok.ts.out"
+    },
+    // should fail when referencing a failing dep entry
+    "run_error": {
+      "args": "run error.ts",
+      "exitCode": 1,
+      "output": "error.ts.out"
+    },
+    // should output a warning about the failing dep entry
+    "task_test": {
+      "args": "task test",
+      "output": "task.out"
+    }
+  }
+}

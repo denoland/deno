@@ -53,7 +53,7 @@ Deno.test(
     await assertRejects(
       () => wasmPromise,
       TypeError,
-      "Invalid WebAssembly content type.",
+      "Invalid WebAssembly content type",
     );
   },
 );

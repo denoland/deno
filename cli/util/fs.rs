@@ -1,6 +1,5 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
-use std::env::current_dir;
 use std::fs::OpenOptions;
 use std::io::Error;
 use std::io::ErrorKind;
@@ -18,7 +17,6 @@ use deno_config::glob::WalkEntry;
 use deno_core::anyhow::anyhow;
 use deno_core::anyhow::Context;
 use deno_core::error::AnyError;
-pub use deno_core::normalize_path;
 use deno_core::unsync::spawn_blocking;
 use deno_core::ModuleSpecifier;
 use deno_runtime::deno_fs::FileSystem;
@@ -253,18 +251,6 @@ fn canonicalize_path_maybe_not_exists_with_custom_fn(
       Err(err) => return Err(err),
     }
   }
-}
-
-pub fn resolve_from_cwd(path: &Path) -> Result<PathBuf, AnyError> {
-  let resolved_path = if path.is_absolute() {
-    path.to_owned()
-  } else {
-    let cwd =
-      current_dir().context("Failed to get current working directory")?;
-    cwd.join(path)
-  };
-
-  Ok(normalize_path(resolved_path))
 }
 
 /// Collects module specifiers that satisfy the given predicate as a file path, by recursively walking `include`.
@@ -509,10 +495,10 @@ pub fn hard_link_dir_recursive(from: &Path, to: &Path) -> Result<(), AnyError> {
   Ok(())
 }
 
-pub fn symlink_dir(oldpath: &Path, newpath: &Path) -> Result<(), AnyError> {
-  let err_mapper = |err: Error| {
+pub fn symlink_dir(oldpath: &Path, newpath: &Path) -> Result<(), Error> {
+  let err_mapper = |err: Error, kind: Option<ErrorKind>| {
     Error::new(
-      err.kind(),
+      kind.unwrap_or_else(|| err.kind()),
       format!(
         "{}, symlink '{}' -> '{}'",
         err,
@@ -524,12 +510,19 @@ pub fn symlink_dir(oldpath: &Path, newpath: &Path) -> Result<(), AnyError> {
   #[cfg(unix)]
   {
     use std::os::unix::fs::symlink;
-    symlink(oldpath, newpath).map_err(err_mapper)?;
+    symlink(oldpath, newpath).map_err(|e| err_mapper(e, None))?;
   }
   #[cfg(not(unix))]
   {
     use std::os::windows::fs::symlink_dir;
-    symlink_dir(oldpath, newpath).map_err(err_mapper)?;
+    symlink_dir(oldpath, newpath).map_err(|err| {
+      if let Some(code) = err.raw_os_error() {
+        if code as u32 == winapi::shared::winerror::ERROR_PRIVILEGE_NOT_HELD {
+          return err_mapper(err, Some(ErrorKind::PermissionDenied));
+        }
+      }
+      err_mapper(err, None)
+    })?;
   }
   Ok(())
 }
@@ -715,29 +708,12 @@ pub fn specifier_from_file_path(
 mod tests {
   use super::*;
   use deno_core::futures;
+  use deno_core::normalize_path;
   use deno_core::parking_lot::Mutex;
   use pretty_assertions::assert_eq;
   use test_util::PathRef;
   use test_util::TempDir;
   use tokio::sync::Notify;
-
-  #[test]
-  fn resolve_from_cwd_child() {
-    let cwd = current_dir().unwrap();
-    assert_eq!(resolve_from_cwd(Path::new("a")).unwrap(), cwd.join("a"));
-  }
-
-  #[test]
-  fn resolve_from_cwd_dot() {
-    let cwd = current_dir().unwrap();
-    assert_eq!(resolve_from_cwd(Path::new(".")).unwrap(), cwd);
-  }
-
-  #[test]
-  fn resolve_from_cwd_parent() {
-    let cwd = current_dir().unwrap();
-    assert_eq!(resolve_from_cwd(Path::new("a/..")).unwrap(), cwd);
-  }
 
   #[test]
   fn test_normalize_path() {
@@ -754,14 +730,6 @@ mod tests {
         PathBuf::from("C:\\a\\c")
       );
     }
-  }
-
-  #[test]
-  fn resolve_from_cwd_absolute() {
-    let expected = Path::new("a");
-    let cwd = current_dir().unwrap();
-    let absolute_expected = cwd.join(expected);
-    assert_eq!(resolve_from_cwd(expected).unwrap(), absolute_expected);
   }
 
   #[test]

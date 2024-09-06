@@ -906,7 +906,7 @@ class ClientRequest extends OutgoingMessage {
     // https://www.rfc-editor.org/rfc/rfc6266#section-4.3
     // Refs: https://github.com/nodejs/node/pull/46528
     if (isContentDispositionField(key) && this._contentLength) {
-      value = Buffer.from(value, "latin1");
+      value = Buffer.from(value).toString("latin1");
     }
 
     if (Array.isArray(value)) {
@@ -1781,7 +1781,8 @@ export class ServerImpl extends EventEmitter {
       });
 
       const req = new IncomingMessageForServer(socket);
-      req.url = request.url?.slice(req.url.indexOf("/", 8));
+      // Slice off the origin so that we only have pathname + search
+      req.url = request.url?.slice(request.url.indexOf("/", 8));
       req.method = request.method;
       req.upgrade =
         request.headers.get("connection")?.toLowerCase().includes("upgrade") &&
@@ -1835,6 +1836,7 @@ export class ServerImpl extends EventEmitter {
   }
 
   setTimeout() {
+    // deno-lint-ignore no-console
     console.error("Not implemented: Server.setTimeout()");
   }
 
