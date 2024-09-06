@@ -15,7 +15,6 @@ util::unit_test_factory!(
     blob_test,
     body_test,
     broadcast_channel_test,
-    buffer_test,
     build_test,
     cache_api_test,
     chmod_test,

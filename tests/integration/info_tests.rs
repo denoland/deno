@@ -6,31 +6,6 @@ use test_util::itest;
 use util::TestContextBuilder;
 
 #[test]
-fn info_with_compiled_source() {
-  let context = TestContextBuilder::new().use_http_server().build();
-  let module_path = "http://127.0.0.1:4545/run/048_media_types_jsx.ts";
-
-  let output = context
-    .new_command()
-    .current_dir(util::testdata_path())
-    .args_vec(["cache", module_path])
-    .run();
-  output.assert_exit_code(0);
-  output.skip_output_check();
-
-  let output = context
-    .new_command()
-    .current_dir(util::testdata_path())
-    .args_vec(["info", module_path])
-    .split_output()
-    .run();
-
-  // check the output of the test.ts program.
-  assert!(output.stdout().trim().contains("emit: "));
-  assert_eq!(output.stderr(), "");
-}
-
-#[test]
 fn info_lock_write() {
   let context = TestContextBuilder::new().use_http_server().build();
 

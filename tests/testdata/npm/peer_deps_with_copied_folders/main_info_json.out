@@ -42,8 +42,6 @@
         }
       ],
       "local": "[WILDCARD]main.ts",
-      "emit": null,
-      "map": null,
       "size": 171,
       "mediaType": "TypeScript",
       "specifier": "file://[WILDCARD]/main.ts"
@@ -53,6 +51,7 @@
     "npm:@denotest/peer-dep-test-child@1": "npm:/@denotest/peer-dep-test-child@1.0.0",
     "npm:@denotest/peer-dep-test-child@2": "npm:/@denotest/peer-dep-test-child@2.0.0"
   },
+  "version": 1,
   "npmPackages": {
     "@denotest/peer-dep-test-child@1.0.0_@denotest+peer-dep-test-peer@1.0.0": {
       "name": "@denotest/peer-dep-test-child",

@@ -1920,104 +1920,6 @@ declare namespace Deno {
    */
   export function createSync(path: string | URL): FsFile;
 
-  /** Seek a resource ID (`rid`) to the given `offset` under mode given by `whence`.
-   * The call resolves to the new position within the resource (bytes from the start).
-   *
-   * ```ts
-   * // Given file.rid pointing to file with "Hello world", which is 11 bytes long:
-   * using file = await Deno.open(
-   *   "hello.txt",
-   *   { read: true, write: true, truncate: true, create: true },
-   * );
-   * await file.write(new TextEncoder().encode("Hello world"));
-   *
-   * // advance cursor 6 bytes
-   * const cursorPosition = await Deno.seek(file.rid, 6, Deno.SeekMode.Start);
-   * console.log(cursorPosition);  // 6
-   * const buf = new Uint8Array(100);
-   * await file.read(buf);
-   * console.log(new TextDecoder().decode(buf)); // "world"
-   * ```
-   *
-   * The seek modes work as follows:
-   *
-   * ```ts
-   * // Given file.rid pointing to file with "Hello world", which is 11 bytes long:
-   * using file = await Deno.open(
-   *   "hello.txt",
-   *   { read: true, write: true, truncate: true, create: true },
-   * );
-   * await file.write(new TextEncoder().encode("Hello world"));
-   *
-   * // Seek 6 bytes from the start of the file
-   * console.log(await Deno.seek(file.rid, 6, Deno.SeekMode.Start)); // "6"
-   * // Seek 2 more bytes from the current position
-   * console.log(await Deno.seek(file.rid, 2, Deno.SeekMode.Current)); // "8"
-   * // Seek backwards 2 bytes from the end of the file
-   * console.log(await Deno.seek(file.rid, -2, Deno.SeekMode.End)); // "9" (i.e. 11-2)
-   * ```
-   *
-   * @deprecated This will be removed in Deno 2.0. See the
-   * {@link https://docs.deno.com/runtime/manual/advanced/migrate_deprecations | Deno 1.x to 2.x Migration Guide}
-   * for migration instructions.
-   *
-   * @category I/O
-   */
-  export function seek(
-    rid: number,
-    offset: number | bigint,
-    whence: SeekMode,
-  ): Promise<number>;
-
-  /** Synchronously seek a resource ID (`rid`) to the given `offset` under mode
-   * given by `whence`. The new position within the resource (bytes from the
-   * start) is returned.
-   *
-   * ```ts
-   * using file = Deno.openSync(
-   *   "hello.txt",
-   *   { read: true, write: true, truncate: true, create: true },
-   * );
-   * file.writeSync(new TextEncoder().encode("Hello world"));
-   *
-   * // advance cursor 6 bytes
-   * const cursorPosition = Deno.seekSync(file.rid, 6, Deno.SeekMode.Start);
-   * console.log(cursorPosition);  // 6
-   * const buf = new Uint8Array(100);
-   * file.readSync(buf);
-   * console.log(new TextDecoder().decode(buf)); // "world"
-   * ```
-   *
-   * The seek modes work as follows:
-   *
-   * ```ts
-   * // Given file.rid pointing to file with "Hello world", which is 11 bytes long:
-   * using file = Deno.openSync(
-   *   "hello.txt",
-   *   { read: true, write: true, truncate: true, create: true },
-   * );
-   * file.writeSync(new TextEncoder().encode("Hello world"));
-   *
-   * // Seek 6 bytes from the start of the file
-   * console.log(Deno.seekSync(file.rid, 6, Deno.SeekMode.Start)); // "6"
-   * // Seek 2 more bytes from the current position
-   * console.log(Deno.seekSync(file.rid, 2, Deno.SeekMode.Current)); // "8"
-   * // Seek backwards 2 bytes from the end of the file
-   * console.log(Deno.seekSync(file.rid, -2, Deno.SeekMode.End)); // "9" (i.e. 11-2)
-   * ```
-   *
-   * @deprecated This will be removed in Deno 2.0. See the
-   * {@link https://docs.deno.com/runtime/manual/advanced/migrate_deprecations | Deno 1.x to 2.x Migration Guide}
-   * for migration instructions.
-   *
-   * @category I/O
-   */
-  export function seekSync(
-    rid: number,
-    offset: number | bigint,
-    whence: SeekMode,
-  ): number;
-
   /**
    * Flushes any pending data and metadata operations of the given file stream
    * to disk.
@@ -2154,16 +2056,6 @@ declare namespace Deno {
      * ```
      */
     readonly writable: WritableStream<Uint8Array>;
-    /**
-     * The constructor which takes a resource ID. Generally `FsFile` should
-     * not be constructed directly. Instead use {@linkcode Deno.open} or
-     * {@linkcode Deno.openSync} to create a new instance of `FsFile`.
-     *
-     * @deprecated This will be removed in Deno 2.0. See the
-     * {@link https://docs.deno.com/runtime/manual/advanced/migrate_deprecations | Deno 1.x to 2.x Migration Guide}
-     * for migration instructions.
-     */
-    constructor(rid: number);
     /** Write the contents of the array buffer (`p`) to the file.
      *
      * Resolves to the number of bytes written.
@@ -2747,81 +2639,6 @@ declare namespace Deno {
      * and the promise returned will be rejected with an AbortError.
      */
     signal?: AbortSignal;
-  }
-
-  /**
-   * A variable-sized buffer of bytes with `read()` and `write()` methods.
-   *
-   * @deprecated This will be removed in Deno 2.0. See the
-   * {@link https://docs.deno.com/runtime/manual/advanced/migrate_deprecations | Deno 1.x to 2.x Migration Guide}
-   * for migration instructions.
-   *
-   * @category I/O
-   */
-  export class Buffer implements Reader, ReaderSync, Writer, WriterSync {
-    constructor(ab?: ArrayBuffer);
-    /** Returns a slice holding the unread portion of the buffer.
-     *
-     * The slice is valid for use only until the next buffer modification (that
-     * is, only until the next call to a method like `read()`, `write()`,
-     * `reset()`, or `truncate()`). If `options.copy` is false the slice aliases the buffer content at
-     * least until the next buffer modification, so immediate changes to the
-     * slice will affect the result of future reads.
-     * @param options Defaults to `{ copy: true }`
-     */
-    bytes(options?: { copy?: boolean }): Uint8Array;
-    /** Returns whether the unread portion of the buffer is empty. */
-    empty(): boolean;
-    /** A read only number of bytes of the unread portion of the buffer. */
-    readonly length: number;
-    /** The read only capacity of the buffer's underlying byte slice, that is,
-     * the total space allocated for the buffer's data. */
-    readonly capacity: number;
-    /** Discards all but the first `n` unread bytes from the buffer but
-     * continues to use the same allocated storage. It throws if `n` is
-     * negative or greater than the length of the buffer. */
-    truncate(n: number): void;
-    /** Resets the buffer to be empty, but it retains the underlying storage for
-     * use by future writes. `.reset()` is the same as `.truncate(0)`. */
-    reset(): void;
-    /** Reads the next `p.length` bytes from the buffer or until the buffer is
-     * drained. Returns the number of bytes read. If the buffer has no data to
-     * return, the return is EOF (`null`). */
-    readSync(p: Uint8Array): number | null;
-    /** Reads the next `p.length` bytes from the buffer or until the buffer is
-     * drained. Resolves to the number of bytes read. If the buffer has no
-     * data to return, resolves to EOF (`null`).
-     *
-     * NOTE: This methods reads bytes synchronously; it's provided for
-     * compatibility with `Reader` interfaces.
-     */
-    read(p: Uint8Array): Promise<number | null>;
-    writeSync(p: Uint8Array): number;
-    /** NOTE: This methods writes bytes synchronously; it's provided for
-     * compatibility with `Writer` interface. */
-    write(p: Uint8Array): Promise<number>;
-    /** Grows the buffer's capacity, if necessary, to guarantee space for
-     * another `n` bytes. After `.grow(n)`, at least `n` bytes can be written to
-     * the buffer without another allocation. If `n` is negative, `.grow()` will
-     * throw. If the buffer can't grow it will throw an error.
-     *
-     * Based on Go Lang's
-     * [Buffer.Grow](https://golang.org/pkg/bytes/#Buffer.Grow). */
-    grow(n: number): void;
-    /** Reads data from `r` until EOF (`null`) and appends it to the buffer,
-     * growing the buffer as needed. It resolves to the number of bytes read.
-     * If the buffer becomes too large, `.readFrom()` will reject with an error.
-     *
-     * Based on Go Lang's
-     * [Buffer.ReadFrom](https://golang.org/pkg/bytes/#Buffer.ReadFrom). */
-    readFrom(r: Reader): Promise<number>;
-    /** Reads data from `r` until EOF (`null`) and appends it to the buffer,
-     * growing the buffer as needed. It returns the number of bytes read. If the
-     * buffer becomes too large, `.readFromSync()` will throw an error.
-     *
-     * Based on Go Lang's
-     * [Buffer.ReadFrom](https://golang.org/pkg/bytes/#Buffer.ReadFrom). */
-    readFromSync(r: ReaderSync): number;
   }
 
   /**
@@ -4875,110 +4692,6 @@ declare namespace Deno {
     mtime: number | Date,
   ): Promise<void>;
 
-  /** The event yielded from an {@linkcode HttpConn} which represents an HTTP
-   * request from a remote client.
-   *
-   * @category HTTP Server
-   *
-   * @deprecated This will be removed in Deno 2.0. See the
-   * {@link https://docs.deno.com/runtime/manual/advanced/migrate_deprecations | Deno 1.x to 2.x Migration Guide}
-   * for migration instructions.
-   */
-  export interface RequestEvent {
-    /** The request from the client in the form of the web platform
-     * {@linkcode Request}. */
-    readonly request: Request;
-    /** The method to be used to respond to the event. The response needs to
-     * either be an instance of {@linkcode Response} or a promise that resolves
-     * with an instance of `Response`.
-     *
-     * When the response is successfully processed then the promise returned
-     * will be resolved. If there are any issues with sending the response,
-     * the promise will be rejected. */
-    respondWith(r: Response | PromiseLike<Response>): Promise<void>;
-  }
-
-  /**
-   * The async iterable that is returned from {@linkcode serveHttp} which
-   * yields up {@linkcode RequestEvent} events, representing individual
-   * requests on the HTTP server connection.
-   *
-   * @category HTTP Server
-   *
-   * @deprecated This will be removed in Deno 2.0. See the
-   * {@link https://docs.deno.com/runtime/manual/advanced/migrate_deprecations | Deno 1.x to 2.x Migration Guide}
-   * for migration instructions.
-   */
-  export interface HttpConn extends AsyncIterable<RequestEvent>, Disposable {
-    /** The resource ID associated with this connection. Generally users do not
-     * need to be aware of this identifier. */
-    readonly rid: number;
-
-    /** An alternative to the async iterable interface which provides promises
-     * which resolve with either a {@linkcode RequestEvent} when there is
-     * another request or `null` when the client has closed the connection. */
-    nextRequest(): Promise<RequestEvent | null>;
-    /** Initiate a server side closure of the connection, indicating to the
-     * client that you refuse to accept any more requests on this connection.
-     *
-     * Typically the client closes the connection, which will result in the
-     * async iterable terminating or the `nextRequest()` method returning
-     * `null`. */
-    close(): void;
-  }
-
-  /**
-   * Provides an interface to handle HTTP request and responses over TCP or TLS
-   * connections. The method returns an {@linkcode HttpConn} which yields up
-   * {@linkcode RequestEvent} events, which utilize the web platform standard
-   * {@linkcode Request} and {@linkcode Response} objects to handle the request.
-   *
-   * ```ts
-   * const conn = Deno.listen({ port: 80 });
-   * const httpConn = Deno.serveHttp(await conn.accept());
-   * const e = await httpConn.nextRequest();
-   * if (e) {
-   *   e.respondWith(new Response("Hello World"));
-   * }
-   * ```
-   *
-   * Alternatively, you can also use the async iterator approach:
-   *
-   * ```ts
-   * async function handleHttp(conn: Deno.Conn) {
-   *   for await (const e of Deno.serveHttp(conn)) {
-   *     e.respondWith(new Response("Hello World"));
-   *   }
-   * }
-   *
-   * for await (const conn of Deno.listen({ port: 80 })) {
-   *   handleHttp(conn);
-   * }
-   * ```
-   *
-   * If `httpConn.nextRequest()` encounters an error or returns `null` then the
-   * underlying {@linkcode HttpConn} resource is closed automatically.
-   *
-   * Also see the experimental Flash HTTP server {@linkcode Deno.serve} which
-   * provides a ground up rewrite of handling of HTTP requests and responses
-   * within the Deno CLI.
-   *
-   * Note that this function *consumes* the given connection passed to it, thus
-   * the original connection will be unusable after calling this. Additionally,
-   * you need to ensure that the connection is not being used elsewhere when
-   * calling this function in order for the connection to be consumed properly.
-   *
-   * For instance, if there is a `Promise` that is waiting for read operation on
-   * the connection to complete, it is considered that the connection is being
-   * used elsewhere. In such a case, this function will fail.
-   *
-   * @category HTTP Server
-   * @deprecated This will be soft-removed in Deno 2.0. See the
-   * {@link https://docs.deno.com/runtime/manual/advanced/migrate_deprecations | Deno 1.x to 2.x Migration Guide}
-   * for migration instructions.
-   */
-  export function serveHttp(conn: Conn): HttpConn;
-
   /** The object that is returned from a {@linkcode Deno.upgradeWebSocket}
    * request.
    *
@@ -5021,22 +4734,21 @@ declare namespace Deno {
    * with the returned response for the websocket upgrade to be successful.
    *
    * ```ts
-   * const conn = Deno.listen({ port: 80 });
-   * const httpConn = Deno.serveHttp(await conn.accept());
-   * const e = await httpConn.nextRequest();
-   * if (e) {
-   *   const { socket, response } = Deno.upgradeWebSocket(e.request);
-   *   socket.onopen = () => {
-   *     socket.send("Hello World!");
-   *   };
-   *   socket.onmessage = (e) => {
-   *     console.log(e.data);
-   *     socket.close();
-   *   };
-   *   socket.onclose = () => console.log("WebSocket has been closed.");
-   *   socket.onerror = (e) => console.error("WebSocket error:", e);
-   *   e.respondWith(response);
-   * }
+   * Deno.serve((req) => {
+   *   if (req.headers.get("upgrade") !== "websocket") {
+   *     return new Response(null, { status: 501 });
+   *   }
+   *   const { socket, response } = Deno.upgradeWebSocket(req);
+   *   socket.addEventListener("open", () => {
+   *     console.log("a client connected!");
+   *   });
+   *   socket.addEventListener("message", (event) => {
+   *     if (event.data === "ping") {
+   *       socket.send("pong");
+   *     }
+   *   });
+   *   return response;
+   * });
    * ```
    *
    * If the request body is disturbed (read from) before the upgrade is

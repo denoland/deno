@@ -1131,3 +1131,9 @@ Deno.test(function importedExecArgvTest() {
 Deno.test(function importedExecPathTest() {
   assertEquals(importedExecPath, Deno.execPath());
 });
+
+Deno.test("process.cpuUsage()", () => {
+  const cpuUsage = process.cpuUsage();
+  assert(typeof cpuUsage.user === "number");
+  assert(typeof cpuUsage.system === "number");
+});
