@@ -310,12 +310,15 @@ impl AsRef<str> for EnvVarName {
   }
 }
 
-pub trait Descriptor: Eq + Clone + Hash {
-  type Arg: From<String>;
+pub trait QueryDescriptor {
+  type AllowDesc: AllowDescriptor<Query = Self>;
+  type DenyDesc: DenyDescriptor<Query = Self>;
 
-  /// Parse this descriptor from a list of Self::Arg, which may have been converted from
-  /// command-line strings.
-  fn parse(list: Option<&[Self::Arg]>) -> Result<HashSet<Self>, AnyError>;
+  fn flag_name() -> &'static str;
+  fn name(&self) -> Cow<str>;
+
+  fn as_allow(&self) -> Self::AllowDesc;
+  fn as_deny(&self) -> Self::DenyDesc;
 
   /// Generic check function to check this descriptor against a `UnaryPermission`.
   fn check_in_permission(
@@ -324,27 +327,35 @@ pub trait Descriptor: Eq + Clone + Hash {
     api_name: Option<&str>,
   ) -> Result<(), AnyError>;
 
-  fn flag_name() -> &'static str;
-  fn name(&self) -> Cow<str>;
-  // By default, specifies no-stronger-than relationship.
-  // As this is not strict, it's only true when descriptors are the same.
-  fn stronger_than(&self, other: &Self) -> bool {
-    self == other
-  }
+  /// Gets if this query descriptor should revoke the provided allow descriptor.
+  fn revokes(&self, other: &Self::AllowDesc) -> bool;
 }
 
-#[derive(Clone, Debug, Eq, PartialEq)]
-pub struct UnaryPermission<T: Descriptor + Hash> {
+pub trait AllowDescriptor: Eq + Clone + Hash {
+  type Query: QueryDescriptor;
+
+  fn as_query(&self) -> Self::Query;
+  fn matches(&self, query: &Self::Query) -> bool;
+}
+
+pub trait DenyDescriptor: Eq + Clone + Hash {
+  type Query: QueryDescriptor;
+
+  fn matches(&self, query: &Self::Query) -> bool;
+}
+
+#[derive(Debug, Eq, PartialEq)]
+pub struct UnaryPermission<TQuery: QueryDescriptor + ?Sized> {
   granted_global: bool,
-  granted_list: HashSet<T>,
+  granted_list: HashSet<TQuery::AllowDesc>,
   flag_denied_global: bool,
-  flag_denied_list: HashSet<T>,
+  flag_denied_list: HashSet<TQuery::DenyDesc>,
   prompt_denied_global: bool,
-  prompt_denied_list: HashSet<T>,
+  prompt_denied_list: HashSet<TQuery::DenyDesc>,
   prompt: bool,
 }
 
-impl<T: Descriptor + Hash> Default for UnaryPermission<T> {
+impl<TQuery: QueryDescriptor> Default for UnaryPermission<TQuery> {
   fn default() -> Self {
     UnaryPermission {
       granted_global: Default::default(),
@@ -358,7 +369,21 @@ impl<T: Descriptor + Hash> Default for UnaryPermission<T> {
   }
 }
 
-impl<T: Descriptor + Hash> UnaryPermission<T> {
+impl<TQuery: QueryDescriptor> Clone for UnaryPermission<TQuery> {
+  fn clone(&self) -> Self {
+    Self {
+      granted_global: self.granted_global,
+      granted_list: self.granted_list.clone(),
+      flag_denied_global: self.flag_denied_global,
+      flag_denied_list: self.flag_denied_list.clone(),
+      prompt_denied_global: self.prompt_denied_global,
+      prompt_denied_list: self.prompt_denied_list.clone(),
+      prompt: self.prompt,
+    }
+  }
+}
+
+impl<TQuery: QueryDescriptor> UnaryPermission<TQuery> {
   pub fn allow_all() -> Self {
     Self {
       granted_global: true,
@@ -382,7 +407,7 @@ impl<T: Descriptor + Hash> UnaryPermission<T> {
 
   fn check_desc(
     &mut self,
-    desc: Option<&T>,
+    desc: Option<&TQuery>,
     assert_non_partial: bool,
     api_name: Option<&str>,
     get_display_name: impl Fn() -> Option<String>,
@@ -391,7 +416,7 @@ impl<T: Descriptor + Hash> UnaryPermission<T> {
     let (result, prompted, is_allow_all) = self
       .query_desc(desc, AllowPartial::from(!assert_non_partial))
       .check2(
-        T::flag_name(),
+        TQuery::flag_name(),
         api_name,
         || match get_display_name() {
           Some(display_name) => Some(display_name),
@@ -404,10 +429,10 @@ impl<T: Descriptor + Hash> UnaryPermission<T> {
         if is_allow_all {
           self.insert_granted(None);
         } else {
-          self.insert_granted(desc.cloned());
+          self.insert_granted(desc.map(|d| d.as_allow()));
         }
       } else {
-        self.insert_prompt_denied(desc.cloned());
+        self.insert_prompt_denied(desc.map(|d| d.as_deny()));
       }
     }
     result
@@ -415,7 +440,7 @@ impl<T: Descriptor + Hash> UnaryPermission<T> {
 
   fn query_desc(
     &self,
-    desc: Option<&T>,
+    desc: Option<&TQuery>,
     allow_partial: AllowPartial,
   ) -> PermissionState {
     if self.is_flag_denied(desc) || self.is_prompt_denied(desc) {
@@ -449,19 +474,19 @@ impl<T: Descriptor + Hash> UnaryPermission<T> {
 
   fn request_desc(
     &mut self,
-    desc: Option<&T>,
+    desc: Option<&TQuery>,
     get_display_name: impl Fn() -> Option<String>,
   ) -> PermissionState {
     let state = self.query_desc(desc, AllowPartial::TreatAsPartialGranted);
     if state == PermissionState::Granted {
-      self.insert_granted(desc.cloned());
+      self.insert_granted(desc.map(|d| d.as_allow()));
       return state;
     }
     if state != PermissionState::Prompt {
       return state;
     }
     let mut message = String::with_capacity(40);
-    message.push_str(&format!("{} access", T::flag_name()));
+    message.push_str(&format!("{} access", TQuery::flag_name()));
     match get_display_name() {
       Some(display_name) => {
         message.push_str(&format!(" to \"{}\"", display_name))
@@ -474,16 +499,16 @@ impl<T: Descriptor + Hash> UnaryPermission<T> {
     }
     match permission_prompt(
       &message,
-      T::flag_name(),
+      TQuery::flag_name(),
       Some("Deno.permissions.request()"),
       true,
     ) {
       PromptResponse::Allow => {
-        self.insert_granted(desc.cloned());
+        self.insert_granted(desc.map(|d| d.as_allow()));
         PermissionState::Granted
       }
       PromptResponse::Deny => {
-        self.insert_prompt_denied(desc.cloned());
+        self.insert_prompt_denied(desc.map(|d| d.as_deny()));
         PermissionState::Denied
       }
       PromptResponse::AllowAll => {
@@ -493,10 +518,10 @@ impl<T: Descriptor + Hash> UnaryPermission<T> {
     }
   }
 
-  fn revoke_desc(&mut self, desc: Option<&T>) -> PermissionState {
+  fn revoke_desc(&mut self, desc: Option<&TQuery>) -> PermissionState {
     match desc {
       Some(desc) => {
-        self.granted_list.retain(|v| !v.stronger_than(desc));
+        self.granted_list.retain(|v| desc.revokes(v));
       }
       None => {
         self.granted_global = false;
@@ -509,47 +534,47 @@ impl<T: Descriptor + Hash> UnaryPermission<T> {
     self.query_desc(desc, AllowPartial::TreatAsPartialGranted)
   }
 
-  fn is_granted(&self, desc: Option<&T>) -> bool {
-    Self::list_contains(desc, self.granted_global, &self.granted_list)
-  }
-
-  fn is_flag_denied(&self, desc: Option<&T>) -> bool {
-    Self::list_contains(desc, self.flag_denied_global, &self.flag_denied_list)
-  }
-
-  fn is_prompt_denied(&self, desc: Option<&T>) -> bool {
+  fn is_granted(&self, desc: Option<&TQuery>) -> bool {
     match desc {
-      Some(desc) => self
-        .prompt_denied_list
-        .iter()
-        .any(|v| desc.stronger_than(v)),
+      Some(desc) => {
+        self.granted_global
+          || self.granted_list.iter().any(|v| desc.matches_allow(v))
+      }
+      None => self.granted_global,
+    }
+  }
+
+  fn is_flag_denied(&self, desc: Option<&TQuery>) -> bool {
+    match desc {
+      Some(desc) => {
+        self.flag_denied_global
+          || self.flag_denied_list.iter().any(|v| desc.matches_deny(v))
+      }
+      None => self.flag_denied_global,
+    }
+  }
+
+  fn is_prompt_denied(&self, desc: Option<&TQuery>) -> bool {
+    match desc {
+      Some(desc) => {
+        self.prompt_denied_list.iter().any(|v| desc.matches_deny(v))
+      }
       None => self.prompt_denied_global || !self.prompt_denied_list.is_empty(),
     }
   }
 
-  fn is_partial_flag_denied(&self, desc: Option<&T>) -> bool {
+  fn is_partial_flag_denied(&self, desc: Option<&TQuery>) -> bool {
     match desc {
       None => !self.flag_denied_list.is_empty(),
-      Some(desc) => self.flag_denied_list.iter().any(|v| desc.stronger_than(v)),
+      Some(desc) => self.flag_denied_list.iter().any(|v| desc.matches_deny(v)),
     }
   }
 
-  fn list_contains(
-    desc: Option<&T>,
-    list_global: bool,
-    list: &HashSet<T>,
-  ) -> bool {
-    match desc {
-      Some(desc) => list_global || list.iter().any(|v| v.stronger_than(desc)),
-      None => list_global,
-    }
-  }
-
-  fn insert_granted(&mut self, desc: Option<T>) {
+  fn insert_granted(&mut self, desc: Option<TQuery::AllowDesc>) {
     Self::list_insert(desc, &mut self.granted_global, &mut self.granted_list);
   }
 
-  fn insert_prompt_denied(&mut self, desc: Option<T>) {
+  fn insert_prompt_denied(&mut self, desc: Option<TQuery::DenyDesc>) {
     Self::list_insert(
       desc,
       &mut self.prompt_denied_global,
@@ -557,7 +582,7 @@ impl<T: Descriptor + Hash> UnaryPermission<T> {
     );
   }
 
-  fn list_insert(
+  fn list_insert<T: Hash + Eq>(
     desc: Option<T>,
     list_global: &mut bool,
     list: &mut HashSet<T>,
@@ -573,7 +598,8 @@ impl<T: Descriptor + Hash> UnaryPermission<T> {
   fn create_child_permissions(
     &mut self,
     flag: ChildUnaryPermissionArg,
-  ) -> Result<UnaryPermission<T>, AnyError> {
+    parse: impl Fn(&str) -> Result<TQuery::AllowDesc, AnyError>,
+  ) -> Result<UnaryPermission<TQuery>, AnyError> {
     let mut perms = Self::default();
 
     match flag {
@@ -588,13 +614,12 @@ impl<T: Descriptor + Hash> UnaryPermission<T> {
       }
       ChildUnaryPermissionArg::NotGranted => {}
       ChildUnaryPermissionArg::GrantedList(granted_list) => {
-        let granted: Vec<T::Arg> =
-          granted_list.into_iter().map(From::from).collect();
-        perms.granted_list = T::parse(Some(&granted))?;
+        perms.granted_list =
+          granted_list.iter().map(parse).collect::<Result<_, _>>()?;
         if !perms
           .granted_list
           .iter()
-          .all(|desc| desc.check_in_permission(self, None).is_ok())
+          .all(|desc| desc.as_query().check_in_permission(self, None).is_ok())
         {
           return Err(escalation_error());
         }
@@ -615,8 +640,25 @@ impl<T: Descriptor + Hash> UnaryPermission<T> {
 #[derive(Clone, Eq, PartialEq, Hash, Debug)]
 pub struct ReadDescriptor(pub PathBuf);
 
-impl Descriptor for ReadDescriptor {
-  type Arg = PathBuf;
+impl QueryDescriptor for ReadDescriptor {
+  type AllowDesc = ReadDescriptor;
+  type DenyDesc = ReadDescriptor;
+
+  fn flag_name() -> &'static str {
+    "read"
+  }
+
+  fn name(&self) -> Cow<str> {
+    Cow::from(self.0.display().to_string())
+  }
+
+  fn as_allow(&self) -> Self::AllowDesc {
+    self.clone()
+  }
+
+  fn as_deny(&self) -> Self::DenyDesc {
+    self.clone()
+  }
 
   fn check_in_permission(
     &self,
@@ -627,20 +669,28 @@ impl Descriptor for ReadDescriptor {
     perm.check_desc(Some(self), true, api_name, || None)
   }
 
-  fn parse(args: Option<&[Self::Arg]>) -> Result<HashSet<Self>, AnyError> {
-    parse_path_list(args, ReadDescriptor)
-  }
-
-  fn flag_name() -> &'static str {
-    "read"
-  }
-
-  fn name(&self) -> Cow<str> {
-    Cow::from(self.0.display().to_string())
-  }
-
-  fn stronger_than(&self, other: &Self) -> bool {
+  fn revokes(&self, other: &Self::AllowDesc) -> bool {
     other.0.starts_with(&self.0)
+  }
+}
+
+impl AllowDescriptor for ReadDescriptor {
+  type Query = ReadDescriptor;
+
+  fn matches(&self, query: &Self::Query) -> bool {
+    self.0.starts_with(&query.0)
+  }
+
+  fn as_query(&self) -> Self::Query {
+    self.clone()
+  }
+}
+
+impl DenyDescriptor for ReadDescriptor {
+  type Query = ReadDescriptor;
+
+  fn matches(&self, query: &Self::Query) -> bool {
+    self.0.starts_with(&query.0)
   }
 }
 
@@ -2249,9 +2299,17 @@ impl<'de> Deserialize<'de> for ChildPermissionsArg {
   }
 }
 
+pub trait PermissionParser {
+  fn parse_read_descriptor(
+    &self,
+    arg: &str,
+  ) -> Result<ReadDescriptor, AnyError>;
+}
+
 pub fn create_child_permissions(
   main_perms: &mut Permissions,
   child_permissions_arg: ChildPermissionsArg,
+  parser: &dyn PermissionParser,
 ) -> Result<Permissions, AnyError> {
   fn is_granted_unary(arg: &ChildUnaryPermissionArg) -> bool {
     match arg {
@@ -2290,7 +2348,9 @@ pub fn create_child_permissions(
   // in the worker_perms.all block above
   worker_perms.read = main_perms
     .read
-    .create_child_permissions(child_permissions_arg.read)?;
+    .create_child_permissions(child_permissions_arg.read, |text| {
+      parser.parse_read_descriptor(text)
+    })?;
   worker_perms.write = main_perms
     .write
     .create_child_permissions(child_permissions_arg.write)?;
