@@ -1,5 +1,4 @@
 console.log("window is", globalThis.window);
-console.log("Deno.Buffer is", Deno.Buffer);
 console.log(
   "Deno.FsFile.prototype.rid is",
   Deno.openSync(import.meta.filename).rid,
