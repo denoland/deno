@@ -646,7 +646,7 @@ function serve(arg1, arg2) {
         options.onListen(listener.addr);
       } else {
         // deno-lint-ignore no-console
-        console.log(`Listening on ${path}`);
+        console.error(`Listening on ${path}`);
       }
     });
   }
@@ -695,7 +695,7 @@ function serve(arg1, arg2) {
       const host = formatHostName(addr.hostname);
 
       // deno-lint-ignore no-console
-      console.log(`Listening on ${scheme}${host}:${addr.port}/`);
+      console.error(`Listening on ${scheme}${host}:${addr.port}/`);
     }
   };
 
@@ -871,7 +871,7 @@ function registerDeclarativeServer(exports) {
             const host = formatHostName(hostname);
 
             // deno-lint-ignore no-console
-            console.debug(
+            console.error(
               `%cdeno serve%c: Listening on %chttp://${host}:${port}/%c${nThreads}`,
               "color: green",
               "color: inherit",
