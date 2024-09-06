@@ -461,6 +461,7 @@ Deno.test({
 Deno.test({
   name: "process.stdin",
   fn() {
+    // @ts-ignore `Deno.stdin.rid` was soft-removed in Deno 2.
     assertEquals(process.stdin.fd, Deno.stdin.rid);
     assertEquals(process.stdin.isTTY, Deno.stdin.isTerminal());
   },
