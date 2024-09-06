@@ -1184,8 +1184,7 @@ fn lsp_deno_task() {
     "deno.jsonc",
     r#"{
     "tasks": {
-      "build": "deno test",
-      "some:test": "deno bundle mod.ts"
+      "build": "deno test"
     }
   }"#,
   );
@@ -1203,10 +1202,6 @@ fn lsp_deno_task() {
       {
         "name": "build",
         "detail": "deno test",
-        "sourceUri": temp_dir.url().join("deno.jsonc").unwrap(),
-      }, {
-        "name": "some:test",
-        "detail": "deno bundle mod.ts",
         "sourceUri": temp_dir.url().join("deno.jsonc").unwrap(),
       }
     ])
@@ -8910,7 +8905,7 @@ fn lsp_completions_node_builtin() {
           "severity": 1,
           "code": "import-node-prefix-missing",
           "source": "deno",
-          "message": "Relative import path \"fs\" not prefixed with / or ./ or ../\nIf you want to use a built-in Node module, add a \"node:\" prefix (ex. \"node:fs\").",
+          "message": "Relative import path \"fs\" not prefixed with / or ./ or ../\n  \u{1b}[0m\u{1b}[36mhint:\u{1b}[0m If you want to use a built-in Node module, add a \"node:\" prefix (ex. \"node:fs\").",
           "data": {
             "specifier": "fs"
           },
@@ -10592,6 +10587,145 @@ fn lsp_format_markdown() {
         "newText": "\n"
       }
     ])
+  );
+  client.shutdown();
+}
+
+#[test]
+fn lsp_format_html() {
+  let context = TestContextBuilder::new().use_temp_cwd().build();
+  let temp_dir = context.temp_dir();
+  temp_dir.write(
+    "deno.json",
+    json!({
+      "unstable": ["fmt-html"],
+    })
+    .to_string(),
+  );
+  let html_file =
+    source_file(temp_dir.path().join("file.html"), "  <html></html>");
+  let mut client = context.new_lsp_command().build();
+  client.initialize_default();
+  let res = client.write_request(
+    "textDocument/formatting",
+    json!({
+      "textDocument": { "uri": html_file.url() },
+      "options": {
+        "tabSize": 2,
+        "insertSpaces": true,
+      },
+    }),
+  );
+  assert_eq!(
+    res,
+    json!([
+      {
+        "range": {
+          "start": { "line": 0, "character": 0 },
+          "end": { "line": 0, "character": 2 },
+        },
+        "newText": "",
+      },
+      {
+        "range": {
+          "start": { "line": 0, "character": 15 },
+          "end": { "line": 0, "character": 15 },
+        },
+        "newText": "\n",
+      },
+    ]),
+  );
+  client.shutdown();
+}
+
+#[test]
+fn lsp_format_css() {
+  let context = TestContextBuilder::new().use_temp_cwd().build();
+  let temp_dir = context.temp_dir();
+  temp_dir.write(
+    "deno.json",
+    json!({
+      "unstable": ["fmt-css"],
+    })
+    .to_string(),
+  );
+  let css_file = source_file(temp_dir.path().join("file.css"), "  foo {}");
+  let mut client = context.new_lsp_command().build();
+  client.initialize_default();
+  let res = client.write_request(
+    "textDocument/formatting",
+    json!({
+      "textDocument": { "uri": css_file.url() },
+      "options": {
+        "tabSize": 2,
+        "insertSpaces": true,
+      },
+    }),
+  );
+  assert_eq!(
+    res,
+    json!([
+      {
+        "range": {
+          "start": { "line": 0, "character": 0 },
+          "end": { "line": 0, "character": 2 },
+        },
+        "newText": "",
+      },
+      {
+        "range": {
+          "start": { "line": 0, "character": 8 },
+          "end": { "line": 0, "character": 8 },
+        },
+        "newText": "\n",
+      },
+    ]),
+  );
+  client.shutdown();
+}
+
+#[test]
+fn lsp_format_yaml() {
+  let context = TestContextBuilder::new().use_temp_cwd().build();
+  let temp_dir = context.temp_dir();
+  temp_dir.write(
+    "deno.json",
+    json!({
+      "unstable": ["fmt-yaml"],
+    })
+    .to_string(),
+  );
+  let yaml_file = source_file(temp_dir.path().join("file.yaml"), "  foo: 1");
+  let mut client = context.new_lsp_command().build();
+  client.initialize_default();
+  let res = client.write_request(
+    "textDocument/formatting",
+    json!({
+      "textDocument": { "uri": yaml_file.url() },
+      "options": {
+        "tabSize": 2,
+        "insertSpaces": true,
+      },
+    }),
+  );
+  assert_eq!(
+    res,
+    json!([
+      {
+        "range": {
+          "start": { "line": 0, "character": 0 },
+          "end": { "line": 0, "character": 2 },
+        },
+        "newText": "",
+      },
+      {
+        "range": {
+          "start": { "line": 0, "character": 8 },
+          "end": { "line": 0, "character": 8 },
+        },
+        "newText": "\n",
+      },
+    ]),
   );
   client.shutdown();
 }
@@ -14633,7 +14767,6 @@ fn lsp_byonm() {
       "@denotest/esm-basic": "*",
     },
   }));
-  context.run_npm("install");
   let mut client = context.new_lsp_command().build();
   client.initialize_default();
   let diagnostics = client.did_open(json!({
@@ -14664,7 +14797,52 @@ fn lsp_byonm() {
         "severity": 1,
         "code": "resolver-error",
         "source": "deno",
-        "message": "Could not find a matching package for 'npm:chalk' in a package.json file. You must specify this as a package.json dependency when the node_modules folder is not managed by Deno.",
+        "message": "Could not find a matching package for 'npm:chalk' in the node_modules directory. Ensure you have all your JSR and npm dependencies listed in your deno.json or package.json, then run `deno install`. Alternatively, turn on auto-install by specifying `\"nodeModulesDir\": \"auto\"` in your deno.json file.",
+      },
+      {
+        "range": {
+          "start": {
+            "line": 2,
+            "character": 15,
+          },
+          "end": {
+            "line": 2,
+            "character": 36,
+          },
+        },
+        "severity": 1,
+        "code": "resolver-error",
+        "source": "deno",
+        "message": "Could not resolve \"@denotest/esm-basic\", but found it in a package.json. Deno expects the node_modules/ directory to be up to date. Did you forget to run `deno install`?",
+      },
+    ])
+  );
+  context.run_npm("install");
+  client.did_change_watched_files(json!({
+    "changes": [{
+      "uri": temp_dir.url().join("node_modules/.package-lock.json").unwrap(),
+      "type": 1,
+    }],
+  }));
+  let diagnostics = client.read_diagnostics();
+  assert_eq!(
+    json!(diagnostics.all()),
+    json!([
+      {
+        "range": {
+          "start": {
+            "line": 1,
+            "character": 15,
+          },
+          "end": {
+            "line": 1,
+            "character": 26,
+          },
+        },
+        "severity": 1,
+        "code": "resolver-error",
+        "source": "deno",
+        "message": "Could not find a matching package for 'npm:chalk' in the node_modules directory. Ensure you have all your JSR and npm dependencies listed in your deno.json or package.json, then run `deno install`. Alternatively, turn on auto-install by specifying `\"nodeModulesDir\": \"auto\"` in your deno.json file.",
       },
     ])
   );

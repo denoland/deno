@@ -1,7 +1,5 @@
 {
   "tempDir": true,
-  // TODO(2.0): re-enable after DENO_FUTURE=1 by default lands
-  "ignore": true,
   "tests": {
     "error_with_new_npm_dep": {
       "steps": [
@@ -60,14 +58,11 @@
       ]
     },
     "error_when_package_json_changed": {
-      "envs": {
-        "DENO_FUTURE": "1"
-      },
       "steps": [
         {
           "args": [
             "eval",
-            "Deno.writeTextFileSync('deno.json', `{ \"nodeModules\": \"local-auto\" }`)"
+            "Deno.writeTextFileSync('deno.json', `{ \"nodeModulesDir\": \"auto\" }`)"
           ],
           "output": "[WILDCARD]"
         },

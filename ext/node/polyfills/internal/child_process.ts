@@ -1099,7 +1099,6 @@ const kNodeFlagsMap = new Map([
 const kDenoSubcommands = new Set([
   "add",
   "bench",
-  "bundle",
   "cache",
   "check",
   "compile",

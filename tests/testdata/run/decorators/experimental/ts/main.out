@@ -1,2 +1,3 @@
+Warning experimentalDecorators compiler option is deprecated and may be removed at any time
 Check [WILDCARD]
 SomeClass { someField: "asdf" }

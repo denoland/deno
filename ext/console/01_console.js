@@ -179,7 +179,7 @@ class AssertionError extends Error {
   }
 }
 
-function assert(cond, msg = "Assertion failed.") {
+function assert(cond, msg = "Assertion failed") {
   if (!cond) {
     throw new AssertionError(msg);
   }
@@ -260,6 +260,7 @@ const colors = {
 
 function defineColorAlias(target, alias) {
   ObjectDefineProperty(colors, alias, {
+    __proto__: null,
     get() {
       return this[target];
     },
@@ -3237,8 +3238,8 @@ class Console {
   table = (data = undefined, properties = undefined) => {
     if (properties !== undefined && !ArrayIsArray(properties)) {
       throw new Error(
-        "The 'properties' argument must be of type Array. " +
-          "Received type " + typeof properties,
+        "The 'properties' argument must be of type Array: " +
+          "received type " + typeof properties,
       );
     }
 
@@ -3448,7 +3449,10 @@ function inspect(
 function createFilteredInspectProxy({ object, keys, evaluate }) {
   const obj = class {};
   if (object.constructor?.name) {
-    ObjectDefineProperty(obj, "name", { value: object.constructor.name });
+    ObjectDefineProperty(obj, "name", {
+      __proto__: null,
+      value: object.constructor.name,
+    });
   }
 
   return new Proxy(new obj(), {

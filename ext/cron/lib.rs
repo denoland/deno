@@ -116,12 +116,15 @@ where
 
 fn validate_cron_name(name: &str) -> Result<(), AnyError> {
   if name.len() > 64 {
-    return Err(type_error("Cron name is too long"));
+    return Err(type_error(format!(
+      "Cron name cannot exceed 64 characters: current length {}",
+      name.len()
+    )));
   }
   if !name.chars().all(|c| {
     c.is_ascii_whitespace() || c.is_ascii_alphanumeric() || c == '_' || c == '-'
   }) {
-    return Err(type_error("Invalid cron name. Only alphanumeric characters, whitespace, hyphens, and underscores are allowed"));
+    return Err(type_error("Invalid cron name: only alphanumeric characters, whitespace, hyphens, and underscores are allowed"));
   }
   Ok(())
 }

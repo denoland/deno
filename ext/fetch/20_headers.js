@@ -73,7 +73,7 @@ function fillHeaders(headers, object) {
       const header = object[i];
       if (header.length !== 2) {
         throw new TypeError(
-          `Invalid header. Length must be 2, but is ${header.length}`,
+          `Invalid header: length must be 2, but is ${header.length}`,
         );
       }
       appendHeader(headers, header[0], header[1]);
@@ -133,15 +133,15 @@ function appendHeader(headers, name, value) {
 
   // 2.
   if (!checkHeaderNameForHttpTokenCodePoint(name)) {
-    throw new TypeError("Header name is not valid.");
+    throw new TypeError(`Invalid header name: "${name}"`);
   }
   if (!checkForInvalidValueChars(value)) {
-    throw new TypeError("Header value is not valid.");
+    throw new TypeError(`Invalid header value: "${value}"`);
   }
 
   // 3.
   if (headers[_guard] == "immutable") {
-    throw new TypeError("Headers are immutable.");
+    throw new TypeError("Cannot change header: headers are immutable");
   }
 
   // 7.
@@ -330,10 +330,10 @@ class Headers {
     name = webidl.converters["ByteString"](name, prefix, "Argument 1");
 
     if (!checkHeaderNameForHttpTokenCodePoint(name)) {
-      throw new TypeError("Header name is not valid.");
+      throw new TypeError(`Invalid header name: "${name}"`);
     }
     if (this[_guard] == "immutable") {
-      throw new TypeError("Headers are immutable.");
+      throw new TypeError("Cannot change headers: headers are immutable");
     }
 
     const list = this[_headerList];
@@ -356,7 +356,7 @@ class Headers {
     name = webidl.converters["ByteString"](name, prefix, "Argument 1");
 
     if (!checkHeaderNameForHttpTokenCodePoint(name)) {
-      throw new TypeError("Header name is not valid.");
+      throw new TypeError(`Invalid header name: "${name}"`);
     }
 
     const list = this[_headerList];
@@ -387,7 +387,7 @@ class Headers {
     name = webidl.converters["ByteString"](name, prefix, "Argument 1");
 
     if (!checkHeaderNameForHttpTokenCodePoint(name)) {
-      throw new TypeError("Header name is not valid.");
+      throw new TypeError(`Invalid header name: "${name}"`);
     }
 
     const list = this[_headerList];
@@ -415,14 +415,14 @@ class Headers {
 
     // 2.
     if (!checkHeaderNameForHttpTokenCodePoint(name)) {
-      throw new TypeError("Header name is not valid.");
+      throw new TypeError(`Invalid header name: "${name}"`);
     }
     if (!checkForInvalidValueChars(value)) {
-      throw new TypeError("Header value is not valid.");
+      throw new TypeError(`Invalid header value: "${value}"`);
     }
 
     if (this[_guard] == "immutable") {
-      throw new TypeError("Headers are immutable.");
+      throw new TypeError("Cannot change headers: headers are immutable");
     }
 
     const list = this[_headerList];
