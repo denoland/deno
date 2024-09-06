@@ -236,13 +236,14 @@ Deno.test("[node/net] net.Server can listen on the same port immediately after i
     console.error(e);
   });
   server.listen(0, () => {
-    const port = (server.address() as any).port;
+    // deno-lint-ignore no-explicit-any
+    const { port } = server.address() as any;
     server.close();
     server.listen(port, () => {
       server.close(() => {
         serverClosed.resolve();
       });
     });
-  })
+  });
   await serverClosed.promise;
 });
