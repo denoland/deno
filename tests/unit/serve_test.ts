@@ -872,6 +872,36 @@ Deno.test({ permissions: { net: true } }, async function validPortString() {
   await server.shutdown();
 });
 
+Deno.test({ permissions: { net: true } }, async function ipv6Hostname() {
+  const ac = new AbortController();
+  let url = "";
+
+  const consoleLog = console.log;
+  console.log = (msg) => {
+    try {
+      const match = msg.match(/Listening on (http:\/\/(.*?):(\d+)\/)/);
+      assert(!!match, `Didn't match ${msg}`);
+      url = match[1];
+    } finally {
+      ac.abort();
+    }
+  };
+
+  try {
+    const server = Deno.serve({
+      handler: () => new Response(),
+      hostname: "::1",
+      port: 0,
+      signal: ac.signal,
+    });
+    assertEquals(server.addr.transport, "tcp");
+    assert(new URL(url), `Not a valid URL "${url}"`);
+    await server.shutdown();
+  } finally {
+    console.log = consoleLog;
+  }
+});
+
 Deno.test({ permissions: { net: true } }, function invalidPortFloat() {
   assertThrows(
     () =>
