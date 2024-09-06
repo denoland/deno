@@ -10749,9 +10749,31 @@ mod tests {
 
   #[test]
   fn jupyter_unstable_flags() {
-    let r = flags_from_vec(svec!["deno", "jupyter", "--unstable-ffi"]);
+    let r = flags_from_vec(svec![
+      "deno",
+      "jupyter",
+      "--unstable-ffi",
+      "--unstable-bare-node-builtins",
+      "--unstable-worker-options"
+    ]);
 
-    assert!(r.is_ok());
+    assert_eq!(
+      r.unwrap(),
+      Flags {
+        subcommand: DenoSubcommand::Jupyter(JupyterFlags {
+          install: false,
+          kernel: false,
+          conn_file: None,
+        }),
+        unstable_config: UnstableConfig {
+          legacy_flag_enabled: false,
+          bare_node_builtins: true,
+          sloppy_imports: false,
+          features: svec!["ffi", "worker-options"],
+        },
+        ..Flags::default()
+      }
+    );
   }
 
   #[test]
