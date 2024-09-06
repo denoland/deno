@@ -564,6 +564,25 @@ function mapToCallback(context, callback, onError) {
   };
 }
 
+/**
+ * @param {string} hostname
+ * @returns {string}
+ */
+function formatHostName(hostname) {
+  // If the hostname is "0.0.0.0", we display "localhost" in console
+  // because browsers in Windows don't resolve "0.0.0.0".
+  // See the discussion in https://github.com/denoland/deno_std/issues/1165
+  if (
+    (Deno.build.os === "windows") &&
+    (hostname == "0.0.0.0" || hostname == "::")
+  ) {
+    return "localhost";
+  }
+
+  // Add brackets around ipv6 hostname
+  return StringPrototypeIncludes(hostname, ":") ? `[${hostname}]` : hostname;
+}
+
 type RawHandler = (
   request: Request,
   info: ServeHandlerInfo,
@@ -685,25 +704,6 @@ function serve(arg1, arg2) {
   };
 
   return serveHttpOnListener(listener, signal, handler, onError, onListen);
-}
-
-/**
- * @param {string} hostname
- * @returns {string}
- */
-function formatHostName(hostname) {
-  // If the hostname is "0.0.0.0", we display "localhost" in console
-  // because browsers in Windows don't resolve "0.0.0.0".
-  // See the discussion in https://github.com/denoland/deno_std/issues/1165
-  if (
-    (Deno.build.os === "windows") &&
-    (hostname == "0.0.0.0" || hostname == "::")
-  ) {
-    return "localhost";
-  }
-
-  // Add brackets around ipv6 hostname
-  return StringPrototypeIncludes(hostname, ":") ? `[${hostname}]` : hostname;
 }
 
 /**
