@@ -210,10 +210,15 @@ impl ConfigUpdater {
     if specifier.scheme() != "file" {
       bail!("Can't update a remote configuration file");
     }
-    let config_file_path = specifier.to_file_path().unwrap();
+    let config_file_path = specifier.to_file_path().map_err(|_| {
+      anyhow!("Specifier {specifier:?} is an invalid file path")
+    })?;
     let config_file_contents = {
-      let contents =
-        tokio::fs::read_to_string(&config_file_path).await.unwrap();
+      let contents = tokio::fs::read_to_string(&config_file_path)
+        .await
+        .with_context(|| {
+          format!("Reading config file at: {}", config_file_path.display())
+        })?;
       if contents.trim().is_empty() {
         "{}\n".into()
       } else {
