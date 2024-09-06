@@ -92,12 +92,14 @@ if (Symbol.metadata) {
 }
 ObjectDefineProperties(Symbol, {
   dispose: {
+    __proto__: null,
     value: SymbolDispose,
     enumerable: false,
     writable: false,
     configurable: false,
   },
   metadata: {
+    __proto__: null,
     value: SymbolMetadata,
     enumerable: false,
     writable: false,
@@ -533,6 +535,7 @@ ObjectDefineProperties(finalDenoNs, {
   args: core.propGetterOnly(opArgs),
   mainModule: core.propGetterOnly(() => op_main_module()),
   exitCode: {
+    __proto__: null,
     get() {
       return os.getExitCode();
     },
