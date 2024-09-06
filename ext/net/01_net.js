@@ -101,6 +101,10 @@ class Conn {
   #writable;
 
   constructor(rid, remoteAddr, localAddr) {
+    ObjectDefineProperty(this, internalRidSymbol, {
+      enumerable: false,
+      value: rid,
+    });
     this.#rid = rid;
     this.#remoteAddr = remoteAddr;
     this.#localAddr = localAddr;
@@ -194,6 +198,10 @@ class TcpConn extends Conn {
 
   constructor(rid, remoteAddr, localAddr) {
     super(rid, remoteAddr, localAddr);
+    ObjectDefineProperty(this, internalRidSymbol, {
+      enumerable: false,
+      value: rid,
+    });
     this.#rid = rid;
   }
 
@@ -207,8 +215,15 @@ class TcpConn extends Conn {
 }
 
 class UnixConn extends Conn {
+  #rid = 0;
+
   constructor(rid, remoteAddr, localAddr) {
     super(rid, remoteAddr, localAddr);
+    ObjectDefineProperty(this, internalRidSymbol, {
+      enumerable: false,
+      value: rid,
+    });
+    this.#rid = rid;
   }
 }
 

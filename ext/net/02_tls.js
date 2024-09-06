@@ -29,6 +29,10 @@ class TlsConn extends Conn {
 
   constructor(rid, remoteAddr, localAddr) {
     super(rid, remoteAddr, localAddr);
+    ObjectDefineProperty(this, internalRidSymbol, {
+      enumerable: false,
+      value: rid,
+    });
     this.#rid = rid;
   }
 
