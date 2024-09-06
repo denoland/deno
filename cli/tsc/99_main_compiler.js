@@ -46,8 +46,6 @@ delete Object.prototype.__proto__;
     "UnixListenOptions",
     "createHttpClient",
     "dlopen",
-    "funlock",
-    "funlockSync",
     "listen",
     "listenDatagram",
     "openKv",

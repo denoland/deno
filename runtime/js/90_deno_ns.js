@@ -1,6 +1,6 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
-import { core, internals } from "ext:core/mod.js";
+import { core } from "ext:core/mod.js";
 import {
   op_net_listen_udp,
   op_net_listen_unixpacket,
@@ -77,22 +77,6 @@ const denoNs = {
   lstat: fs.lstat,
   truncateSync: fs.truncateSync,
   truncate: fs.truncate,
-  ftruncateSync(rid, len) {
-    internals.warnOnDeprecatedApi(
-      "Deno.ftruncateSync()",
-      new Error().stack,
-      "Use `Deno.FsFile.truncateSync()` instead.",
-    );
-    return fs.ftruncateSync(rid, len);
-  },
-  ftruncate(rid, len) {
-    internals.warnOnDeprecatedApi(
-      "Deno.ftruncate()",
-      new Error().stack,
-      "Use `Deno.FsFile.truncate()` instead.",
-    );
-    return fs.ftruncate(rid, len);
-  },
   errors: errors.errors,
   inspect: console.inspect,
   env: os.env,
@@ -101,42 +85,8 @@ const denoNs = {
   Buffer: buffer.Buffer,
   readAll: buffer.readAll,
   readAllSync: buffer.readAllSync,
-  writeAll: buffer.writeAll,
-  writeAllSync: buffer.writeAllSync,
   copy: io.copy,
   SeekMode: io.SeekMode,
-  read(rid, buffer) {
-    internals.warnOnDeprecatedApi(
-      "Deno.read()",
-      new Error().stack,
-      "Use `reader.read()` instead.",
-    );
-    return io.read(rid, buffer);
-  },
-  readSync(rid, buffer) {
-    internals.warnOnDeprecatedApi(
-      "Deno.readSync()",
-      new Error().stack,
-      "Use `reader.readSync()` instead.",
-    );
-    return io.readSync(rid, buffer);
-  },
-  write(rid, data) {
-    internals.warnOnDeprecatedApi(
-      "Deno.write()",
-      new Error().stack,
-      "Use `writer.write()` instead.",
-    );
-    return io.write(rid, data);
-  },
-  writeSync(rid, data) {
-    internals.warnOnDeprecatedApi(
-      "Deno.writeSync()",
-      new Error().stack,
-      "Use `writer.writeSync()` instead.",
-    );
-    return io.writeSync(rid, data);
-  },
   File: fs.File,
   FsFile: fs.FsFile,
   open: fs.open,
@@ -146,22 +96,6 @@ const denoNs = {
   stdin: io.stdin,
   stdout: io.stdout,
   stderr: io.stderr,
-  seek(rid, offset, whence) {
-    internals.warnOnDeprecatedApi(
-      "Deno.seek()",
-      new Error().stack,
-      "Use `file.seek()` instead.",
-    );
-    return fs.seek(rid, offset, whence);
-  },
-  seekSync(rid, offset, whence) {
-    internals.warnOnDeprecatedApi(
-      "Deno.seekSync()",
-      new Error().stack,
-      "Use `file.seekSync()` instead.",
-    );
-    return fs.seekSync(rid, offset, whence);
-  },
   connect: net.connect,
   listen: net.listen,
   loadavg: os.loadavg,
@@ -235,8 +169,6 @@ denoNsUnstableById[unstableIds.ffi] = {
 };
 
 denoNsUnstableById[unstableIds.fs] = {
-  funlock: fs.funlock,
-  funlockSync: fs.funlockSync,
   umask: fs.umask,
 };
 
@@ -283,8 +215,6 @@ const denoNsUnstable = {
   UnsafePointerView: ffi.UnsafePointerView,
   UnsafeFnPointer: ffi.UnsafeFnPointer,
   UnsafeWindowSurface: webgpuSurface.UnsafeWindowSurface,
-  funlock: fs.funlock,
-  funlockSync: fs.funlockSync,
   openKv: kv.openKv,
   AtomicOperation: kv.AtomicOperation,
   Kv: kv.Kv,

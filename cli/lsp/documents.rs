@@ -1242,7 +1242,7 @@ impl Documents {
   /// tsc when type checking.
   pub fn resolve(
     &self,
-    specifiers: &[String],
+    raw_specifiers: &[String],
     referrer: &ModuleSpecifier,
     file_referrer: Option<&ModuleSpecifier>,
   ) -> Vec<Option<(ModuleSpecifier, MediaType)>> {
@@ -1253,16 +1253,16 @@ impl Documents {
       .or(file_referrer);
     let dependencies = document.as_ref().map(|d| d.dependencies());
     let mut results = Vec::new();
-    for specifier in specifiers {
-      if specifier.starts_with("asset:") {
-        if let Ok(specifier) = ModuleSpecifier::parse(specifier) {
+    for raw_specifier in raw_specifiers {
+      if raw_specifier.starts_with("asset:") {
+        if let Ok(specifier) = ModuleSpecifier::parse(raw_specifier) {
           let media_type = MediaType::from_specifier(&specifier);
           results.push(Some((specifier, media_type)));
         } else {
           results.push(None);
         }
       } else if let Some(dep) =
-        dependencies.as_ref().and_then(|d| d.get(specifier))
+        dependencies.as_ref().and_then(|d| d.get(raw_specifier))
       {
         if let Some(specifier) = dep.maybe_type.maybe_specifier() {
           results.push(self.resolve_dependency(
@@ -1281,7 +1281,7 @@ impl Documents {
         }
       } else if let Ok(specifier) =
         self.resolver.as_graph_resolver(file_referrer).resolve(
-          specifier,
+          raw_specifier,
           &deno_graph::Range {
             specifier: referrer.clone(),
             start: deno_graph::Position::zeroed(),
@@ -1515,12 +1515,16 @@ impl<'a> deno_graph::source::Loader for OpenDocumentsGraphLoader<'a> {
   fn cache_module_info(
     &self,
     specifier: &deno_ast::ModuleSpecifier,
+    media_type: MediaType,
     source: &Arc<[u8]>,
     module_info: &deno_graph::ModuleInfo,
   ) {
-    self
-      .inner_loader
-      .cache_module_info(specifier, source, module_info)
+    self.inner_loader.cache_module_info(
+      specifier,
+      media_type,
+      source,
+      module_info,
+    )
   }
 }
 

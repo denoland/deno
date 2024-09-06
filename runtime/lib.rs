@@ -44,7 +44,6 @@ pub use worker_bootstrap::WorkerExecutionMode;
 pub use worker_bootstrap::WorkerLogLevel;
 
 mod shared;
-pub use shared::import_assertion_callback;
 pub use shared::runtime;
 
 pub struct UnstableGranularFlag {
@@ -84,7 +83,7 @@ pub static UNSTABLE_GRANULAR_FLAGS: &[UnstableGranularFlag] = &[
   UnstableGranularFlag {
     name: ops::http::UNSTABLE_FEATURE_NAME,
     help_text: "Enable unstable HTTP APIs",
-    show_in_help: false,
+    show_in_help: true,
     id: 5,
   },
   UnstableGranularFlag {

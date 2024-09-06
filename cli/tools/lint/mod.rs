@@ -45,6 +45,7 @@ use crate::colors;
 use crate::factory::CliFactory;
 use crate::graph_util::ModuleGraphCreator;
 use crate::tools::fmt::run_parallelized;
+use crate::util::display;
 use crate::util::file_watcher;
 use crate::util::fs::canonicalize_path;
 use crate::util::path::is_script_ext;
@@ -59,6 +60,8 @@ pub use linter::CliLinterOptions;
 pub use rules::collect_no_slow_type_diagnostics;
 pub use rules::ConfiguredRules;
 pub use rules::LintRuleProvider;
+
+const JSON_SCHEMA_VERSION: u8 = 1;
 
 static STDIN_FILE_NAME: &str = "$deno$stdin.ts";
 
@@ -440,18 +443,20 @@ pub fn print_rules_list(json: bool, maybe_rules_tags: Option<Vec<String>>) {
     .rules;
 
   if json {
-    let json_rules: Vec<serde_json::Value> = lint_rules
-      .iter()
-      .map(|rule| {
-        serde_json::json!({
-          "code": rule.code(),
-          "tags": rule.tags(),
-          "docs": rule.docs(),
+    let json_output = serde_json::json!({
+      "version": JSON_SCHEMA_VERSION,
+      "rules": lint_rules
+        .iter()
+        .map(|rule| {
+          serde_json::json!({
+            "code": rule.code(),
+            "tags": rule.tags(),
+            "docs": rule.docs(),
+          })
         })
-      })
-      .collect();
-    let json_str = serde_json::to_string_pretty(&json_rules).unwrap();
-    println!("{json_str}");
+        .collect::<Vec<serde_json::Value>>(),
+    });
+    display::write_json_to_stdout(&json_output).unwrap();
   } else {
     // The rules should still be printed even if `--quiet` option is enabled,
     // so use `println!` here instead of `info!`.

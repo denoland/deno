@@ -1131,7 +1131,7 @@ Deno.test(function fetchResponseConstructorInvalidStatus() {
       assert(e instanceof RangeError);
       assert(
         e.message.endsWith(
-          "is not equal to 101 and outside the range [200, 599].",
+          "is not equal to 101 and outside the range [200, 599]",
         ),
       );
     }
@@ -1662,7 +1662,7 @@ Deno.test(
         );
       },
       TypeError,
-      "Fetching files only supports the GET method. Received POST.",
+      "Fetching files only supports the GET method: received POST",
     );
   },
 );

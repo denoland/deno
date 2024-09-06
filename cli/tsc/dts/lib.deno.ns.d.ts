@@ -1920,219 +1920,6 @@ declare namespace Deno {
    */
   export function createSync(path: string | URL): FsFile;
 
-  /** Read from a resource ID (`rid`) into an array buffer (`buffer`).
-   *
-   * Resolves to either the number of bytes read during the operation or EOF
-   * (`null`) if there was nothing more to read.
-   *
-   * It is possible for a read to successfully return with `0` bytes. This does
-   * not indicate EOF.
-   *
-   * This function is one of the lowest level APIs and most users should not
-   * work with this directly, but rather use {@linkcode ReadableStream} and
-   * {@linkcode https://jsr.io/@std/streams/doc/to-array-buffer/~/toArrayBuffer | toArrayBuffer}
-   * instead.
-   *
-   * **It is not guaranteed that the full buffer will be read in a single call.**
-   *
-   * ```ts
-   * // if "/foo/bar.txt" contains the text "hello world":
-   * using file = await Deno.open("/foo/bar.txt");
-   * const buf = new Uint8Array(100);
-   * const numberOfBytesRead = await Deno.read(file.rid, buf); // 11 bytes
-   * const text = new TextDecoder().decode(buf);  // "hello world"
-   * ```
-   *
-   * @deprecated This will be removed in Deno 2.0. See the
-   * {@link https://docs.deno.com/runtime/manual/advanced/migrate_deprecations | Deno 1.x to 2.x Migration Guide}
-   * for migration instructions.
-   *
-   * @category I/O
-   */
-  export function read(rid: number, buffer: Uint8Array): Promise<number | null>;
-
-  /** Synchronously read from a resource ID (`rid`) into an array buffer
-   * (`buffer`).
-   *
-   * Returns either the number of bytes read during the operation or EOF
-   * (`null`) if there was nothing more to read.
-   *
-   * It is possible for a read to successfully return with `0` bytes. This does
-   * not indicate EOF.
-   *
-   * This function is one of the lowest level APIs and most users should not
-   * work with this directly, but rather use {@linkcode ReadableStream} and
-   * {@linkcode https://jsr.io/@std/streams/doc/to-array-buffer/~/toArrayBuffer | toArrayBuffer}
-   * instead.
-   *
-   * **It is not guaranteed that the full buffer will be read in a single
-   * call.**
-   *
-   * ```ts
-   * // if "/foo/bar.txt" contains the text "hello world":
-   * using file = Deno.openSync("/foo/bar.txt");
-   * const buf = new Uint8Array(100);
-   * const numberOfBytesRead = Deno.readSync(file.rid, buf); // 11 bytes
-   * const text = new TextDecoder().decode(buf);  // "hello world"
-   * ```
-   *
-   * @deprecated This will be removed in Deno 2.0. See the
-   * {@link https://docs.deno.com/runtime/manual/advanced/migrate_deprecations | Deno 1.x to 2.x Migration Guide}
-   * for migration instructions.
-   *
-   * @category I/O
-   */
-  export function readSync(rid: number, buffer: Uint8Array): number | null;
-
-  /** Write to the resource ID (`rid`) the contents of the array buffer (`data`).
-   *
-   * Resolves to the number of bytes written. This function is one of the lowest
-   * level APIs and most users should not work with this directly, but rather
-   * use {@linkcode WritableStream}, {@linkcode ReadableStream.from} and
-   * {@linkcode ReadableStream.pipeTo}.
-   *
-   * **It is not guaranteed that the full buffer will be written in a single
-   * call.**
-   *
-   * ```ts
-   * const encoder = new TextEncoder();
-   * const data = encoder.encode("Hello world");
-   * using file = await Deno.open("/foo/bar.txt", { write: true });
-   * const bytesWritten = await Deno.write(file.rid, data); // 11
-   * ```
-   *
-   * @deprecated This will be removed in Deno 2.0. See the
-   * {@link https://docs.deno.com/runtime/manual/advanced/migrate_deprecations | Deno 1.x to 2.x Migration Guide}
-   * for migration instructions.
-   *
-   * @category I/O
-   */
-  export function write(rid: number, data: Uint8Array): Promise<number>;
-
-  /** Synchronously write to the resource ID (`rid`) the contents of the array
-   * buffer (`data`).
-   *
-   * Returns the number of bytes written. This function is one of the lowest
-   * level APIs and most users should not work with this directly, but rather
-   * use {@linkcode WritableStream}, {@linkcode ReadableStream.from} and
-   * {@linkcode ReadableStream.pipeTo}.
-   *
-   * **It is not guaranteed that the full buffer will be written in a single
-   * call.**
-   *
-   * ```ts
-   * const encoder = new TextEncoder();
-   * const data = encoder.encode("Hello world");
-   * using file = Deno.openSync("/foo/bar.txt", { write: true });
-   * const bytesWritten = Deno.writeSync(file.rid, data); // 11
-   * ```
-   *
-   * @deprecated This will be removed in Deno 2.0. See the
-   * {@link https://docs.deno.com/runtime/manual/advanced/migrate_deprecations | Deno 1.x to 2.x Migration Guide}
-   * for migration instructions.
-   *
-   * @category I/O
-   */
-  export function writeSync(rid: number, data: Uint8Array): number;
-
-  /** Seek a resource ID (`rid`) to the given `offset` under mode given by `whence`.
-   * The call resolves to the new position within the resource (bytes from the start).
-   *
-   * ```ts
-   * // Given file.rid pointing to file with "Hello world", which is 11 bytes long:
-   * using file = await Deno.open(
-   *   "hello.txt",
-   *   { read: true, write: true, truncate: true, create: true },
-   * );
-   * await file.write(new TextEncoder().encode("Hello world"));
-   *
-   * // advance cursor 6 bytes
-   * const cursorPosition = await Deno.seek(file.rid, 6, Deno.SeekMode.Start);
-   * console.log(cursorPosition);  // 6
-   * const buf = new Uint8Array(100);
-   * await file.read(buf);
-   * console.log(new TextDecoder().decode(buf)); // "world"
-   * ```
-   *
-   * The seek modes work as follows:
-   *
-   * ```ts
-   * // Given file.rid pointing to file with "Hello world", which is 11 bytes long:
-   * using file = await Deno.open(
-   *   "hello.txt",
-   *   { read: true, write: true, truncate: true, create: true },
-   * );
-   * await file.write(new TextEncoder().encode("Hello world"));
-   *
-   * // Seek 6 bytes from the start of the file
-   * console.log(await Deno.seek(file.rid, 6, Deno.SeekMode.Start)); // "6"
-   * // Seek 2 more bytes from the current position
-   * console.log(await Deno.seek(file.rid, 2, Deno.SeekMode.Current)); // "8"
-   * // Seek backwards 2 bytes from the end of the file
-   * console.log(await Deno.seek(file.rid, -2, Deno.SeekMode.End)); // "9" (i.e. 11-2)
-   * ```
-   *
-   * @deprecated This will be removed in Deno 2.0. See the
-   * {@link https://docs.deno.com/runtime/manual/advanced/migrate_deprecations | Deno 1.x to 2.x Migration Guide}
-   * for migration instructions.
-   *
-   * @category I/O
-   */
-  export function seek(
-    rid: number,
-    offset: number | bigint,
-    whence: SeekMode,
-  ): Promise<number>;
-
-  /** Synchronously seek a resource ID (`rid`) to the given `offset` under mode
-   * given by `whence`. The new position within the resource (bytes from the
-   * start) is returned.
-   *
-   * ```ts
-   * using file = Deno.openSync(
-   *   "hello.txt",
-   *   { read: true, write: true, truncate: true, create: true },
-   * );
-   * file.writeSync(new TextEncoder().encode("Hello world"));
-   *
-   * // advance cursor 6 bytes
-   * const cursorPosition = Deno.seekSync(file.rid, 6, Deno.SeekMode.Start);
-   * console.log(cursorPosition);  // 6
-   * const buf = new Uint8Array(100);
-   * file.readSync(buf);
-   * console.log(new TextDecoder().decode(buf)); // "world"
-   * ```
-   *
-   * The seek modes work as follows:
-   *
-   * ```ts
-   * // Given file.rid pointing to file with "Hello world", which is 11 bytes long:
-   * using file = Deno.openSync(
-   *   "hello.txt",
-   *   { read: true, write: true, truncate: true, create: true },
-   * );
-   * file.writeSync(new TextEncoder().encode("Hello world"));
-   *
-   * // Seek 6 bytes from the start of the file
-   * console.log(Deno.seekSync(file.rid, 6, Deno.SeekMode.Start)); // "6"
-   * // Seek 2 more bytes from the current position
-   * console.log(Deno.seekSync(file.rid, 2, Deno.SeekMode.Current)); // "8"
-   * // Seek backwards 2 bytes from the end of the file
-   * console.log(Deno.seekSync(file.rid, -2, Deno.SeekMode.End)); // "9" (i.e. 11-2)
-   * ```
-   *
-   * @deprecated This will be removed in Deno 2.0. See the
-   * {@link https://docs.deno.com/runtime/manual/advanced/migrate_deprecations | Deno 1.x to 2.x Migration Guide}
-   * for migration instructions.
-   *
-   * @category I/O
-   */
-  export function seekSync(
-    rid: number,
-    offset: number | bigint,
-    whence: SeekMode,
-  ): number;
-
   /**
    * Flushes any pending data and metadata operations of the given file stream
    * to disk.
@@ -2645,17 +2432,6 @@ declare namespace Deno {
     [Symbol.dispose](): void;
   }
 
-  /**
-   * The Deno abstraction for reading and writing files.
-   *
-   * @deprecated This will be removed in Deno 2.0. See the
-   * {@link https://docs.deno.com/runtime/manual/advanced/migrate_deprecations | Deno 1.x to 2.x Migration Guide}
-   * for migration instructions.
-   *
-   * @category File System
-   */
-  export const File: typeof FsFile;
-
   /** Gets the size of the console as columns/rows.
    *
    * ```ts
@@ -2876,25 +2652,6 @@ declare namespace Deno {
   }
 
   /**
-   *  Check if a given resource id (`rid`) is a TTY (a terminal).
-   *
-   * ```ts
-   * // This example is system and context specific
-   * const nonTTYRid = Deno.openSync("my_file.txt").rid;
-   * const ttyRid = Deno.openSync("/dev/tty6").rid;
-   * console.log(Deno.isatty(nonTTYRid)); // false
-   * console.log(Deno.isatty(ttyRid)); // true
-   * ```
-   *
-   * @deprecated This will be soft-removed in Deno 2.0. See the
-   * {@link https://docs.deno.com/runtime/manual/advanced/migrate_deprecations | Deno 1.x to 2.x Migration Guide}
-   * for migration instructions.
-   *
-   * @category I/O
-   */
-  export function isatty(rid: number): boolean;
-
-  /**
    * A variable-sized buffer of bytes with `read()` and `write()` methods.
    *
    * @deprecated This will be removed in Deno 2.0. See the
@@ -2992,29 +2749,6 @@ declare namespace Deno {
    * @category I/O
    */
   export function readAllSync(r: ReaderSync): Uint8Array;
-
-  /**
-   * Write all the content of the array buffer (`arr`) to the writer (`w`).
-   *
-   * @deprecated This will be removed in Deno 2.0. See the
-   * {@link https://docs.deno.com/runtime/manual/advanced/migrate_deprecations | Deno 1.x to 2.x Migration Guide}
-   * for migration instructions.
-   *
-   * @category I/O
-   */
-  export function writeAll(w: Writer, arr: Uint8Array): Promise<void>;
-
-  /**
-   * Synchronously write all the content of the array buffer (`arr`) to the
-   * writer (`w`).
-   *
-   * @deprecated This will be removed in Deno 2.0. See the
-   * {@link https://docs.deno.com/runtime/manual/advanced/migrate_deprecations | Deno 1.x to 2.x Migration Guide}
-   * for migration instructions.
-   *
-   * @category I/O
-   */
-  export function writeAllSync(w: WriterSync, arr: Uint8Array): void;
 
   /**
    * Options which can be set when using {@linkcode Deno.mkdir} and
@@ -4017,14 +3751,6 @@ declare namespace Deno {
    * @category File System
    */
   export interface FsWatcher extends AsyncIterable<FsEvent>, Disposable {
-    /**
-     * The resource id.
-     *
-     * @deprecated This will be removed in Deno 2.0. See the
-     * {@link https://docs.deno.com/runtime/manual/advanced/migrate_deprecations | Deno 1.x to 2.x Migration Guide}
-     * for migration instructions.
-     */
-    readonly rid: number;
     /** Stops watching the file system and closes the watcher resource. */
     close(): void;
     /**
@@ -4081,175 +3807,6 @@ declare namespace Deno {
     paths: string | string[],
     options?: { recursive: boolean },
   ): FsWatcher;
-
-  /**
-   * Options which can be used with {@linkcode Deno.run}.
-   *
-   * @deprecated This will be removed in Deno 2.0. See the
-   * {@link https://docs.deno.com/runtime/manual/advanced/migrate_deprecations | Deno 1.x to 2.x Migration Guide}
-   * for migration instructions.
-   *
-   * @category Subprocess */
-  export interface RunOptions {
-    /** Arguments to pass.
-     *
-     * _Note_: the first element needs to be a path to the executable that is
-     * being run. */
-    cmd: readonly string[] | [string | URL, ...string[]];
-    /** The current working directory that should be used when running the
-     * sub-process. */
-    cwd?: string;
-    /** Any environment variables to be set when running the sub-process. */
-    env?: Record<string, string>;
-    /** By default subprocess inherits `stdout` of parent process. To change
-     * this this option can be set to a resource ID (_rid_) of an open file,
-     * `"inherit"`, `"piped"`, or `"null"`:
-     *
-     * - _number_: the resource ID of an open file/resource. This allows you to
-     *   write to a file.
-     * - `"inherit"`: The default if unspecified. The subprocess inherits from the
-     *   parent.
-     * - `"piped"`: A new pipe should be arranged to connect the parent and child
-     *   sub-process.
-     * - `"null"`: This stream will be ignored. This is the equivalent of attaching
-     *   the stream to `/dev/null`.
-     */
-    stdout?: "inherit" | "piped" | "null" | number;
-    /** By default subprocess inherits `stderr` of parent process. To change
-     * this this option can be set to a resource ID (_rid_) of an open file,
-     * `"inherit"`, `"piped"`, or `"null"`:
-     *
-     * - _number_: the resource ID of an open file/resource. This allows you to
-     *   write to a file.
-     * - `"inherit"`: The default if unspecified. The subprocess inherits from the
-     *   parent.
-     * - `"piped"`: A new pipe should be arranged to connect the parent and child
-     *   sub-process.
-     * - `"null"`: This stream will be ignored. This is the equivalent of attaching
-     *   the stream to `/dev/null`.
-     */
-    stderr?: "inherit" | "piped" | "null" | number;
-    /** By default subprocess inherits `stdin` of parent process. To change
-     * this this option can be set to a resource ID (_rid_) of an open file,
-     * `"inherit"`, `"piped"`, or `"null"`:
-     *
-     * - _number_: the resource ID of an open file/resource. This allows you to
-     *   read from a file.
-     * - `"inherit"`: The default if unspecified. The subprocess inherits from the
-     *   parent.
-     * - `"piped"`: A new pipe should be arranged to connect the parent and child
-     *   sub-process.
-     * - `"null"`: This stream will be ignored. This is the equivalent of attaching
-     *   the stream to `/dev/null`.
-     */
-    stdin?: "inherit" | "piped" | "null" | number;
-  }
-
-  /**
-   * The status resolved from the `.status()` method of a
-   * {@linkcode Deno.Process} instance.
-   *
-   * If `success` is `true`, then `code` will be `0`, but if `success` is
-   * `false`, the sub-process exit code will be set in `code`.
-   *
-   * @deprecated This will be removed in Deno 2.0. See the
-   * {@link https://docs.deno.com/runtime/manual/advanced/migrate_deprecations | Deno 1.x to 2.x Migration Guide}
-   * for migration instructions.
-   *
-   * @category Subprocess */
-  export type ProcessStatus =
-    | {
-      success: true;
-      code: 0;
-      signal?: undefined;
-    }
-    | {
-      success: false;
-      code: number;
-      signal?: number;
-    };
-
-  /**
-   * Represents an instance of a sub process that is returned from
-   * {@linkcode Deno.run} which can be used to manage the sub-process.
-   *
-   * @deprecated This will be removed in Deno 2.0. See the
-   * {@link https://docs.deno.com/runtime/manual/advanced/migrate_deprecations | Deno 1.x to 2.x Migration Guide}
-   * for migration instructions.
-   *
-   * @category Subprocess */
-  export class Process<T extends RunOptions = RunOptions> {
-    /** The resource ID of the sub-process. */
-    readonly rid: number;
-    /** The operating system's process ID for the sub-process. */
-    readonly pid: number;
-    /** A reference to the sub-processes `stdin`, which allows interacting with
-     * the sub-process at a low level. */
-    readonly stdin: T["stdin"] extends "piped" ? Writer & Closer & {
-        writable: WritableStream<Uint8Array>;
-      }
-      : (Writer & Closer & { writable: WritableStream<Uint8Array> }) | null;
-    /** A reference to the sub-processes `stdout`, which allows interacting with
-     * the sub-process at a low level. */
-    readonly stdout: T["stdout"] extends "piped" ? Reader & Closer & {
-        readable: ReadableStream<Uint8Array>;
-      }
-      : (Reader & Closer & { readable: ReadableStream<Uint8Array> }) | null;
-    /** A reference to the sub-processes `stderr`, which allows interacting with
-     * the sub-process at a low level. */
-    readonly stderr: T["stderr"] extends "piped" ? Reader & Closer & {
-        readable: ReadableStream<Uint8Array>;
-      }
-      : (Reader & Closer & { readable: ReadableStream<Uint8Array> }) | null;
-    /** Wait for the process to exit and return its exit status.
-     *
-     * Calling this function multiple times will return the same status.
-     *
-     * The `stdin` reference to the process will be closed before waiting to
-     * avoid a deadlock.
-     *
-     * If `stdout` and/or `stderr` were set to `"piped"`, they must be closed
-     * manually before the process can exit.
-     *
-     * To run process to completion and collect output from both `stdout` and
-     * `stderr` use:
-     *
-     * ```ts
-     * const p = Deno.run({ cmd: [ "echo", "hello world" ], stderr: 'piped', stdout: 'piped' });
-     * const [status, stdout, stderr] = await Promise.all([
-     *   p.status(),
-     *   p.output(),
-     *   p.stderrOutput()
-     * ]);
-     * p.close();
-     * ```
-     */
-    status(): Promise<ProcessStatus>;
-    /** Buffer the stdout until EOF and return it as `Uint8Array`.
-     *
-     * You must set `stdout` to `"piped"` when creating the process.
-     *
-     * This calls `close()` on stdout after its done. */
-    output(): Promise<Uint8Array>;
-    /** Buffer the stderr until EOF and return it as `Uint8Array`.
-     *
-     * You must set `stderr` to `"piped"` when creating the process.
-     *
-     * This calls `close()` on stderr after its done. */
-    stderrOutput(): Promise<Uint8Array>;
-    /** Clean up resources associated with the sub-process instance. */
-    close(): void;
-    /** Send a signal to process.
-     * Default signal is `"SIGTERM"`.
-     *
-     * ```ts
-     * const p = Deno.run({ cmd: [ "sleep", "20" ]});
-     * p.kill("SIGTERM");
-     * p.close();
-     * ```
-     */
-    kill(signo?: Signal): void;
-  }
 
   /** Operating signals which can be listened for or sent to sub-processes. What
    * signals and what their standard behaviors are OS dependent.
@@ -4331,61 +3888,6 @@ declare namespace Deno {
     signal: Signal,
     handler: () => void,
   ): void;
-
-  /**
-   * Spawns new subprocess. RunOptions must contain at a minimum the `opt.cmd`,
-   * an array of program arguments, the first of which is the binary.
-   *
-   * ```ts
-   * const p = Deno.run({
-   *   cmd: ["curl", "https://example.com"],
-   * });
-   * const status = await p.status();
-   * ```
-   *
-   * Subprocess uses same working directory as parent process unless `opt.cwd`
-   * is specified.
-   *
-   * Environmental variables from parent process can be cleared using `opt.clearEnv`.
-   * Doesn't guarantee that only `opt.env` variables are present,
-   * as the OS may set environmental variables for processes.
-   *
-   * Environmental variables for subprocess can be specified using `opt.env`
-   * mapping.
-   *
-   * `opt.uid` sets the child process’s user ID. This translates to a setuid call
-   * in the child process. Failure in the setuid call will cause the spawn to fail.
-   *
-   * `opt.gid` is similar to `opt.uid`, but sets the group ID of the child process.
-   * This has the same semantics as the uid field.
-   *
-   * By default subprocess inherits stdio of parent process. To change
-   * this this, `opt.stdin`, `opt.stdout`, and `opt.stderr` can be set
-   * independently to a resource ID (_rid_) of an open file, `"inherit"`,
-   * `"piped"`, or `"null"`:
-   *
-   * - _number_: the resource ID of an open file/resource. This allows you to
-   *   read or write to a file.
-   * - `"inherit"`: The default if unspecified. The subprocess inherits from the
-   *   parent.
-   * - `"piped"`: A new pipe should be arranged to connect the parent and child
-   *   sub-process.
-   * - `"null"`: This stream will be ignored. This is the equivalent of attaching
-   *   the stream to `/dev/null`.
-   *
-   * Details of the spawned process are returned as an instance of
-   * {@linkcode Deno.Process}.
-   *
-   * Requires `allow-run` permission.
-   *
-   * @deprecated This will be soft-removed in Deno 2.0. See the
-   * {@link https://docs.deno.com/runtime/manual/advanced/migrate_deprecations | Deno 1.x to 2.x Migration Guide}
-   * for migration instructions.
-   *
-   * @tags allow-run
-   * @category Subprocess
-   */
-  export function run<T extends RunOptions = RunOptions>(opt: T): Process<T>;
 
   /** Create a child process.
    *
@@ -5236,97 +4738,6 @@ declare namespace Deno {
   ): void;
 
   /**
-   * Truncates or extends the specified file stream, to reach the specified
-   * `len`.
-   *
-   * If `len` is not specified then the entire file contents are truncated as if
-   * `len` was set to `0`.
-   *
-   * If the file previously was larger than this new length, the extra data is
-   * lost.
-   *
-   * If the file previously was shorter, it is extended, and the extended part
-   * reads as null bytes ('\0').
-   *
-   * ### Truncate the entire file
-   *
-   * ```ts
-   * const file = await Deno.open(
-   *   "my_file.txt",
-   *   { read: true, write: true, create: true }
-   * );
-   * await Deno.ftruncate(file.rid);
-   * ```
-   *
-   * ### Truncate part of the file
-   *
-   * ```ts
-   * const file = await Deno.open(
-   *   "my_file.txt",
-   *   { read: true, write: true, create: true }
-   * );
-   * await file.write(new TextEncoder().encode("Hello World"));
-   * await Deno.ftruncate(file.rid, 7);
-   * const data = new Uint8Array(32);
-   * await Deno.read(file.rid, data);
-   * console.log(new TextDecoder().decode(data)); // Hello W
-   * ```
-   *
-   * @deprecated This will be removed in Deno 2.0. See the
-   * {@link https://docs.deno.com/runtime/manual/advanced/migrate_deprecations | Deno 1.x to 2.x Migration Guide}
-   * for migration instructions.
-   *
-   * @category File System
-   */
-  export function ftruncate(rid: number, len?: number): Promise<void>;
-
-  /**
-   * Synchronously truncates or extends the specified file stream, to reach the
-   * specified `len`.
-   *
-   * If `len` is not specified then the entire file contents are truncated as if
-   * `len` was set to `0`.
-   *
-   * If the file previously was larger than this new length, the extra data is
-   * lost.
-   *
-   * If the file previously was shorter, it is extended, and the extended part
-   * reads as null bytes ('\0').
-   *
-   * ### Truncate the entire file
-   *
-   * ```ts
-   * const file = Deno.openSync(
-   *   "my_file.txt",
-   *   { read: true, write: true, truncate: true, create: true }
-   * );
-   * Deno.ftruncateSync(file.rid);
-   * ```
-   *
-   * ### Truncate part of the file
-   *
-   * ```ts
-   * const file = Deno.openSync(
-   *  "my_file.txt",
-   *  { read: true, write: true, create: true }
-   * );
-   * file.writeSync(new TextEncoder().encode("Hello World"));
-   * Deno.ftruncateSync(file.rid, 7);
-   * Deno.seekSync(file.rid, 0, Deno.SeekMode.Start);
-   * const data = new Uint8Array(32);
-   * Deno.readSync(file.rid, data);
-   * console.log(new TextDecoder().decode(data)); // Hello W
-   * ```
-   *
-   * @deprecated This will be removed in Deno 2.0. See the
-   * {@link https://docs.deno.com/runtime/manual/advanced/migrate_deprecations | Deno 1.x to 2.x Migration Guide}
-   * for migration instructions.
-   *
-   * @category File System
-   */
-  export function ftruncateSync(rid: number, len?: number): void;
-
-  /**
    * Synchronously changes the access (`atime`) and modification (`mtime`) times
    * of a file system object referenced by `path`. Given times are either in
    * seconds (UNIX epoch time) or as `Date` objects.
@@ -5365,110 +4776,6 @@ declare namespace Deno {
     atime: number | Date,
     mtime: number | Date,
   ): Promise<void>;
-
-  /** The event yielded from an {@linkcode HttpConn} which represents an HTTP
-   * request from a remote client.
-   *
-   * @category HTTP Server
-   *
-   * @deprecated This will be removed in Deno 2.0. See the
-   * {@link https://docs.deno.com/runtime/manual/advanced/migrate_deprecations | Deno 1.x to 2.x Migration Guide}
-   * for migration instructions.
-   */
-  export interface RequestEvent {
-    /** The request from the client in the form of the web platform
-     * {@linkcode Request}. */
-    readonly request: Request;
-    /** The method to be used to respond to the event. The response needs to
-     * either be an instance of {@linkcode Response} or a promise that resolves
-     * with an instance of `Response`.
-     *
-     * When the response is successfully processed then the promise returned
-     * will be resolved. If there are any issues with sending the response,
-     * the promise will be rejected. */
-    respondWith(r: Response | PromiseLike<Response>): Promise<void>;
-  }
-
-  /**
-   * The async iterable that is returned from {@linkcode serveHttp} which
-   * yields up {@linkcode RequestEvent} events, representing individual
-   * requests on the HTTP server connection.
-   *
-   * @category HTTP Server
-   *
-   * @deprecated This will be removed in Deno 2.0. See the
-   * {@link https://docs.deno.com/runtime/manual/advanced/migrate_deprecations | Deno 1.x to 2.x Migration Guide}
-   * for migration instructions.
-   */
-  export interface HttpConn extends AsyncIterable<RequestEvent>, Disposable {
-    /** The resource ID associated with this connection. Generally users do not
-     * need to be aware of this identifier. */
-    readonly rid: number;
-
-    /** An alternative to the async iterable interface which provides promises
-     * which resolve with either a {@linkcode RequestEvent} when there is
-     * another request or `null` when the client has closed the connection. */
-    nextRequest(): Promise<RequestEvent | null>;
-    /** Initiate a server side closure of the connection, indicating to the
-     * client that you refuse to accept any more requests on this connection.
-     *
-     * Typically the client closes the connection, which will result in the
-     * async iterable terminating or the `nextRequest()` method returning
-     * `null`. */
-    close(): void;
-  }
-
-  /**
-   * Provides an interface to handle HTTP request and responses over TCP or TLS
-   * connections. The method returns an {@linkcode HttpConn} which yields up
-   * {@linkcode RequestEvent} events, which utilize the web platform standard
-   * {@linkcode Request} and {@linkcode Response} objects to handle the request.
-   *
-   * ```ts
-   * const conn = Deno.listen({ port: 80 });
-   * const httpConn = Deno.serveHttp(await conn.accept());
-   * const e = await httpConn.nextRequest();
-   * if (e) {
-   *   e.respondWith(new Response("Hello World"));
-   * }
-   * ```
-   *
-   * Alternatively, you can also use the async iterator approach:
-   *
-   * ```ts
-   * async function handleHttp(conn: Deno.Conn) {
-   *   for await (const e of Deno.serveHttp(conn)) {
-   *     e.respondWith(new Response("Hello World"));
-   *   }
-   * }
-   *
-   * for await (const conn of Deno.listen({ port: 80 })) {
-   *   handleHttp(conn);
-   * }
-   * ```
-   *
-   * If `httpConn.nextRequest()` encounters an error or returns `null` then the
-   * underlying {@linkcode HttpConn} resource is closed automatically.
-   *
-   * Also see the experimental Flash HTTP server {@linkcode Deno.serve} which
-   * provides a ground up rewrite of handling of HTTP requests and responses
-   * within the Deno CLI.
-   *
-   * Note that this function *consumes* the given connection passed to it, thus
-   * the original connection will be unusable after calling this. Additionally,
-   * you need to ensure that the connection is not being used elsewhere when
-   * calling this function in order for the connection to be consumed properly.
-   *
-   * For instance, if there is a `Promise` that is waiting for read operation on
-   * the connection to complete, it is considered that the connection is being
-   * used elsewhere. In such a case, this function will fail.
-   *
-   * @category HTTP Server
-   * @deprecated This will be soft-removed in Deno 2.0. See the
-   * {@link https://docs.deno.com/runtime/manual/advanced/migrate_deprecations | Deno 1.x to 2.x Migration Guide}
-   * for migration instructions.
-   */
-  export function serveHttp(conn: Conn): HttpConn;
 
   /** The object that is returned from a {@linkcode Deno.upgradeWebSocket}
    * request.
@@ -5512,22 +4819,21 @@ declare namespace Deno {
    * with the returned response for the websocket upgrade to be successful.
    *
    * ```ts
-   * const conn = Deno.listen({ port: 80 });
-   * const httpConn = Deno.serveHttp(await conn.accept());
-   * const e = await httpConn.nextRequest();
-   * if (e) {
-   *   const { socket, response } = Deno.upgradeWebSocket(e.request);
-   *   socket.onopen = () => {
-   *     socket.send("Hello World!");
-   *   };
-   *   socket.onmessage = (e) => {
-   *     console.log(e.data);
-   *     socket.close();
-   *   };
-   *   socket.onclose = () => console.log("WebSocket has been closed.");
-   *   socket.onerror = (e) => console.error("WebSocket error:", e);
-   *   e.respondWith(response);
-   * }
+   * Deno.serve((req) => {
+   *   if (req.headers.get("upgrade") !== "websocket") {
+   *     return new Response(null, { status: 501 });
+   *   }
+   *   const { socket, response } = Deno.upgradeWebSocket(req);
+   *   socket.addEventListener("open", () => {
+   *     console.log("a client connected!");
+   *   });
+   *   socket.addEventListener("message", (event) => {
+   *     if (event.data === "ping") {
+   *       socket.send("pong");
+   *     }
+   *   });
+   *   return response;
+   * });
    * ```
    *
    * If the request body is disturbed (read from) before the upgrade is
@@ -5556,11 +4862,10 @@ declare namespace Deno {
    * Windows.
    *
    * ```ts
-   * const p = Deno.run({
-   *   cmd: ["sleep", "10000"]
-   * });
+   * const command = new Deno.Command("sleep", { args: ["10000"] });
+   * const child = command.spawn();
    *
-   * Deno.kill(p.pid, "SIGINT");
+   * Deno.kill(child.pid, "SIGINT");
    * ```
    *
    * Requires `allow-run` permission.

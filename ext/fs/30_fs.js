@@ -19,16 +19,14 @@ import {
   op_fs_fdatasync_sync,
   op_fs_file_stat_async,
   op_fs_file_stat_sync,
+  op_fs_file_truncate_async,
   op_fs_flock_async,
   op_fs_flock_sync,
   op_fs_fsync_async,
   op_fs_fsync_sync,
-  op_fs_ftruncate_async,
   op_fs_ftruncate_sync,
   op_fs_funlock_async,
-  op_fs_funlock_async_unstable,
   op_fs_funlock_sync,
-  op_fs_funlock_sync_unstable,
   op_fs_futime_async,
   op_fs_futime_sync,
   op_fs_link_async,
@@ -422,14 +420,6 @@ function coerceLen(len) {
   return len;
 }
 
-function ftruncateSync(rid, len) {
-  op_fs_ftruncate_sync(rid, coerceLen(len));
-}
-
-async function ftruncate(rid, len) {
-  await op_fs_ftruncate_async(rid, coerceLen(len));
-}
-
 function truncateSync(path, len) {
   op_fs_truncate_sync(path, coerceLen(len));
 }
@@ -543,30 +533,6 @@ async function fsync(rid) {
   await op_fs_fsync_async(rid);
 }
 
-function funlockSync(rid) {
-  op_fs_funlock_sync_unstable(rid);
-}
-
-async function funlock(rid) {
-  await op_fs_funlock_async_unstable(rid);
-}
-
-function seekSync(
-  rid,
-  offset,
-  whence,
-) {
-  return op_fs_seek_sync(rid, offset, whence);
-}
-
-function seek(
-  rid,
-  offset,
-  whence,
-) {
-  return op_fs_seek_async(rid, offset, whence);
-}
-
 function openSync(
   path,
   options,
@@ -655,11 +621,11 @@ class FsFile {
   }
 
   truncate(len) {
-    return ftruncate(this.#rid, len);
+    return op_fs_file_truncate_async(this.#rid, coerceLen(len));
   }
 
   truncateSync(len) {
-    return ftruncateSync(this.#rid, len);
+    return op_fs_ftruncate_sync(this.#rid, coerceLen(len));
   }
 
   read(p) {
@@ -671,11 +637,11 @@ class FsFile {
   }
 
   seek(offset, whence) {
-    return seek(this.#rid, offset, whence);
+    return op_fs_seek_async(this.#rid, offset, whence);
   }
 
   seekSync(offset, whence) {
-    return seekSync(this.#rid, offset, whence);
+    return op_fs_seek_sync(this.#rid, offset, whence);
   }
 
   async stat() {
@@ -793,8 +759,6 @@ function checkOpenOptions(options) {
     );
   }
 }
-
-const File = FsFile;
 
 function readFileSync(path) {
   return op_fs_read_file_sync(pathFromURL(path));
@@ -958,14 +922,9 @@ export {
   cwd,
   fdatasync,
   fdatasyncSync,
-  File,
   FsFile,
   fsync,
   fsyncSync,
-  ftruncate,
-  ftruncateSync,
-  funlock,
-  funlockSync,
   link,
   linkSync,
   lstat,
@@ -992,8 +951,6 @@ export {
   removeSync,
   rename,
   renameSync,
-  seek,
-  seekSync,
   stat,
   statSync,
   symlink,
