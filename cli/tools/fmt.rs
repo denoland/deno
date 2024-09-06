@@ -313,6 +313,7 @@ fn format_markdown(
             codeblock_config.line_width = line_width;
             dprint_plugin_typescript::format_text(
               &fake_filename,
+              None,
               text.to_string(),
               &codeblock_config,
             )
@@ -407,6 +408,7 @@ pub fn format_html(
           typescript_config.line_width = hints.print_width as u32;
           dprint_plugin_typescript::format_text(
             &path,
+            None,
             text.to_string(),
             &typescript_config,
           )
@@ -451,16 +453,6 @@ pub fn format_file(
   unstable_options: &UnstableFmtOptions,
   ext: Option<String>,
 ) -> Result<Option<String>, AnyError> {
-  let file_path = &if let Some(ext) = &ext {
-    file_path.with_extension(if let Some(prev_ext) = file_path.extension() {
-      format!("{}.{ext}", prev_ext.to_string_lossy())
-    } else {
-      ext.clone()
-    })
-  } else {
-    file_path.to_path_buf()
-  };
-
   let ext = ext.or_else(|| get_extension(file_path)).unwrap_or_default();
 
   match ext.as_str() {
@@ -511,6 +503,7 @@ pub fn format_file(
       let config = get_resolved_typescript_config(fmt_options);
       dprint_plugin_typescript::format_text(
         file_path,
+        Some(&ext),
         file_text.to_string(),
         &config,
       )
