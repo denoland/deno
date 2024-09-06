@@ -622,6 +622,11 @@
         {
           "type": "object",
           "description": "A map of package exports to files in this JSR package.",
+          "propertyNames": {
+            "description": "Package export name",
+            "examples": [".", "./foo", "./bar"],
+            "pattern": "^\\.(/.*)?$"
+          },
           "patternProperties": {
             "^\\.(/.*)?$": {
               "type": "string",

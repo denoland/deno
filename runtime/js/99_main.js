@@ -1,4 +1,3 @@
-// deno-lint-ignore-file no-deprecated-deno-api
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
 // Remove Intl.v8BreakIterator because it is a non-standard API.
@@ -800,13 +799,7 @@ function bootstrapMainRuntime(runtimeOptions, warmup = false) {
     }
     if (internals.future) {
       delete globalThis.window;
-      delete Deno.Buffer;
-      delete Deno.File;
       delete Deno.FsFile.prototype.rid;
-      delete Deno.funlock;
-      delete Deno.funlockSync;
-      delete Deno.seek;
-      delete Deno.seekSync;
     }
   } else {
     // Warmup
@@ -964,13 +957,7 @@ function bootstrapWorkerRuntime(
     }
 
     if (internals.future) {
-      delete Deno.Buffer;
-      delete Deno.File;
       delete Deno.FsFile.prototype.rid;
-      delete Deno.funlock;
-      delete Deno.funlockSync;
-      delete Deno.seek;
-      delete Deno.seekSync;
     }
   } else {
     // Warmup

@@ -87,5 +87,6 @@
     }
   ],
   "redirects": {},
+  "version": 1,
   "npmPackages": {}
 }

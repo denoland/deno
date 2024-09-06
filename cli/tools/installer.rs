@@ -198,14 +198,15 @@ pub async fn infer_name_from_url(
   Some(stem.to_string())
 }
 
-pub fn uninstall(uninstall_flags: UninstallFlags) -> Result<(), AnyError> {
-  if !uninstall_flags.global {
-    log::warn!("⚠️ `deno install` behavior will change in Deno 2. To preserve the current behavior use the `-g` or `--global` flag.");
-  }
-
+pub async fn uninstall(
+  flags: Arc<Flags>,
+  uninstall_flags: UninstallFlags,
+) -> Result<(), AnyError> {
   let uninstall_flags = match uninstall_flags.kind {
     UninstallKind::Global(flags) => flags,
-    UninstallKind::Local => unreachable!(),
+    UninstallKind::Local(remove_flags) => {
+      return super::registry::remove(flags, remove_flags).await;
+    }
   };
 
   let cwd = std::env::current_dir().context("Unable to get CWD")?;
@@ -332,10 +333,6 @@ pub async fn install_command(
 ) -> Result<(), AnyError> {
   match install_flags.kind {
     InstallKind::Global(global_flags) => {
-      if !install_flags.global {
-        log::warn!("⚠️ `deno install` behavior will change in Deno 2. To preserve the current behavior use the `-g` or `--global` flag.");
-      }
-
       install_global(flags, global_flags).await
     }
     InstallKind::Local(local_flags) => {
@@ -1512,8 +1509,8 @@ mod tests {
     assert!(content.contains(&expected_string));
   }
 
-  #[test]
-  fn uninstall_basic() {
+  #[tokio::test]
+  async fn uninstall_basic() {
     let temp_dir = TempDir::new();
     let bin_dir = temp_dir.path().join("bin");
     std::fs::create_dir(&bin_dir).unwrap();
@@ -1540,13 +1537,16 @@ mod tests {
       File::create(file_path).unwrap();
     }
 
-    uninstall(UninstallFlags {
-      kind: UninstallKind::Global(UninstallFlagsGlobal {
-        name: "echo_test".to_string(),
-        root: Some(temp_dir.path().to_string()),
-      }),
-      global: false,
-    })
+    uninstall(
+      Default::default(),
+      UninstallFlags {
+        kind: UninstallKind::Global(UninstallFlagsGlobal {
+          name: "echo_test".to_string(),
+          root: Some(temp_dir.path().to_string()),
+        }),
+      },
+    )
+    .await
     .unwrap();
 
     assert!(!file_path.exists());
