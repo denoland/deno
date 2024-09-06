@@ -691,15 +691,23 @@ function serve(arg1, arg2) {
       options.onListen(addr);
     } else {
       const hostname = mapAnyAddrToLocalhostForWindows(addr.hostname);
-      const host = StringPrototypeIncludes(hostname, ":")
-        ? `[${hostname}]`
-        : hostname;
+      const host = formatHostName(hostname);
+
       // deno-lint-ignore no-console
       console.log(`Listening on ${scheme}${host}:${addr.port}/`);
     }
   };
 
   return serveHttpOnListener(listener, signal, handler, onError, onListen);
+}
+
+/**
+ * @param {string} received
+ * @returns {string}
+ */
+function formatHostName(received) {
+  // Add brackets around ipv6 host
+  return StringPrototypeIncludes(received, ":") ? `[${received}]` : received;
 }
 
 /**
@@ -869,9 +877,11 @@ function registerDeclarativeServer(exports) {
               ? ` with ${serveWorkerCount} threads`
               : "";
             const hostname_ = mapAnyAddrToLocalhostForWindows(hostname);
+            const host = formatHostName(hostname_);
+
             // deno-lint-ignore no-console
             console.debug(
-              `%cdeno serve%c: Listening on %chttp://${hostname_}:${port}/%c${nThreads}`,
+              `%cdeno serve%c: Listening on %chttp://${host}:${port}/%c${nThreads}`,
               "color: green",
               "color: inherit",
               "color: yellow",
