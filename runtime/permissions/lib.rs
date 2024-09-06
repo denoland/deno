@@ -62,6 +62,15 @@ fn resolve_from_cwd(path: &Path) -> Result<PathBuf, AnyError> {
   }
 }
 
+#[inline]
+fn resolve_from_known_cwd(path: &Path, cwd: &Path) -> PathBuf {
+  if path.is_absolute() {
+    normalize_path(path)
+  } else {
+    normalize_path(cwd.join(path))
+  }
+}
+
 static DEBUG_LOG_ENABLED: Lazy<bool> =
   Lazy::new(|| log::log_enabled!(log::Level::Debug));
 
@@ -697,8 +706,25 @@ impl DenyDescriptor for ReadDescriptor {
 #[derive(Clone, Eq, PartialEq, Hash, Debug)]
 pub struct WriteDescriptor(pub PathBuf);
 
-impl Descriptor for WriteDescriptor {
-  type Arg = PathBuf;
+impl QueryDescriptor for WriteDescriptor {
+  type AllowDesc = WriteDescriptor;
+  type DenyDesc = WriteDescriptor;
+
+  fn flag_name() -> &'static str {
+    "write"
+  }
+
+  fn name(&self) -> Cow<str> {
+    Cow::from(self.0.display().to_string())
+  }
+
+  fn as_allow(&self) -> Self::AllowDesc {
+    self.clone()
+  }
+
+  fn as_deny(&self) -> Self::DenyDesc {
+    self.clone()
+  }
 
   fn check_in_permission(
     &self,
@@ -709,20 +735,28 @@ impl Descriptor for WriteDescriptor {
     perm.check_desc(Some(self), true, api_name, || None)
   }
 
-  fn parse(args: Option<&[Self::Arg]>) -> Result<HashSet<Self>, AnyError> {
-    parse_path_list(args, WriteDescriptor)
-  }
-
-  fn flag_name() -> &'static str {
-    "write"
-  }
-
-  fn name(&self) -> Cow<str> {
-    Cow::from(self.0.display().to_string())
-  }
-
-  fn stronger_than(&self, other: &Self) -> bool {
+  fn revokes(&self, other: &Self::AllowDesc) -> bool {
     other.0.starts_with(&self.0)
+  }
+}
+
+impl AllowDescriptor for WriteDescriptor {
+  type Query = WriteDescriptor;
+
+  fn as_query(&self) -> Self::Query {
+    self.clone()
+  }
+
+  fn matches(&self, query: &Self::Query) -> bool {
+    self.0.starts_with(&query.0)
+  }
+}
+
+impl DenyDescriptor for WriteDescriptor {
+  type Query = WriteDescriptor;
+
+  fn matches(&self, query: &Self::Query) -> bool {
+    self.0.starts_with(&query.0)
   }
 }
 
@@ -778,8 +812,25 @@ impl Host {
 #[derive(Clone, Eq, PartialEq, Hash, Debug)]
 pub struct NetDescriptor(pub Host, pub Option<u16>);
 
-impl Descriptor for NetDescriptor {
-  type Arg = String;
+impl QueryDescriptor for NetDescriptor {
+  type AllowDesc = NetDescriptor;
+  type DenyDesc = NetDescriptor;
+
+  fn flag_name() -> &'static str {
+    "net"
+  }
+
+  fn name(&self) -> Cow<str> {
+    Cow::from(format!("{}", self))
+  }
+
+  fn as_allow(&self) -> Self::AllowDesc {
+    self.clone()
+  }
+
+  fn as_deny(&self) -> Self::DenyDesc {
+    self.clone()
+  }
 
   fn check_in_permission(
     &self,
@@ -790,20 +841,28 @@ impl Descriptor for NetDescriptor {
     perm.check_desc(Some(self), false, api_name, || None)
   }
 
-  fn parse(args: Option<&[Self::Arg]>) -> Result<HashSet<Self>, AnyError> {
-    parse_net_list(args)
+  fn revokes(&self, other: &Self::AllowDesc) -> bool {
+    self.0 == other.0 && (other.1.is_none() || self.1 == other.1)
+  }
+}
+
+impl AllowDescriptor for NetDescriptor {
+  type Query = NetDescriptor;
+
+  fn as_query(&self) -> Self::Query {
+    self.clone()
   }
 
-  fn flag_name() -> &'static str {
-    "net"
+  fn matches(&self, query: &Self::Query) -> bool {
+    self.0 == query.0 && (self.1.is_none() || self.1 == query.1)
   }
+}
 
-  fn name(&self) -> Cow<str> {
-    Cow::from(format!("{}", self))
-  }
+impl DenyDescriptor for NetDescriptor {
+  type Query = NetDescriptor;
 
-  fn stronger_than(&self, other: &Self) -> bool {
-    self.0 == other.0 && (self.1.is_none() || self.1 == other.1)
+  fn matches(&self, query: &Self::Query) -> bool {
+    self.0 == query.0 && (self.1.is_none() || self.1 == query.1)
   }
 }
 
@@ -887,8 +946,25 @@ impl EnvDescriptor {
   }
 }
 
-impl Descriptor for EnvDescriptor {
-  type Arg = String;
+impl QueryDescriptor for EnvDescriptor {
+  type AllowDesc = EnvDescriptor;
+  type DenyDesc = EnvDescriptor;
+
+  fn flag_name() -> &'static str {
+    "env"
+  }
+
+  fn name(&self) -> Cow<str> {
+    Cow::from(self.0.as_ref())
+  }
+
+  fn as_allow(&self) -> Self::AllowDesc {
+    self.clone()
+  }
+
+  fn as_deny(&self) -> Self::DenyDesc {
+    self.clone()
+  }
 
   fn check_in_permission(
     &self,
@@ -899,16 +975,28 @@ impl Descriptor for EnvDescriptor {
     perm.check_desc(Some(self), false, api_name, || None)
   }
 
-  fn parse(list: Option<&[Self::Arg]>) -> Result<HashSet<Self>, AnyError> {
-    parse_env_list(list)
+  fn revokes(&self, other: &Self::AllowDesc) -> bool {
+    self == other
+  }
+}
+
+impl AllowDescriptor for EnvDescriptor {
+  type Query = EnvDescriptor;
+
+  fn as_query(&self) -> Self::Query {
+    self.clone()
   }
 
-  fn flag_name() -> &'static str {
-    "env"
+  fn matches(&self, query: &Self::Query) -> bool {
+    self == query
   }
+}
 
-  fn name(&self) -> Cow<str> {
-    Cow::from(self.0.as_ref())
+impl DenyDescriptor for EnvDescriptor {
+  type Query = EnvDescriptor;
+
+  fn matches(&self, query: &Self::Query) -> bool {
+    self == query
   }
 }
 
@@ -919,9 +1007,42 @@ impl AsRef<str> for EnvDescriptor {
 }
 
 #[derive(Clone, Eq, PartialEq, Hash, Debug, Serialize, Deserialize)]
-pub struct RunPathQuery<'a> {
-  pub requested: &'a str,
-  pub resolved: &'a Path,
+pub struct RunPathQuery {
+  pub requested: String,
+  pub resolved: PathBuf,
+}
+
+impl QueryDescriptor for RunPathQuery {
+  type AllowDesc = AllowRunDescriptor;
+  type DenyDesc = RunDescriptor;
+
+  fn flag_name() -> &'static str {
+    "run"
+  }
+
+  fn name(&self) -> Cow<str> {
+    Cow::from(self.to_string())
+  }
+
+  fn as_allow(&self) -> Self::AllowDesc {
+    RunDescriptor::Path(self.resolved.clone())
+  }
+
+  fn as_deny(&self) -> Self::DenyDesc {
+    // todo(dsherret): fix to be broad in #25458
+    RunDescriptor::Path(self.resolved.clone())
+  }
+
+  fn check_in_permission(
+    &self,
+    perm: &mut UnaryPermission<Self>,
+    api_name: Option<&str>,
+  ) -> Result<(), AnyError> {
+    skip_check_if_is_permission_fully_granted!(perm);
+    perm.check_desc(Some(self), false, api_name, || None)
+  }
+
+  fn revokes(&self, other: &Self::AllowDesc) -> bool {}
 }
 
 pub enum RunDescriptorArg {
@@ -929,8 +1050,51 @@ pub enum RunDescriptorArg {
   Path(PathBuf),
 }
 
+#[derive(Debug, Clone, Hash, Eq, PartialEq)]
+pub struct AllowRunDescriptor(PathBuf);
+
+impl AllowRunDescriptor {
+  pub fn parse(text: &str, cwd: &Path) -> Result<Self, AnyError> {
+    let text = if cfg!(windows) {
+      Cow::Owned(text.to_string())
+    } else {
+      Cow::Borrowed(text)
+    };
+    let is_path = if cfg!(windows) {
+      text.contains('/')
+        || text.contains('\\')
+        || Path::new(&text).is_absolute()
+    } else {
+      text.contains('/')
+    };
+    // todo(dsherret): canonicalize in #25458
+    let path = if is_path {
+      resolve_from_known_cwd(Path::new(&text), cwd)
+    } else {
+      which::which(&text)?
+    };
+    Ok(AllowRunDescriptor(path))
+  }
+}
+
+impl AllowDescriptor for AllowRunDescriptor {
+  type Query = RunPathQuery;
+
+  fn as_query(&self) -> Self::Query {
+    RunPathQuery {
+      requested: self.0.to_string_lossy().to_string(),
+      resolved: self.0.clone(),
+    }
+  }
+
+  fn matches(&self, query: &Self::Query) -> bool {
+    query.resolved == self.0
+  }
+}
+
+// todo(THIS PR): get rid of warning
 #[derive(Clone, Eq, PartialEq, Hash, Debug)]
-pub enum RunDescriptor {
+pub enum DenyRunDescriptor {
   /// Warning: You may want to construct with `RunDescriptor::from()` for case
   /// handling.
   Name(String),
@@ -939,22 +1103,21 @@ pub enum RunDescriptor {
   Path(PathBuf),
 }
 
-impl From<String> for RunDescriptorArg {
-  fn from(s: String) -> Self {
-    #[cfg(windows)]
-    let s = s.to_lowercase();
-    let is_path = s.contains('/');
-    #[cfg(windows)]
-    let is_path = is_path || s.contains('\\') || Path::new(&s).is_absolute();
-    if is_path {
-      Self::Path(resolve_from_cwd(Path::new(&s)).unwrap())
+impl DenyRunDescriptor {
+  pub fn parse(text: &str, cwd: &Path) -> Self {
+    if text.contains('/') || cfg!(windows) && text.contains('\\') {
+      DenyRunDescriptor::Name(text.to_string())
     } else {
-      match which::which(&s) {
-        Ok(path) => Self::Path(path),
-        Err(_) => Self::Name(s),
-      }
+      let path = resolve_from_known_cwd(Path::new(&text), cwd);
+      DenyRunDescriptor::Path(path)
     }
   }
+}
+
+impl DenyDescriptor for DenyRunDescriptor {
+  type Query = RunPathQuery;
+
+  fn matches(&self, query: &Self::Query) -> bool {}
 }
 
 impl Descriptor for RunDescriptor {
@@ -1965,18 +2128,6 @@ fn global_from_option<T>(flag: Option<&[T]>) -> bool {
   matches!(flag, Some(v) if v.is_empty())
 }
 
-fn parse_net_list(
-  list: Option<&[String]>,
-) -> Result<HashSet<NetDescriptor>, AnyError> {
-  if let Some(v) = list {
-    v.iter()
-      .map(|x| NetDescriptor::parse(x))
-      .collect::<Result<HashSet<NetDescriptor>, AnyError>>()
-  } else {
-    Ok(HashSet::new())
-  }
-}
-
 fn parse_env_list(
   list: Option<&[String]>,
 ) -> Result<HashSet<EnvDescriptor>, AnyError> {
@@ -1987,25 +2138,6 @@ fn parse_env_list(
           Err(AnyError::msg("Empty path is not allowed"))
         } else {
           Ok(EnvDescriptor::new(x))
-        }
-      })
-      .collect()
-  } else {
-    Ok(HashSet::new())
-  }
-}
-
-fn parse_path_list<T: Descriptor + Hash>(
-  list: Option<&[PathBuf]>,
-  f: fn(PathBuf) -> T,
-) -> Result<HashSet<T>, AnyError> {
-  if let Some(v) = list {
-    v.iter()
-      .map(|raw_path| {
-        if raw_path.as_os_str().is_empty() {
-          Err(AnyError::msg("Empty path is not allowed"))
-        } else {
-          resolve_from_cwd(Path::new(&raw_path)).map(f)
         }
       })
       .collect()
@@ -2299,11 +2431,23 @@ impl<'de> Deserialize<'de> for ChildPermissionsArg {
   }
 }
 
+/// Parses and normalizes permissions.
 pub trait PermissionParser {
   fn parse_read_descriptor(
     &self,
-    arg: &str,
+    text: &str,
   ) -> Result<ReadDescriptor, AnyError>;
+
+  fn parse_write_descriptor(
+    &self,
+    text: &str,
+  ) -> Result<WriteDescriptor, AnyError>;
+
+  fn parse_net_descriptor(&self, text: &str)
+    -> Result<NetDescriptor, AnyError>;
+
+  fn parse_env_descriptor(&self, text: &str)
+    -> Result<EnvDescriptor, AnyError>;
 }
 
 pub fn create_child_permissions(
@@ -2353,10 +2497,14 @@ pub fn create_child_permissions(
     })?;
   worker_perms.write = main_perms
     .write
-    .create_child_permissions(child_permissions_arg.write)?;
+    .create_child_permissions(child_permissions_arg.write, |text| {
+      parser.parse_write_descriptor(text)
+    })?;
   worker_perms.net = main_perms
     .net
-    .create_child_permissions(child_permissions_arg.net)?;
+    .create_child_permissions(child_permissions_arg.net, |text| {
+      parser.parse_net_descriptor(text)
+    })?;
   worker_perms.env = main_perms
     .env
     .create_child_permissions(child_permissions_arg.env)?;
