@@ -1043,7 +1043,7 @@ fn symlink_package_dir(
   new_path: &Path,
 ) -> Result<(), AnyError> {
   let new_parent = new_path.parent().unwrap();
-  if new_parent.file_name().unwrap() != "node_modules" {
+  if new_parent.file_name().unwrap() != "node_modules" || !new_parent.exists() {
     // create the parent folder that will contain the symlink
     fs::create_dir_all(new_parent)
       .with_context(|| format!("Creating '{}'", new_parent.display()))?;
