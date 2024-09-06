@@ -75,6 +75,7 @@ impl NodeResolutionMode {
 pub enum NodeResolution {
   Esm(Url),
   CommonJs(Url),
+  InferredDeclaration(Url),
   BuiltIn(String),
 }
 
@@ -83,6 +84,7 @@ impl NodeResolution {
     match self {
       Self::Esm(u) => u,
       Self::CommonJs(u) => u,
+      Self::InferredDeclaration(u) => u,
       Self::BuiltIn(specifier) => {
         if specifier.starts_with("node:") {
           Url::parse(&specifier).unwrap()
@@ -216,6 +218,22 @@ impl<TEnv: NodeResolverEnv> NodeResolver<TEnv> {
     // TODO(bartlomieju): skipped checking errors for commonJS resolution and
     // "preserveSymlinksMain"/"preserveSymlinks" options.
     Ok(resolve_response)
+  }
+
+  pub fn module_kind(&self, specifier: &Url) -> NodeModuleKind {
+    let path = specifier.path();
+    if path.ends_with(".cjs") || path.ends_with(".cts") {
+      return NodeModuleKind::Cjs;
+    }
+    if path.ends_with(".mjs") || path.ends_with(".mts") {
+      return NodeModuleKind::Esm;
+    }
+    if let Ok(Some(package_json)) = self.get_closest_package_json(specifier) {
+      if package_json.typ != "module" {
+        return NodeModuleKind::Cjs;
+      }
+    }
+    NodeModuleKind::Esm
   }
 
   fn module_resolve(
@@ -409,13 +427,15 @@ impl<TEnv: NodeResolverEnv> NodeResolver<TEnv> {
     let url_str = url.as_str().to_lowercase();
     if url_str.starts_with("http") || url_str.ends_with(".json") {
       Ok(NodeResolution::Esm(url))
-    } else if url_str.ends_with(".js") || url_str.ends_with(".d.ts") {
+    } else if url_str.ends_with(".js") {
       let maybe_package_config = self.get_closest_package_json(&url)?;
       match maybe_package_config {
         Some(c) if c.typ == "module" => Ok(NodeResolution::Esm(url)),
         Some(_) => Ok(NodeResolution::CommonJs(url)),
         None => Ok(NodeResolution::Esm(url)),
       }
+    } else if url_str.ends_with(".d.ts") {
+      Ok(NodeResolution::InferredDeclaration(url))
     } else if url_str.ends_with(".mjs") || url_str.ends_with(".d.mts") {
       Ok(NodeResolution::Esm(url))
     } else if url_str.ends_with(".ts") || url_str.ends_with(".mts") {

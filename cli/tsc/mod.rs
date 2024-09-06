@@ -620,11 +620,6 @@ fn op_resolve_inner(
   let state = state.borrow_mut::<State>();
   let mut resolved: Vec<(String, String)> =
     Vec::with_capacity(args.specifiers.len());
-  let referrer_kind = if args.is_base_cjs {
-    NodeModuleKind::Cjs
-  } else {
-    NodeModuleKind::Esm
-  };
   let referrer = if let Some(remapped_specifier) =
     state.remapped_specifiers.get(&args.base)
   {
@@ -635,6 +630,13 @@ fn op_resolve_inner(
     normalize_specifier(&args.base, &state.current_dir).context(
       "Error converting a string module specifier for \"op_resolve\".",
     )?
+  };
+  let referrer_kind = if args.is_base_cjs {
+    NodeModuleKind::Cjs
+  } else if let Some(npm) = &state.maybe_npm {
+    npm.node_resolver.module_kind(&referrer)
+  } else {
+    NodeModuleKind::Esm
   };
   for specifier in args.specifiers {
     if specifier.starts_with("node:") {

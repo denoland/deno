@@ -178,7 +178,7 @@ impl CliNodeResolver {
     let referrer_kind = if self.cjs_resolutions.contains(referrer) {
       NodeModuleKind::Cjs
     } else {
-      NodeModuleKind::Esm
+      self.node_resolver.module_kind(referrer)
     };
 
     let res =

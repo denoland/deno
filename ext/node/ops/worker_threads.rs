@@ -66,7 +66,7 @@ where
   match node_resolver.url_to_node_resolution(url)? {
     NodeResolution::Esm(u) => Ok(u.to_string()),
     NodeResolution::CommonJs(u) => wrap_cjs(u),
-    NodeResolution::BuiltIn(_) => Err(generic_error("Neither ESM nor CJS")),
+    _ => Err(generic_error("Neither ESM nor CJS")),
   }
 }
 

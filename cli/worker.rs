@@ -707,7 +707,9 @@ impl CliMainWorkerFactory {
       )?;
     match &resolution {
       NodeResolution::BuiltIn(_) => Ok(None),
-      NodeResolution::CommonJs(specifier) | NodeResolution::Esm(specifier) => {
+      NodeResolution::CommonJs(specifier)
+      | NodeResolution::Esm(specifier)
+      | NodeResolution::InferredDeclaration(specifier) => {
         if specifier
           .to_file_path()
           .map(|p| p.exists())

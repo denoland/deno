@@ -8648,7 +8648,18 @@ fn lsp_completions_npm() {
       .iter()
       .map(|i| i.label.as_str())
       .collect::<Vec<_>>(),
-    vec!["default", "MyClass", "named"]
+    vec![
+      "apply",
+      "arguments",
+      "bind",
+      "call",
+      "caller",
+      "length",
+      "name",
+      "prototype",
+      "Symbol",
+      "toString",
+    ],
   );
 
   let res = client.write_request(
