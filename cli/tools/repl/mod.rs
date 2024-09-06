@@ -16,6 +16,7 @@ use deno_core::error::AnyError;
 use deno_core::futures::StreamExt;
 use deno_core::serde_json;
 use deno_core::unsync::spawn_blocking;
+use deno_runtime::deno_permissions::ImportsPermissions;
 use deno_runtime::deno_permissions::Permissions;
 use deno_runtime::deno_permissions::PermissionsContainer;
 use deno_runtime::WorkerExecutionMode;
@@ -152,7 +153,7 @@ async fn read_eval_file(
     deno_core::resolve_url_or_path(eval_file, cli_options.initial_cwd())?;
 
   let file = file_fetcher
-    .fetch(&specifier, &PermissionsContainer::allow_all())
+    .fetch(&specifier, &ImportsPermissions::allow_all())
     .await?;
 
   Ok(file.into_text_decoded()?.source)

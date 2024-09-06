@@ -53,6 +53,7 @@ use deno_core::OpState;
 use deno_core::PollEventLoopOptions;
 use deno_runtime::deno_io::Stdio;
 use deno_runtime::deno_io::StdioPipe;
+use deno_runtime::deno_permissions::ImportsPermissions;
 use deno_runtime::deno_permissions::Permissions;
 use deno_runtime::deno_permissions::PermissionsContainer;
 use deno_runtime::fmt_errors::format_js_error;
@@ -1327,9 +1328,8 @@ async fn fetch_inline_files(
 ) -> Result<Vec<File>, AnyError> {
   let mut files = Vec::new();
   for specifier in specifiers {
-    let fetch_permissions = PermissionsContainer::allow_all();
     let file = file_fetcher
-      .fetch(&specifier, &fetch_permissions)
+      .fetch(&specifier, &ImportsPermissions::allow_all())
       .await?
       .into_text_decoded()?;
 
@@ -1740,7 +1740,7 @@ async fn fetch_specifiers_with_test_mode(
 
   for (specifier, mode) in &mut specifiers_with_mode {
     let file = file_fetcher
-      .fetch(specifier, &PermissionsContainer::allow_all())
+      .fetch(specifier, &ImportsPermissions::allow_all())
       .await?;
 
     let (media_type, _) = file.resolve_media_type_and_charset();

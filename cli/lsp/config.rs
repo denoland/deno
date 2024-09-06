@@ -37,7 +37,7 @@ use deno_lint::linter::LintConfig as DenoLintConfig;
 use deno_npm::npm_rc::ResolvedNpmRc;
 use deno_package_json::PackageJsonCache;
 use deno_runtime::deno_node::PackageJson;
-use deno_runtime::deno_permissions::PermissionsContainer;
+use deno_runtime::deno_permissions::ImportsPermissions;
 use deno_runtime::fs_util::specifier_to_file_path;
 use indexmap::IndexSet;
 use lsp_types::ClientCapabilities;
@@ -1464,7 +1464,7 @@ impl ConfigData {
           let import_map_url = import_map_url.clone();
           async move {
             file_fetcher
-              .fetch(&import_map_url, &PermissionsContainer::allow_all())
+              .fetch(&import_map_url, &ImportsPermissions::allow_all())
               .await
           }
         })
@@ -1508,7 +1508,7 @@ impl ConfigData {
               let file_fetcher = file_fetcher.clone().unwrap();
               async move {
                 let file = file_fetcher
-                  .fetch(&specifier, &PermissionsContainer::allow_all())
+                  .fetch(&specifier, &ImportsPermissions::allow_all())
                   .await?
                   .into_text_decoded()?;
                 Ok(file.source.to_string())

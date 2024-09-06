@@ -6,7 +6,7 @@ use dashmap::DashMap;
 use deno_core::serde_json;
 use deno_graph::packages::JsrPackageInfo;
 use deno_graph::packages::JsrPackageVersionInfo;
-use deno_runtime::deno_permissions::PermissionsContainer;
+use deno_runtime::deno_permissions::ImportsPermissions;
 use deno_semver::package::PackageNv;
 use deno_semver::package::PackageReq;
 use std::sync::Arc;
@@ -69,7 +69,7 @@ impl JsrFetchResolver {
       // spawn due to the lsp's `Send` requirement
       let file = deno_core::unsync::spawn(async move {
         file_fetcher
-          .fetch(&meta_url, &PermissionsContainer::allow_all())
+          .fetch(&meta_url, &ImportsPermissions::allow_all())
           .await
           .ok()
       })
@@ -97,7 +97,7 @@ impl JsrFetchResolver {
       // spawn due to the lsp's `Send` requirement
       let file = deno_core::unsync::spawn(async move {
         file_fetcher
-          .fetch(&meta_url, &PermissionsContainer::allow_all())
+          .fetch(&meta_url, &ImportsPermissions::allow_all())
           .await
           .ok()
       })

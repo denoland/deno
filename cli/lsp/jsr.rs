@@ -14,7 +14,7 @@ use deno_graph::packages::JsrPackageInfo;
 use deno_graph::packages::JsrPackageInfoVersion;
 use deno_graph::packages::JsrPackageVersionInfo;
 use deno_graph::ModuleSpecifier;
-use deno_runtime::deno_permissions::PermissionsContainer;
+use deno_runtime::deno_permissions::ImportsPermissions;
 use deno_semver::jsr::JsrPackageReqReference;
 use deno_semver::package::PackageNv;
 use deno_semver::package::PackageReq;
@@ -311,7 +311,7 @@ impl PackageSearchApi for CliJsrSearchApi {
     // spawn due to the lsp's `Send` requirement
     let file = deno_core::unsync::spawn(async move {
       file_fetcher
-        .fetch(&search_url, &PermissionsContainer::allow_all())
+        .fetch(&search_url, &ImportsPermissions::allow_all())
         .await?
         .into_text_decoded()
     })

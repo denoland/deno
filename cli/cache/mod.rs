@@ -18,6 +18,7 @@ use deno_graph::source::CacheInfo;
 use deno_graph::source::LoadFuture;
 use deno_graph::source::LoadResponse;
 use deno_graph::source::Loader;
+use deno_runtime::deno_permissions::ImportsPermissions;
 use deno_runtime::deno_permissions::PermissionsContainer;
 use std::collections::HashMap;
 use std::path::Path;
@@ -210,7 +211,7 @@ impl Loader for FetchCacher {
 
     let file_fetcher = self.file_fetcher.clone();
     let file_header_overrides = self.file_header_overrides.clone();
-    let permissions = self.permissions.clone();
+    let permissions = self.permissions.0.lock().clone();
     let specifier = specifier.clone();
 
     async move {
@@ -230,7 +231,7 @@ impl Loader for FetchCacher {
         .fetch_no_follow_with_options(FetchNoFollowOptions {
           fetch_options: FetchOptions {
             specifier: &specifier,
-            permissions: &permissions,
+            permissions: &ImportsPermissions::new(permissions),
             maybe_accept: None,
             maybe_cache_setting: maybe_cache_setting.as_ref(),
           },

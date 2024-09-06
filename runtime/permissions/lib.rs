@@ -1619,14 +1619,6 @@ impl PermissionsContainer {
   }
 
   #[inline(always)]
-  pub fn check_specifier(
-    &self,
-    specifier: &ModuleSpecifier,
-  ) -> Result<(), AnyError> {
-    self.0.lock().check_specifier(specifier)
-  }
-
-  #[inline(always)]
   pub fn check_read(
     &mut self,
     path: &Path,
@@ -1887,6 +1879,37 @@ impl PermissionsContainer {
     path: Option<&Path>,
   ) -> Result<(), AnyError> {
     self.0.lock().ffi.check_partial(path)
+  }
+}
+
+/// A subset of `PermissionsContainer` that is dedicated for checking
+/// permissions for importing code:
+///  - static imports
+///  - dynamic imports
+///  - worker threads
+///
+/// One can thing about it as permissions for the "script" destination
+/// in browsers.
+#[derive(Clone, Debug)]
+pub struct ImportsPermissions(pub Arc<Mutex<Permissions>>);
+
+impl ImportsPermissions {
+  // TODO(bartlomieju): consider accepting only `--allow-read` and `--allow-net` permissions,
+  // the rest should be None.
+  pub fn new(perms: Permissions) -> Self {
+    Self(Arc::new(Mutex::new(perms)))
+  }
+
+  pub fn allow_all() -> Self {
+    Self::new(Permissions::allow_all())
+  }
+
+  #[inline(always)]
+  pub fn check_specifier(
+    &self,
+    specifier: &ModuleSpecifier,
+  ) -> Result<(), AnyError> {
+    self.0.lock().check_specifier(specifier)
   }
 }
 
