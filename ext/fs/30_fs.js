@@ -590,16 +590,9 @@ class FsFile {
     });
     this.#rid = rid;
     if (!symbol || symbol !== SymbolFor("Deno.internal.FsFile")) {
-      internals.warnOnDeprecatedApi(
-        "new Deno.FsFile()",
-        new Error().stack,
-        "Use `Deno.open` or `Deno.openSync` instead.",
+      throw new TypeError(
+        "`Deno.FsFile` cannot be constructed, use `Deno.open()` or `Deno.openSync()` instead.",
       );
-      if (internals.future) {
-        throw new TypeError(
-          "`Deno.FsFile` cannot be constructed, use `Deno.open()` or `Deno.openSync()` instead.",
-        );
-      }
     }
   }
 
