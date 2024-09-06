@@ -5550,7 +5550,6 @@ declare namespace Deno {
       & ServeInit<Deno.NetAddr>,
   ): HttpServer<Deno.NetAddr>;
 
-
   /** All plain number types for interfacing with foreign functions.
    *
    * @category FFI
@@ -5651,9 +5650,9 @@ declare namespace Deno {
    */
   export type NativeTypedFunction<T extends UnsafeCallbackDefinition> =
     & "function"
-      & {
-        [brand]: T;
-      };
+    & {
+      [brand]: T;
+    };
 
   /** All supported types for interfacing with foreign functions.
    *
@@ -5680,21 +5679,21 @@ declare namespace Deno {
   export type ToNativeType<T extends NativeType = NativeType> = T extends
     NativeStructType ? BufferSource
     : T extends NativeNumberType ? T extends NativeU8Enum<infer U> ? U
-        : T extends NativeI8Enum<infer U> ? U
-          : T extends NativeU16Enum<infer U> ? U
-            : T extends NativeI16Enum<infer U> ? U
-              : T extends NativeU32Enum<infer U> ? U
-                : T extends NativeI32Enum<infer U> ? U
-                  : number
-      : T extends NativeBigIntType ? bigint
-        : T extends NativeBooleanType ? boolean
-          : T extends NativePointerType
-            ? T extends NativeTypedPointer<infer U> ? U | null : PointerValue
-            : T extends NativeFunctionType
-              ? T extends NativeTypedFunction<infer U> ? PointerValue<U> | null
-                : PointerValue
-              : T extends NativeBufferType ? BufferSource | null
-                : never;
+      : T extends NativeI8Enum<infer U> ? U
+      : T extends NativeU16Enum<infer U> ? U
+      : T extends NativeI16Enum<infer U> ? U
+      : T extends NativeU32Enum<infer U> ? U
+      : T extends NativeI32Enum<infer U> ? U
+      : number
+    : T extends NativeBigIntType ? bigint
+    : T extends NativeBooleanType ? boolean
+    : T extends NativePointerType
+      ? T extends NativeTypedPointer<infer U> ? U | null : PointerValue
+    : T extends NativeFunctionType
+      ? T extends NativeTypedFunction<infer U> ? PointerValue<U> | null
+      : PointerValue
+    : T extends NativeBufferType ? BufferSource | null
+    : never;
 
   /** Type conversion for unsafe callback return types.
    *
@@ -5704,36 +5703,36 @@ declare namespace Deno {
     T extends NativeResultType = NativeResultType,
   > = T extends NativeStructType ? BufferSource
     : T extends NativeNumberType ? T extends NativeU8Enum<infer U> ? U
-        : T extends NativeI8Enum<infer U> ? U
-          : T extends NativeU16Enum<infer U> ? U
-            : T extends NativeI16Enum<infer U> ? U
-              : T extends NativeU32Enum<infer U> ? U
-                : T extends NativeI32Enum<infer U> ? U
-                  : number
-      : T extends NativeBigIntType ? bigint
-        : T extends NativeBooleanType ? boolean
-          : T extends NativePointerType
-            ? T extends NativeTypedPointer<infer U> ? U | null : PointerValue
-            : T extends NativeFunctionType
-              ? T extends NativeTypedFunction<infer U> ? PointerObject<U> | null
-                : PointerValue
-              : T extends NativeBufferType ? BufferSource | null
-                : T extends NativeVoidType ? void
-                  : never;
+      : T extends NativeI8Enum<infer U> ? U
+      : T extends NativeU16Enum<infer U> ? U
+      : T extends NativeI16Enum<infer U> ? U
+      : T extends NativeU32Enum<infer U> ? U
+      : T extends NativeI32Enum<infer U> ? U
+      : number
+    : T extends NativeBigIntType ? bigint
+    : T extends NativeBooleanType ? boolean
+    : T extends NativePointerType
+      ? T extends NativeTypedPointer<infer U> ? U | null : PointerValue
+    : T extends NativeFunctionType
+      ? T extends NativeTypedFunction<infer U> ? PointerObject<U> | null
+      : PointerValue
+    : T extends NativeBufferType ? BufferSource | null
+    : T extends NativeVoidType ? void
+    : never;
 
   /** A utility type for conversion of parameter types of foreign functions.
    *
    * @category FFI
    */
   export type ToNativeParameterTypes<T extends readonly NativeType[]> =
-  //
+    //
     [(T[number])[]] extends [T] ? ToNativeType<T[number]>[]
       : [readonly (T[number])[]] extends [T]
         ? readonly ToNativeType<T[number]>[]
-        : T extends readonly [...NativeType[]] ? {
-            [K in keyof T]: ToNativeType<T[K]>;
-          }
-          : never;
+      : T extends readonly [...NativeType[]] ? {
+          [K in keyof T]: ToNativeType<T[K]>;
+        }
+      : never;
 
   /** Type conversion for foreign symbol return types and unsafe callback
    * parameters.
@@ -5743,21 +5742,21 @@ declare namespace Deno {
   export type FromNativeType<T extends NativeType = NativeType> = T extends
     NativeStructType ? Uint8Array
     : T extends NativeNumberType ? T extends NativeU8Enum<infer U> ? U
-        : T extends NativeI8Enum<infer U> ? U
-          : T extends NativeU16Enum<infer U> ? U
-            : T extends NativeI16Enum<infer U> ? U
-              : T extends NativeU32Enum<infer U> ? U
-                : T extends NativeI32Enum<infer U> ? U
-                  : number
-      : T extends NativeBigIntType ? bigint
-        : T extends NativeBooleanType ? boolean
-          : T extends NativePointerType
-            ? T extends NativeTypedPointer<infer U> ? U | null : PointerValue
-            : T extends NativeBufferType ? PointerValue
-              : T extends NativeFunctionType
-                ? T extends NativeTypedFunction<infer U> ? PointerObject<U> | null
-                  : PointerValue
-                : never;
+      : T extends NativeI8Enum<infer U> ? U
+      : T extends NativeU16Enum<infer U> ? U
+      : T extends NativeI16Enum<infer U> ? U
+      : T extends NativeU32Enum<infer U> ? U
+      : T extends NativeI32Enum<infer U> ? U
+      : number
+    : T extends NativeBigIntType ? bigint
+    : T extends NativeBooleanType ? boolean
+    : T extends NativePointerType
+      ? T extends NativeTypedPointer<infer U> ? U | null : PointerValue
+    : T extends NativeBufferType ? PointerValue
+    : T extends NativeFunctionType
+      ? T extends NativeTypedFunction<infer U> ? PointerObject<U> | null
+      : PointerValue
+    : never;
 
   /** Type conversion for foreign symbol return types.
    *
@@ -5767,36 +5766,36 @@ declare namespace Deno {
     T extends NativeResultType = NativeResultType,
   > = T extends NativeStructType ? Uint8Array
     : T extends NativeNumberType ? T extends NativeU8Enum<infer U> ? U
-        : T extends NativeI8Enum<infer U> ? U
-          : T extends NativeU16Enum<infer U> ? U
-            : T extends NativeI16Enum<infer U> ? U
-              : T extends NativeU32Enum<infer U> ? U
-                : T extends NativeI32Enum<infer U> ? U
-                  : number
-      : T extends NativeBigIntType ? bigint
-        : T extends NativeBooleanType ? boolean
-          : T extends NativePointerType
-            ? T extends NativeTypedPointer<infer U> ? U | null : PointerValue
-            : T extends NativeBufferType ? PointerValue
-              : T extends NativeFunctionType
-                ? T extends NativeTypedFunction<infer U> ? PointerObject<U> | null
-                  : PointerValue
-                : T extends NativeVoidType ? void
-                  : never;
+      : T extends NativeI8Enum<infer U> ? U
+      : T extends NativeU16Enum<infer U> ? U
+      : T extends NativeI16Enum<infer U> ? U
+      : T extends NativeU32Enum<infer U> ? U
+      : T extends NativeI32Enum<infer U> ? U
+      : number
+    : T extends NativeBigIntType ? bigint
+    : T extends NativeBooleanType ? boolean
+    : T extends NativePointerType
+      ? T extends NativeTypedPointer<infer U> ? U | null : PointerValue
+    : T extends NativeBufferType ? PointerValue
+    : T extends NativeFunctionType
+      ? T extends NativeTypedFunction<infer U> ? PointerObject<U> | null
+      : PointerValue
+    : T extends NativeVoidType ? void
+    : never;
 
   /** @category FFI
    */
   export type FromNativeParameterTypes<
     T extends readonly NativeType[],
   > =
-  //
+    //
     [(T[number])[]] extends [T] ? FromNativeType<T[number]>[]
       : [readonly (T[number])[]] extends [T]
         ? readonly FromNativeType<T[number]>[]
-        : T extends readonly [...NativeType[]] ? {
-            [K in keyof T]: FromNativeType<T[K]>;
-          }
-          : never;
+      : T extends readonly [...NativeType[]] ? {
+          [K in keyof T]: FromNativeType<T[K]>;
+        }
+      : never;
 
   /** The interface for a foreign function as defined by its parameter and result
    * types.
@@ -5855,7 +5854,7 @@ declare namespace Deno {
   export type StaticForeignSymbol<T extends ForeignFunction | ForeignStatic> =
     T extends ForeignFunction ? FromForeignFunction<T>
       : T extends ForeignStatic ? FromNativeType<T["type"]>
-        : never;
+      : never;
 
   /**  @category FFI
    */
@@ -5882,8 +5881,8 @@ declare namespace Deno {
   export type StaticForeignLibraryInterface<T extends ForeignLibraryInterface> =
     {
       [K in keyof T]: T[K]["optional"] extends true
-      ? StaticForeignSymbol<T[K]> | null
-      : StaticForeignSymbol<T[K]>;
+        ? StaticForeignSymbol<T[K]> | null
+        : StaticForeignSymbol<T[K]>;
     };
 
   /** A non-null pointer, represented as an object
