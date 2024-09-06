@@ -564,11 +564,7 @@ function mapToCallback(context, callback, onError) {
   };
 }
 
-/**
- * @param {string} hostname
- * @returns {string}
- */
-function formatHostName(hostname) {
+function formatHostName(hostname: string): string {
   // If the hostname is "0.0.0.0", we display "localhost" in console
   // because browsers in Windows don't resolve "0.0.0.0".
   // See the discussion in https://github.com/denoland/deno_std/issues/1165
