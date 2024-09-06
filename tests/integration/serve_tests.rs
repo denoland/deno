@@ -65,7 +65,8 @@ impl ServeClientBuilder {
         .arg("serve")
         .arg("--port")
         .arg("0")
-        .stdout_piped(),
+        .stdout_piped()
+        .stderr_piped(),
       None,
     )
   }
@@ -106,12 +107,12 @@ impl ServeClient {
   fn output(self) -> String {
     let mut child = self.child.borrow_mut();
     child.kill().unwrap();
-    let mut stdout = child.stdout.take().unwrap();
+    let mut stderr = child.stderr.take().unwrap();
     child.wait().unwrap();
 
     let mut output_buf = self.output_buf.borrow_mut();
 
-    stdout.read_to_end(&mut output_buf).unwrap();
+    stderr.read_to_end(&mut output_buf).unwrap();
 
     String::from_utf8(std::mem::take(&mut *output_buf)).unwrap()
   }
@@ -128,7 +129,7 @@ impl ServeClient {
     let mut buffer = self.output_buf.borrow_mut();
     let mut temp_buf = [0u8; 64];
     let mut child = self.child.borrow_mut();
-    let stdout = child.stdout.as_mut().unwrap();
+    let stderr = child.stderr.as_mut().unwrap();
     let port_regex = regex::bytes::Regex::new(r":(\d+)").unwrap();
 
     let start = std::time::Instant::now();
@@ -141,7 +142,7 @@ impl ServeClient {
           String::from_utf8_lossy(&buffer)
         );
       }
-      let read = stdout.read(&mut temp_buf).unwrap();
+      let read = stderr.read(&mut temp_buf).unwrap();
       buffer.extend_from_slice(&temp_buf[..read]);
       if let Some(p) = port_regex
         .captures(&buffer)
