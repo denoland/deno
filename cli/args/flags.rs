@@ -10748,6 +10748,13 @@ mod tests {
   }
 
   #[test]
+  fn jupyter_unstable_flags() {
+    let r = flags_from_vec(svec!["deno", "jupyter", "--unstable-ffi"]);
+
+    assert!(r.is_ok());
+  }
+
+  #[test]
   fn escape_and_split_commas_test() {
     assert_eq!(escape_and_split_commas("foo".to_string()).unwrap(), ["foo"]);
     assert!(escape_and_split_commas("foo,".to_string()).is_err());
