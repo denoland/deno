@@ -586,7 +586,9 @@ async function receiveAlotSendNothing(conn: Deno.Conn) {
     }
   } catch (e) {
     throw new Error(
-      `Got an error (${e.message}) after reading ${nread}/${largeAmount} bytes`,
+      `Got an error (${
+        (e as Error).message
+      }) after reading ${nread}/${largeAmount} bytes`,
       { cause: e },
     );
   }

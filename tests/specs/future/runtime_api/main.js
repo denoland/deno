@@ -1,11 +1,8 @@
 console.log("window is", globalThis.window);
-console.log("Deno.Buffer is", Deno.Buffer);
 console.log(
   "Deno.FsFile.prototype.rid is",
   Deno.openSync(import.meta.filename).rid,
 );
-console.log("Deno.funlock is", Deno.funlock);
-console.log("Deno.funlockSync is", Deno.funlockSync);
 
 // TCP
 // Since these tests may run in parallel, ensure this port is unique to this file

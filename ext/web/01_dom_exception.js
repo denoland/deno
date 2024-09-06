@@ -186,7 +186,7 @@ const entries = ObjectEntries({
 });
 for (let i = 0; i < entries.length; ++i) {
   const { 0: key, 1: value } = entries[i];
-  const desc = { value, enumerable: true };
+  const desc = { __proto__: null, value, enumerable: true };
   ObjectDefineProperty(DOMException, key, desc);
   ObjectDefineProperty(DOMException.prototype, key, desc);
 }

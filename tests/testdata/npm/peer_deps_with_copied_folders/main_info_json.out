@@ -42,8 +42,6 @@
         }
       ],
       "local": "[WILDCARD]main.ts",
-      "emit": null,
-      "map": null,
       "size": 171,
       "mediaType": "TypeScript",
       "specifier": "file://[WILDCARD]/main.ts"
