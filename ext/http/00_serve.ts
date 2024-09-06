@@ -583,19 +583,6 @@ type RawServeOptions = {
 
 const kLoadBalanced = Symbol("kLoadBalanced");
 
-function mapAnyAddrToLocalhostForWindows(hostname: string) {
-  // If the hostname is "0.0.0.0", we display "localhost" in console
-  // because browsers in Windows don't resolve "0.0.0.0".
-  // See the discussion in https://github.com/denoland/deno_std/issues/1165
-  if (
-    (Deno.build.os === "windows") &&
-    (hostname == "0.0.0.0" || hostname == "::")
-  ) {
-    return "localhost";
-  }
-  return hostname;
-}
-
 function serve(arg1, arg2) {
   let options: RawServeOptions | undefined;
   let handler: RawHandler | undefined;
@@ -690,8 +677,7 @@ function serve(arg1, arg2) {
     if (options.onListen) {
       options.onListen(addr);
     } else {
-      const hostname = mapAnyAddrToLocalhostForWindows(addr.hostname);
-      const host = formatHostName(hostname);
+      const host = formatHostName(addr.hostname);
 
       // deno-lint-ignore no-console
       console.log(`Listening on ${scheme}${host}:${addr.port}/`);
@@ -702,12 +688,22 @@ function serve(arg1, arg2) {
 }
 
 /**
- * @param {string} received
+ * @param {string} hostname
  * @returns {string}
  */
-function formatHostName(received) {
-  // Add brackets around ipv6 host
-  return StringPrototypeIncludes(received, ":") ? `[${received}]` : received;
+function formatHostName(hostname) {
+  // If the hostname is "0.0.0.0", we display "localhost" in console
+  // because browsers in Windows don't resolve "0.0.0.0".
+  // See the discussion in https://github.com/denoland/deno_std/issues/1165
+  if (
+    (Deno.build.os === "windows") &&
+    (hostname == "0.0.0.0" || hostname == "::")
+  ) {
+    return "localhost";
+  }
+
+  // Add brackets around ipv6 hostname
+  return StringPrototypeIncludes(hostname, ":") ? `[${hostname}]` : hostname;
 }
 
 /**
@@ -876,8 +872,7 @@ function registerDeclarativeServer(exports) {
             const nThreads = serveWorkerCount > 1
               ? ` with ${serveWorkerCount} threads`
               : "";
-            const hostname_ = mapAnyAddrToLocalhostForWindows(hostname);
-            const host = formatHostName(hostname_);
+            const host = formatHostName(hostname);
 
             // deno-lint-ignore no-console
             console.debug(
