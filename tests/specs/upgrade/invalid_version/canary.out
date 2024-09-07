@@ -1,0 +1,10 @@
+error: Invalid commit hash passed (asdfasdf)
+
+Pass a semver, or a full 40 character git commit hash, or a release channel name.
+
+Example usage:
+  Latest version:    deno upgrade
+  Specific version:  deno upgrade 1.46.3
+  Release Candidate: deno upgrade rc
+  Canary:            deno upgrade canary
+  Specific canary:   deno upgrade 30687c786c37090ac0e4e2c3824b1b5cf313599f
