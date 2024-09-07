@@ -798,6 +798,8 @@ function bootstrapMainRuntime(runtimeOptions, warmup = false) {
       delete globalThis.Temporal.Now.zonedDateTime;
       delete globalThis.Temporal.Now.plainDateTime;
       delete globalThis.Temporal.Now.plainDate;
+      delete globalThis.Temporal.Calendar;
+      delete globalThis.Temporal.TimeZone;
 
       // Modify `Temporal.Calendar` to calendarId string
       ArrayPrototypeForEach([
@@ -819,7 +821,6 @@ function bootstrapMainRuntime(runtimeOptions, warmup = false) {
         });
         delete target.prototype.calendar;
       });
-      delete globalThis.Temporal.Calendar;
 
       // Modify `Temporal.TimeZone` to timeZoneId string
       {
@@ -842,11 +843,11 @@ function bootstrapMainRuntime(runtimeOptions, warmup = false) {
         delete globalThis.Temporal.ZonedDateTime.prototype.timeZone;
       }
       {
-        const timeZone = globalThis.Temporal.Now.timeZone;
+        const nowTimeZone = globalThis.Temporal.Now.timeZone;
         ObjectDefineProperty(globalThis.Temporal.Now, "timeZoneId", {
           __proto__: null,
           value: function timeZoneId() {
-            timeZone().id;
+            nowTimeZone().id;
           },
           writable: true,
           enumerable: false,
@@ -854,7 +855,6 @@ function bootstrapMainRuntime(runtimeOptions, warmup = false) {
         });
         delete globalThis.Temporal.Now.timeZone;
       }
-      delete globalThis.Temporal.TimeZone;
     }
 
     // Setup `Deno` global - we're actually overriding already existing global
@@ -1017,6 +1017,8 @@ function bootstrapWorkerRuntime(
       delete globalThis.Temporal.Now.zonedDateTime;
       delete globalThis.Temporal.Now.plainDateTime;
       delete globalThis.Temporal.Now.plainDate;
+      delete globalThis.Temporal.Calendar;
+      delete globalThis.Temporal.TimeZone;
 
       // Modify `Temporal.Calendar` to calendarId string
       ArrayPrototypeForEach([
@@ -1038,7 +1040,6 @@ function bootstrapWorkerRuntime(
         });
         delete target.prototype.calendar;
       });
-      delete globalThis.Temporal.Calendar;
 
       // Modify `Temporal.TimeZone` to timeZoneId string
       {
@@ -1061,11 +1062,11 @@ function bootstrapWorkerRuntime(
         delete globalThis.Temporal.ZonedDateTime.prototype.timeZone;
       }
       {
-        const timeZone = globalThis.Temporal.Now.timeZone;
+        const nowTimeZone = globalThis.Temporal.Now.timeZone;
         ObjectDefineProperty(globalThis.Temporal.Now, "timeZoneId", {
           __proto__: null,
           value: function timeZoneId() {
-            timeZone().id;
+            nowTimeZone().id;
           },
           writable: true,
           enumerable: false,
@@ -1073,7 +1074,6 @@ function bootstrapWorkerRuntime(
         });
         delete globalThis.Temporal.Now.timeZone;
       }
-      delete globalThis.Temporal.TimeZone;
     }
 
     // Setup `Deno` global - we're actually overriding already existing global
