@@ -793,8 +793,8 @@ Deno.test(
   async function httpServerDefaultOnListenCallback() {
     const ac = new AbortController();
 
-    const consoleLog = console.log;
-    console.log = (msg) => {
+    const consoleError = console.error;
+    console.error = (msg) => {
       try {
         const match = msg.match(
           /Listening on http:\/\/(localhost|0\.0\.0\.0):(\d+)\//,
@@ -819,7 +819,7 @@ Deno.test(
 
       await server.finished;
     } finally {
-      console.log = consoleLog;
+      console.error = consoleError;
     }
   },
 );
@@ -876,8 +876,8 @@ Deno.test({ permissions: { net: true } }, async function ipv6Hostname() {
   const ac = new AbortController();
   let url = "";
 
-  const consoleLog = console.log;
-  console.log = (msg) => {
+  const consoleError = console.error;
+  console.error = (msg) => {
     try {
       const match = msg.match(/Listening on (http:\/\/(.*?):(\d+)\/)/);
       assert(!!match, `Didn't match ${msg}`);
@@ -898,7 +898,7 @@ Deno.test({ permissions: { net: true } }, async function ipv6Hostname() {
     assert(new URL(url), `Not a valid URL "${url}"`);
     await server.shutdown();
   } finally {
-    console.log = consoleLog;
+    console.error = consoleError;
   }
 });
 

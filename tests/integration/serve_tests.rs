@@ -61,6 +61,7 @@ impl ServeClientBuilder {
   fn new() -> Self {
     Self(
       util::deno_cmd()
+        .env("NO_COLOR", "1")
         .current_dir(util::testdata_path())
         .arg("serve")
         .arg("--port")
