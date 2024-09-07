@@ -302,7 +302,12 @@ pub trait FetchPermissions {
     _url: &Url,
     api_name: &str,
   ) -> Result<(), AnyError>;
-  fn check_read(&mut self, _p: &Path, api_name: &str) -> Result<(), AnyError>;
+  #[must_use]
+  fn check_read<'a>(
+    &mut self,
+    _p: &'a Path,
+    api_name: &str,
+  ) -> Result<Cow<'a, Path>, AnyError>;
 }
 
 impl FetchPermissions for deno_permissions::PermissionsContainer {
@@ -316,12 +321,14 @@ impl FetchPermissions for deno_permissions::PermissionsContainer {
   }
 
   #[inline(always)]
-  fn check_read(
+  fn check_read<'a>(
     &mut self,
-    path: &Path,
+    path: &'a Path,
     api_name: &str,
-  ) -> Result<(), AnyError> {
-    deno_permissions::PermissionsContainer::check_read(self, path, api_name)
+  ) -> Result<Cow<'a, Path>, AnyError> {
+    deno_permissions::PermissionsContainer::check_read_path(
+      self, path, api_name,
+    )
   }
 }
 
@@ -359,7 +366,7 @@ where
         type_error("NetworkError when attempting to fetch resource")
       })?;
       let permissions = state.borrow_mut::<FP>();
-      permissions.check_read(&path, "fetch()")?;
+      let path = permissions.check_read(&path, "fetch()")?;
 
       if method != Method::GET {
         return Err(type_error(format!(

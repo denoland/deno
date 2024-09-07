@@ -482,15 +482,15 @@ deno_core::extension!(deno_napi,
 );
 
 pub trait NapiPermissions {
-  fn check(&mut self, path: Option<&Path>)
-    -> std::result::Result<(), AnyError>;
+  #[must_use]
+  fn check(&mut self, path: &str) -> std::result::Result<PathBuf, AnyError>;
 }
 
 // NOTE(bartlomieju): for now, NAPI uses `--allow-ffi` flag, but that might
 // change in the future.
 impl NapiPermissions for deno_permissions::PermissionsContainer {
   #[inline(always)]
-  fn check(&mut self, path: Option<&Path>) -> Result<(), AnyError> {
+  fn check(&mut self, path: &str) -> Result<(), AnyError> {
     deno_permissions::PermissionsContainer::check_ffi(self, path)
   }
 }
@@ -519,15 +519,16 @@ where
 {
   // We must limit the OpState borrow because this function can trigger a
   // re-borrow through the NAPI module.
-  let (async_work_sender, cleanup_hooks, external_ops_tracker) = {
+  let (async_work_sender, cleanup_hooks, external_ops_tracker, path) = {
     let mut op_state = op_state.borrow_mut();
     let permissions = op_state.borrow_mut::<NP>();
-    permissions.check(Some(&PathBuf::from(&path)))?;
+    let path = permissions.check(Some(&PathBuf::from(&path)))?;
     let napi_state = op_state.borrow::<NapiState>();
     (
       op_state.borrow::<V8CrossThreadTaskSpawner>().clone(),
       napi_state.env_cleanup_hooks.clone(),
       op_state.external_ops_tracker.clone(),
+      path,
     )
   };
 

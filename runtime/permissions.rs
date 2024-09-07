@@ -121,4 +121,13 @@ impl deno_permissions::PermissionDescriptorParser
   ) -> Result<deno_permissions::FfiDescriptor, AnyError> {
     Ok(FfiDescriptor(self.resolve_path(text)?))
   }
+
+  // queries
+
+  fn parse_path_query(
+    &self,
+    path: &str,
+  ) -> Result<deno_permissions::PathQueryDescriptor, AnyError> {
+    resolved_f
+  }
 }

@@ -49,11 +49,12 @@ pub trait FsPermissions {
     path: &Path,
     api_name: &str,
   ) -> Result<(), AnyError>;
+  #[must_use]
   fn check_write_partial(
     &mut self,
-    path: &Path,
+    path: &str,
     api_name: &str,
-  ) -> Result<(), AnyError>;
+  ) -> Result<PathBuf, AnyError>;
   fn check_write_all(&mut self, api_name: &str) -> Result<(), AnyError>;
   fn check_write_blind(
     &mut self,
@@ -139,7 +140,7 @@ impl FsPermissions for deno_permissions::PermissionsContainer {
     &mut self,
     path: &Path,
     api_name: &str,
-  ) -> Result<(), AnyError> {
+  ) -> Result<PathBuf, AnyError> {
     deno_permissions::PermissionsContainer::check_write_partial(
       self, path, api_name,
     )

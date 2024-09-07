@@ -344,21 +344,19 @@ pub async fn op_fs_remove_async<P>(
 where
   P: FsPermissions + 'static,
 {
-  let path = PathBuf::from(path);
-
-  let fs = {
+  let (fs, path) = {
     let mut state = state.borrow_mut();
-    if recursive {
+    let path = if recursive {
       state
         .borrow_mut::<P>()
-        .check_write(&path, "Deno.remove()")?;
+        .check_write(&path, "Deno.remove()")?
     } else {
       state
         .borrow_mut::<P>()
-        .check_write_partial(&path, "Deno.remove()")?;
-    }
+        .check_write_partial(&path, "Deno.remove()")?
+    };
 
-    state.borrow::<FileSystemRc>().clone()
+    (state.borrow::<FileSystemRc>().clone(), path)
   };
 
   fs.remove_async(path.clone(), recursive)
