@@ -187,10 +187,15 @@ fn op_loadavg(state: &mut OpState) -> Result<(f64, f64, f64), AnyError> {
 
 #[op2]
 #[string]
-fn op_hostname(state: &mut OpState) -> Result<String, AnyError> {
-  state
-    .borrow_mut::<PermissionsContainer>()
-    .check_sys("hostname", "Deno.hostname()")?;
+fn op_hostname(
+  state: &mut OpState,
+  #[string] stack: Option<String>,
+) -> Result<String, AnyError> {
+  state.borrow_mut::<PermissionsContainer>().check_sys2(
+    "hostname",
+    "Deno.hostname()",
+    stack.as_ref().map(|s| s.as_str()),
+  )?;
   Ok(sys_info::hostname())
 }
 

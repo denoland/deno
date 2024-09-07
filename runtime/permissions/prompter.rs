@@ -72,6 +72,25 @@ pub fn permission_prompt(
   r
 }
 
+pub fn permission_prompt2(
+  message: &str,
+  flag: &str,
+  api_name: Option<&str>,
+  is_unary: bool,
+  stack: Option<&str>,
+) -> PromptResponse {
+  if let Some(before_callback) = MAYBE_BEFORE_PROMPT_CALLBACK.lock().as_mut() {
+    before_callback();
+  }
+  let r = PERMISSION_PROMPTER
+    .lock()
+    .prompt2(message, flag, api_name, is_unary, stack);
+  if let Some(after_callback) = MAYBE_AFTER_PROMPT_CALLBACK.lock().as_mut() {
+    after_callback();
+  }
+  r
+}
+
 pub fn set_prompt_callbacks(
   before_callback: PromptCallback,
   after_callback: PromptCallback,
@@ -90,6 +109,17 @@ pub trait PermissionPrompter: Send + Sync {
     api_name: Option<&str>,
     is_unary: bool,
   ) -> PromptResponse;
+
+  fn prompt2(
+    &mut self,
+    _message: &str,
+    _name: &str,
+    _api_name: Option<&str>,
+    _is_unary: bool,
+    _stack: Option<&str>,
+  ) -> PromptResponse {
+    PromptResponse::AllowAll
+  }
 }
 
 pub struct TtyPrompter;
@@ -278,6 +308,30 @@ impl PermissionPrompter for TtyPrompter {
     api_name: Option<&str>,
     is_unary: bool,
   ) -> PromptResponse {
+    self.prompt_inner(message, name, api_name, is_unary, None)
+  }
+
+  fn prompt2(
+    &mut self,
+    message: &str,
+    name: &str,
+    api_name: Option<&str>,
+    is_unary: bool,
+    stack: Option<&str>,
+  ) -> PromptResponse {
+    self.prompt_inner(message, name, api_name, is_unary, stack)
+  }
+}
+
+impl TtyPrompter {
+  fn prompt_inner(
+    &mut self,
+    message: &str,
+    name: &str,
+    api_name: Option<&str>,
+    is_unary: bool,
+    stack: Option<&str>,
+  ) -> PromptResponse {
     if !std::io::stdin().is_terminal() || !std::io::stderr().is_terminal() {
       return PromptResponse::Deny;
     };
@@ -333,6 +387,30 @@ impl PermissionPrompter for TtyPrompter {
         )
         .unwrap();
       }
+      if let Some(stack) = stack {
+        let lines: Vec<_> = stack.split('\n').skip(1).collect();
+        let len = lines.len();
+        for (idx, line) in lines.into_iter().enumerate() {
+          if idx != len - 1 {
+            writeln!(
+              &mut output,
+              "┃  {} {}",
+              colors::gray("├─"),
+              colors::gray(line.trim())
+            )
+            .unwrap();
+          } else {
+            writeln!(
+              &mut output,
+              "┃  {} {}",
+              colors::gray("└─"),
+              colors::gray(line.trim())
+            )
+            .unwrap();
+          }
+        }
+      }
+
       let msg = format!(
         "Learn more at: {}",
         colors::cyan_with_underline(&format!(
