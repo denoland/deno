@@ -36,6 +36,7 @@ const {
   ObjectDefineProperty,
   ObjectHasOwn,
   ObjectKeys,
+  ObjectGetOwnPropertyDescriptor,
   ObjectPrototypeIsPrototypeOf,
   ObjectSetPrototypeOf,
   ObjectValues,
@@ -807,7 +808,7 @@ function bootstrapMainRuntime(runtimeOptions, warmup = false) {
         globalThis.Temporal.ZonedDateTime,
       ], (target) => {
         const getCalendar =
-          Object.getOwnPropertyDescriptor(target.prototype, "calendar").get;
+          ObjectGetOwnPropertyDescriptor(target.prototype, "calendar").get;
         ObjectDefineProperty(target.prototype, "calendarId", {
           __proto__: null,
           get: function calendarId() {
@@ -822,7 +823,7 @@ function bootstrapMainRuntime(runtimeOptions, warmup = false) {
 
       // Modify `Temporal.TimeZone` to timeZoneId string
       {
-        const getTimeZone = Object.getOwnPropertyDescriptor(
+        const getTimeZone = ObjectGetOwnPropertyDescriptor(
           globalThis.Temporal.ZonedDateTime.prototype,
           "timeZone",
         ).get;
@@ -1026,7 +1027,7 @@ function bootstrapWorkerRuntime(
         globalThis.Temporal.ZonedDateTime,
       ], (target) => {
         const getCalendar =
-          Object.getOwnPropertyDescriptor(target.prototype, "calendar").get;
+          ObjectGetOwnPropertyDescriptor(target.prototype, "calendar").get;
         ObjectDefineProperty(target.prototype, "calendarId", {
           __proto__: null,
           get: function calendarId() {
@@ -1041,7 +1042,7 @@ function bootstrapWorkerRuntime(
 
       // Modify `Temporal.TimeZone` to timeZoneId string
       {
-        const getTimeZone = Object.getOwnPropertyDescriptor(
+        const getTimeZone = ObjectGetOwnPropertyDescriptor(
           globalThis.Temporal.ZonedDateTime.prototype,
           "timeZone",
         ).get;
