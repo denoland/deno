@@ -1,7 +1,7 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
 import { internals, primordials } from "ext:core/mod.js";
-import { op_image_process } from "ext:core/ops";
+import { op_create_image_bitmap } from "ext:core/ops";
 import * as webidl from "ext:deno_webidl/00_webidl.js";
 import { DOMException } from "ext:deno_web/01_dom_exception.js";
 import { createFilteredInspectProxy } from "ext:deno_console/01_console.js";
@@ -11,7 +11,6 @@ const {
   ObjectPrototypeIsPrototypeOf,
   Symbol,
   SymbolFor,
-  TypeError,
   TypedArrayPrototypeGetBuffer,
   Uint8Array,
   PromiseReject,
@@ -189,6 +188,7 @@ function createImageBitmap(
       "Argument 6",
     );
 
+    // 1.
     if (sw === 0) {
       return PromiseReject(new RangeError("sw has to be greater than 0"));
     }
@@ -198,6 +198,7 @@ function createImageBitmap(
     }
   }
 
+  // 2.
   if (options.resizeWidth === 0) {
     return PromiseReject(
       new DOMException(
@@ -217,70 +218,69 @@ function createImageBitmap(
 
   const imageBitmap = webidl.createBranded(ImageBitmap);
 
-  // 6. Switch on image
+  // 3.
   const isBlob = ObjectPrototypeIsPrototypeOf(BlobPrototype, image);
   const isImageData = ObjectPrototypeIsPrototypeOf(ImageDataPrototype, image);
-  if (
-    isImageData ||
-    isBlob
-  ) {
-    return (async () => {
-      let width = 0;
-      let height = 0;
-      let mimeType = "";
-      let imageBitmapSource, buf, predefinedColorSpace;
-      if (isBlob) {
-        imageBitmapSource = imageBitmapSources[0];
-        buf = new Uint8Array(await image.arrayBuffer());
-        mimeType = sniffImage(image.type);
-      }
-      if (isImageData) {
-        width = image[_width];
-        height = image[_height];
-        imageBitmapSource = imageBitmapSources[1];
-        buf = new Uint8Array(TypedArrayPrototypeGetBuffer(image[_data]));
-        predefinedColorSpace = image[_colorSpace];
-      }
-
-      let sx;
-      if (typeof sxOrOptions === "number") {
-        sx = sxOrOptions;
-      }
-
-      const processedImage = op_image_process(
-        buf,
-        {
-          width,
-          height,
-          sx,
-          sy,
-          sw,
-          sh,
-          imageOrientation: options.imageOrientation ?? "from-image",
-          premultiplyAlpha: options.premultiplyAlpha ?? "default",
-          predefinedColorSpace: predefinedColorSpace ?? "srgb",
-          colorSpaceConversion: options.colorSpaceConversion ?? "default",
-          resizeWidth: options.resizeWidth,
-          resizeHeight: options.resizeHeight,
-          resizeQuality: options.resizeQuality ?? "low",
-          imageBitmapSource,
-          mimeType,
-        },
-      );
-      imageBitmap[_bitmapData] = processedImage.data;
-      imageBitmap[_width] = processedImage.width;
-      imageBitmap[_height] = processedImage.height;
-      return imageBitmap;
-    })();
-  } else {
+  if (!isBlob && !isImageData) {
     return PromiseReject(
-      new TypeError(
-        `${prefix}: The provided value is not of type '(${
+      new DOMException(
+        `${prefix}: The provided value for 'image' is not of type '(${
           ArrayPrototypeJoin(imageBitmapSources, " or ")
         })'.`,
+        "InvalidStateError",
       ),
     );
   }
+
+  // 4.
+  return (async () => {
+    let width = 0;
+    let height = 0;
+    let mimeType = "";
+    let imageBitmapSource, buf, predefinedColorSpace;
+    if (isBlob) {
+      imageBitmapSource = imageBitmapSources[0];
+      buf = new Uint8Array(await image.arrayBuffer());
+      mimeType = sniffImage(image.type);
+    }
+    if (isImageData) {
+      width = image[_width];
+      height = image[_height];
+      imageBitmapSource = imageBitmapSources[1];
+      buf = new Uint8Array(TypedArrayPrototypeGetBuffer(image[_data]));
+      predefinedColorSpace = image[_colorSpace];
+    }
+
+    let sx;
+    if (typeof sxOrOptions === "number") {
+      sx = sxOrOptions;
+    }
+    // TODO(Hajime-san): this should be real async
+    const processedImage = op_create_image_bitmap(
+      buf,
+      {
+        width,
+        height,
+        sx,
+        sy,
+        sw,
+        sh,
+        imageOrientation: options.imageOrientation ?? "from-image",
+        premultiplyAlpha: options.premultiplyAlpha ?? "default",
+        predefinedColorSpace: predefinedColorSpace ?? "srgb",
+        colorSpaceConversion: options.colorSpaceConversion ?? "default",
+        resizeWidth: options.resizeWidth,
+        resizeHeight: options.resizeHeight,
+        resizeQuality: options.resizeQuality ?? "low",
+        imageBitmapSource,
+        mimeType,
+      },
+    );
+    imageBitmap[_bitmapData] = processedImage.data;
+    imageBitmap[_width] = processedImage.width;
+    imageBitmap[_height] = processedImage.height;
+    return imageBitmap;
+  })();
 }
 
 function getBitmapData(imageBitmap) {

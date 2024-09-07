@@ -19,7 +19,7 @@ deno_core.workspace = true
 deno_terminal.workspace = true
 deno_webgpu.workspace = true
 image = { version = "0.25.2", default-features = false, features = ["png", "jpeg", "bmp", "ico", "webp", "gif"] }
-# NOTE: The qcms is a color space conversion crate which parses ICC profiles that used in Gecko, 
+# NOTE: The qcms is a color space conversion crate which parses ICC profiles that used in Gecko,
 # however it supports only 8-bit color depth currently.
 # https://searchfox.org/mozilla-central/rev/f09e3f9603a08b5b51bf504846091579bc2ff531/gfx/qcms/src/transform.rs#130-137
 lcms2 = "6.1.0"
