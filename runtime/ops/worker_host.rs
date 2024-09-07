@@ -19,6 +19,7 @@ use deno_core::ModuleSpecifier;
 use deno_core::OpState;
 use deno_permissions::create_child_permissions;
 use deno_permissions::ChildPermissionsArg;
+use deno_permissions::PermissionDescriptorParser;
 use deno_permissions::PermissionsContainer;
 use deno_web::deserialize_js_transferables;
 use deno_web::JsMessageData;
@@ -153,12 +154,17 @@ fn op_create_worker(
       "Worker.deno.permissions",
     );
   }
+  let permission_desc_parser =
+    state.borrow::<Arc<dyn PermissionDescriptorParser>>();
   let parent_permissions = state.borrow_mut::<PermissionsContainer>();
   let worker_permissions = if let Some(child_permissions_arg) = args.permissions
   {
     let mut parent_permissions = parent_permissions.0.lock();
-    let perms =
-      create_child_permissions(&mut parent_permissions, child_permissions_arg)?;
+    let perms = create_child_permissions(
+      &mut parent_permissions,
+      child_permissions_arg,
+      permission_desc_parser,
+    )?;
     PermissionsContainer::new(perms)
   } else {
     parent_permissions.clone()

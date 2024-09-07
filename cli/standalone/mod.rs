@@ -698,6 +698,8 @@ pub async fn run(
   let worker_factory = CliMainWorkerFactory::new(
     StorageKeyResolver::empty(),
     crate::args::DenoSubcommand::Run(Default::default()),
+    // Code cache is not supported for standalone binary yet.
+    None,
     npm_resolver,
     node_resolver,
     Default::default(),
@@ -708,8 +710,6 @@ pub async fn run(
     None,
     None,
     feature_checker,
-    // Code cache is not supported for standalone binary yet.
-    None,
     CliMainWorkerOptions {
       argv: metadata.argv,
       log_level: WorkerLogLevel::Info,

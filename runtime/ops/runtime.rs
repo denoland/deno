@@ -22,9 +22,13 @@ fn op_main_module(state: &mut OpState) -> Result<String, AnyError> {
   let main_path = main_url.to_string();
   if main_url.scheme() == "file" {
     let main_path = main_url.to_file_path().unwrap();
-    state
-      .borrow_mut::<PermissionsContainer>()
-      .check_read_blind(&main_path, "main_module", "Deno.mainModule")?;
+    state.borrow_mut::<PermissionsContainer>().check_read(
+      &ReadQueryDescriptor {
+        requested: "main_module".to_string(),
+        resolved: main_path,
+      },
+      "Deno.mainModule",
+    )?;
   }
   Ok(main_path)
 }

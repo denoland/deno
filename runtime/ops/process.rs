@@ -17,7 +17,7 @@ use deno_io::ChildStderrResource;
 use deno_io::ChildStdinResource;
 use deno_io::ChildStdoutResource;
 use deno_permissions::PermissionsContainer;
-use deno_permissions::RunPathQuery;
+use deno_permissions::RunQueryDescriptor;
 use serde::Deserialize;
 use serde::Serialize;
 use std::borrow::Cow;
@@ -519,9 +519,9 @@ fn compute_run_cmd_and_check_permissions(
     .with_context(|| format!("Failed to spawn '{}'", arg_cmd))?;
   check_run_permission(
     state,
-    RunPathQuery {
-      requested: arg_cmd,
-      resolved: &cmd,
+    &RunQueryDescriptor {
+      requested: arg_cmd.to_string(),
+      resolved: cmd.clone(),
     },
     &run_env,
     api_name,
@@ -597,7 +597,7 @@ fn resolve_path(path: &str, cwd: &Path) -> PathBuf {
 
 fn check_run_permission(
   state: &mut OpState,
-  cmd: RunPathQuery,
+  cmd: &RunQueryDescriptor,
   run_env: &RunEnv,
   api_name: &str,
 ) -> Result<(), AnyError> {

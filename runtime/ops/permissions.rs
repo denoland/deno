@@ -2,6 +2,7 @@
 
 use ::deno_permissions::parse_sys_kind;
 use ::deno_permissions::NetDescriptor;
+use ::deno_permissions::PermissionDescriptorParser;
 use ::deno_permissions::PermissionState;
 use ::deno_permissions::PermissionsContainer;
 use deno_core::error::custom_error;
@@ -19,6 +20,12 @@ deno_core::extension!(
     op_revoke_permission,
     op_request_permission,
   ],
+  options = {
+    permission_desc_parser: Arc<dyn PermissionDescriptorParser>,
+  },
+  state = |state, options| {
+    state.put(options.permission_desc_parser);
+  },
 );
 
 #[derive(Deserialize)]

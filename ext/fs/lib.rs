@@ -23,6 +23,8 @@ use crate::ops::*;
 use deno_core::error::AnyError;
 use deno_core::OpState;
 use deno_io::fs::FsError;
+use deno_permissions::PathQueryDescriptor;
+use deno_permissions::ReadQueryDescriptor;
 use std::borrow::Cow;
 use std::path::Path;
 
@@ -32,11 +34,14 @@ pub trait FsPermissions {
     resolved: bool,
     read: bool,
     write: bool,
-    path: &'a Path,
+    path: &'a PathQueryDescriptor,
     api_name: &str,
   ) -> Result<std::borrow::Cow<'a, Path>, FsError>;
-  fn check_read(&mut self, path: &Path, api_name: &str)
-    -> Result<(), AnyError>;
+  fn check_read(
+    &mut self,
+    desc: &deno_permissions::ReadQueryDescriptor,
+    api_name: &str,
+  ) -> Result<(), AnyError>;
   fn check_read_all(&mut self, api_name: &str) -> Result<(), AnyError>;
   fn check_read_blind(
     &mut self,
@@ -66,14 +71,14 @@ pub trait FsPermissions {
     &mut self,
     resolved: bool,
     open_options: &OpenOptions,
-    path: &'a Path,
+    desc: &'a PathQueryDescriptor,
     api_name: &str,
   ) -> Result<std::borrow::Cow<'a, Path>, FsError> {
     self.check_open(
       resolved,
       open_options.read,
       open_options.write || open_options.append,
-      path,
+      desc,
       api_name,
     )
   }
@@ -85,45 +90,56 @@ impl FsPermissions for deno_permissions::PermissionsContainer {
     resolved: bool,
     read: bool,
     write: bool,
-    path: &'a Path,
+    desc: &'a PathQueryDescriptor,
     api_name: &str,
   ) -> Result<Cow<'a, Path>, FsError> {
     if resolved {
       self
-        .check_special_file(path, api_name)
+        .check_special_file(&desc.resolved, api_name)
         .map_err(FsError::PermissionDenied)?;
-      return Ok(Cow::Borrowed(path));
+      return Ok(Cow::Borrowed(&desc.resolved));
     }
 
     // If somehow read or write aren't specified, use read
     let read = read || !write;
     if read {
-      FsPermissions::check_read(self, path, api_name)
-        .map_err(|_| FsError::PermissionDenied("read"))?;
+      FsPermissions::check_read(
+        self,
+        &ReadQueryDescriptor(desc.clone()),
+        api_name,
+      )
+      .map_err(|_| FsError::PermissionDenied("read"))?;
     }
     if write {
-      FsPermissions::check_write(self, path, api_name)
+      FsPermissions::check_write(self, &desc.resolved, api_name)
         .map_err(|_| FsError::PermissionDenied("write"))?;
     }
-    Ok(Cow::Borrowed(path))
+    Ok(Cow::Borrowed(&desc.resolved))
   }
 
   fn check_read(
     &mut self,
-    path: &Path,
+    desc: &ReadQueryDescriptor,
     api_name: &str,
   ) -> Result<(), AnyError> {
-    deno_permissions::PermissionsContainer::check_read(self, path, api_name)
+    deno_permissions::PermissionsContainer::check_read(self, desc, api_name)
   }
 
+  // todo(THIS PR): remove
   fn check_read_blind(
     &mut self,
     path: &Path,
     display: &str,
     api_name: &str,
   ) -> Result<(), AnyError> {
-    deno_permissions::PermissionsContainer::check_read_blind(
-      self, path, display, api_name,
+    deno_permissions::PermissionsContainer::check_read(
+      self,
+      &deno_permissions::PathQueryDescriptor {
+        requested: display.to_string(),
+        resolved: path.to_path_buf(),
+      }
+      .into_read(),
+      api_name,
     )
   }
 

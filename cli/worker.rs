@@ -30,6 +30,7 @@ use deno_runtime::deno_web::BlobStore;
 use deno_runtime::fmt_errors::format_js_error;
 use deno_runtime::inspector_server::InspectorServer;
 use deno_runtime::ops::worker_host::CreateWebWorkerCb;
+use deno_runtime::permissions::RuntimePermissionDescriptorParser;
 use deno_runtime::web_worker::WebWorker;
 use deno_runtime::web_worker::WebWorkerOptions;
 use deno_runtime::worker::MainWorker;
@@ -122,23 +123,24 @@ pub struct CliMainWorkerOptions {
 }
 
 struct SharedWorkerState {
-  options: CliMainWorkerOptions,
-  subcommand: DenoSubcommand,
-  storage_key_resolver: StorageKeyResolver,
-  npm_resolver: Arc<dyn CliNpmResolver>,
-  node_resolver: Arc<NodeResolver>,
   blob_store: Arc<BlobStore>,
   broadcast_channel: InMemoryBroadcastChannel,
-  shared_array_buffer_store: SharedArrayBufferStore,
+  code_cache: Option<Arc<dyn code_cache::CodeCache>>,
   compiled_wasm_module_store: CompiledWasmModuleStore,
-  module_loader_factory: Box<dyn ModuleLoaderFactory>,
-  root_cert_store_provider: Arc<dyn RootCertStoreProvider>,
+  feature_checker: Arc<FeatureChecker>,
   fs: Arc<dyn deno_fs::FileSystem>,
   maybe_file_watcher_communicator: Option<Arc<WatcherCommunicator>>,
   maybe_inspector_server: Option<Arc<InspectorServer>>,
   maybe_lockfile: Option<Arc<CliLockfile>>,
-  feature_checker: Arc<FeatureChecker>,
-  code_cache: Option<Arc<dyn code_cache::CodeCache>>,
+  module_loader_factory: Box<dyn ModuleLoaderFactory>,
+  node_resolver: Arc<NodeResolver>,
+  npm_resolver: Arc<dyn CliNpmResolver>,
+  permission_desc_parser: Arc<RuntimePermissionDescriptorParser>,
+  root_cert_store_provider: Arc<dyn RootCertStoreProvider>,
+  shared_array_buffer_store: SharedArrayBufferStore,
+  storage_key_resolver: StorageKeyResolver,
+  options: CliMainWorkerOptions,
+  subcommand: DenoSubcommand,
 }
 
 impl SharedWorkerState {
@@ -419,40 +421,42 @@ pub struct CliMainWorkerFactory {
 impl CliMainWorkerFactory {
   #[allow(clippy::too_many_arguments)]
   pub fn new(
-    storage_key_resolver: StorageKeyResolver,
-    subcommand: DenoSubcommand,
-    npm_resolver: Arc<dyn CliNpmResolver>,
-    node_resolver: Arc<NodeResolver>,
     blob_store: Arc<BlobStore>,
-    module_loader_factory: Box<dyn ModuleLoaderFactory>,
-    root_cert_store_provider: Arc<dyn RootCertStoreProvider>,
+    code_cache: Option<Arc<dyn code_cache::CodeCache>>,
+    feature_checker: Arc<FeatureChecker>,
     fs: Arc<dyn deno_fs::FileSystem>,
     maybe_file_watcher_communicator: Option<Arc<WatcherCommunicator>>,
     maybe_inspector_server: Option<Arc<InspectorServer>>,
     maybe_lockfile: Option<Arc<CliLockfile>>,
-    feature_checker: Arc<FeatureChecker>,
-    code_cache: Option<Arc<dyn code_cache::CodeCache>>,
+    module_loader_factory: Box<dyn ModuleLoaderFactory>,
+    npm_resolver: Arc<dyn CliNpmResolver>,
+    node_resolver: Arc<NodeResolver>,
+    permission_parser: Arc<RuntimePermissionDescriptorParser>,
+    storage_key_resolver: StorageKeyResolver,
+    root_cert_store_provider: Arc<dyn RootCertStoreProvider>,
+    subcommand: DenoSubcommand,
     options: CliMainWorkerOptions,
   ) -> Self {
     Self {
       shared: Arc::new(SharedWorkerState {
-        options,
-        subcommand,
-        storage_key_resolver,
-        npm_resolver,
-        node_resolver,
         blob_store,
         broadcast_channel: Default::default(),
-        shared_array_buffer_store: Default::default(),
+        code_cache,
         compiled_wasm_module_store: Default::default(),
-        module_loader_factory,
-        root_cert_store_provider,
+        feature_checker,
         fs,
         maybe_file_watcher_communicator,
         maybe_inspector_server,
         maybe_lockfile,
-        feature_checker,
-        code_cache,
+        module_loader_factory,
+        node_resolver,
+        npm_resolver,
+        permission_desc_parser: permission_parser,
+        root_cert_store_provider,
+        shared_array_buffer_store: Default::default(),
+        storage_key_resolver,
+        options,
+        subcommand,
       }),
     }
   }
@@ -621,6 +625,7 @@ impl CliMainWorkerFactory {
       ),
       stdio,
       feature_checker,
+      permission_desc_parser: shared.permission_desc_parser.clone(),
       skip_op_registration: shared.options.skip_op_registration,
       v8_code_cache: shared.code_cache.clone(),
     };
