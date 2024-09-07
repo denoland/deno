@@ -1914,15 +1914,26 @@ impl Permissions {
 /// case might need to be mutated). Also for the Web Worker API we need a way
 /// to send permissions to a new thread.
 #[derive(Clone, Debug)]
-pub struct PermissionsContainer(pub Arc<Mutex<Permissions>>);
+pub struct PermissionsContainer {
+  descriptor_parser: Arc<dyn PermissionDescriptorParser>,
+  pub inner: Arc<Mutex<Permissions>>,
+}
 
 impl PermissionsContainer {
-  pub fn new(perms: Permissions) -> Self {
-    Self(Arc::new(Mutex::new(perms)))
+  pub fn new(
+    descriptor_parser: Arc<dyn PermissionDescriptorParser>,
+    perms: Permissions,
+  ) -> Self {
+    Self {
+      descriptor_parser,
+      inner: Arc::new(Mutex::new(perms)),
+    }
   }
 
-  pub fn allow_all() -> Self {
-    Self::new(Permissions::allow_all())
+  pub fn allow_all(
+    descriptor_parser: Arc<dyn PermissionDescriptorParser>,
+  ) -> Self {
+    Self::new(descriptor_parser, Permissions::allow_all())
   }
 
   #[inline(always)]
@@ -1930,16 +1941,24 @@ impl PermissionsContainer {
     &self,
     specifier: &ModuleSpecifier,
   ) -> Result<(), AnyError> {
-    self.0.lock().check_specifier(specifier)
+    self.inner.lock().check_specifier(specifier)
   }
 
   #[inline(always)]
   pub fn check_read(
     &self,
-    desc: &ReadQueryDescriptor,
+    path: &str,
     api_name: &str,
-  ) -> Result<(), AnyError> {
-    self.0.lock().read.check(desc, Some(api_name))
+  ) -> Result<PathBuf, AnyError> {
+    let mut inner = self.inner.lock();
+    let inner = &mut inner.read;
+    if inner.is_allow_all() {
+      Ok(PathBuf::from(path))
+    } else {
+      let desc = self.descriptor_parser.parse_path_query(path)?.into_read();
+      inner.check(&desc, Some(api_name))?;
+      Ok(desc.0.resolved)
+    }
   }
 
   #[inline(always)]
@@ -1991,7 +2010,7 @@ impl PermissionsContainer {
 
   #[inline(always)]
   pub fn check_write_partial(
-    &self,
+    &mut self,
     path: &Path,
     api_name: &str,
   ) -> Result<(), AnyError> {
@@ -2000,7 +2019,7 @@ impl PermissionsContainer {
 
   #[inline(always)]
   pub fn check_run(
-    &self,
+    &mut self,
     cmd: &RunQueryDescriptor,
     api_name: &str,
   ) -> Result<(), AnyError> {
@@ -2008,12 +2027,12 @@ impl PermissionsContainer {
   }
 
   #[inline(always)]
-  pub fn check_run_all(&self, api_name: &str) -> Result<(), AnyError> {
+  pub fn check_run_all(&mut self, api_name: &str) -> Result<(), AnyError> {
     self.0.lock().run.check_all(Some(api_name))
   }
 
   #[inline(always)]
-  pub fn query_run_all(&self, api_name: &str) -> bool {
+  pub fn query_run_all(&mut self, api_name: &str) -> bool {
     self.0.lock().run.query_all(Some(api_name))
   }
 
@@ -2023,36 +2042,36 @@ impl PermissionsContainer {
   }
 
   #[inline(always)]
-  pub fn check_env(&self, var: &str) -> Result<(), AnyError> {
+  pub fn check_env(&mut self, var: &str) -> Result<(), AnyError> {
     self.0.lock().env.check(var, None)
   }
 
   #[inline(always)]
-  pub fn check_env_all(&self) -> Result<(), AnyError> {
+  pub fn check_env_all(&mut self) -> Result<(), AnyError> {
     self.0.lock().env.check_all()
   }
 
   #[inline(always)]
-  pub fn check_sys_all(&self) -> Result<(), AnyError> {
+  pub fn check_sys_all(&mut self) -> Result<(), AnyError> {
     self.0.lock().sys.check_all()
   }
 
   #[inline(always)]
-  pub fn check_ffi_all(&self) -> Result<(), AnyError> {
+  pub fn check_ffi_all(&mut self) -> Result<(), AnyError> {
     self.0.lock().ffi.check_all()
   }
 
   /// This checks to see if the allow-all flag was passed, not whether all
   /// permissions are enabled!
   #[inline(always)]
-  pub fn check_was_allow_all_flag_passed(&self) -> Result<(), AnyError> {
+  pub fn check_was_allow_all_flag_passed(&mut self) -> Result<(), AnyError> {
     self.0.lock().all.check()
   }
 
   /// Checks special file access, returning the failed permission type if
   /// not successful.
   pub fn check_special_file(
-    &self,
+    &mut self,
     path: &Path,
     _api_name: &str,
   ) -> Result<(), &'static str> {
@@ -2464,7 +2483,7 @@ impl<'de> Deserialize<'de> for ChildPermissionsArg {
 }
 
 /// Parses and normalizes permissions.
-pub trait PermissionDescriptorParser {
+pub trait PermissionDescriptorParser: Debug {
   fn parse_read_descriptor(
     &self,
     text: &str,
