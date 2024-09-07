@@ -38,10 +38,12 @@ const RELEASE_URL: &str = "https://github.com/denoland/deno/releases";
 const CANARY_URL: &str = "https://dl.deno.land/canary";
 const RC_URL: &str = "https://dl.deno.land/release";
 
-static EXAMPLE_USAGE: &str = cstr!("Example usage:
+static EXAMPLE_USAGE: &str = cstr!("Usage:
   Latest version:    <p(245)>deno upgrade</>
   Specific version:  <p(245)>deno upgrade 1.46.3</>
-  Release Candidate: <p(245)>deno upgrade rc</>
+
+  Release candidate: <p(245)>deno upgrade rc</>
+
   Canary:            <p(245)>deno upgrade canary</>
   Specific canary:   <p(245)>deno upgrade 30687c786c37090ac0e4e2c3824b1b5cf313599f</>");
 
