@@ -9,7 +9,7 @@ flowchart LR
   Input["input binary<br/>( &[u8] )"]
   II["intermediate image<br/>( DynamicImage )"]
   Ops["processing pixel<br/>( ImageBuffer< P, S > )"]
-  Output["output binary<br/>( &[u8] )"]
+  Output["output binary<br/>( Box<[u8]> )"]
   Input --> II
   II --> Ops --> II
   II --> Output
