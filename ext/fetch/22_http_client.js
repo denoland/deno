@@ -42,6 +42,7 @@ class HttpClient {
    */
   constructor(rid) {
     ObjectDefineProperty(this, internalRidSymbol, {
+      __proto__: null,
       enumerable: false,
       value: rid,
     });

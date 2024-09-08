@@ -907,6 +907,7 @@ const GPUDeviceLostInfoPrototype = GPUDeviceLostInfo.prototype;
 function GPUObjectBaseMixin(name, type) {
   type.prototype[_label] = null;
   ObjectDefineProperty(type.prototype, "label", {
+    __proto__: null,
     /**
      * @return {string | null}
      */

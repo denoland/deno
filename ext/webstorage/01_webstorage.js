@@ -119,6 +119,7 @@ function createStorage(persistent) {
     set(target, key, value) {
       if (typeof key === "symbol") {
         return ReflectDefineProperty(target, key, {
+          __proto__: null,
           value,
           configurable: true,
         });

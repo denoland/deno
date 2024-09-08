@@ -42,8 +42,6 @@
         }
       ],
       "local": "[WILDCARD]main.js",
-      "emit": null,
-      "map": null,
       "size": 325,
       "mediaType": "JavaScript",
       "specifier": "[WILDCARD]/main.js"

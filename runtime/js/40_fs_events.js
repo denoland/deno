@@ -23,6 +23,7 @@ class FsWatcher {
   constructor(paths, options) {
     if (internals.future) {
       ObjectDefineProperty(this, "rid", {
+        __proto__: null,
         enumerable: false,
         value: undefined,
       });
@@ -79,7 +80,7 @@ class FsWatcher {
 
 function watchFs(
   paths,
-  options = { recursive: true },
+  options = { __proto__: null, recursive: true },
 ) {
   return new FsWatcher(ArrayIsArray(paths) ? paths : [paths], options);
 }
