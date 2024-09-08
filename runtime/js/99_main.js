@@ -847,7 +847,7 @@ function bootstrapMainRuntime(runtimeOptions, warmup = false) {
         ObjectDefineProperty(globalThis.Temporal.Now, "timeZoneId", {
           __proto__: null,
           value: function timeZoneId() {
-            nowTimeZone().id;
+            return nowTimeZone().id;
           },
           writable: true,
           enumerable: false,
@@ -1066,7 +1066,7 @@ function bootstrapWorkerRuntime(
         ObjectDefineProperty(globalThis.Temporal.Now, "timeZoneId", {
           __proto__: null,
           value: function timeZoneId() {
-            nowTimeZone().id;
+            return nowTimeZone().id;
           },
           writable: true,
           enumerable: false,
