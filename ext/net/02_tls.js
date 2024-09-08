@@ -37,15 +37,6 @@ class TlsConn extends Conn {
     this.#rid = rid;
   }
 
-  get rid() {
-    internals.warnOnDeprecatedApi(
-      "Deno.TlsConn.rid",
-      new Error().stack,
-      "Use `Deno.TlsConn` instance methods instead.",
-    );
-    return this.#rid;
-  }
-
   handshake() {
     return op_tls_handshake(this.#rid);
   }

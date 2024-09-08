@@ -85,6 +85,7 @@ impl FileFlags {
 #[derive(Clone, Debug, Default, Eq, PartialEq)]
 pub struct AddFlags {
   pub packages: Vec<String>,
+  pub dev: bool,
 }
 
 #[derive(Clone, Debug, Default, Eq, PartialEq)]
@@ -1585,6 +1586,15 @@ fn help_subcommand(app: &Command) -> Command {
     }))
 }
 
+fn add_dev_arg() -> Arg {
+  Arg::new("dev")
+    .long("dev")
+    .short('D')
+    .help("Add as a dev dependency")
+    .long_help("Add the package as a dev dependency. Note: This only applies when adding to a `package.json` file.")
+    .action(ArgAction::SetTrue)
+}
+
 fn add_subcommand() -> Command {
   command(
     "add",
@@ -1598,13 +1608,15 @@ You can add multiple dependencies at once:
     UnstableArgsConfig::None,
   )
   .defer(|cmd| {
-    cmd.arg(
-      Arg::new("packages")
-        .help("List of packages to add")
-        .required_unless_present("help")
-        .num_args(1..)
-        .action(ArgAction::Append),
-    )
+    cmd
+      .arg(
+        Arg::new("packages")
+          .help("List of packages to add")
+          .required_unless_present("help")
+          .num_args(1..)
+          .action(ArgAction::Append),
+      )
+      .arg(add_dev_arg())
   })
 }
 
@@ -2453,6 +2465,7 @@ These must be added to the path manually if required."), UnstableArgsConfig::Res
             .help("Install dependents of the specified entrypoint(s)"),
         )
         .arg(env_file_arg())
+        .arg(add_dev_arg().conflicts_with("entrypoint").conflicts_with("global"))
     })
 }
 
@@ -4091,7 +4104,8 @@ fn add_parse_inner(
   let packages = packages
     .unwrap_or_else(|| matches.remove_many::<String>("packages").unwrap())
     .collect();
-  AddFlags { packages }
+  let dev = matches.get_flag("dev");
+  AddFlags { packages, dev }
 }
 
 fn remove_parse(flags: &mut Flags, matches: &mut ArgMatches) {
@@ -10509,31 +10523,53 @@ mod tests {
   }
 
   #[test]
-  fn add_subcommand() {
+  fn add_or_install_subcommand() {
     let r = flags_from_vec(svec!["deno", "add"]);
     r.unwrap_err();
+    for cmd in ["add", "install"] {
+      let mk_flags = |flags: AddFlags| -> Flags {
+        match cmd {
+          "add" => Flags {
+            subcommand: DenoSubcommand::Add(flags),
+            ..Flags::default()
+          },
+          "install" => Flags {
+            subcommand: DenoSubcommand::Install(InstallFlags {
+              kind: InstallKind::Local(InstallFlagsLocal::Add(flags)),
+            }),
+            ..Flags::default()
+          },
+          _ => unreachable!(),
+        }
+      };
 
-    let r = flags_from_vec(svec!["deno", "add", "@david/which"]);
-    assert_eq!(
-      r.unwrap(),
-      Flags {
-        subcommand: DenoSubcommand::Add(AddFlags {
+      let r = flags_from_vec(svec!["deno", cmd, "@david/which"]);
+      assert_eq!(
+        r.unwrap(),
+        mk_flags(AddFlags {
           packages: svec!["@david/which"],
-        }),
-        ..Flags::default()
-      }
-    );
+          dev: false,
+        }) // default is false
+      );
 
-    let r = flags_from_vec(svec!["deno", "add", "@david/which", "@luca/hello"]);
-    assert_eq!(
-      r.unwrap(),
-      Flags {
-        subcommand: DenoSubcommand::Add(AddFlags {
+      let r = flags_from_vec(svec!["deno", cmd, "@david/which", "@luca/hello"]);
+      assert_eq!(
+        r.unwrap(),
+        mk_flags(AddFlags {
           packages: svec!["@david/which", "@luca/hello"],
+          dev: false,
+        })
+      );
+
+      let r = flags_from_vec(svec!["deno", cmd, "--dev", "npm:chalk"]);
+      assert_eq!(
+        r.unwrap(),
+        mk_flags(AddFlags {
+          packages: svec!["npm:chalk"],
+          dev: true,
         }),
-        ..Flags::default()
-      }
-    );
+      );
+    }
   }
 
   #[test]

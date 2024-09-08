@@ -236,9 +236,6 @@ Deno.test({ permissions: { net: true } }, async function netTcpDialListen() {
   assertEquals(1, buf[0]);
   assertEquals(2, buf[1]);
   assertEquals(3, buf[2]);
-  if (!DENO_FUTURE) {
-    assert(conn.rid > 0);
-  }
 
   assert(readResult !== null);
 
@@ -274,9 +271,6 @@ Deno.test({ permissions: { net: true } }, async function netTcpSetNoDelay() {
   assertEquals(1, buf[0]);
   assertEquals(2, buf[1]);
   assertEquals(3, buf[2]);
-  if (!DENO_FUTURE) {
-    assert(conn.rid > 0);
-  }
 
   assert(readResult !== null);
 
@@ -312,9 +306,6 @@ Deno.test({ permissions: { net: true } }, async function netTcpSetKeepAlive() {
   assertEquals(1, buf[0]);
   assertEquals(2, buf[1]);
   assertEquals(3, buf[2]);
-  if (!DENO_FUTURE) {
-    assert(conn.rid > 0);
-  }
 
   assert(readResult !== null);
 
@@ -352,9 +343,6 @@ Deno.test(
     assertEquals(1, buf[0]);
     assertEquals(2, buf[1]);
     assertEquals(3, buf[2]);
-    if (!DENO_FUTURE) {
-      assert(conn.rid > 0);
-    }
 
     assert(readResult !== null);
 
@@ -850,9 +838,6 @@ Deno.test(
     assertEquals(1, buf[0]);
     assertEquals(2, buf[1]);
     assertEquals(3, buf[2]);
-    if (!DENO_FUTURE) {
-      assert(conn.rid > 0);
-    }
 
     assert(readResult !== null);
 
