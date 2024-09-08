@@ -89,7 +89,10 @@ where
 /// Premultiply the alpha channel of the image.
 pub(crate) fn premultiply_alpha(
   image: DynamicImage,
-  unmatch: Option<fn(ColorType) -> Result<DynamicImage, AnyError>>,
+  unmatch_color_handler: fn(
+    ColorType,
+    DynamicImage,
+  ) -> Result<DynamicImage, AnyError>,
 ) -> Result<DynamicImage, AnyError> {
   let color = image.color();
   match color {
@@ -105,10 +108,7 @@ pub(crate) fn premultiply_alpha(
     ColorType::Rgba16 => Ok(DynamicImage::ImageRgba16(
       process_premultiply_alpha(&image.to_rgba16()),
     )),
-    x => match unmatch {
-      Some(unmatch) => unmatch(x),
-      None => Ok(image),
-    },
+    x => unmatch_color_handler(x, image),
   }
 }
 
@@ -217,7 +217,10 @@ where
 /// Invert the premultiplied alpha channel of the image.
 pub(crate) fn unpremultiply_alpha(
   image: DynamicImage,
-  unmatch: Option<fn(ColorType) -> Result<DynamicImage, AnyError>>,
+  unmatch_color_handler: fn(
+    ColorType,
+    DynamicImage,
+  ) -> Result<DynamicImage, AnyError>,
 ) -> Result<DynamicImage, AnyError> {
   match image.color() {
     ColorType::La8 => Ok(DynamicImage::ImageLumaA8(
@@ -232,10 +235,7 @@ pub(crate) fn unpremultiply_alpha(
     ColorType::Rgba16 => Ok(DynamicImage::ImageRgba16(
       process_unpremultiply_alpha(&image.to_rgba16()),
     )),
-    x => match unmatch {
-      Some(unmatch) => unmatch(x),
-      None => Ok(image),
-    },
+    x => unmatch_color_handler(x, image),
   }
 }
 
@@ -387,7 +387,10 @@ where
 /// Convert the color space of the image from sRGB to Display-P3.
 pub(crate) fn srgb_to_display_p3(
   image: DynamicImage,
-  unmatch: Option<fn(ColorType) -> Result<DynamicImage, AnyError>>,
+  unmatch_color_handler: fn(
+    ColorType,
+    DynamicImage,
+  ) -> Result<DynamicImage, AnyError>,
 ) -> Result<DynamicImage, AnyError> {
   match image.color() {
     // The conversion of the lumincance color types to the display-p3 color space is meaningless.
@@ -407,10 +410,7 @@ pub(crate) fn srgb_to_display_p3(
     ColorType::Rgba16 => Ok(DynamicImage::ImageRgba16(
       process_srgb_to_display_p3(&image.to_rgba16()),
     )),
-    x => match unmatch {
-      Some(unmatch) => unmatch(x),
-      None => Ok(image),
-    },
+    x => unmatch_color_handler(x, image),
   }
 }
 
@@ -551,7 +551,7 @@ where
 pub(crate) fn to_srgb_from_icc_profile(
   image: DynamicImage,
   icc_profile: Option<Vec<u8>>,
-  unmatch: Option<fn(ColorType) -> Result<DynamicImage, AnyError>>,
+  unmatch_color_handler: fn(ColorType, DynamicImage) -> Result<DynamicImage, AnyError>,
 ) -> Result<DynamicImage, AnyError> {
   match icc_profile {
     // If there is no color profile information, return the image as is.
@@ -586,10 +586,7 @@ pub(crate) fn to_srgb_from_icc_profile(
           ColorType::Rgba16 => {
             Ok(DynamicImage::ImageRgba16(process_icc_profile_conversion::<_,_,8>(&image,icc_profile,srgb_icc_profile)))
           }
-          x => match unmatch {
-            Some(unmatch) => unmatch(x),
-            None => Ok(image),
-          },
+          x => unmatch_color_handler(x, image),
         }
       }
     },

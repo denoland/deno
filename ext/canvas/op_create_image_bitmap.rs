@@ -19,6 +19,7 @@ use image::imageops::overlay;
 use image::imageops::FilterType;
 use image::ColorType;
 use image::DynamicImage;
+use image::ImageError;
 use image::RgbaImage;
 use serde::Deserialize;
 use serde::Serialize;
@@ -111,55 +112,62 @@ fn decode_bitmap_data(
 ) -> Result<DecodeBitmapDataReturn, AnyError> {
   let (image, width, height, icc_profile) = match image_bitmap_source {
     ImageBitmapSource::Blob => {
+      fn image_decoding_error(error: ImageError) -> AnyError {
+        DOMExceptionInvalidStateError::new(&image_error_message(
+          "decoding",
+          &error.to_string(),
+        ))
+        .into()
+      }
       let (image, icc_profile) = match &*mime_type {
         // Should we support the "image/apng" MIME type here?
         "image/png" => {
           let mut decoder: PngDecoder<ImageDecoderFromReaderType> =
             ImageDecoderFromReader::to_decoder(BufReader::new(Cursor::new(
               buf,
-            )))?;
+            )), image_decoding_error)?;
           let icc_profile = decoder.get_icc_profile();
-          (decoder.to_intermediate_image()?, icc_profile)
+          (decoder.to_intermediate_image(image_decoding_error)?, icc_profile)
         }
         "image/jpeg" => {
           let mut decoder: JpegDecoder<ImageDecoderFromReaderType> =
             ImageDecoderFromReader::to_decoder(BufReader::new(Cursor::new(
               buf,
-            )))?;
+            )), image_decoding_error)?;
           let icc_profile = decoder.get_icc_profile();
-          (decoder.to_intermediate_image()?, icc_profile)
+          (decoder.to_intermediate_image(image_decoding_error)?, icc_profile)
         }
         "image/gif" => {
           let mut decoder: GifDecoder<ImageDecoderFromReaderType> =
             ImageDecoderFromReader::to_decoder(BufReader::new(Cursor::new(
               buf,
-            )))?;
+            )), image_decoding_error)?;
           let icc_profile = decoder.get_icc_profile();
-          (decoder.to_intermediate_image()?, icc_profile)
+          (decoder.to_intermediate_image(image_decoding_error)?, icc_profile)
         }
         "image/bmp" => {
           let mut decoder: BmpDecoder<ImageDecoderFromReaderType> =
             ImageDecoderFromReader::to_decoder(BufReader::new(Cursor::new(
               buf,
-            )))?;
+            )), image_decoding_error)?;
           let icc_profile = decoder.get_icc_profile();
-          (decoder.to_intermediate_image()?, icc_profile)
+          (decoder.to_intermediate_image(image_decoding_error)?, icc_profile)
         }
         "image/x-icon" => {
           let mut decoder: IcoDecoder<ImageDecoderFromReaderType> =
             ImageDecoderFromReader::to_decoder(BufReader::new(Cursor::new(
               buf,
-            )))?;
+            )), image_decoding_error)?;
           let icc_profile = decoder.get_icc_profile();
-          (decoder.to_intermediate_image()?, icc_profile)
+          (decoder.to_intermediate_image(image_decoding_error)?, icc_profile)
         }
         "image/webp" => {
           let mut decoder: WebPDecoder<ImageDecoderFromReaderType> =
             ImageDecoderFromReader::to_decoder(BufReader::new(Cursor::new(
               buf,
-            )))?;
+            )), image_decoding_error)?;
           let icc_profile = decoder.get_icc_profile();
-          (decoder.to_intermediate_image()?, icc_profile)
+          (decoder.to_intermediate_image(image_decoding_error)?, icc_profile)
         }
         "" => {
           return Err(
@@ -243,25 +251,31 @@ fn apply_color_space_conversion(
     ColorSpaceConversion::Default => {
       match image_bitmap_source {
         ImageBitmapSource::Blob => {
-          fn color_unmatch(x: ColorType) -> Result<DynamicImage, AnyError> {
+          fn unmatch_color_handler(
+            x: ColorType,
+            _: DynamicImage,
+          ) -> Result<DynamicImage, AnyError> {
             Err(type_error(image_error_message(
               "apply colorspaceConversion: default",
               &format!("The color type {:?} is not supported.", x),
             )))
           }
-          to_srgb_from_icc_profile(image, icc_profile, Some(color_unmatch))
+          to_srgb_from_icc_profile(image, icc_profile, unmatch_color_handler)
         }
         ImageBitmapSource::ImageData => match predefined_color_space {
           // If the color space is sRGB, return the image as is.
           PredefinedColorSpace::Srgb => Ok(image),
           PredefinedColorSpace::DisplayP3 => {
-            fn unmatch(x: ColorType) -> Result<DynamicImage, AnyError> {
+            fn unmatch_color_handler(
+              x: ColorType,
+              _: DynamicImage,
+            ) -> Result<DynamicImage, AnyError> {
               Err(type_error(image_error_message(
                 "apply colorspace: display-p3",
                 &format!("The color type {:?} is not supported.", x),
               )))
             }
-            srgb_to_display_p3(image, Some(unmatch))
+            srgb_to_display_p3(image, unmatch_color_handler)
           }
         },
       }
@@ -278,6 +292,12 @@ fn apply_premultiply_alpha(
   if !color.has_alpha() {
     Ok(image)
   } else {
+    fn unmatch_color_handler(
+      _: ColorType,
+      image: DynamicImage,
+    ) -> Result<DynamicImage, AnyError> {
+      Ok(image)
+    }
     match premultiply_alpha {
       // 1.
       PremultiplyAlpha::Default => Ok(image),
@@ -285,7 +305,9 @@ fn apply_premultiply_alpha(
       // https://html.spec.whatwg.org/multipage/canvas.html#convert-from-premultiplied
 
       // 2.
-      PremultiplyAlpha::Premultiply => process_premultiply_alpha(image, None),
+      PremultiplyAlpha::Premultiply => {
+        process_premultiply_alpha(image, unmatch_color_handler)
+      }
       // 3.
       PremultiplyAlpha::None => {
         // NOTE: It's not clear how to handle the case of ImageData.
@@ -295,7 +317,7 @@ fn apply_premultiply_alpha(
           return Ok(image);
         }
 
-        unpremultiply_alpha(image, None)
+        unpremultiply_alpha(image, unmatch_color_handler)
       }
     }
   }

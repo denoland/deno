@@ -16,9 +16,6 @@ use image::DynamicImage;
 use image::ImageDecoder;
 use image::ImageError;
 
-use crate::error::image_error_message;
-use crate::error::DOMExceptionInvalidStateError;
-
 //
 // About the animated image
 // > Blob .4
@@ -32,40 +29,43 @@ use crate::error::DOMExceptionInvalidStateError;
 //
 
 pub(crate) trait ImageDecoderFromReader<'a, R: BufRead + Seek> {
-  fn to_decoder(reader: R) -> Result<Self, AnyError>
+  fn to_decoder(
+    reader: R,
+    error_fn: fn(ImageError) -> AnyError,
+  ) -> Result<Self, AnyError>
   where
     Self: Sized;
-  fn to_intermediate_image(self) -> Result<DynamicImage, AnyError>;
+  fn to_intermediate_image(
+    self,
+    error_fn: fn(ImageError) -> AnyError,
+  ) -> Result<DynamicImage, AnyError>;
   fn get_icc_profile(&mut self) -> Option<Vec<u8>>;
 }
 
 pub(crate) type ImageDecoderFromReaderType<'a> = BufReader<Cursor<&'a [u8]>>;
 
-pub(crate) fn image_decoding_error(
-  error: ImageError,
-) -> DOMExceptionInvalidStateError {
-  DOMExceptionInvalidStateError::new(&image_error_message(
-    "decoding",
-    &error.to_string(),
-  ))
-}
-
 macro_rules! impl_image_decoder_from_reader {
   ($decoder:ty, $reader:ty) => {
     impl<'a, R: BufRead + Seek> ImageDecoderFromReader<'a, R> for $decoder {
-      fn to_decoder(reader: R) -> Result<Self, AnyError>
+      fn to_decoder(
+        reader: R,
+        error_fn: fn(ImageError) -> AnyError,
+      ) -> Result<Self, AnyError>
       where
         Self: Sized,
       {
         match <$decoder>::new(reader) {
           Ok(decoder) => Ok(decoder),
-          Err(err) => return Err(image_decoding_error(err).into()),
+          Err(err) => return Err(error_fn(err)),
         }
       }
-      fn to_intermediate_image(self) -> Result<DynamicImage, AnyError> {
+      fn to_intermediate_image(
+        self,
+        error_fn: fn(ImageError) -> AnyError,
+      ) -> Result<DynamicImage, AnyError> {
         match DynamicImage::from_decoder(self) {
           Ok(image) => Ok(image),
-          Err(err) => Err(image_decoding_error(err).into()),
+          Err(err) => Err(error_fn(err)),
         }
       }
       fn get_icc_profile(&mut self) -> Option<Vec<u8>> {
