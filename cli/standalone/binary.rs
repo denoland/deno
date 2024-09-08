@@ -45,7 +45,7 @@ use serde::Serialize;
 use crate::args::CaData;
 use crate::args::CliOptions;
 use crate::args::CompileFlags;
-use crate::args::PackageJsonInstallDepsProvider;
+use crate::args::NpmInstallDepsProvider;
 use crate::args::PermissionFlags;
 use crate::args::UnstableConfig;
 use crate::cache::DenoDir;
@@ -117,7 +117,6 @@ pub struct Metadata {
   pub workspace_resolver: SerializedWorkspaceResolver,
   pub entrypoint_key: String,
   pub node_modules: Option<NodeModules>,
-  pub disable_deprecated_api_warning: bool,
   pub unstable_config: UnstableConfig,
 }
 
@@ -624,12 +623,9 @@ impl<'a> DenoCompileBinaryWriter<'a> {
         pkg_json_resolution: self.workspace_resolver.pkg_json_dep_resolution(),
       },
       node_modules,
-      disable_deprecated_api_warning: cli_options
-        .disable_deprecated_api_warning,
       unstable_config: UnstableConfig {
         legacy_flag_enabled: cli_options.legacy_unstable_flag(),
         bare_node_builtins: cli_options.unstable_bare_node_builtins(),
-        byonm: cli_options.use_byonm(),
         sloppy_imports: cli_options.unstable_sloppy_imports(),
         features: cli_options.unstable_features(),
       },

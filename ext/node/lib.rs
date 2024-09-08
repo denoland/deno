@@ -148,15 +148,6 @@ fn op_node_build_os() -> String {
   env!("TARGET").split('-').nth(2).unwrap().to_string()
 }
 
-#[op2(fast)]
-fn op_node_is_promise_rejected(value: v8::Local<v8::Value>) -> bool {
-  let Ok(promise) = v8::Local::<v8::Promise>::try_from(value) else {
-    return false;
-  };
-
-  promise.state() == v8::PromiseState::Rejected
-}
-
 #[op2]
 #[string]
 fn op_npm_process_state(state: &mut OpState) -> Result<String, AnyError> {
@@ -233,6 +224,8 @@ deno_core::extension!(deno_node,
     ops::crypto::op_node_verify_ed25519,
     ops::crypto::keys::op_node_create_private_key,
     ops::crypto::keys::op_node_create_ed_raw,
+    ops::crypto::keys::op_node_create_rsa_jwk,
+    ops::crypto::keys::op_node_create_ec_jwk,
     ops::crypto::keys::op_node_create_public_key,
     ops::crypto::keys::op_node_create_secret_key,
     ops::crypto::keys::op_node_derive_public_key_from_private_key,
@@ -241,6 +234,7 @@ deno_core::extension!(deno_node,
     ops::crypto::keys::op_node_export_private_key_pem,
     ops::crypto::keys::op_node_export_public_key_der,
     ops::crypto::keys::op_node_export_public_key_pem,
+    ops::crypto::keys::op_node_export_public_key_jwk,
     ops::crypto::keys::op_node_export_secret_key_b64url,
     ops::crypto::keys::op_node_export_secret_key,
     ops::crypto::keys::op_node_generate_dh_group_key_async,
@@ -344,7 +338,6 @@ deno_core::extension!(deno_node,
     ops::os::op_cpus<P>,
     ops::os::op_homedir<P>,
     op_node_build_os,
-    op_node_is_promise_rejected,
     op_npm_process_state,
     ops::require::op_require_init_paths,
     ops::require::op_require_node_module_paths<P>,
@@ -509,6 +502,7 @@ deno_core::extension!(deno_node,
     "internal/error_codes.ts",
     "internal/errors.ts",
     "internal/event_target.mjs",
+    "internal/events/abort_listener.mjs",
     "internal/fixed_queue.ts",
     "internal/fs/streams.mjs",
     "internal/fs/utils.mjs",

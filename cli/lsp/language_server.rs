@@ -32,6 +32,7 @@ use std::collections::VecDeque;
 use std::env;
 use std::fmt::Write as _;
 use std::path::PathBuf;
+use std::str::FromStr;
 use std::sync::Arc;
 use tokio::sync::mpsc::unbounded_channel;
 use tokio::sync::mpsc::UnboundedReceiver;
@@ -723,7 +724,9 @@ impl Inner {
           .into_iter()
           .map(|folder| {
             (
-              self.url_map.normalize_url(&folder.uri, LspUrlKind::Folder),
+              self
+                .url_map
+                .uri_to_specifier(&folder.uri, LspUrlKind::Folder),
               folder,
             )
           })
@@ -735,7 +738,7 @@ impl Inner {
       if let Some(root_uri) = params.root_uri {
         if !workspace_folders.iter().any(|(_, f)| f.uri == root_uri) {
           let root_url =
-            self.url_map.normalize_url(&root_uri, LspUrlKind::Folder);
+            self.url_map.uri_to_specifier(&root_uri, LspUrlKind::Folder);
           let name = root_url.path_segments().and_then(|s| s.last());
           let name = name.unwrap_or_default().to_string();
           workspace_folders.insert(
@@ -963,9 +966,8 @@ impl Inner {
       .await;
     for config_file in self.config.tree.config_files() {
       (|| {
-        let compiler_options = config_file.to_compiler_options().ok()?.0;
-        let compiler_options_obj = compiler_options.as_object()?;
-        let jsx_import_source = compiler_options_obj.get("jsxImportSource")?;
+        let compiler_options = config_file.to_compiler_options().ok()?.options;
+        let jsx_import_source = compiler_options.get("jsxImportSource")?;
         let jsx_import_source = jsx_import_source.as_str()?;
         let referrer = config_file.specifier.clone();
         let specifier = Url::parse(&format!(
@@ -1043,7 +1045,7 @@ impl Inner {
       .filter(|s| self.documents.is_valid_file_referrer(s));
     let specifier = self
       .url_map
-      .normalize_url(&params.text_document.uri, LspUrlKind::File);
+      .uri_to_specifier(&params.text_document.uri, LspUrlKind::File);
     let document = self.documents.open(
       specifier.clone(),
       params.text_document.version,
@@ -1065,7 +1067,7 @@ impl Inner {
     let mark = self.performance.mark_with_args("lsp.did_change", &params);
     let specifier = self
       .url_map
-      .normalize_url(&params.text_document.uri, LspUrlKind::File);
+      .uri_to_specifier(&params.text_document.uri, LspUrlKind::File);
     match self.documents.change(
       &specifier,
       params.text_document.version,
@@ -1102,7 +1104,7 @@ impl Inner {
     let _mark = self.performance.measure_scope("lsp.did_save");
     let specifier = self
       .url_map
-      .normalize_url(&params.text_document.uri, LspUrlKind::File);
+      .uri_to_specifier(&params.text_document.uri, LspUrlKind::File);
     self.documents.save(&specifier);
     if !self
       .config
@@ -1148,7 +1150,7 @@ impl Inner {
     }
     let specifier = self
       .url_map
-      .normalize_url(&params.text_document.uri, LspUrlKind::File);
+      .uri_to_specifier(&params.text_document.uri, LspUrlKind::File);
     self.diagnostics_state.clear(&specifier);
     if self.is_diagnosable(&specifier) {
       self.refresh_npm_specifiers().await;
@@ -1202,7 +1204,7 @@ impl Inner {
     let changes = params
       .changes
       .into_iter()
-      .map(|e| (self.url_map.normalize_url(&e.uri, LspUrlKind::File), e))
+      .map(|e| (self.url_map.uri_to_specifier(&e.uri, LspUrlKind::File), e))
       .collect::<Vec<_>>();
     if changes
       .iter()
@@ -1221,7 +1223,7 @@ impl Inner {
             _ => return None,
           };
           Some(lsp_custom::DenoConfigurationChangeEvent {
-            scope_uri: url_to_uri(t.0),
+            scope_uri: url_to_uri(t.0).ok()?,
             file_uri: e.uri.clone(),
             typ: lsp_custom::DenoConfigurationChangeType::from_file_change_type(
               e.typ,
@@ -1256,7 +1258,7 @@ impl Inner {
             _ => return None,
           };
           Some(lsp_custom::DenoConfigurationChangeEvent {
-            scope_uri: url_to_uri(t.0),
+            scope_uri: url_to_uri(t.0).ok()?,
             file_uri: e.uri.clone(),
             typ: lsp_custom::DenoConfigurationChangeType::from_file_change_type(
               e.typ,
@@ -1282,7 +1284,7 @@ impl Inner {
   ) -> LspResult<Option<DocumentSymbolResponse>> {
     let specifier = self
       .url_map
-      .normalize_url(&params.text_document.uri, LspUrlKind::File);
+      .uri_to_specifier(&params.text_document.uri, LspUrlKind::File);
     if !self.is_diagnosable(&specifier)
       || !self.config.specifier_enabled(&specifier)
     {
@@ -1326,7 +1328,7 @@ impl Inner {
       .filter(|s| self.documents.is_valid_file_referrer(s));
     let mut specifier = self
       .url_map
-      .normalize_url(&params.text_document.uri, LspUrlKind::File);
+      .uri_to_specifier(&params.text_document.uri, LspUrlKind::File);
     // skip formatting any files ignored by the config file
     if !self
       .config
@@ -1441,7 +1443,7 @@ impl Inner {
   }
 
   async fn hover(&self, params: HoverParams) -> LspResult<Option<Hover>> {
-    let specifier = self.url_map.normalize_url(
+    let specifier = self.url_map.uri_to_specifier(
       &params.text_document_position_params.text_document.uri,
       LspUrlKind::File,
     );
@@ -1574,7 +1576,7 @@ impl Inner {
   ) -> LspResult<Option<CodeActionResponse>> {
     let specifier = self
       .url_map
-      .normalize_url(&params.text_document.uri, LspUrlKind::File);
+      .uri_to_specifier(&params.text_document.uri, LspUrlKind::File);
     if !self.is_diagnosable(&specifier)
       || !self.config.specifier_enabled(&specifier)
     {
@@ -1918,7 +1920,7 @@ impl Inner {
   ) -> LspResult<Option<Vec<CodeLens>>> {
     let specifier = self
       .url_map
-      .normalize_url(&params.text_document.uri, LspUrlKind::File);
+      .uri_to_specifier(&params.text_document.uri, LspUrlKind::File);
     if !self.is_diagnosable(&specifier)
       || !self.config.specifier_enabled(&specifier)
     {
@@ -2004,7 +2006,7 @@ impl Inner {
     &self,
     params: DocumentHighlightParams,
   ) -> LspResult<Option<Vec<DocumentHighlight>>> {
-    let specifier = self.url_map.normalize_url(
+    let specifier = self.url_map.uri_to_specifier(
       &params.text_document_position_params.text_document.uri,
       LspUrlKind::File,
     );
@@ -2048,7 +2050,7 @@ impl Inner {
     &self,
     params: ReferenceParams,
   ) -> LspResult<Option<Vec<Location>>> {
-    let specifier = self.url_map.normalize_url(
+    let specifier = self.url_map.uri_to_specifier(
       &params.text_document_position.text_document.uri,
       LspUrlKind::File,
     );
@@ -2104,7 +2106,7 @@ impl Inner {
     &self,
     params: GotoDefinitionParams,
   ) -> LspResult<Option<GotoDefinitionResponse>> {
-    let specifier = self.url_map.normalize_url(
+    let specifier = self.url_map.uri_to_specifier(
       &params.text_document_position_params.text_document.uri,
       LspUrlKind::File,
     );
@@ -2143,7 +2145,7 @@ impl Inner {
     &self,
     params: GotoTypeDefinitionParams,
   ) -> LspResult<Option<GotoTypeDefinitionResponse>> {
-    let specifier = self.url_map.normalize_url(
+    let specifier = self.url_map.uri_to_specifier(
       &params.text_document_position_params.text_document.uri,
       LspUrlKind::File,
     );
@@ -2189,7 +2191,7 @@ impl Inner {
     &self,
     params: CompletionParams,
   ) -> LspResult<Option<CompletionResponse>> {
-    let specifier = self.url_map.normalize_url(
+    let specifier = self.url_map.uri_to_specifier(
       &params.text_document_position.text_document.uri,
       LspUrlKind::File,
     );
@@ -2378,7 +2380,7 @@ impl Inner {
     &self,
     params: GotoImplementationParams,
   ) -> LspResult<Option<GotoImplementationResponse>> {
-    let specifier = self.url_map.normalize_url(
+    let specifier = self.url_map.uri_to_specifier(
       &params.text_document_position_params.text_document.uri,
       LspUrlKind::File,
     );
@@ -2429,7 +2431,7 @@ impl Inner {
   ) -> LspResult<Option<Vec<FoldingRange>>> {
     let specifier = self
       .url_map
-      .normalize_url(&params.text_document.uri, LspUrlKind::File);
+      .uri_to_specifier(&params.text_document.uri, LspUrlKind::File);
     if !self.is_diagnosable(&specifier)
       || !self.config.specifier_enabled(&specifier)
     {
@@ -2476,7 +2478,7 @@ impl Inner {
   ) -> LspResult<Option<Vec<CallHierarchyIncomingCall>>> {
     let specifier = self
       .url_map
-      .normalize_url(&params.item.uri, LspUrlKind::File);
+      .uri_to_specifier(&params.item.uri, LspUrlKind::File);
     if !self.is_diagnosable(&specifier)
       || !self.config.specifier_enabled(&specifier)
     {
@@ -2525,7 +2527,7 @@ impl Inner {
   ) -> LspResult<Option<Vec<CallHierarchyOutgoingCall>>> {
     let specifier = self
       .url_map
-      .normalize_url(&params.item.uri, LspUrlKind::File);
+      .uri_to_specifier(&params.item.uri, LspUrlKind::File);
     if !self.is_diagnosable(&specifier)
       || !self.config.specifier_enabled(&specifier)
     {
@@ -2570,7 +2572,7 @@ impl Inner {
     &self,
     params: CallHierarchyPrepareParams,
   ) -> LspResult<Option<Vec<CallHierarchyItem>>> {
-    let specifier = self.url_map.normalize_url(
+    let specifier = self.url_map.uri_to_specifier(
       &params.text_document_position_params.text_document.uri,
       LspUrlKind::File,
     );
@@ -2634,7 +2636,7 @@ impl Inner {
     &self,
     params: RenameParams,
   ) -> LspResult<Option<WorkspaceEdit>> {
-    let specifier = self.url_map.normalize_url(
+    let specifier = self.url_map.uri_to_specifier(
       &params.text_document_position.text_document.uri,
       LspUrlKind::File,
     );
@@ -2683,7 +2685,7 @@ impl Inner {
   ) -> LspResult<Option<Vec<SelectionRange>>> {
     let specifier = self
       .url_map
-      .normalize_url(&params.text_document.uri, LspUrlKind::File);
+      .uri_to_specifier(&params.text_document.uri, LspUrlKind::File);
     if !self.is_diagnosable(&specifier)
       || !self.config.specifier_enabled(&specifier)
     {
@@ -2721,7 +2723,7 @@ impl Inner {
   ) -> LspResult<Option<SemanticTokensResult>> {
     let specifier = self
       .url_map
-      .normalize_url(&params.text_document.uri, LspUrlKind::File);
+      .uri_to_specifier(&params.text_document.uri, LspUrlKind::File);
     if !self.is_diagnosable(&specifier) {
       return Ok(None);
     }
@@ -2774,7 +2776,7 @@ impl Inner {
   ) -> LspResult<Option<SemanticTokensRangeResult>> {
     let specifier = self
       .url_map
-      .normalize_url(&params.text_document.uri, LspUrlKind::File);
+      .uri_to_specifier(&params.text_document.uri, LspUrlKind::File);
     if !self.is_diagnosable(&specifier) {
       return Ok(None);
     }
@@ -2823,7 +2825,7 @@ impl Inner {
     &self,
     params: SignatureHelpParams,
   ) -> LspResult<Option<SignatureHelp>> {
-    let specifier = self.url_map.normalize_url(
+    let specifier = self.url_map.uri_to_specifier(
       &params.text_document_position_params.text_document.uri,
       LspUrlKind::File,
     );
@@ -2877,8 +2879,8 @@ impl Inner {
   ) -> LspResult<Option<WorkspaceEdit>> {
     let mut changes = vec![];
     for rename in params.files {
-      let old_specifier = self.url_map.normalize_url(
-        &url_to_uri(&resolve_url(&rename.old_uri).unwrap()),
+      let old_specifier = self.url_map.uri_to_specifier(
+        &Uri::from_str(&rename.old_uri).unwrap(),
         LspUrlKind::File,
       );
       let options = self
@@ -2903,8 +2905,8 @@ impl Inner {
           .get_edits_for_file_rename(
             self.snapshot(),
             old_specifier,
-            self.url_map.normalize_url(
-              &url_to_uri(&resolve_url(&rename.new_uri).unwrap()),
+            self.url_map.uri_to_specifier(
+              &Uri::from_str(&rename.new_uri).unwrap(),
               LspUrlKind::File,
             ),
             format_code_settings,
@@ -3503,22 +3505,28 @@ impl Inner {
 
     let mut config_events = vec![];
     for (scope_url, config_data) in self.config.tree.data_by_scope().iter() {
-      let scope_uri = url_to_uri(scope_url);
+      let Ok(scope_uri) = url_to_uri(scope_url) else {
+        continue;
+      };
       if let Some(config_file) = config_data.maybe_deno_json() {
-        config_events.push(lsp_custom::DenoConfigurationChangeEvent {
-          scope_uri: scope_uri.clone(),
-          file_uri: url_to_uri(&config_file.specifier),
-          typ: lsp_custom::DenoConfigurationChangeType::Added,
-          configuration_type: lsp_custom::DenoConfigurationType::DenoJson,
-        });
+        if let Ok(file_uri) = url_to_uri(&config_file.specifier) {
+          config_events.push(lsp_custom::DenoConfigurationChangeEvent {
+            scope_uri: scope_uri.clone(),
+            file_uri,
+            typ: lsp_custom::DenoConfigurationChangeType::Added,
+            configuration_type: lsp_custom::DenoConfigurationType::DenoJson,
+          });
+        }
       }
       if let Some(package_json) = config_data.maybe_pkg_json() {
-        config_events.push(lsp_custom::DenoConfigurationChangeEvent {
-          scope_uri,
-          file_uri: url_to_uri(&package_json.specifier()),
-          typ: lsp_custom::DenoConfigurationChangeType::Added,
-          configuration_type: lsp_custom::DenoConfigurationType::PackageJson,
-        });
+        if let Ok(file_uri) = url_to_uri(&package_json.specifier()) {
+          config_events.push(lsp_custom::DenoConfigurationChangeEvent {
+            scope_uri,
+            file_uri,
+            typ: lsp_custom::DenoConfigurationChangeType::Added,
+            configuration_type: lsp_custom::DenoConfigurationType::PackageJson,
+          });
+        }
       }
     }
     if !config_events.is_empty() {
@@ -3602,11 +3610,6 @@ impl Inner {
             .as_ref()
             .map(|url| url.to_string())
         }),
-        node_modules_dir: Some(
-          config_data
-            .and_then(|d| d.node_modules_dir.as_ref())
-            .is_some(),
-        ),
         // bit of a hack to force the lsp to cache the @types/node package
         type_check_mode: crate::args::TypeCheckMode::Local,
         ..Default::default()
@@ -3648,7 +3651,9 @@ impl Inner {
       .into_iter()
       .map(|folder| {
         (
-          self.url_map.normalize_url(&folder.uri, LspUrlKind::Folder),
+          self
+            .url_map
+            .uri_to_specifier(&folder.uri, LspUrlKind::Folder),
           folder,
         )
       })
@@ -3724,7 +3729,8 @@ impl Inner {
           result.push(TaskDefinition {
             name: name.clone(),
             command: command.to_string(),
-            source_uri: url_to_uri(&config_file.specifier),
+            source_uri: url_to_uri(&config_file.specifier)
+              .map_err(|_| LspError::internal_error())?,
           });
         }
       };
@@ -3735,7 +3741,8 @@ impl Inner {
           result.push(TaskDefinition {
             name: name.clone(),
             command: command.clone(),
-            source_uri: url_to_uri(&package_json.specifier()),
+            source_uri: url_to_uri(&package_json.specifier())
+              .map_err(|_| LspError::internal_error())?,
           });
         }
       }
@@ -3750,7 +3757,7 @@ impl Inner {
   ) -> LspResult<Option<Vec<InlayHint>>> {
     let specifier = self
       .url_map
-      .normalize_url(&params.text_document.uri, LspUrlKind::File);
+      .uri_to_specifier(&params.text_document.uri, LspUrlKind::File);
     if !self.is_diagnosable(&specifier)
       || !self.config.specifier_enabled(&specifier)
       || !self.config.enabled_inlay_hints_for_specifier(&specifier)
@@ -3813,7 +3820,7 @@ impl Inner {
       .mark_with_args("lsp.virtual_text_document", &params);
     let specifier = self
       .url_map
-      .normalize_url(&params.text_document.uri, LspUrlKind::File);
+      .uri_to_specifier(&params.text_document.uri, LspUrlKind::File);
     let contents = if specifier.scheme() == "deno"
       && specifier.path() == "/status.md"
     {

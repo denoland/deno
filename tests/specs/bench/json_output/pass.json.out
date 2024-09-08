@@ -1,5 +1,6 @@
 Check file:///[WILDCARD]/pass.ts
 {
+  "version": 1,
   "runtime": "Deno/[WILDCARD]",
   "cpu": "[WILDCARD]",
   "benches": [

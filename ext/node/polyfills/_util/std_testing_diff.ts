@@ -325,7 +325,10 @@ export function diffstr(A: string, B: string) {
     );
   }
 
-  function tokenize(string: string, { wordDiff = false } = {}): string[] {
+  function tokenize(
+    string: string,
+    { wordDiff = false } = { __proto__: null },
+  ): string[] {
     if (wordDiff) {
       // Split string on whitespace symbols
       const tokens = StringPrototypeSplit(string, WHITESPACE_SYMBOL_PATTERN);
@@ -450,7 +453,7 @@ export function diffstr(A: string, B: string) {
  */
 function createColor(
   diffType: DiffType,
-  { background = false } = {},
+  { background = false } = { __proto__: null },
 ): (s: string) => string {
   // TODO(@littledivy): Remove this when we can detect
   // true color terminals.
@@ -484,7 +487,7 @@ function createSign(diffType: DiffType): string {
 
 export function buildMessage(
   diffResult: ReadonlyArray<DiffResult<string>>,
-  { stringDiff = false } = {},
+  { stringDiff = false } = { __proto__: null },
 ): string[] {
   const messages: string[] = [], diffMessages: string[] = [];
   ArrayPrototypePush(messages, "");
