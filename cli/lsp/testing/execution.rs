@@ -12,6 +12,7 @@ use crate::lsp::client::Client;
 use crate::lsp::client::TestingNotification;
 use crate::lsp::config;
 use crate::lsp::logging::lsp_log;
+use crate::lsp::urls::uri_parse_unencoded;
 use crate::lsp::urls::uri_to_url;
 use crate::lsp::urls::url_to_uri;
 use crate::tools::test;
@@ -32,11 +33,9 @@ use deno_core::ModuleSpecifier;
 use deno_runtime::deno_permissions::Permissions;
 use deno_runtime::tokio_util::create_and_run_current_thread;
 use indexmap::IndexMap;
-use lsp_types::Uri;
 use std::collections::HashMap;
 use std::collections::HashSet;
 use std::num::NonZeroUsize;
-use std::str::FromStr;
 use std::sync::Arc;
 use std::time::Duration;
 use std::time::Instant;
@@ -529,7 +528,7 @@ impl LspTestDescription {
     &self,
     tests: &IndexMap<usize, LspTestDescription>,
   ) -> lsp_custom::TestIdentifier {
-    let uri = Uri::from_str(&self.location().file_name).unwrap();
+    let uri = uri_parse_unencoded(&self.location().file_name).unwrap();
     let static_id = self.static_id();
     let mut root_desc = self;
     while let Some(parent_id) = root_desc.parent_id() {
