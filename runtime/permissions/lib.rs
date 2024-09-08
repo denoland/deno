@@ -329,6 +329,14 @@ pub trait QueryDescriptor {
   fn revokes(&self, other: &Self::AllowDesc) -> bool;
 }
 
+fn format_display_name(display_name: Cow<str>) -> String {
+  if display_name.starts_with('<') && display_name.ends_with('>') {
+    display_name.into_owned()
+  } else {
+    format!("\"{}\"", display_name)
+  }
+}
+
 pub trait AllowDescriptor: Eq + Clone + Hash {
   type Query: QueryDescriptor;
 
@@ -415,7 +423,7 @@ impl<TQuery: QueryDescriptor> UnaryPermission<TQuery> {
       .check2(
         TQuery::flag_name(),
         api_name,
-        || desc.map(|d| format!("\"{}\"", d.display_name())),
+        || desc.map(|d| format_display_name(d.display_name())),
         self.prompt,
       );
     if prompted {
@@ -478,7 +486,8 @@ impl<TQuery: QueryDescriptor> UnaryPermission<TQuery> {
     let mut message = String::with_capacity(40);
     message.push_str(&format!("{} access", TQuery::flag_name()));
     if let Some(desc) = desc {
-      message.push_str(&format!(" to \"{}\"", desc.display_name()));
+      message
+        .push_str(&format!(" to {}", format_display_name(desc.display_name())));
     }
     match permission_prompt(
       &message,
@@ -504,7 +513,7 @@ impl<TQuery: QueryDescriptor> UnaryPermission<TQuery> {
   fn revoke_desc(&mut self, desc: Option<&TQuery>) -> PermissionState {
     match desc {
       Some(desc) => {
-        self.granted_list.retain(|v| desc.revokes(v));
+        self.granted_list.retain(|v| !desc.revokes(v));
       }
       None => {
         self.granted_global = false;
@@ -683,7 +692,7 @@ impl AllowDescriptor for ReadDescriptor {
   type Query = ReadQueryDescriptor;
 
   fn matches(&self, query: &Self::Query) -> bool {
-    self.0.starts_with(&query.0.resolved)
+    query.0.resolved.starts_with(&self.0)
   }
 
   fn as_query(&self) -> Self::Query {
@@ -699,7 +708,7 @@ impl DenyDescriptor for ReadDescriptor {
   type Query = ReadQueryDescriptor;
 
   fn matches(&self, query: &Self::Query) -> bool {
-    self.0.starts_with(&query.0.resolved)
+    query.0.resolved.starts_with(&self.0)
   }
 }
 
@@ -754,7 +763,7 @@ impl AllowDescriptor for WriteDescriptor {
   }
 
   fn matches(&self, query: &Self::Query) -> bool {
-    self.0.starts_with(&query.0.resolved)
+    query.0.resolved.starts_with(&self.0)
   }
 }
 
@@ -762,7 +771,7 @@ impl DenyDescriptor for WriteDescriptor {
   type Query = WriteQueryDescriptor;
 
   fn matches(&self, query: &Self::Query) -> bool {
-    self.0.starts_with(&query.0.resolved)
+    query.0.resolved.starts_with(&self.0)
   }
 }
 
@@ -1279,7 +1288,7 @@ impl AllowDescriptor for FfiDescriptor {
   }
 
   fn matches(&self, query: &Self::Query) -> bool {
-    self.0.starts_with(&query.0.resolved)
+    query.0.resolved.starts_with(&self.0)
   }
 }
 
@@ -1287,7 +1296,7 @@ impl DenyDescriptor for FfiDescriptor {
   type Query = FfiQueryDescriptor;
 
   fn matches(&self, query: &Self::Query) -> bool {
-    self.0.starts_with(&query.0.resolved)
+    query.0.resolved.starts_with(&self.0)
   }
 }
 

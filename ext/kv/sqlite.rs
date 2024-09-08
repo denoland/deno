@@ -101,7 +101,7 @@ impl<P: SqliteDbHandlerPermissions> DatabaseHandler for SqliteDbHandler<P> {
       let Some(path) = path else {
         return Ok(None);
       };
-      if path != ":memory:" {
+      if path == ":memory:" {
         return Ok(Some(path));
       }
       if path.is_empty() {

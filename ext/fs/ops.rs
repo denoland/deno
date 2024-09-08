@@ -5,6 +5,7 @@ use std::io;
 use std::io::SeekFrom;
 use std::path::Path;
 use std::path::PathBuf;
+use std::path::StripPrefixError;
 use std::rc::Rc;
 
 use deno_core::anyhow::bail;
@@ -869,15 +870,18 @@ where
 #[string]
 pub fn op_fs_make_temp_dir_sync<P>(
   state: &mut OpState,
-  #[string] dir: Option<String>,
+  #[string] dir_arg: Option<String>,
   #[string] prefix: Option<String>,
   #[string] suffix: Option<String>,
 ) -> Result<String, AnyError>
 where
   P: FsPermissions + 'static,
 {
-  let (dir, fs) =
-    make_temp_check_sync::<P>(state, dir, "Deno.makeTempDirSync()")?;
+  let (dir, fs) = make_temp_check_sync::<P>(
+    state,
+    dir_arg.as_deref(),
+    "Deno.makeTempDirSync()",
+  )?;
 
   let mut rng = thread_rng();
 
@@ -885,7 +889,11 @@ where
   for _ in 0..MAX_TRIES {
     let path = tmp_name(&mut rng, &dir, prefix.as_deref(), suffix.as_deref())?;
     match fs.mkdir_sync(&path, false, 0o700) {
-      Ok(_) => return path_into_string(path.into_os_string()),
+      Ok(_) => {
+        // PERMISSIONS: ensure the absolute path is not leaked
+        let path = strip_dir_prefix(&dir, dir_arg.as_deref(), path)?;
+        return path_into_string(path.into_os_string());
+      }
       Err(FsError::Io(ref e)) if e.kind() == io::ErrorKind::AlreadyExists => {
         continue;
       }
@@ -904,14 +912,18 @@ where
 #[string]
 pub async fn op_fs_make_temp_dir_async<P>(
   state: Rc<RefCell<OpState>>,
-  #[string] dir: Option<String>,
+  #[string] dir_arg: Option<String>,
   #[string] prefix: Option<String>,
   #[string] suffix: Option<String>,
 ) -> Result<String, AnyError>
 where
   P: FsPermissions + 'static,
 {
-  let (dir, fs) = make_temp_check_async::<P>(state, dir, "Deno.makeTempDir()")?;
+  let (dir, fs) = make_temp_check_async::<P>(
+    state,
+    dir_arg.as_deref(),
+    "Deno.makeTempDir()",
+  )?;
 
   let mut rng = thread_rng();
 
@@ -919,7 +931,11 @@ where
   for _ in 0..MAX_TRIES {
     let path = tmp_name(&mut rng, &dir, prefix.as_deref(), suffix.as_deref())?;
     match fs.clone().mkdir_async(path.clone(), false, 0o700).await {
-      Ok(_) => return path_into_string(path.into_os_string()),
+      Ok(_) => {
+        // PERMISSIONS: ensure the absolute path is not leaked
+        let path = strip_dir_prefix(&dir, dir_arg.as_deref(), path)?;
+        return path_into_string(path.into_os_string());
+      }
       Err(FsError::Io(ref e)) if e.kind() == io::ErrorKind::AlreadyExists => {
         continue;
       }
@@ -938,15 +954,18 @@ where
 #[string]
 pub fn op_fs_make_temp_file_sync<P>(
   state: &mut OpState,
-  #[string] dir: Option<String>,
+  #[string] dir_arg: Option<String>,
   #[string] prefix: Option<String>,
   #[string] suffix: Option<String>,
 ) -> Result<String, AnyError>
 where
   P: FsPermissions + 'static,
 {
-  let (dir, fs) =
-    make_temp_check_sync::<P>(state, dir, "Deno.makeTempFileSync()")?;
+  let (dir, fs) = make_temp_check_sync::<P>(
+    state,
+    dir_arg.as_deref(),
+    "Deno.makeTempFileSync()",
+  )?;
 
   let open_opts = OpenOptions {
     write: true,
@@ -960,7 +979,11 @@ where
   for _ in 0..MAX_TRIES {
     let path = tmp_name(&mut rng, &dir, prefix.as_deref(), suffix.as_deref())?;
     match fs.open_sync(&path, open_opts, None) {
-      Ok(_) => return path_into_string(path.into_os_string()),
+      Ok(_) => {
+        // PERMISSIONS: ensure the absolute path is not leaked
+        let path = strip_dir_prefix(&dir, dir_arg.as_deref(), path)?;
+        return path_into_string(path.into_os_string());
+      }
       Err(FsError::Io(ref e)) if e.kind() == io::ErrorKind::AlreadyExists => {
         continue;
       }
@@ -979,15 +1002,18 @@ where
 #[string]
 pub async fn op_fs_make_temp_file_async<P>(
   state: Rc<RefCell<OpState>>,
-  #[string] dir: Option<String>,
+  #[string] dir_arg: Option<String>,
   #[string] prefix: Option<String>,
   #[string] suffix: Option<String>,
 ) -> Result<String, AnyError>
 where
   P: FsPermissions + 'static,
 {
-  let (dir, fs) =
-    make_temp_check_async::<P>(state, dir, "Deno.makeTempFile()")?;
+  let (dir, fs) = make_temp_check_async::<P>(
+    state,
+    dir_arg.as_deref(),
+    "Deno.makeTempFile()",
+  )?;
 
   let open_opts = OpenOptions {
     write: true,
@@ -1002,7 +1028,11 @@ where
   for _ in 0..MAX_TRIES {
     let path = tmp_name(&mut rng, &dir, prefix.as_deref(), suffix.as_deref())?;
     match fs.clone().open_async(path.clone(), open_opts, None).await {
-      Ok(_) => return path_into_string(path.into_os_string()),
+      Ok(_) => {
+        // PERMISSIONS: ensure the absolute path is not leaked
+        let path = strip_dir_prefix(&dir, dir_arg.as_deref(), path)?;
+        return path_into_string(path.into_os_string());
+      }
       Err(FsError::Io(ref e)) if e.kind() == io::ErrorKind::AlreadyExists => {
         continue;
       }
@@ -1016,9 +1046,26 @@ where
   .context("tmpfile")
 }
 
+fn strip_dir_prefix(
+  resolved_dir: &Path,
+  dir_arg: Option<&str>,
+  result_path: PathBuf,
+) -> Result<PathBuf, StripPrefixError> {
+  if resolved_dir.is_absolute() {
+    match &dir_arg {
+      Some(dir_arg) => {
+        Ok(Path::new(dir_arg).join(result_path.strip_prefix(&resolved_dir)?))
+      }
+      None => Ok(result_path),
+    }
+  } else {
+    Ok(result_path)
+  }
+}
+
 fn make_temp_check_sync<P>(
   state: &mut OpState,
-  dir: Option<String>,
+  dir: Option<&str>,
   api_name: &str,
 ) -> Result<(PathBuf, FileSystemRc), AnyError>
 where
@@ -1040,7 +1087,7 @@ where
 
 fn make_temp_check_async<P>(
   state: Rc<RefCell<OpState>>,
-  dir: Option<String>,
+  dir: Option<&str>,
   api_name: &str,
 ) -> Result<(PathBuf, FileSystemRc), AnyError>
 where
