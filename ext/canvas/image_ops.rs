@@ -595,3 +595,51 @@ pub(crate) fn to_srgb_from_icc_profile(
     },
   }
 }
+
+#[cfg(test)]
+mod tests {
+  use super::*;
+  use image::Rgba;
+
+  #[test]
+  fn test_premultiply_alpha() {
+    let rgba = Rgba::<u8>([255, 128, 0, 128]);
+    let rgba = rgba.premultiply_alpha();
+    assert_eq!(rgba, Rgba::<u8>([128, 64, 0, 128]));
+
+    let rgba = Rgba::<u8>([255, 255, 255, 255]);
+    let rgba = rgba.premultiply_alpha();
+    assert_eq!(rgba, Rgba::<u8>([255, 255, 255, 255]));
+  }
+
+  #[test]
+  fn test_unpremultiply_alpha() {
+    let rgba = Rgba::<u8>([127, 0, 0, 127]);
+    let rgba = rgba.unpremultiply_alpha();
+    assert_eq!(rgba, Rgba::<u8>([255, 0, 0, 127]));
+  }
+
+  #[test]
+  fn test_apply_conversion_matrix_srgb_to_display_p3() {
+    let (r, g, b) = apply_conversion_matrix_srgb_to_display_p3(255_u8, 0, 0);
+    assert_eq!(r, 234);
+    assert_eq!(g, 51);
+    assert_eq!(b, 35);
+
+    let (r, g, b) = apply_conversion_matrix_srgb_to_display_p3(0_u8, 255, 0);
+    assert_eq!(r, 117);
+    assert_eq!(g, 251);
+    assert_eq!(b, 76);
+
+    let (r, g, b) = apply_conversion_matrix_srgb_to_display_p3(0_u8, 0, 255);
+    assert_eq!(r, 0);
+    assert_eq!(g, 0);
+    assert_eq!(b, 245);
+
+    let (r, g, b) =
+      apply_conversion_matrix_srgb_to_display_p3(255_u8, 255, 255);
+    assert_eq!(r, 255);
+    assert_eq!(g, 255);
+    assert_eq!(b, 255);
+  }
+}
