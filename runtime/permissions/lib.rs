@@ -1153,8 +1153,6 @@ impl AllowDescriptor for AllowRunDescriptor {
   fn matches(&self, query: &Self::Query) -> bool {
     match query {
       RunQueryDescriptor::Path(path) => path.resolved == self.0,
-      // name means we couldn't resolve it and so it's
-      // insecure and matches nothing
       RunQueryDescriptor::Name(_) => false,
     }
   }
@@ -1191,15 +1189,13 @@ impl DenyDescriptor for DenyRunDescriptor {
         RunQueryDescriptor::Path(query) => {
           denies_run_name(deny_desc, &query.resolved)
         }
-        // not secure so doesn't match
-        RunQueryDescriptor::Name(_) => false,
+        RunQueryDescriptor::Name(query) => query == deny_desc,
       },
       DenyRunDescriptor::Path(deny_desc) => match query {
         RunQueryDescriptor::Path(query) => {
           query.resolved.starts_with(deny_desc)
         }
-        // not secure so doesn't match
-        RunQueryDescriptor::Name(_) => false,
+        RunQueryDescriptor::Name(query) => denies_run_name(query, deny_desc),
       },
     }
   }
