@@ -83,6 +83,7 @@ impl FileFlags {
 #[derive(Clone, Debug, Default, Eq, PartialEq)]
 pub struct AddFlags {
   pub packages: Vec<String>,
+  pub dev: bool,
 }
 
 #[derive(Clone, Debug, Default, Eq, PartialEq)]
@@ -1302,29 +1303,29 @@ pub fn flags_from_vec(args: Vec<OsString>) -> clap::error::Result<Flags> {
     match subcommand.as_str() {
       "add" => add_parse(&mut flags, &mut m),
       "remove" => remove_parse(&mut flags, &mut m),
-      "bench" => bench_parse(&mut flags, &mut m),
+      "bench" => bench_parse(&mut flags, &mut m)?,
       "bundle" => bundle_parse(&mut flags, &mut m),
-      "cache" => cache_parse(&mut flags, &mut m),
-      "check" => check_parse(&mut flags, &mut m),
+      "cache" => cache_parse(&mut flags, &mut m)?,
+      "check" => check_parse(&mut flags, &mut m)?,
       "clean" => clean_parse(&mut flags, &mut m),
-      "compile" => compile_parse(&mut flags, &mut m),
+      "compile" => compile_parse(&mut flags, &mut m)?,
       "completions" => completions_parse(&mut flags, &mut m, app),
-      "coverage" => coverage_parse(&mut flags, &mut m),
-      "doc" => doc_parse(&mut flags, &mut m),
-      "eval" => eval_parse(&mut flags, &mut m),
-      "fmt" => fmt_parse(&mut flags, &mut m),
+      "coverage" => coverage_parse(&mut flags, &mut m)?,
+      "doc" => doc_parse(&mut flags, &mut m)?,
+      "eval" => eval_parse(&mut flags, &mut m)?,
+      "fmt" => fmt_parse(&mut flags, &mut m)?,
       "init" => init_parse(&mut flags, &mut m),
-      "info" => info_parse(&mut flags, &mut m),
-      "install" => install_parse(&mut flags, &mut m),
+      "info" => info_parse(&mut flags, &mut m)?,
+      "install" => install_parse(&mut flags, &mut m)?,
       "json_reference" => json_reference_parse(&mut flags, &mut m, app),
       "jupyter" => jupyter_parse(&mut flags, &mut m),
-      "lint" => lint_parse(&mut flags, &mut m),
+      "lint" => lint_parse(&mut flags, &mut m)?,
       "lsp" => lsp_parse(&mut flags, &mut m),
-      "repl" => repl_parse(&mut flags, &mut m),
+      "repl" => repl_parse(&mut flags, &mut m)?,
       "run" => run_parse(&mut flags, &mut m, app, false)?,
       "serve" => serve_parse(&mut flags, &mut m, app)?,
       "task" => task_parse(&mut flags, &mut m),
-      "test" => test_parse(&mut flags, &mut m),
+      "test" => test_parse(&mut flags, &mut m)?,
       "types" => types_parse(&mut flags, &mut m),
       "uninstall" => uninstall_parse(&mut flags, &mut m),
       "upgrade" => upgrade_parse(&mut flags, &mut m),
@@ -1583,6 +1584,15 @@ fn help_subcommand(app: &Command) -> Command {
     }))
 }
 
+fn add_dev_arg() -> Arg {
+  Arg::new("dev")
+    .long("dev")
+    .short('D')
+    .help("Add as a dev dependency")
+    .long_help("Add the package as a dev dependency. Note: This only applies when adding to a `package.json` file.")
+    .action(ArgAction::SetTrue)
+}
+
 fn add_subcommand() -> Command {
   command(
     "add",
@@ -1596,13 +1606,15 @@ You can add multiple dependencies at once:
     UnstableArgsConfig::None,
   )
   .defer(|cmd| {
-    cmd.arg(
-      Arg::new("packages")
-        .help("List of packages to add")
-        .required_unless_present("help")
-        .num_args(1..)
-        .action(ArgAction::Append),
-    )
+    cmd
+      .arg(
+        Arg::new("packages")
+          .help("List of packages to add")
+          .required_unless_present("help")
+          .num_args(1..)
+          .action(ArgAction::Append),
+      )
+      .arg(add_dev_arg())
   })
 }
 
@@ -1657,7 +1669,7 @@ If you specify a directory instead of a file, the path is expanded to all contai
         Arg::new("ignore")
           .long("ignore")
           .num_args(1..)
-          .use_value_delimiter(true)
+          .action(ArgAction::Append)
           .require_equals(true)
           .help("Ignore files"),
       )
@@ -1899,7 +1911,7 @@ Generate html reports from lcov:
         Arg::new("ignore")
           .long("ignore")
           .num_args(1..)
-          .use_value_delimiter(true)
+          .action(ArgAction::Append)
           .require_equals(true)
           .help("Ignore coverage files")
           .value_hint(ValueHint::AnyPath),
@@ -2183,7 +2195,7 @@ Ignore formatting a file by adding an ignore comment at the top of the file:
         Arg::new("ignore")
           .long("ignore")
           .num_args(1..)
-          .use_value_delimiter(true)
+          .action(ArgAction::Append)
           .require_equals(true)
           .help("Ignore formatting particular source files")
           .value_hint(ValueHint::AnyPath)
@@ -2365,7 +2377,7 @@ fn install_subcommand() -> Command {
 
 <g>Local installation</>
 
-Add dependencies to the local project's configuration (<p(245)>deno.json / package.json</>) and installs them 
+Add dependencies to the local project's configuration (<p(245)>deno.json / package.json</>) and installs them
 in the package cache. If no dependency is specified, installs all dependencies listed in the config file.
 If the <p(245)>--entrypoint</> flag is passed, installs the dependencies of the specified entrypoint(s).
 
@@ -2451,6 +2463,7 @@ These must be added to the path manually if required."), UnstableArgsConfig::Res
             .help("Install dependents of the specified entrypoint(s)"),
         )
         .arg(env_file_arg())
+        .arg(add_dev_arg().conflicts_with("entrypoint").conflicts_with("global"))
     })
 }
 
@@ -2459,7 +2472,7 @@ fn json_reference_subcommand() -> Command {
 }
 
 fn jupyter_subcommand() -> Command {
-  Command::new("jupyter")
+  command("jupyter", "Deno kernel for Jupyter notebooks", UnstableArgsConfig::ResolutionAndRuntime)
     .arg(
       Arg::new("install")
         .long("install")
@@ -2482,7 +2495,6 @@ fn jupyter_subcommand() -> Command {
         .value_parser(value_parser!(String))
         .value_hint(ValueHint::FilePath)
         .conflicts_with("install"))
-    .about("Deno kernel for Jupyter notebooks")
 }
 
 fn uninstall_subcommand() -> Command {
@@ -2629,7 +2641,7 @@ To ignore linting on an entire file, you can add an ignore comment at the top of
         Arg::new("ignore")
           .long("ignore")
           .num_args(1..)
-          .use_value_delimiter(true)
+          .action(ArgAction::Append)
           .require_equals(true)
           .help("Ignore linting particular source files")
           .value_hint(ValueHint::AnyPath)
@@ -2670,7 +2682,7 @@ fn repl_subcommand() -> Command {
         Arg::new("eval-file")
           .long("eval-file")
           .num_args(1..)
-          .use_value_delimiter(true)
+          .action(ArgAction::Append)
           .require_equals(true)
           .help("Evaluates the provided file(s) as scripts when the REPL starts. Accepts file paths and URLs")
           .value_hint(ValueHint::AnyPath),
@@ -2784,7 +2796,7 @@ fn task_subcommand() -> Command {
     cstr!(
       "Run a task defined in the configuration file.
   <p(245)>deno task build</>
-  
+
 List all available tasks:
   <p(245)>deno task</>"
     ),
@@ -2812,7 +2824,7 @@ fn test_subcommand() -> Command {
 Evaluate the given modules, run all tests declared with <bold>Deno.</><y>test()</> and report results to standard output:
   <p(245)>deno test src/fetch_test.ts src/signal_test.ts</>
 
-Directory arguments are expanded to all contained files matching the glob <c>{*_,*.,}test.{js,mjs,ts,mts,jsx,tsx}</> 
+Directory arguments are expanded to all contained files matching the glob <c>{*_,*.,}test.{js,mjs,ts,mts,jsx,tsx}</>
 or <c>**/__tests__/**</>:
  <p(245)>deno test src/</>
 
@@ -2826,7 +2838,7 @@ or <c>**/__tests__/**</>:
         Arg::new("ignore")
           .long("ignore")
           .num_args(1..)
-          .use_value_delimiter(true)
+          .action(ArgAction::Append)
           .require_equals(true)
           .help("Ignore files")
           .value_hint(ValueHint::AnyPath),
@@ -3192,14 +3204,12 @@ Docs: <c>https://docs.deno.com/go/permissions</>
           .long("allow-read")
           .short('R')
           .num_args(0..)
-          .use_value_delimiter(true)
+          .action(ArgAction::Append)
           .require_equals(true)
           .value_name("PATH")
           .help("Allow file system read access. Optionally specify allowed paths")
-          .value_parser(value_parser!(String))
           .value_hint(ValueHint::AnyPath)
-          .hide(true)
-          ;
+          .hide(true);
         if let Some(requires) = requires {
           arg = arg.requires(requires)
         }
@@ -3211,14 +3221,12 @@ Docs: <c>https://docs.deno.com/go/permissions</>
         let mut arg =   Arg::new("deny-read")
           .long("deny-read")
           .num_args(0..)
-          .use_value_delimiter(true)
+          .action(ArgAction::Append)
           .require_equals(true)
           .value_name("PATH")
           .help("Deny file system read access. Optionally specify denied paths")
-          .value_parser(value_parser!(String))
           .value_hint(ValueHint::AnyPath)
-          .hide(true)
-          ;
+          .hide(true);
         if let Some(requires) = requires {
           arg = arg.requires(requires)
         }
@@ -3231,14 +3239,12 @@ Docs: <c>https://docs.deno.com/go/permissions</>
           .long("allow-write")
           .short('W')
           .num_args(0..)
-          .use_value_delimiter(true)
+          .action(ArgAction::Append)
           .require_equals(true)
           .value_name("PATH")
           .help("Allow file system write access. Optionally specify allowed paths")
-          .value_parser(value_parser!(String))
           .value_hint(ValueHint::AnyPath)
-          .hide(true)
-          ;
+          .hide(true);
         if let Some(requires) = requires {
           arg = arg.requires(requires)
         }
@@ -3250,14 +3256,12 @@ Docs: <c>https://docs.deno.com/go/permissions</>
         let mut arg =    Arg::new("deny-write")
           .long("deny-write")
           .num_args(0..)
-          .use_value_delimiter(true)
+          .action(ArgAction::Append)
           .require_equals(true)
           .value_name("PATH")
           .help("Deny file system write access. Optionally specify denied paths")
-          .value_parser(value_parser!(String))
           .value_hint(ValueHint::AnyPath)
-          .hide(true)
-          ;
+          .hide(true);
         if let Some(requires) = requires {
           arg = arg.requires(requires)
         }
@@ -3435,14 +3439,12 @@ Docs: <c>https://docs.deno.com/go/permissions</>
         let mut arg = Arg::new("allow-ffi")
           .long("allow-ffi")
           .num_args(0..)
-          .use_value_delimiter(true)
+          .action(ArgAction::Append)
           .require_equals(true)
           .value_name("PATH")
           .help("(Unstable) Allow loading dynamic libraries. Optionally specify allowed directories or files")
-          .value_parser(value_parser!(String))
           .value_hint(ValueHint::AnyPath)
-          .hide(true)
-          ;
+          .hide(true);
         if let Some(requires) = requires {
           arg = arg.requires(requires)
         }
@@ -3454,14 +3456,12 @@ Docs: <c>https://docs.deno.com/go/permissions</>
         let mut arg = Arg::new("deny-ffi")
           .long("deny-ffi")
           .num_args(0..)
-          .use_value_delimiter(true)
+          .action(ArgAction::Append)
           .require_equals(true)
           .value_name("PATH")
           .help("(Unstable) Deny loading dynamic libraries. Optionally specify denied directories or files")
-          .value_parser(value_parser!(String))
           .value_hint(ValueHint::AnyPath)
-          .hide(true)
-          ;
+          .hide(true);
         if let Some(requires) = requires {
           arg = arg.requires(requires)
         }
@@ -3611,7 +3611,7 @@ fn reload_arg() -> Arg {
   Arg::new("reload")
     .short('r')
     .num_args(0..)
-    .use_value_delimiter(true)
+    .action(ArgAction::Append)
     .require_equals(true)
     .long("reload")
     .value_name("CACHE_BLOCKLIST")
@@ -3623,7 +3623,6 @@ fn reload_arg() -> Arg {
   npm:chalk                                                Reload specific npm module</>",
     ))
     .value_hint(ValueHint::FilePath)
-    .value_parser(reload_arg_validate)
     .help_heading(DEPENDENCY_MANAGEMENT_HEADING)
 }
 
@@ -3740,8 +3739,7 @@ fn hmr_arg(takes_files: bool) -> Arg {
     arg
       .value_name("FILES")
       .num_args(0..)
-      .value_parser(value_parser!(String))
-      .use_value_delimiter(true)
+      .action(ArgAction::Append)
       .require_equals(true)
       .help(
         cstr!(
@@ -3767,8 +3765,7 @@ fn watch_arg(takes_files: bool) -> Arg {
     arg
       .value_name("FILES")
       .num_args(0..)
-      .value_parser(value_parser!(String))
-      .use_value_delimiter(true)
+      .action(ArgAction::Append)
       .require_equals(true)
       .help(
         cstr!(
@@ -3807,8 +3804,7 @@ fn watch_exclude_arg() -> Arg {
     .help("Exclude provided files/patterns from watch mode")
     .value_name("FILES")
     .num_args(0..)
-    .value_parser(value_parser!(String))
-    .use_value_delimiter(true)
+    .action(ArgAction::Append)
     .require_equals(true)
     .value_hint(ValueHint::AnyPath)
     .help_heading(FILE_WATCHING_HEADING)
@@ -3980,7 +3976,7 @@ fn allow_scripts_arg() -> Arg {
   Arg::new("allow-scripts")
     .long("allow-scripts")
     .num_args(0..)
-    .use_value_delimiter(true)
+    .action(ArgAction::Append)
     .require_equals(true)
     .value_name("PACKAGE")
     .value_parser(parse_packages_allowed_scripts)
@@ -4076,15 +4072,23 @@ fn unstable_args(cfg: UnstableArgsConfig) -> impl IntoIterator<Item = Arg> {
   UnstableArgsIter { idx: 0, cfg }
 }
 
-fn allow_scripts_arg_parse(flags: &mut Flags, matches: &mut ArgMatches) {
+fn allow_scripts_arg_parse(
+  flags: &mut Flags,
+  matches: &mut ArgMatches,
+) -> clap::error::Result<()> {
   let Some(parts) = matches.remove_many::<String>("allow-scripts") else {
-    return;
+    return Ok(());
   };
   if parts.len() == 0 {
     flags.allow_scripts = PackagesAllowedScripts::All;
   } else {
-    flags.allow_scripts = PackagesAllowedScripts::Some(parts.collect());
+    flags.allow_scripts = PackagesAllowedScripts::Some(
+      parts
+        .flat_map(flat_escape_split_commas)
+        .collect::<Result<_, _>>()?,
+    );
   }
+  Ok(())
 }
 
 fn add_parse(flags: &mut Flags, matches: &mut ArgMatches) {
@@ -4098,7 +4102,8 @@ fn add_parse_inner(
   let packages = packages
     .unwrap_or_else(|| matches.remove_many::<String>("packages").unwrap())
     .collect();
-  AddFlags { packages }
+  let dev = matches.get_flag("dev");
+  AddFlags { packages, dev }
 }
 
 fn remove_parse(flags: &mut Flags, matches: &mut ArgMatches) {
@@ -4107,10 +4112,13 @@ fn remove_parse(flags: &mut Flags, matches: &mut ArgMatches) {
   });
 }
 
-fn bench_parse(flags: &mut Flags, matches: &mut ArgMatches) {
+fn bench_parse(
+  flags: &mut Flags,
+  matches: &mut ArgMatches,
+) -> clap::error::Result<()> {
   flags.type_check_mode = TypeCheckMode::Local;
 
-  runtime_args_parse(flags, matches, true, false);
+  runtime_args_parse(flags, matches, true, false)?;
 
   // NOTE: `deno bench` always uses `--no-prompt`, tests shouldn't ever do
   // interactive prompts, unless done by user code
@@ -4119,7 +4127,9 @@ fn bench_parse(flags: &mut Flags, matches: &mut ArgMatches) {
   let json = matches.get_flag("json");
 
   let ignore = match matches.remove_many::<String>("ignore") {
-    Some(f) => f.collect(),
+    Some(f) => f
+      .flat_map(flat_escape_split_commas)
+      .collect::<Result<_, _>>()?,
     None => vec![],
   };
 
@@ -4144,41 +4154,54 @@ fn bench_parse(flags: &mut Flags, matches: &mut ArgMatches) {
     filter,
     json,
     no_run,
-    watch: watch_arg_parse(matches),
+    watch: watch_arg_parse(matches)?,
   });
+
+  Ok(())
 }
 
 fn bundle_parse(flags: &mut Flags, _matches: &mut ArgMatches) {
   flags.subcommand = DenoSubcommand::Bundle;
 }
 
-fn cache_parse(flags: &mut Flags, matches: &mut ArgMatches) {
-  compile_args_parse(flags, matches);
+fn cache_parse(
+  flags: &mut Flags,
+  matches: &mut ArgMatches,
+) -> clap::error::Result<()> {
+  compile_args_parse(flags, matches)?;
   unstable_args_parse(flags, matches, UnstableArgsConfig::ResolutionOnly);
   frozen_lockfile_arg_parse(flags, matches);
-  allow_scripts_arg_parse(flags, matches);
+  allow_scripts_arg_parse(flags, matches)?;
   let files = matches.remove_many::<String>("file").unwrap().collect();
   flags.subcommand = DenoSubcommand::Cache(CacheFlags { files });
+  Ok(())
 }
 
-fn check_parse(flags: &mut Flags, matches: &mut ArgMatches) {
+fn check_parse(
+  flags: &mut Flags,
+  matches: &mut ArgMatches,
+) -> clap::error::Result<()> {
   flags.type_check_mode = TypeCheckMode::Local;
-  compile_args_without_check_parse(flags, matches);
+  compile_args_without_check_parse(flags, matches)?;
   unstable_args_parse(flags, matches, UnstableArgsConfig::ResolutionAndRuntime);
   let files = matches.remove_many::<String>("file").unwrap().collect();
   if matches.get_flag("all") || matches.get_flag("remote") {
     flags.type_check_mode = TypeCheckMode::All;
   }
   flags.subcommand = DenoSubcommand::Check(CheckFlags { files });
+  Ok(())
 }
 
 fn clean_parse(flags: &mut Flags, _matches: &mut ArgMatches) {
   flags.subcommand = DenoSubcommand::Clean;
 }
 
-fn compile_parse(flags: &mut Flags, matches: &mut ArgMatches) {
+fn compile_parse(
+  flags: &mut Flags,
+  matches: &mut ArgMatches,
+) -> clap::error::Result<()> {
   flags.type_check_mode = TypeCheckMode::Local;
-  runtime_args_parse(flags, matches, true, false);
+  runtime_args_parse(flags, matches, true, false)?;
 
   let mut script = matches.remove_many::<String>("script_arg").unwrap();
   let source_file = script.next().unwrap();
@@ -4202,6 +4225,8 @@ fn compile_parse(flags: &mut Flags, matches: &mut ArgMatches) {
     icon,
     include,
   });
+
+  Ok(())
 }
 
 fn completions_parse(
@@ -4233,13 +4258,18 @@ fn completions_parse(
   });
 }
 
-fn coverage_parse(flags: &mut Flags, matches: &mut ArgMatches) {
+fn coverage_parse(
+  flags: &mut Flags,
+  matches: &mut ArgMatches,
+) -> clap::error::Result<()> {
   let files = match matches.remove_many::<String>("files") {
     Some(f) => f.collect(),
     None => vec!["coverage".to_string()], // default
   };
   let ignore = match matches.remove_many::<String>("ignore") {
-    Some(f) => f.collect(),
+    Some(f) => f
+      .flat_map(flat_escape_split_commas)
+      .collect::<Result<Vec<_>, _>>()?,
     None => vec![],
   };
   let include = match matches.remove_many::<String>("include") {
@@ -4270,12 +4300,16 @@ fn coverage_parse(flags: &mut Flags, matches: &mut ArgMatches) {
     exclude,
     r#type,
   });
+  Ok(())
 }
 
-fn doc_parse(flags: &mut Flags, matches: &mut ArgMatches) {
+fn doc_parse(
+  flags: &mut Flags,
+  matches: &mut ArgMatches,
+) -> clap::error::Result<()> {
   unstable_args_parse(flags, matches, UnstableArgsConfig::ResolutionOnly);
   import_map_arg_parse(flags, matches);
-  reload_arg_parse(flags, matches);
+  reload_arg_parse(flags, matches)?;
   lock_arg_parse(flags, matches);
   no_lock_arg_parse(flags, matches);
   no_npm_arg_parse(flags, matches);
@@ -4334,10 +4368,14 @@ fn doc_parse(flags: &mut Flags, matches: &mut ArgMatches) {
     filter,
     private,
   });
+  Ok(())
 }
 
-fn eval_parse(flags: &mut Flags, matches: &mut ArgMatches) {
-  runtime_args_parse(flags, matches, false, true);
+fn eval_parse(
+  flags: &mut Flags,
+  matches: &mut ArgMatches,
+) -> clap::error::Result<()> {
+  runtime_args_parse(flags, matches, false, true)?;
   unstable_args_parse(flags, matches, UnstableArgsConfig::ResolutionAndRuntime);
   flags.allow_all();
 
@@ -4349,9 +4387,13 @@ fn eval_parse(flags: &mut Flags, matches: &mut ArgMatches) {
   flags.argv.extend(code_args);
 
   flags.subcommand = DenoSubcommand::Eval(EvalFlags { print, code });
+  Ok(())
 }
 
-fn fmt_parse(flags: &mut Flags, matches: &mut ArgMatches) {
+fn fmt_parse(
+  flags: &mut Flags,
+  matches: &mut ArgMatches,
+) -> clap::error::Result<()> {
   config_args_parse(flags, matches);
   ext_arg_parse(flags, matches);
 
@@ -4360,7 +4402,9 @@ fn fmt_parse(flags: &mut Flags, matches: &mut ArgMatches) {
     None => vec![],
   };
   let ignore = match matches.remove_many::<String>("ignore") {
-    Some(f) => f.collect(),
+    Some(f) => f
+      .flat_map(flat_escape_split_commas)
+      .collect::<Result<Vec<_>, _>>()?,
     None => vec![],
   };
 
@@ -4384,12 +4428,13 @@ fn fmt_parse(flags: &mut Flags, matches: &mut ArgMatches) {
     single_quote,
     prose_wrap,
     no_semicolons,
-    watch: watch_arg_parse(matches),
+    watch: watch_arg_parse(matches)?,
     unstable_css,
     unstable_html,
     unstable_component,
     unstable_yaml,
   });
+  Ok(())
 }
 
 fn init_parse(flags: &mut Flags, matches: &mut ArgMatches) {
@@ -4400,9 +4445,12 @@ fn init_parse(flags: &mut Flags, matches: &mut ArgMatches) {
   });
 }
 
-fn info_parse(flags: &mut Flags, matches: &mut ArgMatches) {
+fn info_parse(
+  flags: &mut Flags,
+  matches: &mut ArgMatches,
+) -> clap::error::Result<()> {
   unstable_args_parse(flags, matches, UnstableArgsConfig::ResolutionOnly);
-  reload_arg_parse(flags, matches);
+  reload_arg_parse(flags, matches)?;
   config_args_parse(flags, matches);
   import_map_arg_parse(flags, matches);
   location_arg_parse(flags, matches);
@@ -4417,10 +4465,15 @@ fn info_parse(flags: &mut Flags, matches: &mut ArgMatches) {
     file: matches.remove_one::<String>("file"),
     json,
   });
+
+  Ok(())
 }
 
-fn install_parse(flags: &mut Flags, matches: &mut ArgMatches) {
-  runtime_args_parse(flags, matches, true, true);
+fn install_parse(
+  flags: &mut Flags,
+  matches: &mut ArgMatches,
+) -> clap::error::Result<()> {
+  runtime_args_parse(flags, matches, true, true)?;
 
   let global = matches.get_flag("global");
   if global {
@@ -4442,11 +4495,11 @@ fn install_parse(flags: &mut Flags, matches: &mut ArgMatches) {
         force,
       }),
     });
-    return;
+    return Ok(());
   }
 
   // allow scripts only applies to local install
-  allow_scripts_arg_parse(flags, matches);
+  allow_scripts_arg_parse(flags, matches)?;
   if matches.get_flag("entrypoint") {
     let entrypoints = matches.remove_many::<String>("cmd").unwrap_or_default();
     flags.subcommand = DenoSubcommand::Install(InstallFlags {
@@ -4466,6 +4519,7 @@ fn install_parse(flags: &mut Flags, matches: &mut ArgMatches) {
       kind: InstallKind::Local(InstallFlagsLocal::TopLevel),
     });
   }
+  Ok(())
 }
 
 fn json_reference_parse(
@@ -4541,6 +4595,8 @@ fn json_reference_parse(
 }
 
 fn jupyter_parse(flags: &mut Flags, matches: &mut ArgMatches) {
+  unstable_args_parse(flags, matches, UnstableArgsConfig::ResolutionAndRuntime);
+
   let conn_file = matches.remove_one::<String>("conn");
   let kernel = matches.get_flag("kernel");
   let install = matches.get_flag("install");
@@ -4577,7 +4633,10 @@ fn lsp_parse(flags: &mut Flags, _matches: &mut ArgMatches) {
   flags.subcommand = DenoSubcommand::Lsp;
 }
 
-fn lint_parse(flags: &mut Flags, matches: &mut ArgMatches) {
+fn lint_parse(
+  flags: &mut Flags,
+  matches: &mut ArgMatches,
+) -> clap::error::Result<()> {
   unstable_args_parse(flags, matches, UnstableArgsConfig::ResolutionOnly);
 
   config_args_parse(flags, matches);
@@ -4586,7 +4645,9 @@ fn lint_parse(flags: &mut Flags, matches: &mut ArgMatches) {
     None => vec![],
   };
   let ignore = match matches.remove_many::<String>("ignore") {
-    Some(f) => f.collect(),
+    Some(f) => f
+      .flat_map(flat_escape_split_commas)
+      .collect::<Result<Vec<_>, _>>()?,
     None => vec![],
   };
   let fix = matches.get_flag("fix");
@@ -4619,18 +4680,27 @@ fn lint_parse(flags: &mut Flags, matches: &mut ArgMatches) {
     maybe_rules_exclude,
     json,
     compact,
-    watch: watch_arg_parse(matches),
+    watch: watch_arg_parse(matches)?,
     ext,
   });
+  Ok(())
 }
 
-fn repl_parse(flags: &mut Flags, matches: &mut ArgMatches) {
-  runtime_args_parse(flags, matches, true, true);
+fn repl_parse(
+  flags: &mut Flags,
+  matches: &mut ArgMatches,
+) -> clap::error::Result<()> {
+  runtime_args_parse(flags, matches, true, true)?;
   unsafely_ignore_certificate_errors_parse(flags, matches);
 
   let eval_files = matches
     .remove_many::<String>("eval-file")
-    .map(|values| values.collect());
+    .map(|values| {
+      values
+        .flat_map(flat_escape_split_commas)
+        .collect::<Result<Vec<_>, _>>()
+    })
+    .transpose()?;
 
   handle_repl_flags(
     flags,
@@ -4640,6 +4710,7 @@ fn repl_parse(flags: &mut Flags, matches: &mut ArgMatches) {
       is_default_command: false,
     },
   );
+  Ok(())
 }
 
 fn run_parse(
@@ -4648,7 +4719,7 @@ fn run_parse(
   app: Command,
   bare: bool,
 ) -> clap::error::Result<()> {
-  runtime_args_parse(flags, matches, true, true);
+  runtime_args_parse(flags, matches, true, true)?;
   ext_arg_parse(flags, matches);
 
   flags.code_cache_enabled = !matches.get_flag("no-code-cache");
@@ -4658,7 +4729,7 @@ fn run_parse(
     flags.argv.extend(script_arg);
     flags.subcommand = DenoSubcommand::Run(RunFlags {
       script,
-      watch: watch_arg_parse_with_paths(matches),
+      watch: watch_arg_parse_with_paths(matches)?,
       bare,
     });
   } else if bare {
@@ -4690,7 +4761,7 @@ fn serve_parse(
 
   let worker_count = parallel_arg_parse(matches).map(|v| v.get());
 
-  runtime_args_parse(flags, matches, true, true);
+  runtime_args_parse(flags, matches, true, true)?;
   // If the user didn't pass --allow-net, add this port to the network
   // allowlist. If the host is 0.0.0.0, we add :{port} and allow the same network perms
   // as if it was passed to --allow-net directly.
@@ -4726,7 +4797,7 @@ fn serve_parse(
 
   flags.subcommand = DenoSubcommand::Serve(ServeFlags {
     script,
-    watch: watch_arg_parse_with_paths(matches),
+    watch: watch_arg_parse_with_paths(matches)?,
     port,
     host,
     worker_count,
@@ -4776,15 +4847,20 @@ fn parallel_arg_parse(matches: &mut ArgMatches) -> Option<NonZeroUsize> {
   }
 }
 
-fn test_parse(flags: &mut Flags, matches: &mut ArgMatches) {
+fn test_parse(
+  flags: &mut Flags,
+  matches: &mut ArgMatches,
+) -> clap::error::Result<()> {
   flags.type_check_mode = TypeCheckMode::Local;
-  runtime_args_parse(flags, matches, true, true);
+  runtime_args_parse(flags, matches, true, true)?;
   // NOTE: `deno test` always uses `--no-prompt`, tests shouldn't ever do
   // interactive prompts, unless done by user code
   flags.permissions.no_prompt = true;
 
   let ignore = match matches.remove_many::<String>("ignore") {
-    Some(f) => f.collect(),
+    Some(f) => f
+      .flat_map(flat_escape_split_commas)
+      .collect::<Result<_, _>>()?,
     None => vec![],
   };
 
@@ -4861,11 +4937,12 @@ fn test_parse(flags: &mut Flags, matches: &mut ArgMatches) {
     permit_no_files,
     concurrent_jobs,
     trace_leaks,
-    watch: watch_arg_parse_with_paths(matches),
+    watch: watch_arg_parse_with_paths(matches)?,
     reporter,
     junit_path,
     hide_stacktraces,
   });
+  Ok(())
 }
 
 fn types_parse(flags: &mut Flags, _matches: &mut ArgMatches) {
@@ -4915,42 +4992,123 @@ fn publish_parse(flags: &mut Flags, matches: &mut ArgMatches) {
   });
 }
 
-fn compile_args_parse(flags: &mut Flags, matches: &mut ArgMatches) {
-  compile_args_without_check_parse(flags, matches);
+fn compile_args_parse(
+  flags: &mut Flags,
+  matches: &mut ArgMatches,
+) -> clap::error::Result<()> {
+  compile_args_without_check_parse(flags, matches)?;
   no_check_arg_parse(flags, matches);
   check_arg_parse(flags, matches);
+  Ok(())
 }
 
 fn compile_args_without_check_parse(
   flags: &mut Flags,
   matches: &mut ArgMatches,
-) {
+) -> clap::error::Result<()> {
   import_map_arg_parse(flags, matches);
   no_remote_arg_parse(flags, matches);
   no_npm_arg_parse(flags, matches);
   node_modules_and_vendor_dir_arg_parse(flags, matches);
   config_args_parse(flags, matches);
-  reload_arg_parse(flags, matches);
+  reload_arg_parse(flags, matches)?;
   lock_args_parse(flags, matches);
   ca_file_arg_parse(flags, matches);
   unsafely_ignore_certificate_errors_parse(flags, matches);
+  Ok(())
 }
 
-fn permission_args_parse(flags: &mut Flags, matches: &mut ArgMatches) {
+fn escape_and_split_commas(s: String) -> Result<Vec<String>, clap::Error> {
+  let mut result = vec![];
+  let mut current = String::new();
+  let mut chars = s.chars();
+
+  while let Some(c) = chars.next() {
+    if c == ',' {
+      if let Some(next) = chars.next() {
+        if next == ',' {
+          current.push(',');
+        } else {
+          if current.is_empty() {
+            return Err(
+              std::io::Error::new(
+                std::io::ErrorKind::Other,
+                String::from("Empty values are not allowed"),
+              )
+              .into(),
+            );
+          }
+
+          result.push(current.clone());
+          current.clear();
+          current.push(next);
+        }
+      } else {
+        return Err(
+          std::io::Error::new(
+            std::io::ErrorKind::Other,
+            String::from("Empty values are not allowed"),
+          )
+          .into(),
+        );
+      }
+    } else {
+      current.push(c);
+    }
+  }
+
+  if current.is_empty() {
+    return Err(
+      std::io::Error::new(
+        std::io::ErrorKind::Other,
+        String::from("Empty values are not allowed"),
+      )
+      .into(),
+    );
+  }
+
+  result.push(current);
+
+  Ok(result)
+}
+
+fn flat_escape_split_commas(str: String) -> Vec<Result<String, clap::Error>> {
+  match escape_and_split_commas(str) {
+    Ok(vec) => vec.into_iter().map(Ok).collect::<Vec<_>>(),
+    Err(e) => vec![Err(e)],
+  }
+}
+
+fn permission_args_parse(
+  flags: &mut Flags,
+  matches: &mut ArgMatches,
+) -> clap::error::Result<()> {
   if let Some(read_wl) = matches.remove_many::<String>("allow-read") {
-    flags.permissions.allow_read = Some(read_wl.collect());
+    let read_wl = read_wl
+      .flat_map(flat_escape_split_commas)
+      .collect::<Result<Vec<_>, _>>()?;
+    flags.permissions.allow_read = Some(read_wl);
   }
 
   if let Some(read_wl) = matches.remove_many::<String>("deny-read") {
-    flags.permissions.deny_read = Some(read_wl.collect());
+    let read_wl = read_wl
+      .flat_map(flat_escape_split_commas)
+      .collect::<Result<Vec<_>, _>>()?;
+    flags.permissions.deny_read = Some(read_wl);
   }
 
   if let Some(write_wl) = matches.remove_many::<String>("allow-write") {
-    flags.permissions.allow_write = Some(write_wl.collect());
+    let write_wl = write_wl
+      .flat_map(flat_escape_split_commas)
+      .collect::<Result<Vec<_>, _>>()?;
+    flags.permissions.allow_write = Some(write_wl);
   }
 
   if let Some(write_wl) = matches.remove_many::<String>("deny-write") {
-    flags.permissions.deny_write = Some(write_wl.collect());
+    let write_wl = write_wl
+      .flat_map(flat_escape_split_commas)
+      .collect::<Result<Vec<_>, _>>()?;
+    flags.permissions.deny_write = Some(write_wl);
   }
 
   if let Some(net_wl) = matches.remove_many::<String>("allow-net") {
@@ -4994,12 +5152,18 @@ fn permission_args_parse(flags: &mut Flags, matches: &mut ArgMatches) {
   }
 
   if let Some(ffi_wl) = matches.remove_many::<String>("allow-ffi") {
-    flags.permissions.allow_ffi = Some(ffi_wl.collect());
+    let ffi_wl = ffi_wl
+      .flat_map(flat_escape_split_commas)
+      .collect::<Result<Vec<_>, _>>()?;
+    flags.permissions.allow_ffi = Some(ffi_wl);
     debug!("ffi allowlist: {:#?}", &flags.permissions.allow_ffi);
   }
 
   if let Some(ffi_wl) = matches.remove_many::<String>("deny-ffi") {
-    flags.permissions.deny_ffi = Some(ffi_wl.collect());
+    let ffi_wl = ffi_wl
+      .flat_map(flat_escape_split_commas)
+      .collect::<Result<Vec<_>, _>>()?;
+    flags.permissions.deny_ffi = Some(ffi_wl);
     debug!("ffi denylist: {:#?}", &flags.permissions.deny_ffi);
   }
 
@@ -5014,6 +5178,8 @@ fn permission_args_parse(flags: &mut Flags, matches: &mut ArgMatches) {
   if matches.get_flag("no-prompt") {
     flags.permissions.no_prompt = true;
   }
+
+  Ok(())
 }
 
 fn unsafely_ignore_certificate_errors_parse(
@@ -5033,13 +5199,13 @@ fn runtime_args_parse(
   matches: &mut ArgMatches,
   include_perms: bool,
   include_inspector: bool,
-) {
+) -> clap::error::Result<()> {
   unstable_args_parse(flags, matches, UnstableArgsConfig::ResolutionAndRuntime);
-  compile_args_parse(flags, matches);
+  compile_args_parse(flags, matches)?;
   cached_only_arg_parse(flags, matches);
   frozen_lockfile_arg_parse(flags, matches);
   if include_perms {
-    permission_args_parse(flags, matches);
+    permission_args_parse(flags, matches)?;
   }
   if include_inspector {
     inspect_arg_parse(flags, matches);
@@ -5050,6 +5216,7 @@ fn runtime_args_parse(
   enable_testing_features_arg_parse(flags, matches);
   env_file_arg_parse(flags, matches);
   strace_ops_parse(flags, matches);
+  Ok(())
 }
 
 fn inspect_arg_parse(flags: &mut Flags, matches: &mut ArgMatches) {
@@ -5066,9 +5233,15 @@ fn env_file_arg_parse(flags: &mut Flags, matches: &mut ArgMatches) {
   flags.env_file = matches.remove_one::<String>("env-file");
 }
 
-fn reload_arg_parse(flags: &mut Flags, matches: &mut ArgMatches) {
+fn reload_arg_parse(
+  flags: &mut Flags,
+  matches: &mut ArgMatches,
+) -> clap::error::Result<()> {
   if let Some(cache_bl) = matches.remove_many::<String>("reload") {
-    let raw_cache_blocklist: Vec<String> = cache_bl.collect();
+    let raw_cache_blocklist: Vec<String> = cache_bl
+      .flat_map(flat_escape_split_commas)
+      .map(|s| s.and_then(reload_arg_validate))
+      .collect::<Result<Vec<_>, _>>()?;
     if raw_cache_blocklist.is_empty() {
       flags.reload = true;
     } else {
@@ -5077,6 +5250,8 @@ fn reload_arg_parse(flags: &mut Flags, matches: &mut ArgMatches) {
       flags.reload = false;
     }
   }
+
+  Ok(())
 }
 
 fn ca_file_arg_parse(flags: &mut Flags, matches: &mut ArgMatches) {
@@ -5208,61 +5383,90 @@ fn node_modules_and_vendor_dir_arg_parse(
   flags.vendor = matches.remove_one::<bool>("vendor");
 }
 
-fn reload_arg_validate(urlstr: &str) -> Result<String, String> {
+fn reload_arg_validate(urlstr: String) -> Result<String, clap::Error> {
   if urlstr.is_empty() {
-    return Err(String::from("Missing url. Check for extra commas."));
+    return Err(
+      std::io::Error::new(
+        std::io::ErrorKind::Other,
+        String::from("Missing url. Check for extra commas."),
+      )
+      .into(),
+    );
   }
-  match Url::from_str(urlstr) {
-    Ok(_) => Ok(urlstr.to_string()),
-    Err(e) => Err(e.to_string()),
+  match Url::from_str(&urlstr) {
+    Ok(_) => Ok(urlstr),
+    Err(e) => {
+      Err(std::io::Error::new(std::io::ErrorKind::Other, e.to_string()).into())
+    }
   }
 }
 
-fn watch_arg_parse(matches: &mut ArgMatches) -> Option<WatchFlags> {
+fn watch_arg_parse(
+  matches: &mut ArgMatches,
+) -> clap::error::Result<Option<WatchFlags>> {
   if matches.get_flag("watch") {
-    Some(WatchFlags {
+    Ok(Some(WatchFlags {
       hmr: false,
       no_clear_screen: matches.get_flag("no-clear-screen"),
       exclude: matches
         .remove_many::<String>("watch-exclude")
-        .map(|f| f.collect::<Vec<String>>())
+        .map(|f| {
+          f.flat_map(flat_escape_split_commas)
+            .collect::<Result<_, _>>()
+        })
+        .transpose()?
         .unwrap_or_default(),
-    })
+    }))
   } else {
-    None
+    Ok(None)
   }
 }
 
 fn watch_arg_parse_with_paths(
   matches: &mut ArgMatches,
-) -> Option<WatchFlagsWithPaths> {
+) -> clap::error::Result<Option<WatchFlagsWithPaths>> {
   if let Some(paths) = matches.remove_many::<String>("watch") {
-    return Some(WatchFlagsWithPaths {
-      paths: paths.collect(),
+    return Ok(Some(WatchFlagsWithPaths {
+      paths: paths
+        .flat_map(flat_escape_split_commas)
+        .collect::<Result<Vec<_>, _>>()?,
       hmr: false,
       no_clear_screen: matches.get_flag("no-clear-screen"),
       exclude: matches
         .remove_many::<String>("watch-exclude")
-        .map(|f| f.collect::<Vec<String>>())
+        .map(|f| {
+          f.flat_map(flat_escape_split_commas)
+            .collect::<Result<Vec<_>, _>>()
+        })
+        .transpose()?
         .unwrap_or_default(),
-    });
+    }));
   }
 
   if matches.try_contains_id("hmr").is_ok() {
-    return matches.remove_many::<String>("hmr").map(|paths| {
-      WatchFlagsWithPaths {
-        paths: paths.collect(),
-        hmr: true,
-        no_clear_screen: matches.get_flag("no-clear-screen"),
-        exclude: matches
-          .remove_many::<String>("watch-exclude")
-          .map(|f| f.collect::<Vec<String>>())
-          .unwrap_or_default(),
-      }
-    });
+    return matches
+      .remove_many::<String>("hmr")
+      .map(|paths| {
+        Ok(WatchFlagsWithPaths {
+          paths: paths
+            .flat_map(flat_escape_split_commas)
+            .collect::<Result<Vec<_>, _>>()?,
+          hmr: true,
+          no_clear_screen: matches.get_flag("no-clear-screen"),
+          exclude: matches
+            .remove_many::<String>("watch-exclude")
+            .map(|f| {
+              f.flat_map(flat_escape_split_commas)
+                .collect::<Result<Vec<_>, _>>()
+            })
+            .transpose()?
+            .unwrap_or_default(),
+        })
+      })
+      .transpose();
   }
 
-  None
+  Ok(None)
 }
 
 fn unstable_args_parse(
@@ -7646,14 +7850,6 @@ mod tests {
       "script.ts"
     ]);
     assert!(r.is_err(), "Should reject a trailing comma");
-
-    let r = flags_from_vec(svec![
-      "deno",
-      "run",
-      "--reload=http://deno.land/a,,http://deno.land/b",
-      "script.ts"
-    ]);
-    assert!(r.is_err(), "Should reject adjacent commas");
   }
 
   #[test]
@@ -10325,31 +10521,53 @@ mod tests {
   }
 
   #[test]
-  fn add_subcommand() {
+  fn add_or_install_subcommand() {
     let r = flags_from_vec(svec!["deno", "add"]);
     r.unwrap_err();
+    for cmd in ["add", "install"] {
+      let mk_flags = |flags: AddFlags| -> Flags {
+        match cmd {
+          "add" => Flags {
+            subcommand: DenoSubcommand::Add(flags),
+            ..Flags::default()
+          },
+          "install" => Flags {
+            subcommand: DenoSubcommand::Install(InstallFlags {
+              kind: InstallKind::Local(InstallFlagsLocal::Add(flags)),
+            }),
+            ..Flags::default()
+          },
+          _ => unreachable!(),
+        }
+      };
 
-    let r = flags_from_vec(svec!["deno", "add", "@david/which"]);
-    assert_eq!(
-      r.unwrap(),
-      Flags {
-        subcommand: DenoSubcommand::Add(AddFlags {
+      let r = flags_from_vec(svec!["deno", cmd, "@david/which"]);
+      assert_eq!(
+        r.unwrap(),
+        mk_flags(AddFlags {
           packages: svec!["@david/which"],
-        }),
-        ..Flags::default()
-      }
-    );
+          dev: false,
+        }) // default is false
+      );
 
-    let r = flags_from_vec(svec!["deno", "add", "@david/which", "@luca/hello"]);
-    assert_eq!(
-      r.unwrap(),
-      Flags {
-        subcommand: DenoSubcommand::Add(AddFlags {
+      let r = flags_from_vec(svec!["deno", cmd, "@david/which", "@luca/hello"]);
+      assert_eq!(
+        r.unwrap(),
+        mk_flags(AddFlags {
           packages: svec!["@david/which", "@luca/hello"],
+          dev: false,
+        })
+      );
+
+      let r = flags_from_vec(svec!["deno", cmd, "--dev", "npm:chalk"]);
+      assert_eq!(
+        r.unwrap(),
+        mk_flags(AddFlags {
+          packages: svec!["npm:chalk"],
+          dev: true,
         }),
-        ..Flags::default()
-      }
-    );
+      );
+    }
   }
 
   #[test]
@@ -10561,5 +10779,61 @@ mod tests {
       .unwrap_err()
       .to_string()
       .contains("Note: Permission flags can only be used in a global setting"));
+  }
+
+  #[test]
+  fn jupyter_unstable_flags() {
+    let r = flags_from_vec(svec![
+      "deno",
+      "jupyter",
+      "--unstable-ffi",
+      "--unstable-bare-node-builtins",
+      "--unstable-worker-options"
+    ]);
+
+    assert_eq!(
+      r.unwrap(),
+      Flags {
+        subcommand: DenoSubcommand::Jupyter(JupyterFlags {
+          install: false,
+          kernel: false,
+          conn_file: None,
+        }),
+        unstable_config: UnstableConfig {
+          legacy_flag_enabled: false,
+          bare_node_builtins: true,
+          sloppy_imports: false,
+          features: svec!["ffi", "worker-options"],
+        },
+        ..Flags::default()
+      }
+    );
+  }
+
+  #[test]
+  fn escape_and_split_commas_test() {
+    assert_eq!(escape_and_split_commas("foo".to_string()).unwrap(), ["foo"]);
+    assert!(escape_and_split_commas("foo,".to_string()).is_err());
+    assert_eq!(
+      escape_and_split_commas("foo,,".to_string()).unwrap(),
+      ["foo,"]
+    );
+    assert!(escape_and_split_commas("foo,,,".to_string()).is_err());
+    assert_eq!(
+      escape_and_split_commas("foo,,,,".to_string()).unwrap(),
+      ["foo,,"]
+    );
+    assert_eq!(
+      escape_and_split_commas("foo,bar".to_string()).unwrap(),
+      ["foo", "bar"]
+    );
+    assert_eq!(
+      escape_and_split_commas("foo,,bar".to_string()).unwrap(),
+      ["foo,bar"]
+    );
+    assert_eq!(
+      escape_and_split_commas("foo,,,bar".to_string()).unwrap(),
+      ["foo,", "bar"]
+    );
   }
 }

@@ -1152,7 +1152,6 @@ delete Object.prototype.__proto__;
         "strict": true,
         "target": "esnext",
         "useDefineForClassFields": true,
-        "useUnknownInCatchVariables": false,
         "jsx": "react",
         "jsxFactory": "React.createElement",
         "jsxFragmentFactory": "React.Fragment",

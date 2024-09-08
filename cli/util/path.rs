@@ -42,6 +42,21 @@ pub fn get_extension(file_path: &Path) -> Option<String> {
     .map(|e| e.to_lowercase());
 }
 
+pub fn specifier_has_extension(
+  specifier: &ModuleSpecifier,
+  searching_ext: &str,
+) -> bool {
+  let Some((_, ext)) = specifier.path().rsplit_once('.') else {
+    return false;
+  };
+  let searching_ext = searching_ext.strip_prefix('.').unwrap_or(searching_ext);
+  debug_assert!(!searching_ext.contains('.')); // exts like .d.ts are not implemented here
+  if ext.len() != searching_ext.len() {
+    return false;
+  }
+  ext.eq_ignore_ascii_case(searching_ext)
+}
+
 pub fn get_atomic_dir_path(file_path: &Path) -> PathBuf {
   let rand = gen_rand_path_component();
   let new_file_name = format!(
@@ -375,6 +390,18 @@ mod test {
         "from: \"{from_str}\" to: \"{to_str}\""
       );
     }
+  }
+
+  #[test]
+  fn test_specifier_has_extension() {
+    fn get(specifier: &str, ext: &str) -> bool {
+      specifier_has_extension(&ModuleSpecifier::parse(specifier).unwrap(), ext)
+    }
+
+    assert!(get("file:///a/b/c.ts", "ts"));
+    assert!(get("file:///a/b/c.ts", ".ts"));
+    assert!(!get("file:///a/b/c.ts", ".cts"));
+    assert!(get("file:///a/b/c.CtS", ".cts"));
   }
 
   #[test]

@@ -238,7 +238,6 @@
     "ext:runtime/06_util.js": "../runtime/js/06_util.js",
     "ext:runtime/10_permissions.js": "../runtime/js/10_permissions.js",
     "ext:runtime/11_workers.js": "../runtime/js/11_workers.js",
-    "ext:runtime/13_buffer.js": "../runtime/js/13_buffer.js",
     "ext:runtime/30_os.js": "../runtime/js/30_os.js",
     "ext:runtime/40_fs_events.js": "../runtime/js/40_fs_events.js",
     "ext:runtime/40_process.js": "../runtime/js/40_process.js",

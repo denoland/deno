@@ -10,6 +10,7 @@ use std::cmp::Ordering;
 use std::collections::hash_map::Entry;
 use std::collections::BTreeMap;
 use std::collections::HashMap;
+use std::collections::HashSet;
 use std::fs;
 use std::path::Path;
 use std::path::PathBuf;
@@ -620,6 +621,9 @@ async fn sync_resolution_with_fs(
 
   let mut found_names: HashMap<&String, &PackageNv> = HashMap::new();
 
+  // set of node_modules in workspace packages that we've already ensured exist
+  let mut existing_child_node_modules_dirs: HashSet<PathBuf> = HashSet::new();
+
   // 4. Create symlinks for package json dependencies
   {
     for remote in npm_install_deps_provider.remote_pkgs() {
@@ -667,8 +671,15 @@ async fn sync_resolution_with_fs(
       );
       if install_in_child {
         // symlink the dep into the package's child node_modules folder
-        let dest_path =
-          remote.base_dir.join("node_modules").join(&remote.alias);
+        let dest_node_modules = remote.base_dir.join("node_modules");
+        if !existing_child_node_modules_dirs.contains(&dest_node_modules) {
+          fs::create_dir_all(&dest_node_modules).with_context(|| {
+            format!("Creating '{}'", dest_node_modules.display())
+          })?;
+          existing_child_node_modules_dirs.insert(dest_node_modules.clone());
+        }
+        let mut dest_path = dest_node_modules;
+        dest_path.push(&remote.alias);
 
         symlink_package_dir(&local_registry_package_path, &dest_path)?;
       } else {
