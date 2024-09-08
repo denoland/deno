@@ -315,7 +315,7 @@ pub trait QueryDescriptor {
   fn flag_name() -> &'static str;
   fn display_name(&self) -> Cow<str>;
 
-  fn as_allow(&self) -> Self::AllowDesc;
+  fn as_allow(&self) -> Option<Self::AllowDesc>;
   fn as_deny(&self) -> Self::DenyDesc;
 
   /// Generic check function to check this descriptor against a `UnaryPermission`.
@@ -431,7 +431,7 @@ impl<TQuery: QueryDescriptor> UnaryPermission<TQuery> {
         if is_allow_all {
           self.insert_granted(None);
         } else {
-          self.insert_granted(desc.map(|d| d.as_allow()));
+          self.insert_granted(desc);
         }
       } else {
         self.insert_prompt_denied(desc.map(|d| d.as_deny()));
@@ -477,7 +477,7 @@ impl<TQuery: QueryDescriptor> UnaryPermission<TQuery> {
   fn request_desc(&mut self, desc: Option<&TQuery>) -> PermissionState {
     let state = self.query_desc(desc, AllowPartial::TreatAsPartialGranted);
     if state == PermissionState::Granted {
-      self.insert_granted(desc.map(|d| d.as_allow()));
+      self.insert_granted(desc);
       return state;
     }
     if state != PermissionState::Prompt {
@@ -496,7 +496,7 @@ impl<TQuery: QueryDescriptor> UnaryPermission<TQuery> {
       true,
     ) {
       PromptResponse::Allow => {
-        self.insert_granted(desc.map(|d| d.as_allow()));
+        self.insert_granted(desc);
         PermissionState::Granted
       }
       PromptResponse::Deny => {
@@ -559,8 +559,19 @@ impl<TQuery: QueryDescriptor> UnaryPermission<TQuery> {
     }
   }
 
-  fn insert_granted(&mut self, desc: Option<TQuery::AllowDesc>) {
+  fn insert_granted(&mut self, desc: Option<&TQuery>) -> bool {
+    let desc = match desc.map(|d| d.as_allow()) {
+      Some(Some(allow_desc)) => Some(allow_desc),
+      Some(None) => {
+        // the user was prompted for this descriptor in order to not
+        // expose anything about the system to the program, but the
+        // descriptor wasn't valid so no permissions was raised
+        return false;
+      }
+      None => None,
+    };
     Self::list_insert(desc, &mut self.granted_global, &mut self.granted_list);
+    true
   }
 
   fn insert_prompt_denied(&mut self, desc: Option<TQuery::DenyDesc>) {
@@ -663,8 +674,8 @@ impl QueryDescriptor for ReadQueryDescriptor {
     Cow::Borrowed(self.0.requested.as_str())
   }
 
-  fn as_allow(&self) -> Self::AllowDesc {
-    ReadDescriptor(self.0.resolved.clone())
+  fn as_allow(&self) -> Option<Self::AllowDesc> {
+    Some(ReadDescriptor(self.0.resolved.clone()))
   }
 
   fn as_deny(&self) -> Self::DenyDesc {
@@ -727,8 +738,8 @@ impl QueryDescriptor for WriteQueryDescriptor {
     Cow::Borrowed(&self.0.requested)
   }
 
-  fn as_allow(&self) -> Self::AllowDesc {
-    WriteDescriptor(self.0.resolved.clone())
+  fn as_allow(&self) -> Option<Self::AllowDesc> {
+    Some(WriteDescriptor(self.0.resolved.clone()))
   }
 
   fn as_deny(&self) -> Self::DenyDesc {
@@ -839,8 +850,8 @@ impl QueryDescriptor for NetDescriptor {
     Cow::from(format!("{}", self))
   }
 
-  fn as_allow(&self) -> Self::AllowDesc {
-    self.clone()
+  fn as_allow(&self) -> Option<Self::AllowDesc> {
+    Some(self.clone())
   }
 
   fn as_deny(&self) -> Self::DenyDesc {
@@ -973,8 +984,8 @@ impl QueryDescriptor for EnvDescriptor {
     Cow::from(self.0.as_ref())
   }
 
-  fn as_allow(&self) -> Self::AllowDesc {
-    self.clone()
+  fn as_allow(&self) -> Option<Self::AllowDesc> {
+    Some(self.clone())
   }
 
   fn as_deny(&self) -> Self::DenyDesc {
@@ -1022,7 +1033,18 @@ impl AsRef<str> for EnvDescriptor {
 }
 
 #[derive(Clone, Eq, PartialEq, Hash, Debug, Serialize, Deserialize)]
-pub struct RunQueryDescriptor {
+pub enum RunQueryDescriptor {
+  Path(PathRunQueryDescriptor),
+  /// This variant can't be used to grant permissions. It's mostly
+  /// used so that prompts and everything works the same way as when
+  /// the command is resolved, meaning that a script can't tell
+  /// if a command is resolved or not based on how long something
+  /// takes to ask for permissions.
+  Name(String),
+}
+
+#[derive(Clone, Eq, PartialEq, Hash, Debug, Serialize, Deserialize)]
+pub struct PathRunQueryDescriptor {
   pub requested: String,
   pub resolved: PathBuf,
 }
@@ -1036,20 +1058,33 @@ impl QueryDescriptor for RunQueryDescriptor {
   }
 
   fn display_name(&self) -> Cow<str> {
-    Cow::Borrowed(&self.requested)
+    match self {
+      RunQueryDescriptor::Path(path) => Cow::Borrowed(&path.requested),
+      RunQueryDescriptor::Name(name) => Cow::Borrowed(name),
+    }
   }
 
-  fn as_allow(&self) -> Self::AllowDesc {
-    AllowRunDescriptor(self.resolved.clone())
+  fn as_allow(&self) -> Option<Self::AllowDesc> {
+    match self {
+      RunQueryDescriptor::Path(path) => {
+        Some(AllowRunDescriptor(path.resolved.clone()))
+      }
+      RunQueryDescriptor::Name(_) => None,
+    }
   }
 
   fn as_deny(&self) -> Self::DenyDesc {
-    if self.requested.contains('/')
-      || cfg!(windows) && self.requested.contains("\\")
-    {
-      DenyRunDescriptor::Path(self.resolved.clone())
-    } else {
-      DenyRunDescriptor::Name(self.requested.clone())
+    match self {
+      RunQueryDescriptor::Path(path) => {
+        if path.requested.contains('/')
+          || cfg!(windows) && path.requested.contains("\\")
+        {
+          DenyRunDescriptor::Path(path.resolved.clone())
+        } else {
+          DenyRunDescriptor::Name(path.requested.clone())
+        }
+      }
+      RunQueryDescriptor::Name(name) => DenyRunDescriptor::Name(name.clone()),
     }
   }
 
@@ -1063,13 +1098,18 @@ impl QueryDescriptor for RunQueryDescriptor {
   }
 
   fn revokes(&self, other: &Self::AllowDesc) -> bool {
-    if self.resolved == other.0 {
-      return true;
-    }
-    if is_path(&self.requested) {
-      false
-    } else {
-      denies_run_name(&self.requested, &other.0)
+    match self {
+      RunQueryDescriptor::Path(query) => {
+        if query.resolved == other.0 {
+          return true;
+        }
+        if is_path(&query.requested) {
+          false
+        } else {
+          denies_run_name(&query.requested, &other.0)
+        }
+      }
+      RunQueryDescriptor::Name(query) => denies_run_name(query, &other.0),
     }
   }
 }
@@ -1104,14 +1144,19 @@ impl AllowDescriptor for AllowRunDescriptor {
   type Query = RunQueryDescriptor;
 
   fn as_query(&self) -> Self::Query {
-    RunQueryDescriptor {
+    RunQueryDescriptor::Path(PathRunQueryDescriptor {
       requested: self.0.to_string_lossy().into_owned(),
       resolved: self.0.clone(),
-    }
+    })
   }
 
   fn matches(&self, query: &Self::Query) -> bool {
-    query.resolved == self.0
+    match query {
+      RunQueryDescriptor::Path(path) => path.resolved == self.0,
+      // name means we couldn't resolve it and so it's
+      // insecure and matches nothing
+      RunQueryDescriptor::Name(_) => false,
+    }
   }
 }
 
@@ -1142,8 +1187,20 @@ impl DenyDescriptor for DenyRunDescriptor {
 
   fn matches(&self, query: &Self::Query) -> bool {
     match self {
-      DenyRunDescriptor::Name(name) => denies_run_name(name, &query.resolved),
-      DenyRunDescriptor::Path(path) => query.resolved.starts_with(path),
+      DenyRunDescriptor::Name(deny_desc) => match query {
+        RunQueryDescriptor::Path(query) => {
+          denies_run_name(deny_desc, &query.resolved)
+        }
+        // not secure so doesn't match
+        RunQueryDescriptor::Name(_) => false,
+      },
+      DenyRunDescriptor::Path(deny_desc) => match query {
+        RunQueryDescriptor::Path(query) => {
+          query.resolved.starts_with(deny_desc)
+        }
+        // not secure so doesn't match
+        RunQueryDescriptor::Name(_) => false,
+      },
     }
   }
 }
@@ -1185,8 +1242,8 @@ impl QueryDescriptor for SysDescriptor {
     Cow::from(self.0.to_string())
   }
 
-  fn as_allow(&self) -> Self::AllowDesc {
-    self.clone()
+  fn as_allow(&self) -> Option<Self::AllowDesc> {
+    Some(self.clone())
   }
 
   fn as_deny(&self) -> Self::DenyDesc {
@@ -1251,8 +1308,8 @@ impl QueryDescriptor for FfiQueryDescriptor {
     Cow::Borrowed(&self.0.requested)
   }
 
-  fn as_allow(&self) -> Self::AllowDesc {
-    FfiDescriptor(self.0.resolved.clone())
+  fn as_allow(&self) -> Option<Self::AllowDesc> {
+    Some(FfiDescriptor(self.0.resolved.clone()))
   }
 
   fn as_deny(&self) -> Self::DenyDesc {
@@ -1517,7 +1574,6 @@ impl UnaryPermission<RunQueryDescriptor> {
     cmd: &RunQueryDescriptor,
     api_name: Option<&str>,
   ) -> Result<(), AnyError> {
-    debug_assert!(cmd.resolved.is_absolute());
     self.check_desc(Some(cmd), false, api_name)
   }
 

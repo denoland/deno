@@ -2,6 +2,7 @@
 
 use ::deno_permissions::parse_sys_kind;
 use ::deno_permissions::NetDescriptor;
+use ::deno_permissions::PathRunQueryDescriptor;
 use ::deno_permissions::PermissionDescriptorParser;
 use ::deno_permissions::PermissionState;
 use ::deno_permissions::PermissionsContainer;
@@ -106,10 +107,12 @@ pub fn op_query_permission(
       args
         .command
         .as_ref()
-        .and_then(|command| Some((command, which::which(command).ok()?)))
-        .map(|(requested, resolved)| RunQueryDescriptor {
-          requested: requested.to_string(),
-          resolved,
+        .map(|requested| match which::which(requested) {
+          Ok(resolved) => RunQueryDescriptor::Path(PathRunQueryDescriptor {
+            requested: requested.to_string(),
+            resolved,
+          }),
+          Err(_) => RunQueryDescriptor::Name(requested.to_string()),
         })
         .as_ref(),
     ),
@@ -181,10 +184,12 @@ pub fn op_revoke_permission(
       args
         .command
         .as_ref()
-        .and_then(|command| Some((command, which::which(command).ok()?)))
-        .map(|(requested, resolved)| RunQueryDescriptor {
-          requested: requested.to_string(),
-          resolved,
+        .map(|requested| match which::which(requested) {
+          Ok(resolved) => RunQueryDescriptor::Path(PathRunQueryDescriptor {
+            requested: requested.to_string(),
+            resolved,
+          }),
+          Err(_) => RunQueryDescriptor::Name(requested.to_string()),
         })
         .as_ref(),
     ),
@@ -256,10 +261,12 @@ pub fn op_request_permission(
       args
         .command
         .as_ref()
-        .and_then(|command| Some((command, which::which(command).ok()?)))
-        .map(|(requested, resolved)| RunQueryDescriptor {
-          requested: requested.to_string(),
-          resolved,
+        .map(|requested| match which::which(requested) {
+          Ok(resolved) => RunQueryDescriptor::Path(PathRunQueryDescriptor {
+            requested: requested.to_string(),
+            resolved,
+          }),
+          Err(_) => RunQueryDescriptor::Name(requested.to_string()),
         })
         .as_ref(),
     ),
