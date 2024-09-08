@@ -313,9 +313,9 @@ impl PermissionPrompter for TtyPrompter {
 
     // print to stderr so that if stdout is piped this is still displayed.
     let opts: String = if is_unary {
-      format!("[y/n/A] (y = yes, allow; n = no, deny; A = allow all {name} permissions)")
+      format!("[y/n/A/q] (y = yes, allow; n = no, deny; A = allow all {name} permissions; q = quit)")
     } else {
-      "[y/n] (y = yes, allow; n = no, deny)".to_string()
+      "[y/n/q] (y = yes, allow; n = no, deny; q = quit)".to_string()
     };
 
     // output everything in one shot to make the tests more reliable
@@ -397,6 +397,10 @@ impl PermissionPrompter for TtyPrompter {
           let msg = format!("Granted all {name} access.");
           writeln!(stderr_lock, "✅ {}", colors::bold(&msg)).unwrap();
           break PromptResponse::AllowAll;
+        }
+        'q' | 'Q' => {
+          writeln!(stderr_lock, "🛑 Exiting...").unwrap();
+          std::process::exit(0);
         }
         _ => {
           // If we don't get a recognized option try again.
