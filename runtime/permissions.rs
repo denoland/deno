@@ -127,3 +127,24 @@ impl deno_permissions::PermissionDescriptorParser
     })
   }
 }
+
+#[cfg(test)]
+mod test {
+  use std::sync::Arc;
+
+  use deno_fs::RealFs;
+  use deno_permissions::PermissionDescriptorParser;
+
+  use super::*;
+
+  #[test]
+  fn test_handle_empty_value() {
+    let parser = RuntimePermissionDescriptorParser::new(Arc::new(RealFs));
+    assert!(parser.parse_read_descriptor("").is_err());
+    assert!(parser.parse_write_descriptor("").is_err());
+    assert!(parser.parse_env_descriptor("").is_err());
+    assert!(parser.parse_net_descriptor("").is_err());
+    assert!(parser.parse_ffi_descriptor("").is_err());
+    assert!(parser.parse_path_query("").is_err());
+  }
+}
