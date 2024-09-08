@@ -480,6 +480,7 @@ impl WebWorker {
             proxy: None,
           },
         ),
+        deno_kv::KvConfig::builder().build(),
       ),
       deno_cron::deno_cron::init_ops_and_esm(LocalCronHandler::new()),
       deno_napi::deno_napi::init_ops_and_esm::<PermissionsContainer>(),
@@ -505,7 +506,13 @@ impl WebWorker {
       ops::signal::deno_signal::init_ops_and_esm(),
       ops::tty::deno_tty::init_ops_and_esm(),
       ops::http::deno_http_runtime::init_ops_and_esm(),
-      ops::bootstrap::deno_bootstrap::init_ops_and_esm(None),
+      ops::bootstrap::deno_bootstrap::init_ops_and_esm(
+        if options.startup_snapshot.is_some() {
+          None
+        } else {
+          Some(Default::default())
+        },
+      ),
       deno_permissions_web_worker::init_ops_and_esm(
         permissions,
         enable_testing_features,
@@ -538,13 +545,6 @@ impl WebWorker {
       options.bootstrap.enable_op_summary_metrics,
       options.strace_ops,
     );
-    let import_assertions_support = if options.bootstrap.future {
-      deno_core::ImportAssertionsSupport::Error
-    } else {
-      deno_core::ImportAssertionsSupport::CustomCallback(Box::new(
-        crate::shared::import_assertion_callback,
-      ))
-    };
 
     let mut js_runtime = JsRuntime::new(RuntimeOptions {
       module_loader: Some(options.module_loader.clone()),
@@ -565,7 +565,7 @@ impl WebWorker {
       validate_import_attributes_cb: Some(Box::new(
         validate_import_attributes_callback,
       )),
-      import_assertions_support,
+      import_assertions_support: deno_core::ImportAssertionsSupport::Error,
       ..Default::default()
     });
 

@@ -12,6 +12,8 @@ use crate::args::LintReporterKind;
 
 use super::LintError;
 
+const JSON_SCHEMA_VERSION: u8 = 1;
+
 pub fn create_reporter(kind: LintReporterKind) -> Box<dyn LintReporter + Send> {
   match kind {
     LintReporterKind::Pretty => Box::new(PrettyLintReporter::new()),
@@ -170,6 +172,7 @@ struct JsonLintDiagnostic {
 
 #[derive(Serialize)]
 struct JsonLintReporter {
+  version: u8,
   diagnostics: Vec<JsonLintDiagnostic>,
   errors: Vec<LintError>,
 }
@@ -177,6 +180,7 @@ struct JsonLintReporter {
 impl JsonLintReporter {
   fn new() -> JsonLintReporter {
     JsonLintReporter {
+      version: JSON_SCHEMA_VERSION,
       diagnostics: Vec::new(),
       errors: Vec::new(),
     }

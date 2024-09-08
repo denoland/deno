@@ -250,7 +250,7 @@ class UnsafePointer {
       }
     } else {
       throw new TypeError(
-        "Expected ArrayBuffer, ArrayBufferView or UnsafeCallbackPrototype",
+        `Cannot access pointer: expected 'ArrayBuffer', 'ArrayBufferView' or 'UnsafeCallbackPrototype', received ${typeof value}`,
       );
     }
     if (pointer) {
@@ -335,7 +335,9 @@ function getTypeSizeAndAlignment(type, cache = new SafeMap()) {
     const cached = cache.get(type);
     if (cached !== undefined) {
       if (cached === null) {
-        throw new TypeError("Recursive struct definition");
+        throw new TypeError(
+          "Cannot get pointer size: found recursive struct",
+        );
       }
       return cached;
     }
@@ -379,7 +381,7 @@ function getTypeSizeAndAlignment(type, cache = new SafeMap()) {
     case "isize":
       return [8, 8];
     default:
-      throw new TypeError(`Unsupported type: ${type}`);
+      throw new TypeError(`Cannot get pointer size, unsupported type: ${type}`);
   }
 }
 
@@ -395,7 +397,7 @@ class UnsafeCallback {
   constructor(definition, callback) {
     if (definition.nonblocking) {
       throw new TypeError(
-        "Invalid UnsafeCallback, cannot be nonblocking",
+        "Cannot construct UnsafeCallback: cannot be nonblocking",
       );
     }
     const { 0: rid, 1: pointer } = op_ffi_unsafe_callback_create(
@@ -467,7 +469,7 @@ class DynamicLibrary {
         const type = symbols[symbol].type;
         if (type === "void") {
           throw new TypeError(
-            "Foreign symbol of type 'void' is not supported.",
+            "Foreign symbol of type 'void' is not supported",
           );
         }
 
@@ -482,10 +484,11 @@ class DynamicLibrary {
           this.symbols,
           symbol,
           {
+            __proto__: null,
             configurable: false,
             enumerable: true,
-            value,
             writable: false,
+            value,
           },
         );
         continue;
@@ -502,8 +505,10 @@ class DynamicLibrary {
           this.symbols,
           symbol,
           {
+            __proto__: null,
             configurable: false,
             enumerable: true,
+            writable: false,
             value: (...parameters) => {
               if (isStructResult) {
                 const buffer = new Uint8Array(structSize);
@@ -525,7 +530,6 @@ class DynamicLibrary {
                 );
               }
             },
-            writable: false,
           },
         );
       }

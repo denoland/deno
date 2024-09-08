@@ -163,7 +163,6 @@ declare type BodyInit =
   | FormData
   | URLSearchParams
   | ReadableStream<Uint8Array>
-  | AsyncIterable<Uint8Array>
   | string;
 /** @category Fetch */
 declare type RequestDestination =

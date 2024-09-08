@@ -513,6 +513,7 @@ export class ClientHttp2Session extends Http2Session {
           this.emit("error", e);
         }
       })();
+      this[kState].flags |= SESSION_FLAGS_READY;
       this.emit("connect", this, {});
     })();
   }
@@ -839,6 +840,11 @@ async function clientHttp2Request(
     reqHeaders,
   );
 
+  if (session.closed || session.destroyed) {
+    debugHttp2(">>> session closed during request promise");
+    throw new ERR_HTTP2_STREAM_CANCEL();
+  }
+
   return await op_http2_client_request(
     session[kDenoClientRid],
     pseudoHeaders,
@@ -899,6 +905,12 @@ export class ClientHttp2Stream extends Duplex {
         session[kDenoClientRid],
         this.#rid,
       );
+
+      if (session.closed || session.destroyed) {
+        debugHttp2(">>> session closed during response promise");
+        throw new ERR_HTTP2_STREAM_CANCEL();
+      }
+
       const [response, endStream] = await op_http2_client_get_response(
         this.#rid,
       );
@@ -917,7 +929,12 @@ export class ClientHttp2Stream extends Duplex {
       );
       this[kDenoResponse] = response;
       this.emit("ready");
-    })();
+    })().catch((e) => {
+      if (!(e instanceof ERR_HTTP2_STREAM_CANCEL)) {
+        debugHttp2(">>> request/response promise error", e);
+      }
+      this.destroy(e);
+    });
   }
 
   [kUpdateTimer]() {

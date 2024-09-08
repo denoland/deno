@@ -12,13 +12,17 @@ const {
 } = primordials;
 
 import {
+  op_node_create_ec_jwk,
+  op_node_create_ed_raw,
   op_node_create_private_key,
   op_node_create_public_key,
+  op_node_create_rsa_jwk,
   op_node_create_secret_key,
   op_node_derive_public_key_from_private_key,
   op_node_export_private_key_der,
   op_node_export_private_key_pem,
   op_node_export_public_key_der,
+  op_node_export_public_key_jwk,
   op_node_export_public_key_pem,
   op_node_export_secret_key,
   op_node_export_secret_key_b64url,
@@ -32,6 +36,7 @@ import { kHandle } from "ext:deno_node/internal/crypto/constants.ts";
 import { isStringOrBuffer } from "ext:deno_node/internal/crypto/cipher.ts";
 import {
   ERR_CRYPTO_INCOMPATIBLE_KEY_OPTIONS,
+  ERR_CRYPTO_INVALID_JWK,
   ERR_CRYPTO_INVALID_KEY_OBJECT_TYPE,
   ERR_INVALID_ARG_TYPE,
   ERR_INVALID_ARG_VALUE,
@@ -56,6 +61,7 @@ import {
 import {
   validateObject,
   validateOneOf,
+  validateString,
 } from "ext:deno_node/internal/validators.mjs";
 import { BufferEncoding } from "ext:deno_node/_global.d.ts";
 
@@ -256,6 +262,97 @@ export function getKeyObjectHandle(key: KeyObject, ctx: KeyHandleContext) {
   return key[kHandle];
 }
 
+function getKeyObjectHandleFromJwk(key, ctx) {
+  validateObject(key, "key");
+  validateOneOf(
+    key.kty,
+    "key.kty",
+    ["RSA", "EC", "OKP"],
+  );
+  const isPublic = ctx === kConsumePublic || ctx === kCreatePublic;
+
+  if (key.kty === "OKP") {
+    validateString(key.crv, "key.crv");
+    validateOneOf(
+      key.crv,
+      "key.crv",
+      ["Ed25519", "Ed448", "X25519", "X448"],
+    );
+    validateString(key.x, "key.x");
+
+    if (!isPublic) {
+      validateString(key.d, "key.d");
+    }
+
+    let keyData;
+    if (isPublic) {
+      keyData = Buffer.from(key.x, "base64");
+    } else {
+      keyData = Buffer.from(key.d, "base64");
+    }
+
+    switch (key.crv) {
+      case "Ed25519":
+      case "X25519":
+        if (keyData.byteLength !== 32) {
+          throw new ERR_CRYPTO_INVALID_JWK();
+        }
+        break;
+      case "Ed448":
+        if (keyData.byteLength !== 57) {
+          throw new ERR_CRYPTO_INVALID_JWK();
+        }
+        break;
+      case "X448":
+        if (keyData.byteLength !== 56) {
+          throw new ERR_CRYPTO_INVALID_JWK();
+        }
+        break;
+    }
+
+    return op_node_create_ed_raw(key.crv, keyData, isPublic);
+  }
+
+  if (key.kty === "EC") {
+    validateString(key.crv, "key.crv");
+    validateString(key.x, "key.x");
+    validateString(key.y, "key.y");
+
+    if (!isPublic) {
+      validateString(key.d, "key.d");
+    }
+
+    return op_node_create_ec_jwk(key, isPublic);
+  }
+
+  // RSA
+  validateString(key.n, "key.n");
+  validateString(key.e, "key.e");
+
+  const jwk = {
+    kty: key.kty,
+    n: key.n,
+    e: key.e,
+  };
+
+  if (!isPublic) {
+    validateString(key.d, "key.d");
+    validateString(key.p, "key.p");
+    validateString(key.q, "key.q");
+    validateString(key.dp, "key.dp");
+    validateString(key.dq, "key.dq");
+    validateString(key.qi, "key.qi");
+    jwk.d = key.d;
+    jwk.p = key.p;
+    jwk.q = key.q;
+    jwk.dp = key.dp;
+    jwk.dq = key.dq;
+    jwk.qi = key.qi;
+  }
+
+  return op_node_create_rsa_jwk(jwk, isPublic);
+}
+
 export function prepareAsymmetricKey(
   key:
     | string
@@ -306,7 +403,12 @@ export function prepareAsymmetricKey(
     } else if (isCryptoKey(data)) {
       notImplemented("using CryptoKey as input");
     } else if (isJwk(data) && format === "jwk") {
-      notImplemented("using JWK as input");
+      return {
+        // @ts-ignore __proto__ is magic
+        __proto__: null,
+        handle: getKeyObjectHandleFromJwk(data, ctx),
+        format,
+      };
     }
     // Either PEM or DER using PKCS#1 or SPKI.
     if (!isStringOrBuffer(data)) {
@@ -711,8 +813,9 @@ export class PublicKeyObject extends AsymmetricKeyObject {
 
   export(options: JwkKeyExportOptions | KeyExportOptions<KeyFormat>) {
     if (options && options.format === "jwk") {
-      notImplemented("jwk public key export not implemented");
+      return op_node_export_public_key_jwk(this[kHandle]);
     }
+
     const {
       format,
       type,

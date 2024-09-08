@@ -9,6 +9,7 @@ import {
   assertStringIncludes,
   assertThrows,
   delay,
+  DENO_FUTURE,
   fail,
   unimplemented,
 } from "./test_util.ts";
@@ -1130,7 +1131,7 @@ Deno.test(function fetchResponseConstructorInvalidStatus() {
       assert(e instanceof RangeError);
       assert(
         e.message.endsWith(
-          "is not equal to 101 and outside the range [200, 599].",
+          "is not equal to 101 and outside the range [200, 599]",
         ),
       );
     }
@@ -1358,7 +1359,7 @@ Deno.test(
 );
 
 Deno.test(
-  { permissions: { read: true, net: true } },
+  { permissions: { read: true, net: true }, ignore: DENO_FUTURE },
   async function fetchCustomClientPrivateKey(): Promise<
     void
   > {
@@ -1661,7 +1662,7 @@ Deno.test(
         );
       },
       TypeError,
-      "Fetching files only supports the GET method. Received POST.",
+      "Fetching files only supports the GET method: received POST",
     );
   },
 );

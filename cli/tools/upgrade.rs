@@ -15,6 +15,7 @@ use crate::util::progress_bar::ProgressBarStyle;
 use crate::version;
 
 use async_trait::async_trait;
+use color_print::cstr;
 use deno_core::anyhow::bail;
 use deno_core::anyhow::Context;
 use deno_core::error::AnyError;
@@ -36,6 +37,8 @@ use std::time::Duration;
 const RELEASE_URL: &str = "https://github.com/denoland/deno/releases";
 const CANARY_URL: &str = "https://dl.deno.land/canary";
 const DL_RELEASE_URL: &str = "https://dl.deno.land/release";
+
+static EXAMPLE_USAGE: &str = cstr!("Example usage:\n  <p(245)>deno upgrade | deno upgrade 1.46 | deno upgrade canary</>");
 
 pub static ARCHIVE_NAME: Lazy<String> =
   Lazy::new(|| format!("deno-{}.zip", env!("TARGET")));
@@ -226,15 +229,70 @@ impl<
   }
 }
 
-fn get_minor_version(version: &str) -> &str {
-  version.rsplitn(2, '.').collect::<Vec<&str>>()[1]
+fn get_minor_version_blog_post_url(semver: &Version) -> String {
+  format!("https://deno.com/blog/v{}.{}", semver.major, semver.minor)
 }
 
-fn print_release_notes(current_version: &str, new_version: &str) {
-  // TODO(bartlomieju): we might want to reconsider this one for RC releases.
-  // TODO(bartlomieju): also maybe just parse using `Version::standard` instead
-  // of using `get_minor_version`?
-  if get_minor_version(current_version) == get_minor_version(new_version) {
+fn get_rc_version_blog_post_url(semver: &Version) -> String {
+  format!(
+    "https://deno.com/blog/v{}.{}-rc-{}",
+    semver.major, semver.minor, semver.pre[1]
+  )
+}
+
+async fn print_release_notes(
+  current_version: &str,
+  new_version: &str,
+  client: &HttpClient,
+) {
+  let Ok(current_semver) = Version::parse_standard(current_version) else {
+    return;
+  };
+  let Ok(new_semver) = Version::parse_standard(new_version) else {
+    return;
+  };
+
+  let is_switching_from_deno1_to_deno2 =
+    new_semver.major == 2 && current_semver.major == 1;
+  let is_deno_2_rc = new_semver.major == 2
+    && new_semver.minor == 0
+    && new_semver.patch == 0
+    && new_semver.pre.first() == Some(&"rc".to_string());
+
+  if is_deno_2_rc || is_switching_from_deno1_to_deno2 {
+    log::info!(
+      "{}\n\n  {}\n",
+      colors::gray("Migration guide:"),
+      colors::bold(
+        "https://docs.deno.com/runtime/manual/advanced/migrate_deprecations"
+      )
+    );
+  }
+
+  if is_deno_2_rc {
+    log::info!(
+      "{}\n\n  {}\n",
+      colors::gray("If you find a bug, please report to:"),
+      colors::bold("https://github.com/denoland/deno/issues/new")
+    );
+
+    // Check if there's blog post entry for this release
+    let blog_url_str = get_rc_version_blog_post_url(&new_semver);
+    let blog_url = Url::parse(&blog_url_str).unwrap();
+    if client.download(blog_url).await.is_ok() {
+      log::info!(
+        "{}\n\n  {}\n",
+        colors::gray("Blog post:"),
+        colors::bold(blog_url_str)
+      );
+    }
+    return;
+  }
+
+  let should_print = current_semver.major != new_semver.major
+    || current_semver.minor != new_semver.minor;
+
+  if !should_print {
     return;
   }
 
@@ -249,10 +307,7 @@ fn print_release_notes(current_version: &str, new_version: &str) {
   log::info!(
     "{}\n\n  {}\n",
     colors::gray("Blog post:"),
-    colors::bold(format!(
-      "https://deno.com/blog/v{}",
-      get_minor_version(new_version)
-    ))
+    colors::bold(get_minor_version_blog_post_url(&new_semver))
   );
 }
 
@@ -320,14 +375,14 @@ pub fn check_for_upgrades(
         log::info!(
           "{} {}",
           colors::green("A new canary release of Deno is available."),
-          colors::italic_gray("Run `deno upgrade --canary` to install it.")
+          colors::italic_gray("Run `deno upgrade canary` to install it.")
         );
       }
       ReleaseChannel::Rc => {
         log::info!(
           "{} {}",
           colors::green("A new release candidate of Deno is available."),
-          colors::italic_gray("Run `deno upgrade --rc` to install it.")
+          colors::italic_gray("Run `deno upgrade rc` to install it.")
         );
       }
       ReleaseChannel::Lts => {
@@ -516,7 +571,9 @@ pub async fn upgrade(
       print_release_notes(
         version::DENO_VERSION_INFO.deno,
         &selected_version_to_upgrade.version_or_hash,
-      );
+        &client,
+      )
+      .await;
     }
     drop(temp_dir);
     return Ok(());
@@ -544,7 +601,9 @@ pub async fn upgrade(
     print_release_notes(
       version::DENO_VERSION_INFO.deno,
       &selected_version_to_upgrade.version_or_hash,
-    );
+      &client,
+    )
+    .await;
   }
 
   drop(temp_dir); // delete the temp dir
@@ -595,12 +654,20 @@ impl RequestedVersion {
 
     let (channel, passed_version) = if is_canary {
       if !re_hash.is_match(&passed_version) {
-        bail!("Invalid commit hash passed");
+        bail!(
+          "Invalid commit hash passed ({})\n\n{}",
+          colors::gray(passed_version),
+          EXAMPLE_USAGE
+        );
       }
       (ReleaseChannel::Canary, passed_version)
     } else {
       let Ok(semver) = Version::parse_standard(&passed_version) else {
-        bail!("Invalid version passed");
+        bail!(
+          "Invalid version passed ({})\n\n{}",
+          colors::gray(passed_version),
+          EXAMPLE_USAGE
+        );
       };
 
       if semver.pre.contains(&"rc".to_string()) {
@@ -916,8 +983,13 @@ fn check_exe(exe_path: &Path) -> Result<(), AnyError> {
     .arg("-V")
     .stderr(std::process::Stdio::inherit())
     .output()?;
-  assert!(output.status.success());
-  Ok(())
+  if !output.status.success() {
+    bail!(
+      "Failed to validate Deno executable. This may be because your OS is unsupported or the executable is corrupted"
+    )
+  } else {
+    Ok(())
+  }
 }
 
 #[derive(Debug)]
@@ -1670,5 +1742,32 @@ mod test {
         })
       );
     }
+  }
+
+  #[test]
+  fn blog_post_links() {
+    let version = Version::parse_standard("1.46.0").unwrap();
+    assert_eq!(
+      get_minor_version_blog_post_url(&version),
+      "https://deno.com/blog/v1.46"
+    );
+
+    let version = Version::parse_standard("2.1.1").unwrap();
+    assert_eq!(
+      get_minor_version_blog_post_url(&version),
+      "https://deno.com/blog/v2.1"
+    );
+
+    let version = Version::parse_standard("2.0.0-rc.0").unwrap();
+    assert_eq!(
+      get_rc_version_blog_post_url(&version),
+      "https://deno.com/blog/v2.0-rc-0"
+    );
+
+    let version = Version::parse_standard("2.0.0-rc.2").unwrap();
+    assert_eq!(
+      get_rc_version_blog_post_url(&version),
+      "https://deno.com/blog/v2.0-rc-2"
+    );
   }
 }

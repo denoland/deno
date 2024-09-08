@@ -151,7 +151,7 @@ import util from "node:util";
 import v8 from "node:v8";
 import vm from "node:vm";
 import workerThreads from "node:worker_threads";
-import wasi from "ext:deno_node/wasi.ts";
+import wasi from "node:wasi";
 import zlib from "node:zlib";
 
 const nativeModuleExports = ObjectCreate(null);
@@ -890,7 +890,7 @@ Module._preloadModules = function (requests) {
 
 Module.prototype.load = function (filename) {
   if (this.loaded) {
-    throw Error("Module already loaded");
+    throw new Error("Module already loaded");
   }
 
   // Canonicalize the path so it's not pointing to the symlinked directory
@@ -940,12 +940,11 @@ Module.prototype.require = function (id) {
 
 // The module wrapper looks slightly different to Node. Instead of using one
 // wrapper function, we use two. The first one exists to performance optimize
-// access to magic node globals, like `Buffer` or `process`. The second one
-// is the actual wrapper function we run the users code in.
-// The only observable difference is that in Deno `arguments.callee` is not
-// null.
+// access to magic node globals, like `Buffer`. The second one is the actual
+// wrapper function we run the users code in. The only observable difference is
+// that in Deno `arguments.callee` is not null.
 Module.wrapper = [
-  "(function (exports, require, module, __filename, __dirname, Buffer, clearImmediate, clearInterval, clearTimeout, console, global, process, setImmediate, setInterval, setTimeout, performance) { (function (exports, require, module, __filename, __dirname) {",
+  "(function (exports, require, module, __filename, __dirname, Buffer, clearImmediate, clearInterval, clearTimeout, global, setImmediate, setInterval, setTimeout, performance) { (function (exports, require, module, __filename, __dirname) {",
   "\n}).call(this, exports, require, module, __filename, __dirname); })",
 ];
 Module.wrap = function (script) {
@@ -1029,9 +1028,7 @@ Module.prototype._compile = function (content, filename, format) {
     clearImmediate,
     clearInterval,
     clearTimeout,
-    console,
     global,
-    process,
     setImmediate,
     setInterval,
     setTimeout,
@@ -1049,9 +1046,7 @@ Module.prototype._compile = function (content, filename, format) {
     clearImmediate,
     clearInterval,
     clearTimeout,
-    console,
     global,
-    process,
     setImmediate,
     setInterval,
     setTimeout,
@@ -1121,6 +1116,9 @@ Module._extensions[".json"] = function (module, filename) {
 
 // Native extension for .node
 Module._extensions[".node"] = function (module, filename) {
+  if (filename.endsWith("cpufeatures.node")) {
+    throw new Error("Using cpu-features module is currently not supported");
+  }
   module.exports = op_napi_open(
     filename,
     globalThis,

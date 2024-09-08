@@ -1,23 +1,22 @@
 [WILDCARD]
 Check [WILDLINE]/allow_all.ts
-cpu: [WILDLINE]
-runtime: deno [WILDLINE] ([WILDLINE])
+    CPU | [WILDLINE]
+Runtime | Deno [WILDLINE] ([WILDLINE])
 
 [WILDLINE]/allow_all.ts
-benchmark         time (avg)        iter/s             (min … max)       p75       p99      p995
------------------------------------------------------------------- -----------------------------
-read false [WILDLINE] [WILDLINE]/iter[WILDLINE]([WILDLINE] … [WILDLINE]) [WILDLINE]
-read true [WILDLINE] [WILDLINE]/iter[WILDLINE]([WILDLINE] … [WILDLINE]) [WILDLINE]
-write false [WILDLINE] [WILDLINE]/iter[WILDLINE]([WILDLINE] … [WILDLINE]) [WILDLINE]
-write true [WILDLINE] [WILDLINE]/iter[WILDLINE]([WILDLINE] … [WILDLINE]) [WILDLINE]
-net false [WILDLINE] [WILDLINE]/iter[WILDLINE]([WILDLINE] … [WILDLINE]) [WILDLINE]
-net true [WILDLINE] [WILDLINE]/iter[WILDLINE]([WILDLINE] … [WILDLINE]) [WILDLINE]
-env false [WILDLINE] [WILDLINE]/iter[WILDLINE]([WILDLINE] … [WILDLINE]) [WILDLINE]
-env true [WILDLINE] [WILDLINE]/iter[WILDLINE]([WILDLINE] … [WILDLINE]) [WILDLINE]
-run false [WILDLINE] [WILDLINE]/iter[WILDLINE]([WILDLINE] … [WILDLINE]) [WILDLINE]
-run true [WILDLINE] [WILDLINE]/iter[WILDLINE]([WILDLINE] … [WILDLINE]) [WILDLINE]
-ffi false [WILDLINE] [WILDLINE]/iter[WILDLINE]([WILDLINE] … [WILDLINE]) [WILDLINE]
-ffi true [WILDLINE] [WILDLINE]/iter[WILDLINE]([WILDLINE] … [WILDLINE]) [WILDLINE]
-hrtime false [WILDLINE] [WILDLINE]/iter[WILDLINE]([WILDLINE] … [WILDLINE]) [WILDLINE]
-hrtime true [WILDLINE] [WILDLINE]/iter[WILDLINE]([WILDLINE] … [WILDLINE]) [WILDLINE]
+
+benchmark     time/iter (avg)        iter/s      (min … max)           p75      p99     p995
+------------- ----------------------------- --------------------- --------------------------
+read false [WILDLINE] [WILDLINE] [WILDLINE] ([WILDLINE] … [WILDLINE]) [WILDLINE]
+read true [WILDLINE] [WILDLINE] [WILDLINE] ([WILDLINE] … [WILDLINE]) [WILDLINE]
+write false [WILDLINE] [WILDLINE] [WILDLINE] ([WILDLINE] … [WILDLINE]) [WILDLINE]
+write true [WILDLINE] [WILDLINE] [WILDLINE] ([WILDLINE] … [WILDLINE]) [WILDLINE]
+net false [WILDLINE] [WILDLINE] [WILDLINE] ([WILDLINE] … [WILDLINE]) [WILDLINE]
+net true [WILDLINE] [WILDLINE] [WILDLINE] ([WILDLINE] … [WILDLINE]) [WILDLINE]
+env false [WILDLINE] [WILDLINE] [WILDLINE] ([WILDLINE] … [WILDLINE]) [WILDLINE]
+env true [WILDLINE] [WILDLINE] [WILDLINE] ([WILDLINE] … [WILDLINE]) [WILDLINE]
+run false [WILDLINE] [WILDLINE] [WILDLINE] ([WILDLINE] … [WILDLINE]) [WILDLINE]
+run true [WILDLINE] [WILDLINE] [WILDLINE] ([WILDLINE] … [WILDLINE]) [WILDLINE]
+ffi false [WILDLINE] [WILDLINE] [WILDLINE] ([WILDLINE] … [WILDLINE]) [WILDLINE]
+ffi true [WILDLINE] [WILDLINE] [WILDLINE] ([WILDLINE] … [WILDLINE]) [WILDLINE]
 

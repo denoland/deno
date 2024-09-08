@@ -18,7 +18,6 @@ use crate::cache::CodeCache;
 use crate::cache::FastInsecureHasher;
 use crate::cache::ParsedSourceCache;
 use crate::emit::Emitter;
-use crate::factory::CliFactory;
 use crate::graph_container::MainModuleGraphContainer;
 use crate::graph_container::ModuleGraphContainer;
 use crate::graph_container::ModuleGraphUpdatePermit;
@@ -69,54 +68,6 @@ use deno_runtime::deno_node::create_host_defined_options;
 use deno_runtime::deno_permissions::PermissionsContainer;
 use deno_semver::npm::NpmPackageReqReference;
 use node_resolver::NodeResolutionMode;
-
-pub async fn load_top_level_deps(factory: &CliFactory) -> Result<(), AnyError> {
-  let npm_resolver = factory.npm_resolver().await?;
-  let cli_options = factory.cli_options()?;
-  if let Some(npm_resolver) = npm_resolver.as_managed() {
-    if !npm_resolver.ensure_top_level_package_json_install().await? {
-      if let Some(lockfile) = cli_options.maybe_lockfile() {
-        lockfile.error_if_changed()?;
-      }
-
-      npm_resolver.cache_packages().await?;
-    }
-  }
-  // cache as many entries in the import map as we can
-  let resolver = factory.workspace_resolver().await?;
-  if let Some(import_map) = resolver.maybe_import_map() {
-    let roots = import_map
-      .imports()
-      .entries()
-      .filter_map(|entry| {
-        if entry.key.ends_with('/') {
-          None
-        } else {
-          entry.value.cloned()
-        }
-      })
-      .collect::<Vec<_>>();
-    let mut graph_permit = factory
-      .main_module_graph_container()
-      .await?
-      .acquire_update_permit()
-      .await;
-    let graph = graph_permit.graph_mut();
-    factory
-      .module_load_preparer()
-      .await?
-      .prepare_module_load(
-        graph,
-        &roots,
-        false,
-        factory.cli_options()?.ts_type_lib_window(),
-        deno_runtime::deno_permissions::PermissionsContainer::allow_all(),
-      )
-      .await?;
-  }
-
-  Ok(())
-}
 
 pub struct ModuleLoadPreparer {
   options: Arc<CliOptions>,
@@ -450,7 +401,7 @@ impl<TGraphContainer: ModuleGraphContainer>
 
   fn inner_resolve(
     &self,
-    specifier: &str,
+    raw_specifier: &str,
     referrer: &ModuleSpecifier,
   ) -> Result<ModuleSpecifier, AnyError> {
     if self.shared.node_resolver.in_npm_package(referrer) {
@@ -458,7 +409,7 @@ impl<TGraphContainer: ModuleGraphContainer>
         self
           .shared
           .node_resolver
-          .resolve(specifier, referrer, NodeResolutionMode::Execution)?
+          .resolve(raw_specifier, referrer, NodeResolutionMode::Execution)?
           .into_url(),
       );
     }
@@ -467,7 +418,7 @@ impl<TGraphContainer: ModuleGraphContainer>
     let resolution = match graph.get(referrer) {
       Some(Module::Js(module)) => module
         .dependencies
-        .get(specifier)
+        .get(raw_specifier)
         .map(|d| &d.maybe_code)
         .unwrap_or(&Resolution::None),
       _ => &Resolution::None,
@@ -482,7 +433,7 @@ impl<TGraphContainer: ModuleGraphContainer>
         ));
       }
       Resolution::None => Cow::Owned(self.shared.resolver.resolve(
-        specifier,
+        raw_specifier,
         &deno_graph::Range {
           specifier: referrer.clone(),
           start: deno_graph::Position::zeroed(),

@@ -45,6 +45,7 @@ import {
   INITIAL_ACCEPT_BACKOFF_DELAY,
   MAX_ACCEPT_BACKOFF_DELAY,
 } from "ext:deno_node/internal_binding/_listen.ts";
+import { nextTick } from "ext:deno_node/_next_tick.ts";
 
 /** The type of TCP socket. */
 enum socketType {
@@ -228,7 +229,14 @@ export class TCP extends ConnectionWrap {
     this.#port = address.port;
 
     this.#listener = listener;
-    this.#accept();
+
+    // TODO(kt3k): Delays the accept() call 2 ticks. Deno.Listener can't be closed
+    // synchronously when accept() is called. By delaying the accept() call,
+    // the user can close the server synchronously in the callback of listen().
+    // This workaround enables `npm:detect-port` to work correctly.
+    // Remove these nextTick calls when the below issue resolved:
+    // https://github.com/denoland/deno/issues/25480
+    nextTick(nextTick, () => this.#accept());
 
     return 0;
   }

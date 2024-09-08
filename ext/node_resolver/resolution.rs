@@ -367,6 +367,7 @@ impl<TEnv: NodeResolverEnv> NodeResolver<TEnv> {
             pkg_json_path,
           });
         };
+        let name = name.split("/").last().unwrap();
         vec![name.to_string()]
       }
       Some(Value::Object(o)) => {

@@ -404,6 +404,7 @@ impl MainWorker {
             proxy: None,
           },
         ),
+        deno_kv::KvConfig::builder().build(),
       ),
       deno_cron::deno_cron::init_ops_and_esm(LocalCronHandler::new()),
       deno_napi::deno_napi::init_ops_and_esm::<PermissionsContainer>(),
@@ -476,14 +477,6 @@ impl MainWorker {
       }
     });
 
-    let import_assertions_support = if options.bootstrap.future {
-      deno_core::ImportAssertionsSupport::Error
-    } else {
-      deno_core::ImportAssertionsSupport::CustomCallback(Box::new(
-        crate::shared::import_assertion_callback,
-      ))
-    };
-
     let mut js_runtime = JsRuntime::new(RuntimeOptions {
       module_loader: Some(options.module_loader.clone()),
       startup_snapshot: options.startup_snapshot,
@@ -509,7 +502,7 @@ impl MainWorker {
       validate_import_attributes_cb: Some(Box::new(
         validate_import_attributes_callback,
       )),
-      import_assertions_support,
+      import_assertions_support: deno_core::ImportAssertionsSupport::Error,
       eval_context_code_cache_cbs: options.v8_code_cache.map(|cache| {
         let cache_clone = cache.clone();
         (

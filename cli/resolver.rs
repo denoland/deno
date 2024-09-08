@@ -146,7 +146,7 @@ impl CliNodeResolver {
                         concat!(
                         "Could not resolve \"{}\", but found it in a package.json. ",
                         "Deno expects the node_modules/ directory to be up to date. ",
-                        "Did you forget to run `npm install`?"
+                        "Did you forget to run `deno install`?"
                       ),
                         specifier
                       ));
@@ -225,13 +225,8 @@ impl CliNodeResolver {
           let package_json_path = package_folder.join("package.json");
           if !self.fs.exists_sync(&package_json_path) {
             return Err(anyhow!(
-              "Could not find '{}'. Deno expects the node_modules/ directory to be up to date. Did you forget to run `{}`?",
+              "Could not find '{}'. Deno expects the node_modules/ directory to be up to date. Did you forget to run `deno install`?",
               package_json_path.display(),
-              if *crate::args::DENO_FUTURE {
-                "deno install"
-              } else {
-                "npm install"
-              },
             ));
           }
         }
@@ -332,7 +327,9 @@ impl NpmModuleLoader {
     specifier: &ModuleSpecifier,
     maybe_referrer: Option<&ModuleSpecifier>,
   ) -> Option<Result<ModuleCodeStringSource, AnyError>> {
-    if self.node_resolver.in_npm_package(specifier) {
+    if self.node_resolver.in_npm_package(specifier)
+      || (specifier.scheme() == "file" && specifier.path().ends_with(".cjs"))
+    {
       Some(self.load(specifier, maybe_referrer).await)
     } else {
       None
@@ -381,7 +378,9 @@ impl NpmModuleLoader {
         }
       })?;
 
-    let code = if self.cjs_resolutions.contains(specifier) {
+    let code = if self.cjs_resolutions.contains(specifier)
+      || (specifier.scheme() == "file" && specifier.path().ends_with(".cjs"))
+    {
       // translate cjs to esm if it's cjs and inject node globals
       let code = match String::from_utf8_lossy(&code) {
         Cow::Owned(code) => code,
@@ -507,7 +506,7 @@ impl Resolver for CliGraphResolver {
 
   fn resolve(
     &self,
-    specifier: &str,
+    raw_specifier: &str,
     referrer_range: &deno_graph::Range,
     mode: ResolutionMode,
   ) -> Result<ModuleSpecifier, ResolveError> {
@@ -524,7 +523,7 @@ impl Resolver for CliGraphResolver {
     if let Some(node_resolver) = self.node_resolver.as_ref() {
       if referrer.scheme() == "file" && node_resolver.in_npm_package(referrer) {
         return node_resolver
-          .resolve(specifier, referrer, to_node_mode(mode))
+          .resolve(raw_specifier, referrer, to_node_mode(mode))
           .map(|res| res.into_url())
           .map_err(|e| ResolveError::Other(e.into()));
       }
@@ -533,7 +532,7 @@ impl Resolver for CliGraphResolver {
     // Attempt to resolve with the workspace resolver
     let result: Result<_, ResolveError> = self
       .workspace_resolver
-      .resolve(specifier, referrer)
+      .resolve(raw_specifier, referrer)
       .map_err(|err| match err {
         MappedResolutionError::Specifier(err) => ResolveError::Specifier(err),
         MappedResolutionError::ImportMap(err) => {
@@ -705,7 +704,7 @@ impl Resolver for CliGraphResolver {
         // If byonm, check if the bare specifier resolves to an npm package
         if is_byonm && referrer.scheme() == "file" {
           let maybe_resolution = node_resolver
-            .resolve_if_for_npm_pkg(specifier, referrer, to_node_mode(mode))
+            .resolve_if_for_npm_pkg(raw_specifier, referrer, to_node_mode(mode))
             .map_err(ResolveError::Other)?;
           if let Some(res) = maybe_resolution {
             return Ok(res.into_url());
@@ -754,7 +753,7 @@ impl<'a> deno_graph::source::NpmResolver for WorkerCliNpmGraphResolver<'a> {
     let line = start.line + 1;
     let column = start.character + 1;
     if !*DENO_DISABLE_PEDANTIC_NODE_WARNINGS {
-      log::warn!("Warning: Resolving \"{module_name}\" as \"node:{module_name}\" at {specifier}:{line}:{column}. If you want to use a built-in Node module, add a \"node:\" prefix.")
+      log::warn!("{} Resolving \"{module_name}\" as \"node:{module_name}\" at {specifier}:{line}:{column}. If you want to use a built-in Node module, add a \"node:\" prefix.", colors::yellow("Warning"))
     }
   }
 
@@ -1246,15 +1245,15 @@ mod test {
     for (ext_from, ext_to) in [("js", "ts"), ("js", "tsx"), ("mjs", "mts")] {
       let ts_file = temp_dir.join(format!("file.{}", ext_to));
       ts_file.write("");
-      assert_eq!(resolve(&ts_file.uri_file()), None);
+      assert_eq!(resolve(&ts_file.url_file()), None);
       assert_eq!(
         resolve(
           &temp_dir
-            .uri_dir()
+            .url_dir()
             .join(&format!("file.{}", ext_from))
             .unwrap()
         ),
-        Some(SloppyImportsResolution::JsToTs(ts_file.uri_file())),
+        Some(SloppyImportsResolution::JsToTs(ts_file.url_file())),
       );
       ts_file.remove_file();
     }
@@ -1266,11 +1265,11 @@ mod test {
       assert_eq!(
         resolve(
           &temp_dir
-            .uri_dir()
+            .url_dir()
             .join("file") // no ext
             .unwrap()
         ),
-        Some(SloppyImportsResolution::NoExtension(file.uri_file()))
+        Some(SloppyImportsResolution::NoExtension(file.url_file()))
       );
       file.remove_file();
     }
@@ -1281,15 +1280,15 @@ mod test {
       ts_file.write("");
       let js_file = temp_dir.join("file.js");
       js_file.write("");
-      assert_eq!(resolve(&js_file.uri_file()), None);
+      assert_eq!(resolve(&js_file.url_file()), None);
     }
 
     // only js exists, .js specified
     {
       let js_only_file = temp_dir.join("js_only.js");
       js_only_file.write("");
-      assert_eq!(resolve(&js_only_file.uri_file()), None);
-      assert_eq!(resolve_types(&js_only_file.uri_file()), None);
+      assert_eq!(resolve(&js_only_file.url_file()), None);
+      assert_eq!(resolve_types(&js_only_file.url_file()), None);
     }
 
     // resolving a directory to an index file
@@ -1299,8 +1298,8 @@ mod test {
       let index_file = routes_dir.join("index.ts");
       index_file.write("");
       assert_eq!(
-        resolve(&routes_dir.uri_file()),
-        Some(SloppyImportsResolution::Directory(index_file.uri_file())),
+        resolve(&routes_dir.url_file()),
+        Some(SloppyImportsResolution::Directory(index_file.url_file())),
       );
     }
 
@@ -1313,8 +1312,8 @@ mod test {
       let api_file = temp_dir.join("api.ts");
       api_file.write("");
       assert_eq!(
-        resolve(&api_dir.uri_file()),
-        Some(SloppyImportsResolution::NoExtension(api_file.uri_file())),
+        resolve(&api_dir.url_file()),
+        Some(SloppyImportsResolution::NoExtension(api_file.url_file())),
       );
     }
   }

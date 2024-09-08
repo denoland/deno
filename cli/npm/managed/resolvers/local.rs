@@ -10,6 +10,7 @@ use std::cmp::Ordering;
 use std::collections::hash_map::Entry;
 use std::collections::BTreeMap;
 use std::collections::HashMap;
+use std::collections::HashSet;
 use std::fs;
 use std::path::Path;
 use std::path::PathBuf;
@@ -41,7 +42,7 @@ use node_resolver::errors::ReferrerNotFoundError;
 use serde::Deserialize;
 use serde::Serialize;
 
-use crate::args::PackageJsonInstallDepsProvider;
+use crate::args::NpmInstallDepsProvider;
 use crate::cache::CACHE_PERM;
 use crate::npm::cache_dir::mixed_case_package_name_decode;
 use crate::npm::cache_dir::mixed_case_package_name_encode;
@@ -65,7 +66,7 @@ use super::common::RegistryReadPermissionChecker;
 pub struct LocalNpmPackageResolver {
   cache: Arc<NpmCache>,
   fs: Arc<dyn deno_fs::FileSystem>,
-  pkg_json_deps_provider: Arc<PackageJsonInstallDepsProvider>,
+  npm_install_deps_provider: Arc<NpmInstallDepsProvider>,
   progress_bar: ProgressBar,
   resolution: Arc<NpmResolution>,
   tarball_cache: Arc<TarballCache>,
@@ -81,7 +82,7 @@ impl LocalNpmPackageResolver {
   pub fn new(
     cache: Arc<NpmCache>,
     fs: Arc<dyn deno_fs::FileSystem>,
-    pkg_json_deps_provider: Arc<PackageJsonInstallDepsProvider>,
+    npm_install_deps_provider: Arc<NpmInstallDepsProvider>,
     progress_bar: ProgressBar,
     resolution: Arc<NpmResolution>,
     tarball_cache: Arc<TarballCache>,
@@ -92,7 +93,7 @@ impl LocalNpmPackageResolver {
     Self {
       cache,
       fs: fs.clone(),
-      pkg_json_deps_provider,
+      npm_install_deps_provider,
       progress_bar,
       resolution,
       tarball_cache,
@@ -248,7 +249,7 @@ impl NpmPackageFsResolver for LocalNpmPackageResolver {
     sync_resolution_with_fs(
       &self.resolution.snapshot(),
       &self.cache,
-      &self.pkg_json_deps_provider,
+      &self.npm_install_deps_provider,
       &self.progress_bar,
       &self.tarball_cache,
       &self.root_node_modules_path,
@@ -412,14 +413,16 @@ fn has_lifecycle_scripts(
 async fn sync_resolution_with_fs(
   snapshot: &NpmResolutionSnapshot,
   cache: &Arc<NpmCache>,
-  pkg_json_deps_provider: &PackageJsonInstallDepsProvider,
+  npm_install_deps_provider: &NpmInstallDepsProvider,
   progress_bar: &ProgressBar,
   tarball_cache: &Arc<TarballCache>,
   root_node_modules_dir_path: &Path,
   system_info: &NpmSystemInfo,
   lifecycle_scripts: &LifecycleScriptsConfig,
 ) -> Result<(), AnyError> {
-  if snapshot.is_empty() && pkg_json_deps_provider.workspace_pkgs().is_empty() {
+  if snapshot.is_empty()
+    && npm_install_deps_provider.workspace_pkgs().is_empty()
+  {
     return Ok(()); // don't create the directory
   }
 
@@ -618,9 +621,12 @@ async fn sync_resolution_with_fs(
 
   let mut found_names: HashMap<&String, &PackageNv> = HashMap::new();
 
+  // set of node_modules in workspace packages that we've already ensured exist
+  let mut existing_child_node_modules_dirs: HashSet<PathBuf> = HashSet::new();
+
   // 4. Create symlinks for package json dependencies
   {
-    for remote in pkg_json_deps_provider.remote_pkgs() {
+    for remote in npm_install_deps_provider.remote_pkgs() {
       let remote_pkg = if let Ok(remote_pkg) =
         snapshot.resolve_pkg_from_pkg_req(&remote.req)
       {
@@ -665,8 +671,15 @@ async fn sync_resolution_with_fs(
       );
       if install_in_child {
         // symlink the dep into the package's child node_modules folder
-        let dest_path =
-          remote.base_dir.join("node_modules").join(&remote.alias);
+        let dest_node_modules = remote.base_dir.join("node_modules");
+        if !existing_child_node_modules_dirs.contains(&dest_node_modules) {
+          fs::create_dir_all(&dest_node_modules).with_context(|| {
+            format!("Creating '{}'", dest_node_modules.display())
+          })?;
+          existing_child_node_modules_dirs.insert(dest_node_modules.clone());
+        }
+        let mut dest_path = dest_node_modules;
+        dest_path.push(&remote.alias);
 
         symlink_package_dir(&local_registry_package_path, &dest_path)?;
       } else {
@@ -684,7 +697,7 @@ async fn sync_resolution_with_fs(
   }
 
   // 5. Create symlinks for the remaining top level packages in the node_modules folder.
-  // (These may be present if they are not in the package.json dependencies, such as )
+  // (These may be present if they are not in the package.json dependencies)
   // Symlink node_modules/.deno/<package_id>/node_modules/<package_name> to
   // node_modules/<package_name>
   let mut ids = snapshot
@@ -757,10 +770,10 @@ async fn sync_resolution_with_fs(
 
   // 8. Create symlinks for the workspace packages
   {
-    // todo(#24419): this is not exactly correct because it should
+    // todo(dsherret): this is not exactly correct because it should
     // install correctly for a workspace (potentially in sub directories),
     // but this is good enough for a first pass
-    for workspace in pkg_json_deps_provider.workspace_pkgs() {
+    for workspace in npm_install_deps_provider.workspace_pkgs() {
       symlink_package_dir(
         &workspace.target_dir,
         &root_node_modules_dir_path.join(&workspace.alias),
@@ -831,22 +844,14 @@ async fn sync_resolution_with_fs(
   }
 
   if !packages_with_scripts_not_run.is_empty() {
-    let (maybe_install, maybe_install_example) = if *crate::args::DENO_FUTURE {
-      (
-        " or `deno install`",
-        " or `deno install --allow-scripts=pkg1,pkg2`",
-      )
-    } else {
-      ("", "")
-    };
     let packages = packages_with_scripts_not_run
       .iter()
       .map(|(_, p)| format!("npm:{p}"))
       .collect::<Vec<_>>()
       .join(", ");
-    log::warn!("{}: Packages contained npm lifecycle scripts (preinstall/install/postinstall) that were not executed.
-    This may cause the packages to not work correctly. To run them, use the `--allow-scripts` flag with `deno cache`{maybe_install}
-    (e.g. `deno cache --allow-scripts=pkg1,pkg2 <entrypoint>`{maybe_install_example}):\n      {packages}", crate::colors::yellow("warning"));
+    log::warn!("{} Packages contained npm lifecycle scripts (preinstall/install/postinstall) that were not executed.
+    This may cause the packages to not work correctly. To run them, use the `--allow-scripts` flag with `deno cache` or `deno install`
+    (e.g. `deno cache --allow-scripts=pkg1,pkg2 <entrypoint>` or `deno install --allow-scripts=pkg1,pkg2`):\n      {packages}", crate::colors::yellow("Warning"));
     for (scripts_warned_path, _) in packages_with_scripts_not_run {
       let _ignore_err = fs::write(scripts_warned_path, "");
     }
@@ -993,21 +998,31 @@ impl SetupCache {
   }
 }
 
+/// Normalizes a package name for use at `node_modules/.deno/<pkg-name>@<version>[_<copy_index>]`
+pub fn normalize_pkg_name_for_node_modules_deno_folder(name: &str) -> Cow<str> {
+  let name = if name.to_lowercase() == name {
+    Cow::Borrowed(name)
+  } else {
+    Cow::Owned(format!("_{}", mixed_case_package_name_encode(name)))
+  };
+  if name.starts_with('@') {
+    name.replace('/', "+").into()
+  } else {
+    name
+  }
+}
+
 fn get_package_folder_id_folder_name(
   folder_id: &NpmPackageCacheFolderId,
 ) -> String {
   let copy_str = if folder_id.copy_index == 0 {
-    "".to_string()
+    Cow::Borrowed("")
   } else {
-    format!("_{}", folder_id.copy_index)
+    Cow::Owned(format!("_{}", folder_id.copy_index))
   };
   let nv = &folder_id.nv;
-  let name = if nv.name.to_lowercase() == nv.name {
-    Cow::Borrowed(&nv.name)
-  } else {
-    Cow::Owned(format!("_{}", mixed_case_package_name_encode(&nv.name)))
-  };
-  format!("{}@{}{}", name, nv.version, copy_str).replace('/', "+")
+  let name = normalize_pkg_name_for_node_modules_deno_folder(&nv.name);
+  format!("{}@{}{}", name, nv.version, copy_str)
 }
 
 fn get_package_folder_id_from_folder_name(
@@ -1048,42 +1063,50 @@ fn symlink_package_dir(
   // need to delete the previous symlink before creating a new one
   let _ignore = fs::remove_dir_all(new_path);
 
+  let old_path_relative =
+    crate::util::path::relative_path(new_parent, old_path)
+      .unwrap_or_else(|| old_path.to_path_buf());
+
   #[cfg(windows)]
-  return junction_or_symlink_dir(old_path, new_path);
+  {
+    junction_or_symlink_dir(&old_path_relative, old_path, new_path)
+  }
   #[cfg(not(windows))]
-  symlink_dir(old_path, new_path)
+  {
+    symlink_dir(&old_path_relative, new_path).map_err(Into::into)
+  }
 }
 
 #[cfg(windows)]
 fn junction_or_symlink_dir(
+  old_path_relative: &Path,
   old_path: &Path,
   new_path: &Path,
 ) -> Result<(), AnyError> {
-  use deno_core::anyhow::bail;
-  // Use junctions because they're supported on ntfs file systems without
-  // needing to elevate privileges on Windows
+  static USE_JUNCTIONS: std::sync::atomic::AtomicBool =
+    std::sync::atomic::AtomicBool::new(false);
 
-  match junction::create(old_path, new_path) {
+  if USE_JUNCTIONS.load(std::sync::atomic::Ordering::Relaxed) {
+    // Use junctions because they're supported on ntfs file systems without
+    // needing to elevate privileges on Windows.
+    // Note: junctions don't support relative paths, so we need to use the
+    // absolute path here.
+    return junction::create(old_path, new_path)
+      .context("Failed creating junction in node_modules folder");
+  }
+
+  match symlink_dir(old_path_relative, new_path) {
     Ok(()) => Ok(()),
-    Err(junction_err) => {
-      if cfg!(debug_assertions) {
-        // When running the tests, junctions should be created, but if not then
-        // surface this error.
-        log::warn!("Error creating junction. {:#}", junction_err);
-      }
-
-      match symlink_dir(old_path, new_path) {
-        Ok(()) => Ok(()),
-        Err(symlink_err) => bail!(
-          concat!(
-            "Failed creating junction and fallback symlink in node_modules folder.\n\n",
-            "{:#}\n\n{:#}",
-          ),
-          junction_err,
-          symlink_err,
-        ),
-      }
+    Err(symlink_err)
+      if symlink_err.kind() == std::io::ErrorKind::PermissionDenied =>
+    {
+      USE_JUNCTIONS.store(true, std::sync::atomic::Ordering::Relaxed);
+      junction::create(old_path, new_path).map_err(Into::into)
     }
+    Err(symlink_err) => Err(
+      AnyError::from(symlink_err)
+        .context("Failed creating symlink in node_modules folder"),
+    ),
   }
 }
 

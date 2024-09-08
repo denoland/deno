@@ -174,7 +174,7 @@ unsafe extern "C" fn deno_ffi_callback(
         let tc_scope = &mut TryCatch::new(scope);
         args.run(tc_scope);
         if tc_scope.exception().is_some() {
-          log::error!("Illegal unhandled exception in nonblocking callback.");
+          log::error!("Illegal unhandled exception in nonblocking callback");
         }
       });
     }
@@ -621,7 +621,7 @@ where
   Ok(array_value)
 }
 
-#[op2]
+#[op2(fast)]
 pub fn op_ffi_unsafe_callback_close(
   state: &mut OpState,
   scope: &mut v8::HandleScope,

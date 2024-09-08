@@ -1,23 +1,24 @@
-cpu: [WILDCARD]
-runtime: deno [WILDCARD] ([WILDCARD])
+    CPU | [WILDCARD]
+Runtime | Deno [WILDCARD] ([WILDCARD])
 
 [WILDCARD]/explicit_start_and_end.ts
-benchmark          time (avg)        iter/s             (min … max)       p75       p99      p995
-------------------------------------------------------------------- -----------------------------
-start and end  [WILDCARD] [WILDCARD]/iter[WILDCARD]([WILDCARD] … [WILDCARD]) [WILDCARD]
-start only     [WILDCARD] [WILDCARD]/iter[WILDCARD]([WILDCARD] … [WILDCARD]) [WILDCARD]
-end only       [WILDCARD] [WILDCARD]/iter[WILDCARD]([WILDCARD] … [WILDCARD]) [WILDCARD]
-double start   error: TypeError: BenchContext::start() has already been invoked.
+
+benchmark       time/iter (avg)        iter/s      (min … max)           p75      p99     p995
+--------------- ----------------------------- --------------------- --------------------------
+start and end  [WILDCARD] [WILDCARD] [WILDCARD] ([WILDCARD] … [WILDCARD]) [WILDCARD]
+start only     [WILDCARD] [WILDCARD] [WILDCARD] ([WILDCARD] … [WILDCARD]) [WILDCARD]
+end only       [WILDCARD] [WILDCARD] [WILDCARD] ([WILDCARD] … [WILDCARD]) [WILDCARD]
+double start    error: TypeError: BenchContext::start() has already been invoked
   t.start();
     ^
     at BenchContext.start ([WILDCARD])
     at [WILDCARD]/explicit_start_and_end.ts:[WILDCARD]
-double end     error: TypeError: BenchContext::end() has already been invoked.
+double end      error: TypeError: BenchContext::end() has already been invoked
   t.end();
     ^
     at BenchContext.end ([WILDCARD])
     at [WILDCARD]/explicit_start_and_end.ts:[WILDCARD]
-captured       error: TypeError: The benchmark which this context belongs to is not being executed.
+captured        error: TypeError: The benchmark which this context belongs to is not being executed
   captured!.start();
             ^
     at BenchContext.start ([WILDCARD])

@@ -1,7 +1,6 @@
 {
   "tempDir": true,
   "envs": {
-    "DENO_FUTURE": "1",
     "HOME": "$PWD/../",
     "USERPROFILE": "$PWD\\..\\"
   },

@@ -6,6 +6,7 @@ import {
   assertRejects,
   assertThrows,
   delay,
+  DENO_FUTURE,
   execCode,
   execCode2,
   tmpUnixSocketPath,
@@ -27,7 +28,9 @@ Deno.test({ permissions: { net: true } }, function netTcpListenClose() {
   assert(listener.addr.transport === "tcp");
   assertEquals(listener.addr.hostname, "127.0.0.1");
   assertEquals(listener.addr.port, listenPort);
-  assertNotEquals(listener.rid, 0);
+  if (!DENO_FUTURE) {
+    assertNotEquals(listener.rid, 0);
+  }
   listener.close();
 });
 
@@ -233,7 +236,6 @@ Deno.test({ permissions: { net: true } }, async function netTcpDialListen() {
   assertEquals(1, buf[0]);
   assertEquals(2, buf[1]);
   assertEquals(3, buf[2]);
-  assert(conn.rid > 0);
 
   assert(readResult !== null);
 
@@ -269,7 +271,6 @@ Deno.test({ permissions: { net: true } }, async function netTcpSetNoDelay() {
   assertEquals(1, buf[0]);
   assertEquals(2, buf[1]);
   assertEquals(3, buf[2]);
-  assert(conn.rid > 0);
 
   assert(readResult !== null);
 
@@ -305,7 +306,6 @@ Deno.test({ permissions: { net: true } }, async function netTcpSetKeepAlive() {
   assertEquals(1, buf[0]);
   assertEquals(2, buf[1]);
   assertEquals(3, buf[2]);
-  assert(conn.rid > 0);
 
   assert(readResult !== null);
 
@@ -343,7 +343,6 @@ Deno.test(
     assertEquals(1, buf[0]);
     assertEquals(2, buf[1]);
     assertEquals(3, buf[2]);
-    assert(conn.rid > 0);
 
     assert(readResult !== null);
 
@@ -432,7 +431,7 @@ Deno.test(
         // Note: we have to do the test this way as different OS's have
         // different UDP size limits enabled, so we will just ensure if
         // an error is thrown it is the one we are expecting.
-        assert(err.message.match(rx));
+        assert((err as Error).message.match(rx));
         alice.close();
         bob.close();
         return;
@@ -839,7 +838,6 @@ Deno.test(
     assertEquals(1, buf[0]);
     assertEquals(2, buf[1]);
     assertEquals(3, buf[2]);
-    assert(conn.rid > 0);
 
     assert(readResult !== null);
 

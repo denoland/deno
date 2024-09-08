@@ -9,7 +9,7 @@ import { validateBufferArray } from "ext:deno_node/internal/fs/utils.mjs";
 import { getValidatedFd } from "ext:deno_node/internal/fs/utils.mjs";
 import { maybeCallback } from "ext:deno_node/_fs/_fs_common.ts";
 import * as io from "ext:deno_io/12_io.js";
-import * as fs from "ext:deno_fs/30_fs.js";
+import { op_fs_seek_async, op_fs_seek_sync } from "ext:core/ops";
 
 export function writev(fd, buffers, position, callback) {
   const innerWritev = async (fd, buffers, position) => {
@@ -23,7 +23,7 @@ export function writev(fd, buffers, position, callback) {
       }
     }
     if (typeof position === "number") {
-      await fs.seekSync(fd, position, io.SeekMode.Start);
+      await op_fs_seek_async(fd, position, io.SeekMode.Start);
     }
     const buffer = Buffer.concat(chunks);
     let currentOffset = 0;
@@ -64,7 +64,7 @@ export function writevSync(fd, buffers, position) {
       }
     }
     if (typeof position === "number") {
-      fs.seekSync(fd, position, io.SeekMode.Start);
+      op_fs_seek_sync(fd, position, io.SeekMode.Start);
     }
     const buffer = Buffer.concat(chunks);
     let currentOffset = 0;

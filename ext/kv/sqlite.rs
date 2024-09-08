@@ -15,9 +15,9 @@ use std::sync::OnceLock;
 use async_trait::async_trait;
 use deno_core::error::type_error;
 use deno_core::error::AnyError;
+use deno_core::normalize_path;
 use deno_core::unsync::spawn_blocking;
 use deno_core::OpState;
-use deno_node::PathClean;
 pub use denokv_sqlite::SqliteBackendError;
 use denokv_sqlite::SqliteConfig;
 use denokv_sqlite::SqliteNotifier;
@@ -176,7 +176,7 @@ impl<P: SqliteDbHandlerPermissions> DatabaseHandler for SqliteDbHandler<P> {
 
 /// Same as Path::canonicalize, but also handles non-existing paths.
 fn canonicalize_path(path: &Path) -> Result<PathBuf, AnyError> {
-  let path = path.to_path_buf().clean();
+  let path = normalize_path(path);
   let mut path = path;
   let mut names_stack = Vec::new();
   loop {
