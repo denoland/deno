@@ -1,32 +1,4 @@
-Temporal.ZonedDateTime (Unix epoch, UTC)
-era undefined
-eraYear undefined
-year 1970
-month 1
-monthCode M01
-day 1
-hour 0
-minute 0
-second 0
-millisecond 0
-microsecond 0
-nanosecond 0
-timeZoneId UTC
-calendarId iso8601
-dayOfWeek 4
-dayOfYear 1
-weekOfYear 1
-yearOfWeek undefined
-hoursInDay 24
-daysInWeek 7
-daysInMonth 31
-daysInYear 365
-monthsInYear 12
-inLeapYear false
-offsetNanoseconds 0
-offset +00:00
-epochMilliseconds 0
-epochNanoseconds 0n
+Check [WILDCARD]
 Temporal
 [
   "Duration",
