@@ -10,6 +10,7 @@ use std::cmp::Ordering;
 use std::collections::hash_map::Entry;
 use std::collections::BTreeMap;
 use std::collections::HashMap;
+use std::collections::HashSet;
 use std::fs;
 use std::path::Path;
 use std::path::PathBuf;
@@ -41,7 +42,7 @@ use node_resolver::errors::ReferrerNotFoundError;
 use serde::Deserialize;
 use serde::Serialize;
 
-use crate::args::PackageJsonInstallDepsProvider;
+use crate::args::NpmInstallDepsProvider;
 use crate::cache::CACHE_PERM;
 use crate::npm::cache_dir::mixed_case_package_name_decode;
 use crate::npm::cache_dir::mixed_case_package_name_encode;
@@ -65,7 +66,7 @@ use super::common::RegistryReadPermissionChecker;
 pub struct LocalNpmPackageResolver {
   cache: Arc<NpmCache>,
   fs: Arc<dyn deno_fs::FileSystem>,
-  pkg_json_deps_provider: Arc<PackageJsonInstallDepsProvider>,
+  npm_install_deps_provider: Arc<NpmInstallDepsProvider>,
   progress_bar: ProgressBar,
   resolution: Arc<NpmResolution>,
   tarball_cache: Arc<TarballCache>,
@@ -81,7 +82,7 @@ impl LocalNpmPackageResolver {
   pub fn new(
     cache: Arc<NpmCache>,
     fs: Arc<dyn deno_fs::FileSystem>,
-    pkg_json_deps_provider: Arc<PackageJsonInstallDepsProvider>,
+    npm_install_deps_provider: Arc<NpmInstallDepsProvider>,
     progress_bar: ProgressBar,
     resolution: Arc<NpmResolution>,
     tarball_cache: Arc<TarballCache>,
@@ -92,7 +93,7 @@ impl LocalNpmPackageResolver {
     Self {
       cache,
       fs: fs.clone(),
-      pkg_json_deps_provider,
+      npm_install_deps_provider,
       progress_bar,
       resolution,
       tarball_cache,
@@ -248,7 +249,7 @@ impl NpmPackageFsResolver for LocalNpmPackageResolver {
     sync_resolution_with_fs(
       &self.resolution.snapshot(),
       &self.cache,
-      &self.pkg_json_deps_provider,
+      &self.npm_install_deps_provider,
       &self.progress_bar,
       &self.tarball_cache,
       &self.root_node_modules_path,
@@ -412,14 +413,16 @@ fn has_lifecycle_scripts(
 async fn sync_resolution_with_fs(
   snapshot: &NpmResolutionSnapshot,
   cache: &Arc<NpmCache>,
-  pkg_json_deps_provider: &PackageJsonInstallDepsProvider,
+  npm_install_deps_provider: &NpmInstallDepsProvider,
   progress_bar: &ProgressBar,
   tarball_cache: &Arc<TarballCache>,
   root_node_modules_dir_path: &Path,
   system_info: &NpmSystemInfo,
   lifecycle_scripts: &LifecycleScriptsConfig,
 ) -> Result<(), AnyError> {
-  if snapshot.is_empty() && pkg_json_deps_provider.workspace_pkgs().is_empty() {
+  if snapshot.is_empty()
+    && npm_install_deps_provider.workspace_pkgs().is_empty()
+  {
     return Ok(()); // don't create the directory
   }
 
@@ -618,9 +621,12 @@ async fn sync_resolution_with_fs(
 
   let mut found_names: HashMap<&String, &PackageNv> = HashMap::new();
 
+  // set of node_modules in workspace packages that we've already ensured exist
+  let mut existing_child_node_modules_dirs: HashSet<PathBuf> = HashSet::new();
+
   // 4. Create symlinks for package json dependencies
   {
-    for remote in pkg_json_deps_provider.remote_pkgs() {
+    for remote in npm_install_deps_provider.remote_pkgs() {
       let remote_pkg = if let Ok(remote_pkg) =
         snapshot.resolve_pkg_from_pkg_req(&remote.req)
       {
@@ -665,8 +671,15 @@ async fn sync_resolution_with_fs(
       );
       if install_in_child {
         // symlink the dep into the package's child node_modules folder
-        let dest_path =
-          remote.base_dir.join("node_modules").join(&remote.alias);
+        let dest_node_modules = remote.base_dir.join("node_modules");
+        if !existing_child_node_modules_dirs.contains(&dest_node_modules) {
+          fs::create_dir_all(&dest_node_modules).with_context(|| {
+            format!("Creating '{}'", dest_node_modules.display())
+          })?;
+          existing_child_node_modules_dirs.insert(dest_node_modules.clone());
+        }
+        let mut dest_path = dest_node_modules;
+        dest_path.push(&remote.alias);
 
         symlink_package_dir(&local_registry_package_path, &dest_path)?;
       } else {
@@ -684,7 +697,7 @@ async fn sync_resolution_with_fs(
   }
 
   // 5. Create symlinks for the remaining top level packages in the node_modules folder.
-  // (These may be present if they are not in the package.json dependencies, such as )
+  // (These may be present if they are not in the package.json dependencies)
   // Symlink node_modules/.deno/<package_id>/node_modules/<package_name> to
   // node_modules/<package_name>
   let mut ids = snapshot
@@ -757,10 +770,10 @@ async fn sync_resolution_with_fs(
 
   // 8. Create symlinks for the workspace packages
   {
-    // todo(#24419): this is not exactly correct because it should
+    // todo(dsherret): this is not exactly correct because it should
     // install correctly for a workspace (potentially in sub directories),
     // but this is good enough for a first pass
-    for workspace in pkg_json_deps_provider.workspace_pkgs() {
+    for workspace in npm_install_deps_provider.workspace_pkgs() {
       symlink_package_dir(
         &workspace.target_dir,
         &root_node_modules_dir_path.join(&workspace.alias),
@@ -985,21 +998,31 @@ impl SetupCache {
   }
 }
 
+/// Normalizes a package name for use at `node_modules/.deno/<pkg-name>@<version>[_<copy_index>]`
+pub fn normalize_pkg_name_for_node_modules_deno_folder(name: &str) -> Cow<str> {
+  let name = if name.to_lowercase() == name {
+    Cow::Borrowed(name)
+  } else {
+    Cow::Owned(format!("_{}", mixed_case_package_name_encode(name)))
+  };
+  if name.starts_with('@') {
+    name.replace('/', "+").into()
+  } else {
+    name
+  }
+}
+
 fn get_package_folder_id_folder_name(
   folder_id: &NpmPackageCacheFolderId,
 ) -> String {
   let copy_str = if folder_id.copy_index == 0 {
-    "".to_string()
+    Cow::Borrowed("")
   } else {
-    format!("_{}", folder_id.copy_index)
+    Cow::Owned(format!("_{}", folder_id.copy_index))
   };
   let nv = &folder_id.nv;
-  let name = if nv.name.to_lowercase() == nv.name {
-    Cow::Borrowed(&nv.name)
-  } else {
-    Cow::Owned(format!("_{}", mixed_case_package_name_encode(&nv.name)))
-  };
-  format!("{}@{}{}", name, nv.version, copy_str).replace('/', "+")
+  let name = normalize_pkg_name_for_node_modules_deno_folder(&nv.name);
+  format!("{}@{}{}", name, nv.version, copy_str)
 }
 
 fn get_package_folder_id_from_folder_name(

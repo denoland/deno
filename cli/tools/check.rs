@@ -14,6 +14,7 @@ use deno_terminal::colors;
 use once_cell::sync::Lazy;
 use regex::Regex;
 
+use crate::args::check_warn_tsconfig;
 use crate::args::CliOptions;
 use crate::args::TsConfig;
 use crate::args::TsConfigType;
@@ -118,9 +119,7 @@ impl TypeChecker {
       .cli_options
       .resolve_ts_config_for_emit(TsConfigType::Check { lib: options.lib })?;
     if options.log_ignored_options {
-      if let Some(ignored_options) = ts_config_result.maybe_ignored_options {
-        log::warn!("{}", ignored_options);
-      }
+      check_warn_tsconfig(&ts_config_result);
     }
 
     let type_check_mode = options.type_check_mode;

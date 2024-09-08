@@ -842,80 +842,6 @@ declare namespace Deno {
 
   /** **UNSTABLE**: New API, yet to be vetted.
    *
-   * These are unstable options which can be used with {@linkcode Deno.run}.
-   *
-   * @category Subprocess
-   * @experimental
-   */
-  export interface UnstableRunOptions extends RunOptions {
-    /** If `true`, clears the environment variables before executing the
-     * sub-process.
-     *
-     * @default {false} */
-    clearEnv?: boolean;
-    /** For POSIX systems, sets the group ID for the sub process. */
-    gid?: number;
-    /** For POSIX systems, sets the user ID for the sub process. */
-    uid?: number;
-  }
-
-  /** **UNSTABLE**: New API, yet to be vetted.
-   *
-   * Spawns new subprocess. RunOptions must contain at a minimum the `opt.cmd`,
-   * an array of program arguments, the first of which is the binary.
-   *
-   * ```ts
-   * const p = Deno.run({
-   *   cmd: ["curl", "https://example.com"],
-   * });
-   * const status = await p.status();
-   * ```
-   *
-   * Subprocess uses same working directory as parent process unless `opt.cwd`
-   * is specified.
-   *
-   * Environmental variables from parent process can be cleared using `opt.clearEnv`.
-   * Doesn't guarantee that only `opt.env` variables are present,
-   * as the OS may set environmental variables for processes.
-   *
-   * Environmental variables for subprocess can be specified using `opt.env`
-   * mapping.
-   *
-   * `opt.uid` sets the child process’s user ID. This translates to a setuid call
-   * in the child process. Failure in the setuid call will cause the spawn to fail.
-   *
-   * `opt.gid` is similar to `opt.uid`, but sets the group ID of the child process.
-   * This has the same semantics as the uid field.
-   *
-   * By default subprocess inherits stdio of parent process. To change
-   * this this, `opt.stdin`, `opt.stdout`, and `opt.stderr` can be set
-   * independently to a resource ID (_rid_) of an open file, `"inherit"`,
-   * `"piped"`, or `"null"`:
-   *
-   * - _number_: the resource ID of an open file/resource. This allows you to
-   *   read or write to a file.
-   * - `"inherit"`: The default if unspecified. The subprocess inherits from the
-   *   parent.
-   * - `"piped"`: A new pipe should be arranged to connect the parent and child
-   *   sub-process.
-   * - `"null"`: This stream will be ignored. This is the equivalent of attaching
-   *   the stream to `/dev/null`.
-   *
-   * Details of the spawned process are returned as an instance of
-   * {@linkcode Deno.Process}.
-   *
-   * Requires `allow-run` permission.
-   *
-   * @tags allow-run
-   * @category Subprocess
-   * @experimental
-   */
-  export function run<T extends UnstableRunOptions = UnstableRunOptions>(
-    opt: T,
-  ): Process<T>;
-
-  /** **UNSTABLE**: New API, yet to be vetted.
-   *
    * A custom `HttpClient` for use with {@linkcode fetch} function. This is
    * designed to allow custom certificates or proxies to be used with `fetch()`.
    *
@@ -1203,24 +1129,6 @@ declare namespace Deno {
   export function listenDatagram(
     options: UnixListenOptions & { transport: "unixpacket" },
   ): DatagramConn;
-
-  /** **UNSTABLE**: New API, yet to be vetted.
-   *
-   * Release an advisory file-system lock for the provided file.
-   *
-   * @category File System
-   * @experimental
-   */
-  export function funlock(rid: number): Promise<void>;
-
-  /** **UNSTABLE**: New API, yet to be vetted.
-   *
-   * Release an advisory file-system lock for the provided file synchronously.
-   *
-   * @category File System
-   * @experimental
-   */
-  export function funlockSync(rid: number): void;
 
   /** **UNSTABLE**: New API, yet to be vetted.
    *

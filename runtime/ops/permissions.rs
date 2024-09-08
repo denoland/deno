@@ -1,6 +1,7 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
 use ::deno_permissions::parse_sys_kind;
+use ::deno_permissions::NetDescriptor;
 use ::deno_permissions::PermissionState;
 use ::deno_permissions::PermissionsContainer;
 use deno_core::error::custom_error;
@@ -63,7 +64,7 @@ pub fn op_query_permission(
     "net" => permissions.net.query(
       match args.host.as_deref() {
         None => None,
-        Some(h) => Some(h.parse()?),
+        Some(h) => Some(NetDescriptor::parse(h)?),
       }
       .as_ref(),
     ),
@@ -97,7 +98,7 @@ pub fn op_revoke_permission(
     "net" => permissions.net.revoke(
       match args.host.as_deref() {
         None => None,
-        Some(h) => Some(h.parse()?),
+        Some(h) => Some(NetDescriptor::parse(h)?),
       }
       .as_ref(),
     ),
@@ -131,7 +132,7 @@ pub fn op_request_permission(
     "net" => permissions.net.request(
       match args.host.as_deref() {
         None => None,
-        Some(h) => Some(h.parse()?),
+        Some(h) => Some(NetDescriptor::parse(h)?),
       }
       .as_ref(),
     ),
