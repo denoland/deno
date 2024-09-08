@@ -159,7 +159,7 @@ export function freemem(): number {
   if (Deno.build.os === "linux" || Deno.build.os == "android") {
     // On linux, use 'available' memory
     // https://github.com/libuv/libuv/blob/a5c01d4de3695e9d9da34cfd643b5ff0ba582ea7/src/unix/linux.c#L2064
-    return Deno.systemMemoryInfo().available;
+    return Deno.systemMemoryInfo().available * 1024;
   } else {
     // Use 'free' memory on other platforms
     return Deno.systemMemoryInfo().free;
