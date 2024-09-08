@@ -523,6 +523,7 @@ impl FileFetcher {
     self.fetch_inner(specifier, None).await
   }
 
+  // todo(THIS PR): lol what... this is never used?
   /// Fetch a source file and asynchronously return it.
   #[inline(always)]
   pub async fn fetch(

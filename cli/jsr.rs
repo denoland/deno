@@ -6,7 +6,6 @@ use dashmap::DashMap;
 use deno_core::serde_json;
 use deno_graph::packages::JsrPackageInfo;
 use deno_graph::packages::JsrPackageVersionInfo;
-use deno_runtime::deno_permissions::PermissionsContainer;
 use deno_semver::package::PackageNv;
 use deno_semver::package::PackageReq;
 use std::sync::Arc;

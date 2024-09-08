@@ -30,7 +30,6 @@ use deno_core::url::Position;
 use deno_core::url::Url;
 use deno_core::ModuleSpecifier;
 use deno_graph::Dependency;
-use deno_runtime::deno_permissions::PermissionsContainer;
 use log::error;
 use once_cell::sync::Lazy;
 use std::borrow::Cow;
@@ -481,7 +480,7 @@ impl ModuleRegistry {
         file_fetcher
         .fetch_with_options(FetchOptions {
           specifier: &specifier,
-          permissions: &PermissionsContainer::allow_all(),
+          permissions: None,
           maybe_accept: Some("application/vnd.deno.reg.v2+json, application/vnd.deno.reg.v1+json;q=0.9, application/json;q=0.8"),
           maybe_cache_setting: None,
         })
@@ -584,7 +583,7 @@ impl ModuleRegistry {
         let file = deno_core::unsync::spawn({
           async move {
             file_fetcher
-              .fetch(&endpoint, &PermissionsContainer::allow_all())
+              .fetch_bypass_permissions(&endpoint)
               .await
               .ok()?
               .into_text_decoded()
@@ -983,7 +982,7 @@ impl ModuleRegistry {
     // spawn due to the lsp's `Send` requirement
     let file = deno_core::unsync::spawn(async move {
       file_fetcher
-        .fetch(&specifier, &PermissionsContainer::allow_all())
+        .fetch_bypass_permissions(&specifier)
         .await
         .ok()?
         .into_text_decoded()
@@ -1049,7 +1048,7 @@ impl ModuleRegistry {
       let specifier = specifier.clone();
       async move {
         file_fetcher
-          .fetch(&specifier, &PermissionsContainer::allow_all())
+          .fetch_bypass_permissions(&specifier)
           .await
           .map_err(|err| {
             error!(
@@ -1095,7 +1094,7 @@ impl ModuleRegistry {
       let specifier = specifier.clone();
       async move {
         file_fetcher
-          .fetch(&specifier, &PermissionsContainer::allow_all())
+          .fetch_bypass_permissions(&specifier)
           .await
           .map_err(|err| {
             error!(

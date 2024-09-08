@@ -104,6 +104,18 @@ pub type LocalLspHttpCache =
   deno_cache_dir::LocalLspHttpCache<RealDenoCacheEnv>;
 pub use deno_cache_dir::HttpCache;
 
+#[derive(Debug)]
+pub enum PermissionsContainerOption {
+  BypassPermissions,
+  Container(PermissionsContainer),
+}
+
+impl From<PermissionsContainer> for PermissionsContainerOption {
+  fn from(value: PermissionsContainer) -> Self {
+    Self::Container(value)
+  }
+}
+
 /// A "wrapper" for the FileFetcher and DiskCache for the Deno CLI that provides
 /// a concise interface to the DENO_DIR when building module graphs.
 pub struct FetchCacher {
@@ -112,7 +124,7 @@ pub struct FetchCacher {
   global_http_cache: Arc<GlobalHttpCache>,
   npm_resolver: Arc<dyn CliNpmResolver>,
   module_info_cache: Arc<ModuleInfoCache>,
-  permissions: PermissionsContainer,
+  permissions: Option<PermissionsContainer>,
   cache_info_enabled: bool,
 }
 
@@ -123,7 +135,7 @@ impl FetchCacher {
     global_http_cache: Arc<GlobalHttpCache>,
     npm_resolver: Arc<dyn CliNpmResolver>,
     module_info_cache: Arc<ModuleInfoCache>,
-    permissions: PermissionsContainer,
+    permissions: PermissionsContainerOption,
   ) -> Self {
     Self {
       file_fetcher,
@@ -131,7 +143,10 @@ impl FetchCacher {
       global_http_cache,
       npm_resolver,
       module_info_cache,
-      permissions,
+      permissions: match permissions {
+        PermissionsContainerOption::BypassPermissions => None,
+        PermissionsContainerOption::Container(container) => Some(container),
+      },
       cache_info_enabled: false,
     }
   }
@@ -230,7 +245,7 @@ impl Loader for FetchCacher {
         .fetch_no_follow_with_options(FetchNoFollowOptions {
           fetch_options: FetchOptions {
             specifier: &specifier,
-            permissions: &permissions,
+            permissions: permissions.as_ref(),
             maybe_accept: None,
             maybe_cache_setting: maybe_cache_setting.as_ref(),
           },

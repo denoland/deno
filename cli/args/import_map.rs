@@ -3,7 +3,6 @@
 use deno_core::error::AnyError;
 use deno_core::serde_json;
 use deno_core::url::Url;
-use deno_runtime::deno_permissions::PermissionsContainer;
 
 use crate::file_fetcher::FileFetcher;
 

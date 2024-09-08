@@ -16,7 +16,6 @@ use deno_core::OpState;
 use deno_core::V8CrossThreadTaskSpawner;
 use std::cell::RefCell;
 use std::collections::HashMap;
-use std::path::Path;
 use std::path::PathBuf;
 use std::rc::Rc;
 use std::thread_local;

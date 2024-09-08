@@ -369,6 +369,10 @@ where
       })?;
       let permissions = state.borrow_mut::<FP>();
       let path = permissions.check_read(&path, "fetch()")?;
+      let url = match path {
+        Cow::Owned(path) => Url::from_file_path(path).unwrap(),
+        Cow::Borrowed(_) => url,
+      };
 
       if method != Method::GET {
         return Err(type_error(format!(

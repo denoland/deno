@@ -451,7 +451,6 @@ pub async fn run(
   let current_exe_path = std::env::current_exe().unwrap();
   let current_exe_name =
     current_exe_path.file_name().unwrap().to_string_lossy();
-  let maybe_cwd = std::env::current_dir().ok();
   let deno_dir_provider = Arc::new(DenoDirProvider::new(None));
   let root_cert_store_provider = Arc::new(StandaloneRootCertStoreProvider {
     ca_stores: metadata.ca_stores,
@@ -662,8 +661,7 @@ pub async fn run(
   };
 
   let permissions = {
-    let mut permissions =
-      metadata.permissions.to_options(maybe_cwd.as_deref())?;
+    let mut permissions = metadata.permissions.to_options()?;
     // if running with an npm vfs, grant read access to it
     if let Some(vfs_root) = maybe_vfs_root {
       match &mut permissions.allow_read {

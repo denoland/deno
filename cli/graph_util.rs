@@ -41,7 +41,6 @@ use deno_graph::ResolutionError;
 use deno_graph::SpecifierError;
 use deno_runtime::deno_fs::FileSystem;
 use deno_runtime::deno_node;
-use deno_runtime::deno_permissions::PermissionsContainer;
 use deno_semver::jsr::JsrDepPackageReq;
 use deno_semver::package::PackageNv;
 use deno_semver::Version;
@@ -670,12 +669,13 @@ impl ModuleGraphBuilder {
 
   /// Creates the default loader used for creating a graph.
   pub fn create_graph_loader(&self) -> cache::FetchCacher {
-    self.create_fetch_cacher(PermissionsContainer::allow_all())
+    self
+      .create_fetch_cacher(cache::PermissionsContainerOption::BypassPermissions)
   }
 
   pub fn create_fetch_cacher(
     &self,
-    permissions: PermissionsContainer,
+    permissions: cache::PermissionsContainerOption,
   ) -> cache::FetchCacher {
     cache::FetchCacher::new(
       self.file_fetcher.clone(),

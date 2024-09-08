@@ -9,9 +9,9 @@ use deno_core::error::AnyError;
 use deno_core::parking_lot::RwLock;
 use deno_graph::ModuleGraph;
 use deno_runtime::colors;
-use deno_runtime::deno_permissions::PermissionsContainer;
 
 use crate::args::CliOptions;
+use crate::cache;
 use crate::module_loader::ModuleLoadPreparer;
 use crate::util::fs::collect_specifiers;
 use crate::util::path::is_script_ext;
@@ -75,7 +75,7 @@ impl MainModuleGraphContainer {
         specifiers,
         false,
         self.cli_options.ts_type_lib_window(),
-        PermissionsContainer::allow_all(),
+        cache::PermissionsContainerOption::BypassPermissions,
       )
       .await?;
     graph_permit.commit();

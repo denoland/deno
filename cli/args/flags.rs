@@ -32,7 +32,6 @@ use deno_core::normalize_path;
 use deno_core::resolve_url_or_path;
 use deno_core::url::Url;
 use deno_graph::GraphKind;
-use deno_runtime::colors;
 use deno_runtime::deno_permissions::parse_sys_kind;
 use deno_runtime::deno_permissions::PermissionsOptions;
 use log::debug;
@@ -659,11 +658,7 @@ impl PermissionFlags {
       || self.deny_write.is_some()
   }
 
-  pub fn to_options(
-    &self,
-    // will be None when `deno compile` can't resolve the cwd
-    initial_cwd: Option<&Path>,
-  ) -> Result<PermissionsOptions, AnyError> {
+  pub fn to_options(&self) -> Result<PermissionsOptions, AnyError> {
     Ok(PermissionsOptions {
       allow_all: self.allow_all,
       allow_env: self.allow_env.clone(),
