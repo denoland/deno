@@ -25,6 +25,7 @@ use deno_core::OpState;
 use deno_io::fs::FsError;
 use std::borrow::Cow;
 use std::path::Path;
+use std::path::PathBuf;
 
 pub trait FsPermissions {
   fn check_open<'a>(
@@ -35,8 +36,18 @@ pub trait FsPermissions {
     path: &'a Path,
     api_name: &str,
   ) -> Result<std::borrow::Cow<'a, Path>, FsError>;
-  fn check_read(&mut self, path: &Path, api_name: &str)
-    -> Result<(), AnyError>;
+  #[must_use]
+  fn check_read(
+    &mut self,
+    path: &str,
+    api_name: &str,
+  ) -> Result<PathBuf, AnyError>;
+  #[must_use]
+  fn check_read_path<'a>(
+    &mut self,
+    path: &'a Path,
+    api_name: &str,
+  ) -> Result<Cow<'a, Path>, AnyError>;
   fn check_read_all(&mut self, api_name: &str) -> Result<(), AnyError>;
   fn check_read_blind(
     &mut self,
@@ -44,11 +55,18 @@ pub trait FsPermissions {
     display: &str,
     api_name: &str,
   ) -> Result<(), AnyError>;
+  #[must_use]
   fn check_write(
     &mut self,
-    path: &Path,
+    path: &str,
     api_name: &str,
-  ) -> Result<(), AnyError>;
+  ) -> Result<PathBuf, AnyError>;
+  #[must_use]
+  fn check_write_path<'a>(
+    &mut self,
+    path: &'a Path,
+    api_name: &str,
+  ) -> Result<Cow<'a, Path>, AnyError>;
   #[must_use]
   fn check_write_partial(
     &mut self,
@@ -98,25 +116,44 @@ impl FsPermissions for deno_permissions::PermissionsContainer {
 
     // If somehow read or write aren't specified, use read
     let read = read || !write;
+    let mut path: Cow<'a, Path> = Cow::Borrowed(path);
     if read {
-      FsPermissions::check_read(self, path, api_name)
+      let resolved_path = FsPermissions::check_read_path(self, &path, api_name)
         .map_err(|_| FsError::PermissionDenied("read"))?;
+      if let Cow::Owned(resolved_path) = resolved_path {
+        path = Cow::Owned(resolved_path);
+      }
     }
     if write {
-      FsPermissions::check_write(self, path, api_name)
-        .map_err(|_| FsError::PermissionDenied("write"))?;
+      let resolved_path =
+        FsPermissions::check_write_path(self, &path, api_name)
+          .map_err(|_| FsError::PermissionDenied("write"))?;
+      if let Cow::Owned(resolved_path) = resolved_path {
+        path = Cow::Owned(resolved_path);
+      }
     }
-    Ok(Cow::Borrowed(path))
+    Ok(path)
   }
 
   fn check_read(
     &mut self,
-    path: &Path,
+    path: &str,
     api_name: &str,
-  ) -> Result<(), AnyError> {
+  ) -> Result<PathBuf, AnyError> {
     deno_permissions::PermissionsContainer::check_read(self, path, api_name)
   }
 
+  fn check_read_path<'a>(
+    &mut self,
+    path: &'a Path,
+    api_name: &str,
+  ) -> Result<Cow<'a, Path>, AnyError> {
+    deno_permissions::PermissionsContainer::check_read_path(
+      self,
+      path,
+      Some(api_name),
+    )
+  }
   fn check_read_blind(
     &mut self,
     path: &Path,
@@ -130,15 +167,25 @@ impl FsPermissions for deno_permissions::PermissionsContainer {
 
   fn check_write(
     &mut self,
-    path: &Path,
+    path: &str,
     api_name: &str,
-  ) -> Result<(), AnyError> {
+  ) -> Result<PathBuf, AnyError> {
     deno_permissions::PermissionsContainer::check_write(self, path, api_name)
+  }
+
+  fn check_write_path<'a>(
+    &mut self,
+    path: &'a Path,
+    api_name: &str,
+  ) -> Result<Cow<'a, Path>, AnyError> {
+    deno_permissions::PermissionsContainer::check_write_path(
+      self, path, api_name,
+    )
   }
 
   fn check_write_partial(
     &mut self,
-    path: &Path,
+    path: &str,
     api_name: &str,
   ) -> Result<PathBuf, AnyError> {
     deno_permissions::PermissionsContainer::check_write_partial(

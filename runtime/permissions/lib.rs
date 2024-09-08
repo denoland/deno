@@ -52,18 +52,6 @@ macro_rules! skip_check_if_is_permission_fully_granted {
 }
 
 #[inline]
-fn resolve_from_cwd(path: &Path) -> Result<PathBuf, AnyError> {
-  if path.is_absolute() {
-    Ok(normalize_path(path))
-  } else {
-    #[allow(clippy::disallowed_methods)]
-    let cwd = std::env::current_dir()
-      .context("Failed to get current working directory")?;
-    Ok(normalize_path(cwd.join(path)))
-  }
-}
-
-#[inline]
 fn resolve_from_known_cwd(path: &Path, cwd: &Path) -> PathBuf {
   if path.is_absolute() {
     normalize_path(path)
@@ -1857,7 +1845,11 @@ impl Permissions {
 /// to send permissions to a new thread.
 #[derive(Clone, Debug)]
 pub struct PermissionsContainer {
-  descriptor_parser: Arc<dyn PermissionDescriptorParser>,
+  // todo(dsherret): make both of these private as the functionality
+  // can just be methods on PermissionsContainer. Additionally, a separate
+  // struct should be created in here that handles creating child permissions
+  // so that the code is not so verbose elsewhere.
+  pub descriptor_parser: Arc<dyn PermissionDescriptorParser>,
   pub inner: Arc<Mutex<Permissions>>,
 }
 
@@ -1919,7 +1911,7 @@ impl PermissionsContainer {
   pub fn check_read_path<'a>(
     &self,
     path: &'a Path,
-    api_name: &str,
+    api_name: Option<&str>,
   ) -> Result<Cow<'a, Path>, AnyError> {
     let mut inner = self.inner.lock();
     let inner = &mut inner.read;
@@ -1931,7 +1923,7 @@ impl PermissionsContainer {
         resolved: path.to_path_buf(),
       }
       .into_read();
-      inner.check(&desc, Some(api_name))?;
+      inner.check(&desc, api_name)?;
       Ok(Cow::Owned(desc.0.resolved))
     }
   }
@@ -2051,7 +2043,7 @@ impl PermissionsContainer {
     if inner.is_allow_all() {
       Ok(PathBuf::from(path))
     } else {
-      let query = self.descriptor_parser.parse_path_query(path)?;
+      let desc = self.descriptor_parser.parse_path_query(path)?.into_write();
       inner.check_partial(&desc, Some(api_name))?;
       Ok(desc.0.resolved)
     }
@@ -2248,12 +2240,33 @@ impl PermissionsContainer {
     }
   }
 
+  #[must_use]
   #[inline(always)]
-  pub fn check_ffi_partial(
+  pub fn check_ffi_partial_no_path(&mut self) -> Result<(), AnyError> {
+    let mut inner = self.inner.lock();
+    let inner = &mut inner.ffi;
+    if inner.is_allow_all() {
+      Ok(())
+    } else {
+      inner.check_partial(None)
+    }
+  }
+
+  #[must_use]
+  #[inline(always)]
+  pub fn check_ffi_partial_with_path(
     &mut self,
-    path: Option<&Path>,
-  ) -> Result<(), AnyError> {
-    self.0.lock().ffi.check_partial(path)
+    path: &str,
+  ) -> Result<PathBuf, AnyError> {
+    let mut inner = self.inner.lock();
+    let inner = &mut inner.ffi;
+    if inner.is_allow_all() {
+      Ok(PathBuf::from(path))
+    } else {
+      let desc = self.descriptor_parser.parse_path_query(path)?.into_ffi();
+      inner.check_partial(Some(&desc))?;
+      Ok(desc.0.resolved)
+    }
   }
 }
 
@@ -2534,7 +2547,7 @@ impl<'de> Deserialize<'de> for ChildPermissionsArg {
 }
 
 /// Parses and normalizes permissions.
-pub trait PermissionDescriptorParser: Debug {
+pub trait PermissionDescriptorParser: Debug + Send + Sync {
   fn parse_read_descriptor(
     &self,
     text: &str,

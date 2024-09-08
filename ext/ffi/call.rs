@@ -289,7 +289,7 @@ where
   {
     let mut state = state.borrow_mut();
     let permissions = state.borrow_mut::<FP>();
-    permissions.check_partial(None)?;
+    permissions.check_partial_no_path()?;
   };
 
   let symbol = PtrSymbol::new(pointer, &def)?;
@@ -387,7 +387,7 @@ where
   {
     let mut state = state.borrow_mut();
     let permissions = state.borrow_mut::<FP>();
-    permissions.check_partial(None)?;
+    permissions.check_partial_no_path()?;
   };
 
   let symbol = PtrSymbol::new(pointer, &def)?;

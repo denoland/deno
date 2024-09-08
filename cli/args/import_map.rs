@@ -17,7 +17,7 @@ pub async fn resolve_import_map_value_from_specifier(
     Ok(serde_json::from_str(&data_url_text)?)
   } else {
     let file = file_fetcher
-      .fetch(specifier, &PermissionsContainer::allow_all())
+      .fetch_bypass_permissions(specifier)
       .await?
       .into_text_decoded()?;
     Ok(serde_json::from_str(&file.source)?)

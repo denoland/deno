@@ -3,7 +3,7 @@
 use std::path::Path;
 use std::path::PathBuf;
 
-use deno_core::anyhow::bail;
+use deno_core::anyhow::Context;
 use deno_core::error::AnyError;
 use deno_core::normalize_path;
 use deno_permissions::AllowRunDescriptor;
@@ -11,47 +11,40 @@ use deno_permissions::DenyRunDescriptor;
 use deno_permissions::EnvDescriptor;
 use deno_permissions::FfiDescriptor;
 use deno_permissions::NetDescriptor;
+use deno_permissions::PathQueryDescriptor;
 use deno_permissions::ReadDescriptor;
 use deno_permissions::SysDescriptor;
 use deno_permissions::WriteDescriptor;
 
+#[derive(Debug)]
 pub struct RuntimePermissionDescriptorParser {
   fs: deno_fs::FileSystemRc,
-  initial_cwd: Option<PathBuf>,
 }
 
 impl RuntimePermissionDescriptorParser {
-  pub fn new(fs: deno_fs::FileSystemRc, initial_cwd: Option<PathBuf>) {
-    Self { fs, initial_cwd }
+  pub fn new(fs: deno_fs::FileSystemRc) -> Self {
+    Self { fs }
   }
 
-  fn initial_cwd(&self) -> Result<&Path, AnyError> {
-    if let Some(initial_cwd) = &self.initial_cwd {
-      Ok(initial_cwd)
-    } else {
-      bail!("Could not resolve permission path when current working directory could not be resolved.")
+  fn resolve_from_cwd(&self, path: &str) -> Result<PathBuf, AnyError> {
+    if path.is_empty() {
+      return Err(AnyError::msg("Empty path is not allowed"));
     }
-  }
-
-  fn resolve_from_cwd(&self, path: &Path) -> Result<PathBuf, AnyError> {
+    let path = Path::new(path);
     if path.is_absolute() {
       Ok(normalize_path(path))
-    } else if let Some(initial_cwd) = &self.initial_cwd {
-      Ok(normalize_path(initial_cwd.join(path)))
     } else {
-      bail!("Could not resolve relative permission path '{}' when current working directory could not be resolved.", path.display())
+      let cwd = self.resolve_cwd()?;
+      Ok(normalize_path(cwd.join(path)))
     }
   }
 
-  fn resolve_path(
-    &self,
-    text: &str,
-  ) -> Result<PathBuf, deno_core::anyhow::Error> {
-    if text.is_empty() {
-      Err(AnyError::msg("Empty path is not allowed"))
-    } else {
-      self.resolve_from_cwd(Path::new(text))
-    }
+  fn resolve_cwd(&self) -> Result<PathBuf, AnyError> {
+    self
+      .fs
+      .cwd()
+      .map_err(|e| e.into_io_error())
+      .context("failed resolving cwd")
   }
 }
 
@@ -62,14 +55,14 @@ impl deno_permissions::PermissionDescriptorParser
     &self,
     text: &str,
   ) -> Result<ReadDescriptor, AnyError> {
-    Ok(ReadDescriptor(self.resolve_path(text)?))
+    Ok(ReadDescriptor(self.resolve_from_cwd(text)?))
   }
 
   fn parse_write_descriptor(
     &self,
     text: &str,
   ) -> Result<WriteDescriptor, AnyError> {
-    Ok(WriteDescriptor(self.resolve_path(text)?))
+    Ok(WriteDescriptor(self.resolve_from_cwd(text)?))
   }
 
   fn parse_net_descriptor(
@@ -105,21 +98,21 @@ impl deno_permissions::PermissionDescriptorParser
     &self,
     text: &str,
   ) -> Result<AllowRunDescriptor, AnyError> {
-    AllowRunDescriptor::parse(text, self.initial_cwd()?)
+    AllowRunDescriptor::parse(text, &self.resolve_cwd()?)
   }
 
   fn parse_deny_run_descriptor(
     &self,
     text: &str,
   ) -> Result<DenyRunDescriptor, AnyError> {
-    Ok(DenyRunDescriptor::parse(text, self.initial_cwd()?))
+    Ok(DenyRunDescriptor::parse(text, &self.resolve_cwd()?))
   }
 
   fn parse_ffi_descriptor(
     &self,
     text: &str,
   ) -> Result<deno_permissions::FfiDescriptor, AnyError> {
-    Ok(FfiDescriptor(self.resolve_path(text)?))
+    Ok(FfiDescriptor(self.resolve_from_cwd(text)?))
   }
 
   // queries
@@ -127,7 +120,10 @@ impl deno_permissions::PermissionDescriptorParser
   fn parse_path_query(
     &self,
     path: &str,
-  ) -> Result<deno_permissions::PathQueryDescriptor, AnyError> {
-    resolved_f
+  ) -> Result<PathQueryDescriptor, AnyError> {
+    Ok(PathQueryDescriptor {
+      resolved: self.resolve_from_cwd(path)?,
+      requested: path.to_string(),
+    })
   }
 }

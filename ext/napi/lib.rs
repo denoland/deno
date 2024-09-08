@@ -490,7 +490,7 @@ pub trait NapiPermissions {
 // change in the future.
 impl NapiPermissions for deno_permissions::PermissionsContainer {
   #[inline(always)]
-  fn check(&mut self, path: &str) -> Result<(), AnyError> {
+  fn check(&mut self, path: &str) -> Result<PathBuf, AnyError> {
     deno_permissions::PermissionsContainer::check_ffi(self, path)
   }
 }
@@ -501,7 +501,7 @@ unsafe impl Send for NapiModuleHandle {}
 struct NapiModuleHandle(*const NapiModule);
 
 static NAPI_LOADED_MODULES: std::sync::LazyLock<
-  RwLock<HashMap<String, NapiModuleHandle>>,
+  RwLock<HashMap<PathBuf, NapiModuleHandle>>,
 > = std::sync::LazyLock::new(|| RwLock::new(HashMap::new()));
 
 #[op2(reentrant)]
@@ -522,7 +522,7 @@ where
   let (async_work_sender, cleanup_hooks, external_ops_tracker, path) = {
     let mut op_state = op_state.borrow_mut();
     let permissions = op_state.borrow_mut::<NP>();
-    let path = permissions.check(Some(&PathBuf::from(&path)))?;
+    let path = permissions.check(&path)?;
     let napi_state = op_state.borrow::<NapiState>();
     (
       op_state.borrow::<V8CrossThreadTaskSpawner>().clone(),
@@ -613,7 +613,7 @@ where
   } else {
     return Err(type_error(format!(
       "Unable to find register Node-API module at {}",
-      path
+      path.display()
     )));
   };
 

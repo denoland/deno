@@ -32,6 +32,8 @@ use deno_runtime::deno_permissions::Permissions;
 use deno_runtime::deno_permissions::PermissionsContainer;
 use deno_runtime::deno_tls::rustls::RootCertStore;
 use deno_runtime::deno_tls::RootCertStoreProvider;
+use deno_runtime::deno_web::BlobStore;
+use deno_runtime::permissions::RuntimePermissionDescriptorParser;
 use deno_runtime::WorkerExecutionMode;
 use deno_runtime::WorkerLogLevel;
 use deno_semver::npm::NpmPackageReqReference;
@@ -669,15 +671,20 @@ pub async fn run(
           // do nothing, already granted
         }
         Some(vec) => {
-          vec.push(vfs_root);
+          vec.push(vfs_root.to_string_lossy().to_string());
         }
         None => {
-          permissions.allow_read = Some(vec![vfs_root]);
+          permissions.allow_read =
+            Some(vec![vfs_root.to_string_lossy().to_string()]);
         }
       }
     }
 
-    PermissionsContainer::new(Permissions::from_options(&permissions)?)
+    let desc_parser =
+      Arc::new(RuntimePermissionDescriptorParser::new(fs.clone()));
+    let permissions =
+      Permissions::from_options(desc_parser.as_ref(), &permissions)?;
+    PermissionsContainer::new(desc_parser, permissions)
   };
   let feature_checker = Arc::new({
     let mut checker = FeatureChecker::default();
@@ -695,21 +702,24 @@ pub async fn run(
     }
     checker
   });
+  let permission_desc_parser =
+    Arc::new(RuntimePermissionDescriptorParser::new(fs.clone()));
   let worker_factory = CliMainWorkerFactory::new(
-    StorageKeyResolver::empty(),
-    crate::args::DenoSubcommand::Run(Default::default()),
+    Arc::new(BlobStore::default()),
     // Code cache is not supported for standalone binary yet.
     None,
-    npm_resolver,
-    node_resolver,
-    Default::default(),
-    Box::new(module_loader_factory),
-    root_cert_store_provider,
+    feature_checker,
     fs,
     None,
     None,
     None,
-    feature_checker,
+    Box::new(module_loader_factory),
+    node_resolver,
+    npm_resolver,
+    permission_desc_parser,
+    root_cert_store_provider,
+    StorageKeyResolver::empty(),
+    crate::args::DenoSubcommand::Run(Default::default()),
     CliMainWorkerOptions {
       argv: metadata.argv,
       log_level: WorkerLogLevel::Info,

@@ -559,7 +559,7 @@ where
 {
   check_unstable(state, "Deno.UnsafeCallback");
   let permissions = state.borrow_mut::<FP>();
-  permissions.check_partial(None)?;
+  permissions.check_partial_no_path()?;
 
   let thread_id: u32 = LOCAL_THREAD_ID.with(|s| {
     let value = *s.borrow();

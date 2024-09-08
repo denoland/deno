@@ -154,18 +154,19 @@ fn op_create_worker(
       "Worker.deno.permissions",
     );
   }
-  let permission_desc_parser =
-    state.borrow::<Arc<dyn PermissionDescriptorParser>>();
+  let permission_desc_parser = state
+    .borrow::<Arc<dyn PermissionDescriptorParser>>()
+    .clone();
   let parent_permissions = state.borrow_mut::<PermissionsContainer>();
   let worker_permissions = if let Some(child_permissions_arg) = args.permissions
   {
-    let mut parent_permissions = parent_permissions.0.lock();
+    let mut parent_permissions = parent_permissions.inner.lock();
     let perms = create_child_permissions(
       &mut parent_permissions,
       child_permissions_arg,
-      permission_desc_parser,
+      permission_desc_parser.as_ref(),
     )?;
-    PermissionsContainer::new(perms)
+    PermissionsContainer::new(permission_desc_parser, perms)
   } else {
     parent_permissions.clone()
   };

@@ -68,10 +68,7 @@ impl JsrFetchResolver {
       let file_fetcher = self.file_fetcher.clone();
       // spawn due to the lsp's `Send` requirement
       let file = deno_core::unsync::spawn(async move {
-        file_fetcher
-          .fetch(&meta_url, &PermissionsContainer::allow_all())
-          .await
-          .ok()
+        file_fetcher.fetch_bypass_permissions(&meta_url).await.ok()
       })
       .await
       .ok()??;
@@ -96,10 +93,7 @@ impl JsrFetchResolver {
       let file_fetcher = self.file_fetcher.clone();
       // spawn due to the lsp's `Send` requirement
       let file = deno_core::unsync::spawn(async move {
-        file_fetcher
-          .fetch(&meta_url, &PermissionsContainer::allow_all())
-          .await
-          .ok()
+        file_fetcher.fetch_bypass_permissions(&meta_url).await.ok()
       })
       .await
       .ok()??;

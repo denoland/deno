@@ -106,8 +106,9 @@ pub fn op_fs_chdir<P>(
 where
   P: FsPermissions + 'static,
 {
-  let d = PathBuf::from(&directory);
-  state.borrow_mut::<P>().check_read(&d, "Deno.chdir()")?;
+  let d = state
+    .borrow_mut::<P>()
+    .check_read(directory, "Deno.chdir()")?;
   state
     .borrow::<FileSystemRc>()
     .chdir(&d)
@@ -190,11 +191,9 @@ pub fn op_fs_mkdir_sync<P>(
 where
   P: FsPermissions + 'static,
 {
-  let path = PathBuf::from(path);
-
   let mode = mode.unwrap_or(0o777) & 0o777;
 
-  state
+  let path = state
     .borrow_mut::<P>()
     .check_write(&path, "Deno.mkdirSync()")?;
 
@@ -215,14 +214,12 @@ pub async fn op_fs_mkdir_async<P>(
 where
   P: FsPermissions + 'static,
 {
-  let path = PathBuf::from(path);
-
   let mode = mode.unwrap_or(0o777) & 0o777;
 
-  let fs = {
+  let (fs, path) = {
     let mut state = state.borrow_mut();
-    state.borrow_mut::<P>().check_write(&path, "Deno.mkdir()")?;
-    state.borrow::<FileSystemRc>().clone()
+    let path = state.borrow_mut::<P>().check_write(&path, "Deno.mkdir()")?;
+    (state.borrow::<FileSystemRc>().clone(), path)
   };
 
   fs.mkdir_async(path.clone(), recursive, mode)
@@ -241,8 +238,7 @@ pub fn op_fs_chmod_sync<P>(
 where
   P: FsPermissions + 'static,
 {
-  let path = PathBuf::from(path);
-  state
+  let path = state
     .borrow_mut::<P>()
     .check_write(&path, "Deno.chmodSync()")?;
   let fs = state.borrow::<FileSystemRc>();
@@ -259,11 +255,10 @@ pub async fn op_fs_chmod_async<P>(
 where
   P: FsPermissions + 'static,
 {
-  let path = PathBuf::from(path);
-  let fs = {
+  let (fs, path) = {
     let mut state = state.borrow_mut();
-    state.borrow_mut::<P>().check_write(&path, "Deno.chmod()")?;
-    state.borrow::<FileSystemRc>().clone()
+    let path = state.borrow_mut::<P>().check_write(&path, "Deno.chmod()")?;
+    (state.borrow::<FileSystemRc>().clone(), path)
   };
   fs.chmod_async(path.clone(), mode)
     .await
@@ -281,8 +276,7 @@ pub fn op_fs_chown_sync<P>(
 where
   P: FsPermissions + 'static,
 {
-  let path = PathBuf::from(path);
-  state
+  let path = state
     .borrow_mut::<P>()
     .check_write(&path, "Deno.chownSync()")?;
   let fs = state.borrow::<FileSystemRc>();
@@ -301,11 +295,10 @@ pub async fn op_fs_chown_async<P>(
 where
   P: FsPermissions + 'static,
 {
-  let path = PathBuf::from(path);
-  let fs = {
+  let (fs, path) = {
     let mut state = state.borrow_mut();
-    state.borrow_mut::<P>().check_write(&path, "Deno.chown()")?;
-    state.borrow::<FileSystemRc>().clone()
+    let path = state.borrow_mut::<P>().check_write(&path, "Deno.chown()")?;
+    (state.borrow::<FileSystemRc>().clone(), path)
   };
   fs.chown_async(path.clone(), uid, gid)
     .await
@@ -322,9 +315,7 @@ pub fn op_fs_remove_sync<P>(
 where
   P: FsPermissions + 'static,
 {
-  let path = PathBuf::from(path);
-
-  state
+  let path = state
     .borrow_mut::<P>()
     .check_write(&path, "Deno.removeSync()")?;
 
@@ -375,12 +366,9 @@ pub fn op_fs_copy_file_sync<P>(
 where
   P: FsPermissions + 'static,
 {
-  let from = PathBuf::from(from);
-  let to = PathBuf::from(to);
-
   let permissions = state.borrow_mut::<P>();
-  permissions.check_read(&from, "Deno.copyFileSync()")?;
-  permissions.check_write(&to, "Deno.copyFileSync()")?;
+  let from = permissions.check_read(from, "Deno.copyFileSync()")?;
+  let to = permissions.check_write(to, "Deno.copyFileSync()")?;
 
   let fs = state.borrow::<FileSystemRc>();
   fs.copy_file_sync(&from, &to)
@@ -398,15 +386,12 @@ pub async fn op_fs_copy_file_async<P>(
 where
   P: FsPermissions + 'static,
 {
-  let from = PathBuf::from(from);
-  let to = PathBuf::from(to);
-
-  let fs = {
+  let (fs, from, to) = {
     let mut state = state.borrow_mut();
     let permissions = state.borrow_mut::<P>();
-    permissions.check_read(&from, "Deno.copyFile()")?;
-    permissions.check_write(&to, "Deno.copyFile()")?;
-    state.borrow::<FileSystemRc>().clone()
+    let from = permissions.check_read(&from, "Deno.copyFile()")?;
+    let to = permissions.check_write(&to, "Deno.copyFile()")?;
+    (state.borrow::<FileSystemRc>().clone(), from, to)
   };
 
   fs.copy_file_async(from.clone(), to.clone())
@@ -425,8 +410,7 @@ pub fn op_fs_stat_sync<P>(
 where
   P: FsPermissions + 'static,
 {
-  let path = PathBuf::from(path);
-  state
+  let path = state
     .borrow_mut::<P>()
     .check_read(&path, "Deno.statSync()")?;
   let fs = state.borrow::<FileSystemRc>();
@@ -445,12 +429,11 @@ pub async fn op_fs_stat_async<P>(
 where
   P: FsPermissions + 'static,
 {
-  let path = PathBuf::from(path);
-  let fs = {
+  let (fs, path) = {
     let mut state = state.borrow_mut();
     let permissions = state.borrow_mut::<P>();
-    permissions.check_read(&path, "Deno.stat()")?;
-    state.borrow::<FileSystemRc>().clone()
+    let path = permissions.check_read(&path, "Deno.stat()")?;
+    (state.borrow::<FileSystemRc>().clone(), path)
   };
   let stat = fs
     .stat_async(path.clone())
@@ -468,8 +451,7 @@ pub fn op_fs_lstat_sync<P>(
 where
   P: FsPermissions + 'static,
 {
-  let path = PathBuf::from(path);
-  state
+  let path = state
     .borrow_mut::<P>()
     .check_read(&path, "Deno.lstatSync()")?;
   let fs = state.borrow::<FileSystemRc>();
@@ -488,12 +470,11 @@ pub async fn op_fs_lstat_async<P>(
 where
   P: FsPermissions + 'static,
 {
-  let path = PathBuf::from(path);
-  let fs = {
+  let (fs, path) = {
     let mut state = state.borrow_mut();
     let permissions = state.borrow_mut::<P>();
-    permissions.check_read(&path, "Deno.lstat()")?;
-    state.borrow::<FileSystemRc>().clone()
+    let path = permissions.check_read(&path, "Deno.lstat()")?;
+    (state.borrow::<FileSystemRc>().clone(), path)
   };
   let stat = fs
     .lstat_async(path.clone())
@@ -511,11 +492,9 @@ pub fn op_fs_realpath_sync<P>(
 where
   P: FsPermissions + 'static,
 {
-  let path = PathBuf::from(path);
-
   let fs = state.borrow::<FileSystemRc>().clone();
   let permissions = state.borrow_mut::<P>();
-  permissions.check_read(&path, "Deno.realPathSync()")?;
+  let path = permissions.check_read(&path, "Deno.realPathSync()")?;
   if path.is_relative() {
     permissions.check_read_blind(&fs.cwd()?, "CWD", "Deno.realPathSync()")?;
   }
@@ -536,18 +515,16 @@ pub async fn op_fs_realpath_async<P>(
 where
   P: FsPermissions + 'static,
 {
-  let path = PathBuf::from(path);
-
-  let fs;
-  {
+  let (fs, path) = {
     let mut state = state.borrow_mut();
-    fs = state.borrow::<FileSystemRc>().clone();
+    let fs = state.borrow::<FileSystemRc>().clone();
     let permissions = state.borrow_mut::<P>();
-    permissions.check_read(&path, "Deno.realPath()")?;
+    let path = permissions.check_read(&path, "Deno.realPath()")?;
     if path.is_relative() {
       permissions.check_read_blind(&fs.cwd()?, "CWD", "Deno.realPath()")?;
     }
-  }
+    (fs, path)
+  };
   let resolved_path = fs
     .realpath_async(path.clone())
     .await
@@ -566,9 +543,7 @@ pub fn op_fs_read_dir_sync<P>(
 where
   P: FsPermissions + 'static,
 {
-  let path = PathBuf::from(path);
-
-  state
+  let path = state
     .borrow_mut::<P>()
     .check_read(&path, "Deno.readDirSync()")?;
 
@@ -587,14 +562,12 @@ pub async fn op_fs_read_dir_async<P>(
 where
   P: FsPermissions + 'static,
 {
-  let path = PathBuf::from(path);
-
-  let fs = {
+  let (fs, path) = {
     let mut state = state.borrow_mut();
-    state
+    let path = state
       .borrow_mut::<P>()
       .check_read(&path, "Deno.readDir()")?;
-    state.borrow::<FileSystemRc>().clone()
+    (state.borrow::<FileSystemRc>().clone(), path)
   };
 
   let entries = fs
@@ -614,13 +587,10 @@ pub fn op_fs_rename_sync<P>(
 where
   P: FsPermissions + 'static,
 {
-  let oldpath = PathBuf::from(oldpath);
-  let newpath = PathBuf::from(newpath);
-
   let permissions = state.borrow_mut::<P>();
-  permissions.check_read(&oldpath, "Deno.renameSync()")?;
-  permissions.check_write(&oldpath, "Deno.renameSync()")?;
-  permissions.check_write(&newpath, "Deno.renameSync()")?;
+  let _ = permissions.check_read(&oldpath, "Deno.renameSync()")?;
+  let oldpath = permissions.check_write(&oldpath, "Deno.renameSync()")?;
+  let newpath = permissions.check_write(&newpath, "Deno.renameSync()")?;
 
   let fs = state.borrow::<FileSystemRc>();
   fs.rename_sync(&oldpath, &newpath)
@@ -638,16 +608,13 @@ pub async fn op_fs_rename_async<P>(
 where
   P: FsPermissions + 'static,
 {
-  let oldpath = PathBuf::from(oldpath);
-  let newpath = PathBuf::from(newpath);
-
-  let fs = {
+  let (fs, oldpath, newpath) = {
     let mut state = state.borrow_mut();
     let permissions = state.borrow_mut::<P>();
-    permissions.check_read(&oldpath, "Deno.rename()")?;
-    permissions.check_write(&oldpath, "Deno.rename()")?;
-    permissions.check_write(&newpath, "Deno.rename()")?;
-    state.borrow::<FileSystemRc>().clone()
+    _ = permissions.check_read(&oldpath, "Deno.rename()")?;
+    let oldpath = permissions.check_write(&oldpath, "Deno.rename()")?;
+    let newpath = permissions.check_write(&newpath, "Deno.rename()")?;
+    (state.borrow::<FileSystemRc>().clone(), oldpath, newpath)
   };
 
   fs.rename_async(oldpath.clone(), newpath.clone())
@@ -666,14 +633,11 @@ pub fn op_fs_link_sync<P>(
 where
   P: FsPermissions + 'static,
 {
-  let oldpath = PathBuf::from(oldpath);
-  let newpath = PathBuf::from(newpath);
-
   let permissions = state.borrow_mut::<P>();
-  permissions.check_read(&oldpath, "Deno.linkSync()")?;
-  permissions.check_write(&oldpath, "Deno.linkSync()")?;
-  permissions.check_read(&newpath, "Deno.linkSync()")?;
-  permissions.check_write(&newpath, "Deno.linkSync()")?;
+  _ = permissions.check_read(&oldpath, "Deno.linkSync()")?;
+  let oldpath = permissions.check_write(&oldpath, "Deno.linkSync()")?;
+  _ = permissions.check_read(&newpath, "Deno.linkSync()")?;
+  let newpath = permissions.check_write(&newpath, "Deno.linkSync()")?;
 
   let fs = state.borrow::<FileSystemRc>();
   fs.link_sync(&oldpath, &newpath)
@@ -691,17 +655,14 @@ pub async fn op_fs_link_async<P>(
 where
   P: FsPermissions + 'static,
 {
-  let oldpath = PathBuf::from(&oldpath);
-  let newpath = PathBuf::from(&newpath);
-
-  let fs = {
+  let (fs, oldpath, newpath) = {
     let mut state = state.borrow_mut();
     let permissions = state.borrow_mut::<P>();
-    permissions.check_read(&oldpath, "Deno.link()")?;
-    permissions.check_write(&oldpath, "Deno.link()")?;
-    permissions.check_read(&newpath, "Deno.link()")?;
-    permissions.check_write(&newpath, "Deno.link()")?;
-    state.borrow::<FileSystemRc>().clone()
+    _ = permissions.check_read(&oldpath, "Deno.link()")?;
+    let oldpath = permissions.check_write(&oldpath, "Deno.link()")?;
+    _ = permissions.check_read(&newpath, "Deno.link()")?;
+    let newpath = permissions.check_write(&newpath, "Deno.link()")?;
+    (state.borrow::<FileSystemRc>().clone(), oldpath, newpath)
   };
 
   fs.link_async(oldpath.clone(), newpath.clone())
@@ -772,9 +733,7 @@ pub fn op_fs_read_link_sync<P>(
 where
   P: FsPermissions + 'static,
 {
-  let path = PathBuf::from(path);
-
-  state
+  let path = state
     .borrow_mut::<P>()
     .check_read(&path, "Deno.readLink()")?;
 
@@ -794,14 +753,12 @@ pub async fn op_fs_read_link_async<P>(
 where
   P: FsPermissions + 'static,
 {
-  let path = PathBuf::from(path);
-
-  let fs = {
+  let (fs, path) = {
     let mut state = state.borrow_mut();
-    state
+    let path = state
       .borrow_mut::<P>()
       .check_read(&path, "Deno.readLink()")?;
-    state.borrow::<FileSystemRc>().clone()
+    (state.borrow::<FileSystemRc>().clone(), path)
   };
 
   let target = fs
@@ -821,9 +778,7 @@ pub fn op_fs_truncate_sync<P>(
 where
   P: FsPermissions + 'static,
 {
-  let path = PathBuf::from(path);
-
-  state
+  let path = state
     .borrow_mut::<P>()
     .check_write(&path, "Deno.truncateSync()")?;
 
@@ -843,14 +798,12 @@ pub async fn op_fs_truncate_async<P>(
 where
   P: FsPermissions + 'static,
 {
-  let path = PathBuf::from(path);
-
-  let fs = {
+  let (fs, path) = {
     let mut state = state.borrow_mut();
-    state
+    let path = state
       .borrow_mut::<P>()
       .check_write(&path, "Deno.truncate()")?;
-    state.borrow::<FileSystemRc>().clone()
+    (state.borrow::<FileSystemRc>().clone(), path)
   };
 
   fs.truncate_async(path.clone(), len)
@@ -872,9 +825,7 @@ pub fn op_fs_utime_sync<P>(
 where
   P: FsPermissions + 'static,
 {
-  let path = PathBuf::from(path);
-
-  state.borrow_mut::<P>().check_write(&path, "Deno.utime()")?;
+  let path = state.borrow_mut::<P>().check_write(path, "Deno.utime()")?;
 
   let fs = state.borrow::<FileSystemRc>();
   fs.utime_sync(&path, atime_secs, atime_nanos, mtime_secs, mtime_nanos)
@@ -895,12 +846,10 @@ pub async fn op_fs_utime_async<P>(
 where
   P: FsPermissions + 'static,
 {
-  let path = PathBuf::from(path);
-
-  let fs = {
+  let (fs, path) = {
     let mut state = state.borrow_mut();
-    state.borrow_mut::<P>().check_write(&path, "Deno.utime()")?;
-    state.borrow::<FileSystemRc>().clone()
+    let path = state.borrow_mut::<P>().check_write(&path, "Deno.utime()")?;
+    (state.borrow::<FileSystemRc>().clone(), path)
   };
 
   fs.utime_async(
@@ -1077,11 +1026,7 @@ where
 {
   let fs = state.borrow::<FileSystemRc>().clone();
   let dir = match dir {
-    Some(dir) => {
-      let dir = PathBuf::from(dir);
-      state.borrow_mut::<P>().check_write(&dir, api_name)?;
-      dir
-    }
+    Some(dir) => state.borrow_mut::<P>().check_write(&dir, api_name)?,
     None => {
       let dir = fs.tmp_dir().context("tmpdir")?;
       state
@@ -1104,11 +1049,7 @@ where
   let mut state = state.borrow_mut();
   let fs = state.borrow::<FileSystemRc>().clone();
   let dir = match dir {
-    Some(dir) => {
-      let dir = PathBuf::from(dir);
-      state.borrow_mut::<P>().check_write(&dir, api_name)?;
-      dir
-    }
+    Some(dir) => state.borrow_mut::<P>().check_write(&dir, api_name)?,
     None => {
       let dir = fs.tmp_dir().context("tmpdir")?;
       state

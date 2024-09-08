@@ -429,11 +429,11 @@ impl CliMainWorkerFactory {
     maybe_inspector_server: Option<Arc<InspectorServer>>,
     maybe_lockfile: Option<Arc<CliLockfile>>,
     module_loader_factory: Box<dyn ModuleLoaderFactory>,
-    npm_resolver: Arc<dyn CliNpmResolver>,
     node_resolver: Arc<NodeResolver>,
+    npm_resolver: Arc<dyn CliNpmResolver>,
     permission_parser: Arc<RuntimePermissionDescriptorParser>,
-    storage_key_resolver: StorageKeyResolver,
     root_cert_store_provider: Arc<dyn RootCertStoreProvider>,
+    storage_key_resolver: StorageKeyResolver,
     subcommand: DenoSubcommand,
     options: CliMainWorkerOptions,
   ) -> Self {
@@ -530,9 +530,13 @@ impl CliMainWorkerFactory {
       (main_module, false)
     };
 
-    let ModuleLoaderAndSourceMapGetter { module_loader } = shared
-      .module_loader_factory
-      .create_for_main(PermissionsContainer::allow_all(), permissions.clone());
+    let ModuleLoaderAndSourceMapGetter { module_loader } =
+      shared.module_loader_factory.create_for_main(
+        PermissionsContainer::allow_all(
+          self.shared.permission_desc_parser.clone(),
+        ),
+        permissions.clone(),
+      );
     let maybe_inspector_server = shared.maybe_inspector_server.clone();
 
     let create_web_worker_cb =
@@ -817,6 +821,7 @@ fn create_web_worker_callback(
       stdio: stdio.clone(),
       cache_storage_dir,
       feature_checker,
+      permission_desc_parser: shared.permission_desc_parser.clone(),
       strace_ops: shared.options.strace_ops.clone(),
       close_on_idle: args.close_on_idle,
       maybe_worker_metadata: args.maybe_worker_metadata,
@@ -838,13 +843,16 @@ fn create_web_worker_callback(
 mod tests {
   use super::*;
   use deno_core::resolve_path;
+  use deno_fs::RealFs;
   use deno_runtime::deno_permissions::Permissions;
 
   fn create_test_worker() -> MainWorker {
     let main_module =
       resolve_path("./hello.js", &std::env::current_dir().unwrap()).unwrap();
-    let permissions =
-      PermissionsContainer::new(Permissions::none_without_prompt());
+    let permissions = PermissionsContainer::new(
+      Arc::new(RuntimePermissionDescriptorParser::new(Arc::new(RealFs))),
+      Permissions::none_without_prompt(),
+    );
 
     let options = WorkerOptions {
       startup_snapshot: crate::js::deno_isolate_init(),

@@ -30,6 +30,7 @@ use deno_core::ModuleSpecifier;
 use deno_core::PollEventLoopOptions;
 use deno_runtime::deno_permissions::Permissions;
 use deno_runtime::deno_permissions::PermissionsContainer;
+use deno_runtime::permissions::RuntimePermissionDescriptorParser;
 use deno_runtime::tokio_util::create_and_run_current_thread;
 use deno_runtime::WorkerExecutionMode;
 use indexmap::IndexMap;
@@ -144,14 +145,14 @@ fn create_reporter(
 /// Run a single specifier as an executable bench module.
 async fn bench_specifier(
   worker_factory: Arc<CliMainWorkerFactory>,
-  permissions: Permissions,
+  permissions_container: PermissionsContainer,
   specifier: ModuleSpecifier,
   sender: UnboundedSender<BenchEvent>,
   filter: TestFilter,
 ) -> Result<(), AnyError> {
   match bench_specifier_inner(
     worker_factory,
-    permissions,
+    permissions_container,
     specifier.clone(),
     &sender,
     filter,
@@ -176,7 +177,7 @@ async fn bench_specifier(
 /// Run a single specifier as an executable bench module.
 async fn bench_specifier_inner(
   worker_factory: Arc<CliMainWorkerFactory>,
-  permissions: Permissions,
+  permissions_container: PermissionsContainer,
   specifier: ModuleSpecifier,
   sender: &UnboundedSender<BenchEvent>,
   filter: TestFilter,
@@ -185,7 +186,7 @@ async fn bench_specifier_inner(
     .create_custom_worker(
       WorkerExecutionMode::Bench,
       specifier.clone(),
-      PermissionsContainer::new(permissions),
+      permissions_container,
       vec![ops::bench::deno_bench::init_ops(sender.clone())],
       Default::default(),
     )
@@ -264,6 +265,7 @@ async fn bench_specifier_inner(
 async fn bench_specifiers(
   worker_factory: Arc<CliMainWorkerFactory>,
   permissions: &Permissions,
+  permissions_desc_parser: &Arc<RuntimePermissionDescriptorParser>,
   specifiers: Vec<ModuleSpecifier>,
   options: BenchSpecifierOptions,
 ) -> Result<(), AnyError> {
@@ -273,13 +275,16 @@ async fn bench_specifiers(
 
   let join_handles = specifiers.into_iter().map(move |specifier| {
     let worker_factory = worker_factory.clone();
-    let permissions = permissions.clone();
+    let permissions_container = PermissionsContainer::new(
+      permissions_desc_parser.clone(),
+      permissions.clone(),
+    );
     let sender = sender.clone();
     let options = option_for_handles.clone();
     spawn_blocking(move || {
       let future = bench_specifier(
         worker_factory,
-        permissions,
+        permissions_container,
         specifier,
         sender,
         options.filter,
@@ -410,8 +415,11 @@ pub async fn run_benchmarks(
   // Various bench files should not share the same permissions in terms of
   // `PermissionsContainer` - otherwise granting/revoking permissions in one
   // file would have impact on other files, which is undesirable.
-  let permissions =
-    Permissions::from_options(&cli_options.permissions_options()?)?;
+  let permission_desc_parser = factory.permission_desc_parser()?.clone();
+  let permissions = Permissions::from_options(
+    permission_desc_parser.as_ref(),
+    &cli_options.permissions_options()?,
+  )?;
 
   let members_with_bench_options =
     cli_options.resolve_bench_options_for_members(&bench_flags)?;
@@ -446,6 +454,7 @@ pub async fn run_benchmarks(
   bench_specifiers(
     worker_factory,
     &permissions,
+    &permission_desc_parser,
     specifiers,
     BenchSpecifierOptions {
       filter: TestFilter::from_flag(&workspace_bench_options.filter),
@@ -519,8 +528,11 @@ pub async fn run_benchmarks_with_watch(
         // Various bench files should not share the same permissions in terms of
         // `PermissionsContainer` - otherwise granting/revoking permissions in one
         // file would have impact on other files, which is undesirable.
-        let permissions =
-          Permissions::from_options(&cli_options.permissions_options()?)?;
+        let permission_desc_parser = factory.permission_desc_parser()?.clone();
+        let permissions = Permissions::from_options(
+          permission_desc_parser.as_ref(),
+          &cli_options.permissions_options()?,
+        )?;
 
         let graph = module_graph_creator
           .create_graph(graph_kind, collected_bench_modules.clone())
@@ -568,6 +580,7 @@ pub async fn run_benchmarks_with_watch(
         bench_specifiers(
           worker_factory,
           &permissions,
+          &permission_desc_parser,
           specifiers,
           BenchSpecifierOptions {
             filter: TestFilter::from_flag(&workspace_bench_options.filter),

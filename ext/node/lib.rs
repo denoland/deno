@@ -3,8 +3,10 @@
 #![deny(clippy::print_stderr)]
 #![deny(clippy::print_stdout)]
 
+use std::borrow::Cow;
 use std::collections::HashSet;
 use std::path::Path;
+use std::path::PathBuf;
 
 use deno_core::error::AnyError;
 use deno_core::located_script_name;
@@ -49,21 +51,27 @@ pub trait NodePermissions {
     url: &Url,
     api_name: &str,
   ) -> Result<(), AnyError>;
+  #[must_use]
   #[inline(always)]
-  fn check_read(&mut self, path: &Path) -> Result<(), AnyError> {
+  fn check_read(&mut self, path: &str) -> Result<PathBuf, AnyError> {
     self.check_read_with_api_name(path, None)
   }
+  #[must_use]
   fn check_read_with_api_name(
     &mut self,
-    path: &Path,
+    path: &str,
     api_name: Option<&str>,
-  ) -> Result<(), AnyError>;
+  ) -> Result<PathBuf, AnyError>;
+  fn check_read_path<'a>(
+    &mut self,
+    path: &'a Path,
+  ) -> Result<Cow<'a, Path>, AnyError>;
   fn check_sys(&mut self, kind: &str, api_name: &str) -> Result<(), AnyError>;
   fn check_write_with_api_name(
     &mut self,
-    path: &Path,
+    path: &str,
     api_name: Option<&str>,
-  ) -> Result<(), AnyError>;
+  ) -> Result<PathBuf, AnyError>;
 }
 
 impl NodePermissions for deno_permissions::PermissionsContainer {
@@ -79,20 +87,27 @@ impl NodePermissions for deno_permissions::PermissionsContainer {
   #[inline(always)]
   fn check_read_with_api_name(
     &mut self,
-    path: &Path,
+    path: &str,
     api_name: Option<&str>,
-  ) -> Result<(), AnyError> {
+  ) -> Result<PathBuf, AnyError> {
     deno_permissions::PermissionsContainer::check_read_with_api_name(
       self, path, api_name,
     )
   }
 
+  fn check_read_path<'a>(
+    &mut self,
+    path: &'a Path,
+  ) -> Result<Cow<'a, Path>, AnyError> {
+    deno_permissions::PermissionsContainer::check_read_path(self, path, None)
+  }
+
   #[inline(always)]
   fn check_write_with_api_name(
     &mut self,
-    path: &Path,
+    path: &str,
     api_name: Option<&str>,
-  ) -> Result<(), AnyError> {
+  ) -> Result<PathBuf, AnyError> {
     deno_permissions::PermissionsContainer::check_write_with_api_name(
       self, path, api_name,
     )

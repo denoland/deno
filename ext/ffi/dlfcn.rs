@@ -122,11 +122,9 @@ pub fn op_ffi_load<'scope, FP>(
 where
   FP: FfiPermissions + 'static,
 {
-  let path = args.path;
-
   check_unstable(state, "Deno.dlopen");
   let permissions = state.borrow_mut::<FP>();
-  permissions.check_partial(Some(&PathBuf::from(&path)))?;
+  let path = permissions.check_partial_with_path(&args.path)?;
 
   let lib = Library::open(&path).map_err(|e| {
     dlopen2::Error::OpeningLibraryError(std::io::Error::new(
@@ -292,7 +290,7 @@ fn sync_fn_impl<'s>(
 
 // `path` is only used on Windows.
 #[allow(unused_variables)]
-pub(crate) fn format_error(e: dlopen2::Error, path: String) -> String {
+pub(crate) fn format_error(e: dlopen2::Error, path: PathBuf) -> String {
   match e {
     #[cfg(target_os = "windows")]
     // This calls FormatMessageW with library path
@@ -326,7 +324,8 @@ pub(crate) fn format_error(e: dlopen2::Error, path: String) -> String {
 
       let mut buf = vec![0; 500];
 
-      let path = OsStr::new(&path)
+      let path = path
+        .as_os_str()
         .encode_wide()
         .chain(Some(0))
         .collect::<Vec<_>>();

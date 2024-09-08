@@ -2,6 +2,7 @@
 
 use std::sync::atomic::AtomicUsize;
 use std::sync::atomic::Ordering;
+use std::sync::Arc;
 use std::time;
 
 use deno_core::error::generic_error;
@@ -13,6 +14,7 @@ use deno_core::ModuleSpecifier;
 use deno_core::OpState;
 use deno_runtime::deno_permissions::create_child_permissions;
 use deno_runtime::deno_permissions::ChildPermissionsArg;
+use deno_runtime::deno_permissions::PermissionDescriptorParser;
 use deno_runtime::deno_permissions::PermissionsContainer;
 use tokio::sync::mpsc::UnboundedSender;
 use uuid::Uuid;
@@ -59,11 +61,18 @@ pub fn op_pledge_test_permissions(
   #[serde] args: ChildPermissionsArg,
 ) -> Result<Uuid, AnyError> {
   let token = Uuid::new_v4();
+  let permission_desc_parser = state
+    .borrow::<Arc<dyn PermissionDescriptorParser>>()
+    .clone();
   let parent_permissions = state.borrow_mut::<PermissionsContainer>();
   let worker_permissions = {
-    let mut parent_permissions = parent_permissions.0.lock();
-    let perms = create_child_permissions(&mut parent_permissions, args)?;
-    PermissionsContainer::new(perms)
+    let mut parent_permissions = parent_permissions.inner.lock();
+    let perms = create_child_permissions(
+      &mut parent_permissions,
+      args,
+      permission_desc_parser.as_ref(),
+    )?;
+    PermissionsContainer::new(permission_desc_parser, perms)
   };
   let parent_permissions = parent_permissions.clone();
 

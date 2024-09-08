@@ -239,7 +239,7 @@ impl Default for WorkerOptions {
       stdio: Default::default(),
       feature_checker: Default::default(),
       permission_desc_parser: Arc::new(RuntimePermissionDescriptorParser::new(
-        real_fs, None,
+        real_fs,
       )),
       v8_code_cache: Default::default(),
     }

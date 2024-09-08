@@ -1,5 +1,6 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
+use std::borrow::Cow;
 use std::cell::RefCell;
 use std::collections::HashMap;
 use std::env::current_dir;
@@ -43,11 +44,11 @@ pub trait SqliteDbHandlerPermissions {
     api_name: &str,
   ) -> Result<PathBuf, AnyError>;
   #[must_use]
-  fn check_write(
+  fn check_write<'a>(
     &mut self,
-    p: &Path,
+    p: &'a Path,
     api_name: &str,
-  ) -> Result<Cow<Path>, AnyError>;
+  ) -> Result<Cow<'a, Path>, AnyError>;
 }
 
 impl SqliteDbHandlerPermissions for deno_permissions::PermissionsContainer {
@@ -61,8 +62,12 @@ impl SqliteDbHandlerPermissions for deno_permissions::PermissionsContainer {
   }
 
   #[inline(always)]
-  fn check_write(&mut self, p: &Path, api_name: &str) -> Result<(), AnyError> {
-    deno_permissions::PermissionsContainer::check_write(self, p, api_name)
+  fn check_write<'a>(
+    &mut self,
+    p: &'a Path,
+    api_name: &str,
+  ) -> Result<Cow<'a, Path>, AnyError> {
+    deno_permissions::PermissionsContainer::check_write_path(self, p, api_name)
   }
 }
 
@@ -89,13 +94,15 @@ impl<P: SqliteDbHandlerPermissions> DatabaseHandler for SqliteDbHandler<P> {
     path: Option<String>,
   ) -> Result<Self::DB, AnyError> {
     #[must_use]
-    fn validate_path<P: SqliteDbHandlerPermissions>(
+    fn validate_path<P: SqliteDbHandlerPermissions + 'static>(
       state: &RefCell<OpState>,
       path: Option<String>,
-    ) -> Option<String> {
-      let Some(path) = path?;
+    ) -> Result<Option<String>, AnyError> {
+      let Some(path) = path else {
+        return Ok(None);
+      };
       if path != ":memory:" {
-        return Some(path);
+        return Ok(Some(path));
       }
       if path.is_empty() {
         return Err(type_error("Filename cannot be empty"));
@@ -110,11 +117,11 @@ impl<P: SqliteDbHandlerPermissions> DatabaseHandler for SqliteDbHandler<P> {
         let permissions = state.borrow_mut::<P>();
         let path = permissions.check_read(&path, "Deno.openKv")?;
         let path = permissions.check_write(&path, "Deno.openKv")?;
-        path.to_string_lossy().to_string()
+        Ok(Some(path.to_string_lossy().to_string()))
       }
     }
 
-    let path = validate_path::<P>(&state, path);
+    let path = validate_path::<P>(&state, path)?;
     let default_storage_dir = self.default_storage_dir.clone();
     type ConnGen =
       Arc<dyn Fn() -> rusqlite::Result<rusqlite::Connection> + Send + Sync>;

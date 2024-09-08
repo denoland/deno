@@ -299,13 +299,13 @@ impl Drop for ResourceToBodyAdapter {
 pub trait FetchPermissions {
   fn check_net_url(
     &mut self,
-    _url: &Url,
+    url: &Url,
     api_name: &str,
   ) -> Result<(), AnyError>;
   #[must_use]
   fn check_read<'a>(
     &mut self,
-    _p: &'a Path,
+    p: &'a Path,
     api_name: &str,
   ) -> Result<Cow<'a, Path>, AnyError>;
 }
@@ -327,7 +327,9 @@ impl FetchPermissions for deno_permissions::PermissionsContainer {
     api_name: &str,
   ) -> Result<Cow<'a, Path>, AnyError> {
     deno_permissions::PermissionsContainer::check_read_path(
-      self, path, api_name,
+      self,
+      path,
+      Some(api_name),
     )
   }
 }

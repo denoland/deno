@@ -225,11 +225,12 @@ pub fn op_tls_key_static_from_file<NP>(
 where
   NP: NetPermissions + 'static,
 {
-  {
+  let (cert_file, key_file) = {
     let permissions = state.borrow_mut::<NP>();
-    permissions.check_read(Path::new(&cert_file), &api)?;
-    permissions.check_read(Path::new(&key_file), &api)?;
-  }
+    let cert_file = permissions.check_read(&cert_file, &api)?;
+    let key_file = permissions.check_read(&key_file, &api)?;
+    (cert_file, key_file)
+  };
 
   let cert = load_certs_from_file(&cert_file)?;
   let key = load_private_keys_from_file(&key_file)?
@@ -384,15 +385,17 @@ where
     .try_borrow::<UnsafelyIgnoreCertificateErrors>()
     .and_then(|it| it.0.clone());
 
-  {
+  let cert_file = {
     let mut s = state.borrow_mut();
     let permissions = s.borrow_mut::<NP>();
     permissions
       .check_net(&(&addr.hostname, Some(addr.port)), "Deno.connectTls()")?;
     if let Some(path) = cert_file {
-      permissions.check_read(Path::new(path), "Deno.connectTls()")?;
+      Some(permissions.check_read(path, "Deno.connectTls()")?)
+    } else {
+      None
     }
-  }
+  };
 
   let mut ca_certs = args
     .ca_certs
@@ -456,7 +459,7 @@ where
 }
 
 fn load_certs_from_file(
-  path: &str,
+  path: &Path,
 ) -> Result<Vec<CertificateDer<'static>>, AnyError> {
   let cert_file = File::open(path)?;
   let reader = &mut BufReader::new(cert_file);
@@ -464,7 +467,7 @@ fn load_certs_from_file(
 }
 
 fn load_private_keys_from_file(
-  path: &str,
+  path: &Path,
 ) -> Result<Vec<PrivateKeyDer<'static>>, AnyError> {
   let key_bytes = std::fs::read(path)?;
   load_private_keys(&key_bytes)

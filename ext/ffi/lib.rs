@@ -6,7 +6,7 @@ use deno_core::OpState;
 use std::mem::size_of;
 use std::os::raw::c_char;
 use std::os::raw::c_short;
-use std::path::Path;
+use std::path::PathBuf;
 
 mod call;
 mod callback;
@@ -50,13 +50,28 @@ fn check_unstable(state: &OpState, api_name: &str) {
 }
 
 pub trait FfiPermissions {
-  fn check_partial(&mut self, path: Option<&Path>) -> Result<(), AnyError>;
+  fn check_partial_no_path(&mut self) -> Result<(), AnyError>;
+  #[must_use]
+  fn check_partial_with_path(
+    &mut self,
+    path: &str,
+  ) -> Result<PathBuf, AnyError>;
 }
 
 impl FfiPermissions for deno_permissions::PermissionsContainer {
   #[inline(always)]
-  fn check_partial(&mut self, path: Option<&Path>) -> Result<(), AnyError> {
-    deno_permissions::PermissionsContainer::check_ffi_partial(self, path)
+  fn check_partial_no_path(&mut self) -> Result<(), AnyError> {
+    deno_permissions::PermissionsContainer::check_ffi_partial_no_path(self)
+  }
+
+  #[inline(always)]
+  fn check_partial_with_path(
+    &mut self,
+    path: &str,
+  ) -> Result<PathBuf, AnyError> {
+    deno_permissions::PermissionsContainer::check_ffi_partial_with_path(
+      self, path,
+    )
   }
 }
 

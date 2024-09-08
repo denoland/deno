@@ -65,6 +65,8 @@ use deno_core::FeatureChecker;
 use deno_runtime::deno_fs;
 use deno_runtime::deno_node::DenoFsNodeResolverEnv;
 use deno_runtime::deno_node::NodeResolver;
+use deno_runtime::deno_permissions::Permissions;
+use deno_runtime::deno_permissions::PermissionsContainer;
 use deno_runtime::deno_tls::rustls::RootCertStore;
 use deno_runtime::deno_tls::RootCertStoreProvider;
 use deno_runtime::deno_web::BlobStore;
@@ -714,9 +716,8 @@ impl CliFactory {
     &self,
   ) -> Result<&Arc<RuntimePermissionDescriptorParser>, AnyError> {
     self.services.permission_desc_parser.get_or_try_init(|| {
-      let fs = self.fs();
-      let cli_options = self.cli_options()?;
-      RuntimePermissionDescriptorParser::new(fs, cli_options.initial_cwd())
+      let fs = self.fs().clone();
+      Ok(Arc::new(RuntimePermissionDescriptorParser::new(fs)))
     })
   }
 
@@ -755,6 +756,17 @@ impl CliFactory {
     ))
   }
 
+  pub fn create_permissions_container(
+    &self,
+  ) -> Result<PermissionsContainer, AnyError> {
+    let desc_parser = self.permission_desc_parser()?.clone();
+    let permissions = Permissions::from_options(
+      desc_parser.as_ref(),
+      &self.cli_options()?.permissions_options()?,
+    )?;
+    Ok(PermissionsContainer::new(desc_parser, permissions))
+  }
+
   pub async fn create_cli_main_worker_factory(
     &self,
   ) -> Result<CliMainWorkerFactory, AnyError> {
@@ -778,8 +790,6 @@ impl CliFactory {
       },
       self.feature_checker()?.clone(),
       self.fs().clone(),
-      npm_resolver.clone(),
-      node_resolver.clone(),
       maybe_file_watcher_communicator,
       self.maybe_inspector_server()?.clone(),
       cli_options.maybe_lockfile().cloned(),
@@ -803,6 +813,8 @@ impl CliFactory {
         self.parsed_source_cache().clone(),
         self.resolver().await?.clone(),
       )),
+      node_resolver.clone(),
+      npm_resolver.clone(),
       self.permission_desc_parser()?.clone(),
       self.root_cert_store_provider().clone(),
       StorageKeyResolver::from_options(cli_options),
