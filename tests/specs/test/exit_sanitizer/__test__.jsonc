@@ -1,0 +1,5 @@
+{
+  "args": "test ../../../testdata/test/sanitizer/exit_sanitizer.ts",
+  "output": "../../../testdata/test/sanitizer/exit_sanitizer.out",
+  "exitCode": 1
+}

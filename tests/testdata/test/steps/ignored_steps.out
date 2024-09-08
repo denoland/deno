@@ -1,5 +1,5 @@
 [WILDCARD]
-running 1 test from ./test/steps/ignored_steps.ts
+running 1 test from [WILDCARD]/test/steps/ignored_steps.ts
 ignored step ...
   step 1 ... ignored ([WILDCARD])
   step 2 ... ok ([WILDCARD])

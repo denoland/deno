@@ -1,0 +1,4 @@
+{
+  "args": "test --no-check ../../../testdata/test/sanitizer/ops_sanitizer_nexttick.ts",
+  "output": "../../../testdata/test/sanitizer/ops_sanitizer_nexttick.out"
+}

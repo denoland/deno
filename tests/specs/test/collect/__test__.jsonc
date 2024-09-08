@@ -1,0 +1,5 @@
+{
+  "args": "test --ignore=../../../testdata/test/collect/ignore ../../../testdata/test/collect",
+  "exitCode": 0,
+  "output": "main.out"
+}

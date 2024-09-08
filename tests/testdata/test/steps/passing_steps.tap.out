@@ -1,5 +1,5 @@
 TAP version 14
-# ./test/steps/passing_steps.ts
+# [WILDCARD]/test/steps/passing_steps.ts
 # Subtest: description
     ok 1 - inner 1
     ok 2 - inner 2

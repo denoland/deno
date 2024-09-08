@@ -1,0 +1,5 @@
+{
+  "args": "test --allow-read ../../../testdata/test/sanitizer/resource_sanitizer.ts",
+  "output": "../../../testdata/test/sanitizer/resource_sanitizer.out",
+  "exitCode": 1
+}

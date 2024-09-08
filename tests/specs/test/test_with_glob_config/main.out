@@ -1,0 +1,21 @@
+Check [WILDCARD]/test/glob/pages/[id].ts
+Check [WILDCARD]/test/glob/data/test1.js
+Check [WILDCARD]/test/glob/data/test1.ts
+Check [WILDCARD]/test/glob/nested/fizz/bar.ts
+Check [WILDCARD]/test/glob/nested/fizz/fizz.ts
+Check [WILDCARD]/test/glob/nested/fizz/foo.ts
+Check [WILDCARD]/test/glob/nested/foo/bar.ts
+Check [WILDCARD]/test/glob/nested/foo/fizz.ts
+Check [WILDCARD]/test/glob/nested/foo/foo.ts
+running 0 tests from ../../../testdata/test/glob/pages/[id].ts
+running 0 tests from ../../../testdata/test/glob/data/test1.js
+running 0 tests from ../../../testdata/test/glob/data/test1.ts
+running 0 tests from ../../../testdata/test/glob/nested/fizz/bar.ts
+running 0 tests from ../../../testdata/test/glob/nested/fizz/fizz.ts
+running 0 tests from ../../../testdata/test/glob/nested/fizz/foo.ts
+running 0 tests from ../../../testdata/test/glob/nested/foo/bar.ts
+running 0 tests from ../../../testdata/test/glob/nested/foo/fizz.ts
+running 0 tests from ../../../testdata/test/glob/nested/foo/foo.ts
+
+ok | 0 passed | 0 failed ([WILDCARD])
+

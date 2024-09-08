@@ -1,5 +1,5 @@
 TAP version 14
-# ./test/steps/ignored_steps.ts
+# [WILDCARD]/test/steps/ignored_steps.ts
 # Subtest: ignored step
     ok 1 - step 1 # SKIP
     ok 2 - step 2

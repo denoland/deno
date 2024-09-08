@@ -1,0 +1,53 @@
+Check [WILDCARD]/main.ts
+running 16 tests from ./main.ts
+test 0 ... ok ([WILDCARD])
+test 1 ... ok ([WILDCARD])
+test 2 ... ok ([WILDCARD])
+test 3 ... ok ([WILDCARD])
+test 4 ... ok ([WILDCARD])
+test 5 ... ok ([WILDCARD])
+test 6 ... ok ([WILDCARD])
+test 7 ... ok ([WILDCARD])
+test 8 ...
+------- output -------
+console.log
+----- output end -----
+test 8 ... ok ([WILDCARD])
+test 9 ...
+------- output -------
+console.error
+----- output end -----
+test 9 ... ok ([WILDCARD])
+test\b ...
+------- output -------
+console.error
+----- output end -----
+test\b ... ok ([WILDCARD])
+test\f ...
+------- output -------
+console.error
+----- output end -----
+test\f ... ok ([WILDCARD])
+test\t ...
+------- output -------
+console.error
+----- output end -----
+test\t ... ok ([WILDCARD])
+test\n ...
+------- output -------
+console.error
+----- output end -----
+test\n ... ok ([WILDCARD])
+test\r ...
+------- output -------
+console.error
+----- output end -----
+test\r ... ok ([WILDCARD])
+test\v ...
+------- output -------
+console.error
+----- output end -----
+test\v ... ok ([WILDCARD])
+
+ok | 16 passed | 0 failed ([WILDCARD])
+

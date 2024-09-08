@@ -1,5 +1,5 @@
 [WILDCARD]
-running 6 tests from ./test/steps/passing_steps.ts
+running 6 tests from [WILDCARD]/test/steps/passing_steps.ts
 description ...
   step 1 ...
     inner 1 ... ok ([WILDCARD]s)

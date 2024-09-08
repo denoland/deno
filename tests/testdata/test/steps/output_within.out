@@ -1,5 +1,5 @@
 [WILDCARD]
-running 1 test from ./test/steps/output_within.ts
+running 1 test from [WILDCARD]/test/steps/output_within.ts
 description ...
 ------- output -------
 1

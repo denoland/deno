@@ -1,0 +1,5 @@
+{
+  "args": "test -A --trace-leaks ../../../testdata/test/sanitizer/trace_ops_caught_error/main.ts",
+  "output": "../../../testdata/test/sanitizer/trace_ops_caught_error/main.out",
+  "exitCode": 0
+}

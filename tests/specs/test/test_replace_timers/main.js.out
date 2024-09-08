@@ -1,0 +1,8 @@
+Check [WILDCARD]/main.js
+running 1 test from [WILDCARD]/main.js
+foo ...
+  bar ... ok ([WILDCARD])
+foo ... ok ([WILDCARD])
+
+ok | 1 passed (1 step) | 0 failed ([WILDCARD])
+

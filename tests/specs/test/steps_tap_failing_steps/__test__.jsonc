@@ -1,0 +1,8 @@
+{
+  "args": "test --reporter=tap ../../../testdata/test/steps/failing_steps.ts",
+  "exitCode": 1,
+  "envs": {
+    "NO_COLOR": "1"
+  },
+  "output": "../../../testdata/test/steps/failing_steps.tap.out"
+}
