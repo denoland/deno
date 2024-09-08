@@ -162,9 +162,9 @@ fn op_create_worker(
   {
     let mut parent_permissions = parent_permissions.inner.lock();
     let perms = create_child_permissions(
+      permission_desc_parser.as_ref(),
       &mut parent_permissions,
       child_permissions_arg,
-      permission_desc_parser.as_ref(),
     )?;
     PermissionsContainer::new(permission_desc_parser, perms)
   } else {

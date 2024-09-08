@@ -63,9 +63,9 @@ pub fn op_pledge_test_permissions(
   let worker_permissions = {
     let mut parent_permissions = parent_permissions.inner.lock();
     let perms = create_child_permissions(
+      permission_desc_parser.as_ref(),
       &mut parent_permissions,
       args,
-      permission_desc_parser.as_ref(),
     )?;
     PermissionsContainer::new(permission_desc_parser, perms)
   };

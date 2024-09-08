@@ -348,6 +348,7 @@ pub trait DenyDescriptor: Eq + Clone + Hash {
   type Query: QueryDescriptor;
 
   fn matches(&self, query: &Self::Query) -> bool;
+  fn is_partial(&self, query: &Self::Query) -> bool;
 }
 
 #[derive(Debug, Eq, PartialEq)]
@@ -555,7 +556,7 @@ impl<TQuery: QueryDescriptor> UnaryPermission<TQuery> {
   fn is_partial_flag_denied(&self, desc: Option<&TQuery>) -> bool {
     match desc {
       None => !self.flag_denied_list.is_empty(),
-      Some(desc) => self.flag_denied_list.iter().any(|v| v.matches(desc)),
+      Some(desc) => self.flag_denied_list.iter().any(|v| v.is_partial(desc)),
     }
   }
 
@@ -721,6 +722,10 @@ impl DenyDescriptor for ReadDescriptor {
   fn matches(&self, query: &Self::Query) -> bool {
     query.0.resolved.starts_with(&self.0)
   }
+
+  fn is_partial(&self, query: &Self::Query) -> bool {
+    self.0.starts_with(&query.0.resolved)
+  }
 }
 
 #[derive(Clone, Eq, PartialEq, Hash, Debug)]
@@ -783,6 +788,10 @@ impl DenyDescriptor for WriteDescriptor {
 
   fn matches(&self, query: &Self::Query) -> bool {
     query.0.resolved.starts_with(&self.0)
+  }
+
+  fn is_partial(&self, query: &Self::Query) -> bool {
+    self.0.starts_with(&query.0.resolved)
   }
 }
 
@@ -889,6 +898,10 @@ impl DenyDescriptor for NetDescriptor {
 
   fn matches(&self, query: &Self::Query) -> bool {
     self.0 == query.0 && (self.1.is_none() || self.1 == query.1)
+  }
+
+  fn is_partial(&self, query: &Self::Query) -> bool {
+    false
   }
 }
 
@@ -1023,6 +1036,10 @@ impl DenyDescriptor for EnvDescriptor {
 
   fn matches(&self, query: &Self::Query) -> bool {
     self == query
+  }
+
+  fn is_partial(&self, query: &Self::Query) -> bool {
+    false
   }
 }
 
@@ -1199,6 +1216,10 @@ impl DenyDescriptor for DenyRunDescriptor {
       },
     }
   }
+
+  fn is_partial(&self, query: &Self::Query) -> bool {
+    false
+  }
 }
 
 fn is_path(text: &str) -> bool {
@@ -1278,6 +1299,10 @@ impl DenyDescriptor for SysDescriptor {
   fn matches(&self, query: &Self::Query) -> bool {
     self == query
   }
+
+  fn is_partial(&self, query: &Self::Query) -> bool {
+    false
+  }
 }
 
 pub fn parse_sys_kind(kind: &str) -> Result<&str, AnyError> {
@@ -1350,6 +1375,10 @@ impl DenyDescriptor for FfiDescriptor {
 
   fn matches(&self, query: &Self::Query) -> bool {
     query.0.resolved.starts_with(&self.0)
+  }
+
+  fn is_partial(&self, query: &Self::Query) -> bool {
+    self.0.starts_with(&query.0.resolved)
   }
 }
 
@@ -2658,9 +2687,9 @@ pub trait PermissionDescriptorParser: Debug + Send + Sync {
 }
 
 pub fn create_child_permissions(
+  parser: &dyn PermissionDescriptorParser,
   main_perms: &mut Permissions,
   child_permissions_arg: ChildPermissionsArg,
-  parser: &dyn PermissionDescriptorParser,
 ) -> Result<Permissions, AnyError> {
   fn is_granted_unary(arg: &ChildUnaryPermissionArg) -> bool {
     match arg {
@@ -3701,30 +3730,30 @@ mod tests {
   //   assert_eq!(perms.env.revoke(Some("HomE")), PermissionState::Prompt);
   // }
 
-  // #[test]
-  // fn test_check_partial_denied() {
-  //   let mut perms = Permissions {
-  //     read: Permissions::new_unary(
-  //       Some(&[]),
-  //       Some(&[PathBuf::from("/foo/bar")]),
-  //       false,
-  //     )
-  //     .unwrap(),
-  //     write: Permissions::new_unary(
-  //       Some(&[]),
-  //       Some(&[PathBuf::from("/foo/bar")]),
-  //       false,
-  //     )
-  //     .unwrap(),
-  //     ..Permissions::none_without_prompt()
-  //   };
+  #[test]
+  fn test_check_partial_denied() {
+    let parser = TestPermissionDescriptorParser;
+    let mut perms = Permissions::from_options(
+      &parser,
+      &PermissionsOptions {
+        allow_read: Some(vec![]),
+        deny_read: Some(svec!["/foo/bar"]),
+        allow_write: Some(vec![]),
+        deny_write: Some(svec!["/foo/bar"]),
+        ..Default::default()
+      },
+    )
+    .unwrap();
 
-  //   perms.read.check_partial(Path::new("/foo"), None).unwrap();
-  //   assert!(perms.read.check(Path::new("/foo"), None).is_err());
+    let read_query = parser.parse_path_query("/foo").unwrap().into_read();
+    perms.read.check_partial(&read_query, None).unwrap();
+    eprintln!("{:?}", perms.read);
+    assert!(perms.read.check(&read_query, None).is_err());
 
-  //   perms.write.check_partial(Path::new("/foo"), None).unwrap();
-  //   assert!(perms.write.check(Path::new("/foo"), None).is_err());
-  // }
+    let write_query = parser.parse_path_query("/foo").unwrap().into_write();
+    perms.write.check_partial(&write_query, None).unwrap();
+    assert!(perms.write.check(&write_query, None).is_err());
+  }
 
   #[test]
   fn test_net_fully_qualified_domain_name() {
@@ -3752,238 +3781,263 @@ mod tests {
     }
   }
 
-  // #[test]
-  // fn test_deserialize_child_permissions_arg() {
-  //   set_prompter(Box::new(TestPrompter));
-  //   assert_eq!(
-  //     ChildPermissionsArg::inherit(),
-  //     ChildPermissionsArg {
-  //       env: ChildUnaryPermissionArg::Inherit,
-  //       net: ChildUnaryPermissionArg::Inherit,
-  //       ffi: ChildUnaryPermissionArg::Inherit,
-  //       read: ChildUnaryPermissionArg::Inherit,
-  //       run: ChildUnaryPermissionArg::Inherit,
-  //       sys: ChildUnaryPermissionArg::Inherit,
-  //       write: ChildUnaryPermissionArg::Inherit,
-  //     }
-  //   );
-  //   assert_eq!(
-  //     ChildPermissionsArg::none(),
-  //     ChildPermissionsArg {
-  //       env: ChildUnaryPermissionArg::NotGranted,
-  //       net: ChildUnaryPermissionArg::NotGranted,
-  //       ffi: ChildUnaryPermissionArg::NotGranted,
-  //       read: ChildUnaryPermissionArg::NotGranted,
-  //       run: ChildUnaryPermissionArg::NotGranted,
-  //       sys: ChildUnaryPermissionArg::NotGranted,
-  //       write: ChildUnaryPermissionArg::NotGranted,
-  //     }
-  //   );
-  //   assert_eq!(
-  //     serde_json::from_value::<ChildPermissionsArg>(json!("inherit")).unwrap(),
-  //     ChildPermissionsArg::inherit()
-  //   );
-  //   assert_eq!(
-  //     serde_json::from_value::<ChildPermissionsArg>(json!("none")).unwrap(),
-  //     ChildPermissionsArg::none()
-  //   );
-  //   assert_eq!(
-  //     serde_json::from_value::<ChildPermissionsArg>(json!({})).unwrap(),
-  //     ChildPermissionsArg::none()
-  //   );
-  //   assert_eq!(
-  //     serde_json::from_value::<ChildPermissionsArg>(json!({
-  //       "env": ["foo", "bar"],
-  //     }))
-  //     .unwrap(),
-  //     ChildPermissionsArg {
-  //       env: ChildUnaryPermissionArg::GrantedList(svec!["foo", "bar"]),
-  //       ..ChildPermissionsArg::none()
-  //     }
-  //   );
-  //   assert_eq!(
-  //     serde_json::from_value::<ChildPermissionsArg>(json!({
-  //       "env": true,
-  //       "net": true,
-  //       "ffi": true,
-  //       "read": true,
-  //       "run": true,
-  //       "sys": true,
-  //       "write": true,
-  //     }))
-  //     .unwrap(),
-  //     ChildPermissionsArg {
-  //       env: ChildUnaryPermissionArg::Granted,
-  //       net: ChildUnaryPermissionArg::Granted,
-  //       ffi: ChildUnaryPermissionArg::Granted,
-  //       read: ChildUnaryPermissionArg::Granted,
-  //       run: ChildUnaryPermissionArg::Granted,
-  //       sys: ChildUnaryPermissionArg::Granted,
-  //       write: ChildUnaryPermissionArg::Granted,
-  //     }
-  //   );
-  //   assert_eq!(
-  //     serde_json::from_value::<ChildPermissionsArg>(json!({
-  //       "env": false,
-  //       "net": false,
-  //       "ffi": false,
-  //       "read": false,
-  //       "run": false,
-  //       "sys": false,
-  //       "write": false,
-  //     }))
-  //     .unwrap(),
-  //     ChildPermissionsArg {
-  //       env: ChildUnaryPermissionArg::NotGranted,
-  //       net: ChildUnaryPermissionArg::NotGranted,
-  //       ffi: ChildUnaryPermissionArg::NotGranted,
-  //       read: ChildUnaryPermissionArg::NotGranted,
-  //       run: ChildUnaryPermissionArg::NotGranted,
-  //       sys: ChildUnaryPermissionArg::NotGranted,
-  //       write: ChildUnaryPermissionArg::NotGranted,
-  //     }
-  //   );
-  //   assert_eq!(
-  //     serde_json::from_value::<ChildPermissionsArg>(json!({
-  //       "env": ["foo", "bar"],
-  //       "net": ["foo", "bar:8000"],
-  //       "ffi": ["foo", "file:///bar/baz"],
-  //       "read": ["foo", "file:///bar/baz"],
-  //       "run": ["foo", "file:///bar/baz", "./qux"],
-  //       "sys": ["hostname", "osRelease"],
-  //       "write": ["foo", "file:///bar/baz"],
-  //     }))
-  //     .unwrap(),
-  //     ChildPermissionsArg {
-  //       env: ChildUnaryPermissionArg::GrantedList(svec!["foo", "bar"]),
-  //       net: ChildUnaryPermissionArg::GrantedList(svec!["foo", "bar:8000"]),
-  //       ffi: ChildUnaryPermissionArg::GrantedList(svec![
-  //         "foo",
-  //         "file:///bar/baz"
-  //       ]),
-  //       read: ChildUnaryPermissionArg::GrantedList(svec![
-  //         "foo",
-  //         "file:///bar/baz"
-  //       ]),
-  //       run: ChildUnaryPermissionArg::GrantedList(svec![
-  //         "foo",
-  //         "file:///bar/baz",
-  //         "./qux"
-  //       ]),
-  //       sys: ChildUnaryPermissionArg::GrantedList(svec![
-  //         "hostname",
-  //         "osRelease"
-  //       ]),
-  //       write: ChildUnaryPermissionArg::GrantedList(svec![
-  //         "foo",
-  //         "file:///bar/baz"
-  //       ]),
-  //     }
-  //   );
-  // }
+  #[test]
+  fn test_deserialize_child_permissions_arg() {
+    set_prompter(Box::new(TestPrompter));
+    assert_eq!(
+      ChildPermissionsArg::inherit(),
+      ChildPermissionsArg {
+        env: ChildUnaryPermissionArg::Inherit,
+        net: ChildUnaryPermissionArg::Inherit,
+        ffi: ChildUnaryPermissionArg::Inherit,
+        read: ChildUnaryPermissionArg::Inherit,
+        run: ChildUnaryPermissionArg::Inherit,
+        sys: ChildUnaryPermissionArg::Inherit,
+        write: ChildUnaryPermissionArg::Inherit,
+      }
+    );
+    assert_eq!(
+      ChildPermissionsArg::none(),
+      ChildPermissionsArg {
+        env: ChildUnaryPermissionArg::NotGranted,
+        net: ChildUnaryPermissionArg::NotGranted,
+        ffi: ChildUnaryPermissionArg::NotGranted,
+        read: ChildUnaryPermissionArg::NotGranted,
+        run: ChildUnaryPermissionArg::NotGranted,
+        sys: ChildUnaryPermissionArg::NotGranted,
+        write: ChildUnaryPermissionArg::NotGranted,
+      }
+    );
+    assert_eq!(
+      serde_json::from_value::<ChildPermissionsArg>(json!("inherit")).unwrap(),
+      ChildPermissionsArg::inherit()
+    );
+    assert_eq!(
+      serde_json::from_value::<ChildPermissionsArg>(json!("none")).unwrap(),
+      ChildPermissionsArg::none()
+    );
+    assert_eq!(
+      serde_json::from_value::<ChildPermissionsArg>(json!({})).unwrap(),
+      ChildPermissionsArg::none()
+    );
+    assert_eq!(
+      serde_json::from_value::<ChildPermissionsArg>(json!({
+        "env": ["foo", "bar"],
+      }))
+      .unwrap(),
+      ChildPermissionsArg {
+        env: ChildUnaryPermissionArg::GrantedList(svec!["foo", "bar"]),
+        ..ChildPermissionsArg::none()
+      }
+    );
+    assert_eq!(
+      serde_json::from_value::<ChildPermissionsArg>(json!({
+        "env": true,
+        "net": true,
+        "ffi": true,
+        "read": true,
+        "run": true,
+        "sys": true,
+        "write": true,
+      }))
+      .unwrap(),
+      ChildPermissionsArg {
+        env: ChildUnaryPermissionArg::Granted,
+        net: ChildUnaryPermissionArg::Granted,
+        ffi: ChildUnaryPermissionArg::Granted,
+        read: ChildUnaryPermissionArg::Granted,
+        run: ChildUnaryPermissionArg::Granted,
+        sys: ChildUnaryPermissionArg::Granted,
+        write: ChildUnaryPermissionArg::Granted,
+      }
+    );
+    assert_eq!(
+      serde_json::from_value::<ChildPermissionsArg>(json!({
+        "env": false,
+        "net": false,
+        "ffi": false,
+        "read": false,
+        "run": false,
+        "sys": false,
+        "write": false,
+      }))
+      .unwrap(),
+      ChildPermissionsArg {
+        env: ChildUnaryPermissionArg::NotGranted,
+        net: ChildUnaryPermissionArg::NotGranted,
+        ffi: ChildUnaryPermissionArg::NotGranted,
+        read: ChildUnaryPermissionArg::NotGranted,
+        run: ChildUnaryPermissionArg::NotGranted,
+        sys: ChildUnaryPermissionArg::NotGranted,
+        write: ChildUnaryPermissionArg::NotGranted,
+      }
+    );
+    assert_eq!(
+      serde_json::from_value::<ChildPermissionsArg>(json!({
+        "env": ["foo", "bar"],
+        "net": ["foo", "bar:8000"],
+        "ffi": ["foo", "file:///bar/baz"],
+        "read": ["foo", "file:///bar/baz"],
+        "run": ["foo", "file:///bar/baz", "./qux"],
+        "sys": ["hostname", "osRelease"],
+        "write": ["foo", "file:///bar/baz"],
+      }))
+      .unwrap(),
+      ChildPermissionsArg {
+        env: ChildUnaryPermissionArg::GrantedList(svec!["foo", "bar"]),
+        net: ChildUnaryPermissionArg::GrantedList(svec!["foo", "bar:8000"]),
+        ffi: ChildUnaryPermissionArg::GrantedList(svec![
+          "foo",
+          "file:///bar/baz"
+        ]),
+        read: ChildUnaryPermissionArg::GrantedList(svec![
+          "foo",
+          "file:///bar/baz"
+        ]),
+        run: ChildUnaryPermissionArg::GrantedList(svec![
+          "foo",
+          "file:///bar/baz",
+          "./qux"
+        ]),
+        sys: ChildUnaryPermissionArg::GrantedList(svec![
+          "hostname",
+          "osRelease"
+        ]),
+        write: ChildUnaryPermissionArg::GrantedList(svec![
+          "foo",
+          "file:///bar/baz"
+        ]),
+      }
+    );
+  }
 
-  // #[test]
-  // fn test_create_child_permissions() {
-  //   set_prompter(Box::new(TestPrompter));
-  //   let mut main_perms = Permissions {
-  //     env: Permissions::new_unary(Some(&[]), None, false).unwrap(),
-  //     net: Permissions::new_unary(Some(&sarr!["foo", "bar"]), None, false)
-  //       .unwrap(),
-  //     ..Permissions::none_without_prompt()
-  //   };
-  //   assert_eq!(
-  //     create_child_permissions(
-  //       &mut main_perms.clone(),
-  //       ChildPermissionsArg {
-  //         env: ChildUnaryPermissionArg::Inherit,
-  //         net: ChildUnaryPermissionArg::GrantedList(svec!["foo"]),
-  //         ffi: ChildUnaryPermissionArg::NotGranted,
-  //         ..ChildPermissionsArg::none()
-  //       }
-  //     )
-  //     .unwrap(),
-  //     Permissions {
-  //       env: Permissions::new_unary(Some(&[]), None, false).unwrap(),
-  //       net: Permissions::new_unary(Some(&sarr!["foo"]), None, false).unwrap(),
-  //       ..Permissions::none_without_prompt()
-  //     }
-  //   );
-  //   assert!(create_child_permissions(
-  //     &mut main_perms.clone(),
-  //     ChildPermissionsArg {
-  //       net: ChildUnaryPermissionArg::Granted,
-  //       ..ChildPermissionsArg::none()
-  //     }
-  //   )
-  //   .is_err());
-  //   assert!(create_child_permissions(
-  //     &mut main_perms.clone(),
-  //     ChildPermissionsArg {
-  //       net: ChildUnaryPermissionArg::GrantedList(svec!["foo", "bar", "baz"]),
-  //       ..ChildPermissionsArg::none()
-  //     }
-  //   )
-  //   .is_err());
-  //   assert!(create_child_permissions(
-  //     &mut main_perms,
-  //     ChildPermissionsArg {
-  //       ffi: ChildUnaryPermissionArg::GrantedList(svec!["foo"]),
-  //       ..ChildPermissionsArg::none()
-  //     }
-  //   )
-  //   .is_err());
-  // }
+  #[test]
+  fn test_create_child_permissions() {
+    set_prompter(Box::new(TestPrompter));
+    let parser = TestPermissionDescriptorParser;
+    let mut main_perms = Permissions::from_options(
+      &parser,
+      &PermissionsOptions {
+        allow_env: Some(vec![]),
+        allow_net: Some(svec!["foo", "bar"]),
+        ..Default::default()
+      },
+    )
+    .unwrap();
+    assert_eq!(
+      create_child_permissions(
+        &parser,
+        &mut main_perms.clone(),
+        ChildPermissionsArg {
+          env: ChildUnaryPermissionArg::Inherit,
+          net: ChildUnaryPermissionArg::GrantedList(svec!["foo"]),
+          ffi: ChildUnaryPermissionArg::NotGranted,
+          ..ChildPermissionsArg::none()
+        }
+      )
+      .unwrap(),
+      Permissions {
+        env: Permissions::new_unary(Some(HashSet::new()), None, false).unwrap(),
+        net: Permissions::new_unary(
+          Some(HashSet::from([NetDescriptor::parse("foo").unwrap()])),
+          None,
+          false
+        )
+        .unwrap(),
+        ..Permissions::none_without_prompt()
+      }
+    );
+    assert!(create_child_permissions(
+      &parser,
+      &mut main_perms.clone(),
+      ChildPermissionsArg {
+        net: ChildUnaryPermissionArg::Granted,
+        ..ChildPermissionsArg::none()
+      }
+    )
+    .is_err());
+    assert!(create_child_permissions(
+      &parser,
+      &mut main_perms.clone(),
+      ChildPermissionsArg {
+        net: ChildUnaryPermissionArg::GrantedList(svec!["foo", "bar", "baz"]),
+        ..ChildPermissionsArg::none()
+      }
+    )
+    .is_err());
+    assert!(create_child_permissions(
+      &parser,
+      &mut main_perms,
+      ChildPermissionsArg {
+        ffi: ChildUnaryPermissionArg::GrantedList(svec!["foo"]),
+        ..ChildPermissionsArg::none()
+      }
+    )
+    .is_err());
+  }
 
-  // #[test]
-  // fn test_create_child_permissions_with_prompt() {
-  //   set_prompter(Box::new(TestPrompter));
-  //   let prompt_value = PERMISSION_PROMPT_STUB_VALUE_SETTER.lock();
-  //   let mut main_perms = Permissions::from_options(&PermissionsOptions {
-  //     prompt: true,
-  //     ..Default::default()
-  //   })
-  //   .unwrap();
-  //   prompt_value.set(true);
-  //   let worker_perms = create_child_permissions(
-  //     &mut main_perms,
-  //     ChildPermissionsArg {
-  //       read: ChildUnaryPermissionArg::Granted,
-  //       run: ChildUnaryPermissionArg::GrantedList(svec!["foo", "bar"]),
-  //       ..ChildPermissionsArg::none()
-  //     },
-  //   )
-  //   .unwrap();
-  //   assert_eq!(main_perms, worker_perms);
-  //   assert_eq!(
-  //     main_perms.run.granted_list,
-  //     HashSet::from([
-  //       RunDescriptor::Name("bar".to_owned()),
-  //       RunDescriptor::Name("foo".to_owned())
-  //     ])
-  //   );
-  // }
+  #[test]
+  fn test_create_child_permissions_with_prompt() {
+    set_prompter(Box::new(TestPrompter));
+    let prompt_value = PERMISSION_PROMPT_STUB_VALUE_SETTER.lock();
+    let mut main_perms = Permissions::from_options(
+      &TestPermissionDescriptorParser,
+      &PermissionsOptions {
+        prompt: true,
+        ..Default::default()
+      },
+    )
+    .unwrap();
+    prompt_value.set(true);
+    let worker_perms = create_child_permissions(
+      &TestPermissionDescriptorParser,
+      &mut main_perms,
+      ChildPermissionsArg {
+        read: ChildUnaryPermissionArg::Granted,
+        run: ChildUnaryPermissionArg::GrantedList(svec!["foo", "bar"]),
+        ..ChildPermissionsArg::none()
+      },
+    )
+    .unwrap();
+    assert_eq!(main_perms, worker_perms);
+    assert_eq!(
+      main_perms.run.granted_list,
+      HashSet::from([
+        AllowRunDescriptor(PathBuf::from("/bar")),
+        AllowRunDescriptor(PathBuf::from("/foo")),
+      ])
+    );
+  }
 
-  // #[test]
-  // fn test_create_child_permissions_with_inherited_denied_list() {
-  //   set_prompter(Box::new(TestPrompter));
-  //   let prompt_value = PERMISSION_PROMPT_STUB_VALUE_SETTER.lock();
-  //   let mut main_perms = Permissions::from_options(&PermissionsOptions {
-  //     prompt: true,
-  //     ..Default::default()
-  //   })
-  //   .unwrap();
-  //   prompt_value.set(false);
-  //   assert!(main_perms.write.check(&PathBuf::from("foo"), None).is_err());
-  //   let worker_perms = create_child_permissions(
-  //     &mut main_perms.clone(),
-  //     ChildPermissionsArg::none(),
-  //   )
-  //   .unwrap();
-  //   assert_eq!(
-  //     worker_perms.write.flag_denied_list,
-  //     main_perms.write.flag_denied_list
-  //   );
-  // }
+  #[test]
+  fn test_create_child_permissions_with_inherited_denied_list() {
+    set_prompter(Box::new(TestPrompter));
+    let prompt_value = PERMISSION_PROMPT_STUB_VALUE_SETTER.lock();
+    let parser = TestPermissionDescriptorParser;
+    let mut main_perms = Permissions::from_options(
+      &parser,
+      &PermissionsOptions {
+        prompt: true,
+        ..Default::default()
+      },
+    )
+    .unwrap();
+    prompt_value.set(false);
+    assert!(main_perms
+      .write
+      .check(&parser.parse_path_query("foo").unwrap().into_write(), None)
+      .is_err());
+    let worker_perms = create_child_permissions(
+      &TestPermissionDescriptorParser,
+      &mut main_perms.clone(),
+      ChildPermissionsArg::none(),
+    )
+    .unwrap();
+    assert_eq!(
+      worker_perms.write.flag_denied_list,
+      main_perms.write.flag_denied_list
+    );
+  }
 
   #[test]
   fn test_host_parse() {
