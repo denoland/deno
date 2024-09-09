@@ -371,6 +371,13 @@ fn get_suggestions_for_terminal_errors(e: &JsError) -> Vec<FixSuggestion> {
           "Run again with `--unstable-http` flag to enable this API.",
         ),
       ];
+    } else if msg.contains("WebSocketStream is not defined") {
+      return vec![
+        FixSuggestion::info("new WebSocketStream() is an unstable API."),
+        FixSuggestion::hint(
+          "Run again with `--unstable-http` flag to enable this API.",
+        ),
+      ];
     } else if msg.contains("Temporal is not defined") {
       return vec![
         FixSuggestion::info("Temporal is an unstable API."),

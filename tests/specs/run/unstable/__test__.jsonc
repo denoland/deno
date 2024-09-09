@@ -15,6 +15,11 @@
       "exitCode": 1,
       "output": "http.out"
     },
+    "http_wss": {
+      "args": "run http_wss.ts",
+      "exitCode": 1,
+      "output": "http_wss.out"
+    },
     "kv": {
       "args": "run kv.ts",
       "exitCode": 1,
