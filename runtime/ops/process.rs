@@ -16,7 +16,6 @@ use deno_io::fs::FileResource;
 use deno_io::ChildStderrResource;
 use deno_io::ChildStdinResource;
 use deno_io::ChildStdoutResource;
-use deno_permissions::PathRunQueryDescriptor;
 use deno_permissions::PermissionsContainer;
 use deno_permissions::RunQueryDescriptor;
 use serde::Deserialize;
@@ -520,10 +519,10 @@ fn compute_run_cmd_and_check_permissions(
     .with_context(|| format!("Failed to spawn '{}'", arg_cmd))?;
   check_run_permission(
     state,
-    &RunQueryDescriptor::Path(PathRunQueryDescriptor {
+    &RunQueryDescriptor::Path {
       requested: arg_cmd.to_string(),
       resolved: cmd.clone(),
-    }),
+    },
     &run_env,
     api_name,
   )?;

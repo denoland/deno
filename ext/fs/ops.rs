@@ -781,7 +781,7 @@ where
 {
   let path = state
     .borrow_mut::<P>()
-    .check_write(&path, "Deno.truncateSync()")?;
+    .check_write(path, "Deno.truncateSync()")?;
 
   let fs = state.borrow::<FileSystemRc>();
   fs.truncate_sync(&path, len)
@@ -1054,7 +1054,7 @@ fn strip_dir_prefix(
   if resolved_dir.is_absolute() {
     match &dir_arg {
       Some(dir_arg) => {
-        Ok(Path::new(dir_arg).join(result_path.strip_prefix(&resolved_dir)?))
+        Ok(Path::new(dir_arg).join(result_path.strip_prefix(resolved_dir)?))
       }
       None => Ok(result_path),
     }
@@ -1073,7 +1073,7 @@ where
 {
   let fs = state.borrow::<FileSystemRc>().clone();
   let dir = match dir {
-    Some(dir) => state.borrow_mut::<P>().check_write(&dir, api_name)?,
+    Some(dir) => state.borrow_mut::<P>().check_write(dir, api_name)?,
     None => {
       let dir = fs.tmp_dir().context("tmpdir")?;
       state
@@ -1096,7 +1096,7 @@ where
   let mut state = state.borrow_mut();
   let fs = state.borrow::<FileSystemRc>().clone();
   let dir = match dir {
-    Some(dir) => state.borrow_mut::<P>().check_write(&dir, api_name)?,
+    Some(dir) => state.borrow_mut::<P>().check_write(dir, api_name)?,
     None => {
       let dir = fs.tmp_dir().context("tmpdir")?;
       state

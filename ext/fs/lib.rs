@@ -36,13 +36,13 @@ pub trait FsPermissions {
     path: &'a Path,
     api_name: &str,
   ) -> Result<std::borrow::Cow<'a, Path>, FsError>;
-  #[must_use]
+  #[must_use = "the resolved return value to mitigate time-of-check to time-of-use issues"]
   fn check_read(
     &mut self,
     path: &str,
     api_name: &str,
   ) -> Result<PathBuf, AnyError>;
-  #[must_use]
+  #[must_use = "the resolved return value to mitigate time-of-check to time-of-use issues"]
   fn check_read_path<'a>(
     &mut self,
     path: &'a Path,
@@ -55,19 +55,19 @@ pub trait FsPermissions {
     display: &str,
     api_name: &str,
   ) -> Result<(), AnyError>;
-  #[must_use]
+  #[must_use = "the resolved return value to mitigate time-of-check to time-of-use issues"]
   fn check_write(
     &mut self,
     path: &str,
     api_name: &str,
   ) -> Result<PathBuf, AnyError>;
-  #[must_use]
+  #[must_use = "the resolved return value to mitigate time-of-check to time-of-use issues"]
   fn check_write_path<'a>(
     &mut self,
     path: &'a Path,
     api_name: &str,
   ) -> Result<Cow<'a, Path>, AnyError>;
-  #[must_use]
+  #[must_use = "the resolved return value to mitigate time-of-check to time-of-use issues"]
   fn check_write_partial(
     &mut self,
     path: &str,

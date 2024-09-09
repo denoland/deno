@@ -2,7 +2,6 @@
 
 use ::deno_permissions::parse_sys_kind;
 use ::deno_permissions::NetDescriptor;
-use ::deno_permissions::PathRunQueryDescriptor;
 use ::deno_permissions::PermissionDescriptorParser;
 use ::deno_permissions::PermissionState;
 use ::deno_permissions::PermissionsContainer;
@@ -108,10 +107,10 @@ pub fn op_query_permission(
         .command
         .as_ref()
         .map(|requested| match which::which(requested) {
-          Ok(resolved) => RunQueryDescriptor::Path(PathRunQueryDescriptor {
+          Ok(resolved) => RunQueryDescriptor::Path {
             requested: requested.to_string(),
             resolved,
-          }),
+          },
           Err(_) => RunQueryDescriptor::Name(requested.to_string()),
         })
         .as_ref(),
@@ -185,10 +184,10 @@ pub fn op_revoke_permission(
         .command
         .as_ref()
         .map(|requested| match which::which(requested) {
-          Ok(resolved) => RunQueryDescriptor::Path(PathRunQueryDescriptor {
+          Ok(resolved) => RunQueryDescriptor::Path {
             requested: requested.to_string(),
             resolved,
-          }),
+          },
           Err(_) => RunQueryDescriptor::Name(requested.to_string()),
         })
         .as_ref(),
@@ -262,10 +261,10 @@ pub fn op_request_permission(
         .command
         .as_ref()
         .map(|requested| match which::which(requested) {
-          Ok(resolved) => RunQueryDescriptor::Path(PathRunQueryDescriptor {
+          Ok(resolved) => RunQueryDescriptor::Path {
             requested: requested.to_string(),
             resolved,
-          }),
+          },
           Err(_) => RunQueryDescriptor::Name(requested.to_string()),
         })
         .as_ref(),
