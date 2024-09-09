@@ -1,8 +1,6 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
-use deno_ast::ModuleSpecifier;
 use deno_core::anyhow::Context;
-use deno_core::error::uri_error;
 use deno_core::error::AnyError;
 pub use deno_core::normalize_path;
 use std::path::Path;
@@ -17,49 +15,6 @@ pub fn resolve_from_cwd(path: &Path) -> Result<PathBuf, AnyError> {
     let cwd = std::env::current_dir()
       .context("Failed to get current working directory")?;
     Ok(normalize_path(cwd.join(path)))
-  }
-}
-
-/// Attempts to convert a specifier to a file path. By default, uses the Url
-/// crate's `to_file_path()` method, but falls back to try and resolve unix-style
-/// paths on Windows.
-pub fn specifier_to_file_path(
-  specifier: &ModuleSpecifier,
-) -> Result<PathBuf, AnyError> {
-  let result = if specifier.scheme() != "file" {
-    Err(())
-  } else if cfg!(windows) {
-    match specifier.to_file_path() {
-      Ok(path) => Ok(path),
-      Err(()) => {
-        // This might be a unix-style path which is used in the tests even on Windows.
-        // Attempt to see if we can convert it to a `PathBuf`. This code should be removed
-        // once/if https://github.com/servo/rust-url/issues/730 is implemented.
-        if specifier.scheme() == "file"
-          && specifier.host().is_none()
-          && specifier.port().is_none()
-          && specifier.path_segments().is_some()
-        {
-          let path_str = specifier.path();
-          match String::from_utf8(
-            percent_encoding::percent_decode(path_str.as_bytes()).collect(),
-          ) {
-            Ok(path_str) => Ok(PathBuf::from(path_str)),
-            Err(_) => Err(()),
-          }
-        } else {
-          Err(())
-        }
-      }
-    }
-  } else {
-    specifier.to_file_path()
-  };
-  match result {
-    Ok(path) => Ok(path),
-    Err(()) => Err(uri_error(format!(
-      "Invalid file path.\n  Specifier: {specifier}"
-    ))),
   }
 }
 

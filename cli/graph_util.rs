@@ -24,7 +24,6 @@ use deno_graph::source::LoaderChecksum;
 use deno_graph::JsrLoadError;
 use deno_graph::ModuleLoadError;
 use deno_graph::WorkspaceFastCheckOption;
-use deno_runtime::fs_util::specifier_to_file_path;
 
 use deno_core::error::custom_error;
 use deno_core::error::AnyError;
@@ -41,6 +40,7 @@ use deno_graph::ResolutionError;
 use deno_graph::SpecifierError;
 use deno_runtime::deno_fs::FileSystem;
 use deno_runtime::deno_node;
+use deno_runtime::deno_permissions::specifier_to_file_path;
 use deno_runtime::deno_permissions::PermissionsContainer;
 use deno_semver::jsr::JsrDepPackageReq;
 use deno_semver::package::PackageNv;

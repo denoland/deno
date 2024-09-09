@@ -1587,7 +1587,7 @@ impl Permissions {
     specifier: &ModuleSpecifier,
   ) -> Result<(), AnyError> {
     match specifier.scheme() {
-      "file" => match specifier.to_file_path() {
+      "file" => match specifier_to_file_path(specifier) {
         Ok(path) => self.read.check(&path, Some("import()")),
         Err(_) => Err(uri_error(format!(
           "Invalid file path.\n  Specifier: {specifier}"
@@ -1597,6 +1597,45 @@ impl Permissions {
       "blob" => Ok(()),
       _ => self.net.check_url(specifier, Some("import()")),
     }
+  }
+}
+
+/// Attempts to convert a specifier to a file path. By default, uses the Url
+/// crate's `to_file_path()` method, but falls back to try and resolve unix-style
+/// paths on Windows.
+pub fn specifier_to_file_path(
+  specifier: &ModuleSpecifier,
+) -> Result<PathBuf, AnyError> {
+  let result = if specifier.scheme() != "file" {
+    Err(())
+  } else if cfg!(windows) {
+    // This might be a unix-style path which is used in the tests even on Windows.
+    // Attempt to see if we can convert it to a `PathBuf`. This code should be removed
+    // once/if https://github.com/servo/rust-url/issues/730 is implemented.
+    if specifier.scheme() == "file"
+      && specifier.host().is_none()
+      && specifier.port().is_none()
+      && specifier.path_segments().is_some()
+    {
+      let path_str = specifier.path();
+      let _ = match String::from_utf8(
+        percent_encoding::percent_decode(path_str.as_bytes()).collect(),
+      ) {
+        Ok(path_str) => Ok(PathBuf::from(path_str)),
+        Err(_) => Err(()),
+      };
+      specifier.to_file_path()
+    } else {
+      Err(())
+    }
+  } else {
+    specifier.to_file_path()
+  };
+  match result {
+    Ok(path) => Ok(path),
+    Err(()) => Err(uri_error(format!(
+      "Invalid file path.\n  Specifier: {specifier}"
+    ))),
   }
 }
 
@@ -3672,6 +3711,30 @@ mod tests {
 
     for (input, expected) in cases {
       assert_eq!(NetDescriptor::parse(input).ok(), *expected, "'{input}'");
+    }
+  }
+
+  #[cfg(target_os = "windows")]
+  #[test]
+  fn test_specifier_to_file_path() {
+    run_success_test("file:///../../tools/format.js", "../../tools/format.js");
+    run_success_test("../../tools/format.js", "../../tools/format.js");
+
+    assert_no_panic_specifier_to_file_path("file:/");
+    assert_no_panic_specifier_to_file_path("file://");
+    assert_no_panic_specifier_to_file_path("file:///");
+    assert_no_panic_specifier_to_file_path("file://asdf");
+
+    fn run_success_test(specifier: &str, expected_path: &str) {
+      let result =
+        specifier_to_file_path(&ModuleSpecifier::parse(specifier).unwrap())
+          .unwrap();
+      assert_eq!(result, PathBuf::from(expected_path));
+    }
+    fn assert_no_panic_specifier_to_file_path(specifier: &str) {
+      // we just want to make sure that specifier to file path doens't panic
+      let _ =
+        specifier_to_file_path(&ModuleSpecifier::parse(specifier).unwrap());
     }
   }
 }

@@ -1924,6 +1924,7 @@ dependencies = [
  "libc",
  "log",
  "once_cell",
+ "percent-encoding",
  "serde",
  "which 4.4.2",
  "winapi",

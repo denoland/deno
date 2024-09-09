@@ -5272,3 +5272,20 @@ fn emit_failed_readonly_file_system() {
     .run();
   output.assert_matches_text("[WILDCARD]Error saving emit data ([WILDLINE]main.ts)[WILDCARD]Skipped emit cache save of [WILDLINE]other.ts[WILDCARD]hi[WILDCARD]");
 }
+
+#[test]
+fn handle_invalid_path_error() {
+  let deno_panicked = |output: &std::process::Output| {
+    String::from_utf8_lossy(&output.stderr).contains("Deno has panicked")
+  };
+
+  // this one used to panic on linux
+  let deno_cmd = util::deno_cmd_with_deno_dir(&util::new_deno_dir());
+  let output = deno_cmd.arg("run").arg("file://asdf").output().unwrap();
+  assert!(!deno_panicked(&output));
+
+  // this one used to panic on windows
+  let deno_cmd = util::deno_cmd_with_deno_dir(&util::new_deno_dir());
+  let output = deno_cmd.arg("run").arg("file:/asdf").output().unwrap();
+  assert!(!deno_panicked(&output));
+}

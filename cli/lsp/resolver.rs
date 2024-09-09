@@ -1,5 +1,7 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
+use super::cache::LspCache;
+use super::jsr::JsrCacheResolver;
 use crate::args::create_default_npmrc;
 use crate::args::CacheSetting;
 use crate::args::CliLockfile;
@@ -36,7 +38,7 @@ use deno_npm::NpmSystemInfo;
 use deno_runtime::deno_fs;
 use deno_runtime::deno_node::NodeResolver;
 use deno_runtime::deno_node::PackageJson;
-use deno_runtime::fs_util::specifier_to_file_path;
+use deno_runtime::deno_permissions::specifier_to_file_path;
 use deno_semver::jsr::JsrPackageReqReference;
 use deno_semver::npm::NpmPackageReqReference;
 use deno_semver::package::PackageNv;
@@ -52,9 +54,6 @@ use std::collections::BTreeSet;
 use std::collections::HashMap;
 use std::collections::HashSet;
 use std::sync::Arc;
-
-use super::cache::LspCache;
-use super::jsr::JsrCacheResolver;
 
 #[derive(Debug, Clone)]
 struct LspScopeResolver {
