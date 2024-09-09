@@ -203,7 +203,7 @@ async function ensureNoNewITests() {
     "coverage_tests.rs": 0,
     "eval_tests.rs": 0,
     "flags_tests.rs": 0,
-    "fmt_tests.rs": 17,
+    "fmt_tests.rs": 16,
     "info_tests.rs": 18,
     "init_tests.rs": 0,
     "inspector_tests.rs": 0,
