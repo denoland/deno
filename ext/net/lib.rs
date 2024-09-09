@@ -26,19 +26,19 @@ pub trait NetPermissions {
     host: &(T, Option<u16>),
     api_name: &str,
   ) -> Result<(), AnyError>;
-  #[must_use]
+  #[must_use = "the resolved return value to mitigate time-of-check to time-of-use issues"]
   fn check_read(
     &mut self,
     p: &str,
     api_name: &str,
   ) -> Result<PathBuf, AnyError>;
-  #[must_use]
+  #[must_use = "the resolved return value to mitigate time-of-check to time-of-use issues"]
   fn check_write(
     &mut self,
     p: &str,
     api_name: &str,
   ) -> Result<PathBuf, AnyError>;
-  #[must_use]
+  #[must_use = "the resolved return value to mitigate time-of-check to time-of-use issues"]
   fn check_write_path<'a>(
     &mut self,
     p: &'a Path,

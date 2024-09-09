@@ -247,7 +247,7 @@ where
 {
   let path = state
     .borrow_mut::<P>()
-    .check_write_with_api_name(&path, Some("node:fs.lutimes"))?;
+    .check_write_with_api_name(path, Some("node:fs.lutimes"))?;
 
   let fs = state.borrow::<FileSystemRc>();
   fs.lutime_sync(&path, atime_secs, atime_nanos, mtime_secs, mtime_nanos)?;

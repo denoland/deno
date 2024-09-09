@@ -37,13 +37,13 @@ pub struct SqliteDbHandler<P: SqliteDbHandlerPermissions + 'static> {
 }
 
 pub trait SqliteDbHandlerPermissions {
-  #[must_use]
+  #[must_use = "the resolved return value to mitigate time-of-check to time-of-use issues"]
   fn check_read(
     &mut self,
     p: &str,
     api_name: &str,
   ) -> Result<PathBuf, AnyError>;
-  #[must_use]
+  #[must_use = "the resolved return value to mitigate time-of-check to time-of-use issues"]
   fn check_write<'a>(
     &mut self,
     p: &'a Path,
@@ -93,7 +93,7 @@ impl<P: SqliteDbHandlerPermissions> DatabaseHandler for SqliteDbHandler<P> {
     state: Rc<RefCell<OpState>>,
     path: Option<String>,
   ) -> Result<Self::DB, AnyError> {
-    #[must_use]
+    #[must_use = "the resolved return value to mitigate time-of-check to time-of-use issues"]
     fn validate_path<P: SqliteDbHandlerPermissions + 'static>(
       state: &RefCell<OpState>,
       path: Option<String>,

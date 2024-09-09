@@ -302,7 +302,7 @@ pub trait FetchPermissions {
     url: &Url,
     api_name: &str,
   ) -> Result<(), AnyError>;
-  #[must_use]
+  #[must_use = "the resolved return value to mitigate time-of-check to time-of-use issues"]
   fn check_read<'a>(
     &mut self,
     p: &'a Path,

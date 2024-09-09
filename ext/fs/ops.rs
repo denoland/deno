@@ -318,7 +318,7 @@ where
 {
   let path = state
     .borrow_mut::<P>()
-    .check_write(&path, "Deno.removeSync()")?;
+    .check_write(path, "Deno.removeSync()")?;
 
   let fs = state.borrow::<FileSystemRc>();
   fs.remove_sync(&path, recursive)
@@ -635,10 +635,10 @@ where
   P: FsPermissions + 'static,
 {
   let permissions = state.borrow_mut::<P>();
-  _ = permissions.check_read(&oldpath, "Deno.linkSync()")?;
-  let oldpath = permissions.check_write(&oldpath, "Deno.linkSync()")?;
-  _ = permissions.check_read(&newpath, "Deno.linkSync()")?;
-  let newpath = permissions.check_write(&newpath, "Deno.linkSync()")?;
+  _ = permissions.check_read(oldpath, "Deno.linkSync()")?;
+  let oldpath = permissions.check_write(oldpath, "Deno.linkSync()")?;
+  _ = permissions.check_read(newpath, "Deno.linkSync()")?;
+  let newpath = permissions.check_write(newpath, "Deno.linkSync()")?;
 
   let fs = state.borrow::<FileSystemRc>();
   fs.link_sync(&oldpath, &newpath)
