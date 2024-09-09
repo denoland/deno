@@ -7,6 +7,7 @@ use deno_core::anyhow::Context;
 use deno_core::error::AnyError;
 use deno_core::normalize_path;
 use deno_permissions::AllowRunDescriptor;
+use deno_permissions::AllowRunDescriptorParseResult;
 use deno_permissions::DenyRunDescriptor;
 use deno_permissions::EnvDescriptor;
 use deno_permissions::FfiDescriptor;
@@ -97,8 +98,8 @@ impl deno_permissions::PermissionDescriptorParser
   fn parse_allow_run_descriptor(
     &self,
     text: &str,
-  ) -> Result<AllowRunDescriptor, AnyError> {
-    AllowRunDescriptor::parse(text, &self.resolve_cwd()?)
+  ) -> Result<AllowRunDescriptorParseResult, AnyError> {
+    Ok(AllowRunDescriptor::parse(text, &self.resolve_cwd()?)?)
   }
 
   fn parse_deny_run_descriptor(

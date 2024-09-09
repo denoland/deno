@@ -602,7 +602,7 @@ impl<TQuery: QueryDescriptor> UnaryPermission<TQuery> {
   fn create_child_permissions(
     &mut self,
     flag: ChildUnaryPermissionArg,
-    parse: impl Fn(&str) -> Result<TQuery::AllowDesc, AnyError>,
+    parse: impl Fn(&str) -> Result<Option<TQuery::AllowDesc>, AnyError>,
   ) -> Result<UnaryPermission<TQuery>, AnyError> {
     let mut perms = Self::default();
 
@@ -620,7 +620,7 @@ impl<TQuery: QueryDescriptor> UnaryPermission<TQuery> {
       ChildUnaryPermissionArg::GrantedList(granted_list) => {
         perms.granted_list = granted_list
           .iter()
-          .map(|i| parse(i))
+          .filter_map(|i| parse(i).transpose())
           .collect::<Result<_, _>>()?;
         if !perms
           .granted_list
@@ -1161,11 +1161,22 @@ pub enum RunDescriptorArg {
   Path(PathBuf),
 }
 
+pub enum AllowRunDescriptorParseResult {
+  /// An error occured getting the descriptor that should
+  /// be surfaced as a warning when launching deno, but should
+  /// be ignored when creating a worker.
+  Unresolved(Box<which::Error>),
+  Descriptor(AllowRunDescriptor),
+}
+
 #[derive(Debug, Clone, Hash, Eq, PartialEq)]
 pub struct AllowRunDescriptor(pub PathBuf);
 
 impl AllowRunDescriptor {
-  pub fn parse(text: &str, cwd: &Path) -> Result<Self, AnyError> {
+  pub fn parse(
+    text: &str,
+    cwd: &Path,
+  ) -> Result<AllowRunDescriptorParseResult, which::Error> {
     let text = if cfg!(windows) {
       Cow::Owned(text.to_string())
     } else {
@@ -1176,9 +1187,23 @@ impl AllowRunDescriptor {
     let path = if is_path {
       resolve_from_known_cwd(Path::new(text.as_ref()), cwd)
     } else {
-      which::which(text.as_ref())?
+      match which::which_in(text.as_ref(), std::env::var_os("PATH"), cwd) {
+        Ok(path) => path,
+        Err(err) => match err {
+          which::Error::BadAbsolutePath | which::Error::BadRelativePath => {
+            return Err(err);
+          }
+          which::Error::CannotFindBinaryPath
+          | which::Error::CannotGetCurrentDir
+          | which::Error::CannotCanonicalize => {
+            return Ok(AllowRunDescriptorParseResult::Unresolved(Box::new(err)))
+          }
+        },
+      }
     };
-    Ok(AllowRunDescriptor(path))
+    Ok(AllowRunDescriptorParseResult::Descriptor(
+      AllowRunDescriptor(path),
+    ))
   }
 }
 
@@ -1200,7 +1225,6 @@ impl AllowDescriptor for AllowRunDescriptor {
   }
 }
 
-// todo(THIS PR): get rid of warning
 #[derive(Clone, Eq, PartialEq, Hash, Debug)]
 pub enum DenyRunDescriptor {
   /// Warning: You may want to construct with `RunDescriptor::from()` for case
@@ -2701,7 +2725,7 @@ pub trait PermissionDescriptorParser: Debug + Send + Sync {
   fn parse_allow_run_descriptor(
     &self,
     text: &str,
-  ) -> Result<AllowRunDescriptor, AnyError>;
+  ) -> Result<AllowRunDescriptorParseResult, AnyError>;
 
   fn parse_deny_run_descriptor(
     &self,
@@ -2762,37 +2786,39 @@ pub fn create_child_permissions(
   worker_perms.read = main_perms
     .read
     .create_child_permissions(child_permissions_arg.read, |text| {
-      parser.parse_read_descriptor(text)
+      Ok(Some(parser.parse_read_descriptor(text)?))
     })?;
   worker_perms.write = main_perms
     .write
     .create_child_permissions(child_permissions_arg.write, |text| {
-      parser.parse_write_descriptor(text)
+      Ok(Some(parser.parse_write_descriptor(text)?))
     })?;
   worker_perms.net = main_perms
     .net
     .create_child_permissions(child_permissions_arg.net, |text| {
-      parser.parse_net_descriptor(text)
+      Ok(Some(parser.parse_net_descriptor(text)?))
     })?;
   worker_perms.env = main_perms
     .env
     .create_child_permissions(child_permissions_arg.env, |text| {
-      parser.parse_env_descriptor(text)
+      Ok(Some(parser.parse_env_descriptor(text)?))
     })?;
   worker_perms.sys = main_perms
     .sys
     .create_child_permissions(child_permissions_arg.sys, |text| {
-      parser.parse_sys_descriptor(text)
+      Ok(Some(parser.parse_sys_descriptor(text)?))
     })?;
-  worker_perms.run = main_perms
-    .run
-    .create_child_permissions(child_permissions_arg.run, |text| {
-      parser.parse_allow_run_descriptor(text)
-    })?;
+  worker_perms.run = main_perms.run.create_child_permissions(
+    child_permissions_arg.run,
+    |text| match parser.parse_allow_run_descriptor(text)? {
+      AllowRunDescriptorParseResult::Unresolved(_) => Ok(None),
+      AllowRunDescriptorParseResult::Descriptor(desc) => Ok(Some(desc)),
+    },
+  )?;
   worker_perms.ffi = main_perms
     .ffi
     .create_child_permissions(child_permissions_arg.ffi, |text| {
-      parser.parse_ffi_descriptor(text)
+      Ok(Some(parser.parse_ffi_descriptor(text)?))
     })?;
 
   Ok(worker_perms)
@@ -2873,8 +2899,10 @@ mod tests {
     fn parse_allow_run_descriptor(
       &self,
       text: &str,
-    ) -> Result<AllowRunDescriptor, AnyError> {
-      Ok(AllowRunDescriptor(self.join_path_with_root(text)))
+    ) -> Result<AllowRunDescriptorParseResult, AnyError> {
+      Ok(AllowRunDescriptorParseResult::Descriptor(
+        AllowRunDescriptor(self.join_path_with_root(text)),
+      ))
     }
 
     fn parse_deny_run_descriptor(
