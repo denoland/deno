@@ -1,0 +1,5 @@
+{
+  "args": "run -A worker_error.ts",
+  "output": "worker_error.ts.out",
+  "exitCode": 1
+}
