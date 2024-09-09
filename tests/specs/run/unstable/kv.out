@@ -3,5 +3,5 @@ const db = await Deno.openKv();
                       ^
     at file:///Users/ib/dev/deno/tests/specs/run/unstable/kv.ts:1:23
 
-    info: Deno.openKv() is an unstable API
+    info: Deno.openKv() is an unstable API.
     hint: Run again with `--unstable-kv` flag to enable this API.

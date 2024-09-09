@@ -3,5 +3,5 @@ Deno.createHttpClient();
      ^
     at file:///Users/ib/dev/deno/tests/specs/run/unstable/http.ts:1:6
 
-    info: Deno.createHttpClient() is an unstable API
+    info: Deno.createHttpClient() is an unstable API.
     hint: Run again with `--unstable-http` flag to enable this API.

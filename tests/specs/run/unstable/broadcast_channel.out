@@ -3,5 +3,5 @@ new BroadcastChannel("hello");
 ^
     at file:///Users/ib/dev/deno/tests/specs/run/unstable/broadcast_channel.ts:1:1
 
-    info: BroadcastChannel is an unstable API
+    info: BroadcastChannel is an unstable API.
     hint: Run again with `--unstable-broadcast-channel` flag to enable this API.

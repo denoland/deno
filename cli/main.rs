@@ -352,35 +352,35 @@ fn get_suggestions_for_terminal_errors(e: &JsError) -> Vec<FixSuggestion> {
       ];
     } else if msg.contains("openKv is not a function") {
       return vec![
-        FixSuggestion::info("Deno.openKv() is an unstable API"),
+        FixSuggestion::info("Deno.openKv() is an unstable API."),
         FixSuggestion::hint(
           "Run again with `--unstable-kv` flag to enable this API.",
         ),
       ];
     } else if msg.contains("cron is not a function") {
       return vec![
-        FixSuggestion::info("Deno.cron() is an unstable API"),
+        FixSuggestion::info("Deno.cron() is an unstable API."),
         FixSuggestion::hint(
           "Run again with `--unstable-cron` flag to enable this API.",
         ),
       ];
     } else if msg.contains("createHttpClient is not a function") {
       return vec![
-        FixSuggestion::info("Deno.createHttpClient() is an unstable API"),
+        FixSuggestion::info("Deno.createHttpClient() is an unstable API."),
         FixSuggestion::hint(
           "Run again with `--unstable-http` flag to enable this API.",
         ),
       ];
     } else if msg.contains("Temporal is not defined") {
       return vec![
-        FixSuggestion::info("Temporal is an unstable API"),
+        FixSuggestion::info("Temporal is an unstable API."),
         FixSuggestion::hint(
           "Run again with `--unstable-temporal` flag to enable this API.",
         ),
       ];
     } else if msg.contains("BroadcastChannel is not defined") {
       return vec![
-        FixSuggestion::info("BroadcastChannel is an unstable API"),
+        FixSuggestion::info("BroadcastChannel is an unstable API."),
         FixSuggestion::hint(
           "Run again with `--unstable-broadcast-channel` flag to enable this API.",
         ),

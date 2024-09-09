@@ -3,5 +3,5 @@ Temporal.Now.instant();
 ^
     at file:///Users/ib/dev/deno/tests/specs/run/unstable/temporal.ts:1:1
 
-    info: Temporal is an unstable API
+    info: Temporal is an unstable API.
     hint: Run again with `--unstable-temporal` flag to enable this API.
