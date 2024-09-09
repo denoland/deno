@@ -4338,7 +4338,7 @@ async fn websocketstream_ping() {
 
   let child = util::deno_cmd()
     .arg("test")
-    .arg("--unstable-http")
+    .arg("--unstable-net")
     .arg("--allow-net")
     .arg("--cert")
     .arg(root_ca)
