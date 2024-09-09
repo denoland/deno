@@ -77,6 +77,7 @@ async function createDenoDtsFile() {
 async function updatePkgJson() {
   const pkgJsonFile = definitelyTypedDir.join("package.json");
   const obj = pkgJsonFile.readJsonSync();
+  // deno-lint-ignore no-explicit-any
   (obj as any).version = await getDenoVersion();
   pkgJsonFile.writeTextSync(JSON.stringify(obj, undefined, 4) + "\n"); // 4 spaces indent
 }
