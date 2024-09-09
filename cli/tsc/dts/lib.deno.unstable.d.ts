@@ -113,7 +113,9 @@ declare namespace Deno {
    * @category FFI
    * @experimental
    */
-  export type NativeStructType = { readonly struct: readonly NativeType[] };
+  export interface NativeStructType {
+    readonly struct: readonly NativeType[];
+  }
 
   /**
    * @category FFI
@@ -1976,10 +1978,10 @@ declare namespace Deno {
      * @category Jupyter
      * @experimental
      */
-    export type VegaObject = {
+    export interface VegaObject {
       $schema: string;
       [key: string]: unknown;
-    };
+    }
 
     /**
      * A collection of supported media types and data for Jupyter frontends.
@@ -1987,7 +1989,7 @@ declare namespace Deno {
      * @category Jupyter
      * @experimental
      */
-    export type MediaBundle = {
+    export interface MediaBundle {
       "text/plain"?: string;
       "text/html"?: string;
       "image/svg+xml"?: string;
@@ -2013,7 +2015,7 @@ declare namespace Deno {
 
       // Must support a catch all for custom media types / mimetypes
       [key: string]: string | object | undefined;
-    };
+    }
 
     /**
      * @category Jupyter
@@ -2025,9 +2027,9 @@ declare namespace Deno {
      * @category Jupyter
      * @experimental
      */
-    export type Displayable = {
+    export interface Displayable {
       [$display]: () => MediaBundle | Promise<MediaBundle>;
-    };
+    }
 
     /**
      * Display function for Jupyter Deno Kernel.

@@ -9,7 +9,7 @@
  * @category GPU
  * @experimental
  */
-declare interface GPUObjectBase {
+interface GPUObjectBase {
   label: string;
 }
 
@@ -17,7 +17,7 @@ declare interface GPUObjectBase {
  * @category GPU
  * @experimental
  */
-declare interface GPUObjectDescriptorBase {
+interface GPUObjectDescriptorBase {
   label?: string;
 }
 
@@ -105,7 +105,7 @@ declare class GPU {
  * @category GPU
  * @experimental
  */
-declare interface GPURequestAdapterOptions {
+interface GPURequestAdapterOptions {
   powerPreference?: GPUPowerPreference;
   forceFallbackAdapter?: boolean;
 }
@@ -114,7 +114,7 @@ declare interface GPURequestAdapterOptions {
  * @category GPU
  * @experimental
  */
-declare type GPUPowerPreference = "low-power" | "high-performance";
+type GPUPowerPreference = "low-power" | "high-performance";
 
 /**
  * @category GPU
@@ -133,7 +133,7 @@ declare class GPUAdapter {
  * @category GPU
  * @experimental
  */
-declare interface GPUDeviceDescriptor extends GPUObjectDescriptorBase {
+interface GPUDeviceDescriptor extends GPUObjectDescriptorBase {
   requiredFeatures?: GPUFeatureName[];
   requiredLimits?: Record<string, number>;
 }
@@ -142,7 +142,7 @@ declare interface GPUDeviceDescriptor extends GPUObjectDescriptorBase {
  * @category GPU
  * @experimental
  */
-declare type GPUFeatureName =
+type GPUFeatureName =
   | "depth-clip-control"
   | "depth32float-stencil8"
   | "pipeline-statistics-query"
@@ -248,13 +248,13 @@ declare class GPUBuffer implements GPUObjectBase {
  * @category GPU
  * @experimental
  */
-declare type GPUBufferMapState = "unmapped" | "pending" | "mapped";
+type GPUBufferMapState = "unmapped" | "pending" | "mapped";
 
 /**
  * @category GPU
  * @experimental
  */
-declare interface GPUBufferDescriptor extends GPUObjectDescriptorBase {
+interface GPUBufferDescriptor extends GPUObjectDescriptorBase {
   size: number;
   usage: GPUBufferUsageFlags;
   mappedAtCreation?: boolean;
@@ -264,13 +264,13 @@ declare interface GPUBufferDescriptor extends GPUObjectDescriptorBase {
  * @category GPU
  * @experimental
  */
-declare type GPUBufferUsageFlags = number;
+type GPUBufferUsageFlags = number;
 
 /**
  * @category GPU
  * @experimental
  */
-declare type GPUFlagsConstant = number;
+type GPUFlagsConstant = number;
 
 /**
  * @category GPU
@@ -293,7 +293,7 @@ declare class GPUBufferUsage {
  * @category GPU
  * @experimental
  */
-declare type GPUMapModeFlags = number;
+type GPUMapModeFlags = number;
 
 /**
  * @category GPU
@@ -328,7 +328,7 @@ declare class GPUTexture implements GPUObjectBase {
  * @category GPU
  * @experimental
  */
-declare interface GPUTextureDescriptor extends GPUObjectDescriptorBase {
+interface GPUTextureDescriptor extends GPUObjectDescriptorBase {
   size: GPUExtent3D;
   mipLevelCount?: number;
   sampleCount?: number;
@@ -342,13 +342,13 @@ declare interface GPUTextureDescriptor extends GPUObjectDescriptorBase {
  * @category GPU
  * @experimental
  */
-declare type GPUTextureDimension = "1d" | "2d" | "3d";
+type GPUTextureDimension = "1d" | "2d" | "3d";
 
 /**
  * @category GPU
  * @experimental
  */
-declare type GPUTextureUsageFlags = number;
+type GPUTextureUsageFlags = number;
 
 /**
  * @category GPU
@@ -374,7 +374,7 @@ declare class GPUTextureView implements GPUObjectBase {
  * @category GPU
  * @experimental
  */
-declare interface GPUTextureViewDescriptor extends GPUObjectDescriptorBase {
+interface GPUTextureViewDescriptor extends GPUObjectDescriptorBase {
   format?: GPUTextureFormat;
   dimension?: GPUTextureViewDimension;
   aspect?: GPUTextureAspect;
@@ -388,7 +388,7 @@ declare interface GPUTextureViewDescriptor extends GPUObjectDescriptorBase {
  * @category GPU
  * @experimental
  */
-declare type GPUTextureViewDimension =
+type GPUTextureViewDimension =
   | "1d"
   | "2d"
   | "2d-array"
@@ -400,13 +400,13 @@ declare type GPUTextureViewDimension =
  * @category GPU
  * @experimental
  */
-declare type GPUTextureAspect = "all" | "stencil-only" | "depth-only";
+type GPUTextureAspect = "all" | "stencil-only" | "depth-only";
 
 /**
  * @category GPU
  * @experimental
  */
-declare type GPUTextureFormat =
+type GPUTextureFormat =
   | "r8unorm"
   | "r8snorm"
   | "r8uint"
@@ -515,7 +515,7 @@ declare class GPUSampler implements GPUObjectBase {
  * @category GPU
  * @experimental
  */
-declare interface GPUSamplerDescriptor extends GPUObjectDescriptorBase {
+interface GPUSamplerDescriptor extends GPUObjectDescriptorBase {
   addressModeU?: GPUAddressMode;
   addressModeV?: GPUAddressMode;
   addressModeW?: GPUAddressMode;
@@ -532,25 +532,25 @@ declare interface GPUSamplerDescriptor extends GPUObjectDescriptorBase {
  * @category GPU
  * @experimental
  */
-declare type GPUAddressMode = "clamp-to-edge" | "repeat" | "mirror-repeat";
+type GPUAddressMode = "clamp-to-edge" | "repeat" | "mirror-repeat";
 
 /**
  * @category GPU
  * @experimental
  */
-declare type GPUFilterMode = "nearest" | "linear";
+type GPUFilterMode = "nearest" | "linear";
 
 /**
  * @category GPU
  * @experimental
  */
-declare type GPUMipmapFilterMode = "nearest" | "linear";
+type GPUMipmapFilterMode = "nearest" | "linear";
 
 /**
  * @category GPU
  * @experimental
  */
-declare type GPUCompareFunction =
+type GPUCompareFunction =
   | "never"
   | "less"
   | "equal"
@@ -572,7 +572,7 @@ declare class GPUBindGroupLayout implements GPUObjectBase {
  * @category GPU
  * @experimental
  */
-declare interface GPUBindGroupLayoutDescriptor extends GPUObjectDescriptorBase {
+interface GPUBindGroupLayoutDescriptor extends GPUObjectDescriptorBase {
   entries: GPUBindGroupLayoutEntry[];
 }
 
@@ -580,7 +580,7 @@ declare interface GPUBindGroupLayoutDescriptor extends GPUObjectDescriptorBase {
  * @category GPU
  * @experimental
  */
-declare interface GPUBindGroupLayoutEntry {
+interface GPUBindGroupLayoutEntry {
   binding: number;
   visibility: GPUShaderStageFlags;
 
@@ -594,7 +594,7 @@ declare interface GPUBindGroupLayoutEntry {
  * @category GPU
  * @experimental
  */
-declare type GPUShaderStageFlags = number;
+type GPUShaderStageFlags = number;
 
 /**
  * @category GPU
@@ -610,7 +610,7 @@ declare class GPUShaderStage {
  * @category GPU
  * @experimental
  */
-declare interface GPUBufferBindingLayout {
+interface GPUBufferBindingLayout {
   type?: GPUBufferBindingType;
   hasDynamicOffset?: boolean;
   minBindingSize?: number;
@@ -620,13 +620,13 @@ declare interface GPUBufferBindingLayout {
  * @category GPU
  * @experimental
  */
-declare type GPUBufferBindingType = "uniform" | "storage" | "read-only-storage";
+type GPUBufferBindingType = "uniform" | "storage" | "read-only-storage";
 
 /**
  * @category GPU
  * @experimental
  */
-declare interface GPUSamplerBindingLayout {
+interface GPUSamplerBindingLayout {
   type?: GPUSamplerBindingType;
 }
 
@@ -634,7 +634,7 @@ declare interface GPUSamplerBindingLayout {
  * @category GPU
  * @experimental
  */
-declare type GPUSamplerBindingType =
+type GPUSamplerBindingType =
   | "filtering"
   | "non-filtering"
   | "comparison";
@@ -643,7 +643,7 @@ declare type GPUSamplerBindingType =
  * @category GPU
  * @experimental
  */
-declare interface GPUTextureBindingLayout {
+interface GPUTextureBindingLayout {
   sampleType?: GPUTextureSampleType;
   viewDimension?: GPUTextureViewDimension;
   multisampled?: boolean;
@@ -653,7 +653,7 @@ declare interface GPUTextureBindingLayout {
  * @category GPU
  * @experimental
  */
-declare type GPUTextureSampleType =
+type GPUTextureSampleType =
   | "float"
   | "unfilterable-float"
   | "depth"
@@ -664,7 +664,7 @@ declare type GPUTextureSampleType =
  * @category GPU
  * @experimental
  */
-declare type GPUStorageTextureAccess =
+type GPUStorageTextureAccess =
   | "write-only"
   | "read-only"
   | "read-write";
@@ -673,7 +673,7 @@ declare type GPUStorageTextureAccess =
  * @category GPU
  * @experimental
  */
-declare interface GPUStorageTextureBindingLayout {
+interface GPUStorageTextureBindingLayout {
   access: GPUStorageTextureAccess;
   format: GPUTextureFormat;
   viewDimension?: GPUTextureViewDimension;
@@ -691,7 +691,7 @@ declare class GPUBindGroup implements GPUObjectBase {
  * @category GPU
  * @experimental
  */
-declare interface GPUBindGroupDescriptor extends GPUObjectDescriptorBase {
+interface GPUBindGroupDescriptor extends GPUObjectDescriptorBase {
   layout: GPUBindGroupLayout;
   entries: GPUBindGroupEntry[];
 }
@@ -700,7 +700,7 @@ declare interface GPUBindGroupDescriptor extends GPUObjectDescriptorBase {
  * @category GPU
  * @experimental
  */
-declare type GPUBindingResource =
+type GPUBindingResource =
   | GPUSampler
   | GPUTextureView
   | GPUBufferBinding;
@@ -709,7 +709,7 @@ declare type GPUBindingResource =
  * @category GPU
  * @experimental
  */
-declare interface GPUBindGroupEntry {
+interface GPUBindGroupEntry {
   binding: number;
   resource: GPUBindingResource;
 }
@@ -718,7 +718,7 @@ declare interface GPUBindGroupEntry {
  * @category GPU
  * @experimental
  */
-declare interface GPUBufferBinding {
+interface GPUBufferBinding {
   buffer: GPUBuffer;
   offset?: number;
   size?: number;
@@ -736,7 +736,7 @@ declare class GPUPipelineLayout implements GPUObjectBase {
  * @category GPU
  * @experimental
  */
-declare interface GPUPipelineLayoutDescriptor extends GPUObjectDescriptorBase {
+interface GPUPipelineLayoutDescriptor extends GPUObjectDescriptorBase {
   bindGroupLayouts: GPUBindGroupLayout[];
 }
 
@@ -744,13 +744,13 @@ declare interface GPUPipelineLayoutDescriptor extends GPUObjectDescriptorBase {
  * @category GPU
  * @experimental
  */
-declare type GPUCompilationMessageType = "error" | "warning" | "info";
+type GPUCompilationMessageType = "error" | "warning" | "info";
 
 /**
  * @category GPU
  * @experimental
  */
-declare interface GPUCompilationMessage {
+interface GPUCompilationMessage {
   readonly message: string;
   readonly type: GPUCompilationMessageType;
   readonly lineNum: number;
@@ -761,8 +761,8 @@ declare interface GPUCompilationMessage {
  * @category GPU
  * @experimental
  */
-declare interface GPUCompilationInfo {
-  readonly messages: ReadonlyArray<GPUCompilationMessage>;
+interface GPUCompilationInfo {
+  readonly messages: readonly GPUCompilationMessage[];
 }
 
 /**
@@ -779,7 +779,7 @@ declare class GPUPipelineError extends DOMException {
  * @category GPU
  * @experimental
  */
-declare interface GPUPipelineErrorInit {
+interface GPUPipelineErrorInit {
   reason: GPUPipelineErrorReason;
 }
 
@@ -787,7 +787,7 @@ declare interface GPUPipelineErrorInit {
  * @category GPU
  * @experimental
  */
-declare type GPUPipelineErrorReason = "validation" | "internal";
+type GPUPipelineErrorReason = "validation" | "internal";
 
 /**
  * @category GPU
@@ -801,7 +801,7 @@ declare class GPUShaderModule implements GPUObjectBase {
  * @category GPU
  * @experimental
  */
-declare interface GPUShaderModuleDescriptor extends GPUObjectDescriptorBase {
+interface GPUShaderModuleDescriptor extends GPUObjectDescriptorBase {
   code: string;
   sourceMap?: any;
 }
@@ -810,13 +810,13 @@ declare interface GPUShaderModuleDescriptor extends GPUObjectDescriptorBase {
  * @category GPU
  * @experimental
  */
-declare type GPUAutoLayoutMode = "auto";
+type GPUAutoLayoutMode = "auto";
 
 /**
  * @category GPU
  * @experimental
  */
-declare interface GPUPipelineDescriptorBase extends GPUObjectDescriptorBase {
+interface GPUPipelineDescriptorBase extends GPUObjectDescriptorBase {
   layout: GPUPipelineLayout | GPUAutoLayoutMode;
 }
 
@@ -824,7 +824,7 @@ declare interface GPUPipelineDescriptorBase extends GPUObjectDescriptorBase {
  * @category GPU
  * @experimental
  */
-declare interface GPUPipelineBase {
+interface GPUPipelineBase {
   getBindGroupLayout(index: number): GPUBindGroupLayout;
 }
 
@@ -832,7 +832,7 @@ declare interface GPUPipelineBase {
  * @category GPU
  * @experimental
  */
-declare interface GPUProgrammableStage {
+interface GPUProgrammableStage {
   module: GPUShaderModule;
   entryPoint?: string;
   constants?: Record<string, number>;
@@ -852,8 +852,7 @@ declare class GPUComputePipeline implements GPUObjectBase, GPUPipelineBase {
  * @category GPU
  * @experimental
  */
-declare interface GPUComputePipelineDescriptor
-  extends GPUPipelineDescriptorBase {
+interface GPUComputePipelineDescriptor extends GPUPipelineDescriptorBase {
   compute: GPUProgrammableStage;
 }
 
@@ -871,8 +870,7 @@ declare class GPURenderPipeline implements GPUObjectBase, GPUPipelineBase {
  * @category GPU
  * @experimental
  */
-declare interface GPURenderPipelineDescriptor
-  extends GPUPipelineDescriptorBase {
+interface GPURenderPipelineDescriptor extends GPUPipelineDescriptorBase {
   vertex: GPUVertexState;
   primitive?: GPUPrimitiveState;
   depthStencil?: GPUDepthStencilState;
@@ -884,7 +882,7 @@ declare interface GPURenderPipelineDescriptor
  * @category GPU
  * @experimental
  */
-declare interface GPUPrimitiveState {
+interface GPUPrimitiveState {
   topology?: GPUPrimitiveTopology;
   stripIndexFormat?: GPUIndexFormat;
   frontFace?: GPUFrontFace;
@@ -896,7 +894,7 @@ declare interface GPUPrimitiveState {
  * @category GPU
  * @experimental
  */
-declare type GPUPrimitiveTopology =
+type GPUPrimitiveTopology =
   | "point-list"
   | "line-list"
   | "line-strip"
@@ -907,19 +905,19 @@ declare type GPUPrimitiveTopology =
  * @category GPU
  * @experimental
  */
-declare type GPUFrontFace = "ccw" | "cw";
+type GPUFrontFace = "ccw" | "cw";
 
 /**
  * @category GPU
  * @experimental
  */
-declare type GPUCullMode = "none" | "front" | "back";
+type GPUCullMode = "none" | "front" | "back";
 
 /**
  * @category GPU
  * @experimental
  */
-declare interface GPUMultisampleState {
+interface GPUMultisampleState {
   count?: number;
   mask?: number;
   alphaToCoverageEnabled?: boolean;
@@ -929,7 +927,7 @@ declare interface GPUMultisampleState {
  * @category GPU
  * @experimental
  */
-declare interface GPUFragmentState extends GPUProgrammableStage {
+interface GPUFragmentState extends GPUProgrammableStage {
   targets: (GPUColorTargetState | null)[];
 }
 
@@ -937,7 +935,7 @@ declare interface GPUFragmentState extends GPUProgrammableStage {
  * @category GPU
  * @experimental
  */
-declare interface GPUColorTargetState {
+interface GPUColorTargetState {
   format: GPUTextureFormat;
 
   blend?: GPUBlendState;
@@ -948,7 +946,7 @@ declare interface GPUColorTargetState {
  * @category GPU
  * @experimental
  */
-declare interface GPUBlendState {
+interface GPUBlendState {
   color: GPUBlendComponent;
   alpha: GPUBlendComponent;
 }
@@ -957,7 +955,7 @@ declare interface GPUBlendState {
  * @category GPU
  * @experimental
  */
-declare type GPUColorWriteFlags = number;
+type GPUColorWriteFlags = number;
 
 /**
  * @category GPU
@@ -975,7 +973,7 @@ declare class GPUColorWrite {
  * @category GPU
  * @experimental
  */
-declare interface GPUBlendComponent {
+interface GPUBlendComponent {
   operation?: GPUBlendOperation;
   srcFactor?: GPUBlendFactor;
   dstFactor?: GPUBlendFactor;
@@ -985,7 +983,7 @@ declare interface GPUBlendComponent {
  * @category GPU
  * @experimental
  */
-declare type GPUBlendFactor =
+type GPUBlendFactor =
   | "zero"
   | "one"
   | "src"
@@ -1004,7 +1002,7 @@ declare type GPUBlendFactor =
  * @category GPU
  * @experimental
  */
-declare type GPUBlendOperation =
+type GPUBlendOperation =
   | "add"
   | "subtract"
   | "reverse-subtract"
@@ -1015,7 +1013,7 @@ declare type GPUBlendOperation =
  * @category GPU
  * @experimental
  */
-declare interface GPUDepthStencilState {
+interface GPUDepthStencilState {
   format: GPUTextureFormat;
 
   depthWriteEnabled: boolean;
@@ -1036,7 +1034,7 @@ declare interface GPUDepthStencilState {
  * @category GPU
  * @experimental
  */
-declare interface GPUStencilFaceState {
+interface GPUStencilFaceState {
   compare?: GPUCompareFunction;
   failOp?: GPUStencilOperation;
   depthFailOp?: GPUStencilOperation;
@@ -1047,7 +1045,7 @@ declare interface GPUStencilFaceState {
  * @category GPU
  * @experimental
  */
-declare type GPUStencilOperation =
+type GPUStencilOperation =
   | "keep"
   | "zero"
   | "replace"
@@ -1061,13 +1059,13 @@ declare type GPUStencilOperation =
  * @category GPU
  * @experimental
  */
-declare type GPUIndexFormat = "uint16" | "uint32";
+type GPUIndexFormat = "uint16" | "uint32";
 
 /**
  * @category GPU
  * @experimental
  */
-declare type GPUVertexFormat =
+type GPUVertexFormat =
   | "uint8x2"
   | "uint8x4"
   | "sint8x2"
@@ -1104,13 +1102,13 @@ declare type GPUVertexFormat =
  * @category GPU
  * @experimental
  */
-declare type GPUVertexStepMode = "vertex" | "instance";
+type GPUVertexStepMode = "vertex" | "instance";
 
 /**
  * @category GPU
  * @experimental
  */
-declare interface GPUVertexState extends GPUProgrammableStage {
+interface GPUVertexState extends GPUProgrammableStage {
   buffers?: (GPUVertexBufferLayout | null)[];
 }
 
@@ -1118,7 +1116,7 @@ declare interface GPUVertexState extends GPUProgrammableStage {
  * @category GPU
  * @experimental
  */
-declare interface GPUVertexBufferLayout {
+interface GPUVertexBufferLayout {
   arrayStride: number;
   stepMode?: GPUVertexStepMode;
   attributes: GPUVertexAttribute[];
@@ -1128,7 +1126,7 @@ declare interface GPUVertexBufferLayout {
  * @category GPU
  * @experimental
  */
-declare interface GPUVertexAttribute {
+interface GPUVertexAttribute {
   format: GPUVertexFormat;
   offset: number;
 
@@ -1139,7 +1137,7 @@ declare interface GPUVertexAttribute {
  * @category GPU
  * @experimental
  */
-declare interface GPUImageDataLayout {
+interface GPUImageDataLayout {
   offset?: number;
   bytesPerRow?: number;
   rowsPerImage?: number;
@@ -1157,7 +1155,7 @@ declare class GPUCommandBuffer implements GPUObjectBase {
  * @category GPU
  * @experimental
  */
-declare interface GPUCommandBufferDescriptor extends GPUObjectDescriptorBase {}
+interface GPUCommandBufferDescriptor extends GPUObjectDescriptorBase {}
 
 /**
  * @category GPU
@@ -1224,13 +1222,13 @@ declare class GPUCommandEncoder implements GPUObjectBase {
  * @category GPU
  * @experimental
  */
-declare interface GPUCommandEncoderDescriptor extends GPUObjectDescriptorBase {}
+interface GPUCommandEncoderDescriptor extends GPUObjectDescriptorBase {}
 
 /**
  * @category GPU
  * @experimental
  */
-declare interface GPUImageCopyBuffer extends GPUImageDataLayout {
+interface GPUImageCopyBuffer extends GPUImageDataLayout {
   buffer: GPUBuffer;
 }
 
@@ -1238,7 +1236,7 @@ declare interface GPUImageCopyBuffer extends GPUImageDataLayout {
  * @category GPU
  * @experimental
  */
-declare interface GPUImageCopyTexture {
+interface GPUImageCopyTexture {
   texture: GPUTexture;
   mipLevel?: number;
   origin?: GPUOrigin3D;
@@ -1249,7 +1247,7 @@ declare interface GPUImageCopyTexture {
  * @category GPU
  * @experimental
  */
-declare interface GPUProgrammablePassEncoder {
+interface GPUProgrammablePassEncoder {
   setBindGroup(
     index: number,
     bindGroup: GPUBindGroup,
@@ -1305,7 +1303,7 @@ declare class GPUComputePassEncoder
  * @category GPU
  * @experimental
  */
-declare interface GPUComputePassTimestampWrites {
+interface GPUComputePassTimestampWrites {
   querySet: GPUQuerySet;
   beginningOfPassWriteIndex?: number;
   endOfPassWriteIndex?: number;
@@ -1315,7 +1313,7 @@ declare interface GPUComputePassTimestampWrites {
  * @category GPU
  * @experimental
  */
-declare interface GPUComputePassDescriptor extends GPUObjectDescriptorBase {
+interface GPUComputePassDescriptor extends GPUObjectDescriptorBase {
   timestampWrites?: GPUComputePassTimestampWrites;
 }
 
@@ -1323,7 +1321,7 @@ declare interface GPUComputePassDescriptor extends GPUObjectDescriptorBase {
  * @category GPU
  * @experimental
  */
-declare interface GPURenderEncoderBase {
+interface GPURenderEncoderBase {
   setPipeline(pipeline: GPURenderPipeline): undefined;
 
   setIndexBuffer(
@@ -1444,7 +1442,7 @@ declare class GPURenderPassEncoder
  * @category GPU
  * @experimental
  */
-declare interface GPURenderPassTimestampWrites {
+interface GPURenderPassTimestampWrites {
   querySet: GPUQuerySet;
   beginningOfPassWriteIndex?: number;
   endOfPassWriteIndex?: number;
@@ -1454,7 +1452,7 @@ declare interface GPURenderPassTimestampWrites {
  * @category GPU
  * @experimental
  */
-declare interface GPURenderPassDescriptor extends GPUObjectDescriptorBase {
+interface GPURenderPassDescriptor extends GPUObjectDescriptorBase {
   colorAttachments: (GPURenderPassColorAttachment | null)[];
   depthStencilAttachment?: GPURenderPassDepthStencilAttachment;
   occlusionQuerySet?: GPUQuerySet;
@@ -1465,7 +1463,7 @@ declare interface GPURenderPassDescriptor extends GPUObjectDescriptorBase {
  * @category GPU
  * @experimental
  */
-declare interface GPURenderPassColorAttachment {
+interface GPURenderPassColorAttachment {
   view: GPUTextureView;
   resolveTarget?: GPUTextureView;
 
@@ -1478,7 +1476,7 @@ declare interface GPURenderPassColorAttachment {
  * @category GPU
  * @experimental
  */
-declare interface GPURenderPassDepthStencilAttachment {
+interface GPURenderPassDepthStencilAttachment {
   view: GPUTextureView;
 
   depthClearValue?: number;
@@ -1496,13 +1494,13 @@ declare interface GPURenderPassDepthStencilAttachment {
  * @category GPU
  * @experimental
  */
-declare type GPULoadOp = "load" | "clear";
+type GPULoadOp = "load" | "clear";
 
 /**
  * @category GPU
  * @experimental
  */
-declare type GPUStoreOp = "store" | "discard";
+type GPUStoreOp = "store" | "discard";
 
 /**
  * @category GPU
@@ -1516,7 +1514,7 @@ declare class GPURenderBundle implements GPUObjectBase {
  * @category GPU
  * @experimental
  */
-declare interface GPURenderBundleDescriptor extends GPUObjectDescriptorBase {}
+interface GPURenderBundleDescriptor extends GPUObjectDescriptorBase {}
 
 /**
  * @category GPU
@@ -1579,7 +1577,7 @@ declare class GPURenderBundleEncoder
  * @category GPU
  * @experimental
  */
-declare interface GPURenderPassLayout extends GPUObjectDescriptorBase {
+interface GPURenderPassLayout extends GPUObjectDescriptorBase {
   colorFormats: (GPUTextureFormat | null)[];
   depthStencilFormat?: GPUTextureFormat;
   sampleCount?: number;
@@ -1589,7 +1587,7 @@ declare interface GPURenderPassLayout extends GPUObjectDescriptorBase {
  * @category GPU
  * @experimental
  */
-declare interface GPURenderBundleEncoderDescriptor extends GPURenderPassLayout {
+interface GPURenderBundleEncoderDescriptor extends GPURenderPassLayout {
   depthReadOnly?: boolean;
   stencilReadOnly?: boolean;
 }
@@ -1638,7 +1636,7 @@ declare class GPUQuerySet implements GPUObjectBase {
  * @category GPU
  * @experimental
  */
-declare interface GPUQuerySetDescriptor extends GPUObjectDescriptorBase {
+interface GPUQuerySetDescriptor extends GPUObjectDescriptorBase {
   type: GPUQueryType;
   count: number;
 }
@@ -1647,19 +1645,19 @@ declare interface GPUQuerySetDescriptor extends GPUObjectDescriptorBase {
  * @category GPU
  * @experimental
  */
-declare type GPUQueryType = "occlusion" | "timestamp";
+type GPUQueryType = "occlusion" | "timestamp";
 
 /**
  * @category GPU
  * @experimental
  */
-declare type GPUDeviceLostReason = "destroyed";
+type GPUDeviceLostReason = "destroyed";
 
 /**
  * @category GPU
  * @experimental
  */
-declare interface GPUDeviceLostInfo {
+interface GPUDeviceLostInfo {
   readonly reason: GPUDeviceLostReason;
   readonly message: string;
 }
@@ -1700,7 +1698,7 @@ declare class GPUInternalError extends GPUError {
  * @category GPU
  * @experimental
  */
-declare type GPUErrorFilter = "out-of-memory" | "validation" | "internal";
+type GPUErrorFilter = "out-of-memory" | "validation" | "internal";
 
 /**
  * @category GPU
@@ -1719,7 +1717,7 @@ declare class GPUUncapturedErrorEvent extends Event {
  * @category GPU
  * @experimental
  */
-declare interface GPUUncapturedErrorEventInit extends EventInit {
+interface GPUUncapturedErrorEventInit extends EventInit {
   error: GPUError;
 }
 
@@ -1727,7 +1725,7 @@ declare interface GPUUncapturedErrorEventInit extends EventInit {
  * @category GPU
  * @experimental
  */
-declare interface GPUColorDict {
+interface GPUColorDict {
   r: number;
   g: number;
   b: number;
@@ -1738,13 +1736,13 @@ declare interface GPUColorDict {
  * @category GPU
  * @experimental
  */
-declare type GPUColor = number[] | GPUColorDict;
+type GPUColor = number[] | GPUColorDict;
 
 /**
  * @category GPU
  * @experimental
  */
-declare interface GPUOrigin3DDict {
+interface GPUOrigin3DDict {
   x?: number;
   y?: number;
   z?: number;
@@ -1754,13 +1752,13 @@ declare interface GPUOrigin3DDict {
  * @category GPU
  * @experimental
  */
-declare type GPUOrigin3D = number[] | GPUOrigin3DDict;
+type GPUOrigin3D = number[] | GPUOrigin3DDict;
 
 /**
  * @category GPU
  * @experimental
  */
-declare interface GPUExtent3DDict {
+interface GPUExtent3DDict {
   width: number;
   height?: number;
   depthOrArrayLayers?: number;
@@ -1770,19 +1768,19 @@ declare interface GPUExtent3DDict {
  * @category GPU
  * @experimental
  */
-declare type GPUExtent3D = number[] | GPUExtent3DDict;
+type GPUExtent3D = number[] | GPUExtent3DDict;
 
 /**
  * @category GPU
  * @experimental
  */
-declare type GPUCanvasAlphaMode = "opaque" | "premultiplied";
+type GPUCanvasAlphaMode = "opaque" | "premultiplied";
 
 /**
  * @category GPU
  * @experimental
  */
-declare interface GPUCanvasConfiguration {
+interface GPUCanvasConfiguration {
   device: GPUDevice;
   format: GPUTextureFormat;
   usage?: GPUTextureUsageFlags;
@@ -1796,7 +1794,7 @@ declare interface GPUCanvasConfiguration {
  * @category GPU
  * @experimental
  */
-declare interface GPUCanvasContext {
+interface GPUCanvasContext {
   configure(configuration: GPUCanvasConfiguration): undefined;
   unconfigure(): undefined;
   getCurrentTexture(): GPUTexture;

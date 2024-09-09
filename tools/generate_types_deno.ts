@@ -2,8 +2,9 @@
 
 // This script is used to generate the @types/deno package on DefinitelyTyped.
 
-import $ from "jsr:@david/dax@0.41.0";
+import $ from "jsr:@david/dax@0.42.0";
 import { Node, Project } from "jsr:@ts-morph/ts-morph@23.0.0";
+import * as semver from "jsr:@std/semver@1.0.3";
 
 const rootDir = $.path(import.meta.dirname!).parentOrThrow();
 const definitelyTypedDir = rootDir.join(
@@ -18,9 +19,12 @@ const denoExec = rootDir.join(
   "target/debug/deno" + (Deno.build.os === "windows" ? ".exe" : ""),
 );
 
+$.logStep("Building Deno executable...");
 await $`cargo build`;
 
+$.logStep("Creating declaration file...");
 await createDenoDtsFile();
+$.logStep("Updating package.json...");
 await updatePkgJson();
 
 async function createDenoDtsFile() {
@@ -63,6 +67,17 @@ async function createDenoDtsFile() {
       ]) || statement.getName()?.startsWith("GPU"));
     if (!shouldKeepKeep) {
       statement.remove();
+      continue;
+    }
+
+    if (
+      Node.isModuleDeclaration(statement) && statement.getName() == "Deno"
+    ) {
+      statement.forEachDescendant((node) => {
+        if (Node.isExportable(node)) {
+          node.setIsExported(false);
+        }
+      });
     }
   }
 
@@ -77,8 +92,10 @@ async function createDenoDtsFile() {
 async function updatePkgJson() {
   const pkgJsonFile = definitelyTypedDir.join("package.json");
   const obj = pkgJsonFile.readJsonSync();
+  const version = semver.parse(await getDenoVersion());
+  version.patch = 9999;
   // deno-lint-ignore no-explicit-any
-  (obj as any).version = await getDenoVersion();
+  (obj as any).version = semver.format(version);
   pkgJsonFile.writeTextSync(JSON.stringify(obj, undefined, 4) + "\n"); // 4 spaces indent
 }
 

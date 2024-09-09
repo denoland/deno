@@ -10,7 +10,7 @@
  *
  * @category Platform
  */
-declare interface ImportMeta {
+interface ImportMeta {
   /** A string representation of the fully qualified module URL. When the
    * module is loaded locally, the value will be a file URL (e.g.
    * `file:///path/module.ts`).
@@ -89,7 +89,7 @@ declare interface ImportMeta {
  *
  * @category Performance
  */
-declare interface Performance {
+interface Performance {
   /** Stores a timestamp with the associated name (a "mark"). */
   mark(markName: string, options?: PerformanceMarkOptions): PerformanceMark;
 
@@ -109,7 +109,7 @@ declare interface Performance {
  *
  * @category Performance
  */
-declare interface PerformanceMarkOptions {
+interface PerformanceMarkOptions {
   /** Metadata to be included in the mark. */
   // deno-lint-ignore no-explicit-any
   detail?: any;
@@ -126,7 +126,7 @@ declare interface PerformanceMarkOptions {
  *
  * @category Performance
  */
-declare interface PerformanceMeasureOptions {
+interface PerformanceMeasureOptions {
   /** Metadata to be included in the measure. */
   // deno-lint-ignore no-explicit-any
   detail?: any;
