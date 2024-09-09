@@ -4605,64 +4605,6 @@ fn permission_prompt_escapes_ansi_codes_and_control_chars() {
   }
 }
 
-itest!(node_builtin_modules_ts {
-  args: "run --quiet --allow-read run/node_builtin_modules/mod.ts hello there",
-  output: "run/node_builtin_modules/mod.ts.out",
-  envs: env_vars_for_npm_tests(),
-  exit_code: 0,
-});
-
-itest!(node_builtin_modules_js {
-  args: "run --quiet --allow-read run/node_builtin_modules/mod.js hello there",
-  output: "run/node_builtin_modules/mod.js.out",
-  envs: env_vars_for_npm_tests(),
-  exit_code: 0,
-});
-
-itest!(node_prefix_missing {
-  args: "run --quiet run/node_prefix_missing/main.ts",
-  output: "run/node_prefix_missing/main.ts.out",
-  envs: env_vars_for_npm_tests(),
-  exit_code: 1,
-});
-
-itest!(node_prefix_missing_unstable_bare_node_builtins_enbaled {
-  args: "run --unstable-bare-node-builtins run/node_prefix_missing/main.ts",
-  output: "run/node_prefix_missing/feature_enabled.out",
-  envs: env_vars_for_npm_tests(),
-  exit_code: 0,
-});
-
-itest!(
-  node_prefix_missing_unstable_bare_node_builtins_enbaled_by_env {
-    args: "run run/node_prefix_missing/main.ts",
-    output: "run/node_prefix_missing/feature_enabled.out",
-    envs: [
-      env_vars_for_npm_tests(),
-      vec![(
-        "DENO_UNSTABLE_BARE_NODE_BUILTINS".to_string(),
-        "1".to_string()
-      )]
-    ]
-    .concat(),
-    exit_code: 0,
-  }
-);
-
-itest!(node_prefix_missing_unstable_bare_node_builtins_enbaled_by_config {
-  args: "run --config=run/node_prefix_missing/config.json run/node_prefix_missing/main.ts",
-  output: "run/node_prefix_missing/feature_enabled.out",
-  envs: env_vars_for_npm_tests(),
-  exit_code: 0,
-});
-
-itest!(node_prefix_missing_unstable_bare_node_builtins_enbaled_with_import_map {
-  args: "run --unstable-bare-node-builtins --import-map run/node_prefix_missing/import_map.json run/node_prefix_missing/main.ts",
-  output: "run/node_prefix_missing/feature_enabled.out",
-  envs: env_vars_for_npm_tests(),
-  exit_code: 0,
-});
-
 itest!(dynamic_import_syntax_error {
   args: "run -A run/dynamic_import_syntax_error.js",
   output: "run/dynamic_import_syntax_error.js.out",
