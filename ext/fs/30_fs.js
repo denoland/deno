@@ -18,6 +18,8 @@ import {
   op_fs_file_stat_async,
   op_fs_file_stat_sync,
   op_fs_file_sync_async,
+  op_fs_file_sync_data_async,
+  op_fs_file_sync_data_sync,
   op_fs_file_sync_sync,
   op_fs_file_truncate_async,
   op_fs_flock_async,
