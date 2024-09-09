@@ -1084,7 +1084,7 @@ pub enum RunQueryDescriptor {
 
 impl RunQueryDescriptor {
   pub fn parse(requested: &str) -> Result<RunQueryDescriptor, AnyError> {
-    if is_path(&requested) {
+    if is_path(requested) {
       let path = PathBuf::from(requested);
       let resolved = if path.is_absolute() {
         normalize_path(path)
@@ -1203,7 +1203,7 @@ impl AllowRunDescriptor {
     text: &str,
     cwd: &Path,
   ) -> Result<AllowRunDescriptorParseResult, which::Error> {
-    let is_path = is_path(&text);
+    let is_path = is_path(text);
     // todo(dsherret): canonicalize in #25458
     let path = if is_path {
       resolve_from_known_cwd(Path::new(text), cwd)
