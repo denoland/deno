@@ -194,7 +194,7 @@ uuid = { version = "1.3.0", features = ["v4"] }
 webpki-roots = "0.26"
 which = "4.2.5"
 yoke = { version = "0.7.4", features = ["derive"] }
-zeromq = { version = "=0.4.0", default-features = false, features = ["tcp-transport", "tokio-runtime"] }
+zeromq = { version = "=0.4.0", default-features = false, features = ["ipc-transport", "tcp-transport", "tokio-runtime"] }
 zstd = "=0.12.4"
 
 # crypto
