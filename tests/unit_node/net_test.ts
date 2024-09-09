@@ -228,3 +228,22 @@ Deno.test("[node/net] BlockList doesn't leak resources", () => {
   blockList.addAddress("1.1.1.1");
   assert(blockList.check("1.1.1.1"));
 });
+
+Deno.test("[node/net] net.Server can listen on the same port immediately after it's closed", async () => {
+  const serverClosed = Promise.withResolvers<void>();
+  const server = net.createServer();
+  server.on("error", (e) => {
+    console.error(e);
+  });
+  server.listen(0, () => {
+    // deno-lint-ignore no-explicit-any
+    const { port } = server.address() as any;
+    server.close();
+    server.listen(port, () => {
+      server.close(() => {
+        serverClosed.resolve();
+      });
+    });
+  });
+  await serverClosed.promise;
+});
