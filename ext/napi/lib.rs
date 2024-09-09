@@ -481,7 +481,7 @@ deno_core::extension!(deno_napi,
 );
 
 pub trait NapiPermissions {
-  #[must_use]
+  #[must_use = "the resolved return value to mitigate time-of-check to time-of-use issues"]
   fn check(&mut self, path: &str) -> std::result::Result<PathBuf, AnyError>;
 }
 
