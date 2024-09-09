@@ -183,16 +183,6 @@ declare namespace Deno {
     options: UnixListenOptions & { transport: "unix" },
   ): UnixListener;
 
-  /** Provides TLS certified keys, ie: a key that has been certified by a trusted certificate authority.
-   * A certified key generally consists of a private key and certificate part.
-   *
-   * @category Network
-   */
-  export type TlsCertifiedKeyOptions =
-    | TlsCertifiedKeyPem
-    | TlsCertifiedKeyFromFile
-    | TlsCertifiedKeyConnectTls;
-
   /**
    * Provides certified key material from strings. The key material is provided in
    * `PEM`-format (Privacy Enhanced Mail, https://www.rfc-editor.org/rfc/rfc1422) which can be identified by having
@@ -217,59 +207,6 @@ declare namespace Deno {
     key: string;
     /** Certificate chain in `PEM` format. */
     cert: string;
-  }
-
-  /**
-   * @deprecated This will be removed in Deno 2.0. See the
-   * {@link https://docs.deno.com/runtime/manual/advanced/migrate_deprecations | Deno 1.x to 2.x Migration Guide}
-   * for migration instructions.
-   *
-   * @category Network
-   */
-  export interface TlsCertifiedKeyFromFile {
-    /** Path to a file containing a PEM formatted CA certificate. Requires
-     * `--allow-read`.
-     *
-     * @tags allow-read
-     * @deprecated This will be removed in Deno 2.0. See the
-     * {@link https://docs.deno.com/runtime/manual/advanced/migrate_deprecations | Deno 1.x to 2.x Migration Guide}
-     * for migration instructions.
-     */
-    certFile: string;
-    /** Path to a file containing a private key file. Requires `--allow-read`.
-     *
-     * @tags allow-read
-     * @deprecated This will be removed in Deno 2.0. See the
-     * {@link https://docs.deno.com/runtime/manual/advanced/migrate_deprecations | Deno 1.x to 2.x Migration Guide}
-     * for migration instructions.
-     */
-    keyFile: string;
-  }
-
-  /**
-   * @deprecated This will be removed in Deno 2.0. See the
-   * {@link https://docs.deno.com/runtime/manual/advanced/migrate_deprecations | Deno 1.x to 2.x Migration Guide}
-   * for migration instructions.
-   *
-   * @category Network
-   */
-  export interface TlsCertifiedKeyConnectTls {
-    /**
-     * Certificate chain in `PEM` format.
-     *
-     * @deprecated This will be removed in Deno 2.0. See the
-     * {@link https://docs.deno.com/runtime/manual/advanced/migrate_deprecations | Deno 1.x to 2.x Migration Guide}
-     * for migration instructions.
-     */
-    certChain: string;
-    /**
-     * Private key in `PEM` format. RSA, EC, and PKCS8-format keys are supported.
-     *
-     * @deprecated This will be removed in Deno 2.0. See the
-     * {@link https://docs.deno.com/runtime/manual/advanced/migrate_deprecations | Deno 1.x to 2.x Migration Guide}
-     * for migration instructions.
-     */
-    privateKey: string;
   }
 
   /** @category Network */
@@ -300,7 +237,7 @@ declare namespace Deno {
    * @category Network
    */
   export function listenTls(
-    options: ListenTlsOptions & TlsCertifiedKeyOptions,
+    options: ListenTlsOptions & TlsCertifiedKeyPem,
   ): TlsListener;
 
   /** @category Network */
@@ -381,16 +318,6 @@ declare namespace Deno {
      *
      * @default {"127.0.0.1"} */
     hostname?: string;
-    /** Path to a file containing a PEM formatted list of root certificates that will
-     * be used in addition to the default root certificates to verify the peer's certificate. Requires
-     * `--allow-read`.
-     *
-     * @tags allow-read
-     * @deprecated This will be removed in Deno 2.0. See the
-     * {@link https://docs.deno.com/runtime/manual/advanced/migrate_deprecations | Deno 1.x to 2.x Migration Guide}
-     * for migration instructions.
-     */
-    certFile?: string;
     /** A list of root certificates that will be used in addition to the
      * default root certificates to verify the peer's certificate.
      *
@@ -444,7 +371,7 @@ declare namespace Deno {
    * @category Network
    */
   export function connectTls(
-    options: ConnectTlsOptions & TlsCertifiedKeyOptions,
+    options: ConnectTlsOptions & TlsCertifiedKeyPem,
   ): Promise<TlsConn>;
 
   /** @category Network */

@@ -972,7 +972,7 @@ declare namespace Deno {
    * @experimental
    */
   export function createHttpClient(
-    options: CreateHttpClientOptions & TlsCertifiedKeyOptions,
+    options: CreateHttpClientOptions & TlsCertifiedKeyPem,
   ): HttpClient;
 
   /** **UNSTABLE**: New API, yet to be vetted.
