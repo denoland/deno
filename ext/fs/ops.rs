@@ -1430,7 +1430,7 @@ pub async fn op_fs_seek_async(
 }
 
 #[op2(fast)]
-pub fn op_fs_fdatasync_sync(
+pub fn op_fs_file_sync_data_sync(
   state: &mut OpState,
   #[smi] rid: ResourceId,
 ) -> Result<(), AnyError> {
@@ -1440,7 +1440,7 @@ pub fn op_fs_fdatasync_sync(
 }
 
 #[op2(async)]
-pub async fn op_fs_fdatasync_async(
+pub async fn op_fs_file_sync_data_async(
   state: Rc<RefCell<OpState>>,
   #[smi] rid: ResourceId,
 ) -> Result<(), AnyError> {

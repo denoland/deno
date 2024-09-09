@@ -1658,141 +1658,6 @@ declare namespace Deno {
   }
 
   /**
-   * An abstract interface which when implemented provides an interface to read
-   * bytes into an array buffer asynchronously.
-   *
-   * @deprecated This will be removed in Deno 2.0. See the
-   * {@link https://docs.deno.com/runtime/manual/advanced/migrate_deprecations | Deno 1.x to 2.x Migration Guide}
-   * for migration instructions.
-   *
-   * @category I/O */
-  export interface Reader {
-    /** Reads up to `p.byteLength` bytes into `p`. It resolves to the number of
-     * bytes read (`0` < `n` <= `p.byteLength`) and rejects if any error
-     * encountered. Even if `read()` resolves to `n` < `p.byteLength`, it may
-     * use all of `p` as scratch space during the call. If some data is
-     * available but not `p.byteLength` bytes, `read()` conventionally resolves
-     * to what is available instead of waiting for more.
-     *
-     * When `read()` encounters end-of-file condition, it resolves to EOF
-     * (`null`).
-     *
-     * When `read()` encounters an error, it rejects with an error.
-     *
-     * Callers should always process the `n` > `0` bytes returned before
-     * considering the EOF (`null`). Doing so correctly handles I/O errors that
-     * happen after reading some bytes and also both of the allowed EOF
-     * behaviors.
-     *
-     * Implementations should not retain a reference to `p`.
-     *
-     * Use
-     * {@linkcode https://jsr.io/@std/io/doc/iterate-reader/~/iterateReader | iterateReader}
-     * to turn {@linkcode Reader} into an {@linkcode AsyncIterator}.
-     */
-    read(p: Uint8Array): Promise<number | null>;
-  }
-
-  /**
-   * An abstract interface which when implemented provides an interface to read
-   * bytes into an array buffer synchronously.
-   *
-   * @deprecated This will be removed in Deno 2.0. See the
-   * {@link https://docs.deno.com/runtime/manual/advanced/migrate_deprecations | Deno 1.x to 2.x Migration Guide}
-   * for migration instructions.
-   *
-   * @category I/O */
-  export interface ReaderSync {
-    /** Reads up to `p.byteLength` bytes into `p`. It resolves to the number
-     * of bytes read (`0` < `n` <= `p.byteLength`) and rejects if any error
-     * encountered. Even if `readSync()` returns `n` < `p.byteLength`, it may use
-     * all of `p` as scratch space during the call. If some data is available
-     * but not `p.byteLength` bytes, `readSync()` conventionally returns what is
-     * available instead of waiting for more.
-     *
-     * When `readSync()` encounters end-of-file condition, it returns EOF
-     * (`null`).
-     *
-     * When `readSync()` encounters an error, it throws with an error.
-     *
-     * Callers should always process the `n` > `0` bytes returned before
-     * considering the EOF (`null`). Doing so correctly handles I/O errors that
-     * happen after reading some bytes and also both of the allowed EOF
-     * behaviors.
-     *
-     * Implementations should not retain a reference to `p`.
-     *
-     * Use
-     * {@linkcode https://jsr.io/@std/io/doc/iterate-reader/~/iterateReaderSync | iterateReaderSync}
-     * to turn {@linkcode ReaderSync} into an {@linkcode Iterator}.
-     */
-    readSync(p: Uint8Array): number | null;
-  }
-
-  /**
-   * An abstract interface which when implemented provides an interface to write
-   * bytes from an array buffer to a file/resource asynchronously.
-   *
-   * @deprecated This will be removed in Deno 2.0. See the
-   * {@link https://docs.deno.com/runtime/manual/advanced/migrate_deprecations | Deno 1.x to 2.x Migration Guide}
-   * for migration instructions.
-   *
-   * @category I/O */
-  export interface Writer {
-    /** Writes `p.byteLength` bytes from `p` to the underlying data stream. It
-     * resolves to the number of bytes written from `p` (`0` <= `n` <=
-     * `p.byteLength`) or reject with the error encountered that caused the
-     * write to stop early. `write()` must reject with a non-null error if
-     * would resolve to `n` < `p.byteLength`. `write()` must not modify the
-     * slice data, even temporarily.
-     *
-     * This function is one of the lowest
-     * level APIs and most users should not work with this directly, but rather
-     * use {@linkcode https://jsr.io/@std/io/doc/write-all/~/writeAll | writeAll}
-     * instead.
-     *
-     * Implementations should not retain a reference to `p`.
-     */
-    write(p: Uint8Array): Promise<number>;
-  }
-
-  /**
-   * An abstract interface which when implemented provides an interface to write
-   * bytes from an array buffer to a file/resource synchronously.
-   *
-   * @deprecated This will be removed in Deno 2.0. See the
-   * {@link https://docs.deno.com/runtime/manual/advanced/migrate_deprecations | Deno 1.x to 2.x Migration Guide}
-   * for migration instructions.
-   *
-   * @category I/O */
-  export interface WriterSync {
-    /** Writes `p.byteLength` bytes from `p` to the underlying data
-     * stream. It returns the number of bytes written from `p` (`0` <= `n`
-     * <= `p.byteLength`) and any error encountered that caused the write to
-     * stop early. `writeSync()` must throw a non-null error if it returns `n` <
-     * `p.byteLength`. `writeSync()` must not modify the slice data, even
-     * temporarily.
-     *
-     * Implementations should not retain a reference to `p`.
-     */
-    writeSync(p: Uint8Array): number;
-  }
-
-  /**
-   * An abstract interface which when implemented provides an interface to close
-   * files/resources that were previously opened.
-   *
-   * @deprecated This will be removed in Deno 2.0. See the
-   * {@link https://docs.deno.com/runtime/manual/advanced/migrate_deprecations | Deno 1.x to 2.x Migration Guide}
-   * for migration instructions.
-   *
-   * @category I/O */
-  export interface Closer {
-    /** Closes the resource, "freeing" the backing file/resource. */
-    close(): void;
-  }
-
-  /**
    * An abstract interface which when implemented provides an interface to seek
    * within an open file/resource asynchronously.
    *
@@ -1920,40 +1785,6 @@ declare namespace Deno {
    */
   export function createSync(path: string | URL): FsFile;
 
-  /**
-   * Flushes any pending data operations of the given file stream to disk.
-   *  ```ts
-   * const file = await Deno.open(
-   *   "my_file.txt",
-   *   { read: true, write: true, create: true },
-   * );
-   * await file.write(new TextEncoder().encode("Hello World"));
-   * await Deno.fdatasync(file.rid);
-   * console.log(await Deno.readTextFile("my_file.txt")); // Hello World
-   * ```
-   *
-   * @category File System
-   */
-  export function fdatasync(rid: number): Promise<void>;
-
-  /**
-   * Synchronously flushes any pending data operations of the given file stream
-   * to disk.
-   *
-   *  ```ts
-   * const file = Deno.openSync(
-   *   "my_file.txt",
-   *   { read: true, write: true, create: true },
-   * );
-   * file.writeSync(new TextEncoder().encode("Hello World"));
-   * Deno.fdatasyncSync(file.rid);
-   * console.log(Deno.readTextFileSync("my_file.txt")); // Hello World
-   * ```
-   *
-   * @category File System
-   */
-  export function fdatasyncSync(rid: number): void;
-
   /** The Deno abstraction for reading and writing files.
    *
    * This is the most straight forward way of handling files within Deno and is
@@ -1971,16 +1802,7 @@ declare namespace Deno {
    *
    * @category File System
    */
-  export class FsFile
-    implements
-      Reader,
-      ReaderSync,
-      Writer,
-      WriterSync,
-      Seeker,
-      SeekerSync,
-      Closer,
-      Disposable {
+  export class FsFile implements Seeker, SeekerSync, Disposable {
     /**
      * The resource ID associated with the file instance. The resource ID
      * should be considered an opaque reference to resource.
@@ -2413,9 +2235,12 @@ declare namespace Deno {
   }
 
   /** A reference to `stdin` which can be used to read directly from `stdin`.
-   * It implements the Deno specific {@linkcode Reader}, {@linkcode ReaderSync},
-   * and {@linkcode Closer} interfaces as well as provides a
-   * {@linkcode ReadableStream} interface.
+   *
+   * It implements the Deno specific
+   * {@linkcode https://jsr.io/@std/io/doc/types/~/Reader | Reader},
+   * {@linkcode https://jsr.io/@std/io/doc/types/~/ReaderSync | ReaderSync},
+   * and {@linkcode https://jsr.io/@std/io/doc/types/~/Closer | Closer}
+   * interfaces as well as provides a {@linkcode ReadableStream} interface.
    *
    * ### Reading chunks from the readable stream
    *
@@ -2429,7 +2254,57 @@ declare namespace Deno {
    *
    * @category I/O
    */
-  export const stdin: Reader & ReaderSync & Closer & {
+  export const stdin: {
+    /** Read the incoming data from `stdin` into an array buffer (`p`).
+     *
+     * Resolves to either the number of bytes read during the operation or EOF
+     * (`null`) if there was nothing more to read.
+     *
+     * It is possible for a read to successfully return with `0` bytes. This
+     * does not indicate EOF.
+     *
+     * **It is not guaranteed that the full buffer will be read in a single
+     * call.**
+     *
+     * ```ts
+     * // If the text "hello world" is piped into the script:
+     * const buf = new Uint8Array(100);
+     * const numberOfBytesRead = await Deno.stdin.read(buf); // 11 bytes
+     * const text = new TextDecoder().decode(buf);  // "hello world"
+     * ```
+     *
+     * @category I/O
+     */
+    read(p: Uint8Array): Promise<number | null>;
+    /** Synchronously read from the incoming data from `stdin` into an array
+     * buffer (`p`).
+     *
+     * Returns either the number of bytes read during the operation or EOF
+     * (`null`) if there was nothing more to read.
+     *
+     * It is possible for a read to successfully return with `0` bytes. This
+     * does not indicate EOF.
+     *
+     * **It is not guaranteed that the full buffer will be read in a single
+     * call.**
+     *
+     * ```ts
+     * // If the text "hello world" is piped into the script:
+     * const buf = new Uint8Array(100);
+     * const numberOfBytesRead = Deno.stdin.readSync(buf); // 11 bytes
+     * const text = new TextDecoder().decode(buf);  // "hello world"
+     * ```
+     *
+     * @category I/O
+     */
+    readSync(p: Uint8Array): number | null;
+    /** Closes `stdin`, freeing the resource.
+     *
+     * ```ts
+     * Deno.stdin.close();
+     * ```
+     */
+    close(): void;
     /** A readable stream interface to `stdin`. */
     readonly readable: ReadableStream<Uint8Array>;
     /**
@@ -2459,8 +2334,10 @@ declare namespace Deno {
     isTerminal(): boolean;
   };
   /** A reference to `stdout` which can be used to write directly to `stdout`.
-   * It implements the Deno specific {@linkcode Writer}, {@linkcode WriterSync},
-   * and {@linkcode Closer} interfaces as well as provides a
+   * It implements the Deno specific
+   * {@linkcode https://jsr.io/@std/io/doc/types/~/Writer | Writer},
+   * {@linkcode https://jsr.io/@std/io/doc/types/~/WriterSync | WriterSync},
+   * and {@linkcode https://jsr.io/@std/io/doc/types/~/Closer | Closer} interfaces as well as provides a
    * {@linkcode WritableStream} interface.
    *
    * These are low level constructs, and the {@linkcode console} interface is a
@@ -2468,7 +2345,44 @@ declare namespace Deno {
    *
    * @category I/O
    */
-  export const stdout: Writer & WriterSync & Closer & {
+  export const stdout: {
+    /** Write the contents of the array buffer (`p`) to `stdout`.
+     *
+     * Resolves to the number of bytes written.
+     *
+     * **It is not guaranteed that the full buffer will be written in a single
+     * call.**
+     *
+     * ```ts
+     * const encoder = new TextEncoder();
+     * const data = encoder.encode("Hello world");
+     * const bytesWritten = await Deno.stdout.write(data); // 11
+     * ```
+     *
+     * @category I/O
+     */
+    write(p: Uint8Array): Promise<number>;
+    /** Synchronously write the contents of the array buffer (`p`) to `stdout`.
+     *
+     * Returns the number of bytes written.
+     *
+     * **It is not guaranteed that the full buffer will be written in a single
+     * call.**
+     *
+     * ```ts
+     * const encoder = new TextEncoder();
+     * const data = encoder.encode("Hello world");
+     * const bytesWritten = Deno.stdout.writeSync(data); // 11
+     * ```
+     */
+    writeSync(p: Uint8Array): number;
+    /** Closes `stdout`, freeing the resource.
+     *
+     * ```ts
+     * Deno.stdout.close();
+     * ```
+     */
+    close(): void;
     /** A writable stream interface to `stdout`. */
     readonly writable: WritableStream<Uint8Array>;
     /**
@@ -2484,8 +2398,10 @@ declare namespace Deno {
     isTerminal(): boolean;
   };
   /** A reference to `stderr` which can be used to write directly to `stderr`.
-   * It implements the Deno specific {@linkcode Writer}, {@linkcode WriterSync},
-   * and {@linkcode Closer} interfaces as well as provides a
+   * It implements the Deno specific
+   * {@linkcode https://jsr.io/@std/io/doc/types/~/Writer | Writer},
+   * {@linkcode https://jsr.io/@std/io/doc/types/~/WriterSync | WriterSync},
+   * and {@linkcode https://jsr.io/@std/io/doc/types/~/Closer | Closer} interfaces as well as provides a
    * {@linkcode WritableStream} interface.
    *
    * These are low level constructs, and the {@linkcode console} interface is a
@@ -2493,7 +2409,44 @@ declare namespace Deno {
    *
    * @category I/O
    */
-  export const stderr: Writer & WriterSync & Closer & {
+  export const stderr: {
+    /** Write the contents of the array buffer (`p`) to `stderr`.
+     *
+     * Resolves to the number of bytes written.
+     *
+     * **It is not guaranteed that the full buffer will be written in a single
+     * call.**
+     *
+     * ```ts
+     * const encoder = new TextEncoder();
+     * const data = encoder.encode("Hello world");
+     * const bytesWritten = await Deno.stderr.write(data); // 11
+     * ```
+     *
+     * @category I/O
+     */
+    write(p: Uint8Array): Promise<number>;
+    /** Synchronously write the contents of the array buffer (`p`) to `stderr`.
+     *
+     * Returns the number of bytes written.
+     *
+     * **It is not guaranteed that the full buffer will be written in a single
+     * call.**
+     *
+     * ```ts
+     * const encoder = new TextEncoder();
+     * const data = encoder.encode("Hello world");
+     * const bytesWritten = Deno.stderr.writeSync(data); // 11
+     * ```
+     */
+    writeSync(p: Uint8Array): number;
+    /** Closes `stderr`, freeing the resource.
+     *
+     * ```ts
+     * Deno.stderr.close();
+     * ```
+     */
+    close(): void;
     /** A writable stream interface to `stderr`. */
     readonly writable: WritableStream<Uint8Array>;
     /**
@@ -2575,30 +2528,6 @@ declare namespace Deno {
      */
     signal?: AbortSignal;
   }
-
-  /**
-   * Read Reader `r` until EOF (`null`) and resolve to the content as
-   * Uint8Array`.
-   *
-   * @deprecated This will be removed in Deno 2.0. See the
-   * {@link https://docs.deno.com/runtime/manual/advanced/migrate_deprecations | Deno 1.x to 2.x Migration Guide}
-   * for migration instructions.
-   *
-   * @category I/O
-   */
-  export function readAll(r: Reader): Promise<Uint8Array>;
-
-  /**
-   * Synchronously reads Reader `r` until EOF (`null`) and returns the content
-   * as `Uint8Array`.
-   *
-   * @deprecated This will be removed in Deno 2.0. See the
-   * {@link https://docs.deno.com/runtime/manual/advanced/migrate_deprecations | Deno 1.x to 2.x Migration Guide}
-   * for migration instructions.
-   *
-   * @category I/O
-   */
-  export function readAllSync(r: ReaderSync): Uint8Array;
 
   /**
    * Options which can be set when using {@linkcode Deno.mkdir} and

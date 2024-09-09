@@ -98,8 +98,6 @@ const denoNs = {
   connectTls: tls.connectTls,
   listenTls: tls.listenTls,
   startTls: tls.startTls,
-  fdatasyncSync: fs.fdatasyncSync,
-  fdatasync: fs.fdatasync,
   symlink: fs.symlink,
   symlinkSync: fs.symlinkSync,
   link: fs.link,

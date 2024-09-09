@@ -15,11 +15,8 @@ import {
   op_fs_copy_file_async,
   op_fs_copy_file_sync,
   op_fs_cwd,
-  op_fs_fdatasync_async,
-  op_fs_fdatasync_sync,
   op_fs_file_stat_async,
   op_fs_file_stat_sync,
-  op_fs_file_sync_async,
   op_fs_file_truncate_async,
   op_fs_flock_async,
   op_fs_flock_sync,
@@ -517,14 +514,6 @@ async function symlink(
   );
 }
 
-function fdatasyncSync(rid) {
-  op_fs_fdatasync_sync(rid);
-}
-
-async function fdatasync(rid) {
-  await op_fs_fdatasync_async(rid);
-}
-
 function openSync(
   path,
   options,
@@ -640,11 +629,11 @@ class FsFile {
   }
 
   async syncData() {
-    await op_fs_fdatasync_async(this.#rid);
+    await op_fs_file_sync_data_async(this.#rid);
   }
 
   syncDataSync() {
-    op_fs_fdatasync_sync(this.#rid);
+    op_fs_file_sync_data_sync(this.#rid);
   }
 
   close() {
@@ -906,8 +895,6 @@ export {
   create,
   createSync,
   cwd,
-  fdatasync,
-  fdatasyncSync,
   FsFile,
   link,
   linkSync,
