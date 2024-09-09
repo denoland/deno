@@ -79,7 +79,9 @@ Deno.test(
     ) => {
       const src = `
       console.log(
-        ${JSON.stringify(Object.keys(expectedEnv))}.map(k => Deno.env.get(k))
+        ${
+        JSON.stringify(Object.keys(expectedEnv))
+      }.map(k => Deno.env.get(k) ?? null)
       )`;
       const { success, stdout } = await new Deno.Command(Deno.execPath(), {
         args: ["eval", src],

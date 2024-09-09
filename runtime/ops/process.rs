@@ -23,6 +23,7 @@ use serde::Serialize;
 use std::borrow::Cow;
 use std::cell::RefCell;
 use std::collections::HashMap;
+use std::ffi::OsString;
 use std::path::Path;
 use std::path::PathBuf;
 use std::process::ExitStatus;
@@ -530,7 +531,7 @@ fn compute_run_cmd_and_check_permissions(
 }
 
 struct RunEnv {
-  envs: HashMap<String, String>,
+  envs: HashMap<OsString, OsString>,
   cwd: PathBuf,
 }
 
@@ -550,19 +551,31 @@ fn compute_run_env(
     .map(|cwd_arg| resolve_path(cwd_arg, &cwd))
     .unwrap_or(cwd);
   let envs = if arg_clear_env {
-    arg_envs.iter().cloned().collect()
+    arg_envs
+      .iter()
+      .map(|(k, v)| (OsString::from(k), OsString::from(v)))
+      .collect()
   } else {
-    let mut envs = std::env::vars()
-      .map(|(k, v)| (if cfg!(windows) { k.to_uppercase() } else { k }, v))
+    let mut envs = std::env::vars_os()
+      .map(|(k, v)| {
+        (
+          if cfg!(windows) {
+            k.to_ascii_uppercase()
+          } else {
+            k
+          },
+          v,
+        )
+      })
       .collect::<HashMap<_, _>>();
     for (key, value) in arg_envs {
       envs.insert(
-        if cfg!(windows) {
-          key.to_uppercase()
+        OsString::from(if cfg!(windows) {
+          key.to_ascii_uppercase()
         } else {
           key.clone()
-        },
-        value.clone(),
+        }),
+        OsString::from(value.clone()),
       );
     }
     envs
@@ -577,7 +590,7 @@ fn resolve_cmd(cmd: &str, env: &RunEnv) -> Result<PathBuf, AnyError> {
   if is_path {
     Ok(resolve_path(cmd, &env.cwd))
   } else {
-    let path = env.envs.get("PATH");
+    let path = env.envs.get(&OsString::from("PATH"));
     match which::which_in(cmd, path, &env.cwd) {
       Ok(cmd) => Ok(cmd),
       Err(which::Error::CannotFindBinaryPath) => {
@@ -627,11 +640,22 @@ fn get_requires_allow_all_env_vars(env: &RunEnv) -> Vec<&str> {
     key.starts_with("LD_") || key.starts_with("DYLD_")
   }
 
+  fn is_empty(value: &OsString) -> bool {
+    value.is_empty()
+      || value.to_str().map(|v| v.trim().is_empty()).unwrap_or(false)
+  }
+
   let mut found_envs = env
     .envs
     .iter()
-    .filter(|(k, v)| requires_allow_all(k) && !v.trim().is_empty())
-    .map(|(k, _)| k.as_str())
+    .filter_map(|(k, v)| {
+      let key = k.to_str()?;
+      if requires_allow_all(key) && !is_empty(v) {
+        Some(key)
+      } else {
+        None
+      }
+    })
     .collect::<Vec<_>>();
   found_envs.sort();
   found_envs
