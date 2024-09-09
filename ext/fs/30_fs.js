@@ -17,10 +17,11 @@ import {
   op_fs_cwd,
   op_fs_file_stat_async,
   op_fs_file_stat_sync,
+  op_fs_file_sync_async,
+  op_fs_file_sync_sync,
   op_fs_file_truncate_async,
   op_fs_flock_async,
   op_fs_flock_sync,
-  op_fs_fsync_sync,
   op_fs_ftruncate_sync,
   op_fs_funlock_async,
   op_fs_funlock_sync,
@@ -659,7 +660,7 @@ class FsFile {
   }
 
   syncSync() {
-    op_fs_fsync_sync(this.#rid);
+    op_fs_file_sync_sync(this.#rid);
   }
 
   async utime(atime, mtime) {

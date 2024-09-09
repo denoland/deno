@@ -1450,7 +1450,7 @@ pub async fn op_fs_file_sync_data_async(
 }
 
 #[op2(fast)]
-pub fn op_fs_fsync_sync(
+pub fn op_fs_file_sync_sync(
   state: &mut OpState,
   #[smi] rid: ResourceId,
 ) -> Result<(), AnyError> {
