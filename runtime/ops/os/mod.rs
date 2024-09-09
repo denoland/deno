@@ -4,6 +4,7 @@ use super::utils::into_string;
 use crate::worker::ExitCode;
 use deno_core::error::type_error;
 use deno_core::error::AnyError;
+use deno_core::error::JsError;
 use deno_core::normalize_path;
 use deno_core::op2;
 use deno_core::v8;
@@ -185,12 +186,18 @@ fn op_loadavg(state: &mut OpState) -> Result<(f64, f64, f64), AnyError> {
   Ok(sys_info::loadavg())
 }
 
-#[op2]
+#[op2(reentrant)]
 #[string]
 fn op_hostname(
+  scope: &mut v8::HandleScope,
   state: &mut OpState,
   #[string] stack: Option<String>,
 ) -> Result<String, AnyError> {
+  let msg = v8::String::new(scope, "asdf").unwrap();
+  let error = v8::Exception::error(scope, msg.into());
+  let js_error = JsError::from_v8_exception(scope, error);
+  eprintln!("js error {:#?}", js_error);
+
   state.borrow_mut::<PermissionsContainer>().check_sys2(
     "hostname",
     "Deno.hostname()",
