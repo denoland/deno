@@ -502,6 +502,7 @@ pub async fn add(
     }
   }
 
+  let dev = add_flags.dev;
   for selected_package in selected_packages {
     log::info!(
       "Add {}{}{}",
@@ -512,14 +513,14 @@ pub async fn add(
 
     if selected_package.package_name.starts_with("npm:") {
       if let Some(npm) = &mut npm_config {
-        npm.add(selected_package, false);
+        npm.add(selected_package, dev);
       } else {
-        deno_config.as_mut().unwrap().add(selected_package, false);
+        deno_config.as_mut().unwrap().add(selected_package, dev);
       }
     } else if let Some(deno) = &mut deno_config {
-      deno.add(selected_package, false);
+      deno.add(selected_package, dev);
     } else {
-      npm_config.as_mut().unwrap().add(selected_package, false);
+      npm_config.as_mut().unwrap().add(selected_package, dev);
     }
   }
 
