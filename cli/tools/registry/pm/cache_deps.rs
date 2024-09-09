@@ -106,7 +106,7 @@ pub async fn cache_top_level_deps(
         &roots,
         false,
         deno_config::deno_json::TsTypeLib::DenoWorker,
-        crate::cache::PermissionsContainerOption::BypassPermissions,
+        crate::cache::FetchPermissionsOption::AllowAll,
       )
       .await?;
   }

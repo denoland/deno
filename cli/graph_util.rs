@@ -669,13 +669,12 @@ impl ModuleGraphBuilder {
 
   /// Creates the default loader used for creating a graph.
   pub fn create_graph_loader(&self) -> cache::FetchCacher {
-    self
-      .create_fetch_cacher(cache::PermissionsContainerOption::BypassPermissions)
+    self.create_fetch_cacher(cache::FetchPermissionsOption::AllowAll)
   }
 
   pub fn create_fetch_cacher(
     &self,
-    permissions: cache::PermissionsContainerOption,
+    permissions: cache::FetchPermissionsOption,
   ) -> cache::FetchCacher {
     cache::FetchCacher::new(
       self.file_fetcher.clone(),

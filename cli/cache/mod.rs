@@ -4,6 +4,7 @@ use crate::args::CacheSetting;
 use crate::errors::get_error_class_name;
 use crate::file_fetcher::FetchNoFollowOptions;
 use crate::file_fetcher::FetchOptions;
+use crate::file_fetcher::FetchPermissionsOptionRef;
 use crate::file_fetcher::FileFetcher;
 use crate::file_fetcher::FileOrRedirect;
 use crate::npm::CliNpmResolver;
@@ -104,13 +105,24 @@ pub type LocalLspHttpCache =
   deno_cache_dir::LocalLspHttpCache<RealDenoCacheEnv>;
 pub use deno_cache_dir::HttpCache;
 
-#[derive(Debug)]
-pub enum PermissionsContainerOption {
-  BypassPermissions,
+#[derive(Debug, Clone)]
+pub enum FetchPermissionsOption {
+  AllowAll,
   Container(PermissionsContainer),
 }
 
-impl From<PermissionsContainer> for PermissionsContainerOption {
+impl FetchPermissionsOption {
+  pub fn as_ref(&self) -> FetchPermissionsOptionRef {
+    match self {
+      FetchPermissionsOption::AllowAll => FetchPermissionsOptionRef::AllowAll,
+      FetchPermissionsOption::Container(container) => {
+        FetchPermissionsOptionRef::Container(container)
+      }
+    }
+  }
+}
+
+impl From<PermissionsContainer> for FetchPermissionsOption {
   fn from(value: PermissionsContainer) -> Self {
     Self::Container(value)
   }
@@ -124,7 +136,7 @@ pub struct FetchCacher {
   global_http_cache: Arc<GlobalHttpCache>,
   npm_resolver: Arc<dyn CliNpmResolver>,
   module_info_cache: Arc<ModuleInfoCache>,
-  permissions: Option<PermissionsContainer>,
+  permissions: FetchPermissionsOption,
   cache_info_enabled: bool,
 }
 
@@ -135,7 +147,7 @@ impl FetchCacher {
     global_http_cache: Arc<GlobalHttpCache>,
     npm_resolver: Arc<dyn CliNpmResolver>,
     module_info_cache: Arc<ModuleInfoCache>,
-    permissions: PermissionsContainerOption,
+    permissions: FetchPermissionsOption,
   ) -> Self {
     Self {
       file_fetcher,
@@ -143,10 +155,7 @@ impl FetchCacher {
       global_http_cache,
       npm_resolver,
       module_info_cache,
-      permissions: match permissions {
-        PermissionsContainerOption::BypassPermissions => None,
-        PermissionsContainerOption::Container(container) => Some(container),
-      },
+      permissions,
       cache_info_enabled: false,
     }
   }

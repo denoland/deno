@@ -161,9 +161,15 @@ fn get_validated_scheme(
   }
 }
 
+#[derive(Debug, Copy, Clone)]
+pub enum FetchPermissionsOptionRef<'a> {
+  AllowAll,
+  Container(&'a PermissionsContainer),
+}
+
 pub struct FetchOptions<'a> {
   pub specifier: &'a ModuleSpecifier,
-  pub permissions: Option<&'a PermissionsContainer>,
+  pub permissions: FetchPermissionsOptionRef<'a>,
   pub maybe_accept: Option<&'a str>,
   pub maybe_cache_setting: Option<&'a CacheSetting>,
 }
@@ -520,25 +526,28 @@ impl FileFetcher {
     &self,
     specifier: &ModuleSpecifier,
   ) -> Result<File, AnyError> {
-    self.fetch_inner(specifier, None).await
+    self
+      .fetch_inner(specifier, FetchPermissionsOptionRef::AllowAll)
+      .await
   }
 
-  // todo(THIS PR): lol what... this is never used?
   /// Fetch a source file and asynchronously return it.
-  #[allow(clippy::allow_unused)]
+  #[allow(dead_code)] // todo(25469): undo when merging
   #[inline(always)]
   pub async fn fetch(
     &self,
     specifier: &ModuleSpecifier,
     permissions: &PermissionsContainer,
   ) -> Result<File, AnyError> {
-    self.fetch_inner(specifier, Some(permissions)).await
+    self
+      .fetch_inner(specifier, FetchPermissionsOptionRef::Container(permissions))
+      .await
   }
 
   async fn fetch_inner(
     &self,
     specifier: &ModuleSpecifier,
-    permissions: Option<&PermissionsContainer>,
+    permissions: FetchPermissionsOptionRef<'_>,
   ) -> Result<File, AnyError> {
     self
       .fetch_with_options(FetchOptions {
@@ -602,8 +611,13 @@ impl FileFetcher {
       specifier
     );
     let scheme = get_validated_scheme(specifier)?;
-    if let Some(permissions) = &options.permissions {
-      permissions.check_specifier(specifier)?;
+    match options.permissions {
+      FetchPermissionsOptionRef::AllowAll => {
+        // allow
+      }
+      FetchPermissionsOptionRef::Container(permissions) => {
+        permissions.check_specifier(specifier)?;
+      }
     }
     if let Some(file) = self.memory_files.get(specifier) {
       Ok(FileOrRedirect::File(file))
@@ -719,7 +733,7 @@ mod tests {
       .fetch_with_options_and_max_redirect(
         FetchOptions {
           specifier,
-          permissions: None,
+          permissions: FetchPermissionsOptionRef::AllowAll,
           maybe_accept: None,
           maybe_cache_setting: Some(&file_fetcher.cache_setting),
         },
@@ -1218,7 +1232,7 @@ mod tests {
       .fetch_with_options_and_max_redirect(
         FetchOptions {
           specifier: &specifier,
-          permissions: None,
+          permissions: FetchPermissionsOptionRef::AllowAll,
           maybe_accept: None,
           maybe_cache_setting: Some(&file_fetcher.cache_setting),
         },
@@ -1231,7 +1245,7 @@ mod tests {
       .fetch_with_options_and_max_redirect(
         FetchOptions {
           specifier: &specifier,
-          permissions: None,
+          permissions: FetchPermissionsOptionRef::AllowAll,
           maybe_accept: None,
           maybe_cache_setting: Some(&file_fetcher.cache_setting),
         },

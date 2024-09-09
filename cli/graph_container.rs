@@ -75,7 +75,7 @@ impl MainModuleGraphContainer {
         specifiers,
         false,
         self.cli_options.ts_type_lib_window(),
-        cache::PermissionsContainerOption::BypassPermissions,
+        cache::FetchPermissionsOption::AllowAll,
       )
       .await?;
     graph_permit.commit();
