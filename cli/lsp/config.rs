@@ -1083,7 +1083,6 @@ impl Default for LspTsConfig {
         "strict": true,
         "target": "esnext",
         "useDefineForClassFields": true,
-        "useUnknownInCatchVariables": false,
         "jsx": "react",
         "jsxFactory": "React.createElement",
         "jsxFragmentFactory": "React.Fragment",

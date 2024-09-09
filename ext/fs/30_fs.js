@@ -585,6 +585,7 @@ class FsFile {
 
   constructor(rid, symbol) {
     ObjectDefineProperty(this, internalRidSymbol, {
+      __proto__: null,
       enumerable: false,
       value: rid,
     });
