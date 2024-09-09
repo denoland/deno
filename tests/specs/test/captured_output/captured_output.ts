@@ -19,7 +19,7 @@ Deno.test("output", async () => {
   }).spawn();
   await c.status;
   const worker = new Worker(
-    import.meta.resolve("./captured_output.worker.js"),
+    import.meta.resolve("./captured_output.worker.ts"),
     { type: "module" },
   );
 

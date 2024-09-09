@@ -7,10 +7,10 @@ If you can reliably reproduce this panic, include the
 reproduction steps and re-run with the RUST_BACKTRACE=1 env
 var set and include the backtrace in your report.
 
-Platform: windows x86_64
-Version: 2.0.0-rc.0
-Args: ["[WILDCARD]\\target\\debug\\deno.exe", "test", "main.js"]
+Platform: [WILDCARD]
+Version: [WILDCARD]
+Args: ["[WILDCARD]deno.exe", "test", "main.js"]
 
-thread 'tokio-runtime-worker' panicked at cli\ops\testing.rs:66:5:
+thread 'tokio-runtime-worker' panicked at cli\ops\testing.rs:[WILDCARD]:
 pledge test permissions called before restoring previous pledge
-note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+[WILDCARD]
