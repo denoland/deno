@@ -20,6 +20,7 @@ pub fn resolve_from_cwd(path: &Path) -> Result<PathBuf, AnyError> {
 
 #[cfg(test)]
 mod tests {
+  use deno_core::ModuleSpecifier;
   use super::*;
 
   fn current_dir() -> PathBuf {
@@ -82,7 +83,7 @@ mod tests {
 
     fn run_success_test(specifier: &str, expected_path: &str) {
       let result =
-        specifier_to_file_path(&ModuleSpecifier::parse(specifier).unwrap())
+        deno_permissions::specifier_to_file_path(&ModuleSpecifier::parse(specifier).unwrap())
           .unwrap();
       assert_eq!(result, PathBuf::from(expected_path));
     }
