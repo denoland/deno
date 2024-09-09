@@ -1785,44 +1785,6 @@ declare namespace Deno {
    */
   export function createSync(path: string | URL): FsFile;
 
-  /**
-   * Flushes any pending data and metadata operations of the given file stream
-   * to disk.
-   *
-   * ```ts
-   * const file = await Deno.open(
-   *   "my_file.txt",
-   *   { read: true, write: true, create: true },
-   * );
-   * await file.write(new TextEncoder().encode("Hello World"));
-   * await file.truncate(1);
-   * await Deno.fsync(file.rid);
-   * console.log(await Deno.readTextFile("my_file.txt")); // H
-   * ```
-   *
-   * @category File System
-   */
-  export function fsync(rid: number): Promise<void>;
-
-  /**
-   * Synchronously flushes any pending data and metadata operations of the given
-   * file stream to disk.
-   *
-   * ```ts
-   * const file = Deno.openSync(
-   *   "my_file.txt",
-   *   { read: true, write: true, create: true },
-   * );
-   * file.writeSync(new TextEncoder().encode("Hello World"));
-   * file.truncateSync(1);
-   * Deno.fsyncSync(file.rid);
-   * console.log(Deno.readTextFileSync("my_file.txt")); // H
-   * ```
-   *
-   * @category File System
-   */
-  export function fsyncSync(rid: number): void;
-
   /** The Deno abstraction for reading and writing files.
    *
    * This is the most straight forward way of handling files within Deno and is
