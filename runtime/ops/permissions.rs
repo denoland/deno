@@ -12,6 +12,7 @@ use deno_core::op2;
 use deno_core::OpState;
 use serde::Deserialize;
 use serde::Serialize;
+use std::path::PathBuf;
 use std::sync::Arc;
 
 deno_core::extension!(
@@ -102,19 +103,9 @@ pub fn op_query_permission(
     "sys" => permissions
       .sys
       .query(args.kind.as_deref().map(parse_sys_kind).transpose()?),
-    "run" => permissions.run.query(
-      args
-        .command
-        .as_ref()
-        .map(|requested| match which::which(requested) {
-          Ok(resolved) => RunQueryDescriptor::Path {
-            requested: requested.to_string(),
-            resolved,
-          },
-          Err(_) => RunQueryDescriptor::Name(requested.to_string()),
-        })
-        .as_ref(),
-    ),
+    "run" => permissions
+      .run
+      .query(args.command.as_deref().map(parse_run_query).as_ref()),
     "ffi" => permissions.ffi.query(
       path
         .map(|path| {
@@ -179,19 +170,9 @@ pub fn op_revoke_permission(
     "sys" => permissions
       .sys
       .revoke(args.kind.as_deref().map(parse_sys_kind).transpose()?),
-    "run" => permissions.run.revoke(
-      args
-        .command
-        .as_ref()
-        .map(|requested| match which::which(requested) {
-          Ok(resolved) => RunQueryDescriptor::Path {
-            requested: requested.to_string(),
-            resolved,
-          },
-          Err(_) => RunQueryDescriptor::Name(requested.to_string()),
-        })
-        .as_ref(),
-    ),
+    "run" => permissions
+      .run
+      .revoke(args.command.as_deref().map(parse_run_query).as_ref()),
     "ffi" => permissions.ffi.revoke(
       path
         .map(|path| {
@@ -256,19 +237,9 @@ pub fn op_request_permission(
     "sys" => permissions
       .sys
       .request(args.kind.as_deref().map(parse_sys_kind).transpose()?),
-    "run" => permissions.run.request(
-      args
-        .command
-        .as_ref()
-        .map(|requested| match which::which(requested) {
-          Ok(resolved) => RunQueryDescriptor::Path {
-            requested: requested.to_string(),
-            resolved,
-          },
-          Err(_) => RunQueryDescriptor::Name(requested.to_string()),
-        })
-        .as_ref(),
-    ),
+    "run" => permissions
+      .run
+      .request(args.command.as_deref().map(parse_run_query).as_ref()),
     "ffi" => permissions.ffi.request(
       path
         .map(|path| {
@@ -287,4 +258,22 @@ pub fn op_request_permission(
     }
   };
   Ok(PermissionStatus::from(perm))
+}
+
+fn parse_run_query(requested: &str) -> RunQueryDescriptor {
+  let path = PathBuf::from(requested);
+  if path.is_absolute() {
+    return RunQueryDescriptor::Path {
+      requested: requested.to_string(),
+      resolved: path,
+    };
+  }
+
+  match which::which(requested) {
+    Ok(resolved) => RunQueryDescriptor::Path {
+      requested: requested.to_string(),
+      resolved,
+    },
+    Err(_) => RunQueryDescriptor::Name(requested.to_string()),
+  }
 }
