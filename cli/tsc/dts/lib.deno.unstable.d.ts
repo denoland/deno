@@ -1132,24 +1132,6 @@ declare namespace Deno {
 
   /** **UNSTABLE**: New API, yet to be vetted.
    *
-   * Release an advisory file-system lock for the provided file.
-   *
-   * @category File System
-   * @experimental
-   */
-  export function funlock(rid: number): Promise<void>;
-
-  /** **UNSTABLE**: New API, yet to be vetted.
-   *
-   * Release an advisory file-system lock for the provided file synchronously.
-   *
-   * @category File System
-   * @experimental
-   */
-  export function funlockSync(rid: number): void;
-
-  /** **UNSTABLE**: New API, yet to be vetted.
-   *
    * Open a new {@linkcode Deno.Kv} connection to persist data.
    *
    * When a path is provided, the database will be persisted to disk at that

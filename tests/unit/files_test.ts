@@ -1,7 +1,5 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
-// deno-lint-ignore-file no-deprecated-deno-api
-
 import {
   assert,
   assertEquals,
@@ -14,8 +12,11 @@ import { copy } from "@std/io/copy";
 // Note tests for Deno.FsFile.setRaw is in integration tests.
 
 Deno.test(function filesStdioFileDescriptors() {
+  // @ts-ignore `Deno.stdin.rid` was soft-removed in Deno 2.
   assertEquals(Deno.stdin.rid, 0);
+  // @ts-ignore `Deno.stdout.rid` was soft-removed in Deno 2.
   assertEquals(Deno.stdout.rid, 1);
+  // @ts-ignore `Deno.stderr.rid` was soft-removed in Deno 2.
   assertEquals(Deno.stderr.rid, 2);
 });
 
@@ -24,7 +25,6 @@ Deno.test(
   async function filesCopyToStdout() {
     const filename = "tests/testdata/assets/fixture.json";
     using file = await Deno.open(filename);
-    assert(file instanceof Deno.File);
     assert(file instanceof Deno.FsFile);
     assert(file.rid > 2);
     const bytesWritten = await copy(file, Deno.stdout);
