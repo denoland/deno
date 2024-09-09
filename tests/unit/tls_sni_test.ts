@@ -17,7 +17,7 @@ Deno.test(
       "server-2": { cert: certEcc, key: keyEcc },
       "fail-server-3": { cert: "(invalid)", key: "(bad)" },
     };
-    const opts: Deno.ListenTlsOptions = {
+    const opts: unknown = {
       hostname: "localhost",
       port: 0,
       [resolverSymbol]: (sni: string) => {
