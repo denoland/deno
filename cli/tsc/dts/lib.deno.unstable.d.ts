@@ -465,7 +465,9 @@ declare namespace Deno {
    * @category FFI
    * @experimental
    */
-  export type PointerObject<T = unknown> = { [brand]: T };
+  export interface PointerObject<T = unknown> {
+    [brand]: T;
+  }
 
   /** **UNSTABLE**: New API, yet to be vetted.
    *
@@ -491,7 +493,7 @@ declare namespace Deno {
     static equals<T = unknown>(a: PointerValue<T>, b: PointerValue<T>): boolean;
     /** Return the direct memory pointer to the typed array in memory. */
     static of<T = unknown>(
-      value: Deno.UnsafeCallback | BufferSource,
+      value: UnsafeCallback | BufferSource,
     ): PointerValue<T>;
     /** Return a new pointer offset from the original by `offset` bytes. */
     static offset<T = unknown>(
@@ -835,8 +837,8 @@ declare namespace Deno {
   export class UnsafeWindowSurface {
     constructor(
       system: "cocoa" | "win32" | "x11" | "wayland",
-      windowHandle: Deno.PointerValue<unknown>,
-      displayHandle: Deno.PointerValue<unknown>,
+      windowHandle: PointerValue<unknown>,
+      displayHandle: PointerValue<unknown>,
     );
     getContext(context: "webgpu"): GPUCanvasContext;
     present(): void;
@@ -1149,7 +1151,7 @@ declare namespace Deno {
    * @category Cloud
    * @experimental
    */
-  export function openKv(path?: string): Promise<Deno.Kv>;
+  export function openKv(path?: string): Promise<Kv>;
 
   /** **UNSTABLE**: New API, yet to be vetted.
    *
@@ -1412,7 +1414,11 @@ declare namespace Deno {
    * @category Cloud
    * @experimental
    */
-  export type KvEntry<T> = { key: KvKey; value: T; versionstamp: string };
+  export interface KvEntry<T> {
+    key: KvKey;
+    value: T;
+    versionstamp: string;
+  }
 
   /**
    * **UNSTABLE**: New API, yet to be vetted.
@@ -1617,7 +1623,7 @@ declare namespace Deno {
       value: unknown,
       options?: {
         delay?: number;
-        keysIfUndelivered?: Deno.KvKey[];
+        keysIfUndelivered?: KvKey[];
         backoffSchedule?: number[];
       },
     ): this;
@@ -1848,7 +1854,7 @@ declare namespace Deno {
       value: unknown,
       options?: {
         delay?: number;
-        keysIfUndelivered?: Deno.KvKey[];
+        keysIfUndelivered?: KvKey[];
         backoffSchedule?: number[];
       },
     ): Promise<KvCommitResult>;
