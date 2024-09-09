@@ -591,12 +591,14 @@ where
   }
 }
 
-#[op2(fast)]
-pub fn op_require_break_on_next_statement(state: &mut OpState) {
-  let inspector = state.borrow::<Rc<RefCell<JsRuntimeInspector>>>();
-  inspector
-    .borrow_mut()
-    .wait_for_session_and_break_on_next_statement()
+#[op2(fast, reentrant)]
+pub fn op_require_break_on_next_statement(state: Rc<RefCell<OpState>>) {
+  let inspector_rc = {
+      let state = state.borrow();
+      state.borrow::<Rc<RefCell<JsRuntimeInspector>>>().clone()
+  };
+  let mut inspector = inspector_rc.borrow_mut();
+  inspector.wait_for_session_and_break_on_next_statement()
 }
 
 fn url_to_file_path_string(url: &Url) -> Result<String, AnyError> {
