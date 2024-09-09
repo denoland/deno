@@ -119,6 +119,7 @@ Deno.test(
     });
 
     await new Promise<void>((resolve, reject) => {
+      // @ts-ignore (iuioiua) `file.rid` should no longer be needed once FDs are used
       writeFile(file.rid, "hello world", (err) => {
         if (err) return reject(err);
         resolve();
@@ -234,6 +235,7 @@ Deno.test(
     });
 
     await new Promise<void>((resolve, reject) => {
+      // @ts-ignore (iuioiua) `file.rid` should no longer be needed once FDs are used
       writeFile(file.rid, "hello world", { mode: 0o777 }, (err) => {
         if (err) return reject(err);
         resolve();
@@ -288,6 +290,7 @@ Deno.test(
       read: true,
     });
 
+    // @ts-ignore (iuioiua) `file.rid` should no longer be needed once FDs are used
     writeFileSync(file.rid, "hello world");
 
     const data = Deno.readFileSync(tempFile);
