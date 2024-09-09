@@ -194,27 +194,4 @@ denoNsUnstableById[unstableIds.webgpu] = {
 
 // denoNsUnstableById[unstableIds.workerOptions] = { __proto__: null }
 
-// when editing this list, also update unstableDenoProps in cli/tsc/99_main_compiler.js
-const denoNsUnstable = {
-  listenDatagram: net.createListenDatagram(
-    op_net_listen_udp,
-    op_net_listen_unixpacket,
-  ),
-  umask: fs.umask,
-  HttpClient: httpClient.HttpClient,
-  createHttpClient: httpClient.createHttpClient,
-  dlopen: ffi.dlopen,
-  UnsafeCallback: ffi.UnsafeCallback,
-  UnsafePointer: ffi.UnsafePointer,
-  UnsafePointerView: ffi.UnsafePointerView,
-  UnsafeFnPointer: ffi.UnsafeFnPointer,
-  UnsafeWindowSurface: webgpuSurface.UnsafeWindowSurface,
-  openKv: kv.openKv,
-  AtomicOperation: kv.AtomicOperation,
-  Kv: kv.Kv,
-  KvU64: kv.KvU64,
-  KvListIterator: kv.KvListIterator,
-  cron: cron.cron,
-};
-
-export { denoNs, denoNsUnstable, denoNsUnstableById, unstableIds };
+export { denoNs, denoNsUnstableById, unstableIds };

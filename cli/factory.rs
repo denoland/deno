@@ -852,8 +852,6 @@ impl CliFactory {
       unsafely_ignore_certificate_errors: cli_options
         .unsafely_ignore_certificate_errors()
         .clone(),
-      // TODO(bartlomieju): remove before landing
-      unstable: false,
       create_hmr_runner,
       create_coverage_collector,
       node_ipc: cli_options.node_ipc_fd(),

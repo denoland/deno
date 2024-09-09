@@ -727,8 +727,6 @@ pub async fn run(
       seed: metadata.seed,
       unsafely_ignore_certificate_errors: metadata
         .unsafely_ignore_certificate_errors,
-      // TODO(bartlomieju): remove before landing
-      unstable: false,
       create_hmr_runner: None,
       create_coverage_collector: None,
       node_ipc: None,
