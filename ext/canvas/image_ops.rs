@@ -239,181 +239,6 @@ pub(crate) fn unpremultiply_alpha(
   }
 }
 
-// reference
-// https://www.w3.org/TR/css-color-4/#color-conversion-code
-fn srgb_to_linear<T: Primitive>(value: T) -> f32 {
-  if value.to_f32().unwrap() <= 0.04045 {
-    value.to_f32().unwrap() / 12.92
-  } else {
-    ((value.to_f32().unwrap() + 0.055) / 1.055).powf(2.4)
-  }
-}
-
-// reference
-// https://www.w3.org/TR/css-color-4/#color-conversion-code
-fn linear_to_display_p3<T: Primitive>(value: T) -> f32 {
-  if value.to_f32().unwrap() <= 0.0031308 {
-    value.to_f32().unwrap() * 12.92
-  } else {
-    1.055 * value.to_f32().unwrap().powf(1.0 / 2.4) - 0.055
-  }
-}
-
-fn normalize_value_to_0_1<T: Primitive>(value: T) -> f32 {
-  value.to_f32().unwrap() / T::DEFAULT_MAX_VALUE.to_f32().unwrap()
-}
-
-fn unnormalize_value_from_0_1<T: Primitive>(value: f32) -> T {
-  NumCast::from(
-    (value.clamp(0.0, 1.0) * T::DEFAULT_MAX_VALUE.to_f32().unwrap()).round(),
-  )
-  .unwrap()
-}
-
-fn apply_conversion_matrix_srgb_to_display_p3<T: Primitive>(
-  r: T,
-  g: T,
-  b: T,
-) -> (T, T, T) {
-  // normalize the value to 0.0 - 1.0
-  let (r, g, b) = (
-    normalize_value_to_0_1(r),
-    normalize_value_to_0_1(g),
-    normalize_value_to_0_1(b),
-  );
-
-  // sRGB -> Linear RGB
-  let (r, g, b) = (srgb_to_linear(r), srgb_to_linear(g), srgb_to_linear(b));
-
-  // Display-P3 (RGB) -> Display-P3 (XYZ)
-  //
-  // inv[ P3-D65 (D65) to XYZ ] * [ sRGB (D65) to XYZ ]
-  // http://www.brucelindbloom.com/index.html?Eqn_RGB_XYZ_Matrix.html
-  // https://fujiwaratko.sakura.ne.jp/infosci/colorspace/colorspace2_e.html
-
-  // [ sRGB (D65) to XYZ ]
-  #[rustfmt::skip]
-  let (m1x, m1y, m1z) = (
-    [0.4124564, 0.3575761, 0.1804375],
-    [0.2126729, 0.7151522, 0.0721750],
-    [0.0193339, 0.119_192, 0.9503041],
-  );
-
-  let (r, g, b) = (
-    r * m1x[0] + g * m1x[1] + b * m1x[2],
-    r * m1y[0] + g * m1y[1] + b * m1y[2],
-    r * m1z[0] + g * m1z[1] + b * m1z[2],
-  );
-
-  // inv[ P3-D65 (D65) to XYZ ]
-  #[rustfmt::skip]
-  let (m2x, m2y, m2z) = (
-    [    2.493_497,  -0.931_383_6,  -0.402_710_8 ],
-    [   -0.829_489,   1.762_664_1, 0.023_624_687 ],
-    [ 0.035_845_83, -0.076_172_39,   0.956_884_5 ],
-  );
-
-  let (r, g, b) = (
-    r * m2x[0] + g * m2x[1] + b * m2x[2],
-    r * m2y[0] + g * m2y[1] + b * m2y[2],
-    r * m2z[0] + g * m2z[1] + b * m2z[2],
-  );
-
-  // This calculation is similar as above that it is a little faster, but less accurate.
-  // let r = 0.8225 * r + 0.1774 * g + 0.0000 * b;
-  // let g = 0.0332 * r + 0.9669 * g + 0.0000 * b;
-  // let b = 0.0171 * r + 0.0724 * g + 0.9108 * b;
-
-  // Display-P3 (Linear) -> Display-P3
-  let (r, g, b) = (
-    linear_to_display_p3(r),
-    linear_to_display_p3(g),
-    linear_to_display_p3(b),
-  );
-
-  // unnormalize the value from 0.0 - 1.0
-  (
-    unnormalize_value_from_0_1(r),
-    unnormalize_value_from_0_1(g),
-    unnormalize_value_from_0_1(b),
-  )
-}
-
-pub(crate) trait ColorSpaceConversion {
-  /// Display P3 Color Encoding (v 1.0)  
-  /// https://www.color.org/chardata/rgb/DisplayP3.xalter
-  fn srgb_to_display_p3(&self) -> Self;
-}
-
-impl<T: Primitive> ColorSpaceConversion for Rgb<T> {
-  fn srgb_to_display_p3(&self) -> Self {
-    let (r, g, b) = (self.0[0], self.0[1], self.0[2]);
-
-    let (r, g, b) = apply_conversion_matrix_srgb_to_display_p3(r, g, b);
-
-    Rgb::<T>([r, g, b])
-  }
-}
-
-impl<T: Primitive> ColorSpaceConversion for Rgba<T> {
-  fn srgb_to_display_p3(&self) -> Self {
-    let (r, g, b, a) = (self.0[0], self.0[1], self.0[2], self.0[3]);
-
-    let (r, g, b) = apply_conversion_matrix_srgb_to_display_p3(r, g, b);
-
-    Rgba::<T>([r, g, b, a])
-  }
-}
-
-// make public if needed
-fn process_srgb_to_display_p3<I, P, S>(image: &I) -> ImageBuffer<P, Vec<S>>
-where
-  I: GenericImageView<Pixel = P>,
-  P: Pixel<Subpixel = S> + ColorSpaceConversion + 'static,
-  S: Primitive + 'static,
-{
-  let (width, height) = image.dimensions();
-  let mut out = ImageBuffer::new(width, height);
-
-  for (x, y, pixel) in image.pixels() {
-    let pixel = pixel.srgb_to_display_p3();
-
-    out.put_pixel(x, y, pixel);
-  }
-
-  out
-}
-
-/// Convert the color space of the image from sRGB to Display-P3.
-pub(crate) fn srgb_to_display_p3(
-  image: DynamicImage,
-  unmatch_color_handler: fn(
-    ColorType,
-    DynamicImage,
-  ) -> Result<DynamicImage, AnyError>,
-) -> Result<DynamicImage, AnyError> {
-  match image.color() {
-    // The conversion of the lumincance color types to the display-p3 color space is meaningless.
-    ColorType::L8 => Ok(DynamicImage::ImageLuma8(image.to_luma8())),
-    ColorType::L16 => Ok(DynamicImage::ImageLuma16(image.to_luma16())),
-    ColorType::La8 => Ok(DynamicImage::ImageLumaA8(image.to_luma_alpha8())),
-    ColorType::La16 => Ok(DynamicImage::ImageLumaA16(image.to_luma_alpha16())),
-    ColorType::Rgb8 => Ok(DynamicImage::ImageRgb8(process_srgb_to_display_p3(
-      &image.to_rgb8(),
-    ))),
-    ColorType::Rgb16 => Ok(DynamicImage::ImageRgb16(
-      process_srgb_to_display_p3(&image.to_rgb16()),
-    )),
-    ColorType::Rgba8 => Ok(DynamicImage::ImageRgba8(
-      process_srgb_to_display_p3(&image.to_rgba8()),
-    )),
-    ColorType::Rgba16 => Ok(DynamicImage::ImageRgba16(
-      process_srgb_to_display_p3(&image.to_rgba16()),
-    )),
-    x => unmatch_color_handler(x, image),
-  }
-}
-
 pub(crate) trait SliceToPixel {
   fn slice_to_pixel(pixel: &[u8]) -> Self;
 }
@@ -593,6 +418,185 @@ pub(crate) fn to_srgb_from_icc_profile(
   }
 }
 
+// NOTE: The following code is not used in the current implementation,
+// but it is left as a reference for future use about implementing CanvasRenderingContext2D.
+// https://github.com/denoland/deno/issues/5701#issuecomment-1833304511
+
+// // reference
+// // https://www.w3.org/TR/css-color-4/#color-conversion-code
+// fn srgb_to_linear<T: Primitive>(value: T) -> f32 {
+//   if value.to_f32().unwrap() <= 0.04045 {
+//     value.to_f32().unwrap() / 12.92
+//   } else {
+//     ((value.to_f32().unwrap() + 0.055) / 1.055).powf(2.4)
+//   }
+// }
+
+// // reference
+// // https://www.w3.org/TR/css-color-4/#color-conversion-code
+// fn linear_to_display_p3<T: Primitive>(value: T) -> f32 {
+//   if value.to_f32().unwrap() <= 0.0031308 {
+//     value.to_f32().unwrap() * 12.92
+//   } else {
+//     1.055 * value.to_f32().unwrap().powf(1.0 / 2.4) - 0.055
+//   }
+// }
+
+// fn normalize_value_to_0_1<T: Primitive>(value: T) -> f32 {
+//   value.to_f32().unwrap() / T::DEFAULT_MAX_VALUE.to_f32().unwrap()
+// }
+
+// fn unnormalize_value_from_0_1<T: Primitive>(value: f32) -> T {
+//   NumCast::from(
+//     (value.clamp(0.0, 1.0) * T::DEFAULT_MAX_VALUE.to_f32().unwrap()).round(),
+//   )
+//   .unwrap()
+// }
+
+// fn apply_conversion_matrix_srgb_to_display_p3<T: Primitive>(
+//   r: T,
+//   g: T,
+//   b: T,
+// ) -> (T, T, T) {
+//   // normalize the value to 0.0 - 1.0
+//   let (r, g, b) = (
+//     normalize_value_to_0_1(r),
+//     normalize_value_to_0_1(g),
+//     normalize_value_to_0_1(b),
+//   );
+
+//   // sRGB -> Linear RGB
+//   let (r, g, b) = (srgb_to_linear(r), srgb_to_linear(g), srgb_to_linear(b));
+
+//   // Display-P3 (RGB) -> Display-P3 (XYZ)
+//   //
+//   // inv[ P3-D65 (D65) to XYZ ] * [ sRGB (D65) to XYZ ]
+//   // http://www.brucelindbloom.com/index.html?Eqn_RGB_XYZ_Matrix.html
+//   // https://fujiwaratko.sakura.ne.jp/infosci/colorspace/colorspace2_e.html
+
+//   // [ sRGB (D65) to XYZ ]
+//   #[rustfmt::skip]
+//   let (m1x, m1y, m1z) = (
+//     [0.4124564, 0.3575761, 0.1804375],
+//     [0.2126729, 0.7151522, 0.0721750],
+//     [0.0193339, 0.119_192, 0.9503041],
+//   );
+
+//   let (r, g, b) = (
+//     r * m1x[0] + g * m1x[1] + b * m1x[2],
+//     r * m1y[0] + g * m1y[1] + b * m1y[2],
+//     r * m1z[0] + g * m1z[1] + b * m1z[2],
+//   );
+
+//   // inv[ P3-D65 (D65) to XYZ ]
+//   #[rustfmt::skip]
+//   let (m2x, m2y, m2z) = (
+//     [    2.493_497,  -0.931_383_6,  -0.402_710_8 ],
+//     [   -0.829_489,   1.762_664_1, 0.023_624_687 ],
+//     [ 0.035_845_83, -0.076_172_39,   0.956_884_5 ],
+//   );
+
+//   let (r, g, b) = (
+//     r * m2x[0] + g * m2x[1] + b * m2x[2],
+//     r * m2y[0] + g * m2y[1] + b * m2y[2],
+//     r * m2z[0] + g * m2z[1] + b * m2z[2],
+//   );
+
+//   // This calculation is similar as above that it is a little faster, but less accurate.
+//   // let r = 0.8225 * r + 0.1774 * g + 0.0000 * b;
+//   // let g = 0.0332 * r + 0.9669 * g + 0.0000 * b;
+//   // let b = 0.0171 * r + 0.0724 * g + 0.9108 * b;
+
+//   // Display-P3 (Linear) -> Display-P3
+//   let (r, g, b) = (
+//     linear_to_display_p3(r),
+//     linear_to_display_p3(g),
+//     linear_to_display_p3(b),
+//   );
+
+//   // unnormalize the value from 0.0 - 1.0
+//   (
+//     unnormalize_value_from_0_1(r),
+//     unnormalize_value_from_0_1(g),
+//     unnormalize_value_from_0_1(b),
+//   )
+// }
+
+// trait ColorSpaceConversion {
+//   /// Display P3 Color Encoding (v 1.0)
+//   /// https://www.color.org/chardata/rgb/DisplayP3.xalter
+//   fn srgb_to_display_p3(&self) -> Self;
+// }
+
+// impl<T: Primitive> ColorSpaceConversion for Rgb<T> {
+//   fn srgb_to_display_p3(&self) -> Self {
+//     let (r, g, b) = (self.0[0], self.0[1], self.0[2]);
+
+//     let (r, g, b) = apply_conversion_matrix_srgb_to_display_p3(r, g, b);
+
+//     Rgb::<T>([r, g, b])
+//   }
+// }
+
+// impl<T: Primitive> ColorSpaceConversion for Rgba<T> {
+//   fn srgb_to_display_p3(&self) -> Self {
+//     let (r, g, b, a) = (self.0[0], self.0[1], self.0[2], self.0[3]);
+
+//     let (r, g, b) = apply_conversion_matrix_srgb_to_display_p3(r, g, b);
+
+//     Rgba::<T>([r, g, b, a])
+//   }
+// }
+
+// // make public if needed
+// fn process_srgb_to_display_p3<I, P, S>(image: &I) -> ImageBuffer<P, Vec<S>>
+// where
+//   I: GenericImageView<Pixel = P>,
+//   P: Pixel<Subpixel = S> + ColorSpaceConversion + 'static,
+//   S: Primitive + 'static,
+// {
+//   let (width, height) = image.dimensions();
+//   let mut out = ImageBuffer::new(width, height);
+
+//   for (x, y, pixel) in image.pixels() {
+//     let pixel = pixel.srgb_to_display_p3();
+
+//     out.put_pixel(x, y, pixel);
+//   }
+
+//   out
+// }
+
+// /// Convert the color space of the image from sRGB to Display-P3.
+// fn srgb_to_display_p3(
+//   image: DynamicImage,
+//   unmatch_color_handler: fn(
+//     ColorType,
+//     DynamicImage,
+//   ) -> Result<DynamicImage, AnyError>,
+// ) -> Result<DynamicImage, AnyError> {
+//   match image.color() {
+//     // The conversion of the lumincance color types to the display-p3 color space is meaningless.
+//     ColorType::L8 => Ok(DynamicImage::ImageLuma8(image.to_luma8())),
+//     ColorType::L16 => Ok(DynamicImage::ImageLuma16(image.to_luma16())),
+//     ColorType::La8 => Ok(DynamicImage::ImageLumaA8(image.to_luma_alpha8())),
+//     ColorType::La16 => Ok(DynamicImage::ImageLumaA16(image.to_luma_alpha16())),
+//     ColorType::Rgb8 => Ok(DynamicImage::ImageRgb8(process_srgb_to_display_p3(
+//       &image.to_rgb8(),
+//     ))),
+//     ColorType::Rgb16 => Ok(DynamicImage::ImageRgb16(
+//       process_srgb_to_display_p3(&image.to_rgb16()),
+//     )),
+//     ColorType::Rgba8 => Ok(DynamicImage::ImageRgba8(
+//       process_srgb_to_display_p3(&image.to_rgba8()),
+//     )),
+//     ColorType::Rgba16 => Ok(DynamicImage::ImageRgba16(
+//       process_srgb_to_display_p3(&image.to_rgba16()),
+//     )),
+//     x => unmatch_color_handler(x, image),
+//   }
+// }
+
 #[cfg(test)]
 mod tests {
   use super::*;
@@ -616,27 +620,27 @@ mod tests {
     assert_eq!(rgba, Rgba::<u8>([255, 0, 0, 127]));
   }
 
-  #[test]
-  fn test_apply_conversion_matrix_srgb_to_display_p3() {
-    let (r, g, b) = apply_conversion_matrix_srgb_to_display_p3(255_u8, 0, 0);
-    assert_eq!(r, 234);
-    assert_eq!(g, 51);
-    assert_eq!(b, 35);
+  // #[test]
+  // fn test_apply_conversion_matrix_srgb_to_display_p3() {
+  //   let (r, g, b) = apply_conversion_matrix_srgb_to_display_p3(255_u8, 0, 0);
+  //   assert_eq!(r, 234);
+  //   assert_eq!(g, 51);
+  //   assert_eq!(b, 35);
 
-    let (r, g, b) = apply_conversion_matrix_srgb_to_display_p3(0_u8, 255, 0);
-    assert_eq!(r, 117);
-    assert_eq!(g, 251);
-    assert_eq!(b, 76);
+  //   let (r, g, b) = apply_conversion_matrix_srgb_to_display_p3(0_u8, 255, 0);
+  //   assert_eq!(r, 117);
+  //   assert_eq!(g, 251);
+  //   assert_eq!(b, 76);
 
-    let (r, g, b) = apply_conversion_matrix_srgb_to_display_p3(0_u8, 0, 255);
-    assert_eq!(r, 0);
-    assert_eq!(g, 0);
-    assert_eq!(b, 245);
+  //   let (r, g, b) = apply_conversion_matrix_srgb_to_display_p3(0_u8, 0, 255);
+  //   assert_eq!(r, 0);
+  //   assert_eq!(g, 0);
+  //   assert_eq!(b, 245);
 
-    let (r, g, b) =
-      apply_conversion_matrix_srgb_to_display_p3(255_u8, 255, 255);
-    assert_eq!(r, 255);
-    assert_eq!(g, 255);
-    assert_eq!(b, 255);
-  }
+  //   let (r, g, b) =
+  //     apply_conversion_matrix_srgb_to_display_p3(255_u8, 255, 255);
+  //   assert_eq!(r, 255);
+  //   assert_eq!(g, 255);
+  //   assert_eq!(b, 255);
+  // }
 }

@@ -3,7 +3,6 @@
 use std::path::PathBuf;
 
 pub mod error;
-pub mod idl;
 mod image_decoder;
 mod image_ops;
 mod op_create_image_bitmap;

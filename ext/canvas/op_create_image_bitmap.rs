@@ -26,11 +26,9 @@ use serde::Serialize;
 
 use crate::error::image_error_message;
 use crate::error::DOMExceptionInvalidStateError;
-use crate::idl::PredefinedColorSpace;
 use crate::image_decoder::ImageDecoderFromReader;
 use crate::image_decoder::ImageDecoderFromReaderType;
 use crate::image_ops::premultiply_alpha as process_premultiply_alpha;
-use crate::image_ops::srgb_to_display_p3;
 use crate::image_ops::to_srgb_from_icc_profile;
 use crate::image_ops::unpremultiply_alpha;
 
@@ -84,7 +82,6 @@ struct OpCreateImageBitmapArgs {
   sh: Option<i32>,
   image_orientation: ImageOrientation,
   premultiply_alpha: PremultiplyAlpha,
-  predefined_color_space: PredefinedColorSpace,
   color_space_conversion: ColorSpaceConversion,
   resize_width: Option<u32>,
   resize_height: Option<u32>,
@@ -241,44 +238,22 @@ See: https://mimesniff.spec.whatwg.org/#image-type-pattern-matching-algorithm\n"
 fn apply_color_space_conversion(
   image: DynamicImage,
   icc_profile: Option<Vec<u8>>,
-  image_bitmap_source: &ImageBitmapSource,
   color_space_conversion: &ColorSpaceConversion,
-  predefined_color_space: &PredefinedColorSpace,
 ) -> Result<DynamicImage, AnyError> {
   match color_space_conversion {
     // return the decoded image as is.
     ColorSpaceConversion::None => Ok(image),
     ColorSpaceConversion::Default => {
-      match image_bitmap_source {
-        ImageBitmapSource::Blob => {
-          fn unmatch_color_handler(
-            x: ColorType,
-            _: DynamicImage,
-          ) -> Result<DynamicImage, AnyError> {
-            Err(type_error(image_error_message(
-              "apply colorspaceConversion: default",
-              &format!("The color type {:?} is not supported.", x),
-            )))
-          }
-          to_srgb_from_icc_profile(image, icc_profile, unmatch_color_handler)
-        }
-        ImageBitmapSource::ImageData => match predefined_color_space {
-          // If the color space is sRGB, return the image as is.
-          PredefinedColorSpace::Srgb => Ok(image),
-          PredefinedColorSpace::DisplayP3 => {
-            fn unmatch_color_handler(
-              x: ColorType,
-              _: DynamicImage,
-            ) -> Result<DynamicImage, AnyError> {
-              Err(type_error(image_error_message(
-                "apply colorspace: display-p3",
-                &format!("The color type {:?} is not supported.", x),
-              )))
-            }
-            srgb_to_display_p3(image, unmatch_color_handler)
-          }
-        },
+      fn unmatch_color_handler(
+        x: ColorType,
+        _: DynamicImage,
+      ) -> Result<DynamicImage, AnyError> {
+        Err(type_error(image_error_message(
+          "apply colorspaceConversion: default",
+          &format!("The color type {:?} is not supported.", x),
+        )))
       }
+      to_srgb_from_icc_profile(image, icc_profile, unmatch_color_handler)
     }
   }
 }
@@ -339,7 +314,6 @@ pub(super) fn op_create_image_bitmap(
     sy,
     image_orientation,
     premultiply_alpha,
-    predefined_color_space,
     color_space_conversion,
     resize_width,
     resize_height,
@@ -355,7 +329,6 @@ pub(super) fn op_create_image_bitmap(
     sh: args.sh,
     image_orientation: args.image_orientation,
     premultiply_alpha: args.premultiply_alpha,
-    predefined_color_space: args.predefined_color_space,
     color_space_conversion: args.color_space_conversion,
     resize_width: args.resize_width,
     resize_height: args.resize_height,
@@ -455,13 +428,8 @@ pub(super) fn op_create_image_bitmap(
   };
 
   // 9.
-  let image = apply_color_space_conversion(
-    image,
-    icc_profile,
-    &image_bitmap_source,
-    &color_space_conversion,
-    &predefined_color_space,
-  )?;
+  let image =
+    apply_color_space_conversion(image, icc_profile, &color_space_conversion)?;
 
   // 10.
   let image =
