@@ -82,9 +82,9 @@ mod tests {
     );
 
     fn run_success_test(specifier: &str, expected_path: &str) {
-      let result=deno_permissions::specifier_to_file_path(
+      let result = deno_permissions::specifier_to_file_path(
         &ModuleSpecifier::parse(specifier).unwrap(),
-        )
+      )
       .unwrap();
       assert_eq!(result, PathBuf::from(expected_path));
     }
