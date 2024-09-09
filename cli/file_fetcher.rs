@@ -525,6 +525,7 @@ impl FileFetcher {
 
   // todo(THIS PR): lol what... this is never used?
   /// Fetch a source file and asynchronously return it.
+  #[clippy(allow_unused)]
   #[inline(always)]
   pub async fn fetch(
     &self,
