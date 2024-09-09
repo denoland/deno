@@ -17,7 +17,7 @@ Deno.test(
       "server-2": { cert: certEcc, key: keyEcc },
       "fail-server-3": { cert: "(invalid)", key: "(bad)" },
     };
-    const opts: unknown = {
+    const opts: Deno.ListenTlsOptions = {
       hostname: "localhost",
       port: 0,
       [resolverSymbol]: (sni: string) => {
@@ -25,9 +25,7 @@ Deno.test(
         return keys[sni]!;
       },
     };
-    const listener = Deno.listenTls(
-      <Deno.ListenTlsOptions & Deno.TlsCertifiedKeyConnectTls> opts,
-    );
+    const listener = Deno.listenTls(opts);
 
     for (
       const server of ["server-1", "server-2", "fail-server-3", "fail-server-4"]
