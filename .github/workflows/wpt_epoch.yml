@@ -66,9 +66,9 @@ jobs:
       - name: Run web platform tests
         shell: bash
         run: |
-          deno run --unstable -A --lock=tools/deno.lock.json --config=tests/config/deno.json \
+          deno run -A --lock=tools/deno.lock.json --config=tests/config/deno.json \
             ./tests/wpt/wpt.ts setup
-          deno run --unstable -A --lock=tools/deno.lock.json --config=tests/config/deno.json \
+          deno run -A --lock=tools/deno.lock.json --config=tests/config/deno.json \
             ./tests/wpt/wpt.ts run                                             \                                                \
             --binary=$(which deno) --quiet --release --no-ignore --json=wpt.json --wptreport=wptreport.json --exit-zero
 
