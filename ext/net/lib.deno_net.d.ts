@@ -127,6 +127,7 @@ declare namespace Deno {
      * conn.close();
      * ```
      */
+    close(): void;
     /** The local address of the connection. */
     readonly localAddr: A;
     /** The remote address of the connection. */
