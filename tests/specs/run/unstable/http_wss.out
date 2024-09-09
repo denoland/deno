@@ -4,4 +4,4 @@ const wss = new WebSocketStream("ws://127.0.0.1:4513");
     at [WILDCARD]http_wss.ts:1:13
 
     info: new WebSocketStream() is an unstable API.
-    hint: Run again with `--unstable-http` flag to enable this API.
+    hint: Run again with `--unstable-net` flag to enable this API.
