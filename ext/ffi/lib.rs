@@ -51,7 +51,7 @@ fn check_unstable(state: &OpState, api_name: &str) {
 
 pub trait FfiPermissions {
   fn check_partial_no_path(&mut self) -> Result<(), AnyError>;
-  #[must_use]
+  #[must_use = "the resolved return value to mitigate time-of-check to time-of-use issues"]
   fn check_partial_with_path(
     &mut self,
     path: &str,
