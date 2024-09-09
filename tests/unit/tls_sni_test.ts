@@ -25,6 +25,7 @@ Deno.test(
         return keys[sni]!;
       },
     };
+    // @ts-ignore Trust me
     const listener = Deno.listenTls(opts);
 
     for (
