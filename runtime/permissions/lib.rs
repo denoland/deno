@@ -1082,6 +1082,32 @@ pub enum RunQueryDescriptor {
   Name(String),
 }
 
+impl RunQueryDescriptor {
+  pub fn parse(requested: &str) -> Result<RunQueryDescriptor, AnyError> {
+    if is_path(&requested) {
+      let path = PathBuf::from(requested);
+      let resolved = if path.is_absolute() {
+        normalize_path(path)
+      } else {
+        let cwd = std::env::current_dir().context("failed resolving cwd")?;
+        normalize_path(cwd.join(path))
+      };
+      Ok(RunQueryDescriptor::Path {
+        requested: requested.to_string(),
+        resolved,
+      })
+    } else {
+      match which::which(requested) {
+        Ok(resolved) => Ok(RunQueryDescriptor::Path {
+          requested: requested.to_string(),
+          resolved,
+        }),
+        Err(_) => Ok(RunQueryDescriptor::Name(requested.to_string())),
+      }
+    }
+  }
+}
+
 impl QueryDescriptor for RunQueryDescriptor {
   type AllowDesc = AllowRunDescriptor;
   type DenyDesc = DenyRunDescriptor;
@@ -1177,17 +1203,12 @@ impl AllowRunDescriptor {
     text: &str,
     cwd: &Path,
   ) -> Result<AllowRunDescriptorParseResult, which::Error> {
-    let text = if cfg!(windows) {
-      Cow::Owned(text.to_string())
-    } else {
-      Cow::Borrowed(text)
-    };
     let is_path = is_path(&text);
     // todo(dsherret): canonicalize in #25458
     let path = if is_path {
-      resolve_from_known_cwd(Path::new(text.as_ref()), cwd)
+      resolve_from_known_cwd(Path::new(text), cwd)
     } else {
-      match which::which_in(text.as_ref(), std::env::var_os("PATH"), cwd) {
+      match which::which_in(text, std::env::var_os("PATH"), cwd) {
         Ok(path) => path,
         Err(err) => match err {
           which::Error::BadAbsolutePath | which::Error::BadRelativePath => {
@@ -1787,30 +1808,25 @@ impl Permissions {
     opts: &PermissionsOptions,
   ) -> Result<Self, AnyError> {
     fn resolve_allow_run(
+      parser: &dyn PermissionDescriptorParser,
       allow_run: &[String],
     ) -> Result<HashSet<AllowRunDescriptor>, AnyError> {
       let mut new_allow_run = HashSet::with_capacity(allow_run.len());
-      for command_name in allow_run {
-        if command_name.is_empty() {
+      for unresolved in allow_run {
+        if unresolved.is_empty() {
           bail!("Empty command name not allowed in --allow-run=...")
         }
-        let path = PathBuf::from(command_name);
-        if path.is_absolute() {
-          new_allow_run.insert(AllowRunDescriptor(path));
-        } else {
-          let command_path_result = which::which(command_name);
-          match command_path_result {
-            Ok(command_path) => {
-              new_allow_run.insert(AllowRunDescriptor(command_path));
-            }
-            Err(err) => {
-              log::info!(
-                "{} Failed to resolve '{}' for allow-run: {}",
-                colors::gray("Info"),
-                command_name,
-                err
-              );
-            }
+        match parser.parse_allow_run_descriptor(unresolved)? {
+          AllowRunDescriptorParseResult::Descriptor(descriptor) => {
+            new_allow_run.insert(descriptor);
+          }
+          AllowRunDescriptorParseResult::Unresolved(err) => {
+            log::info!(
+              "{} Failed to resolve '{}' for allow-run: {}",
+              colors::gray("Info"),
+              unresolved,
+              err
+            );
           }
         }
       }
@@ -1838,15 +1854,17 @@ impl Permissions {
     let allow_run = opts
       .allow_run
       .as_ref()
-      .and_then(|raw_allow_run| match resolve_allow_run(raw_allow_run) {
-        Ok(resolved_allow_run) => {
-          if resolved_allow_run.is_empty() && !raw_allow_run.is_empty() {
-            None // convert to no permissions if now empty
-          } else {
-            Some(Ok(resolved_allow_run))
+      .and_then(|raw_allow_run| {
+        match resolve_allow_run(parser, raw_allow_run) {
+          Ok(resolved_allow_run) => {
+            if resolved_allow_run.is_empty() && !raw_allow_run.is_empty() {
+              None // convert to no permissions if now empty
+            } else {
+              Some(Ok(resolved_allow_run))
+            }
           }
+          Err(err) => Some(Err(err)),
         }
-        Err(err) => Some(Err(err)),
       })
       .transpose()?;
     // add the allow_run list to deno_write
@@ -2741,6 +2759,11 @@ pub trait PermissionDescriptorParser: Debug + Send + Sync {
     &self,
     path: &str,
   ) -> Result<PathQueryDescriptor, AnyError>;
+
+  fn parse_run_query(
+    &self,
+    requested: &str,
+  ) -> Result<RunQueryDescriptor, AnyError>;
 }
 
 pub fn create_child_permissions(
@@ -2931,6 +2954,13 @@ mod tests {
         resolved: self.join_path_with_root(path),
         requested: path.to_string(),
       })
+    }
+
+    fn parse_run_query(
+      &self,
+      requested: &str,
+    ) -> Result<RunQueryDescriptor, AnyError> {
+      RunQueryDescriptor::parse(requested)
     }
   }
 

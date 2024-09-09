@@ -3,6 +3,7 @@
 use std::path::Path;
 use std::path::PathBuf;
 
+use deno_core::anyhow::bail;
 use deno_core::anyhow::Context;
 use deno_core::error::AnyError;
 use deno_core::normalize_path;
@@ -14,6 +15,7 @@ use deno_permissions::FfiDescriptor;
 use deno_permissions::NetDescriptor;
 use deno_permissions::PathQueryDescriptor;
 use deno_permissions::ReadDescriptor;
+use deno_permissions::RunQueryDescriptor;
 use deno_permissions::SysDescriptor;
 use deno_permissions::WriteDescriptor;
 
@@ -29,7 +31,7 @@ impl RuntimePermissionDescriptorParser {
 
   fn resolve_from_cwd(&self, path: &str) -> Result<PathBuf, AnyError> {
     if path.is_empty() {
-      return Err(AnyError::msg("Empty path is not allowed"));
+      bail!("Empty path is not allowed");
     }
     let path = Path::new(path);
     if path.is_absolute() {
@@ -127,6 +129,16 @@ impl deno_permissions::PermissionDescriptorParser
       requested: path.to_string(),
     })
   }
+
+  fn parse_run_query(
+    &self,
+    requested: &str,
+  ) -> Result<RunQueryDescriptor, AnyError> {
+    if requested.is_empty() {
+      bail!("Empty run query is not allowed");
+    }
+    RunQueryDescriptor::parse(requested)
+  }
 }
 
 #[cfg(test)]
@@ -147,5 +159,6 @@ mod test {
     assert!(parser.parse_net_descriptor("").is_err());
     assert!(parser.parse_ffi_descriptor("").is_err());
     assert!(parser.parse_path_query("").is_err());
+    assert!(parser.parse_run_query("").is_err());
   }
 }

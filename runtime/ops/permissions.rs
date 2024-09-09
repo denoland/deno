@@ -1,18 +1,15 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
 use ::deno_permissions::parse_sys_kind;
-use ::deno_permissions::NetDescriptor;
 use ::deno_permissions::PermissionDescriptorParser;
 use ::deno_permissions::PermissionState;
 use ::deno_permissions::PermissionsContainer;
-use ::deno_permissions::RunQueryDescriptor;
 use deno_core::error::custom_error;
 use deno_core::error::AnyError;
 use deno_core::op2;
 use deno_core::OpState;
 use serde::Deserialize;
 use serde::Serialize;
-use std::path::PathBuf;
 use std::sync::Arc;
 
 deno_core::extension!(
@@ -95,7 +92,7 @@ pub fn op_query_permission(
     "net" => permissions.net.query(
       match args.host.as_deref() {
         None => None,
-        Some(h) => Some(NetDescriptor::parse(h)?),
+        Some(h) => Some(desc_parser.parse_net_descriptor(h)?),
       }
       .as_ref(),
     ),
@@ -103,9 +100,14 @@ pub fn op_query_permission(
     "sys" => permissions
       .sys
       .query(args.kind.as_deref().map(parse_sys_kind).transpose()?),
-    "run" => permissions
-      .run
-      .query(args.command.as_deref().map(parse_run_query).as_ref()),
+    "run" => permissions.run.query(
+      args
+        .command
+        .as_deref()
+        .map(|request| desc_parser.parse_run_query(request))
+        .transpose()?
+        .as_ref(),
+    ),
     "ffi" => permissions.ffi.query(
       path
         .map(|path| {
@@ -162,7 +164,7 @@ pub fn op_revoke_permission(
     "net" => permissions.net.revoke(
       match args.host.as_deref() {
         None => None,
-        Some(h) => Some(NetDescriptor::parse(h)?),
+        Some(h) => Some(desc_parser.parse_net_descriptor(h)?),
       }
       .as_ref(),
     ),
@@ -170,9 +172,14 @@ pub fn op_revoke_permission(
     "sys" => permissions
       .sys
       .revoke(args.kind.as_deref().map(parse_sys_kind).transpose()?),
-    "run" => permissions
-      .run
-      .revoke(args.command.as_deref().map(parse_run_query).as_ref()),
+    "run" => permissions.run.revoke(
+      args
+        .command
+        .as_deref()
+        .map(|request| desc_parser.parse_run_query(request))
+        .transpose()?
+        .as_ref(),
+    ),
     "ffi" => permissions.ffi.revoke(
       path
         .map(|path| {
@@ -229,7 +236,7 @@ pub fn op_request_permission(
     "net" => permissions.net.request(
       match args.host.as_deref() {
         None => None,
-        Some(h) => Some(NetDescriptor::parse(h)?),
+        Some(h) => Some(desc_parser.parse_net_descriptor(h)?),
       }
       .as_ref(),
     ),
@@ -237,9 +244,14 @@ pub fn op_request_permission(
     "sys" => permissions
       .sys
       .request(args.kind.as_deref().map(parse_sys_kind).transpose()?),
-    "run" => permissions
-      .run
-      .request(args.command.as_deref().map(parse_run_query).as_ref()),
+    "run" => permissions.run.request(
+      args
+        .command
+        .as_deref()
+        .map(|request| desc_parser.parse_run_query(request))
+        .transpose()?
+        .as_ref(),
+    ),
     "ffi" => permissions.ffi.request(
       path
         .map(|path| {
@@ -258,22 +270,4 @@ pub fn op_request_permission(
     }
   };
   Ok(PermissionStatus::from(perm))
-}
-
-fn parse_run_query(requested: &str) -> RunQueryDescriptor {
-  let path = PathBuf::from(requested);
-  if path.is_absolute() {
-    return RunQueryDescriptor::Path {
-      requested: requested.to_string(),
-      resolved: path,
-    };
-  }
-
-  match which::which(requested) {
-    Ok(resolved) => RunQueryDescriptor::Path {
-      requested: requested.to_string(),
-      resolved,
-    },
-    Err(_) => RunQueryDescriptor::Name(requested.to_string()),
-  }
 }

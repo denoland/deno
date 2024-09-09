@@ -552,9 +552,18 @@ fn compute_run_env(
   let envs = if arg_clear_env {
     arg_envs.iter().cloned().collect()
   } else {
-    let mut envs = std::env::vars().collect::<HashMap<_, _>>();
+    let mut envs = std::env::vars()
+      .map(|(k, v)| (if cfg!(windows) { k.to_uppercase() } else { k }, v))
+      .collect::<HashMap<_, _>>();
     for (key, value) in arg_envs {
-      envs.insert(key.clone(), value.clone());
+      envs.insert(
+        if cfg!(windows) {
+          key.to_uppercase()
+        } else {
+          key.clone()
+        },
+        value.clone(),
+      );
     }
     envs
   };
@@ -568,19 +577,7 @@ fn resolve_cmd(cmd: &str, env: &RunEnv) -> Result<PathBuf, AnyError> {
   if is_path {
     Ok(resolve_path(cmd, &env.cwd))
   } else {
-    let path = env.envs.get("PATH").or_else(|| {
-      if cfg!(windows) {
-        env.envs.iter().find_map(|(k, v)| {
-          if k.to_uppercase() == "PATH" {
-            Some(v)
-          } else {
-            None
-          }
-        })
-      } else {
-        None
-      }
-    });
+    let path = env.envs.get("PATH");
     match which::which_in(cmd, path, &env.cwd) {
       Ok(cmd) => Ok(cmd),
       Err(which::Error::CannotFindBinaryPath) => {

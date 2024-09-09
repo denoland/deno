@@ -454,7 +454,6 @@ function setupReadCheckGranularWorkerTest() {
   // create executables that will be resolved when doing `which`
   const ext = Deno.build.os === "windows" ? ".exe" : "";
   Deno.copyFileSync(Deno.execPath(), tempDir + "/bar" + ext);
-  Deno.copyFileSync(Deno.execPath(), tempDir + "/baz" + ext);
 
   return {
     tempDir,
