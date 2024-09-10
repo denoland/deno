@@ -1259,10 +1259,10 @@ pub enum DenyRunDescriptor {
 impl DenyRunDescriptor {
   pub fn parse(text: &str, cwd: &Path) -> Self {
     if text.contains('/') || cfg!(windows) && text.contains('\\') {
-      DenyRunDescriptor::Name(text.to_string())
-    } else {
       let path = resolve_from_known_cwd(Path::new(&text), cwd);
       DenyRunDescriptor::Path(path)
+    } else {
+      DenyRunDescriptor::Name(text.to_string())
     }
   }
 }
@@ -1307,11 +1307,15 @@ fn denies_run_name(name: &str, cmd_path: &Path) -> bool {
   let Some(file_stem) = file_stem.to_str() else {
     return false;
   };
-  let Some(remaining) = file_stem.strip_prefix(name) else {
+  if file_stem.len() < name.len() {
     return false;
-  };
+  }
+  let (prefix, suffix) = file_stem.split_at(name.len());
+  if !prefix.eq_ignore_ascii_case(name) {
+    return false;
+  }
   // be broad and consider anything like `deno.something` as matching deny perms
-  remaining.is_empty() || remaining.starts_with('.')
+  suffix.is_empty() || suffix.starts_with('.')
 }
 
 #[derive(Clone, Eq, PartialEq, Hash, Debug)]
@@ -4247,6 +4251,30 @@ mod tests {
 
     for (input, expected) in cases {
       assert_eq!(NetDescriptor::parse(input).ok(), *expected, "'{input}'");
+    }
+  }
+
+  #[test]
+  fn test_denies_run_name() {
+    let cases = [
+      ("deno", "C:\\deno.exe", true),
+      ("deno", "C:\\sub\\deno.cmd", true),
+      ("deno", "C:\\sub\\DeNO.cmd", true),
+      ("DEno", "C:\\sub\\deno.cmd", true),
+      ("deno", "C:\\other\\sub\\deno.batch", true),
+      ("deno", "C:\\other\\sub\\deno", true),
+      ("denort", "C:\\other\\sub\\deno.exe", false),
+      ("deno", "/home/test/deno", true),
+      ("deno", "/home/test/denot", false),
+    ];
+    for (name, cmd_path, denies) in cases {
+      assert_eq!(
+        denies_run_name(name, &PathBuf::from(cmd_path)),
+        denies,
+        "{} {}",
+        name,
+        cmd_path
+      );
     }
   }
 }
