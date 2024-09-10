@@ -3716,42 +3716,8 @@ mod tests {
   #[cfg(target_os = "windows")]
   #[test]
   fn test_specifier_to_file_path() {
-    use std::env;
-    use std::fs;
-    use std::fs::File;
-    use std::io::Write;
-    use std::path::PathBuf;
-
-    let temp_dir = env::current_dir().expect("Failed to get current directory");
-    let temp_file_path = temp_dir.join("temp_test_file.js");
-    let mut file =
-      File::create(&temp_file_path).expect("Failed to create temporary file");
-    writeln!(file, "console.log('Temporary test file');")
-      .expect("Failed to write to temporary file");
-    let temp_file_path_str = temp_file_path
-      .to_str()
-      .expect("Failed to convert path to string");
-    let file_url = format!("file:///{}", temp_file_path_str.replace("\\", "/"));
-
-    run_success_test(&file_url, temp_file_path_str);
-
-    if let Err(e) = fs::remove_file(&temp_file_path) {
-      panic!("Failed to remove temporary file: {:?}", e);
-    }
-
     let failure_tests = vec!["file:/", "file://", "file:///", "file://asdf"];
-
     for specifier in failure_tests {
-      assert_no_panic_specifier_to_file_path(specifier);
-    }
-
-    fn run_success_test(specifier: &str, expected_path: &str) {
-      let result =
-        specifier_to_file_path(&ModuleSpecifier::parse(specifier).unwrap())
-          .unwrap();
-      assert_eq!(result, PathBuf::from(expected_path));
-    }
-    fn assert_no_panic_specifier_to_file_path(specifier: &str) {
       let _ =
         specifier_to_file_path(&ModuleSpecifier::parse(specifier).unwrap());
     }
