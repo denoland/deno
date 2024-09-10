@@ -528,7 +528,7 @@ Deno.test(
   },
   async function commandFailedWithSignal() {
     const output = await new Deno.Command(Deno.execPath(), {
-      args: ["eval", "--unstable", "Deno.kill(Deno.pid, 'SIGKILL')"],
+      args: ["eval", "Deno.kill(Deno.pid, 'SIGKILL')"],
     }).output();
     assertEquals(output.success, false);
     if (Deno.build.os === "windows") {
@@ -547,7 +547,7 @@ Deno.test(
   },
   function commandSyncFailedWithSignal() {
     const output = new Deno.Command(Deno.execPath(), {
-      args: ["eval", "--unstable", "Deno.kill(Deno.pid, 'SIGKILL')"],
+      args: ["eval", "Deno.kill(Deno.pid, 'SIGKILL')"],
     }).outputSync();
     assertEquals(output.success, false);
     if (Deno.build.os === "windows") {
@@ -835,7 +835,7 @@ Deno.test(
 const command = await new Deno.Command(Deno.execPath(), {
   cwd: Deno.args[0],
   stdout: "piped",
-  args: ["run", "-A", "--unstable", Deno.args[1]],
+  args: ["run", "-A", Deno.args[1]],
 });
 const child = command.spawn();
 const readable = child.stdout.pipeThrough(new TextDecoderStream());
@@ -877,7 +877,7 @@ setInterval(() => {
       Deno.execPath(),
       {
         cwd,
-        args: ["run", "-A", "--unstable", programFile, cwd, childProgramFile],
+        args: ["run", "-A", programFile, cwd, childProgramFile],
       },
     ).output();
 

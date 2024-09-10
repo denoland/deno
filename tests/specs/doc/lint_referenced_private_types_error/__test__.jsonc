@@ -1,0 +1,5 @@
+{
+  "args": "doc --lint referenced_private_types.ts",
+  "exitCode": 1,
+  "output": "referenced_private_types_lint.out"
+}

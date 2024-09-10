@@ -1430,7 +1430,7 @@ pub async fn op_fs_seek_async(
 }
 
 #[op2(fast)]
-pub fn op_fs_fdatasync_sync(
+pub fn op_fs_file_sync_data_sync(
   state: &mut OpState,
   #[smi] rid: ResourceId,
 ) -> Result<(), AnyError> {
@@ -1440,7 +1440,7 @@ pub fn op_fs_fdatasync_sync(
 }
 
 #[op2(async)]
-pub async fn op_fs_fdatasync_async(
+pub async fn op_fs_file_sync_data_async(
   state: Rc<RefCell<OpState>>,
   #[smi] rid: ResourceId,
 ) -> Result<(), AnyError> {
@@ -1450,7 +1450,7 @@ pub async fn op_fs_fdatasync_async(
 }
 
 #[op2(fast)]
-pub fn op_fs_fsync_sync(
+pub fn op_fs_file_sync_sync(
   state: &mut OpState,
   #[smi] rid: ResourceId,
 ) -> Result<(), AnyError> {
@@ -1460,7 +1460,7 @@ pub fn op_fs_fsync_sync(
 }
 
 #[op2(async)]
-pub async fn op_fs_fsync_async(
+pub async fn op_fs_file_sync_async(
   state: Rc<RefCell<OpState>>,
   #[smi] rid: ResourceId,
 ) -> Result<(), AnyError> {
@@ -1491,28 +1491,6 @@ pub async fn op_fs_file_stat_async(
   let file = FileResource::get_file(&state.borrow(), rid)?;
   let stat = file.stat_async().await?;
   Ok(stat.into())
-}
-
-#[op2(fast)]
-pub fn op_fs_funlock_sync_unstable(
-  state: &mut OpState,
-  #[smi] rid: ResourceId,
-) -> Result<(), AnyError> {
-  check_unstable(state, "Deno.funlockSync");
-  let file = FileResource::get_file(state, rid)?;
-  file.unlock_sync()?;
-  Ok(())
-}
-
-#[op2(async)]
-pub async fn op_fs_funlock_async_unstable(
-  state: Rc<RefCell<OpState>>,
-  #[smi] rid: ResourceId,
-) -> Result<(), AnyError> {
-  check_unstable(&state.borrow(), "Deno.funlock");
-  let file = FileResource::get_file(&state.borrow(), rid)?;
-  file.unlock_async().await?;
-  Ok(())
 }
 
 #[op2(fast)]

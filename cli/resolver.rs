@@ -327,7 +327,9 @@ impl NpmModuleLoader {
     specifier: &ModuleSpecifier,
     maybe_referrer: Option<&ModuleSpecifier>,
   ) -> Option<Result<ModuleCodeStringSource, AnyError>> {
-    if self.node_resolver.in_npm_package(specifier) {
+    if self.node_resolver.in_npm_package(specifier)
+      || (specifier.scheme() == "file" && specifier.path().ends_with(".cjs"))
+    {
       Some(self.load(specifier, maybe_referrer).await)
     } else {
       None
@@ -376,7 +378,9 @@ impl NpmModuleLoader {
         }
       })?;
 
-    let code = if self.cjs_resolutions.contains(specifier) {
+    let code = if self.cjs_resolutions.contains(specifier)
+      || (specifier.scheme() == "file" && specifier.path().ends_with(".cjs"))
+    {
       // translate cjs to esm if it's cjs and inject node globals
       let code = match String::from_utf8_lossy(&code) {
         Cow::Owned(code) => code,
@@ -703,7 +707,14 @@ impl Resolver for CliGraphResolver {
             .resolve_if_for_npm_pkg(raw_specifier, referrer, to_node_mode(mode))
             .map_err(ResolveError::Other)?;
           if let Some(res) = maybe_resolution {
-            return Ok(res.into_url());
+            match res {
+              NodeResolution::Esm(url) | NodeResolution::CommonJs(url) => {
+                return Ok(url)
+              }
+              NodeResolution::BuiltIn(_) => {
+                // don't resolve bare specifiers for built-in modules via node resolution
+              }
+            }
           }
         }
 

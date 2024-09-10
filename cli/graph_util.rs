@@ -368,7 +368,6 @@ pub struct ModuleGraphBuilder {
   parsed_source_cache: Arc<ParsedSourceCache>,
   lockfile: Option<Arc<CliLockfile>>,
   maybe_file_watcher_reporter: Option<FileWatcherReporter>,
-  emit_cache: Arc<cache::EmitCache>,
   file_fetcher: Arc<FileFetcher>,
   global_http_cache: Arc<GlobalHttpCache>,
 }
@@ -385,7 +384,6 @@ impl ModuleGraphBuilder {
     parsed_source_cache: Arc<ParsedSourceCache>,
     lockfile: Option<Arc<CliLockfile>>,
     maybe_file_watcher_reporter: Option<FileWatcherReporter>,
-    emit_cache: Arc<cache::EmitCache>,
     file_fetcher: Arc<FileFetcher>,
     global_http_cache: Arc<GlobalHttpCache>,
   ) -> Self {
@@ -399,7 +397,6 @@ impl ModuleGraphBuilder {
       parsed_source_cache,
       lockfile,
       maybe_file_watcher_reporter,
-      emit_cache,
       file_fetcher,
       global_http_cache,
     }
@@ -681,7 +678,6 @@ impl ModuleGraphBuilder {
     permissions: PermissionsContainer,
   ) -> cache::FetchCacher {
     cache::FetchCacher::new(
-      self.emit_cache.clone(),
       self.file_fetcher.clone(),
       self.options.resolve_file_header_overrides(),
       self.global_http_cache.clone(),
@@ -735,8 +731,8 @@ pub fn enhanced_resolution_error_message(error: &ResolutionError) -> String {
   } else {
     get_import_prefix_missing_error(error).map(|specifier| {
       format!(
-        "If you want to use a JSR or npm package, try running `deno add {}`",
-        specifier
+        "If you want to use a JSR or npm package, try running `deno add jsr:{}` or `deno add npm:{}`",
+        specifier, specifier
       )
     })
   };
@@ -881,24 +877,29 @@ fn get_import_prefix_missing_error(error: &ResolutionError) -> Option<&str> {
   let mut maybe_specifier = None;
   if let ResolutionError::InvalidSpecifier {
     error: SpecifierError::ImportPrefixMissing { specifier, .. },
-    ..
+    range,
   } = error
   {
-    maybe_specifier = Some(specifier);
-  } else if let ResolutionError::ResolverError { error, .. } = error {
-    match error.as_ref() {
-      ResolveError::Specifier(specifier_error) => {
-        if let SpecifierError::ImportPrefixMissing { specifier, .. } =
-          specifier_error
-        {
-          maybe_specifier = Some(specifier);
+    if range.specifier.scheme() == "file" {
+      maybe_specifier = Some(specifier);
+    }
+  } else if let ResolutionError::ResolverError { error, range, .. } = error {
+    if range.specifier.scheme() == "file" {
+      match error.as_ref() {
+        ResolveError::Specifier(specifier_error) => {
+          if let SpecifierError::ImportPrefixMissing { specifier, .. } =
+            specifier_error
+          {
+            maybe_specifier = Some(specifier);
+          }
         }
-      }
-      ResolveError::Other(other_error) => {
-        if let Some(SpecifierError::ImportPrefixMissing { specifier, .. }) =
-          other_error.downcast_ref::<SpecifierError>()
-        {
-          maybe_specifier = Some(specifier);
+        ResolveError::Other(other_error) => {
+          if let Some(SpecifierError::ImportPrefixMissing {
+            specifier, ..
+          }) = other_error.downcast_ref::<SpecifierError>()
+          {
+            maybe_specifier = Some(specifier);
+          }
         }
       }
     }

@@ -221,7 +221,6 @@ Deno.test(
     );
 
     const conn = await Deno.connectTls({ hostname, port, caCerts });
-    assert(DENO_FUTURE || conn.rid > 0);
     const w = new BufWriter(conn);
     const r = new BufReader(conn);
     const body = `GET / HTTP/1.1\r\nHost: ${hostname}:${port}\r\n\r\n`;
@@ -273,7 +272,6 @@ Deno.test(
     );
 
     const conn = await Deno.connectTls({ hostname, port, caCerts });
-    assert(DENO_FUTURE || conn.rid > 0);
     const w = new BufWriter(conn);
     const r = new BufReader(conn);
     const body = `GET / HTTP/1.1\r\nHost: ${hostname}:${port}\r\n\r\n`;
@@ -588,7 +586,9 @@ async function receiveAlotSendNothing(conn: Deno.Conn) {
     }
   } catch (e) {
     throw new Error(
-      `Got an error (${e.message}) after reading ${nread}/${largeAmount} bytes`,
+      `Got an error (${
+        (e as Error).message
+      }) after reading ${nread}/${largeAmount} bytes`,
       { cause: e },
     );
   }

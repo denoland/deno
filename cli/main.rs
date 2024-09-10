@@ -46,7 +46,8 @@ use deno_core::error::JsError;
 use deno_core::futures::FutureExt;
 use deno_core::unsync::JoinHandle;
 use deno_npm::resolution::SnapshotFromLockfileError;
-use deno_runtime::fmt_errors::format_js_error;
+use deno_runtime::fmt_errors::format_js_error_with_suggestions;
+use deno_runtime::fmt_errors::FixSuggestion;
 use deno_runtime::tokio_util::create_and_run_current_thread_with_maybe_metrics;
 use deno_terminal::colors;
 use factory::CliFactory;
@@ -161,7 +162,7 @@ async fn run_subcommand(flags: Arc<Flags>) -> Result<i32, AnyError> {
       tools::jupyter::kernel(flags, jupyter_flags).await
     }),
     DenoSubcommand::Uninstall(uninstall_flags) => spawn_subcommand(async {
-      tools::installer::uninstall(uninstall_flags)
+      tools::installer::uninstall(flags, uninstall_flags).await
     }),
     DenoSubcommand::Lsp => spawn_subcommand(async { lsp::start().await }),
     DenoSubcommand::Lint(lint_flags) => spawn_subcommand(async {
@@ -336,12 +337,74 @@ fn exit_with_message(message: &str, code: i32) -> ! {
   std::process::exit(code);
 }
 
+fn get_suggestions_for_terminal_errors(e: &JsError) -> Vec<FixSuggestion> {
+  if let Some(msg) = &e.message {
+    if msg.contains("module is not defined")
+      || msg.contains("exports is not defined")
+    {
+      return vec![
+        FixSuggestion::info(
+          "Deno does not support CommonJS modules without `.cjs` extension.",
+        ),
+        FixSuggestion::hint(
+          "Rewrite this module to ESM or change the file extension to `.cjs`.",
+        ),
+      ];
+    } else if msg.contains("openKv is not a function") {
+      return vec![
+        FixSuggestion::info("Deno.openKv() is an unstable API."),
+        FixSuggestion::hint(
+          "Run again with `--unstable-kv` flag to enable this API.",
+        ),
+      ];
+    } else if msg.contains("cron is not a function") {
+      return vec![
+        FixSuggestion::info("Deno.cron() is an unstable API."),
+        FixSuggestion::hint(
+          "Run again with `--unstable-cron` flag to enable this API.",
+        ),
+      ];
+    } else if msg.contains("createHttpClient is not a function") {
+      return vec![
+        FixSuggestion::info("Deno.createHttpClient() is an unstable API."),
+        FixSuggestion::hint(
+          "Run again with `--unstable-http` flag to enable this API.",
+        ),
+      ];
+    } else if msg.contains("WebSocketStream is not defined") {
+      return vec![
+        FixSuggestion::info("new WebSocketStream() is an unstable API."),
+        FixSuggestion::hint(
+          "Run again with `--unstable-net` flag to enable this API.",
+        ),
+      ];
+    } else if msg.contains("Temporal is not defined") {
+      return vec![
+        FixSuggestion::info("Temporal is an unstable API."),
+        FixSuggestion::hint(
+          "Run again with `--unstable-temporal` flag to enable this API.",
+        ),
+      ];
+    } else if msg.contains("BroadcastChannel is not defined") {
+      return vec![
+        FixSuggestion::info("BroadcastChannel is an unstable API."),
+        FixSuggestion::hint(
+          "Run again with `--unstable-broadcast-channel` flag to enable this API.",
+        ),
+      ];
+    }
+  }
+
+  vec![]
+}
+
 fn exit_for_error(error: AnyError) -> ! {
   let mut error_string = format!("{error:?}");
   let mut error_code = 1;
 
   if let Some(e) = error.downcast_ref::<JsError>() {
-    error_string = format_js_error(e);
+    let suggestions = get_suggestions_for_terminal_errors(e);
+    error_string = format_js_error_with_suggestions(e, suggestions);
   } else if let Some(SnapshotFromLockfileError::IntegrityCheckFailed(e)) =
     error.downcast_ref::<SnapshotFromLockfileError>()
   {
@@ -415,25 +478,14 @@ fn resolve_flags_and_init(
     Err(err) => exit_for_error(AnyError::from(err)),
   };
 
-  // TODO(bartlomieju): remove when `--unstable` flag is removed.
+  // TODO(bartlomieju): remove in Deno v2.5 and hard error then.
   if flags.unstable_config.legacy_flag_enabled {
-    #[allow(clippy::print_stderr)]
-    if matches!(flags.subcommand, DenoSubcommand::Check(_)) {
-      // can't use log crate because that's not setup yet
-      eprintln!(
-        "⚠️  {}",
-        colors::yellow(
-          "The `--unstable` flag is not needed for `deno check` anymore."
-        )
-      );
-    } else {
-      eprintln!(
-        "⚠️  {}",
-        colors::yellow(
-          "The `--unstable` flag is deprecated and will be removed in Deno 2.0. Use granular `--unstable-*` flags instead.\nLearn more at: https://docs.deno.com/runtime/manual/tools/unstable_flags"
-        )
-      );
-    }
+    log::warn!(
+      "⚠️  {}",
+      colors::yellow(
+        "The `--unstable` flag has been removed in Deno 2.0. Use granular `--unstable-*` flags instead.\nLearn more at: https://docs.deno.com/runtime/manual/tools/unstable_flags"
+      )
+    );
   }
 
   let default_v8_flags = match flags.subcommand {

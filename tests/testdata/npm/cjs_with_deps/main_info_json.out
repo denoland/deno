@@ -42,8 +42,6 @@
         }
       ],
       "local": "[WILDCARD]main.js",
-      "emit": null,
-      "map": null,
       "size": 325,
       "mediaType": "JavaScript",
       "specifier": "[WILDCARD]/main.js"
@@ -53,6 +51,7 @@
     "npm:chai@4.3": "npm:/chai@4.3.6",
     "npm:chalk@4": "npm:/chalk@4.1.2"
   },
+  "version": 1,
   "npmPackages": {
     "ansi-styles@4.3.0": {
       "name": "ansi-styles",

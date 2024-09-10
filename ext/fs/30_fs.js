@@ -15,20 +15,18 @@ import {
   op_fs_copy_file_async,
   op_fs_copy_file_sync,
   op_fs_cwd,
-  op_fs_fdatasync_async,
-  op_fs_fdatasync_sync,
   op_fs_file_stat_async,
   op_fs_file_stat_sync,
+  op_fs_file_sync_async,
+  op_fs_file_sync_data_async,
+  op_fs_file_sync_data_sync,
+  op_fs_file_sync_sync,
   op_fs_file_truncate_async,
   op_fs_flock_async,
   op_fs_flock_sync,
-  op_fs_fsync_async,
-  op_fs_fsync_sync,
   op_fs_ftruncate_sync,
   op_fs_funlock_async,
-  op_fs_funlock_async_unstable,
   op_fs_funlock_sync,
-  op_fs_funlock_sync_unstable,
   op_fs_futime_async,
   op_fs_futime_sync,
   op_fs_link_async,
@@ -519,46 +517,6 @@ async function symlink(
   );
 }
 
-function fdatasyncSync(rid) {
-  op_fs_fdatasync_sync(rid);
-}
-
-async function fdatasync(rid) {
-  await op_fs_fdatasync_async(rid);
-}
-
-function fsyncSync(rid) {
-  op_fs_fsync_sync(rid);
-}
-
-async function fsync(rid) {
-  await op_fs_fsync_async(rid);
-}
-
-function funlockSync(rid) {
-  op_fs_funlock_sync_unstable(rid);
-}
-
-async function funlock(rid) {
-  await op_fs_funlock_async_unstable(rid);
-}
-
-function seekSync(
-  rid,
-  offset,
-  whence,
-) {
-  return op_fs_seek_sync(rid, offset, whence);
-}
-
-function seek(
-  rid,
-  offset,
-  whence,
-) {
-  return op_fs_seek_async(rid, offset, whence);
-}
-
 function openSync(
   path,
   options,
@@ -611,21 +569,15 @@ class FsFile {
 
   constructor(rid, symbol) {
     ObjectDefineProperty(this, internalRidSymbol, {
+      __proto__: null,
       enumerable: false,
       value: rid,
     });
     this.#rid = rid;
     if (!symbol || symbol !== SymbolFor("Deno.internal.FsFile")) {
-      internals.warnOnDeprecatedApi(
-        "new Deno.FsFile()",
-        new Error().stack,
-        "Use `Deno.open` or `Deno.openSync` instead.",
+      throw new TypeError(
+        "`Deno.FsFile` cannot be constructed, use `Deno.open()` or `Deno.openSync()` instead.",
       );
-      if (internals.future) {
-        throw new TypeError(
-          "`Deno.FsFile` cannot be constructed, use `Deno.open()` or `Deno.openSync()` instead.",
-        );
-      }
     }
   }
 
@@ -663,11 +615,11 @@ class FsFile {
   }
 
   seek(offset, whence) {
-    return seek(this.#rid, offset, whence);
+    return op_fs_seek_async(this.#rid, offset, whence);
   }
 
   seekSync(offset, whence) {
-    return seekSync(this.#rid, offset, whence);
+    return op_fs_seek_sync(this.#rid, offset, whence);
   }
 
   async stat() {
@@ -680,11 +632,11 @@ class FsFile {
   }
 
   async syncData() {
-    await op_fs_fdatasync_async(this.#rid);
+    await op_fs_file_sync_data_async(this.#rid);
   }
 
   syncDataSync() {
-    op_fs_fdatasync_sync(this.#rid);
+    op_fs_file_sync_data_sync(this.#rid);
   }
 
   close() {
@@ -706,11 +658,11 @@ class FsFile {
   }
 
   async sync() {
-    await op_fs_fsync_async(this.#rid);
+    await op_fs_file_sync_async(this.#rid);
   }
 
   syncSync() {
-    op_fs_fsync_sync(this.#rid);
+    op_fs_file_sync_sync(this.#rid);
   }
 
   async utime(atime, mtime) {
@@ -946,13 +898,7 @@ export {
   create,
   createSync,
   cwd,
-  fdatasync,
-  fdatasyncSync,
   FsFile,
-  fsync,
-  fsyncSync,
-  funlock,
-  funlockSync,
   link,
   linkSync,
   lstat,
@@ -979,8 +925,6 @@ export {
   removeSync,
   rename,
   renameSync,
-  seek,
-  seekSync,
   stat,
   statSync,
   symlink,

@@ -12,8 +12,11 @@ import { copy } from "@std/io/copy";
 // Note tests for Deno.FsFile.setRaw is in integration tests.
 
 Deno.test(function filesStdioFileDescriptors() {
+  // @ts-ignore `Deno.stdin.rid` was soft-removed in Deno 2.
   assertEquals(Deno.stdin.rid, 0);
+  // @ts-ignore `Deno.stdout.rid` was soft-removed in Deno 2.
   assertEquals(Deno.stdout.rid, 1);
+  // @ts-ignore `Deno.stderr.rid` was soft-removed in Deno 2.
   assertEquals(Deno.stderr.rid, 2);
 });
 
@@ -926,7 +929,7 @@ function runFlockTestProcess(opts: { exclusive: boolean; sync: boolean }) {
 `;
 
   const process = new Deno.Command(Deno.execPath(), {
-    args: ["eval", "--unstable", scriptText],
+    args: ["eval", scriptText],
     stdin: "piped",
     stdout: "piped",
     stderr: "null",
