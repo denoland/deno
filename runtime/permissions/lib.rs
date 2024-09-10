@@ -3725,25 +3725,26 @@ mod tests {
     let temp_dir = match env::current_dir() {
       Ok(dir) => dir,
       Err(e) => {
-        assert!(false, "{:?}", e);
-        return;
+        panic!("{:?}", e);
       }
     };
 
-    let temp_file_path = temp_dir.join("test.txt");
+    #[allow(clippy::join_absolute_paths)]
+    let temp_file_path = temp_dir.join("/test.txt");
     let temp_file_path_str = temp_file_path.to_str().unwrap();
     if let Err(e) = File::create(&temp_file_path)
       .and_then(|mut file| writeln!(file, "Temporary test content"))
     {
-      assert!(false, "{:?}", e);
+      panic!("{:?}", e);
     }
+
     run_success_test(
       format!("file:/{}", temp_file_path_str).as_str(),
       temp_file_path_str,
     );
 
     if let Err(e) = fs::remove_file(&temp_file_path) {
-      assert!(false, "{:?}", e);
+      panic!("{:?}", e);
     }
 
     let failure_tests = vec!["file:/", "file://", "file:///", "file://asdf"];
