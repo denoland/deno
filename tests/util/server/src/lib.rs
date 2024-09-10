@@ -48,7 +48,7 @@ pub use fs::TempDir;
 
 pub const PERMISSION_VARIANTS: [&str; 5] =
   ["read", "write", "env", "net", "run"];
-pub const PERMISSION_DENIED_PATTERN: &str = "PermissionDenied";
+pub const PERMISSION_DENIED_PATTERN: &str = "NotCapable";
 
 static GUARD: Lazy<Mutex<HttpServerCount>> = Lazy::new(Default::default);
 

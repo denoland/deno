@@ -175,8 +175,11 @@ declare namespace Deno {
     /**
      * Raised when the underlying operating system indicates the current user
      * which the Deno process is running under does not have the appropriate
-     * permissions to a file or resource, or the user _did not_ provide required
-     * `--allow-*` flag.
+     * permissions to a file or resource.
+     *
+     * Before Deno 2.0, this error was raised when the user _did not_ provide
+     * required `--allow-*` flag. As of Deno 2.0, that case is now handled by
+     * the {@link NotCapable} error.
      *
      * @category Errors */
     export class PermissionDenied extends Error {}
@@ -314,6 +317,15 @@ declare namespace Deno {
      *
      * @category Errors */
     export class NotADirectory extends Error {}
+    /**
+     * Raised when trying to perform an operation while the relevant Deno
+     * permission (like `--allow-read`) has not been granted.
+     *
+     * Before Deno 2.0, this condition was covered by the {@link PermissionDenied}
+     * error.
+     *
+     * @category Errors */
+    export class NotCapable extends Error {}
   }
 
   /** The current process ID of this instance of the Deno CLI.
@@ -1803,15 +1815,6 @@ declare namespace Deno {
    * @category File System
    */
   export class FsFile implements Seeker, SeekerSync, Disposable {
-    /**
-     * The resource ID associated with the file instance. The resource ID
-     * should be considered an opaque reference to resource.
-     *
-     * @deprecated This will be removed in Deno 2.0. See the
-     * {@link https://docs.deno.com/runtime/manual/advanced/migrate_deprecations | Deno 1.x to 2.x Migration Guide}
-     * for migration instructions.
-     */
-    readonly rid: number;
     /** A {@linkcode ReadableStream} instance representing to the byte contents
      * of the file. This makes it easy to interoperate with other web streams
      * based APIs.
@@ -1961,7 +1964,7 @@ declare namespace Deno {
      * resolves to the new position within the resource (bytes from the start).
      *
      * ```ts
-     * // Given file pointing to file with "Hello world", which is 11 bytes long:
+     * // Given the file contains "Hello world" text, which is 11 bytes long:
      * using file = await Deno.open(
      *   "hello.txt",
      *   { read: true, write: true, truncate: true, create: true },
@@ -1979,7 +1982,7 @@ declare namespace Deno {
      * The seek modes work as follows:
      *
      * ```ts
-     * // Given file.rid pointing to file with "Hello world", which is 11 bytes long:
+     * // Given the file contains "Hello world" text, which is 11 bytes long:
      * const file = await Deno.open(
      *   "hello.txt",
      *   { read: true, write: true, truncate: true, create: true },
@@ -2016,7 +2019,7 @@ declare namespace Deno {
      * The seek modes work as follows:
      *
      * ```ts
-     * // Given file.rid pointing to file with "Hello world", which is 11 bytes long:
+     * // Given the file contains "Hello world" text, which is 11 bytes long:
      * using file = Deno.openSync(
      *   "hello.txt",
      *   { read: true, write: true, truncate: true, create: true },

@@ -55,7 +55,7 @@ function unreachable(): never {
 Deno.test({ permissions: { net: false } }, async function connectTLSNoPerm() {
   await assertRejects(async () => {
     await Deno.connectTls({ hostname: "deno.land", port: 443 });
-  }, Deno.errors.PermissionDenied);
+  }, Deno.errors.NotCapable);
 });
 
 Deno.test(

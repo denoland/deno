@@ -13,6 +13,7 @@ Deno.test({
     const file: Deno.FsFile = await Deno.open(tempFile);
 
     await new Promise<void>((resolve, reject) => {
+      // @ts-ignore (iuioiua) `file.rid` should no longer be needed once FDs are used
       close(file.rid, (err) => {
         if (err !== null) reject();
         else resolve();
@@ -45,6 +46,7 @@ Deno.test({
 
     let foo: string;
     const promise = new Promise<void>((resolve) => {
+      // @ts-ignore (iuioiua) `file.rid` should no longer be needed once FDs are used
       close(file.rid, () => {
         assert(foo === "bar");
         resolve();
@@ -66,6 +68,7 @@ Deno.test({
     const tempFile: string = Deno.makeTempFileSync();
     const file: Deno.FsFile = Deno.openSync(tempFile);
 
+    // @ts-ignore (iuioiua) `file.rid` should no longer be needed once FDs are used
     closeSync(file.rid);
     Deno.removeSync(tempFile);
   },
