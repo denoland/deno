@@ -782,7 +782,6 @@ function bootstrapMainRuntime(runtimeOptions, warmup = false) {
     }
     if (internals.future) {
       delete globalThis.window;
-      delete Deno.FsFile.prototype.rid;
     }
   } else {
     // Warmup
@@ -928,10 +927,6 @@ function bootstrapWorkerRuntime(
         maybeWorkerMetadata: workerMetadata,
         nodeDebug,
       });
-    }
-
-    if (internals.future) {
-      delete Deno.FsFile.prototype.rid;
     }
   } else {
     // Warmup

@@ -1,8 +1,4 @@
 console.log("window is", globalThis.window);
-console.log(
-  "Deno.FsFile.prototype.rid is",
-  Deno.openSync(import.meta.filename).rid,
-);
 
 // TCP
 // Since these tests may run in parallel, ensure this port is unique to this file
