@@ -1,4 +1,4 @@
-@denotest/add
+@denotest/esm-basic
 [Module: null prototype] {
   add: [Function (anonymous)],
   default: { add: [Function (anonymous)] }

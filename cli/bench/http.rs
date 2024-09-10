@@ -49,7 +49,7 @@ pub fn benchmark(
     }
 
     let port = get_port();
-    // deno run -A --unstable <path> <addr>
+    // deno run -A --unstable-net <path> <addr>
     res.insert(
       file_stem.to_string(),
       run(
@@ -57,7 +57,7 @@ pub fn benchmark(
           deno_exe.as_str(),
           "run",
           "--allow-all",
-          "--unstable",
+          "--unstable-net",
           "--enable-testing-features-do-not-use",
           path,
           &server_addr(port),
