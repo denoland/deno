@@ -64,9 +64,20 @@ impl SerializerDelegate {
 impl v8::ValueSerializerImpl for SerializerDelegate {
   fn get_shared_array_buffer_id<'s>(
     &self,
-    _scope: &mut v8::HandleScope<'s>,
-    _shared_array_buffer: v8::Local<'s, v8::SharedArrayBuffer>,
+    scope: &mut v8::HandleScope<'s>,
+    shared_array_buffer: v8::Local<'s, v8::SharedArrayBuffer>,
   ) -> Option<u32> {
+    let obj = self.obj(scope);
+    let key = FastString::from_static("_getSharedArrayBufferId")
+      .v8_string(scope)
+      .into();
+    if let Some(v) = obj.get(scope, key) {
+      if let Ok(fun) = v.try_cast::<v8::Function>() {
+        return fun
+          .call(scope, obj.into(), &[shared_array_buffer.into()])
+          .and_then(|ret| ret.uint32_value(scope));
+      }
+    }
     None
   }
   fn has_custom_host_object(&self, _isolate: &mut v8::Isolate) -> bool {
@@ -82,11 +93,12 @@ impl v8::ValueSerializerImpl for SerializerDelegate {
       .v8_string(scope)
       .into();
     if let Some(v) = obj.get(scope, key) {
-      if let Ok(fun) = v.try_cast::<v8::Function>() {
-        if let Some(error) = fun.call(scope, obj.into(), &[message.into()]) {
-          scope.throw_exception(error);
-          return;
-        }
+      let fun = v
+        .try_cast::<v8::Function>()
+        .expect("_getDataCloneError should be a function");
+      if let Some(error) = fun.call(scope, obj.into(), &[message.into()]) {
+        scope.throw_exception(error);
+        return;
       }
     }
     let error = v8::Exception::type_error(scope, message);
@@ -99,7 +111,7 @@ impl v8::ValueSerializerImpl for SerializerDelegate {
     object: v8::Local<'s, v8::Object>,
     _value_serializer: &dyn ValueSerializerHelper,
   ) -> Option<bool> {
-    let obj = v8::Local::new(scope, &self.obj);
+    let obj = self.obj(scope);
     let key = FastString::from_static("_writeHostObject")
       .v8_string(scope)
       .into();
