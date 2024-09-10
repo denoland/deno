@@ -12,6 +12,4 @@ try {
   }
 }
 
-tlsListener.close();
-
 self.close();
