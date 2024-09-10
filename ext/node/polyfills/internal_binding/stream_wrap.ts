@@ -345,7 +345,7 @@ export class LibuvStreamWrap extends HandleWrap {
         nread = codeMap.get("ECONNRESET")!;
       } else {
         this[ownerSymbol].destroy(e);
-        return
+        return;
       }
     }
 

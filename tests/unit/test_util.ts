@@ -34,7 +34,7 @@ export function pathToAbsoluteFileUrl(path: string): URL {
   return new URL(`file://${Deno.build.os === "windows" ? "/" : ""}${path}`);
 }
 
-export function execCode(code: string): Promise<readonly [status: number, output: string]> {
+export function execCode(code: string): Promise<readonly [number, string]> {
   return execCode2(code).finished();
 }
 
