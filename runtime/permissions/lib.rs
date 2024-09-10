@@ -1618,13 +1618,12 @@ pub fn specifier_to_file_path(
       && specifier.path_segments().is_some()
     {
       let path_str = specifier.path();
-      let _ = match String::from_utf8(
+      match String::from_utf8(
         percent_encoding::percent_decode(path_str.as_bytes()).collect(),
       ) {
-        Ok(path_str) => Ok(PathBuf::from(path_str)),
+        Ok(_) => specifier.to_file_path(),
         Err(_) => Err(()),
-      };
-      specifier.to_file_path()
+      }
     } else {
       Err(())
     }
@@ -3717,13 +3716,41 @@ mod tests {
   #[cfg(target_os = "windows")]
   #[test]
   fn test_specifier_to_file_path() {
-    run_success_test("file:///../../tools/format.js", "../../tools/format.js");
-    run_success_test("../../tools/format.js", "../../tools/format.js");
+    use std::env;
+    use std::fs;
+    use std::fs::File;
+    use std::io::Write;
+    use std::path::PathBuf;
 
-    assert_no_panic_specifier_to_file_path("file:/");
-    assert_no_panic_specifier_to_file_path("file://");
-    assert_no_panic_specifier_to_file_path("file:///");
-    assert_no_panic_specifier_to_file_path("file://asdf");
+    let temp_dir = match env::current_dir() {
+      Ok(dir) => dir,
+      Err(e) => {
+        assert!(false, "{:?}", e);
+        return;
+      }
+    };
+
+    let temp_file_path = temp_dir.join("test.txt");
+    let temp_file_path_str = temp_file_path.to_str().unwrap();
+    if let Err(e) = File::create(&temp_file_path)
+      .and_then(|mut file| writeln!(file, "Temporary test content"))
+    {
+      assert!(false, "{:?}", e);
+    }
+    run_success_test(
+      format!("file:/{}", temp_file_path_str).as_str(),
+      temp_file_path_str,
+    );
+
+    if let Err(e) = fs::remove_file(&temp_file_path) {
+      assert!(false, "{:?}", e);
+    }
+
+    let failure_tests = vec!["file:/", "file://", "file:///", "file://asdf"];
+
+    for specifier in failure_tests {
+      assert_no_panic_specifier_to_file_path(specifier);
+    }
 
     fn run_success_test(specifier: &str, expected_path: &str) {
       let result =
@@ -3732,7 +3759,6 @@ mod tests {
       assert_eq!(result, PathBuf::from(expected_path));
     }
     fn assert_no_panic_specifier_to_file_path(specifier: &str) {
-      // we just want to make sure that specifier to file path doens't panic
       let _ =
         specifier_to_file_path(&ModuleSpecifier::parse(specifier).unwrap());
     }
