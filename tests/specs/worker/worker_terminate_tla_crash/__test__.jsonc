@@ -1,0 +1,4 @@
+{
+  "args": "run --quiet --reload terminate_tla_crash.js",
+  "output": "terminate_tla_crash.js.out"
+}
