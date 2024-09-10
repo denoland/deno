@@ -77,6 +77,7 @@ const objects = [
   }, /foobar/);
 }
 
+// TODO(nathanwhit): we don't have any exposed host objects, so these parts don't work
 // {
 //   const ser = new v8.DefaultSerializer();
 //   ser._writeHostObject = common.mustCall((object) => {
