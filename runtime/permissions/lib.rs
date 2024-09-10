@@ -3716,21 +3716,12 @@ mod tests {
   #[cfg(target_os = "windows")]
   #[test]
   fn test_specifier_to_file_path() {
-    use std::env;
     use std::fs;
     use std::fs::File;
     use std::io::Write;
     use std::path::PathBuf;
 
-    let temp_dir = match env::current_dir() {
-      Ok(dir) => dir,
-      Err(e) => {
-        panic!("{:?}", e);
-      }
-    };
-
-    #[allow(clippy::join_absolute_paths)]
-    let temp_file_path = temp_dir.join("/test.txt");
+    let temp_file_path = PathBuf::from("/test.txt");
     let temp_file_path_str = temp_file_path.to_str().unwrap();
     if let Err(e) = File::create(&temp_file_path)
       .and_then(|mut file| writeln!(file, "Temporary test content"))
