@@ -77,8 +77,57 @@ declare namespace Deno {
   export type UnixListener = Listener<UnixConn, UnixAddr>;
 
   /** @category Network */
-  export interface Conn<A extends Addr = Addr>
-    extends Reader, Writer, Closer, Disposable {
+  export interface Conn<A extends Addr = Addr> extends Disposable {
+    /** Read the incoming data from the connection into an array buffer (`p`).
+     *
+     * Resolves to either the number of bytes read during the operation or EOF
+     * (`null`) if there was nothing more to read.
+     *
+     * It is possible for a read to successfully return with `0` bytes. This
+     * does not indicate EOF.
+     *
+     * **It is not guaranteed that the full buffer will be read in a single
+     * call.**
+     *
+     * ```ts
+     * // If the text "hello world" is received by the client:
+     * const conn = await Deno.connect({ hostname: "example.com", port: 80 });
+     * const buf = new Uint8Array(100);
+     * const numberOfBytesRead = await conn.read(buf); // 11 bytes
+     * const text = new TextDecoder().decode(buf);  // "hello world"
+     * ```
+     *
+     * @category I/O
+     */
+    read(p: Uint8Array): Promise<number | null>;
+    /** Write the contents of the array buffer (`p`) to the connection.
+     *
+     * Resolves to the number of bytes written.
+     *
+     * **It is not guaranteed that the full buffer will be written in a single
+     * call.**
+     *
+     * ```ts
+     * const conn = await Deno.connect({ hostname: "example.com", port: 80 });
+     * const encoder = new TextEncoder();
+     * const data = encoder.encode("Hello world");
+     * const bytesWritten = await conn.write(data); // 11
+     * ```
+     *
+     * @category I/O
+     */
+    write(p: Uint8Array): Promise<number>;
+    /** Closes the connection, freeing the resource.
+     *
+     * ```ts
+     * const conn = await Deno.connect({ hostname: "example.com", port: 80 });
+     *
+     * // ...
+     *
+     * conn.close();
+     * ```
+     */
+    close(): void;
     /** The local address of the connection. */
     readonly localAddr: A;
     /** The remote address of the connection. */

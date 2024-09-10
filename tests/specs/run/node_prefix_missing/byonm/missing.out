@@ -1,0 +1,3 @@
+error: Relative import path "fs" not prefixed with / or ./ or ../
+  hint: If you want to use a built-in Node module, add a "node:" prefix (ex. "node:fs").
+    at file:///[WILDLINE]/missing.ts:1:16
