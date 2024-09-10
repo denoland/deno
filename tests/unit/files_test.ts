@@ -26,7 +26,6 @@ Deno.test(
     const filename = "tests/testdata/assets/fixture.json";
     using file = await Deno.open(filename);
     assert(file instanceof Deno.FsFile);
-    assert(file.rid > 2);
     const bytesWritten = await copy(file, Deno.stdout);
     const fileSize = Deno.statSync(filename).size;
     assertEquals(bytesWritten, fileSize);

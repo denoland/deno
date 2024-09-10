@@ -6,7 +6,6 @@ import {
   assertStrictEquals,
   assertStringIncludes,
   assertThrows,
-  DENO_FUTURE,
 } from "./test_util.ts";
 
 Deno.test(
@@ -363,8 +362,6 @@ Deno.test(
 
 Deno.test(
   {
-    // Ignoring because uses `file.rid`
-    ignore: DENO_FUTURE,
     permissions: { run: true, write: true, read: true },
   },
   async function runRedirectStdoutStderr() {
@@ -382,10 +379,12 @@ Deno.test(
         "eval",
         "Deno.stderr.write(new TextEncoder().encode('error\\n')); Deno.stdout.write(new TextEncoder().encode('output\\n'));",
       ],
-      stdout: file.rid,
-      stderr: file.rid,
+      stdout: "piped",
+      stderr: "piped",
     });
 
+    await p.stdout.readable.pipeTo(file.writable, { preventClose: true });
+    await p.stderr.readable.pipeTo(file.writable);
     await p.status();
     p.close();
 
@@ -402,8 +401,6 @@ Deno.test(
 
 Deno.test(
   {
-    // Ignoring because uses `file.rid`
-    ignore: DENO_FUTURE,
     permissions: { run: true, write: true, read: true },
   },
   async function runRedirectStdin() {
@@ -425,9 +422,10 @@ Deno.test(
         }
         `,
       ],
-      stdin: file.rid,
+      stdin: "piped",
     });
 
+    await file.readable.pipeTo(p.stdin.writable);
     const status = await p.status();
     assertEquals(status.code, 0);
     p.close();
