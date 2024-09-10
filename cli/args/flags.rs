@@ -571,6 +571,7 @@ fn parse_packages_allowed_scripts(s: &str) -> Result<String, AnyError> {
   Clone, Default, Debug, Eq, PartialEq, serde::Serialize, serde::Deserialize,
 )]
 pub struct UnstableConfig {
+  // TODO(bartlomieju): remove in Deno 2.5
   pub legacy_flag_enabled: bool, // --unstable
   pub bare_node_builtins: bool,  // --unstable-bare-node-builts
   pub sloppy_imports: bool,
@@ -5477,6 +5478,7 @@ fn unstable_args_parse(
   matches: &mut ArgMatches,
   cfg: UnstableArgsConfig,
 ) {
+  // TODO(bartlomieju): remove in Deno 2.5
   if matches.get_flag("unstable") {
     flags.unstable_config.legacy_flag_enabled = true;
   }
@@ -8766,7 +8768,7 @@ mod tests {
   #[test]
   fn test_with_flags() {
     #[rustfmt::skip]
-    let r = flags_from_vec(svec!["deno", "test", "--unstable", "--no-npm", "--no-remote", "--trace-leaks", "--no-run", "--filter", "- foo", "--coverage=cov", "--clean", "--location", "https:foo", "--allow-net", "--permit-no-files", "dir1/", "dir2/", "--", "arg1", "arg2"]);
+    let r = flags_from_vec(svec!["deno", "test", "--no-npm", "--no-remote", "--trace-leaks", "--no-run", "--filter", "- foo", "--coverage=cov", "--clean", "--location", "https:foo", "--allow-net", "--permit-no-files", "dir1/", "dir2/", "--", "arg1", "arg2"]);
     assert_eq!(
       r.unwrap(),
       Flags {
@@ -8790,10 +8792,6 @@ mod tests {
           junit_path: None,
           hide_stacktraces: false,
         }),
-        unstable_config: UnstableConfig {
-          legacy_flag_enabled: true,
-          ..Default::default()
-        },
         no_npm: true,
         no_remote: true,
         location: Some(Url::parse("https://foo/").unwrap()),
@@ -10201,7 +10199,6 @@ mod tests {
       "deno",
       "bench",
       "--json",
-      "--unstable",
       "--no-npm",
       "--no-remote",
       "--no-run",
@@ -10229,10 +10226,6 @@ mod tests {
           },
           watch: Default::default(),
         }),
-        unstable_config: UnstableConfig {
-          legacy_flag_enabled: true,
-          ..Default::default()
-        },
         no_npm: true,
         no_remote: true,
         type_check_mode: TypeCheckMode::Local,
@@ -10803,10 +10796,10 @@ mod tests {
           conn_file: None,
         }),
         unstable_config: UnstableConfig {
-          legacy_flag_enabled: false,
           bare_node_builtins: true,
           sloppy_imports: false,
           features: svec!["ffi", "worker-options"],
+          ..Default::default()
         },
         ..Flags::default()
       }
