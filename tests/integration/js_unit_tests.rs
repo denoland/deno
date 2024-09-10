@@ -84,7 +84,6 @@ util::unit_test_factory!(
     structured_clone_test,
     symbol_test,
     symlink_test,
-    sync_test,
     test_util,
     testing_test,
     text_encoding_test,
