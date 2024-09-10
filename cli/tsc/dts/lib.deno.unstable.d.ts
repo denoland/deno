@@ -496,8 +496,7 @@ declare namespace Deno {
     | string
     | number
     | bigint
-    | boolean
-    | symbol;
+    | boolean;
 
   /** **UNSTABLE**: New API, yet to be vetted.
    *
