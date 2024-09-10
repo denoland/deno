@@ -35,15 +35,6 @@ declare namespace Deno {
     /** Return the address of the `Listener`. */
     readonly addr: A;
 
-    /**
-     * Return the rid of the `Listener`.
-     *
-     * @deprecated This will be removed in Deno 2.0. See the
-     * {@link https://docs.deno.com/runtime/manual/advanced/migrate_deprecations | Deno 1.x to 2.x Migration Guide}
-     * for migration instructions.
-     */
-    readonly rid: number;
-
     [Symbol.asyncIterator](): AsyncIterableIterator<T>;
 
     /**

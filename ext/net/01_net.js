@@ -237,13 +237,6 @@ class Listener {
   #promise = null;
 
   constructor(rid, addr) {
-    if (internals.future) {
-      ObjectDefineProperty(this, "rid", {
-        __proto__: null,
-        enumerable: false,
-        value: undefined,
-      });
-    }
     ObjectDefineProperty(this, internalRidSymbol, {
       __proto__: null,
       enumerable: false,
@@ -251,15 +244,6 @@ class Listener {
     });
     this.#rid = rid;
     this.#addr = addr;
-  }
-
-  get rid() {
-    internals.warnOnDeprecatedApi(
-      "Deno.Listener.rid",
-      new Error().stack,
-      "Use `Deno.Listener` instance methods instead.",
-    );
-    return this.#rid;
   }
 
   get addr() {
