@@ -1,7 +1,7 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
 import { core, primordials } from "ext:core/mod.js";
-const { BadResource, Interrupted, PermissionDenied } = core;
+const { BadResource, Interrupted, NotCapable } = core;
 const { Error } = primordials;
 
 class NotFound extends Error {
@@ -116,6 +116,13 @@ class Busy extends Error {
   }
 }
 
+class PermissionDenied extends Error {
+  constructor(msg) {
+    super(msg);
+    this.name = "PermissionDenied";
+  }
+}
+
 class NotSupported extends Error {
   constructor(msg) {
     super(msg);
@@ -176,6 +183,7 @@ const errors = {
   IsADirectory,
   NetworkUnreachable,
   NotADirectory,
+  NotCapable,
 };
 
 export { errors };

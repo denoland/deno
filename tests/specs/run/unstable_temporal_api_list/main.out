@@ -1,0 +1,148 @@
+Check [WILDCARD]
+Temporal
+[
+  "Duration",
+  "Instant",
+  "Now",
+  "PlainDate",
+  "PlainDateTime",
+  "PlainMonthDay",
+  "PlainTime",
+  "PlainYearMonth",
+  "ZonedDateTime"
+]
+Temporal.Now
+[
+  "instant",
+  "plainDateISO",
+  "plainDateTimeISO",
+  "plainTimeISO",
+  "timeZoneId",
+  "zonedDateTimeISO"
+]
+Temporal.Instant.prototype
+[
+  "add",
+  "constructor",
+  "epochMilliseconds",
+  "epochNanoseconds",
+  "equals",
+  "round",
+  "since",
+  "subtract",
+  "toJSON",
+  "toLocaleString",
+  "toString",
+  "toZonedDateTimeISO",
+  "until",
+  "valueOf"
+]
+Temporal.ZonedDateTime.prototype
+[
+  "add",               "calendarId",        "constructor",
+  "day",               "dayOfWeek",         "dayOfYear",
+  "daysInMonth",       "daysInWeek",        "daysInYear",
+  "epochMilliseconds", "epochNanoseconds",  "equals",
+  "era",               "eraYear",           "hour",
+  "hoursInDay",        "inLeapYear",        "microsecond",
+  "millisecond",       "minute",            "month",
+  "monthCode",         "monthsInYear",      "nanosecond",
+  "offset",            "offsetNanoseconds", "round",
+  "second",            "since",             "startOfDay",
+  "subtract",          "timeZoneId",        "toInstant",
+  "toJSON",            "toLocaleString",    "toPlainDate",
+  "toPlainDateTime",   "toPlainTime",       "toString",
+  "until",             "valueOf",           "weekOfYear",
+  "with",              "withCalendar",      "withPlainTime",
+  "withTimeZone",      "year"
+]
+Temporal.PlainDate.prototype
+[
+  "add",              "calendarId",
+  "constructor",      "day",
+  "dayOfWeek",        "dayOfYear",
+  "daysInMonth",      "daysInWeek",
+  "daysInYear",       "equals",
+  "era",              "eraYear",
+  "inLeapYear",       "month",
+  "monthCode",        "monthsInYear",
+  "since",            "subtract",
+  "toJSON",           "toLocaleString",
+  "toPlainDateTime",  "toPlainMonthDay",
+  "toPlainYearMonth", "toString",
+  "toZonedDateTime",  "until",
+  "valueOf",          "weekOfYear",
+  "with",             "withCalendar",
+  "year"
+]
+Temporal.PlainTime.prototype
+[
+  "add",         "constructor",
+  "equals",      "hour",
+  "microsecond", "millisecond",
+  "minute",      "nanosecond",
+  "round",       "second",
+  "since",       "subtract",
+  "toJSON",      "toLocaleString",
+  "toString",    "until",
+  "valueOf",     "with"
+]
+Temporal.PlainDateTime.prototype
+[
+  "add",             "calendarId",   "constructor",
+  "day",             "dayOfWeek",    "dayOfYear",
+  "daysInMonth",     "daysInWeek",   "daysInYear",
+  "equals",          "era",          "eraYear",
+  "hour",            "inLeapYear",   "microsecond",
+  "millisecond",     "minute",       "month",
+  "monthCode",       "monthsInYear", "nanosecond",
+  "round",           "second",       "since",
+  "subtract",        "toJSON",       "toLocaleString",
+  "toPlainDate",     "toPlainTime",  "toString",
+  "toZonedDateTime", "until",        "valueOf",
+  "weekOfYear",      "with",         "withCalendar",
+  "withPlainTime",   "year"
+]
+Temporal.PlainYearMonth.prototype
+[
+  "add",         "calendarId",
+  "constructor", "daysInMonth",
+  "daysInYear",  "equals",
+  "era",         "eraYear",
+  "inLeapYear",  "month",
+  "monthCode",   "monthsInYear",
+  "since",       "subtract",
+  "toJSON",      "toLocaleString",
+  "toPlainDate", "toString",
+  "until",       "valueOf",
+  "with",        "year"
+]
+Temporal.PlainMonthDay.prototype
+[
+  "calendarId",
+  "constructor",
+  "day",
+  "equals",
+  "monthCode",
+  "toJSON",
+  "toLocaleString",
+  "toPlainDate",
+  "toString",
+  "valueOf",
+  "with"
+]
+Temporal.Duration.prototype
+[
+  "abs",          "add",
+  "blank",        "constructor",
+  "days",         "hours",
+  "microseconds", "milliseconds",
+  "minutes",      "months",
+  "nanoseconds",  "negated",
+  "round",        "seconds",
+  "sign",         "subtract",
+  "toJSON",       "toLocaleString",
+  "toString",     "total",
+  "valueOf",      "weeks",
+  "with",         "years"
+]

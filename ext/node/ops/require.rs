@@ -6,6 +6,7 @@ use deno_core::error::AnyError;
 use deno_core::normalize_path;
 use deno_core::op2;
 use deno_core::url::Url;
+use deno_core::v8;
 use deno_core::JsRuntimeInspector;
 use deno_core::ModuleSpecifier;
 use deno_core::OpState;
@@ -613,4 +614,30 @@ fn url_to_file_path(url: &Url) -> Result<PathBuf, AnyError> {
       deno_core::anyhow::bail!("failed to convert '{}' to file path", url)
     }
   }
+}
+
+#[op2(fast)]
+pub fn op_require_can_parse_as_esm(
+  scope: &mut v8::HandleScope,
+  #[string] source: &str,
+) -> bool {
+  let scope = &mut v8::TryCatch::new(scope);
+  let Some(source) = v8::String::new(scope, source) else {
+    return false;
+  };
+  let origin = v8::ScriptOrigin::new(
+    scope,
+    source.into(),
+    0,
+    0,
+    false,
+    0,
+    None,
+    true,
+    false,
+    true,
+    None,
+  );
+  let mut source = v8::script_compiler::Source::new(source, Some(&origin));
+  v8::script_compiler::compile_module(scope, &mut source).is_some()
 }
