@@ -10907,7 +10907,7 @@ fn lsp_configuration_did_change() {
         },
       },
     },
-    "unstable": false,
+    "unstable": [],
   } }));
 
   let list = client.get_completion_list(
@@ -12560,7 +12560,7 @@ fn lsp_node_modules_dir() {
         "paths": true,
         "imports": {},
       },
-      "unstable": false,
+      "unstable": [],
     } }));
   };
   refresh_config(&mut client);
@@ -12678,7 +12678,7 @@ fn lsp_vendor_dir() {
       "paths": true,
       "imports": {},
     },
-    "unstable": false,
+    "unstable": [],
   } }));
 
   let diagnostics = client.read_diagnostics();
