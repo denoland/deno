@@ -929,7 +929,7 @@ function runFlockTestProcess(opts: { exclusive: boolean; sync: boolean }) {
 `;
 
   const process = new Deno.Command(Deno.execPath(), {
-    args: ["eval", "--unstable", scriptText],
+    args: ["eval", scriptText],
     stdin: "piped",
     stdout: "piped",
     stderr: "null",
