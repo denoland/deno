@@ -74,7 +74,7 @@ Deno.test(
 Deno.test({ permissions: { read: false } }, function statSyncPerm() {
   assertThrows(() => {
     Deno.statSync("README.md");
-  }, Deno.errors.PermissionDenied);
+  }, Deno.errors.NotCapable);
 });
 
 Deno.test({ permissions: { read: true } }, function statSyncNotFound() {
@@ -118,7 +118,7 @@ Deno.test({ permissions: { read: true } }, function lstatSyncSuccess() {
 Deno.test({ permissions: { read: false } }, function lstatSyncPerm() {
   assertThrows(() => {
     Deno.lstatSync("assets/hello.txt");
-  }, Deno.errors.PermissionDenied);
+  }, Deno.errors.NotCapable);
 });
 
 Deno.test({ permissions: { read: true } }, function lstatSyncNotFound() {
@@ -200,7 +200,7 @@ Deno.test(
 Deno.test({ permissions: { read: false } }, async function statPerm() {
   await assertRejects(async () => {
     await Deno.stat("README.md");
-  }, Deno.errors.PermissionDenied);
+  }, Deno.errors.NotCapable);
 });
 
 Deno.test({ permissions: { read: true } }, async function statNotFound() {
@@ -244,7 +244,7 @@ Deno.test({ permissions: { read: true } }, async function lstatSuccess() {
 Deno.test({ permissions: { read: false } }, async function lstatPerm() {
   await assertRejects(async () => {
     await Deno.lstat("README.md");
-  }, Deno.errors.PermissionDenied);
+  }, Deno.errors.NotCapable);
 });
 
 Deno.test({ permissions: { read: true } }, async function lstatNotFound() {

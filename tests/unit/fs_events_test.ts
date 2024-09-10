@@ -7,7 +7,7 @@ import { assert, assertEquals, assertThrows, delay } from "./test_util.ts";
 Deno.test({ permissions: { read: false } }, function watchFsPermissions() {
   assertThrows(() => {
     Deno.watchFs(".");
-  }, Deno.errors.PermissionDenied);
+  }, Deno.errors.NotCapable);
 });
 
 Deno.test({ permissions: { read: true } }, function watchFsInvalidPath() {
