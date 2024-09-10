@@ -294,6 +294,7 @@ core.registerErrorClass("NotConnected", errors.NotConnected);
 core.registerErrorClass("AddrInUse", errors.AddrInUse);
 core.registerErrorClass("AddrNotAvailable", errors.AddrNotAvailable);
 core.registerErrorClass("BrokenPipe", errors.BrokenPipe);
+core.registerErrorClass("PermissionDenied", errors.PermissionDenied);
 core.registerErrorClass("AlreadyExists", errors.AlreadyExists);
 core.registerErrorClass("InvalidData", errors.InvalidData);
 core.registerErrorClass("TimedOut", errors.TimedOut);
@@ -782,7 +783,6 @@ function bootstrapMainRuntime(runtimeOptions, warmup = false) {
     }
     if (internals.future) {
       delete globalThis.window;
-      delete Deno.FsFile.prototype.rid;
     }
   } else {
     // Warmup
@@ -928,10 +928,6 @@ function bootstrapWorkerRuntime(
         maybeWorkerMetadata: workerMetadata,
         nodeDebug,
       });
-    }
-
-    if (internals.future) {
-      delete Deno.FsFile.prototype.rid;
     }
   } else {
     // Warmup

@@ -1,5 +1,4 @@
 window is undefined
-Deno.FsFile.prototype.rid is undefined
 Deno.FsFile constructor is illegal
 Deno.ConnectTlsOptions.(certFile|keyFile) do nothing
 Deno.ConnectTlsOptions.(certChain|privateKey) do nothing

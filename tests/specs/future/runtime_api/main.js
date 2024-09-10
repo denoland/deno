@@ -1,8 +1,4 @@
 console.log("window is", globalThis.window);
-console.log(
-  "Deno.FsFile.prototype.rid is",
-  Deno.openSync(import.meta.filename).rid,
-);
 
 try {
   new Deno.FsFile(0);

@@ -4,9 +4,11 @@
 
 import { core, internals, primordials } from "ext:core/mod.js";
 import {
+  op_import_sync,
   op_napi_open,
   op_require_as_file_path,
   op_require_break_on_next_statement,
+  op_require_can_parse_as_esm,
   op_require_init_paths,
   op_require_is_deno_dir_package,
   op_require_is_request_relative,
@@ -900,16 +902,6 @@ Module.prototype.load = function (filename) {
     pathDirname(this.filename),
   );
   const extension = findLongestRegisteredExtension(filename);
-  // allow .mjs to be overridden
-  if (
-    StringPrototypeEndsWith(filename, ".mjs") && !Module._extensions[".mjs"]
-  ) {
-    throw createRequireEsmError(
-      filename,
-      moduleParentCache.get(this)?.filename,
-    );
-  }
-
   Module._extensions[extension](this, this.filename);
   this.loaded = true;
 
@@ -987,27 +979,24 @@ function wrapSafe(
     if (process.mainModule === cjsModuleInstance) {
       enrichCJSError(err.thrown);
     }
-    if (isEsmSyntaxError(err.thrown)) {
-      throw createRequireEsmError(
-        filename,
-        moduleParentCache.get(cjsModuleInstance)?.filename,
-      );
-    } else {
-      throw err.thrown;
-    }
+    throw err.thrown;
   }
   return f;
 }
 
 Module.prototype._compile = function (content, filename, format) {
-  const compiledWrapper = wrapSafe(filename, content, this, format);
-
   if (format === "module") {
-    // TODO(https://github.com/denoland/deno/issues/24822): implement require esm
-    throw createRequireEsmError(
-      filename,
-      moduleParentCache.get(module)?.filename,
-    );
+    return loadESMFromCJS(this, filename, content);
+  }
+
+  let compiledWrapper;
+  try {
+    compiledWrapper = wrapSafe(filename, content, this, format);
+  } catch (err) {
+    if (err instanceof SyntaxError && op_require_can_parse_as_esm(content)) {
+      return loadESMFromCJS(this, filename, content);
+    }
+    throw err;
   }
 
   const dirname = pathDirname(filename);
@@ -1065,12 +1054,7 @@ Module._extensions[".js"] = function (module, filename) {
   if (StringPrototypeEndsWith(filename, ".js")) {
     const pkg = op_require_read_closest_package_json(filename);
     if (pkg?.typ === "module") {
-      // TODO(https://github.com/denoland/deno/issues/24822): implement require esm
       format = "module";
-      throw createRequireEsmError(
-        filename,
-        moduleParentCache.get(module)?.filename,
-      );
     } else if (pkg?.type === "commonjs") {
       format = "commonjs";
     }
@@ -1081,19 +1065,18 @@ Module._extensions[".js"] = function (module, filename) {
   module._compile(content, filename, format);
 };
 
-function createRequireEsmError(filename, parent) {
-  let message = `require() of ES Module ${filename}`;
+function loadESMFromCJS(module, filename, code) {
+  const namespace = op_import_sync(
+    url.pathToFileURL(filename).toString(),
+    code,
+  );
 
-  if (parent) {
-    message += ` from ${parent}`;
-  }
-
-  message +=
-    ` not supported. Instead change the require to a dynamic import() which is available in all CommonJS modules.`;
-  const err = new Error(message);
-  err.code = "ERR_REQUIRE_ESM";
-  return err;
+  module.exports = namespace;
 }
+
+Module._extensions[".mjs"] = function (module, filename) {
+  loadESMFromCJS(module, filename);
+};
 
 function stripBOM(content) {
   if (StringPrototypeCharCodeAt(content, 0) === 0xfeff) {

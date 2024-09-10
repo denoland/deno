@@ -22,6 +22,7 @@ Deno.test("Errors work", () => {
   assert(new Deno.errors.Http("msg") instanceof Error);
   assert(new Deno.errors.Busy("msg") instanceof Error);
   assert(new Deno.errors.NotSupported("msg") instanceof Error);
+  assert(new Deno.errors.NotCapable("msg") instanceof Error);
 });
 
 Deno.test("Errors have some tamper resistance", () => {
