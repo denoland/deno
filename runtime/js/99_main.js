@@ -86,7 +86,7 @@ import {
 import { SymbolDispose, SymbolMetadata } from "ext:deno_web/00_infra.js";
 // deno-lint-ignore prefer-primordials
 if (Symbol.metadata) {
-  throw "V8 supports Symbol.metadata now, no need to shim it!";
+  throw "V8 supports Symbol.metadata now, no need to shim it";
 }
 ObjectDefineProperties(Symbol, {
   dispose: {
@@ -228,7 +228,7 @@ let loadedMainWorkerScript = false;
 
 function importScripts(...urls) {
   if (op_worker_get_type() === "module") {
-    throw new TypeError("Can't import scripts in a module worker.");
+    throw new TypeError("Cannot import scripts in a module worker");
   }
 
   const baseUrl = location.getLocationHref();
@@ -237,7 +237,7 @@ function importScripts(...urls) {
       return new url.URL(scriptUrl, baseUrl ?? undefined).href;
     } catch {
       throw new DOMException(
-        "Failed to parse URL.",
+        `Failed to parse URL: ${scriptUrl}`,
         "SyntaxError",
       );
     }
@@ -719,7 +719,7 @@ function bootstrapMainRuntime(runtimeOptions, warmup = false) {
           return jupyterNs;
         }
         throw new Error(
-          "Deno.jupyter is only available in `deno jupyter` subcommand.",
+          "Deno.jupyter is only available in `deno jupyter` subcommand",
         );
       },
       set(val) {
@@ -747,7 +747,7 @@ function bootstrapMainRuntime(runtimeOptions, warmup = false) {
       // https://github.com/tc39/proposal-temporal/pull/2895
       // https://github.com/tc39/proposal-temporal/pull/2914
       if (typeof Temporal.Instant.fromEpochSeconds === "undefined") {
-        throw "V8 removes obsoleted Temporal API now, no need to delete them!";
+        throw "V8 removes obsoleted Temporal API now, no need to delete them";
       }
       delete Temporal.Instant.fromEpochSeconds;
       delete Temporal.Instant.fromEpochMicroseconds;
@@ -890,7 +890,7 @@ function bootstrapWorkerRuntime(
       // https://github.com/tc39/proposal-temporal/pull/2895
       // https://github.com/tc39/proposal-temporal/pull/2914
       if (typeof Temporal.Instant.fromEpochSeconds === "undefined") {
-        throw "V8 removes obsoleted Temporal API now, no need to delete them!";
+        throw "V8 removes obsoleted Temporal API now, no need to delete them";
       }
       delete Temporal.Instant.fromEpochSeconds;
       delete Temporal.Instant.fromEpochMicroseconds;

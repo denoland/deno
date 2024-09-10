@@ -73,8 +73,16 @@ Deno.test(
     });
     const child = command.spawn();
 
-    assertThrows(() => child.stdout, TypeError, "stdout is not piped");
-    assertThrows(() => child.stderr, TypeError, "stderr is not piped");
+    assertThrows(
+      () => child.stdout,
+      TypeError,
+      "Cannot get 'stdout': 'stdout' is not piped",
+    );
+    assertThrows(
+      () => child.stderr,
+      TypeError,
+      "Cannot get 'stderr': 'stderr' is not piped",
+    );
 
     const msg = new TextEncoder().encode("hello");
     const writer = child.stdin.getWriter();
@@ -99,9 +107,21 @@ Deno.test(
     });
     const child = command.spawn();
 
-    assertThrows(() => child.stdin, TypeError, "stdin is not piped");
-    assertThrows(() => child.stdout, TypeError, "stdout is not piped");
-    assertThrows(() => child.stderr, TypeError, "stderr is not piped");
+    assertThrows(
+      () => child.stdin,
+      TypeError,
+      "Cannot get 'stdin': 'stdin' is not piped",
+    );
+    assertThrows(
+      () => child.stdout,
+      TypeError,
+      "Cannot get 'stdout': 'stdout' is not piped",
+    );
+    assertThrows(
+      () => child.stderr,
+      TypeError,
+      "Cannot get 'stderr': 'stderr' is not piped",
+    );
 
     await child.status;
   },
@@ -120,8 +140,16 @@ Deno.test(
     });
     const child = command.spawn();
 
-    assertThrows(() => child.stdin, TypeError, "stdin is not piped");
-    assertThrows(() => child.stderr, TypeError, "stderr is not piped");
+    assertThrows(
+      () => child.stdin,
+      TypeError,
+      "Cannot get 'stdin': 'stdin' is not piped",
+    );
+    assertThrows(
+      () => child.stderr,
+      TypeError,
+      "Cannot get 'stderr': 'stderr' is not piped",
+    );
 
     const readable = child.stdout.pipeThrough(new TextDecoderStream());
     const reader = readable.getReader();
@@ -154,8 +182,16 @@ Deno.test(
     });
     const child = command.spawn();
 
-    assertThrows(() => child.stdin, TypeError, "stdin is not piped");
-    assertThrows(() => child.stdout, TypeError, "stdout is not piped");
+    assertThrows(
+      () => child.stdin,
+      TypeError,
+      "Cannot get 'stdin': 'stdin' is not piped",
+    );
+    assertThrows(
+      () => child.stdout,
+      TypeError,
+      "Cannot get 'stdout': 'stdout' is not piped",
+    );
 
     const readable = child.stderr.pipeThrough(new TextDecoderStream());
     const reader = readable.getReader();
@@ -955,7 +991,7 @@ Deno.test(
     assertThrows(
       () => child.kill(),
       TypeError,
-      "Child process has already terminated.",
+      "Child process has already terminated",
     );
   },
 );

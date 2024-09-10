@@ -101,7 +101,7 @@ class Process {
 
   async output() {
     if (!this.stdout) {
-      throw new TypeError("stdout was not piped");
+      throw new TypeError("Cannot collect output: 'stdout' is not piped");
     }
     try {
       return await readAll(this.stdout);
@@ -112,7 +112,7 @@ class Process {
 
   async stderrOutput() {
     if (!this.stderr) {
-      throw new TypeError("stderr was not piped");
+      throw new TypeError("Cannot collect output: 'stderr' is not piped");
     }
     try {
       return await readAll(this.stderr);
@@ -235,7 +235,7 @@ class ChildProcess {
   #stdin = null;
   get stdin() {
     if (this.#stdin == null) {
-      throw new TypeError("stdin is not piped");
+      throw new TypeError("Cannot get 'stdin': 'stdin' is not piped");
     }
     return this.#stdin;
   }
@@ -243,7 +243,7 @@ class ChildProcess {
   #stdout = null;
   get stdout() {
     if (this.#stdout == null) {
-      throw new TypeError("stdout is not piped");
+      throw new TypeError("Cannot get 'stdout': 'stdout' is not piped");
     }
     return this.#stdout;
   }
@@ -251,7 +251,7 @@ class ChildProcess {
   #stderr = null;
   get stderr() {
     if (this.#stderr == null) {
-      throw new TypeError("stderr is not piped");
+      throw new TypeError("Cannot get 'stderr': 'stderr' is not piped");
     }
     return this.#stderr;
   }
@@ -267,7 +267,7 @@ class ChildProcess {
     extraPipeRids,
   } = null) {
     if (key !== illegalConstructorKey) {
-      throw new TypeError("Illegal constructor.");
+      throw new TypeError("Illegal constructor");
     }
 
     this.#rid = rid;
@@ -307,12 +307,12 @@ class ChildProcess {
   async output() {
     if (this.#stdout?.locked) {
       throw new TypeError(
-        "Can't collect output because stdout is locked",
+        "Cannot collect output: 'stdout' is locked",
       );
     }
     if (this.#stderr?.locked) {
       throw new TypeError(
-        "Can't collect output because stderr is locked",
+        "Cannot collect output: 'stderr' is locked",
       );
     }
 
@@ -328,13 +328,13 @@ class ChildProcess {
       signal: status.signal,
       get stdout() {
         if (stdout == null) {
-          throw new TypeError("stdout is not piped");
+          throw new TypeError("Cannot get 'stdout': 'stdout' is not piped");
         }
         return stdout;
       },
       get stderr() {
         if (stderr == null) {
-          throw new TypeError("stderr is not piped");
+          throw new TypeError("Cannot get 'stderr': 'stderr' is not piped");
         }
         return stderr;
       },
@@ -343,7 +343,7 @@ class ChildProcess {
 
   kill(signo = "SIGTERM") {
     if (this.#waitComplete) {
-      throw new TypeError("Child process has already terminated.");
+      throw new TypeError("Child process has already terminated");
     }
     op_spawn_kill(this.#rid, signo);
   }
@@ -421,13 +421,13 @@ function spawnSync(command, {
     signal: result.status.signal,
     get stdout() {
       if (result.stdout == null) {
-        throw new TypeError("stdout is not piped");
+        throw new TypeError("Cannot get 'stdout': 'stdout' is not piped");
       }
       return result.stdout;
     },
     get stderr() {
       if (result.stderr == null) {
-        throw new TypeError("stderr is not piped");
+        throw new TypeError("Cannot get 'stderr': 'stderr' is not piped");
       }
       return result.stderr;
     },
