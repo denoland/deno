@@ -687,12 +687,6 @@ pub async fn run(
   let feature_checker = Arc::new({
     let mut checker = FeatureChecker::default();
     checker.set_exit_cb(Box::new(crate::unstable_exit_cb));
-    // TODO(bartlomieju): enable, once we deprecate `--unstable` in favor
-    // of granular --unstable-* flags.
-    // feature_checker.set_warn_cb(Box::new(crate::unstable_warn_cb));
-    if metadata.unstable_config.legacy_flag_enabled {
-      checker.enable_legacy_unstable();
-    }
     for feature in metadata.unstable_config.features {
       // `metadata` is valid for the whole lifetime of the program, so we
       // can leak the string here.
@@ -741,7 +735,6 @@ pub async fn run(
       seed: metadata.seed,
       unsafely_ignore_certificate_errors: metadata
         .unsafely_ignore_certificate_errors,
-      unstable: metadata.unstable_config.legacy_flag_enabled,
       create_hmr_runner: None,
       create_coverage_collector: None,
       node_ipc: None,

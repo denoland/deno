@@ -1547,10 +1547,6 @@ impl CliOptions {
     &self.flags.unsafely_ignore_certificate_errors
   }
 
-  pub fn legacy_unstable_flag(&self) -> bool {
-    self.flags.unstable_config.legacy_flag_enabled
-  }
-
   pub fn unstable_bare_node_builtins(&self) -> bool {
     self.flags.unstable_config.bare_node_builtins
       || self.workspace().has_unstable("bare-node-builtins")

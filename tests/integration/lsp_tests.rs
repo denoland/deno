@@ -2143,7 +2143,7 @@ fn lsp_hover_unstable_always_enabled() {
       "version": 1,
       // IMPORTANT: If you change this API due to stabilization, also change it
       // in the enabled test below.
-      "text": "type _ = Deno.ForeignLibraryInterface;\n"
+      "text": "type _ = Deno.DatagramConn;\n"
     }
   }));
   let res = client.write_request(
@@ -2161,14 +2161,14 @@ fn lsp_hover_unstable_always_enabled() {
       "contents":[
         {
           "language":"typescript",
-          "value":"interface Deno.ForeignLibraryInterface"
+          "value":"interface Deno.DatagramConn"
         },
-        "**UNSTABLE**: New API, yet to be vetted.\n\nA foreign library interface descriptor.",
-        "\n\n*@category* - FFI  \n\n*@experimental*",
+        "**UNSTABLE**: New API, yet to be vetted.\n\nA generic transport listener for message-oriented protocols.",
+        "\n\n*@category* - Network  \n\n*@experimental*",
       ],
       "range":{
         "start":{ "line":0, "character":14 },
-        "end":{ "line":0, "character":37 }
+        "end":{ "line":0, "character":26 }
       }
     })
   );
@@ -2188,7 +2188,7 @@ fn lsp_hover_unstable_enabled() {
       "uri": "file:///a/file.ts",
       "languageId": "typescript",
       "version": 1,
-      "text": "type _ = Deno.ForeignLibraryInterface;\n"
+      "text": "type _ = Deno.DatagramConn;\n"
     }
   }));
   let res = client.write_request(
@@ -2206,14 +2206,14 @@ fn lsp_hover_unstable_enabled() {
       "contents":[
         {
           "language":"typescript",
-          "value":"interface Deno.ForeignLibraryInterface"
+          "value":"interface Deno.DatagramConn"
         },
-        "**UNSTABLE**: New API, yet to be vetted.\n\nA foreign library interface descriptor.",
-        "\n\n*@category* - FFI  \n\n*@experimental*",
+        "**UNSTABLE**: New API, yet to be vetted.\n\nA generic transport listener for message-oriented protocols.",
+        "\n\n*@category* - Network  \n\n*@experimental*",
       ],
       "range":{
         "start":{ "line":0, "character":14 },
-        "end":{ "line":0, "character":37 }
+        "end":{ "line":0, "character":26 }
       }
     })
   );
@@ -10269,9 +10269,7 @@ fn lsp_format_exclude_with_config() {
     "deno.fmt.jsonc",
     r#"{
     "fmt": {
-      "files": {
-        "exclude": ["ignored.ts"]
-      },
+      "exclude": ["ignored.ts"],
       "options": {
         "useTabs": true,
         "lineWidth": 40,
@@ -10322,9 +10320,7 @@ fn lsp_format_exclude_default_config() {
     "deno.fmt.jsonc",
     r#"{
     "fmt": {
-      "files": {
-        "exclude": ["ignored.ts"]
-      },
+      "exclude": ["ignored.ts"],
       "options": {
         "useTabs": true,
         "lineWidth": 40,
@@ -11707,9 +11703,7 @@ fn lsp_lint_exclude_with_config() {
     "deno.lint.jsonc",
     r#"{
       "lint": {
-        "files": {
-          "exclude": ["ignored.ts"]
-        },
+        "exclude": ["ignored.ts"],
         "rules": {
           "exclude": ["camelcase"],
           "include": ["ban-untagged-todo"],

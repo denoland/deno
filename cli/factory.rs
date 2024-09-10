@@ -727,10 +727,6 @@ impl CliFactory {
       let mut checker = FeatureChecker::default();
       checker.set_exit_cb(Box::new(crate::unstable_exit_cb));
       checker.set_warn_cb(Box::new(crate::unstable_warn_cb));
-      if cli_options.legacy_unstable_flag() {
-        checker.enable_legacy_unstable();
-        checker.warn_on_legacy_unstable();
-      }
       let unstable_features = cli_options.unstable_features();
       for granular_flag in crate::UNSTABLE_GRANULAR_FLAGS {
         if unstable_features.contains(&granular_flag.name.to_string()) {
@@ -881,7 +877,6 @@ impl CliFactory {
       unsafely_ignore_certificate_errors: cli_options
         .unsafely_ignore_certificate_errors()
         .clone(),
-      unstable: cli_options.legacy_unstable_flag(),
       create_hmr_runner,
       create_coverage_collector,
       node_ipc: cli_options.node_ipc_fd(),

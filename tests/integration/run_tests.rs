@@ -482,9 +482,8 @@ itest!(_088_dynamic_import_already_evaluating {
   output: "run/088_dynamic_import_already_evaluating.ts.out",
 });
 
-// TODO(bartlomieju): remove --unstable once Deno.Command is stabilized
 itest!(_089_run_allow_list {
-  args: "run --unstable --allow-run=curl run/089_run_allow_list.ts",
+  args: "run --allow-run=curl run/089_run_allow_list.ts",
   envs: vec![
     ("LD_LIBRARY_PATH".to_string(), "".to_string()),
     ("DYLD_FALLBACK_LIBRARY_PATH".to_string(), "".to_string())
@@ -2534,14 +2533,12 @@ mod permissions {
   use test_util::itest;
   use util::TestContext;
 
-  // TODO(bartlomieju): remove --unstable once Deno.Command is stabilized
   #[test]
   fn with_allow() {
     for permission in &util::PERMISSION_VARIANTS {
       let status = util::deno_cmd()
         .current_dir(util::testdata_path())
         .arg("run")
-        .arg("--unstable")
         .arg(format!("--allow-{permission}"))
         .arg("run/permission_test.ts")
         .arg(format!("{permission}Required"))
@@ -2553,13 +2550,12 @@ mod permissions {
     }
   }
 
-  // TODO(bartlomieju): remove --unstable once Deno.Command is stabilized
   #[test]
   fn without_allow() {
     for permission in &util::PERMISSION_VARIANTS {
       let (_, err) = util::run_and_collect_output(
         false,
-        &format!("run --unstable run/permission_test.ts {permission}Required"),
+        &format!("run run/permission_test.ts {permission}Required"),
         None,
         None,
         false,
@@ -3013,7 +3009,7 @@ mod permissions {
   fn _066_prompt() {
     TestContext::default()
       .new_command()
-      .args_vec(["run", "--quiet", "--unstable", "run/066_prompt.ts"])
+      .args_vec(["run", "--quiet", "run/066_prompt.ts"])
       .with_pty(|mut console| {
         console.expect("What is your name? Jane Doe");
         console.write_line_raw("");
@@ -3569,7 +3565,6 @@ fn deno_no_prompt_environment_variable() {
   let output = util::deno_cmd()
     .current_dir(util::testdata_path())
     .arg("run")
-    .arg("--unstable")
     .arg("run/no_prompt.ts")
     .env("DENO_NO_PROMPT", "1")
     .spawn()
@@ -4083,7 +4078,6 @@ async fn http2_request_url() {
   let mut child = util::deno_cmd()
     .current_dir(util::testdata_path())
     .arg("run")
-    .arg("--unstable")
     .arg("--quiet")
     .arg("--allow-net")
     .arg("--allow-read")
@@ -4332,7 +4326,7 @@ async fn websocketstream_ping() {
 
   let child = util::deno_cmd()
     .arg("test")
-    .arg("--unstable")
+    .arg("--unstable-net")
     .arg("--allow-net")
     .arg("--cert")
     .arg(root_ca)
@@ -4378,7 +4372,6 @@ async fn websocket_server_multi_field_connection_header() {
   let root_ca = util::testdata_path().join("tls/RootCA.pem");
   let mut child = util::deno_cmd()
     .arg("run")
-    .arg("--unstable")
     .arg("--allow-net")
     .arg("--cert")
     .arg(root_ca)
@@ -4432,7 +4425,6 @@ async fn websocket_server_idletimeout() {
   let root_ca = util::testdata_path().join("tls/RootCA.pem");
   let mut child = util::deno_cmd()
     .arg("run")
-    .arg("--unstable")
     .arg("--allow-net")
     .arg("--cert")
     .arg(root_ca)
@@ -4599,64 +4591,6 @@ fn permission_prompt_escapes_ansi_codes_and_control_chars() {
   }
 }
 
-itest!(node_builtin_modules_ts {
-  args: "run --quiet --allow-read run/node_builtin_modules/mod.ts hello there",
-  output: "run/node_builtin_modules/mod.ts.out",
-  envs: env_vars_for_npm_tests(),
-  exit_code: 0,
-});
-
-itest!(node_builtin_modules_js {
-  args: "run --quiet --allow-read run/node_builtin_modules/mod.js hello there",
-  output: "run/node_builtin_modules/mod.js.out",
-  envs: env_vars_for_npm_tests(),
-  exit_code: 0,
-});
-
-itest!(node_prefix_missing {
-  args: "run --quiet run/node_prefix_missing/main.ts",
-  output: "run/node_prefix_missing/main.ts.out",
-  envs: env_vars_for_npm_tests(),
-  exit_code: 1,
-});
-
-itest!(node_prefix_missing_unstable_bare_node_builtins_enbaled {
-  args: "run --unstable-bare-node-builtins run/node_prefix_missing/main.ts",
-  output: "run/node_prefix_missing/feature_enabled.out",
-  envs: env_vars_for_npm_tests(),
-  exit_code: 0,
-});
-
-itest!(
-  node_prefix_missing_unstable_bare_node_builtins_enbaled_by_env {
-    args: "run run/node_prefix_missing/main.ts",
-    output: "run/node_prefix_missing/feature_enabled.out",
-    envs: [
-      env_vars_for_npm_tests(),
-      vec![(
-        "DENO_UNSTABLE_BARE_NODE_BUILTINS".to_string(),
-        "1".to_string()
-      )]
-    ]
-    .concat(),
-    exit_code: 0,
-  }
-);
-
-itest!(node_prefix_missing_unstable_bare_node_builtins_enbaled_by_config {
-  args: "run --config=run/node_prefix_missing/config.json run/node_prefix_missing/main.ts",
-  output: "run/node_prefix_missing/feature_enabled.out",
-  envs: env_vars_for_npm_tests(),
-  exit_code: 0,
-});
-
-itest!(node_prefix_missing_unstable_bare_node_builtins_enbaled_with_import_map {
-  args: "run --unstable-bare-node-builtins --import-map run/node_prefix_missing/import_map.json run/node_prefix_missing/main.ts",
-  output: "run/node_prefix_missing/feature_enabled.out",
-  envs: env_vars_for_npm_tests(),
-  exit_code: 0,
-});
-
 itest!(dynamic_import_syntax_error {
   args: "run -A run/dynamic_import_syntax_error.js",
   output: "run/dynamic_import_syntax_error.js.out",
@@ -4803,13 +4737,6 @@ itest!(unstable_temporal_api_config_file {
   output: "run/unstable_temporal_api/main.out",
   http_server: false,
   exit_code: 0,
-});
-
-itest!(unstable_temporal_api_missing_flag {
-  args: "run --no-config run/unstable_temporal_api/missing_flag.js",
-  output: "run/unstable_temporal_api/missing_flag.out",
-  http_server: false,
-  exit_code: 1,
 });
 
 // TODO(bartlomieju): temporary disabled
@@ -5148,7 +5075,6 @@ async fn listen_tls_alpn() {
   let mut child = util::deno_cmd()
     .current_dir(util::testdata_path())
     .arg("run")
-    .arg("--unstable")
     .arg("--quiet")
     .arg("--allow-net")
     .arg("--allow-read")
@@ -5202,7 +5128,6 @@ async fn listen_tls_alpn_fail() {
   let mut child = util::deno_cmd()
     .current_dir(util::testdata_path())
     .arg("run")
-    .arg("--unstable")
     .arg("--quiet")
     .arg("--allow-net")
     .arg("--allow-read")
