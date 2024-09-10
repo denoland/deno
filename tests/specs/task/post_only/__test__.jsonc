@@ -1,0 +1,9 @@
+{
+  "args": "task test",
+  "cwd": "../../../testdata/task/package_json_post_only",
+  "output": "../../../testdata/task/package_json_post_only/bin.out",
+  "envs": {
+    "NO_COLOR": "1"
+  },
+  "exitCode": 1
+}

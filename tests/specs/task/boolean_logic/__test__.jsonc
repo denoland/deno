@@ -1,0 +1,7 @@
+{
+  "args": "task -q --config ../../../testdata/task/deno_json/deno.json boolean_logic",
+  "output": "../../../testdata/task/deno_json/task_boolean_logic.out",
+  "envs": {
+    "NO_COLOR": "1"
+  }
+}

@@ -1,0 +1,7 @@
+{
+  "args": "task -q --config ../../../testdata/task/deno_json/deno.json echo string \"quoted string\"",
+  "output": "../../../testdata/task/deno_json/task_additional_args_nested_strings.out",
+  "envs": {
+    "NO_COLOR": "1"
+  }
+}

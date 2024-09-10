@@ -1,0 +1,8 @@
+{
+  "args": "task -q --config ../../../testdata/task/deno_json/deno.json --cwd .. echo_init_cwd",
+  "output": "../../../testdata/task/deno_json/task_init_cwd.out",
+  "envs": {
+    "NO_COLOR": "1"
+  },
+  "exitCode": 0
+}

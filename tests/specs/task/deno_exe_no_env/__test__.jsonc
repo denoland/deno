@@ -1,0 +1,7 @@
+{
+  "args": "task -q --config ../../../testdata/task/deno_json/deno.json deno_echo",
+  "output": "../../../testdata/task/deno_json/task_deno_exe_no_env.out",
+  "envs": {
+    "NO_COLOR": "1"
+  }
+}

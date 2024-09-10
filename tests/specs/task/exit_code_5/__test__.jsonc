@@ -1,0 +1,8 @@
+{
+  "args": "task --config ../../../testdata/task/deno_json/deno.json exit_code_5",
+  "output": "../../../testdata/task/deno_json/task_exit_code_5.out",
+  "envs": {
+    "NO_COLOR": "1"
+  },
+  "exitCode": 5
+}

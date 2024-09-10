@@ -1,0 +1,9 @@
+{
+  "args": "task",
+  "cwd": "../../../testdata/task/package_json",
+  "output": "../../../testdata/task/package_json/no_args.out",
+  "envs": {
+    "NO_COLOR": "1"
+  },
+  "exitCode": 1
+}

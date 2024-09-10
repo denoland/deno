@@ -1,0 +1,8 @@
+{
+  "args": "task --config ../../../testdata/task/deno_json/deno.json non_existent",
+  "output": "../../../testdata/task/deno_json/task_non_existent.out",
+  "envs": {
+    "NO_COLOR": "1"
+  },
+  "exitCode": 1
+}
