@@ -334,6 +334,7 @@
       "test-fs-open-numeric-flags.js",
       "test-fs-open.js",
       "test-fs-opendir.js",
+      "test-fs-promises-writefile-with-fd.js",
       "test-fs-read-stream-autoClose.js",
       "test-fs-read-stream-concurrent-reads.js",
       "test-fs-read-stream-double-close.js",
