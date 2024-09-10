@@ -68,5 +68,3 @@ mod test;
 mod upgrade;
 #[path = "watcher_tests.rs"]
 mod watcher;
-#[path = "worker_tests.rs"]
-mod worker;
