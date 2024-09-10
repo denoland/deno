@@ -1,3 +1,4 @@
+#!/usr/bin/env -S deno run -A
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
 // This script is used to generate the @types/deno package on DefinitelyTyped.
