@@ -127,7 +127,7 @@ Deno.test(
     for (const options of openOptions) {
       await assertRejects(async () => {
         await Deno.open(filename, options);
-      }, Deno.errors.PermissionDenied);
+      }, Deno.errors.NotCapable);
     }
   },
 );
@@ -170,7 +170,7 @@ Deno.test(async function openOptions() {
 Deno.test({ permissions: { read: false } }, async function readPermFailure() {
   await assertRejects(async () => {
     await Deno.open("package.json", { read: true });
-  }, Deno.errors.PermissionDenied);
+  }, Deno.errors.NotCapable);
 });
 
 Deno.test(
@@ -229,7 +229,7 @@ Deno.test(
     const filename = "tests/hello.txt";
     await assertRejects(async () => {
       await Deno.open(filename, { read: true });
-    }, Deno.errors.PermissionDenied);
+    }, Deno.errors.NotCapable);
   },
 );
 
