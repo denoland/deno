@@ -108,7 +108,7 @@ async function testFetchProgrammaticProxy() {
       "--quiet",
       "--reload",
       "--allow-net=localhost:4545,localhost:4555",
-      "--unstable",
+      "--unstable-http",
       "programmatic_proxy_client.ts",
     ],
   }).output();

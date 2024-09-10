@@ -10314,9 +10314,7 @@ fn lsp_format_exclude_with_config() {
     "deno.fmt.jsonc",
     r#"{
     "fmt": {
-      "files": {
-        "exclude": ["ignored.ts"]
-      },
+      "exclude": ["ignored.ts"],
       "options": {
         "useTabs": true,
         "lineWidth": 40,
@@ -10367,9 +10365,7 @@ fn lsp_format_exclude_default_config() {
     "deno.fmt.jsonc",
     r#"{
     "fmt": {
-      "files": {
-        "exclude": ["ignored.ts"]
-      },
+      "exclude": ["ignored.ts"],
       "options": {
         "useTabs": true,
         "lineWidth": 40,
@@ -11752,9 +11748,7 @@ fn lsp_lint_exclude_with_config() {
     "deno.lint.jsonc",
     r#"{
       "lint": {
-        "files": {
-          "exclude": ["ignored.ts"]
-        },
+        "exclude": ["ignored.ts"],
         "rules": {
           "exclude": ["camelcase"],
           "include": ["ban-untagged-todo"],
