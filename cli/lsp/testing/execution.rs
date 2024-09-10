@@ -466,7 +466,7 @@ impl TestRun {
     );
     args.push(Cow::Borrowed("--trace-leaks"));
     for unstable_feature in self.workspace_settings.unstable.as_deref() {
-      let flag = format!("--{unstable_feature}");
+      let flag = format!("--unstable-{unstable_feature}");
       if !args.contains(&Cow::Borrowed(&flag)) {
         args.push(Cow::Owned(flag));
       }
