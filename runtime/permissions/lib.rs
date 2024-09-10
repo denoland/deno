@@ -4257,12 +4257,19 @@ mod tests {
   #[test]
   fn test_denies_run_name() {
     let cases = [
+      #[cfg(windows)]
       ("deno", "C:\\deno.exe", true),
+      #[cfg(windows)]
       ("deno", "C:\\sub\\deno.cmd", true),
+      #[cfg(windows)]
       ("deno", "C:\\sub\\DeNO.cmd", true),
+      #[cfg(windows)]
       ("DEno", "C:\\sub\\deno.cmd", true),
+      #[cfg(windows)]
       ("deno", "C:\\other\\sub\\deno.batch", true),
+      #[cfg(windows)]
       ("deno", "C:\\other\\sub\\deno", true),
+      #[cfg(windows)]
       ("denort", "C:\\other\\sub\\deno.exe", false),
       ("deno", "/home/test/deno", true),
       ("deno", "/home/test/denot", false),
