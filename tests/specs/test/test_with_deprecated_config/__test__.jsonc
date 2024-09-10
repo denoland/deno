@@ -1,5 +1,0 @@
-{
-  "args": "test --config ../../../testdata/test/collect/deno.deprecated.jsonc ../../../testdata/test/collect",
-  "exitCode": 0,
-  "output": "main.out"
-}
