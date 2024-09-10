@@ -3716,27 +3716,23 @@ mod tests {
   #[cfg(target_os = "windows")]
   #[test]
   fn test_specifier_to_file_path() {
-    use std::fs;
+    use std::env;
     use std::fs::File;
     use std::io::Write;
     use std::path::PathBuf;
 
-    let temp_file_path = PathBuf::from("/test.txt");
-    let temp_file_path_str = temp_file_path.to_str().unwrap();
-    if let Err(e) = File::create(&temp_file_path)
-      .and_then(|mut file| writeln!(file, "Temporary test content"))
-    {
-      panic!("{:?}", e);
-    }
+    let temp_dir = env::current_dir().expect("Failed to get current directory");
+    let temp_file_path = temp_dir.join("temp_test_file.js");
+    let mut file =
+      File::create(&temp_file_path).expect("Failed to create temporary file");
+    writeln!(file, "console.log('Temporary test file');")
+      .expect("Failed to write to temporary file");
+    let temp_file_path_str = temp_file_path
+      .to_str()
+      .expect("Failed to convert path to string");
+    let file_url = format!("file:///{}", temp_file_path_str.replace("\\", "/"));
 
-    run_success_test(
-      format!("file:///{}", temp_file_path_str).as_str(),
-      temp_file_path_str,
-    );
-
-    if let Err(e) = fs::remove_file(&temp_file_path) {
-      panic!("{:?}", e);
-    }
+    run_success_test(&file_url, temp_file_path_str);
 
     let failure_tests = vec!["file:/", "file://", "file:///", "file://asdf"];
 
