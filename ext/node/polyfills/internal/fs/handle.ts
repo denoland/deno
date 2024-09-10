@@ -145,9 +145,9 @@ export class FileHandle extends EventEmitter {
 
 function fsCall(fn, handle, ...args) {
   if (handle.fd === -1) {
-    const err = new Error('file closed');
+    const err = new Error("file closed");
     throw Object.assign(err, {
-      code: 'EBADF',
+      code: "EBADF",
       syscall: fn.name,
     });
   }
