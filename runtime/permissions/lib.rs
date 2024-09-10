@@ -3739,7 +3739,7 @@ mod tests {
     }
 
     run_success_test(
-      format!("file:/{}", temp_file_path_str).as_str(),
+      format!("file:///{}", temp_file_path_str).as_str(),
       temp_file_path_str,
     );
 
