@@ -3717,6 +3717,7 @@ mod tests {
   #[test]
   fn test_specifier_to_file_path() {
     use std::env;
+    use std::fs;
     use std::fs::File;
     use std::io::Write;
     use std::path::PathBuf;
@@ -3733,6 +3734,10 @@ mod tests {
     let file_url = format!("file:///{}", temp_file_path_str.replace("\\", "/"));
 
     run_success_test(&file_url, temp_file_path_str);
+
+    if let Err(e) = fs::remove_file(&temp_file_path) {
+      panic!("Failed to remove temporary file: {:?}", e);
+    }
 
     let failure_tests = vec!["file:/", "file://", "file:///", "file://asdf"];
 
