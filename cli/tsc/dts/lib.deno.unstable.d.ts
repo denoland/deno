@@ -4782,7 +4782,7 @@ declare var Float16Array: Float16ArrayConstructor;
  * @category Platform
  * @experimental
  */
-declare interface Float16 {
+declare interface Float16Array {
   [Symbol.iterator](): IterableIterator<number>;
   /**
    * Returns an array of key, value pairs for every entry in the array
@@ -4803,7 +4803,7 @@ declare interface Float16 {
  * @experimental
  */
 declare interface Float16Constructor {
-  new (elements: Iterable<number>): Float16;
+  new (elements: Iterable<number>): Float16Array;
 
   /**
    * Creates an array from an array-like or iterable object.
@@ -4815,7 +4815,7 @@ declare interface Float16Constructor {
     arrayLike: Iterable<number>,
     mapfn?: (v: number, k: number) => number,
     thisArg?: any,
-  ): Float16;
+  ): Float16Array;
 }
 
 /**
