@@ -51,7 +51,11 @@ for (const file of project.getSourceFiles()) {
         errors.push(getErrorPrefix(node) + "export keyword");
         continue;
       }
-    } else if (!node.hasDeclareKeyword()) {
+    } else if (
+      !node.hasDeclareKeyword() &&
+      node.getKind() !== ts.SyntaxKind.InterfaceDeclaration &&
+      node.getKind() !== ts.SyntaxKind.TypeAliasDeclaration
+    ) {
       errors.push(getErrorPrefix(node) + "declare keyword");
       continue;
     }

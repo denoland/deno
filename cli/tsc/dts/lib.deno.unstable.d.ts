@@ -8,8 +8,6 @@
 /// <reference lib="es2022.intl" />
 
 declare namespace Deno {
-  export {}; // stop default export type behavior
-
   /** **UNSTABLE**: New API, yet to be vetted.
    *
    * Retrieve the process umask.  If `mask` is provided, sets the process umask.
@@ -2160,7 +2158,11 @@ declare namespace Deno {
         buffers?: Uint8Array[];
       },
     ): Promise<void>;
+
+    export {}; // only export exports
   }
+
+  export {}; // only export exports
 }
 
 /** **UNSTABLE**: New API, yet to be vetted.

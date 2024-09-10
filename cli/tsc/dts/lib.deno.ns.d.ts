@@ -314,6 +314,8 @@ declare namespace Deno {
      *
      * @category Errors */
     export class NotADirectory extends Error {}
+
+    export {}; // only export exports
   }
 
   /** The current process ID of this instance of the Deno CLI.
@@ -5470,4 +5472,6 @@ declare namespace Deno {
       & (ServeTcpOptions | (ServeTcpOptions & TlsCertifiedKeyOptions))
       & ServeInit<Deno.NetAddr>,
   ): HttpServer<Deno.NetAddr>;
+
+  export {}; // only export exports
 }

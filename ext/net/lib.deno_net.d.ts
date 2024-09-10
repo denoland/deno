@@ -495,4 +495,6 @@ declare namespace Deno {
     conn: TcpConn,
     options?: StartTlsOptions,
   ): Promise<TlsConn>;
+
+  export {}; // only export exports
 }

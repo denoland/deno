@@ -70,16 +70,6 @@ async function createDenoDtsFile() {
       statement.remove();
       continue;
     }
-
-    if (
-      Node.isModuleDeclaration(statement) && statement.getName() == "Deno"
-    ) {
-      statement.forEachDescendant((node) => {
-        if (Node.isExportable(node)) {
-          node.setIsExported(false);
-        }
-      });
-    }
   }
 
   file.insertStatements(
