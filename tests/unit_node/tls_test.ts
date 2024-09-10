@@ -10,10 +10,8 @@ import * as stream from "node:stream";
 const tlsTestdataDir = fromFileUrl(
   new URL("../testdata/tls", import.meta.url),
 );
-const keyFile = join(tlsTestdataDir, "localhost.key");
-const certFile = join(tlsTestdataDir, "localhost.crt");
-const key = Deno.readTextFileSync(keyFile);
-const cert = Deno.readTextFileSync(certFile);
+const key = Deno.readTextFileSync(join(tlsTestdataDir, "localhost.key"));
+const cert = Deno.readTextFileSync(join(tlsTestdataDir, "localhost.crt"));
 const rootCaCert = Deno.readTextFileSync(join(tlsTestdataDir, "RootCA.pem"));
 
 for (

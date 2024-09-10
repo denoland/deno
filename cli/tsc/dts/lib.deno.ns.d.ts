@@ -5356,7 +5356,7 @@ declare namespace Deno {
   export function serve(
     options:
       | ServeTcpOptions
-      | (ServeTcpOptions & TlsCertifiedKeyOptions),
+      | (ServeTcpOptions & TlsCertifiedKeyPem),
     handler: ServeHandler<Deno.NetAddr>,
   ): HttpServer<Deno.NetAddr>;
   /** Serves HTTP requests with the given option bag.
@@ -5413,7 +5413,7 @@ declare namespace Deno {
    */
   export function serve(
     options:
-      & (ServeTcpOptions | (ServeTcpOptions & TlsCertifiedKeyOptions))
+      & (ServeTcpOptions | (ServeTcpOptions & TlsCertifiedKeyPem))
       & ServeInit<Deno.NetAddr>,
   ): HttpServer<Deno.NetAddr>;
 
