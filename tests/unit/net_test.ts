@@ -2,11 +2,9 @@
 import {
   assert,
   assertEquals,
-  assertNotEquals,
   assertRejects,
   assertThrows,
   delay,
-  DENO_FUTURE,
   execCode,
   execCode2,
   tmpUnixSocketPath,
