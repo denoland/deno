@@ -488,9 +488,8 @@ itest!(_088_dynamic_import_already_evaluating {
   output: "run/088_dynamic_import_already_evaluating.ts.out",
 });
 
-// TODO(bartlomieju): remove --unstable once Deno.Command is stabilized
 itest!(_089_run_allow_list {
-  args: "run --unstable --allow-run=curl run/089_run_allow_list.ts",
+  args: "run --allow-run=curl run/089_run_allow_list.ts",
   envs: vec![
     ("LD_LIBRARY_PATH".to_string(), "".to_string()),
     ("DYLD_FALLBACK_LIBRARY_PATH".to_string(), "".to_string())
@@ -2540,14 +2539,12 @@ mod permissions {
   use test_util::itest;
   use util::TestContext;
 
-  // TODO(bartlomieju): remove --unstable once Deno.Command is stabilized
   #[test]
   fn with_allow() {
     for permission in &util::PERMISSION_VARIANTS {
       let status = util::deno_cmd()
         .current_dir(util::testdata_path())
         .arg("run")
-        .arg("--unstable")
         .arg(format!("--allow-{permission}"))
         .arg("run/permission_test.ts")
         .arg(format!("{permission}Required"))
@@ -2559,13 +2556,12 @@ mod permissions {
     }
   }
 
-  // TODO(bartlomieju): remove --unstable once Deno.Command is stabilized
   #[test]
   fn without_allow() {
     for permission in &util::PERMISSION_VARIANTS {
       let (_, err) = util::run_and_collect_output(
         false,
-        &format!("run --unstable run/permission_test.ts {permission}Required"),
+        &format!("run run/permission_test.ts {permission}Required"),
         None,
         None,
         false,
@@ -3019,7 +3015,7 @@ mod permissions {
   fn _066_prompt() {
     TestContext::default()
       .new_command()
-      .args_vec(["run", "--quiet", "--unstable", "run/066_prompt.ts"])
+      .args_vec(["run", "--quiet", "run/066_prompt.ts"])
       .with_pty(|mut console| {
         console.expect("What is your name? Jane Doe");
         console.write_line_raw("");
@@ -3575,7 +3571,6 @@ fn deno_no_prompt_environment_variable() {
   let output = util::deno_cmd()
     .current_dir(util::testdata_path())
     .arg("run")
-    .arg("--unstable")
     .arg("run/no_prompt.ts")
     .env("DENO_NO_PROMPT", "1")
     .spawn()
@@ -4089,7 +4084,6 @@ async fn http2_request_url() {
   let mut child = util::deno_cmd()
     .current_dir(util::testdata_path())
     .arg("run")
-    .arg("--unstable")
     .arg("--quiet")
     .arg("--allow-net")
     .arg("--allow-read")
@@ -4384,7 +4378,6 @@ async fn websocket_server_multi_field_connection_header() {
   let root_ca = util::testdata_path().join("tls/RootCA.pem");
   let mut child = util::deno_cmd()
     .arg("run")
-    .arg("--unstable")
     .arg("--allow-net")
     .arg("--cert")
     .arg(root_ca)
@@ -4438,7 +4431,6 @@ async fn websocket_server_idletimeout() {
   let root_ca = util::testdata_path().join("tls/RootCA.pem");
   let mut child = util::deno_cmd()
     .arg("run")
-    .arg("--unstable")
     .arg("--allow-net")
     .arg("--cert")
     .arg(root_ca)
@@ -5089,7 +5081,6 @@ async fn listen_tls_alpn() {
   let mut child = util::deno_cmd()
     .current_dir(util::testdata_path())
     .arg("run")
-    .arg("--unstable")
     .arg("--quiet")
     .arg("--allow-net")
     .arg("--allow-read")
@@ -5143,7 +5134,6 @@ async fn listen_tls_alpn_fail() {
   let mut child = util::deno_cmd()
     .current_dir(util::testdata_path())
     .arg("run")
-    .arg("--unstable")
     .arg("--quiet")
     .arg("--allow-net")
     .arg("--allow-read")
