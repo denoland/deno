@@ -55,7 +55,7 @@ function unreachable(): never {
 Deno.test({ permissions: { net: false } }, async function connectTLSNoPerm() {
   await assertRejects(async () => {
     await Deno.connectTls({ hostname: "deno.land", port: 443 });
-  }, Deno.errors.PermissionDenied);
+  }, Deno.errors.NotCapable);
 });
 
 Deno.test(
@@ -76,7 +76,7 @@ Deno.test(
         port: 443,
         certFile: "tests/testdata/tls/RootCA.crt",
       });
-    }, Deno.errors.PermissionDenied);
+    }, Deno.errors.NotCapable);
   },
 );
 
@@ -116,7 +116,7 @@ Deno.test(
         certFile: "tests/testdata/tls/localhost.crt",
         keyFile: "tests/testdata/tls/localhost.key",
       });
-    }, Deno.errors.PermissionDenied);
+    }, Deno.errors.NotCapable);
   },
 );
 
@@ -221,7 +221,6 @@ Deno.test(
     );
 
     const conn = await Deno.connectTls({ hostname, port, caCerts });
-    assert(DENO_FUTURE || conn.rid > 0);
     const w = new BufWriter(conn);
     const r = new BufReader(conn);
     const body = `GET / HTTP/1.1\r\nHost: ${hostname}:${port}\r\n\r\n`;
@@ -273,7 +272,6 @@ Deno.test(
     );
 
     const conn = await Deno.connectTls({ hostname, port, caCerts });
-    assert(DENO_FUTURE || conn.rid > 0);
     const w = new BufWriter(conn);
     const r = new BufReader(conn);
     const body = `GET / HTTP/1.1\r\nHost: ${hostname}:${port}\r\n\r\n`;
@@ -588,7 +586,9 @@ async function receiveAlotSendNothing(conn: Deno.Conn) {
     }
   } catch (e) {
     throw new Error(
-      `Got an error (${e.message}) after reading ${nread}/${largeAmount} bytes`,
+      `Got an error (${
+        (e as Error).message
+      }) after reading ${nread}/${largeAmount} bytes`,
       { cause: e },
     );
   }

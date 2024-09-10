@@ -30,10 +30,10 @@ There are two ways to run `unit_test_runner.ts`:
 
 ```sh
 # Run all tests.
-cargo run --bin deno -- test --allow-all --unstable --location=http://js-unit-tests/foo/bar cli/tests/unit/
+cargo run --bin deno -- test --allow-all --location=http://js-unit-tests/foo/bar cli/tests/unit/
 
 # Run a specific test module
-cargo run --bin deno -- test --allow-all --unstable --location=http://js-unit-tests/foo/bar cli/tests/unit/files_test.ts
+cargo run --bin deno -- test --allow-all --location=http://js-unit-tests/foo/bar cli/tests/unit/files_test.ts
 ```
 
 ### Http server

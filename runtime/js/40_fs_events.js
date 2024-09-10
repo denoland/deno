@@ -23,21 +23,13 @@ class FsWatcher {
   constructor(paths, options) {
     if (internals.future) {
       ObjectDefineProperty(this, "rid", {
+        __proto__: null,
         enumerable: false,
         value: undefined,
       });
     }
     const { recursive } = options;
     this.#rid = op_fs_events_open({ recursive, paths });
-  }
-
-  get rid() {
-    internals.warnOnDeprecatedApi(
-      "Deno.FsWatcher.rid",
-      new Error().stack,
-      "Use `Deno.FsWatcher` instance methods instead.",
-    );
-    return this.#rid;
   }
 
   unref() {
@@ -88,7 +80,7 @@ class FsWatcher {
 
 function watchFs(
   paths,
-  options = { recursive: true },
+  options = { __proto__: null, recursive: true },
 ) {
   return new FsWatcher(ArrayIsArray(paths) ? paths : [paths], options);
 }

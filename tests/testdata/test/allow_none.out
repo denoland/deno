@@ -10,27 +10,27 @@ ffi ... FAILED [WILDCARD]
  ERRORS 
 
 read => ./test/allow_none.ts:[WILDCARD]
-error: PermissionDenied: Can't escalate parent thread permissions
+error: NotCapable: Can't escalate parent thread permissions
 [WILDCARD]
 
 write => ./test/allow_none.ts:[WILDCARD]
-error: PermissionDenied: Can't escalate parent thread permissions
+error: NotCapable: Can't escalate parent thread permissions
 [WILDCARD]
 
 net => ./test/allow_none.ts:[WILDCARD]
-error: PermissionDenied: Can't escalate parent thread permissions
+error: NotCapable: Can't escalate parent thread permissions
 [WILDCARD]
 
 env => ./test/allow_none.ts:[WILDCARD]
-error: PermissionDenied: Can't escalate parent thread permissions
+error: NotCapable: Can't escalate parent thread permissions
 [WILDCARD]
 
 run => ./test/allow_none.ts:[WILDCARD]
-error: PermissionDenied: Can't escalate parent thread permissions
+error: NotCapable: Can't escalate parent thread permissions
 [WILDCARD]
 
 ffi => ./test/allow_none.ts:[WILDCARD]
-error: PermissionDenied: Can't escalate parent thread permissions
+error: NotCapable: Can't escalate parent thread permissions
 [WILDCARD]
 
  FAILURES 

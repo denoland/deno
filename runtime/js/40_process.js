@@ -130,6 +130,8 @@ class Process {
   }
 }
 
+// Note: This function was soft-removed in Deno 2. Its types have been removed,
+// but its implementation has been kept to avoid breaking changes.
 function run({
   cmd,
   cwd = undefined,
@@ -144,11 +146,6 @@ function run({
       ...new SafeArrayIterator(ArrayPrototypeSlice(cmd, 1)),
     ];
   }
-  internals.warnOnDeprecatedApi(
-    "Deno.run()",
-    (new Error()).stack,
-    `Use "Deno.Command()" API instead.`,
-  );
   const res = opRun({
     cmd: ArrayPrototypeMap(cmd, String),
     cwd,
@@ -466,6 +463,7 @@ class Command {
 
   spawn() {
     const options = {
+      __proto__: null,
       ...(this.#options ?? {}),
       stdout: this.#options?.stdout ?? "inherit",
       stderr: this.#options?.stderr ?? "inherit",

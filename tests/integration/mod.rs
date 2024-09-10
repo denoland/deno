@@ -17,8 +17,6 @@ mod check;
 mod compile;
 #[path = "coverage_tests.rs"]
 mod coverage;
-#[path = "doc_tests.rs"]
-mod doc;
 #[path = "eval_tests.rs"]
 mod eval;
 #[path = "flags_tests.rs"]
@@ -70,5 +68,3 @@ mod test;
 mod upgrade;
 #[path = "watcher_tests.rs"]
 mod watcher;
-#[path = "worker_tests.rs"]
-mod worker;

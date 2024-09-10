@@ -18,6 +18,7 @@ pub use npm::NpmResolverRc;
 pub use package_json::load_pkg_json;
 pub use package_json::PackageJsonThreadLocalCache;
 pub use path::PathClean;
+pub use resolution::parse_npm_pkg_name;
 pub use resolution::NodeModuleKind;
 pub use resolution::NodeResolution;
 pub use resolution::NodeResolutionMode;

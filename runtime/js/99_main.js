@@ -1,4 +1,3 @@
-// deno-lint-ignore-file no-deprecated-deno-api
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
 // Remove Intl.v8BreakIterator because it is a non-standard API.
@@ -38,7 +37,6 @@ const {
   ObjectKeys,
   ObjectPrototypeIsPrototypeOf,
   ObjectSetPrototypeOf,
-  ObjectValues,
   PromisePrototypeThen,
   PromiseResolve,
   StringPrototypePadEnd,
@@ -68,7 +66,6 @@ import * as fetch from "ext:deno_fetch/26_fetch.js";
 import * as messagePort from "ext:deno_web/13_message_port.js";
 import {
   denoNs,
-  denoNsUnstable,
   denoNsUnstableById,
   unstableIds,
 } from "ext:runtime/90_deno_ns.js";
@@ -93,12 +90,14 @@ if (Symbol.metadata) {
 }
 ObjectDefineProperties(Symbol, {
   dispose: {
+    __proto__: null,
     value: SymbolDispose,
     enumerable: false,
     writable: false,
     configurable: false,
   },
   metadata: {
+    __proto__: null,
     value: SymbolMetadata,
     enumerable: false,
     writable: false,
@@ -295,6 +294,7 @@ core.registerErrorClass("NotConnected", errors.NotConnected);
 core.registerErrorClass("AddrInUse", errors.AddrInUse);
 core.registerErrorClass("AddrNotAvailable", errors.AddrNotAvailable);
 core.registerErrorClass("BrokenPipe", errors.BrokenPipe);
+core.registerErrorClass("PermissionDenied", errors.PermissionDenied);
 core.registerErrorClass("AlreadyExists", errors.AlreadyExists);
 core.registerErrorClass("InvalidData", errors.InvalidData);
 core.registerErrorClass("TimedOut", errors.TimedOut);
@@ -438,28 +438,19 @@ ObjectDefineProperties(globalThis, windowOrWorkerGlobalScope);
 
 // Set up global properties shared by main and worker runtime that are exposed
 // by unstable features if those are enabled.
-function exposeUnstableFeaturesForWindowOrWorkerGlobalScope(options) {
-  const { unstableFlag, unstableFeatures } = options;
-  if (unstableFlag) {
-    const all = ObjectValues(unstableForWindowOrWorkerGlobalScope);
-    for (let i = 0; i <= all.length; i++) {
-      const props = all[i];
-      ObjectDefineProperties(globalThis, { ...props });
-    }
-  } else {
-    const featureIds = ArrayPrototypeMap(
-      ObjectKeys(
-        unstableForWindowOrWorkerGlobalScope,
-      ),
-      (k) => k | 0,
-    );
+function exposeUnstableFeaturesForWindowOrWorkerGlobalScope(unstableFeatures) {
+  const featureIds = ArrayPrototypeMap(
+    ObjectKeys(
+      unstableForWindowOrWorkerGlobalScope,
+    ),
+    (k) => k | 0,
+  );
 
-    for (let i = 0; i <= featureIds.length; i++) {
-      const featureId = featureIds[i];
-      if (ArrayPrototypeIncludes(unstableFeatures, featureId)) {
-        const props = unstableForWindowOrWorkerGlobalScope[featureId];
-        ObjectDefineProperties(globalThis, { ...props });
-      }
+  for (let i = 0; i <= featureIds.length; i++) {
+    const featureId = featureIds[i];
+    if (ArrayPrototypeIncludes(unstableFeatures, featureId)) {
+      const props = unstableForWindowOrWorkerGlobalScope[featureId];
+      ObjectDefineProperties(globalThis, { ...props });
     }
   }
 }
@@ -534,6 +525,7 @@ ObjectDefineProperties(finalDenoNs, {
   args: core.propGetterOnly(opArgs),
   mainModule: core.propGetterOnly(() => op_main_module()),
   exitCode: {
+    __proto__: null,
     get() {
       return os.getExitCode();
     },
@@ -570,18 +562,16 @@ function bootstrapMainRuntime(runtimeOptions, warmup = false) {
     const {
       0: denoVersion,
       1: location_,
-      2: unstableFlag,
-      3: unstableFeatures,
-      4: inspectFlag,
-      6: hasNodeModulesDir,
-      7: argv0,
-      8: nodeDebug,
-      9: future,
-      10: mode,
-      11: servePort,
-      12: serveHost,
-      13: serveIsMain,
-      14: serveWorkerCount,
+      2: unstableFeatures,
+      3: inspectFlag,
+      5: hasNodeModulesDir,
+      6: argv0,
+      7: nodeDebug,
+      8: mode,
+      9: servePort,
+      10: serveHost,
+      11: serveIsMain,
+      12: serveWorkerCount,
     } = runtimeOptions;
 
     if (mode === executionModes.serve) {
@@ -668,7 +658,7 @@ function bootstrapMainRuntime(runtimeOptions, warmup = false) {
     // TODO(iuioiua): remove in Deno v2. This allows us to dynamically delete
     // class properties within constructors for classes that are not defined
     // within the Deno namespace.
-    internals.future = future;
+    internals.future = true;
 
     removeImportedOps();
 
@@ -691,10 +681,7 @@ function bootstrapMainRuntime(runtimeOptions, warmup = false) {
       location.setLocationHref(location_);
     }
 
-    exposeUnstableFeaturesForWindowOrWorkerGlobalScope({
-      unstableFlag,
-      unstableFeatures,
-    });
+    exposeUnstableFeaturesForWindowOrWorkerGlobalScope(unstableFeatures);
     ObjectDefineProperties(globalThis, mainRuntimeGlobalProperties);
     ObjectDefineProperties(globalThis, {
       // TODO(bartlomieju): in the future we might want to change the
@@ -723,31 +710,27 @@ function bootstrapMainRuntime(runtimeOptions, warmup = false) {
       target,
     );
 
-    // TODO(bartlomieju): deprecate --unstable
-    if (unstableFlag) {
-      ObjectAssign(finalDenoNs, denoNsUnstable);
-      // TODO(bartlomieju): this is not ideal, but because we use `ObjectAssign`
-      // above any properties that are defined elsewhere using `Object.defineProperty`
-      // are lost.
-      let jupyterNs = undefined;
-      ObjectDefineProperty(finalDenoNs, "jupyter", {
-        get() {
-          if (jupyterNs) {
-            return jupyterNs;
-          }
-          throw new Error(
-            "Deno.jupyter is only available in `deno jupyter` subcommand.",
-          );
-        },
-        set(val) {
-          jupyterNs = val;
-        },
-      });
-    } else {
-      for (let i = 0; i <= unstableFeatures.length; i++) {
-        const id = unstableFeatures[i];
-        ObjectAssign(finalDenoNs, denoNsUnstableById[id]);
-      }
+    // TODO(bartlomieju): this is not ideal, but because we use `ObjectAssign`
+    // above any properties that are defined elsewhere using `Object.defineProperty`
+    // are lost.
+    let jupyterNs = undefined;
+    ObjectDefineProperty(finalDenoNs, "jupyter", {
+      get() {
+        if (jupyterNs) {
+          return jupyterNs;
+        }
+        throw new Error(
+          "Deno.jupyter is only available in `deno jupyter` subcommand.",
+        );
+      },
+      set(val) {
+        jupyterNs = val;
+      },
+    });
+
+    for (let i = 0; i <= unstableFeatures.length; i++) {
+      const id = unstableFeatures[i];
+      ObjectAssign(finalDenoNs, denoNsUnstableById[id]);
     }
 
     if (!ArrayPrototypeIncludes(unstableFeatures, unstableIds.unsafeProto)) {
@@ -798,27 +781,9 @@ function bootstrapMainRuntime(runtimeOptions, warmup = false) {
         nodeDebug,
       });
     }
-    if (future) {
+    if (internals.future) {
       delete globalThis.window;
-      delete Deno.Buffer;
-      delete Deno.File;
-      delete Deno.fstat;
-      delete Deno.fstatSync;
-      delete Deno.ftruncate;
-      delete Deno.ftruncateSync;
       delete Deno.FsFile.prototype.rid;
-      delete Deno.funlock;
-      delete Deno.funlockSync;
-      delete Deno.readAll;
-      delete Deno.readAllSync;
-      delete Deno.read;
-      delete Deno.readSync;
-      delete Deno.seek;
-      delete Deno.seekSync;
-      delete Deno.writeAll;
-      delete Deno.writeAllSync;
-      delete Deno.write;
-      delete Deno.writeSync;
     }
   } else {
     // Warmup
@@ -841,19 +806,17 @@ function bootstrapWorkerRuntime(
     const {
       0: denoVersion,
       1: location_,
-      2: unstableFlag,
-      3: unstableFeatures,
-      5: enableTestingFeaturesFlag,
-      6: hasNodeModulesDir,
-      7: argv0,
-      8: nodeDebug,
-      9: future,
+      2: unstableFeatures,
+      4: enableTestingFeaturesFlag,
+      5: hasNodeModulesDir,
+      6: argv0,
+      7: nodeDebug,
     } = runtimeOptions;
 
     // TODO(iuioiua): remove in Deno v2. This allows us to dynamically delete
     // class properties within constructors for classes that are not defined
     // within the Deno namespace.
-    internals.future = future;
+    internals.future = true;
 
     performance.setTimeOrigin(DateNow());
     globalThis_ = globalThis;
@@ -863,10 +826,7 @@ function bootstrapWorkerRuntime(
     delete globalThis.bootstrap;
     hasBootstrapped = true;
 
-    exposeUnstableFeaturesForWindowOrWorkerGlobalScope({
-      unstableFlag,
-      unstableFeatures,
-    });
+    exposeUnstableFeaturesForWindowOrWorkerGlobalScope(unstableFeatures);
     ObjectDefineProperties(globalThis, workerRuntimeGlobalProperties);
     ObjectDefineProperties(globalThis, {
       name: core.propWritable(name),
@@ -908,14 +868,9 @@ function bootstrapWorkerRuntime(
     globalThis.pollForMessages = pollForMessages;
     globalThis.hasMessageEventListener = hasMessageEventListener;
 
-    // TODO(bartlomieju): deprecate --unstable
-    if (unstableFlag) {
-      ObjectAssign(finalDenoNs, denoNsUnstable);
-    } else {
-      for (let i = 0; i <= unstableFeatures.length; i++) {
-        const id = unstableFeatures[i];
-        ObjectAssign(finalDenoNs, denoNsUnstableById[id]);
-      }
+    for (let i = 0; i <= unstableFeatures.length; i++) {
+      const id = unstableFeatures[i];
+      ObjectAssign(finalDenoNs, denoNsUnstableById[id]);
     }
 
     // Not available in workers
@@ -976,26 +931,8 @@ function bootstrapWorkerRuntime(
       });
     }
 
-    if (future) {
-      delete Deno.Buffer;
-      delete Deno.File;
-      delete Deno.fstat;
-      delete Deno.fstatSync;
-      delete Deno.ftruncate;
-      delete Deno.ftruncateSync;
+    if (internals.future) {
       delete Deno.FsFile.prototype.rid;
-      delete Deno.funlock;
-      delete Deno.funlockSync;
-      delete Deno.readAll;
-      delete Deno.readAllSync;
-      delete Deno.read;
-      delete Deno.readSync;
-      delete Deno.seek;
-      delete Deno.seekSync;
-      delete Deno.writeAll;
-      delete Deno.writeAllSync;
-      delete Deno.write;
-      delete Deno.writeSync;
     }
   } else {
     // Warmup

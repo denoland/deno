@@ -112,7 +112,6 @@ pub struct CliMainWorkerOptions {
   pub origin_data_folder_path: Option<PathBuf>,
   pub seed: Option<u64>,
   pub unsafely_ignore_certificate_errors: Option<Vec<String>>,
-  pub unstable: bool,
   pub skip_op_registration: bool,
   pub create_hmr_runner: Option<CreateHmrRunnerCb>,
   pub create_coverage_collector: Option<CreateCoverageCollectorCb>,
@@ -138,7 +137,6 @@ struct SharedWorkerState {
   maybe_inspector_server: Option<Arc<InspectorServer>>,
   maybe_lockfile: Option<Arc<CliLockfile>>,
   feature_checker: Arc<FeatureChecker>,
-  enable_future_features: bool,
   code_cache: Option<Arc<dyn code_cache::CodeCache>>,
 }
 
@@ -453,8 +451,6 @@ impl CliMainWorkerFactory {
         maybe_inspector_server,
         maybe_lockfile,
         feature_checker,
-        // TODO(2.0): remove?
-        enable_future_features: true,
         code_cache,
       }),
     }
@@ -583,7 +579,6 @@ impl CliMainWorkerFactory {
         is_stdout_tty: deno_terminal::is_stdout_tty(),
         is_stderr_tty: deno_terminal::is_stderr_tty(),
         color_level: colors::get_color_level(),
-        unstable: shared.options.unstable,
         unstable_features,
         user_agent: version::DENO_VERSION_INFO.user_agent.to_string(),
         inspect: shared.options.is_inspecting,
@@ -591,7 +586,6 @@ impl CliMainWorkerFactory {
         argv0: shared.options.argv0.clone(),
         node_debug: shared.options.node_debug.clone(),
         node_ipc_fd: shared.options.node_ipc,
-        future: shared.enable_future_features,
         mode,
         serve_port: shared.options.serve_port,
         serve_host: shared.options.serve_host.clone(),
@@ -779,7 +773,6 @@ fn create_web_worker_callback(
         color_level: colors::get_color_level(),
         is_stdout_tty: deno_terminal::is_stdout_tty(),
         is_stderr_tty: deno_terminal::is_stderr_tty(),
-        unstable: shared.options.unstable,
         unstable_features,
         user_agent: version::DENO_VERSION_INFO.user_agent.to_string(),
         inspect: shared.options.is_inspecting,
@@ -787,7 +780,6 @@ fn create_web_worker_callback(
         argv0: shared.options.argv0.clone(),
         node_debug: shared.options.node_debug.clone(),
         node_ipc_fd: None,
-        future: shared.enable_future_features,
         mode: WorkerExecutionMode::Worker,
         serve_port: shared.options.serve_port,
         serve_host: shared.options.serve_host.clone(),

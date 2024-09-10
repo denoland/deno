@@ -58,26 +58,23 @@ itest!(cjs_invalid_name_exports {
   http_server: true,
 });
 
-itest!(cjs_require_esm_error {
-  args: "run --allow-read --quiet npm/cjs_require_esm_error/main.ts",
-  output: "npm/cjs_require_esm_error/main.out",
+itest!(cjs_require_esm {
+  args: "run --allow-read --quiet npm/cjs_require_esm/main.ts",
+  output: "npm/cjs_require_esm/main.out",
   envs: env_vars_for_npm_tests(),
   http_server: true,
-  exit_code: 1,
 });
 
-itest!(cjs_require_esm_mjs_error {
-  args: "run --allow-read --quiet npm/cjs_require_esm_mjs_error/main.ts",
-  output: "npm/cjs_require_esm_mjs_error/main.out",
+itest!(cjs_require_esm_mjs {
+  args: "run --allow-read --quiet npm/cjs_require_esm_mjs/main.ts",
+  output: "npm/cjs_require_esm_mjs/main.out",
   envs: env_vars_for_npm_tests(),
   http_server: true,
-  exit_code: 1,
 });
 
-itest!(require_esm_error {
-  args: "run --allow-read --quiet node/require_esm_error/main.ts",
-  output: "node/require_esm_error/main.out",
-  exit_code: 1,
+itest!(require_esm {
+  args: "run --allow-read --quiet node/require_esm/main.ts",
+  output: "node/require_esm/main.out",
 });
 
 itest!(dynamic_import_deno_ts_from_npm {
@@ -2195,7 +2192,7 @@ console.log(getKind());
     .args("run --allow-read chalk.ts")
     .run();
   output.assert_matches_text(
-    r#"error: Could not find a matching package for 'npm:chalk@5' in a package.json file. You must specify this as a package.json dependency when the node_modules folder is not managed by Deno.
+    r#"error: Could not find a matching package for 'npm:chalk@5' in the node_modules directory. Ensure you have all your JSR and npm dependencies listed in your deno.json or package.json, then run `deno install`. Alternatively, turn on auto-install by specifying `"nodeModulesDir": "auto"` in your deno.json file.
     at file:///[WILDCARD]chalk.ts:1:19
 "#);
   output.assert_exit_code(1);
@@ -2277,7 +2274,7 @@ console.log(getKind());
     .args("run --allow-read chalk.ts")
     .run();
   output.assert_matches_text(
-    r#"error: Could not find a matching package for 'npm:chalk@5' in a package.json file. You must specify this as a package.json dependency when the node_modules folder is not managed by Deno.
+    r#"error: Could not find a matching package for 'npm:chalk@5' in the node_modules directory. Ensure you have all your JSR and npm dependencies listed in your deno.json or package.json, then run `deno install`. Alternatively, turn on auto-install by specifying `"nodeModulesDir": "auto"` in your deno.json file.
     at file:///[WILDCARD]chalk.ts:1:19
 "#);
   output.assert_exit_code(1);

@@ -1,0 +1,5 @@
+{
+  "args": "run -A --quiet --reload worker_async_error.ts",
+  "output": "worker_async_error.ts.out",
+  "exitCode": 1
+}

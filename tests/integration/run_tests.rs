@@ -483,19 +483,13 @@ itest!(dynamic_import_concurrent_non_statically_analyzable {
   http_server: true,
 });
 
-itest!(no_check_imports_not_used_as_values {
-    args: "run --config run/no_check_imports_not_used_as_values/preserve_imports.tsconfig.json --no-check run/no_check_imports_not_used_as_values/main.ts",
-    output: "run/no_check_imports_not_used_as_values/main.out",
-  });
-
 itest!(_088_dynamic_import_already_evaluating {
   args: "run --allow-read run/088_dynamic_import_already_evaluating.ts",
   output: "run/088_dynamic_import_already_evaluating.ts.out",
 });
 
-// TODO(bartlomieju): remove --unstable once Deno.Command is stabilized
 itest!(_089_run_allow_list {
-  args: "run --unstable --allow-run=curl run/089_run_allow_list.ts",
+  args: "run --allow-run=curl run/089_run_allow_list.ts",
   envs: vec![
     ("LD_LIBRARY_PATH".to_string(), "".to_string()),
     ("DYLD_FALLBACK_LIBRARY_PATH".to_string(), "".to_string())
@@ -1931,11 +1925,6 @@ itest!(es_private_fields {
   output: "run/es_private_fields.js.out",
 });
 
-itest!(cjs_imports {
-  args: "run --quiet --reload run/cjs_imports/main.ts",
-  output: "run/cjs_imports/main.out",
-});
-
 itest!(ts_import_from_js {
   args: "run --quiet --reload run/ts_import_from_js/main.js",
   output: "run/ts_import_from_js/main.out",
@@ -2550,14 +2539,12 @@ mod permissions {
   use test_util::itest;
   use util::TestContext;
 
-  // TODO(bartlomieju): remove --unstable once Deno.Command is stabilized
   #[test]
   fn with_allow() {
     for permission in &util::PERMISSION_VARIANTS {
       let status = util::deno_cmd()
         .current_dir(util::testdata_path())
         .arg("run")
-        .arg("--unstable")
         .arg(format!("--allow-{permission}"))
         .arg("run/permission_test.ts")
         .arg(format!("{permission}Required"))
@@ -2569,13 +2556,12 @@ mod permissions {
     }
   }
 
-  // TODO(bartlomieju): remove --unstable once Deno.Command is stabilized
   #[test]
   fn without_allow() {
     for permission in &util::PERMISSION_VARIANTS {
       let (_, err) = util::run_and_collect_output(
         false,
-        &format!("run --unstable run/permission_test.ts {permission}Required"),
+        &format!("run run/permission_test.ts {permission}Required"),
         None,
         None,
         false,
@@ -3029,7 +3015,7 @@ mod permissions {
   fn _066_prompt() {
     TestContext::default()
       .new_command()
-      .args_vec(["run", "--quiet", "--unstable", "run/066_prompt.ts"])
+      .args_vec(["run", "--quiet", "run/066_prompt.ts"])
       .with_pty(|mut console| {
         console.expect("What is your name? Jane Doe");
         console.write_line_raw("");
@@ -3159,7 +3145,7 @@ fn issue9750() {
       console.write_line_raw("n");
       console.expect_all(&[
         "Denied env access to \"SECRET\".",
-        "PermissionDenied: Requires env access to \"SECRET\", run again with the --allow-env flag",
+        "NotCapable: Requires env access to \"SECRET\", run again with the --allow-env flag",
       ]);
     });
 }
@@ -3585,7 +3571,6 @@ fn deno_no_prompt_environment_variable() {
   let output = util::deno_cmd()
     .current_dir(util::testdata_path())
     .arg("run")
-    .arg("--unstable")
     .arg("run/no_prompt.ts")
     .env("DENO_NO_PROMPT", "1")
     .spawn()
@@ -3681,11 +3666,6 @@ itest!(spawn_kill_permissions {
 itest!(followup_dyn_import_resolved {
   args: "run --allow-read run/followup_dyn_import_resolves/main.ts",
   output: "run/followup_dyn_import_resolves/main.ts.out",
-});
-
-itest!(allow_run_allowlist_resolution {
-  args: "run --quiet -A allow_run_allowlist_resolution.ts",
-  output: "allow_run_allowlist_resolution.ts.out",
 });
 
 itest!(unhandled_rejection {
@@ -4071,7 +4051,7 @@ async fn test_resolve_dns() {
     let out = String::from_utf8_lossy(&output.stdout);
     assert!(!output.status.success());
     assert!(err.starts_with("Check file"));
-    assert!(err.contains(r#"error: Uncaught (in promise) PermissionDenied: Requires net access to "127.0.0.1:4553""#));
+    assert!(err.contains(r#"error: Uncaught (in promise) NotCapable: Requires net access to "127.0.0.1:4553""#));
     assert!(out.is_empty());
   }
 
@@ -4092,7 +4072,7 @@ async fn test_resolve_dns() {
     let out = String::from_utf8_lossy(&output.stdout);
     assert!(!output.status.success());
     assert!(err.starts_with("Check file"));
-    assert!(err.contains(r#"error: Uncaught (in promise) PermissionDenied: Requires net access to "127.0.0.1:4553""#));
+    assert!(err.contains(r#"error: Uncaught (in promise) NotCapable: Requires net access to "127.0.0.1:4553""#));
     assert!(out.is_empty());
   }
 
@@ -4104,7 +4084,6 @@ async fn http2_request_url() {
   let mut child = util::deno_cmd()
     .current_dir(util::testdata_path())
     .arg("run")
-    .arg("--unstable")
     .arg("--quiet")
     .arg("--allow-net")
     .arg("--allow-read")
@@ -4353,7 +4332,7 @@ async fn websocketstream_ping() {
 
   let child = util::deno_cmd()
     .arg("test")
-    .arg("--unstable")
+    .arg("--unstable-net")
     .arg("--allow-net")
     .arg("--cert")
     .arg(root_ca)
@@ -4399,7 +4378,6 @@ async fn websocket_server_multi_field_connection_header() {
   let root_ca = util::testdata_path().join("tls/RootCA.pem");
   let mut child = util::deno_cmd()
     .arg("run")
-    .arg("--unstable")
     .arg("--allow-net")
     .arg("--cert")
     .arg(root_ca)
@@ -4453,7 +4431,6 @@ async fn websocket_server_idletimeout() {
   let root_ca = util::testdata_path().join("tls/RootCA.pem");
   let mut child = util::deno_cmd()
     .arg("run")
-    .arg("--unstable")
     .arg("--allow-net")
     .arg("--cert")
     .arg(root_ca)
@@ -4592,75 +4569,33 @@ fn permission_prompt_escapes_ansi_codes_and_control_chars() {
     ))
   });
 
-  util::with_pty(&["repl"], |mut console| {
-    console.write_line_raw(r#"const boldANSI = "\u001b[1m";"#);
-    console.expect("undefined");
-    console.write_line_raw(r#"const unboldANSI = "\u001b[22m";"#);
-    console.expect("undefined");
-    console.write_line_raw(
-      r#"new Deno.Command(`${boldANSI}cat${unboldANSI}`).spawn();"#,
-    );
-    console.expect("\u{250f} \u{26a0}\u{fe0f}  Deno requests run access to \"\\u{1b}[1mcat\\u{1b}[22m\".");
-  });
-}
-
-itest!(node_builtin_modules_ts {
-  args: "run --quiet --allow-read run/node_builtin_modules/mod.ts hello there",
-  output: "run/node_builtin_modules/mod.ts.out",
-  envs: env_vars_for_npm_tests(),
-  exit_code: 0,
-});
-
-itest!(node_builtin_modules_js {
-  args: "run --quiet --allow-read run/node_builtin_modules/mod.js hello there",
-  output: "run/node_builtin_modules/mod.js.out",
-  envs: env_vars_for_npm_tests(),
-  exit_code: 0,
-});
-
-itest!(node_prefix_missing {
-  args: "run --quiet run/node_prefix_missing/main.ts",
-  output: "run/node_prefix_missing/main.ts.out",
-  envs: env_vars_for_npm_tests(),
-  exit_code: 1,
-});
-
-itest!(node_prefix_missing_unstable_bare_node_builtins_enbaled {
-  args: "run --unstable-bare-node-builtins run/node_prefix_missing/main.ts",
-  output: "run/node_prefix_missing/feature_enabled.out",
-  envs: env_vars_for_npm_tests(),
-  exit_code: 0,
-});
-
-itest!(
-  node_prefix_missing_unstable_bare_node_builtins_enbaled_by_env {
-    args: "run run/node_prefix_missing/main.ts",
-    output: "run/node_prefix_missing/feature_enabled.out",
-    envs: [
-      env_vars_for_npm_tests(),
-      vec![(
-        "DENO_UNSTABLE_BARE_NODE_BUILTINS".to_string(),
-        "1".to_string()
-      )]
-    ]
-    .concat(),
-    exit_code: 0,
+  // windows doesn't support backslashes in paths, so just try this on unix
+  if cfg!(unix) {
+    let context = TestContextBuilder::default().use_temp_cwd().build();
+    context
+      .new_command()
+      .env("PATH", context.temp_dir().path())
+      .env("DYLD_FALLBACK_LIBRARY_PATH", "")
+      .env("LD_LIBRARY_PATH", "")
+      .args_vec(["repl", "--allow-write=."])
+      .with_pty(|mut console| {
+        console.write_line_raw(r#"const boldANSI = "\u001b[1m";"#);
+        console.expect("undefined");
+        console.write_line_raw(r#"const unboldANSI = "\u001b[22m";"#);
+        console.expect("undefined");
+        console.write_line_raw(
+          r#"Deno.writeTextFileSync(`${boldANSI}cat${unboldANSI}`, "");"#,
+        );
+        console.expect("undefined");
+        console.write_line_raw(
+          r#"new Deno.Command(`./${boldANSI}cat${unboldANSI}`).spawn();"#,
+        );
+        console
+          .expect("\u{250f} \u{26a0}\u{fe0f}  Deno requests run access to \"");
+        console.expect("\\u{1b}[1mcat\\u{1b}[22m\"."); // ensure escaped
+      });
   }
-);
-
-itest!(node_prefix_missing_unstable_bare_node_builtins_enbaled_by_config {
-  args: "run --config=run/node_prefix_missing/config.json run/node_prefix_missing/main.ts",
-  output: "run/node_prefix_missing/feature_enabled.out",
-  envs: env_vars_for_npm_tests(),
-  exit_code: 0,
-});
-
-itest!(node_prefix_missing_unstable_bare_node_builtins_enbaled_with_import_map {
-  args: "run --unstable-bare-node-builtins --import-map run/node_prefix_missing/import_map.json run/node_prefix_missing/main.ts",
-  output: "run/node_prefix_missing/feature_enabled.out",
-  envs: env_vars_for_npm_tests(),
-  exit_code: 0,
-});
+}
 
 itest!(dynamic_import_syntax_error {
   args: "run -A run/dynamic_import_syntax_error.js",
@@ -4808,13 +4743,6 @@ itest!(unstable_temporal_api_config_file {
   output: "run/unstable_temporal_api/main.out",
   http_server: false,
   exit_code: 0,
-});
-
-itest!(unstable_temporal_api_missing_flag {
-  args: "run --no-config run/unstable_temporal_api/missing_flag.js",
-  output: "run/unstable_temporal_api/missing_flag.out",
-  http_server: false,
-  exit_code: 1,
 });
 
 // TODO(bartlomieju): temporary disabled
@@ -5153,7 +5081,6 @@ async fn listen_tls_alpn() {
   let mut child = util::deno_cmd()
     .current_dir(util::testdata_path())
     .arg("run")
-    .arg("--unstable")
     .arg("--quiet")
     .arg("--allow-net")
     .arg("--allow-read")
@@ -5207,7 +5134,6 @@ async fn listen_tls_alpn_fail() {
   let mut child = util::deno_cmd()
     .current_dir(util::testdata_path())
     .arg("run")
-    .arg("--unstable")
     .arg("--quiet")
     .arg("--allow-net")
     .arg("--allow-read")
