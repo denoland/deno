@@ -246,6 +246,32 @@ Deno.test({
 });
 
 Deno.test({
+  name: "createCipheriv - invalid inputs",
+  fn() {
+    assertThrows(
+      () => crypto.createCipheriv("aes256", new Uint8Array(31), new Uint8Array(16)),
+      RangeError,
+      "Invalid key length",
+    );
+    assertThrows(
+      () => crypto.createCipheriv("aes-256-cbc", new Uint8Array(31), new Uint8Array(16)),
+      RangeError,
+      "Invalid key length",
+    );
+    assertThrows(
+      () => crypto.createCipheriv("aes256", new Uint8Array(32), new Uint8Array(15)),
+      TypeError,
+      "Invalid initialization vector",
+    );
+    assertThrows(
+      () => crypto.createCipheriv("aes-256-cbc", new Uint8Array(32), new Uint8Array(15)),
+      TypeError,
+      "Invalid initialization vector",
+    );
+  },
+});
+
+Deno.test({
   name: "createDecipheriv - invalid algorithm",
   fn() {
     assertThrows(
@@ -256,6 +282,32 @@ Deno.test({
     );
   },
 });
+
+Deno.test({
+  name: "createDecipheriv - invalid inputs",
+  fn() {
+    assertThrows(
+      () => crypto.createDecipheriv("aes256", new Uint8Array(31), new Uint8Array(16)),
+      RangeError,
+      "Invalid key length",
+    );
+    assertThrows(
+      () => crypto.createDecipheriv("aes-256-cbc", new Uint8Array(31), new Uint8Array(16)),
+      RangeError,
+      "Invalid key length",
+    );
+    assertThrows(
+      () => crypto.createDecipheriv("aes256", new Uint8Array(32), new Uint8Array(15)),
+      TypeError,
+      "Invalid initialization vector",
+    );
+    assertThrows(
+      () => crypto.createDecipheriv("aes-256-cbc", new Uint8Array(32), new Uint8Array(15)),
+      TypeError,
+      "Invalid initialization vector",
+    );
+  },
+})
 
 Deno.test({
   name: "getCiphers",
