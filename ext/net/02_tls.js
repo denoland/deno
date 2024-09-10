@@ -138,12 +138,12 @@ function loadTlsKeyPair(api, {
 
   if (cert !== undefined && key === undefined) {
     throw new TypeError(
-      `If \`${cert}\` is specified, \`${key}\` must be specified as well for \`${api}\`.`,
+      `If \`cert\` is specified, \`key\` must be specified as well for \`${api}\`.`,
     );
   }
   if (cert === undefined && key !== undefined) {
     throw new TypeError(
-      `If \`${cert}\` is specified, \`${key}\` must be specified as well for \`${api}\`.`,
+      `If \`key\` is specified, \`cert\` must be specified as well for \`${api}\`.`,
     );
   }
 
