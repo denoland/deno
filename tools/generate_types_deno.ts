@@ -27,6 +27,8 @@ $.logStep("Creating declaration file...");
 await createDenoDtsFile();
 $.logStep("Updating package.json...");
 await updatePkgJson();
+$.logStep("Formatting...");
+await $`pnpm dprint fmt`.cwd(definitelyTypedDir);
 
 async function createDenoDtsFile() {
   function matchesAny(text: string | undefined, patterns: string[]): boolean {
