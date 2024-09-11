@@ -26,7 +26,7 @@ Deno.test(
     const filePath = "chown_test_file.txt";
     await assertRejects(async () => {
       await Deno.chown(filePath, 1000, 1000);
-    }, Deno.errors.PermissionDenied);
+    }, Deno.errors.NotCapable);
   },
 );
 

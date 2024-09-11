@@ -8,5 +8,3 @@ Temporal.PlainDateTime 1995-12-07T15:00:00
 Temporal.PlainYearMonth 2020-10
 Temporal.PlainMonthDay 07-14
 Temporal.Duration PT130H20M
-Temporal.TimeZone Africa/Cairo
-Temporal.Calendar 1999-12-31
