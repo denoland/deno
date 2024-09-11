@@ -175,8 +175,11 @@ declare namespace Deno {
     /**
      * Raised when the underlying operating system indicates the current user
      * which the Deno process is running under does not have the appropriate
-     * permissions to a file or resource, or the user _did not_ provide required
-     * `--allow-*` flag.
+     * permissions to a file or resource.
+     *
+     * Before Deno 2.0, this error was raised when the user _did not_ provide
+     * required `--allow-*` flag. As of Deno 2.0, that case is now handled by
+     * the {@link NotCapable} error.
      *
      * @category Errors */
     export class PermissionDenied extends Error {}
@@ -314,6 +317,15 @@ declare namespace Deno {
      *
      * @category Errors */
     export class NotADirectory extends Error {}
+    /**
+     * Raised when trying to perform an operation while the relevant Deno
+     * permission (like `--allow-read`) has not been granted.
+     *
+     * Before Deno 2.0, this condition was covered by the {@link PermissionDenied}
+     * error.
+     *
+     * @category Errors */
+    export class NotCapable extends Error {}
   }
 
   /** The current process ID of this instance of the Deno CLI.
@@ -1762,15 +1774,6 @@ declare namespace Deno {
    * @category File System
    */
   export class FsFile implements Disposable {
-    /**
-     * The resource ID associated with the file instance. The resource ID
-     * should be considered an opaque reference to resource.
-     *
-     * @deprecated This will be removed in Deno 2.0. See the
-     * {@link https://docs.deno.com/runtime/manual/advanced/migrate_deprecations | Deno 1.x to 2.x Migration Guide}
-     * for migration instructions.
-     */
-    readonly rid: number;
     /** A {@linkcode ReadableStream} instance representing to the byte contents
      * of the file. This makes it easy to interoperate with other web streams
      * based APIs.
@@ -1920,7 +1923,7 @@ declare namespace Deno {
      * resolves to the new position within the resource (bytes from the start).
      *
      * ```ts
-     * // Given file pointing to file with "Hello world", which is 11 bytes long:
+     * // Given the file contains "Hello world" text, which is 11 bytes long:
      * using file = await Deno.open(
      *   "hello.txt",
      *   { read: true, write: true, truncate: true, create: true },
@@ -1938,7 +1941,7 @@ declare namespace Deno {
      * The seek modes work as follows:
      *
      * ```ts
-     * // Given file.rid pointing to file with "Hello world", which is 11 bytes long:
+     * // Given the file contains "Hello world" text, which is 11 bytes long:
      * const file = await Deno.open(
      *   "hello.txt",
      *   { read: true, write: true, truncate: true, create: true },
@@ -1975,7 +1978,7 @@ declare namespace Deno {
      * The seek modes work as follows:
      *
      * ```ts
-     * // Given file.rid pointing to file with "Hello world", which is 11 bytes long:
+     * // Given the file contains "Hello world" text, which is 11 bytes long:
      * using file = Deno.openSync(
      *   "hello.txt",
      *   { read: true, write: true, truncate: true, create: true },
@@ -4515,6 +4518,24 @@ declare namespace Deno {
     mtime: number | Date,
   ): Promise<void>;
 
+  /** Retrieve the process umask.  If `mask` is provided, sets the process umask.
+   * This call always returns what the umask was before the call.
+   *
+   * ```ts
+   * console.log(Deno.umask());  // e.g. 18 (0o022)
+   * const prevUmaskValue = Deno.umask(0o077);  // e.g. 18 (0o022)
+   * console.log(Deno.umask());  // e.g. 63 (0o077)
+   * ```
+   *
+   * This API is under consideration to determine if permissions are required to
+   * call it.
+   *
+   * *Note*: This API is not implemented on Windows
+   *
+   * @category File System
+   */
+  export function umask(mask?: number): number;
+
   /** The object that is returned from a {@linkcode Deno.upgradeWebSocket}
    * request.
    *
@@ -5294,7 +5315,7 @@ declare namespace Deno {
   export function serve(
     options:
       | ServeTcpOptions
-      | (ServeTcpOptions & TlsCertifiedKeyOptions),
+      | (ServeTcpOptions & TlsCertifiedKeyPem),
     handler: ServeHandler<Deno.NetAddr>,
   ): HttpServer<Deno.NetAddr>;
   /** Serves HTTP requests with the given option bag.
@@ -5351,7 +5372,678 @@ declare namespace Deno {
    */
   export function serve(
     options:
-      & (ServeTcpOptions | (ServeTcpOptions & TlsCertifiedKeyOptions))
+      & (ServeTcpOptions | (ServeTcpOptions & TlsCertifiedKeyPem))
       & ServeInit<Deno.NetAddr>,
   ): HttpServer<Deno.NetAddr>;
+
+  /** All plain number types for interfacing with foreign functions.
+   *
+   * @category FFI
+   */
+  export type NativeNumberType =
+    | "u8"
+    | "i8"
+    | "u16"
+    | "i16"
+    | "u32"
+    | "i32"
+    | "f32"
+    | "f64";
+
+  /** All BigInt number types for interfacing with foreign functions.
+   *
+   * @category FFI
+   */
+  export type NativeBigIntType =
+    | "u64"
+    | "i64"
+    | "usize"
+    | "isize";
+
+  /** The native boolean type for interfacing to foreign functions.
+   *
+   * @category FFI
+   */
+  export type NativeBooleanType = "bool";
+
+  /** The native pointer type for interfacing to foreign functions.
+   *
+   * @category FFI
+   */
+  export type NativePointerType = "pointer";
+
+  /** The native buffer type for interfacing to foreign functions.
+   *
+   * @category FFI
+   */
+  export type NativeBufferType = "buffer";
+
+  /** The native function type for interfacing with foreign functions.
+   *
+   * @category FFI
+   */
+  export type NativeFunctionType = "function";
+
+  /** The native void type for interfacing with foreign functions.
+   *
+   * @category FFI
+   */
+  export type NativeVoidType = "void";
+
+  /** The native struct type for interfacing with foreign functions.
+   *
+   * @category FFI
+   */
+  export type NativeStructType = { readonly struct: readonly NativeType[] };
+
+  /**
+   * @category FFI
+   */
+  export const brand: unique symbol;
+
+  /**
+   * @category FFI
+   */
+  export type NativeU8Enum<T extends number> = "u8" & { [brand]: T };
+  /**
+   * @category FFI
+   */
+  export type NativeI8Enum<T extends number> = "i8" & { [brand]: T };
+  /**
+   * @category FFI
+   */
+  export type NativeU16Enum<T extends number> = "u16" & { [brand]: T };
+  /**
+   * @category FFI
+   */
+  export type NativeI16Enum<T extends number> = "i16" & { [brand]: T };
+  /**
+   * @category FFI
+   */
+  export type NativeU32Enum<T extends number> = "u32" & { [brand]: T };
+  /**
+   * @category FFI
+   */
+  export type NativeI32Enum<T extends number> = "i32" & { [brand]: T };
+  /**
+   * @category FFI
+   */
+  export type NativeTypedPointer<T extends PointerObject> = "pointer" & {
+    [brand]: T;
+  };
+  /**
+   * @category FFI
+   */
+  export type NativeTypedFunction<T extends UnsafeCallbackDefinition> =
+    & "function"
+    & {
+      [brand]: T;
+    };
+
+  /** All supported types for interfacing with foreign functions.
+   *
+   * @category FFI
+   */
+  export type NativeType =
+    | NativeNumberType
+    | NativeBigIntType
+    | NativeBooleanType
+    | NativePointerType
+    | NativeBufferType
+    | NativeFunctionType
+    | NativeStructType;
+
+  /** @category FFI
+   */
+  export type NativeResultType = NativeType | NativeVoidType;
+
+  /** Type conversion for foreign symbol parameters and unsafe callback return
+   * types.
+   *
+   * @category FFI
+   */
+  export type ToNativeType<T extends NativeType = NativeType> = T extends
+    NativeStructType ? BufferSource
+    : T extends NativeNumberType ? T extends NativeU8Enum<infer U> ? U
+      : T extends NativeI8Enum<infer U> ? U
+      : T extends NativeU16Enum<infer U> ? U
+      : T extends NativeI16Enum<infer U> ? U
+      : T extends NativeU32Enum<infer U> ? U
+      : T extends NativeI32Enum<infer U> ? U
+      : number
+    : T extends NativeBigIntType ? bigint
+    : T extends NativeBooleanType ? boolean
+    : T extends NativePointerType
+      ? T extends NativeTypedPointer<infer U> ? U | null : PointerValue
+    : T extends NativeFunctionType
+      ? T extends NativeTypedFunction<infer U> ? PointerValue<U> | null
+      : PointerValue
+    : T extends NativeBufferType ? BufferSource | null
+    : never;
+
+  /** Type conversion for unsafe callback return types.
+   *
+   * @category FFI
+   */
+  export type ToNativeResultType<
+    T extends NativeResultType = NativeResultType,
+  > = T extends NativeStructType ? BufferSource
+    : T extends NativeNumberType ? T extends NativeU8Enum<infer U> ? U
+      : T extends NativeI8Enum<infer U> ? U
+      : T extends NativeU16Enum<infer U> ? U
+      : T extends NativeI16Enum<infer U> ? U
+      : T extends NativeU32Enum<infer U> ? U
+      : T extends NativeI32Enum<infer U> ? U
+      : number
+    : T extends NativeBigIntType ? bigint
+    : T extends NativeBooleanType ? boolean
+    : T extends NativePointerType
+      ? T extends NativeTypedPointer<infer U> ? U | null : PointerValue
+    : T extends NativeFunctionType
+      ? T extends NativeTypedFunction<infer U> ? PointerObject<U> | null
+      : PointerValue
+    : T extends NativeBufferType ? BufferSource | null
+    : T extends NativeVoidType ? void
+    : never;
+
+  /** A utility type for conversion of parameter types of foreign functions.
+   *
+   * @category FFI
+   */
+  export type ToNativeParameterTypes<T extends readonly NativeType[]> =
+    //
+    [(T[number])[]] extends [T] ? ToNativeType<T[number]>[]
+      : [readonly (T[number])[]] extends [T]
+        ? readonly ToNativeType<T[number]>[]
+      : T extends readonly [...NativeType[]] ? {
+          [K in keyof T]: ToNativeType<T[K]>;
+        }
+      : never;
+
+  /** Type conversion for foreign symbol return types and unsafe callback
+   * parameters.
+   *
+   * @category FFI
+   */
+  export type FromNativeType<T extends NativeType = NativeType> = T extends
+    NativeStructType ? Uint8Array
+    : T extends NativeNumberType ? T extends NativeU8Enum<infer U> ? U
+      : T extends NativeI8Enum<infer U> ? U
+      : T extends NativeU16Enum<infer U> ? U
+      : T extends NativeI16Enum<infer U> ? U
+      : T extends NativeU32Enum<infer U> ? U
+      : T extends NativeI32Enum<infer U> ? U
+      : number
+    : T extends NativeBigIntType ? bigint
+    : T extends NativeBooleanType ? boolean
+    : T extends NativePointerType
+      ? T extends NativeTypedPointer<infer U> ? U | null : PointerValue
+    : T extends NativeBufferType ? PointerValue
+    : T extends NativeFunctionType
+      ? T extends NativeTypedFunction<infer U> ? PointerObject<U> | null
+      : PointerValue
+    : never;
+
+  /** Type conversion for foreign symbol return types.
+   *
+   * @category FFI
+   */
+  export type FromNativeResultType<
+    T extends NativeResultType = NativeResultType,
+  > = T extends NativeStructType ? Uint8Array
+    : T extends NativeNumberType ? T extends NativeU8Enum<infer U> ? U
+      : T extends NativeI8Enum<infer U> ? U
+      : T extends NativeU16Enum<infer U> ? U
+      : T extends NativeI16Enum<infer U> ? U
+      : T extends NativeU32Enum<infer U> ? U
+      : T extends NativeI32Enum<infer U> ? U
+      : number
+    : T extends NativeBigIntType ? bigint
+    : T extends NativeBooleanType ? boolean
+    : T extends NativePointerType
+      ? T extends NativeTypedPointer<infer U> ? U | null : PointerValue
+    : T extends NativeBufferType ? PointerValue
+    : T extends NativeFunctionType
+      ? T extends NativeTypedFunction<infer U> ? PointerObject<U> | null
+      : PointerValue
+    : T extends NativeVoidType ? void
+    : never;
+
+  /** @category FFI
+   */
+  export type FromNativeParameterTypes<
+    T extends readonly NativeType[],
+  > =
+    //
+    [(T[number])[]] extends [T] ? FromNativeType<T[number]>[]
+      : [readonly (T[number])[]] extends [T]
+        ? readonly FromNativeType<T[number]>[]
+      : T extends readonly [...NativeType[]] ? {
+          [K in keyof T]: FromNativeType<T[K]>;
+        }
+      : never;
+
+  /** The interface for a foreign function as defined by its parameter and result
+   * types.
+   *
+   * @category FFI
+   */
+  export interface ForeignFunction<
+    Parameters extends readonly NativeType[] = readonly NativeType[],
+    Result extends NativeResultType = NativeResultType,
+    NonBlocking extends boolean = boolean,
+  > {
+    /** Name of the symbol.
+     *
+     * Defaults to the key name in symbols object. */
+    name?: string;
+    /** The parameters of the foreign function. */
+    parameters: Parameters;
+    /** The result (return value) of the foreign function. */
+    result: Result;
+    /** When `true`, function calls will run on a dedicated blocking thread and
+     * will return a `Promise` resolving to the `result`. */
+    nonblocking?: NonBlocking;
+    /** When `true`, dlopen will not fail if the symbol is not found.
+     * Instead, the symbol will be set to `null`.
+     *
+     * @default {false} */
+    optional?: boolean;
+  }
+
+  /** @category FFI
+   */
+  export interface ForeignStatic<Type extends NativeType = NativeType> {
+    /** Name of the symbol, defaults to the key name in symbols object. */
+    name?: string;
+    /** The type of the foreign static value. */
+    type: Type;
+    /** When `true`, dlopen will not fail if the symbol is not found.
+     * Instead, the symbol will be set to `null`.
+     *
+     * @default {false} */
+    optional?: boolean;
+  }
+
+  /** A foreign library interface descriptor.
+   *
+   * @category FFI
+   */
+  export interface ForeignLibraryInterface {
+    [name: string]: ForeignFunction | ForeignStatic;
+  }
+
+  /** A utility type that infers a foreign symbol.
+   *
+   * @category FFI
+   */
+  export type StaticForeignSymbol<T extends ForeignFunction | ForeignStatic> =
+    T extends ForeignFunction ? FromForeignFunction<T>
+      : T extends ForeignStatic ? FromNativeType<T["type"]>
+      : never;
+
+  /**  @category FFI
+   */
+  export type FromForeignFunction<T extends ForeignFunction> =
+    T["parameters"] extends readonly [] ? () => StaticForeignSymbolReturnType<T>
+      : (
+        ...args: ToNativeParameterTypes<T["parameters"]>
+      ) => StaticForeignSymbolReturnType<T>;
+
+  /** @category FFI
+   */
+  export type StaticForeignSymbolReturnType<T extends ForeignFunction> =
+    ConditionalAsync<T["nonblocking"], FromNativeResultType<T["result"]>>;
+
+  /** @category FFI
+   */
+  export type ConditionalAsync<IsAsync extends boolean | undefined, T> =
+    IsAsync extends true ? Promise<T> : T;
+
+  /** A utility type that infers a foreign library interface.
+   *
+   * @category FFI
+   */
+  export type StaticForeignLibraryInterface<T extends ForeignLibraryInterface> =
+    {
+      [K in keyof T]: T[K]["optional"] extends true
+        ? StaticForeignSymbol<T[K]> | null
+        : StaticForeignSymbol<T[K]>;
+    };
+
+  /** A non-null pointer, represented as an object
+   * at runtime. The object's prototype is `null`
+   * and cannot be changed. The object cannot be
+   * assigned to either and is thus entirely read-only.
+   *
+   * To interact with memory through a pointer use the
+   * {@linkcode UnsafePointerView} class. To create a
+   * pointer from an address or the get the address of
+   * a pointer use the static methods of the
+   * {@linkcode UnsafePointer} class.
+   *
+   * @category FFI
+   */
+  export type PointerObject<T = unknown> = { [brand]: T };
+
+  /** Pointers are represented either with a {@linkcode PointerObject}
+   * object or a `null` if the pointer is null.
+   *
+   * @category FFI
+   */
+  export type PointerValue<T = unknown> = null | PointerObject<T>;
+
+  /** A collection of static functions for interacting with pointer objects.
+   *
+   * @category FFI
+   */
+  export class UnsafePointer {
+    /** Create a pointer from a numeric value. This one is <i>really</i> dangerous! */
+    static create<T = unknown>(value: bigint): PointerValue<T>;
+    /** Returns `true` if the two pointers point to the same address. */
+    static equals<T = unknown>(a: PointerValue<T>, b: PointerValue<T>): boolean;
+    /** Return the direct memory pointer to the typed array in memory. */
+    static of<T = unknown>(
+      value: Deno.UnsafeCallback | BufferSource,
+    ): PointerValue<T>;
+    /** Return a new pointer offset from the original by `offset` bytes. */
+    static offset<T = unknown>(
+      value: PointerObject,
+      offset: number,
+    ): PointerValue<T>;
+    /** Get the numeric value of a pointer */
+    static value(value: PointerValue): bigint;
+  }
+
+  /** An unsafe pointer view to a memory location as specified by the `pointer`
+   * value. The `UnsafePointerView` API follows the standard built in interface
+   * {@linkcode DataView} for accessing the underlying types at an memory
+   * location (numbers, strings and raw bytes).
+   *
+   * @category FFI
+   */
+  export class UnsafePointerView {
+    constructor(pointer: PointerObject);
+
+    pointer: PointerObject;
+
+    /** Gets a boolean at the specified byte offset from the pointer. */
+    getBool(offset?: number): boolean;
+    /** Gets an unsigned 8-bit integer at the specified byte offset from the
+     * pointer. */
+    getUint8(offset?: number): number;
+    /** Gets a signed 8-bit integer at the specified byte offset from the
+     * pointer. */
+    getInt8(offset?: number): number;
+    /** Gets an unsigned 16-bit integer at the specified byte offset from the
+     * pointer. */
+    getUint16(offset?: number): number;
+    /** Gets a signed 16-bit integer at the specified byte offset from the
+     * pointer. */
+    getInt16(offset?: number): number;
+    /** Gets an unsigned 32-bit integer at the specified byte offset from the
+     * pointer. */
+    getUint32(offset?: number): number;
+    /** Gets a signed 32-bit integer at the specified byte offset from the
+     * pointer. */
+    getInt32(offset?: number): number;
+    /** Gets an unsigned 64-bit integer at the specified byte offset from the
+     * pointer. */
+    getBigUint64(offset?: number): bigint;
+    /** Gets a signed 64-bit integer at the specified byte offset from the
+     * pointer. */
+    getBigInt64(offset?: number): bigint;
+    /** Gets a signed 32-bit float at the specified byte offset from the
+     * pointer. */
+    getFloat32(offset?: number): number;
+    /** Gets a signed 64-bit float at the specified byte offset from the
+     * pointer. */
+    getFloat64(offset?: number): number;
+    /** Gets a pointer at the specified byte offset from the pointer */
+    getPointer<T = unknown>(offset?: number): PointerValue<T>;
+    /** Gets a C string (`null` terminated string) at the specified byte offset
+     * from the pointer. */
+    getCString(offset?: number): string;
+    /** Gets a C string (`null` terminated string) at the specified byte offset
+     * from the specified pointer. */
+    static getCString(
+      pointer: PointerObject,
+      offset?: number,
+    ): string;
+    /** Gets an `ArrayBuffer` of length `byteLength` at the specified byte
+     * offset from the pointer. */
+    getArrayBuffer(byteLength: number, offset?: number): ArrayBuffer;
+    /** Gets an `ArrayBuffer` of length `byteLength` at the specified byte
+     * offset from the specified pointer. */
+    static getArrayBuffer(
+      pointer: PointerObject,
+      byteLength: number,
+      offset?: number,
+    ): ArrayBuffer;
+    /** Copies the memory of the pointer into a typed array.
+     *
+     * Length is determined from the typed array's `byteLength`.
+     *
+     * Also takes optional byte offset from the pointer. */
+    copyInto(destination: BufferSource, offset?: number): void;
+    /** Copies the memory of the specified pointer into a typed array.
+     *
+     * Length is determined from the typed array's `byteLength`.
+     *
+     * Also takes optional byte offset from the pointer. */
+    static copyInto(
+      pointer: PointerObject,
+      destination: BufferSource,
+      offset?: number,
+    ): void;
+  }
+
+  /** An unsafe pointer to a function, for calling functions that are not present
+   * as symbols.
+   *
+   * @category FFI
+   */
+  export class UnsafeFnPointer<const Fn extends ForeignFunction> {
+    /** The pointer to the function. */
+    pointer: PointerObject<Fn>;
+    /** The definition of the function. */
+    definition: Fn;
+
+    constructor(pointer: PointerObject<NoInfer<Fn>>, definition: Fn);
+    /** @deprecated Properly type {@linkcode pointer} using {@linkcode NativeTypedFunction} or {@linkcode UnsafeCallbackDefinition} types. */
+    constructor(pointer: PointerObject, definition: Fn);
+
+    /** Call the foreign function. */
+    call: FromForeignFunction<Fn>;
+  }
+
+  /** Definition of a unsafe callback function.
+   *
+   * @category FFI
+   */
+  export interface UnsafeCallbackDefinition<
+    Parameters extends readonly NativeType[] = readonly NativeType[],
+    Result extends NativeResultType = NativeResultType,
+  > {
+    /** The parameters of the callbacks. */
+    parameters: Parameters;
+    /** The current result of the callback. */
+    result: Result;
+  }
+
+  /** An unsafe callback function.
+   *
+   * @category FFI
+   */
+  export type UnsafeCallbackFunction<
+    Parameters extends readonly NativeType[] = readonly NativeType[],
+    Result extends NativeResultType = NativeResultType,
+  > = Parameters extends readonly [] ? () => ToNativeResultType<Result> : (
+    ...args: FromNativeParameterTypes<Parameters>
+  ) => ToNativeResultType<Result>;
+
+  /** An unsafe function pointer for passing JavaScript functions as C function
+   * pointers to foreign function calls.
+   *
+   * The function pointer remains valid until the `close()` method is called.
+   *
+   * All `UnsafeCallback` are always thread safe in that they can be called from
+   * foreign threads without crashing. However, they do not wake up the Deno event
+   * loop by default.
+   *
+   * If a callback is to be called from foreign threads, use the `threadSafe()`
+   * static constructor or explicitly call `ref()` to have the callback wake up
+   * the Deno event loop when called from foreign threads. This also stops
+   * Deno's process from exiting while the callback still exists and is not
+   * unref'ed.
+   *
+   * Use `deref()` to then allow Deno's process to exit. Calling `deref()` on
+   * a ref'ed callback does not stop it from waking up the Deno event loop when
+   * called from foreign threads.
+   *
+   * @category FFI
+   */
+  export class UnsafeCallback<
+    const Definition extends UnsafeCallbackDefinition =
+      UnsafeCallbackDefinition,
+  > {
+    constructor(
+      definition: Definition,
+      callback: UnsafeCallbackFunction<
+        Definition["parameters"],
+        Definition["result"]
+      >,
+    );
+
+    /** The pointer to the unsafe callback. */
+    readonly pointer: PointerObject<Definition>;
+    /** The definition of the unsafe callback. */
+    readonly definition: Definition;
+    /** The callback function. */
+    readonly callback: UnsafeCallbackFunction<
+      Definition["parameters"],
+      Definition["result"]
+    >;
+
+    /**
+     * Creates an {@linkcode UnsafeCallback} and calls `ref()` once to allow it to
+     * wake up the Deno event loop when called from foreign threads.
+     *
+     * This also stops Deno's process from exiting while the callback still
+     * exists and is not unref'ed.
+     */
+    static threadSafe<
+      Definition extends UnsafeCallbackDefinition = UnsafeCallbackDefinition,
+    >(
+      definition: Definition,
+      callback: UnsafeCallbackFunction<
+        Definition["parameters"],
+        Definition["result"]
+      >,
+    ): UnsafeCallback<Definition>;
+
+    /**
+     * Increments the callback's reference counting and returns the new
+     * reference count.
+     *
+     * After `ref()` has been called, the callback always wakes up the
+     * Deno event loop when called from foreign threads.
+     *
+     * If the callback's reference count is non-zero, it keeps Deno's
+     * process from exiting.
+     */
+    ref(): number;
+
+    /**
+     * Decrements the callback's reference counting and returns the new
+     * reference count.
+     *
+     * Calling `unref()` does not stop a callback from waking up the Deno
+     * event loop when called from foreign threads.
+     *
+     * If the callback's reference counter is zero, it no longer keeps
+     * Deno's process from exiting.
+     */
+    unref(): number;
+
+    /**
+     * Removes the C function pointer associated with this instance.
+     *
+     * Continuing to use the instance or the C function pointer after closing
+     * the `UnsafeCallback` will lead to errors and crashes.
+     *
+     * Calling this method sets the callback's reference counting to zero,
+     * stops the callback from waking up the Deno event loop when called from
+     * foreign threads and no longer keeps Deno's process from exiting.
+     */
+    close(): void;
+  }
+
+  /** A dynamic library resource.  Use {@linkcode Deno.dlopen} to load a dynamic
+   * library and return this interface.
+   *
+   * @category FFI
+   */
+  export interface DynamicLibrary<S extends ForeignLibraryInterface> {
+    /** All of the registered library along with functions for calling them. */
+    symbols: StaticForeignLibraryInterface<S>;
+    /** Removes the pointers associated with the library symbols.
+     *
+     * Continuing to use symbols that are part of the library will lead to
+     * errors and crashes.
+     *
+     * Calling this method will also immediately set any references to zero and
+     * will no longer keep Deno's process from exiting.
+     */
+    close(): void;
+  }
+
+  /** Opens an external dynamic library and registers symbols, making foreign
+   * functions available to be called.
+   *
+   * Requires `allow-ffi` permission. Loading foreign dynamic libraries can in
+   * theory bypass all of the sandbox permissions. While it is a separate
+   * permission users should acknowledge in practice that is effectively the
+   * same as running with the `allow-all` permission.
+   *
+   * @example Given a C library which exports a foreign function named `add()`
+   *
+   * ```ts
+   * // Determine library extension based on
+   * // your OS.
+   * let libSuffix = "";
+   * switch (Deno.build.os) {
+   *   case "windows":
+   *     libSuffix = "dll";
+   *     break;
+   *   case "darwin":
+   *     libSuffix = "dylib";
+   *     break;
+   *   default:
+   *     libSuffix = "so";
+   *     break;
+   * }
+   *
+   * const libName = `./libadd.${libSuffix}`;
+   * // Open library and define exported symbols
+   * const dylib = Deno.dlopen(
+   *   libName,
+   *   {
+   *     "add": { parameters: ["isize", "isize"], result: "isize" },
+   *   } as const,
+   * );
+   *
+   * // Call the symbol `add`
+   * const result = dylib.symbols.add(35n, 34n); // 69n
+   *
+   * console.log(`Result from external addition of 35 and 34: ${result}`);
+   * ```
+   *
+   * @tags allow-ffi
+   * @category FFI
+   */
+  export function dlopen<const S extends ForeignLibraryInterface>(
+    filename: string | URL,
+    symbols: S,
+  ): DynamicLibrary<S>;
 }
