@@ -1,6 +1,6 @@
 {
-  "args": "task -q --config ../../../testdata/task/deno_json/deno.json piped",
-  "output": "../../../testdata/task/deno_json/task_piped_stdin.out",
+  "args": "task -q --config deno.json piped",
+  "output": "task_piped_stdin.out",
   "envs": {
     "NO_COLOR": "1"
   }

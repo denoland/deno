@@ -1,6 +1,6 @@
 {
-  "args": "task -q --cwd ../../../testdata/task/deno_json",
-  "output": "../../../testdata/task/deno_json/task_no_args.out",
+  "args": "task -q --cwd deno.json",
+  "output": "task_no_args.out",
   "envs": {
     "NO_COLOR": "1"
   },

@@ -1,7 +1,6 @@
 {
   "args": "task --quiet echo",
-  "cwd": "../../../testdata/task/package_json",
-  "output": "../../../testdata/task/package_json/echo.out",
+  "output": "echo.out",
   "envs": {
     "NO_COLOR": "1",
     "NPM_CONFIG_REGISTRY": "http://localhost:4260/"

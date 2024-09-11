@@ -1,7 +1,6 @@
 {
-  "args": "task test",
-  "cwd": "../../../testdata/task/deno_json_pre_post/",
-  "output": "../../../testdata/task/deno_json_pre_post/bin.out",
+  "args": "task --config deno.json test",
+  "output": "bin.out",
   "envs": {
     "NO_COLOR": "1"
   },

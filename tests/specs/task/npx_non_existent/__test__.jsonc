@@ -1,7 +1,6 @@
 {
   "args": "task non-existent",
-  "cwd": "../../../testdata/task/npx",
-  "output": "../../../testdata/task/npx/non_existent.out",
+  "output": "non_existent.out",
   "envs": {
     "NO_COLOR": "1",
     "NPM_CONFIG_REGISTRY": "http://localhost:4260/"

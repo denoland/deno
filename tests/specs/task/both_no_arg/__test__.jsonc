@@ -1,7 +1,6 @@
 {
-  "args": "task",
-  "cwd": "../../../testdata/task/both",
-  "output": "../../../testdata/task/both/no_args.out",
+  "args": "task --config deno.json",
+  "output": "no_args.out",
   "envs": {
     "NO_COLOR": "1"
   },

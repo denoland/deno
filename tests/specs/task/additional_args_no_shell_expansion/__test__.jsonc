@@ -1,6 +1,6 @@
 {
-  "args": "task -q --config ../../../testdata/task/deno_json/deno.json echo $(echo 5)",
-  "output": "../../../testdata/task/deno_json/task_additional_args_no_shell_expansion.out",
+  "args": "task -q --config deno.json echo $(echo 5)",
+  "output": "task_additional_args_no_shell_expansion.out",
   "envs": {
     "NO_COLOR": "1"
   }

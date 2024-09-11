@@ -1,7 +1,6 @@
 {
   "args": "task test",
-  "cwd": "../../../testdata/task/package_json_pre",
-  "output": "../../../testdata/task/package_json_pre/bin.out",
+  "output": "bin.out",
   "envs": {
     "NO_COLOR": "1"
   },

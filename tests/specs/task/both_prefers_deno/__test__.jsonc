@@ -1,7 +1,6 @@
 {
-  "args": "task output some text",
-  "cwd": "../../../testdata/task/both",
-  "output": "../../../testdata/task/both/prefers_deno.out",
+  "args": "task --config deno.json output some text",
+  "output": "prefers_deno.out",
   "envs": {
     "NO_COLOR": "1",
     "NPM_CONFIG_REGISTRY": "http://localhost:4260/"
