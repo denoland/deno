@@ -81,35 +81,29 @@ pub static UNSTABLE_GRANULAR_FLAGS: &[UnstableGranularFlag] = &[
     id: 4,
   },
   UnstableGranularFlag {
-    name: ops::http::UNSTABLE_FEATURE_NAME,
-    help_text: "Enable unstable HTTP APIs",
-    show_in_help: true,
-    id: 5,
-  },
-  UnstableGranularFlag {
     name: deno_kv::UNSTABLE_FEATURE_NAME,
     help_text: "Enable unstable Key-Value store APIs",
     show_in_help: true,
-    id: 6,
+    id: 5,
   },
   UnstableGranularFlag {
     name: deno_net::UNSTABLE_FEATURE_NAME,
     help_text: "Enable unstable net APIs",
     show_in_help: true,
-    id: 7,
+    id: 6,
   },
   // TODO(bartlomieju): consider removing it
   UnstableGranularFlag {
     name: ops::process::UNSTABLE_FEATURE_NAME,
     help_text: "Enable unstable process APIs",
     show_in_help: false,
-    id: 8,
+    id: 7,
   },
   UnstableGranularFlag {
     name: "temporal",
     help_text: "Enable unstable Temporal API",
     show_in_help: true,
-    id: 9,
+    id: 8,
   },
   UnstableGranularFlag {
     name: "unsafe-proto",
@@ -117,19 +111,19 @@ pub static UNSTABLE_GRANULAR_FLAGS: &[UnstableGranularFlag] = &[
     show_in_help: true,
     // This number is used directly in the JS code. Search
     // for "unstableIds" to see where it's used.
-    id: 10,
+    id: 9,
   },
   UnstableGranularFlag {
     name: deno_webgpu::UNSTABLE_FEATURE_NAME,
     help_text: "Enable unstable `WebGPU` API",
     show_in_help: false,
-    id: 11,
+    id: 10,
   },
   UnstableGranularFlag {
     name: ops::worker_host::UNSTABLE_FEATURE_NAME,
     help_text: "Enable unstable Web Worker APIs",
     show_in_help: true,
-    id: 12,
+    id: 11,
   },
 ];
 

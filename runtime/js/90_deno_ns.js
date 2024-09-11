@@ -136,14 +136,13 @@ const unstableIds = {
   cron: 2,
   ffi: 3,
   fs: 4,
-  http: 5,
-  kv: 6,
-  net: 7,
-  process: 8,
-  temporal: 9,
-  unsafeProto: 10,
-  webgpu: 11,
-  workerOptions: 12,
+  kv: 5,
+  net: 6,
+  process: 7,
+  temporal: 8,
+  unsafeProto: 9,
+  webgpu: 10,
+  workerOptions: 11,
 };
 
 const denoNsUnstableById = { __proto__: null };
