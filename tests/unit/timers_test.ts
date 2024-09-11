@@ -362,54 +362,6 @@ Deno.test(async function timeoutBindThis() {
   }
 });
 
-Deno.test(async function timeoutBindThis() {
-  const thisCheckPassed = [null, undefined, globalThis];
-
-  const thisCheckFailed = [
-    0,
-    "",
-    true,
-    false,
-    {},
-    [],
-    "foo",
-    () => {},
-    Object.prototype,
-  ];
-
-  for (const thisArg of thisCheckPassed) {
-    const { promise, resolve } = Promise.withResolvers<void>();
-    let hasThrown = 0;
-    try {
-      setTimeout.call(thisArg, () => resolve(), 1);
-      hasThrown = 1;
-    } catch (err) {
-      if (err instanceof TypeError) {
-        hasThrown = 2;
-      } else {
-        hasThrown = 3;
-      }
-    }
-    await promise;
-    assertEquals(hasThrown, 1);
-  }
-
-  for (const thisArg of thisCheckFailed) {
-    let hasThrown = 0;
-    try {
-      setTimeout.call(thisArg, () => {}, 1);
-      hasThrown = 1;
-    } catch (err) {
-      if (err instanceof TypeError) {
-        hasThrown = 2;
-      } else {
-        hasThrown = 3;
-      }
-    }
-    assertEquals(hasThrown, 2);
-  }
-});
-
 Deno.test(function clearTimeoutShouldConvertToNumber() {
   let called = false;
   const obj = {
