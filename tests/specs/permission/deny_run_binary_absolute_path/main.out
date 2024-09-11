@@ -1,8 +1,8 @@
-PermissionDenied: Requires run access to "deno", run again with the --allow-run flag
+NotCapable: Requires run access to "deno", run again with the --allow-run flag
     at [WILDCARD] {
-  name: "PermissionDenied"
+  name: "NotCapable"
 }
-PermissionDenied: Requires run access to "[WILDLINE]", run again with the --allow-run flag
+NotCapable: Requires run access to "[WILDLINE]", run again with the --allow-run flag
     at [WILDCARD] {
-  name: "PermissionDenied"
+  name: "NotCapable"
 }
