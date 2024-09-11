@@ -312,7 +312,7 @@ pub fn get_repl_workspace_settings() -> WorkspaceSettings {
     document_preload_limit: 0, // don't pre-load any modules as it's expensive and not useful for the repl
     tls_certificate: None,
     unsafely_ignore_certificate_errors: None,
-    unstable: false,
+    unstable: Default::default(),
     suggest: DenoCompletionSettings {
       imports: ImportCompletionSettings {
         auto_discover: false,

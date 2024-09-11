@@ -1,2 +1,2 @@
-error: Uncaught PermissionDenied: Requires read access to <CWD>, specify the required permissions during compilation using `deno compile --allow-read`
+error: Uncaught NotCapable: Requires read access to <CWD>, specify the required permissions during compilation using `deno compile --allow-read`
 [WILDCARD]
