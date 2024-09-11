@@ -1,6 +1,7 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 // Copyright Joyent and Node contributors. All rights reserved. MIT license.
 
+import { primordials } from "ext:core/mod.js";
 import { notImplemented } from "ext:deno_node/_utils.ts";
 
 export const REPL_MODE_SLOPPY = Symbol("repl-sloppy");
