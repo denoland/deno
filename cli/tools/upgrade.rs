@@ -650,7 +650,7 @@ impl RequestedVersion {
     let (channel, passed_version) = if is_canary {
       if !re_hash.is_match(&passed_version) {
         bail!(
-          "Invalid commit hash passed ({})\n\nPass a semver version, or a full 40 character git commit hash, or a release channel name.\n\nUsage:\n{}",
+          "Invalid commit hash passed ({})\n\nPass a semver, or a full 40 character git commit hash, or a release channel name.\n\nUsage:\n{}",
           colors::gray(passed_version),
           UPGRADE_USAGE
         );
@@ -660,7 +660,7 @@ impl RequestedVersion {
     } else {
       let Ok(semver) = Version::parse_standard(&passed_version) else {
         bail!(
-          "Invalid version passed ({})\n\nPass a semver version, or a full 40 character git commit hash, or a release channel name.\n\nUsage:\n{}",
+          "Invalid version passed ({})\n\nPass a semver, or a full 40 character git commit hash, or a release channel name.\n\nUsage:\n{}",
           colors::gray(passed_version),
           UPGRADE_USAGE
         );
@@ -1232,7 +1232,7 @@ mod test {
     assert_contains!(err, "Invalid version passed");
     assert_contains!(
       err,
-      "Pass a semver version, or a full 40 character git commit hash, or a release channel name."
+      "Pass a semver, or a full 40 character git commit hash, or a release channel name."
     );
 
     upgrade_flags.version_or_hash_or_channel = Some("11.asd.1324".to_string());
@@ -1242,7 +1242,7 @@ mod test {
     assert_contains!(err, "Invalid version passed");
     assert_contains!(
       err,
-      "Pass a semver version, or a full 40 character git commit hash, or a release channel name."
+      "Pass a semver, or a full 40 character git commit hash, or a release channel name."
     );
   }
 
