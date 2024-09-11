@@ -43,7 +43,7 @@ Deno.test({ permissions: { read: false } }, function dirCwdPermError() {
     () => {
       Deno.cwd();
     },
-    Deno.errors.PermissionDenied,
+    Deno.errors.NotCapable,
     "Requires read access to <CWD>, run again with the --allow-read flag",
   );
 });

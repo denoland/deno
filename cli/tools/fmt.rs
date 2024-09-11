@@ -907,6 +907,7 @@ fn get_resolved_malva_config(
   };
 
   let language_options = LanguageOptions {
+    align_comments: true,
     hex_case: HexCase::Lower,
     hex_color_length: None,
     quotes: if let Some(true) = options.single_quote {

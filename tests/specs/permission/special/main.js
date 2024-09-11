@@ -7,10 +7,10 @@ const testCases = [
   [["darwin", "linux"], null, "/etc/passwd"],
   [["windows"], null, "\\\\.\\nul"],
   // Denied, requires `--allow-all`
-  [["darwin", "linux"], /PermissionDenied/, "/dev/ptmx"],
-  [["linux"], /PermissionDenied/, "/proc/self/environ"],
-  [["linux"], /PermissionDenied/, "/proc/self/mem"],
-  [["windows"], /PermissionDenied/, "\\\\.\\PhysicalDrive0"],
+  [["darwin", "linux"], /NotCapable/, "/dev/ptmx"],
+  [["linux"], /NotCapable/, "/proc/self/environ"],
+  [["linux"], /NotCapable/, "/proc/self/mem"],
+  [["windows"], /NotCapable/, "\\\\.\\PhysicalDrive0"],
 ];
 
 const os = Deno.build.os;

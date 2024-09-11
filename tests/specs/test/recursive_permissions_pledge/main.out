@@ -1,4 +1,3 @@
-Check [WILDCARD]/main.js
 
 ============================================================
 Deno has panicked. This is a bug in Deno. Please report this
@@ -13,4 +12,3 @@ Args: ["[WILDCARD]deno.exe", "test", "main.js"]
 
 thread 'tokio-runtime-worker' panicked at cli\ops\testing.rs:[WILDCARD]:
 pledge test permissions called before restoring previous pledge
-[WILDCARD]
