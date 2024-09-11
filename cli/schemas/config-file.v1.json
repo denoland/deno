@@ -515,6 +515,7 @@
           "cron",
           "ffi",
           "fs",
+          "http",
           "kv",
           "net",
           "sloppy-imports",
