@@ -2143,7 +2143,7 @@ fn lsp_hover_unstable_always_enabled() {
       "version": 1,
       // IMPORTANT: If you change this API due to stabilization, also change it
       // in the enabled test below.
-      "text": "type _ = Deno.ForeignLibraryInterface;\n"
+      "text": "type _ = Deno.DatagramConn;\n"
     }
   }));
   let res = client.write_request(
@@ -2161,14 +2161,14 @@ fn lsp_hover_unstable_always_enabled() {
       "contents":[
         {
           "language":"typescript",
-          "value":"interface Deno.ForeignLibraryInterface"
+          "value":"interface Deno.DatagramConn"
         },
-        "**UNSTABLE**: New API, yet to be vetted.\n\nA foreign library interface descriptor.",
-        "\n\n*@category* - FFI  \n\n*@experimental*",
+        "**UNSTABLE**: New API, yet to be vetted.\n\nA generic transport listener for message-oriented protocols.",
+        "\n\n*@category* - Network  \n\n*@experimental*",
       ],
       "range":{
         "start":{ "line":0, "character":14 },
-        "end":{ "line":0, "character":37 }
+        "end":{ "line":0, "character":26 }
       }
     })
   );
@@ -2188,7 +2188,7 @@ fn lsp_hover_unstable_enabled() {
       "uri": "file:///a/file.ts",
       "languageId": "typescript",
       "version": 1,
-      "text": "type _ = Deno.ForeignLibraryInterface;\n"
+      "text": "type _ = Deno.DatagramConn;\n"
     }
   }));
   let res = client.write_request(
@@ -2206,14 +2206,14 @@ fn lsp_hover_unstable_enabled() {
       "contents":[
         {
           "language":"typescript",
-          "value":"interface Deno.ForeignLibraryInterface"
+          "value":"interface Deno.DatagramConn"
         },
-        "**UNSTABLE**: New API, yet to be vetted.\n\nA foreign library interface descriptor.",
-        "\n\n*@category* - FFI  \n\n*@experimental*",
+        "**UNSTABLE**: New API, yet to be vetted.\n\nA generic transport listener for message-oriented protocols.",
+        "\n\n*@category* - Network  \n\n*@experimental*",
       ],
       "range":{
         "start":{ "line":0, "character":14 },
-        "end":{ "line":0, "character":37 }
+        "end":{ "line":0, "character":26 }
       }
     })
   );
@@ -9722,6 +9722,51 @@ fn lsp_lockfile_redirect_resolution() {
   client.shutdown();
 }
 
+// Regression test for https://github.com/denoland/vscode_deno/issues/1157.
+#[test]
+fn lsp_diagnostics_brackets_in_file_name() {
+  let context = TestContextBuilder::new().use_temp_cwd().build();
+  let mut client = context.new_lsp_command().build();
+  client.initialize_default();
+  let diagnostics = client.did_open(json!({
+    "textDocument": {
+      "uri": "file:///a/%5Bfile%5D.ts",
+      "languageId": "typescript",
+      "version": 1,
+      "text": "/** @deprecated */\nexport const a = \"a\";\n\na;\n",
+    },
+  }));
+  assert_eq!(
+    json!(diagnostics.all()),
+    json!([
+      {
+        "range": {
+          "start": { "line": 3, "character": 0 },
+          "end": { "line": 3, "character": 1 },
+        },
+        "severity": 4,
+        "code": 6385,
+        "source": "deno-ts",
+        "message": "'a' is deprecated.",
+        "relatedInformation": [
+          {
+            "location": {
+              "uri": "file:///a/%5Bfile%5D.ts",
+              "range": {
+                "start": { "line": 0, "character": 4 },
+                "end": { "line": 0, "character": 16 },
+              },
+            },
+            "message": "The declaration was marked as deprecated here.",
+          },
+        ],
+        "tags": [2],
+      },
+    ]),
+  );
+  client.shutdown();
+}
+
 #[test]
 fn lsp_diagnostics_deprecated() {
   let context = TestContextBuilder::new().use_temp_cwd().build();
@@ -10269,9 +10314,7 @@ fn lsp_format_exclude_with_config() {
     "deno.fmt.jsonc",
     r#"{
     "fmt": {
-      "files": {
-        "exclude": ["ignored.ts"]
-      },
+      "exclude": ["ignored.ts"],
       "options": {
         "useTabs": true,
         "lineWidth": 40,
@@ -10322,9 +10365,7 @@ fn lsp_format_exclude_default_config() {
     "deno.fmt.jsonc",
     r#"{
     "fmt": {
-      "files": {
-        "exclude": ["ignored.ts"]
-      },
+      "exclude": ["ignored.ts"],
       "options": {
         "useTabs": true,
         "lineWidth": 40,
@@ -10911,7 +10952,7 @@ fn lsp_configuration_did_change() {
         },
       },
     },
-    "unstable": false,
+    "unstable": [],
   } }));
 
   let list = client.get_completion_list(
@@ -11116,24 +11157,6 @@ fn lsp_workspace_symbol() {
         "containerName": "B"
       },
       {
-        "name": "fields",
-        "kind": 6,
-        "location": {
-          "uri": "deno:/asset/lib.deno.unstable.d.ts",
-          "range": null,
-        },
-        "containerName": "CalendarProtocol"
-      },
-      {
-        "name": "fields",
-        "kind": 6,
-        "location": {
-          "uri": "deno:/asset/lib.deno.unstable.d.ts",
-          "range": null,
-        },
-        "containerName": "Calendar"
-      },
-      {
         "name": "ClassFieldDecoratorContext",
         "kind": 11,
         "location": {
@@ -11142,168 +11165,6 @@ fn lsp_workspace_symbol() {
         },
         "containerName": ""
       },
-      {
-        "name": "dateFromFields",
-        "kind": 6,
-        "location": {
-          "uri": "deno:/asset/lib.deno.unstable.d.ts",
-          "range": null,
-        },
-        "containerName": "CalendarProtocol"
-      },
-      {
-        "name": "dateFromFields",
-        "kind": 6,
-        "location": {
-          "uri": "deno:/asset/lib.deno.unstable.d.ts",
-          "range": null,
-        },
-        "containerName": "Calendar"
-      },
-      {
-        "name": "getISOFields",
-        "kind": 6,
-        "location": {
-          "uri": "deno:/asset/lib.deno.unstable.d.ts",
-          "range": null,
-        },
-        "containerName": "PlainDate"
-      },
-      {
-        "name": "getISOFields",
-        "kind": 6,
-        "location": {
-          "uri": "deno:/asset/lib.deno.unstable.d.ts",
-          "range": null,
-        },
-        "containerName": "PlainDateTime"
-      },
-      {
-        "name": "getISOFields",
-        "kind": 6,
-        "location": {
-          "uri": "deno:/asset/lib.deno.unstable.d.ts",
-          "range": null,
-        },
-        "containerName": "PlainMonthDay"
-      },
-      {
-        "name": "getISOFields",
-        "kind": 6,
-        "location": {
-          "uri": "deno:/asset/lib.deno.unstable.d.ts",
-          "range": null,
-        },
-        "containerName": "PlainTime"
-      },
-      {
-        "name": "getISOFields",
-        "kind": 6,
-        "location": {
-          "uri": "deno:/asset/lib.deno.unstable.d.ts",
-          "range": null,
-        },
-        "containerName": "PlainYearMonth"
-      },
-      {
-        "name": "getISOFields",
-        "kind": 6,
-        "location": {
-          "uri": "deno:/asset/lib.deno.unstable.d.ts",
-          "range": null,
-        },
-        "containerName": "ZonedDateTime"
-      },
-      {
-        "name": "mergeFields",
-        "kind": 6,
-        "location": {
-          "uri": "deno:/asset/lib.deno.unstable.d.ts",
-          "range": null,
-        },
-        "containerName": "CalendarProtocol"
-      },
-      {
-        "name": "mergeFields",
-        "kind": 6,
-        "location": {
-          "uri": "deno:/asset/lib.deno.unstable.d.ts",
-          "range": null,
-        },
-        "containerName": "Calendar"
-      },
-      {
-        "name": "monthDayFromFields",
-        "kind": 6,
-        "location": {
-          "uri": "deno:/asset/lib.deno.unstable.d.ts",
-          "range": null,
-        },
-        "containerName": "CalendarProtocol"
-      },
-      {
-        "name": "monthDayFromFields",
-        "kind": 6,
-        "location": {
-          "uri": "deno:/asset/lib.deno.unstable.d.ts",
-          "range": null,
-        },
-        "containerName": "Calendar"
-      },
-      {
-        "name": "PlainDateISOFields",
-        "kind": 5,
-        "location": {
-          "uri": "deno:/asset/lib.deno.unstable.d.ts",
-          "range": null,
-        },
-        "containerName": "Temporal"
-      },
-      {
-        "name": "PlainDateTimeISOFields",
-        "kind": 5,
-        "location": {
-          "uri": "deno:/asset/lib.deno.unstable.d.ts",
-          "range": null,
-        },
-        "containerName": "Temporal"
-      },
-      {
-        "name": "PlainTimeISOFields",
-        "kind": 5,
-        "location": {
-          "uri": "deno:/asset/lib.deno.unstable.d.ts",
-          "range": null,
-        },
-        "containerName": "Temporal"
-      },
-      {
-        "name": "yearMonthFromFields",
-        "kind": 6,
-        "location": {
-          "uri": "deno:/asset/lib.deno.unstable.d.ts",
-          "range": null,
-        },
-        "containerName": "CalendarProtocol"
-      },
-      {
-        "name": "yearMonthFromFields",
-        "kind": 6,
-        "location": {
-          "uri": "deno:/asset/lib.deno.unstable.d.ts",
-          "range": null,
-        },
-        "containerName": "Calendar"
-      },
-      {
-        "name": "ZonedDateTimeISOFields",
-        "kind": 5,
-        "location": {
-          "uri": "deno:/asset/lib.deno.unstable.d.ts",
-          "range": null,
-        },
-        "containerName": "Temporal"
-      }
     ])
   );
   client.shutdown();
@@ -11707,9 +11568,7 @@ fn lsp_lint_exclude_with_config() {
     "deno.lint.jsonc",
     r#"{
       "lint": {
-        "files": {
-          "exclude": ["ignored.ts"]
-        },
+        "exclude": ["ignored.ts"],
         "rules": {
           "exclude": ["camelcase"],
           "include": ["ban-untagged-todo"],
@@ -12037,6 +11896,8 @@ Deno.test({
   async fn(t) {
     console.log("test a");
     await t.step("step of test a", () => {});
+    const kv = await Deno.openKv();
+    kv.close();
   }
 });
 "#;
@@ -12046,6 +11907,12 @@ Deno.test({
 
   let mut client = context.new_lsp_command().build();
   client.initialize_default();
+  client.change_configuration(json!({
+    "deno": {
+      "enable": true,
+      "unstable": ["kv"],
+    },
+  }));
 
   client.did_open(json!({
     "textDocument": {
@@ -12566,7 +12433,7 @@ fn lsp_node_modules_dir() {
         "paths": true,
         "imports": {},
       },
-      "unstable": false,
+      "unstable": [],
     } }));
   };
   refresh_config(&mut client);
@@ -12684,7 +12551,7 @@ fn lsp_vendor_dir() {
       "paths": true,
       "imports": {},
     },
-    "unstable": false,
+    "unstable": [],
   } }));
 
   let diagnostics = client.read_diagnostics();

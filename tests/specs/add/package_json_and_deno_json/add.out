@@ -1,0 +1,12 @@
+[UNORDERED_START]
+Add npm:@denotest/esm-basic@1.0.0
+Add jsr:@denotest/add@1.0.0
+Add npm:@denotest/say-hello@1.0.0
+Download http://localhost:4260/@denotest/esm-basic
+Download http://localhost:4260/@denotest/esm-basic/1.0.0.tgz
+Download http://localhost:4260/@denotest/say-hello
+Download http://localhost:4260/@denotest/say-hello/1.0.0.tgz
+Initialize @denotest/esm-basic@1.0.0
+Initialize @denotest/say-hello@1.0.0
+Download http://127.0.0.1:4250/@denotest/add/1.0.0/mod.ts
+[UNORDERED_END]

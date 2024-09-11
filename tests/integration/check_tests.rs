@@ -215,7 +215,6 @@ fn typecheck_declarations_unstable() {
   let args = vec![
     "test".to_string(),
     "--doc".to_string(),
-    "--unstable".to_string(),
     util::root_path()
       .join("cli/tsc/dts/lib.deno.unstable.d.ts")
       .to_string_lossy()

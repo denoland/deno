@@ -33,6 +33,7 @@ export function setTimeout(
 }
 
 ObjectDefineProperty(setTimeout, promisify.custom, {
+  __proto__: null,
   value: (timeout: number, ...args: unknown[]) => {
     return new Promise((cb) =>
       setTimeout(cb, timeout, ...new SafeArrayIterator(args))

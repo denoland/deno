@@ -528,7 +528,6 @@ Deno.test({
     const childProcess = spawn(Deno.execPath(), [
       "run",
       "-A",
-      "--unstable",
       script,
     ]);
     const deferred = Promise.withResolvers<void>();

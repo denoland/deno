@@ -238,7 +238,7 @@ pub fn mem_info() -> Option<MemInfo> {
       if let Some(line) = line {
         let mem = line.split_whitespace().nth(1);
         let mem = mem.and_then(|v| v.parse::<u64>().ok());
-        mem_info.available = mem.unwrap_or(0);
+        mem_info.available = mem.unwrap_or(0) * 1024;
       }
     }
   }

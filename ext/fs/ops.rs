@@ -60,7 +60,7 @@ fn map_permission_error(
   path: &Path,
 ) -> AnyError {
   match error {
-    FsError::PermissionDenied(err) => {
+    FsError::NotCapable(err) => {
       let path = format!("{path:?}");
       let (path, truncated) = if path.len() > 1024 {
         (&path[0..1024], "...(truncated)")
@@ -74,7 +74,7 @@ fn map_permission_error(
         format!(
           "Requires {err} access to {path}{truncated}, run again with the --allow-{err} flag")
       };
-      custom_error("PermissionDenied", msg)
+      custom_error("NotCapable", msg)
     }
     err => Err::<(), _>(err)
       .context_path(operation, path)
@@ -1430,7 +1430,7 @@ pub async fn op_fs_seek_async(
 }
 
 #[op2(fast)]
-pub fn op_fs_fdatasync_sync(
+pub fn op_fs_file_sync_data_sync(
   state: &mut OpState,
   #[smi] rid: ResourceId,
 ) -> Result<(), AnyError> {
@@ -1440,7 +1440,7 @@ pub fn op_fs_fdatasync_sync(
 }
 
 #[op2(async)]
-pub async fn op_fs_fdatasync_async(
+pub async fn op_fs_file_sync_data_async(
   state: Rc<RefCell<OpState>>,
   #[smi] rid: ResourceId,
 ) -> Result<(), AnyError> {
@@ -1450,7 +1450,7 @@ pub async fn op_fs_fdatasync_async(
 }
 
 #[op2(fast)]
-pub fn op_fs_fsync_sync(
+pub fn op_fs_file_sync_sync(
   state: &mut OpState,
   #[smi] rid: ResourceId,
 ) -> Result<(), AnyError> {
@@ -1460,7 +1460,7 @@ pub fn op_fs_fsync_sync(
 }
 
 #[op2(async)]
-pub async fn op_fs_fsync_async(
+pub async fn op_fs_file_sync_async(
   state: Rc<RefCell<OpState>>,
   #[smi] rid: ResourceId,
 ) -> Result<(), AnyError> {
