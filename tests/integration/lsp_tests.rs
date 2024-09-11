@@ -10907,7 +10907,7 @@ fn lsp_configuration_did_change() {
         },
       },
     },
-    "unstable": false,
+    "unstable": [],
   } }));
 
   let list = client.get_completion_list(
@@ -11851,6 +11851,8 @@ Deno.test({
   async fn(t) {
     console.log("test a");
     await t.step("step of test a", () => {});
+    const kv = await Deno.openKv();
+    kv.close();
   }
 });
 "#;
@@ -11860,6 +11862,12 @@ Deno.test({
 
   let mut client = context.new_lsp_command().build();
   client.initialize_default();
+  client.change_configuration(json!({
+    "deno": {
+      "enable": true,
+      "unstable": ["kv"],
+    },
+  }));
 
   client.did_open(json!({
     "textDocument": {
@@ -12380,7 +12388,7 @@ fn lsp_node_modules_dir() {
         "paths": true,
         "imports": {},
       },
-      "unstable": false,
+      "unstable": [],
     } }));
   };
   refresh_config(&mut client);
@@ -12498,7 +12506,7 @@ fn lsp_vendor_dir() {
       "paths": true,
       "imports": {},
     },
-    "unstable": false,
+    "unstable": [],
   } }));
 
   let diagnostics = client.read_diagnostics();

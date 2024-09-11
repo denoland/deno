@@ -829,7 +829,6 @@ NOTE: This file should not be manually edited. Please edit `tests/node_compat/co
 - [parallel/test-fs-promises-watch.js](https://github.com/nodejs/node/tree/v18.12.1/test/parallel/test-fs-promises-watch.js)
 - [parallel/test-fs-promises-write-optional-params.js](https://github.com/nodejs/node/tree/v18.12.1/test/parallel/test-fs-promises-write-optional-params.js)
 - [parallel/test-fs-promises-writefile-typedarray.js](https://github.com/nodejs/node/tree/v18.12.1/test/parallel/test-fs-promises-writefile-typedarray.js)
-- [parallel/test-fs-promises-writefile-with-fd.js](https://github.com/nodejs/node/tree/v18.12.1/test/parallel/test-fs-promises-writefile-with-fd.js)
 - [parallel/test-fs-promises-writefile.js](https://github.com/nodejs/node/tree/v18.12.1/test/parallel/test-fs-promises-writefile.js)
 - [parallel/test-fs-promises.js](https://github.com/nodejs/node/tree/v18.12.1/test/parallel/test-fs-promises.js)
 - [parallel/test-fs-promisified.js](https://github.com/nodejs/node/tree/v18.12.1/test/parallel/test-fs-promisified.js)
