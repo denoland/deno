@@ -1,5 +1,5 @@
 {
-  "args": "test --shuffle ../../../testdata/test/shuffle",
+  "args": "test --shuffle shuffle",
   "output": "[WILDCARD]",
   "exitCode": 0
 }

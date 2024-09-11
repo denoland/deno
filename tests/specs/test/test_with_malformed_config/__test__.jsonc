@@ -1,5 +1,5 @@
 {
-  "args": "test --config ../../../testdata/test/collect/deno.malformed.jsonc",
+  "args": "test --config deno.malformed.jsonc",
   "exitCode": 1,
   "output": "main.out"
 }

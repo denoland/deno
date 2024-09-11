@@ -8,7 +8,8 @@ var set and include the backtrace in your report.
 
 Platform: [WILDCARD]
 Version: [WILDCARD]
-Args: ["[WILDCARD]deno.exe", "test", "main.js"]
+Args: ["[WILDCARD]deno[WILDCARD]", "test", "main.js"]
 
 thread 'tokio-runtime-worker' panicked at cli\ops\testing.rs:[WILDCARD]:
 pledge test permissions called before restoring previous pledge
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace

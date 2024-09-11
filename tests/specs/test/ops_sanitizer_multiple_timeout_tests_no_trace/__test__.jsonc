@@ -1,5 +1,5 @@
 {
-  "args": "test ../../../testdata/test/sanitizer/ops_sanitizer_multiple_timeout_tests.ts",
+  "args": "test ops_sanitizer_multiple_timeout_tests.ts",
   "exitCode": 1,
-  "output": "../../../testdata/test/sanitizer/ops_sanitizer_multiple_timeout_tests_no_trace.out"
+  "output": "ops_sanitizer_multiple_timeout_tests_no_trace.out"
 }

@@ -1,5 +1,5 @@
 {
-  "args": "test --allow-net --trace-leaks ../../../testdata/test/sanitizer/ops_sanitizer_tcp.ts",
+  "args": "test --allow-net --trace-leaks ops_sanitizer_tcp.ts",
   "exitCode": 1,
-  "output": "../../../testdata/test/sanitizer/ops_sanitizer_tcp.out"
+  "output": "ops_sanitizer_tcp.out"
 }

@@ -1,5 +1,5 @@
 {
-  "args": "test --reporter=dot ../../../testdata/test/steps/ignored_steps.ts",
+  "args": "test --reporter=dot ignored_steps.ts",
   "exitCode": 0,
-  "output": "../../../testdata/test/steps/ignored_steps.dot.out"
+  "output": "ignored_steps.dot.out"
 }

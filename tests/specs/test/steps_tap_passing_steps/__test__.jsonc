@@ -1,5 +1,5 @@
 {
-  "args": "test --reporter=tap ../../../testdata/test/steps/passing_steps.ts",
+  "args": "test --reporter=tap passing_steps.ts",
   "exitCode": 0,
-  "output": "../../../testdata/test/steps/passing_steps.tap.out"
+  "output": "passing_steps.tap.out"
 }

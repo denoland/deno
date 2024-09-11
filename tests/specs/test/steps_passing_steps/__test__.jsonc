@@ -1,5 +1,5 @@
 {
-  "args": "test ../../../testdata/test/steps/passing_steps.ts",
+  "args": "test passing_steps.ts",
   "exitCode": 0,
-  "output": "../../../testdata/test/steps/passing_steps.out"
+  "output": "passing_steps.out"
 }

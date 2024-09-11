@@ -1,5 +1,5 @@
 {
-  "args": "test --config ../../../config/deno.json main.ts",
+  "args": "test --config deno.json main.ts",
   "exitCode": 1,
   "output": "main.out"
 }

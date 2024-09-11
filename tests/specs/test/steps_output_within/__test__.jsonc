@@ -1,5 +1,5 @@
 {
-  "args": "test ../../../testdata/test/steps/output_within.ts",
+  "args": "test output_within.ts",
   "exitCode": 0,
-  "output": "../../../testdata/test/steps/output_within.out"
+  "output": "output_within.out"
 }
