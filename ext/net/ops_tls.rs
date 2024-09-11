@@ -34,8 +34,6 @@ use deno_tls::new_resolver;
 use deno_tls::rustls::pki_types::ServerName;
 use deno_tls::rustls::ClientConnection;
 use deno_tls::rustls::ServerConfig;
-use deno_tls::webpki::types::CertificateDer;
-use deno_tls::webpki::types::PrivateKeyDer;
 use deno_tls::ServerConfigProvider;
 use deno_tls::SocketUse;
 use deno_tls::TlsKey;
@@ -207,32 +205,6 @@ pub fn op_tls_key_static(
 ) -> Result<TlsKeysHolder, AnyError> {
   let cert = load_certs(&mut BufReader::new(cert.as_bytes()))?;
   let key = load_private_keys(key.as_bytes())?
-    .into_iter()
-    .next()
-    .unwrap();
-  Ok(TlsKeysHolder::from(TlsKeys::Static(TlsKey(cert, key))))
-}
-
-/// Legacy op -- will be removed in Deno 2.0.
-#[op2]
-#[cppgc]
-pub fn op_tls_key_static_from_file<NP>(
-  state: &mut OpState,
-  #[string] api: String,
-  #[string] cert_file: String,
-  #[string] key_file: String,
-) -> Result<TlsKeysHolder, AnyError>
-where
-  NP: NetPermissions + 'static,
-{
-  {
-    let permissions = state.borrow_mut::<NP>();
-    permissions.check_read(Path::new(&cert_file), &api)?;
-    permissions.check_read(Path::new(&key_file), &api)?;
-  }
-
-  let cert = load_certs_from_file(&cert_file)?;
-  let key = load_private_keys_from_file(&key_file)?
     .into_iter()
     .next()
     .unwrap();
@@ -453,21 +425,6 @@ where
   };
 
   Ok((rid, IpAddr::from(local_addr), IpAddr::from(remote_addr)))
-}
-
-fn load_certs_from_file(
-  path: &str,
-) -> Result<Vec<CertificateDer<'static>>, AnyError> {
-  let cert_file = File::open(path)?;
-  let reader = &mut BufReader::new(cert_file);
-  load_certs(reader)
-}
-
-fn load_private_keys_from_file(
-  path: &str,
-) -> Result<Vec<PrivateKeyDer<'static>>, AnyError> {
-  let key_bytes = std::fs::read(path)?;
-  load_private_keys(&key_bytes)
 }
 
 #[derive(Deserialize)]

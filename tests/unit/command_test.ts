@@ -418,7 +418,7 @@ Deno.test(
       await new Deno.Command(Deno.execPath(), {
         args: ["eval", "console.log('hello world')"],
       }).output();
-    }, Deno.errors.PermissionDenied);
+    }, Deno.errors.NotCapable);
   },
 );
 
@@ -429,7 +429,7 @@ Deno.test(
       new Deno.Command(Deno.execPath(), {
         args: ["eval", "console.log('hello world')"],
       }).outputSync();
-    }, Deno.errors.PermissionDenied);
+    }, Deno.errors.NotCapable);
   },
 );
 
