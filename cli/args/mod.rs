@@ -1596,18 +1596,6 @@ impl CliOptions {
         }
       });
 
-    // TODO(2.0): remove this code and enable these features in `99_main.js` by default.
-    let future_features = [
-      deno_runtime::deno_ffi::UNSTABLE_FEATURE_NAME.to_string(),
-      deno_runtime::deno_fs::UNSTABLE_FEATURE_NAME.to_string(),
-      deno_runtime::deno_webgpu::UNSTABLE_FEATURE_NAME.to_string(),
-    ];
-    future_features.iter().for_each(|future_feature| {
-      if !from_config_file.contains(future_feature) {
-        from_config_file.push(future_feature.to_string());
-      }
-    });
-
     if !from_config_file.is_empty() {
       // collect unstable granular flags
       let mut all_valid_unstable_flags: Vec<&str> =
