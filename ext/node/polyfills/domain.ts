@@ -15,6 +15,8 @@ function emitError(e) {
   this.emit("error", e);
 }
 
+// TODO(bartlomieju): maybe use this one
+// deno-lint-ignore prefer-const
 let stack = [];
 export const _stack = stack;
 export const active = null;

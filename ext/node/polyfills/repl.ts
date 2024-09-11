@@ -3,6 +3,7 @@
 
 import { primordials } from "ext:core/mod.js";
 import { notImplemented } from "ext:deno_node/_utils.ts";
+const { Symbol } = primordials;
 
 export const REPL_MODE_SLOPPY = Symbol("repl-sloppy");
 export const REPL_MODE_STRICT = Symbol("repl-strict");
