@@ -126,6 +126,12 @@ const denoNs = {
   uid: os.uid,
   Command: process.Command,
   ChildProcess: process.ChildProcess,
+  dlopen: ffi.dlopen,
+  UnsafeCallback: ffi.UnsafeCallback,
+  UnsafePointer: ffi.UnsafePointer,
+  UnsafePointerView: ffi.UnsafePointerView,
+  UnsafeFnPointer: ffi.UnsafeFnPointer,
+  umask: fs.umask,
 };
 
 // NOTE(bartlomieju): keep IDs in sync with `cli/main.rs`
@@ -152,17 +158,9 @@ denoNsUnstableById[unstableIds.cron] = {
   cron: cron.cron,
 };
 
-denoNsUnstableById[unstableIds.ffi] = {
-  dlopen: ffi.dlopen,
-  UnsafeCallback: ffi.UnsafeCallback,
-  UnsafePointer: ffi.UnsafePointer,
-  UnsafePointerView: ffi.UnsafePointerView,
-  UnsafeFnPointer: ffi.UnsafeFnPointer,
-};
+denoNsUnstableById[unstableIds.ffi] = {};
 
-denoNsUnstableById[unstableIds.fs] = {
-  umask: fs.umask,
-};
+denoNsUnstableById[unstableIds.fs] = {};
 
 denoNsUnstableById[unstableIds.http] = {
   HttpClient: httpClient.HttpClient,
