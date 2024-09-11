@@ -42,7 +42,7 @@ Deno.test({ permissions: { write: false } }, function makeTempDirSyncPerm() {
   // makeTempDirSync should require write permissions (for now).
   assertThrows(() => {
     Deno.makeTempDirSync({ dir: "/baddir" });
-  }, Deno.errors.PermissionDenied);
+  }, Deno.errors.NotCapable);
 });
 
 Deno.test(
@@ -117,7 +117,7 @@ Deno.test({ permissions: { write: false } }, function makeTempFileSyncPerm() {
   // makeTempFileSync should require write permissions (for now).
   assertThrows(() => {
     Deno.makeTempFileSync({ dir: "/baddir" });
-  }, Deno.errors.PermissionDenied);
+  }, Deno.errors.NotCapable);
 });
 
 Deno.test(

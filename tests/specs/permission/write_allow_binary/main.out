@@ -1,5 +1,5 @@
 Running...
-error: Uncaught (in promise) PermissionDenied: Requires write access to "binary[WILDLINE]", run again with the --allow-write flag
+error: Uncaught (in promise) NotCapable: Requires write access to "binary[WILDLINE]", run again with the --allow-write flag
 Deno.writeTextFileSync(binaryName, "");
      ^
     at [WILDCARD]
