@@ -1,6 +1,6 @@
 error: Invalid version passed (asdfasdf)
 
-Pass a semver, or a full 40 character git commit hash, or a release channel name.
+Pass a semver version, or a full 40 character git commit hash, or a release channel name.
 
 Usage:
 Latest
