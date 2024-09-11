@@ -4,6 +4,7 @@
 
 use crate::args::Flags;
 use crate::args::UpgradeFlags;
+use crate::args::UPGRADE_USAGE;
 use crate::colors;
 use crate::factory::CliFactory;
 use crate::http_util::HttpClient;
@@ -13,7 +14,6 @@ use crate::util::archive;
 use crate::util::progress_bar::ProgressBar;
 use crate::util::progress_bar::ProgressBarStyle;
 use crate::version;
-use crate::args::UPGRADE_USAGE;
 
 use async_trait::async_trait;
 use deno_core::anyhow::bail;

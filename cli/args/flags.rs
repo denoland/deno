@@ -2983,8 +2983,8 @@ The declaration file could be saved and used for typing information.",
   )
 }
 
-
-pub static UPGRADE_USAGE: &str = cstr!("<g>Latest</>
+pub static UPGRADE_USAGE: &str = cstr!(
+  "<g>Latest</>
   <bold>deno upgrade</>
 
 <g>Specific version</>
@@ -2995,8 +2995,8 @@ pub static UPGRADE_USAGE: &str = cstr!("<g>Latest</>
 <g>Channel</>
   <bold>deno upgrade</> <p(245)>stable</>
   <bold>deno upgrade</> <p(245)>rc</>
-  <bold>deno upgrade</> <p(245)>canary</>");
-
+  <bold>deno upgrade</> <p(245)>canary</>"
+);
 
 fn upgrade_subcommand() -> Command {
   command(
