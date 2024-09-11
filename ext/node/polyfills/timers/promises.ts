@@ -17,4 +17,5 @@ export default {
   setTimeout,
   setImmediate,
   setInterval,
+  scheduler,
 };
