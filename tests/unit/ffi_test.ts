@@ -24,10 +24,10 @@ Deno.test({ permissions: { ffi: true } }, function dlopenInvalidArguments() {
   }, TypeError);
 });
 
-Deno.test({ permissions: { ffi: false } }, function ffiPermissionDenied() {
+Deno.test({ permissions: { ffi: false } }, function ffiNotCapable() {
   assertThrows(() => {
     Deno.dlopen("/usr/lib/libc.so.6", {});
-  }, Deno.errors.PermissionDenied);
+  }, Deno.errors.NotCapable);
   const fnptr = new Deno.UnsafeFnPointer(
     // @ts-expect-error: Not NonNullable but null check is after permissions check.
     null,
@@ -38,44 +38,44 @@ Deno.test({ permissions: { ffi: false } }, function ffiPermissionDenied() {
   );
   assertThrows(() => {
     fnptr.call(123, null);
-  }, Deno.errors.PermissionDenied);
+  }, Deno.errors.NotCapable);
   assertThrows(() => {
     Deno.UnsafePointer.of(new Uint8Array(0));
-  }, Deno.errors.PermissionDenied);
+  }, Deno.errors.NotCapable);
   const ptrView = new Deno.UnsafePointerView(
     // @ts-expect-error: Not NonNullable but null check is after permissions check.
     null,
   );
   assertThrows(() => {
     ptrView.copyInto(new Uint8Array(0));
-  }, Deno.errors.PermissionDenied);
+  }, Deno.errors.NotCapable);
   assertThrows(() => {
     ptrView.getCString();
-  }, Deno.errors.PermissionDenied);
+  }, Deno.errors.NotCapable);
   assertThrows(() => {
     ptrView.getUint8();
-  }, Deno.errors.PermissionDenied);
+  }, Deno.errors.NotCapable);
   assertThrows(() => {
     ptrView.getInt8();
-  }, Deno.errors.PermissionDenied);
+  }, Deno.errors.NotCapable);
   assertThrows(() => {
     ptrView.getUint16();
-  }, Deno.errors.PermissionDenied);
+  }, Deno.errors.NotCapable);
   assertThrows(() => {
     ptrView.getInt16();
-  }, Deno.errors.PermissionDenied);
+  }, Deno.errors.NotCapable);
   assertThrows(() => {
     ptrView.getUint32();
-  }, Deno.errors.PermissionDenied);
+  }, Deno.errors.NotCapable);
   assertThrows(() => {
     ptrView.getInt32();
-  }, Deno.errors.PermissionDenied);
+  }, Deno.errors.NotCapable);
   assertThrows(() => {
     ptrView.getFloat32();
-  }, Deno.errors.PermissionDenied);
+  }, Deno.errors.NotCapable);
   assertThrows(() => {
     ptrView.getFloat64();
-  }, Deno.errors.PermissionDenied);
+  }, Deno.errors.NotCapable);
 });
 
 Deno.test({ permissions: { ffi: true } }, function pointerOf() {

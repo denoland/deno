@@ -1123,6 +1123,8 @@ impl Flags {
 
 static ENV_VARIABLES_HELP: &str = cstr!(
   r#"<y>Environment variables:</>
+<y>Docs:</> <c>https://docs.deno.com/go/env-vars</>
+
   <g>DENO_AUTH_TOKENS</>      A semi-colon separated list of bearer tokens and hostnames
                         to use when fetching remote modules from private repositories
                          <p(245)>(e.g. "abcde12345@deno.land;54321edcba@github.com")</>
@@ -3153,7 +3155,7 @@ fn compile_args_without_check_args(app: Command) -> Command {
 fn permission_args(app: Command, requires: Option<&'static str>) -> Command {
   app
     .after_help(cstr!(r#"<y>Permission options:</>
-Docs: <c>https://docs.deno.com/go/permissions</>
+<y>Docs</>: <c>https://docs.deno.com/go/permissions</>
 
   <g>-A, --allow-all</>                        Allow all permissions.
   <g>--no-prompt</>                        Always throw if required permission wasn't passed.

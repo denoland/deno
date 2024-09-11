@@ -104,6 +104,7 @@
       "test-util-promisify.js",
       "test-util-types.js",
       "test-util.js",
+      "test-v8-serdes.js",
       "test-webcrypto-sign-verify.js",
       "test-whatwg-url-properties.js",
       // needs replace ".on" => ".addEventListener" in L29

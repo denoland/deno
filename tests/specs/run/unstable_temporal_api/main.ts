@@ -57,15 +57,3 @@ console.log(
     minutes: 20,
   }),
 );
-console.log(
-  "Temporal.TimeZone",
-  Temporal.TimeZone.from("Africa/Cairo"),
-);
-console.log(
-  "Temporal.Calendar",
-  Temporal.Calendar.from("iso8601").dateFromFields({
-    year: 1999,
-    month: 12,
-    day: 31,
-  }, {}),
-);

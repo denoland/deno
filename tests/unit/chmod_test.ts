@@ -94,7 +94,7 @@ Deno.test({ permissions: { write: true } }, function chmodSyncFailure() {
 Deno.test({ permissions: { write: false } }, function chmodSyncPerm() {
   assertThrows(() => {
     Deno.chmodSync("/somefile.txt", 0o777);
-  }, Deno.errors.PermissionDenied);
+  }, Deno.errors.NotCapable);
 });
 
 Deno.test(
@@ -186,5 +186,5 @@ Deno.test({ permissions: { write: true } }, async function chmodFailure() {
 Deno.test({ permissions: { write: false } }, async function chmodPerm() {
   await assertRejects(async () => {
     await Deno.chmod("/somefile.txt", 0o777);
-  }, Deno.errors.PermissionDenied);
+  }, Deno.errors.NotCapable);
 });

@@ -3858,7 +3858,11 @@ impl Inner {
 
   </details>
 "#,
-        serde_json::to_string_pretty(&workspace_settings).unwrap(),
+        serde_json::to_string_pretty(&workspace_settings)
+          .inspect_err(|e| {
+            dbg!(e);
+          })
+          .unwrap(),
         documents_specifiers.len(),
         documents_specifiers
           .into_iter()
