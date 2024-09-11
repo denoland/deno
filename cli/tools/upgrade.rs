@@ -13,9 +13,9 @@ use crate::util::archive;
 use crate::util::progress_bar::ProgressBar;
 use crate::util::progress_bar::ProgressBarStyle;
 use crate::version;
+use crate::args::UPGRADE_USAGE;
 
 use async_trait::async_trait;
-use color_print::cstr;
 use deno_core::anyhow::bail;
 use deno_core::anyhow::Context;
 use deno_core::error::AnyError;
@@ -37,15 +37,6 @@ use std::time::Duration;
 const RELEASE_URL: &str = "https://github.com/denoland/deno/releases";
 const CANARY_URL: &str = "https://dl.deno.land/canary";
 const RC_URL: &str = "https://dl.deno.land/release";
-
-static EXAMPLE_USAGE: &str = cstr!("Usage:
-  Latest version:    <p(245)>deno upgrade</>
-  Specific version:  <p(245)>deno upgrade 1.46.3</>
-
-  Release candidate: <p(245)>deno upgrade rc</>
-
-  Canary:            <p(245)>deno upgrade canary</>
-  Specific canary:   <p(245)>deno upgrade 30687c786c37090ac0e4e2c3824b1b5cf313599f</>");
 
 pub static ARCHIVE_NAME: Lazy<String> =
   Lazy::new(|| format!("deno-{}.zip", env!("TARGET")));
@@ -659,18 +650,19 @@ impl RequestedVersion {
     let (channel, passed_version) = if is_canary {
       if !re_hash.is_match(&passed_version) {
         bail!(
-          "Invalid commit hash passed ({})\n\nPass a semver, or a full 40 character git commit hash, or a release channel name.\n\n{}",
+          "Invalid commit hash passed ({})\n\nPass a semver, or a full 40 character git commit hash, or a release channel name.\n\nUsage:\n{}",
           colors::gray(passed_version),
-          EXAMPLE_USAGE
+          UPGRADE_USAGE
         );
       }
+
       (ReleaseChannel::Canary, passed_version)
     } else {
       let Ok(semver) = Version::parse_standard(&passed_version) else {
         bail!(
-          "Invalid version passed ({})\n\nPass a semver, or a full 40 character git commit hash, or a release channel name.\n\n{}",
+          "Invalid version passed ({})\n\nPass a semver, or a full 40 character git commit hash, or a release channel name.\n\nUsage:\n{}",
           colors::gray(passed_version),
-          EXAMPLE_USAGE
+          UPGRADE_USAGE
         );
       };
 
