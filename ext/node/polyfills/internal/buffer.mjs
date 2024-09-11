@@ -65,7 +65,7 @@ const customInspectSymbol =
     ? Symbol["for"]("nodejs.util.inspect.custom")
     : null;
 
-const INSPECT_MAX_BYTES = 50;
+export const INSPECT_MAX_BYTES = 50;
 
 export const constants = {
   MAX_LENGTH: kMaxLength,
