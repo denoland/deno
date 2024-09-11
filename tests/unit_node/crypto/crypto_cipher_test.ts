@@ -139,16 +139,32 @@ Deno.test({
 Deno.test({
   name: "createCipheriv - input encoding",
   fn() {
-    const cipher = crypto.createCipheriv(
-      "aes-128-cbc",
-      new Uint8Array(16),
-      new Uint8Array(16),
-    );
-    assertEquals(
-      cipher.update("hello, world! hello, world!", "utf-8", "hex"),
-      "ca7df4d74f51b77a7440ead38343ab0f",
-    );
-    assertEquals(cipher.final("hex"), "d0da733dec1fa61125c80a6f97e6166e");
+    {
+      const cipher = crypto.createCipheriv(
+        "aes-128-cbc",
+        new Uint8Array(16),
+        new Uint8Array(16),
+      );
+      assertEquals(
+        cipher.update("hello, world! hello, world!", "utf-8", "hex"),
+        "ca7df4d74f51b77a7440ead38343ab0f",
+      );
+      assertEquals(cipher.final("hex"), "d0da733dec1fa61125c80a6f97e6166e");
+    }
+
+    {
+      const cipher = crypto.createCipheriv(
+        "aes-128-cbc",
+        new Uint8Array(16),
+        new Uint8Array(16),
+      );
+      // update with string without input encoding
+      assertEquals(
+        cipher.update("hello, world! hello, world!").toString("hex"),
+        "ca7df4d74f51b77a7440ead38343ab0f",
+      );
+      assertEquals(cipher.final("hex"), "d0da733dec1fa61125c80a6f97e6166e");
+    }
   },
 });
 
