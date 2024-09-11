@@ -136,13 +136,14 @@ const unstableIds = {
   cron: 2,
   ffi: 3,
   fs: 4,
-  kv: 5,
-  net: 6,
-  process: 7,
-  temporal: 8,
-  unsafeProto: 9,
-  webgpu: 10,
-  workerOptions: 11,
+  http: 5,
+  kv: 6,
+  net: 7,
+  process: 8,
+  temporal: 9,
+  unsafeProto: 10,
+  webgpu: 11,
+  workerOptions: 12,
 };
 
 const denoNsUnstableById = { __proto__: null };
@@ -163,6 +164,11 @@ denoNsUnstableById[unstableIds.ffi] = {
 
 denoNsUnstableById[unstableIds.fs] = {
   umask: fs.umask,
+};
+
+denoNsUnstableById[unstableIds.http] = {
+  HttpClient: httpClient.HttpClient,
+  createHttpClient: httpClient.createHttpClient,
 };
 
 denoNsUnstableById[unstableIds.kv] = {
