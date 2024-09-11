@@ -57,7 +57,7 @@ async assertion fail ... FAILED [WILDCARD]
 resolve pass ... ok [WILDCARD]
 reject fail ... FAILED [WILDCARD]
 unhandled rejection - passes but warns ...
-Uncaught error from ./node/test.js FAILED
+Uncaught error from ./test.js FAILED
 unhandled rejection - passes but warns ... cancelled ([WILDCARD])
 async unhandled rejection - passes but warns ... cancelled ([WILDCARD])
 immediate throw - passes but warns ... cancelled ([WILDCARD])
@@ -151,7 +151,7 @@ error: Error: rejected from reject fail
                         ^
     at [WILDCARD]
 
-./node/test.js (uncaught error)
+./test.js (uncaught error)
 error: (in promise) Error: rejected from unhandled rejection fail
   Promise.reject(new Error("rejected from unhandled rejection fail"));
                  ^
@@ -168,7 +168,7 @@ async throw fail => ./test.js:53:1
 async skip fail => ./test.js:64:1
 async assertion fail => ./test.js:69:1
 reject fail => ./test.js:78:1
-./node/test.js (uncaught error)
+./test.js (uncaught error)
 
 FAILED | 9 passed (2 steps) | 51 failed | 4 ignored [WILDCARD]
 
