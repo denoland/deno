@@ -1,11 +1,16 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
-import { assertEquals, assertInstanceOf } from "@std/assert";
+import {
+  assertEquals,
+  assertInstanceOf,
+  assertStringIncludes,
+} from "@std/assert";
 import { delay } from "@std/async/delay";
 import { fromFileUrl, join } from "@std/path";
 import * as tls from "node:tls";
 import * as net from "node:net";
 import * as stream from "node:stream";
+import { execCode } from "../unit/test_util.ts";
 
 const tlsTestdataDir = fromFileUrl(
   new URL("../testdata/tls", import.meta.url),
@@ -188,4 +193,25 @@ Deno.test("tlssocket._handle._parentWrap is set", () => {
       ._handle as any)!
       ._parentWrap;
   assertInstanceOf(parentWrap, stream.PassThrough);
+});
+
+Deno.test("tls.connect() throws InvalidData when there's error in certificate", async () => {
+  // Uses execCode to avoid `--unsafely-ignore-certificate-errors` option applied
+  const [status, output] = await execCode(`
+    import tls from "node:tls";
+    const conn = tls.connect({
+      host: "localhost",
+      port: 4557,
+    });
+
+    conn.on("error", (err) => {
+      console.log(err);
+    });
+  `);
+
+  assertEquals(status, 0);
+  assertStringIncludes(
+    output,
+    "InvalidData: invalid peer certificate: UnknownIssuer",
+  );
 });
