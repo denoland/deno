@@ -1,3 +1,0 @@
-error: Uncaught (in promise) Error: require() of ES Module [WILDCARD]esm.js from [WILDCARD]main.ts not supported. Instead change the require to a dynamic import() which is available in all CommonJS modules.
-    at [WILDCARD]
-    at file:///[WILDCARD]/require_esm_error/main.ts:5:1

@@ -1,6 +1,6 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
-import { core, internals, primordials } from "ext:core/mod.js";
+import { core, primordials } from "ext:core/mod.js";
 const {
   isDate,
   internalRidSymbol,
@@ -579,15 +579,6 @@ class FsFile {
         "`Deno.FsFile` cannot be constructed, use `Deno.open()` or `Deno.openSync()` instead.",
       );
     }
-  }
-
-  get rid() {
-    internals.warnOnDeprecatedApi(
-      "Deno.FsFile.rid",
-      new Error().stack,
-      "Use `Deno.FsFile` methods directly instead.",
-    );
-    return this.#rid;
   }
 
   write(p) {

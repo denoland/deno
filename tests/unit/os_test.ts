@@ -48,16 +48,16 @@ Deno.test({ permissions: { env: true } }, function avoidEmptyNamedEnv() {
   assertThrows(() => Deno.env.delete("a\0a"), TypeError);
 });
 
-Deno.test({ permissions: { env: false } }, function envPermissionDenied1() {
+Deno.test({ permissions: { env: false } }, function envPerm1() {
   assertThrows(() => {
     Deno.env.toObject();
-  }, Deno.errors.PermissionDenied);
+  }, Deno.errors.NotCapable);
 });
 
-Deno.test({ permissions: { env: false } }, function envPermissionDenied2() {
+Deno.test({ permissions: { env: false } }, function envPerm2() {
   assertThrows(() => {
     Deno.env.get("PATH");
-  }, Deno.errors.PermissionDenied);
+  }, Deno.errors.NotCapable);
 });
 
 // This test verifies that on Windows, environment variables are
@@ -193,7 +193,7 @@ Deno.test({ permissions: { read: false } }, function execPathPerm() {
     () => {
       Deno.execPath();
     },
-    Deno.errors.PermissionDenied,
+    Deno.errors.NotCapable,
     "Requires read access to <exec_path>, run again with the --allow-read flag",
   );
 });
@@ -208,7 +208,7 @@ Deno.test(
       () => {
         Deno.readTextFileSync("/proc/net/dev");
       },
-      Deno.errors.PermissionDenied,
+      Deno.errors.NotCapable,
       `Requires all access to "/proc/net/dev", run again with the --allow-all flag`,
     );
   },
@@ -225,7 +225,7 @@ Deno.test(
 Deno.test({ permissions: { sys: false } }, function loadavgPerm() {
   assertThrows(() => {
     Deno.loadavg();
-  }, Deno.errors.PermissionDenied);
+  }, Deno.errors.NotCapable);
 });
 
 Deno.test(
@@ -255,7 +255,7 @@ Deno.test(
 Deno.test({ permissions: { sys: false } }, function hostnamePerm() {
   assertThrows(() => {
     Deno.hostname();
-  }, Deno.errors.PermissionDenied);
+  }, Deno.errors.NotCapable);
 });
 
 Deno.test(
@@ -268,7 +268,7 @@ Deno.test(
 Deno.test({ permissions: { sys: false } }, function releasePerm() {
   assertThrows(() => {
     Deno.osRelease();
-  }, Deno.errors.PermissionDenied);
+  }, Deno.errors.NotCapable);
 });
 
 Deno.test({ permissions: { sys: ["osUptime"] } }, function osUptime() {
@@ -280,7 +280,7 @@ Deno.test({ permissions: { sys: ["osUptime"] } }, function osUptime() {
 Deno.test({ permissions: { sys: false } }, function osUptimePerm() {
   assertThrows(() => {
     Deno.osUptime();
-  }, Deno.errors.PermissionDenied);
+  }, Deno.errors.NotCapable);
 });
 
 Deno.test(

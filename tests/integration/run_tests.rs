@@ -3139,7 +3139,7 @@ fn issue9750() {
       console.write_line_raw("n");
       console.expect_all(&[
         "Denied env access to \"SECRET\".",
-        "PermissionDenied: Requires env access to \"SECRET\", run again with the --allow-env flag",
+        "NotCapable: Requires env access to \"SECRET\", run again with the --allow-env flag",
       ]);
     });
 }
@@ -4045,7 +4045,7 @@ async fn test_resolve_dns() {
     let out = String::from_utf8_lossy(&output.stdout);
     assert!(!output.status.success());
     assert!(err.starts_with("Check file"));
-    assert!(err.contains(r#"error: Uncaught (in promise) PermissionDenied: Requires net access to "127.0.0.1:4553""#));
+    assert!(err.contains(r#"error: Uncaught (in promise) NotCapable: Requires net access to "127.0.0.1:4553""#));
     assert!(out.is_empty());
   }
 
@@ -4066,7 +4066,7 @@ async fn test_resolve_dns() {
     let out = String::from_utf8_lossy(&output.stdout);
     assert!(!output.status.success());
     assert!(err.starts_with("Check file"));
-    assert!(err.contains(r#"error: Uncaught (in promise) PermissionDenied: Requires net access to "127.0.0.1:4553""#));
+    assert!(err.contains(r#"error: Uncaught (in promise) NotCapable: Requires net access to "127.0.0.1:4553""#));
     assert!(out.is_empty());
   }
 
@@ -4721,20 +4721,6 @@ itest!(unsafe_proto {
 itest!(unsafe_proto_flag {
   args: "run -A --unstable-unsafe-proto run/unsafe_proto/main.js",
   output: "run/unsafe_proto/main_with_unsafe_proto_flag.out",
-  http_server: false,
-  exit_code: 0,
-});
-
-itest!(unstable_temporal_api {
-  args: "run --no-config --unstable-temporal --check run/unstable_temporal_api/main.ts",
-  output: "run/unstable_temporal_api/main.out",
-  http_server: false,
-  exit_code: 0,
-});
-
-itest!(unstable_temporal_api_config_file {
-  args: "run --check run/unstable_temporal_api/main.ts",
-  output: "run/unstable_temporal_api/main.out",
   http_server: false,
   exit_code: 0,
 });

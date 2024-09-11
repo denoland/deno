@@ -142,7 +142,7 @@ impl PermissionState {
         name
       )
     };
-    custom_error("PermissionDenied", msg)
+    custom_error("NotCapable", msg)
   }
 
   /// Check the permission state. bool is whether a prompt was issued.
@@ -2470,10 +2470,7 @@ fn global_from_option<T>(flag: Option<&HashSet<T>>) -> bool {
 }
 
 fn escalation_error() -> AnyError {
-  custom_error(
-    "PermissionDenied",
-    "Can't escalate parent thread permissions",
-  )
+  custom_error("NotCapable", "Can't escalate parent thread permissions")
 }
 
 #[derive(Debug, Eq, PartialEq)]

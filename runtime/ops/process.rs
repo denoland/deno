@@ -619,7 +619,7 @@ fn check_run_permission(
       // we don't allow users to launch subprocesses with any LD_ or DYLD_*
       // env vars set because this allows executing code (ex. LD_PRELOAD)
       return Err(deno_core::error::custom_error(
-        "PermissionDenied",
+        "NotCapable",
         format!(
           "Requires --allow-all permissions to spawn subprocess with {} environment variable{}.",
           env_var_names.join(", "),

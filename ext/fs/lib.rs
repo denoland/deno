@@ -110,7 +110,7 @@ impl FsPermissions for deno_permissions::PermissionsContainer {
     if resolved {
       self
         .check_special_file(path, api_name)
-        .map_err(FsError::PermissionDenied)?;
+        .map_err(FsError::NotCapable)?;
       return Ok(Cow::Borrowed(path));
     }
 
@@ -119,7 +119,7 @@ impl FsPermissions for deno_permissions::PermissionsContainer {
     let mut path: Cow<'a, Path> = Cow::Borrowed(path);
     if read {
       let resolved_path = FsPermissions::check_read_path(self, &path, api_name)
-        .map_err(|_| FsError::PermissionDenied("read"))?;
+        .map_err(|_| FsError::NotCapable("read"))?;
       if let Cow::Owned(resolved_path) = resolved_path {
         path = Cow::Owned(resolved_path);
       }
@@ -127,7 +127,7 @@ impl FsPermissions for deno_permissions::PermissionsContainer {
     if write {
       let resolved_path =
         FsPermissions::check_write_path(self, &path, api_name)
-          .map_err(|_| FsError::PermissionDenied("write"))?;
+          .map_err(|_| FsError::NotCapable("write"))?;
       if let Cow::Owned(resolved_path) = resolved_path {
         path = Cow::Owned(resolved_path);
       }

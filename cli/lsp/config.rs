@@ -42,6 +42,8 @@ use indexmap::IndexSet;
 use lsp_types::ClientCapabilities;
 use std::collections::BTreeMap;
 use std::collections::HashMap;
+use std::ops::Deref;
+use std::ops::DerefMut;
 use std::path::Path;
 use std::path::PathBuf;
 use std::sync::Arc;
@@ -67,6 +69,54 @@ pub const SETTINGS_SECTION: &str = "deno";
 
 fn is_true() -> bool {
   true
+}
+
+/// Wrapper that defaults if it fails to deserialize. Good for individual
+/// settings.
+#[derive(Debug, Default, Clone, Eq, PartialEq)]
+pub struct SafeValue<T> {
+  inner: T,
+}
+
+impl<'de, T: Default + for<'de2> Deserialize<'de2>> Deserialize<'de>
+  for SafeValue<T>
+{
+  fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+  where
+    D: serde::Deserializer<'de>,
+  {
+    Ok(Self {
+      inner: Deserialize::deserialize(deserializer).unwrap_or_default(),
+    })
+  }
+}
+
+impl<T: Serialize> Serialize for SafeValue<T> {
+  fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+  where
+    S: serde::Serializer,
+  {
+    self.inner.serialize(serializer)
+  }
+}
+
+impl<T> Deref for SafeValue<T> {
+  type Target = T;
+  fn deref(&self) -> &Self::Target {
+    &self.inner
+  }
+}
+
+impl<T> DerefMut for SafeValue<T> {
+  fn deref_mut(&mut self) -> &mut T {
+    &mut self.inner
+  }
+}
+
+impl<T> SafeValue<T> {
+  pub fn as_deref(&self) -> &T {
+    &self.inner
+  }
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq)]
@@ -537,7 +587,7 @@ pub struct WorkspaceSettings {
   pub unsafely_ignore_certificate_errors: Option<Vec<String>>,
 
   #[serde(default)]
-  pub unstable: bool,
+  pub unstable: SafeValue<Vec<String>>,
 
   #[serde(default)]
   pub javascript: LanguageWorkspaceSettings,
@@ -567,7 +617,7 @@ impl Default for WorkspaceSettings {
       testing: Default::default(),
       tls_certificate: None,
       unsafely_ignore_certificate_errors: None,
-      unstable: false,
+      unstable: Default::default(),
       javascript: Default::default(),
       typescript: Default::default(),
     }
@@ -2139,7 +2189,7 @@ mod tests {
         },
         tls_certificate: None,
         unsafely_ignore_certificate_errors: None,
-        unstable: false,
+        unstable: Default::default(),
         javascript: LanguageWorkspaceSettings {
           inlay_hints: InlayHintsSettings {
             parameter_names: InlayHintsParamNamesOptions {
