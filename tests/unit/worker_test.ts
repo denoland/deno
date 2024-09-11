@@ -546,7 +546,7 @@ Deno.test({
         );
         worker.terminate();
       },
-      Deno.errors.PermissionDenied,
+      Deno.errors.NotCapable,
       "Can't escalate parent thread permissions",
     );
   },

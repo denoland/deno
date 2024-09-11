@@ -15,6 +15,7 @@ Deno.test({
     using file = await Deno.open(filePath);
 
     await new Promise<Stats>((resolve, reject) => {
+      // @ts-ignore (iuioiua) `file.rid` should no longer be needed once FDs are used
       fstat(file.rid, (err: Error | null, stat: Stats) => {
         if (err) reject(err);
         resolve(stat);
@@ -43,6 +44,7 @@ Deno.test({
 
     await new Promise<BigIntStats>((resolve, reject) => {
       fstat(
+        // @ts-ignore (iuioiua) `file.rid` should no longer be needed once FDs are used
         file.rid,
         { bigint: true },
         (err: Error | null, stat: BigIntStats) => {
@@ -71,6 +73,7 @@ Deno.test({
     using file = Deno.openSync(filePath);
 
     try {
+      // @ts-ignore (iuioiua) `file.rid` should no longer be needed once FDs are used
       assertStats(fstatSync(file.rid), file.statSync());
     } finally {
       Deno.removeSync(filePath);
@@ -89,9 +92,11 @@ Deno.test({
 
     try {
       // HEAD
+      // @ts-ignore (iuioiua) `file.rid` should no longer be needed once FDs are used
       assertStatsBigInt(fstatSync(file.rid, { bigint: true }), file.statSync());
       //
       assertStatsBigInt(
+        // @ts-ignore (iuioiua) `file.rid` should no longer be needed once FDs are used
         fstatSync(file.rid, { bigint: true }),
         file.statSync(),
       );
