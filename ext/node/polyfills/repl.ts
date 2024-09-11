@@ -3,6 +3,9 @@
 
 import { notImplemented } from "ext:deno_node/_utils.ts";
 
+export const REPL_MODE_SLOPPY = Symbol("repl-sloppy");
+export const REPL_MODE_STRICT = Symbol("repl-strict");
+
 export class REPLServer {
   constructor() {
     notImplemented("REPLServer.prototype.constructor");
@@ -61,4 +64,6 @@ export default {
   builtinModules,
   _builtinLibs,
   start,
+  REPL_MODE_SLOPPY,
+  REPL_MODE_STRICT,
 };
