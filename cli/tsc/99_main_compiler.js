@@ -44,7 +44,6 @@ delete Object.prototype.__proto__;
     "UnsafeFnPointer",
     "UnixConnectOptions",
     "UnixListenOptions",
-    "createHttpClient",
     "dlopen",
     "listen",
     "listenDatagram",

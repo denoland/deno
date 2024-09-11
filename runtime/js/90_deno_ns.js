@@ -126,6 +126,8 @@ const denoNs = {
   uid: os.uid,
   Command: process.Command,
   ChildProcess: process.ChildProcess,
+  httpClient: httpClient.httpClient,
+  createHttpClient: httpClient.createHttpClient,
 };
 
 // NOTE(bartlomieju): keep IDs in sync with `cli/main.rs`
@@ -162,11 +164,6 @@ denoNsUnstableById[unstableIds.ffi] = {
 
 denoNsUnstableById[unstableIds.fs] = {
   umask: fs.umask,
-};
-
-denoNsUnstableById[unstableIds.http] = {
-  HttpClient: httpClient.HttpClient,
-  createHttpClient: httpClient.createHttpClient,
 };
 
 denoNsUnstableById[unstableIds.kv] = {
