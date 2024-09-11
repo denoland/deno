@@ -220,13 +220,9 @@ pub fn op_node_create_cipheriv(
   #[string] algorithm: &str,
   #[buffer] key: &[u8],
   #[buffer] iv: &[u8],
-) -> u32 {
-  state.resource_table.add(
-    match cipher::CipherContext::new(algorithm, key, iv) {
-      Ok(context) => context,
-      Err(_) => return 0,
-    },
-  )
+) -> Result<u32, AnyError> {
+  let context = cipher::CipherContext::new(algorithm, key, iv)?;
+  Ok(state.resource_table.add(context))
 }
 
 #[op2(fast)]
@@ -292,13 +288,9 @@ pub fn op_node_create_decipheriv(
   #[string] algorithm: &str,
   #[buffer] key: &[u8],
   #[buffer] iv: &[u8],
-) -> u32 {
-  state.resource_table.add(
-    match cipher::DecipherContext::new(algorithm, key, iv) {
-      Ok(context) => context,
-      Err(_) => return 0,
-    },
-  )
+) -> Result<u32, AnyError> {
+  let context = cipher::DecipherContext::new(algorithm, key, iv)?;
+  Ok(state.resource_table.add(context))
 }
 
 #[op2(fast)]

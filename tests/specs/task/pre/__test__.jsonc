@@ -1,0 +1,8 @@
+{
+  "args": "task test",
+  "output": "bin.out",
+  "envs": {
+    "NO_COLOR": "1"
+  },
+  "exitCode": 0
+}
