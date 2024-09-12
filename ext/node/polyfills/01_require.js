@@ -67,13 +67,13 @@ const {
 
 import { nodeGlobals } from "ext:deno_node/00_globals.js";
 
-import _httpAgent from "ext:deno_node/_http_agent.mjs";
-import _httpOutgoing from "ext:deno_node/_http_outgoing.ts";
-import _streamDuplex from "ext:deno_node/internal/streams/duplex.mjs";
-import _streamPassthrough from "ext:deno_node/internal/streams/passthrough.mjs";
-import _streamReadable from "ext:deno_node/internal/streams/readable.mjs";
-import _streamTransform from "ext:deno_node/internal/streams/transform.mjs";
-import _streamWritable from "ext:deno_node/internal/streams/writable.mjs";
+import _httpAgent from "node:_http_agent";
+import _httpOutgoing from "node:_http_outgoing";
+import _streamDuplex from "node:_stream_duplex";
+import _streamPassthrough from "node:_stream_passthrough";
+import _streamReadable from "node:_stream_readable";
+import _streamTransform from "node:_stream_transform";
+import _streamWritable from "node:_stream_writable";
 import assert from "node:assert";
 import assertStrict from "node:assert/strict";
 import asyncHooks from "node:async_hooks";
