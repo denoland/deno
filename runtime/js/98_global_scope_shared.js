@@ -203,6 +203,10 @@ const windowOrWorkerGlobalScope = {
     (webgpu) => webgpu.GPUBindGroupLayout,
     loadWebGPU,
   ),
+  GPUInternalError: core.propNonEnumerableLazyLoaded(
+    (webgpu) => webgpu.GPUInternalError,
+    loadWebGPU,
+  ),
   GPUPipelineError: core.propNonEnumerableLazyLoaded(
     (webgpu) => webgpu.GPUPipelineError,
     loadWebGPU,
