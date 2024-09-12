@@ -7,6 +7,7 @@ use crate::args::TestReporterConfig;
 use crate::colors;
 use crate::display;
 use crate::factory::CliFactory;
+use crate::file_fetcher::File;
 use crate::file_fetcher::FileFetcher;
 use crate::graph_util::has_graph_root_local_dependent_changed;
 use crate::ops;
@@ -1565,34 +1566,12 @@ pub async fn run_tests(
     return Err(generic_error("No test modules found"));
   }
 
-  let specifiers_for_typecheck_and_test = {
-    // Specifiers to extract doc tests from
-    let specifiers_needing_extraction = specifiers_with_mode
-      .iter()
-      .filter(|(_, mode)| mode.needs_test_extraction())
-      .map(|(s, _)| s.clone())
-      .collect::<Vec<_>>();
-
-    let mut final_specifiers = specifiers_with_mode
-      .into_iter()
-      .filter_map(|(s, mode)| mode.needs_test_run().then_some(s))
-      .collect::<Vec<_>>();
-
-    // Extract doc tests, add them to the file fetcher as in-memory files,
-    // and add the specifiers to the final list of specifiers to run tests on.
-    for s in &specifiers_needing_extraction {
-      let file = file_fetcher
-        .fetch(s, &PermissionsContainer::allow_all())
-        .await?;
-      let doc_tests = extract_doc_tests(file)?;
-      for doc_test in doc_tests {
-        final_specifiers.push(doc_test.specifier.clone());
-        file_fetcher.insert_memory_files(doc_test);
-      }
-    }
-
-    final_specifiers
-  };
+  let doc_tests = get_doc_tests(&specifiers_with_mode, file_fetcher).await?;
+  let specifiers_for_typecheck_and_test =
+    get_target_specifiers(specifiers_with_mode, &doc_tests);
+  for doc_test in doc_tests {
+    file_fetcher.insert_memory_files(doc_test);
+  }
 
   let main_graph_container = factory.main_module_graph_container().await?;
 
@@ -1755,35 +1734,13 @@ pub async fn run_tests_with_watch(
         .filter(|(specifier, _)| test_modules_to_reload.contains(specifier))
         .collect::<Vec<(ModuleSpecifier, TestMode)>>();
 
-        let specifiers_for_typecheck_and_test = {
-          // Specifiers to extract doc tests from
-          let specifiers_needing_extraction = specifiers_with_mode
-            .iter()
-            .filter(|(_, mode)| mode.needs_test_extraction())
-            .map(|(s, _)| s.clone())
-            .collect::<Vec<_>>();
-
-          let mut final_specifiers = specifiers_with_mode
-            .into_iter()
-            .filter_map(|(s, mode)| mode.needs_test_run().then_some(s))
-            .collect::<Vec<_>>();
-
-          // Extract doc tests, add them to the file fetcher as in-memory files,
-          // and add the specifiers to the final list of specifiers to run tests
-          // on.
-          for s in &specifiers_needing_extraction {
-            let file = file_fetcher
-              .fetch(s, &PermissionsContainer::allow_all())
-              .await?;
-            let doc_tests = extract_doc_tests(file)?;
-            for doc_test in doc_tests {
-              final_specifiers.push(doc_test.specifier.clone());
-              file_fetcher.insert_memory_files(doc_test);
-            }
-          }
-
-          final_specifiers
-        };
+        let doc_tests =
+          get_doc_tests(&specifiers_with_mode, file_fetcher).await?;
+        let specifiers_for_typecheck_and_test =
+          get_target_specifiers(specifiers_with_mode, &doc_tests);
+        for doc_test in doc_tests {
+          file_fetcher.insert_memory_files(doc_test);
+        }
 
         let main_graph_container =
           factory.main_module_graph_container().await?;
@@ -1836,6 +1793,40 @@ pub async fn run_tests_with_watch(
   .await?;
 
   Ok(())
+}
+
+/// Extracts doc tests from files specified by the given specifiers.
+async fn get_doc_tests(
+  specifiers_with_mode: &[(Url, TestMode)],
+  file_fetcher: &FileFetcher,
+) -> Result<Vec<File>, AnyError> {
+  let specifiers_needing_extraction = specifiers_with_mode
+    .iter()
+    .filter(|(_, mode)| mode.needs_test_extraction())
+    .map(|(s, _)| s);
+
+  let mut doc_tests = Vec::new();
+  for s in specifiers_needing_extraction {
+    let file = file_fetcher
+      .fetch(s, &PermissionsContainer::allow_all())
+      .await?;
+    doc_tests.extend(extract_doc_tests(file)?);
+  }
+
+  Ok(doc_tests)
+}
+
+/// Get a list of specifiers that we need to perform typecheck and run tests on.
+/// The result includes "pseudo specifiers" for doc tests.
+fn get_target_specifiers(
+  specifiers_with_mode: Vec<(Url, TestMode)>,
+  doc_tests: &[File],
+) -> Vec<Url> {
+  specifiers_with_mode
+    .into_iter()
+    .filter_map(|(s, mode)| mode.needs_test_run().then_some(s))
+    .chain(doc_tests.iter().map(|d| d.specifier.clone()))
+    .collect()
 }
 
 /// Tracks failures for the `--fail-fast` argument in
