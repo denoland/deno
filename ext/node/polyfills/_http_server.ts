@@ -1,3 +1,5 @@
+// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
+
 export enum STATUS_CODES {
   /** RFC 7231, 6.2.1 */
   Continue = 100,

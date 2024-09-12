@@ -2,7 +2,11 @@
 // Copyright Joyent and Node contributors. All rights reserved. MIT license.
 
 import { primordials } from "ext:core/mod.js";
-const { RegExpPrototypeTest, SafeRegExp } = primordials;
+const {
+  RegExpPrototypeTest,
+  SafeRegExp,
+  Symbol,
+} = primordials;
 
 export const CRLF = "\r\n";
 export const kIncomingMessage = Symbol("IncomingMessage");
