@@ -98,10 +98,6 @@ const denoNs = {
   connectTls: tls.connectTls,
   listenTls: tls.listenTls,
   startTls: tls.startTls,
-  fsyncSync: fs.fsyncSync,
-  fsync: fs.fsync,
-  fdatasyncSync: fs.fdatasyncSync,
-  fdatasync: fs.fdatasync,
   symlink: fs.symlink,
   symlinkSync: fs.symlinkSync,
   link: fs.link,
@@ -130,6 +126,8 @@ const denoNs = {
   uid: os.uid,
   Command: process.Command,
   ChildProcess: process.ChildProcess,
+  httpClient: httpClient.httpClient,
+  createHttpClient: httpClient.createHttpClient,
 };
 
 // NOTE(bartlomieju): keep IDs in sync with `cli/main.rs`
@@ -196,27 +194,4 @@ denoNsUnstableById[unstableIds.webgpu] = {
 
 // denoNsUnstableById[unstableIds.workerOptions] = { __proto__: null }
 
-// when editing this list, also update unstableDenoProps in cli/tsc/99_main_compiler.js
-const denoNsUnstable = {
-  listenDatagram: net.createListenDatagram(
-    op_net_listen_udp,
-    op_net_listen_unixpacket,
-  ),
-  umask: fs.umask,
-  HttpClient: httpClient.HttpClient,
-  createHttpClient: httpClient.createHttpClient,
-  dlopen: ffi.dlopen,
-  UnsafeCallback: ffi.UnsafeCallback,
-  UnsafePointer: ffi.UnsafePointer,
-  UnsafePointerView: ffi.UnsafePointerView,
-  UnsafeFnPointer: ffi.UnsafeFnPointer,
-  UnsafeWindowSurface: webgpuSurface.UnsafeWindowSurface,
-  openKv: kv.openKv,
-  AtomicOperation: kv.AtomicOperation,
-  Kv: kv.Kv,
-  KvU64: kv.KvU64,
-  KvListIterator: kv.KvListIterator,
-  cron: cron.cron,
-};
-
-export { denoNs, denoNsUnstable, denoNsUnstableById, unstableIds };
+export { denoNs, denoNsUnstableById, unstableIds };

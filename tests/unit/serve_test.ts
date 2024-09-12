@@ -3,7 +3,7 @@
 // deno-lint-ignore-file no-console
 
 import { assertMatch, assertRejects } from "@std/assert";
-import { Buffer, BufReader, BufWriter } from "@std/io";
+import { Buffer, BufReader, BufWriter, type Reader } from "@std/io";
 import { TextProtoReader } from "../testdata/run/textproto.ts";
 import {
   assert,
@@ -3774,7 +3774,7 @@ Deno.test(
   },
 );
 
-function chunkedBodyReader(h: Headers, r: BufReader): Deno.Reader {
+function chunkedBodyReader(h: Headers, r: BufReader): Reader {
   // Based on https://tools.ietf.org/html/rfc2616#section-19.4.6
   const tp = new TextProtoReader(r);
   let finished = false;

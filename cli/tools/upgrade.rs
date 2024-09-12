@@ -4,6 +4,7 @@
 
 use crate::args::Flags;
 use crate::args::UpgradeFlags;
+use crate::args::UPGRADE_USAGE;
 use crate::colors;
 use crate::factory::CliFactory;
 use crate::http_util::HttpClient;
@@ -15,7 +16,6 @@ use crate::util::progress_bar::ProgressBarStyle;
 use crate::version;
 
 use async_trait::async_trait;
-use color_print::cstr;
 use deno_core::anyhow::bail;
 use deno_core::anyhow::Context;
 use deno_core::error::AnyError;
@@ -37,8 +37,6 @@ use std::time::Duration;
 const RELEASE_URL: &str = "https://github.com/denoland/deno/releases";
 const CANARY_URL: &str = "https://dl.deno.land/canary";
 const DL_RELEASE_URL: &str = "https://dl.deno.land/release";
-
-static EXAMPLE_USAGE: &str = cstr!("Example usage:\n  <p(245)>deno upgrade | deno upgrade 1.46 | deno upgrade canary</>");
 
 pub static ARCHIVE_NAME: Lazy<String> =
   Lazy::new(|| format!("deno-{}.zip", env!("TARGET")));
@@ -629,6 +627,7 @@ impl RequestedVersion {
     };
     let mut maybe_passed_version = upgrade_flags.version.clone();
 
+    // TODO(bartlomieju): prefer flags first? This whole logic could be cleaned up...
     if let Some(val) = &upgrade_flags.version_or_hash_or_channel {
       if let Ok(channel) = ReleaseChannel::deserialize(&val.to_lowercase()) {
         // TODO(bartlomieju): print error if any other flags passed?
@@ -655,18 +654,19 @@ impl RequestedVersion {
     let (channel, passed_version) = if is_canary {
       if !re_hash.is_match(&passed_version) {
         bail!(
-          "Invalid commit hash passed ({})\n\n{}",
+          "Invalid commit hash passed ({})\n\nPass a semver, or a full 40 character git commit hash, or a release channel name.\n\nUsage:\n{}",
           colors::gray(passed_version),
-          EXAMPLE_USAGE
+          UPGRADE_USAGE
         );
       }
+
       (ReleaseChannel::Canary, passed_version)
     } else {
       let Ok(semver) = Version::parse_standard(&passed_version) else {
         bail!(
-          "Invalid version passed ({})\n\n{}",
+          "Invalid version passed ({})\n\nPass a semver, or a full 40 character git commit hash, or a release channel name.\n\nUsage:\n{}",
           colors::gray(passed_version),
-          EXAMPLE_USAGE
+          UPGRADE_USAGE
         );
       };
 
@@ -1067,6 +1067,8 @@ mod test {
   use std::cell::RefCell;
   use std::rc::Rc;
 
+  use test_util::assert_contains;
+
   use super::*;
 
   #[test]
@@ -1164,6 +1166,27 @@ mod test {
         ReleaseChannel::Canary,
         "5c69b4861b52ab406e73b9cd85c254f0505cb20f".to_string()
       )
+    );
+
+    upgrade_flags.version_or_hash_or_channel =
+      Some("5c69b4861b52a".to_string());
+    let err = RequestedVersion::from_upgrade_flags(upgrade_flags.clone())
+      .unwrap_err()
+      .to_string();
+    assert_contains!(err, "Invalid version passed");
+    assert_contains!(
+      err,
+      "Pass a semver, or a full 40 character git commit hash, or a release channel name."
+    );
+
+    upgrade_flags.version_or_hash_or_channel = Some("11.asd.1324".to_string());
+    let err = RequestedVersion::from_upgrade_flags(upgrade_flags.clone())
+      .unwrap_err()
+      .to_string();
+    assert_contains!(err, "Invalid version passed");
+    assert_contains!(
+      err,
+      "Pass a semver, or a full 40 character git commit hash, or a release channel name."
     );
   }
 

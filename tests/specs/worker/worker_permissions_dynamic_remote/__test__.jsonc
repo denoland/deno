@@ -1,0 +1,5 @@
+{
+  "args": "run --quiet --reload --allow-net --unstable-worker-options ../../../testdata/workers/permissions_dynamic_remote.ts",
+  "output": "../../../testdata/workers/permissions_dynamic_remote.ts.out",
+  "exitCode": 1
+}

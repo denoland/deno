@@ -1,0 +1,5 @@
+{
+  "tasks": {
+    "echo_cwd": "echo $(pwd)"
+  }
+}

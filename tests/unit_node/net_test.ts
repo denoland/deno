@@ -113,7 +113,7 @@ Deno.test({
       const s = new net.Server();
       s.listen(3000);
     } catch (e) {
-      assert(e instanceof Deno.errors.PermissionDenied);
+      assert(e instanceof Deno.errors.NotCapable);
     }
   },
 });

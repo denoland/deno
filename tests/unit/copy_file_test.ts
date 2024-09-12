@@ -84,7 +84,7 @@ Deno.test(
   function copyFileSyncPerm1() {
     assertThrows(() => {
       Deno.copyFileSync("/from.txt", "/to.txt");
-    }, Deno.errors.PermissionDenied);
+    }, Deno.errors.NotCapable);
   },
 );
 
@@ -93,7 +93,7 @@ Deno.test(
   function copyFileSyncPerm2() {
     assertThrows(() => {
       Deno.copyFileSync("/from.txt", "/to.txt");
-    }, Deno.errors.PermissionDenied);
+    }, Deno.errors.NotCapable);
   },
 );
 
@@ -197,7 +197,7 @@ Deno.test(
   async function copyFilePerm1() {
     await assertRejects(async () => {
       await Deno.copyFile("/from.txt", "/to.txt");
-    }, Deno.errors.PermissionDenied);
+    }, Deno.errors.NotCapable);
   },
 );
 
@@ -206,7 +206,7 @@ Deno.test(
   async function copyFilePerm2() {
     await assertRejects(async () => {
       await Deno.copyFile("/from.txt", "/to.txt");
-    }, Deno.errors.PermissionDenied);
+    }, Deno.errors.NotCapable);
   },
 );
 

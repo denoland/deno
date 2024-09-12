@@ -36,7 +36,7 @@ Deno.test(
 Deno.test({ permissions: { write: false } }, function mkdirSyncPerm() {
   assertThrows(() => {
     Deno.mkdirSync("/baddir");
-  }, Deno.errors.PermissionDenied);
+  }, Deno.errors.NotCapable);
 });
 
 Deno.test(
