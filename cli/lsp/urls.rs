@@ -126,15 +126,32 @@ fn from_deno_url(url: &Url) -> Option<Url> {
   Url::parse(&string).ok()
 }
 
-#[derive(Debug)]
-struct NotebookCell {
-  item: lsp_types::TextDocumentItem,
+#[derive(Debug, Clone)]
+pub struct NotebookCell {
+  pub uri: Uri,
+  pub language_id: String,
+  pub version: i32,
+  pub text: Arc<str>,
+  pub line_index: Arc<LineIndex>,
+}
+
+impl NotebookCell {
+  fn new(item: lsp_types::TextDocumentItem) -> Self {
+    let line_index = Arc::new(LineIndex::new(&item.text));
+    Self {
+      uri: item.uri,
+      language_id: item.language_id,
+      version: item.version,
+      text: item.text.into(),
+      line_index,
+    }
+  }
 }
 
 #[derive(Debug)]
 struct Notebook {
   uri: Uri,
-  cells: IndexMap<Uri, lsp_types::TextDocumentItem>,
+  cells: IndexMap<Uri, Arc<NotebookCell>>,
   version: i32,
   script_language_id: Option<String>,
   script_cells: IndexMap<Uri, NotebookScriptCellInfo>,
@@ -143,7 +160,7 @@ struct Notebook {
 impl Notebook {
   fn new(
     uri: Uri,
-    cells: IndexMap<Uri, lsp_types::TextDocumentItem>,
+    cells: IndexMap<Uri, Arc<NotebookCell>>,
     version: i32,
   ) -> Self {
     static SCRIPT_LANGUAGE_IDS: &[&str] = &[
@@ -154,26 +171,26 @@ impl Notebook {
       "typescriptreact",
       "tsx",
     ];
-    let script_language_id = cells.values().find_map(|i| {
+    let script_language_id = cells.values().find_map(|c| {
       SCRIPT_LANGUAGE_IDS
-        .contains(&i.language_id.as_str())
-        .then(|| i.language_id.clone())
+        .contains(&c.language_id.as_str())
+        .then(|| c.language_id.clone())
     });
     let mut script_cells = IndexMap::new();
     let mut script_line_offset = 0;
     if let Some(language_id) = &script_language_id {
-      for item in cells.values() {
-        if &item.language_id != language_id {
+      for cell in cells.values() {
+        if &cell.language_id != language_id {
           continue;
         }
         let line_count =
-          item.text.chars().filter(|c| *c == '\n').count() as u32;
+          cell.text.chars().filter(|c| *c == '\n').count() as u32;
         let cell_info = NotebookScriptCellInfo {
           line_offset: script_line_offset,
           line_count,
         };
         script_line_offset += line_count;
-        script_cells.insert(item.uri.clone(), cell_info);
+        script_cells.insert(cell.uri.clone(), cell_info);
       }
     }
     Self {
@@ -198,36 +215,50 @@ impl Notebook {
           cells.retain(|i, _| !closed_cells.contains(i));
         }
         if let Some(did_open) = structure.did_open {
-          cells.extend(did_open.into_iter().map(|i| (i.uri.clone(), i)));
+          cells.extend(
+            did_open
+              .into_iter()
+              .map(|i| (i.uri.clone(), Arc::new(NotebookCell::new(i)))),
+          );
         }
       }
       if let Some(changes) = cell_change.text_content {
         for change in changes {
-          let Some(item) =
-            cells.values_mut().find(|i| &i.uri == &change.document.uri)
+          let Some(cell) =
+            cells.values_mut().find(|c| c.uri == change.document.uri)
           else {
             continue;
           };
-          item.version = change.document.version;
-          let mut content = item.text.clone();
-          let mut line_index = LineIndex::new(&item.text);
+          let mut text = cell.text.to_string();
+          let mut line_index = cell.line_index.clone();
           let mut index_valid = IndexValid::All;
           for change in change.changes {
             if let Some(range) = change.range {
               if !index_valid.covers(range.start.line) {
-                line_index = LineIndex::new(&content);
+                line_index = Arc::new(LineIndex::new(&text));
               }
               index_valid = IndexValid::UpTo(range.start.line);
               let Ok(range) = line_index.get_text_range(range) else {
                 continue;
               };
-              content.replace_range(Range::<usize>::from(range), &change.text);
+              text.replace_range(Range::<usize>::from(range), &change.text);
             } else {
-              content = change.text;
+              text = change.text;
               index_valid = IndexValid::UpTo(0);
             }
           }
-          item.text = content;
+          let line_index = if index_valid == IndexValid::All {
+            line_index
+          } else {
+            Arc::new(LineIndex::new(text.as_str()))
+          };
+          *cell = Arc::new(NotebookCell {
+            uri: cell.uri.clone(),
+            language_id: cell.language_id.clone(),
+            version: cell.version,
+            text: text.into(),
+            line_index,
+          });
         }
       }
     }
@@ -238,8 +269,7 @@ impl Notebook {
     let text = self
       .script_cells
       .iter()
-      .map(|(u, _)| [self.cells.get(u).unwrap().text.as_str(), "\n"])
-      .flatten()
+      .flat_map(|(u, _)| [self.cells.get(u).unwrap().text.as_ref(), "\n"])
       .collect::<Vec<_>>()
       .join("");
     dbg!(self.uri.as_str(), &text);
@@ -313,7 +343,7 @@ pub fn uri_to_url(uri: &Uri) -> Url {
   Url::parse(uri.as_str()).unwrap()
 }
 
-#[derive(Debug, Copy)]
+#[derive(Debug, Copy, Clone)]
 pub struct NotebookScriptCellInfo {
   pub line_offset: u32,
   pub line_count: u32,
@@ -352,7 +382,7 @@ impl MappedSpecifier {
     }
   }
 
-  pub fn notebook_cell_info(&self) -> Option<&NotebookScriptCellInfo> {
+  pub fn notebook_script_cell_info(&self) -> Option<&NotebookScriptCellInfo> {
     match self {
       Self::NotebookScript(_, i) => Some(i),
       _ => None,
@@ -470,7 +500,7 @@ impl LspUrlMap {
     kind: LspUrlKind,
   ) -> MappedSpecifier {
     let notebook_script = (|| {
-      let mut inner = self.inner.lock();
+      let inner = self.inner.lock();
       let notebook_uri = inner.script_cell_to_notebook_uri.get(uri)?;
       let notebook = inner.notebooks.get(notebook_uri)?;
       let cell_info = *notebook.script_cells.get(uri)?;
@@ -486,13 +516,35 @@ impl LspUrlMap {
   pub fn specifier_to_uri2(
     &self,
     specifier: &ModuleSpecifier,
-    _line: Option<u32>,
+    line: Option<u32>,
     file_referrer: Option<&ModuleSpecifier>,
   ) -> Result<(Uri, Option<NotebookScriptCellInfo>), AnyError> {
-    // TODO(nayeemrmn): Implement!
-    self
-      .specifier_to_uri(specifier, file_referrer)
-      .map(|s| (s, None))
+    let uri = self.specifier_to_uri(specifier, file_referrer)?;
+    let cell_entry = (|| {
+      let line = line?;
+      let inner = self.inner.lock();
+      let notebook = inner.notebooks.get(&uri)?;
+      let (uri, cell_info) = notebook
+        .script_cells
+        .iter()
+        .rev()
+        .find(|(_, i)| i.line_offset <= line)?;
+      if cell_info.line_offset + cell_info.line_count <= line {
+        return None;
+      }
+      Some((uri.clone(), *cell_info))
+    })();
+    if let Some((uri, cell_info)) = cell_entry {
+      return Ok((uri, Some(cell_info)));
+    }
+    Ok((uri, None))
+  }
+
+  pub fn notebook_cell(&self, uri: &Uri) -> Option<Arc<NotebookCell>> {
+    let inner = self.inner.lock();
+    let notebook_uri = inner.script_cell_to_notebook_uri.get(uri)?;
+    let notebook = inner.notebooks.get(notebook_uri)?;
+    notebook.cells.get(uri).cloned()
   }
 
   pub fn notebook_did_open(
@@ -505,7 +557,7 @@ impl LspUrlMap {
       params
         .cell_text_documents
         .into_iter()
-        .map(|i| (i.uri.clone(), i))
+        .map(|i| (i.uri.clone(), Arc::new(NotebookCell::new(i))))
         .collect(),
       params.notebook_document.version,
     );
@@ -534,11 +586,14 @@ impl LspUrlMap {
         ),
       ));
     };
-    let structure_changed =
-      params.change.cells.is_some_and(|c| c.structure.is_some());
+    let structure_changed = params
+      .change
+      .cells
+      .as_ref()
+      .is_some_and(|c| c.structure.is_some());
     if structure_changed {
       for script_cell_uri in notebook.script_cells.keys() {
-        inner.script_cell_to_notebook_uri.remove(&script_cell_uri);
+        inner.script_cell_to_notebook_uri.remove(script_cell_uri);
       }
     }
     let notebook = notebook.with_change(params);
@@ -563,7 +618,7 @@ impl LspUrlMap {
       inner.notebooks.remove(&params.notebook_document.uri)
     {
       for script_cell_uri in notebook.script_cells.keys() {
-        inner.script_cell_to_notebook_uri.remove(&script_cell_uri);
+        inner.script_cell_to_notebook_uri.remove(script_cell_uri);
       }
     }
     lsp_types::TextDocumentIdentifier {
@@ -580,7 +635,7 @@ impl LspUrlMap {
 ///   ),
 ///   Some(Url::parse("file:///path/to/file.ipynb.ts?scheme=deno-notebook-cell#abc").unwrap()),
 /// );
-fn file_like_to_file_specifier(specifier: &Url) -> Option<Url> {
+pub fn file_like_to_file_specifier(specifier: &Url) -> Option<Url> {
   if matches!(specifier.scheme(), "untitled" | "deno-notebook-cell") {
     if let Ok(mut s) = ModuleSpecifier::parse(&format!(
       "file://{}",
