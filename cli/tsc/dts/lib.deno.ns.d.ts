@@ -175,8 +175,11 @@ declare namespace Deno {
     /**
      * Raised when the underlying operating system indicates the current user
      * which the Deno process is running under does not have the appropriate
-     * permissions to a file or resource, or the user _did not_ provide required
-     * `--allow-*` flag.
+     * permissions to a file or resource.
+     *
+     * Before Deno 2.0, this error was raised when the user _did not_ provide
+     * required `--allow-*` flag. As of Deno 2.0, that case is now handled by
+     * the {@link NotCapable} error.
      *
      * @category Errors */
     export class PermissionDenied extends Error {}
@@ -314,6 +317,15 @@ declare namespace Deno {
      *
      * @category Errors */
     export class NotADirectory extends Error {}
+    /**
+     * Raised when trying to perform an operation while the relevant Deno
+     * permission (like `--allow-read`) has not been granted.
+     *
+     * Before Deno 2.0, this condition was covered by the {@link PermissionDenied}
+     * error.
+     *
+     * @category Errors */
+    export class NotCapable extends Error {}
   }
 
   /** The current process ID of this instance of the Deno CLI.
@@ -1658,141 +1670,6 @@ declare namespace Deno {
   }
 
   /**
-   * An abstract interface which when implemented provides an interface to read
-   * bytes into an array buffer asynchronously.
-   *
-   * @deprecated This will be removed in Deno 2.0. See the
-   * {@link https://docs.deno.com/runtime/manual/advanced/migrate_deprecations | Deno 1.x to 2.x Migration Guide}
-   * for migration instructions.
-   *
-   * @category I/O */
-  export interface Reader {
-    /** Reads up to `p.byteLength` bytes into `p`. It resolves to the number of
-     * bytes read (`0` < `n` <= `p.byteLength`) and rejects if any error
-     * encountered. Even if `read()` resolves to `n` < `p.byteLength`, it may
-     * use all of `p` as scratch space during the call. If some data is
-     * available but not `p.byteLength` bytes, `read()` conventionally resolves
-     * to what is available instead of waiting for more.
-     *
-     * When `read()` encounters end-of-file condition, it resolves to EOF
-     * (`null`).
-     *
-     * When `read()` encounters an error, it rejects with an error.
-     *
-     * Callers should always process the `n` > `0` bytes returned before
-     * considering the EOF (`null`). Doing so correctly handles I/O errors that
-     * happen after reading some bytes and also both of the allowed EOF
-     * behaviors.
-     *
-     * Implementations should not retain a reference to `p`.
-     *
-     * Use
-     * {@linkcode https://jsr.io/@std/io/doc/iterate-reader/~/iterateReader | iterateReader}
-     * to turn {@linkcode Reader} into an {@linkcode AsyncIterator}.
-     */
-    read(p: Uint8Array): Promise<number | null>;
-  }
-
-  /**
-   * An abstract interface which when implemented provides an interface to read
-   * bytes into an array buffer synchronously.
-   *
-   * @deprecated This will be removed in Deno 2.0. See the
-   * {@link https://docs.deno.com/runtime/manual/advanced/migrate_deprecations | Deno 1.x to 2.x Migration Guide}
-   * for migration instructions.
-   *
-   * @category I/O */
-  export interface ReaderSync {
-    /** Reads up to `p.byteLength` bytes into `p`. It resolves to the number
-     * of bytes read (`0` < `n` <= `p.byteLength`) and rejects if any error
-     * encountered. Even if `readSync()` returns `n` < `p.byteLength`, it may use
-     * all of `p` as scratch space during the call. If some data is available
-     * but not `p.byteLength` bytes, `readSync()` conventionally returns what is
-     * available instead of waiting for more.
-     *
-     * When `readSync()` encounters end-of-file condition, it returns EOF
-     * (`null`).
-     *
-     * When `readSync()` encounters an error, it throws with an error.
-     *
-     * Callers should always process the `n` > `0` bytes returned before
-     * considering the EOF (`null`). Doing so correctly handles I/O errors that
-     * happen after reading some bytes and also both of the allowed EOF
-     * behaviors.
-     *
-     * Implementations should not retain a reference to `p`.
-     *
-     * Use
-     * {@linkcode https://jsr.io/@std/io/doc/iterate-reader/~/iterateReaderSync | iterateReaderSync}
-     * to turn {@linkcode ReaderSync} into an {@linkcode Iterator}.
-     */
-    readSync(p: Uint8Array): number | null;
-  }
-
-  /**
-   * An abstract interface which when implemented provides an interface to write
-   * bytes from an array buffer to a file/resource asynchronously.
-   *
-   * @deprecated This will be removed in Deno 2.0. See the
-   * {@link https://docs.deno.com/runtime/manual/advanced/migrate_deprecations | Deno 1.x to 2.x Migration Guide}
-   * for migration instructions.
-   *
-   * @category I/O */
-  export interface Writer {
-    /** Writes `p.byteLength` bytes from `p` to the underlying data stream. It
-     * resolves to the number of bytes written from `p` (`0` <= `n` <=
-     * `p.byteLength`) or reject with the error encountered that caused the
-     * write to stop early. `write()` must reject with a non-null error if
-     * would resolve to `n` < `p.byteLength`. `write()` must not modify the
-     * slice data, even temporarily.
-     *
-     * This function is one of the lowest
-     * level APIs and most users should not work with this directly, but rather
-     * use {@linkcode https://jsr.io/@std/io/doc/write-all/~/writeAll | writeAll}
-     * instead.
-     *
-     * Implementations should not retain a reference to `p`.
-     */
-    write(p: Uint8Array): Promise<number>;
-  }
-
-  /**
-   * An abstract interface which when implemented provides an interface to write
-   * bytes from an array buffer to a file/resource synchronously.
-   *
-   * @deprecated This will be removed in Deno 2.0. See the
-   * {@link https://docs.deno.com/runtime/manual/advanced/migrate_deprecations | Deno 1.x to 2.x Migration Guide}
-   * for migration instructions.
-   *
-   * @category I/O */
-  export interface WriterSync {
-    /** Writes `p.byteLength` bytes from `p` to the underlying data
-     * stream. It returns the number of bytes written from `p` (`0` <= `n`
-     * <= `p.byteLength`) and any error encountered that caused the write to
-     * stop early. `writeSync()` must throw a non-null error if it returns `n` <
-     * `p.byteLength`. `writeSync()` must not modify the slice data, even
-     * temporarily.
-     *
-     * Implementations should not retain a reference to `p`.
-     */
-    writeSync(p: Uint8Array): number;
-  }
-
-  /**
-   * An abstract interface which when implemented provides an interface to close
-   * files/resources that were previously opened.
-   *
-   * @deprecated This will be removed in Deno 2.0. See the
-   * {@link https://docs.deno.com/runtime/manual/advanced/migrate_deprecations | Deno 1.x to 2.x Migration Guide}
-   * for migration instructions.
-   *
-   * @category I/O */
-  export interface Closer {
-    /** Closes the resource, "freeing" the backing file/resource. */
-    close(): void;
-  }
-
-  /**
    * An abstract interface which when implemented provides an interface to seek
    * within an open file/resource asynchronously.
    *
@@ -1920,78 +1797,6 @@ declare namespace Deno {
    */
   export function createSync(path: string | URL): FsFile;
 
-  /**
-   * Flushes any pending data and metadata operations of the given file stream
-   * to disk.
-   *
-   * ```ts
-   * const file = await Deno.open(
-   *   "my_file.txt",
-   *   { read: true, write: true, create: true },
-   * );
-   * await file.write(new TextEncoder().encode("Hello World"));
-   * await file.truncate(1);
-   * await Deno.fsync(file.rid);
-   * console.log(await Deno.readTextFile("my_file.txt")); // H
-   * ```
-   *
-   * @category File System
-   */
-  export function fsync(rid: number): Promise<void>;
-
-  /**
-   * Synchronously flushes any pending data and metadata operations of the given
-   * file stream to disk.
-   *
-   * ```ts
-   * const file = Deno.openSync(
-   *   "my_file.txt",
-   *   { read: true, write: true, create: true },
-   * );
-   * file.writeSync(new TextEncoder().encode("Hello World"));
-   * file.truncateSync(1);
-   * Deno.fsyncSync(file.rid);
-   * console.log(Deno.readTextFileSync("my_file.txt")); // H
-   * ```
-   *
-   * @category File System
-   */
-  export function fsyncSync(rid: number): void;
-
-  /**
-   * Flushes any pending data operations of the given file stream to disk.
-   *  ```ts
-   * const file = await Deno.open(
-   *   "my_file.txt",
-   *   { read: true, write: true, create: true },
-   * );
-   * await file.write(new TextEncoder().encode("Hello World"));
-   * await Deno.fdatasync(file.rid);
-   * console.log(await Deno.readTextFile("my_file.txt")); // Hello World
-   * ```
-   *
-   * @category File System
-   */
-  export function fdatasync(rid: number): Promise<void>;
-
-  /**
-   * Synchronously flushes any pending data operations of the given file stream
-   * to disk.
-   *
-   *  ```ts
-   * const file = Deno.openSync(
-   *   "my_file.txt",
-   *   { read: true, write: true, create: true },
-   * );
-   * file.writeSync(new TextEncoder().encode("Hello World"));
-   * Deno.fdatasyncSync(file.rid);
-   * console.log(Deno.readTextFileSync("my_file.txt")); // Hello World
-   * ```
-   *
-   * @category File System
-   */
-  export function fdatasyncSync(rid: number): void;
-
   /** The Deno abstraction for reading and writing files.
    *
    * This is the most straight forward way of handling files within Deno and is
@@ -2009,25 +1814,7 @@ declare namespace Deno {
    *
    * @category File System
    */
-  export class FsFile
-    implements
-      Reader,
-      ReaderSync,
-      Writer,
-      WriterSync,
-      Seeker,
-      SeekerSync,
-      Closer,
-      Disposable {
-    /**
-     * The resource ID associated with the file instance. The resource ID
-     * should be considered an opaque reference to resource.
-     *
-     * @deprecated This will be removed in Deno 2.0. See the
-     * {@link https://docs.deno.com/runtime/manual/advanced/migrate_deprecations | Deno 1.x to 2.x Migration Guide}
-     * for migration instructions.
-     */
-    readonly rid: number;
+  export class FsFile implements Seeker, SeekerSync, Disposable {
     /** A {@linkcode ReadableStream} instance representing to the byte contents
      * of the file. This makes it easy to interoperate with other web streams
      * based APIs.
@@ -2177,7 +1964,7 @@ declare namespace Deno {
      * resolves to the new position within the resource (bytes from the start).
      *
      * ```ts
-     * // Given file pointing to file with "Hello world", which is 11 bytes long:
+     * // Given the file contains "Hello world" text, which is 11 bytes long:
      * using file = await Deno.open(
      *   "hello.txt",
      *   { read: true, write: true, truncate: true, create: true },
@@ -2195,7 +1982,7 @@ declare namespace Deno {
      * The seek modes work as follows:
      *
      * ```ts
-     * // Given file.rid pointing to file with "Hello world", which is 11 bytes long:
+     * // Given the file contains "Hello world" text, which is 11 bytes long:
      * const file = await Deno.open(
      *   "hello.txt",
      *   { read: true, write: true, truncate: true, create: true },
@@ -2232,7 +2019,7 @@ declare namespace Deno {
      * The seek modes work as follows:
      *
      * ```ts
-     * // Given file.rid pointing to file with "Hello world", which is 11 bytes long:
+     * // Given the file contains "Hello world" text, which is 11 bytes long:
      * using file = Deno.openSync(
      *   "hello.txt",
      *   { read: true, write: true, truncate: true, create: true },
@@ -2451,9 +2238,12 @@ declare namespace Deno {
   }
 
   /** A reference to `stdin` which can be used to read directly from `stdin`.
-   * It implements the Deno specific {@linkcode Reader}, {@linkcode ReaderSync},
-   * and {@linkcode Closer} interfaces as well as provides a
-   * {@linkcode ReadableStream} interface.
+   *
+   * It implements the Deno specific
+   * {@linkcode https://jsr.io/@std/io/doc/types/~/Reader | Reader},
+   * {@linkcode https://jsr.io/@std/io/doc/types/~/ReaderSync | ReaderSync},
+   * and {@linkcode https://jsr.io/@std/io/doc/types/~/Closer | Closer}
+   * interfaces as well as provides a {@linkcode ReadableStream} interface.
    *
    * ### Reading chunks from the readable stream
    *
@@ -2467,16 +2257,57 @@ declare namespace Deno {
    *
    * @category I/O
    */
-  export const stdin: Reader & ReaderSync & Closer & {
-    /**
-     * The resource ID assigned to `stdin`. This can be used with the discrete
-     * I/O functions in the `Deno` namespace.
+  export const stdin: {
+    /** Read the incoming data from `stdin` into an array buffer (`p`).
      *
-     * @deprecated This will be soft-removed in Deno 2.0. See the
-     * {@link https://docs.deno.com/runtime/manual/advanced/migrate_deprecations | Deno 1.x to 2.x Migration Guide}
-     * for migration instructions.
+     * Resolves to either the number of bytes read during the operation or EOF
+     * (`null`) if there was nothing more to read.
+     *
+     * It is possible for a read to successfully return with `0` bytes. This
+     * does not indicate EOF.
+     *
+     * **It is not guaranteed that the full buffer will be read in a single
+     * call.**
+     *
+     * ```ts
+     * // If the text "hello world" is piped into the script:
+     * const buf = new Uint8Array(100);
+     * const numberOfBytesRead = await Deno.stdin.read(buf); // 11 bytes
+     * const text = new TextDecoder().decode(buf);  // "hello world"
+     * ```
+     *
+     * @category I/O
      */
-    readonly rid: number;
+    read(p: Uint8Array): Promise<number | null>;
+    /** Synchronously read from the incoming data from `stdin` into an array
+     * buffer (`p`).
+     *
+     * Returns either the number of bytes read during the operation or EOF
+     * (`null`) if there was nothing more to read.
+     *
+     * It is possible for a read to successfully return with `0` bytes. This
+     * does not indicate EOF.
+     *
+     * **It is not guaranteed that the full buffer will be read in a single
+     * call.**
+     *
+     * ```ts
+     * // If the text "hello world" is piped into the script:
+     * const buf = new Uint8Array(100);
+     * const numberOfBytesRead = Deno.stdin.readSync(buf); // 11 bytes
+     * const text = new TextDecoder().decode(buf);  // "hello world"
+     * ```
+     *
+     * @category I/O
+     */
+    readSync(p: Uint8Array): number | null;
+    /** Closes `stdin`, freeing the resource.
+     *
+     * ```ts
+     * Deno.stdin.close();
+     * ```
+     */
+    close(): void;
     /** A readable stream interface to `stdin`. */
     readonly readable: ReadableStream<Uint8Array>;
     /**
@@ -2506,8 +2337,10 @@ declare namespace Deno {
     isTerminal(): boolean;
   };
   /** A reference to `stdout` which can be used to write directly to `stdout`.
-   * It implements the Deno specific {@linkcode Writer}, {@linkcode WriterSync},
-   * and {@linkcode Closer} interfaces as well as provides a
+   * It implements the Deno specific
+   * {@linkcode https://jsr.io/@std/io/doc/types/~/Writer | Writer},
+   * {@linkcode https://jsr.io/@std/io/doc/types/~/WriterSync | WriterSync},
+   * and {@linkcode https://jsr.io/@std/io/doc/types/~/Closer | Closer} interfaces as well as provides a
    * {@linkcode WritableStream} interface.
    *
    * These are low level constructs, and the {@linkcode console} interface is a
@@ -2515,16 +2348,44 @@ declare namespace Deno {
    *
    * @category I/O
    */
-  export const stdout: Writer & WriterSync & Closer & {
-    /**
-     * The resource ID assigned to `stdout`. This can be used with the discrete
-     * I/O functions in the `Deno` namespace.
+  export const stdout: {
+    /** Write the contents of the array buffer (`p`) to `stdout`.
      *
-     * @deprecated This will be soft-removed in Deno 2.0. See the
-     * {@link https://docs.deno.com/runtime/manual/advanced/migrate_deprecations | Deno 1.x to 2.x Migration Guide}
-     * for migration instructions.
+     * Resolves to the number of bytes written.
+     *
+     * **It is not guaranteed that the full buffer will be written in a single
+     * call.**
+     *
+     * ```ts
+     * const encoder = new TextEncoder();
+     * const data = encoder.encode("Hello world");
+     * const bytesWritten = await Deno.stdout.write(data); // 11
+     * ```
+     *
+     * @category I/O
      */
-    readonly rid: number;
+    write(p: Uint8Array): Promise<number>;
+    /** Synchronously write the contents of the array buffer (`p`) to `stdout`.
+     *
+     * Returns the number of bytes written.
+     *
+     * **It is not guaranteed that the full buffer will be written in a single
+     * call.**
+     *
+     * ```ts
+     * const encoder = new TextEncoder();
+     * const data = encoder.encode("Hello world");
+     * const bytesWritten = Deno.stdout.writeSync(data); // 11
+     * ```
+     */
+    writeSync(p: Uint8Array): number;
+    /** Closes `stdout`, freeing the resource.
+     *
+     * ```ts
+     * Deno.stdout.close();
+     * ```
+     */
+    close(): void;
     /** A writable stream interface to `stdout`. */
     readonly writable: WritableStream<Uint8Array>;
     /**
@@ -2540,8 +2401,10 @@ declare namespace Deno {
     isTerminal(): boolean;
   };
   /** A reference to `stderr` which can be used to write directly to `stderr`.
-   * It implements the Deno specific {@linkcode Writer}, {@linkcode WriterSync},
-   * and {@linkcode Closer} interfaces as well as provides a
+   * It implements the Deno specific
+   * {@linkcode https://jsr.io/@std/io/doc/types/~/Writer | Writer},
+   * {@linkcode https://jsr.io/@std/io/doc/types/~/WriterSync | WriterSync},
+   * and {@linkcode https://jsr.io/@std/io/doc/types/~/Closer | Closer} interfaces as well as provides a
    * {@linkcode WritableStream} interface.
    *
    * These are low level constructs, and the {@linkcode console} interface is a
@@ -2549,16 +2412,44 @@ declare namespace Deno {
    *
    * @category I/O
    */
-  export const stderr: Writer & WriterSync & Closer & {
-    /**
-     * The resource ID assigned to `stderr`. This can be used with the discrete
-     * I/O functions in the `Deno` namespace.
+  export const stderr: {
+    /** Write the contents of the array buffer (`p`) to `stderr`.
      *
-     * @deprecated This will be soft-removed in Deno 2.0. See the
-     * {@link https://docs.deno.com/runtime/manual/advanced/migrate_deprecations | Deno 1.x to 2.x Migration Guide}
-     * for migration instructions.
+     * Resolves to the number of bytes written.
+     *
+     * **It is not guaranteed that the full buffer will be written in a single
+     * call.**
+     *
+     * ```ts
+     * const encoder = new TextEncoder();
+     * const data = encoder.encode("Hello world");
+     * const bytesWritten = await Deno.stderr.write(data); // 11
+     * ```
+     *
+     * @category I/O
      */
-    readonly rid: number;
+    write(p: Uint8Array): Promise<number>;
+    /** Synchronously write the contents of the array buffer (`p`) to `stderr`.
+     *
+     * Returns the number of bytes written.
+     *
+     * **It is not guaranteed that the full buffer will be written in a single
+     * call.**
+     *
+     * ```ts
+     * const encoder = new TextEncoder();
+     * const data = encoder.encode("Hello world");
+     * const bytesWritten = Deno.stderr.writeSync(data); // 11
+     * ```
+     */
+    writeSync(p: Uint8Array): number;
+    /** Closes `stderr`, freeing the resource.
+     *
+     * ```ts
+     * Deno.stderr.close();
+     * ```
+     */
+    close(): void;
     /** A writable stream interface to `stderr`. */
     readonly writable: WritableStream<Uint8Array>;
     /**
@@ -2640,30 +2531,6 @@ declare namespace Deno {
      */
     signal?: AbortSignal;
   }
-
-  /**
-   * Read Reader `r` until EOF (`null`) and resolve to the content as
-   * Uint8Array`.
-   *
-   * @deprecated This will be removed in Deno 2.0. See the
-   * {@link https://docs.deno.com/runtime/manual/advanced/migrate_deprecations | Deno 1.x to 2.x Migration Guide}
-   * for migration instructions.
-   *
-   * @category I/O
-   */
-  export function readAll(r: Reader): Promise<Uint8Array>;
-
-  /**
-   * Synchronously reads Reader `r` until EOF (`null`) and returns the content
-   * as `Uint8Array`.
-   *
-   * @deprecated This will be removed in Deno 2.0. See the
-   * {@link https://docs.deno.com/runtime/manual/advanced/migrate_deprecations | Deno 1.x to 2.x Migration Guide}
-   * for migration instructions.
-   *
-   * @category I/O
-   */
-  export function readAllSync(r: ReaderSync): Uint8Array;
 
   /**
    * Options which can be set when using {@linkcode Deno.mkdir} and
@@ -4692,6 +4559,24 @@ declare namespace Deno {
     mtime: number | Date,
   ): Promise<void>;
 
+  /** Retrieve the process umask.  If `mask` is provided, sets the process umask.
+   * This call always returns what the umask was before the call.
+   *
+   * ```ts
+   * console.log(Deno.umask());  // e.g. 18 (0o022)
+   * const prevUmaskValue = Deno.umask(0o077);  // e.g. 18 (0o022)
+   * console.log(Deno.umask());  // e.g. 63 (0o077)
+   * ```
+   *
+   * This API is under consideration to determine if permissions are required to
+   * call it.
+   *
+   * *Note*: This API is not implemented on Windows
+   *
+   * @category File System
+   */
+  export function umask(mask?: number): number;
+
   /** The object that is returned from a {@linkcode Deno.upgradeWebSocket}
    * request.
    *
@@ -5471,7 +5356,7 @@ declare namespace Deno {
   export function serve(
     options:
       | ServeTcpOptions
-      | (ServeTcpOptions & TlsCertifiedKeyOptions),
+      | (ServeTcpOptions & TlsCertifiedKeyPem),
     handler: ServeHandler<Deno.NetAddr>,
   ): HttpServer<Deno.NetAddr>;
   /** Serves HTTP requests with the given option bag.
@@ -5528,7 +5413,800 @@ declare namespace Deno {
    */
   export function serve(
     options:
-      & (ServeTcpOptions | (ServeTcpOptions & TlsCertifiedKeyOptions))
+      & (ServeTcpOptions | (ServeTcpOptions & TlsCertifiedKeyPem))
       & ServeInit<Deno.NetAddr>,
   ): HttpServer<Deno.NetAddr>;
+
+  /** All plain number types for interfacing with foreign functions.
+   *
+   * @category FFI
+   */
+  export type NativeNumberType =
+    | "u8"
+    | "i8"
+    | "u16"
+    | "i16"
+    | "u32"
+    | "i32"
+    | "f32"
+    | "f64";
+
+  /** All BigInt number types for interfacing with foreign functions.
+   *
+   * @category FFI
+   */
+  export type NativeBigIntType =
+    | "u64"
+    | "i64"
+    | "usize"
+    | "isize";
+
+  /** The native boolean type for interfacing to foreign functions.
+   *
+   * @category FFI
+   */
+  export type NativeBooleanType = "bool";
+
+  /** The native pointer type for interfacing to foreign functions.
+   *
+   * @category FFI
+   */
+  export type NativePointerType = "pointer";
+
+  /** The native buffer type for interfacing to foreign functions.
+   *
+   * @category FFI
+   */
+  export type NativeBufferType = "buffer";
+
+  /** The native function type for interfacing with foreign functions.
+   *
+   * @category FFI
+   */
+  export type NativeFunctionType = "function";
+
+  /** The native void type for interfacing with foreign functions.
+   *
+   * @category FFI
+   */
+  export type NativeVoidType = "void";
+
+  /** The native struct type for interfacing with foreign functions.
+   *
+   * @category FFI
+   */
+  export type NativeStructType = { readonly struct: readonly NativeType[] };
+
+  /**
+   * @category FFI
+   */
+  export const brand: unique symbol;
+
+  /**
+   * @category FFI
+   */
+  export type NativeU8Enum<T extends number> = "u8" & { [brand]: T };
+  /**
+   * @category FFI
+   */
+  export type NativeI8Enum<T extends number> = "i8" & { [brand]: T };
+  /**
+   * @category FFI
+   */
+  export type NativeU16Enum<T extends number> = "u16" & { [brand]: T };
+  /**
+   * @category FFI
+   */
+  export type NativeI16Enum<T extends number> = "i16" & { [brand]: T };
+  /**
+   * @category FFI
+   */
+  export type NativeU32Enum<T extends number> = "u32" & { [brand]: T };
+  /**
+   * @category FFI
+   */
+  export type NativeI32Enum<T extends number> = "i32" & { [brand]: T };
+  /**
+   * @category FFI
+   */
+  export type NativeTypedPointer<T extends PointerObject> = "pointer" & {
+    [brand]: T;
+  };
+  /**
+   * @category FFI
+   */
+  export type NativeTypedFunction<T extends UnsafeCallbackDefinition> =
+    & "function"
+    & {
+      [brand]: T;
+    };
+
+  /** All supported types for interfacing with foreign functions.
+   *
+   * @category FFI
+   */
+  export type NativeType =
+    | NativeNumberType
+    | NativeBigIntType
+    | NativeBooleanType
+    | NativePointerType
+    | NativeBufferType
+    | NativeFunctionType
+    | NativeStructType;
+
+  /** @category FFI
+   */
+  export type NativeResultType = NativeType | NativeVoidType;
+
+  /** Type conversion for foreign symbol parameters and unsafe callback return
+   * types.
+   *
+   * @category FFI
+   */
+  export type ToNativeType<T extends NativeType = NativeType> = T extends
+    NativeStructType ? BufferSource
+    : T extends NativeNumberType ? T extends NativeU8Enum<infer U> ? U
+      : T extends NativeI8Enum<infer U> ? U
+      : T extends NativeU16Enum<infer U> ? U
+      : T extends NativeI16Enum<infer U> ? U
+      : T extends NativeU32Enum<infer U> ? U
+      : T extends NativeI32Enum<infer U> ? U
+      : number
+    : T extends NativeBigIntType ? bigint
+    : T extends NativeBooleanType ? boolean
+    : T extends NativePointerType
+      ? T extends NativeTypedPointer<infer U> ? U | null : PointerValue
+    : T extends NativeFunctionType
+      ? T extends NativeTypedFunction<infer U> ? PointerValue<U> | null
+      : PointerValue
+    : T extends NativeBufferType ? BufferSource | null
+    : never;
+
+  /** Type conversion for unsafe callback return types.
+   *
+   * @category FFI
+   */
+  export type ToNativeResultType<
+    T extends NativeResultType = NativeResultType,
+  > = T extends NativeStructType ? BufferSource
+    : T extends NativeNumberType ? T extends NativeU8Enum<infer U> ? U
+      : T extends NativeI8Enum<infer U> ? U
+      : T extends NativeU16Enum<infer U> ? U
+      : T extends NativeI16Enum<infer U> ? U
+      : T extends NativeU32Enum<infer U> ? U
+      : T extends NativeI32Enum<infer U> ? U
+      : number
+    : T extends NativeBigIntType ? bigint
+    : T extends NativeBooleanType ? boolean
+    : T extends NativePointerType
+      ? T extends NativeTypedPointer<infer U> ? U | null : PointerValue
+    : T extends NativeFunctionType
+      ? T extends NativeTypedFunction<infer U> ? PointerObject<U> | null
+      : PointerValue
+    : T extends NativeBufferType ? BufferSource | null
+    : T extends NativeVoidType ? void
+    : never;
+
+  /** A utility type for conversion of parameter types of foreign functions.
+   *
+   * @category FFI
+   */
+  export type ToNativeParameterTypes<T extends readonly NativeType[]> =
+    //
+    [(T[number])[]] extends [T] ? ToNativeType<T[number]>[]
+      : [readonly (T[number])[]] extends [T]
+        ? readonly ToNativeType<T[number]>[]
+      : T extends readonly [...NativeType[]] ? {
+          [K in keyof T]: ToNativeType<T[K]>;
+        }
+      : never;
+
+  /** Type conversion for foreign symbol return types and unsafe callback
+   * parameters.
+   *
+   * @category FFI
+   */
+  export type FromNativeType<T extends NativeType = NativeType> = T extends
+    NativeStructType ? Uint8Array
+    : T extends NativeNumberType ? T extends NativeU8Enum<infer U> ? U
+      : T extends NativeI8Enum<infer U> ? U
+      : T extends NativeU16Enum<infer U> ? U
+      : T extends NativeI16Enum<infer U> ? U
+      : T extends NativeU32Enum<infer U> ? U
+      : T extends NativeI32Enum<infer U> ? U
+      : number
+    : T extends NativeBigIntType ? bigint
+    : T extends NativeBooleanType ? boolean
+    : T extends NativePointerType
+      ? T extends NativeTypedPointer<infer U> ? U | null : PointerValue
+    : T extends NativeBufferType ? PointerValue
+    : T extends NativeFunctionType
+      ? T extends NativeTypedFunction<infer U> ? PointerObject<U> | null
+      : PointerValue
+    : never;
+
+  /** Type conversion for foreign symbol return types.
+   *
+   * @category FFI
+   */
+  export type FromNativeResultType<
+    T extends NativeResultType = NativeResultType,
+  > = T extends NativeStructType ? Uint8Array
+    : T extends NativeNumberType ? T extends NativeU8Enum<infer U> ? U
+      : T extends NativeI8Enum<infer U> ? U
+      : T extends NativeU16Enum<infer U> ? U
+      : T extends NativeI16Enum<infer U> ? U
+      : T extends NativeU32Enum<infer U> ? U
+      : T extends NativeI32Enum<infer U> ? U
+      : number
+    : T extends NativeBigIntType ? bigint
+    : T extends NativeBooleanType ? boolean
+    : T extends NativePointerType
+      ? T extends NativeTypedPointer<infer U> ? U | null : PointerValue
+    : T extends NativeBufferType ? PointerValue
+    : T extends NativeFunctionType
+      ? T extends NativeTypedFunction<infer U> ? PointerObject<U> | null
+      : PointerValue
+    : T extends NativeVoidType ? void
+    : never;
+
+  /** @category FFI
+   */
+  export type FromNativeParameterTypes<
+    T extends readonly NativeType[],
+  > =
+    //
+    [(T[number])[]] extends [T] ? FromNativeType<T[number]>[]
+      : [readonly (T[number])[]] extends [T]
+        ? readonly FromNativeType<T[number]>[]
+      : T extends readonly [...NativeType[]] ? {
+          [K in keyof T]: FromNativeType<T[K]>;
+        }
+      : never;
+
+  /** The interface for a foreign function as defined by its parameter and result
+   * types.
+   *
+   * @category FFI
+   */
+  export interface ForeignFunction<
+    Parameters extends readonly NativeType[] = readonly NativeType[],
+    Result extends NativeResultType = NativeResultType,
+    NonBlocking extends boolean = boolean,
+  > {
+    /** Name of the symbol.
+     *
+     * Defaults to the key name in symbols object. */
+    name?: string;
+    /** The parameters of the foreign function. */
+    parameters: Parameters;
+    /** The result (return value) of the foreign function. */
+    result: Result;
+    /** When `true`, function calls will run on a dedicated blocking thread and
+     * will return a `Promise` resolving to the `result`. */
+    nonblocking?: NonBlocking;
+    /** When `true`, dlopen will not fail if the symbol is not found.
+     * Instead, the symbol will be set to `null`.
+     *
+     * @default {false} */
+    optional?: boolean;
+  }
+
+  /** @category FFI
+   */
+  export interface ForeignStatic<Type extends NativeType = NativeType> {
+    /** Name of the symbol, defaults to the key name in symbols object. */
+    name?: string;
+    /** The type of the foreign static value. */
+    type: Type;
+    /** When `true`, dlopen will not fail if the symbol is not found.
+     * Instead, the symbol will be set to `null`.
+     *
+     * @default {false} */
+    optional?: boolean;
+  }
+
+  /** A foreign library interface descriptor.
+   *
+   * @category FFI
+   */
+  export interface ForeignLibraryInterface {
+    [name: string]: ForeignFunction | ForeignStatic;
+  }
+
+  /** A utility type that infers a foreign symbol.
+   *
+   * @category FFI
+   */
+  export type StaticForeignSymbol<T extends ForeignFunction | ForeignStatic> =
+    T extends ForeignFunction ? FromForeignFunction<T>
+      : T extends ForeignStatic ? FromNativeType<T["type"]>
+      : never;
+
+  /**  @category FFI
+   */
+  export type FromForeignFunction<T extends ForeignFunction> =
+    T["parameters"] extends readonly [] ? () => StaticForeignSymbolReturnType<T>
+      : (
+        ...args: ToNativeParameterTypes<T["parameters"]>
+      ) => StaticForeignSymbolReturnType<T>;
+
+  /** @category FFI
+   */
+  export type StaticForeignSymbolReturnType<T extends ForeignFunction> =
+    ConditionalAsync<T["nonblocking"], FromNativeResultType<T["result"]>>;
+
+  /** @category FFI
+   */
+  export type ConditionalAsync<IsAsync extends boolean | undefined, T> =
+    IsAsync extends true ? Promise<T> : T;
+
+  /** A utility type that infers a foreign library interface.
+   *
+   * @category FFI
+   */
+  export type StaticForeignLibraryInterface<T extends ForeignLibraryInterface> =
+    {
+      [K in keyof T]: T[K]["optional"] extends true
+        ? StaticForeignSymbol<T[K]> | null
+        : StaticForeignSymbol<T[K]>;
+    };
+
+  /** A non-null pointer, represented as an object
+   * at runtime. The object's prototype is `null`
+   * and cannot be changed. The object cannot be
+   * assigned to either and is thus entirely read-only.
+   *
+   * To interact with memory through a pointer use the
+   * {@linkcode UnsafePointerView} class. To create a
+   * pointer from an address or the get the address of
+   * a pointer use the static methods of the
+   * {@linkcode UnsafePointer} class.
+   *
+   * @category FFI
+   */
+  export type PointerObject<T = unknown> = { [brand]: T };
+
+  /** Pointers are represented either with a {@linkcode PointerObject}
+   * object or a `null` if the pointer is null.
+   *
+   * @category FFI
+   */
+  export type PointerValue<T = unknown> = null | PointerObject<T>;
+
+  /** A collection of static functions for interacting with pointer objects.
+   *
+   * @category FFI
+   */
+  export class UnsafePointer {
+    /** Create a pointer from a numeric value. This one is <i>really</i> dangerous! */
+    static create<T = unknown>(value: bigint): PointerValue<T>;
+    /** Returns `true` if the two pointers point to the same address. */
+    static equals<T = unknown>(a: PointerValue<T>, b: PointerValue<T>): boolean;
+    /** Return the direct memory pointer to the typed array in memory. */
+    static of<T = unknown>(
+      value: Deno.UnsafeCallback | BufferSource,
+    ): PointerValue<T>;
+    /** Return a new pointer offset from the original by `offset` bytes. */
+    static offset<T = unknown>(
+      value: PointerObject,
+      offset: number,
+    ): PointerValue<T>;
+    /** Get the numeric value of a pointer */
+    static value(value: PointerValue): bigint;
+  }
+
+  /** An unsafe pointer view to a memory location as specified by the `pointer`
+   * value. The `UnsafePointerView` API follows the standard built in interface
+   * {@linkcode DataView} for accessing the underlying types at an memory
+   * location (numbers, strings and raw bytes).
+   *
+   * @category FFI
+   */
+  export class UnsafePointerView {
+    constructor(pointer: PointerObject);
+
+    pointer: PointerObject;
+
+    /** Gets a boolean at the specified byte offset from the pointer. */
+    getBool(offset?: number): boolean;
+    /** Gets an unsigned 8-bit integer at the specified byte offset from the
+     * pointer. */
+    getUint8(offset?: number): number;
+    /** Gets a signed 8-bit integer at the specified byte offset from the
+     * pointer. */
+    getInt8(offset?: number): number;
+    /** Gets an unsigned 16-bit integer at the specified byte offset from the
+     * pointer. */
+    getUint16(offset?: number): number;
+    /** Gets a signed 16-bit integer at the specified byte offset from the
+     * pointer. */
+    getInt16(offset?: number): number;
+    /** Gets an unsigned 32-bit integer at the specified byte offset from the
+     * pointer. */
+    getUint32(offset?: number): number;
+    /** Gets a signed 32-bit integer at the specified byte offset from the
+     * pointer. */
+    getInt32(offset?: number): number;
+    /** Gets an unsigned 64-bit integer at the specified byte offset from the
+     * pointer. */
+    getBigUint64(offset?: number): bigint;
+    /** Gets a signed 64-bit integer at the specified byte offset from the
+     * pointer. */
+    getBigInt64(offset?: number): bigint;
+    /** Gets a signed 32-bit float at the specified byte offset from the
+     * pointer. */
+    getFloat32(offset?: number): number;
+    /** Gets a signed 64-bit float at the specified byte offset from the
+     * pointer. */
+    getFloat64(offset?: number): number;
+    /** Gets a pointer at the specified byte offset from the pointer */
+    getPointer<T = unknown>(offset?: number): PointerValue<T>;
+    /** Gets a C string (`null` terminated string) at the specified byte offset
+     * from the pointer. */
+    getCString(offset?: number): string;
+    /** Gets a C string (`null` terminated string) at the specified byte offset
+     * from the specified pointer. */
+    static getCString(
+      pointer: PointerObject,
+      offset?: number,
+    ): string;
+    /** Gets an `ArrayBuffer` of length `byteLength` at the specified byte
+     * offset from the pointer. */
+    getArrayBuffer(byteLength: number, offset?: number): ArrayBuffer;
+    /** Gets an `ArrayBuffer` of length `byteLength` at the specified byte
+     * offset from the specified pointer. */
+    static getArrayBuffer(
+      pointer: PointerObject,
+      byteLength: number,
+      offset?: number,
+    ): ArrayBuffer;
+    /** Copies the memory of the pointer into a typed array.
+     *
+     * Length is determined from the typed array's `byteLength`.
+     *
+     * Also takes optional byte offset from the pointer. */
+    copyInto(destination: BufferSource, offset?: number): void;
+    /** Copies the memory of the specified pointer into a typed array.
+     *
+     * Length is determined from the typed array's `byteLength`.
+     *
+     * Also takes optional byte offset from the pointer. */
+    static copyInto(
+      pointer: PointerObject,
+      destination: BufferSource,
+      offset?: number,
+    ): void;
+  }
+
+  /** An unsafe pointer to a function, for calling functions that are not present
+   * as symbols.
+   *
+   * @category FFI
+   */
+  export class UnsafeFnPointer<const Fn extends ForeignFunction> {
+    /** The pointer to the function. */
+    pointer: PointerObject<Fn>;
+    /** The definition of the function. */
+    definition: Fn;
+
+    constructor(pointer: PointerObject<NoInfer<Fn>>, definition: Fn);
+    /** @deprecated Properly type {@linkcode pointer} using {@linkcode NativeTypedFunction} or {@linkcode UnsafeCallbackDefinition} types. */
+    constructor(pointer: PointerObject, definition: Fn);
+
+    /** Call the foreign function. */
+    call: FromForeignFunction<Fn>;
+  }
+
+  /** Definition of a unsafe callback function.
+   *
+   * @category FFI
+   */
+  export interface UnsafeCallbackDefinition<
+    Parameters extends readonly NativeType[] = readonly NativeType[],
+    Result extends NativeResultType = NativeResultType,
+  > {
+    /** The parameters of the callbacks. */
+    parameters: Parameters;
+    /** The current result of the callback. */
+    result: Result;
+  }
+
+  /** An unsafe callback function.
+   *
+   * @category FFI
+   */
+  export type UnsafeCallbackFunction<
+    Parameters extends readonly NativeType[] = readonly NativeType[],
+    Result extends NativeResultType = NativeResultType,
+  > = Parameters extends readonly [] ? () => ToNativeResultType<Result> : (
+    ...args: FromNativeParameterTypes<Parameters>
+  ) => ToNativeResultType<Result>;
+
+  /** An unsafe function pointer for passing JavaScript functions as C function
+   * pointers to foreign function calls.
+   *
+   * The function pointer remains valid until the `close()` method is called.
+   *
+   * All `UnsafeCallback` are always thread safe in that they can be called from
+   * foreign threads without crashing. However, they do not wake up the Deno event
+   * loop by default.
+   *
+   * If a callback is to be called from foreign threads, use the `threadSafe()`
+   * static constructor or explicitly call `ref()` to have the callback wake up
+   * the Deno event loop when called from foreign threads. This also stops
+   * Deno's process from exiting while the callback still exists and is not
+   * unref'ed.
+   *
+   * Use `deref()` to then allow Deno's process to exit. Calling `deref()` on
+   * a ref'ed callback does not stop it from waking up the Deno event loop when
+   * called from foreign threads.
+   *
+   * @category FFI
+   */
+  export class UnsafeCallback<
+    const Definition extends UnsafeCallbackDefinition =
+      UnsafeCallbackDefinition,
+  > {
+    constructor(
+      definition: Definition,
+      callback: UnsafeCallbackFunction<
+        Definition["parameters"],
+        Definition["result"]
+      >,
+    );
+
+    /** The pointer to the unsafe callback. */
+    readonly pointer: PointerObject<Definition>;
+    /** The definition of the unsafe callback. */
+    readonly definition: Definition;
+    /** The callback function. */
+    readonly callback: UnsafeCallbackFunction<
+      Definition["parameters"],
+      Definition["result"]
+    >;
+
+    /**
+     * Creates an {@linkcode UnsafeCallback} and calls `ref()` once to allow it to
+     * wake up the Deno event loop when called from foreign threads.
+     *
+     * This also stops Deno's process from exiting while the callback still
+     * exists and is not unref'ed.
+     */
+    static threadSafe<
+      Definition extends UnsafeCallbackDefinition = UnsafeCallbackDefinition,
+    >(
+      definition: Definition,
+      callback: UnsafeCallbackFunction<
+        Definition["parameters"],
+        Definition["result"]
+      >,
+    ): UnsafeCallback<Definition>;
+
+    /**
+     * Increments the callback's reference counting and returns the new
+     * reference count.
+     *
+     * After `ref()` has been called, the callback always wakes up the
+     * Deno event loop when called from foreign threads.
+     *
+     * If the callback's reference count is non-zero, it keeps Deno's
+     * process from exiting.
+     */
+    ref(): number;
+
+    /**
+     * Decrements the callback's reference counting and returns the new
+     * reference count.
+     *
+     * Calling `unref()` does not stop a callback from waking up the Deno
+     * event loop when called from foreign threads.
+     *
+     * If the callback's reference counter is zero, it no longer keeps
+     * Deno's process from exiting.
+     */
+    unref(): number;
+
+    /**
+     * Removes the C function pointer associated with this instance.
+     *
+     * Continuing to use the instance or the C function pointer after closing
+     * the `UnsafeCallback` will lead to errors and crashes.
+     *
+     * Calling this method sets the callback's reference counting to zero,
+     * stops the callback from waking up the Deno event loop when called from
+     * foreign threads and no longer keeps Deno's process from exiting.
+     */
+    close(): void;
+  }
+
+  /** A dynamic library resource.  Use {@linkcode Deno.dlopen} to load a dynamic
+   * library and return this interface.
+   *
+   * @category FFI
+   */
+  export interface DynamicLibrary<S extends ForeignLibraryInterface> {
+    /** All of the registered library along with functions for calling them. */
+    symbols: StaticForeignLibraryInterface<S>;
+    /** Removes the pointers associated with the library symbols.
+     *
+     * Continuing to use symbols that are part of the library will lead to
+     * errors and crashes.
+     *
+     * Calling this method will also immediately set any references to zero and
+     * will no longer keep Deno's process from exiting.
+     */
+    close(): void;
+  }
+
+  /** Opens an external dynamic library and registers symbols, making foreign
+   * functions available to be called.
+   *
+   * Requires `allow-ffi` permission. Loading foreign dynamic libraries can in
+   * theory bypass all of the sandbox permissions. While it is a separate
+   * permission users should acknowledge in practice that is effectively the
+   * same as running with the `allow-all` permission.
+   *
+   * @example Given a C library which exports a foreign function named `add()`
+   *
+   * ```ts
+   * // Determine library extension based on
+   * // your OS.
+   * let libSuffix = "";
+   * switch (Deno.build.os) {
+   *   case "windows":
+   *     libSuffix = "dll";
+   *     break;
+   *   case "darwin":
+   *     libSuffix = "dylib";
+   *     break;
+   *   default:
+   *     libSuffix = "so";
+   *     break;
+   * }
+   *
+   * const libName = `./libadd.${libSuffix}`;
+   * // Open library and define exported symbols
+   * const dylib = Deno.dlopen(
+   *   libName,
+   *   {
+   *     "add": { parameters: ["isize", "isize"], result: "isize" },
+   *   } as const,
+   * );
+   *
+   * // Call the symbol `add`
+   * const result = dylib.symbols.add(35n, 34n); // 69n
+   *
+   * console.log(`Result from external addition of 35 and 34: ${result}`);
+   * ```
+   *
+   * @tags allow-ffi
+   * @category FFI
+   */
+  export function dlopen<const S extends ForeignLibraryInterface>(
+    filename: string | URL,
+    symbols: S,
+  ): DynamicLibrary<S>;
+
+  /**
+   * A custom `HttpClient` for use with {@linkcode fetch} function. This is
+   * designed to allow custom certificates or proxies to be used with `fetch()`.
+   *
+   * @example ```ts
+   * const caCert = await Deno.readTextFile("./ca.pem");
+   * const client = Deno.createHttpClient({ caCerts: [ caCert ] });
+   * const req = await fetch("https://myserver.com", { client });
+   * ```
+   *
+   * @category Fetch
+   */
+  export interface HttpClient extends Disposable {
+    /** Close the HTTP client. */
+    close(): void;
+  }
+
+  /**
+   * The options used when creating a {@linkcode Deno.HttpClient}.
+   *
+   * @category Fetch
+   */
+  export interface CreateHttpClientOptions {
+    /** A list of root certificates that will be used in addition to the
+     * default root certificates to verify the peer's certificate.
+     *
+     * Must be in PEM format. */
+    caCerts?: string[];
+    /** A HTTP proxy to use for new connections. */
+    proxy?: Proxy;
+    /** Sets the maximum number of idle connections per host allowed in the pool. */
+    poolMaxIdlePerHost?: number;
+    /** Set an optional timeout for idle sockets being kept-alive.
+     * Set to false to disable the timeout. */
+    poolIdleTimeout?: number | false;
+    /**
+     * Whether HTTP/1.1 is allowed or not.
+     *
+     * @default {true}
+     */
+    http1?: boolean;
+    /** Whether HTTP/2 is allowed or not.
+     *
+     * @default {true}
+     */
+    http2?: boolean;
+    /** Whether setting the host header is allowed or not.
+     *
+     * @default {false}
+     */
+    allowHost?: boolean;
+  }
+
+  /**
+   * The definition of a proxy when specifying
+   * {@linkcode Deno.CreateHttpClientOptions}.
+   *
+   * @category Fetch
+   */
+  export interface Proxy {
+    /** The string URL of the proxy server to use. */
+    url: string;
+    /** The basic auth credentials to be used against the proxy server. */
+    basicAuth?: BasicAuth;
+  }
+
+  /**
+   * Basic authentication credentials to be used with a {@linkcode Deno.Proxy}
+   * server when specifying {@linkcode Deno.CreateHttpClientOptions}.
+   *
+   * @category Fetch
+   */
+  export interface BasicAuth {
+    /** The username to be used against the proxy server. */
+    username: string;
+    /** The password to be used against the proxy server. */
+    password: string;
+  }
+
+  /** Create a custom HttpClient to use with {@linkcode fetch}. This is an
+   * extension of the web platform Fetch API which allows Deno to use custom
+   * TLS certificates and connect via a proxy while using `fetch()`.
+   *
+   * @example ```ts
+   * const caCert = await Deno.readTextFile("./ca.pem");
+   * const client = Deno.createHttpClient({ caCerts: [ caCert ] });
+   * const response = await fetch("https://myserver.com", { client });
+   * ```
+   *
+   * @example ```ts
+   * const client = Deno.createHttpClient({
+   *   proxy: { url: "http://myproxy.com:8080" }
+   * });
+   * const response = await fetch("https://myserver.com", { client });
+   * ```
+   *
+   * @category Fetch
+   */
+  export function createHttpClient(
+    options: CreateHttpClientOptions,
+  ): HttpClient;
+
+  /**
+   * Create a custom HttpClient to use with {@linkcode fetch}. This is an
+   * extension of the web platform Fetch API which allows Deno to use custom
+   * TLS certificates and connect via a proxy while using `fetch()`.
+   *
+   * @example ```ts
+   * const caCert = await Deno.readTextFile("./ca.pem");
+   * // Load a client key and certificate that we'll use to connect
+   * const key = await Deno.readTextFile("./key.key");
+   * const cert = await Deno.readTextFile("./cert.crt");
+   * const client = Deno.createHttpClient({ caCerts: [ caCert ], key, cert });
+   * const response = await fetch("https://myserver.com", { client });
+   * ```
+   *
+   * @category Fetch
+   */
+  export function createHttpClient(
+    options: CreateHttpClientOptions & TlsCertifiedKeyPem,
+  ): HttpClient;
 }

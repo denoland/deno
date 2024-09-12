@@ -38,6 +38,7 @@ import { TextEncoder } from "ext:deno_web/08_text_encoding.js";
 import { Buffer } from "node:buffer";
 import { notImplemented } from "ext:deno_node/_utils.ts";
 import { HandleWrap } from "ext:deno_node/internal_binding/handle_wrap.ts";
+import { ownerSymbol } from "ext:deno_node/internal/async_hooks.ts";
 import {
   AsyncWrap,
   providerType,
@@ -343,7 +344,8 @@ export class LibuvStreamWrap extends HandleWrap {
       ) {
         nread = codeMap.get("ECONNRESET")!;
       } else {
-        nread = codeMap.get("UNKNOWN")!;
+        this[ownerSymbol].destroy(e);
+        return;
       }
     }
 

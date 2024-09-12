@@ -70,7 +70,7 @@ Deno.test(
       const oldpath = "/oldbaddir";
       const newpath = "/newbaddir";
       Deno.renameSync(oldpath, newpath);
-    }, Deno.errors.PermissionDenied);
+    }, Deno.errors.NotCapable);
   },
 );
 
@@ -81,7 +81,7 @@ Deno.test(
       const oldpath = "/oldbaddir";
       const newpath = "/newbaddir";
       Deno.renameSync(oldpath, newpath);
-    }, Deno.errors.PermissionDenied);
+    }, Deno.errors.NotCapable);
   },
 );
 

@@ -5420,6 +5420,7 @@ class ReadableStream {
 // TODO(lucacasonato): should be moved to webidl crate
 ReadableStream.prototype[SymbolAsyncIterator] = ReadableStream.prototype.values;
 ObjectDefineProperty(ReadableStream.prototype, SymbolAsyncIterator, {
+  __proto__: null,
   writable: true,
   enumerable: false,
   configurable: true,

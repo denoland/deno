@@ -124,12 +124,6 @@ itest!(test_with_config2 {
   output: "test/collect2.out",
 });
 
-itest!(test_with_deprecated_config {
-  args: "test --config test/collect/deno.deprecated.jsonc test/collect",
-  exit_code: 0,
-  output: "test/collect.deprecated.out",
-});
-
 itest!(test_with_malformed_config {
   args: "test --config test/collect/deno.malformed.jsonc",
   exit_code: 1,

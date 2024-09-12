@@ -263,6 +263,7 @@ function mixinBody(prototype, bodySymbol, mimeTypeSymbol) {
   /** @type {PropertyDescriptorMap} */
   const mixin = {
     body: {
+      __proto__: null,
       /**
        * @returns {ReadableStream<Uint8Array> | null}
        */
@@ -278,6 +279,7 @@ function mixinBody(prototype, bodySymbol, mimeTypeSymbol) {
       enumerable: true,
     },
     bodyUsed: {
+      __proto__: null,
       /**
        * @returns {boolean}
        */
@@ -292,6 +294,7 @@ function mixinBody(prototype, bodySymbol, mimeTypeSymbol) {
       enumerable: true,
     },
     arrayBuffer: {
+      __proto__: null,
       /** @returns {Promise<ArrayBuffer>} */
       value: function arrayBuffer() {
         return consumeBody(this, "ArrayBuffer");
@@ -301,6 +304,7 @@ function mixinBody(prototype, bodySymbol, mimeTypeSymbol) {
       enumerable: true,
     },
     blob: {
+      __proto__: null,
       /** @returns {Promise<Blob>} */
       value: function blob() {
         return consumeBody(this, "Blob");
@@ -310,6 +314,7 @@ function mixinBody(prototype, bodySymbol, mimeTypeSymbol) {
       enumerable: true,
     },
     bytes: {
+      __proto__: null,
       /** @returns {Promise<Uint8Array>} */
       value: function bytes() {
         return consumeBody(this, "bytes");
@@ -319,6 +324,7 @@ function mixinBody(prototype, bodySymbol, mimeTypeSymbol) {
       enumerable: true,
     },
     formData: {
+      __proto__: null,
       /** @returns {Promise<FormData>} */
       value: function formData() {
         return consumeBody(this, "FormData");
@@ -328,6 +334,7 @@ function mixinBody(prototype, bodySymbol, mimeTypeSymbol) {
       enumerable: true,
     },
     json: {
+      __proto__: null,
       /** @returns {Promise<any>} */
       value: function json() {
         return consumeBody(this, "JSON");
@@ -337,6 +344,7 @@ function mixinBody(prototype, bodySymbol, mimeTypeSymbol) {
       enumerable: true,
     },
     text: {
+      __proto__: null,
       /** @returns {Promise<string>} */
       value: function text() {
         return consumeBody(this, "text");

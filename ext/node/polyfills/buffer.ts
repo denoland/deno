@@ -7,6 +7,7 @@ export {
   Buffer,
   constants,
   default,
+  INSPECT_MAX_BYTES,
   isAscii,
   isUtf8,
   kMaxLength,

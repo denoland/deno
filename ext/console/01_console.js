@@ -260,6 +260,7 @@ const colors = {
 
 function defineColorAlias(target, alias) {
   ObjectDefineProperty(colors, alias, {
+    __proto__: null,
     get() {
       return this[target];
     },
@@ -842,14 +843,6 @@ function formatRaw(ctx, value, recurseTimes, typedArray, proxyDetails) {
           ) ||
           ObjectPrototypeIsPrototypeOf(
             globalThis.Temporal.Duration.prototype,
-            value,
-          ) ||
-          ObjectPrototypeIsPrototypeOf(
-            globalThis.Temporal.TimeZone.prototype,
-            value,
-          ) ||
-          ObjectPrototypeIsPrototypeOf(
-            globalThis.Temporal.Calendar.prototype,
             value,
           )
         )
@@ -3447,7 +3440,10 @@ function inspect(
 function createFilteredInspectProxy({ object, keys, evaluate }) {
   const obj = class {};
   if (object.constructor?.name) {
-    ObjectDefineProperty(obj, "name", { value: object.constructor.name });
+    ObjectDefineProperty(obj, "name", {
+      __proto__: null,
+      value: object.constructor.name,
+    });
   }
 
   return new Proxy(new obj(), {
