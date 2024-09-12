@@ -32,9 +32,7 @@ delete Object.prototype.__proto__;
   /** @type {ReadonlySet<string>} */
   const unstableDenoProps = new Set([
     "AtomicOperation",
-    "CreateHttpClientOptions",
     "DatagramConn",
-    "HttpClient",
     "Kv",
     "KvListIterator",
     "KvU64",
@@ -44,7 +42,6 @@ delete Object.prototype.__proto__;
     "UnsafeFnPointer",
     "UnixConnectOptions",
     "UnixListenOptions",
-    "createHttpClient",
     "dlopen",
     "listen",
     "listenDatagram",

@@ -2986,12 +2986,8 @@ The declaration file could be saved and used for typing information.",
   )
 }
 
-fn upgrade_subcommand() -> Command {
-  command(
-    "upgrade",
-    cstr!("Upgrade deno executable to the given version.
-
-<g>Latest</>
+pub static UPGRADE_USAGE: &str = cstr!(
+  "<g>Latest</>
   <bold>deno upgrade</>
 
 <g>Specific version</>
@@ -3002,7 +2998,15 @@ fn upgrade_subcommand() -> Command {
 <g>Channel</>
   <bold>deno upgrade</> <p(245)>stable</>
   <bold>deno upgrade</> <p(245)>rc</>
-  <bold>deno upgrade</> <p(245)>canary</>
+  <bold>deno upgrade</> <p(245)>canary</>"
+);
+
+fn upgrade_subcommand() -> Command {
+  command(
+    "upgrade",
+    color_print::cformat!("Upgrade deno executable to the given version.
+
+{}
 
 The version is downloaded from <p(245)>https://dl.deno.land</> and is used to replace the current executable.
 
@@ -3010,7 +3014,7 @@ If you want to not replace the current Deno executable but instead download an u
 different location, use the <c>--output</> flag:
   <p(245)>deno upgrade --output $HOME/my_deno</>
 
-<y>Read more:</> <c>https://docs.deno.com/go/cmd/upgrade</>"),
+<y>Read more:</> <c>https://docs.deno.com/go/cmd/upgrade</>", UPGRADE_USAGE),
     UnstableArgsConfig::None,
   )
   .hide(cfg!(not(feature = "upgrade")))
