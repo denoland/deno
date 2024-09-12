@@ -149,6 +149,10 @@ const windowOrWorkerGlobalScope = {
     (webgpu) => webgpu.GPUBufferUsage,
     loadWebGPU,
   ),
+  GPUTextureUsage: core.propNonEnumerableLazyLoaded(
+    (webgpu) => webgpu.GPUTextureUsage,
+    loadWebGPU,
+  ),
 };
 
 const unstableForWindowOrWorkerGlobalScope = { __proto__: null };
@@ -171,7 +175,6 @@ unstableForWindowOrWorkerGlobalScope[unstableIds.webgpu] = {
   GPUQueue: core.propNonEnumerableLazyLoaded((webgpu) => webgpu.GPUQueue, loadWebGPU),
   GPUBuffer: core.propNonEnumerableLazyLoaded((webgpu) => webgpu.GPUBuffer, loadWebGPU),
   GPUMapMode: core.propNonEnumerableLazyLoaded((webgpu) => webgpu.GPUMapMode, loadWebGPU),
-  GPUTextureUsage: core.propNonEnumerableLazyLoaded((webgpu) => webgpu.GPUTextureUsage, loadWebGPU),
   GPUTexture: core.propNonEnumerableLazyLoaded((webgpu) => webgpu.GPUTexture, loadWebGPU),
   GPUTextureView: core.propNonEnumerableLazyLoaded((webgpu) => webgpu.GPUTextureView, loadWebGPU),
   GPUSampler: core.propNonEnumerableLazyLoaded((webgpu) => webgpu.GPUSampler, loadWebGPU),
