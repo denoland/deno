@@ -5,7 +5,6 @@ import {
   assertEquals,
   assertRejects,
   assertThrows,
-  DENO_FUTURE,
 } from "./test_util.ts";
 import { copy } from "@std/io/copy";
 
@@ -21,7 +20,7 @@ Deno.test(function filesStdioFileDescriptors() {
 });
 
 Deno.test(
-  { ignore: DENO_FUTURE, permissions: { read: true } },
+  { permissions: { read: true } },
   async function filesCopyToStdout() {
     const filename = "tests/testdata/assets/fixture.json";
     using file = await Deno.open(filename);
