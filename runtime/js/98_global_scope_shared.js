@@ -145,6 +145,10 @@ const windowOrWorkerGlobalScope = {
   structuredClone: core.propWritable(messagePort.structuredClone),
   // Branding as a WebIDL object
   [webidl.brand]: core.propNonEnumerable(webidl.brand),
+  GPUBufferUsage: core.propNonEnumerableLazyLoaded(
+    (webgpu) => webgpu.GPUBufferUsage,
+    loadWebGPU,
+  ),
 };
 
 const unstableForWindowOrWorkerGlobalScope = { __proto__: null };
@@ -166,7 +170,6 @@ unstableForWindowOrWorkerGlobalScope[unstableIds.webgpu] = {
   GPUDevice: core.propNonEnumerableLazyLoaded((webgpu) => webgpu.GPUDevice, loadWebGPU),
   GPUQueue: core.propNonEnumerableLazyLoaded((webgpu) => webgpu.GPUQueue, loadWebGPU),
   GPUBuffer: core.propNonEnumerableLazyLoaded((webgpu) => webgpu.GPUBuffer, loadWebGPU),
-  GPUBufferUsage: core.propNonEnumerableLazyLoaded((webgpu) => webgpu.GPUBufferUsage, loadWebGPU),
   GPUMapMode: core.propNonEnumerableLazyLoaded((webgpu) => webgpu.GPUMapMode, loadWebGPU),
   GPUTextureUsage: core.propNonEnumerableLazyLoaded((webgpu) => webgpu.GPUTextureUsage, loadWebGPU),
   GPUTexture: core.propNonEnumerableLazyLoaded((webgpu) => webgpu.GPUTexture, loadWebGPU),
