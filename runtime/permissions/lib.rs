@@ -3710,7 +3710,6 @@ mod tests {
     }
   }
 
-  #[cfg(target_os = "windows")]
   #[test]
   fn test_specifier_to_file_path() {
     use std::env;
