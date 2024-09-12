@@ -150,7 +150,6 @@ const windowOrWorkerGlobalScope = {
     (webgpu) => webgpu.GPUAdapter,
     loadWebGPU,
   ),
-
   GPUAdapterInfo: core.propNonEnumerableLazyLoaded(
     (webgpu) => webgpu.GPUAdapterInfo,
     loadWebGPU,
@@ -159,13 +158,11 @@ const windowOrWorkerGlobalScope = {
     (webgpu) => webgpu.GPUBuffer,
     loadWebGPU,
   ),
-
   GPUBufferUsage: core.propNonEnumerableLazyLoaded(
     (webgpu) => webgpu.GPUBufferUsage,
     loadWebGPU,
   ),
   GPUCanvasContext: core.propNonEnumerable(webgpuSurface.GPUCanvasContext),
-
   GPUColorWrite: core.propNonEnumerableLazyLoaded(
     (webgpu) => webgpu.GPUColorWrite,
     loadWebGPU,
@@ -182,12 +179,10 @@ const windowOrWorkerGlobalScope = {
     (webgpu) => webgpu.GPUComputePassEncoder,
     loadWebGPU,
   ),
-
   GPUComputePipeline: core.propNonEnumerableLazyLoaded(
     (webgpu) => webgpu.GPUComputePipeline,
     loadWebGPU,
   ),
-
   GPUDevice: core.propNonEnumerableLazyLoaded(
     (webgpu) => webgpu.GPUDevice,
     loadWebGPU,
@@ -196,19 +191,24 @@ const windowOrWorkerGlobalScope = {
     (webgpu) => webgpu.GPUDeviceLostInfo,
     loadWebGPU,
   ),
-
   GPUError: core.propNonEnumerableLazyLoaded(
     (webgpu) => webgpu.GPUError,
     loadWebGPU,
   ),
-
   GPUBindGroup: core.propNonEnumerableLazyLoaded(
     (webgpu) => webgpu.GPUBindGroup,
     loadWebGPU,
   ),
-
   GPUBindGroupLayout: core.propNonEnumerableLazyLoaded(
     (webgpu) => webgpu.GPUBindGroupLayout,
+    loadWebGPU,
+  ),
+  GPUPipelineError: core.propNonEnumerableLazyLoaded(
+    (webgpu) => webgpu.GPUPipelineError,
+    loadWebGPU,
+  ),
+  GPUUncapturedErrorEvent: core.propNonEnumerableLazyLoaded(
+    (webgpu) => webgpu.GPUUncapturedErrorEvent,
     loadWebGPU,
   ),
   GPUPipelineLayout: core.propNonEnumerableLazyLoaded(
@@ -231,7 +231,6 @@ const windowOrWorkerGlobalScope = {
     (webgpu) => webgpu.GPUOutOfMemoryError,
     loadWebGPU,
   ),
-
   GPURenderBundle: core.propNonEnumerableLazyLoaded(
     (webgpu) => webgpu.GPURenderBundle,
     loadWebGPU,
@@ -240,17 +239,14 @@ const windowOrWorkerGlobalScope = {
     (webgpu) => webgpu.GPURenderBundleEncoder,
     loadWebGPU,
   ),
-
   GPURenderPassEncoder: core.propNonEnumerableLazyLoaded(
     (webgpu) => webgpu.GPURenderPassEncoder,
     loadWebGPU,
   ),
-
   GPURenderPipeline: core.propNonEnumerableLazyLoaded(
     (webgpu) => webgpu.GPURenderPipeline,
     loadWebGPU,
   ),
-
   GPUSampler: core.propNonEnumerableLazyLoaded(
     (webgpu) => webgpu.GPUSampler,
     loadWebGPU,
@@ -259,12 +255,10 @@ const windowOrWorkerGlobalScope = {
     (webgpu) => webgpu.GPUShaderModule,
     loadWebGPU,
   ),
-
   GPUShaderStage: core.propNonEnumerableLazyLoaded(
     (webgpu) => webgpu.GPUShaderStage,
     loadWebGPU,
   ),
-
   GPUSupportedFeatures: core.propNonEnumerableLazyLoaded(
     (webgpu) => webgpu.GPUSupportedFeatures,
     loadWebGPU,
@@ -281,12 +275,10 @@ const windowOrWorkerGlobalScope = {
     (webgpu) => webgpu.GPUTextureView,
     loadWebGPU,
   ),
-
   GPUTextureUsage: core.propNonEnumerableLazyLoaded(
     (webgpu) => webgpu.GPUTextureUsage,
     loadWebGPU,
   ),
-
   GPUValidationError: core.propNonEnumerableLazyLoaded(
     (webgpu) => webgpu.GPUValidationError,
     loadWebGPU,
