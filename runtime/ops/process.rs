@@ -239,10 +239,11 @@ fn create_command(
   #[cfg(windows)]
   {
     if args.detached {
-      command.creation_flags(
-        windows_sys::Win32::System::Threading::DETACHED_PROCESS
-          | windows_sys::Win32::System::Threading::CREATE_NEW_PROCESS_GROUP,
-      );
+      // TODO(nathanwhit): Currently this causes the process to hang
+      // until the detached process exits (so never). It repros with just the
+      // rust std library, so it's either a bug or requires more control than we have.
+      // To be resolved at the same time as additional stdio support.
+      log::warn!("detached processes are not currently supported on Windows");
     }
     if args.windows_raw_arguments {
       for arg in args.args.iter() {
