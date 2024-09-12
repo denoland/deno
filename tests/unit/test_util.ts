@@ -25,9 +25,6 @@ export { delay } from "@std/async/delay";
 export { readLines } from "@std/io/read-lines";
 export { parseArgs } from "@std/cli/parse-args";
 
-// TODO(2.0): remove this and all the tests that depend on it.
-export const DENO_FUTURE = true;
-
 export function pathToAbsoluteFileUrl(path: string): URL {
   path = resolve(path);
 
