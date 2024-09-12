@@ -425,7 +425,7 @@ export class ChildProcess extends EventEmitter {
     }
 
     /* Cancel any pending IPC I/O */
-    if (this.canDisconnect) {
+    if (this[kCanDisconnect]) {
       this.disconnect?.();
     }
 
