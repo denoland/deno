@@ -27,13 +27,13 @@ use crate::cache::CacheDBHash;
 use crate::cache::Caches;
 use crate::cache::FastInsecureHasher;
 use crate::cache::TypeCheckCache;
-use crate::extract;
 use crate::factory::CliFactory;
 use crate::graph_util::BuildFastCheckGraphOptions;
 use crate::graph_util::ModuleGraphBuilder;
 use crate::npm::CliNpmResolver;
 use crate::tsc;
 use crate::tsc::Diagnostics;
+use crate::util::extract;
 use crate::util::path::to_percent_decoded_str;
 
 pub async fn check(
