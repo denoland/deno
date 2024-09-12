@@ -1,2 +1,2 @@
-Check [WILDCARD]/tests/specs/check/typecheck_doc_duplicate_identifiers/mod.ts
-Check [WILDCARD]/tests/specs/check/typecheck_doc_duplicate_identifiers/mod.ts$2-8.ts
+Check [WILDCARD]/mod.ts
+Check [WILDCARD]/mod.ts$2-8.ts

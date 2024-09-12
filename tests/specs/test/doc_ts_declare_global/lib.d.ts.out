@@ -1,6 +1,6 @@
-Check [WILDCARD]/tests/specs/test/doc_ts_declare_global/lib$d$ts$5-11.ts
+Check [WILDCARD]/lib$d$ts$5-11.ts
 running 1 test from ./lib$d$ts$5-11.ts
-[WILDCARD]/tests/specs/test/doc_ts_declare_global/lib$d$ts$5-11.ts ... ok ([WILDCARD]ms)
+[WILDCARD]/lib$d$ts$5-11.ts ... ok ([WILDCARD]ms)
 
 ok | 1 passed | 0 failed ([WILDCARD]ms)
 

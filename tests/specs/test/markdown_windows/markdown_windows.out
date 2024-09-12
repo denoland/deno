@@ -1,7 +1,7 @@
-Check [WILDCARD]/specs/test/markdown_windows/markdown_windows.md$11-14.js
-Check [WILDCARD]/specs/test/markdown_windows/markdown_windows.md$17-20.ts
-Check [WILDCARD]/specs/test/markdown_windows/markdown_windows.md$29-32.ts
+Check [WILDCARD]/markdown_windows.md$11-14.js
+Check [WILDCARD]/markdown_windows.md$17-20.ts
+Check [WILDCARD]/markdown_windows.md$29-32.ts
 error: TS2322 [ERROR]: Type 'number' is not assignable to type 'string'.
     const a: string = 42;
           ^
-    at [WILDCARD]/specs/test/markdown_windows/markdown_windows.md$29-32.ts:2:11
+    at [WILDCARD]/markdown_windows.md$29-32.ts:2:11
