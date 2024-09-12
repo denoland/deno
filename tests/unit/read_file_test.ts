@@ -31,7 +31,7 @@ Deno.test({ permissions: { read: true } }, function readFileSyncUrl() {
 Deno.test({ permissions: { read: false } }, function readFileSyncPerm() {
   assertThrows(() => {
     Deno.readFileSync("tests/testdata/assets/fixture.json");
-  }, Deno.errors.PermissionDenied);
+  }, Deno.errors.NotCapable);
 });
 
 Deno.test({ permissions: { read: true } }, function readFileSyncNotFound() {
@@ -63,7 +63,7 @@ Deno.test({ permissions: { read: true } }, async function readFileSuccess() {
 Deno.test({ permissions: { read: false } }, async function readFilePerm() {
   await assertRejects(async () => {
     await Deno.readFile("tests/testdata/assets/fixture.json");
-  }, Deno.errors.PermissionDenied);
+  }, Deno.errors.NotCapable);
 });
 
 Deno.test({ permissions: { read: true } }, function readFileSyncLoop() {
@@ -161,7 +161,7 @@ Deno.test(
     try {
       await Deno.readFile("definitely-not-found.json");
     } catch (e) {
-      assertEquals(e.code, "ENOENT");
+      assertEquals((e as { code: string }).code, "ENOENT");
     }
   },
 );
@@ -172,7 +172,7 @@ Deno.test(
     try {
       await Deno.readFile("tests/testdata/assets/");
     } catch (e) {
-      assertEquals(e.code, "EISDIR");
+      assertEquals((e as { code: string }).code, "EISDIR");
     }
   },
 );

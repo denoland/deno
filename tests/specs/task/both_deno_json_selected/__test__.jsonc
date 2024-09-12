@@ -1,0 +1,9 @@
+{
+  "args": "task --config deno.json other",
+  "output": "deno_selected.out",
+  "envs": {
+    "NO_COLOR": "1",
+    "NPM_CONFIG_REGISTRY": "http://localhost:4260/"
+  },
+  "exitCode": 0
+}

@@ -15,7 +15,6 @@ util::unit_test_factory!(
     blob_test,
     body_test,
     broadcast_channel_test,
-    buffer_test,
     build_test,
     cache_api_test,
     chmod_test,
@@ -85,7 +84,6 @@ util::unit_test_factory!(
     structured_clone_test,
     symbol_test,
     symlink_test,
-    sync_test,
     test_util,
     testing_test,
     text_encoding_test,
@@ -124,9 +122,8 @@ fn js_unit_test(test: String) {
     .arg("--no-lock")
     // TODO(bartlomieju): would be better if we could apply this unstable
     // flag to particular files, but there's many of them that rely on unstable
-    // net APIs (`reusePort` in `listen` and `listenTls`; `listenDatagram`, `createHttpClient`)
+    // net APIs (`reusePort` in `listen` and `listenTls`; `listenDatagram`)
     .arg("--unstable-net")
-    .arg("--unstable-http")
     .arg("--location=http://127.0.0.1:4545/")
     .arg("--no-prompt");
 

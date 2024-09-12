@@ -32,26 +32,15 @@ delete Object.prototype.__proto__;
   /** @type {ReadonlySet<string>} */
   const unstableDenoProps = new Set([
     "AtomicOperation",
-    "CreateHttpClientOptions",
     "DatagramConn",
-    "HttpClient",
     "Kv",
     "KvListIterator",
     "KvU64",
-    "UnsafeCallback",
-    "UnsafePointer",
-    "UnsafePointerView",
-    "UnsafeFnPointer",
     "UnixConnectOptions",
     "UnixListenOptions",
-    "createHttpClient",
-    "dlopen",
-    "funlock",
-    "funlockSync",
     "listen",
     "listenDatagram",
     "openKv",
-    "umask",
   ]);
   const unstableMsgSuggestion =
     "If not, try changing the 'lib' compiler option to include 'deno.unstable' " +
@@ -1154,7 +1143,6 @@ delete Object.prototype.__proto__;
         "strict": true,
         "target": "esnext",
         "useDefineForClassFields": true,
-        "useUnknownInCatchVariables": false,
         "jsx": "react",
         "jsxFactory": "React.createElement",
         "jsxFragmentFactory": "React.Fragment",
