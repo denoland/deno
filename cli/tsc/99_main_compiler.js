@@ -622,7 +622,7 @@ delete Object.prototype.__proto__;
       if (!fileInfo) {
         return undefined;
       }
-      let { data, scriptKind, version, isCjs } = fileInfo;
+      const { data, scriptKind, version, isCjs } = fileInfo;
       assert(
         data != null,
         `"data" is unexpectedly null for "${specifier}".`,
