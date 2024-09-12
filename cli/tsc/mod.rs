@@ -586,7 +586,7 @@ fn op_load_inner(
       .filter(|npm| npm.node_resolver.in_npm_package(specifier))
     {
       Some(Cow::Owned(load_from_node_modules(
-        &specifier,
+        specifier,
         Some(npm.node_resolver.as_ref()),
         &mut media_type,
         &mut is_cjs,
@@ -1262,10 +1262,7 @@ mod tests {
       },
     )
     .expect("should have invoked op");
-    assert_eq!(
-      actual,
-      vec![("https://deno.land/x/b.ts".into(), ".ts".into())]
-    );
+    assert_eq!(actual, vec![("https://deno.land/x/b.ts".into(), ".ts")]);
   }
 
   #[tokio::test]
@@ -1285,10 +1282,7 @@ mod tests {
       },
     )
     .expect("should have not errored");
-    assert_eq!(
-      actual,
-      vec![(MISSING_DEPENDENCY_SPECIFIER.into(), ".d.ts".into())]
-    );
+    assert_eq!(actual, vec![(MISSING_DEPENDENCY_SPECIFIER.into(), ".d.ts")]);
   }
 
   #[tokio::test]
