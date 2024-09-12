@@ -6,7 +6,6 @@ mod cache;
 mod cdp;
 mod emit;
 mod errors;
-mod extract;
 mod factory;
 mod file_fetcher;
 mod graph_container;
