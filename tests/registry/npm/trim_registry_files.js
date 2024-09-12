@@ -41,7 +41,7 @@ for (const dirPath of getPackageDirs()) {
       }
     }
   }
-  Deno.writeTextFileSync(registryPath, JSON.stringify(data, null, 2) + "\n");
+  Deno.writeTextFileSync(registryPath, JSON.stringify(data) + "\n");
 }
 
 function extractVersion(name) {
