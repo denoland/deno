@@ -160,16 +160,8 @@ export class Pipe extends ConnectionWrap {
         }
       },
       (e) => {
-        // TODO(cmorten): correct mapping of connection error to status code.
-        let code: number;
-
-        if (e instanceof Deno.errors.NotFound) {
-          code = codeMap.get("ENOENT")!;
-        } else if (e instanceof Deno.errors.PermissionDenied) {
-          code = codeMap.get("EACCES")!;
-        } else {
-          code = codeMap.get("ECONNREFUSED")!;
-        }
+        const code = codeMap.get(e.code ?? "UNKNOWN") ??
+          codeMap.get("UNKNOWN")!;
 
         try {
           this.afterConnect(req, code);
@@ -207,16 +199,10 @@ export class Pipe extends ConnectionWrap {
     try {
       listener = Deno.listen(listenOptions);
     } catch (e) {
-      if (e instanceof Deno.errors.AddrInUse) {
-        return codeMap.get("EADDRINUSE")!;
-      } else if (e instanceof Deno.errors.AddrNotAvailable) {
-        return codeMap.get("EADDRNOTAVAIL")!;
-      } else if (e instanceof Deno.errors.PermissionDenied) {
+      if (e instanceof Deno.errors.NotCapable) {
         throw e;
       }
-
-      // TODO(cmorten): map errors to appropriate error codes.
-      return codeMap.get("UNKNOWN")!;
+      return codeMap.get(e.code ?? "UNKNOWN") ?? codeMap.get("UNKNOWN")!;
     }
 
     const address = listener.addr as Deno.UnixAddr;

@@ -1069,8 +1069,10 @@ fn open_with_access_check(
     };
     (*access_check)(false, &path, &options)?;
     // On Linux, /proc may contain magic links that we don't want to resolve
-    let needs_canonicalization = !is_windows_device_path
-      && (!cfg!(target_os = "linux") || path.starts_with("/proc"));
+    let is_linux_special_path = cfg!(target_os = "linux")
+      && (path.starts_with("/proc") || path.starts_with("/dev"));
+    let needs_canonicalization =
+      !is_windows_device_path && !is_linux_special_path;
     let path = if needs_canonicalization {
       match path.canonicalize() {
         Ok(path) => path,

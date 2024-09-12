@@ -707,7 +707,14 @@ impl Resolver for CliGraphResolver {
             .resolve_if_for_npm_pkg(raw_specifier, referrer, to_node_mode(mode))
             .map_err(ResolveError::Other)?;
           if let Some(res) = maybe_resolution {
-            return Ok(res.into_url());
+            match res {
+              NodeResolution::Esm(url) | NodeResolution::CommonJs(url) => {
+                return Ok(url)
+              }
+              NodeResolution::BuiltIn(_) => {
+                // don't resolve bare specifiers for built-in modules via node resolution
+              }
+            }
           }
         }
 

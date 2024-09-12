@@ -159,6 +159,7 @@ pub struct SpawnArgs {
   stdio: ChildStdio,
 
   extra_stdio: Vec<Stdio>,
+  detached: bool,
 }
 
 #[derive(Deserialize)]
@@ -243,12 +244,21 @@ fn create_command(
   let mut command = std::process::Command::new(cmd);
 
   #[cfg(windows)]
-  if args.windows_raw_arguments {
-    for arg in args.args.iter() {
-      command.raw_arg(arg);
+  {
+    if args.detached {
+      // TODO(nathanwhit): Currently this causes the process to hang
+      // until the detached process exits (so never). It repros with just the
+      // rust std library, so it's either a bug or requires more control than we have.
+      // To be resolved at the same time as additional stdio support.
+      log::warn!("detached processes are not currently supported on Windows");
     }
-  } else {
-    command.args(args.args);
+    if args.windows_raw_arguments {
+      for arg in args.args.iter() {
+        command.raw_arg(arg);
+      }
+    } else {
+      command.args(args.args);
+    }
   }
 
   #[cfg(not(windows))]
@@ -336,7 +346,11 @@ fn create_command(
       }
     }
 
+    let detached = args.detached;
     command.pre_exec(move || {
+      if detached {
+        libc::setsid();
+      }
       for &(src, dst) in &fds_to_dup {
         if src >= 0 && dst >= 0 {
           let _fd = libc::dup2(src, dst);
@@ -402,12 +416,15 @@ fn spawn_child(
   command: std::process::Command,
   ipc_pipe_rid: Option<ResourceId>,
   extra_pipe_rids: Vec<Option<ResourceId>>,
+  detached: bool,
 ) -> Result<Child, AnyError> {
   let mut command = tokio::process::Command::from(command);
   // TODO(@crowlkats): allow detaching processes.
   //  currently deno will orphan a process when exiting with an error or Deno.exit()
   // We want to kill child when it's closed
-  command.kill_on_drop(true);
+  if !detached {
+    command.kill_on_drop(true);
+  }
 
   let mut child = match command.spawn() {
     Ok(child) => child,
@@ -609,7 +626,7 @@ fn check_run_permission(
       // we don't allow users to launch subprocesses with any LD_ or DYLD_*
       // env vars set because this allows executing code (ex. LD_PRELOAD)
       return Err(deno_core::error::custom_error(
-        "PermissionDenied",
+        "NotCapable",
         format!(
           "Requires --allow-all permissions to spawn subprocess with {} environment variable{}.",
           env_var_names.join(", "),
@@ -647,9 +664,10 @@ fn op_spawn_child(
   #[serde] args: SpawnArgs,
   #[string] api_name: String,
 ) -> Result<Child, AnyError> {
+  let detached = args.detached;
   let (command, pipe_rid, extra_pipe_rids, handles_to_close) =
     create_command(state, args, &api_name)?;
-  let child = spawn_child(state, command, pipe_rid, extra_pipe_rids);
+  let child = spawn_child(state, command, pipe_rid, extra_pipe_rids, detached);
   for handle in handles_to_close {
     close_raw_handle(handle);
   }

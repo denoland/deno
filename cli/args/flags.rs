@@ -85,6 +85,7 @@ impl FileFlags {
 #[derive(Clone, Debug, Default, Eq, PartialEq)]
 pub struct AddFlags {
   pub packages: Vec<String>,
+  pub dev: bool,
 }
 
 #[derive(Clone, Debug, Default, Eq, PartialEq)]
@@ -569,6 +570,7 @@ fn parse_packages_allowed_scripts(s: &str) -> Result<String, AnyError> {
   Clone, Default, Debug, Eq, PartialEq, serde::Serialize, serde::Deserialize,
 )]
 pub struct UnstableConfig {
+  // TODO(bartlomieju): remove in Deno 2.5
   pub legacy_flag_enabled: bool, // --unstable
   pub bare_node_builtins: bool,  // --unstable-bare-node-builts
   pub sloppy_imports: bool,
@@ -1120,6 +1122,8 @@ impl Flags {
 
 static ENV_VARIABLES_HELP: &str = cstr!(
   r#"<y>Environment variables:</>
+<y>Docs:</> <c>https://docs.deno.com/go/env-vars</>
+
   <g>DENO_AUTH_TOKENS</>      A semi-colon separated list of bearer tokens and hostnames
                         to use when fetching remote modules from private repositories
                          <p(245)>(e.g. "abcde12345@deno.land;54321edcba@github.com")</>
@@ -1585,6 +1589,15 @@ fn help_subcommand(app: &Command) -> Command {
     }))
 }
 
+fn add_dev_arg() -> Arg {
+  Arg::new("dev")
+    .long("dev")
+    .short('D')
+    .help("Add as a dev dependency")
+    .long_help("Add the package as a dev dependency. Note: This only applies when adding to a `package.json` file.")
+    .action(ArgAction::SetTrue)
+}
+
 fn add_subcommand() -> Command {
   command(
     "add",
@@ -1598,13 +1611,15 @@ You can add multiple dependencies at once:
     UnstableArgsConfig::None,
   )
   .defer(|cmd| {
-    cmd.arg(
-      Arg::new("packages")
-        .help("List of packages to add")
-        .required_unless_present("help")
-        .num_args(1..)
-        .action(ArgAction::Append),
-    )
+    cmd
+      .arg(
+        Arg::new("packages")
+          .help("List of packages to add")
+          .required_unless_present("help")
+          .num_args(1..)
+          .action(ArgAction::Append),
+      )
+      .arg(add_dev_arg())
   })
 }
 
@@ -2453,6 +2468,7 @@ These must be added to the path manually if required."), UnstableArgsConfig::Res
             .help("Install dependents of the specified entrypoint(s)"),
         )
         .arg(env_file_arg())
+        .arg(add_dev_arg().conflicts_with("entrypoint").conflicts_with("global"))
     })
 }
 
@@ -2970,12 +2986,8 @@ The declaration file could be saved and used for typing information.",
   )
 }
 
-fn upgrade_subcommand() -> Command {
-  command(
-    "upgrade",
-    cstr!("Upgrade deno executable to the given version.
-
-<g>Latest</>
+pub static UPGRADE_USAGE: &str = cstr!(
+  "<g>Latest</>
   <bold>deno upgrade</>
 
 <g>Specific version</>
@@ -2986,7 +2998,15 @@ fn upgrade_subcommand() -> Command {
 <g>Channel</>
   <bold>deno upgrade</> <p(245)>stable</>
   <bold>deno upgrade</> <p(245)>rc</>
-  <bold>deno upgrade</> <p(245)>canary</>
+  <bold>deno upgrade</> <p(245)>canary</>"
+);
+
+fn upgrade_subcommand() -> Command {
+  command(
+    "upgrade",
+    color_print::cformat!("Upgrade deno executable to the given version.
+
+{}
 
 The version is downloaded from <p(245)>https://dl.deno.land</> and is used to replace the current executable.
 
@@ -2994,7 +3014,7 @@ If you want to not replace the current Deno executable but instead download an u
 different location, use the <c>--output</> flag:
   <p(245)>deno upgrade --output $HOME/my_deno</>
 
-<y>Read more:</> <c>https://docs.deno.com/go/cmd/upgrade</>"),
+<y>Read more:</> <c>https://docs.deno.com/go/cmd/upgrade</>", UPGRADE_USAGE),
     UnstableArgsConfig::None,
   )
   .hide(cfg!(not(feature = "upgrade")))
@@ -3138,7 +3158,7 @@ fn compile_args_without_check_args(app: Command) -> Command {
 fn permission_args(app: Command, requires: Option<&'static str>) -> Command {
   app
     .after_help(cstr!(r#"<y>Permission options:</>
-Docs: <c>https://docs.deno.com/go/permissions</>
+<y>Docs</>: <c>https://docs.deno.com/go/permissions</>
 
   <g>-A, --allow-all</>                        Allow all permissions.
   <g>--no-prompt</>                        Always throw if required permission wasn't passed.
@@ -4091,7 +4111,8 @@ fn add_parse_inner(
   let packages = packages
     .unwrap_or_else(|| matches.remove_many::<String>("packages").unwrap())
     .collect();
-  AddFlags { packages }
+  let dev = matches.get_flag("dev");
+  AddFlags { packages, dev }
 }
 
 fn remove_parse(flags: &mut Flags, matches: &mut ArgMatches) {
@@ -5462,6 +5483,7 @@ fn unstable_args_parse(
   matches: &mut ArgMatches,
   cfg: UnstableArgsConfig,
 ) {
+  // TODO(bartlomieju): remove in Deno 2.5
   if matches.get_flag("unstable") {
     flags.unstable_config.legacy_flag_enabled = true;
   }
@@ -8751,7 +8773,7 @@ mod tests {
   #[test]
   fn test_with_flags() {
     #[rustfmt::skip]
-    let r = flags_from_vec(svec!["deno", "test", "--unstable", "--no-npm", "--no-remote", "--trace-leaks", "--no-run", "--filter", "- foo", "--coverage=cov", "--clean", "--location", "https:foo", "--allow-net", "--permit-no-files", "dir1/", "dir2/", "--", "arg1", "arg2"]);
+    let r = flags_from_vec(svec!["deno", "test", "--no-npm", "--no-remote", "--trace-leaks", "--no-run", "--filter", "- foo", "--coverage=cov", "--clean", "--location", "https:foo", "--allow-net", "--permit-no-files", "dir1/", "dir2/", "--", "arg1", "arg2"]);
     assert_eq!(
       r.unwrap(),
       Flags {
@@ -8775,10 +8797,6 @@ mod tests {
           junit_path: None,
           hide_stacktraces: false,
         }),
-        unstable_config: UnstableConfig {
-          legacy_flag_enabled: true,
-          ..Default::default()
-        },
         no_npm: true,
         no_remote: true,
         location: Some(Url::parse("https://foo/").unwrap()),
@@ -10186,7 +10204,6 @@ mod tests {
       "deno",
       "bench",
       "--json",
-      "--unstable",
       "--no-npm",
       "--no-remote",
       "--no-run",
@@ -10214,10 +10231,6 @@ mod tests {
           },
           watch: Default::default(),
         }),
-        unstable_config: UnstableConfig {
-          legacy_flag_enabled: true,
-          ..Default::default()
-        },
         no_npm: true,
         no_remote: true,
         type_check_mode: TypeCheckMode::Local,
@@ -10509,31 +10522,53 @@ mod tests {
   }
 
   #[test]
-  fn add_subcommand() {
+  fn add_or_install_subcommand() {
     let r = flags_from_vec(svec!["deno", "add"]);
     r.unwrap_err();
+    for cmd in ["add", "install"] {
+      let mk_flags = |flags: AddFlags| -> Flags {
+        match cmd {
+          "add" => Flags {
+            subcommand: DenoSubcommand::Add(flags),
+            ..Flags::default()
+          },
+          "install" => Flags {
+            subcommand: DenoSubcommand::Install(InstallFlags {
+              kind: InstallKind::Local(InstallFlagsLocal::Add(flags)),
+            }),
+            ..Flags::default()
+          },
+          _ => unreachable!(),
+        }
+      };
 
-    let r = flags_from_vec(svec!["deno", "add", "@david/which"]);
-    assert_eq!(
-      r.unwrap(),
-      Flags {
-        subcommand: DenoSubcommand::Add(AddFlags {
+      let r = flags_from_vec(svec!["deno", cmd, "@david/which"]);
+      assert_eq!(
+        r.unwrap(),
+        mk_flags(AddFlags {
           packages: svec!["@david/which"],
-        }),
-        ..Flags::default()
-      }
-    );
+          dev: false,
+        }) // default is false
+      );
 
-    let r = flags_from_vec(svec!["deno", "add", "@david/which", "@luca/hello"]);
-    assert_eq!(
-      r.unwrap(),
-      Flags {
-        subcommand: DenoSubcommand::Add(AddFlags {
+      let r = flags_from_vec(svec!["deno", cmd, "@david/which", "@luca/hello"]);
+      assert_eq!(
+        r.unwrap(),
+        mk_flags(AddFlags {
           packages: svec!["@david/which", "@luca/hello"],
+          dev: false,
+        })
+      );
+
+      let r = flags_from_vec(svec!["deno", cmd, "--dev", "npm:chalk"]);
+      assert_eq!(
+        r.unwrap(),
+        mk_flags(AddFlags {
+          packages: svec!["npm:chalk"],
+          dev: true,
         }),
-        ..Flags::default()
-      }
-    );
+      );
+    }
   }
 
   #[test]
@@ -10766,10 +10801,10 @@ mod tests {
           conn_file: None,
         }),
         unstable_config: UnstableConfig {
-          legacy_flag_enabled: false,
           bare_node_builtins: true,
           sloppy_imports: false,
           features: svec!["ffi", "worker-options"],
+          ..Default::default()
         },
         ..Flags::default()
       }

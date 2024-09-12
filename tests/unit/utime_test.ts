@@ -176,7 +176,7 @@ Deno.test(
 
     assertThrows(() => {
       Deno.utimeSync("/some_dir", atime, mtime);
-    }, Deno.errors.PermissionDenied);
+    }, Deno.errors.NotCapable);
   },
 );
 
@@ -291,6 +291,6 @@ Deno.test(
 
     await assertRejects(async () => {
       await Deno.utime("/some_dir", atime, mtime);
-    }, Deno.errors.PermissionDenied);
+    }, Deno.errors.NotCapable);
   },
 );
