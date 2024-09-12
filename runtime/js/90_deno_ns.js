@@ -132,6 +132,8 @@ const denoNs = {
   UnsafePointerView: ffi.UnsafePointerView,
   UnsafeFnPointer: ffi.UnsafeFnPointer,
   umask: fs.umask,
+  httpClient: httpClient.httpClient,
+  createHttpClient: httpClient.createHttpClient,
 };
 
 // NOTE(bartlomieju): keep IDs in sync with `cli/main.rs`

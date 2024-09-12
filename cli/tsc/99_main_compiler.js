@@ -32,15 +32,12 @@ delete Object.prototype.__proto__;
   /** @type {ReadonlySet<string>} */
   const unstableDenoProps = new Set([
     "AtomicOperation",
-    "CreateHttpClientOptions",
     "DatagramConn",
-    "HttpClient",
     "Kv",
     "KvListIterator",
     "KvU64",
     "UnixConnectOptions",
     "UnixListenOptions",
-    "createHttpClient",
     "listen",
     "listenDatagram",
     "openKv",
