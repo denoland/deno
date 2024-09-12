@@ -1,6 +1,4 @@
 {
-  "_id": "@types/lz-string",
-  "_rev": "554-923923210a37cca16c53a3e8dd472e22",
   "name": "@types/lz-string",
   "description": "Stub TypeScript definitions entry for lz-string, which provides its own types definitions",
   "dist-tags": {
@@ -12,13 +10,6 @@
       "version": "1.3.33",
       "description": "TypeScript definitions for lz-string",
       "license": "MIT",
-      "contributors": [
-        {
-          "name": "Roman Nikitin",
-          "url": "https://github.com/M0ns1gn0r",
-          "githubUsername": "M0ns1gn0r"
-        }
-      ],
       "main": "",
       "types": "index",
       "repository": {
@@ -44,21 +35,7 @@
           }
         ]
       },
-      "maintainers": [
-        {
-          "name": "types",
-          "email": "ts-npm-types@microsoft.com"
-        }
-      ],
-      "_npmUser": {
-        "name": "types",
-        "email": "ts-npm-types@microsoft.com"
-      },
       "directories": {},
-      "_npmOperationalInternal": {
-        "host": "s3://npm-registry-packages",
-        "tmp": "tmp/lz-string_1.3.33_1550092868900_0.5979975733337666"
-      },
       "_hasShrinkwrap": false
     },
     "1.5.0": {
@@ -87,27 +64,10 @@
         ],
         "npm-signature": "-----BEGIN PGP SIGNATURE-----\r\nVersion: OpenPGP.js v4.10.10\r\nComment: https://openpgpjs.org\r\n\r\nwsFzBAEBCAAGBQJkECMgACEJED1NWxICdlZqFiEECWMYAoorWMhJKdjhPU1b\r\nEgJ2VmopOQ//U+7G8WFrWQ3ecjTZrMAAqmwWNK1jgA3r0PonmwkiDjQlNAHj\r\nXAfJK8YSuFBrl8buIAkoJT9i+H6bpHIShj5fA4FKVtA1ihcwclAdvvoilwH2\r\nNCvoFeZZgrZB6y5e6AvGDHY67C2DzQ9XhfqYM0myyXS+of2gfznAPVqXwGCs\r\nWW39ee/WAbBEoN2Z1/hEAh+W51hV0HUjs39sbupo0vOHy9GdYuVJtTMeqesF\r\nmCfDDaM1FxbsMFccy8qRsihD26iwBMRa+W3+208gCc0i9xs8wRc+8GQcAGWd\r\nxSrTEgRd8hfBs6bxDKlSD3Qg7pTq3L+HvlUZGL2AHSbC6k/MCNduHhxEcrrj\r\nssFE4iuCievfQsd0CC4rI/8s5MDGwdQ+nldv0rYjsSphjLgHDly0LE1kAbNv\r\nxZWFXmFb7318wmbC38KYDn1I0b6YndHQFu1usVJ+Z107H/mxWRZeRg0THlD8\r\n3LuLEkCJqRddGmLkSQkJ6IZtX8H9EuuhU4ny6Xb3FYFhnXWmw7YSuvrrfSgs\r\nPlLlscCRsXgWYPzQ7h8mOyE4MoHfrjzcgFKIUgWPvW6EprDPAKu28vIXnn7j\r\nG0CiCYL+IWWTqa6pKkOJsE1ILkPYTZj/592zfGPzspl9Kfb/4+IaDMmApBVO\r\n51TMBjyXgYYDajmh6y8/U389X93/bIV/wjY=\r\n=935O\r\n-----END PGP SIGNATURE-----\r\n"
       },
-      "_npmUser": {
-        "name": "types",
-        "email": "ts-npm-types@microsoft.com"
-      },
       "directories": {},
-      "maintainers": [
-        {
-          "name": "types",
-          "email": "ts-npm-types@microsoft.com"
-        }
-      ],
-      "_npmOperationalInternal": {
-        "host": "s3://npm-registry-packages",
-        "tmp": "tmp/lz-string_1.5.0_1678779167950_0.5151061207876493"
-      },
       "_hasShrinkwrap": false
     }
   },
   "license": "MIT",
-  "readmeFilename": "",
-  "users": {
-    "flumpus-dev": true
-  }
+  "readmeFilename": ""
 }
