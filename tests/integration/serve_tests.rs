@@ -216,6 +216,7 @@ async fn deno_serve_parallel() {
 
   let output = client.output();
 
+  // TODO(bartlomieju): somehow `console.error` doesn't respect `NO_COLOR` env var.
   let listening_regex =
     Regex::new(r"Listening on %chttp[\w:/\.]+%c with (\d+) threads").unwrap();
 
