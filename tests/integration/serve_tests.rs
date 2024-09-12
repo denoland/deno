@@ -217,7 +217,7 @@ async fn deno_serve_parallel() {
   let output = client.output();
 
   let listening_regex =
-    Regex::new(r"Listening on http[\w:/\.]+ with (\d+) threads").unwrap();
+    Regex::new(r"Listening on %chttp[\w:/\.]+%c with (\d+) threads").unwrap();
 
   eprintln!("serve output:\n{output}");
   assert_eq!(

@@ -1,4 +1,4 @@
-console.log("starting serve");
+console.error("starting serve");
 export default {
   fetch(_req: Request) {
     console.log("serving request");
