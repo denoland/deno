@@ -67,7 +67,7 @@ import {
   ERR_SOCKET_CLOSED,
   ERR_STREAM_WRITE_AFTER_END,
 } from "ext:deno_node/internal/errors.ts";
-import { _checkIsHttpToken } from "ext:deno_node/_http_common.ts";
+import { _checkIsHttpToken } from "node:_http_common";
 const {
   StringPrototypeTrim,
   FunctionPrototypeBind,
@@ -2295,7 +2295,7 @@ function onStreamTimeout(kind) {
   };
 }
 
-class Http2ServerRequest extends Readable {
+export class Http2ServerRequest extends Readable {
   readableEnded = false;
 
   constructor(stream, headers, options, rawHeaders) {
@@ -2523,7 +2523,7 @@ function isConnectionHeaderAllowed(name, value) {
     value === "trailers";
 }
 
-class Http2ServerResponse extends Stream {
+export class Http2ServerResponse extends Stream {
   writable = false;
   req = null;
 

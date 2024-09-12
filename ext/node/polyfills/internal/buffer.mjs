@@ -2606,6 +2606,7 @@ export default {
   constants,
   isAscii,
   isUtf8,
+  INSPECT_MAX_BYTES,
   kMaxLength,
   kStringMaxLength,
   SlowBuffer,

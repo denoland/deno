@@ -1,7 +1,6 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
 use deno_core::error::AnyError;
-use deno_core::OpState;
 
 use std::mem::size_of;
 use std::os::raw::c_char;
@@ -40,14 +39,6 @@ const _: () = {
 };
 
 pub const UNSTABLE_FEATURE_NAME: &str = "ffi";
-
-fn check_unstable(state: &OpState, api_name: &str) {
-  // TODO(bartlomieju): replace with `state.feature_checker.check_or_exit`
-  // once we phase out `check_or_exit_with_legacy_fallback`
-  state
-    .feature_checker
-    .check_or_exit_with_legacy_fallback(UNSTABLE_FEATURE_NAME, api_name)
-}
 
 pub trait FfiPermissions {
   fn check_partial(&mut self, path: Option<&Path>) -> Result<(), AnyError>;

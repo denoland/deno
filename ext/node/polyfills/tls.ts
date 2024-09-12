@@ -5,8 +5,8 @@
 // deno-lint-ignore-file prefer-primordials
 
 import { notImplemented } from "ext:deno_node/_utils.ts";
-import tlsCommon from "ext:deno_node/_tls_common.ts";
-import tlsWrap from "ext:deno_node/_tls_wrap.ts";
+import tlsCommon from "node:_tls_common";
+import tlsWrap from "node:_tls_wrap";
 
 // openssl -> rustls
 const cipherMap = {
@@ -34,6 +34,8 @@ export const rootCertificates = undefined;
 export const DEFAULT_ECDH_CURVE = "auto";
 export const DEFAULT_MAX_VERSION = "TLSv1.3";
 export const DEFAULT_MIN_VERSION = "TLSv1.2";
+export const CLIENT_RENEG_LIMIT = 3;
+export const CLIENT_RENEG_WINDOW = 600;
 
 export class CryptoStream {}
 export class SecurePair {}
@@ -58,6 +60,8 @@ export default {
   DEFAULT_ECDH_CURVE,
   DEFAULT_MAX_VERSION,
   DEFAULT_MIN_VERSION,
+  CLIENT_RENEG_LIMIT,
+  CLIENT_RENEG_WINDOW,
 };
 
 export const checkServerIdentity = tlsWrap.checkServerIdentity;
