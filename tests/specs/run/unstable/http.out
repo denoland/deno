@@ -1,7 +1,0 @@
-error: Uncaught (in promise) TypeError: Deno.createHttpClient is not a function
-Deno.createHttpClient();
-     ^
-    at [WILDCARD]http.ts:1:6
-
-    info: Deno.createHttpClient() is an unstable API.
-    hint: Run again with `--unstable-http` flag to enable this API.

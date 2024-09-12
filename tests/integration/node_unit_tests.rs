@@ -112,7 +112,6 @@ fn node_unit_test(test: String) {
     .arg(deno_config_path())
     .arg("--no-lock")
     .arg("--unstable-broadcast-channel")
-    .arg("--unstable-http")
     .arg("--unstable-net")
     // TODO(kt3k): This option is required to pass tls_test.ts,
     // but this shouldn't be necessary. tls.connect currently doesn't
