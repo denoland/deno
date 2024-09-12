@@ -727,9 +727,26 @@ async fn find_latest_version_to_upgrade(
   );
 
   let client = http_client_provider.get_or_create()?;
-  let latest_version_found =
-    fetch_latest_version(&client, release_channel, UpgradeCheckKind::Execution)
-      .await?;
+
+  let latest_version_found = match fetch_latest_version(
+    &client,
+    release_channel,
+    UpgradeCheckKind::Execution,
+  )
+  .await
+  {
+    Ok(v) => v,
+    Err(err) => {
+      if err.to_string().contains("Not found") {
+        bail!(
+          "No {} release available at the moment.",
+          release_channel.name()
+        );
+      } else {
+        return Err(err);
+      }
+    }
+  };
 
   let (maybe_newer_latest_version, current_version) = match release_channel {
     ReleaseChannel::Canary => {
