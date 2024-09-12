@@ -600,16 +600,10 @@ declare interface GPUPipelineErrorInit {
   reason: GPUPipelineErrorReason;
 }
 
-/**
- * @category GPU
- * @
- */
+/** @category GPU */
 declare type GPUPipelineErrorReason = "validation" | "internal";
 
-/**
- * @category GPU
- * @
- */
+/** @category GPU */
 declare class GPUShaderModule implements GPUObjectBase {
   label: string;
 }
@@ -1150,10 +1144,7 @@ declare interface GPURenderPassColorAttachment {
   storeOp: GPUStoreOp;
 }
 
-/**
- * @category GPU
- * @
- */
+/** @category GPU */
 declare interface GPURenderPassDepthStencilAttachment {
   view: GPUTextureView;
 
