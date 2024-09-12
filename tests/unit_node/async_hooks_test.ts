@@ -163,6 +163,7 @@ Deno.test(async function worksWithAsyncAPIs() {
 
 Deno.test(async function worksWithDynamicImports() {
   const store = new AsyncLocalStorage();
+  // @ts-expect-error implicit any
   globalThis.alsDynamicImport = () => store.getStore();
   const dataUrl =
     `data:application/javascript,export const data = alsDynamicImport()`;
