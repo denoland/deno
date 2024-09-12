@@ -160,3 +160,14 @@ Deno.test(async function worksWithAsyncAPIs() {
     test();
   });
 });
+
+Deno.test(async function worksWithDynamicImports() {
+  const store = new AsyncLocalStorage();
+  globalThis.alsDynamicImport = () => store.getStore();
+  const dataUrl =
+    `data:application/javascript,export const data = alsDynamicImport()`;
+  await store.run("data", async () => {
+    const { data } = await import(dataUrl);
+    assertEquals(data, "data");
+  });
+});
