@@ -5,8 +5,8 @@
 // deno-lint-ignore-file prefer-primordials
 
 import { notImplemented } from "ext:deno_node/_utils.ts";
-import tlsCommon from "ext:deno_node/_tls_common.ts";
-import tlsWrap from "ext:deno_node/_tls_wrap.ts";
+import tlsCommon from "node:_tls_common";
+import tlsWrap from "node:_tls_wrap";
 
 // openssl -> rustls
 const cipherMap = {
