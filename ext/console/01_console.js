@@ -844,14 +844,6 @@ function formatRaw(ctx, value, recurseTimes, typedArray, proxyDetails) {
           ObjectPrototypeIsPrototypeOf(
             globalThis.Temporal.Duration.prototype,
             value,
-          ) ||
-          ObjectPrototypeIsPrototypeOf(
-            globalThis.Temporal.TimeZone.prototype,
-            value,
-          ) ||
-          ObjectPrototypeIsPrototypeOf(
-            globalThis.Temporal.Calendar.prototype,
-            value,
           )
         )
       ) {

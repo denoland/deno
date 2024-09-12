@@ -1,7 +1,6 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
 use std::collections::HashMap;
-use std::str::FromStr;
 
 use deno_ast::LineAndColumnIndex;
 use deno_ast::ModuleSpecifier;
@@ -42,6 +41,7 @@ use super::config::LanguageWorkspaceSettings;
 use super::config::ObjectLiteralMethodSnippets;
 use super::config::TestingSettings;
 use super::config::WorkspaceSettings;
+use super::urls::uri_parse_unencoded;
 use super::urls::url_to_uri;
 
 #[derive(Debug)]
@@ -263,7 +263,8 @@ impl ReplLanguageServer {
   }
 
   fn get_document_uri(&self) -> Uri {
-    Uri::from_str(self.cwd_uri.join("$deno$repl.ts").unwrap().as_str()).unwrap()
+    uri_parse_unencoded(self.cwd_uri.join("$deno$repl.ts").unwrap().as_str())
+      .unwrap()
   }
 }
 
@@ -311,7 +312,7 @@ pub fn get_repl_workspace_settings() -> WorkspaceSettings {
     document_preload_limit: 0, // don't pre-load any modules as it's expensive and not useful for the repl
     tls_certificate: None,
     unsafely_ignore_certificate_errors: None,
-    unstable: false,
+    unstable: Default::default(),
     suggest: DenoCompletionSettings {
       imports: ImportCompletionSettings {
         auto_discover: false,

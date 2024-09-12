@@ -115,7 +115,6 @@ deno_core::extension!(deno_net,
 
     ops_tls::op_tls_key_null,
     ops_tls::op_tls_key_static,
-    ops_tls::op_tls_key_static_from_file<P>,
     ops_tls::op_tls_cert_resolver_create,
     ops_tls::op_tls_cert_resolver_poll,
     ops_tls::op_tls_cert_resolver_resolve,
