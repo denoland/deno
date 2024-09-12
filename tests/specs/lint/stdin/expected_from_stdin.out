@@ -1,5 +1,5 @@
 error[no-explicit-any]: `any` type is not allowed
- --> [WILDCARD]$deno$stdin.ts:1:9
+ --> [WILDCARD]main.ts:1:9
   | 
 1 | let _a: any;
   |         ^^^

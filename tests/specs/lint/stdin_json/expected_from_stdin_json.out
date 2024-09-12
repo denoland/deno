@@ -2,7 +2,7 @@
   "version": 1,
   "diagnostics": [
     {
-      "filename": "[WILDCARD]$deno$stdin.ts",
+      "filename": "[WILDCARD]main.ts",
       "range": {
         "start": {
           "line": 1,

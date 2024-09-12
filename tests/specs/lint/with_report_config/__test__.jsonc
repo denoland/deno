@@ -1,0 +1,5 @@
+{
+  "args": "lint --config Deno.compact.format.jsonc with_config/",
+  "output": "with_report_config_compact.out",
+  "exitCode": 1
+}
