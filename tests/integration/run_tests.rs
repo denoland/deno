@@ -1829,17 +1829,6 @@ itest!(unstable_cron_enabled {
   output: "run/unstable_cron.enabled.out",
 });
 
-itest!(unstable_http_disabled {
-  args: "run --quiet --reload --allow-read run/unstable_http.js",
-  output: "run/unstable_http.disabled.out",
-});
-
-itest!(unstable_http_enabled {
-  args:
-    "run --quiet --reload --allow-read --unstable-http run/unstable_http.js",
-  output: "run/unstable_http.enabled.out",
-});
-
 itest!(unstable_net_disabled {
   args: "run --quiet --reload --allow-read run/unstable_net.js",
   output: "run/unstable_net.disabled.out",
