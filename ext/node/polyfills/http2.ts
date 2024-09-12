@@ -2295,7 +2295,7 @@ function onStreamTimeout(kind) {
   };
 }
 
-class Http2ServerRequest extends Readable {
+export class Http2ServerRequest extends Readable {
   readableEnded = false;
 
   constructor(stream, headers, options, rawHeaders) {
@@ -2523,7 +2523,7 @@ function isConnectionHeaderAllowed(name, value) {
     value === "trailers";
 }
 
-class Http2ServerResponse extends Stream {
+export class Http2ServerResponse extends Stream {
   writable = false;
   req = null;
 
