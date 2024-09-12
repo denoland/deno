@@ -89,6 +89,21 @@ export function clearImmediate(immediate: Immediate) {
   clearTimeout_(immediate._immediateId);
 }
 
+export const promises = {
+  setTimeout: promisify(setTimeout),
+  setImmediate: promisify(setImmediate),
+  setInterval: promisify(setInterval),
+  scheduler: {
+    async wait(
+      delay: number,
+      options?: { signal?: AbortSignal },
+    ): Promise<void> {
+      return await setTimeout(delay, undefined, options);
+    },
+    yield: setImmediate,
+  },
+};
+
 export default {
   setTimeout,
   clearTimeout,
@@ -97,4 +112,5 @@ export default {
   setImmediate,
   setUnrefTimeout,
   clearImmediate,
+  promises,
 };
