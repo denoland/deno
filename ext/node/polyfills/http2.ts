@@ -67,7 +67,7 @@ import {
   ERR_SOCKET_CLOSED,
   ERR_STREAM_WRITE_AFTER_END,
 } from "ext:deno_node/internal/errors.ts";
-import { _checkIsHttpToken } from "ext:deno_node/_http_common.ts";
+import { _checkIsHttpToken } from "node:_http_common";
 const {
   StringPrototypeTrim,
   FunctionPrototypeBind,

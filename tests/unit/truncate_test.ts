@@ -76,13 +76,13 @@ Deno.test(
 Deno.test({ permissions: { write: false } }, function truncateSyncPerm() {
   assertThrows(() => {
     Deno.truncateSync("/test_truncateSyncPermission.txt");
-  }, Deno.errors.PermissionDenied);
+  }, Deno.errors.NotCapable);
 });
 
 Deno.test({ permissions: { write: false } }, async function truncatePerm() {
   await assertRejects(async () => {
     await Deno.truncate("/test_truncatePermission.txt");
-  }, Deno.errors.PermissionDenied);
+  }, Deno.errors.NotCapable);
 });
 
 Deno.test(

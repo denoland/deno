@@ -11,6 +11,8 @@ import { deprecate } from "node:util";
 
 import { ucs2 } from "ext:deno_node/internal/idna.ts";
 
+const version = "2.1.0";
+
 // deno-lint-ignore no-explicit-any
 function punyDeprecated(fn: any) {
   return deprecate(
@@ -37,7 +39,7 @@ function encode(domain) {
   return punyDeprecated(op_node_idna_punycode_encode)(domain);
 }
 
-export { decode, encode, toASCII, toUnicode, ucs2 };
+export { decode, encode, toASCII, toUnicode, ucs2, version };
 
 export default {
   decode,
@@ -45,4 +47,5 @@ export default {
   toASCII,
   toUnicode,
   ucs2,
+  version,
 };
