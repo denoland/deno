@@ -493,11 +493,23 @@ Object.defineProperties(
 
     // deno-lint-ignore no-explicit-any
     _send(data: any, encoding?: string | null, callback?: () => void) {
-      if (!this._headerSent && this._header !== null) {
-        this._writeHeader();
-        this._headerSent = true;
+      if (this.socket) {
+        if (!this._headerSent && this._header !== null) {
+          this._writeHeader();
+          this._headerSent = true;
+        }
+        return this._writeRaw(data, encoding, callback);
+      } else {
+        this.on("socket", (socket) => {
+          socket.on("connect", () => {
+            if (!this._headerSent && this._header !== null) {
+              this._writeHeader();
+              this._headerSent = true;
+            }
+            return this._writeRaw(data, encoding, callback);
+          });
+        });
       }
-      return this._writeRaw(data, encoding, callback);
     },
 
     _writeHeader() {

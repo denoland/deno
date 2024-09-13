@@ -386,7 +386,7 @@ class ClientRequest extends OutgoingMessage {
     }
 
     if (this.agent) {
-      console.log("use this.agent");
+      // console.log("use this.agent");
       this.agent.addRequest(this, optsWithoutSignal);
     } else {
       // No agent, default to Connection:close.
@@ -414,13 +414,14 @@ class ClientRequest extends OutgoingMessage {
         }
       } else {
         debug("CLIENT use net.createConnection", optsWithoutSignal);
-        console.log("use net.createConnection");
+        // console.log("use net.createConnection");
         this.onSocket(netCreateConnection(optsWithoutSignal));
       }
     }
   }
 
   _writeHeader() {
+    console.trace("_writeHeader");
     const url = this._createUrlStrFromOptions();
 
     const headers = [];
@@ -459,6 +460,7 @@ class ClientRequest extends OutgoingMessage {
 
     (async () => {
       try {
+        // console.log("this.socket", this.socket);
         const res = await op_node_http_request_with_conn(
           this.method,
           url,
@@ -597,6 +599,7 @@ class ClientRequest extends OutgoingMessage {
     nextTick(() => {
       this.socket = socket;
       this.emit("socket", socket);
+      console.trace("onSocket invoked", socket);
     });
   }
 
@@ -618,13 +621,19 @@ class ClientRequest extends OutgoingMessage {
     if (chunk) {
       this.write_(chunk, encoding, null, true);
     } else if (!this._headerSent) {
-      this.on("socket", (socket) => {
-        socket.on("connect", () => {
-          this._contentLength = 0;
-          this._implicitHeader();
-          this._send("", "latin1");
+      if (this.socket) {
+        this._contentLength = 0;
+        this._implicitHeader();
+        this._send("", "latin1");
+      } else {
+        this.on("socket", (socket) => {
+          socket.on("connect", () => {
+            this._contentLength = 0;
+            this._implicitHeader();
+            this._send("", "latin1");
+          });
         });
-      });
+      }
     }
     (async () => {
       try {
