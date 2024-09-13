@@ -579,6 +579,7 @@ function bootstrapMainRuntime(runtimeOptions, warmup = false) {
 
     if (mode === executionModes.serve) {
       if (serveIsMain && serveWorkerCount) {
+        // deno-lint-ignore no-global-assign
         console = new internalConsole.Console((msg, level) =>
           core.print("[serve-worker-0 ] " + msg, level > 1)
         );
@@ -587,6 +588,7 @@ function bootstrapMainRuntime(runtimeOptions, warmup = false) {
         // 15 = "serve-worker-nn".length, assuming
         // serveWorkerCount < 100
         const prefix = `[${StringPrototypePadEnd(base, 15, " ")}]`;
+        // deno-lint-ignore no-global-assign
         console = new internalConsole.Console((msg, level) =>
           core.print(`${prefix} ` + msg, level > 1)
         );
