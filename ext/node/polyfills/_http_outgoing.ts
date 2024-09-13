@@ -522,20 +522,72 @@ Object.defineProperties(
 
     // deno-lint-ignore no-explicit-any
     _send(data: any, encoding?: string | null, callback?: () => void) {
+      // if socket is ready, write the data after headers are written.
+      // if socket is not ready, buffer data in outputbuffer.
       if (this.socket) {
+        console.log("im never invoked");
         if (!this._headerSent && this._header !== null) {
           this._writeHeader();
           this._headerSent = true;
         }
-        return this._writeRaw(data, encoding, callback);
+
+        if (this._headerSent) {
+          return this._writeRaw(data, encoding, callback);
+        }
       } else {
-        console.log("pushing data to outputData");
+        if (!this._listenerSet) {
+          this._listenerSet = true;
+          this.on("socket", (socket) => {
+            console.log("socket rid:", socket._handle.rid);
+            socket.on("ready", () => {
+              if (!this._headerSent && this._header !== null) {
+                this._writeHeader();
+                this._headerSent = true;
+              }
+
+              this._flushBuffer();
+            });
+          });
+        }
         this.outputData.push({ data, encoding, callback });
       }
     },
 
     _writeHeader() {
       throw new ERR_METHOD_NOT_IMPLEMENTED("_writeHeader()");
+    },
+
+    async _flushBuffer() {
+      const outputLength = this.outputData.length;
+      if (outputLength <= 0 || !this.socket || !this._bodyWriter) {
+        return undefined;
+      }
+
+      const outputData = this.outputData;
+      let ret;
+      // Retain for(;;) loop for performance reasons
+      // Refs: https://github.com/nodejs/node/pull/30958
+      for (let i = 0; i < outputLength; i++) {
+        let { data, encoding, callback } = outputData[i];
+        if (typeof data === "string") {
+          data = Buffer.from(data, encoding);
+        }
+        if (data instanceof Buffer) {
+          data = new Uint8Array(data.buffer, data.byteOffset, data.byteLength);
+        }
+        ret = await this._bodyWriter.write(data).then(() => {
+          callback?.();
+          this.emit("drain");
+        }).catch((e) => {
+          this._requestSendError = e;
+        });
+        console.log("flushing data:", data, ret);
+      }
+
+      this.outputData = [];
+      this.outputSize = 0;
+
+      return ret;
     },
 
     _writeRaw(
