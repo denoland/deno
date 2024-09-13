@@ -2703,6 +2703,13 @@ fn repl_subcommand() -> Command {
                        <p(245)>[default: $DENO_DIR/deno_history.txt]</>"))
     )
     .arg(env_file_arg())
+    .arg(
+      Arg::new("args")
+        .num_args(0..)
+        .action(ArgAction::Append)
+        .value_name("ARGS")
+        .last(true)
+    )
 }
 
 fn run_args(command: Command, top_level: bool) -> Command {
@@ -4710,6 +4717,10 @@ fn repl_parse(
         .collect::<Result<Vec<_>, _>>()
     })
     .transpose()?;
+
+  if let Some(args) = matches.remove_many::<String>("args") {
+    flags.argv.extend(args);
+  }
 
   handle_repl_flags(
     flags,
@@ -10716,6 +10727,25 @@ mod tests {
           allow_ffi: Some(vec![]),
           ..Default::default()
         },
+        ..Flags::default()
+      }
+    );
+  }
+
+  #[test]
+  fn repl_user_args() {
+    let r = flags_from_vec(svec!["deno", "repl", "foo"]);
+    assert!(r.is_err());
+    let r = flags_from_vec(svec!["deno", "repl", "--", "foo"]);
+    assert_eq!(
+      r.unwrap(),
+      Flags {
+        subcommand: DenoSubcommand::Repl(ReplFlags {
+          eval_files: None,
+          eval: None,
+          is_default_command: false,
+        }),
+        argv: svec!["foo"],
         ..Flags::default()
       }
     );
