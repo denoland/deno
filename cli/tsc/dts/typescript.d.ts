@@ -3589,8 +3589,6 @@ declare namespace ts {
     }
     namespace deno {
         function setIsNodeSourceFileCallback(callback: IsNodeSourceFileCallback): void;
-        /** List of globals that node is not allowed to set (ex. Request). */
-        function setNodeBannedGlobalNames(names: readonly string[]): void;
         function setNodeOnlyGlobalNames(names: readonly string[]): void;
         function createDenoForkContext({ mergeSymbol, globals, nodeGlobals }: {
             mergeSymbol(target: ts.Symbol, source: ts.Symbol, unidirectional?: boolean): ts.Symbol;
