@@ -3152,6 +3152,8 @@ interface Blob {
     readonly type: string;
     /** [MDN Reference](https://developer.mozilla.org/docs/Web/API/Blob/arrayBuffer) */
     arrayBuffer(): Promise<ArrayBuffer>;
+    /** [MDN Reference](https://developer.mozilla.org/docs/Web/API/Blob/bytes) */
+    bytes(): Promise<Uint8Array>;
     /** [MDN Reference](https://developer.mozilla.org/docs/Web/API/Blob/slice) */
     slice(start?: number, end?: number, contentType?: string): Blob;
     /** [MDN Reference](https://developer.mozilla.org/docs/Web/API/Blob/stream) */
@@ -3187,6 +3189,8 @@ interface Body {
     arrayBuffer(): Promise<ArrayBuffer>;
     /** [MDN Reference](https://developer.mozilla.org/docs/Web/API/Request/blob) */
     blob(): Promise<Blob>;
+    /** [MDN Reference](https://developer.mozilla.org/docs/Web/API/Request/bytes) */
+    bytes(): Promise<Uint8Array>;
     /** [MDN Reference](https://developer.mozilla.org/docs/Web/API/Request/formData) */
     formData(): Promise<FormData>;
     /** [MDN Reference](https://developer.mozilla.org/docs/Web/API/Request/json) */
