@@ -579,13 +579,17 @@ function bootstrapMainRuntime(runtimeOptions, warmup = false) {
 
     if (mode === executionModes.serve) {
       if (serveIsMain && serveWorkerCount) {
-        console = new internalConsole.Console((msg, level) => core.print("[serve-worker-0 ] " + msg, level > 1));
+        console = new internalConsole.Console((msg, level) =>
+          core.print("[serve-worker-0 ] " + msg, level > 1)
+        );
       } else if (serveWorkerCount !== null) {
         const base = `serve-worker-${serveWorkerCount + 1}`;
         // 15 = "serve-worker-nn".length, assuming
         // serveWorkerCount < 100
         const prefix = `[${StringPrototypePadEnd(base, 15, " ")}]`;
-        console = new internalConsole.Console((msg, level) => core.print(`${prefix} ` + msg, level > 1));
+        console = new internalConsole.Console((msg, level) =>
+          core.print(`${prefix} ` + msg, level > 1)
+        );
       }
     }
 
