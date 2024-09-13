@@ -4,11 +4,14 @@ use std::borrow::Cow;
 use std::cell::RefCell;
 use std::pin::Pin;
 use std::rc::Rc;
+use std::sync::atomic::AtomicBool;
+use std::sync::Arc;
 use std::task::Context;
 use std::task::Poll;
 
 use bytes::Bytes;
 use deno_core::anyhow;
+use deno_core::anyhow::Error;
 use deno_core::error::bad_resource;
 use deno_core::error::type_error;
 use deno_core::error::AnyError;
@@ -17,6 +20,7 @@ use deno_core::futures::Future;
 use deno_core::futures::FutureExt;
 use deno_core::futures::Stream;
 use deno_core::futures::StreamExt;
+use deno_core::futures::TryFutureExt;
 use deno_core::op2;
 use deno_core::serde::Serialize;
 use deno_core::unsync::spawn;
@@ -39,8 +43,10 @@ use http::header::HeaderValue;
 use http::header::AUTHORIZATION;
 use http::header::CONTENT_LENGTH;
 use http::Method;
+use http::Response;
 use http_body_util::BodyExt;
 use hyper::body::Frame;
+use hyper::body::Incoming;
 use hyper_util::rt::TokioIo;
 use std::cmp::min;
 use tokio::io::AsyncReadExt;
@@ -60,6 +66,29 @@ pub struct NodeHttpResponse {
   pub error: Option<String>,
 }
 
+pub struct NodeHttpConnReady {
+  recv: tokio::sync::oneshot::Receiver<()>,
+}
+
+impl deno_core::Resource for NodeHttpConnReady {
+  fn name(&self) -> Cow<str> {
+    "nodeHttpConnReady".into()
+  }
+}
+
+pub struct NodeHttpClientResponse {
+  response:
+    Pin<Box<dyn Future<Output = Result<Response<Incoming>, Error>> + Send>>,
+  url: String,
+  connection_started: Arc<AtomicBool>,
+}
+
+impl deno_core::Resource for NodeHttpClientResponse {
+  fn name(&self) -> Cow<str> {
+    "nodeHttpClientResponse".into()
+  }
+}
+
 #[op2(async)]
 #[serde]
 pub async fn op_node_http_request_with_conn<P>(
@@ -69,7 +98,7 @@ pub async fn op_node_http_request_with_conn<P>(
   #[serde] headers: Vec<(ByteString, ByteString)>,
   #[smi] body: Option<ResourceId>,
   #[smi] conn_rid: ResourceId,
-) -> Result<NodeHttpResponse, AnyError>
+) -> Result<(ResourceId, ResourceId), AnyError>
 where
   P: crate::NodePermissions + 'static,
 {
@@ -85,11 +114,18 @@ where
   let io = TokioIo::new(tcp_stream);
   let (mut sender, conn) = hyper::client::conn::http1::handshake(io).await?;
 
+  let connection_started = Arc::new(AtomicBool::new(false));
+  let conn_start = connection_started.clone();
+
+  let (notify, receiver) = tokio::sync::oneshot::channel::<()>();
+
   // Spawn a task to poll the connection, driving the HTTP state
   let _handle = tokio::task::spawn(async move {
-    eprintln!("connection started");
+    eprintln!("rs: connection started");
+    conn_start.store(true, std::sync::atomic::Ordering::Relaxed);
+    let _ = notify.send(());
     conn.await?;
-    eprintln!("connection completed");
+    eprintln!("rs: connection completed");
     Ok::<_, AnyError>(())
   });
 
@@ -156,12 +192,64 @@ where
     request.headers_mut().insert(CONTENT_LENGTH, len.into());
   }
 
-  // eprintln!("rs: sending request: {request:?}");
+  eprintln!("rs: sending request: {request:?}");
   // let req_fut = sender.send_request(request);
   // let res = tokio::time::timeout(Duration::from_secs(10), req_fut).await??;
-  let res = sender.send_request(request).await?;
+  let res = sender.send_request(request).map_err(Error::from).boxed();
+  let rid = state
+    .borrow_mut()
+    .resource_table
+    .add(NodeHttpClientResponse {
+      response: res,
+      url: url.clone(),
+      connection_started,
+    });
+  let conn_rid = state
+    .borrow_mut()
+    .resource_table
+    .add(NodeHttpConnReady { recv: receiver });
+
+  Ok((rid, conn_rid))
+}
+
+#[op2(async)]
+#[serde]
+pub async fn op_node_http_wait_for_connection(
+  state: Rc<RefCell<OpState>>,
+  #[smi] rid: ResourceId,
+) -> Result<ResourceId, AnyError> {
+  let resource = state
+    .borrow_mut()
+    .resource_table
+    .take::<NodeHttpConnReady>(rid)?;
+  let resource =
+    Rc::try_unwrap(resource).map_err(|_| bad_resource("NodeHttpConnReady"))?;
+  resource.recv.await?;
+  Ok(rid)
+}
+
+#[op2(async)]
+#[serde]
+pub async fn op_node_http_await_response(
+  state: Rc<RefCell<OpState>>,
+  #[smi] rid: ResourceId,
+) -> Result<NodeHttpResponse, AnyError> {
+  let resource = state
+    .borrow_mut()
+    .resource_table
+    .take::<NodeHttpClientResponse>(rid)?;
+  let resource = Rc::try_unwrap(resource)
+    .map_err(|_| bad_resource("NodeHttpClientResponse"))?;
+
+  eprintln!(
+    "rs: awaiting response: {}",
+    resource
+      .connection_started
+      .load(std::sync::atomic::Ordering::Relaxed)
+  );
+  let res = resource.response.await?;
   // let res = tokio::time::timeout(Duration::from_secs(10), req_fut).await??;
-  // eprintln!("rs: received response");
+  eprintln!("rs: received response");
 
   let status = res.status();
   let mut res_headers = Vec::new();
@@ -196,7 +284,7 @@ where
     status: status.as_u16(),
     status_text: status.canonical_reason().unwrap_or("").to_string(),
     headers: res_headers,
-    url,
+    url: resource.url,
     response_rid,
     content_length,
     remote_addr_ip,
@@ -461,6 +549,7 @@ impl Stream for NodeHttpResourceToBodyAdapter {
         Poll::Ready(res) => match res {
           Ok(buf) if buf.is_empty() => Poll::Ready(None),
           Ok(buf) => {
+            println!("rs: reading: {len}", len = buf.len());
             this.1 = Some(this.0.clone().read(64 * 1024));
             Poll::Ready(Some(Ok(buf.to_vec().into())))
           }

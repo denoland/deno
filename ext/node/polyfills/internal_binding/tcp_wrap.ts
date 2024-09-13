@@ -376,8 +376,10 @@ export class TCP extends ConnectionWrap {
       transport: "tcp",
     };
 
+    console.log("deno.connect start");
     Deno.connect(connectOptions).then(
       (conn: Deno.Conn) => {
+        console.log("deno.connect success");
         // Incorrect / backwards, but correcting the local address and port with
         // what was actually used given we can't actually specify these in Deno.
         const localAddr = conn.localAddr as Deno.NetAddr;

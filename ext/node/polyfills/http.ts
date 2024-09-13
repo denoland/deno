@@ -5,8 +5,10 @@
 
 import { core, primordials } from "ext:core/mod.js";
 import {
+  op_node_http_await_response,
   op_node_http_fetch_response_upgrade,
   op_node_http_request_with_conn,
+  op_node_http_wait_for_connection,
 } from "ext:core/ops";
 
 import { TextEncoder } from "ext:deno_web/08_text_encoding.js";
@@ -414,14 +416,14 @@ class ClientRequest extends OutgoingMessage {
         }
       } else {
         debug("CLIENT use net.createConnection", optsWithoutSignal);
-        // console.log("use net.createConnection");
+        console.log("use net.createConnection");
         this.onSocket(netCreateConnection(optsWithoutSignal));
       }
     }
   }
 
   _writeHeader() {
-    // console.trace("_writeHeader invoked");
+    console.trace("_writeHeader invoked");
     const url = this._createUrlStrFromOptions();
 
     const headers = [];
@@ -460,15 +462,20 @@ class ClientRequest extends OutgoingMessage {
 
     (async () => {
       try {
-        // console.trace("js: sending request", this.socket.rid);
+        console.trace("js: sending request", this.socket.rid);
         // console.log("this.socket", this.socket);
-        const res = await op_node_http_request_with_conn(
+        const [rid, connRid] = await op_node_http_request_with_conn(
           this.method,
           url,
           headers,
           this._bodyWriteRid,
           this.socket.rid,
         );
+        console.log("js: request sent", { rid, connRid });
+        // Emit request ready to let the request body to be written.
+        await op_node_http_wait_for_connection(connRid);
+        this.emit("requestReady");
+        const res = await op_node_http_await_response(rid);
         console.log({ res });
         // if (this._req.cancelHandleRid !== null) {
         //   core.tryClose(this._req.cancelHandleRid);
@@ -605,7 +612,9 @@ class ClientRequest extends OutgoingMessage {
         // Note: the order is important, as the headers flush
         // sets up the request.
         this._flushHeaders();
-        this._flushBody();
+        this.on("requestReady", () => {
+          this._flushBody();
+        });
       });
       this.socket = socket;
       this.emit("socket", socket);
