@@ -48,7 +48,6 @@
       "directories": {}
     }
   },
-  "readme": "# East Asian Width\n\nGet [East Asian Width](http://www.unicode.org/reports/tr11/) from a character.\n\n'F'(Fullwidth), 'H'(Halfwidth), 'W'(Wide), 'Na'(Narrow), 'A'(Ambiguous) or 'N'(Natural).\n\nOriginal Code is [東アジアの文字幅 (East Asian Width) の判定 - 中途](http://d.hatena.ne.jp/takenspc/20111126#1322252878).\n\n## Install\n\n    $ npm install eastasianwidth\n\n## Usage\n\n    var eaw = require('eastasianwidth');\n    console.log(eaw.eastAsianWidth('￦')) // 'F'\n    console.log(eaw.eastAsianWidth('｡')) // 'H'\n    console.log(eaw.eastAsianWidth('뀀')) // 'W'\n    console.log(eaw.eastAsianWidth('a')) // 'Na'\n    console.log(eaw.eastAsianWidth('①')) // 'A'\n    console.log(eaw.eastAsianWidth('ف')) // 'N'\n\n    console.log(eaw.characterLength('￦')) // 2\n    console.log(eaw.characterLength('｡')) // 1\n    console.log(eaw.characterLength('뀀')) // 2\n    console.log(eaw.characterLength('a')) // 1\n    console.log(eaw.characterLength('①')) // 2\n    console.log(eaw.characterLength('ف')) // 1\n\n    console.log(eaw.length('あいうえお')) // 10\n    console.log(eaw.length('abcdefg')) // 7\n    console.log(eaw.length('￠￦｡ￜㄅ뀀¢⟭a⊙①بف')) // 19\n",
   "author": {
     "name": "Masaki Komagata"
   },

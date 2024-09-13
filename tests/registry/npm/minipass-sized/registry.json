@@ -80,6 +80,5 @@
     "url": "https://github.com/isaacs/minipass-sized/issues"
   },
   "license": "ISC",
-  "readme": "# minipass-sized\n\nA Minipass stream that raises an error if you get a different number of\nbytes than expected.\n\n## USAGE\n\nUse just like any old [minipass](http://npm.im/minipass) stream, but\nprovide a `size` option to the constructor.\n\nThe `size` option must be a positive integer, smaller than\n`Number.MAX_SAFE_INTEGER`.\n\n```js\nconst MinipassSized = require('minipass-sized')\n// figure out how much data you expect to get\nconst expectedSize = +headers['content-length']\nconst stream = new MinipassSized({ size: expectedSize })\nstream.on('error', er => {\n  // if it's the wrong size, then this will raise an error with\n  // { found: <number>, expect: <number>, code: 'EBADSIZE' }\n})\nresponse.pipe(stream)\n```\n\nCaveats: this does not work with `objectMode` streams, and will throw a\n`TypeError` from the constructor if the size argument is missing or\ninvalid.\n",
   "readmeFilename": "README.md"
 }

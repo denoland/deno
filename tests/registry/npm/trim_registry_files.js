@@ -14,6 +14,7 @@ for (const dirPath of getPackageDirs()) {
   const registryPath = dirPath + "/registry.json";
   const data = JSON.parse(Deno.readTextFileSync(registryPath));
   // this is to save data
+  delete data.readme;
   for (const version in data.versions) {
     if (!versions.includes(version)) {
       delete data.versions[version];

@@ -58,7 +58,6 @@
       "_hasShrinkwrap": false
     }
   },
-  "readme": "# get-stdin\n\n> Get [stdin](https://nodejs.org/api/process.html#process_process_stdin) as a string or buffer\n\n## Install\n\n```\n$ npm install get-stdin\n```\n\n## Usage\n\n```js\n// example.js\nimport getStdin from 'get-stdin';\n\nconsole.log(await getStdin());\n//=> 'unicorns'\n```\n\n```\n$ echo unicorns | node example.js\nunicorns\n```\n\n## API\n\nBoth methods returns a promise that is resolved when the `end` event fires on the `stdin` stream, indicating that there is no more data to be read.\n\n### getStdin()\n\nGet `stdin` as a `string`.\n\nIn a TTY context, a promise that resolves to an empty `string` is returned.\n\n### getStdin.buffer()\n\nGet `stdin` as a `Buffer`.\n\nIn a TTY context, a promise that resolves to an empty `Buffer` is returned.\n\n## Related\n\n- [get-stream](https://github.com/sindresorhus/get-stream) - Get a stream as a string or buffer\n\n---\n\n<div align=\"center\">\n\t<b>\n\t\t<a href=\"https://tidelift.com/subscription/pkg/npm-get-stdin?utm_source=npm-get-stdin&utm_medium=referral&utm_campaign=readme\">Get professional support for this package with a Tidelift subscription</a>\n\t</b>\n\t<br>\n\t<sub>\n\t\tTidelift helps make open source sustainable for maintainers while giving companies<br>assurances about security, maintenance, and licensing for their dependencies.\n\t</sub>\n</div>\n",
   "readmeFilename": "readme.md",
   "homepage": "https://github.com/sindresorhus/get-stdin#readme",
   "repository": {

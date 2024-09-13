@@ -56,7 +56,6 @@
       "directories": {}
     }
   },
-  "readme": "",
   "repository": {
     "type": "git",
     "url": "git+https://github.com/jestjs/jest.git",

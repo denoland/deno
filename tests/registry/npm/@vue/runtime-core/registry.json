@@ -69,6 +69,5 @@
     "url": "https://github.com/vuejs/core/issues"
   },
   "license": "MIT",
-  "readme": "# @vue/runtime-core\n\n> This package is published only for typing and building custom renderers. It is NOT meant to be used in applications.\n\nFor full exposed APIs, see `src/index.ts`. You can also run `yarn build runtime-core --types` from repo root, which will generate an API report at `temp/runtime-core.api.md`.\n\n## Building a Custom Renderer\n\n``` ts\nimport { createRenderer } from '@vue/runtime-core'\n\nconst { render, createApp } = createRenderer({\n  patchProp,\n  insert,\n  remove,\n  createElement,\n  // ...\n})\n\n// `render` is the low-level API\n// `createApp` returns an app instance with configurable context shared\n// by the entire app tree.\nexport { render, createApp }\n\nexport * from '@vue/runtime-core'\n```\n\nSee `@vue/runtime-dom` for how a DOM-targeting renderer is implemented.\n",
   "readmeFilename": "README.md"
 }

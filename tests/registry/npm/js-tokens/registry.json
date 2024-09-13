@@ -53,7 +53,6 @@
       "directories": {}
     }
   },
-  "readme": "# js-tokens\n\nThe tiny, regex powered, lenient, _almost_ spec-compliant JavaScript tokenizer that never fails.\n\n```js\nconst jsTokens = require(\"js-tokens\");\n\nconst jsString = 'JSON.stringify({k:3.14**2}, null /*replacer*/, \"\\\\t\")';\n\nArray.from(jsTokens(jsString), (token) => token.value).join(\"|\");\n// JSON|.|stringify|(|{|k|:|3.14|**|2|}|,| |null| |/*replacer*/|,| |\"\\t\"|)\n```\n\n**[➡️ Full readme](https://github.com/lydell/js-tokens/)**",
   "homepage": "https://github.com/lydell/js-tokens#readme",
   "repository": {
     "type": "git",

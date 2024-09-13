@@ -52,7 +52,6 @@
     "name": "Alexey Raspopov"
   },
   "license": "ISC",
-  "readme": "# picocolors\n\nThe tiniest and the fastest library for terminal output formatting with ANSI colors.\n\n```javascript\nimport pc from \"picocolors\"\n\nconsole.log(\n  pc.green(`How are ${pc.italic(`you`)} doing?`)\n)\n```\n\n- **No dependencies.**\n- **14 times** smaller and **2 times** faster than chalk.\n- Used by popular tools like PostCSS, SVGO, Stylelint, and Browserslist.\n- Node.js v6+ & browsers support. Support for both CJS and ESM projects.\n- TypeScript type declarations included.\n- [`NO_COLOR`](https://no-color.org/) friendly.\n\n## Docs\nRead **[full docs](https://github.com/alexeyraspopov/picocolors#readme)** on GitHub.\n",
   "readmeFilename": "README.md",
   "homepage": "https://github.com/alexeyraspopov/picocolors#readme",
   "repository": {

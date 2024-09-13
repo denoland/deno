@@ -56,7 +56,6 @@
       "_hasShrinkwrap": false
     }
   },
-  "readme": "# require-from-string [![Build Status](https://travis-ci.org/floatdrop/require-from-string.svg?branch=master)](https://travis-ci.org/floatdrop/require-from-string)\n\nLoad module from string in Node.\n\n## Install\n\n```\n$ npm install --save require-from-string\n```\n\n\n## Usage\n\n```js\nvar requireFromString = require('require-from-string');\n\nrequireFromString('module.exports = 1');\n//=> 1\n```\n\n\n## API\n\n### requireFromString(code, [filename], [options])\n\n#### code\n\n*Required*  \nType: `string`\n\nModule code.\n\n#### filename\nType: `string`  \nDefault: `''`\n\nOptional filename.\n\n\n#### options\nType: `object`\n\n##### appendPaths\nType: `Array`\n\nList of `paths`, that will be appended to module `paths`. Useful, when you want\nto be able require modules from these paths.\n\n##### prependPaths\nType: `Array`\n\nSame as `appendPaths`, but paths will be prepended.\n\n## License\n\nMIT © [Vsevolod Strukchinsky](http://github.com/floatdrop)\n",
   "homepage": "https://github.com/floatdrop/require-from-string#readme",
   "repository": {
     "type": "git",

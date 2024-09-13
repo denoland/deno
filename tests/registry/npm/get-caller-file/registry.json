@@ -63,7 +63,6 @@
       "_hasShrinkwrap": false
     }
   },
-  "readme": "# get-caller-file\n\n[![Build Status](https://travis-ci.org/stefanpenner/get-caller-file.svg?branch=master)](https://travis-ci.org/stefanpenner/get-caller-file)\n[![Build status](https://ci.appveyor.com/api/projects/status/ol2q94g1932cy14a/branch/master?svg=true)](https://ci.appveyor.com/project/embercli/get-caller-file/branch/master)\n\nThis is a utility, which allows a function to figure out from which file it was invoked. It does so by inspecting v8's stack trace at the time it is invoked.\n\nInspired by http://stackoverflow.com/questions/13227489\n\n*note: this relies on Node/V8 specific APIs, as such other runtimes may not work*\n\n## Installation\n\n```bash\nyarn add get-caller-file\n```\n\n## Usage\n\nGiven:\n\n```js\n// ./foo.js\nconst getCallerFile = require('get-caller-file');\n\nmodule.exports = function() {\n  return getCallerFile(); // figures out who called it\n};\n```\n\n```js\n// index.js\nconst foo = require('./foo');\n\nfoo() // => /full/path/to/this/file/index.js\n```\n\n\n## Options:\n\n* `getCallerFile(position = 2)`: where position is stack frame whos fileName we want.\n",
   "homepage": "https://github.com/stefanpenner/get-caller-file#readme",
   "repository": {
     "type": "git",

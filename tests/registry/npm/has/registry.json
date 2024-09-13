@@ -66,7 +66,6 @@
       "_hasShrinkwrap": false
     }
   },
-  "readme": "# has\n\n> Object.prototype.hasOwnProperty.call shortcut\n\n## Installation\n\n```sh\nnpm install --save has\n```\n\n## Usage\n\n```js\nvar has = require('has');\n\nhas({}, 'hasOwnProperty'); // false\nhas(Object.prototype, 'hasOwnProperty'); // true\n```\n",
   "author": {
     "name": "Thiago de Arruda",
     "email": "tpadilha84@gmail.com"

@@ -73,6 +73,5 @@
     "url": "https://github.com/vuejs/core/issues"
   },
   "license": "MIT",
-  "readme": "# @vue/runtime-dom\n\n``` js\nimport { h, createApp } from '@vue/runtime-dom'\n\nconst RootComponent = {\n  render() {\n    return h('div', 'hello world')\n  }\n}\n\ncreateApp(RootComponent).mount('#app')\n```\n",
   "readmeFilename": "README.md"
 }

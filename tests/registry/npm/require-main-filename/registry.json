@@ -55,7 +55,6 @@
       "_hasShrinkwrap": false
     }
   },
-  "readme": "# require-main-filename\n\n[![Build Status](https://travis-ci.org/yargs/require-main-filename.png)](https://travis-ci.org/yargs/require-main-filename)\n[![Coverage Status](https://coveralls.io/repos/yargs/require-main-filename/badge.svg?branch=master)](https://coveralls.io/r/yargs/require-main-filename?branch=master)\n[![NPM version](https://img.shields.io/npm/v/require-main-filename.svg)](https://www.npmjs.com/package/require-main-filename)\n\n`require.main.filename` is great for figuring out the entry\npoint for the current application. This can be combined with a module like\n[pkg-conf](https://www.npmjs.com/package/pkg-conf) to, _as if by magic_, load\ntop-level configuration.\n\nUnfortunately, `require.main.filename` sometimes fails when an application is\nexecuted with an alternative process manager, e.g., [iisnode](https://github.com/tjanczuk/iisnode).\n\n`require-main-filename` is a shim that addresses this problem.\n\n## Usage\n\n```js\nvar main = require('require-main-filename')()\n// use main as an alternative to require.main.filename.\n```\n\n## License\n\nISC\n",
   "homepage": "https://github.com/yargs/require-main-filename#readme",
   "repository": {
     "type": "git",

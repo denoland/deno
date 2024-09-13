@@ -70,7 +70,6 @@
     "url": "https://izs.me"
   },
   "license": "ISC",
-  "readme": "# minipass-flush\n\nA Minipass stream that calls a flush function before emitting 'end'\n\n## USAGE\n\n```js\nconst Flush = require('minipass-flush')\ncons f = new Flush({\n  flush (cb) {\n    // call the cb when done, or return a promise\n    // the 'end' event will wait for it, along with\n    // close, finish, and prefinish.\n    // call the cb with an error, or return a rejecting\n    // promise to emit 'error' instead of doing the 'end'\n    return rerouteAllEncryptions().then(() => clearAllChannels())\n  },\n  // all other minipass options accepted as well\n})\n\nsomeDataSource.pipe(f).on('end', () => {\n  // proper flushing has been accomplished\n})\n\n// Or as a subclass implementing a 'flush' method:\nclass MyFlush extends Flush {\n  flush (cb) {\n    // old fashioned callback style!\n    rerouteAllEncryptions(er => {\n      if (er)\n        return cb(er)\n      clearAllChannels(er => {\n        if (er)\n          cb(er)\n        cb()\n      })\n    })\n  }\n}\n```\n\nThat's about it.\n\nIf your `flush` method doesn't have to do anything asynchronous, then it's\nbetter to call the callback right away in this tick, rather than returning\n`Promise.resolve()`, so that the `end` event can happen as soon as\npossible.\n",
   "readmeFilename": "README.md",
   "homepage": "https://github.com/isaacs/minipass-flush#readme",
   "repository": {

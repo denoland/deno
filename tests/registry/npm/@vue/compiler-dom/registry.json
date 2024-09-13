@@ -74,6 +74,5 @@
     "url": "https://github.com/vuejs/core/issues"
   },
   "license": "MIT",
-  "readme": "# @vue/compiler-dom",
   "readmeFilename": "README.md"
 }

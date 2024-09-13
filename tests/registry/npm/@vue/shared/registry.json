@@ -64,6 +64,5 @@
     "url": "https://github.com/vuejs/core/issues"
   },
   "license": "MIT",
-  "readme": "# @vue/shared\n\nInternal utility functions and constants shared across `@vue` packages.\n",
   "readmeFilename": "README.md"
 }

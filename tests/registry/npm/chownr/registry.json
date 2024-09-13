@@ -62,7 +62,6 @@
       "_hasShrinkwrap": false
     }
   },
-  "readme": "Like `chown -R`.\n\nTakes the same arguments as `fs.chown()`\n",
   "author": {
     "name": "Isaac Z. Schlueter",
     "email": "i@izs.me",

@@ -54,7 +54,6 @@
       }
     }
   },
-  "readme": "# is-lambda\n\nReturns `true` if the current environment is an [AWS\nLambda](https://aws.amazon.com/lambda/) server.\n\n[![Build status](https://travis-ci.org/watson/is-lambda.svg?branch=master)](https://travis-ci.org/watson/is-lambda)\n[![js-standard-style](https://img.shields.io/badge/code%20style-standard-brightgreen.svg?style=flat)](https://github.com/feross/standard)\n\n## Installation\n\n```\nnpm install is-lambda\n```\n\n## Usage\n\n```js\nvar isLambda = require('is-lambda')\n\nif (isLambda) {\n  console.log('The code is running on a AWS Lambda')\n}\n```\n\n## License\n\nMIT\n",
   "homepage": "https://github.com/watson/is-lambda",
   "repository": {
     "type": "git",
