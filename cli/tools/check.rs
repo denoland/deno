@@ -84,7 +84,9 @@ impl TypeChecker {
     graph: ModuleGraph,
     options: CheckOptions,
   ) -> Result<Arc<ModuleGraph>, AnyError> {
-    let (graph, diagnostics) = self.check_diagnostics(graph, options).await?;
+    let (graph, mut diagnostics) =
+      self.check_diagnostics(graph, options).await?;
+    diagnostics.emit_warnings();
     if diagnostics.is_empty() {
       Ok(graph)
     } else {

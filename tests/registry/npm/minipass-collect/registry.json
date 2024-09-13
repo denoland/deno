@@ -1,1 +1,81 @@
-{"name":"minipass-collect","dist-tags":{"latest":"2.0.1"},"versions":{"2.0.1":{"name":"minipass-collect","version":"2.0.1","description":"A Minipass stream that collects all the data into a single chunk","author":{"name":"Isaac Z. Schlueter","email":"i@izs.me","url":"https://izs.me"},"license":"ISC","scripts":{"test":"tap","snap":"tap","preversion":"npm test","postversion":"npm publish","prepublishOnly":"git push origin --follow-tags"},"tap":{"check-coverage":true},"devDependencies":{"tap":"^16.3.8"},"dependencies":{"minipass":"^7.0.3"},"engines":{"node":">=16 || 14 >=14.17"},"repository":{"type":"git","url":"git+https://github.com/isaacs/minipass-collect.git"},"_id":"minipass-collect@2.0.1","gitHead":"a0a97f9e714fd60a3a14373c09f486309b5cc371","bugs":{"url":"https://github.com/isaacs/minipass-collect/issues"},"_nodeVersion":"18.16.0","_npmVersion":"9.8.1","dist":{"integrity":"sha512-D7V8PO9oaz7PWGLbCACuI1qEOsq7UKfLotx/C0Aet43fCUB/wfQ7DYeq2oR/svFJGYDHPr38SHATeaj/ZoKHKw==","shasum":"1621bc77e12258a12c60d34e2276ec5c20680863","tarball":"http://localhost:4260/minipass-collect/minipass-collect-2.0.1.tgz","fileCount":4,"unpackedSize":4963,"signatures":[{"keyid":"SHA256:jl3bwswu80PjjokCgh0o2w5c2U4LhQAE57gj9cz1kzA","sig":"MEUCIGHm7nziWUCc9523LXf4MAFCd60uXbf2OoL2HVQAfgfnAiEAoWPujoOaz1kdIW34UYkfRWW0c500oT2p2EStSmrRRFI="}]},"directories":{},"_hasShrinkwrap":false}},"description":"A Minipass stream that collects all the data into a single chunk","author":{"name":"Isaac Z. Schlueter","email":"i@izs.me","url":"https://izs.me"},"license":"ISC","readme":"# minipass-collect\n\nA Minipass stream that collects all the data into a single chunk\n\nNote that this buffers ALL data written to it, so it's only good for\nsituations where you are sure the entire stream fits in memory.\n\nNote: this is primarily useful for the `Collect.PassThrough` class, since\nMinipass streams already have a `.collect()` method which returns a promise\nthat resolves to the array of chunks, and a `.concat()` method that returns\nthe data concatenated into a single Buffer or String.\n\n## USAGE\n\n```js\nconst Collect = require('minipass-collect')\n\nconst collector = new Collect()\ncollector.on('data', allTheData => {\n  console.log('all the data!', allTheData)\n})\n\nsomeSourceOfData.pipe(collector)\n\n// note that you can also simply do:\nsomeSourceOfData.pipe(new Minipass()).concat().then(data => ...)\n// or even, if someSourceOfData is a Minipass:\nsomeSourceOfData.concat().then(data => ...)\n// but you might prefer to have it stream-shaped rather than\n// Promise-shaped in some scenarios.\n```\n\nIf you want to collect the data, but _also_ act as a passthrough stream,\nthen use `Collect.PassThrough` instead (for example to memoize streaming\nresponses), and listen on the `collect` event.\n\n```js\nconst Collect = require('minipass-collect')\n\nconst collector = new Collect.PassThrough()\ncollector.on('collect', allTheData => {\n  console.log('all the data!', allTheData)\n})\n\nsomeSourceOfData.pipe(collector).pipe(someOtherStream)\n```\n\nAll [minipass options](http://npm.im/minipass) are supported.\n","readmeFilename":"README.md","homepage":"https://github.com/isaacs/minipass-collect#readme","repository":{"type":"git","url":"git+https://github.com/isaacs/minipass-collect.git"},"bugs":{"url":"https://github.com/isaacs/minipass-collect/issues"}}
+{
+  "name": "minipass-collect",
+  "dist-tags": {
+    "latest": "2.0.1"
+  },
+  "versions": {
+    "2.0.1": {
+      "name": "minipass-collect",
+      "version": "2.0.1",
+      "description": "A Minipass stream that collects all the data into a single chunk",
+      "author": {
+        "name": "Isaac Z. Schlueter",
+        "email": "i@izs.me",
+        "url": "https://izs.me"
+      },
+      "license": "ISC",
+      "scripts": {
+        "test": "tap",
+        "snap": "tap",
+        "preversion": "npm test",
+        "postversion": "npm publish",
+        "prepublishOnly": "git push origin --follow-tags"
+      },
+      "tap": {
+        "check-coverage": true
+      },
+      "devDependencies": {
+        "tap": "^16.3.8"
+      },
+      "dependencies": {
+        "minipass": "^7.0.3"
+      },
+      "engines": {
+        "node": ">=16 || 14 >=14.17"
+      },
+      "repository": {
+        "type": "git",
+        "url": "git+https://github.com/isaacs/minipass-collect.git"
+      },
+      "_id": "minipass-collect@2.0.1",
+      "gitHead": "a0a97f9e714fd60a3a14373c09f486309b5cc371",
+      "bugs": {
+        "url": "https://github.com/isaacs/minipass-collect/issues"
+      },
+      "_nodeVersion": "18.16.0",
+      "_npmVersion": "9.8.1",
+      "dist": {
+        "integrity": "sha512-D7V8PO9oaz7PWGLbCACuI1qEOsq7UKfLotx/C0Aet43fCUB/wfQ7DYeq2oR/svFJGYDHPr38SHATeaj/ZoKHKw==",
+        "shasum": "1621bc77e12258a12c60d34e2276ec5c20680863",
+        "tarball": "http://localhost:4260/minipass-collect/minipass-collect-2.0.1.tgz",
+        "fileCount": 4,
+        "unpackedSize": 4963,
+        "signatures": [
+          {
+            "keyid": "SHA256:jl3bwswu80PjjokCgh0o2w5c2U4LhQAE57gj9cz1kzA",
+            "sig": "MEUCIGHm7nziWUCc9523LXf4MAFCd60uXbf2OoL2HVQAfgfnAiEAoWPujoOaz1kdIW34UYkfRWW0c500oT2p2EStSmrRRFI="
+          }
+        ]
+      },
+      "directories": {},
+      "_hasShrinkwrap": false
+    }
+  },
+  "description": "A Minipass stream that collects all the data into a single chunk",
+  "author": {
+    "name": "Isaac Z. Schlueter",
+    "email": "i@izs.me",
+    "url": "https://izs.me"
+  },
+  "license": "ISC",
+  "readme": "# minipass-collect\n\nA Minipass stream that collects all the data into a single chunk\n\nNote that this buffers ALL data written to it, so it's only good for\nsituations where you are sure the entire stream fits in memory.\n\nNote: this is primarily useful for the `Collect.PassThrough` class, since\nMinipass streams already have a `.collect()` method which returns a promise\nthat resolves to the array of chunks, and a `.concat()` method that returns\nthe data concatenated into a single Buffer or String.\n\n## USAGE\n\n```js\nconst Collect = require('minipass-collect')\n\nconst collector = new Collect()\ncollector.on('data', allTheData => {\n  console.log('all the data!', allTheData)\n})\n\nsomeSourceOfData.pipe(collector)\n\n// note that you can also simply do:\nsomeSourceOfData.pipe(new Minipass()).concat().then(data => ...)\n// or even, if someSourceOfData is a Minipass:\nsomeSourceOfData.concat().then(data => ...)\n// but you might prefer to have it stream-shaped rather than\n// Promise-shaped in some scenarios.\n```\n\nIf you want to collect the data, but _also_ act as a passthrough stream,\nthen use `Collect.PassThrough` instead (for example to memoize streaming\nresponses), and listen on the `collect` event.\n\n```js\nconst Collect = require('minipass-collect')\n\nconst collector = new Collect.PassThrough()\ncollector.on('collect', allTheData => {\n  console.log('all the data!', allTheData)\n})\n\nsomeSourceOfData.pipe(collector).pipe(someOtherStream)\n```\n\nAll [minipass options](http://npm.im/minipass) are supported.\n",
+  "readmeFilename": "README.md",
+  "homepage": "https://github.com/isaacs/minipass-collect#readme",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/isaacs/minipass-collect.git"
+  },
+  "bugs": {
+    "url": "https://github.com/isaacs/minipass-collect/issues"
+  }
+}

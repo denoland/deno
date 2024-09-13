@@ -1,1 +1,70 @@
-{"name":"js-tokens","description":"Tiny JavaScript tokenizer.","dist-tags":{"latest":"4.0.0"},"versions":{"4.0.0":{"name":"js-tokens","version":"4.0.0","author":{"name":"Simon Lydell"},"license":"MIT","description":"A regex that tokenizes JavaScript.","files":["index.js"],"repository":{"type":"git","url":"git+https://github.com/lydell/js-tokens.git"},"scripts":{"test":"mocha --ui tdd","esprima-compare":"node esprima-compare ./index.js everything.js/es5.js","build":"node generate-index.js","dev":"npm run build && npm test"},"devDependencies":{"coffeescript":"2.1.1","esprima":"4.0.0","everything.js":"1.0.3","mocha":"5.0.0"},"gitHead":"0eb6e9daee32160ab0fca979b6dc91a1991b720c","bugs":{"url":"https://github.com/lydell/js-tokens/issues"},"_id":"js-tokens@4.0.0","_npmVersion":"5.6.0","_nodeVersion":"8.9.4","dist":{"integrity":"sha512-RdJUflcE3cUzKiMqQgsCu06FPu9UdIJO0beYbPhHN4k6apgJtifcoCtT9bcxOpYBtpD2kCM6Sbzg4CausW/PKQ==","shasum":"19203fb59991df98e3a287050d4647cdeaf32499","tarball":"http://localhost:4260/js-tokens/js-tokens-4.0.0.tgz","signatures":[{"keyid":"SHA256:jl3bwswu80PjjokCgh0o2w5c2U4LhQAE57gj9cz1kzA","sig":"MEUCIHTFYsC9RMPKFuD2Ff2bRCSWNb36hIt4dZfUv4vusrrOAiEAp3qTBJDVdCmqIySFXqJpqfON89dldxEoM1XZQXYkKkg="}]},"directories":{}}},"readme":"# js-tokens\n\nThe tiny, regex powered, lenient, _almost_ spec-compliant JavaScript tokenizer that never fails.\n\n```js\nconst jsTokens = require(\"js-tokens\");\n\nconst jsString = 'JSON.stringify({k:3.14**2}, null /*replacer*/, \"\\\\t\")';\n\nArray.from(jsTokens(jsString), (token) => token.value).join(\"|\");\n// JSON|.|stringify|(|{|k|:|3.14|**|2|}|,| |null| |/*replacer*/|,| |\"\\t\"|)\n```\n\n**[➡️ Full readme](https://github.com/lydell/js-tokens/)**","homepage":"https://github.com/lydell/js-tokens#readme","repository":{"type":"git","url":"git+https://github.com/lydell/js-tokens.git"},"author":{"name":"Simon Lydell"},"bugs":{"url":"https://github.com/lydell/js-tokens/issues"},"license":"MIT","readmeFilename":"README.md"}
+{
+  "name": "js-tokens",
+  "description": "Tiny JavaScript tokenizer.",
+  "dist-tags": {
+    "latest": "4.0.0"
+  },
+  "versions": {
+    "4.0.0": {
+      "name": "js-tokens",
+      "version": "4.0.0",
+      "author": {
+        "name": "Simon Lydell"
+      },
+      "license": "MIT",
+      "description": "A regex that tokenizes JavaScript.",
+      "files": [
+        "index.js"
+      ],
+      "repository": {
+        "type": "git",
+        "url": "git+https://github.com/lydell/js-tokens.git"
+      },
+      "scripts": {
+        "test": "mocha --ui tdd",
+        "esprima-compare": "node esprima-compare ./index.js everything.js/es5.js",
+        "build": "node generate-index.js",
+        "dev": "npm run build && npm test"
+      },
+      "devDependencies": {
+        "coffeescript": "2.1.1",
+        "esprima": "4.0.0",
+        "everything.js": "1.0.3",
+        "mocha": "5.0.0"
+      },
+      "gitHead": "0eb6e9daee32160ab0fca979b6dc91a1991b720c",
+      "bugs": {
+        "url": "https://github.com/lydell/js-tokens/issues"
+      },
+      "_id": "js-tokens@4.0.0",
+      "_npmVersion": "5.6.0",
+      "_nodeVersion": "8.9.4",
+      "dist": {
+        "integrity": "sha512-RdJUflcE3cUzKiMqQgsCu06FPu9UdIJO0beYbPhHN4k6apgJtifcoCtT9bcxOpYBtpD2kCM6Sbzg4CausW/PKQ==",
+        "shasum": "19203fb59991df98e3a287050d4647cdeaf32499",
+        "tarball": "http://localhost:4260/js-tokens/js-tokens-4.0.0.tgz",
+        "signatures": [
+          {
+            "keyid": "SHA256:jl3bwswu80PjjokCgh0o2w5c2U4LhQAE57gj9cz1kzA",
+            "sig": "MEUCIHTFYsC9RMPKFuD2Ff2bRCSWNb36hIt4dZfUv4vusrrOAiEAp3qTBJDVdCmqIySFXqJpqfON89dldxEoM1XZQXYkKkg="
+          }
+        ]
+      },
+      "directories": {}
+    }
+  },
+  "readme": "# js-tokens\n\nThe tiny, regex powered, lenient, _almost_ spec-compliant JavaScript tokenizer that never fails.\n\n```js\nconst jsTokens = require(\"js-tokens\");\n\nconst jsString = 'JSON.stringify({k:3.14**2}, null /*replacer*/, \"\\\\t\")';\n\nArray.from(jsTokens(jsString), (token) => token.value).join(\"|\");\n// JSON|.|stringify|(|{|k|:|3.14|**|2|}|,| |null| |/*replacer*/|,| |\"\\t\"|)\n```\n\n**[➡️ Full readme](https://github.com/lydell/js-tokens/)**",
+  "homepage": "https://github.com/lydell/js-tokens#readme",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/lydell/js-tokens.git"
+  },
+  "author": {
+    "name": "Simon Lydell"
+  },
+  "bugs": {
+    "url": "https://github.com/lydell/js-tokens/issues"
+  },
+  "license": "MIT",
+  "readmeFilename": "README.md"
+}

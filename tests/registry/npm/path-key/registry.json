@@ -1,1 +1,75 @@
-{"name":"path-key","description":"Get the PATH environment variable key cross-platform","dist-tags":{"latest":"3.1.1"},"versions":{"3.1.1":{"name":"path-key","version":"3.1.1","description":"Get the PATH environment variable key cross-platform","license":"MIT","repository":{"type":"git","url":"git+https://github.com/sindresorhus/path-key.git"},"author":{"name":"Sindre Sorhus","email":"sindresorhus@gmail.com","url":"sindresorhus.com"},"engines":{"node":">=8"},"scripts":{"test":"xo && ava && tsd"},"devDependencies":{"@types/node":"^11.13.0","ava":"^1.4.1","tsd":"^0.7.2","xo":"^0.24.0"},"gitHead":"caea269db3a5eb0c09c793f4be5435312971d2fa","bugs":{"url":"https://github.com/sindresorhus/path-key/issues"},"_id":"path-key@3.1.1","_nodeVersion":"10.17.0","_npmVersion":"6.11.3","dist":{"integrity":"sha512-ojmeN0qd+y0jszEtoY48r0Peq5dwMEkIlCOu6Q5f41lfkswXuKtYrhgoTpLnyIcHm24Uhqx+5Tqm2InSwLhE6Q==","shasum":"581f6ade658cbba65a0d3380de7753295054f375","tarball":"http://localhost:4260/path-key/path-key-3.1.1.tgz","fileCount":5,"unpackedSize":4553,"npm-signature":"-----BEGIN PGP SIGNATURE-----\r\nVersion: OpenPGP.js v3.0.4\r\nComment: https://openpgpjs.org\r\n\r\nwsFcBAEBCAAQBQJd2BEWCRA9TVsSAnZWagAAYX0P/Rz/b6MNfPe+VoHlRz8Q\nJQlrCaHeSa+2Hj4XhEt+DWDfpDMXX5OcgAOiz6JzF4Hnsx+VGpQZsYkp7F3q\noQjcL0pQ2sA25U14C5mP06VMKGMmsDnXMX/iIc7VYyC6/JUGdtxAOs42pAJG\n9fs8fha47T2gFWsAziytzdTODop1UCtbfDTsOrO81KUzMfhmLAxVaIBHztaD\nOgdxOeINVMrqyCplRnOYHXjjd10CbqVWBmqtyIAMJj84cHitF/03ZHhpvt1P\ngzpTkH60nVm3gaMnMz+akGLapyy2I72MjZcuRx3Tkw8Qqwm7lGygoE/UCtfR\noo5MtUSgnPPLZf/BHuRGwd2L8rCxqnaLYO6su05/1WC4MmGacRni2czBybTp\niTUh30Lzhwna47u+VfWTv77kPlV3IqcSSMnKVCwF4Ea4Z+diQ8K0BCzp/N7U\nXxpN1nh1jqR8kMcQr9ybgTsQ5Xv/x/KNvMNpGnBu/VfAuy0q7XG4k0efI4NJ\nGXtl3LzeTgw94KtVeaC5V/+iBijPvO2TGCoOoONaSkGPP8UlLaabCr62O76h\nxe15coJ04Yz8cPTzyOOMkoUJrtJmG6whwI/OqIxKaNKGUzL0u0YZDTepeJD2\nYw+LxPkIJwaw5ohi7nMFh6pR4Fva28KOQvbYUMM80/R1VZDvwMBqpQCJNlV0\nYPc9\r\n=1qcn\r\n-----END PGP SIGNATURE-----\r\n","signatures":[{"keyid":"SHA256:jl3bwswu80PjjokCgh0o2w5c2U4LhQAE57gj9cz1kzA","sig":"MEQCIAwOqg8TUPAYc0BU4fVgYQw5sg3cZlPq2S90+ei63ZrEAiAsWC5WjxqdP1lbFmNySWF/BHy6UfJwkONg7eFU55uHwA=="}]},"directories":{},"_hasShrinkwrap":false}},"readme":"# path-key\n\n> Get the [PATH](https://en.wikipedia.org/wiki/PATH_(variable)) environment variable key cross-platform\n\nIt's usually `PATH` but on Windows it can be any casing like `Path`...\n\n## Install\n\n```\n$ npm install path-key\n```\n\n## Usage\n\n```js\nimport pathKey from 'path-key';\n\nconst key = pathKey();\n//=> 'PATH'\n\nconst PATH = process.env[key];\n//=> '/usr/local/bin:/usr/bin:/bin'\n```\n\n## API\n\n### pathKey(options?)\n\n#### options\n\nType: `object`\n\n##### env\n\nType: `object`\\\nDefault: [`process.env`](https://nodejs.org/api/process.html#process_process_env)\n\nUse a custom environment variables object.\n\n#### platform\n\nType: `string`\\\nDefault: [`process.platform`](https://nodejs.org/api/process.html#process_process_platform)\n\nGet the PATH key for a specific platform.\n\n---\n\n<div align=\"center\">\n\t<b>\n\t\t<a href=\"https://tidelift.com/subscription/pkg/npm-path-key?utm_source=npm-path-key&utm_medium=referral&utm_campaign=readme\">Get professional support for this package with a Tidelift subscription</a>\n\t</b>\n\t<br>\n\t<sub>\n\t\tTidelift helps make open source sustainable for maintainers while giving companies<br>assurances about security, maintenance, and licensing for their dependencies.\n\t</sub>\n</div>\n","homepage":"https://github.com/sindresorhus/path-key#readme","repository":{"type":"git","url":"git+https://github.com/sindresorhus/path-key.git"},"author":{"name":"Sindre Sorhus","email":"sindresorhus@gmail.com","url":"https://sindresorhus.com"},"bugs":{"url":"https://github.com/sindresorhus/path-key/issues"},"license":"MIT","readmeFilename":"readme.md"}
+{
+  "name": "path-key",
+  "description": "Get the PATH environment variable key cross-platform",
+  "dist-tags": {
+    "latest": "3.1.1"
+  },
+  "versions": {
+    "3.1.1": {
+      "name": "path-key",
+      "version": "3.1.1",
+      "description": "Get the PATH environment variable key cross-platform",
+      "license": "MIT",
+      "repository": {
+        "type": "git",
+        "url": "git+https://github.com/sindresorhus/path-key.git"
+      },
+      "author": {
+        "name": "Sindre Sorhus",
+        "email": "sindresorhus@gmail.com",
+        "url": "sindresorhus.com"
+      },
+      "engines": {
+        "node": ">=8"
+      },
+      "scripts": {
+        "test": "xo && ava && tsd"
+      },
+      "devDependencies": {
+        "@types/node": "^11.13.0",
+        "ava": "^1.4.1",
+        "tsd": "^0.7.2",
+        "xo": "^0.24.0"
+      },
+      "gitHead": "caea269db3a5eb0c09c793f4be5435312971d2fa",
+      "bugs": {
+        "url": "https://github.com/sindresorhus/path-key/issues"
+      },
+      "_id": "path-key@3.1.1",
+      "_nodeVersion": "10.17.0",
+      "_npmVersion": "6.11.3",
+      "dist": {
+        "integrity": "sha512-ojmeN0qd+y0jszEtoY48r0Peq5dwMEkIlCOu6Q5f41lfkswXuKtYrhgoTpLnyIcHm24Uhqx+5Tqm2InSwLhE6Q==",
+        "shasum": "581f6ade658cbba65a0d3380de7753295054f375",
+        "tarball": "http://localhost:4260/path-key/path-key-3.1.1.tgz",
+        "fileCount": 5,
+        "unpackedSize": 4553,
+        "npm-signature": "-----BEGIN PGP SIGNATURE-----\r\nVersion: OpenPGP.js v3.0.4\r\nComment: https://openpgpjs.org\r\n\r\nwsFcBAEBCAAQBQJd2BEWCRA9TVsSAnZWagAAYX0P/Rz/b6MNfPe+VoHlRz8Q\nJQlrCaHeSa+2Hj4XhEt+DWDfpDMXX5OcgAOiz6JzF4Hnsx+VGpQZsYkp7F3q\noQjcL0pQ2sA25U14C5mP06VMKGMmsDnXMX/iIc7VYyC6/JUGdtxAOs42pAJG\n9fs8fha47T2gFWsAziytzdTODop1UCtbfDTsOrO81KUzMfhmLAxVaIBHztaD\nOgdxOeINVMrqyCplRnOYHXjjd10CbqVWBmqtyIAMJj84cHitF/03ZHhpvt1P\ngzpTkH60nVm3gaMnMz+akGLapyy2I72MjZcuRx3Tkw8Qqwm7lGygoE/UCtfR\noo5MtUSgnPPLZf/BHuRGwd2L8rCxqnaLYO6su05/1WC4MmGacRni2czBybTp\niTUh30Lzhwna47u+VfWTv77kPlV3IqcSSMnKVCwF4Ea4Z+diQ8K0BCzp/N7U\nXxpN1nh1jqR8kMcQr9ybgTsQ5Xv/x/KNvMNpGnBu/VfAuy0q7XG4k0efI4NJ\nGXtl3LzeTgw94KtVeaC5V/+iBijPvO2TGCoOoONaSkGPP8UlLaabCr62O76h\nxe15coJ04Yz8cPTzyOOMkoUJrtJmG6whwI/OqIxKaNKGUzL0u0YZDTepeJD2\nYw+LxPkIJwaw5ohi7nMFh6pR4Fva28KOQvbYUMM80/R1VZDvwMBqpQCJNlV0\nYPc9\r\n=1qcn\r\n-----END PGP SIGNATURE-----\r\n",
+        "signatures": [
+          {
+            "keyid": "SHA256:jl3bwswu80PjjokCgh0o2w5c2U4LhQAE57gj9cz1kzA",
+            "sig": "MEQCIAwOqg8TUPAYc0BU4fVgYQw5sg3cZlPq2S90+ei63ZrEAiAsWC5WjxqdP1lbFmNySWF/BHy6UfJwkONg7eFU55uHwA=="
+          }
+        ]
+      },
+      "directories": {},
+      "_hasShrinkwrap": false
+    }
+  },
+  "readme": "# path-key\n\n> Get the [PATH](https://en.wikipedia.org/wiki/PATH_(variable)) environment variable key cross-platform\n\nIt's usually `PATH` but on Windows it can be any casing like `Path`...\n\n## Install\n\n```\n$ npm install path-key\n```\n\n## Usage\n\n```js\nimport pathKey from 'path-key';\n\nconst key = pathKey();\n//=> 'PATH'\n\nconst PATH = process.env[key];\n//=> '/usr/local/bin:/usr/bin:/bin'\n```\n\n## API\n\n### pathKey(options?)\n\n#### options\n\nType: `object`\n\n##### env\n\nType: `object`\\\nDefault: [`process.env`](https://nodejs.org/api/process.html#process_process_env)\n\nUse a custom environment variables object.\n\n#### platform\n\nType: `string`\\\nDefault: [`process.platform`](https://nodejs.org/api/process.html#process_process_platform)\n\nGet the PATH key for a specific platform.\n\n---\n\n<div align=\"center\">\n\t<b>\n\t\t<a href=\"https://tidelift.com/subscription/pkg/npm-path-key?utm_source=npm-path-key&utm_medium=referral&utm_campaign=readme\">Get professional support for this package with a Tidelift subscription</a>\n\t</b>\n\t<br>\n\t<sub>\n\t\tTidelift helps make open source sustainable for maintainers while giving companies<br>assurances about security, maintenance, and licensing for their dependencies.\n\t</sub>\n</div>\n",
+  "homepage": "https://github.com/sindresorhus/path-key#readme",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/sindresorhus/path-key.git"
+  },
+  "author": {
+    "name": "Sindre Sorhus",
+    "email": "sindresorhus@gmail.com",
+    "url": "https://sindresorhus.com"
+  },
+  "bugs": {
+    "url": "https://github.com/sindresorhus/path-key/issues"
+  },
+  "license": "MIT",
+  "readmeFilename": "readme.md"
+}

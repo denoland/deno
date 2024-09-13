@@ -1,1 +1,64 @@
-{"name":"scheduler","description":"Cooperative scheduler for the browser environment.","dist-tags":{"latest":"0.23.0"},"versions":{"0.23.0":{"name":"scheduler","version":"0.23.0","description":"Cooperative scheduler for the browser environment.","main":"index.js","repository":{"type":"git","url":"git+https://github.com/facebook/react.git","directory":"packages/scheduler"},"license":"MIT","bugs":{"url":"https://github.com/facebook/react/issues"},"dependencies":{"loose-envify":"^1.1.0"},"browserify":{"transform":["loose-envify"]},"gitHead":"be229c5655074642ee664f532f2e7411dd7dccc7","_id":"scheduler@0.23.0","_nodeVersion":"17.1.0","_npmVersion":"8.1.2","dist":{"integrity":"sha512-CtuThmgHNg7zIZWAXi3AsyIzA3n4xx7aNyjwC2VJldO2LMVDhFK+63xGqq6CsJH4rTAt6/M+N4GhZiDYPx9eUw==","shasum":"ba8041afc3d30eb206a487b6b384002e4e61fdfe","tarball":"http://localhost:4260/scheduler/scheduler-0.23.0.tgz","fileCount":17,"unpackedSize":93383,"signatures":[{"keyid":"SHA256:jl3bwswu80PjjokCgh0o2w5c2U4LhQAE57gj9cz1kzA","sig":"MEUCIQCuUFLmRELHjjJvlsHNO7vuJtfOnhT+JnfqmTvwgRYftQIgZhnDzvxglekFIKzPn4lRQixz0fepynlXuH6vCxOF1L0="}],"npm-signature":"-----BEGIN PGP SIGNATURE-----\r\nVersion: OpenPGP.js v4.10.10\r\nComment: https://openpgpjs.org\r\n\r\nwsFzBAEBCAAGBQJiqOXIACEJED1NWxICdlZqFiEECWMYAoorWMhJKdjhPU1b\r\nEgJ2VmpaAg//dMv58QLF2xbMA0hoBS4oT1Fd72lHkEiVvrJzl1VA73WAqDxC\r\nqQZ6SfdB7Bq/rJ8LhU3Tgn6HsFjhlCR5JYKkgjHjs5Gt5kBMEMXPgJ53lIe0\r\nYuO1ZNBWHlu9ZA3T/FYNCpsopmEEINKDCF/ZCizSGXJhid78VXVdZV77ZA1R\r\nPYct63PlVlNVM1HiaOqVyQHKMTHITgi6q0WK+fALKOVXJ0W2j0LoxY3oiS/9\r\nv7mKJpWPbWurhIj4BRnJWDHovEUERFXUFpCx2b3JqGX9/e3nDO2iEu11eI3c\r\nLQqWof4tV6a+eMUH6X/S/rkgvW9FC6Wm5RxoMwFhkCiGJkwqgAK1zWFW1thR\r\nWF1fgMuZZ0lVSRazn8qxRntqoXGBQS/9+DCuhm6n+z2Mp1dLedW5Pwdxqvn4\r\nRCIWkaLtoKwwVc2Qci24qtC1LGkTkpqL/GNfPoV84wKFxbLOAwVQMV+RKf6Y\r\n3k7tmWqFWQWYKFfsdLiqvHWynwi6pPYIQkIpFTDl2+/iJT3Io0Ex6VqasYyL\r\nZUSVN6VskqrHDPO657VD1VIWAQrmVk0MR4NH7ArGLTM3TRQGspwIZ1m+sHwC\r\nZ4nAB09Y1lUSHs+w12Re7FeumFgClavUWTqe69219mzgisiyFa49bOJ3xv6+\r\n43ViKo63xOsKDX1iHqxU2Q5n/XY8dCPul9E=\r\n=q8ie\r\n-----END PGP SIGNATURE-----\r\n"},"directories":{},"_hasShrinkwrap":false}},"repository":{"type":"git","url":"git+https://github.com/facebook/react.git","directory":"packages/scheduler"},"homepage":"https://reactjs.org/","bugs":{"url":"https://github.com/facebook/react/issues"},"license":"MIT","readme":"","readmeFilename":""}
+{
+  "name": "scheduler",
+  "description": "Cooperative scheduler for the browser environment.",
+  "dist-tags": {
+    "latest": "0.23.0"
+  },
+  "versions": {
+    "0.23.0": {
+      "name": "scheduler",
+      "version": "0.23.0",
+      "description": "Cooperative scheduler for the browser environment.",
+      "main": "index.js",
+      "repository": {
+        "type": "git",
+        "url": "git+https://github.com/facebook/react.git",
+        "directory": "packages/scheduler"
+      },
+      "license": "MIT",
+      "bugs": {
+        "url": "https://github.com/facebook/react/issues"
+      },
+      "dependencies": {
+        "loose-envify": "^1.1.0"
+      },
+      "browserify": {
+        "transform": [
+          "loose-envify"
+        ]
+      },
+      "gitHead": "be229c5655074642ee664f532f2e7411dd7dccc7",
+      "_id": "scheduler@0.23.0",
+      "_nodeVersion": "17.1.0",
+      "_npmVersion": "8.1.2",
+      "dist": {
+        "integrity": "sha512-CtuThmgHNg7zIZWAXi3AsyIzA3n4xx7aNyjwC2VJldO2LMVDhFK+63xGqq6CsJH4rTAt6/M+N4GhZiDYPx9eUw==",
+        "shasum": "ba8041afc3d30eb206a487b6b384002e4e61fdfe",
+        "tarball": "http://localhost:4260/scheduler/scheduler-0.23.0.tgz",
+        "fileCount": 17,
+        "unpackedSize": 93383,
+        "signatures": [
+          {
+            "keyid": "SHA256:jl3bwswu80PjjokCgh0o2w5c2U4LhQAE57gj9cz1kzA",
+            "sig": "MEUCIQCuUFLmRELHjjJvlsHNO7vuJtfOnhT+JnfqmTvwgRYftQIgZhnDzvxglekFIKzPn4lRQixz0fepynlXuH6vCxOF1L0="
+          }
+        ],
+        "npm-signature": "-----BEGIN PGP SIGNATURE-----\r\nVersion: OpenPGP.js v4.10.10\r\nComment: https://openpgpjs.org\r\n\r\nwsFzBAEBCAAGBQJiqOXIACEJED1NWxICdlZqFiEECWMYAoorWMhJKdjhPU1b\r\nEgJ2VmpaAg//dMv58QLF2xbMA0hoBS4oT1Fd72lHkEiVvrJzl1VA73WAqDxC\r\nqQZ6SfdB7Bq/rJ8LhU3Tgn6HsFjhlCR5JYKkgjHjs5Gt5kBMEMXPgJ53lIe0\r\nYuO1ZNBWHlu9ZA3T/FYNCpsopmEEINKDCF/ZCizSGXJhid78VXVdZV77ZA1R\r\nPYct63PlVlNVM1HiaOqVyQHKMTHITgi6q0WK+fALKOVXJ0W2j0LoxY3oiS/9\r\nv7mKJpWPbWurhIj4BRnJWDHovEUERFXUFpCx2b3JqGX9/e3nDO2iEu11eI3c\r\nLQqWof4tV6a+eMUH6X/S/rkgvW9FC6Wm5RxoMwFhkCiGJkwqgAK1zWFW1thR\r\nWF1fgMuZZ0lVSRazn8qxRntqoXGBQS/9+DCuhm6n+z2Mp1dLedW5Pwdxqvn4\r\nRCIWkaLtoKwwVc2Qci24qtC1LGkTkpqL/GNfPoV84wKFxbLOAwVQMV+RKf6Y\r\n3k7tmWqFWQWYKFfsdLiqvHWynwi6pPYIQkIpFTDl2+/iJT3Io0Ex6VqasYyL\r\nZUSVN6VskqrHDPO657VD1VIWAQrmVk0MR4NH7ArGLTM3TRQGspwIZ1m+sHwC\r\nZ4nAB09Y1lUSHs+w12Re7FeumFgClavUWTqe69219mzgisiyFa49bOJ3xv6+\r\n43ViKo63xOsKDX1iHqxU2Q5n/XY8dCPul9E=\r\n=q8ie\r\n-----END PGP SIGNATURE-----\r\n"
+      },
+      "directories": {},
+      "_hasShrinkwrap": false
+    }
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/facebook/react.git",
+    "directory": "packages/scheduler"
+  },
+  "homepage": "https://reactjs.org/",
+  "bugs": {
+    "url": "https://github.com/facebook/react/issues"
+  },
+  "license": "MIT",
+  "readme": "",
+  "readmeFilename": ""
+}

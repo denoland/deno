@@ -1,1 +1,35 @@
-{"name":"electron-to-chromium","dist-tags":{"latest":"1.4.348"},"versions":{"1.4.348":{"name":"electron-to-chromium","version":"1.4.348","devDependencies":{"ava":"^5.1.1","codecov":"^3.8.2","compare-versions":"^6.0.0-rc.1","node-fetch":"^3.3.0","nyc":"^15.1.0","shelljs":"^0.8.5"},"dist":{"integrity":"sha512-gM7TdwuG3amns/1rlgxMbeeyNoBFPa+4Uu0c7FeROWh4qWmvSOnvcslKmWy51ggLKZ2n/F/4i2HJ+PVNxH9uCQ==","shasum":"f49379dc212d79f39112dd026f53e371279e433d","tarball":"http://localhost:4260/electron-to-chromium/electron-to-chromium-1.4.348.tgz","fileCount":13,"unpackedSize":220360,"signatures":[{"keyid":"SHA256:jl3bwswu80PjjokCgh0o2w5c2U4LhQAE57gj9cz1kzA","sig":"MEYCIQCtvgYU0V5ouubVjwFi7ZDbnEBFHYth5G1cL9WKEqROXAIhAJtURudPmp9RdxlQ2Jzky5HTTgAOzHKxKR+8/1Czx2eA"}],"npm-signature":"-----BEGIN PGP SIGNATURE-----\r\nVersion: OpenPGP.js v4.10.10\r\nComment: https://openpgpjs.org\r\n\r\nwsFzBAEBCAAGBQJkJyAuACEJED1NWxICdlZqFiEECWMYAoorWMhJKdjhPU1b\r\nEgJ2VmrH/A/+OuAxaWO3izkzoueEpJeBFnu0wQPztTMNwZBNlaCWOmB/WRhl\r\n4EIHw9C39sUI3w1xUGzeJbnREwT5qE6JccM53W2KXzEt2lZiBUK8UtDg/ktb\r\nrz58aHFlWICWp/PUjL1xL2nhQ0CEye7Xd8yw/l78t77pgsrPk1Eo+8GBdvDM\r\nAMFtTSKxe8BnJn6I/n5qXq0GiZvGF/M9fotReuwXsGZ0L2Tdg9MmBYuk/BaA\r\nOgCn8ZeA6NJVZ7srbUBurpWS5MMvbbBQqnAmfBo2S9cVMLoMwnlllI5BOqsu\r\n+W3V6H2rqIuTWRt8n7smvjuxOlvIyZVU+dFSfAuV4YvZ34wNJ9j4tsm2bdPJ\r\nzEuznk6mj/mGUSGGdSE+z3Z/kYhKQnRmw4Mlj2l7mLfLnq7Lc9FEihiisrBC\r\ng1RRywDI6ilt8bJgN55EzQVazmKp2KMi8buChWewRRrx2tPYf7swICvD4IwH\r\nOoWkvmLq0ENVS7fQDygfridS/G3u8OCdmbGlWdQd2dCVptghOEFjRjy7kzCK\r\nt/QhnBI9oAXwX2kuIZ7ui2WvIaRw6gntsifC/t5XScl3fIlW5GDGN+Gaujv9\r\nKSifhD7oxKE6BkSCaVWl+LlAgbO+lVvAH5CP2UUra0bUfwTDNV2ifxkn0kJ3\r\nPlyuFGIMsFY4dS5UXa+a5w1wAvxAspuaJwA=\r\n=Fkx0\r\n-----END PGP SIGNATURE-----\r\n"}}},"modified":"2023-03-31T18:02:22.694Z"}
+{
+  "name": "electron-to-chromium",
+  "dist-tags": {
+    "latest": "1.4.348"
+  },
+  "versions": {
+    "1.4.348": {
+      "name": "electron-to-chromium",
+      "version": "1.4.348",
+      "devDependencies": {
+        "ava": "^5.1.1",
+        "codecov": "^3.8.2",
+        "compare-versions": "^6.0.0-rc.1",
+        "node-fetch": "^3.3.0",
+        "nyc": "^15.1.0",
+        "shelljs": "^0.8.5"
+      },
+      "dist": {
+        "integrity": "sha512-gM7TdwuG3amns/1rlgxMbeeyNoBFPa+4Uu0c7FeROWh4qWmvSOnvcslKmWy51ggLKZ2n/F/4i2HJ+PVNxH9uCQ==",
+        "shasum": "f49379dc212d79f39112dd026f53e371279e433d",
+        "tarball": "http://localhost:4260/electron-to-chromium/electron-to-chromium-1.4.348.tgz",
+        "fileCount": 13,
+        "unpackedSize": 220360,
+        "signatures": [
+          {
+            "keyid": "SHA256:jl3bwswu80PjjokCgh0o2w5c2U4LhQAE57gj9cz1kzA",
+            "sig": "MEYCIQCtvgYU0V5ouubVjwFi7ZDbnEBFHYth5G1cL9WKEqROXAIhAJtURudPmp9RdxlQ2Jzky5HTTgAOzHKxKR+8/1Czx2eA"
+          }
+        ],
+        "npm-signature": "-----BEGIN PGP SIGNATURE-----\r\nVersion: OpenPGP.js v4.10.10\r\nComment: https://openpgpjs.org\r\n\r\nwsFzBAEBCAAGBQJkJyAuACEJED1NWxICdlZqFiEECWMYAoorWMhJKdjhPU1b\r\nEgJ2VmrH/A/+OuAxaWO3izkzoueEpJeBFnu0wQPztTMNwZBNlaCWOmB/WRhl\r\n4EIHw9C39sUI3w1xUGzeJbnREwT5qE6JccM53W2KXzEt2lZiBUK8UtDg/ktb\r\nrz58aHFlWICWp/PUjL1xL2nhQ0CEye7Xd8yw/l78t77pgsrPk1Eo+8GBdvDM\r\nAMFtTSKxe8BnJn6I/n5qXq0GiZvGF/M9fotReuwXsGZ0L2Tdg9MmBYuk/BaA\r\nOgCn8ZeA6NJVZ7srbUBurpWS5MMvbbBQqnAmfBo2S9cVMLoMwnlllI5BOqsu\r\n+W3V6H2rqIuTWRt8n7smvjuxOlvIyZVU+dFSfAuV4YvZ34wNJ9j4tsm2bdPJ\r\nzEuznk6mj/mGUSGGdSE+z3Z/kYhKQnRmw4Mlj2l7mLfLnq7Lc9FEihiisrBC\r\ng1RRywDI6ilt8bJgN55EzQVazmKp2KMi8buChWewRRrx2tPYf7swICvD4IwH\r\nOoWkvmLq0ENVS7fQDygfridS/G3u8OCdmbGlWdQd2dCVptghOEFjRjy7kzCK\r\nt/QhnBI9oAXwX2kuIZ7ui2WvIaRw6gntsifC/t5XScl3fIlW5GDGN+Gaujv9\r\nKSifhD7oxKE6BkSCaVWl+LlAgbO+lVvAH5CP2UUra0bUfwTDNV2ifxkn0kJ3\r\nPlyuFGIMsFY4dS5UXa+a5w1wAvxAspuaJwA=\r\n=Fkx0\r\n-----END PGP SIGNATURE-----\r\n"
+      }
+    }
+  },
+  "modified": "2023-03-31T18:02:22.694Z"
+}

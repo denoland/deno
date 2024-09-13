@@ -1,1 +1,71 @@
-{"name":"fsevents","description":"Native Access to MacOS FSEvents","dist-tags":{"latest":"2.3.3"},"versions":{"2.3.3":{"name":"fsevents","version":"2.3.3","description":"Native Access to MacOS FSEvents","main":"fsevents.js","types":"fsevents.d.ts","os":["darwin"],"engines":{"node":"^8.16.0 || ^10.6.0 || >=11.0.0"},"scripts":{"clean":"node-gyp clean && rm -f fsevents.node","build":"node-gyp clean && rm -f fsevents.node && node-gyp rebuild && node-gyp clean","test":"/bin/bash ./test.sh 2>/dev/null","prepublishOnly":"npm run build","install":"node-gyp rebuild"},"repository":{"type":"git","url":"git+https://github.com/fsevents/fsevents.git"},"license":"MIT","bugs":{"url":"https://github.com/fsevents/fsevents/issues"},"devDependencies":{"node-gyp":"^9.4.0"},"gypfile":true,"gitHead":"2db891e51aa0f2975c5eaaf6aa30f13d720a830a","_id":"fsevents@2.3.3","_nodeVersion":"18.17.1","_npmVersion":"9.6.7","dist":{"integrity":"sha512-5xoDfX+fL7faATnagmWPpbFtwh/R77WmMMqqHGS65C3vvB0YHrgF+B1YmZ3441tMj5n63k0212XNoJwzlhffQw==","shasum":"cac6407785d03675a2a5e1a5305c697b347d90d6","tarball":"http://localhost:4260/fsevents/fsevents-2.3.3.tgz","fileCount":6,"unpackedSize":173224,"signatures":[{"keyid":"SHA256:jl3bwswu80PjjokCgh0o2w5c2U4LhQAE57gj9cz1kzA","sig":"MEUCIBqKmzRJwFJcSLXc/SdNTdFsUQvsS/tX+pFHr2JkniDbAiEAiTjoxV3W2IK2g8Udbes/ZP46+TtL40PX3IX/bxosfWs="}]},"directories":{},"_hasShrinkwrap":false}},"readme":"# fsevents\n\nNative access to MacOS FSEvents in [Node.js](https://nodejs.org/)\n\nThe FSEvents API in MacOS allows applications to register for notifications of\nchanges to a given directory tree. It is a very fast and lightweight alternative\nto kqueue.\n\nThis is a low-level library. For a cross-platform file watching module that\nuses fsevents, check out [Chokidar](https://github.com/paulmillr/chokidar).\n\n## Usage\n\n```sh\nnpm install fsevents\n```\n\nSupports only **Node.js v8.16 and higher**.\n\n```js\nconst fsevents = require('fsevents');\n\n// To start observation\nconst stop = fsevents.watch(__dirname, (path, flags, id) => {\n  const info = fsevents.getInfo(path, flags);\n});\n\n// To end observation\nstop();\n```\n\n> **Important note:** The API behaviour is slightly different from typical JS APIs. The `stop` function **must** be\n> retrieved and stored somewhere, even if you don't plan to stop the watcher. If you forget it, the garbage collector\n> will eventually kick in, the watcher will be unregistered, and your callbacks won't be called anymore.\n\nThe callback passed as the second parameter to `.watch` get's called whenever the operating system detects a\na change in the file system. It takes three arguments:\n\n###### `fsevents.watch(dirname: string, (path: string, flags: number, id: string) => void): () => Promise<undefined>`\n\n * `path: string` - the item in the filesystem that have been changed\n * `flags: number` - a numeric value describing what the change was\n * `id: string` - an unique-id identifying this specific event\n\n Returns closer callback which when called returns a Promise resolving when the watcher process has been shut down.\n\n###### `fsevents.getInfo(path: string, flags: number, id: string): FsEventInfo`\n\nThe `getInfo` function takes the `path`, `flags` and `id` arguments and converts those parameters into a structure\nthat is easier to digest to determine what the change was.\n\nThe `FsEventsInfo` has the following shape:\n\n```js\n/**\n * @typedef {'created'|'modified'|'deleted'|'moved'|'root-changed'|'cloned'|'unknown'} FsEventsEvent\n * @typedef {'file'|'directory'|'symlink'} FsEventsType\n */\n{\n  \"event\": \"created\", // {FsEventsEvent}\n  \"path\": \"file.txt\",\n  \"type\": \"file\",    // {FsEventsType}\n  \"changes\": {\n    \"inode\": true,   // Had iNode Meta-Information changed\n    \"finder\": false, // Had Finder Meta-Data changed\n    \"access\": false, // Had access permissions changed\n    \"xattrs\": false  // Had xAttributes changed\n  },\n  \"flags\": 0x100000000\n}\n```\n\n## Changelog\n\n- v2.3 supports Apple Silicon ARM CPUs\n- v2 supports node 8.16+ and reduces package size massively\n- v1.2.8 supports node 6+\n- v1.2.7 supports node 4+\n\n## Troubleshooting\n\n- I'm getting `EBADPLATFORM` `Unsupported platform for fsevents` error.\n- It's fine, nothing is broken. fsevents is macos-only. Other platforms are skipped. If you want to hide this warning, report a bug to NPM bugtracker asking them to hide ebadplatform warnings by default.\n\n## License\n\nThe MIT License Copyright (C) 2010-2020 by Philipp Dunkel, Ben Noordhuis, Elan Shankar, Paul Miller — see LICENSE file.\n\nVisit our [GitHub page](https://github.com/fsevents/fsevents) and [NPM Page](https://npmjs.org/package/fsevents)\n","repository":{"type":"git","url":"git+https://github.com/fsevents/fsevents.git"},"readmeFilename":"README.md","homepage":"https://github.com/fsevents/fsevents","bugs":{"url":"https://github.com/fsevents/fsevents/issues"},"license":"MIT"}
+{
+  "name": "fsevents",
+  "description": "Native Access to MacOS FSEvents",
+  "dist-tags": {
+    "latest": "2.3.3"
+  },
+  "versions": {
+    "2.3.3": {
+      "name": "fsevents",
+      "version": "2.3.3",
+      "description": "Native Access to MacOS FSEvents",
+      "main": "fsevents.js",
+      "types": "fsevents.d.ts",
+      "os": [
+        "darwin"
+      ],
+      "engines": {
+        "node": "^8.16.0 || ^10.6.0 || >=11.0.0"
+      },
+      "scripts": {
+        "clean": "node-gyp clean && rm -f fsevents.node",
+        "build": "node-gyp clean && rm -f fsevents.node && node-gyp rebuild && node-gyp clean",
+        "test": "/bin/bash ./test.sh 2>/dev/null",
+        "prepublishOnly": "npm run build",
+        "install": "node-gyp rebuild"
+      },
+      "repository": {
+        "type": "git",
+        "url": "git+https://github.com/fsevents/fsevents.git"
+      },
+      "license": "MIT",
+      "bugs": {
+        "url": "https://github.com/fsevents/fsevents/issues"
+      },
+      "devDependencies": {
+        "node-gyp": "^9.4.0"
+      },
+      "gypfile": true,
+      "gitHead": "2db891e51aa0f2975c5eaaf6aa30f13d720a830a",
+      "_id": "fsevents@2.3.3",
+      "_nodeVersion": "18.17.1",
+      "_npmVersion": "9.6.7",
+      "dist": {
+        "integrity": "sha512-5xoDfX+fL7faATnagmWPpbFtwh/R77WmMMqqHGS65C3vvB0YHrgF+B1YmZ3441tMj5n63k0212XNoJwzlhffQw==",
+        "shasum": "cac6407785d03675a2a5e1a5305c697b347d90d6",
+        "tarball": "http://localhost:4260/fsevents/fsevents-2.3.3.tgz",
+        "fileCount": 6,
+        "unpackedSize": 173224,
+        "signatures": [
+          {
+            "keyid": "SHA256:jl3bwswu80PjjokCgh0o2w5c2U4LhQAE57gj9cz1kzA",
+            "sig": "MEUCIBqKmzRJwFJcSLXc/SdNTdFsUQvsS/tX+pFHr2JkniDbAiEAiTjoxV3W2IK2g8Udbes/ZP46+TtL40PX3IX/bxosfWs="
+          }
+        ]
+      },
+      "directories": {},
+      "_hasShrinkwrap": false
+    }
+  },
+  "readme": "# fsevents\n\nNative access to MacOS FSEvents in [Node.js](https://nodejs.org/)\n\nThe FSEvents API in MacOS allows applications to register for notifications of\nchanges to a given directory tree. It is a very fast and lightweight alternative\nto kqueue.\n\nThis is a low-level library. For a cross-platform file watching module that\nuses fsevents, check out [Chokidar](https://github.com/paulmillr/chokidar).\n\n## Usage\n\n```sh\nnpm install fsevents\n```\n\nSupports only **Node.js v8.16 and higher**.\n\n```js\nconst fsevents = require('fsevents');\n\n// To start observation\nconst stop = fsevents.watch(__dirname, (path, flags, id) => {\n  const info = fsevents.getInfo(path, flags);\n});\n\n// To end observation\nstop();\n```\n\n> **Important note:** The API behaviour is slightly different from typical JS APIs. The `stop` function **must** be\n> retrieved and stored somewhere, even if you don't plan to stop the watcher. If you forget it, the garbage collector\n> will eventually kick in, the watcher will be unregistered, and your callbacks won't be called anymore.\n\nThe callback passed as the second parameter to `.watch` get's called whenever the operating system detects a\na change in the file system. It takes three arguments:\n\n###### `fsevents.watch(dirname: string, (path: string, flags: number, id: string) => void): () => Promise<undefined>`\n\n * `path: string` - the item in the filesystem that have been changed\n * `flags: number` - a numeric value describing what the change was\n * `id: string` - an unique-id identifying this specific event\n\n Returns closer callback which when called returns a Promise resolving when the watcher process has been shut down.\n\n###### `fsevents.getInfo(path: string, flags: number, id: string): FsEventInfo`\n\nThe `getInfo` function takes the `path`, `flags` and `id` arguments and converts those parameters into a structure\nthat is easier to digest to determine what the change was.\n\nThe `FsEventsInfo` has the following shape:\n\n```js\n/**\n * @typedef {'created'|'modified'|'deleted'|'moved'|'root-changed'|'cloned'|'unknown'} FsEventsEvent\n * @typedef {'file'|'directory'|'symlink'} FsEventsType\n */\n{\n  \"event\": \"created\", // {FsEventsEvent}\n  \"path\": \"file.txt\",\n  \"type\": \"file\",    // {FsEventsType}\n  \"changes\": {\n    \"inode\": true,   // Had iNode Meta-Information changed\n    \"finder\": false, // Had Finder Meta-Data changed\n    \"access\": false, // Had access permissions changed\n    \"xattrs\": false  // Had xAttributes changed\n  },\n  \"flags\": 0x100000000\n}\n```\n\n## Changelog\n\n- v2.3 supports Apple Silicon ARM CPUs\n- v2 supports node 8.16+ and reduces package size massively\n- v1.2.8 supports node 6+\n- v1.2.7 supports node 4+\n\n## Troubleshooting\n\n- I'm getting `EBADPLATFORM` `Unsupported platform for fsevents` error.\n- It's fine, nothing is broken. fsevents is macos-only. Other platforms are skipped. If you want to hide this warning, report a bug to NPM bugtracker asking them to hide ebadplatform warnings by default.\n\n## License\n\nThe MIT License Copyright (C) 2010-2020 by Philipp Dunkel, Ben Noordhuis, Elan Shankar, Paul Miller — see LICENSE file.\n\nVisit our [GitHub page](https://github.com/fsevents/fsevents) and [NPM Page](https://npmjs.org/package/fsevents)\n",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/fsevents/fsevents.git"
+  },
+  "readmeFilename": "README.md",
+  "homepage": "https://github.com/fsevents/fsevents",
+  "bugs": {
+    "url": "https://github.com/fsevents/fsevents/issues"
+  },
+  "license": "MIT"
+}

@@ -1,1 +1,74 @@
-{"name":"universalify","description":"Make a callback- or promise-based function support both promises and callbacks.","dist-tags":{"latest":"2.0.0"},"versions":{"2.0.0":{"name":"universalify","version":"2.0.0","description":"Make a callback- or promise-based function support both promises and callbacks.","bugs":{"url":"https://github.com/RyanZim/universalify/issues"},"license":"MIT","author":{"name":"Ryan Zimmerman","email":"opensrc@ryanzim.com"},"repository":{"type":"git","url":"git+https://github.com/RyanZim/universalify.git"},"scripts":{"test":"standard && nyc tape test/*.js | colortape"},"devDependencies":{"colortape":"^0.1.2","coveralls":"^3.0.1","nyc":"^15.0.0","standard":"^14.3.1","tape":"^5.0.1"},"engines":{"node":">= 10.0.0"},"gitHead":"a853a4aedc63c69fcdc62b77643d75b0d162a098","_id":"universalify@2.0.0","_nodeVersion":"14.0.0","_npmVersion":"6.14.4","dist":{"integrity":"sha512-hAZsKq7Yy11Zu1DE0OzWjw7nnLZmJZYTDZZyEFHZdUhV8FkH5MCfoU1XMaxXovpyW5nq5scPqq0ZDP9Zyl04oQ==","shasum":"75a4984efedc4b08975c5aeb73f530d02df25717","tarball":"http://localhost:4260/universalify/universalify-2.0.0.tgz","fileCount":4,"unpackedSize":4639,"npm-signature":"-----BEGIN PGP SIGNATURE-----\r\nVersion: OpenPGP.js v3.0.4\r\nComment: https://openpgpjs.org\r\n\r\nwsFcBAEBCAAQBQJfHDUNCRA9TVsSAnZWagAAYNEP/RZVxoo7bLXWTTzcZmi6\nVwER5sd6QoPf/Q1mWa5sBFTIUFivbm/NNFZo891lRwAFovDcR14390HNF8yz\n7U+YtOOhBDV1NsLonz1OHvvde0ucqz+fcEG3zBI3MWOP/BNgAo1PXYINjKmi\nwGk+sSBzrM+ZFo6LNfhQJ9aK2LXxNjP7YhshBfQW5Y7cElnpzCRrvdx42fZR\nYXfn1Av1Y36woZ48PB9nfgLJiLRJEzr+BFbuGlwdd/FNzXAmoH5cEmZkPYeP\nXbqhswpWOHuee4RVRkSRsPMcbpo/WemxmHrMxuG49Hcqe6rXrUEWZVU7FgJt\n1U5KOT4W5IbSuqNIL222cyDV62Tw1yhc1Y4A5LhhggI6n0aRAiNFbn9YTJU1\nN0U2ARxHYfnwLI623nLluLZvYjDGyMO6XpiCOAp+T2scbtO/T7uudsd4FP6+\nAd3A7LPQsvXdlv9FtRN941tdkVQ9AN4ZYFtrv3+2m1NpkwUnqUGlRugJlUb5\n7bn6Dd1HLU92xnk0K84tb3nQ+fNjXA/fJmO0yDuSJRMhamJ1gyrY/W7rsh8C\nwWdHWQWxVfFSvvL4pA4ZZb9TaZhNIPwB0/NRTLay1HQKm4k0+U0dVGeyPkmh\n37LjowAQrzwA4rXTwDNiBPmNvTlT8xiPQifRjiNZb7ffNiPOtrxVoO15wBw6\n5Hym\r\n=lhr8\r\n-----END PGP SIGNATURE-----\r\n","signatures":[{"keyid":"SHA256:jl3bwswu80PjjokCgh0o2w5c2U4LhQAE57gj9cz1kzA","sig":"MEYCIQCfzHvKe3Ujr8OkM/r7gRIC8lRqcO8zDF9nVeIBguVDxwIhAMVxBOPq6uoO7pcsx5yA7K5aiqunDvGAjtKmqxZR5LGB"}]},"directories":{},"_hasShrinkwrap":false}},"readme":"# universalify\n\n[![Travis branch](https://img.shields.io/travis/RyanZim/universalify/master.svg)](https://travis-ci.org/RyanZim/universalify)\n![Coveralls github branch](https://img.shields.io/coveralls/github/RyanZim/universalify/master.svg)\n![npm](https://img.shields.io/npm/dm/universalify.svg)\n![npm](https://img.shields.io/npm/l/universalify.svg)\n\nMake a callback- or promise-based function support both promises and callbacks.\n\nUses the native promise implementation.\n\n## Installation\n\n```bash\nnpm install universalify\n```\n\n## API\n\n### `universalify.fromCallback(fn)`\n\nTakes a callback-based function to universalify, and returns the universalified  function.\n\nFunction must take a callback as the last parameter that will be called with the signature `(error, result)`. `universalify` does not support calling the callback with three or more arguments, and does not ensure that the callback is only called once.\n\n```js\nfunction callbackFn (n, cb) {\n  setTimeout(() => cb(null, n), 15)\n}\n\nconst fn = universalify.fromCallback(callbackFn)\n\n// Works with Promises:\nfn('Hello World!')\n.then(result => console.log(result)) // -> Hello World!\n.catch(error => console.error(error))\n\n// Works with Callbacks:\nfn('Hi!', (error, result) => {\n  if (error) return console.error(error)\n  console.log(result)\n  // -> Hi!\n})\n```\n\n### `universalify.fromPromise(fn)`\n\nTakes a promise-based function to universalify, and returns the universalified  function.\n\nFunction must return a valid JS promise. `universalify` does not ensure that a valid promise is returned.\n\n```js\nfunction promiseFn (n) {\n  return new Promise(resolve => {\n    setTimeout(() => resolve(n), 15)\n  })\n}\n\nconst fn = universalify.fromPromise(promiseFn)\n\n// Works with Promises:\nfn('Hello World!')\n.then(result => console.log(result)) // -> Hello World!\n.catch(error => console.error(error))\n\n// Works with Callbacks:\nfn('Hi!', (error, result) => {\n  if (error) return console.error(error)\n  console.log(result)\n  // -> Hi!\n})\n```\n\n## License\n\nMIT\n","homepage":"https://github.com/RyanZim/universalify#readme","repository":{"type":"git","url":"git+https://github.com/RyanZim/universalify.git"},"author":{"name":"Ryan Zimmerman","email":"opensrc@ryanzim.com"},"bugs":{"url":"https://github.com/RyanZim/universalify/issues"},"license":"MIT","readmeFilename":"README.md"}
+{
+  "name": "universalify",
+  "description": "Make a callback- or promise-based function support both promises and callbacks.",
+  "dist-tags": {
+    "latest": "2.0.0"
+  },
+  "versions": {
+    "2.0.0": {
+      "name": "universalify",
+      "version": "2.0.0",
+      "description": "Make a callback- or promise-based function support both promises and callbacks.",
+      "bugs": {
+        "url": "https://github.com/RyanZim/universalify/issues"
+      },
+      "license": "MIT",
+      "author": {
+        "name": "Ryan Zimmerman",
+        "email": "opensrc@ryanzim.com"
+      },
+      "repository": {
+        "type": "git",
+        "url": "git+https://github.com/RyanZim/universalify.git"
+      },
+      "scripts": {
+        "test": "standard && nyc tape test/*.js | colortape"
+      },
+      "devDependencies": {
+        "colortape": "^0.1.2",
+        "coveralls": "^3.0.1",
+        "nyc": "^15.0.0",
+        "standard": "^14.3.1",
+        "tape": "^5.0.1"
+      },
+      "engines": {
+        "node": ">= 10.0.0"
+      },
+      "gitHead": "a853a4aedc63c69fcdc62b77643d75b0d162a098",
+      "_id": "universalify@2.0.0",
+      "_nodeVersion": "14.0.0",
+      "_npmVersion": "6.14.4",
+      "dist": {
+        "integrity": "sha512-hAZsKq7Yy11Zu1DE0OzWjw7nnLZmJZYTDZZyEFHZdUhV8FkH5MCfoU1XMaxXovpyW5nq5scPqq0ZDP9Zyl04oQ==",
+        "shasum": "75a4984efedc4b08975c5aeb73f530d02df25717",
+        "tarball": "http://localhost:4260/universalify/universalify-2.0.0.tgz",
+        "fileCount": 4,
+        "unpackedSize": 4639,
+        "npm-signature": "-----BEGIN PGP SIGNATURE-----\r\nVersion: OpenPGP.js v3.0.4\r\nComment: https://openpgpjs.org\r\n\r\nwsFcBAEBCAAQBQJfHDUNCRA9TVsSAnZWagAAYNEP/RZVxoo7bLXWTTzcZmi6\nVwER5sd6QoPf/Q1mWa5sBFTIUFivbm/NNFZo891lRwAFovDcR14390HNF8yz\n7U+YtOOhBDV1NsLonz1OHvvde0ucqz+fcEG3zBI3MWOP/BNgAo1PXYINjKmi\nwGk+sSBzrM+ZFo6LNfhQJ9aK2LXxNjP7YhshBfQW5Y7cElnpzCRrvdx42fZR\nYXfn1Av1Y36woZ48PB9nfgLJiLRJEzr+BFbuGlwdd/FNzXAmoH5cEmZkPYeP\nXbqhswpWOHuee4RVRkSRsPMcbpo/WemxmHrMxuG49Hcqe6rXrUEWZVU7FgJt\n1U5KOT4W5IbSuqNIL222cyDV62Tw1yhc1Y4A5LhhggI6n0aRAiNFbn9YTJU1\nN0U2ARxHYfnwLI623nLluLZvYjDGyMO6XpiCOAp+T2scbtO/T7uudsd4FP6+\nAd3A7LPQsvXdlv9FtRN941tdkVQ9AN4ZYFtrv3+2m1NpkwUnqUGlRugJlUb5\n7bn6Dd1HLU92xnk0K84tb3nQ+fNjXA/fJmO0yDuSJRMhamJ1gyrY/W7rsh8C\nwWdHWQWxVfFSvvL4pA4ZZb9TaZhNIPwB0/NRTLay1HQKm4k0+U0dVGeyPkmh\n37LjowAQrzwA4rXTwDNiBPmNvTlT8xiPQifRjiNZb7ffNiPOtrxVoO15wBw6\n5Hym\r\n=lhr8\r\n-----END PGP SIGNATURE-----\r\n",
+        "signatures": [
+          {
+            "keyid": "SHA256:jl3bwswu80PjjokCgh0o2w5c2U4LhQAE57gj9cz1kzA",
+            "sig": "MEYCIQCfzHvKe3Ujr8OkM/r7gRIC8lRqcO8zDF9nVeIBguVDxwIhAMVxBOPq6uoO7pcsx5yA7K5aiqunDvGAjtKmqxZR5LGB"
+          }
+        ]
+      },
+      "directories": {},
+      "_hasShrinkwrap": false
+    }
+  },
+  "readme": "# universalify\n\n[![Travis branch](https://img.shields.io/travis/RyanZim/universalify/master.svg)](https://travis-ci.org/RyanZim/universalify)\n![Coveralls github branch](https://img.shields.io/coveralls/github/RyanZim/universalify/master.svg)\n![npm](https://img.shields.io/npm/dm/universalify.svg)\n![npm](https://img.shields.io/npm/l/universalify.svg)\n\nMake a callback- or promise-based function support both promises and callbacks.\n\nUses the native promise implementation.\n\n## Installation\n\n```bash\nnpm install universalify\n```\n\n## API\n\n### `universalify.fromCallback(fn)`\n\nTakes a callback-based function to universalify, and returns the universalified  function.\n\nFunction must take a callback as the last parameter that will be called with the signature `(error, result)`. `universalify` does not support calling the callback with three or more arguments, and does not ensure that the callback is only called once.\n\n```js\nfunction callbackFn (n, cb) {\n  setTimeout(() => cb(null, n), 15)\n}\n\nconst fn = universalify.fromCallback(callbackFn)\n\n// Works with Promises:\nfn('Hello World!')\n.then(result => console.log(result)) // -> Hello World!\n.catch(error => console.error(error))\n\n// Works with Callbacks:\nfn('Hi!', (error, result) => {\n  if (error) return console.error(error)\n  console.log(result)\n  // -> Hi!\n})\n```\n\n### `universalify.fromPromise(fn)`\n\nTakes a promise-based function to universalify, and returns the universalified  function.\n\nFunction must return a valid JS promise. `universalify` does not ensure that a valid promise is returned.\n\n```js\nfunction promiseFn (n) {\n  return new Promise(resolve => {\n    setTimeout(() => resolve(n), 15)\n  })\n}\n\nconst fn = universalify.fromPromise(promiseFn)\n\n// Works with Promises:\nfn('Hello World!')\n.then(result => console.log(result)) // -> Hello World!\n.catch(error => console.error(error))\n\n// Works with Callbacks:\nfn('Hi!', (error, result) => {\n  if (error) return console.error(error)\n  console.log(result)\n  // -> Hi!\n})\n```\n\n## License\n\nMIT\n",
+  "homepage": "https://github.com/RyanZim/universalify#readme",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/RyanZim/universalify.git"
+  },
+  "author": {
+    "name": "Ryan Zimmerman",
+    "email": "opensrc@ryanzim.com"
+  },
+  "bugs": {
+    "url": "https://github.com/RyanZim/universalify/issues"
+  },
+  "license": "MIT",
+  "readmeFilename": "README.md"
+}

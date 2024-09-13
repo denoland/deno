@@ -1,1 +1,74 @@
-{"name":"env-paths","description":"Get paths for storing things like data, config, cache, etc","dist-tags":{"latest":"2.2.1"},"versions":{"2.2.1":{"name":"env-paths","version":"2.2.1","description":"Get paths for storing things like data, config, cache, etc","license":"MIT","repository":{"type":"git","url":"git+https://github.com/sindresorhus/env-paths.git"},"author":{"name":"Sindre Sorhus","email":"sindresorhus@gmail.com","url":"sindresorhus.com"},"engines":{"node":">=6"},"scripts":{"test":"xo && ava && tsd"},"devDependencies":{"ava":"^1.4.1","tsd":"^0.7.1","xo":"^0.24.0"},"gitHead":"62d4ec8cd42f1a419e00856fab949ca8286773f6","bugs":{"url":"https://github.com/sindresorhus/env-paths/issues"},"_id":"env-paths@2.2.1","_nodeVersion":"14.16.0","_npmVersion":"6.14.10","dist":{"integrity":"sha512-+h1lkLKhZMTYjog1VEpJNG7NZJWcuc2DDk/qsqSTRRCOXiLjeQ1d1/udrUGhqMxUgAlwKNZ0cf2uqan5GLuS2A==","shasum":"420399d416ce1fbe9bc0a07c62fa68d67fd0f8f2","tarball":"http://localhost:4260/env-paths/env-paths-2.2.1.tgz","fileCount":5,"unpackedSize":10163,"npm-signature":"-----BEGIN PGP SIGNATURE-----\r\nVersion: OpenPGP.js v3.0.13\r\nComment: https://openpgpjs.org\r\n\r\nwsFcBAEBCAAQBQJgRhkLCRA9TVsSAnZWagAAzIQP/2Nmbs5q/06VvU/UEGn8\nZxcOoMA7tGLWbSvcUSAIfmtu74DSqoEyMJJLKLsAKG6CeVxf/wvv+IW98luL\nfLSPrIcUbEKEECKnRvgC1/lJx0H7x8daWFhEn5V/qT3/Tq+YQxxxxV6eBgE2\nSg2Cm0YFYj+4fv13Et/N0jr5lX5RjUiBRwYKisM0X/wTntBmrmWuJ+r3G9yn\nfpButg2CG8FhqS8PIvxFMjpfl5Kzx+4fskZlbzWXjl437YVMnOddVfE4d+4b\ncsl9IiRVfRQun7Mma2krUdsyv7/Cv7MeJcktjgUjOK1IfSsR6DyAw4oJtMMS\nbfOYjv6tRPZA4UPO/c+ZSNMkIvcueZLH+1Pufv2tQ99CgY5ZYz0zWOn7SOQ9\n1NA3URMsoeHs1UDbtQmk5ZPHV3/GuXUBDBAwD5Y1gPnUP44hdsguV6VONJEG\nFjsLltGVjSDdvDgxTaSorSKNk3uqiLxSquX/D0qtMy71mcqJ2dIuYhcpgsFE\n/9w0sQkCKDlaCBCr4dQ9ziWnCr38Jut+rWKQkSXYsWdlFnhBYZlPDYhEl2Bb\ng28SPiHvPLoL7soXHz372VZpl36Kc8kDQHOpiz7UACKqYJifgboyC3+o/LzE\nWb6yHm9Tg04MUrq2MisG3VlCZjc5DuHDSwNFpaCUyxv/NX5n6mEDOxP+FW9e\nJoEn\r\n=qhG9\r\n-----END PGP SIGNATURE-----\r\n","signatures":[{"keyid":"SHA256:jl3bwswu80PjjokCgh0o2w5c2U4LhQAE57gj9cz1kzA","sig":"MEUCIQC58s8SpFZdII3DGJV28/aC5XN31PJjPaBnax5dqZPg3AIgC8/GVwDk0mrXqqsjqNe7O6gSNDqVOFt5XJ/bQPVB6lI="}]},"directories":{},"_hasShrinkwrap":false}},"readme":"# env-paths\n\n> Get paths for storing things like data, config, cache, etc\n\nUses the correct OS-specific paths. Most developers get this wrong.\n\n## Install\n\n```\n$ npm install env-paths\n```\n\n## Usage\n\n```js\nimport envPaths from 'env-paths';\n\nconst paths = envPaths('MyApp');\n\npaths.data;\n//=> '/home/sindresorhus/.local/share/MyApp-nodejs'\n\npaths.config\n//=> '/home/sindresorhus/.config/MyApp-nodejs'\n```\n\n## API\n\n### paths = envPaths(name, options?)\n\nNote: It only generates the path strings. It doesn't create the directories for you. You could use [`make-dir`](https://github.com/sindresorhus/make-dir) to create the directories.\n\n#### name\n\nType: `string`\n\nThe name of your project. Used to generate the paths.\n\n#### options\n\nType: `object`\n\n##### suffix\n\nType: `string`\\\nDefault: `'nodejs'`\n\n**Don't use this option unless you really have to!**\n\nSuffix appended to the project name to avoid name conflicts with native\napps. Pass an empty string to disable it.\n\n### paths.data\n\nDirectory for data files.\n\nExample locations (with the default `nodejs` [suffix](#suffix)):\n\n- macOS: `~/Library/Application Support/MyApp-nodejs`\n- Windows: `%LOCALAPPDATA%\\MyApp-nodejs\\Data` (for example, `C:\\Users\\USERNAME\\AppData\\Local\\MyApp-nodejs\\Data`)\n- Linux: `~/.local/share/MyApp-nodejs` (or `$XDG_DATA_HOME/MyApp-nodejs`)\n\n### paths.config\n\nDirectory for config files.\n\nExample locations (with the default `nodejs` [suffix](#suffix)):\n\n- macOS: `~/Library/Preferences/MyApp-nodejs`\n- Windows: `%APPDATA%\\MyApp-nodejs\\Config` (for example, `C:\\Users\\USERNAME\\AppData\\Roaming\\MyApp-nodejs\\Config`)\n- Linux: `~/.config/MyApp-nodejs` (or `$XDG_CONFIG_HOME/MyApp-nodejs`)\n\n### paths.cache\n\nDirectory for non-essential data files.\n\nExample locations (with the default `nodejs` [suffix](#suffix)):\n\n- macOS: `~/Library/Caches/MyApp-nodejs`\n- Windows: `%LOCALAPPDATA%\\MyApp-nodejs\\Cache` (for example, `C:\\Users\\USERNAME\\AppData\\Local\\MyApp-nodejs\\Cache`)\n- Linux: `~/.cache/MyApp-nodejs` (or `$XDG_CACHE_HOME/MyApp-nodejs`)\n\n### paths.log\n\nDirectory for log files.\n\nExample locations (with the default `nodejs` [suffix](#suffix)):\n\n- macOS: `~/Library/Logs/MyApp-nodejs`\n- Windows: `%LOCALAPPDATA%\\MyApp-nodejs\\Log` (for example, `C:\\Users\\USERNAME\\AppData\\Local\\MyApp-nodejs\\Log`)\n- Linux: `~/.local/state/MyApp-nodejs` (or `$XDG_STATE_HOME/MyApp-nodejs`)\n\n### paths.temp\n\nDirectory for temporary files.\n\nExample locations (with the default `nodejs` [suffix](#suffix)):\n\n- macOS: `/var/folders/jf/f2twvvvs5jl_m49tf034ffpw0000gn/T/MyApp-nodejs`\n- Windows: `%LOCALAPPDATA%\\Temp\\MyApp-nodejs` (for example, `C:\\Users\\USERNAME\\AppData\\Local\\Temp\\MyApp-nodejs`)\n- Linux: `/tmp/USERNAME/MyApp-nodejs`\n\n---\n\n<div align=\"center\">\n\t<b>\n\t\t<a href=\"https://tidelift.com/subscription/pkg/npm-env-paths?utm_source=npm-env-paths&utm_medium=referral&utm_campaign=readme\">Get professional support for this package with a Tidelift subscription</a>\n\t</b>\n\t<br>\n\t<sub>\n\t\tTidelift helps make open source sustainable for maintainers while giving companies<br>assurances about security, maintenance, and licensing for their dependencies.\n\t</sub>\n</div>\n","homepage":"https://github.com/sindresorhus/env-paths#readme","repository":{"type":"git","url":"git+https://github.com/sindresorhus/env-paths.git"},"author":{"name":"Sindre Sorhus","email":"sindresorhus@gmail.com","url":"https://sindresorhus.com"},"bugs":{"url":"https://github.com/sindresorhus/env-paths/issues"},"license":"MIT","readmeFilename":"readme.md"}
+{
+  "name": "env-paths",
+  "description": "Get paths for storing things like data, config, cache, etc",
+  "dist-tags": {
+    "latest": "2.2.1"
+  },
+  "versions": {
+    "2.2.1": {
+      "name": "env-paths",
+      "version": "2.2.1",
+      "description": "Get paths for storing things like data, config, cache, etc",
+      "license": "MIT",
+      "repository": {
+        "type": "git",
+        "url": "git+https://github.com/sindresorhus/env-paths.git"
+      },
+      "author": {
+        "name": "Sindre Sorhus",
+        "email": "sindresorhus@gmail.com",
+        "url": "sindresorhus.com"
+      },
+      "engines": {
+        "node": ">=6"
+      },
+      "scripts": {
+        "test": "xo && ava && tsd"
+      },
+      "devDependencies": {
+        "ava": "^1.4.1",
+        "tsd": "^0.7.1",
+        "xo": "^0.24.0"
+      },
+      "gitHead": "62d4ec8cd42f1a419e00856fab949ca8286773f6",
+      "bugs": {
+        "url": "https://github.com/sindresorhus/env-paths/issues"
+      },
+      "_id": "env-paths@2.2.1",
+      "_nodeVersion": "14.16.0",
+      "_npmVersion": "6.14.10",
+      "dist": {
+        "integrity": "sha512-+h1lkLKhZMTYjog1VEpJNG7NZJWcuc2DDk/qsqSTRRCOXiLjeQ1d1/udrUGhqMxUgAlwKNZ0cf2uqan5GLuS2A==",
+        "shasum": "420399d416ce1fbe9bc0a07c62fa68d67fd0f8f2",
+        "tarball": "http://localhost:4260/env-paths/env-paths-2.2.1.tgz",
+        "fileCount": 5,
+        "unpackedSize": 10163,
+        "npm-signature": "-----BEGIN PGP SIGNATURE-----\r\nVersion: OpenPGP.js v3.0.13\r\nComment: https://openpgpjs.org\r\n\r\nwsFcBAEBCAAQBQJgRhkLCRA9TVsSAnZWagAAzIQP/2Nmbs5q/06VvU/UEGn8\nZxcOoMA7tGLWbSvcUSAIfmtu74DSqoEyMJJLKLsAKG6CeVxf/wvv+IW98luL\nfLSPrIcUbEKEECKnRvgC1/lJx0H7x8daWFhEn5V/qT3/Tq+YQxxxxV6eBgE2\nSg2Cm0YFYj+4fv13Et/N0jr5lX5RjUiBRwYKisM0X/wTntBmrmWuJ+r3G9yn\nfpButg2CG8FhqS8PIvxFMjpfl5Kzx+4fskZlbzWXjl437YVMnOddVfE4d+4b\ncsl9IiRVfRQun7Mma2krUdsyv7/Cv7MeJcktjgUjOK1IfSsR6DyAw4oJtMMS\nbfOYjv6tRPZA4UPO/c+ZSNMkIvcueZLH+1Pufv2tQ99CgY5ZYz0zWOn7SOQ9\n1NA3URMsoeHs1UDbtQmk5ZPHV3/GuXUBDBAwD5Y1gPnUP44hdsguV6VONJEG\nFjsLltGVjSDdvDgxTaSorSKNk3uqiLxSquX/D0qtMy71mcqJ2dIuYhcpgsFE\n/9w0sQkCKDlaCBCr4dQ9ziWnCr38Jut+rWKQkSXYsWdlFnhBYZlPDYhEl2Bb\ng28SPiHvPLoL7soXHz372VZpl36Kc8kDQHOpiz7UACKqYJifgboyC3+o/LzE\nWb6yHm9Tg04MUrq2MisG3VlCZjc5DuHDSwNFpaCUyxv/NX5n6mEDOxP+FW9e\nJoEn\r\n=qhG9\r\n-----END PGP SIGNATURE-----\r\n",
+        "signatures": [
+          {
+            "keyid": "SHA256:jl3bwswu80PjjokCgh0o2w5c2U4LhQAE57gj9cz1kzA",
+            "sig": "MEUCIQC58s8SpFZdII3DGJV28/aC5XN31PJjPaBnax5dqZPg3AIgC8/GVwDk0mrXqqsjqNe7O6gSNDqVOFt5XJ/bQPVB6lI="
+          }
+        ]
+      },
+      "directories": {},
+      "_hasShrinkwrap": false
+    }
+  },
+  "readme": "# env-paths\n\n> Get paths for storing things like data, config, cache, etc\n\nUses the correct OS-specific paths. Most developers get this wrong.\n\n## Install\n\n```\n$ npm install env-paths\n```\n\n## Usage\n\n```js\nimport envPaths from 'env-paths';\n\nconst paths = envPaths('MyApp');\n\npaths.data;\n//=> '/home/sindresorhus/.local/share/MyApp-nodejs'\n\npaths.config\n//=> '/home/sindresorhus/.config/MyApp-nodejs'\n```\n\n## API\n\n### paths = envPaths(name, options?)\n\nNote: It only generates the path strings. It doesn't create the directories for you. You could use [`make-dir`](https://github.com/sindresorhus/make-dir) to create the directories.\n\n#### name\n\nType: `string`\n\nThe name of your project. Used to generate the paths.\n\n#### options\n\nType: `object`\n\n##### suffix\n\nType: `string`\\\nDefault: `'nodejs'`\n\n**Don't use this option unless you really have to!**\n\nSuffix appended to the project name to avoid name conflicts with native\napps. Pass an empty string to disable it.\n\n### paths.data\n\nDirectory for data files.\n\nExample locations (with the default `nodejs` [suffix](#suffix)):\n\n- macOS: `~/Library/Application Support/MyApp-nodejs`\n- Windows: `%LOCALAPPDATA%\\MyApp-nodejs\\Data` (for example, `C:\\Users\\USERNAME\\AppData\\Local\\MyApp-nodejs\\Data`)\n- Linux: `~/.local/share/MyApp-nodejs` (or `$XDG_DATA_HOME/MyApp-nodejs`)\n\n### paths.config\n\nDirectory for config files.\n\nExample locations (with the default `nodejs` [suffix](#suffix)):\n\n- macOS: `~/Library/Preferences/MyApp-nodejs`\n- Windows: `%APPDATA%\\MyApp-nodejs\\Config` (for example, `C:\\Users\\USERNAME\\AppData\\Roaming\\MyApp-nodejs\\Config`)\n- Linux: `~/.config/MyApp-nodejs` (or `$XDG_CONFIG_HOME/MyApp-nodejs`)\n\n### paths.cache\n\nDirectory for non-essential data files.\n\nExample locations (with the default `nodejs` [suffix](#suffix)):\n\n- macOS: `~/Library/Caches/MyApp-nodejs`\n- Windows: `%LOCALAPPDATA%\\MyApp-nodejs\\Cache` (for example, `C:\\Users\\USERNAME\\AppData\\Local\\MyApp-nodejs\\Cache`)\n- Linux: `~/.cache/MyApp-nodejs` (or `$XDG_CACHE_HOME/MyApp-nodejs`)\n\n### paths.log\n\nDirectory for log files.\n\nExample locations (with the default `nodejs` [suffix](#suffix)):\n\n- macOS: `~/Library/Logs/MyApp-nodejs`\n- Windows: `%LOCALAPPDATA%\\MyApp-nodejs\\Log` (for example, `C:\\Users\\USERNAME\\AppData\\Local\\MyApp-nodejs\\Log`)\n- Linux: `~/.local/state/MyApp-nodejs` (or `$XDG_STATE_HOME/MyApp-nodejs`)\n\n### paths.temp\n\nDirectory for temporary files.\n\nExample locations (with the default `nodejs` [suffix](#suffix)):\n\n- macOS: `/var/folders/jf/f2twvvvs5jl_m49tf034ffpw0000gn/T/MyApp-nodejs`\n- Windows: `%LOCALAPPDATA%\\Temp\\MyApp-nodejs` (for example, `C:\\Users\\USERNAME\\AppData\\Local\\Temp\\MyApp-nodejs`)\n- Linux: `/tmp/USERNAME/MyApp-nodejs`\n\n---\n\n<div align=\"center\">\n\t<b>\n\t\t<a href=\"https://tidelift.com/subscription/pkg/npm-env-paths?utm_source=npm-env-paths&utm_medium=referral&utm_campaign=readme\">Get professional support for this package with a Tidelift subscription</a>\n\t</b>\n\t<br>\n\t<sub>\n\t\tTidelift helps make open source sustainable for maintainers while giving companies<br>assurances about security, maintenance, and licensing for their dependencies.\n\t</sub>\n</div>\n",
+  "homepage": "https://github.com/sindresorhus/env-paths#readme",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/sindresorhus/env-paths.git"
+  },
+  "author": {
+    "name": "Sindre Sorhus",
+    "email": "sindresorhus@gmail.com",
+    "url": "https://sindresorhus.com"
+  },
+  "bugs": {
+    "url": "https://github.com/sindresorhus/env-paths/issues"
+  },
+  "license": "MIT",
+  "readmeFilename": "readme.md"
+}

@@ -1,1 +1,148 @@
-{"name":"signal-exit","description":"when you want to fire an event no matter how a process exits.","dist-tags":{"latest":"4.1.0"},"versions":{"4.1.0":{"name":"signal-exit","version":"4.1.0","description":"when you want to fire an event no matter how a process exits.","main":"./dist/cjs/index.js","module":"./dist/mjs/index.js","browser":"./dist/mjs/browser.js","types":"./dist/mjs/index.d.ts","exports":{".":{"import":{"types":"./dist/mjs/index.d.ts","default":"./dist/mjs/index.js"},"require":{"types":"./dist/cjs/index.d.ts","default":"./dist/cjs/index.js"}},"./signals":{"import":{"types":"./dist/mjs/signals.d.ts","default":"./dist/mjs/signals.js"},"require":{"types":"./dist/cjs/signals.d.ts","default":"./dist/cjs/signals.js"}},"./browser":{"import":{"types":"./dist/mjs/browser.d.ts","default":"./dist/mjs/browser.js"},"require":{"types":"./dist/cjs/browser.d.ts","default":"./dist/cjs/browser.js"}}},"engines":{"node":">=14"},"repository":{"type":"git","url":"git+https://github.com/tapjs/signal-exit.git"},"author":{"name":"Ben Coe","email":"ben@npmjs.com"},"license":"ISC","devDependencies":{"@types/cross-spawn":"^6.0.2","@types/node":"^18.15.11","@types/signal-exit":"^3.0.1","@types/tap":"^15.0.8","c8":"^7.13.0","prettier":"^2.8.6","tap":"^16.3.4","ts-node":"^10.9.1","typedoc":"^0.23.28","typescript":"^5.0.2"},"scripts":{"preversion":"npm test","postversion":"npm publish","prepublishOnly":"git push origin --follow-tags","preprepare":"rm -rf dist","prepare":"tsc -p tsconfig.json && tsc -p tsconfig-esm.json && bash ./scripts/fixup.sh","pretest":"npm run prepare","presnap":"npm run prepare","test":"c8 tap","snap":"c8 tap","format":"prettier --write . --loglevel warn","typedoc":"typedoc --tsconfig tsconfig-esm.json ./src/*.ts"},"prettier":{"semi":false,"printWidth":75,"tabWidth":2,"useTabs":false,"singleQuote":true,"jsxSingleQuote":false,"bracketSameLine":true,"arrowParens":"avoid","endOfLine":"lf"},"tap":{"coverage":false,"jobs":1,"node-arg":["--no-warnings","--loader","ts-node/esm"],"ts":false},"funding":{"url":"https://github.com/sponsors/isaacs"},"gitHead":"458776d9cf8be89712aa1f7b45bb2163ce15ef4a","bugs":{"url":"https://github.com/tapjs/signal-exit/issues"},"_id":"signal-exit@4.1.0","_nodeVersion":"18.16.0","_npmVersion":"9.7.2","dist":{"integrity":"sha512-bzyZ1e88w9O1iNJbKnOlvYTrWPDl46O1bG0D3XInv+9tkPrxrN8jUUTiFlDkkmKWgn1M6CfIA13SuGqOa9Korw==","shasum":"952188c1cbd546070e2dd20d0f41c0ae0530cb04","tarball":"http://localhost:4260/signal-exit/signal-exit-4.1.0.tgz","fileCount":29,"unpackedSize":76966,"signatures":[{"keyid":"SHA256:jl3bwswu80PjjokCgh0o2w5c2U4LhQAE57gj9cz1kzA","sig":"MEUCIQC17YSNmo/hSXVVI2cchqvs3la7twHltiehlUoPq/9VGgIgD2Hb18tHfjmWx8vendx1mWOOOYvu7+XRLUj+wwxejPE="}]},"directories":{},"_hasShrinkwrap":false}},"readme":"# signal-exit\n\nWhen you want to fire an event no matter how a process exits:\n\n- reaching the end of execution.\n- explicitly having `process.exit(code)` called.\n- having `process.kill(pid, sig)` called.\n- receiving a fatal signal from outside the process\n\nUse `signal-exit`.\n\n```js\n// Hybrid module, either works\nimport { onExit } from 'signal-exit'\n// or:\n// const { onExit } = require('signal-exit')\n\nonExit((code, signal) => {\n  console.log('process exited!', code, signal)\n})\n```\n\n## API\n\n`remove = onExit((code, signal) => {}, options)`\n\nThe return value of the function is a function that will remove\nthe handler.\n\nNote that the function _only_ fires for signals if the signal\nwould cause the process to exit. That is, there are no other\nlisteners, and it is a fatal signal.\n\nIf the global `process` object is not suitable for this purpose\n(ie, it's unset, or doesn't have an `emit` method, etc.) then the\n`onExit` function is a no-op that returns a no-op `remove` method.\n\n### Options\n\n- `alwaysLast`: Run this handler after any other signal or exit\n  handlers. This causes `process.emit` to be monkeypatched.\n\n### Capturing Signal Exits\n\nIf the handler returns an exact boolean `true`, and the exit is a\ndue to signal, then the signal will be considered handled, and\nwill _not_ trigger a synthetic `process.kill(process.pid,\nsignal)` after firing the `onExit` handlers.\n\nIn this case, it your responsibility as the caller to exit with a\nsignal (for example, by calling `process.kill()`) if you wish to\npreserve the same exit status that would otherwise have occurred.\nIf you do not, then the process will likely exit gracefully with\nstatus 0 at some point, assuming that no other terminating signal\nor other exit trigger occurs.\n\nPrior to calling handlers, the `onExit` machinery is unloaded, so\nany subsequent exits or signals will not be handled, even if the\nsignal is captured and the exit is thus prevented.\n\nNote that numeric code exits may indicate that the process is\nalready committed to exiting, for example due to a fatal\nexception or unhandled promise rejection, and so there is no way to\nprevent it safely.\n\n### Browser Fallback\n\nThe `'signal-exit/browser'` module is the same fallback shim that\njust doesn't do anything, but presents the same function\ninterface.\n\nPatches welcome to add something that hooks onto\n`window.onbeforeunload` or similar, but it might just not be a\nthing that makes sense there.\n","homepage":"https://github.com/tapjs/signal-exit#readme","repository":{"type":"git","url":"git+https://github.com/tapjs/signal-exit.git"},"author":{"name":"Ben Coe","email":"ben@npmjs.com"},"bugs":{"url":"https://github.com/tapjs/signal-exit/issues"},"license":"ISC","readmeFilename":"README.md"}
+{
+  "name": "signal-exit",
+  "description": "when you want to fire an event no matter how a process exits.",
+  "dist-tags": {
+    "latest": "4.1.0"
+  },
+  "versions": {
+    "4.1.0": {
+      "name": "signal-exit",
+      "version": "4.1.0",
+      "description": "when you want to fire an event no matter how a process exits.",
+      "main": "./dist/cjs/index.js",
+      "module": "./dist/mjs/index.js",
+      "browser": "./dist/mjs/browser.js",
+      "types": "./dist/mjs/index.d.ts",
+      "exports": {
+        ".": {
+          "import": {
+            "types": "./dist/mjs/index.d.ts",
+            "default": "./dist/mjs/index.js"
+          },
+          "require": {
+            "types": "./dist/cjs/index.d.ts",
+            "default": "./dist/cjs/index.js"
+          }
+        },
+        "./signals": {
+          "import": {
+            "types": "./dist/mjs/signals.d.ts",
+            "default": "./dist/mjs/signals.js"
+          },
+          "require": {
+            "types": "./dist/cjs/signals.d.ts",
+            "default": "./dist/cjs/signals.js"
+          }
+        },
+        "./browser": {
+          "import": {
+            "types": "./dist/mjs/browser.d.ts",
+            "default": "./dist/mjs/browser.js"
+          },
+          "require": {
+            "types": "./dist/cjs/browser.d.ts",
+            "default": "./dist/cjs/browser.js"
+          }
+        }
+      },
+      "engines": {
+        "node": ">=14"
+      },
+      "repository": {
+        "type": "git",
+        "url": "git+https://github.com/tapjs/signal-exit.git"
+      },
+      "author": {
+        "name": "Ben Coe",
+        "email": "ben@npmjs.com"
+      },
+      "license": "ISC",
+      "devDependencies": {
+        "@types/cross-spawn": "^6.0.2",
+        "@types/node": "^18.15.11",
+        "@types/signal-exit": "^3.0.1",
+        "@types/tap": "^15.0.8",
+        "c8": "^7.13.0",
+        "prettier": "^2.8.6",
+        "tap": "^16.3.4",
+        "ts-node": "^10.9.1",
+        "typedoc": "^0.23.28",
+        "typescript": "^5.0.2"
+      },
+      "scripts": {
+        "preversion": "npm test",
+        "postversion": "npm publish",
+        "prepublishOnly": "git push origin --follow-tags",
+        "preprepare": "rm -rf dist",
+        "prepare": "tsc -p tsconfig.json && tsc -p tsconfig-esm.json && bash ./scripts/fixup.sh",
+        "pretest": "npm run prepare",
+        "presnap": "npm run prepare",
+        "test": "c8 tap",
+        "snap": "c8 tap",
+        "format": "prettier --write . --loglevel warn",
+        "typedoc": "typedoc --tsconfig tsconfig-esm.json ./src/*.ts"
+      },
+      "prettier": {
+        "semi": false,
+        "printWidth": 75,
+        "tabWidth": 2,
+        "useTabs": false,
+        "singleQuote": true,
+        "jsxSingleQuote": false,
+        "bracketSameLine": true,
+        "arrowParens": "avoid",
+        "endOfLine": "lf"
+      },
+      "tap": {
+        "coverage": false,
+        "jobs": 1,
+        "node-arg": [
+          "--no-warnings",
+          "--loader",
+          "ts-node/esm"
+        ],
+        "ts": false
+      },
+      "funding": {
+        "url": "https://github.com/sponsors/isaacs"
+      },
+      "gitHead": "458776d9cf8be89712aa1f7b45bb2163ce15ef4a",
+      "bugs": {
+        "url": "https://github.com/tapjs/signal-exit/issues"
+      },
+      "_id": "signal-exit@4.1.0",
+      "_nodeVersion": "18.16.0",
+      "_npmVersion": "9.7.2",
+      "dist": {
+        "integrity": "sha512-bzyZ1e88w9O1iNJbKnOlvYTrWPDl46O1bG0D3XInv+9tkPrxrN8jUUTiFlDkkmKWgn1M6CfIA13SuGqOa9Korw==",
+        "shasum": "952188c1cbd546070e2dd20d0f41c0ae0530cb04",
+        "tarball": "http://localhost:4260/signal-exit/signal-exit-4.1.0.tgz",
+        "fileCount": 29,
+        "unpackedSize": 76966,
+        "signatures": [
+          {
+            "keyid": "SHA256:jl3bwswu80PjjokCgh0o2w5c2U4LhQAE57gj9cz1kzA",
+            "sig": "MEUCIQC17YSNmo/hSXVVI2cchqvs3la7twHltiehlUoPq/9VGgIgD2Hb18tHfjmWx8vendx1mWOOOYvu7+XRLUj+wwxejPE="
+          }
+        ]
+      },
+      "directories": {},
+      "_hasShrinkwrap": false
+    }
+  },
+  "readme": "# signal-exit\n\nWhen you want to fire an event no matter how a process exits:\n\n- reaching the end of execution.\n- explicitly having `process.exit(code)` called.\n- having `process.kill(pid, sig)` called.\n- receiving a fatal signal from outside the process\n\nUse `signal-exit`.\n\n```js\n// Hybrid module, either works\nimport { onExit } from 'signal-exit'\n// or:\n// const { onExit } = require('signal-exit')\n\nonExit((code, signal) => {\n  console.log('process exited!', code, signal)\n})\n```\n\n## API\n\n`remove = onExit((code, signal) => {}, options)`\n\nThe return value of the function is a function that will remove\nthe handler.\n\nNote that the function _only_ fires for signals if the signal\nwould cause the process to exit. That is, there are no other\nlisteners, and it is a fatal signal.\n\nIf the global `process` object is not suitable for this purpose\n(ie, it's unset, or doesn't have an `emit` method, etc.) then the\n`onExit` function is a no-op that returns a no-op `remove` method.\n\n### Options\n\n- `alwaysLast`: Run this handler after any other signal or exit\n  handlers. This causes `process.emit` to be monkeypatched.\n\n### Capturing Signal Exits\n\nIf the handler returns an exact boolean `true`, and the exit is a\ndue to signal, then the signal will be considered handled, and\nwill _not_ trigger a synthetic `process.kill(process.pid,\nsignal)` after firing the `onExit` handlers.\n\nIn this case, it your responsibility as the caller to exit with a\nsignal (for example, by calling `process.kill()`) if you wish to\npreserve the same exit status that would otherwise have occurred.\nIf you do not, then the process will likely exit gracefully with\nstatus 0 at some point, assuming that no other terminating signal\nor other exit trigger occurs.\n\nPrior to calling handlers, the `onExit` machinery is unloaded, so\nany subsequent exits or signals will not be handled, even if the\nsignal is captured and the exit is thus prevented.\n\nNote that numeric code exits may indicate that the process is\nalready committed to exiting, for example due to a fatal\nexception or unhandled promise rejection, and so there is no way to\nprevent it safely.\n\n### Browser Fallback\n\nThe `'signal-exit/browser'` module is the same fallback shim that\njust doesn't do anything, but presents the same function\ninterface.\n\nPatches welcome to add something that hooks onto\n`window.onbeforeunload` or similar, but it might just not be a\nthing that makes sense there.\n",
+  "homepage": "https://github.com/tapjs/signal-exit#readme",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/tapjs/signal-exit.git"
+  },
+  "author": {
+    "name": "Ben Coe",
+    "email": "ben@npmjs.com"
+  },
+  "bugs": {
+    "url": "https://github.com/tapjs/signal-exit/issues"
+  },
+  "license": "ISC",
+  "readmeFilename": "README.md"
+}

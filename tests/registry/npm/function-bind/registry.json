@@ -1,1 +1,93 @@
-{"name":"function-bind","description":"Implementation of Function.prototype.bind","dist-tags":{"latest":"1.1.1"},"versions":{"1.1.1":{"name":"function-bind","version":"1.1.1","description":"Implementation of Function.prototype.bind","author":{"name":"Raynos","email":"raynos2@gmail.com"},"repository":{"type":"git","url":"git://github.com/Raynos/function-bind.git"},"main":"index","bugs":{"url":"https://github.com/Raynos/function-bind/issues","email":"raynos2@gmail.com"},"dependencies":{},"devDependencies":{"@ljharb/eslint-config":"^12.2.1","covert":"^1.1.0","eslint":"^4.5.0","jscs":"^3.0.7","tape":"^4.8.0"},"license":"MIT","scripts":{"pretest":"npm run lint","test":"npm run tests-only","posttest":"npm run coverage -- --quiet","tests-only":"node test","coverage":"covert test/*.js","lint":"npm run jscs && npm run eslint","jscs":"jscs *.js */*.js","eslint":"eslint *.js */*.js"},"testling":{"files":"test/index.js","browsers":["ie/8..latest","firefox/16..latest","firefox/nightly","chrome/22..latest","chrome/canary","opera/12..latest","opera/next","safari/5.1..latest","ipad/6.0..latest","iphone/6.0..latest","android-browser/4.2..latest"]},"gitHead":"1213f807066d1cb8d39a0592d5118f4b1f03de4a","_id":"function-bind@1.1.1","_npmVersion":"5.3.0","_nodeVersion":"8.4.0","dist":{"integrity":"sha512-yIovAzMX49sF8Yl58fSCWJ5svSLuaibPxXQJFLmBObTuCr0Mf1KiPopGM9NiFjiYBCbfaa2Fh6breQ6ANVTI0A==","shasum":"a56899d3ea3c9bab874bb9773b7c5ede92f4895d","tarball":"http://localhost:4260/function-bind/function-bind-1.1.1.tgz","signatures":[{"keyid":"SHA256:jl3bwswu80PjjokCgh0o2w5c2U4LhQAE57gj9cz1kzA","sig":"MEUCIQDsVxPdBe+3LZpIF8YZMP7chLM+i5RVRwvtzCd5Yx7zigIgHw6sg2uwy+ItJamfc9+b+XTQOi93JrtZ+8F6YNq3Jz8="}]}}},"readme":"# function-bind\n\n<!--\n    [![build status][travis-svg]][travis-url]\n    [![NPM version][npm-badge-svg]][npm-url]\n    [![Coverage Status][5]][6]\n    [![gemnasium Dependency Status][7]][8]\n    [![Dependency status][deps-svg]][deps-url]\n    [![Dev Dependency status][dev-deps-svg]][dev-deps-url]\n-->\n\n<!-- [![browser support][11]][12] -->\n\nImplementation of function.prototype.bind\n\n## Example\n\nI mainly do this for unit tests I run on phantomjs.\nPhantomJS does not have Function.prototype.bind :(\n\n```js\nFunction.prototype.bind = require(\"function-bind\")\n```\n\n## Installation\n\n`npm install function-bind`\n\n## Contributors\n\n - Raynos\n\n## MIT Licenced\n\n  [travis-svg]: https://travis-ci.org/Raynos/function-bind.svg\n  [travis-url]: https://travis-ci.org/Raynos/function-bind\n  [npm-badge-svg]: https://badge.fury.io/js/function-bind.svg\n  [npm-url]: https://npmjs.org/package/function-bind\n  [5]: https://coveralls.io/repos/Raynos/function-bind/badge.png\n  [6]: https://coveralls.io/r/Raynos/function-bind\n  [7]: https://gemnasium.com/Raynos/function-bind.png\n  [8]: https://gemnasium.com/Raynos/function-bind\n  [deps-svg]: https://david-dm.org/Raynos/function-bind.svg\n  [deps-url]: https://david-dm.org/Raynos/function-bind\n  [dev-deps-svg]: https://david-dm.org/Raynos/function-bind/dev-status.svg\n  [dev-deps-url]: https://david-dm.org/Raynos/function-bind#info=devDependencies\n  [11]: https://ci.testling.com/Raynos/function-bind.png\n  [12]: https://ci.testling.com/Raynos/function-bind\n","author":{"name":"Raynos","email":"raynos2@gmail.com"},"repository":{"type":"git","url":"git://github.com/Raynos/function-bind.git"},"homepage":"https://github.com/Raynos/function-bind","bugs":{"url":"https://github.com/Raynos/function-bind/issues","email":"raynos2@gmail.com"},"readmeFilename":"README.md","license":"MIT"}
+{
+  "name": "function-bind",
+  "description": "Implementation of Function.prototype.bind",
+  "dist-tags": {
+    "latest": "1.1.1"
+  },
+  "versions": {
+    "1.1.1": {
+      "name": "function-bind",
+      "version": "1.1.1",
+      "description": "Implementation of Function.prototype.bind",
+      "author": {
+        "name": "Raynos",
+        "email": "raynos2@gmail.com"
+      },
+      "repository": {
+        "type": "git",
+        "url": "git://github.com/Raynos/function-bind.git"
+      },
+      "main": "index",
+      "bugs": {
+        "url": "https://github.com/Raynos/function-bind/issues",
+        "email": "raynos2@gmail.com"
+      },
+      "dependencies": {},
+      "devDependencies": {
+        "@ljharb/eslint-config": "^12.2.1",
+        "covert": "^1.1.0",
+        "eslint": "^4.5.0",
+        "jscs": "^3.0.7",
+        "tape": "^4.8.0"
+      },
+      "license": "MIT",
+      "scripts": {
+        "pretest": "npm run lint",
+        "test": "npm run tests-only",
+        "posttest": "npm run coverage -- --quiet",
+        "tests-only": "node test",
+        "coverage": "covert test/*.js",
+        "lint": "npm run jscs && npm run eslint",
+        "jscs": "jscs *.js */*.js",
+        "eslint": "eslint *.js */*.js"
+      },
+      "testling": {
+        "files": "test/index.js",
+        "browsers": [
+          "ie/8..latest",
+          "firefox/16..latest",
+          "firefox/nightly",
+          "chrome/22..latest",
+          "chrome/canary",
+          "opera/12..latest",
+          "opera/next",
+          "safari/5.1..latest",
+          "ipad/6.0..latest",
+          "iphone/6.0..latest",
+          "android-browser/4.2..latest"
+        ]
+      },
+      "gitHead": "1213f807066d1cb8d39a0592d5118f4b1f03de4a",
+      "_id": "function-bind@1.1.1",
+      "_npmVersion": "5.3.0",
+      "_nodeVersion": "8.4.0",
+      "dist": {
+        "integrity": "sha512-yIovAzMX49sF8Yl58fSCWJ5svSLuaibPxXQJFLmBObTuCr0Mf1KiPopGM9NiFjiYBCbfaa2Fh6breQ6ANVTI0A==",
+        "shasum": "a56899d3ea3c9bab874bb9773b7c5ede92f4895d",
+        "tarball": "http://localhost:4260/function-bind/function-bind-1.1.1.tgz",
+        "signatures": [
+          {
+            "keyid": "SHA256:jl3bwswu80PjjokCgh0o2w5c2U4LhQAE57gj9cz1kzA",
+            "sig": "MEUCIQDsVxPdBe+3LZpIF8YZMP7chLM+i5RVRwvtzCd5Yx7zigIgHw6sg2uwy+ItJamfc9+b+XTQOi93JrtZ+8F6YNq3Jz8="
+          }
+        ]
+      }
+    }
+  },
+  "readme": "# function-bind\n\n<!--\n    [![build status][travis-svg]][travis-url]\n    [![NPM version][npm-badge-svg]][npm-url]\n    [![Coverage Status][5]][6]\n    [![gemnasium Dependency Status][7]][8]\n    [![Dependency status][deps-svg]][deps-url]\n    [![Dev Dependency status][dev-deps-svg]][dev-deps-url]\n-->\n\n<!-- [![browser support][11]][12] -->\n\nImplementation of function.prototype.bind\n\n## Example\n\nI mainly do this for unit tests I run on phantomjs.\nPhantomJS does not have Function.prototype.bind :(\n\n```js\nFunction.prototype.bind = require(\"function-bind\")\n```\n\n## Installation\n\n`npm install function-bind`\n\n## Contributors\n\n - Raynos\n\n## MIT Licenced\n\n  [travis-svg]: https://travis-ci.org/Raynos/function-bind.svg\n  [travis-url]: https://travis-ci.org/Raynos/function-bind\n  [npm-badge-svg]: https://badge.fury.io/js/function-bind.svg\n  [npm-url]: https://npmjs.org/package/function-bind\n  [5]: https://coveralls.io/repos/Raynos/function-bind/badge.png\n  [6]: https://coveralls.io/r/Raynos/function-bind\n  [7]: https://gemnasium.com/Raynos/function-bind.png\n  [8]: https://gemnasium.com/Raynos/function-bind\n  [deps-svg]: https://david-dm.org/Raynos/function-bind.svg\n  [deps-url]: https://david-dm.org/Raynos/function-bind\n  [dev-deps-svg]: https://david-dm.org/Raynos/function-bind/dev-status.svg\n  [dev-deps-url]: https://david-dm.org/Raynos/function-bind#info=devDependencies\n  [11]: https://ci.testling.com/Raynos/function-bind.png\n  [12]: https://ci.testling.com/Raynos/function-bind\n",
+  "author": {
+    "name": "Raynos",
+    "email": "raynos2@gmail.com"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git://github.com/Raynos/function-bind.git"
+  },
+  "homepage": "https://github.com/Raynos/function-bind",
+  "bugs": {
+    "url": "https://github.com/Raynos/function-bind/issues",
+    "email": "raynos2@gmail.com"
+  },
+  "readmeFilename": "README.md",
+  "license": "MIT"
+}

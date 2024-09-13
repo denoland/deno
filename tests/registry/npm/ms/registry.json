@@ -1,1 +1,80 @@
-{"name":"ms","description":"Tiny millisecond conversion utility","dist-tags":{"latest":"2.1.2"},"versions":{"2.1.2":{"name":"ms","version":"2.1.2","description":"Tiny millisecond conversion utility","repository":{"type":"git","url":"git+https://github.com/zeit/ms.git"},"main":"./index","scripts":{"precommit":"lint-staged","lint":"eslint lib/* bin/*","test":"mocha tests.js"},"eslintConfig":{"extends":"eslint:recommended","env":{"node":true,"es6":true}},"lint-staged":{"*.js":["npm run lint","prettier --single-quote --write","git add"]},"license":"MIT","devDependencies":{"eslint":"4.12.1","expect.js":"0.3.1","husky":"0.14.3","lint-staged":"5.0.0","mocha":"4.0.1"},"gitHead":"7920885eb232fbe7a5efdab956d3e7c507c92ddf","bugs":{"url":"https://github.com/zeit/ms/issues"},"_id":"ms@2.1.2","_npmVersion":"6.4.1","_nodeVersion":"10.15.3","dist":{"integrity":"sha512-sGkPx+VjMtmA6MX27oA4FBFELFCZZ4S4XqeGOXCv68tT+jb3vk/RyaKWP0PTKyWtmLSM0b+adUTEvbs1PEaH2w==","shasum":"d09d1f357b443f493382a8eb3ccd183872ae6009","tarball":"http://localhost:4260/ms/ms-2.1.2.tgz","fileCount":4,"unpackedSize":6842,"npm-signature":"-----BEGIN PGP SIGNATURE-----\r\nVersion: OpenPGP.js v3.0.4\r\nComment: https://openpgpjs.org\r\n\r\nwsFcBAEBCAAQBQJc+U4MCRA9TVsSAnZWagAA71AP/2rpu0zYdK5Z/BXrrKNW\nljsVOs4oHNJ2jeZrzpcV8eZUZ6zAi78plyxcnMCbbG+TrpjXrPcb8qFq630G\nS6+srbEF0lCGCc+ktJrNJPTeXkDxukQXVrepgZ2kxZ4m3q/QIAVoK4t9ebuH\nNYa+39wwET9oPuPsk+YY0Z7fQ1vadyuzHYOrRmtudV3ZtyT0k74Ec3IhKamW\nlLDJtCklD7IGcwirrvPssxmYu8WP+PAyFnrVaOW+iior1o07oWO2mk7sk3Fx\nwBSBFf7vZqFJP6Qg1m3TVBAiipL+Pf+b3Dy8fhmn4NhTGj/9Wl7f/LcqogOV\nV9l77qsZldCERBwmwLsHlMyCSSl/b2qaz28ZBTRwHtHdo19QT6MqX8Yvomy4\n+gyPBBAHC6bqqLZ0veRKzSNFfJYoFw8tQzyjSjpmYcdxaB5w4z4QPZAkZCku\ns+sooI5Xo33E9rcEDWmyqxdUud+Au/fTttg0dReYe8NVrUgzyk4T1W+D7I4k\nu3XV7O9bOaJiBTNsb22lGIC6E/HtjfoqW7iwl0cdZ8iZcPTBClkzsy9Hz6a4\nmNKDARFL0wjzWF/CoXyKcI6t9ruOepTQRfbAtZDAo4LEYj/bGiqm2kbX5AP6\nicCOlufTNip74l2bXv2sJNwtjGzEYF/S79Oyc49IP/ovIua4quXXtSjAh8Bg\nLrV/\r\n=GrYx\r\n-----END PGP SIGNATURE-----\r\n","signatures":[{"keyid":"SHA256:jl3bwswu80PjjokCgh0o2w5c2U4LhQAE57gj9cz1kzA","sig":"MEUCIQDVNTHsphMsdrWmzEq1T6dFGHe80Vg5ZmIWN1NIKOAHewIgE0sscC2rehxwM3V43Nil6I4auXhiwsdK9Kb1JtejdzE="}]},"directories":{},"_hasShrinkwrap":false}},"readme":"# ms\n\n![CI](https://github.com/vercel/ms/workflows/CI/badge.svg)\n\nUse this package to easily convert various time formats to milliseconds.\n\n## Examples\n\n<!-- prettier-ignore -->\n```js\nms('2 days')  // 172800000\nms('1d')      // 86400000\nms('10h')     // 36000000\nms('2.5 hrs') // 9000000\nms('2h')      // 7200000\nms('1m')      // 60000\nms('5s')      // 5000\nms('1y')      // 31557600000\nms('100')     // 100\nms('-3 days') // -259200000\nms('-1h')     // -3600000\nms('-200')    // -200\n```\n\n### Convert from Milliseconds\n\n<!-- prettier-ignore -->\n```js\nms(60000)             // \"1m\"\nms(2 * 60000)         // \"2m\"\nms(-3 * 60000)        // \"-3m\"\nms(ms('10 hours'))    // \"10h\"\n```\n\n### Time Format Written-Out\n\n<!-- prettier-ignore -->\n```js\nms(60000, { long: true })             // \"1 minute\"\nms(2 * 60000, { long: true })         // \"2 minutes\"\nms(-3 * 60000, { long: true })        // \"-3 minutes\"\nms(ms('10 hours'), { long: true })    // \"10 hours\"\n```\n\n## Features\n\n- Works both in [Node.js](https://nodejs.org) and in the browser\n- If a number is supplied to `ms`, a string with a unit is returned\n- If a string that contains the number is supplied, it returns it as a number (e.g.: it returns `100` for `'100'`)\n- If you pass a string with a number and a valid unit, the number of equivalent milliseconds is returned\n\n## TypeScript support\n\nAs of v3.0, this package includes TypeScript definitions.\n\nFor added safety, we're using [Template Literal Types](https://www.typescriptlang.org/docs/handbook/2/template-literal-types.html) (added in [TypeScript 4.1](https://www.typescriptlang.org/docs/handbook/release-notes/typescript-4-1.html)). This ensures that you don't accidentally pass `ms` values that it can't process.\n\nThis won't require you to do anything special in most situations, but you can also import the `StringValue` type from `ms` if you need to use it.\n\n```ts\nimport ms, { StringValue } from 'ms';\n\n// Using the exported type.\nfunction example(value: StringValue) {\n  ms(value);\n}\n\n// This function will only accept a string compatible with `ms`.\nexample('1 h');\n```\n\nIn this example, we use a [Type Assertion](https://www.typescriptlang.org/docs/handbook/2/everyday-types.html#type-assertions) to coerce a `string`.\n\n```ts\nimport ms, { StringValue } from 'ms';\n\n// Type assertion with the exported type.\nfunction example(value: string) {\n  try {\n    // A string could be \"wider\" than the values accepted by `ms`, so we assert\n    // that our `value` is a `StringValue`.\n    //\n    // It's important to note that this can be dangerous (see below).\n    ms(value as StringValue);\n  } catch (error: Error) {\n    // Handle any errors from invalid vaues.\n    console.error(error);\n  }\n}\n\n// This function will accept any string, which may result in a bug.\nexample('any value');\n```\n\nYou may also create a custom Template Literal Type.\n\n```ts\nimport ms from 'ms';\n\ntype OnlyDaysAndWeeks = `${number} ${'days' | 'weeks'}`;\n\n// Using a custom Template Literal Type.\nfunction example(value: OnlyDaysAndWeeks) {\n  // The type of `value` is narrower than the values `ms` accepts, which is\n  // safe to use without coercion.\n  ms(value);\n}\n\n// This function will accept \"# days\" or \"# weeks\" only.\nexample('5.2 days');\n```\n\n## Related Packages\n\n- [ms.macro](https://github.com/knpwrs/ms.macro) - Run `ms` as a macro at build-time.\n\n## Caught a Bug?\n\n1. [Fork](https://help.github.com/articles/fork-a-repo/) this repository to your own GitHub account and then [clone](https://help.github.com/articles/cloning-a-repository/) it to your local device\n2. Link the package to the global module directory: `npm link`\n3. Within the module you want to test your local development instance of ms, just link it to the dependencies: `npm link ms`. Instead of the default one from npm, Node.js will now use your clone of ms!\n\nAs always, you can run the tests using: `npm test`\n","repository":{"type":"git","url":"git+https://github.com/vercel/ms.git"},"bugs":{"url":"https://github.com/vercel/ms/issues"},"readmeFilename":"readme.md","homepage":"https://github.com/vercel/ms#readme","license":"MIT"}
+{
+  "name": "ms",
+  "description": "Tiny millisecond conversion utility",
+  "dist-tags": {
+    "latest": "2.1.2"
+  },
+  "versions": {
+    "2.1.2": {
+      "name": "ms",
+      "version": "2.1.2",
+      "description": "Tiny millisecond conversion utility",
+      "repository": {
+        "type": "git",
+        "url": "git+https://github.com/zeit/ms.git"
+      },
+      "main": "./index",
+      "scripts": {
+        "precommit": "lint-staged",
+        "lint": "eslint lib/* bin/*",
+        "test": "mocha tests.js"
+      },
+      "eslintConfig": {
+        "extends": "eslint:recommended",
+        "env": {
+          "node": true,
+          "es6": true
+        }
+      },
+      "lint-staged": {
+        "*.js": [
+          "npm run lint",
+          "prettier --single-quote --write",
+          "git add"
+        ]
+      },
+      "license": "MIT",
+      "devDependencies": {
+        "eslint": "4.12.1",
+        "expect.js": "0.3.1",
+        "husky": "0.14.3",
+        "lint-staged": "5.0.0",
+        "mocha": "4.0.1"
+      },
+      "gitHead": "7920885eb232fbe7a5efdab956d3e7c507c92ddf",
+      "bugs": {
+        "url": "https://github.com/zeit/ms/issues"
+      },
+      "_id": "ms@2.1.2",
+      "_npmVersion": "6.4.1",
+      "_nodeVersion": "10.15.3",
+      "dist": {
+        "integrity": "sha512-sGkPx+VjMtmA6MX27oA4FBFELFCZZ4S4XqeGOXCv68tT+jb3vk/RyaKWP0PTKyWtmLSM0b+adUTEvbs1PEaH2w==",
+        "shasum": "d09d1f357b443f493382a8eb3ccd183872ae6009",
+        "tarball": "http://localhost:4260/ms/ms-2.1.2.tgz",
+        "fileCount": 4,
+        "unpackedSize": 6842,
+        "npm-signature": "-----BEGIN PGP SIGNATURE-----\r\nVersion: OpenPGP.js v3.0.4\r\nComment: https://openpgpjs.org\r\n\r\nwsFcBAEBCAAQBQJc+U4MCRA9TVsSAnZWagAA71AP/2rpu0zYdK5Z/BXrrKNW\nljsVOs4oHNJ2jeZrzpcV8eZUZ6zAi78plyxcnMCbbG+TrpjXrPcb8qFq630G\nS6+srbEF0lCGCc+ktJrNJPTeXkDxukQXVrepgZ2kxZ4m3q/QIAVoK4t9ebuH\nNYa+39wwET9oPuPsk+YY0Z7fQ1vadyuzHYOrRmtudV3ZtyT0k74Ec3IhKamW\nlLDJtCklD7IGcwirrvPssxmYu8WP+PAyFnrVaOW+iior1o07oWO2mk7sk3Fx\nwBSBFf7vZqFJP6Qg1m3TVBAiipL+Pf+b3Dy8fhmn4NhTGj/9Wl7f/LcqogOV\nV9l77qsZldCERBwmwLsHlMyCSSl/b2qaz28ZBTRwHtHdo19QT6MqX8Yvomy4\n+gyPBBAHC6bqqLZ0veRKzSNFfJYoFw8tQzyjSjpmYcdxaB5w4z4QPZAkZCku\ns+sooI5Xo33E9rcEDWmyqxdUud+Au/fTttg0dReYe8NVrUgzyk4T1W+D7I4k\nu3XV7O9bOaJiBTNsb22lGIC6E/HtjfoqW7iwl0cdZ8iZcPTBClkzsy9Hz6a4\nmNKDARFL0wjzWF/CoXyKcI6t9ruOepTQRfbAtZDAo4LEYj/bGiqm2kbX5AP6\nicCOlufTNip74l2bXv2sJNwtjGzEYF/S79Oyc49IP/ovIua4quXXtSjAh8Bg\nLrV/\r\n=GrYx\r\n-----END PGP SIGNATURE-----\r\n",
+        "signatures": [
+          {
+            "keyid": "SHA256:jl3bwswu80PjjokCgh0o2w5c2U4LhQAE57gj9cz1kzA",
+            "sig": "MEUCIQDVNTHsphMsdrWmzEq1T6dFGHe80Vg5ZmIWN1NIKOAHewIgE0sscC2rehxwM3V43Nil6I4auXhiwsdK9Kb1JtejdzE="
+          }
+        ]
+      },
+      "directories": {},
+      "_hasShrinkwrap": false
+    }
+  },
+  "readme": "# ms\n\n![CI](https://github.com/vercel/ms/workflows/CI/badge.svg)\n\nUse this package to easily convert various time formats to milliseconds.\n\n## Examples\n\n<!-- prettier-ignore -->\n```js\nms('2 days')  // 172800000\nms('1d')      // 86400000\nms('10h')     // 36000000\nms('2.5 hrs') // 9000000\nms('2h')      // 7200000\nms('1m')      // 60000\nms('5s')      // 5000\nms('1y')      // 31557600000\nms('100')     // 100\nms('-3 days') // -259200000\nms('-1h')     // -3600000\nms('-200')    // -200\n```\n\n### Convert from Milliseconds\n\n<!-- prettier-ignore -->\n```js\nms(60000)             // \"1m\"\nms(2 * 60000)         // \"2m\"\nms(-3 * 60000)        // \"-3m\"\nms(ms('10 hours'))    // \"10h\"\n```\n\n### Time Format Written-Out\n\n<!-- prettier-ignore -->\n```js\nms(60000, { long: true })             // \"1 minute\"\nms(2 * 60000, { long: true })         // \"2 minutes\"\nms(-3 * 60000, { long: true })        // \"-3 minutes\"\nms(ms('10 hours'), { long: true })    // \"10 hours\"\n```\n\n## Features\n\n- Works both in [Node.js](https://nodejs.org) and in the browser\n- If a number is supplied to `ms`, a string with a unit is returned\n- If a string that contains the number is supplied, it returns it as a number (e.g.: it returns `100` for `'100'`)\n- If you pass a string with a number and a valid unit, the number of equivalent milliseconds is returned\n\n## TypeScript support\n\nAs of v3.0, this package includes TypeScript definitions.\n\nFor added safety, we're using [Template Literal Types](https://www.typescriptlang.org/docs/handbook/2/template-literal-types.html) (added in [TypeScript 4.1](https://www.typescriptlang.org/docs/handbook/release-notes/typescript-4-1.html)). This ensures that you don't accidentally pass `ms` values that it can't process.\n\nThis won't require you to do anything special in most situations, but you can also import the `StringValue` type from `ms` if you need to use it.\n\n```ts\nimport ms, { StringValue } from 'ms';\n\n// Using the exported type.\nfunction example(value: StringValue) {\n  ms(value);\n}\n\n// This function will only accept a string compatible with `ms`.\nexample('1 h');\n```\n\nIn this example, we use a [Type Assertion](https://www.typescriptlang.org/docs/handbook/2/everyday-types.html#type-assertions) to coerce a `string`.\n\n```ts\nimport ms, { StringValue } from 'ms';\n\n// Type assertion with the exported type.\nfunction example(value: string) {\n  try {\n    // A string could be \"wider\" than the values accepted by `ms`, so we assert\n    // that our `value` is a `StringValue`.\n    //\n    // It's important to note that this can be dangerous (see below).\n    ms(value as StringValue);\n  } catch (error: Error) {\n    // Handle any errors from invalid vaues.\n    console.error(error);\n  }\n}\n\n// This function will accept any string, which may result in a bug.\nexample('any value');\n```\n\nYou may also create a custom Template Literal Type.\n\n```ts\nimport ms from 'ms';\n\ntype OnlyDaysAndWeeks = `${number} ${'days' | 'weeks'}`;\n\n// Using a custom Template Literal Type.\nfunction example(value: OnlyDaysAndWeeks) {\n  // The type of `value` is narrower than the values `ms` accepts, which is\n  // safe to use without coercion.\n  ms(value);\n}\n\n// This function will accept \"# days\" or \"# weeks\" only.\nexample('5.2 days');\n```\n\n## Related Packages\n\n- [ms.macro](https://github.com/knpwrs/ms.macro) - Run `ms` as a macro at build-time.\n\n## Caught a Bug?\n\n1. [Fork](https://help.github.com/articles/fork-a-repo/) this repository to your own GitHub account and then [clone](https://help.github.com/articles/cloning-a-repository/) it to your local device\n2. Link the package to the global module directory: `npm link`\n3. Within the module you want to test your local development instance of ms, just link it to the dependencies: `npm link ms`. Instead of the default one from npm, Node.js will now use your clone of ms!\n\nAs always, you can run the tests using: `npm test`\n",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/vercel/ms.git"
+  },
+  "bugs": {
+    "url": "https://github.com/vercel/ms/issues"
+  },
+  "readmeFilename": "readme.md",
+  "homepage": "https://github.com/vercel/ms#readme",
+  "license": "MIT"
+}

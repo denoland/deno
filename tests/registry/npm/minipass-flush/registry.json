@@ -1,1 +1,83 @@
-{"name":"minipass-flush","dist-tags":{"latest":"1.0.5"},"versions":{"1.0.5":{"name":"minipass-flush","version":"1.0.5","description":"A Minipass stream that calls a flush function before emitting 'end'","author":{"name":"Isaac Z. Schlueter","email":"i@izs.me","url":"https://izs.me"},"license":"ISC","scripts":{"test":"tap","snap":"tap","preversion":"npm test","postversion":"npm publish","postpublish":"git push origin --follow-tags"},"tap":{"check-coverage":true},"devDependencies":{"tap":"^14.6.9"},"dependencies":{"minipass":"^3.0.0"},"main":"index.js","repository":{"type":"git","url":"git+https://github.com/isaacs/minipass-flush.git"},"engines":{"node":">= 8"},"gitHead":"9625266c18ca9d14bb13f85dfcdf8cb67763b14e","bugs":{"url":"https://github.com/isaacs/minipass-flush/issues"},"_id":"minipass-flush@1.0.5","_nodeVersion":"12.8.1","_npmVersion":"6.12.0-next.0","dist":{"integrity":"sha512-JmQSYYpPUqX5Jyn1mXaRwOda1uQ8HP5KAT/oDSLCzt1BYRhQU0/hDtsB1ufZfEEzMZ9aAVmsBw8+FWsIXlClWw==","shasum":"82e7135d7e89a50ffe64610a787953c4c4cbb373","tarball":"http://localhost:4260/minipass-flush/minipass-flush-1.0.5.tgz","fileCount":4,"unpackedSize":3771,"npm-signature":"-----BEGIN PGP SIGNATURE-----\r\nVersion: OpenPGP.js v3.0.4\r\nComment: https://openpgpjs.org\r\n\r\nwsFcBAEBCAAQBQJdkmuZCRA9TVsSAnZWagAAbU0QAJZOgfwMjGwsBXsEKbe4\nkLt82NEj2aO+Hx9DqkBbt0XWoOypu9zNzY5kknQQBGSY+qT2yL0IkisbvC/c\nJkVbRj/rULVUMiYh0fzFzn2dRm7tCsDrI+KMeeGPt5jfs38ZAAnbQEMdwabI\nttqjCC5aSPBu4KZvXuadHGWtccwzkbE8ZoEr5BFFoUSR7ovVpeNkfj3mRXDh\nR0Iv/1YUqkxX3h9QMeDgFMwZTMEbxnd9noR6n71XeIv4FsIzMNf0TSNeC2Q1\nuNWYTaOTzDMCLEUHUIu6ba0tfmi9ZIqTxzJXozGX9YJ76+NoptytoK48v7Lo\nMEwfnuF/TtAAe6WGfcqHOZc0+rF1KnAJPXc05kscsLj4kh199sCDtrFmkKlT\n/I+lBtV5raSGdKVAjNC4ONnNETRij42HDVfvpuGIPUrSvXRLkrcxcjhEI8r6\nb8w8j8GodE7gAoHzUxdbcwARpPcszCOLF1Ttv5jWPSKR+pBzs/qnSDCdBcbu\nPgG5Cypac6wLcmdbpHigsvTN3rX8YHFyqf3ROypeLvxB01oTLWPPcSOf3zj3\nW+kqJ1SeiGVcp7suEbqGO5FxoBQkGm98YPXvk4uDjxQygd8iP6gG3FAR0jYu\n6i5u1TlpeNA1B3ZraveU4Uu/vpP2AL96F+ehDHQgDK4S990to6utl6Dk85HZ\nIud+\r\n=EXN3\r\n-----END PGP SIGNATURE-----\r\n","signatures":[{"keyid":"SHA256:jl3bwswu80PjjokCgh0o2w5c2U4LhQAE57gj9cz1kzA","sig":"MEUCIGDBlwD3arNCq9Laj2Ecw/O+KJ1u+CD2uVLIYV18eBlGAiEAhjEiSv0QdmJPic/P1y5UYL7Gnt40/D5k+MAD1mKu5wk="}]},"directories":{},"_hasShrinkwrap":false}},"description":"A Minipass stream that calls a flush function before emitting 'end'","author":{"name":"Isaac Z. Schlueter","email":"i@izs.me","url":"https://izs.me"},"license":"ISC","readme":"# minipass-flush\n\nA Minipass stream that calls a flush function before emitting 'end'\n\n## USAGE\n\n```js\nconst Flush = require('minipass-flush')\ncons f = new Flush({\n  flush (cb) {\n    // call the cb when done, or return a promise\n    // the 'end' event will wait for it, along with\n    // close, finish, and prefinish.\n    // call the cb with an error, or return a rejecting\n    // promise to emit 'error' instead of doing the 'end'\n    return rerouteAllEncryptions().then(() => clearAllChannels())\n  },\n  // all other minipass options accepted as well\n})\n\nsomeDataSource.pipe(f).on('end', () => {\n  // proper flushing has been accomplished\n})\n\n// Or as a subclass implementing a 'flush' method:\nclass MyFlush extends Flush {\n  flush (cb) {\n    // old fashioned callback style!\n    rerouteAllEncryptions(er => {\n      if (er)\n        return cb(er)\n      clearAllChannels(er => {\n        if (er)\n          cb(er)\n        cb()\n      })\n    })\n  }\n}\n```\n\nThat's about it.\n\nIf your `flush` method doesn't have to do anything asynchronous, then it's\nbetter to call the callback right away in this tick, rather than returning\n`Promise.resolve()`, so that the `end` event can happen as soon as\npossible.\n","readmeFilename":"README.md","homepage":"https://github.com/isaacs/minipass-flush#readme","repository":{"type":"git","url":"git+https://github.com/isaacs/minipass-flush.git"},"bugs":{"url":"https://github.com/isaacs/minipass-flush/issues"}}
+{
+  "name": "minipass-flush",
+  "dist-tags": {
+    "latest": "1.0.5"
+  },
+  "versions": {
+    "1.0.5": {
+      "name": "minipass-flush",
+      "version": "1.0.5",
+      "description": "A Minipass stream that calls a flush function before emitting 'end'",
+      "author": {
+        "name": "Isaac Z. Schlueter",
+        "email": "i@izs.me",
+        "url": "https://izs.me"
+      },
+      "license": "ISC",
+      "scripts": {
+        "test": "tap",
+        "snap": "tap",
+        "preversion": "npm test",
+        "postversion": "npm publish",
+        "postpublish": "git push origin --follow-tags"
+      },
+      "tap": {
+        "check-coverage": true
+      },
+      "devDependencies": {
+        "tap": "^14.6.9"
+      },
+      "dependencies": {
+        "minipass": "^3.0.0"
+      },
+      "main": "index.js",
+      "repository": {
+        "type": "git",
+        "url": "git+https://github.com/isaacs/minipass-flush.git"
+      },
+      "engines": {
+        "node": ">= 8"
+      },
+      "gitHead": "9625266c18ca9d14bb13f85dfcdf8cb67763b14e",
+      "bugs": {
+        "url": "https://github.com/isaacs/minipass-flush/issues"
+      },
+      "_id": "minipass-flush@1.0.5",
+      "_nodeVersion": "12.8.1",
+      "_npmVersion": "6.12.0-next.0",
+      "dist": {
+        "integrity": "sha512-JmQSYYpPUqX5Jyn1mXaRwOda1uQ8HP5KAT/oDSLCzt1BYRhQU0/hDtsB1ufZfEEzMZ9aAVmsBw8+FWsIXlClWw==",
+        "shasum": "82e7135d7e89a50ffe64610a787953c4c4cbb373",
+        "tarball": "http://localhost:4260/minipass-flush/minipass-flush-1.0.5.tgz",
+        "fileCount": 4,
+        "unpackedSize": 3771,
+        "npm-signature": "-----BEGIN PGP SIGNATURE-----\r\nVersion: OpenPGP.js v3.0.4\r\nComment: https://openpgpjs.org\r\n\r\nwsFcBAEBCAAQBQJdkmuZCRA9TVsSAnZWagAAbU0QAJZOgfwMjGwsBXsEKbe4\nkLt82NEj2aO+Hx9DqkBbt0XWoOypu9zNzY5kknQQBGSY+qT2yL0IkisbvC/c\nJkVbRj/rULVUMiYh0fzFzn2dRm7tCsDrI+KMeeGPt5jfs38ZAAnbQEMdwabI\nttqjCC5aSPBu4KZvXuadHGWtccwzkbE8ZoEr5BFFoUSR7ovVpeNkfj3mRXDh\nR0Iv/1YUqkxX3h9QMeDgFMwZTMEbxnd9noR6n71XeIv4FsIzMNf0TSNeC2Q1\nuNWYTaOTzDMCLEUHUIu6ba0tfmi9ZIqTxzJXozGX9YJ76+NoptytoK48v7Lo\nMEwfnuF/TtAAe6WGfcqHOZc0+rF1KnAJPXc05kscsLj4kh199sCDtrFmkKlT\n/I+lBtV5raSGdKVAjNC4ONnNETRij42HDVfvpuGIPUrSvXRLkrcxcjhEI8r6\nb8w8j8GodE7gAoHzUxdbcwARpPcszCOLF1Ttv5jWPSKR+pBzs/qnSDCdBcbu\nPgG5Cypac6wLcmdbpHigsvTN3rX8YHFyqf3ROypeLvxB01oTLWPPcSOf3zj3\nW+kqJ1SeiGVcp7suEbqGO5FxoBQkGm98YPXvk4uDjxQygd8iP6gG3FAR0jYu\n6i5u1TlpeNA1B3ZraveU4Uu/vpP2AL96F+ehDHQgDK4S990to6utl6Dk85HZ\nIud+\r\n=EXN3\r\n-----END PGP SIGNATURE-----\r\n",
+        "signatures": [
+          {
+            "keyid": "SHA256:jl3bwswu80PjjokCgh0o2w5c2U4LhQAE57gj9cz1kzA",
+            "sig": "MEUCIGDBlwD3arNCq9Laj2Ecw/O+KJ1u+CD2uVLIYV18eBlGAiEAhjEiSv0QdmJPic/P1y5UYL7Gnt40/D5k+MAD1mKu5wk="
+          }
+        ]
+      },
+      "directories": {},
+      "_hasShrinkwrap": false
+    }
+  },
+  "description": "A Minipass stream that calls a flush function before emitting 'end'",
+  "author": {
+    "name": "Isaac Z. Schlueter",
+    "email": "i@izs.me",
+    "url": "https://izs.me"
+  },
+  "license": "ISC",
+  "readme": "# minipass-flush\n\nA Minipass stream that calls a flush function before emitting 'end'\n\n## USAGE\n\n```js\nconst Flush = require('minipass-flush')\ncons f = new Flush({\n  flush (cb) {\n    // call the cb when done, or return a promise\n    // the 'end' event will wait for it, along with\n    // close, finish, and prefinish.\n    // call the cb with an error, or return a rejecting\n    // promise to emit 'error' instead of doing the 'end'\n    return rerouteAllEncryptions().then(() => clearAllChannels())\n  },\n  // all other minipass options accepted as well\n})\n\nsomeDataSource.pipe(f).on('end', () => {\n  // proper flushing has been accomplished\n})\n\n// Or as a subclass implementing a 'flush' method:\nclass MyFlush extends Flush {\n  flush (cb) {\n    // old fashioned callback style!\n    rerouteAllEncryptions(er => {\n      if (er)\n        return cb(er)\n      clearAllChannels(er => {\n        if (er)\n          cb(er)\n        cb()\n      })\n    })\n  }\n}\n```\n\nThat's about it.\n\nIf your `flush` method doesn't have to do anything asynchronous, then it's\nbetter to call the callback right away in this tick, rather than returning\n`Promise.resolve()`, so that the `end` event can happen as soon as\npossible.\n",
+  "readmeFilename": "README.md",
+  "homepage": "https://github.com/isaacs/minipass-flush#readme",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/isaacs/minipass-flush.git"
+  },
+  "bugs": {
+    "url": "https://github.com/isaacs/minipass-flush/issues"
+  }
+}
