@@ -1,1 +1,90 @@
-{"name":"unique-filename","description":"Generate a unique filename for use in temporary directories or caches.","dist-tags":{"latest":"3.0.0"},"versions":{"3.0.0":{"name":"unique-filename","version":"3.0.0","author":{"name":"GitHub Inc."},"license":"ISC","_id":"unique-filename@3.0.0","bugs":{"url":"https://github.com/iarna/unique-filename/issues"},"tap":{"nyc-arg":["--exclude","tap-snapshots/**"]},"dist":{"shasum":"48ba7a5a16849f5080d26c760c86cf5cf05770ea","tarball":"http://localhost:4260/unique-filename/unique-filename-3.0.0.tgz","fileCount":4,"integrity":"sha512-afXhuC55wkAmZ0P18QsVE6kp8JaxrEokN2HGIoIVv2ijHQd419H0+6EigAFcIzXeMIkcIkNBpB3L/DXB3cTS/g==","signatures":[{"sig":"MEUCIQC7AsCFOeTGcFtlnipoV/Cz7Ipqw6YjUhL11AQ19OQAogIgJpCmdRGqvybP0RZ3EOsOKNoT1qXW1Pc44wYejZL/KUM=","keyid":"SHA256:jl3bwswu80PjjokCgh0o2w5c2U4LhQAE57gj9cz1kzA"}],"unpackedSize":3414,"npm-signature":"-----BEGIN PGP SIGNATURE-----\r\nVersion: OpenPGP.js v4.10.10\r\nComment: https://openpgpjs.org\r\n\r\nwsFzBAEBCAAGBQJjSaHcACEJED1NWxICdlZqFiEECWMYAoorWMhJKdjhPU1b\r\nEgJ2Vmq99BAAkitPZqFX+xTRAdYaiPc6gxswhetNXAA2qAEjkTlHWvlO4c+o\r\nzFi9EUNF/hH8ecrxT+Fo2vu7hyojkMAaHdhrAK43YuEcUzaTcJUyQJsv/psk\r\nb4lNsyt7oO11JPxJ4eUJ53iM2dbZDOD5GlBaI4v0mdN+IFDldAwqNK6+XaE2\r\n3B0Q+fFJ7oEH608To1WxOKzm/6/pvt5YyClM+6ZQnd60Mj6CEy72yrPhpfCZ\r\nnx3UJkS8RzF/QLcJMIrk5dc+xSu6B7m4XHSLGNuobs1u4viEYw8Cf7Svg99t\r\nsWoHbuPJBniC/jRwyj4c1S+SgyUo0Ov00Lwt7qh7wJQHgptKgE9MidrOAX0o\r\nIFZiR2v6VBIrXb4M7qJwwgbo2bw6pQcDtsNzJ2A1STNIwH71/4h4cH3OPLKg\r\n8QgzzTh+4y2Ll9Ys4WokrrgBb1h8Sm4yAu7Me1LWVCrAn2PgpzUFtGLHbDmj\r\nKAgbg26lGi6QTR6J7BD0f2LgzMLQ/BeDRZV69TyCofTjKSyll+/e7aUux8bs\r\nmRCjGR77+az/6fH85NdYUBv3VTGTPpBijFWrbJ7IZG3KlBQlRZgCR7n507iG\r\njDh15JJkcf29g/syvLxACIYXg5ynmR5jXv0opTHe/HWLkfKDUUBzJJTX6slx\r\ngxe9TBAJ707IvbqGHmjZXshHiBAXwslhXhc=\r\n=KEBJ\r\n-----END PGP SIGNATURE-----\r\n"},"main":"lib/index.js","engines":{"node":"^14.17.0 || ^16.13.0 || >=18.0.0"},"gitHead":"49d999ed740c2455755fd19f774571e81454a75e","scripts":{"lint":"eslint \"**/*.js\"","snap":"tap","test":"tap","lintfix":"npm run lint -- --fix","postlint":"template-oss-check","posttest":"npm run lint","template-oss-apply":"template-oss-apply --force"},"repository":{"url":"git+https://github.com/npm/unique-filename.git","type":"git"},"_npmVersion":"8.19.2","description":"Generate a unique filename for use in temporary directories or caches.","directories":{},"templateOSS":{"version":"4.5.1","//@npmcli/template-oss":"This file is partially managed by @npmcli/template-oss. Edits may be overwritten."},"_nodeVersion":"18.10.0","dependencies":{"unique-slug":"^4.0.0"},"_hasShrinkwrap":false,"devDependencies":{"tap":"^16.3.0","@npmcli/template-oss":"4.5.1","@npmcli/eslint-config":"^4.0.0"}}},"author":{"name":"GitHub Inc."},"repository":{"url":"git+https://github.com/npm/unique-filename.git","type":"git"},"license":"ISC","homepage":"https://github.com/iarna/unique-filename","bugs":{"url":"https://github.com/iarna/unique-filename/issues"},"readme":"unique-filename\n===============\n\nGenerate a unique filename for use in temporary directories or caches.\n\n```js\nconst uniqueFilename = require('unique-filename')\n\n// returns something like: '/tmp/c5b28f47'\nconst randomTmpfile = uniqueFilename(os.tmpdir())\n\n// returns something like: '/tmp/my-test-51a7b48d'\nconst randomPrefixedTmpfile = uniqueFilename(os.tmpdir(), 'my-test')\n\n// returns something like: '/my-tmp-dir/testing-7ddd44c0'\nconst uniqueTmpfile = uniqueFilename('/my-tmp-dir', 'testing', '/my/thing/to/uniq/on')\n```\n\n### uniqueFilename(*dir*, *fileprefix*, *uniqstr*) → String\n\nReturns the full path of a unique filename that looks like:\n`dir/prefix-7ddd44c0`\nor `dir/7ddd44c0`\n\n*dir* – The path you want the filename in. `os.tmpdir()` is a good choice for this.\n\n*fileprefix* – A string to append prior to the unique part of the filename.\nThe parameter is required if *uniqstr* is also passed in but is otherwise\noptional and can be `undefined`/`null`/`''`. If present and not empty\nthen this string plus a hyphen are prepended to the unique part.\n\n*uniqstr* – Optional, if not passed the unique part of the resulting\nfilename will be random.  If passed in it will be generated from this string\nin a reproducible way.\n","readmeFilename":"README.md"}
+{
+  "name": "unique-filename",
+  "description": "Generate a unique filename for use in temporary directories or caches.",
+  "dist-tags": {
+    "latest": "3.0.0"
+  },
+  "versions": {
+    "3.0.0": {
+      "name": "unique-filename",
+      "version": "3.0.0",
+      "author": {
+        "name": "GitHub Inc."
+      },
+      "license": "ISC",
+      "_id": "unique-filename@3.0.0",
+      "bugs": {
+        "url": "https://github.com/iarna/unique-filename/issues"
+      },
+      "tap": {
+        "nyc-arg": [
+          "--exclude",
+          "tap-snapshots/**"
+        ]
+      },
+      "dist": {
+        "shasum": "48ba7a5a16849f5080d26c760c86cf5cf05770ea",
+        "tarball": "http://localhost:4260/unique-filename/unique-filename-3.0.0.tgz",
+        "fileCount": 4,
+        "integrity": "sha512-afXhuC55wkAmZ0P18QsVE6kp8JaxrEokN2HGIoIVv2ijHQd419H0+6EigAFcIzXeMIkcIkNBpB3L/DXB3cTS/g==",
+        "signatures": [
+          {
+            "sig": "MEUCIQC7AsCFOeTGcFtlnipoV/Cz7Ipqw6YjUhL11AQ19OQAogIgJpCmdRGqvybP0RZ3EOsOKNoT1qXW1Pc44wYejZL/KUM=",
+            "keyid": "SHA256:jl3bwswu80PjjokCgh0o2w5c2U4LhQAE57gj9cz1kzA"
+          }
+        ],
+        "unpackedSize": 3414,
+        "npm-signature": "-----BEGIN PGP SIGNATURE-----\r\nVersion: OpenPGP.js v4.10.10\r\nComment: https://openpgpjs.org\r\n\r\nwsFzBAEBCAAGBQJjSaHcACEJED1NWxICdlZqFiEECWMYAoorWMhJKdjhPU1b\r\nEgJ2Vmq99BAAkitPZqFX+xTRAdYaiPc6gxswhetNXAA2qAEjkTlHWvlO4c+o\r\nzFi9EUNF/hH8ecrxT+Fo2vu7hyojkMAaHdhrAK43YuEcUzaTcJUyQJsv/psk\r\nb4lNsyt7oO11JPxJ4eUJ53iM2dbZDOD5GlBaI4v0mdN+IFDldAwqNK6+XaE2\r\n3B0Q+fFJ7oEH608To1WxOKzm/6/pvt5YyClM+6ZQnd60Mj6CEy72yrPhpfCZ\r\nnx3UJkS8RzF/QLcJMIrk5dc+xSu6B7m4XHSLGNuobs1u4viEYw8Cf7Svg99t\r\nsWoHbuPJBniC/jRwyj4c1S+SgyUo0Ov00Lwt7qh7wJQHgptKgE9MidrOAX0o\r\nIFZiR2v6VBIrXb4M7qJwwgbo2bw6pQcDtsNzJ2A1STNIwH71/4h4cH3OPLKg\r\n8QgzzTh+4y2Ll9Ys4WokrrgBb1h8Sm4yAu7Me1LWVCrAn2PgpzUFtGLHbDmj\r\nKAgbg26lGi6QTR6J7BD0f2LgzMLQ/BeDRZV69TyCofTjKSyll+/e7aUux8bs\r\nmRCjGR77+az/6fH85NdYUBv3VTGTPpBijFWrbJ7IZG3KlBQlRZgCR7n507iG\r\njDh15JJkcf29g/syvLxACIYXg5ynmR5jXv0opTHe/HWLkfKDUUBzJJTX6slx\r\ngxe9TBAJ707IvbqGHmjZXshHiBAXwslhXhc=\r\n=KEBJ\r\n-----END PGP SIGNATURE-----\r\n"
+      },
+      "main": "lib/index.js",
+      "engines": {
+        "node": "^14.17.0 || ^16.13.0 || >=18.0.0"
+      },
+      "gitHead": "49d999ed740c2455755fd19f774571e81454a75e",
+      "scripts": {
+        "lint": "eslint \"**/*.js\"",
+        "snap": "tap",
+        "test": "tap",
+        "lintfix": "npm run lint -- --fix",
+        "postlint": "template-oss-check",
+        "posttest": "npm run lint",
+        "template-oss-apply": "template-oss-apply --force"
+      },
+      "repository": {
+        "url": "git+https://github.com/npm/unique-filename.git",
+        "type": "git"
+      },
+      "_npmVersion": "8.19.2",
+      "description": "Generate a unique filename for use in temporary directories or caches.",
+      "directories": {},
+      "templateOSS": {
+        "version": "4.5.1",
+        "//@npmcli/template-oss": "This file is partially managed by @npmcli/template-oss. Edits may be overwritten."
+      },
+      "_nodeVersion": "18.10.0",
+      "dependencies": {
+        "unique-slug": "^4.0.0"
+      },
+      "_hasShrinkwrap": false,
+      "devDependencies": {
+        "tap": "^16.3.0",
+        "@npmcli/template-oss": "4.5.1",
+        "@npmcli/eslint-config": "^4.0.0"
+      }
+    }
+  },
+  "author": {
+    "name": "GitHub Inc."
+  },
+  "repository": {
+    "url": "git+https://github.com/npm/unique-filename.git",
+    "type": "git"
+  },
+  "license": "ISC",
+  "homepage": "https://github.com/iarna/unique-filename",
+  "bugs": {
+    "url": "https://github.com/iarna/unique-filename/issues"
+  },
+  "readme": "unique-filename\n===============\n\nGenerate a unique filename for use in temporary directories or caches.\n\n```js\nconst uniqueFilename = require('unique-filename')\n\n// returns something like: '/tmp/c5b28f47'\nconst randomTmpfile = uniqueFilename(os.tmpdir())\n\n// returns something like: '/tmp/my-test-51a7b48d'\nconst randomPrefixedTmpfile = uniqueFilename(os.tmpdir(), 'my-test')\n\n// returns something like: '/my-tmp-dir/testing-7ddd44c0'\nconst uniqueTmpfile = uniqueFilename('/my-tmp-dir', 'testing', '/my/thing/to/uniq/on')\n```\n\n### uniqueFilename(*dir*, *fileprefix*, *uniqstr*) → String\n\nReturns the full path of a unique filename that looks like:\n`dir/prefix-7ddd44c0`\nor `dir/7ddd44c0`\n\n*dir* – The path you want the filename in. `os.tmpdir()` is a good choice for this.\n\n*fileprefix* – A string to append prior to the unique part of the filename.\nThe parameter is required if *uniqstr* is also passed in but is otherwise\noptional and can be `undefined`/`null`/`''`. If present and not empty\nthen this string plus a hyphen are prepended to the unique part.\n\n*uniqstr* – Optional, if not passed the unique part of the resulting\nfilename will be random.  If passed in it will be generated from this string\nin a reproducible way.\n",
+  "readmeFilename": "README.md"
+}

@@ -1,1 +1,47 @@
-{"name":"update-browserslist-db","dist-tags":{"latest":"1.0.10"},"versions":{"1.0.10":{"name":"update-browserslist-db","version":"1.0.10","dependencies":{"escalade":"^3.1.1","picocolors":"^1.0.0"},"peerDependencies":{"browserslist":">= 4.21.0"},"bin":{"browserslist-lint":"cli.js"},"dist":{"integrity":"sha512-OztqDenkfFkbSG+tRxBeAnCVPckDBcvibKd35yDONx6OU8N7sqgwc7rCbkJ/WcYtVRZ4ba68d6byhC21GFh7sQ==","shasum":"0f54b876545726f17d00cd9a2561e6dade943ff3","tarball":"http://localhost:4260/update-browserslist-db/update-browserslist-db-1.0.10.tgz","fileCount":8,"unpackedSize":13581,"signatures":[{"keyid":"SHA256:jl3bwswu80PjjokCgh0o2w5c2U4LhQAE57gj9cz1kzA","sig":"MEUCIE0WA8i81fDJ2wiJD0Gbj31BrBAQ8LpRdLGjJ4Jt0GdGAiEA69VYu+dpFQdGLqhfFMyfQB30n3nnHgP/pumK3ZKyx/Q="}],"npm-signature":"-----BEGIN PGP SIGNATURE-----\r\nVersion: OpenPGP.js v4.10.10\r\nComment: https://openpgpjs.org\r\n\r\nwsFzBAEBCAAGBQJjPbgHACEJED1NWxICdlZqFiEECWMYAoorWMhJKdjhPU1b\r\nEgJ2Vmrh0w//Z6zXG/lgz/mxTTYkkCLJXjAWSbeCUyRimfYHZB5j09B9YAmR\r\nQEtb1h2X7OyECjspS8+ymYE+yD9Ciz56J7smZihLGvE8BTGEO8bT57v0AILl\r\n3K9dILXznHypnCSpZbI3yFvqWaPkCdjEcKZ+ioi2/xLbuEMtRi4P3M+Ud/Ue\r\nN6Dz4s6dqxkvmh86NthMVvlYEtk9gGSBJEI41yc6VV43CfzR176zYOb3h40E\r\nq+x15wj1kvjvTOOa9PrbK2rcPS/8fGXvG039+p4F0nSiATRwV3mQVRH7enQO\r\nuVkE8EuDh91+UyhLiXkn51M5QZGT8iWVTh2GxAkljENmsupQjgUhglOwJ6A8\r\ntbyV2jBPxsoNAWgMBQT1ms3NI9H9nyYYbRoVujXgsfgRbnGbcZhUpJJL62Hz\r\nQgn2iVpijbs0D8B29G9DpXJjFXdUA3zLyJ04zDXOgyppioIRM46vThJcE6KP\r\nVO3WsbjbrxzNYmbJr0sqmQ44YoQAF/zhcmVGiKtxAf06zl7mRqXet1tCagDp\r\nk59ZHbw9MV1esJU2HPm0azgFeTPbRG2B9zIE6wA9MXVwHW+pfquEmXmE2C9D\r\njklw9920lduIoI6DUZ8TPvQxfadEXjwyOROq0W0ePBfGpnJ0KurYkrsHXZvW\r\nMsUXEn3pX6OU4pZwVQ6SoRIYXC/EUGHApPE=\r\n=u80j\r\n-----END PGP SIGNATURE-----\r\n"},"funding":[{"type":"opencollective","url":"https://opencollective.com/browserslist"},{"type":"tidelift","url":"https://tidelift.com/funding/github/npm/browserslist"}]}},"modified":"2022-10-05T16:59:51.776Z"}
+{
+  "name": "update-browserslist-db",
+  "dist-tags": {
+    "latest": "1.0.10"
+  },
+  "versions": {
+    "1.0.10": {
+      "name": "update-browserslist-db",
+      "version": "1.0.10",
+      "dependencies": {
+        "escalade": "^3.1.1",
+        "picocolors": "^1.0.0"
+      },
+      "peerDependencies": {
+        "browserslist": ">= 4.21.0"
+      },
+      "bin": {
+        "browserslist-lint": "cli.js"
+      },
+      "dist": {
+        "integrity": "sha512-OztqDenkfFkbSG+tRxBeAnCVPckDBcvibKd35yDONx6OU8N7sqgwc7rCbkJ/WcYtVRZ4ba68d6byhC21GFh7sQ==",
+        "shasum": "0f54b876545726f17d00cd9a2561e6dade943ff3",
+        "tarball": "http://localhost:4260/update-browserslist-db/update-browserslist-db-1.0.10.tgz",
+        "fileCount": 8,
+        "unpackedSize": 13581,
+        "signatures": [
+          {
+            "keyid": "SHA256:jl3bwswu80PjjokCgh0o2w5c2U4LhQAE57gj9cz1kzA",
+            "sig": "MEUCIE0WA8i81fDJ2wiJD0Gbj31BrBAQ8LpRdLGjJ4Jt0GdGAiEA69VYu+dpFQdGLqhfFMyfQB30n3nnHgP/pumK3ZKyx/Q="
+          }
+        ],
+        "npm-signature": "-----BEGIN PGP SIGNATURE-----\r\nVersion: OpenPGP.js v4.10.10\r\nComment: https://openpgpjs.org\r\n\r\nwsFzBAEBCAAGBQJjPbgHACEJED1NWxICdlZqFiEECWMYAoorWMhJKdjhPU1b\r\nEgJ2Vmrh0w//Z6zXG/lgz/mxTTYkkCLJXjAWSbeCUyRimfYHZB5j09B9YAmR\r\nQEtb1h2X7OyECjspS8+ymYE+yD9Ciz56J7smZihLGvE8BTGEO8bT57v0AILl\r\n3K9dILXznHypnCSpZbI3yFvqWaPkCdjEcKZ+ioi2/xLbuEMtRi4P3M+Ud/Ue\r\nN6Dz4s6dqxkvmh86NthMVvlYEtk9gGSBJEI41yc6VV43CfzR176zYOb3h40E\r\nq+x15wj1kvjvTOOa9PrbK2rcPS/8fGXvG039+p4F0nSiATRwV3mQVRH7enQO\r\nuVkE8EuDh91+UyhLiXkn51M5QZGT8iWVTh2GxAkljENmsupQjgUhglOwJ6A8\r\ntbyV2jBPxsoNAWgMBQT1ms3NI9H9nyYYbRoVujXgsfgRbnGbcZhUpJJL62Hz\r\nQgn2iVpijbs0D8B29G9DpXJjFXdUA3zLyJ04zDXOgyppioIRM46vThJcE6KP\r\nVO3WsbjbrxzNYmbJr0sqmQ44YoQAF/zhcmVGiKtxAf06zl7mRqXet1tCagDp\r\nk59ZHbw9MV1esJU2HPm0azgFeTPbRG2B9zIE6wA9MXVwHW+pfquEmXmE2C9D\r\njklw9920lduIoI6DUZ8TPvQxfadEXjwyOROq0W0ePBfGpnJ0KurYkrsHXZvW\r\nMsUXEn3pX6OU4pZwVQ6SoRIYXC/EUGHApPE=\r\n=u80j\r\n-----END PGP SIGNATURE-----\r\n"
+      },
+      "funding": [
+        {
+          "type": "opencollective",
+          "url": "https://opencollective.com/browserslist"
+        },
+        {
+          "type": "tidelift",
+          "url": "https://tidelift.com/funding/github/npm/browserslist"
+        }
+      ]
+    }
+  },
+  "modified": "2022-10-05T16:59:51.776Z"
+}

@@ -1,1 +1,76 @@
-{"name":"loose-envify","description":"Fast (and loose) selective `process.env` replacer using js-tokens instead of an AST","dist-tags":{"latest":"1.4.0"},"versions":{"1.4.0":{"name":"loose-envify","version":"1.4.0","description":"Fast (and loose) selective `process.env` replacer using js-tokens instead of an AST","license":"MIT","author":{"name":"Andres Suarez","email":"zertosh@gmail.com"},"main":"index.js","bin":{"loose-envify":"cli.js"},"repository":{"type":"git","url":"git://github.com/zertosh/loose-envify.git"},"scripts":{"test":"tap test/*.js"},"dependencies":{"js-tokens":"^3.0.0 || ^4.0.0"},"devDependencies":{"browserify":"^13.1.1","envify":"^3.4.0","tap":"^8.0.0"},"gitHead":"a8fdd02e3a435195f526053882d64537d627b3e6","bugs":{"url":"https://github.com/zertosh/loose-envify/issues"},"_id":"loose-envify@1.4.0","_npmVersion":"6.1.0","_nodeVersion":"10.6.0","dist":{"integrity":"sha512-lyuxPGr/Wfhrlem2CL/UcnUc1zcqKAImBDzukY7Y5F/yQiNdko6+fRLevlw1HgMySw7f611UIY408EtxRSoK3Q==","shasum":"71ee51fa7be4caec1a63839f7e682d8132d30caf","tarball":"http://localhost:4260/loose-envify/loose-envify-1.4.0.tgz","fileCount":8,"unpackedSize":5814,"npm-signature":"-----BEGIN PGP SIGNATURE-----\r\nVersion: OpenPGP.js v3.0.4\r\nComment: https://openpgpjs.org\r\n\r\nwsFcBAEBCAAQBQJbRJP5CRA9TVsSAnZWagAAQQ4P+wRneDh61dzk3uPX6QCb\nZ97i+VxSY74ti8gVGSCryXFkL8zPsjlBd1/yADnaS5y6InlHuHQZQ2820I3x\ngfSjlhCU9drbF8vXw7FSxIRQfFO5JvF7+L5M1mvsDVmz024M+97DQwFnRjo5\nCvSDVLC/HbnnTRX1Cfj9kQlDVS85RhLaDvYWendfUfivp++TwUizDUTS8nOu\nVIiwXygaef55bBmo+yNeQa+GmyAWET3jAaPl0MNBht6jtnMY9ZkgwXc03zaE\n0wRcOZbBfhUKk1VEk2TCN/TtN+AyktbI5rmyQXoHBGn3HjZntI/LjLmAw9dD\ndetTKPf1O2n8KLT/tGZjIRQjQWNbB51thQ4H3KsMBSfbIhdnZvFHmnDKilug\nIGjE4lKa4px0/ac+SBw6wQuZMy4I3xCbZd59qSpPB3IO0E+Qm+rhLdUiMDjf\n2y49xwMB7dixjRv7sLLqYwiSkXGkLp1N81drN7oNoZaLxOVCbJQKYoHwnsY4\ncoRc7W768FaKwZJPIWfZK2u2MAq5TL4v2+2laxAn25K5Qs6hh8rguSho7iPR\nZcaKA/maVJo8BGO+CEqvaysfUbnYZ06VOFnzG/TbLnLlmZUMMex95z8RloP8\n4kcoh3muuqd75sMUDURgjFCvXbQeORMZ3sa+G8h716pUVjvKLu5xNOF7qCN0\npadk\r\n=rcpJ\r\n-----END PGP SIGNATURE-----\r\n","signatures":[{"keyid":"SHA256:jl3bwswu80PjjokCgh0o2w5c2U4LhQAE57gj9cz1kzA","sig":"MEUCIQCtEQH8N9PyT4xrBOIczpbwwOu4sf2mIqw6XS4KIwV+WgIgQZ76hRyzJ94tUL0jNVJ8VyAx8MoCeb7p0qmyKQUEka8="}]},"directories":{},"_hasShrinkwrap":false}},"readme":"# loose-envify\n\n[![Build Status](https://travis-ci.org/zertosh/loose-envify.svg?branch=master)](https://travis-ci.org/zertosh/loose-envify)\n\nFast (and loose) selective `process.env` replacer using [js-tokens](https://github.com/lydell/js-tokens) instead of an AST. Works just like [envify](https://github.com/hughsk/envify) but much faster.\n\n## Gotchas\n\n* Doesn't handle broken syntax.\n* Doesn't look inside embedded expressions in template strings.\n  - **this won't work:**\n  ```js\n  console.log(`the current env is ${process.env.NODE_ENV}`);\n  ```\n* Doesn't replace oddly-spaced or oddly-commented expressions.\n  - **this won't work:**\n  ```js\n  console.log(process./*won't*/env./*work*/NODE_ENV);\n  ```\n\n## Usage/Options\n\nloose-envify has the exact same interface as [envify](https://github.com/hughsk/envify), including the CLI.\n\n## Benchmark\n\n```\nenvify:\n\n  $ for i in {1..5}; do node bench/bench.js 'envify'; done\n  708ms\n  727ms\n  791ms\n  719ms\n  720ms\n\nloose-envify:\n\n  $ for i in {1..5}; do node bench/bench.js '../'; done\n  51ms\n  52ms\n  52ms\n  52ms\n  52ms\n```\n","homepage":"https://github.com/zertosh/loose-envify","repository":{"type":"git","url":"git://github.com/zertosh/loose-envify.git"},"author":{"name":"Andres Suarez","email":"zertosh@gmail.com"},"bugs":{"url":"https://github.com/zertosh/loose-envify/issues"},"license":"MIT","readmeFilename":"README.md"}
+{
+  "name": "loose-envify",
+  "description": "Fast (and loose) selective `process.env` replacer using js-tokens instead of an AST",
+  "dist-tags": {
+    "latest": "1.4.0"
+  },
+  "versions": {
+    "1.4.0": {
+      "name": "loose-envify",
+      "version": "1.4.0",
+      "description": "Fast (and loose) selective `process.env` replacer using js-tokens instead of an AST",
+      "license": "MIT",
+      "author": {
+        "name": "Andres Suarez",
+        "email": "zertosh@gmail.com"
+      },
+      "main": "index.js",
+      "bin": {
+        "loose-envify": "cli.js"
+      },
+      "repository": {
+        "type": "git",
+        "url": "git://github.com/zertosh/loose-envify.git"
+      },
+      "scripts": {
+        "test": "tap test/*.js"
+      },
+      "dependencies": {
+        "js-tokens": "^3.0.0 || ^4.0.0"
+      },
+      "devDependencies": {
+        "browserify": "^13.1.1",
+        "envify": "^3.4.0",
+        "tap": "^8.0.0"
+      },
+      "gitHead": "a8fdd02e3a435195f526053882d64537d627b3e6",
+      "bugs": {
+        "url": "https://github.com/zertosh/loose-envify/issues"
+      },
+      "_id": "loose-envify@1.4.0",
+      "_npmVersion": "6.1.0",
+      "_nodeVersion": "10.6.0",
+      "dist": {
+        "integrity": "sha512-lyuxPGr/Wfhrlem2CL/UcnUc1zcqKAImBDzukY7Y5F/yQiNdko6+fRLevlw1HgMySw7f611UIY408EtxRSoK3Q==",
+        "shasum": "71ee51fa7be4caec1a63839f7e682d8132d30caf",
+        "tarball": "http://localhost:4260/loose-envify/loose-envify-1.4.0.tgz",
+        "fileCount": 8,
+        "unpackedSize": 5814,
+        "npm-signature": "-----BEGIN PGP SIGNATURE-----\r\nVersion: OpenPGP.js v3.0.4\r\nComment: https://openpgpjs.org\r\n\r\nwsFcBAEBCAAQBQJbRJP5CRA9TVsSAnZWagAAQQ4P+wRneDh61dzk3uPX6QCb\nZ97i+VxSY74ti8gVGSCryXFkL8zPsjlBd1/yADnaS5y6InlHuHQZQ2820I3x\ngfSjlhCU9drbF8vXw7FSxIRQfFO5JvF7+L5M1mvsDVmz024M+97DQwFnRjo5\nCvSDVLC/HbnnTRX1Cfj9kQlDVS85RhLaDvYWendfUfivp++TwUizDUTS8nOu\nVIiwXygaef55bBmo+yNeQa+GmyAWET3jAaPl0MNBht6jtnMY9ZkgwXc03zaE\n0wRcOZbBfhUKk1VEk2TCN/TtN+AyktbI5rmyQXoHBGn3HjZntI/LjLmAw9dD\ndetTKPf1O2n8KLT/tGZjIRQjQWNbB51thQ4H3KsMBSfbIhdnZvFHmnDKilug\nIGjE4lKa4px0/ac+SBw6wQuZMy4I3xCbZd59qSpPB3IO0E+Qm+rhLdUiMDjf\n2y49xwMB7dixjRv7sLLqYwiSkXGkLp1N81drN7oNoZaLxOVCbJQKYoHwnsY4\ncoRc7W768FaKwZJPIWfZK2u2MAq5TL4v2+2laxAn25K5Qs6hh8rguSho7iPR\nZcaKA/maVJo8BGO+CEqvaysfUbnYZ06VOFnzG/TbLnLlmZUMMex95z8RloP8\n4kcoh3muuqd75sMUDURgjFCvXbQeORMZ3sa+G8h716pUVjvKLu5xNOF7qCN0\npadk\r\n=rcpJ\r\n-----END PGP SIGNATURE-----\r\n",
+        "signatures": [
+          {
+            "keyid": "SHA256:jl3bwswu80PjjokCgh0o2w5c2U4LhQAE57gj9cz1kzA",
+            "sig": "MEUCIQCtEQH8N9PyT4xrBOIczpbwwOu4sf2mIqw6XS4KIwV+WgIgQZ76hRyzJ94tUL0jNVJ8VyAx8MoCeb7p0qmyKQUEka8="
+          }
+        ]
+      },
+      "directories": {},
+      "_hasShrinkwrap": false
+    }
+  },
+  "readme": "# loose-envify\n\n[![Build Status](https://travis-ci.org/zertosh/loose-envify.svg?branch=master)](https://travis-ci.org/zertosh/loose-envify)\n\nFast (and loose) selective `process.env` replacer using [js-tokens](https://github.com/lydell/js-tokens) instead of an AST. Works just like [envify](https://github.com/hughsk/envify) but much faster.\n\n## Gotchas\n\n* Doesn't handle broken syntax.\n* Doesn't look inside embedded expressions in template strings.\n  - **this won't work:**\n  ```js\n  console.log(`the current env is ${process.env.NODE_ENV}`);\n  ```\n* Doesn't replace oddly-spaced or oddly-commented expressions.\n  - **this won't work:**\n  ```js\n  console.log(process./*won't*/env./*work*/NODE_ENV);\n  ```\n\n## Usage/Options\n\nloose-envify has the exact same interface as [envify](https://github.com/hughsk/envify), including the CLI.\n\n## Benchmark\n\n```\nenvify:\n\n  $ for i in {1..5}; do node bench/bench.js 'envify'; done\n  708ms\n  727ms\n  791ms\n  719ms\n  720ms\n\nloose-envify:\n\n  $ for i in {1..5}; do node bench/bench.js '../'; done\n  51ms\n  52ms\n  52ms\n  52ms\n  52ms\n```\n",
+  "homepage": "https://github.com/zertosh/loose-envify",
+  "repository": {
+    "type": "git",
+    "url": "git://github.com/zertosh/loose-envify.git"
+  },
+  "author": {
+    "name": "Andres Suarez",
+    "email": "zertosh@gmail.com"
+  },
+  "bugs": {
+    "url": "https://github.com/zertosh/loose-envify/issues"
+  },
+  "license": "MIT",
+  "readmeFilename": "README.md"
+}

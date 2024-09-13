@@ -1,1 +1,108 @@
-{"name":"ajv-formats","dist-tags":{"latest":"2.1.1"},"versions":{"2.1.1":{"name":"ajv-formats","version":"2.1.1","description":"Format validation for Ajv v7+","main":"dist/index.js","types":"dist/index.d.ts","scripts":{"build":"tsc","prettier:write":"prettier --write \"./**/*.{md,json,yaml,js,ts}\"","prettier:check":"prettier --list-different \"./**/*.{md,json,yaml,js,ts}\"","eslint":"eslint --ext .ts ./src/**/*","test-spec":"jest","test-cov":"jest --coverage","test":"npm run prettier:check && npm run build && npm run eslint && npm run test-cov","ci-test":"npm run test"},"repository":{"type":"git","url":"git+https://github.com/ajv-validator/ajv-formats.git"},"author":{"name":"Evgeny Poberezkin"},"license":"MIT","bugs":{"url":"https://github.com/ajv-validator/ajv-formats/issues"},"dependencies":{"ajv":"^8.0.0"},"peerDependencies":{"ajv":"^8.0.0"},"peerDependenciesMeta":{"ajv":{"optional":true}},"devDependencies":{"@ajv-validator/config":"^0.3.0","@types/jest":"^26.0.5","@types/node":"^14.10.1","@typescript-eslint/eslint-plugin":"^3.7.0","@typescript-eslint/parser":"^3.7.0","ajv":"^8.0.0","eslint":"^7.5.0","eslint-config-prettier":"^6.11.0","husky":"^4.2.5","jest":"^26.1.0","json-schema-test":"^2.0.0","lint-staged":"^10.2.11","prettier":"^2.3.2","ts-jest":"^26.1.3","typescript":"^4.0.0"},"prettier":"@ajv-validator/config/prettierrc.json","husky":{"hooks":{"pre-commit":"lint-staged && npm test"}},"lint-staged":{"*.{md,json,yaml,js,ts}":"prettier --write"},"gitHead":"c1cb46cad79f984020a9a0ef569e9c091ce24400","_id":"ajv-formats@2.1.1","_nodeVersion":"14.17.4","_npmVersion":"6.14.14","dist":{"integrity":"sha512-Wx0Kx52hxE7C18hkMEggYlEifqWZtYaRgouJor+WMdPnQyEK13vgEWyVNup7SoeeoLMsr4kf5h6dOW11I15MUA==","shasum":"6e669400659eb74973bbf2e33327180a0996b520","tarball":"http://localhost:4260/ajv-formats/ajv-formats-2.1.1.tgz","fileCount":15,"unpackedSize":52227,"npm-signature":"-----BEGIN PGP SIGNATURE-----\r\nVersion: OpenPGP.js v3.0.13\r\nComment: https://openpgpjs.org\r\n\r\nwsFcBAEBCAAQBQJh2jKWCRA9TVsSAnZWagAAyu4P/AxuqlnEShCyP+ukQBKX\nL0cHq5/18T4izpHsZHE/vu2sf3JdeZzeFLfoL5JjZmlyumJsbXgwdepTH7HX\nNGHfRsUwHr+D48BiXd/Y6wZlC2kTpa/+UJfPZullkRVtGop/WlMkPc3dnRU3\novZ4qAz7w04mHdUSqkYwGT3ajLNHndUjivZ9ZAh8mCh+vjQFuA7zAvpFDz0K\nZLAKumx/nvf2SpoDNdofzjvL7pjdpaJC+yQDvggY/TII/XkrpDWNqfh6I8Xd\nx4v6ho/dnn4ihlI1SNRbT6dZMK3wgyrWbR19z+Qj2ruP3Vvck4usSdUgMIzb\nKPA6T61x9tgP5vxNfStRlUm24xjZhkfOpe/OaioN/XEnv1DpAyuU28gk2mPt\nHMD7T3p31JLTMZg1BN+TToau4vYsfjWW6UXk7IstQf5attcLp2VL6ZAUwYC7\nWSFWCpavok2mO3cOvkSyNJKGripNquL8N9W1BcQ/aXr3mK9OA0Vc8MrFtdbs\nq7tr7UCOZobDu8tt5KGBPVHiDdjpb/X6r7GTIirdaikktx5DW/dfMvzGqqVq\nZPm4Pe69QdsR7kq62/h1OnmKFqBC3AKXhix6QTCqbmv0iI42DE0BSsjqs6L9\nuTx3tNo4BrMsimcBekRx1Vm+0YP7Jx7RzHPK0JYBYuANdvwUOSzNOUFqKS2N\nNm8/\r\n=nmgl\r\n-----END PGP SIGNATURE-----\r\n","signatures":[{"keyid":"SHA256:jl3bwswu80PjjokCgh0o2w5c2U4LhQAE57gj9cz1kzA","sig":"MEQCIAiQ+wpxq7SGVGoZOo0Nq8utdTDArin0rYRIkc5QOzfGAiBwW/bjoF2mAg1rps4zt9jh3F66eaMSaMP62JTw0OOZqg=="}]},"directories":{},"_hasShrinkwrap":false}},"description":"Format validation for Ajv v7+","homepage":"https://github.com/ajv-validator/ajv-formats#readme","repository":{"type":"git","url":"git+https://github.com/ajv-validator/ajv-formats.git"},"author":{"name":"Evgeny Poberezkin"},"bugs":{"url":"https://github.com/ajv-validator/ajv-formats/issues"},"license":"MIT","readme":"","readmeFilename":""}
+{
+  "name": "ajv-formats",
+  "dist-tags": {
+    "latest": "2.1.1"
+  },
+  "versions": {
+    "2.1.1": {
+      "name": "ajv-formats",
+      "version": "2.1.1",
+      "description": "Format validation for Ajv v7+",
+      "main": "dist/index.js",
+      "types": "dist/index.d.ts",
+      "scripts": {
+        "build": "tsc",
+        "prettier:write": "prettier --write \"./**/*.{md,json,yaml,js,ts}\"",
+        "prettier:check": "prettier --list-different \"./**/*.{md,json,yaml,js,ts}\"",
+        "eslint": "eslint --ext .ts ./src/**/*",
+        "test-spec": "jest",
+        "test-cov": "jest --coverage",
+        "test": "npm run prettier:check && npm run build && npm run eslint && npm run test-cov",
+        "ci-test": "npm run test"
+      },
+      "repository": {
+        "type": "git",
+        "url": "git+https://github.com/ajv-validator/ajv-formats.git"
+      },
+      "author": {
+        "name": "Evgeny Poberezkin"
+      },
+      "license": "MIT",
+      "bugs": {
+        "url": "https://github.com/ajv-validator/ajv-formats/issues"
+      },
+      "dependencies": {
+        "ajv": "^8.0.0"
+      },
+      "peerDependencies": {
+        "ajv": "^8.0.0"
+      },
+      "peerDependenciesMeta": {
+        "ajv": {
+          "optional": true
+        }
+      },
+      "devDependencies": {
+        "@ajv-validator/config": "^0.3.0",
+        "@types/jest": "^26.0.5",
+        "@types/node": "^14.10.1",
+        "@typescript-eslint/eslint-plugin": "^3.7.0",
+        "@typescript-eslint/parser": "^3.7.0",
+        "ajv": "^8.0.0",
+        "eslint": "^7.5.0",
+        "eslint-config-prettier": "^6.11.0",
+        "husky": "^4.2.5",
+        "jest": "^26.1.0",
+        "json-schema-test": "^2.0.0",
+        "lint-staged": "^10.2.11",
+        "prettier": "^2.3.2",
+        "ts-jest": "^26.1.3",
+        "typescript": "^4.0.0"
+      },
+      "prettier": "@ajv-validator/config/prettierrc.json",
+      "husky": {
+        "hooks": {
+          "pre-commit": "lint-staged && npm test"
+        }
+      },
+      "lint-staged": {
+        "*.{md,json,yaml,js,ts}": "prettier --write"
+      },
+      "gitHead": "c1cb46cad79f984020a9a0ef569e9c091ce24400",
+      "_id": "ajv-formats@2.1.1",
+      "_nodeVersion": "14.17.4",
+      "_npmVersion": "6.14.14",
+      "dist": {
+        "integrity": "sha512-Wx0Kx52hxE7C18hkMEggYlEifqWZtYaRgouJor+WMdPnQyEK13vgEWyVNup7SoeeoLMsr4kf5h6dOW11I15MUA==",
+        "shasum": "6e669400659eb74973bbf2e33327180a0996b520",
+        "tarball": "http://localhost:4260/ajv-formats/ajv-formats-2.1.1.tgz",
+        "fileCount": 15,
+        "unpackedSize": 52227,
+        "npm-signature": "-----BEGIN PGP SIGNATURE-----\r\nVersion: OpenPGP.js v3.0.13\r\nComment: https://openpgpjs.org\r\n\r\nwsFcBAEBCAAQBQJh2jKWCRA9TVsSAnZWagAAyu4P/AxuqlnEShCyP+ukQBKX\nL0cHq5/18T4izpHsZHE/vu2sf3JdeZzeFLfoL5JjZmlyumJsbXgwdepTH7HX\nNGHfRsUwHr+D48BiXd/Y6wZlC2kTpa/+UJfPZullkRVtGop/WlMkPc3dnRU3\novZ4qAz7w04mHdUSqkYwGT3ajLNHndUjivZ9ZAh8mCh+vjQFuA7zAvpFDz0K\nZLAKumx/nvf2SpoDNdofzjvL7pjdpaJC+yQDvggY/TII/XkrpDWNqfh6I8Xd\nx4v6ho/dnn4ihlI1SNRbT6dZMK3wgyrWbR19z+Qj2ruP3Vvck4usSdUgMIzb\nKPA6T61x9tgP5vxNfStRlUm24xjZhkfOpe/OaioN/XEnv1DpAyuU28gk2mPt\nHMD7T3p31JLTMZg1BN+TToau4vYsfjWW6UXk7IstQf5attcLp2VL6ZAUwYC7\nWSFWCpavok2mO3cOvkSyNJKGripNquL8N9W1BcQ/aXr3mK9OA0Vc8MrFtdbs\nq7tr7UCOZobDu8tt5KGBPVHiDdjpb/X6r7GTIirdaikktx5DW/dfMvzGqqVq\nZPm4Pe69QdsR7kq62/h1OnmKFqBC3AKXhix6QTCqbmv0iI42DE0BSsjqs6L9\nuTx3tNo4BrMsimcBekRx1Vm+0YP7Jx7RzHPK0JYBYuANdvwUOSzNOUFqKS2N\nNm8/\r\n=nmgl\r\n-----END PGP SIGNATURE-----\r\n",
+        "signatures": [
+          {
+            "keyid": "SHA256:jl3bwswu80PjjokCgh0o2w5c2U4LhQAE57gj9cz1kzA",
+            "sig": "MEQCIAiQ+wpxq7SGVGoZOo0Nq8utdTDArin0rYRIkc5QOzfGAiBwW/bjoF2mAg1rps4zt9jh3F66eaMSaMP62JTw0OOZqg=="
+          }
+        ]
+      },
+      "directories": {},
+      "_hasShrinkwrap": false
+    }
+  },
+  "description": "Format validation for Ajv v7+",
+  "homepage": "https://github.com/ajv-validator/ajv-formats#readme",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/ajv-validator/ajv-formats.git"
+  },
+  "author": {
+    "name": "Evgeny Poberezkin"
+  },
+  "bugs": {
+    "url": "https://github.com/ajv-validator/ajv-formats/issues"
+  },
+  "license": "MIT",
+  "readme": "",
+  "readmeFilename": ""
+}

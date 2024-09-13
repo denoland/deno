@@ -1,1 +1,123 @@
-{"name":"postcss","description":"Tool for transforming styles with JS plugins","dist-tags":{"latest":"8.4.16"},"versions":{"8.4.16":{"name":"postcss","version":"8.4.16","description":"Tool for transforming styles with JS plugins","engines":{"node":"^10 || ^12 || >=14"},"exports":{".":{"require":"./lib/postcss.js","import":"./lib/postcss.mjs","types":"./lib/postcss.d.ts"},"./lib/at-rule":"./lib/at-rule.js","./lib/comment":"./lib/comment.js","./lib/container":"./lib/container.js","./lib/css-syntax-error":"./lib/css-syntax-error.js","./lib/declaration":"./lib/declaration.js","./lib/fromJSON":"./lib/fromJSON.js","./lib/input":"./lib/input.js","./lib/lazy-result":"./lib/lazy-result.js","./lib/no-work-result":"./lib/no-work-result.js","./lib/list":"./lib/list.js","./lib/map-generator":"./lib/map-generator.js","./lib/node":"./lib/node.js","./lib/parse":"./lib/parse.js","./lib/parser":"./lib/parser.js","./lib/postcss":"./lib/postcss.js","./lib/previous-map":"./lib/previous-map.js","./lib/processor":"./lib/processor.js","./lib/result":"./lib/result.js","./lib/root":"./lib/root.js","./lib/rule":"./lib/rule.js","./lib/stringifier":"./lib/stringifier.js","./lib/stringify":"./lib/stringify.js","./lib/symbols":"./lib/symbols.js","./lib/terminal-highlight":"./lib/terminal-highlight.js","./lib/tokenize":"./lib/tokenize.js","./lib/warn-once":"./lib/warn-once.js","./lib/warning":"./lib/warning.js","./package.json":"./package.json"},"main":"./lib/postcss.js","types":"./lib/postcss.d.ts","funding":[{"type":"opencollective","url":"https://opencollective.com/postcss/"},{"type":"tidelift","url":"https://tidelift.com/funding/github/npm/postcss"}],"author":{"name":"Andrey Sitnik","email":"andrey@sitnik.ru"},"license":"MIT","repository":{"type":"git","url":"git+https://github.com/postcss/postcss.git"},"bugs":{"url":"https://github.com/postcss/postcss/issues"},"dependencies":{"nanoid":"^3.3.4","picocolors":"^1.0.0","source-map-js":"^1.0.2"},"browser":{"./lib/terminal-highlight":false,"source-map-js":false,"path":false,"url":false,"fs":false},"gitHead":"bc18340b6bcbea43839e56a8b61b939396b487ef","_id":"postcss@8.4.16","_nodeVersion":"18.7.0","_npmVersion":"8.15.0","dist":{"integrity":"sha512-ipHE1XBvKzm5xI7hiHCZJCSugxvsdq2mPnsq5+UF+VHCjiBvtDrlxJfMBToWaP9D5XlgNmcFGqoHmUn0EYEaRQ==","shasum":"33a1d675fac39941f5f445db0de4db2b6e01d43c","tarball":"http://localhost:4260/postcss/postcss-8.4.16.tgz","fileCount":54,"unpackedSize":186792,"signatures":[{"keyid":"SHA256:jl3bwswu80PjjokCgh0o2w5c2U4LhQAE57gj9cz1kzA","sig":"MEUCIFH+UIT24wbZev1em33zx3GPflt/CQpILSoMyWVjE9kAAiEAm+rmAT1EpBpKUBSHt5thUpbQx2yrjT2lx551OlFR6+U="}],"npm-signature":"-----BEGIN PGP SIGNATURE-----\r\nVersion: OpenPGP.js v4.10.10\r\nComment: https://openpgpjs.org\r\n\r\nwsFzBAEBCAAGBQJi7roqACEJED1NWxICdlZqFiEECWMYAoorWMhJKdjhPU1b\r\nEgJ2Vmp51g/5ANdhuKbUu/vTRgvT0z3wuujoja1OBzpykXOk25AILOFI9jdd\r\nu/SJrsHzbYqnpLJmgYDlTTSVidJfwaTOcAGY18/rVXsU+5ivxPGqjzTs51e2\r\n3OoQOKlLj9lLNyua0DJkK7FY2Jx05Z51Q67MO8iDpUt7RMtg2RMPv+GHMcP5\r\nJb1YuU18kCNa54wryaENApQFLjiNiqh05acJob2hXT6rUTTS0wdxZwm6RRUC\r\nDFTGe/yb7ECqEt9dKCwfrjay/GklAi3WLT2Bv2xGICK6eemnp2kLeNfzz95q\r\nbAmYSZxOwRBXagoaDZ7PXKZ6ZWkTYbaj7yyuhIRb3801nzDodPEd+zGnoxso\r\ne4lgIoXEpsvRfp+aF9DnoxZygiuOylb12Dkbpl78ENH3xrliZEIzUYDJhFYn\r\nzBRLAo6OhvRcGHh+BTSzkuMStzlsIgnPupsCoGrq2zSg3LDoRNFwRDXtmZHa\r\n2U8SjyN8WSPzT+ZU3PkU2miDpWs3JHvkoiBVbtYydR9FBfuwxxrbUJqzpIAW\r\ngtYUeAiSiUl+Qtb3XKzLNgInQSDV522Bs7rFG2NqlyZ2rKFp/cfr1/fXnNQ8\r\nNU6F04FDq/e92bohVExgnJiqb1kHy7iU46WA0Xl/Dt6V+eTLQ7WZ0gqnFzwU\r\nxjyltxUByKuT/EtQeqbK7iLUevog7Nt/LKk=\r\n=MS1+\r\n-----END PGP SIGNATURE-----\r\n"},"directories":{},"_hasShrinkwrap":false}},"readme":"# PostCSS [![Gitter][chat-img]][chat]\n\n<img align=\"right\" width=\"95\" height=\"95\"\n     alt=\"Philosopher’s stone, logo of PostCSS\"\n     src=\"https://postcss.org/logo.svg\">\n\n[chat-img]: https://img.shields.io/badge/Gitter-Join_the_PostCSS_chat-brightgreen.svg\n[chat]:     https://gitter.im/postcss/postcss\n\nPostCSS is a tool for transforming styles with JS plugins.\nThese plugins can lint your CSS, support variables and mixins,\ntranspile future CSS syntax, inline images, and more.\n\nPostCSS is used by industry leaders including Wikipedia, Twitter, Alibaba,\nand JetBrains. The [Autoprefixer] PostCSS plugin is one of the most popular\nCSS processors.\n\nPostCSS takes a CSS file and provides an API to analyze and modify its rules\n(by transforming them into an [Abstract Syntax Tree]).\nThis API can then be used by [plugins] to do a lot of useful things,\ne.g., to find errors automatically, or to insert vendor prefixes.\n\n**Support / Discussion:** [Gitter](https://gitter.im/postcss/postcss)<br>\n**Twitter account:**      [@postcss](https://twitter.com/postcss)<br>\n**VK.com page:**          [postcss](https://vk.com/postcss)<br>\n**中文翻译**:              [`docs/README-cn.md`](./docs/README-cn.md)\n\nFor PostCSS commercial support (consulting, improving the front-end culture\nof your company, PostCSS plugins), contact [Evil Martians]\nat <postcss@evilmartians.com>.\n\n[Abstract Syntax Tree]: https://en.wikipedia.org/wiki/Abstract_syntax_tree\n[Evil Martians]:        https://evilmartians.com/?utm_source=postcss\n[Autoprefixer]:         https://github.com/postcss/autoprefixer\n[plugins]:              https://github.com/postcss/postcss#plugins\n\n<a href=\"https://evilmartians.com/?utm_source=postcss\">\n  <img src=\"https://evilmartians.com/badges/sponsored-by-evil-martians.svg\"\n       alt=\"Sponsored by Evil Martians\" width=\"236\" height=\"54\">\n</a>\n\n\n## Docs\nRead **[full docs](https://github.com/postcss/postcss#readme)** on GitHub.\n","author":{"name":"Andrey Sitnik","email":"andrey@sitnik.ru"},"repository":{"type":"git","url":"git+https://github.com/postcss/postcss.git"},"readmeFilename":"README.md","bugs":{"url":"https://github.com/postcss/postcss/issues"},"license":"MIT","homepage":"https://postcss.org/"}
+{
+  "name": "postcss",
+  "description": "Tool for transforming styles with JS plugins",
+  "dist-tags": {
+    "latest": "8.4.16"
+  },
+  "versions": {
+    "8.4.16": {
+      "name": "postcss",
+      "version": "8.4.16",
+      "description": "Tool for transforming styles with JS plugins",
+      "engines": {
+        "node": "^10 || ^12 || >=14"
+      },
+      "exports": {
+        ".": {
+          "require": "./lib/postcss.js",
+          "import": "./lib/postcss.mjs",
+          "types": "./lib/postcss.d.ts"
+        },
+        "./lib/at-rule": "./lib/at-rule.js",
+        "./lib/comment": "./lib/comment.js",
+        "./lib/container": "./lib/container.js",
+        "./lib/css-syntax-error": "./lib/css-syntax-error.js",
+        "./lib/declaration": "./lib/declaration.js",
+        "./lib/fromJSON": "./lib/fromJSON.js",
+        "./lib/input": "./lib/input.js",
+        "./lib/lazy-result": "./lib/lazy-result.js",
+        "./lib/no-work-result": "./lib/no-work-result.js",
+        "./lib/list": "./lib/list.js",
+        "./lib/map-generator": "./lib/map-generator.js",
+        "./lib/node": "./lib/node.js",
+        "./lib/parse": "./lib/parse.js",
+        "./lib/parser": "./lib/parser.js",
+        "./lib/postcss": "./lib/postcss.js",
+        "./lib/previous-map": "./lib/previous-map.js",
+        "./lib/processor": "./lib/processor.js",
+        "./lib/result": "./lib/result.js",
+        "./lib/root": "./lib/root.js",
+        "./lib/rule": "./lib/rule.js",
+        "./lib/stringifier": "./lib/stringifier.js",
+        "./lib/stringify": "./lib/stringify.js",
+        "./lib/symbols": "./lib/symbols.js",
+        "./lib/terminal-highlight": "./lib/terminal-highlight.js",
+        "./lib/tokenize": "./lib/tokenize.js",
+        "./lib/warn-once": "./lib/warn-once.js",
+        "./lib/warning": "./lib/warning.js",
+        "./package.json": "./package.json"
+      },
+      "main": "./lib/postcss.js",
+      "types": "./lib/postcss.d.ts",
+      "funding": [
+        {
+          "type": "opencollective",
+          "url": "https://opencollective.com/postcss/"
+        },
+        {
+          "type": "tidelift",
+          "url": "https://tidelift.com/funding/github/npm/postcss"
+        }
+      ],
+      "author": {
+        "name": "Andrey Sitnik",
+        "email": "andrey@sitnik.ru"
+      },
+      "license": "MIT",
+      "repository": {
+        "type": "git",
+        "url": "git+https://github.com/postcss/postcss.git"
+      },
+      "bugs": {
+        "url": "https://github.com/postcss/postcss/issues"
+      },
+      "dependencies": {
+        "nanoid": "^3.3.4",
+        "picocolors": "^1.0.0",
+        "source-map-js": "^1.0.2"
+      },
+      "browser": {
+        "./lib/terminal-highlight": false,
+        "source-map-js": false,
+        "path": false,
+        "url": false,
+        "fs": false
+      },
+      "gitHead": "bc18340b6bcbea43839e56a8b61b939396b487ef",
+      "_id": "postcss@8.4.16",
+      "_nodeVersion": "18.7.0",
+      "_npmVersion": "8.15.0",
+      "dist": {
+        "integrity": "sha512-ipHE1XBvKzm5xI7hiHCZJCSugxvsdq2mPnsq5+UF+VHCjiBvtDrlxJfMBToWaP9D5XlgNmcFGqoHmUn0EYEaRQ==",
+        "shasum": "33a1d675fac39941f5f445db0de4db2b6e01d43c",
+        "tarball": "http://localhost:4260/postcss/postcss-8.4.16.tgz",
+        "fileCount": 54,
+        "unpackedSize": 186792,
+        "signatures": [
+          {
+            "keyid": "SHA256:jl3bwswu80PjjokCgh0o2w5c2U4LhQAE57gj9cz1kzA",
+            "sig": "MEUCIFH+UIT24wbZev1em33zx3GPflt/CQpILSoMyWVjE9kAAiEAm+rmAT1EpBpKUBSHt5thUpbQx2yrjT2lx551OlFR6+U="
+          }
+        ],
+        "npm-signature": "-----BEGIN PGP SIGNATURE-----\r\nVersion: OpenPGP.js v4.10.10\r\nComment: https://openpgpjs.org\r\n\r\nwsFzBAEBCAAGBQJi7roqACEJED1NWxICdlZqFiEECWMYAoorWMhJKdjhPU1b\r\nEgJ2Vmp51g/5ANdhuKbUu/vTRgvT0z3wuujoja1OBzpykXOk25AILOFI9jdd\r\nu/SJrsHzbYqnpLJmgYDlTTSVidJfwaTOcAGY18/rVXsU+5ivxPGqjzTs51e2\r\n3OoQOKlLj9lLNyua0DJkK7FY2Jx05Z51Q67MO8iDpUt7RMtg2RMPv+GHMcP5\r\nJb1YuU18kCNa54wryaENApQFLjiNiqh05acJob2hXT6rUTTS0wdxZwm6RRUC\r\nDFTGe/yb7ECqEt9dKCwfrjay/GklAi3WLT2Bv2xGICK6eemnp2kLeNfzz95q\r\nbAmYSZxOwRBXagoaDZ7PXKZ6ZWkTYbaj7yyuhIRb3801nzDodPEd+zGnoxso\r\ne4lgIoXEpsvRfp+aF9DnoxZygiuOylb12Dkbpl78ENH3xrliZEIzUYDJhFYn\r\nzBRLAo6OhvRcGHh+BTSzkuMStzlsIgnPupsCoGrq2zSg3LDoRNFwRDXtmZHa\r\n2U8SjyN8WSPzT+ZU3PkU2miDpWs3JHvkoiBVbtYydR9FBfuwxxrbUJqzpIAW\r\ngtYUeAiSiUl+Qtb3XKzLNgInQSDV522Bs7rFG2NqlyZ2rKFp/cfr1/fXnNQ8\r\nNU6F04FDq/e92bohVExgnJiqb1kHy7iU46WA0Xl/Dt6V+eTLQ7WZ0gqnFzwU\r\nxjyltxUByKuT/EtQeqbK7iLUevog7Nt/LKk=\r\n=MS1+\r\n-----END PGP SIGNATURE-----\r\n"
+      },
+      "directories": {},
+      "_hasShrinkwrap": false
+    }
+  },
+  "readme": "# PostCSS [![Gitter][chat-img]][chat]\n\n<img align=\"right\" width=\"95\" height=\"95\"\n     alt=\"Philosopher’s stone, logo of PostCSS\"\n     src=\"https://postcss.org/logo.svg\">\n\n[chat-img]: https://img.shields.io/badge/Gitter-Join_the_PostCSS_chat-brightgreen.svg\n[chat]:     https://gitter.im/postcss/postcss\n\nPostCSS is a tool for transforming styles with JS plugins.\nThese plugins can lint your CSS, support variables and mixins,\ntranspile future CSS syntax, inline images, and more.\n\nPostCSS is used by industry leaders including Wikipedia, Twitter, Alibaba,\nand JetBrains. The [Autoprefixer] PostCSS plugin is one of the most popular\nCSS processors.\n\nPostCSS takes a CSS file and provides an API to analyze and modify its rules\n(by transforming them into an [Abstract Syntax Tree]).\nThis API can then be used by [plugins] to do a lot of useful things,\ne.g., to find errors automatically, or to insert vendor prefixes.\n\n**Support / Discussion:** [Gitter](https://gitter.im/postcss/postcss)<br>\n**Twitter account:**      [@postcss](https://twitter.com/postcss)<br>\n**VK.com page:**          [postcss](https://vk.com/postcss)<br>\n**中文翻译**:              [`docs/README-cn.md`](./docs/README-cn.md)\n\nFor PostCSS commercial support (consulting, improving the front-end culture\nof your company, PostCSS plugins), contact [Evil Martians]\nat <postcss@evilmartians.com>.\n\n[Abstract Syntax Tree]: https://en.wikipedia.org/wiki/Abstract_syntax_tree\n[Evil Martians]:        https://evilmartians.com/?utm_source=postcss\n[Autoprefixer]:         https://github.com/postcss/autoprefixer\n[plugins]:              https://github.com/postcss/postcss#plugins\n\n<a href=\"https://evilmartians.com/?utm_source=postcss\">\n  <img src=\"https://evilmartians.com/badges/sponsored-by-evil-martians.svg\"\n       alt=\"Sponsored by Evil Martians\" width=\"236\" height=\"54\">\n</a>\n\n\n## Docs\nRead **[full docs](https://github.com/postcss/postcss#readme)** on GitHub.\n",
+  "author": {
+    "name": "Andrey Sitnik",
+    "email": "andrey@sitnik.ru"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/postcss/postcss.git"
+  },
+  "readmeFilename": "README.md",
+  "bugs": {
+    "url": "https://github.com/postcss/postcss/issues"
+  },
+  "license": "MIT",
+  "homepage": "https://postcss.org/"
+}

@@ -1,1 +1,74 @@
-{"name":"@vue/runtime-core","dist-tags":{"latest":"3.2.38"},"versions":{"3.2.38":{"name":"@vue/runtime-core","version":"3.2.38","description":"@vue/runtime-core","main":"index.js","module":"dist/runtime-core.esm-bundler.js","types":"dist/runtime-core.d.ts","buildOptions":{"name":"VueRuntimeCore","formats":["esm-bundler","cjs"]},"sideEffects":false,"repository":{"type":"git","url":"git+https://github.com/vuejs/core.git","directory":"packages/runtime-core"},"author":{"name":"Evan You"},"license":"MIT","bugs":{"url":"https://github.com/vuejs/core/issues"},"dependencies":{"@vue/shared":"3.2.38","@vue/reactivity":"3.2.38"},"licenseText":"The MIT License (MIT)\n\nCopyright (c) 2018-present, Yuxi (Evan) You\n\nPermission is hereby granted, free of charge, to any person obtaining a copy\nof this software and associated documentation files (the \"Software\"), to deal\nin the Software without restriction, including without limitation the rights\nto use, copy, modify, merge, publish, distribute, sublicense, and/or sell\ncopies of the Software, and to permit persons to whom the Software is\nfurnished to do so, subject to the following conditions:\n\nThe above copyright notice and this permission notice shall be included in\nall copies or substantial portions of the Software.\n\nTHE SOFTWARE IS PROVIDED \"AS IS\", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR\nIMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,\nFITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE\nAUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER\nLIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,\nOUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN\nTHE SOFTWARE.\n","_id":"@vue/runtime-core@3.2.38","dist":{"shasum":"d19cf591c210713f80e6a94ffbfef307c27aea06","integrity":"sha512-kk0qiSiXUU/IKxZw31824rxmFzrLr3TL6ZcbrxWTKivadoKupdlzbQM4SlGo4MU6Zzrqv4fzyUasTU1jDoEnzg==","tarball":"http://localhost:4260/@vue/runtime-core/runtime-core-3.2.38.tgz","fileCount":10,"unpackedSize":970208,"signatures":[{"keyid":"SHA256:jl3bwswu80PjjokCgh0o2w5c2U4LhQAE57gj9cz1kzA","sig":"MEQCIAsm2fdycDen1D3Wd8ZPtR67JJQJZfaSTcps7rJX78QpAiBJrJX1bieuvtPZ+aFOTS+yVOKCkQLIMt4ny7cmnVfA+Q=="}],"npm-signature":"-----BEGIN PGP SIGNATURE-----\r\nVersion: OpenPGP.js v4.10.10\r\nComment: https://openpgpjs.org\r\n\r\nwsFzBAEBCAAGBQJjDcQFACEJED1NWxICdlZqFiEECWMYAoorWMhJKdjhPU1b\r\nEgJ2VmquLBAAki+4cRmnCjxu73uzrK0Ip3v/I+K+PJFdjvHvUiz5SbUNRu69\r\njWSr89Jkt0vlpLGbHVnR44eO9CCnu2UhbwZEWiX259fJhzfqpdCoNruc4bTx\r\nW46dxK29Zm29mayIljFyk4jwED8UpVBXRCHSuRVfNSxmaGCDl4fAa4XUdDvR\r\nW0tneO+QzQ39eyaK4aJepm8yw4Ce5UA9f7MzNkwbVwAQaPEgInEjfK9JUSdq\r\n82OfNR3PgCfRCdlmiwWEfHKxbnni1/hAgRlTQ+ZPGPzcWTwz6ms2Hi0U/6I3\r\nAHgedcHIVfJhqp0O/XPahRB8jHLBHxARJAyfTg3qaqpjA237hVfUrgf5x2e1\r\n8UvDQvmOUMN6izpnjXUF5YrYL97Cej6NMx2g7qKLMjBNjqsd19rVPRT4xYAd\r\nrIHkkxgPy+6FTcdT2/U9BNe/ho/4i/oZvUsQf6DlycbCwz7wSiwYOsMCO//m\r\nFDLXfCemZhzWAke20R9NPX2XSf32cS6X7L6VWJZTp3XM0f7P23AkMOJ8FITH\r\nFoNCjKc4USZAgGAXDW3Y1/SrMi5l5/0hh/iyL51JUxKtx6qOtfUNDB5U8gE7\r\n63422kdL4tIa2JxzOxi9v60Wq5ihsWL0OYG1OhU+RyxvyJ9RCc7cwsAIWUls\r\nGdPESmDYHRPIK1c1VthCoIlUL3Ocz/AsHP0=\r\n=r/jL\r\n-----END PGP SIGNATURE-----\r\n"},"directories":{},"_hasShrinkwrap":false}},"description":"@vue/runtime-core","homepage":"https://github.com/vuejs/core/tree/main/packages/runtime-core#readme","repository":{"type":"git","url":"git+https://github.com/vuejs/core.git","directory":"packages/runtime-core"},"author":{"name":"Evan You"},"bugs":{"url":"https://github.com/vuejs/core/issues"},"license":"MIT","readme":"# @vue/runtime-core\n\n> This package is published only for typing and building custom renderers. It is NOT meant to be used in applications.\n\nFor full exposed APIs, see `src/index.ts`. You can also run `yarn build runtime-core --types` from repo root, which will generate an API report at `temp/runtime-core.api.md`.\n\n## Building a Custom Renderer\n\n``` ts\nimport { createRenderer } from '@vue/runtime-core'\n\nconst { render, createApp } = createRenderer({\n  patchProp,\n  insert,\n  remove,\n  createElement,\n  // ...\n})\n\n// `render` is the low-level API\n// `createApp` returns an app instance with configurable context shared\n// by the entire app tree.\nexport { render, createApp }\n\nexport * from '@vue/runtime-core'\n```\n\nSee `@vue/runtime-dom` for how a DOM-targeting renderer is implemented.\n","readmeFilename":"README.md"}
+{
+  "name": "@vue/runtime-core",
+  "dist-tags": {
+    "latest": "3.2.38"
+  },
+  "versions": {
+    "3.2.38": {
+      "name": "@vue/runtime-core",
+      "version": "3.2.38",
+      "description": "@vue/runtime-core",
+      "main": "index.js",
+      "module": "dist/runtime-core.esm-bundler.js",
+      "types": "dist/runtime-core.d.ts",
+      "buildOptions": {
+        "name": "VueRuntimeCore",
+        "formats": [
+          "esm-bundler",
+          "cjs"
+        ]
+      },
+      "sideEffects": false,
+      "repository": {
+        "type": "git",
+        "url": "git+https://github.com/vuejs/core.git",
+        "directory": "packages/runtime-core"
+      },
+      "author": {
+        "name": "Evan You"
+      },
+      "license": "MIT",
+      "bugs": {
+        "url": "https://github.com/vuejs/core/issues"
+      },
+      "dependencies": {
+        "@vue/shared": "3.2.38",
+        "@vue/reactivity": "3.2.38"
+      },
+      "licenseText": "The MIT License (MIT)\n\nCopyright (c) 2018-present, Yuxi (Evan) You\n\nPermission is hereby granted, free of charge, to any person obtaining a copy\nof this software and associated documentation files (the \"Software\"), to deal\nin the Software without restriction, including without limitation the rights\nto use, copy, modify, merge, publish, distribute, sublicense, and/or sell\ncopies of the Software, and to permit persons to whom the Software is\nfurnished to do so, subject to the following conditions:\n\nThe above copyright notice and this permission notice shall be included in\nall copies or substantial portions of the Software.\n\nTHE SOFTWARE IS PROVIDED \"AS IS\", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR\nIMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,\nFITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE\nAUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER\nLIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,\nOUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN\nTHE SOFTWARE.\n",
+      "_id": "@vue/runtime-core@3.2.38",
+      "dist": {
+        "shasum": "d19cf591c210713f80e6a94ffbfef307c27aea06",
+        "integrity": "sha512-kk0qiSiXUU/IKxZw31824rxmFzrLr3TL6ZcbrxWTKivadoKupdlzbQM4SlGo4MU6Zzrqv4fzyUasTU1jDoEnzg==",
+        "tarball": "http://localhost:4260/@vue/runtime-core/runtime-core-3.2.38.tgz",
+        "fileCount": 10,
+        "unpackedSize": 970208,
+        "signatures": [
+          {
+            "keyid": "SHA256:jl3bwswu80PjjokCgh0o2w5c2U4LhQAE57gj9cz1kzA",
+            "sig": "MEQCIAsm2fdycDen1D3Wd8ZPtR67JJQJZfaSTcps7rJX78QpAiBJrJX1bieuvtPZ+aFOTS+yVOKCkQLIMt4ny7cmnVfA+Q=="
+          }
+        ],
+        "npm-signature": "-----BEGIN PGP SIGNATURE-----\r\nVersion: OpenPGP.js v4.10.10\r\nComment: https://openpgpjs.org\r\n\r\nwsFzBAEBCAAGBQJjDcQFACEJED1NWxICdlZqFiEECWMYAoorWMhJKdjhPU1b\r\nEgJ2VmquLBAAki+4cRmnCjxu73uzrK0Ip3v/I+K+PJFdjvHvUiz5SbUNRu69\r\njWSr89Jkt0vlpLGbHVnR44eO9CCnu2UhbwZEWiX259fJhzfqpdCoNruc4bTx\r\nW46dxK29Zm29mayIljFyk4jwED8UpVBXRCHSuRVfNSxmaGCDl4fAa4XUdDvR\r\nW0tneO+QzQ39eyaK4aJepm8yw4Ce5UA9f7MzNkwbVwAQaPEgInEjfK9JUSdq\r\n82OfNR3PgCfRCdlmiwWEfHKxbnni1/hAgRlTQ+ZPGPzcWTwz6ms2Hi0U/6I3\r\nAHgedcHIVfJhqp0O/XPahRB8jHLBHxARJAyfTg3qaqpjA237hVfUrgf5x2e1\r\n8UvDQvmOUMN6izpnjXUF5YrYL97Cej6NMx2g7qKLMjBNjqsd19rVPRT4xYAd\r\nrIHkkxgPy+6FTcdT2/U9BNe/ho/4i/oZvUsQf6DlycbCwz7wSiwYOsMCO//m\r\nFDLXfCemZhzWAke20R9NPX2XSf32cS6X7L6VWJZTp3XM0f7P23AkMOJ8FITH\r\nFoNCjKc4USZAgGAXDW3Y1/SrMi5l5/0hh/iyL51JUxKtx6qOtfUNDB5U8gE7\r\n63422kdL4tIa2JxzOxi9v60Wq5ihsWL0OYG1OhU+RyxvyJ9RCc7cwsAIWUls\r\nGdPESmDYHRPIK1c1VthCoIlUL3Ocz/AsHP0=\r\n=r/jL\r\n-----END PGP SIGNATURE-----\r\n"
+      },
+      "directories": {},
+      "_hasShrinkwrap": false
+    }
+  },
+  "description": "@vue/runtime-core",
+  "homepage": "https://github.com/vuejs/core/tree/main/packages/runtime-core#readme",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/vuejs/core.git",
+    "directory": "packages/runtime-core"
+  },
+  "author": {
+    "name": "Evan You"
+  },
+  "bugs": {
+    "url": "https://github.com/vuejs/core/issues"
+  },
+  "license": "MIT",
+  "readme": "# @vue/runtime-core\n\n> This package is published only for typing and building custom renderers. It is NOT meant to be used in applications.\n\nFor full exposed APIs, see `src/index.ts`. You can also run `yarn build runtime-core --types` from repo root, which will generate an API report at `temp/runtime-core.api.md`.\n\n## Building a Custom Renderer\n\n``` ts\nimport { createRenderer } from '@vue/runtime-core'\n\nconst { render, createApp } = createRenderer({\n  patchProp,\n  insert,\n  remove,\n  createElement,\n  // ...\n})\n\n// `render` is the low-level API\n// `createApp` returns an app instance with configurable context shared\n// by the entire app tree.\nexport { render, createApp }\n\nexport * from '@vue/runtime-core'\n```\n\nSee `@vue/runtime-dom` for how a DOM-targeting renderer is implemented.\n",
+  "readmeFilename": "README.md"
+}

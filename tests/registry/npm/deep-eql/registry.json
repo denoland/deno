@@ -1,1 +1,125 @@
-{"name":"deep-eql","description":"Improved deep equality testing for Node.js and the browser.","dist-tags":{"latest":"3.0.1"},"versions":{"3.0.1":{"name":"deep-eql","description":"Improved deep equality testing for Node.js and the browser.","license":"MIT","author":{"name":"Jake Luer","email":"jake@alogicalparadox.com"},"main":"./index","files":["index.js","deep-eql.js"],"repository":{"type":"git","url":"git+ssh://git@github.com/chaijs/deep-eql.git"},"scripts":{"bench":"node bench","build":"browserify $npm_package_main --standalone deepEqual -o deep-eql.js","lint":"eslint --ignore-path .gitignore .","prepublish":"npm run build","semantic-release":"semantic-release pre && npm publish && semantic-release post","pretest":"npm run lint","test":"npm run test:node && npm run test:browser","test:node":"istanbul cover _mocha","test:browser":"karma start --singleRun=true","watch":"karma start --auto-watch --singleRun=false","upload-coverage":"lcov-result-merger 'coverage/**/lcov.info' | coveralls; exit 0"},"config":{"ghooks":{"commit-msg":"validate-commit-msg"}},"eslintConfig":{"extends":["strict/es5"],"rules":{"complexity":0,"spaced-comment":0,"no-underscore-dangle":0,"no-use-before-define":0}},"dependencies":{"type-detect":"^4.0.0"},"devDependencies":{"benchmark":"^2.1.0","browserify":"^13.0.0","browserify-istanbul":"^1.0.0","component":"*","coveralls":"2.11.8","eslint":"^2.4.0","eslint-config-strict":"^8.5.0","eslint-plugin-filenames":"^0.2.0","ghooks":"^1.0.1","istanbul":"^0.4.2","karma":"^0.13.22","karma-browserify":"^5.0.2","karma-coverage":"^0.5.5","karma-mocha":"^0.2.2","karma-phantomjs-launcher":"^1.0.0","karma-sauce-launcher":"^0.3.1","kewlr":"^0.3.1","lcov-result-merger":"^1.0.2","lodash.isequal":"^4.4.0","mocha":"^3.1.2","phantomjs-prebuilt":"^2.1.5","semantic-release":"^4.3.5","simple-assert":"^1.0.0","travis-after-all":"^1.4.4","validate-commit-msg":"^2.3.1","watchify":"^3.7.0"},"engines":{"node":">=0.12"},"version":"3.0.1","gitHead":"04d6da6518f8ddc288638ca42503752028810120","bugs":{"url":"https://github.com/chaijs/deep-eql/issues"},"_id":"deep-eql@3.0.1","_npmVersion":"5.4.0","_nodeVersion":"4.8.4","dist":{"integrity":"sha512-+QeIQyN5ZuO+3Uk5DYh6/1eKO0m0YmJFGNmFHGACpf1ClL1nmlV/p4gNgbl2pJGxgXb4faqo6UE+M5ACEMyVcw==","shasum":"dfc9404400ad1c8fe023e7da1df1c147c4b444df","tarball":"http://localhost:4260/deep-eql/deep-eql-3.0.1.tgz","signatures":[{"keyid":"SHA256:jl3bwswu80PjjokCgh0o2w5c2U4LhQAE57gj9cz1kzA","sig":"MEQCIA2Guc+Zr2++fpu1HORRISQsk11kiAUxrDzV8xdJtCwvAiBEz45k8/VAewT+AIlg5CPaJ3gB2t17o0CIetQyvSPPcw=="}]},"directories":{}}},"readme":"<h1 align=center>\n  <a href=\"http://chaijs.com\" title=\"Chai Documentation\">\n    <img alt=\"deep-eql\" src=\"https://raw.githubusercontent.com/chaijs/deep-eql/main/deep-eql-logo.svg\"/>\n  </a>\n</h1>\n\n<p align=center>\n  Improved deep equality testing for <a href=\"http://nodejs.org/\">node</a> and the browser.\n</p>\n\n<p align=center>\n  <a href=\"https://github.com/chaijs/deep-eql/actions\">\n    <img\n      alt=\"build:?\"\n      src=\"https://github.com/chaijs/deep-eql/workflows/Build/badge.svg\"\n    />\n  </a><a href=\"https://coveralls.io/r/chaijs/deep-eql\">\n    <img\n      alt=\"coverage:?\"\n      src=\"https://img.shields.io/coveralls/chaijs/deep-eql/master.svg?style=flat-square\"\n    />\n  </a><a href=\"https://www.npmjs.com/packages/deep-eql\">\n    <img\n      alt=\"dependencies:?\"\n      src=\"https://img.shields.io/npm/dm/deep-eql.svg?style=flat-square\"\n    />\n  </a><a href=\"\">\n    <img\n      alt=\"devDependencies:?\"\n      src=\"https://img.shields.io/david/chaijs/deep-eql.svg?style=flat-square\"\n    />\n  </a>\n  <br>\n  <a href=\"https://chai-slack.herokuapp.com/\">\n    <img\n      alt=\"Join the Slack chat\"\n      src=\"https://img.shields.io/badge/slack-join%20chat-E2206F.svg?style=flat-square\"\n    />\n  </a>\n  <a href=\"https://gitter.im/chaijs/deep-eql\">\n    <img\n      alt=\"Join the Gitter chat\"\n      src=\"https://img.shields.io/badge/gitter-join%20chat-D0104D.svg?style=flat-square\"\n    />\n  </a>\n</p>\n\n## What is Deep-Eql?\n\nDeep Eql is a module which you can use to determine if two objects are \"deeply\" equal - that is, rather than having referential equality (`a === b`), this module checks an object's keys recursively, until it finds primitives to check for referential equality. For more on equality in JavaScript, read [the comparison operators article on mdn](https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Operators/Comparison_Operators).\n\nAs an example, take the following:\n\n```js\n1 === 1 // These are primitives, they hold the same reference - they are strictly equal\n1 == '1' // These are two different primitives, through type coercion they hold the same value - they are loosely equal\n{ a: 1 } !== { a: 1 } // These are two different objects, they hold different references and so are not strictly equal - even though they hold the same values inside\n{ a: 1 } != { a: 1 } // They have the same type, meaning loose equality performs the same check as strict equality - they are still not equal.\n\nvar deepEql = require(\"deep-eql\");\ndeepEql({ a: 1 }, { a: 1 }) === true // deepEql can determine that they share the same keys and those keys share the same values, therefore they are deeply equal!\n```\n\n## Installation\n\n### Node.js\n\n`deep-eql` is available on [npm](http://npmjs.org).\n\n    $ npm install deep-eql\n\n## Usage\n\nThe primary export of `deep-eql` is function that can be given two objects to compare. It will always return a boolean which can be used to determine if two objects are deeply equal.\n\n### Rules\n\n- Strict equality for non-traversable nodes according to [`Object.is`](https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/Object/is):\n  - `eql(NaN, NaN).should.be.true;`\n  - `eql(-0, +0).should.be.false;`\n- All own and inherited enumerable properties are considered:\n  - `eql(Object.create({ foo: { a: 1 } }), Object.create({ foo: { a: 1 } })).should.be.true;`\n  - `eql(Object.create({ foo: { a: 1 } }), Object.create({ foo: { a: 2 } })).should.be.false;`\n- When comparing `Error` objects, only `name`, `message`, and `code` properties are considered, regardless of enumerability:\n  - `eql(Error('foo'), Error('foo')).should.be.true;`\n  - `eql(Error('foo'), Error('bar')).should.be.false;`\n  - `eql(Error('foo'), TypeError('foo')).should.be.false;`\n  - `eql(Object.assign(Error('foo'), { code: 42 }), Object.assign(Error('foo'), { code: 42 })).should.be.true;`\n  - `eql(Object.assign(Error('foo'), { code: 42 }), Object.assign(Error('foo'), { code: 13 })).should.be.false;`\n  - `eql(Object.assign(Error('foo'), { otherProp: 42 }), Object.assign(Error('foo'), { otherProp: 13 })).should.be.true;`\n- Arguments are not Arrays:\n  - `eql([], arguments).should.be.false;`\n  - `eql([], Array.prototype.slice.call(arguments)).should.be.true;`\n","author":{"name":"Jake Luer","email":"jake@alogicalparadox.com"},"repository":{"type":"git","url":"git+ssh://git@github.com/chaijs/deep-eql.git"},"bugs":{"url":"https://github.com/chaijs/deep-eql/issues"},"license":"MIT","readmeFilename":"README.md","homepage":"https://github.com/chaijs/deep-eql#readme"}
+{
+  "name": "deep-eql",
+  "description": "Improved deep equality testing for Node.js and the browser.",
+  "dist-tags": {
+    "latest": "3.0.1"
+  },
+  "versions": {
+    "3.0.1": {
+      "name": "deep-eql",
+      "description": "Improved deep equality testing for Node.js and the browser.",
+      "license": "MIT",
+      "author": {
+        "name": "Jake Luer",
+        "email": "jake@alogicalparadox.com"
+      },
+      "main": "./index",
+      "files": [
+        "index.js",
+        "deep-eql.js"
+      ],
+      "repository": {
+        "type": "git",
+        "url": "git+ssh://git@github.com/chaijs/deep-eql.git"
+      },
+      "scripts": {
+        "bench": "node bench",
+        "build": "browserify $npm_package_main --standalone deepEqual -o deep-eql.js",
+        "lint": "eslint --ignore-path .gitignore .",
+        "prepublish": "npm run build",
+        "semantic-release": "semantic-release pre && npm publish && semantic-release post",
+        "pretest": "npm run lint",
+        "test": "npm run test:node && npm run test:browser",
+        "test:node": "istanbul cover _mocha",
+        "test:browser": "karma start --singleRun=true",
+        "watch": "karma start --auto-watch --singleRun=false",
+        "upload-coverage": "lcov-result-merger 'coverage/**/lcov.info' | coveralls; exit 0"
+      },
+      "config": {
+        "ghooks": {
+          "commit-msg": "validate-commit-msg"
+        }
+      },
+      "eslintConfig": {
+        "extends": [
+          "strict/es5"
+        ],
+        "rules": {
+          "complexity": 0,
+          "spaced-comment": 0,
+          "no-underscore-dangle": 0,
+          "no-use-before-define": 0
+        }
+      },
+      "dependencies": {
+        "type-detect": "^4.0.0"
+      },
+      "devDependencies": {
+        "benchmark": "^2.1.0",
+        "browserify": "^13.0.0",
+        "browserify-istanbul": "^1.0.0",
+        "component": "*",
+        "coveralls": "2.11.8",
+        "eslint": "^2.4.0",
+        "eslint-config-strict": "^8.5.0",
+        "eslint-plugin-filenames": "^0.2.0",
+        "ghooks": "^1.0.1",
+        "istanbul": "^0.4.2",
+        "karma": "^0.13.22",
+        "karma-browserify": "^5.0.2",
+        "karma-coverage": "^0.5.5",
+        "karma-mocha": "^0.2.2",
+        "karma-phantomjs-launcher": "^1.0.0",
+        "karma-sauce-launcher": "^0.3.1",
+        "kewlr": "^0.3.1",
+        "lcov-result-merger": "^1.0.2",
+        "lodash.isequal": "^4.4.0",
+        "mocha": "^3.1.2",
+        "phantomjs-prebuilt": "^2.1.5",
+        "semantic-release": "^4.3.5",
+        "simple-assert": "^1.0.0",
+        "travis-after-all": "^1.4.4",
+        "validate-commit-msg": "^2.3.1",
+        "watchify": "^3.7.0"
+      },
+      "engines": {
+        "node": ">=0.12"
+      },
+      "version": "3.0.1",
+      "gitHead": "04d6da6518f8ddc288638ca42503752028810120",
+      "bugs": {
+        "url": "https://github.com/chaijs/deep-eql/issues"
+      },
+      "_id": "deep-eql@3.0.1",
+      "_npmVersion": "5.4.0",
+      "_nodeVersion": "4.8.4",
+      "dist": {
+        "integrity": "sha512-+QeIQyN5ZuO+3Uk5DYh6/1eKO0m0YmJFGNmFHGACpf1ClL1nmlV/p4gNgbl2pJGxgXb4faqo6UE+M5ACEMyVcw==",
+        "shasum": "dfc9404400ad1c8fe023e7da1df1c147c4b444df",
+        "tarball": "http://localhost:4260/deep-eql/deep-eql-3.0.1.tgz",
+        "signatures": [
+          {
+            "keyid": "SHA256:jl3bwswu80PjjokCgh0o2w5c2U4LhQAE57gj9cz1kzA",
+            "sig": "MEQCIA2Guc+Zr2++fpu1HORRISQsk11kiAUxrDzV8xdJtCwvAiBEz45k8/VAewT+AIlg5CPaJ3gB2t17o0CIetQyvSPPcw=="
+          }
+        ]
+      },
+      "directories": {}
+    }
+  },
+  "readme": "<h1 align=center>\n  <a href=\"http://chaijs.com\" title=\"Chai Documentation\">\n    <img alt=\"deep-eql\" src=\"https://raw.githubusercontent.com/chaijs/deep-eql/main/deep-eql-logo.svg\"/>\n  </a>\n</h1>\n\n<p align=center>\n  Improved deep equality testing for <a href=\"http://nodejs.org/\">node</a> and the browser.\n</p>\n\n<p align=center>\n  <a href=\"https://github.com/chaijs/deep-eql/actions\">\n    <img\n      alt=\"build:?\"\n      src=\"https://github.com/chaijs/deep-eql/workflows/Build/badge.svg\"\n    />\n  </a><a href=\"https://coveralls.io/r/chaijs/deep-eql\">\n    <img\n      alt=\"coverage:?\"\n      src=\"https://img.shields.io/coveralls/chaijs/deep-eql/master.svg?style=flat-square\"\n    />\n  </a><a href=\"https://www.npmjs.com/packages/deep-eql\">\n    <img\n      alt=\"dependencies:?\"\n      src=\"https://img.shields.io/npm/dm/deep-eql.svg?style=flat-square\"\n    />\n  </a><a href=\"\">\n    <img\n      alt=\"devDependencies:?\"\n      src=\"https://img.shields.io/david/chaijs/deep-eql.svg?style=flat-square\"\n    />\n  </a>\n  <br>\n  <a href=\"https://chai-slack.herokuapp.com/\">\n    <img\n      alt=\"Join the Slack chat\"\n      src=\"https://img.shields.io/badge/slack-join%20chat-E2206F.svg?style=flat-square\"\n    />\n  </a>\n  <a href=\"https://gitter.im/chaijs/deep-eql\">\n    <img\n      alt=\"Join the Gitter chat\"\n      src=\"https://img.shields.io/badge/gitter-join%20chat-D0104D.svg?style=flat-square\"\n    />\n  </a>\n</p>\n\n## What is Deep-Eql?\n\nDeep Eql is a module which you can use to determine if two objects are \"deeply\" equal - that is, rather than having referential equality (`a === b`), this module checks an object's keys recursively, until it finds primitives to check for referential equality. For more on equality in JavaScript, read [the comparison operators article on mdn](https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Operators/Comparison_Operators).\n\nAs an example, take the following:\n\n```js\n1 === 1 // These are primitives, they hold the same reference - they are strictly equal\n1 == '1' // These are two different primitives, through type coercion they hold the same value - they are loosely equal\n{ a: 1 } !== { a: 1 } // These are two different objects, they hold different references and so are not strictly equal - even though they hold the same values inside\n{ a: 1 } != { a: 1 } // They have the same type, meaning loose equality performs the same check as strict equality - they are still not equal.\n\nvar deepEql = require(\"deep-eql\");\ndeepEql({ a: 1 }, { a: 1 }) === true // deepEql can determine that they share the same keys and those keys share the same values, therefore they are deeply equal!\n```\n\n## Installation\n\n### Node.js\n\n`deep-eql` is available on [npm](http://npmjs.org).\n\n    $ npm install deep-eql\n\n## Usage\n\nThe primary export of `deep-eql` is function that can be given two objects to compare. It will always return a boolean which can be used to determine if two objects are deeply equal.\n\n### Rules\n\n- Strict equality for non-traversable nodes according to [`Object.is`](https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/Object/is):\n  - `eql(NaN, NaN).should.be.true;`\n  - `eql(-0, +0).should.be.false;`\n- All own and inherited enumerable properties are considered:\n  - `eql(Object.create({ foo: { a: 1 } }), Object.create({ foo: { a: 1 } })).should.be.true;`\n  - `eql(Object.create({ foo: { a: 1 } }), Object.create({ foo: { a: 2 } })).should.be.false;`\n- When comparing `Error` objects, only `name`, `message`, and `code` properties are considered, regardless of enumerability:\n  - `eql(Error('foo'), Error('foo')).should.be.true;`\n  - `eql(Error('foo'), Error('bar')).should.be.false;`\n  - `eql(Error('foo'), TypeError('foo')).should.be.false;`\n  - `eql(Object.assign(Error('foo'), { code: 42 }), Object.assign(Error('foo'), { code: 42 })).should.be.true;`\n  - `eql(Object.assign(Error('foo'), { code: 42 }), Object.assign(Error('foo'), { code: 13 })).should.be.false;`\n  - `eql(Object.assign(Error('foo'), { otherProp: 42 }), Object.assign(Error('foo'), { otherProp: 13 })).should.be.true;`\n- Arguments are not Arrays:\n  - `eql([], arguments).should.be.false;`\n  - `eql([], Array.prototype.slice.call(arguments)).should.be.true;`\n",
+  "author": {
+    "name": "Jake Luer",
+    "email": "jake@alogicalparadox.com"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+ssh://git@github.com/chaijs/deep-eql.git"
+  },
+  "bugs": {
+    "url": "https://github.com/chaijs/deep-eql/issues"
+  },
+  "license": "MIT",
+  "readmeFilename": "README.md",
+  "homepage": "https://github.com/chaijs/deep-eql#readme"
+}

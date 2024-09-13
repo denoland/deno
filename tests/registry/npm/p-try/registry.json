@@ -1,1 +1,74 @@
-{"name":"p-try","description":"`Start a promise chain","dist-tags":{"latest":"2.2.0"},"versions":{"2.2.0":{"name":"p-try","version":"2.2.0","description":"`Start a promise chain","license":"MIT","repository":{"type":"git","url":"git+https://github.com/sindresorhus/p-try.git"},"author":{"name":"Sindre Sorhus","email":"sindresorhus@gmail.com","url":"sindresorhus.com"},"engines":{"node":">=6"},"scripts":{"test":"xo && ava && tsd"},"devDependencies":{"ava":"^1.4.1","tsd":"^0.7.1","xo":"^0.24.0"},"gitHead":"e80e2e130b2d16807345be02aa03541e6e085952","bugs":{"url":"https://github.com/sindresorhus/p-try/issues"},"_id":"p-try@2.2.0","_nodeVersion":"8.15.0","_npmVersion":"6.9.0","dist":{"integrity":"sha512-R4nPAVTAU0B9D35/Gk3uJf/7XYbQcyohSKdvAxIRSNghFl4e71hVoGnBNQz9cWaXxO2I10KTC+3jMdvvoKw6dQ==","shasum":"cb2868540e313d61de58fafbe35ce9004d5540e6","tarball":"http://localhost:4260/p-try/p-try-2.2.0.tgz","fileCount":5,"unpackedSize":4371,"npm-signature":"-----BEGIN PGP SIGNATURE-----\r\nVersion: OpenPGP.js v3.0.4\r\nComment: https://openpgpjs.org\r\n\r\nwsFcBAEBCAAQBQJcoLPbCRA9TVsSAnZWagAALrsP/ie/GNjXnqYiGeGV/bKQ\nudud/fo7L0Brvq7zY+bNfSDNeyIDc5fosGrrCvaCA7JpK+KYnN+ww6lTy2pa\nY3njArVn6eeqfw2ZnheHrJOduMvftXw3+9EJ2Y0ulJ+OfDxvFI5n3HsE4bia\n4M/hMfvo4ScI4MmDnkcGA0rZEEPnfHg8Ud9u5tJOyIsftV08oY4Czg+cGyOV\nWuLge0A7+BHXhmVz44NR7edufsq2hbbmSsvl14SMyWYEjKV2r9Q3fEwL5XHP\narq39bqA9X+DnD0a12oWtYeT+v3r5ewg4h7H7QtA9Bvxdns/usJw/6KHy1za\nh8haNrRmBn1ze0sF/kNSKeStFcIsH8fp4Iiu4w8mniipVcuSt5tK5mvh3KOv\n0p8rBWzxGEqcxXxsxmI1rLEKGMy0ZthgvLOtRsnYl8a/DG1cxE9ZN5c2oaWA\ngUSDavh3tnwpl8PTag013nAmYSDYTNhA2TmHbWbfTzSCFvAjhivKfbIrcyF6\n1iQX4AckEZgtSTvbzbggC87gQS4xMfM82pi2rmkJuv3i6Iu2RkbDeFrQWphl\nL0FftZLanQQ39WeOiHZK1zNiBLaOxXWH/VWQKLG9CwgYSqFNGDbZIQuq2HkI\n/lJ6uIP2LZs+dMpDlw37K4BUOIS7wxJvOGfbwZmyYHN6gA2AeCA2wYZh4zVc\npEVP\r\n=gHtm\r\n-----END PGP SIGNATURE-----\r\n","signatures":[{"keyid":"SHA256:jl3bwswu80PjjokCgh0o2w5c2U4LhQAE57gj9cz1kzA","sig":"MEQCIFqJShDf2xjNgk1aoDGnPwZwG+G7HV52faNfi6pOpE0GAiBBrH0yhwIdb+P7KpY/+oabo0DWJVmv0pL/crggmNyfzQ=="}]},"directories":{},"_hasShrinkwrap":false}},"readme":"# p-try\n\n> Start a promise chain\n\n[How is it useful?](http://cryto.net/~joepie91/blog/2016/05/11/what-is-promise-try-and-why-does-it-matter/)\n\n## Install\n\n```sh\nnpm install p-try\n```\n\n## Usage\n\n```js\nimport pTry from 'p-try';\n\ntry {\n\tconst value = await pTry(() => {\n\t\treturn synchronousFunctionThatMightThrow();\n\t});\n\tconsole.log(value);\n} catch (error) {\n\tconsole.error(error);\n}\n```\n\n## API\n\n### pTry(fn, ...arguments)\n\nReturns a `Promise` resolved with the value of calling `fn(...arguments)`. If the function throws an error, the returned `Promise` will be rejected with that error.\n\nSupport for passing arguments on to the `fn` is provided in order to be able to avoid creating unnecessary closures. You probably don't need this optimization unless you're pushing a *lot* of functions.\n\n#### fn\n\nThe function to run to start the promise chain.\n\n#### arguments\n\nArguments to pass to `fn`.\n\n## Related\n\n- [More…](https://github.com/sindresorhus/promise-fun)\n\n---\n\n<div align=\"center\">\n\t<b>\n\t\t<a href=\"https://tidelift.com/subscription/pkg/npm-p-try?utm_source=npm-p-try&utm_medium=referral&utm_campaign=readme\">Get professional support for this package with a Tidelift subscription</a>\n\t</b>\n\t<br>\n\t<sub>\n\t\tTidelift helps make open source sustainable for maintainers while giving companies<br>assurances about security, maintenance, and licensing for their dependencies.\n\t</sub>\n</div>\n","homepage":"https://github.com/sindresorhus/p-try#readme","repository":{"type":"git","url":"git+https://github.com/sindresorhus/p-try.git"},"author":{"name":"Sindre Sorhus","email":"sindresorhus@gmail.com","url":"https://sindresorhus.com"},"bugs":{"url":"https://github.com/sindresorhus/p-try/issues"},"license":"MIT","readmeFilename":"readme.md"}
+{
+  "name": "p-try",
+  "description": "`Start a promise chain",
+  "dist-tags": {
+    "latest": "2.2.0"
+  },
+  "versions": {
+    "2.2.0": {
+      "name": "p-try",
+      "version": "2.2.0",
+      "description": "`Start a promise chain",
+      "license": "MIT",
+      "repository": {
+        "type": "git",
+        "url": "git+https://github.com/sindresorhus/p-try.git"
+      },
+      "author": {
+        "name": "Sindre Sorhus",
+        "email": "sindresorhus@gmail.com",
+        "url": "sindresorhus.com"
+      },
+      "engines": {
+        "node": ">=6"
+      },
+      "scripts": {
+        "test": "xo && ava && tsd"
+      },
+      "devDependencies": {
+        "ava": "^1.4.1",
+        "tsd": "^0.7.1",
+        "xo": "^0.24.0"
+      },
+      "gitHead": "e80e2e130b2d16807345be02aa03541e6e085952",
+      "bugs": {
+        "url": "https://github.com/sindresorhus/p-try/issues"
+      },
+      "_id": "p-try@2.2.0",
+      "_nodeVersion": "8.15.0",
+      "_npmVersion": "6.9.0",
+      "dist": {
+        "integrity": "sha512-R4nPAVTAU0B9D35/Gk3uJf/7XYbQcyohSKdvAxIRSNghFl4e71hVoGnBNQz9cWaXxO2I10KTC+3jMdvvoKw6dQ==",
+        "shasum": "cb2868540e313d61de58fafbe35ce9004d5540e6",
+        "tarball": "http://localhost:4260/p-try/p-try-2.2.0.tgz",
+        "fileCount": 5,
+        "unpackedSize": 4371,
+        "npm-signature": "-----BEGIN PGP SIGNATURE-----\r\nVersion: OpenPGP.js v3.0.4\r\nComment: https://openpgpjs.org\r\n\r\nwsFcBAEBCAAQBQJcoLPbCRA9TVsSAnZWagAALrsP/ie/GNjXnqYiGeGV/bKQ\nudud/fo7L0Brvq7zY+bNfSDNeyIDc5fosGrrCvaCA7JpK+KYnN+ww6lTy2pa\nY3njArVn6eeqfw2ZnheHrJOduMvftXw3+9EJ2Y0ulJ+OfDxvFI5n3HsE4bia\n4M/hMfvo4ScI4MmDnkcGA0rZEEPnfHg8Ud9u5tJOyIsftV08oY4Czg+cGyOV\nWuLge0A7+BHXhmVz44NR7edufsq2hbbmSsvl14SMyWYEjKV2r9Q3fEwL5XHP\narq39bqA9X+DnD0a12oWtYeT+v3r5ewg4h7H7QtA9Bvxdns/usJw/6KHy1za\nh8haNrRmBn1ze0sF/kNSKeStFcIsH8fp4Iiu4w8mniipVcuSt5tK5mvh3KOv\n0p8rBWzxGEqcxXxsxmI1rLEKGMy0ZthgvLOtRsnYl8a/DG1cxE9ZN5c2oaWA\ngUSDavh3tnwpl8PTag013nAmYSDYTNhA2TmHbWbfTzSCFvAjhivKfbIrcyF6\n1iQX4AckEZgtSTvbzbggC87gQS4xMfM82pi2rmkJuv3i6Iu2RkbDeFrQWphl\nL0FftZLanQQ39WeOiHZK1zNiBLaOxXWH/VWQKLG9CwgYSqFNGDbZIQuq2HkI\n/lJ6uIP2LZs+dMpDlw37K4BUOIS7wxJvOGfbwZmyYHN6gA2AeCA2wYZh4zVc\npEVP\r\n=gHtm\r\n-----END PGP SIGNATURE-----\r\n",
+        "signatures": [
+          {
+            "keyid": "SHA256:jl3bwswu80PjjokCgh0o2w5c2U4LhQAE57gj9cz1kzA",
+            "sig": "MEQCIFqJShDf2xjNgk1aoDGnPwZwG+G7HV52faNfi6pOpE0GAiBBrH0yhwIdb+P7KpY/+oabo0DWJVmv0pL/crggmNyfzQ=="
+          }
+        ]
+      },
+      "directories": {},
+      "_hasShrinkwrap": false
+    }
+  },
+  "readme": "# p-try\n\n> Start a promise chain\n\n[How is it useful?](http://cryto.net/~joepie91/blog/2016/05/11/what-is-promise-try-and-why-does-it-matter/)\n\n## Install\n\n```sh\nnpm install p-try\n```\n\n## Usage\n\n```js\nimport pTry from 'p-try';\n\ntry {\n\tconst value = await pTry(() => {\n\t\treturn synchronousFunctionThatMightThrow();\n\t});\n\tconsole.log(value);\n} catch (error) {\n\tconsole.error(error);\n}\n```\n\n## API\n\n### pTry(fn, ...arguments)\n\nReturns a `Promise` resolved with the value of calling `fn(...arguments)`. If the function throws an error, the returned `Promise` will be rejected with that error.\n\nSupport for passing arguments on to the `fn` is provided in order to be able to avoid creating unnecessary closures. You probably don't need this optimization unless you're pushing a *lot* of functions.\n\n#### fn\n\nThe function to run to start the promise chain.\n\n#### arguments\n\nArguments to pass to `fn`.\n\n## Related\n\n- [More…](https://github.com/sindresorhus/promise-fun)\n\n---\n\n<div align=\"center\">\n\t<b>\n\t\t<a href=\"https://tidelift.com/subscription/pkg/npm-p-try?utm_source=npm-p-try&utm_medium=referral&utm_campaign=readme\">Get professional support for this package with a Tidelift subscription</a>\n\t</b>\n\t<br>\n\t<sub>\n\t\tTidelift helps make open source sustainable for maintainers while giving companies<br>assurances about security, maintenance, and licensing for their dependencies.\n\t</sub>\n</div>\n",
+  "homepage": "https://github.com/sindresorhus/p-try#readme",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/sindresorhus/p-try.git"
+  },
+  "author": {
+    "name": "Sindre Sorhus",
+    "email": "sindresorhus@gmail.com",
+    "url": "https://sindresorhus.com"
+  },
+  "bugs": {
+    "url": "https://github.com/sindresorhus/p-try/issues"
+  },
+  "license": "MIT",
+  "readmeFilename": "readme.md"
+}

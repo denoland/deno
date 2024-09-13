@@ -1,1 +1,190 @@
-{"name":"preact-render-to-string","description":"Render JSX to an HTML string, with support for Preact components.","dist-tags":{"latest":"6.4.0"},"versions":{"6.4.0":{"name":"preact-render-to-string","amdName":"preactRenderToString","version":"6.4.0","description":"Render JSX to an HTML string, with support for Preact components.","main":"dist/index.js","umd:main":"dist/index.umd.js","module":"dist/index.module.js","jsnext:main":"dist/index.module.js","types":"src/index.d.ts","exports":{".":{"types":"./src/index.d.ts","browser":"./dist/index.module.js","umd":"./dist/index.umd.js","import":"./dist/index.mjs","require":"./dist/index.js"},"./jsx":{"types":"./jsx.d.ts","browser":"./dist/jsx.module.js","umd":"./dist/jsx.umd.js","import":"./dist/jsx.mjs","require":"./dist/jsx.js"},"./package.json":"./package.json"},"scripts":{"bench":"BABEL_ENV=test node -r @babel/register benchmarks index.js","bench:v8":"BABEL_ENV=test microbundle benchmarks/index.js -f modern --alias benchmarkjs-pretty=benchmarks/lib/benchmark-lite.js --external none --target node --no-compress --no-sourcemap --raw -o benchmarks/.v8.mjs && v8 --module benchmarks/.v8.mjs","build":"npm run -s transpile && npm run -s transpile:jsx && npm run -s copy-typescript-definition","postbuild":"node ./config/node-13-exports.js && node ./config/node-commonjs.js && node ./config/node-verify-exports.js","transpile":"microbundle src/index.js -f es,cjs,umd --target web --external preact","transpile:jsx":"microbundle src/jsx.js -o dist/jsx.js --target web --external preact && microbundle dist/jsx.js -o dist/jsx.js -f cjs --external preact","copy-typescript-definition":"copyfiles -f src/*.d.ts dist","test":"eslint src test && tsc && npm run test:mocha && npm run test:mocha:compat && npm run test:mocha:debug && npm run bench","test:mocha":"BABEL_ENV=test mocha -r @babel/register -r test/setup.js test/*.test.js","test:mocha:compat":"BABEL_ENV=test mocha -r @babel/register -r test/setup.js 'test/compat/*.test.js'","test:mocha:debug":"BABEL_ENV=test mocha -r @babel/register -r test/setup.js 'test/debug/index.test.js'","format":"prettier src/**/*.{d.ts,js} test/**/*.js --write","prepublishOnly":"npm run build","release":"npm run build && git commit -am $npm_package_version && git tag $npm_package_version && git push && git push --tags && npm publish"},"eslintConfig":{"extends":"developit","rules":{"react/prefer-stateless-function":0,"react/jsx-no-bind":0,"react/no-danger":0,"jest/valid-expect":0,"new-cap":0,"curly":"off","brace-style":"off","indent":"off"},"settings":{"react":{"version":"16.8"}}},"babel":{"env":{"test":{"presets":[["@babel/preset-env",{"targets":{"node":true}}]],"plugins":[["@babel/plugin-transform-react-jsx",{"pragma":"h"}]]}}},"minify":{"compress":{"reduce_funcs":false}},"author":{"name":"Jason Miller","email":"jason@developit.ca"},"license":"MIT","repository":{"type":"git","url":"git+https://github.com/developit/preact-render-to-string.git"},"bugs":{"url":"https://github.com/developit/preact-render-to-string/issues"},"peerDependencies":{"preact":">=10"},"devDependencies":{"@babel/plugin-transform-react-jsx":"^7.22.15","@babel/preset-env":"^7.23.2","@babel/register":"^7.22.15","@changesets/changelog-github":"^0.4.1","@changesets/cli":"^2.18.0","benchmarkjs-pretty":"^2.0.1","chai":"^4.3.10","copyfiles":"^2.4.1","eslint":"^7.16.0","eslint-config-developit":"^1.2.0","husky":"^4.3.6","lint-staged":"^10.5.3","microbundle":"^0.15.1","mocha":"^10.2.0","baseline-rts":"npm:preact-render-to-string@latest","preact":"^10.13.0","prettier":"^2.2.1","sinon":"^9.2.2","sinon-chai":"^3.5.0","typescript":"^5.0.0"},"dependencies":{"pretty-format":"^3.8.0"},"prettier":{"singleQuote":true,"trailingComma":"none","useTabs":true,"tabWidth":2},"lint-staged":{"**/*.{js,jsx,ts,tsx,yml}":["prettier --write"]},"husky":{"hooks":{"pre-commit":"lint-staged"}},"gitHead":"797c82fd7a8cb49c2cfd1f5c3f5e94a44b473956","_id":"preact-render-to-string@6.4.0","_nodeVersion":"18.15.0","_npmVersion":"9.5.0","dist":{"integrity":"sha512-pzDwezZaLbK371OiJjXDsZJwVOALzFX5M1wEh2Kr0pEApq5AV6bRH/DFbA/zNA7Lck/duyREPQLLvzu2G6hEQQ==","shasum":"03cdd661d35e9ac76bed9f0e37ccceb42cae5fa5","tarball":"http://localhost:4260/preact-render-to-string/preact-render-to-string-6.4.0.tgz","fileCount":37,"unpackedSize":438403,"signatures":[{"keyid":"SHA256:jl3bwswu80PjjokCgh0o2w5c2U4LhQAE57gj9cz1kzA","sig":"MEYCIQDTa+cBqkHxRPuwDWpHw9h6UF0HFVokRCpvLEgoiEaZtwIhAJSIy8Q2fXZda8KVTd8CpzeT5jFPbCiww9rvyCyA125q"}]},"directories":{},"_hasShrinkwrap":false}},"readme":"# preact-render-to-string\n\n[![NPM](http://img.shields.io/npm/v/preact-render-to-string.svg)](https://www.npmjs.com/package/preact-render-to-string)\n[![Build status](https://github.com/preactjs/preact-render-to-string/actions/workflows/ci.yml/badge.svg)](https://github.com/preactjs/preact-render-to-string/actions/workflows/ci.yml)\n\nRender JSX and [Preact](https://github.com/preactjs/preact) components to an HTML string.\n\nWorks in Node & the browser, making it useful for universal/isomorphic rendering.\n\n\\>\\> **[Cute Fox-Related Demo](http://codepen.io/developit/pen/dYZqjE?editors=001)** _(@ CodePen)_ <<\n\n---\n\n### Render JSX/VDOM to HTML\n\n```js\nimport { render } from 'preact-render-to-string';\nimport { h } from 'preact';\n/** @jsx h */\n\nlet vdom = <div class=\"foo\">content</div>;\n\nlet html = render(vdom);\nconsole.log(html);\n// <div class=\"foo\">content</div>\n```\n\n### Render Preact Components to HTML\n\n```js\nimport { render } from 'preact-render-to-string';\nimport { h, Component } from 'preact';\n/** @jsx h */\n\n// Classical components work\nclass Fox extends Component {\n\trender({ name }) {\n\t\treturn <span class=\"fox\">{name}</span>;\n\t}\n}\n\n// ... and so do pure functional components:\nconst Box = ({ type, children }) => (\n\t<div class={`box box-${type}`}>{children}</div>\n);\n\nlet html = render(\n\t<Box type=\"open\">\n\t\t<Fox name=\"Finn\" />\n\t</Box>\n);\n\nconsole.log(html);\n// <div class=\"box box-open\"><span class=\"fox\">Finn</span></div>\n```\n\n---\n\n### Render JSX / Preact / Whatever via Express!\n\n```js\nimport express from 'express';\nimport { h } from 'preact';\nimport { render } from 'preact-render-to-string';\n/** @jsx h */\n\n// silly example component:\nconst Fox = ({ name }) => (\n\t<div class=\"fox\">\n\t\t<h5>{name}</h5>\n\t\t<p>This page is all about {name}.</p>\n\t</div>\n);\n\n// basic HTTP server via express:\nconst app = express();\napp.listen(8080);\n\n// on each request, render and return a component:\napp.get('/:fox', (req, res) => {\n\tlet html = render(<Fox name={req.params.fox} />);\n\t// send it back wrapped up as an HTML5 document:\n\tres.send(`<!DOCTYPE html><html><body>${html}</body></html>`);\n});\n```\n\n### Error Boundaries\n\nRendering errors can be caught by Preact via `getDerivedStateFromErrors` or `componentDidCatch`. To enable that feature in `preact-render-to-string` set `errorBoundaries = true`\n\n```js\nimport { options } from 'preact';\n\n// Enable error boundaries in `preact-render-to-string`\noptions.errorBoundaries = true;\n```\n\n---\n\n### `Suspense` & `lazy` components with [`preact/compat`](https://www.npmjs.com/package/preact) & [`preact-ssr-prepass`](https://www.npmjs.com/package/preact-ssr-prepass)\n\n```bash\nnpm install preact preact-render-to-string preact-ssr-prepass\n```\n\n```jsx\nexport default () => {\n\treturn <h1>Home page</h1>;\n};\n```\n\n```jsx\nimport { Suspense, lazy } from 'preact/compat';\n\n// Creation of the lazy component\nconst HomePage = lazy(() => import('./pages/home'));\n\nconst Main = () => {\n\treturn (\n\t\t<Suspense fallback={<p>Loading</p>}>\n\t\t\t<HomePage />\n\t\t</Suspense>\n\t);\n};\n```\n\n```jsx\nimport { render } from 'preact-render-to-string';\nimport prepass from 'preact-ssr-prepass';\nimport { Main } from './main';\n\nconst main = async () => {\n\t// Creation of the virtual DOM\n\tconst vdom = <Main />;\n\n\t// Pre-rendering of lazy components\n\tawait prepass(vdom);\n\n\t// Rendering of components\n\tconst html = render(vdom);\n\n\tconsole.log(html);\n\t// <h1>Home page</h1>\n};\n\n// Execution & error handling\nmain().catch((error) => {\n\tconsole.error(error);\n});\n```\n\n---\n\n### License\n\n[MIT](http://choosealicense.com/licenses/mit/)\n","author":{"name":"Jason Miller","email":"jason@developit.ca"},"license":"MIT","readmeFilename":"README.md","homepage":"https://github.com/developit/preact-render-to-string","repository":{"type":"git","url":"git+https://github.com/developit/preact-render-to-string.git"},"bugs":{"url":"https://github.com/developit/preact-render-to-string/issues"}}
+{
+  "name": "preact-render-to-string",
+  "description": "Render JSX to an HTML string, with support for Preact components.",
+  "dist-tags": {
+    "latest": "6.4.0"
+  },
+  "versions": {
+    "6.4.0": {
+      "name": "preact-render-to-string",
+      "amdName": "preactRenderToString",
+      "version": "6.4.0",
+      "description": "Render JSX to an HTML string, with support for Preact components.",
+      "main": "dist/index.js",
+      "umd:main": "dist/index.umd.js",
+      "module": "dist/index.module.js",
+      "jsnext:main": "dist/index.module.js",
+      "types": "src/index.d.ts",
+      "exports": {
+        ".": {
+          "types": "./src/index.d.ts",
+          "browser": "./dist/index.module.js",
+          "umd": "./dist/index.umd.js",
+          "import": "./dist/index.mjs",
+          "require": "./dist/index.js"
+        },
+        "./jsx": {
+          "types": "./jsx.d.ts",
+          "browser": "./dist/jsx.module.js",
+          "umd": "./dist/jsx.umd.js",
+          "import": "./dist/jsx.mjs",
+          "require": "./dist/jsx.js"
+        },
+        "./package.json": "./package.json"
+      },
+      "scripts": {
+        "bench": "BABEL_ENV=test node -r @babel/register benchmarks index.js",
+        "bench:v8": "BABEL_ENV=test microbundle benchmarks/index.js -f modern --alias benchmarkjs-pretty=benchmarks/lib/benchmark-lite.js --external none --target node --no-compress --no-sourcemap --raw -o benchmarks/.v8.mjs && v8 --module benchmarks/.v8.mjs",
+        "build": "npm run -s transpile && npm run -s transpile:jsx && npm run -s copy-typescript-definition",
+        "postbuild": "node ./config/node-13-exports.js && node ./config/node-commonjs.js && node ./config/node-verify-exports.js",
+        "transpile": "microbundle src/index.js -f es,cjs,umd --target web --external preact",
+        "transpile:jsx": "microbundle src/jsx.js -o dist/jsx.js --target web --external preact && microbundle dist/jsx.js -o dist/jsx.js -f cjs --external preact",
+        "copy-typescript-definition": "copyfiles -f src/*.d.ts dist",
+        "test": "eslint src test && tsc && npm run test:mocha && npm run test:mocha:compat && npm run test:mocha:debug && npm run bench",
+        "test:mocha": "BABEL_ENV=test mocha -r @babel/register -r test/setup.js test/*.test.js",
+        "test:mocha:compat": "BABEL_ENV=test mocha -r @babel/register -r test/setup.js 'test/compat/*.test.js'",
+        "test:mocha:debug": "BABEL_ENV=test mocha -r @babel/register -r test/setup.js 'test/debug/index.test.js'",
+        "format": "prettier src/**/*.{d.ts,js} test/**/*.js --write",
+        "prepublishOnly": "npm run build",
+        "release": "npm run build && git commit -am $npm_package_version && git tag $npm_package_version && git push && git push --tags && npm publish"
+      },
+      "eslintConfig": {
+        "extends": "developit",
+        "rules": {
+          "react/prefer-stateless-function": 0,
+          "react/jsx-no-bind": 0,
+          "react/no-danger": 0,
+          "jest/valid-expect": 0,
+          "new-cap": 0,
+          "curly": "off",
+          "brace-style": "off",
+          "indent": "off"
+        },
+        "settings": {
+          "react": {
+            "version": "16.8"
+          }
+        }
+      },
+      "babel": {
+        "env": {
+          "test": {
+            "presets": [
+              [
+                "@babel/preset-env",
+                {
+                  "targets": {
+                    "node": true
+                  }
+                }
+              ]
+            ],
+            "plugins": [
+              [
+                "@babel/plugin-transform-react-jsx",
+                {
+                  "pragma": "h"
+                }
+              ]
+            ]
+          }
+        }
+      },
+      "minify": {
+        "compress": {
+          "reduce_funcs": false
+        }
+      },
+      "author": {
+        "name": "Jason Miller",
+        "email": "jason@developit.ca"
+      },
+      "license": "MIT",
+      "repository": {
+        "type": "git",
+        "url": "git+https://github.com/developit/preact-render-to-string.git"
+      },
+      "bugs": {
+        "url": "https://github.com/developit/preact-render-to-string/issues"
+      },
+      "peerDependencies": {
+        "preact": ">=10"
+      },
+      "devDependencies": {
+        "@babel/plugin-transform-react-jsx": "^7.22.15",
+        "@babel/preset-env": "^7.23.2",
+        "@babel/register": "^7.22.15",
+        "@changesets/changelog-github": "^0.4.1",
+        "@changesets/cli": "^2.18.0",
+        "benchmarkjs-pretty": "^2.0.1",
+        "chai": "^4.3.10",
+        "copyfiles": "^2.4.1",
+        "eslint": "^7.16.0",
+        "eslint-config-developit": "^1.2.0",
+        "husky": "^4.3.6",
+        "lint-staged": "^10.5.3",
+        "microbundle": "^0.15.1",
+        "mocha": "^10.2.0",
+        "baseline-rts": "npm:preact-render-to-string@latest",
+        "preact": "^10.13.0",
+        "prettier": "^2.2.1",
+        "sinon": "^9.2.2",
+        "sinon-chai": "^3.5.0",
+        "typescript": "^5.0.0"
+      },
+      "dependencies": {
+        "pretty-format": "^3.8.0"
+      },
+      "prettier": {
+        "singleQuote": true,
+        "trailingComma": "none",
+        "useTabs": true,
+        "tabWidth": 2
+      },
+      "lint-staged": {
+        "**/*.{js,jsx,ts,tsx,yml}": [
+          "prettier --write"
+        ]
+      },
+      "husky": {
+        "hooks": {
+          "pre-commit": "lint-staged"
+        }
+      },
+      "gitHead": "797c82fd7a8cb49c2cfd1f5c3f5e94a44b473956",
+      "_id": "preact-render-to-string@6.4.0",
+      "_nodeVersion": "18.15.0",
+      "_npmVersion": "9.5.0",
+      "dist": {
+        "integrity": "sha512-pzDwezZaLbK371OiJjXDsZJwVOALzFX5M1wEh2Kr0pEApq5AV6bRH/DFbA/zNA7Lck/duyREPQLLvzu2G6hEQQ==",
+        "shasum": "03cdd661d35e9ac76bed9f0e37ccceb42cae5fa5",
+        "tarball": "http://localhost:4260/preact-render-to-string/preact-render-to-string-6.4.0.tgz",
+        "fileCount": 37,
+        "unpackedSize": 438403,
+        "signatures": [
+          {
+            "keyid": "SHA256:jl3bwswu80PjjokCgh0o2w5c2U4LhQAE57gj9cz1kzA",
+            "sig": "MEYCIQDTa+cBqkHxRPuwDWpHw9h6UF0HFVokRCpvLEgoiEaZtwIhAJSIy8Q2fXZda8KVTd8CpzeT5jFPbCiww9rvyCyA125q"
+          }
+        ]
+      },
+      "directories": {},
+      "_hasShrinkwrap": false
+    }
+  },
+  "readme": "# preact-render-to-string\n\n[![NPM](http://img.shields.io/npm/v/preact-render-to-string.svg)](https://www.npmjs.com/package/preact-render-to-string)\n[![Build status](https://github.com/preactjs/preact-render-to-string/actions/workflows/ci.yml/badge.svg)](https://github.com/preactjs/preact-render-to-string/actions/workflows/ci.yml)\n\nRender JSX and [Preact](https://github.com/preactjs/preact) components to an HTML string.\n\nWorks in Node & the browser, making it useful for universal/isomorphic rendering.\n\n\\>\\> **[Cute Fox-Related Demo](http://codepen.io/developit/pen/dYZqjE?editors=001)** _(@ CodePen)_ <<\n\n---\n\n### Render JSX/VDOM to HTML\n\n```js\nimport { render } from 'preact-render-to-string';\nimport { h } from 'preact';\n/** @jsx h */\n\nlet vdom = <div class=\"foo\">content</div>;\n\nlet html = render(vdom);\nconsole.log(html);\n// <div class=\"foo\">content</div>\n```\n\n### Render Preact Components to HTML\n\n```js\nimport { render } from 'preact-render-to-string';\nimport { h, Component } from 'preact';\n/** @jsx h */\n\n// Classical components work\nclass Fox extends Component {\n\trender({ name }) {\n\t\treturn <span class=\"fox\">{name}</span>;\n\t}\n}\n\n// ... and so do pure functional components:\nconst Box = ({ type, children }) => (\n\t<div class={`box box-${type}`}>{children}</div>\n);\n\nlet html = render(\n\t<Box type=\"open\">\n\t\t<Fox name=\"Finn\" />\n\t</Box>\n);\n\nconsole.log(html);\n// <div class=\"box box-open\"><span class=\"fox\">Finn</span></div>\n```\n\n---\n\n### Render JSX / Preact / Whatever via Express!\n\n```js\nimport express from 'express';\nimport { h } from 'preact';\nimport { render } from 'preact-render-to-string';\n/** @jsx h */\n\n// silly example component:\nconst Fox = ({ name }) => (\n\t<div class=\"fox\">\n\t\t<h5>{name}</h5>\n\t\t<p>This page is all about {name}.</p>\n\t</div>\n);\n\n// basic HTTP server via express:\nconst app = express();\napp.listen(8080);\n\n// on each request, render and return a component:\napp.get('/:fox', (req, res) => {\n\tlet html = render(<Fox name={req.params.fox} />);\n\t// send it back wrapped up as an HTML5 document:\n\tres.send(`<!DOCTYPE html><html><body>${html}</body></html>`);\n});\n```\n\n### Error Boundaries\n\nRendering errors can be caught by Preact via `getDerivedStateFromErrors` or `componentDidCatch`. To enable that feature in `preact-render-to-string` set `errorBoundaries = true`\n\n```js\nimport { options } from 'preact';\n\n// Enable error boundaries in `preact-render-to-string`\noptions.errorBoundaries = true;\n```\n\n---\n\n### `Suspense` & `lazy` components with [`preact/compat`](https://www.npmjs.com/package/preact) & [`preact-ssr-prepass`](https://www.npmjs.com/package/preact-ssr-prepass)\n\n```bash\nnpm install preact preact-render-to-string preact-ssr-prepass\n```\n\n```jsx\nexport default () => {\n\treturn <h1>Home page</h1>;\n};\n```\n\n```jsx\nimport { Suspense, lazy } from 'preact/compat';\n\n// Creation of the lazy component\nconst HomePage = lazy(() => import('./pages/home'));\n\nconst Main = () => {\n\treturn (\n\t\t<Suspense fallback={<p>Loading</p>}>\n\t\t\t<HomePage />\n\t\t</Suspense>\n\t);\n};\n```\n\n```jsx\nimport { render } from 'preact-render-to-string';\nimport prepass from 'preact-ssr-prepass';\nimport { Main } from './main';\n\nconst main = async () => {\n\t// Creation of the virtual DOM\n\tconst vdom = <Main />;\n\n\t// Pre-rendering of lazy components\n\tawait prepass(vdom);\n\n\t// Rendering of components\n\tconst html = render(vdom);\n\n\tconsole.log(html);\n\t// <h1>Home page</h1>\n};\n\n// Execution & error handling\nmain().catch((error) => {\n\tconsole.error(error);\n});\n```\n\n---\n\n### License\n\n[MIT](http://choosealicense.com/licenses/mit/)\n",
+  "author": {
+    "name": "Jason Miller",
+    "email": "jason@developit.ca"
+  },
+  "license": "MIT",
+  "readmeFilename": "README.md",
+  "homepage": "https://github.com/developit/preact-render-to-string",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/developit/preact-render-to-string.git"
+  },
+  "bugs": {
+    "url": "https://github.com/developit/preact-render-to-string/issues"
+  }
+}

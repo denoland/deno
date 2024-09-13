@@ -1,1 +1,80 @@
-{"name":"p-locate","description":"Get the first fulfilled promise that satisfies the provided testing function","dist-tags":{"latest":"4.1.0"},"versions":{"4.1.0":{"name":"p-locate","version":"4.1.0","description":"Get the first fulfilled promise that satisfies the provided testing function","license":"MIT","repository":{"type":"git","url":"git+https://github.com/sindresorhus/p-locate.git"},"author":{"name":"Sindre Sorhus","email":"sindresorhus@gmail.com","url":"sindresorhus.com"},"engines":{"node":">=8"},"scripts":{"test":"xo && ava && tsd"},"dependencies":{"p-limit":"^2.2.0"},"devDependencies":{"ava":"^1.4.1","delay":"^4.1.0","in-range":"^1.0.0","time-span":"^3.0.0","tsd":"^0.7.2","xo":"^0.24.0"},"gitHead":"a650b26e49713a8cca58f669a7f8aef9b655554c","bugs":{"url":"https://github.com/sindresorhus/p-locate/issues"},"_id":"p-locate@4.1.0","_nodeVersion":"8.15.0","_npmVersion":"6.9.0","dist":{"integrity":"sha512-R79ZZ/0wAxKGu3oYMlz8jy/kbhsNrS7SKZ7PxEHBgJ5+F2mtFW2fK2cOtBh1cHYkQsbzFV7I+EoRKe6Yt0oK7A==","shasum":"a3428bb7088b3a60292f66919278b7c297ad4f07","tarball":"http://localhost:4260/p-locate/p-locate-4.1.0.tgz","fileCount":5,"unpackedSize":7285,"npm-signature":"-----BEGIN PGP SIGNATURE-----\r\nVersion: OpenPGP.js v3.0.4\r\nComment: https://openpgpjs.org\r\n\r\nwsFcBAEBCAAQBQJcpY/2CRA9TVsSAnZWagAALQMP/3vN0BSJiCM4ZVUWhqjQ\nL3PQu0gcZuncKRGoX4Vpm7nhfubo13PwinE5dDOrueBPoCrdYJQk/uuYBJQS\nugePB/oxbLwK1vL0ZanyaJTRYWrdNJsZmciYRkQ09Pci/oyZ39c6sjtkGj7v\nU8dLhR47iNBHf5RhOlxlEGEaxAHIn7xumDwRnK+xDOZCVJp4HmHcT0XK8J08\ncuraQ3ZDCGDFSJUzoL9XGUhFWlxwLfLsHwcjfBfD7kGdLBchlgrgN1uVIa0m\n8ta73mV2JtzYxrRE2WmDyDqfVdNAE0pSoUrTRrGKVrI60TguIv5c+AhEVR+R\nVYl8gnq0FbesgxhYRHz8h64HfArEBkzrOdDFNARBwZh0HYIxLIEO1gzyBKj4\nfGiyMVXKeAiGrxUWfD47Bra9fCQlxjO2IkA7c4PqWj9Al8C6Q2DfGp6e73JP\n3bXxOTNMQVxAjI/Xej7XEHaAB500KvEmrXv4Mz+wyIT3c8pdpwv8MJtw1PLf\naP1iItAWF2FZl5pyxcX9PRGLkIRz452ncq30ZLRbPohdg8+Lcqrq6zeqAucH\nkmY37n1qWmvT9btNTcHz/TsO658ty+3aiZeXh6Aw9V7SvKfxECVWs2t6rtaU\nojg73RJjxBFDr8eju0DuRXJv2EdFoHe/IgymO+eFXk9K7sw3B1RjMzlwt4Ag\nQLSM\r\n=XPFA\r\n-----END PGP SIGNATURE-----\r\n","signatures":[{"keyid":"SHA256:jl3bwswu80PjjokCgh0o2w5c2U4LhQAE57gj9cz1kzA","sig":"MEUCIDBDHNeeA91skg5DOjOvw5L1TFNYs/8fttpOaXZHLIcyAiEAm8ra3BQ3mwFdFY1sQHqolxuwScU+6MUIzm5fO2ub/e8="}]},"directories":{},"_hasShrinkwrap":false}},"readme":"# p-locate\n\n> Get the first fulfilled promise that satisfies the provided testing function\n\nThink of it like an async version of [`Array#find`](https://developer.mozilla.org/en/docs/Web/JavaScript/Reference/Global_Objects/Array/find).\n\n## Install\n\n```\n$ npm install p-locate\n```\n\n## Usage\n\nHere we find the first file that exists on disk, in array order.\n\n```js\nimport {pathExists} from 'path-exists';\nimport pLocate from 'p-locate';\n\nconst files = [\n\t'unicorn.png',\n\t'rainbow.png', // Only this one actually exists on disk\n\t'pony.png'\n];\n\nconst foundPath = await pLocate(files, file => pathExists(file));\n\nconsole.log(foundPath);\n//=> 'rainbow'\n```\n\n*The above is just an example. Use [`locate-path`](https://github.com/sindresorhus/locate-path) if you need this.*\n\n## API\n\n### pLocate(input, tester, options?)\n\nReturns a `Promise` that is fulfilled when `tester` resolves to `true` or the iterable is done, or rejects if any of the promises reject. The fulfilled value is the current iterable value or `undefined` if `tester` never resolved to `true`.\n\n#### input\n\nType: `Iterable<Promise | unknown>`\n\nAn iterable of promises/values to test.\n\n#### tester(element)\n\nType: `Function`\n\nThis function will receive resolved values from `input` and is expected to return a `Promise<boolean>` or `boolean`.\n\n#### options\n\nType: `object`\n\n##### concurrency\n\nType: `number`\\\nDefault: `Infinity`\\\nMinimum: `1`\n\nThe number of concurrently pending promises returned by `tester`.\n\n##### preserveOrder\n\nType: `boolean`\\\nDefault: `true`\n\nPreserve `input` order when searching.\n\nDisable this to improve performance if you don't care about the order.\n\n## Related\n\n- [p-map](https://github.com/sindresorhus/p-map) - Map over promises concurrently\n- [p-filter](https://github.com/sindresorhus/p-filter) - Filter promises concurrently\n- [p-any](https://github.com/sindresorhus/p-any) - Wait for any promise to be fulfilled\n- [More…](https://github.com/sindresorhus/promise-fun)\n\n---\n\n<div align=\"center\">\n\t<b>\n\t\t<a href=\"https://tidelift.com/subscription/pkg/npm-p-locate?utm_source=npm-p-locate&utm_medium=referral&utm_campaign=readme\">Get professional support for this package with a Tidelift subscription</a>\n\t</b>\n\t<br>\n\t<sub>\n\t\tTidelift helps make open source sustainable for maintainers while giving companies<br>assurances about security, maintenance, and licensing for their dependencies.\n\t</sub>\n</div>\n","homepage":"https://github.com/sindresorhus/p-locate#readme","repository":{"type":"git","url":"git+https://github.com/sindresorhus/p-locate.git"},"author":{"name":"Sindre Sorhus","email":"sindresorhus@gmail.com","url":"https://sindresorhus.com"},"bugs":{"url":"https://github.com/sindresorhus/p-locate/issues"},"license":"MIT","readmeFilename":"readme.md"}
+{
+  "name": "p-locate",
+  "description": "Get the first fulfilled promise that satisfies the provided testing function",
+  "dist-tags": {
+    "latest": "4.1.0"
+  },
+  "versions": {
+    "4.1.0": {
+      "name": "p-locate",
+      "version": "4.1.0",
+      "description": "Get the first fulfilled promise that satisfies the provided testing function",
+      "license": "MIT",
+      "repository": {
+        "type": "git",
+        "url": "git+https://github.com/sindresorhus/p-locate.git"
+      },
+      "author": {
+        "name": "Sindre Sorhus",
+        "email": "sindresorhus@gmail.com",
+        "url": "sindresorhus.com"
+      },
+      "engines": {
+        "node": ">=8"
+      },
+      "scripts": {
+        "test": "xo && ava && tsd"
+      },
+      "dependencies": {
+        "p-limit": "^2.2.0"
+      },
+      "devDependencies": {
+        "ava": "^1.4.1",
+        "delay": "^4.1.0",
+        "in-range": "^1.0.0",
+        "time-span": "^3.0.0",
+        "tsd": "^0.7.2",
+        "xo": "^0.24.0"
+      },
+      "gitHead": "a650b26e49713a8cca58f669a7f8aef9b655554c",
+      "bugs": {
+        "url": "https://github.com/sindresorhus/p-locate/issues"
+      },
+      "_id": "p-locate@4.1.0",
+      "_nodeVersion": "8.15.0",
+      "_npmVersion": "6.9.0",
+      "dist": {
+        "integrity": "sha512-R79ZZ/0wAxKGu3oYMlz8jy/kbhsNrS7SKZ7PxEHBgJ5+F2mtFW2fK2cOtBh1cHYkQsbzFV7I+EoRKe6Yt0oK7A==",
+        "shasum": "a3428bb7088b3a60292f66919278b7c297ad4f07",
+        "tarball": "http://localhost:4260/p-locate/p-locate-4.1.0.tgz",
+        "fileCount": 5,
+        "unpackedSize": 7285,
+        "npm-signature": "-----BEGIN PGP SIGNATURE-----\r\nVersion: OpenPGP.js v3.0.4\r\nComment: https://openpgpjs.org\r\n\r\nwsFcBAEBCAAQBQJcpY/2CRA9TVsSAnZWagAALQMP/3vN0BSJiCM4ZVUWhqjQ\nL3PQu0gcZuncKRGoX4Vpm7nhfubo13PwinE5dDOrueBPoCrdYJQk/uuYBJQS\nugePB/oxbLwK1vL0ZanyaJTRYWrdNJsZmciYRkQ09Pci/oyZ39c6sjtkGj7v\nU8dLhR47iNBHf5RhOlxlEGEaxAHIn7xumDwRnK+xDOZCVJp4HmHcT0XK8J08\ncuraQ3ZDCGDFSJUzoL9XGUhFWlxwLfLsHwcjfBfD7kGdLBchlgrgN1uVIa0m\n8ta73mV2JtzYxrRE2WmDyDqfVdNAE0pSoUrTRrGKVrI60TguIv5c+AhEVR+R\nVYl8gnq0FbesgxhYRHz8h64HfArEBkzrOdDFNARBwZh0HYIxLIEO1gzyBKj4\nfGiyMVXKeAiGrxUWfD47Bra9fCQlxjO2IkA7c4PqWj9Al8C6Q2DfGp6e73JP\n3bXxOTNMQVxAjI/Xej7XEHaAB500KvEmrXv4Mz+wyIT3c8pdpwv8MJtw1PLf\naP1iItAWF2FZl5pyxcX9PRGLkIRz452ncq30ZLRbPohdg8+Lcqrq6zeqAucH\nkmY37n1qWmvT9btNTcHz/TsO658ty+3aiZeXh6Aw9V7SvKfxECVWs2t6rtaU\nojg73RJjxBFDr8eju0DuRXJv2EdFoHe/IgymO+eFXk9K7sw3B1RjMzlwt4Ag\nQLSM\r\n=XPFA\r\n-----END PGP SIGNATURE-----\r\n",
+        "signatures": [
+          {
+            "keyid": "SHA256:jl3bwswu80PjjokCgh0o2w5c2U4LhQAE57gj9cz1kzA",
+            "sig": "MEUCIDBDHNeeA91skg5DOjOvw5L1TFNYs/8fttpOaXZHLIcyAiEAm8ra3BQ3mwFdFY1sQHqolxuwScU+6MUIzm5fO2ub/e8="
+          }
+        ]
+      },
+      "directories": {},
+      "_hasShrinkwrap": false
+    }
+  },
+  "readme": "# p-locate\n\n> Get the first fulfilled promise that satisfies the provided testing function\n\nThink of it like an async version of [`Array#find`](https://developer.mozilla.org/en/docs/Web/JavaScript/Reference/Global_Objects/Array/find).\n\n## Install\n\n```\n$ npm install p-locate\n```\n\n## Usage\n\nHere we find the first file that exists on disk, in array order.\n\n```js\nimport {pathExists} from 'path-exists';\nimport pLocate from 'p-locate';\n\nconst files = [\n\t'unicorn.png',\n\t'rainbow.png', // Only this one actually exists on disk\n\t'pony.png'\n];\n\nconst foundPath = await pLocate(files, file => pathExists(file));\n\nconsole.log(foundPath);\n//=> 'rainbow'\n```\n\n*The above is just an example. Use [`locate-path`](https://github.com/sindresorhus/locate-path) if you need this.*\n\n## API\n\n### pLocate(input, tester, options?)\n\nReturns a `Promise` that is fulfilled when `tester` resolves to `true` or the iterable is done, or rejects if any of the promises reject. The fulfilled value is the current iterable value or `undefined` if `tester` never resolved to `true`.\n\n#### input\n\nType: `Iterable<Promise | unknown>`\n\nAn iterable of promises/values to test.\n\n#### tester(element)\n\nType: `Function`\n\nThis function will receive resolved values from `input` and is expected to return a `Promise<boolean>` or `boolean`.\n\n#### options\n\nType: `object`\n\n##### concurrency\n\nType: `number`\\\nDefault: `Infinity`\\\nMinimum: `1`\n\nThe number of concurrently pending promises returned by `tester`.\n\n##### preserveOrder\n\nType: `boolean`\\\nDefault: `true`\n\nPreserve `input` order when searching.\n\nDisable this to improve performance if you don't care about the order.\n\n## Related\n\n- [p-map](https://github.com/sindresorhus/p-map) - Map over promises concurrently\n- [p-filter](https://github.com/sindresorhus/p-filter) - Filter promises concurrently\n- [p-any](https://github.com/sindresorhus/p-any) - Wait for any promise to be fulfilled\n- [More…](https://github.com/sindresorhus/promise-fun)\n\n---\n\n<div align=\"center\">\n\t<b>\n\t\t<a href=\"https://tidelift.com/subscription/pkg/npm-p-locate?utm_source=npm-p-locate&utm_medium=referral&utm_campaign=readme\">Get professional support for this package with a Tidelift subscription</a>\n\t</b>\n\t<br>\n\t<sub>\n\t\tTidelift helps make open source sustainable for maintainers while giving companies<br>assurances about security, maintenance, and licensing for their dependencies.\n\t</sub>\n</div>\n",
+  "homepage": "https://github.com/sindresorhus/p-locate#readme",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/sindresorhus/p-locate.git"
+  },
+  "author": {
+    "name": "Sindre Sorhus",
+    "email": "sindresorhus@gmail.com",
+    "url": "https://sindresorhus.com"
+  },
+  "bugs": {
+    "url": "https://github.com/sindresorhus/p-locate/issues"
+  },
+  "license": "MIT",
+  "readmeFilename": "readme.md"
+}

@@ -1,1 +1,103 @@
-{"name":"cliui","description":"easily create complex multi-column command-line-interfaces","dist-tags":{"latest":"6.0.0"},"versions":{"6.0.0":{"name":"cliui","version":"6.0.0","description":"easily create complex multi-column command-line-interfaces","main":"index.js","scripts":{"pretest":"standard","test":"nyc mocha","coverage":"nyc --reporter=text-lcov mocha | coveralls"},"repository":{"type":"git","url":"git+ssh://git@github.com/yargs/cliui.git"},"config":{"blanket":{"pattern":["index.js"],"data-cover-never":["node_modules","test"],"output-reporter":"spec"}},"standard":{"ignore":["**/example/**"],"globals":["it"]},"author":{"name":"Ben Coe","email":"ben@npmjs.com"},"license":"ISC","dependencies":{"string-width":"^4.2.0","strip-ansi":"^6.0.0","wrap-ansi":"^6.2.0"},"devDependencies":{"chai":"^4.2.0","chalk":"^3.0.0","coveralls":"^3.0.3","mocha":"^6.2.2","nyc":"^14.1.1","standard":"^12.0.1"},"engine":{"node":">=8"},"gitHead":"7761da3e8cddd1f49024252a6b0195a94565b357","bugs":{"url":"https://github.com/yargs/cliui/issues"},"_id":"cliui@6.0.0","_nodeVersion":"13.0.0","_npmVersion":"6.12.0","dist":{"integrity":"sha512-t6wbgtoCXvAzst7QgXxJYqPt0usEfbgQdftEPbLL/cvv6HPE5VgvqCuAIDR0NgU52ds6rFwqrgakNLrHEjCbrQ==","shasum":"511d702c0c4e41ca156d7d0e96021f23e13225b1","tarball":"http://localhost:4260/cliui/cliui-6.0.0.tgz","fileCount":5,"unpackedSize":14873,"npm-signature":"-----BEGIN PGP SIGNATURE-----\r\nVersion: OpenPGP.js v3.0.4\r\nComment: https://openpgpjs.org\r\n\r\nwsFcBAEBCAAQBQJd0HOpCRA9TVsSAnZWagAAbIQP/ijBtX9rdZGp+liNKOdI\nHXXvoC5bwDcEItg6CyPsDbeQWLQVt2NFe+x4UwECNYdk2VEYx5w9+6O+Yw/U\nRdQtEV6Ia9aHuo7EGwCuuuLs0F58t+976O89msU6F0MwSVCHe75FnVA8Jw6M\nJcBqAy14vlqKngXp1KtkZrt3+pmd4siwOlglhWZ3bRUQAiqpkcLBx/OaT4xl\npXgp7wwMJmdQ7yKz//ncJsiBs6yt21ukvh3MHXd2xeznBP6KIO5kuZ+aXwfe\nT2R/cBcH7A+MjlZr2lYHMfBcGTnHZ9Hwls2xqsXOXnAae/8sSVAjWwZHrA1K\nk+8cxhUHvyxcD+JahSJ3J5XXX5ToEZrYZ52NK8pwOHQANj2Md3qr5uj1C+pw\ng2ZKgMpZCWHsWAI9LK1qCsnkQRq0K59NgfynrFB4X75wqTAzbPMbRVCX1H72\nYFx6L9LQLlRF7YKCkwNjYIIFHKV2NNlgZTDQWhckD7enz4JuXm70Dti87ntp\nL9OTuABvAJmwcHebbh5ELfhszSAof/FgYOGD1r4zrWZSPBFlBVKLp0JzjHtK\n1pykG6YhVxzKIePK7ksHPIbZSwYf9O+NqTo1yw02EVk5GlRyJADhbn80mI5n\nIc3TjnKaSHCnLAs1Hr+Xbx0TlpzCTtk8OteZ8luS8cJCmfDmtTF/CpTag3Bo\n8Ieq\r\n=pcrZ\r\n-----END PGP SIGNATURE-----\r\n","signatures":[{"keyid":"SHA256:jl3bwswu80PjjokCgh0o2w5c2U4LhQAE57gj9cz1kzA","sig":"MEQCIBjblVIv0dQgLMhp3niugCvEUB2Wf4FvUIlwqN3BleYDAiAceF7BadnCX2aA7FUOW8bbCnz5Q6uGO5zD1F8bBHDvhw=="}]},"directories":{},"_hasShrinkwrap":false}},"readme":"# cliui\n\n![ci](https://github.com/yargs/cliui/workflows/ci/badge.svg)\n[![NPM version](https://img.shields.io/npm/v/cliui.svg)](https://www.npmjs.com/package/cliui)\n[![Conventional Commits](https://img.shields.io/badge/Conventional%20Commits-1.0.0-yellow.svg)](https://conventionalcommits.org)\n![nycrc config on GitHub](https://img.shields.io/nycrc/yargs/cliui)\n\neasily create complex multi-column command-line-interfaces.\n\n## Example\n\n```js\nconst ui = require('cliui')()\n\nui.div('Usage: $0 [command] [options]')\n\nui.div({\n  text: 'Options:',\n  padding: [2, 0, 1, 0]\n})\n\nui.div(\n  {\n    text: \"-f, --file\",\n    width: 20,\n    padding: [0, 4, 0, 4]\n  },\n  {\n    text: \"the file to load.\" +\n      chalk.green(\"(if this description is long it wraps).\")\n    ,\n    width: 20\n  },\n  {\n    text: chalk.red(\"[required]\"),\n    align: 'right'\n  }\n)\n\nconsole.log(ui.toString())\n```\n\n## Deno/ESM Support\n\nAs of `v7` `cliui` supports [Deno](https://github.com/denoland/deno) and\n[ESM](https://nodejs.org/api/esm.html#esm_ecmascript_modules):\n\n```typescript\nimport cliui from \"https://deno.land/x/cliui/deno.ts\";\n\nconst ui = cliui({})\n\nui.div('Usage: $0 [command] [options]')\n\nui.div({\n  text: 'Options:',\n  padding: [2, 0, 1, 0]\n})\n\nui.div({\n  text: \"-f, --file\",\n  width: 20,\n  padding: [0, 4, 0, 4]\n})\n\nconsole.log(ui.toString())\n```\n\n<img width=\"500\" src=\"screenshot.png\">\n\n## Layout DSL\n\ncliui exposes a simple layout DSL:\n\nIf you create a single `ui.div`, passing a string rather than an\nobject:\n\n* `\\n`: characters will be interpreted as new rows.\n* `\\t`: characters will be interpreted as new columns.\n* `\\s`: characters will be interpreted as padding.\n\n**as an example...**\n\n```js\nvar ui = require('./')({\n  width: 60\n})\n\nui.div(\n  'Usage: node ./bin/foo.js\\n' +\n  '  <regex>\\t  provide a regex\\n' +\n  '  <glob>\\t  provide a glob\\t [required]'\n)\n\nconsole.log(ui.toString())\n```\n\n**will output:**\n\n```shell\nUsage: node ./bin/foo.js\n  <regex>  provide a regex\n  <glob>   provide a glob          [required]\n```\n\n## Methods\n\n```js\ncliui = require('cliui')\n```\n\n### cliui({width: integer})\n\nSpecify the maximum width of the UI being generated.\nIf no width is provided, cliui will try to get the current window's width and use it, and if that doesn't work, width will be set to `80`.\n\n### cliui({wrap: boolean})\n\nEnable or disable the wrapping of text in a column.\n\n### cliui.div(column, column, column)\n\nCreate a row with any number of columns, a column\ncan either be a string, or an object with the following\noptions:\n\n* **text:** some text to place in the column.\n* **width:** the width of a column.\n* **align:** alignment, `right` or `center`.\n* **padding:** `[top, right, bottom, left]`.\n* **border:** should a border be placed around the div?\n\n### cliui.span(column, column, column)\n\nSimilar to `div`, except the next row will be appended without\na new line being created.\n\n### cliui.resetOutput()\n\nResets the UI elements of the current cliui instance, maintaining the values\nset for `width` and `wrap`.\n","author":{"name":"Ben Coe","email":"ben@npmjs.com"},"license":"ISC","readmeFilename":"README.md","homepage":"https://github.com/yargs/cliui#readme","repository":{"type":"git","url":"git+https://github.com/yargs/cliui.git"},"bugs":{"url":"https://github.com/yargs/cliui/issues"}}
+{
+  "name": "cliui",
+  "description": "easily create complex multi-column command-line-interfaces",
+  "dist-tags": {
+    "latest": "6.0.0"
+  },
+  "versions": {
+    "6.0.0": {
+      "name": "cliui",
+      "version": "6.0.0",
+      "description": "easily create complex multi-column command-line-interfaces",
+      "main": "index.js",
+      "scripts": {
+        "pretest": "standard",
+        "test": "nyc mocha",
+        "coverage": "nyc --reporter=text-lcov mocha | coveralls"
+      },
+      "repository": {
+        "type": "git",
+        "url": "git+ssh://git@github.com/yargs/cliui.git"
+      },
+      "config": {
+        "blanket": {
+          "pattern": [
+            "index.js"
+          ],
+          "data-cover-never": [
+            "node_modules",
+            "test"
+          ],
+          "output-reporter": "spec"
+        }
+      },
+      "standard": {
+        "ignore": [
+          "**/example/**"
+        ],
+        "globals": [
+          "it"
+        ]
+      },
+      "author": {
+        "name": "Ben Coe",
+        "email": "ben@npmjs.com"
+      },
+      "license": "ISC",
+      "dependencies": {
+        "string-width": "^4.2.0",
+        "strip-ansi": "^6.0.0",
+        "wrap-ansi": "^6.2.0"
+      },
+      "devDependencies": {
+        "chai": "^4.2.0",
+        "chalk": "^3.0.0",
+        "coveralls": "^3.0.3",
+        "mocha": "^6.2.2",
+        "nyc": "^14.1.1",
+        "standard": "^12.0.1"
+      },
+      "engine": {
+        "node": ">=8"
+      },
+      "gitHead": "7761da3e8cddd1f49024252a6b0195a94565b357",
+      "bugs": {
+        "url": "https://github.com/yargs/cliui/issues"
+      },
+      "_id": "cliui@6.0.0",
+      "_nodeVersion": "13.0.0",
+      "_npmVersion": "6.12.0",
+      "dist": {
+        "integrity": "sha512-t6wbgtoCXvAzst7QgXxJYqPt0usEfbgQdftEPbLL/cvv6HPE5VgvqCuAIDR0NgU52ds6rFwqrgakNLrHEjCbrQ==",
+        "shasum": "511d702c0c4e41ca156d7d0e96021f23e13225b1",
+        "tarball": "http://localhost:4260/cliui/cliui-6.0.0.tgz",
+        "fileCount": 5,
+        "unpackedSize": 14873,
+        "npm-signature": "-----BEGIN PGP SIGNATURE-----\r\nVersion: OpenPGP.js v3.0.4\r\nComment: https://openpgpjs.org\r\n\r\nwsFcBAEBCAAQBQJd0HOpCRA9TVsSAnZWagAAbIQP/ijBtX9rdZGp+liNKOdI\nHXXvoC5bwDcEItg6CyPsDbeQWLQVt2NFe+x4UwECNYdk2VEYx5w9+6O+Yw/U\nRdQtEV6Ia9aHuo7EGwCuuuLs0F58t+976O89msU6F0MwSVCHe75FnVA8Jw6M\nJcBqAy14vlqKngXp1KtkZrt3+pmd4siwOlglhWZ3bRUQAiqpkcLBx/OaT4xl\npXgp7wwMJmdQ7yKz//ncJsiBs6yt21ukvh3MHXd2xeznBP6KIO5kuZ+aXwfe\nT2R/cBcH7A+MjlZr2lYHMfBcGTnHZ9Hwls2xqsXOXnAae/8sSVAjWwZHrA1K\nk+8cxhUHvyxcD+JahSJ3J5XXX5ToEZrYZ52NK8pwOHQANj2Md3qr5uj1C+pw\ng2ZKgMpZCWHsWAI9LK1qCsnkQRq0K59NgfynrFB4X75wqTAzbPMbRVCX1H72\nYFx6L9LQLlRF7YKCkwNjYIIFHKV2NNlgZTDQWhckD7enz4JuXm70Dti87ntp\nL9OTuABvAJmwcHebbh5ELfhszSAof/FgYOGD1r4zrWZSPBFlBVKLp0JzjHtK\n1pykG6YhVxzKIePK7ksHPIbZSwYf9O+NqTo1yw02EVk5GlRyJADhbn80mI5n\nIc3TjnKaSHCnLAs1Hr+Xbx0TlpzCTtk8OteZ8luS8cJCmfDmtTF/CpTag3Bo\n8Ieq\r\n=pcrZ\r\n-----END PGP SIGNATURE-----\r\n",
+        "signatures": [
+          {
+            "keyid": "SHA256:jl3bwswu80PjjokCgh0o2w5c2U4LhQAE57gj9cz1kzA",
+            "sig": "MEQCIBjblVIv0dQgLMhp3niugCvEUB2Wf4FvUIlwqN3BleYDAiAceF7BadnCX2aA7FUOW8bbCnz5Q6uGO5zD1F8bBHDvhw=="
+          }
+        ]
+      },
+      "directories": {},
+      "_hasShrinkwrap": false
+    }
+  },
+  "readme": "# cliui\n\n![ci](https://github.com/yargs/cliui/workflows/ci/badge.svg)\n[![NPM version](https://img.shields.io/npm/v/cliui.svg)](https://www.npmjs.com/package/cliui)\n[![Conventional Commits](https://img.shields.io/badge/Conventional%20Commits-1.0.0-yellow.svg)](https://conventionalcommits.org)\n![nycrc config on GitHub](https://img.shields.io/nycrc/yargs/cliui)\n\neasily create complex multi-column command-line-interfaces.\n\n## Example\n\n```js\nconst ui = require('cliui')()\n\nui.div('Usage: $0 [command] [options]')\n\nui.div({\n  text: 'Options:',\n  padding: [2, 0, 1, 0]\n})\n\nui.div(\n  {\n    text: \"-f, --file\",\n    width: 20,\n    padding: [0, 4, 0, 4]\n  },\n  {\n    text: \"the file to load.\" +\n      chalk.green(\"(if this description is long it wraps).\")\n    ,\n    width: 20\n  },\n  {\n    text: chalk.red(\"[required]\"),\n    align: 'right'\n  }\n)\n\nconsole.log(ui.toString())\n```\n\n## Deno/ESM Support\n\nAs of `v7` `cliui` supports [Deno](https://github.com/denoland/deno) and\n[ESM](https://nodejs.org/api/esm.html#esm_ecmascript_modules):\n\n```typescript\nimport cliui from \"https://deno.land/x/cliui/deno.ts\";\n\nconst ui = cliui({})\n\nui.div('Usage: $0 [command] [options]')\n\nui.div({\n  text: 'Options:',\n  padding: [2, 0, 1, 0]\n})\n\nui.div({\n  text: \"-f, --file\",\n  width: 20,\n  padding: [0, 4, 0, 4]\n})\n\nconsole.log(ui.toString())\n```\n\n<img width=\"500\" src=\"screenshot.png\">\n\n## Layout DSL\n\ncliui exposes a simple layout DSL:\n\nIf you create a single `ui.div`, passing a string rather than an\nobject:\n\n* `\\n`: characters will be interpreted as new rows.\n* `\\t`: characters will be interpreted as new columns.\n* `\\s`: characters will be interpreted as padding.\n\n**as an example...**\n\n```js\nvar ui = require('./')({\n  width: 60\n})\n\nui.div(\n  'Usage: node ./bin/foo.js\\n' +\n  '  <regex>\\t  provide a regex\\n' +\n  '  <glob>\\t  provide a glob\\t [required]'\n)\n\nconsole.log(ui.toString())\n```\n\n**will output:**\n\n```shell\nUsage: node ./bin/foo.js\n  <regex>  provide a regex\n  <glob>   provide a glob          [required]\n```\n\n## Methods\n\n```js\ncliui = require('cliui')\n```\n\n### cliui({width: integer})\n\nSpecify the maximum width of the UI being generated.\nIf no width is provided, cliui will try to get the current window's width and use it, and if that doesn't work, width will be set to `80`.\n\n### cliui({wrap: boolean})\n\nEnable or disable the wrapping of text in a column.\n\n### cliui.div(column, column, column)\n\nCreate a row with any number of columns, a column\ncan either be a string, or an object with the following\noptions:\n\n* **text:** some text to place in the column.\n* **width:** the width of a column.\n* **align:** alignment, `right` or `center`.\n* **padding:** `[top, right, bottom, left]`.\n* **border:** should a border be placed around the div?\n\n### cliui.span(column, column, column)\n\nSimilar to `div`, except the next row will be appended without\na new line being created.\n\n### cliui.resetOutput()\n\nResets the UI elements of the current cliui instance, maintaining the values\nset for `width` and `wrap`.\n",
+  "author": {
+    "name": "Ben Coe",
+    "email": "ben@npmjs.com"
+  },
+  "license": "ISC",
+  "readmeFilename": "README.md",
+  "homepage": "https://github.com/yargs/cliui#readme",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/yargs/cliui.git"
+  },
+  "bugs": {
+    "url": "https://github.com/yargs/cliui/issues"
+  }
+}

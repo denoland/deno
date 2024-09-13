@@ -1,1 +1,132 @@
-{"name":"type-detect","description":"Improved typeof detection for node.js and the browser.","dist-tags":{"latest":"4.0.8"},"versions":{"4.0.8":{"name":"type-detect","description":"Improved typeof detection for node.js and the browser.","license":"MIT","author":{"name":"Jake Luer","email":"jake@alogicalparadox.com","url":"http://alogicalparadox.com"},"files":["index.js","type-detect.js"],"main":"./type-detect.js","repository":{"type":"git","url":"git+ssh://git@github.com/chaijs/type-detect.git"},"scripts":{"bench":"node bench","build":"rollup -c rollup.conf.js","commit-msg":"commitlint -x angular","lint":"eslint --ignore-path .gitignore .","prepare":"cross-env NODE_ENV=production npm run build","semantic-release":"semantic-release pre && npm publish && semantic-release post","pretest:node":"cross-env NODE_ENV=test npm run build","pretest:browser":"cross-env NODE_ENV=test npm run build","test":"npm run test:node && npm run test:browser","test:browser":"karma start --singleRun=true","test:node":"nyc mocha type-detect.test.js","posttest:node":"nyc report --report-dir \"coverage/node-$(node --version)\" --reporter=lcovonly && npm run upload-coverage","posttest:browser":"npm run upload-coverage","upload-coverage":"codecov"},"eslintConfig":{"env":{"es6":true},"extends":["strict/es6"],"globals":{"HTMLElement":false},"rules":{"complexity":0,"max-statements":0,"prefer-rest-params":0}},"devDependencies":{"@commitlint/cli":"^4.2.2","benchmark":"^2.1.0","buble":"^0.16.0","codecov":"^3.0.0","commitlint-config-angular":"^4.2.1","cross-env":"^5.1.1","eslint":"^4.10.0","eslint-config-strict":"^14.0.0","eslint-plugin-filenames":"^1.2.0","husky":"^0.14.3","karma":"^1.7.1","karma-chrome-launcher":"^2.2.0","karma-coverage":"^1.1.1","karma-detect-browsers":"^2.2.5","karma-edge-launcher":"^0.4.2","karma-firefox-launcher":"^1.0.1","karma-ie-launcher":"^1.0.0","karma-mocha":"^1.3.0","karma-opera-launcher":"^1.0.0","karma-safari-launcher":"^1.0.0","karma-safaritechpreview-launcher":"0.0.6","karma-sauce-launcher":"^1.2.0","mocha":"^4.0.1","nyc":"^11.3.0","rollup":"^0.50.0","rollup-plugin-buble":"^0.16.0","rollup-plugin-commonjs":"^8.2.6","rollup-plugin-istanbul":"^1.1.0","rollup-plugin-node-resolve":"^3.0.0","semantic-release":"^8.2.0","simple-assert":"^1.0.0"},"engines":{"node":">=4"},"version":"4.0.8","gitHead":"a40d8395f06507edd3e4806cb3fe5a878f6a6551","bugs":{"url":"https://github.com/chaijs/type-detect/issues"},"_id":"type-detect@4.0.8","_npmVersion":"5.6.0","_nodeVersion":"8.9.4","dist":{"integrity":"sha512-0fr/mIH1dlO+x7TlcMy+bIDqKPsw/70tVyeHW787goQjhmqaZe10uwLujubK9q9Lg6Fiho1KUKDYz0Z7k7g5/g==","shasum":"7646fb5f18871cfbb7749e69bd39a6388eb7450c","tarball":"http://localhost:4260/type-detect/type-detect-4.0.8.tgz","signatures":[{"keyid":"SHA256:jl3bwswu80PjjokCgh0o2w5c2U4LhQAE57gj9cz1kzA","sig":"MEQCIEFxImpCxU+MuBlIeBAmerqd0RsGClH5O5G220HhFDPjAiBu9IIino0NDpaZJe49jwAOU5KIoB0BfJu8oPqZi0uLhw=="}]},"directories":{}}},"readme":"<h1 align=center>\n  <a href=\"http://chaijs.com\" title=\"Chai Documentation\">\n    <img alt=\"ChaiJS\" src=\"http://chaijs.com/img/chai-logo.png\"/> type-detect\n  </a>\n</h1>\n<br>\n<p align=center>\n  Improved typeof detection for <a href=\"http://nodejs.org\">node</a> and the browser.\n</p>\n\n<p align=center>\n  <a href=\"./LICENSE\">\n    <img\n      alt=\"license:mit\"\n      src=\"https://img.shields.io/badge/license-mit-green.svg?style=flat-square\"\n    />\n  </a>\n  <a href=\"https://github.com/chaijs/type-detect/releases\">\n    <img\n      alt=\"tag:?\"\n      src=\"https://img.shields.io/github/tag/chaijs/type-detect.svg?style=flat-square\"\n    />\n  </a>\n  <a href=\"https://travis-ci.org/chaijs/type-detect\">\n    <img\n      alt=\"build:?\"\n      src=\"https://img.shields.io/travis/chaijs/type-detect/master.svg?style=flat-square\"\n    />\n  </a>\n  <a href=\"https://coveralls.io/r/chaijs/type-detect\">\n    <img\n      alt=\"coverage:?\"\n      src=\"https://img.shields.io/coveralls/chaijs/type-detect/master.svg?style=flat-square\"\n    />\n  </a>\n  <a href=\"https://www.npmjs.com/packages/type-detect\">\n    <img\n      alt=\"npm:?\"\n      src=\"https://img.shields.io/npm/v/type-detect.svg?style=flat-square\"\n    />\n  </a>\n  <a href=\"https://www.npmjs.com/packages/type-detect\">\n    <img\n      alt=\"dependencies:?\"\n      src=\"https://img.shields.io/npm/dm/type-detect.svg?style=flat-square\"\n    />\n  </a>\n  <a href=\"\">\n    <img\n      alt=\"devDependencies:?\"\n      src=\"https://img.shields.io/david/chaijs/type-detect.svg?style=flat-square\"\n    />\n  </a>\n  <br/>\n  <table>\n  <tr><th colspan=6>Supported Browsers</th></tr> <tr>\n  <th align=center><img src=\"https://camo.githubusercontent.com/ab586f11dfcb49bf5f2c2fa9adadc5e857de122a/687474703a2f2f73766773686172652e636f6d2f692f3278532e737667\" alt=\"\"> Chrome</th>\n  <th align=center><img src=\"https://camo.githubusercontent.com/98cca3108c18dcfaa62667b42046540c6822cdac/687474703a2f2f73766773686172652e636f6d2f692f3279352e737667\" alt=\"\"> Edge</th>\n  <th align=center><img src=\"https://camo.githubusercontent.com/acdcb09840a9e1442cbaf1b684f95ab3c3f41cf4/687474703a2f2f73766773686172652e636f6d2f692f3279462e737667\" alt=\"\"> Firefox</th>\n  <th align=center><img src=\"https://camo.githubusercontent.com/728f8cb0bee9ed58ab85e39266f1152c53e0dffd/687474703a2f2f73766773686172652e636f6d2f692f3278342e737667\" alt=\"\"> Safari</th>\n  <th align=center><img src=\"https://camo.githubusercontent.com/96a2317034dee0040d0a762e7a30c3c650c45aac/687474703a2f2f73766773686172652e636f6d2f692f3279532e737667\" alt=\"\"> IE</th>\n  </tr><tr>\n  <td align=center>✅</td>\n  <td align=center>✅</td>\n  <td align=center>✅</td>\n  <td align=center>✅</td>\n  <td align=center>9, 10, 11</td>\n  </tr>\n  </table>\n  <br>\n  <a href=\"https://chai-slack.herokuapp.com/\">\n    <img\n      alt=\"Join the Slack chat\"\n      src=\"https://img.shields.io/badge/slack-join%20chat-E2206F.svg?style=flat-square\"\n    />\n  </a>\n  <a href=\"https://gitter.im/chaijs/chai\">\n    <img\n      alt=\"Join the Gitter chat\"\n      src=\"https://img.shields.io/badge/gitter-join%20chat-D0104D.svg?style=flat-square\"\n    />\n  </a>\n</p>\n\n## What is Type-Detect?\n\nType Detect is a module which you can use to detect the type of a given object. It returns a string representation of the object's type, either using [`typeof`](http://www.ecma-international.org/ecma-262/6.0/index.html#sec-typeof-operator) or [`@@toStringTag`](http://www.ecma-international.org/ecma-262/6.0/index.html#sec-symbol.tostringtag). It also normalizes some object names for consistency among browsers.\n\n## Why?\n\nThe `typeof` operator will only specify primitive values; everything else is `\"object\"` (including `null`, arrays, regexps, etc). Many developers use `Object.prototype.toString()` - which is a fine alternative and returns many more types (null returns `[object Null]`, Arrays as `[object Array]`, regexps as `[object RegExp]` etc). \n\nSadly, `Object.prototype.toString` is slow, and buggy. By slow - we mean it is slower than `typeof`. By buggy - we mean that some values (like Promises, the global object, iterators, dataviews, a bunch of HTML elements) all report different things in different browsers.\n\n`type-detect` fixes all of the shortcomings with `Object.prototype.toString`. We have extra code to speed up checks of JS and DOM objects, as much as 20-30x faster for some values. `type-detect` also fixes any consistencies with these objects.\n\n## Installation\n\n### Node.js\n\n`type-detect` is available on [npm](http://npmjs.org). To install it, type:\n\n    $ npm install type-detect\n\n### Browsers\n\nYou can also use it within the browser; install via npm and use the `type-detect.js` file found within the download. For example:\n\n```html\n<script src=\"./node_modules/type-detect/type-detect.js\"></script>\n```\n\n## Usage\n\nThe primary export of `type-detect` is function that can serve as a replacement for `typeof`. The results of this function will be more specific than that of native `typeof`.\n\n```js\nvar type = require('type-detect');\n```\n\n#### array\n\n```js\nassert(type([]) === 'Array');\nassert(type(new Array()) === 'Array');\n```\n\n#### regexp\n\n```js\nassert(type(/a-z/gi) === 'RegExp');\nassert(type(new RegExp('a-z')) === 'RegExp');\n```\n\n#### function\n\n```js\nassert(type(function () {}) === 'function');\n```\n\n#### arguments\n\n```js\n(function () {\n  assert(type(arguments) === 'Arguments');\n})();\n```\n\n#### date\n\n```js\nassert(type(new Date) === 'Date');\n```\n\n#### number\n\n```js\nassert(type(1) === 'number');\nassert(type(1.234) === 'number');\nassert(type(-1) === 'number');\nassert(type(-1.234) === 'number');\nassert(type(Infinity) === 'number');\nassert(type(NaN) === 'number');\nassert(type(new Number(1)) === 'Number'); // note - the object version has a capital N\n```\n\n#### string\n\n```js\nassert(type('hello world') === 'string');\nassert(type(new String('hello')) === 'String'); // note - the object version has a capital S\n```\n\n#### null\n\n```js\nassert(type(null) === 'null');\nassert(type(undefined) !== 'null');\n```\n\n#### undefined\n\n```js\nassert(type(undefined) === 'undefined');\nassert(type(null) !== 'undefined');\n```\n\n#### object\n\n```js\nvar Noop = function () {};\nassert(type({}) === 'Object');\nassert(type(Noop) !== 'Object');\nassert(type(new Noop) === 'Object');\nassert(type(new Object) === 'Object');\n```\n\n#### ECMA6 Types\n\nAll new ECMAScript 2015 objects are also supported, such as Promises and Symbols:\n\n```js\nassert(type(new Map() === 'Map');\nassert(type(new WeakMap()) === 'WeakMap');\nassert(type(new Set()) === 'Set');\nassert(type(new WeakSet()) === 'WeakSet');\nassert(type(Symbol()) === 'symbol');\nassert(type(new Promise(callback) === 'Promise');\nassert(type(new Int8Array()) === 'Int8Array');\nassert(type(new Uint8Array()) === 'Uint8Array');\nassert(type(new UInt8ClampedArray()) === 'Uint8ClampedArray');\nassert(type(new Int16Array()) === 'Int16Array');\nassert(type(new Uint16Array()) === 'Uint16Array');\nassert(type(new Int32Array()) === 'Int32Array');\nassert(type(new UInt32Array()) === 'Uint32Array');\nassert(type(new Float32Array()) === 'Float32Array');\nassert(type(new Float64Array()) === 'Float64Array');\nassert(type(new ArrayBuffer()) === 'ArrayBuffer');\nassert(type(new DataView(arrayBuffer)) === 'DataView');\n```\n\nAlso, if you use `Symbol.toStringTag` to change an Objects return value of the `toString()` Method, `type()` will return this value, e.g:\n\n```js\nvar myObject = {};\nmyObject[Symbol.toStringTag] = 'myCustomType';\nassert(type(myObject) === 'myCustomType');\n```\n","author":{"name":"Jake Luer","email":"jake@alogicalparadox.com","url":"http://alogicalparadox.com"},"repository":{"type":"git","url":"git+ssh://git@github.com/chaijs/type-detect.git"},"homepage":"https://github.com/chaijs/type-detect#readme","bugs":{"url":"https://github.com/chaijs/type-detect/issues"},"license":"MIT","readmeFilename":"README.md"}
+{
+  "name": "type-detect",
+  "description": "Improved typeof detection for node.js and the browser.",
+  "dist-tags": {
+    "latest": "4.0.8"
+  },
+  "versions": {
+    "4.0.8": {
+      "name": "type-detect",
+      "description": "Improved typeof detection for node.js and the browser.",
+      "license": "MIT",
+      "author": {
+        "name": "Jake Luer",
+        "email": "jake@alogicalparadox.com",
+        "url": "http://alogicalparadox.com"
+      },
+      "files": [
+        "index.js",
+        "type-detect.js"
+      ],
+      "main": "./type-detect.js",
+      "repository": {
+        "type": "git",
+        "url": "git+ssh://git@github.com/chaijs/type-detect.git"
+      },
+      "scripts": {
+        "bench": "node bench",
+        "build": "rollup -c rollup.conf.js",
+        "commit-msg": "commitlint -x angular",
+        "lint": "eslint --ignore-path .gitignore .",
+        "prepare": "cross-env NODE_ENV=production npm run build",
+        "semantic-release": "semantic-release pre && npm publish && semantic-release post",
+        "pretest:node": "cross-env NODE_ENV=test npm run build",
+        "pretest:browser": "cross-env NODE_ENV=test npm run build",
+        "test": "npm run test:node && npm run test:browser",
+        "test:browser": "karma start --singleRun=true",
+        "test:node": "nyc mocha type-detect.test.js",
+        "posttest:node": "nyc report --report-dir \"coverage/node-$(node --version)\" --reporter=lcovonly && npm run upload-coverage",
+        "posttest:browser": "npm run upload-coverage",
+        "upload-coverage": "codecov"
+      },
+      "eslintConfig": {
+        "env": {
+          "es6": true
+        },
+        "extends": [
+          "strict/es6"
+        ],
+        "globals": {
+          "HTMLElement": false
+        },
+        "rules": {
+          "complexity": 0,
+          "max-statements": 0,
+          "prefer-rest-params": 0
+        }
+      },
+      "devDependencies": {
+        "@commitlint/cli": "^4.2.2",
+        "benchmark": "^2.1.0",
+        "buble": "^0.16.0",
+        "codecov": "^3.0.0",
+        "commitlint-config-angular": "^4.2.1",
+        "cross-env": "^5.1.1",
+        "eslint": "^4.10.0",
+        "eslint-config-strict": "^14.0.0",
+        "eslint-plugin-filenames": "^1.2.0",
+        "husky": "^0.14.3",
+        "karma": "^1.7.1",
+        "karma-chrome-launcher": "^2.2.0",
+        "karma-coverage": "^1.1.1",
+        "karma-detect-browsers": "^2.2.5",
+        "karma-edge-launcher": "^0.4.2",
+        "karma-firefox-launcher": "^1.0.1",
+        "karma-ie-launcher": "^1.0.0",
+        "karma-mocha": "^1.3.0",
+        "karma-opera-launcher": "^1.0.0",
+        "karma-safari-launcher": "^1.0.0",
+        "karma-safaritechpreview-launcher": "0.0.6",
+        "karma-sauce-launcher": "^1.2.0",
+        "mocha": "^4.0.1",
+        "nyc": "^11.3.0",
+        "rollup": "^0.50.0",
+        "rollup-plugin-buble": "^0.16.0",
+        "rollup-plugin-commonjs": "^8.2.6",
+        "rollup-plugin-istanbul": "^1.1.0",
+        "rollup-plugin-node-resolve": "^3.0.0",
+        "semantic-release": "^8.2.0",
+        "simple-assert": "^1.0.0"
+      },
+      "engines": {
+        "node": ">=4"
+      },
+      "version": "4.0.8",
+      "gitHead": "a40d8395f06507edd3e4806cb3fe5a878f6a6551",
+      "bugs": {
+        "url": "https://github.com/chaijs/type-detect/issues"
+      },
+      "_id": "type-detect@4.0.8",
+      "_npmVersion": "5.6.0",
+      "_nodeVersion": "8.9.4",
+      "dist": {
+        "integrity": "sha512-0fr/mIH1dlO+x7TlcMy+bIDqKPsw/70tVyeHW787goQjhmqaZe10uwLujubK9q9Lg6Fiho1KUKDYz0Z7k7g5/g==",
+        "shasum": "7646fb5f18871cfbb7749e69bd39a6388eb7450c",
+        "tarball": "http://localhost:4260/type-detect/type-detect-4.0.8.tgz",
+        "signatures": [
+          {
+            "keyid": "SHA256:jl3bwswu80PjjokCgh0o2w5c2U4LhQAE57gj9cz1kzA",
+            "sig": "MEQCIEFxImpCxU+MuBlIeBAmerqd0RsGClH5O5G220HhFDPjAiBu9IIino0NDpaZJe49jwAOU5KIoB0BfJu8oPqZi0uLhw=="
+          }
+        ]
+      },
+      "directories": {}
+    }
+  },
+  "readme": "<h1 align=center>\n  <a href=\"http://chaijs.com\" title=\"Chai Documentation\">\n    <img alt=\"ChaiJS\" src=\"http://chaijs.com/img/chai-logo.png\"/> type-detect\n  </a>\n</h1>\n<br>\n<p align=center>\n  Improved typeof detection for <a href=\"http://nodejs.org\">node</a> and the browser.\n</p>\n\n<p align=center>\n  <a href=\"./LICENSE\">\n    <img\n      alt=\"license:mit\"\n      src=\"https://img.shields.io/badge/license-mit-green.svg?style=flat-square\"\n    />\n  </a>\n  <a href=\"https://github.com/chaijs/type-detect/releases\">\n    <img\n      alt=\"tag:?\"\n      src=\"https://img.shields.io/github/tag/chaijs/type-detect.svg?style=flat-square\"\n    />\n  </a>\n  <a href=\"https://travis-ci.org/chaijs/type-detect\">\n    <img\n      alt=\"build:?\"\n      src=\"https://img.shields.io/travis/chaijs/type-detect/master.svg?style=flat-square\"\n    />\n  </a>\n  <a href=\"https://coveralls.io/r/chaijs/type-detect\">\n    <img\n      alt=\"coverage:?\"\n      src=\"https://img.shields.io/coveralls/chaijs/type-detect/master.svg?style=flat-square\"\n    />\n  </a>\n  <a href=\"https://www.npmjs.com/packages/type-detect\">\n    <img\n      alt=\"npm:?\"\n      src=\"https://img.shields.io/npm/v/type-detect.svg?style=flat-square\"\n    />\n  </a>\n  <a href=\"https://www.npmjs.com/packages/type-detect\">\n    <img\n      alt=\"dependencies:?\"\n      src=\"https://img.shields.io/npm/dm/type-detect.svg?style=flat-square\"\n    />\n  </a>\n  <a href=\"\">\n    <img\n      alt=\"devDependencies:?\"\n      src=\"https://img.shields.io/david/chaijs/type-detect.svg?style=flat-square\"\n    />\n  </a>\n  <br/>\n  <table>\n  <tr><th colspan=6>Supported Browsers</th></tr> <tr>\n  <th align=center><img src=\"https://camo.githubusercontent.com/ab586f11dfcb49bf5f2c2fa9adadc5e857de122a/687474703a2f2f73766773686172652e636f6d2f692f3278532e737667\" alt=\"\"> Chrome</th>\n  <th align=center><img src=\"https://camo.githubusercontent.com/98cca3108c18dcfaa62667b42046540c6822cdac/687474703a2f2f73766773686172652e636f6d2f692f3279352e737667\" alt=\"\"> Edge</th>\n  <th align=center><img src=\"https://camo.githubusercontent.com/acdcb09840a9e1442cbaf1b684f95ab3c3f41cf4/687474703a2f2f73766773686172652e636f6d2f692f3279462e737667\" alt=\"\"> Firefox</th>\n  <th align=center><img src=\"https://camo.githubusercontent.com/728f8cb0bee9ed58ab85e39266f1152c53e0dffd/687474703a2f2f73766773686172652e636f6d2f692f3278342e737667\" alt=\"\"> Safari</th>\n  <th align=center><img src=\"https://camo.githubusercontent.com/96a2317034dee0040d0a762e7a30c3c650c45aac/687474703a2f2f73766773686172652e636f6d2f692f3279532e737667\" alt=\"\"> IE</th>\n  </tr><tr>\n  <td align=center>✅</td>\n  <td align=center>✅</td>\n  <td align=center>✅</td>\n  <td align=center>✅</td>\n  <td align=center>9, 10, 11</td>\n  </tr>\n  </table>\n  <br>\n  <a href=\"https://chai-slack.herokuapp.com/\">\n    <img\n      alt=\"Join the Slack chat\"\n      src=\"https://img.shields.io/badge/slack-join%20chat-E2206F.svg?style=flat-square\"\n    />\n  </a>\n  <a href=\"https://gitter.im/chaijs/chai\">\n    <img\n      alt=\"Join the Gitter chat\"\n      src=\"https://img.shields.io/badge/gitter-join%20chat-D0104D.svg?style=flat-square\"\n    />\n  </a>\n</p>\n\n## What is Type-Detect?\n\nType Detect is a module which you can use to detect the type of a given object. It returns a string representation of the object's type, either using [`typeof`](http://www.ecma-international.org/ecma-262/6.0/index.html#sec-typeof-operator) or [`@@toStringTag`](http://www.ecma-international.org/ecma-262/6.0/index.html#sec-symbol.tostringtag). It also normalizes some object names for consistency among browsers.\n\n## Why?\n\nThe `typeof` operator will only specify primitive values; everything else is `\"object\"` (including `null`, arrays, regexps, etc). Many developers use `Object.prototype.toString()` - which is a fine alternative and returns many more types (null returns `[object Null]`, Arrays as `[object Array]`, regexps as `[object RegExp]` etc). \n\nSadly, `Object.prototype.toString` is slow, and buggy. By slow - we mean it is slower than `typeof`. By buggy - we mean that some values (like Promises, the global object, iterators, dataviews, a bunch of HTML elements) all report different things in different browsers.\n\n`type-detect` fixes all of the shortcomings with `Object.prototype.toString`. We have extra code to speed up checks of JS and DOM objects, as much as 20-30x faster for some values. `type-detect` also fixes any consistencies with these objects.\n\n## Installation\n\n### Node.js\n\n`type-detect` is available on [npm](http://npmjs.org). To install it, type:\n\n    $ npm install type-detect\n\n### Browsers\n\nYou can also use it within the browser; install via npm and use the `type-detect.js` file found within the download. For example:\n\n```html\n<script src=\"./node_modules/type-detect/type-detect.js\"></script>\n```\n\n## Usage\n\nThe primary export of `type-detect` is function that can serve as a replacement for `typeof`. The results of this function will be more specific than that of native `typeof`.\n\n```js\nvar type = require('type-detect');\n```\n\n#### array\n\n```js\nassert(type([]) === 'Array');\nassert(type(new Array()) === 'Array');\n```\n\n#### regexp\n\n```js\nassert(type(/a-z/gi) === 'RegExp');\nassert(type(new RegExp('a-z')) === 'RegExp');\n```\n\n#### function\n\n```js\nassert(type(function () {}) === 'function');\n```\n\n#### arguments\n\n```js\n(function () {\n  assert(type(arguments) === 'Arguments');\n})();\n```\n\n#### date\n\n```js\nassert(type(new Date) === 'Date');\n```\n\n#### number\n\n```js\nassert(type(1) === 'number');\nassert(type(1.234) === 'number');\nassert(type(-1) === 'number');\nassert(type(-1.234) === 'number');\nassert(type(Infinity) === 'number');\nassert(type(NaN) === 'number');\nassert(type(new Number(1)) === 'Number'); // note - the object version has a capital N\n```\n\n#### string\n\n```js\nassert(type('hello world') === 'string');\nassert(type(new String('hello')) === 'String'); // note - the object version has a capital S\n```\n\n#### null\n\n```js\nassert(type(null) === 'null');\nassert(type(undefined) !== 'null');\n```\n\n#### undefined\n\n```js\nassert(type(undefined) === 'undefined');\nassert(type(null) !== 'undefined');\n```\n\n#### object\n\n```js\nvar Noop = function () {};\nassert(type({}) === 'Object');\nassert(type(Noop) !== 'Object');\nassert(type(new Noop) === 'Object');\nassert(type(new Object) === 'Object');\n```\n\n#### ECMA6 Types\n\nAll new ECMAScript 2015 objects are also supported, such as Promises and Symbols:\n\n```js\nassert(type(new Map() === 'Map');\nassert(type(new WeakMap()) === 'WeakMap');\nassert(type(new Set()) === 'Set');\nassert(type(new WeakSet()) === 'WeakSet');\nassert(type(Symbol()) === 'symbol');\nassert(type(new Promise(callback) === 'Promise');\nassert(type(new Int8Array()) === 'Int8Array');\nassert(type(new Uint8Array()) === 'Uint8Array');\nassert(type(new UInt8ClampedArray()) === 'Uint8ClampedArray');\nassert(type(new Int16Array()) === 'Int16Array');\nassert(type(new Uint16Array()) === 'Uint16Array');\nassert(type(new Int32Array()) === 'Int32Array');\nassert(type(new UInt32Array()) === 'Uint32Array');\nassert(type(new Float32Array()) === 'Float32Array');\nassert(type(new Float64Array()) === 'Float64Array');\nassert(type(new ArrayBuffer()) === 'ArrayBuffer');\nassert(type(new DataView(arrayBuffer)) === 'DataView');\n```\n\nAlso, if you use `Symbol.toStringTag` to change an Objects return value of the `toString()` Method, `type()` will return this value, e.g:\n\n```js\nvar myObject = {};\nmyObject[Symbol.toStringTag] = 'myCustomType';\nassert(type(myObject) === 'myCustomType');\n```\n",
+  "author": {
+    "name": "Jake Luer",
+    "email": "jake@alogicalparadox.com",
+    "url": "http://alogicalparadox.com"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+ssh://git@github.com/chaijs/type-detect.git"
+  },
+  "homepage": "https://github.com/chaijs/type-detect#readme",
+  "bugs": {
+    "url": "https://github.com/chaijs/type-detect/issues"
+  },
+  "license": "MIT",
+  "readmeFilename": "README.md"
+}
