@@ -1,1 +1,47 @@
-{"name":"autoprefixer","dist-tags":{"latest":"10.4.14"},"versions":{"10.4.14":{"name":"autoprefixer","version":"10.4.14","dependencies":{"browserslist":"^4.21.5","caniuse-lite":"^1.0.30001464","fraction.js":"^4.2.0","normalize-range":"^0.1.2","picocolors":"^1.0.0","postcss-value-parser":"^4.2.0"},"peerDependencies":{"postcss":"^8.1.0"},"bin":{"autoprefixer":"bin/autoprefixer"},"dist":{"integrity":"sha512-FQzyfOsTlwVzjHxKEqRIAdJx9niO6VCBCoEwax/VLSoQF29ggECcPuBqUMZ+u8jCZOPSy8b8/8KnuFbp0SaFZQ==","shasum":"e28d49902f8e759dd25b153264e862df2705f79d","tarball":"http://localhost:4260/autoprefixer/autoprefixer-10.4.14.tgz","fileCount":83,"unpackedSize":198756,"signatures":[{"keyid":"SHA256:jl3bwswu80PjjokCgh0o2w5c2U4LhQAE57gj9cz1kzA","sig":"MEYCIQDbaPVpk/hRBScv7vP4h58dCbdZctLzVGOSM40BEdLIZgIhANmKh9JUosI3TCNjA0Rgf65I78+qL4Ik60ZfP7Nz4HY8"}],"npm-signature":"-----BEGIN PGP SIGNATURE-----\r\nVersion: OpenPGP.js v4.10.10\r\nComment: https://openpgpjs.org\r\n\r\nwsFzBAEBCAAGBQJkClKvACEJED1NWxICdlZqFiEECWMYAoorWMhJKdjhPU1b\r\nEgJ2VmrPCQ//UACWicbRKEnz0WMamKne+Py6jGL3SxUzymlmPvlsxKcI/4B6\r\nPvU57CyH4E1jlk/NMXcDKX9TMMkL8wgrTw1kFW8/X/kEV3eb/ioBo9dVDfs1\r\nF9nE3UH6wj9x7XoJ7HiXAb8wgAXlNh/UXIRYz0NOcWbol+MSFTIUvWuEapYa\r\ndFg9T1WKI5/GzMoJUw+3D+f2MHwTQjLqHJSUYsVa82OeHD3ZINSsj4qBhgLD\r\nG3j+TQIU8N3nPO/7sCHErgXY3thR519q+Lfw+/5oW//kf7H9hp4e5PUYICWS\r\nJS0PXSwXmHHgpfK6//naPfqAM05tsXL6ioR3qlTusw7vMXaSC4l1EqzaNj1n\r\nfh5Ku34vwp3/blMGZIIHCkfiCWzrJFqg5NywXagJdvo0A1OzzucW9DI5Jmvy\r\nCPyJ0pOvuILGEOhm2t/yQ6fPGbg7TI4V5C7nefS/401IQPR2ee8SRr4foaV7\r\nxqtAD8Tikq0PTuAK39uEWSpywOVTZ4lvVm7Le/uNiNaP+28FC6vB8IuCQ85q\r\nh3HD5XQDPyf3xz26SbbOfZImysSsSEbxVfnhF6UKsPBkQrWkhx2zQrjB6pz+\r\nln6T6ZQjQcZiF5Vf8cW81hEFB61d2/+mUJHUpkYI0n6wMTr0ih4DgsmCa62G\r\nSSKml+YGOLmnouBtf56v+/+5cw3ljXmJT7I=\r\n=wMzp\r\n-----END PGP SIGNATURE-----\r\n"},"engines":{"node":"^10 || ^12 || >=14"},"funding":[{"type":"opencollective","url":"https://opencollective.com/postcss/"},{"type":"tidelift","url":"https://tidelift.com/funding/github/npm/autoprefixer"}]}},"modified":"2023-03-09T21:42:07.794Z"}
+{
+  "name": "autoprefixer",
+  "dist-tags": {
+    "latest": "10.4.14"
+  },
+  "versions": {
+    "10.4.14": {
+      "name": "autoprefixer",
+      "version": "10.4.14",
+      "dependencies": {
+        "browserslist": "^4.21.5",
+        "caniuse-lite": "^1.0.30001464",
+        "fraction.js": "^4.2.0",
+        "normalize-range": "^0.1.2",
+        "picocolors": "^1.0.0",
+        "postcss-value-parser": "^4.2.0"
+      },
+      "peerDependencies": {
+        "postcss": "^8.1.0"
+      },
+      "bin": {
+        "autoprefixer": "bin/autoprefixer"
+      },
+      "dist": {
+        "integrity": "sha512-FQzyfOsTlwVzjHxKEqRIAdJx9niO6VCBCoEwax/VLSoQF29ggECcPuBqUMZ+u8jCZOPSy8b8/8KnuFbp0SaFZQ==",
+        "shasum": "e28d49902f8e759dd25b153264e862df2705f79d",
+        "tarball": "http://localhost:4260/autoprefixer/autoprefixer-10.4.14.tgz",
+        "fileCount": 83,
+        "unpackedSize": 198756
+      },
+      "engines": {
+        "node": "^10 || ^12 || >=14"
+      },
+      "funding": [
+        {
+          "type": "opencollective",
+          "url": "https://opencollective.com/postcss/"
+        },
+        {
+          "type": "tidelift",
+          "url": "https://tidelift.com/funding/github/npm/autoprefixer"
+        }
+      ]
+    }
+  },
+  "modified": "2023-03-09T21:42:07.794Z"
+}

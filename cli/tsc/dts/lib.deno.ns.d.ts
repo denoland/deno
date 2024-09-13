@@ -5086,9 +5086,7 @@ declare namespace Deno {
      *
      * @category HTTP Server
      */
-    fetch: (
-      request: Request,
-    ) => Response | Promise<Response>;
+    fetch: ServeHandler;
   }
 
   /** Options which can be set when calling {@linkcode Deno.serve}.

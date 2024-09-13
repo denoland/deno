@@ -1,1 +1,68 @@
-{"name":"err-code","description":"Create an error with a code","dist-tags":{"latest":"2.0.3"},"versions":{"2.0.3":{"name":"err-code","version":"2.0.3","description":"Create an error with a code","main":"index.js","scripts":{"lint":"eslint '{*.js,test/**/*.js}' --ignore-pattern *.umd.js","test":"mocha --bail","browserify":"browserify -s err-code index.js > index.umd.js"},"bugs":{"url":"https://github.com/IndigoUnited/js-err-code/issues/"},"repository":{"type":"git","url":"git://github.com/IndigoUnited/js-err-code.git"},"author":{"name":"IndigoUnited","email":"hello@indigounited.com","url":"http://indigounited.com"},"license":"MIT","devDependencies":{"@satazor/eslint-config":"^3.0.0","browserify":"^16.5.1","eslint":"^7.2.0","expect.js":"^0.3.1","mocha":"^8.0.1"},"gitHead":"92511d41a6a926c94c9d11493404867b1e92a77a","_id":"err-code@2.0.3","_nodeVersion":"12.16.1","_npmVersion":"6.14.1","dist":{"integrity":"sha512-2bmlRpNKBxT/CRmPOlyISQpNj+qSeYvcym/uT0Jx2bMOlKLtSy1ZmLuVxSEKKyor/N5yhvp/ZiG1oE3DEYMSFA==","shasum":"23c2f3b756ffdfc608d30e27c9a941024807e7f9","tarball":"http://localhost:4260/err-code/err-code-2.0.3.tgz","fileCount":10,"unpackedSize":12280,"npm-signature":"-----BEGIN PGP SIGNATURE-----\r\nVersion: OpenPGP.js v3.0.4\r\nComment: https://openpgpjs.org\r\n\r\nwsFcBAEBCAAQBQJe61mnCRA9TVsSAnZWagAAZukP/24MThzdq9aW1ODioe6b\nAaOi1DN5e8T5yCr5Yb3I8qlfpDk6K7+IWZF/kt/QuLJWJmHUVsVPvyhGIiK5\n4D/EqLaT3huH2EshVpK64vLHW6wC89oJZIM9glgUe8cHa5Baxkf0f0tDwy/C\nXJRuki3MRpZyRsDUf2eaIjFBRw0VsfFYLDvW4MfuiCpiVlrv1QPjcGiJSJyC\nqzTfCltj11+/rjgP2ULYodKzhO9FdTlXL3L6mdlm8gSrh+fXow5POVpoVPCQ\n9dGbqiY7rJ+dwlDXrhghhABJQjsdvtsUljJ4jxbo/bNMn9bjmWKdYjtMGfCC\nDAwh/YqBUXLVt9BQdpNY9gSLcahW609vtXvXY05cfI/TQf/c5qkQWtf6xiOv\n1Md3g41jbTXadXdoTgslRnNA9WPZipu2mJKrtwhit+3uzriX3IBi5lizpHrF\ngOS6Qlp6SRtDHOZ3hZ8dlkIRpOg0W9Zitv/32sHtsZKy+bhluOF5JaaYcM6J\nAouzYXLJj+CkfV+d5LMZqYgYSeI6lW77Y3ehf8aHGBea4rl15wQ+hVkysco6\nWesWSoi2l32CIwvxxAYDwwr7+EhTcUFqpxyuhioSOEfnNYMWlsGe34XicURE\nqXQPd+Bd/8iyimo3qAq5bhrcf0BidHz3w32Uo9KnIRAkA/PkTZ9igpo0uvs6\nr3bY\r\n=aGKM\r\n-----END PGP SIGNATURE-----\r\n","signatures":[{"keyid":"SHA256:jl3bwswu80PjjokCgh0o2w5c2U4LhQAE57gj9cz1kzA","sig":"MEUCICRiUUK/TTWx/VYm23/tdIENOaASLrdcGmkJxquGw5mHAiEAvZOTRTe4/VNtWPtA9tPX9/BJT78eBLBMHgVs3RFgC3I="}]},"directories":{},"_hasShrinkwrap":false}},"readme":"# err-code\n\n[![NPM version][npm-image]][npm-url] [![Downloads][downloads-image]][npm-url] [![Build Status][travis-image]][travis-url] [![Dependency status][david-dm-image]][david-dm-url] [![Dev Dependency status][david-dm-dev-image]][david-dm-dev-url] [![Greenkeeper badge][greenkeeper-image]][greenkeeper-url]\n\n[npm-url]:https://npmjs.org/package/err-code\n[downloads-image]:http://img.shields.io/npm/dm/err-code.svg\n[npm-image]:http://img.shields.io/npm/v/err-code.svg\n[travis-url]:https://travis-ci.org/IndigoUnited/js-err-code\n[travis-image]:http://img.shields.io/travis/IndigoUnited/js-err-code/master.svg\n[david-dm-url]:https://david-dm.org/IndigoUnited/js-err-code\n[david-dm-image]:https://img.shields.io/david/IndigoUnited/js-err-code.svg\n[david-dm-dev-url]:https://david-dm.org/IndigoUnited/js-err-code?type=dev\n[david-dm-dev-image]:https://img.shields.io/david/dev/IndigoUnited/js-err-code.svg\n[greenkeeper-image]:https://badges.greenkeeper.io/IndigoUnited/js-err-code.svg\n[greenkeeper-url]:https://greenkeeper.io/\n\nCreate new error instances with a code and additional properties.\n\n\n## Installation\n\n```console\n$ npm install err-code\n// or\n$ bower install err-code\n```\n\nThe browser file is named index.umd.js which supports CommonJS, AMD and globals (errCode).\n\n\n## Why\n\nI find myself doing this repeatedly:\n\n```js\nvar err = new Error('My message');\nerr.code = 'SOMECODE';\nerr.detail = 'Additional information about the error';\nthrow err;\n```\n\n\n## Usage\n\nSimple usage.\n\n```js\nvar errcode = require('err-code');\n\n// fill error with message + code\nthrow errcode(new Error('My message'), 'ESOMECODE');\n// fill error with message + code + props\nthrow errcode(new Error('My message'), 'ESOMECODE', { detail: 'Additional information about the error' });\n// fill error with message + props\nthrow errcode(new Error('My message'), { detail: 'Additional information about the error' });\n```\n\n## Pre-existing fields\n\nIf the passed `Error` already has a `.code` field, or fields specified in the third argument to `errcode` they will be overwritten, unless the fields are read only or otherwise throw during assignment in which case a new object will be created that shares a prototype chain with the original `Error`. The `.stack` and `.message` properties will be carried over from the original error and `.code` or any passed properties will be set on it.\n\n\n## Tests\n\n`$ npm test`\n\n\n## License\n\nReleased under the [MIT License](http://www.opensource.org/licenses/mit-license.php).\n","homepage":"https://github.com/IndigoUnited/js-err-code#readme","repository":{"type":"git","url":"git://github.com/IndigoUnited/js-err-code.git"},"author":{"name":"IndigoUnited","email":"hello@indigounited.com","url":"http://indigounited.com"},"bugs":{"url":"https://github.com/IndigoUnited/js-err-code/issues/"},"license":"MIT","readmeFilename":"README.md"}
+{
+  "name": "err-code",
+  "description": "Create an error with a code",
+  "dist-tags": {
+    "latest": "2.0.3"
+  },
+  "versions": {
+    "2.0.3": {
+      "name": "err-code",
+      "version": "2.0.3",
+      "description": "Create an error with a code",
+      "main": "index.js",
+      "scripts": {
+        "lint": "eslint '{*.js,test/**/*.js}' --ignore-pattern *.umd.js",
+        "test": "mocha --bail",
+        "browserify": "browserify -s err-code index.js > index.umd.js"
+      },
+      "bugs": {
+        "url": "https://github.com/IndigoUnited/js-err-code/issues/"
+      },
+      "repository": {
+        "type": "git",
+        "url": "git://github.com/IndigoUnited/js-err-code.git"
+      },
+      "author": {
+        "name": "IndigoUnited",
+        "email": "hello@indigounited.com",
+        "url": "http://indigounited.com"
+      },
+      "license": "MIT",
+      "devDependencies": {
+        "@satazor/eslint-config": "^3.0.0",
+        "browserify": "^16.5.1",
+        "eslint": "^7.2.0",
+        "expect.js": "^0.3.1",
+        "mocha": "^8.0.1"
+      },
+      "gitHead": "92511d41a6a926c94c9d11493404867b1e92a77a",
+      "_id": "err-code@2.0.3",
+      "_nodeVersion": "12.16.1",
+      "_npmVersion": "6.14.1",
+      "dist": {
+        "integrity": "sha512-2bmlRpNKBxT/CRmPOlyISQpNj+qSeYvcym/uT0Jx2bMOlKLtSy1ZmLuVxSEKKyor/N5yhvp/ZiG1oE3DEYMSFA==",
+        "shasum": "23c2f3b756ffdfc608d30e27c9a941024807e7f9",
+        "tarball": "http://localhost:4260/err-code/err-code-2.0.3.tgz",
+        "fileCount": 10,
+        "unpackedSize": 12280
+      },
+      "directories": {},
+      "_hasShrinkwrap": false
+    }
+  },
+  "homepage": "https://github.com/IndigoUnited/js-err-code#readme",
+  "repository": {
+    "type": "git",
+    "url": "git://github.com/IndigoUnited/js-err-code.git"
+  },
+  "author": {
+    "name": "IndigoUnited",
+    "email": "hello@indigounited.com",
+    "url": "http://indigounited.com"
+  },
+  "bugs": {
+    "url": "https://github.com/IndigoUnited/js-err-code/issues/"
+  },
+  "license": "MIT",
+  "readmeFilename": "README.md"
+}

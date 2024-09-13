@@ -1,1 +1,183 @@
-{"name":"wrap-ansi","description":"Wordwrap a string with ANSI escape codes","dist-tags":{"latest":"8.1.0"},"versions":{"6.2.0":{"name":"wrap-ansi","version":"6.2.0","description":"Wordwrap a string with ANSI escape codes","license":"MIT","repository":{"type":"git","url":"git+https://github.com/chalk/wrap-ansi.git"},"author":{"name":"Sindre Sorhus","email":"sindresorhus@gmail.com","url":"sindresorhus.com"},"engines":{"node":">=8"},"scripts":{"test":"xo && nyc ava"},"dependencies":{"ansi-styles":"^4.0.0","string-width":"^4.1.0","strip-ansi":"^6.0.0"},"devDependencies":{"ava":"^2.1.0","chalk":"^2.4.2","coveralls":"^3.0.3","has-ansi":"^3.0.0","nyc":"^14.1.1","xo":"^0.24.0"},"gitHead":"a28eb7d6cdbf91bccb56d04d095ca9463c15d3db","bugs":{"url":"https://github.com/chalk/wrap-ansi/issues"},"_id":"wrap-ansi@6.2.0","_nodeVersion":"12.13.0","_npmVersion":"6.12.0","dist":{"integrity":"sha512-r6lPcBGxZXlIcymEu7InxDMhdW0KDxpLgoFLcguasxCaJ/SOIZwINatK9KY/tf+ZrlywOKU0UDj3ATXUBfxJXA==","shasum":"e9393ba07102e6c91a3b221478f0257cd2856e53","tarball":"http://localhost:4260/wrap-ansi/wrap-ansi-6.2.0.tgz","fileCount":4,"unpackedSize":9500,"npm-signature":"-----BEGIN PGP SIGNATURE-----\r\nVersion: OpenPGP.js v3.0.4\r\nComment: https://openpgpjs.org\r\n\r\nwsFcBAEBCAAQBQJdyYdxCRA9TVsSAnZWagAA2dsQAIzMpppxZ5UnooIOBZqe\nHRhqc79iACxFpe+EFGO2Ft3Zba0Ccte4oQzRPUQ+r3iA/o0nDgLvaHMaSnTw\nK073n6Ak7y50s3jyhlEJIRUm9paQlrgc70odMBbU3jq1NshGK9g4ERdp1sfj\n8EohNgBs87ZTUc+P6jJ7KcqAswKxUwDmfB0G+0jPw+bko/aDJBv5Yv7bwHby\nfDSC1ONZySASjq/vf24TeqE44cvk7nH2A3b57x85ha5htcWUM+LdjDZg+QQe\nwvN/udVaKVZTQMwT1IIzf5SE8FZ3OEyCj6WnksQhHHOHmCWC70QSqQqh6eye\nWm8QZ+ZZh+s1d88Zf3iZvhyK0R16SNHznfILad19m9c89EEV6RsfFG4xnurs\nsEr3goedqs2ZDL057fLrtMnHf8ZXUXfuP5eI5TAaO6OtEJ3rEDNau9IlK5Nd\nXnxxJNHaGyDi9kPZAWz7ESyKu6uDiMlFSDn3mS10FPU5hRRkkHvaDEQYTEp3\nJk6QNOk/AlNubQVE/BzwBPLwgEhsDxUvEuUnyTGpmtPz6FPmBuhZJJ0CZIPB\nG1cZ7Bt/+WZkDRKzvqld81tJm4rBo68B+DmhJCsgDD+9Zkax+j6vJeDqt++y\nGJdaTsk/GvSwSHIW5dUi12utdn4Jy6RgPyJIxDb8TcFVI2Dm+JPuAiNJ0cQn\nBt9z\r\n=hCBi\r\n-----END PGP SIGNATURE-----\r\n","signatures":[{"keyid":"SHA256:jl3bwswu80PjjokCgh0o2w5c2U4LhQAE57gj9cz1kzA","sig":"MEQCIBo3DJI+PdNrF7RgmAf56UxJWAD2qFlXFjEPQ0O5V/6wAiBP8UrlLK7UcyawI9lH3EiEvMkPVSAEMlg5XUyR0X4aBw=="}]},"directories":{},"_hasShrinkwrap":false},"7.0.0":{"name":"wrap-ansi","version":"7.0.0","description":"Wordwrap a string with ANSI escape codes","license":"MIT","repository":{"type":"git","url":"git+https://github.com/chalk/wrap-ansi.git"},"funding":"https://github.com/chalk/wrap-ansi?sponsor=1","author":{"name":"Sindre Sorhus","email":"sindresorhus@gmail.com","url":"https://sindresorhus.com"},"engines":{"node":">=10"},"scripts":{"test":"xo && nyc ava"},"dependencies":{"ansi-styles":"^4.0.0","string-width":"^4.1.0","strip-ansi":"^6.0.0"},"devDependencies":{"ava":"^2.1.0","chalk":"^4.0.0","coveralls":"^3.0.3","has-ansi":"^4.0.0","nyc":"^15.0.1","xo":"^0.29.1"},"gitHead":"c81bf7d6d0a9c1a49f7ce6413fbc8fbcf9938330","bugs":{"url":"https://github.com/chalk/wrap-ansi/issues"},"_id":"wrap-ansi@7.0.0","_nodeVersion":"10.20.1","_npmVersion":"6.14.4","dist":{"integrity":"sha512-YVGIj2kamLSTxw6NsZjoBxfSwsn0ycdesmc4p+Q21c5zPuZ1pl+NfxVdxPtdHvmNVOQ6XSYG4AUtyt/Fi7D16Q==","shasum":"67e145cff510a6a6984bdf1152911d69d2eb9e43","tarball":"http://localhost:4260/wrap-ansi/wrap-ansi-7.0.0.tgz","fileCount":4,"unpackedSize":10648,"npm-signature":"-----BEGIN PGP SIGNATURE-----\r\nVersion: OpenPGP.js v3.0.4\r\nComment: https://openpgpjs.org\r\n\r\nwsFcBAEBCAAQBQJeoHaECRA9TVsSAnZWagAAK24P/jwyeF34W9cqIv/B3ksz\n92WOZxBeOfH13jbFs4Ha3FhMDAtvLeTJeomi6vcxSMEm2QwClv4xWQB8zHom\nqOXcdDIZ0vOXXZIEtkdpRsYu+jYh5sH/Wqp7CZMtYbMuAPZb2JmmbW+8YL5H\nSOX9I1J8VUGZ0Nsz12tEYbWDaeeK1ALa6qp88TfiUtOGr8T+GhI1kIH9zSEq\nper8hpXgbaX14k+sAey2iVY4zZmfPQbKEbcpPUKLX3QHVYuRVWcI/eFgET9C\nyA39dJDetiFDdPrSKps8/5YA+jNbYWyip+ljT8/Em2PF5JJlOuAii+42EKyM\nUwxii3cKKQ4Q5Zuh5j2RnFutBOFdCLOQfYZAoJEeuxd2UQPZrTEOGD5mXbng\n7g3wf33Syyr+SVbHnRCI8NNrRu1agm4m/uIpugTuvPo1cg4I+hNshRGX1+1D\n5DJKE9KSpz5M67B6mZfsJfLC5ksGtrNBDFvjNAoqo69oSNaGfFJZNC0iXHE6\nIYkRDb/aN4w6JmnaO6vFIx4+5HozLd3iDLKzlDYmTloJNjN1r9kcdMnQUoAG\n5IGC8lGYuTQYyhemyJ92e+OaZQBXaPxBa64Atvj9psPTFko5m18FOqh0HMbp\nreGEUF3K+5wyUv+1C97ZAHbxJ5ZJ3s/qCeIzzWcxuEiqAAAiDxpPmOj9WXan\nRWNd\r\n=dAFV\r\n-----END PGP SIGNATURE-----\r\n","signatures":[{"keyid":"SHA256:jl3bwswu80PjjokCgh0o2w5c2U4LhQAE57gj9cz1kzA","sig":"MEYCIQCKo7j2UdQx54mSbTdaaej2HDd+7W+ESXd3KKVPvJfvJAIhAMJ7QP5IP0+ZduLVTIUpiMK2pHSoyirpMJPR7ttSpH2z"}]},"directories":{},"_hasShrinkwrap":false},"8.1.0":{"name":"wrap-ansi","version":"8.1.0","description":"Wordwrap a string with ANSI escape codes","license":"MIT","repository":{"type":"git","url":"git+https://github.com/chalk/wrap-ansi.git"},"funding":"https://github.com/chalk/wrap-ansi?sponsor=1","author":{"name":"Sindre Sorhus","email":"sindresorhus@gmail.com","url":"https://sindresorhus.com"},"type":"module","exports":{"types":"./index.d.ts","default":"./index.js"},"engines":{"node":">=12"},"scripts":{"test":"xo && nyc ava && tsd"},"dependencies":{"ansi-styles":"^6.1.0","string-width":"^5.0.1","strip-ansi":"^7.0.1"},"devDependencies":{"ava":"^3.15.0","chalk":"^4.1.2","coveralls":"^3.1.1","has-ansi":"^5.0.1","nyc":"^15.1.0","tsd":"^0.25.0","xo":"^0.44.0"},"types":"./index.d.ts","gitHead":"115090266b0ebb1797032582de78d617575778ab","bugs":{"url":"https://github.com/chalk/wrap-ansi/issues"},"_id":"wrap-ansi@8.1.0","_nodeVersion":"14.21.1","_npmVersion":"9.2.0","dist":{"integrity":"sha512-si7QWI6zUMq56bESFvagtmzMdGOtoxfR+Sez11Mobfc7tm+VkUckk9bW2UeffTGVUbOksxmSw0AA2gs8g71NCQ==","shasum":"56dc22368ee570face1b49819975d9b9a5ead214","tarball":"http://localhost:4260/wrap-ansi/wrap-ansi-8.1.0.tgz","fileCount":5,"unpackedSize":11777,"signatures":[{"keyid":"SHA256:jl3bwswu80PjjokCgh0o2w5c2U4LhQAE57gj9cz1kzA","sig":"MEUCIQCTLHPWZRhU1psYEAvTz2AEDNsMLsR+G9tplhjk3/R3BAIgNOJvHTwK2n7NB5EqKVWO2XlPckE0YuQWw6rMaitomrA="}],"npm-signature":"-----BEGIN PGP SIGNATURE-----\r\nVersion: OpenPGP.js v4.10.10\r\nComment: https://openpgpjs.org\r\n\r\nwsFzBAEBCAAGBQJjzl3EACEJED1NWxICdlZqFiEECWMYAoorWMhJKdjhPU1b\r\nEgJ2VmpO/A//bYXkxwhhxDVoigdWOaNHiKW+majk5idpXfyGE5PoWIgsqFut\r\nP0aBrryVq2ghKQeknXKuOvpqP2Hp0sJSM6MoLDye3gfk+HNlyJzVdHalk6N8\r\n0DifL08xKkdsbtG0+anIaaI1PVoyL5S8I5FkLZrl+/SKenE5FnlT91rdJi2P\r\n+LiGCRYmA/t+8NbnCvy898l0ZOzQlfM9tdni7V/Sbn8Qgr2lUXJTEqhausHI\r\nIYBTWyW5MWIh4/pfVfFHDDMcdXBKvQ4VRhZC+aPQUjVCGPvW5CWZnP3OPm8a\r\nNfJIO35tUkGN002iswqVdTexuRp5nioJoqRmk2FLC5dnuiKi6Nb0BMB3yy+L\r\nJJXOY+0jF0G3JFFLm82UTCEVFX79uYflr+qaOyRI2GvJzWL9Xjva4VbKbBs5\r\n9o2NoZAbc4sgMlFvUU+xKav3rH+76mQJeJdL+eCKwZkeQomOnrhxrLv5Kc4j\r\nEN1g/vcLEJG/A8u6yWXpxl+/vZYWv6KeNnGhwLF5ffDY0ox1yOb2kHmH73bN\r\nmgavI+Qq7CP3bZFfTM5uJxk9L7ZocdlziHdRE+WllVG3199KvO63RKohUtNb\r\nvJs9XFEHlevDhHne+D0R7oRhN2j9ivImAyrz49hqE7o2UTldVv3qgFY0boeT\r\niPTeVHWKSmTLDzMTbyHNWObQWegh6j8+g9I=\r\n=Y4Bg\r\n-----END PGP SIGNATURE-----\r\n"},"directories":{},"_hasShrinkwrap":false}},"readme":"# wrap-ansi\n\n> Wordwrap a string with [ANSI escape codes](https://en.wikipedia.org/wiki/ANSI_escape_code#Colors_and_Styles)\n\n## Install\n\n```sh\nnpm install wrap-ansi\n```\n\n## Usage\n\n```js\nimport chalk from 'chalk';\nimport wrapAnsi from 'wrap-ansi';\n\nconst input = 'The quick brown ' + chalk.red('fox jumped over ') +\n\t'the lazy ' + chalk.green('dog and then ran away with the unicorn.');\n\nconsole.log(wrapAnsi(input, 20));\n```\n\n<img width=\"331\" src=\"screenshot.png\">\n\n## API\n\n### wrapAnsi(string, columns, options?)\n\nWrap words to the specified column width.\n\n#### string\n\nType: `string`\n\nA string with ANSI escape codes, like one styled by [`chalk`](https://github.com/chalk/chalk).\n\nNewline characters will be normalized to `\\n`.\n\n#### columns\n\nType: `number`\n\nThe number of columns to wrap the text to.\n\n#### options\n\nType: `object`\n\n##### hard\n\nType: `boolean`\\\nDefault: `false`\n\nBy default the wrap is soft, meaning long words may extend past the column width. Setting this to `true` will make it hard wrap at the column width.\n\n##### wordWrap\n\nType: `boolean`\\\nDefault: `true`\n\nBy default, an attempt is made to split words at spaces, ensuring that they don't extend past the configured columns. If wordWrap is `false`, each column will instead be completely filled splitting words as necessary.\n\n##### trim\n\nType: `boolean`\\\nDefault: `true`\n\nWhitespace on all lines is removed by default. Set this option to `false` if you don't want to trim.\n\n## Related\n\n- [slice-ansi](https://github.com/chalk/slice-ansi) - Slice a string with ANSI escape codes\n- [cli-truncate](https://github.com/sindresorhus/cli-truncate) - Truncate a string to a specific width in the terminal\n- [chalk](https://github.com/chalk/chalk) - Terminal string styling done right\n- [jsesc](https://github.com/mathiasbynens/jsesc) - Generate ASCII-only output from Unicode strings. Useful for creating test fixtures.\n","homepage":"https://github.com/chalk/wrap-ansi#readme","repository":{"type":"git","url":"git+https://github.com/chalk/wrap-ansi.git"},"author":{"name":"Sindre Sorhus","email":"sindresorhus@gmail.com","url":"https://sindresorhus.com"},"bugs":{"url":"https://github.com/chalk/wrap-ansi/issues"},"license":"MIT","readmeFilename":"readme.md"}
+{
+  "name": "wrap-ansi",
+  "description": "Wordwrap a string with ANSI escape codes",
+  "dist-tags": {
+    "latest": "8.1.0"
+  },
+  "versions": {
+    "6.2.0": {
+      "name": "wrap-ansi",
+      "version": "6.2.0",
+      "description": "Wordwrap a string with ANSI escape codes",
+      "license": "MIT",
+      "repository": {
+        "type": "git",
+        "url": "git+https://github.com/chalk/wrap-ansi.git"
+      },
+      "author": {
+        "name": "Sindre Sorhus",
+        "email": "sindresorhus@gmail.com",
+        "url": "sindresorhus.com"
+      },
+      "engines": {
+        "node": ">=8"
+      },
+      "scripts": {
+        "test": "xo && nyc ava"
+      },
+      "dependencies": {
+        "ansi-styles": "^4.0.0",
+        "string-width": "^4.1.0",
+        "strip-ansi": "^6.0.0"
+      },
+      "devDependencies": {
+        "ava": "^2.1.0",
+        "chalk": "^2.4.2",
+        "coveralls": "^3.0.3",
+        "has-ansi": "^3.0.0",
+        "nyc": "^14.1.1",
+        "xo": "^0.24.0"
+      },
+      "gitHead": "a28eb7d6cdbf91bccb56d04d095ca9463c15d3db",
+      "bugs": {
+        "url": "https://github.com/chalk/wrap-ansi/issues"
+      },
+      "_id": "wrap-ansi@6.2.0",
+      "_nodeVersion": "12.13.0",
+      "_npmVersion": "6.12.0",
+      "dist": {
+        "integrity": "sha512-r6lPcBGxZXlIcymEu7InxDMhdW0KDxpLgoFLcguasxCaJ/SOIZwINatK9KY/tf+ZrlywOKU0UDj3ATXUBfxJXA==",
+        "shasum": "e9393ba07102e6c91a3b221478f0257cd2856e53",
+        "tarball": "http://localhost:4260/wrap-ansi/wrap-ansi-6.2.0.tgz",
+        "fileCount": 4,
+        "unpackedSize": 9500
+      },
+      "directories": {},
+      "_hasShrinkwrap": false
+    },
+    "7.0.0": {
+      "name": "wrap-ansi",
+      "version": "7.0.0",
+      "description": "Wordwrap a string with ANSI escape codes",
+      "license": "MIT",
+      "repository": {
+        "type": "git",
+        "url": "git+https://github.com/chalk/wrap-ansi.git"
+      },
+      "funding": "https://github.com/chalk/wrap-ansi?sponsor=1",
+      "author": {
+        "name": "Sindre Sorhus",
+        "email": "sindresorhus@gmail.com",
+        "url": "https://sindresorhus.com"
+      },
+      "engines": {
+        "node": ">=10"
+      },
+      "scripts": {
+        "test": "xo && nyc ava"
+      },
+      "dependencies": {
+        "ansi-styles": "^4.0.0",
+        "string-width": "^4.1.0",
+        "strip-ansi": "^6.0.0"
+      },
+      "devDependencies": {
+        "ava": "^2.1.0",
+        "chalk": "^4.0.0",
+        "coveralls": "^3.0.3",
+        "has-ansi": "^4.0.0",
+        "nyc": "^15.0.1",
+        "xo": "^0.29.1"
+      },
+      "gitHead": "c81bf7d6d0a9c1a49f7ce6413fbc8fbcf9938330",
+      "bugs": {
+        "url": "https://github.com/chalk/wrap-ansi/issues"
+      },
+      "_id": "wrap-ansi@7.0.0",
+      "_nodeVersion": "10.20.1",
+      "_npmVersion": "6.14.4",
+      "dist": {
+        "integrity": "sha512-YVGIj2kamLSTxw6NsZjoBxfSwsn0ycdesmc4p+Q21c5zPuZ1pl+NfxVdxPtdHvmNVOQ6XSYG4AUtyt/Fi7D16Q==",
+        "shasum": "67e145cff510a6a6984bdf1152911d69d2eb9e43",
+        "tarball": "http://localhost:4260/wrap-ansi/wrap-ansi-7.0.0.tgz",
+        "fileCount": 4,
+        "unpackedSize": 10648
+      },
+      "directories": {},
+      "_hasShrinkwrap": false
+    },
+    "8.1.0": {
+      "name": "wrap-ansi",
+      "version": "8.1.0",
+      "description": "Wordwrap a string with ANSI escape codes",
+      "license": "MIT",
+      "repository": {
+        "type": "git",
+        "url": "git+https://github.com/chalk/wrap-ansi.git"
+      },
+      "funding": "https://github.com/chalk/wrap-ansi?sponsor=1",
+      "author": {
+        "name": "Sindre Sorhus",
+        "email": "sindresorhus@gmail.com",
+        "url": "https://sindresorhus.com"
+      },
+      "type": "module",
+      "exports": {
+        "types": "./index.d.ts",
+        "default": "./index.js"
+      },
+      "engines": {
+        "node": ">=12"
+      },
+      "scripts": {
+        "test": "xo && nyc ava && tsd"
+      },
+      "dependencies": {
+        "ansi-styles": "^6.1.0",
+        "string-width": "^5.0.1",
+        "strip-ansi": "^7.0.1"
+      },
+      "devDependencies": {
+        "ava": "^3.15.0",
+        "chalk": "^4.1.2",
+        "coveralls": "^3.1.1",
+        "has-ansi": "^5.0.1",
+        "nyc": "^15.1.0",
+        "tsd": "^0.25.0",
+        "xo": "^0.44.0"
+      },
+      "types": "./index.d.ts",
+      "gitHead": "115090266b0ebb1797032582de78d617575778ab",
+      "bugs": {
+        "url": "https://github.com/chalk/wrap-ansi/issues"
+      },
+      "_id": "wrap-ansi@8.1.0",
+      "_nodeVersion": "14.21.1",
+      "_npmVersion": "9.2.0",
+      "dist": {
+        "integrity": "sha512-si7QWI6zUMq56bESFvagtmzMdGOtoxfR+Sez11Mobfc7tm+VkUckk9bW2UeffTGVUbOksxmSw0AA2gs8g71NCQ==",
+        "shasum": "56dc22368ee570face1b49819975d9b9a5ead214",
+        "tarball": "http://localhost:4260/wrap-ansi/wrap-ansi-8.1.0.tgz",
+        "fileCount": 5,
+        "unpackedSize": 11777
+      },
+      "directories": {},
+      "_hasShrinkwrap": false
+    }
+  },
+  "homepage": "https://github.com/chalk/wrap-ansi#readme",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/chalk/wrap-ansi.git"
+  },
+  "author": {
+    "name": "Sindre Sorhus",
+    "email": "sindresorhus@gmail.com",
+    "url": "https://sindresorhus.com"
+  },
+  "bugs": {
+    "url": "https://github.com/chalk/wrap-ansi/issues"
+  },
+  "license": "MIT",
+  "readmeFilename": "readme.md"
+}

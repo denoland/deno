@@ -1,1 +1,84 @@
-{"name":"globals","description":"Global identifiers from different JavaScript environments","dist-tags":{"latest":"13.17.0"},"versions":{"13.17.0":{"name":"globals","version":"13.17.0","description":"Global identifiers from different JavaScript environments","license":"MIT","repository":{"type":"git","url":"git+https://github.com/sindresorhus/globals.git"},"funding":"https://github.com/sponsors/sindresorhus","author":{"name":"Sindre Sorhus","email":"sindresorhus@gmail.com","url":"https://sindresorhus.com"},"engines":{"node":">=8"},"scripts":{"test":"xo && ava"},"dependencies":{"type-fest":"^0.20.2"},"devDependencies":{"ava":"^2.4.0","tsd":"^0.14.0","xo":"^0.36.1"},"xo":{"ignores":["get-browser-globals.js"],"rules":{"node/no-unsupported-features/es-syntax":"off"}},"tsd":{"compilerOptions":{"resolveJsonModule":true}},"types":"./index.d.ts","gitHead":"1a1f7e863300f5685c66263086765b8cdcdc3665","bugs":{"url":"https://github.com/sindresorhus/globals/issues"},"_id":"globals@13.17.0","_nodeVersion":"14.19.3","_npmVersion":"8.3.2","dist":{"integrity":"sha512-1C+6nQRb1GwGMKm2dH/E7enFAMxGTmGI7/dEdhy/DNelv85w9B72t3uc5frtMNXIbzrarJJ/lTCjcaZwbLJmyw==","shasum":"902eb1e680a41da93945adbdcb5a9f361ba69bd4","tarball":"http://localhost:4260/globals/globals-13.17.0.tgz","fileCount":6,"unpackedSize":46315,"signatures":[{"keyid":"SHA256:jl3bwswu80PjjokCgh0o2w5c2U4LhQAE57gj9cz1kzA","sig":"MEUCIQCJVV2QzBgk8QZkIGiL0Tc47k02GV4sjqgvLVClSY6g+QIgdj0X+kHQpzOJcZbeTTMeuHYCtmL+ZAGIte0MO/V6JYs="}],"npm-signature":"-----BEGIN PGP SIGNATURE-----\r\nVersion: OpenPGP.js v4.10.10\r\nComment: https://openpgpjs.org\r\n\r\nwsFzBAEBCAAGBQJi2QtlACEJED1NWxICdlZqFiEECWMYAoorWMhJKdjhPU1b\r\nEgJ2VmrDhw//fc6R4ogS7lQO8GlzVFeV1aKEwo8ZIuqm9md1EpvujtNtg3si\r\nSMAVyV94avK6zxZXbZ+CPBQZcWJ3rgTwdrldodOMXPRGcyqKN1oPyIR46Jzr\r\nPLedBVnfRyx+sGxQxz+RQRts73rr3b/GoD5fuLKx+V0cEjGUtKaJoZCsgwa8\r\nlo250LsjGJir6pQtTZMCjeEbZZrK0thL8Njru3NyhGzNsGVGyspIifF0Ph9+\r\nCEmSM73ziZrlEHYKYsFnIDqHpGQcE9IToVQJJofzQKoTmOLR1ZWL+8eaWAzn\r\n1TJvHs/nNofvYc4cvqzh4kVkrjhy52gV25sZt4EnZbTaSVCKlzz77sgUXnpb\r\nk8dYYorrMMKeV/ipLiqhAiJ9Ac18BTUh2DGs4CF10yrOryTXWQi/m5EEWf78\r\nHTObf8c+A7ltejG6EApHcToYPo3L9ogJY7GqZaVq4xfcKwBTNQIwi97OM+i5\r\nbn8VQCinnWgGHfBHDWPvQNCCGNdZO24pYzGm+ZxhDt6+CmnB8einjBR/2mzY\r\nTiTlyHsUi2aTPygwG9zTN55lRShk5Y/pcenrMC0jfe2NW0ayHZ2EbPck0fdA\r\n4TnxCY2SXrPK0q4YG0IemE7lI68n8Hf8PoK7uhG70foWGggqSUJWipOCbu6a\r\nbM4aJiiLKeybcAh/ynig4RsbK+cGX6vM5EE=\r\n=xg5I\r\n-----END PGP SIGNATURE-----\r\n"},"directories":{},"_hasShrinkwrap":false}},"readme":"# globals\n\n> Global identifiers from different JavaScript environments\n\nIt's just a [JSON file](globals.json), so use it in any environment.\n\nThis package is used by ESLint.\n\n**This package [no longer accepts](https://github.com/sindresorhus/globals/issues/82) new environments. If you need it for ESLint, just [create a plugin](http://eslint.org/docs/developer-guide/working-with-plugins#environments-in-plugins).**\n\n## Install\n\n```\n$ npm install globals\n```\n\n## Usage\n\n```js\nconst globals = require('globals');\n\nconsole.log(globals.browser);\n/*\n{\n\taddEventListener: false,\n\tapplicationCache: false,\n\tArrayBuffer: false,\n\tatob: false,\n\t…\n}\n*/\n```\n\nEach global is given a value of `true` or `false`. A value of `true` indicates that the variable may be overwritten. A value of `false` indicates that the variable should be considered read-only. This information is used by static analysis tools to flag incorrect behavior. We assume all variables should be `false` unless we hear otherwise.\n\nFor Node.js this package provides two sets of globals:\n\n- `globals.nodeBuiltin`: Globals available to all code running in Node.js.\n\tThese will usually be available as properties on the `global` object and include `process`, `Buffer`, but not CommonJS arguments like `require`.\n\tSee: https://nodejs.org/api/globals.html\n- `globals.node`: A combination of the globals from `nodeBuiltin` plus all CommonJS arguments (\"CommonJS module scope\").\n\tSee: https://nodejs.org/api/modules.html#modules_the_module_scope\n\nWhen analyzing code that is known to run outside of a CommonJS wrapper, for example, JavaScript modules, `nodeBuiltin` can find accidental CommonJS references.\n\n---\n\n<div align=\"center\">\n\t<b>\n\t\t<a href=\"https://tidelift.com/subscription/pkg/npm-globals?utm_source=npm-globals&utm_medium=referral&utm_campaign=readme\">Get professional support for this package with a Tidelift subscription</a>\n\t</b>\n\t<br>\n\t<sub>\n\t\tTidelift helps make open source sustainable for maintainers while giving companies<br>assurances about security, maintenance, and licensing for their dependencies.\n\t</sub>\n</div>\n","author":{"name":"Sindre Sorhus","email":"sindresorhus@gmail.com","url":"https://sindresorhus.com"},"repository":{"type":"git","url":"git+https://github.com/sindresorhus/globals.git"},"homepage":"https://github.com/sindresorhus/globals#readme","bugs":{"url":"https://github.com/sindresorhus/globals/issues"},"license":"MIT","readmeFilename":"readme.md"}
+{
+  "name": "globals",
+  "description": "Global identifiers from different JavaScript environments",
+  "dist-tags": {
+    "latest": "13.17.0"
+  },
+  "versions": {
+    "13.17.0": {
+      "name": "globals",
+      "version": "13.17.0",
+      "description": "Global identifiers from different JavaScript environments",
+      "license": "MIT",
+      "repository": {
+        "type": "git",
+        "url": "git+https://github.com/sindresorhus/globals.git"
+      },
+      "funding": "https://github.com/sponsors/sindresorhus",
+      "author": {
+        "name": "Sindre Sorhus",
+        "email": "sindresorhus@gmail.com",
+        "url": "https://sindresorhus.com"
+      },
+      "engines": {
+        "node": ">=8"
+      },
+      "scripts": {
+        "test": "xo && ava"
+      },
+      "dependencies": {
+        "type-fest": "^0.20.2"
+      },
+      "devDependencies": {
+        "ava": "^2.4.0",
+        "tsd": "^0.14.0",
+        "xo": "^0.36.1"
+      },
+      "xo": {
+        "ignores": [
+          "get-browser-globals.js"
+        ],
+        "rules": {
+          "node/no-unsupported-features/es-syntax": "off"
+        }
+      },
+      "tsd": {
+        "compilerOptions": {
+          "resolveJsonModule": true
+        }
+      },
+      "types": "./index.d.ts",
+      "gitHead": "1a1f7e863300f5685c66263086765b8cdcdc3665",
+      "bugs": {
+        "url": "https://github.com/sindresorhus/globals/issues"
+      },
+      "_id": "globals@13.17.0",
+      "_nodeVersion": "14.19.3",
+      "_npmVersion": "8.3.2",
+      "dist": {
+        "integrity": "sha512-1C+6nQRb1GwGMKm2dH/E7enFAMxGTmGI7/dEdhy/DNelv85w9B72t3uc5frtMNXIbzrarJJ/lTCjcaZwbLJmyw==",
+        "shasum": "902eb1e680a41da93945adbdcb5a9f361ba69bd4",
+        "tarball": "http://localhost:4260/globals/globals-13.17.0.tgz",
+        "fileCount": 6,
+        "unpackedSize": 46315
+      },
+      "directories": {},
+      "_hasShrinkwrap": false
+    }
+  },
+  "author": {
+    "name": "Sindre Sorhus",
+    "email": "sindresorhus@gmail.com",
+    "url": "https://sindresorhus.com"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/sindresorhus/globals.git"
+  },
+  "homepage": "https://github.com/sindresorhus/globals#readme",
+  "bugs": {
+    "url": "https://github.com/sindresorhus/globals/issues"
+  },
+  "license": "MIT",
+  "readmeFilename": "readme.md"
+}
