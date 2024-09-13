@@ -1,4 +1,5 @@
 #!/usr/bin/env -S deno run --allow-env --allow-read --allow-write=.
+// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 import {
   ModuleDeclarationKind,
   Node,
@@ -56,7 +57,8 @@ for (const file of project.getSourceFiles()) {
   }
 }
 
+// deno-lint-ignore no-console
 console.log(
-  "Names: ",
+  "Globals: ",
   Array.from(names).sort(),
 );
