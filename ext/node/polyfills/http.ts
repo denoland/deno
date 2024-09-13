@@ -599,7 +599,11 @@ class ClientRequest extends OutgoingMessage {
     nextTick(() => {
       this.socket = socket;
       this.emit("socket", socket);
-      console.trace("onSocket invoked", socket);
+      // Flush the internal buffers once socket is assigned.
+      // Note: the order is important, as the headers flush
+      // sets up the request.
+      this._flushHeaders();
+      this._flushBody();
     });
   }
 

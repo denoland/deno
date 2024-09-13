@@ -491,8 +491,34 @@ Object.defineProperties(
       return ret;
     },
 
+    _flushBody() {
+      const socket = this.socket;
+      const outputLength = this.outputData.length;
+      if (socket && socket.writable && outputLength > 0) {
+        console.log("flushing body");
+        for (let i = 0; i < outputLength; i++) {
+          const { data, encoding, callback } = this.outputData[i];
+          this._writeRaw(data, encoding, callback);
+        }
+        this.outputData = [];
+      }
+    },
+
+    /** Right after socket is ready, we need to writeHeader() to setup the request and
+     *  client. This is invoked by onSocket(). */
+    _flushHeaders() {
+      console.log("flushHeaders");
+      if (this.socket) {
+        if (!this._headerSent && this._header !== null) {
+          this._writeHeader();
+          this._headerSent = true;
+        }
+      }
+    },
+
     // deno-lint-ignore no-explicit-any
     _send(data: any, encoding?: string | null, callback?: () => void) {
+      console.log("writing data:", data, "socket:", this.socket);
       if (this.socket) {
         if (!this._headerSent && this._header !== null) {
           this._writeHeader();
@@ -500,15 +526,8 @@ Object.defineProperties(
         }
         return this._writeRaw(data, encoding, callback);
       } else {
-        this.on("socket", (socket) => {
-          socket.on("connect", () => {
-            if (!this._headerSent && this._header !== null) {
-              this._writeHeader();
-              this._headerSent = true;
-            }
-            return this._writeRaw(data, encoding, callback);
-          });
-        });
+        console.log("pushing data to outputData");
+        this.outputData.push({ data, encoding, callback });
       }
     },
 
@@ -522,6 +541,7 @@ Object.defineProperties(
       encoding?: string | null,
       callback?: () => void,
     ) {
+      console.log("_writeRaw invoked:", data.length);
       if (typeof data === "string") {
         data = Buffer.from(data, encoding);
       }
