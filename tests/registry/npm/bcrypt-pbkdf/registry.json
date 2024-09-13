@@ -1,1 +1,53 @@
-{"name":"bcrypt-pbkdf","description":"Port of the OpenBSD bcrypt_pbkdf function to pure JS","dist-tags":{"latest":"1.0.2"},"versions":{"1.0.2":{"name":"bcrypt-pbkdf","version":"1.0.2","description":"Port of the OpenBSD bcrypt_pbkdf function to pure JS","repository":{"type":"git","url":"git://github.com/joyent/node-bcrypt-pbkdf.git"},"main":"index.js","dependencies":{"tweetnacl":"^0.14.3"},"devDependencies":{},"license":"BSD-3-Clause","gitHead":"15fa7399a1090ba70d855764f7ace23003bf45f3","bugs":{"url":"https://github.com/joyent/node-bcrypt-pbkdf/issues"},"_id":"bcrypt-pbkdf@1.0.2","scripts":{},"_shasum":"a4301d389b6a43f9b67ff3ca11a3f6637e360e9e","_from":".","_npmVersion":"2.15.11","_nodeVersion":"0.12.18","dist":{"shasum":"a4301d389b6a43f9b67ff3ca11a3f6637e360e9e","tarball":"http://localhost:4260/bcrypt-pbkdf/bcrypt-pbkdf-1.0.2.tgz","fileCount":5,"unpackedSize":28994,"integrity":"sha512-qeFIXtP4MSoi6NLqO12WfqARWWuCKi2Rn/9hJLEmtB5yTNr9DqFWkJRCf2qShWzPeAMRnOgCrq0sg/KLv5ES9w==","signatures":[{"keyid":"SHA256:jl3bwswu80PjjokCgh0o2w5c2U4LhQAE57gj9cz1kzA","sig":"MEYCIQChYywQjt5fZLC9Rra6lu+zL8cvuTL5dMd2eOEhxappzwIhALDhzEgD/8ch3dt4FJFJIkUGloGoubSOB8uag2TfDxIC"}]},"directories":{},"_hasShrinkwrap":false}},"readme":"Port of the OpenBSD `bcrypt_pbkdf` function to pure Javascript. `npm`-ified\nversion of [Devi Mandiri's port](https://github.com/devi/tmp/blob/master/js/bcrypt_pbkdf.js),\nwith some minor performance improvements. The code is copied verbatim (and\nun-styled) from Devi's work.\n\nThis product includes software developed by Niels Provos.\n\n## API\n\n### `bcrypt_pbkdf.pbkdf(pass, passlen, salt, saltlen, key, keylen, rounds)`\n\nDerive a cryptographic key of arbitrary length from a given password and salt,\nusing the OpenBSD `bcrypt_pbkdf` function. This is a combination of Blowfish and\nSHA-512.\n\nSee [this article](http://www.tedunangst.com/flak/post/bcrypt-pbkdf) for\nfurther information.\n\nParameters:\n\n * `pass`, a Uint8Array of length `passlen`\n * `passlen`, an integer Number\n * `salt`, a Uint8Array of length `saltlen`\n * `saltlen`, an integer Number\n * `key`, a Uint8Array of length `keylen`, will be filled with output\n * `keylen`, an integer Number\n * `rounds`, an integer Number, number of rounds of the PBKDF to run\n\n### `bcrypt_pbkdf.hash(sha2pass, sha2salt, out)`\n\nCalculate a Blowfish hash, given SHA2-512 output of a password and salt. Used as\npart of the inner round function in the PBKDF.\n\nParameters:\n\n * `sha2pass`, a Uint8Array of length 64\n * `sha2salt`, a Uint8Array of length 64\n * `out`, a Uint8Array of length 32, will be filled with output\n\n## License\n\nThis source form is a 1:1 port from the OpenBSD `blowfish.c` and `bcrypt_pbkdf.c`.\nAs a result, it retains the original copyright and license. The two files are\nunder slightly different (but compatible) licenses, and are here combined in\none file. For each of the full license texts see `LICENSE`.\n","license":"BSD-3-Clause","readmeFilename":"README.md","homepage":"https://github.com/joyent/node-bcrypt-pbkdf#readme","repository":{"type":"git","url":"git://github.com/joyent/node-bcrypt-pbkdf.git"},"bugs":{"url":"https://github.com/joyent/node-bcrypt-pbkdf/issues"}}
+{
+  "name": "bcrypt-pbkdf",
+  "description": "Port of the OpenBSD bcrypt_pbkdf function to pure JS",
+  "dist-tags": {
+    "latest": "1.0.2"
+  },
+  "versions": {
+    "1.0.2": {
+      "name": "bcrypt-pbkdf",
+      "version": "1.0.2",
+      "description": "Port of the OpenBSD bcrypt_pbkdf function to pure JS",
+      "repository": {
+        "type": "git",
+        "url": "git://github.com/joyent/node-bcrypt-pbkdf.git"
+      },
+      "main": "index.js",
+      "dependencies": {
+        "tweetnacl": "^0.14.3"
+      },
+      "devDependencies": {},
+      "license": "BSD-3-Clause",
+      "gitHead": "15fa7399a1090ba70d855764f7ace23003bf45f3",
+      "bugs": {
+        "url": "https://github.com/joyent/node-bcrypt-pbkdf/issues"
+      },
+      "_id": "bcrypt-pbkdf@1.0.2",
+      "scripts": {},
+      "_shasum": "a4301d389b6a43f9b67ff3ca11a3f6637e360e9e",
+      "_from": ".",
+      "_npmVersion": "2.15.11",
+      "_nodeVersion": "0.12.18",
+      "dist": {
+        "shasum": "a4301d389b6a43f9b67ff3ca11a3f6637e360e9e",
+        "tarball": "http://localhost:4260/bcrypt-pbkdf/bcrypt-pbkdf-1.0.2.tgz",
+        "fileCount": 5,
+        "unpackedSize": 28994,
+        "integrity": "sha512-qeFIXtP4MSoi6NLqO12WfqARWWuCKi2Rn/9hJLEmtB5yTNr9DqFWkJRCf2qShWzPeAMRnOgCrq0sg/KLv5ES9w=="
+      },
+      "directories": {},
+      "_hasShrinkwrap": false
+    }
+  },
+  "license": "BSD-3-Clause",
+  "readmeFilename": "README.md",
+  "homepage": "https://github.com/joyent/node-bcrypt-pbkdf#readme",
+  "repository": {
+    "type": "git",
+    "url": "git://github.com/joyent/node-bcrypt-pbkdf.git"
+  },
+  "bugs": {
+    "url": "https://github.com/joyent/node-bcrypt-pbkdf/issues"
+  }
+}

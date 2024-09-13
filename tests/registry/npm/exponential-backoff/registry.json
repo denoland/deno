@@ -1,1 +1,89 @@
-{"name":"exponential-backoff","description":"A utility that allows retrying a function with an exponential delay between attempts.","dist-tags":{"latest":"3.1.1"},"versions":{"3.1.1":{"name":"exponential-backoff","version":"3.1.1","author":{"name":"Sami Sayegh"},"license":"Apache-2.0","_id":"exponential-backoff@3.1.1","bugs":{"url":"https://github.com/coveo/exponential-backoff/issues"},"dist":{"shasum":"64ac7526fe341ab18a39016cd22c787d01e00bf6","tarball":"http://localhost:4260/exponential-backoff/exponential-backoff-3.1.1.tgz","fileCount":33,"integrity":"sha512-dX7e/LHVJ6W3DE1MHWi9S1EYzDESENfLrYohG2G++ovZrYOkm4Knwa0mc1cn84xJOR4KEU0WSchhLbd0UklbHw==","signatures":[{"sig":"MEUCIQDr+out+uvlHUvEC7/599hD5V9fPzhl76LLZb+Kf1CkXQIgH5Jm+BY6CLJ+e6gJGBSYkBgV6twi6/0GhGZ4rfGLMyc=","keyid":"SHA256:jl3bwswu80PjjokCgh0o2w5c2U4LhQAE57gj9cz1kzA"}],"unpackedSize":37269,"npm-signature":"-----BEGIN PGP SIGNATURE-----\r\nVersion: OpenPGP.js v4.10.10\r\nComment: https://openpgpjs.org\r\n\r\nwsFzBAEBCAAGBQJj87BBACEJED1NWxICdlZqFiEECWMYAoorWMhJKdjhPU1b\r\nEgJ2VmoIzw/9FJrP3q6G51DaBfQcrCOf7AyZjBdmdzLJ0Qj0SUPxFccR4slF\r\n9D0gc2T6MwccogbNSRoNBPnw6pyPcg4DvMIClmCocbpbBxXrIg3muIOY40sZ\r\nlbnnkWlGS4LixGOq2hv+EubRc/ye7InUwPO9/vO3m1vnGjOnzjAF30r8kmkV\r\nX+WVfhTYbH1gc6vCicK7lr+ydDmodjiI2pOMxD2V5chuV71KrDgxexnnfUEw\r\n0D0b98LAuBP1nV1O5tdvypS3l8LmF6s8hopm9C22ZGhWWk0RG/H+GJD+hQms\r\nkTenT3UnHqkZwb6GFF0jtne6wBkvXLiNRoVb9WDNdh8uglR96P0SKbB+OEDC\r\nDTV12NCOPgl5GJN+xmX85ZVJb4HMxbrg/OZEnGoZZf40eJFU/GFnf4Ez9C3D\r\nkoEut5cK8+nwpsqlDv3i9pqYpxg2xXsO2Z+uQe7BmEepHq7MxTTLfMpiEdeU\r\nhazeD3U2MR0U20ERuB3e/EOcVLpBFJzeMLWv7ROv0vQbB4BAB3RVX8VNPNS9\r\nRSh1bA3PdhpcJEL1ItxuSmWbB19BFXJVaKpX8VunoqRzCq9hiJVad5ykOMzH\r\n9L6nm32F2Dt8j1H4MrB0H0vJkMSOV8MS4CSgONR6P7k20NtzH5KVAkb07fSS\r\nIxMeNnzfsVnLRP8rQd5fAAm3TYupq4KSjLM=\r\n=7l6+\r\n-----END PGP SIGNATURE-----\r\n"},"jest":{"testRegex":"\\.spec\\.ts$","transform":{"^.+\\.ts$":"ts-jest"},"moduleFileExtensions":["ts","js"]},"main":"dist/backoff.js","husky":{"hooks":{"pre-commit":"lint-staged"}},"types":"dist/backoff.d.ts","gitHead":"47b552aa6007a1320e851118d638a476cf765516","scripts":{"test":"jest","build":"tsc","test:watch":"jest --watch"},"repository":{"url":"git+https://github.com/coveo/exponential-backoff.git","type":"git"},"_npmVersion":"9.3.1","description":"A utility that allows retrying a function with an exponential delay between attempts.","directories":{},"lint-staged":{"*.{ts,json,md}":["prettier --write","git add"]},"_nodeVersion":"18.14.0","_hasShrinkwrap":false,"devDependencies":{"jest":"^24.9.0","husky":"^3.0.9","ts-jest":"^24.1.0","prettier":"^1.18.2","typescript":"^3.6.4","@types/jest":"^24.0.18","@types/node":"^10.14.21","lint-staged":"^9.4.2"}}},"author":{"name":"Sami Sayegh"},"repository":{"url":"git+https://github.com/coveo/exponential-backoff.git","type":"git"},"license":"Apache-2.0","homepage":"https://github.com/coveo/exponential-backoff#readme","bugs":{"url":"https://github.com/coveo/exponential-backoff/issues"},"readme":"# exponential-backoff\n\nA utility that allows retrying a function with an exponential delay between attempts.\n\n## Installation\n\n```\nnpm i exponential-backoff\n```\n\n## Usage\n\nThe `backOff<T>` function takes a promise-returning function to retry, and an optional `BackOffOptions` object. It returns a `Promise<T>`.\n\n```ts\nfunction backOff<T>(\n  request: () => Promise<T>,\n  options?: BackOffOptions\n): Promise<T>;\n```\n\nHere is an example retrying a function that calls a hypothetical weather endpoint:\n\n```js\nimport { backOff } from \"exponential-backoff\";\n\nfunction getWeather() {\n  return fetch(\"weather-endpoint\");\n}\n\nasync function main() {\n  try {\n    const response = await backOff(() => getWeather());\n    // process response\n  } catch (e) {\n    // handle error\n  }\n}\n\nmain();\n```\n\nMigrating across major versions? Here are our [breaking changes](https://github.com/coveo/exponential-backoff/tree/master/doc/migration-guide.md).\n\n### `BackOffOptions`\n\n- `delayFirstAttempt?: boolean`\n\n  Decides whether the `startingDelay` should be applied before the first call. If `false`, the first call will occur without a delay.\n\n  Default value is `false`.\n\n- `jitter?: JitterType | string`\n\n  Decides whether a [jitter](https://aws.amazon.com/blogs/architecture/exponential-backoff-and-jitter/) should be applied to the delay. Possible values are `full` and `none`.\n\n  Default value is `none`.\n\n- `maxDelay?: number`\n\n  The maximum delay, in milliseconds, between two consecutive attempts.\n\n  Default value is `Infinity`.\n\n- `numOfAttempts?: number`\n\n  The maximum number of times to attempt the function.\n\n  Default value is `10`.\n\n  Minimum value is `1`.\n\n- `retry?: (e: any, attemptNumber: number) => boolean | Promise<boolean>`\n\n  The `retry` function can be used to run logic after every failed attempt (e.g. logging a message, assessing the last error, etc.). It is called with the last error and the upcoming attempt number. Returning `true` will retry the function as long as the `numOfAttempts` has not been exceeded. Returning `false` will end the execution.\n\n  Default value is a function that always returns `true`.\n\n- `startingDelay?: number`\n\n  The delay, in milliseconds, before executing the function for the first time.\n\n  Default value is `100` ms.\n\n- `timeMultiple?: number`\n\n  The `startingDelay` is multiplied by the `timeMultiple` to increase the delay between reattempts.\n\n  Default value is `2`.\n","readmeFilename":"README.md"}
+{
+  "name": "exponential-backoff",
+  "description": "A utility that allows retrying a function with an exponential delay between attempts.",
+  "dist-tags": {
+    "latest": "3.1.1"
+  },
+  "versions": {
+    "3.1.1": {
+      "name": "exponential-backoff",
+      "version": "3.1.1",
+      "author": {
+        "name": "Sami Sayegh"
+      },
+      "license": "Apache-2.0",
+      "_id": "exponential-backoff@3.1.1",
+      "bugs": {
+        "url": "https://github.com/coveo/exponential-backoff/issues"
+      },
+      "dist": {
+        "shasum": "64ac7526fe341ab18a39016cd22c787d01e00bf6",
+        "tarball": "http://localhost:4260/exponential-backoff/exponential-backoff-3.1.1.tgz",
+        "fileCount": 33,
+        "integrity": "sha512-dX7e/LHVJ6W3DE1MHWi9S1EYzDESENfLrYohG2G++ovZrYOkm4Knwa0mc1cn84xJOR4KEU0WSchhLbd0UklbHw==",
+        "unpackedSize": 37269
+      },
+      "jest": {
+        "testRegex": "\\.spec\\.ts$",
+        "transform": {
+          "^.+\\.ts$": "ts-jest"
+        },
+        "moduleFileExtensions": [
+          "ts",
+          "js"
+        ]
+      },
+      "main": "dist/backoff.js",
+      "husky": {
+        "hooks": {
+          "pre-commit": "lint-staged"
+        }
+      },
+      "types": "dist/backoff.d.ts",
+      "gitHead": "47b552aa6007a1320e851118d638a476cf765516",
+      "scripts": {
+        "test": "jest",
+        "build": "tsc",
+        "test:watch": "jest --watch"
+      },
+      "repository": {
+        "url": "git+https://github.com/coveo/exponential-backoff.git",
+        "type": "git"
+      },
+      "_npmVersion": "9.3.1",
+      "description": "A utility that allows retrying a function with an exponential delay between attempts.",
+      "directories": {},
+      "lint-staged": {
+        "*.{ts,json,md}": [
+          "prettier --write",
+          "git add"
+        ]
+      },
+      "_nodeVersion": "18.14.0",
+      "_hasShrinkwrap": false,
+      "devDependencies": {
+        "jest": "^24.9.0",
+        "husky": "^3.0.9",
+        "ts-jest": "^24.1.0",
+        "prettier": "^1.18.2",
+        "typescript": "^3.6.4",
+        "@types/jest": "^24.0.18",
+        "@types/node": "^10.14.21",
+        "lint-staged": "^9.4.2"
+      }
+    }
+  },
+  "author": {
+    "name": "Sami Sayegh"
+  },
+  "repository": {
+    "url": "git+https://github.com/coveo/exponential-backoff.git",
+    "type": "git"
+  },
+  "license": "Apache-2.0",
+  "homepage": "https://github.com/coveo/exponential-backoff#readme",
+  "bugs": {
+    "url": "https://github.com/coveo/exponential-backoff/issues"
+  },
+  "readmeFilename": "README.md"
+}

@@ -1,1 +1,69 @@
-{"name":"get-stdin","description":"Get stdin as a string or buffer","dist-tags":{"latest":"8.0.0"},"versions":{"8.0.0":{"name":"get-stdin","version":"8.0.0","description":"Get stdin as a string or buffer","license":"MIT","repository":{"type":"git","url":"git+https://github.com/sindresorhus/get-stdin.git"},"funding":"https://github.com/sponsors/sindresorhus","author":{"name":"Sindre Sorhus","email":"sindresorhus@gmail.com","url":"https://sindresorhus.com"},"engines":{"node":">=10"},"scripts":{"test":"xo && ava test.js test-buffer.js && echo unicorns | node test-real.js && tsd"},"devDependencies":{"@types/node":"^13.13.5","ava":"^2.4.0","delay":"^4.2.0","tsd":"^0.11.0","xo":"^0.24.0"},"gitHead":"07288e101242054df3c197abc5559458af6c78ba","bugs":{"url":"https://github.com/sindresorhus/get-stdin/issues"},"_id":"get-stdin@8.0.0","_nodeVersion":"10.20.1","_npmVersion":"6.14.5","dist":{"integrity":"sha512-sY22aA6xchAzprjyqmSEQv4UbAAzRN0L2dQB0NlN5acTTK9Don6nhoc3eAbUnpZiCANAMfd/+40kVdKfFygohg==","shasum":"cbad6a73feb75f6eeb22ba9e01f89aa28aa97a53","tarball":"http://localhost:4260/get-stdin/get-stdin-8.0.0.tgz","fileCount":5,"unpackedSize":4706,"npm-signature":"-----BEGIN PGP SIGNATURE-----\r\nVersion: OpenPGP.js v3.0.4\r\nComment: https://openpgpjs.org\r\n\r\nwsFcBAEBCAAQBQJeum+fCRA9TVsSAnZWagAAcbEQAJJ3LNFhDyx27qf3mZI2\n6gyySUh4v+Yu7Hdn0ub7utiCGqBkXI5oDrFzuFij/VLj2IU7iqL8eEf0z8Jj\nE7kt6+sHP1aKznVb/nDRAEgN1fhqYDvgfPxPcDiHpSpnqbmgf0iJSGzc6DRz\nMO8HumeNlFp/qXEAXTHO22SHbT0uBFTPA5csekdmOWesBhxkbWrBlUHgQTsM\nq4U4ja8MRFn/p0/3NpUWsylcNqXeNpaYmAnCm8PJKxGah1MJ/FFrOaRRQFPM\nveWBbxYERdu1VrXsnvgWmvCvUuBjZcGJbeFP96ozbgJ6xKRgNcSEhi2aJTzB\ng4/0svekPJfiKN4RqobzOPZEhlgIjYLS0J4lQHz4fpOCwYME+SZze3nvhVlJ\nBU/+PuSu7aLb91+VZP5aWj5/Nd+piiKILUjdPS2DtUULrg5NOzJAdlslx3Qi\ny+cfdC6onNK3kSf0Wat68qUA1oXEHiAaQ7g0NI2PvPyvJqBNhsAh8L9pZGo7\nYVH3bJp9J7Vw2kcjtA/1jrXiRmrXyg45aX9XPzyk2TtyMFYjBr5yXNfdcaMn\nrXxgyULt6NUXVxNWTnCGG9U3UmyDMVjVAHrMWBtkTJNUF7pQBVrSFAO38lKw\nen1afewK4lKyoV3XF2HMJik8sLg4o9ADuSru+SgVtVxTM57+Lhy/FmTeAklv\nmlgx\r\n=39cJ\r\n-----END PGP SIGNATURE-----\r\n","signatures":[{"keyid":"SHA256:jl3bwswu80PjjokCgh0o2w5c2U4LhQAE57gj9cz1kzA","sig":"MEUCIQDf37RkwpfJaLf7BKD2w2HnOBtZz58MdWM28Byt29r/pAIgYB747Ikc2emWSZFR4g3enzZvN0GTLkI5vkpI0rEhA1A="}]},"directories":{},"_hasShrinkwrap":false}},"readme":"# get-stdin\n\n> Get [stdin](https://nodejs.org/api/process.html#process_process_stdin) as a string or buffer\n\n## Install\n\n```\n$ npm install get-stdin\n```\n\n## Usage\n\n```js\n// example.js\nimport getStdin from 'get-stdin';\n\nconsole.log(await getStdin());\n//=> 'unicorns'\n```\n\n```\n$ echo unicorns | node example.js\nunicorns\n```\n\n## API\n\nBoth methods returns a promise that is resolved when the `end` event fires on the `stdin` stream, indicating that there is no more data to be read.\n\n### getStdin()\n\nGet `stdin` as a `string`.\n\nIn a TTY context, a promise that resolves to an empty `string` is returned.\n\n### getStdin.buffer()\n\nGet `stdin` as a `Buffer`.\n\nIn a TTY context, a promise that resolves to an empty `Buffer` is returned.\n\n## Related\n\n- [get-stream](https://github.com/sindresorhus/get-stream) - Get a stream as a string or buffer\n\n---\n\n<div align=\"center\">\n\t<b>\n\t\t<a href=\"https://tidelift.com/subscription/pkg/npm-get-stdin?utm_source=npm-get-stdin&utm_medium=referral&utm_campaign=readme\">Get professional support for this package with a Tidelift subscription</a>\n\t</b>\n\t<br>\n\t<sub>\n\t\tTidelift helps make open source sustainable for maintainers while giving companies<br>assurances about security, maintenance, and licensing for their dependencies.\n\t</sub>\n</div>\n","readmeFilename":"readme.md","homepage":"https://github.com/sindresorhus/get-stdin#readme","repository":{"type":"git","url":"git+https://github.com/sindresorhus/get-stdin.git"},"author":{"name":"Sindre Sorhus","email":"sindresorhus@gmail.com","url":"https://sindresorhus.com"},"bugs":{"url":"https://github.com/sindresorhus/get-stdin/issues"},"license":"MIT"}
+{
+  "name": "get-stdin",
+  "description": "Get stdin as a string or buffer",
+  "dist-tags": {
+    "latest": "8.0.0"
+  },
+  "versions": {
+    "8.0.0": {
+      "name": "get-stdin",
+      "version": "8.0.0",
+      "description": "Get stdin as a string or buffer",
+      "license": "MIT",
+      "repository": {
+        "type": "git",
+        "url": "git+https://github.com/sindresorhus/get-stdin.git"
+      },
+      "funding": "https://github.com/sponsors/sindresorhus",
+      "author": {
+        "name": "Sindre Sorhus",
+        "email": "sindresorhus@gmail.com",
+        "url": "https://sindresorhus.com"
+      },
+      "engines": {
+        "node": ">=10"
+      },
+      "scripts": {
+        "test": "xo && ava test.js test-buffer.js && echo unicorns | node test-real.js && tsd"
+      },
+      "devDependencies": {
+        "@types/node": "^13.13.5",
+        "ava": "^2.4.0",
+        "delay": "^4.2.0",
+        "tsd": "^0.11.0",
+        "xo": "^0.24.0"
+      },
+      "gitHead": "07288e101242054df3c197abc5559458af6c78ba",
+      "bugs": {
+        "url": "https://github.com/sindresorhus/get-stdin/issues"
+      },
+      "_id": "get-stdin@8.0.0",
+      "_nodeVersion": "10.20.1",
+      "_npmVersion": "6.14.5",
+      "dist": {
+        "integrity": "sha512-sY22aA6xchAzprjyqmSEQv4UbAAzRN0L2dQB0NlN5acTTK9Don6nhoc3eAbUnpZiCANAMfd/+40kVdKfFygohg==",
+        "shasum": "cbad6a73feb75f6eeb22ba9e01f89aa28aa97a53",
+        "tarball": "http://localhost:4260/get-stdin/get-stdin-8.0.0.tgz",
+        "fileCount": 5,
+        "unpackedSize": 4706
+      },
+      "directories": {},
+      "_hasShrinkwrap": false
+    }
+  },
+  "readmeFilename": "readme.md",
+  "homepage": "https://github.com/sindresorhus/get-stdin#readme",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/sindresorhus/get-stdin.git"
+  },
+  "author": {
+    "name": "Sindre Sorhus",
+    "email": "sindresorhus@gmail.com",
+    "url": "https://sindresorhus.com"
+  },
+  "bugs": {
+    "url": "https://github.com/sindresorhus/get-stdin/issues"
+  },
+  "license": "MIT"
+}
