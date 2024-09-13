@@ -32,24 +32,15 @@ delete Object.prototype.__proto__;
   /** @type {ReadonlySet<string>} */
   const unstableDenoProps = new Set([
     "AtomicOperation",
-    "CreateHttpClientOptions",
     "DatagramConn",
-    "HttpClient",
     "Kv",
     "KvListIterator",
     "KvU64",
-    "UnsafeCallback",
-    "UnsafePointer",
-    "UnsafePointerView",
-    "UnsafeFnPointer",
     "UnixConnectOptions",
     "UnixListenOptions",
-    "createHttpClient",
-    "dlopen",
     "listen",
     "listenDatagram",
     "openKv",
-    "umask",
   ]);
   const unstableMsgSuggestion =
     "If not, try changing the 'lib' compiler option to include 'deno.unstable' " +
@@ -126,27 +117,6 @@ delete Object.prototype.__proto__;
     }
   }
 
-  class SpecifierIsCjsCache {
-    /** @type {Set<string>} */
-    #cache = new Set();
-
-    /** @param {[string, ts.Extension]} param */
-    maybeAdd([specifier, ext]) {
-      if (ext === ".cjs" || ext === ".d.cts" || ext === ".cts") {
-        this.#cache.add(specifier);
-      }
-    }
-
-    add(specifier) {
-      this.#cache.add(specifier);
-    }
-
-    /** @param specifier {string} */
-    has(specifier) {
-      return this.#cache.has(specifier);
-    }
-  }
-
   // In the case of the LSP, this will only ever contain the assets.
   /** @type {Map<string, ts.SourceFile>} */
   const sourceFileCache = new Map();
@@ -163,7 +133,8 @@ delete Object.prototype.__proto__;
   /** @type {Map<string, boolean>} */
   const isNodeSourceFileCache = new Map();
 
-  const isCjsCache = new SpecifierIsCjsCache();
+  /** @type {Map<string, boolean>} */
+  const isCjsCache = new Map();
 
   // Maps asset specifiers to the first scope that the asset was loaded into.
   /** @type {Map<string, string | null>} */
@@ -244,7 +215,7 @@ delete Object.prototype.__proto__;
           scriptSnapshot,
           {
             ...getCreateSourceFileOptions(sourceFileOptions),
-            impliedNodeFormat: isCjsCache.has(fileName)
+            impliedNodeFormat: (isCjsCache.get(fileName) ?? false)
               ? ts.ModuleKind.CommonJS
               : ts.ModuleKind.ESNext,
             // in the lsp we want to be able to show documentation
@@ -645,18 +616,13 @@ delete Object.prototype.__proto__;
       if (!fileInfo) {
         return undefined;
       }
-      let { data, scriptKind, version, isCjs } = fileInfo;
+      const { data, scriptKind, version, isCjs } = fileInfo;
       assert(
         data != null,
         `"data" is unexpectedly null for "${specifier}".`,
       );
 
-      // use the cache for non-lsp
-      if (isCjs == null) {
-        isCjs = isCjsCache.has(specifier);
-      } else if (isCjs) {
-        isCjsCache.add(specifier);
-      }
+      isCjsCache.set(specifier, isCjs);
 
       sourceFile = ts.createSourceFile(
         specifier,
@@ -731,11 +697,10 @@ delete Object.prototype.__proto__;
           /** @type {[string, ts.Extension] | undefined} */
           const resolved = ops.op_resolve(
             containingFilePath,
-            isCjsCache.has(containingFilePath),
+            isCjsCache.get(containingFilePath) ?? false,
             [fileReference.fileName],
           )?.[0];
           if (resolved) {
-            isCjsCache.maybeAdd(resolved);
             return {
               primary: true,
               resolvedFileName: resolved[0],
@@ -765,13 +730,12 @@ delete Object.prototype.__proto__;
       /** @type {Array<[string, ts.Extension] | undefined>} */
       const resolved = ops.op_resolve(
         base,
-        isCjsCache.has(base),
+        isCjsCache.get(base) ?? false,
         specifiers,
       );
       if (resolved) {
         const result = resolved.map((item) => {
           if (item) {
-            isCjsCache.maybeAdd(item);
             const [resolvedFileName, extension] = item;
             return {
               resolvedFileName,
@@ -850,9 +814,7 @@ delete Object.prototype.__proto__;
         if (!fileInfo) {
           return undefined;
         }
-        if (fileInfo.isCjs) {
-          isCjsCache.add(specifier);
-        }
+        isCjsCache.set(specifier, fileInfo.isCjs);
         sourceTextCache.set(specifier, fileInfo.data);
         scriptVersionCache.set(specifier, fileInfo.version);
         sourceText = fileInfo.data;

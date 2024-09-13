@@ -1,1 +1,86 @@
-{"_id":"function-bind","_rev":"19-f9e851d54b1bc584b06b6fcd450e232e","name":"function-bind","description":"Implementation of Function.prototype.bind","dist-tags":{"latest":"1.1.1"},"versions":{"0.1.0":{"name":"function-bind","version":"0.1.0","description":"Implementation of function.prototype.bind","keywords":[],"author":{"name":"Raynos","email":"raynos2@gmail.com"},"repository":{"type":"git","url":"git://github.com/Raynos/function-bind.git"},"main":"index","homepage":"https://github.com/Raynos/function-bind","contributors":[{"name":"Raynos"}],"bugs":{"url":"https://github.com/Raynos/function-bind/issues","email":"raynos2@gmail.com"},"dependencies":{},"devDependencies":{"tape":"~1.0.2"},"licenses":[{"type":"MIT","url":"http://github.com/Raynos/function-bind/raw/master/LICENSE"}],"scripts":{"test":"node ./test/index.js","start":"node ./index.js","watch":"nodemon -w ./index.js index.js","travis-test":"istanbul cover ./test/index.js && ((cat coverage/lcov.info | coveralls) || exit 0)","cover":"istanbul cover --report none --print detail ./test/index.js","view-cover":"istanbul report html && google-chrome ./coverage/index.html","test-browser":"testem-browser ./test/browser/index.js","testem":"testem-both -b=./test/browser/index.js"},"testling":{"files":"test/index.js","browsers":["ie/8..latest","firefox/16..latest","firefox/nightly","chrome/22..latest","chrome/canary","opera/12..latest","opera/next","safari/5.1..latest","ipad/6.0..latest","iphone/6.0..latest","android-browser/4.2..latest"]},"_id":"function-bind@0.1.0","dist":{"shasum":"4d356a3bbea3a1226d0dde4749a8a80087cda3e2","tarball":"http://localhost:4260/function-bind/function-bind-0.1.0.tgz","integrity":"sha512-4UP4tXl/2KpwfhzRR9vtQ3Ft5QG4om3n1QDCq5FkqnODDd2ca/qqXFiBdf/RHxjlDcjzpGL1ocTUyXrfXci1NQ==","signatures":[{"keyid":"SHA256:jl3bwswu80PjjokCgh0o2w5c2U4LhQAE57gj9cz1kzA","sig":"MEUCIQDNXonyKvW3aq2Dt5dDse7duLKV9Wq8jSqVk/93L6VErQIgPkMu0ju/ZNrI843cZj06HKkUJVzoM6j8ggH8kOZ75do="}]},"_from":".","_npmVersion":"1.2.25","_npmUser":{"name":"raynos","email":"raynos2@gmail.com"},"maintainers":[{"name":"raynos","email":"raynos2@gmail.com"}]},"1.0.0":{"name":"function-bind","version":"1.0.0","description":"Implementation of function.prototype.bind","keywords":[],"author":{"name":"Raynos","email":"raynos2@gmail.com"},"repository":{"type":"git","url":"git://github.com/Raynos/function-bind.git"},"main":"index","homepage":"https://github.com/Raynos/function-bind","contributors":[{"name":"Raynos"}],"bugs":{"url":"https://github.com/Raynos/function-bind/issues","email":"raynos2@gmail.com"},"dependencies":{},"devDependencies":{"tape":"~2.14.0","covert":"~0.4.0"},"licenses":[{"type":"MIT","url":"http://github.com/Raynos/function-bind/raw/master/LICENSE"}],"scripts":{"test":"node test/index.js","coverage":"covert test/*.js","coverage-quiet":"covert test/*.js --quiet"},"testling":{"files":"test/index.js","browsers":["ie/8..latest","firefox/16..latest","firefox/nightly","chrome/22..latest","chrome/canary","opera/12..latest","opera/next","safari/5.1..latest","ipad/6.0..latest","iphone/6.0..latest","android-browser/4.2..latest"]},"gitHead":"2e324165faafc0211bea7ddc5ec54b97f884e350","_id":"function-bind@1.0.0","_shasum":"00e4e206738ad45ec0017d62a7ef77d9917ab2a2","_from":".","_npmVersion":"1.4.21","_npmUser":{"name":"ljharb","email":"ljharb@gmail.com"},"maintainers":[{"name":"raynos","email":"raynos2@gmail.com"},{"name":"ljharb","email":"ljharb@gmail.com"}],"dist":{"shasum":"00e4e206738ad45ec0017d62a7ef77d9917ab2a2","tarball":"http://localhost:4260/function-bind/function-bind-1.0.0.tgz","integrity":"sha512-ZdHaPFa9xBJ0eBlxf+Ia/NQ7DQfEq26SruzXjpHJ1Et5uLsWnEGoHBD6LSaxshBfNTEGK0zAxCrHdABRcgo3dA==","signatures":[{"keyid":"SHA256:jl3bwswu80PjjokCgh0o2w5c2U4LhQAE57gj9cz1kzA","sig":"MEYCIQD5TMzEEuM2k3O29zQ/UDd4+YD0KJfV32UbGTlV4fL1iAIhAJvp8l4cCyTdxZdMmTEQIWhA18n5q+sdSFuLnrCVXcEP"}]}},"1.0.2":{"name":"function-bind","version":"1.0.2","description":"Implementation of Function.prototype.bind","keywords":["function","bind","shim","es5"],"author":{"name":"Raynos","email":"raynos2@gmail.com"},"repository":{"type":"git","url":"git://github.com/Raynos/function-bind.git"},"main":"index","homepage":"https://github.com/Raynos/function-bind","contributors":[{"name":"Raynos"},{"name":"Jordan Harband","url":"https://github.com/ljharb"}],"bugs":{"url":"https://github.com/Raynos/function-bind/issues","email":"raynos2@gmail.com"},"dependencies":{},"devDependencies":{"tape":"~3.0.0","covert":"~1.0.0","jscs":"~1.6.2"},"licenses":[{"type":"MIT","url":"http://github.com/Raynos/function-bind/raw/master/LICENSE"}],"scripts":{"test":"npm run lint && node test/index.js && npm run coverage-quiet","coverage":"covert test/*.js","coverage-quiet":"covert test/*.js --quiet","lint":"jscs *.js */*.js"},"testling":{"files":"test/index.js","browsers":["ie/8..latest","firefox/16..latest","firefox/nightly","chrome/22..latest","chrome/canary","opera/12..latest","opera/next","safari/5.1..latest","ipad/6.0..latest","iphone/6.0..latest","android-browser/4.2..latest"]},"gitHead":"71784cd83079ccd7f20684e959e1958936a0e3ff","_id":"function-bind@1.0.2","_shasum":"c2873b69c5e6d7cefae47d2555172926c8c2e05e","_from":".","_npmVersion":"1.4.28","_npmUser":{"name":"ljharb","email":"ljharb@gmail.com"},"maintainers":[{"name":"raynos","email":"raynos2@gmail.com"},{"name":"ljharb","email":"ljharb@gmail.com"}],"dist":{"shasum":"c2873b69c5e6d7cefae47d2555172926c8c2e05e","tarball":"http://localhost:4260/function-bind/function-bind-1.0.2.tgz","integrity":"sha512-v2124bSW+kLVmfLEHDpsTeQy+sLEg9gdD/1aVTO7jolX/EmBEq9+atKWYEV3w791Os5USi8yNyuUtiVEXMWiAw==","signatures":[{"keyid":"SHA256:jl3bwswu80PjjokCgh0o2w5c2U4LhQAE57gj9cz1kzA","sig":"MEYCIQC/fb09LXqi/S/XCiGGR80GFQWGnlb//2iDXvrTilfDrAIhAI7izsP+giJBxJFL5uX/9k+Uwe75W26i1/oIUkjTnwEg"}]}},"1.1.0":{"name":"function-bind","version":"1.1.0","description":"Implementation of Function.prototype.bind","keywords":["function","bind","shim","es5"],"author":{"name":"Raynos","email":"raynos2@gmail.com"},"repository":{"type":"git","url":"git://github.com/Raynos/function-bind.git"},"main":"index","homepage":"https://github.com/Raynos/function-bind","contributors":[{"name":"Raynos"},{"name":"Jordan Harband","url":"https://github.com/ljharb"}],"bugs":{"url":"https://github.com/Raynos/function-bind/issues","email":"raynos2@gmail.com"},"dependencies":{},"devDependencies":{"tape":"^4.4.0","covert":"^1.1.0","jscs":"^2.9.0","eslint":"^2.0.0","@ljharb/eslint-config":"^2.1.0"},"licenses":[{"type":"MIT","url":"http://github.com/Raynos/function-bind/raw/master/LICENSE"}],"scripts":{"test":"npm run lint && npm run tests-only && npm run coverage-quiet","tests-only":"node test","coverage":"covert test/*.js","coverage-quiet":"covert test/*.js --quiet","lint":"npm run jscs && npm run eslint","jscs":"jscs *.js */*.js","eslint":"eslint *.js */*.js"},"testling":{"files":"test/index.js","browsers":["ie/8..latest","firefox/16..latest","firefox/nightly","chrome/22..latest","chrome/canary","opera/12..latest","opera/next","safari/5.1..latest","ipad/6.0..latest","iphone/6.0..latest","android-browser/4.2..latest"]},"gitHead":"cb5057f2a0018ac48c812ccee86934a5af30efdb","_id":"function-bind@1.1.0","_shasum":"16176714c801798e4e8f2cf7f7529467bb4a5771","_from":".","_npmVersion":"3.6.0","_nodeVersion":"5.6.0","_npmUser":{"name":"ljharb","email":"ljharb@gmail.com"},"dist":{"shasum":"16176714c801798e4e8f2cf7f7529467bb4a5771","tarball":"http://localhost:4260/function-bind/function-bind-1.1.0.tgz","integrity":"sha512-rdjNZR1BePD6g5bTgalqkSN9eMuHgB2KHOBupLM8f5TblXwiV8nSY31dygkdwLNFn1m2KAkjFsREUuLNcU1rdg==","signatures":[{"keyid":"SHA256:jl3bwswu80PjjokCgh0o2w5c2U4LhQAE57gj9cz1kzA","sig":"MEUCIChAIxsZ/Z+Uf2sKfvL7vSYyvIua0IhoERa8wsDlRDMpAiEAzdZkw5K770jnn0pTnBbjF5h9dkklqX/QJaDMU5+nPHY="}]},"maintainers":[{"name":"raynos","email":"raynos2@gmail.com"},{"name":"ljharb","email":"ljharb@gmail.com"}],"_npmOperationalInternal":{"host":"packages-6-west.internal.npmjs.com","tmp":"tmp/function-bind-1.1.0.tgz_1455438520627_0.822420896962285"}},"1.1.1":{"name":"function-bind","version":"1.1.1","description":"Implementation of Function.prototype.bind","keywords":["function","bind","shim","es5"],"author":{"name":"Raynos","email":"raynos2@gmail.com"},"repository":{"type":"git","url":"git://github.com/Raynos/function-bind.git"},"main":"index","homepage":"https://github.com/Raynos/function-bind","contributors":[{"name":"Raynos"},{"name":"Jordan Harband","url":"https://github.com/ljharb"}],"bugs":{"url":"https://github.com/Raynos/function-bind/issues","email":"raynos2@gmail.com"},"dependencies":{},"devDependencies":{"@ljharb/eslint-config":"^12.2.1","covert":"^1.1.0","eslint":"^4.5.0","jscs":"^3.0.7","tape":"^4.8.0"},"license":"MIT","scripts":{"pretest":"npm run lint","test":"npm run tests-only","posttest":"npm run coverage -- --quiet","tests-only":"node test","coverage":"covert test/*.js","lint":"npm run jscs && npm run eslint","jscs":"jscs *.js */*.js","eslint":"eslint *.js */*.js"},"testling":{"files":"test/index.js","browsers":["ie/8..latest","firefox/16..latest","firefox/nightly","chrome/22..latest","chrome/canary","opera/12..latest","opera/next","safari/5.1..latest","ipad/6.0..latest","iphone/6.0..latest","android-browser/4.2..latest"]},"gitHead":"1213f807066d1cb8d39a0592d5118f4b1f03de4a","_id":"function-bind@1.1.1","_npmVersion":"5.3.0","_nodeVersion":"8.4.0","_npmUser":{"name":"ljharb","email":"ljharb@gmail.com"},"dist":{"integrity":"sha512-yIovAzMX49sF8Yl58fSCWJ5svSLuaibPxXQJFLmBObTuCr0Mf1KiPopGM9NiFjiYBCbfaa2Fh6breQ6ANVTI0A==","shasum":"a56899d3ea3c9bab874bb9773b7c5ede92f4895d","tarball":"http://localhost:4260/function-bind/function-bind-1.1.1.tgz","signatures":[{"keyid":"SHA256:jl3bwswu80PjjokCgh0o2w5c2U4LhQAE57gj9cz1kzA","sig":"MEUCIQDsVxPdBe+3LZpIF8YZMP7chLM+i5RVRwvtzCd5Yx7zigIgHw6sg2uwy+ItJamfc9+b+XTQOi93JrtZ+8F6YNq3Jz8="}]},"maintainers":[{"name":"raynos","email":"raynos2@gmail.com"},{"name":"ljharb","email":"ljharb@gmail.com"}],"_npmOperationalInternal":{"host":"s3://npm-registry-packages","tmp":"tmp/function-bind-1.1.1.tgz_1503906695005_0.1665907499846071"}}},"readme":"# function-bind\n\n<!--\n    [![build status][travis-svg]][travis-url]\n    [![NPM version][npm-badge-svg]][npm-url]\n    [![Coverage Status][5]][6]\n    [![gemnasium Dependency Status][7]][8]\n    [![Dependency status][deps-svg]][deps-url]\n    [![Dev Dependency status][dev-deps-svg]][dev-deps-url]\n-->\n\n<!-- [![browser support][11]][12] -->\n\nImplementation of function.prototype.bind\n\n## Example\n\nI mainly do this for unit tests I run on phantomjs.\nPhantomJS does not have Function.prototype.bind :(\n\n```js\nFunction.prototype.bind = require(\"function-bind\")\n```\n\n## Installation\n\n`npm install function-bind`\n\n## Contributors\n\n - Raynos\n\n## MIT Licenced\n\n  [travis-svg]: https://travis-ci.org/Raynos/function-bind.svg\n  [travis-url]: https://travis-ci.org/Raynos/function-bind\n  [npm-badge-svg]: https://badge.fury.io/js/function-bind.svg\n  [npm-url]: https://npmjs.org/package/function-bind\n  [5]: https://coveralls.io/repos/Raynos/function-bind/badge.png\n  [6]: https://coveralls.io/r/Raynos/function-bind\n  [7]: https://gemnasium.com/Raynos/function-bind.png\n  [8]: https://gemnasium.com/Raynos/function-bind\n  [deps-svg]: https://david-dm.org/Raynos/function-bind.svg\n  [deps-url]: https://david-dm.org/Raynos/function-bind\n  [dev-deps-svg]: https://david-dm.org/Raynos/function-bind/dev-status.svg\n  [dev-deps-url]: https://david-dm.org/Raynos/function-bind#info=devDependencies\n  [11]: https://ci.testling.com/Raynos/function-bind.png\n  [12]: https://ci.testling.com/Raynos/function-bind\n","maintainers":[{"name":"raynos","email":"raynos2@gmail.com"},{"name":"ljharb","email":"ljharb@gmail.com"}],"time":{"modified":"2022-06-18T04:14:28.973Z","created":"2013-06-16T23:25:41.232Z","0.1.0":"2013-06-16T23:25:42.888Z","1.0.0":"2014-08-09T17:02:51.069Z","1.0.1":"2014-10-03T07:38:13.045Z","1.0.2":"2014-10-05T07:23:52.930Z","1.1.0":"2016-02-14T08:28:42.411Z","1.1.1":"2017-08-28T07:51:35.937Z"},"author":{"name":"Raynos","email":"raynos2@gmail.com"},"repository":{"type":"git","url":"git://github.com/Raynos/function-bind.git"},"homepage":"https://github.com/Raynos/function-bind","keywords":["function","bind","shim","es5"],"contributors":[{"name":"Raynos"},{"name":"Jordan Harband","url":"https://github.com/ljharb"}],"bugs":{"url":"https://github.com/Raynos/function-bind/issues","email":"raynos2@gmail.com"},"readmeFilename":"README.md","users":{},"license":"MIT"}
+{
+  "name": "function-bind",
+  "description": "Implementation of Function.prototype.bind",
+  "dist-tags": {
+    "latest": "1.1.1"
+  },
+  "versions": {
+    "1.1.1": {
+      "name": "function-bind",
+      "version": "1.1.1",
+      "description": "Implementation of Function.prototype.bind",
+      "author": {
+        "name": "Raynos",
+        "email": "raynos2@gmail.com"
+      },
+      "repository": {
+        "type": "git",
+        "url": "git://github.com/Raynos/function-bind.git"
+      },
+      "main": "index",
+      "bugs": {
+        "url": "https://github.com/Raynos/function-bind/issues",
+        "email": "raynos2@gmail.com"
+      },
+      "dependencies": {},
+      "devDependencies": {
+        "@ljharb/eslint-config": "^12.2.1",
+        "covert": "^1.1.0",
+        "eslint": "^4.5.0",
+        "jscs": "^3.0.7",
+        "tape": "^4.8.0"
+      },
+      "license": "MIT",
+      "scripts": {
+        "pretest": "npm run lint",
+        "test": "npm run tests-only",
+        "posttest": "npm run coverage -- --quiet",
+        "tests-only": "node test",
+        "coverage": "covert test/*.js",
+        "lint": "npm run jscs && npm run eslint",
+        "jscs": "jscs *.js */*.js",
+        "eslint": "eslint *.js */*.js"
+      },
+      "testling": {
+        "files": "test/index.js",
+        "browsers": [
+          "ie/8..latest",
+          "firefox/16..latest",
+          "firefox/nightly",
+          "chrome/22..latest",
+          "chrome/canary",
+          "opera/12..latest",
+          "opera/next",
+          "safari/5.1..latest",
+          "ipad/6.0..latest",
+          "iphone/6.0..latest",
+          "android-browser/4.2..latest"
+        ]
+      },
+      "gitHead": "1213f807066d1cb8d39a0592d5118f4b1f03de4a",
+      "_id": "function-bind@1.1.1",
+      "_npmVersion": "5.3.0",
+      "_nodeVersion": "8.4.0",
+      "dist": {
+        "integrity": "sha512-yIovAzMX49sF8Yl58fSCWJ5svSLuaibPxXQJFLmBObTuCr0Mf1KiPopGM9NiFjiYBCbfaa2Fh6breQ6ANVTI0A==",
+        "shasum": "a56899d3ea3c9bab874bb9773b7c5ede92f4895d",
+        "tarball": "http://localhost:4260/function-bind/function-bind-1.1.1.tgz"
+      }
+    }
+  },
+  "author": {
+    "name": "Raynos",
+    "email": "raynos2@gmail.com"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git://github.com/Raynos/function-bind.git"
+  },
+  "homepage": "https://github.com/Raynos/function-bind",
+  "bugs": {
+    "url": "https://github.com/Raynos/function-bind/issues",
+    "email": "raynos2@gmail.com"
+  },
+  "readmeFilename": "README.md",
+  "license": "MIT"
+}

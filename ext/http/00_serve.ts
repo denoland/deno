@@ -880,8 +880,8 @@ function registerDeclarativeServer(exports) {
             );
           }
         },
-        handler: (req) => {
-          return exports.fetch(req);
+        handler: (req, connInfo) => {
+          return exports.fetch(req, connInfo);
         },
       });
     };

@@ -1657,47 +1657,6 @@ declare namespace Deno {
     End = 2,
   }
 
-  /**
-   * An abstract interface which when implemented provides an interface to seek
-   * within an open file/resource asynchronously.
-   *
-   * @category I/O */
-  export interface Seeker {
-    /** Seek sets the offset for the next `read()` or `write()` to offset,
-     * interpreted according to `whence`: `Start` means relative to the
-     * start of the file, `Current` means relative to the current offset,
-     * and `End` means relative to the end. Seek resolves to the new offset
-     * relative to the start of the file.
-     *
-     * Seeking to an offset before the start of the file is an error. Seeking to
-     * any positive offset is legal, but the behavior of subsequent I/O
-     * operations on the underlying object is implementation-dependent.
-     *
-     * It resolves with the updated offset.
-     */
-    seek(offset: number | bigint, whence: SeekMode): Promise<number>;
-  }
-
-  /**
-   * An abstract interface which when implemented provides an interface to seek
-   * within an open file/resource synchronously.
-   *
-   * @category I/O */
-  export interface SeekerSync {
-    /** Seek sets the offset for the next `readSync()` or `writeSync()` to
-     * offset, interpreted according to `whence`: `Start` means relative
-     * to the start of the file, `Current` means relative to the current
-     * offset, and `End` means relative to the end.
-     *
-     * Seeking to an offset before the start of the file is an error. Seeking to
-     * any positive offset is legal, but the behavior of subsequent I/O
-     * operations on the underlying object is implementation-dependent.
-     *
-     * It returns the updated offset.
-     */
-    seekSync(offset: number | bigint, whence: SeekMode): number;
-  }
-
   /** Open a file and resolve to an instance of {@linkcode Deno.FsFile}. The
    * file does not need to previously exist if using the `create` or `createNew`
    * open options. The caller may have the resulting file automatically closed
@@ -1802,7 +1761,7 @@ declare namespace Deno {
    *
    * @category File System
    */
-  export class FsFile implements Seeker, SeekerSync, Disposable {
+  export class FsFile implements Disposable {
     /** A {@linkcode ReadableStream} instance representing to the byte contents
      * of the file. This makes it easy to interoperate with other web streams
      * based APIs.
@@ -5116,7 +5075,7 @@ declare namespace Deno {
      *
      * @category HTTP Server
      */
-    fetch: (request: Request) => Response | Promise<Response>;
+    fetch: ServeHandler;
   }
 
   /** Options which can be set when calling {@linkcode Deno.serve}.
@@ -6063,4 +6022,126 @@ declare namespace Deno {
     filename: string | URL,
     symbols: S,
   ): DynamicLibrary<S>;
+
+  /**
+   * A custom `HttpClient` for use with {@linkcode fetch} function. This is
+   * designed to allow custom certificates or proxies to be used with `fetch()`.
+   *
+   * @example ```ts
+   * const caCert = await Deno.readTextFile("./ca.pem");
+   * const client = Deno.createHttpClient({ caCerts: [ caCert ] });
+   * const req = await fetch("https://myserver.com", { client });
+   * ```
+   *
+   * @category Fetch
+   */
+  export interface HttpClient extends Disposable {
+    /** Close the HTTP client. */
+    close(): void;
+  }
+
+  /**
+   * The options used when creating a {@linkcode Deno.HttpClient}.
+   *
+   * @category Fetch
+   */
+  export interface CreateHttpClientOptions {
+    /** A list of root certificates that will be used in addition to the
+     * default root certificates to verify the peer's certificate.
+     *
+     * Must be in PEM format. */
+    caCerts?: string[];
+    /** A HTTP proxy to use for new connections. */
+    proxy?: Proxy;
+    /** Sets the maximum number of idle connections per host allowed in the pool. */
+    poolMaxIdlePerHost?: number;
+    /** Set an optional timeout for idle sockets being kept-alive.
+     * Set to false to disable the timeout. */
+    poolIdleTimeout?: number | false;
+    /**
+     * Whether HTTP/1.1 is allowed or not.
+     *
+     * @default {true}
+     */
+    http1?: boolean;
+    /** Whether HTTP/2 is allowed or not.
+     *
+     * @default {true}
+     */
+    http2?: boolean;
+    /** Whether setting the host header is allowed or not.
+     *
+     * @default {false}
+     */
+    allowHost?: boolean;
+  }
+
+  /**
+   * The definition of a proxy when specifying
+   * {@linkcode Deno.CreateHttpClientOptions}.
+   *
+   * @category Fetch
+   */
+  export interface Proxy {
+    /** The string URL of the proxy server to use. */
+    url: string;
+    /** The basic auth credentials to be used against the proxy server. */
+    basicAuth?: BasicAuth;
+  }
+
+  /**
+   * Basic authentication credentials to be used with a {@linkcode Deno.Proxy}
+   * server when specifying {@linkcode Deno.CreateHttpClientOptions}.
+   *
+   * @category Fetch
+   */
+  export interface BasicAuth {
+    /** The username to be used against the proxy server. */
+    username: string;
+    /** The password to be used against the proxy server. */
+    password: string;
+  }
+
+  /** Create a custom HttpClient to use with {@linkcode fetch}. This is an
+   * extension of the web platform Fetch API which allows Deno to use custom
+   * TLS certificates and connect via a proxy while using `fetch()`.
+   *
+   * @example ```ts
+   * const caCert = await Deno.readTextFile("./ca.pem");
+   * const client = Deno.createHttpClient({ caCerts: [ caCert ] });
+   * const response = await fetch("https://myserver.com", { client });
+   * ```
+   *
+   * @example ```ts
+   * const client = Deno.createHttpClient({
+   *   proxy: { url: "http://myproxy.com:8080" }
+   * });
+   * const response = await fetch("https://myserver.com", { client });
+   * ```
+   *
+   * @category Fetch
+   */
+  export function createHttpClient(
+    options: CreateHttpClientOptions,
+  ): HttpClient;
+
+  /**
+   * Create a custom HttpClient to use with {@linkcode fetch}. This is an
+   * extension of the web platform Fetch API which allows Deno to use custom
+   * TLS certificates and connect via a proxy while using `fetch()`.
+   *
+   * @example ```ts
+   * const caCert = await Deno.readTextFile("./ca.pem");
+   * // Load a client key and certificate that we'll use to connect
+   * const key = await Deno.readTextFile("./key.key");
+   * const cert = await Deno.readTextFile("./cert.crt");
+   * const client = Deno.createHttpClient({ caCerts: [ caCert ], key, cert });
+   * const response = await fetch("https://myserver.com", { client });
+   * ```
+   *
+   * @category Fetch
+   */
+  export function createHttpClient(
+    options: CreateHttpClientOptions & TlsCertifiedKeyPem,
+  ): HttpClient;
 }

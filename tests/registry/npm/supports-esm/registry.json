@@ -1,1 +1,64 @@
-{"_id":"supports-esm","_rev":"1-c2e0f7841e94f7fd5efa579ca9ab52c9","name":"supports-esm","dist-tags":{"latest":"1.0.0"},"versions":{"1.0.0":{"name":"supports-esm","version":"1.0.0","description":"Detect at runtime if Node.js supports ECMAScript modules","main":"index.js","exports":"./index.js","dependencies":{"has-package-exports":"^1.1.0"},"devDependencies":{"semver":"^7.3.2"},"scripts":{"test":"node test.js"},"repository":{"type":"git","url":"git+https://github.com/targos/supports-esm.git"},"keywords":["ESM","support","ES Modules"],"author":{"name":"Michaël Zasso","email":"targos@protonmail.com"},"license":"MIT","bugs":{"url":"https://github.com/targos/supports-esm/issues"},"homepage":"https://github.com/targos/supports-esm#readme","gitHead":"433e6107ae208a642fdf27dc0862d79a7c8b9145","_id":"supports-esm@1.0.0","_nodeVersion":"14.2.0","_npmVersion":"6.14.4","dist":{"integrity":"sha512-96Am8CDqUaC0I2+C/swJ0yEvM8ZnGn4unoers/LSdE4umhX7mELzqyLzx3HnZAluq5PXIsGMKqa7NkqaeHMPcg==","shasum":"7cc567747d0745e2b77b331c9b9cae13cf4dc60e","tarball":"http://localhost:4260/supports-esm/supports-esm-1.0.0.tgz","fileCount":4,"unpackedSize":3489,"npm-signature":"-----BEGIN PGP SIGNATURE-----\r\nVersion: OpenPGP.js v3.0.4\r\nComment: https://openpgpjs.org\r\n\r\nwsFcBAEBCAAQBQJev7mjCRA9TVsSAnZWagAANe8P/0TWu/Gj/Nq6fNoK/ZSd\nAthgVBhz9pIPiLe0W3ACsb7nPUoJYykAA10N+Bzscb2S6dKLCuByxUtdiv+M\nOk10z2q+E/FRhOTPsXBRSvQdEBhKD1A1/diCGQTo9MGGchWOtwi+vlNDQUf5\nK6iNyNxjFenVj+t56A97LSQmtHq1I1bbzBa4zBO11mpDDVsTGCDnnSO0TFDO\npBBYmuMEVaHz/Yt7eIoBCQR5+DvIwgpbDrGrV0L25kT8VmZRxqRXOBFJNO2C\nYE2VlE7SZhxRwkRDyonJ3RZJzFCw9NSJTUJwXk8zRNdpv+6XB+YLj0OBgQ28\nGYHqnsJJ5kETM+y4oONU4aKWi+hn6/EteVAAaBkYE1E5NSJoOh5OEE90PytX\nY1vVWn7Yqip+fbw0QrSpgSXj0rfui26MRvCTL1wBZ7Y3phkBB/c2rLmQa7RO\nO+hbRkjk9cyzBzNXe4r2Zv2eKwn6TZNIBPT/EcYaHPnuKn4X4DnPgEB+bP2G\nqWa1C5lQ9VVt3xYYJE961uec+hAlKlllkKu4587rqvZ+OGFqi9AnIXagCBU4\n7LmAsbd/RRhlZcgTAv29qFwPf/nEgjHkcKvyJBLpmq+G9c2o3LM+oVwbZU8D\n2iQ2oyJ2ui8NavomlNxqZkoaocuKER7qgUEJWBB3aTUREhSpFZ1EK3Flm546\netuD\r\n=evMx\r\n-----END PGP SIGNATURE-----\r\n","signatures":[{"keyid":"SHA256:jl3bwswu80PjjokCgh0o2w5c2U4LhQAE57gj9cz1kzA","sig":"MEUCIQDDiId5jvQO53FtGea7llGowJaurzOK+xWkjyCE0wA6hgIgd1KdPWDd/ofGUvBGP1Hqqdr5365vjkYyVNxnOUDbWCo="}]},"maintainers":[{"name":"targos","email":"targos+npm@protonmail.com"}],"_npmUser":{"name":"targos","email":"targos+npm@protonmail.com"},"directories":{},"_npmOperationalInternal":{"host":"s3://npm-registry-packages","tmp":"tmp/supports-esm_1.0.0_1589623203010_0.7300584811356978"},"_hasShrinkwrap":false}},"time":{"created":"2020-05-16T10:00:03.010Z","1.0.0":"2020-05-16T10:00:03.202Z","modified":"2022-05-19T01:59:46.323Z"},"maintainers":[{"name":"targos","email":"targos+npm@protonmail.com"}],"description":"Detect at runtime if Node.js supports ECMAScript modules","homepage":"https://github.com/targos/supports-esm#readme","keywords":["ESM","support","ES Modules"],"repository":{"type":"git","url":"git+https://github.com/targos/supports-esm.git"},"author":{"name":"Michaël Zasso","email":"targos@protonmail.com"},"bugs":{"url":"https://github.com/targos/supports-esm/issues"},"license":"MIT","readme":"# supports-esm\n\n[![NPM version][npm-image]][npm-url]\n[![build status][ci-image]][ci-url]\n[![npm download][download-image]][download-url]\n[![License][license-image]][license-url]\n\nDetect at runtime if Node.js supports ECMAScript modules.\n\n## Installation\n\n`$ npm install supports-esm`\n\n## Usage\n\nThis library exports `true` if the current Node.js version is considered to have\nreasonable support for ESM features, `false` otherwise.\n\nVersion 1.x returns `true` if the following features are all present:\n\n- Dynamic imports\n- \"exports\" field in `package.json`, including conditional exports\n- Package self-reference\n\nOne notable use case is to conditionally execute an ESM or CommonJS entrypoint\nfrom a \"bin\" script, such as a command-line interface authored in ESM and\ntranspiled to CommonJS for backwards compatibility:\n\n```js\n'use strict';\n\nconst supportsESM = require('supports-esm');\n\nif (supportsESM) {\n  import('../src/cli.js').catch((error) => {\n    console.error(error);\n    process.exit(1);\n  });\n} else {\n  require('../build-cjs/cli.js');\n}\n```\n\nThis snippet works in all Node.js versions >= 10.0.0.\n\n[npm-image]: https://img.shields.io/npm/v/supports-esm.svg\n[npm-url]: https://npmjs.org/package/supports-esm\n[ci-image]: https://github.com/targos/supports-esm/workflows/Test/badge.svg?branch=master\n[ci-url]: https://github.com/targos/supports-esm/actions?query=workflow%3ATest\n[download-image]: https://img.shields.io/npm/dm/supports-esm.svg\n[download-url]: https://npmjs.org/package/supports-esm\n[license-image]: https://img.shields.io/npm/l/supports-esm.svg\n[license-url]: LICENSE\n","readmeFilename":"README.md"}
+{
+  "name": "supports-esm",
+  "dist-tags": {
+    "latest": "1.0.0"
+  },
+  "versions": {
+    "1.0.0": {
+      "name": "supports-esm",
+      "version": "1.0.0",
+      "description": "Detect at runtime if Node.js supports ECMAScript modules",
+      "main": "index.js",
+      "exports": "./index.js",
+      "dependencies": {
+        "has-package-exports": "^1.1.0"
+      },
+      "devDependencies": {
+        "semver": "^7.3.2"
+      },
+      "scripts": {
+        "test": "node test.js"
+      },
+      "repository": {
+        "type": "git",
+        "url": "git+https://github.com/targos/supports-esm.git"
+      },
+      "author": {
+        "name": "Michaël Zasso",
+        "email": "targos@protonmail.com"
+      },
+      "license": "MIT",
+      "bugs": {
+        "url": "https://github.com/targos/supports-esm/issues"
+      },
+      "gitHead": "433e6107ae208a642fdf27dc0862d79a7c8b9145",
+      "_id": "supports-esm@1.0.0",
+      "_nodeVersion": "14.2.0",
+      "_npmVersion": "6.14.4",
+      "dist": {
+        "integrity": "sha512-96Am8CDqUaC0I2+C/swJ0yEvM8ZnGn4unoers/LSdE4umhX7mELzqyLzx3HnZAluq5PXIsGMKqa7NkqaeHMPcg==",
+        "shasum": "7cc567747d0745e2b77b331c9b9cae13cf4dc60e",
+        "tarball": "http://localhost:4260/supports-esm/supports-esm-1.0.0.tgz",
+        "fileCount": 4,
+        "unpackedSize": 3489
+      },
+      "directories": {},
+      "_hasShrinkwrap": false
+    }
+  },
+  "description": "Detect at runtime if Node.js supports ECMAScript modules",
+  "homepage": "https://github.com/targos/supports-esm#readme",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/targos/supports-esm.git"
+  },
+  "author": {
+    "name": "Michaël Zasso",
+    "email": "targos@protonmail.com"
+  },
+  "bugs": {
+    "url": "https://github.com/targos/supports-esm/issues"
+  },
+  "license": "MIT",
+  "readmeFilename": "README.md"
+}

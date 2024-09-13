@@ -5277,6 +5277,7 @@ var require_stream = __commonJS({
     Stream._uint8ArrayToBuffer = function _uint8ArrayToBuffer(chunk) {
       return Buffer2.from(chunk.buffer, chunk.byteOffset, chunk.byteLength);
     };
+    Stream._isArrayBufferView = isArrayBufferView;
   },
 });
 /* End esm.sh bundle */
@@ -5311,11 +5312,15 @@ export const Duplex = CustomStream.Duplex;
 export const PassThrough = CustomStream.PassThrough;
 export const Stream = CustomStream.Stream;
 export const Transform = CustomStream.Transform;
+export const _isArrayBufferView = isArrayBufferView;
 export const _isUint8Array = CustomStream._isUint8Array;
 export const _uint8ArrayToBuffer = CustomStream._uint8ArrayToBuffer;
 export const addAbortSignal = CustomStream.addAbortSignal;
 export const pipeline = CustomStream.pipeline;
-export { finished };
+export const isDisturbed = CustomStream.isDisturbed;
+export const isErrored = CustomStream.isErrored;
+export const compose = CustomStream.compose;
+export { destroy, finished, isDestroyed, isReadable, isWritable };
 
 function isWritableStream(object) {
   return object instanceof WritableStream;
