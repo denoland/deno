@@ -8726,7 +8726,3 @@ dependencies = [
  "cc",
  "pkg-config",
 ]
-
-[[patch.unused]]
-name = "deno_config"
-version = "0.34.1"
