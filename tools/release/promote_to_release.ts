@@ -20,7 +20,10 @@ const DENO_BINARIES = [
   "denort",
 ];
 
-const CHANNEL = "rc";
+const CHANNEL = Deno.args[0];
+if (CHANNEL !== "rc" && CHANNEL !== "lts") {
+  throw new Error(`Invalid channel: ${CHANNEL}`);
+}
 
 const CANARY_URL = "https://dl.deno.land";
 
@@ -40,12 +43,12 @@ function getUnzippedFilename(binary: string, target: string) {
   }
 }
 
-function getRcBinaryName(binary: string, target: string): string {
+function getBinaryName(binary: string, target: string): string {
   let ext = "";
   if (target.includes("windows")) {
     ext = ".exe";
   }
-  return `${binary}-${target}-rc${ext}`;
+  return `${binary}-${target}-${CHANNEL}${ext}`;
 }
 
 function getArchiveName(binary: string, target: string): string {
@@ -92,8 +95,8 @@ async function unzipArchive(archiveName: string, unzippedName: string) {
   }
 }
 
-async function createArchive(rcBinaryName: string, archiveName: string) {
-  const output = await $`zip -r ./${archiveName} ./${rcBinaryName}`;
+async function createArchive(binaryName: string, archiveName: string) {
+  const output = await $`zip -r ./${archiveName} ./${binaryName}`;
 
   if (output.code !== 0) {
     $.logError(
@@ -106,13 +109,13 @@ async function createArchive(rcBinaryName: string, archiveName: string) {
 async function runPatchver(
   binary: string,
   target: string,
-  rcBinaryName: string,
+  binaryName: string,
 ) {
   const input = await Deno.readFile(binary);
   const output = patchver(input, CHANNEL);
 
   try {
-    await Deno.writeFile(rcBinaryName, output);
+    await Deno.writeFile(binaryName, output);
   } catch (e) {
     $.logError(
       `Failed to promote to RC ${binary} (${target}), error:`,
@@ -124,19 +127,19 @@ async function runPatchver(
 
 async function runRcodesign(
   target: string,
-  rcBinaryName: string,
+  binaryName: string,
   commitHash: string,
 ) {
-  if (!target.includes("apple") || rcBinaryName.includes("denort")) {
+  if (!target.includes("apple") || binaryName.includes("denort")) {
     return;
   }
-  $.logStep(`Codesign ${rcBinaryName}`);
+  $.logStep(`Codesign ${binaryName}`);
   const tempFile = $.path("temp.p12");
   let output;
   try {
     await $`echo $APPLE_CODESIGN_KEY | base64 -d`.stdout(tempFile);
     output =
-      await $`rcodesign sign ./${rcBinaryName} --binary-identifier=deno-${commitHash} --code-signature-flags=runtime --code-signature-flags=runtime --p12-password="$APPLE_CODESIGN_PASSWORD" --p12-file=${tempFile} --entitlements-xml-file=cli/entitlements.plist`;
+      await $`rcodesign sign ./${binaryName} --binary-identifier=deno-${commitHash} --code-signature-flags=runtime --code-signature-flags=runtime --p12-password="$APPLE_CODESIGN_PASSWORD" --p12-file=${tempFile} --entitlements-xml-file=cli/entitlements.plist`;
   } finally {
     try {
       tempFile.removeSync();
@@ -146,7 +149,7 @@ async function runRcodesign(
   }
   if (output.code !== 0) {
     $.logError(
-      `Failed to codesign ${rcBinaryName} (error code ${output.code})`,
+      `Failed to codesign ${binaryName} (error code ${output.code})`,
     );
     Deno.exit(1);
   }
@@ -159,17 +162,17 @@ async function promoteBinaryToRc(
   commitHash: string,
 ) {
   const unzippedName = getUnzippedFilename(binary, target);
-  const rcBinaryName = getRcBinaryName(binary, target);
+  const binaryName = getBinaryName(binary, target);
   const archiveName = getArchiveName(binary, target);
   await remove(unzippedName);
-  await remove(rcBinaryName);
+  await remove(binaryName);
   $.logStep(
     "Unzip",
     archiveName,
     gray("binary"),
     binary,
-    gray("rcBinaryName"),
-    rcBinaryName,
+    gray("binaryName"),
+    binaryName,
   );
 
   await unzipArchive(archiveName, unzippedName);
@@ -180,12 +183,12 @@ async function promoteBinaryToRc(
     unzippedName,
     `(${target})`,
     gray("output to"),
-    rcBinaryName,
+    binaryName,
   );
-  await runPatchver(unzippedName, target, rcBinaryName);
+  await runPatchver(unzippedName, target, binaryName);
   // Remove the unpatched binary and rename patched one.
   await remove(unzippedName);
-  await Deno.rename(rcBinaryName, unzippedName);
+  await Deno.rename(binaryName, unzippedName);
   await runRcodesign(target, unzippedName, commitHash);
   // Set executable permission
   if (!target.includes("windows")) {
@@ -209,7 +212,7 @@ async function promoteBinariesToRc(commitHash: string) {
         "Promote",
         binaryName,
         target,
-        "to RC...",
+        `to ${CHANNEL}...`,
       );
       await promoteBinaryToRc(binaryName, target, commitHash);
       $.logLight(
@@ -217,7 +220,7 @@ async function promoteBinariesToRc(commitHash: string) {
         "Promoted",
         binaryName,
         target,
-        "to RC!",
+        `to ${CHANNEL}!`,
       );
     }
   }
@@ -229,18 +232,21 @@ async function dumpRcVersion() {
   const output = await $`./deno -V`.stdout("piped");
   const denoVersion = output.stdout.slice(5).split("+")[0];
   $.logStep("Computed version", denoVersion);
-  await Deno.writeTextFile("./release-rc-latest.txt", `v${denoVersion}`);
+  await Deno.writeTextFile(
+    `./release-${CHANNEL}-latest.txt`,
+    `v${denoVersion}`,
+  );
 }
 
 async function main() {
-  const commitHash = Deno.args[0];
+  const commitHash = Deno.args[1];
   if (!commitHash) {
     throw new Error("Commit hash needs to be provided as an argument");
   }
   $.logStep("Download canary binaries...");
   await fetchLatestCanaryBinaries(commitHash);
   console.log("All canary binaries ready");
-  $.logStep("Promote canary binaries to RC...");
+  $.logStep(`Promote canary binaries to ${CHANNEL}...`);
   await promoteBinariesToRc(commitHash);
 
   // Finally dump the version name to a `release.txt` file for uploading to GCP

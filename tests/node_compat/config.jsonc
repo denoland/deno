@@ -8,6 +8,7 @@
       "elipses.txt",
       "empty.txt",
       "exit.js",
+      "parent-process-nonpersistent.js",
       "print-chars.js",
       "x.txt"
     ],
@@ -25,6 +26,7 @@
       "test-buffer-from.js",
       "test-buffer-includes.js",
       "test-buffer-indexof.js",
+      "test-child-process-detached.js",
       "test-child-process-exec-abortcontroller-promisified.js",
       "test-child-process-exec-encoding.js",
       "test-child-process-exec-kill-throws.js",
@@ -135,6 +137,7 @@
     "fixtures": [
       "a.js",
       "child_process_should_emit_error.js",
+      "child-process-persistent.js",
       "child-process-spawn-node.js",
       "echo.js",
       "elipses.txt",
@@ -766,6 +769,7 @@
   },
   "windowsIgnore": {
     "parallel": [
+      "test-child-process-detached.js",
       "test-child-process-exec-abortcontroller-promisified.js",
       "test-console-log-throw-primitive.js",
       "test-console-no-swallow-stack-overflow.js",

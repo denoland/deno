@@ -36,17 +36,11 @@ delete Object.prototype.__proto__;
     "Kv",
     "KvListIterator",
     "KvU64",
-    "UnsafeCallback",
-    "UnsafePointer",
-    "UnsafePointerView",
-    "UnsafeFnPointer",
     "UnixConnectOptions",
     "UnixListenOptions",
-    "dlopen",
     "listen",
     "listenDatagram",
     "openKv",
-    "umask",
   ]);
   const unstableMsgSuggestion =
     "If not, try changing the 'lib' compiler option to include 'deno.unstable' " +

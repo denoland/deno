@@ -26,7 +26,6 @@ use rand::thread_rng;
 use rand::Rng;
 use serde::Serialize;
 
-use crate::check_unstable;
 use crate::interface::AccessCheckFn;
 use crate::interface::FileSystemRc;
 use crate::interface::FsDirEntry;
@@ -121,7 +120,6 @@ pub fn op_fs_umask(
 ) -> Result<u32, AnyError>
 where
 {
-  check_unstable(state, "Deno.umask");
   state.borrow::<FileSystemRc>().umask(mask).context("umask")
 }
 
