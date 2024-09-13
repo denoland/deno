@@ -87,7 +87,9 @@ where
 
   // Spawn a task to poll the connection, driving the HTTP state
   let _handle = tokio::task::spawn(async move {
+    eprintln!("connection started");
     conn.await?;
+    eprintln!("connection completed");
     Ok::<_, AnyError>(())
   });
 
@@ -154,7 +156,12 @@ where
     request.headers_mut().insert(CONTENT_LENGTH, len.into());
   }
 
+  // eprintln!("rs: sending request: {request:?}");
+  // let req_fut = sender.send_request(request);
+  // let res = tokio::time::timeout(Duration::from_secs(10), req_fut).await??;
   let res = sender.send_request(request).await?;
+  // let res = tokio::time::timeout(Duration::from_secs(10), req_fut).await??;
+  // eprintln!("rs: received response");
 
   let status = res.status();
   let mut res_headers = Vec::new();
@@ -178,6 +185,7 @@ where
   let body = body.boxed();
 
   let res = http::Response::from_parts(parts, body);
+  println!("res: {res:?}");
 
   let response_rid = state
     .borrow_mut()

@@ -108,6 +108,8 @@ export function OutgoingMessage() {
   this._onPendingData = nop;
 
   this._bodyWriter = null;
+
+  this._listenerSet = false;
 }
 
 Object.setPrototypeOf(OutgoingMessage.prototype, Stream.prototype);
@@ -507,12 +509,14 @@ Object.defineProperties(
     /** Right after socket is ready, we need to writeHeader() to setup the request and
      *  client. This is invoked by onSocket(). */
     _flushHeaders() {
-      console.log("flushHeaders");
+      // console.log("flushHeaders");
       if (this.socket) {
         if (!this._headerSent && this._header !== null) {
           this._writeHeader();
           this._headerSent = true;
         }
+      } else {
+        // console.log("socket not found");
       }
     },
 
@@ -520,11 +524,15 @@ Object.defineProperties(
     _send(data: any, encoding?: string | null, callback?: () => void) {
       console.log("writing data:", data, "socket:", this.socket);
       if (this.socket) {
+        console.log("im never invoked");
         if (!this._headerSent && this._header !== null) {
           this._writeHeader();
           this._headerSent = true;
         }
-        return this._writeRaw(data, encoding, callback);
+
+        if (this._headerSent) {
+          return this._writeRaw(data, encoding, callback);
+        }
       } else {
         console.log("pushing data to outputData");
         this.outputData.push({ data, encoding, callback });
@@ -533,6 +541,39 @@ Object.defineProperties(
 
     _writeHeader() {
       throw new ERR_METHOD_NOT_IMPLEMENTED("_writeHeader()");
+    },
+
+    async _flushBuffer() {
+      const outputLength = this.outputData.length;
+      if (outputLength <= 0 || !this.socket || !this._bodyWriter) {
+        return undefined;
+      }
+
+      const outputData = this.outputData;
+      let ret;
+      // Retain for(;;) loop for performance reasons
+      // Refs: https://github.com/nodejs/node/pull/30958
+      for (let i = 0; i < outputLength; i++) {
+        let { data, encoding, callback } = outputData[i];
+        if (typeof data === "string") {
+          data = Buffer.from(data, encoding);
+        }
+        if (data instanceof Buffer) {
+          data = new Uint8Array(data.buffer, data.byteOffset, data.byteLength);
+        }
+        ret = await this._bodyWriter.write(data).then(() => {
+          callback?.();
+          this.emit("drain");
+        }).catch((e) => {
+          this._requestSendError = e;
+        });
+        console.log("flushing data:", data, ret);
+      }
+
+      this.outputData = [];
+      this.outputSize = 0;
+
+      return ret;
     },
 
     _writeRaw(

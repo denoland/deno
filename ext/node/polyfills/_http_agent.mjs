@@ -326,6 +326,7 @@ Agent.prototype.createSocket = function createSocket(req, options, cb) {
   });
 
   const newSocket = this.createConnection(options, oncreate);
+  console.log("agent: creating a connection", newSocket._handle.rid);
   if (newSocket) {
     oncreate(null, newSocket);
   }

@@ -386,7 +386,7 @@ class ClientRequest extends OutgoingMessage {
     }
 
     if (this.agent) {
-      // console.log("use this.agent");
+      console.log("use this.agent");
       this.agent.addRequest(this, optsWithoutSignal);
     } else {
       // No agent, default to Connection:close.
@@ -421,7 +421,7 @@ class ClientRequest extends OutgoingMessage {
   }
 
   _writeHeader() {
-    console.trace("_writeHeader");
+    // console.trace("_writeHeader invoked");
     const url = this._createUrlStrFromOptions();
 
     const headers = [];
@@ -460,6 +460,7 @@ class ClientRequest extends OutgoingMessage {
 
     (async () => {
       try {
+        // console.trace("js: sending request", this.socket.rid);
         // console.log("this.socket", this.socket);
         const res = await op_node_http_request_with_conn(
           this.method,
@@ -468,6 +469,7 @@ class ClientRequest extends OutgoingMessage {
           this._bodyWriteRid,
           this.socket.rid,
         );
+        console.log({ res });
         // if (this._req.cancelHandleRid !== null) {
         //   core.tryClose(this._req.cancelHandleRid);
         // }
@@ -546,6 +548,7 @@ class ClientRequest extends OutgoingMessage {
           this.emit("close");
         } else {
           {
+            console.log("_bodyRid set", res.responseRid);
             incoming._bodyRid = res.responseRid;
           }
           this.emit("response", incoming);
@@ -597,13 +600,15 @@ class ClientRequest extends OutgoingMessage {
   // TODO(bartlomieju): handle error
   onSocket(socket, _err) {
     nextTick(() => {
+      socket.on("connect", () => {
+        // Flush the internal buffers once socket is ready.
+        // Note: the order is important, as the headers flush
+        // sets up the request.
+        this._flushHeaders();
+        this._flushBody();
+      });
       this.socket = socket;
       this.emit("socket", socket);
-      // Flush the internal buffers once socket is assigned.
-      // Note: the order is important, as the headers flush
-      // sets up the request.
-      this._flushHeaders();
-      this._flushBody();
     });
   }
 
@@ -940,6 +945,7 @@ export class IncomingMessageForClient extends NodeReadable {
     const buf = new Uint8Array(16 * 1024);
 
     core.read(this._bodyRid, buf).then((bytesRead) => {
+      console.log(`bytes read from ${this._bodyRid}:`, bytesRead);
       if (bytesRead === 0) {
         this.push(null);
       } else {
