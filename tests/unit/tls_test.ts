@@ -6,7 +6,6 @@ import {
   assertRejects,
   assertStrictEquals,
   assertThrows,
-  DENO_FUTURE,
 } from "./test_util.ts";
 import { BufReader, BufWriter } from "@std/io";
 import { readAll } from "@std/io/read-all";
@@ -1042,7 +1041,7 @@ Deno.test(
 );
 
 Deno.test(
-  { permissions: { read: true, net: true }, ignore: DENO_FUTURE },
+  { permissions: { read: true, net: true } },
   async function connectTLSBadCertKey(): Promise<void> {
     await assertRejects(async () => {
       await Deno.connectTls({
@@ -1074,7 +1073,7 @@ Deno.test(
 );
 
 Deno.test(
-  { permissions: { read: true, net: true }, ignore: DENO_FUTURE },
+  { permissions: { read: true, net: true } },
   async function connectTLSNotKey(): Promise<void> {
     await assertRejects(async () => {
       await Deno.connectTls({

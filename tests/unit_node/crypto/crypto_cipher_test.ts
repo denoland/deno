@@ -378,3 +378,41 @@ Deno.test({
     assertEquals(info2.ivLength, 16);
   },
 });
+
+Deno.test({
+  name:
+    "createDecipheriv - handling of the last chunk when auto padding enabled/disabled",
+  fn() {
+    const algorithm = "aes-256-cbc";
+    const key = Buffer.from(
+      "84dcdd964968734fdf0de4a2cba471c2e0a753930b841c014b1e77f456b5797b",
+      "hex",
+    );
+    const val = Buffer.from(
+      "feabbdf66e2c71cc780d0cd2765dcce283e8ae7e58fcc1a9acafc678581e0e06",
+      "hex",
+    );
+    const iv = Buffer.alloc(16, 0);
+
+    {
+      const decipher = crypto.createDecipheriv(algorithm, key, iv);
+      decipher.setAutoPadding(false);
+      assertEquals(
+        decipher.update(val, undefined, "hex"),
+        "ed2c908f26571bf8e50d60b77fb9c25f95b933b59111543c6fac41ad6b47e681",
+      );
+      assertEquals(decipher.final("hex"), "");
+    }
+
+    {
+      const decipher = crypto.createDecipheriv(algorithm, key, iv);
+      assertEquals(
+        decipher.update(val, undefined, "hex"),
+        "ed2c908f26571bf8e50d60b77fb9c25f",
+      );
+      assertThrows(() => {
+        decipher.final();
+      });
+    }
+  },
+});

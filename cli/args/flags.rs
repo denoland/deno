@@ -1658,7 +1658,7 @@ Evaluate the given files, run all benches declared with 'Deno.bench()' and repor
 If you specify a directory instead of a file, the path is expanded to all contained files matching the glob <c>{*_,*.,}bench.{js,mjs,ts,mts,jsx,tsx}</>:
   <p(245)>deno bench src/</>
 
-<y>Read more:</> <c>https://docs.deno.com/go/cmd/bench</>"),
+<y>Read more:</> <c>https://docs.deno.com/go/bench</>"),
     UnstableArgsConfig::ResolutionAndRuntime,
   )
   .defer(|cmd| {
@@ -1723,7 +1723,7 @@ Download and compile a module with all of its static dependencies and save them 
 
 Future runs of this module will trigger no downloads or compilation unless --reload is specified
 
-<y>Read more:</> <c>https://docs.deno.com/go/cmd/cache</>"),
+<y>Read more:</> <c>https://docs.deno.com/go/cache</>"),
     UnstableArgsConfig::ResolutionOnly,
   )
   .defer(|cmd| {
@@ -1756,7 +1756,7 @@ fn check_subcommand() -> Command {
 
 Unless --reload is specified, this command will not re-download already cached dependencies
 
-<y>Read more:</> <c>https://docs.deno.com/go/cmd/check</>"),
+<y>Read more:</> <c>https://docs.deno.com/go/check</>"),
           UnstableArgsConfig::ResolutionAndRuntime
     )
     .defer(|cmd| {
@@ -1800,7 +1800,7 @@ Any flags specified which affect runtime behavior will be applied to the resulti
 Cross-compiling to different target architectures is supported using the <c>--target</> flag.
 On the first invocation with deno will download the proper binary and cache it in <c>$DENO_DIR</>.
 
-<y>Read more:</> <c>https://docs.deno.com/go/cmd/compile</>
+<y>Read more:</> <c>https://docs.deno.com/go/compile</>
 "),
     UnstableArgsConfig::ResolutionAndRuntime,
   )
@@ -1907,7 +1907,7 @@ Write a report using the lcov format:
 Generate html reports from lcov:
   <p(245)>genhtml -o html_cov cov.lcov</>
 
-<y>Read more:</> <c>https://docs.deno.com/go/cmd/coverage</>"),
+<y>Read more:</> <c>https://docs.deno.com/go/coverage</>"),
     UnstableArgsConfig::None,
   )
   .defer(|cmd| {
@@ -2000,7 +2000,7 @@ Show documentation for runtime built-ins:
     <p(245)>deno doc</>
     <p(245)>deno doc --filter Deno.Listener</>
 
-<y>Read more:</> <c>https://docs.deno.com/go/cmd/doc</>"),
+<y>Read more:</> <c>https://docs.deno.com/go/doc</>"),
           UnstableArgsConfig::ResolutionOnly
     )
     .defer(|cmd| {
@@ -2120,7 +2120,7 @@ To evaluate as TypeScript:
 
 This command has implicit access to all permissions.
 
-<y>Read more:</> <c>https://docs.deno.com/go/cmd/eval</>"
+<y>Read more:</> <c>https://docs.deno.com/go/eval</>"
     ),
     UnstableArgsConfig::ResolutionAndRuntime,
   )
@@ -2168,7 +2168,7 @@ Ignore formatting code by preceding it with an ignore comment:
 Ignore formatting a file by adding an ignore comment at the top of the file:
   <p(245)>// deno-fmt-ignore-file</>
 
-<y>Read more:</> <c>https://docs.deno.com/go/cmd/fmt</>"),
+<y>Read more:</> <c>https://docs.deno.com/go/fmt</>"),
     UnstableArgsConfig::None,
   )
   .defer(|cmd| {
@@ -2346,7 +2346,7 @@ The following information is shown:
   emit: Local path of compiled source code (TypeScript only)
   dependencies: Dependency tree of the source file
 
-<y>Read more:</> <c>https://docs.deno.com/go/cmd/info</>"),
+<y>Read more:</> <c>https://docs.deno.com/go/info</>"),
           UnstableArgsConfig::ResolutionOnly
     )
     .defer(|cmd| cmd
@@ -2580,7 +2580,7 @@ To ignore specific diagnostics, you can write an ignore comment on the preceding
 To ignore linting on an entire file, you can add an ignore comment at the top of the file:
   <p(245)>// deno-lint-ignore-file</>
 
-<y>Read more:</> <c>https://docs.deno.com/go/cmd/lint</>
+<y>Read more:</> <c>https://docs.deno.com/go/lint</>
 "),
     UnstableArgsConfig::ResolutionOnly,
   )
@@ -2740,7 +2740,7 @@ Grant all permissions:
 Specifying the filename '-' to read the file from stdin.
   <p(245)>curl https://examples.deno.land/hello-world.ts | deno run -</>
 
-<y>Read more:</> <c>https://docs.deno.com/go/cmd/run</>"), UnstableArgsConfig::ResolutionAndRuntime), false)
+<y>Read more:</> <c>https://docs.deno.com/go/run</>"), UnstableArgsConfig::ResolutionAndRuntime), false)
 }
 
 fn serve_host_validator(host: &str) -> Result<String, String> {
@@ -2764,7 +2764,7 @@ Start a server defined in server.ts:
 Start a server defined in server.ts, watching for changes and running on port 5050:
   <p(245)>deno serve --watch --port 5050 server.ts</>
 
-<y>Read more:</> <c>https://docs.deno.com/go/cmd/serve</>"), UnstableArgsConfig::ResolutionAndRuntime), true, true)
+<y>Read more:</> <c>https://docs.deno.com/go/serve</>"), UnstableArgsConfig::ResolutionAndRuntime), true, true)
     .arg(
       Arg::new("port")
         .long("port")
@@ -2833,7 +2833,7 @@ Directory arguments are expanded to all contained files matching the glob <c>{*_
 or <c>**/__tests__/**</>:
  <p(245)>deno test src/</>
 
-<y>Read more:</> <c>https://docs.deno.com/go/cmd/test</>"),
+<y>Read more:</> <c>https://docs.deno.com/go/test</>"),
           UnstableArgsConfig::ResolutionAndRuntime
     )
     .defer(|cmd|
@@ -2986,12 +2986,8 @@ The declaration file could be saved and used for typing information.",
   )
 }
 
-fn upgrade_subcommand() -> Command {
-  command(
-    "upgrade",
-    cstr!("Upgrade deno executable to the given version.
-
-<g>Latest</>
+pub static UPGRADE_USAGE: &str = cstr!(
+  "<g>Latest</>
   <bold>deno upgrade</>
 
 <g>Specific version</>
@@ -3002,7 +2998,15 @@ fn upgrade_subcommand() -> Command {
 <g>Channel</>
   <bold>deno upgrade</> <p(245)>stable</>
   <bold>deno upgrade</> <p(245)>rc</>
-  <bold>deno upgrade</> <p(245)>canary</>
+  <bold>deno upgrade</> <p(245)>canary</>"
+);
+
+fn upgrade_subcommand() -> Command {
+  command(
+    "upgrade",
+    color_print::cformat!("Upgrade deno executable to the given version.
+
+{}
 
 The version is downloaded from <p(245)>https://dl.deno.land</> and is used to replace the current executable.
 
@@ -3010,7 +3014,7 @@ If you want to not replace the current Deno executable but instead download an u
 different location, use the <c>--output</> flag:
   <p(245)>deno upgrade --output $HOME/my_deno</>
 
-<y>Read more:</> <c>https://docs.deno.com/go/cmd/upgrade</>"),
+<y>Read more:</> <c>https://docs.deno.com/go/upgrade</>", UPGRADE_USAGE),
     UnstableArgsConfig::None,
   )
   .hide(cfg!(not(feature = "upgrade")))
