@@ -48,14 +48,7 @@
         "shasum": "e90d3466ba209b932451508a11ce3d3632145931",
         "tarball": "http://localhost:4260/minizlib/minizlib-2.1.2.tgz",
         "fileCount": 5,
-        "unpackedSize": 17309,
-        "npm-signature": "-----BEGIN PGP SIGNATURE-----\r\nVersion: OpenPGP.js v3.0.4\r\nComment: https://openpgpjs.org\r\n\r\nwsFcBAEBCAAQBQJfNxNuCRA9TVsSAnZWagAASdIP/RRnOjk1e2hmhdyLX58h\nTn+WzhsGAp0FttFn3962ib19L57ynxj32+TpbrO37TJbmLSDAjFZ4hOWPexk\n4aSkfoCzNzeoDUh8CH8cXMGalPMFSNAcoj/V9p2e4JBQbRWgT0B+XyRFTFKR\n8B9Zza+7fZBfiAZtDbUkxBr4JCSCuc0bLCOoeoqt+8WxwRmZvC8/CjsyO3uP\nNfMP/uMi0+zv0+78+L8/oghYuoEEUv5KsEFIne8GXqCik7PZFwbswfZtlI1d\nbXArRr8pVZvaK8++OaKN8ppk/ZHCmyvbBySXtznsy2++KVdEG0mg7SR+kg1y\nqwNdZWnqalFj9XHayqDZ97sdmx4SscGTeZwpx/LBqXVDW59v8rX9SFQ3as8p\n9Uy9KxMjk1asDriPS+aaJjbM27x2VSeBv+hFcmIsXv6JjdQSyCOcM1Kpk7hD\n8w0q5LQTvuHPGiqdrLAwLu1JH2aEHPr/jrYrEms5Q6eeYHCKinKrxWcpVkHa\nwGlvB2KXo6CyW3SWnpSlSToCjzDEuCKcRpyhZffLNSpGdEmI49PbpGteaTO1\ngc2yLV4q5uQNhQES7Lovh1/FCk+kcAN6kFLtEeaYsK/G5/VDbj3Mv6ovEC+O\nVqs5vBbkA7Pjw48Uuva1PYBCxPw3O/K2C9TP0O3TWyR101VVhTK5Dhvv5fLk\nROVN\r\n=0klg\r\n-----END PGP SIGNATURE-----\r\n",
-        "signatures": [
-          {
-            "keyid": "SHA256:jl3bwswu80PjjokCgh0o2w5c2U4LhQAE57gj9cz1kzA",
-            "sig": "MEQCIFFUhtHPTvBoEDsGT0dRfPAyJBQIXN7KLCr2qbTbuAERAiAOSmdDwiA7whgyuc+cg/HUG68h6/+b2JAJuw73+8DsrQ=="
-          }
-        ]
+        "unpackedSize": 17309
       },
       "directories": {},
       "_hasShrinkwrap": false

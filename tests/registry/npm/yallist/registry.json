@@ -45,14 +45,7 @@
         "shasum": "9bb92790d9c0effec63be73519e11a35019a3a72",
         "tarball": "http://localhost:4260/yallist/yallist-4.0.0.tgz",
         "fileCount": 5,
-        "unpackedSize": 14752,
-        "npm-signature": "-----BEGIN PGP SIGNATURE-----\r\nVersion: OpenPGP.js v3.0.4\r\nComment: https://openpgpjs.org\r\n\r\nwsFcBAEBCAAQBQJdkmCpCRA9TVsSAnZWagAAkVgP/3zxsW6EFohtKYJOFO0J\nlkdsbK2ee8965Oy4UNyD9F+d13p47zFmrNztw+zVS+gEt9AkSpjwMomHdQAV\nJ9NBsGaG7ppjaeNNfp8CwGO2El0rILWeEr4YdhoL6wfnxa/yuQ6HeuJty097\nOZ/FP3CXPCxj8Jlos0NwjLig/Yemtt1PNNlufcDhcKX+wzftExCMir+lBBna\nq5NpnUnOQnr3+QUFqeRHXWgPh4nJLGd9NuAmu/HcrlCnu1FEd3nWrmKtEvVg\n3GZn8lK8FLteiAxS4rHaQb8QX0W9r/RGLxuvla/KXq9LfxucTStI5pLhTj3A\nZlOxZDI/v+0wXAfr3+Bcsq5sJefk0+N5h0sWc9+hl+L2yvbMiZr2e8Z67msS\n9Hl8uwvjMwtEOCTMIyBdvBVy0OCzvEHjm+2tYwd/e3VTTWzEc9zIdUirWVU/\nqcCgSMnN+8MjV+8KLdLHVjDuxQSHFlm0LcmaU5ILlKX57rKFVOVWt8ZJ3wep\nuAzfUOkmrwWR+lN58w/MIbhdwqHcMpLmgXBJEHEtbfh7Qk6yK+A/Q237YBNq\nYIIB24k7z0vcAPN82s3LxxfLxbQBzFB1mwT8NcKQCG5XJbef8V3LLJeD78iZ\n1NvS7tl8VpSUg5Vc3C5OJvmbxbFiVPZXio/nFnwwR2jNe6ukFJ/YKlSo5MrA\ny6Ty\r\n=3Dpm\r\n-----END PGP SIGNATURE-----\r\n",
-        "signatures": [
-          {
-            "keyid": "SHA256:jl3bwswu80PjjokCgh0o2w5c2U4LhQAE57gj9cz1kzA",
-            "sig": "MEYCIQCYUnufgWErBDMXe8KslrNmcyrPV1kGU2qlaK4ZeXoazwIhAKBpS5djrxLEclmS9SbzcNwhJJW8F7NXnArMOSGiGSCv"
-          }
-        ]
+        "unpackedSize": 14752
       },
       "_hasShrinkwrap": false
     }

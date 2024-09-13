@@ -42,13 +42,7 @@
       "dist": {
         "integrity": "sha512-RdJUflcE3cUzKiMqQgsCu06FPu9UdIJO0beYbPhHN4k6apgJtifcoCtT9bcxOpYBtpD2kCM6Sbzg4CausW/PKQ==",
         "shasum": "19203fb59991df98e3a287050d4647cdeaf32499",
-        "tarball": "http://localhost:4260/js-tokens/js-tokens-4.0.0.tgz",
-        "signatures": [
-          {
-            "keyid": "SHA256:jl3bwswu80PjjokCgh0o2w5c2U4LhQAE57gj9cz1kzA",
-            "sig": "MEUCIHTFYsC9RMPKFuD2Ff2bRCSWNb36hIt4dZfUv4vusrrOAiEAp3qTBJDVdCmqIySFXqJpqfON89dldxEoM1XZQXYkKkg="
-          }
-        ]
+        "tarball": "http://localhost:4260/js-tokens/js-tokens-4.0.0.tgz"
       },
       "directories": {}
     }

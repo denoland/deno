@@ -44,13 +44,7 @@
       "dist": {
         "shasum": "3d9877899e6a53efc0160504cde15f82e6f061d5",
         "tarball": "http://localhost:4260/is-lambda/is-lambda-1.0.1.tgz",
-        "integrity": "sha512-z7CMFGNrENq5iFB9Bqo64Xk6Y9sg+epq1myIcdHaGnbMTYOxvzsEtdYqQUylB7LxfkvgrrjP32T6Ywciio9UIQ==",
-        "signatures": [
-          {
-            "keyid": "SHA256:jl3bwswu80PjjokCgh0o2w5c2U4LhQAE57gj9cz1kzA",
-            "sig": "MEQCIHWpJi2/bQUyBW7NDenjkyIbtXFZWLcIcpU1QjUbyp3XAiAtuGpqcPbXMtAMcDVHbc0whQvcNPh5129edWIKXieCnA=="
-          }
-        ]
+        "integrity": "sha512-z7CMFGNrENq5iFB9Bqo64Xk6Y9sg+epq1myIcdHaGnbMTYOxvzsEtdYqQUylB7LxfkvgrrjP32T6Ywciio9UIQ=="
       }
     }
   },

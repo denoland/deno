@@ -63,13 +63,7 @@
         "shasum": "9e8b5013873299e11fab6fd548405da2d6c602b2",
         "tarball": "http://localhost:4260/https-proxy-agent/https-proxy-agent-7.0.5.tgz",
         "fileCount": 12,
-        "unpackedSize": 34878,
-        "signatures": [
-          {
-            "keyid": "SHA256:jl3bwswu80PjjokCgh0o2w5c2U4LhQAE57gj9cz1kzA",
-            "sig": "MEQCIDFZmWUU+D3oE97K/cAiDmaGBWqWbaJGdP4cXqLZkp/qAiBUAt9Z2J0FL8xGKJYYpXlFk+nOjdkWPWIy0xRwtfTq6g=="
-          }
-        ]
+        "unpackedSize": 34878
       },
       "directories": {},
       "_hasShrinkwrap": false

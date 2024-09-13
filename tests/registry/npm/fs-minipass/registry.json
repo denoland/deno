@@ -51,14 +51,7 @@
         "shasum": "7f5036fdbf12c63c169190cbe4199c852271f9fb",
         "tarball": "http://localhost:4260/fs-minipass/fs-minipass-2.1.0.tgz",
         "fileCount": 4,
-        "unpackedSize": 14089,
-        "npm-signature": "-----BEGIN PGP SIGNATURE-----\r\nVersion: OpenPGP.js v3.0.4\r\nComment: https://openpgpjs.org\r\n\r\nwsFcBAEBCAAQBQJeJzc8CRA9TVsSAnZWagAA394P/1iQTxpDUgo9PcXXEOf8\nzkw0nrrZ4dvg2FcBUePgJ6iDjY/e/p8wXBXBeCvaDVkULwjlMDMChv5aweS+\nS+hxZHpCe8f3QbTBlUGMQWgTrLrb3qXdHkBpv/uXuZD3eVzqJ8un/85aSc17\nnBJ6cTxbSft00ncApFRAh7fwZERBB8TWip+YSqjkv/5cSiiUwlRG/cCX3ogD\nMuqO083eOwdxonH/UgnGsI3Ijsdo0AqeEEjCYOCfFAnLtCdaDNC/7DqjnyrO\nwVAn0wuu0iAUXx3+3O/HgaAI6KR1qu16Zk9cB0vknd2SpxieqpV8vUNxfg8Y\n9fkdj5BkYenKsc5iqsdClYjnL533BEtd5+xu5/W8yXucQiiKedl06TGa39kj\nbXbXOY7C5LJiNe4BRQjVInBPhZytHQFl0StT9+A8SbCdFYjnZ6jFl4uKYVIe\nOHcjxfEx2gG40J5tRdL0YUM5L55ahgxS23l7hWL5sBOati7wWSP0IbnOa54i\n2qFnkek1tORJKneJ7g6p8XaZCNLY/5tV16Me+M0xJOxwhsNfJ+BvYode/B+/\nBm5uRXu/oW0k7WJ6s8n3GnzVCL8FiQdI7r7s74h745ftL5NXsVJo8d27kZEo\nIvumC4gilQ930J18VYtKlVEagVUOdXrU1zpAZ6tjCHmnMUB/VPE7FY4rFRXT\nHiAi\r\n=X3w7\r\n-----END PGP SIGNATURE-----\r\n",
-        "signatures": [
-          {
-            "keyid": "SHA256:jl3bwswu80PjjokCgh0o2w5c2U4LhQAE57gj9cz1kzA",
-            "sig": "MEQCIETjZE1EEDJqg6zfu44nfx6QmFlVznDQ3wnCJpEhn7eTAiAnIeoJR4uTnkUYIY8KLUi9riu9b41CCevmzEBz/hw71w=="
-          }
-        ]
+        "unpackedSize": 14089
       },
       "directories": {},
       "_hasShrinkwrap": false
@@ -127,13 +120,7 @@
           "provenance": {
             "predicateType": "https://slsa.dev/provenance/v1"
           }
-        },
-        "signatures": [
-          {
-            "keyid": "SHA256:jl3bwswu80PjjokCgh0o2w5c2U4LhQAE57gj9cz1kzA",
-            "sig": "MEUCIQD9zx1hl03IJIeWe9sdBFvux0IyXR6zf9Oguze7gejg5wIgTcY3Z3fPqn/3NAF6k5ixMQ1IssMYG446B4ZdiOMtTBA="
-          }
-        ]
+        }
       },
       "directories": {},
       "_hasShrinkwrap": false

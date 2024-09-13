@@ -60,13 +60,7 @@
         "shasum": "98fe6c4308317c5f394d85a435eb192490f7e132",
         "tarball": "http://localhost:4260/v8flags/v8flags-4.0.1.tgz",
         "fileCount": 5,
-        "unpackedSize": 9757,
-        "signatures": [
-          {
-            "keyid": "SHA256:jl3bwswu80PjjokCgh0o2w5c2U4LhQAE57gj9cz1kzA",
-            "sig": "MEQCIALVO7Jl3K1f93BllM4VAgxy/uwBX/P4FxO7D4TA0i0iAiACMIbiKyMSrFfsb7RDOB7+78Y9hOWNfJCc+Bv9Wedr4Q=="
-          }
-        ]
+        "unpackedSize": 9757
       },
       "directories": {},
       "_hasShrinkwrap": false

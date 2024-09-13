@@ -45,13 +45,7 @@
         "shasum": "cac6407785d03675a2a5e1a5305c697b347d90d6",
         "tarball": "http://localhost:4260/fsevents/fsevents-2.3.3.tgz",
         "fileCount": 6,
-        "unpackedSize": 173224,
-        "signatures": [
-          {
-            "keyid": "SHA256:jl3bwswu80PjjokCgh0o2w5c2U4LhQAE57gj9cz1kzA",
-            "sig": "MEUCIBqKmzRJwFJcSLXc/SdNTdFsUQvsS/tX+pFHr2JkniDbAiEAiTjoxV3W2IK2g8Udbes/ZP46+TtL40PX3IX/bxosfWs="
-          }
-        ]
+        "unpackedSize": 173224
       },
       "directories": {},
       "_hasShrinkwrap": false

@@ -29,12 +29,6 @@
         "tarball": "http://localhost:4260/tar/tar-6.2.1.tgz",
         "fileCount": 29,
         "integrity": "sha512-DZ4yORTwrbTj/7MZYq2w+/ZFdI6OZ/f9SFHR+71gIVUZhOQPHzVCLpvRnPgyaMpfWxxk/4ONva3GQSyNIKRv6A==",
-        "signatures": [
-          {
-            "sig": "MEQCICiN57b6g7ZWCQN3sRJ+KpQedOYvNEmp0rJiwyGiT6ilAiA92/r4ohXAxTc9ATTxiPbhsnqxFx5d2WFp4qzPVMI+cA==",
-            "keyid": "SHA256:jl3bwswu80PjjokCgh0o2w5c2U4LhQAE57gj9cz1kzA"
-          }
-        ],
         "unpackedSize": 166613
       },
       "engines": {

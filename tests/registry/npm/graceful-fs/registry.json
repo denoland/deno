@@ -43,14 +43,7 @@
         "shasum": "147d3a006da4ca3ce14728c7aefc287c367d7a6c",
         "tarball": "http://localhost:4260/graceful-fs/graceful-fs-4.2.10.tgz",
         "fileCount": 7,
-        "unpackedSize": 32470,
-        "signatures": [
-          {
-            "keyid": "SHA256:jl3bwswu80PjjokCgh0o2w5c2U4LhQAE57gj9cz1kzA",
-            "sig": "MEQCIA1uTjaW3iIxS4M3qAd6G2a1eA2VBnJk3uad5b39KE2kAiAM2jgxR4jcxVjstEzRCd5ydGON5o0VkPyEuFNHKzYupQ=="
-          }
-        ],
-        "npm-signature": "-----BEGIN PGP SIGNATURE-----\r\nVersion: OpenPGP.js v4.10.10\r\nComment: https://openpgpjs.org\r\n\r\nwsFzBAEBCAAGBQJiSyZoACEJED1NWxICdlZqFiEECWMYAoorWMhJKdjhPU1b\r\nEgJ2VmpCzw//UtS3HkPO3bCZalf3uNH+6ZTvOyFSFzjOprlRrOvQ5r51hicp\r\npizQBejiOaCcK5p7tBViXT+bV5otgvJ8dXBjiQQpXuSuSVN13MWs9FsNJANQ\r\nlcmzJRFZwdhoVygtRtuk6Dx9EOG7gfcH3Oud/ztts9iSeDLRsZewzkHtqRBX\r\nAfoAaFn9YNZ/14B0QwsbmOHeURedNmdnPLU5hL3o91LjUe3++TrMPA0BcDFT\r\nN8jguwfX9YoD6GkAO/11Iu9q48QALO6WwdU7+WF3f1kp1GdryxfxaYgTZWMp\r\nOrfgCRpDCzdDZkN8AKTlJkRUnDRHuEeiJB5wfONw1p321XwBx4EbqenZQSkc\r\naBhP8Q20MKRJb6A8tuNKyvx9toSeYY6gj7thORU7RhI4JvJJgGSGNyHeAjz5\r\nV5cap9J8QrI472ZxIth3abdws45yP/f4kVtZ+32GdcCrwkQHiL8VfGYuaPoM\r\nyvULvSiKeDkBZR7oGAHUyM2esHaZcqSQDsQ8aP7dCL/L80iW4qQzvs1Ngmqt\r\nGMzRIAh6LzMG/Q/xX0lLBNLLqa3ajkrcyIjpKFgzhS5TqAr/gNI56i4kgTuP\r\nFPxg6QHN/q8tt/MhWjZA6jZjCs/X7ZjNCFKU1qBhf8ecnqdkFZMo2fQo0tN+\r\nLRaRLDpK3L8hBQ5tY0YmrKHqymSZjT43Voo=\r\n=5ivk\r\n-----END PGP SIGNATURE-----\r\n"
+        "unpackedSize": 32470
       },
       "_hasShrinkwrap": false
     }

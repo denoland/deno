@@ -50,14 +50,7 @@
         "shasum": "bb2f95a5eda2ec168ec9274e06a747c3e2904d2b",
         "tarball": "http://localhost:4260/p-map/p-map-4.0.0.tgz",
         "fileCount": 5,
-        "unpackedSize": 8687,
-        "npm-signature": "-----BEGIN PGP SIGNATURE-----\r\nVersion: OpenPGP.js v3.0.4\r\nComment: https://openpgpjs.org\r\n\r\nwsFcBAEBCAAQBQJeYLuGCRA9TVsSAnZWagAALNkP/icS/zHu6yNrCwiCNS4E\nnbsyyry8rc6iti+rBi4HJkNecN+gWM5J+OC8mmBa29jOWiefCtMlI2vjIPs5\n/UCBVEkHoZhhwriQ5X2Yz8yW5jimdE1QErzYKHhzGsNMFdc9VuPCVGtqartl\nQkrlJT+D0LOPBtOugmaLBt6XWX2Ks1NGYr/WtFwqfsE35kDGQvZ1MaAj9+Fc\naRK5LUoEn/06LPmVqPGjKjhoue3QgihCZSxoBWjMgwYblZyAkbiEM9Xe+Gjg\nB+MCAk2Eh6gZbqzyTmAythHyQgiz+lnNwXTGDXCKAD2rf8R11V7bOl6eFiml\nuMjmDHJ84VTwt9doONukyzxbGhJqCiwc6+38yT85DZCTQpmtUgcniRPygxqC\n5LQTx6DrQQ7nFUfwF+YfUd+q+GFyzGZNknW/+J9lKJazEFd2UCOaNHguRw0F\nPFcENv4j3bX2RfNkral0JZ2I+U8vu2NkpXWG3DmL1o38SgpQ7JC/wdXjSRcn\n4VlIhz5LcBms967YXTg1LAW7OQob73ksIXp2hGaGwiVfaZhPxWowZbCahfbA\nELrajj3H88QN4QDFxmp1CNrkgPkE4AyuBSgpnTiSP9wQTeBL4lZ+mfThBwtn\n4v694zqg4uF4u2vn7v5AkNBS2OlBvYNd59WjScPCOLWWZATQKqiHVVDErAGe\nFdI9\r\n=NTiQ\r\n-----END PGP SIGNATURE-----\r\n",
-        "signatures": [
-          {
-            "keyid": "SHA256:jl3bwswu80PjjokCgh0o2w5c2U4LhQAE57gj9cz1kzA",
-            "sig": "MEUCIQC7DQo5ZwXGnm1bMkOmN+5uiS7ZpVvO4j+NbQuzyssCjQIgNdV4S73hWNZCO72WffAW3PYDOVEzEam4A1J4dnk0iCM="
-          }
-        ]
+        "unpackedSize": 8687
       },
       "directories": {},
       "_hasShrinkwrap": false

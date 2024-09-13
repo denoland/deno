@@ -49,13 +49,7 @@
         "shasum": "1621bc77e12258a12c60d34e2276ec5c20680863",
         "tarball": "http://localhost:4260/minipass-collect/minipass-collect-2.0.1.tgz",
         "fileCount": 4,
-        "unpackedSize": 4963,
-        "signatures": [
-          {
-            "keyid": "SHA256:jl3bwswu80PjjokCgh0o2w5c2U4LhQAE57gj9cz1kzA",
-            "sig": "MEUCIGHm7nziWUCc9523LXf4MAFCd60uXbf2OoL2HVQAfgfnAiEAoWPujoOaz1kdIW34UYkfRWW0c500oT2p2EStSmrRRFI="
-          }
-        ]
+        "unpackedSize": 4963
       },
       "directories": {},
       "_hasShrinkwrap": false

@@ -96,13 +96,7 @@
       "dist": {
         "integrity": "sha512-+QeIQyN5ZuO+3Uk5DYh6/1eKO0m0YmJFGNmFHGACpf1ClL1nmlV/p4gNgbl2pJGxgXb4faqo6UE+M5ACEMyVcw==",
         "shasum": "dfc9404400ad1c8fe023e7da1df1c147c4b444df",
-        "tarball": "http://localhost:4260/deep-eql/deep-eql-3.0.1.tgz",
-        "signatures": [
-          {
-            "keyid": "SHA256:jl3bwswu80PjjokCgh0o2w5c2U4LhQAE57gj9cz1kzA",
-            "sig": "MEQCIA2Guc+Zr2++fpu1HORRISQsk11kiAUxrDzV8xdJtCwvAiBEz45k8/VAewT+AIlg5CPaJ3gB2t17o0CIetQyvSPPcw=="
-          }
-        ]
+        "tarball": "http://localhost:4260/deep-eql/deep-eql-3.0.1.tgz"
       },
       "directories": {}
     }

@@ -84,13 +84,7 @@
         "shasum": "e501cd3094b278495eb4258d4c9f6d5ac3019f00",
         "tarball": "http://localhost:4260/package-json-from-dist/package-json-from-dist-1.0.0.tgz",
         "fileCount": 13,
-        "unpackedSize": 33940,
-        "signatures": [
-          {
-            "keyid": "SHA256:jl3bwswu80PjjokCgh0o2w5c2U4LhQAE57gj9cz1kzA",
-            "sig": "MEUCIBk1UxJB1c1W5JqTwhuKr1Dnao3WgyeqtoSK5jKUvZyTAiEA8nD3BvBEUOi8z1O5qVay68RDTcOeH1op6kTxNdKi7CI="
-          }
-        ]
+        "unpackedSize": 33940
       },
       "directories": {},
       "_hasShrinkwrap": false

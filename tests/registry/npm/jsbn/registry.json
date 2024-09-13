@@ -33,13 +33,7 @@
       "dist": {
         "shasum": "b01307cb29b618a1ed26ec79e911f803c4da0040",
         "tarball": "http://localhost:4260/jsbn/jsbn-1.1.0.tgz",
-        "integrity": "sha512-4bYVV3aAMtDTTu4+xsDYa6sy9GyJ69/amsu9sYF2zqjiEoZA5xJi3BrfX3uY+/IekIu7MwdObdbDWpoZdBv3/A==",
-        "signatures": [
-          {
-            "keyid": "SHA256:jl3bwswu80PjjokCgh0o2w5c2U4LhQAE57gj9cz1kzA",
-            "sig": "MEYCIQDfJzg5+rvckY7nqgg7aTMuYjwBDvKXH5BcVsTfxV+YNAIhANWVA/9k8GQvH9wvGEr+V8bayMMkhduMellPjQv/T0A+"
-          }
-        ]
+        "integrity": "sha512-4bYVV3aAMtDTTu4+xsDYa6sy9GyJ69/amsu9sYF2zqjiEoZA5xJi3BrfX3uY+/IekIu7MwdObdbDWpoZdBv3/A=="
       }
     }
   },

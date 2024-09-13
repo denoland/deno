@@ -27,12 +27,6 @@
         "tarball": "http://localhost:4260/@npmcli/fs/fs-3.1.1.tgz",
         "fileCount": 13,
         "integrity": "sha512-q9CRWjpHCMIh5sVyefoD1cA7PkvILqCZsnSOEUUivORLjxCO/Irmue2DprETiNgEqktDBZaM1Bi+jrarx1XdCg==",
-        "signatures": [
-          {
-            "sig": "MEQCIGgGtUq4+uzs0XScvlFRq+OwngJ/rv7arf79l9nlbNG8AiBdjGr9Hq1zFtsBVRBKL45mZOkBR8qHofq5eZRE9wke5Q==",
-            "keyid": "SHA256:jl3bwswu80PjjokCgh0o2w5c2U4LhQAE57gj9cz1kzA"
-          }
-        ],
         "unpackedSize": 26547
       },
       "main": "lib/index.js",

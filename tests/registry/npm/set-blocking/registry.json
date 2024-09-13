@@ -49,13 +49,7 @@
       "dist": {
         "shasum": "045f9782d011ae9a6803ddd382b24392b3d890f7",
         "tarball": "http://localhost:4260/set-blocking/set-blocking-2.0.0.tgz",
-        "integrity": "sha512-KiKBS8AnWGEyLzofFfmvKwpdPzqiy16LvQfK3yv/fVH7Bj13/wl3JSR1J+rfgRE9q7xUJK4qvgS8raSOeLUehw==",
-        "signatures": [
-          {
-            "keyid": "SHA256:jl3bwswu80PjjokCgh0o2w5c2U4LhQAE57gj9cz1kzA",
-            "sig": "MEUCIC7PKDtLSfgEG/qqzrcxx2Khs2CK9p75Arv9+g4Bdt8aAiEApBbZwIIifoIUzRmqNhH90HEOVMzYU/PkU6J14r2GWT8="
-          }
-        ]
+        "integrity": "sha512-KiKBS8AnWGEyLzofFfmvKwpdPzqiy16LvQfK3yv/fVH7Bj13/wl3JSR1J+rfgRE9q7xUJK4qvgS8raSOeLUehw=="
       }
     }
   },

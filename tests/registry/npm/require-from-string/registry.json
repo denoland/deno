@@ -44,13 +44,7 @@
         "shasum": "89a7fdd938261267318eafe14f9c32e598c36909",
         "tarball": "http://localhost:4260/require-from-string/require-from-string-2.0.2.tgz",
         "fileCount": 4,
-        "unpackedSize": 3422,
-        "signatures": [
-          {
-            "keyid": "SHA256:jl3bwswu80PjjokCgh0o2w5c2U4LhQAE57gj9cz1kzA",
-            "sig": "MEUCIE2jrMs9LEA5YwPbB+k86fiEWbTiZrILb/xQp2cSIEePAiEApTYU69t0eG1qFeeVayYDlVRtYxsT4vFi9gJB5pqvtXE="
-          }
-        ]
+        "unpackedSize": 3422
       },
       "directories": {},
       "_hasShrinkwrap": false

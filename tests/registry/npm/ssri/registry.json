@@ -28,12 +28,6 @@
         "tarball": "http://localhost:4260/ssri/ssri-10.0.6.tgz",
         "fileCount": 4,
         "integrity": "sha512-MGrFH9Z4NP9Iyhqn16sDtBpRRNJ0Y2hNa6D65h736fVSaPCHr4DM4sWUNvVaSuC+0OBGhwsrydQwmgfg5LncqQ==",
-        "signatures": [
-          {
-            "sig": "MEUCIH0RAcuWHmyOrnF59mNHnOghRQc5pfXEyeKTuz0ADHaMAiEAzSMgV3xTvd0Hl4gQjpKKMr/niKEkH7Boonxk1iL335g=",
-            "keyid": "SHA256:jl3bwswu80PjjokCgh0o2w5c2U4LhQAE57gj9cz1kzA"
-          }
-        ],
         "attestations": {
           "url": "http://localhost:4260/attestations/ssri@10.0.6",
           "provenance": {

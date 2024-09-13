@@ -128,13 +128,7 @@
         "shasum": "767004ccf3a5b30df39bed90718bab43fe0a59f7",
         "tarball": "http://localhost:4260/foreground-child/foreground-child-3.2.1.tgz",
         "fileCount": 37,
-        "unpackedSize": 68184,
-        "signatures": [
-          {
-            "keyid": "SHA256:jl3bwswu80PjjokCgh0o2w5c2U4LhQAE57gj9cz1kzA",
-            "sig": "MEQCICh3UF+VAJBE3PR4nCLEMutI04CojoFdJIieW6ffZVutAiBpPfgu74fUsaEfaA39HHpkoMqf9ICY3vOGIdNkiz3TWw=="
-          }
-        ]
+        "unpackedSize": 68184
       },
       "directories": {},
       "_hasShrinkwrap": false

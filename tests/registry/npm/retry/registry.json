@@ -53,13 +53,7 @@
         "tarball": "http://localhost:4260/retry/retry-0.12.0.tgz",
         "fileCount": 17,
         "unpackedSize": 32210,
-        "integrity": "sha512-9LkiTwjUh6rT555DtE9rTX+BKByPfrMzEAtnlEtdEwr3Nkffwiihqe2bWADg+OQRjt9gl6ICdmB/ZFDCGAtSow==",
-        "signatures": [
-          {
-            "keyid": "SHA256:jl3bwswu80PjjokCgh0o2w5c2U4LhQAE57gj9cz1kzA",
-            "sig": "MEYCIQDMDGASpQgnZsQGbQrEfU7i4L+ZKTo9locIjyOG8CM7zgIhALH9AixwT4LkB513kWXw3P2vIZ6kqYNzDWTD7UQ/RdD7"
-          }
-        ]
+        "integrity": "sha512-9LkiTwjUh6rT555DtE9rTX+BKByPfrMzEAtnlEtdEwr3Nkffwiihqe2bWADg+OQRjt9gl6ICdmB/ZFDCGAtSow=="
       },
       "_hasShrinkwrap": false
     }

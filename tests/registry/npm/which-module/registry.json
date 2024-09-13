@@ -46,13 +46,7 @@
       "dist": {
         "shasum": "d9ef07dce77b9902b8a3a8fa4b31c3e3f7e6e87a",
         "tarball": "http://localhost:4260/which-module/which-module-2.0.0.tgz",
-        "integrity": "sha512-B+enWhmw6cjfVC7kS8Pj9pCrKSc5txArRyaYGe088shv/FGWH+0Rjx/xPgtsWfsUtS27FkP697E4DDhgrgoc0Q==",
-        "signatures": [
-          {
-            "keyid": "SHA256:jl3bwswu80PjjokCgh0o2w5c2U4LhQAE57gj9cz1kzA",
-            "sig": "MEYCIQC53OPKZYZEE0kq+DSThbHCGmj9pK3ydC0qIfmE6vmSkQIhAMuI0FnrJwWYGDqZGh7/upXLNzuN3E3Zj872XxGix75U"
-          }
-        ]
+        "integrity": "sha512-B+enWhmw6cjfVC7kS8Pj9pCrKSc5txArRyaYGe088shv/FGWH+0Rjx/xPgtsWfsUtS27FkP697E4DDhgrgoc0Q=="
       }
     }
   },

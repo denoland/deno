@@ -21,14 +21,7 @@
         "tarball": "http://localhost:4260/exponential-backoff/exponential-backoff-3.1.1.tgz",
         "fileCount": 33,
         "integrity": "sha512-dX7e/LHVJ6W3DE1MHWi9S1EYzDESENfLrYohG2G++ovZrYOkm4Knwa0mc1cn84xJOR4KEU0WSchhLbd0UklbHw==",
-        "signatures": [
-          {
-            "sig": "MEUCIQDr+out+uvlHUvEC7/599hD5V9fPzhl76LLZb+Kf1CkXQIgH5Jm+BY6CLJ+e6gJGBSYkBgV6twi6/0GhGZ4rfGLMyc=",
-            "keyid": "SHA256:jl3bwswu80PjjokCgh0o2w5c2U4LhQAE57gj9cz1kzA"
-          }
-        ],
-        "unpackedSize": 37269,
-        "npm-signature": "-----BEGIN PGP SIGNATURE-----\r\nVersion: OpenPGP.js v4.10.10\r\nComment: https://openpgpjs.org\r\n\r\nwsFzBAEBCAAGBQJj87BBACEJED1NWxICdlZqFiEECWMYAoorWMhJKdjhPU1b\r\nEgJ2VmoIzw/9FJrP3q6G51DaBfQcrCOf7AyZjBdmdzLJ0Qj0SUPxFccR4slF\r\n9D0gc2T6MwccogbNSRoNBPnw6pyPcg4DvMIClmCocbpbBxXrIg3muIOY40sZ\r\nlbnnkWlGS4LixGOq2hv+EubRc/ye7InUwPO9/vO3m1vnGjOnzjAF30r8kmkV\r\nX+WVfhTYbH1gc6vCicK7lr+ydDmodjiI2pOMxD2V5chuV71KrDgxexnnfUEw\r\n0D0b98LAuBP1nV1O5tdvypS3l8LmF6s8hopm9C22ZGhWWk0RG/H+GJD+hQms\r\nkTenT3UnHqkZwb6GFF0jtne6wBkvXLiNRoVb9WDNdh8uglR96P0SKbB+OEDC\r\nDTV12NCOPgl5GJN+xmX85ZVJb4HMxbrg/OZEnGoZZf40eJFU/GFnf4Ez9C3D\r\nkoEut5cK8+nwpsqlDv3i9pqYpxg2xXsO2Z+uQe7BmEepHq7MxTTLfMpiEdeU\r\nhazeD3U2MR0U20ERuB3e/EOcVLpBFJzeMLWv7ROv0vQbB4BAB3RVX8VNPNS9\r\nRSh1bA3PdhpcJEL1ItxuSmWbB19BFXJVaKpX8VunoqRzCq9hiJVad5ykOMzH\r\n9L6nm32F2Dt8j1H4MrB0H0vJkMSOV8MS4CSgONR6P7k20NtzH5KVAkb07fSS\r\nIxMeNnzfsVnLRP8rQd5fAAm3TYupq4KSjLM=\r\n=7l6+\r\n-----END PGP SIGNATURE-----\r\n"
+        "unpackedSize": 37269
       },
       "jest": {
         "testRegex": "\\.spec\\.ts$",

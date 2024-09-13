@@ -291,13 +291,7 @@
         "shasum": "66007b67aad4d11899f583df1b0116d94a89b8f5",
         "tarball": "http://localhost:4260/preact/preact-10.19.6.tgz",
         "fileCount": 131,
-        "unpackedSize": 1370954,
-        "signatures": [
-          {
-            "keyid": "SHA256:jl3bwswu80PjjokCgh0o2w5c2U4LhQAE57gj9cz1kzA",
-            "sig": "MEUCIQDh1diBOzydVPt9VeQt4EOfIOOPJu7BkY12zPdurgT9zgIgfuNN2AnNgP+o3Vg9jfoa1JFpRCWardIoyTYqKPKUegY="
-          }
-        ]
+        "unpackedSize": 1370954
       },
       "directories": {},
       "_hasShrinkwrap": false

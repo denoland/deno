@@ -46,13 +46,7 @@
         "shasum": "44fa161b0187b9549dd84bb91802f9bd8385cd6a",
         "tarball": "http://localhost:4260/safer-buffer/safer-buffer-2.1.2.tgz",
         "fileCount": 7,
-        "unpackedSize": 42299,
-        "signatures": [
-          {
-            "keyid": "SHA256:jl3bwswu80PjjokCgh0o2w5c2U4LhQAE57gj9cz1kzA",
-            "sig": "MEYCIQCiWlmbOFsq/xKEX4UKFrw7JuXKDGPMQwhMUq5cAT6LggIhAIHQagK183Vhp/6SzFuUWxphk7AbQiAzPiOAMO7etVRH"
-          }
-        ]
+        "unpackedSize": 42299
       },
       "directories": {},
       "_hasShrinkwrap": false

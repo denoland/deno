@@ -29,12 +29,6 @@
         "tarball": "http://localhost:4260/lru-cache/lru-cache-10.4.1.tgz",
         "fileCount": 17,
         "integrity": "sha512-8h/JsUc/2+Dm9RPJnBAmObGnUqTMmsIKThxixMLOkrebSihRhTV0wLD/8BSk6OU6Pbj8hiDTbsI3fLjBJSlhDg==",
-        "signatures": [
-          {
-            "sig": "MEYCIQDkwiQ89aPHlodZcENNaXDb9s7djMsMBGUnP8WZo+3f5AIhAOzrtCRKJTa/sXN6+cNzzPPDs/Spgn21ZAPm7QIZiRHk",
-            "keyid": "SHA256:jl3bwswu80PjjokCgh0o2w5c2U4LhQAE57gj9cz1kzA"
-          }
-        ],
         "unpackedSize": 804340
       },
       "main": "./dist/commonjs/index.js",

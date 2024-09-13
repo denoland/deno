@@ -21,12 +21,6 @@
         "tarball": "http://localhost:4260/jackspeak/jackspeak-3.4.2.tgz",
         "fileCount": 21,
         "integrity": "sha512-qH3nOSj8q/8+Eg8LUPOq3C+6HWkpUioIjDsq1+D4zY91oZvpPttw8GwtF1nReRYKXl+1AORyFqtm2f5Q1SB6/Q==",
-        "signatures": [
-          {
-            "sig": "MEYCIQDQjdGlw/fkPqtOMv0ucXnRk/TkZ7m8bjI2nqJOW+BxKwIhAPHs+uDvbBHMqu25nIadbvcYqmBpXJoGiC6V3SFfUxkl",
-            "keyid": "SHA256:jl3bwswu80PjjokCgh0o2w5c2U4LhQAE57gj9cz1kzA"
-          }
-        ],
         "unpackedSize": 297035
       },
       "main": "./dist/commonjs/index.js",

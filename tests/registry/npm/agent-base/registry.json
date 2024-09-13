@@ -61,13 +61,7 @@
         "shasum": "bdbded7dfb096b751a2a087eeeb9664725b2e317",
         "tarball": "http://localhost:4260/agent-base/agent-base-7.1.1.tgz",
         "fileCount": 12,
-        "unpackedSize": 31249,
-        "signatures": [
-          {
-            "keyid": "SHA256:jl3bwswu80PjjokCgh0o2w5c2U4LhQAE57gj9cz1kzA",
-            "sig": "MEQCICukUv7At8DBG9zvB3grqS9q18Bw9PPJwQIZpQq0tHZaAiBhiCvJ0ot1d9WsVT3+zqexp8BR4hufEl57A+jsa6gIsQ=="
-          }
-        ]
+        "unpackedSize": 31249
       },
       "directories": {},
       "_hasShrinkwrap": false

@@ -44,13 +44,7 @@
       "dist": {
         "shasum": "f6534d15148269b20352e7bee26f501f9a191290",
         "tarball": "http://localhost:4260/decamelize/decamelize-1.2.0.tgz",
-        "integrity": "sha512-z2S+W9X73hAUUki+N+9Za2lBlun89zigOyGrsax+KUQ6wKW4ZoWpEYBkGhQjwAjjDCkWxhY0VKEhk8wzY7F5cA==",
-        "signatures": [
-          {
-            "keyid": "SHA256:jl3bwswu80PjjokCgh0o2w5c2U4LhQAE57gj9cz1kzA",
-            "sig": "MEUCIQCQhUezVI1PCerbzo58z6jDX/QX65VXwwlK0MtuP/qWmQIgPE3vDVmsT4Hjv8yxBjhumH7ME0jtXibtktOC235S6X4="
-          }
-        ]
+        "integrity": "sha512-z2S+W9X73hAUUki+N+9Za2lBlun89zigOyGrsax+KUQ6wKW4ZoWpEYBkGhQjwAjjDCkWxhY0VKEhk8wzY7F5cA=="
       },
       "directories": {}
     }

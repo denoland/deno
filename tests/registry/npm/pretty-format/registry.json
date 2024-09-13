@@ -45,13 +45,7 @@
       "dist": {
         "shasum": "bfbed56d5e9a776645f4b1ff7aa1a3ac4fa3c385",
         "tarball": "http://localhost:4260/pretty-format/pretty-format-3.8.0.tgz",
-        "integrity": "sha512-WuxUnVtlWL1OfZFQFuqvnvs6MiAGk9UNsBostyBOB0Is9wb5uRESevA6rnl/rkksXaGX3GzZhPup5d6Vp1nFew==",
-        "signatures": [
-          {
-            "keyid": "SHA256:jl3bwswu80PjjokCgh0o2w5c2U4LhQAE57gj9cz1kzA",
-            "sig": "MEQCIGKlYEJdj9xJ42shTyj1xLJPtlxl86Orhd+3IFzXGNAHAiB5446kTOhc9tundS9ZoqzhyxjBFpHKD7hFpaCmaVfrAA=="
-          }
-        ]
+        "integrity": "sha512-WuxUnVtlWL1OfZFQFuqvnvs6MiAGk9UNsBostyBOB0Is9wb5uRESevA6rnl/rkksXaGX3GzZhPup5d6Vp1nFew=="
       },
       "directories": {}
     }

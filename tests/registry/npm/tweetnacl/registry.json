@@ -58,13 +58,7 @@
       "dist": {
         "shasum": "5ae68177f192d4456269d108afa93ff8743f4f64",
         "tarball": "http://localhost:4260/tweetnacl/tweetnacl-0.14.5.tgz",
-        "integrity": "sha512-KXXFFdAbFXY4geFIwoyNK+f5Z1b7swfXABfL7HXCmoIWMKU3dmS26672A4EeQtDzLKy7SXmfBu51JolvEKwtGA==",
-        "signatures": [
-          {
-            "keyid": "SHA256:jl3bwswu80PjjokCgh0o2w5c2U4LhQAE57gj9cz1kzA",
-            "sig": "MEUCIQDHhdkxfW1hN14i/xMCWfhygkl+52bR+DkNVmdARtwc6wIgPxfsfj8jgtNcMyBXTnqqri0hI2MhOcZniVHZ8VDCcFk="
-          }
-        ]
+        "integrity": "sha512-KXXFFdAbFXY4geFIwoyNK+f5Z1b7swfXABfL7HXCmoIWMKU3dmS26672A4EeQtDzLKy7SXmfBu51JolvEKwtGA=="
       }
     }
   },

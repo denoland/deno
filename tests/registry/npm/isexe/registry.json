@@ -46,13 +46,7 @@
       "dist": {
         "shasum": "e8fbf374dc556ff8947a10dcb0572d633f2cfa10",
         "tarball": "http://localhost:4260/isexe/isexe-2.0.0.tgz",
-        "integrity": "sha512-RHxMLp9lnKHGHRng9QFhRCMbYAcVpn69smSGcq3f36xjgVVWThj4qqLbTLlq7Ssj8B+fIQ1EuCEGI2lKsyQeIw==",
-        "signatures": [
-          {
-            "keyid": "SHA256:jl3bwswu80PjjokCgh0o2w5c2U4LhQAE57gj9cz1kzA",
-            "sig": "MEQCIADIHL0vHAyBDSHK5BeCzNQb3ooCTHoBU+bp0my0d0pwAiAEzxUmLzKn2xsUOTDZngxVYgQ+2BELnj8z+ZNAJWENzA=="
-          }
-        ]
+        "integrity": "sha512-RHxMLp9lnKHGHRng9QFhRCMbYAcVpn69smSGcq3f36xjgVVWThj4qqLbTLlq7Ssj8B+fIQ1EuCEGI2lKsyQeIw=="
       }
     },
     "3.1.1": {
@@ -166,13 +160,7 @@
         "shasum": "4a407e2bd78ddfb14bea0c27c6f7072dde775f0d",
         "tarball": "http://localhost:4260/isexe/isexe-3.1.1.tgz",
         "fileCount": 37,
-        "unpackedSize": 42976,
-        "signatures": [
-          {
-            "keyid": "SHA256:jl3bwswu80PjjokCgh0o2w5c2U4LhQAE57gj9cz1kzA",
-            "sig": "MEUCIBt7dbhTPX0ky58uojKSFYst9buz67jou2hy++gCFoGJAiEA6bCzyCRapCKkPSJwo7lcebsUmoRa25od3DcKmMtaygM="
-          }
-        ]
+        "unpackedSize": 42976
       },
       "directories": {},
       "_hasShrinkwrap": false

@@ -25,12 +25,6 @@
         "tarball": "http://localhost:4260/path-scurry/path-scurry-1.11.1.tgz",
         "fileCount": 13,
         "integrity": "sha512-Xa4Nw17FS9ApQFJ9umLiJS4orGjm7ZzwUrwamcGQuHSzDyth9boKDaycYdDcZDuqYATXw4HFXgaqWTctW/v1HA==",
-        "signatures": [
-          {
-            "sig": "MEYCIQDBjLbfo2sQti3sfRnzaiinq/kkXl1m+QvSVxxwW4e8xAIhAOU7wQ5HNxGrEROeHVnPM5T/4hhZllwlkzv1Aufgubk8",
-            "keyid": "SHA256:jl3bwswu80PjjokCgh0o2w5c2U4LhQAE57gj9cz1kzA"
-          }
-        ],
         "unpackedSize": 535479
       },
       "main": "./dist/commonjs/index.js",

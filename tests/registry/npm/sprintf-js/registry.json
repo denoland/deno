@@ -53,13 +53,7 @@
         "shasum": "4914b903a2f8b685d17fdf78a70e917e872e444a",
         "tarball": "http://localhost:4260/sprintf-js/sprintf-js-1.1.3.tgz",
         "fileCount": 11,
-        "unpackedSize": 39879,
-        "signatures": [
-          {
-            "keyid": "SHA256:jl3bwswu80PjjokCgh0o2w5c2U4LhQAE57gj9cz1kzA",
-            "sig": "MEQCIFqEdBzxc5TO4qHn2Vaj+rUbeXXAIrldXZrm+Oh3ctpGAiA9wmSjDRjIGR5h/m5RnndPawduJOh1VPtIhc1D08pEew=="
-          }
-        ]
+        "unpackedSize": 39879
       },
       "directories": {},
       "_hasShrinkwrap": false

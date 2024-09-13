@@ -102,13 +102,7 @@
       "dist": {
         "integrity": "sha512-0fr/mIH1dlO+x7TlcMy+bIDqKPsw/70tVyeHW787goQjhmqaZe10uwLujubK9q9Lg6Fiho1KUKDYz0Z7k7g5/g==",
         "shasum": "7646fb5f18871cfbb7749e69bd39a6388eb7450c",
-        "tarball": "http://localhost:4260/type-detect/type-detect-4.0.8.tgz",
-        "signatures": [
-          {
-            "keyid": "SHA256:jl3bwswu80PjjokCgh0o2w5c2U4LhQAE57gj9cz1kzA",
-            "sig": "MEQCIEFxImpCxU+MuBlIeBAmerqd0RsGClH5O5G220HhFDPjAiBu9IIino0NDpaZJe49jwAOU5KIoB0BfJu8oPqZi0uLhw=="
-          }
-        ]
+        "tarball": "http://localhost:4260/type-detect/type-detect-4.0.8.tgz"
       },
       "directories": {}
     }

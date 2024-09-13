@@ -78,14 +78,7 @@
         "shasum": "730b67e3cd09e2deacf03c027c81c9d9dbc5e8ab",
         "tarball": "http://localhost:4260/nanoid/nanoid-3.3.4.tgz",
         "fileCount": 24,
-        "unpackedSize": 21583,
-        "signatures": [
-          {
-            "keyid": "SHA256:jl3bwswu80PjjokCgh0o2w5c2U4LhQAE57gj9cz1kzA",
-            "sig": "MEQCIEXG2ta5bIaT6snvQFKV+m1KjuF4DaCpp186tcPo8vsRAiB2Eg9/6nKRi4lZOfwQC1fgq4EzrFjU8T+uqwGxWEQE8A=="
-          }
-        ],
-        "npm-signature": "-----BEGIN PGP SIGNATURE-----\r\nVersion: OpenPGP.js v4.10.10\r\nComment: https://openpgpjs.org\r\n\r\nwsFzBAEBCAAGBQJicQqNACEJED1NWxICdlZqFiEECWMYAoorWMhJKdjhPU1b\r\nEgJ2Vmp6rw/+IRvv2zOtwi8goF3h1VctIQVWtTtYrobDIVC2W++jyxdbgZoP\r\n2CDj1YWjrr+eM6O6sI1Bj+bF+yoqQ+z8ojtfW3vtRPpjzUf/7Sgs4F2ANshp\r\ne3rqdaQLjpHPriHf6HmPJy3YNJ+7n5TPPGoTEGXAe4eCZdko3XidCMWZdHlf\r\nYQU9CVYiG6mjjORkWw1sYctt8exdcGFMh0QoQq7BEp04QWm04JwvHjUiAgvf\r\nmEQLrNrf9nwzjpnubAJD+1z6fKOc9vUE44MOj2PkPoOr6a+iBBBgwBf45cnj\r\ng8R2G5xzxsRRB0a8XZdp67y3WA8rIaYaUuBFtEWYp7QFoA/tp6AGmHEAhjLa\r\nQKTquG7ejBu21ZsQaxpGc/3WWLEm+7F78GF8CXpQdtg0Kg1eugRotSNnU0SO\r\nPLiyYV4Mw6kXnbVchS5Y+HmcDVEcSBMTve/f1KpmIhJueJ20RCg4MGYZWgI9\r\nNJ1KgH2h4djX4XuoXpcsKnX3oVfinHEMke8sLWXHsMAtOxDipEWgW9cE9hk0\r\n71Y6LAAPBu34pmaj73B0qZiIY7wXxoGWQOCl2STS/VyDG/K9w1T+WiYROu+8\r\nE9Gd+f4qXmdi7Jw6May86DDfauCwBP3gnrB5aeOktCjWsgrrdClN3Hv2pIAN\r\noJcjS3IURf6oeV4+Yw1B5GoJu1Y/6U75fOU=\r\n=IMnM\r\n-----END PGP SIGNATURE-----\r\n"
+        "unpackedSize": 21583
       },
       "directories": {},
       "_hasShrinkwrap": false

@@ -47,13 +47,7 @@
       "dist": {
         "shasum": "a3b30a5c4f199183167aaab93beefae3ddfb654f",
         "tarball": "http://localhost:4260/is-fullwidth-code-point/is-fullwidth-code-point-2.0.0.tgz",
-        "integrity": "sha512-VHskAKYM8RfSFXwee5t5cbN5PZeq1Wrh6qd5bkyiXIf6UQcN6w/A0eXM9r6t8d+GYOh+o6ZhiEnb88LN/Y8m2w==",
-        "signatures": [
-          {
-            "keyid": "SHA256:jl3bwswu80PjjokCgh0o2w5c2U4LhQAE57gj9cz1kzA",
-            "sig": "MEYCIQCSW/cIb2AC9PUmuDvt3vURWZEjYEv+/Z+qXFcaI3He9wIhAJplGEI7JWtosgwWrXJjQD9IYNK5KNVtWFv31JFxRyHm"
-          }
-        ]
+        "integrity": "sha512-VHskAKYM8RfSFXwee5t5cbN5PZeq1Wrh6qd5bkyiXIf6UQcN6w/A0eXM9r6t8d+GYOh+o6ZhiEnb88LN/Y8m2w=="
       },
       "directories": {}
     },
@@ -94,14 +88,7 @@
         "shasum": "f116f8064fe90b3f7844a38997c0b75051269f1d",
         "tarball": "http://localhost:4260/is-fullwidth-code-point/is-fullwidth-code-point-3.0.0.tgz",
         "fileCount": 5,
-        "unpackedSize": 4994,
-        "npm-signature": "-----BEGIN PGP SIGNATURE-----\r\nVersion: OpenPGP.js v3.0.4\r\nComment: https://openpgpjs.org\r\n\r\nwsFcBAEBCAAQBQJcj1IhCRA9TVsSAnZWagAAXfQQAINQrkV7QJDGobc762SJ\nTQP45A1CPt+R4IrE6kzoZgbu9aVlK/1/ovrehQ3pkUYLdK+FLwkijHHNkP74\ntK/poxvNxDPUQbBUM/j73RmoTUye16j7bLIkoFQ5a9mgnjy35ZPUUARaw9Ad\nXLHa33xcp1v1dzg7fKrRicfqyIbv780zQRnrKCdE1Vw2G/wDO9R2xBbjhsFd\nni8GhNIHcmG9PDcg1B5vlTxrMPfhMPY4mw4j7V9IgDBbFU2r2L9hGVJYIa6s\nHDiQJYUeqyh/pKlvjI6O/GQPE+AB8IduBxMk+hRHaONTIX/F3RPFmkbwBpTW\nqF6yfoC7roALJrxeJwRooir4h7rChPXLf2UfzDMXYbo/srJ62Gw9ZYnYk/KQ\nA0Ve8GMXiPw3g9ow882INpTGRfql2szTuv8Lmz/vLW1XzcS+AewI72LKM+Kw\nRDwIVsjlORm836UKa8Or6JoGA1jBxIde+ETNXez9c8zAHr4O3zg+ySuAEN2S\nzswpng5xcjhPrgXp2OgkBG8LJBnvPNa2fAT5UPuEcMZhUxHNezSNDIih6weX\nb1YgjtrDOh5qIHaLbR9BJBYC6Vk+gvTK2m6/vDLqmH8P/cvvFkCX2qKgV3wC\n3vPowzeDopsNnA6YvIztI/uk/KV4B1i3Y5eFaylbzqUt23OPf1RrbzL9E0q3\ngPCe\r\n=DL3r\r\n-----END PGP SIGNATURE-----\r\n",
-        "signatures": [
-          {
-            "keyid": "SHA256:jl3bwswu80PjjokCgh0o2w5c2U4LhQAE57gj9cz1kzA",
-            "sig": "MEUCIFqdK0e+RN4xM+7IrAyYmqvTaNg8MFEzwF42BtAoAgitAiEA/9YISFLSR/ut9zSkO4XG67As7nGNUWRBkhM21Q+8foU="
-          }
-        ]
+        "unpackedSize": 4994
       },
       "directories": {},
       "_hasShrinkwrap": false

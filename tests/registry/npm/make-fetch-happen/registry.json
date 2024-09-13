@@ -31,12 +31,6 @@
         "tarball": "http://localhost:4260/make-fetch-happen/make-fetch-happen-13.0.1.tgz",
         "fileCount": 13,
         "integrity": "sha512-cKTUFc/rbKUd/9meOvgrpJ2WrNzymt6jfRDdwg5UCnVzv9dTpEj9JS5m3wtziXVCjluIXyL8pcaukYqezIzZQA==",
-        "signatures": [
-          {
-            "sig": "MEQCIA7a7b2hrtmuR9wWgjUVT2P4QyG21Hl7HvygsnEsFXPmAiBMMHCNEuyCw6YnMFh0lhvBpgQ/f2jefYql9X40r/Wh+g==",
-            "keyid": "SHA256:jl3bwswu80PjjokCgh0o2w5c2U4LhQAE57gj9cz1kzA"
-          }
-        ],
         "attestations": {
           "url": "http://localhost:4260/attestations/make-fetch-happen@13.0.1",
           "provenance": {

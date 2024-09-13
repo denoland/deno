@@ -49,14 +49,7 @@
         "shasum": "52f010178c2a4c117a7757cfe942adb7d2da4cac",
         "tarball": "http://localhost:4260/estree-walker/estree-walker-2.0.2.tgz",
         "fileCount": 17,
-        "unpackedSize": 50243,
-        "npm-signature": "-----BEGIN PGP SIGNATURE-----\r\nVersion: OpenPGP.js v3.0.13\r\nComment: https://openpgpjs.org\r\n\r\nwsFcBAEBCAAQBQJfz7LfCRA9TVsSAnZWagAAIHEP/3W5C8KLN5INJg2Zrvn/\ns1sQstVkA8NVw1f006STezOgzzLmH1WilQ17juF0f5OzY5JN+N14NhOnaxfV\ndC/+wSKiQKtEzyIjM/odxE1V4TJo3O08JdyFW8wJRD+AdcHmojLpbit5uN8i\ncI/gJZQKN44q28AGEtwjy8aMS+iOsH24WuA9VLJ62h4DVsjQYkMttRPGRgtF\nKPGnWsw2Ng43TPJqHy9Iqrk6Y3ukmLfssimVn4W1Yxc16RCg1z43B9w3Nmk6\n49UKiiYEO6+EqFsk6trDzwwtJOL1yhnB7dkreU1TQBkEhCB7rmmKQJin/LXm\nKisS9T60V9mB4bRtaDQVLylLSz6u9y93VAfkndcv5byt4EQiF5E6AEO4Jo0v\n7hoOWF1qxxvLH9u4KBJXPBw9eL/2oXYWwCfc/+ycUKISwv8vWbyHRRZgUstu\nspZpCLTUfWvK2sA1O0iy3VquX+bCWwTSagY4b5ZkwHb1CW8ADwU+piWELfZL\nuwI7gdRZuNjFmQko3YlkY+3icLae9osHNM34TqmakoSYicGp+ERgzeJGXO/O\nX95LDk1bJctUs64H7xv+MNQ7z4xWL43jfcBzEu93KsH3nMTi3Qh8+uV7mrtN\nWzobbyTErFKhS14YsGIgr3SEPbGxq4vHSWCCNzHMqh1+PKc4CqxrhJlEHjiI\nAjXr\r\n=0OBC\r\n-----END PGP SIGNATURE-----\r\n",
-        "signatures": [
-          {
-            "keyid": "SHA256:jl3bwswu80PjjokCgh0o2w5c2U4LhQAE57gj9cz1kzA",
-            "sig": "MEUCIHTgIR8c6jabJ8AGPJD/b/bX5gFjDsPTspyhM1CukcRCAiEA71mt+FxZ8yX3AoQFDOmB3QcQ4MFR3+dKqKIsSYhavb8="
-          }
-        ]
+        "unpackedSize": 50243
       },
       "directories": {},
       "_hasShrinkwrap": false

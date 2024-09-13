@@ -32,12 +32,6 @@
         "tarball": "http://localhost:4260/semver/semver-7.6.2.tgz",
         "fileCount": 52,
         "integrity": "sha512-FNAIBWCx9qcRhoHcgcJ0gvU7SN1lYU2ZXuSfl04bSC5OpvDHFyJCjdNHomPXxjQlCBU67YW64PzY7/VIEH7F2w==",
-        "signatures": [
-          {
-            "sig": "MEYCIQD6/pwdiEu5Ip6DyQ8rwsJ13wLppdOMIDtJOClcLbK+nwIhAMgA4McQIu/+mVtitzpO97NIKFlLAt+8ABL6dnMipilm",
-            "keyid": "SHA256:jl3bwswu80PjjokCgh0o2w5c2U4LhQAE57gj9cz1kzA"
-          }
-        ],
         "attestations": {
           "url": "http://localhost:4260/attestations/semver@7.6.2",
           "provenance": {

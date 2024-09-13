@@ -59,13 +59,7 @@
         "shasum": "1ebd0f09c52ba95a09750afe3f3f9f724a800cb5",
         "tarball": "http://localhost:4260/socks/socks-2.8.3.tgz",
         "fileCount": 32,
-        "unpackedSize": 156302,
-        "signatures": [
-          {
-            "keyid": "SHA256:jl3bwswu80PjjokCgh0o2w5c2U4LhQAE57gj9cz1kzA",
-            "sig": "MEUCIQCK1DTr6IDjVG3NrjjnBKEwJ3UIUhA0yGDE6+Troh5+ugIgV5jooHtwcnN5GVpk4HeGWlTt3VbJghKRRQe0ztJjc9k="
-          }
-        ]
+        "unpackedSize": 156302
       },
       "directories": {},
       "_hasShrinkwrap": false

@@ -97,13 +97,7 @@
         "shasum": "117a960819b08780c3bd1f14ef3c1cc1d3f3ea5a",
         "tarball": "http://localhost:4260/ip-address/ip-address-9.0.5.tgz",
         "fileCount": 48,
-        "unpackedSize": 176898,
-        "signatures": [
-          {
-            "keyid": "SHA256:jl3bwswu80PjjokCgh0o2w5c2U4LhQAE57gj9cz1kzA",
-            "sig": "MEUCIGNoc2Yy0JaKBF+Joty0BBRQcnRUG4ICPaOpH4yTyUbWAiEA7SKD3LwAgTXzKjv7bmWgSda6xzxDgZ21Q+QVyXIUauc="
-          }
-        ]
+        "unpackedSize": 176898
       },
       "directories": {},
       "_hasShrinkwrap": false

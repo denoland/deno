@@ -42,14 +42,7 @@
         "shasum": "68472f79711c084657c067c5c6ad93cddea8214c",
         "tarball": "http://localhost:4260/minipass-pipeline/minipass-pipeline-1.2.4.tgz",
         "fileCount": 4,
-        "unpackedSize": 7004,
-        "npm-signature": "-----BEGIN PGP SIGNATURE-----\r\nVersion: OpenPGP.js v3.0.4\r\nComment: https://openpgpjs.org\r\n\r\nwsFcBAEBCAAQBQJfIHD1CRA9TVsSAnZWagAA0+kP/iYjOcMFfErbQD36koDF\nQPvdz1dvzGvT8F9VqlTy317usF4sjUXjeQRf8oEZCemvQWHUToQj2pJK7T2Y\neHb/g9kHTw68fhYgKtGtsI3jfLc41s8yWQ/LfWlmGB9M+atfKGMFt48a4lCs\nohNOCOOwV2S5SEOGon3n0E0UoN3BGTubhj0s1CKftXvmwS3ZKm+fwAW+2EzW\nqQEuZOR/s/PwOmfVbIu3zOgy+YGIWPGOHX3kLQ7o7jVpSofbzqt1Y6GvZXxZ\n+/gwCNvM4gBrvQvUprqY0DBBxLv7gRnKvkr+XWhLK4UgK+KLeAZoqxbd0maX\nxU3sYYC+L9UzcwgLZTOwM6qhIRzMHolOWpFxUCYnndxH7oJqkNeaIPEqA9MW\nMlbRo9mId0VdkYZHBesYrhxOk8vH+RaONNEckZjzqZFkEQUb3IKQ1hKS+m6E\ntt/sunCfbMyhgFZ7m5YaDBPC/tYWLP62CLe6jy9XQlE9KCSznqlqnVbFgxjE\n4FqvkoHWfyaBwBz5yavmpFeiM2Aoy87C39/XJXbk2JoNW0pP+FvhvnBWFFHe\nUWp21ql+e9dOuZOksaVdRsy6ExxMdFQtdiz0v3Om4ywzXlPQMYWQdYrCTFBA\nJkAJ8KtArBx3oPWwvfk1qFz05SUv9PsE3RVw5QU+X7jvOED+PGAAvx6dZ0Za\nMJeC\r\n=oGZg\r\n-----END PGP SIGNATURE-----\r\n",
-        "signatures": [
-          {
-            "keyid": "SHA256:jl3bwswu80PjjokCgh0o2w5c2U4LhQAE57gj9cz1kzA",
-            "sig": "MEUCIQDf8v9m6p3gFue3Yjxd4e6H2T4lS3KiG/ohLPF9cT3DdAIgUryCYUg+9BioenOtYvXrslzq8FoSszqID75p3aVhCAQ="
-          }
-        ]
+        "unpackedSize": 7004
       },
       "directories": {},
       "_hasShrinkwrap": false

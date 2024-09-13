@@ -64,13 +64,7 @@
         "shasum": "75e6f223f2acb4026866c26a2ead6aab75a8ca7e",
         "tarball": "http://localhost:4260/node-gyp/node-gyp-10.1.0.tgz",
         "fileCount": 95,
-        "unpackedSize": 1726747,
-        "signatures": [
-          {
-            "keyid": "SHA256:jl3bwswu80PjjokCgh0o2w5c2U4LhQAE57gj9cz1kzA",
-            "sig": "MEYCIQCtbTgP5X+OUoSr0tJFu0vdmD4bvPepthKw2IeF8rfGUQIhAOZ9Zy/krKn/tkSabJlX4z7bqNnUxS+es34pGSTb3Jfy"
-          }
-        ]
+        "unpackedSize": 1726747
       },
       "directories": {},
       "_hasShrinkwrap": false

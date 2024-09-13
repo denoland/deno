@@ -160,13 +160,7 @@
         "shasum": "03cdd661d35e9ac76bed9f0e37ccceb42cae5fa5",
         "tarball": "http://localhost:4260/preact-render-to-string/preact-render-to-string-6.4.0.tgz",
         "fileCount": 37,
-        "unpackedSize": 438403,
-        "signatures": [
-          {
-            "keyid": "SHA256:jl3bwswu80PjjokCgh0o2w5c2U4LhQAE57gj9cz1kzA",
-            "sig": "MEYCIQDTa+cBqkHxRPuwDWpHw9h6UF0HFVokRCpvLEgoiEaZtwIhAJSIy8Q2fXZda8KVTd8CpzeT5jFPbCiww9rvyCyA125q"
-          }
-        ]
+        "unpackedSize": 438403
       },
       "directories": {},
       "_hasShrinkwrap": false

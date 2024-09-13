@@ -29,12 +29,6 @@
         "tarball": "http://localhost:4260/minipass-fetch/minipass-fetch-3.0.5.tgz",
         "fileCount": 11,
         "integrity": "sha512-2N8elDQAtSnFV0Dk7gt15KHsS0Fyz6CbYZ360h0WTYV1Ty46li3rAXVOQj1THMNLdmrD9Vt5pBPtWtVkpwGBqg==",
-        "signatures": [
-          {
-            "sig": "MEUCIQCa4AG/RmwIFY2m4oi9Suf2JMV/+jm61vaQqWklyAdcogIgcqhlUvdlWGRFE5bxtFUBk6ugppYNBDgrmCON0Ckbmsc=",
-            "keyid": "SHA256:jl3bwswu80PjjokCgh0o2w5c2U4LhQAE57gj9cz1kzA"
-          }
-        ],
         "attestations": {
           "url": "http://localhost:4260/attestations/minipass-fetch@3.0.5",
           "provenance": {

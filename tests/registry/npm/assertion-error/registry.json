@@ -42,13 +42,7 @@
       "dist": {
         "integrity": "sha512-jgsaNduz+ndvGyFt3uSuWqvy4lCnIJiovtouQN5JZHOKCS2QuhEdbcQHFhVksz2N2U9hXJo8odG7ETyWlEeuDw==",
         "shasum": "e60b6b0e8f301bd97e5375215bda406c85118c0b",
-        "tarball": "http://localhost:4260/assertion-error/assertion-error-1.1.0.tgz",
-        "signatures": [
-          {
-            "keyid": "SHA256:jl3bwswu80PjjokCgh0o2w5c2U4LhQAE57gj9cz1kzA",
-            "sig": "MEQCIBLKjetp37+0lhhi9deyZvXmBZcF/3rW0uJJtY/162bGAiA/3giMIaJv7sRAruur386mr5e9OzyX7FBDJo6ugT1cxQ=="
-          }
-        ]
+        "tarball": "http://localhost:4260/assertion-error/assertion-error-1.1.0.tgz"
       },
       "directories": {}
     }

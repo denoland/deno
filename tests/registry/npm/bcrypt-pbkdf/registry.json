@@ -34,13 +34,7 @@
         "tarball": "http://localhost:4260/bcrypt-pbkdf/bcrypt-pbkdf-1.0.2.tgz",
         "fileCount": 5,
         "unpackedSize": 28994,
-        "integrity": "sha512-qeFIXtP4MSoi6NLqO12WfqARWWuCKi2Rn/9hJLEmtB5yTNr9DqFWkJRCf2qShWzPeAMRnOgCrq0sg/KLv5ES9w==",
-        "signatures": [
-          {
-            "keyid": "SHA256:jl3bwswu80PjjokCgh0o2w5c2U4LhQAE57gj9cz1kzA",
-            "sig": "MEYCIQChYywQjt5fZLC9Rra6lu+zL8cvuTL5dMd2eOEhxappzwIhALDhzEgD/8ch3dt4FJFJIkUGloGoubSOB8uag2TfDxIC"
-          }
-        ]
+        "integrity": "sha512-qeFIXtP4MSoi6NLqO12WfqARWWuCKi2Rn/9hJLEmtB5yTNr9DqFWkJRCf2qShWzPeAMRnOgCrq0sg/KLv5ES9w=="
       },
       "directories": {},
       "_hasShrinkwrap": false

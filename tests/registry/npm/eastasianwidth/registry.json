@@ -37,13 +37,7 @@
       "dist": {
         "integrity": "sha512-I88TYZWc9XiYHRQ4/3c5rjjfgkjhLyW2luGIheGERbNQ6OY7yTybanSpDXZa8y7VUP9YmDcYa+eyq4ca7iLqWA==",
         "shasum": "696ce2ec0aa0e6ea93a397ffcf24aa7840c827cb",
-        "tarball": "http://localhost:4260/eastasianwidth/eastasianwidth-0.2.0.tgz",
-        "signatures": [
-          {
-            "keyid": "SHA256:jl3bwswu80PjjokCgh0o2w5c2U4LhQAE57gj9cz1kzA",
-            "sig": "MEUCIDNcp1SIwsuxLGmN5jJS4ZVTyfWVfHzoC3URtimwSMusAiEA4eLB2KCWmzEszVyewyStQBj4U38rvuXvf4AcXnx/IjM="
-          }
-        ]
+        "tarball": "http://localhost:4260/eastasianwidth/eastasianwidth-0.2.0.tgz"
       },
       "directories": {}
     }

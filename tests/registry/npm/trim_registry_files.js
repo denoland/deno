@@ -32,6 +32,8 @@ for (const dirPath of getPackageDirs()) {
       delete data.versions[version].maintainers;
       delete data.versions[version]._npmUser;
       delete data.versions[version]._npmOperationalInternal;
+      delete data.versions[version].dist.signatures;
+      delete data.versions[version].dist["npm-signature"];
       if (!versions.includes(data["dist-tags"].latest)) {
         data["dist-tags"].latest = [...versions].sort().pop();
       }

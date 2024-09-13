@@ -30,12 +30,6 @@
         "tarball": "http://localhost:4260/nopt/nopt-7.2.1.tgz",
         "fileCount": 8,
         "integrity": "sha512-taM24ViiimT/XntxbPyJQzCG+p4EKOpgD3mxFwW38mGjVUrfERQOeY4EDHjdnptttfHuHQXFx+lTP08Q+mLa/w==",
-        "signatures": [
-          {
-            "sig": "MEUCIQDsGsywXebnr3VNxXxSfSuZKiPrOTyj3J5TmMy6Wh+dIQIgOqooSxmxbTSlbegMSG8W/S9pHAsXDSFZAdCxO9OQqaU=",
-            "keyid": "SHA256:jl3bwswu80PjjokCgh0o2w5c2U4LhQAE57gj9cz1kzA"
-          }
-        ],
         "attestations": {
           "url": "http://localhost:4260/attestations/nopt@7.2.1",
           "provenance": {

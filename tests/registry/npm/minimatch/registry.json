@@ -22,12 +22,6 @@
         "tarball": "http://localhost:4260/minimatch/minimatch-9.0.5.tgz",
         "fileCount": 53,
         "integrity": "sha512-G6T0ZX48xgozx7587koeX9Ys2NYy6Gmv//P89sEte9V9whIapMNF4idKxnW2QtCcLiTWlb/wfCabAtAFWhhBow==",
-        "signatures": [
-          {
-            "sig": "MEYCIQC8i1XVlxHUOKd0etL7moPA7FuIE5d+E6J4fd1YQj0btgIhAMtyRwTteIb7e0oR/SIFP0LK/JFECg7Aj3KbraAX9pih",
-            "keyid": "SHA256:jl3bwswu80PjjokCgh0o2w5c2U4LhQAE57gj9cz1kzA"
-          }
-        ],
         "unpackedSize": 435003
       },
       "main": "./dist/commonjs/index.js",

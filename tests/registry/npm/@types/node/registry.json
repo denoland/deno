@@ -34,14 +34,7 @@
         "shasum": "17d42c6322d917764dd3d2d3a10d7884925de067",
         "tarball": "http://localhost:4260/@types/node/node-18.8.2.tgz",
         "fileCount": 124,
-        "unpackedSize": 3524549,
-        "signatures": [
-          {
-            "keyid": "SHA256:jl3bwswu80PjjokCgh0o2w5c2U4LhQAE57gj9cz1kzA",
-            "sig": "MEYCIQCAqI3XibndhBD647C/13AFb58Fhmg4WmfCoGrIYrgtzwIhAIB0b0D58Tigwb3qKaOVsKnuYOOr0strAmprZSCi/+oq"
-          }
-        ],
-        "npm-signature": "-----BEGIN PGP SIGNATURE-----\r\nVersion: OpenPGP.js v4.10.10\r\nComment: https://openpgpjs.org\r\n\r\nwsFzBAEBCAAGBQJjPFItACEJED1NWxICdlZqFiEECWMYAoorWMhJKdjhPU1b\r\nEgJ2VmrKAg/+IwaUWPgePlO4IxW7CVhFEEFiyhjEH3FHe0ogC3YmreoBFv/A\r\nPwQrwObdskbGWrBzsAOVFvhzYktzP3kc857HtU2ia9FXeaEYvsSQBqh6jZfA\r\njR1+h+jn+W5JnmbnwRGfNn2riCo/un4tYoZ4o/bKiMdNd9WrdIs0Oii1Dd4N\r\nnsBXPb05UPPP4Uu8cz68u1bj+QQ6aslr6keGNyNeILf8bJsEfcfVkEO3l4cu\r\njyTIrxiD+tM8jrUE9CDeodF8CZNuvLh3hqdMPJeH3U47qkDtPDKEOvZTbyYm\r\ngodto6mcnuBr8F9vmikAQfGiXV0U2cg2XRjWc1lI8HT4X0kESTIo+nzNuliD\r\niTpfjyZHdKBGGIuHP1Ou9dVvx4t5XZ1JsK9EK5WTilvAlu/qZrynxXxAV3Rc\r\nvL9UhIacISprMWB3Sohl9ZtfcmGnV/KMRpM+yPZOWp39gQQCKaKF/j2f/mir\r\n8YFbFUnySZkXKzxgsgjrSsh9QiK2dYAzcqHlazITeFN9jOYRzYUjAFj3qOFm\r\n7o1eJpW0qM5vgR+fPq30WxcdcQ4PaWgHSlb/ll8hiwQG1ZUihO/1RU7FtDoc\r\n1KwcfrGOAJPL6vBSLPReUkhDIUTSBwfmvfMxzqD1aDp6YV5WX7h03B0dWbPJ\r\nmPJmJZjjZje4Trk9jBJ5/ZLpB8/zkrDKvhE=\r\n=LPWa\r\n-----END PGP SIGNATURE-----\r\n"
+        "unpackedSize": 3524549
       },
       "directories": {},
       "_hasShrinkwrap": false
@@ -75,13 +68,7 @@
         "shasum": "cb03fca8910fdeb7595b755126a8a78144714eea",
         "tarball": "http://localhost:4260/@types/node/node-18.16.19.tgz",
         "fileCount": 125,
-        "unpackedSize": 3677153,
-        "signatures": [
-          {
-            "keyid": "SHA256:jl3bwswu80PjjokCgh0o2w5c2U4LhQAE57gj9cz1kzA",
-            "sig": "MEYCIQCrmUK+J0P1ywi+U/RBUqMXSK7c0kDYxMEYunkXNSPf+wIhANTRnqmuKWdzIKhsGHCZB+js8qhLcce/P+XOR1JmSNIc"
-          }
-        ]
+        "unpackedSize": 3677153
       },
       "directories": {},
       "_hasShrinkwrap": false

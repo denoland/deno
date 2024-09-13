@@ -28,12 +28,6 @@
         "tarball": "http://localhost:4260/glob/glob-10.4.4.tgz",
         "fileCount": 65,
         "integrity": "sha512-XsOKvHsu38Xe19ZQupE6N/HENeHQBA05o3hV8labZZT2zYDg1+emxWHnc/Bm9AcCMPXfD6jt+QC7zC5JSFyumw==",
-        "signatures": [
-          {
-            "sig": "MEUCIQCgHPF8XN3tuyJVZY/mk6XGnjI0czNt8rbIMYMlqgrw1QIgXnAz8HxtRhDCXenUQgfjYcEXPOH6Ylq+5q4a8fwDERc=",
-            "keyid": "SHA256:jl3bwswu80PjjokCgh0o2w5c2U4LhQAE57gj9cz1kzA"
-          }
-        ],
         "unpackedSize": 475328
       },
       "main": "./dist/commonjs/index.js",

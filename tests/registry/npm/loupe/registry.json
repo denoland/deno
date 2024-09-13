@@ -151,14 +151,7 @@
         "shasum": "7e0b9bffc76f148f9be769cb1321d3dcf3cb25f3",
         "tarball": "http://localhost:4260/loupe/loupe-2.3.4.tgz",
         "fileCount": 24,
-        "unpackedSize": 56060,
-        "npm-signature": "-----BEGIN PGP SIGNATURE-----\r\nVersion: OpenPGP.js v3.0.13\r\nComment: https://openpgpjs.org\r\n\r\nwsFcBAEBCAAQBQJiBSvXCRA9TVsSAnZWagAA5GMQAJNuCRvAOABV3NaJwrSn\no46XwR3XBgbKgQUgNqjdZVytQrG7W0N2fFIJEsxrLh8FmV7NewVwZDmUW5ug\nzUDWqnJ8YubHw2+W4b0EJM39nU8iUwR5Gmt5dbbOCGu1QMfVhugBpxFfPr/Y\nkZZ3JToYqjZ523+gL2pollIHMMzJ87o9gRZtWRdiIk9anNHgmhZlB2tPflQ+\ndHSEwpOAHZEWZSNVRoBvFVPagpFqfLP6oiuO1qd8j9xkEu5OHui1A7fUFoiR\nZACUVy1hpSnAM9JjVoUa2saEHWlgprMiww4t7x2eR4x5bB2IYVbN1BAJGYhB\nmzMYJpVT6f0WcNHY82IvKgEZ8bpCxjrYHSLJLf3gP0PYGkkGy4MjtvNmLYIn\n0+ORkJpS94XwS0+RLRkc3mET9Fc7v5tTJVcf+7PGBoLoFJFMq70i3ufhT/+p\nrNlR3CKOImKCaVo4R58uw/zwikkDJEFq+DZtWsq8pJqMuvSTAQl6UEtdKXlw\nDPm+Nx0yXf641CvpUZJ7Ea8QxoOiNRZxzidXqI0rXWZYmTsS8+rvCIgNuSd3\nXhWJtZGG2yY8HSHMFUPY/GVV9Dh1fFL3ZwYLLa/3FhmOY32zlOOBqCQ1onQl\nRbjsDEsUJCgQ5c+vHCncEc+NADSrqNlicMw/SFqeAvbR9S+ZtX+83kw5sq5M\nyuWX\r\n=GAB5\r\n-----END PGP SIGNATURE-----\r\n",
-        "signatures": [
-          {
-            "keyid": "SHA256:jl3bwswu80PjjokCgh0o2w5c2U4LhQAE57gj9cz1kzA",
-            "sig": "MEYCIQCA3CaA1BAoAU59PGrhQpQxolxvBV2eSQKCoXmsGHPwpgIhAN2osnbK131i8NkfxAmYsFocDdtZxp62muOWECWapmSg"
-          }
-        ]
+        "unpackedSize": 56060
       },
       "directories": {},
       "_hasShrinkwrap": false

@@ -27,12 +27,6 @@
         "tarball": "http://localhost:4260/@npmcli/agent/agent-2.2.2.tgz",
         "fileCount": 8,
         "integrity": "sha512-OrcNPXdpSl9UX7qPVRWbmWMCSXrcDa2M9DvrbOTj7ao1S4PlqVFYv9/yLKMkrJKZ/V5A/kDBC690or307i26Og==",
-        "signatures": [
-          {
-            "sig": "MEYCIQD8utuvBD/N8G0uYr0HEHH22zAe3c5tqP0Gj0z80N+saQIhAJu+Qf6LE+R2RmJtdZVBAIPYico2M8zk7QAOpDwjstzf",
-            "keyid": "SHA256:jl3bwswu80PjjokCgh0o2w5c2U4LhQAE57gj9cz1kzA"
-          }
-        ],
         "attestations": {
           "url": "http://localhost:4260/attestations/@npmcli%2fagent@2.2.2",
           "provenance": {

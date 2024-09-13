@@ -68,13 +68,7 @@
         "shasum": "9071dca17af95f483300316f4b063578fa0db08c",
         "tarball": "http://localhost:4260/socks-proxy-agent/socks-proxy-agent-8.0.4.tgz",
         "fileCount": 8,
-        "unpackedSize": 24807,
-        "signatures": [
-          {
-            "keyid": "SHA256:jl3bwswu80PjjokCgh0o2w5c2U4LhQAE57gj9cz1kzA",
-            "sig": "MEUCIQCVGE9sWVNsvXQxNfnxkVYDLtr6au/T9keiMS8qqpx5xAIgAdieGvxZXNLSv9g8QcnXPcB16VC91E6Vi1CIjwLnaQQ="
-          }
-        ]
+        "unpackedSize": 24807
       },
       "directories": {},
       "_hasShrinkwrap": false

@@ -22,12 +22,6 @@
         "tarball": "http://localhost:4260/debug/debug-4.3.5.tgz",
         "fileCount": 7,
         "integrity": "sha512-pt0bNEmneDIvdL1Xsd9oDQ/wrQRkXDT4AUWlNZNPKvW5x/jyO9VFXkJUP07vQ2upmw5PlaITaPKc31jK13V+jg==",
-        "signatures": [
-          {
-            "sig": "MEUCIQD2eFpf3p60i2+rFrwBiP8ctewWXYfqZxZvMEU/XyX/xAIgJXRFOrWWj+tLfHrd400HHT/bz+yV4Edh8cAmQFDP3Jw=",
-            "keyid": "SHA256:jl3bwswu80PjjokCgh0o2w5c2U4LhQAE57gj9cz1kzA"
-          }
-        ],
         "unpackedSize": 42430
       },
       "main": "./src/index.js",

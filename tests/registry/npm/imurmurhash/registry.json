@@ -40,13 +40,7 @@
       "dist": {
         "shasum": "9218b9b2b928a238b13dc4fb6b6d576f231453ea",
         "tarball": "http://localhost:4260/imurmurhash/imurmurhash-0.1.4.tgz",
-        "integrity": "sha512-JmXMZ6wuvDmLiHEml9ykzqO6lwFbof0GG4IkcGaENdCRDDmMVnny7s5HsIgHCbaq0w2MyPhDqkhTUgS2LU2PHA==",
-        "signatures": [
-          {
-            "keyid": "SHA256:jl3bwswu80PjjokCgh0o2w5c2U4LhQAE57gj9cz1kzA",
-            "sig": "MEQCIDBYV53bBFjsfNsa4u6aXAPKZ+9co9516ZzIbyHU6H9GAiBXXkJRFrbyt8Y2KjDxx6KfZb8DhPxQB/BkZd2wnfAMEg=="
-          }
-        ]
+        "integrity": "sha512-JmXMZ6wuvDmLiHEml9ykzqO6lwFbof0GG4IkcGaENdCRDDmMVnny7s5HsIgHCbaq0w2MyPhDqkhTUgS2LU2PHA=="
       },
       "_from": ".",
       "_npmVersion": "1.3.2",

@@ -51,13 +51,7 @@
       "dist": {
         "integrity": "sha512-UjgapumWlbMhkBgzT7Ykc5YXUT46F0iKu8SGXq0bcwP5dz/h0Plj6enJqjz1Zbq2l5WaqYnrVbwWOWMyF3F47g==",
         "shasum": "74722af32e9614e9c287a8d0bbde48b5e2f1a263",
-        "tarball": "http://localhost:4260/source-map/source-map-0.6.1.tgz",
-        "signatures": [
-          {
-            "keyid": "SHA256:jl3bwswu80PjjokCgh0o2w5c2U4LhQAE57gj9cz1kzA",
-            "sig": "MEUCIQDPx7x89gwCo+c9mch3nQQV4x592HZQjNy/wpijqND5dwIgdntgvrjeVvc+G3I58Ystp1p/nRlBvwCttzsVkDpLzVo="
-          }
-        ]
+        "tarball": "http://localhost:4260/source-map/source-map-0.6.1.tgz"
       },
       "directories": {}
     }

@@ -118,13 +118,7 @@
         "shasum": "952188c1cbd546070e2dd20d0f41c0ae0530cb04",
         "tarball": "http://localhost:4260/signal-exit/signal-exit-4.1.0.tgz",
         "fileCount": 29,
-        "unpackedSize": 76966,
-        "signatures": [
-          {
-            "keyid": "SHA256:jl3bwswu80PjjokCgh0o2w5c2U4LhQAE57gj9cz1kzA",
-            "sig": "MEUCIQC17YSNmo/hSXVVI2cchqvs3la7twHltiehlUoPq/9VGgIgD2Hb18tHfjmWx8vendx1mWOOOYvu7+XRLUj+wwxejPE="
-          }
-        ]
+        "unpackedSize": 76966
       },
       "directories": {},
       "_hasShrinkwrap": false
