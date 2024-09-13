@@ -14,6 +14,7 @@ for (const dirPath of getPackageDirs()) {
   const registryPath = dirPath + "/registry.json";
   const data = JSON.parse(Deno.readTextFileSync(registryPath));
   // this is to save data
+  delete data.readme;
   for (const version in data.versions) {
     if (!versions.includes(version)) {
       delete data.versions[version];
@@ -25,17 +26,14 @@ for (const dirPath of getPackageDirs()) {
       delete data.maintainers;
       delete data.keywords;
       delete data.time;
-      const versionData = data.versions[version];
-      delete versionData.contributors;
-      delete versionData.homepage;
-      delete versionData.keywords;
-      delete versionData.maintainers;
-      delete versionData._npmUser;
-      delete versionData._npmOperationalInternal;
-      versionData.dist.tarball = versionData.dist.tarball.replace(
-        `https://registry.npmjs.org/${versionData.name}/-/`,
-        `http://localhost:4260/${versionData.name}/`,
-      );
+      delete data.versions[version].contributors;
+      delete data.versions[version].homepage;
+      delete data.versions[version].keywords;
+      delete data.versions[version].maintainers;
+      delete data.versions[version]._npmUser;
+      delete data.versions[version]._npmOperationalInternal;
+      delete data.versions[version].dist.signatures;
+      delete data.versions[version].dist["npm-signature"];
       if (!versions.includes(data["dist-tags"].latest)) {
         data["dist-tags"].latest = [...versions].sort().pop();
       }

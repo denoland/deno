@@ -61,20 +61,12 @@
         "shasum": "22aaf38708db2674ed9ada224ca4aa708d821e3d",
         "tarball": "http://localhost:4260/react-dom/react-dom-18.2.0.tgz",
         "fileCount": 32,
-        "unpackedSize": 4502126,
-        "signatures": [
-          {
-            "keyid": "SHA256:jl3bwswu80PjjokCgh0o2w5c2U4LhQAE57gj9cz1kzA",
-            "sig": "MEQCIFuONR/ZM75T69/D+wZB2ISrCRRdJpEazmE9z9Q1/85OAiBhXI23GeB2iSHs3KI7A6aCYAnmcmAXQEP5aTonIB2BPQ=="
-          }
-        ],
-        "npm-signature": "-----BEGIN PGP SIGNATURE-----\r\nVersion: OpenPGP.js v4.10.10\r\nComment: https://openpgpjs.org\r\n\r\nwsFzBAEBCAAGBQJiqOWoACEJED1NWxICdlZqFiEECWMYAoorWMhJKdjhPU1b\r\nEgJ2VmpByw//eI6uM3zx7T1rud9wwDH0kxpi626o69cqbgqn76aUXTf4i3ZZ\r\njtwRoOa37r64psShlltZELbaUstMVaWIi4O06hSzbwkn06xCVakNcfnseoBB\r\ncPFne9rMRPWLMpXLyLX04G6TltGKuWadyqDZDP/1MOexfAfWYsuSgUx92pwF\r\neJ2K0INPoyBiPakFPQrzh2wZ3bBbSyw2h+fXlz35Q1lMpDErDoW5r6mOJ9s6\r\nwuApEFlHAhFvh8gF2cDes1BGOKGNc+WqevpftYL9mEOYz/B7ysbHyTolpY+G\r\nbv5q/d/YUrk69qx7rKesEGlpG0REpZxGKcB1XzWIN+6Q50MNis5mSyEobTrG\r\nXbsQCgwUUHpSV2iMyAbcrPklR2l5sRT8gQHvDJvtLNUf5jA4DKqIAxZKlvV6\r\nvLRmFehbTf9AmXB4fNdXz5WjfA8ASx/77Jv4I/0qH7U3y37vFxZTWIzGVEoD\r\nxIDL4n4wtmar+DWs2T6m2tnPFW+Ww/LNebGNCNYm+HTZKWwdMcxDqkyf4aD2\r\ntVtSso5TJjdaDzM+j+E8EUD1sn5ii9BO18d3PFN4BnAbTRHGQzH9u0ovxSOm\r\n5LptPLbJEtmD+BYr+VsUdQ6T9gZFhNRmGxMjDxy8k2Fb2L1ssnvGqdsHJHel\r\ndPZI4W0tZfRuWlM/M4eRhxHosGqSwWaVSyg=\r\n=s0bE\r\n-----END PGP SIGNATURE-----\r\n"
+        "unpackedSize": 4502126
       },
       "directories": {},
       "_hasShrinkwrap": false
     }
   },
-  "readme": "",
   "homepage": "https://reactjs.org/",
   "repository": {
     "type": "git",

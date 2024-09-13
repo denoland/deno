@@ -60,19 +60,12 @@
         "shasum": "9a8b1f246866c028509486585f62b8f2c18c270e",
         "tarball": "http://localhost:4260/http-proxy-agent/http-proxy-agent-7.0.2.tgz",
         "fileCount": 8,
-        "unpackedSize": 23348,
-        "signatures": [
-          {
-            "keyid": "SHA256:jl3bwswu80PjjokCgh0o2w5c2U4LhQAE57gj9cz1kzA",
-            "sig": "MEUCIBi+r32oZ7TAb8M+r8gRNyTMLi4SMGeNoZOcOaBcXWBJAiEAgEJSlR5tDp/tFXfa6gKR+uqSbvjxJ3CwHII/T6GqKuk="
-          }
-        ]
+        "unpackedSize": 23348
       },
       "directories": {},
       "_hasShrinkwrap": false
     }
   },
-  "readme": "http-proxy-agent\n================\n### An HTTP(s) proxy `http.Agent` implementation for HTTP\n\nThis module provides an `http.Agent` implementation that connects to a specified\nHTTP or HTTPS proxy server, and can be used with the built-in `http` module.\n\n__Note:__ For HTTP proxy usage with the `https` module, check out\n[`https-proxy-agent`](../https-proxy-agent).\n\n\nExample\n-------\n\n```ts\nimport * as http from 'http';\nimport { HttpProxyAgent } from 'http-proxy-agent';\n\nconst agent = new HttpProxyAgent('http://168.63.76.32:3128');\n\nhttp.get('http://nodejs.org/api/', { agent }, (res) => {\n  console.log('\"response\" event!', res.headers);\n  res.pipe(process.stdout);\n});\n```\n\nAPI\n---\n\n### new HttpProxyAgent(proxy: string | URL, options?: HttpProxyAgentOptions)\n\nThe `HttpProxyAgent` class implements an `http.Agent` subclass that connects\nto the specified \"HTTP(s) proxy server\" in order to proxy HTTP requests.\n\nThe `proxy` argument is the URL for the proxy server.\n\nThe `options` argument accepts the usual `http.Agent` constructor options, and\nsome additional properties:\n\n * `headers` - Object containing additional headers to send to the proxy server\n   in each request. This may also be a function that returns a headers object.\n  \n   **NOTE:** If your proxy does not strip these headers from the request, they\n   will also be sent to the destination server.",
   "author": {
     "name": "Nathan Rajlich",
     "email": "nathan@tootallnate.net",

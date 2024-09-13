@@ -18,14 +18,7 @@
         "shasum": "448e5109a313a3527f5a3ab2119ec4cf0e0e2950",
         "tarball": "http://localhost:4260/fraction.js/fraction.js-4.2.0.tgz",
         "fileCount": 7,
-        "unpackedSize": 67397,
-        "npm-signature": "-----BEGIN PGP SIGNATURE-----\r\nVersion: OpenPGP.js v4.10.10\r\nComment: https://openpgpjs.org\r\n\r\nwsFzBAEBCAAGBQJiI9ecACEJED1NWxICdlZqFiEECWMYAoorWMhJKdjhPU1b\r\nEgJ2Vmp/lBAAjC2oc8YCaLNzAdSTT98eVqKdnbSgx1dUPqi3VegopgfFE5Mk\r\nMxkCPTYR9XO0kC/kyoRbl8om9kCu8VjjrywVQSCcr+j4DF1B38Rkgqj+cWum\r\nm0Y+maMgjVfcpzwJhePQCeF/2WKVWu/FSLXQJpWs4fXtcVGvfbUj33xSwVA/\r\nrMrr/8OjPEEnK+GsyzsS+XZdDOHz0FyYku4zsuLgsvXWhCF4NRTTey2RxiHM\r\n+5QkQ3JyqU/nuMvqI077mlsXkfOtkSJhlB/Mib65BH9JGVWu+LriSP4jMH34\r\nT7/DHhgYeEzgIDT6jdHT1FjqxUNQIspBwkIRuq5KtAvT+EkYsneeBlDI6cx1\r\n/4DDKGRjhkWlM4ejEvwtRPeAo3GhuwMFJ/Ewza9ePycVtY37/CCq7aYCzr9b\r\nID5ebur19E9stwIfgK+jns7DZTcOiNqsWbqkTKDDGb+FiXIV75ApzxXEE1az\r\n0+3n84ZmdPW2RVlRHS1YwMH0ubTim6iPOlL9xQ1LFR+P5pbEqAcqwWA9+CvQ\r\n+xuBKSXm0zv45pOGUGvkMtEvHMlNqGii/Uzj6bAj/D8QlUomGg8Viy56/jjp\r\nlEHDmrwpDVShKbb/FmOsTMH/Vp4GXs/QcbvgMNkc41kBsQ6pakDTckH8Ap0p\r\n/456rQi3dV+zyejXidHP9/NqH8EcsQKacjI=\r\n=xBZv\r\n-----END PGP SIGNATURE-----\r\n",
-        "signatures": [
-          {
-            "keyid": "SHA256:jl3bwswu80PjjokCgh0o2w5c2U4LhQAE57gj9cz1kzA",
-            "sig": "MEYCIQDXoZEcz1Sd45YDbgGpXTvSRRZaQKI6bCZgbUBbsafdVgIhAIEaYpbVDppED48LWFEqLLz/yb+5uxhO2c4FnCxNw6cu"
-          }
-        ]
+        "unpackedSize": 67397
       },
       "engines": {
         "node": "*"

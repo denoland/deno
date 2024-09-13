@@ -42,20 +42,12 @@
         "shasum": "513bdbe2d3b95d7762e8c1137efa195c6c61b5b3",
         "tarball": "http://localhost:4260/path-exists/path-exists-4.0.0.tgz",
         "fileCount": 5,
-        "unpackedSize": 3919,
-        "npm-signature": "-----BEGIN PGP SIGNATURE-----\r\nVersion: OpenPGP.js v3.0.4\r\nComment: https://openpgpjs.org\r\n\r\nwsFcBAEBCAAQBQJcpXoNCRA9TVsSAnZWagAAnosQAI8XSu8kmOriX6qXOsXw\nVCUJHDFHO4M5dLJdrT1o5o0SDkTQUmOSazUR/CvaA/4pE7rtPjOL58CrHqSI\nKfEF3lTitx+L3kEw3br6bPMVTo+JoSH04L+UXq7YdkfwRigrNmZpjMiIychR\ngxcgTzBfsFBYzRRUia8OUAFkIK9kvzpRorfFSMfzGGB9V+vjbMd2V+OM0N+G\nAc48nmGUsrQKknAiJpkixM5PWMd/51kV5SzO13RLCnwNOYnH/vNij/9oseSt\njO2nkixc7PDMZTD/2kOQoRQpYoKju/gUnFXCynw1A4EHxetv6QB4nbIVLt8t\nyGhu+hrhNlTgP4MBuSddj4iqJ2EY6VpVZzUNNSzI7SzF62AWTZRHoNLG80yM\naSDKS9Vu+9lkT+YOTA1dXFMol2a29Lzo6Q1PAj2vHd++SZ5A0QO5iRVQkocu\ncecYKaeP2XCa6iWaPwAfEN2rJRdnKN3LrKKr1Cbttjd9WI3Kr152uNXYLjw3\nQ4KpUo4B9rNSTArMk7AIJ1/71uDxvCB+T0OYkj+uHTEKAB/wllpUcJXE2V4Q\nnRig/oWco1+oo1qBY0b2OgiiUcTEfuYUDEyecojVV+nmDDzC/GmcO/93hFnL\nEFxqhB1yaFHuaK4+ntJRpFg+fry09I8mu145WqhggK3le4DUTyyrESAjcBOs\n6s47\r\n=Jirh\r\n-----END PGP SIGNATURE-----\r\n",
-        "signatures": [
-          {
-            "keyid": "SHA256:jl3bwswu80PjjokCgh0o2w5c2U4LhQAE57gj9cz1kzA",
-            "sig": "MEUCIQDyfLbncajlWbMDIPi5XGJseXcr9CBh1zovKHHQXBhJGQIgQ9BTBfVebUAF7DtKGmDzoJ0PTS1AWbuzQtjQKkFSdu8="
-          }
-        ]
+        "unpackedSize": 3919
       },
       "directories": {},
       "_hasShrinkwrap": false
     }
   },
-  "readme": "# path-exists\n\n> Check if a path exists\n\nNOTE: `fs.existsSync` has been un-deprecated in Node.js since 6.8.0. If you only need to check synchronously, this module is not needed.\n\nNever use this before handling a file though:\n\n> In particular, checking if a file exists before opening it is an anti-pattern that leaves you vulnerable to race conditions: another process may remove the file between the calls to `fs.exists()` and `fs.open()`. Just open the file and handle the error when it's not there.\n\n## Install\n\n```\n$ npm install path-exists\n```\n\n## Usage\n\n```js\n// foo.js\nimport {pathExists} from 'path-exists';\n\nconsole.log(await pathExists('foo.js'));\n//=> true\n```\n\n## API\n\n### pathExists(path)\n\nReturns a `Promise<boolean>` of whether the path exists.\n\n### pathExistsSync(path)\n\nReturns a `boolean` of whether the path exists.\n\n## Related\n\n- [path-exists-cli](https://github.com/sindresorhus/path-exists-cli) - CLI for this module\n- [path-type](https://github.com/sindresorhus/path-type) - Check if a path exists and whether it's a file, directory, or symlink\n\n---\n\n<div align=\"center\">\n\t<b>\n\t\t<a href=\"https://tidelift.com/subscription/pkg/npm-path-exists?utm_source=npm-path-exists&utm_medium=referral&utm_campaign=readme\">Get professional support for this package with a Tidelift subscription</a>\n\t</b>\n\t<br>\n\t<sub>\n\t\tTidelift helps make open source sustainable for maintainers while giving companies<br>assurances about security, maintenance, and licensing for their dependencies.\n\t</sub>\n</div>\n",
   "homepage": "https://github.com/sindresorhus/path-exists#readme",
   "repository": {
     "type": "git",

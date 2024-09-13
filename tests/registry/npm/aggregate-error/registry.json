@@ -46,20 +46,12 @@
         "shasum": "92670ff50f5359bdb7a3e0d40d0ec30c5737687a",
         "tarball": "http://localhost:4260/aggregate-error/aggregate-error-3.1.0.tgz",
         "fileCount": 5,
-        "unpackedSize": 6690,
-        "npm-signature": "-----BEGIN PGP SIGNATURE-----\r\nVersion: OpenPGP.js v3.0.4\r\nComment: https://openpgpjs.org\r\n\r\nwsFcBAEBCAAQBQJfQErcCRA9TVsSAnZWagAAf/YP/ibX9IXEI1C1OlqoT4fY\n4eq/6W0Mt2mIq8D2nAZShWHaYdM3llNZNKFVunhNfBsZ1lYGizwCV95QnjcA\nOV6+wKW/dIk9qJUo7+EfOtorC1lrdJshIqVETuwirk+a+HkBh9zMJFxgXiYs\ndxCWGiqQes7FV3qytLo2jmjh9+2DBmnod/5/8CaSSu8zPBKMRGfaF9/NUH1j\nxyPHitx1yPFmjdTcuESAmC7QEiFrIx1m1H7gzPWDUrHajlmKwhkVHAhayZDj\nMmZRPfbxfavxqc5ba6jEGcEXdJf/npjOkSrrnfFHri4582BQ/si9PE522hnM\nMId1JH21sWcn5LTuJcVhO6KNfUJ08HBbyfbjICKRsgCgEovBV8D2/CWWs87U\nM2CDQ8zXMLoYlr4dYqB4Eo7pbgxTKLpNmhoAZYcbDogYLB9/p38MxXU9S46D\nw6/StKVss6wwno/TIxvka31K9I9IbH4Nof3KH4ek7Bcqc55h+IIfIE6BGRcm\ngOLrVUkKSP2EQOjWf9MtjyX4/HLBtWSpZLu3yr7SzpVq4G68CwzQ3KPtQHTJ\nVwi+vStNeZtEaedJp+Y22CC2zhWZ3tZHptLsJKAB5xlWlDU2W3FrP9XR2L0U\nvM9P1CmOCKAQge+O8inRFtxAE0gHNuA4Fy/0JxCFhgpBDqaZQgkb/6x0ERT7\n7AVh\r\n=Sxhl\r\n-----END PGP SIGNATURE-----\r\n",
-        "signatures": [
-          {
-            "keyid": "SHA256:jl3bwswu80PjjokCgh0o2w5c2U4LhQAE57gj9cz1kzA",
-            "sig": "MEUCIGiETVzB7JNhlldMQtr8MMh6EEIAvmfBTpDJoCD/z/CtAiEA/8XMjd3BoEUvnRxgWCg7otZ51MaAXQtlgm47KsBAglQ="
-          }
-        ]
+        "unpackedSize": 6690
       },
       "directories": {},
       "_hasShrinkwrap": false
     }
   },
-  "readme": "# aggregate-error\n\n> Create an error from multiple errors\n\n*Note: With [Node.js 15](https://medium.com/@nodejs/node-js-v15-0-0-is-here-deb00750f278), there's now a built-in [`AggregateError`](https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/AggregateError) type.*\n\n## Install\n\n```sh\nnpm install aggregate-error\n```\n\n## Usage\n\n```js\nimport AggregateError from 'aggregate-error';\n\nconst error = new AggregateError([new Error('foo'), 'bar', {message: 'baz'}]);\n\nthrow error;\n/*\nAggregateError:\n    Error: foo\n        at Object.<anonymous> (/Users/sindresorhus/dev/aggregate-error/example.js:3:33)\n    Error: bar\n        at Object.<anonymous> (/Users/sindresorhus/dev/aggregate-error/example.js:3:13)\n    Error: baz\n        at Object.<anonymous> (/Users/sindresorhus/dev/aggregate-error/example.js:3:13)\n    at AggregateError (/Users/sindresorhus/dev/aggregate-error/index.js:19:3)\n    at Object.<anonymous> (/Users/sindresorhus/dev/aggregate-error/example.js:3:13)\n    at Module._compile (module.js:556:32)\n    at Object.Module._extensions..js (module.js:565:10)\n    at Module.load (module.js:473:32)\n    at tryModuleLoad (module.js:432:12)\n    at Function.Module._load (module.js:424:3)\n    at Module.runMain (module.js:590:10)\n    at run (bootstrap_node.js:394:7)\n    at startup (bootstrap_node.js:149:9)\n*/\n\nfor (const individualError of error.errors) {\n\tconsole.log(individualError);\n}\n//=> [Error: foo]\n//=> [Error: bar]\n//=> [Error: baz]\n```\n\n## API\n\n### AggregateError(errors)\n\nReturns an `Error`.\n\n#### errors\n\nType: `Array<Error|object|string>`\n\nIf a string, a new `Error` is created with the string as the error message.\\\nIf a non-Error object, a new `Error` is created with all properties from the object copied over.\n",
   "homepage": "https://github.com/sindresorhus/aggregate-error#readme",
   "repository": {
     "type": "git",

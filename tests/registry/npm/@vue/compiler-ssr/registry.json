@@ -39,14 +39,7 @@
         "integrity": "sha512-bm9jOeyv1H3UskNm4S6IfueKjUNFmi2kRweFIGnqaGkkRePjwEcfCVqyS3roe7HvF4ugsEkhf4+kIvDhip6XzQ==",
         "tarball": "http://localhost:4260/@vue/compiler-ssr/compiler-ssr-3.2.38.tgz",
         "fileCount": 7,
-        "unpackedSize": 59102,
-        "signatures": [
-          {
-            "keyid": "SHA256:jl3bwswu80PjjokCgh0o2w5c2U4LhQAE57gj9cz1kzA",
-            "sig": "MEUCIQCqxg+GCJYYXhgjctNi0CqD7HyFF+ROUQkHCN1K7DyHYwIgcmZkY/RHCHh8T+KLbfKrj03YHJv1U2fDxlzD4dqjE1k="
-          }
-        ],
-        "npm-signature": "-----BEGIN PGP SIGNATURE-----\r\nVersion: OpenPGP.js v4.10.10\r\nComment: https://openpgpjs.org\r\n\r\nwsFzBAEBCAAGBQJjDcQAACEJED1NWxICdlZqFiEECWMYAoorWMhJKdjhPU1b\r\nEgJ2VmreRxAAlJ2/Sf4PNqEqtRrceye4bfiW3i/IREEovJX2MLOo0BMaARGs\r\nlMkj0sZKBSuJCqYLtGTdgog+iSbsep2keBG65bxKBKjOn5vo6e0+sI15ca63\r\nQIuQGlFn4NAXRvmlkE1I2cPnE1iFog9H4oF2uHRQsj5B//WlJJgVxIXuNet5\r\n5v8ckJf5YP6YdBzQFkhRu7AgL72U/NmfXe+hT1sjBy0J93/lJqNaUrau+I43\r\nMB4DeaBA5Pa4ltVJjbE9x23OYf/Tk3a0tmUcpx1BZKv4NAC8GZ70EmcsTY7l\r\nqKZkMfzG+tr1aqTVmyqyNqiiNO6TkAPrfFAy6tlM0bfNfWyxK529mU5HthPU\r\nhFuHueU2MPE+WLVe4MPaZmDTfc443SPOW0dwUhScaV12hePSNmaTDLnATSNc\r\nD1iwvSiJPtzKmNBTRY6YoM3/b9KEQV5GablefZavLJLVJixmP8BTtK9r6g9A\r\nr41aN7BNx1yG3nZQM0e3S2rnV9mr9ZuIKb3N8PN/9Ycedxp9nuCXd3SeKa8j\r\nQKdb6jLNL9sge/Y8L+NgbgokdRxCHQdQ7jxSZw7e3Ej38aSzTj7HJizn2UgG\r\nhk77xwHfNlBxtHp97Hs7VvcTxCTauwFzICcFp7ODH9euq6ZFJuIWUvVso6c0\r\ntFHs5ClTMuIAbuLyJRyiqsyHm0fpkbcZ1HQ=\r\n=Acde\r\n-----END PGP SIGNATURE-----\r\n"
+        "unpackedSize": 59102
       },
       "directories": {},
       "_hasShrinkwrap": false
@@ -66,6 +59,5 @@
     "url": "https://github.com/vuejs/core/issues"
   },
   "license": "MIT",
-  "readme": "# @vue/compiler-ssr",
   "readmeFilename": "README.md"
 }

@@ -46,17 +46,10 @@
       "dist": {
         "shasum": "d9ef07dce77b9902b8a3a8fa4b31c3e3f7e6e87a",
         "tarball": "http://localhost:4260/which-module/which-module-2.0.0.tgz",
-        "integrity": "sha512-B+enWhmw6cjfVC7kS8Pj9pCrKSc5txArRyaYGe088shv/FGWH+0Rjx/xPgtsWfsUtS27FkP697E4DDhgrgoc0Q==",
-        "signatures": [
-          {
-            "keyid": "SHA256:jl3bwswu80PjjokCgh0o2w5c2U4LhQAE57gj9cz1kzA",
-            "sig": "MEYCIQC53OPKZYZEE0kq+DSThbHCGmj9pK3ydC0qIfmE6vmSkQIhAMuI0FnrJwWYGDqZGh7/upXLNzuN3E3Zj872XxGix75U"
-          }
-        ]
+        "integrity": "sha512-B+enWhmw6cjfVC7kS8Pj9pCrKSc5txArRyaYGe088shv/FGWH+0Rjx/xPgtsWfsUtS27FkP697E4DDhgrgoc0Q=="
       }
     }
   },
-  "readme": "# which-module\n\n> Find the module object for something that was require()d\n\n[![Build Status](https://travis-ci.org/nexdrew/which-module.svg?branch=master)](https://travis-ci.org/nexdrew/which-module)\n[![Coverage Status](https://coveralls.io/repos/github/nexdrew/which-module/badge.svg?branch=master)](https://coveralls.io/github/nexdrew/which-module?branch=master)\n[![Standard Version](https://img.shields.io/badge/release-standard%20version-brightgreen.svg)](https://github.com/conventional-changelog/standard-version)\n\nFind the `module` object in `require.cache` for something that was `require()`d\nor `import`ed - essentially a reverse `require()` lookup.\n\nUseful for libs that want to e.g. lookup a filename for a module or submodule\nthat it did not `require()` itself.\n\n## Install and Usage\n\n```\nnpm install --save which-module\n```\n\n```js\nconst whichModule = require('which-module')\n\nconsole.log(whichModule(require('something')))\n// Module {\n//   id: '/path/to/project/node_modules/something/index.js',\n//   exports: [Function],\n//   parent: ...,\n//   filename: '/path/to/project/node_modules/something/index.js',\n//   loaded: true,\n//   children: [],\n//   paths: [ '/path/to/project/node_modules/something/node_modules',\n//            '/path/to/project/node_modules',\n//            '/path/to/node_modules',\n//            '/path/node_modules',\n//            '/node_modules' ] }\n```\n\n## API\n\n### `whichModule(exported)`\n\nReturn the [`module` object](https://nodejs.org/api/modules.html#modules_the_module_object),\nif any, that represents the given argument in the `require.cache`.\n\n`exported` can be anything that was previously `require()`d or `import`ed as a\nmodule, submodule, or dependency - which means `exported` is identical to the\n`module.exports` returned by this method.\n\nIf `exported` did not come from the `exports` of a `module` in `require.cache`,\nthen this method returns `null`.\n\n## License\n\nISC © Contributors\n",
   "homepage": "https://github.com/nexdrew/which-module#readme",
   "repository": {
     "type": "git",

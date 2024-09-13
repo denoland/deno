@@ -96,14 +96,7 @@
         "shasum": "68ee0892a1616893b7e6daed46b74ffdb5079ed6",
         "tarball": "http://localhost:4260/has-package-exports/has-package-exports-1.3.0.tgz",
         "fileCount": 13,
-        "unpackedSize": 19477,
-        "signatures": [
-          {
-            "keyid": "SHA256:jl3bwswu80PjjokCgh0o2w5c2U4LhQAE57gj9cz1kzA",
-            "sig": "MEQCIFijeujs5k90ktAHaPQdPFGO5ijvx6DfP5Erlu+eNzQCAiBAvNyUKfabIx6RHHCzEvIh3KGzDigMvGZemZftPUJynQ=="
-          }
-        ],
-        "npm-signature": "-----BEGIN PGP SIGNATURE-----\r\nVersion: OpenPGP.js v4.10.10\r\nComment: https://openpgpjs.org\r\n\r\nwsFzBAEBCAAGBQJiTuVcACEJED1NWxICdlZqFiEECWMYAoorWMhJKdjhPU1b\r\nEgJ2VmoCChAAjZKw6zbcEsHqHT74JVQoL/JAXwPd5v1NeMX3Awgo+mRxS4/G\r\nZqcVexX241p+AhjxdtBWMixkSBVsX8Tk2QPlhBagrQTgfzj3TgLNnGhhMDWk\r\nSQ/w+rGGi+7d++GCQy+xNZpz38mtwAt03/4Yad3Xc63UC/N4KhN3xKhqa7Un\r\nMTgdTUYchYvToXZoaWmeaSLlNTC/U3oppjonKVxWzO6JYYgDtEayaKzBETDO\r\nMeeCi2JAnOfDNFUHbGZ9NbQ0ZX0VD4xWPqp7cRljvAeVjqM3KQC092buZppB\r\n9wLtbR5L7s7joH6/SZabtVgYClZAZgOnDgbuxQfDLbfTcWmkUYGpr22NeDfm\r\nkl2mUnv6Rc80u2TTAG/jWTgzNHMhcsy3Rymr43POfEHFAXun7bMlwnA1lkQy\r\nBjfw02IA+9tZZfNmZQUYnW0m9LIDKnU47M0zPXY8sskMpdDj4aJLAlzyj+AG\r\nObZdwrsEeWy9GgIFkykJhb0ReJZy3XGCJLvodaKeT/sx5VS6OQnOLAIcoHe5\r\nmD7JtjfzLRZq5sNknxmmnc96OWv+ns1DFRJAKg2TGz6+CaQLqDKPfU3hqtUx\r\nh3teeWgUdxmBHcHkfH6vDYRnQGAY2fi6XMANijGbrPuOBf7oddB0T/gza3Jd\r\nGf15pSLqwYfEByLpO2tQC05Tpsalxqcp9Ys=\r\n=0WVw\r\n-----END PGP SIGNATURE-----\r\n"
+        "unpackedSize": 19477
       },
       "directories": {},
       "_hasShrinkwrap": false
@@ -123,6 +116,5 @@
     "url": "https://github.com/inspect-js/has-package-exports/issues"
   },
   "license": "MIT",
-  "readme": "# has-package-exports <sup>[![Version Badge][npm-version-svg]][package-url]</sup>\n\n[![dependency status][deps-svg]][deps-url]\n[![dev dependency status][dev-deps-svg]][dev-deps-url]\n[![License][license-image]][license-url]\n[![Downloads][downloads-image]][downloads-url]\n\n[![npm badge][npm-badge-png]][package-url]\n\nDoes the current node version have support for the \"exports\" field in package.json?\n\nAt the time of this writing, node v12.17+ and v13+ has support for the [\"exports\" field in package.json](https://nodejs.org/api/packages.html#packages_exports).\n\nThis library exports `true` if the current node version supports it, `false` if it does not, and `null` if it's in a browser.\n\nRequire or import `has-package-exports/conditional` to determine if the current environment supports conditional exports (as of this writing, node v12.17+ and v13.7+).\n\nRequire or import `has-package-exports/pattern` to determine if the current environment supports exports patterns (as of this writing, node v12.20+ and v14.13+).\n\nRequire or import `has-package-exports/pattern-trailers` to determine if the current environment supports exports pattern trailers (as of this writing, node v14.19+ and v16.9+).\n\n## Tests\nSimply clone the repo, `npm install`, and run `npm test`\n\n[package-url]: https://npmjs.org/package/has-package-exports\n[npm-version-svg]: https://versionbadg.es/inspect-js/has-package-exports.svg\n[deps-svg]: https://david-dm.org/inspect-js/has-package-exports.svg\n[deps-url]: https://david-dm.org/inspect-js/has-package-exports\n[dev-deps-svg]: https://david-dm.org/inspect-js/has-package-exports/dev-status.svg\n[dev-deps-url]: https://david-dm.org/inspect-js/has-package-exports#info=devDependencies\n[npm-badge-png]: https://nodei.co/npm/has-package-exports.png?downloads=true&stars=true\n[license-image]: https://img.shields.io/npm/l/has-package-exports.svg\n[license-url]: LICENSE\n[downloads-image]: https://img.shields.io/npm/dm/has-package-exports.svg\n[downloads-url]: https://npm-stat.com/charts.html?package=has-package-exports\n",
   "readmeFilename": "README.md"
 }

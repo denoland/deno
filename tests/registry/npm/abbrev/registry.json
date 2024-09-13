@@ -27,14 +27,7 @@
         "tarball": "http://localhost:4260/abbrev/abbrev-2.0.0.tgz",
         "fileCount": 4,
         "integrity": "sha512-6/mh1E2u2YgEsCHdY0Yx5oW+61gZU+1vXaoiHHrpKeuRNNgFvS+/jrwHiQhB5apAf5oB7UB7E19ol2R2LKH8hQ==",
-        "signatures": [
-          {
-            "sig": "MEQCIAqmMUR8ZhXSrjGlpIqySNBD9Pa236Qja5gsIWoqGhRaAiBss1eUkBZQkv4pCtZXOXp5D1pZDUNnz0y/bz7oDuH3uQ==",
-            "keyid": "SHA256:jl3bwswu80PjjokCgh0o2w5c2U4LhQAE57gj9cz1kzA"
-          }
-        ],
-        "unpackedSize": 4827,
-        "npm-signature": "-----BEGIN PGP SIGNATURE-----\r\nVersion: OpenPGP.js v4.10.10\r\nComment: https://openpgpjs.org\r\n\r\nwsFzBAEBCAAGBQJjYUvRACEJED1NWxICdlZqFiEECWMYAoorWMhJKdjhPU1b\r\nEgJ2VmqmHg//TaKWbk0RyOVd76RxaU48TKH2GwNGZqy4pxlrLKUFedm49eG6\r\nlmZm0XN3FmnCMBfj/aQ+vf4IF/NKaZpHpYbcq3wlfOdEeDisKauxheH0Hia+\r\n8KDwi7kPod8WVFt3GfrYzKscZybn4xTMkLMDe3CKRa6tzQeJUm8je8a8eRD2\r\nS8iTV7GjKPCePsS5mxakvZ7pigDFsjPAM2NzpUksiP1SS3dVVNnJoG+i4Lcg\r\nSjc7PdIszYpsk1L/SWG6Habsg7bembsTAS2a+Kl2pveU/Xp/UReEf2B+DKtp\r\nWs5O691i6xVeMICVNJFF525xPpq1kLYPknsx+SObk/b9tOhdByvUPi4ig5UZ\r\nXT3JZhv0S2pZgYXdW9KA086Jrln0X4yoHXHjfx44JLURNIjOT5wAw+Y/IRCg\r\ntg/vMwX187IfB8qG3LRrVNbxXxIl9FMCj/YBtW4TmNh/T0SDyItNSkresswh\r\nSTdNg2cE8jglnKk2/G2aKX/UnaJ5COzMOdUtF91oVjrOBZQ7HN7otS8ccdXe\r\nIGH14mamCJOx0OBS2D47gO+bpiyNJVhaOaQX1Q3QU9CHhY5DMb6PPzooMiGG\r\nGBgWlTSwzZSMJ4N1XK2thLTHmJMncQTdUWTEG9e9IGHG6Tcc40C/wjbWuocn\r\n5u2Lbqn50mw/xdtk0ZJUl0rsJoSOgu2RXVw=\r\n=u41A\r\n-----END PGP SIGNATURE-----\r\n"
+        "unpackedSize": 4827
       },
       "main": "lib/index.js",
       "engines": {
@@ -82,6 +75,5 @@
   "bugs": {
     "url": "https://github.com/npm/abbrev-js/issues"
   },
-  "readme": "# abbrev-js\n\nJust like [ruby's Abbrev](http://apidock.com/ruby/Abbrev).\n\nUsage:\n\n    var abbrev = require(\"abbrev\");\n    abbrev(\"foo\", \"fool\", \"folding\", \"flop\");\n    \n    // returns:\n    { fl: 'flop'\n    , flo: 'flop'\n    , flop: 'flop'\n    , fol: 'folding'\n    , fold: 'folding'\n    , foldi: 'folding'\n    , foldin: 'folding'\n    , folding: 'folding'\n    , foo: 'foo'\n    , fool: 'fool'\n    }\n\nThis is handy for command-line scripts, or other cases where you want to be able to accept shorthands.\n",
   "readmeFilename": "README.md"
 }

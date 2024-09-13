@@ -51,19 +51,11 @@
         "shasum": "4f94412a82db32f36e3b0b9741f8a97feb031f7e",
         "tarball": "http://localhost:4260/get-caller-file/get-caller-file-2.0.5.tgz",
         "fileCount": 6,
-        "unpackedSize": 4719,
-        "npm-signature": "-----BEGIN PGP SIGNATURE-----\r\nVersion: OpenPGP.js v3.0.4\r\nComment: https://openpgpjs.org\r\n\r\nwsFcBAEBCAAQBQJchDSvCRA9TVsSAnZWagAA+fkP/2U1MPEJqJbpnldZojNu\n2nIJyOVpRXH0N89M8DLqJdG0WL91oWdxkKgPowueS6WSTazZidlvBW+mbVSV\nDR05kIMKl+FPSErdaJRCRia9n8KE5QMHswLou+gGp3B/ih8s+EtATgkbRjWJ\nBHSY1s/Kk7zfg9HN3AAZNnqgbbU7UkEA2CdIazeZ20Pdbv9FI4VeRU0pec03\nJhGy1rz9g84KtdWpd/v7zTHSAvzPNTPHEYAD1WwiiSs8k2V5F4PBGSp3ibE3\nnjSjbvxXq71GZOoL/wyPwoOMp6cnLsWejITymECCHzMh7FdXS7jvfNGP9tIR\nMYOzEekjfmzNKQqFKsEb/PGDZJ3glxdODZYssdNPy7adeHJgLzNyn7lJvlny\nbRtCHv0NaqldlrEP4b67Di/25K/Zm/gBBlz39rR/XwYz8WHAH+mm0CIiDGhG\nM6tRFxV2/FUAQDhOtp1jb+GM+kkCDUewuNyCQnyv7Yjijz/0q+0bPTCP/145\n/YQZctFMjfO7EJV9jZEDkBvuEfnuPUEPMAI5Asnqofvs0X3R1W1DoX5aZpoD\n1ZtfgZmHOj3c+Qg5TlucPjZ1BlR3mD0lCGElM9UwFMKCfza5J53xOjA4fY0T\n5rVVqbCOSM3tTYjaeL04N7xnHy2pikgplCfgZpRK7NmTVARih5Ri+m4jYr0s\nWucD\r\n=ppms\r\n-----END PGP SIGNATURE-----\r\n",
-        "signatures": [
-          {
-            "keyid": "SHA256:jl3bwswu80PjjokCgh0o2w5c2U4LhQAE57gj9cz1kzA",
-            "sig": "MEUCIG9u4KIkcDrP0Rl0wG1LBp0MZzbdp85Alg0IQbkB8jTEAiEA7/PnKH2QuHJAJlbfouS2tFzziPkSi6SMskyl0I6A9FI="
-          }
-        ]
+        "unpackedSize": 4719
       },
       "_hasShrinkwrap": false
     }
   },
-  "readme": "# get-caller-file\n\n[![Build Status](https://travis-ci.org/stefanpenner/get-caller-file.svg?branch=master)](https://travis-ci.org/stefanpenner/get-caller-file)\n[![Build status](https://ci.appveyor.com/api/projects/status/ol2q94g1932cy14a/branch/master?svg=true)](https://ci.appveyor.com/project/embercli/get-caller-file/branch/master)\n\nThis is a utility, which allows a function to figure out from which file it was invoked. It does so by inspecting v8's stack trace at the time it is invoked.\n\nInspired by http://stackoverflow.com/questions/13227489\n\n*note: this relies on Node/V8 specific APIs, as such other runtimes may not work*\n\n## Installation\n\n```bash\nyarn add get-caller-file\n```\n\n## Usage\n\nGiven:\n\n```js\n// ./foo.js\nconst getCallerFile = require('get-caller-file');\n\nmodule.exports = function() {\n  return getCallerFile(); // figures out who called it\n};\n```\n\n```js\n// index.js\nconst foo = require('./foo');\n\nfoo() // => /full/path/to/this/file/index.js\n```\n\n\n## Options:\n\n* `getCallerFile(position = 2)`: where position is stack frame whos fileName we want.\n",
   "homepage": "https://github.com/stefanpenner/get-caller-file#readme",
   "repository": {
     "type": "git",

@@ -68,13 +68,7 @@
         "shasum": "9071dca17af95f483300316f4b063578fa0db08c",
         "tarball": "http://localhost:4260/socks-proxy-agent/socks-proxy-agent-8.0.4.tgz",
         "fileCount": 8,
-        "unpackedSize": 24807,
-        "signatures": [
-          {
-            "keyid": "SHA256:jl3bwswu80PjjokCgh0o2w5c2U4LhQAE57gj9cz1kzA",
-            "sig": "MEUCIQCVGE9sWVNsvXQxNfnxkVYDLtr6au/T9keiMS8qqpx5xAIgAdieGvxZXNLSv9g8QcnXPcB16VC91E6Vi1CIjwLnaQQ="
-          }
-        ]
+        "unpackedSize": 24807
       },
       "directories": {},
       "_hasShrinkwrap": false
@@ -95,6 +89,5 @@
   "bugs": {
     "url": "https://github.com/TooTallNate/proxy-agents/issues"
   },
-  "readme": "socks-proxy-agent\n================\n### A SOCKS proxy `http.Agent` implementation for HTTP and HTTPS\n\nThis module provides an `http.Agent` implementation that connects to a\nspecified SOCKS proxy server, and can be used with the built-in `http`\nand `https` modules.\n\nIt can also be used in conjunction with the `ws` module to establish a WebSocket\nconnection over a SOCKS proxy. See the \"Examples\" section below.\n\nExamples\n--------\n\n```ts\nimport https from 'https';\nimport { SocksProxyAgent } from 'socks-proxy-agent';\n\nconst agent = new SocksProxyAgent(\n\t'socks://your-name%40gmail.com:abcdef12345124@br41.nordvpn.com'\n);\n\nhttps.get('https://ipinfo.io', { agent }, (res) => {\n\tconsole.log(res.headers);\n\tres.pipe(process.stdout);\n});\n```\n\n#### `ws` WebSocket connection example\n\n```ts\nimport WebSocket from 'ws';\nimport { SocksProxyAgent } from 'socks-proxy-agent';\n\nconst agent = new SocksProxyAgent(\n\t'socks://your-name%40gmail.com:abcdef12345124@br41.nordvpn.com'\n);\n\nvar socket = new WebSocket('ws://echo.websocket.events', { agent });\n\nsocket.on('open', function () {\n\tconsole.log('\"open\" event!');\n\tsocket.send('hello world');\n});\n\nsocket.on('message', function (data, flags) {\n\tconsole.log('\"message\" event! %j %j', data, flags);\n\tsocket.close();\n});\n```",
   "readmeFilename": "README.md"
 }

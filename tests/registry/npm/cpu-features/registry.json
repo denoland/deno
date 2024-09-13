@@ -54,14 +54,7 @@
         "shasum": "0023475bb4f4c525869c162e4108099e35bf19d8",
         "tarball": "http://localhost:4260/cpu-features/cpu-features-0.0.4.tgz",
         "fileCount": 124,
-        "unpackedSize": 441166,
-        "signatures": [
-          {
-            "keyid": "SHA256:jl3bwswu80PjjokCgh0o2w5c2U4LhQAE57gj9cz1kzA",
-            "sig": "MEYCIQDSoV5qJZIAzWTYCD64r4fVmVBgeFomwHHNYtaKRCEvKwIhAKRJESSPM24XRXra2se6hwBay/LKhu6xjQNB0xaAxOBc"
-          }
-        ],
-        "npm-signature": "-----BEGIN PGP SIGNATURE-----\r\nVersion: OpenPGP.js v4.10.10\r\nComment: https://openpgpjs.org\r\n\r\nwsFzBAEBCAAGBQJiRx9JACEJED1NWxICdlZqFiEECWMYAoorWMhJKdjhPU1b\r\nEgJ2Vmp+5w/+KuurV/OwC51tg6PDWX8G3ii9UOqdhwAyZNLPH7Mwje02Lkak\r\nWYTr4fyEYajXSM5xCi3btEdK4npEX9bfUVpwh/OOBPJ9vHg0lcF6oFpl0d3K\r\ngXO36F6oI+qsTE6QVDgyv8ugQtSEjGkcyI9wiwJfWxODxDCZzl54Ai4MCla1\r\nLnDuISklJAJTwGFiMFwsNKicys4l8nqYdJUL5TL92+WTDBI07aqHEBagJzfH\r\novlDbQUHrKO5dXn0tGLrwQUQ4gmwak2vMID007PiAAW7XZD3QPrsq5mAqXCp\r\nQVU3/a5Zf+ApDRl0wSHbLU8SMqU+M3tCUS/Nn7vCzUYXPE+urFS/vM+y/KHS\r\n/zYvVDq6Lh/x72pThqIdDM9ieVThZUzeQRkcnK8JKCJjh3e8hUNu5zoSk0KX\r\ndxhSL4L22jZaBNY9+YzCxKS9iTrSiE1i9NOOzuBQ1qezF840RrJJrqRnMWq3\r\nf1WRU8CeUhZv6xgz9xaDWrLHAygAOlh6LNJj3Olshi0QGwfk6RCRodjZhlpV\r\nj92Z3J4pKauQcvXDfJRroeyg8JgB79UHhrauekUs/ExEYwmg5lAuRaYJp4vG\r\nSXR0q3bJsRxAtVriNaqd6zyEGiVPAuf2J2uVT6/GW0pg58ma0W/Xp0XBYjnE\r\npzj6Ywk2ciP+lL854X5noeBnTxcCBWCcRhk=\r\n=W+qc\r\n-----END PGP SIGNATURE-----\r\n"
+        "unpackedSize": 441166
       },
       "directories": {},
       "_hasShrinkwrap": false
@@ -80,6 +73,5 @@
   "bugs": {
     "url": "https://github.com/mscdex/cpu-features/issues"
   },
-  "readme": "\nDescription\n===========\n\nA simple [node.js](https://nodejs.org) binding to [cpu_features](https://github.com/google/cpu_features) for obtaining information about installed CPU(s).\n\n\nRequirements\n============\n\n* [node.js](http://nodejs.org/) -- v10.0.0 or newer\n* An appropriate build environment -- see [node-gyp's documentation](https://github.com/nodejs/node-gyp/blob/master/README.md)\n\n\nInstall\n=======\n\n    npm install cpu-features\n\n\nExample\n=======\n\n```js\n  // Generally it's a good idea to just call this once and\n  // reuse the result since `cpu-features` does not cache\n  // the result itself.\n  const features = require('cpu-features')();\n\n  console.log(features);\n  // example output:\n  // { arch: 'x86',\n  //   brand: 'Intel(R) Core(TM) i7-3770K CPU @ 3.50GHz',\n  //   family: 6,\n  //   model: 58,\n  //   stepping: 9,\n  //   uarch: 'INTEL_IVB',\n  //   flags:\n  //    { fpu: true,\n  //      tsc: true,\n  //      cx8: true,\n  //      clfsh: true,\n  //      mmx: true,\n  //      aes: true,\n  //      erms: true,\n  //      f16c: true,\n  //      sse: true,\n  //      sse2: true,\n  //      sse3: true,\n  //      ssse3: true,\n  //      sse4_1: true,\n  //      sse4_2: true,\n  //      avx: true,\n  //      pclmulqdq: true,\n  //      cx16: true,\n  //      popcnt: true,\n  //      rdrnd: true,\n  //      ss: true } }\n```\n",
   "readmeFilename": "README.md"
 }

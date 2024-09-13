@@ -48,13 +48,7 @@
       "dist": {
         "shasum": "a8479022eb1ac368a871389b635262c505ee368f",
         "tarball": "http://localhost:4260/strip-ansi/strip-ansi-4.0.0.tgz",
-        "integrity": "sha512-4XaJ2zQdCzROZDivEVIDPkcQn8LMFSa8kj8Gxb/Lnwzv9A8VctNZ+lfivC/sV3ivW8ElJTERXZoPBRrZKkNKow==",
-        "signatures": [
-          {
-            "keyid": "SHA256:jl3bwswu80PjjokCgh0o2w5c2U4LhQAE57gj9cz1kzA",
-            "sig": "MEUCIQDCHb1Csy8k35kjhKC6q92oiFt2kuQV/8WevQ9+AO1edAIgYgwiSmWPF1eN76CL+Wfe3JZrRsrG1KfL3LkykZgVr1s="
-          }
-        ]
+        "integrity": "sha512-4XaJ2zQdCzROZDivEVIDPkcQn8LMFSa8kj8Gxb/Lnwzv9A8VctNZ+lfivC/sV3ivW8ElJTERXZoPBRrZKkNKow=="
       },
       "directories": {}
     },
@@ -101,14 +95,7 @@
         "shasum": "61740a08ce36b61e50e65653f07060d000975fb2",
         "tarball": "http://localhost:4260/strip-ansi/strip-ansi-7.0.1.tgz",
         "fileCount": 5,
-        "unpackedSize": 4090,
-        "npm-signature": "-----BEGIN PGP SIGNATURE-----\r\nVersion: OpenPGP.js v3.0.13\r\nComment: https://openpgpjs.org\r\n\r\nwsFcBAEBCAAQBQJh28O/CRA9TVsSAnZWagAAK+QP/R0BPwbqYKm2cKZ+Cus/\nkbU1maxjoVw7zikegwh/3jUfVA81v5YaxfkvrAq0Z+C0NXC1iJ3zlVCXTzDi\n0jcnNH6n4nV7P6PHYRuK+opNRD1nrsr/8oyowR8NkWPxJVrwaY2ytc8t+qYv\n+gKWENM7MRdcLRYlKI3PQ+hD0ViiZv0OYNqR3AmVOWRNAqSN5OprG3Q3piNM\n42mS2bdT5APpY8H2JfT4c4C5EVLXmJS5mAHuFFY+PP1/h4gnTXBLnWCePbpO\nXN5qT+bNCocXUt7WI2+gf7IL1QY9G+n2NbPMH/xBP1+pOYY8jBZ4kU64obvW\n/7YcHKjoFukd/Rq3Ud2Soj75GvABnJ6VKfZhhMLOq2n4J3wR5lFfRcnYNpNG\nEhXbQHr9C0bjeW0obOGy3ZP5RL3gm9G2h0N1C9tTkxM9MsqlBw9Wn1o3x3cd\ngBJnPHwJTm/X/PmOvFRsbf2/CykAZMYjxkNlqdV1YrJLeYYu4ZWbkxThPWu3\nSKek7ChwkIPCeOVg6Hhqd76CXbndzjNTxT4eb5/lnQypALG680yB/AVFdRlI\no+M7eP8z5FF8i0BFV2bU6+b6ldsLUzBAlxBJyo7BuCOX5XSJEHExKItV1XwW\ncVDenzuNgOrS5t2wbE9jH/8pinueBAJllC1bi6CGBvR8jTSlWhabkJkuEnse\n6q5t\r\n=C27g\r\n-----END PGP SIGNATURE-----\r\n",
-        "signatures": [
-          {
-            "keyid": "SHA256:jl3bwswu80PjjokCgh0o2w5c2U4LhQAE57gj9cz1kzA",
-            "sig": "MEYCIQDn4rHfbYwQwEPLxQRIm4QfxT9rWZDiINZP0MqM6LICKgIhAJTz8zQ3KFbr1ayTgxAO2X4LKInMfqQutoaHj2sTNW0W"
-          }
-        ]
+        "unpackedSize": 4090
       },
       "directories": {},
       "_hasShrinkwrap": false
@@ -155,19 +142,12 @@
         "shasum": "9e26c63d30f53443e9489495b2105d37b67a85d9",
         "tarball": "http://localhost:4260/strip-ansi/strip-ansi-6.0.1.tgz",
         "fileCount": 5,
-        "unpackedSize": 4029,
-        "signatures": [
-          {
-            "keyid": "SHA256:jl3bwswu80PjjokCgh0o2w5c2U4LhQAE57gj9cz1kzA",
-            "sig": "MEQCIEIaIvQJAMRlSerQ8cuHIzWxWLJPS6LkkF/9tMpiAXTvAiBY3tMFoj8tB0mc3dm7Th97E9p88NfZfjOdr/HKu8apLw=="
-          }
-        ]
+        "unpackedSize": 4029
       },
       "directories": {},
       "_hasShrinkwrap": false
     }
   },
-  "readme": "",
   "author": {
     "name": "Sindre Sorhus",
     "email": "sindresorhus@gmail.com",

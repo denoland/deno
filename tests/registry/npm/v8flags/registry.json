@@ -60,19 +60,12 @@
         "shasum": "98fe6c4308317c5f394d85a435eb192490f7e132",
         "tarball": "http://localhost:4260/v8flags/v8flags-4.0.1.tgz",
         "fileCount": 5,
-        "unpackedSize": 9757,
-        "signatures": [
-          {
-            "keyid": "SHA256:jl3bwswu80PjjokCgh0o2w5c2U4LhQAE57gj9cz1kzA",
-            "sig": "MEQCIALVO7Jl3K1f93BllM4VAgxy/uwBX/P4FxO7D4TA0i0iAiACMIbiKyMSrFfsb7RDOB7+78Y9hOWNfJCc+Bv9Wedr4Q=="
-          }
-        ]
+        "unpackedSize": 9757
       },
       "directories": {},
       "_hasShrinkwrap": false
     }
   },
-  "readme": "<p align=\"center\">\n  <a href=\"http://gulpjs.com\">\n    <img height=\"257\" width=\"114\" src=\"https://raw.githubusercontent.com/gulpjs/artwork/master/gulp-2x.png\">\n  </a>\n</p>\n\n# v8flags\n\n[![NPM version][npm-image]][npm-url] [![Downloads][downloads-image]][npm-url] [![Build Status][ci-image]][ci-url] [![Coveralls Status][coveralls-image]][coveralls-url]\n\nGet available v8 and Node.js flags.\n\n## Usage\n\n```js\nconst v8flags = require('v8flags');\n\nv8flags(function (err, results) {\n  console.log(results);\n  // [ '--use_strict',\n  //   '--es5_readonly',\n  //   '--es52_globals',\n  //   '--harmony_typeof',\n  //   '--harmony_scoping',\n  //   '--harmony_modules',\n  //   '--harmony_proxies',\n  //   '--harmony_collections',\n  //   '--harmony',\n  // ...\n});\n```\n\n## API\n\n### `v8flags(cb)`\n\nFinds the available flags and calls the passed callback with any errors and an array of flag results.\n\n### `v8flags.configfile`\n\nThe name of the cache file for flags.\n\n### `v8flags.configPath`\n\nThe filepath location of the `configfile` above.\n\n## License\n\nMIT\n\n<!-- prettier-ignore-start -->\n[downloads-image]: https://img.shields.io/npm/dm/v8flags.svg?style=flat-square\n[npm-url]: https://www.npmjs.com/package/v8flags\n[npm-image]: https://img.shields.io/npm/v/v8flags.svg?style=flat-square\n\n[ci-url]: https://github.com/gulpjs/v8flags/actions?query=workflow:dev\n[ci-image]: https://img.shields.io/github/actions/workflow/status/gulpjs/v8flags/dev.yml?branch=master&style=flat-square\n\n[coveralls-url]: https://coveralls.io/r/gulpjs/v8flags\n[coveralls-image]: https://img.shields.io/coveralls/gulpjs/v8flags/master.svg?style=flat-square\n<!-- prettier-ignore-end -->\n",
   "homepage": "https://github.com/gulpjs/v8flags#readme",
   "repository": {
     "type": "git",

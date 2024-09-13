@@ -44,17 +44,10 @@
       "dist": {
         "shasum": "3d9877899e6a53efc0160504cde15f82e6f061d5",
         "tarball": "http://localhost:4260/is-lambda/is-lambda-1.0.1.tgz",
-        "integrity": "sha512-z7CMFGNrENq5iFB9Bqo64Xk6Y9sg+epq1myIcdHaGnbMTYOxvzsEtdYqQUylB7LxfkvgrrjP32T6Ywciio9UIQ==",
-        "signatures": [
-          {
-            "keyid": "SHA256:jl3bwswu80PjjokCgh0o2w5c2U4LhQAE57gj9cz1kzA",
-            "sig": "MEQCIHWpJi2/bQUyBW7NDenjkyIbtXFZWLcIcpU1QjUbyp3XAiAtuGpqcPbXMtAMcDVHbc0whQvcNPh5129edWIKXieCnA=="
-          }
-        ]
+        "integrity": "sha512-z7CMFGNrENq5iFB9Bqo64Xk6Y9sg+epq1myIcdHaGnbMTYOxvzsEtdYqQUylB7LxfkvgrrjP32T6Ywciio9UIQ=="
       }
     }
   },
-  "readme": "# is-lambda\n\nReturns `true` if the current environment is an [AWS\nLambda](https://aws.amazon.com/lambda/) server.\n\n[![Build status](https://travis-ci.org/watson/is-lambda.svg?branch=master)](https://travis-ci.org/watson/is-lambda)\n[![js-standard-style](https://img.shields.io/badge/code%20style-standard-brightgreen.svg?style=flat)](https://github.com/feross/standard)\n\n## Installation\n\n```\nnpm install is-lambda\n```\n\n## Usage\n\n```js\nvar isLambda = require('is-lambda')\n\nif (isLambda) {\n  console.log('The code is running on a AWS Lambda')\n}\n```\n\n## License\n\nMIT\n",
   "homepage": "https://github.com/watson/is-lambda",
   "repository": {
     "type": "git",

@@ -21,13 +21,7 @@
       "dist": {
         "shasum": "2d10c06bdfd312ea9777695a4d28439456b75942",
         "tarball": "http://localhost:4260/normalize-range/normalize-range-0.1.2.tgz",
-        "integrity": "sha512-bdok/XvKII3nUpklnV6P2hxtMNrCboOjAcyBuQnWEhO665FwrSNRxU+AqpsyvO6LgGYPspN+lu5CLtw4jPRKNA==",
-        "signatures": [
-          {
-            "keyid": "SHA256:jl3bwswu80PjjokCgh0o2w5c2U4LhQAE57gj9cz1kzA",
-            "sig": "MEUCIE/pPGFro0Dc2jy+Xczxvr24YzO9s1xQynEBZoe2bi1MAiEAu5ZcDlfU7EqSGImCiQY9jpsumxIQCyAlpFAuAnfjDw8="
-          }
-        ]
+        "integrity": "sha512-bdok/XvKII3nUpklnV6P2hxtMNrCboOjAcyBuQnWEhO665FwrSNRxU+AqpsyvO6LgGYPspN+lu5CLtw4jPRKNA=="
       },
       "engines": {
         "node": ">=0.10.0"

@@ -47,14 +47,7 @@
         "shasum": "3183e38fae9a65d7cb5e53945cd5897d0260a06a",
         "tarball": "http://localhost:4260/ansi-regex/ansi-regex-6.0.1.tgz",
         "fileCount": 5,
-        "unpackedSize": 5667,
-        "npm-signature": "-----BEGIN PGP SIGNATURE-----\r\nVersion: OpenPGP.js v3.0.13\r\nComment: https://openpgpjs.org\r\n\r\nwsFcBAEBCAAQBQJhO78hCRA9TVsSAnZWagAA+F4P/0Xt4D0GoXduv+o147iO\nj3b1oPSNypnmThhmCAUInwB1Xd9SXFEjzuNDNGX/8xeWUQrJssJ+SBEzb5te\nr34P6wPHUeuTa2p1j3ABN9ABP/NPCPkaEDgjx86ImkT++3VI8yNEuSSOsghI\n5Ssvhm6bLJBWzCt/cweIG7x4ZJQPeUbyoWIJmBobCDyNuVgabmk9B2B1RyO0\nf2aounmh5w1fBWsx65MjTi7fu4e/GOP+xscf9Rn1AdRP6rcxJakPjaGTF3HE\naz6UNP9UZCuZ4rb6xOFEfLmiqfNbK31NKNLPrABDXF6NkbJepsUhNmju32cg\nUuo4lSkxfFaVyFXFB1h62RmDdemxZWl9j24fVt+99K4BH6xOiwPmOHHHPJnL\nXNuZ6eCwdcLjPe8Af/0GEsFqdDu591Hwi2Nl8UNAD5hCzcDTITOTL95Dopaw\nGzySTClnDsh17Ud73FWM51FQzVDORa2vOmVzQts3aHlF93ufk9RHtlN9YxAV\nUvM3IxMHx2O8Rc2gSc6t/pJAdFACBLkLDGtcQVhxaFcTpGXrKUr+KN2gFC4D\nXZA/MvK0YXBmrwec20k2wTAdmi7XO5k8HciCPT7MZDJONTBlt9cC/LL41JNc\nvxj0A0loP9R44eVoAJOSbxhpnteeIjw4rwkOySZOqqEsUw5MDFp/peiojlcv\nCOQk\r\n=VRgZ\r\n-----END PGP SIGNATURE-----\r\n",
-        "signatures": [
-          {
-            "keyid": "SHA256:jl3bwswu80PjjokCgh0o2w5c2U4LhQAE57gj9cz1kzA",
-            "sig": "MEUCIQCWW/ZEXmQGK500jBFw7uRYczrrcLTzOEnm3uDiNPs6rAIgcKX8SLAOUpBu/tWg+7vPsMA4l7siraEVYPpTETOVqX0="
-          }
-        ]
+        "unpackedSize": 5667
       },
       "directories": {},
       "_hasShrinkwrap": false
@@ -100,14 +93,7 @@
         "shasum": "082cb2c89c9fe8659a311a53bd6a4dc5301db304",
         "tarball": "http://localhost:4260/ansi-regex/ansi-regex-5.0.1.tgz",
         "fileCount": 5,
-        "unpackedSize": 5609,
-        "npm-signature": "-----BEGIN PGP SIGNATURE-----\r\nVersion: OpenPGP.js v3.0.13\r\nComment: https://openpgpjs.org\r\n\r\nwsFcBAEBCAAQBQJhQMXnCRA9TVsSAnZWagAADYYP/iz1/gbU0N9EjGpKc+Gm\nnX7qe5zf8TvcOpxBMDSFiCD5ntg/EH4YguqeUhRgW7X/nx58basGjNU2Payd\n6gIBVMEriQUWhS6MllSbiIbxY3ALKRcNhIphqER4kneujLwTqgAMOSjjnOk+\nvhPheetSO9ydRVZvb1UHC45D/4Bl0BJjPuAgF6YJlAae+bon50yImBeBUus4\nSmcbaBKSoCKT+ml4pfNidfUIJn+Zo8u0u8WI/6hfJ5oD9/eerQaSK/Fjt1hZ\nj67NmXWMsMugedkgpKbK3lZX+LucgTrb7L9QJC++LQj6FSRDQBguiODgJ912\nVxqjJN0SSqcpNRVk0dTHhI2IoOn4Mu3HVZolsrVFGXsQDMlNHWxehHUtzZ/h\ne592hb0tqcyIeMFLUMcRhcnaQZrNKTYv7XSMpfPWh73slOk5AaZFOyY/yZ2k\nIqfm7sKVsijHzRgyveZ+n1QyV6CWFMzQbxnj34t7NpnX429VY/F/ZL/E1Yfu\noJhSbp/K0+k8Gp9g9YNDANE7s5jM8pJzlSOo3XUWyaFaujRHMsAtxgtYikZB\n3uzZaYQxryjCkvuvZJFwUBMeLWJP2JKt7bpK3mv7DHvEWTxicBHSPaePhA01\nOfiQ7YzPY3pNI/Fki/jloyJgSazLpvlWv7XWAF/OhvB5G3KQbfDe/hbQg0Yq\nsUn3\r\n=I35d\r\n-----END PGP SIGNATURE-----\r\n",
-        "signatures": [
-          {
-            "keyid": "SHA256:jl3bwswu80PjjokCgh0o2w5c2U4LhQAE57gj9cz1kzA",
-            "sig": "MEUCIQCS7XsMq0d29jMXjedcRcP044S7ZelyMVBxKjkUpCShHAIgGyiTNkLoCCh/rpMnXAisLtOsV3SGe2ftVRwhvZTAPyw="
-          }
-        ]
+        "unpackedSize": 5609
       },
       "directories": {},
       "_hasShrinkwrap": false
@@ -151,20 +137,12 @@
         "shasum": "123d6479e92ad45ad897d4054e3c7ca7db4944e1",
         "tarball": "http://localhost:4260/ansi-regex/ansi-regex-3.0.1.tgz",
         "fileCount": 4,
-        "unpackedSize": 4054,
-        "npm-signature": "-----BEGIN PGP SIGNATURE-----\r\nVersion: OpenPGP.js v4.10.10\r\nComment: https://openpgpjs.org\r\n\r\nwsFzBAEBCAAGBQJiQGbIACEJED1NWxICdlZqFiEECWMYAoorWMhJKdjhPU1b\r\nEgJ2Vmqy/Q//Vh9oKpgDxgXcW+UYZ9DZKYScVldnKzuT5VNYLrGT8mMMPxAC\r\nws4wVRyeWo8WX4jwQqpZaDxr5WlH+X2tbxM+PmwncwkOYTtbTGutmr+cwc16\r\nXaKNwQZt4F5fA32N39Jxyu05sLqje517n3rRFvN6HqzOw21DYIL6N7UpUXeD\r\nFiwNMFOi2S3RMUJgf6EDVNB59MNX7X6W85cvJrjRK8xfUJB50ODx1WfUNG1X\r\nc96t6swskGBdq0riRxtmUTyJgxkgaL4eHnYMpLSad1Xx5rVyHckL9CFajYPo\r\np64kmi2+UHAswdfzDYuQTuIt2vKzpKCGGP74FSZ5trTsQNuljvjhemFePlAw\r\nXOoq2sf/yTGiNu9W+ved2NPpR/nSQO9UnBp7P/pKcfY92rPOwRc3ypBx4JDC\r\nQHANx8/fM7TtRrVUyVJoyEYzMnDxDQnzeGRrYfSneg1oI7oci62HXmgrfxvh\r\n8TPDgsKALJixmkDc6FQgENjmMrblrmU7ZuK2H1meidi+62MJEoTj5lwXKp9d\r\nhay1RKGB4qKHEO5PVIBrYdvkoZIaUyIrN4KgcqHHjrOKWhcWAZDu3A9wwyLD\r\nAOMLQbPqJccQj2FrSMOGrc1ego70swRFGX21xLW0xqr8p65PTLGBKp0+OgC9\r\nlcz8F/xfg1PkqVRZw4TGuEcBE3EHcDFSrr0=\r\n=xF18\r\n-----END PGP SIGNATURE-----\r\n",
-        "signatures": [
-          {
-            "keyid": "SHA256:jl3bwswu80PjjokCgh0o2w5c2U4LhQAE57gj9cz1kzA",
-            "sig": "MEUCIGxf4gJU3Ry4fyipshNrDGCYFK/glbif7vsA/O9sywmCAiEAgFdMiI1ykrpU2QunGRKSzrIksQtwFrDpgjgh2uUQKh8="
-          }
-        ]
+        "unpackedSize": 4054
       },
       "directories": {},
       "_hasShrinkwrap": false
     }
   },
-  "readme": "",
   "homepage": "https://github.com/chalk/ansi-regex#readme",
   "repository": {
     "type": "git",

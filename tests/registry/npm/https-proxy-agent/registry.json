@@ -63,13 +63,7 @@
         "shasum": "9e8b5013873299e11fab6fd548405da2d6c602b2",
         "tarball": "http://localhost:4260/https-proxy-agent/https-proxy-agent-7.0.5.tgz",
         "fileCount": 12,
-        "unpackedSize": 34878,
-        "signatures": [
-          {
-            "keyid": "SHA256:jl3bwswu80PjjokCgh0o2w5c2U4LhQAE57gj9cz1kzA",
-            "sig": "MEQCIDFZmWUU+D3oE97K/cAiDmaGBWqWbaJGdP4cXqLZkp/qAiBUAt9Z2J0FL8xGKJYYpXlFk+nOjdkWPWIy0xRwtfTq6g=="
-          }
-        ]
+        "unpackedSize": 34878
       },
       "directories": {},
       "_hasShrinkwrap": false
@@ -90,6 +84,5 @@
   "bugs": {
     "url": "https://github.com/TooTallNate/proxy-agents/issues"
   },
-  "readme": "https-proxy-agent\n================\n### An HTTP(s) proxy `http.Agent` implementation for HTTPS\n\nThis module provides an `http.Agent` implementation that connects to a specified\nHTTP or HTTPS proxy server, and can be used with the built-in `https` module.\n\nSpecifically, this `Agent` implementation connects to an intermediary \"proxy\"\nserver and issues the [CONNECT HTTP method][CONNECT], which tells the proxy to\nopen a direct TCP connection to the destination server.\n\nSince this agent implements the CONNECT HTTP method, it also works with other\nprotocols that use this method when connecting over proxies (i.e. WebSockets).\nSee the \"Examples\" section below for more.\n\nExamples\n--------\n\n#### `https` module example\n\n```ts\nimport * as https from 'https';\nimport { HttpsProxyAgent } from 'https-proxy-agent';\n\nconst agent = new HttpsProxyAgent('http://168.63.76.32:3128');\n\nhttps.get('https://example.com', { agent }, (res) => {\n  console.log('\"response\" event!', res.headers);\n  res.pipe(process.stdout);\n});\n```\n\n#### `ws` WebSocket connection example\n\n```ts\nimport WebSocket from 'ws';\nimport { HttpsProxyAgent } from 'https-proxy-agent';\n\nconst agent = new HttpsProxyAgent('http://168.63.76.32:3128');\nconst socket = new WebSocket('ws://echo.websocket.org', { agent });\n\nsocket.on('open', function () {\n  console.log('\"open\" event!');\n  socket.send('hello world');\n});\n\nsocket.on('message', function (data, flags) {\n  console.log('\"message\" event! %j %j', data, flags);\n  socket.close();\n});\n```\n\nAPI\n---\n\n### new HttpsProxyAgent(proxy: string | URL, options?: HttpsProxyAgentOptions)\n\nThe `HttpsProxyAgent` class implements an `http.Agent` subclass that connects\nto the specified \"HTTP(s) proxy server\" in order to proxy HTTPS and/or WebSocket\nrequests. This is achieved by using the [HTTP `CONNECT` method][CONNECT].\n\nThe `proxy` argument is the URL for the proxy server.\n\nThe `options` argument accepts the usual `http.Agent` constructor options, and\nsome additional properties:\n\n * `headers` - Object containing additional headers to send to the proxy server\n   in the `CONNECT` request.\n\n[CONNECT]: http://en.wikipedia.org/wiki/HTTP_tunnel#HTTP_CONNECT_Tunneling\n",
   "readmeFilename": "README.md"
 }

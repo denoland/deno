@@ -39,20 +39,12 @@
         "shasum": "56574afdd791f54a8e9b2785c0582a2d26210fa9",
         "tarball": "http://localhost:4260/encoding/encoding-0.1.13.tgz",
         "fileCount": 7,
-        "unpackedSize": 7123,
-        "npm-signature": "-----BEGIN PGP SIGNATURE-----\r\nVersion: OpenPGP.js v3.0.4\r\nComment: https://openpgpjs.org\r\n\r\nwsFcBAEBCAAQBQJfCBJzCRA9TVsSAnZWagAANNcP/i1TY309HKXYl74I0RJz\noqFuwSxgoWXNnJ3ugBuNbz7U9DjcEhbbaYEHuc26lwkYV0HMiDZGgVDKaZzy\nWPxU6cO+Cm1/Dy9UrevCe78O34+Koaymhi69i9MWHlcAIfbCcp/qcm2EOdeI\nJ2usvmzGXxnwWQQVb+Sw7H9/eQFuYUlSXAbE/1kSDZyDq5McCdMBySEIE0fa\niS+dQBVdLJl2sFwL7DgoT+QWt2v53svwJbR1ZQbfySaLJVVMvoFrs21pt3Td\nlwJ8j1lz2ADxI/9WX0faYxKCJNtVDXDpnBA4hnYzDPFbmX8skKXLabus2mUZ\nO9Mh7zTRzvIOm0c8meKLq/RVIYODOX/eEvegvJcdNTpCd3K/GWOqF/28+vCH\nD45K6J/vTcwku1cZdX+MO1GBX5A8iV1JISKzjXyycjV50PfB8dZ2YanKQGjA\nmkmYzBPssaA+/dVtrdlpl2L03sUae9YUPI8x2dwHstZ+BlMZ/or9/EIH5rOj\nCxqc0KeUDsMD/mtzjCeWdxA4POamYNMJsU0ewluzKYZrSH9L1yccCULVUuJn\nh1XL2H8EOABR7A0PnZhGfIsL2K+TpT47ieOHragZ2c7LnO9kVfKetdAhoR4L\nQVNHr6zLnA5scWfk68sBNXgWKJvdPnCz4vZLQhDzhfx5PAL/OSHm7WHGOhH0\nsLJK\r\n=Xp+Q\r\n-----END PGP SIGNATURE-----\r\n",
-        "signatures": [
-          {
-            "keyid": "SHA256:jl3bwswu80PjjokCgh0o2w5c2U4LhQAE57gj9cz1kzA",
-            "sig": "MEUCIQDjEJ8zoQO4Tth6hxEHL+G4uUHRf5vm6GQ6WPo4LxbWXwIgJqM+w7XPr2CJSxOqTYe4/A6Xo4a64Oius0PaOi/0M08="
-          }
-        ]
+        "unpackedSize": 7123
       },
       "directories": {},
       "_hasShrinkwrap": false
     }
   },
-  "readme": "# Encoding\n\n**encoding** is a simple wrapper around [iconv-lite](https://github.com/ashtuchkin/iconv-lite/) to convert strings from one encoding to another.\n\n[![Build Status](https://secure.travis-ci.org/andris9/encoding.svg)](http://travis-ci.org/andris9/Nodemailer)\n[![npm version](https://badge.fury.io/js/encoding.svg)](http://badge.fury.io/js/encoding)\n\nInitially _encoding_ was a wrapper around _node-iconv_ (main) and _iconv-lite_ (fallback) and was used as the encoding layer for Nodemailer/mailparser. Somehow it also ended up as a dependency for a bunch of other project, none of these actually using _node-iconv_. The loading mechanics caused issues for front-end projects and Nodemailer/malparser had moved on, so _node-iconv_ was removed.\n\n## Install\n\nInstall through npm\n\n    npm install encoding\n\n## Usage\n\nRequire the module\n\n    var encoding = require(\"encoding\");\n\nConvert with encoding.convert()\n\n    var resultBuffer = encoding.convert(text, toCharset, fromCharset);\n\nWhere\n\n-   **text** is either a Buffer or a String to be converted\n-   **toCharset** is the characterset to convert the string\n-   **fromCharset** (_optional_, defaults to UTF-8) is the source charset\n\nOutput of the conversion is always a Buffer object.\n\nExample\n\n    var result = encoding.convert(\"ÕÄÖÜ\", \"Latin_1\");\n    console.log(result); //<Buffer d5 c4 d6 dc>\n\n## License\n\n**MIT**\n",
   "author": {
     "name": "Andris Reinman"
   },

@@ -46,13 +46,7 @@
       "dist": {
         "shasum": "e8fbf374dc556ff8947a10dcb0572d633f2cfa10",
         "tarball": "http://localhost:4260/isexe/isexe-2.0.0.tgz",
-        "integrity": "sha512-RHxMLp9lnKHGHRng9QFhRCMbYAcVpn69smSGcq3f36xjgVVWThj4qqLbTLlq7Ssj8B+fIQ1EuCEGI2lKsyQeIw==",
-        "signatures": [
-          {
-            "keyid": "SHA256:jl3bwswu80PjjokCgh0o2w5c2U4LhQAE57gj9cz1kzA",
-            "sig": "MEQCIADIHL0vHAyBDSHK5BeCzNQb3ooCTHoBU+bp0my0d0pwAiAEzxUmLzKn2xsUOTDZngxVYgQ+2BELnj8z+ZNAJWENzA=="
-          }
-        ]
+        "integrity": "sha512-RHxMLp9lnKHGHRng9QFhRCMbYAcVpn69smSGcq3f36xjgVVWThj4qqLbTLlq7Ssj8B+fIQ1EuCEGI2lKsyQeIw=="
       }
     },
     "3.1.1": {
@@ -166,19 +160,12 @@
         "shasum": "4a407e2bd78ddfb14bea0c27c6f7072dde775f0d",
         "tarball": "http://localhost:4260/isexe/isexe-3.1.1.tgz",
         "fileCount": 37,
-        "unpackedSize": 42976,
-        "signatures": [
-          {
-            "keyid": "SHA256:jl3bwswu80PjjokCgh0o2w5c2U4LhQAE57gj9cz1kzA",
-            "sig": "MEUCIBt7dbhTPX0ky58uojKSFYst9buz67jou2hy++gCFoGJAiEA6bCzyCRapCKkPSJwo7lcebsUmoRa25od3DcKmMtaygM="
-          }
-        ]
+        "unpackedSize": 42976
       },
       "directories": {},
       "_hasShrinkwrap": false
     }
   },
-  "readme": "# isexe\n\nMinimal module to check if a file is executable, and a normal file.\n\nUses `fs.stat` and tests against the `PATHEXT` environment variable on\nWindows.\n\n## USAGE\n\n```js\nimport { isexe, sync } from 'isexe'\n// or require() works too\n// const { isexe } = require('isexe')\nisexe('some-file-name').then(isExe => {\n  if (isExe) {\n    console.error('this thing can be run')\n  } else {\n    console.error('cannot be run')\n  }\n}, (err) => {\n  console.error('probably file doesnt exist or something')\n})\n\n// same thing but synchronous, throws errors\nisExe = sync('some-file-name')\n\n// treat errors as just \"not executable\"\nconst isExe = await isexe('maybe-missing-file', { ignoreErrors: true })\nconst isExe = sync('maybe-missing-file', { ignoreErrors: true })\n```\n\n## API\n\n### `isexe(path, [options]) => Promise<boolean>`\n\nCheck if the path is executable.\n\nWill raise whatever errors may be raised by `fs.stat`, unless\n`options.ignoreErrors` is set to true.\n\n### `sync(path, [options]) => boolean`\n\nSame as `isexe` but returns the value and throws any errors raised.\n\n## Platform Specific Implementations\n\nIf for some reason you want to use the implementation for a\nspecific platform, you can do that.\n\n```js\nimport { win32, posix } from 'isexe'\nwin32.isexe(...)\nwin32.sync(...)\n// etc\n\n// or:\nimport { isexe, sync } from 'isexe/posix'\n```\n\nThe default exported implementation will be chosen based on\n`process.platform`.\n\n### Options\n\n```ts\nimport type IsexeOptions from 'isexe'\n```\n\n* `ignoreErrors` Treat all errors as \"no, this is not\n  executable\", but don't raise them.\n* `uid` Number to use as the user id on posix\n* `gid` Number to use as the group id on posix\n* `pathExt` List of path extensions to use instead of `PATHEXT`\n  environment variable on Windows.\n",
   "author": {
     "name": "Isaac Z. Schlueter",
     "email": "i@izs.me",

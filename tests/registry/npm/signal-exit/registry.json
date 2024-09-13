@@ -118,19 +118,12 @@
         "shasum": "952188c1cbd546070e2dd20d0f41c0ae0530cb04",
         "tarball": "http://localhost:4260/signal-exit/signal-exit-4.1.0.tgz",
         "fileCount": 29,
-        "unpackedSize": 76966,
-        "signatures": [
-          {
-            "keyid": "SHA256:jl3bwswu80PjjokCgh0o2w5c2U4LhQAE57gj9cz1kzA",
-            "sig": "MEUCIQC17YSNmo/hSXVVI2cchqvs3la7twHltiehlUoPq/9VGgIgD2Hb18tHfjmWx8vendx1mWOOOYvu7+XRLUj+wwxejPE="
-          }
-        ]
+        "unpackedSize": 76966
       },
       "directories": {},
       "_hasShrinkwrap": false
     }
   },
-  "readme": "# signal-exit\n\nWhen you want to fire an event no matter how a process exits:\n\n- reaching the end of execution.\n- explicitly having `process.exit(code)` called.\n- having `process.kill(pid, sig)` called.\n- receiving a fatal signal from outside the process\n\nUse `signal-exit`.\n\n```js\n// Hybrid module, either works\nimport { onExit } from 'signal-exit'\n// or:\n// const { onExit } = require('signal-exit')\n\nonExit((code, signal) => {\n  console.log('process exited!', code, signal)\n})\n```\n\n## API\n\n`remove = onExit((code, signal) => {}, options)`\n\nThe return value of the function is a function that will remove\nthe handler.\n\nNote that the function _only_ fires for signals if the signal\nwould cause the process to exit. That is, there are no other\nlisteners, and it is a fatal signal.\n\nIf the global `process` object is not suitable for this purpose\n(ie, it's unset, or doesn't have an `emit` method, etc.) then the\n`onExit` function is a no-op that returns a no-op `remove` method.\n\n### Options\n\n- `alwaysLast`: Run this handler after any other signal or exit\n  handlers. This causes `process.emit` to be monkeypatched.\n\n### Capturing Signal Exits\n\nIf the handler returns an exact boolean `true`, and the exit is a\ndue to signal, then the signal will be considered handled, and\nwill _not_ trigger a synthetic `process.kill(process.pid,\nsignal)` after firing the `onExit` handlers.\n\nIn this case, it your responsibility as the caller to exit with a\nsignal (for example, by calling `process.kill()`) if you wish to\npreserve the same exit status that would otherwise have occurred.\nIf you do not, then the process will likely exit gracefully with\nstatus 0 at some point, assuming that no other terminating signal\nor other exit trigger occurs.\n\nPrior to calling handlers, the `onExit` machinery is unloaded, so\nany subsequent exits or signals will not be handled, even if the\nsignal is captured and the exit is thus prevented.\n\nNote that numeric code exits may indicate that the process is\nalready committed to exiting, for example due to a fatal\nexception or unhandled promise rejection, and so there is no way to\nprevent it safely.\n\n### Browser Fallback\n\nThe `'signal-exit/browser'` module is the same fallback shim that\njust doesn't do anything, but presents the same function\ninterface.\n\nPatches welcome to add something that hooks onto\n`window.onbeforeunload` or similar, but it might just not be a\nthing that makes sense there.\n",
   "homepage": "https://github.com/tapjs/signal-exit#readme",
   "repository": {
     "type": "git",
