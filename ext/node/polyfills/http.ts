@@ -13,7 +13,7 @@ import { TextEncoder } from "ext:deno_web/08_text_encoding.js";
 import { setTimeout } from "ext:deno_web/02_timers.js";
 import {
   _normalizeArgs,
-  // createConnection,
+  createConnection as netCreateConnection,
   ListenOptions,
   Socket,
 } from "node:net";
@@ -386,6 +386,7 @@ class ClientRequest extends OutgoingMessage {
     }
 
     if (this.agent) {
+      console.log("use this.agent");
       this.agent.addRequest(this, optsWithoutSignal);
     } else {
       // No agent, default to Connection:close.
@@ -413,7 +414,8 @@ class ClientRequest extends OutgoingMessage {
         }
       } else {
         debug("CLIENT use net.createConnection", optsWithoutSignal);
-        this.onSocket(net.createConnection(optsWithoutSignal));
+        console.log("use net.createConnection");
+        this.onSocket(netCreateConnection(optsWithoutSignal));
       }
     }
   }
@@ -547,9 +549,9 @@ class ClientRequest extends OutgoingMessage {
           this.emit("response", incoming);
         }
       } catch (err) {
-        if (this._req.cancelHandleRid !== null) {
-          core.tryClose(this._req.cancelHandleRid);
-        }
+        // if (this._req.cancelHandleRid !== null) {
+        //   core.tryClose(this._req.cancelHandleRid);
+        // }
 
         if (this._requestSendError !== undefined) {
           // if the request body stream errored, we want to propagate that error
