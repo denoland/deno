@@ -1,1 +1,74 @@
-{"name":"color-convert","description":"Plain color conversion functions","dist-tags":{"latest":"2.0.1"},"versions":{"2.0.1":{"name":"color-convert","description":"Plain color conversion functions","version":"2.0.1","author":{"name":"Heather Arthur","email":"fayearthur@gmail.com"},"license":"MIT","repository":{"type":"git","url":"git+https://github.com/Qix-/color-convert.git"},"scripts":{"pretest":"xo","test":"node test/basic.js"},"engines":{"node":">=7.0.0"},"xo":{"rules":{"default-case":0,"no-inline-comments":0,"operator-linebreak":0}},"devDependencies":{"chalk":"^2.4.2","xo":"^0.24.0"},"dependencies":{"color-name":"~1.1.4"},"gitHead":"e1cb7846258e1d7aa25873814684d4fbbbca53ed","bugs":{"url":"https://github.com/Qix-/color-convert/issues"},"_id":"color-convert@2.0.1","_nodeVersion":"12.4.0","_npmVersion":"6.9.0","dist":{"integrity":"sha512-RRECPsj7iu/xb5oKYcsFHSppFNnsj/52OVTRKb4zP5onXwVF3zVmmToNcOfGC+CRDpfK/U584fMg38ZHCaElKQ==","shasum":"72d3a68d598c9bdb3af2ad1e84f21d896abd4de3","tarball":"http://localhost:4260/color-convert/color-convert-2.0.1.tgz","fileCount":7,"unpackedSize":27189,"npm-signature":"-----BEGIN PGP SIGNATURE-----\r\nVersion: OpenPGP.js v3.0.4\r\nComment: https://openpgpjs.org\r\n\r\nwsFcBAEBCAAQBQJdWw8hCRA9TVsSAnZWagAAc60P/14ziCngY6rmLxrmBZwI\n/u9S0nyyyBwBtCMRDYg9QnZizmcuDmeoBb1ptCNHAqPzW9O5xS4jtc59h+Cz\nFJgsFWNdSxQm7VraaBfgRvlDD+epDc8TyHRarG3wZ3GwK/xUPDkY8exK7JHl\nTUqwy3rOSJlxlfY5KYqvcAw9jUW4Ki5NA+1mvWpill/T6GwwiU9/mxv3Ul6f\nSuid8MxGZxBKVy5qMASbJ452cer5QyPgbty57ZdpAqWiIK0s6iaESJJCjfxI\nyiO7lWZMpgRfDihzSCxBhEb3hdO+7dia5M/RJm2L0jkW1rO6oTtvdOiI82AN\nRgRMT53u+ZVgf3gXoVQHgHmb2aikycXVSnwRv4Z6JIrToxbxbYj6AmNgSb39\n4Royuzzlt17SIKTkJ0BF3ZKeumnQyeK2aIgDahRzT1xeVvCcpMLqsgpu6FKP\nsMDk9f7+nKvaQf13D7xh9tEeMB3wd5ab2FAYpk7Gk47jtOQTG5FGyGwIKCyn\nxaxv85/KDAITn0AQQ2dyPuUshoTQVPUCnaGlN2XNtnLQ9QjPXIkTfdYlgry4\n6ysJCtzKLrjaz1zXpvBxQmexcjpBozt7raOO76XqDc9rQY8hirMMT+kFn4wy\nBK0FSk4jJNPqb9GduVnyMGR3eq5UxrDZbYdowb+DpDBEih/DUimhi0+5uro1\nqeOh\r\n=9TuD\r\n-----END PGP SIGNATURE-----\r\n","signatures":[{"keyid":"SHA256:jl3bwswu80PjjokCgh0o2w5c2U4LhQAE57gj9cz1kzA","sig":"MEUCIQDawANUBU4JyKUu4FIXFy8S7MRHb4bNg7kk0ifG6KLYaQIgJ3p3N1TtoTXNQlvECo4whQoW3oot3kbzgAOutQTZTrA="}]},"directories":{},"_hasShrinkwrap":false}},"author":{"name":"Heather Arthur","email":"fayearthur@gmail.com"},"repository":{"type":"git","url":"git+https://github.com/Qix-/color-convert.git"},"readme":"# color-convert\n\n[![Build Status](https://travis-ci.org/Qix-/color-convert.svg?branch=master)](https://travis-ci.org/Qix-/color-convert)\n\nColor-convert is a color conversion library for JavaScript and node.\nIt converts all ways between `rgb`, `hsl`, `hsv`, `hwb`, `cmyk`, `ansi`, `ansi16`, `hex` strings, and CSS `keyword`s (will round to closest):\n\n```js\nvar convert = require('color-convert');\n\nconvert.rgb.hsl(140, 200, 100);             // [96, 48, 59]\nconvert.keyword.rgb('blue');                // [0, 0, 255]\n\nvar rgbChannels = convert.rgb.channels;     // 3\nvar cmykChannels = convert.cmyk.channels;   // 4\nvar ansiChannels = convert.ansi16.channels; // 1\n```\n\n# Install\n\n```console\n$ npm install color-convert\n```\n\n# API\n\nSimply get the property of the _from_ and _to_ conversion that you're looking for.\n\nAll functions have a rounded and unrounded variant. By default, return values are rounded. To get the unrounded (raw) results, simply tack on `.raw` to the function.\n\nAll 'from' functions have a hidden property called `.channels` that indicates the number of channels the function expects (not including alpha).\n\n```js\nvar convert = require('color-convert');\n\n// Hex to LAB\nconvert.hex.lab('DEADBF');         // [ 76, 21, -2 ]\nconvert.hex.lab.raw('DEADBF');     // [ 75.56213190997677, 20.653827952644754, -2.290532499330533 ]\n\n// RGB to CMYK\nconvert.rgb.cmyk(167, 255, 4);     // [ 35, 0, 98, 0 ]\nconvert.rgb.cmyk.raw(167, 255, 4); // [ 34.509803921568626, 0, 98.43137254901961, 0 ]\n```\n\n### Arrays\nAll functions that accept multiple arguments also support passing an array.\n\nNote that this does **not** apply to functions that convert from a color that only requires one value (e.g. `keyword`, `ansi256`, `hex`, etc.)\n\n```js\nvar convert = require('color-convert');\n\nconvert.rgb.hex(123, 45, 67);      // '7B2D43'\nconvert.rgb.hex([123, 45, 67]);    // '7B2D43'\n```\n\n## Routing\n\nConversions that don't have an _explicitly_ defined conversion (in [conversions.js](conversions.js)), but can be converted by means of sub-conversions (e.g. XYZ -> **RGB** -> CMYK), are automatically routed together. This allows just about any color model supported by `color-convert` to be converted to any other model, so long as a sub-conversion path exists. This is also true for conversions requiring more than one step in between (e.g. LCH -> **LAB** -> **XYZ** -> **RGB** -> Hex).\n\nKeep in mind that extensive conversions _may_ result in a loss of precision, and exist only to be complete. For a list of \"direct\" (single-step) conversions, see [conversions.js](conversions.js).\n\n# Contribute\n\nIf there is a new model you would like to support, or want to add a direct conversion between two existing models, please send us a pull request.\n\n# License\nCopyright &copy; 2011-2016, Heather Arthur and Josh Junon. Licensed under the [MIT License](LICENSE).\n","readmeFilename":"README.md","homepage":"https://github.com/Qix-/color-convert#readme","bugs":{"url":"https://github.com/Qix-/color-convert/issues"},"license":"MIT"}
+{
+  "name": "color-convert",
+  "description": "Plain color conversion functions",
+  "dist-tags": {
+    "latest": "2.0.1"
+  },
+  "versions": {
+    "2.0.1": {
+      "name": "color-convert",
+      "description": "Plain color conversion functions",
+      "version": "2.0.1",
+      "author": {
+        "name": "Heather Arthur",
+        "email": "fayearthur@gmail.com"
+      },
+      "license": "MIT",
+      "repository": {
+        "type": "git",
+        "url": "git+https://github.com/Qix-/color-convert.git"
+      },
+      "scripts": {
+        "pretest": "xo",
+        "test": "node test/basic.js"
+      },
+      "engines": {
+        "node": ">=7.0.0"
+      },
+      "xo": {
+        "rules": {
+          "default-case": 0,
+          "no-inline-comments": 0,
+          "operator-linebreak": 0
+        }
+      },
+      "devDependencies": {
+        "chalk": "^2.4.2",
+        "xo": "^0.24.0"
+      },
+      "dependencies": {
+        "color-name": "~1.1.4"
+      },
+      "gitHead": "e1cb7846258e1d7aa25873814684d4fbbbca53ed",
+      "bugs": {
+        "url": "https://github.com/Qix-/color-convert/issues"
+      },
+      "_id": "color-convert@2.0.1",
+      "_nodeVersion": "12.4.0",
+      "_npmVersion": "6.9.0",
+      "dist": {
+        "integrity": "sha512-RRECPsj7iu/xb5oKYcsFHSppFNnsj/52OVTRKb4zP5onXwVF3zVmmToNcOfGC+CRDpfK/U584fMg38ZHCaElKQ==",
+        "shasum": "72d3a68d598c9bdb3af2ad1e84f21d896abd4de3",
+        "tarball": "http://localhost:4260/color-convert/color-convert-2.0.1.tgz",
+        "fileCount": 7,
+        "unpackedSize": 27189
+      },
+      "directories": {},
+      "_hasShrinkwrap": false
+    }
+  },
+  "author": {
+    "name": "Heather Arthur",
+    "email": "fayearthur@gmail.com"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Qix-/color-convert.git"
+  },
+  "readmeFilename": "README.md",
+  "homepage": "https://github.com/Qix-/color-convert#readme",
+  "bugs": {
+    "url": "https://github.com/Qix-/color-convert/issues"
+  },
+  "license": "MIT"
+}

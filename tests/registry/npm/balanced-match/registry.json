@@ -1,1 +1,80 @@
-{"name":"balanced-match","description":"Match balanced character pairs, like \"{\" and \"}\"","dist-tags":{"latest":"1.0.2"},"versions":{"1.0.2":{"name":"balanced-match","description":"Match balanced character pairs, like \"{\" and \"}\"","version":"1.0.2","repository":{"type":"git","url":"git://github.com/juliangruber/balanced-match.git"},"main":"index.js","scripts":{"test":"tape test/test.js","bench":"matcha test/bench.js"},"devDependencies":{"matcha":"^0.7.0","tape":"^4.6.0"},"author":{"name":"Julian Gruber","email":"mail@juliangruber.com","url":"http://juliangruber.com"},"license":"MIT","testling":{"files":"test/*.js","browsers":["ie/8..latest","firefox/20..latest","firefox/nightly","chrome/25..latest","chrome/canary","opera/12..latest","opera/next","safari/5.1..latest","ipad/6.0..latest","iphone/6.0..latest","android-browser/4.2..latest"]},"gitHead":"c7412e09b95d6ad97fd1e2996f6adca7626a9ae8","bugs":{"url":"https://github.com/juliangruber/balanced-match/issues"},"_id":"balanced-match@1.0.2","_nodeVersion":"15.9.0","_npmVersion":"7.7.6","dist":{"integrity":"sha512-3oSeUO0TMV67hN1AmbXsK4yaqU7tjiHlbxRDZOpH0KW9+CeX4bRAaX0Anxt0tx2MrpRpWwQaPwIlISEJhYU5Pw==","shasum":"e83e3a7e3f300b34cb9d87f615fa0cbf357690ee","tarball":"http://localhost:4260/balanced-match/balanced-match-1.0.2.tgz","fileCount":5,"unpackedSize":6939,"npm-signature":"-----BEGIN PGP SIGNATURE-----\r\nVersion: OpenPGP.js v3.0.13\r\nComment: https://openpgpjs.org\r\n\r\nwsFcBAEBCAAQBQJgbFk9CRA9TVsSAnZWagAAZCkP/2oCPlLyH1O+2fxJepxC\nP64dIPH4FmdtcuRV6m9JSSnNayjLyl7KZSkzngJveJAVMwBH2oSO40HVruAc\njNGdawU0sm41Tvkxm0K9AhiT5pfqBHv6KBj/sR5+2iF56zAM7pxrc8eTsgj9\nHBAYq5ZoePKf+Kki77ilWwK1Z7VXekk3KNgPd4jsbZ58JGL2dLVmqJcOPAfx\nTRECI9NV5oyHl+EsOGnMnAB8Z7GvNH+/sVo5lWZkldStJDjlj3mZq9fxMo5I\nw/2pmVPI8dvYYA6r3mp55YYDyvWA49CoRgTHXqEy4tpHmmdTAdB2Je+3j/n0\nvbJm74Ab6CnZnwa9Oaowz+VcKkcczXICTxPj0D+ddvVksD+6VpnAz79Jyia5\nqApDNXnYv+8bdnMwhnA2tQ0vz10HANuZ1xfpXE9Yy4Py/1LsTvExovYsie1G\n9RQ1GkIpGwwyOuzbDqHtrRjduAy35VNtIw2nQTCRLz87w/7DV+RbTvaT1Fp7\nb4WQN9z6BoX0Bl/Qi8PXTDN5J8M83MsRThoYm20M0nAVeGbxrfHTMJoXvxF9\ntlHuV3E7W7x3lvG0za7wLn9p76uOzxDX8Osr5POJ/GpEVciz0PWcbHQHFHUm\nxB+x3O0C9eAdKW/9/7/YA9zMqdqcMuwg6f26neIYIk10oZQyRriBoV6OZtIy\ntw1n\r\n=eH8s\r\n-----END PGP SIGNATURE-----\r\n","signatures":[{"keyid":"SHA256:jl3bwswu80PjjokCgh0o2w5c2U4LhQAE57gj9cz1kzA","sig":"MEQCIHRQpAKwqTgs0SDP5KcV7MzsuTPMEkHeNqJFBOy5hYMwAiB/QgzhE/4zo/h6mn5Sl6u4YP0UZKqPYCZe5GhyLntdKA=="}]},"directories":{},"_hasShrinkwrap":false}},"readme":"# balanced-match\n\nMatch balanced string pairs, like `{` and `}` or `<b>` and `</b>`. Supports regular expressions as well!\n\n[![CI](https://github.com/juliangruber/balanced-match/actions/workflows/ci.yml/badge.svg)](https://github.com/juliangruber/balanced-match/actions/workflows/ci.yml)\n[![downloads](https://img.shields.io/npm/dm/balanced-match.svg)](https://www.npmjs.org/package/balanced-match)\n\n## Example\n\nGet the first matching pair of braces:\n\n```js\nimport balanced from 'balanced-match'\n\nconsole.log(balanced('{', '}', 'pre{in{nested}}post'))\nconsole.log(balanced('{', '}', 'pre{first}between{second}post'))\nconsole.log(balanced(/\\s+\\{\\s+/, /\\s+\\}\\s+/, 'pre  {   in{nest}   }  post'))\n```\n\nThe matches are:\n\n```bash\n$ node example.js\n{ start: 3, end: 14, pre: 'pre', body: 'in{nested}', post: 'post' }\n{ start: 3,\n  end: 9,\n  pre: 'pre',\n  body: 'first',\n  post: 'between{second}post' }\n{ start: 3, end: 17, pre: 'pre', body: 'in{nest}', post: 'post' }\n```\n\n## API\n\n### const m = balanced(a, b, str)\n\nFor the first non-nested matching pair of `a` and `b` in `str`, return an\nobject with those keys:\n\n- **start** the index of the first match of `a`\n- **end** the index of the matching `b`\n- **pre** the preamble, `a` and `b` not included\n- **body** the match, `a` and `b` not included\n- **post** the postscript, `a` and `b` not included\n\nIf there's no match, `undefined` will be returned.\n\nIf the `str` contains more `a` than `b` / there are unmatched pairs, the first match that was closed will be used. For example, `{{a}` will match `['{', 'a', '']` and `{a}}` will match `['', 'a', '}']`.\n\n### const r = balanced.range(a, b, str)\n\nFor the first non-nested matching pair of `a` and `b` in `str`, return an\narray with indexes: `[ <a index>, <b index> ]`.\n\nIf there's no match, `undefined` will be returned.\n\nIf the `str` contains more `a` than `b` / there are unmatched pairs, the first match that was closed will be used. For example, `{{a}` will match `[ 1, 3 ]` and `{a}}` will match `[0, 2]`.\n\n## Installation\n\nWith [npm](https://npmjs.org) do:\n\n```bash\nnpm install balanced-match\n```\n\n## Security contact information\n\nTo report a security vulnerability, please use the\n[Tidelift security contact](https://tidelift.com/security).\nTidelift will coordinate the fix and disclosure.\n\n## License\n\n(MIT)\n\nCopyright (c) 2013 Julian Gruber &lt;julian@juliangruber.com&gt;\n\nPermission is hereby granted, free of charge, to any person obtaining a copy of\nthis software and associated documentation files (the \"Software\"), to deal in\nthe Software without restriction, including without limitation the rights to\nuse, copy, modify, merge, publish, distribute, sublicense, and/or sell copies\nof the Software, and to permit persons to whom the Software is furnished to do\nso, subject to the following conditions:\n\nThe above copyright notice and this permission notice shall be included in all\ncopies or substantial portions of the Software.\n\nTHE SOFTWARE IS PROVIDED \"AS IS\", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR\nIMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,\nFITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE\nAUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER\nLIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,\nOUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE\nSOFTWARE.\n","author":{"name":"Julian Gruber","email":"mail@juliangruber.com","url":"http://juliangruber.com"},"repository":{"type":"git","url":"git://github.com/juliangruber/balanced-match.git"},"homepage":"https://github.com/juliangruber/balanced-match","bugs":{"url":"https://github.com/juliangruber/balanced-match/issues"},"license":"MIT","readmeFilename":"README.md"}
+{
+  "name": "balanced-match",
+  "description": "Match balanced character pairs, like \"{\" and \"}\"",
+  "dist-tags": {
+    "latest": "1.0.2"
+  },
+  "versions": {
+    "1.0.2": {
+      "name": "balanced-match",
+      "description": "Match balanced character pairs, like \"{\" and \"}\"",
+      "version": "1.0.2",
+      "repository": {
+        "type": "git",
+        "url": "git://github.com/juliangruber/balanced-match.git"
+      },
+      "main": "index.js",
+      "scripts": {
+        "test": "tape test/test.js",
+        "bench": "matcha test/bench.js"
+      },
+      "devDependencies": {
+        "matcha": "^0.7.0",
+        "tape": "^4.6.0"
+      },
+      "author": {
+        "name": "Julian Gruber",
+        "email": "mail@juliangruber.com",
+        "url": "http://juliangruber.com"
+      },
+      "license": "MIT",
+      "testling": {
+        "files": "test/*.js",
+        "browsers": [
+          "ie/8..latest",
+          "firefox/20..latest",
+          "firefox/nightly",
+          "chrome/25..latest",
+          "chrome/canary",
+          "opera/12..latest",
+          "opera/next",
+          "safari/5.1..latest",
+          "ipad/6.0..latest",
+          "iphone/6.0..latest",
+          "android-browser/4.2..latest"
+        ]
+      },
+      "gitHead": "c7412e09b95d6ad97fd1e2996f6adca7626a9ae8",
+      "bugs": {
+        "url": "https://github.com/juliangruber/balanced-match/issues"
+      },
+      "_id": "balanced-match@1.0.2",
+      "_nodeVersion": "15.9.0",
+      "_npmVersion": "7.7.6",
+      "dist": {
+        "integrity": "sha512-3oSeUO0TMV67hN1AmbXsK4yaqU7tjiHlbxRDZOpH0KW9+CeX4bRAaX0Anxt0tx2MrpRpWwQaPwIlISEJhYU5Pw==",
+        "shasum": "e83e3a7e3f300b34cb9d87f615fa0cbf357690ee",
+        "tarball": "http://localhost:4260/balanced-match/balanced-match-1.0.2.tgz",
+        "fileCount": 5,
+        "unpackedSize": 6939
+      },
+      "directories": {},
+      "_hasShrinkwrap": false
+    }
+  },
+  "author": {
+    "name": "Julian Gruber",
+    "email": "mail@juliangruber.com",
+    "url": "http://juliangruber.com"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git://github.com/juliangruber/balanced-match.git"
+  },
+  "homepage": "https://github.com/juliangruber/balanced-match",
+  "bugs": {
+    "url": "https://github.com/juliangruber/balanced-match/issues"
+  },
+  "license": "MIT",
+  "readmeFilename": "README.md"
+}
