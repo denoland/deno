@@ -6,8 +6,6 @@
 import { core, primordials } from "ext:core/mod.js";
 import {
   op_node_http_fetch_response_upgrade,
-  op_node_http_fetch_send,
-  op_node_http_request,
   op_node_http_request_with_conn,
 } from "ext:core/ops";
 
@@ -50,7 +48,9 @@ import { Agent, globalAgent } from "node:_http_agent";
 import { urlToHttpOptions } from "ext:deno_node/internal/url.ts";
 import { kEmptyObject, once } from "ext:deno_node/internal/util.mjs";
 import { constants, TCP } from "ext:deno_node/internal_binding/tcp_wrap.ts";
-import { notImplemented, warnNotImplemented } from "ext:deno_node/_utils.ts";
+// import { notImplemented, warnNotImplemented } from "ext:deno_node/_utils.ts";
+import { notImplemented } from "ext:deno_node/_utils.ts";
+
 import {
   connResetException,
   ERR_HTTP_HEADERS_SENT,
@@ -64,8 +64,8 @@ import { getTimerDuration } from "ext:deno_node/internal/timers.mjs";
 import { serve, upgradeHttpRaw } from "ext:deno_http/00_serve.ts";
 import { createHttpClient } from "ext:deno_fetch/22_http_client.js";
 import { headersEntries } from "ext:deno_fetch/20_headers.js";
-import { timerId } from "ext:deno_web/03_abort_signal.js";
-import { clearTimeout as webClearTimeout } from "ext:deno_web/02_timers.js";
+// import { timerId } from "ext:deno_web/03_abort_signal.js";
+// import { clearTimeout as webClearTimeout } from "ext:deno_web/02_timers.js";
 import { resourceForReadableStream } from "ext:deno_web/06_streams.js";
 import { TcpConn } from "ext:deno_net/01_net.js";
 import { STATUS_CODES } from "node:_http_server";
@@ -419,7 +419,6 @@ class ClientRequest extends OutgoingMessage {
   }
 
   _writeHeader() {
-    console.trace("writeHeader");
     const url = this._createUrlStrFromOptions();
 
     const headers = [];

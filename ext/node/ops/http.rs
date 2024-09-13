@@ -25,18 +25,12 @@ use deno_core::AsyncRefCell;
 use deno_core::AsyncResult;
 use deno_core::BufView;
 use deno_core::ByteString;
-use deno_core::CancelFuture;
 use deno_core::CancelHandle;
 use deno_core::CancelTryFuture;
 use deno_core::OpState;
 use deno_core::RcRef;
 use deno_core::Resource;
 use deno_core::ResourceId;
-use deno_fetch::get_or_create_client_from_state;
-use deno_fetch::FetchCancelHandle;
-use deno_fetch::FetchRequestResource;
-use deno_fetch::FetchReturn;
-use deno_fetch::HttpClientResource;
 use deno_fetch::ResBody;
 use deno_net::io::TcpStreamResource;
 use http::header::HeaderMap;
@@ -51,125 +45,6 @@ use hyper_util::rt::TokioIo;
 use std::cmp::min;
 use tokio::io::AsyncReadExt;
 use tokio::io::AsyncWriteExt;
-
-#[op2]
-#[serde]
-pub fn op_node_http_request<P>(
-  state: &mut OpState,
-  #[serde] method: ByteString,
-  #[string] url: String,
-  #[serde] headers: Vec<(ByteString, ByteString)>,
-  #[smi] client_rid: Option<u32>,
-  #[smi] body: Option<ResourceId>,
-) -> Result<FetchReturn, AnyError>
-where
-  P: crate::NodePermissions + 'static,
-{
-  let client = if let Some(rid) = client_rid {
-    let r = state.resource_table.get::<HttpClientResource>(rid)?;
-    r.client.clone()
-  } else {
-    get_or_create_client_from_state(state)?
-  };
-
-  let method = Method::from_bytes(&method)?;
-  let mut url = Url::parse(&url)?;
-  let maybe_authority = deno_fetch::extract_authority(&mut url);
-
-  {
-    let permissions = state.borrow_mut::<P>();
-    permissions.check_net_url(&url, "ClientRequest")?;
-  }
-
-  let mut header_map = HeaderMap::new();
-  for (key, value) in headers {
-    let name = HeaderName::from_bytes(&key)
-      .map_err(|err| type_error(err.to_string()))?;
-    let v = HeaderValue::from_bytes(&value)
-      .map_err(|err| type_error(err.to_string()))?;
-
-    header_map.append(name, v);
-  }
-
-  let (body, con_len) = if let Some(body) = body {
-    (
-      BodyExt::boxed(NodeHttpResourceToBodyAdapter::new(
-        state.resource_table.take_any(body)?,
-      )),
-      None,
-    )
-  } else {
-    // POST and PUT requests should always have a 0 length content-length,
-    // if there is no body. https://fetch.spec.whatwg.org/#http-network-or-cache-fetch
-    let len = if matches!(method, Method::POST | Method::PUT) {
-      Some(0)
-    } else {
-      None
-    };
-    (
-      http_body_util::Empty::new()
-        .map_err(|never| match never {})
-        .boxed(),
-      len,
-    )
-  };
-
-  let mut request = http::Request::new(body);
-  *request.method_mut() = method.clone();
-  *request.uri_mut() = url
-    .as_str()
-    .parse()
-    .map_err(|_| type_error("Invalid URL"))?;
-  *request.headers_mut() = header_map;
-
-  if let Some((username, password)) = maybe_authority {
-    request.headers_mut().insert(
-      AUTHORIZATION,
-      deno_fetch::basic_auth(&username, password.as_deref()),
-    );
-  }
-  if let Some(len) = con_len {
-    request.headers_mut().insert(CONTENT_LENGTH, len.into());
-  }
-
-  let cancel_handle = CancelHandle::new_rc();
-  let cancel_handle_ = cancel_handle.clone();
-
-  let fut = async move {
-    client
-      .send(request)
-      .or_cancel(cancel_handle_)
-      .await
-      .map(|res| res.map_err(|err| type_error(err.to_string())))
-  };
-
-  let request_rid = state.resource_table.add(FetchRequestResource {
-    future: Box::pin(fut),
-    url,
-  });
-
-  let cancel_handle_rid =
-    state.resource_table.add(FetchCancelHandle(cancel_handle));
-
-  Ok(FetchReturn {
-    request_rid,
-    cancel_handle_rid: Some(cancel_handle_rid),
-  })
-}
-
-#[derive(Default, Serialize)]
-#[serde(rename_all = "camelCase")]
-pub struct NodeHttpFetchResponse {
-  pub status: u16,
-  pub status_text: String,
-  pub headers: Vec<(ByteString, ByteString)>,
-  pub url: String,
-  pub response_rid: ResourceId,
-  pub content_length: Option<u64>,
-  pub remote_addr_ip: Option<String>,
-  pub remote_addr_port: Option<u16>,
-  pub error: Option<String>,
-}
 
 #[derive(Default, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -307,85 +182,9 @@ where
   let response_rid = state
     .borrow_mut()
     .resource_table
-    .add(NodeHttpFetchResponseResource::new(res, content_length));
+    .add(NodeHttpResponseResource::new(res, content_length));
 
   Ok(NodeHttpResponse {
-    status: status.as_u16(),
-    status_text: status.canonical_reason().unwrap_or("").to_string(),
-    headers: res_headers,
-    url,
-    response_rid,
-    content_length,
-    remote_addr_ip,
-    remote_addr_port,
-    error: None,
-  })
-}
-
-#[op2(async)]
-#[serde]
-pub async fn op_node_http_fetch_send(
-  state: Rc<RefCell<OpState>>,
-  #[smi] rid: ResourceId,
-) -> Result<NodeHttpFetchResponse, AnyError> {
-  let request = state
-    .borrow_mut()
-    .resource_table
-    .take::<FetchRequestResource>(rid)?;
-
-  let request = Rc::try_unwrap(request)
-    .ok()
-    .expect("multiple op_node_http_fetch_send ongoing");
-
-  let res = match request.future.await {
-    Ok(Ok(res)) => res,
-    Ok(Err(err)) => {
-      // We're going to try and rescue the error cause from a stream and return it from this fetch.
-      // If any error in the chain is a hyper body error, return that as a special result we can use to
-      // reconstruct an error chain (eg: `new TypeError(..., { cause: new Error(...) })`).
-      // TODO(mmastrac): it would be a lot easier if we just passed a v8::Global through here instead
-      let mut err_ref: &dyn std::error::Error = err.as_ref();
-      while let Some(err) = std::error::Error::source(err_ref) {
-        if let Some(err) = err.downcast_ref::<hyper::Error>() {
-          if let Some(err) = std::error::Error::source(err) {
-            return Ok(NodeHttpFetchResponse {
-              error: Some(err.to_string()),
-              ..Default::default()
-            });
-          }
-        }
-        err_ref = err;
-      }
-
-      return Err(type_error(err.to_string()));
-    }
-    Err(_) => return Err(type_error("request was cancelled")),
-  };
-
-  let status = res.status();
-  let url = request.url.into();
-  let mut res_headers = Vec::new();
-  for (key, val) in res.headers().iter() {
-    res_headers.push((key.as_str().into(), val.as_bytes().into()));
-  }
-
-  let content_length = hyper::body::Body::size_hint(res.body()).exact();
-  let remote_addr = res
-    .extensions()
-    .get::<hyper_util::client::legacy::connect::HttpInfo>()
-    .map(|info| info.remote_addr());
-  let (remote_addr_ip, remote_addr_port) = if let Some(addr) = remote_addr {
-    (Some(addr.ip().to_string()), Some(addr.port()))
-  } else {
-    (None, None)
-  };
-
-  let response_rid = state
-    .borrow_mut()
-    .resource_table
-    .add(NodeHttpFetchResponseResource::new(res, content_length));
-
-  Ok(NodeHttpFetchResponse {
     status: status.as_u16(),
     status_text: status.canonical_reason().unwrap_or("").to_string(),
     headers: res_headers,
@@ -407,7 +206,7 @@ pub async fn op_node_http_fetch_response_upgrade(
   let raw_response = state
     .borrow_mut()
     .resource_table
-    .take::<NodeHttpFetchResponseResource>(rid)?;
+    .take::<NodeHttpResponseResource>(rid)?;
   let raw_response = Rc::try_unwrap(raw_response)
     .expect("Someone is holding onto NodeHttpFetchResponseResource");
 
@@ -523,13 +322,13 @@ impl Default for NodeHttpFetchResponseReader {
 }
 
 #[derive(Debug)]
-pub struct NodeHttpFetchResponseResource {
+pub struct NodeHttpResponseResource {
   pub response_reader: AsyncRefCell<NodeHttpFetchResponseReader>,
   pub cancel: CancelHandle,
   pub size: Option<u64>,
 }
 
-impl NodeHttpFetchResponseResource {
+impl NodeHttpResponseResource {
   pub fn new(response: http::Response<ResBody>, size: Option<u64>) -> Self {
     Self {
       response_reader: AsyncRefCell::new(NodeHttpFetchResponseReader::Start(
@@ -551,7 +350,7 @@ impl NodeHttpFetchResponseResource {
   }
 }
 
-impl Resource for NodeHttpFetchResponseResource {
+impl Resource for NodeHttpResponseResource {
   fn name(&self) -> Cow<str> {
     "fetchResponse".into()
   }

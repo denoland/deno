@@ -48,7 +48,6 @@ import {
 import { nextTick } from "ext:deno_node/_next_tick.ts";
 
 import { core } from "ext:core/mod.js";
-import { consoleSize } from "../../../../runtime/js/40_tty.js";
 const { internalRidSymbol } = core;
 
 /** The type of TCP socket. */
