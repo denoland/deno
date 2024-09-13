@@ -14,15 +14,6 @@ const project = new Project({
   tsConfigFilePath: typesNodeDir.join("tsconfig.json").toString(),
 });
 const names = new Set<string>();
-const bannableNames = new Set<string>([
-  "structuredClone",
-  "AsyncDisposable",
-  "Disposable",
-  "ImportMeta",
-  "atob",
-  "btoa",
-  "fetch",
-]);
 const ignoredNames = new Set<string>([
   "Array",
   "BigInt64Array",
@@ -55,14 +46,6 @@ for (const file of project.getSourceFiles()) {
       if (Node.isVariableStatement(statement)) {
         for (const decl of statement.getDeclarations()) {
           if (ignoredNames.has(decl.getName())) continue;
-          const typeofQuerys = decl.getDescendantsOfKind(
-            ts.SyntaxKind.TypeQuery,
-          );
-          if (
-            typeofQuerys.some((q) => q.getExprName().getText() === "globalThis")
-          ) {
-            bannableNames.add(decl.getName());
-          }
           names.add(decl.getName());
         }
       } else if (Node.hasName(statement)) {
@@ -73,8 +56,7 @@ for (const file of project.getSourceFiles()) {
   }
 }
 
-console.log("Bannable names: ", Array.from(bannableNames).sort());
 console.log(
-  "Node only names: ",
-  Array.from(names.difference(bannableNames)).sort(),
+  "Names: ",
+  Array.from(names).sort(),
 );
