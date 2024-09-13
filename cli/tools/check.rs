@@ -53,17 +53,7 @@ pub async fn check(
   let specifiers_for_typecheck = if check_flags.doc {
     let file_fetcher = factory.file_fetcher()?;
 
-    let mut specifiers_for_typecheck = specifiers
-      .iter()
-      .filter(|specifier| {
-        use MediaType::*;
-        matches!(
-          MediaType::from_specifier(specifier),
-          TypeScript | JavaScript | Tsx | Jsx | Mts | Mjs | Cts | Cjs
-        )
-      })
-      .cloned()
-      .collect::<Vec<_>>();
+    let mut specifiers_for_typecheck = specifiers.clone();
 
     for s in &specifiers {
       let file = file_fetcher
