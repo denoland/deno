@@ -462,7 +462,7 @@ class ClientRequest extends OutgoingMessage {
 
     (async () => {
       try {
-        console.trace("js: sending request");
+        console.trace("js: sending request", this.socket.rid);
         // console.log("this.socket", this.socket);
         const [rid, connRid] = await op_node_http_request_with_conn(
           this.method,
@@ -608,6 +608,7 @@ class ClientRequest extends OutgoingMessage {
   onSocket(socket, _err) {
     nextTick(() => {
       socket.on("connect", () => {
+        console.log("connect emitted");
         // Flush the internal buffers once socket is ready.
         // Note: the order is important, as the headers flush
         // sets up the request.

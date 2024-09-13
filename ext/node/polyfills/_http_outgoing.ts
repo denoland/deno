@@ -535,20 +535,21 @@ Object.defineProperties(
           return this._writeRaw(data, encoding, callback);
         }
       } else {
-        if (!this._listenerSet) {
-          this._listenerSet = true;
-          this.on("socket", (socket) => {
-            console.log("socket rid:", socket._handle.rid);
-            socket.on("ready", () => {
-              if (!this._headerSent && this._header !== null) {
-                this._writeHeader();
-                this._headerSent = true;
-              }
+        // if (!this._listenerSet) {
+        //   this._listenerSet = true;
+        //   this.on("socket", (socket) => {
+        //     console.log("socket rid:", socket._handle.rid);
+        //     socket.on("ready", () => {
+        //       if (!this._headerSent && this._header !== null) {
+        //         this._writeHeader();
+        //         this._headerSent = true;
+        //       }
 
-              this._flushBuffer();
-            });
-          });
-        }
+        //       this._flushBuffer();
+        //     });
+        //   });
+        // }
+        console.log("pushing to outputData:", this.outputData.length);
         this.outputData.push({ data, encoding, callback });
       }
     },
@@ -596,7 +597,7 @@ Object.defineProperties(
       encoding?: string | null,
       callback?: () => void,
     ) {
-      console.log("_writeRaw invoked:", data.length);
+      console.trace("_writeRaw invoked:", data.length);
       if (typeof data === "string") {
         data = Buffer.from(data, encoding);
       }
