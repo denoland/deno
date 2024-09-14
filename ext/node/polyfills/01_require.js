@@ -128,6 +128,7 @@ import internalTestBinding from "ext:deno_node/internal/test/binding.ts";
 import internalTimers from "ext:deno_node/internal/timers.mjs";
 import internalUtil from "ext:deno_node/internal/util.mjs";
 import internalUtilInspect from "ext:deno_node/internal/util/inspect.mjs";
+import internalConsole from "ext:deno_node/internal/console/constructor.mjs";
 import net from "node:net";
 import os from "node:os";
 import pathPosix from "node:path/posix";
@@ -198,6 +199,7 @@ function setupBuiltinModules() {
     http2,
     https,
     inspector,
+    "internal/console/constructor": internalConsole,
     "internal/child_process": internalCp,
     "internal/crypto/certificate": internalCryptoCertificate,
     "internal/crypto/cipher": internalCryptoCipher,
