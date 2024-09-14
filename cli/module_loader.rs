@@ -104,7 +104,7 @@ impl ModuleLoadPreparer {
     roots: &[ModuleSpecifier],
     is_dynamic: bool,
     lib: TsTypeLib,
-    permissions: crate::cache::FetchPermissionsOption,
+    permissions: crate::file_fetcher::FetchPermissionsOption,
   ) -> Result<(), AnyError> {
     log::debug!("Preparing module load.");
     let _pb_clear_guard = self.progress_bar.clear_guard();

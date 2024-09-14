@@ -4,7 +4,7 @@ use crate::args::CacheSetting;
 use crate::errors::get_error_class_name;
 use crate::file_fetcher::FetchNoFollowOptions;
 use crate::file_fetcher::FetchOptions;
-use crate::file_fetcher::FetchPermissionsOptionRef;
+use crate::file_fetcher::FetchPermissionsOption;
 use crate::file_fetcher::FileFetcher;
 use crate::file_fetcher::FileOrRedirect;
 use crate::npm::CliNpmResolver;
@@ -19,7 +19,6 @@ use deno_graph::source::CacheInfo;
 use deno_graph::source::LoadFuture;
 use deno_graph::source::LoadResponse;
 use deno_graph::source::Loader;
-use deno_runtime::deno_permissions::PermissionsContainer;
 use std::collections::HashMap;
 use std::path::Path;
 use std::path::PathBuf;
@@ -104,29 +103,6 @@ pub type LocalHttpCache = deno_cache_dir::LocalHttpCache<RealDenoCacheEnv>;
 pub type LocalLspHttpCache =
   deno_cache_dir::LocalLspHttpCache<RealDenoCacheEnv>;
 pub use deno_cache_dir::HttpCache;
-
-#[derive(Debug, Clone)]
-pub enum FetchPermissionsOption {
-  AllowAll,
-  Container(PermissionsContainer),
-}
-
-impl FetchPermissionsOption {
-  pub fn as_ref(&self) -> FetchPermissionsOptionRef {
-    match self {
-      FetchPermissionsOption::AllowAll => FetchPermissionsOptionRef::AllowAll,
-      FetchPermissionsOption::Container(container) => {
-        FetchPermissionsOptionRef::Container(container)
-      }
-    }
-  }
-}
-
-impl From<PermissionsContainer> for FetchPermissionsOption {
-  fn from(value: PermissionsContainer) -> Self {
-    Self::Container(value)
-  }
-}
 
 /// A "wrapper" for the FileFetcher and DiskCache for the Deno CLI that provides
 /// a concise interface to the DENO_DIR when building module graphs.

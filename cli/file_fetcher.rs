@@ -167,6 +167,29 @@ pub enum FetchPermissionsOptionRef<'a> {
   Container(&'a PermissionsContainer),
 }
 
+#[derive(Debug, Clone)]
+pub enum FetchPermissionsOption {
+  AllowAll,
+  Container(PermissionsContainer),
+}
+
+impl FetchPermissionsOption {
+  pub fn as_ref(&self) -> FetchPermissionsOptionRef {
+    match self {
+      FetchPermissionsOption::AllowAll => FetchPermissionsOptionRef::AllowAll,
+      FetchPermissionsOption::Container(container) => {
+        FetchPermissionsOptionRef::Container(container)
+      }
+    }
+  }
+}
+
+impl From<PermissionsContainer> for FetchPermissionsOption {
+  fn from(value: PermissionsContainer) -> Self {
+    Self::Container(value)
+  }
+}
+
 pub struct FetchOptions<'a> {
   pub specifier: &'a ModuleSpecifier,
   pub permissions: FetchPermissionsOptionRef<'a>,

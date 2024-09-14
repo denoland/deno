@@ -11,7 +11,7 @@ use deno_graph::ModuleGraph;
 use deno_runtime::colors;
 
 use crate::args::CliOptions;
-use crate::cache;
+use crate::file_fetcher::FetchPermissionsOption;
 use crate::module_loader::ModuleLoadPreparer;
 use crate::util::fs::collect_specifiers;
 use crate::util::path::is_script_ext;
@@ -75,7 +75,7 @@ impl MainModuleGraphContainer {
         specifiers,
         false,
         self.cli_options.ts_type_lib_window(),
-        cache::FetchPermissionsOption::AllowAll,
+        FetchPermissionsOption::AllowAll,
       )
       .await?;
     graph_permit.commit();
