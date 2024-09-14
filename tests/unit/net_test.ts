@@ -2,11 +2,9 @@
 import {
   assert,
   assertEquals,
-  assertNotEquals,
   assertRejects,
   assertThrows,
   delay,
-  DENO_FUTURE,
   execCode,
   execCode2,
   tmpUnixSocketPath,
@@ -28,9 +26,6 @@ Deno.test({ permissions: { net: true } }, function netTcpListenClose() {
   assert(listener.addr.transport === "tcp");
   assertEquals(listener.addr.hostname, "127.0.0.1");
   assertEquals(listener.addr.port, listenPort);
-  if (!DENO_FUTURE) {
-    assertNotEquals(listener.rid, 0);
-  }
   listener.close();
 });
 
@@ -100,7 +95,7 @@ Deno.test(
       assert(socket.addr.transport === "unix");
       assertEquals(socket.addr.path, filePath);
       socket.close();
-    }, Deno.errors.PermissionDenied);
+    }, Deno.errors.NotCapable);
   },
 );
 
@@ -119,7 +114,7 @@ Deno.test(
       assert(socket.addr.transport === "unixpacket");
       assertEquals(socket.addr.path, filePath);
       socket.close();
-    }, Deno.errors.PermissionDenied);
+    }, Deno.errors.NotCapable);
   },
 );
 

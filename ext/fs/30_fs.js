@@ -1,6 +1,6 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
-import { core, internals, primordials } from "ext:core/mod.js";
+import { core, primordials } from "ext:core/mod.js";
 const {
   isDate,
   internalRidSymbol,
@@ -17,13 +17,13 @@ import {
   op_fs_cwd,
   op_fs_file_stat_async,
   op_fs_file_stat_sync,
+  op_fs_file_sync_async,
   op_fs_file_sync_data_async,
   op_fs_file_sync_data_sync,
+  op_fs_file_sync_sync,
   op_fs_file_truncate_async,
   op_fs_flock_async,
   op_fs_flock_sync,
-  op_fs_fsync_async,
-  op_fs_fsync_sync,
   op_fs_ftruncate_sync,
   op_fs_funlock_async,
   op_fs_funlock_sync,
@@ -517,14 +517,6 @@ async function symlink(
   );
 }
 
-function fsyncSync(rid) {
-  op_fs_fsync_sync(rid);
-}
-
-async function fsync(rid) {
-  await op_fs_fsync_async(rid);
-}
-
 function openSync(
   path,
   options,
@@ -587,15 +579,6 @@ class FsFile {
         "`Deno.FsFile` cannot be constructed, use `Deno.open()` or `Deno.openSync()` instead.",
       );
     }
-  }
-
-  get rid() {
-    internals.warnOnDeprecatedApi(
-      "Deno.FsFile.rid",
-      new Error().stack,
-      "Use `Deno.FsFile` methods directly instead.",
-    );
-    return this.#rid;
   }
 
   write(p) {
@@ -666,11 +649,11 @@ class FsFile {
   }
 
   async sync() {
-    await op_fs_fsync_async(this.#rid);
+    await op_fs_file_sync_async(this.#rid);
   }
 
   syncSync() {
-    op_fs_fsync_sync(this.#rid);
+    op_fs_file_sync_sync(this.#rid);
   }
 
   async utime(atime, mtime) {
@@ -907,8 +890,6 @@ export {
   createSync,
   cwd,
   FsFile,
-  fsync,
-  fsyncSync,
   link,
   linkSync,
   lstat,

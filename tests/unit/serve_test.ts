@@ -3,7 +3,7 @@
 // deno-lint-ignore-file no-console
 
 import { assertMatch, assertRejects } from "@std/assert";
-import { Buffer, BufReader, BufWriter } from "@std/io";
+import { Buffer, BufReader, BufWriter, type Reader } from "@std/io";
 import { TextProtoReader } from "../testdata/run/textproto.ts";
 import {
   assert,
@@ -12,7 +12,6 @@ import {
   assertThrows,
   curlRequest,
   curlRequestWithStdErr,
-  DENO_FUTURE,
   execCode,
   execCode3,
   fail,
@@ -20,7 +19,7 @@ import {
 } from "./test_util.ts";
 
 // Since these tests may run in parallel, ensure this port is unique to this file
-const servePort = DENO_FUTURE ? 4511 : 4502;
+const servePort = 4511;
 
 const {
   upgradeHttpRaw,
@@ -3774,7 +3773,7 @@ Deno.test(
   },
 );
 
-function chunkedBodyReader(h: Headers, r: BufReader): Deno.Reader {
+function chunkedBodyReader(h: Headers, r: BufReader): Reader {
   // Based on https://tools.ietf.org/html/rfc2616#section-19.4.6
   const tp = new TextProtoReader(r);
   let finished = false;

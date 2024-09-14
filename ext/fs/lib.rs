@@ -21,7 +21,6 @@ pub use crate::sync::MaybeSync;
 use crate::ops::*;
 
 use deno_core::error::AnyError;
-use deno_core::OpState;
 use deno_io::fs::FsError;
 use std::borrow::Cow;
 use std::path::Path;
@@ -91,7 +90,7 @@ impl FsPermissions for deno_permissions::PermissionsContainer {
     if resolved {
       self
         .check_special_file(path, api_name)
-        .map_err(FsError::PermissionDenied)?;
+        .map_err(FsError::NotCapable)?;
       return Ok(Cow::Borrowed(path));
     }
 
@@ -99,11 +98,11 @@ impl FsPermissions for deno_permissions::PermissionsContainer {
     let read = read || !write;
     if read {
       FsPermissions::check_read(self, path, api_name)
-        .map_err(|_| FsError::PermissionDenied("read"))?;
+        .map_err(|_| FsError::NotCapable("read"))?;
     }
     if write {
       FsPermissions::check_write(self, path, api_name)
-        .map_err(|_| FsError::PermissionDenied("write"))?;
+        .map_err(|_| FsError::NotCapable("write"))?;
     }
     Ok(Cow::Borrowed(path))
   }
@@ -167,15 +166,6 @@ impl FsPermissions for deno_permissions::PermissionsContainer {
 
 pub const UNSTABLE_FEATURE_NAME: &str = "fs";
 
-/// Helper for checking unstable features. Used for sync ops.
-fn check_unstable(state: &OpState, api_name: &str) {
-  // TODO(bartlomieju): replace with `state.feature_checker.check_or_exit`
-  // once we phase out `check_or_exit_with_legacy_fallback`
-  state
-    .feature_checker
-    .check_or_exit_with_legacy_fallback(UNSTABLE_FEATURE_NAME, api_name);
-}
-
 deno_core::extension!(deno_fs,
   deps = [ deno_web ],
   parameters = [P: FsPermissions],
@@ -231,8 +221,8 @@ deno_core::extension!(deno_fs,
     op_fs_seek_async,
     op_fs_file_sync_data_sync,
     op_fs_file_sync_data_async,
-    op_fs_fsync_sync,
-    op_fs_fsync_async,
+    op_fs_file_sync_sync,
+    op_fs_file_sync_async,
     op_fs_file_stat_sync,
     op_fs_file_stat_async,
     op_fs_flock_async,

@@ -57,8 +57,6 @@ fn op_http_start(
     .resource_table
     .take::<deno_net::io::UnixStreamResource>(tcp_stream_rid)
   {
-    super::check_unstable(state, UNSTABLE_FEATURE_NAME, "Deno.serveHttp");
-
     // This UNIX socket might be used somewhere else. If it's the case, we cannot proceed with the
     // process of starting a HTTP server on top of this UNIX socket, so we just return a bad
     // resource error. See also: https://github.com/denoland/deno/pull/16242

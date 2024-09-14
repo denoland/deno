@@ -1,0 +1,8 @@
+{
+  "args": "task -q --config deno.json",
+  "output": "task_no_args.out",
+  "envs": {
+    "NO_COLOR": "1"
+  },
+  "exitCode": 1
+}
