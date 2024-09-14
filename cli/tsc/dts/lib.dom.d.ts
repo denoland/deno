@@ -8798,7 +8798,7 @@ declare var GamepadButton: {
 };
 
 /**
- * This Gamepad API interface contains references to gamepads connected to the system, which is what the gamepad events Window.gamepadconnected and Window.gamepaddisconnected are fired in response to.
+ * This Gamepad API interface contains references to gamepads connected to the system, which is what the gamepad events globalThis.gamepadconnected and globalThis.gamepaddisconnected are fired in response to.
  *
  * [MDN Reference](https://developer.mozilla.org/docs/Web/API/GamepadEvent)
  */
@@ -21603,7 +21603,7 @@ declare var SubmitEvent: {
 };
 
 /**
- * This Web Crypto API interface provides a number of low-level cryptographic functions. It is accessed via the Crypto.subtle properties available in a window context (via Window.crypto).
+ * This Web Crypto API interface provides a number of low-level cryptographic functions. It is accessed via the Crypto.subtle properties available in a window context (via globalThis.crypto).
  * Available only in secure contexts.
  *
  * [MDN Reference](https://developer.mozilla.org/docs/Web/API/SubtleCrypto)
