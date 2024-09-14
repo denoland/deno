@@ -99,6 +99,7 @@ import http from "node:http";
 import http2 from "node:http2";
 import https from "node:https";
 import inspector from "node:inspector";
+import inspectorPromises from "node:inspector/promises";
 import internalCp from "ext:deno_node/internal/child_process.ts";
 import internalCryptoCertificate from "ext:deno_node/internal/crypto/certificate.ts";
 import internalCryptoCipher from "ext:deno_node/internal/crypto/cipher.ts";
@@ -198,6 +199,8 @@ function setupBuiltinModules() {
     http2,
     https,
     inspector,
+    "inspector/promises": inspectorPromises,
+    "internal/console/constructor": internalConsole,
     "internal/child_process": internalCp,
     "internal/crypto/certificate": internalCryptoCertificate,
     "internal/crypto/cipher": internalCryptoCipher,
