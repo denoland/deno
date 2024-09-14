@@ -21,7 +21,6 @@ pub use crate::sync::MaybeSync;
 use crate::ops::*;
 
 use deno_core::error::AnyError;
-use deno_core::OpState;
 use deno_io::fs::FsError;
 use std::borrow::Cow;
 use std::path::Path;
@@ -214,15 +213,6 @@ impl FsPermissions for deno_permissions::PermissionsContainer {
 }
 
 pub const UNSTABLE_FEATURE_NAME: &str = "fs";
-
-/// Helper for checking unstable features. Used for sync ops.
-fn check_unstable(state: &OpState, api_name: &str) {
-  // TODO(bartlomieju): replace with `state.feature_checker.check_or_exit`
-  // once we phase out `check_or_exit_with_legacy_fallback`
-  state
-    .feature_checker
-    .check_or_exit_with_legacy_fallback(UNSTABLE_FEATURE_NAME, api_name);
-}
 
 deno_core::extension!(deno_fs,
   deps = [ deno_web ],

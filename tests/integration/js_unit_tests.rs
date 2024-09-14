@@ -122,9 +122,8 @@ fn js_unit_test(test: String) {
     .arg("--no-lock")
     // TODO(bartlomieju): would be better if we could apply this unstable
     // flag to particular files, but there's many of them that rely on unstable
-    // net APIs (`reusePort` in `listen` and `listenTls`; `listenDatagram`, `createHttpClient`)
+    // net APIs (`reusePort` in `listen` and `listenTls`; `listenDatagram`)
     .arg("--unstable-net")
-    .arg("--unstable-http")
     .arg("--location=http://127.0.0.1:4545/")
     .arg("--no-prompt");
 

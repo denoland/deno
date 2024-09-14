@@ -1,6 +1,5 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
-use crate::check_unstable;
 use crate::symbol::NativeType;
 use crate::FfiPermissions;
 use crate::ForeignFunction;
@@ -557,7 +556,6 @@ pub fn op_ffi_unsafe_callback_create<FP, 'scope>(
 where
   FP: FfiPermissions + 'static,
 {
-  check_unstable(state, "Deno.UnsafeCallback");
   let permissions = state.borrow_mut::<FP>();
   permissions.check_partial_no_path()?;
 

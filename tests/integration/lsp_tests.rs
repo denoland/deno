@@ -9722,6 +9722,51 @@ fn lsp_lockfile_redirect_resolution() {
   client.shutdown();
 }
 
+// Regression test for https://github.com/denoland/vscode_deno/issues/1157.
+#[test]
+fn lsp_diagnostics_brackets_in_file_name() {
+  let context = TestContextBuilder::new().use_temp_cwd().build();
+  let mut client = context.new_lsp_command().build();
+  client.initialize_default();
+  let diagnostics = client.did_open(json!({
+    "textDocument": {
+      "uri": "file:///a/%5Bfile%5D.ts",
+      "languageId": "typescript",
+      "version": 1,
+      "text": "/** @deprecated */\nexport const a = \"a\";\n\na;\n",
+    },
+  }));
+  assert_eq!(
+    json!(diagnostics.all()),
+    json!([
+      {
+        "range": {
+          "start": { "line": 3, "character": 0 },
+          "end": { "line": 3, "character": 1 },
+        },
+        "severity": 4,
+        "code": 6385,
+        "source": "deno-ts",
+        "message": "'a' is deprecated.",
+        "relatedInformation": [
+          {
+            "location": {
+              "uri": "file:///a/%5Bfile%5D.ts",
+              "range": {
+                "start": { "line": 0, "character": 4 },
+                "end": { "line": 0, "character": 16 },
+              },
+            },
+            "message": "The declaration was marked as deprecated here.",
+          },
+        ],
+        "tags": [2],
+      },
+    ]),
+  );
+  client.shutdown();
+}
+
 #[test]
 fn lsp_diagnostics_deprecated() {
   let context = TestContextBuilder::new().use_temp_cwd().build();

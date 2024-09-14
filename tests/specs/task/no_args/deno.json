@@ -1,0 +1,13 @@
+{
+  "tasks": {
+    "boolean_logic": "sleep 0.1 && echo 3 && echo 4 & echo 1 && echo 2 || echo NOPE",
+    "echo": "echo 1",
+    "deno_echo": "deno eval 'console.log(5)'",
+    "strings": "deno run main.ts && deno eval \"console.log(\\\"test\\\")\"",
+    "piped": "echo 12345 | (deno eval 'const b = new Uint8Array(1);Deno.stdin.readSync(b);console.log(b)' && deno eval 'const b = new Uint8Array(1);Deno.stdin.readSync(b);console.log(b)')",
+    "exit_code_5": "echo $(echo 10 ; exit 2) && exit 5",
+    "echo_cwd": "echo $(pwd)",
+    "echo_init_cwd": "echo $INIT_CWD",
+    "echo_emoji": "echo 🔥"
+  }
+}

@@ -1,6 +1,5 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
-use crate::check_unstable;
 use crate::FfiPermissions;
 use deno_core::error::range_error;
 use deno_core::error::type_error;
@@ -21,7 +20,6 @@ pub fn op_ffi_ptr_create<FP>(
 where
   FP: FfiPermissions + 'static,
 {
-  check_unstable(state, "Deno.UnsafePointer#create");
   let permissions = state.borrow_mut::<FP>();
   permissions.check_partial_no_path()?;
 
@@ -37,7 +35,6 @@ pub fn op_ffi_ptr_equals<FP>(
 where
   FP: FfiPermissions + 'static,
 {
-  check_unstable(state, "Deno.UnsafePointer#equals");
   let permissions = state.borrow_mut::<FP>();
   permissions.check_partial_no_path()?;
 
@@ -52,7 +49,6 @@ pub fn op_ffi_ptr_of<FP>(
 where
   FP: FfiPermissions + 'static,
 {
-  check_unstable(state, "Deno.UnsafePointer#of");
   let permissions = state.borrow_mut::<FP>();
   permissions.check_partial_no_path()?;
 
@@ -67,7 +63,6 @@ pub fn op_ffi_ptr_of_exact<FP>(
 where
   FP: FfiPermissions + 'static,
 {
-  check_unstable(state, "Deno.UnsafePointer#of");
   let permissions = state.borrow_mut::<FP>();
   permissions.check_partial_no_path()?;
 
@@ -89,7 +84,6 @@ pub fn op_ffi_ptr_offset<FP>(
 where
   FP: FfiPermissions + 'static,
 {
-  check_unstable(state, "Deno.UnsafePointer#offset");
   let permissions = state.borrow_mut::<FP>();
   permissions.check_partial_no_path()?;
 
@@ -120,7 +114,6 @@ pub fn op_ffi_ptr_value<FP>(
 where
   FP: FfiPermissions + 'static,
 {
-  check_unstable(state, "Deno.UnsafePointer#value");
   let permissions = state.borrow_mut::<FP>();
   permissions.check_partial_no_path()?;
 
@@ -138,8 +131,6 @@ pub fn op_ffi_get_buf<FP, 'scope>(
 where
   FP: FfiPermissions + 'static,
 {
-  check_unstable(state, "Deno.UnsafePointerView#getArrayBuffer");
-
   let permissions = state.borrow_mut::<FP>();
   permissions.check_partial_no_path()?;
 
@@ -172,8 +163,6 @@ pub fn op_ffi_buf_copy_into<FP>(
 where
   FP: FfiPermissions + 'static,
 {
-  check_unstable(state, "Deno.UnsafePointerView#copyInto");
-
   let permissions = state.borrow_mut::<FP>();
   permissions.check_partial_no_path()?;
 
@@ -205,8 +194,6 @@ pub fn op_ffi_cstr_read<FP, 'scope>(
 where
   FP: FfiPermissions + 'static,
 {
-  check_unstable(state, "Deno.UnsafePointerView#getCString");
-
   let permissions = state.borrow_mut::<FP>();
   permissions.check_partial_no_path()?;
 
@@ -233,8 +220,6 @@ pub fn op_ffi_read_bool<FP>(
 where
   FP: FfiPermissions + 'static,
 {
-  check_unstable(state, "Deno.UnsafePointerView#getBool");
-
   let permissions = state.borrow_mut::<FP>();
   permissions.check_partial_no_path()?;
 
@@ -255,8 +240,6 @@ pub fn op_ffi_read_u8<FP>(
 where
   FP: FfiPermissions + 'static,
 {
-  check_unstable(state, "Deno.UnsafePointerView#getUint8");
-
   let permissions = state.borrow_mut::<FP>();
   permissions.check_partial_no_path()?;
 
@@ -279,8 +262,6 @@ pub fn op_ffi_read_i8<FP>(
 where
   FP: FfiPermissions + 'static,
 {
-  check_unstable(state, "Deno.UnsafePointerView#getInt8");
-
   let permissions = state.borrow_mut::<FP>();
   permissions.check_partial_no_path()?;
 
@@ -303,8 +284,6 @@ pub fn op_ffi_read_u16<FP>(
 where
   FP: FfiPermissions + 'static,
 {
-  check_unstable(state, "Deno.UnsafePointerView#getUint16");
-
   let permissions = state.borrow_mut::<FP>();
   permissions.check_partial_no_path()?;
 
@@ -327,8 +306,6 @@ pub fn op_ffi_read_i16<FP>(
 where
   FP: FfiPermissions + 'static,
 {
-  check_unstable(state, "Deno.UnsafePointerView#getInt16");
-
   let permissions = state.borrow_mut::<FP>();
   permissions.check_partial_no_path()?;
 
@@ -351,8 +328,6 @@ pub fn op_ffi_read_u32<FP>(
 where
   FP: FfiPermissions + 'static,
 {
-  check_unstable(state, "Deno.UnsafePointerView#getUint32");
-
   let permissions = state.borrow_mut::<FP>();
   permissions.check_partial_no_path()?;
 
@@ -373,8 +348,6 @@ pub fn op_ffi_read_i32<FP>(
 where
   FP: FfiPermissions + 'static,
 {
-  check_unstable(state, "Deno.UnsafePointerView#getInt32");
-
   let permissions = state.borrow_mut::<FP>();
   permissions.check_partial_no_path()?;
 
@@ -398,8 +371,6 @@ pub fn op_ffi_read_u64<FP>(
 where
   FP: FfiPermissions + 'static,
 {
-  check_unstable(state, "Deno.UnsafePointerView#getBigUint64");
-
   let permissions = state.borrow_mut::<FP>();
   permissions.check_partial_no_path()?;
 
@@ -426,8 +397,6 @@ pub fn op_ffi_read_i64<FP>(
 where
   FP: FfiPermissions + 'static,
 {
-  check_unstable(state, "Deno.UnsafePointerView#getBigInt64");
-
   let permissions = state.borrow_mut::<FP>();
   permissions.check_partial_no_path()?;
 
@@ -451,8 +420,6 @@ pub fn op_ffi_read_f32<FP>(
 where
   FP: FfiPermissions + 'static,
 {
-  check_unstable(state, "Deno.UnsafePointerView#getFloat32");
-
   let permissions = state.borrow_mut::<FP>();
   permissions.check_partial_no_path()?;
 
@@ -473,8 +440,6 @@ pub fn op_ffi_read_f64<FP>(
 where
   FP: FfiPermissions + 'static,
 {
-  check_unstable(state, "Deno.UnsafePointerView#getFloat64");
-
   let permissions = state.borrow_mut::<FP>();
   permissions.check_partial_no_path()?;
 
@@ -495,8 +460,6 @@ pub fn op_ffi_read_ptr<FP>(
 where
   FP: FfiPermissions + 'static,
 {
-  check_unstable(state, "Deno.UnsafePointerView#getPointer");
-
   let permissions = state.borrow_mut::<FP>();
   permissions.check_partial_no_path()?;
 

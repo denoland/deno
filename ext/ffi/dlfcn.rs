@@ -1,6 +1,5 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
-use crate::check_unstable;
 use crate::ir::out_buffer_as_ptr;
 use crate::symbol::NativeType;
 use crate::symbol::Symbol;
@@ -121,7 +120,6 @@ pub fn op_ffi_load<'scope, FP>(
 where
   FP: FfiPermissions + 'static,
 {
-  check_unstable(state, "Deno.dlopen");
   let permissions = state.borrow_mut::<FP>();
   let path = permissions.check_partial_with_path(&args.path)?;
 
