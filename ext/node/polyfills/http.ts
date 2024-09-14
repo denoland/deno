@@ -640,13 +640,20 @@ class ClientRequest extends OutgoingMessage {
     if (chunk) {
       this.write_(chunk, encoding, null, true);
     } else if (!this._headerSent) {
-      if (this.socket) {
+      if (this.socket && !this.socket.connecting) {
         this._contentLength = 0;
+        console.log(
+          "end: _implicitHeader; socket.rid",
+          this.socket.rid,
+          "socket.connecting",
+          this.socket.connecting,
+        );
         this._implicitHeader();
         this._send("", "latin1");
       } else {
         this.on("socket", (socket) => {
           socket.on("connect", () => {
+            console.log("connect emitted - sending implicit header");
             this._contentLength = 0;
             this._implicitHeader();
             this._send("", "latin1");

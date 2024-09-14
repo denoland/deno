@@ -524,7 +524,7 @@ Object.defineProperties(
     _send(data: any, encoding?: string | null, callback?: () => void) {
       // if socket is ready, write the data after headers are written.
       // if socket is not ready, buffer data in outputbuffer.
-      if (this.socket) {
+      if (this.socket && !this.socket.connecting) {
         console.log("im never invoked");
         if (!this._headerSent && this._header !== null) {
           this._writeHeader();

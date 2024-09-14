@@ -293,6 +293,7 @@ where
     .borrow::<DefaultTlsOptions>()
     .root_cert_store()?;
 
+  println!("used in op_tls_start");
   let resource_rc = state
     .borrow_mut()
     .resource_table

@@ -329,7 +329,7 @@ pub fn take_network_stream_resource(
   // The stream we're attempting to unwrap may be in use somewhere else. If that's the case, we cannot proceed
   // with the process of unwrapping this connection, so we just return a bad resource error.
   // See also: https://github.com/denoland/deno/pull/16242
-
+  println!("used in take_network_stream_resource");
   if let Ok(resource_rc) = resource_table.take::<TcpStreamResource>(stream_rid)
   {
     // This TCP connection might be used somewhere else.

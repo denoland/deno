@@ -22,6 +22,7 @@ fn op_http_start(
   state: &mut OpState,
   #[smi] tcp_stream_rid: ResourceId,
 ) -> Result<ResourceId, AnyError> {
+  println!("used in op_http_start");
   if let Ok(resource_rc) = state
     .resource_table
     .take::<TcpStreamResource>(tcp_stream_rid)

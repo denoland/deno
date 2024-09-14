@@ -107,8 +107,15 @@ where
     .borrow_mut()
     .resource_table
     .take::<TcpStreamResource>(conn_rid)?;
-  let resource = Rc::try_unwrap(resource_rc)
-    .map_err(|_| bad_resource("TCP stream is currently in use"))?;
+  eprintln!(
+    "rc: strong_count: {strong_count} weak_count: {weak_count}",
+    strong_count = Rc::strong_count(&resource_rc),
+    weak_count = Rc::weak_count(&resource_rc)
+  );
+  let resource = Rc::try_unwrap(resource_rc).map_err(|e| {
+    eprintln!("error: {:?}", e);
+    bad_resource("TCP stream is currently in use")
+  })?;
   let (read_half, write_half) = resource.into_inner();
   let tcp_stream = read_half.reunite(write_half)?;
   let io = TokioIo::new(tcp_stream);
