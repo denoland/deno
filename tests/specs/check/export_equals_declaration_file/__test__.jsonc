@@ -1,0 +1,10 @@
+{
+  "steps": [{
+    "args": "check main.ts",
+    "output": "main.out"
+  }, {
+    // ensure diagnostic is not cached
+    "args": "check main.ts",
+    "output": "main.out"
+  }]
+}
