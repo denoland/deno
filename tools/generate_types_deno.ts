@@ -76,7 +76,7 @@ async function createDenoDtsFile() {
 
   file.insertStatements(
     0,
-    '// Copyright 2018-2024 the Deno authors. MIT license.\n\n/// <reference lib="dom" />\n\n',
+    "// Copyright 2018-2024 the Deno authors. MIT license.\n\n",
   );
 
   file.saveSync();

@@ -12,14 +12,14 @@
  *
  * @category Canvas
  */
-declare type ColorSpaceConversion = "default" | "none";
+type ColorSpaceConversion = "default" | "none";
 
 /**
  * Specifies how the bitmap image should be oriented.
  *
  * @category Canvas
  */
-declare type ImageOrientation = "flipY" | "from-image" | "none";
+type ImageOrientation = "flipY" | "from-image" | "none";
 
 /**
  * Specifies whether the bitmap's color channels should be premultiplied by
@@ -27,7 +27,7 @@ declare type ImageOrientation = "flipY" | "from-image" | "none";
  *
  * @category Canvas
  */
-declare type PremultiplyAlpha = "default" | "none" | "premultiply";
+type PremultiplyAlpha = "default" | "none" | "premultiply";
 
 /**
  * Specifies the algorithm to be used for resizing the input to match the
@@ -35,20 +35,20 @@ declare type PremultiplyAlpha = "default" | "none" | "premultiply";
  *
  * @category Canvas
  */
-declare type ResizeQuality = "high" | "low" | "medium" | "pixelated";
+type ResizeQuality = "high" | "low" | "medium" | "pixelated";
 
 /**
  * The `ImageBitmapSource` type represents an image data source that can be
  * used to create an `ImageBitmap`.
  *
  * @category Canvas */
-declare type ImageBitmapSource = Blob | ImageData;
+type ImageBitmapSource = Blob | ImageData;
 
 /**
  * The options of {@linkcode createImageBitmap}.
  *
  * @category Canvas */
-declare interface ImageBitmapOptions {
+interface ImageBitmapOptions {
   /**
    * Specifies whether the image should be decoded using color space
    * conversion. Either none or default (default). The value default
@@ -116,7 +116,7 @@ declare function createImageBitmap(
  *
  * @category Canvas
  */
-declare interface ImageBitmap {
+interface ImageBitmap {
   /**
    * The height of the bitmap.
    */

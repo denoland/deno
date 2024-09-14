@@ -9,23 +9,23 @@
 declare var crypto: Crypto;
 
 /** @category Crypto */
-declare interface Algorithm {
+interface Algorithm {
   name: string;
 }
 
 /** @category Crypto */
-declare interface KeyAlgorithm {
+interface KeyAlgorithm {
   name: string;
 }
 
 /** @category Crypto */
-declare type AlgorithmIdentifier = string | Algorithm;
+type AlgorithmIdentifier = string | Algorithm;
 /** @category Crypto */
-declare type HashAlgorithmIdentifier = AlgorithmIdentifier;
+type HashAlgorithmIdentifier = AlgorithmIdentifier;
 /** @category Crypto */
-declare type KeyType = "private" | "public" | "secret";
+type KeyType = "private" | "public" | "secret";
 /** @category Crypto */
-declare type KeyUsage =
+type KeyUsage =
   | "decrypt"
   | "deriveBits"
   | "deriveKey"
@@ -35,19 +35,19 @@ declare type KeyUsage =
   | "verify"
   | "wrapKey";
 /** @category Crypto */
-declare type KeyFormat = "jwk" | "pkcs8" | "raw" | "spki";
+type KeyFormat = "jwk" | "pkcs8" | "raw" | "spki";
 /** @category Crypto */
-declare type NamedCurve = string;
+type NamedCurve = string;
 
 /** @category Crypto */
-declare interface RsaOtherPrimesInfo {
+interface RsaOtherPrimesInfo {
   d?: string;
   r?: string;
   t?: string;
 }
 
 /** @category Crypto */
-declare interface JsonWebKey {
+interface JsonWebKey {
   alg?: string;
   crv?: string;
   d?: string;
@@ -69,129 +69,129 @@ declare interface JsonWebKey {
 }
 
 /** @category Crypto */
-declare interface AesCbcParams extends Algorithm {
+interface AesCbcParams extends Algorithm {
   iv: BufferSource;
 }
 
 /** @category Crypto */
-declare interface AesGcmParams extends Algorithm {
+interface AesGcmParams extends Algorithm {
   iv: BufferSource;
   additionalData?: BufferSource;
   tagLength?: number;
 }
 
 /** @category Crypto */
-declare interface AesCtrParams extends Algorithm {
+interface AesCtrParams extends Algorithm {
   counter: BufferSource;
   length: number;
 }
 
 /** @category Crypto */
-declare interface HmacKeyGenParams extends Algorithm {
+interface HmacKeyGenParams extends Algorithm {
   hash: HashAlgorithmIdentifier;
   length?: number;
 }
 
 /** @category Crypto */
-declare interface EcKeyGenParams extends Algorithm {
+interface EcKeyGenParams extends Algorithm {
   namedCurve: NamedCurve;
 }
 
 /** @category Crypto */
-declare interface EcKeyImportParams extends Algorithm {
+interface EcKeyImportParams extends Algorithm {
   namedCurve: NamedCurve;
 }
 
 /** @category Crypto */
-declare interface EcdsaParams extends Algorithm {
+interface EcdsaParams extends Algorithm {
   hash: HashAlgorithmIdentifier;
 }
 
 /** @category Crypto */
-declare interface RsaHashedImportParams extends Algorithm {
+interface RsaHashedImportParams extends Algorithm {
   hash: HashAlgorithmIdentifier;
 }
 
 /** @category Crypto */
-declare interface RsaHashedKeyGenParams extends RsaKeyGenParams {
+interface RsaHashedKeyGenParams extends RsaKeyGenParams {
   hash: HashAlgorithmIdentifier;
 }
 
 /** @category Crypto */
-declare interface RsaKeyGenParams extends Algorithm {
+interface RsaKeyGenParams extends Algorithm {
   modulusLength: number;
   publicExponent: Uint8Array;
 }
 
 /** @category Crypto */
-declare interface RsaPssParams extends Algorithm {
+interface RsaPssParams extends Algorithm {
   saltLength: number;
 }
 
 /** @category Crypto */
-declare interface RsaOaepParams extends Algorithm {
+interface RsaOaepParams extends Algorithm {
   label?: Uint8Array;
 }
 
 /** @category Crypto */
-declare interface HmacImportParams extends Algorithm {
+interface HmacImportParams extends Algorithm {
   hash: HashAlgorithmIdentifier;
   length?: number;
 }
 
 /** @category Crypto */
-declare interface EcKeyAlgorithm extends KeyAlgorithm {
+interface EcKeyAlgorithm extends KeyAlgorithm {
   namedCurve: NamedCurve;
 }
 
 /** @category Crypto */
-declare interface HmacKeyAlgorithm extends KeyAlgorithm {
+interface HmacKeyAlgorithm extends KeyAlgorithm {
   hash: KeyAlgorithm;
   length: number;
 }
 
 /** @category Crypto */
-declare interface RsaHashedKeyAlgorithm extends RsaKeyAlgorithm {
+interface RsaHashedKeyAlgorithm extends RsaKeyAlgorithm {
   hash: KeyAlgorithm;
 }
 
 /** @category Crypto */
-declare interface RsaKeyAlgorithm extends KeyAlgorithm {
+interface RsaKeyAlgorithm extends KeyAlgorithm {
   modulusLength: number;
   publicExponent: Uint8Array;
 }
 
 /** @category Crypto */
-declare interface HkdfParams extends Algorithm {
+interface HkdfParams extends Algorithm {
   hash: HashAlgorithmIdentifier;
   info: BufferSource;
   salt: BufferSource;
 }
 
 /** @category Crypto */
-declare interface Pbkdf2Params extends Algorithm {
+interface Pbkdf2Params extends Algorithm {
   hash: HashAlgorithmIdentifier;
   iterations: number;
   salt: BufferSource;
 }
 
 /** @category Crypto */
-declare interface AesDerivedKeyParams extends Algorithm {
+interface AesDerivedKeyParams extends Algorithm {
   length: number;
 }
 
 /** @category Crypto */
-declare interface EcdhKeyDeriveParams extends Algorithm {
+interface EcdhKeyDeriveParams extends Algorithm {
   public: CryptoKey;
 }
 
 /** @category Crypto */
-declare interface AesKeyGenParams extends Algorithm {
+interface AesKeyGenParams extends Algorithm {
   length: number;
 }
 
 /** @category Crypto */
-declare interface AesKeyAlgorithm extends KeyAlgorithm {
+interface AesKeyAlgorithm extends KeyAlgorithm {
   length: number;
 }
 
@@ -200,7 +200,7 @@ declare interface AesKeyAlgorithm extends KeyAlgorithm {
  *
  * @category Crypto
  */
-declare interface CryptoKey {
+interface CryptoKey {
   readonly algorithm: KeyAlgorithm;
   readonly extractable: boolean;
   readonly type: KeyType;
@@ -218,7 +218,7 @@ declare var CryptoKey: {
  *
  * @category Crypto
  */
-declare interface CryptoKeyPair {
+interface CryptoKeyPair {
   privateKey: CryptoKey;
   publicKey: CryptoKey;
 }
@@ -235,7 +235,7 @@ declare var CryptoKeyPair: {
  *
  * @category Crypto
  */
-declare interface SubtleCrypto {
+interface SubtleCrypto {
   generateKey(
     algorithm: RsaHashedKeyGenParams | EcKeyGenParams,
     extractable: boolean,
@@ -374,7 +374,7 @@ declare var SubtleCrypto: {
 };
 
 /** @category Crypto */
-declare interface Crypto {
+interface Crypto {
   readonly subtle: SubtleCrypto;
   getRandomValues<
     T extends

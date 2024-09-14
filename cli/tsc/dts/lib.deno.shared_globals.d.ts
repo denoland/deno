@@ -412,7 +412,7 @@ declare function clearInterval(id?: number): void;
 declare function clearTimeout(id?: number): void;
 
 /** @category Platform */
-declare interface VoidFunction {
+interface VoidFunction {
   (): void;
 }
 
@@ -444,7 +444,7 @@ declare function queueMicrotask(func: VoidFunction): void;
 declare function dispatchEvent(event: Event): boolean;
 
 /** @category Platform */
-declare interface DOMStringList {
+interface DOMStringList {
   /** Returns the number of strings in strings. */
   readonly length: number;
   /** Returns true if strings contains string, and false otherwise. */
@@ -455,13 +455,13 @@ declare interface DOMStringList {
 }
 
 /** @category Platform */
-declare type BufferSource = ArrayBufferView | ArrayBuffer;
+type BufferSource = ArrayBufferView | ArrayBuffer;
 
 /** @category I/O */
 declare var console: Console;
 
 /** @category Events */
-declare interface ErrorEventInit extends EventInit {
+interface ErrorEventInit extends EventInit {
   message?: string;
   filename?: string;
   lineno?: number;
@@ -470,7 +470,7 @@ declare interface ErrorEventInit extends EventInit {
 }
 
 /** @category Events */
-declare interface ErrorEvent extends Event {
+interface ErrorEvent extends Event {
   readonly message: string;
   readonly filename: string;
   readonly lineno: number;
@@ -485,13 +485,13 @@ declare var ErrorEvent: {
 };
 
 /** @category Events */
-declare interface PromiseRejectionEventInit extends EventInit {
+interface PromiseRejectionEventInit extends EventInit {
   promise: Promise<any>;
   reason?: any;
 }
 
 /** @category Events */
-declare interface PromiseRejectionEvent extends Event {
+interface PromiseRejectionEvent extends Event {
   readonly promise: Promise<any>;
   readonly reason: any;
 }
@@ -506,24 +506,24 @@ declare var PromiseRejectionEvent: {
 };
 
 /** @category Workers */
-declare interface AbstractWorkerEventMap {
+interface AbstractWorkerEventMap {
   "error": ErrorEvent;
 }
 
 /** @category Workers */
-declare interface WorkerEventMap extends AbstractWorkerEventMap {
+interface WorkerEventMap extends AbstractWorkerEventMap {
   "message": MessageEvent;
   "messageerror": MessageEvent;
 }
 
 /** @category Workers */
-declare interface WorkerOptions {
+interface WorkerOptions {
   type?: "classic" | "module";
   name?: string;
 }
 
 /** @category Workers */
-declare interface Worker extends EventTarget {
+interface Worker extends EventTarget {
   onerror: (this: Worker, e: ErrorEvent) => any | null;
   onmessage: (this: Worker, e: MessageEvent) => any | null;
   onmessageerror: (this: Worker, e: MessageEvent) => any | null;
@@ -559,10 +559,10 @@ declare var Worker: {
 };
 
 /** @category Performance */
-declare type PerformanceEntryList = PerformanceEntry[];
+type PerformanceEntryList = PerformanceEntry[];
 
 /** @category Performance */
-declare interface Performance extends EventTarget {
+interface Performance extends EventTarget {
   /** Returns a timestamp representing the start of the performance measurement. */
   readonly timeOrigin: number;
 
@@ -616,7 +616,7 @@ declare var Performance: {
 declare var performance: Performance;
 
 /** @category Performance */
-declare interface PerformanceMarkOptions {
+interface PerformanceMarkOptions {
   /** Metadata to be included in the mark. */
   detail?: any;
 
@@ -625,7 +625,7 @@ declare interface PerformanceMarkOptions {
 }
 
 /** @category Performance */
-declare interface PerformanceMeasureOptions {
+interface PerformanceMeasureOptions {
   /** Metadata to be included in the measure. */
   detail?: any;
 
@@ -647,7 +647,7 @@ declare interface PerformanceMeasureOptions {
  *
  * @category Performance
  */
-declare interface PerformanceEntry {
+interface PerformanceEntry {
   readonly duration: number;
   readonly entryType: string;
   readonly name: string;
@@ -674,7 +674,7 @@ declare var PerformanceEntry: {
  *
  * @category Performance
  */
-declare interface PerformanceMark extends PerformanceEntry {
+interface PerformanceMark extends PerformanceEntry {
   readonly detail: any;
   readonly entryType: "mark";
 }
@@ -698,7 +698,7 @@ declare var PerformanceMark: {
  *
  * @category Performance
  */
-declare interface PerformanceMeasure extends PerformanceEntry {
+interface PerformanceMeasure extends PerformanceEntry {
   readonly detail: any;
   readonly entryType: "measure";
 }
@@ -716,12 +716,12 @@ declare var PerformanceMeasure: {
 };
 
 /** @category Events */
-declare interface CustomEventInit<T = any> extends EventInit {
+interface CustomEventInit<T = any> extends EventInit {
   detail?: T;
 }
 
 /** @category Events */
-declare interface CustomEvent<T = any> extends Event {
+interface CustomEvent<T = any> extends Event {
   /** Returns any custom data event was created with. Typically used for
    * synthetic events. */
   readonly detail: T;
@@ -734,7 +734,7 @@ declare var CustomEvent: {
 };
 
 /** @category Platform */
-declare interface ErrorConstructor {
+interface ErrorConstructor {
   /** See https://v8.dev/docs/stack-trace-api#stack-trace-collection-for-custom-exceptions. */
   captureStackTrace(error: Object, constructor?: Function): void;
   // TODO(nayeemrmn): Support `Error.prepareStackTrace()`. We currently use this
