@@ -748,6 +748,8 @@ Object.defineProperty(Process.prototype, "allowedNodeEnvironmentFlags", {
   },
 });
 
+export const allowedNodeEnvironmentFlags = ALLOWED_FLAGS;
+
 Process.prototype.features = { inspector: false };
 
 // TODO(kt3k): Get the value from --no-deprecation flag.
