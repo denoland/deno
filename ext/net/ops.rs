@@ -1054,7 +1054,7 @@ mod tests {
       }
     );
 
-    let mut feature_checker = deno_core::FeatureChecker::default();
+    let feature_checker = deno_core::FeatureChecker::default();
 
     let mut runtime = JsRuntime::new(RuntimeOptions {
       extensions: vec![test_ext::init_ops()],
