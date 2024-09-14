@@ -1,1 +1,74 @@
-{"name":"json-schema-traverse","description":"Traverse JSON Schema passing each schema object to callback","dist-tags":{"latest":"1.0.0"},"versions":{"1.0.0":{"name":"json-schema-traverse","version":"1.0.0","description":"Traverse JSON Schema passing each schema object to callback","main":"index.js","types":"index.d.ts","scripts":{"eslint":"eslint index.js spec","test-spec":"mocha spec -R spec","test":"npm run eslint && nyc npm run test-spec"},"repository":{"type":"git","url":"git+https://github.com/epoberezkin/json-schema-traverse.git"},"author":{"name":"Evgeny Poberezkin"},"license":"MIT","bugs":{"url":"https://github.com/epoberezkin/json-schema-traverse/issues"},"devDependencies":{"eslint":"^7.3.1","mocha":"^8.0.1","nyc":"^15.0.0","pre-commit":"^1.2.2"},"nyc":{"exclude":["**/spec/**","node_modules"],"reporter":["lcov","text-summary"]},"gitHead":"6b45983cd76270042cc79527da5c8972f13599ec","_id":"json-schema-traverse@1.0.0","_nodeVersion":"14.15.1","_npmVersion":"6.14.8","dist":{"integrity":"sha512-NM8/P9n3XjXhIZn1lLhkFaACTOURQXjWhV4BA/RnOv8xvgqtqpAX9IO4mRQxSx1Rlo4tqzeqb0sOlruaOy3dug==","shasum":"ae7bcb3656ab77a73ba5c49bf654f38e6b6860e2","tarball":"http://localhost:4260/json-schema-traverse/json-schema-traverse-1.0.0.tgz","fileCount":12,"unpackedSize":22220,"npm-signature":"-----BEGIN PGP SIGNATURE-----\r\nVersion: OpenPGP.js v3.0.13\r\nComment: https://openpgpjs.org\r\n\r\nwsFcBAEBCAAQBQJf1fN3CRA9TVsSAnZWagAAOvgP/RW4IyNaG+9p/oIa6WhS\nu0try6lP7Hym+dFd2utH5S19/K2IPoFXP7CFvq1blPVc1adUBBRdfdz7SJ9J\nVJr0Hdzpvrzhkzfod9SyGcjmwOIZDGmI7mhwxTuqYCN1kOWpAY0gnzfV+n5p\nZxDGKLieCqCzmKc1TsSb/aUtWndUmcs8UsUZI5mjqSTajcqRSX11Fillmor8\nZVFzyKWhwEmDFRQlFRR3cTEbytvs55sqTdpWxaZDh7g8UrxdhUQIoI0SnQFO\n3pWaMCf+fM9SGY2JUlMLhr6n3ui5OBqkgjfw5AUtld405fyNbPQlJu7QxATo\nMU7npmYHcoinMOpciVD/tLNxD+OQKyOZ/NlL+XXBdCWQhLIuF+Rnb+raUiSC\nw8q8W5Vba/JN9/pHs8x+3P1eZFIM+cxMQk9RYFuEqtHkGhDiVthpyMsK5h0K\n2Nu7nLBVsnEEid9UggwPep2ua1JO5YETsAtwwo0RFuhRhs3I37eKloiI+NmJ\nCBASUczFiT2vE5ySGPHWMteTjL/5uUU+a+IZhqA/o2Wsmnw4Kxln5npF0kjg\njAQnn/t7QQcWhNGqsFnKEg2rv6cUgj9MoZdxHsyyyCnZ4qEBLByv83zOpigR\nfyxhFwV8uGKg1IZmeNQn+Kj/pBpifoUSbR4LGr54MVSuUrkjIdBv/sCLVC3c\n3vaz\r\n=T5IW\r\n-----END PGP SIGNATURE-----\r\n","signatures":[{"keyid":"SHA256:jl3bwswu80PjjokCgh0o2w5c2U4LhQAE57gj9cz1kzA","sig":"MEUCIQCNOIFNJRe2jcKCXH4ICrcSvZnowa7w+vu8ftVn1ma0LAIgVov161AURGFLhlj5B6eSkke5RxOlmvY3avjHP8IvUTo="}]},"directories":{},"_hasShrinkwrap":false}},"readme":"# json-schema-traverse\nTraverse JSON Schema passing each schema object to callback\n\n[![build](https://github.com/epoberezkin/json-schema-traverse/workflows/build/badge.svg)](https://github.com/epoberezkin/json-schema-traverse/actions?query=workflow%3Abuild)\n[![npm](https://img.shields.io/npm/v/json-schema-traverse)](https://www.npmjs.com/package/json-schema-traverse)\n[![coverage](https://coveralls.io/repos/github/epoberezkin/json-schema-traverse/badge.svg?branch=master)](https://coveralls.io/github/epoberezkin/json-schema-traverse?branch=master)\n\n\n## Install\n\n```\nnpm install json-schema-traverse\n```\n\n\n## Usage\n\n```javascript\nconst traverse = require('json-schema-traverse');\nconst schema = {\n  properties: {\n    foo: {type: 'string'},\n    bar: {type: 'integer'}\n  }\n};\n\ntraverse(schema, {cb});\n// cb is called 3 times with:\n// 1. root schema\n// 2. {type: 'string'}\n// 3. {type: 'integer'}\n\n// Or:\n\ntraverse(schema, {cb: {pre, post}});\n// pre is called 3 times with:\n// 1. root schema\n// 2. {type: 'string'}\n// 3. {type: 'integer'}\n//\n// post is called 3 times with:\n// 1. {type: 'string'}\n// 2. {type: 'integer'}\n// 3. root schema\n\n```\n\nCallback function `cb` is called for each schema object (not including draft-06 boolean schemas), including the root schema, in pre-order traversal. Schema references ($ref) are not resolved, they are passed as is.  Alternatively, you can pass a `{pre, post}` object as `cb`, and then `pre` will be called before traversing child elements, and `post` will be called after all child elements have been traversed.\n\nCallback is passed these parameters:\n\n- _schema_: the current schema object\n- _JSON pointer_: from the root schema to the current schema object\n- _root schema_: the schema passed to `traverse` object\n- _parent JSON pointer_: from the root schema to the parent schema object (see below)\n- _parent keyword_: the keyword inside which this schema appears (e.g. `properties`, `anyOf`, etc.)\n- _parent schema_: not necessarily parent object/array; in the example above the parent schema for `{type: 'string'}` is the root schema\n- _index/property_: index or property name in the array/object containing multiple schemas; in the example above for `{type: 'string'}` the property name is `'foo'`\n\n\n## Traverse objects in all unknown keywords\n\n```javascript\nconst traverse = require('json-schema-traverse');\nconst schema = {\n  mySchema: {\n    minimum: 1,\n    maximum: 2\n  }\n};\n\ntraverse(schema, {allKeys: true, cb});\n// cb is called 2 times with:\n// 1. root schema\n// 2. mySchema\n```\n\nWithout option `allKeys: true` callback will be called only with root schema.\n\n\n## Enterprise support\n\njson-schema-traverse package is a part of [Tidelift enterprise subscription](https://tidelift.com/subscription/pkg/npm-json-schema-traverse?utm_source=npm-json-schema-traverse&utm_medium=referral&utm_campaign=enterprise&utm_term=repo) - it provides a centralised commercial support to open-source software users, in addition to the support provided by software maintainers.\n\n\n## Security contact\n\nTo report a security vulnerability, please use the\n[Tidelift security contact](https://tidelift.com/security).\nTidelift will coordinate the fix and disclosure. Please do NOT report security vulnerability via GitHub issues.\n\n\n## License\n\n[MIT](https://github.com/epoberezkin/json-schema-traverse/blob/master/LICENSE)\n","homepage":"https://github.com/epoberezkin/json-schema-traverse#readme","repository":{"type":"git","url":"git+https://github.com/epoberezkin/json-schema-traverse.git"},"author":{"name":"Evgeny Poberezkin"},"bugs":{"url":"https://github.com/epoberezkin/json-schema-traverse/issues"},"license":"MIT","readmeFilename":"README.md"}
+{
+  "name": "json-schema-traverse",
+  "description": "Traverse JSON Schema passing each schema object to callback",
+  "dist-tags": {
+    "latest": "1.0.0"
+  },
+  "versions": {
+    "1.0.0": {
+      "name": "json-schema-traverse",
+      "version": "1.0.0",
+      "description": "Traverse JSON Schema passing each schema object to callback",
+      "main": "index.js",
+      "types": "index.d.ts",
+      "scripts": {
+        "eslint": "eslint index.js spec",
+        "test-spec": "mocha spec -R spec",
+        "test": "npm run eslint && nyc npm run test-spec"
+      },
+      "repository": {
+        "type": "git",
+        "url": "git+https://github.com/epoberezkin/json-schema-traverse.git"
+      },
+      "author": {
+        "name": "Evgeny Poberezkin"
+      },
+      "license": "MIT",
+      "bugs": {
+        "url": "https://github.com/epoberezkin/json-schema-traverse/issues"
+      },
+      "devDependencies": {
+        "eslint": "^7.3.1",
+        "mocha": "^8.0.1",
+        "nyc": "^15.0.0",
+        "pre-commit": "^1.2.2"
+      },
+      "nyc": {
+        "exclude": [
+          "**/spec/**",
+          "node_modules"
+        ],
+        "reporter": [
+          "lcov",
+          "text-summary"
+        ]
+      },
+      "gitHead": "6b45983cd76270042cc79527da5c8972f13599ec",
+      "_id": "json-schema-traverse@1.0.0",
+      "_nodeVersion": "14.15.1",
+      "_npmVersion": "6.14.8",
+      "dist": {
+        "integrity": "sha512-NM8/P9n3XjXhIZn1lLhkFaACTOURQXjWhV4BA/RnOv8xvgqtqpAX9IO4mRQxSx1Rlo4tqzeqb0sOlruaOy3dug==",
+        "shasum": "ae7bcb3656ab77a73ba5c49bf654f38e6b6860e2",
+        "tarball": "http://localhost:4260/json-schema-traverse/json-schema-traverse-1.0.0.tgz",
+        "fileCount": 12,
+        "unpackedSize": 22220
+      },
+      "directories": {},
+      "_hasShrinkwrap": false
+    }
+  },
+  "homepage": "https://github.com/epoberezkin/json-schema-traverse#readme",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/epoberezkin/json-schema-traverse.git"
+  },
+  "author": {
+    "name": "Evgeny Poberezkin"
+  },
+  "bugs": {
+    "url": "https://github.com/epoberezkin/json-schema-traverse/issues"
+  },
+  "license": "MIT",
+  "readmeFilename": "README.md"
+}

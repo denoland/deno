@@ -1,1 +1,86 @@
-{"name":"agent-base","description":"Turn a function into an `http.Agent` instance","dist-tags":{"latest":"7.1.1"},"versions":{"7.1.1":{"name":"agent-base","version":"7.1.1","description":"Turn a function into an `http.Agent` instance","main":"./dist/index.js","types":"./dist/index.d.ts","repository":{"type":"git","url":"git+https://github.com/TooTallNate/proxy-agents.git","directory":"packages/agent-base"},"author":{"name":"Nathan Rajlich","email":"nathan@tootallnate.net","url":"http://n8.io/"},"license":"MIT","dependencies":{"debug":"^4.3.4"},"devDependencies":{"@types/debug":"^4.1.7","@types/jest":"^29.5.1","@types/node":"^14.18.45","@types/semver":"^7.3.13","@types/ws":"^6.0.4","async-listen":"^3.0.0","jest":"^29.5.0","ts-jest":"^29.1.0","typescript":"^5.0.4","ws":"^3.3.3","tsconfig":"0.0.0"},"engines":{"node":">= 14"},"scripts":{"build":"tsc","test":"jest --env node --verbose --bail","lint":"eslint . --ext .ts","pack":"node ../../scripts/pack.mjs"},"bugs":{"url":"https://github.com/TooTallNate/proxy-agents/issues"},"_id":"agent-base@7.1.1","_integrity":"sha512-H0TSyFNDMomMNJQBn8wFV5YC/2eJ+VXECwOadZJT554xP6cODZHPX3H9QMQECxvrgiSOP1pHjy1sMWQVYJOUOA==","_resolved":"/tmp/49926a570127159653e7b70d101bcbba/agent-base-7.1.1.tgz","_from":"file:agent-base-7.1.1.tgz","_nodeVersion":"20.11.1","_npmVersion":"10.2.4","dist":{"integrity":"sha512-H0TSyFNDMomMNJQBn8wFV5YC/2eJ+VXECwOadZJT554xP6cODZHPX3H9QMQECxvrgiSOP1pHjy1sMWQVYJOUOA==","shasum":"bdbded7dfb096b751a2a087eeeb9664725b2e317","tarball":"http://localhost:4260/agent-base/agent-base-7.1.1.tgz","fileCount":12,"unpackedSize":31249,"signatures":[{"keyid":"SHA256:jl3bwswu80PjjokCgh0o2w5c2U4LhQAE57gj9cz1kzA","sig":"MEQCICukUv7At8DBG9zvB3grqS9q18Bw9PPJwQIZpQq0tHZaAiBhiCvJ0ot1d9WsVT3+zqexp8BR4hufEl57A+jsa6gIsQ=="}]},"directories":{},"_hasShrinkwrap":false}},"readme":"agent-base\n==========\n### Turn a function into an [`http.Agent`][http.Agent] instance\n\nThis module is a thin wrapper around the base `http.Agent` class.\n\nIt provides an abstract class that must define a `connect()` function,\nwhich is responsible for creating the underlying socket that the HTTP\nclient requests will use.\n\nThe `connect()` function may return an arbitrary `Duplex` stream, or\nanother `http.Agent` instance to delegate the request to, and may be\nasynchronous (by defining an `async` function).\n\nInstances of this agent can be used with the `http` and `https`\nmodules. To differentiate, the options parameter in the `connect()`\nfunction includes a `secureEndpoint` property, which can be checked\nto determine what type of socket should be returned.\n\n#### Some subclasses:\n\nHere are some more interesting uses of `agent-base`.\nSend a pull request to list yours!\n\n * [`http-proxy-agent`][http-proxy-agent]: An HTTP(s) proxy `http.Agent` implementation for HTTP endpoints\n * [`https-proxy-agent`][https-proxy-agent]: An HTTP(s) proxy `http.Agent` implementation for HTTPS endpoints\n * [`pac-proxy-agent`][pac-proxy-agent]: A PAC file proxy `http.Agent` implementation for HTTP and HTTPS\n * [`socks-proxy-agent`][socks-proxy-agent]: A SOCKS proxy `http.Agent` implementation for HTTP and HTTPS\n\nExample\n-------\n\nHere's a minimal example that creates a new `net.Socket` or `tls.Socket`\nbased on the `secureEndpoint` property. This agent can be used with both\nthe `http` and `https` modules.\n\n```ts\nimport * as net from 'net';\nimport * as tls from 'tls';\nimport * as http from 'http';\nimport { Agent } from 'agent-base';\n\nclass MyAgent extends Agent {\n  connect(req, opts) {\n    // `secureEndpoint` is true when using the \"https\" module\n    if (opts.secureEndpoint) {\n      return tls.connect(opts);\n    } else {\n      return net.connect(opts);\n    }\n  }\n});\n\n// Keep alive enabled means that `connect()` will only be\n// invoked when a new connection needs to be created\nconst agent = new MyAgent({ keepAlive: true });\n\n// Pass the `agent` option when creating the HTTP request\nhttp.get('http://nodejs.org/api/', { agent }, (res) => {\n  console.log('\"response\" event!', res.headers);\n  res.pipe(process.stdout);\n});\n```\n\n[http-proxy-agent]: ../http-proxy-agent\n[https-proxy-agent]: ../https-proxy-agent\n[pac-proxy-agent]: ../pac-proxy-agent\n[socks-proxy-agent]: ../socks-proxy-agent\n[http.Agent]: https://nodejs.org/api/http.html#http_class_http_agent\n","author":{"name":"Nathan Rajlich","email":"nathan@tootallnate.net","url":"http://n8.io/"},"repository":{"type":"git","url":"git+https://github.com/TooTallNate/proxy-agents.git","directory":"packages/agent-base"},"homepage":"https://github.com/TooTallNate/proxy-agents#readme","bugs":{"url":"https://github.com/TooTallNate/proxy-agents/issues"},"license":"MIT","readmeFilename":"README.md"}
+{
+  "name": "agent-base",
+  "description": "Turn a function into an `http.Agent` instance",
+  "dist-tags": {
+    "latest": "7.1.1"
+  },
+  "versions": {
+    "7.1.1": {
+      "name": "agent-base",
+      "version": "7.1.1",
+      "description": "Turn a function into an `http.Agent` instance",
+      "main": "./dist/index.js",
+      "types": "./dist/index.d.ts",
+      "repository": {
+        "type": "git",
+        "url": "git+https://github.com/TooTallNate/proxy-agents.git",
+        "directory": "packages/agent-base"
+      },
+      "author": {
+        "name": "Nathan Rajlich",
+        "email": "nathan@tootallnate.net",
+        "url": "http://n8.io/"
+      },
+      "license": "MIT",
+      "dependencies": {
+        "debug": "^4.3.4"
+      },
+      "devDependencies": {
+        "@types/debug": "^4.1.7",
+        "@types/jest": "^29.5.1",
+        "@types/node": "^14.18.45",
+        "@types/semver": "^7.3.13",
+        "@types/ws": "^6.0.4",
+        "async-listen": "^3.0.0",
+        "jest": "^29.5.0",
+        "ts-jest": "^29.1.0",
+        "typescript": "^5.0.4",
+        "ws": "^3.3.3",
+        "tsconfig": "0.0.0"
+      },
+      "engines": {
+        "node": ">= 14"
+      },
+      "scripts": {
+        "build": "tsc",
+        "test": "jest --env node --verbose --bail",
+        "lint": "eslint . --ext .ts",
+        "pack": "node ../../scripts/pack.mjs"
+      },
+      "bugs": {
+        "url": "https://github.com/TooTallNate/proxy-agents/issues"
+      },
+      "_id": "agent-base@7.1.1",
+      "_integrity": "sha512-H0TSyFNDMomMNJQBn8wFV5YC/2eJ+VXECwOadZJT554xP6cODZHPX3H9QMQECxvrgiSOP1pHjy1sMWQVYJOUOA==",
+      "_resolved": "/tmp/49926a570127159653e7b70d101bcbba/agent-base-7.1.1.tgz",
+      "_from": "file:agent-base-7.1.1.tgz",
+      "_nodeVersion": "20.11.1",
+      "_npmVersion": "10.2.4",
+      "dist": {
+        "integrity": "sha512-H0TSyFNDMomMNJQBn8wFV5YC/2eJ+VXECwOadZJT554xP6cODZHPX3H9QMQECxvrgiSOP1pHjy1sMWQVYJOUOA==",
+        "shasum": "bdbded7dfb096b751a2a087eeeb9664725b2e317",
+        "tarball": "http://localhost:4260/agent-base/agent-base-7.1.1.tgz",
+        "fileCount": 12,
+        "unpackedSize": 31249
+      },
+      "directories": {},
+      "_hasShrinkwrap": false
+    }
+  },
+  "author": {
+    "name": "Nathan Rajlich",
+    "email": "nathan@tootallnate.net",
+    "url": "http://n8.io/"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/TooTallNate/proxy-agents.git",
+    "directory": "packages/agent-base"
+  },
+  "homepage": "https://github.com/TooTallNate/proxy-agents#readme",
+  "bugs": {
+    "url": "https://github.com/TooTallNate/proxy-agents/issues"
+  },
+  "license": "MIT",
+  "readmeFilename": "README.md"
+}
