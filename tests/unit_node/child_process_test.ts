@@ -12,7 +12,7 @@ import {
   assertThrows,
 } from "@std/assert";
 import * as path from "@std/path";
-import { setTimeout } from "node:timers";
+import { clearTimeout, setTimeout } from "node:timers";
 
 const { spawn, spawnSync, execFile, execFileSync, ChildProcess } = CP;
 
