@@ -231,7 +231,7 @@ impl TestRun {
     let permission_desc_parser = factory.permission_desc_parser()?.clone();
     let permissions = Permissions::from_options(
       permission_desc_parser.as_ref(),
-      &cli_options.permissions_options()?,
+      &cli_options.permissions_options(),
     )?;
     let main_graph_container = factory.main_module_graph_container().await?;
     test::check_specifiers(

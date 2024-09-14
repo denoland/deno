@@ -1500,7 +1500,7 @@ impl CliOptions {
     &self.flags.permissions
   }
 
-  pub fn permissions_options(&self) -> Result<PermissionsOptions, AnyError> {
+  pub fn permissions_options(&self) -> PermissionsOptions {
     self.flags.permissions.to_options()
   }
 

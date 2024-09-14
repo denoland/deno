@@ -758,7 +758,7 @@ impl CliFactory {
     let desc_parser = self.permission_desc_parser()?.clone();
     let permissions = Permissions::from_options(
       desc_parser.as_ref(),
-      &self.cli_options()?.permissions_options()?,
+      &self.cli_options()?.permissions_options(),
     )?;
     Ok(PermissionsContainer::new(desc_parser, permissions))
   }

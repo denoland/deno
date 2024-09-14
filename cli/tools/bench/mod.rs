@@ -418,7 +418,7 @@ pub async fn run_benchmarks(
   let permission_desc_parser = factory.permission_desc_parser()?.clone();
   let permissions = Permissions::from_options(
     permission_desc_parser.as_ref(),
-    &cli_options.permissions_options()?,
+    &cli_options.permissions_options(),
   )?;
 
   let members_with_bench_options =
@@ -531,7 +531,7 @@ pub async fn run_benchmarks_with_watch(
         let permission_desc_parser = factory.permission_desc_parser()?.clone();
         let permissions = Permissions::from_options(
           permission_desc_parser.as_ref(),
-          &cli_options.permissions_options()?,
+          &cli_options.permissions_options(),
         )?;
 
         let graph = module_graph_creator

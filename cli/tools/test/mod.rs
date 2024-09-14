@@ -1769,7 +1769,7 @@ pub async fn run_tests(
   let permission_desc_parser = factory.permission_desc_parser()?;
   let permissions = Permissions::from_options(
     permission_desc_parser.as_ref(),
-    &cli_options.permissions_options()?,
+    &cli_options.permissions_options(),
   )?;
   let log_level = cli_options.log_level();
 
@@ -1923,7 +1923,7 @@ pub async fn run_tests_with_watch(
         let permission_desc_parser = factory.permission_desc_parser()?;
         let permissions = Permissions::from_options(
           permission_desc_parser.as_ref(),
-          &cli_options.permissions_options()?,
+          &cli_options.permissions_options(),
         )?;
         let graph = module_graph_creator
           .create_graph(graph_kind, test_modules)

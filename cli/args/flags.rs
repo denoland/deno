@@ -660,8 +660,8 @@ impl PermissionFlags {
       || self.deny_write.is_some()
   }
 
-  pub fn to_options(&self) -> Result<PermissionsOptions, AnyError> {
-    Ok(PermissionsOptions {
+  pub fn to_options(&self) -> PermissionsOptions {
+    PermissionsOptions {
       allow_all: self.allow_all,
       allow_env: self.allow_env.clone(),
       deny_env: self.deny_env.clone(),
@@ -678,7 +678,7 @@ impl PermissionFlags {
       allow_write: self.allow_write.clone(),
       deny_write: self.deny_write.clone(),
       prompt: !resolve_no_prompt(self),
-    })
+    }
   }
 }
 
