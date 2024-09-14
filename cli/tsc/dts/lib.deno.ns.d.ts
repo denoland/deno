@@ -5437,7 +5437,9 @@ declare namespace Deno {
    *
    * @category FFI
    */
-  export type NativeStructType = { readonly struct: readonly NativeType[] };
+  export interface NativeStructType {
+    readonly struct: readonly NativeType[];
+  }
 
   /**
    * @category FFI
@@ -5727,7 +5729,9 @@ declare namespace Deno {
    *
    * @category FFI
    */
-  export type PointerObject<T = unknown> = { [brand]: T };
+  export interface PointerObject<T = unknown> {
+    [brand]: T;
+  }
 
   /** Pointers are represented either with a {@linkcode PointerObject}
    * object or a `null` if the pointer is null.
