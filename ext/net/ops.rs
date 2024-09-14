@@ -1055,7 +1055,6 @@ mod tests {
     );
 
     let mut feature_checker = deno_core::FeatureChecker::default();
-    feature_checker.enable_legacy_unstable();
 
     let mut runtime = JsRuntime::new(RuntimeOptions {
       extensions: vec![test_ext::init_ops()],
