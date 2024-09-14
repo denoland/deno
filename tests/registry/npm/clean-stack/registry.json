@@ -1,1 +1,69 @@
-{"name":"clean-stack","description":"Clean up error stack traces","dist-tags":{"latest":"2.2.0"},"versions":{"2.2.0":{"name":"clean-stack","version":"2.2.0","description":"Clean up error stack traces","license":"MIT","repository":{"type":"git","url":"git+https://github.com/sindresorhus/clean-stack.git"},"author":{"name":"Sindre Sorhus","email":"sindresorhus@gmail.com","url":"sindresorhus.com"},"engines":{"node":">=6"},"scripts":{"test":"xo && ava && tsd"},"devDependencies":{"ava":"^1.4.1","tsd":"^0.7.2","xo":"^0.24.0"},"browser":{"os":false},"gitHead":"91440c5a1615354fb9419354650937c434eb9f49","bugs":{"url":"https://github.com/sindresorhus/clean-stack/issues"},"_id":"clean-stack@2.2.0","_nodeVersion":"10.16.0","_npmVersion":"6.9.0","dist":{"integrity":"sha512-4diC9HaTE+KRAMWhDhrGOECgWZxoevMc5TlkObMqNSsVU62PYzXZ/SMTjzyGAFF1YusgxGcSWTEXBhp0CPwQ1A==","shasum":"ee8472dbb129e727b31e8a10a427dee9dfe4008b","tarball":"http://localhost:4260/clean-stack/clean-stack-2.2.0.tgz","fileCount":5,"unpackedSize":5508,"npm-signature":"-----BEGIN PGP SIGNATURE-----\r\nVersion: OpenPGP.js v3.0.4\r\nComment: https://openpgpjs.org\r\n\r\nwsFcBAEBCAAQBQJdQbLICRA9TVsSAnZWagAA/rgP/1TWGRCM3DhESdXGjNFH\niKBjOj8P+r/uaBFCV2EWL+/4gyww3VA6ECIyw3NJ8Iin0tiulY+nzo65bmxv\n0sEg3R57d5W3XFrvKc/3w+EEyeq+EVTUUZFxb3jw63WGJppezy+24WBiI1wZ\nUkgPXvfhs2ZqXmCdVlrOQ3zhCuwDzMXHO7rChGfOMhsQTPPB3uhxdlMdS7N5\noA3MnPUOcTO1oHIWL6Kj/EfQcLcgxnQQrR0gJd+NZGoS3Wa4Z5HhWPtfKBh1\n7roltnx0tKKKXbEK/XMvjVJdO+tbGaunmLjD/d7R+pctEazftxjWjef0b8ve\nlpT3k+j8unp/scto7a3hZnKSgfBJz9QO0OE0jciuBijEvTm2PN2IMjUXxbeq\ni+DtRYLdIRnL6SsiqMxIZUuO2KuR+O1xMmxPkM1LkiSW8x9s9vwifHYBtQnM\nhElRbyGqO+nILUklpt9a9lvxwpYDqQeuGJt4Fogdsz5BoDf640pmn/5KS6NV\n3ydUF0lEXihTs24Nl1TPH7hYVV7fdM4/gQm4BlmtkBuvP738BkkAHRt/HCfl\nBAwWPgPXpW7TwpPP/jK+UNud4YKzj6fDiDxoVPOuj5584IEPx4nU2rdIiPHa\nq0w7XIgmqoBGNU5wPAepNhPOlITXAiuSFZnEZG4NVUNPqNaprc1msH48QpFu\nQWIh\r\n=N8TA\r\n-----END PGP SIGNATURE-----\r\n","signatures":[{"keyid":"SHA256:jl3bwswu80PjjokCgh0o2w5c2U4LhQAE57gj9cz1kzA","sig":"MEUCIQC5PrgG9Ds9PcV/WTk5JfxwjrzMq7cESI0NFDUOcz5MQAIgIUJEeTCPKar2fj39jSQbw4v/jjsJE3pOaNtDh5n9MS8="}]},"directories":{},"_hasShrinkwrap":false}},"readme":"# clean-stack\n\n> Clean up error stack traces\n\nRemoves the mostly unhelpful internal Node.js entries.\n\nAlso works in Electron.\n\n## Install\n\n```sh\nnpm install clean-stack\n```\n\n## Usage\n\n```js\nimport cleanStack from 'clean-stack';\n\nconst error = new Error('Missing unicorn');\n\nconsole.log(error.stack);\n/*\nError: Missing unicorn\n    at Object.<anonymous> (/Users/sindresorhus/dev/clean-stack/unicorn.js:2:15)\n    at Module._compile (module.js:409:26)\n    at Object.Module._extensions..js (module.js:416:10)\n    at Module.load (module.js:343:32)\n    at Function.Module._load (module.js:300:12)\n    at Function.Module.runMain (module.js:441:10)\n    at startup (node.js:139:18)\n*/\n\nconsole.log(cleanStack(error.stack));\n/*\nError: Missing unicorn\n    at Object.<anonymous> (/Users/sindresorhus/dev/clean-stack/unicorn.js:2:15)\n*/\n```\n\n## API\n\n### cleanStack(stack, options?)\n\nReturns the cleaned stack or `undefined` if the given `stack` is `undefined`.\n\n#### stack\n\nType: `string | undefined`\n\nThe `stack` property of an [`Error`](https://github.com/microsoft/TypeScript/blob/eac073894b172ec719ca7f28b0b94fc6e6e7d4cf/lib/lib.es5.d.ts#L972-L976).\n\n#### options\n\nType: `object`\n\n##### pretty\n\nType: `boolean`\\\nDefault: `false`\n\nPrettify the file paths in the stack:\n\n`/Users/sindresorhus/dev/clean-stack/unicorn.js:2:15` → `~/dev/clean-stack/unicorn.js:2:15`\n\n##### basePath\n\nType: `string?`\n\nRemove the given base path from stack trace file paths, effectively turning absolute paths into relative ones. It will also transform absolute file URLs into relative paths.\n\nExample with `'/Users/sindresorhus/dev/clean-stack'` as `basePath`:\n\n`/Users/sindresorhus/dev/clean-stack/unicorn.js:2:15` → `unicorn.js:2:15`\n\n##### pathFilter\n\nType: `(path: string) => boolean`\n\nRemove the stack lines where the given function returns `false`. The function receives the path part of the stack line.\n\n```js\nimport cleanStack from 'clean-stack';\n\nconst error = new Error('Missing unicorn');\n\nconsole.log(cleanStack(error.stack));\n// Error: Missing unicorn\n//     at Object.<anonymous> (/Users/sindresorhus/dev/clean-stack/unicorn.js:2:15)\n//     at Object.<anonymous> (/Users/sindresorhus/dev/clean-stack/omit-me.js:1:16)\n\nconst pathFilter = path => !/omit-me/.test(path);\n\nconsole.log(cleanStack(error.stack, {pathFilter}));\n// Error: Missing unicorn\n//     at Object.<anonymous> (/Users/sindresorhus/dev/clean-stack/unicorn.js:2:15)\n```\n\n## Related\n\n- [extract-stack](https://github.com/sindresorhus/extract-stack) - Extract the actual stack of an error\n- [stack-utils](https://github.com/tapjs/stack-utils) - Captures and cleans stack traces\n","homepage":"https://github.com/sindresorhus/clean-stack#readme","repository":{"type":"git","url":"git+https://github.com/sindresorhus/clean-stack.git"},"author":{"name":"Sindre Sorhus","email":"sindresorhus@gmail.com","url":"https://sindresorhus.com"},"bugs":{"url":"https://github.com/sindresorhus/clean-stack/issues"},"license":"MIT","readmeFilename":"readme.md"}
+{
+  "name": "clean-stack",
+  "description": "Clean up error stack traces",
+  "dist-tags": {
+    "latest": "2.2.0"
+  },
+  "versions": {
+    "2.2.0": {
+      "name": "clean-stack",
+      "version": "2.2.0",
+      "description": "Clean up error stack traces",
+      "license": "MIT",
+      "repository": {
+        "type": "git",
+        "url": "git+https://github.com/sindresorhus/clean-stack.git"
+      },
+      "author": {
+        "name": "Sindre Sorhus",
+        "email": "sindresorhus@gmail.com",
+        "url": "sindresorhus.com"
+      },
+      "engines": {
+        "node": ">=6"
+      },
+      "scripts": {
+        "test": "xo && ava && tsd"
+      },
+      "devDependencies": {
+        "ava": "^1.4.1",
+        "tsd": "^0.7.2",
+        "xo": "^0.24.0"
+      },
+      "browser": {
+        "os": false
+      },
+      "gitHead": "91440c5a1615354fb9419354650937c434eb9f49",
+      "bugs": {
+        "url": "https://github.com/sindresorhus/clean-stack/issues"
+      },
+      "_id": "clean-stack@2.2.0",
+      "_nodeVersion": "10.16.0",
+      "_npmVersion": "6.9.0",
+      "dist": {
+        "integrity": "sha512-4diC9HaTE+KRAMWhDhrGOECgWZxoevMc5TlkObMqNSsVU62PYzXZ/SMTjzyGAFF1YusgxGcSWTEXBhp0CPwQ1A==",
+        "shasum": "ee8472dbb129e727b31e8a10a427dee9dfe4008b",
+        "tarball": "http://localhost:4260/clean-stack/clean-stack-2.2.0.tgz",
+        "fileCount": 5,
+        "unpackedSize": 5508
+      },
+      "directories": {},
+      "_hasShrinkwrap": false
+    }
+  },
+  "homepage": "https://github.com/sindresorhus/clean-stack#readme",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/sindresorhus/clean-stack.git"
+  },
+  "author": {
+    "name": "Sindre Sorhus",
+    "email": "sindresorhus@gmail.com",
+    "url": "https://sindresorhus.com"
+  },
+  "bugs": {
+    "url": "https://github.com/sindresorhus/clean-stack/issues"
+  },
+  "license": "MIT",
+  "readmeFilename": "readme.md"
+}

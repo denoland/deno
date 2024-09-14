@@ -1,1 +1,99 @@
-{"name":"object-keys","description":"An Object.keys replacement, in case Object.keys is not available. From https://github.com/es-shims/es5-shim","dist-tags":{"latest":"1.1.1"},"versions":{"1.1.1":{"name":"object-keys","version":"1.1.1","author":{"name":"Jordan Harband","email":"ljharb@gmail.com","url":"http://ljharb.codes"},"description":"An Object.keys replacement, in case Object.keys is not available. From https://github.com/es-shims/es5-shim","license":"MIT","main":"index.js","scripts":{"pretest":"npm run --silent lint","test":"npm run --silent tests-only","posttest":"npm run --silent audit","tests-only":"node test/index.js","coverage":"covert test/*.js","coverage-quiet":"covert test/*.js --quiet","lint":"eslint .","preaudit":"npm install --package-lock --package-lock-only","audit":"npm audit","postaudit":"rm package-lock.json"},"repository":{"type":"git","url":"git://github.com/ljharb/object-keys.git"},"dependencies":{},"devDependencies":{"@ljharb/eslint-config":"^13.1.1","covert":"^1.1.1","eslint":"^5.13.0","foreach":"^2.0.5","indexof":"^0.0.1","is":"^3.3.0","tape":"^4.9.2"},"testling":{"files":"test/index.js","browsers":["iexplore/6.0..latest","firefox/3.0..6.0","firefox/15.0..latest","firefox/nightly","chrome/4.0..10.0","chrome/20.0..latest","chrome/canary","opera/10.0..latest","opera/next","safari/4.0..latest","ipad/6.0..latest","iphone/6.0..latest","android-browser/4.2"]},"engines":{"node":">= 0.4"},"gitHead":"ba2c1989270c7de969aa8498fc3b7c8e677806f3","bugs":{"url":"https://github.com/ljharb/object-keys/issues"},"_id":"object-keys@1.1.1","_nodeVersion":"11.13.0","_npmVersion":"6.7.0","dist":{"integrity":"sha512-NuAESUOUMrlIXOfHKzD6bpPu3tYt3xvjNdRIQ+FeT0lNb4K8WR70CaDxhuNguS2XG+GjkyMwOzsN5ZktImfhLA==","shasum":"1c47f272df277f3b1daf061677d9c82e2322c60e","tarball":"http://localhost:4260/object-keys/object-keys-1.1.1.tgz","fileCount":11,"unpackedSize":26544,"npm-signature":"-----BEGIN PGP SIGNATURE-----\r\nVersion: OpenPGP.js v3.0.4\r\nComment: https://openpgpjs.org\r\n\r\nwsFcBAEBCAAQBQJcqWC7CRA9TVsSAnZWagAApOoQAIGgpq1xnaDCEe3hqJFt\n1fjwFbEKHTyK59hA/zVmvvR4ikMeltZc5KAIKNt5XyDBO4NtuRcA7E1b3D7C\nFX/IMtPwIq5OvZLWhEnGBNTmwlVq8PI9DwZ6AE2hWM4JAmkT5tay7QtjDAur\nYRdTEEB3eqWETNiaybnF9d1GLKuH4dKcM/v9yiHMp+qa9Ivpe9VtWRj7WTr+\nkxc39JZdSVGFbVYNCFkZ8oyj5VbLOtyMB++6JxbR9fYlZ06ibmT+XrFsz7CF\nr7hQ/XFHlyodg0pi34+YhlyDAsPIvk8DOxDoKGs4aFZ6EqZm3hVnWaAlKqgX\n3ikZAT9Z/4d9icoRkEhVMj7INySL4bSd7lFDIlwGruc4j6U6b6phhwgIlhQE\nMsnWmnLL7/AAaPB8oiNhb8Lt/9/jRJsAHwRBRH9NN/DH2VyP0F2hzp66L5dF\niIVw9YUIBCOzfRg5Gr0qd0GCGbIefcq4AomxsJEdBbV+3AFkJvj7dibMrSb7\nJcBVC/TwJCjNv+Ols7VZE+Yj6ZYbNrsuh5KbPkdFchg6qNgds1Dh1tH8GwrJ\nULdSyACz/0stHNGr8p+Boa85mDseApgozr42UUHdEQyohO1/meNonjDGJl9w\ncLlcHMcR7hnLzp4v54jcv+q74EDZa15iEk/ckLdYFoUXXhRhBJo0XyG43zf8\nEO6O\r\n=PzOq\r\n-----END PGP SIGNATURE-----\r\n","signatures":[{"keyid":"SHA256:jl3bwswu80PjjokCgh0o2w5c2U4LhQAE57gj9cz1kzA","sig":"MEYCIQDEXnivOzyezLnJgG1VUzWQj/PurnTkz1ZGYX4uYuK0JgIhAKKg/wGdPhn67UneiElcVANcbwapE+3GGhHJftwDOncL"}]},"directories":{},"_hasShrinkwrap":false}},"readme":"#object-keys <sup>[![Version Badge][npm-version-svg]][package-url]</sup>\n\n[![Build Status][travis-svg]][travis-url]\n[![dependency status][deps-svg]][deps-url]\n[![dev dependency status][dev-deps-svg]][dev-deps-url]\n[![License][license-image]][license-url]\n[![Downloads][downloads-image]][downloads-url]\n\n[![npm badge][npm-badge-png]][package-url]\n\n[![browser support][testling-svg]][testling-url]\n\nAn Object.keys shim. Invoke its \"shim\" method to shim Object.keys if it is unavailable.\n\nMost common usage:\n```js\nvar keys = Object.keys || require('object-keys');\n```\n\n## Example\n\n```js\nvar keys = require('object-keys');\nvar assert = require('assert');\nvar obj = {\n\ta: true,\n\tb: true,\n\tc: true\n};\n\nassert.deepEqual(keys(obj), ['a', 'b', 'c']);\n```\n\n```js\nvar keys = require('object-keys');\nvar assert = require('assert');\n/* when Object.keys is not present */\ndelete Object.keys;\nvar shimmedKeys = keys.shim();\nassert.equal(shimmedKeys, keys);\nassert.deepEqual(Object.keys(obj), keys(obj));\n```\n\n```js\nvar keys = require('object-keys');\nvar assert = require('assert');\n/* when Object.keys is present */\nvar shimmedKeys = keys.shim();\nassert.equal(shimmedKeys, Object.keys);\nassert.deepEqual(Object.keys(obj), keys(obj));\n```\n\n## Source\nImplementation taken directly from [es5-shim][es5-shim-url], with modifications, including from [lodash][lodash-url].\n\n## Tests\nSimply clone the repo, `npm install`, and run `npm test`\n\n[package-url]: https://npmjs.org/package/object-keys\n[npm-version-svg]: http://versionbadg.es/ljharb/object-keys.svg\n[travis-svg]: https://travis-ci.org/ljharb/object-keys.svg\n[travis-url]: https://travis-ci.org/ljharb/object-keys\n[deps-svg]: https://david-dm.org/ljharb/object-keys.svg\n[deps-url]: https://david-dm.org/ljharb/object-keys\n[dev-deps-svg]: https://david-dm.org/ljharb/object-keys/dev-status.svg\n[dev-deps-url]: https://david-dm.org/ljharb/object-keys#info=devDependencies\n[testling-svg]: https://ci.testling.com/ljharb/object-keys.png\n[testling-url]: https://ci.testling.com/ljharb/object-keys\n[es5-shim-url]: https://github.com/es-shims/es5-shim/blob/master/es5-shim.js#L542-589\n[lodash-url]: https://github.com/lodash/lodash\n[npm-badge-png]: https://nodei.co/npm/object-keys.png?downloads=true&stars=true\n[license-image]: http://img.shields.io/npm/l/object-keys.svg\n[license-url]: LICENSE\n[downloads-image]: http://img.shields.io/npm/dm/object-keys.svg\n[downloads-url]: http://npm-stat.com/charts.html?package=object-keys\n\n","author":{"name":"Jordan Harband","email":"ljharb@gmail.com","url":"http://ljharb.codes"},"repository":{"type":"git","url":"git://github.com/ljharb/object-keys.git"},"readmeFilename":"README.md","homepage":"https://github.com/ljharb/object-keys#readme","bugs":{"url":"https://github.com/ljharb/object-keys/issues"},"license":"MIT"}
+{
+  "name": "object-keys",
+  "description": "An Object.keys replacement, in case Object.keys is not available. From https://github.com/es-shims/es5-shim",
+  "dist-tags": {
+    "latest": "1.1.1"
+  },
+  "versions": {
+    "1.1.1": {
+      "name": "object-keys",
+      "version": "1.1.1",
+      "author": {
+        "name": "Jordan Harband",
+        "email": "ljharb@gmail.com",
+        "url": "http://ljharb.codes"
+      },
+      "description": "An Object.keys replacement, in case Object.keys is not available. From https://github.com/es-shims/es5-shim",
+      "license": "MIT",
+      "main": "index.js",
+      "scripts": {
+        "pretest": "npm run --silent lint",
+        "test": "npm run --silent tests-only",
+        "posttest": "npm run --silent audit",
+        "tests-only": "node test/index.js",
+        "coverage": "covert test/*.js",
+        "coverage-quiet": "covert test/*.js --quiet",
+        "lint": "eslint .",
+        "preaudit": "npm install --package-lock --package-lock-only",
+        "audit": "npm audit",
+        "postaudit": "rm package-lock.json"
+      },
+      "repository": {
+        "type": "git",
+        "url": "git://github.com/ljharb/object-keys.git"
+      },
+      "dependencies": {},
+      "devDependencies": {
+        "@ljharb/eslint-config": "^13.1.1",
+        "covert": "^1.1.1",
+        "eslint": "^5.13.0",
+        "foreach": "^2.0.5",
+        "indexof": "^0.0.1",
+        "is": "^3.3.0",
+        "tape": "^4.9.2"
+      },
+      "testling": {
+        "files": "test/index.js",
+        "browsers": [
+          "iexplore/6.0..latest",
+          "firefox/3.0..6.0",
+          "firefox/15.0..latest",
+          "firefox/nightly",
+          "chrome/4.0..10.0",
+          "chrome/20.0..latest",
+          "chrome/canary",
+          "opera/10.0..latest",
+          "opera/next",
+          "safari/4.0..latest",
+          "ipad/6.0..latest",
+          "iphone/6.0..latest",
+          "android-browser/4.2"
+        ]
+      },
+      "engines": {
+        "node": ">= 0.4"
+      },
+      "gitHead": "ba2c1989270c7de969aa8498fc3b7c8e677806f3",
+      "bugs": {
+        "url": "https://github.com/ljharb/object-keys/issues"
+      },
+      "_id": "object-keys@1.1.1",
+      "_nodeVersion": "11.13.0",
+      "_npmVersion": "6.7.0",
+      "dist": {
+        "integrity": "sha512-NuAESUOUMrlIXOfHKzD6bpPu3tYt3xvjNdRIQ+FeT0lNb4K8WR70CaDxhuNguS2XG+GjkyMwOzsN5ZktImfhLA==",
+        "shasum": "1c47f272df277f3b1daf061677d9c82e2322c60e",
+        "tarball": "http://localhost:4260/object-keys/object-keys-1.1.1.tgz",
+        "fileCount": 11,
+        "unpackedSize": 26544
+      },
+      "directories": {},
+      "_hasShrinkwrap": false
+    }
+  },
+  "author": {
+    "name": "Jordan Harband",
+    "email": "ljharb@gmail.com",
+    "url": "http://ljharb.codes"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git://github.com/ljharb/object-keys.git"
+  },
+  "readmeFilename": "README.md",
+  "homepage": "https://github.com/ljharb/object-keys#readme",
+  "bugs": {
+    "url": "https://github.com/ljharb/object-keys/issues"
+  },
+  "license": "MIT"
+}

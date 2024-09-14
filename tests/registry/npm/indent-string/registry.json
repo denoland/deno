@@ -1,1 +1,66 @@
-{"name":"indent-string","description":"Indent each line in a string","dist-tags":{"latest":"4.0.0"},"versions":{"4.0.0":{"name":"indent-string","version":"4.0.0","description":"Indent each line in a string","license":"MIT","repository":{"type":"git","url":"git+https://github.com/sindresorhus/indent-string.git"},"author":{"name":"Sindre Sorhus","email":"sindresorhus@gmail.com","url":"sindresorhus.com"},"engines":{"node":">=8"},"scripts":{"test":"xo && ava && tsd"},"devDependencies":{"ava":"^1.4.1","tsd":"^0.7.2","xo":"^0.24.0"},"gitHead":"99280aa24669a3fab303bb231d6caafd7d5029d3","bugs":{"url":"https://github.com/sindresorhus/indent-string/issues"},"_id":"indent-string@4.0.0","_npmVersion":"6.4.1","_nodeVersion":"10.15.1","dist":{"integrity":"sha512-EdDDZu4A2OyIK7Lr/2zG+w5jmbuk1DVBnEwREQvBzspBJkCEbRa8GxU1lghYcaGJCnRWibjDXlq779X1/y5xwg==","shasum":"624f8f4497d619b2d9768531d58f4122854d7251","tarball":"http://localhost:4260/indent-string/indent-string-4.0.0.tgz","fileCount":5,"unpackedSize":4398,"npm-signature":"-----BEGIN PGP SIGNATURE-----\r\nVersion: OpenPGP.js v3.0.4\r\nComment: https://openpgpjs.org\r\n\r\nwsFcBAEBCAAQBQJcttZBCRA9TVsSAnZWagAAw4QP/RLhgvRhH6lu6c73/OqW\nwqtS6k3cxc3I8oyxGMwBPsk4UTEkoLK8Yz4lrhs6xrK+yGKlChqmACe2mWLb\nBTFBIdSVejTyN7sMRm/UFfS4FwQ4Gz1mlTT/FGR36LAuRxrU2EmExVY2Ser2\nbsQyODD7cr5a3H0iRLFCM7TGOtIy+t5o4l3ktbyUclbKLakyk0SNI1SXHMrA\n7ggcy9TNx3gQ94AlNONra/F8S67Kz2xMqSrRuZQ9MP/awfcpyVDOZssr2tZq\nYF7/obaQjCRswMykj58Lo1gPEjwQeJkM48zzGuvNtFgiyjpPpX7HvZMXfjVH\ncMPcOaqpBj/wbAvCFeCkaXl29ReznD30iJOrqg0kdagvshRbx1S8SFDDoxwR\nJCCxQv7M2D8twLfnhPY/hEIwa2VFLKHyDi/v39QeVXaVsuGLvrxZLU3cIcFS\nQ8MgS6DAvfoo2biiHfvLKf7paEx1COBjY2d1p/APi3lHPlTNeC4QpOOeSvAt\n2QS0dgXOXaE7LijnJRt9kIwgoljFOgs4LHDU/ZmyR3dpjTQnrH84oKY5zJzy\n/XXouR8TglSkGruwrnoTkJ0Ro9erMGEKt5P+UqGaVNvL2Grmsi1UyW6auQbo\nQ4zoS9zcmSBBAvHhtZGxRDpr6lfnAwg4SSluYLA/1Qy3D4EcYIlBFGOI2HB1\ntSXY\r\n=83ol\r\n-----END PGP SIGNATURE-----\r\n","signatures":[{"keyid":"SHA256:jl3bwswu80PjjokCgh0o2w5c2U4LhQAE57gj9cz1kzA","sig":"MEUCIGPHHuz9DpZOHrB3DpJ+kS0ACff0FCj390y/7sXNkh7XAiEA3tjpHtr67ThClg/N7z8mYCV2WW+XizZVUQN4/xy1ZPw="}]},"directories":{},"_hasShrinkwrap":false}},"readme":"# indent-string\n\n> Indent each line in a string\n\n## Install\n\n```\n$ npm install indent-string\n```\n\n## Usage\n\n```js\nimport indentString from 'indent-string';\n\nindentString('Unicorns\\nRainbows', 4);\n//=> '    Unicorns\\n    Rainbows'\n\nindentString('Unicorns\\nRainbows', 4, {indent: '♥'});\n//=> '♥♥♥♥Unicorns\\n♥♥♥♥Rainbows'\n```\n\n## API\n\n### indentString(string, count?, options?)\n\n#### string\n\nType: `string`\n\nThe string to indent.\n\n#### count\n\nType: `number`\\\nDefault: `1`\n\nHow many times you want `options.indent` repeated.\n\n#### options\n\nType: `object`\n\n##### indent\n\nType: `string`\\\nDefault: `' '`\n\nThe string to use for the indent.\n\n##### includeEmptyLines\n\nType: `boolean`\\\nDefault: `false`\n\nAlso indent empty lines.\n\n## Related\n\n- [indent-string-cli](https://github.com/sindresorhus/indent-string-cli) - CLI for this module\n- [strip-indent](https://github.com/sindresorhus/strip-indent) - Strip leading whitespace from every line in a string\n\n---\n\n<div align=\"center\">\n\t<b>\n\t\t<a href=\"https://tidelift.com/subscription/pkg/npm-indent-string?utm_source=npm-indent-string&utm_medium=referral&utm_campaign=readme\">Get professional support for this package with a Tidelift subscription</a>\n\t</b>\n\t<br>\n\t<sub>\n\t\tTidelift helps make open source sustainable for maintainers while giving companies<br>assurances about security, maintenance, and licensing for their dependencies.\n\t</sub>\n</div>\n","homepage":"https://github.com/sindresorhus/indent-string#readme","repository":{"type":"git","url":"git+https://github.com/sindresorhus/indent-string.git"},"author":{"name":"Sindre Sorhus","email":"sindresorhus@gmail.com","url":"https://sindresorhus.com"},"bugs":{"url":"https://github.com/sindresorhus/indent-string/issues"},"license":"MIT","readmeFilename":"readme.md"}
+{
+  "name": "indent-string",
+  "description": "Indent each line in a string",
+  "dist-tags": {
+    "latest": "4.0.0"
+  },
+  "versions": {
+    "4.0.0": {
+      "name": "indent-string",
+      "version": "4.0.0",
+      "description": "Indent each line in a string",
+      "license": "MIT",
+      "repository": {
+        "type": "git",
+        "url": "git+https://github.com/sindresorhus/indent-string.git"
+      },
+      "author": {
+        "name": "Sindre Sorhus",
+        "email": "sindresorhus@gmail.com",
+        "url": "sindresorhus.com"
+      },
+      "engines": {
+        "node": ">=8"
+      },
+      "scripts": {
+        "test": "xo && ava && tsd"
+      },
+      "devDependencies": {
+        "ava": "^1.4.1",
+        "tsd": "^0.7.2",
+        "xo": "^0.24.0"
+      },
+      "gitHead": "99280aa24669a3fab303bb231d6caafd7d5029d3",
+      "bugs": {
+        "url": "https://github.com/sindresorhus/indent-string/issues"
+      },
+      "_id": "indent-string@4.0.0",
+      "_npmVersion": "6.4.1",
+      "_nodeVersion": "10.15.1",
+      "dist": {
+        "integrity": "sha512-EdDDZu4A2OyIK7Lr/2zG+w5jmbuk1DVBnEwREQvBzspBJkCEbRa8GxU1lghYcaGJCnRWibjDXlq779X1/y5xwg==",
+        "shasum": "624f8f4497d619b2d9768531d58f4122854d7251",
+        "tarball": "http://localhost:4260/indent-string/indent-string-4.0.0.tgz",
+        "fileCount": 5,
+        "unpackedSize": 4398
+      },
+      "directories": {},
+      "_hasShrinkwrap": false
+    }
+  },
+  "homepage": "https://github.com/sindresorhus/indent-string#readme",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/sindresorhus/indent-string.git"
+  },
+  "author": {
+    "name": "Sindre Sorhus",
+    "email": "sindresorhus@gmail.com",
+    "url": "https://sindresorhus.com"
+  },
+  "bugs": {
+    "url": "https://github.com/sindresorhus/indent-string/issues"
+  },
+  "license": "MIT",
+  "readmeFilename": "readme.md"
+}

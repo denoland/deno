@@ -1,1 +1,61 @@
-{"name":"@ljharb/has-package-exports-patterns","dist-tags":{"latest":"0.0.2"},"versions":{"0.0.2":{"name":"@ljharb/has-package-exports-patterns","version":"0.0.2","main":"./no.js","exports":{".":"./no.js","./patterns/*":"./patterns/*ed.js","./pattern-trailers/*":"./pattern-trailers/*ed.js","./pattern-trailers/*.js":"./pattern-trailers/*ed.js"},"repository":{"type":"git","url":"git+https://github.com/inspect-js/has-package-exports.git"},"author":{"name":"Jordan Harband","email":"ljharb@gmail.com"},"license":"MIT","bugs":{"url":"https://github.com/inspect-js/has-package-exports/issues"},"publishConfig":{"access":"public"},"gitHead":"f0f693d8e03b9be35d8559df09f9d29cc93f0810","_id":"@ljharb/has-package-exports-patterns@0.0.2","_nodeVersion":"17.8.0","_npmVersion":"8.3.1","dist":{"integrity":"sha512-4/RWEeXDO6bocPONheFe6gX/oQdP/bEpv0oL4HqjPP5DCenBSt0mHgahppY49N0CpsaqffdwPq+TlX9CYOq2Dw==","shasum":"c1718939b65efa1f45f53686c2fcfa992b9fb68f","tarball":"http://localhost:4260/@ljharb/has-package-exports-patterns/has-package-exports-patterns-0.0.2.tgz","fileCount":4,"unpackedSize":770,"signatures":[{"keyid":"SHA256:jl3bwswu80PjjokCgh0o2w5c2U4LhQAE57gj9cz1kzA","sig":"MEUCIB2kq741WzizIG98/ELM99UeZlbDuUFh6N2Frl5pBxRFAiEAmmsPZYZVwIobIPJFHu+DlkHedTV3FZngCFTVkAlstJ4="}],"npm-signature":"-----BEGIN PGP SIGNATURE-----\r\nVersion: OpenPGP.js v4.10.10\r\nComment: https://openpgpjs.org\r\n\r\nwsFzBAEBCAAGBQJiTnmjACEJED1NWxICdlZqFiEECWMYAoorWMhJKdjhPU1b\r\nEgJ2Vmobhg/+M0JnGNgLGqhKeAP3rdF06hRZnZcwQ/aHufu6K5LKF42LQwNY\r\n0PZIpb4qyfCI+rvSbK+kat3cPuY0ZnV99slZe4ZxR85FpJm3WDm+WxHqkDi8\r\nm5G0rY6dmwTB+8o05g8pUDaxu5Pd+J5ouWXBoySzyrctNoNwslBCvXY5GZZL\r\nowcI3gOFW3uhaBUrZa955LFcB7fUEvZkD7cayMKT21lTBb2lcby3Thl7yVHE\r\nBGU/6a4spdnfOi/YsJx9R67oCqCjwt93gAAa+7rclvsOQZITiR9722toywAU\r\ny64tb8t/MSGsR4cjoBlcjrVfgMPinJSN2rIL34IijKX6pSBvGRFkWY0MqMcO\r\n/YvOH61l2ivdGEMQBxCNPsdfMXKGUKriwJ6NLUZiSMSue5cxGQASj6S5FtkA\r\nqQV7DaQTJut3mrSYL93fs5rvVubBdGw4mmIoKkuICFXAaYTCiROUCrHOnpST\r\nL1G7ZLXLkKyT1k/ISivh5vFQq17IacHCEZ/5Y56UwtSBVistNsBhuVMQSOxJ\r\nwzzi0i0+nAVrSV+OUc9y9rFgx8EMppewOMG+JlLHNMD6V6jmA2wZBgf7ek8O\r\nun9TanuxyINaWKKsqg5/fSZCXjRNDd+uGA+UlrMSoznUACz7zdG+feC1bO+k\r\nkzuAfVPdiRNcilaRUc3ihfQH9TevL0hobPA=\r\n=VOhM\r\n-----END PGP SIGNATURE-----\r\n"},"directories":{},"_hasShrinkwrap":false}},"homepage":"https://github.com/inspect-js/has-package-exports#readme","repository":{"type":"git","url":"git+https://github.com/inspect-js/has-package-exports.git"},"author":{"name":"Jordan Harband","email":"ljharb@gmail.com"},"bugs":{"url":"https://github.com/inspect-js/has-package-exports/issues"},"license":"MIT","readme":"ERROR: No README data found!","readmeFilename":""}
+{
+  "name": "@ljharb/has-package-exports-patterns",
+  "dist-tags": {
+    "latest": "0.0.2"
+  },
+  "versions": {
+    "0.0.2": {
+      "name": "@ljharb/has-package-exports-patterns",
+      "version": "0.0.2",
+      "main": "./no.js",
+      "exports": {
+        ".": "./no.js",
+        "./patterns/*": "./patterns/*ed.js",
+        "./pattern-trailers/*": "./pattern-trailers/*ed.js",
+        "./pattern-trailers/*.js": "./pattern-trailers/*ed.js"
+      },
+      "repository": {
+        "type": "git",
+        "url": "git+https://github.com/inspect-js/has-package-exports.git"
+      },
+      "author": {
+        "name": "Jordan Harband",
+        "email": "ljharb@gmail.com"
+      },
+      "license": "MIT",
+      "bugs": {
+        "url": "https://github.com/inspect-js/has-package-exports/issues"
+      },
+      "publishConfig": {
+        "access": "public"
+      },
+      "gitHead": "f0f693d8e03b9be35d8559df09f9d29cc93f0810",
+      "_id": "@ljharb/has-package-exports-patterns@0.0.2",
+      "_nodeVersion": "17.8.0",
+      "_npmVersion": "8.3.1",
+      "dist": {
+        "integrity": "sha512-4/RWEeXDO6bocPONheFe6gX/oQdP/bEpv0oL4HqjPP5DCenBSt0mHgahppY49N0CpsaqffdwPq+TlX9CYOq2Dw==",
+        "shasum": "c1718939b65efa1f45f53686c2fcfa992b9fb68f",
+        "tarball": "http://localhost:4260/@ljharb/has-package-exports-patterns/has-package-exports-patterns-0.0.2.tgz",
+        "fileCount": 4,
+        "unpackedSize": 770
+      },
+      "directories": {},
+      "_hasShrinkwrap": false
+    }
+  },
+  "homepage": "https://github.com/inspect-js/has-package-exports#readme",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/inspect-js/has-package-exports.git"
+  },
+  "author": {
+    "name": "Jordan Harband",
+    "email": "ljharb@gmail.com"
+  },
+  "bugs": {
+    "url": "https://github.com/inspect-js/has-package-exports/issues"
+  },
+  "license": "MIT",
+  "readmeFilename": ""
+}

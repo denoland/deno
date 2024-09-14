@@ -1,1 +1,77 @@
-{"name":"minipass-sized","dist-tags":{"latest":"1.0.3"},"versions":{"1.0.3":{"name":"minipass-sized","version":"1.0.3","description":"A Minipass stream that raises an error if you get a different number of bytes than expected","author":{"name":"Isaac Z. Schlueter","email":"i@izs.me","url":"https://izs.me"},"license":"ISC","scripts":{"test":"tap","snap":"tap","preversion":"npm test","postversion":"npm publish","postpublish":"git push origin --follow-tags"},"tap":{"check-coverage":true},"devDependencies":{"tap":"^14.6.4"},"dependencies":{"minipass":"^3.0.0"},"main":"index.js","directories":{"test":"test"},"repository":{"type":"git","url":"git+https://github.com/isaacs/minipass-sized.git"},"engines":{"node":">=8"},"gitHead":"4314081d97c5f3f4bd4c23e380e81fd7392aaa2c","bugs":{"url":"https://github.com/isaacs/minipass-sized/issues"},"_id":"minipass-sized@1.0.3","_nodeVersion":"12.8.1","_npmVersion":"6.12.0-next.0","dist":{"integrity":"sha512-MbkQQ2CTiBMlA2Dm/5cY+9SWFEN8pzzOXi6rlM5Xxq0Yqbda5ZQy9sU75a673FE9ZK0Zsbr6Y5iP6u9nktfg2g==","shasum":"70ee5a7c5052070afacfbc22977ea79def353b70","tarball":"http://localhost:4260/minipass-sized/minipass-sized-1.0.3.tgz","fileCount":7,"unpackedSize":123865,"npm-signature":"-----BEGIN PGP SIGNATURE-----\r\nVersion: OpenPGP.js v3.0.4\r\nComment: https://openpgpjs.org\r\n\r\nwsFcBAEBCAAQBQJdkmZECRA9TVsSAnZWagAAUPcQAIf33O6EWy+mASa+JfQv\noGNPaC54UKUC/QoerRzQDLmRIEE/QkNYqMBTm6Q5uHfuecqtJDb3d1O4trFe\nM7o9ctpbjhcLkvemtgsc9fev2N6JgSY68OLrpvYqSLqedcUvomhAJxKMupLm\n97eR6MGlb2+Kstv616VlZI37O9tDeE6pvtRohI+cmvOdk2uzTByUhn7gVaql\nvlYh0z5E807Q7xmEcaR+sx6JHrOFfELdux3agnOz/LoHJw2fDPoE34uu+LLw\nrMvcp3bXYHK1m1MYouiyYS6D23OT9DN5fK6ofGvdDqR0IgsN6EelE42cxjxP\nRTzzmsP4Ccw8nffYaEnPZ5Bcar/7Q8zWUHny90+soDpFbY6PhTp6fCvRBjrT\nwj0P9HX4MOhlel6xVFIX8JPBoEqtkus0VUENze720yuI7ziscOcxG4G7rFij\nxv3iuqC03AQfIRK4zRTTrXWiUdgm68fSw6IZEp8sR4x2AkUd807/YF2prKZy\nTnbWjy2l9DSn4IkyYmVOjiNpMmCzaw9MTb6JAMfEEYmc7zlWhpOBldYvTOqS\n/AIdWQS2sZ+CnXDmnv6cQy+SqEsK337aZY0PXFoFV2RHudtcceOQMNs0Eii6\n1bZSMY3acyifsAa0yeDlY0zokUDSNat9QZYdv4r2Kujw6xsHrayJA2y3K76l\nDP/x\r\n=oVVn\r\n-----END PGP SIGNATURE-----\r\n","signatures":[{"keyid":"SHA256:jl3bwswu80PjjokCgh0o2w5c2U4LhQAE57gj9cz1kzA","sig":"MEYCIQCtsBF/Ry3rWgEiNmHYrvXBbzV+Mm9omSjLis/aKkd95QIhAIQABBP+xC5JFzOtybiV5xZZnwCc96BDP+SRIKzJHzCF"}]},"_hasShrinkwrap":false}},"description":"A Minipass stream that raises an error if you get a different number of bytes than expected","homepage":"https://github.com/isaacs/minipass-sized#readme","repository":{"type":"git","url":"git+https://github.com/isaacs/minipass-sized.git"},"author":{"name":"Isaac Z. Schlueter","email":"i@izs.me","url":"https://izs.me"},"bugs":{"url":"https://github.com/isaacs/minipass-sized/issues"},"license":"ISC","readme":"# minipass-sized\n\nA Minipass stream that raises an error if you get a different number of\nbytes than expected.\n\n## USAGE\n\nUse just like any old [minipass](http://npm.im/minipass) stream, but\nprovide a `size` option to the constructor.\n\nThe `size` option must be a positive integer, smaller than\n`Number.MAX_SAFE_INTEGER`.\n\n```js\nconst MinipassSized = require('minipass-sized')\n// figure out how much data you expect to get\nconst expectedSize = +headers['content-length']\nconst stream = new MinipassSized({ size: expectedSize })\nstream.on('error', er => {\n  // if it's the wrong size, then this will raise an error with\n  // { found: <number>, expect: <number>, code: 'EBADSIZE' }\n})\nresponse.pipe(stream)\n```\n\nCaveats: this does not work with `objectMode` streams, and will throw a\n`TypeError` from the constructor if the size argument is missing or\ninvalid.\n","readmeFilename":"README.md"}
+{
+  "name": "minipass-sized",
+  "dist-tags": {
+    "latest": "1.0.3"
+  },
+  "versions": {
+    "1.0.3": {
+      "name": "minipass-sized",
+      "version": "1.0.3",
+      "description": "A Minipass stream that raises an error if you get a different number of bytes than expected",
+      "author": {
+        "name": "Isaac Z. Schlueter",
+        "email": "i@izs.me",
+        "url": "https://izs.me"
+      },
+      "license": "ISC",
+      "scripts": {
+        "test": "tap",
+        "snap": "tap",
+        "preversion": "npm test",
+        "postversion": "npm publish",
+        "postpublish": "git push origin --follow-tags"
+      },
+      "tap": {
+        "check-coverage": true
+      },
+      "devDependencies": {
+        "tap": "^14.6.4"
+      },
+      "dependencies": {
+        "minipass": "^3.0.0"
+      },
+      "main": "index.js",
+      "directories": {
+        "test": "test"
+      },
+      "repository": {
+        "type": "git",
+        "url": "git+https://github.com/isaacs/minipass-sized.git"
+      },
+      "engines": {
+        "node": ">=8"
+      },
+      "gitHead": "4314081d97c5f3f4bd4c23e380e81fd7392aaa2c",
+      "bugs": {
+        "url": "https://github.com/isaacs/minipass-sized/issues"
+      },
+      "_id": "minipass-sized@1.0.3",
+      "_nodeVersion": "12.8.1",
+      "_npmVersion": "6.12.0-next.0",
+      "dist": {
+        "integrity": "sha512-MbkQQ2CTiBMlA2Dm/5cY+9SWFEN8pzzOXi6rlM5Xxq0Yqbda5ZQy9sU75a673FE9ZK0Zsbr6Y5iP6u9nktfg2g==",
+        "shasum": "70ee5a7c5052070afacfbc22977ea79def353b70",
+        "tarball": "http://localhost:4260/minipass-sized/minipass-sized-1.0.3.tgz",
+        "fileCount": 7,
+        "unpackedSize": 123865
+      },
+      "_hasShrinkwrap": false
+    }
+  },
+  "description": "A Minipass stream that raises an error if you get a different number of bytes than expected",
+  "homepage": "https://github.com/isaacs/minipass-sized#readme",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/isaacs/minipass-sized.git"
+  },
+  "author": {
+    "name": "Isaac Z. Schlueter",
+    "email": "i@izs.me",
+    "url": "https://izs.me"
+  },
+  "bugs": {
+    "url": "https://github.com/isaacs/minipass-sized/issues"
+  },
+  "license": "ISC",
+  "readmeFilename": "README.md"
+}

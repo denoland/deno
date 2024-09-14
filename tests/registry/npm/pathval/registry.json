@@ -1,1 +1,112 @@
-{"name":"pathval","description":"Object value retrieval given a string path","dist-tags":{"latest":"1.1.1"},"versions":{"1.1.1":{"name":"pathval","description":"Object value retrieval given a string path","version":"1.1.1","license":"MIT","author":{"name":"Veselin Todorov","email":"hi@vesln.com"},"main":"./index.js","repository":{"type":"git","url":"git+ssh://git@github.com/chaijs/pathval.git"},"scripts":{"build":"browserify --standalone pathval -o pathval.js","lint":"eslint --ignore-path .gitignore .","lint:fix":"npm run lint -- --fix","prepublish":"npm run build","semantic-release":"semantic-release pre && npm publish && semantic-release post","pretest":"npm run lint","test":"npm run test:node && npm run test:browser && npm run upload-coverage","test:browser":"karma start --singleRun=true","test:node":"nyc mocha","upload-coverage":"lcov-result-merger 'coverage/**/lcov.info' | coveralls; exit 0"},"config":{"ghooks":{"commit-msg":"validate-commit-msg"}},"eslintConfig":{"extends":["strict/es5"],"env":{"es6":true},"globals":{"HTMLElement":false},"rules":{"complexity":0,"max-statements":0}},"devDependencies":{"browserify":"^17.0.0","browserify-istanbul":"^3.0.1","coveralls":"^3.1.0","eslint":"^7.13.0","eslint-config-strict":"^14.0.1","eslint-plugin-filenames":"^1.3.2","ghooks":"^2.0.4","karma":"^5.2.3","karma-browserify":"^7.0.0","karma-coverage":"^2.0.3","karma-mocha":"^2.0.1","karma-phantomjs-launcher":"^1.0.4","karma-sauce-launcher":"^4.3.3","lcov-result-merger":"^3.1.0","mocha":"^8.2.1","nyc":"^15.1.0","phantomjs-prebuilt":"^2.1.16","semantic-release":"^17.2.2","simple-assert":"^1.0.0","travis-after-all":"^1.4.5","validate-commit-msg":"^2.14.0"},"engines":{"node":"*"},"gitHead":"db6c3e39c39859564704b7f37149082689f1b172","bugs":{"url":"https://github.com/chaijs/pathval/issues"},"_id":"pathval@1.1.1","_nodeVersion":"14.9.0","_npmVersion":"6.14.8","dist":{"integrity":"sha512-Dp6zGqpTdETdR63lehJYPeIOqpiNBNtc7BpWSLrOje7UaIsE5aY92r/AunQA7rsXvet3lrJ3JnZX29UPTKXyKQ==","shasum":"8534e77a77ce7ac5a2512ea21e0fdb8fcf6c3d8d","tarball":"http://localhost:4260/pathval/pathval-1.1.1.tgz","fileCount":6,"unpackedSize":15830,"npm-signature":"-----BEGIN PGP SIGNATURE-----\r\nVersion: OpenPGP.js v3.0.13\r\nComment: https://openpgpjs.org\r\n\r\nwsFcBAEBCAAQBQJgD+x9CRA9TVsSAnZWagAARd4P+wdHojovTrxc91hH6k/c\n3Godh5zA1jYAwNlwjcHWxS88ahx4eOff0OiBeNx+nVhILsAKxrXyCySC0yFc\nf16UdXO6u3IX4O8dzlVFwKYdT7icgioUDzrxsNXioE/sdZMXlEyNFxm6QHN8\nBUz0fI+h5FyTUuHIjt6vd5ZbDL5nsL58+S3JiqWl76KBxNyzUh53j+2AVLW4\n+bTUyNQMkgFUXwY0O3IxNQqBLuDUOrAoiCowF/WsgzESdkvwFbVTu6JY4Hnb\niMw4RSIbV78iEVESSli1Tug3bBFLshjzIzZUNqzdu9En1iy12sPvmqctXDZy\ntimD/2vV7ei5zievT/FjwcXj/V5k2if7mNxwbdBPPEb36UeXnCYzYOyUAmY8\noSZbAav6rVTVJkkBYl+2XXz4eypZ6CNBc07y8M/1y8tQ0vgQYTd43fHvrZ1K\nglH/YtSLj+abkPtW65wCZS1Ahx8Okvg4bsogwkovPL0SUiNbQzBvoUeJz3bz\nPIE2t7H7ZIniuTYEF/l6y+MKWOdVBt1ucq8rsBRiGMov5PQK08/8OzrBOl/K\n3dZY61MkvmcTeBMlw7Ti2pZ8A0+W6Tw4naO31KfmuVh4404Fqp79G3TEu0Xl\ngjoSFM/TdS/3QeuCMCl9v4ol8Cs1aMybSsAjdGe1UOWTetLX5cNd239CXy9o\n1gti\r\n=fphS\r\n-----END PGP SIGNATURE-----\r\n","signatures":[{"keyid":"SHA256:jl3bwswu80PjjokCgh0o2w5c2U4LhQAE57gj9cz1kzA","sig":"MEUCIQDCq1EFJ5gpdj/gAtuMvlWrx/gGxxt2sXf3r02rgfLyuQIgN3fLLXsIoODW1d6v4ajwQ6/MikOWcxFFSj9cBcVQTdY="}]},"directories":{},"_hasShrinkwrap":false}},"readme":"<h1 align=center>\n  <a href=\"http://chaijs.com\" title=\"Chai Documentation\">\n    <img alt=\"ChaiJS\" src=\"http://chaijs.com/img/chai-logo.png\">\n  </a>\n  <br>\n  pathval\n</h1>\n\n<p align=center>\n   Tool for Object value retrieval given a string path for <a href=\"http://nodejs.org\">node</a> and the browser.\n</p>\n\n<p align=center>\n  <a href=\"./LICENSE\">\n    <img\n      alt=\"license:mit\"\n      src=\"https://img.shields.io/badge/license-mit-green.svg?style=flat-square\"\n    />\n  </a>\n  <a href=\"https://github.com/chaijs/pathval/releases\">\n    <img\n      alt=\"tag:?\"\n      src=\"https://img.shields.io/github/tag/chaijs/pathval.svg?style=flat-square\"\n    />\n  </a>\n  <a href=\"https://travis-ci.org/chaijs/pathval\">\n    <img\n      alt=\"build:?\"\n      src=\"https://img.shields.io/travis/chaijs/pathval/master.svg?style=flat-square\"\n    />\n  </a>\n  <a href=\"https://coveralls.io/r/chaijs/pathval\">\n    <img\n      alt=\"coverage:?\"\n      src=\"https://img.shields.io/coveralls/chaijs/pathval/master.svg?style=flat-square\"\n    />\n  </a>\n  <a href=\"https://www.npmjs.com/packages/pathval\">\n    <img\n      alt=\"npm:?\"\n      src=\"https://img.shields.io/npm/v/pathval.svg?style=flat-square\"\n    />\n  </a>\n  <a href=\"https://www.npmjs.com/packages/pathval\">\n    <img\n      alt=\"dependencies:?\"\n      src=\"https://img.shields.io/npm/dm/pathval.svg?style=flat-square\"\n    />\n  </a>\n  <a href=\"\">\n    <img\n      alt=\"devDependencies:?\"\n      src=\"https://img.shields.io/david/chaijs/pathval.svg?style=flat-square\"\n    />\n  </a>\n  <br/>\n  <a href=\"https://saucelabs.com/u/chaijs-pathval\">\n    <img\n      alt=\"Selenium Test Status\"\n      src=\"https://saucelabs.com/browser-matrix/chaijs-pathval.svg\"\n    />\n  </a>\n  <br>\n  <a href=\"https://chai-slack.herokuapp.com/\">\n    <img\n      alt=\"Join the Slack chat\"\n      src=\"https://img.shields.io/badge/slack-join%20chat-E2206F.svg?style=flat-square\"\n    />\n  </a>\n  <a href=\"https://gitter.im/chaijs/chai\">\n    <img\n      alt=\"Join the Gitter chat\"\n      src=\"https://img.shields.io/badge/gitter-join%20chat-D0104D.svg?style=flat-square\"\n    />\n  </a>\n</p>\n\n## What is pathval?\n\nPathval is a module which you can use to retrieve or set an Object's property for a given `String` path.\n\n## Installation\n\n### Node.js\n\n`pathval` is available on [npm](http://npmjs.org). To install it, type:\n\n    $ npm install pathval\n\n### Browsers\n\nYou can also use it within the browser; install via npm and use the `pathval.js` file found within the download. For example:\n\n```html\n<script src=\"./node_modules/pathval/pathval.js\"></script>\n```\n\n## Usage\n\nThe primary export of `pathval` is an object which has the following methods:\n\n* `hasProperty(object, name)` - Checks whether an `object` has `name`d property or numeric array index.\n* `getPathInfo(object, path)` - Returns an object with info indicating the value of the `parent` of that path, the `name ` of the property we're retrieving and its `value`.\n* `getPathValue(object, path)` - Retrieves the value of a property at a given `path` inside an `object`'.\n* `setPathValue(object, path, value)` - Sets the `value` of a property at a given `path` inside an `object` and returns the object in which the property has been set.\n\n```js\nvar pathval = require('pathval');\n```\n\n#### .hasProperty(object, name)\n\n```js\nvar pathval = require('pathval');\n\nvar obj = { prop: 'a value' };\npathval.hasProperty(obj, 'prop'); // true\n```\n\n#### .getPathInfo(object, path)\n\n```js\nvar pathval = require('pathval');\n\nvar obj = { earth: { country: 'Brazil' } };\npathval.getPathInfo(obj, 'earth.country'); // { parent: { country: 'Brazil'  }, name: 'country', value: 'Brazil', exists: true }\n```\n\n#### .getPathValue(object, path)\n\n```js\nvar pathval = require('pathval');\n\nvar obj = { earth: { country: 'Brazil' } };\npathval.getPathValue(obj, 'earth.country'); // 'Brazil'\n```\n\n#### .setPathValue(object, path, value)\n\n```js\nvar pathval = require('pathval');\n\nvar obj = { earth: { country: 'Brazil' } };\npathval.setPathValue(obj, 'earth.country', 'USA');\n\nobj.earth.country; // 'USA'\n```\n","author":{"name":"Veselin Todorov","email":"hi@vesln.com"},"repository":{"type":"git","url":"git+ssh://git@github.com/chaijs/pathval.git"},"homepage":"https://github.com/chaijs/pathval","bugs":{"url":"https://github.com/chaijs/pathval/issues"},"license":"MIT","readmeFilename":"README.md"}
+{
+  "name": "pathval",
+  "description": "Object value retrieval given a string path",
+  "dist-tags": {
+    "latest": "1.1.1"
+  },
+  "versions": {
+    "1.1.1": {
+      "name": "pathval",
+      "description": "Object value retrieval given a string path",
+      "version": "1.1.1",
+      "license": "MIT",
+      "author": {
+        "name": "Veselin Todorov",
+        "email": "hi@vesln.com"
+      },
+      "main": "./index.js",
+      "repository": {
+        "type": "git",
+        "url": "git+ssh://git@github.com/chaijs/pathval.git"
+      },
+      "scripts": {
+        "build": "browserify --standalone pathval -o pathval.js",
+        "lint": "eslint --ignore-path .gitignore .",
+        "lint:fix": "npm run lint -- --fix",
+        "prepublish": "npm run build",
+        "semantic-release": "semantic-release pre && npm publish && semantic-release post",
+        "pretest": "npm run lint",
+        "test": "npm run test:node && npm run test:browser && npm run upload-coverage",
+        "test:browser": "karma start --singleRun=true",
+        "test:node": "nyc mocha",
+        "upload-coverage": "lcov-result-merger 'coverage/**/lcov.info' | coveralls; exit 0"
+      },
+      "config": {
+        "ghooks": {
+          "commit-msg": "validate-commit-msg"
+        }
+      },
+      "eslintConfig": {
+        "extends": [
+          "strict/es5"
+        ],
+        "env": {
+          "es6": true
+        },
+        "globals": {
+          "HTMLElement": false
+        },
+        "rules": {
+          "complexity": 0,
+          "max-statements": 0
+        }
+      },
+      "devDependencies": {
+        "browserify": "^17.0.0",
+        "browserify-istanbul": "^3.0.1",
+        "coveralls": "^3.1.0",
+        "eslint": "^7.13.0",
+        "eslint-config-strict": "^14.0.1",
+        "eslint-plugin-filenames": "^1.3.2",
+        "ghooks": "^2.0.4",
+        "karma": "^5.2.3",
+        "karma-browserify": "^7.0.0",
+        "karma-coverage": "^2.0.3",
+        "karma-mocha": "^2.0.1",
+        "karma-phantomjs-launcher": "^1.0.4",
+        "karma-sauce-launcher": "^4.3.3",
+        "lcov-result-merger": "^3.1.0",
+        "mocha": "^8.2.1",
+        "nyc": "^15.1.0",
+        "phantomjs-prebuilt": "^2.1.16",
+        "semantic-release": "^17.2.2",
+        "simple-assert": "^1.0.0",
+        "travis-after-all": "^1.4.5",
+        "validate-commit-msg": "^2.14.0"
+      },
+      "engines": {
+        "node": "*"
+      },
+      "gitHead": "db6c3e39c39859564704b7f37149082689f1b172",
+      "bugs": {
+        "url": "https://github.com/chaijs/pathval/issues"
+      },
+      "_id": "pathval@1.1.1",
+      "_nodeVersion": "14.9.0",
+      "_npmVersion": "6.14.8",
+      "dist": {
+        "integrity": "sha512-Dp6zGqpTdETdR63lehJYPeIOqpiNBNtc7BpWSLrOje7UaIsE5aY92r/AunQA7rsXvet3lrJ3JnZX29UPTKXyKQ==",
+        "shasum": "8534e77a77ce7ac5a2512ea21e0fdb8fcf6c3d8d",
+        "tarball": "http://localhost:4260/pathval/pathval-1.1.1.tgz",
+        "fileCount": 6,
+        "unpackedSize": 15830
+      },
+      "directories": {},
+      "_hasShrinkwrap": false
+    }
+  },
+  "author": {
+    "name": "Veselin Todorov",
+    "email": "hi@vesln.com"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+ssh://git@github.com/chaijs/pathval.git"
+  },
+  "homepage": "https://github.com/chaijs/pathval",
+  "bugs": {
+    "url": "https://github.com/chaijs/pathval/issues"
+  },
+  "license": "MIT",
+  "readmeFilename": "README.md"
+}
