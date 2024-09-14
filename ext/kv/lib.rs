@@ -131,9 +131,9 @@ where
     let state = state.borrow();
     // TODO(bartlomieju): replace with `state.feature_checker.check_or_exit`
     // once we phase out `check_or_exit_with_legacy_fallback`
-    state
-      .feature_checker
-      .check_or_exit_with_legacy_fallback(UNSTABLE_FEATURE_NAME, "Deno.openKv");
+//    state
+//      .feature_checker
+//      .check_or_exit_with_legacy_fallback(UNSTABLE_FEATURE_NAME, "Deno.openKv");
     state.borrow::<Rc<DBH>>().clone()
   };
   let db = handler.open(state.clone(), path).await?;
