@@ -5377,8 +5377,6 @@ declare namespace Deno {
       & ServeInit<Deno.NetAddr>,
   ): HttpServer<Deno.NetAddr>;
 
-  export {}; // only export exports
-
   /** All plain number types for interfacing with foreign functions.
    *
    * @category FFI
@@ -6175,4 +6173,6 @@ declare namespace Deno {
   export function createHttpClient(
     options: CreateHttpClientOptions & TlsCertifiedKeyPem,
   ): HttpClient;
+
+  export {}; // only export exports
 }
