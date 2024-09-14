@@ -87,7 +87,7 @@ async function updatePkgJson() {
   const obj = pkgJsonFile.readJsonSync();
   const version = semver.parse(await getDenoVersion());
   version.patch = 9999;
-  version.preRelease = undefined;
+  version.prerelease = undefined;
   version.build = undefined;
   // deno-lint-ignore no-explicit-any
   (obj as any).version = semver.format(version);
