@@ -50,10 +50,9 @@ pub fn op_broadcast_subscribe<BC>(
 where
   BC: BroadcastChannel + 'static,
 {
-  state.feature_checker.check_or_exit(
-    UNSTABLE_FEATURE_NAME,
-    "BroadcastChannel",
-  );
+  state
+    .feature_checker
+    .check_or_exit(UNSTABLE_FEATURE_NAME, "BroadcastChannel");
   let bc = state.borrow::<BC>();
   let resource = bc.subscribe()?;
   Ok(state.resource_table.add(resource))
