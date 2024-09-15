@@ -36,7 +36,6 @@ use crate::util::display;
 use crate::util::v8::get_v8_flags_from_env;
 use crate::util::v8::init_v8_flags;
 
-use args::TaskFlags;
 use deno_runtime::WorkerExecutionMode;
 pub use deno_runtime::UNSTABLE_GRANULAR_FLAGS;
 
@@ -55,7 +54,6 @@ use standalone::MODULE_NOT_FOUND;
 use standalone::UNSUPPORTED_SCHEME;
 use std::env;
 use std::future::Future;
-use std::ops::Deref;
 use std::path::PathBuf;
 use std::sync::Arc;
 
