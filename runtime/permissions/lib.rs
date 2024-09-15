@@ -309,11 +309,13 @@ impl AsRef<str> for EnvVarName {
 }
 
 pub trait QueryDescriptor: Debug {
-  type AllowDesc: AllowDescriptor<Query = Self>;
-  type DenyDesc: DenyDescriptor<Query = Self>;
+  type AllowDesc: Debug + Eq + Clone + Hash;
+  type DenyDesc: Debug + Eq + Clone + Hash;
 
   fn flag_name() -> &'static str;
   fn display_name(&self) -> Cow<str>;
+
+  fn from_allow(allow: &Self::AllowDesc) -> Self;
 
   fn as_allow(&self) -> Option<Self::AllowDesc>;
   fn as_deny(&self) -> Self::DenyDesc;
@@ -331,6 +333,7 @@ pub trait QueryDescriptor: Debug {
   /// Gets if this query descriptor should revoke the provided allow descriptor.
   fn revokes(&self, other: &Self::AllowDesc) -> bool;
   fn stronger_than_deny(&self, other: &Self::DenyDesc) -> bool;
+  fn overlaps_deny(&self, other: &Self::DenyDesc) -> bool;
 }
 
 fn format_display_name(display_name: Cow<str>) -> String {
@@ -339,18 +342,6 @@ fn format_display_name(display_name: Cow<str>) -> String {
   } else {
     format!("\"{}\"", display_name)
   }
-}
-
-pub trait AllowDescriptor: Debug + Eq + Clone + Hash {
-  type Query: QueryDescriptor;
-
-  fn as_query(&self) -> Self::Query;
-}
-
-pub trait DenyDescriptor: Debug + Eq + Clone + Hash {
-  type Query: QueryDescriptor;
-
-  fn is_partial(&self, query: &Self::Query) -> bool;
 }
 
 #[derive(Debug, Eq, PartialEq)]
@@ -561,7 +552,9 @@ impl<TQuery: QueryDescriptor> UnaryPermission<TQuery> {
   fn is_partial_flag_denied(&self, query: Option<&TQuery>) -> bool {
     match query {
       None => !self.flag_denied_list.is_empty(),
-      Some(query) => self.flag_denied_list.iter().any(|v| v.is_partial(query)),
+      Some(query) => {
+        self.flag_denied_list.iter().any(|v| query.overlaps_deny(v))
+      }
     }
   }
 
@@ -624,11 +617,11 @@ impl<TQuery: QueryDescriptor> UnaryPermission<TQuery> {
           .iter()
           .filter_map(|i| parse(i).transpose())
           .collect::<Result<_, _>>()?;
-        if !perms
-          .granted_list
-          .iter()
-          .all(|desc| desc.as_query().check_in_permission(self, None).is_ok())
-        {
+        if !perms.granted_list.iter().all(|desc| {
+          TQuery::from_allow(desc)
+            .check_in_permission(self, None)
+            .is_ok()
+        }) {
           return Err(escalation_error());
         }
       }
@@ -680,6 +673,14 @@ impl QueryDescriptor for ReadQueryDescriptor {
     Cow::Borrowed(self.0.requested.as_str())
   }
 
+  fn from_allow(allow: &Self::AllowDesc) -> Self {
+    PathQueryDescriptor {
+      requested: allow.0.to_string_lossy().into_owned(),
+      resolved: allow.0.clone(),
+    }
+    .into_read()
+  }
+
   fn as_allow(&self) -> Option<Self::AllowDesc> {
     Some(ReadDescriptor(self.0.resolved.clone()))
   }
@@ -712,30 +713,14 @@ impl QueryDescriptor for ReadQueryDescriptor {
   fn stronger_than_deny(&self, other: &Self::DenyDesc) -> bool {
     other.0.starts_with(&self.0.resolved)
   }
+
+  fn overlaps_deny(&self, other: &Self::DenyDesc) -> bool {
+    self.stronger_than_deny(other)
+  }
 }
 
 #[derive(Clone, Eq, PartialEq, Hash, Debug)]
 pub struct ReadDescriptor(pub PathBuf);
-
-impl AllowDescriptor for ReadDescriptor {
-  type Query = ReadQueryDescriptor;
-
-  fn as_query(&self) -> Self::Query {
-    PathQueryDescriptor {
-      requested: self.0.to_string_lossy().into_owned(),
-      resolved: self.0.clone(),
-    }
-    .into_read()
-  }
-}
-
-impl DenyDescriptor for ReadDescriptor {
-  type Query = ReadQueryDescriptor;
-
-  fn is_partial(&self, query: &Self::Query) -> bool {
-    self.0.starts_with(&query.0.resolved)
-  }
-}
 
 #[derive(Clone, Eq, PartialEq, Hash, Debug)]
 pub struct WriteQueryDescriptor(pub PathQueryDescriptor);
@@ -750,6 +735,13 @@ impl QueryDescriptor for WriteQueryDescriptor {
 
   fn display_name(&self) -> Cow<str> {
     Cow::Borrowed(&self.0.requested)
+  }
+
+  fn from_allow(allow: &Self::AllowDesc) -> Self {
+    WriteQueryDescriptor(PathQueryDescriptor {
+      requested: allow.0.to_string_lossy().into_owned(),
+      resolved: allow.0.clone(),
+    })
   }
 
   fn as_allow(&self) -> Option<Self::AllowDesc> {
@@ -784,29 +776,14 @@ impl QueryDescriptor for WriteQueryDescriptor {
   fn stronger_than_deny(&self, other: &Self::DenyDesc) -> bool {
     other.0.starts_with(&self.0.resolved)
   }
+
+  fn overlaps_deny(&self, other: &Self::DenyDesc) -> bool {
+    self.stronger_than_deny(other)
+  }
 }
 
 #[derive(Clone, Eq, PartialEq, Hash, Debug)]
 pub struct WriteDescriptor(pub PathBuf);
-
-impl AllowDescriptor for WriteDescriptor {
-  type Query = WriteQueryDescriptor;
-
-  fn as_query(&self) -> Self::Query {
-    WriteQueryDescriptor(PathQueryDescriptor {
-      requested: self.0.to_string_lossy().into_owned(),
-      resolved: self.0.clone(),
-    })
-  }
-}
-
-impl DenyDescriptor for WriteDescriptor {
-  type Query = WriteQueryDescriptor;
-
-  fn is_partial(&self, query: &Self::Query) -> bool {
-    self.0.starts_with(&query.0.resolved)
-  }
-}
 
 #[derive(Clone, Eq, PartialEq, Hash, Debug)]
 pub enum Host {
@@ -872,6 +849,10 @@ impl QueryDescriptor for NetDescriptor {
     Cow::from(format!("{}", self))
   }
 
+  fn from_allow(allow: &Self::AllowDesc) -> Self {
+    allow.clone()
+  }
+
   fn as_allow(&self) -> Option<Self::AllowDesc> {
     Some(self.clone())
   }
@@ -904,20 +885,8 @@ impl QueryDescriptor for NetDescriptor {
   fn stronger_than_deny(&self, other: &Self::DenyDesc) -> bool {
     self.matches_deny(other)
   }
-}
 
-impl AllowDescriptor for NetDescriptor {
-  type Query = NetDescriptor;
-
-  fn as_query(&self) -> Self::Query {
-    self.clone()
-  }
-}
-
-impl DenyDescriptor for NetDescriptor {
-  type Query = NetDescriptor;
-
-  fn is_partial(&self, _query: &Self::Query) -> bool {
+  fn overlaps_deny(&self, _other: &Self::DenyDesc) -> bool {
     false
   }
 }
@@ -1014,6 +983,10 @@ impl QueryDescriptor for EnvDescriptor {
     Cow::from(self.0.as_ref())
   }
 
+  fn from_allow(allow: &Self::AllowDesc) -> Self {
+    allow.clone()
+  }
+
   fn as_allow(&self) -> Option<Self::AllowDesc> {
     Some(self.clone())
   }
@@ -1046,20 +1019,8 @@ impl QueryDescriptor for EnvDescriptor {
   fn stronger_than_deny(&self, other: &Self::DenyDesc) -> bool {
     self == other
   }
-}
 
-impl AllowDescriptor for EnvDescriptor {
-  type Query = EnvDescriptor;
-
-  fn as_query(&self) -> Self::Query {
-    self.clone()
-  }
-}
-
-impl DenyDescriptor for EnvDescriptor {
-  type Query = EnvDescriptor;
-
-  fn is_partial(&self, _query: &Self::Query) -> bool {
+  fn overlaps_deny(&self, _other: &Self::DenyDesc) -> bool {
     false
   }
 }
@@ -1123,6 +1084,13 @@ impl QueryDescriptor for RunQueryDescriptor {
     match self {
       RunQueryDescriptor::Path { requested, .. } => Cow::Borrowed(requested),
       RunQueryDescriptor::Name(name) => Cow::Borrowed(name),
+    }
+  }
+
+  fn from_allow(allow: &Self::AllowDesc) -> Self {
+    RunQueryDescriptor::Path {
+      requested: allow.0.to_string_lossy().into_owned(),
+      resolved: allow.0.clone(),
     }
   }
 
@@ -1207,6 +1175,10 @@ impl QueryDescriptor for RunQueryDescriptor {
   fn stronger_than_deny(&self, other: &Self::DenyDesc) -> bool {
     self.matches_deny(other)
   }
+
+  fn overlaps_deny(&self, _other: &Self::DenyDesc) -> bool {
+    false
+  }
 }
 
 pub enum RunDescriptorArg {
@@ -1255,17 +1227,6 @@ impl AllowRunDescriptor {
   }
 }
 
-impl AllowDescriptor for AllowRunDescriptor {
-  type Query = RunQueryDescriptor;
-
-  fn as_query(&self) -> Self::Query {
-    RunQueryDescriptor::Path {
-      requested: self.0.to_string_lossy().into_owned(),
-      resolved: self.0.clone(),
-    }
-  }
-}
-
 #[derive(Clone, Eq, PartialEq, Hash, Debug)]
 pub enum DenyRunDescriptor {
   /// Warning: You may want to construct with `RunDescriptor::from()` for case
@@ -1284,14 +1245,6 @@ impl DenyRunDescriptor {
     } else {
       DenyRunDescriptor::Name(text.to_string())
     }
-  }
-}
-
-impl DenyDescriptor for DenyRunDescriptor {
-  type Query = RunQueryDescriptor;
-
-  fn is_partial(&self, _query: &Self::Query) -> bool {
-    false
   }
 }
 
@@ -1336,6 +1289,10 @@ impl QueryDescriptor for SysDescriptor {
     Cow::from(self.0.to_string())
   }
 
+  fn from_allow(allow: &Self::AllowDesc) -> Self {
+    allow.clone()
+  }
+
   fn as_allow(&self) -> Option<Self::AllowDesc> {
     Some(self.clone())
   }
@@ -1368,20 +1325,8 @@ impl QueryDescriptor for SysDescriptor {
   fn stronger_than_deny(&self, other: &Self::DenyDesc) -> bool {
     self == other
   }
-}
 
-impl AllowDescriptor for SysDescriptor {
-  type Query = SysDescriptor;
-
-  fn as_query(&self) -> Self::Query {
-    self.clone()
-  }
-}
-
-impl DenyDescriptor for SysDescriptor {
-  type Query = SysDescriptor;
-
-  fn is_partial(&self, _query: &Self::Query) -> bool {
+  fn overlaps_deny(&self, _other: &Self::DenyDesc) -> bool {
     false
   }
 }
@@ -1408,6 +1353,14 @@ impl QueryDescriptor for FfiQueryDescriptor {
 
   fn display_name(&self) -> Cow<str> {
     Cow::Borrowed(&self.0.requested)
+  }
+
+  fn from_allow(allow: &Self::AllowDesc) -> Self {
+    PathQueryDescriptor {
+      requested: allow.0.to_string_lossy().into_owned(),
+      resolved: allow.0.clone(),
+    }
+    .into_ffi()
   }
 
   fn as_allow(&self) -> Option<Self::AllowDesc> {
@@ -1442,30 +1395,14 @@ impl QueryDescriptor for FfiQueryDescriptor {
   fn stronger_than_deny(&self, other: &Self::DenyDesc) -> bool {
     other.0.starts_with(&self.0.resolved)
   }
+
+  fn overlaps_deny(&self, other: &Self::DenyDesc) -> bool {
+    self.stronger_than_deny(other)
+  }
 }
 
 #[derive(Clone, Eq, PartialEq, Hash, Debug)]
 pub struct FfiDescriptor(pub PathBuf);
-
-impl AllowDescriptor for FfiDescriptor {
-  type Query = FfiQueryDescriptor;
-
-  fn as_query(&self) -> Self::Query {
-    PathQueryDescriptor {
-      requested: self.0.to_string_lossy().into_owned(),
-      resolved: self.0.clone(),
-    }
-    .into_ffi()
-  }
-}
-
-impl DenyDescriptor for FfiDescriptor {
-  type Query = FfiQueryDescriptor;
-
-  fn is_partial(&self, query: &Self::Query) -> bool {
-    self.0.starts_with(&query.0.resolved)
-  }
-}
 
 impl UnaryPermission<ReadQueryDescriptor> {
   pub fn query(&self, desc: Option<&ReadQueryDescriptor>) -> PermissionState {
