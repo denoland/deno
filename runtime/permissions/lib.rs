@@ -1076,9 +1076,10 @@ pub enum RunQueryDescriptor {
     requested: String,
     resolved: PathBuf,
   },
-  /// This variant can't be used to grant permissions. It's mostly
-  /// used so that prompts and everything works the same way as when
-  /// the command is resolved, meaning that a script can't tell
+  /// This variant won't actually grant permissions because the path of
+  /// the executable is unresolved. It's mostly used so that prompts and
+  /// everything works the same way as when the command is resolved,
+  /// meaning that a script can't tell
   /// if a command is resolved or not based on how long something
   /// takes to ask for permissions.
   Name(String),
