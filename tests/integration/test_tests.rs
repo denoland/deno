@@ -6,7 +6,6 @@ use test_util as util;
 use test_util::itest;
 use util::assert_contains;
 use util::assert_not_contains;
-// use util::env_vars_for_npm_tests;
 use util::wildcard_match;
 use util::TestContext;
 use util::TestContextBuilder;
@@ -598,17 +597,6 @@ fn sigint_with_hanging_test() {
     },
   );
 }
-
-// TODO(2.0): this should be rewritten to a spec test and first run `deno install`
-// itest!(package_json_basic {
-//   args: "test",
-//   output: "package_json/basic/lib.test.out",
-//   envs: env_vars_for_npm_tests(),
-//   http_server: true,
-//   cwd: Some("package_json/basic"),
-//   copy_temp_dir: Some("package_json/basic"),
-//   exit_code: 0,
-// });
 
 itest!(test_replace_timers {
   args: "test test/replace_timers.js",

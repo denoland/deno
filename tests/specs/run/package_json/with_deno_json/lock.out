@@ -1,0 +1,18 @@
+{
+  "version": "4",
+  "specifiers": {
+    "npm:@denotest/esm-basic@*": "1.0.0"
+  },
+  "npm": {
+    "@denotest/esm-basic@1.0.0": {
+      "integrity": "sha512-wYZKj75JE5csSBtJF2er+4zKPZdEkKlg72YTOGsazUr905s2VM+xrp8anDoy8Ob7IX5tll+4eNaBuvwcS/rLKg=="
+    }
+  },
+  "workspace": {
+    "packageJson": {
+      "dependencies": [
+        "npm:@denotest/esm-basic@*"
+      ]
+    }
+  }
+}
