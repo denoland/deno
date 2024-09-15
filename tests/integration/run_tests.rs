@@ -3364,16 +3364,6 @@ itest!(
   }
 );
 
-// TODO(2.0): this should be rewritten to a spec test and first run `deno install`
-// itest!(package_json_auto_discovered_for_npm_binary {
-//   args: "run -L debug -A npm:@denotest/bin/cli-esm this is a test",
-//   output: "run/with_package_json/npm_binary/main.out",
-//   cwd: Some("run/with_package_json/npm_binary/"),
-//   copy_temp_dir: Some("run/with_package_json/"),
-//   envs: env_vars_for_npm_tests(),
-//   http_server: true,
-// });
-
 #[test]
 fn package_json_no_node_modules_dir_created() {
   // it should not create a node_modules directory
