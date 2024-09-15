@@ -188,39 +188,21 @@ async fn run_subcommand(flags: Arc<Flags>) -> Result<i32, AnyError> {
           Ok(v) => Ok(v),
           Err(script_err) => {
             let script_err_msg = script_err.to_string();
-            if script_err_msg.starts_with(MODULE_NOT_FOUND) || script_err_msg.starts_with(UNSUPPORTED_SCHEME) {
-              if run_flags.bare {
-                let mut cmd = args::clap_root();
-                cmd.build();
-                let command_names = cmd.get_subcommands().map(|command| command.get_name()).collect::<Vec<_>>();
-                let suggestions = args::did_you_mean(&run_flags.script, command_names);
-                if !suggestions.is_empty() {
-                  let mut error = clap::error::Error::<clap::error::DefaultFormatter>::new(clap::error::ErrorKind::InvalidSubcommand).with_cmd(&cmd);
-                  error.insert(
-                    clap::error::ContextKind::SuggestedSubcommand,
-                    clap::error::ContextValue::Strings(suggestions),
-                  );
+            if (script_err_msg.starts_with(MODULE_NOT_FOUND) || script_err_msg.starts_with(UNSUPPORTED_SCHEME)) && run_flags.bare {
+              let mut cmd = args::clap_root();
+              cmd.build();
+              let command_names = cmd.get_subcommands().map(|command| command.get_name()).collect::<Vec<_>>();
+              let suggestions = args::did_you_mean(&run_flags.script, command_names);
+              if !suggestions.is_empty() {
+                let mut error = clap::error::Error::<clap::error::DefaultFormatter>::new(clap::error::ErrorKind::InvalidSubcommand).with_cmd(&cmd);
+                error.insert(
+                  clap::error::ContextKind::SuggestedSubcommand,
+                  clap::error::ContextValue::Strings(suggestions),
+                );
 
-                  Err(error.into())
-                } else {
-                  Err(script_err)
-                }
+                Err(error.into())
               } else {
-                let mut new_flags = flags.deref().clone();
-                let task_flags = TaskFlags {
-                  cwd: None,
-                  task: Some(run_flags.script.clone()),
-                  is_run: true,
-                };
-                new_flags.subcommand = DenoSubcommand::Task(task_flags.clone());
-                let result = tools::task::execute_script(Arc::new(new_flags), task_flags.clone()).await;
-                match result {
-                  Ok(v) => Ok(v),
-                  Err(_) => {
-                    // Return script error for backwards compatibility.
-                    Err(script_err)
-                  }
-                }
+                Err(script_err)
               }
             } else {
               Err(script_err)
