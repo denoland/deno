@@ -641,11 +641,6 @@ function bootstrapMainRuntime(runtimeOptions, warmup = false) {
       });
     }
 
-    // TODO(iuioiua): remove in Deno v2. This allows us to dynamically delete
-    // class properties within constructors for classes that are not defined
-    // within the Deno namespace.
-    internals.future = true;
-
     removeImportedOps();
 
     performance.setTimeOrigin(DateNow());
@@ -834,9 +829,6 @@ function bootstrapMainRuntime(runtimeOptions, warmup = false) {
         nodeDebug,
       });
     }
-    if (internals.future) {
-      delete globalThis.window;
-    }
   } else {
     // Warmup
   }
@@ -864,11 +856,6 @@ function bootstrapWorkerRuntime(
       6: argv0,
       7: nodeDebug,
     } = runtimeOptions;
-
-    // TODO(iuioiua): remove in Deno v2. This allows us to dynamically delete
-    // class properties within constructors for classes that are not defined
-    // within the Deno namespace.
-    internals.future = true;
 
     performance.setTimeOrigin(DateNow());
     globalThis_ = globalThis;
