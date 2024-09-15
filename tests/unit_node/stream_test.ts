@@ -3,7 +3,6 @@
 import { assert, assertEquals } from "@std/assert";
 import { fromFileUrl, relative } from "@std/path";
 import { pipeline } from "node:stream/promises";
-// @ts-expect-error: @types/node is outdated
 import { getDefaultHighWaterMark, Stream } from "node:stream";
 import { createReadStream, createWriteStream } from "node:fs";
 import { EventEmitter } from "node:events";

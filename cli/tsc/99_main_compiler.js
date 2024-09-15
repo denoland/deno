@@ -462,6 +462,8 @@ delete Object.prototype.__proto__;
     // TS2792: Cannot find module. Did you mean to set the 'moduleResolution'
     // option to 'node', or to add aliases to the 'paths' option?
     2792,
+    // TS2307: Cannot find module '{0}' or its corresponding type declarations.
+    2307,
     // TS5009: Cannot find the common subdirectory path for the input files.
     5009,
     // TS5055: Cannot write file
@@ -942,6 +944,8 @@ delete Object.prototype.__proto__;
     Object.assign(options, {
       allowNonTsExtensions: true,
       allowImportingTsExtensions: true,
+      module: ts.ModuleKind.NodeNext,
+      moduleResolution: ts.ModuleResolutionKind.NodeNext,
     });
     if (errors.length > 0 && logDebug) {
       debug(ts.formatDiagnostics(errors, host));
@@ -1021,7 +1025,7 @@ delete Object.prototype.__proto__;
         : ts.sortAndDeduplicateDiagnostics(
           checkFiles.map((s) => program.getSemanticDiagnostics(s)).flat(),
         )),
-    ].filter((diagnostic) => !IGNORED_DIAGNOSTICS.includes(diagnostic.code));
+    ].filter(filterMapDiagnostic);
 
     // emit the tsbuildinfo file
     // @ts-ignore: emitBuildInfo is not exposed (https://github.com/microsoft/TypeScript/issues/49871)
@@ -1034,6 +1038,27 @@ delete Object.prototype.__proto__;
       stats: performanceEnd(),
     });
     debug("<<< exec stop");
+  }
+
+  /** @param {ts.Diagnostic} diagnostic */
+  function filterMapDiagnostic(diagnostic) {
+    if (IGNORED_DIAGNOSTICS.includes(diagnostic.code)) {
+      return false;
+    }
+    // make the diagnostic for using an `export =` in an es module a warning
+    if (diagnostic.code === 1203) {
+      diagnostic.category = ts.DiagnosticCategory.Warning;
+      if (typeof diagnostic.messageText === "string") {
+        const message =
+          " This will start erroring in a future version of Deno 2 " +
+          "in order to align with TypeScript.";
+        // seems typescript shares objects, so check if it's already been set
+        if (!diagnostic.messageText.endsWith(message)) {
+          diagnostic.messageText += message;
+        }
+      }
+    }
+    return true;
   }
 
   /**
@@ -1107,7 +1132,8 @@ delete Object.prototype.__proto__;
         "experimentalDecorators": false,
         "isolatedModules": true,
         "lib": ["deno.ns", "deno.window", "deno.unstable"],
-        "module": "esnext",
+        "module": "NodeNext",
+        "moduleResolution": "NodeNext",
         "moduleDetection": "force",
         "noEmit": true,
         "resolveJsonModule": true,
@@ -1249,7 +1275,7 @@ delete Object.prototype.__proto__;
               ...ls.getSemanticDiagnostics(specifier),
               ...ls.getSuggestionDiagnostics(specifier),
               ...ls.getSyntacticDiagnostics(specifier),
-            ].filter(({ code }) => !IGNORED_DIAGNOSTICS.includes(code)));
+            ].filter(filterMapDiagnostic));
           }
           return respond(id, diagnosticMap);
         } catch (e) {
@@ -1295,48 +1321,38 @@ delete Object.prototype.__proto__;
   // A build time only op that provides some setup information that is used to
   // ensure the snapshot is setup properly.
   /** @type {{ buildSpecifier: string; libs: string[]; nodeBuiltInModuleNames: string[] }} */
-  const { buildSpecifier, libs, nodeBuiltInModuleNames } = ops.op_build_info();
-
-  ts.deno.setNodeBuiltInModuleNames(nodeBuiltInModuleNames);
+  const { buildSpecifier, libs } = ops.op_build_info();
 
   // list of globals that should be kept in Node's globalThis
   ts.deno.setNodeOnlyGlobalNames([
-    // when bumping the @types/node version we should check if
-    // anything needs to be updated here
-    "NodeRequire",
-    "RequireResolve",
-    "RequireResolve",
-    "process",
-    "console",
-    "__filename",
     "__dirname",
-    "require",
-    "module",
+    "__filename",
+    "Buffer",
+    "BufferConstructor",
+    "BufferEncoding",
+    "clearImmediate",
+    "clearInterval",
+    "clearTimeout",
+    "console",
+    "Console",
+    "ErrorConstructor",
     "exports",
     "gc",
-    "BufferEncoding",
-    "BufferConstructor",
-    "WithImplicitCoercion",
-    "Buffer",
-    "Console",
-    "ImportMeta",
-    "setTimeout",
-    "setInterval",
-    "setImmediate",
     "Global",
-    "AbortController",
-    "AbortSignal",
-    "Blob",
-    "BroadcastChannel",
-    "MessageChannel",
-    "MessagePort",
-    "Event",
-    "EventTarget",
-    "performance",
-    "TextDecoder",
-    "TextEncoder",
-    "URL",
-    "URLSearchParams",
+    "ImportMeta",
+    "localStorage",
+    "module",
+    "NodeModule",
+    "NodeRequire",
+    "process",
+    "queueMicrotask",
+    "RequestInit",
+    "require",
+    "ResponseInit",
+    "sessionStorage",
+    "setImmediate",
+    "setInterval",
+    "setTimeout",
   ]);
 
   for (const lib of libs) {

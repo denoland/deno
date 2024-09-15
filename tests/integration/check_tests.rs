@@ -52,11 +52,6 @@ itest!(check_npm_install_diagnostics {
   exit_code: 1,
 });
 
-itest!(check_export_equals_declaration_file {
-  args: "check --quiet check/export_equals_declaration_file/main.ts",
-  exit_code: 0,
-});
-
 itest!(check_static_response_json {
   args: "check --quiet check/response_json.ts",
   exit_code: 0,

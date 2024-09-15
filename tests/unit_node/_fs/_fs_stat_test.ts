@@ -133,7 +133,9 @@ Deno.test("[std/node/fs] stat callback isn't called twice if error is thrown", a
 Deno.test({
   name: "[std/node/fs] stat default methods",
   fn() {
-    const stats = new Stats();
+    // stats ctor is private
+    // deno-lint-ignore no-explicit-any
+    const stats = new (Stats as any)();
     assertEquals(stats.isFile(), false);
     assertEquals(stats.isDirectory(), false);
     assertEquals(stats.isBlockDevice(), false);

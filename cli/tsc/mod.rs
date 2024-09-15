@@ -1096,7 +1096,6 @@ mod tests {
       "jsxFactory": "React.createElement",
       "jsxFragmentFactory": "React.Fragment",
       "lib": ["deno.window"],
-      "module": "esnext",
       "noEmit": true,
       "outDir": "internal:///",
       "strict": true,

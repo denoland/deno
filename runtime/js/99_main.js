@@ -3,6 +3,7 @@
 // Remove Intl.v8BreakIterator because it is a non-standard API.
 delete Intl.v8BreakIterator;
 
+import * as internalConsole from "ext:deno_console/01_console.js";
 import { core, internals, primordials } from "ext:core/mod.js";
 const ops = core.ops;
 import {
@@ -578,36 +579,19 @@ function bootstrapMainRuntime(runtimeOptions, warmup = false) {
 
     if (mode === executionModes.serve) {
       if (serveIsMain && serveWorkerCount) {
-        // deno-lint-ignore no-console
-        const origLog = console.log;
-        // deno-lint-ignore no-console
-        const origError = console.error;
-        const prefix = `[serve-worker-0 ]`;
-        // deno-lint-ignore no-console
-        console.log = (...args) => {
-          return origLog(prefix, ...new primordials.SafeArrayIterator(args));
-        };
-        // deno-lint-ignore no-console
-        console.error = (...args) => {
-          return origError(prefix, ...new primordials.SafeArrayIterator(args));
-        };
+        // deno-lint-ignore no-global-assign
+        console = new internalConsole.Console((msg, level) =>
+          core.print("[serve-worker-0 ] " + msg, level > 1)
+        );
       } else if (serveWorkerCount !== null) {
-        // deno-lint-ignore no-console
-        const origLog = console.log;
-        // deno-lint-ignore no-console
-        const origError = console.error;
         const base = `serve-worker-${serveWorkerCount + 1}`;
         // 15 = "serve-worker-nn".length, assuming
         // serveWorkerCount < 100
         const prefix = `[${StringPrototypePadEnd(base, 15, " ")}]`;
-        // deno-lint-ignore no-console
-        console.log = (...args) => {
-          return origLog(prefix, ...new primordials.SafeArrayIterator(args));
-        };
-        // deno-lint-ignore no-console
-        console.error = (...args) => {
-          return origError(prefix, ...new primordials.SafeArrayIterator(args));
-        };
+        // deno-lint-ignore no-global-assign
+        console = new internalConsole.Console((msg, level) =>
+          core.print(`${prefix} ` + msg, level > 1)
+        );
       }
     }
 
