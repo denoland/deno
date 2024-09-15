@@ -325,6 +325,9 @@ pub trait QueryDescriptor: Debug {
     api_name: Option<&str>,
   ) -> Result<(), AnyError>;
 
+  fn matches_allow(&self, other: &Self::AllowDesc) -> bool;
+  fn matches_deny(&self, other: &Self::DenyDesc) -> bool;
+
   /// Gets if this query descriptor should revoke the provided allow descriptor.
   fn revokes(&self, other: &Self::AllowDesc) -> bool;
   fn stronger_than_deny(&self, other: &Self::DenyDesc) -> bool;
@@ -342,13 +345,11 @@ pub trait AllowDescriptor: Debug + Eq + Clone + Hash {
   type Query: QueryDescriptor;
 
   fn as_query(&self) -> Self::Query;
-  fn matches(&self, query: &Self::Query) -> bool;
 }
 
 pub trait DenyDescriptor: Debug + Eq + Clone + Hash {
   type Query: QueryDescriptor;
 
-  fn matches(&self, query: &Self::Query) -> bool;
   fn is_partial(&self, query: &Self::Query) -> bool;
 }
 
@@ -527,44 +528,45 @@ impl<TQuery: QueryDescriptor> UnaryPermission<TQuery> {
     self.query_desc(desc, AllowPartial::TreatAsPartialGranted)
   }
 
-  fn is_granted(&self, desc: Option<&TQuery>) -> bool {
-    match desc {
-      Some(desc) => {
-        self.granted_global || self.granted_list.iter().any(|v| v.matches(desc))
+  fn is_granted(&self, query: Option<&TQuery>) -> bool {
+    match query {
+      Some(query) => {
+        self.granted_global
+          || self.granted_list.iter().any(|v| query.matches_allow(v))
       }
       None => self.granted_global,
     }
   }
 
-  fn is_flag_denied(&self, desc: Option<&TQuery>) -> bool {
-    match desc {
-      Some(desc) => {
+  fn is_flag_denied(&self, query: Option<&TQuery>) -> bool {
+    match query {
+      Some(query) => {
         self.flag_denied_global
-          || self.flag_denied_list.iter().any(|v| v.matches(desc))
+          || self.flag_denied_list.iter().any(|v| query.matches_deny(v))
       }
       None => self.flag_denied_global,
     }
   }
 
-  fn is_prompt_denied(&self, desc: Option<&TQuery>) -> bool {
-    match desc {
-      Some(desc) => self
+  fn is_prompt_denied(&self, query: Option<&TQuery>) -> bool {
+    match query {
+      Some(query) => self
         .prompt_denied_list
         .iter()
-        .any(|v| desc.stronger_than_deny(v)),
+        .any(|v| query.stronger_than_deny(v)),
       None => self.prompt_denied_global || !self.prompt_denied_list.is_empty(),
     }
   }
 
-  fn is_partial_flag_denied(&self, desc: Option<&TQuery>) -> bool {
-    match desc {
+  fn is_partial_flag_denied(&self, query: Option<&TQuery>) -> bool {
+    match query {
       None => !self.flag_denied_list.is_empty(),
-      Some(desc) => self.flag_denied_list.iter().any(|v| v.is_partial(desc)),
+      Some(query) => self.flag_denied_list.iter().any(|v| v.is_partial(query)),
     }
   }
 
-  fn insert_granted(&mut self, desc: Option<&TQuery>) -> bool {
-    let desc = match desc.map(|d| d.as_allow()) {
+  fn insert_granted(&mut self, query: Option<&TQuery>) -> bool {
+    let desc = match query.map(|q| q.as_allow()) {
       Some(Some(allow_desc)) => Some(allow_desc),
       Some(None) => {
         // the user was prompted for this descriptor in order to not
@@ -695,8 +697,16 @@ impl QueryDescriptor for ReadQueryDescriptor {
     perm.check_desc(Some(self), true, api_name)
   }
 
-  fn revokes(&self, other: &Self::AllowDesc) -> bool {
+  fn matches_allow(&self, other: &Self::AllowDesc) -> bool {
     self.0.resolved.starts_with(&other.0)
+  }
+
+  fn matches_deny(&self, other: &Self::DenyDesc) -> bool {
+    self.0.resolved.starts_with(&other.0)
+  }
+
+  fn revokes(&self, other: &Self::AllowDesc) -> bool {
+    self.matches_allow(other)
   }
 
   fn stronger_than_deny(&self, other: &Self::DenyDesc) -> bool {
@@ -710,10 +720,6 @@ pub struct ReadDescriptor(pub PathBuf);
 impl AllowDescriptor for ReadDescriptor {
   type Query = ReadQueryDescriptor;
 
-  fn matches(&self, query: &Self::Query) -> bool {
-    query.0.resolved.starts_with(&self.0)
-  }
-
   fn as_query(&self) -> Self::Query {
     PathQueryDescriptor {
       requested: self.0.to_string_lossy().into_owned(),
@@ -725,10 +731,6 @@ impl AllowDescriptor for ReadDescriptor {
 
 impl DenyDescriptor for ReadDescriptor {
   type Query = ReadQueryDescriptor;
-
-  fn matches(&self, query: &Self::Query) -> bool {
-    query.0.resolved.starts_with(&self.0)
-  }
 
   fn is_partial(&self, query: &Self::Query) -> bool {
     self.0.starts_with(&query.0.resolved)
@@ -767,8 +769,16 @@ impl QueryDescriptor for WriteQueryDescriptor {
     perm.check_desc(Some(self), true, api_name)
   }
 
-  fn revokes(&self, other: &Self::AllowDesc) -> bool {
+  fn matches_allow(&self, other: &Self::AllowDesc) -> bool {
     self.0.resolved.starts_with(&other.0)
+  }
+
+  fn matches_deny(&self, other: &Self::DenyDesc) -> bool {
+    self.0.resolved.starts_with(&other.0)
+  }
+
+  fn revokes(&self, other: &Self::AllowDesc) -> bool {
+    self.matches_allow(other)
   }
 
   fn stronger_than_deny(&self, other: &Self::DenyDesc) -> bool {
@@ -788,18 +798,10 @@ impl AllowDescriptor for WriteDescriptor {
       resolved: self.0.clone(),
     })
   }
-
-  fn matches(&self, query: &Self::Query) -> bool {
-    query.0.resolved.starts_with(&self.0)
-  }
 }
 
 impl DenyDescriptor for WriteDescriptor {
   type Query = WriteQueryDescriptor;
-
-  fn matches(&self, query: &Self::Query) -> bool {
-    query.0.resolved.starts_with(&self.0)
-  }
 
   fn is_partial(&self, query: &Self::Query) -> bool {
     self.0.starts_with(&query.0.resolved)
@@ -887,12 +889,20 @@ impl QueryDescriptor for NetDescriptor {
     perm.check_desc(Some(self), false, api_name)
   }
 
-  fn revokes(&self, other: &Self::AllowDesc) -> bool {
+  fn matches_allow(&self, other: &Self::AllowDesc) -> bool {
     self.0 == other.0 && (other.1.is_none() || self.1 == other.1)
   }
 
-  fn stronger_than_deny(&self, other: &Self::DenyDesc) -> bool {
+  fn matches_deny(&self, other: &Self::DenyDesc) -> bool {
     self.0 == other.0 && (other.1.is_none() || self.1 == other.1)
+  }
+
+  fn revokes(&self, other: &Self::AllowDesc) -> bool {
+    self.matches_allow(other)
+  }
+
+  fn stronger_than_deny(&self, other: &Self::DenyDesc) -> bool {
+    self.matches_deny(other)
   }
 }
 
@@ -902,18 +912,10 @@ impl AllowDescriptor for NetDescriptor {
   fn as_query(&self) -> Self::Query {
     self.clone()
   }
-
-  fn matches(&self, query: &Self::Query) -> bool {
-    self.0 == query.0 && (self.1.is_none() || self.1 == query.1)
-  }
 }
 
 impl DenyDescriptor for NetDescriptor {
   type Query = NetDescriptor;
-
-  fn matches(&self, query: &Self::Query) -> bool {
-    self.0 == query.0 && (self.1.is_none() || self.1 == query.1)
-  }
 
   fn is_partial(&self, _query: &Self::Query) -> bool {
     false
@@ -1029,6 +1031,14 @@ impl QueryDescriptor for EnvDescriptor {
     perm.check_desc(Some(self), false, api_name)
   }
 
+  fn matches_allow(&self, other: &Self::AllowDesc) -> bool {
+    self == other
+  }
+
+  fn matches_deny(&self, other: &Self::DenyDesc) -> bool {
+    self == other
+  }
+
   fn revokes(&self, other: &Self::AllowDesc) -> bool {
     self == other
   }
@@ -1044,18 +1054,10 @@ impl AllowDescriptor for EnvDescriptor {
   fn as_query(&self) -> Self::Query {
     self.clone()
   }
-
-  fn matches(&self, query: &Self::Query) -> bool {
-    self == query
-  }
 }
 
 impl DenyDescriptor for EnvDescriptor {
   type Query = EnvDescriptor;
-
-  fn matches(&self, query: &Self::Query) -> bool {
-    self == query
-  }
 
   fn is_partial(&self, _query: &Self::Query) -> bool {
     false
@@ -1158,6 +1160,30 @@ impl QueryDescriptor for RunQueryDescriptor {
     perm.check_desc(Some(self), false, api_name)
   }
 
+  fn matches_allow(&self, other: &Self::AllowDesc) -> bool {
+    match self {
+      RunQueryDescriptor::Path { resolved, .. } => *resolved == other.0,
+      RunQueryDescriptor::Name(_) => false,
+    }
+  }
+
+  fn matches_deny(&self, other: &Self::DenyDesc) -> bool {
+    match other {
+      DenyRunDescriptor::Name(deny_desc) => match self {
+        RunQueryDescriptor::Path { resolved, .. } => {
+          denies_run_name(deny_desc, resolved)
+        }
+        RunQueryDescriptor::Name(query) => query == deny_desc,
+      },
+      DenyRunDescriptor::Path(deny_desc) => match self {
+        RunQueryDescriptor::Path { resolved, .. } => {
+          resolved.starts_with(deny_desc)
+        }
+        RunQueryDescriptor::Name(query) => denies_run_name(query, deny_desc),
+      },
+    }
+  }
+
   fn revokes(&self, other: &Self::AllowDesc) -> bool {
     match self {
       RunQueryDescriptor::Path {
@@ -1178,7 +1204,7 @@ impl QueryDescriptor for RunQueryDescriptor {
   }
 
   fn stronger_than_deny(&self, other: &Self::DenyDesc) -> bool {
-    other.matches(self)
+    self.matches_deny(other)
   }
 }
 
@@ -1237,13 +1263,6 @@ impl AllowDescriptor for AllowRunDescriptor {
       resolved: self.0.clone(),
     }
   }
-
-  fn matches(&self, query: &Self::Query) -> bool {
-    match query {
-      RunQueryDescriptor::Path { resolved, .. } => *resolved == self.0,
-      RunQueryDescriptor::Name(_) => false,
-    }
-  }
 }
 
 #[derive(Clone, Eq, PartialEq, Hash, Debug)]
@@ -1269,23 +1288,6 @@ impl DenyRunDescriptor {
 
 impl DenyDescriptor for DenyRunDescriptor {
   type Query = RunQueryDescriptor;
-
-  fn matches(&self, query: &Self::Query) -> bool {
-    match self {
-      DenyRunDescriptor::Name(deny_desc) => match query {
-        RunQueryDescriptor::Path { resolved, .. } => {
-          denies_run_name(deny_desc, resolved)
-        }
-        RunQueryDescriptor::Name(query) => query == deny_desc,
-      },
-      DenyRunDescriptor::Path(deny_desc) => match query {
-        RunQueryDescriptor::Path { resolved, .. } => {
-          resolved.starts_with(deny_desc)
-        }
-        RunQueryDescriptor::Name(query) => denies_run_name(query, deny_desc),
-      },
-    }
-  }
 
   fn is_partial(&self, _query: &Self::Query) -> bool {
     false
@@ -1350,6 +1352,14 @@ impl QueryDescriptor for SysDescriptor {
     perm.check_desc(Some(self), false, api_name)
   }
 
+  fn matches_allow(&self, other: &Self::AllowDesc) -> bool {
+    self == other
+  }
+
+  fn matches_deny(&self, other: &Self::DenyDesc) -> bool {
+    self == other
+  }
+
   fn revokes(&self, other: &Self::AllowDesc) -> bool {
     self == other
   }
@@ -1365,18 +1375,10 @@ impl AllowDescriptor for SysDescriptor {
   fn as_query(&self) -> Self::Query {
     self.clone()
   }
-
-  fn matches(&self, query: &Self::Query) -> bool {
-    self == query
-  }
 }
 
 impl DenyDescriptor for SysDescriptor {
   type Query = SysDescriptor;
-
-  fn matches(&self, query: &Self::Query) -> bool {
-    self == query
-  }
 
   fn is_partial(&self, _query: &Self::Query) -> bool {
     false
@@ -1424,8 +1426,16 @@ impl QueryDescriptor for FfiQueryDescriptor {
     perm.check_desc(Some(self), true, api_name)
   }
 
-  fn revokes(&self, other: &Self::AllowDesc) -> bool {
+  fn matches_allow(&self, other: &Self::AllowDesc) -> bool {
     self.0.resolved.starts_with(&other.0)
+  }
+
+  fn matches_deny(&self, other: &Self::DenyDesc) -> bool {
+    self.0.resolved.starts_with(&other.0)
+  }
+
+  fn revokes(&self, other: &Self::AllowDesc) -> bool {
+    self.matches_allow(other)
   }
 
   fn stronger_than_deny(&self, other: &Self::DenyDesc) -> bool {
@@ -1446,18 +1456,10 @@ impl AllowDescriptor for FfiDescriptor {
     }
     .into_ffi()
   }
-
-  fn matches(&self, query: &Self::Query) -> bool {
-    query.0.resolved.starts_with(&self.0)
-  }
 }
 
 impl DenyDescriptor for FfiDescriptor {
   type Query = FfiQueryDescriptor;
-
-  fn matches(&self, query: &Self::Query) -> bool {
-    query.0.resolved.starts_with(&self.0)
-  }
 
   fn is_partial(&self, query: &Self::Query) -> bool {
     self.0.starts_with(&query.0.resolved)
