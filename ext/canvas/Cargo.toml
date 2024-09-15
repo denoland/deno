@@ -22,6 +22,8 @@ image = { version = "0.25.2", default-features = false, features = ["png", "jpeg
 # NOTE: The qcms is a color space conversion crate which parses ICC profiles that used in Gecko,
 # however it supports only 8-bit color depth currently.
 # https://searchfox.org/mozilla-central/rev/f09e3f9603a08b5b51bf504846091579bc2ff531/gfx/qcms/src/transform.rs#130-137
-lcms2 = "6.1.0"
+# It seems to be failed to build for aarch64-unknown-linux-gnu with pkg-config.
+# https://github.com/kornelski/rust-lcms2-sys/blob/b8e9c3efcf266b88600318fb519c073b9ebb61b7/README.md#L26
+lcms2 = { version = "6.1.0", features = ["static"] }
 num-traits = { version = "0.2.19" }
 serde = { workspace = true, features = ["derive"] }
