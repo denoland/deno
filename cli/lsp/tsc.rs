@@ -6154,7 +6154,7 @@ mod tests {
     let change = changes.text_changes.first().unwrap();
     assert_eq!(
       change.new_text,
-      "import { someLongVariable } from './b.ts'\n"
+      "import type { someLongVariable } from './b.ts'\n"
     );
   }
 

@@ -5659,7 +5659,7 @@ fn lsp_jsr_code_action_missing_declaration() {
                       "character": 6,
                     },
                   },
-                  "newText": "import { ReturnType } from \"jsr:@denotest/types-file/types\";\n",
+                  "newText": "import type { ReturnType } from \"jsr:@denotest/types-file/types\";\n",
                 },
                 {
                   "range": {
@@ -6150,7 +6150,7 @@ export class DuckConfig {
               "start": { "line": 0, "character": 0 },
               "end": { "line": 0, "character": 0 }
             },
-            "newText": "import { DuckConfigOptions } from \"./file02.ts\";\n\n"
+            "newText": "import type { DuckConfigOptions } from \"./file02.ts\";\n\n"
           }]
         }]
       }
@@ -6266,7 +6266,7 @@ export class DuckConfig {
               "start": { "line": 0, "character": 0 },
               "end": { "line": 0, "character": 0 }
             },
-            "newText": "import { DuckConfig } from \"./file01.ts\";\nimport { DuckConfigOptions } from \"./file02.ts\";\n\n"
+            "newText": "import { DuckConfig } from \"./file01.ts\";\nimport type { DuckConfigOptions } from \"./file02.ts\";\n\n"
           }]
         }]
       },
@@ -6343,7 +6343,7 @@ fn lsp_code_actions_imports_dts() {
               "start": { "line": 0, "character": 0 },
               "end": { "line": 0, "character": 0 },
             },
-            "newText": "import { SomeType } from \"./decl.d.ts\";\n",
+            "newText": "import type { SomeType } from \"./decl.d.ts\";\n",
           }],
         }],
       },
@@ -6663,7 +6663,7 @@ fn lsp_code_actions_imports_respects_fmt_config() {
               "start": { "line": 0, "character": 0 },
               "end": { "line": 0, "character": 0 }
             },
-            "newText": "import { DuckConfigOptions } from './file01.ts'\n"
+            "newText": "import type { DuckConfigOptions } from './file01.ts'\n"
           }]
         }]
       }
@@ -6716,7 +6716,7 @@ fn lsp_code_actions_imports_respects_fmt_config() {
               "start": { "line": 0, "character": 0 },
               "end": { "line": 0, "character": 0 }
             },
-            "newText": "import { DuckConfigOptions } from './file01.ts'\n"
+            "newText": "import type { DuckConfigOptions } from './file01.ts'\n"
           }]
         }]
       },
@@ -6816,7 +6816,7 @@ fn lsp_quote_style_from_workspace_settings() {
               "start": { "line": 0, "character": 0 },
               "end": { "line": 0, "character": 0 },
             },
-            "newText": "import { DuckConfigOptions } from './file01.ts';\n",
+            "newText": "import type { DuckConfigOptions } from './file01.ts';\n",
           }],
         }],
       },
@@ -6860,7 +6860,7 @@ fn lsp_quote_style_from_workspace_settings() {
               "start": { "line": 0, "character": 0 },
               "end": { "line": 0, "character": 0 },
             },
-            "newText": "import { DuckConfigOptions } from \"./file01.ts\";\n",
+            "newText": "import type { DuckConfigOptions } from \"./file01.ts\";\n",
           }],
         }],
       },
@@ -7246,12 +7246,12 @@ fn lsp_completions_auto_import() {
       "uri": "file:///a/file.ts",
       "languageId": "typescript",
       "version": 1,
-      "text": "export {};\n\n",
+      "text": "const result = add(1, 2);\n",
     }
   }));
   let list = client.get_completion_list(
     "file:///a/file.ts",
-    (2, 0),
+    (0, 18),
     json!({ "triggerKind": 1 }),
   );
   assert!(!list.is_incomplete);
@@ -7259,46 +7259,7 @@ fn lsp_completions_auto_import() {
   let Some(item) = item else {
     panic!("completions items missing 'add' symbol");
   };
-  let mut item_value = serde_json::to_value(item).unwrap();
-  item_value["data"]["tsc"]["data"]["exportMapKey"] =
-    serde_json::Value::String("".to_string());
-
-  let req = json!({
-    "label": "add",
-    "labelDetails": {
-      "description": "./🦕.ts",
-    },
-    "kind": 3,
-    "sortText": "￿16_0",
-    "commitCharacters": [
-      ".",
-      ",",
-      ";",
-      "("
-    ],
-    "data": {
-      "tsc": {
-        "specifier": "file:///a/file.ts",
-        "position": 12,
-        "name": "add",
-        "source": "./%F0%9F%A6%95.ts",
-         "specifierRewrite": [
-           "./%F0%9F%A6%95.ts",
-           "./🦕.ts",
-         ],
-        "data": {
-          "exportName": "add",
-          "exportMapKey": "",
-          "moduleSpecifier": "./%F0%9F%A6%95.ts",
-          "fileName": "file:///a/%F0%9F%A6%95.ts"
-        },
-        "useCodeSnippet": false
-      }
-    }
-  });
-  assert_eq!(item_value, req);
-
-  let res = client.write_request("completionItem/resolve", req);
+  let res = client.write_request("completionItem/resolve", json!(item));
   assert_eq!(
     res,
     json!({
