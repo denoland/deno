@@ -1,12 +1,10 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
-// deno-lint-ignore-file no-window-prefix no-window
 import {
   assert,
   assertEquals,
   assertRejects,
   assertThrows,
-  DENO_FUTURE,
 } from "./test_util.ts";
 
 Deno.test(function globalThisExists() {
@@ -20,32 +18,16 @@ Deno.test(function noInternalGlobals() {
   }
 });
 
-Deno.test({ ignore: DENO_FUTURE }, function windowExists() {
-  assert(window != null);
-});
-
 Deno.test(function selfExists() {
   assert(self != null);
 });
 
-Deno.test({ ignore: DENO_FUTURE }, function windowWindowExists() {
-  assert(window.window === window);
-});
-
-Deno.test({ ignore: DENO_FUTURE }, function windowSelfExists() {
-  assert(window.self === window);
-});
-
-Deno.test({ ignore: DENO_FUTURE }, function globalThisEqualsWindow() {
-  assert(globalThis === window);
+Deno.test(function globalThisWindowEqualsUndefined() {
+  assert(globalThis.window === undefined);
 });
 
 Deno.test(function globalThisEqualsSelf() {
   assert(globalThis === self);
-});
-
-Deno.test({ ignore: DENO_FUTURE }, function globalThisInstanceofWindow() {
-  assert(globalThis instanceof Window);
 });
 
 Deno.test(function globalThisConstructorLength() {
@@ -64,10 +46,6 @@ Deno.test(function navigatorInstanceofNavigator() {
 
 Deno.test(function DenoNamespaceExists() {
   assert(Deno != null);
-});
-
-Deno.test({ ignore: DENO_FUTURE }, function DenoNamespaceEqualsWindowDeno() {
-  assert(Deno === window.Deno);
 });
 
 Deno.test(function DenoNamespaceIsNotFrozen() {
@@ -120,11 +98,7 @@ Deno.test(async function windowQueueMicrotask() {
       res();
     };
   });
-  if (DENO_FUTURE) {
-    globalThis.queueMicrotask(resolve1!);
-  } else {
-    window.queueMicrotask(resolve1!);
-  }
+  globalThis.queueMicrotask(resolve1!);
   setTimeout(resolve2!, 0);
   await p1;
   await p2;
@@ -143,18 +117,9 @@ Deno.test(function webApiGlobalThis() {
 Deno.test(function windowNameIsDefined() {
   assertEquals(typeof globalThis.name, "string");
   assertEquals(name, "");
-  if (!DENO_FUTURE) {
-    assertEquals(window.name, name);
-  }
   name = "foobar";
-  if (!DENO_FUTURE) {
-    assertEquals(window.name, "foobar");
-  }
   assertEquals(name, "foobar");
   name = "";
-  if (!DENO_FUTURE) {
-    assertEquals(window.name, "");
-  }
   assertEquals(name, "");
 });
 

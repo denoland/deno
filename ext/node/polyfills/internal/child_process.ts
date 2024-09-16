@@ -56,6 +56,7 @@ import { StringPrototypeSlice } from "ext:deno_node/internal/primordials.mjs";
 import { StreamBase } from "ext:deno_node/internal_binding/stream_wrap.ts";
 import { Pipe, socketType } from "ext:deno_node/internal_binding/pipe_wrap.ts";
 import { Socket } from "node:net";
+import { kDetached, kExtraStdio, kIpc } from "ext:runtime/40_process.js";
 
 export function mapValues<T, O>(
   record: Readonly<Record<string, T>>,
@@ -109,6 +110,7 @@ export function stdioStringToArray(
 
 const kClosesNeeded = Symbol("_closesNeeded");
 const kClosesReceived = Symbol("_closesReceived");
+const kCanDisconnect = Symbol("_canDisconnect");
 
 // We only want to emit a close event for the child process when all of
 // the writable streams have closed. The value of `child[kClosesNeeded]` should be 1 +
@@ -222,7 +224,7 @@ export class ChildProcess extends EventEmitter {
   #spawned = Promise.withResolvers<void>();
   [kClosesNeeded] = 1;
   [kClosesReceived] = 0;
-  canDisconnect = false;
+  [kCanDisconnect] = false;
 
   constructor(
     command: string,
@@ -238,6 +240,7 @@ export class ChildProcess extends EventEmitter {
       shell = false,
       signal,
       windowsVerbatimArguments = false,
+      detached,
     } = options || {};
     const normalizedStdio = normalizeStdioOption(stdio);
     const [
@@ -275,8 +278,9 @@ export class ChildProcess extends EventEmitter {
         stdout: toDenoStdio(stdout),
         stderr: toDenoStdio(stderr),
         windowsRawArguments: windowsVerbatimArguments,
-        ipc, // internal
-        extraStdio: extraStdioNormalized,
+        [kIpc]: ipc, // internal
+        [kExtraStdio]: extraStdioNormalized,
+        [kDetached]: detached,
       }).spawn();
       this.pid = this.#process.pid;
 
@@ -387,8 +391,8 @@ export class ChildProcess extends EventEmitter {
           this.emit("exit", exitCode, signalCode);
           await this.#_waitForChildStreamsToClose();
           this.#closePipes();
-          maybeClose(this);
           nextTick(flushStdio, this);
+          maybeClose(this);
         });
       })();
     } catch (err) {
@@ -421,7 +425,7 @@ export class ChildProcess extends EventEmitter {
     }
 
     /* Cancel any pending IPC I/O */
-    if (this.canDisconnect) {
+    if (this[kCanDisconnect]) {
       this.disconnect?.();
     }
 
@@ -552,7 +556,7 @@ export interface ChildProcessOptions {
   stdio?: Array<NodeStdio | number | Stream | null | undefined> | NodeStdio;
 
   /**
-   * NOTE: This option is not yet implemented.
+   * Whether to spawn the process in a detached state.
    */
   detached?: boolean;
 
@@ -1416,7 +1420,7 @@ export function setupChannel(target: any, ipc: number) {
     }
 
     target.connected = false;
-    target.canDisconnect = false;
+    target[kCanDisconnect] = false;
     control[kControlDisconnect]();
     process.nextTick(() => {
       target.channel = null;
@@ -1424,7 +1428,7 @@ export function setupChannel(target: any, ipc: number) {
       target.emit("disconnect");
     });
   };
-  target.canDisconnect = true;
+  target[kCanDisconnect] = true;
 
   // Start reading messages from the channel.
   readLoop();

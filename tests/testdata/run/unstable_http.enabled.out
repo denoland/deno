@@ -1,4 +1,0 @@
-main [class HttpClient]
-main [Function: createHttpClient]
-worker [class HttpClient]
-worker [Function: createHttpClient]

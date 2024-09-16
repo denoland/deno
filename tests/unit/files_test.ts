@@ -5,7 +5,6 @@ import {
   assertEquals,
   assertRejects,
   assertThrows,
-  DENO_FUTURE,
 } from "./test_util.ts";
 import { copy } from "@std/io/copy";
 
@@ -21,12 +20,11 @@ Deno.test(function filesStdioFileDescriptors() {
 });
 
 Deno.test(
-  { ignore: DENO_FUTURE, permissions: { read: true } },
+  { permissions: { read: true } },
   async function filesCopyToStdout() {
     const filename = "tests/testdata/assets/fixture.json";
     using file = await Deno.open(filename);
     assert(file instanceof Deno.FsFile);
-    assert(file.rid > 2);
     const bytesWritten = await copy(file, Deno.stdout);
     const fileSize = Deno.statSync(filename).size;
     assertEquals(bytesWritten, fileSize);
@@ -127,7 +125,7 @@ Deno.test(
     for (const options of openOptions) {
       await assertRejects(async () => {
         await Deno.open(filename, options);
-      }, Deno.errors.PermissionDenied);
+      }, Deno.errors.NotCapable);
     }
   },
 );
@@ -170,7 +168,7 @@ Deno.test(async function openOptions() {
 Deno.test({ permissions: { read: false } }, async function readPermFailure() {
   await assertRejects(async () => {
     await Deno.open("package.json", { read: true });
-  }, Deno.errors.PermissionDenied);
+  }, Deno.errors.NotCapable);
 });
 
 Deno.test(
@@ -229,7 +227,7 @@ Deno.test(
     const filename = "tests/hello.txt";
     await assertRejects(async () => {
       await Deno.open(filename, { read: true });
-    }, Deno.errors.PermissionDenied);
+    }, Deno.errors.NotCapable);
   },
 );
 
@@ -929,7 +927,7 @@ function runFlockTestProcess(opts: { exclusive: boolean; sync: boolean }) {
 `;
 
   const process = new Deno.Command(Deno.execPath(), {
-    args: ["eval", "--unstable", scriptText],
+    args: ["eval", scriptText],
     stdin: "piped",
     stdout: "piped",
     stderr: "null",

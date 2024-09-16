@@ -26,7 +26,6 @@ use rand::thread_rng;
 use rand::Rng;
 use serde::Serialize;
 
-use crate::check_unstable;
 use crate::interface::AccessCheckFn;
 use crate::interface::FileSystemRc;
 use crate::interface::FsDirEntry;
@@ -60,7 +59,7 @@ fn map_permission_error(
   path: &Path,
 ) -> AnyError {
   match error {
-    FsError::PermissionDenied(err) => {
+    FsError::NotCapable(err) => {
       let path = format!("{path:?}");
       let (path, truncated) = if path.len() > 1024 {
         (&path[0..1024], "...(truncated)")
@@ -74,7 +73,7 @@ fn map_permission_error(
         format!(
           "Requires {err} access to {path}{truncated}, run again with the --allow-{err} flag")
       };
-      custom_error("PermissionDenied", msg)
+      custom_error("NotCapable", msg)
     }
     err => Err::<(), _>(err)
       .context_path(operation, path)
@@ -121,7 +120,6 @@ pub fn op_fs_umask(
 ) -> Result<u32, AnyError>
 where
 {
-  check_unstable(state, "Deno.umask");
   state.borrow::<FileSystemRc>().umask(mask).context("umask")
 }
 

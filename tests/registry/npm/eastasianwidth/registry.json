@@ -1,1 +1,58 @@
-{"_id":"eastasianwidth","_rev":"11-91876cb26e8342f0184358a4533f49b8","name":"eastasianwidth","description":"Get East Asian Width from a character.","dist-tags":{"latest":"0.3.0"},"versions":{"0.0.1":{"name":"eastasianwidth","version":"0.0.1","description":"Get East Asian Width from a character.","main":"eastasianwidth.js","scripts":{"test":"mocha"},"repository":{"type":"git","url":"git://github.com/komagata/eastasianwidth.git"},"author":{"name":"Masaki Komagata"},"license":"MIT","_id":"eastasianwidth@0.0.1","dist":{"shasum":"0ad84cd562f6d38c2da08c1e718db4b67e7e3e6c","tarball":"http://localhost:4260/eastasianwidth/eastasianwidth-0.0.1.tgz","integrity":"sha512-2SLfJ/GaYrJg6rSLkZB0JMi5yIXh115JwcOSV251zVt1RXB6nGeMBgdj54iK4Nx5zTbWnVa4OTlKipsN2Klo1g==","signatures":[{"keyid":"SHA256:jl3bwswu80PjjokCgh0o2w5c2U4LhQAE57gj9cz1kzA","sig":"MEYCIQCszyjVh6RrJpvniyXdvFLfKtwWj1I7OjQJ7bq7br8ANAIhAMNqIB5ukMUGOkgFHcUkWNyhMLK+nUJJtLPA+0DZusek"}]},"_from":".","_npmVersion":"1.2.15","_npmUser":{"name":"komagata","email":"komagata@gmail.com"},"maintainers":[{"name":"komagata","email":"komagata@gmail.com"}],"directories":{}},"0.1.0":{"name":"eastasianwidth","version":"0.1.0","description":"Get East Asian Width from a character.","main":"eastasianwidth.js","scripts":{"test":"mocha"},"repository":{"type":"git","url":"git://github.com/komagata/eastasianwidth.git"},"author":{"name":"Masaki Komagata"},"license":"MIT","devDependencies":{"mocha":"~1.9.0"},"_id":"eastasianwidth@0.1.0","dist":{"shasum":"b4ffaecacbb99526dbe529ebcd5903bf9548f874","tarball":"http://localhost:4260/eastasianwidth/eastasianwidth-0.1.0.tgz","integrity":"sha512-a5tZXDCAoLc2TZjpiarWCpY3jPiXsaUqHzhy0fgn3W/6gNUCVPT+MX88gwqI9BpvBVmUdj71JoSW2ES2VGY7SQ==","signatures":[{"keyid":"SHA256:jl3bwswu80PjjokCgh0o2w5c2U4LhQAE57gj9cz1kzA","sig":"MEUCIQCjnN2Kcm6Tv07Tuc54symsI6+ylspIGFeNiYXPTPYXbwIgVfUuXT0W0ICIYhdjnRGxheJ9y/HZx/QB1TC1z7ytF+0="}]},"_from":".","_npmVersion":"1.2.18","_npmUser":{"name":"komagata","email":"komagata@gmail.com"},"maintainers":[{"name":"komagata","email":"komagata@gmail.com"}],"directories":{}},"0.1.1":{"name":"eastasianwidth","version":"0.1.1","description":"Get East Asian Width from a character.","main":"eastasianwidth.js","scripts":{"test":"mocha"},"repository":{"type":"git","url":"git://github.com/komagata/eastasianwidth.git"},"author":{"name":"Masaki Komagata"},"license":"MIT","devDependencies":{"mocha":"~1.9.0"},"gitHead":"43fe50622ed463cddae446f0b4fa92db783074cc","bugs":{"url":"https://github.com/komagata/eastasianwidth/issues"},"homepage":"https://github.com/komagata/eastasianwidth#readme","_id":"eastasianwidth@0.1.1","_shasum":"44d656de9da415694467335365fb3147b8572b7c","_from":".","_npmVersion":"2.14.4","_nodeVersion":"4.1.0","_npmUser":{"name":"komagata","email":"komagata@gmail.com"},"maintainers":[{"name":"komagata","email":"komagata@gmail.com"}],"dist":{"shasum":"44d656de9da415694467335365fb3147b8572b7c","tarball":"http://localhost:4260/eastasianwidth/eastasianwidth-0.1.1.tgz","integrity":"sha512-jqG4b6XUnaQf0SrCeTi4NVLetPQM44xmkyadAXqaqCQsa2zqy9NWMdSOTNC0reqQ0zj+ePFAIh3TYlcXc6MZLQ==","signatures":[{"keyid":"SHA256:jl3bwswu80PjjokCgh0o2w5c2U4LhQAE57gj9cz1kzA","sig":"MEYCIQCuABodl1PpFOxdSen7v+A0v/3kA39K6UucrSXtC+jxDgIhAIIX8rhxxsrlB9YZcjPCBXS6blodAv0qnNaBR/F69nCH"}]},"directories":{}},"0.2.0":{"name":"eastasianwidth","version":"0.2.0","description":"Get East Asian Width from a character.","main":"eastasianwidth.js","files":["eastasianwidth.js"],"scripts":{"test":"mocha"},"repository":{"type":"git","url":"git://github.com/komagata/eastasianwidth.git"},"author":{"name":"Masaki Komagata"},"license":"MIT","devDependencies":{"mocha":"~1.9.0"},"gitHead":"b89f04d44dc786885615e94cd6e2ba1ef7866fa4","bugs":{"url":"https://github.com/komagata/eastasianwidth/issues"},"homepage":"https://github.com/komagata/eastasianwidth#readme","_id":"eastasianwidth@0.2.0","_npmVersion":"5.5.1","_nodeVersion":"8.9.1","_npmUser":{"name":"komagata","email":"komagata@gmail.com"},"dist":{"integrity":"sha512-I88TYZWc9XiYHRQ4/3c5rjjfgkjhLyW2luGIheGERbNQ6OY7yTybanSpDXZa8y7VUP9YmDcYa+eyq4ca7iLqWA==","shasum":"696ce2ec0aa0e6ea93a397ffcf24aa7840c827cb","tarball":"http://localhost:4260/eastasianwidth/eastasianwidth-0.2.0.tgz","signatures":[{"keyid":"SHA256:jl3bwswu80PjjokCgh0o2w5c2U4LhQAE57gj9cz1kzA","sig":"MEUCIDNcp1SIwsuxLGmN5jJS4ZVTyfWVfHzoC3URtimwSMusAiEA4eLB2KCWmzEszVyewyStQBj4U38rvuXvf4AcXnx/IjM="}]},"maintainers":[{"name":"komagata","email":"komagata@gmail.com"}],"_npmOperationalInternal":{"host":"s3://npm-registry-packages","tmp":"tmp/eastasianwidth-0.2.0.tgz_1514798767374_0.8861281618010253"},"directories":{}},"0.3.0":{"name":"eastasianwidth","version":"0.3.0","description":"Get East Asian Width from a character.","main":"eastasianwidth.js","scripts":{"test":"mocha"},"repository":{"type":"git","url":"git://github.com/komagata/eastasianwidth.git"},"author":{"name":"Masaki Komagata"},"license":"MIT","devDependencies":{"mocha":"^10.4.0"},"_id":"eastasianwidth@0.3.0","gitHead":"e5ee638e2039093c924b60d8a2ba7c12c52549f8","types":"./eastasianwidth.d.ts","bugs":{"url":"https://github.com/komagata/eastasianwidth/issues"},"homepage":"https://github.com/komagata/eastasianwidth#readme","_nodeVersion":"20.9.0","_npmVersion":"10.5.1","dist":{"integrity":"sha512-JqasYqGO32J2c91uYKdhu1vNmXGADaLB7OOgjAhjMvpjdvGb0tsYcuwn381MwqCg4YBQDtByQcNlFYuv2kmOug==","shasum":"f40078088bf791bc0bb2583a6d439e9e5d0d116b","tarball":"http://localhost:4260/eastasianwidth/eastasianwidth-0.3.0.tgz","fileCount":4,"unpackedSize":14128,"signatures":[{"keyid":"SHA256:jl3bwswu80PjjokCgh0o2w5c2U4LhQAE57gj9cz1kzA","sig":"MEYCIQCwFaM2c+sGTutlfXRYYUFDkIR4XHDE9um+33q1qpgOuQIhAMvmfzctiRnTCA8dwYDocjmI/37tLVCNrzie0iRpTsv2"}]},"_npmUser":{"name":"komagata","email":"komagata@gmail.com"},"directories":{},"maintainers":[{"name":"komagata","email":"komagata@gmail.com"}],"_npmOperationalInternal":{"host":"s3://npm-registry-packages","tmp":"tmp/eastasianwidth_0.3.0_1713677157598_0.3961141127470915"},"_hasShrinkwrap":false}},"readme":"# East Asian Width\n\nGet [East Asian Width](http://www.unicode.org/reports/tr11/) from a character.\n\n'F'(Fullwidth), 'H'(Halfwidth), 'W'(Wide), 'Na'(Narrow), 'A'(Ambiguous) or 'N'(Natural).\n\nOriginal Code is [東アジアの文字幅 (East Asian Width) の判定 - 中途](http://d.hatena.ne.jp/takenspc/20111126#1322252878).\n\n## Install\n\n    $ npm install eastasianwidth\n\n## Usage\n\n    var eaw = require('eastasianwidth');\n    console.log(eaw.eastAsianWidth('￦')) // 'F'\n    console.log(eaw.eastAsianWidth('｡')) // 'H'\n    console.log(eaw.eastAsianWidth('뀀')) // 'W'\n    console.log(eaw.eastAsianWidth('a')) // 'Na'\n    console.log(eaw.eastAsianWidth('①')) // 'A'\n    console.log(eaw.eastAsianWidth('ف')) // 'N'\n\n    console.log(eaw.characterLength('￦')) // 2\n    console.log(eaw.characterLength('｡')) // 1\n    console.log(eaw.characterLength('뀀')) // 2\n    console.log(eaw.characterLength('a')) // 1\n    console.log(eaw.characterLength('①')) // 2\n    console.log(eaw.characterLength('ف')) // 1\n\n    console.log(eaw.length('あいうえお')) // 10\n    console.log(eaw.length('abcdefg')) // 7\n    console.log(eaw.length('￠￦｡ￜㄅ뀀¢⟭a⊙①بف')) // 19\n","maintainers":[{"name":"komagata","email":"komagata@gmail.com"}],"time":{"modified":"2024-04-21T05:25:57.921Z","created":"2013-03-30T08:27:48.673Z","0.0.1":"2013-03-30T08:27:52.329Z","0.1.0":"2013-05-02T07:11:28.264Z","0.1.1":"2015-09-26T00:58:06.293Z","0.2.0":"2018-01-01T09:26:07.460Z","0.3.0":"2024-04-21T05:25:57.746Z"},"author":{"name":"Masaki Komagata"},"repository":{"type":"git","url":"git://github.com/komagata/eastasianwidth.git"},"homepage":"https://github.com/komagata/eastasianwidth#readme","bugs":{"url":"https://github.com/komagata/eastasianwidth/issues"},"license":"MIT","readmeFilename":"README.md"}
+{
+  "name": "eastasianwidth",
+  "description": "Get East Asian Width from a character.",
+  "dist-tags": {
+    "latest": "0.2.0"
+  },
+  "versions": {
+    "0.2.0": {
+      "name": "eastasianwidth",
+      "version": "0.2.0",
+      "description": "Get East Asian Width from a character.",
+      "main": "eastasianwidth.js",
+      "files": [
+        "eastasianwidth.js"
+      ],
+      "scripts": {
+        "test": "mocha"
+      },
+      "repository": {
+        "type": "git",
+        "url": "git://github.com/komagata/eastasianwidth.git"
+      },
+      "author": {
+        "name": "Masaki Komagata"
+      },
+      "license": "MIT",
+      "devDependencies": {
+        "mocha": "~1.9.0"
+      },
+      "gitHead": "b89f04d44dc786885615e94cd6e2ba1ef7866fa4",
+      "bugs": {
+        "url": "https://github.com/komagata/eastasianwidth/issues"
+      },
+      "_id": "eastasianwidth@0.2.0",
+      "_npmVersion": "5.5.1",
+      "_nodeVersion": "8.9.1",
+      "dist": {
+        "integrity": "sha512-I88TYZWc9XiYHRQ4/3c5rjjfgkjhLyW2luGIheGERbNQ6OY7yTybanSpDXZa8y7VUP9YmDcYa+eyq4ca7iLqWA==",
+        "shasum": "696ce2ec0aa0e6ea93a397ffcf24aa7840c827cb",
+        "tarball": "http://localhost:4260/eastasianwidth/eastasianwidth-0.2.0.tgz"
+      },
+      "directories": {}
+    }
+  },
+  "author": {
+    "name": "Masaki Komagata"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git://github.com/komagata/eastasianwidth.git"
+  },
+  "homepage": "https://github.com/komagata/eastasianwidth#readme",
+  "bugs": {
+    "url": "https://github.com/komagata/eastasianwidth/issues"
+  },
+  "license": "MIT",
+  "readmeFilename": "README.md"
+}

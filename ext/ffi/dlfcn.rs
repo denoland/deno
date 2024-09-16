@@ -1,6 +1,5 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
-use crate::check_unstable;
 use crate::ir::out_buffer_as_ptr;
 use crate::symbol::NativeType;
 use crate::symbol::Symbol;
@@ -124,7 +123,6 @@ where
 {
   let path = args.path;
 
-  check_unstable(state, "Deno.dlopen");
   let permissions = state.borrow_mut::<FP>();
   permissions.check_partial(Some(&PathBuf::from(&path)))?;
 
