@@ -1,2 +1,3 @@
-Task main:foo deno run main.ts
-main
+error: Module not found "file://[WILDCARD]/main:foo".
+
+A task with the same name was found. You can run with it with 'deno task main:foo'

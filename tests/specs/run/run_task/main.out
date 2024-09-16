@@ -1,2 +1,3 @@
-Task main deno run main.ts
-main
+error: Module not found "[WILDCARD]/run_task/main". Maybe add a '.ts' extension or run with --unstable-sloppy-imports
+
+A task with the same name was found. You can run with it with 'deno task main'

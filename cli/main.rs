@@ -36,7 +36,6 @@ use crate::util::display;
 use crate::util::v8::get_v8_flags_from_env;
 use crate::util::v8::init_v8_flags;
 
-use args::TaskFlags;
 use deno_runtime::WorkerExecutionMode;
 pub use deno_runtime::UNSTABLE_GRANULAR_FLAGS;
 
@@ -55,7 +54,6 @@ use standalone::MODULE_NOT_FOUND;
 use standalone::UNSUPPORTED_SCHEME;
 use std::env;
 use std::future::Future;
-use std::ops::Deref;
 use std::path::PathBuf;
 use std::sync::Arc;
 
@@ -189,9 +187,10 @@ async fn run_subcommand(flags: Arc<Flags>) -> Result<i32, AnyError> {
           Err(script_err) => {
             let script_err_msg = script_err.to_string();
             if script_err_msg.starts_with(MODULE_NOT_FOUND) || script_err_msg.starts_with(UNSUPPORTED_SCHEME) {
+              let mut cmd = args::clap_root();
+              cmd.build();
+
               if run_flags.bare {
-                let mut cmd = args::clap_root();
-                cmd.build();
                 let command_names = cmd.get_subcommands().map(|command| command.get_name()).collect::<Vec<_>>();
                 let suggestions = args::did_you_mean(&run_flags.script, command_names);
                 if !suggestions.is_empty() {
@@ -206,20 +205,17 @@ async fn run_subcommand(flags: Arc<Flags>) -> Result<i32, AnyError> {
                   Err(script_err)
                 }
               } else {
-                let mut new_flags = flags.deref().clone();
-                let task_flags = TaskFlags {
-                  cwd: None,
-                  task: Some(run_flags.script.clone()),
-                  is_run: true,
+                let factory = CliFactory::from_flags(flags);
+                let cli_options = factory.cli_options()?;
+                dbg!(&run_flags.script);
+                let Ok(tasks_config) = dbg!(tools::task::get_tasks_config(cli_options)) else {
+                  return Err(script_err);
                 };
-                new_flags.subcommand = DenoSubcommand::Task(task_flags.clone());
-                let result = tools::task::execute_script(Arc::new(new_flags), task_flags.clone()).await;
-                match result {
-                  Ok(v) => Ok(v),
-                  Err(_) => {
-                    // Return script error for backwards compatibility.
-                    Err(script_err)
-                  }
+                let tasks = tools::task::list_available_tasks(&cli_options.start_dir, &tasks_config);
+                if tasks.contains_key(&run_flags.script) {
+                  Err(AnyError::msg(format!("{script_err}\n\nA task with the same name was found. You can run with it with 'deno task {}'", run_flags.script)))
+                } else {
+                  Err(script_err)
                 }
               }
             } else {

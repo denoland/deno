@@ -8,6 +8,14 @@ use std::path::PathBuf;
 use std::rc::Rc;
 use std::sync::Arc;
 
+use crate::args::CliOptions;
+use crate::args::Flags;
+use crate::args::TaskFlags;
+use crate::colors;
+use crate::factory::CliFactory;
+use crate::npm::CliNpmResolver;
+use crate::task_runner;
+use crate::util::fs::canonicalize_path;
 use deno_config::deno_json::Task;
 use deno_config::workspace::TaskOrScript;
 use deno_config::workspace::WorkspaceDirectory;
@@ -18,15 +26,7 @@ use deno_core::anyhow::Context;
 use deno_core::error::AnyError;
 use deno_core::normalize_path;
 use deno_task_shell::ShellCommand;
-
-use crate::args::CliOptions;
-use crate::args::Flags;
-use crate::args::TaskFlags;
-use crate::colors;
-use crate::factory::CliFactory;
-use crate::npm::CliNpmResolver;
-use crate::task_runner;
-use crate::util::fs::canonicalize_path;
+use indexmap::IndexMap;
 
 pub async fn execute_script(
   flags: Arc<Flags>,
@@ -34,38 +34,7 @@ pub async fn execute_script(
 ) -> Result<i32, AnyError> {
   let factory = CliFactory::from_flags(flags);
   let cli_options = factory.cli_options()?;
-  let start_dir = &cli_options.start_dir;
-  if !start_dir.has_deno_or_pkg_json() {
-    if task_flags.is_run {
-      bail!(
-        r#"deno run couldn't find deno.json(c).
-If you meant to run a script, specify it, e.g., `deno run ./script.ts`.
-To run a task, ensure the config file exists.
-Examples:
-- Script: `deno run ./script.ts`
-- Task: `deno run dev`
-See https://docs.deno.com/go/config"#
-      )
-    } else {
-      bail!("deno task couldn't find deno.json(c). See https://docs.deno.com/go/config")
-    }
-  }
-  let force_use_pkg_json =
-    std::env::var_os(crate::task_runner::USE_PKG_JSON_HIDDEN_ENV_VAR_NAME)
-      .map(|v| {
-        // always remove so sub processes don't inherit this env var
-        std::env::remove_var(
-          crate::task_runner::USE_PKG_JSON_HIDDEN_ENV_VAR_NAME,
-        );
-        v == "1"
-      })
-      .unwrap_or(false);
-  let tasks_config = start_dir.to_tasks_config()?;
-  let tasks_config = if force_use_pkg_json {
-    tasks_config.with_only_pkg_json()
-  } else {
-    tasks_config
-  };
+  let tasks_config = get_tasks_config(cli_options)?;
 
   let task_name = match &task_flags.task {
     Some(task) => task,
@@ -168,6 +137,31 @@ See https://docs.deno.com/go/config"#
   }
 }
 
+pub fn get_tasks_config(
+  cli_options: &Arc<CliOptions>,
+) -> Result<WorkspaceTasksConfig, AnyError> {
+  let start_dir = &cli_options.start_dir;
+  if !start_dir.has_deno_or_pkg_json() {
+    bail!("deno task couldn't find deno.json(c). See https://docs.deno.com/go/config")
+  }
+  let force_use_pkg_json =
+    std::env::var_os(crate::task_runner::USE_PKG_JSON_HIDDEN_ENV_VAR_NAME)
+      .map(|v| {
+        // always remove so sub processes don't inherit this env var
+        std::env::remove_var(
+          crate::task_runner::USE_PKG_JSON_HIDDEN_ENV_VAR_NAME,
+        );
+        v == "1"
+      })
+      .unwrap_or(false);
+  let tasks_config = start_dir.to_tasks_config()?;
+  if force_use_pkg_json {
+    Ok(tasks_config.with_only_pkg_json())
+  } else {
+    Ok(tasks_config)
+  }
+}
+
 struct RunTaskOptions<'a> {
   task_name: &'a str,
   script: &'a str,
@@ -224,7 +218,6 @@ fn print_available_tasks(
   tasks_config: &WorkspaceTasksConfig,
 ) -> Result<(), std::io::Error> {
   writeln!(writer, "{}", colors::green("Available tasks:"))?;
-  let is_cwd_root_dir = tasks_config.root.is_none();
 
   if tasks_config.is_empty() {
     writeln!(
@@ -233,6 +226,68 @@ fn print_available_tasks(
       colors::red("No tasks found in configuration file")
     )?;
   } else {
+    for (
+      key,
+      TaskItem {
+        is_root,
+        is_deno,
+        task,
+      },
+    ) in list_available_tasks(workspace_dir, tasks_config)
+    {
+      writeln!(
+        writer,
+        "- {}{}",
+        colors::cyan(key),
+        if is_root {
+          if is_deno {
+            format!(" {}", colors::italic_gray("(workspace)"))
+          } else {
+            format!(" {}", colors::italic_gray("(workspace package.json)"))
+          }
+        } else if is_deno {
+          "".to_string()
+        } else {
+          format!(" {}", colors::italic_gray("(package.json)"))
+        }
+      )?;
+      let definition = match task.as_ref() {
+        Task::Definition(definition) => definition,
+        Task::Commented { definition, .. } => definition,
+      };
+      if let Task::Commented { comments, .. } = task.as_ref() {
+        let slash_slash = colors::italic_gray("//");
+        for comment in comments {
+          writeln!(
+            writer,
+            "    {slash_slash} {}",
+            colors::italic_gray(comment)
+          )?;
+        }
+      }
+      writeln!(writer, "    {definition}")?;
+    }
+  }
+
+  Ok(())
+}
+
+pub struct TaskItem<'a> {
+  is_root: bool,
+  is_deno: bool,
+  task: Cow<'a, Task>,
+}
+
+pub fn list_available_tasks<'a>(
+  workspace_dir: &'a Arc<WorkspaceDirectory>,
+  tasks_config: &'a WorkspaceTasksConfig,
+) -> IndexMap<&'a String, TaskItem<'a>> {
+  let is_cwd_root_dir = tasks_config.root.is_none();
+
+  if tasks_config.is_empty() {
+    IndexMap::new()
+  } else {
+    let mut out_tasks = IndexMap::with_capacity(tasks_config.tasks_count());
     let mut seen_task_names =
       HashSet::with_capacity(tasks_config.tasks_count());
     for maybe_config in [&tasks_config.member, &tasks_config.root] {
@@ -272,40 +327,18 @@ fn print_available_tasks(
         if !seen_task_names.insert(key) {
           continue; // already seen
         }
-        writeln!(
-          writer,
-          "- {}{}",
-          colors::cyan(key),
-          if is_root {
-            if is_deno {
-              format!(" {}", colors::italic_gray("(workspace)"))
-            } else {
-              format!(" {}", colors::italic_gray("(workspace package.json)"))
-            }
-          } else if is_deno {
-            "".to_string()
-          } else {
-            format!(" {}", colors::italic_gray("(package.json)"))
-          }
-        )?;
-        let definition = match task.as_ref() {
-          Task::Definition(definition) => definition,
-          Task::Commented { definition, .. } => definition,
-        };
-        if let Task::Commented { comments, .. } = task.as_ref() {
-          let slash_slash = colors::italic_gray("//");
-          for comment in comments {
-            writeln!(
-              writer,
-              "    {slash_slash} {}",
-              colors::italic_gray(comment)
-            )?;
-          }
-        }
-        writeln!(writer, "    {definition}")?;
+
+        out_tasks.insert(
+          key,
+          TaskItem {
+            is_root,
+            is_deno,
+            task,
+          },
+        );
       }
     }
-  }
 
-  Ok(())
+    out_tasks
+  }
 }
