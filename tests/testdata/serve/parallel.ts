@@ -1,7 +1,7 @@
-console.log("starting serve");
+console.error("starting serve");
 export default {
   fetch(_req: Request) {
-    console.log("serving request");
+    console.error("serving request");
     return new Response("deno serve parallel");
   },
 };

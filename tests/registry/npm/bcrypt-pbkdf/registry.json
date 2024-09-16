@@ -1,1 +1,53 @@
-{"_id":"bcrypt-pbkdf","_rev":"36-1813af753f7bd459411f7b54d76c5f74","name":"bcrypt-pbkdf","description":"Port of the OpenBSD bcrypt_pbkdf function to pure JS","dist-tags":{"latest":"1.0.2"},"versions":{"1.0.0":{"name":"bcrypt-pbkdf","version":"1.0.0","description":"Port of the OpenBSD bcrypt_pbkdf function to pure JS","main":"index.js","dependencies":{"tweetnacl":"^0.14.3"},"devDependencies":{},"license":"BSD-4-Clause","gitHead":"e88be37d3cd25395b4aa496ac468b33671368be6","_id":"bcrypt-pbkdf@1.0.0","scripts":{},"_shasum":"3ca76b85241c7170bf7d9703e7b9aa74630040d4","_from":".","_npmVersion":"3.10.3","_nodeVersion":"0.12.15","_npmUser":{"name":"arekinath","email":"alex@cooperi.net"},"dist":{"shasum":"3ca76b85241c7170bf7d9703e7b9aa74630040d4","tarball":"http://localhost:4260/bcrypt-pbkdf/bcrypt-pbkdf-1.0.0.tgz","integrity":"sha512-1d7nPZyCV4TvkiRd3dZEqDrcj88tAe3ZxwkKeAJJ9eEoDIHyVPxGbmV1HMFVGa2XH4JHRrwUja36rLzR5BA60g==","signatures":[{"keyid":"SHA256:jl3bwswu80PjjokCgh0o2w5c2U4LhQAE57gj9cz1kzA","sig":"MEUCIBsBuTlX3JsQac5rE1mTTrcXA9SjHj3veRkF5h3gQJQDAiEAxtyynYs2Ig6eMQybwfYM8xiaT/T6Qrua7OJBdYaAv/o="}]},"maintainers":[{"name":"arekinath","email":"alex@cooperi.net"}],"_npmOperationalInternal":{"host":"packages-16-east.internal.npmjs.com","tmp":"tmp/bcrypt-pbkdf-1.0.0.tgz_1471381825814_0.06877309852279723"},"directories":{}},"1.0.1":{"name":"bcrypt-pbkdf","version":"1.0.1","description":"Port of the OpenBSD bcrypt_pbkdf function to pure JS","main":"index.js","dependencies":{"tweetnacl":"^0.14.3"},"devDependencies":{},"license":"BSD-3-Clause","gitHead":"fa2ab3ae9efa15367264151398635a915c7b411d","_id":"bcrypt-pbkdf@1.0.1","scripts":{},"_shasum":"63bc5dcb61331b92bc05fd528953c33462a06f8d","_from":".","_npmVersion":"2.14.9","_nodeVersion":"0.12.9","_npmUser":{"name":"arekinath","email":"alex@cooperi.net"},"dist":{"shasum":"63bc5dcb61331b92bc05fd528953c33462a06f8d","tarball":"http://localhost:4260/bcrypt-pbkdf/bcrypt-pbkdf-1.0.1.tgz","integrity":"sha512-vY4sOrSlpwNZXsinfJ0HpbSkFft4nhSVLeUrQ4j2ydGmBOiVY83aMJStJATBy0C3+XdaYa990kIA1qkC2mUq6g==","signatures":[{"keyid":"SHA256:jl3bwswu80PjjokCgh0o2w5c2U4LhQAE57gj9cz1kzA","sig":"MEQCIBZuaBsom/6JLjGKhclNtePzqZsHzR0C80PlV9mSWGjcAiA3p8h8FYgvOslN30CTH1iAqVrEmDMcDtPORpnPxiAbNA=="}]},"maintainers":[{"name":"arekinath","email":"alex@cooperi.net"},{"name":"dap","email":"dap@cs.brown.edu"},{"name":"jclulow","email":"josh@sysmgr.org"},{"name":"trentm","email":"trentm@gmail.com"}],"_npmOperationalInternal":{"host":"packages-18-east.internal.npmjs.com","tmp":"tmp/bcrypt-pbkdf-1.0.1.tgz_1486007687899_0.974529881728813"},"directories":{}},"1.0.2":{"name":"bcrypt-pbkdf","version":"1.0.2","description":"Port of the OpenBSD bcrypt_pbkdf function to pure JS","repository":{"type":"git","url":"git://github.com/joyent/node-bcrypt-pbkdf.git"},"main":"index.js","dependencies":{"tweetnacl":"^0.14.3"},"devDependencies":{},"license":"BSD-3-Clause","gitHead":"15fa7399a1090ba70d855764f7ace23003bf45f3","bugs":{"url":"https://github.com/joyent/node-bcrypt-pbkdf/issues"},"homepage":"https://github.com/joyent/node-bcrypt-pbkdf#readme","_id":"bcrypt-pbkdf@1.0.2","scripts":{},"_shasum":"a4301d389b6a43f9b67ff3ca11a3f6637e360e9e","_from":".","_npmVersion":"2.15.11","_nodeVersion":"0.12.18","_npmUser":{"name":"arekinath","email":"alex@cooperi.net"},"dist":{"shasum":"a4301d389b6a43f9b67ff3ca11a3f6637e360e9e","tarball":"http://localhost:4260/bcrypt-pbkdf/bcrypt-pbkdf-1.0.2.tgz","fileCount":5,"unpackedSize":28994,"integrity":"sha512-qeFIXtP4MSoi6NLqO12WfqARWWuCKi2Rn/9hJLEmtB5yTNr9DqFWkJRCf2qShWzPeAMRnOgCrq0sg/KLv5ES9w==","signatures":[{"keyid":"SHA256:jl3bwswu80PjjokCgh0o2w5c2U4LhQAE57gj9cz1kzA","sig":"MEYCIQChYywQjt5fZLC9Rra6lu+zL8cvuTL5dMd2eOEhxappzwIhALDhzEgD/8ch3dt4FJFJIkUGloGoubSOB8uag2TfDxIC"}]},"maintainers":[{"name":"arekinath","email":"alex@cooperi.net"},{"name":"dap","email":"dap@cs.brown.edu"},{"name":"jclulow","email":"josh@sysmgr.org"},{"name":"trentm","email":"trentm@gmail.com"}],"directories":{},"_npmOperationalInternal":{"host":"s3://npm-registry-packages","tmp":"tmp/bcrypt-pbkdf_1.0.2_1530232438519_0.6464853720318084"},"_hasShrinkwrap":false}},"readme":"Port of the OpenBSD `bcrypt_pbkdf` function to pure Javascript. `npm`-ified\nversion of [Devi Mandiri's port](https://github.com/devi/tmp/blob/master/js/bcrypt_pbkdf.js),\nwith some minor performance improvements. The code is copied verbatim (and\nun-styled) from Devi's work.\n\nThis product includes software developed by Niels Provos.\n\n## API\n\n### `bcrypt_pbkdf.pbkdf(pass, passlen, salt, saltlen, key, keylen, rounds)`\n\nDerive a cryptographic key of arbitrary length from a given password and salt,\nusing the OpenBSD `bcrypt_pbkdf` function. This is a combination of Blowfish and\nSHA-512.\n\nSee [this article](http://www.tedunangst.com/flak/post/bcrypt-pbkdf) for\nfurther information.\n\nParameters:\n\n * `pass`, a Uint8Array of length `passlen`\n * `passlen`, an integer Number\n * `salt`, a Uint8Array of length `saltlen`\n * `saltlen`, an integer Number\n * `key`, a Uint8Array of length `keylen`, will be filled with output\n * `keylen`, an integer Number\n * `rounds`, an integer Number, number of rounds of the PBKDF to run\n\n### `bcrypt_pbkdf.hash(sha2pass, sha2salt, out)`\n\nCalculate a Blowfish hash, given SHA2-512 output of a password and salt. Used as\npart of the inner round function in the PBKDF.\n\nParameters:\n\n * `sha2pass`, a Uint8Array of length 64\n * `sha2salt`, a Uint8Array of length 64\n * `out`, a Uint8Array of length 32, will be filled with output\n\n## License\n\nThis source form is a 1:1 port from the OpenBSD `blowfish.c` and `bcrypt_pbkdf.c`.\nAs a result, it retains the original copyright and license. The two files are\nunder slightly different (but compatible) licenses, and are here combined in\none file. For each of the full license texts see `LICENSE`.\n","maintainers":[{"email":"bahamat@digitalelf.net","name":"bahamat"},{"email":"todd.whiteman@joyent.com","name":"todd.whiteman"},{"email":"kusorbox@gmail.com","name":"kusor"},{"email":"michael.hicks@joyent.com","name":"michael.hicks"},{"email":"trentm@gmail.com","name":"trentm"},{"email":"dap@cs.brown.edu","name":"dap"},{"email":"josh@sysmgr.org","name":"jclulow"},{"email":"alex@cooperi.net","name":"arekinath"}],"time":{"modified":"2022-06-13T04:26:47.421Z","created":"2016-08-16T21:10:29.470Z","1.0.0":"2016-08-16T21:10:29.470Z","1.0.1":"2017-02-02T03:54:49.593Z","1.0.2":"2018-06-29T00:33:59.042Z"},"license":"BSD-3-Clause","readmeFilename":"README.md","homepage":"https://github.com/joyent/node-bcrypt-pbkdf#readme","repository":{"type":"git","url":"git://github.com/joyent/node-bcrypt-pbkdf.git"},"bugs":{"url":"https://github.com/joyent/node-bcrypt-pbkdf/issues"}}
+{
+  "name": "bcrypt-pbkdf",
+  "description": "Port of the OpenBSD bcrypt_pbkdf function to pure JS",
+  "dist-tags": {
+    "latest": "1.0.2"
+  },
+  "versions": {
+    "1.0.2": {
+      "name": "bcrypt-pbkdf",
+      "version": "1.0.2",
+      "description": "Port of the OpenBSD bcrypt_pbkdf function to pure JS",
+      "repository": {
+        "type": "git",
+        "url": "git://github.com/joyent/node-bcrypt-pbkdf.git"
+      },
+      "main": "index.js",
+      "dependencies": {
+        "tweetnacl": "^0.14.3"
+      },
+      "devDependencies": {},
+      "license": "BSD-3-Clause",
+      "gitHead": "15fa7399a1090ba70d855764f7ace23003bf45f3",
+      "bugs": {
+        "url": "https://github.com/joyent/node-bcrypt-pbkdf/issues"
+      },
+      "_id": "bcrypt-pbkdf@1.0.2",
+      "scripts": {},
+      "_shasum": "a4301d389b6a43f9b67ff3ca11a3f6637e360e9e",
+      "_from": ".",
+      "_npmVersion": "2.15.11",
+      "_nodeVersion": "0.12.18",
+      "dist": {
+        "shasum": "a4301d389b6a43f9b67ff3ca11a3f6637e360e9e",
+        "tarball": "http://localhost:4260/bcrypt-pbkdf/bcrypt-pbkdf-1.0.2.tgz",
+        "fileCount": 5,
+        "unpackedSize": 28994,
+        "integrity": "sha512-qeFIXtP4MSoi6NLqO12WfqARWWuCKi2Rn/9hJLEmtB5yTNr9DqFWkJRCf2qShWzPeAMRnOgCrq0sg/KLv5ES9w=="
+      },
+      "directories": {},
+      "_hasShrinkwrap": false
+    }
+  },
+  "license": "BSD-3-Clause",
+  "readmeFilename": "README.md",
+  "homepage": "https://github.com/joyent/node-bcrypt-pbkdf#readme",
+  "repository": {
+    "type": "git",
+    "url": "git://github.com/joyent/node-bcrypt-pbkdf.git"
+  },
+  "bugs": {
+    "url": "https://github.com/joyent/node-bcrypt-pbkdf/issues"
+  }
+}

@@ -499,7 +499,6 @@ async fn run_watch_no_dynamic() {
     .current_dir(t.path())
     .arg("run")
     .arg("--watch")
-    .arg("--unstable")
     .arg("-L")
     .arg("debug")
     .arg(&file_to_watch)
@@ -626,7 +625,6 @@ async fn run_watch_external_watch_files() {
     .arg(watch_arg)
     .arg("-L")
     .arg("debug")
-    .arg("--unstable")
     .arg(&file_to_watch)
     .env("NO_COLOR", "1")
     .piped_output()
@@ -671,7 +669,6 @@ async fn run_watch_load_unload_events() {
     .current_dir(t.path())
     .arg("run")
     .arg("--watch")
-    .arg("--unstable")
     .arg("-L")
     .arg("debug")
     .arg(&file_to_watch)
@@ -723,7 +720,6 @@ async fn run_watch_not_exit() {
     .current_dir(t.path())
     .arg("run")
     .arg("--watch")
-    .arg("--unstable")
     .arg("-L")
     .arg("debug")
     .arg(&file_to_watch)
@@ -873,7 +869,6 @@ async fn test_watch_basic() {
     .current_dir(t.path())
     .arg("test")
     .arg("--watch")
-    .arg("--unstable")
     .arg("--no-check")
     .arg(t.path())
     .env("NO_COLOR", "1")
@@ -1029,7 +1024,6 @@ async fn test_watch_doc() {
     .arg("test")
     .arg("--watch")
     .arg("--doc")
-    .arg("--unstable")
     .arg(t.path())
     .env("NO_COLOR", "1")
     .piped_output()
@@ -1365,16 +1359,16 @@ async fn test_watch_serve() {
     .piped_output()
     .spawn()
     .unwrap();
-  let (mut stdout_lines, mut stderr_lines) = child_lines(&mut child);
+  let (mut _stdout_lines, mut stderr_lines) = child_lines(&mut child);
 
-  wait_contains("Listening on", &mut stdout_lines).await;
+  wait_contains("Listening on", &mut stderr_lines).await;
   // Note that we start serving very quickly, so we specifically want to wait for this message
   wait_contains(r#"Watching paths: [""#, &mut stderr_lines).await;
 
   file_to_watch.write(file_content);
 
   wait_contains("serving", &mut stderr_lines).await;
-  wait_contains("Listening on", &mut stdout_lines).await;
+  wait_contains("Listening on", &mut stderr_lines).await;
 
   check_alive_then_kill(child);
 }
@@ -1407,7 +1401,6 @@ async fn run_watch_dynamic_imports() {
     .current_dir(t.path())
     .arg("run")
     .arg("--watch")
-    .arg("--unstable")
     .arg("--allow-read")
     .arg("-L")
     .arg("debug")

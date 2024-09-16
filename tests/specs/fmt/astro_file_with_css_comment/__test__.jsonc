@@ -1,0 +1,5 @@
+{
+  "tempDir": true,
+  "args": "fmt --unstable-component",
+  "output": "fmt.out"
+}
