@@ -198,7 +198,7 @@ async function ensureNoNewITests() {
     "bench_tests.rs": 0,
     "cache_tests.rs": 0,
     "cert_tests.rs": 0,
-    "check_tests.rs": 22,
+    "check_tests.rs": 21,
     "compile_tests.rs": 0,
     "coverage_tests.rs": 0,
     "eval_tests.rs": 0,
@@ -214,7 +214,7 @@ async function ensureNoNewITests() {
     "lint_tests.rs": 18,
     // Read the comment above. Please don't increase these numbers!
     "lsp_tests.rs": 0,
-    "node_compat_tests.rs": 4,
+    "node_compat_tests.rs": 0,
     "node_unit_tests.rs": 2,
     "npm_tests.rs": 92,
     "pm_tests.rs": 0,
@@ -227,7 +227,7 @@ async function ensureNoNewITests() {
     "upgrade_tests.rs": 0,
     "vendor_tests.rs": 1,
     "watcher_tests.rs": 0,
-    "worker_tests.rs": 18,
+    "worker_tests.rs": 0,
   };
   const integrationDir = join(ROOT_PATH, "tests", "integration");
   for await (const entry of Deno.readDir(integrationDir)) {

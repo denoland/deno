@@ -3312,11 +3312,6 @@ itest!(import_attributes_type_check {
   exit_code: 1,
 });
 
-itest!(delete_window {
-  args: "run run/delete_window.js",
-  output_str: Some("true\n"),
-});
-
 itest!(colors_without_global_this {
   args: "run run/colors_without_globalThis.js",
   output_str: Some("true\n"),

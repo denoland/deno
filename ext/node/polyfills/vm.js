@@ -27,7 +27,7 @@ import { ERR_INVALID_ARG_TYPE } from "ext:deno_node/internal/errors.ts";
 
 import { primordials } from "ext:core/mod.js";
 
-const { Symbol, ArrayPrototypeForEach } = primordials;
+const { Symbol, ArrayPrototypeForEach, ObjectFreeze } = primordials;
 
 const kParsingContext = Symbol("script parsing context");
 
@@ -349,8 +349,22 @@ export function measureMemory(_options) {
   notImplemented("measureMemory");
 }
 
+const USE_MAIN_CONTEXT_DEFAULT_LOADER = Symbol(
+  "USE_MAIN_CONTEXT_DEFAULT_LOADER",
+);
+const DONT_CONTEXTIFY = Symbol("DONT_CONTEXTIFY");
+
+export const constants = {
+  __proto__: null,
+  USE_MAIN_CONTEXT_DEFAULT_LOADER,
+  DONT_CONTEXTIFY,
+};
+
+ObjectFreeze(constants);
+
 export default {
   Script,
+  constants,
   createContext,
   createScript,
   runInContext,

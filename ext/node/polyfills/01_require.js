@@ -151,6 +151,7 @@ import test from "node:test";
 import timers from "node:timers";
 import timersPromises from "node:timers/promises";
 import tls from "node:tls";
+import traceEvents from "node:trace_events";
 import tty from "node:tty";
 import url from "node:url";
 import utilTypes from "node:util/types";
@@ -260,6 +261,7 @@ function setupBuiltinModules() {
     timers,
     "timers/promises": timersPromises,
     tls,
+    traceEvents,
     tty,
     url,
     util,

@@ -1,12 +1,11 @@
 import test from "node:test";
-
 test("should not complain about resource and op sanitizers", async (t) => {
   // resource
-  const _file1 = Deno.open("welcome.ts");
+  const _file1 = Deno.open("test_no_sanitizers/welcome.ts");
 
   await t.test("nested test", () => {
     // resource
-    const _file2 = Deno.open("cat.ts");
+    const _file2 = Deno.open("test_no_sanitizers/cat.ts");
 
     // op
     crypto.subtle.digest(
