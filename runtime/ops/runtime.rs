@@ -20,12 +20,6 @@ deno_core::extension!(
 fn op_main_module(state: &mut OpState) -> Result<String, AnyError> {
   let main_url = state.borrow::<ModuleSpecifier>();
   let main_path = main_url.to_string();
-  if main_url.scheme() == "file" {
-    let main_path = main_url.to_file_path().unwrap();
-    state
-      .borrow_mut::<PermissionsContainer>()
-      .check_read_blind(&main_path, "main_module", "Deno.mainModule")?;
-  }
   Ok(main_path)
 }
 
