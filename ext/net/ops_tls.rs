@@ -52,7 +52,6 @@ use std::io::ErrorKind;
 use std::io::Read;
 use std::net::SocketAddr;
 use std::num::NonZeroUsize;
-use std::path::Path;
 use std::rc::Rc;
 use std::sync::Arc;
 use tokio::io::AsyncReadExt;
@@ -356,15 +355,17 @@ where
     .try_borrow::<UnsafelyIgnoreCertificateErrors>()
     .and_then(|it| it.0.clone());
 
-  {
+  let cert_file = {
     let mut s = state.borrow_mut();
     let permissions = s.borrow_mut::<NP>();
     permissions
       .check_net(&(&addr.hostname, Some(addr.port)), "Deno.connectTls()")?;
     if let Some(path) = cert_file {
-      permissions.check_read(Path::new(path), "Deno.connectTls()")?;
+      Some(permissions.check_read(path, "Deno.connectTls()")?)
+    } else {
+      None
     }
-  }
+  };
 
   let mut ca_certs = args
     .ca_certs

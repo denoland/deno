@@ -32,6 +32,8 @@ use deno_runtime::deno_permissions::Permissions;
 use deno_runtime::deno_permissions::PermissionsContainer;
 use deno_runtime::deno_tls::rustls::RootCertStore;
 use deno_runtime::deno_tls::RootCertStoreProvider;
+use deno_runtime::deno_web::BlobStore;
+use deno_runtime::permissions::RuntimePermissionDescriptorParser;
 use deno_runtime::WorkerExecutionMode;
 use deno_runtime::WorkerLogLevel;
 use deno_semver::npm::NpmPackageReqReference;
@@ -449,7 +451,6 @@ pub async fn run(
   let current_exe_path = std::env::current_exe().unwrap();
   let current_exe_name =
     current_exe_path.file_name().unwrap().to_string_lossy();
-  let maybe_cwd = std::env::current_dir().ok();
   let deno_dir_provider = Arc::new(DenoDirProvider::new(None));
   let root_cert_store_provider = Arc::new(StandaloneRootCertStoreProvider {
     ca_stores: metadata.ca_stores,
@@ -660,8 +661,7 @@ pub async fn run(
   };
 
   let permissions = {
-    let mut permissions =
-      metadata.permissions.to_options(maybe_cwd.as_deref())?;
+    let mut permissions = metadata.permissions.to_options();
     // if running with an npm vfs, grant read access to it
     if let Some(vfs_root) = maybe_vfs_root {
       match &mut permissions.allow_read {
@@ -669,15 +669,20 @@ pub async fn run(
           // do nothing, already granted
         }
         Some(vec) => {
-          vec.push(vfs_root);
+          vec.push(vfs_root.to_string_lossy().to_string());
         }
         None => {
-          permissions.allow_read = Some(vec![vfs_root]);
+          permissions.allow_read =
+            Some(vec![vfs_root.to_string_lossy().to_string()]);
         }
       }
     }
 
-    PermissionsContainer::new(Permissions::from_options(&permissions)?)
+    let desc_parser =
+      Arc::new(RuntimePermissionDescriptorParser::new(fs.clone()));
+    let permissions =
+      Permissions::from_options(desc_parser.as_ref(), &permissions)?;
+    PermissionsContainer::new(desc_parser, permissions)
   };
   let feature_checker = Arc::new({
     let mut checker = FeatureChecker::default();
@@ -689,21 +694,24 @@ pub async fn run(
     }
     checker
   });
+  let permission_desc_parser =
+    Arc::new(RuntimePermissionDescriptorParser::new(fs.clone()));
   let worker_factory = CliMainWorkerFactory::new(
-    StorageKeyResolver::empty(),
-    crate::args::DenoSubcommand::Run(Default::default()),
-    npm_resolver,
-    node_resolver,
-    Default::default(),
-    Box::new(module_loader_factory),
-    root_cert_store_provider,
+    Arc::new(BlobStore::default()),
+    // Code cache is not supported for standalone binary yet.
+    None,
+    feature_checker,
     fs,
     None,
     None,
     None,
-    feature_checker,
-    // Code cache is not supported for standalone binary yet.
-    None,
+    Box::new(module_loader_factory),
+    node_resolver,
+    npm_resolver,
+    permission_desc_parser,
+    root_cert_store_provider,
+    StorageKeyResolver::empty(),
+    crate::args::DenoSubcommand::Run(Default::default()),
     CliMainWorkerOptions {
       argv: metadata.argv,
       log_level: WorkerLogLevel::Info,

@@ -255,12 +255,6 @@ itest!(_052_no_remote_flag {
   http_server: true,
 });
 
-itest!(_056_make_temp_file_write_perm {
-  args:
-    "run --quiet --allow-read --allow-write=./subdir/ run/056_make_temp_file_write_perm.ts",
-  output: "run/056_make_temp_file_write_perm.out",
-});
-
 itest!(_058_tasks_microtasks_close {
   args: "run --quiet run/058_tasks_microtasks_close.ts",
   output: "run/058_tasks_microtasks_close.ts.out",

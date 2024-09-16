@@ -27,7 +27,6 @@ use deno_npm::npm_rc::NpmRc;
 use deno_npm::npm_rc::ResolvedNpmRc;
 use deno_npm::resolution::ValidSerializedNpmResolutionSnapshot;
 use deno_npm::NpmSystemInfo;
-use deno_runtime::deno_permissions::PermissionsContainer;
 use deno_semver::npm::NpmPackageReqReference;
 use import_map::resolve_import_map_value_from_specifier;
 
@@ -1082,7 +1081,7 @@ impl CliOptions {
             let specifier = specifier.clone();
             async move {
               let file = file_fetcher
-                .fetch(&specifier, &PermissionsContainer::allow_all())
+                .fetch_bypass_permissions(&specifier)
                 .await?
                 .into_text_decoded()?;
               Ok(file.source.to_string())
@@ -1501,8 +1500,8 @@ impl CliOptions {
     &self.flags.permissions
   }
 
-  pub fn permissions_options(&self) -> Result<PermissionsOptions, AnyError> {
-    self.flags.permissions.to_options(Some(&self.initial_cwd))
+  pub fn permissions_options(&self) -> PermissionsOptions {
+    self.flags.permissions.to_options()
   }
 
   pub fn reload_flag(&self) -> bool {

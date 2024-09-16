@@ -49,6 +49,7 @@ use crate::code_cache::CodeCache;
 use crate::code_cache::CodeCacheType;
 use crate::inspector_server::InspectorServer;
 use crate::ops;
+use crate::permissions::RuntimePermissionDescriptorParser;
 use crate::shared::maybe_transpile_source;
 use crate::shared::runtime;
 use crate::BootstrapOptions;
@@ -157,6 +158,8 @@ pub struct WorkerOptions {
   /// executed tries to load modules.
   pub module_loader: Rc<dyn ModuleLoader>,
   pub node_services: Option<NodeExtInitServices>,
+  pub permission_desc_parser:
+    Arc<dyn deno_permissions::PermissionDescriptorParser>,
   // Callbacks invoked when creating new instance of WebWorker
   pub create_web_worker_cb: Arc<ops::worker_host::CreateWebWorkerCb>,
   pub format_js_error_fn: Option<Arc<FormatJsErrorFn>>,
@@ -201,13 +204,16 @@ pub struct WorkerOptions {
   pub v8_code_cache: Option<Arc<dyn CodeCache>>,
 }
 
+// todo(dsherret): this is error prone to use. We should separate
+// out the WorkerOptions from the services.
 impl Default for WorkerOptions {
   fn default() -> Self {
+    let real_fs = Arc::new(deno_fs::RealFs);
     Self {
       create_web_worker_cb: Arc::new(|_| {
         unimplemented!("web workers are not supported")
       }),
-      fs: Arc::new(deno_fs::RealFs),
+      fs: real_fs.clone(),
       module_loader: Rc::new(FsModuleLoader),
       skip_op_registration: false,
       seed: None,
@@ -232,6 +238,9 @@ impl Default for WorkerOptions {
       bootstrap: Default::default(),
       stdio: Default::default(),
       feature_checker: Default::default(),
+      permission_desc_parser: Arc::new(RuntimePermissionDescriptorParser::new(
+        real_fs,
+      )),
       v8_code_cache: Default::default(),
     }
   }
@@ -425,7 +434,9 @@ impl MainWorker {
       ),
       ops::fs_events::deno_fs_events::init_ops_and_esm(),
       ops::os::deno_os::init_ops_and_esm(exit_code.clone()),
-      ops::permissions::deno_permissions::init_ops_and_esm(),
+      ops::permissions::deno_permissions::init_ops_and_esm(
+        options.permission_desc_parser,
+      ),
       ops::process::deno_process::init_ops_and_esm(),
       ops::signal::deno_signal::init_ops_and_esm(),
       ops::tty::deno_tty::init_ops_and_esm(),
