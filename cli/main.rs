@@ -207,8 +207,7 @@ async fn run_subcommand(flags: Arc<Flags>) -> Result<i32, AnyError> {
               } else {
                 let factory = CliFactory::from_flags(flags);
                 let cli_options = factory.cli_options()?;
-                dbg!(&run_flags.script);
-                let Ok(tasks_config) = dbg!(tools::task::get_tasks_config(cli_options)) else {
+                let Ok(tasks_config) = tools::task::get_tasks_config(cli_options) else {
                   return Err(script_err);
                 };
                 let tasks = tools::task::list_available_tasks(&cli_options.start_dir, &tasks_config);

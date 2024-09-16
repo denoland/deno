@@ -121,9 +121,6 @@ pub async fn execute_script(
       }
     },
     None => {
-      if task_flags.is_run {
-        return Err(anyhow!("Task not found: {}", task_name));
-      }
       log::error!("Task not found: {}", task_name);
       if log::log_enabled!(log::Level::Error) {
         print_available_tasks(
