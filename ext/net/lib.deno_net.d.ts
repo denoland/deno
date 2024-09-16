@@ -371,9 +371,14 @@ declare namespace Deno {
   }
 
   /** Establishes a secure connection over TLS (transport layer security) using
-   * an optional cert file, hostname (default is "127.0.0.1") and port.  The
-   * cert file is optional and if not included Mozilla's root certificates will
-   * be used (see also https://github.com/ctz/webpki-roots for specifics)
+   * an optional list of CA certs, hostname (default is "127.0.0.1") and port.
+   *
+   * The CA cert list is optional and if not included Mozilla's root
+   * certificates will be used (see also https://github.com/ctz/webpki-roots for
+   * specifics).
+   *
+   * Mutual TLS (mTLS or client certificates) are supported by providing a
+   * `key` and `cert` in the options as PEM-encoded strings.
    *
    * ```ts
    * const caCert = await Deno.readTextFile("./certs/my_custom_root_CA.pem");
@@ -381,28 +386,10 @@ declare namespace Deno {
    * const conn2 = await Deno.connectTls({ caCerts: [caCert], hostname: "192.0.2.1", port: 80 });
    * const conn3 = await Deno.connectTls({ hostname: "[2001:db8::1]", port: 80 });
    * const conn4 = await Deno.connectTls({ caCerts: [caCert], hostname: "golang.org", port: 80});
-   * ```
    *
-   * Requires `allow-net` permission.
-   *
-   * @tags allow-net
-   * @category Network
-   */
-  export function connectTls(options: ConnectTlsOptions): Promise<TlsConn>;
-
-  /** Establishes a secure connection over TLS (transport layer security) using
-   * an optional cert file, client certificate, hostname (default is "127.0.0.1") and
-   * port.  The cert file is optional and if not included Mozilla's root certificates will
-   * be used (see also https://github.com/ctz/webpki-roots for specifics)
-   *
-   * ```ts
-   * const caCert = await Deno.readTextFile("./certs/my_custom_root_CA.pem");
    * const key = "----BEGIN PRIVATE KEY----...";
    * const cert = "----BEGIN CERTIFICATE----...";
-   * const conn1 = await Deno.connectTls({ port: 80, key, cert });
-   * const conn2 = await Deno.connectTls({ caCerts: [caCert], hostname: "192.0.2.1", port: 80, key, cert });
-   * const conn3 = await Deno.connectTls({ hostname: "[2001:db8::1]", port: 80, key, cert });
-   * const conn4 = await Deno.connectTls({ caCerts: [caCert], hostname: "golang.org", port: 80, key, cert });
+   * const conn5 = await Deno.connectTls({ port: 80, key, cert });
    * ```
    *
    * Requires `allow-net` permission.
@@ -411,7 +398,7 @@ declare namespace Deno {
    * @category Network
    */
   export function connectTls(
-    options: ConnectTlsOptions & TlsCertifiedKeyPem,
+    options: ConnectTlsOptions | (ConnectTlsOptions & TlsCertifiedKeyPem),
   ): Promise<TlsConn>;
 
   /** @category Network */

@@ -3,7 +3,6 @@
 use test_util as util;
 use util::assert_contains;
 use util::assert_not_contains;
-// use util::env_vars_for_npm_tests;
 use util::wildcard_match;
 use util::TestContext;
 use util::TestContextBuilder;
@@ -48,16 +47,28 @@ fn sigint_with_hanging_test() {
   );
 }
 
-// TODO(2.0): this should be rewritten to a spec test and first run `deno install`
-// itest!(package_json_basic {
-//   args: "test",
-//   output: "package_json/basic/lib.test.out",
-//   envs: env_vars_for_npm_tests(),
-//   http_server: true,
-//   cwd: Some("package_json/basic"),
-//   copy_temp_dir: Some("package_json/basic"),
-//   exit_code: 0,
-// });
+#[test]
+fn test_with_glob_config() {
+  let context = TestContextBuilder::new().cwd("test").build();
+
+  let cmd_output = context
+    .new_command()
+    .args("test --config deno.glob.json")
+    .run();
+
+  cmd_output.assert_exit_code(0);
+
+  let output = cmd_output.combined_output();
+  assert_contains!(output, "glob/nested/fizz/fizz.ts");
+  assert_contains!(output, "glob/pages/[id].ts");
+  assert_contains!(output, "glob/nested/fizz/bar.ts");
+  assert_contains!(output, "glob/nested/foo/foo.ts");
+  assert_contains!(output, "glob/data/test1.js");
+  assert_contains!(output, "glob/nested/foo/bar.ts");
+  assert_contains!(output, "glob/nested/foo/fizz.ts");
+  assert_contains!(output, "glob/nested/fizz/foo.ts");
+  assert_contains!(output, "glob/data/test1.ts");
+}
 
 #[test]
 fn test_with_glob_config_and_flags() {
