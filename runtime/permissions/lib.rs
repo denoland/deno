@@ -564,7 +564,7 @@ impl<TQuery: QueryDescriptor> UnaryPermission<TQuery> {
       Some(None) => {
         // the user was prompted for this descriptor in order to not
         // expose anything about the system to the program, but the
-        // descriptor wasn't valid so no permissions was raised
+        // descriptor wasn't valid so no permission was raised
         return false;
       }
       None => None,
@@ -1109,7 +1109,8 @@ impl QueryDescriptor for RunQueryDescriptor {
         resolved,
         requested,
       } => {
-        if requested.contains('/') || cfg!(windows) && requested.contains("\\")
+        if requested.contains('/')
+          || (cfg!(windows) && requested.contains("\\"))
         {
           DenyRunDescriptor::Path(resolved.clone())
         } else {
@@ -1811,11 +1812,11 @@ impl Permissions {
         }
       })
       .transpose()?;
-    // add the allow_run list to deno_write
+    // add the allow_run list to deny_write
     if let Some(allow_run_vec) = &allow_run {
       if !allow_run_vec.is_empty() {
-        let deno_write = deny_write.get_or_insert_with(Default::default);
-        deno_write.extend(
+        let deny_write = deny_write.get_or_insert_with(Default::default);
+        deny_write.extend(
           allow_run_vec
             .iter()
             .map(|item| WriteDescriptor(item.0.clone())),

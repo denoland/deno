@@ -80,7 +80,7 @@ impl deno_permissions::PermissionDescriptorParser
     text: &str,
   ) -> Result<EnvDescriptor, AnyError> {
     if text.is_empty() {
-      Err(AnyError::msg("Empty path not allowed"))
+      Err(AnyError::msg("Empty env not allowed"))
     } else {
       Ok(EnvDescriptor::new(text))
     }
