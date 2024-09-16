@@ -23,8 +23,6 @@ mod eval;
 mod flags;
 #[path = "fmt_tests.rs"]
 mod fmt;
-#[path = "info_tests.rs"]
-mod info;
 #[path = "init_tests.rs"]
 mod init;
 #[path = "inspector_tests.rs"]

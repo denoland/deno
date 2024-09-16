@@ -1,15 +1,15 @@
 {
   "roots": [
-    "file://[WILDCARD]/info/json_output/main.ts"
+    "file://[WILDCARD]/json_output/main.ts"
   ],
   "modules": [
     {
       "kind": "esm",
       "dependencies": [
         {
-          "specifier": "../../subdir/mod1.ts",
+          "specifier": "../mod1.ts",
           "code": {
-            "specifier": "file://[WILDCARD]/subdir/mod1.ts",
+            "specifier": "file://[WILDCARD]/mod1.ts",
             "span": {
               "start": {
                 "line": 0,
@@ -17,7 +17,7 @@
               },
               "end": {
                 "line": 0,
-                "character": 74
+                "character": 64
               }
             }
           }
@@ -34,7 +34,7 @@
         {
           "specifier": "./subdir2/mod2.ts",
           "code": {
-            "specifier": "file://[WILDCARD]/subdir/subdir2/mod2.ts",
+            "specifier": "file://[WILDCARD]/subdir2/mod2.ts",
             "span": {
               "start": {
                 "line": 0,
@@ -51,14 +51,14 @@
       "local": "[WILDCARD]mod1.ts",
       [WILDCARD]
       "mediaType": "TypeScript",
-      "specifier": "file://[WILDCARD]/subdir/mod1.ts"
+      "specifier": "file://[WILDCARD]/mod1.ts"
     },
     {
       "kind": "esm",
       "local": "[WILDCARD]print_hello.ts",
       [WILDCARD]
       "mediaType": "TypeScript",
-      "specifier": "file://[WILDCARD]/subdir/print_hello.ts"
+      "specifier": "file://[WILDCARD]/print_hello.ts"
     },
     {
       "kind": "esm",
@@ -66,7 +66,7 @@
         {
           "specifier": "../print_hello.ts",
           "code": {
-            "specifier": "file://[WILDCARD]/subdir/print_hello.ts",
+            "specifier": "file://[WILDCARD]/print_hello.ts",
             "span": {
               "start": {
                 "line": 0,
@@ -83,7 +83,7 @@
       "local": "[WILDCARD]mod2.ts",
       [WILDCARD]
       "mediaType": "TypeScript",
-      "specifier": "file://[WILDCARD]/subdir/subdir2/mod2.ts"
+      "specifier": "file://[WILDCARD]/subdir2/mod2.ts"
     }
   ],
   "redirects": {},
