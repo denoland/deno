@@ -398,4 +398,4 @@ opt-level = 3
 opt-level = 3
 
 [patch.crates-io]
-deno_core = { git = "https://github.com/denoland/deno_core", branch = "short_circuit_dyn_cached" }
+deno_core = { git = "https://github.com/denoland/deno_core", rev = "fe3b0ba" }
