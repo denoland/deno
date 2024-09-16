@@ -495,7 +495,7 @@ fn resolve_flags_and_init(
   };
 
   init_v8_flags(&default_v8_flags, &flags.v8_flags, get_v8_flags_from_env());
-  // TODO(bartlomieju): remove last argument in Deno 2.
+  // TODO(bartlomieju): remove last argument once Deploy no longer needs it
   deno_core::JsRuntime::init_platform(
     None, /* import assertions enabled */ false,
   );

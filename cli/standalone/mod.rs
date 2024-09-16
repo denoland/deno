@@ -745,7 +745,7 @@ pub async fn run(
 
   // Initialize v8 once from the main thread.
   v8_set_flags(construct_v8_flags(&[], &metadata.v8_flags, vec![]));
-  // TODO(bartlomieju): remove last argument in Deno 2.
+  // TODO(bartlomieju): remove last argument once Deploy no longer needs it
   deno_core::JsRuntime::init_platform(None, true);
 
   let mut worker = worker_factory
