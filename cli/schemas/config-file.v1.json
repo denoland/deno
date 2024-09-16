@@ -413,7 +413,7 @@
         {
           "description": "Enables or disables the use of a local node_modules folder for npm packages. Alternatively, use the `--node-modules-dir` flag or override the config via `--node-modules-dir=false`. Requires Deno 1.34 or later.",
           "type": "boolean",
-          "deprecated": true
+          "deprecated": false
         }
       ]
     },
