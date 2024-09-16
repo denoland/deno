@@ -1,6 +1,6 @@
 {
   "$id": "https://deno.land/x/deno/cli/schemas/config-file.v1.json",
-  "$schema": "http://json-schema.org/draft-07/schema",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
   "description": "A JSON representation of a Deno configuration file.",
   "required": [],
   "title": "Deno configuration file Schema",
