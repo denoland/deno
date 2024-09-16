@@ -1,0 +1,16 @@
+{
+  "steps": [
+    {
+      "if": "windows",
+      "args": "lint",
+      "output": "main_windows.out",
+      "exitCode": 1
+    },
+    {
+      "if": "unix",
+      "args": "lint",
+      "output": "main_unix.out",
+      "exitCode": 1
+    }
+  ]
+}

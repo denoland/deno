@@ -39,15 +39,18 @@ impl ServeClientBuilder {
 
     ServeClient::with_child(child)
   }
+
   fn map(
     self,
     f: impl FnOnce(util::TestCommandBuilder) -> util::TestCommandBuilder,
   ) -> Self {
     Self(f(self.0), self.1)
   }
+
   fn entry_point(self, file: impl AsRef<str>) -> Self {
     Self(self.0, Some(file.as_ref().into()))
   }
+
   fn worker_count(self, n: Option<u64>) -> Self {
     self.map(|t| {
       let t = t.arg("--parallel");
@@ -58,6 +61,7 @@ impl ServeClientBuilder {
       }
     })
   }
+
   fn new() -> Self {
     Self(
       util::deno_cmd()
@@ -77,6 +81,7 @@ impl ServeClient {
   fn builder() -> ServeClientBuilder {
     ServeClientBuilder::new()
   }
+
   fn with_child(child: DenoChild) -> Self {
     Self {
       child: RefCell::new(child),
@@ -131,7 +136,8 @@ impl ServeClient {
     let mut temp_buf = [0u8; 64];
     let mut child = self.child.borrow_mut();
     let stderr = child.stderr.as_mut().unwrap();
-    let port_regex = regex::bytes::Regex::new(r":(\d+)").unwrap();
+    let port_regex =
+      regex::bytes::Regex::new(r"Listening on https?:[^:]+:(\d+)/").unwrap();
 
     let start = std::time::Instant::now();
     // try to find the port number in the output
@@ -156,6 +162,9 @@ impl ServeClient {
       // I don't want to switch RefCell to Mutex just for this
       std::thread::sleep(Duration::from_millis(10));
     };
+
+    eprintln!("stderr: {}", String::from_utf8_lossy(&temp_buf));
+
     self
       .endpoint
       .replace(Some(format!("http://127.0.0.1:{port}")));
