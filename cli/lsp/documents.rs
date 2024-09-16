@@ -1524,12 +1524,16 @@ impl<'a> deno_graph::source::Loader for OpenDocumentsGraphLoader<'a> {
   fn cache_module_info(
     &self,
     specifier: &deno_ast::ModuleSpecifier,
+    media_type: MediaType,
     source: &Arc<[u8]>,
     module_info: &deno_graph::ModuleInfo,
   ) {
-    self
-      .inner_loader
-      .cache_module_info(specifier, source, module_info)
+    self.inner_loader.cache_module_info(
+      specifier,
+      media_type,
+      source,
+      module_info,
+    )
   }
 }
 

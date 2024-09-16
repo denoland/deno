@@ -461,22 +461,6 @@ impl<'a> GraphDisplayContext<'a> {
               local.to_string_lossy()
             )?;
           }
-          if let Some(emit) = &cache_info.emit {
-            writeln!(
-              writer,
-              "{} {}",
-              colors::bold("emit:"),
-              emit.to_string_lossy()
-            )?;
-          }
-          if let Some(map) = &cache_info.map {
-            writeln!(
-              writer,
-              "{} {}",
-              colors::bold("map:"),
-              map.to_string_lossy()
-            )?;
-          }
         }
         if let Some(module) = root.js() {
           writeln!(writer, "{} {}", colors::bold("type:"), module.media_type)?;

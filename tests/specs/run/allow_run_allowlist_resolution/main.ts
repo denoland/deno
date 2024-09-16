@@ -1,40 +1,37 @@
 // Testing the following:
 // | `deno run --allow-run=binary`         | `which path == "/usr/bin/binary"` at startup | `which path != "/usr/bin/binary"` at startup |
 // |---------------------------------------|----------------------------------------------|--------------------------------------------|
-// | **`Deno.Command("binary")`**          | ✅                                          | ✅                                         |
-// | **`Deno.Command("/usr/bin/binary")`** | ✅                                          | ❌                                         |
-
+// | **`Deno.Command("binary")`**          | :white_check_mark:                                          | :white_check_mark:                                         |
+// | **`Deno.Command("/usr/bin/binary")`** | :white_check_mark:                                          | :x:                                         |
 // | `deno run --allow-run=/usr/bin/binary | `which path == "/usr/bin/binary"` at runtime | `which path != "/usr/bin/binary"` at runtime |
 // |---------------------------------------|----------------------------------------------|--------------------------------------------|
-// | **`Deno.Command("binary")`**          | ✅                                          | ❌                                         |
-// | **`Deno.Command("/usr/bin/binary")`** | ✅                                          | ✅                                         |
+// | **`Deno.Command("binary")`**          | :white_check_mark:                                          | :x:                                         |
+// | **`Deno.Command("/usr/bin/binary")`** | :white_check_mark:                                          | :white_check_mark:                                         |
 
 const binaryName = Deno.build.os === "windows" ? "binary.exe" : "binary";
 const pathSep = Deno.build.os === "windows" ? "\\" : "/";
-const cwd = Deno.realPathSync(Deno.cwd());
+const cwd = Deno.cwd();
 const execPathParent = `${Deno.cwd()}${pathSep}sub`;
 const execPath = `${execPathParent}${pathSep}${binaryName}`;
+
 Deno.mkdirSync(execPathParent);
 Deno.copyFileSync(Deno.execPath(), execPath);
 
-const fileText = `
-console.error(await Deno.permissions.query({ name: "run", command: "binary" }));
-console.error(await Deno.permissions.query({ name: "run", command: "${
-  execPath.replaceAll("\\", "\\\\")
-}" }));
-Deno.env.set("PATH", "");
-console.error(await Deno.permissions.query({ name: "run", command: "binary" }));
-console.error(await Deno.permissions.query({ name: "run", command: "${
-  execPath.replaceAll("\\", "\\\\")
-}" }));
-`;
-const testUrl = `data:application/typescript;base64,${btoa(fileText)}`;
+const testUrl = `data:application/typescript;base64,${
+  btoa(`
+  console.error(await Deno.permissions.query({ name: "run", command: "binary" }));
+  console.error(await Deno.permissions.query({ name: "run", command: "${
+    execPath.replaceAll("\\", "\\\\")
+  }" }));
+  Deno.env.set("PATH", "");
+  console.error(await Deno.permissions.query({ name: "run", command: "binary" }));
+  console.error(await Deno.permissions.query({ name: "run", command: "${
+    execPath.replaceAll("\\", "\\\\")
+  }" }));
+`)
+}`;
 
-// for debugging
-console.error("Script:", fileText);
-console.error("---");
-
-const process1 = await new Deno.Command(Deno.execPath(), {
+await new Deno.Command(Deno.execPath(), {
   args: [
     "run",
     "--allow-env",

@@ -1,0 +1,5 @@
+{
+  "args": "info --quiet --json json_output/main.ts",
+  "output": "json_output/main.out",
+  "exitCode": 0
+}

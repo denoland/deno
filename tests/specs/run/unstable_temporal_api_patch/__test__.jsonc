@@ -1,0 +1,5 @@
+{
+  "args": "run --no-config --unstable-temporal --check main.ts",
+  "output": "main.out",
+  "exitCode": 0
+}

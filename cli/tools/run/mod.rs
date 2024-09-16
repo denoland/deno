@@ -5,8 +5,6 @@ use std::sync::Arc;
 
 use deno_config::deno_json::NodeModulesDirMode;
 use deno_core::error::AnyError;
-use deno_runtime::deno_permissions::Permissions;
-use deno_runtime::deno_permissions::PermissionsContainer;
 use deno_runtime::WorkerExecutionMode;
 
 use crate::args::EvalFlags;
@@ -62,9 +60,7 @@ pub async fn run_script(
 
   maybe_npm_install(&factory).await?;
 
-  let permissions = PermissionsContainer::new(Permissions::from_options(
-    &cli_options.permissions_options()?,
-  )?);
+  let permissions = factory.create_permissions_container()?;
   let worker_factory = factory.create_cli_main_worker_factory().await?;
   let mut worker = worker_factory
     .create_main_worker(mode, main_module, permissions)
@@ -83,9 +79,7 @@ pub async fn run_from_stdin(flags: Arc<Flags>) -> Result<i32, AnyError> {
 
   let file_fetcher = factory.file_fetcher()?;
   let worker_factory = factory.create_cli_main_worker_factory().await?;
-  let permissions = PermissionsContainer::new(Permissions::from_options(
-    &cli_options.permissions_options()?,
-  )?);
+  let permissions = factory.create_permissions_container()?;
   let mut source = Vec::new();
   std::io::stdin().read_to_end(&mut source)?;
   // Save a fake file into file fetcher cache
@@ -131,9 +125,7 @@ async fn run_with_watch(
 
         let _ = watcher_communicator.watch_paths(cli_options.watch_paths());
 
-        let permissions = PermissionsContainer::new(Permissions::from_options(
-          &cli_options.permissions_options()?,
-        )?);
+        let permissions = factory.create_permissions_container()?;
         let mut worker = factory
           .create_cli_main_worker_factory()
           .await?
@@ -181,9 +173,7 @@ pub async fn eval_command(
     source: source_code.into_bytes().into(),
   });
 
-  let permissions = PermissionsContainer::new(Permissions::from_options(
-    &cli_options.permissions_options()?,
-  )?);
+  let permissions = factory.create_permissions_container()?;
   let worker_factory = factory.create_cli_main_worker_factory().await?;
   let mut worker = worker_factory
     .create_main_worker(WorkerExecutionMode::Eval, main_module, permissions)
