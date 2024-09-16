@@ -4,7 +4,6 @@ use deno_core::error::AnyError;
 use deno_core::op2;
 use deno_core::ModuleSpecifier;
 use deno_core::OpState;
-use deno_permissions::PermissionsContainer;
 
 deno_core::extension!(
   deno_runtime,
