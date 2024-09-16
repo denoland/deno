@@ -407,6 +407,7 @@
       "oneOf": [
         {
           "description": "Sets the node_modules management mode for npm packages. Alternatively, use the `--node-modules-dir=<MODE>` flag. Requires Deno 2.0-rc.1 or later.",
+          "default": "none",
           "enum": ["auto", "manual", "none"]
         },
         {
