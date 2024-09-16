@@ -1553,7 +1553,7 @@ itest!(import_meta {
 });
 
 itest!(main_module {
-  args: "run --quiet --allow-read --reload run/main_module/main.ts",
+  args: "run --quiet  --reload run/main_module/main.ts",
   output: "run/main_module/main.out",
 });
 
