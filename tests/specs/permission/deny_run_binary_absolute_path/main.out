@@ -1,3 +1,4 @@
+Warning --allow-run can be trivially exploited. Prefer specifying an allow list (https://docs.deno.com/runtime/fundamentals/security/#running-subprocesses)
 NotCapable: Requires run access to "deno", run again with the --allow-run flag
     at [WILDCARD] {
   name: "NotCapable"
