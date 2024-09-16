@@ -6126,7 +6126,12 @@ declare namespace Deno {
 
   /** Create a custom HttpClient to use with {@linkcode fetch}. This is an
    * extension of the web platform Fetch API which allows Deno to use custom
-   * TLS certificates and connect via a proxy while using `fetch()`.
+   * TLS CA certificates and connect via a proxy while using `fetch()`.
+   *
+   * The `cert` and `key` options can be used to specify a client certificate
+   * and key to use when connecting to a server that requires client
+   * authentication (mutual TLS or mTLS). The `cert` and `key` options must be
+   * provided in PEM format.
    *
    * @example ```ts
    * const caCert = await Deno.readTextFile("./ca.pem");
@@ -6141,29 +6146,18 @@ declare namespace Deno {
    * const response = await fetch("https://myserver.com", { client });
    * ```
    *
-   * @category Fetch
-   */
-  export function createHttpClient(
-    options: CreateHttpClientOptions,
-  ): HttpClient;
-
-  /**
-   * Create a custom HttpClient to use with {@linkcode fetch}. This is an
-   * extension of the web platform Fetch API which allows Deno to use custom
-   * TLS certificates and connect via a proxy while using `fetch()`.
-   *
    * @example ```ts
-   * const caCert = await Deno.readTextFile("./ca.pem");
-   * // Load a client key and certificate that we'll use to connect
-   * const key = await Deno.readTextFile("./key.key");
-   * const cert = await Deno.readTextFile("./cert.crt");
-   * const client = Deno.createHttpClient({ caCerts: [ caCert ], key, cert });
+   * const key = "----BEGIN PRIVATE KEY----...";
+   * const cert = "----BEGIN CERTIFICATE----...";
+   * const client = Deno.createHttpClient({ key, cert });
    * const response = await fetch("https://myserver.com", { client });
    * ```
    *
    * @category Fetch
    */
   export function createHttpClient(
-    options: CreateHttpClientOptions & TlsCertifiedKeyPem,
+    options:
+      | CreateHttpClientOptions
+      | (CreateHttpClientOptions & TlsCertifiedKeyPem),
   ): HttpClient;
 }
