@@ -5826,7 +5826,10 @@ declare namespace Deno {
     /** The definition of the function. */
     definition: Fn;
 
-    constructor(pointer: PointerObject<NoInfer<Fn>>, definition: Fn);
+    constructor(
+      pointer: PointerObject<NoInfer<Omit<Fn, "nonblocking">>>,
+      definition: Fn,
+    );
 
     /** Call the foreign function. */
     call: FromForeignFunction<Fn>;
