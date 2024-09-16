@@ -1,0 +1,5 @@
+{
+  "args": "test output_within.ts",
+  "exitCode": 0,
+  "output": "output_within.out"
+}

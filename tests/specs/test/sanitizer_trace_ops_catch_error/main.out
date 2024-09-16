@@ -1,0 +1,6 @@
+Check file:///[WILDCARD]main.ts
+running 1 test from [WILDCARD]main.ts
+handle thrown error in async function ... ok ([WILDCARD])
+
+ok | 1 passed | 0 failed ([WILDCARD])
+
