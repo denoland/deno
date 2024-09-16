@@ -1687,6 +1687,7 @@ If you specify a directory instead of a file, the path is expanded to all contai
       .arg(no_clear_screen_arg())
       .arg(script_arg().last(true))
       .arg(env_file_arg())
+      .arg(executable_ext_arg())
   })
 }
 
@@ -2948,6 +2949,7 @@ or <c>**/__tests__/**</>:
           .action(ArgAction::SetTrue)
       )
       .arg(env_file_arg())
+      .arg(executable_ext_arg())
     )
 }
 
@@ -4107,6 +4109,7 @@ fn bench_parse(
   flags.type_check_mode = TypeCheckMode::Local;
 
   runtime_args_parse(flags, matches, true, false)?;
+  ext_arg_parse(flags, matches);
 
   // NOTE: `deno bench` always uses `--no-prompt`, tests shouldn't ever do
   // interactive prompts, unless done by user code
@@ -4838,6 +4841,8 @@ fn test_parse(
 ) -> clap::error::Result<()> {
   flags.type_check_mode = TypeCheckMode::Local;
   runtime_args_parse(flags, matches, true, true)?;
+  ext_arg_parse(flags, matches);
+
   // NOTE: `deno test` always uses `--no-prompt`, tests shouldn't ever do
   // interactive prompts, unless done by user code
   flags.permissions.no_prompt = true;
