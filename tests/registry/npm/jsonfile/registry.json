@@ -1,1 +1,71 @@
-{"name":"jsonfile","description":"Easily read/write JSON files.","dist-tags":{"latest":"6.1.0"},"versions":{"6.1.0":{"name":"jsonfile","version":"6.1.0","description":"Easily read/write JSON files.","repository":{"type":"git","url":"git+ssh://git@github.com/jprichardson/node-jsonfile.git"},"author":{"name":"JP Richardson","email":"jprichardson@gmail.com"},"license":"MIT","dependencies":{"universalify":"^2.0.0","graceful-fs":"^4.1.6"},"optionalDependencies":{"graceful-fs":"^4.1.6"},"devDependencies":{"mocha":"^8.2.0","rimraf":"^2.4.0","standard":"^16.0.1"},"main":"index.js","scripts":{"lint":"standard","test":"npm run lint && npm run unit","unit":"mocha"},"gitHead":"9c6478a85899a9318547a6e9514b0403166d8c5c","bugs":{"url":"https://github.com/jprichardson/node-jsonfile/issues"},"_id":"jsonfile@6.1.0","_nodeVersion":"14.10.1","_npmVersion":"6.14.8","dist":{"integrity":"sha512-5dgndWOriYSm5cnYaJNhalLNDKOqFwyDB/rr1E9ZsGciGvKPs8R2xYGCacuf3z6K1YKDz182fd+fY3cn3pMqXQ==","shasum":"bc55b2634793c679ec6403094eb13698a6ec0aae","tarball":"http://localhost:4260/jsonfile/jsonfile-6.1.0.tgz","fileCount":6,"unpackedSize":19750,"npm-signature":"-----BEGIN PGP SIGNATURE-----\r\nVersion: OpenPGP.js v3.0.13\r\nComment: https://openpgpjs.org\r\n\r\nwsFcBAEBCAAQBQJfnZgpCRA9TVsSAnZWagAAyvEP/1U+F1C6bK4oaOU/aMsR\nTdH3fyS8nowKmwtBOmnm3rVCJMbj1CcWD0IVO4IVICu16+VUVhk6VyhVzqK4\nInLFo6tqQ9VSsCyFuOYH3+lDW1VvP8oUr7dA2uVPSp2WUFD4BUlYUBrlvHi+\n5TBqtXbmIVcoAYcynAfLYKHD20f+NwLoJr2CvTh1+1nl2TxCePA4EZ5BBF3g\nzc2MlrlihyWHGRD22qASr7Io0SeblavZvb+HCTiHkKu4NqxWY+bfqfX4mLh4\n1vhDw3lHy2SUi/7jfKM9VAx9r+jfxm3nJs9SJFs+cKap7q1n7a7ilWZ1H7tJ\nkdjMtBjynibaF8EP8Emdx2tXOBxCz7YWqEBxssDpokT5/Y8e/YPRfFODvepn\nsAxudDQ1SCnm9GtomOymm5Di3g4xB1Eeb2d5NvWFxB4Pd/DhjeyGg0/dRLhY\nu7Ue9nY0Z0WV7LbkUzx7bWlIkRk+qhTh9SbarhWj7Ym4b6mgfPeEPQbtPz7o\nqHw4OJcdwvf/kXuAz5gKCjPjKwTHetylhzTA1Zx9b++JNDAj5Y1fcWStQj/Y\nuJoe4ZhSS2WgtG1o4Y9zuAlDInF1cb5pGojHuKpaZHUj1Vy1CB2m/evsA+yb\npum19tfmbP7xAz1MF4HFmbXAK/XBSN2J/xSxIsZnUnTzThcHQAEkDTNUQ6p5\nQPym\r\n=h240\r\n-----END PGP SIGNATURE-----\r\n","signatures":[{"keyid":"SHA256:jl3bwswu80PjjokCgh0o2w5c2U4LhQAE57gj9cz1kzA","sig":"MEYCIQCQVRI3EQyvWuTYfa6DQPlNoAI/usb6HNnGplMg437AJwIhAI4YR6cC9kPQGesWlO/LAnCo//eyfDm9MrVNXwfrH6Lf"}]},"directories":{},"_hasShrinkwrap":false}},"readme":"Node.js - jsonfile\n================\n\nEasily read/write JSON files in Node.js. _Note: this module cannot be used in the browser._\n\n[![npm Package](https://img.shields.io/npm/v/jsonfile.svg?style=flat-square)](https://www.npmjs.org/package/jsonfile)\n[![build status](https://secure.travis-ci.org/jprichardson/node-jsonfile.svg)](http://travis-ci.org/jprichardson/node-jsonfile)\n[![windows Build status](https://img.shields.io/appveyor/ci/jprichardson/node-jsonfile/master.svg?label=windows%20build)](https://ci.appveyor.com/project/jprichardson/node-jsonfile/branch/master)\n\n<a href=\"https://github.com/feross/standard\"><img src=\"https://cdn.rawgit.com/feross/standard/master/sticker.svg\" alt=\"Standard JavaScript\" width=\"100\"></a>\n\nWhy?\n----\n\nWriting `JSON.stringify()` and then `fs.writeFile()` and `JSON.parse()` with `fs.readFile()` enclosed in `try/catch` blocks became annoying.\n\n\n\nInstallation\n------------\n\n    npm install --save jsonfile\n\n\n\nAPI\n---\n\n* [`readFile(filename, [options], callback)`](#readfilefilename-options-callback)\n* [`readFileSync(filename, [options])`](#readfilesyncfilename-options)\n* [`writeFile(filename, obj, [options], callback)`](#writefilefilename-obj-options-callback)\n* [`writeFileSync(filename, obj, [options])`](#writefilesyncfilename-obj-options)\n\n----\n\n### readFile(filename, [options], callback)\n\n`options` (`object`, default `undefined`): Pass in any [`fs.readFile`](https://nodejs.org/api/fs.html#fs_fs_readfile_path_options_callback) options or set `reviver` for a [JSON reviver](https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/JSON/parse).\n  - `throws` (`boolean`, default: `true`). If `JSON.parse` throws an error, pass this error to the callback.\n  If `false`, returns `null` for the object.\n\n\n```js\nconst jsonfile = require('jsonfile')\nconst file = '/tmp/data.json'\njsonfile.readFile(file, function (err, obj) {\n  if (err) console.error(err)\n  console.dir(obj)\n})\n```\n\nYou can also use this method with promises. The `readFile` method will return a promise if you do not pass a callback function.\n\n```js\nconst jsonfile = require('jsonfile')\nconst file = '/tmp/data.json'\njsonfile.readFile(file)\n  .then(obj => console.dir(obj))\n  .catch(error => console.error(error))\n```\n\n----\n\n### readFileSync(filename, [options])\n\n`options` (`object`, default `undefined`): Pass in any [`fs.readFileSync`](https://nodejs.org/api/fs.html#fs_fs_readfilesync_path_options) options or set `reviver` for a [JSON reviver](https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/JSON/parse).\n- `throws` (`boolean`, default: `true`). If an error is encountered reading or parsing the file, throw the error. If `false`, returns `null` for the object.\n\n```js\nconst jsonfile = require('jsonfile')\nconst file = '/tmp/data.json'\n\nconsole.dir(jsonfile.readFileSync(file))\n```\n\n----\n\n### writeFile(filename, obj, [options], callback)\n\n`options`: Pass in any [`fs.writeFile`](https://nodejs.org/api/fs.html#fs_fs_writefile_file_data_options_callback) options or set `replacer` for a [JSON replacer](https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/JSON/stringify). Can also pass in `spaces`, or override `EOL` string or set `finalEOL` flag as `false` to not save the file with `EOL` at the end.\n\n\n```js\nconst jsonfile = require('jsonfile')\n\nconst file = '/tmp/data.json'\nconst obj = { name: 'JP' }\n\njsonfile.writeFile(file, obj, function (err) {\n  if (err) console.error(err)\n})\n```\nOr use with promises as follows:\n\n```js\nconst jsonfile = require('jsonfile')\n\nconst file = '/tmp/data.json'\nconst obj = { name: 'JP' }\n\njsonfile.writeFile(file, obj)\n  .then(res => {\n    console.log('Write complete')\n  })\n  .catch(error => console.error(error))\n```\n\n\n**formatting with spaces:**\n\n```js\nconst jsonfile = require('jsonfile')\n\nconst file = '/tmp/data.json'\nconst obj = { name: 'JP' }\n\njsonfile.writeFile(file, obj, { spaces: 2 }, function (err) {\n  if (err) console.error(err)\n})\n```\n\n**overriding EOL:**\n\n```js\nconst jsonfile = require('jsonfile')\n\nconst file = '/tmp/data.json'\nconst obj = { name: 'JP' }\n\njsonfile.writeFile(file, obj, { spaces: 2, EOL: '\\r\\n' }, function (err) {\n  if (err) console.error(err)\n})\n```\n\n\n**disabling the EOL at the end of file:**\n\n```js\nconst jsonfile = require('jsonfile')\n\nconst file = '/tmp/data.json'\nconst obj = { name: 'JP' }\n\njsonfile.writeFile(file, obj, { spaces: 2, finalEOL: false }, function (err) {\n  if (err) console.log(err)\n})\n```\n\n**appending to an existing JSON file:**\n\nYou can use `fs.writeFile` option `{ flag: 'a' }` to achieve this.\n\n```js\nconst jsonfile = require('jsonfile')\n\nconst file = '/tmp/mayAlreadyExistedData.json'\nconst obj = { name: 'JP' }\n\njsonfile.writeFile(file, obj, { flag: 'a' }, function (err) {\n  if (err) console.error(err)\n})\n```\n\n----\n\n### writeFileSync(filename, obj, [options])\n\n`options`: Pass in any [`fs.writeFileSync`](https://nodejs.org/api/fs.html#fs_fs_writefilesync_file_data_options) options or set `replacer` for a [JSON replacer](https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/JSON/stringify). Can also pass in `spaces`, or override `EOL` string or set `finalEOL` flag as `false` to not save the file with `EOL` at the end.\n\n```js\nconst jsonfile = require('jsonfile')\n\nconst file = '/tmp/data.json'\nconst obj = { name: 'JP' }\n\njsonfile.writeFileSync(file, obj)\n```\n\n**formatting with spaces:**\n\n```js\nconst jsonfile = require('jsonfile')\n\nconst file = '/tmp/data.json'\nconst obj = { name: 'JP' }\n\njsonfile.writeFileSync(file, obj, { spaces: 2 })\n```\n\n**overriding EOL:**\n\n```js\nconst jsonfile = require('jsonfile')\n\nconst file = '/tmp/data.json'\nconst obj = { name: 'JP' }\n\njsonfile.writeFileSync(file, obj, { spaces: 2, EOL: '\\r\\n' })\n```\n\n**disabling the EOL at the end of file:**\n\n```js\nconst jsonfile = require('jsonfile')\n\nconst file = '/tmp/data.json'\nconst obj = { name: 'JP' }\n\njsonfile.writeFileSync(file, obj, { spaces: 2, finalEOL: false })\n```\n\n**appending to an existing JSON file:**\n\nYou can use `fs.writeFileSync` option `{ flag: 'a' }` to achieve this.\n\n```js\nconst jsonfile = require('jsonfile')\n\nconst file = '/tmp/mayAlreadyExistedData.json'\nconst obj = { name: 'JP' }\n\njsonfile.writeFileSync(file, obj, { flag: 'a' })\n```\n\nLicense\n-------\n\n(MIT License)\n\nCopyright 2012-2016, JP Richardson  <jprichardson@gmail.com>\n","author":{"name":"JP Richardson","email":"jprichardson@gmail.com"},"repository":{"type":"git","url":"git+ssh://git@github.com/jprichardson/node-jsonfile.git"},"homepage":"https://github.com/jprichardson/node-jsonfile#readme","bugs":{"url":"https://github.com/jprichardson/node-jsonfile/issues"},"readmeFilename":"README.md","license":"MIT"}
+{
+  "name": "jsonfile",
+  "description": "Easily read/write JSON files.",
+  "dist-tags": {
+    "latest": "6.1.0"
+  },
+  "versions": {
+    "6.1.0": {
+      "name": "jsonfile",
+      "version": "6.1.0",
+      "description": "Easily read/write JSON files.",
+      "repository": {
+        "type": "git",
+        "url": "git+ssh://git@github.com/jprichardson/node-jsonfile.git"
+      },
+      "author": {
+        "name": "JP Richardson",
+        "email": "jprichardson@gmail.com"
+      },
+      "license": "MIT",
+      "dependencies": {
+        "universalify": "^2.0.0",
+        "graceful-fs": "^4.1.6"
+      },
+      "optionalDependencies": {
+        "graceful-fs": "^4.1.6"
+      },
+      "devDependencies": {
+        "mocha": "^8.2.0",
+        "rimraf": "^2.4.0",
+        "standard": "^16.0.1"
+      },
+      "main": "index.js",
+      "scripts": {
+        "lint": "standard",
+        "test": "npm run lint && npm run unit",
+        "unit": "mocha"
+      },
+      "gitHead": "9c6478a85899a9318547a6e9514b0403166d8c5c",
+      "bugs": {
+        "url": "https://github.com/jprichardson/node-jsonfile/issues"
+      },
+      "_id": "jsonfile@6.1.0",
+      "_nodeVersion": "14.10.1",
+      "_npmVersion": "6.14.8",
+      "dist": {
+        "integrity": "sha512-5dgndWOriYSm5cnYaJNhalLNDKOqFwyDB/rr1E9ZsGciGvKPs8R2xYGCacuf3z6K1YKDz182fd+fY3cn3pMqXQ==",
+        "shasum": "bc55b2634793c679ec6403094eb13698a6ec0aae",
+        "tarball": "http://localhost:4260/jsonfile/jsonfile-6.1.0.tgz",
+        "fileCount": 6,
+        "unpackedSize": 19750
+      },
+      "directories": {},
+      "_hasShrinkwrap": false
+    }
+  },
+  "author": {
+    "name": "JP Richardson",
+    "email": "jprichardson@gmail.com"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+ssh://git@github.com/jprichardson/node-jsonfile.git"
+  },
+  "homepage": "https://github.com/jprichardson/node-jsonfile#readme",
+  "bugs": {
+    "url": "https://github.com/jprichardson/node-jsonfile/issues"
+  },
+  "readmeFilename": "README.md",
+  "license": "MIT"
+}

@@ -280,6 +280,17 @@ impl Diagnostics {
     Diagnostics(diagnostics)
   }
 
+  pub fn emit_warnings(&mut self) {
+    self.0.retain(|d| {
+      if d.category == DiagnosticCategory::Warning {
+        log::warn!("{}\n", d);
+        false
+      } else {
+        true
+      }
+    });
+  }
+
   /// Return a set of diagnostics where only the values where the predicate
   /// returns `true` are included.
   pub fn filter<P>(self, predicate: P) -> Self

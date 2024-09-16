@@ -267,9 +267,11 @@ memoryUsage.rss = function (): number {
 
 // Returns a negative error code than can be recognized by errnoException
 function _kill(pid: number, sig: number): number {
+  const maybeMapErrno = (res: number) =>
+    res === 0 ? res : uv.mapSysErrnoToUvErrno(res);
   // signal 0 does not exist in constants.os.signals, thats why it have to be handled explicitly
   if (sig === 0) {
-    return op_node_process_kill(pid, 0);
+    return maybeMapErrno(op_node_process_kill(pid, 0));
   }
   const maybeSignal = Object.entries(constants.os.signals).find((
     [_, numericCode],
@@ -278,7 +280,7 @@ function _kill(pid: number, sig: number): number {
   if (!maybeSignal) {
     return uv.codeMap.get("EINVAL");
   }
-  return op_node_process_kill(pid, sig);
+  return maybeMapErrno(op_node_process_kill(pid, sig));
 }
 
 export function dlopen(module, filename, _flags) {
@@ -745,6 +747,8 @@ Object.defineProperty(Process.prototype, "allowedNodeEnvironmentFlags", {
     return ALLOWED_FLAGS;
   },
 });
+
+export const allowedNodeEnvironmentFlags = ALLOWED_FLAGS;
 
 Process.prototype.features = { inspector: false };
 

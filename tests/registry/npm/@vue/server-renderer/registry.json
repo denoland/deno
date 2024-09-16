@@ -1,1 +1,69 @@
-{"name":"@vue/server-renderer","dist-tags":{"latest":"3.2.38"},"versions":{"3.2.38":{"name":"@vue/server-renderer","version":"3.2.38","description":"@vue/server-renderer","main":"index.js","module":"dist/server-renderer.esm-bundler.js","types":"dist/server-renderer.d.ts","buildOptions":{"name":"VueServerRenderer","formats":["esm-bundler","esm-browser","cjs"]},"repository":{"type":"git","url":"git+https://github.com/vuejs/core.git","directory":"packages/server-renderer"},"author":{"name":"Evan You"},"license":"MIT","bugs":{"url":"https://github.com/vuejs/core/issues"},"peerDependencies":{"vue":"3.2.38"},"dependencies":{"@vue/shared":"3.2.38","@vue/compiler-ssr":"3.2.38"},"licenseText":"The MIT License (MIT)\n\nCopyright (c) 2018-present, Yuxi (Evan) You\n\nPermission is hereby granted, free of charge, to any person obtaining a copy\nof this software and associated documentation files (the \"Software\"), to deal\nin the Software without restriction, including without limitation the rights\nto use, copy, modify, merge, publish, distribute, sublicense, and/or sell\ncopies of the Software, and to permit persons to whom the Software is\nfurnished to do so, subject to the following conditions:\n\nThe above copyright notice and this permission notice shall be included in\nall copies or substantial portions of the Software.\n\nTHE SOFTWARE IS PROVIDED \"AS IS\", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR\nIMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,\nFITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE\nAUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER\nLIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,\nOUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN\nTHE SOFTWARE.\n","_id":"@vue/server-renderer@3.2.38","dist":{"shasum":"01a4c0f218e90b8ad1815074208a1974ded109aa","integrity":"sha512-pg+JanpbOZ5kEfOZzO2bt02YHd+ELhYP8zPeLU1H0e7lg079NtuuSB8fjLdn58c4Ou8UQ6C1/P+528nXnLPAhA==","tarball":"http://localhost:4260/@vue/server-renderer/server-renderer-3.2.38.tgz","fileCount":12,"unpackedSize":474625,"signatures":[{"keyid":"SHA256:jl3bwswu80PjjokCgh0o2w5c2U4LhQAE57gj9cz1kzA","sig":"MEUCIF368bdzHuiL41rI7IkZWTqNUwNUYXy0W6vHkq1Vbc0dAiEAv7Ch3w/7I7kZqbBxtwLne/0VEaEoxk4aYPqCruGvw4Q="}],"npm-signature":"-----BEGIN PGP SIGNATURE-----\r\nVersion: OpenPGP.js v4.10.10\r\nComment: https://openpgpjs.org\r\n\r\nwsFzBAEBCAAGBQJjDcQJACEJED1NWxICdlZqFiEECWMYAoorWMhJKdjhPU1b\r\nEgJ2VmrVqg/9HnGhSNPuKtyRo6W9ZUn/iVPP7CN6AqwAJt1OX08iWfOJkEbu\r\nvB7kOt8TNJCW/PMTkvtIN8E02RYTw2I8WFNCol0Cibov7CbtzAlk96+ABZ/+\r\nPOaLwiFtDHZ4/x/IiFyqc4CCh3ztlEGUhRVF+8v5tuR2+I0a3jfhfP5fcqce\r\nupDMn9RITm5fZlEMYD/7zpiknHbAbLwaDMaB05V0ntKt8aVCspRNdcMHXxCu\r\nGmJnV5igbUUF9UTWHKGgjW4CLvyFd+VvSRjYHtGLSCG0SsEutCkB8FDzz+9m\r\nJRxqSlftB+44N7A3pJFMocsuSKTELt88k5XD0yfkUKpa7v70gpatcsYHYScu\r\nvG6+XXlX4XMEqS583UOV1apAfE3fLZAGUXp/xByP0f7WXYBzX7tcqOZgMRGR\r\nRxUcL1sabP0m/oAQNajjYI+ZirvaCewPpjWVBaIDqZutRuI178UkVxFQ13cF\r\nazq4J1I6qzZrazLY4WeSWnpr0OcktV/hh0BE9W1YCHg/BnmQJsTzNTtb24ij\r\nRLE/cs27R5ek4TtP6MBRk+fFBoDdOYFWbSMXuFySUsG26k/blg5bzUGJiPgG\r\n9jderxZOtLoy9uaBnVM0qHc/AShFqnv7soZL43dFnDS5pYj4JSbnFnrK6kqc\r\noy/+tGlDtyrZyJ+48AGTTM30Mp0qaHG5u2k=\r\n=Ii5d\r\n-----END PGP SIGNATURE-----\r\n"},"directories":{},"_hasShrinkwrap":false}},"description":"@vue/server-renderer","homepage":"https://github.com/vuejs/core/tree/main/packages/server-renderer#readme","repository":{"type":"git","url":"git+https://github.com/vuejs/core.git","directory":"packages/server-renderer"},"author":{"name":"Evan You"},"bugs":{"url":"https://github.com/vuejs/core/issues"},"license":"MIT","readme":"# @vue/server-renderer\n\n**Note: as of 3.2.13+, this package is included as a dependency of the main `vue` package and can be accessed as `vue/server-renderer`. This means you no longer need to explicitly install this package and ensure its version match that of `vue`'s. Just use the `vue/server-renderer` deep import instead.**\n\n## Basic API\n\n### `renderToString`\n\n**Signature**\n\n```ts\nfunction renderToString(\n  input: App | VNode,\n  context?: SSRContext\n): Promise<string>\n```\n\n**Usage**\n\n```js\nconst { createSSRApp } = require('vue')\nconst { renderToString } = require('@vue/server-renderer')\n\nconst app = createSSRApp({\n  data: () => ({ msg: 'hello' }),\n  template: `<div>{{ msg }}</div>`\n})\n\n;(async () => {\n  const html = await renderToString(app)\n  console.log(html)\n})()\n```\n\n### Handling Teleports\n\nIf the rendered app contains teleports, the teleported content will not be part of the rendered string. Instead, they are exposed under the `teleports` property of the ssr context object:\n\n```js\nconst ctx = {}\nconst html = await renderToString(app, ctx)\n\nconsole.log(ctx.teleports) // { '#teleported': 'teleported content' }\n```\n\n## Streaming API\n\n### `renderToNodeStream`\n\nRenders input as a [Node.js Readable stream](https://nodejs.org/api/stream.html#stream_class_stream_readable).\n\n**Signature**\n\n```ts\nfunction renderToNodeStream(input: App | VNode, context?: SSRContext): Readable\n```\n\n**Usage**\n\n```js\n// inside a Node.js http handler\nrenderToNodeStream(app).pipe(res)\n```\n\n**Note:** This method is not supported in the ESM build of `@vue/server-renderer`, which is decoupled from Node.js environments. Use `pipeToNodeWritable` instead.\n\n### `pipeToNodeWritable`\n\nRender and pipe to an existing [Node.js Writable stream](https://nodejs.org/api/stream.html#stream_writable_streams) instance.\n\n**Signature**\n\n```ts\nfunction pipeToNodeWritable(\n  input: App | VNode,\n  context: SSRContext = {},\n  writable: Writable\n): void\n```\n\n**Usage**\n\n```js\n// inside a Node.js http handler\npipeToNodeWritable(app, {}, res)\n```\n\n### `renderToWebStream`\n\nRenders input as a [Web ReadableStream](https://developer.mozilla.org/en-US/docs/Web/API/Streams_API).\n\n**Signature**\n\n```ts\nfunction renderToWebStream(\n  input: App | VNode,\n  context?: SSRContext\n): ReadableStream\n```\n\n**Usage**\n\n```js\n// inside an environment with ReadableStream support\nreturn new Response(renderToWebStream(app))\n```\n\n**Note:** in environments that do not expose `ReadableStream` constructor in the global scope, `pipeToWebWritable` should be used instead.\n\n### `pipeToWebWritable`\n\nRender and pipe to an existing [Web WritableStream](https://developer.mozilla.org/en-US/docs/Web/API/WritableStream) instance.\n\n**Signature**\n\n```ts\nfunction pipeToWebWritable(\n  input: App | VNode,\n  context: SSRContext = {},\n  writable: WritableStream\n): void\n```\n\n**Usage**\n\nThis is typically used in combination with [`TransformStream`](https://developer.mozilla.org/en-US/docs/Web/API/TransformStream):\n\n```js\n// TransformStream is available in environments such as CloudFlare workers.\n// in Node.js, TransformStream needs to be explicitly imported from 'stream/web'\nconst { readable, writable } = new TransformStream()\npipeToWebWritable(app, {}, writable)\n\nreturn new Response(readable)\n```\n\n### `renderToSimpleStream`\n\nRenders input in streaming mode using a simple readable interface.\n\n**Signature**\n\n```ts\nfunction renderToSimpleStream(\n  input: App | VNode,\n  context: SSRContext,\n  options: SimpleReadable\n): SimpleReadable\n\ninterface SimpleReadable {\n  push(content: string | null): void\n  destroy(err: any): void\n}\n```\n\n**Usage**\n\n```js\nlet res = ''\n\nrenderToSimpleStream(\n  app,\n  {},\n  {\n    push(chunk) {\n      if (chunk === null) {\n        // done\n        console(`render complete: ${res}`)\n      } else {\n        res += chunk\n      }\n    },\n    destroy(err) {\n      // error encountered\n    }\n  }\n)\n```\n","readmeFilename":"README.md"}
+{
+  "name": "@vue/server-renderer",
+  "dist-tags": {
+    "latest": "3.2.38"
+  },
+  "versions": {
+    "3.2.38": {
+      "name": "@vue/server-renderer",
+      "version": "3.2.38",
+      "description": "@vue/server-renderer",
+      "main": "index.js",
+      "module": "dist/server-renderer.esm-bundler.js",
+      "types": "dist/server-renderer.d.ts",
+      "buildOptions": {
+        "name": "VueServerRenderer",
+        "formats": [
+          "esm-bundler",
+          "esm-browser",
+          "cjs"
+        ]
+      },
+      "repository": {
+        "type": "git",
+        "url": "git+https://github.com/vuejs/core.git",
+        "directory": "packages/server-renderer"
+      },
+      "author": {
+        "name": "Evan You"
+      },
+      "license": "MIT",
+      "bugs": {
+        "url": "https://github.com/vuejs/core/issues"
+      },
+      "peerDependencies": {
+        "vue": "3.2.38"
+      },
+      "dependencies": {
+        "@vue/shared": "3.2.38",
+        "@vue/compiler-ssr": "3.2.38"
+      },
+      "licenseText": "The MIT License (MIT)\n\nCopyright (c) 2018-present, Yuxi (Evan) You\n\nPermission is hereby granted, free of charge, to any person obtaining a copy\nof this software and associated documentation files (the \"Software\"), to deal\nin the Software without restriction, including without limitation the rights\nto use, copy, modify, merge, publish, distribute, sublicense, and/or sell\ncopies of the Software, and to permit persons to whom the Software is\nfurnished to do so, subject to the following conditions:\n\nThe above copyright notice and this permission notice shall be included in\nall copies or substantial portions of the Software.\n\nTHE SOFTWARE IS PROVIDED \"AS IS\", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR\nIMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,\nFITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE\nAUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER\nLIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,\nOUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN\nTHE SOFTWARE.\n",
+      "_id": "@vue/server-renderer@3.2.38",
+      "dist": {
+        "shasum": "01a4c0f218e90b8ad1815074208a1974ded109aa",
+        "integrity": "sha512-pg+JanpbOZ5kEfOZzO2bt02YHd+ELhYP8zPeLU1H0e7lg079NtuuSB8fjLdn58c4Ou8UQ6C1/P+528nXnLPAhA==",
+        "tarball": "http://localhost:4260/@vue/server-renderer/server-renderer-3.2.38.tgz",
+        "fileCount": 12,
+        "unpackedSize": 474625
+      },
+      "directories": {},
+      "_hasShrinkwrap": false
+    }
+  },
+  "description": "@vue/server-renderer",
+  "homepage": "https://github.com/vuejs/core/tree/main/packages/server-renderer#readme",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/vuejs/core.git",
+    "directory": "packages/server-renderer"
+  },
+  "author": {
+    "name": "Evan You"
+  },
+  "bugs": {
+    "url": "https://github.com/vuejs/core/issues"
+  },
+  "license": "MIT",
+  "readmeFilename": "README.md"
+}

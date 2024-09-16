@@ -1,1 +1,104 @@
-{"name":"yargs","description":"yargs the modern, pirate-themed, successor to optimist.","dist-tags":{"latest":"15.4.1"},"versions":{"15.4.1":{"name":"yargs","version":"15.4.1","description":"yargs the modern, pirate-themed, successor to optimist.","main":"./index.js","dependencies":{"cliui":"^6.0.0","decamelize":"^1.2.0","find-up":"^4.1.0","get-caller-file":"^2.0.1","require-directory":"^2.1.1","require-main-filename":"^2.0.0","set-blocking":"^2.0.0","string-width":"^4.2.0","which-module":"^2.0.0","y18n":"^4.0.0","yargs-parser":"^18.1.2"},"devDependencies":{"@types/chai":"^4.2.11","@types/decamelize":"^1.2.0","@types/mocha":"^7.0.2","@types/node":"^10.0.3","@typescript-eslint/eslint-plugin":"^3.0.0","@typescript-eslint/parser":"^3.0.0","c8":"^7.0.0","chai":"^4.2.0","chalk":"^4.0.0","coveralls":"^3.0.9","cpr":"^3.0.1","cross-spawn":"^7.0.0","es6-promise":"^4.2.5","eslint":"^6.8.0","eslint-plugin-import":"^2.20.1","eslint-plugin-node":"^11.0.0","gts":"^2.0.0-alpha.4","hashish":"0.0.4","mocha":"^7.0.0","rimraf":"^3.0.2","standardx":"^5.0.0","typescript":"^3.7.0","which":"^2.0.0","yargs-test-extends":"^1.0.1"},"scripts":{"fix":"standardx --fix  && standardx --fix **/*.ts","posttest":"npm run check","test":"c8 mocha --require ./test/before.js --timeout=12000 --check-leaks","coverage":"c8 report --check-coverage","check":"standardx && standardx **/*.ts","compile":"rimraf build && tsc","prepare":"npm run compile","pretest":"npm run compile -- -p tsconfig.test.json"},"repository":{"type":"git","url":"git+https://github.com/yargs/yargs.git"},"standardx":{"ignore":["build","**/example/**"]},"license":"MIT","engines":{"node":">=8"},"gitHead":"0b519a4672c8493d72838292ed0d60b63b88f33e","bugs":{"url":"https://github.com/yargs/yargs/issues"},"_id":"yargs@15.4.1","_nodeVersion":"12.16.3","_npmVersion":"6.14.4","dist":{"integrity":"sha512-aePbxDmcYW++PaqBsJ+HYUFwCdv4LVvdnhBy78E57PIor8/OVvhMrADFFEDh8DHDFRv/O9i3lPhsENjO7QX0+A==","shasum":"0d87a16de01aee9d8bec2bfbf74f67851730f4f8","tarball":"http://localhost:4260/yargs/yargs-15.4.1.tgz","fileCount":62,"unpackedSize":230562,"npm-signature":"-----BEGIN PGP SIGNATURE-----\r\nVersion: OpenPGP.js v3.0.4\r\nComment: https://openpgpjs.org\r\n\r\nwsFcBAEBCAAQBQJfCO7ACRA9TVsSAnZWagAAFNwP+gJWn0U7ipXQ2EmdrbTP\nL//Ag226k17jQL/06WdfxQI7vgpUkcRHRuq2ktej6mJwk9lD/ejKh8RJQJNm\nmq2trjQNAaLnbQdVcoz23uWZRGrIE5WEjJxAulXSKG7X3kKGbVZ2YUUfqPk4\nEuyMomEoEJi5+voL4gB9I63znQNi4AeOOaT+6/D+GfVs1NdF2G0gAWbWTQ9x\n7/OXQFzslYycoRdNIAye49ZEiTXrkoTm9pTafETb/c1gTyXjAPMWlkH6T0jE\nVCmhDO8XqJhhomcL+184DzgGYi10geqC00Je6wDcZn10culZayCxLzEywsdV\ndUiu4YY7YZmlBoa6JoapZi/PG2OxbCEmMd16VipMeMjo493V86SV+KCeIFQf\nEdrXxzHUJdBiWGqqLGHO65sdQxiGPMWEL1nIQlmzyUoza816lhvHo28F3Rth\nCBBuvD8wmkiZbWGQyBmFUZKomvu/04Qp2wXee5OszJ2ZnxqNYbgoooZGX+J8\njRsK7NcxQkPZ3G7DXM3gdhOEilxECBzZv2DEBJuvetCeML7qjL9ztOs7VZSr\nQIj1qQgMT9evv9ANlsQzUJcOAMEVarJRZ0mhXwKzWqpKKBgrDBNu98i+j8rX\nRiqT7te7ASTNsYg/SRc7bQArodgT7GUeWrMpkgCFWHqpEySk2b1YSPE+/lQv\nL11f\r\n=VoM2\r\n-----END PGP SIGNATURE-----\r\n","signatures":[{"keyid":"SHA256:jl3bwswu80PjjokCgh0o2w5c2U4LhQAE57gj9cz1kzA","sig":"MEYCIQCN/KNryqwe9hB1Eteck09nGx8PqC9O9p2irdQYdJeZXwIhANI38fKhI0wlMm35Bg5l2gR753CFhHfIcznqnC1Gfsci"}]},"directories":{},"_hasShrinkwrap":false}},"readme":"<p align=\"center\">\n  <img width=\"250\" src=\"https://raw.githubusercontent.com/yargs/yargs/main/yargs-logo.png\">\n</p>\n<h1 align=\"center\"> Yargs </h1>\n<p align=\"center\">\n  <b >Yargs be a node.js library fer hearties tryin' ter parse optstrings</b>\n</p>\n\n<br>\n\n![ci](https://github.com/yargs/yargs/workflows/ci/badge.svg)\n[![NPM version][npm-image]][npm-url]\n[![js-standard-style][standard-image]][standard-url]\n[![Coverage][coverage-image]][coverage-url]\n[![Conventional Commits][conventional-commits-image]][conventional-commits-url]\n[![Slack][slack-image]][slack-url]\n\n## Description\nYargs helps you build interactive command line tools, by parsing arguments and generating an elegant user interface.\n\nIt gives you:\n\n* commands and (grouped) options (`my-program.js serve --port=5000`).\n* a dynamically generated help menu based on your arguments:\n\n```\nmocha [spec..]\n\nRun tests with Mocha\n\nCommands\n  mocha inspect [spec..]  Run tests with Mocha                         [default]\n  mocha init <path>       create a client-side Mocha setup at <path>\n\nRules & Behavior\n  --allow-uncaught           Allow uncaught errors to propagate        [boolean]\n  --async-only, -A           Require all tests to use a callback (async) or\n                             return a Promise                          [boolean]\n```\n\n* bash-completion shortcuts for commands and options.\n* and [tons more](/docs/api.md).\n\n## Installation\n\nStable version:\n```bash\nnpm i yargs\n```\n\nBleeding edge version with the most recent features:\n```bash\nnpm i yargs@next\n```\n\n## Usage\n\n### Simple Example\n\n```javascript\n#!/usr/bin/env node\nconst yargs = require('yargs/yargs')\nconst { hideBin } = require('yargs/helpers')\nconst argv = yargs(hideBin(process.argv)).argv\n\nif (argv.ships > 3 && argv.distance < 53.5) {\n  console.log('Plunder more riffiwobbles!')\n} else {\n  console.log('Retreat from the xupptumblers!')\n}\n```\n\n```bash\n$ ./plunder.js --ships=4 --distance=22\nPlunder more riffiwobbles!\n\n$ ./plunder.js --ships 12 --distance 98.7\nRetreat from the xupptumblers!\n```\n\n> Note: `hideBin` is a shorthand for [`process.argv.slice(2)`](https://nodejs.org/en/knowledge/command-line/how-to-parse-command-line-arguments/). It has the benefit that it takes into account variations in some environments, e.g., [Electron](https://github.com/electron/electron/issues/4690).\n\n### Complex Example\n\n```javascript\n#!/usr/bin/env node\nconst yargs = require('yargs/yargs')\nconst { hideBin } = require('yargs/helpers')\n\nyargs(hideBin(process.argv))\n  .command('serve [port]', 'start the server', (yargs) => {\n    return yargs\n      .positional('port', {\n        describe: 'port to bind on',\n        default: 5000\n      })\n  }, (argv) => {\n    if (argv.verbose) console.info(`start server on :${argv.port}`)\n    serve(argv.port)\n  })\n  .option('verbose', {\n    alias: 'v',\n    type: 'boolean',\n    description: 'Run with verbose logging'\n  })\n  .parse()\n```\n\nRun the example above with `--help` to see the help for the application.\n\n## Supported Platforms\n\n### TypeScript\n\nyargs has type definitions at [@types/yargs][type-definitions].\n\n```\nnpm i @types/yargs --save-dev\n```\n\nSee usage examples in [docs](/docs/typescript.md).\n\n### Deno\n\nAs of `v16`, `yargs` supports [Deno](https://github.com/denoland/deno):\n\n```typescript\nimport yargs from 'https://deno.land/x/yargs/deno.ts'\nimport { Arguments } from 'https://deno.land/x/yargs/deno-types.ts'\n\nyargs(Deno.args)\n  .command('download <files...>', 'download a list of files', (yargs: any) => {\n    return yargs.positional('files', {\n      describe: 'a list of files to do something with'\n    })\n  }, (argv: Arguments) => {\n    console.info(argv)\n  })\n  .strictCommands()\n  .demandCommand(1)\n  .parse()\n```\n\n### ESM\n\nAs of `v16`,`yargs` supports ESM imports:\n\n```js\nimport yargs from 'yargs'\nimport { hideBin } from 'yargs/helpers'\n\nyargs(hideBin(process.argv))\n  .command('curl <url>', 'fetch the contents of the URL', () => {}, (argv) => {\n    console.info(argv)\n  })\n  .demandCommand(1)\n  .parse()\n```\n\n### Usage in Browser\n\nSee examples of using yargs in the browser in [docs](/docs/browser.md).\n\n## Community\n\nHaving problems? want to contribute? join our [community slack](http://devtoolscommunity.herokuapp.com).\n\n## Documentation\n\n### Table of Contents\n\n* [Yargs' API](/docs/api.md)\n* [Examples](/docs/examples.md)\n* [Parsing Tricks](/docs/tricks.md)\n  * [Stop the Parser](/docs/tricks.md#stop)\n  * [Negating Boolean Arguments](/docs/tricks.md#negate)\n  * [Numbers](/docs/tricks.md#numbers)\n  * [Arrays](/docs/tricks.md#arrays)\n  * [Objects](/docs/tricks.md#objects)\n  * [Quotes](/docs/tricks.md#quotes)\n* [Advanced Topics](/docs/advanced.md)\n  * [Composing Your App Using Commands](/docs/advanced.md#commands)\n  * [Building Configurable CLI Apps](/docs/advanced.md#configuration)\n  * [Customizing Yargs' Parser](/docs/advanced.md#customizing)\n  * [Bundling yargs](/docs/bundling.md)\n* [Contributing](/contributing.md)\n\n## Supported Node.js Versions\n\nLibraries in this ecosystem make a best effort to track\n[Node.js' release schedule](https://nodejs.org/en/about/releases/). Here's [a\npost on why we think this is important](https://medium.com/the-node-js-collection/maintainers-should-consider-following-node-js-release-schedule-ab08ed4de71a).\n\n[npm-url]: https://www.npmjs.com/package/yargs\n[npm-image]: https://img.shields.io/npm/v/yargs.svg\n[standard-image]: https://img.shields.io/badge/code%20style-standard-brightgreen.svg\n[standard-url]: http://standardjs.com/\n[conventional-commits-image]: https://img.shields.io/badge/Conventional%20Commits-1.0.0-yellow.svg\n[conventional-commits-url]: https://conventionalcommits.org/\n[slack-image]: http://devtoolscommunity.herokuapp.com/badge.svg\n[slack-url]: http://devtoolscommunity.herokuapp.com\n[type-definitions]: https://github.com/DefinitelyTyped/DefinitelyTyped/tree/master/types/yargs\n[coverage-image]: https://img.shields.io/nycrc/yargs/yargs\n[coverage-url]: https://github.com/yargs/yargs/blob/main/.nycrc\n","repository":{"type":"git","url":"git+https://github.com/yargs/yargs.git"},"readmeFilename":"README.md","homepage":"https://yargs.js.org/","bugs":{"url":"https://github.com/yargs/yargs/issues"},"license":"MIT"}
+{
+  "name": "yargs",
+  "description": "yargs the modern, pirate-themed, successor to optimist.",
+  "dist-tags": {
+    "latest": "15.4.1"
+  },
+  "versions": {
+    "15.4.1": {
+      "name": "yargs",
+      "version": "15.4.1",
+      "description": "yargs the modern, pirate-themed, successor to optimist.",
+      "main": "./index.js",
+      "dependencies": {
+        "cliui": "^6.0.0",
+        "decamelize": "^1.2.0",
+        "find-up": "^4.1.0",
+        "get-caller-file": "^2.0.1",
+        "require-directory": "^2.1.1",
+        "require-main-filename": "^2.0.0",
+        "set-blocking": "^2.0.0",
+        "string-width": "^4.2.0",
+        "which-module": "^2.0.0",
+        "y18n": "^4.0.0",
+        "yargs-parser": "^18.1.2"
+      },
+      "devDependencies": {
+        "@types/chai": "^4.2.11",
+        "@types/decamelize": "^1.2.0",
+        "@types/mocha": "^7.0.2",
+        "@types/node": "^10.0.3",
+        "@typescript-eslint/eslint-plugin": "^3.0.0",
+        "@typescript-eslint/parser": "^3.0.0",
+        "c8": "^7.0.0",
+        "chai": "^4.2.0",
+        "chalk": "^4.0.0",
+        "coveralls": "^3.0.9",
+        "cpr": "^3.0.1",
+        "cross-spawn": "^7.0.0",
+        "es6-promise": "^4.2.5",
+        "eslint": "^6.8.0",
+        "eslint-plugin-import": "^2.20.1",
+        "eslint-plugin-node": "^11.0.0",
+        "gts": "^2.0.0-alpha.4",
+        "hashish": "0.0.4",
+        "mocha": "^7.0.0",
+        "rimraf": "^3.0.2",
+        "standardx": "^5.0.0",
+        "typescript": "^3.7.0",
+        "which": "^2.0.0",
+        "yargs-test-extends": "^1.0.1"
+      },
+      "scripts": {
+        "fix": "standardx --fix  && standardx --fix **/*.ts",
+        "posttest": "npm run check",
+        "test": "c8 mocha --require ./test/before.js --timeout=12000 --check-leaks",
+        "coverage": "c8 report --check-coverage",
+        "check": "standardx && standardx **/*.ts",
+        "compile": "rimraf build && tsc",
+        "prepare": "npm run compile",
+        "pretest": "npm run compile -- -p tsconfig.test.json"
+      },
+      "repository": {
+        "type": "git",
+        "url": "git+https://github.com/yargs/yargs.git"
+      },
+      "standardx": {
+        "ignore": [
+          "build",
+          "**/example/**"
+        ]
+      },
+      "license": "MIT",
+      "engines": {
+        "node": ">=8"
+      },
+      "gitHead": "0b519a4672c8493d72838292ed0d60b63b88f33e",
+      "bugs": {
+        "url": "https://github.com/yargs/yargs/issues"
+      },
+      "_id": "yargs@15.4.1",
+      "_nodeVersion": "12.16.3",
+      "_npmVersion": "6.14.4",
+      "dist": {
+        "integrity": "sha512-aePbxDmcYW++PaqBsJ+HYUFwCdv4LVvdnhBy78E57PIor8/OVvhMrADFFEDh8DHDFRv/O9i3lPhsENjO7QX0+A==",
+        "shasum": "0d87a16de01aee9d8bec2bfbf74f67851730f4f8",
+        "tarball": "http://localhost:4260/yargs/yargs-15.4.1.tgz",
+        "fileCount": 62,
+        "unpackedSize": 230562
+      },
+      "directories": {},
+      "_hasShrinkwrap": false
+    }
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/yargs/yargs.git"
+  },
+  "readmeFilename": "README.md",
+  "homepage": "https://yargs.js.org/",
+  "bugs": {
+    "url": "https://github.com/yargs/yargs/issues"
+  },
+  "license": "MIT"
+}

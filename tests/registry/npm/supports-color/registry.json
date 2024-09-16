@@ -1,1 +1,70 @@
-{"name":"supports-color","description":"Detect whether a terminal supports color","dist-tags":{"latest":"7.2.0"},"versions":{"7.2.0":{"name":"supports-color","version":"7.2.0","description":"Detect whether a terminal supports color","license":"MIT","repository":{"type":"git","url":"git+https://github.com/chalk/supports-color.git"},"author":{"name":"Sindre Sorhus","email":"sindresorhus@gmail.com","url":"sindresorhus.com"},"engines":{"node":">=8"},"scripts":{"test":"xo && ava"},"dependencies":{"has-flag":"^4.0.0"},"devDependencies":{"ava":"^1.4.1","import-fresh":"^3.0.0","xo":"^0.24.0"},"browser":"browser.js","gitHead":"c5edf46896d1fc1826cb1183a60d61eecb65d749","bugs":{"url":"https://github.com/chalk/supports-color/issues"},"_id":"supports-color@7.2.0","_nodeVersion":"12.18.2","_npmVersion":"6.14.7","dist":{"integrity":"sha512-qpCAvRl9stuOHveKsn7HncJRvv501qIacKzQlO/+Lwxc9+0q2wLyv4Dfvt80/DPn2pqOBsJdDiogXGR9+OvwRw==","shasum":"1b7dcdcb32b8138801b3e478ba6a51caa89648da","tarball":"http://localhost:4260/supports-color/supports-color-7.2.0.tgz","fileCount":5,"unpackedSize":7035,"npm-signature":"-----BEGIN PGP SIGNATURE-----\r\nVersion: OpenPGP.js v3.0.4\r\nComment: https://openpgpjs.org\r\n\r\nwsFcBAEBCAAQBQJfSOfPCRA9TVsSAnZWagAA1JEQAKKOOmIj0Pn5/XIGvNlg\nBR4gMIGAAlPuSAJAA7lZQukqIbZxtkepHkTYc0hOR8VIW0R8kr9fuHjlqv5n\n/xt6fGCvmOfzty0wcuuudsxtp710zt3XDKKoTTyiFZxowVldF/9B6hGuagXU\nWV96BUo9o72dfQB/70q9ulPAYqqtotOkO0WhP5/Nom0hZ9htDHTRkDkHnUsF\nAaxNAxGxOORNj2yo/KYjKf9H9g18YJcybhk65MWOA4w5M8H6gAb/qbEo0wTI\nxmvtuZClK8OrIEqbkC2y7W8EGS4Tq0vxCe0z8xaT44sm169+8SwMI4NPEz+B\ntCsKmFHtidQ5Gb3svu508fuaBT0Hjspfd3FA7VfiwLa9/pP7I071+KsXxv9W\nkaMIF0PL0LCx6vlwH15IkRiX1ESJcuF39zKMxRV9W2i9x65LRHU0d4G4r4ND\nBv2j2EvbeE0A2Ec83QLN/YCL+mFxrQsRj4cZtzAtzczk2qHSPD8R4mvaVLAQ\nzzxzJPZ6baYBCXsXhNy/dWLwN+C3DnMZiQPJQHirlNMsfNO0ZNtVEEU/E/VU\nMzzoJ97fZx+tkMB3atmxhM3Kcy6yM0EYqlrsQfR4WLmnD0QXogaQBWUjQpDW\ns/x0bBz693U6LoeLaZtQ0XebdwtRnEmLpY2eu0b4mgDYaJPrlmaQH3SNlor6\nwx3o\r\n=bmle\r\n-----END PGP SIGNATURE-----\r\n","signatures":[{"keyid":"SHA256:jl3bwswu80PjjokCgh0o2w5c2U4LhQAE57gj9cz1kzA","sig":"MEQCIE0VQZExbPCN/unr9MvTQXP8sE2Dc3/XaR75ek8UW/PdAiBAcA235EKWMIT6eyE5i6OIMFXIX21HdO+KikcpSHdOdQ=="}]},"directories":{},"_hasShrinkwrap":false}},"readme":"# supports-color\n\n> Detect whether a terminal supports color\n\n## Install\n\n```\n$ npm install supports-color\n```\n\n## Usage\n\n```js\nimport supportsColor from 'supports-color';\n\nif (supportsColor.stdout) {\n\tconsole.log('Terminal stdout supports color');\n}\n\nif (supportsColor.stdout.has256) {\n\tconsole.log('Terminal stdout supports 256 colors');\n}\n\nif (supportsColor.stderr.has16m) {\n\tconsole.log('Terminal stderr supports 16 million colors (truecolor)');\n}\n```\n\n## API\n\nReturns an `object` with a `stdout` and `stderr` property for testing either streams. Each property is an `Object`, or `false` if color is not supported.\n\nThe `stdout`/`stderr` objects specifies a level of support for color through a `.level` property and a corresponding flag:\n\n- `.level = 1` and `.hasBasic = true`: Basic color support (16 colors)\n- `.level = 2` and `.has256 = true`: 256 color support\n- `.level = 3` and `.has16m = true`: Truecolor support (16 million colors)\n\n### Custom instance\n\nThe package also exposes the named export `createSupportColor` function that takes an arbitrary write stream (for example, `process.stdout`) and an optional options object to (re-)evaluate color support for an arbitrary stream.\n\n```js\nimport {createSupportsColor} from 'supports-color';\n\nconst stdoutSupportsColor = createSupportsColor(process.stdout);\n\nif (stdoutSupportsColor) {\n\tconsole.log('Terminal stdout supports color');\n}\n\n// `stdoutSupportsColor` is the same as `supportsColor.stdout`\n```\n\nThe options object supports a single boolean property `sniffFlags`. By default it is `true`, which instructs the detection to sniff `process.argv` for the multitude of `--color` flags (see _Info_ below). If `false`, then `process.argv` is not considered when determining color support.\n\n## Info\n\nIt obeys the `--color` and `--no-color` CLI flags.\n\nFor situations where using `--color` is not possible, use the environment variable `FORCE_COLOR=1` (level 1), `FORCE_COLOR=2` (level 2), or `FORCE_COLOR=3` (level 3) to forcefully enable color, or `FORCE_COLOR=0` to forcefully disable. The use of `FORCE_COLOR` overrides all other color support checks.\n\nExplicit 256/Truecolor mode can be enabled using the `--color=256` and `--color=16m` flags, respectively.\n\n## Related\n\n- [supports-color-cli](https://github.com/chalk/supports-color-cli) - CLI for this module\n- [chalk](https://github.com/chalk/chalk) - Terminal string styling done right\n- [is-unicode-supported](https://github.com/sindresorhus/is-unicode-supported) - Detect whether the terminal supports Unicode\n- [is-interactive](https://github.com/sindresorhus/is-interactive) - Check if stdout or stderr is interactive\n\n## Maintainers\n\n- [Sindre Sorhus](https://github.com/sindresorhus)\n- [Josh Junon](https://github.com/qix-)\n\n---\n\n<div align=\"center\">\n\t<b>\n\t\t<a href=\"https://tidelift.com/subscription/pkg/npm-supports-color?utm_source=npm-supports-color&utm_medium=referral&utm_campaign=readme\">Get professional support for this package with a Tidelift subscription</a>\n\t</b>\n\t<br>\n\t<sub>\n\t\tTidelift helps make open source sustainable for maintainers while giving companies<br>assurances about security, maintenance, and licensing for their dependencies.\n\t</sub>\n</div>\n\n---\n","homepage":"https://github.com/chalk/supports-color#readme","repository":{"type":"git","url":"git+https://github.com/chalk/supports-color.git"},"author":{"name":"Sindre Sorhus","email":"sindresorhus@gmail.com","url":"https://sindresorhus.com"},"bugs":{"url":"https://github.com/chalk/supports-color/issues"},"license":"MIT","readmeFilename":"readme.md"}
+{
+  "name": "supports-color",
+  "description": "Detect whether a terminal supports color",
+  "dist-tags": {
+    "latest": "7.2.0"
+  },
+  "versions": {
+    "7.2.0": {
+      "name": "supports-color",
+      "version": "7.2.0",
+      "description": "Detect whether a terminal supports color",
+      "license": "MIT",
+      "repository": {
+        "type": "git",
+        "url": "git+https://github.com/chalk/supports-color.git"
+      },
+      "author": {
+        "name": "Sindre Sorhus",
+        "email": "sindresorhus@gmail.com",
+        "url": "sindresorhus.com"
+      },
+      "engines": {
+        "node": ">=8"
+      },
+      "scripts": {
+        "test": "xo && ava"
+      },
+      "dependencies": {
+        "has-flag": "^4.0.0"
+      },
+      "devDependencies": {
+        "ava": "^1.4.1",
+        "import-fresh": "^3.0.0",
+        "xo": "^0.24.0"
+      },
+      "browser": "browser.js",
+      "gitHead": "c5edf46896d1fc1826cb1183a60d61eecb65d749",
+      "bugs": {
+        "url": "https://github.com/chalk/supports-color/issues"
+      },
+      "_id": "supports-color@7.2.0",
+      "_nodeVersion": "12.18.2",
+      "_npmVersion": "6.14.7",
+      "dist": {
+        "integrity": "sha512-qpCAvRl9stuOHveKsn7HncJRvv501qIacKzQlO/+Lwxc9+0q2wLyv4Dfvt80/DPn2pqOBsJdDiogXGR9+OvwRw==",
+        "shasum": "1b7dcdcb32b8138801b3e478ba6a51caa89648da",
+        "tarball": "http://localhost:4260/supports-color/supports-color-7.2.0.tgz",
+        "fileCount": 5,
+        "unpackedSize": 7035
+      },
+      "directories": {},
+      "_hasShrinkwrap": false
+    }
+  },
+  "homepage": "https://github.com/chalk/supports-color#readme",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/chalk/supports-color.git"
+  },
+  "author": {
+    "name": "Sindre Sorhus",
+    "email": "sindresorhus@gmail.com",
+    "url": "https://sindresorhus.com"
+  },
+  "bugs": {
+    "url": "https://github.com/chalk/supports-color/issues"
+  },
+  "license": "MIT",
+  "readmeFilename": "readme.md"
+}

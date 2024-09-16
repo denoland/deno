@@ -1,1 +1,88 @@
-{"name":"node-gyp","description":"Node.js native addon build tool","dist-tags":{"latest":"10.1.0"},"versions":{"10.1.0":{"name":"node-gyp","description":"Node.js native addon build tool","license":"MIT","version":"10.1.0","installVersion":11,"author":{"name":"Nathan Rajlich","email":"nathan@tootallnate.net","url":"http://tootallnate.net"},"repository":{"type":"git","url":"git://github.com/nodejs/node-gyp.git"},"preferGlobal":true,"bin":{"node-gyp":"bin/node-gyp.js"},"main":"./lib/node-gyp.js","dependencies":{"env-paths":"^2.2.0","exponential-backoff":"^3.1.1","glob":"^10.3.10","graceful-fs":"^4.2.6","make-fetch-happen":"^13.0.0","nopt":"^7.0.0","proc-log":"^3.0.0","semver":"^7.3.5","tar":"^6.1.2","which":"^4.0.0"},"engines":{"node":"^16.14.0 || >=18.0.0"},"devDependencies":{"bindings":"^1.5.0","cross-env":"^7.0.3","mocha":"^10.2.0","nan":"^2.14.2","require-inject":"^1.4.4","standard":"^17.0.0"},"scripts":{"lint":"standard \"*/*.js\" \"test/**/*.js\" \".github/**/*.js\"","test":"cross-env NODE_GYP_NULL_LOGGER=true mocha --timeout 15000 test/test-download.js test/test-*"},"_id":"node-gyp@10.1.0","gitHead":"f90ce122fe564be68368d0c0dec5dacd9e770233","bugs":{"url":"https://github.com/nodejs/node-gyp/issues"},"_nodeVersion":"20.7.0","_npmVersion":"10.4.0","dist":{"integrity":"sha512-B4J5M1cABxPc5PwfjhbV5hoy2DP9p8lFXASnEN6hugXOa61416tnTZ29x9sSwAd0o99XNIcpvDDy1swAExsVKA==","shasum":"75e6f223f2acb4026866c26a2ead6aab75a8ca7e","tarball":"http://localhost:4260/node-gyp/node-gyp-10.1.0.tgz","fileCount":95,"unpackedSize":1726747,"signatures":[{"keyid":"SHA256:jl3bwswu80PjjokCgh0o2w5c2U4LhQAE57gj9cz1kzA","sig":"MEYCIQCtbTgP5X+OUoSr0tJFu0vdmD4bvPepthKw2IeF8rfGUQIhAOZ9Zy/krKn/tkSabJlX4z7bqNnUxS+es34pGSTb3Jfy"}]},"directories":{},"_hasShrinkwrap":false}},"readme":"# `node-gyp` - Node.js native addon build tool\n\n[![Build Status](https://github.com/nodejs/node-gyp/workflows/Tests/badge.svg?branch=main)](https://github.com/nodejs/node-gyp/actions?query=workflow%3ATests+branch%3Amain)\n![npm](https://img.shields.io/npm/dm/node-gyp)\n\n`node-gyp` is a cross-platform command-line tool written in Node.js for\ncompiling native addon modules for Node.js. It contains a vendored copy of the\n[gyp-next](https://github.com/nodejs/gyp-next) project that was previously used\nby the Chromium team and extended to support the development of Node.js native\naddons.\n\nNote that `node-gyp` is _not_ used to build Node.js itself.\n\nAll current and LTS target versions of Node.js are supported. Depending on what version of Node.js is actually installed on your system\n`node-gyp` downloads the necessary development files or headers for the target version. List of stable Node.js versions can be found on [Node.js website](https://nodejs.org/en/about/previous-releases).\n\n## Features\n\n * The same build commands work on any of the supported platforms\n * Supports the targeting of different versions of Node.js\n\n## Installation\n\nYou can install `node-gyp` using `npm`:\n\n``` bash\nnpm install -g node-gyp\n```\n\nDepending on your operating system, you will need to install:\n\n### On Unix\n\n   * [A supported version of Python](https://devguide.python.org/versions/)\n   * `make`\n   * A proper C/C++ compiler toolchain, like [GCC](https://gcc.gnu.org)\n\n### On macOS\n\n   * [A supported version of Python](https://devguide.python.org/versions/)\n   * `Xcode Command Line Tools` which will install `clang`, `clang++`, and `make`.\n     * Install the `Xcode Command Line Tools` standalone by running `xcode-select --install`. -- OR --\n     * Alternatively, if you already have the [full Xcode installed](https://developer.apple.com/xcode/download/), you can install the Command Line Tools under the menu `Xcode -> Open Developer Tool -> More Developer Tools...`.\n\n\n### On Windows\n\nInstall the current [version of Python](https://devguide.python.org/versions/) from the\n[Microsoft Store](https://apps.microsoft.com/store/search?publisher=Python+Software+Foundation).\n\nInstall tools and configuration manually:\n   * Install Visual C++ Build Environment: For Visual Studio 2019 or later, use the `Desktop development with C++` workload from [Visual Studio Community](https://visualstudio.microsoft.com/thank-you-downloading-visual-studio/?sku=Community).  For a version older than Visual Studio 2019, install [Visual Studio Build Tools](https://visualstudio.microsoft.com/thank-you-downloading-visual-studio/?sku=BuildTools) with the `Visual C++ build tools` option.\n\n   If the above steps didn't work for you, please visit [Microsoft's Node.js Guidelines for Windows](https://github.com/Microsoft/nodejs-guidelines/blob/master/windows-environment.md#compiling-native-addon-modules) for additional tips.\n\n   To target native ARM64 Node.js on Windows on ARM, add the components \"Visual C++ compilers and libraries for ARM64\" and \"Visual C++ ATL for ARM64\".\n\n   To use the native ARM64 C++ compiler on Windows on ARM, ensure that you have Visual Studio 2022 [17.4 or later](https://devblogs.microsoft.com/visualstudio/arm64-visual-studio-is-officially-here/) installed.\n\nIt's advised to install following Powershell module: [VSSetup](https://github.com/microsoft/vssetup.powershell) using `Install-Module VSSetup -Scope CurrentUser`.\nThis will make Visual Studio detection logic to use more flexible and accessible method, avoiding Powershell's `ConstrainedLanguage` mode.\n\n### Configuring Python Dependency\n\n`node-gyp` requires that you have installed a [supported version of Python](https://devguide.python.org/versions/).\nIf you have multiple versions of Python installed, you can identify which version\n`node-gyp` should use in one of the following ways:\n\n1. by setting the `--python` command-line option, e.g.:\n\n``` bash\nnode-gyp <command> --python /path/to/executable/python\n```\n\n2. If `node-gyp` is called by way of `npm`, *and* you have multiple versions of\nPython installed, then you can set the `npm_config_python` environment variable\nto the appropriate path:\n``` bash\nexport npm_config_python=/path/to/executable/python\n```\n&nbsp;&nbsp;&nbsp;&nbsp;Or on Windows:\n```console\npy --list-paths  # To see the installed Python versions\nset npm_config_python=C:\\path\\to\\python.exe\n```\n\n3. If the `PYTHON` environment variable is set to the path of a Python executable,\nthen that version will be used if it is a supported version.\n\n4. If the `NODE_GYP_FORCE_PYTHON` environment variable is set to the path of a\nPython executable, it will be used instead of any of the other configured or\nbuilt-in Python search paths. If it's not a compatible version, no further\nsearching will be done.\n\n### Build for Third Party Node.js Runtimes\n\nWhen building modules for third-party Node.js runtimes like Electron, which have\ndifferent build configurations from the official Node.js distribution, you\nshould use `--dist-url` or `--nodedir` flags to specify the headers of the\nruntime to build for.\n\nAlso when `--dist-url` or `--nodedir` flags are passed, node-gyp will use the\n`config.gypi` shipped in the headers distribution to generate build\nconfigurations, which is different from the default mode that would use the\n`process.config` object of the running Node.js instance.\n\nSome old versions of Electron shipped malformed `config.gypi` in their headers\ndistributions, and you might need to pass `--force-process-config` to node-gyp\nto work around configuration errors.\n\n## How to Use\n\nTo compile your native addon first go to its root directory:\n\n``` bash\ncd my_node_addon\n```\n\nThe next step is to generate the appropriate project build files for the current\nplatform. Use `configure` for that:\n\n``` bash\nnode-gyp configure\n```\n\nAuto-detection fails for Visual C++ Build Tools 2015, so `--msvs_version=2015`\nneeds to be added (not needed when run by npm as configured above):\n``` bash\nnode-gyp configure --msvs_version=2015\n```\n\n__Note__: The `configure` step looks for a `binding.gyp` file in the current\ndirectory to process. See below for instructions on creating a `binding.gyp` file.\n\nNow you will have either a `Makefile` (on Unix platforms) or a `vcxproj` file\n(on Windows) in the `build/` directory. Next, invoke the `build` command:\n\n``` bash\nnode-gyp build\n```\n\nNow you have your compiled `.node` bindings file! The compiled bindings end up\nin `build/Debug/` or `build/Release/`, depending on the build mode. At this point,\nyou can require the `.node` file with Node.js and run your tests!\n\n__Note:__ To create a _Debug_ build of the bindings file, pass the `--debug` (or\n`-d`) switch when running either the `configure`, `build` or `rebuild` commands.\n\n## The `binding.gyp` file\n\nA `binding.gyp` file describes the configuration to build your module, in a\nJSON-like format. This file gets placed in the root of your package, alongside\n`package.json`.\n\nA barebones `gyp` file appropriate for building a Node.js addon could look like:\n\n```python\n{\n  \"targets\": [\n    {\n      \"target_name\": \"binding\",\n      \"sources\": [ \"src/binding.cc\" ]\n    }\n  ]\n}\n```\n\n## Further reading\n\nThe **[docs](./docs/)** directory contains additional documentation on specific node-gyp topics that may be useful if you are experiencing problems installing or building addons using node-gyp.\n\nSome additional resources for Node.js native addons and writing `gyp` configuration files:\n\n * [\"Going Native\" a nodeschool.io tutorial](http://nodeschool.io/#goingnative)\n * [\"Hello World\" node addon example](https://github.com/nodejs/node/tree/main/test/addons/hello-world)\n * [gyp user documentation](https://gyp.gsrc.io/docs/UserDocumentation.md)\n * [gyp input format reference](https://gyp.gsrc.io/docs/InputFormatReference.md)\n * [*\"binding.gyp\" files out in the wild* wiki page](./docs/binding.gyp-files-in-the-wild.md)\n\n## Commands\n\n`node-gyp` responds to the following commands:\n\n| **Command**   | **Description**\n|:--------------|:---------------------------------------------------------------\n| `help`        | Shows the help dialog\n| `build`       | Invokes `make`/`msbuild.exe` and builds the native addon\n| `clean`       | Removes the `build` directory if it exists\n| `configure`   | Generates project build files for the current platform\n| `rebuild`     | Runs `clean`, `configure` and `build` all in a row\n| `install`     | Installs Node.js header files for the given version\n| `list`        | Lists the currently installed Node.js header versions\n| `remove`      | Removes the Node.js header files for the given version\n\n\n## Command Options\n\n`node-gyp` accepts the following command options:\n\n| **Command**                       | **Description**\n|:----------------------------------|:------------------------------------------\n| `-j n`, `--jobs n`                | Run `make` in parallel. The value `max` will use all available CPU cores\n| `--target=v6.2.1`                 | Node.js version to build for (default is `process.version`)\n| `--silly`, `--loglevel=silly`     | Log all progress to console\n| `--verbose`, `--loglevel=verbose` | Log most progress to console\n| `--silent`, `--loglevel=silent`   | Don't log anything to console\n| `debug`, `--debug`                | Make Debug build (default is `Release`)\n| `--release`, `--no-debug`         | Make Release build\n| `-C $dir`, `--directory=$dir`     | Run command in different directory\n| `--make=$make`                    | Override `make` command (e.g. `gmake`)\n| `--thin=yes`                      | Enable thin static libraries\n| `--arch=$arch`                    | Set target architecture (e.g. ia32)\n| `--tarball=$path`                 | Get headers from a local tarball\n| `--devdir=$path`                  | SDK download directory (default is OS cache directory)\n| `--ensure`                        | Don't reinstall headers if already present\n| `--dist-url=$url`                 | Download header tarball from custom URL\n| `--proxy=$url`                    | Set HTTP(S) proxy for downloading header tarball\n| `--noproxy=$urls`                 | Set urls to ignore proxies when downloading header tarball\n| `--cafile=$cafile`                | Override default CA chain (to download tarball)\n| `--nodedir=$path`                 | Set the path to the node source code\n| `--python=$path`                  | Set path to the Python binary\n| `--msvs_version=$version`         | Set Visual Studio version (Windows only)\n| `--solution=$solution`            | Set Visual Studio Solution version (Windows only)\n| `--force-process-config`          | Force using runtime's `process.config` object to generate `config.gypi` file\n\n## Configuration\n\n### Environment variables\n\nUse the form `npm_config_OPTION_NAME` for any of the command options listed\nabove (dashes in option names should be replaced by underscores).\n\nFor example, to set `devdir` equal to `/tmp/.gyp`, you would:\n\nRun this on Unix:\n\n```bash\nexport npm_config_devdir=/tmp/.gyp\n```\n\nOr this on Windows:\n\n```console\nset npm_config_devdir=c:\\temp\\.gyp\n```\n\n### `npm` configuration for npm versions before v9\n\nUse the form `OPTION_NAME` for any of the command options listed above.\n\nFor example, to set `devdir` equal to `/tmp/.gyp`, you would run:\n\n```bash\nnpm config set [--global] devdir /tmp/.gyp\n```\n\n**Note:** Configuration set via `npm` will only be used when `node-gyp`\nis run via `npm`, not when `node-gyp` is run directly.\n\n## License\n\n`node-gyp` is available under the MIT license. See the [LICENSE\nfile](LICENSE) for details.\n","author":{"name":"Nathan Rajlich","email":"nathan@tootallnate.net","url":"http://tootallnate.net"},"repository":{"type":"git","url":"git://github.com/nodejs/node-gyp.git"},"homepage":"https://github.com/nodejs/node-gyp#readme","bugs":{"url":"https://github.com/nodejs/node-gyp/issues"},"readmeFilename":"README.md","license":"MIT"}
+{
+  "name": "node-gyp",
+  "description": "Node.js native addon build tool",
+  "dist-tags": {
+    "latest": "10.1.0"
+  },
+  "versions": {
+    "10.1.0": {
+      "name": "node-gyp",
+      "description": "Node.js native addon build tool",
+      "license": "MIT",
+      "version": "10.1.0",
+      "installVersion": 11,
+      "author": {
+        "name": "Nathan Rajlich",
+        "email": "nathan@tootallnate.net",
+        "url": "http://tootallnate.net"
+      },
+      "repository": {
+        "type": "git",
+        "url": "git://github.com/nodejs/node-gyp.git"
+      },
+      "preferGlobal": true,
+      "bin": {
+        "node-gyp": "bin/node-gyp.js"
+      },
+      "main": "./lib/node-gyp.js",
+      "dependencies": {
+        "env-paths": "^2.2.0",
+        "exponential-backoff": "^3.1.1",
+        "glob": "^10.3.10",
+        "graceful-fs": "^4.2.6",
+        "make-fetch-happen": "^13.0.0",
+        "nopt": "^7.0.0",
+        "proc-log": "^3.0.0",
+        "semver": "^7.3.5",
+        "tar": "^6.1.2",
+        "which": "^4.0.0"
+      },
+      "engines": {
+        "node": "^16.14.0 || >=18.0.0"
+      },
+      "devDependencies": {
+        "bindings": "^1.5.0",
+        "cross-env": "^7.0.3",
+        "mocha": "^10.2.0",
+        "nan": "^2.14.2",
+        "require-inject": "^1.4.4",
+        "standard": "^17.0.0"
+      },
+      "scripts": {
+        "lint": "standard \"*/*.js\" \"test/**/*.js\" \".github/**/*.js\"",
+        "test": "cross-env NODE_GYP_NULL_LOGGER=true mocha --timeout 15000 test/test-download.js test/test-*"
+      },
+      "_id": "node-gyp@10.1.0",
+      "gitHead": "f90ce122fe564be68368d0c0dec5dacd9e770233",
+      "bugs": {
+        "url": "https://github.com/nodejs/node-gyp/issues"
+      },
+      "_nodeVersion": "20.7.0",
+      "_npmVersion": "10.4.0",
+      "dist": {
+        "integrity": "sha512-B4J5M1cABxPc5PwfjhbV5hoy2DP9p8lFXASnEN6hugXOa61416tnTZ29x9sSwAd0o99XNIcpvDDy1swAExsVKA==",
+        "shasum": "75e6f223f2acb4026866c26a2ead6aab75a8ca7e",
+        "tarball": "http://localhost:4260/node-gyp/node-gyp-10.1.0.tgz",
+        "fileCount": 95,
+        "unpackedSize": 1726747
+      },
+      "directories": {},
+      "_hasShrinkwrap": false
+    }
+  },
+  "author": {
+    "name": "Nathan Rajlich",
+    "email": "nathan@tootallnate.net",
+    "url": "http://tootallnate.net"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git://github.com/nodejs/node-gyp.git"
+  },
+  "homepage": "https://github.com/nodejs/node-gyp#readme",
+  "bugs": {
+    "url": "https://github.com/nodejs/node-gyp/issues"
+  },
+  "readmeFilename": "README.md",
+  "license": "MIT"
+}

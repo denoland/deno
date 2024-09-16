@@ -1,1 +1,88 @@
-{"name":"@vue/compiler-sfc","dist-tags":{"latest":"3.2.38"},"versions":{"3.2.38":{"name":"@vue/compiler-sfc","version":"3.2.38","description":"@vue/compiler-sfc","main":"dist/compiler-sfc.cjs.js","module":"dist/compiler-sfc.esm-browser.js","types":"dist/compiler-sfc.d.ts","buildOptions":{"name":"VueCompilerSFC","formats":["cjs","esm-browser"],"prod":false,"enableNonBrowserBranches":true},"repository":{"type":"git","url":"git+https://github.com/vuejs/core.git","directory":"packages/compiler-sfc"},"author":{"name":"Evan You"},"license":"MIT","bugs":{"url":"https://github.com/vuejs/core/issues"},"dependencies":{"@babel/parser":"^7.16.4","@vue/compiler-core":"3.2.38","@vue/compiler-dom":"3.2.38","@vue/compiler-ssr":"3.2.38","@vue/reactivity-transform":"3.2.38","@vue/shared":"3.2.38","estree-walker":"^2.0.2","magic-string":"^0.25.7","source-map":"^0.6.1","postcss":"^8.1.10"},"devDependencies":{"@types/estree":"^0.0.48","@babel/types":"^7.16.0","@types/lru-cache":"^5.1.0","pug":"^3.0.1","sass":"^1.26.9","@vue/consolidate":"^0.17.3","hash-sum":"^2.0.0","lru-cache":"^5.1.1","merge-source-map":"^1.1.0","postcss-modules":"^4.0.0","postcss-selector-parser":"^6.0.4"},"licenseText":"The MIT License (MIT)\n\nCopyright (c) 2018-present, Yuxi (Evan) You\n\nPermission is hereby granted, free of charge, to any person obtaining a copy\nof this software and associated documentation files (the \"Software\"), to deal\nin the Software without restriction, including without limitation the rights\nto use, copy, modify, merge, publish, distribute, sublicense, and/or sell\ncopies of the Software, and to permit persons to whom the Software is\nfurnished to do so, subject to the following conditions:\n\nThe above copyright notice and this permission notice shall be included in\nall copies or substantial portions of the Software.\n\nTHE SOFTWARE IS PROVIDED \"AS IS\", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR\nIMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,\nFITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE\nAUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER\nLIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,\nOUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN\nTHE SOFTWARE.\n","_id":"@vue/compiler-sfc@3.2.38","dist":{"shasum":"9e763019471a535eb1fceeaac9d4d18a83f0940f","integrity":"sha512-KZjrW32KloMYtTcHAFuw3CqsyWc5X6seb8KbkANSWt3Cz9p2qA8c1GJpSkksFP9ABb6an0FLCFl46ZFXx3kKpg==","tarball":"http://localhost:4260/@vue/compiler-sfc/compiler-sfc-3.2.38.tgz","fileCount":8,"unpackedSize":2080509,"signatures":[{"keyid":"SHA256:jl3bwswu80PjjokCgh0o2w5c2U4LhQAE57gj9cz1kzA","sig":"MEUCIQDk5/k9sPiRsEXIxkcyK2qEeEBwvOLFL15UTD8bURAS5QIgT/WJ3KfBz3HA0VYwKRwkOtm3dYRO9H5pMcUA6LvJiNk="}],"npm-signature":"-----BEGIN PGP SIGNATURE-----\r\nVersion: OpenPGP.js v4.10.10\r\nComment: https://openpgpjs.org\r\n\r\nwsFzBAEBCAAGBQJjDcP+ACEJED1NWxICdlZqFiEECWMYAoorWMhJKdjhPU1b\r\nEgJ2Vmo/uQ//am1jTR52w+C6oH9kLSHrZGjPlChTzIgSZ0fzMf/j5BJrgfyo\r\nvhA8zhdpbxxs2KREDUiRISUo+ZWKX6LUwT20z9J835YELR6sSwV0wxSmA2Hh\r\nFfVIm4s4XkAqMudfaiCFVdF9qPcBm578Kz1p/WmiCBORKTnVcSc8NlEWYIf4\r\nzfO9ilffFpVvQhTLoDtLG/yAA6s32+mShRFDyuona2fizdU+9kf5RSPP7aOd\r\nKqIBiRU4OmwK5q3CrIFzdOszhLoFqo2qhUhecOAOTzTaOuRAJoqKqWq7UzBb\r\nKnmqIVD77JccQXV41PEMeSJrLq2JsWmvhOfa7ExkotT0K0CAhhZj839NC/q2\r\nDGeKdEmaXyhInOrpSXgD5vktgf+6G/jDxUb9bJyUjPMw2D4yAD1hBzZBCG/j\r\nWZKEhOxlnCKiIGZ++t6uTi4o6GQiwLX2FnBXkJIEi9NJj3+0LstgDT1EZFK3\r\nFl/8gy6k3bDCCVefZzsUBCaPDaVBQHeHI/NwUNTT/YGnPl30gi7Bqi3ApWQl\r\nETIRb88BzcpH58Ml9DpnnOCsEkFe6CJ2B+ZYKhUXmhQDYaexSBS53TizuMAO\r\n+poMrYP1XV3eLVlIbWGYYmdGT/sPa9nKFiUgM1d5Lla6BeqZrlfuYori+KYz\r\nefaLCjXPNtbKcBTDxbq4Pv7hCQwb2UbK83o=\r\n=uME4\r\n-----END PGP SIGNATURE-----\r\n"},"directories":{},"_hasShrinkwrap":false}},"description":"@vue/compiler-sfc","homepage":"https://github.com/vuejs/core/tree/main/packages/compiler-sfc#readme","repository":{"type":"git","url":"git+https://github.com/vuejs/core.git","directory":"packages/compiler-sfc"},"author":{"name":"Evan You"},"bugs":{"url":"https://github.com/vuejs/core/issues"},"license":"MIT","readme":"# @vue/compiler-sfc\n\n> Lower level utilities for compiling Vue Single File Components\n\n**Note: as of 3.2.13+, this package is included as a dependency of the main `vue` package and can be accessed as `vue/compiler-sfc`. This means you no longer need to explicitly install this package and ensure its version match that of `vue`'s. Just use the main `vue/compiler-sfc` deep import instead.**\n\nThis package contains lower level utilities that you can use if you are writing a plugin / transform for a bundler or module system that compiles Vue Single File Components (SFCs) into JavaScript. It is used in [vue-loader](https://github.com/vuejs/vue-loader), [rollup-plugin-vue](https://github.com/vuejs/rollup-plugin-vue) and [vite](https://github.com/vitejs/vite).\n\n## API\n\nThe API is intentionally low-level due to the various considerations when integrating Vue SFCs in a build system:\n\n- Separate hot-module replacement (HMR) for script, template and styles\n\n  - template updates should not reset component state\n  - style updates should be performed without component re-render\n\n- Leveraging the tool's plugin system for pre-processor handling. e.g. `<style lang=\"scss\">` should be processed by the corresponding webpack loader.\n\n- In some cases, transformers of each block in an SFC do not share the same execution context. For example, when used with `thread-loader` or other parallelized configurations, the template sub-loader in `vue-loader` may not have access to the full SFC and its descriptor.\n\nThe general idea is to generate a facade module that imports the individual blocks of the component. The trick is the module imports itself with different query strings so that the build system can handle each request as \"virtual\" modules:\n\n```\n                                  +--------------------+\n                                  |                    |\n                                  |  script transform  |\n                           +----->+                    |\n                           |      +--------------------+\n                           |\n+--------------------+     |      +--------------------+\n|                    |     |      |                    |\n|  facade transform  +----------->+ template transform |\n|                    |     |      |                    |\n+--------------------+     |      +--------------------+\n                           |\n                           |      +--------------------+\n                           +----->+                    |\n                                  |  style transform   |\n                                  |                    |\n                                  +--------------------+\n```\n\nWhere the facade module looks like this:\n\n```js\n// main script\nimport script from '/project/foo.vue?vue&type=script'\n// template compiled to render function\nimport { render } from '/project/foo.vue?vue&type=template&id=xxxxxx'\n// css\nimport '/project/foo.vue?vue&type=style&index=0&id=xxxxxx'\n\n// attach render function to script\nscript.render = render\n\n// attach additional metadata\n// some of these should be dev only\nscript.__file = 'example.vue'\nscript.__scopeId = 'xxxxxx'\n\n// additional tooling-specific HMR handling code\n// using __VUE_HMR_API__ global\n\nexport default script\n```\n\n### High Level Workflow\n\n1. In facade transform, parse the source into descriptor with the `parse` API and generate the above facade module code based on the descriptor;\n\n2. In script transform, use `compileScript` to process the script. This handles features like `<script setup>` and CSS variable injection. Alternatively, this can be done directly in the facade module (with the code inlined instead of imported), but it will require rewriting `export default` to a temp variable (a `rewriteDefault` convenience API is provided for this purpose) so additional options can be attached to the exported object.\n\n3. In template transform, use `compileTemplate` to compile the raw template into render function code.\n\n4. In style transform, use `compileStyle` to compile raw CSS to handle `<style scoped>`, `<style module>` and CSS variable injection.\n\nOptions needed for these APIs can be passed via the query string.\n\nFor detailed API references and options, check out the source type definitions. For actual usage of these APIs, check out [rollup-plugin-vue](https://github.com/vuejs/rollup-plugin-vue/tree/next) or [vue-loader](https://github.com/vuejs/vue-loader/tree/next).\n","readmeFilename":"README.md"}
+{
+  "name": "@vue/compiler-sfc",
+  "dist-tags": {
+    "latest": "3.2.38"
+  },
+  "versions": {
+    "3.2.38": {
+      "name": "@vue/compiler-sfc",
+      "version": "3.2.38",
+      "description": "@vue/compiler-sfc",
+      "main": "dist/compiler-sfc.cjs.js",
+      "module": "dist/compiler-sfc.esm-browser.js",
+      "types": "dist/compiler-sfc.d.ts",
+      "buildOptions": {
+        "name": "VueCompilerSFC",
+        "formats": [
+          "cjs",
+          "esm-browser"
+        ],
+        "prod": false,
+        "enableNonBrowserBranches": true
+      },
+      "repository": {
+        "type": "git",
+        "url": "git+https://github.com/vuejs/core.git",
+        "directory": "packages/compiler-sfc"
+      },
+      "author": {
+        "name": "Evan You"
+      },
+      "license": "MIT",
+      "bugs": {
+        "url": "https://github.com/vuejs/core/issues"
+      },
+      "dependencies": {
+        "@babel/parser": "^7.16.4",
+        "@vue/compiler-core": "3.2.38",
+        "@vue/compiler-dom": "3.2.38",
+        "@vue/compiler-ssr": "3.2.38",
+        "@vue/reactivity-transform": "3.2.38",
+        "@vue/shared": "3.2.38",
+        "estree-walker": "^2.0.2",
+        "magic-string": "^0.25.7",
+        "source-map": "^0.6.1",
+        "postcss": "^8.1.10"
+      },
+      "devDependencies": {
+        "@types/estree": "^0.0.48",
+        "@babel/types": "^7.16.0",
+        "@types/lru-cache": "^5.1.0",
+        "pug": "^3.0.1",
+        "sass": "^1.26.9",
+        "@vue/consolidate": "^0.17.3",
+        "hash-sum": "^2.0.0",
+        "lru-cache": "^5.1.1",
+        "merge-source-map": "^1.1.0",
+        "postcss-modules": "^4.0.0",
+        "postcss-selector-parser": "^6.0.4"
+      },
+      "licenseText": "The MIT License (MIT)\n\nCopyright (c) 2018-present, Yuxi (Evan) You\n\nPermission is hereby granted, free of charge, to any person obtaining a copy\nof this software and associated documentation files (the \"Software\"), to deal\nin the Software without restriction, including without limitation the rights\nto use, copy, modify, merge, publish, distribute, sublicense, and/or sell\ncopies of the Software, and to permit persons to whom the Software is\nfurnished to do so, subject to the following conditions:\n\nThe above copyright notice and this permission notice shall be included in\nall copies or substantial portions of the Software.\n\nTHE SOFTWARE IS PROVIDED \"AS IS\", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR\nIMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,\nFITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE\nAUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER\nLIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,\nOUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN\nTHE SOFTWARE.\n",
+      "_id": "@vue/compiler-sfc@3.2.38",
+      "dist": {
+        "shasum": "9e763019471a535eb1fceeaac9d4d18a83f0940f",
+        "integrity": "sha512-KZjrW32KloMYtTcHAFuw3CqsyWc5X6seb8KbkANSWt3Cz9p2qA8c1GJpSkksFP9ABb6an0FLCFl46ZFXx3kKpg==",
+        "tarball": "http://localhost:4260/@vue/compiler-sfc/compiler-sfc-3.2.38.tgz",
+        "fileCount": 8,
+        "unpackedSize": 2080509
+      },
+      "directories": {},
+      "_hasShrinkwrap": false
+    }
+  },
+  "description": "@vue/compiler-sfc",
+  "homepage": "https://github.com/vuejs/core/tree/main/packages/compiler-sfc#readme",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/vuejs/core.git",
+    "directory": "packages/compiler-sfc"
+  },
+  "author": {
+    "name": "Evan You"
+  },
+  "bugs": {
+    "url": "https://github.com/vuejs/core/issues"
+  },
+  "license": "MIT",
+  "readmeFilename": "README.md"
+}
