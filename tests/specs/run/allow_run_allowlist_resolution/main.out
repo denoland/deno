@@ -1,5 +1,3 @@
-Script: [WILDCARD]
----
 PermissionStatus { state: "granted", onchange: null }
 PermissionStatus { state: "granted", onchange: null }
 PermissionStatus { state: "prompt", onchange: null }

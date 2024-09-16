@@ -1709,14 +1709,6 @@ fn warn_insecure_allow_run_flags(flags: &Flags) {
       colors::yellow("Warning")
     );
   }
-
-  // discourage using --allow-run with deno
-  if allow_run_list.iter().any(|d| d == "deno") {
-    log::warn!(
-      "{} --allow-run=deno can be trivially exploited. The Deno binary can be executed to do anything (https://docs.deno.com/runtime/fundamentals/security/#running-subprocesses)",
-      colors::yellow("Warning")
-    );
-  }
 }
 
 /// Resolves the path to use for a local node_modules folder.

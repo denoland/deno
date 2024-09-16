@@ -1,1 +1,0 @@
-Warning --allow-run=deno can be trivially exploited. The Deno binary can be executed to do anything (https://docs.deno.com/runtime/fundamentals/security/#running-subprocesses)

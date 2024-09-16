@@ -3,10 +3,6 @@
     "no_allow_list": {
       "args": "run --allow-run main.ts",
       "output": "no_allow_list.out"
-    },
-    "allow_run_deno": {
-      "args": "run --allow-run=deno main.ts",
-      "output": "allow_run_deno.out"
     }
   }
 }
