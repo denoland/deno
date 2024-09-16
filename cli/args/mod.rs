@@ -809,6 +809,8 @@ impl CliOptions {
       }
     }
 
+    warn_insecure_allow_run_flags(&flags);
+
     let maybe_lockfile = maybe_lockfile.filter(|_| !force_global_cache);
     let deno_dir_provider =
       Arc::new(DenoDirProvider::new(flags.cache_path.clone()));
@@ -1685,6 +1687,27 @@ impl CliOptions {
         Some(self.initial_cwd.clone())
       },
     }
+  }
+}
+
+/// Warns for specific uses of `--allow-run`. This function is not
+/// intended to catch every single possible insecure use of `--allow-run`,
+/// but is just an attempt to discourage some common pitfalls.
+fn warn_insecure_allow_run_flags(flags: &Flags) {
+  let permissions = &flags.permissions;
+  if permissions.allow_all {
+    return;
+  }
+  let Some(allow_run_list) = permissions.allow_run.as_ref() else {
+    return;
+  };
+
+  // discourage using --allow-run without an allow list
+  if allow_run_list.is_empty() {
+    log::warn!(
+      "{} --allow-run can be trivially exploited. Prefer specifying an allow list (https://docs.deno.com/runtime/fundamentals/security/#running-subprocesses)",
+      colors::yellow("Warning")
+    );
   }
 }
 

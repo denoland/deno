@@ -1,5 +1,5 @@
 {
-  "args": "test --allow-run --allow-read captured_output.ts",
+  "args": "test -A captured_output.ts",
   "output": "main.out",
   "envs": { "NO_COLOR": "1" },
   "exitCode": 0
