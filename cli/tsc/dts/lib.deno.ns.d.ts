@@ -536,10 +536,7 @@ declare namespace Deno {
    * set of permissions to the test context.
    *
    * @category Permissions */
-  export type PermissionOptions =
-    | "inherit"
-    | "none"
-    | PermissionOptionsObject;
+  export type PermissionOptions = "inherit" | "none" | PermissionOptionsObject;
 
   /**
    * A set of options which can define the permissions within a test or worker
@@ -944,10 +941,7 @@ declare namespace Deno {
      *
      * @category Testing
      */
-    (
-      name: string,
-      fn: (t: TestContext) => void | Promise<void>,
-    ): void;
+    (name: string, fn: (t: TestContext) => void | Promise<void>): void;
 
     /** Register a test which will be run when `deno test` is used on the command
      * line and the containing module looks like a test module.
@@ -1079,10 +1073,7 @@ declare namespace Deno {
      *
      * @category Testing
      */
-    ignore(
-      name: string,
-      fn: (t: TestContext) => void | Promise<void>,
-    ): void;
+    ignore(name: string, fn: (t: TestContext) => void | Promise<void>): void;
 
     /** Shorthand property for ignoring a particular test case.
      *
@@ -1128,10 +1119,7 @@ declare namespace Deno {
      *
      * @category Testing
      */
-    only(
-      name: string,
-      fn: (t: TestContext) => void | Promise<void>,
-    ): void;
+    only(name: string, fn: (t: TestContext) => void | Promise<void>): void;
 
     /** Shorthand property for focusing a particular test case.
      *
@@ -3964,10 +3952,7 @@ declare namespace Deno {
    *
    * @category Permissions
    */
-  export type PermissionState =
-    | "granted"
-    | "denied"
-    | "prompt";
+  export type PermissionState = "granted" | "denied" | "prompt";
 
   /** The permission descriptor for the `allow-run` and `deny-run` permissions, which controls
    * access to what sub-processes can be executed by Deno. The option `command`
@@ -4107,7 +4092,7 @@ declare namespace Deno {
    *
    * @category Permissions */
   export interface PermissionStatusEventMap {
-    "change": Event;
+    change: Event;
   }
 
   /** An {@linkcode EventTarget} returned from the {@linkcode Deno.permissions}
@@ -5311,9 +5296,7 @@ declare namespace Deno {
    * @category HTTP Server
    */
   export function serve(
-    options:
-      | ServeTcpOptions
-      | (ServeTcpOptions & TlsCertifiedKeyPem),
+    options: ServeTcpOptions | (ServeTcpOptions & TlsCertifiedKeyPem),
     handler: ServeHandler<Deno.NetAddr>,
   ): HttpServer<Deno.NetAddr>;
   /** Serves HTTP requests with the given option bag.
@@ -5392,11 +5375,7 @@ declare namespace Deno {
    *
    * @category FFI
    */
-  export type NativeBigIntType =
-    | "u64"
-    | "i64"
-    | "usize"
-    | "isize";
+  export type NativeBigIntType = "u64" | "i64" | "usize" | "isize";
 
   /** The native boolean type for interfacing to foreign functions.
    *
@@ -5512,7 +5491,8 @@ declare namespace Deno {
     : T extends NativeBigIntType ? bigint
     : T extends NativeBooleanType ? boolean
     : T extends NativePointerType
-      ? T extends NativeTypedPointer<infer U> ? U | null : PointerValue
+      ? T extends NativeTypedPointer<infer U> ? U | null
+      : PointerValue
     : T extends NativeFunctionType
       ? T extends NativeTypedFunction<infer U> ? PointerValue<U> | null
       : PointerValue
@@ -5536,7 +5516,8 @@ declare namespace Deno {
     : T extends NativeBigIntType ? bigint
     : T extends NativeBooleanType ? boolean
     : T extends NativePointerType
-      ? T extends NativeTypedPointer<infer U> ? U | null : PointerValue
+      ? T extends NativeTypedPointer<infer U> ? U | null
+      : PointerValue
     : T extends NativeFunctionType
       ? T extends NativeTypedFunction<infer U> ? PointerObject<U> | null
       : PointerValue
@@ -5550,9 +5531,8 @@ declare namespace Deno {
    */
   export type ToNativeParameterTypes<T extends readonly NativeType[]> =
     //
-    [(T[number])[]] extends [T] ? ToNativeType<T[number]>[]
-      : [readonly (T[number])[]] extends [T]
-        ? readonly ToNativeType<T[number]>[]
+    [T[number][]] extends [T] ? ToNativeType<T[number]>[]
+      : [readonly T[number][]] extends [T] ? readonly ToNativeType<T[number]>[]
       : T extends readonly [...NativeType[]] ? {
           [K in keyof T]: ToNativeType<T[K]>;
         }
@@ -5575,7 +5555,8 @@ declare namespace Deno {
     : T extends NativeBigIntType ? bigint
     : T extends NativeBooleanType ? boolean
     : T extends NativePointerType
-      ? T extends NativeTypedPointer<infer U> ? U | null : PointerValue
+      ? T extends NativeTypedPointer<infer U> ? U | null
+      : PointerValue
     : T extends NativeBufferType ? PointerValue
     : T extends NativeFunctionType
       ? T extends NativeTypedFunction<infer U> ? PointerObject<U> | null
@@ -5599,7 +5580,8 @@ declare namespace Deno {
     : T extends NativeBigIntType ? bigint
     : T extends NativeBooleanType ? boolean
     : T extends NativePointerType
-      ? T extends NativeTypedPointer<infer U> ? U | null : PointerValue
+      ? T extends NativeTypedPointer<infer U> ? U | null
+      : PointerValue
     : T extends NativeBufferType ? PointerValue
     : T extends NativeFunctionType
       ? T extends NativeTypedFunction<infer U> ? PointerObject<U> | null
@@ -5609,12 +5591,10 @@ declare namespace Deno {
 
   /** @category FFI
    */
-  export type FromNativeParameterTypes<
-    T extends readonly NativeType[],
-  > =
+  export type FromNativeParameterTypes<T extends readonly NativeType[]> =
     //
-    [(T[number])[]] extends [T] ? FromNativeType<T[number]>[]
-      : [readonly (T[number])[]] extends [T]
+    [T[number][]] extends [T] ? FromNativeType<T[number]>[]
+      : [readonly T[number][]] extends [T]
         ? readonly FromNativeType<T[number]>[]
       : T extends readonly [...NativeType[]] ? {
           [K in keyof T]: FromNativeType<T[K]>;
@@ -5695,8 +5675,10 @@ declare namespace Deno {
 
   /** @category FFI
    */
-  export type ConditionalAsync<IsAsync extends boolean | undefined, T> =
-    IsAsync extends true ? Promise<T> : T;
+  export type ConditionalAsync<
+    IsAsync extends boolean | undefined,
+    T,
+  > = IsAsync extends true ? Promise<T> : T;
 
   /** A utility type that infers a foreign library interface.
    *
@@ -5804,10 +5786,7 @@ declare namespace Deno {
     getCString(offset?: number): string;
     /** Gets a C string (`null` terminated string) at the specified byte offset
      * from the specified pointer. */
-    static getCString(
-      pointer: PointerObject,
-      offset?: number,
-    ): string;
+    static getCString(pointer: PointerObject, offset?: number): string;
     /** Gets an `ArrayBuffer` of length `byteLength` at the specified byte
      * offset from the pointer. */
     getArrayBuffer(byteLength: number, offset?: number): ArrayBuffer;
@@ -5847,9 +5826,10 @@ declare namespace Deno {
     /** The definition of the function. */
     definition: Fn;
 
-    constructor(pointer: PointerObject<NoInfer<Fn>>, definition: Fn);
-    /** @deprecated Properly type {@linkcode pointer} using {@linkcode NativeTypedFunction} or {@linkcode UnsafeCallbackDefinition} types. */
-    constructor(pointer: PointerObject, definition: Fn);
+    constructor(
+      pointer: PointerObject<NoInfer<Omit<Fn, "nonblocking">>>,
+      definition: Fn,
+    );
 
     /** Call the foreign function. */
     call: FromForeignFunction<Fn>;
@@ -5876,9 +5856,10 @@ declare namespace Deno {
   export type UnsafeCallbackFunction<
     Parameters extends readonly NativeType[] = readonly NativeType[],
     Result extends NativeResultType = NativeResultType,
-  > = Parameters extends readonly [] ? () => ToNativeResultType<Result> : (
-    ...args: FromNativeParameterTypes<Parameters>
-  ) => ToNativeResultType<Result>;
+  > = Parameters extends readonly [] ? () => ToNativeResultType<Result>
+    : (
+      ...args: FromNativeParameterTypes<Parameters>
+    ) => ToNativeResultType<Result>;
 
   /** An unsafe function pointer for passing JavaScript functions as C function
    * pointers to foreign function calls.
