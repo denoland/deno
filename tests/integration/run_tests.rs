@@ -488,9 +488,8 @@ itest!(_088_dynamic_import_already_evaluating {
   output: "run/088_dynamic_import_already_evaluating.ts.out",
 });
 
-// TODO(bartlomieju): remove --unstable once Deno.Command is stabilized
 itest!(_089_run_allow_list {
-  args: "run --unstable --allow-run=curl run/089_run_allow_list.ts",
+  args: "run --allow-run=curl run/089_run_allow_list.ts",
   envs: vec![
     ("LD_LIBRARY_PATH".to_string(), "".to_string()),
     ("DYLD_FALLBACK_LIBRARY_PATH".to_string(), "".to_string())
@@ -1830,17 +1829,6 @@ itest!(unstable_cron_enabled {
   output: "run/unstable_cron.enabled.out",
 });
 
-itest!(unstable_http_disabled {
-  args: "run --quiet --reload --allow-read run/unstable_http.js",
-  output: "run/unstable_http.disabled.out",
-});
-
-itest!(unstable_http_enabled {
-  args:
-    "run --quiet --reload --allow-read --unstable-http run/unstable_http.js",
-  output: "run/unstable_http.enabled.out",
-});
-
 itest!(unstable_net_disabled {
   args: "run --quiet --reload --allow-read run/unstable_net.js",
   output: "run/unstable_net.disabled.out",
@@ -2540,14 +2528,12 @@ mod permissions {
   use test_util::itest;
   use util::TestContext;
 
-  // TODO(bartlomieju): remove --unstable once Deno.Command is stabilized
   #[test]
   fn with_allow() {
     for permission in &util::PERMISSION_VARIANTS {
       let status = util::deno_cmd()
         .current_dir(util::testdata_path())
         .arg("run")
-        .arg("--unstable")
         .arg(format!("--allow-{permission}"))
         .arg("run/permission_test.ts")
         .arg(format!("{permission}Required"))
@@ -2559,13 +2545,12 @@ mod permissions {
     }
   }
 
-  // TODO(bartlomieju): remove --unstable once Deno.Command is stabilized
   #[test]
   fn without_allow() {
     for permission in &util::PERMISSION_VARIANTS {
       let (_, err) = util::run_and_collect_output(
         false,
-        &format!("run --unstable run/permission_test.ts {permission}Required"),
+        &format!("run run/permission_test.ts {permission}Required"),
         None,
         None,
         false,
@@ -3019,7 +3004,7 @@ mod permissions {
   fn _066_prompt() {
     TestContext::default()
       .new_command()
-      .args_vec(["run", "--quiet", "--unstable", "run/066_prompt.ts"])
+      .args_vec(["run", "--quiet", "run/066_prompt.ts"])
       .with_pty(|mut console| {
         console.expect("What is your name? Jane Doe");
         console.write_line_raw("");
@@ -3149,7 +3134,7 @@ fn issue9750() {
       console.write_line_raw("n");
       console.expect_all(&[
         "Denied env access to \"SECRET\".",
-        "PermissionDenied: Requires env access to \"SECRET\", run again with the --allow-env flag",
+        "NotCapable: Requires env access to \"SECRET\", run again with the --allow-env flag",
       ]);
     });
 }
@@ -3331,11 +3316,6 @@ itest!(import_attributes_type_check {
   args: "run --allow-read --check import_attributes/type_check.ts",
   output: "import_attributes/type_check.out",
   exit_code: 1,
-});
-
-itest!(delete_window {
-  args: "run run/delete_window.js",
-  output_str: Some("true\n"),
 });
 
 itest!(colors_without_global_this {
@@ -3575,7 +3555,6 @@ fn deno_no_prompt_environment_variable() {
   let output = util::deno_cmd()
     .current_dir(util::testdata_path())
     .arg("run")
-    .arg("--unstable")
     .arg("run/no_prompt.ts")
     .env("DENO_NO_PROMPT", "1")
     .spawn()
@@ -4056,7 +4035,7 @@ async fn test_resolve_dns() {
     let out = String::from_utf8_lossy(&output.stdout);
     assert!(!output.status.success());
     assert!(err.starts_with("Check file"));
-    assert!(err.contains(r#"error: Uncaught (in promise) PermissionDenied: Requires net access to "127.0.0.1:4553""#));
+    assert!(err.contains(r#"error: Uncaught (in promise) NotCapable: Requires net access to "127.0.0.1:4553""#));
     assert!(out.is_empty());
   }
 
@@ -4077,7 +4056,7 @@ async fn test_resolve_dns() {
     let out = String::from_utf8_lossy(&output.stdout);
     assert!(!output.status.success());
     assert!(err.starts_with("Check file"));
-    assert!(err.contains(r#"error: Uncaught (in promise) PermissionDenied: Requires net access to "127.0.0.1:4553""#));
+    assert!(err.contains(r#"error: Uncaught (in promise) NotCapable: Requires net access to "127.0.0.1:4553""#));
     assert!(out.is_empty());
   }
 
@@ -4089,7 +4068,6 @@ async fn http2_request_url() {
   let mut child = util::deno_cmd()
     .current_dir(util::testdata_path())
     .arg("run")
-    .arg("--unstable")
     .arg("--quiet")
     .arg("--allow-net")
     .arg("--allow-read")
@@ -4384,7 +4362,6 @@ async fn websocket_server_multi_field_connection_header() {
   let root_ca = util::testdata_path().join("tls/RootCA.pem");
   let mut child = util::deno_cmd()
     .arg("run")
-    .arg("--unstable")
     .arg("--allow-net")
     .arg("--cert")
     .arg(root_ca)
@@ -4438,7 +4415,6 @@ async fn websocket_server_idletimeout() {
   let root_ca = util::testdata_path().join("tls/RootCA.pem");
   let mut child = util::deno_cmd()
     .arg("run")
-    .arg("--unstable")
     .arg("--allow-net")
     .arg("--cert")
     .arg(root_ca)
@@ -4735,20 +4711,6 @@ itest!(unsafe_proto {
 itest!(unsafe_proto_flag {
   args: "run -A --unstable-unsafe-proto run/unsafe_proto/main.js",
   output: "run/unsafe_proto/main_with_unsafe_proto_flag.out",
-  http_server: false,
-  exit_code: 0,
-});
-
-itest!(unstable_temporal_api {
-  args: "run --no-config --unstable-temporal --check run/unstable_temporal_api/main.ts",
-  output: "run/unstable_temporal_api/main.out",
-  http_server: false,
-  exit_code: 0,
-});
-
-itest!(unstable_temporal_api_config_file {
-  args: "run --check run/unstable_temporal_api/main.ts",
-  output: "run/unstable_temporal_api/main.out",
   http_server: false,
   exit_code: 0,
 });
@@ -5089,7 +5051,6 @@ async fn listen_tls_alpn() {
   let mut child = util::deno_cmd()
     .current_dir(util::testdata_path())
     .arg("run")
-    .arg("--unstable")
     .arg("--quiet")
     .arg("--allow-net")
     .arg("--allow-read")
@@ -5143,7 +5104,6 @@ async fn listen_tls_alpn_fail() {
   let mut child = util::deno_cmd()
     .current_dir(util::testdata_path())
     .arg("run")
-    .arg("--unstable")
     .arg("--quiet")
     .arg("--allow-net")
     .arg("--allow-read")

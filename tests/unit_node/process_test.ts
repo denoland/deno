@@ -173,7 +173,6 @@ Deno.test({
       args: [
         "run",
         "--quiet",
-        "--unstable",
         "./testdata/process_exit.ts",
       ],
       cwd,
@@ -895,7 +894,6 @@ Deno.test({
       args: [
         "run",
         "--quiet",
-        "--unstable",
         "./testdata/process_exit2.ts",
       ],
       cwd: testDir,
@@ -914,7 +912,6 @@ Deno.test({
       args: [
         "run",
         "--quiet",
-        "--unstable",
         "./testdata/process_really_exit.ts",
       ],
       cwd: testDir,

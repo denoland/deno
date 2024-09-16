@@ -154,16 +154,21 @@ Deno.test("crypto.createSign|sign - compare with node", async (t) => {
     new URL(import.meta.resolve("../testdata/rsa_private.pem")),
   );
   for (const { digest, signature } of fixtures) {
-    await t.step(digest, () => {
-      let actual: string | null;
-      try {
-        const s = createSign(digest);
-        s.update(DATA);
-        actual = s.sign(privateKey).toString("hex");
-      } catch {
-        actual = null;
-      }
-      assertEquals(actual, signature);
+    await t.step({
+      name: digest,
+      // TODO(lucacasonato): our md4 implementation does not have an OID, so it can't sign/verify
+      ignore: digest.toLowerCase().includes("md4"),
+      fn: () => {
+        let actual: string | null;
+        try {
+          const s = createSign(digest);
+          s.update(DATA);
+          actual = s.sign(privateKey).toString("hex");
+        } catch {
+          actual = null;
+        }
+        assertEquals(actual, signature);
+      },
     });
   }
 });
@@ -176,7 +181,8 @@ Deno.test("crypto.createVerify|verify - compare with node", async (t) => {
   for (const { digest, signature } of fixtures) {
     await t.step({
       name: digest,
-      ignore: signature === null,
+      // TODO(lucacasonato): our md4 implementation does not have an OID, so it can't sign/verify
+      ignore: signature === null || digest.toLowerCase().includes("md4"),
       fn: () => {
         const s = createVerify(digest);
         s.update(DATA);

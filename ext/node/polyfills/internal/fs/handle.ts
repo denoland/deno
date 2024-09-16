@@ -133,10 +133,26 @@ export class FileHandle extends EventEmitter {
     }
   }
 
+  writeFile(data, options): Promise<void> {
+    return fsCall(promises.writeFile, this, data, options);
+  }
+
   close(): Promise<void> {
     // Note that Deno.close is not async
     return Promise.resolve(core.close(this.fd));
   }
+}
+
+function fsCall(fn, handle, ...args) {
+  if (handle.fd === -1) {
+    const err = new Error("file closed");
+    throw Object.assign(err, {
+      code: "EBADF",
+      syscall: fn.name,
+    });
+  }
+
+  return fn(handle, ...args);
 }
 
 export default {

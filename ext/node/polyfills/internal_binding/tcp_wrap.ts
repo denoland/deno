@@ -212,16 +212,10 @@ export class TCP extends ConnectionWrap {
     try {
       listener = Deno.listen(listenOptions);
     } catch (e) {
-      if (e instanceof Deno.errors.AddrInUse) {
-        return codeMap.get("EADDRINUSE")!;
-      } else if (e instanceof Deno.errors.AddrNotAvailable) {
-        return codeMap.get("EADDRNOTAVAIL")!;
-      } else if (e instanceof Deno.errors.PermissionDenied) {
+      if (e instanceof Deno.errors.NotCapable) {
         throw e;
       }
-
-      // TODO(cmorten): map errors to appropriate error codes.
-      return codeMap.get("UNKNOWN")!;
+      return codeMap.get(e.code ?? "UNKNOWN") ?? codeMap.get("UNKNOWN")!;
     }
 
     const address = listener.addr as Deno.NetAddr;

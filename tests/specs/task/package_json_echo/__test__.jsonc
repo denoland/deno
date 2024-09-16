@@ -1,0 +1,9 @@
+{
+  "args": "task --quiet echo",
+  "output": "echo.out",
+  "envs": {
+    "NO_COLOR": "1",
+    "NPM_CONFIG_REGISTRY": "http://localhost:4260/"
+  },
+  "exitCode": 0
+}

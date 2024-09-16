@@ -52,11 +52,6 @@ itest!(check_npm_install_diagnostics {
   exit_code: 1,
 });
 
-itest!(check_export_equals_declaration_file {
-  args: "check --quiet check/export_equals_declaration_file/main.ts",
-  exit_code: 0,
-});
-
 itest!(check_static_response_json {
   args: "check --quiet check/response_json.ts",
   exit_code: 0,
@@ -215,7 +210,6 @@ fn typecheck_declarations_unstable() {
   let args = vec![
     "test".to_string(),
     "--doc".to_string(),
-    "--unstable".to_string(),
     util::root_path()
       .join("cli/tsc/dts/lib.deno.unstable.d.ts")
       .to_string_lossy()

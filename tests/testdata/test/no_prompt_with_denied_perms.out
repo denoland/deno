@@ -4,7 +4,7 @@ no prompt ... FAILED ([WILDCARD]s)
  ERRORS 
 
 no prompt => ./test/no_prompt_with_denied_perms.ts:[WILDCARD]
-error: PermissionDenied: Requires read access to "./some_file.txt", run again with the --allow-read flag
+error: NotCapable: Requires read access to "./some_file.txt", run again with the --allow-read flag
 [WILDCARD]
 
  FAILURES 

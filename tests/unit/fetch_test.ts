@@ -9,7 +9,6 @@ import {
   assertStringIncludes,
   assertThrows,
   delay,
-  DENO_FUTURE,
   fail,
   unimplemented,
 } from "./test_util.ts";
@@ -124,7 +123,7 @@ Deno.test({ permissions: { net: true } }, async function fetchJsonSuccess() {
 Deno.test({ permissions: { net: false } }, async function fetchPerm() {
   await assertRejects(async () => {
     await fetch("http://localhost:4545/assets/fixture.json");
-  }, Deno.errors.PermissionDenied);
+  }, Deno.errors.NotCapable);
 });
 
 Deno.test({ permissions: { net: true } }, async function fetchUrl() {
@@ -1359,7 +1358,7 @@ Deno.test(
 );
 
 Deno.test(
-  { permissions: { read: true, net: true }, ignore: DENO_FUTURE },
+  { permissions: { read: true, net: true } },
   async function fetchCustomClientPrivateKey(): Promise<
     void
   > {
@@ -1637,7 +1636,7 @@ Deno.test(
 Deno.test({ permissions: { read: false } }, async function fetchFilePerm() {
   await assertRejects(async () => {
     await fetch(import.meta.resolve("../testdata/subdir/json_1.json"));
-  }, Deno.errors.PermissionDenied);
+  }, Deno.errors.NotCapable);
 });
 
 Deno.test(
@@ -1645,7 +1644,7 @@ Deno.test(
   async function fetchFilePermDoesNotExist() {
     await assertRejects(async () => {
       await fetch(import.meta.resolve("./bad.json"));
-    }, Deno.errors.PermissionDenied);
+    }, Deno.errors.NotCapable);
   },
 );
 

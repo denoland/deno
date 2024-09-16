@@ -20,7 +20,7 @@ import {
 } from "ext:deno_node/internal/validators.mjs";
 import { Buffer } from "node:buffer";
 import type { WritableOptions } from "ext:deno_node/_stream.d.ts";
-import Writable from "ext:deno_node/internal/streams/writable.mjs";
+import Writable from "node:_stream_writable";
 import type {
   BinaryLike,
   BinaryToTextEncoding,
