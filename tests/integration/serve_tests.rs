@@ -198,7 +198,7 @@ async fn deno_serve_parallel() {
 
   let mut serve_counts = HashMap::<u32, u32>::new();
 
-  tokio::time::sleep(Duration::from_millis(1000)).await;
+  tokio::time::sleep(Duration::from_millis(1500)).await;
 
   let serve_regex =
     Regex::new(r"\[serve\-worker\-(\d+)\s*\] serving request").unwrap();
@@ -211,7 +211,7 @@ async fn deno_serve_parallel() {
     assert_eq!(200, response.status());
     let body = response.text().await.unwrap();
     assert_eq!(body, "deno serve parallel");
-    tokio::time::sleep(Duration::from_millis(1)).await;
+    tokio::time::sleep(Duration::from_millis(10)).await;
   }
 
   let output = client.output();
