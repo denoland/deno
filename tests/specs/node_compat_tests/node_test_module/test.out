@@ -1,5 +1,5 @@
 [WILDCARD]
-running 63 tests from ./node/test.js
+running 63 tests from ./test.js
 sync pass todo ...
 ------- output -------
 Warning: Not implemented: test.TestContext.todo
@@ -57,7 +57,7 @@ async assertion fail ... FAILED [WILDCARD]
 resolve pass ... ok [WILDCARD]
 reject fail ... FAILED [WILDCARD]
 unhandled rejection - passes but warns ...
-Uncaught error from ./node/test.js FAILED
+Uncaught error from ./test.js FAILED
 unhandled rejection - passes but warns ... cancelled ([WILDCARD])
 async unhandled rejection - passes but warns ... cancelled ([WILDCARD])
 immediate throw - passes but warns ... cancelled ([WILDCARD])
@@ -108,32 +108,32 @@ unfinished test with unhandledRejection ... cancelled ([WILDCARD])
 
  ERRORS 
 
-sync fail todo => ./node/test.js:20:1
+sync fail todo => ./test.js:20:1
 error: Error: thrown from sync fail todo
   throw new Error("thrown from sync fail todo");
 [WILDCARD]
 
-sync fail todo with message => ./node/test.js:25:1
+sync fail todo with message => ./test.js:25:1
 error: Error: thrown from sync fail todo with message
   throw new Error("thrown from sync fail todo with message");
 [WILDCARD]
 
-sync throw fail => ./node/test.js:42:1
+sync throw fail => ./test.js:42:1
 error: Error: thrown from sync throw fail
   throw new Error("thrown from sync throw fail");
 [WILDCARD]
 
-async throw fail => ./node/test.js:53:1
+async throw fail => ./test.js:53:1
 error: Error: thrown from async throw fail
   throw new Error("thrown from async throw fail");
 [WILDCARD]
 
-async skip fail => ./node/test.js:64:1
+async skip fail => ./test.js:64:1
 error: Error: thrown from async throw fail
   throw new Error("thrown from async throw fail");
 [WILDCARD]
 
-async assertion fail => ./node/test.js:69:1
+async assertion fail => ./test.js:69:1
 error: AssertionError: Values are not strictly equal:
 
 
@@ -145,13 +145,13 @@ error: AssertionError: Values are not strictly equal:
 
     at [WILDCARD]
 
-reject fail => ./node/test.js:78:1
+reject fail => ./test.js:78:1
 error: Error: rejected from reject fail
   return Promise.reject(new Error("rejected from reject fail"));
                         ^
     at [WILDCARD]
 
-./node/test.js (uncaught error)
+./test.js (uncaught error)
 error: (in promise) Error: rejected from unhandled rejection fail
   Promise.reject(new Error("rejected from unhandled rejection fail"));
                  ^
@@ -161,14 +161,14 @@ It most likely originated from a dangling promise, event/timeout handler or top-
 
  FAILURES 
 
-sync fail todo => ./node/test.js:20:1
-sync fail todo with message => ./node/test.js:25:1
-sync throw fail => ./node/test.js:42:1
-async throw fail => ./node/test.js:53:1
-async skip fail => ./node/test.js:64:1
-async assertion fail => ./node/test.js:69:1
-reject fail => ./node/test.js:78:1
-./node/test.js (uncaught error)
+sync fail todo => ./test.js:20:1
+sync fail todo with message => ./test.js:25:1
+sync throw fail => ./test.js:42:1
+async throw fail => ./test.js:53:1
+async skip fail => ./test.js:64:1
+async assertion fail => ./test.js:69:1
+reject fail => ./test.js:78:1
+./test.js (uncaught error)
 
 FAILED | 9 passed (2 steps) | 51 failed | 4 ignored [WILDCARD]
 
