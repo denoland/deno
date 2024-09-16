@@ -70,6 +70,7 @@ use std::collections::HashMap;
 use std::env;
 use std::io::BufReader;
 use std::io::Cursor;
+use std::io::Read;
 use std::net::SocketAddr;
 use std::num::NonZeroUsize;
 use std::path::Path;
@@ -749,15 +750,22 @@ pub enum NpmProcessStateKind {
   Byonm,
 }
 
-pub(crate) const NPM_RESOLUTION_STATE_ENV_VAR_NAME: &str =
-  "DENO_DONT_USE_INTERNAL_NODE_COMPAT_STATE";
+pub(crate) const NPM_RESOLUTION_STATE_FD_ENV_VAR_NAME: &str =
+  "DENO_DONT_USE_INTERNAL_NODE_COMPAT_STATE_FD";
 
+// static NPM_PROCESS_STATE: Lazy<Option<NpmProcessState>> = Lazy::new(|| None);
 static NPM_PROCESS_STATE: Lazy<Option<NpmProcessState>> = Lazy::new(|| {
-  let state = std::env::var(NPM_RESOLUTION_STATE_ENV_VAR_NAME).ok()?;
-  let state: NpmProcessState = serde_json::from_str(&state).ok()?;
-  // remove the environment variable so that sub processes
-  // that are spawned do not also use this.
-  std::env::remove_var(NPM_RESOLUTION_STATE_ENV_VAR_NAME);
+  let fd = std::env::var(NPM_RESOLUTION_STATE_FD_ENV_VAR_NAME).ok()?;
+  std::env::remove_var(NPM_RESOLUTION_STATE_FD_ENV_VAR_NAME);
+  let fd = fd.parse::<deno_runtime::deno_io::RawIoHandle>().ok()?;
+  #[cfg(unix)]
+  let mut file = {
+    use std::os::fd::FromRawFd;
+    unsafe { std::fs::File::from_raw_fd(fd) }
+  };
+  let mut buf = Vec::new();
+  file.read_to_end(&mut buf).unwrap();
+  let state: NpmProcessState = serde_json::from_slice(&buf).ok()?;
   Some(state)
 });
 

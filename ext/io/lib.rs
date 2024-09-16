@@ -67,6 +67,7 @@ pub use pipe::AsyncPipeRead;
 pub use pipe::AsyncPipeWrite;
 pub use pipe::PipeRead;
 pub use pipe::PipeWrite;
+pub use pipe::RawPipeHandle;
 
 pub use bi_pipe::bi_pipe_pair_raw;
 pub use bi_pipe::BiPipe;
@@ -74,6 +75,29 @@ pub use bi_pipe::BiPipeRead;
 pub use bi_pipe::BiPipeResource;
 pub use bi_pipe::BiPipeWrite;
 pub use bi_pipe::RawBiPipeHandle;
+
+#[cfg(unix)]
+pub type RawIoHandle = std::os::fd::RawFd;
+
+#[cfg(windows)]
+pub type RawIoHandle = std::os::windows::io::RawHandle;
+
+pub fn close_raw_handle(handle: RawIoHandle) {
+  #[cfg(unix)]
+  {
+    // SAFETY: libc call
+    unsafe {
+      libc::close(handle);
+    }
+  }
+  #[cfg(windows)]
+  {
+    // SAFETY: win32 call
+    unsafe {
+      windows_sys::Win32::Foundation::CloseHandle(handle as _);
+    }
+  }
+}
 
 // Store the stdio fd/handles in global statics in order to keep them
 // alive for the duration of the application since the last handle/fd

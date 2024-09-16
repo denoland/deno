@@ -505,23 +505,6 @@ fn spawn_child(
   })
 }
 
-fn close_raw_handle(handle: deno_io::RawBiPipeHandle) {
-  #[cfg(unix)]
-  {
-    // SAFETY: libc call
-    unsafe {
-      libc::close(handle);
-    }
-  }
-  #[cfg(windows)]
-  {
-    // SAFETY: win32 call
-    unsafe {
-      windows_sys::Win32::Foundation::CloseHandle(handle as _);
-    }
-  }
-}
-
 fn compute_run_cmd_and_check_permissions(
   arg_cmd: &str,
   arg_cwd: Option<&str>,
@@ -669,7 +652,7 @@ fn op_spawn_child(
     create_command(state, args, &api_name)?;
   let child = spawn_child(state, command, pipe_rid, extra_pipe_rids, detached);
   for handle in handles_to_close {
-    close_raw_handle(handle);
+    deno_io::close_raw_handle(handle);
   }
   child
 }

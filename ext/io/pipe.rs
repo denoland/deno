@@ -1,7 +1,10 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 use std::io;
+use std::os::fd::AsRawFd;
 use std::pin::Pin;
 use std::process::Stdio;
+
+pub type RawPipeHandle = super::RawIoHandle;
 
 // The synchronous read end of a unidirectional pipe.
 pub struct PipeRead {
@@ -36,6 +39,48 @@ pub struct AsyncPipeWrite {
 }
 
 impl PipeRead {
+  pub fn from_raw_handle(handle: RawPipeHandle) -> Self {
+    #[cfg(unix)]
+    {
+      use std::os::fd::FromRawFd;
+      Self {
+        file: unsafe { std::fs::File::from_raw_fd(handle) },
+      }
+    }
+    #[cfg(windows)]
+    {
+      use std::os::windows::io::FromRawHandle;
+      Self {
+        file: unsafe { std::fs::File::from_raw_handle(handle) },
+      }
+    }
+  }
+
+  pub fn into_raw_handle(self) -> RawPipeHandle {
+    #[cfg(unix)]
+    {
+      use std::os::unix::io::IntoRawFd;
+      self.file.into_raw_fd()
+    }
+    #[cfg(windows)]
+    {
+      use std::os::windows::io::IntoRawHandle;
+      self.file.into_raw_handle()
+    }
+  }
+
+  pub fn as_raw_handle(&self) -> RawPipeHandle {
+    #[cfg(unix)]
+    {
+      use std::os::unix::io::AsRawFd;
+      self.file.as_raw_fd()
+    }
+    #[cfg(windows)]
+    {
+      use std::os::windows::io::AsRawHandle;
+      self.file.as_raw_handle()
+    }
+  }
   /// Converts this sync reader into an async reader. May fail if the Tokio runtime is
   /// unavailable.
   #[cfg(windows)]

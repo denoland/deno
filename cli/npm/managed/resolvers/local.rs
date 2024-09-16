@@ -12,6 +12,8 @@ use std::collections::BTreeMap;
 use std::collections::HashMap;
 use std::collections::HashSet;
 use std::fs;
+use std::io::Write;
+use std::os::fd::AsRawFd;
 use std::path::Path;
 use std::path::PathBuf;
 use std::rc::Rc;
@@ -787,6 +789,8 @@ async fn sync_resolution_with_fs(
     }
   }
 
+  drop(pb_clear_guard);
+
   if !packages_with_scripts.is_empty() {
     // get custom commands for each bin available in the node_modules dir (essentially
     // the scripts that are in `node_modules/.bin`)
@@ -802,9 +806,11 @@ async fn sync_resolution_with_fs(
     );
 
     let mut env_vars = crate::task_runner::real_env_vars();
+    let mut temp_file = tempfile::tempfile()?;
+    temp_file.write_all(process_state.as_bytes())?;
     env_vars.insert(
-      crate::args::NPM_RESOLUTION_STATE_ENV_VAR_NAME.to_string(),
-      process_state,
+      crate::args::NPM_RESOLUTION_STATE_FD_ENV_VAR_NAME.to_string(),
+      temp_file.as_raw_fd().to_string(),
     );
     for (package, package_path, scripts_run_path) in packages_with_scripts {
       // add custom commands for binaries from the package's dependencies. this will take precedence over the
@@ -865,7 +871,6 @@ async fn sync_resolution_with_fs(
 
   setup_cache.save();
   drop(single_process_lock);
-  drop(pb_clear_guard);
 
   Ok(())
 }
