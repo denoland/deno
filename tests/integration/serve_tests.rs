@@ -163,7 +163,7 @@ impl ServeClient {
       std::thread::sleep(Duration::from_millis(10));
     };
 
-    eprintln!("stderr: {}", String::from_utf8_lossy(&temp_buffer));
+    eprintln!("stderr: {}", String::from_utf8_lossy(&temp_buf));
 
     self
       .endpoint
