@@ -120,7 +120,7 @@ Deno.test(function permissionQueryForReadReturnsSameStatusSync() {
 });
 
 Deno.test(function permissionsIllegalConstructor() {
-  assertThrows(() => new Deno.Permissions(), TypeError, "Illegal constructor.");
+  assertThrows(() => new Deno.Permissions(), TypeError, "Illegal constructor");
   assertEquals(Deno.Permissions.length, 0);
 });
 
@@ -128,7 +128,7 @@ Deno.test(function permissionStatusIllegalConstructor() {
   assertThrows(
     () => new Deno.PermissionStatus(),
     TypeError,
-    "Illegal constructor.",
+    "Illegal constructor",
   );
   assertEquals(Deno.PermissionStatus.length, 0);
 });

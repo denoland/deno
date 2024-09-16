@@ -11,7 +11,6 @@ const {
   ObjectPrototypeIsPrototypeOf,
   PromiseResolve,
   SymbolAsyncIterator,
-  ObjectDefineProperty,
 } = primordials;
 
 import { SymbolDispose } from "ext:deno_web/00_infra.js";
@@ -21,13 +20,6 @@ class FsWatcher {
   #promise;
 
   constructor(paths, options) {
-    if (internals.future) {
-      ObjectDefineProperty(this, "rid", {
-        __proto__: null,
-        enumerable: false,
-        value: undefined,
-      });
-    }
     const { recursive } = options;
     this.#rid = op_fs_events_open({ recursive, paths });
   }

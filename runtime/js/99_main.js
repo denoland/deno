@@ -3,6 +3,7 @@
 // Remove Intl.v8BreakIterator because it is a non-standard API.
 delete Intl.v8BreakIterator;
 
+import * as internalConsole from "ext:deno_console/01_console.js";
 import { core, internals, primordials } from "ext:core/mod.js";
 const ops = core.ops;
 import {
@@ -88,7 +89,7 @@ import {
 import { SymbolDispose, SymbolMetadata } from "ext:deno_web/00_infra.js";
 // deno-lint-ignore prefer-primordials
 if (Symbol.metadata) {
-  throw "V8 supports Symbol.metadata now, no need to shim it!";
+  throw "V8 supports Symbol.metadata now, no need to shim it";
 }
 ObjectDefineProperties(Symbol, {
   dispose: {
@@ -230,7 +231,7 @@ let loadedMainWorkerScript = false;
 
 function importScripts(...urls) {
   if (op_worker_get_type() === "module") {
-    throw new TypeError("Can't import scripts in a module worker.");
+    throw new TypeError("Cannot import scripts in a module worker");
   }
 
   const baseUrl = location.getLocationHref();
@@ -239,7 +240,7 @@ function importScripts(...urls) {
       return new url.URL(scriptUrl, baseUrl ?? undefined).href;
     } catch {
       throw new DOMException(
-        "Failed to parse URL.",
+        `Failed to parse URL: ${scriptUrl}`,
         "SyntaxError",
       );
     }
@@ -578,36 +579,19 @@ function bootstrapMainRuntime(runtimeOptions, warmup = false) {
 
     if (mode === executionModes.serve) {
       if (serveIsMain && serveWorkerCount) {
-        // deno-lint-ignore no-console
-        const origLog = console.log;
-        // deno-lint-ignore no-console
-        const origError = console.error;
-        const prefix = `[serve-worker-0 ]`;
-        // deno-lint-ignore no-console
-        console.log = (...args) => {
-          return origLog(prefix, ...new primordials.SafeArrayIterator(args));
-        };
-        // deno-lint-ignore no-console
-        console.error = (...args) => {
-          return origError(prefix, ...new primordials.SafeArrayIterator(args));
-        };
+        // deno-lint-ignore no-global-assign
+        console = new internalConsole.Console((msg, level) =>
+          core.print("[serve-worker-0 ] " + msg, level > 1)
+        );
       } else if (serveWorkerCount !== null) {
-        // deno-lint-ignore no-console
-        const origLog = console.log;
-        // deno-lint-ignore no-console
-        const origError = console.error;
         const base = `serve-worker-${serveWorkerCount + 1}`;
         // 15 = "serve-worker-nn".length, assuming
         // serveWorkerCount < 100
         const prefix = `[${StringPrototypePadEnd(base, 15, " ")}]`;
-        // deno-lint-ignore no-console
-        console.log = (...args) => {
-          return origLog(prefix, ...new primordials.SafeArrayIterator(args));
-        };
-        // deno-lint-ignore no-console
-        console.error = (...args) => {
-          return origError(prefix, ...new primordials.SafeArrayIterator(args));
-        };
+        // deno-lint-ignore no-global-assign
+        console = new internalConsole.Console((msg, level) =>
+          core.print(`${prefix} ` + msg, level > 1)
+        );
       }
     }
 
@@ -656,11 +640,6 @@ function bootstrapMainRuntime(runtimeOptions, warmup = false) {
         }
       });
     }
-
-    // TODO(iuioiua): remove in Deno v2. This allows us to dynamically delete
-    // class properties within constructors for classes that are not defined
-    // within the Deno namespace.
-    internals.future = true;
 
     removeImportedOps();
 
@@ -722,7 +701,7 @@ function bootstrapMainRuntime(runtimeOptions, warmup = false) {
           return jupyterNs;
         }
         throw new Error(
-          "Deno.jupyter is only available in `deno jupyter` subcommand.",
+          "Deno.jupyter is only available in `deno jupyter` subcommand",
         );
       },
       set(val) {
@@ -751,7 +730,7 @@ function bootstrapMainRuntime(runtimeOptions, warmup = false) {
       // https://github.com/tc39/proposal-temporal/pull/2914
       // https://github.com/tc39/proposal-temporal/pull/2925
       if (typeof globalThis.Temporal.Instant.fromEpochSeconds === "undefined") {
-        throw "V8 removes obsoleted Temporal API now, no need to delete them!";
+        throw "V8 removes obsoleted Temporal API now, no need to delete them";
       }
       delete globalThis.Temporal.Instant.fromEpochSeconds;
       delete globalThis.Temporal.Instant.fromEpochMicroseconds;
@@ -850,9 +829,6 @@ function bootstrapMainRuntime(runtimeOptions, warmup = false) {
         nodeDebug,
       });
     }
-    if (internals.future) {
-      delete globalThis.window;
-    }
   } else {
     // Warmup
   }
@@ -880,11 +856,6 @@ function bootstrapWorkerRuntime(
       6: argv0,
       7: nodeDebug,
     } = runtimeOptions;
-
-    // TODO(iuioiua): remove in Deno v2. This allows us to dynamically delete
-    // class properties within constructors for classes that are not defined
-    // within the Deno namespace.
-    internals.future = true;
 
     performance.setTimeOrigin(DateNow());
     globalThis_ = globalThis;
@@ -960,7 +931,7 @@ function bootstrapWorkerRuntime(
       // https://github.com/tc39/proposal-temporal/pull/2914
       // https://github.com/tc39/proposal-temporal/pull/2925
       if (typeof globalThis.Temporal.Instant.fromEpochSeconds === "undefined") {
-        throw "V8 removes obsoleted Temporal API now, no need to delete them!";
+        throw "V8 removes obsoleted Temporal API now, no need to delete them";
       }
       delete globalThis.Temporal.Instant.fromEpochSeconds;
       delete globalThis.Temporal.Instant.fromEpochMicroseconds;

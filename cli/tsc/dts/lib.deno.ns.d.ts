@@ -1669,47 +1669,6 @@ declare namespace Deno {
     End = 2,
   }
 
-  /**
-   * An abstract interface which when implemented provides an interface to seek
-   * within an open file/resource asynchronously.
-   *
-   * @category I/O */
-  export interface Seeker {
-    /** Seek sets the offset for the next `read()` or `write()` to offset,
-     * interpreted according to `whence`: `Start` means relative to the
-     * start of the file, `Current` means relative to the current offset,
-     * and `End` means relative to the end. Seek resolves to the new offset
-     * relative to the start of the file.
-     *
-     * Seeking to an offset before the start of the file is an error. Seeking to
-     * any positive offset is legal, but the behavior of subsequent I/O
-     * operations on the underlying object is implementation-dependent.
-     *
-     * It resolves with the updated offset.
-     */
-    seek(offset: number | bigint, whence: SeekMode): Promise<number>;
-  }
-
-  /**
-   * An abstract interface which when implemented provides an interface to seek
-   * within an open file/resource synchronously.
-   *
-   * @category I/O */
-  export interface SeekerSync {
-    /** Seek sets the offset for the next `readSync()` or `writeSync()` to
-     * offset, interpreted according to `whence`: `Start` means relative
-     * to the start of the file, `Current` means relative to the current
-     * offset, and `End` means relative to the end.
-     *
-     * Seeking to an offset before the start of the file is an error. Seeking to
-     * any positive offset is legal, but the behavior of subsequent I/O
-     * operations on the underlying object is implementation-dependent.
-     *
-     * It returns the updated offset.
-     */
-    seekSync(offset: number | bigint, whence: SeekMode): number;
-  }
-
   /** Open a file and resolve to an instance of {@linkcode Deno.FsFile}. The
    * file does not need to previously exist if using the `create` or `createNew`
    * open options. The caller may have the resulting file automatically closed
@@ -1814,7 +1773,7 @@ declare namespace Deno {
    *
    * @category File System
    */
-  export class FsFile implements Seeker, SeekerSync, Disposable {
+  export class FsFile implements Disposable {
     /** A {@linkcode ReadableStream} instance representing to the byte contents
      * of the file. This makes it easy to interoperate with other web streams
      * based APIs.
@@ -5131,9 +5090,7 @@ declare namespace Deno {
      *
      * @category HTTP Server
      */
-    fetch: (
-      request: Request,
-    ) => Response | Promise<Response>;
+    fetch: ServeHandler;
   }
 
   /** Options which can be set when calling {@linkcode Deno.serve}.
