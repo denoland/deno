@@ -35,8 +35,6 @@ mod js_unit_tests;
 mod jsr;
 #[path = "jupyter_tests.rs"]
 mod jupyter;
-#[path = "lint_tests.rs"]
-mod lint;
 #[path = "lsp_tests.rs"]
 mod lsp;
 #[path = "node_unit_tests.rs"]

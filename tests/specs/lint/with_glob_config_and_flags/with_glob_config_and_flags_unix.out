@@ -1,0 +1,114 @@
+[UNORDERED_START]
+error[no-unused-vars]: `foo` is never used
+ --> [WILDLINE]lint/with_glob_config_and_flags/glob/nested/fizz/bar.ts:1:10
+  | 
+1 | function foo() {
+  |          ^^^
+  = hint: If this is intentional, prefix it with an underscore like `_foo`
+
+  docs: https://lint.deno.land/rules/no-unused-vars
+
+
+error[no-unused-vars]: `foo` is never used
+ --> [WILDLINE]lint/with_glob_config_and_flags/glob/nested/foo/bazz.ts:1:10
+  | 
+1 | function foo() {
+  |          ^^^
+  = hint: If this is intentional, prefix it with an underscore like `_foo`
+
+  docs: https://lint.deno.land/rules/no-unused-vars
+
+
+error[no-unused-vars]: `foo` is never used
+ --> [WILDLINE]lint/with_glob_config_and_flags/glob/nested/foo/foo.ts:1:10
+  | 
+1 | function foo() {
+  |          ^^^
+  = hint: If this is intentional, prefix it with an underscore like `_foo`
+
+  docs: https://lint.deno.land/rules/no-unused-vars
+
+
+error[no-unused-vars]: `foo` is never used
+ --> [WILDLINE]lint/with_glob_config_and_flags/glob/data/test1.ts:1:10
+  | 
+1 | function foo() {
+  |          ^^^
+  = hint: If this is intentional, prefix it with an underscore like `_foo`
+
+  docs: https://lint.deno.land/rules/no-unused-vars
+
+
+error[no-unused-vars]: `foo` is never used
+ --> [WILDLINE]lint/with_glob_config_and_flags/glob/nested/foo/bar.ts:1:10
+  | 
+1 | function foo() {
+  |          ^^^
+  = hint: If this is intentional, prefix it with an underscore like `_foo`
+
+  docs: https://lint.deno.land/rules/no-unused-vars
+
+
+error[no-unused-vars]: `foo` is never used
+ --> [WILDLINE]lint/with_glob_config_and_flags/glob/nested/fizz/bazz.ts:1:10
+  | 
+1 | function foo() {
+  |          ^^^
+  = hint: If this is intentional, prefix it with an underscore like `_foo`
+
+  docs: https://lint.deno.land/rules/no-unused-vars
+
+
+error[no-unused-vars]: `foo` is never used
+ --> [WILDLINE]lint/with_glob_config_and_flags/glob/nested/fizz/fizz.ts:1:10
+  | 
+1 | function foo() {
+  |          ^^^
+  = hint: If this is intentional, prefix it with an underscore like `_foo`
+
+  docs: https://lint.deno.land/rules/no-unused-vars
+
+
+error[no-unused-vars]: `foo` is never used
+ --> [WILDLINE]lint/with_glob_config_and_flags/glob/nested/fizz/foo.ts:1:10
+  | 
+1 | function foo() {
+  |          ^^^
+  = hint: If this is intentional, prefix it with an underscore like `_foo`
+
+  docs: https://lint.deno.land/rules/no-unused-vars
+
+
+error[no-unused-vars]: `foo` is never used
+ --> [WILDLINE]lint/with_glob_config_and_flags/glob/data/test1.js:1:10
+  | 
+1 | function foo() {
+  |          ^^^
+  = hint: If this is intentional, prefix it with an underscore like `_foo`
+
+  docs: https://lint.deno.land/rules/no-unused-vars
+
+
+error[no-unused-vars]: `foo` is never used
+ --> [WILDLINE]lint/with_glob_config_and_flags/glob/nested/foo/fizz.ts:1:10
+  | 
+1 | function foo() {
+  |          ^^^
+  = hint: If this is intentional, prefix it with an underscore like `_foo`
+
+  docs: https://lint.deno.land/rules/no-unused-vars
+
+
+error[no-unused-vars]: `foo` is never used
+ --> [WILDLINE]lint/with_glob_config_and_flags/glob/pages/[id].ts:1:10
+  | 
+1 | function foo() {
+  |          ^^^
+  = hint: If this is intentional, prefix it with an underscore like `_foo`
+
+  docs: https://lint.deno.land/rules/no-unused-vars
+[UNORDERED_END]
+
+
+Found 11 problems
+Checked 11 files
