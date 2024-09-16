@@ -1,0 +1,24 @@
+[UNORDERED_START]
+error[no-unused-vars]: `a` is never used
+ --> [WILDLINE]lint/opt_out_top_level_exclude_via_lint_inexclude/main.ts:1:7
+  | 
+1 | const a = 1;
+  |       ^
+  = hint: If this is intentional, prefix it with an underscore like `_a`
+
+  docs: https://lint.deno.land/rules/no-unused-vars
+
+
+error[no-unused-vars]: `a` is never used
+ --> [WILDLINE]lint/opt_out_top_level_exclude_via_lint_inexclude/excluded.ts:1:7
+  | 
+1 | const a = 2;
+  |       ^
+  = hint: If this is intentional, prefix it with an underscore like `_a`
+
+  docs: https://lint.deno.land/rules/no-unused-vars
+[UNORDERED_END]
+
+
+Found 2 problems
+Checked 2 files
