@@ -10382,10 +10382,12 @@
               "blob-url-workers.window.html": [],
               "microtasks": {
                 "basic.any.html": [
-                  "import() should not drain the microtask queue if it fails during specifier resolution"
+                  "import() should not drain the microtask queue if it fails during specifier resolution",
+		  "import() should not drain the microtask queue when loading an already loaded module"
                 ],
                 "basic.any.worker.html": [
-                  "import() should not drain the microtask queue if it fails during specifier resolution"
+                  "import() should not drain the microtask queue if it fails during specifier resolution",
+		  "import() should not drain the microtask queue when loading an already loaded module"
                 ],
                 "css-import-in-worker.any.worker.html": true,
                 "with-import-assertions.any.html": true,
