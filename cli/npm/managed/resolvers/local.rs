@@ -856,27 +856,42 @@ async fn sync_resolution_with_fs(
       packages_with_deprecation_warnings.lock();
     if !packages_with_deprecation_warnings.is_empty() {
       log::warn!(
-        "{} Following packages are deprecated",
+        "{} Following packages are deprecated:",
         colors::yellow("Warning")
       );
-      for (package_id, msg) in &*packages_with_deprecation_warnings {
-        log::warn!("  - {:?} - {}", package_id, colors::gray(msg));
+      let len = packages_with_deprecation_warnings.len();
+      for (idx, (package_id, msg)) in
+        packages_with_deprecation_warnings.iter().enumerate()
+      {
+        if idx != len - 1 {
+          log::warn!(
+            "┠─ {}",
+            colors::gray(format!("npm:{:?} ({})", package_id, msg))
+          );
+        } else {
+          log::warn!(
+            "┗─ {}",
+            colors::gray(format!("npm:{:?} ({})", package_id, msg))
+          );
+        }
       }
     }
   }
 
   if !packages_with_scripts_not_run.is_empty() {
-    log::warn!("{} Following packages contained npm lifecycle scripts ({}) that were not executed.", colors::yellow("Warning"), colors::gray("preinstall/install/postinstall"));
+    log::warn!("{} Following packages contained npm lifecycle scripts ({}) that were not executed:", colors::yellow("Warning"), colors::gray("preinstall/install/postinstall"));
 
     for (_, package_nv) in packages_with_scripts_not_run.iter() {
-      log::warn!("┠─── {}", colors::gray(format!("npm:{package_nv}")));
+      log::warn!("┠─ {}", colors::gray(format!("npm:{package_nv}")));
     }
 
+    log::warn!("┃");
     log::warn!(
       "┠─ {}",
       colors::italic("This may cause the packages to not work correctly.")
     );
     log::warn!("┠─ {}", colors::italic("To run lifecycle scripts, use the `--allow-scripts` flag with `deno install`"));
+    log::warn!("┃");
     log::warn!("┗─ If you want to run lifecycle script, run:");
     let packages_comma_separated = packages_with_scripts_not_run
       .iter()
