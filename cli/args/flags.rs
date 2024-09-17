@@ -1000,8 +1000,12 @@ impl Flags {
           if module_specifier.scheme() == "file"
             || module_specifier.scheme() == "npm"
           {
-            if let Ok(p) = specifier_to_file_path(&module_specifier) {
-              Some(vec![p.parent().unwrap().to_path_buf()])
+            if let Ok(file_path) = specifier_to_file_path(&module_specifier) {
+              if let Some(parent_path) = file_path.parent() {
+                Some(vec![parent_path.to_path_buf()])
+              } else {
+                Some(vec![file_path.to_path_buf()])
+              }
             } else {
               Some(vec![current_dir.to_path_buf()])
             }

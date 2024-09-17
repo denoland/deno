@@ -883,6 +883,17 @@ impl CliOptions {
     let start_dir = match &flags.config_flag {
       ConfigFlag::Discover => {
         if let Some(start_paths) = flags.config_path_args(&initial_cwd) {
+          for path in &start_paths {
+            if !path.exists() || !path.is_dir() || path == Path::new("/") {
+              let path_str = match &flags.subcommand {
+                DenoSubcommand::Run(run) => &run.script,
+                _ => path.to_str().unwrap_or("Invalid path"),
+              };
+              return Err(deno_core::error::uri_error(format!(
+                "Invalid file path.\n  Specifier: {path_str}"
+              )));
+            }
+          }
           WorkspaceDirectory::discover(
             WorkspaceDiscoverStart::Paths(&start_paths),
             &resolve_workspace_discover_options(),

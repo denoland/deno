@@ -2087,28 +2087,9 @@ mod tests {
 
   #[test]
   fn test_config_specifier_enabled() {
-    use std::fs::File;
-    use std::fs::{self};
-    use std::io::Write;
-    use tempfile::tempdir;
-
-    let temp_dir = tempdir().unwrap();
-    let temp_dir_path = temp_dir.path();
-
-    let file_a_path = temp_dir_path.join("a.ts");
-
-    File::create(&file_a_path)
-      .unwrap()
-      .write_all(b"Temporary content")
-      .unwrap();
-
-    let root_uri =
-      resolve_url(&format!("file://{}/", temp_dir_path.to_str().unwrap()))
-        .unwrap();
+    let root_uri = resolve_url("file:///").unwrap();
     let mut config = Config::new_with_roots(vec![root_uri]);
-    let specifier =
-      resolve_url(&format!("file://{}/a.ts", temp_dir_path.to_str().unwrap()))
-        .unwrap();
+    let specifier = resolve_url("file:///a.ts").unwrap();
     assert!(!config.specifier_enabled(&specifier));
     config.set_workspace_settings(
       serde_json::from_value(json!({
@@ -2118,30 +2099,13 @@ mod tests {
       vec![],
     );
     assert!(config.specifier_enabled(&specifier));
-
-    fs::remove_file(file_a_path).unwrap();
   }
 
   #[test]
   fn test_config_snapshot_specifier_enabled() {
-    use std::fs::File;
-    use std::fs::{self};
-    use tempfile::tempdir;
-
-    let temp_dir = tempdir().unwrap();
-    let temp_dir_path = temp_dir.path();
-
-    let file_a_path = temp_dir_path.join("a.ts");
-
-    File::create(&file_a_path).unwrap();
-
-    let root_uri =
-      resolve_url(&format!("file://{}/", temp_dir_path.to_str().unwrap()))
-        .unwrap();
+    let root_uri = resolve_url("file:///").unwrap();
     let mut config = Config::new_with_roots(vec![root_uri]);
-    let specifier =
-      resolve_url(&format!("file://{}/a.ts", temp_dir_path.to_str().unwrap()))
-        .unwrap();
+    let specifier = resolve_url("file:///a.ts").unwrap();
     assert!(!config.specifier_enabled(&specifier));
     config.set_workspace_settings(
       serde_json::from_value(json!({
@@ -2151,48 +2115,14 @@ mod tests {
       vec![],
     );
     assert!(config.specifier_enabled(&specifier));
-
-    fs::remove_file(file_a_path).unwrap();
   }
 
   #[test]
   fn test_config_specifier_enabled_path() {
-    use std::fs::File;
-    use std::fs::{self};
-    use std::io::Write;
-    use tempfile::tempdir;
-
-    let temp_dir = tempdir().unwrap();
-    let temp_dir_path = temp_dir.path();
-
-    let worker_dir = temp_dir_path.join("worker");
-    let other_dir = temp_dir_path.join("other");
-    fs::create_dir_all(&worker_dir).unwrap();
-    fs::create_dir_all(&other_dir).unwrap();
-
-    let file_a_path = worker_dir.join("a.ts");
-    let file_b_path = other_dir.join("b.ts");
-
-    let mut file_a = File::create(&file_a_path).unwrap();
-    writeln!(file_a, "Temporary content for a.ts").unwrap();
-
-    let mut file_b = File::create(&file_b_path).unwrap();
-    writeln!(file_b, "Temporary content for b.ts").unwrap();
-
-    let root_uri =
-      resolve_url(&format!("file://{}/", temp_dir_path.to_str().unwrap()))
-        .unwrap();
+    let root_uri = resolve_url("file:///project/").unwrap();
     let mut config = Config::new_with_roots(vec![root_uri]);
-    let specifier_a = resolve_url(&format!(
-      "file://{}/worker/a.ts",
-      temp_dir_path.to_str().unwrap()
-    ))
-    .unwrap();
-    let specifier_b = resolve_url(&format!(
-      "file://{}/other/b.ts",
-      temp_dir_path.to_str().unwrap()
-    ))
-    .unwrap();
+    let specifier_a = resolve_url("file:///project/worker/a.ts").unwrap();
+    let specifier_b = resolve_url("file:///project/other/b.ts").unwrap();
     assert!(!config.specifier_enabled(&specifier_a));
     assert!(!config.specifier_enabled(&specifier_b));
     let workspace_settings =
@@ -2200,31 +2130,11 @@ mod tests {
     config.set_workspace_settings(workspace_settings, vec![]);
     assert!(config.specifier_enabled(&specifier_a));
     assert!(!config.specifier_enabled(&specifier_b));
-
-    fs::remove_file(file_a_path).unwrap();
-    fs::remove_file(file_b_path).unwrap();
   }
 
   #[test]
   fn test_config_specifier_disabled_path() {
-    use std::fs::File;
-    use std::fs::{self};
-    use tempfile::tempdir;
-
-    let temp_dir = tempdir().unwrap();
-    let temp_dir_path = temp_dir.path();
-
-    let file_mod1_path = temp_dir_path.join("mod1.ts");
-    let file_mod2_path = temp_dir_path.join("mod2.ts");
-    let file_mod3_path = temp_dir_path.join("mod3.ts");
-
-    File::create(&file_mod1_path).unwrap();
-    File::create(&file_mod2_path).unwrap();
-    File::create(&file_mod3_path).unwrap();
-
-    let root_uri =
-      resolve_url(&format!("file://{}/", temp_dir_path.to_str().unwrap()))
-        .unwrap();
+    let root_uri = resolve_url("file:///root/").unwrap();
     let mut config = Config::new_with_roots(vec![root_uri.clone()]);
     config.set_workspace_settings(
       WorkspaceSettings {
@@ -2239,10 +2149,6 @@ mod tests {
     assert!(config.specifier_enabled(&root_uri.join("mod1.ts").unwrap()));
     assert!(!config.specifier_enabled(&root_uri.join("mod2.ts").unwrap()));
     assert!(!config.specifier_enabled(&root_uri.join("mod3.ts").unwrap()));
-
-    fs::remove_file(file_mod1_path).unwrap();
-    fs::remove_file(file_mod2_path).unwrap();
-    fs::remove_file(file_mod3_path).unwrap();
   }
 
   #[test]

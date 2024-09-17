@@ -1609,23 +1609,31 @@ pub fn specifier_to_file_path(
   let result = if specifier.scheme() != "file" {
     Err(())
   } else if cfg!(windows) {
-    // This might be a unix-style path which is used in the tests even on Windows.
-    // Attempt to see if we can convert it to a `PathBuf`. This code should be removed
-    // once/if https://github.com/servo/rust-url/issues/730 is implemented.
-    if specifier.scheme() == "file"
-      && specifier.host().is_none()
-      && specifier.port().is_none()
-      && specifier.path_segments().is_some()
-    {
-      let path_str = specifier.path();
-      match String::from_utf8(
-        percent_encoding::percent_decode(path_str.as_bytes()).collect(),
-      ) {
-        Ok(_) => specifier.to_file_path(),
-        Err(_) => Err(()),
-      }
-    } else {
+    if specifier.host().is_some() {
       Err(())
+    } else {
+      match specifier.to_file_path() {
+        Ok(path) => Ok(path),
+        Err(()) => {
+          // This might be a unix-style path which is used in the tests even on Windows.
+          // Attempt to see if we can convert it to a `PathBuf`. This code should be removed
+          // once/if https://github.com/servo/rust-url/issues/730 is implemented.
+          if specifier.scheme() == "file"
+            && specifier.port().is_none()
+            && specifier.path_segments().is_some()
+          {
+            let path_str = specifier.path();
+            match String::from_utf8(
+              percent_encoding::percent_decode(path_str.as_bytes()).collect(),
+            ) {
+              Ok(path_str) => Ok(PathBuf::from(path_str)),
+              Err(_) => Err(()),
+            }
+          } else {
+            Err(())
+          }
+        }
+      }
     }
   } else {
     specifier.to_file_path()
@@ -3712,44 +3720,35 @@ mod tests {
 
   #[test]
   fn test_specifier_to_file_path() {
-    use std::env;
-    use std::fs;
-    use std::fs::File;
-    use std::io::Write;
-    use std::path::PathBuf;
+    run_success_test("file:///", "/");
+    run_success_test("file:///test", "/test");
+    run_success_test("file:///dir/test/test.txt", "/dir/test/test.txt");
+    run_success_test(
+      "file:///dir/test%20test/test.txt",
+      "/dir/test test/test.txt",
+    );
 
-    let temp_dir = match env::current_dir() {
-      Ok(dir) => dir,
-      Err(e) => {
-        panic!("{:?}", e);
-      }
-    };
+    assert_no_panic_specifier_to_file_path("file:/");
+    assert_no_panic_specifier_to_file_path("file://");
+    assert_no_panic_specifier_to_file_path("file://asdf/");
+    assert_no_panic_specifier_to_file_path("file://asdf/66666/a.ts");
 
-    #[allow(clippy::join_absolute_paths)]
-    let temp_file_path = temp_dir.join("test.txt");
-    let temp_file_path_str = temp_file_path.to_str().unwrap();
-    if let Err(e) = File::create(&temp_file_path)
-      .and_then(|mut file| writeln!(file, "Temporary test content"))
-    {
-      panic!("{:?}", e);
+    fn run_success_test(specifier: &str, expected_path: &str) {
+      let result =
+        specifier_to_file_path(&ModuleSpecifier::parse(specifier).unwrap())
+          .unwrap();
+      assert_eq!(result, PathBuf::from(expected_path));
     }
-
-    let result = specifier_to_file_path(
-      &ModuleSpecifier::parse(
-        format!("file:///{}", temp_file_path_str).as_str(),
-      )
-      .unwrap(),
-    )
-    .unwrap();
-    assert_eq!(result, PathBuf::from(temp_file_path_str));
-
-    if let Err(e) = fs::remove_file(&temp_file_path) {
-      panic!("{:?}", e);
-    }
-    let failure_tests = vec!["file:/", "file://", "file:///", "file://asdf"];
-    for specifier in failure_tests {
-      let _ =
+    fn assert_no_panic_specifier_to_file_path(specifier: &str) {
+      let result =
         specifier_to_file_path(&ModuleSpecifier::parse(specifier).unwrap());
+      match result {
+        Ok(_) => (),
+        Err(err) => assert_eq!(
+          err.to_string(),
+          format!("Invalid file path.\n  Specifier: {specifier}")
+        ),
+      }
     }
   }
 }
