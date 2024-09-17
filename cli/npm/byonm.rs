@@ -280,7 +280,7 @@ impl NodeRequireResolver for ByonmCliNpmResolver {
       .components()
       .any(|c| c.as_os_str().to_ascii_lowercase() == "node_modules")
     {
-      permissions.check_read(path)?;
+      _ = permissions.check_read_path(path)?;
     }
     Ok(())
   }

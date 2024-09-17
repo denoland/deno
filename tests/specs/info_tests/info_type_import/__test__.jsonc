@@ -1,0 +1,4 @@
+{
+  "args": "info info_type_import.ts",
+  "output": "info_type_import.out"
+}

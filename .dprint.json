@@ -56,7 +56,6 @@
     "tests/testdata/run/byte_order_mark.ts",
     "tests/testdata/run/error_syntax_empty_trailing_line.mjs",
     "tests/testdata/run/inline_js_source_map*",
-    "tests/testdata/test/glob/",
     "tests/testdata/test/markdown_windows.md",
     "tests/util/std",
     "tests/wpt/runner/expectation.json",

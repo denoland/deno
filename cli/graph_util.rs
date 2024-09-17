@@ -11,6 +11,7 @@ use crate::cache::ModuleInfoCache;
 use crate::cache::ParsedSourceCache;
 use crate::colors;
 use crate::errors::get_error_class_name;
+use crate::file_fetcher::FetchPermissionsOption;
 use crate::file_fetcher::FileFetcher;
 use crate::npm::CliNpmResolver;
 use crate::resolver::CliGraphResolver;
@@ -670,12 +671,12 @@ impl ModuleGraphBuilder {
 
   /// Creates the default loader used for creating a graph.
   pub fn create_graph_loader(&self) -> cache::FetchCacher {
-    self.create_fetch_cacher(PermissionsContainer::allow_all())
+    self.create_fetch_cacher(FetchPermissionsOption::AllowAll)
   }
 
   pub fn create_fetch_cacher(
     &self,
-    permissions: PermissionsContainer,
+    permissions: FetchPermissionsOption,
   ) -> cache::FetchCacher {
     cache::FetchCacher::new(
       self.file_fetcher.clone(),

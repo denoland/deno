@@ -1,0 +1,6 @@
+{
+  "args": "test main.ts --parallel",
+  "exitCode": 0,
+  "envs": { "DENO_JOBS": "2" },
+  "output": "main.out"
+}

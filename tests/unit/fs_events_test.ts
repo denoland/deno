@@ -90,8 +90,6 @@ Deno.test(
   },
 );
 
-// TODO(kt3k): This test is for the backward compatibility of `.return` method.
-// This should be removed at 2.0
 Deno.test(
   { permissions: { read: true, write: true } },
   async function watchFsReturn() {

@@ -1,0 +1,12 @@
+error[no-unused-vars]: `data` is never used
+ --> [WILDCARD]lint/jsx/main.jsx:1:7
+  | 
+1 | const data = <div>hello</div>;
+  |       ^^^^
+  = hint: If this is intentional, prefix it with an underscore like `_data`
+
+  docs: https://lint.deno.land/rules/no-unused-vars
+
+
+Found 1 problem
+Checked 1 file
