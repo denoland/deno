@@ -4,6 +4,7 @@ use aes::cipher::block_padding::Pkcs7;
 use aes::cipher::BlockDecryptMut;
 use aes::cipher::BlockEncryptMut;
 use aes::cipher::KeyIvInit;
+use deno_core::error::range_error;
 use deno_core::error::type_error;
 use deno_core::error::AnyError;
 use deno_core::Resource;
@@ -62,6 +63,10 @@ impl CipherContext {
 
   pub fn encrypt(&self, input: &[u8], output: &mut [u8]) {
     self.cipher.borrow_mut().encrypt(input, output);
+  }
+
+  pub fn take_tag(self) -> Tag {
+    Rc::try_unwrap(self.cipher).ok()?.into_inner().take_tag()
   }
 
   pub fn r#final(
@@ -133,20 +138,33 @@ impl Cipher {
       "aes-192-ecb" => Aes192Ecb(Box::new(ecb::Encryptor::new(key.into()))),
       "aes-256-ecb" => Aes256Ecb(Box::new(ecb::Encryptor::new(key.into()))),
       "aes-128-gcm" => {
-        let mut cipher =
-          aead_gcm_stream::AesGcm::<aes::Aes128>::new(key.into());
-        cipher.init(iv.try_into()?);
+        if iv.len() != 12 {
+          return Err(type_error("IV length must be 12 bytes"));
+        }
+
+        let cipher =
+          aead_gcm_stream::AesGcm::<aes::Aes128>::new(key.into(), iv);
 
         Aes128Gcm(Box::new(cipher))
       }
       "aes-256-gcm" => {
-        let mut cipher =
-          aead_gcm_stream::AesGcm::<aes::Aes256>::new(key.into());
-        cipher.init(iv.try_into()?);
+        if iv.len() != 12 {
+          return Err(type_error("IV length must be 12 bytes"));
+        }
+
+        let cipher =
+          aead_gcm_stream::AesGcm::<aes::Aes256>::new(key.into(), iv);
 
         Aes256Gcm(Box::new(cipher))
       }
       "aes256" | "aes-256-cbc" => {
+        if key.len() != 32 {
+          return Err(range_error("Invalid key length"));
+        }
+        if iv.len() != 16 {
+          return Err(type_error("Invalid initialization vector"));
+        }
+
         Aes256Cbc(Box::new(cbc::Encryptor::new(key.into(), iv.into())))
       }
       _ => return Err(type_error(format!("Unknown cipher {algorithm_name}"))),
@@ -290,6 +308,15 @@ impl Cipher {
       }
     }
   }
+
+  fn take_tag(self) -> Tag {
+    use Cipher::*;
+    match self {
+      Aes128Gcm(cipher) => Some(cipher.finish().to_vec()),
+      Aes256Gcm(cipher) => Some(cipher.finish().to_vec()),
+      _ => None,
+    }
+  }
 }
 
 impl Decipher {
@@ -307,20 +334,33 @@ impl Decipher {
       "aes-192-ecb" => Aes192Ecb(Box::new(ecb::Decryptor::new(key.into()))),
       "aes-256-ecb" => Aes256Ecb(Box::new(ecb::Decryptor::new(key.into()))),
       "aes-128-gcm" => {
-        let mut decipher =
-          aead_gcm_stream::AesGcm::<aes::Aes128>::new(key.into());
-        decipher.init(iv.try_into()?);
+        if iv.len() != 12 {
+          return Err(type_error("IV length must be 12 bytes"));
+        }
+
+        let decipher =
+          aead_gcm_stream::AesGcm::<aes::Aes128>::new(key.into(), iv);
 
         Aes128Gcm(Box::new(decipher))
       }
       "aes-256-gcm" => {
-        let mut decipher =
-          aead_gcm_stream::AesGcm::<aes::Aes256>::new(key.into());
-        decipher.init(iv.try_into()?);
+        if iv.len() != 12 {
+          return Err(type_error("IV length must be 12 bytes"));
+        }
+
+        let decipher =
+          aead_gcm_stream::AesGcm::<aes::Aes256>::new(key.into(), iv);
 
         Aes256Gcm(Box::new(decipher))
       }
       "aes256" | "aes-256-cbc" => {
+        if key.len() != 32 {
+          return Err(range_error("Invalid key length"));
+        }
+        if iv.len() != 16 {
+          return Err(type_error("Invalid initialization vector"));
+        }
+
         Aes256Cbc(Box::new(cbc::Decryptor::new(key.into(), iv.into())))
       }
       _ => return Err(type_error(format!("Unknown cipher {algorithm_name}"))),

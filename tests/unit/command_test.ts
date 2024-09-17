@@ -73,8 +73,16 @@ Deno.test(
     });
     const child = command.spawn();
 
-    assertThrows(() => child.stdout, TypeError, "stdout is not piped");
-    assertThrows(() => child.stderr, TypeError, "stderr is not piped");
+    assertThrows(
+      () => child.stdout,
+      TypeError,
+      "Cannot get 'stdout': 'stdout' is not piped",
+    );
+    assertThrows(
+      () => child.stderr,
+      TypeError,
+      "Cannot get 'stderr': 'stderr' is not piped",
+    );
 
     const msg = new TextEncoder().encode("hello");
     const writer = child.stdin.getWriter();
@@ -99,9 +107,21 @@ Deno.test(
     });
     const child = command.spawn();
 
-    assertThrows(() => child.stdin, TypeError, "stdin is not piped");
-    assertThrows(() => child.stdout, TypeError, "stdout is not piped");
-    assertThrows(() => child.stderr, TypeError, "stderr is not piped");
+    assertThrows(
+      () => child.stdin,
+      TypeError,
+      "Cannot get 'stdin': 'stdin' is not piped",
+    );
+    assertThrows(
+      () => child.stdout,
+      TypeError,
+      "Cannot get 'stdout': 'stdout' is not piped",
+    );
+    assertThrows(
+      () => child.stderr,
+      TypeError,
+      "Cannot get 'stderr': 'stderr' is not piped",
+    );
 
     await child.status;
   },
@@ -120,8 +140,16 @@ Deno.test(
     });
     const child = command.spawn();
 
-    assertThrows(() => child.stdin, TypeError, "stdin is not piped");
-    assertThrows(() => child.stderr, TypeError, "stderr is not piped");
+    assertThrows(
+      () => child.stdin,
+      TypeError,
+      "Cannot get 'stdin': 'stdin' is not piped",
+    );
+    assertThrows(
+      () => child.stderr,
+      TypeError,
+      "Cannot get 'stderr': 'stderr' is not piped",
+    );
 
     const readable = child.stdout.pipeThrough(new TextDecoderStream());
     const reader = readable.getReader();
@@ -154,8 +182,16 @@ Deno.test(
     });
     const child = command.spawn();
 
-    assertThrows(() => child.stdin, TypeError, "stdin is not piped");
-    assertThrows(() => child.stdout, TypeError, "stdout is not piped");
+    assertThrows(
+      () => child.stdin,
+      TypeError,
+      "Cannot get 'stdin': 'stdin' is not piped",
+    );
+    assertThrows(
+      () => child.stdout,
+      TypeError,
+      "Cannot get 'stdout': 'stdout' is not piped",
+    );
 
     const readable = child.stderr.pipeThrough(new TextDecoderStream());
     const reader = readable.getReader();
@@ -382,7 +418,7 @@ Deno.test(
       await new Deno.Command(Deno.execPath(), {
         args: ["eval", "console.log('hello world')"],
       }).output();
-    }, Deno.errors.PermissionDenied);
+    }, Deno.errors.NotCapable);
   },
 );
 
@@ -393,7 +429,7 @@ Deno.test(
       new Deno.Command(Deno.execPath(), {
         args: ["eval", "console.log('hello world')"],
       }).outputSync();
-    }, Deno.errors.PermissionDenied);
+    }, Deno.errors.NotCapable);
   },
 );
 
@@ -528,7 +564,7 @@ Deno.test(
   },
   async function commandFailedWithSignal() {
     const output = await new Deno.Command(Deno.execPath(), {
-      args: ["eval", "--unstable", "Deno.kill(Deno.pid, 'SIGKILL')"],
+      args: ["eval", "Deno.kill(Deno.pid, 'SIGKILL')"],
     }).output();
     assertEquals(output.success, false);
     if (Deno.build.os === "windows") {
@@ -547,7 +583,7 @@ Deno.test(
   },
   function commandSyncFailedWithSignal() {
     const output = new Deno.Command(Deno.execPath(), {
-      args: ["eval", "--unstable", "Deno.kill(Deno.pid, 'SIGKILL')"],
+      args: ["eval", "Deno.kill(Deno.pid, 'SIGKILL')"],
     }).outputSync();
     assertEquals(output.success, false);
     if (Deno.build.os === "windows") {
@@ -835,7 +871,7 @@ Deno.test(
 const command = await new Deno.Command(Deno.execPath(), {
   cwd: Deno.args[0],
   stdout: "piped",
-  args: ["run", "-A", "--unstable", Deno.args[1]],
+  args: ["run", "-A", Deno.args[1]],
 });
 const child = command.spawn();
 const readable = child.stdout.pipeThrough(new TextDecoderStream());
@@ -877,7 +913,7 @@ setInterval(() => {
       Deno.execPath(),
       {
         cwd,
-        args: ["run", "-A", "--unstable", programFile, cwd, childProgramFile],
+        args: ["run", "-A", programFile, cwd, childProgramFile],
       },
     ).output();
 
@@ -955,7 +991,7 @@ Deno.test(
     assertThrows(
       () => child.kill(),
       TypeError,
-      "Child process has already terminated.",
+      "Child process has already terminated",
     );
   },
 );
@@ -975,3 +1011,56 @@ Deno.test(
     );
   },
 );
+
+Deno.test(
+  { permissions: { write: true, run: true, read: true } },
+  async function commandWithCwdOrPath() {
+    const cwd = Deno.makeTempDirSync({ prefix: "deno_command_test" });
+    try {
+      const suffix = Deno.build.os === "windows" ? ".exe" : "";
+      Deno.mkdirSync(`${cwd}/subdir`);
+      Deno.copyFileSync(Deno.execPath(), `${cwd}/subdir/my_binary${suffix}`);
+      // cwd
+      {
+        const output = await new Deno.Command(`./my_binary${suffix}`, {
+          cwd: `${cwd}/subdir`,
+          args: ["-v"],
+        }).output();
+        assertEquals(output.success, true);
+      }
+      // path
+      {
+        const output = await new Deno.Command(`my_binary${suffix}`, {
+          env: {
+            PATH: `${cwd}/subdir`,
+          },
+          args: ["-v"],
+        }).output();
+        assertEquals(output.success, true);
+      }
+    } finally {
+      Deno.removeSync(cwd, { recursive: true });
+    }
+  },
+);
+
+Deno.test(async function outputWhenManuallyConsumingStreams() {
+  const command = new Deno.Command(Deno.execPath(), {
+    args: ["eval", "console.log('hello world')"],
+    stdout: "piped",
+    stderr: "piped",
+  });
+  const child = command.spawn();
+  for await (const _ of child.stdout) {
+    // consume stdout
+  }
+  for await (const _ of child.stderr) {
+    // consume stderr
+  }
+  const status = await child.output();
+  assertEquals(status.success, true);
+  assertEquals(status.code, 0);
+  assertEquals(status.signal, null);
+  assertEquals(status.stdout, new Uint8Array());
+  assertEquals(status.stderr, new Uint8Array());
+});

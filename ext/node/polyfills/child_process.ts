@@ -18,11 +18,11 @@ import {
   ChildProcessOptions,
   normalizeSpawnArguments,
   setupChannel,
-  type SpawnOptions,
   spawnSync as _spawnSync,
+  stdioStringToArray,
+  type SpawnOptions,
   type SpawnSyncOptions,
   type SpawnSyncResult,
-  stdioStringToArray,
 } from "ext:deno_node/internal/child_process.ts";
 import {
   validateAbortSignal,
@@ -145,7 +145,6 @@ export function fork(
   args = [
     "run",
     ...op_bootstrap_unstable_args(),
-    "--node-modules-dir",
     "-A",
     ...stringifiedV8Flags,
     ...execArgv,

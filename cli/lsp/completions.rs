@@ -249,7 +249,7 @@ pub async fn get_import_completions(
       .collect();
     let mut is_incomplete = false;
     if let Some(import_map) = maybe_import_map {
-      items.extend(get_base_import_map_completions(import_map));
+      items.extend(get_base_import_map_completions(import_map, specifier));
     }
     if let Some(origin_items) =
       module_registries.get_origin_completions(&text, &range)
@@ -268,20 +268,20 @@ pub async fn get_import_completions(
 /// map as completion items.
 fn get_base_import_map_completions(
   import_map: &ImportMap,
+  referrer: &ModuleSpecifier,
 ) -> Vec<lsp::CompletionItem> {
   import_map
-    .imports()
-    .keys()
-    .map(|key| {
+    .entries_for_referrer(referrer)
+    .map(|entry| {
       // for some strange reason, keys that start with `/` get stored in the
       // import map as `file:///`, and so when we pull the keys out, we need to
       // change the behavior
-      let mut label = if key.starts_with("file://") {
-        FILE_PROTO_RE.replace(key, "").to_string()
+      let mut label = if entry.key.starts_with("file://") {
+        FILE_PROTO_RE.replace(entry.key, "").to_string()
       } else {
-        key.to_string()
+        entry.key.to_string()
       };
-      let kind = if key.ends_with('/') {
+      let kind = if entry.key.ends_with('/') {
         label.pop();
         Some(lsp::CompletionItemKind::FOLDER)
       } else {
@@ -838,7 +838,7 @@ mod tests {
     fs_sources: &[(&str, &str)],
   ) -> Documents {
     let temp_dir = TempDir::new();
-    let cache = LspCache::new(Some(temp_dir.uri().join(".deno_dir").unwrap()));
+    let cache = LspCache::new(Some(temp_dir.url().join(".deno_dir").unwrap()));
     let mut documents = Documents::default();
     documents.update_config(
       &Default::default(),
@@ -858,8 +858,8 @@ mod tests {
         .global()
         .set(&specifier, HashMap::default(), source.as_bytes())
         .expect("could not cache file");
-      let document =
-        documents.get_or_load(&specifier, &temp_dir.uri().join("$").unwrap());
+      let document = documents
+        .get_or_load(&specifier, Some(&temp_dir.url().join("$").unwrap()));
       assert!(document.is_some(), "source could not be setup");
     }
     documents

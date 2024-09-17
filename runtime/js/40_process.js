@@ -101,7 +101,7 @@ class Process {
 
   async output() {
     if (!this.stdout) {
-      throw new TypeError("stdout was not piped");
+      throw new TypeError("Cannot collect output: 'stdout' is not piped");
     }
     try {
       return await readAll(this.stdout);
@@ -112,7 +112,7 @@ class Process {
 
   async stderrOutput() {
     if (!this.stderr) {
-      throw new TypeError("stderr was not piped");
+      throw new TypeError("Cannot collect output: 'stderr' is not piped");
     }
     try {
       return await readAll(this.stderr);
@@ -130,13 +130,12 @@ class Process {
   }
 }
 
+// Note: This function was soft-removed in Deno 2. Its types have been removed,
+// but its implementation has been kept to avoid breaking changes.
 function run({
   cmd,
   cwd = undefined,
-  clearEnv = false,
   env = { __proto__: null },
-  gid = undefined,
-  uid = undefined,
   stdout = "inherit",
   stderr = "inherit",
   stdin = "inherit",
@@ -147,18 +146,10 @@ function run({
       ...new SafeArrayIterator(ArrayPrototypeSlice(cmd, 1)),
     ];
   }
-  internals.warnOnDeprecatedApi(
-    "Deno.run()",
-    (new Error()).stack,
-    `Use "Deno.Command()" API instead.`,
-  );
   const res = opRun({
     cmd: ArrayPrototypeMap(cmd, String),
     cwd,
-    clearEnv,
     env: ObjectEntries(env),
-    gid,
-    uid,
     stdin,
     stdout,
     stderr,
@@ -166,23 +157,29 @@ function run({
   return new Process(res);
 }
 
+export const kExtraStdio = Symbol("extraStdio");
+export const kIpc = Symbol("ipc");
+export const kDetached = Symbol("detached");
+
 const illegalConstructorKey = Symbol("illegalConstructorKey");
 
-function spawnChildInner(opFn, command, apiName, {
+function spawnChildInner(command, apiName, {
   args = [],
   cwd = undefined,
   clearEnv = false,
   env = { __proto__: null },
   uid = undefined,
   gid = undefined,
+  signal = undefined,
   stdin = "null",
   stdout = "piped",
   stderr = "piped",
-  signal = undefined,
   windowsRawArguments = false,
-  ipc = -1,
+  [kDetached]: detached = false,
+  [kExtraStdio]: extraStdio = [],
+  [kIpc]: ipc = -1,
 } = { __proto__: null }) {
-  const child = opFn({
+  const child = op_spawn_child({
     cmd: pathFromURL(command),
     args: ArrayPrototypeMap(args, String),
     cwd: pathFromURL(cwd),
@@ -195,6 +192,8 @@ function spawnChildInner(opFn, command, apiName, {
     stderr,
     windowsRawArguments,
     ipc,
+    extraStdio,
+    detached,
   }, apiName);
   return new ChildProcess(illegalConstructorKey, {
     ...child,
@@ -204,7 +203,6 @@ function spawnChildInner(opFn, command, apiName, {
 
 function spawnChild(command, options = { __proto__: null }) {
   return spawnChildInner(
-    op_spawn_child,
     command,
     "Deno.Command().spawn()",
     options,
@@ -221,16 +219,19 @@ function collectOutput(readableStream) {
   return readableStreamCollectIntoUint8Array(readableStream);
 }
 
-const _pipeFd = Symbol("[[pipeFd]]");
+const _ipcPipeRid = Symbol("[[ipcPipeRid]]");
+const _extraPipeRids = Symbol("[[_extraPipeRids]]");
 
-internals.getPipeFd = (process) => process[_pipeFd];
+internals.getIpcPipeRid = (process) => process[_ipcPipeRid];
+internals.getExtraPipeRids = (process) => process[_extraPipeRids];
 
 class ChildProcess {
   #rid;
   #waitPromise;
   #waitComplete = false;
 
-  [_pipeFd];
+  [_ipcPipeRid];
+  [_extraPipeRids];
 
   #pid;
   get pid() {
@@ -240,7 +241,7 @@ class ChildProcess {
   #stdin = null;
   get stdin() {
     if (this.#stdin == null) {
-      throw new TypeError("stdin is not piped");
+      throw new TypeError("Cannot get 'stdin': 'stdin' is not piped");
     }
     return this.#stdin;
   }
@@ -248,7 +249,7 @@ class ChildProcess {
   #stdout = null;
   get stdout() {
     if (this.#stdout == null) {
-      throw new TypeError("stdout is not piped");
+      throw new TypeError("Cannot get 'stdout': 'stdout' is not piped");
     }
     return this.#stdout;
   }
@@ -256,7 +257,7 @@ class ChildProcess {
   #stderr = null;
   get stderr() {
     if (this.#stderr == null) {
-      throw new TypeError("stderr is not piped");
+      throw new TypeError("Cannot get 'stderr': 'stderr' is not piped");
     }
     return this.#stderr;
   }
@@ -268,15 +269,17 @@ class ChildProcess {
     stdinRid,
     stdoutRid,
     stderrRid,
-    pipeFd, // internal
+    ipcPipeRid, // internal
+    extraPipeRids,
   } = null) {
     if (key !== illegalConstructorKey) {
-      throw new TypeError("Illegal constructor.");
+      throw new TypeError("Illegal constructor");
     }
 
     this.#rid = rid;
     this.#pid = pid;
-    this[_pipeFd] = pipeFd;
+    this[_ipcPipeRid] = ipcPipeRid;
+    this[_extraPipeRids] = extraPipeRids;
 
     if (stdinRid !== null) {
       this.#stdin = writableStreamForRid(stdinRid);
@@ -310,12 +313,12 @@ class ChildProcess {
   async output() {
     if (this.#stdout?.locked) {
       throw new TypeError(
-        "Can't collect output because stdout is locked",
+        "Cannot collect output: 'stdout' is locked",
       );
     }
     if (this.#stderr?.locked) {
       throw new TypeError(
-        "Can't collect output because stderr is locked",
+        "Cannot collect output: 'stderr' is locked",
       );
     }
 
@@ -331,13 +334,13 @@ class ChildProcess {
       signal: status.signal,
       get stdout() {
         if (stdout == null) {
-          throw new TypeError("stdout is not piped");
+          throw new TypeError("Cannot get 'stdout': 'stdout' is not piped");
         }
         return stdout;
       },
       get stderr() {
         if (stderr == null) {
-          throw new TypeError("stderr is not piped");
+          throw new TypeError("Cannot get 'stderr': 'stderr' is not piped");
         }
         return stderr;
       },
@@ -346,7 +349,7 @@ class ChildProcess {
 
   kill(signo = "SIGTERM") {
     if (this.#waitComplete) {
-      throw new TypeError("Child process has already terminated.");
+      throw new TypeError("Child process has already terminated");
     }
     op_spawn_kill(this.#rid, signo);
   }
@@ -380,7 +383,6 @@ function spawn(command, options) {
     );
   }
   return spawnChildInner(
-    op_spawn_child,
     command,
     "Deno.Command().output()",
     options,
@@ -417,6 +419,8 @@ function spawnSync(command, {
     stdout,
     stderr,
     windowsRawArguments,
+    extraStdio: [],
+    detached: false,
   });
   return {
     success: result.status.success,
@@ -424,13 +428,13 @@ function spawnSync(command, {
     signal: result.status.signal,
     get stdout() {
       if (result.stdout == null) {
-        throw new TypeError("stdout is not piped");
+        throw new TypeError("Cannot get 'stdout': 'stdout' is not piped");
       }
       return result.stdout;
     },
     get stderr() {
       if (result.stderr == null) {
-        throw new TypeError("stderr is not piped");
+        throw new TypeError("Cannot get 'stderr': 'stderr' is not piped");
       }
       return result.stderr;
     },
@@ -466,6 +470,7 @@ class Command {
 
   spawn() {
     const options = {
+      __proto__: null,
       ...(this.#options ?? {}),
       stdout: this.#options?.stdout ?? "inherit",
       stderr: this.#options?.stderr ?? "inherit",

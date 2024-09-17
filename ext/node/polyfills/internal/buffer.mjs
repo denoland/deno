@@ -1,4 +1,4 @@
-// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 // Copyright Joyent and Node contributors. All rights reserved. MIT license.
 // Copyright Feross Aboukhadijeh, and other contributors. All rights reserved. MIT license.
 
@@ -65,7 +65,7 @@ const customInspectSymbol =
     ? Symbol["for"]("nodejs.util.inspect.custom")
     : null;
 
-const INSPECT_MAX_BYTES = 50;
+export const INSPECT_MAX_BYTES = 50;
 
 export const constants = {
   MAX_LENGTH: kMaxLength,
@@ -2606,6 +2606,7 @@ export default {
   constants,
   isAscii,
   isUtf8,
+  INSPECT_MAX_BYTES,
   kMaxLength,
   kStringMaxLength,
   SlowBuffer,

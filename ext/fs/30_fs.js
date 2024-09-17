@@ -1,6 +1,6 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
-import { core, internals, primordials } from "ext:core/mod.js";
+import { core, primordials } from "ext:core/mod.js";
 const {
   isDate,
   internalRidSymbol,
@@ -15,22 +15,18 @@ import {
   op_fs_copy_file_async,
   op_fs_copy_file_sync,
   op_fs_cwd,
-  op_fs_fdatasync_async,
-  op_fs_fdatasync_sync,
   op_fs_file_stat_async,
   op_fs_file_stat_sync,
+  op_fs_file_sync_async,
+  op_fs_file_sync_data_async,
+  op_fs_file_sync_data_sync,
+  op_fs_file_sync_sync,
+  op_fs_file_truncate_async,
   op_fs_flock_async,
-  op_fs_flock_async_unstable,
   op_fs_flock_sync,
-  op_fs_flock_sync_unstable,
-  op_fs_fsync_async,
-  op_fs_fsync_sync,
-  op_fs_ftruncate_async,
   op_fs_ftruncate_sync,
   op_fs_funlock_async,
-  op_fs_funlock_async_unstable,
   op_fs_funlock_sync,
-  op_fs_funlock_sync_unstable,
   op_fs_futime_async,
   op_fs_futime_sync,
   op_fs_link_async,
@@ -397,15 +393,6 @@ function parseFileInfo(response) {
   };
 }
 
-function fstatSync(rid) {
-  op_fs_file_stat_sync(rid, statBuf);
-  return statStruct(statBuf);
-}
-
-async function fstat(rid) {
-  return parseFileInfo(await op_fs_file_stat_async(rid));
-}
-
 async function lstat(path) {
   const res = await op_fs_lstat_async(pathFromURL(path));
   return parseFileInfo(res);
@@ -431,14 +418,6 @@ function coerceLen(len) {
     return 0;
   }
   return len;
-}
-
-function ftruncateSync(rid, len) {
-  op_fs_ftruncate_sync(rid, coerceLen(len));
-}
-
-async function ftruncate(rid, len) {
-  await op_fs_ftruncate_async(rid, coerceLen(len));
 }
 
 function truncateSync(path, len) {
@@ -480,32 +459,6 @@ function toUnixTimeFromEpoch(value) {
     seconds,
     nanoseconds,
   ];
-}
-
-function futimeSync(
-  rid,
-  atime,
-  mtime,
-) {
-  const { 0: atimeSec, 1: atimeNsec } = toUnixTimeFromEpoch(atime);
-  const { 0: mtimeSec, 1: mtimeNsec } = toUnixTimeFromEpoch(mtime);
-  op_fs_futime_sync(rid, atimeSec, atimeNsec, mtimeSec, mtimeNsec);
-}
-
-async function futime(
-  rid,
-  atime,
-  mtime,
-) {
-  const { 0: atimeSec, 1: atimeNsec } = toUnixTimeFromEpoch(atime);
-  const { 0: mtimeSec, 1: mtimeNsec } = toUnixTimeFromEpoch(mtime);
-  await op_fs_futime_async(
-    rid,
-    atimeSec,
-    atimeNsec,
-    mtimeSec,
-    mtimeNsec,
-  );
 }
 
 function utimeSync(
@@ -564,54 +517,6 @@ async function symlink(
   );
 }
 
-function fdatasyncSync(rid) {
-  op_fs_fdatasync_sync(rid);
-}
-
-async function fdatasync(rid) {
-  await op_fs_fdatasync_async(rid);
-}
-
-function fsyncSync(rid) {
-  op_fs_fsync_sync(rid);
-}
-
-async function fsync(rid) {
-  await op_fs_fsync_async(rid);
-}
-
-function flockSync(rid, exclusive) {
-  op_fs_flock_sync_unstable(rid, exclusive === true);
-}
-
-async function flock(rid, exclusive) {
-  await op_fs_flock_async_unstable(rid, exclusive === true);
-}
-
-function funlockSync(rid) {
-  op_fs_funlock_sync_unstable(rid);
-}
-
-async function funlock(rid) {
-  await op_fs_funlock_async_unstable(rid);
-}
-
-function seekSync(
-  rid,
-  offset,
-  whence,
-) {
-  return op_fs_seek_sync(rid, offset, whence);
-}
-
-function seek(
-  rid,
-  offset,
-  whence,
-) {
-  return op_fs_seek_async(rid, offset, whence);
-}
-
 function openSync(
   path,
   options,
@@ -664,31 +569,16 @@ class FsFile {
 
   constructor(rid, symbol) {
     ObjectDefineProperty(this, internalRidSymbol, {
+      __proto__: null,
       enumerable: false,
       value: rid,
     });
     this.#rid = rid;
     if (!symbol || symbol !== SymbolFor("Deno.internal.FsFile")) {
-      internals.warnOnDeprecatedApi(
-        "new Deno.FsFile()",
-        new Error().stack,
-        "Use `Deno.open` or `Deno.openSync` instead.",
+      throw new TypeError(
+        "`Deno.FsFile` cannot be constructed, use `Deno.open()` or `Deno.openSync()` instead.",
       );
-      if (internals.future) {
-        throw new TypeError(
-          "`Deno.FsFile` cannot be constructed, use `Deno.open()` or `Deno.openSync()` instead.",
-        );
-      }
     }
-  }
-
-  get rid() {
-    internals.warnOnDeprecatedApi(
-      "Deno.FsFile.rid",
-      new Error().stack,
-      "Use `Deno.FsFile` methods directly instead.",
-    );
-    return this.#rid;
   }
 
   write(p) {
@@ -700,11 +590,11 @@ class FsFile {
   }
 
   truncate(len) {
-    return ftruncate(this.#rid, len);
+    return op_fs_file_truncate_async(this.#rid, coerceLen(len));
   }
 
   truncateSync(len) {
-    return ftruncateSync(this.#rid, len);
+    return op_fs_ftruncate_sync(this.#rid, coerceLen(len));
   }
 
   read(p) {
@@ -716,27 +606,28 @@ class FsFile {
   }
 
   seek(offset, whence) {
-    return seek(this.#rid, offset, whence);
+    return op_fs_seek_async(this.#rid, offset, whence);
   }
 
   seekSync(offset, whence) {
-    return seekSync(this.#rid, offset, whence);
+    return op_fs_seek_sync(this.#rid, offset, whence);
   }
 
-  stat() {
-    return fstat(this.#rid);
+  async stat() {
+    return parseFileInfo(await op_fs_file_stat_async(this.#rid));
   }
 
   statSync() {
-    return fstatSync(this.#rid);
+    op_fs_file_stat_sync(this.#rid, statBuf);
+    return statStruct(statBuf);
   }
 
   async syncData() {
-    await op_fs_fdatasync_async(this.#rid);
+    await op_fs_file_sync_data_async(this.#rid);
   }
 
   syncDataSync() {
-    op_fs_fdatasync_sync(this.#rid);
+    op_fs_file_sync_data_sync(this.#rid);
   }
 
   close() {
@@ -758,19 +649,29 @@ class FsFile {
   }
 
   async sync() {
-    await op_fs_fsync_async(this.#rid);
+    await op_fs_file_sync_async(this.#rid);
   }
 
   syncSync() {
-    op_fs_fsync_sync(this.#rid);
+    op_fs_file_sync_sync(this.#rid);
   }
 
   async utime(atime, mtime) {
-    await futime(this.#rid, atime, mtime);
+    const { 0: atimeSec, 1: atimeNsec } = toUnixTimeFromEpoch(atime);
+    const { 0: mtimeSec, 1: mtimeNsec } = toUnixTimeFromEpoch(mtime);
+    await op_fs_futime_async(
+      this.#rid,
+      atimeSec,
+      atimeNsec,
+      mtimeSec,
+      mtimeNsec,
+    );
   }
 
   utimeSync(atime, mtime) {
-    futimeSync(this.#rid, atime, mtime);
+    const { 0: atimeSec, 1: atimeNsec } = toUnixTimeFromEpoch(atime);
+    const { 0: mtimeSec, 1: mtimeNsec } = toUnixTimeFromEpoch(mtime);
+    op_fs_futime_sync(this.#rid, atimeSec, atimeNsec, mtimeSec, mtimeNsec);
   }
 
   isTerminal() {
@@ -827,8 +728,6 @@ function checkOpenOptions(options) {
     );
   }
 }
-
-const File = FsFile;
 
 function readFileSync(path) {
   return op_fs_read_file_sync(pathFromURL(path));
@@ -990,22 +889,7 @@ export {
   create,
   createSync,
   cwd,
-  fdatasync,
-  fdatasyncSync,
-  File,
-  flock,
-  flockSync,
   FsFile,
-  fstat,
-  fstatSync,
-  fsync,
-  fsyncSync,
-  ftruncate,
-  ftruncateSync,
-  funlock,
-  funlockSync,
-  futime,
-  futimeSync,
   link,
   linkSync,
   lstat,
@@ -1032,8 +916,6 @@ export {
   removeSync,
   rename,
   renameSync,
-  seek,
-  seekSync,
   stat,
   statSync,
   symlink,

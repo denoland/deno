@@ -14,7 +14,6 @@ use deno_graph::packages::JsrPackageInfo;
 use deno_graph::packages::JsrPackageInfoVersion;
 use deno_graph::packages::JsrPackageVersionInfo;
 use deno_graph::ModuleSpecifier;
-use deno_runtime::deno_permissions::PermissionsContainer;
 use deno_semver::jsr::JsrPackageReqReference;
 use deno_semver::package::PackageNv;
 use deno_semver::package::PackageReq;
@@ -92,20 +91,23 @@ impl JsrCacheResolver {
       }
     }
     if let Some(lockfile) = config_data.and_then(|d| d.lockfile.as_ref()) {
-      for (req_url, nv_url) in &lockfile.lock().content.packages.specifiers {
-        let Some(req) = req_url.strip_prefix("jsr:") else {
+      for (dep_req, version) in &lockfile.lock().content.packages.specifiers {
+        let req = match dep_req.kind {
+          deno_semver::package::PackageKind::Jsr => &dep_req.req,
+          deno_semver::package::PackageKind::Npm => {
+            continue;
+          }
+        };
+        let Ok(version) = Version::parse_standard(version) else {
           continue;
         };
-        let Some(nv) = nv_url.strip_prefix("jsr:") else {
-          continue;
-        };
-        let Ok(req) = PackageReq::from_str(req) else {
-          continue;
-        };
-        let Ok(nv) = PackageNv::from_str(nv) else {
-          continue;
-        };
-        nv_by_req.insert(req, Some(nv));
+        nv_by_req.insert(
+          req.clone(),
+          Some(PackageNv {
+            name: req.name.clone(),
+            version,
+          }),
+        );
       }
     }
     Self {
@@ -258,12 +260,9 @@ fn read_cached_url(
   cache: &Arc<dyn HttpCache>,
 ) -> Option<Vec<u8>> {
   cache
-    .read_file_bytes(
-      &cache.cache_item_key(url).ok()?,
-      None,
-      deno_cache_dir::GlobalToLocalCopy::Disallow,
-    )
+    .get(&cache.cache_item_key(url).ok()?, None)
     .ok()?
+    .map(|f| f.content)
 }
 
 #[derive(Debug)]
@@ -311,7 +310,7 @@ impl PackageSearchApi for CliJsrSearchApi {
     // spawn due to the lsp's `Send` requirement
     let file = deno_core::unsync::spawn(async move {
       file_fetcher
-        .fetch(&search_url, &PermissionsContainer::allow_all())
+        .fetch_bypass_permissions(&search_url)
         .await?
         .into_text_decoded()
     })

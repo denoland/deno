@@ -8,6 +8,8 @@
 // std/fmt/colors auto determines whether to put colors in or not. We need
 // better infrastructure here so we can properly test the colors.
 
+// deno-lint-ignore-file no-console
+
 import {
   assert,
   assertEquals,
@@ -1889,6 +1891,25 @@ Deno.test(function consoleLogShouldNotThrowErrorWhenInputIsProxiedTypedArray() {
     const proxiedUint8Array = new Proxy(new Uint8Array([1, 2]), {});
     console.log(proxiedUint8Array);
     assertEquals(stripAnsiCode(out.toString()), "Uint8Array(2) [ 1, 2 ]\n");
+  });
+});
+
+Deno.test(function consoleLogWhenCauseIsAssignedShouldNotPrintCauseTwice() {
+  mockConsole((console, out) => {
+    const typeError = new TypeError("Type incorrect");
+    const syntaxError = new SyntaxError("Improper syntax");
+    typeError.cause = syntaxError;
+    console.log(typeError);
+    const result = stripAnsiCode(out.toString());
+    // Filter out stack trace lines, keeping only the first line and the cause line
+    const filteredOutput = result
+      .split("\n")
+      .filter((line) => !line.trim().startsWith("at"))
+      .join("\n");
+
+    const expectedResult =
+      "TypeError: Type incorrect\nCaused by SyntaxError: Improper syntax\n";
+    assertEquals(filteredOutput.trim(), expectedResult.trim());
   });
 });
 

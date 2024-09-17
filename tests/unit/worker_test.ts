@@ -1,8 +1,11 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
+// deno-lint-ignore-file no-console
+
 // Requires to be run with `--allow-net` flag
 
 import { assert, assertEquals, assertMatch, assertThrows } from "@std/assert";
+import { toFileUrl } from "@std/path/to-file-url";
 
 function resolveWorker(worker: string): string {
   return import.meta.resolve(`../testdata/workers/${worker}`);
@@ -440,7 +443,31 @@ Deno.test("Worker limit children permissions", async function () {
   worker.terminate();
 });
 
+function setupReadCheckGranularWorkerTest() {
+  const tempDir = Deno.realPathSync(Deno.makeTempDirSync());
+  const initialPath = Deno.env.get("PATH")!;
+  const initialCwd = Deno.cwd();
+  Deno.chdir(tempDir);
+  const envSep = Deno.build.os === "windows" ? ";" : ":";
+  Deno.env.set("PATH", initialPath + envSep + tempDir);
+
+  // create executables that will be resolved when doing `which`
+  const ext = Deno.build.os === "windows" ? ".exe" : "";
+  Deno.copyFileSync(Deno.execPath(), tempDir + "/bar" + ext);
+
+  return {
+    tempDir,
+    runFooFilePath: tempDir + "/foo" + ext,
+    [Symbol.dispose]() {
+      Deno.removeSync(tempDir, { recursive: true });
+      Deno.env.set("PATH", initialPath);
+      Deno.chdir(initialCwd);
+    },
+  };
+}
+
 Deno.test("Worker limit children permissions granularly", async function () {
+  const ctx = setupReadCheckGranularWorkerTest();
   const workerUrl = resolveWorker("read_check_granular_worker.js");
   const worker = new Worker(
     workerUrl,
@@ -449,11 +476,15 @@ Deno.test("Worker limit children permissions granularly", async function () {
       deno: {
         permissions: {
           env: ["foo"],
-          hrtime: true,
           net: ["foo", "bar:8000"],
           ffi: [new URL("foo", workerUrl), "bar"],
-          read: [new URL("foo", workerUrl), "bar"],
-          run: [new URL("foo", workerUrl), "bar", "./baz"],
+          read: [new URL("foo", workerUrl), "bar", ctx.tempDir],
+          run: [
+            toFileUrl(ctx.runFooFilePath),
+            "bar",
+            "./baz",
+            "unresolved-exec",
+          ],
           write: [new URL("foo", workerUrl), "bar"],
         },
       },
@@ -466,7 +497,6 @@ Deno.test("Worker limit children permissions granularly", async function () {
     envGlobal: "prompt",
     envFoo: "granted",
     envAbsent: "prompt",
-    hrtime: "granted",
     netGlobal: "prompt",
     netFoo: "granted",
     netFoo8000: "granted",
@@ -482,8 +512,10 @@ Deno.test("Worker limit children permissions granularly", async function () {
     readAbsent: "prompt",
     runGlobal: "prompt",
     runFoo: "granted",
+    runFooPath: "granted",
     runBar: "granted",
     runBaz: "granted",
+    runUnresolved: "prompt", // unresolved binaries remain as "prompt"
     runAbsent: "prompt",
     writeGlobal: "prompt",
     writeFoo: "granted",
@@ -494,6 +526,7 @@ Deno.test("Worker limit children permissions granularly", async function () {
 });
 
 Deno.test("Nested worker limit children permissions", async function () {
+  const _cleanup = setupReadCheckGranularWorkerTest();
   /** This worker has permissions but doesn't grant them to its children */
   const worker = new Worker(
     resolveWorker("parent_read_check_worker.js"),
@@ -506,7 +539,6 @@ Deno.test("Nested worker limit children permissions", async function () {
     envGlobal: "prompt",
     envFoo: "prompt",
     envAbsent: "prompt",
-    hrtime: "prompt",
     netGlobal: "prompt",
     netFoo: "prompt",
     netFoo8000: "prompt",
@@ -522,8 +554,10 @@ Deno.test("Nested worker limit children permissions", async function () {
     readAbsent: "prompt",
     runGlobal: "prompt",
     runFoo: "prompt",
+    runFooPath: "prompt",
     runBar: "prompt",
     runBaz: "prompt",
+    runUnresolved: "prompt",
     runAbsent: "prompt",
     writeGlobal: "prompt",
     writeFoo: "prompt",
@@ -547,7 +581,7 @@ Deno.test({
         );
         worker.terminate();
       },
-      Deno.errors.PermissionDenied,
+      Deno.errors.NotCapable,
       "Can't escalate parent thread permissions",
     );
   },
@@ -584,7 +618,6 @@ Deno.test("Worker permissions are not inherited with empty permission object", a
   worker.postMessage(null);
   assertEquals(await promise, {
     env: "prompt",
-    hrtime: "prompt",
     net: "prompt",
     ffi: "prompt",
     read: "prompt",
@@ -609,7 +642,6 @@ Deno.test("Worker permissions are not inherited with single specified permission
   worker.postMessage(null);
   assertEquals(await promise, {
     env: "prompt",
-    hrtime: "prompt",
     net: "granted",
     ffi: "prompt",
     read: "prompt",

@@ -34,8 +34,6 @@ use deno_tls::new_resolver;
 use deno_tls::rustls::pki_types::ServerName;
 use deno_tls::rustls::ClientConnection;
 use deno_tls::rustls::ServerConfig;
-use deno_tls::webpki::types::CertificateDer;
-use deno_tls::webpki::types::PrivateKeyDer;
 use deno_tls::ServerConfigProvider;
 use deno_tls::SocketUse;
 use deno_tls::TlsKey;
@@ -54,7 +52,6 @@ use std::io::ErrorKind;
 use std::io::Read;
 use std::net::SocketAddr;
 use std::num::NonZeroUsize;
-use std::path::Path;
 use std::rc::Rc;
 use std::sync::Arc;
 use tokio::io::AsyncReadExt;
@@ -213,32 +210,6 @@ pub fn op_tls_key_static(
   Ok(TlsKeysHolder::from(TlsKeys::Static(TlsKey(cert, key))))
 }
 
-/// Legacy op -- will be removed in Deno 2.0.
-#[op2]
-#[cppgc]
-pub fn op_tls_key_static_from_file<NP>(
-  state: &mut OpState,
-  #[string] api: String,
-  #[string] cert_file: String,
-  #[string] key_file: String,
-) -> Result<TlsKeysHolder, AnyError>
-where
-  NP: NetPermissions + 'static,
-{
-  {
-    let permissions = state.borrow_mut::<NP>();
-    permissions.check_read(Path::new(&cert_file), &api)?;
-    permissions.check_read(Path::new(&key_file), &api)?;
-  }
-
-  let cert = load_certs_from_file(&cert_file)?;
-  let key = load_private_keys_from_file(&key_file)?
-    .into_iter()
-    .next()
-    .unwrap();
-  Ok(TlsKeysHolder::from(TlsKeys::Static(TlsKey(cert, key))))
-}
-
 #[op2]
 pub fn op_tls_cert_resolver_create<'s>(
   scope: &mut v8::HandleScope<'s>,
@@ -384,15 +355,17 @@ where
     .try_borrow::<UnsafelyIgnoreCertificateErrors>()
     .and_then(|it| it.0.clone());
 
-  {
+  let cert_file = {
     let mut s = state.borrow_mut();
     let permissions = s.borrow_mut::<NP>();
     permissions
       .check_net(&(&addr.hostname, Some(addr.port)), "Deno.connectTls()")?;
     if let Some(path) = cert_file {
-      permissions.check_read(Path::new(path), "Deno.connectTls()")?;
+      Some(permissions.check_read(path, "Deno.connectTls()")?)
+    } else {
+      None
     }
-  }
+  };
 
   let mut ca_certs = args
     .ca_certs
@@ -455,26 +428,13 @@ where
   Ok((rid, IpAddr::from(local_addr), IpAddr::from(remote_addr)))
 }
 
-fn load_certs_from_file(
-  path: &str,
-) -> Result<Vec<CertificateDer<'static>>, AnyError> {
-  let cert_file = File::open(path)?;
-  let reader = &mut BufReader::new(cert_file);
-  load_certs(reader)
-}
-
-fn load_private_keys_from_file(
-  path: &str,
-) -> Result<Vec<PrivateKeyDer<'static>>, AnyError> {
-  let key_bytes = std::fs::read(path)?;
-  load_private_keys(&key_bytes)
-}
-
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ListenTlsArgs {
   alpn_protocols: Option<Vec<String>>,
   reuse_port: bool,
+  #[serde(default)]
+  load_balanced: bool,
 }
 
 #[op2]
@@ -502,7 +462,11 @@ where
     .next()
     .ok_or_else(|| generic_error("No resolved address found"))?;
 
-  let tcp_listener = TcpListener::bind_direct(bind_addr, args.reuse_port)?;
+  let tcp_listener = if args.load_balanced {
+    TcpListener::bind_load_balanced(bind_addr)
+  } else {
+    TcpListener::bind_direct(bind_addr, args.reuse_port)
+  }?;
   let local_addr = tcp_listener.local_addr()?;
   let alpn = args
     .alpn_protocols

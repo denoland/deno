@@ -1,0 +1,22 @@
+Check [WILDCARD]/captured_output.ts
+running 1 test from ./captured_output.ts
+output ...
+------- output -------
+[UNORDERED_START]
+1
+0
+3
+2
+5
+4
+7
+6
+Check [WILDLINE]/captured_output.worker.ts
+9
+8
+[UNORDERED_END]
+----- output end -----
+output ... ok ([WILDCARD])
+
+ok | 1 passed | 0 failed ([WILDCARD])
+

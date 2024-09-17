@@ -25,7 +25,6 @@ import {
   StringPrototypeStartsWith,
   StringPrototypeToUpperCase,
 } from "ext:deno_node/internal/primordials.mjs";
-
 import { assert } from "ext:deno_node/_util/asserts.ts";
 import { EventEmitter } from "node:events";
 import { os } from "ext:deno_node/internal_binding/constants.ts";
@@ -54,6 +53,10 @@ import { kEmptyObject } from "ext:deno_node/internal/util.mjs";
 import { getValidatedPath } from "ext:deno_node/internal/fs/utils.mjs";
 import process from "node:process";
 import { StringPrototypeSlice } from "ext:deno_node/internal/primordials.mjs";
+import { StreamBase } from "ext:deno_node/internal_binding/stream_wrap.ts";
+import { Pipe, socketType } from "ext:deno_node/internal_binding/pipe_wrap.ts";
+import { Socket } from "node:net";
+import { kDetached, kExtraStdio, kIpc } from "ext:runtime/40_process.js";
 
 export function mapValues<T, O>(
   record: Readonly<Record<string, T>>,
@@ -107,6 +110,7 @@ export function stdioStringToArray(
 
 const kClosesNeeded = Symbol("_closesNeeded");
 const kClosesReceived = Symbol("_closesReceived");
+const kCanDisconnect = Symbol("_canDisconnect");
 
 // We only want to emit a close event for the child process when all of
 // the writable streams have closed. The value of `child[kClosesNeeded]` should be 1 +
@@ -115,6 +119,47 @@ function maybeClose(child: ChildProcess) {
   child[kClosesReceived]++;
   if (child[kClosesNeeded] === child[kClosesReceived]) {
     child.emit("close", child.exitCode, child.signalCode);
+  }
+}
+
+function flushStdio(subprocess: ChildProcess) {
+  const stdio = subprocess.stdio;
+
+  if (stdio == null) return;
+
+  for (let i = 0; i < stdio.length; i++) {
+    const stream = stdio[i];
+    if (!stream || !stream.readable) {
+      continue;
+    }
+    stream.resume();
+  }
+}
+
+// Wraps a resource in a class that implements
+// StreamBase, so it can be used with node streams
+class StreamResource implements StreamBase {
+  #rid: number;
+  constructor(rid: number) {
+    this.#rid = rid;
+  }
+  close(): void {
+    core.close(this.#rid);
+  }
+  async read(p: Uint8Array): Promise<number | null> {
+    const readPromise = core.read(this.#rid, p);
+    core.unrefOpPromise(readPromise);
+    const nread = await readPromise;
+    return nread > 0 ? nread : null;
+  }
+  ref(): void {
+    return;
+  }
+  unref(): void {
+    return;
+  }
+  write(p: Uint8Array): Promise<number> {
+    return core.write(this.#rid, p);
   }
 }
 
@@ -179,7 +224,7 @@ export class ChildProcess extends EventEmitter {
   #spawned = Promise.withResolvers<void>();
   [kClosesNeeded] = 1;
   [kClosesReceived] = 0;
-  canDisconnect = false;
+  [kCanDisconnect] = false;
 
   constructor(
     command: string,
@@ -195,13 +240,14 @@ export class ChildProcess extends EventEmitter {
       shell = false,
       signal,
       windowsVerbatimArguments = false,
+      detached,
     } = options || {};
     const normalizedStdio = normalizeStdioOption(stdio);
     const [
       stdin = "pipe",
       stdout = "pipe",
       stderr = "pipe",
-      _channel, // TODO(kt3k): handle this correctly
+      ...extraStdio
     ] = normalizedStdio;
     const [cmd, cmdArgs] = buildCommand(
       command,
@@ -213,6 +259,15 @@ export class ChildProcess extends EventEmitter {
 
     const ipc = normalizedStdio.indexOf("ipc");
 
+    const extraStdioOffset = 3; // stdin, stdout, stderr
+
+    const extraStdioNormalized: DenoStdio[] = [];
+    for (let i = 0; i < extraStdio.length; i++) {
+      const fd = i + extraStdioOffset;
+      if (fd === ipc) extraStdioNormalized.push("null");
+      extraStdioNormalized.push(toDenoStdio(extraStdio[i]));
+    }
+
     const stringEnv = mapValues(env, (value) => value.toString());
     try {
       this.#process = new Deno.Command(cmd, {
@@ -223,7 +278,9 @@ export class ChildProcess extends EventEmitter {
         stdout: toDenoStdio(stdout),
         stderr: toDenoStdio(stderr),
         windowsRawArguments: windowsVerbatimArguments,
-        ipc, // internal
+        [kIpc]: ipc, // internal
+        [kExtraStdio]: extraStdioNormalized,
+        [kDetached]: detached,
       }).spawn();
       this.pid = this.#process.pid;
 
@@ -259,12 +316,35 @@ export class ChildProcess extends EventEmitter {
           maybeClose(this);
         });
       }
-      // TODO(nathanwhit): once we impl > 3 stdio pipes make sure we also listen for their
-      // close events (like above)
 
       this.stdio[0] = this.stdin;
       this.stdio[1] = this.stdout;
       this.stdio[2] = this.stderr;
+
+      if (ipc >= 0) {
+        this.stdio[ipc] = null;
+      }
+
+      const pipeRids = internals.getExtraPipeRids(this.#process);
+      for (let i = 0; i < pipeRids.length; i++) {
+        const rid: number | null = pipeRids[i];
+        const fd = i + extraStdioOffset;
+        if (rid) {
+          this[kClosesNeeded]++;
+          this.stdio[fd] = new Socket(
+            {
+              handle: new Pipe(
+                socketType.IPC,
+                new StreamResource(rid),
+              ),
+              // deno-lint-ignore no-explicit-any
+            } as any,
+          );
+          this.stdio[fd]?.on("close", () => {
+            maybeClose(this);
+          });
+        }
+      }
 
       nextTick(() => {
         this.emit("spawn");
@@ -292,9 +372,9 @@ export class ChildProcess extends EventEmitter {
         }
       }
 
-      const pipeFd = internals.getPipeFd(this.#process);
-      if (typeof pipeFd == "number") {
-        setupChannel(this, pipeFd);
+      const pipeRid = internals.getIpcPipeRid(this.#process);
+      if (typeof pipeRid == "number") {
+        setupChannel(this, pipeRid);
         this[kClosesNeeded]++;
         this.on("disconnect", () => {
           maybeClose(this);
@@ -311,6 +391,7 @@ export class ChildProcess extends EventEmitter {
           this.emit("exit", exitCode, signalCode);
           await this.#_waitForChildStreamsToClose();
           this.#closePipes();
+          nextTick(flushStdio, this);
           maybeClose(this);
         });
       })();
@@ -344,7 +425,7 @@ export class ChildProcess extends EventEmitter {
     }
 
     /* Cancel any pending IPC I/O */
-    if (this.canDisconnect) {
+    if (this[kCanDisconnect]) {
       this.disconnect?.();
     }
 
@@ -394,16 +475,6 @@ export class ChildProcess extends EventEmitter {
     if (this.stdin) {
       assert(this.stdin);
       this.stdin.destroy();
-    }
-    /// TODO(nathanwhit): for some reason when the child process exits
-    /// and the child end of the named pipe closes, reads still just return `Pending`
-    /// instead of returning that 0 bytes were read (to signal the pipe died).
-    /// For now, just forcibly disconnect, but in theory I think we could miss messages
-    /// that haven't been read yet.
-    if (Deno.build.os === "windows") {
-      if (this.canDisconnect) {
-        this.disconnect?.();
-      }
     }
   }
 }
@@ -485,7 +556,7 @@ export interface ChildProcessOptions {
   stdio?: Array<NodeStdio | number | Stream | null | undefined> | NodeStdio;
 
   /**
-   * NOTE: This option is not yet implemented.
+   * Whether to spawn the process in a detached state.
    */
   detached?: boolean;
 
@@ -1032,7 +1103,6 @@ const kNodeFlagsMap = new Map([
 const kDenoSubcommands = new Set([
   "add",
   "bench",
-  "bundle",
   "cache",
   "check",
   "compile",
@@ -1319,7 +1389,6 @@ export function setupChannel(target: any, ipc: number) {
     if (!target.connected) {
       const err = new ERR_IPC_CHANNEL_CLOSED();
       if (typeof callback === "function") {
-        console.error("ChildProcess.send with callback");
         process.nextTick(callback, err);
       } else {
         nextTick(() => target.emit("error", err));
@@ -1351,7 +1420,7 @@ export function setupChannel(target: any, ipc: number) {
     }
 
     target.connected = false;
-    target.canDisconnect = false;
+    target[kCanDisconnect] = false;
     control[kControlDisconnect]();
     process.nextTick(() => {
       target.channel = null;
@@ -1359,7 +1428,7 @@ export function setupChannel(target: any, ipc: number) {
       target.emit("disconnect");
     });
   };
-  target.canDisconnect = true;
+  target[kCanDisconnect] = true;
 
   // Start reading messages from the channel.
   readLoop();

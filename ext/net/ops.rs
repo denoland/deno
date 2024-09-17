@@ -353,6 +353,7 @@ pub fn op_net_listen_tcp<NP>(
   state: &mut OpState,
   #[serde] addr: IpAddr,
   reuse_port: bool,
+  load_balanced: bool,
 ) -> Result<(ResourceId, IpAddr), AnyError>
 where
   NP: NetPermissions + 'static,
@@ -367,7 +368,11 @@ where
     .next()
     .ok_or_else(|| generic_error("No resolved address found"))?;
 
-  let listener = TcpListener::bind_direct(addr, reuse_port)?;
+  let listener = if load_balanced {
+    TcpListener::bind_load_balanced(addr)
+  } else {
+    TcpListener::bind_direct(addr, reuse_port)
+  }?;
   let local_addr = listener.local_addr()?;
   let listener_resource = NetworkListenerResource::new(listener);
   let rid = state.resource_table.add(listener_resource);
@@ -779,6 +784,7 @@ mod tests {
   use std::net::Ipv6Addr;
   use std::net::ToSocketAddrs;
   use std::path::Path;
+  use std::path::PathBuf;
   use std::sync::Arc;
   use std::sync::Mutex;
   use trust_dns_proto::rr::rdata::a::A;
@@ -986,18 +992,26 @@ mod tests {
 
     fn check_read(
       &mut self,
-      _p: &Path,
+      p: &str,
       _api_name: &str,
-    ) -> Result<(), AnyError> {
-      Ok(())
+    ) -> Result<PathBuf, AnyError> {
+      Ok(PathBuf::from(p))
     }
 
     fn check_write(
       &mut self,
-      _p: &Path,
+      p: &str,
       _api_name: &str,
-    ) -> Result<(), AnyError> {
-      Ok(())
+    ) -> Result<PathBuf, AnyError> {
+      Ok(PathBuf::from(p))
+    }
+
+    fn check_write_path<'a>(
+      &mut self,
+      p: &'a Path,
+      _api_name: &str,
+    ) -> Result<Cow<'a, Path>, AnyError> {
+      Ok(Cow::Borrowed(p))
     }
   }
 
@@ -1049,12 +1063,9 @@ mod tests {
       }
     );
 
-    let mut feature_checker = deno_core::FeatureChecker::default();
-    feature_checker.enable_legacy_unstable();
-
     let mut runtime = JsRuntime::new(RuntimeOptions {
       extensions: vec![test_ext::init_ops()],
-      feature_checker: Some(Arc::new(feature_checker)),
+      feature_checker: Some(Arc::new(Default::default())),
       ..Default::default()
     });
 

@@ -3,25 +3,25 @@
     "root": {
       "args": "task",
       "output": "root.out",
-      "exitCode": 1
+      "exitCode": 0
     },
     "package_a": {
       "args": "task",
       "cwd": "package-a",
       "output": "package-a.out",
-      "exitCode": 1
+      "exitCode": 0
     },
     "package_b": {
       "args": "task",
       "cwd": "package-b",
       "output": "package-b.out",
-      "exitCode": 1
+      "exitCode": 0
     },
     "scripts": {
       "args": "task",
       "cwd": "scripts",
       "output": "scripts.out",
-      "exitCode": 1
+      "exitCode": 0
     },
     "package_b_tasks": {
       "steps": [{

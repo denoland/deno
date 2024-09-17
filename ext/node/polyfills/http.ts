@@ -30,21 +30,22 @@ import {
 } from "ext:deno_node/internal/validators.mjs";
 import {
   addAbortSignal,
+  Duplex as NodeDuplex,
   finished,
   Readable as NodeReadable,
   Writable as NodeWritable,
 } from "node:stream";
 import {
+  kUniqueHeaders,
   OutgoingMessage,
   parseUniqueHeadersOption,
   validateHeaderName,
   validateHeaderValue,
-} from "ext:deno_node/_http_outgoing.ts";
+} from "node:_http_outgoing";
 import { ok as assert } from "node:assert";
 import { kOutHeaders } from "ext:deno_node/internal/http.ts";
-import { _checkIsHttpToken as checkIsHttpToken } from "ext:deno_node/_http_common.ts";
-import { Agent, globalAgent } from "ext:deno_node/_http_agent.mjs";
-// import { chunkExpression as RE_TE_CHUNKED } from "ext:deno_node/_http_common.ts";
+import { _checkIsHttpToken as checkIsHttpToken } from "node:_http_common";
+import { Agent, globalAgent } from "node:_http_agent";
 import { urlToHttpOptions } from "ext:deno_node/internal/url.ts";
 import { kEmptyObject } from "ext:deno_node/internal/util.mjs";
 import { constants, TCP } from "ext:deno_node/internal_binding/tcp_wrap.ts";
@@ -66,177 +67,11 @@ import { timerId } from "ext:deno_web/03_abort_signal.js";
 import { clearTimeout as webClearTimeout } from "ext:deno_web/02_timers.js";
 import { resourceForReadableStream } from "ext:deno_web/06_streams.js";
 import { TcpConn } from "ext:deno_net/01_net.js";
+import { STATUS_CODES } from "node:_http_server";
+import { methods as METHODS } from "node:_http_common";
 
 const { internalRidSymbol } = core;
 const { ArrayIsArray } = primordials;
-
-enum STATUS_CODES {
-  /** RFC 7231, 6.2.1 */
-  Continue = 100,
-  /** RFC 7231, 6.2.2 */
-  SwitchingProtocols = 101,
-  /** RFC 2518, 10.1 */
-  Processing = 102,
-  /** RFC 8297 **/
-  EarlyHints = 103,
-
-  /** RFC 7231, 6.3.1 */
-  OK = 200,
-  /** RFC 7231, 6.3.2 */
-  Created = 201,
-  /** RFC 7231, 6.3.3 */
-  Accepted = 202,
-  /** RFC 7231, 6.3.4 */
-  NonAuthoritativeInfo = 203,
-  /** RFC 7231, 6.3.5 */
-  NoContent = 204,
-  /** RFC 7231, 6.3.6 */
-  ResetContent = 205,
-  /** RFC 7233, 4.1 */
-  PartialContent = 206,
-  /** RFC 4918, 11.1 */
-  MultiStatus = 207,
-  /** RFC 5842, 7.1 */
-  AlreadyReported = 208,
-  /** RFC 3229, 10.4.1 */
-  IMUsed = 226,
-
-  /** RFC 7231, 6.4.1 */
-  MultipleChoices = 300,
-  /** RFC 7231, 6.4.2 */
-  MovedPermanently = 301,
-  /** RFC 7231, 6.4.3 */
-  Found = 302,
-  /** RFC 7231, 6.4.4 */
-  SeeOther = 303,
-  /** RFC 7232, 4.1 */
-  NotModified = 304,
-  /** RFC 7231, 6.4.5 */
-  UseProxy = 305,
-  /** RFC 7231, 6.4.7 */
-  TemporaryRedirect = 307,
-  /** RFC 7538, 3 */
-  PermanentRedirect = 308,
-
-  /** RFC 7231, 6.5.1 */
-  BadRequest = 400,
-  /** RFC 7235, 3.1 */
-  Unauthorized = 401,
-  /** RFC 7231, 6.5.2 */
-  PaymentRequired = 402,
-  /** RFC 7231, 6.5.3 */
-  Forbidden = 403,
-  /** RFC 7231, 6.5.4 */
-  NotFound = 404,
-  /** RFC 7231, 6.5.5 */
-  MethodNotAllowed = 405,
-  /** RFC 7231, 6.5.6 */
-  NotAcceptable = 406,
-  /** RFC 7235, 3.2 */
-  ProxyAuthRequired = 407,
-  /** RFC 7231, 6.5.7 */
-  RequestTimeout = 408,
-  /** RFC 7231, 6.5.8 */
-  Conflict = 409,
-  /** RFC 7231, 6.5.9 */
-  Gone = 410,
-  /** RFC 7231, 6.5.10 */
-  LengthRequired = 411,
-  /** RFC 7232, 4.2 */
-  PreconditionFailed = 412,
-  /** RFC 7231, 6.5.11 */
-  RequestEntityTooLarge = 413,
-  /** RFC 7231, 6.5.12 */
-  RequestURITooLong = 414,
-  /** RFC 7231, 6.5.13 */
-  UnsupportedMediaType = 415,
-  /** RFC 7233, 4.4 */
-  RequestedRangeNotSatisfiable = 416,
-  /** RFC 7231, 6.5.14 */
-  ExpectationFailed = 417,
-  /** RFC 7168, 2.3.3 */
-  Teapot = 418,
-  /** RFC 7540, 9.1.2 */
-  MisdirectedRequest = 421,
-  /** RFC 4918, 11.2 */
-  UnprocessableEntity = 422,
-  /** RFC 4918, 11.3 */
-  Locked = 423,
-  /** RFC 4918, 11.4 */
-  FailedDependency = 424,
-  /** RFC 8470, 5.2 */
-  TooEarly = 425,
-  /** RFC 7231, 6.5.15 */
-  UpgradeRequired = 426,
-  /** RFC 6585, 3 */
-  PreconditionRequired = 428,
-  /** RFC 6585, 4 */
-  TooManyRequests = 429,
-  /** RFC 6585, 5 */
-  RequestHeaderFieldsTooLarge = 431,
-  /** RFC 7725, 3 */
-  UnavailableForLegalReasons = 451,
-
-  /** RFC 7231, 6.6.1 */
-  InternalServerError = 500,
-  /** RFC 7231, 6.6.2 */
-  NotImplemented = 501,
-  /** RFC 7231, 6.6.3 */
-  BadGateway = 502,
-  /** RFC 7231, 6.6.4 */
-  ServiceUnavailable = 503,
-  /** RFC 7231, 6.6.5 */
-  GatewayTimeout = 504,
-  /** RFC 7231, 6.6.6 */
-  HTTPVersionNotSupported = 505,
-  /** RFC 2295, 8.1 */
-  VariantAlsoNegotiates = 506,
-  /** RFC 4918, 11.5 */
-  InsufficientStorage = 507,
-  /** RFC 5842, 7.2 */
-  LoopDetected = 508,
-  /** RFC 2774, 7 */
-  NotExtended = 510,
-  /** RFC 6585, 6 */
-  NetworkAuthenticationRequired = 511,
-}
-
-const METHODS = [
-  "ACL",
-  "BIND",
-  "CHECKOUT",
-  "CONNECT",
-  "COPY",
-  "DELETE",
-  "GET",
-  "HEAD",
-  "LINK",
-  "LOCK",
-  "M-SEARCH",
-  "MERGE",
-  "MKACTIVITY",
-  "MKCALENDAR",
-  "MKCOL",
-  "MOVE",
-  "NOTIFY",
-  "OPTIONS",
-  "PATCH",
-  "POST",
-  "PROPFIND",
-  "PROPPATCH",
-  "PURGE",
-  "PUT",
-  "REBIND",
-  "REPORT",
-  "SEARCH",
-  "SOURCE",
-  "SUBSCRIBE",
-  "TRACE",
-  "UNBIND",
-  "UNLINK",
-  "UNLOCK",
-  "UNSUBSCRIBE",
-];
 
 type Chunk = string | Buffer | Uint8Array;
 
@@ -282,20 +117,20 @@ function validateHost(host, name) {
 const INVALID_PATH_REGEX = /[^\u0021-\u00ff]/;
 const kError = Symbol("kError");
 
-const kUniqueHeaders = Symbol("kUniqueHeaders");
-
 class FakeSocket extends EventEmitter {
   constructor(
     opts: {
       encrypted?: boolean | undefined;
       remotePort?: number | undefined;
       remoteAddress?: string | undefined;
+      reader?: ReadableStreamDefaultReader | undefined;
     } = {},
   ) {
     super();
     this.remoteAddress = opts.remoteAddress;
     this.remotePort = opts.remotePort;
     this.encrypted = opts.encrypted;
+    this.reader = opts.reader;
     this.writable = true;
     this.readable = true;
   }
@@ -903,7 +738,7 @@ class ClientRequest extends OutgoingMessage {
     // https://www.rfc-editor.org/rfc/rfc6266#section-4.3
     // Refs: https://github.com/nodejs/node/pull/46528
     if (isContentDispositionField(key) && this._contentLength) {
-      value = Buffer.from(value, "latin1");
+      value = Buffer.from(value).toString("latin1");
     }
 
     if (Array.isArray(value)) {
@@ -1439,12 +1274,11 @@ export class ServerResponse extends NodeWritable {
   }
 
   appendHeader(name: string, value: string | string[]) {
-    if (Array.isArray(value)) {
-      this.#hasNonStringHeaders = true;
-    }
     if (this.#headers[name] === undefined) {
+      if (Array.isArray(value)) this.#hasNonStringHeaders = true;
       this.#headers[name] = value;
     } else {
+      this.#hasNonStringHeaders = true;
       if (!Array.isArray(this.#headers[name])) {
         this.#headers[name] = [this.#headers[name]];
       }
@@ -1614,17 +1448,17 @@ export class ServerResponse extends NodeWritable {
 
 // TODO(@AaronO): optimize
 export class IncomingMessageForServer extends NodeReadable {
-  #req: Request;
   #headers: Record<string, string>;
   url: string;
   method: string;
-  // Polyfills part of net.Socket object.
-  // These properties are used by `npm:forwarded` for example.
-  socket: { remoteAddress: string; remotePort: number };
+  socket: Socket | FakeSocket;
 
-  constructor(req: Request, socket: FakeSocket) {
-    // Check if no body (GET/HEAD/OPTIONS/...)
-    const reader = req.body?.getReader();
+  constructor(socket: FakeSocket | Socket) {
+    const reader = socket instanceof FakeSocket
+      ? socket.reader
+      : socket instanceof Socket
+      ? NodeDuplex.toWeb(socket).readable.getReader()
+      : null;
     super({
       autoDestroy: true,
       emitClose: true,
@@ -1647,12 +1481,11 @@ export class IncomingMessageForServer extends NodeReadable {
         }).finally(nextTick(onError, this, err, cb));
       },
     });
-    // TODO(@bartlomieju): consider more robust path extraction, e.g:
-    // url: (new URL(request.url).pathname),
-    this.url = req.url?.slice(req.url.indexOf("/", 8));
-    this.method = req.method;
+    this.url = "";
+    this.method = "";
     this.socket = socket;
-    this.#req = req;
+    this.upgrade = null;
+    this.rawHeaders = [];
   }
 
   get aborted() {
@@ -1670,7 +1503,7 @@ export class IncomingMessageForServer extends NodeReadable {
   get headers() {
     if (!this.#headers) {
       this.#headers = {};
-      const entries = headersEntries(this.#req.headers);
+      const entries = headersEntries(this.rawHeaders);
       for (let i = 0; i < entries.length; i++) {
         const entry = entries[i];
         this.#headers[entry[0]] = entry[1];
@@ -1683,16 +1516,17 @@ export class IncomingMessageForServer extends NodeReadable {
     this.#headers = val;
   }
 
-  get upgrade(): boolean {
-    return Boolean(
-      this.#req.headers.get("connection")?.toLowerCase().includes("upgrade") &&
-        this.#req.headers.get("upgrade"),
-    );
-  }
-
   // connection is deprecated, but still tested in unit test.
   get connection() {
     return this.socket;
+  }
+
+  setTimeout(msecs, callback) {
+    if (callback) {
+      this.on("timeout", callback);
+    }
+    this.socket.setTimeout(msecs);
+    return this;
   }
 }
 
@@ -1775,8 +1609,18 @@ export class ServerImpl extends EventEmitter {
         remoteAddress: info.remoteAddr.hostname,
         remotePort: info.remoteAddr.port,
         encrypted: this._encrypted,
+        reader: request.body?.getReader(),
       });
-      const req = new IncomingMessageForServer(request, socket);
+
+      const req = new IncomingMessageForServer(socket);
+      // Slice off the origin so that we only have pathname + search
+      req.url = request.url?.slice(request.url.indexOf("/", 8));
+      req.method = request.method;
+      req.upgrade =
+        request.headers.get("connection")?.toLowerCase().includes("upgrade") &&
+        request.headers.get("upgrade");
+      req.rawHeaders = request.headers;
+
       if (req.upgrade && this.listenerCount("upgrade") > 0) {
         const { conn, response } = upgradeHttpRaw(request);
         const socket = new Socket({
@@ -1824,6 +1668,7 @@ export class ServerImpl extends EventEmitter {
   }
 
   setTimeout() {
+    // deno-lint-ignore no-console
     console.error("Not implemented: Server.setTimeout()");
   }
 

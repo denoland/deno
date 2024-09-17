@@ -1,0 +1,5 @@
+{
+  "args": "lint --json file1.js file2.ts ignored_file.ts malformed.js",
+  "output": "expected_json.out",
+  "exitCode": 1
+}

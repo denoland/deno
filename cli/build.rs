@@ -5,6 +5,7 @@ use std::path::PathBuf;
 
 use deno_core::snapshot::*;
 use deno_runtime::*;
+mod shared;
 
 mod ts {
   use super::*;
@@ -12,7 +13,6 @@ mod ts {
   use deno_core::error::AnyError;
   use deno_core::op2;
   use deno_core::OpState;
-  use deno_runtime::deno_node::SUPPORTED_BUILTIN_NODE_MODULES;
   use serde::Serialize;
   use std::collections::HashMap;
   use std::io::Write;
@@ -24,7 +24,6 @@ mod ts {
   struct BuildInfoResponse {
     build_specifier: String,
     libs: Vec<String>,
-    node_built_in_module_names: Vec<String>,
   }
 
   #[op2]
@@ -36,14 +35,9 @@ mod ts {
       .iter()
       .map(|s| s.to_string())
       .collect();
-    let node_built_in_module_names = SUPPORTED_BUILTIN_NODE_MODULES
-      .iter()
-      .map(|s| s.to_string())
-      .collect();
     BuildInfoResponse {
       build_specifier,
       libs: build_libs,
-      node_built_in_module_names,
     }
   }
 
@@ -242,6 +236,7 @@ mod ts {
       "esnext.decorators",
       "esnext.disposable",
       "esnext.intl",
+      "esnext.iterator",
       "esnext.object",
       "esnext.promise",
       "esnext.regexp",
@@ -329,20 +324,9 @@ mod ts {
 fn create_cli_snapshot(snapshot_path: PathBuf) {
   use deno_runtime::ops::bootstrap::SnapshotOptions;
 
-  // NOTE(bartlomieju): keep in sync with `cli/version.rs`.
-  // Ideally we could deduplicate that code.
-  fn deno_version() -> String {
-    if env::var("DENO_CANARY").is_ok() {
-      format!("{}+{}", env!("CARGO_PKG_VERSION"), &git_commit_hash()[..7])
-    } else {
-      env!("CARGO_PKG_VERSION").to_string()
-    }
-  }
-
   let snapshot_options = SnapshotOptions {
-    deno_version: deno_version(),
     ts_version: ts::version(),
-    v8_version: deno_core::v8_version(),
+    v8_version: deno_core::v8::VERSION_STRING,
     target: std::env::var("TARGET").unwrap(),
   };
 
@@ -456,7 +440,7 @@ fn main() {
   );
 
   let ts_version = ts::version();
-  debug_assert_eq!(ts_version, "5.5.2"); // bump this assertion when it changes
+  debug_assert_eq!(ts_version, "5.6.2"); // bump this assertion when it changes
   println!("cargo:rustc-env=TS_VERSION={}", ts_version);
   println!("cargo:rerun-if-env-changed=TS_VERSION");
 

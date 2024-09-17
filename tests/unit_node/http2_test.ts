@@ -1,5 +1,7 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
+// deno-lint-ignore-file no-console
+
 import * as http2 from "node:http2";
 import { Buffer } from "node:buffer";
 import { readFile } from "node:fs/promises";
@@ -274,4 +276,110 @@ Deno.test("[node/http2 client] deno doesn't panic on uppercase headers", async (
   req.end();
   await endPromise.promise;
   assertEquals(receivedData, "hello world\n");
+});
+
+Deno.test("[node/http2 ClientHttp2Session.socket]", async () => {
+  const url = "http://127.0.0.1:4246";
+  const client = http2.connect(url);
+  client.on("error", (err) => console.error(err));
+
+  const req = client.request({ ":method": "POST", ":path": "/" });
+  const endPromise = Promise.withResolvers<void>();
+
+  // test that we can access session.socket
+  client.socket.setTimeout(10000);
+  // nodejs allows setting arbitrary properties
+  // deno-lint-ignore no-explicit-any
+  (client.socket as any).nonExistant = 9001;
+  // deno-lint-ignore no-explicit-any
+  assertEquals((client.socket as any).nonExistant, 9001);
+
+  // regular request dance to make sure it keeps working
+  let receivedData = "";
+  req.write("hello");
+  req.setEncoding("utf8");
+
+  req.on("data", (chunk) => {
+    receivedData += chunk;
+  });
+  req.on("end", () => {
+    req.close();
+    client.close();
+    endPromise.resolve();
+  });
+  req.end();
+  await endPromise.promise;
+  assertEquals(client.socket.remoteAddress, "127.0.0.1");
+  assertEquals(client.socket.remotePort, 4246);
+  assertEquals(client.socket.remoteFamily, "IPv4");
+  client.socket.setTimeout(0);
+  assertEquals(receivedData, "hello world\n");
+});
+
+Deno.test("[node/http2 client] connection states", async () => {
+  const expected = {
+    beforeConnect: { connecting: true, closed: false, destroyed: false },
+    afterConnect: { connecting: false, closed: false, destroyed: false },
+    afterClose: { connecting: false, closed: true, destroyed: false },
+    afterDestroy: { connecting: false, closed: true, destroyed: true },
+  };
+  const actual: Partial<typeof expected> = {};
+
+  const url = "http://127.0.0.1:4246";
+  const connectPromise = Promise.withResolvers<void>();
+  const client = http2.connect(url, {}, () => {
+    connectPromise.resolve();
+  });
+  client.on("error", (err) => console.error(err));
+
+  // close event happens after destory has been called
+  const destroyPromise = Promise.withResolvers<void>();
+  client.on("close", () => {
+    destroyPromise.resolve();
+  });
+
+  actual.beforeConnect = {
+    connecting: client.connecting,
+    closed: client.closed,
+    destroyed: client.destroyed,
+  };
+
+  await connectPromise.promise;
+  actual.afterConnect = {
+    connecting: client.connecting,
+    closed: client.closed,
+    destroyed: client.destroyed,
+  };
+
+  // leave a request open to prevent immediate destroy
+  const req = client.request();
+  req.on("data", () => {});
+  req.on("error", (err) => console.error(err));
+  const reqClosePromise = Promise.withResolvers<void>();
+  req.on("close", () => {
+    reqClosePromise.resolve();
+  });
+
+  client.close();
+  actual.afterClose = {
+    connecting: client.connecting,
+    closed: client.closed,
+    destroyed: client.destroyed,
+  };
+
+  await destroyPromise.promise;
+  actual.afterDestroy = {
+    connecting: client.connecting,
+    closed: client.closed,
+    destroyed: client.destroyed,
+  };
+
+  await reqClosePromise.promise;
+
+  assertEquals(actual, expected);
+});
+
+Deno.test("request and response exports", () => {
+  assert(http2.Http2ServerRequest);
+  assert(http2.Http2ServerResponse);
 });

@@ -58,6 +58,7 @@ const workerNavigator = webidl.createBranded(WorkerNavigator);
 
 ObjectDefineProperties(WorkerNavigator.prototype, {
   gpu: {
+    __proto__: null,
     configurable: true,
     enumerable: true,
     get() {
@@ -67,6 +68,7 @@ ObjectDefineProperties(WorkerNavigator.prototype, {
     },
   },
   hardwareConcurrency: {
+    __proto__: null,
     configurable: true,
     enumerable: true,
     get() {
@@ -75,6 +77,7 @@ ObjectDefineProperties(WorkerNavigator.prototype, {
     },
   },
   userAgent: {
+    __proto__: null,
     configurable: true,
     enumerable: true,
     get() {
@@ -83,6 +86,7 @@ ObjectDefineProperties(WorkerNavigator.prototype, {
     },
   },
   language: {
+    __proto__: null,
     configurable: true,
     enumerable: true,
     get() {
@@ -91,6 +95,7 @@ ObjectDefineProperties(WorkerNavigator.prototype, {
     },
   },
   languages: {
+    __proto__: null,
     configurable: true,
     enumerable: true,
     get() {

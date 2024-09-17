@@ -13,6 +13,7 @@ use deno_core::unsync::spawn_blocking;
 use deno_core::GarbageCollected;
 use deno_core::ToJsBuffer;
 use ed25519_dalek::pkcs8::BitStringRef;
+use elliptic_curve::JwkEcKey;
 use num_bigint::BigInt;
 use num_traits::FromPrimitive as _;
 use pkcs8::DecodePrivateKey as _;
@@ -45,6 +46,7 @@ use spki::der::Reader as _;
 use spki::DecodePublicKey as _;
 use spki::EncodePublicKey as _;
 use spki::SubjectPublicKeyInfoRef;
+use x509_parser::x509;
 
 use super::dh;
 use super::dh::DiffieHellmanGroup;
@@ -229,6 +231,16 @@ impl RsaPssPrivateKey {
     RsaPssPublicKey {
       key: self.key.to_public_key(),
       details: self.details,
+    }
+  }
+}
+
+impl EcPublicKey {
+  pub fn to_jwk(&self) -> Result<elliptic_curve::JwkEcKey, AnyError> {
+    match self {
+      EcPublicKey::P224(_) => Err(type_error("Unsupported JWK EC curve: P224")),
+      EcPublicKey::P256(key) => Ok(key.to_jwk()),
+      EcPublicKey::P384(key) => Ok(key.to_jwk()),
     }
   }
 }
@@ -496,14 +508,9 @@ impl KeyObjectHandle {
         AsymmetricPrivateKey::X25519(x25519_dalek::StaticSecret::from(bytes))
       }
       ED25519_OID => {
-        let string_ref = OctetStringRef::from_der(pk_info.private_key)
+        let signing_key = ed25519_dalek::SigningKey::try_from(pk_info)
           .map_err(|_| type_error("invalid Ed25519 private key"))?;
-        if string_ref.as_bytes().len() != 32 {
-          return Err(type_error("Ed25519 private key is the wrong length"));
-        }
-        let mut bytes = [0; 32];
-        bytes.copy_from_slice(string_ref.as_bytes());
-        AsymmetricPrivateKey::Ed25519(ed25519_dalek::SigningKey::from(bytes))
+        AsymmetricPrivateKey::Ed25519(signing_key)
       }
       DH_KEY_AGREEMENT_OID => {
         let params = pk_info
@@ -523,11 +530,192 @@ impl KeyObjectHandle {
     Ok(KeyObjectHandle::AsymmetricPrivate(private_key))
   }
 
+  pub fn new_x509_public_key(
+    spki: &x509::SubjectPublicKeyInfo,
+  ) -> Result<KeyObjectHandle, AnyError> {
+    use x509_parser::der_parser::asn1_rs::oid;
+    use x509_parser::public_key::PublicKey;
+
+    let key = match spki.parsed()? {
+      PublicKey::RSA(key) => {
+        let public_key = RsaPublicKey::new(
+          rsa::BigUint::from_bytes_be(key.modulus),
+          rsa::BigUint::from_bytes_be(key.exponent),
+        )?;
+        AsymmetricPublicKey::Rsa(public_key)
+      }
+      PublicKey::EC(point) => {
+        let data = point.data();
+        if let Some(params) = &spki.algorithm.parameters {
+          let curve_oid = params.as_oid()?;
+          const ID_SECP224R1: &[u8] = &oid!(raw 1.3.132.0.33);
+          const ID_SECP256R1: &[u8] = &oid!(raw 1.2.840.10045.3.1.7);
+          const ID_SECP384R1: &[u8] = &oid!(raw 1.3.132.0.34);
+
+          match curve_oid.as_bytes() {
+            ID_SECP224R1 => {
+              let public_key = p224::PublicKey::from_sec1_bytes(data)?;
+              AsymmetricPublicKey::Ec(EcPublicKey::P224(public_key))
+            }
+            ID_SECP256R1 => {
+              let public_key = p256::PublicKey::from_sec1_bytes(data)?;
+              AsymmetricPublicKey::Ec(EcPublicKey::P256(public_key))
+            }
+            ID_SECP384R1 => {
+              let public_key = p384::PublicKey::from_sec1_bytes(data)?;
+              AsymmetricPublicKey::Ec(EcPublicKey::P384(public_key))
+            }
+            _ => return Err(type_error("unsupported ec named curve")),
+          }
+        } else {
+          return Err(type_error("missing ec parameters"));
+        }
+      }
+      PublicKey::DSA(_) => {
+        let verifying_key = dsa::VerifyingKey::from_public_key_der(spki.raw)
+          .map_err(|_| type_error("malformed DSS public key"))?;
+        AsymmetricPublicKey::Dsa(verifying_key)
+      }
+      _ => return Err(type_error("unsupported x509 public key type")),
+    };
+
+    Ok(KeyObjectHandle::AsymmetricPublic(key))
+  }
+
+  pub fn new_rsa_jwk(
+    jwk: RsaJwkKey,
+    is_public: bool,
+  ) -> Result<KeyObjectHandle, AnyError> {
+    use base64::prelude::BASE64_URL_SAFE_NO_PAD;
+
+    let n = BASE64_URL_SAFE_NO_PAD.decode(jwk.n.as_bytes())?;
+    let e = BASE64_URL_SAFE_NO_PAD.decode(jwk.e.as_bytes())?;
+
+    if is_public {
+      let public_key = RsaPublicKey::new(
+        rsa::BigUint::from_bytes_be(&n),
+        rsa::BigUint::from_bytes_be(&e),
+      )?;
+
+      Ok(KeyObjectHandle::AsymmetricPublic(AsymmetricPublicKey::Rsa(
+        public_key,
+      )))
+    } else {
+      let d = BASE64_URL_SAFE_NO_PAD.decode(
+        jwk
+          .d
+          .ok_or_else(|| type_error("missing RSA private component"))?
+          .as_bytes(),
+      )?;
+      let p = BASE64_URL_SAFE_NO_PAD.decode(
+        jwk
+          .p
+          .ok_or_else(|| type_error("missing RSA private component"))?
+          .as_bytes(),
+      )?;
+      let q = BASE64_URL_SAFE_NO_PAD.decode(
+        jwk
+          .q
+          .ok_or_else(|| type_error("missing RSA private component"))?
+          .as_bytes(),
+      )?;
+
+      let mut private_key = RsaPrivateKey::from_components(
+        rsa::BigUint::from_bytes_be(&n),
+        rsa::BigUint::from_bytes_be(&e),
+        rsa::BigUint::from_bytes_be(&d),
+        vec![
+          rsa::BigUint::from_bytes_be(&p),
+          rsa::BigUint::from_bytes_be(&q),
+        ],
+      )?;
+      private_key.precompute()?; // precompute CRT params
+
+      Ok(KeyObjectHandle::AsymmetricPrivate(
+        AsymmetricPrivateKey::Rsa(private_key),
+      ))
+    }
+  }
+
+  pub fn new_ec_jwk(
+    jwk: &JwkEcKey,
+    is_public: bool,
+  ) -> Result<KeyObjectHandle, AnyError> {
+    //  https://datatracker.ietf.org/doc/html/rfc7518#section-6.2.1.1
+    let handle = match jwk.crv() {
+      "P-256" if is_public => {
+        KeyObjectHandle::AsymmetricPublic(AsymmetricPublicKey::Ec(
+          EcPublicKey::P256(p256::PublicKey::from_jwk(jwk)?),
+        ))
+      }
+      "P-256" => KeyObjectHandle::AsymmetricPrivate(AsymmetricPrivateKey::Ec(
+        EcPrivateKey::P256(p256::SecretKey::from_jwk(jwk)?),
+      )),
+      "P-384" if is_public => {
+        KeyObjectHandle::AsymmetricPublic(AsymmetricPublicKey::Ec(
+          EcPublicKey::P384(p384::PublicKey::from_jwk(jwk)?),
+        ))
+      }
+      "P-384" => KeyObjectHandle::AsymmetricPrivate(AsymmetricPrivateKey::Ec(
+        EcPrivateKey::P384(p384::SecretKey::from_jwk(jwk)?),
+      )),
+      _ => {
+        return Err(type_error(format!("unsupported curve: {}", jwk.crv())));
+      }
+    };
+
+    Ok(handle)
+  }
+
+  pub fn new_ed_raw(
+    curve: &str,
+    data: &[u8],
+    is_public: bool,
+  ) -> Result<KeyObjectHandle, AnyError> {
+    match curve {
+      "Ed25519" => {
+        let data = data
+          .try_into()
+          .map_err(|_| type_error("invalid Ed25519 key"))?;
+        if !is_public {
+          Ok(KeyObjectHandle::AsymmetricPrivate(
+            AsymmetricPrivateKey::Ed25519(
+              ed25519_dalek::SigningKey::from_bytes(data),
+            ),
+          ))
+        } else {
+          Ok(KeyObjectHandle::AsymmetricPublic(
+            AsymmetricPublicKey::Ed25519(
+              ed25519_dalek::VerifyingKey::from_bytes(data)?,
+            ),
+          ))
+        }
+      }
+      "X25519" => {
+        let data: [u8; 32] = data
+          .try_into()
+          .map_err(|_| type_error("invalid x25519 key"))?;
+        if !is_public {
+          Ok(KeyObjectHandle::AsymmetricPrivate(
+            AsymmetricPrivateKey::X25519(x25519_dalek::StaticSecret::from(
+              data,
+            )),
+          ))
+        } else {
+          Ok(KeyObjectHandle::AsymmetricPublic(
+            AsymmetricPublicKey::X25519(x25519_dalek::PublicKey::from(data)),
+          ))
+        }
+      }
+      _ => Err(type_error("unsupported curve")),
+    }
+  }
+
   pub fn new_asymmetric_public_key_from_js(
     key: &[u8],
     format: &str,
     typ: &str,
-    _passphrase: Option<&[u8]>,
+    passphrase: Option<&[u8]>,
   ) -> Result<KeyObjectHandle, AnyError> {
     let document = match format {
       "pem" => {
@@ -547,23 +735,22 @@ impl KeyObjectHandle {
             Document::from_pkcs1_der(document.as_bytes())
               .map_err(|_| type_error("invalid PKCS#1 public key"))?
           }
-          EncryptedPrivateKeyInfo::PEM_LABEL => {
-            // FIXME
-            return Err(type_error(
-              "deriving public key from encrypted private key",
-            ));
-          }
-          PrivateKeyInfo::PEM_LABEL => {
-            // FIXME
-            return Err(type_error("public key cannot be a private key"));
-          }
-          sec1::EcPrivateKey::PEM_LABEL => {
-            // FIXME
-            return Err(type_error("deriving public key from ec private key"));
-          }
-          rsa::pkcs1::RsaPrivateKey::PEM_LABEL => {
-            // FIXME
-            return Err(type_error("deriving public key from rsa private key"));
+          EncryptedPrivateKeyInfo::PEM_LABEL
+          | PrivateKeyInfo::PEM_LABEL
+          | sec1::EcPrivateKey::PEM_LABEL
+          | rsa::pkcs1::RsaPrivateKey::PEM_LABEL => {
+            let handle = KeyObjectHandle::new_asymmetric_private_key_from_js(
+              key, format, typ, passphrase,
+            )?;
+            match handle {
+              KeyObjectHandle::AsymmetricPrivate(private) => {
+                return Ok(KeyObjectHandle::AsymmetricPublic(
+                  private.to_public_key(),
+                ))
+              }
+              KeyObjectHandle::AsymmetricPublic(_)
+              | KeyObjectHandle::Secret(_) => unreachable!(),
+            }
           }
           // TODO: handle x509 certificates as public keys
           _ => {
@@ -643,16 +830,8 @@ impl KeyObjectHandle {
         AsymmetricPublicKey::X25519(x25519_dalek::PublicKey::from(bytes))
       }
       ED25519_OID => {
-        let mut bytes = [0; 32];
-        let data = spki.subject_public_key.as_bytes().ok_or_else(|| {
-          type_error("malformed or missing public key in ed25519 spki")
-        })?;
-        if data.len() < 32 {
-          return Err(type_error("ed25519 public key is too short"));
-        }
-        bytes.copy_from_slice(&data[0..32]);
-        let verifying_key = ed25519_dalek::VerifyingKey::from_bytes(&bytes)
-          .map_err(|_| type_error("ed25519 public key is malformed"))?;
+        let verifying_key = ed25519_dalek::VerifyingKey::try_from(spki)
+          .map_err(|_| type_error("invalid Ed25519 private key"))?;
         AsymmetricPublicKey::Ed25519(verifying_key)
       }
       DH_KEY_AGREEMENT_OID => {
@@ -734,7 +913,63 @@ fn parse_rsa_pss_params(
   Ok(details)
 }
 
+use base64::prelude::BASE64_URL_SAFE_NO_PAD;
+
+fn bytes_to_b64(bytes: &[u8]) -> String {
+  BASE64_URL_SAFE_NO_PAD.encode(bytes)
+}
+
 impl AsymmetricPublicKey {
+  fn export_jwk(&self) -> Result<deno_core::serde_json::Value, AnyError> {
+    match self {
+      AsymmetricPublicKey::Ec(key) => {
+        let jwk = key.to_jwk()?;
+        Ok(deno_core::serde_json::json!(jwk))
+      }
+      AsymmetricPublicKey::X25519(key) => {
+        let bytes = key.as_bytes();
+        let jwk = deno_core::serde_json::json!({
+            "kty": "OKP",
+            "crv": "X25519",
+            "x": bytes_to_b64(bytes),
+        });
+        Ok(jwk)
+      }
+      AsymmetricPublicKey::Ed25519(key) => {
+        let bytes = key.to_bytes();
+        let jwk = deno_core::serde_json::json!({
+            "kty": "OKP",
+            "crv": "Ed25519",
+            "x": bytes_to_b64(&bytes),
+        });
+        Ok(jwk)
+      }
+      AsymmetricPublicKey::Rsa(key) => {
+        let n = key.n();
+        let e = key.e();
+
+        let jwk = deno_core::serde_json::json!({
+            "kty": "RSA",
+            "n": bytes_to_b64(&n.to_bytes_be()),
+            "e": bytes_to_b64(&e.to_bytes_be()),
+        });
+        Ok(jwk)
+      }
+      AsymmetricPublicKey::RsaPss(key) => {
+        let n = key.key.n();
+        let e = key.key.e();
+
+        let jwk = deno_core::serde_json::json!({
+            "kty": "RSA",
+            "n": bytes_to_b64(&n.to_bytes_be()),
+            "e": bytes_to_b64(&e.to_bytes_be()),
+        });
+        Ok(jwk)
+      }
+      _ => Err(type_error("jwk export not implemented for this key type")),
+    }
+  }
+
   fn export_der(&self, typ: &str) -> Result<Box<[u8]>, AnyError> {
     match typ {
       "pkcs1" => match self {
@@ -986,6 +1221,43 @@ pub fn op_node_create_private_key(
   KeyObjectHandle::new_asymmetric_private_key_from_js(
     key, format, typ, passphrase,
   )
+}
+
+#[op2]
+#[cppgc]
+pub fn op_node_create_ed_raw(
+  #[string] curve: &str,
+  #[buffer] key: &[u8],
+  is_public: bool,
+) -> Result<KeyObjectHandle, AnyError> {
+  KeyObjectHandle::new_ed_raw(curve, key, is_public)
+}
+
+#[derive(serde::Deserialize)]
+pub struct RsaJwkKey {
+  n: String,
+  e: String,
+  d: Option<String>,
+  p: Option<String>,
+  q: Option<String>,
+}
+
+#[op2]
+#[cppgc]
+pub fn op_node_create_rsa_jwk(
+  #[serde] jwk: RsaJwkKey,
+  is_public: bool,
+) -> Result<KeyObjectHandle, AnyError> {
+  KeyObjectHandle::new_rsa_jwk(jwk, is_public)
+}
+
+#[op2]
+#[cppgc]
+pub fn op_node_create_ec_jwk(
+  #[serde] jwk: elliptic_curve::JwkEcKey,
+  is_public: bool,
+) -> Result<KeyObjectHandle, AnyError> {
+  KeyObjectHandle::new_ec_jwk(&jwk, is_public)
 }
 
 #[op2]
@@ -1713,6 +1985,18 @@ pub fn op_node_export_secret_key_b64url(
     .as_secret_key()
     .ok_or_else(|| type_error("key is not a secret key"))?;
   Ok(base64::engine::general_purpose::URL_SAFE_NO_PAD.encode(key))
+}
+
+#[op2]
+#[serde]
+pub fn op_node_export_public_key_jwk(
+  #[cppgc] handle: &KeyObjectHandle,
+) -> Result<deno_core::serde_json::Value, AnyError> {
+  let public_key = handle
+    .as_public_key()
+    .ok_or_else(|| type_error("key is not an asymmetric public key"))?;
+
+  public_key.export_jwk()
 }
 
 #[op2]

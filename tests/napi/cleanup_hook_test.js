@@ -1,5 +1,7 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
+// deno-lint-ignore-file no-console
+
 import { assertEquals, loadTestLibrary } from "./common.js";
 
 const properties = loadTestLibrary();
@@ -15,9 +17,7 @@ if (import.meta.main) {
         "--config",
         Deno.realPathSync("../config/deno.json"),
         "--no-lock",
-        "--allow-read",
-        "--allow-run",
-        "--allow-ffi",
+        "-A",
         "--unstable-ffi",
         import.meta.url,
       ],

@@ -9,8 +9,6 @@
 
 #[path = "bench_tests.rs"]
 mod bench;
-#[path = "bundle_tests.rs"]
-mod bundle;
 #[path = "cache_tests.rs"]
 mod cache;
 #[path = "check_tests.rs"]
@@ -19,16 +17,12 @@ mod check;
 mod compile;
 #[path = "coverage_tests.rs"]
 mod coverage;
-#[path = "doc_tests.rs"]
-mod doc;
 #[path = "eval_tests.rs"]
 mod eval;
 #[path = "flags_tests.rs"]
 mod flags;
 #[path = "fmt_tests.rs"]
 mod fmt;
-#[path = "info_tests.rs"]
-mod info;
 #[path = "init_tests.rs"]
 mod init;
 #[path = "inspector_tests.rs"]
@@ -41,12 +35,8 @@ mod js_unit_tests;
 mod jsr;
 #[path = "jupyter_tests.rs"]
 mod jupyter;
-#[path = "lint_tests.rs"]
-mod lint;
 #[path = "lsp_tests.rs"]
 mod lsp;
-#[path = "node_compat_tests.rs"]
-mod node_compat_tests;
 #[path = "node_unit_tests.rs"]
 mod node_unit_tests;
 #[path = "npm_tests.rs"]
@@ -70,9 +60,5 @@ mod task;
 mod test;
 #[path = "upgrade_tests.rs"]
 mod upgrade;
-#[path = "vendor_tests.rs"]
-mod vendor;
 #[path = "watcher_tests.rs"]
 mod watcher;
-#[path = "worker_tests.rs"]
-mod worker;

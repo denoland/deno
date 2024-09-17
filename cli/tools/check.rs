@@ -14,6 +14,7 @@ use deno_terminal::colors;
 use once_cell::sync::Lazy;
 use regex::Regex;
 
+use crate::args::check_warn_tsconfig;
 use crate::args::CliOptions;
 use crate::args::TsConfig;
 use crate::args::TsConfigType;
@@ -83,7 +84,9 @@ impl TypeChecker {
     graph: ModuleGraph,
     options: CheckOptions,
   ) -> Result<Arc<ModuleGraph>, AnyError> {
-    let (graph, diagnostics) = self.check_diagnostics(graph, options).await?;
+    let (graph, mut diagnostics) =
+      self.check_diagnostics(graph, options).await?;
+    diagnostics.emit_warnings();
     if diagnostics.is_empty() {
       Ok(graph)
     } else {
@@ -118,9 +121,7 @@ impl TypeChecker {
       .cli_options
       .resolve_ts_config_for_emit(TsConfigType::Check { lib: options.lib })?;
     if options.log_ignored_options {
-      if let Some(ignored_options) = ts_config_result.maybe_ignored_options {
-        log::warn!("{}", ignored_options);
-      }
+      check_warn_tsconfig(&ts_config_result);
     }
 
     let type_check_mode = options.type_check_mode;
@@ -427,7 +428,7 @@ fn get_tsc_roots(
 
   // now walk the graph that only includes the fast check dependencies
   while let Some(specifier) = pending.pop_front() {
-    let Some(module) = graph.get(&specifier) else {
+    let Some(module) = graph.get(specifier) else {
       continue;
     };
     if let Some(entry) = maybe_get_check_entry(module, check_js) {

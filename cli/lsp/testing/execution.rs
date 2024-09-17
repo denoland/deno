@@ -12,9 +12,13 @@ use crate::lsp::client::Client;
 use crate::lsp::client::TestingNotification;
 use crate::lsp::config;
 use crate::lsp::logging::lsp_log;
+use crate::lsp::urls::uri_parse_unencoded;
+use crate::lsp::urls::uri_to_url;
+use crate::lsp::urls::url_to_uri;
 use crate::tools::test;
 use crate::tools::test::create_test_event_channel;
 use crate::tools::test::FailFastTracker;
+use crate::tools::test::TestFailureFormatOptions;
 
 use deno_core::anyhow::anyhow;
 use deno_core::error::AnyError;
@@ -27,8 +31,10 @@ use deno_core::unsync::spawn;
 use deno_core::unsync::spawn_blocking;
 use deno_core::ModuleSpecifier;
 use deno_runtime::deno_permissions::Permissions;
+use deno_runtime::deno_permissions::PermissionsContainer;
 use deno_runtime::tokio_util::create_and_run_current_thread;
 use indexmap::IndexMap;
+use std::borrow::Cow;
 use std::collections::HashMap;
 use std::collections::HashSet;
 use std::num::NonZeroUsize;
@@ -52,12 +58,12 @@ fn as_queue_and_filters(
 
   if let Some(include) = &params.include {
     for item in include {
-      if let Some((test_definitions, _)) = tests.get(&item.text_document.uri) {
-        queue.insert(item.text_document.uri.clone());
+      let url = uri_to_url(&item.text_document.uri);
+      if let Some((test_definitions, _)) = tests.get(&url) {
+        queue.insert(url.clone());
         if let Some(id) = &item.id {
           if let Some(test) = test_definitions.get(id) {
-            let filter =
-              filters.entry(item.text_document.uri.clone()).or_default();
+            let filter = filters.entry(url).or_default();
             if let Some(include) = filter.include.as_mut() {
               include.insert(test.id.clone(), test.clone());
             } else {
@@ -74,19 +80,19 @@ fn as_queue_and_filters(
   }
 
   for item in &params.exclude {
-    if let Some((test_definitions, _)) = tests.get(&item.text_document.uri) {
+    let url = uri_to_url(&item.text_document.uri);
+    if let Some((test_definitions, _)) = tests.get(&url) {
       if let Some(id) = &item.id {
         // there is no way to exclude a test step
         if item.step_id.is_none() {
           if let Some(test) = test_definitions.get(id) {
-            let filter =
-              filters.entry(item.text_document.uri.clone()).or_default();
+            let filter = filters.entry(url.clone()).or_default();
             filter.exclude.insert(test.id.clone(), test.clone());
           }
         }
       } else {
         // the entire test module is excluded
-        queue.remove(&item.text_document.uri);
+        queue.remove(&url);
       }
     }
   }
@@ -181,7 +187,7 @@ impl TestRun {
     self
       .queue
       .iter()
-      .map(|s| {
+      .filter_map(|s| {
         let ids = if let Some((test_module, _)) = tests.get(s) {
           if let Some(filter) = self.filters.get(s) {
             filter.as_ids(test_module)
@@ -191,10 +197,12 @@ impl TestRun {
         } else {
           Vec::new()
         };
-        lsp_custom::EnqueuedTestModule {
-          text_document: lsp::TextDocumentIdentifier { uri: s.clone() },
+        Some(lsp_custom::EnqueuedTestModule {
+          text_document: lsp::TextDocumentIdentifier {
+            uri: url_to_uri(s).ok()?,
+          },
           ids,
-        }
+        })
       })
       .collect()
   }
@@ -212,15 +220,19 @@ impl TestRun {
   ) -> Result<(), AnyError> {
     let args = self.get_args();
     lsp_log!("Executing test run with arguments: {}", args.join(" "));
-    let flags =
-      Arc::new(flags_from_vec(args.into_iter().map(From::from).collect())?);
+    let flags = Arc::new(flags_from_vec(
+      args.into_iter().map(|s| From::from(s.as_ref())).collect(),
+    )?);
     let factory = CliFactory::from_flags(flags);
     let cli_options = factory.cli_options()?;
     // Various test files should not share the same permissions in terms of
     // `PermissionsContainer` - otherwise granting/revoking permissions in one
     // file would have impact on other files, which is undesirable.
-    let permissions =
-      Permissions::from_options(&cli_options.permissions_options()?)?;
+    let permission_desc_parser = factory.permission_desc_parser()?.clone();
+    let permissions = Permissions::from_options(
+      permission_desc_parser.as_ref(),
+      &cli_options.permissions_options(),
+    )?;
     let main_graph_container = factory.main_module_graph_container().await?;
     test::check_specifiers(
       factory.file_fetcher()?,
@@ -268,7 +280,10 @@ impl TestRun {
     let join_handles = queue.into_iter().map(move |specifier| {
       let specifier = specifier.clone();
       let worker_factory = worker_factory.clone();
-      let permissions = permissions.clone();
+      let permissions_container = PermissionsContainer::new(
+        permission_desc_parser.clone(),
+        permissions.clone(),
+      );
       let worker_sender = test_event_sender_factory.worker();
       let fail_fast_tracker = fail_fast_tracker.clone();
       let lsp_filter = self.filters.get(&specifier);
@@ -297,7 +312,7 @@ impl TestRun {
           // channel.
           create_and_run_current_thread(test::test_specifier(
             worker_factory,
-            permissions,
+            permissions_container,
             specifier,
             worker_sender,
             fail_fast_tracker,
@@ -445,37 +460,42 @@ impl TestRun {
     Ok(())
   }
 
-  fn get_args(&self) -> Vec<&str> {
-    let mut args = vec!["deno", "test"];
+  fn get_args(&self) -> Vec<Cow<str>> {
+    let mut args = vec![Cow::Borrowed("deno"), Cow::Borrowed("test")];
     args.extend(
       self
         .workspace_settings
         .testing
         .args
         .iter()
-        .map(|s| s.as_str()),
+        .map(|s| Cow::Borrowed(s.as_str())),
     );
-    args.push("--trace-leaks");
-    if self.workspace_settings.unstable && !args.contains(&"--unstable") {
-      args.push("--unstable");
+    args.push(Cow::Borrowed("--trace-leaks"));
+    for unstable_feature in self.workspace_settings.unstable.as_deref() {
+      let flag = format!("--unstable-{unstable_feature}");
+      if !args.contains(&Cow::Borrowed(&flag)) {
+        args.push(Cow::Owned(flag));
+      }
     }
     if let Some(config) = &self.workspace_settings.config {
-      if !args.contains(&"--config") && !args.contains(&"-c") {
-        args.push("--config");
-        args.push(config.as_str());
+      if !args.contains(&Cow::Borrowed("--config"))
+        && !args.contains(&Cow::Borrowed("-c"))
+      {
+        args.push(Cow::Borrowed("--config"));
+        args.push(Cow::Borrowed(config.as_str()));
       }
     }
     if let Some(import_map) = &self.workspace_settings.import_map {
-      if !args.contains(&"--import-map") {
-        args.push("--import-map");
-        args.push(import_map.as_str());
+      if !args.contains(&Cow::Borrowed("--import-map")) {
+        args.push(Cow::Borrowed("--import-map"));
+        args.push(Cow::Borrowed(import_map.as_str()));
       }
     }
     if self.kind == lsp_custom::TestRunKind::Debug
-      && !args.contains(&"--inspect")
-      && !args.contains(&"--inspect-brk")
+      && !args.contains(&Cow::Borrowed("--inspect"))
+      && !args.contains(&Cow::Borrowed("--inspect-brk"))
     {
-      args.push("--inspect");
+      args.push(Cow::Borrowed("--inspect"));
     }
     args
   }
@@ -522,7 +542,7 @@ impl LspTestDescription {
     &self,
     tests: &IndexMap<usize, LspTestDescription>,
   ) -> lsp_custom::TestIdentifier {
-    let uri = ModuleSpecifier::parse(&self.location().file_name).unwrap();
+    let uri = uri_parse_unencoded(&self.location().file_name).unwrap();
     let static_id = self.static_id();
     let mut root_desc = self;
     while let Some(parent_id) = root_desc.parent_id() {
@@ -586,6 +606,9 @@ impl LspTestReporter {
     let (test_module, _) = files
       .entry(specifier.clone())
       .or_insert_with(|| (TestModule::new(specifier), "1".to_string()));
+    let Ok(uri) = url_to_uri(&test_module.specifier) else {
+      return;
+    };
     let (static_id, is_new) = test_module.register_dynamic(desc);
     self.tests.insert(
       desc.id,
@@ -596,9 +619,7 @@ impl LspTestReporter {
         .client
         .send_test_notification(TestingNotification::Module(
           lsp_custom::TestModuleNotificationParams {
-            text_document: lsp::TextDocumentIdentifier {
-              uri: test_module.specifier.clone(),
-            },
+            text_document: lsp::TextDocumentIdentifier { uri },
             kind: lsp_custom::TestModuleNotificationKind::Insert,
             label: test_module.label(self.maybe_root_uri.as_ref()),
             tests: vec![test_module.get_test_data(&static_id)],
@@ -655,7 +676,10 @@ impl LspTestReporter {
         let desc = self.tests.get(&desc.id).unwrap();
         self.progress(lsp_custom::TestRunProgressMessage::Failed {
           test: desc.as_test_identifier(&self.tests),
-          messages: as_test_messages(failure.to_string(), false),
+          messages: as_test_messages(
+            failure.format(&TestFailureFormatOptions::default()),
+            false,
+          ),
           duration: Some(elapsed as u32),
         })
       }
@@ -675,7 +699,7 @@ impl LspTestReporter {
     let err_string = format!(
       "Uncaught error from {}: {}\nThis error was not caught from a test and caused the test runner to fail on the referenced module.\nIt most likely originated from a dangling promise, event/timeout handler or top-level code.",
       origin,
-      test::fmt::format_test_error(js_error)
+      test::fmt::format_test_error(js_error, &TestFailureFormatOptions::default())
     );
     let messages = as_test_messages(err_string, false);
     for desc in self.tests.values().filter(|d| d.origin() == origin) {
@@ -693,6 +717,9 @@ impl LspTestReporter {
     let (test_module, _) = files
       .entry(specifier.clone())
       .or_insert_with(|| (TestModule::new(specifier), "1".to_string()));
+    let Ok(uri) = url_to_uri(&test_module.specifier) else {
+      return;
+    };
     let (static_id, is_new) = test_module.register_step_dynamic(
       desc,
       self.tests.get(&desc.parent_id).unwrap().static_id(),
@@ -706,9 +733,7 @@ impl LspTestReporter {
         .client
         .send_test_notification(TestingNotification::Module(
           lsp_custom::TestModuleNotificationParams {
-            text_document: lsp::TextDocumentIdentifier {
-              uri: test_module.specifier.clone(),
-            },
+            text_document: lsp::TextDocumentIdentifier { uri },
             kind: lsp_custom::TestModuleNotificationKind::Insert,
             label: test_module.label(self.maybe_root_uri.as_ref()),
             tests: vec![test_module.get_test_data(&static_id)],
@@ -751,7 +776,10 @@ impl LspTestReporter {
       test::TestStepResult::Failed(failure) => {
         self.progress(lsp_custom::TestRunProgressMessage::Failed {
           test: desc.as_test_identifier(&self.tests),
-          messages: as_test_messages(failure.to_string(), false),
+          messages: as_test_messages(
+            failure.format(&TestFailureFormatOptions::default()),
+            false,
+          ),
           duration: Some(elapsed as u32),
         })
       }
@@ -789,14 +817,14 @@ mod tests {
       include: Some(vec![
         lsp_custom::TestIdentifier {
           text_document: lsp::TextDocumentIdentifier {
-            uri: specifier.clone(),
+            uri: url_to_uri(&specifier).unwrap(),
           },
           id: None,
           step_id: None,
         },
         lsp_custom::TestIdentifier {
           text_document: lsp::TextDocumentIdentifier {
-            uri: non_test_specifier.clone(),
+            uri: url_to_uri(&non_test_specifier).unwrap(),
           },
           id: None,
           step_id: None,
@@ -804,7 +832,7 @@ mod tests {
       ]),
       exclude: vec![lsp_custom::TestIdentifier {
         text_document: lsp::TextDocumentIdentifier {
-          uri: specifier.clone(),
+          uri: url_to_uri(&specifier).unwrap(),
         },
         id: Some(
           "69d9fe87f64f5b66cb8b631d4fd2064e8224b8715a049be54276c42189ff8f9f"

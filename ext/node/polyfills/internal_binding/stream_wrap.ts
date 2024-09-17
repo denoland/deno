@@ -38,17 +38,18 @@ import { TextEncoder } from "ext:deno_web/08_text_encoding.js";
 import { Buffer } from "node:buffer";
 import { notImplemented } from "ext:deno_node/_utils.ts";
 import { HandleWrap } from "ext:deno_node/internal_binding/handle_wrap.ts";
+import { ownerSymbol } from "ext:deno_node/internal/async_hooks.ts";
 import {
   AsyncWrap,
   providerType,
 } from "ext:deno_node/internal_binding/async_wrap.ts";
 import { codeMap } from "ext:deno_node/internal_binding/uv.ts";
 
-interface Reader {
+export interface Reader {
   read(p: Uint8Array): Promise<number | null>;
 }
 
-interface Writer {
+export interface Writer {
   write(p: Uint8Array): Promise<number>;
 }
 
@@ -56,7 +57,12 @@ export interface Closer {
   close(): void;
 }
 
-type Ref = { ref(): void; unref(): void };
+export interface Ref {
+  ref(): void;
+  unref(): void;
+}
+
+export interface StreamBase extends Reader, Writer, Closer, Ref {}
 
 const enum StreamBaseStateFields {
   kReadBytesOrError,
@@ -338,7 +344,8 @@ export class LibuvStreamWrap extends HandleWrap {
       ) {
         nread = codeMap.get("ECONNRESET")!;
       } else {
-        nread = codeMap.get("UNKNOWN")!;
+        this[ownerSymbol].destroy(e);
+        return;
       }
     }
 

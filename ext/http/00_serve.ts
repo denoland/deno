@@ -457,7 +457,7 @@ function fastSyncResponseOrStream(
   // At this point in the response it needs to be a stream
   if (!ObjectPrototypeIsPrototypeOf(ReadableStreamPrototype, stream)) {
     innerRequest?.close();
-    throw TypeError("invalid response");
+    throw new TypeError("invalid response");
   }
   const resourceBacking = getReadableStreamResourceBacking(stream);
   let rid, autoClose;
@@ -506,13 +506,13 @@ function mapToCallback(context, callback, onError) {
 
       // Throwing Error if the handler return value is not a Response class
       if (!ObjectPrototypeIsPrototypeOf(ResponsePrototype, response)) {
-        throw TypeError(
+        throw new TypeError(
           "Return value from serve handler must be a response or a promise resolving to a response",
         );
       }
 
       if (response.bodyUsed) {
-        throw TypeError(
+        throw new TypeError(
           "The body of the Response returned from the serve handler has already been consumed.",
         );
       }
@@ -520,11 +520,12 @@ function mapToCallback(context, callback, onError) {
       try {
         response = await onError(error);
         if (!ObjectPrototypeIsPrototypeOf(ResponsePrototype, response)) {
-          throw TypeError(
+          throw new TypeError(
             "Return value from onError handler must be a response or a promise resolving to a response",
           );
         }
       } catch (error) {
+        // deno-lint-ignore no-console
         console.error("Exception in onError while handling exception", error);
         response = internalServerError();
       }
@@ -533,6 +534,7 @@ function mapToCallback(context, callback, onError) {
     if (innerRequest?.[_upgraded]) {
       // We're done here as the connection has been upgraded during the callback and no longer requires servicing.
       if (response !== UPGRADE_RESPONSE_SENTINEL) {
+        // deno-lint-ignore no-console
         console.error("Upgrade response was not returned from callback");
         context.close();
       }
@@ -579,6 +581,23 @@ type RawServeOptions = {
   handler?: RawHandler;
 };
 
+const kLoadBalanced = Symbol("kLoadBalanced");
+
+function formatHostName(hostname: string): string {
+  // If the hostname is "0.0.0.0", we display "localhost" in console
+  // because browsers in Windows don't resolve "0.0.0.0".
+  // See the discussion in https://github.com/denoland/deno_std/issues/1165
+  if (
+    (Deno.build.os === "windows") &&
+    (hostname == "0.0.0.0" || hostname == "::")
+  ) {
+    return "localhost";
+  }
+
+  // Add brackets around ipv6 hostname
+  return StringPrototypeIncludes(hostname, ":") ? `[${hostname}]` : hostname;
+}
+
 function serve(arg1, arg2) {
   let options: RawServeOptions | undefined;
   let handler: RawHandler | undefined;
@@ -610,6 +629,7 @@ function serve(arg1, arg2) {
   const wantsUnix = ObjectHasOwn(options, "path");
   const signal = options.signal;
   const onError = options.onError ?? function (error) {
+    // deno-lint-ignore no-console
     console.error(error);
     return internalServerError();
   };
@@ -625,7 +645,8 @@ function serve(arg1, arg2) {
       if (options.onListen) {
         options.onListen(listener.addr);
       } else {
-        console.log(`Listening on ${path}`);
+        // deno-lint-ignore no-console
+        console.error(`Listening on ${path}`);
       }
     });
   }
@@ -634,6 +655,7 @@ function serve(arg1, arg2) {
     hostname: options.hostname ?? "0.0.0.0",
     port: options.port ?? 8000,
     reusePort: options.reusePort ?? false,
+    loadBalanced: options[kLoadBalanced] ?? false,
   };
 
   if (options.certFile || options.keyFile) {
@@ -665,23 +687,15 @@ function serve(arg1, arg2) {
   }
 
   const addr = listener.addr;
-  // If the hostname is "0.0.0.0", we display "localhost" in console
-  // because browsers in Windows don't resolve "0.0.0.0".
-  // See the discussion in https://github.com/denoland/deno_std/issues/1165
-  const hostname = (addr.hostname == "0.0.0.0" || addr.hostname == "::") &&
-      (Deno.build.os === "windows")
-    ? "localhost"
-    : addr.hostname;
-  addr.hostname = hostname;
 
   const onListen = (scheme) => {
     if (options.onListen) {
       options.onListen(addr);
     } else {
-      const host = StringPrototypeIncludes(addr.hostname, ":")
-        ? `[${addr.hostname}]`
-        : addr.hostname;
-      console.log(`Listening on ${scheme}${host}:${addr.port}/`);
+      const host = formatHostName(addr.hostname);
+
+      // deno-lint-ignore no-console
+      console.error(`Listening on ${scheme}${host}:${addr.port}/`);
     }
   };
 
@@ -726,6 +740,7 @@ function serveHttpOn(context, addr, callback) {
 
   const promiseErrorHandler = (error) => {
     // Abnormal exit
+    // deno-lint-ignore no-console
     console.error(
       "Terminating Deno.serve loop due to unexpected error",
       error,
@@ -842,21 +857,31 @@ function registerDeclarativeServer(exports) {
         "Invalid type for fetch: must be a function with a single or no parameter",
       );
     }
-    return ({ servePort, serveHost }) => {
+    return ({ servePort, serveHost, serveIsMain, serveWorkerCount }) => {
       Deno.serve({
         port: servePort,
         hostname: serveHost,
+        [kLoadBalanced]: (serveIsMain && serveWorkerCount > 1) ||
+          (serveWorkerCount !== null),
         onListen: ({ port, hostname }) => {
-          console.debug(
-            `%cdeno serve%c: Listening on %chttp://${hostname}:${port}/%c`,
-            "color: green",
-            "color: inherit",
-            "color: yellow",
-            "color: inherit",
-          );
+          if (serveIsMain) {
+            const nThreads = serveWorkerCount > 1
+              ? ` with ${serveWorkerCount} threads`
+              : "";
+            const host = formatHostName(hostname);
+
+            // deno-lint-ignore no-console
+            console.error(
+              `%cdeno serve%c: Listening on %chttp://${host}:${port}/%c${nThreads}`,
+              "color: green",
+              "color: inherit",
+              "color: yellow",
+              "color: inherit",
+            );
+          }
         },
-        handler: (req) => {
-          return exports.fetch(req);
+        handler: (req, connInfo) => {
+          return exports.fetch(req, connInfo);
         },
       });
     };

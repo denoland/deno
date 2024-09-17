@@ -56,6 +56,7 @@ use deno_runtime::deno_io::StdioPipe;
 use deno_runtime::deno_permissions::Permissions;
 use deno_runtime::deno_permissions::PermissionsContainer;
 use deno_runtime::fmt_errors::format_js_error;
+use deno_runtime::permissions::RuntimePermissionDescriptorParser;
 use deno_runtime::tokio_util::create_and_run_current_thread;
 use deno_runtime::worker::MainWorker;
 use deno_runtime::WorkerExecutionMode;
@@ -288,6 +289,11 @@ impl From<&TestDescription> for TestFailureDescription {
   }
 }
 
+#[derive(Debug, Default, Clone, PartialEq)]
+pub struct TestFailureFormatOptions {
+  pub hide_stacktraces: bool,
+}
+
 #[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Debug, Clone, PartialEq, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -302,52 +308,55 @@ pub enum TestFailure {
   HasSanitizersAndOverlaps(IndexSet<String>), // Long names of overlapped tests
 }
 
-impl std::fmt::Display for TestFailure {
-  fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+impl TestFailure {
+  pub fn format(
+    &self,
+    options: &TestFailureFormatOptions,
+  ) -> Cow<'static, str> {
     match self {
       TestFailure::JsError(js_error) => {
-        write!(f, "{}", format_test_error(js_error))
+        Cow::Owned(format_test_error(js_error, options))
       }
-      TestFailure::FailedSteps(1) => write!(f, "1 test step failed."),
-      TestFailure::FailedSteps(n) => write!(f, "{n} test steps failed."),
+      TestFailure::FailedSteps(1) => Cow::Borrowed("1 test step failed."),
+      TestFailure::FailedSteps(n) => {
+        Cow::Owned(format!("{} test steps failed.", n))
+      }
       TestFailure::IncompleteSteps => {
-        write!(f, "Completed while steps were still running. Ensure all steps are awaited with `await t.step(...)`.")
+        Cow::Borrowed("Completed while steps were still running. Ensure all steps are awaited with `await t.step(...)`.")
       }
       TestFailure::Incomplete => {
-        write!(
-          f,
-          "Didn't complete before parent. Await step with `await t.step(...)`."
-        )
+        Cow::Borrowed("Didn't complete before parent. Await step with `await t.step(...)`.")
       }
       TestFailure::Leaked(details, trailer_notes) => {
-        write!(f, "Leaks detected:")?;
+        let mut f = String::new();
+        write!(f, "Leaks detected:").unwrap();
         for detail in details {
-          write!(f, "\n  - {}", detail)?;
+          write!(f, "\n  - {}", detail).unwrap();
         }
         for trailer in trailer_notes {
-          write!(f, "\n{}", trailer)?;
+          write!(f, "\n{}", trailer).unwrap();
         }
-        Ok(())
+        Cow::Owned(f)
       }
       TestFailure::OverlapsWithSanitizers(long_names) => {
-        write!(f, "Started test step while another test step with sanitizers was running:")?;
+        let mut f = String::new();
+        write!(f, "Started test step while another test step with sanitizers was running:").unwrap();
         for long_name in long_names {
-          write!(f, "\n  * {}", long_name)?;
+          write!(f, "\n  * {}", long_name).unwrap();
         }
-        Ok(())
+        Cow::Owned(f)
       }
       TestFailure::HasSanitizersAndOverlaps(long_names) => {
-        write!(f, "Started test step with sanitizers while another test step was running:")?;
+        let mut f = String::new();
+        write!(f, "Started test step with sanitizers while another test step was running:").unwrap();
         for long_name in long_names {
-          write!(f, "\n  * {}", long_name)?;
+          write!(f, "\n  * {}", long_name).unwrap();
         }
-        Ok(())
+        Cow::Owned(f)
       }
     }
   }
-}
 
-impl TestFailure {
   pub fn overview(&self) -> String {
     match self {
       TestFailure::JsError(js_error) => js_error.exception_message.clone(),
@@ -367,10 +376,6 @@ impl TestFailure {
           .to_string()
       }
     }
-  }
-
-  pub fn detail(&self) -> String {
-    self.to_string()
   }
 
   fn format_label(&self) -> String {
@@ -512,6 +517,7 @@ struct TestSpecifiersOptions {
   specifier: TestSpecifierOptions,
   reporter: TestReporterConfig,
   junit_path: Option<String>,
+  hide_stacktraces: bool,
 }
 
 #[derive(Debug, Default, Clone)]
@@ -545,23 +551,31 @@ impl TestSummary {
 
 fn get_test_reporter(options: &TestSpecifiersOptions) -> Box<dyn TestReporter> {
   let parallel = options.concurrent_jobs.get() > 1;
+  let failure_format_options = TestFailureFormatOptions {
+    hide_stacktraces: options.hide_stacktraces,
+  };
   let reporter: Box<dyn TestReporter> = match &options.reporter {
-    TestReporterConfig::Dot => {
-      Box::new(DotTestReporter::new(options.cwd.clone()))
-    }
+    TestReporterConfig::Dot => Box::new(DotTestReporter::new(
+      options.cwd.clone(),
+      failure_format_options,
+    )),
     TestReporterConfig::Pretty => Box::new(PrettyTestReporter::new(
       parallel,
       options.log_level != Some(Level::Error),
       options.filter,
       false,
       options.cwd.clone(),
+      failure_format_options,
     )),
-    TestReporterConfig::Junit => {
-      Box::new(JunitTestReporter::new(options.cwd.clone(), "-".to_string()))
-    }
+    TestReporterConfig::Junit => Box::new(JunitTestReporter::new(
+      options.cwd.clone(),
+      "-".to_string(),
+      failure_format_options,
+    )),
     TestReporterConfig::Tap => Box::new(TapTestReporter::new(
       options.cwd.clone(),
       options.concurrent_jobs > NonZeroUsize::new(1).unwrap(),
+      failure_format_options,
     )),
   };
 
@@ -569,6 +583,9 @@ fn get_test_reporter(options: &TestSpecifiersOptions) -> Box<dyn TestReporter> {
     let junit = Box::new(JunitTestReporter::new(
       options.cwd.clone(),
       junit_path.to_string(),
+      TestFailureFormatOptions {
+        hide_stacktraces: options.hide_stacktraces,
+      },
     ));
     return Box::new(CompoundTestReporter::new(vec![reporter, junit]));
   }
@@ -579,7 +596,7 @@ fn get_test_reporter(options: &TestSpecifiersOptions) -> Box<dyn TestReporter> {
 async fn configure_main_worker(
   worker_factory: Arc<CliMainWorkerFactory>,
   specifier: &Url,
-  permissions: Permissions,
+  permissions_container: PermissionsContainer,
   worker_sender: TestEventWorkerSender,
   options: &TestSpecifierOptions,
 ) -> Result<(Option<Box<dyn CoverageCollector>>, MainWorker), anyhow::Error> {
@@ -587,7 +604,7 @@ async fn configure_main_worker(
     .create_custom_worker(
       WorkerExecutionMode::Test,
       specifier.clone(),
-      PermissionsContainer::new(permissions),
+      permissions_container,
       vec![ops::testing::deno_test::init_ops(worker_sender.sender)],
       Stdio {
         stdin: StdioPipe::inherit(),
@@ -630,7 +647,7 @@ async fn configure_main_worker(
 /// both.
 pub async fn test_specifier(
   worker_factory: Arc<CliMainWorkerFactory>,
-  permissions: Permissions,
+  permissions_container: PermissionsContainer,
   specifier: ModuleSpecifier,
   worker_sender: TestEventWorkerSender,
   fail_fast_tracker: FailFastTracker,
@@ -642,7 +659,7 @@ pub async fn test_specifier(
   let (coverage_collector, mut worker) = configure_main_worker(
     worker_factory,
     &specifier,
-    permissions,
+    permissions_container,
     worker_sender,
     &options,
   )
@@ -1311,9 +1328,8 @@ async fn fetch_inline_files(
 ) -> Result<Vec<File>, AnyError> {
   let mut files = Vec::new();
   for specifier in specifiers {
-    let fetch_permissions = PermissionsContainer::allow_all();
     let file = file_fetcher
-      .fetch(&specifier, &fetch_permissions)
+      .fetch_bypass_permissions(&specifier)
       .await?
       .into_text_decoded()?;
 
@@ -1391,6 +1407,7 @@ static HAS_TEST_RUN_SIGINT_HANDLER: AtomicBool = AtomicBool::new(false);
 async fn test_specifiers(
   worker_factory: Arc<CliMainWorkerFactory>,
   permissions: &Permissions,
+  permission_desc_parser: &Arc<RuntimePermissionDescriptorParser>,
   specifiers: Vec<ModuleSpecifier>,
   options: TestSpecifiersOptions,
 ) -> Result<(), AnyError> {
@@ -1418,14 +1435,17 @@ async fn test_specifiers(
 
   let join_handles = specifiers.into_iter().map(move |specifier| {
     let worker_factory = worker_factory.clone();
-    let permissions = permissions.clone();
+    let permissions_container = PermissionsContainer::new(
+      permission_desc_parser.clone(),
+      permissions.clone(),
+    );
     let worker_sender = test_event_sender_factory.worker();
     let fail_fast_tracker = fail_fast_tracker.clone();
     let specifier_options = options.specifier.clone();
     spawn_blocking(move || {
       create_and_run_current_thread(test_specifier(
         worker_factory,
-        permissions,
+        permissions_container,
         specifier,
         worker_sender,
         fail_fast_tracker,
@@ -1723,9 +1743,7 @@ async fn fetch_specifiers_with_test_mode(
     .collect::<Vec<_>>();
 
   for (specifier, mode) in &mut specifiers_with_mode {
-    let file = file_fetcher
-      .fetch(specifier, &PermissionsContainer::allow_all())
-      .await?;
+    let file = file_fetcher.fetch_bypass_permissions(specifier).await?;
 
     let (media_type, _) = file.resolve_media_type_and_charset();
     if matches!(media_type, MediaType::Unknown | MediaType::Dts) {
@@ -1748,8 +1766,11 @@ pub async fn run_tests(
   // Various test files should not share the same permissions in terms of
   // `PermissionsContainer` - otherwise granting/revoking permissions in one
   // file would have impact on other files, which is undesirable.
-  let permissions =
-    Permissions::from_options(&cli_options.permissions_options()?)?;
+  let permission_desc_parser = factory.permission_desc_parser()?;
+  let permissions = Permissions::from_options(
+    permission_desc_parser.as_ref(),
+    &cli_options.permissions_options(),
+  )?;
   let log_level = cli_options.log_level();
 
   let members_with_test_options =
@@ -1762,7 +1783,8 @@ pub async fn run_tests(
   )
   .await?;
 
-  if !workspace_test_options.allow_none && specifiers_with_mode.is_empty() {
+  if !workspace_test_options.permit_no_files && specifiers_with_mode.is_empty()
+  {
     return Err(generic_error("No test modules found"));
   }
 
@@ -1785,6 +1807,7 @@ pub async fn run_tests(
   test_specifiers(
     worker_factory,
     &permissions,
+    permission_desc_parser,
     specifiers_with_mode
       .into_iter()
       .filter_map(|(s, m)| match m {
@@ -1807,6 +1830,7 @@ pub async fn run_tests(
       filter: workspace_test_options.filter.is_some(),
       reporter: workspace_test_options.reporter,
       junit_path: workspace_test_options.junit_path,
+      hide_stacktraces: workspace_test_options.hide_stacktraces,
       specifier: TestSpecifierOptions {
         filter: TestFilter::from_flag(&workspace_test_options.filter),
         shuffle: workspace_test_options.shuffle,
@@ -1896,8 +1920,11 @@ pub async fn run_tests_with_watch(
           .flatten()
           .collect::<Vec<_>>();
 
-        let permissions =
-          Permissions::from_options(&cli_options.permissions_options()?)?;
+        let permission_desc_parser = factory.permission_desc_parser()?;
+        let permissions = Permissions::from_options(
+          permission_desc_parser.as_ref(),
+          &cli_options.permissions_options(),
+        )?;
         let graph = module_graph_creator
           .create_graph(graph_kind, test_modules)
           .await?;
@@ -1951,6 +1978,7 @@ pub async fn run_tests_with_watch(
         test_specifiers(
           worker_factory,
           &permissions,
+          permission_desc_parser,
           specifiers_with_mode
             .into_iter()
             .filter_map(|(s, m)| match m {
@@ -1973,6 +2001,7 @@ pub async fn run_tests_with_watch(
             filter: workspace_test_options.filter.is_some(),
             reporter: workspace_test_options.reporter,
             junit_path: workspace_test_options.junit_path,
+            hide_stacktraces: workspace_test_options.hide_stacktraces,
             specifier: TestSpecifierOptions {
               filter: TestFilter::from_flag(&workspace_test_options.filter),
               shuffle: workspace_test_options.shuffle,

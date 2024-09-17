@@ -1,15 +1,19 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
+// deno-lint-ignore-file no-console
+
 import EventEmitter from "node:events";
 import http, { type RequestOptions, type ServerResponse } from "node:http";
 import url from "node:url";
 import https from "node:https";
 import net from "node:net";
 import fs from "node:fs";
+import { text } from "node:stream/consumers";
 
 import { assert, assertEquals, fail } from "@std/assert";
 import { assertSpyCalls, spy } from "@std/testing/mock";
 import { fromFileUrl, relative } from "@std/path";
+import { retry } from "@std/async/retry";
 
 import { gzip } from "node:zlib";
 import { Buffer } from "node:buffer";
@@ -1118,6 +1122,27 @@ Deno.test("[node/http] ServerResponse appendHeader", async () => {
   await promise;
 });
 
+Deno.test("[node/http] ServerResponse appendHeader set-cookie", async () => {
+  const { promise, resolve } = Promise.withResolvers<void>();
+  const server = http.createServer((_req, res) => {
+    res.appendHeader("Set-Cookie", "a=b");
+    res.appendHeader("Set-Cookie", "c=d");
+    res.end("Hello World");
+  });
+
+  server.listen(async () => {
+    const { port } = server.address() as { port: number };
+    const res = await fetch(`http://localhost:${port}`);
+    assertEquals(res.headers.getSetCookie(), ["a=b", "c=d"]);
+    assertEquals(await res.text(), "Hello World");
+    server.close(() => {
+      resolve();
+    });
+  });
+
+  await promise;
+});
+
 Deno.test("[node/http] IncomingMessage override", () => {
   const req = new http.IncomingMessage(new net.Socket());
   // https://github.com/dougmoscrop/serverless-http/blob/3aaa6d0fe241109a8752efb011c242d249f32368/lib/request.js#L20-L30
@@ -1517,4 +1542,133 @@ Deno.test("[node/http] ClientRequest PUT subarray", async () => {
   req.end(payload);
   await promise;
   assertEquals(body, "world");
+});
+
+Deno.test("[node/http] req.url equals pathname + search", async () => {
+  const { promise, resolve } = Promise.withResolvers<void>();
+
+  const server = http.createServer((req, res) => res.end(req.url));
+  server.listen(async () => {
+    const { port } = server.address() as net.AddressInfo;
+    const res = await fetch(`http://localhost:${port}/foo/bar?baz=1`);
+    const text = await res.text();
+    assertEquals(text, "/foo/bar?baz=1");
+
+    server.close(() => {
+      resolve();
+    });
+  });
+
+  await promise;
+});
+
+Deno.test("[node/http] ClientRequest content-disposition header works", async () => {
+  const payload = Buffer.from("hello world");
+  let body = "";
+  let headers = {} as http.IncomingHttpHeaders;
+  const { promise, resolve, reject } = Promise.withResolvers<void>();
+  const req = http.request("http://localhost:4545/echo_server", {
+    method: "PUT",
+    headers: {
+      "content-disposition": "attachment",
+    },
+  }, (resp) => {
+    headers = resp.headers;
+    resp.on("data", (chunk) => {
+      body += chunk;
+    });
+
+    resp.on("end", () => {
+      resolve();
+    });
+  });
+  req.once("error", (e) => reject(e));
+  req.end(payload);
+  await promise;
+  assertEquals(body, "hello world");
+  assertEquals(headers["content-disposition"], "attachment");
+});
+
+Deno.test("[node/http] In ClientRequest, option.hostname has precedence over options.host", async () => {
+  const responseReceived = Promise.withResolvers<void>();
+
+  new http.ClientRequest({
+    hostname: "localhost",
+    host: "invalid-hostname.test",
+    port: 4545,
+    path: "/http_version",
+  }).on("response", async (res) => {
+    assertEquals(res.statusCode, 200);
+    assertEquals(await text(res), "HTTP/1.1");
+    responseReceived.resolve();
+  }).end();
+
+  await responseReceived.promise;
+});
+
+Deno.test("[node/http] upgraded socket closes when the server closed without closing handshake", async () => {
+  const clientSocketClosed = Promise.withResolvers<void>();
+  const serverProcessClosed = Promise.withResolvers<void>();
+
+  // Uses the server in different process to shutdown it without closing handshake
+  const server = `
+    Deno.serve({ port: 1337 }, (req) => {
+      if (req.headers.get("upgrade") != "websocket") {
+        return new Response("ok");
+      }
+      console.log("upgrade on server");
+      const { socket, response } = Deno.upgradeWebSocket(req);
+      socket.addEventListener("message", (event) => {
+        console.log("server received", event.data);
+        socket.send("pong");
+      });
+      return response;
+    });
+  `;
+
+  const p = new Deno.Command("deno", { args: ["eval", server] }).spawn();
+
+  // Wait for the server to respond
+  await retry(async () => {
+    const resp = await fetch("http://localhost:1337");
+    const _text = await resp.text();
+  });
+
+  const options = {
+    port: 1337,
+    host: "127.0.0.1",
+    headers: {
+      "Connection": "Upgrade",
+      "Upgrade": "websocket",
+      "Sec-WebSocket-Key": "dGhlIHNhbXBsZSBub25jZQ==",
+    },
+  };
+
+  http.request(options).on("upgrade", (_res, socket) => {
+    socket.on("close", () => {
+      console.log("client socket closed");
+      clientSocketClosed.resolve();
+    });
+    socket.on("data", async (data) => {
+      // receives pong message
+      assertEquals(data, Buffer.from("8104706f6e67", "hex"));
+
+      p.kill();
+      await p.status;
+
+      console.log("process closed");
+      serverProcessClosed.resolve();
+
+      // sending some additional message
+      socket.write(Buffer.from("81847de88e01", "hex"));
+      socket.write(Buffer.from("0d81e066", "hex"));
+    });
+
+    // sending ping message
+    socket.write(Buffer.from("81847de88e01", "hex"));
+    socket.write(Buffer.from("0d81e066", "hex"));
+  }).end();
+
+  await clientSocketClosed.promise;
+  await serverProcessClosed.promise;
 });

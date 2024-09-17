@@ -2,4 +2,7 @@
 /// <reference lib="deno.ns" />
 
 // unstable apis removed here, so should error
-Deno.dlopen("path/to/lib", {});
+Deno.listenDatagram({
+  port: 3000,
+  transport: "udp",
+});

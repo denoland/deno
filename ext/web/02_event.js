@@ -392,6 +392,7 @@ const EventPrototype = Event.prototype;
 // Not spec compliant. The spec defines it as [LegacyUnforgeable]
 // but doing so has a big performance hit
 ReflectDefineProperty(Event.prototype, "isTrusted", {
+  __proto__: null,
   enumerable: true,
   get: isTrusted,
 });
@@ -402,7 +403,10 @@ function defineEnumerableProps(
 ) {
   for (let i = 0; i < props.length; ++i) {
     const prop = props[i];
-    ReflectDefineProperty(Ctor.prototype, prop, { enumerable: true });
+    ReflectDefineProperty(Ctor.prototype, prop, {
+      __proto__: null,
+      enumerable: true,
+    });
   }
 }
 
@@ -1274,6 +1278,7 @@ class CustomEvent extends Event {
 const CustomEventPrototype = CustomEvent.prototype;
 
 ReflectDefineProperty(CustomEvent.prototype, "detail", {
+  __proto__: null,
   enumerable: true,
 });
 
@@ -1417,6 +1422,7 @@ function defineEventHandler(
 ) {
   // HTML specification section 8.1.7.1
   ObjectDefineProperty(emitter, `on${name}`, {
+    __proto__: null,
     get() {
       if (!this[_eventHandlers]) {
         return null;

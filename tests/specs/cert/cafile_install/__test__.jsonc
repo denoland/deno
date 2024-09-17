@@ -9,6 +9,7 @@
       "echo_test",
       "--root",
       "$PWD",
+      "-g",
       "https://localhost:5545/echo.ts"
     ],
     "output": "[WILDCARD]"

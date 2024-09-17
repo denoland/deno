@@ -1,4 +1,7 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
+
+// deno-lint-ignore-file no-console
+
 import {
   assert,
   assertEquals,
@@ -120,7 +123,7 @@ Deno.test({ permissions: { net: true } }, async function fetchJsonSuccess() {
 Deno.test({ permissions: { net: false } }, async function fetchPerm() {
   await assertRejects(async () => {
     await fetch("http://localhost:4545/assets/fixture.json");
-  }, Deno.errors.PermissionDenied);
+  }, Deno.errors.NotCapable);
 });
 
 Deno.test({ permissions: { net: true } }, async function fetchUrl() {
@@ -1127,7 +1130,7 @@ Deno.test(function fetchResponseConstructorInvalidStatus() {
       assert(e instanceof RangeError);
       assert(
         e.message.endsWith(
-          "is not equal to 101 and outside the range [200, 599].",
+          "is not equal to 101 and outside the range [200, 599]",
         ),
       );
     }
@@ -1633,7 +1636,7 @@ Deno.test(
 Deno.test({ permissions: { read: false } }, async function fetchFilePerm() {
   await assertRejects(async () => {
     await fetch(import.meta.resolve("../testdata/subdir/json_1.json"));
-  }, Deno.errors.PermissionDenied);
+  }, Deno.errors.NotCapable);
 });
 
 Deno.test(
@@ -1641,7 +1644,7 @@ Deno.test(
   async function fetchFilePermDoesNotExist() {
     await assertRejects(async () => {
       await fetch(import.meta.resolve("./bad.json"));
-    }, Deno.errors.PermissionDenied);
+    }, Deno.errors.NotCapable);
   },
 );
 
@@ -1658,7 +1661,7 @@ Deno.test(
         );
       },
       TypeError,
-      "Fetching files only supports the GET method. Received POST.",
+      "Fetching files only supports the GET method: received POST",
     );
   },
 );

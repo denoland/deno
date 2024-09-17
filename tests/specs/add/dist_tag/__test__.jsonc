@@ -3,7 +3,7 @@
   "steps": [
     {
       "args": "add npm:ajv@latest",
-      "output": "Add npm:ajv@8.11.0\n"
+      "output": "add.out"
     }
   ]
 }

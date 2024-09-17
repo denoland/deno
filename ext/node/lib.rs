@@ -3,8 +3,10 @@
 #![deny(clippy::print_stderr)]
 #![deny(clippy::print_stdout)]
 
+use std::borrow::Cow;
 use std::collections::HashSet;
 use std::path::Path;
+use std::path::PathBuf;
 
 use deno_core::error::AnyError;
 use deno_core::located_script_name;
@@ -49,54 +51,29 @@ pub trait NodePermissions {
     url: &Url,
     api_name: &str,
   ) -> Result<(), AnyError>;
+  #[must_use = "the resolved return value to mitigate time-of-check to time-of-use issues"]
   #[inline(always)]
-  fn check_read(&mut self, path: &Path) -> Result<(), AnyError> {
+  fn check_read(&mut self, path: &str) -> Result<PathBuf, AnyError> {
     self.check_read_with_api_name(path, None)
   }
+  #[must_use = "the resolved return value to mitigate time-of-check to time-of-use issues"]
   fn check_read_with_api_name(
     &mut self,
-    path: &Path,
+    path: &str,
     api_name: Option<&str>,
-  ) -> Result<(), AnyError>;
+  ) -> Result<PathBuf, AnyError>;
+  #[must_use = "the resolved return value to mitigate time-of-check to time-of-use issues"]
+  fn check_read_path<'a>(
+    &mut self,
+    path: &'a Path,
+  ) -> Result<Cow<'a, Path>, AnyError>;
   fn check_sys(&mut self, kind: &str, api_name: &str) -> Result<(), AnyError>;
+  #[must_use = "the resolved return value to mitigate time-of-check to time-of-use issues"]
   fn check_write_with_api_name(
     &mut self,
-    path: &Path,
+    path: &str,
     api_name: Option<&str>,
-  ) -> Result<(), AnyError>;
-}
-
-pub struct AllowAllNodePermissions;
-
-impl NodePermissions for AllowAllNodePermissions {
-  fn check_net_url(
-    &mut self,
-    _url: &Url,
-    _api_name: &str,
-  ) -> Result<(), AnyError> {
-    Ok(())
-  }
-  fn check_read_with_api_name(
-    &mut self,
-    _path: &Path,
-    _api_name: Option<&str>,
-  ) -> Result<(), AnyError> {
-    Ok(())
-  }
-  fn check_write_with_api_name(
-    &mut self,
-    _path: &Path,
-    _api_name: Option<&str>,
-  ) -> Result<(), AnyError> {
-    Ok(())
-  }
-  fn check_sys(
-    &mut self,
-    _kind: &str,
-    _api_name: &str,
-  ) -> Result<(), AnyError> {
-    Ok(())
-  }
+  ) -> Result<PathBuf, AnyError>;
 }
 
 impl NodePermissions for deno_permissions::PermissionsContainer {
@@ -112,20 +89,27 @@ impl NodePermissions for deno_permissions::PermissionsContainer {
   #[inline(always)]
   fn check_read_with_api_name(
     &mut self,
-    path: &Path,
+    path: &str,
     api_name: Option<&str>,
-  ) -> Result<(), AnyError> {
+  ) -> Result<PathBuf, AnyError> {
     deno_permissions::PermissionsContainer::check_read_with_api_name(
       self, path, api_name,
     )
   }
 
+  fn check_read_path<'a>(
+    &mut self,
+    path: &'a Path,
+  ) -> Result<Cow<'a, Path>, AnyError> {
+    deno_permissions::PermissionsContainer::check_read_path(self, path, None)
+  }
+
   #[inline(always)]
   fn check_write_with_api_name(
     &mut self,
-    path: &Path,
+    path: &str,
     api_name: Option<&str>,
-  ) -> Result<(), AnyError> {
+  ) -> Result<PathBuf, AnyError> {
     deno_permissions::PermissionsContainer::check_write_with_api_name(
       self, path, api_name,
     )
@@ -181,15 +165,6 @@ fn op_node_build_os() -> String {
   env!("TARGET").split('-').nth(2).unwrap().to_string()
 }
 
-#[op2(fast)]
-fn op_node_is_promise_rejected(value: v8::Local<v8::Value>) -> bool {
-  let Ok(promise) = v8::Local::<v8::Promise>::try_from(value) else {
-    return false;
-  };
-
-  promise.state() == v8::PromiseState::Rejected
-}
-
 #[op2]
 #[string]
 fn op_npm_process_state(state: &mut OpState) -> Result<String, AnyError> {
@@ -226,6 +201,7 @@ deno_core::extension!(deno_node,
     ops::crypto::op_node_cipheriv_encrypt,
     ops::crypto::op_node_cipheriv_final,
     ops::crypto::op_node_cipheriv_set_aad,
+    ops::crypto::op_node_cipheriv_take,
     ops::crypto::op_node_create_cipheriv,
     ops::crypto::op_node_create_decipheriv,
     ops::crypto::op_node_create_hash,
@@ -260,8 +236,13 @@ deno_core::extension!(deno_node,
     ops::crypto::op_node_scrypt_async,
     ops::crypto::op_node_scrypt_sync,
     ops::crypto::op_node_sign,
+    ops::crypto::op_node_sign_ed25519,
     ops::crypto::op_node_verify,
+    ops::crypto::op_node_verify_ed25519,
     ops::crypto::keys::op_node_create_private_key,
+    ops::crypto::keys::op_node_create_ed_raw,
+    ops::crypto::keys::op_node_create_rsa_jwk,
+    ops::crypto::keys::op_node_create_ec_jwk,
     ops::crypto::keys::op_node_create_public_key,
     ops::crypto::keys::op_node_create_secret_key,
     ops::crypto::keys::op_node_derive_public_key_from_private_key,
@@ -270,6 +251,7 @@ deno_core::extension!(deno_node,
     ops::crypto::keys::op_node_export_private_key_pem,
     ops::crypto::keys::op_node_export_public_key_der,
     ops::crypto::keys::op_node_export_public_key_pem,
+    ops::crypto::keys::op_node_export_public_key_jwk,
     ops::crypto::keys::op_node_export_secret_key_b64url,
     ops::crypto::keys::op_node_export_secret_key,
     ops::crypto::keys::op_node_generate_dh_group_key_async,
@@ -308,6 +290,7 @@ deno_core::extension!(deno_node,
     ops::crypto::x509::op_node_x509_get_valid_to,
     ops::crypto::x509::op_node_x509_get_serial_number,
     ops::crypto::x509::op_node_x509_key_usage,
+    ops::crypto::x509::op_node_x509_public_key,
     ops::fs::op_node_fs_exists_sync<P>,
     ops::fs::op_node_fs_exists<P>,
     ops::fs::op_node_cp_sync<P>,
@@ -320,6 +303,25 @@ deno_core::extension!(deno_node,
     ops::winerror::op_node_sys_to_uv_error,
     ops::v8::op_v8_cached_data_version_tag,
     ops::v8::op_v8_get_heap_statistics,
+    ops::v8::op_v8_get_wire_format_version,
+    ops::v8::op_v8_new_deserializer,
+    ops::v8::op_v8_new_serializer,
+    ops::v8::op_v8_read_double,
+    ops::v8::op_v8_read_header,
+    ops::v8::op_v8_read_raw_bytes,
+    ops::v8::op_v8_read_uint32,
+    ops::v8::op_v8_read_uint64,
+    ops::v8::op_v8_read_value,
+    ops::v8::op_v8_release_buffer,
+    ops::v8::op_v8_set_treat_array_buffer_views_as_host_objects,
+    ops::v8::op_v8_transfer_array_buffer,
+    ops::v8::op_v8_transfer_array_buffer_de,
+    ops::v8::op_v8_write_double,
+    ops::v8::op_v8_write_header,
+    ops::v8::op_v8_write_raw_bytes,
+    ops::v8::op_v8_write_uint32,
+    ops::v8::op_v8_write_uint64,
+    ops::v8::op_v8_write_value,
     ops::vm::op_vm_create_script,
     ops::vm::op_vm_create_context,
     ops::vm::op_vm_script_run_in_context,
@@ -372,8 +374,8 @@ deno_core::extension!(deno_node,
     ops::os::op_cpus<P>,
     ops::os::op_homedir<P>,
     op_node_build_os,
-    op_node_is_promise_rejected,
     op_npm_process_state,
+    ops::require::op_require_can_parse_as_esm,
     ops::require::op_require_init_paths,
     ops::require::op_require_node_module_paths<P>,
     ops::require::op_require_proxy_path,
@@ -457,17 +459,12 @@ deno_core::extension!(deno_node,
     "_fs/_fs_write.mjs",
     "_fs/_fs_writeFile.ts",
     "_fs/_fs_writev.mjs",
-    "_http_agent.mjs",
-    "_http_common.ts",
-    "_http_outgoing.ts",
     "_next_tick.ts",
     "_process/exiting.ts",
     "_process/process.ts",
     "_process/streams.mjs",
     "_readline.mjs",
     "_stream.mjs",
-    "_tls_common.ts",
-    "_tls_wrap.ts",
     "_util/_util_callbackify.js",
     "_util/asserts.ts",
     "_util/async.ts",
@@ -479,7 +476,6 @@ deno_core::extension!(deno_node,
     "_zlib_binding.mjs",
     "_zlib.mjs",
     "assertion_error.ts",
-    "inspector.ts",
     "internal_binding/_libuv_winerror.ts",
     "internal_binding/_listen.ts",
     "internal_binding/_node.ts",
@@ -538,6 +534,7 @@ deno_core::extension!(deno_node,
     "internal/error_codes.ts",
     "internal/errors.ts",
     "internal/event_target.mjs",
+    "internal/events/abort_listener.mjs",
     "internal/fixed_queue.ts",
     "internal/fs/streams.mjs",
     "internal/fs/utils.mjs",
@@ -562,15 +559,10 @@ deno_core::extension!(deno_node,
     "internal/streams/add-abort-signal.mjs",
     "internal/streams/buffer_list.mjs",
     "internal/streams/destroy.mjs",
-    "internal/streams/duplex.mjs",
     "internal/streams/end-of-stream.mjs",
     "internal/streams/lazy_transform.mjs",
-    "internal/streams/passthrough.mjs",
-    "internal/streams/readable.mjs",
     "internal/streams/state.mjs",
-    "internal/streams/transform.mjs",
     "internal/streams/utils.mjs",
-    "internal/streams/writable.mjs",
     "internal/test/binding.ts",
     "internal/timers.mjs",
     "internal/url.ts",
@@ -591,7 +583,17 @@ deno_core::extension!(deno_node,
     "path/mod.ts",
     "path/separator.ts",
     "readline/promises.ts",
-    "wasi.ts",
+    "node:_http_agent" = "_http_agent.mjs",
+    "node:_http_common" = "_http_common.ts",
+    "node:_http_outgoing" = "_http_outgoing.ts",
+    "node:_http_server" = "_http_server.ts",
+    "node:_stream_duplex" = "internal/streams/duplex.mjs",
+    "node:_stream_passthrough" = "internal/streams/passthrough.mjs",
+    "node:_stream_readable" = "internal/streams/readable.mjs",
+    "node:_stream_transform" = "internal/streams/transform.mjs",
+    "node:_stream_writable" = "internal/streams/writable.mjs",
+    "node:_tls_common" = "_tls_common.ts",
+    "node:_tls_wrap" = "_tls_wrap.ts",
     "node:assert" = "assert.ts",
     "node:assert/strict" = "assert/strict.ts",
     "node:async_hooks" = "async_hooks.ts",
@@ -612,6 +614,8 @@ deno_core::extension!(deno_node,
     "node:http" = "http.ts",
     "node:http2" = "http2.ts",
     "node:https" = "https.ts",
+    "node:inspector" = "inspector.ts",
+    "node:inspector/promises" = "inspector.ts",
     "node:module" = "01_require.js",
     "node:net" = "net.ts",
     "node:os" = "os.ts",
@@ -635,12 +639,14 @@ deno_core::extension!(deno_node,
     "node:timers" = "timers.ts",
     "node:timers/promises" = "timers/promises.ts",
     "node:tls" = "tls.ts",
+    "node:trace_events" = "trace_events.ts",
     "node:tty" = "tty.js",
     "node:url" = "url.ts",
     "node:util" = "util.ts",
     "node:util/types" = "util/types.ts",
     "node:v8" = "v8.ts",
     "node:vm" = "vm.js",
+    "node:wasi" = "wasi.ts",
     "node:worker_threads" = "worker_threads.ts",
     "node:zlib" = "zlib.ts",
   ],
@@ -661,115 +667,116 @@ deno_core::extension!(deno_node,
   global_template_middleware = global_template_middleware,
   global_object_middleware = global_object_middleware,
   customizer = |ext: &mut deno_core::Extension| {
-    let mut external_references = Vec::with_capacity(14);
+    let external_references = [
+      vm::QUERY_MAP_FN.with(|query| {
+        ExternalReference {
+          named_query: *query,
+        }
+      }),
+      vm::GETTER_MAP_FN.with(|getter| {
+        ExternalReference {
+          named_getter: *getter,
+        }
+      }),
+      vm::SETTER_MAP_FN.with(|setter| {
+        ExternalReference {
+          named_setter: *setter,
+        }
+      }),
+      vm::DESCRIPTOR_MAP_FN.with(|descriptor| {
+        ExternalReference {
+          named_getter: *descriptor,
+        }
+      }),
+      vm::DELETER_MAP_FN.with(|deleter| {
+        ExternalReference {
+          named_deleter: *deleter,
+        }
+      }),
+      vm::ENUMERATOR_MAP_FN.with(|enumerator| {
+        ExternalReference {
+          enumerator: *enumerator,
+        }
+      }),
+      vm::DEFINER_MAP_FN.with(|definer| {
+        ExternalReference {
+          named_definer: *definer,
+        }
+      }),
 
-    vm::QUERY_MAP_FN.with(|query| {
-      external_references.push(ExternalReference {
-        named_query: *query,
-      });
-    });
-    vm::GETTER_MAP_FN.with(|getter| {
-      external_references.push(ExternalReference {
-        named_getter: *getter,
-      });
-    });
-    vm::SETTER_MAP_FN.with(|setter| {
-      external_references.push(ExternalReference {
-        named_setter: *setter,
-      });
-    });
-    vm::DESCRIPTOR_MAP_FN.with(|descriptor| {
-      external_references.push(ExternalReference {
-        named_getter: *descriptor,
-      });
-    });
-    vm::DELETER_MAP_FN.with(|deleter| {
-      external_references.push(ExternalReference {
-        named_deleter: *deleter,
-      });
-    });
-    vm::ENUMERATOR_MAP_FN.with(|enumerator| {
-      external_references.push(ExternalReference {
-        enumerator: *enumerator,
-      });
-    });
-    vm::DEFINER_MAP_FN.with(|definer| {
-      external_references.push(ExternalReference {
-        named_definer: *definer,
-      });
-    });
+      vm::INDEXED_QUERY_MAP_FN.with(|query| {
+        ExternalReference {
+          indexed_query: *query,
+        }
+      }),
+      vm::INDEXED_GETTER_MAP_FN.with(|getter| {
+        ExternalReference {
+          indexed_getter: *getter,
+        }
+      }),
+      vm::INDEXED_SETTER_MAP_FN.with(|setter| {
+        ExternalReference {
+          indexed_setter: *setter,
+        }
+      }),
+      vm::INDEXED_DESCRIPTOR_MAP_FN.with(|descriptor| {
+        ExternalReference {
+          indexed_getter: *descriptor,
+        }
+      }),
+      vm::INDEXED_DELETER_MAP_FN.with(|deleter| {
+        ExternalReference {
+          indexed_deleter: *deleter,
+        }
+      }),
+      vm::INDEXED_DEFINER_MAP_FN.with(|definer| {
+        ExternalReference {
+          indexed_definer: *definer,
+        }
+      }),
+      vm::INDEXED_ENUMERATOR_MAP_FN.with(|enumerator| {
+        ExternalReference {
+          enumerator: *enumerator,
+        }
+      }),
 
-    vm::INDEXED_QUERY_MAP_FN.with(|query| {
-      external_references.push(ExternalReference {
-        indexed_query: *query,
-      });
-    });
-    vm::INDEXED_GETTER_MAP_FN.with(|getter| {
-      external_references.push(ExternalReference {
-        indexed_getter: *getter,
-      });
-    });
-    vm::INDEXED_SETTER_MAP_FN.with(|setter| {
-      external_references.push(ExternalReference {
-        indexed_setter: *setter,
-      });
-    });
-    vm::INDEXED_DESCRIPTOR_MAP_FN.with(|descriptor| {
-      external_references.push(ExternalReference {
-        indexed_getter: *descriptor,
-      });
-    });
-    vm::INDEXED_DELETER_MAP_FN.with(|deleter| {
-      external_references.push(ExternalReference {
-        indexed_deleter: *deleter,
-      });
-    });
-    vm::INDEXED_DEFINER_MAP_FN.with(|definer| {
-      external_references.push(ExternalReference {
-        indexed_definer: *definer,
-      });
-    });
-    vm::INDEXED_ENUMERATOR_MAP_FN.with(|enumerator| {
-      external_references.push(ExternalReference {
-        enumerator: *enumerator,
-      });
-    });
+      global::GETTER_MAP_FN.with(|getter| {
+        ExternalReference {
+          named_getter: *getter,
+        }
+      }),
+      global::SETTER_MAP_FN.with(|setter| {
+        ExternalReference {
+          named_setter: *setter,
+        }
+      }),
+      global::QUERY_MAP_FN.with(|query| {
+        ExternalReference {
+          named_query: *query,
+        }
+      }),
+      global::DELETER_MAP_FN.with(|deleter| {
+        ExternalReference {
+          named_deleter: *deleter,
+        }
+      }),
+      global::ENUMERATOR_MAP_FN.with(|enumerator| {
+        ExternalReference {
+          enumerator: *enumerator,
+        }
+      }),
+      global::DEFINER_MAP_FN.with(|definer| {
+        ExternalReference {
+          named_definer: *definer,
+        }
+      }),
+      global::DESCRIPTOR_MAP_FN.with(|descriptor| {
+        ExternalReference {
+          named_getter: *descriptor,
+        }
+      }),
+    ];
 
-    global::GETTER_MAP_FN.with(|getter| {
-      external_references.push(ExternalReference {
-        named_getter: *getter,
-      });
-    });
-    global::SETTER_MAP_FN.with(|setter| {
-      external_references.push(ExternalReference {
-        named_setter: *setter,
-      });
-    });
-    global::QUERY_MAP_FN.with(|query| {
-      external_references.push(ExternalReference {
-        named_query: *query,
-      });
-    });
-    global::DELETER_MAP_FN.with(|deleter| {
-      external_references.push(ExternalReference {
-        named_deleter: *deleter,
-      });
-    });
-    global::ENUMERATOR_MAP_FN.with(|enumerator| {
-      external_references.push(ExternalReference {
-        enumerator: *enumerator,
-      });
-    });
-    global::DEFINER_MAP_FN.with(|definer| {
-      external_references.push(ExternalReference {
-        named_definer: *definer,
-      });
-    });
-    global::DESCRIPTOR_MAP_FN.with(|descriptor| {
-      external_references.push(ExternalReference {
-        named_getter: *descriptor,
-      });
-    });
     ext.external_references.to_mut().extend(external_references);
   },
 );

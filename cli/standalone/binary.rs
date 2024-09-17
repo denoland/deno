@@ -45,7 +45,7 @@ use serde::Serialize;
 use crate::args::CaData;
 use crate::args::CliOptions;
 use crate::args::CompileFlags;
-use crate::args::PackageJsonInstallDepsProvider;
+use crate::args::NpmInstallDepsProvider;
 use crate::args::PermissionFlags;
 use crate::args::UnstableConfig;
 use crate::cache::DenoDir;
@@ -53,6 +53,7 @@ use crate::file_fetcher::FileFetcher;
 use crate::http_util::HttpClientProvider;
 use crate::npm::CliNpmResolver;
 use crate::npm::InnerCliNpmResolverRef;
+use crate::shared::ReleaseChannel;
 use crate::standalone::virtual_fs::VfsEntry;
 use crate::util::archive;
 use crate::util::fs::canonicalize_path_maybe_not_exists;
@@ -99,6 +100,8 @@ pub struct SerializedWorkspaceResolver {
   pub pkg_json_resolution: PackageJsonDepResolution,
 }
 
+// Note: Don't use hashmaps/hashsets. Ensure the serialization
+// is deterministic.
 #[derive(Deserialize, Serialize)]
 pub struct Metadata {
   pub argv: Vec<String>,
@@ -110,11 +113,10 @@ pub struct Metadata {
   pub ca_stores: Option<Vec<String>>,
   pub ca_data: Option<Vec<u8>>,
   pub unsafely_ignore_certificate_errors: Option<Vec<String>>,
-  pub env_vars_from_env_file: HashMap<String, String>,
+  pub env_vars_from_env_file: IndexMap<String, String>,
   pub workspace_resolver: SerializedWorkspaceResolver,
   pub entrypoint_key: String,
   pub node_modules: Option<NodeModules>,
-  pub disable_deprecated_api_warning: bool,
   pub unstable_config: UnstableConfig,
 }
 
@@ -187,10 +189,19 @@ fn write_binary_bytes(
 
   let target = compile_flags.resolve_target();
   if target.contains("linux") {
-    libsui::Elf::new(&original_bin).append(&writer, &mut file_writer)?;
+    libsui::Elf::new(&original_bin).append(
+      "d3n0l4nd",
+      &writer,
+      &mut file_writer,
+    )?;
   } else if target.contains("windows") {
-    libsui::PortableExecutable::from(&original_bin)?
-      .write_resource("d3n0l4nd", writer)?
+    let mut pe = libsui::PortableExecutable::from(&original_bin)?;
+    if let Some(icon) = compile_flags.icon.as_ref() {
+      let icon = std::fs::read(icon)?;
+      pe = pe.set_icon(&icon)?;
+    }
+
+    pe.write_resource("d3n0l4nd", writer)?
       .build(&mut file_writer)?;
   } else if target.contains("darwin") {
     libsui::Macho::from(original_bin)?
@@ -370,6 +381,15 @@ impl<'a> DenoCompileBinaryWriter<'a> {
       }
       set_windows_binary_to_gui(&mut original_binary)?;
     }
+    if compile_flags.icon.is_some() {
+      let target = compile_flags.resolve_target();
+      if !target.contains("windows") {
+        bail!(
+          "The `--icon` flag is only available when targeting Windows (current: {})",
+          target,
+        )
+      }
+    }
     self.write_standalone_binary(
       writer,
       original_binary,
@@ -398,11 +418,23 @@ impl<'a> DenoCompileBinaryWriter<'a> {
     let target = compile_flags.resolve_target();
     let binary_name = format!("denort-{target}.zip");
 
-    let binary_path_suffix = if crate::version::is_canary() {
-      format!("canary/{}/{}", crate::version::GIT_COMMIT_HASH, binary_name)
-    } else {
-      format!("release/v{}/{}", env!("CARGO_PKG_VERSION"), binary_name)
-    };
+    let binary_path_suffix =
+      match crate::version::DENO_VERSION_INFO.release_channel {
+        ReleaseChannel::Canary => {
+          format!(
+            "canary/{}/{}",
+            crate::version::DENO_VERSION_INFO.git_hash,
+            binary_name
+          )
+        }
+        ReleaseChannel::Stable => {
+          format!("release/v{}/{}", env!("CARGO_PKG_VERSION"), binary_name)
+        }
+        _ => bail!(
+          "`deno compile` current doesn't support {} release channel",
+          crate::version::DENO_VERSION_INFO.release_channel.name()
+        ),
+      };
 
     let download_directory = self.deno_dir.dl_folder_path();
     let binary_path = download_directory.join(&binary_path_suffix);
@@ -591,12 +623,9 @@ impl<'a> DenoCompileBinaryWriter<'a> {
         pkg_json_resolution: self.workspace_resolver.pkg_json_dep_resolution(),
       },
       node_modules,
-      disable_deprecated_api_warning: cli_options
-        .disable_deprecated_api_warning,
       unstable_config: UnstableConfig {
-        legacy_flag_enabled: cli_options.legacy_unstable_flag(),
+        legacy_flag_enabled: false,
         bare_node_builtins: cli_options.unstable_bare_node_builtins(),
-        byonm: cli_options.use_byonm(),
         sloppy_imports: cli_options.unstable_sloppy_imports(),
         features: cli_options.unstable_features(),
       },
@@ -636,8 +665,10 @@ impl<'a> DenoCompileBinaryWriter<'a> {
           // but also don't make this dependent on the registry url
           let root_path = npm_resolver.global_cache_root_folder();
           let mut builder = VfsBuilder::new(root_path)?;
-          for package in npm_resolver.all_system_packages(&self.npm_system_info)
-          {
+          let mut packages =
+            npm_resolver.all_system_packages(&self.npm_system_info);
+          packages.sort_by(|a, b| a.id.cmp(&b.id)); // determinism
+          for package in packages {
             let folder =
               npm_resolver.resolve_pkg_folder_from_pkg_id(&package.id)?;
             builder.add_dir_recursive(&folder)?;
@@ -698,11 +729,13 @@ impl<'a> DenoCompileBinaryWriter<'a> {
           cli_options.workspace().root_dir().to_file_path().unwrap(),
         );
         while let Some(pending_dir) = pending_dirs.pop_front() {
-          let entries = fs::read_dir(&pending_dir).with_context(|| {
-            format!("Failed reading: {}", pending_dir.display())
-          })?;
+          let mut entries = fs::read_dir(&pending_dir)
+            .with_context(|| {
+              format!("Failed reading: {}", pending_dir.display())
+            })?
+            .collect::<Result<Vec<_>, _>>()?;
+          entries.sort_by_cached_key(|entry| entry.file_name()); // determinism
           for entry in entries {
-            let entry = entry?;
             let path = entry.path();
             if !path.is_dir() {
               continue;
@@ -724,8 +757,8 @@ impl<'a> DenoCompileBinaryWriter<'a> {
 /// in the passed environment file.
 fn get_file_env_vars(
   filename: String,
-) -> Result<HashMap<String, String>, dotenvy::Error> {
-  let mut file_env_vars = HashMap::new();
+) -> Result<IndexMap<String, String>, dotenvy::Error> {
+  let mut file_env_vars = IndexMap::new();
   for item in dotenvy::from_filename_iter(filename)? {
     let Ok((key, val)) = item else {
       continue; // this failure will be warned about on load

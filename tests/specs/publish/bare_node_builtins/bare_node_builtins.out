@@ -1,7 +1,11 @@
-Warning: Resolving "url" as "node:url" at file:///[WILDLINE]/mod.ts:1:22. If you want to use a built-in Node module, add a "node:" prefix.
-Warning: Resolving "url" as "node:url" at file:///[WILDLINE]/mod.ts:1:22. If you want to use a built-in Node module, add a "node:" prefix.
+Warning Resolving "url" as "node:url" at file:///[WILDLINE]/mod.ts:1:22. If you want to use a built-in Node module, add a "node:" prefix.
+Warning Resolving "url" as "node:url" at file:///[WILDLINE]/mod.ts:1:22. If you want to use a built-in Node module, add a "node:" prefix.
+[UNORDERED_START]
 Download http://localhost:4260/@types/node
-Download http://localhost:4260/@types/node/node-18.16.19.tgz
+Download http://localhost:4260/undici-types
+Download http://localhost:4260/@types/node/node-22.5.4.tgz
+Download http://localhost:4260/undici-types/undici-types-6.19.8.tgz
+[UNORDERED_END]
 Check file:///[WILDLINE]/mod.ts
 Checking for slow types in the public API...
 Check file:///[WILDLINE]/mod.ts

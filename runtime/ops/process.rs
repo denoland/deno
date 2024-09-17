@@ -1,6 +1,5 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
-use super::check_unstable;
 use deno_core::anyhow::Context;
 use deno_core::error::type_error;
 use deno_core::error::AnyError;
@@ -18,10 +17,15 @@ use deno_io::ChildStderrResource;
 use deno_io::ChildStdinResource;
 use deno_io::ChildStdoutResource;
 use deno_permissions::PermissionsContainer;
+use deno_permissions::RunQueryDescriptor;
 use serde::Deserialize;
 use serde::Serialize;
 use std::borrow::Cow;
 use std::cell::RefCell;
+use std::collections::HashMap;
+use std::ffi::OsString;
+use std::path::Path;
+use std::path::PathBuf;
 use std::process::ExitStatus;
 use std::rc::Rc;
 use tokio::process::Command;
@@ -154,6 +158,9 @@ pub struct SpawnArgs {
 
   #[serde(flatten)]
   stdio: ChildStdio,
+
+  extra_stdio: Vec<Stdio>,
+  detached: bool,
 }
 
 #[derive(Deserialize)]
@@ -215,39 +222,52 @@ pub struct SpawnOutput {
   stderr: Option<ToJsBuffer>,
 }
 
-type CreateCommand = (std::process::Command, Option<ResourceId>);
+type CreateCommand = (
+  std::process::Command,
+  Option<ResourceId>,
+  Vec<Option<ResourceId>>,
+  Vec<deno_io::RawBiPipeHandle>,
+);
 
 fn create_command(
   state: &mut OpState,
   mut args: SpawnArgs,
   api_name: &str,
 ) -> Result<CreateCommand, AnyError> {
-  state
-    .borrow_mut::<PermissionsContainer>()
-    .check_run(&args.cmd, api_name)?;
-
-  let mut command = std::process::Command::new(args.cmd);
+  let (cmd, run_env) = compute_run_cmd_and_check_permissions(
+    &args.cmd,
+    args.cwd.as_deref(),
+    &args.env,
+    args.clear_env,
+    state,
+    api_name,
+  )?;
+  let mut command = std::process::Command::new(cmd);
 
   #[cfg(windows)]
-  if args.windows_raw_arguments {
-    for arg in args.args.iter() {
-      command.raw_arg(arg);
+  {
+    if args.detached {
+      // TODO(nathanwhit): Currently this causes the process to hang
+      // until the detached process exits (so never). It repros with just the
+      // rust std library, so it's either a bug or requires more control than we have.
+      // To be resolved at the same time as additional stdio support.
+      log::warn!("detached processes are not currently supported on Windows");
     }
-  } else {
-    command.args(args.args);
+    if args.windows_raw_arguments {
+      for arg in args.args.iter() {
+        command.raw_arg(arg);
+      }
+    } else {
+      command.args(args.args);
+    }
   }
 
   #[cfg(not(windows))]
   command.args(args.args);
 
-  if let Some(cwd) = args.cwd {
-    command.current_dir(cwd);
-  }
-
-  if args.clear_env {
-    command.env_clear();
-  }
-  command.envs(args.env);
+  command.current_dir(run_env.cwd);
+  command.env_clear();
+  command.envs(run_env.envs);
 
   #[cfg(unix)]
   if let Some(gid) = args.gid {
@@ -277,216 +297,107 @@ fn create_command(
   // TODO(bartlomieju):
   #[allow(clippy::undocumented_unsafe_blocks)]
   unsafe {
+    let mut extra_pipe_rids = Vec::new();
+    let mut fds_to_dup = Vec::new();
+    let mut fds_to_close = Vec::new();
+    let mut ipc_rid = None;
     if let Some(ipc) = args.ipc {
-      if ipc < 0 {
-        return Ok((command, None));
+      if ipc >= 0 {
+        let (ipc_fd1, ipc_fd2) = deno_io::bi_pipe_pair_raw()?;
+        fds_to_dup.push((ipc_fd2, ipc));
+        fds_to_close.push(ipc_fd2);
+        /* One end returned to parent process (this) */
+        let pipe_rid =
+          state
+            .resource_table
+            .add(deno_node::IpcJsonStreamResource::new(
+              ipc_fd1 as _,
+              deno_node::IpcRefTracker::new(state.external_ops_tracker.clone()),
+            )?);
+        /* The other end passed to child process via NODE_CHANNEL_FD */
+        command.env("NODE_CHANNEL_FD", format!("{}", ipc));
+        ipc_rid = Some(pipe_rid);
       }
-      // SockFlag is broken on macOS
-      // https://github.com/nix-rust/nix/issues/861
-      let mut fds = [-1, -1];
-      #[cfg(not(target_os = "macos"))]
-      let flags = libc::SOCK_CLOEXEC | libc::SOCK_NONBLOCK;
-
-      #[cfg(target_os = "macos")]
-      let flags = 0;
-
-      let ret = libc::socketpair(
-        libc::AF_UNIX,
-        libc::SOCK_STREAM | flags,
-        0,
-        fds.as_mut_ptr(),
-      );
-      if ret != 0 {
-        return Err(std::io::Error::last_os_error().into());
-      }
-
-      if cfg!(target_os = "macos") {
-        let fcntl =
-          |fd: i32, flag: libc::c_int| -> Result<(), std::io::Error> {
-            let flags = libc::fcntl(fd, libc::F_GETFL, 0);
-
-            if flags == -1 {
-              return Err(fail(fds));
-            }
-            let ret = libc::fcntl(fd, libc::F_SETFL, flags | flag);
-            if ret == -1 {
-              return Err(fail(fds));
-            }
-            Ok(())
-          };
-
-        fn fail(fds: [i32; 2]) -> std::io::Error {
-          unsafe {
-            libc::close(fds[0]);
-            libc::close(fds[1]);
-          }
-          std::io::Error::last_os_error()
-        }
-
-        // SOCK_NONBLOCK is not supported on macOS.
-        (fcntl)(fds[0], libc::O_NONBLOCK)?;
-        (fcntl)(fds[1], libc::O_NONBLOCK)?;
-
-        // SOCK_CLOEXEC is not supported on macOS.
-        (fcntl)(fds[0], libc::FD_CLOEXEC)?;
-        (fcntl)(fds[1], libc::FD_CLOEXEC)?;
-      }
-
-      let fd1 = fds[0];
-      let fd2 = fds[1];
-
-      command.pre_exec(move || {
-        if ipc >= 0 {
-          let _fd = libc::dup2(fd2, ipc);
-          libc::close(fd2);
-        }
-        libc::setgroups(0, std::ptr::null());
-        Ok(())
-      });
-
-      /* One end returned to parent process (this) */
-      let pipe_rid = Some(state.resource_table.add(
-        deno_node::IpcJsonStreamResource::new(
-          fd1 as _,
-          deno_node::IpcRefTracker::new(state.external_ops_tracker.clone()),
-        )?,
-      ));
-
-      /* The other end passed to child process via NODE_CHANNEL_FD */
-      command.env("NODE_CHANNEL_FD", format!("{}", ipc));
-
-      return Ok((command, pipe_rid));
     }
 
-    Ok((command, None))
+    for (i, stdio) in args.extra_stdio.into_iter().enumerate() {
+      // index 0 in `extra_stdio` actually refers to fd 3
+      // because we handle stdin,stdout,stderr specially
+      let fd = (i + 3) as i32;
+      // TODO(nathanwhit): handle inherited, but this relies on the parent process having
+      // fds open already. since we don't generally support dealing with raw fds,
+      // we can't properly support this
+      if matches!(stdio, Stdio::Piped) {
+        let (fd1, fd2) = deno_io::bi_pipe_pair_raw()?;
+        fds_to_dup.push((fd2, fd));
+        fds_to_close.push(fd2);
+        let rid = state.resource_table.add(
+          match deno_io::BiPipeResource::from_raw_handle(fd1) {
+            Ok(v) => v,
+            Err(e) => {
+              log::warn!("Failed to open bidirectional pipe for fd {fd}: {e}");
+              extra_pipe_rids.push(None);
+              continue;
+            }
+          },
+        );
+        extra_pipe_rids.push(Some(rid));
+      } else {
+        extra_pipe_rids.push(None);
+      }
+    }
+
+    let detached = args.detached;
+    command.pre_exec(move || {
+      if detached {
+        libc::setsid();
+      }
+      for &(src, dst) in &fds_to_dup {
+        if src >= 0 && dst >= 0 {
+          let _fd = libc::dup2(src, dst);
+          libc::close(src);
+        }
+      }
+      libc::setgroups(0, std::ptr::null());
+      Ok(())
+    });
+
+    Ok((command, ipc_rid, extra_pipe_rids, fds_to_close))
   }
 
   #[cfg(windows)]
-  // Safety: We setup a windows named pipe and pass one end to the child process.
-  unsafe {
-    use windows_sys::Win32::Foundation::CloseHandle;
-    use windows_sys::Win32::Foundation::DuplicateHandle;
-    use windows_sys::Win32::Foundation::DUPLICATE_SAME_ACCESS;
-    use windows_sys::Win32::Foundation::ERROR_ACCESS_DENIED;
-    use windows_sys::Win32::Foundation::ERROR_PIPE_CONNECTED;
-    use windows_sys::Win32::Foundation::GENERIC_READ;
-    use windows_sys::Win32::Foundation::GENERIC_WRITE;
-    use windows_sys::Win32::Foundation::INVALID_HANDLE_VALUE;
-    use windows_sys::Win32::Security::SECURITY_ATTRIBUTES;
-    use windows_sys::Win32::Storage::FileSystem::CreateFileW;
-    use windows_sys::Win32::Storage::FileSystem::FILE_FLAG_FIRST_PIPE_INSTANCE;
-    use windows_sys::Win32::Storage::FileSystem::FILE_FLAG_OVERLAPPED;
-    use windows_sys::Win32::Storage::FileSystem::OPEN_EXISTING;
-    use windows_sys::Win32::Storage::FileSystem::PIPE_ACCESS_DUPLEX;
-    use windows_sys::Win32::System::Pipes::ConnectNamedPipe;
-    use windows_sys::Win32::System::Pipes::CreateNamedPipeW;
-    use windows_sys::Win32::System::Pipes::PIPE_READMODE_BYTE;
-    use windows_sys::Win32::System::Pipes::PIPE_TYPE_BYTE;
-    use windows_sys::Win32::System::Threading::GetCurrentProcess;
-
-    use std::io;
-    use std::os::windows::ffi::OsStrExt;
-    use std::path::Path;
-    use std::ptr;
-
+  {
+    let mut ipc_rid = None;
+    let mut handles_to_close = Vec::with_capacity(1);
     if let Some(ipc) = args.ipc {
-      if ipc < 0 {
-        return Ok((command, None));
+      if ipc >= 0 {
+        let (hd1, hd2) = deno_io::bi_pipe_pair_raw()?;
+
+        /* One end returned to parent process (this) */
+        let pipe_rid = Some(state.resource_table.add(
+          deno_node::IpcJsonStreamResource::new(
+            hd1 as i64,
+            deno_node::IpcRefTracker::new(state.external_ops_tracker.clone()),
+          )?,
+        ));
+
+        /* The other end passed to child process via NODE_CHANNEL_FD */
+        command.env("NODE_CHANNEL_FD", format!("{}", hd2 as i64));
+
+        handles_to_close.push(hd2);
+
+        ipc_rid = pipe_rid;
       }
-
-      let (path, hd1) = loop {
-        let name = format!("\\\\.\\pipe\\{}", uuid::Uuid::new_v4());
-        let mut path = Path::new(&name)
-          .as_os_str()
-          .encode_wide()
-          .collect::<Vec<_>>();
-        path.push(0);
-
-        let hd1 = CreateNamedPipeW(
-          path.as_ptr(),
-          PIPE_ACCESS_DUPLEX
-            | FILE_FLAG_FIRST_PIPE_INSTANCE
-            | FILE_FLAG_OVERLAPPED,
-          PIPE_TYPE_BYTE | PIPE_READMODE_BYTE,
-          1,
-          65536,
-          65536,
-          0,
-          std::ptr::null_mut(),
-        );
-
-        if hd1 == INVALID_HANDLE_VALUE {
-          let err = io::Error::last_os_error();
-          /* If the pipe name is already in use, try again. */
-          if err.raw_os_error() == Some(ERROR_ACCESS_DENIED as i32) {
-            continue;
-          }
-
-          return Err(err.into());
-        }
-
-        break (path, hd1);
-      };
-
-      /* Create child pipe handle. */
-      let s = SECURITY_ATTRIBUTES {
-        nLength: std::mem::size_of::<SECURITY_ATTRIBUTES>() as u32,
-        lpSecurityDescriptor: ptr::null_mut(),
-        bInheritHandle: 1,
-      };
-      let mut hd2 = CreateFileW(
-        path.as_ptr(),
-        GENERIC_READ | GENERIC_WRITE,
-        0,
-        &s,
-        OPEN_EXISTING,
-        FILE_FLAG_OVERLAPPED,
-        0,
-      );
-      if hd2 == INVALID_HANDLE_VALUE {
-        return Err(io::Error::last_os_error().into());
-      }
-
-      // Will not block because we have create the pair.
-      if ConnectNamedPipe(hd1, ptr::null_mut()) == 0 {
-        let err = std::io::Error::last_os_error();
-        if err.raw_os_error() != Some(ERROR_PIPE_CONNECTED as i32) {
-          CloseHandle(hd2);
-          return Err(err.into());
-        }
-      }
-
-      // Duplicating the handle to allow the child process to use it.
-      if DuplicateHandle(
-        GetCurrentProcess(),
-        hd2,
-        GetCurrentProcess(),
-        &mut hd2,
-        0,
-        1,
-        DUPLICATE_SAME_ACCESS,
-      ) == 0
-      {
-        return Err(std::io::Error::last_os_error().into());
-      }
-
-      /* One end returned to parent process (this) */
-      let pipe_fd = Some(state.resource_table.add(
-        deno_node::IpcJsonStreamResource::new(
-          hd1 as i64,
-          deno_node::IpcRefTracker::new(state.external_ops_tracker.clone()),
-        )?,
-      ));
-
-      /* The other end passed to child process via NODE_CHANNEL_FD */
-      command.env("NODE_CHANNEL_FD", format!("{}", hd2 as i64));
-
-      return Ok((command, pipe_fd));
     }
-  }
 
-  #[cfg(not(unix))]
-  return Ok((command, None));
+    if args.extra_stdio.iter().any(|s| matches!(s, Stdio::Piped)) {
+      log::warn!(
+        "Additional stdio pipes beyond stdin/stdout/stderr are not currently supported on windows"
+      );
+    }
+
+    Ok((command, ipc_rid, vec![], handles_to_close))
+  }
 }
 
 #[derive(Serialize)]
@@ -497,19 +408,24 @@ struct Child {
   stdin_rid: Option<ResourceId>,
   stdout_rid: Option<ResourceId>,
   stderr_rid: Option<ResourceId>,
-  pipe_fd: Option<ResourceId>,
+  ipc_pipe_rid: Option<ResourceId>,
+  extra_pipe_rids: Vec<Option<ResourceId>>,
 }
 
 fn spawn_child(
   state: &mut OpState,
   command: std::process::Command,
-  pipe_fd: Option<ResourceId>,
+  ipc_pipe_rid: Option<ResourceId>,
+  extra_pipe_rids: Vec<Option<ResourceId>>,
+  detached: bool,
 ) -> Result<Child, AnyError> {
   let mut command = tokio::process::Command::from(command);
   // TODO(@crowlkats): allow detaching processes.
   //  currently deno will orphan a process when exiting with an error or Deno.exit()
   // We want to kill child when it's closed
-  command.kill_on_drop(true);
+  if !detached {
+    command.kill_on_drop(true);
+  }
 
   let mut child = match command.spawn() {
     Ok(child) => child,
@@ -585,8 +501,181 @@ fn spawn_child(
     stdin_rid,
     stdout_rid,
     stderr_rid,
-    pipe_fd,
+    ipc_pipe_rid,
+    extra_pipe_rids,
   })
+}
+
+fn close_raw_handle(handle: deno_io::RawBiPipeHandle) {
+  #[cfg(unix)]
+  {
+    // SAFETY: libc call
+    unsafe {
+      libc::close(handle);
+    }
+  }
+  #[cfg(windows)]
+  {
+    // SAFETY: win32 call
+    unsafe {
+      windows_sys::Win32::Foundation::CloseHandle(handle as _);
+    }
+  }
+}
+
+fn compute_run_cmd_and_check_permissions(
+  arg_cmd: &str,
+  arg_cwd: Option<&str>,
+  arg_envs: &[(String, String)],
+  arg_clear_env: bool,
+  state: &mut OpState,
+  api_name: &str,
+) -> Result<(PathBuf, RunEnv), AnyError> {
+  let run_env = compute_run_env(arg_cwd, arg_envs, arg_clear_env)
+    .with_context(|| format!("Failed to spawn '{}'", arg_cmd))?;
+  let cmd = resolve_cmd(arg_cmd, &run_env)
+    .with_context(|| format!("Failed to spawn '{}'", arg_cmd))?;
+  check_run_permission(
+    state,
+    &RunQueryDescriptor::Path {
+      requested: arg_cmd.to_string(),
+      resolved: cmd.clone(),
+    },
+    &run_env,
+    api_name,
+  )?;
+  Ok((cmd, run_env))
+}
+
+struct RunEnv {
+  envs: HashMap<OsString, OsString>,
+  cwd: PathBuf,
+}
+
+/// Computes the current environment, which will then be used to inform
+/// permissions and finally spawning. This is very important to compute
+/// ahead of time so that the environment used to verify permissions is
+/// the same environment used to spawn the sub command. This protects against
+/// someone doing timing attacks by changing the environment on a worker.
+fn compute_run_env(
+  arg_cwd: Option<&str>,
+  arg_envs: &[(String, String)],
+  arg_clear_env: bool,
+) -> Result<RunEnv, AnyError> {
+  #[allow(clippy::disallowed_methods)]
+  let cwd = std::env::current_dir().context("failed resolving cwd")?;
+  let cwd = arg_cwd
+    .map(|cwd_arg| resolve_path(cwd_arg, &cwd))
+    .unwrap_or(cwd);
+  let envs = if arg_clear_env {
+    arg_envs
+      .iter()
+      .map(|(k, v)| (OsString::from(k), OsString::from(v)))
+      .collect()
+  } else {
+    let mut envs = std::env::vars_os()
+      .map(|(k, v)| {
+        (
+          if cfg!(windows) {
+            k.to_ascii_uppercase()
+          } else {
+            k
+          },
+          v,
+        )
+      })
+      .collect::<HashMap<_, _>>();
+    for (key, value) in arg_envs {
+      envs.insert(
+        OsString::from(if cfg!(windows) {
+          key.to_ascii_uppercase()
+        } else {
+          key.clone()
+        }),
+        OsString::from(value.clone()),
+      );
+    }
+    envs
+  };
+  Ok(RunEnv { envs, cwd })
+}
+
+fn resolve_cmd(cmd: &str, env: &RunEnv) -> Result<PathBuf, AnyError> {
+  let is_path = cmd.contains('/');
+  #[cfg(windows)]
+  let is_path = is_path || cmd.contains('\\') || Path::new(&cmd).is_absolute();
+  if is_path {
+    Ok(resolve_path(cmd, &env.cwd))
+  } else {
+    let path = env.envs.get(&OsString::from("PATH"));
+    match which::which_in(cmd, path, &env.cwd) {
+      Ok(cmd) => Ok(cmd),
+      Err(which::Error::CannotFindBinaryPath) => {
+        Err(std::io::Error::from(std::io::ErrorKind::NotFound).into())
+      }
+      Err(err) => Err(err.into()),
+    }
+  }
+}
+
+fn resolve_path(path: &str, cwd: &Path) -> PathBuf {
+  deno_core::normalize_path(cwd.join(path))
+}
+
+fn check_run_permission(
+  state: &mut OpState,
+  cmd: &RunQueryDescriptor,
+  run_env: &RunEnv,
+  api_name: &str,
+) -> Result<(), AnyError> {
+  let permissions = state.borrow_mut::<PermissionsContainer>();
+  if !permissions.query_run_all(api_name) {
+    // error the same on all platforms
+    let env_var_names = get_requires_allow_all_env_vars(run_env);
+    if !env_var_names.is_empty() {
+      // we don't allow users to launch subprocesses with any LD_ or DYLD_*
+      // env vars set because this allows executing code (ex. LD_PRELOAD)
+      return Err(deno_core::error::custom_error(
+        "NotCapable",
+        format!(
+          "Requires --allow-all permissions to spawn subprocess with {} environment variable{}.",
+          env_var_names.join(", "),
+          if env_var_names.len() != 1 { "s" } else { "" }
+        )
+      ));
+    }
+    permissions.check_run(cmd, api_name)?;
+  }
+  Ok(())
+}
+
+fn get_requires_allow_all_env_vars(env: &RunEnv) -> Vec<&str> {
+  fn requires_allow_all(key: &str) -> bool {
+    let key = key.trim();
+    // we could be more targted here, but there are quite a lot of
+    // LD_* and DYLD_* env variables
+    key.starts_with("LD_") || key.starts_with("DYLD_")
+  }
+
+  fn is_empty(value: &OsString) -> bool {
+    value.is_empty()
+      || value.to_str().map(|v| v.trim().is_empty()).unwrap_or(false)
+  }
+
+  let mut found_envs = env
+    .envs
+    .iter()
+    .filter_map(|(k, v)| {
+      let key = k.to_str()?;
+      if requires_allow_all(key) && !is_empty(v) {
+        Some(key)
+      } else {
+        None
+      }
+    })
+    .collect::<Vec<_>>();
+  found_envs.sort();
+  found_envs
 }
 
 #[op2]
@@ -596,8 +685,14 @@ fn op_spawn_child(
   #[serde] args: SpawnArgs,
   #[string] api_name: String,
 ) -> Result<Child, AnyError> {
-  let (command, pipe_rid) = create_command(state, args, &api_name)?;
-  spawn_child(state, command, pipe_rid)
+  let detached = args.detached;
+  let (command, pipe_rid, extra_pipe_rids, handles_to_close) =
+    create_command(state, args, &api_name)?;
+  let child = spawn_child(state, command, pipe_rid, extra_pipe_rids, detached);
+  for handle in handles_to_close {
+    close_raw_handle(handle);
+  }
+  child
 }
 
 #[op2(async)]
@@ -626,7 +721,7 @@ fn op_spawn_sync(
 ) -> Result<SpawnOutput, AnyError> {
   let stdout = matches!(args.stdio.stdout, StdioOrRid::Stdio(Stdio::Piped));
   let stderr = matches!(args.stdio.stderr, StdioOrRid::Stdio(Stdio::Piped));
-  let (mut command, _) =
+  let (mut command, _, _, _) =
     create_command(state, args, "Deno.Command().outputSync()")?;
   let output = command.output().with_context(|| {
     format!(
@@ -664,6 +759,8 @@ fn op_spawn_kill(
 }
 
 mod deprecated {
+  use deno_core::anyhow;
+
   use super::*;
 
   #[derive(Deserialize)]
@@ -671,12 +768,7 @@ mod deprecated {
   pub struct RunArgs {
     cmd: Vec<String>,
     cwd: Option<String>,
-    clear_env: bool,
     env: Vec<(String, String)>,
-    #[cfg(unix)]
-    gid: Option<u32>,
-    #[cfg(unix)]
-    uid: Option<u32>,
     stdin: StdioOrRid,
     stdout: StdioOrRid,
     stderr: StdioOrRid,
@@ -716,37 +808,27 @@ mod deprecated {
     #[serde] run_args: RunArgs,
   ) -> Result<RunInfo, AnyError> {
     let args = run_args.cmd;
-    state
-      .borrow_mut::<PermissionsContainer>()
-      .check_run(&args[0], "Deno.run()")?;
-    let env = run_args.env;
-    let cwd = run_args.cwd;
+    let cmd = args.first().ok_or_else(|| anyhow::anyhow!("Missing cmd"))?;
+    let (cmd, run_env) = compute_run_cmd_and_check_permissions(
+      cmd,
+      run_args.cwd.as_deref(),
+      &run_args.env,
+      /* clear env */ false,
+      state,
+      "Deno.run()",
+    )?;
 
-    let mut c = Command::new(args.first().unwrap());
-    (1..args.len()).for_each(|i| {
-      let arg = args.get(i).unwrap();
+    let mut c = Command::new(cmd);
+    for arg in args.iter().skip(1) {
       c.arg(arg);
-    });
-    cwd.map(|d| c.current_dir(d));
-
-    if run_args.clear_env {
-      super::check_unstable(state, UNSTABLE_FEATURE_NAME, "Deno.run.clearEnv");
-      c.env_clear();
     }
-    for (key, value) in &env {
+    c.current_dir(run_env.cwd);
+
+    c.env_clear();
+    for (key, value) in run_env.envs {
       c.env(key, value);
     }
 
-    #[cfg(unix)]
-    if let Some(gid) = run_args.gid {
-      super::check_unstable(state, UNSTABLE_FEATURE_NAME, "Deno.run.gid");
-      c.gid(gid);
-    }
-    #[cfg(unix)]
-    if let Some(uid) = run_args.uid {
-      super::check_unstable(state, UNSTABLE_FEATURE_NAME, "Deno.run.uid");
-      c.uid(uid);
-    }
     #[cfg(unix)]
     // TODO(bartlomieju):
     #[allow(clippy::undocumented_unsafe_blocks)]

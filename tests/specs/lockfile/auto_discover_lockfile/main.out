@@ -10,4 +10,4 @@ This could be caused by:
   * the lock file may be corrupt
   * the source itself may be corrupt
 
-Use the --lock-write flag to regenerate the lockfile or --reload to reload the source code from the server.
+Investigate the lockfile; delete it to regenerate the lockfile or --reload to reload the source code from the server.

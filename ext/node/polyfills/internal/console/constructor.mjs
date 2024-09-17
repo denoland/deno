@@ -1,4 +1,4 @@
-// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 // Copyright Joyent and Node contributors. All rights reserved. MIT license.
 
 // TODO(petamoriken): enable prefer-primordials for node polyfills
@@ -667,10 +667,15 @@ Console.prototype.dirxml = Console.prototype.log;
 Console.prototype.error = Console.prototype.warn;
 Console.prototype.groupCollapsed = Console.prototype.group;
 
+export function bindStreamsLazy(console, object) {
+  Console.prototype[kBindStreamsLazy].call(console, object);
+}
+
 export { Console, formatTime, kBindProperties, kBindStreamsLazy };
 export default {
   Console,
   kBindStreamsLazy,
   kBindProperties,
   formatTime,
+  bindStreamsLazy,
 };

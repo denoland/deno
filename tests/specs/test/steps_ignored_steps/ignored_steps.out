@@ -1,0 +1,8 @@
+[WILDCARD]
+running 1 test from [WILDCARD]ignored_steps.ts
+ignored step ...
+  step 1 ... ignored ([WILDCARD])
+  step 2 ... ok ([WILDCARD])
+ignored step ... ok ([WILDCARD])
+
+ok | 1 passed (1 step) | 0 failed | 0 ignored (1 step) [WILDCARD]

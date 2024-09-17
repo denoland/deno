@@ -41,10 +41,10 @@
           "markdownDescription": "Differentiate between undefined and not present when type checking\n\nSee more: https://www.typescriptlang.org/tsconfig#exactOptionalPropertyTypes"
         },
         "experimentalDecorators": {
-          "description": "Enable experimental support for TC39 stage 2 draft decorators.",
+          "description": "Enable experimental support for legacy experimental decorators.",
           "type": "boolean",
-          "default": true,
-          "markdownDescription": "Enable experimental support for TC39 stage 2 draft decorators.\n\nSee more: https://www.typescriptlang.org/tsconfig#experimentalDecorators"
+          "default": false,
+          "markdownDescription": "Enable experimental support for legacy experimental decorators.\n\nSee more: https://www.typescriptlang.org/tsconfig#experimentalDecorators"
         },
         "jsx": {
           "description": "Specify what JSX code is generated.",
@@ -119,10 +119,10 @@
           "markdownDescription": "Enable error reporting for fallthrough cases in switch statements.\n\nSee more: https://www.typescriptlang.org/tsconfig#noFallthroughCasesInSwitch"
         },
         "noImplicitAny": {
-          "description": "Enable error reporting for expressions and declarations with an implied `any` type..",
+          "description": "Enable error reporting for expressions and declarations with an implied `any` type.",
           "type": "boolean",
           "default": true,
-          "markdownDescription": "Enable error reporting for expressions and declarations with an implied `any` type..\n\nSee more: https://www.typescriptlang.org/tsconfig#noImplicitAny"
+          "markdownDescription": "Enable error reporting for expressions and declarations with an implied `any` type.\n\nSee more: https://www.typescriptlang.org/tsconfig#noImplicitAny"
         },
         "noImplicitOverride": {
           "description": "Ensure overriding members in derived classes are marked with an override modifier.",
@@ -147,6 +147,12 @@
           "type": "boolean",
           "default": true,
           "markdownDescription": "Disable adding 'use strict' directives in emitted JavaScript files.\n\nSee more: https://www.typescriptlang.org/tsconfig#noImplicitUseStrict"
+        },
+        "noPropertyAccessFromIndexSignature": {
+          "description": "Enforces using indexed accessors for keys declared using an indexed type.",
+          "type": "boolean",
+          "default": false,
+          "markdownDescription": "Enforces using indexed accessors for keys declared using an indexed type.\n\nSee more: https://www.typescriptlang.org/tsconfig#noPropertyAccessFromIndexSignature"
         },
         "noStrictGenericChecks": {
           "description": "Disable strict checking of generic signatures in function types.",
@@ -213,6 +219,12 @@
           "type": "boolean",
           "default": false,
           "markdownDescription": "Suppress `noImplicitAny` errors when indexing objects that lack index signatures.\n\nSee more: https://www.typescriptlang.org/tsconfig#suppressImplicitAnyIndexErrors"
+        },
+        "useUnknownInCatchVariables": {
+          "description": "Default catch clause variables as `unknown` instead of `any`.",
+          "type": "boolean",
+          "default": true,
+          "markdownDescription": "Default catch clause variables as `unknown` instead of `any`.\n\nSee more: https://www.typescriptlang.org/tsconfig#useUnknownInCatchVariables"
         }
       }
     },
@@ -265,25 +277,6 @@
           "description": "List of files, directories or globs that will not be linted.",
           "items": {
             "type": "string"
-          }
-        },
-        "files": {
-          "type": "object",
-          "properties": {
-            "include": {
-              "type": "array",
-              "description": "List of files, directories or globs that will be linted.",
-              "items": {
-                "type": "string"
-              }
-            },
-            "exclude": {
-              "type": "array",
-              "description": "List of files, directories or globs that will not be linted.",
-              "items": {
-                "type": "string"
-              }
-            }
           }
         },
         "rules": {
@@ -341,25 +334,6 @@
           "description": "List of files, directories or globs that will not be formatted.",
           "items": {
             "type": "string"
-          }
-        },
-        "files": {
-          "type": "object",
-          "properties": {
-            "include": {
-              "type": "array",
-              "description": "List of files, directories or globs that will be formatted.",
-              "items": {
-                "type": "string"
-              }
-            },
-            "exclude": {
-              "type": "array",
-              "description": "List of files, directories or globs that will not be formatted.",
-              "items": {
-                "type": "string"
-              }
-            }
           }
         },
         "useTabs": {
@@ -434,7 +408,7 @@
       "type": "boolean"
     },
     "vendor": {
-      "description": "UNSTABLE: Enables or disables the use of a local vendor folder as a local cache for remote modules and node_modules folder for npm packages. Alternatively, use the `--vendor` flag or override the config via `--vendor=false`. Requires Deno 1.36.1 or later.",
+      "description": "Enables or disables the use of a local vendor folder as a local cache for remote modules and node_modules folder for npm packages. Alternatively, use the `--vendor` flag or override the config via `--vendor=false`. Requires Deno 1.36.1 or later.",
       "type": "boolean"
     },
     "tasks": {
@@ -464,25 +438,6 @@
           "description": "List of files, directories or globs that will not be searched for tests.",
           "items": {
             "type": "string"
-          }
-        },
-        "files": {
-          "type": "object",
-          "properties": {
-            "include": {
-              "type": "array",
-              "description": "List of files, directories or globs that will be searched for tests.",
-              "items": {
-                "type": "string"
-              }
-            },
-            "exclude": {
-              "type": "array",
-              "description": "List of files, directories or globs that will not be searched for tests.",
-              "items": {
-                "type": "string"
-              }
-            }
           }
         }
       }
@@ -524,32 +479,29 @@
           "items": {
             "type": "string"
           }
-        },
-        "files": {
-          "type": "object",
-          "properties": {
-            "include": {
-              "type": "array",
-              "description": "List of files, directories or globs that will be searched for benchmarks.",
-              "items": {
-                "type": "string"
-              }
-            },
-            "exclude": {
-              "type": "array",
-              "description": "List of files, directories or globs that will not be searched for benchmarks.",
-              "items": {
-                "type": "string"
-              }
-            }
-          }
         }
       }
     },
+    "license": {
+      "description": "The SPDX license identifier if this is a JSR package. Specify this or add a license file to the package.",
+      "type": ["string"]
+    },
     "lock": {
       "description": "Whether to use a lock file or the path to use for the lock file. Can be overridden by CLI arguments.",
-      "type": ["string", "boolean"],
-      "default": true
+      "type": ["string", "boolean", "object"],
+      "default": true,
+      "properties": {
+        "path": {
+          "type": "string",
+          "description": "The path to use for the lock file.",
+          "default": "deno.lock"
+        },
+        "frozen": {
+          "type": "boolean",
+          "description": "Whether to exit with an error if lock file is out of date.",
+          "default": false
+        }
+      }
     },
     "unstable": {
       "type": "array",
@@ -594,6 +546,11 @@
         {
           "type": "object",
           "description": "A map of package exports to files in this JSR package.",
+          "propertyNames": {
+            "description": "Package export name",
+            "examples": [".", "./foo", "./bar"],
+            "pattern": "^\\.(/.*)?$"
+          },
           "patternProperties": {
             "^\\.(/.*)?$": {
               "type": "string",
@@ -603,6 +560,13 @@
           "examples": [{ ".": "./mod.ts" }]
         }
       ]
+    },
+    "patch": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "description": "UNSTABLE: List of relative paths to folders containing JSR packages to use local versions of."
     },
     "workspace": {
       "oneOf": [

@@ -1,5 +1,7 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
+use deno_lockfile::NewLockfileOptions;
+use deno_semver::jsr::JsrDepPackageReq;
 use test_util as util;
 use test_util::itest;
 use util::env_vars_for_npm_tests;
@@ -35,11 +37,6 @@ itest!(check_jsximportsource_importmap_config {
   output_str: Some(""),
 });
 
-itest!(bundle_jsximportsource_importmap_config {
-  args: "bundle --quiet --config check/jsximportsource_importmap_config/deno.json check/jsximportsource_importmap_config/main.tsx",
-  output: "check/jsximportsource_importmap_config/main.bundle.js",
-});
-
 itest!(jsx_not_checked {
   args: "check check/jsx_not_checked/main.jsx",
   output: "check/jsx_not_checked/main.out",
@@ -53,11 +50,6 @@ itest!(check_npm_install_diagnostics {
   output: "check/npm_install_diagnostics/main.out",
   envs: vec![("NO_COLOR".to_string(), "1".to_string())],
   exit_code: 1,
-});
-
-itest!(check_export_equals_declaration_file {
-  args: "check --quiet check/export_equals_declaration_file/main.ts",
-  exit_code: 0,
 });
 
 itest!(check_static_response_json {
@@ -218,7 +210,6 @@ fn typecheck_declarations_unstable() {
   let args = vec![
     "test".to_string(),
     "--doc".to_string(),
-    "--unstable".to_string(),
     util::root_path()
       .join("cli/tsc/dts/lib.deno.unstable.d.ts")
       .to_string_lossy()
@@ -252,36 +243,6 @@ fn ts_no_recheck_on_redirect() {
 itest!(check_dts {
   args: "check --quiet check/dts/check_dts.d.ts",
   output: "check/dts/check_dts.out",
-  exit_code: 1,
-});
-
-itest!(package_json_basic {
-  args: "check main.ts",
-  output: "package_json/basic/main.check.out",
-  envs: env_vars_for_npm_tests(),
-  http_server: true,
-  cwd: Some("package_json/basic"),
-  copy_temp_dir: Some("package_json/basic"),
-  exit_code: 0,
-});
-
-itest!(package_json_fail_check {
-  args: "check --quiet fail_check.ts",
-  output: "package_json/basic/fail_check.check.out",
-  envs: env_vars_for_npm_tests(),
-  http_server: true,
-  cwd: Some("package_json/basic"),
-  copy_temp_dir: Some("package_json/basic"),
-  exit_code: 1,
-});
-
-itest!(package_json_with_deno_json {
-  args: "check --quiet main.ts",
-  output: "package_json/deno_json/main.check.out",
-  cwd: Some("package_json/deno_json/"),
-  copy_temp_dir: Some("package_json/deno_json/"),
-  envs: env_vars_for_npm_tests(),
-  http_server: true,
   exit_code: 1,
 });
 
@@ -361,16 +322,23 @@ fn npm_module_check_then_error() {
     ])
     .run()
     .skip_output_check();
-  let lockfile = temp_dir.path().join("deno.lock");
-  let mut lockfile_content =
-    lockfile.read_json::<deno_lockfile::LockfileContent>();
+  let lockfile_path = temp_dir.path().join("deno.lock");
+  let mut lockfile = deno_lockfile::Lockfile::new(NewLockfileOptions {
+    file_path: lockfile_path.to_path_buf(),
+    content: &lockfile_path.read_to_string(),
+    overwrite: false,
+  })
+  .unwrap();
 
   // make the specifier resolve to version 1
-  lockfile_content.packages.specifiers.insert(
-    "npm:@denotest/breaking-change-between-versions".to_string(),
-    "npm:@denotest/breaking-change-between-versions@1.0.0".to_string(),
+  lockfile.content.packages.specifiers.insert(
+    JsrDepPackageReq::from_str(
+      "npm:@denotest/breaking-change-between-versions",
+    )
+    .unwrap(),
+    "1.0.0".to_string(),
   );
-  lockfile.write_json(&lockfile_content);
+  lockfile_path.write(lockfile.as_json_string());
   temp_dir.write(
     "main.ts",
     "import { oldName } from 'npm:@denotest/breaking-change-between-versions'; console.log(oldName());\n",
@@ -381,11 +349,14 @@ fn npm_module_check_then_error() {
 
   // now update the lockfile to use version 2 instead, which should cause a
   // type checking error because the oldName no longer exists
-  lockfile_content.packages.specifiers.insert(
-    "npm:@denotest/breaking-change-between-versions".to_string(),
-    "npm:@denotest/breaking-change-between-versions@2.0.0".to_string(),
+  lockfile.content.packages.specifiers.insert(
+    JsrDepPackageReq::from_str(
+      "npm:@denotest/breaking-change-between-versions",
+    )
+    .unwrap(),
+    "2.0.0".to_string(),
   );
-  lockfile.write_json(&lockfile_content);
+  lockfile_path.write(lockfile.as_json_string());
 
   check_command
     .run()
