@@ -1,5 +1,5 @@
 {
-  "args": "check --doc markdown.md",
+  "args": "check --doc-only markdown.md",
   "exitCode": 1,
   "output": "markdown.out"
 }

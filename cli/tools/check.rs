@@ -49,13 +49,17 @@ pub async fn check(
     log::warn!("{} No matching files found.", colors::yellow("Warning"));
   }
 
-  let specifiers_for_typecheck = if check_flags.doc {
+  let specifiers_for_typecheck = if check_flags.doc || check_flags.doc_only {
     let file_fetcher = factory.file_fetcher()?;
 
-    let mut specifiers_for_typecheck = specifiers.clone();
+    let mut specifiers_for_typecheck = if check_flags.doc {
+      specifiers.clone()
+    } else {
+      vec![]
+    };
 
-    for s in &specifiers {
-      let file = file_fetcher.fetch_bypass_permissions(s).await?;
+    for s in specifiers {
+      let file = file_fetcher.fetch_bypass_permissions(&s).await?;
       let snippet_files = extract::extract_snippet_files(file)?;
       for snippet_file in snippet_files {
         specifiers_for_typecheck.push(snippet_file.specifier.clone());
