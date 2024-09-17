@@ -5,7 +5,6 @@ use std::sync::Arc;
 use deno_core::error::AnyError;
 use deno_core::futures::TryFutureExt;
 use deno_core::ModuleSpecifier;
-use deno_runtime::deno_permissions::Permissions;
 use deno_runtime::deno_permissions::PermissionsContainer;
 
 use super::run::check_permission_before_script;
@@ -45,9 +44,7 @@ pub async fn serve(
 
   maybe_npm_install(&factory).await?;
 
-  let permissions = PermissionsContainer::new(Permissions::from_options(
-    &cli_options.permissions_options()?,
-  )?);
+  let permissions = factory.create_permissions_container()?;
   let worker_factory = factory.create_cli_main_worker_factory().await?;
 
   do_serve(
@@ -175,9 +172,7 @@ async fn serve_with_watch(
 
         let _ = watcher_communicator.watch_paths(cli_options.watch_paths());
 
-        let permissions = PermissionsContainer::new(Permissions::from_options(
-          &cli_options.permissions_options()?,
-        )?);
+        let permissions = factory.create_permissions_container()?;
         let worker_factory = factory.create_cli_main_worker_factory().await?;
 
         do_serve(worker_factory, main_module, permissions, worker_count, hmr)

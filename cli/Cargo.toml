@@ -2,7 +2,7 @@
 
 [package]
 name = "deno"
-version = "2.0.0-rc.0"
+version = "2.0.0-rc.2"
 authors.workspace = true
 default-run = "deno"
 edition.workspace = true
@@ -65,13 +65,13 @@ winres.workspace = true
 [dependencies]
 deno_ast = { workspace = true, features = ["bundler", "cjs", "codegen", "proposal", "react", "sourcemap", "transforms", "typescript", "view", "visit"] }
 deno_cache_dir = { workspace = true }
-deno_config = { version = "=0.33.2", features = ["workspace", "sync"] }
+deno_config = { version = "=0.34.2", features = ["workspace", "sync"] }
 deno_core = { workspace = true, features = ["include_js_files_for_snapshotting"] }
 deno_doc = { version = "0.148.0", features = ["html", "syntect"] }
-deno_graph = { version = "=0.82.0" }
-deno_lint = { version = "=0.64.0", features = ["docs"] }
+deno_graph = { version = "=0.82.1" }
+deno_lint = { version = "=0.65.0", features = ["docs"] }
 deno_lockfile.workspace = true
-deno_npm = "=0.25.0"
+deno_npm = "=0.25.1"
 deno_package_json.workspace = true
 deno_runtime = { workspace = true, features = ["include_js_files_for_snapshotting"] }
 deno_semver.workspace = true
@@ -123,7 +123,7 @@ libc.workspace = true
 libz-sys.workspace = true
 log = { workspace = true, features = ["serde"] }
 lsp-types.workspace = true
-malva = "=0.9.0"
+malva = "=0.10.1"
 markup_fmt = "=0.12.0"
 memmem.workspace = true
 monch.workspace = true
@@ -134,7 +134,7 @@ p256.workspace = true
 pathdiff = "0.2.1"
 percent-encoding.workspace = true
 phf.workspace = true
-pretty_yaml = "=0.4.0"
+pretty_yaml = "=0.5.0"
 quick-junit = "^0.3.5"
 rand = { workspace = true, features = ["small_rng"] }
 regex.workspace = true
@@ -161,6 +161,7 @@ typed-arena = "=2.0.2"
 uuid = { workspace = true, features = ["serde"] }
 walkdir = "=2.3.2"
 which.workspace = true
+yoke.workspace = true
 zeromq.workspace = true
 zip = { version = "2.1.6", default-features = false, features = ["deflate-flate2"] }
 zstd.workspace = true

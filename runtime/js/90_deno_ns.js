@@ -20,7 +20,6 @@ import * as errors from "ext:runtime/01_errors.js";
 import * as version from "ext:runtime/01_version.ts";
 import * as permissions from "ext:runtime/10_permissions.js";
 import * as io from "ext:deno_io/12_io.js";
-import * as buffer from "ext:runtime/13_buffer.js";
 import * as fs from "ext:deno_fs/30_fs.js";
 import * as os from "ext:runtime/30_os.js";
 import * as fsEvents from "ext:runtime/40_fs_events.js";
@@ -82,9 +81,6 @@ const denoNs = {
   env: os.env,
   exit: os.exit,
   execPath: os.execPath,
-  Buffer: buffer.Buffer,
-  readAll: buffer.readAll,
-  readAllSync: buffer.readAllSync,
   copy: io.copy,
   SeekMode: io.SeekMode,
   File: fs.File,
@@ -102,10 +98,6 @@ const denoNs = {
   connectTls: tls.connectTls,
   listenTls: tls.listenTls,
   startTls: tls.startTls,
-  fsyncSync: fs.fsyncSync,
-  fsync: fs.fsync,
-  fdatasyncSync: fs.fdatasyncSync,
-  fdatasync: fs.fdatasync,
   symlink: fs.symlink,
   symlinkSync: fs.symlinkSync,
   link: fs.link,
@@ -134,6 +126,14 @@ const denoNs = {
   uid: os.uid,
   Command: process.Command,
   ChildProcess: process.ChildProcess,
+  dlopen: ffi.dlopen,
+  UnsafeCallback: ffi.UnsafeCallback,
+  UnsafePointer: ffi.UnsafePointer,
+  UnsafePointerView: ffi.UnsafePointerView,
+  UnsafeFnPointer: ffi.UnsafeFnPointer,
+  umask: fs.umask,
+  httpClient: httpClient.httpClient,
+  createHttpClient: httpClient.createHttpClient,
 };
 
 // NOTE(bartlomieju): keep IDs in sync with `cli/main.rs`
@@ -160,17 +160,9 @@ denoNsUnstableById[unstableIds.cron] = {
   cron: cron.cron,
 };
 
-denoNsUnstableById[unstableIds.ffi] = {
-  dlopen: ffi.dlopen,
-  UnsafeCallback: ffi.UnsafeCallback,
-  UnsafePointer: ffi.UnsafePointer,
-  UnsafePointerView: ffi.UnsafePointerView,
-  UnsafeFnPointer: ffi.UnsafeFnPointer,
-};
+denoNsUnstableById[unstableIds.ffi] = {};
 
-denoNsUnstableById[unstableIds.fs] = {
-  umask: fs.umask,
-};
+denoNsUnstableById[unstableIds.fs] = {};
 
 denoNsUnstableById[unstableIds.http] = {
   HttpClient: httpClient.HttpClient,
@@ -200,27 +192,4 @@ denoNsUnstableById[unstableIds.webgpu] = {
 
 // denoNsUnstableById[unstableIds.workerOptions] = { __proto__: null }
 
-// when editing this list, also update unstableDenoProps in cli/tsc/99_main_compiler.js
-const denoNsUnstable = {
-  listenDatagram: net.createListenDatagram(
-    op_net_listen_udp,
-    op_net_listen_unixpacket,
-  ),
-  umask: fs.umask,
-  HttpClient: httpClient.HttpClient,
-  createHttpClient: httpClient.createHttpClient,
-  dlopen: ffi.dlopen,
-  UnsafeCallback: ffi.UnsafeCallback,
-  UnsafePointer: ffi.UnsafePointer,
-  UnsafePointerView: ffi.UnsafePointerView,
-  UnsafeFnPointer: ffi.UnsafeFnPointer,
-  UnsafeWindowSurface: webgpuSurface.UnsafeWindowSurface,
-  openKv: kv.openKv,
-  AtomicOperation: kv.AtomicOperation,
-  Kv: kv.Kv,
-  KvU64: kv.KvU64,
-  KvListIterator: kv.KvListIterator,
-  cron: cron.cron,
-};
-
-export { denoNs, denoNsUnstable, denoNsUnstableById, unstableIds };
+export { denoNs, denoNsUnstableById, unstableIds };

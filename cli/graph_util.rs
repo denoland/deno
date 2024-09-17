@@ -11,6 +11,7 @@ use crate::cache::ModuleInfoCache;
 use crate::cache::ParsedSourceCache;
 use crate::colors;
 use crate::errors::get_error_class_name;
+use crate::file_fetcher::FetchPermissionsOption;
 use crate::file_fetcher::FileFetcher;
 use crate::npm::CliNpmResolver;
 use crate::resolver::CliGraphResolver;
@@ -41,7 +42,6 @@ use deno_graph::ResolutionError;
 use deno_graph::SpecifierError;
 use deno_runtime::deno_fs::FileSystem;
 use deno_runtime::deno_node;
-use deno_runtime::deno_permissions::PermissionsContainer;
 use deno_semver::jsr::JsrDepPackageReq;
 use deno_semver::package::PackageNv;
 use deno_semver::Version;
@@ -368,7 +368,6 @@ pub struct ModuleGraphBuilder {
   parsed_source_cache: Arc<ParsedSourceCache>,
   lockfile: Option<Arc<CliLockfile>>,
   maybe_file_watcher_reporter: Option<FileWatcherReporter>,
-  emit_cache: Arc<cache::EmitCache>,
   file_fetcher: Arc<FileFetcher>,
   global_http_cache: Arc<GlobalHttpCache>,
 }
@@ -385,7 +384,6 @@ impl ModuleGraphBuilder {
     parsed_source_cache: Arc<ParsedSourceCache>,
     lockfile: Option<Arc<CliLockfile>>,
     maybe_file_watcher_reporter: Option<FileWatcherReporter>,
-    emit_cache: Arc<cache::EmitCache>,
     file_fetcher: Arc<FileFetcher>,
     global_http_cache: Arc<GlobalHttpCache>,
   ) -> Self {
@@ -399,7 +397,6 @@ impl ModuleGraphBuilder {
       parsed_source_cache,
       lockfile,
       maybe_file_watcher_reporter,
-      emit_cache,
       file_fetcher,
       global_http_cache,
     }
@@ -673,15 +670,14 @@ impl ModuleGraphBuilder {
 
   /// Creates the default loader used for creating a graph.
   pub fn create_graph_loader(&self) -> cache::FetchCacher {
-    self.create_fetch_cacher(PermissionsContainer::allow_all())
+    self.create_fetch_cacher(FetchPermissionsOption::AllowAll)
   }
 
   pub fn create_fetch_cacher(
     &self,
-    permissions: PermissionsContainer,
+    permissions: FetchPermissionsOption,
   ) -> cache::FetchCacher {
     cache::FetchCacher::new(
-      self.emit_cache.clone(),
       self.file_fetcher.clone(),
       self.options.resolve_file_header_overrides(),
       self.global_http_cache.clone(),

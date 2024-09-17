@@ -627,15 +627,19 @@ class WebSocket extends EventTarget {
 
 ObjectDefineProperties(WebSocket, {
   CONNECTING: {
+    __proto__: null,
     value: 0,
   },
   OPEN: {
+    __proto__: null,
     value: 1,
   },
   CLOSING: {
+    __proto__: null,
     value: 2,
   },
   CLOSED: {
+    __proto__: null,
     value: 3,
   },
 });
