@@ -104,7 +104,7 @@ impl ModuleLoadPreparer {
     roots: &[ModuleSpecifier],
     is_dynamic: bool,
     lib: TsTypeLib,
-    permissions: PermissionsContainer,
+    permissions: crate::file_fetcher::FetchPermissionsOption,
   ) -> Result<(), AnyError> {
     log::debug!("Preparing module load.");
     let _pb_clear_guard = self.progress_bar.clear_guard();
@@ -762,7 +762,7 @@ impl<TGraphContainer: ModuleGraphContainer> ModuleLoader
           &[specifier],
           is_dynamic,
           lib,
-          root_permissions,
+          root_permissions.into(),
         )
         .await?;
       update_permit.commit();

@@ -1,1 +1,59 @@
-{"name":"minipass-pipeline","dist-tags":{"latest":"1.2.4"},"versions":{"1.2.4":{"name":"minipass-pipeline","version":"1.2.4","description":"create a pipeline of streams using Minipass","author":{"name":"Isaac Z. Schlueter","email":"i@izs.me","url":"https://izs.me"},"license":"ISC","scripts":{"test":"tap","snap":"tap","preversion":"npm test","postversion":"npm publish","postpublish":"git push origin --follow-tags"},"tap":{"check-coverage":true},"devDependencies":{"tap":"^14.6.9"},"dependencies":{"minipass":"^3.0.0"},"engines":{"node":">=8"},"gitHead":"ead0263f019a9ec1eeb6db5da34c62479bb0a967","_id":"minipass-pipeline@1.2.4","_nodeVersion":"14.2.0","_npmVersion":"7.0.0-beta","dist":{"integrity":"sha512-xuIq7cIOt09RPRJ19gdi4b+RiNvDFYe5JH+ggNvBqGqpQXcru3PcRmOZuHBKWK1Txf9+cQ+HMVN4d6z46LZP7A==","shasum":"68472f79711c084657c067c5c6ad93cddea8214c","tarball":"http://localhost:4260/minipass-pipeline/minipass-pipeline-1.2.4.tgz","fileCount":4,"unpackedSize":7004,"npm-signature":"-----BEGIN PGP SIGNATURE-----\r\nVersion: OpenPGP.js v3.0.4\r\nComment: https://openpgpjs.org\r\n\r\nwsFcBAEBCAAQBQJfIHD1CRA9TVsSAnZWagAA0+kP/iYjOcMFfErbQD36koDF\nQPvdz1dvzGvT8F9VqlTy317usF4sjUXjeQRf8oEZCemvQWHUToQj2pJK7T2Y\neHb/g9kHTw68fhYgKtGtsI3jfLc41s8yWQ/LfWlmGB9M+atfKGMFt48a4lCs\nohNOCOOwV2S5SEOGon3n0E0UoN3BGTubhj0s1CKftXvmwS3ZKm+fwAW+2EzW\nqQEuZOR/s/PwOmfVbIu3zOgy+YGIWPGOHX3kLQ7o7jVpSofbzqt1Y6GvZXxZ\n+/gwCNvM4gBrvQvUprqY0DBBxLv7gRnKvkr+XWhLK4UgK+KLeAZoqxbd0maX\nxU3sYYC+L9UzcwgLZTOwM6qhIRzMHolOWpFxUCYnndxH7oJqkNeaIPEqA9MW\nMlbRo9mId0VdkYZHBesYrhxOk8vH+RaONNEckZjzqZFkEQUb3IKQ1hKS+m6E\ntt/sunCfbMyhgFZ7m5YaDBPC/tYWLP62CLe6jy9XQlE9KCSznqlqnVbFgxjE\n4FqvkoHWfyaBwBz5yavmpFeiM2Aoy87C39/XJXbk2JoNW0pP+FvhvnBWFFHe\nUWp21ql+e9dOuZOksaVdRsy6ExxMdFQtdiz0v3Om4ywzXlPQMYWQdYrCTFBA\nJkAJ8KtArBx3oPWwvfk1qFz05SUv9PsE3RVw5QU+X7jvOED+PGAAvx6dZ0Za\nMJeC\r\n=oGZg\r\n-----END PGP SIGNATURE-----\r\n","signatures":[{"keyid":"SHA256:jl3bwswu80PjjokCgh0o2w5c2U4LhQAE57gj9cz1kzA","sig":"MEUCIQDf8v9m6p3gFue3Yjxd4e6H2T4lS3KiG/ohLPF9cT3DdAIgUryCYUg+9BioenOtYvXrslzq8FoSszqID75p3aVhCAQ="}]},"directories":{},"_hasShrinkwrap":false}},"description":"create a pipeline of streams using Minipass","author":{"name":"Isaac Z. Schlueter","email":"i@izs.me","url":"https://izs.me"},"license":"ISC","readme":"# minipass-pipeline\n\nCreate a pipeline of streams using Minipass.\n\nCalls `.pipe()` on all the streams in the list.  Returns a stream where\nwrites got to the first pipe in the chain, and reads are from the last.\n\nErrors are proxied along the chain and emitted on the Pipeline stream.\n\n## USAGE\n\n```js\nconst Pipeline = require('minipass-pipeline')\n\n// the list of streams to pipeline together,\n// a bit like `input | transform | output` in bash\nconst p = new Pipeline(input, transform, output)\n\np.write('foo') // writes to input\np.on('data', chunk => doSomething()) // reads from output stream\n\n// less contrived example (but still pretty contrived)...\nconst decode = new bunzipDecoder()\nconst unpack = tar.extract({ cwd: 'target-dir' })\nconst tbz = new Pipeline(decode, unpack)\n\nfs.createReadStream('archive.tbz').pipe(tbz)\n\n// specify any minipass options if you like, as the first argument\n// it'll only try to pipeline event emitters with a .pipe() method\nconst p = new Pipeline({ objectMode: true }, input, transform, output)\n\n// If you don't know the things to pipe in right away, that's fine.\n// use p.push(stream) to add to the end, or p.unshift(stream) to the front\nconst databaseDecoderStreamDoohickey = (connectionInfo) => {\n  const p = new Pipeline()\n  logIntoDatabase(connectionInfo).then(connection => {\n    initializeDecoderRing(connectionInfo).then(decoderRing => {\n      p.push(connection, decoderRing)\n      getUpstreamSource(upstream => {\n        p.unshift(upstream)\n      })\n    })\n  })\n  // return to caller right away\n  // emitted data will be upstream -> connection -> decoderRing pipeline\n  return p\n}\n```\n\nPipeline is a [minipass](http://npm.im/minipass) stream, so it's as\nsynchronous as the streams it wraps.  It will buffer data until there is a\nreader, but no longer, so make sure to attach your listeners before you\npipe it somewhere else.\n\n## `new Pipeline(opts = {}, ...streams)`\n\nCreate a new Pipeline with the specified Minipass options and any streams\nprovided.\n\n## `pipeline.push(stream, ...)`\n\nAttach one or more streams to the pipeline at the end (read) side of the\npipe chain.\n\n## `pipeline.unshift(stream, ...)`\n\nAttach one or more streams to the pipeline at the start (write) side of the\npipe chain.\n","readmeFilename":"README.md"}
+{
+  "name": "minipass-pipeline",
+  "dist-tags": {
+    "latest": "1.2.4"
+  },
+  "versions": {
+    "1.2.4": {
+      "name": "minipass-pipeline",
+      "version": "1.2.4",
+      "description": "create a pipeline of streams using Minipass",
+      "author": {
+        "name": "Isaac Z. Schlueter",
+        "email": "i@izs.me",
+        "url": "https://izs.me"
+      },
+      "license": "ISC",
+      "scripts": {
+        "test": "tap",
+        "snap": "tap",
+        "preversion": "npm test",
+        "postversion": "npm publish",
+        "postpublish": "git push origin --follow-tags"
+      },
+      "tap": {
+        "check-coverage": true
+      },
+      "devDependencies": {
+        "tap": "^14.6.9"
+      },
+      "dependencies": {
+        "minipass": "^3.0.0"
+      },
+      "engines": {
+        "node": ">=8"
+      },
+      "gitHead": "ead0263f019a9ec1eeb6db5da34c62479bb0a967",
+      "_id": "minipass-pipeline@1.2.4",
+      "_nodeVersion": "14.2.0",
+      "_npmVersion": "7.0.0-beta",
+      "dist": {
+        "integrity": "sha512-xuIq7cIOt09RPRJ19gdi4b+RiNvDFYe5JH+ggNvBqGqpQXcru3PcRmOZuHBKWK1Txf9+cQ+HMVN4d6z46LZP7A==",
+        "shasum": "68472f79711c084657c067c5c6ad93cddea8214c",
+        "tarball": "http://localhost:4260/minipass-pipeline/minipass-pipeline-1.2.4.tgz",
+        "fileCount": 4,
+        "unpackedSize": 7004
+      },
+      "directories": {},
+      "_hasShrinkwrap": false
+    }
+  },
+  "description": "create a pipeline of streams using Minipass",
+  "author": {
+    "name": "Isaac Z. Schlueter",
+    "email": "i@izs.me",
+    "url": "https://izs.me"
+  },
+  "license": "ISC",
+  "readmeFilename": "README.md"
+}

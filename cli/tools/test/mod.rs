@@ -53,6 +53,7 @@ use deno_runtime::deno_io::StdioPipe;
 use deno_runtime::deno_permissions::Permissions;
 use deno_runtime::deno_permissions::PermissionsContainer;
 use deno_runtime::fmt_errors::format_js_error;
+use deno_runtime::permissions::RuntimePermissionDescriptorParser;
 use deno_runtime::tokio_util::create_and_run_current_thread;
 use deno_runtime::worker::MainWorker;
 use deno_runtime::WorkerExecutionMode;
@@ -606,7 +607,7 @@ fn get_test_reporter(options: &TestSpecifiersOptions) -> Box<dyn TestReporter> {
 async fn configure_main_worker(
   worker_factory: Arc<CliMainWorkerFactory>,
   specifier: &Url,
-  permissions: Permissions,
+  permissions_container: PermissionsContainer,
   worker_sender: TestEventWorkerSender,
   options: &TestSpecifierOptions,
 ) -> Result<(Option<Box<dyn CoverageCollector>>, MainWorker), anyhow::Error> {
@@ -614,7 +615,7 @@ async fn configure_main_worker(
     .create_custom_worker(
       WorkerExecutionMode::Test,
       specifier.clone(),
-      PermissionsContainer::new(permissions),
+      permissions_container,
       vec![ops::testing::deno_test::init_ops(worker_sender.sender)],
       Stdio {
         stdin: StdioPipe::inherit(),
@@ -657,7 +658,7 @@ async fn configure_main_worker(
 /// both.
 pub async fn test_specifier(
   worker_factory: Arc<CliMainWorkerFactory>,
-  permissions: Permissions,
+  permissions_container: PermissionsContainer,
   specifier: ModuleSpecifier,
   worker_sender: TestEventWorkerSender,
   fail_fast_tracker: FailFastTracker,
@@ -669,7 +670,7 @@ pub async fn test_specifier(
   let (coverage_collector, mut worker) = configure_main_worker(
     worker_factory,
     &specifier,
-    permissions,
+    permissions_container,
     worker_sender,
     &options,
   )
@@ -1190,6 +1191,7 @@ static HAS_TEST_RUN_SIGINT_HANDLER: AtomicBool = AtomicBool::new(false);
 async fn test_specifiers(
   worker_factory: Arc<CliMainWorkerFactory>,
   permissions: &Permissions,
+  permission_desc_parser: &Arc<RuntimePermissionDescriptorParser>,
   specifiers: Vec<ModuleSpecifier>,
   options: TestSpecifiersOptions,
 ) -> Result<(), AnyError> {
@@ -1217,14 +1219,17 @@ async fn test_specifiers(
 
   let join_handles = specifiers.into_iter().map(move |specifier| {
     let worker_factory = worker_factory.clone();
-    let permissions = permissions.clone();
+    let permissions_container = PermissionsContainer::new(
+      permission_desc_parser.clone(),
+      permissions.clone(),
+    );
     let worker_sender = test_event_sender_factory.worker();
     let fail_fast_tracker = fail_fast_tracker.clone();
     let specifier_options = options.specifier.clone();
     spawn_blocking(move || {
       create_and_run_current_thread(test_specifier(
         worker_factory,
-        permissions,
+        permissions_container,
         specifier,
         worker_sender,
         fail_fast_tracker,
@@ -1522,9 +1527,7 @@ async fn fetch_specifiers_with_test_mode(
     .collect::<Vec<_>>();
 
   for (specifier, mode) in &mut specifiers_with_mode {
-    let file = file_fetcher
-      .fetch(specifier, &PermissionsContainer::allow_all())
-      .await?;
+    let file = file_fetcher.fetch_bypass_permissions(specifier).await?;
 
     let (media_type, _) = file.resolve_media_type_and_charset();
     if matches!(media_type, MediaType::Unknown | MediaType::Dts) {
@@ -1547,8 +1550,11 @@ pub async fn run_tests(
   // Various test files should not share the same permissions in terms of
   // `PermissionsContainer` - otherwise granting/revoking permissions in one
   // file would have impact on other files, which is undesirable.
-  let permissions =
-    Permissions::from_options(&cli_options.permissions_options()?)?;
+  let permission_desc_parser = factory.permission_desc_parser()?;
+  let permissions = Permissions::from_options(
+    permission_desc_parser.as_ref(),
+    &cli_options.permissions_options(),
+  )?;
   let log_level = cli_options.log_level();
 
   let members_with_test_options =
@@ -1591,6 +1597,7 @@ pub async fn run_tests(
   test_specifiers(
     worker_factory,
     &permissions,
+    permission_desc_parser,
     specifiers_for_typecheck_and_test,
     TestSpecifiersOptions {
       cwd: Url::from_directory_path(cli_options.initial_cwd()).map_err(
@@ -1697,8 +1704,11 @@ pub async fn run_tests_with_watch(
           .flatten()
           .collect::<Vec<_>>();
 
-        let permissions =
-          Permissions::from_options(&cli_options.permissions_options()?)?;
+        let permission_desc_parser = factory.permission_desc_parser()?;
+        let permissions = Permissions::from_options(
+          permission_desc_parser.as_ref(),
+          &cli_options.permissions_options(),
+        )?;
         let graph = module_graph_creator
           .create_graph(graph_kind, test_modules)
           .await?;
@@ -1760,6 +1770,7 @@ pub async fn run_tests_with_watch(
         test_specifiers(
           worker_factory,
           &permissions,
+          permission_desc_parser,
           specifiers_for_typecheck_and_test,
           TestSpecifiersOptions {
             cwd: Url::from_directory_path(cli_options.initial_cwd()).map_err(
@@ -1807,9 +1818,7 @@ async fn get_doc_tests(
 
   let mut doc_tests = Vec::new();
   for s in specifiers_needing_extraction {
-    let file = file_fetcher
-      .fetch(s, &PermissionsContainer::allow_all())
-      .await?;
+    let file = file_fetcher.fetch_bypass_permissions(s).await?;
     doc_tests.extend(extract_doc_tests(file)?);
   }
 

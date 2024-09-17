@@ -1445,16 +1445,16 @@ async fn test_watch_serve() {
     .piped_output()
     .spawn()
     .unwrap();
-  let (mut stdout_lines, mut stderr_lines) = child_lines(&mut child);
+  let (mut _stdout_lines, mut stderr_lines) = child_lines(&mut child);
 
-  wait_contains("Listening on", &mut stdout_lines).await;
+  wait_contains("Listening on", &mut stderr_lines).await;
   // Note that we start serving very quickly, so we specifically want to wait for this message
   wait_contains(r#"Watching paths: [""#, &mut stderr_lines).await;
 
   file_to_watch.write(file_content);
 
   wait_contains("serving", &mut stderr_lines).await;
-  wait_contains("Listening on", &mut stdout_lines).await;
+  wait_contains("Listening on", &mut stderr_lines).await;
 
   check_alive_then_kill(child);
 }

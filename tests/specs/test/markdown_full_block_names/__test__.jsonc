@@ -1,5 +1,5 @@
 {
-  "args": "test --doc markdown_full_block_names.md",
+  "args": "test --doc --allow-all main.md",
   "exitCode": 1,
-  "output": "markdown_full_block_names.out"
+  "output": "main.out"
 }

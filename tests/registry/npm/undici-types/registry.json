@@ -1,0 +1,53 @@
+{
+  "name": "undici-types",
+  "dist-tags": {
+    "latest": "6.19.8"
+  },
+  "versions": {
+    "6.19.8": {
+      "name": "undici-types",
+      "version": "6.19.8",
+      "description": "A stand-alone types package for Undici",
+      "bugs": {
+        "url": "https://github.com/nodejs/undici/issues"
+      },
+      "repository": {
+        "type": "git",
+        "url": "git+https://github.com/nodejs/undici.git"
+      },
+      "license": "MIT",
+      "types": "index.d.ts",
+      "_id": "undici-types@6.19.8",
+      "gitHead": "3d3ce0695c8c3f9a8f3c8af90dd42d0569d3f0bb",
+      "_nodeVersion": "20.16.0",
+      "_npmVersion": "10.8.1",
+      "dist": {
+        "integrity": "sha512-ve2KP6f/JnbPBFyobGHuerC9g1FYGn/F8n1LWTwNxCEzd6IfqTwUQcNXgEtmmQ6DlRrC1hrSrBnCZPokRrDHjw==",
+        "shasum": "35111c9d1437ab83a7cdc0abae2f26d88eda0a02",
+        "tarball": "http://localhost:4260/undici-types/undici-types-6.19.8.tgz",
+        "fileCount": 41,
+        "unpackedSize": 84225,
+        "signatures": [
+          {
+            "keyid": "SHA256:jl3bwswu80PjjokCgh0o2w5c2U4LhQAE57gj9cz1kzA",
+            "sig": "MEUCIGHm3RU6nmPjpFrE7lus7cMT9nBeVHOhTWjzflE57x08AiEAs6/KJsXAnqL1KXWZBAkJ5Gf4NdDUqZcjr/OL+clXX3I="
+          }
+        ]
+      },
+      "directories": {},
+      "_hasShrinkwrap": false
+    }
+  },
+  "bugs": {
+    "url": "https://github.com/nodejs/undici/issues"
+  },
+  "license": "MIT",
+  "homepage": "https://undici.nodejs.org",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/nodejs/undici.git"
+  },
+  "description": "A stand-alone types package for Undici",
+  "readme": "# undici-types\n\nThis package is a dual-publish of the [undici](https://www.npmjs.com/package/undici) library types. The `undici` package **still contains types**. This package is for users who _only_ need undici types (such as for `@types/node`). It is published alongside every release of `undici`, so you can always use the same version.\n\n- [GitHub nodejs/undici](https://github.com/nodejs/undici)\n- [Undici Documentation](https://undici.nodejs.org/#/)\n",
+  "readmeFilename": "README.md"
+}

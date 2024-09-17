@@ -10,7 +10,6 @@ use deno_core::error::AnyError;
 use deno_graph::Module;
 use deno_graph::ModuleGraph;
 use deno_runtime::deno_node::NodeResolver;
-use deno_runtime::deno_permissions::PermissionsContainer;
 use deno_terminal::colors;
 use once_cell::sync::Lazy;
 use regex::Regex;
@@ -56,9 +55,7 @@ pub async fn check(
     let mut specifiers_for_typecheck = specifiers.clone();
 
     for s in &specifiers {
-      let file = file_fetcher
-        .fetch(s, &PermissionsContainer::allow_all())
-        .await?;
+      let file = file_fetcher.fetch_bypass_permissions(s).await?;
       let snippet_files = extract::extract_snippet_files(file)?;
       for snippet_file in snippet_files {
         specifiers_for_typecheck.push(snippet_file.specifier.clone());
@@ -129,7 +126,9 @@ impl TypeChecker {
     graph: ModuleGraph,
     options: CheckOptions,
   ) -> Result<Arc<ModuleGraph>, AnyError> {
-    let (graph, diagnostics) = self.check_diagnostics(graph, options).await?;
+    let (graph, mut diagnostics) =
+      self.check_diagnostics(graph, options).await?;
+    diagnostics.emit_warnings();
     if diagnostics.is_empty() {
       Ok(graph)
     } else {

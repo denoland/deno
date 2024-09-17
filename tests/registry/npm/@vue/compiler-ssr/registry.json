@@ -1,1 +1,63 @@
-{"name":"@vue/compiler-ssr","dist-tags":{"latest":"3.2.38"},"versions":{"3.2.38":{"name":"@vue/compiler-ssr","version":"3.2.38","description":"@vue/compiler-ssr","main":"dist/compiler-ssr.cjs.js","types":"dist/compiler-ssr.d.ts","buildOptions":{"prod":false,"formats":["cjs"]},"repository":{"type":"git","url":"git+https://github.com/vuejs/core.git","directory":"packages/compiler-ssr"},"author":{"name":"Evan You"},"license":"MIT","bugs":{"url":"https://github.com/vuejs/core/issues"},"dependencies":{"@vue/shared":"3.2.38","@vue/compiler-dom":"3.2.38"},"licenseText":"The MIT License (MIT)\n\nCopyright (c) 2018-present, Yuxi (Evan) You\n\nPermission is hereby granted, free of charge, to any person obtaining a copy\nof this software and associated documentation files (the \"Software\"), to deal\nin the Software without restriction, including without limitation the rights\nto use, copy, modify, merge, publish, distribute, sublicense, and/or sell\ncopies of the Software, and to permit persons to whom the Software is\nfurnished to do so, subject to the following conditions:\n\nThe above copyright notice and this permission notice shall be included in\nall copies or substantial portions of the Software.\n\nTHE SOFTWARE IS PROVIDED \"AS IS\", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR\nIMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,\nFITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE\nAUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER\nLIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,\nOUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN\nTHE SOFTWARE.\n","_id":"@vue/compiler-ssr@3.2.38","dist":{"shasum":"933b23bf99e667e5078eefc6ba94cb95fd765dfe","integrity":"sha512-bm9jOeyv1H3UskNm4S6IfueKjUNFmi2kRweFIGnqaGkkRePjwEcfCVqyS3roe7HvF4ugsEkhf4+kIvDhip6XzQ==","tarball":"http://localhost:4260/@vue/compiler-ssr/compiler-ssr-3.2.38.tgz","fileCount":7,"unpackedSize":59102,"signatures":[{"keyid":"SHA256:jl3bwswu80PjjokCgh0o2w5c2U4LhQAE57gj9cz1kzA","sig":"MEUCIQCqxg+GCJYYXhgjctNi0CqD7HyFF+ROUQkHCN1K7DyHYwIgcmZkY/RHCHh8T+KLbfKrj03YHJv1U2fDxlzD4dqjE1k="}],"npm-signature":"-----BEGIN PGP SIGNATURE-----\r\nVersion: OpenPGP.js v4.10.10\r\nComment: https://openpgpjs.org\r\n\r\nwsFzBAEBCAAGBQJjDcQAACEJED1NWxICdlZqFiEECWMYAoorWMhJKdjhPU1b\r\nEgJ2VmreRxAAlJ2/Sf4PNqEqtRrceye4bfiW3i/IREEovJX2MLOo0BMaARGs\r\nlMkj0sZKBSuJCqYLtGTdgog+iSbsep2keBG65bxKBKjOn5vo6e0+sI15ca63\r\nQIuQGlFn4NAXRvmlkE1I2cPnE1iFog9H4oF2uHRQsj5B//WlJJgVxIXuNet5\r\n5v8ckJf5YP6YdBzQFkhRu7AgL72U/NmfXe+hT1sjBy0J93/lJqNaUrau+I43\r\nMB4DeaBA5Pa4ltVJjbE9x23OYf/Tk3a0tmUcpx1BZKv4NAC8GZ70EmcsTY7l\r\nqKZkMfzG+tr1aqTVmyqyNqiiNO6TkAPrfFAy6tlM0bfNfWyxK529mU5HthPU\r\nhFuHueU2MPE+WLVe4MPaZmDTfc443SPOW0dwUhScaV12hePSNmaTDLnATSNc\r\nD1iwvSiJPtzKmNBTRY6YoM3/b9KEQV5GablefZavLJLVJixmP8BTtK9r6g9A\r\nr41aN7BNx1yG3nZQM0e3S2rnV9mr9ZuIKb3N8PN/9Ycedxp9nuCXd3SeKa8j\r\nQKdb6jLNL9sge/Y8L+NgbgokdRxCHQdQ7jxSZw7e3Ej38aSzTj7HJizn2UgG\r\nhk77xwHfNlBxtHp97Hs7VvcTxCTauwFzICcFp7ODH9euq6ZFJuIWUvVso6c0\r\ntFHs5ClTMuIAbuLyJRyiqsyHm0fpkbcZ1HQ=\r\n=Acde\r\n-----END PGP SIGNATURE-----\r\n"},"directories":{},"_hasShrinkwrap":false}},"description":"@vue/compiler-ssr","homepage":"https://github.com/vuejs/core/tree/main/packages/compiler-ssr#readme","repository":{"type":"git","url":"git+https://github.com/vuejs/core.git","directory":"packages/compiler-ssr"},"author":{"name":"Evan You"},"bugs":{"url":"https://github.com/vuejs/core/issues"},"license":"MIT","readme":"# @vue/compiler-ssr","readmeFilename":"README.md"}
+{
+  "name": "@vue/compiler-ssr",
+  "dist-tags": {
+    "latest": "3.2.38"
+  },
+  "versions": {
+    "3.2.38": {
+      "name": "@vue/compiler-ssr",
+      "version": "3.2.38",
+      "description": "@vue/compiler-ssr",
+      "main": "dist/compiler-ssr.cjs.js",
+      "types": "dist/compiler-ssr.d.ts",
+      "buildOptions": {
+        "prod": false,
+        "formats": [
+          "cjs"
+        ]
+      },
+      "repository": {
+        "type": "git",
+        "url": "git+https://github.com/vuejs/core.git",
+        "directory": "packages/compiler-ssr"
+      },
+      "author": {
+        "name": "Evan You"
+      },
+      "license": "MIT",
+      "bugs": {
+        "url": "https://github.com/vuejs/core/issues"
+      },
+      "dependencies": {
+        "@vue/shared": "3.2.38",
+        "@vue/compiler-dom": "3.2.38"
+      },
+      "licenseText": "The MIT License (MIT)\n\nCopyright (c) 2018-present, Yuxi (Evan) You\n\nPermission is hereby granted, free of charge, to any person obtaining a copy\nof this software and associated documentation files (the \"Software\"), to deal\nin the Software without restriction, including without limitation the rights\nto use, copy, modify, merge, publish, distribute, sublicense, and/or sell\ncopies of the Software, and to permit persons to whom the Software is\nfurnished to do so, subject to the following conditions:\n\nThe above copyright notice and this permission notice shall be included in\nall copies or substantial portions of the Software.\n\nTHE SOFTWARE IS PROVIDED \"AS IS\", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR\nIMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,\nFITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE\nAUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER\nLIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,\nOUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN\nTHE SOFTWARE.\n",
+      "_id": "@vue/compiler-ssr@3.2.38",
+      "dist": {
+        "shasum": "933b23bf99e667e5078eefc6ba94cb95fd765dfe",
+        "integrity": "sha512-bm9jOeyv1H3UskNm4S6IfueKjUNFmi2kRweFIGnqaGkkRePjwEcfCVqyS3roe7HvF4ugsEkhf4+kIvDhip6XzQ==",
+        "tarball": "http://localhost:4260/@vue/compiler-ssr/compiler-ssr-3.2.38.tgz",
+        "fileCount": 7,
+        "unpackedSize": 59102
+      },
+      "directories": {},
+      "_hasShrinkwrap": false
+    }
+  },
+  "description": "@vue/compiler-ssr",
+  "homepage": "https://github.com/vuejs/core/tree/main/packages/compiler-ssr#readme",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/vuejs/core.git",
+    "directory": "packages/compiler-ssr"
+  },
+  "author": {
+    "name": "Evan You"
+  },
+  "bugs": {
+    "url": "https://github.com/vuejs/core/issues"
+  },
+  "license": "MIT",
+  "readmeFilename": "README.md"
+}
