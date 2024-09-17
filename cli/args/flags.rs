@@ -11,8 +11,6 @@ use std::path::Path;
 use std::path::PathBuf;
 use std::str::FromStr;
 
-use crate::args::resolve_no_prompt;
-use crate::util::fs::canonicalize_path;
 use clap::builder::styling::AnsiColor;
 use clap::builder::FalseyValueParser;
 use clap::error::ErrorKind;
@@ -41,6 +39,9 @@ use log::debug;
 use log::Level;
 use serde::Deserialize;
 use serde::Serialize;
+
+use crate::args::resolve_no_prompt;
+use crate::util::fs::canonicalize_path;
 
 use super::flags_net;
 
