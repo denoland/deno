@@ -11659,24 +11659,108 @@ fn lsp_jsx_import_source_config_file_automatic_cache() {
   // The caching is done on an asynchronous task spawned after init, so there's
   // a chance it wasn't done in time and we need to wait for another batch of
   // diagnostics.
+  let mut version = 1;
   while !diagnostics.all().is_empty() {
     std::thread::sleep(std::time::Duration::from_millis(50));
     // The post-cache diagnostics update triggers inconsistently on CI for some
     // reason. Force it with this notification.
-    diagnostics = client.did_open(json!({
-      "textDocument": {
-        "uri": temp_dir.url().join("file.tsx").unwrap(),
-        "languageId": "typescriptreact",
-        "version": 1,
-        "text": "
-          export function Foo() {
-            return <div></div>;
-          }
-        ",
-      },
-    }));
+    version += 1;
+    client.write_notification(
+      "textDocument/didChange",
+      json!({
+        "textDocument": {
+          "uri": temp_dir.url().join("file.tsx").unwrap(),
+          "version": version,
+        },
+        "contentChanges": [
+          {
+            "range": {
+              "start": { "line": 0, "character": 0 },
+              "end": { "line": 0, "character": 0 },
+            },
+            "text": "",
+          },
+        ],
+      }),
+    );
+    diagnostics = client.read_diagnostics();
   }
   assert_eq!(diagnostics.all(), vec![]);
+  client.shutdown();
+}
+
+#[ignore = "https://github.com/denoland/deno/issues/21770"]
+#[test]
+fn lsp_jsx_import_source_package_json_automatic_cache() {
+  let context = TestContextBuilder::new()
+    .use_http_server()
+    .use_temp_cwd()
+    .build();
+  let temp_dir = context.temp_dir();
+  temp_dir.write(
+    "deno.json",
+    json!({
+      "compilerOptions": {
+        "jsx": "react-jsx",
+        "jsxImportSource": "preact",
+      },
+      "nodeModulesDir": false,
+    })
+    .to_string(),
+  );
+  temp_dir.write(
+    "package.json",
+    json!({
+      "dependencies": {
+        "preact": "^10.19.6",
+      },
+    })
+    .to_string(),
+  );
+  let mut client = context.new_lsp_command().build();
+  client.initialize_default();
+  let mut diagnostics = client.did_open(json!({
+    "textDocument": {
+      "uri": temp_dir.url().join("file.tsx").unwrap(),
+      "languageId": "typescriptreact",
+      "version": 1,
+      "text": "
+        export function Foo() {
+          return <div></div>;
+        }
+      ",
+    },
+  }));
+  // The caching is done on an asynchronous task spawned after init, so there's
+  // a chance it wasn't done in time and we need to wait for another batch of
+  // diagnostics.
+  let mut version = 1;
+  while !diagnostics.all().is_empty() {
+    std::thread::sleep(std::time::Duration::from_millis(50));
+    // The post-cache diagnostics update triggers inconsistently on CI for some
+    // reason. Force it with this notification.
+    version += 1;
+    client.write_notification(
+      "textDocument/didChange",
+      json!({
+        "textDocument": {
+          "uri": temp_dir.url().join("file.tsx").unwrap(),
+          "version": version,
+        },
+        "contentChanges": [
+          {
+            "range": {
+              "start": { "line": 0, "character": 0 },
+              "end": { "line": 0, "character": 0 },
+            },
+            "text": "",
+          },
+        ],
+      }),
+    );
+    diagnostics = client.read_diagnostics();
+  }
+  assert_eq!(json!(diagnostics.all()), json!([]));
   client.shutdown();
 }
 
