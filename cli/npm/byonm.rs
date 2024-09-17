@@ -16,7 +16,7 @@ use deno_runtime::deno_node::NodePermissions;
 use deno_runtime::deno_node::NodeRequireResolver;
 use deno_runtime::deno_node::NpmProcessStateProvider;
 use deno_runtime::deno_node::PackageJson;
-use deno_runtime::deno_permissions::specifier_to_file_path;
+use deno_runtime::fs_util::specifier_to_file_path;
 use deno_semver::package::PackageReq;
 use deno_semver::Version;
 use node_resolver::errors::PackageFolderResolveError;

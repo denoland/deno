@@ -1,11 +1,5 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
-use crate::args::JsxImportSourceConfig;
-use crate::args::DENO_DISABLE_PEDANTIC_NODE_WARNINGS;
-use crate::node::CliNodeCodeTranslator;
-use crate::npm::CliNpmResolver;
-use crate::npm::InnerCliNpmResolverRef;
-use crate::util::sync::AtomicFlag;
 use async_trait::async_trait;
 use dashmap::DashMap;
 use dashmap::DashSet;
@@ -33,7 +27,7 @@ use deno_runtime::deno_fs;
 use deno_runtime::deno_fs::FileSystem;
 use deno_runtime::deno_node::is_builtin_node_module;
 use deno_runtime::deno_node::NodeResolver;
-use deno_runtime::deno_permissions::specifier_to_file_path;
+use deno_runtime::fs_util::specifier_to_file_path;
 use deno_semver::npm::NpmPackageReqReference;
 use deno_semver::package::PackageReq;
 use node_resolver::errors::ClosestPkgJsonError;
@@ -52,6 +46,13 @@ use std::borrow::Cow;
 use std::path::Path;
 use std::path::PathBuf;
 use std::sync::Arc;
+
+use crate::args::JsxImportSourceConfig;
+use crate::args::DENO_DISABLE_PEDANTIC_NODE_WARNINGS;
+use crate::node::CliNodeCodeTranslator;
+use crate::npm::CliNpmResolver;
+use crate::npm::InnerCliNpmResolverRef;
+use crate::util::sync::AtomicFlag;
 
 pub struct ModuleCodeStringSource {
   pub code: ModuleSourceCode,

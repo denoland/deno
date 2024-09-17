@@ -1,5 +1,35 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
+use dashmap::DashMap;
+use deno_ast::MediaType;
+use deno_cache_dir::HttpCache;
+use deno_config::workspace::PackageJsonDepResolution;
+use deno_config::workspace::WorkspaceResolver;
+use deno_core::url::Url;
+use deno_graph::source::Resolver;
+use deno_graph::GraphImport;
+use deno_graph::ModuleSpecifier;
+use deno_npm::NpmSystemInfo;
+use deno_runtime::deno_fs;
+use deno_runtime::deno_node::NodeResolver;
+use deno_runtime::deno_node::PackageJson;
+use deno_runtime::fs_util::specifier_to_file_path;
+use deno_semver::jsr::JsrPackageReqReference;
+use deno_semver::npm::NpmPackageReqReference;
+use deno_semver::package::PackageNv;
+use deno_semver::package::PackageReq;
+use indexmap::IndexMap;
+use node_resolver::errors::ClosestPkgJsonError;
+use node_resolver::NodeResolution;
+use node_resolver::NodeResolutionMode;
+use node_resolver::NpmResolver;
+use std::borrow::Cow;
+use std::collections::BTreeMap;
+use std::collections::BTreeSet;
+use std::collections::HashMap;
+use std::collections::HashSet;
+use std::sync::Arc;
+
 use super::cache::LspCache;
 use super::jsr::JsrCacheResolver;
 use crate::args::create_default_npmrc;
@@ -25,35 +55,6 @@ use crate::resolver::CliNodeResolver;
 use crate::resolver::WorkerCliNpmGraphResolver;
 use crate::util::progress_bar::ProgressBar;
 use crate::util::progress_bar::ProgressBarStyle;
-use dashmap::DashMap;
-use deno_ast::MediaType;
-use deno_cache_dir::HttpCache;
-use deno_config::workspace::PackageJsonDepResolution;
-use deno_config::workspace::WorkspaceResolver;
-use deno_core::url::Url;
-use deno_graph::source::Resolver;
-use deno_graph::GraphImport;
-use deno_graph::ModuleSpecifier;
-use deno_npm::NpmSystemInfo;
-use deno_runtime::deno_fs;
-use deno_runtime::deno_node::NodeResolver;
-use deno_runtime::deno_node::PackageJson;
-use deno_runtime::deno_permissions::specifier_to_file_path;
-use deno_semver::jsr::JsrPackageReqReference;
-use deno_semver::npm::NpmPackageReqReference;
-use deno_semver::package::PackageNv;
-use deno_semver::package::PackageReq;
-use indexmap::IndexMap;
-use node_resolver::errors::ClosestPkgJsonError;
-use node_resolver::NodeResolution;
-use node_resolver::NodeResolutionMode;
-use node_resolver::NpmResolver;
-use std::borrow::Cow;
-use std::collections::BTreeMap;
-use std::collections::BTreeSet;
-use std::collections::HashMap;
-use std::collections::HashSet;
-use std::sync::Arc;
 
 #[derive(Debug, Clone)]
 struct LspScopeResolver {

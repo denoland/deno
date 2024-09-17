@@ -62,7 +62,7 @@ use deno_core::ModuleSpecifier;
 use deno_core::OpState;
 use deno_core::PollEventLoopOptions;
 use deno_core::RuntimeOptions;
-use deno_runtime::deno_permissions::specifier_to_file_path;
+use deno_runtime::fs_util::specifier_to_file_path;
 use deno_runtime::inspector_server::InspectorServer;
 use deno_runtime::tokio_util::create_basic_runtime;
 use indexmap::IndexMap;

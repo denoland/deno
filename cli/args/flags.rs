@@ -7,7 +7,6 @@ use std::net::SocketAddr;
 use std::num::NonZeroU32;
 use std::num::NonZeroU8;
 use std::num::NonZeroUsize;
-use std::panic;
 use std::path::Path;
 use std::path::PathBuf;
 use std::str::FromStr;
@@ -36,8 +35,8 @@ use deno_core::resolve_url_or_path;
 use deno_core::url::Url;
 use deno_graph::GraphKind;
 use deno_runtime::deno_permissions::parse_sys_kind;
-use deno_runtime::deno_permissions::specifier_to_file_path;
 use deno_runtime::deno_permissions::PermissionsOptions;
+use deno_runtime::fs_util::specifier_to_file_path;
 use log::debug;
 use log::Level;
 use serde::Deserialize;
@@ -917,12 +916,8 @@ impl Flags {
           if module_specifier.scheme() == "file"
             || module_specifier.scheme() == "npm"
           {
-            if let Ok(file_path) = specifier_to_file_path(&module_specifier) {
-              if let Some(parent_path) = file_path.parent() {
-                Some(vec![parent_path.to_path_buf()])
-              } else {
-                Some(vec![file_path.to_path_buf()])
-              }
+            if let Ok(p) = specifier_to_file_path(&module_specifier) {
+              Some(vec![p.parent().unwrap().to_path_buf()])
             } else {
               Some(vec![current_dir.to_path_buf()])
             }

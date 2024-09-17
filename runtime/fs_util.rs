@@ -2,9 +2,11 @@
 
 use deno_core::anyhow::Context;
 use deno_core::error::AnyError;
-pub use deno_core::normalize_path;
 use std::path::Path;
 use std::path::PathBuf;
+
+pub use deno_core::normalize_path;
+pub use deno_permissions::specifier_to_file_path;
 
 #[inline]
 pub fn resolve_from_cwd(path: &Path) -> Result<PathBuf, AnyError> {

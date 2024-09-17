@@ -10,7 +10,7 @@ use crate::lsp::logging::lsp_warn;
 
 use deno_core::url::Url;
 use deno_core::ModuleSpecifier;
-use deno_runtime::deno_permissions::specifier_to_file_path;
+use deno_runtime::fs_util::specifier_to_file_path;
 use std::collections::BTreeMap;
 use std::fs;
 use std::path::Path;
