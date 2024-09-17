@@ -1,4 +1,4 @@
-import { type B, create } from "../subdir/export_types.ts";
+import { create, type B } from "../subdir/export_types.ts";
 
 const b: B = create();
 
