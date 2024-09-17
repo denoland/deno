@@ -1932,7 +1932,7 @@ impl Permissions {
     specifier: &ModuleSpecifier,
   ) -> Result<(), AnyError> {
     match specifier.scheme() {
-        "file" => match specifier_to_file_path(specifier) {
+      "file" => match specifier_to_file_path(specifier) {
         Ok(path) => self.read.check(
           &PathQueryDescriptor {
             requested: path.to_string_lossy().into_owned(),
@@ -4269,37 +4269,37 @@ mod tests {
     }
   }
 
-    #[test]
-    fn test_specifier_to_file_path() {
-        run_success_test("file:///", "/");
-        run_success_test("file:///test", "/test");
-        run_success_test("file:///dir/test/test.txt", "/dir/test/test.txt");
-        run_success_test(
-            "file:///dir/test%20test/test.txt",
-            "/dir/test test/test.txt",
-        );
+  #[test]
+  fn test_specifier_to_file_path() {
+    run_success_test("file:///", "/");
+    run_success_test("file:///test", "/test");
+    run_success_test("file:///dir/test/test.txt", "/dir/test/test.txt");
+    run_success_test(
+      "file:///dir/test%20test/test.txt",
+      "/dir/test test/test.txt",
+    );
 
-        assert_no_panic_specifier_to_file_path("file:/");
-        assert_no_panic_specifier_to_file_path("file://");
-        assert_no_panic_specifier_to_file_path("file://asdf/");
-        assert_no_panic_specifier_to_file_path("file://asdf/66666/a.ts");
+    assert_no_panic_specifier_to_file_path("file:/");
+    assert_no_panic_specifier_to_file_path("file://");
+    assert_no_panic_specifier_to_file_path("file://asdf/");
+    assert_no_panic_specifier_to_file_path("file://asdf/66666/a.ts");
 
-        fn run_success_test(specifier: &str, expected_path: &str) {
-            let result =
-                specifier_to_file_path(&ModuleSpecifier::parse(specifier).unwrap())
-                    .unwrap();
-            assert_eq!(result, PathBuf::from(expected_path));
-        }
-        fn assert_no_panic_specifier_to_file_path(specifier: &str) {
-            let result =
-                specifier_to_file_path(&ModuleSpecifier::parse(specifier).unwrap());
-            match result {
-                Ok(_) => (),
-                Err(err) => assert_eq!(
-                    err.to_string(),
-                    format!("Invalid file path.\n  Specifier: {specifier}")
-                ),
-            }
-        }
+    fn run_success_test(specifier: &str, expected_path: &str) {
+      let result =
+        specifier_to_file_path(&ModuleSpecifier::parse(specifier).unwrap())
+          .unwrap();
+      assert_eq!(result, PathBuf::from(expected_path));
     }
+    fn assert_no_panic_specifier_to_file_path(specifier: &str) {
+      let result =
+        specifier_to_file_path(&ModuleSpecifier::parse(specifier).unwrap());
+      match result {
+        Ok(_) => (),
+        Err(err) => assert_eq!(
+          err.to_string(),
+          format!("Invalid file path.\n  Specifier: {specifier}")
+        ),
+      }
+    }
+  }
 }
