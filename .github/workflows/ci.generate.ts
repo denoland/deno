@@ -1096,10 +1096,10 @@ const ci = {
         {
           name: "Upload canary version file to dl.deno.land",
           run: [
-            "latest_canary_hash=$(gsutil cat gs://dl.deno.land/canary-latest.txt) && \\",
+            "latest_canary_hash=$(gsutil cat gs://dl.deno.land/canary-latest.txt)",
             "git cat-file -e $latest_canary_hash",
             "if [ $? -eq 0]; then",
-            "  echo ${{ github.sha }} > canary-latest.txt && \\",
+            "  echo ${{ github.sha }} > canary-latest.txt",
             '  gsutil -h "Cache-Control: no-cache" cp canary-latest.txt gs://dl.deno.land/canary-latest.txt',
             "fi",
           ].join("\n"),
