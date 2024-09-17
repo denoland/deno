@@ -2,7 +2,6 @@
 
 use std::borrow::Cow;
 use std::cell::RefCell;
-use std::collections::HashSet;
 use std::path::PathBuf;
 use std::pin::Pin;
 use std::rc::Rc;
@@ -44,7 +43,6 @@ use deno_core::error::generic_error;
 use deno_core::error::AnyError;
 use deno_core::futures::future::FutureExt;
 use deno_core::futures::Future;
-use deno_core::parking_lot::Mutex;
 use deno_core::resolve_url;
 use deno_core::ModuleCodeString;
 use deno_core::ModuleLoader;
@@ -106,7 +104,7 @@ impl ModuleLoadPreparer {
     roots: &[ModuleSpecifier],
     is_dynamic: bool,
     lib: TsTypeLib,
-    permissions: PermissionsContainer,
+    permissions: crate::file_fetcher::FetchPermissionsOption,
     ext_overwrite: Option<&String>,
   ) -> Result<(), AnyError> {
     log::debug!("Preparing module load.");
@@ -265,7 +263,6 @@ impl CliModuleLoaderFactory {
       emitter: self.shared.emitter.clone(),
       parsed_source_cache: self.shared.parsed_source_cache.clone(),
       shared: self.shared.clone(),
-      prevent_v8_code_cache: Default::default(),
     })));
     ModuleLoaderAndSourceMapGetter {
       module_loader: loader,
@@ -317,10 +314,6 @@ struct CliModuleLoaderInner<TGraphContainer: ModuleGraphContainer> {
   emitter: Arc<Emitter>,
   parsed_source_cache: Arc<ParsedSourceCache>,
   graph_container: TGraphContainer,
-  // NOTE(bartlomieju): this is temporary, for deprecated import assertions.
-  // Should be removed in Deno 2.
-  // Modules stored here should not be V8 code-cached.
-  prevent_v8_code_cache: Arc<Mutex<HashSet<String>>>,
 }
 
 impl<TGraphContainer: ModuleGraphContainer>
@@ -790,7 +783,7 @@ impl<TGraphContainer: ModuleGraphContainer> ModuleLoader
           &[specifier],
           is_dynamic,
           lib,
-          root_permissions,
+          root_permissions.into(),
           None,
         )
         .await?;
@@ -807,14 +800,6 @@ impl<TGraphContainer: ModuleGraphContainer> ModuleLoader
     code_cache: &[u8],
   ) -> Pin<Box<dyn Future<Output = ()>>> {
     if let Some(cache) = self.0.shared.code_cache.as_ref() {
-      if self
-        .0
-        .prevent_v8_code_cache
-        .lock()
-        .contains(specifier.as_str())
-      {
-        return std::future::ready(()).boxed_local();
-      }
       // This log line is also used by tests.
       log::debug!(
         "Updating V8 code cache for ES module: {specifier}, [{source_hash:?}]"
@@ -827,19 +812,6 @@ impl<TGraphContainer: ModuleGraphContainer> ModuleLoader
       );
     }
     std::future::ready(()).boxed_local()
-  }
-
-  fn purge_and_prevent_code_cache(&self, specifier: &str) {
-    if let Some(cache) = self.0.shared.code_cache.as_ref() {
-      // This log line is also used by tests.
-      log::debug!("Remove V8 code cache for ES module: {specifier}");
-      cache.remove_code_cache(specifier);
-      self
-        .0
-        .prevent_v8_code_cache
-        .lock()
-        .insert(specifier.to_string());
-    }
   }
 
   fn get_source_map(&self, file_name: &str) -> Option<Vec<u8>> {

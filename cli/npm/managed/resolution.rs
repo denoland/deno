@@ -318,7 +318,7 @@ fn get_npm_pending_resolver(
       // WARNING: When bumping this version, check if anything needs to be
       // updated in the `setNodeOnlyGlobalNames` call in 99_main_compiler.js
       types_node_version_req: Some(
-        VersionReq::parse_from_npm("18.0.0 - 18.16.19").unwrap(),
+        VersionReq::parse_from_npm("22.0.0 - 22.5.4").unwrap(),
       ),
     },
   )

@@ -490,10 +490,6 @@ async fn resolve_shim_data(
     TypeCheckMode::Local => executable_args.push("--check".to_string()),
   }
 
-  if flags.unstable_config.legacy_flag_enabled {
-    executable_args.push("--unstable".to_string());
-  }
-
   for feature in &flags.unstable_config.features {
     executable_args.push(format!("--unstable-{}", feature));
   }
@@ -822,13 +818,7 @@ mod tests {
 
     create_install_shim(
       &HttpClientProvider::new(None, None),
-      &Flags {
-        unstable_config: UnstableConfig {
-          legacy_flag_enabled: true,
-          ..Default::default()
-        },
-        ..Flags::default()
-      },
+      &Flags::default(),
       InstallFlagsGlobal {
         module_url: "http://localhost:4545/echo_server.ts".to_string(),
         args: vec![],
@@ -850,12 +840,11 @@ mod tests {
     let content = fs::read_to_string(file_path).unwrap();
     if cfg!(windows) {
       assert!(content.contains(
-        r#""run" "--unstable" "--no-config" "http://localhost:4545/echo_server.ts""#
+        r#""run" "--no-config" "http://localhost:4545/echo_server.ts""#
       ));
     } else {
-      assert!(content.contains(
-        r#"run --unstable --no-config 'http://localhost:4545/echo_server.ts'"#
-      ));
+      assert!(content
+        .contains(r#"run --no-config 'http://localhost:4545/echo_server.ts'"#));
     }
   }
 
@@ -886,13 +875,7 @@ mod tests {
   async fn install_unstable_legacy() {
     let shim_data = resolve_shim_data(
       &HttpClientProvider::new(None, None),
-      &Flags {
-        unstable_config: UnstableConfig {
-          legacy_flag_enabled: true,
-          ..Default::default()
-        },
-        ..Default::default()
-      },
+      &Default::default(),
       &InstallFlagsGlobal {
         module_url: "http://localhost:4545/echo_server.ts".to_string(),
         args: vec![],
@@ -907,12 +890,7 @@ mod tests {
     assert_eq!(shim_data.name, "echo_server");
     assert_eq!(
       shim_data.args,
-      vec![
-        "run",
-        "--unstable",
-        "--no-config",
-        "http://localhost:4545/echo_server.ts",
-      ]
+      vec!["run", "--no-config", "http://localhost:4545/echo_server.ts",]
     );
   }
 

@@ -1,0 +1,5 @@
+{
+  "args": "test --config collect/deno2.jsonc collect",
+  "exitCode": 0,
+  "output": "main.out"
+}

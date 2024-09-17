@@ -75,7 +75,7 @@ See https://docs.deno.com/go/config"#
         &cli_options.start_dir,
         &tasks_config,
       )?;
-      return Ok(1);
+      return Ok(0);
     }
   };
 

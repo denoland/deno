@@ -1,0 +1,11 @@
+Check [WILDCARD]/overloads/main.ts
+running 6 tests from ./main.ts
+test0 ... ok ([WILDCARD])
+test1 ... ok ([WILDCARD])
+test2 ... ok ([WILDCARD])
+test3 ... ok ([WILDCARD])
+test4 ... ok ([WILDCARD])
+test5 ... ignored ([WILDCARD])
+
+ok | 5 passed | 0 failed | 1 ignored ([WILDCARD])
+

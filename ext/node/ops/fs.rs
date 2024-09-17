@@ -1,8 +1,6 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
 use std::cell::RefCell;
-use std::path::Path;
-use std::path::PathBuf;
 use std::rc::Rc;
 
 use deno_core::error::AnyError;
@@ -21,8 +19,7 @@ pub fn op_node_fs_exists_sync<P>(
 where
   P: NodePermissions + 'static,
 {
-  let path = PathBuf::from(path);
-  state
+  let path = state
     .borrow_mut::<P>()
     .check_read_with_api_name(&path, Some("node:fs.existsSync()"))?;
   let fs = state.borrow::<FileSystemRc>();
@@ -37,14 +34,12 @@ pub async fn op_node_fs_exists<P>(
 where
   P: NodePermissions + 'static,
 {
-  let path = PathBuf::from(path);
-
-  let fs = {
+  let (fs, path) = {
     let mut state = state.borrow_mut();
-    state
+    let path = state
       .borrow_mut::<P>()
       .check_read_with_api_name(&path, Some("node:fs.exists()"))?;
-    state.borrow::<FileSystemRc>().clone()
+    (state.borrow::<FileSystemRc>().clone(), path)
   };
 
   Ok(fs.exists_async(path).await?)
@@ -59,18 +54,15 @@ pub fn op_node_cp_sync<P>(
 where
   P: NodePermissions + 'static,
 {
-  let path = Path::new(path);
-  let new_path = Path::new(new_path);
-
-  state
+  let path = state
     .borrow_mut::<P>()
     .check_read_with_api_name(path, Some("node:fs.cpSync"))?;
-  state
+  let new_path = state
     .borrow_mut::<P>()
     .check_write_with_api_name(new_path, Some("node:fs.cpSync"))?;
 
   let fs = state.borrow::<FileSystemRc>();
-  fs.cp_sync(path, new_path)?;
+  fs.cp_sync(&path, &new_path)?;
   Ok(())
 }
 
@@ -83,18 +75,15 @@ pub async fn op_node_cp<P>(
 where
   P: NodePermissions + 'static,
 {
-  let path = PathBuf::from(path);
-  let new_path = PathBuf::from(new_path);
-
-  let fs = {
+  let (fs, path, new_path) = {
     let mut state = state.borrow_mut();
-    state
+    let path = state
       .borrow_mut::<P>()
       .check_read_with_api_name(&path, Some("node:fs.cpSync"))?;
-    state
+    let new_path = state
       .borrow_mut::<P>()
       .check_write_with_api_name(&new_path, Some("node:fs.cpSync"))?;
-    state.borrow::<FileSystemRc>().clone()
+    (state.borrow::<FileSystemRc>().clone(), path, new_path)
   };
 
   fs.cp_async(path, new_path).await?;
@@ -123,21 +112,21 @@ pub fn op_node_statfs<P>(
 where
   P: NodePermissions + 'static,
 {
-  {
+  let path = {
     let mut state = state.borrow_mut();
-    state
+    let path = state
       .borrow_mut::<P>()
-      .check_read_with_api_name(Path::new(&path), Some("node:fs.statfs"))?;
+      .check_read_with_api_name(&path, Some("node:fs.statfs"))?;
     state
       .borrow_mut::<P>()
       .check_sys("statfs", "node:fs.statfs")?;
-  }
+    path
+  };
   #[cfg(unix)]
   {
-    use std::ffi::OsStr;
     use std::os::unix::ffi::OsStrExt;
 
-    let path = OsStr::new(&path);
+    let path = path.as_os_str();
     let mut cpath = path.as_bytes().to_vec();
     cpath.push(0);
     if bigint {
@@ -196,7 +185,7 @@ where
     // Using a vfs here doesn't make sense, it won't align with the windows API
     // call below.
     #[allow(clippy::disallowed_methods)]
-    let path = Path::new(&path).canonicalize()?;
+    let path = path.canonicalize()?;
     let root = path
       .ancestors()
       .last()
@@ -256,14 +245,12 @@ pub fn op_node_lutimes_sync<P>(
 where
   P: NodePermissions + 'static,
 {
-  let path = Path::new(path);
-
-  state
+  let path = state
     .borrow_mut::<P>()
     .check_write_with_api_name(path, Some("node:fs.lutimes"))?;
 
   let fs = state.borrow::<FileSystemRc>();
-  fs.lutime_sync(path, atime_secs, atime_nanos, mtime_secs, mtime_nanos)?;
+  fs.lutime_sync(&path, atime_secs, atime_nanos, mtime_secs, mtime_nanos)?;
   Ok(())
 }
 
@@ -279,14 +266,12 @@ pub async fn op_node_lutimes<P>(
 where
   P: NodePermissions + 'static,
 {
-  let path = PathBuf::from(path);
-
-  let fs = {
+  let (fs, path) = {
     let mut state = state.borrow_mut();
-    state
+    let path = state
       .borrow_mut::<P>()
       .check_write_with_api_name(&path, Some("node:fs.lutimesSync"))?;
-    state.borrow::<FileSystemRc>().clone()
+    (state.borrow::<FileSystemRc>().clone(), path)
   };
 
   fs.lutime_async(path, atime_secs, atime_nanos, mtime_secs, mtime_nanos)
@@ -305,8 +290,7 @@ pub fn op_node_lchown_sync<P>(
 where
   P: NodePermissions + 'static,
 {
-  let path = PathBuf::from(path);
-  state
+  let path = state
     .borrow_mut::<P>()
     .check_write_with_api_name(&path, Some("node:fs.lchownSync"))?;
   let fs = state.borrow::<FileSystemRc>();
@@ -324,13 +308,12 @@ pub async fn op_node_lchown<P>(
 where
   P: NodePermissions + 'static,
 {
-  let path = PathBuf::from(path);
-  let fs = {
+  let (fs, path) = {
     let mut state = state.borrow_mut();
-    state
+    let path = state
       .borrow_mut::<P>()
       .check_write_with_api_name(&path, Some("node:fs.lchown"))?;
-    state.borrow::<FileSystemRc>().clone()
+    (state.borrow::<FileSystemRc>().clone(), path)
   };
   fs.lchown_async(path, uid, gid).await?;
   Ok(())

@@ -649,7 +649,7 @@ const ci = {
           name: "test_format.js",
           if: "matrix.job == 'lint' && matrix.os == 'linux'",
           run:
-            "deno run --unstable --allow-write --allow-read --allow-run --allow-net ./tools/format.js --check",
+            "deno run --allow-write --allow-read --allow-run --allow-net ./tools/format.js --check",
         },
         {
           name: "Lint PR title",
@@ -664,7 +664,7 @@ const ci = {
           name: "lint.js",
           if: "matrix.job == 'lint'",
           run:
-            "deno run --unstable --allow-write --allow-read --allow-run --allow-net ./tools/lint.js",
+            "deno run --allow-write --allow-read --allow-run --allow-net ./tools/lint.js",
         },
         {
           name: "jsdoc_checker.js",
@@ -813,8 +813,12 @@ const ci = {
           ].join("\n"),
           run: [
             'gsutil -h "Cache-Control: public, max-age=3600" cp ./target/release/*.zip gs://dl.deno.land/canary/$(git rev-parse HEAD)/',
-            "echo ${{ github.sha }} > canary-latest.txt",
-            'gsutil -h "Cache-Control: no-cache" cp canary-latest.txt gs://dl.deno.land/canary-$(rustc -vV | sed -n "s|host: ||p")-latest.txt',
+            'latest_canary_hash=$(gsutil cat gs://dl.deno.land/canary-$(rustc -vV | sed -n "s|host: ||p")-latest.txt)',
+            "git cat-file -e $latest_canary_hash",
+            "if [ $? -eq 0 ]; then",
+            "  echo ${{ github.sha }} > canary-latest.txt",
+            '  gsutil -h "Cache-Control: no-cache" cp canary-latest.txt gs://dl.deno.land/canary-$(rustc -vV | sed -n "s|host: ||p")-latest.txt',
+            "fi",
           ].join("\n"),
         },
         {
@@ -826,7 +830,7 @@ const ci = {
             "!startsWith(github.ref, 'refs/tags/')",
           ].join("\n"),
           run:
-            "target/release/deno run -A --unstable --config tests/config/deno.json ext/websocket/autobahn/fuzzingclient.js",
+            "target/release/deno run -A --config tests/config/deno.json ext/websocket/autobahn/fuzzingclient.js",
         },
         {
           name: "Test (full, debug)",
@@ -879,9 +883,9 @@ const ci = {
             DENO_BIN: "./target/debug/deno",
           },
           run: [
-            "deno run -A --unstable --lock=tools/deno.lock.json --config tests/config/deno.json\\",
+            "deno run -A --lock=tools/deno.lock.json --config tests/config/deno.json\\",
             "        ./tests/wpt/wpt.ts setup",
-            "deno run -A --unstable --lock=tools/deno.lock.json --config tests/config/deno.json\\",
+            "deno run -A --lock=tools/deno.lock.json --config tests/config/deno.json\\",
             '         ./tests/wpt/wpt.ts run --quiet --binary="$DENO_BIN"',
           ].join("\n"),
         },
@@ -892,9 +896,9 @@ const ci = {
             DENO_BIN: "./target/release/deno",
           },
           run: [
-            "deno run -A --unstable --lock=tools/deno.lock.json --config tests/config/deno.json\\",
+            "deno run -A --lock=tools/deno.lock.json --config tests/config/deno.json\\",
             "         ./tests/wpt/wpt.ts setup",
-            "deno run -A --unstable --lock=tools/deno.lock.json --config tests/config/deno.json\\",
+            "deno run -A --lock=tools/deno.lock.json --config tests/config/deno.json\\",
             "         ./tests/wpt/wpt.ts run --quiet --release         \\",
             '                            --binary="$DENO_BIN"          \\',
             "                            --json=wpt.json               \\",
@@ -958,8 +962,7 @@ const ci = {
             "git clone --depth 1 --branch gh-pages                             \\",
             "    https://${DENOBOT_PAT}@github.com/denoland/benchmark_data.git \\",
             "    gh-pages",
-            "./target/release/deno run --allow-all --unstable \\",
-            "    ./tools/build_benchmark_jsons.js --release",
+            "./target/release/deno run --allow-all ./tools/build_benchmark_jsons.js --release",
             "cd gh-pages",
             'git config user.email "propelml@gmail.com"',
             'git config user.name "denobot"',
@@ -1093,8 +1096,12 @@ const ci = {
         {
           name: "Upload canary version file to dl.deno.land",
           run: [
-            "echo ${{ github.sha }} > canary-latest.txt",
-            'gsutil -h "Cache-Control: no-cache" cp canary-latest.txt gs://dl.deno.land/canary-latest.txt',
+            "latest_canary_hash=$(gsutil cat gs://dl.deno.land/canary-latest.txt)",
+            "git cat-file -e $latest_canary_hash",
+            "if [ $? -eq 0]; then",
+            "  echo ${{ github.sha }} > canary-latest.txt",
+            '  gsutil -h "Cache-Control: no-cache" cp canary-latest.txt gs://dl.deno.land/canary-latest.txt',
+            "fi",
           ].join("\n"),
         },
       ],

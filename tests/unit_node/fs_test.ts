@@ -88,7 +88,7 @@ Deno.test(
   () => {
     assertThrows(() => {
       existsSync("tests/testdata/assets/fixture.json");
-    }, Deno.errors.PermissionDenied);
+    }, Deno.errors.NotCapable);
   },
 );
 

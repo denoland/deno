@@ -15,7 +15,6 @@ use deno_core::serde_json;
 use deno_npm::registry::NpmPackageInfo;
 use deno_runtime::deno_node::NodeRequireResolver;
 use deno_runtime::deno_node::NpmProcessStateProvider;
-use deno_runtime::deno_permissions::PermissionsContainer;
 use deno_semver::package::PackageNv;
 use deno_semver::package::PackageReq;
 use node_resolver::NpmResolver;
@@ -152,10 +151,7 @@ impl NpmFetchResolver {
       let file_fetcher = self.file_fetcher.clone();
       // spawn due to the lsp's `Send` requirement
       let file = deno_core::unsync::spawn(async move {
-        file_fetcher
-          .fetch(&info_url, &PermissionsContainer::allow_all())
-          .await
-          .ok()
+        file_fetcher.fetch_bypass_permissions(&info_url).await.ok()
       })
       .await
       .ok()??;

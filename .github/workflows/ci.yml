@@ -389,7 +389,7 @@ jobs:
           cache-path: ./target
       - name: test_format.js
         if: '!(matrix.skip) && (matrix.job == ''lint'' && matrix.os == ''linux'')'
-        run: deno run --unstable --allow-write --allow-read --allow-run --allow-net ./tools/format.js --check
+        run: deno run --allow-write --allow-read --allow-run --allow-net ./tools/format.js --check
       - name: Lint PR title
         if: '!(matrix.skip) && (matrix.job == ''lint'' && github.event_name == ''pull_request'' && matrix.os == ''linux'')'
         env:
@@ -397,7 +397,7 @@ jobs:
         run: deno run ./tools/verify_pr_title.js "$PR_TITLE"
       - name: lint.js
         if: '!(matrix.skip) && (matrix.job == ''lint'')'
-        run: deno run --unstable --allow-write --allow-read --allow-run --allow-net ./tools/lint.js
+        run: deno run --allow-write --allow-read --allow-run --allow-net ./tools/lint.js
       - name: jsdoc_checker.js
         if: '!(matrix.skip) && (matrix.job == ''lint'')'
         run: deno run --allow-read --allow-env --allow-sys ./tools/jsdoc_checker.js
@@ -486,15 +486,19 @@ jobs:
           github.ref == 'refs/heads/main')
         run: |-
           gsutil -h "Cache-Control: public, max-age=3600" cp ./target/release/*.zip gs://dl.deno.land/canary/$(git rev-parse HEAD)/
-          echo ${{ github.sha }} > canary-latest.txt
-          gsutil -h "Cache-Control: no-cache" cp canary-latest.txt gs://dl.deno.land/canary-$(rustc -vV | sed -n "s|host: ||p")-latest.txt
+          latest_canary_hash=$(gsutil cat gs://dl.deno.land/canary-$(rustc -vV | sed -n "s|host: ||p")-latest.txt)
+          git cat-file -e $latest_canary_hash
+          if [ $? -eq 0 ]; then
+            echo ${{ github.sha }} > canary-latest.txt
+            gsutil -h "Cache-Control: no-cache" cp canary-latest.txt gs://dl.deno.land/canary-$(rustc -vV | sed -n "s|host: ||p")-latest.txt
+          fi
       - name: Autobahn testsuite
         if: |-
           !(matrix.skip) && ((matrix.os == 'linux' && matrix.arch != 'aarch64') &&
           matrix.job == 'test' &&
           matrix.profile == 'release' &&
           !startsWith(github.ref, 'refs/tags/'))
-        run: target/release/deno run -A --unstable --config tests/config/deno.json ext/websocket/autobahn/fuzzingclient.js
+        run: target/release/deno run -A --config tests/config/deno.json ext/websocket/autobahn/fuzzingclient.js
       - name: 'Test (full, debug)'
         if: |-
           !(matrix.skip) && (matrix.job == 'test' &&
@@ -531,18 +535,18 @@ jobs:
         env:
           DENO_BIN: ./target/debug/deno
         run: |-
-          deno run -A --unstable --lock=tools/deno.lock.json --config tests/config/deno.json\
+          deno run -A --lock=tools/deno.lock.json --config tests/config/deno.json\
                   ./tests/wpt/wpt.ts setup
-          deno run -A --unstable --lock=tools/deno.lock.json --config tests/config/deno.json\
+          deno run -A --lock=tools/deno.lock.json --config tests/config/deno.json\
                    ./tests/wpt/wpt.ts run --quiet --binary="$DENO_BIN"
       - name: Run web platform tests (release)
         if: '!(matrix.skip) && (matrix.wpt && matrix.profile == ''release'')'
         env:
           DENO_BIN: ./target/release/deno
         run: |-
-          deno run -A --unstable --lock=tools/deno.lock.json --config tests/config/deno.json\
+          deno run -A --lock=tools/deno.lock.json --config tests/config/deno.json\
                    ./tests/wpt/wpt.ts setup
-          deno run -A --unstable --lock=tools/deno.lock.json --config tests/config/deno.json\
+          deno run -A --lock=tools/deno.lock.json --config tests/config/deno.json\
                    ./tests/wpt/wpt.ts run --quiet --release         \
                                       --binary="$DENO_BIN"          \
                                       --json=wpt.json               \
@@ -590,8 +594,7 @@ jobs:
           git clone --depth 1 --branch gh-pages                             \
               https://${DENOBOT_PAT}@github.com/denoland/benchmark_data.git \
               gh-pages
-          ./target/release/deno run --allow-all --unstable \
-              ./tools/build_benchmark_jsons.js --release
+          ./target/release/deno run --allow-all ./tools/build_benchmark_jsons.js --release
           cd gh-pages
           git config user.email "propelml@gmail.com"
           git config user.name "denobot"
@@ -691,5 +694,9 @@ jobs:
           project_id: denoland
       - name: Upload canary version file to dl.deno.land
         run: |-
-          echo ${{ github.sha }} > canary-latest.txt
-          gsutil -h "Cache-Control: no-cache" cp canary-latest.txt gs://dl.deno.land/canary-latest.txt
+          latest_canary_hash=$(gsutil cat gs://dl.deno.land/canary-latest.txt)
+          git cat-file -e $latest_canary_hash
+          if [ $? -eq 0]; then
+            echo ${{ github.sha }} > canary-latest.txt
+            gsutil -h "Cache-Control: no-cache" cp canary-latest.txt gs://dl.deno.land/canary-latest.txt
+          fi

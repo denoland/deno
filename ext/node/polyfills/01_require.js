@@ -4,9 +4,11 @@
 
 import { core, internals, primordials } from "ext:core/mod.js";
 import {
+  op_import_sync,
   op_napi_open,
   op_require_as_file_path,
   op_require_break_on_next_statement,
+  op_require_can_parse_as_esm,
   op_require_init_paths,
   op_require_is_deno_dir_package,
   op_require_is_request_relative,
@@ -65,13 +67,17 @@ const {
 
 import { nodeGlobals } from "ext:deno_node/00_globals.js";
 
-import _httpAgent from "ext:deno_node/_http_agent.mjs";
-import _httpOutgoing from "ext:deno_node/_http_outgoing.ts";
-import _streamDuplex from "ext:deno_node/internal/streams/duplex.mjs";
-import _streamPassthrough from "ext:deno_node/internal/streams/passthrough.mjs";
-import _streamReadable from "ext:deno_node/internal/streams/readable.mjs";
-import _streamTransform from "ext:deno_node/internal/streams/transform.mjs";
-import _streamWritable from "ext:deno_node/internal/streams/writable.mjs";
+import _httpAgent from "node:_http_agent";
+import _httpCommon from "node:_http_common";
+import _httpOutgoing from "node:_http_outgoing";
+import _httpServer from "node:_http_server";
+import _streamDuplex from "node:_stream_duplex";
+import _streamPassthrough from "node:_stream_passthrough";
+import _streamReadable from "node:_stream_readable";
+import _streamTransform from "node:_stream_transform";
+import _streamWritable from "node:_stream_writable";
+import _tlsCommon from "node:_tls_common";
+import _tlsWrap from "node:_tls_wrap";
 import assert from "node:assert";
 import assertStrict from "node:assert/strict";
 import asyncHooks from "node:async_hooks";
@@ -93,6 +99,7 @@ import http from "node:http";
 import http2 from "node:http2";
 import https from "node:https";
 import inspector from "node:inspector";
+import inspectorPromises from "node:inspector/promises";
 import internalCp from "ext:deno_node/internal/child_process.ts";
 import internalCryptoCertificate from "ext:deno_node/internal/crypto/certificate.ts";
 import internalCryptoCipher from "ext:deno_node/internal/crypto/cipher.ts";
@@ -122,6 +129,7 @@ import internalTestBinding from "ext:deno_node/internal/test/binding.ts";
 import internalTimers from "ext:deno_node/internal/timers.mjs";
 import internalUtil from "ext:deno_node/internal/util.mjs";
 import internalUtilInspect from "ext:deno_node/internal/util/inspect.mjs";
+import internalConsole from "ext:deno_node/internal/console/constructor.mjs";
 import net from "node:net";
 import os from "node:os";
 import pathPosix from "node:path/posix";
@@ -144,6 +152,7 @@ import test from "node:test";
 import timers from "node:timers";
 import timersPromises from "node:timers/promises";
 import tls from "node:tls";
+import traceEvents from "node:trace_events";
 import tty from "node:tty";
 import url from "node:url";
 import utilTypes from "node:util/types";
@@ -161,12 +170,16 @@ const builtinModules = [];
 function setupBuiltinModules() {
   const nodeModules = {
     "_http_agent": _httpAgent,
+    "_http_common": _httpCommon,
     "_http_outgoing": _httpOutgoing,
+    "_http_server": _httpServer,
     "_stream_duplex": _streamDuplex,
     "_stream_passthrough": _streamPassthrough,
     "_stream_readable": _streamReadable,
     "_stream_transform": _streamTransform,
     "_stream_writable": _streamWritable,
+    "_tls_common": _tlsCommon,
+    "_tls_wrap": _tlsWrap,
     assert,
     "assert/strict": assertStrict,
     "async_hooks": asyncHooks,
@@ -188,6 +201,8 @@ function setupBuiltinModules() {
     http2,
     https,
     inspector,
+    "inspector/promises": inspectorPromises,
+    "internal/console/constructor": internalConsole,
     "internal/child_process": internalCp,
     "internal/crypto/certificate": internalCryptoCertificate,
     "internal/crypto/cipher": internalCryptoCipher,
@@ -248,6 +263,7 @@ function setupBuiltinModules() {
     timers,
     "timers/promises": timersPromises,
     tls,
+    traceEvents,
     tty,
     url,
     util,
@@ -900,16 +916,6 @@ Module.prototype.load = function (filename) {
     pathDirname(this.filename),
   );
   const extension = findLongestRegisteredExtension(filename);
-  // allow .mjs to be overridden
-  if (
-    StringPrototypeEndsWith(filename, ".mjs") && !Module._extensions[".mjs"]
-  ) {
-    throw createRequireEsmError(
-      filename,
-      moduleParentCache.get(this)?.filename,
-    );
-  }
-
   Module._extensions[extension](this, this.filename);
   this.loaded = true;
 
@@ -987,27 +993,24 @@ function wrapSafe(
     if (process.mainModule === cjsModuleInstance) {
       enrichCJSError(err.thrown);
     }
-    if (isEsmSyntaxError(err.thrown)) {
-      throw createRequireEsmError(
-        filename,
-        moduleParentCache.get(cjsModuleInstance)?.filename,
-      );
-    } else {
-      throw err.thrown;
-    }
+    throw err.thrown;
   }
   return f;
 }
 
 Module.prototype._compile = function (content, filename, format) {
-  const compiledWrapper = wrapSafe(filename, content, this, format);
-
   if (format === "module") {
-    // TODO(https://github.com/denoland/deno/issues/24822): implement require esm
-    throw createRequireEsmError(
-      filename,
-      moduleParentCache.get(module)?.filename,
-    );
+    return loadESMFromCJS(this, filename, content);
+  }
+
+  let compiledWrapper;
+  try {
+    compiledWrapper = wrapSafe(filename, content, this, format);
+  } catch (err) {
+    if (err instanceof SyntaxError && op_require_can_parse_as_esm(content)) {
+      return loadESMFromCJS(this, filename, content);
+    }
+    throw err;
   }
 
   const dirname = pathDirname(filename);
@@ -1065,12 +1068,7 @@ Module._extensions[".js"] = function (module, filename) {
   if (StringPrototypeEndsWith(filename, ".js")) {
     const pkg = op_require_read_closest_package_json(filename);
     if (pkg?.typ === "module") {
-      // TODO(https://github.com/denoland/deno/issues/24822): implement require esm
       format = "module";
-      throw createRequireEsmError(
-        filename,
-        moduleParentCache.get(module)?.filename,
-      );
     } else if (pkg?.type === "commonjs") {
       format = "commonjs";
     }
@@ -1081,19 +1079,18 @@ Module._extensions[".js"] = function (module, filename) {
   module._compile(content, filename, format);
 };
 
-function createRequireEsmError(filename, parent) {
-  let message = `require() of ES Module ${filename}`;
+function loadESMFromCJS(module, filename, code) {
+  const namespace = op_import_sync(
+    url.pathToFileURL(filename).toString(),
+    code,
+  );
 
-  if (parent) {
-    message += ` from ${parent}`;
-  }
-
-  message +=
-    ` not supported. Instead change the require to a dynamic import() which is available in all CommonJS modules.`;
-  const err = new Error(message);
-  err.code = "ERR_REQUIRE_ESM";
-  return err;
+  module.exports = namespace;
 }
+
+Module._extensions[".mjs"] = function (module, filename) {
+  loadESMFromCJS(module, filename);
+};
 
 function stripBOM(content) {
   if (StringPrototypeCharCodeAt(content, 0) === 0xfeff) {

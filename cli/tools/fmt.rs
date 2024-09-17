@@ -936,6 +936,7 @@ fn get_resolved_malva_config(
   };
 
   let language_options = LanguageOptions {
+    align_comments: true,
     hex_case: HexCase::Lower,
     hex_color_length: None,
     quotes: if let Some(true) = options.single_quote {
@@ -1040,7 +1041,6 @@ fn get_resolved_yaml_config(
 
   let layout_options = LayoutOptions {
     print_width: options.line_width.unwrap_or(80) as usize,
-    use_tabs: options.use_tabs.unwrap_or_default(),
     indent_width: options.indent_width.unwrap_or(2) as usize,
     line_break: LineBreak::Lf,
   };
@@ -1057,6 +1057,9 @@ fn get_resolved_yaml_config(
     brace_spacing: true,
     bracket_spacing: false,
     dash_spacing: DashSpacing::OneSpace,
+    prefer_single_line: false,
+    flow_sequence_prefer_single_line: None,
+    flow_map_prefer_single_line: None,
     trim_trailing_whitespaces: true,
     trim_trailing_zero: false,
     ignore_comment_directive: "deno-fmt-ignore".into(),

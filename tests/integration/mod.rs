@@ -23,8 +23,6 @@ mod eval;
 mod flags;
 #[path = "fmt_tests.rs"]
 mod fmt;
-#[path = "info_tests.rs"]
-mod info;
 #[path = "init_tests.rs"]
 mod init;
 #[path = "inspector_tests.rs"]
@@ -37,12 +35,8 @@ mod js_unit_tests;
 mod jsr;
 #[path = "jupyter_tests.rs"]
 mod jupyter;
-#[path = "lint_tests.rs"]
-mod lint;
 #[path = "lsp_tests.rs"]
 mod lsp;
-#[path = "node_compat_tests.rs"]
-mod node_compat_tests;
 #[path = "node_unit_tests.rs"]
 mod node_unit_tests;
 #[path = "npm_tests.rs"]
@@ -68,5 +62,3 @@ mod test;
 mod upgrade;
 #[path = "watcher_tests.rs"]
 mod watcher;
-#[path = "worker_tests.rs"]
-mod worker;
