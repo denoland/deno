@@ -1,5 +1,46 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
+use deno_ast::MediaType;
+use deno_config::workspace::WorkspaceDirectory;
+use deno_config::workspace::WorkspaceDiscoverOptions;
+use deno_core::anyhow::anyhow;
+use deno_core::error::AnyError;
+use deno_core::resolve_url;
+use deno_core::serde_json;
+use deno_core::serde_json::json;
+use deno_core::serde_json::Value;
+use deno_core::unsync::spawn;
+use deno_core::url;
+use deno_core::url::Url;
+use deno_core::ModuleSpecifier;
+use deno_graph::GraphKind;
+use deno_graph::Resolution;
+use deno_runtime::deno_tls::rustls::RootCertStore;
+use deno_runtime::deno_tls::RootCertStoreProvider;
+use deno_semver::jsr::JsrPackageReqReference;
+use indexmap::Equivalent;
+use indexmap::IndexSet;
+use log::error;
+use serde::Deserialize;
+use serde_json::from_value;
+use std::collections::BTreeMap;
+use std::collections::BTreeSet;
+use std::collections::HashMap;
+use std::collections::HashSet;
+use std::collections::VecDeque;
+use std::env;
+use std::fmt::Write as _;
+use std::path::PathBuf;
+use std::str::FromStr;
+use std::sync::Arc;
+use tokio::sync::mpsc::unbounded_channel;
+use tokio::sync::mpsc::UnboundedReceiver;
+use tokio::sync::mpsc::UnboundedSender;
+use tower_lsp::jsonrpc::Error as LspError;
+use tower_lsp::jsonrpc::Result as LspResult;
+use tower_lsp::lsp_types::request::*;
+use tower_lsp::lsp_types::*;
+
 use super::analysis::fix_ts_import_changes;
 use super::analysis::ts_changes_to_edit;
 use super::analysis::CodeActionCollection;
@@ -967,16 +1008,27 @@ impl Inner {
       (|| {
         let compiler_options = config_file.to_compiler_options().ok()?.options;
         let jsx_import_source = compiler_options.get("jsxImportSource")?;
-        let jsx_import_source = jsx_import_source.as_str()?;
+        let jsx_import_source = jsx_import_source.as_str()?.to_string();
         let referrer = config_file.specifier.clone();
-        let specifier = Url::parse(&format!(
-          "data:application/typescript;base64,{}",
-          base64::engine::general_purpose::STANDARD
-            .encode(format!("import '{jsx_import_source}/jsx-runtime';"))
-        ))
-        .unwrap();
+        let specifier = format!("{jsx_import_source}/jsx-runtime");
         self.task_queue.queue_task(Box::new(|ls: LanguageServer| {
           spawn(async move {
+            let specifier = {
+              let inner = ls.inner.read().await;
+              let resolver = inner.resolver.as_graph_resolver(Some(&referrer));
+              let Ok(specifier) = resolver.resolve(
+                &specifier,
+                &deno_graph::Range {
+                  specifier: referrer.clone(),
+                  start: deno_graph::Position::zeroed(),
+                  end: deno_graph::Position::zeroed(),
+                },
+                deno_graph::source::ResolutionMode::Types,
+              ) else {
+                return;
+              };
+              specifier
+            };
             if let Err(err) = ls.cache(vec![specifier], referrer, false).await {
               lsp_warn!("{:#}", err);
             }

@@ -1405,9 +1405,9 @@ dependencies = [
 
 [[package]]
 name = "deno_core"
-version = "0.309.0"
+version = "0.310.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "eaecc78e8903d1b5d95c7fb01a14eb342b9e63484763a304fd30a8f48861f9df"
+checksum = "40269d9035d16ea83335f87eab8014c6e73c5045a1f32a3cfae835b3efdd76b1"
 dependencies = [
  "anyhow",
  "bincode",
@@ -1887,9 +1887,9 @@ dependencies = [
 
 [[package]]
 name = "deno_ops"
-version = "0.185.0"
+version = "0.186.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "2d817c00b3f30bef495c84080b5ed327ed68d6d2636b5ed8b730d00a06221dc1"
+checksum = "ba0c37f722813b9a9016f9d442e37bce0e30b97111a1690e70bab1057c03651d"
 dependencies = [
  "proc-macro-rules",
  "proc-macro2",
@@ -2519,9 +2519,9 @@ dependencies = [
 
 [[package]]
 name = "dprint-plugin-typescript"
-version = "0.91.7"
+version = "0.92.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "243879526ffc78aeb111719c3180f95820847c28eeeffb8d2585d1ec15a44fe4"
+checksum = "7e454b93b06b61a6cf76b921906074616052a29a16dba8119947669121283fc3"
 dependencies = [
  "anyhow",
  "deno_ast",
@@ -6258,9 +6258,9 @@ dependencies = [
 
 [[package]]
 name = "serde_v8"
-version = "0.218.0"
+version = "0.219.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "134add6f9dc7a226912468f7c427a476583ab362e094f04ff3a9fa79f2df97c7"
+checksum = "0b4de773ce668166fe0a77291cf90a7740be7997c954103c8125892597c0e98b"
 dependencies = [
  "num-bigint",
  "serde",

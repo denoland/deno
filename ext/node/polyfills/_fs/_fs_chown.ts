@@ -4,8 +4,8 @@
 // deno-lint-ignore-file prefer-primordials
 
 import {
-  type CallbackWithError,
   makeCallback,
+  type CallbackWithError,
 } from "ext:deno_node/_fs/_fs_common.ts";
 import {
   getValidatedPath,
