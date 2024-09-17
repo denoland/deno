@@ -138,11 +138,20 @@ fn fetch_local(specifier: &ModuleSpecifier) -> Result<File, AnyError> {
   let local = specifier.to_file_path().map_err(|_| {
     uri_error(format!("Invalid file path.\n  Specifier: {specifier}"))
   })?;
+  // If it doesnt have a extension, we want to treat it as typescript by default
+  let headers = if local.extension().is_none() {
+    Some(HashMap::from([(
+      "content-type".to_string(),
+      "application/typescript".to_string(),
+    )]))
+  } else {
+    None
+  };
   let bytes = fs::read(local)?;
 
   Ok(File {
     specifier: specifier.clone(),
-    maybe_headers: None,
+    maybe_headers: headers,
     source: bytes.into(),
   })
 }

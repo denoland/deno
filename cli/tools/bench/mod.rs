@@ -434,7 +434,9 @@ pub async fn run_benchmarks(
   }
 
   let main_graph_container = factory.main_module_graph_container().await?;
-  main_graph_container.check_specifiers(&specifiers).await?;
+  main_graph_container
+    .check_specifiers(&specifiers, cli_options.ext_flag().as_ref())
+    .await?;
 
   if workspace_bench_options.no_run {
     return Ok(());
@@ -557,7 +559,7 @@ pub async fn run_benchmarks_with_watch(
         factory
           .main_module_graph_container()
           .await?
-          .check_specifiers(&specifiers)
+          .check_specifiers(&specifiers, cli_options.ext_flag().as_ref())
           .await?;
 
         if workspace_bench_options.no_run {

@@ -3,11 +3,11 @@
   "tests": {
     "ext_flag": {
       "args": "test --ext=ts as_ts.js",
-      "output": "Checked 1 file\n"
+      "output": "ext.out"
     },
     "extensionless": {
       "args": "test extensionless",
-      "output": "Checked 1 file\n"
+      "output": "extensionless.out"
     }
   }
 }

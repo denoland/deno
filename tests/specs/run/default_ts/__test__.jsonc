@@ -3,8 +3,8 @@
   "tests": {
     "stdin": {
       "args": "run -",
-      "input": "const x: string = \"foo\";",
-      "output": "const x: string = \"foo\";\n"
+      "input": "const x: string = \"foo\";console.log(x)",
+      "output": "foo\n"
     },
     "ext_flag": {
       "args": "run --ext=ts as_ts.js",

@@ -365,7 +365,11 @@ impl WorkspaceLinter {
               }
             }
 
-            let r = linter.lint_file(&file_path, file_text, cli_options.ext_flag().as_deref());
+            let r = linter.lint_file(
+              &file_path,
+              file_text,
+              cli_options.ext_flag().as_deref(),
+            );
             if let Ok((file_source, file_diagnostics)) = &r {
               if let Some(incremental_cache) = &maybe_incremental_cache {
                 if file_diagnostics.is_empty() {
@@ -425,11 +429,16 @@ fn collect_lint_files(
   cli_options: &CliOptions,
   files: FilePatterns,
 ) -> Result<Vec<PathBuf>, AnyError> {
-  FileCollector::new(|e| cli_options.ext_flag().as_ref().is_some_and(|ext| is_script_ext(Path::new(&format!("placeholder.{ext}")))) || is_script_ext(e.path) || e.path.extension().is_none())
-    .ignore_git_folder()
-    .ignore_node_modules()
-    .set_vendor_folder(cli_options.vendor_dir_path().map(ToOwned::to_owned))
-    .collect_file_patterns(&deno_config::fs::RealDenoConfigFs, files)
+  FileCollector::new(|e| {
+    cli_options.ext_flag().as_ref().is_some_and(|ext| {
+      is_script_ext(Path::new(&format!("placeholder.{ext}")))
+    }) || is_script_ext(e.path)
+      || e.path.extension().is_none()
+  })
+  .ignore_git_folder()
+  .ignore_node_modules()
+  .set_vendor_folder(cli_options.vendor_dir_path().map(ToOwned::to_owned))
+  .collect_file_patterns(&deno_config::fs::RealDenoConfigFs, files)
 }
 
 #[allow(clippy::print_stdout)]

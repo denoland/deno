@@ -1358,6 +1358,7 @@ pub async fn check_specifiers(
   file_fetcher: &FileFetcher,
   main_graph_container: &Arc<MainModuleGraphContainer>,
   specifiers: Vec<(ModuleSpecifier, TestMode)>,
+  ext_overwrite: Option<&String>,
 ) -> Result<(), AnyError> {
   let inline_files = fetch_inline_files(
     file_fetcher,
@@ -1395,7 +1396,7 @@ pub async fn check_specifiers(
   }
 
   main_graph_container
-    .check_specifiers(&module_specifiers)
+    .check_specifiers(&module_specifiers, ext_overwrite)
     .await?;
 
   Ok(())
@@ -1789,6 +1790,7 @@ pub async fn run_tests(
     file_fetcher,
     main_graph_container,
     specifiers_with_mode.clone(),
+    cli_options.ext_flag().as_ref(),
   )
   .await?;
 
@@ -1959,6 +1961,7 @@ pub async fn run_tests_with_watch(
           file_fetcher,
           main_graph_container,
           specifiers_with_mode.clone(),
+          cli_options.ext_flag().as_ref(),
         )
         .await?;
 

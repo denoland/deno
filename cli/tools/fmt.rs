@@ -120,7 +120,13 @@ pub async fn format(
             };
           }
 
-          format_files(caches, cli_options, &fmt_flags, paths_with_options_batches).await?;
+          format_files(
+            caches,
+            cli_options,
+            &fmt_flags,
+            paths_with_options_batches,
+          )
+          .await?;
 
           Ok(())
         })
@@ -133,7 +139,8 @@ pub async fn format(
     let caches = factory.caches()?;
     let paths_with_options_batches =
       resolve_paths_with_options_batches(cli_options, &fmt_flags)?;
-    format_files(caches, cli_options, &fmt_flags, paths_with_options_batches).await?;
+    format_files(caches, cli_options, &fmt_flags, paths_with_options_batches)
+      .await?;
   }
 
   Ok(())
@@ -213,11 +220,16 @@ fn collect_fmt_files(
   cli_options: &CliOptions,
   files: FilePatterns,
 ) -> Result<Vec<PathBuf>, AnyError> {
-  FileCollector::new(|e| cli_options.ext_flag().as_ref().is_some_and(|ext| is_supported_ext_fmt(Path::new(&format!("placeholder.{ext}")))) || is_supported_ext_fmt(e.path) || e.path.extension().is_none())
-    .ignore_git_folder()
-    .ignore_node_modules()
-    .set_vendor_folder(cli_options.vendor_dir_path().map(ToOwned::to_owned))
-    .collect_file_patterns(&deno_config::fs::RealDenoConfigFs, files)
+  FileCollector::new(|e| {
+    cli_options.ext_flag().as_ref().is_some_and(|ext| {
+      is_supported_ext_fmt(Path::new(&format!("placeholder.{ext}")))
+    }) || is_supported_ext_fmt(e.path)
+      || e.path.extension().is_none()
+  })
+  .ignore_git_folder()
+  .ignore_node_modules()
+  .set_vendor_folder(cli_options.vendor_dir_path().map(ToOwned::to_owned))
+  .collect_file_patterns(&deno_config::fs::RealDenoConfigFs, files)
 }
 
 /// Formats markdown (using <https://github.com/dprint/dprint-plugin-markdown>) and its code blocks
@@ -669,7 +681,13 @@ impl Formatter for RealFormatter {
           &file_path,
           &file_contents.text,
           |file_path, file_text| {
-            format_file(file_path, file_text, &fmt_options, &unstable_options, ext.clone())
+            format_file(
+              file_path,
+              file_text,
+              &fmt_options,
+              &unstable_options,
+              ext.clone(),
+            )
           },
         ) {
           Ok(Some(formatted_text)) => {
