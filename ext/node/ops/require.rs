@@ -6,6 +6,7 @@ use deno_core::error::AnyError;
 use deno_core::normalize_path;
 use deno_core::op2;
 use deno_core::url::Url;
+use deno_core::v8;
 use deno_core::JsRuntimeInspector;
 use deno_core::ModuleSpecifier;
 use deno_core::OpState;
@@ -591,12 +592,14 @@ where
   }
 }
 
-#[op2(fast)]
-pub fn op_require_break_on_next_statement(state: &mut OpState) {
-  let inspector = state.borrow::<Rc<RefCell<JsRuntimeInspector>>>();
-  inspector
-    .borrow_mut()
-    .wait_for_session_and_break_on_next_statement()
+#[op2(fast, reentrant)]
+pub fn op_require_break_on_next_statement(state: Rc<RefCell<OpState>>) {
+  let inspector_rc = {
+    let state = state.borrow();
+    state.borrow::<Rc<RefCell<JsRuntimeInspector>>>().clone()
+  };
+  let mut inspector = inspector_rc.borrow_mut();
+  inspector.wait_for_session_and_break_on_next_statement()
 }
 
 fn url_to_file_path_string(url: &Url) -> Result<String, AnyError> {
@@ -611,4 +614,30 @@ fn url_to_file_path(url: &Url) -> Result<PathBuf, AnyError> {
       deno_core::anyhow::bail!("failed to convert '{}' to file path", url)
     }
   }
+}
+
+#[op2(fast)]
+pub fn op_require_can_parse_as_esm(
+  scope: &mut v8::HandleScope,
+  #[string] source: &str,
+) -> bool {
+  let scope = &mut v8::TryCatch::new(scope);
+  let Some(source) = v8::String::new(scope, source) else {
+    return false;
+  };
+  let origin = v8::ScriptOrigin::new(
+    scope,
+    source.into(),
+    0,
+    0,
+    false,
+    0,
+    None,
+    true,
+    false,
+    true,
+    None,
+  );
+  let mut source = v8::script_compiler::Source::new(source, Some(&origin));
+  v8::script_compiler::compile_module(scope, &mut source).is_some()
 }
