@@ -42,7 +42,6 @@ use deno_graph::SpecifierError;
 use deno_runtime::deno_fs::FileSystem;
 use deno_runtime::deno_node;
 use deno_runtime::deno_permissions::specifier_to_file_path;
-use deno_runtime::deno_permissions::PermissionsContainer;
 use deno_semver::jsr::JsrDepPackageReq;
 use deno_semver::package::PackageNv;
 use deno_semver::Version;

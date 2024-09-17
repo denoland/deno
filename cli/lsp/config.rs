@@ -38,7 +38,6 @@ use deno_npm::npm_rc::ResolvedNpmRc;
 use deno_package_json::PackageJsonCache;
 use deno_runtime::deno_node::PackageJson;
 use deno_runtime::deno_permissions::specifier_to_file_path;
-use deno_runtime::deno_permissions::PermissionsContainer;
 use indexmap::IndexSet;
 use lsp_types::ClientCapabilities;
 use std::collections::BTreeMap;
