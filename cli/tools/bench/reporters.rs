@@ -18,8 +18,11 @@ pub trait BenchReporter {
   fn report_uncaught_error(&mut self, origin: &str, error: Box<JsError>);
 }
 
+const JSON_SCHEMA_VERSION: u8 = 1;
+
 #[derive(Debug, Serialize)]
 struct JsonReporterOutput {
+  version: u8,
   runtime: String,
   cpu: String,
   benches: Vec<JsonReporterBench>,
@@ -28,6 +31,7 @@ struct JsonReporterOutput {
 impl Default for JsonReporterOutput {
   fn default() -> Self {
     Self {
+      version: JSON_SCHEMA_VERSION,
       runtime: format!(
         "{} {}",
         version::DENO_VERSION_INFO.user_agent,

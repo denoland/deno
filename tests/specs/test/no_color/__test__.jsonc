@@ -1,0 +1,8 @@
+{
+  "args": "test main.ts",
+  "exitCode": 1,
+  "envs": {
+    "NO_COLOR": "1"
+  },
+  "output": "main.out"
+}

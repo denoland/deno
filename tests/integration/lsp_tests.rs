@@ -2143,7 +2143,7 @@ fn lsp_hover_unstable_always_enabled() {
       "version": 1,
       // IMPORTANT: If you change this API due to stabilization, also change it
       // in the enabled test below.
-      "text": "type _ = Deno.ForeignLibraryInterface;\n"
+      "text": "type _ = Deno.DatagramConn;\n"
     }
   }));
   let res = client.write_request(
@@ -2161,14 +2161,14 @@ fn lsp_hover_unstable_always_enabled() {
       "contents":[
         {
           "language":"typescript",
-          "value":"interface Deno.ForeignLibraryInterface"
+          "value":"interface Deno.DatagramConn"
         },
-        "**UNSTABLE**: New API, yet to be vetted.\n\nA foreign library interface descriptor.",
-        "\n\n*@category* - FFI  \n\n*@experimental*",
+        "**UNSTABLE**: New API, yet to be vetted.\n\nA generic transport listener for message-oriented protocols.",
+        "\n\n*@category* - Network  \n\n*@experimental*",
       ],
       "range":{
         "start":{ "line":0, "character":14 },
-        "end":{ "line":0, "character":37 }
+        "end":{ "line":0, "character":26 }
       }
     })
   );
@@ -2188,7 +2188,7 @@ fn lsp_hover_unstable_enabled() {
       "uri": "file:///a/file.ts",
       "languageId": "typescript",
       "version": 1,
-      "text": "type _ = Deno.ForeignLibraryInterface;\n"
+      "text": "type _ = Deno.DatagramConn;\n"
     }
   }));
   let res = client.write_request(
@@ -2206,14 +2206,14 @@ fn lsp_hover_unstable_enabled() {
       "contents":[
         {
           "language":"typescript",
-          "value":"interface Deno.ForeignLibraryInterface"
+          "value":"interface Deno.DatagramConn"
         },
-        "**UNSTABLE**: New API, yet to be vetted.\n\nA foreign library interface descriptor.",
-        "\n\n*@category* - FFI  \n\n*@experimental*",
+        "**UNSTABLE**: New API, yet to be vetted.\n\nA generic transport listener for message-oriented protocols.",
+        "\n\n*@category* - Network  \n\n*@experimental*",
       ],
       "range":{
         "start":{ "line":0, "character":14 },
-        "end":{ "line":0, "character":37 }
+        "end":{ "line":0, "character":26 }
       }
     })
   );
@@ -5380,7 +5380,7 @@ fn lsp_jsr_auto_import_completion() {
     json!({ "triggerKind": 1 }),
   );
   assert!(!list.is_incomplete);
-  assert_eq!(list.items.len(), 267);
+  assert_eq!(list.items.len(), 268);
   let item = list.items.iter().find(|i| i.label == "add").unwrap();
   assert_eq!(&item.label, "add");
   assert_eq!(
@@ -5460,7 +5460,7 @@ fn lsp_jsr_auto_import_completion_import_map() {
     json!({ "triggerKind": 1 }),
   );
   assert!(!list.is_incomplete);
-  assert_eq!(list.items.len(), 267);
+  assert_eq!(list.items.len(), 268);
   let item = list.items.iter().find(|i| i.label == "add").unwrap();
   assert_eq!(&item.label, "add");
   assert_eq!(json!(&item.label_details), json!({ "description": "add" }));
@@ -5659,7 +5659,7 @@ fn lsp_jsr_code_action_missing_declaration() {
                       "character": 6,
                     },
                   },
-                  "newText": "import { ReturnType } from \"jsr:@denotest/types-file/types\";\n",
+                  "newText": "import type { ReturnType } from \"jsr:@denotest/types-file/types\";\n",
                 },
                 {
                   "range": {
@@ -6150,7 +6150,7 @@ export class DuckConfig {
               "start": { "line": 0, "character": 0 },
               "end": { "line": 0, "character": 0 }
             },
-            "newText": "import { DuckConfigOptions } from \"./file02.ts\";\n\n"
+            "newText": "import type { DuckConfigOptions } from \"./file02.ts\";\n\n"
           }]
         }]
       }
@@ -6266,7 +6266,7 @@ export class DuckConfig {
               "start": { "line": 0, "character": 0 },
               "end": { "line": 0, "character": 0 }
             },
-            "newText": "import { DuckConfig } from \"./file01.ts\";\nimport { DuckConfigOptions } from \"./file02.ts\";\n\n"
+            "newText": "import { DuckConfig } from \"./file01.ts\";\nimport type { DuckConfigOptions } from \"./file02.ts\";\n\n"
           }]
         }]
       },
@@ -6343,7 +6343,7 @@ fn lsp_code_actions_imports_dts() {
               "start": { "line": 0, "character": 0 },
               "end": { "line": 0, "character": 0 },
             },
-            "newText": "import { SomeType } from \"./decl.d.ts\";\n",
+            "newText": "import type { SomeType } from \"./decl.d.ts\";\n",
           }],
         }],
       },
@@ -6663,7 +6663,7 @@ fn lsp_code_actions_imports_respects_fmt_config() {
               "start": { "line": 0, "character": 0 },
               "end": { "line": 0, "character": 0 }
             },
-            "newText": "import { DuckConfigOptions } from './file01.ts'\n"
+            "newText": "import type { DuckConfigOptions } from './file01.ts'\n"
           }]
         }]
       }
@@ -6716,7 +6716,7 @@ fn lsp_code_actions_imports_respects_fmt_config() {
               "start": { "line": 0, "character": 0 },
               "end": { "line": 0, "character": 0 }
             },
-            "newText": "import { DuckConfigOptions } from './file01.ts'\n"
+            "newText": "import type { DuckConfigOptions } from './file01.ts'\n"
           }]
         }]
       },
@@ -6816,7 +6816,7 @@ fn lsp_quote_style_from_workspace_settings() {
               "start": { "line": 0, "character": 0 },
               "end": { "line": 0, "character": 0 },
             },
-            "newText": "import { DuckConfigOptions } from './file01.ts';\n",
+            "newText": "import type { DuckConfigOptions } from './file01.ts';\n",
           }],
         }],
       },
@@ -6860,7 +6860,7 @@ fn lsp_quote_style_from_workspace_settings() {
               "start": { "line": 0, "character": 0 },
               "end": { "line": 0, "character": 0 },
             },
-            "newText": "import { DuckConfigOptions } from \"./file01.ts\";\n",
+            "newText": "import type { DuckConfigOptions } from \"./file01.ts\";\n",
           }],
         }],
       },
@@ -7246,12 +7246,12 @@ fn lsp_completions_auto_import() {
       "uri": "file:///a/file.ts",
       "languageId": "typescript",
       "version": 1,
-      "text": "export {};\n\n",
+      "text": "const result = add(1, 2);\n",
     }
   }));
   let list = client.get_completion_list(
     "file:///a/file.ts",
-    (2, 0),
+    (0, 18),
     json!({ "triggerKind": 1 }),
   );
   assert!(!list.is_incomplete);
@@ -7259,46 +7259,7 @@ fn lsp_completions_auto_import() {
   let Some(item) = item else {
     panic!("completions items missing 'add' symbol");
   };
-  let mut item_value = serde_json::to_value(item).unwrap();
-  item_value["data"]["tsc"]["data"]["exportMapKey"] =
-    serde_json::Value::String("".to_string());
-
-  let req = json!({
-    "label": "add",
-    "labelDetails": {
-      "description": "./🦕.ts",
-    },
-    "kind": 3,
-    "sortText": "￿16_0",
-    "commitCharacters": [
-      ".",
-      ",",
-      ";",
-      "("
-    ],
-    "data": {
-      "tsc": {
-        "specifier": "file:///a/file.ts",
-        "position": 12,
-        "name": "add",
-        "source": "./%F0%9F%A6%95.ts",
-         "specifierRewrite": [
-           "./%F0%9F%A6%95.ts",
-           "./🦕.ts",
-         ],
-        "data": {
-          "exportName": "add",
-          "exportMapKey": "",
-          "moduleSpecifier": "./%F0%9F%A6%95.ts",
-          "fileName": "file:///a/%F0%9F%A6%95.ts"
-        },
-        "useCodeSnippet": false
-      }
-    }
-  });
-  assert_eq!(item_value, req);
-
-  let res = client.write_request("completionItem/resolve", req);
+  let res = client.write_request("completionItem/resolve", json!(item));
   assert_eq!(
     res,
     json!({
@@ -8905,7 +8866,7 @@ fn lsp_completions_node_builtin() {
           "severity": 1,
           "code": "import-node-prefix-missing",
           "source": "deno",
-          "message": "Relative import path \"fs\" not prefixed with / or ./ or ../\nIf you want to use a built-in Node module, add a \"node:\" prefix (ex. \"node:fs\").",
+          "message": "Relative import path \"fs\" not prefixed with / or ./ or ../\n  \u{1b}[0m\u{1b}[36mhint:\u{1b}[0m If you want to use a built-in Node module, add a \"node:\" prefix (ex. \"node:fs\").",
           "data": {
             "specifier": "fs"
           },
@@ -9722,6 +9683,51 @@ fn lsp_lockfile_redirect_resolution() {
   client.shutdown();
 }
 
+// Regression test for https://github.com/denoland/vscode_deno/issues/1157.
+#[test]
+fn lsp_diagnostics_brackets_in_file_name() {
+  let context = TestContextBuilder::new().use_temp_cwd().build();
+  let mut client = context.new_lsp_command().build();
+  client.initialize_default();
+  let diagnostics = client.did_open(json!({
+    "textDocument": {
+      "uri": "file:///a/%5Bfile%5D.ts",
+      "languageId": "typescript",
+      "version": 1,
+      "text": "/** @deprecated */\nexport const a = \"a\";\n\na;\n",
+    },
+  }));
+  assert_eq!(
+    json!(diagnostics.all()),
+    json!([
+      {
+        "range": {
+          "start": { "line": 3, "character": 0 },
+          "end": { "line": 3, "character": 1 },
+        },
+        "severity": 4,
+        "code": 6385,
+        "source": "deno-ts",
+        "message": "'a' is deprecated.",
+        "relatedInformation": [
+          {
+            "location": {
+              "uri": "file:///a/%5Bfile%5D.ts",
+              "range": {
+                "start": { "line": 0, "character": 4 },
+                "end": { "line": 0, "character": 16 },
+              },
+            },
+            "message": "The declaration was marked as deprecated here.",
+          },
+        ],
+        "tags": [2],
+      },
+    ]),
+  );
+  client.shutdown();
+}
+
 #[test]
 fn lsp_diagnostics_deprecated() {
   let context = TestContextBuilder::new().use_temp_cwd().build();
@@ -10269,9 +10275,7 @@ fn lsp_format_exclude_with_config() {
     "deno.fmt.jsonc",
     r#"{
     "fmt": {
-      "files": {
-        "exclude": ["ignored.ts"]
-      },
+      "exclude": ["ignored.ts"],
       "options": {
         "useTabs": true,
         "lineWidth": 40,
@@ -10322,9 +10326,7 @@ fn lsp_format_exclude_default_config() {
     "deno.fmt.jsonc",
     r#"{
     "fmt": {
-      "files": {
-        "exclude": ["ignored.ts"]
-      },
+      "exclude": ["ignored.ts"],
       "options": {
         "useTabs": true,
         "lineWidth": 40,
@@ -10911,7 +10913,7 @@ fn lsp_configuration_did_change() {
         },
       },
     },
-    "unstable": false,
+    "unstable": [],
   } }));
 
   let list = client.get_completion_list(
@@ -11116,24 +11118,6 @@ fn lsp_workspace_symbol() {
         "containerName": "B"
       },
       {
-        "name": "fields",
-        "kind": 6,
-        "location": {
-          "uri": "deno:/asset/lib.deno.unstable.d.ts",
-          "range": null,
-        },
-        "containerName": "CalendarProtocol"
-      },
-      {
-        "name": "fields",
-        "kind": 6,
-        "location": {
-          "uri": "deno:/asset/lib.deno.unstable.d.ts",
-          "range": null,
-        },
-        "containerName": "Calendar"
-      },
-      {
         "name": "ClassFieldDecoratorContext",
         "kind": 11,
         "location": {
@@ -11142,168 +11126,6 @@ fn lsp_workspace_symbol() {
         },
         "containerName": ""
       },
-      {
-        "name": "dateFromFields",
-        "kind": 6,
-        "location": {
-          "uri": "deno:/asset/lib.deno.unstable.d.ts",
-          "range": null,
-        },
-        "containerName": "CalendarProtocol"
-      },
-      {
-        "name": "dateFromFields",
-        "kind": 6,
-        "location": {
-          "uri": "deno:/asset/lib.deno.unstable.d.ts",
-          "range": null,
-        },
-        "containerName": "Calendar"
-      },
-      {
-        "name": "getISOFields",
-        "kind": 6,
-        "location": {
-          "uri": "deno:/asset/lib.deno.unstable.d.ts",
-          "range": null,
-        },
-        "containerName": "PlainDate"
-      },
-      {
-        "name": "getISOFields",
-        "kind": 6,
-        "location": {
-          "uri": "deno:/asset/lib.deno.unstable.d.ts",
-          "range": null,
-        },
-        "containerName": "PlainDateTime"
-      },
-      {
-        "name": "getISOFields",
-        "kind": 6,
-        "location": {
-          "uri": "deno:/asset/lib.deno.unstable.d.ts",
-          "range": null,
-        },
-        "containerName": "PlainMonthDay"
-      },
-      {
-        "name": "getISOFields",
-        "kind": 6,
-        "location": {
-          "uri": "deno:/asset/lib.deno.unstable.d.ts",
-          "range": null,
-        },
-        "containerName": "PlainTime"
-      },
-      {
-        "name": "getISOFields",
-        "kind": 6,
-        "location": {
-          "uri": "deno:/asset/lib.deno.unstable.d.ts",
-          "range": null,
-        },
-        "containerName": "PlainYearMonth"
-      },
-      {
-        "name": "getISOFields",
-        "kind": 6,
-        "location": {
-          "uri": "deno:/asset/lib.deno.unstable.d.ts",
-          "range": null,
-        },
-        "containerName": "ZonedDateTime"
-      },
-      {
-        "name": "mergeFields",
-        "kind": 6,
-        "location": {
-          "uri": "deno:/asset/lib.deno.unstable.d.ts",
-          "range": null,
-        },
-        "containerName": "CalendarProtocol"
-      },
-      {
-        "name": "mergeFields",
-        "kind": 6,
-        "location": {
-          "uri": "deno:/asset/lib.deno.unstable.d.ts",
-          "range": null,
-        },
-        "containerName": "Calendar"
-      },
-      {
-        "name": "monthDayFromFields",
-        "kind": 6,
-        "location": {
-          "uri": "deno:/asset/lib.deno.unstable.d.ts",
-          "range": null,
-        },
-        "containerName": "CalendarProtocol"
-      },
-      {
-        "name": "monthDayFromFields",
-        "kind": 6,
-        "location": {
-          "uri": "deno:/asset/lib.deno.unstable.d.ts",
-          "range": null,
-        },
-        "containerName": "Calendar"
-      },
-      {
-        "name": "PlainDateISOFields",
-        "kind": 5,
-        "location": {
-          "uri": "deno:/asset/lib.deno.unstable.d.ts",
-          "range": null,
-        },
-        "containerName": "Temporal"
-      },
-      {
-        "name": "PlainDateTimeISOFields",
-        "kind": 5,
-        "location": {
-          "uri": "deno:/asset/lib.deno.unstable.d.ts",
-          "range": null,
-        },
-        "containerName": "Temporal"
-      },
-      {
-        "name": "PlainTimeISOFields",
-        "kind": 5,
-        "location": {
-          "uri": "deno:/asset/lib.deno.unstable.d.ts",
-          "range": null,
-        },
-        "containerName": "Temporal"
-      },
-      {
-        "name": "yearMonthFromFields",
-        "kind": 6,
-        "location": {
-          "uri": "deno:/asset/lib.deno.unstable.d.ts",
-          "range": null,
-        },
-        "containerName": "CalendarProtocol"
-      },
-      {
-        "name": "yearMonthFromFields",
-        "kind": 6,
-        "location": {
-          "uri": "deno:/asset/lib.deno.unstable.d.ts",
-          "range": null,
-        },
-        "containerName": "Calendar"
-      },
-      {
-        "name": "ZonedDateTimeISOFields",
-        "kind": 5,
-        "location": {
-          "uri": "deno:/asset/lib.deno.unstable.d.ts",
-          "range": null,
-        },
-        "containerName": "Temporal"
-      }
     ])
   );
   client.shutdown();
@@ -11707,9 +11529,7 @@ fn lsp_lint_exclude_with_config() {
     "deno.lint.jsonc",
     r#"{
       "lint": {
-        "files": {
-          "exclude": ["ignored.ts"]
-        },
+        "exclude": ["ignored.ts"],
         "rules": {
           "exclude": ["camelcase"],
           "include": ["ban-untagged-todo"],
@@ -11839,24 +11659,108 @@ fn lsp_jsx_import_source_config_file_automatic_cache() {
   // The caching is done on an asynchronous task spawned after init, so there's
   // a chance it wasn't done in time and we need to wait for another batch of
   // diagnostics.
+  let mut version = 1;
   while !diagnostics.all().is_empty() {
     std::thread::sleep(std::time::Duration::from_millis(50));
     // The post-cache diagnostics update triggers inconsistently on CI for some
     // reason. Force it with this notification.
-    diagnostics = client.did_open(json!({
-      "textDocument": {
-        "uri": temp_dir.url().join("file.tsx").unwrap(),
-        "languageId": "typescriptreact",
-        "version": 1,
-        "text": "
-          export function Foo() {
-            return <div></div>;
-          }
-        ",
-      },
-    }));
+    version += 1;
+    client.write_notification(
+      "textDocument/didChange",
+      json!({
+        "textDocument": {
+          "uri": temp_dir.url().join("file.tsx").unwrap(),
+          "version": version,
+        },
+        "contentChanges": [
+          {
+            "range": {
+              "start": { "line": 0, "character": 0 },
+              "end": { "line": 0, "character": 0 },
+            },
+            "text": "",
+          },
+        ],
+      }),
+    );
+    diagnostics = client.read_diagnostics();
   }
   assert_eq!(diagnostics.all(), vec![]);
+  client.shutdown();
+}
+
+#[ignore = "https://github.com/denoland/deno/issues/21770"]
+#[test]
+fn lsp_jsx_import_source_package_json_automatic_cache() {
+  let context = TestContextBuilder::new()
+    .use_http_server()
+    .use_temp_cwd()
+    .build();
+  let temp_dir = context.temp_dir();
+  temp_dir.write(
+    "deno.json",
+    json!({
+      "compilerOptions": {
+        "jsx": "react-jsx",
+        "jsxImportSource": "preact",
+      },
+      "nodeModulesDir": false,
+    })
+    .to_string(),
+  );
+  temp_dir.write(
+    "package.json",
+    json!({
+      "dependencies": {
+        "preact": "^10.19.6",
+      },
+    })
+    .to_string(),
+  );
+  let mut client = context.new_lsp_command().build();
+  client.initialize_default();
+  let mut diagnostics = client.did_open(json!({
+    "textDocument": {
+      "uri": temp_dir.url().join("file.tsx").unwrap(),
+      "languageId": "typescriptreact",
+      "version": 1,
+      "text": "
+        export function Foo() {
+          return <div></div>;
+        }
+      ",
+    },
+  }));
+  // The caching is done on an asynchronous task spawned after init, so there's
+  // a chance it wasn't done in time and we need to wait for another batch of
+  // diagnostics.
+  let mut version = 1;
+  while !diagnostics.all().is_empty() {
+    std::thread::sleep(std::time::Duration::from_millis(50));
+    // The post-cache diagnostics update triggers inconsistently on CI for some
+    // reason. Force it with this notification.
+    version += 1;
+    client.write_notification(
+      "textDocument/didChange",
+      json!({
+        "textDocument": {
+          "uri": temp_dir.url().join("file.tsx").unwrap(),
+          "version": version,
+        },
+        "contentChanges": [
+          {
+            "range": {
+              "start": { "line": 0, "character": 0 },
+              "end": { "line": 0, "character": 0 },
+            },
+            "text": "",
+          },
+        ],
+      }),
+    );
+    diagnostics = client.read_diagnostics();
+  }
+  assert_eq!(json!(diagnostics.all()), json!([]));
   client.shutdown();
 }
 
@@ -12037,6 +11941,8 @@ Deno.test({
   async fn(t) {
     console.log("test a");
     await t.step("step of test a", () => {});
+    const kv = await Deno.openKv();
+    kv.close();
   }
 });
 "#;
@@ -12046,6 +11952,12 @@ Deno.test({
 
   let mut client = context.new_lsp_command().build();
   client.initialize_default();
+  client.change_configuration(json!({
+    "deno": {
+      "enable": true,
+      "unstable": ["kv"],
+    },
+  }));
 
   client.did_open(json!({
     "textDocument": {
@@ -12566,7 +12478,7 @@ fn lsp_node_modules_dir() {
         "paths": true,
         "imports": {},
       },
-      "unstable": false,
+      "unstable": [],
     } }));
   };
   refresh_config(&mut client);
@@ -12684,7 +12596,7 @@ fn lsp_vendor_dir() {
       "paths": true,
       "imports": {},
     },
-    "unstable": false,
+    "unstable": [],
   } }));
 
   let diagnostics = client.read_diagnostics();

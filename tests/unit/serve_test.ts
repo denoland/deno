@@ -3,7 +3,7 @@
 // deno-lint-ignore-file no-console
 
 import { assertMatch, assertRejects } from "@std/assert";
-import { Buffer, BufReader, BufWriter } from "@std/io";
+import { Buffer, BufReader, BufWriter, type Reader } from "@std/io";
 import { TextProtoReader } from "../testdata/run/textproto.ts";
 import {
   assert,
@@ -12,7 +12,6 @@ import {
   assertThrows,
   curlRequest,
   curlRequestWithStdErr,
-  DENO_FUTURE,
   execCode,
   execCode3,
   fail,
@@ -20,7 +19,7 @@ import {
 } from "./test_util.ts";
 
 // Since these tests may run in parallel, ensure this port is unique to this file
-const servePort = DENO_FUTURE ? 4511 : 4502;
+const servePort = 4511;
 
 const {
   upgradeHttpRaw,
@@ -793,8 +792,8 @@ Deno.test(
   async function httpServerDefaultOnListenCallback() {
     const ac = new AbortController();
 
-    const consoleLog = console.log;
-    console.log = (msg) => {
+    const consoleError = console.error;
+    console.error = (msg) => {
       try {
         const match = msg.match(
           /Listening on http:\/\/(localhost|0\.0\.0\.0):(\d+)\//,
@@ -819,7 +818,7 @@ Deno.test(
 
       await server.finished;
     } finally {
-      console.log = consoleLog;
+      console.error = consoleError;
     }
   },
 );
@@ -870,6 +869,36 @@ Deno.test({ permissions: { net: true } }, async function validPortString() {
   assertEquals(server.addr.transport, "tcp");
   assertEquals(server.addr.port, 4501);
   await server.shutdown();
+});
+
+Deno.test({ permissions: { net: true } }, async function ipv6Hostname() {
+  const ac = new AbortController();
+  let url = "";
+
+  const consoleError = console.error;
+  console.error = (msg) => {
+    try {
+      const match = msg.match(/Listening on (http:\/\/(.*?):(\d+)\/)/);
+      assert(!!match, `Didn't match ${msg}`);
+      url = match[1];
+    } finally {
+      ac.abort();
+    }
+  };
+
+  try {
+    const server = Deno.serve({
+      handler: () => new Response(),
+      hostname: "::1",
+      port: 0,
+      signal: ac.signal,
+    });
+    assertEquals(server.addr.transport, "tcp");
+    assert(new URL(url), `Not a valid URL "${url}"`);
+    await server.shutdown();
+  } finally {
+    console.error = consoleError;
+  }
 });
 
 Deno.test({ permissions: { net: true } }, function invalidPortFloat() {
@@ -3744,7 +3773,7 @@ Deno.test(
   },
 );
 
-function chunkedBodyReader(h: Headers, r: BufReader): Deno.Reader {
+function chunkedBodyReader(h: Headers, r: BufReader): Reader {
   // Based on https://tools.ietf.org/html/rfc2616#section-19.4.6
   const tp = new TextProtoReader(r);
   let finished = false;
@@ -4190,4 +4219,20 @@ Deno.test({
     Error,
     'Operation `"op_net_listen_unix"` not supported on non-unix platforms.',
   );
+});
+
+Deno.test({
+  name: "onListen callback gets 0.0.0.0 hostname as is",
+}, async () => {
+  const { promise, resolve } = Promise.withResolvers<{ hostname: string }>();
+
+  const server = Deno.serve({
+    handler: (_) => new Response("ok"),
+    hostname: "0.0.0.0",
+    port: 0,
+    onListen: resolve,
+  });
+  const { hostname } = await promise;
+  assertEquals(hostname, "0.0.0.0");
+  await server.shutdown();
 });

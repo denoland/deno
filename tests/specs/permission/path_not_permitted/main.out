@@ -1,11 +1,11 @@
 Running...
-PermissionDenied: Requires run access to "[WILDLINE]deno[WILDLINE]", run again with the --allow-run flag
+NotCapable: Requires run access to "binary", run again with the --allow-run flag
     [WILDCARD]
     at file:///[WILDLINE]/sub.ts:15:5 {
-  name: "PermissionDenied"
+  name: "NotCapable"
 }
-PermissionDenied: Requires run access to "[WILDLINE]deno[WILDLINE]", run again with the --allow-run flag
+NotCapable: Requires run access to "binary", run again with the --allow-run flag
     [WILDCARD]
     at file:///[WILDLINE]/sub.ts:23:22 {
-  name: "PermissionDenied"
+  name: "NotCapable"
 }

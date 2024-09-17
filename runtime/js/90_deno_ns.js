@@ -1,6 +1,6 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
-import { core, internals } from "ext:core/mod.js";
+import { core } from "ext:core/mod.js";
 import {
   op_net_listen_udp,
   op_net_listen_unixpacket,
@@ -20,7 +20,6 @@ import * as errors from "ext:runtime/01_errors.js";
 import * as version from "ext:runtime/01_version.ts";
 import * as permissions from "ext:runtime/10_permissions.js";
 import * as io from "ext:deno_io/12_io.js";
-import * as buffer from "ext:runtime/13_buffer.js";
 import * as fs from "ext:deno_fs/30_fs.js";
 import * as os from "ext:runtime/30_os.js";
 import * as fsEvents from "ext:runtime/40_fs_events.js";
@@ -82,9 +81,6 @@ const denoNs = {
   env: os.env,
   exit: os.exit,
   execPath: os.execPath,
-  Buffer: buffer.Buffer,
-  readAll: buffer.readAll,
-  readAllSync: buffer.readAllSync,
   copy: io.copy,
   SeekMode: io.SeekMode,
   File: fs.File,
@@ -96,32 +92,12 @@ const denoNs = {
   stdin: io.stdin,
   stdout: io.stdout,
   stderr: io.stderr,
-  seek(rid, offset, whence) {
-    internals.warnOnDeprecatedApi(
-      "Deno.seek()",
-      new Error().stack,
-      "Use `file.seek()` instead.",
-    );
-    return fs.seek(rid, offset, whence);
-  },
-  seekSync(rid, offset, whence) {
-    internals.warnOnDeprecatedApi(
-      "Deno.seekSync()",
-      new Error().stack,
-      "Use `file.seekSync()` instead.",
-    );
-    return fs.seekSync(rid, offset, whence);
-  },
   connect: net.connect,
   listen: net.listen,
   loadavg: os.loadavg,
   connectTls: tls.connectTls,
   listenTls: tls.listenTls,
   startTls: tls.startTls,
-  fsyncSync: fs.fsyncSync,
-  fsync: fs.fsync,
-  fdatasyncSync: fs.fdatasyncSync,
-  fdatasync: fs.fdatasync,
   symlink: fs.symlink,
   symlinkSync: fs.symlinkSync,
   link: fs.link,
@@ -150,6 +126,14 @@ const denoNs = {
   uid: os.uid,
   Command: process.Command,
   ChildProcess: process.ChildProcess,
+  dlopen: ffi.dlopen,
+  UnsafeCallback: ffi.UnsafeCallback,
+  UnsafePointer: ffi.UnsafePointer,
+  UnsafePointerView: ffi.UnsafePointerView,
+  UnsafeFnPointer: ffi.UnsafeFnPointer,
+  umask: fs.umask,
+  httpClient: httpClient.httpClient,
+  createHttpClient: httpClient.createHttpClient,
 };
 
 // NOTE(bartlomieju): keep IDs in sync with `cli/main.rs`
@@ -176,19 +160,9 @@ denoNsUnstableById[unstableIds.cron] = {
   cron: cron.cron,
 };
 
-denoNsUnstableById[unstableIds.ffi] = {
-  dlopen: ffi.dlopen,
-  UnsafeCallback: ffi.UnsafeCallback,
-  UnsafePointer: ffi.UnsafePointer,
-  UnsafePointerView: ffi.UnsafePointerView,
-  UnsafeFnPointer: ffi.UnsafeFnPointer,
-};
+denoNsUnstableById[unstableIds.ffi] = {};
 
-denoNsUnstableById[unstableIds.fs] = {
-  funlock: fs.funlock,
-  funlockSync: fs.funlockSync,
-  umask: fs.umask,
-};
+denoNsUnstableById[unstableIds.fs] = {};
 
 denoNsUnstableById[unstableIds.http] = {
   HttpClient: httpClient.HttpClient,
@@ -218,29 +192,4 @@ denoNsUnstableById[unstableIds.webgpu] = {
 
 // denoNsUnstableById[unstableIds.workerOptions] = { __proto__: null }
 
-// when editing this list, also update unstableDenoProps in cli/tsc/99_main_compiler.js
-const denoNsUnstable = {
-  listenDatagram: net.createListenDatagram(
-    op_net_listen_udp,
-    op_net_listen_unixpacket,
-  ),
-  umask: fs.umask,
-  HttpClient: httpClient.HttpClient,
-  createHttpClient: httpClient.createHttpClient,
-  dlopen: ffi.dlopen,
-  UnsafeCallback: ffi.UnsafeCallback,
-  UnsafePointer: ffi.UnsafePointer,
-  UnsafePointerView: ffi.UnsafePointerView,
-  UnsafeFnPointer: ffi.UnsafeFnPointer,
-  UnsafeWindowSurface: webgpuSurface.UnsafeWindowSurface,
-  funlock: fs.funlock,
-  funlockSync: fs.funlockSync,
-  openKv: kv.openKv,
-  AtomicOperation: kv.AtomicOperation,
-  Kv: kv.Kv,
-  KvU64: kv.KvU64,
-  KvListIterator: kv.KvListIterator,
-  cron: cron.cron,
-};
-
-export { denoNs, denoNsUnstable, denoNsUnstableById, unstableIds };
+export { denoNs, denoNsUnstableById, unstableIds };

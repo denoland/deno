@@ -311,6 +311,7 @@ fn format_markdown(
             codeblock_config.line_width = line_width;
             dprint_plugin_typescript::format_text(
               &fake_filename,
+              None,
               text.to_string(),
               &codeblock_config,
             )
@@ -405,6 +406,7 @@ pub fn format_html(
           typescript_config.line_width = hints.print_width as u32;
           dprint_plugin_typescript::format_text(
             &path,
+            None,
             text.to_string(),
             &typescript_config,
           )
@@ -498,6 +500,7 @@ pub fn format_file(
       let config = get_resolved_typescript_config(fmt_options);
       dprint_plugin_typescript::format_text(
         file_path,
+        None,
         file_text.to_string(),
         &config,
       )
@@ -907,6 +910,7 @@ fn get_resolved_malva_config(
   };
 
   let language_options = LanguageOptions {
+    align_comments: true,
     hex_case: HexCase::Lower,
     hex_color_length: None,
     quotes: if let Some(true) = options.single_quote {
@@ -1011,7 +1015,6 @@ fn get_resolved_yaml_config(
 
   let layout_options = LayoutOptions {
     print_width: options.line_width.unwrap_or(80) as usize,
-    use_tabs: options.use_tabs.unwrap_or_default(),
     indent_width: options.indent_width.unwrap_or(2) as usize,
     line_break: LineBreak::Lf,
   };
@@ -1028,6 +1031,9 @@ fn get_resolved_yaml_config(
     brace_spacing: true,
     bracket_spacing: false,
     dash_spacing: DashSpacing::OneSpace,
+    prefer_single_line: false,
+    flow_sequence_prefer_single_line: None,
+    flow_map_prefer_single_line: None,
     trim_trailing_whitespaces: true,
     trim_trailing_zero: false,
     ignore_comment_directive: "deno-fmt-ignore".into(),

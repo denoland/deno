@@ -33,6 +33,7 @@ pub mod fs_util;
 pub mod inspector_server;
 pub mod js;
 pub mod ops;
+pub mod permissions;
 pub mod snapshot;
 pub mod tokio_util;
 pub mod web_worker;
@@ -83,7 +84,7 @@ pub static UNSTABLE_GRANULAR_FLAGS: &[UnstableGranularFlag] = &[
   UnstableGranularFlag {
     name: ops::http::UNSTABLE_FEATURE_NAME,
     help_text: "Enable unstable HTTP APIs",
-    show_in_help: true,
+    show_in_help: false,
     id: 5,
   },
   UnstableGranularFlag {

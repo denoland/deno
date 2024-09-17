@@ -223,7 +223,7 @@
         "useUnknownInCatchVariables": {
           "description": "Default catch clause variables as `unknown` instead of `any`.",
           "type": "boolean",
-          "default": false,
+          "default": true,
           "markdownDescription": "Default catch clause variables as `unknown` instead of `any`.\n\nSee more: https://www.typescriptlang.org/tsconfig#useUnknownInCatchVariables"
         }
       }
@@ -277,25 +277,6 @@
           "description": "List of files, directories or globs that will not be linted.",
           "items": {
             "type": "string"
-          }
-        },
-        "files": {
-          "type": "object",
-          "properties": {
-            "include": {
-              "type": "array",
-              "description": "List of files, directories or globs that will be linted.",
-              "items": {
-                "type": "string"
-              }
-            },
-            "exclude": {
-              "type": "array",
-              "description": "List of files, directories or globs that will not be linted.",
-              "items": {
-                "type": "string"
-              }
-            }
           }
         },
         "rules": {
@@ -353,25 +334,6 @@
           "description": "List of files, directories or globs that will not be formatted.",
           "items": {
             "type": "string"
-          }
-        },
-        "files": {
-          "type": "object",
-          "properties": {
-            "include": {
-              "type": "array",
-              "description": "List of files, directories or globs that will be formatted.",
-              "items": {
-                "type": "string"
-              }
-            },
-            "exclude": {
-              "type": "array",
-              "description": "List of files, directories or globs that will not be formatted.",
-              "items": {
-                "type": "string"
-              }
-            }
           }
         },
         "useTabs": {
@@ -477,25 +439,6 @@
           "items": {
             "type": "string"
           }
-        },
-        "files": {
-          "type": "object",
-          "properties": {
-            "include": {
-              "type": "array",
-              "description": "List of files, directories or globs that will be searched for tests.",
-              "items": {
-                "type": "string"
-              }
-            },
-            "exclude": {
-              "type": "array",
-              "description": "List of files, directories or globs that will not be searched for tests.",
-              "items": {
-                "type": "string"
-              }
-            }
-          }
         }
       }
     },
@@ -535,25 +478,6 @@
           "description": "List of files, directories or globs that will not be searched for benchmarks.",
           "items": {
             "type": "string"
-          }
-        },
-        "files": {
-          "type": "object",
-          "properties": {
-            "include": {
-              "type": "array",
-              "description": "List of files, directories or globs that will be searched for benchmarks.",
-              "items": {
-                "type": "string"
-              }
-            },
-            "exclude": {
-              "type": "array",
-              "description": "List of files, directories or globs that will not be searched for benchmarks.",
-              "items": {
-                "type": "string"
-              }
-            }
           }
         }
       }
@@ -622,6 +546,11 @@
         {
           "type": "object",
           "description": "A map of package exports to files in this JSR package.",
+          "propertyNames": {
+            "description": "Package export name",
+            "examples": [".", "./foo", "./bar"],
+            "pattern": "^\\.(/.*)?$"
+          },
           "patternProperties": {
             "^\\.(/.*)?$": {
               "type": "string",

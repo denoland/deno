@@ -4,14 +4,19 @@
 
 // @deno-types="./_stream.d.ts"
 import {
+  _isArrayBufferView,
   _isUint8Array,
   _uint8ArrayToBuffer,
   addAbortSignal,
-  // compose,
-  // destroy,
+  compose,
+  destroy,
   Duplex,
   finished,
-  // isDisturbed,
+  isDestroyed,
+  isDisturbed,
+  isErrored,
+  isReadable,
+  isWritable,
   PassThrough,
   pipeline,
   Readable,
@@ -19,16 +24,30 @@ import {
   Transform,
   Writable,
 } from "ext:deno_node/_stream.mjs";
+import {
+  getDefaultHighWaterMark,
+  setDefaultHighWaterMark,
+} from "ext:deno_node/internal/streams/state.mjs";
 
 export {
+  _isArrayBufferView,
   _isUint8Array,
   _uint8ArrayToBuffer,
   addAbortSignal,
+  compose,
+  destroy,
   Duplex,
   finished,
+  getDefaultHighWaterMark,
+  isDestroyed,
+  isDisturbed,
+  isErrored,
+  isReadable,
+  isWritable,
   PassThrough,
   pipeline,
   Readable,
+  setDefaultHighWaterMark,
   Stream,
   Transform,
   Writable,

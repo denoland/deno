@@ -255,12 +255,6 @@ itest!(_052_no_remote_flag {
   http_server: true,
 });
 
-itest!(_056_make_temp_file_write_perm {
-  args:
-    "run --quiet --allow-read --allow-write=./subdir/ run/056_make_temp_file_write_perm.ts",
-  output: "run/056_make_temp_file_write_perm.out",
-});
-
 itest!(_058_tasks_microtasks_close {
   args: "run --quiet run/058_tasks_microtasks_close.ts",
   output: "run/058_tasks_microtasks_close.ts.out",
@@ -488,9 +482,8 @@ itest!(_088_dynamic_import_already_evaluating {
   output: "run/088_dynamic_import_already_evaluating.ts.out",
 });
 
-// TODO(bartlomieju): remove --unstable once Deno.Command is stabilized
 itest!(_089_run_allow_list {
-  args: "run --unstable --allow-run=curl run/089_run_allow_list.ts",
+  args: "run --allow-run=curl run/089_run_allow_list.ts",
   envs: vec![
     ("LD_LIBRARY_PATH".to_string(), "".to_string()),
     ("DYLD_FALLBACK_LIBRARY_PATH".to_string(), "".to_string())
@@ -1560,7 +1553,7 @@ itest!(import_meta {
 });
 
 itest!(main_module {
-  args: "run --quiet --allow-read --reload run/main_module/main.ts",
+  args: "run --quiet  --reload run/main_module/main.ts",
   output: "run/main_module/main.out",
 });
 
@@ -1830,17 +1823,6 @@ itest!(unstable_cron_enabled {
   output: "run/unstable_cron.enabled.out",
 });
 
-itest!(unstable_http_disabled {
-  args: "run --quiet --reload --allow-read run/unstable_http.js",
-  output: "run/unstable_http.disabled.out",
-});
-
-itest!(unstable_http_enabled {
-  args:
-    "run --quiet --reload --allow-read --unstable-http run/unstable_http.js",
-  output: "run/unstable_http.enabled.out",
-});
-
 itest!(unstable_net_disabled {
   args: "run --quiet --reload --allow-read run/unstable_net.js",
   output: "run/unstable_net.disabled.out",
@@ -1924,11 +1906,6 @@ itest!(fix_worker_dispatchevent {
 itest!(es_private_fields {
   args: "run --quiet --reload run/es_private_fields.js",
   output: "run/es_private_fields.js.out",
-});
-
-itest!(cjs_imports {
-  args: "run --quiet --reload run/cjs_imports/main.ts",
-  output: "run/cjs_imports/main.out",
 });
 
 itest!(ts_import_from_js {
@@ -2545,14 +2522,12 @@ mod permissions {
   use test_util::itest;
   use util::TestContext;
 
-  // TODO(bartlomieju): remove --unstable once Deno.Command is stabilized
   #[test]
   fn with_allow() {
     for permission in &util::PERMISSION_VARIANTS {
       let status = util::deno_cmd()
         .current_dir(util::testdata_path())
         .arg("run")
-        .arg("--unstable")
         .arg(format!("--allow-{permission}"))
         .arg("run/permission_test.ts")
         .arg(format!("{permission}Required"))
@@ -2564,13 +2539,12 @@ mod permissions {
     }
   }
 
-  // TODO(bartlomieju): remove --unstable once Deno.Command is stabilized
   #[test]
   fn without_allow() {
     for permission in &util::PERMISSION_VARIANTS {
       let (_, err) = util::run_and_collect_output(
         false,
-        &format!("run --unstable run/permission_test.ts {permission}Required"),
+        &format!("run run/permission_test.ts {permission}Required"),
         None,
         None,
         false,
@@ -3024,7 +2998,7 @@ mod permissions {
   fn _066_prompt() {
     TestContext::default()
       .new_command()
-      .args_vec(["run", "--quiet", "--unstable", "run/066_prompt.ts"])
+      .args_vec(["run", "--quiet", "run/066_prompt.ts"])
       .with_pty(|mut console| {
         console.expect("What is your name? Jane Doe");
         console.write_line_raw("");
@@ -3154,7 +3128,7 @@ fn issue9750() {
       console.write_line_raw("n");
       console.expect_all(&[
         "Denied env access to \"SECRET\".",
-        "PermissionDenied: Requires env access to \"SECRET\", run again with the --allow-env flag",
+        "NotCapable: Requires env access to \"SECRET\", run again with the --allow-env flag",
       ]);
     });
 }
@@ -3338,11 +3312,6 @@ itest!(import_attributes_type_check {
   exit_code: 1,
 });
 
-itest!(delete_window {
-  args: "run run/delete_window.js",
-  output_str: Some("true\n"),
-});
-
 itest!(colors_without_global_this {
   args: "run run/colors_without_globalThis.js",
   output_str: Some("true\n"),
@@ -3383,42 +3352,6 @@ itest!(
     exit_code: 1,
   }
 );
-
-// TODO(2.0): this should be rewritten to a spec test and first run `deno install`
-// itest!(package_json_auto_discovered_for_npm_binary {
-//   args: "run -L debug -A npm:@denotest/bin/cli-esm this is a test",
-//   output: "run/with_package_json/npm_binary/main.out",
-//   cwd: Some("run/with_package_json/npm_binary/"),
-//   copy_temp_dir: Some("run/with_package_json/"),
-//   envs: env_vars_for_npm_tests(),
-//   http_server: true,
-// });
-
-// TODO(2.0): this should be rewritten to a spec test and first run `deno install`
-#[test]
-#[ignore]
-fn package_json_with_deno_json() {
-  let context = TestContextBuilder::for_npm()
-    .use_copy_temp_dir("package_json/deno_json/")
-    .cwd("package_json/deno_json/")
-    .build();
-  let output = context.new_command().args("run --quiet -A main.ts").run();
-  output.assert_matches_file("package_json/deno_json/main.out");
-
-  assert!(context
-    .temp_dir()
-    .path()
-    .join("package_json/deno_json/deno.lock")
-    .exists());
-
-  // run again and ensure the top level install doesn't happen twice
-  let output = context
-    .new_command()
-    .args("run --log-level=debug -A main.ts")
-    .run();
-  let output = output.combined_output();
-  assert_contains!(output, "Skipping top level install.");
-}
 
 #[test]
 fn package_json_no_node_modules_dir_created() {
@@ -3580,7 +3513,6 @@ fn deno_no_prompt_environment_variable() {
   let output = util::deno_cmd()
     .current_dir(util::testdata_path())
     .arg("run")
-    .arg("--unstable")
     .arg("run/no_prompt.ts")
     .env("DENO_NO_PROMPT", "1")
     .spawn()
@@ -4061,7 +3993,7 @@ async fn test_resolve_dns() {
     let out = String::from_utf8_lossy(&output.stdout);
     assert!(!output.status.success());
     assert!(err.starts_with("Check file"));
-    assert!(err.contains(r#"error: Uncaught (in promise) PermissionDenied: Requires net access to "127.0.0.1:4553""#));
+    assert!(err.contains(r#"error: Uncaught (in promise) NotCapable: Requires net access to "127.0.0.1:4553""#));
     assert!(out.is_empty());
   }
 
@@ -4082,7 +4014,7 @@ async fn test_resolve_dns() {
     let out = String::from_utf8_lossy(&output.stdout);
     assert!(!output.status.success());
     assert!(err.starts_with("Check file"));
-    assert!(err.contains(r#"error: Uncaught (in promise) PermissionDenied: Requires net access to "127.0.0.1:4553""#));
+    assert!(err.contains(r#"error: Uncaught (in promise) NotCapable: Requires net access to "127.0.0.1:4553""#));
     assert!(out.is_empty());
   }
 
@@ -4094,7 +4026,6 @@ async fn http2_request_url() {
   let mut child = util::deno_cmd()
     .current_dir(util::testdata_path())
     .arg("run")
-    .arg("--unstable")
     .arg("--quiet")
     .arg("--allow-net")
     .arg("--allow-read")
@@ -4343,7 +4274,7 @@ async fn websocketstream_ping() {
 
   let child = util::deno_cmd()
     .arg("test")
-    .arg("--unstable")
+    .arg("--unstable-net")
     .arg("--allow-net")
     .arg("--cert")
     .arg(root_ca)
@@ -4389,7 +4320,6 @@ async fn websocket_server_multi_field_connection_header() {
   let root_ca = util::testdata_path().join("tls/RootCA.pem");
   let mut child = util::deno_cmd()
     .arg("run")
-    .arg("--unstable")
     .arg("--allow-net")
     .arg("--cert")
     .arg(root_ca)
@@ -4443,7 +4373,6 @@ async fn websocket_server_idletimeout() {
   let root_ca = util::testdata_path().join("tls/RootCA.pem");
   let mut child = util::deno_cmd()
     .arg("run")
-    .arg("--unstable")
     .arg("--allow-net")
     .arg("--cert")
     .arg(root_ca)
@@ -4610,64 +4539,6 @@ fn permission_prompt_escapes_ansi_codes_and_control_chars() {
   }
 }
 
-itest!(node_builtin_modules_ts {
-  args: "run --quiet --allow-read run/node_builtin_modules/mod.ts hello there",
-  output: "run/node_builtin_modules/mod.ts.out",
-  envs: env_vars_for_npm_tests(),
-  exit_code: 0,
-});
-
-itest!(node_builtin_modules_js {
-  args: "run --quiet --allow-read run/node_builtin_modules/mod.js hello there",
-  output: "run/node_builtin_modules/mod.js.out",
-  envs: env_vars_for_npm_tests(),
-  exit_code: 0,
-});
-
-itest!(node_prefix_missing {
-  args: "run --quiet run/node_prefix_missing/main.ts",
-  output: "run/node_prefix_missing/main.ts.out",
-  envs: env_vars_for_npm_tests(),
-  exit_code: 1,
-});
-
-itest!(node_prefix_missing_unstable_bare_node_builtins_enbaled {
-  args: "run --unstable-bare-node-builtins run/node_prefix_missing/main.ts",
-  output: "run/node_prefix_missing/feature_enabled.out",
-  envs: env_vars_for_npm_tests(),
-  exit_code: 0,
-});
-
-itest!(
-  node_prefix_missing_unstable_bare_node_builtins_enbaled_by_env {
-    args: "run run/node_prefix_missing/main.ts",
-    output: "run/node_prefix_missing/feature_enabled.out",
-    envs: [
-      env_vars_for_npm_tests(),
-      vec![(
-        "DENO_UNSTABLE_BARE_NODE_BUILTINS".to_string(),
-        "1".to_string()
-      )]
-    ]
-    .concat(),
-    exit_code: 0,
-  }
-);
-
-itest!(node_prefix_missing_unstable_bare_node_builtins_enbaled_by_config {
-  args: "run --config=run/node_prefix_missing/config.json run/node_prefix_missing/main.ts",
-  output: "run/node_prefix_missing/feature_enabled.out",
-  envs: env_vars_for_npm_tests(),
-  exit_code: 0,
-});
-
-itest!(node_prefix_missing_unstable_bare_node_builtins_enbaled_with_import_map {
-  args: "run --unstable-bare-node-builtins --import-map run/node_prefix_missing/import_map.json run/node_prefix_missing/main.ts",
-  output: "run/node_prefix_missing/feature_enabled.out",
-  envs: env_vars_for_npm_tests(),
-  exit_code: 0,
-});
-
 itest!(dynamic_import_syntax_error {
   args: "run -A run/dynamic_import_syntax_error.js",
   output: "run/dynamic_import_syntax_error.js.out",
@@ -4800,27 +4671,6 @@ itest!(unsafe_proto_flag {
   output: "run/unsafe_proto/main_with_unsafe_proto_flag.out",
   http_server: false,
   exit_code: 0,
-});
-
-itest!(unstable_temporal_api {
-  args: "run --no-config --unstable-temporal --check run/unstable_temporal_api/main.ts",
-  output: "run/unstable_temporal_api/main.out",
-  http_server: false,
-  exit_code: 0,
-});
-
-itest!(unstable_temporal_api_config_file {
-  args: "run --check run/unstable_temporal_api/main.ts",
-  output: "run/unstable_temporal_api/main.out",
-  http_server: false,
-  exit_code: 0,
-});
-
-itest!(unstable_temporal_api_missing_flag {
-  args: "run --no-config run/unstable_temporal_api/missing_flag.js",
-  output: "run/unstable_temporal_api/missing_flag.out",
-  http_server: false,
-  exit_code: 1,
 });
 
 // TODO(bartlomieju): temporary disabled
@@ -5159,7 +5009,6 @@ async fn listen_tls_alpn() {
   let mut child = util::deno_cmd()
     .current_dir(util::testdata_path())
     .arg("run")
-    .arg("--unstable")
     .arg("--quiet")
     .arg("--allow-net")
     .arg("--allow-read")
@@ -5213,7 +5062,6 @@ async fn listen_tls_alpn_fail() {
   let mut child = util::deno_cmd()
     .current_dir(util::testdata_path())
     .arg("run")
-    .arg("--unstable")
     .arg("--quiet")
     .arg("--allow-net")
     .arg("--allow-read")

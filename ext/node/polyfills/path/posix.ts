@@ -18,6 +18,9 @@ export const {
   resolve,
   sep,
   toNamespacedPath,
+  _makeLong,
 } = path.posix;
 
+export const posix = path.posix;
+export const win32 = path.win32;
 export default path.posix;

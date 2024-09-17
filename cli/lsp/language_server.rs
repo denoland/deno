@@ -1,6 +1,5 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
-use base64::Engine;
 use deno_ast::MediaType;
 use deno_config::workspace::WorkspaceDirectory;
 use deno_config::workspace::WorkspaceDiscoverOptions;
@@ -968,16 +967,27 @@ impl Inner {
       (|| {
         let compiler_options = config_file.to_compiler_options().ok()?.options;
         let jsx_import_source = compiler_options.get("jsxImportSource")?;
-        let jsx_import_source = jsx_import_source.as_str()?;
+        let jsx_import_source = jsx_import_source.as_str()?.to_string();
         let referrer = config_file.specifier.clone();
-        let specifier = Url::parse(&format!(
-          "data:application/typescript;base64,{}",
-          base64::engine::general_purpose::STANDARD
-            .encode(format!("import '{jsx_import_source}/jsx-runtime';"))
-        ))
-        .unwrap();
+        let specifier = format!("{jsx_import_source}/jsx-runtime");
         self.task_queue.queue_task(Box::new(|ls: LanguageServer| {
           spawn(async move {
+            let specifier = {
+              let inner = ls.inner.read().await;
+              let resolver = inner.resolver.as_graph_resolver(Some(&referrer));
+              let Ok(specifier) = resolver.resolve(
+                &specifier,
+                &deno_graph::Range {
+                  specifier: referrer.clone(),
+                  start: deno_graph::Position::zeroed(),
+                  end: deno_graph::Position::zeroed(),
+                },
+                deno_graph::source::ResolutionMode::Types,
+              ) else {
+                return;
+              };
+              specifier
+            };
             if let Err(err) = ls.cache(vec![specifier], referrer, false).await {
               lsp_warn!("{:#}", err);
             }
@@ -3859,7 +3869,11 @@ impl Inner {
 
   </details>
 "#,
-        serde_json::to_string_pretty(&workspace_settings).unwrap(),
+        serde_json::to_string_pretty(&workspace_settings)
+          .inspect_err(|e| {
+            dbg!(e);
+          })
+          .unwrap(),
         documents_specifiers.len(),
         documents_specifiers
           .into_iter()

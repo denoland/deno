@@ -378,3 +378,8 @@ Deno.test("[node/http2 client] connection states", async () => {
 
   assertEquals(actual, expected);
 });
+
+Deno.test("request and response exports", () => {
+  assert(http2.Http2ServerRequest);
+  assert(http2.Http2ServerResponse);
+});
