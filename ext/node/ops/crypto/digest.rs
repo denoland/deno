@@ -80,6 +80,10 @@ macro_rules! match_fixed_digest_with_eager_block_buffer {
         type $type = ::sm3::Sm3;
         $body
       }
+      "rsa-md4" | "md4" | "md4withrsaencryption" => {
+        type $type = ::md4::Md4;
+        $body
+      }
       "md5-sha1" => {
         type $type = crate::ops::crypto::md5_sha1::Md5Sha1;
         $body
@@ -260,6 +264,7 @@ impl Hash {
 
   pub fn get_hashes() -> Vec<&'static str> {
     vec![
+      "RSA-MD4",
       "RSA-MD5",
       "RSA-RIPEMD160",
       "RSA-SHA1",
@@ -281,6 +286,8 @@ impl Hash {
       "id-rsassa-pkcs1-v1_5-with-sha3-256",
       "id-rsassa-pkcs1-v1_5-with-sha3-384",
       "id-rsassa-pkcs1-v1_5-with-sha3-512",
+      "md4",
+      "md4WithRSAEncryption",
       "md5",
       "md5-sha1",
       "md5WithRSAEncryption",

@@ -1405,8 +1405,9 @@ dependencies = [
 
 [[package]]
 name = "deno_core"
-version = "0.308.0"
-source = "git+https://github.com/denoland/deno_core?rev=fe3b0ba#fe3b0ba799baaf8e94a1b0778df1513055363c17"
+version = "0.309.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "eaecc78e8903d1b5d95c7fb01a14eb342b9e63484763a304fd30a8f48861f9df"
 dependencies = [
  "anyhow",
  "bincode",
@@ -1718,9 +1719,9 @@ dependencies = [
 
 [[package]]
 name = "deno_lockfile"
-version = "0.23.0"
+version = "0.23.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "fb68a4a666c69eabd8fe505d6fdc4ed4a2d962fe1680dbfa8b0c8a2975d58ed0"
+checksum = "579117d5815aa9bae0212637d6f4d5f45f9649bb2c8988dca434077545535039"
 dependencies = [
  "deno_semver",
  "serde",
@@ -1867,9 +1868,9 @@ dependencies = [
 
 [[package]]
 name = "deno_npm"
-version = "0.25.0"
+version = "0.25.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "efb2dd7efaf478d780a6ca43e6127667d5329ed9a5ff89f42cec0dc21ee58342"
+checksum = "e61b112e9bb332e8e6b0d82fcea7664423933de476e1726dd23a924a2d94f4ef"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -1886,8 +1887,9 @@ dependencies = [
 
 [[package]]
 name = "deno_ops"
-version = "0.184.0"
-source = "git+https://github.com/denoland/deno_core?rev=fe3b0ba#fe3b0ba799baaf8e94a1b0778df1513055363c17"
+version = "0.185.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "2d817c00b3f30bef495c84080b5ed327ed68d6d2636b5ed8b730d00a06221dc1"
 dependencies = [
  "proc-macro-rules",
  "proc-macro2",
@@ -6255,8 +6257,9 @@ dependencies = [
 
 [[package]]
 name = "serde_v8"
-version = "0.217.0"
-source = "git+https://github.com/denoland/deno_core?rev=fe3b0ba#fe3b0ba799baaf8e94a1b0778df1513055363c17"
+version = "0.218.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "134add6f9dc7a226912468f7c427a476583ab362e094f04ff3a9fa79f2df97c7"
 dependencies = [
  "num-bigint",
  "serde",
@@ -8723,3 +8726,8 @@ dependencies = [
  "cc",
  "pkg-config",
 ]
+
+[[patch.unused]]
+name = "deno_core"
+version = "0.308.0"
+source = "git+https://github.com/denoland/deno_core?rev=fe3b0ba#fe3b0ba799baaf8e94a1b0778df1513055363c17"

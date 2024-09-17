@@ -21,7 +21,7 @@ where
   FP: FfiPermissions + 'static,
 {
   let permissions = state.borrow_mut::<FP>();
-  permissions.check_partial(None)?;
+  permissions.check_partial_no_path()?;
 
   Ok(ptr_number as *mut c_void)
 }
@@ -36,7 +36,7 @@ where
   FP: FfiPermissions + 'static,
 {
   let permissions = state.borrow_mut::<FP>();
-  permissions.check_partial(None)?;
+  permissions.check_partial_no_path()?;
 
   Ok(a == b)
 }
@@ -50,7 +50,7 @@ where
   FP: FfiPermissions + 'static,
 {
   let permissions = state.borrow_mut::<FP>();
-  permissions.check_partial(None)?;
+  permissions.check_partial_no_path()?;
 
   Ok(buf as *mut c_void)
 }
@@ -64,7 +64,7 @@ where
   FP: FfiPermissions + 'static,
 {
   let permissions = state.borrow_mut::<FP>();
-  permissions.check_partial(None)?;
+  permissions.check_partial_no_path()?;
 
   let Some(buf) = buf.get_backing_store() else {
     return Ok(0 as _);
@@ -85,7 +85,7 @@ where
   FP: FfiPermissions + 'static,
 {
   let permissions = state.borrow_mut::<FP>();
-  permissions.check_partial(None)?;
+  permissions.check_partial_no_path()?;
 
   if ptr.is_null() {
     return Err(type_error("Invalid pointer to offset, pointer is null"));
@@ -115,7 +115,7 @@ where
   FP: FfiPermissions + 'static,
 {
   let permissions = state.borrow_mut::<FP>();
-  permissions.check_partial(None)?;
+  permissions.check_partial_no_path()?;
 
   Ok(ptr as usize)
 }
@@ -132,7 +132,7 @@ where
   FP: FfiPermissions + 'static,
 {
   let permissions = state.borrow_mut::<FP>();
-  permissions.check_partial(None)?;
+  permissions.check_partial_no_path()?;
 
   if ptr.is_null() {
     return Err(type_error("Invalid ArrayBuffer pointer, pointer is null"));
@@ -164,7 +164,7 @@ where
   FP: FfiPermissions + 'static,
 {
   let permissions = state.borrow_mut::<FP>();
-  permissions.check_partial(None)?;
+  permissions.check_partial_no_path()?;
 
   if src.is_null() {
     Err(type_error("Invalid ArrayBuffer pointer, pointer is null"))
@@ -195,7 +195,7 @@ where
   FP: FfiPermissions + 'static,
 {
   let permissions = state.borrow_mut::<FP>();
-  permissions.check_partial(None)?;
+  permissions.check_partial_no_path()?;
 
   if ptr.is_null() {
     return Err(type_error("Invalid CString pointer, pointer is null"));
@@ -221,7 +221,7 @@ where
   FP: FfiPermissions + 'static,
 {
   let permissions = state.borrow_mut::<FP>();
-  permissions.check_partial(None)?;
+  permissions.check_partial_no_path()?;
 
   if ptr.is_null() {
     return Err(type_error("Invalid bool pointer, pointer is null"));
@@ -241,7 +241,7 @@ where
   FP: FfiPermissions + 'static,
 {
   let permissions = state.borrow_mut::<FP>();
-  permissions.check_partial(None)?;
+  permissions.check_partial_no_path()?;
 
   if ptr.is_null() {
     return Err(type_error("Invalid u8 pointer, pointer is null"));
@@ -263,7 +263,7 @@ where
   FP: FfiPermissions + 'static,
 {
   let permissions = state.borrow_mut::<FP>();
-  permissions.check_partial(None)?;
+  permissions.check_partial_no_path()?;
 
   if ptr.is_null() {
     return Err(type_error("Invalid i8 pointer, pointer is null"));
@@ -285,7 +285,7 @@ where
   FP: FfiPermissions + 'static,
 {
   let permissions = state.borrow_mut::<FP>();
-  permissions.check_partial(None)?;
+  permissions.check_partial_no_path()?;
 
   if ptr.is_null() {
     return Err(type_error("Invalid u16 pointer, pointer is null"));
@@ -307,7 +307,7 @@ where
   FP: FfiPermissions + 'static,
 {
   let permissions = state.borrow_mut::<FP>();
-  permissions.check_partial(None)?;
+  permissions.check_partial_no_path()?;
 
   if ptr.is_null() {
     return Err(type_error("Invalid i16 pointer, pointer is null"));
@@ -329,7 +329,7 @@ where
   FP: FfiPermissions + 'static,
 {
   let permissions = state.borrow_mut::<FP>();
-  permissions.check_partial(None)?;
+  permissions.check_partial_no_path()?;
 
   if ptr.is_null() {
     return Err(type_error("Invalid u32 pointer, pointer is null"));
@@ -349,7 +349,7 @@ where
   FP: FfiPermissions + 'static,
 {
   let permissions = state.borrow_mut::<FP>();
-  permissions.check_partial(None)?;
+  permissions.check_partial_no_path()?;
 
   if ptr.is_null() {
     return Err(type_error("Invalid i32 pointer, pointer is null"));
@@ -372,7 +372,7 @@ where
   FP: FfiPermissions + 'static,
 {
   let permissions = state.borrow_mut::<FP>();
-  permissions.check_partial(None)?;
+  permissions.check_partial_no_path()?;
 
   if ptr.is_null() {
     return Err(type_error("Invalid u64 pointer, pointer is null"));
@@ -398,7 +398,7 @@ where
   FP: FfiPermissions + 'static,
 {
   let permissions = state.borrow_mut::<FP>();
-  permissions.check_partial(None)?;
+  permissions.check_partial_no_path()?;
 
   if ptr.is_null() {
     return Err(type_error("Invalid i64 pointer, pointer is null"));
@@ -421,7 +421,7 @@ where
   FP: FfiPermissions + 'static,
 {
   let permissions = state.borrow_mut::<FP>();
-  permissions.check_partial(None)?;
+  permissions.check_partial_no_path()?;
 
   if ptr.is_null() {
     return Err(type_error("Invalid f32 pointer, pointer is null"));
@@ -441,7 +441,7 @@ where
   FP: FfiPermissions + 'static,
 {
   let permissions = state.borrow_mut::<FP>();
-  permissions.check_partial(None)?;
+  permissions.check_partial_no_path()?;
 
   if ptr.is_null() {
     return Err(type_error("Invalid f64 pointer, pointer is null"));
@@ -461,7 +461,7 @@ where
   FP: FfiPermissions + 'static,
 {
   let permissions = state.borrow_mut::<FP>();
-  permissions.check_partial(None)?;
+  permissions.check_partial_no_path()?;
 
   if ptr.is_null() {
     return Err(type_error("Invalid pointer pointer, pointer is null"));
