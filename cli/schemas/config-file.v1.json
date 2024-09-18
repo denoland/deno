@@ -127,7 +127,7 @@
         "noImplicitOverride": {
           "description": "Ensure overriding members in derived classes are marked with an override modifier.",
           "type": "boolean",
-          "default": false,
+          "default": true,
           "markdownDescription": "Ensure overriding members in derived classes are marked with an override modifier.\n\nSee more: https://www.typescriptlang.org/tsconfig#noImplicitOverride"
         },
         "noImplicitReturns": {
