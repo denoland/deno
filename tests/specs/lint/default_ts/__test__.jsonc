@@ -3,8 +3,8 @@
   "tests": {
     "stdin": {
       "args": "lint -",
-      "input": "const x: string = \"foo\";",
-      "output": "const x: string = \"foo\";\n"
+      "input": "const _x: string = \"foo\";",
+      "output": "Checked 1 file\n"
     },
     "ext_flag": {
       "args": "lint --ext=ts as_ts.js",

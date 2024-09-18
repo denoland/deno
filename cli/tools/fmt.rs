@@ -465,7 +465,7 @@ pub fn format_file(
   unstable_options: &UnstableFmtOptions,
   ext: Option<String>,
 ) -> Result<Option<String>, AnyError> {
-  let ext = ext.or_else(|| get_extension(file_path)).unwrap_or_default();
+  let ext = ext.or_else(|| get_extension(file_path)).unwrap_or("ts".to_string());
 
   match ext.as_str() {
     "md" | "mkd" | "mkdn" | "mdwn" | "mdown" | "markdown" => {
