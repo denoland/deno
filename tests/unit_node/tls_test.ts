@@ -1,6 +1,7 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
 import {
+  assert,
   assertEquals,
   assertInstanceOf,
   assertStringIncludes,
@@ -214,4 +215,8 @@ Deno.test("tls.connect() throws InvalidData when there's error in certificate", 
     output,
     "InvalidData: invalid peer certificate: UnknownIssuer",
   );
+});
+
+Deno.test("tls.rootCertificates is not empty", () => {
+  assert(tls.rootCertificates.length > 0);
 });
