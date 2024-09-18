@@ -10,15 +10,15 @@ try {
 }
 
 // Skip these tests on linux CI, because the vulkan emulator is not good enough
-// yet, and skip on macOS CI because these do not have virtual GPUs.
-const isLinuxOrMacCI =
-  (Deno.build.os === "linux" || Deno.build.os === "darwin") && isCI;
+// yet, and skip on macOS x86 CI because these do not have virtual GPUs.
+const isCIWithoutGPU = (Deno.build.os === "linux" ||
+  (Deno.build.os === "darwin" && Deno.build.arch === "x86_64")) && isCI;
 // Skip these tests in WSL because it doesn't have good GPU support.
 const isWsl = await checkIsWsl();
 
 Deno.test({
   permissions: { read: true, env: true },
-  ignore: isWsl || isLinuxOrMacCI,
+  ignore: isWsl || isCIWithoutGPU,
 }, async function webgpuComputePass() {
   const adapter = await navigator.gpu.requestAdapter();
   assert(adapter);
@@ -104,7 +104,7 @@ Deno.test({
 
 Deno.test({
   permissions: { read: true, env: true },
-  ignore: isWsl || isLinuxOrMacCI,
+  ignore: isWsl || isCIWithoutGPU,
 }, async function webgpuHelloTriangle() {
   const adapter = await navigator.gpu.requestAdapter();
   assert(adapter);
@@ -216,7 +216,7 @@ Deno.test({
 });
 
 Deno.test({
-  ignore: isWsl || isLinuxOrMacCI,
+  ignore: isWsl || isCIWithoutGPU,
 }, async function webgpuAdapterHasFeatures() {
   const adapter = await navigator.gpu.requestAdapter();
   assert(adapter);
@@ -226,7 +226,7 @@ Deno.test({
 });
 
 Deno.test({
-  ignore: isWsl || isLinuxOrMacCI,
+  ignore: isWsl || isCIWithoutGPU,
 }, async function webgpuNullWindowSurfaceThrows() {
   const adapter = await navigator.gpu.requestAdapter();
   assert(adapter);
@@ -249,7 +249,7 @@ Deno.test(function getPreferredCanvasFormat() {
 });
 
 Deno.test({
-  ignore: isWsl || isLinuxOrMacCI,
+  ignore: isWsl || isCIWithoutGPU,
 }, async function validateGPUColor() {
   const adapter = await navigator.gpu.requestAdapter();
   assert(adapter);
@@ -312,7 +312,7 @@ Deno.test({
 });
 
 Deno.test({
-  ignore: isWsl || isLinuxOrMacCI,
+  ignore: isWsl || isCIWithoutGPU,
 }, async function validateGPUExtent3D() {
   const adapter = await navigator.gpu.requestAdapter();
   assert(adapter);
@@ -412,7 +412,7 @@ Deno.test({
 });
 
 Deno.test({
-  ignore: isWsl || isLinuxOrMacCI,
+  ignore: isWsl || isCIWithoutGPU,
 }, async function validateGPUOrigin3D() {
   const adapter = await navigator.gpu.requestAdapter();
   assert(adapter);
@@ -505,7 +505,7 @@ Deno.test({
 });
 
 Deno.test({
-  ignore: isWsl || isLinuxOrMacCI,
+  ignore: isWsl || isCIWithoutGPU,
 }, async function beginRenderPassWithoutDepthClearValue() {
   const adapter = await navigator.gpu.requestAdapter();
   assert(adapter);
