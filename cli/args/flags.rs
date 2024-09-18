@@ -5925,7 +5925,7 @@ mod tests {
     );
 
     let r = flags_from_vec(svec!["deno", "run", "--v8-flags=--expose-gc"]);
-    assert!(r.is_ok());
+    assert!(r.is_err());
   }
 
   #[test]
