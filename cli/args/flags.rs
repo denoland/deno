@@ -2118,7 +2118,6 @@ Ignore formatting a file by adding an ignore comment at the top of the file:
         Arg::new("ext")
           .long("ext")
           .help("Set content type of the supplied file")
-          .hide_default_value(true)
           .value_parser([
             "ts", "tsx", "js", "jsx", "md", "json", "jsonc", "css", "scss",
             "sass", "less", "html", "svelte", "vue", "astro", "yml", "yaml",
@@ -6295,7 +6294,6 @@ mod tests {
           unstable_yaml: false,
           watch: Default::default(),
         }),
-        ext: Some("ts".to_string()),
         ..Flags::default()
       }
     );
@@ -6322,7 +6320,6 @@ mod tests {
           unstable_yaml: false,
           watch: Default::default(),
         }),
-        ext: Some("ts".to_string()),
         ..Flags::default()
       }
     );
@@ -6349,7 +6346,6 @@ mod tests {
           unstable_yaml: false,
           watch: Some(Default::default()),
         }),
-        ext: Some("ts".to_string()),
         ..Flags::default()
       }
     );
@@ -6389,7 +6385,6 @@ mod tests {
             exclude: vec![],
           })
         }),
-        ext: Some("ts".to_string()),
         ..Flags::default()
       }
     );
@@ -6423,7 +6418,6 @@ mod tests {
           unstable_yaml: false,
           watch: Some(Default::default()),
         }),
-        ext: Some("ts".to_string()),
         ..Flags::default()
       }
     );
@@ -6450,7 +6444,6 @@ mod tests {
           unstable_yaml: false,
           watch: Default::default(),
         }),
-        ext: Some("ts".to_string()),
         config_flag: ConfigFlag::Path("deno.jsonc".to_string()),
         ..Flags::default()
       }
@@ -6486,7 +6479,6 @@ mod tests {
           watch: Some(Default::default()),
         }),
         config_flag: ConfigFlag::Path("deno.jsonc".to_string()),
-        ext: Some("ts".to_string()),
         ..Flags::default()
       }
     );
@@ -6525,7 +6517,6 @@ mod tests {
           unstable_yaml: false,
           watch: Default::default(),
         }),
-        ext: Some("ts".to_string()),
         ..Flags::default()
       }
     );
@@ -6559,7 +6550,6 @@ mod tests {
           unstable_yaml: false,
           watch: Default::default(),
         }),
-        ext: Some("ts".to_string()),
         ..Flags::default()
       }
     );
