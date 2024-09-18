@@ -1583,7 +1583,10 @@ pub async fn run_tests(
 
   // Typecheck
   main_graph_container
-    .check_specifiers(&specifiers_for_typecheck_and_test, cli_options.ext_flag().as_ref())
+    .check_specifiers(
+      &specifiers_for_typecheck_and_test,
+      cli_options.ext_flag().as_ref(),
+    )
     .await?;
 
   if workspace_test_options.no_run {
@@ -1757,7 +1760,10 @@ pub async fn run_tests_with_watch(
 
         // Typecheck
         main_graph_container
-          .check_specifiers(&specifiers_for_typecheck_and_test, cli_options.ext_flag().as_ref())
+          .check_specifiers(
+            &specifiers_for_typecheck_and_test,
+            cli_options.ext_flag().as_ref(),
+          )
           .await?;
 
         if workspace_test_options.no_run {
