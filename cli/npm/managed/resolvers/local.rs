@@ -890,9 +890,7 @@ async fn sync_resolution_with_fs(
       "┠─ {}",
       colors::italic("This may cause the packages to not work correctly.")
     );
-    log::warn!("┠─ {}", colors::italic("To run lifecycle scripts, use the `--allow-scripts` flag with `deno install`"));
-    log::warn!("┃");
-    log::warn!("┗─ If you want to run lifecycle script, run:");
+    log::warn!("┗─ {}", colors::italic("To run lifecycle scripts, use the `--allow-scripts` flag with `deno install`:"));
     let packages_comma_separated = packages_with_scripts_not_run
       .iter()
       .map(|(_, p)| format!("npm:{p}"))
