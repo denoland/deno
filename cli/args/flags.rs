@@ -299,7 +299,6 @@ pub struct LintFlags {
   pub json: bool,
   pub compact: bool,
   pub watch: Option<WatchFlags>,
-  pub ext: Option<String>,
 }
 
 impl LintFlags {
@@ -1629,6 +1628,7 @@ If you specify a directory instead of a file, the path is expanded to all contai
       .arg(no_clear_screen_arg())
       .arg(script_arg().last(true))
       .arg(env_file_arg())
+      .arg(executable_ext_arg())
   })
 }
 
@@ -2125,9 +2125,6 @@ Ignore formatting a file by adding an ignore comment at the top of the file:
         Arg::new("ext")
           .long("ext")
           .help("Set content type of the supplied file")
-          // prefer using ts for formatting instead of js because ts works in more scenarios
-          .default_value("ts")
-          .hide_default_value(true)
           .value_parser([
             "ts", "tsx", "js", "jsx", "md", "json", "jsonc", "css", "scss",
             "sass", "less", "html", "svelte", "vue", "astro", "yml", "yaml",
@@ -2910,6 +2907,7 @@ or <c>**/__tests__/**</>:
           .action(ArgAction::SetTrue)
       )
       .arg(env_file_arg())
+      .arg(executable_ext_arg())
     )
 }
 
@@ -4074,6 +4072,7 @@ fn bench_parse(
   flags.type_check_mode = TypeCheckMode::Local;
 
   runtime_args_parse(flags, matches, true, false)?;
+  ext_arg_parse(flags, matches);
 
   // NOTE: `deno bench` always uses `--no-prompt`, tests shouldn't ever do
   // interactive prompts, unless done by user code
@@ -4597,8 +4596,9 @@ fn lint_parse(
   matches: &mut ArgMatches,
 ) -> clap::error::Result<()> {
   unstable_args_parse(flags, matches, UnstableArgsConfig::ResolutionOnly);
-
+  ext_arg_parse(flags, matches);
   config_args_parse(flags, matches);
+
   let files = match matches.remove_many::<String>("files") {
     Some(f) => f.collect(),
     None => vec![],
@@ -4625,7 +4625,6 @@ fn lint_parse(
 
   let json = matches.get_flag("json");
   let compact = matches.get_flag("compact");
-  let ext = matches.remove_one::<String>("ext");
 
   flags.subcommand = DenoSubcommand::Lint(LintFlags {
     files: FileFlags {
@@ -4640,7 +4639,6 @@ fn lint_parse(
     json,
     compact,
     watch: watch_arg_parse(matches)?,
-    ext,
   });
   Ok(())
 }
@@ -4821,6 +4819,8 @@ fn test_parse(
 ) -> clap::error::Result<()> {
   flags.type_check_mode = TypeCheckMode::Local;
   runtime_args_parse(flags, matches, true, true)?;
+  ext_arg_parse(flags, matches);
+
   // NOTE: `deno test` always uses `--no-prompt`, tests shouldn't ever do
   // interactive prompts, unless done by user code
   flags.permissions.no_prompt = true;
@@ -6273,7 +6273,6 @@ mod tests {
           unstable_yaml: false,
           watch: Default::default(),
         }),
-        ext: Some("ts".to_string()),
         ..Flags::default()
       }
     );
@@ -6300,7 +6299,6 @@ mod tests {
           unstable_yaml: false,
           watch: Default::default(),
         }),
-        ext: Some("ts".to_string()),
         ..Flags::default()
       }
     );
@@ -6327,7 +6325,6 @@ mod tests {
           unstable_yaml: false,
           watch: Default::default(),
         }),
-        ext: Some("ts".to_string()),
         ..Flags::default()
       }
     );
@@ -6354,7 +6351,6 @@ mod tests {
           unstable_yaml: false,
           watch: Some(Default::default()),
         }),
-        ext: Some("ts".to_string()),
         ..Flags::default()
       }
     );
@@ -6394,7 +6390,6 @@ mod tests {
             exclude: vec![],
           })
         }),
-        ext: Some("ts".to_string()),
         ..Flags::default()
       }
     );
@@ -6428,7 +6423,6 @@ mod tests {
           unstable_yaml: false,
           watch: Some(Default::default()),
         }),
-        ext: Some("ts".to_string()),
         ..Flags::default()
       }
     );
@@ -6455,7 +6449,6 @@ mod tests {
           unstable_yaml: false,
           watch: Default::default(),
         }),
-        ext: Some("ts".to_string()),
         config_flag: ConfigFlag::Path("deno.jsonc".to_string()),
         ..Flags::default()
       }
@@ -6491,7 +6484,6 @@ mod tests {
           watch: Some(Default::default()),
         }),
         config_flag: ConfigFlag::Path("deno.jsonc".to_string()),
-        ext: Some("ts".to_string()),
         ..Flags::default()
       }
     );
@@ -6530,7 +6522,6 @@ mod tests {
           unstable_yaml: false,
           watch: Default::default(),
         }),
-        ext: Some("ts".to_string()),
         ..Flags::default()
       }
     );
@@ -6564,7 +6555,6 @@ mod tests {
           unstable_yaml: false,
           watch: Default::default(),
         }),
-        ext: Some("ts".to_string()),
         ..Flags::default()
       }
     );
@@ -6589,7 +6579,6 @@ mod tests {
           json: false,
           compact: false,
           watch: Default::default(),
-          ext: None,
         }),
         ..Flags::default()
       }
@@ -6618,7 +6607,6 @@ mod tests {
           json: false,
           compact: false,
           watch: Some(Default::default()),
-          ext: None,
         }),
         ..Flags::default()
       }
@@ -6652,7 +6640,6 @@ mod tests {
             no_clear_screen: true,
             exclude: vec![],
           }),
-          ext: None,
         }),
         ..Flags::default()
       }
@@ -6680,7 +6667,6 @@ mod tests {
           json: false,
           compact: false,
           watch: Default::default(),
-          ext: None,
         }),
         ..Flags::default()
       }
@@ -6703,7 +6689,6 @@ mod tests {
           json: false,
           compact: false,
           watch: Default::default(),
-          ext: None,
         }),
         ..Flags::default()
       }
@@ -6731,7 +6716,6 @@ mod tests {
           json: false,
           compact: false,
           watch: Default::default(),
-          ext: None,
         }),
         ..Flags::default()
       }
@@ -6760,7 +6744,6 @@ mod tests {
           json: false,
           compact: false,
           watch: Default::default(),
-          ext: None,
         }),
         ..Flags::default()
       }
@@ -6783,7 +6766,6 @@ mod tests {
           json: true,
           compact: false,
           watch: Default::default(),
-          ext: None,
         }),
         ..Flags::default()
       }
@@ -6813,7 +6795,6 @@ mod tests {
           json: true,
           compact: false,
           watch: Default::default(),
-          ext: None,
         }),
         config_flag: ConfigFlag::Path("Deno.jsonc".to_string()),
         ..Flags::default()
@@ -6844,7 +6825,6 @@ mod tests {
           json: false,
           compact: true,
           watch: Default::default(),
-          ext: None,
         }),
         config_flag: ConfigFlag::Path("Deno.jsonc".to_string()),
         ..Flags::default()
