@@ -6,8 +6,8 @@ const a: string = 1;
     at file://[WILDCARD]/main.ts:8:7
 
 TS2322 [ERROR]: Type 'string' is not assignable to type 'number'.
-const b: number = "1";
-      ^
-    at file://[WILDCARD]/main.ts$2-5.ts:1:7
+    const b: number = "1";
+          ^
+    at file://[WILDCARD]/main.ts$2-5.ts:2:11
 
 Found 2 errors.
