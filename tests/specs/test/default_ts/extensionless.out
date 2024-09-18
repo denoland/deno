@@ -1,6 +1,4 @@
 Check file:///[WILDCARD]/extensionless
 running 1 test from ./extensionless
-foo ... ok (0ms)
-
-ok | 1 passed | 0 failed (1ms)
+[WILDCARD]
 

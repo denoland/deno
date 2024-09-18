@@ -1,6 +1,4 @@
 Check file:///[WILDCARD]/as_ts.js
 running 1 test from ./as_ts.js
-foo ... ok (0ms)
-
-ok | 1 passed | 0 failed (1ms)
+[WILDCARD]
 
