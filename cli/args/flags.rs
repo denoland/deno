@@ -663,21 +663,33 @@ impl PermissionFlags {
   }
 
   pub fn to_options(&self) -> PermissionsOptions {
+    fn handle_allow<T: Default>(
+      allow_all: bool,
+      value: Option<T>,
+    ) -> Option<T> {
+      if allow_all {
+        assert!(value.is_none());
+        Some(T::default())
+      } else {
+        value
+      }
+    }
+
     PermissionsOptions {
       allow_all: self.allow_all,
-      allow_env: self.allow_env.clone(),
+      allow_env: handle_allow(self.allow_all, self.allow_env.clone()),
       deny_env: self.deny_env.clone(),
-      allow_net: self.allow_net.clone(),
+      allow_net: handle_allow(self.allow_all, self.allow_net.clone()),
       deny_net: self.deny_net.clone(),
-      allow_ffi: self.allow_ffi.clone(),
+      allow_ffi: handle_allow(self.allow_all, self.allow_ffi.clone()),
       deny_ffi: self.deny_ffi.clone(),
-      allow_read: self.allow_read.clone(),
+      allow_read: handle_allow(self.allow_all, self.allow_read.clone()),
       deny_read: self.deny_read.clone(),
-      allow_run: self.allow_run.clone(),
+      allow_run: handle_allow(self.allow_all, self.allow_run.clone()),
       deny_run: self.deny_run.clone(),
-      allow_sys: self.allow_sys.clone(),
+      allow_sys: handle_allow(self.allow_all, self.allow_sys.clone()),
       deny_sys: self.deny_sys.clone(),
-      allow_write: self.allow_write.clone(),
+      allow_write: handle_allow(self.allow_all, self.allow_write.clone()),
       deny_write: self.deny_write.clone(),
       prompt: !resolve_no_prompt(self),
     }
