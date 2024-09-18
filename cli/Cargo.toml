@@ -69,7 +69,7 @@ deno_config = { version = "=0.34.2", features = ["workspace", "sync"] }
 deno_core = { workspace = true, features = ["include_js_files_for_snapshotting"] }
 deno_doc = { version = "0.148.0", features = ["html", "syntect"] }
 deno_graph = { version = "=0.82.1" }
-deno_lint = { version = "=0.65.0", features = ["docs"] }
+deno_lint = { version = "=0.66.0", features = ["docs"] }
 deno_lockfile.workspace = true
 deno_npm = "=0.25.1"
 deno_package_json.workspace = true
