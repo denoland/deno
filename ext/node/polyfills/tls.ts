@@ -10,7 +10,7 @@ import tlsWrap from "node:_tls_wrap";
 import { op_get_root_certificates } from "ext:core/ops";
 import { primordials } from "ext:core/mod.js";
 
-const { ObjectFreeze, ObjectDefineProperty } = primordials;
+const { ObjectFreeze } = primordials;
 
 // openssl -> rustls
 const cipherMap = {
@@ -34,23 +34,7 @@ export function getCiphers() {
   return Object.keys(cipherMap).map((name) => name.toLowerCase());
 }
 
-const certs = {};
-let rootCertificates_;
-function cacheRootCertificates() {
-  rootCertificates_ = ObjectFreeze(op_get_root_certificates());
-}
-ObjectDefineProperty(certs, "rootCertificates", {
-  __proto__: null,
-  configurable: false,
-  enumerable: true,
-  get: () => {
-    // Out-of-line caching to promote inlining the getter.
-    if (!rootCertificates_) cacheRootCertificates();
-    return rootCertificates_;
-  },
-});
-
-export const { rootCertificates } = certs;
+export const rootCertificates = ObjectFreeze(op_get_root_certificates());
 export const DEFAULT_ECDH_CURVE = "auto";
 export const DEFAULT_MAX_VERSION = "TLSv1.3";
 export const DEFAULT_MIN_VERSION = "TLSv1.2";
