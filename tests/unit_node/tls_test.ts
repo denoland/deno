@@ -147,10 +147,12 @@ Deno.test("tls.createServer creates a TLS server", async () => {
     },
   );
   server.listen(0, async () => {
-    const conn = await Deno.connectTls({
-      hostname: "127.0.0.1",
+    const tcpConn = await Deno.connect({
       // deno-lint-ignore no-explicit-any
       port: (server.address() as any).port,
+    });
+    const conn = await Deno.startTls(tcpConn, {
+      hostname: "localhost",
       caCerts: [rootCaCert],
     });
 

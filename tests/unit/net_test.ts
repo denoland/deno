@@ -126,8 +126,6 @@ Deno.test(
     const listener = Deno.listen({ port: listenPort });
     const p = listener.accept();
     listener.close();
-    // TODO(piscisaureus): the error type should be `Interrupted` here, which
-    // gets thrown, but then ext/net catches it and rethrows `BadResource`.
     await assertRejects(
       () => p,
       Deno.errors.BadResource,
@@ -151,8 +149,8 @@ Deno.test(
     listener.close();
     await assertRejects(
       () => p,
-      Deno.errors.BadResource,
-      "Listener has been closed",
+      Deno.errors.Interrupted,
+      "operation canceled",
     );
   },
 );
@@ -163,12 +161,12 @@ Deno.test(
     const listener = Deno.listen({ port: 4510 });
     let acceptErrCount = 0;
     const checkErr = (e: Error) => {
-      if (e.message === "Listener has been closed") {
+      if (e.message === "operation canceled") {
         assertEquals(acceptErrCount, 1);
       } else if (e.message === "Another accept task is ongoing") {
         acceptErrCount++;
       } else {
-        throw new Error("Unexpected error message");
+        throw e;
       }
     };
     const p = listener.accept().catch(checkErr);
@@ -190,7 +188,7 @@ Deno.test(
     const listener = Deno.listen({ transport: "unix", path: filePath });
     let acceptErrCount = 0;
     const checkErr = (e: Error) => {
-      if (e.message === "Listener has been closed") {
+      if (e.message === "operation canceled") {
         assertEquals(acceptErrCount, 1);
       } else if (e instanceof Deno.errors.Busy) { // "Listener already in use"
         acceptErrCount++;
@@ -1309,7 +1307,7 @@ Deno.test(
 
       done = assertRejects(
         () => listener.accept(),
-        Deno.errors.BadResource,
+        Deno.errors.Interrupted,
       );
     }
 
@@ -1324,7 +1322,7 @@ Deno.test(
     listener.close();
     await assertRejects( // definitely closed
       () => listener.accept(),
-      Deno.errors.BadResource,
+      Deno.errors.Interrupted,
     );
     // calling [Symbol.dispose] after manual close is a no-op
   },

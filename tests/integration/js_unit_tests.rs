@@ -143,8 +143,19 @@ fn js_unit_test(test: String) {
     deno = deno.arg("--unstable-worker-options");
   }
 
-  // TODO(mmastrac): it would be better to just load a test CA for all tests
-  if test == "websocket_test" || test == "tls_sni_test" {
+  // Some tests require the root CA cert file to be loaded.
+  if test == "websocket_test" {
+    deno = deno.arg(format!(
+      "--cert={}",
+      util::testdata_path()
+        .join("tls")
+        .join("RootCA.pem")
+        .to_string_lossy()
+    ));
+  };
+
+  if test == "tls_sni_test" {
+    // TODO(lucacasonato): fix the SNI in the certs so that this is not needed
     deno = deno.arg("--unsafely-ignore-certificate-errors");
   }
 

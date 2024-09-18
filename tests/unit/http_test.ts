@@ -2305,7 +2305,7 @@ Deno.test(
 
     const buf = new Uint8Array(128);
     const readPromise = serverConn.read(buf);
-    assertThrows(() => Deno.serveHttp(serverConn), Deno.errors.BadResource);
+    assertThrows(() => Deno.serveHttp(serverConn), Deno.errors.Busy);
 
     clientConn.close();
     listener.close();
@@ -2338,7 +2338,7 @@ Deno.test(
 
     const buf = new Uint8Array(128);
     const readPromise = serverConn.read(buf);
-    assertThrows(() => Deno.serveHttp(serverConn), Deno.errors.BadResource);
+    assertThrows(() => Deno.serveHttp(serverConn), Deno.errors.Busy);
 
     clientConn.close();
     listener.close();
@@ -2362,7 +2362,7 @@ Deno.test(
 
     const buf = new Uint8Array(128);
     const readPromise = serverConn.read(buf);
-    assertThrows(() => Deno.serveHttp(serverConn), Deno.errors.BadResource);
+    assertThrows(() => Deno.serveHttp(serverConn), Deno.errors.Busy);
 
     clientConn.close();
     listener.close();

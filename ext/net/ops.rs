@@ -69,7 +69,6 @@ impl From<SocketAddr> for IpAddr {
 }
 
 pub(crate) fn accept_err(e: std::io::Error) -> AnyError {
-  // FIXME(bartlomieju): compatibility with current JS implementation
   if let std::io::ErrorKind::Interrupted = e.kind() {
     bad_resource("Listener has been closed")
   } else {
