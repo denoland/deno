@@ -676,12 +676,12 @@ impl AddPackageReq {
         Some((alias, text)) => {
           let (maybe_prefix, entry_text) = parse_prefix(text);
           (
-            maybe_prefix.unwrap_or(Prefix::Jsr),
+            maybe_prefix.ok_or_else(|| anyhow!("Missing prefix. Possible prefixes are 'jsr:' or 'npm:'"))?,
             Some(alias.to_string()),
             entry_text,
           )
         }
-        None => (Prefix::Jsr, None, entry_text),
+        None => return Err(anyhow!("Missing prefix. Possible prefixes are 'jsr:' or 'npm:'")),
       },
     };
 
@@ -847,8 +847,6 @@ fn update_config_file_content<
 
 #[cfg(test)]
 mod test {
-  use deno_semver::VersionReq;
-
   use super::*;
 
   #[test]
@@ -891,15 +889,8 @@ mod test {
       }
     );
     assert_eq!(
-      AddPackageReq::parse("@scope/pkg@tag").unwrap(),
-      AddPackageReq {
-        alias: "@scope/pkg".to_string(),
-        value: AddPackageReqValue::Jsr(PackageReq {
-          name: "@scope/pkg".to_string(),
-          // this is a tag
-          version_req: VersionReq::parse_from_specifier("tag").unwrap(),
-        }),
-      }
+      AddPackageReq::parse("@scope/pkg@tag").unwrap_err().to_string(),
+      "Missing prefix. Possible prefixes are 'jsr:' or 'npm:'",
     );
   }
 }
