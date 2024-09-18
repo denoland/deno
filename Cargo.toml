@@ -191,6 +191,7 @@ twox-hash = "=1.6.3"
 # Upgrading past 2.4.1 may cause WPT failures
 url = { version = "< 2.5.0", features = ["serde", "expose_internals"] }
 uuid = { version = "1.3.0", features = ["v4"] }
+webpki-root-certs = "0.26.5"
 webpki-roots = "0.26"
 which = "4.2.5"
 yoke = { version = "0.7.4", features = ["derive"] }
