@@ -5128,17 +5128,19 @@ fn emit_failed_readonly_file_system() {
 
 #[test]
 fn handle_invalid_path_error() {
-  let deno_panicked = |output: &std::process::Output| {
-    String::from_utf8_lossy(&output.stderr).contains("Deno has panicked")
-  };
-
-  // this one used to panic on linux
   let deno_cmd = util::deno_cmd_with_deno_dir(&util::new_deno_dir());
   let output = deno_cmd.arg("run").arg("file://asdf").output().unwrap();
-  assert!(!deno_panicked(&output));
+  assert!(String::from_utf8_lossy(&output.stderr).contains("Invalid file path."));
 
-  // this one used to panic on windows
   let deno_cmd = util::deno_cmd_with_deno_dir(&util::new_deno_dir());
-  let output = deno_cmd.arg("run").arg("file:/asdf").output().unwrap();
-  assert!(!deno_panicked(&output));
+  let output = deno_cmd.arg("run").arg("/a/b").output().unwrap();
+  assert!(String::from_utf8_lossy(&output.stderr).contains("Module not found"));
+
+  let deno_cmd = util::deno_cmd_with_deno_dir(&util::new_deno_dir());
+  let output = deno_cmd.arg("run").arg("//a/b").output().unwrap();
+  assert!(String::from_utf8_lossy(&output.stderr).contains("Invalid file path."));
+
+  let deno_cmd = util::deno_cmd_with_deno_dir(&util::new_deno_dir());
+  let output = deno_cmd.arg("run").arg("///a/b").output().unwrap();
+  assert!(String::from_utf8_lossy(&output.stderr).contains("Module not found"));
 }
