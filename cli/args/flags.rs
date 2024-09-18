@@ -664,21 +664,33 @@ impl PermissionFlags {
   }
 
   pub fn to_options(&self) -> PermissionsOptions {
+    fn handle_allow<T: Default>(
+      allow_all: bool,
+      value: Option<T>,
+    ) -> Option<T> {
+      if allow_all {
+        assert!(value.is_none());
+        Some(T::default())
+      } else {
+        value
+      }
+    }
+
     PermissionsOptions {
       allow_all: self.allow_all,
-      allow_env: self.allow_env.clone(),
+      allow_env: handle_allow(self.allow_all, self.allow_env.clone()),
       deny_env: self.deny_env.clone(),
-      allow_net: self.allow_net.clone(),
+      allow_net: handle_allow(self.allow_all, self.allow_net.clone()),
       deny_net: self.deny_net.clone(),
-      allow_ffi: self.allow_ffi.clone(),
+      allow_ffi: handle_allow(self.allow_all, self.allow_ffi.clone()),
       deny_ffi: self.deny_ffi.clone(),
-      allow_read: self.allow_read.clone(),
+      allow_read: handle_allow(self.allow_all, self.allow_read.clone()),
       deny_read: self.deny_read.clone(),
-      allow_run: self.allow_run.clone(),
+      allow_run: handle_allow(self.allow_all, self.allow_run.clone()),
       deny_run: self.deny_run.clone(),
-      allow_sys: self.allow_sys.clone(),
+      allow_sys: handle_allow(self.allow_all, self.allow_sys.clone()),
       deny_sys: self.deny_sys.clone(),
-      allow_write: self.allow_write.clone(),
+      allow_write: handle_allow(self.allow_all, self.allow_write.clone()),
       deny_write: self.deny_write.clone(),
       prompt: !resolve_no_prompt(self),
     }
@@ -975,13 +987,13 @@ impl Flags {
   #[inline(always)]
   fn allow_all(&mut self) {
     self.permissions.allow_all = true;
-    self.permissions.allow_read = Some(vec![]);
-    self.permissions.allow_env = Some(vec![]);
-    self.permissions.allow_net = Some(vec![]);
-    self.permissions.allow_run = Some(vec![]);
-    self.permissions.allow_write = Some(vec![]);
-    self.permissions.allow_sys = Some(vec![]);
-    self.permissions.allow_ffi = Some(vec![]);
+    self.permissions.allow_read = None;
+    self.permissions.allow_env = None;
+    self.permissions.allow_net = None;
+    self.permissions.allow_run = None;
+    self.permissions.allow_write = None;
+    self.permissions.allow_sys = None;
+    self.permissions.allow_ffi = None;
   }
 
   pub fn resolve_watch_exclude_set(
@@ -1370,13 +1382,7 @@ where
 fn handle_repl_flags(flags: &mut Flags, repl_flags: ReplFlags) {
   // If user runs just `deno` binary we enter REPL and allow all permissions.
   if repl_flags.is_default_command {
-    flags.permissions.allow_net = Some(vec![]);
-    flags.permissions.allow_env = Some(vec![]);
-    flags.permissions.allow_run = Some(vec![]);
-    flags.permissions.allow_read = Some(vec![]);
-    flags.permissions.allow_sys = Some(vec![]);
-    flags.permissions.allow_write = Some(vec![]);
-    flags.permissions.allow_ffi = Some(vec![]);
+    flags.allow_all();
   }
   flags.subcommand = DenoSubcommand::Repl(repl_flags);
 }
@@ -6136,13 +6142,6 @@ mod tests {
         )),
         permissions: PermissionFlags {
           allow_all: true,
-          allow_net: Some(vec![]),
-          allow_env: Some(vec![]),
-          allow_run: Some(vec![]),
-          allow_read: Some(vec![]),
-          allow_sys: Some(vec![]),
-          allow_write: Some(vec![]),
-          allow_ffi: Some(vec![]),
           ..Default::default()
         },
         code_cache_enabled: true,
@@ -7075,13 +7074,6 @@ mod tests {
         }),
         permissions: PermissionFlags {
           allow_all: true,
-          allow_net: Some(vec![]),
-          allow_env: Some(vec![]),
-          allow_run: Some(vec![]),
-          allow_read: Some(vec![]),
-          allow_sys: Some(vec![]),
-          allow_write: Some(vec![]),
-          allow_ffi: Some(vec![]),
           ..Default::default()
         },
         ..Flags::default()
@@ -7101,13 +7093,6 @@ mod tests {
         }),
         permissions: PermissionFlags {
           allow_all: true,
-          allow_net: Some(vec![]),
-          allow_env: Some(vec![]),
-          allow_run: Some(vec![]),
-          allow_read: Some(vec![]),
-          allow_sys: Some(vec![]),
-          allow_write: Some(vec![]),
-          allow_ffi: Some(vec![]),
           ..Default::default()
         },
         ..Flags::default()
@@ -7132,13 +7117,6 @@ mod tests {
         }),
         permissions: PermissionFlags {
           allow_all: true,
-          allow_net: Some(vec![]),
-          allow_env: Some(vec![]),
-          allow_run: Some(vec![]),
-          allow_read: Some(vec![]),
-          allow_sys: Some(vec![]),
-          allow_write: Some(vec![]),
-          allow_ffi: Some(vec![]),
           ..Default::default()
         },
         ext: Some("ts".to_string()),
@@ -7172,13 +7150,6 @@ mod tests {
         inspect: Some("127.0.0.1:9229".parse().unwrap()),
         permissions: PermissionFlags {
           allow_all: true,
-          allow_net: Some(vec![]),
-          allow_env: Some(vec![]),
-          allow_run: Some(vec![]),
-          allow_read: Some(vec![]),
-          allow_sys: Some(vec![]),
-          allow_write: Some(vec![]),
-          allow_ffi: Some(vec![]),
           ..Default::default()
         },
         env_file: Some(".example.env".to_owned()),
@@ -7206,13 +7177,6 @@ mod tests {
         argv: svec!["arg1", "arg2"],
         permissions: PermissionFlags {
           allow_all: true,
-          allow_net: Some(vec![]),
-          allow_env: Some(vec![]),
-          allow_run: Some(vec![]),
-          allow_read: Some(vec![]),
-          allow_sys: Some(vec![]),
-          allow_write: Some(vec![]),
-          allow_ffi: Some(vec![]),
           ..Default::default()
         },
         ..Flags::default()
@@ -7233,19 +7197,7 @@ mod tests {
         }),
         unsafely_ignore_certificate_errors: None,
         permissions: PermissionFlags {
-          allow_net: Some(vec![]),
-          allow_env: Some(vec![]),
-          deny_env: None,
-          allow_run: Some(vec![]),
-          deny_run: None,
-          allow_read: Some(vec![]),
-          deny_read: None,
-          allow_sys: Some(vec![]),
-          deny_sys: None,
-          allow_write: Some(vec![]),
-          deny_write: None,
-          allow_ffi: Some(vec![]),
-          deny_ffi: None,
+          allow_all: true,
           ..Default::default()
         },
         ..Flags::default()
@@ -7292,13 +7244,6 @@ mod tests {
         inspect: Some("127.0.0.1:9229".parse().unwrap()),
         permissions: PermissionFlags {
           allow_all: true,
-          allow_net: Some(vec![]),
-          allow_env: Some(vec![]),
-          allow_run: Some(vec![]),
-          allow_read: Some(vec![]),
-          allow_sys: Some(vec![]),
-          allow_write: Some(vec![]),
-          allow_ffi: Some(vec![]),
           ..Default::default()
         },
         env_file: Some(".example.env".to_owned()),
@@ -10699,14 +10644,7 @@ mod tests {
         }),
         log_level: Some(Level::Debug),
         permissions: PermissionFlags {
-          allow_all: false,
-          allow_net: Some(vec![]),
-          allow_env: Some(vec![]),
-          allow_run: Some(vec![]),
-          allow_read: Some(vec![]),
-          allow_sys: Some(vec![]),
-          allow_write: Some(vec![]),
-          allow_ffi: Some(vec![]),
+          allow_all: true,
           ..Default::default()
         },
         ..Flags::default()
