@@ -11,7 +11,6 @@ pub mod ipc;
 pub mod os;
 pub mod process;
 pub mod require;
-pub mod tls;
 pub mod util;
 pub mod v8;
 pub mod vm;
