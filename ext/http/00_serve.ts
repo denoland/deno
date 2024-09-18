@@ -511,9 +511,15 @@ function mapToCallback(context, callback, onError) {
         );
       }
 
+      if (response.type === "error") {
+        throw new TypeError(
+          "Return value from serve handler must not be an error response (like Response.error())",
+        )
+      }
+
       if (response.bodyUsed) {
         throw new TypeError(
-          "The body of the Response returned from the serve handler has already been consumed.",
+          "The body of the Response returned from the serve handler has already been consumed"
         );
       }
     } catch (error) {

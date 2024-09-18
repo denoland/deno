@@ -678,6 +678,41 @@ Deno.test(
   },
 );
 
+
+Deno.test(
+  { permissions: { net: true } },
+  async function httpServerReturnErrorResponse() {
+    const ac = new AbortController();
+    const { promise, resolve } = Promise.withResolvers<void>();
+    let hadError = false;
+    const server = Deno.serve({
+      handler: () => {
+        return Response.error();
+      },
+      port: servePort,
+      signal: ac.signal,
+      onListen: onListen(resolve),
+      onError: () => {
+        hadError = true;
+        return new Response("Internal Server Error", { status: 500 });
+      },
+    });
+
+    await promise;
+
+    const resp = await fetch(`http://127.0.0.1:${servePort}/`, {
+      headers: { "connection": "close" },
+    });
+    assertEquals(resp.status, 500);
+    const text = await resp.text();
+    assertEquals(text, "Internal Server Error");
+    assert(hadError);
+
+    ac.abort();
+    await server.finished;
+  },
+);
+
 Deno.test({ permissions: { net: true } }, async function httpServerOverload1() {
   const ac = new AbortController();
   const deferred = Promise.withResolvers<void>();
