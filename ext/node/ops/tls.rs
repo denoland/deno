@@ -14,7 +14,7 @@ pub fn op_get_root_certificates() -> Vec<String> {
         .chars()
         .collect::<Vec<char>>()
         // Node uses 72 characters per line, so we need to follow node even though
-        // it's not spec compliant https://datatracker.ietf.org/doc/html/rfc7468#section-2 
+        // it's not spec compliant https://datatracker.ietf.org/doc/html/rfc7468#section-2
         .chunks(72)
         .map(|c| c.iter().collect::<String>())
         .collect::<Vec<String>>()
