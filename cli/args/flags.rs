@@ -109,6 +109,8 @@ pub struct CacheFlags {
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct CheckFlags {
   pub files: Vec<String>,
+  pub doc: bool,
+  pub doc_only: bool,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -1689,6 +1691,19 @@ Unless --reload is specified, this command will not re-download already cached d
             .hide(true)
         )
         .arg(
+          Arg::new("doc")
+            .long("doc")
+            .help("Type-check code blocks in JSDoc as well as actual code")
+            .action(ArgAction::SetTrue)
+        )
+        .arg(
+          Arg::new("doc-only")
+          .long("doc-only")
+          .help("Type-check code blocks in JSDoc and Markdown only")
+            .action(ArgAction::SetTrue)
+            .conflicts_with("doc")
+        )
+        .arg(
           Arg::new("file")
             .num_args(1..)
             .required_unless_present("help")
@@ -2783,7 +2798,7 @@ or <c>**/__tests__/**</>:
       .arg(
         Arg::new("doc")
           .long("doc")
-          .help("Type-check code blocks in JSDoc and Markdown")
+          .help("Evaluate code blocks in JSDoc and Markdown")
           .action(ArgAction::SetTrue)
           .help_heading(TEST_HEADING),
       )
@@ -4115,7 +4130,11 @@ fn check_parse(
   if matches.get_flag("all") || matches.get_flag("remote") {
     flags.type_check_mode = TypeCheckMode::All;
   }
-  flags.subcommand = DenoSubcommand::Check(CheckFlags { files });
+  flags.subcommand = DenoSubcommand::Check(CheckFlags {
+    files,
+    doc: matches.get_flag("doc"),
+    doc_only: matches.get_flag("doc-only"),
+  });
   Ok(())
 }
 
@@ -6856,10 +6875,53 @@ mod tests {
       Flags {
         subcommand: DenoSubcommand::Check(CheckFlags {
           files: svec!["script.ts"],
+          doc: false,
+          doc_only: false,
         }),
         type_check_mode: TypeCheckMode::Local,
         ..Flags::default()
       }
+    );
+
+    let r = flags_from_vec(svec!["deno", "check", "--doc", "script.ts"]);
+    assert_eq!(
+      r.unwrap(),
+      Flags {
+        subcommand: DenoSubcommand::Check(CheckFlags {
+          files: svec!["script.ts"],
+          doc: true,
+          doc_only: false,
+        }),
+        type_check_mode: TypeCheckMode::Local,
+        ..Flags::default()
+      }
+    );
+
+    let r = flags_from_vec(svec!["deno", "check", "--doc-only", "markdown.md"]);
+    assert_eq!(
+      r.unwrap(),
+      Flags {
+        subcommand: DenoSubcommand::Check(CheckFlags {
+          files: svec!["markdown.md"],
+          doc: false,
+          doc_only: true,
+        }),
+        type_check_mode: TypeCheckMode::Local,
+        ..Flags::default()
+      }
+    );
+
+    // `--doc` and `--doc-only` are mutually exclusive
+    let r = flags_from_vec(svec![
+      "deno",
+      "check",
+      "--doc",
+      "--doc-only",
+      "script.ts"
+    ]);
+    assert_eq!(
+      r.unwrap_err().kind(),
+      clap::error::ErrorKind::ArgumentConflict
     );
 
     for all_flag in ["--remote", "--all"] {
@@ -6869,6 +6931,8 @@ mod tests {
         Flags {
           subcommand: DenoSubcommand::Check(CheckFlags {
             files: svec!["script.ts"],
+            doc: false,
+            doc_only: false,
           }),
           type_check_mode: TypeCheckMode::All,
           ..Flags::default()
