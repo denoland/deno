@@ -6269,7 +6269,6 @@ mod tests {
           unstable_yaml: false,
           watch: Default::default(),
         }),
-        ext: Some("ts".to_string()),
         ..Flags::default()
       }
     );
