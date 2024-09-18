@@ -1,6 +1,5 @@
 Check file:///[WILDCARD]/extensionless
-    CPU | Apple M3 Max
-Runtime | Deno 2.0.0-rc.1 (aarch64-apple-darwin)
+[WILDCARD]
 
 file:///[WILDCARD]/extensionless
 [WILDCARD]

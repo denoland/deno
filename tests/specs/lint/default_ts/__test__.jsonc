@@ -2,16 +2,16 @@
   "tempDir": true,
   "tests": {
     "stdin": {
-      "args": "fmt -",
+      "args": "lint -",
       "input": "const x: string = \"foo\";",
       "output": "const x: string = \"foo\";\n"
     },
     "ext_flag": {
-      "args": "fmt --ext=ts as_ts.js",
+      "args": "lint --ext=ts as_ts.js",
       "output": "Checked 1 file\n"
     },
     "extensionless": {
-      "args": "fmt extensionless",
+      "args": "lint extensionless",
       "output": "Checked 1 file\n"
     }
   }
