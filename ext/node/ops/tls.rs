@@ -9,7 +9,6 @@ pub fn op_get_root_certificates() -> Vec<String> {
   let certs = webpki_root_certs::TLS_SERVER_ROOT_CERTS
     .iter()
     .map(|cert| {
-      // Convert DER to base64 using Engine
       let b64 = base64::engine::general_purpose::STANDARD.encode(cert);
       let pem_lines = b64
         .chars()

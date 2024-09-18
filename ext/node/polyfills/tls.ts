@@ -9,7 +9,6 @@ import tlsCommon from "node:_tls_common";
 import tlsWrap from "node:_tls_wrap";
 import { op_get_root_certificates } from "ext:core/ops";
 import { primordials } from "ext:core/mod.js";
-import console from "node:console";
 
 const { ObjectFreeze } = primordials;
 
