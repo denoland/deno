@@ -1,5 +1,9 @@
 {
   "tests": {
+    "deno_run_empty": {
+      "args": "run",
+      "output": "empty.out"
+    },
     "deno_run_task": {
       "args": "run main",
       "output": "main.out"

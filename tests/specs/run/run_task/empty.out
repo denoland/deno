@@ -1,0 +1,3 @@
+error: [SCRIPT_ARG] may only be omitted with --v8-flags=--help
+
+Usage: deno run [OPTIONS] [SCRIPT_ARG]...
