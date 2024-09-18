@@ -18,11 +18,11 @@ import {
   ChildProcessOptions,
   normalizeSpawnArguments,
   setupChannel,
-  spawnSync as _spawnSync,
-  stdioStringToArray,
   type SpawnOptions,
+  spawnSync as _spawnSync,
   type SpawnSyncOptions,
   type SpawnSyncResult,
+  stdioStringToArray,
 } from "ext:deno_node/internal/child_process.ts";
 import {
   validateAbortSignal,

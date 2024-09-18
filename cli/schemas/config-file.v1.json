@@ -9,6 +9,7 @@
     "compilerOptions": {
       "type": "object",
       "description": "Instructs the TypeScript compiler how to compile .ts files.",
+      "additionalProperties": false,
       "properties": {
         "allowJs": {
           "description": "Allow JavaScript files to be a part of your program. Use the `checkJS` option to get errors from these files.",
@@ -127,7 +128,7 @@
         "noImplicitOverride": {
           "description": "Ensure overriding members in derived classes are marked with an override modifier.",
           "type": "boolean",
-          "default": false,
+          "default": true,
           "markdownDescription": "Ensure overriding members in derived classes are marked with an override modifier.\n\nSee more: https://www.typescriptlang.org/tsconfig#noImplicitOverride"
         },
         "noImplicitReturns": {

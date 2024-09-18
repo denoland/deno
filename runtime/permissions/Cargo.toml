@@ -20,6 +20,7 @@ fqdn = "0.3.4"
 libc.workspace = true
 log.workspace = true
 once_cell.workspace = true
+percent-encoding = { version = "2.3.1", features = [] }
 serde.workspace = true
 which.workspace = true
 

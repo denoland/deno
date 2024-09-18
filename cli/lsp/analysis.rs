@@ -11,7 +11,6 @@ use super::urls::url_to_uri;
 use crate::args::jsr_url;
 use crate::tools::lint::CliLinter;
 use deno_lint::diagnostic::LintDiagnosticRange;
-use deno_runtime::fs_util::specifier_to_file_path;
 
 use deno_ast::SourceRange;
 use deno_ast::SourceRangedForSpanned;
@@ -25,6 +24,7 @@ use deno_core::serde_json;
 use deno_core::serde_json::json;
 use deno_core::ModuleSpecifier;
 use deno_runtime::deno_node::PathClean;
+use deno_runtime::fs_util::specifier_to_file_path;
 use deno_semver::jsr::JsrPackageNvReference;
 use deno_semver::jsr::JsrPackageReqReference;
 use deno_semver::npm::NpmPackageReqReference;
