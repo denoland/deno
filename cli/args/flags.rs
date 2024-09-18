@@ -974,13 +974,13 @@ impl Flags {
   #[inline(always)]
   fn allow_all(&mut self) {
     self.permissions.allow_all = true;
-    self.permissions.allow_read = Some(vec![]);
-    self.permissions.allow_env = Some(vec![]);
-    self.permissions.allow_net = Some(vec![]);
-    self.permissions.allow_run = Some(vec![]);
-    self.permissions.allow_write = Some(vec![]);
-    self.permissions.allow_sys = Some(vec![]);
-    self.permissions.allow_ffi = Some(vec![]);
+    self.permissions.allow_read = None;
+    self.permissions.allow_env = None;
+    self.permissions.allow_net = None;
+    self.permissions.allow_run = None;
+    self.permissions.allow_write = None;
+    self.permissions.allow_sys = None;
+    self.permissions.allow_ffi = None;
   }
 
   pub fn resolve_watch_exclude_set(
@@ -1369,7 +1369,7 @@ where
 fn handle_repl_flags(flags: &mut Flags, repl_flags: ReplFlags) {
   // If user runs just `deno` binary we enter REPL and allow all permissions.
   if repl_flags.is_default_command {
-    flags.permissions.allow_all = true;
+    flags.allow_all();
   }
   flags.subcommand = DenoSubcommand::Repl(repl_flags);
 }
