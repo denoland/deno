@@ -1,0 +1,6 @@
+Check [WILDCARD]/mod.ts
+Check [WILDCARD]/mod.ts$2-5.ts
+error: TS2322 [ERROR]: Type 'number' is not assignable to type 'string'.
+const sum: string = add(1, 2);
+      ~~~
+    at [WILDCARD]/mod.ts$2-5.ts:2:7

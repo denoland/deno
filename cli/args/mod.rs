@@ -1705,7 +1705,7 @@ fn warn_insecure_allow_run_flags(flags: &Flags) {
   // discourage using --allow-run without an allow list
   if allow_run_list.is_empty() {
     log::warn!(
-      "{} --allow-run can be trivially exploited. Prefer specifying an allow list (https://docs.deno.com/runtime/fundamentals/security/#running-subprocesses)",
+      "{} --allow-run without an allow list is susceptible to exploits. Prefer specifying an allow list (https://docs.deno.com/runtime/fundamentals/security/#running-subprocesses)",
       colors::yellow("Warning")
     );
   }

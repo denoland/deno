@@ -234,17 +234,9 @@ impl TestRun {
       &cli_options.permissions_options(),
     )?;
     let main_graph_container = factory.main_module_graph_container().await?;
-    test::check_specifiers(
-      factory.file_fetcher()?,
-      main_graph_container,
-      self
-        .queue
-        .iter()
-        .map(|s| (s.clone(), test::TestMode::Executable))
-        .collect(),
-      None,
-    )
-    .await?;
+    main_graph_container
+      .check_specifiers(&self.queue.iter().cloned().collect::<Vec<_>>(), None)
+      .await?;
 
     let (concurrent_jobs, fail_fast) =
       if let DenoSubcommand::Test(test_flags) = cli_options.sub_command() {

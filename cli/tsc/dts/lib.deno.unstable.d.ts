@@ -1218,21 +1218,6 @@ declare namespace Deno {
 
 /** **UNSTABLE**: New API, yet to be vetted.
  *
- * The [Fetch API](https://developer.mozilla.org/en-US/docs/Web/API/Fetch_API)
- * which also supports setting a {@linkcode Deno.HttpClient} which provides a
- * way to connect via proxies and use custom TLS certificates.
- *
- * @tags allow-net, allow-read
- * @category Fetch
- * @experimental
- */
-declare function fetch(
-  input: Request | URL | string,
-  init?: RequestInit & { client: Deno.HttpClient },
-): Promise<Response>;
-
-/** **UNSTABLE**: New API, yet to be vetted.
- *
  * @category Workers
  * @experimental
  */
