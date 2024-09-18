@@ -1633,18 +1633,14 @@ See the Deno 1.x to 2.x Migration Guide for migration instructions: https://docs
 fn cache_subcommand() -> Command {
   command(
     "cache",
-    "⚠️ Warning: `deno cache` is deprecated and will be removed in Deno 2.1.
-
-Use `deno install --entrypoint` instead.
-    
-Cache and compile remote dependencies recursively.
+    cstr!("Cache and compile remote dependencies.
 
 Download and compile a module with all of its static dependencies and save them in the local cache, without running any code:
   <p(245)>deno cache jsr:@std/http/file-server</>
 
 Future runs of this module will trigger no downloads or compilation unless --reload is specified
 
-<y>Read more:</> <c>https://docs.deno.com/go/cache</>",
+<y>Read more:</> <c>https://docs.deno.com/go/cache</>"),
     UnstableArgsConfig::ResolutionOnly,
 )
   .hide(true)

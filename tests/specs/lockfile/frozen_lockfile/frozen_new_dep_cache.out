@@ -1,7 +1,4 @@
-⚠️ Warning: `deno cache` is deprecated and will be removed in Deno 2.1.
-
-Use `deno install --entrypoint` instead.
-error: The lockfile is out of date. Run `deno cache --frozen=false`, `deno install --frozen=false`, or rerun with `--frozen=false` to update it.
+error: The lockfile is out of date. Run `deno install --entrypoint --frozen=false`, `deno install --frozen=false`, or rerun with `--frozen=false` to update it.
 changes:
  4 | -    "npm:@denotest/add@1": "1.0.0"
  4 | +    "npm:@denotest/add@1": "1.0.0",

@@ -223,8 +223,6 @@ fn reload_info_not_found_cache_but_exists_remote() {
   // cache successfully to the deno_dir
   let output = test_context.new_command().args("cache main.ts").run();
   output.assert_matches_text(concat!(
-    "⚠️ Warning: `deno cache` is deprecated and will be removed in Deno 2.1.\n\n",
-    "Use `deno install --entrypoint` instead.\n",
     "Download http://127.0.0.1:4250/@denotest/add/meta.json\n",
     "Download http://127.0.0.1:4250/@denotest/add/1.0.0_meta.json\n",
     "Download http://127.0.0.1:4250/@denotest/add/1.0.0/mod.ts\n",

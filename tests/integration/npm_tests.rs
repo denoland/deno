@@ -1590,8 +1590,6 @@ itest!(non_existent_dep {
   exit_code: 1,
   output_str: Some(concat!(
     "[UNORDERED_START]\n",
-    "⚠️ Warning: `deno cache` is deprecated and will be removed in Deno 2.1.\n\n",
-    "Use `deno install --entrypoint` instead.\n",
     "Download http://localhost:4260/@denotest/non-existent-dep\n",
     "Download http://localhost:4260/@denotest/non-existent\n",
     "[UNORDERED_END]\n",
@@ -1606,8 +1604,6 @@ itest!(non_existent_dep_version {
   exit_code: 1,
   output_str: Some(concat!(
     "[UNORDERED_START]\n",
-    "⚠️ Warning: `deno cache` is deprecated and will be removed in Deno 2.1.\n\n",
-    "Use `deno install --entrypoint` instead.\n",
     "Download http://localhost:4260/@denotest/non-existent-dep-version\n",
     "Download http://localhost:4260/@denotest/esm-basic\n",
     "[UNORDERED_END]\n",
@@ -1673,8 +1669,6 @@ fn reload_info_not_found_cache_but_exists_remote() {
     .run();
   output.assert_matches_text(concat!(
     "[UNORDERED_START]\n",
-    "⚠️ Warning: `deno cache` is deprecated and will be removed in Deno 2.1.\n\n",
-    "Use `deno install --entrypoint` instead.\n",
     "Download http://localhost:4260/@denotest/esm-basic\n",
     "Download http://localhost:4260/@denotest/esm-import-cjs-default\n",
     "Download http://localhost:4260/@denotest/cjs-default-export\n",
@@ -2037,8 +2031,6 @@ fn top_level_install_package_json_explicit_opt_in() {
   temp_dir.write("main.ts", "console.log(5);");
   let output = test_context.new_command().args("cache main.ts").run();
   output.assert_matches_text(concat!(
-    "⚠️ Warning: `deno cache` is deprecated and will be removed in Deno 2.1.\n\n",
-    "Use `deno install --entrypoint` instead.\n",
     "Download http://localhost:4260/@denotest/esm-basic\n",
     "Download http://localhost:4260/@denotest/esm-basic/1.0.0.tgz\n",
     "Initialize @denotest/esm-basic@1.0.0\n",

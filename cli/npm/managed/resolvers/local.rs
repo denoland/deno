@@ -856,8 +856,8 @@ async fn sync_resolution_with_fs(
       .collect::<Vec<_>>()
       .join(", ");
     log::warn!("{} Packages contained npm lifecycle scripts (preinstall/install/postinstall) that were not executed.
-    This may cause the packages to not work correctly. To run them, use the `--allow-scripts` flag with `deno cache` or `deno install`
-    (e.g. `deno cache --allow-scripts=pkg1,pkg2 <entrypoint>` or `deno install --allow-scripts=pkg1,pkg2`):\n      {packages}", crate::colors::yellow("Warning"));
+    This may cause the packages to not work correctly. To run them, use the `--allow-scripts` flag with `deno install --entrypoint` or `deno install`
+    (e.g. `deno install --entrypoint --allow-scripts=pkg1,pkg2 <entrypoint>` or `deno install --allow-scripts=pkg1,pkg2`):\n      {packages}", crate::colors::yellow("Warning"));
     for (scripts_warned_path, _) in packages_with_scripts_not_run {
       let _ignore_err = fs::write(scripts_warned_path, "");
     }
