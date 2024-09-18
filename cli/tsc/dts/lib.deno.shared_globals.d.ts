@@ -13,6 +13,7 @@
 /// <reference lib="deno.fetch" />
 /// <reference lib="deno.websocket" />
 /// <reference lib="deno.crypto" />
+/// <reference lib="deno.ns" />
 
 /** @category WASM */
 declare namespace WebAssembly {
@@ -740,3 +741,15 @@ declare interface ErrorConstructor {
   // TODO(nayeemrmn): Support `Error.prepareStackTrace()`. We currently use this
   // internally in a way that makes it unavailable for users.
 }
+
+/** The [Fetch API](https://developer.mozilla.org/en-US/docs/Web/API/Fetch_API)
+ * which also supports setting a {@linkcode Deno.HttpClient} which provides a
+ * way to connect via proxies and use custom TLS certificates.
+ *
+ * @tags allow-net, allow-read
+ * @category Fetch
+ */
+declare function fetch(
+  input: Request | URL | string,
+  init?: RequestInit & { client: Deno.HttpClient },
+): Promise<Response>;
