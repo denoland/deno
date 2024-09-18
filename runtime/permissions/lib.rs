@@ -3274,12 +3274,9 @@ mod tests {
 
     let mut test_cases = vec![];
 
-    if cfg!(target_os = "windows") {
-      test_cases.push("file://");
-      test_cases.push("file:///");
-    } else {
-      test_cases.push("file://remotehost/");
-    }
+    test_cases.push("file://dir");
+    test_cases.push("file://asdf/");
+    test_cases.push("file://remotehost/");
 
     for url in test_cases {
       assert!(perms
