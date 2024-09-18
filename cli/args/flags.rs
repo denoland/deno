@@ -7226,19 +7226,7 @@ mod tests {
         }),
         unsafely_ignore_certificate_errors: None,
         permissions: PermissionFlags {
-          allow_net: Some(vec![]),
-          allow_env: Some(vec![]),
-          deny_env: None,
-          allow_run: Some(vec![]),
-          deny_run: None,
-          allow_read: Some(vec![]),
-          deny_read: None,
-          allow_sys: Some(vec![]),
-          deny_sys: None,
-          allow_write: Some(vec![]),
-          deny_write: None,
-          allow_ffi: Some(vec![]),
-          deny_ffi: None,
+          allow_all: true,
           ..Default::default()
         },
         ..Flags::default()
@@ -10692,14 +10680,7 @@ mod tests {
         }),
         log_level: Some(Level::Debug),
         permissions: PermissionFlags {
-          allow_all: false,
-          allow_net: Some(vec![]),
-          allow_env: Some(vec![]),
-          allow_run: Some(vec![]),
-          allow_read: Some(vec![]),
-          allow_sys: Some(vec![]),
-          allow_write: Some(vec![]),
-          allow_ffi: Some(vec![]),
+          allow_all: true,
           ..Default::default()
         },
         ..Flags::default()
