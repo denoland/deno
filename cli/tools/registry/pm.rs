@@ -676,12 +676,18 @@ impl AddPackageReq {
         Some((alias, text)) => {
           let (maybe_prefix, entry_text) = parse_prefix(text);
           (
-            maybe_prefix.ok_or_else(|| anyhow!("Missing prefix. Possible prefixes are 'jsr:' or 'npm:'"))?,
+            maybe_prefix.ok_or_else(|| {
+              anyhow!("Missing prefix. Possible prefixes are 'jsr:' or 'npm:'")
+            })?,
             Some(alias.to_string()),
             entry_text,
           )
         }
-        None => return Err(anyhow!("Missing prefix. Possible prefixes are 'jsr:' or 'npm:'")),
+        None => {
+          return Err(anyhow!(
+            "Missing prefix. Possible prefixes are 'jsr:' or 'npm:'"
+          ))
+        }
       },
     };
 
@@ -889,7 +895,9 @@ mod test {
       }
     );
     assert_eq!(
-      AddPackageReq::parse("@scope/pkg@tag").unwrap_err().to_string(),
+      AddPackageReq::parse("@scope/pkg@tag")
+        .unwrap_err()
+        .to_string(),
       "Missing prefix. Possible prefixes are 'jsr:' or 'npm:'",
     );
   }
