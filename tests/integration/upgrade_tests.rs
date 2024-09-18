@@ -5,7 +5,6 @@ use std::process::Stdio;
 use std::time::Instant;
 use test_util as util;
 use test_util::assert_starts_with;
-use test_util::TempDir;
 use test_util::TestContext;
 use util::TestContextBuilder;
 
