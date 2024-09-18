@@ -2,7 +2,7 @@
   "tempDir": true,
   "steps": [
     {
-      "args": "add @std/testing",
+      "args": "add jsr:@std/testing",
       "output": "add.out"
     }
   ]

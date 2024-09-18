@@ -16,7 +16,7 @@ fn add_basic() {
   let temp_dir = context.temp_dir().path();
   temp_dir.join("deno.json").write_json(&starting_deno_json);
 
-  let output = context.new_command().args("add @denotest/add").run();
+  let output = context.new_command().args("add jsr:@denotest/add").run();
   output.assert_exit_code(0);
   let output = output.combined_output();
   assert_contains!(output, "Add jsr:@denotest/add");
@@ -35,7 +35,7 @@ fn add_basic_no_deno_json() {
   let context = pm_context_builder().build();
   let temp_dir = context.temp_dir().path();
 
-  let output = context.new_command().args("add @denotest/add").run();
+  let output = context.new_command().args("add jsr:@denotest/add").run();
   output.assert_exit_code(0);
   let output = output.combined_output();
   assert_contains!(output, "Add jsr:@denotest/add");
@@ -55,7 +55,7 @@ fn add_basic_with_empty_deno_json() {
   let temp_dir = context.temp_dir();
   temp_dir.write("deno.json", "");
 
-  let output = context.new_command().args("add @denotest/add").run();
+  let output = context.new_command().args("add jsr:@denotest/add").run();
   output.assert_exit_code(0);
   let output = output.combined_output();
   assert_contains!(output, "Add jsr:@denotest/add");
@@ -74,7 +74,7 @@ fn add_version_contraint() {
   let context = pm_context_builder().build();
   let temp_dir = context.temp_dir().path();
 
-  let output = context.new_command().args("add @denotest/add@1").run();
+  let output = context.new_command().args("add jsr:@denotest/add@1").run();
   output.assert_exit_code(0);
   let output = output.combined_output();
   assert_contains!(output, "Add jsr:@denotest/add");
@@ -90,7 +90,7 @@ fn add_tilde() {
   let context = pm_context_builder().build();
   let temp_dir = context.temp_dir().path();
 
-  let output = context.new_command().args("add @denotest/add@~1").run();
+  let output = context.new_command().args("add jsr:@denotest/add@~1").run();
   output.assert_exit_code(0);
   let output = output.combined_output();
   assert_contains!(output, "Add jsr:@denotest/add");
@@ -114,7 +114,7 @@ fn add_multiple() {
 
   let output = context
     .new_command()
-    .args("add @denotest/add @denotest/subset-type-graph")
+    .args("add jsr:@denotest/add jsr:@denotest/subset-type-graph")
     .run();
   output.assert_exit_code(0);
   let output = output.combined_output();
