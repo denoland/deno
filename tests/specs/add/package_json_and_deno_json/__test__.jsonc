@@ -4,7 +4,7 @@
     "npm_prefers_package_json": {
       "steps": [
         {
-          "args": "add npm:@denotest/esm-basic @denotest/add npm:@denotest/say-hello",
+          "args": "add npm:@denotest/esm-basic jsr:@denotest/add npm:@denotest/say-hello",
           "output": "add.out"
         },
         {
