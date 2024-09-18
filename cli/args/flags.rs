@@ -4694,10 +4694,16 @@ fn run_parse(
       "[SCRIPT_ARG] may only be omitted with --v8-flags=--help, else to use the repl with arguments, please use the `deno repl` subcommand",
     ));
   } else {
-    return Err(app.get_subcommands_mut().find(|subcommand| subcommand.get_name() == "run").unwrap().error(
-      clap::error::ErrorKind::MissingRequiredArgument,
-      "[SCRIPT_ARG] may only be omitted with --v8-flags=--help",
-    ));
+    return Err(
+      app
+        .get_subcommands_mut()
+        .find(|subcommand| subcommand.get_name() == "run")
+        .unwrap()
+        .error(
+          clap::error::ErrorKind::MissingRequiredArgument,
+          "[SCRIPT_ARG] may only be omitted with --v8-flags=--help",
+        ),
+    );
   }
 
   Ok(())
