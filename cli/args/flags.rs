@@ -34,6 +34,7 @@ use deno_core::url::Url;
 use deno_graph::GraphKind;
 use deno_runtime::deno_permissions::parse_sys_kind;
 use deno_runtime::deno_permissions::PermissionsOptions;
+use deno_runtime::fs_util::specifier_to_file_path;
 use log::debug;
 use log::Level;
 use serde::Deserialize;
@@ -918,7 +919,7 @@ impl Flags {
           if module_specifier.scheme() == "file"
             || module_specifier.scheme() == "npm"
           {
-            if let Ok(p) = module_specifier.to_file_path() {
+            if let Ok(p) = specifier_to_file_path(&module_specifier) {
               Some(vec![p.parent().unwrap().to_path_buf()])
             } else {
               Some(vec![current_dir.to_path_buf()])
