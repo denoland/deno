@@ -111,9 +111,6 @@ ObjectDefineProperties(Symbol, {
 let windowIsClosing = false;
 let globalThis_;
 
-// TODO(2.0): remove once all deprecated APIs are removed.
-function warnOnDeprecatedApi() {}
-
 function windowClose() {
   if (!windowIsClosing) {
     windowIsClosing = true;
@@ -506,7 +503,7 @@ function removeImportedOps() {
 // FIXME(bartlomieju): temporarily add whole `Deno.core` to
 // `Deno[Deno.internal]` namespace. It should be removed and only necessary
 // methods should be left there.
-ObjectAssign(internals, { core, warnOnDeprecatedApi });
+ObjectAssign(internals, { core });
 const internalSymbol = Symbol("Deno.internal");
 const finalDenoNs = {
   internal: internalSymbol,

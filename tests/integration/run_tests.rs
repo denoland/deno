@@ -255,12 +255,6 @@ itest!(_052_no_remote_flag {
   http_server: true,
 });
 
-itest!(_056_make_temp_file_write_perm {
-  args:
-    "run --quiet --allow-read --allow-write=./subdir/ run/056_make_temp_file_write_perm.ts",
-  output: "run/056_make_temp_file_write_perm.out",
-});
-
 itest!(_058_tasks_microtasks_close {
   args: "run --quiet run/058_tasks_microtasks_close.ts",
   output: "run/058_tasks_microtasks_close.ts.out",
@@ -1559,7 +1553,7 @@ itest!(import_meta {
 });
 
 itest!(main_module {
-  args: "run --quiet --allow-read --reload run/main_module/main.ts",
+  args: "run --quiet  --reload run/main_module/main.ts",
   output: "run/main_module/main.out",
 });
 
@@ -3359,42 +3353,6 @@ itest!(
   }
 );
 
-// TODO(2.0): this should be rewritten to a spec test and first run `deno install`
-// itest!(package_json_auto_discovered_for_npm_binary {
-//   args: "run -L debug -A npm:@denotest/bin/cli-esm this is a test",
-//   output: "run/with_package_json/npm_binary/main.out",
-//   cwd: Some("run/with_package_json/npm_binary/"),
-//   copy_temp_dir: Some("run/with_package_json/"),
-//   envs: env_vars_for_npm_tests(),
-//   http_server: true,
-// });
-
-// TODO(2.0): this should be rewritten to a spec test and first run `deno install`
-#[test]
-#[ignore]
-fn package_json_with_deno_json() {
-  let context = TestContextBuilder::for_npm()
-    .use_copy_temp_dir("package_json/deno_json/")
-    .cwd("package_json/deno_json/")
-    .build();
-  let output = context.new_command().args("run --quiet -A main.ts").run();
-  output.assert_matches_file("package_json/deno_json/main.out");
-
-  assert!(context
-    .temp_dir()
-    .path()
-    .join("package_json/deno_json/deno.lock")
-    .exists());
-
-  // run again and ensure the top level install doesn't happen twice
-  let output = context
-    .new_command()
-    .args("run --log-level=debug -A main.ts")
-    .run();
-  let output = output.combined_output();
-  assert_contains!(output, "Skipping top level install.");
-}
-
 #[test]
 fn package_json_no_node_modules_dir_created() {
   // it should not create a node_modules directory
@@ -5166,4 +5124,28 @@ fn emit_failed_readonly_file_system() {
     .args("run --log-level=debug main.ts")
     .run();
   output.assert_matches_text("[WILDCARD]Error saving emit data ([WILDLINE]main.ts)[WILDCARD]Skipped emit cache save of [WILDLINE]other.ts[WILDCARD]hi[WILDCARD]");
+}
+
+#[cfg(windows)]
+#[test]
+fn handle_invalid_path_error() {
+  let deno_cmd = util::deno_cmd_with_deno_dir(&util::new_deno_dir());
+  let output = deno_cmd.arg("run").arg("file://asdf").output().unwrap();
+  assert!(
+    String::from_utf8_lossy(&output.stderr).contains("Invalid file path.")
+  );
+
+  let deno_cmd = util::deno_cmd_with_deno_dir(&util::new_deno_dir());
+  let output = deno_cmd.arg("run").arg("/a/b").output().unwrap();
+  assert!(String::from_utf8_lossy(&output.stderr).contains("Module not found"));
+
+  let deno_cmd = util::deno_cmd_with_deno_dir(&util::new_deno_dir());
+  let output = deno_cmd.arg("run").arg("//a/b").output().unwrap();
+  assert!(
+    String::from_utf8_lossy(&output.stderr).contains("Invalid file path.")
+  );
+
+  let deno_cmd = util::deno_cmd_with_deno_dir(&util::new_deno_dir());
+  let output = deno_cmd.arg("run").arg("///a/b").output().unwrap();
+  assert!(String::from_utf8_lossy(&output.stderr).contains("Module not found"));
 }

@@ -1043,3 +1043,24 @@ Deno.test(
     }
   },
 );
+
+Deno.test(async function outputWhenManuallyConsumingStreams() {
+  const command = new Deno.Command(Deno.execPath(), {
+    args: ["eval", "console.log('hello world')"],
+    stdout: "piped",
+    stderr: "piped",
+  });
+  const child = command.spawn();
+  for await (const _ of child.stdout) {
+    // consume stdout
+  }
+  for await (const _ of child.stderr) {
+    // consume stderr
+  }
+  const status = await child.output();
+  assertEquals(status.success, true);
+  assertEquals(status.code, 0);
+  assertEquals(status.signal, null);
+  assertEquals(status.stdout, new Uint8Array());
+  assertEquals(status.stderr, new Uint8Array());
+});

@@ -1,28 +1,5 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
-use crate::args::create_default_npmrc;
-use crate::args::CacheSetting;
-use crate::args::CliLockfile;
-use crate::args::NpmInstallDepsProvider;
-use crate::graph_util::CliJsrUrlProvider;
-use crate::http_util::HttpClientProvider;
-use crate::lsp::config::Config;
-use crate::lsp::config::ConfigData;
-use crate::lsp::logging::lsp_warn;
-use crate::npm::create_cli_npm_resolver_for_lsp;
-use crate::npm::CliNpmResolver;
-use crate::npm::CliNpmResolverByonmCreateOptions;
-use crate::npm::CliNpmResolverCreateOptions;
-use crate::npm::CliNpmResolverManagedCreateOptions;
-use crate::npm::CliNpmResolverManagedSnapshotOption;
-use crate::npm::ManagedCliNpmResolver;
-use crate::resolver::CjsResolutionStore;
-use crate::resolver::CliGraphResolver;
-use crate::resolver::CliGraphResolverOptions;
-use crate::resolver::CliNodeResolver;
-use crate::resolver::WorkerCliNpmGraphResolver;
-use crate::util::progress_bar::ProgressBar;
-use crate::util::progress_bar::ProgressBarStyle;
 use dashmap::DashMap;
 use deno_ast::MediaType;
 use deno_cache_dir::HttpCache;
@@ -55,6 +32,29 @@ use std::sync::Arc;
 
 use super::cache::LspCache;
 use super::jsr::JsrCacheResolver;
+use crate::args::create_default_npmrc;
+use crate::args::CacheSetting;
+use crate::args::CliLockfile;
+use crate::args::NpmInstallDepsProvider;
+use crate::graph_util::CliJsrUrlProvider;
+use crate::http_util::HttpClientProvider;
+use crate::lsp::config::Config;
+use crate::lsp::config::ConfigData;
+use crate::lsp::logging::lsp_warn;
+use crate::npm::create_cli_npm_resolver_for_lsp;
+use crate::npm::CliNpmResolver;
+use crate::npm::CliNpmResolverByonmCreateOptions;
+use crate::npm::CliNpmResolverCreateOptions;
+use crate::npm::CliNpmResolverManagedCreateOptions;
+use crate::npm::CliNpmResolverManagedSnapshotOption;
+use crate::npm::ManagedCliNpmResolver;
+use crate::resolver::CjsResolutionStore;
+use crate::resolver::CliGraphResolver;
+use crate::resolver::CliGraphResolverOptions;
+use crate::resolver::CliNodeResolver;
+use crate::resolver::WorkerCliNpmGraphResolver;
+use crate::util::progress_bar::ProgressBar;
+use crate::util::progress_bar::ProgressBarStyle;
 
 #[derive(Debug, Clone)]
 struct LspScopeResolver {

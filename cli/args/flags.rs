@@ -35,9 +35,9 @@ use deno_core::normalize_path;
 use deno_core::resolve_url_or_path;
 use deno_core::url::Url;
 use deno_graph::GraphKind;
-use deno_runtime::colors;
 use deno_runtime::deno_permissions::parse_sys_kind;
 use deno_runtime::deno_permissions::PermissionsOptions;
+use deno_runtime::fs_util::specifier_to_file_path;
 use log::debug;
 use log::Level;
 use serde::Deserialize;
@@ -108,6 +108,8 @@ pub struct CacheFlags {
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct CheckFlags {
   pub files: Vec<String>,
+  pub doc: bool,
+  pub doc_only: bool,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -659,107 +661,25 @@ impl PermissionFlags {
       || self.deny_write.is_some()
   }
 
-  pub fn to_options(
-    &self,
-    // will be None when `deno compile` can't resolve the cwd
-    initial_cwd: Option<&Path>,
-  ) -> Result<PermissionsOptions, AnyError> {
-    fn convert_option_str_to_path_buf(
-      flag: &Option<Vec<String>>,
-      initial_cwd: Option<&Path>,
-    ) -> Result<Option<Vec<PathBuf>>, AnyError> {
-      let Some(paths) = &flag else {
-        return Ok(None);
-      };
-
-      let mut new_paths = Vec::with_capacity(paths.len());
-      for path in paths {
-        if let Some(initial_cwd) = initial_cwd {
-          new_paths.push(initial_cwd.join(path))
-        } else {
-          let path = PathBuf::from(path);
-          if path.is_absolute() {
-            new_paths.push(path);
-          } else {
-            bail!("Could not resolve relative permission path '{}' when current working directory could not be resolved.", path.display())
-          }
-        }
-      }
-      Ok(Some(new_paths))
-    }
-
-    fn resolve_allow_run(
-      allow_run: &[String],
-    ) -> Result<Vec<PathBuf>, AnyError> {
-      let mut new_allow_run = Vec::with_capacity(allow_run.len());
-      for command_name in allow_run {
-        if command_name.is_empty() {
-          bail!("Empty command name not allowed in --allow-run=...")
-        }
-        let command_path_result = which::which(command_name);
-        match command_path_result {
-          Ok(command_path) => new_allow_run.push(command_path),
-          Err(err) => {
-            log::info!(
-              "{} Failed to resolve '{}' for allow-run: {}",
-              colors::gray("Info"),
-              command_name,
-              err
-            );
-          }
-        }
-      }
-      Ok(new_allow_run)
-    }
-
-    let mut deny_write =
-      convert_option_str_to_path_buf(&self.deny_write, initial_cwd)?;
-    let allow_run = self
-      .allow_run
-      .as_ref()
-      .and_then(|raw_allow_run| match resolve_allow_run(raw_allow_run) {
-        Ok(resolved_allow_run) => {
-          if resolved_allow_run.is_empty() && !raw_allow_run.is_empty() {
-            None // convert to no permissions if now empty
-          } else {
-            Some(Ok(resolved_allow_run))
-          }
-        }
-        Err(err) => Some(Err(err)),
-      })
-      .transpose()?;
-    // add the allow_run list to deno_write
-    if let Some(allow_run_vec) = &allow_run {
-      if !allow_run_vec.is_empty() {
-        let deno_write = deny_write.get_or_insert_with(Vec::new);
-        deno_write.extend(allow_run_vec.iter().cloned());
-      }
-    }
-
-    Ok(PermissionsOptions {
+  pub fn to_options(&self) -> PermissionsOptions {
+    PermissionsOptions {
       allow_all: self.allow_all,
       allow_env: self.allow_env.clone(),
       deny_env: self.deny_env.clone(),
       allow_net: self.allow_net.clone(),
       deny_net: self.deny_net.clone(),
-      allow_ffi: convert_option_str_to_path_buf(&self.allow_ffi, initial_cwd)?,
-      deny_ffi: convert_option_str_to_path_buf(&self.deny_ffi, initial_cwd)?,
-      allow_read: convert_option_str_to_path_buf(
-        &self.allow_read,
-        initial_cwd,
-      )?,
-      deny_read: convert_option_str_to_path_buf(&self.deny_read, initial_cwd)?,
-      allow_run,
+      allow_ffi: self.allow_ffi.clone(),
+      deny_ffi: self.deny_ffi.clone(),
+      allow_read: self.allow_read.clone(),
+      deny_read: self.deny_read.clone(),
+      allow_run: self.allow_run.clone(),
       deny_run: self.deny_run.clone(),
       allow_sys: self.allow_sys.clone(),
       deny_sys: self.deny_sys.clone(),
-      allow_write: convert_option_str_to_path_buf(
-        &self.allow_write,
-        initial_cwd,
-      )?,
-      deny_write,
+      allow_write: self.allow_write.clone(),
+      deny_write: self.deny_write.clone(),
       prompt: !resolve_no_prompt(self),
-    })
+    }
   }
 }
 
@@ -997,7 +917,7 @@ impl Flags {
           if module_specifier.scheme() == "file"
             || module_specifier.scheme() == "npm"
           {
-            if let Ok(p) = module_specifier.to_file_path() {
+            if let Ok(p) = specifier_to_file_path(&module_specifier) {
               Some(vec![p.parent().unwrap().to_path_buf()])
             } else {
               Some(vec![current_dir.to_path_buf()])
@@ -1774,6 +1694,19 @@ Unless --reload is specified, this command will not re-download already cached d
             .action(ArgAction::SetTrue)
             .conflicts_with("no-remote")
             .hide(true)
+        )
+        .arg(
+          Arg::new("doc")
+            .long("doc")
+            .help("Type-check code blocks in JSDoc as well as actual code")
+            .action(ArgAction::SetTrue)
+        )
+        .arg(
+          Arg::new("doc-only")
+          .long("doc-only")
+          .help("Type-check code blocks in JSDoc and Markdown only")
+            .action(ArgAction::SetTrue)
+            .conflicts_with("doc")
         )
         .arg(
           Arg::new("file")
@@ -2870,7 +2803,7 @@ or <c>**/__tests__/**</>:
       .arg(
         Arg::new("doc")
           .long("doc")
-          .help("Type-check code blocks in JSDoc and Markdown")
+          .help("Evaluate code blocks in JSDoc and Markdown")
           .action(ArgAction::SetTrue)
           .help_heading(TEST_HEADING),
       )
@@ -4202,7 +4135,11 @@ fn check_parse(
   if matches.get_flag("all") || matches.get_flag("remote") {
     flags.type_check_mode = TypeCheckMode::All;
   }
-  flags.subcommand = DenoSubcommand::Check(CheckFlags { files });
+  flags.subcommand = DenoSubcommand::Check(CheckFlags {
+    files,
+    doc: matches.get_flag("doc"),
+    doc_only: matches.get_flag("doc-only"),
+  });
   Ok(())
 }
 
@@ -6943,10 +6880,53 @@ mod tests {
       Flags {
         subcommand: DenoSubcommand::Check(CheckFlags {
           files: svec!["script.ts"],
+          doc: false,
+          doc_only: false,
         }),
         type_check_mode: TypeCheckMode::Local,
         ..Flags::default()
       }
+    );
+
+    let r = flags_from_vec(svec!["deno", "check", "--doc", "script.ts"]);
+    assert_eq!(
+      r.unwrap(),
+      Flags {
+        subcommand: DenoSubcommand::Check(CheckFlags {
+          files: svec!["script.ts"],
+          doc: true,
+          doc_only: false,
+        }),
+        type_check_mode: TypeCheckMode::Local,
+        ..Flags::default()
+      }
+    );
+
+    let r = flags_from_vec(svec!["deno", "check", "--doc-only", "markdown.md"]);
+    assert_eq!(
+      r.unwrap(),
+      Flags {
+        subcommand: DenoSubcommand::Check(CheckFlags {
+          files: svec!["markdown.md"],
+          doc: false,
+          doc_only: true,
+        }),
+        type_check_mode: TypeCheckMode::Local,
+        ..Flags::default()
+      }
+    );
+
+    // `--doc` and `--doc-only` are mutually exclusive
+    let r = flags_from_vec(svec![
+      "deno",
+      "check",
+      "--doc",
+      "--doc-only",
+      "script.ts"
+    ]);
+    assert_eq!(
+      r.unwrap_err().kind(),
+      clap::error::ErrorKind::ArgumentConflict
     );
 
     for all_flag in ["--remote", "--all"] {
@@ -6956,6 +6936,8 @@ mod tests {
         Flags {
           subcommand: DenoSubcommand::Check(CheckFlags {
             files: svec!["script.ts"],
+            doc: false,
+            doc_only: false,
           }),
           type_check_mode: TypeCheckMode::All,
           ..Flags::default()

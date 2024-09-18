@@ -127,7 +127,8 @@ impl RegistryReadPermissionChecker {
       }
     }
 
-    permissions.check_read(path)
+    _ = permissions.check_read_path(path)?;
+    Ok(())
   }
 }
 

@@ -1,0 +1,4 @@
+{
+  "args": "info --reload type_directives_01.ts",
+  "output": "types_header.out"
+}
