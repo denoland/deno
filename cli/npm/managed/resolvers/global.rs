@@ -199,5 +199,5 @@ fn warn_scripts_not_supported(packages: &[(PathBuf, &PackageNv)]) {
     .collect::<Vec<String>>()
     .join(", ");
   log::warn!("{}: The following packages contained npm lifecycle scripts that were not executed: {}
-    Lifecycle scripts are only supported when using a local `node_modules` directory. Add `{}` to your deno config to enable it.", crate::colors::yellow("warning"), crate::colors::cyan(&packages_str), crate::colors::cyan("\"nodeModulesDir\": true"));
+    Lifecycle scripts are only supported when using a local `node_modules` directory. Add `{}` to your deno config to enable it.", crate::colors::yellow("warning"), crate::colors::cyan(&packages_str), crate::colors::cyan("\"nodeModulesDir\": \"auto\""));
 }

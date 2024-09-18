@@ -201,22 +201,14 @@ pub fn default_warn_not_run(
   packages_with_scripts_not_run: &[(PathBuf, &PackageNv)],
 ) {
   if !packages_with_scripts_not_run.is_empty() {
-    let (maybe_install, maybe_install_example) = if *crate::args::DENO_FUTURE {
-      (
-        " or `deno install`",
-        " or `deno install --allow-scripts=pkg1,pkg2`",
-      )
-    } else {
-      ("", "")
-    };
     let packages = packages_with_scripts_not_run
       .iter()
       .map(|(_, p)| format!("npm:{p}"))
       .collect::<Vec<_>>()
       .join(", ");
     log::warn!("{}: Packages contained npm lifecycle scripts (preinstall/install/postinstall) that were not executed.
-    This may cause the packages to not work correctly. To run them, use the `--allow-scripts` flag with `deno cache`{maybe_install}
-    (e.g. `deno cache --allow-scripts=pkg1,pkg2 <entrypoint>`{maybe_install_example}):\n      {packages}", crate::colors::yellow("warning"));
+    This may cause the packages to not work correctly. To run them, use the `--allow-scripts` flag with `deno install`
+    (e.g. `deno install --allow-scripts=pkg1,pkg2 <entrypoint>`):\n      {packages}", crate::colors::yellow("warning"));
   }
 }
 
