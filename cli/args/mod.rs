@@ -1702,13 +1702,8 @@ fn warn_insecure_allow_run_flags(flags: &Flags) {
     return;
   };
 
-  let is_no_args_deno = match flags.subcommand.clone() {
-    DenoSubcommand::Repl(repl_flags) => repl_flags.is_default_command,
-    _ => false,
-  };
-  // discourage using --allow-run without an allow list, but
-  // allow it when no args deno is used [deno] without subcommand
-  if allow_run_list.is_empty() && !is_no_args_deno {
+  // discourage using --allow-run without an allow list
+  if allow_run_list.is_empty() {
     log::warn!(
       "{} --allow-run can be trivially exploited. Prefer specifying an allow list (https://docs.deno.com/runtime/fundamentals/security/#running-subprocesses)",
       colors::yellow("Warning")

@@ -1367,13 +1367,7 @@ where
 fn handle_repl_flags(flags: &mut Flags, repl_flags: ReplFlags) {
   // If user runs just `deno` binary we enter REPL and allow all permissions.
   if repl_flags.is_default_command {
-    flags.permissions.allow_net = Some(vec![]);
-    flags.permissions.allow_env = Some(vec![]);
-    flags.permissions.allow_run = Some(vec![]);
-    flags.permissions.allow_read = Some(vec![]);
-    flags.permissions.allow_sys = Some(vec![]);
-    flags.permissions.allow_write = Some(vec![]);
-    flags.permissions.allow_ffi = Some(vec![]);
+    flags.permissions.allow_all = true;
   }
   flags.subcommand = DenoSubcommand::Repl(repl_flags);
 }
