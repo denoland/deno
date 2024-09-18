@@ -5126,6 +5126,7 @@ fn emit_failed_readonly_file_system() {
   output.assert_matches_text("[WILDCARD]Error saving emit data ([WILDLINE]main.ts)[WILDCARD]Skipped emit cache save of [WILDLINE]other.ts[WILDCARD]hi[WILDCARD]");
 }
 
+#[cfg(windows)]
 #[test]
 fn handle_invalid_path_error() {
   let deno_cmd = util::deno_cmd_with_deno_dir(&util::new_deno_dir());
