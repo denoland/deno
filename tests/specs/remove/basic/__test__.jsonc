@@ -7,7 +7,7 @@
     "args": ["eval", "console.log(Deno.readTextFileSync('deno.lock').trim())"],
     "output": "add_lock.out"
   }, {
-    "args": ["remove", "jsr:@std/assert", "jsr:@std/http"],
+    "args": ["remove", "@std/assert", "@std/http"],
     "output": "rm.out"
   }, {
     "args": ["eval", "console.log(Deno.readTextFileSync('deno.lock').trim())"],
