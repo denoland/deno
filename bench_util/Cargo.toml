@@ -1,22 +1,24 @@
-# Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
+# Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
+
 [package]
 name = "deno_bench_util"
-version = "0.25.0"
-authors = ["the Deno authors"]
-edition = "2021"
-license = "MIT"
+version = "0.162.0"
+authors.workspace = true
+edition.workspace = true
+license.workspace = true
 publish = true
 readme = "README.md"
-repository = "https://github.com/denoland/deno"
+repository.workspace = true
 description = "Bench and profiling utilities for deno crates"
 
-# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+[lib]
+path = "lib.rs"
 
 [dependencies]
-bencher = "0.1"
-deno_core = { version = "0.113.0", path = "../core" }
-tokio = { version = "1.10.1", features = ["full"] }
+bencher.workspace = true
+deno_core.workspace = true
+tokio.workspace = true
 
 [[bench]]
-name = "op_baseline"
+name = "utf8"
 harness = false

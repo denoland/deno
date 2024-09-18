@@ -1,4 +1,0 @@
-error: Failed to parse "fmt" configuration
-
-Caused by:
-    unknown field `dont_know_this_field`, expected `include` or `exclude`

@@ -1,0 +1,32 @@
+error[no-eval]: `eval` call is not allowed
+ --> [WILDLINE]a.ts:1:1
+  | 
+1 | eval("");
+  | ^^^^^^^^
+  = hint: Remove the use of `eval`
+
+  docs: https://lint.deno.land/rules/no-eval
+
+
+error[no-await-in-loop]: Unexpected `await` inside a loop.
+ --> [WILDLINE]a.ts:4:3
+  | 
+4 |   await Deno.open("test");
+  |   ^^^^^^^^^^^^^^^^^^^^^^^
+  = hint: Remove `await` in loop body, store all promises generated and then `await Promise.all(storedPromises)` after the loop
+
+  docs: https://lint.deno.land/rules/no-await-in-loop
+
+
+error[no-explicit-any]: `any` type is not allowed
+ --> [WILDLINE]a.ts:9:25
+  | 
+9 | export function test(): any {
+  |                         ^^^
+  = hint: Use a specific type other than `any`
+
+  docs: https://lint.deno.land/rules/no-explicit-any
+
+
+Found 3 problems
+Checked 1 file

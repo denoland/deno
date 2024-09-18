@@ -1,23 +1,41 @@
-# Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
+# Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
 [package]
 name = "deno_web"
-version = "0.62.0"
-authors = ["the Deno authors"]
-edition = "2021"
-license = "MIT"
+version = "0.199.0"
+authors.workspace = true
+edition.workspace = true
+license.workspace = true
 readme = "README.md"
-repository = "https://github.com/denoland/deno"
+repository.workspace = true
 description = "Collection of Web APIs"
 
 [lib]
 path = "lib.rs"
 
 [dependencies]
-async-trait = "0.1.51"
-base64 = "0.13.0"
-deno_core = { version = "0.113.0", path = "../../core" }
-encoding_rs = "0.8.29"
-serde = "1.0.129"
-tokio = { version = "1.10.1", features = ["full"] }
-uuid = { version = "0.8.2", features = ["v4", "serde"] }
+async-trait.workspace = true
+base64-simd = "0.8"
+bytes.workspace = true
+deno_core.workspace = true
+deno_permissions.workspace = true
+encoding_rs.workspace = true
+flate2 = { workspace = true, features = ["default"] }
+futures.workspace = true
+serde = "1.0.149"
+tokio.workspace = true
+uuid = { workspace = true, features = ["serde"] }
+
+[dev-dependencies]
+deno_bench_util.workspace = true
+deno_console.workspace = true
+deno_url.workspace = true
+deno_webidl.workspace = true
+
+[[bench]]
+name = "encoding"
+harness = false
+
+[[bench]]
+name = "timers_ops"
+harness = false

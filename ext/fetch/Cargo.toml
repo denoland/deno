@@ -1,27 +1,44 @@
-# Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
+# Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
 [package]
 name = "deno_fetch"
-version = "0.54.0"
-authors = ["the Deno authors"]
-edition = "2021"
-license = "MIT"
+version = "0.192.0"
+authors.workspace = true
+edition.workspace = true
+license.workspace = true
 readme = "README.md"
-repository = "https://github.com/denoland/deno"
+repository.workspace = true
 description = "Fetch API implementation for Deno"
 
 [lib]
 path = "lib.rs"
 
 [dependencies]
-bytes = "1.1.0"
-data-url = "0.1.0"
-deno_core = { version = "0.113.0", path = "../../core" }
-deno_tls = { version = "0.18.0", path = "../tls" }
+base64.workspace = true
+bytes.workspace = true
+data-url.workspace = true
+deno_core.workspace = true
+deno_permissions.workspace = true
+deno_tls.workspace = true
 dyn-clone = "1"
-http = "0.2.4"
-reqwest = { version = "0.11.7", default-features = false, features = ["rustls-tls", "stream", "gzip", "brotli"] }
-serde = { version = "1.0.129", features = ["derive"] }
-tokio = { version = "1.10.1", features = ["full"] }
-tokio-stream = "0.1.7"
-tokio-util = "0.6.7"
+error_reporter = "1"
+http.workspace = true
+http-body-util.workspace = true
+hyper.workspace = true
+hyper-rustls.workspace = true
+hyper-util.workspace = true
+ipnet.workspace = true
+percent-encoding.workspace = true
+rustls-webpki.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+tokio.workspace = true
+tokio-rustls.workspace = true
+tokio-socks.workspace = true
+tokio-util = { workspace = true, features = ["io"] }
+tower.workspace = true
+tower-http.workspace = true
+tower-service.workspace = true
+
+[dev-dependencies]
+fast-socks5.workspace = true

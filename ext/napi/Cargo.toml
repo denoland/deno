@@ -1,0 +1,19 @@
+# Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
+
+[package]
+name = "deno_napi"
+version = "0.99.0"
+authors.workspace = true
+edition.workspace = true
+license.workspace = true
+readme = "README.md"
+repository.workspace = true
+description = "NAPI implementation for Deno"
+
+[lib]
+path = "lib.rs"
+
+[dependencies]
+deno_core.workspace = true
+deno_permissions.workspace = true
+libloading = { version = "0.7" }

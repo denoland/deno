@@ -1,0 +1,7 @@
+{
+  "tempDir": true,
+  // TODO(2.0): decide if this test should be fixed or removed
+  "ignore": true,
+  "args": "cache main.ts",
+  "output": "main.cache.out"
+}

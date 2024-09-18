@@ -1,0 +1,4 @@
+{
+  "args": "check --all main.tsx",
+  "output": "main.out"
+}

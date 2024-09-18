@@ -2,8 +2,8 @@
 
 This op crate implements the WebGPU API as defined in
 https://gpuweb.github.io/gpuweb/ in Deno. The implementation targets the spec
-draft as of February 22, 2021. The spec is still very much in flux. This op
-crate tries to stay up to date with the spec, but is constrained by the features
+draft as of March 31, 2024. The spec is still very much in flux. This extension
+tries to stay up to date with the spec, but is constrained by the features
 implemented in our GPU backend library [wgpu](https://github.com/gfx-rs/wgpu).
 
 The spec is still very bare bones, and is still missing many details. As the
@@ -19,7 +19,7 @@ running through our WPT runner. This will be used to validate implementation
 conformance.
 
 GitHub CI doesn't run with GPUs, so testing relies on software like DX WARP &
-Vulkan lavapipe. Currently only using DX WARP works, so tests are only run on
+Vulkan lavapipe. Currently, only using DX WARP works, so tests are only run on
 Windows.
 
 ## Links

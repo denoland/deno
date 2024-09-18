@@ -1,0 +1,38 @@
+[target.x86_64-pc-windows-msvc]
+rustflags = ["-C", "target-feature=+crt-static"]
+
+[target.'cfg(all(windows, debug_assertions))']
+rustflags = [
+  "-C",
+  "target-feature=+crt-static",
+  "-C",
+  # increase the stack size to prevent overflowing the
+  # stack in debug when launching sub commands
+  "link-arg=/STACK:4194304",
+]
+
+[target.x86_64-apple-darwin]
+rustflags = [
+  "-C",
+  "link-args=-weak_framework Metal -weak_framework MetalPerformanceShaders -weak_framework QuartzCore -weak_framework CoreGraphics",
+]
+
+[target.aarch64-apple-darwin]
+rustflags = [
+  "-C",
+  "link-args=-fuse-ld=lld -weak_framework Metal -weak_framework MetalPerformanceShaders -weak_framework QuartzCore -weak_framework CoreGraphics",
+]
+
+[target.'cfg(all())']
+rustflags = [
+  "-D",
+  "clippy::all",
+  "-D",
+  "clippy::await_holding_refcell_ref",
+  "-D",
+  "clippy::missing_safety_doc",
+  "-D",
+  "clippy::undocumented_unsafe_blocks",
+  "--cfg",
+  "tokio_unstable",
+]

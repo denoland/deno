@@ -1,0 +1,10 @@
+{
+  "name": "example",
+  "scripts": {
+    "say": "cowsay 'do make say'",
+    "think": "cowthink think"
+  },
+  "dependencies": {
+    "cowsay": "*"
+  }
+}

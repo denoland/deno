@@ -1,16 +1,12 @@
-// Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
 /// <reference no-default-lib="true" />
 /// <reference lib="esnext" />
 
-declare namespace globalThis {
-  declare namespace __bootstrap {
-    declare namespace console {
-      declare function createFilteredInspectProxy<TObject>(params: {
-        object: TObject;
-        keys: (keyof TObject)[];
-        evaluate: boolean;
-      }): Record<string, unknown>;
-    }
-  }
+declare module "ext:deno_console/01_console.js" {
+  function createFilteredInspectProxy<TObject>(params: {
+    object: TObject;
+    keys: (keyof TObject)[];
+    evaluate: boolean;
+  }): Record<string, unknown>;
 }

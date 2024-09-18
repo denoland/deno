@@ -1,20 +1,14 @@
-// Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
-
-// deno-lint-ignore-file no-var
+// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
 /// <reference no-default-lib="true" />
 /// <reference lib="esnext" />
 
-declare namespace globalThis {
-  declare namespace __bootstrap {
-    declare var url: {
-      URL: typeof URL;
-      URLSearchParams: typeof URLSearchParams;
-      parseUrlEncoded(bytes: Uint8Array): [string, string][];
-    };
+declare module "ext:deno_url/00_url.js" {
+  const URL: typeof URL;
+  const URLSearchParams: typeof URLSearchParams;
+  function parseUrlEncoded(bytes: Uint8Array): [string, string][];
+}
 
-    declare var urlPattern: {
-      URLPattern: typeof URLPattern;
-    };
-  }
+declare module "ext:deno_url/01_urlpattern.js" {
+  const URLPattern: typeof URLPattern;
 }

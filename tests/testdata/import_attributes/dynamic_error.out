@@ -1,0 +1,4 @@
+error: Uncaught (in promise) TypeError: Attempted to load JSON module without specifying "type": "json" attribute in the import statement.
+const data = await import("./data.json");
+             ^
+    at async [WILDCARD]dynamic_error.ts:1:14

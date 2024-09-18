@@ -1,0 +1,13 @@
+1
+{
+  cancelable: true,
+  message: "Uncaught Error: foo",
+  filename: "[WILDCARD]/report_error_handled.ts",
+  lineno: 18,
+  colno: 13,
+  error: Error: foo
+    at [WILDCARD]/report_error_handled.ts:18:13
+}
+onerror() called Error: foo
+    at [WILDCARD]/report_error_handled.ts:18:13
+2

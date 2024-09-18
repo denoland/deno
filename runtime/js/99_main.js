@@ -1,711 +1,1078 @@
-// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
-// Removes the `__proto__` for security reasons.  This intentionally makes
-// Deno non compliant with ECMA-262 Annex B.2.2.1
-//
-"use strict";
-delete Object.prototype.__proto__;
+// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
-((window) => {
-  const core = Deno.core;
-  const {
-    ArrayPrototypeMap,
-    Error,
-    FunctionPrototypeCall,
-    FunctionPrototypeBind,
-    ObjectAssign,
-    ObjectDefineProperty,
-    ObjectDefineProperties,
-    ObjectFreeze,
-    ObjectSetPrototypeOf,
-    PromiseResolve,
-    Symbol,
-    SymbolFor,
-    SymbolIterator,
-    PromisePrototypeThen,
-    TypeError,
-  } = window.__bootstrap.primordials;
-  const util = window.__bootstrap.util;
-  const eventTarget = window.__bootstrap.eventTarget;
-  const globalInterfaces = window.__bootstrap.globalInterfaces;
-  const location = window.__bootstrap.location;
-  const build = window.__bootstrap.build;
-  const version = window.__bootstrap.version;
-  const errorStack = window.__bootstrap.errorStack;
-  const os = window.__bootstrap.os;
-  const timers = window.__bootstrap.timers;
-  const base64 = window.__bootstrap.base64;
-  const encoding = window.__bootstrap.encoding;
-  const Console = window.__bootstrap.console.Console;
-  const worker = window.__bootstrap.worker;
-  const internals = window.__bootstrap.internals;
-  const performance = window.__bootstrap.performance;
-  const crypto = window.__bootstrap.crypto;
-  const url = window.__bootstrap.url;
-  const urlPattern = window.__bootstrap.urlPattern;
-  const headers = window.__bootstrap.headers;
-  const streams = window.__bootstrap.streams;
-  const fileReader = window.__bootstrap.fileReader;
-  const webgpu = window.__bootstrap.webgpu;
-  const webSocket = window.__bootstrap.webSocket;
-  const webStorage = window.__bootstrap.webStorage;
-  const broadcastChannel = window.__bootstrap.broadcastChannel;
-  const file = window.__bootstrap.file;
-  const formData = window.__bootstrap.formData;
-  const fetch = window.__bootstrap.fetch;
-  const prompt = window.__bootstrap.prompt;
-  const messagePort = window.__bootstrap.messagePort;
-  const denoNs = window.__bootstrap.denoNs;
-  const denoNsUnstable = window.__bootstrap.denoNsUnstable;
-  const errors = window.__bootstrap.errors.errors;
-  const webidl = window.__bootstrap.webidl;
-  const domException = window.__bootstrap.domException;
-  const { defineEventHandler } = window.__bootstrap.event;
-  const { deserializeJsMessageData, serializeJsMessageData } =
-    window.__bootstrap.messagePort;
+// Remove Intl.v8BreakIterator because it is a non-standard API.
+delete Intl.v8BreakIterator;
 
-  let windowIsClosing = false;
+import * as internalConsole from "ext:deno_console/01_console.js";
+import { core, internals, primordials } from "ext:core/mod.js";
+const ops = core.ops;
+import {
+  op_bootstrap_args,
+  op_bootstrap_is_stderr_tty,
+  op_bootstrap_is_stdout_tty,
+  op_bootstrap_no_color,
+  op_bootstrap_pid,
+  op_main_module,
+  op_ppid,
+  op_set_format_exception_callback,
+  op_snapshot_options,
+  op_worker_close,
+  op_worker_get_type,
+  op_worker_post_message,
+  op_worker_recv_message,
+  op_worker_sync_fetch,
+} from "ext:core/ops";
+const {
+  ArrayPrototypeFilter,
+  ArrayPrototypeForEach,
+  ArrayPrototypeIncludes,
+  ArrayPrototypeMap,
+  DateNow,
+  Error,
+  ErrorPrototype,
+  FunctionPrototypeBind,
+  FunctionPrototypeCall,
+  ObjectAssign,
+  ObjectDefineProperties,
+  ObjectDefineProperty,
+  ObjectHasOwn,
+  ObjectKeys,
+  ObjectGetOwnPropertyDescriptor,
+  ObjectPrototypeIsPrototypeOf,
+  ObjectSetPrototypeOf,
+  PromisePrototypeThen,
+  PromiseResolve,
+  StringPrototypePadEnd,
+  Symbol,
+  SymbolIterator,
+  TypeError,
+} = primordials;
+const {
+  isNativeError,
+} = core;
+import { registerDeclarativeServer } from "ext:deno_http/00_serve.ts";
+import * as event from "ext:deno_web/02_event.js";
+import * as location from "ext:deno_web/12_location.js";
+import * as version from "ext:runtime/01_version.ts";
+import * as os from "ext:runtime/30_os.js";
+import * as timers from "ext:deno_web/02_timers.js";
+import {
+  getDefaultInspectOptions,
+  getStderrNoColor,
+  inspectArgs,
+  quoteString,
+  setNoColorFns,
+} from "ext:deno_console/01_console.js";
+import * as performance from "ext:deno_web/15_performance.js";
+import * as url from "ext:deno_url/00_url.js";
+import * as fetch from "ext:deno_fetch/26_fetch.js";
+import * as messagePort from "ext:deno_web/13_message_port.js";
+import {
+  denoNs,
+  denoNsUnstableById,
+  unstableIds,
+} from "ext:runtime/90_deno_ns.js";
+import { errors } from "ext:runtime/01_errors.js";
+import * as webidl from "ext:deno_webidl/00_webidl.js";
+import { DOMException } from "ext:deno_web/01_dom_exception.js";
+import {
+  unstableForWindowOrWorkerGlobalScope,
+  windowOrWorkerGlobalScope,
+} from "ext:runtime/98_global_scope_shared.js";
+import {
+  mainRuntimeGlobalProperties,
+  memoizeLazy,
+} from "ext:runtime/98_global_scope_window.js";
+import {
+  workerRuntimeGlobalProperties,
+} from "ext:runtime/98_global_scope_worker.js";
+import { SymbolDispose, SymbolMetadata } from "ext:deno_web/00_infra.js";
+// deno-lint-ignore prefer-primordials
+if (Symbol.metadata) {
+  throw "V8 supports Symbol.metadata now, no need to shim it";
+}
+ObjectDefineProperties(Symbol, {
+  dispose: {
+    __proto__: null,
+    value: SymbolDispose,
+    enumerable: false,
+    writable: false,
+    configurable: false,
+  },
+  metadata: {
+    __proto__: null,
+    value: SymbolMetadata,
+    enumerable: false,
+    writable: false,
+    configurable: false,
+  },
+});
 
-  function windowClose() {
-    if (!windowIsClosing) {
-      windowIsClosing = true;
-      // Push a macrotask to exit after a promise resolve.
-      // This is not perfect, but should be fine for first pass.
-      PromisePrototypeThen(
-        PromiseResolve(),
-        () =>
-          FunctionPrototypeCall(timers.setTimeout, null, () => {
-            // This should be fine, since only Window/MainWorker has .close()
-            os.exit(0);
-          }, 0),
-      );
-    }
+let windowIsClosing = false;
+let globalThis_;
+
+function windowClose() {
+  if (!windowIsClosing) {
+    windowIsClosing = true;
+    // Push a macrotask to exit after a promise resolve.
+    // This is not perfect, but should be fine for first pass.
+    PromisePrototypeThen(
+      PromiseResolve(),
+      () =>
+        FunctionPrototypeCall(timers.setTimeout, null, () => {
+          // This should be fine, since only Window/MainWorker has .close()
+          os.exit(0);
+        }, 0),
+    );
+  }
+}
+
+function workerClose() {
+  if (isClosing) {
+    return;
   }
 
-  function workerClose() {
-    if (isClosing) {
-      return;
-    }
+  isClosing = true;
+  op_worker_close();
+}
 
-    isClosing = true;
-    core.opSync("op_worker_close");
+function postMessage(message, transferOrOptions = { __proto__: null }) {
+  const prefix =
+    "Failed to execute 'postMessage' on 'DedicatedWorkerGlobalScope'";
+  webidl.requiredArguments(arguments.length, 1, prefix);
+  message = webidl.converters.any(message);
+  let options;
+  if (
+    webidl.type(transferOrOptions) === "Object" &&
+    transferOrOptions !== undefined &&
+    transferOrOptions[SymbolIterator] !== undefined
+  ) {
+    const transfer = webidl.converters["sequence<object>"](
+      transferOrOptions,
+      prefix,
+      "Argument 2",
+    );
+    options = { transfer };
+  } else {
+    options = webidl.converters.StructuredSerializeOptions(
+      transferOrOptions,
+      prefix,
+      "Argument 2",
+    );
   }
+  const { transfer } = options;
+  const data = messagePort.serializeJsMessageData(message, transfer);
+  op_worker_post_message(data);
+}
 
-  function postMessage(message, transferOrOptions = {}) {
-    const prefix =
-      "Failed to execute 'postMessage' on 'DedicatedWorkerGlobalScope'";
-    webidl.requiredArguments(arguments.length, 1, { prefix });
-    message = webidl.converters.any(message);
-    let options;
-    if (
-      webidl.type(transferOrOptions) === "Object" &&
-      transferOrOptions !== undefined &&
-      transferOrOptions[SymbolIterator] !== undefined
-    ) {
-      const transfer = webidl.converters["sequence<object>"](
-        transferOrOptions,
-        { prefix, context: "Argument 2" },
-      );
-      options = { transfer };
-    } else {
-      options = webidl.converters.StructuredSerializeOptions(
-        transferOrOptions,
-        {
-          prefix,
-          context: "Argument 2",
-        },
-      );
-    }
-    const { transfer } = options;
-    const data = serializeJsMessageData(message, transfer);
-    core.opSync("op_worker_post_message", data);
+let isClosing = false;
+let globalDispatchEvent;
+
+function hasMessageEventListener() {
+  return event.listenerCount(globalThis, "message") > 0 ||
+    messagePort.messageEventListenerCount > 0;
+}
+
+async function pollForMessages() {
+  if (!globalDispatchEvent) {
+    globalDispatchEvent = FunctionPrototypeBind(
+      globalThis.dispatchEvent,
+      globalThis,
+    );
   }
-
-  let isClosing = false;
-  let globalDispatchEvent;
-
-  async function pollForMessages() {
-    if (!globalDispatchEvent) {
-      globalDispatchEvent = FunctionPrototypeBind(
-        globalThis.dispatchEvent,
-        globalThis,
-      );
+  while (!isClosing) {
+    const recvMessage = op_worker_recv_message();
+    if (globalThis[messagePort.unrefPollForMessages] === true) {
+      core.unrefOpPromise(recvMessage);
     }
-    while (!isClosing) {
-      const data = await core.opAsync("op_worker_recv_message");
-      if (data === null) break;
-      const v = deserializeJsMessageData(data);
-      const message = v[0];
-      const transferables = v[1];
+    const data = await recvMessage;
+    // const data = await op_worker_recv_message();
+    if (data === null) break;
+    const v = messagePort.deserializeJsMessageData(data);
+    const message = v[0];
+    const transferables = v[1];
 
-      const msgEvent = new MessageEvent("message", {
-        cancelable: false,
-        data: message,
-        ports: transferables.filter((t) => t instanceof MessagePort),
+    const msgEvent = new event.MessageEvent("message", {
+      cancelable: false,
+      data: message,
+      ports: ArrayPrototypeFilter(
+        transferables,
+        (t) =>
+          ObjectPrototypeIsPrototypeOf(messagePort.MessagePortPrototype, t),
+      ),
+    });
+    event.setIsTrusted(msgEvent, true);
+
+    try {
+      globalDispatchEvent(msgEvent);
+    } catch (e) {
+      const errorEvent = new event.ErrorEvent("error", {
+        cancelable: true,
+        message: e.message,
+        lineno: e.lineNumber ? e.lineNumber + 1 : undefined,
+        colno: e.columnNumber ? e.columnNumber + 1 : undefined,
+        filename: e.fileName,
+        error: e,
       });
 
-      try {
-        globalDispatchEvent(msgEvent);
-      } catch (e) {
-        const errorEvent = new ErrorEvent("error", {
-          cancelable: true,
-          message: e.message,
-          lineno: e.lineNumber ? e.lineNumber + 1 : undefined,
-          colno: e.columnNumber ? e.columnNumber + 1 : undefined,
-          filename: e.fileName,
-          error: e,
-        });
-
-        globalDispatchEvent(errorEvent);
-        if (!errorEvent.defaultPrevented) {
-          throw e;
-        }
+      event.setIsTrusted(errorEvent, true);
+      globalDispatchEvent(errorEvent);
+      if (!errorEvent.defaultPrevented) {
+        throw e;
       }
     }
   }
+}
 
-  let loadedMainWorkerScript = false;
+let loadedMainWorkerScript = false;
 
-  function importScripts(...urls) {
-    if (core.opSync("op_worker_get_type") === "module") {
-      throw new TypeError("Can't import scripts in a module worker.");
-    }
-
-    const baseUrl = location.getLocationHref();
-    const parsedUrls = ArrayPrototypeMap(urls, (scriptUrl) => {
-      try {
-        return new url.URL(scriptUrl, baseUrl ?? undefined).href;
-      } catch {
-        throw new domException.DOMException(
-          "Failed to parse URL.",
-          "SyntaxError",
-        );
-      }
-    });
-
-    // A classic worker's main script has looser MIME type checks than any
-    // imported scripts, so we use `loadedMainWorkerScript` to distinguish them.
-    // TODO(andreubotella) Refactor worker creation so the main script isn't
-    // loaded with `importScripts()`.
-    const scripts = core.opSync(
-      "op_worker_sync_fetch",
-      parsedUrls,
-      !loadedMainWorkerScript,
-    );
-    loadedMainWorkerScript = true;
-
-    for (const { url, script } of scripts) {
-      const err = core.evalContext(script, url)[1];
-      if (err !== null) {
-        throw err.thrown;
-      }
-    }
+function importScripts(...urls) {
+  if (op_worker_get_type() === "module") {
+    throw new TypeError("Cannot import scripts in a module worker");
   }
 
-  function opMainModule() {
-    return core.opSync("op_main_module");
-  }
-
-  function runtimeStart(runtimeOptions, source) {
-    core.setMacrotaskCallback(timers.handleTimerMacrotask);
-    core.setWasmStreamingCallback(fetch.handleWasmStreaming);
-    version.setVersions(
-      runtimeOptions.denoVersion,
-      runtimeOptions.v8Version,
-      runtimeOptions.tsVersion,
-    );
-    if (runtimeOptions.unstableFlag) {
-      internals.enableTestSteps();
+  const baseUrl = location.getLocationHref();
+  const parsedUrls = ArrayPrototypeMap(urls, (scriptUrl) => {
+    try {
+      return new url.URL(scriptUrl, baseUrl ?? undefined).href;
+    } catch {
+      throw new DOMException(
+        `Failed to parse URL: ${scriptUrl}`,
+        "SyntaxError",
+      );
     }
-    build.setBuildInfo(runtimeOptions.target);
-    util.setLogDebug(runtimeOptions.debugFlag, source);
-    const prepareStackTrace = core.createPrepareStackTrace(
-      // TODO(bartlomieju): a very crude way to disable
-      // source mapping of errors. This condition is true
-      // only for compiled standalone binaries.
-      runtimeOptions.applySourceMaps ? errorStack.opApplySourceMap : undefined,
-      errorStack.opFormatFileName,
-    );
-    // deno-lint-ignore prefer-primordials
-    Error.prepareStackTrace = prepareStackTrace;
-  }
-
-  function registerErrors() {
-    core.registerErrorClass("NotFound", errors.NotFound);
-    core.registerErrorClass("PermissionDenied", errors.PermissionDenied);
-    core.registerErrorClass("ConnectionRefused", errors.ConnectionRefused);
-    core.registerErrorClass("ConnectionReset", errors.ConnectionReset);
-    core.registerErrorClass("ConnectionAborted", errors.ConnectionAborted);
-    core.registerErrorClass("NotConnected", errors.NotConnected);
-    core.registerErrorClass("AddrInUse", errors.AddrInUse);
-    core.registerErrorClass("AddrNotAvailable", errors.AddrNotAvailable);
-    core.registerErrorClass("BrokenPipe", errors.BrokenPipe);
-    core.registerErrorClass("AlreadyExists", errors.AlreadyExists);
-    core.registerErrorClass("InvalidData", errors.InvalidData);
-    core.registerErrorClass("TimedOut", errors.TimedOut);
-    core.registerErrorClass("Interrupted", errors.Interrupted);
-    core.registerErrorClass("WriteZero", errors.WriteZero);
-    core.registerErrorClass("UnexpectedEof", errors.UnexpectedEof);
-    core.registerErrorClass("BadResource", errors.BadResource);
-    core.registerErrorClass("Http", errors.Http);
-    core.registerErrorClass("Busy", errors.Busy);
-    core.registerErrorClass("NotSupported", errors.NotSupported);
-    core.registerErrorBuilder(
-      "DOMExceptionOperationError",
-      function DOMExceptionOperationError(msg) {
-        return new domException.DOMException(msg, "OperationError");
-      },
-    );
-    core.registerErrorBuilder(
-      "DOMExceptionQuotaExceededError",
-      function DOMExceptionQuotaExceededError(msg) {
-        return new domException.DOMException(msg, "QuotaExceededError");
-      },
-    );
-    core.registerErrorBuilder(
-      "DOMExceptionNotSupportedError",
-      function DOMExceptionNotSupportedError(msg) {
-        return new domException.DOMException(msg, "NotSupported");
-      },
-    );
-    core.registerErrorBuilder(
-      "DOMExceptionNetworkError",
-      function DOMExceptionNetworkError(msg) {
-        return new domException.DOMException(msg, "NetworkError");
-      },
-    );
-    core.registerErrorBuilder(
-      "DOMExceptionAbortError",
-      function DOMExceptionAbortError(msg) {
-        return new domException.DOMException(msg, "AbortError");
-      },
-    );
-    core.registerErrorBuilder(
-      "DOMExceptionInvalidCharacterError",
-      function DOMExceptionInvalidCharacterError(msg) {
-        return new domException.DOMException(msg, "InvalidCharacterError");
-      },
-    );
-    core.registerErrorBuilder(
-      "DOMExceptionDataError",
-      function DOMExceptionDataError(msg) {
-        return new domException.DOMException(msg, "DataError");
-      },
-    );
-  }
-
-  class Navigator {
-    constructor() {
-      webidl.illegalConstructor();
-    }
-
-    [SymbolFor("Deno.privateCustomInspect")](inspect) {
-      return `${this.constructor.name} ${inspect({})}`;
-    }
-  }
-
-  const navigator = webidl.createBranded(Navigator);
-
-  let numCpus;
-
-  ObjectDefineProperties(Navigator.prototype, {
-    gpu: {
-      configurable: true,
-      enumerable: true,
-      get() {
-        webidl.assertBranded(this, Navigator);
-        return webgpu.gpu;
-      },
-    },
-    hardwareConcurrency: {
-      configurable: true,
-      enumerable: true,
-      get() {
-        webidl.assertBranded(this, Navigator);
-        return numCpus;
-      },
-    },
   });
 
-  class WorkerNavigator {
-    constructor() {
-      webidl.illegalConstructor();
-    }
+  // A classic worker's main script has looser MIME type checks than any
+  // imported scripts, so we use `loadedMainWorkerScript` to distinguish them.
+  // TODO(andreubotella) Refactor worker creation so the main script isn't
+  // loaded with `importScripts()`.
+  const scripts = op_worker_sync_fetch(
+    parsedUrls,
+    !loadedMainWorkerScript,
+  );
+  loadedMainWorkerScript = true;
 
-    [SymbolFor("Deno.privateCustomInspect")](inspect) {
-      return `${this.constructor.name} ${inspect({})}`;
+  for (let i = 0; i < scripts.length; ++i) {
+    const { url, script } = scripts[i];
+    const err = core.evalContext(script, url)[1];
+    if (err !== null) {
+      throw err.thrown;
     }
   }
+}
 
-  const workerNavigator = webidl.createBranded(WorkerNavigator);
+const opArgs = memoizeLazy(() => op_bootstrap_args());
+const opPid = memoizeLazy(() => op_bootstrap_pid());
+setNoColorFns(
+  () => op_bootstrap_no_color() || !op_bootstrap_is_stdout_tty(),
+  () => op_bootstrap_no_color() || !op_bootstrap_is_stderr_tty(),
+);
 
-  ObjectDefineProperties(WorkerNavigator.prototype, {
-    gpu: {
-      configurable: true,
-      enumerable: true,
-      get() {
-        webidl.assertBranded(this, WorkerNavigator);
-        return webgpu.gpu;
-      },
+function formatException(error) {
+  if (
+    isNativeError(error) ||
+    ObjectPrototypeIsPrototypeOf(ErrorPrototype, error)
+  ) {
+    return null;
+  } else if (typeof error == "string") {
+    return `Uncaught ${
+      inspectArgs([quoteString(error, getDefaultInspectOptions())], {
+        colors: !getStderrNoColor(),
+      })
+    }`;
+  } else {
+    return `Uncaught ${inspectArgs([error], { colors: !getStderrNoColor() })}`;
+  }
+}
+
+core.registerErrorClass("NotFound", errors.NotFound);
+core.registerErrorClass("ConnectionRefused", errors.ConnectionRefused);
+core.registerErrorClass("ConnectionReset", errors.ConnectionReset);
+core.registerErrorClass("ConnectionAborted", errors.ConnectionAborted);
+core.registerErrorClass("NotConnected", errors.NotConnected);
+core.registerErrorClass("AddrInUse", errors.AddrInUse);
+core.registerErrorClass("AddrNotAvailable", errors.AddrNotAvailable);
+core.registerErrorClass("BrokenPipe", errors.BrokenPipe);
+core.registerErrorClass("PermissionDenied", errors.PermissionDenied);
+core.registerErrorClass("AlreadyExists", errors.AlreadyExists);
+core.registerErrorClass("InvalidData", errors.InvalidData);
+core.registerErrorClass("TimedOut", errors.TimedOut);
+core.registerErrorClass("WouldBlock", errors.WouldBlock);
+core.registerErrorClass("WriteZero", errors.WriteZero);
+core.registerErrorClass("UnexpectedEof", errors.UnexpectedEof);
+core.registerErrorClass("Http", errors.Http);
+core.registerErrorClass("Busy", errors.Busy);
+core.registerErrorClass("NotSupported", errors.NotSupported);
+core.registerErrorClass("FilesystemLoop", errors.FilesystemLoop);
+core.registerErrorClass("IsADirectory", errors.IsADirectory);
+core.registerErrorClass("NetworkUnreachable", errors.NetworkUnreachable);
+core.registerErrorClass("NotADirectory", errors.NotADirectory);
+core.registerErrorBuilder(
+  "DOMExceptionOperationError",
+  function DOMExceptionOperationError(msg) {
+    return new DOMException(msg, "OperationError");
+  },
+);
+core.registerErrorBuilder(
+  "DOMExceptionQuotaExceededError",
+  function DOMExceptionQuotaExceededError(msg) {
+    return new DOMException(msg, "QuotaExceededError");
+  },
+);
+core.registerErrorBuilder(
+  "DOMExceptionNotSupportedError",
+  function DOMExceptionNotSupportedError(msg) {
+    return new DOMException(msg, "NotSupported");
+  },
+);
+core.registerErrorBuilder(
+  "DOMExceptionNetworkError",
+  function DOMExceptionNetworkError(msg) {
+    return new DOMException(msg, "NetworkError");
+  },
+);
+core.registerErrorBuilder(
+  "DOMExceptionAbortError",
+  function DOMExceptionAbortError(msg) {
+    return new DOMException(msg, "AbortError");
+  },
+);
+core.registerErrorBuilder(
+  "DOMExceptionInvalidCharacterError",
+  function DOMExceptionInvalidCharacterError(msg) {
+    return new DOMException(msg, "InvalidCharacterError");
+  },
+);
+core.registerErrorBuilder(
+  "DOMExceptionDataError",
+  function DOMExceptionDataError(msg) {
+    return new DOMException(msg, "DataError");
+  },
+);
+
+function runtimeStart(
+  denoVersion,
+  v8Version,
+  tsVersion,
+  target,
+) {
+  core.setWasmStreamingCallback(fetch.handleWasmStreaming);
+  core.setReportExceptionCallback(event.reportException);
+  op_set_format_exception_callback(formatException);
+  version.setVersions(
+    denoVersion,
+    v8Version,
+    tsVersion,
+  );
+  core.setBuildInfo(target);
+}
+
+core.setUnhandledPromiseRejectionHandler(processUnhandledPromiseRejection);
+core.setHandledPromiseRejectionHandler(processRejectionHandled);
+
+// Notification that the core received an unhandled promise rejection that is about to
+// terminate the runtime. If we can handle it, attempt to do so.
+function processUnhandledPromiseRejection(promise, reason) {
+  const rejectionEvent = new event.PromiseRejectionEvent(
+    "unhandledrejection",
+    {
+      cancelable: true,
+      promise,
+      reason,
     },
-    hardwareConcurrency: {
-      configurable: true,
-      enumerable: true,
-      get() {
-        webidl.assertBranded(this, WorkerNavigator);
-        return numCpus;
-      },
+  );
+
+  // Note that the handler may throw, causing a recursive "error" event
+  globalThis_.dispatchEvent(rejectionEvent);
+
+  // If event was not yet prevented, try handing it off to Node compat layer
+  // (if it was initialized)
+  if (
+    !rejectionEvent.defaultPrevented &&
+    typeof internals.nodeProcessUnhandledRejectionCallback !== "undefined"
+  ) {
+    internals.nodeProcessUnhandledRejectionCallback(rejectionEvent);
+  }
+
+  // If event was not prevented (or "unhandledrejection" listeners didn't
+  // throw) we will let Rust side handle it.
+  if (rejectionEvent.defaultPrevented) {
+    return true;
+  }
+
+  return false;
+}
+
+function processRejectionHandled(promise, reason) {
+  const rejectionHandledEvent = new event.PromiseRejectionEvent(
+    "rejectionhandled",
+    { promise, reason },
+  );
+
+  // Note that the handler may throw, causing a recursive "error" event
+  globalThis_.dispatchEvent(rejectionHandledEvent);
+
+  if (typeof internals.nodeProcessRejectionHandledCallback !== "undefined") {
+    internals.nodeProcessRejectionHandledCallback(rejectionHandledEvent);
+  }
+}
+
+function dispatchLoadEvent() {
+  globalThis_.dispatchEvent(new Event("load"));
+}
+
+function dispatchBeforeUnloadEvent() {
+  return globalThis_.dispatchEvent(
+    new Event("beforeunload", { cancelable: true }),
+  );
+}
+
+function dispatchUnloadEvent() {
+  globalThis_.dispatchEvent(new Event("unload"));
+}
+
+let hasBootstrapped = false;
+// Set up global properties shared by main and worker runtime.
+ObjectDefineProperties(globalThis, windowOrWorkerGlobalScope);
+
+// Set up global properties shared by main and worker runtime that are exposed
+// by unstable features if those are enabled.
+function exposeUnstableFeaturesForWindowOrWorkerGlobalScope(unstableFeatures) {
+  const featureIds = ArrayPrototypeMap(
+    ObjectKeys(
+      unstableForWindowOrWorkerGlobalScope,
+    ),
+    (k) => k | 0,
+  );
+
+  for (let i = 0; i <= featureIds.length; i++) {
+    const featureId = featureIds[i];
+    if (ArrayPrototypeIncludes(unstableFeatures, featureId)) {
+      const props = unstableForWindowOrWorkerGlobalScope[featureId];
+      ObjectDefineProperties(globalThis, { ...props });
+    }
+  }
+}
+
+// NOTE(bartlomieju): remove all the ops that have already been imported using
+// "virtual op module" (`ext:core/ops`).
+const NOT_IMPORTED_OPS = [
+  // Related to `Deno.bench()` API
+  "op_bench_now",
+  "op_dispatch_bench_event",
+  "op_register_bench",
+  "op_bench_get_origin",
+
+  // Related to `Deno.jupyter` API
+  "op_jupyter_broadcast",
+  "op_jupyter_input",
+
+  // Related to `Deno.test()` API
+  "op_test_event_step_result_failed",
+  "op_test_event_step_result_ignored",
+  "op_test_event_step_result_ok",
+  "op_test_event_step_wait",
+  "op_test_op_sanitizer_collect",
+  "op_test_op_sanitizer_finish",
+  "op_test_op_sanitizer_get_async_message",
+  "op_test_op_sanitizer_report",
+  "op_restore_test_permissions",
+  "op_register_test_step",
+  "op_register_test",
+  "op_test_get_origin",
+  "op_pledge_test_permissions",
+
+  // TODO(bartlomieju): used in various integration tests - figure out a way
+  // to not depend on them.
+  "op_set_exit_code",
+  "op_napi_open",
+  "op_npm_process_state",
+];
+
+function removeImportedOps() {
+  const allOpNames = ObjectKeys(ops);
+  for (let i = 0; i < allOpNames.length; i++) {
+    const opName = allOpNames[i];
+    if (!ArrayPrototypeIncludes(NOT_IMPORTED_OPS, opName)) {
+      delete ops[opName];
+    }
+  }
+}
+
+// FIXME(bartlomieju): temporarily add whole `Deno.core` to
+// `Deno[Deno.internal]` namespace. It should be removed and only necessary
+// methods should be left there.
+ObjectAssign(internals, { core });
+const internalSymbol = Symbol("Deno.internal");
+const finalDenoNs = {
+  internal: internalSymbol,
+  [internalSymbol]: internals,
+  ...denoNs,
+  // Deno.test and Deno.bench are noops here, but kept for compatibility; so
+  // that they don't cause errors when used outside of `deno test`/`deno bench`
+  // contexts.
+  test: () => {},
+  bench: () => {},
+};
+
+ObjectDefineProperties(finalDenoNs, {
+  pid: core.propGetterOnly(opPid),
+  // `ppid` should not be memoized.
+  // https://github.com/denoland/deno/issues/23004
+  ppid: core.propGetterOnly(() => op_ppid()),
+  noColor: core.propGetterOnly(() => op_bootstrap_no_color()),
+  args: core.propGetterOnly(opArgs),
+  mainModule: core.propGetterOnly(() => op_main_module()),
+  exitCode: {
+    __proto__: null,
+    get() {
+      return os.getExitCode();
     },
-  });
-
-  // https://developer.mozilla.org/en-US/docs/Web/API/WindowOrWorkerGlobalScope
-  const windowOrWorkerGlobalScope = {
-    Blob: util.nonEnumerable(file.Blob),
-    ByteLengthQueuingStrategy: util.nonEnumerable(
-      streams.ByteLengthQueuingStrategy,
-    ),
-    CloseEvent: util.nonEnumerable(CloseEvent),
-    CountQueuingStrategy: util.nonEnumerable(
-      streams.CountQueuingStrategy,
-    ),
-    CryptoKey: util.nonEnumerable(crypto.CryptoKey),
-    CustomEvent: util.nonEnumerable(CustomEvent),
-    DOMException: util.nonEnumerable(domException.DOMException),
-    ErrorEvent: util.nonEnumerable(ErrorEvent),
-    Event: util.nonEnumerable(Event),
-    EventTarget: util.nonEnumerable(EventTarget),
-    File: util.nonEnumerable(file.File),
-    FileReader: util.nonEnumerable(fileReader.FileReader),
-    FormData: util.nonEnumerable(formData.FormData),
-    Headers: util.nonEnumerable(headers.Headers),
-    MessageEvent: util.nonEnumerable(MessageEvent),
-    Performance: util.nonEnumerable(performance.Performance),
-    PerformanceEntry: util.nonEnumerable(performance.PerformanceEntry),
-    PerformanceMark: util.nonEnumerable(performance.PerformanceMark),
-    PerformanceMeasure: util.nonEnumerable(performance.PerformanceMeasure),
-    ProgressEvent: util.nonEnumerable(ProgressEvent),
-    ReadableStream: util.nonEnumerable(streams.ReadableStream),
-    ReadableStreamDefaultReader: util.nonEnumerable(
-      streams.ReadableStreamDefaultReader,
-    ),
-    Request: util.nonEnumerable(fetch.Request),
-    Response: util.nonEnumerable(fetch.Response),
-    TextDecoder: util.nonEnumerable(encoding.TextDecoder),
-    TextEncoder: util.nonEnumerable(encoding.TextEncoder),
-    TextDecoderStream: util.nonEnumerable(encoding.TextDecoderStream),
-    TextEncoderStream: util.nonEnumerable(encoding.TextEncoderStream),
-    TransformStream: util.nonEnumerable(streams.TransformStream),
-    URL: util.nonEnumerable(url.URL),
-    URLPattern: util.nonEnumerable(urlPattern.URLPattern),
-    URLSearchParams: util.nonEnumerable(url.URLSearchParams),
-    WebSocket: util.nonEnumerable(webSocket.WebSocket),
-    MessageChannel: util.nonEnumerable(messagePort.MessageChannel),
-    MessagePort: util.nonEnumerable(messagePort.MessagePort),
-    Worker: util.nonEnumerable(worker.Worker),
-    WritableStream: util.nonEnumerable(streams.WritableStream),
-    WritableStreamDefaultWriter: util.nonEnumerable(
-      streams.WritableStreamDefaultWriter,
-    ),
-    WritableStreamDefaultController: util.nonEnumerable(
-      streams.WritableStreamDefaultController,
-    ),
-    ReadableByteStreamController: util.nonEnumerable(
-      streams.ReadableByteStreamController,
-    ),
-    ReadableStreamBYOBReader: util.nonEnumerable(
-      streams.ReadableStreamBYOBReader,
-    ),
-    ReadableStreamBYOBRequest: util.nonEnumerable(
-      streams.ReadableStreamBYOBRequest,
-    ),
-    ReadableStreamDefaultController: util.nonEnumerable(
-      streams.ReadableStreamDefaultController,
-    ),
-    TransformStreamDefaultController: util.nonEnumerable(
-      streams.TransformStreamDefaultController,
-    ),
-    atob: util.writable(base64.atob),
-    btoa: util.writable(base64.btoa),
-    clearInterval: util.writable(timers.clearInterval),
-    clearTimeout: util.writable(timers.clearTimeout),
-    console: util.nonEnumerable(
-      new Console((msg, level) => core.print(msg, level > 1)),
-    ),
-    crypto: util.readOnly(crypto.crypto),
-    Crypto: util.nonEnumerable(crypto.Crypto),
-    SubtleCrypto: util.nonEnumerable(crypto.SubtleCrypto),
-    fetch: util.writable(fetch.fetch),
-    performance: util.writable(performance.performance),
-    setInterval: util.writable(timers.setInterval),
-    setTimeout: util.writable(timers.setTimeout),
-    structuredClone: util.writable(messagePort.structuredClone),
-  };
-
-  const unstableWindowOrWorkerGlobalScope = {
-    BroadcastChannel: util.nonEnumerable(broadcastChannel.BroadcastChannel),
-    WebSocketStream: util.nonEnumerable(webSocket.WebSocketStream),
-
-    GPU: util.nonEnumerable(webgpu.GPU),
-    GPUAdapter: util.nonEnumerable(webgpu.GPUAdapter),
-    GPUSupportedLimits: util.nonEnumerable(webgpu.GPUSupportedLimits),
-    GPUSupportedFeatures: util.nonEnumerable(webgpu.GPUSupportedFeatures),
-    GPUDevice: util.nonEnumerable(webgpu.GPUDevice),
-    GPUQueue: util.nonEnumerable(webgpu.GPUQueue),
-    GPUBuffer: util.nonEnumerable(webgpu.GPUBuffer),
-    GPUBufferUsage: util.nonEnumerable(webgpu.GPUBufferUsage),
-    GPUMapMode: util.nonEnumerable(webgpu.GPUMapMode),
-    GPUTexture: util.nonEnumerable(webgpu.GPUTexture),
-    GPUTextureUsage: util.nonEnumerable(webgpu.GPUTextureUsage),
-    GPUTextureView: util.nonEnumerable(webgpu.GPUTextureView),
-    GPUSampler: util.nonEnumerable(webgpu.GPUSampler),
-    GPUBindGroupLayout: util.nonEnumerable(webgpu.GPUBindGroupLayout),
-    GPUPipelineLayout: util.nonEnumerable(webgpu.GPUPipelineLayout),
-    GPUBindGroup: util.nonEnumerable(webgpu.GPUBindGroup),
-    GPUShaderModule: util.nonEnumerable(webgpu.GPUShaderModule),
-    GPUShaderStage: util.nonEnumerable(webgpu.GPUShaderStage),
-    GPUComputePipeline: util.nonEnumerable(webgpu.GPUComputePipeline),
-    GPURenderPipeline: util.nonEnumerable(webgpu.GPURenderPipeline),
-    GPUColorWrite: util.nonEnumerable(webgpu.GPUColorWrite),
-    GPUCommandEncoder: util.nonEnumerable(webgpu.GPUCommandEncoder),
-    GPURenderPassEncoder: util.nonEnumerable(webgpu.GPURenderPassEncoder),
-    GPUComputePassEncoder: util.nonEnumerable(webgpu.GPUComputePassEncoder),
-    GPUCommandBuffer: util.nonEnumerable(webgpu.GPUCommandBuffer),
-    GPURenderBundleEncoder: util.nonEnumerable(webgpu.GPURenderBundleEncoder),
-    GPURenderBundle: util.nonEnumerable(webgpu.GPURenderBundle),
-    GPUQuerySet: util.nonEnumerable(webgpu.GPUQuerySet),
-    GPUOutOfMemoryError: util.nonEnumerable(webgpu.GPUOutOfMemoryError),
-    GPUValidationError: util.nonEnumerable(webgpu.GPUValidationError),
-  };
-
-  const mainRuntimeGlobalProperties = {
-    Location: location.locationConstructorDescriptor,
-    location: location.locationDescriptor,
-    Window: globalInterfaces.windowConstructorDescriptor,
-    window: util.readOnly(globalThis),
-    self: util.writable(globalThis),
-    Navigator: util.nonEnumerable(Navigator),
-    navigator: {
-      configurable: true,
-      enumerable: true,
-      get: () => navigator,
+    set(value) {
+      os.setExitCode(value);
     },
-    close: util.writable(windowClose),
-    closed: util.getterOnly(() => windowIsClosing),
-    alert: util.writable(prompt.alert),
-    confirm: util.writable(prompt.confirm),
-    prompt: util.writable(prompt.prompt),
-    localStorage: {
-      configurable: true,
-      enumerable: true,
-      get: webStorage.localStorage,
-    },
-    sessionStorage: {
-      configurable: true,
-      enumerable: true,
-      get: webStorage.sessionStorage,
-    },
-    Storage: util.nonEnumerable(webStorage.Storage),
-  };
+  },
+});
 
-  const workerRuntimeGlobalProperties = {
-    WorkerLocation: location.workerLocationConstructorDescriptor,
-    location: location.workerLocationDescriptor,
-    WorkerGlobalScope: globalInterfaces.workerGlobalScopeConstructorDescriptor,
-    DedicatedWorkerGlobalScope:
-      globalInterfaces.dedicatedWorkerGlobalScopeConstructorDescriptor,
-    WorkerNavigator: util.nonEnumerable(WorkerNavigator),
-    navigator: {
-      configurable: true,
-      enumerable: true,
-      get: () => workerNavigator,
-    },
-    self: util.readOnly(globalThis),
-    // TODO(bartlomieju): should be readonly?
-    close: util.nonEnumerable(workerClose),
-    postMessage: util.writable(postMessage),
-  };
+const {
+  tsVersion,
+  v8Version,
+  target,
+} = op_snapshot_options();
 
-  let hasBootstrapped = false;
+const executionModes = {
+  none: 0,
+  worker: 1,
+  run: 2,
+  repl: 3,
+  eval: 4,
+  test: 5,
+  bench: 6,
+  serve: 7,
+  jupyter: 8,
+};
 
-  function bootstrapMainRuntime(runtimeOptions) {
+function bootstrapMainRuntime(runtimeOptions, warmup = false) {
+  if (!warmup) {
     if (hasBootstrapped) {
       throw new Error("Worker runtime already bootstrapped");
     }
 
-    const consoleFromV8 = window.console;
-    const wrapConsole = window.__bootstrap.console.wrapConsole;
+    const {
+      0: denoVersion,
+      1: location_,
+      2: unstableFeatures,
+      3: inspectFlag,
+      5: hasNodeModulesDir,
+      6: argv0,
+      7: nodeDebug,
+      8: mode,
+      9: servePort,
+      10: serveHost,
+      11: serveIsMain,
+      12: serveWorkerCount,
+    } = runtimeOptions;
+
+    if (mode === executionModes.serve) {
+      if (serveIsMain && serveWorkerCount) {
+        // deno-lint-ignore no-global-assign
+        console = new internalConsole.Console((msg, level) =>
+          core.print("[serve-worker-0 ] " + msg, level > 1)
+        );
+      } else if (serveWorkerCount !== null) {
+        const base = `serve-worker-${serveWorkerCount + 1}`;
+        // 15 = "serve-worker-nn".length, assuming
+        // serveWorkerCount < 100
+        const prefix = `[${StringPrototypePadEnd(base, 15, " ")}]`;
+        // deno-lint-ignore no-global-assign
+        console = new internalConsole.Console((msg, level) =>
+          core.print(`${prefix} ` + msg, level > 1)
+        );
+      }
+    }
+
+    if (mode === executionModes.run || mode === executionModes.serve) {
+      let serve = undefined;
+      core.addMainModuleHandler((main) => {
+        if (ObjectHasOwn(main, "default")) {
+          try {
+            serve = registerDeclarativeServer(main.default);
+          } catch (e) {
+            if (mode === executionModes.serve) {
+              throw e;
+            }
+          }
+        }
+
+        if (mode === executionModes.serve && !serve) {
+          if (serveIsMain) {
+            // Only error if main worker
+            // deno-lint-ignore no-console
+            console.error(
+              `%cerror: %cdeno serve requires %cexport default { fetch }%c in the main module, did you mean to run \"deno run\"?`,
+              "color: yellow;",
+              "color: inherit;",
+              "font-weight: bold;",
+              "font-weight: normal;",
+            );
+          }
+          return;
+        }
+
+        if (serve) {
+          if (mode === executionModes.run) {
+            // deno-lint-ignore no-console
+            console.error(
+              `%cwarning: %cDetected %cexport default { fetch }%c, did you mean to run \"deno serve\"?`,
+              "color: yellow;",
+              "color: inherit;",
+              "font-weight: bold;",
+              "font-weight: normal;",
+            );
+          }
+          if (mode === executionModes.serve) {
+            serve({ servePort, serveHost, serveIsMain, serveWorkerCount });
+          }
+        }
+      });
+    }
+
+    removeImportedOps();
+
+    performance.setTimeOrigin(DateNow());
+    globalThis_ = globalThis;
 
     // Remove bootstrapping data from the global scope
     delete globalThis.__bootstrap;
     delete globalThis.bootstrap;
-    util.log("bootstrapMainRuntime");
     hasBootstrapped = true;
-    ObjectDefineProperties(globalThis, windowOrWorkerGlobalScope);
-    if (runtimeOptions.unstableFlag) {
-      ObjectDefineProperties(globalThis, unstableWindowOrWorkerGlobalScope);
+
+    // If the `--location` flag isn't set, make `globalThis.location` `undefined` and
+    // writable, so that they can mock it themselves if they like. If the flag was
+    // set, define `globalThis.location`, using the provided value.
+    if (location_ == null) {
+      mainRuntimeGlobalProperties.location = {
+        writable: true,
+      };
+    } else {
+      location.setLocationHref(location_);
     }
+
+    exposeUnstableFeaturesForWindowOrWorkerGlobalScope(unstableFeatures);
     ObjectDefineProperties(globalThis, mainRuntimeGlobalProperties);
+    ObjectDefineProperties(globalThis, {
+      // TODO(bartlomieju): in the future we might want to change the
+      // behavior of setting `name` to actually update the process name.
+      // Empty string matches what browsers do.
+      name: core.propWritable(""),
+      close: core.propWritable(windowClose),
+      closed: core.propGetterOnly(() => windowIsClosing),
+    });
     ObjectSetPrototypeOf(globalThis, Window.prototype);
 
-    const consoleFromDeno = globalThis.console;
-    wrapConsole(consoleFromDeno, consoleFromV8);
-
-    eventTarget.setEventTargetData(globalThis);
-
-    defineEventHandler(window, "load");
-    defineEventHandler(window, "unload");
-
-    const isUnloadDispatched = SymbolFor("isUnloadDispatched");
-    // Stores the flag for checking whether unload is dispatched or not.
-    // This prevents the recursive dispatches of unload events.
-    // See https://github.com/denoland/deno/issues/9201.
-    window[isUnloadDispatched] = false;
-    window.addEventListener("unload", () => {
-      window[isUnloadDispatched] = true;
-    });
-
-    runtimeStart(runtimeOptions);
-    const {
-      args,
-      location: locationHref,
-      noColor,
-      pid,
-      ppid,
-      unstableFlag,
-      cpuCount,
-    } = runtimeOptions;
-
-    if (locationHref != null) {
-      location.setLocationHref(locationHref);
+    if (inspectFlag) {
+      const consoleFromDeno = globalThis.console;
+      core.wrapConsole(consoleFromDeno, core.v8Console);
     }
-    numCpus = cpuCount;
-    registerErrors();
 
-    const internalSymbol = Symbol("Deno.internal");
+    event.defineEventHandler(globalThis, "error");
+    event.defineEventHandler(globalThis, "load");
+    event.defineEventHandler(globalThis, "beforeunload");
+    event.defineEventHandler(globalThis, "unload");
 
-    const finalDenoNs = {
-      core,
-      internal: internalSymbol,
-      [internalSymbol]: internals,
-      resources: core.resources,
-      close: core.close,
-      ...denoNs,
-    };
-    ObjectDefineProperties(finalDenoNs, {
-      pid: util.readOnly(pid),
-      ppid: util.readOnly(ppid),
-      noColor: util.readOnly(noColor),
-      args: util.readOnly(ObjectFreeze(args)),
-      mainModule: util.getterOnly(opMainModule),
+    runtimeStart(
+      denoVersion,
+      v8Version,
+      tsVersion,
+      target,
+    );
+
+    // TODO(bartlomieju): this is not ideal, but because we use `ObjectAssign`
+    // above any properties that are defined elsewhere using `Object.defineProperty`
+    // are lost.
+    let jupyterNs = undefined;
+    ObjectDefineProperty(finalDenoNs, "jupyter", {
+      get() {
+        if (jupyterNs) {
+          return jupyterNs;
+        }
+        throw new Error(
+          "Deno.jupyter is only available in `deno jupyter` subcommand",
+        );
+      },
+      set(val) {
+        jupyterNs = val;
+      },
     });
 
-    if (unstableFlag) {
-      ObjectAssign(finalDenoNs, denoNsUnstable);
+    for (let i = 0; i <= unstableFeatures.length; i++) {
+      const id = unstableFeatures[i];
+      ObjectAssign(finalDenoNs, denoNsUnstableById[id]);
+    }
+
+    if (!ArrayPrototypeIncludes(unstableFeatures, unstableIds.unsafeProto)) {
+      // Removes the `__proto__` for security reasons.
+      // https://tc39.es/ecma262/#sec-get-object.prototype.__proto__
+      delete Object.prototype.__proto__;
+    }
+
+    if (!ArrayPrototypeIncludes(unstableFeatures, unstableIds.temporal)) {
+      // Removes the `Temporal` API.
+      delete globalThis.Temporal;
+      delete globalThis.Date.prototype.toTemporalInstant;
+    } else {
+      // Removes the obsoleted `Temporal` API.
+      // https://github.com/tc39/proposal-temporal/pull/2895
+      // https://github.com/tc39/proposal-temporal/pull/2914
+      // https://github.com/tc39/proposal-temporal/pull/2925
+      if (typeof globalThis.Temporal.Instant.fromEpochSeconds === "undefined") {
+        throw "V8 removes obsoleted Temporal API now, no need to delete them";
+      }
+      delete globalThis.Temporal.Instant.fromEpochSeconds;
+      delete globalThis.Temporal.Instant.fromEpochMicroseconds;
+      delete globalThis.Temporal.Instant.prototype.epochSeconds;
+      delete globalThis.Temporal.Instant.prototype.epochMicroseconds;
+      delete globalThis.Temporal.Instant.prototype.toZonedDateTime;
+      delete globalThis.Temporal.PlainDate.prototype.getISOFiels; // weird
+      delete globalThis.Temporal.PlainDate.prototype.getISOFields;
+      delete globalThis.Temporal.PlainDateTime.prototype.withPlainDate;
+      delete globalThis.Temporal.PlainDateTime.prototype.toPlainYearMonth;
+      delete globalThis.Temporal.PlainDateTime.prototype.toPlainMonthDay;
+      delete globalThis.Temporal.PlainDateTime.prototype.getISOFields;
+      delete globalThis.Temporal.PlainMonthDay.prototype.getISOFields;
+      delete globalThis.Temporal.PlainTime.prototype.calendar;
+      delete globalThis.Temporal.PlainTime.prototype.toPlainDateTime;
+      delete globalThis.Temporal.PlainTime.prototype.toZonedDateTime;
+      delete globalThis.Temporal.PlainTime.prototype.getISOFields;
+      delete globalThis.Temporal.PlainYearMonth.prototype.getISOFields;
+      delete globalThis.Temporal.ZonedDateTime.prototype.epochSeconds;
+      delete globalThis.Temporal.ZonedDateTime.prototype.epochMicroseconds;
+      delete globalThis.Temporal.ZonedDateTime.prototype.withPlainDate;
+      delete globalThis.Temporal.ZonedDateTime.prototype.toPlainYearMonth;
+      delete globalThis.Temporal.ZonedDateTime.prototype.toPlainMonthDay;
+      delete globalThis.Temporal.ZonedDateTime.prototype.getISOFields;
+      delete globalThis.Temporal.Now.zonedDateTime;
+      delete globalThis.Temporal.Now.plainDateTime;
+      delete globalThis.Temporal.Now.plainDate;
+      delete globalThis.Temporal.Calendar;
+      delete globalThis.Temporal.TimeZone;
+
+      // Modify `Temporal.Calendar` to calendarId string
+      ArrayPrototypeForEach([
+        globalThis.Temporal.PlainDate,
+        globalThis.Temporal.PlainDateTime,
+        globalThis.Temporal.PlainMonthDay,
+        globalThis.Temporal.PlainYearMonth,
+        globalThis.Temporal.ZonedDateTime,
+      ], (target) => {
+        const getCalendar =
+          ObjectGetOwnPropertyDescriptor(target.prototype, "calendar").get;
+        ObjectDefineProperty(target.prototype, "calendarId", {
+          __proto__: null,
+          get: function calendarId() {
+            return FunctionPrototypeCall(getCalendar, this).id;
+          },
+          enumerable: false,
+          configurable: true,
+        });
+        delete target.prototype.calendar;
+      });
+
+      // Modify `Temporal.TimeZone` to timeZoneId string
+      {
+        const getTimeZone = ObjectGetOwnPropertyDescriptor(
+          globalThis.Temporal.ZonedDateTime.prototype,
+          "timeZone",
+        ).get;
+        ObjectDefineProperty(
+          globalThis.Temporal.ZonedDateTime.prototype,
+          "timeZoneId",
+          {
+            __proto__: null,
+            get: function timeZoneId() {
+              return FunctionPrototypeCall(getTimeZone, this).id;
+            },
+            enumerable: false,
+            configurable: true,
+          },
+        );
+        delete globalThis.Temporal.ZonedDateTime.prototype.timeZone;
+      }
+      {
+        const nowTimeZone = globalThis.Temporal.Now.timeZone;
+        ObjectDefineProperty(globalThis.Temporal.Now, "timeZoneId", {
+          __proto__: null,
+          value: function timeZoneId() {
+            return nowTimeZone().id;
+          },
+          writable: true,
+          enumerable: false,
+          configurable: true,
+        });
+        delete globalThis.Temporal.Now.timeZone;
+      }
     }
 
     // Setup `Deno` global - we're actually overriding already existing global
     // `Deno` with `Deno` namespace from "./deno.ts".
-    ObjectDefineProperty(globalThis, "Deno", util.readOnly(finalDenoNs));
-    ObjectFreeze(globalThis.Deno.core);
+    ObjectDefineProperty(globalThis, "Deno", core.propReadOnly(finalDenoNs));
 
-    util.log("args", args);
+    if (nodeBootstrap) {
+      nodeBootstrap({
+        usesLocalNodeModulesDir: hasNodeModulesDir,
+        runningOnMainThread: true,
+        argv0,
+        nodeDebug,
+      });
+    }
+  } else {
+    // Warmup
   }
+}
 
-  function bootstrapWorkerRuntime(
-    runtimeOptions,
-    name,
-    useDenoNamespace,
-    internalName,
-  ) {
+function bootstrapWorkerRuntime(
+  runtimeOptions,
+  name,
+  internalName,
+  workerId,
+  maybeWorkerMetadata,
+  warmup = false,
+) {
+  if (!warmup) {
     if (hasBootstrapped) {
       throw new Error("Worker runtime already bootstrapped");
     }
 
-    const consoleFromV8 = window.console;
-    const wrapConsole = window.__bootstrap.console.wrapConsole;
+    const {
+      0: denoVersion,
+      1: location_,
+      2: unstableFeatures,
+      4: enableTestingFeaturesFlag,
+      5: hasNodeModulesDir,
+      6: argv0,
+      7: nodeDebug,
+    } = runtimeOptions;
+
+    performance.setTimeOrigin(DateNow());
+    globalThis_ = globalThis;
 
     // Remove bootstrapping data from the global scope
     delete globalThis.__bootstrap;
     delete globalThis.bootstrap;
-    util.log("bootstrapWorkerRuntime");
     hasBootstrapped = true;
-    ObjectDefineProperties(globalThis, windowOrWorkerGlobalScope);
-    if (runtimeOptions.unstableFlag) {
-      ObjectDefineProperties(globalThis, unstableWindowOrWorkerGlobalScope);
-    }
+
+    exposeUnstableFeaturesForWindowOrWorkerGlobalScope(unstableFeatures);
     ObjectDefineProperties(globalThis, workerRuntimeGlobalProperties);
-    ObjectDefineProperties(globalThis, { name: util.writable(name) });
-    if (runtimeOptions.enableTestingFeaturesFlag) {
+    ObjectDefineProperties(globalThis, {
+      name: core.propWritable(name),
+      // TODO(bartlomieju): should be readonly?
+      close: core.propNonEnumerable(workerClose),
+      postMessage: core.propWritable(postMessage),
+    });
+    if (enableTestingFeaturesFlag) {
       ObjectDefineProperty(
         globalThis,
         "importScripts",
-        util.writable(importScripts),
+        core.propWritable(importScripts),
       );
     }
     ObjectSetPrototypeOf(globalThis, DedicatedWorkerGlobalScope.prototype);
 
     const consoleFromDeno = globalThis.console;
-    wrapConsole(consoleFromDeno, consoleFromV8);
+    core.wrapConsole(consoleFromDeno, core.v8Console);
 
-    eventTarget.setEventTargetData(globalThis);
+    event.defineEventHandler(self, "message");
+    event.defineEventHandler(self, "error", undefined, true);
 
-    defineEventHandler(self, "message");
-    defineEventHandler(self, "error", undefined, true);
+    // `Deno.exit()` is an alias to `self.close()`. Setting and exit
+    // code using an op in worker context is a no-op.
+    os.setExitHandler((_exitCode) => {
+      workerClose();
+    });
 
     runtimeStart(
-      runtimeOptions,
+      denoVersion,
+      v8Version,
+      tsVersion,
+      target,
       internalName ?? name,
     );
-    const {
-      unstableFlag,
-      pid,
-      noColor,
-      args,
-      location: locationHref,
-      cpuCount,
-    } = runtimeOptions;
 
-    location.setLocationHref(locationHref);
-    numCpus = cpuCount;
-    registerErrors();
+    location.setLocationHref(location_);
 
-    pollForMessages();
+    globalThis.pollForMessages = pollForMessages;
+    globalThis.hasMessageEventListener = hasMessageEventListener;
 
-    const internalSymbol = Symbol("Deno.internal");
-
-    const finalDenoNs = {
-      core,
-      internal: internalSymbol,
-      [internalSymbol]: internals,
-      resources: core.resources,
-      close: core.close,
-      ...denoNs,
-    };
-    if (useDenoNamespace) {
-      if (unstableFlag) {
-        ObjectAssign(finalDenoNs, denoNsUnstable);
-      }
-      ObjectDefineProperties(finalDenoNs, {
-        pid: util.readOnly(pid),
-        noColor: util.readOnly(noColor),
-        args: util.readOnly(ObjectFreeze(args)),
-      });
-      // Setup `Deno` global - we're actually overriding already
-      // existing global `Deno` with `Deno` namespace from "./deno.ts".
-      ObjectDefineProperty(globalThis, "Deno", util.readOnly(finalDenoNs));
-      ObjectFreeze(globalThis.Deno.core);
-    } else {
-      delete globalThis.Deno;
-      util.assert(globalThis.Deno === undefined);
+    for (let i = 0; i <= unstableFeatures.length; i++) {
+      const id = unstableFeatures[i];
+      ObjectAssign(finalDenoNs, denoNsUnstableById[id]);
     }
-  }
 
-  ObjectDefineProperties(globalThis, {
-    bootstrap: {
-      value: {
-        mainRuntime: bootstrapMainRuntime,
-        workerRuntime: bootstrapWorkerRuntime,
-      },
-      configurable: true,
-    },
-  });
-})(this);
+    // Not available in workers
+    delete finalDenoNs.mainModule;
+
+    if (!ArrayPrototypeIncludes(unstableFeatures, unstableIds.unsafeProto)) {
+      // Removes the `__proto__` for security reasons.
+      // https://tc39.es/ecma262/#sec-get-object.prototype.__proto__
+      delete Object.prototype.__proto__;
+    }
+
+    if (!ArrayPrototypeIncludes(unstableFeatures, unstableIds.temporal)) {
+      // Removes the `Temporal` API.
+      delete globalThis.Temporal;
+      delete globalThis.Date.prototype.toTemporalInstant;
+    } else {
+      // Removes the obsoleted `Temporal` API.
+      // https://github.com/tc39/proposal-temporal/pull/2895
+      // https://github.com/tc39/proposal-temporal/pull/2914
+      // https://github.com/tc39/proposal-temporal/pull/2925
+      if (typeof globalThis.Temporal.Instant.fromEpochSeconds === "undefined") {
+        throw "V8 removes obsoleted Temporal API now, no need to delete them";
+      }
+      delete globalThis.Temporal.Instant.fromEpochSeconds;
+      delete globalThis.Temporal.Instant.fromEpochMicroseconds;
+      delete globalThis.Temporal.Instant.prototype.epochSeconds;
+      delete globalThis.Temporal.Instant.prototype.epochMicroseconds;
+      delete globalThis.Temporal.Instant.prototype.toZonedDateTime;
+      delete globalThis.Temporal.PlainDate.prototype.getISOFiels; // weird
+      delete globalThis.Temporal.PlainDate.prototype.getISOFields;
+      delete globalThis.Temporal.PlainDateTime.prototype.withPlainDate;
+      delete globalThis.Temporal.PlainDateTime.prototype.toPlainYearMonth;
+      delete globalThis.Temporal.PlainDateTime.prototype.toPlainMonthDay;
+      delete globalThis.Temporal.PlainDateTime.prototype.getISOFields;
+      delete globalThis.Temporal.PlainMonthDay.prototype.getISOFields;
+      delete globalThis.Temporal.PlainTime.prototype.calendar;
+      delete globalThis.Temporal.PlainTime.prototype.toPlainDateTime;
+      delete globalThis.Temporal.PlainTime.prototype.toZonedDateTime;
+      delete globalThis.Temporal.PlainTime.prototype.getISOFields;
+      delete globalThis.Temporal.PlainYearMonth.prototype.getISOFields;
+      delete globalThis.Temporal.ZonedDateTime.prototype.epochSeconds;
+      delete globalThis.Temporal.ZonedDateTime.prototype.epochMicroseconds;
+      delete globalThis.Temporal.ZonedDateTime.prototype.withPlainDate;
+      delete globalThis.Temporal.ZonedDateTime.prototype.toPlainYearMonth;
+      delete globalThis.Temporal.ZonedDateTime.prototype.toPlainMonthDay;
+      delete globalThis.Temporal.ZonedDateTime.prototype.getISOFields;
+      delete globalThis.Temporal.Now.zonedDateTime;
+      delete globalThis.Temporal.Now.plainDateTime;
+      delete globalThis.Temporal.Now.plainDate;
+      delete globalThis.Temporal.Calendar;
+      delete globalThis.Temporal.TimeZone;
+
+      // Modify `Temporal.Calendar` to calendarId string
+      ArrayPrototypeForEach([
+        globalThis.Temporal.PlainDate,
+        globalThis.Temporal.PlainDateTime,
+        globalThis.Temporal.PlainMonthDay,
+        globalThis.Temporal.PlainYearMonth,
+        globalThis.Temporal.ZonedDateTime,
+      ], (target) => {
+        const getCalendar =
+          ObjectGetOwnPropertyDescriptor(target.prototype, "calendar").get;
+        ObjectDefineProperty(target.prototype, "calendarId", {
+          __proto__: null,
+          get: function calendarId() {
+            return FunctionPrototypeCall(getCalendar, this).id;
+          },
+          enumerable: false,
+          configurable: true,
+        });
+        delete target.prototype.calendar;
+      });
+
+      // Modify `Temporal.TimeZone` to timeZoneId string
+      {
+        const getTimeZone = ObjectGetOwnPropertyDescriptor(
+          globalThis.Temporal.ZonedDateTime.prototype,
+          "timeZone",
+        ).get;
+        ObjectDefineProperty(
+          globalThis.Temporal.ZonedDateTime.prototype,
+          "timeZoneId",
+          {
+            __proto__: null,
+            get: function timeZoneId() {
+              return FunctionPrototypeCall(getTimeZone, this).id;
+            },
+            enumerable: false,
+            configurable: true,
+          },
+        );
+        delete globalThis.Temporal.ZonedDateTime.prototype.timeZone;
+      }
+      {
+        const nowTimeZone = globalThis.Temporal.Now.timeZone;
+        ObjectDefineProperty(globalThis.Temporal.Now, "timeZoneId", {
+          __proto__: null,
+          value: function timeZoneId() {
+            return nowTimeZone().id;
+          },
+          writable: true,
+          enumerable: false,
+          configurable: true,
+        });
+        delete globalThis.Temporal.Now.timeZone;
+      }
+    }
+
+    // Setup `Deno` global - we're actually overriding already existing global
+    // `Deno` with `Deno` namespace from "./deno.ts".
+    ObjectDefineProperty(globalThis, "Deno", core.propReadOnly(finalDenoNs));
+
+    const workerMetadata = maybeWorkerMetadata
+      ? messagePort.deserializeJsMessageData(maybeWorkerMetadata)
+      : undefined;
+
+    if (nodeBootstrap) {
+      nodeBootstrap({
+        usesLocalNodeModulesDir: hasNodeModulesDir,
+        runningOnMainThread: false,
+        argv0,
+        workerId,
+        maybeWorkerMetadata: workerMetadata,
+        nodeDebug,
+      });
+    }
+  } else {
+    // Warmup
+    return;
+  }
+}
+
+const nodeBootstrap = globalThis.nodeBootstrap;
+delete globalThis.nodeBootstrap;
+const dispatchProcessExitEvent = internals.dispatchProcessExitEvent;
+delete internals.dispatchProcessExitEvent;
+const dispatchProcessBeforeExitEvent = internals.dispatchProcessBeforeExitEvent;
+delete internals.dispatchProcessBeforeExitEvent;
+
+globalThis.bootstrap = {
+  mainRuntime: bootstrapMainRuntime,
+  workerRuntime: bootstrapWorkerRuntime,
+  dispatchLoadEvent,
+  dispatchUnloadEvent,
+  dispatchBeforeUnloadEvent,
+  dispatchProcessExitEvent,
+  dispatchProcessBeforeExitEvent,
+};
+
+event.setEventTargetData(globalThis);
+event.saveGlobalThisReference(globalThis);
+event.defineEventHandler(globalThis, "unhandledrejection");
+
+// Nothing listens to this, but it warms up the code paths for event dispatch
+(new event.EventTarget()).dispatchEvent(new Event("warmup"));
+
+removeImportedOps();
+
+// Run the warmup path through node and runtime/worker bootstrap functions
+bootstrapMainRuntime(undefined, true);
+bootstrapWorkerRuntime(
+  undefined,
+  undefined,
+  undefined,
+  undefined,
+  undefined,
+  true,
+);
+nodeBootstrap({ warmup: true });

@@ -1,109 +1,186 @@
-// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
-use crate::cache::CacherLoader;
-use crate::cache::FetchCacher;
-use crate::config_file::ConfigFile;
-use crate::flags::Flags;
-use crate::graph_util::graph_valid;
-use crate::proc_state::ProcState;
-use crate::resolver::ImportMapResolver;
-use crate::resolver::JsxResolver;
+use crate::cache::DenoDir;
+use crate::cache::GlobalHttpCache;
+use crate::cache::HttpCache;
+use crate::cache::LocalLspHttpCache;
+use crate::lsp::config::Config;
+use crate::lsp::logging::lsp_log;
+use crate::lsp::logging::lsp_warn;
 
-use deno_core::anyhow::anyhow;
-use deno_core::error::AnyError;
+use deno_core::url::Url;
 use deno_core::ModuleSpecifier;
-use deno_runtime::permissions::Permissions;
-use deno_runtime::tokio_util::create_basic_runtime;
-use import_map::ImportMap;
-use std::path::PathBuf;
+use deno_runtime::fs_util::specifier_to_file_path;
+use std::collections::BTreeMap;
+use std::fs;
+use std::path::Path;
 use std::sync::Arc;
-use std::thread;
-use tokio::sync::mpsc;
-use tokio::sync::oneshot;
+use std::time::SystemTime;
 
-type Request = (Vec<ModuleSpecifier>, oneshot::Sender<Result<(), AnyError>>);
+pub fn calculate_fs_version(
+  cache: &LspCache,
+  specifier: &ModuleSpecifier,
+  file_referrer: Option<&ModuleSpecifier>,
+) -> Option<String> {
+  match specifier.scheme() {
+    "npm" | "node" | "data" | "blob" => None,
+    "file" => specifier_to_file_path(specifier)
+      .ok()
+      .and_then(|path| calculate_fs_version_at_path(&path)),
+    _ => calculate_fs_version_in_cache(cache, specifier, file_referrer),
+  }
+}
 
-/// A "server" that handles requests from the language server to cache modules
-/// in its own thread.
-#[derive(Debug)]
-pub(crate) struct CacheServer(mpsc::UnboundedSender<Request>);
+/// Calculate a version for for a given path.
+pub fn calculate_fs_version_at_path(path: &Path) -> Option<String> {
+  let metadata = fs::metadata(path).ok()?;
+  if let Ok(modified) = metadata.modified() {
+    if let Ok(n) = modified.duration_since(SystemTime::UNIX_EPOCH) {
+      Some(n.as_millis().to_string())
+    } else {
+      Some("1".to_string())
+    }
+  } else {
+    Some("1".to_string())
+  }
+}
 
-impl CacheServer {
-  pub async fn new(
-    maybe_cache_path: Option<PathBuf>,
-    maybe_import_map: Option<Arc<ImportMap>>,
-    maybe_config_file: Option<ConfigFile>,
-  ) -> Self {
-    let (tx, mut rx) = mpsc::unbounded_channel::<Request>();
-    let _join_handle = thread::spawn(move || {
-      let runtime = create_basic_runtime();
-      runtime.block_on(async {
-        let ps = ProcState::build(Flags {
-          cache_path: maybe_cache_path,
-          ..Default::default()
+fn calculate_fs_version_in_cache(
+  cache: &LspCache,
+  specifier: &ModuleSpecifier,
+  file_referrer: Option<&ModuleSpecifier>,
+) -> Option<String> {
+  let http_cache = cache.for_specifier(file_referrer);
+  let Ok(cache_key) = http_cache.cache_item_key(specifier) else {
+    return Some("1".to_string());
+  };
+  match http_cache.read_modified_time(&cache_key) {
+    Ok(Some(modified)) => {
+      match modified.duration_since(SystemTime::UNIX_EPOCH) {
+        Ok(n) => Some(n.as_millis().to_string()),
+        Err(_) => Some("1".to_string()),
+      }
+    }
+    Ok(None) => None,
+    Err(_) => Some("1".to_string()),
+  }
+}
+
+#[derive(Debug, Clone)]
+pub struct LspCache {
+  deno_dir: DenoDir,
+  global: Arc<GlobalHttpCache>,
+  vendors_by_scope: BTreeMap<ModuleSpecifier, Option<Arc<LocalLspHttpCache>>>,
+}
+
+impl Default for LspCache {
+  fn default() -> Self {
+    Self::new(None)
+  }
+}
+
+impl LspCache {
+  pub fn new(global_cache_url: Option<Url>) -> Self {
+    let global_cache_path = global_cache_url.and_then(|s| {
+      specifier_to_file_path(&s)
+        .inspect(|p| {
+          lsp_log!("Resolved global cache path: \"{}\"", p.to_string_lossy());
         })
-        .await
-        .unwrap();
-        let maybe_import_map_resolver =
-          maybe_import_map.map(ImportMapResolver::new);
-        let maybe_jsx_resolver = maybe_config_file
-          .as_ref()
-          .map(|cf| {
-            cf.to_maybe_jsx_import_source_module()
-              .map(|im| JsxResolver::new(im, maybe_import_map_resolver.clone()))
-          })
-          .flatten();
-        let maybe_resolver = if maybe_jsx_resolver.is_some() {
-          maybe_jsx_resolver.as_ref().map(|jr| jr.as_resolver())
-        } else {
-          maybe_import_map_resolver
-            .as_ref()
-            .map(|im| im.as_resolver())
-        };
-        let maybe_imports = maybe_config_file
-          .map(|cf| cf.to_maybe_imports().ok())
-          .flatten()
-          .flatten();
-        let mut cache = FetchCacher::new(
-          ps.dir.gen_cache.clone(),
-          ps.file_fetcher.clone(),
-          Permissions::allow_all(),
-          Permissions::allow_all(),
-        );
-
-        while let Some((roots, tx)) = rx.recv().await {
-          let graph = deno_graph::create_graph(
-            roots,
-            false,
-            maybe_imports.clone(),
-            cache.as_mut_loader(),
-            maybe_resolver,
-            None,
-            None,
-          )
-          .await;
-
-          if tx.send(graph_valid(&graph, true, false)).is_err() {
-            log::warn!("cannot send to client");
-          }
-        }
-      })
+        .inspect_err(|err| {
+          lsp_warn!("Failed to resolve custom cache path: {err}");
+        })
+        .ok()
     });
-
-    Self(tx)
+    let deno_dir = DenoDir::new(global_cache_path)
+      .expect("should be infallible with absolute custom root");
+    let global = Arc::new(GlobalHttpCache::new(
+      deno_dir.deps_folder_path(),
+      crate::cache::RealDenoCacheEnv,
+    ));
+    Self {
+      deno_dir,
+      global,
+      vendors_by_scope: Default::default(),
+    }
   }
 
-  /// Attempt to cache the supplied module specifiers and their dependencies in
-  /// the current DENO_DIR, returning any errors, so they can be returned to the
-  /// client.
-  pub async fn cache(
+  pub fn update_config(&mut self, config: &Config) {
+    self.vendors_by_scope = config
+      .tree
+      .data_by_scope()
+      .iter()
+      .map(|(scope, config_data)| {
+        (
+          scope.clone(),
+          config_data.vendor_dir.as_ref().map(|v| {
+            Arc::new(LocalLspHttpCache::new(v.clone(), self.global.clone()))
+          }),
+        )
+      })
+      .collect();
+  }
+
+  pub fn deno_dir(&self) -> &DenoDir {
+    &self.deno_dir
+  }
+
+  pub fn global(&self) -> &Arc<GlobalHttpCache> {
+    &self.global
+  }
+
+  pub fn for_specifier(
     &self,
-    roots: Vec<ModuleSpecifier>,
-  ) -> Result<(), AnyError> {
-    let (tx, rx) = oneshot::channel::<Result<(), AnyError>>();
-    if self.0.send((roots, tx)).is_err() {
-      return Err(anyhow!("failed to send request to cache thread"));
+    file_referrer: Option<&ModuleSpecifier>,
+  ) -> Arc<dyn HttpCache> {
+    let Some(file_referrer) = file_referrer else {
+      return self.global.clone();
+    };
+    self
+      .vendors_by_scope
+      .iter()
+      .rfind(|(s, _)| file_referrer.as_str().starts_with(s.as_str()))
+      .and_then(|(_, v)| v.clone().map(|v| v as _))
+      .unwrap_or(self.global.clone() as _)
+  }
+
+  pub fn vendored_specifier(
+    &self,
+    specifier: &ModuleSpecifier,
+    file_referrer: Option<&ModuleSpecifier>,
+  ) -> Option<ModuleSpecifier> {
+    let file_referrer = file_referrer?;
+    if !matches!(specifier.scheme(), "http" | "https") {
+      return None;
     }
-    rx.await?
+    let vendor = self
+      .vendors_by_scope
+      .iter()
+      .rfind(|(s, _)| file_referrer.as_str().starts_with(s.as_str()))?
+      .1
+      .as_ref()?;
+    vendor.get_file_url(specifier)
+  }
+
+  pub fn unvendored_specifier(
+    &self,
+    specifier: &ModuleSpecifier,
+  ) -> Option<ModuleSpecifier> {
+    let path = specifier_to_file_path(specifier).ok()?;
+    let vendor = self
+      .vendors_by_scope
+      .iter()
+      .rfind(|(s, _)| specifier.as_str().starts_with(s.as_str()))?
+      .1
+      .as_ref()?;
+    vendor.get_remote_url(&path)
+  }
+
+  pub fn is_valid_file_referrer(&self, specifier: &ModuleSpecifier) -> bool {
+    if let Ok(path) = specifier_to_file_path(specifier) {
+      if !path.starts_with(&self.deno_dir().root) {
+        return true;
+      }
+    }
+    false
   }
 }

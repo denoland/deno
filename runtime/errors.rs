@@ -1,4 +1,4 @@
-// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
 //! There are many types of errors in Deno:
 //! - AnyError: a generic wrapper that can encapsulate any type of error.
@@ -13,14 +13,13 @@ use deno_core::error::AnyError;
 use deno_core::serde_json;
 use deno_core::url;
 use deno_core::ModuleResolutionError;
-use deno_fetch::reqwest;
 use std::env;
 use std::error::Error;
 use std::io;
 use std::sync::Arc;
 
-fn get_dlopen_error_class(error: &dlopen::Error) -> &'static str {
-  use dlopen::Error::*;
+fn get_dlopen_error_class(error: &dlopen2::Error) -> &'static str {
+  use dlopen2::Error::*;
   match error {
     NullCharacter(_) => "InvalidData",
     OpeningLibraryError(ref e) => get_io_error_class(e),
@@ -58,10 +57,19 @@ fn get_io_error_class(error: &io::Error) -> &'static str {
     WriteZero => "WriteZero",
     UnexpectedEof => "UnexpectedEof",
     Other => "Error",
-    WouldBlock => unreachable!(),
+    WouldBlock => "WouldBlock",
     // Non-exhaustive enum - might add new variants
     // in the future
-    _ => "Error",
+    kind => {
+      let kind_str = kind.to_string();
+      match kind_str.as_str() {
+        "FilesystemLoop" => "FilesystemLoop",
+        "IsADirectory" => "IsADirectory",
+        "NetworkUnreachable" => "NetworkUnreachable",
+        "NotADirectory" => "NotADirectory",
+        _ => "Error",
+      }
+    }
   }
 }
 
@@ -92,27 +100,6 @@ fn get_regex_error_class(error: &regex::Error) -> &'static str {
   }
 }
 
-fn get_request_error_class(error: &reqwest::Error) -> &'static str {
-  error
-    .source()
-    .and_then(|inner_err| {
-      (inner_err
-        .downcast_ref::<io::Error>()
-        .map(get_io_error_class))
-      .or_else(|| {
-        inner_err
-          .downcast_ref::<serde_json::error::Error>()
-          .map(get_serde_json_error_class)
-      })
-      .or_else(|| {
-        inner_err
-          .downcast_ref::<url::ParseError>()
-          .map(get_url_parse_error_class)
-      })
-    })
-    .unwrap_or("Http")
-}
-
 fn get_serde_json_error_class(
   error: &serde_json::error::Error,
 ) -> &'static str {
@@ -137,6 +124,16 @@ fn get_hyper_error_class(_error: &hyper::Error) -> &'static str {
   "Http"
 }
 
+fn get_hyper_util_error_class(
+  _error: &hyper_util::client::legacy::Error,
+) -> &'static str {
+  "Http"
+}
+
+fn get_hyper_v014_error_class(_error: &hyper_v014::Error) -> &'static str {
+  "Http"
+}
+
 #[cfg(unix)]
 pub fn get_nix_error_class(error: &nix::Error) -> &'static str {
   match error {
@@ -146,6 +143,10 @@ pub fn get_nix_error_class(error: &nix::Error) -> &'static str {
     nix::Error::ENOTTY => "BadResource",
     nix::Error::EPERM => "PermissionDenied",
     nix::Error::ESRCH => "NotFound",
+    nix::Error::ELOOP => "FilesystemLoop",
+    nix::Error::ENOTDIR => "NotADirectory",
+    nix::Error::ENETUNREACH => "NetworkUnreachable",
+    nix::Error::EISDIR => "IsADirectory",
     nix::Error::UnknownErrno => "Error",
     &nix::Error::ENOTSUP => unreachable!(),
     _ => "Error",
@@ -159,13 +160,21 @@ pub fn get_error_class_name(e: &AnyError) -> Option<&'static str> {
     .or_else(|| deno_webstorage::get_not_supported_error_class_name(e))
     .or_else(|| deno_websocket::get_network_error_class_name(e))
     .or_else(|| {
-      e.downcast_ref::<dlopen::Error>()
+      e.downcast_ref::<dlopen2::Error>()
         .map(get_dlopen_error_class)
     })
     .or_else(|| e.downcast_ref::<hyper::Error>().map(get_hyper_error_class))
     .or_else(|| {
-      e.downcast_ref::<Arc<hyper::Error>>()
-        .map(|e| get_hyper_error_class(&**e))
+      e.downcast_ref::<hyper_util::client::legacy::Error>()
+        .map(get_hyper_util_error_class)
+    })
+    .or_else(|| {
+      e.downcast_ref::<hyper_v014::Error>()
+        .map(get_hyper_v014_error_class)
+    })
+    .or_else(|| {
+      e.downcast_ref::<Arc<hyper_v014::Error>>()
+        .map(|e| get_hyper_v014_error_class(e))
     })
     .or_else(|| {
       e.downcast_ref::<deno_core::Canceled>().map(|e| {
@@ -186,10 +195,6 @@ pub fn get_error_class_name(e: &AnyError) -> Option<&'static str> {
       e.downcast_ref::<notify::Error>()
         .map(get_notify_error_class)
     })
-    .or_else(|| {
-      e.downcast_ref::<reqwest::Error>()
-        .map(get_request_error_class)
-    })
     .or_else(|| e.downcast_ref::<regex::Error>().map(get_regex_error_class))
     .or_else(|| {
       e.downcast_ref::<serde_json::error::Error>()
@@ -198,6 +203,10 @@ pub fn get_error_class_name(e: &AnyError) -> Option<&'static str> {
     .or_else(|| {
       e.downcast_ref::<url::ParseError>()
         .map(get_url_parse_error_class)
+    })
+    .or_else(|| {
+      e.downcast_ref::<deno_kv::sqlite::SqliteBackendError>()
+        .map(|_| "TypeError")
     })
     .or_else(|| {
       #[cfg(unix)]

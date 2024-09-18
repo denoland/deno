@@ -1,4 +1,4 @@
-// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
 // The logic of this module is heavily influenced by path-to-regexp at:
 // https://github.com/pillarjs/path-to-regexp/ which is licensed as follows:
@@ -33,10 +33,11 @@ use once_cell::sync::Lazy;
 use regex::Regex;
 use std::collections::HashMap;
 use std::fmt;
+use std::fmt::Write as _;
 use std::iter::Peekable;
 
 static ESCAPE_STRING_RE: Lazy<Regex> =
-  Lazy::new(|| Regex::new(r"([.+*?=^!:${}()\[\]|/\\])").unwrap());
+  lazy_regex::lazy_regex!(r"([.+*?=^!:${}()\[\]|/\\])");
 
 #[derive(Debug, PartialEq, Eq)]
 enum TokenType {
@@ -219,8 +220,8 @@ pub enum StringOrNumber {
 impl fmt::Display for StringOrNumber {
   fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
     match &self {
-      Self::Number(n) => write!(f, "{}", n),
-      Self::String(s) => write!(f, "{}", s),
+      Self::Number(n) => write!(f, "{n}"),
+      Self::String(s) => write!(f, "{s}"),
     }
   }
 }
@@ -268,9 +269,9 @@ impl StringOrVec {
         let mut s = String::new();
         for (i, segment) in v.iter().enumerate() {
           if omit_initial_prefix && i == 0 {
-            s.push_str(&format!("{}{}", segment, suffix));
+            write!(s, "{segment}{suffix}").unwrap();
           } else {
-            s.push_str(&format!("{}{}{}", prefix, segment, suffix));
+            write!(s, "{prefix}{segment}{suffix}").unwrap();
           }
         }
         s
@@ -451,14 +452,11 @@ pub fn parse(
         path = String::new();
       }
 
-      let name = name.map_or_else(
-        || {
-          let default = StringOrNumber::Number(key);
-          key += 1;
-          default
-        },
-        StringOrNumber::String,
-      );
+      let name = name.map(StringOrNumber::String).unwrap_or_else(|| {
+        let default = StringOrNumber::Number(key);
+        key += 1;
+        default
+      });
       let prefix = if prefix.is_empty() {
         None
       } else {
@@ -497,8 +495,10 @@ pub fn parse(
 
       must_consume(&TokenType::Close, &mut tokens)?;
 
-      let name = maybe_name.clone().map_or_else(
-        || {
+      let name = maybe_name
+        .clone()
+        .map(StringOrNumber::String)
+        .unwrap_or_else(|| {
           if maybe_pattern.is_some() {
             let default = StringOrNumber::Number(key);
             key += 1;
@@ -506,9 +506,7 @@ pub fn parse(
           } else {
             StringOrNumber::String("".to_string())
           }
-        },
-        StringOrNumber::String,
-      );
+        });
       let pattern = if maybe_name.is_some() && maybe_pattern.is_none() {
         default_pattern.clone()
       } else {
@@ -569,11 +567,13 @@ pub fn tokens_to_regex(
         let prefix = key
           .prefix
           .clone()
-          .map_or_else(|| "".to_string(), |s| escape_string(&s));
+          .map(|s| escape_string(&s))
+          .unwrap_or_default();
         let suffix = key
           .suffix
           .clone()
-          .map_or_else(|| "".to_string(), |s| escape_string(&s));
+          .map(|s| escape_string(&s))
+          .unwrap_or_default();
 
         if !key.pattern.is_empty() {
           if !prefix.is_empty() || !suffix.is_empty() {
@@ -609,7 +609,7 @@ pub fn tokens_to_regex(
           }
         } else {
           let modifier = key.modifier.clone().unwrap_or_default();
-          format!(r"(?:{}{}){}", prefix, suffix, modifier)
+          format!(r"(?:{prefix}{suffix}){modifier}")
         }
       }
     };
@@ -618,15 +618,15 @@ pub fn tokens_to_regex(
 
   if end {
     if !strict {
-      route.push_str(&format!(r"{}?", delimiter));
+      write!(route, r"{delimiter}?").unwrap();
     }
     if has_ends_with {
-      route.push_str(&format!(r"(?={})", ends_with));
+      write!(route, r"(?={ends_with})").unwrap();
     } else {
       route.push('$');
     }
   } else {
-    let is_end_deliminated = match maybe_end_token {
+    let is_end_delimited = match maybe_end_token {
       Some(Token::String(mut s)) => {
         if let Some(c) = s.pop() {
           delimiter.contains(c)
@@ -639,16 +639,16 @@ pub fn tokens_to_regex(
     };
 
     if !strict {
-      route.push_str(&format!(r"(?:{}(?={}))?", delimiter, ends_with));
+      write!(route, r"(?:{delimiter}(?={ends_with}))?").unwrap();
     }
 
-    if !is_end_deliminated {
-      route.push_str(&format!(r"(?={}|{})", delimiter, ends_with));
+    if !is_end_delimited {
+      write!(route, r"(?={delimiter}|{ends_with})").unwrap();
     }
   }
 
   let flags = if sensitive { "" } else { "(?i)" };
-  let re = FancyRegex::new(&format!("{}{}", flags, route))?;
+  let re = FancyRegex::new(&format!("{flags}{route}"))?;
   let maybe_keys = if keys.is_empty() { None } else { Some(keys) };
 
   Ok((re, maybe_keys))
@@ -753,7 +753,7 @@ impl Compiler {
                       }
                     }
                   }
-                  path.push_str(&format!("{}{}{}", prefix, segment, suffix));
+                  write!(path, "{prefix}{segment}{suffix}").unwrap();
                 }
               }
             }
@@ -772,7 +772,7 @@ impl Compiler {
               }
               let prefix = k.prefix.clone().unwrap_or_default();
               let suffix = k.suffix.clone().unwrap_or_default();
-              path.push_str(&format!("{}{}{}", prefix, s, suffix));
+              write!(path, "{prefix}{s}{suffix}").unwrap();
             }
             None => {
               if !optional {
@@ -795,8 +795,6 @@ impl Compiler {
 
 #[derive(Debug)]
 pub struct MatchResult {
-  pub path: String,
-  pub index: usize,
   pub params: HashMap<StringOrNumber, StringOrVec>,
 }
 
@@ -824,9 +822,6 @@ impl Matcher {
   /// Match a string path, optionally returning the match result.
   pub fn matches(&self, path: &str) -> Option<MatchResult> {
     let caps = self.re.captures(path).ok()??;
-    let m = caps.get(0)?;
-    let path = m.as_str().to_string();
-    let index = m.start();
     let mut params = HashMap::new();
     if let Some(keys) = &self.maybe_keys {
       for (i, key) in keys.iter().enumerate() {
@@ -852,11 +847,7 @@ impl Matcher {
       }
     }
 
-    Some(MatchResult {
-      path,
-      index,
-      params,
-    })
+    Some(MatchResult { params })
   }
 }
 
@@ -873,25 +864,23 @@ mod tests {
     fixtures: &[Fixture],
   ) {
     let result = string_to_regex(path, maybe_options);
-    assert!(result.is_ok(), "Could not parse path: \"{}\"", path);
+    assert!(result.is_ok(), "Could not parse path: \"{path}\"");
     let (re, _) = result.unwrap();
     for (fixture, expected) in fixtures {
-      let result = re.find(*fixture);
+      let result = re.find(fixture);
       assert!(
         result.is_ok(),
-        "Find failure for path \"{}\" and fixture \"{}\"",
-        path,
-        fixture
+        "Find failure for path \"{path}\" and fixture \"{fixture}\""
       );
       let actual = result.unwrap();
       if let Some((text, start, end)) = *expected {
-        assert!(actual.is_some(), "Match failure for path \"{}\" and fixture \"{}\". Expected Some got None", path, fixture);
+        assert!(actual.is_some(), "Match failure for path \"{path}\" and fixture \"{fixture}\". Expected Some got None");
         let actual = actual.unwrap();
         assert_eq!(actual.as_str(), text, "Match failure for path \"{}\" and fixture \"{}\".  Expected \"{}\" got \"{}\".", path, fixture, text, actual.as_str());
         assert_eq!(actual.start(), start);
         assert_eq!(actual.end(), end);
       } else {
-        assert!(actual.is_none(), "Match failure for path \"{}\" and fixture \"{}\". Expected None got {:?}", path, fixture, actual);
+        assert!(actual.is_none(), "Match failure for path \"{path}\" and fixture \"{fixture}\". Expected None got {actual:?}");
       }
     }
   }

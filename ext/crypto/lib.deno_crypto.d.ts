@@ -1,24 +1,31 @@
-// Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
 // deno-lint-ignore-file no-var
 
 /// <reference no-default-lib="true" />
 /// <reference lib="esnext" />
 
+/** @category Crypto */
 declare var crypto: Crypto;
 
-interface Algorithm {
+/** @category Crypto */
+declare interface Algorithm {
   name: string;
 }
 
-interface KeyAlgorithm {
+/** @category Crypto */
+declare interface KeyAlgorithm {
   name: string;
 }
 
-type AlgorithmIdentifier = string | Algorithm;
-type HashAlgorithmIdentifier = AlgorithmIdentifier;
-type KeyType = "private" | "public" | "secret";
-type KeyUsage =
+/** @category Crypto */
+declare type AlgorithmIdentifier = string | Algorithm;
+/** @category Crypto */
+declare type HashAlgorithmIdentifier = AlgorithmIdentifier;
+/** @category Crypto */
+declare type KeyType = "private" | "public" | "secret";
+/** @category Crypto */
+declare type KeyUsage =
   | "decrypt"
   | "deriveBits"
   | "deriveKey"
@@ -27,16 +34,20 @@ type KeyUsage =
   | "unwrapKey"
   | "verify"
   | "wrapKey";
-type KeyFormat = "jwk" | "pkcs8" | "raw" | "spki";
-type NamedCurve = string;
+/** @category Crypto */
+declare type KeyFormat = "jwk" | "pkcs8" | "raw" | "spki";
+/** @category Crypto */
+declare type NamedCurve = string;
 
-interface RsaOtherPrimesInfo {
+/** @category Crypto */
+declare interface RsaOtherPrimesInfo {
   d?: string;
   r?: string;
   t?: string;
 }
 
-interface JsonWebKey {
+/** @category Crypto */
+declare interface JsonWebKey {
   alg?: string;
   crv?: string;
   d?: string;
@@ -45,7 +56,6 @@ interface JsonWebKey {
   e?: string;
   ext?: boolean;
   k?: string;
-  // deno-lint-ignore camelcase
   key_ops?: string[];
   kty?: string;
   n?: string;
@@ -58,140 +68,174 @@ interface JsonWebKey {
   y?: string;
 }
 
-interface AesCbcParams extends Algorithm {
+/** @category Crypto */
+declare interface AesCbcParams extends Algorithm {
   iv: BufferSource;
 }
 
-interface AesGcmParams extends Algorithm {
+/** @category Crypto */
+declare interface AesGcmParams extends Algorithm {
   iv: BufferSource;
   additionalData?: BufferSource;
   tagLength?: number;
 }
 
-interface AesCtrParams extends Algorithm {
+/** @category Crypto */
+declare interface AesCtrParams extends Algorithm {
   counter: BufferSource;
   length: number;
 }
 
-interface HmacKeyGenParams extends Algorithm {
+/** @category Crypto */
+declare interface HmacKeyGenParams extends Algorithm {
   hash: HashAlgorithmIdentifier;
   length?: number;
 }
 
-interface EcKeyGenParams extends Algorithm {
+/** @category Crypto */
+declare interface EcKeyGenParams extends Algorithm {
   namedCurve: NamedCurve;
 }
 
-interface EcImportParams extends Algorithm {
+/** @category Crypto */
+declare interface EcKeyImportParams extends Algorithm {
   namedCurve: NamedCurve;
 }
 
-interface EcdsaParams extends Algorithm {
+/** @category Crypto */
+declare interface EcdsaParams extends Algorithm {
   hash: HashAlgorithmIdentifier;
 }
 
-interface RsaHashedImportParams extends Algorithm {
+/** @category Crypto */
+declare interface RsaHashedImportParams extends Algorithm {
   hash: HashAlgorithmIdentifier;
 }
 
-interface RsaHashedKeyGenParams extends RsaKeyGenParams {
+/** @category Crypto */
+declare interface RsaHashedKeyGenParams extends RsaKeyGenParams {
   hash: HashAlgorithmIdentifier;
 }
 
-interface RsaKeyGenParams extends Algorithm {
+/** @category Crypto */
+declare interface RsaKeyGenParams extends Algorithm {
   modulusLength: number;
   publicExponent: Uint8Array;
 }
 
-interface RsaPssParams extends Algorithm {
+/** @category Crypto */
+declare interface RsaPssParams extends Algorithm {
   saltLength: number;
 }
 
-interface RsaOaepParams extends Algorithm {
+/** @category Crypto */
+declare interface RsaOaepParams extends Algorithm {
   label?: Uint8Array;
 }
 
-interface HmacImportParams extends Algorithm {
+/** @category Crypto */
+declare interface HmacImportParams extends Algorithm {
   hash: HashAlgorithmIdentifier;
   length?: number;
 }
 
-interface RsaHashedImportParams extends Algorithm {
-  hash: HashAlgorithmIdentifier;
-}
-
-interface EcKeyAlgorithm extends KeyAlgorithm {
+/** @category Crypto */
+declare interface EcKeyAlgorithm extends KeyAlgorithm {
   namedCurve: NamedCurve;
 }
 
-interface HmacKeyAlgorithm extends KeyAlgorithm {
+/** @category Crypto */
+declare interface HmacKeyAlgorithm extends KeyAlgorithm {
   hash: KeyAlgorithm;
   length: number;
 }
 
-interface RsaHashedKeyAlgorithm extends RsaKeyAlgorithm {
+/** @category Crypto */
+declare interface RsaHashedKeyAlgorithm extends RsaKeyAlgorithm {
   hash: KeyAlgorithm;
 }
 
-interface RsaKeyAlgorithm extends KeyAlgorithm {
+/** @category Crypto */
+declare interface RsaKeyAlgorithm extends KeyAlgorithm {
   modulusLength: number;
   publicExponent: Uint8Array;
 }
 
-interface HkdfParams extends Algorithm {
+/** @category Crypto */
+declare interface HkdfParams extends Algorithm {
   hash: HashAlgorithmIdentifier;
   info: BufferSource;
   salt: BufferSource;
 }
 
-interface Pbkdf2Params extends Algorithm {
+/** @category Crypto */
+declare interface Pbkdf2Params extends Algorithm {
   hash: HashAlgorithmIdentifier;
   iterations: number;
   salt: BufferSource;
 }
 
-interface AesDerivedKeyParams extends Algorithm {
+/** @category Crypto */
+declare interface AesDerivedKeyParams extends Algorithm {
   length: number;
 }
 
-interface EcdhKeyDeriveParams extends Algorithm {
+/** @category Crypto */
+declare interface EcdhKeyDeriveParams extends Algorithm {
   public: CryptoKey;
 }
 
-interface AesKeyGenParams extends Algorithm {
+/** @category Crypto */
+declare interface AesKeyGenParams extends Algorithm {
   length: number;
 }
 
-interface AesKeyAlgorithm extends KeyAlgorithm {
+/** @category Crypto */
+declare interface AesKeyAlgorithm extends KeyAlgorithm {
   length: number;
 }
 
-/** The CryptoKey dictionary of the Web Crypto API represents a cryptographic key. */
-interface CryptoKey {
+/** The CryptoKey dictionary of the Web Crypto API represents a cryptographic
+ * key.
+ *
+ * @category Crypto
+ */
+declare interface CryptoKey {
   readonly algorithm: KeyAlgorithm;
   readonly extractable: boolean;
   readonly type: KeyType;
   readonly usages: KeyUsage[];
 }
 
+/** @category Crypto */
 declare var CryptoKey: {
-  prototype: CryptoKey;
-  new (): CryptoKey;
+  readonly prototype: CryptoKey;
+  new (): never;
 };
 
-/** The CryptoKeyPair dictionary of the Web Crypto API represents a key pair for an asymmetric cryptography algorithm, also known as a public-key algorithm. */
-interface CryptoKeyPair {
+/** The CryptoKeyPair dictionary of the Web Crypto API represents a key pair for
+ * an asymmetric cryptography algorithm, also known as a public-key algorithm.
+ *
+ * @category Crypto
+ */
+declare interface CryptoKeyPair {
   privateKey: CryptoKey;
   publicKey: CryptoKey;
 }
 
+/** @category Crypto */
 declare var CryptoKeyPair: {
-  prototype: CryptoKeyPair;
-  new (): CryptoKeyPair;
+  readonly prototype: CryptoKeyPair;
+  new (): never;
 };
 
-/** This Web Crypto API interface provides a number of low-level cryptographic functions. It is accessed via the Crypto.subtle properties available in a window context (via Window.crypto). */
-interface SubtleCrypto {
+/** This Web Crypto API interface provides a number of low-level cryptographic
+ * functions. It is accessed via the Crypto.subtle properties available in a
+ * window context (via globalThis.crypto).
+ *
+ * @category Crypto
+ */
+declare interface SubtleCrypto {
   generateKey(
     algorithm: RsaHashedKeyGenParams | EcKeyGenParams,
     extractable: boolean,
@@ -214,7 +258,7 @@ interface SubtleCrypto {
       | AlgorithmIdentifier
       | HmacImportParams
       | RsaHashedImportParams
-      | EcImportParams,
+      | EcKeyImportParams,
     extractable: boolean,
     keyUsages: KeyUsage[],
   ): Promise<CryptoKey>;
@@ -225,7 +269,7 @@ interface SubtleCrypto {
       | AlgorithmIdentifier
       | HmacImportParams
       | RsaHashedImportParams
-      | EcImportParams,
+      | EcKeyImportParams,
     extractable: boolean,
     keyUsages: KeyUsage[],
   ): Promise<CryptoKey>;
@@ -264,6 +308,7 @@ interface SubtleCrypto {
       | AlgorithmIdentifier
       | RsaOaepParams
       | AesCbcParams
+      | AesGcmParams
       | AesCtrParams,
     key: CryptoKey,
     data: BufferSource,
@@ -278,7 +323,11 @@ interface SubtleCrypto {
     length: number,
   ): Promise<ArrayBuffer>;
   deriveKey(
-    algorithm: AlgorithmIdentifier | HkdfParams | Pbkdf2Params,
+    algorithm:
+      | AlgorithmIdentifier
+      | HkdfParams
+      | Pbkdf2Params
+      | EcdhKeyDeriveParams,
     baseKey: CryptoKey,
     derivedKeyType:
       | AlgorithmIdentifier
@@ -312,12 +361,19 @@ interface SubtleCrypto {
       | AlgorithmIdentifier
       | HmacImportParams
       | RsaHashedImportParams
-      | EcImportParams,
+      | EcKeyImportParams,
     extractable: boolean,
     keyUsages: KeyUsage[],
   ): Promise<CryptoKey>;
 }
 
+/** @category Crypto */
+declare var SubtleCrypto: {
+  readonly prototype: SubtleCrypto;
+  new (): never;
+};
+
+/** @category Crypto */
 declare interface Crypto {
   readonly subtle: SubtleCrypto;
   getRandomValues<
@@ -329,17 +385,16 @@ declare interface Crypto {
       | Uint16Array
       | Uint32Array
       | Uint8ClampedArray
-      | Float32Array
-      | Float64Array
-      | DataView
-      | null,
+      | BigInt64Array
+      | BigUint64Array,
   >(
     array: T,
   ): T;
-  randomUUID(): string;
+  randomUUID(): `${string}-${string}-${string}-${string}-${string}`;
 }
 
-declare var SubtleCrypto: {
-  prototype: SubtleCrypto;
-  new (): SubtleCrypto;
+/** @category Crypto */
+declare var Crypto: {
+  readonly prototype: Crypto;
+  new (): never;
 };

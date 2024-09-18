@@ -1,24 +1,32 @@
-# Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
+# Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
 [package]
 name = "deno_ffi"
-version = "0.18.0"
-authors = ["the Deno authors"]
-edition = "2021"
-license = "MIT"
+version = "0.155.0"
+authors.workspace = true
+edition.workspace = true
+license.workspace = true
 readme = "README.md"
-repository = "https://github.com/denoland/deno"
+repository.workspace = true
 description = "Dynamic library ffi for deno"
 
 [lib]
 path = "lib.rs"
 
 [dependencies]
-deno_core = { version = "0.113.0", path = "../../core" }
-dlopen = "0.1.8"
-libffi = "2.0.0"
-serde = { version = "1.0.129", features = ["derive"] }
-tokio = { version = "1.10.1", features = ["full"] }
+deno_core.workspace = true
+deno_permissions.workspace = true
+dlopen2.workspace = true
+dynasmrt = "1.2.3"
+libffi = "=3.2.0"
+libffi-sys = "=2.3.0"
+log.workspace = true
+serde.workspace = true
+serde-value = "0.7"
+serde_json = "1.0"
 
 [target.'cfg(windows)'.dependencies]
-winapi = { version = "0.3.9", features = ["errhandlingapi", "minwindef", "ntdef", "winbase", "winnt"] }
+winapi = { workspace = true, features = ["errhandlingapi", "minwindef", "ntdef", "winbase", "winnt"] }
+
+[lints.rust]
+unexpected_cfgs = { level = "warn", check-cfg = ['cfg(target_aarch, values("x86_64", "aarch64"))'] }

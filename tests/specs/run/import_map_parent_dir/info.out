@@ -1,0 +1,7 @@
+local: [WILDLINE]main.ts
+type: TypeScript
+dependencies: 1 unique
+size: [WILDLINE]
+
+file:///[WILDLINE]/sub/main.ts ([WILDLINE])
+└── file:///[WILDLINE]/shared/models.ts ([WILDLINE])

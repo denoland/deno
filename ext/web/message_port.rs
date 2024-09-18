@@ -1,25 +1,34 @@
+// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
+
 use std::borrow::Cow;
 use std::cell::RefCell;
 use std::rc::Rc;
 
 use deno_core::error::type_error;
 use deno_core::error::AnyError;
-use deno_core::ZeroCopyBuf;
-use deno_core::{CancelFuture, Resource};
-use deno_core::{CancelHandle, OpState};
-use deno_core::{RcRef, ResourceId};
+use deno_core::op2;
+
+use deno_core::CancelFuture;
+use deno_core::CancelHandle;
+use deno_core::DetachedBuffer;
+use deno_core::OpState;
+use deno_core::RcRef;
+use deno_core::Resource;
+use deno_core::ResourceId;
+use futures::future::poll_fn;
 use serde::Deserialize;
 use serde::Serialize;
+use tokio::sync::mpsc::error::TryRecvError;
 use tokio::sync::mpsc::unbounded_channel;
 use tokio::sync::mpsc::UnboundedReceiver;
 use tokio::sync::mpsc::UnboundedSender;
 
-enum Transferable {
+pub enum Transferable {
   MessagePort(MessagePort),
   ArrayBuffer(u32),
 }
 
-type MessagePortMessage = (Vec<u8>, Vec<Transferable>);
+type MessagePortMessage = (DetachedBuffer, Vec<Transferable>);
 
 pub struct MessagePort {
   rx: RefCell<UnboundedReceiver<MessagePortMessage>>,
@@ -38,7 +47,7 @@ impl MessagePort {
     // Swallow the failed to send error. It means the channel was disentangled,
     // but not cleaned up.
     if let Some(tx) = &*self.tx.borrow() {
-      tx.send((data.data.to_vec(), transferables)).ok();
+      tx.send((data.data, transferables)).ok();
     }
 
     Ok(())
@@ -48,16 +57,19 @@ impl MessagePort {
     &self,
     state: Rc<RefCell<OpState>>,
   ) -> Result<Option<JsMessageData>, AnyError> {
-    #![allow(clippy::await_holding_refcell_ref)] // TODO(ry) remove!
-    let mut rx = self
-      .rx
-      .try_borrow_mut()
-      .map_err(|_| type_error("Port receiver is already borrowed"))?;
-    if let Some((data, transferables)) = rx.recv().await {
+    let rx = &self.rx;
+
+    let maybe_data = poll_fn(|cx| {
+      let mut rx = rx.borrow_mut();
+      rx.poll_recv(cx)
+    })
+    .await;
+
+    if let Some((data, transferables)) = maybe_data {
       let js_transferables =
         serialize_transferables(&mut state.borrow_mut(), transferables);
       return Ok(Some(JsMessageData {
-        data: ZeroCopyBuf::from(data),
+        data,
         transferables: js_transferables,
       }));
     }
@@ -104,11 +116,11 @@ impl Resource for MessagePortResource {
   }
 }
 
+#[op2]
+#[serde]
 pub fn op_message_port_create_entangled(
   state: &mut OpState,
-  _: (),
-  _: (),
-) -> Result<(ResourceId, ResourceId), AnyError> {
+) -> (ResourceId, ResourceId) {
   let (port1, port2) = create_entangled_message_port();
 
   let port1_id = state.resource_table.add(MessagePortResource {
@@ -121,7 +133,7 @@ pub fn op_message_port_create_entangled(
     cancel: CancelHandle::new(),
   });
 
-  Ok((port1_id, port2_id))
+  (port1_id, port2_id)
 }
 
 #[derive(Deserialize, Serialize)]
@@ -132,7 +144,7 @@ pub enum JsTransferable {
   ArrayBuffer(u32),
 }
 
-fn deserialize_js_transferables(
+pub fn deserialize_js_transferables(
   state: &mut OpState,
   js_transferables: Vec<JsTransferable>,
 ) -> Result<Vec<Transferable>, AnyError> {
@@ -157,7 +169,7 @@ fn deserialize_js_transferables(
   Ok(transferables)
 }
 
-fn serialize_transferables(
+pub fn serialize_transferables(
   state: &mut OpState,
   transferables: Vec<Transferable>,
 ) -> Vec<JsTransferable> {
@@ -181,14 +193,15 @@ fn serialize_transferables(
 
 #[derive(Deserialize, Serialize)]
 pub struct JsMessageData {
-  data: ZeroCopyBuf,
-  transferables: Vec<JsTransferable>,
+  pub data: DetachedBuffer,
+  pub transferables: Vec<JsTransferable>,
 }
 
+#[op2]
 pub fn op_message_port_post_message(
   state: &mut OpState,
-  rid: ResourceId,
-  data: JsMessageData,
+  #[smi] rid: ResourceId,
+  #[serde] data: JsMessageData,
 ) -> Result<(), AnyError> {
   for js_transferable in &data.transferables {
     if let JsTransferable::MessagePort(id) = js_transferable {
@@ -199,14 +212,14 @@ pub fn op_message_port_post_message(
   }
 
   let resource = state.resource_table.get::<MessagePortResource>(rid)?;
-
   resource.port.send(state, data)
 }
 
+#[op2(async)]
+#[serde]
 pub async fn op_message_port_recv_message(
   state: Rc<RefCell<OpState>>,
-  rid: ResourceId,
-  _: (),
+  #[smi] rid: ResourceId,
 ) -> Result<Option<JsMessageData>, AnyError> {
   let resource = {
     let state = state.borrow();
@@ -217,4 +230,24 @@ pub async fn op_message_port_recv_message(
   };
   let cancel = RcRef::map(resource.clone(), |r| &r.cancel);
   resource.port.recv(state).or_cancel(cancel).await?
+}
+
+#[op2]
+#[serde]
+pub fn op_message_port_recv_message_sync(
+  state: &mut OpState, // Rc<RefCell<OpState>>,
+  #[smi] rid: ResourceId,
+) -> Result<Option<JsMessageData>, AnyError> {
+  let resource = state.resource_table.get::<MessagePortResource>(rid)?;
+  resource.cancel.cancel();
+  let mut rx = resource.port.rx.borrow_mut();
+
+  match rx.try_recv() {
+    Ok((d, t)) => Ok(Some(JsMessageData {
+      data: d,
+      transferables: serialize_transferables(state, t),
+    })),
+    Err(TryRecvError::Empty) => Ok(None),
+    Err(TryRecvError::Disconnected) => Ok(None),
+  }
 }

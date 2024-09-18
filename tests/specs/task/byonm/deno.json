@@ -1,0 +1,7 @@
+{
+  "tasks": {
+    "deno-say": "cowsay 'do make say'",
+    "deno-think": "cowthink think"
+  },
+  "unstable": ["byonm"]
+}

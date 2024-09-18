@@ -1,82 +1,77 @@
-// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
-"use strict";
-((window) => {
-  const { stdin } = window.__bootstrap.files;
-  const { ArrayPrototypePush, StringPrototypeCharCodeAt, Uint8Array } =
-    window.__bootstrap.primordials;
-  const { isatty } = window.__bootstrap.tty;
-  const LF = StringPrototypeCharCodeAt("\n", 0);
-  const CR = StringPrototypeCharCodeAt("\r", 0);
-  const core = window.Deno.core;
+// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
+import { core, primordials } from "ext:core/mod.js";
+import { op_read_line_prompt } from "ext:core/ops";
+const {
+  ArrayPrototypePush,
+  StringPrototypeCharCodeAt,
+  Uint8Array,
+} = primordials;
 
-  function alert(message = "Alert") {
-    if (!isatty(stdin.rid)) {
-      return;
-    }
+import { stdin } from "ext:deno_io/12_io.js";
 
-    core.print(`${message} [Enter] `, false);
+const LF = StringPrototypeCharCodeAt("\n", 0);
+const CR = StringPrototypeCharCodeAt("\r", 0);
 
-    readLineFromStdinSync();
+function alert(message = "Alert") {
+  if (!stdin.isTerminal()) {
+    return;
   }
 
-  function confirm(message = "Confirm") {
-    if (!isatty(stdin.rid)) {
-      return false;
-    }
+  core.print(`${message} [Enter] `, false);
 
-    core.print(`${message} [y/N] `, false);
+  readLineFromStdinSync();
+}
 
-    const answer = readLineFromStdinSync();
-
-    return answer === "Y" || answer === "y";
+function confirm(message = "Confirm") {
+  if (!stdin.isTerminal()) {
+    return false;
   }
 
-  function prompt(message = "Prompt", defaultValue) {
-    defaultValue ??= null;
+  core.print(`${message} [y/N] `, false);
 
-    if (!isatty(stdin.rid)) {
-      return null;
-    }
+  const answer = readLineFromStdinSync();
 
-    core.print(`${message} `, false);
+  return answer === "Y" || answer === "y";
+}
 
-    if (defaultValue) {
-      core.print(`[${defaultValue}] `, false);
-    }
+function prompt(message = "Prompt", defaultValue) {
+  defaultValue ??= "";
 
-    return readLineFromStdinSync() || defaultValue;
+  if (!stdin.isTerminal()) {
+    return null;
   }
 
-  function readLineFromStdinSync() {
-    const c = new Uint8Array(1);
-    const buf = [];
+  return op_read_line_prompt(
+    `${message} `,
+    `${defaultValue}`,
+  );
+}
 
-    while (true) {
+function readLineFromStdinSync() {
+  const c = new Uint8Array(1);
+  const buf = [];
+
+  while (true) {
+    const n = stdin.readSync(c);
+    if (n === null || n === 0) {
+      break;
+    }
+    if (c[0] === CR) {
       const n = stdin.readSync(c);
-      if (n === null || n === 0) {
-        break;
-      }
-      if (c[0] === CR) {
-        const n = stdin.readSync(c);
-        if (c[0] === LF) {
-          break;
-        }
-        ArrayPrototypePush(buf, CR);
-        if (n === null || n === 0) {
-          break;
-        }
-      }
       if (c[0] === LF) {
         break;
       }
-      ArrayPrototypePush(buf, c[0]);
+      ArrayPrototypePush(buf, CR);
+      if (n === null || n === 0) {
+        break;
+      }
     }
-    return core.decode(new Uint8Array(buf));
+    if (c[0] === LF) {
+      break;
+    }
+    ArrayPrototypePush(buf, c[0]);
   }
+  return core.decode(new Uint8Array(buf));
+}
 
-  window.__bootstrap.prompt = {
-    alert,
-    confirm,
-    prompt,
-  };
-})(this);
+export { alert, confirm, prompt };

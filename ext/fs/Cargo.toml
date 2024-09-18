@@ -1,0 +1,37 @@
+# Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
+
+[package]
+name = "deno_fs"
+version = "0.78.0"
+authors.workspace = true
+edition.workspace = true
+license.workspace = true
+readme = "README.md"
+repository.workspace = true
+description = "Ops for interacting with the file system"
+
+[lib]
+path = "lib.rs"
+
+[features]
+sync_fs = []
+
+[dependencies]
+async-trait.workspace = true
+base32.workspace = true
+deno_core.workspace = true
+deno_io.workspace = true
+deno_permissions.workspace = true
+filetime.workspace = true
+libc.workspace = true
+rand.workspace = true
+rayon = "1.8.0"
+serde.workspace = true
+
+[target.'cfg(unix)'.dependencies]
+nix.workspace = true
+
+[target.'cfg(windows)'.dependencies]
+winapi = { workspace = true, features = ["winbase"] }
+windows-sys.workspace = true
+junction.workspace = true

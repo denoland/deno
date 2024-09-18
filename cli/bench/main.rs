@@ -1,9 +1,11 @@
-// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
+
+#![allow(clippy::print_stdout)]
+#![allow(clippy::print_stderr)]
 
 use deno_core::error::AnyError;
 use deno_core::serde_json;
 use deno_core::serde_json::Value;
-use serde::Serialize;
 use std::collections::HashMap;
 use std::convert::From;
 use std::env;
@@ -13,16 +15,17 @@ use std::path::PathBuf;
 use std::process::Command;
 use std::process::Stdio;
 use std::time::SystemTime;
+use test_util::PathRef;
 
 mod http;
 mod lsp;
 
-fn read_json(filename: &str) -> Result<Value> {
+fn read_json(filename: &Path) -> Result<Value> {
   let f = fs::File::open(filename)?;
   Ok(serde_json::from_reader(f)?)
 }
 
-fn write_json(filename: &str, value: &Value) -> Result<()> {
+fn write_json(filename: &Path, value: &Value) -> Result<()> {
   let f = fs::File::create(filename)?;
   serde_json::to_writer(f, value)?;
   Ok(())
@@ -35,7 +38,7 @@ const EXEC_TIME_BENCHMARKS: &[(&str, &[&str], Option<i32>)] = &[
   // invalidating that cache.
   (
     "cold_hello",
-    &["run", "--reload", "cli/tests/testdata/002_hello.ts"],
+    &["run", "--reload", "tests/testdata/run/002_hello.ts"],
     None,
   ),
   (
@@ -43,19 +46,19 @@ const EXEC_TIME_BENCHMARKS: &[(&str, &[&str], Option<i32>)] = &[
     &[
       "run",
       "--reload",
-      "cli/tests/testdata/003_relative_import.ts",
+      "tests/testdata/run/003_relative_import.ts",
     ],
     None,
   ),
-  ("hello", &["run", "cli/tests/testdata/002_hello.ts"], None),
+  ("hello", &["run", "tests/testdata/run/002_hello.ts"], None),
   (
     "relative_import",
-    &["run", "cli/tests/testdata/003_relative_import.ts"],
+    &["run", "tests/testdata/run/003_relative_import.ts"],
     None,
   ),
   (
     "error_001",
-    &["run", "cli/tests/testdata/error_001.ts"],
+    &["run", "tests/testdata/run/error_001.ts"],
     Some(1),
   ),
   (
@@ -64,7 +67,7 @@ const EXEC_TIME_BENCHMARKS: &[(&str, &[&str], Option<i32>)] = &[
       "run",
       "--reload",
       "--no-check",
-      "cli/tests/testdata/002_hello.ts",
+      "tests/testdata/run/002_hello.ts",
     ],
     None,
   ),
@@ -73,7 +76,7 @@ const EXEC_TIME_BENCHMARKS: &[(&str, &[&str], Option<i32>)] = &[
     &[
       "run",
       "--allow-read",
-      "cli/tests/testdata/workers/bench_startup.ts",
+      "tests/testdata/workers/bench_startup.ts",
     ],
     None,
   ),
@@ -82,7 +85,7 @@ const EXEC_TIME_BENCHMARKS: &[(&str, &[&str], Option<i32>)] = &[
     &[
       "run",
       "--allow-read",
-      "cli/tests/testdata/workers/bench_round_robin.ts",
+      "tests/testdata/workers/bench_round_robin.ts",
     ],
     None,
   ),
@@ -91,36 +94,39 @@ const EXEC_TIME_BENCHMARKS: &[(&str, &[&str], Option<i32>)] = &[
     &[
       "run",
       "--allow-read",
-      "cli/tests/testdata/workers/bench_large_message.ts",
+      "tests/testdata/workers/bench_large_message.ts",
     ],
     None,
   ),
   (
     "text_decoder",
-    &["run", "cli/tests/testdata/text_decoder_perf.js"],
+    &["run", "tests/testdata/benches/text_decoder_perf.js"],
     None,
   ),
   (
     "text_encoder",
-    &["run", "cli/tests/testdata/text_encoder_perf.js"],
+    &["run", "tests/testdata/benches/text_encoder_perf.js"],
     None,
   ),
   (
     "text_encoder_into",
-    &["run", "cli/tests/testdata/text_encoder_into_perf.js"],
+    &["run", "tests/testdata/benches/text_encoder_into_perf.js"],
     None,
   ),
   (
     "response_string",
-    &["run", "cli/tests/testdata/response_string_perf.js"],
+    &["run", "tests/testdata/benches/response_string_perf.js"],
     None,
   ),
   (
     "check",
     &[
-      "cache",
+      "check",
       "--reload",
-      "test_util/std/examples/chat/server_test.ts",
+      "--unstable",
+      "--config",
+      "tests/config/deno.json",
+      "tests/util/std/http/file_server_test.ts",
     ],
     None,
   ),
@@ -130,21 +136,10 @@ const EXEC_TIME_BENCHMARKS: &[(&str, &[&str], Option<i32>)] = &[
       "cache",
       "--reload",
       "--no-check",
-      "test_util/std/examples/chat/server_test.ts",
-    ],
-    None,
-  ),
-  (
-    "bundle",
-    &["bundle", "test_util/std/examples/chat/server_test.ts"],
-    None,
-  ),
-  (
-    "bundle_no_check",
-    &[
-      "bundle",
-      "--no-check",
-      "test_util/std/examples/chat/server_test.ts",
+      "--unstable",
+      "--config",
+      "tests/config/deno.json",
+      "tests/util/std/http/file_server_test.ts",
     ],
     None,
   ),
@@ -154,17 +149,17 @@ const RESULT_KEYS: &[&str] =
   &["mean", "stddev", "user", "system", "min", "max"];
 fn run_exec_time(
   deno_exe: &Path,
-  target_dir: &Path,
+  target_dir: &PathRef,
 ) -> Result<HashMap<String, HashMap<String, f64>>> {
-  let hyperfine_exe = test_util::prebuilt_tool_path("hyperfine");
+  let hyperfine_exe = test_util::prebuilt_tool_path("hyperfine").to_string();
 
   let benchmark_file = target_dir.join("hyperfine_results.json");
-  let benchmark_file = benchmark_file.to_str().unwrap();
+  let benchmark_file_str = benchmark_file.to_string();
 
   let mut command = [
-    hyperfine_exe.to_str().unwrap(),
+    hyperfine_exe.as_str(),
     "--export-json",
-    benchmark_file,
+    benchmark_file_str.as_str(),
     "--warmup",
     "3",
   ]
@@ -176,7 +171,7 @@ fn run_exec_time(
     let ret_code_test = if let Some(code) = return_code {
       // Bash test which asserts the return code value of the previous command
       // $? contains the return code of the previous command
-      format!("; test $? -eq {}", code)
+      format!("; test $? -eq {code}")
     } else {
       "".to_string()
     };
@@ -197,7 +192,7 @@ fn run_exec_time(
   );
 
   let mut results = HashMap::<String, HashMap<String, f64>>::new();
-  let hyperfine_results = read_json(benchmark_file)?;
+  let hyperfine_results = read_json(benchmark_file.as_path())?;
   for ((name, _, _), data) in EXEC_TIME_BENCHMARKS.iter().zip(
     hyperfine_results
       .as_object()
@@ -221,7 +216,7 @@ fn run_exec_time(
   Ok(results)
 }
 
-fn rlib_size(target_dir: &std::path::Path, prefix: &str) -> u64 {
+fn rlib_size(target_dir: &std::path::Path, prefix: &str) -> i64 {
   let mut size = 0;
   let mut seen = std::collections::HashSet::new();
   for entry in std::fs::read_dir(target_dir.join("deps")).unwrap() {
@@ -231,36 +226,39 @@ fn rlib_size(target_dir: &std::path::Path, prefix: &str) -> u64 {
     if name.starts_with(prefix) && name.ends_with(".rlib") {
       let start = name.split('-').next().unwrap().to_string();
       if seen.contains(&start) {
-        println!("skip {}", name);
+        println!("skip {name}");
       } else {
         seen.insert(start);
         size += entry.metadata().unwrap().len();
-        println!("check size {} {}", name, size);
+        println!("check size {name} {size}");
       }
     }
   }
   assert!(size > 0);
-  size
+  size as i64
 }
 
-const BINARY_TARGET_FILES: &[&str] =
-  &["CLI_SNAPSHOT.bin", "COMPILER_SNAPSHOT.bin"];
-fn get_binary_sizes(target_dir: &Path) -> Result<HashMap<String, u64>> {
-  let mut sizes = HashMap::<String, u64>::new();
+const BINARY_TARGET_FILES: &[&str] = &[
+  "CLI_SNAPSHOT.bin",
+  "RUNTIME_SNAPSHOT.bin",
+  "COMPILER_SNAPSHOT.bin",
+];
+fn get_binary_sizes(target_dir: &Path) -> Result<HashMap<String, i64>> {
+  let mut sizes = HashMap::<String, i64>::new();
   let mut mtimes = HashMap::<String, SystemTime>::new();
 
   sizes.insert(
     "deno".to_string(),
-    test_util::deno_exe_path().metadata()?.len(),
+    test_util::deno_exe_path().as_path().metadata()?.len() as i64,
   );
 
   // add up size for everything in target/release/deps/libswc*
   let swc_size = rlib_size(target_dir, "libswc");
-  println!("swc {} bytes", swc_size);
+  println!("swc {swc_size} bytes");
   sizes.insert("swc_rlib".to_string(), swc_size);
 
   let v8_size = rlib_size(target_dir, "libv8");
-  println!("v8 {} bytes", v8_size);
+  println!("v8 {v8_size} bytes");
   sizes.insert("rusty_v8_rlib".to_string(), v8_size);
 
   // Because cargo's OUT_DIR is not predictable, search the build tree for
@@ -287,109 +285,18 @@ fn get_binary_sizes(target_dir: &Path) -> Result<HashMap<String, u64>> {
     }
 
     mtimes.insert(filename.clone(), file_mtime);
-    sizes.insert(filename, meta.len());
+    sizes.insert(filename, meta.len() as i64);
   }
 
   Ok(sizes)
 }
 
-const BUNDLES: &[(&str, &str)] = &[
-  ("file_server", "./test_util/std/http/file_server.ts"),
-  ("gist", "./test_util/std/examples/gist.ts"),
-];
-fn bundle_benchmark(deno_exe: &Path) -> Result<HashMap<String, u64>> {
-  let mut sizes = HashMap::<String, u64>::new();
-
-  for (name, url) in BUNDLES {
-    let path = format!("{}.bundle.js", name);
-    test_util::run(
-      &[
-        deno_exe.to_str().unwrap(),
-        "bundle",
-        "--unstable",
-        url,
-        &path,
-      ],
-      None,
-      None,
-      None,
-      true,
-    );
-
-    let file = PathBuf::from(path);
-    assert!(file.is_file());
-    sizes.insert(name.to_string(), file.metadata()?.len());
-    let _ = fs::remove_file(file);
-  }
-
-  Ok(sizes)
-}
-
-fn run_http(target_dir: &Path, new_data: &mut BenchResult) -> Result<()> {
-  let stats = http::benchmark(target_dir)?;
-
-  new_data.req_per_sec = stats
-    .iter()
-    .map(|(name, result)| (name.clone(), result.requests))
-    .collect();
-
-  new_data.max_latency = stats
-    .iter()
-    .map(|(name, result)| (name.clone(), result.latency))
-    .collect();
-
-  Ok(())
-}
-
-fn run_strace_benchmarks(
-  deno_exe: &Path,
-  new_data: &mut BenchResult,
-) -> Result<()> {
-  use std::io::Read;
-
-  let mut thread_count = HashMap::<String, u64>::new();
-  let mut syscall_count = HashMap::<String, u64>::new();
-
-  for (name, args, expected_exit_code) in EXEC_TIME_BENCHMARKS {
-    let mut file = tempfile::NamedTempFile::new()?;
-
-    let exit_status = Command::new("strace")
-      .args(&[
-        "-c",
-        "-f",
-        "-o",
-        file.path().to_str().unwrap(),
-        deno_exe.to_str().unwrap(),
-      ])
-      .args(args.iter())
-      .stdout(Stdio::null())
-      .spawn()?
-      .wait()?;
-    let expected_exit_code = expected_exit_code.unwrap_or(0);
-    assert_eq!(exit_status.code(), Some(expected_exit_code));
-
-    let mut output = String::new();
-    file.as_file_mut().read_to_string(&mut output)?;
-
-    let strace_result = test_util::parse_strace_output(&output);
-    let clone = strace_result.get("clone").map(|d| d.calls).unwrap_or(0) + 1;
-    let total = strace_result.get("total").unwrap().calls;
-    thread_count.insert(name.to_string(), clone);
-    syscall_count.insert(name.to_string(), total);
-  }
-
-  new_data.thread_count = thread_count;
-  new_data.syscall_count = syscall_count;
-
-  Ok(())
-}
-
-fn run_max_mem_benchmark(deno_exe: &Path) -> Result<HashMap<String, u64>> {
-  let mut results = HashMap::<String, u64>::new();
+fn run_max_mem_benchmark(deno_exe: &Path) -> Result<HashMap<String, i64>> {
+  let mut results = HashMap::<String, i64>::new();
 
   for (name, args, return_code) in EXEC_TIME_BENCHMARKS {
     let proc = Command::new("time")
-      .args(&["-v", deno_exe.to_str().unwrap()])
+      .args(["-v", deno_exe.to_str().unwrap()])
       .args(args.iter())
       .stdout(Stdio::null())
       .stderr(Stdio::piped())
@@ -401,7 +308,10 @@ fn run_max_mem_benchmark(deno_exe: &Path) -> Result<HashMap<String, u64>> {
     }
     let out = String::from_utf8(proc_result.stderr)?;
 
-    results.insert(name.to_string(), test_util::parse_max_mem(&out).unwrap());
+    results.insert(
+      name.to_string(),
+      test_util::parse_max_mem(&out).unwrap() as i64,
+    );
   }
 
   Ok(results)
@@ -417,12 +327,13 @@ fn cargo_deps() -> usize {
       count += 1
     }
   }
-  println!("cargo_deps {}", count);
+  println!("cargo_deps {count}");
   assert!(count > 10); // Sanity check.
   count
 }
 
-#[derive(Default, Serialize)]
+// TODO(@littledivy): Remove this, denoland/benchmark_data is deprecated.
+#[derive(Default, serde::Serialize)]
 struct BenchResult {
   created_at: String,
   sha1: String,
@@ -431,35 +342,54 @@ struct BenchResult {
   // When this is changed, the historical data in gh-pages branch needs to be
   // changed too.
   benchmark: HashMap<String, HashMap<String, f64>>,
-  binary_size: HashMap<String, u64>,
-  bundle_size: HashMap<String, u64>,
+  binary_size: HashMap<String, i64>,
+  bundle_size: HashMap<String, i64>,
   cargo_deps: usize,
   max_latency: HashMap<String, f64>,
-  max_memory: HashMap<String, u64>,
-  lsp_exec_time: HashMap<String, u64>,
-  req_per_sec: HashMap<String, u64>,
-  syscall_count: HashMap<String, u64>,
-  thread_count: HashMap<String, u64>,
+  max_memory: HashMap<String, i64>,
+  lsp_exec_time: HashMap<String, i64>,
+  req_per_sec: HashMap<String, i64>,
+  syscall_count: HashMap<String, i64>,
+  thread_count: HashMap<String, i64>,
 }
 
-/*
- TODO(SyrupThinker)
- Switch to the #[bench] attribute once
- it is stabilized.
- Before that the #[test] tests won't be run because
- we replace the harness with our own runner here.
-*/
-fn main() -> Result<()> {
-  if !env::args().any(|s| s == "--bench") {
+#[tokio::main]
+async fn main() -> Result<()> {
+  let mut args = env::args();
+
+  let mut benchmarks = vec![
+    "exec_time",
+    "binary_size",
+    "cargo_deps",
+    "lsp",
+    "http",
+    "strace",
+    "mem_usage",
+  ];
+
+  let mut found_bench = false;
+  let filter = args.nth(1);
+  if let Some(filter) = filter {
+    if filter != "--bench" {
+      benchmarks.retain(|s| s == &filter);
+    } else {
+      found_bench = true;
+    }
+  }
+
+  if !found_bench && !args.any(|s| s == "--bench") {
     return Ok(());
   }
 
   println!("Starting Deno benchmark");
 
   let target_dir = test_util::target_dir();
-  let deno_exe = test_util::deno_exe_path();
-
-  env::set_current_dir(&test_util::root_path())?;
+  let deno_exe = if let Ok(p) = std::env::var("DENO_BENCH_EXE") {
+    PathBuf::from(p)
+  } else {
+    test_util::deno_exe_path().to_path_buf()
+  };
+  env::set_current_dir(test_util::root_path())?;
 
   let mut new_data = BenchResult {
     created_at: chrono::Utc::now()
@@ -474,34 +404,101 @@ fn main() -> Result<()> {
     .0
     .trim()
     .to_string(),
-    benchmark: run_exec_time(&deno_exe, &target_dir)?,
-    binary_size: get_binary_sizes(&target_dir)?,
-    bundle_size: bundle_benchmark(&deno_exe)?,
-    cargo_deps: cargo_deps(),
-    lsp_exec_time: lsp::benchmarks(&deno_exe)?,
     ..Default::default()
   };
 
-  if cfg!(not(target_os = "windows")) {
-    run_http(&target_dir, &mut new_data)?;
+  if benchmarks.contains(&"exec_time") {
+    let exec_times = run_exec_time(&deno_exe, &target_dir)?;
+    new_data.benchmark = exec_times;
   }
 
-  if cfg!(target_os = "linux") {
-    run_strace_benchmarks(&deno_exe, &mut new_data)?;
-    new_data.max_memory = run_max_mem_benchmark(&deno_exe)?;
+  if benchmarks.contains(&"binary_size") {
+    let binary_sizes = get_binary_sizes(target_dir.as_path())?;
+    new_data.binary_size = binary_sizes;
   }
 
-  println!("===== <BENCHMARK RESULTS>");
-  serde_json::to_writer_pretty(std::io::stdout(), &new_data)?;
-  println!("\n===== </BENCHMARK RESULTS>");
-
-  if let Some(filename) = target_dir.join("bench.json").to_str() {
-    write_json(filename, &serde_json::to_value(&new_data)?)?;
-  } else {
-    eprintln!("Cannot write bench.json, path is invalid");
+  if benchmarks.contains(&"cargo_deps") {
+    let cargo_deps = cargo_deps();
+    new_data.cargo_deps = cargo_deps;
   }
+
+  if benchmarks.contains(&"lsp") {
+    let lsp_exec_times = lsp::benchmarks(&deno_exe);
+    new_data.lsp_exec_time = lsp_exec_times;
+  }
+
+  if benchmarks.contains(&"http") && cfg!(not(target_os = "windows")) {
+    let stats = http::benchmark(target_dir.as_path())?;
+    let req_per_sec = stats
+      .iter()
+      .map(|(name, result)| (name.clone(), result.requests as i64))
+      .collect();
+    new_data.req_per_sec = req_per_sec;
+    let max_latency = stats
+      .iter()
+      .map(|(name, result)| (name.clone(), result.latency))
+      .collect();
+
+    new_data.max_latency = max_latency;
+  }
+
+  if cfg!(target_os = "linux") && benchmarks.contains(&"strace") {
+    use std::io::Read;
+
+    let mut thread_count = HashMap::<String, i64>::new();
+    let mut syscall_count = HashMap::<String, i64>::new();
+
+    for (name, args, expected_exit_code) in EXEC_TIME_BENCHMARKS {
+      let mut file = tempfile::NamedTempFile::new()?;
+
+      let exit_status = Command::new("strace")
+        .args([
+          "-c",
+          "-f",
+          "-o",
+          file.path().to_str().unwrap(),
+          deno_exe.to_str().unwrap(),
+        ])
+        .args(args.iter())
+        .stdout(Stdio::null())
+        .env("LC_NUMERIC", "C")
+        .spawn()?
+        .wait()?;
+      let expected_exit_code = expected_exit_code.unwrap_or(0);
+      assert_eq!(exit_status.code(), Some(expected_exit_code));
+
+      let mut output = String::new();
+      file.as_file_mut().read_to_string(&mut output)?;
+
+      let strace_result = test_util::parse_strace_output(&output);
+      let clone =
+        strace_result
+          .get("clone")
+          .map(|d| d.calls)
+          .unwrap_or_else(|| {
+            strace_result.get("clone3").map(|d| d.calls).unwrap_or(0)
+          })
+          + 1;
+      let total = strace_result.get("total").unwrap().calls;
+      thread_count.insert(name.to_string(), clone as i64);
+      syscall_count.insert(name.to_string(), total as i64);
+    }
+
+    new_data.thread_count = thread_count;
+    new_data.syscall_count = syscall_count;
+  }
+
+  if benchmarks.contains(&"mem_usage") {
+    let max_memory = run_max_mem_benchmark(&deno_exe)?;
+    new_data.max_memory = max_memory;
+  }
+
+  write_json(
+    target_dir.join("bench.json").as_path(),
+    &serde_json::to_value(&new_data)?,
+  )?;
 
   Ok(())
 }
 
-pub(crate) type Result<T> = std::result::Result<T, AnyError>;
+pub type Result<T> = std::result::Result<T, AnyError>;

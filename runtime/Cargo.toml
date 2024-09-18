@@ -1,100 +1,140 @@
-# Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
+# Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
 [package]
 name = "deno_runtime"
-version = "0.39.0"
-authors = ["the Deno authors"]
-edition = "2021"
-license = "MIT"
-repository = "https://github.com/denoland/deno"
+version = "0.177.0"
+authors.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
 description = "Provides the deno runtime library"
 
 [features]
 # "fake" feature that allows to generate docs on docs.rs
 docsrs = []
+# A feature that allows excluding `./js/99_main.js` from the exported extension.
+exclude_runtime_main_js = []
+# A feature that disables embedding of the JavaScript source files in the binary.
+# With this feature enabled, the sources must be consumed during build time,
+# by creating a startup snapshot.
+include_js_files_for_snapshotting = [
+  "deno_core/include_js_files_for_snapshotting",
+]
+# A dev feature to disable creations and loading of snapshots in favor of
+# loading JS sources at runtime.
+hmr = ["include_js_files_for_snapshotting"]
+# Signal that only snapshotted JS sources should be used. This will
+# conditionally exclude the runtime source transpilation logic, and add an
+# assertion that a snapshot is provided.
+only_snapshotted_js_sources = ["include_js_files_for_snapshotting"]
+
+[lints.rust]
+unexpected_cfgs = { level = "warn", check-cfg = ['cfg(tokio_unstable)'] }
 
 [lib]
 name = "deno_runtime"
 path = "lib.rs"
 
 [[example]]
-name = "hello_runtime"
-path = "examples/hello_runtime.rs"
+name = "extension"
+path = "examples/extension/main.rs"
 
 [build-dependencies]
-deno_broadcast_channel = { version = "0.25.0", path = "../ext/broadcast_channel" }
-deno_console = { version = "0.31.0", path = "../ext/console" }
-deno_core = { version = "0.113.0", path = "../core" }
-deno_crypto = { version = "0.45.0", path = "../ext/crypto" }
-deno_fetch = { version = "0.54.0", path = "../ext/fetch" }
-deno_ffi = { version = "0.18.0", path = "../ext/ffi" }
-deno_http = { version = "0.23.0", path = "../ext/http" }
-deno_net = { version = "0.23.0", path = "../ext/net" }
-deno_timers = { version = "0.29.0", path = "../ext/timers" }
-deno_tls = { version = "0.18.0", path = "../ext/tls" }
-deno_url = { version = "0.31.0", path = "../ext/url" }
-deno_web = { version = "0.62.0", path = "../ext/web" }
-deno_webgpu = { version = "0.32.0", path = "../ext/webgpu" }
-deno_webidl = { version = "0.31.0", path = "../ext/webidl" }
-deno_websocket = { version = "0.36.0", path = "../ext/websocket" }
-deno_webstorage = { version = "0.26.0", path = "../ext/webstorage" }
-
-lzzzz = '=0.8.0'
+deno_ast.workspace = true
+deno_broadcast_channel.workspace = true
+deno_cache.workspace = true
+deno_canvas.workspace = true
+deno_console.workspace = true
+deno_core.workspace = true
+deno_cron.workspace = true
+deno_crypto.workspace = true
+deno_fetch.workspace = true
+deno_ffi.workspace = true
+deno_fs = { workspace = true, features = ["sync_fs"] }
+deno_http.workspace = true
+deno_io.workspace = true
+deno_net.workspace = true
+deno_node.workspace = true
+deno_kv.workspace = true
+deno_tls.workspace = true
+deno_url.workspace = true
+deno_web.workspace = true
+deno_webgpu.workspace = true
+deno_webidl.workspace = true
+deno_websocket.workspace = true
+deno_webstorage.workspace = true
+deno_napi.workspace = true
+flate2 = { workspace = true, features = ["default"] }
+serde.workspace = true
 
 [target.'cfg(windows)'.build-dependencies]
-winres = "0.1.11"
-winapi = "0.3.9"
+winapi.workspace = true
 
 [dependencies]
-deno_broadcast_channel = { version = "0.25.0", path = "../ext/broadcast_channel" }
-deno_console = { version = "0.31.0", path = "../ext/console" }
-deno_core = { version = "0.113.0", path = "../core" }
-deno_crypto = { version = "0.45.0", path = "../ext/crypto" }
-deno_fetch = { version = "0.54.0", path = "../ext/fetch" }
-deno_ffi = { version = "0.18.0", path = "../ext/ffi" }
-deno_http = { version = "0.23.0", path = "../ext/http" }
-deno_net = { version = "0.23.0", path = "../ext/net" }
-deno_timers = { version = "0.29.0", path = "../ext/timers" }
-deno_tls = { version = "0.18.0", path = "../ext/tls" }
-deno_url = { version = "0.31.0", path = "../ext/url" }
-deno_web = { version = "0.62.0", path = "../ext/web" }
-deno_webgpu = { version = "0.32.0", path = "../ext/webgpu" }
-deno_webidl = { version = "0.31.0", path = "../ext/webidl" }
-deno_websocket = { version = "0.36.0", path = "../ext/websocket" }
-deno_webstorage = { version = "0.26.0", path = "../ext/webstorage" }
+deno_ast.workspace = true
+deno_broadcast_channel.workspace = true
+deno_cache.workspace = true
+deno_canvas.workspace = true
+deno_console.workspace = true
+deno_core.workspace = true
+deno_cron.workspace = true
+deno_crypto.workspace = true
+deno_fetch.workspace = true
+deno_ffi.workspace = true
+deno_fs = { workspace = true, features = ["sync_fs"] }
+deno_http.workspace = true
+deno_io.workspace = true
+deno_kv.workspace = true
+deno_napi.workspace = true
+deno_net.workspace = true
+deno_node.workspace = true
+deno_permissions.workspace = true
+deno_terminal.workspace = true
+deno_tls.workspace = true
+deno_url.workspace = true
+deno_web.workspace = true
+deno_webgpu.workspace = true
+deno_webidl.workspace = true
+deno_websocket.workspace = true
+deno_webstorage.workspace = true
+node_resolver = { workspace = true, features = ["sync"] }
 
-atty = "0.2.14"
-dlopen = "0.1.8"
-encoding_rs = "0.8.29"
-filetime = "0.2.15"
-fs3 = "0.5.0"
-http = "0.2.4"
-hyper = { version = "0.14.12", features = ["server", "stream", "http1", "http2", "runtime"] }
-libc = "0.2.106"
-log = "0.4.14"
-lzzzz = '=0.8.0'
-netif = "0.1.0"
-notify = "=5.0.0-pre.12"
-once_cell = "=1.9.0"
-regex = "1.5.4"
-ring = "0.16.20"
-serde = { version = "1.0.129", features = ["derive"] }
+dlopen2.workspace = true
+encoding_rs.workspace = true
+fastwebsockets.workspace = true
+http.workspace = true
+http-body-util.workspace = true
+hyper.workspace = true
+hyper-util.workspace = true
+hyper_v014 = { workspace = true, features = ["server", "stream", "http1", "http2", "runtime"] }
+libc.workspace = true
+log.workspace = true
+netif = "0.1.6"
+notify.workspace = true
+once_cell.workspace = true
+percent-encoding.workspace = true
+regex.workspace = true
+rustyline = { workspace = true, features = ["custom-bindings"] }
+serde.workspace = true
+signal-hook = "0.3.17"
 signal-hook-registry = "1.4.0"
-sys-info = "0.9.0"
-termcolor = "1.1.2"
-tokio = { version = "1.10.1", features = ["full"] }
-uuid = { version = "0.8.2", features = ["v4"] }
+tokio.workspace = true
+tokio-metrics.workspace = true
+twox-hash.workspace = true
+uuid.workspace = true
+which.workspace = true
 
 [target.'cfg(windows)'.dependencies]
-fwdansi = "1.1.0"
-winapi = { version = "0.3.9", features = ["commapi", "knownfolders", "mswsock", "objbase", "shlobj", "tlhelp32", "winbase", "winerror", "winsock2"] }
+winapi = { workspace = true, features = ["commapi", "knownfolders", "mswsock", "objbase", "psapi", "shlobj", "tlhelp32", "winbase", "winerror", "winuser", "winsock2"] }
+ntapi = "0.4.0"
+windows-sys.workspace = true
 
 [target.'cfg(unix)'.dependencies]
-nix = "0.22.1"
+nix.workspace = true
 
 [dev-dependencies]
 # Used in benchmark
-test_util = { path = "../test_util" }
+test_util.workspace = true
 
 [package.metadata.docs.rs]
 features = ["docsrs"]

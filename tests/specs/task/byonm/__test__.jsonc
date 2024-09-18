@@ -1,0 +1,50 @@
+{
+  "tempDir": true,
+  "tests": {
+    "deno_json": {
+      "steps": [{
+        "commandName": "npm",
+        "args": "install",
+        "output": "[WILDCARD]"
+      }, {
+        "args": "task say",
+        "output": "package_json_say.out"
+      }, {
+        "args": "task think",
+        "output": "package_json_think.out"
+      }, {
+        "args": "task deno-say",
+        "output": "deno_json_say.out"
+      }, {
+        "args": "task deno-think",
+        "output": "deno_json_think.out"
+      }]
+    },
+    "no_deno_json": {
+      "steps": [{
+        "args": [
+          "eval",
+          "Deno.removeSync('deno.json')"
+        ],
+        "output": ""
+      }, {
+        "commandName": "npm",
+        "args": "install",
+        "output": "[WILDCARD]"
+      }, {
+        "args": "task say",
+        "output": "package_json_say.out"
+      }, {
+        // byonm flag
+        "args": "task --unstable-byonm say",
+        "output": "package_json_say.out"
+      }, {
+        "args": [
+          "eval",
+          "try { Deno.statSync('node_modules/.deno'); } catch (e) { if (e instanceof Deno.errors.NotFound) { console.log('good'); } else { throw new Error('bad'); } }"
+        ],
+        "output": "good\n"
+      }]
+    }
+  }
+}

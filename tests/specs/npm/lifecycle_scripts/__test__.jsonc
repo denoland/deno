@@ -1,0 +1,154 @@
+{
+  "tests": {
+    "node_gyp": {
+      "tempDir": true,
+      "steps": [
+        {
+          "args": "cache --allow-scripts=npm:@denotest/node-addon main.js",
+          "output": "[WILDCARD]gyp info ok \n"
+        },
+        {
+          "args": "run -A main.js",
+          "output": "world\n"
+        }
+      ]
+    },
+    "run_without_scripts": {
+      "tempDir": true,
+      "steps": [
+        {
+          "args": "run -A main.js",
+          "output": "node_gyp_not_run.out",
+          "exitCode": 1
+        }
+      ]
+    },
+    "implicit_node_gyp": {
+      "tempDir": true,
+      "steps": [
+        {
+          "envs": {
+            // I don't think this will work on windows
+            "PATH": ""
+          },
+          "args": "cache --allow-scripts implicit_node_gyp.js",
+          "output": "node_gyp_not_found.out",
+          "exitCode": 1
+        }
+      ]
+    },
+    "lifecycle_scripts": {
+      "tempDir": true,
+      "steps": [
+        {
+          // without running scripts (should warn)
+          "args": "cache all_lifecycles.js",
+          "output": "all_lifecycles_not_run.out"
+        },
+        {
+          // now run scripts
+          "args": "cache --allow-scripts all_lifecycles.js",
+          // this test package covers running preinstall, install, and postinstall scripts
+          // it also exercises running bin packages (esbuild in this case), using `node` in a script
+          // (with and without node-only CLI flags), and using `npx` in a script
+          "output": "all_lifecycles.out"
+        }
+      ]
+    },
+    "only_warns_first": {
+      "tempDir": true,
+      "steps": [
+        {
+          // without running scripts (should warn)
+          "args": "run all_lifecycles.js",
+          "output": "only_warns_first1.out",
+          "exitCode": 1
+        },
+        {
+          // without running scripts (does not warn)
+          "args": "run all_lifecycles.js",
+          "output": "only_warns_first2.out",
+          "exitCode": 1
+        }
+      ]
+    },
+    "future_install_lifecycle_scripts": {
+      "tempDir": true,
+      "steps": [
+        {
+          "args": [
+            "eval",
+            "Deno.removeSync('./deno.json')"
+          ],
+          "output": "[WILDCARD]"
+        },
+        {
+          "args": [
+            "eval",
+            "Deno.writeTextFileSync('package.json', '{\"dependencies\":{ \"@denotest/node-lifecycle-scripts\": \"*\" } }')"
+          ],
+          "output": ""
+        },
+        {
+          "args": "install",
+          "output": "future_install_all_lifecycles_not_run.out"
+        }
+      ]
+    },
+    "lifecycle_scripts_conflicting_bin": {
+      "tempDir": true,
+      "steps": [
+        {
+          // we import @denotest/says-hello-on-install, which executes `say-hello` from `@denotest/say-hello` in its
+          // install script. we also import `@denotest/better-say-hello`, which provides a
+          // bin called `say-hello` as well. `@denotest/says-hello-on-install` wins (gets put into
+          // node_modules/.bin/say-hello) because it's closer in the dependency tree, but when
+          // we run the install script, we should use the correct binary (relative to the package)
+          "args": "cache --allow-scripts conflicting_bin.js",
+          "output": "conflicting_bin.out"
+        }
+      ]
+    },
+    "fsevents_default_install_script": {
+      "tempDir": true,
+      "steps": [
+        {
+          "if": "mac",
+          "args": "cache fsevents.js",
+          "output": "fsevents.out"
+        },
+        {
+          "if": "mac",
+          "args": "cache --allow-scripts fsevents.js",
+          "output": ""
+        }
+      ]
+    },
+    "lifecycle_scripts_no_deno_json": {
+      "tempDir": true,
+      "steps": [
+        {
+          "args": ["eval", "Deno.removeSync('deno.json')"],
+          "output": ""
+        },
+        {
+          "args": "cache --allow-scripts --node-modules-dir=auto no_deno_json.js",
+          "output": "no_deno_json.out"
+        }
+      ]
+    },
+    "lifecycle_scripts_no_deno_json_conflicting_bin": {
+      "tempDir": true,
+      "steps": [
+        {
+          "args": ["eval", "Deno.removeSync('deno.json')"],
+          "output": ""
+        },
+        {
+          "args": "cache --allow-scripts --node-modules-dir=auto conflicting_bin.js",
+          "output": "conflicting_bin.out"
+        }
+      ]
+    }
+  }
+}

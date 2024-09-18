@@ -1,7 +1,8 @@
-// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
 use deno_core::anyhow::anyhow;
 use deno_core::error::AnyError;
+use deno_core::serde_json;
 use deno_core::serde_json::Value;
 use std::cell::RefCell;
 use tokio::sync::mpsc::channel;
@@ -55,17 +56,19 @@ pub struct RustylineSyncMessageSender {
 }
 
 impl RustylineSyncMessageSender {
-  pub fn post_message(
+  pub fn post_message<T: serde::Serialize>(
     &self,
     method: &str,
-    params: Option<Value>,
+    params: Option<T>,
   ) -> Result<Value, AnyError> {
     if let Err(err) =
       self
         .message_tx
         .blocking_send(RustylineSyncMessage::PostMessage {
           method: method.to_string(),
-          params,
+          params: params
+            .map(|params| serde_json::to_value(params))
+            .transpose()?,
         })
     {
       Err(anyhow!("{}", err))

@@ -1,0 +1,10 @@
+Check [WILDCARD]/bench/only.ts
+    CPU | [WILDCARD]
+Runtime | Deno [WILDCARD] ([WILDCARD])
+
+[WILDCARD]/bench/only.ts
+
+benchmark   time/iter (avg)        iter/s      (min … max)           p75      p99     p995
+----------- ----------------------------- --------------------- --------------------------
+only [WILDCARD] [WILDCARD] [WILDCARD] ([WILDCARD] … [WILDCARD]) [WILDCARD]
+error: Bench failed because the "only" option was used

@@ -1,0 +1,11 @@
+Target from self.onmessage: [object DedicatedWorkerGlobalScope]
+Target from message event listener: [object DedicatedWorkerGlobalScope]
+Arguments from self.onerror: [
+  "Uncaught Error: Some error message",
+  "[WILDCARD]/worker_event_handlers.js",
+  9,
+  9,
+  Error: Some error message
+    at [WILDCARD]
+]
+Is event canceled?: true

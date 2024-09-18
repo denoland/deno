@@ -1,50 +1,45 @@
-// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
 // NOTE to all: use **cached** prepared statements when interfacing with SQLite.
 
+use std::fmt;
+use std::path::PathBuf;
+
 use deno_core::error::AnyError;
-use deno_core::include_js_files;
-use deno_core::op_sync;
-use deno_core::Extension;
+use deno_core::op2;
 use deno_core::OpState;
 use rusqlite::params;
 use rusqlite::Connection;
 use rusqlite::OptionalExtension;
-use serde::Deserialize;
-use std::fmt;
-use std::path::PathBuf;
+
+pub use rusqlite;
 
 #[derive(Clone)]
 struct OriginStorageDir(PathBuf);
 
-const MAX_STORAGE_BYTES: u32 = 10 * 1024 * 1024;
+const MAX_STORAGE_BYTES: usize = 10 * 1024 * 1024;
 
-pub fn init(origin_storage_dir: Option<PathBuf>) -> Extension {
-  Extension::builder()
-    .js(include_js_files!(
-      prefix "deno:ext/webstorage",
-      "01_webstorage.js",
-    ))
-    .ops(vec![
-      ("op_webstorage_length", op_sync(op_webstorage_length)),
-      ("op_webstorage_key", op_sync(op_webstorage_key)),
-      ("op_webstorage_set", op_sync(op_webstorage_set)),
-      ("op_webstorage_get", op_sync(op_webstorage_get)),
-      ("op_webstorage_remove", op_sync(op_webstorage_remove)),
-      ("op_webstorage_clear", op_sync(op_webstorage_clear)),
-      (
-        "op_webstorage_iterate_keys",
-        op_sync(op_webstorage_iterate_keys),
-      ),
-    ])
-    .state(move |state| {
-      if let Some(origin_storage_dir) = &origin_storage_dir {
-        state.put(OriginStorageDir(origin_storage_dir.clone()));
-      }
-      Ok(())
-    })
-    .build()
-}
+deno_core::extension!(deno_webstorage,
+  deps = [ deno_webidl ],
+  ops = [
+    op_webstorage_length,
+    op_webstorage_key,
+    op_webstorage_set,
+    op_webstorage_get,
+    op_webstorage_remove,
+    op_webstorage_clear,
+    op_webstorage_iterate_keys,
+  ],
+  esm = [ "01_webstorage.js" ],
+  options = {
+    origin_storage_dir: Option<PathBuf>
+  },
+  state = |state, options| {
+    if let Some(origin_storage_dir) = options.origin_storage_dir {
+      state.put(OriginStorageDir(origin_storage_dir));
+    }
+  },
+);
 
 pub fn get_declaration() -> PathBuf {
   PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("lib.deno_webstorage.d.ts")
@@ -107,10 +102,10 @@ fn get_webstorage(
   Ok(conn)
 }
 
+#[op2(fast)]
 pub fn op_webstorage_length(
   state: &mut OpState,
   persistent: bool,
-  _: (),
 ) -> Result<u32, AnyError> {
   let conn = get_webstorage(state, persistent)?;
 
@@ -120,9 +115,11 @@ pub fn op_webstorage_length(
   Ok(length)
 }
 
+#[op2]
+#[string]
 pub fn op_webstorage_key(
   state: &mut OpState,
-  index: u32,
+  #[smi] index: u32,
   persistent: bool,
 ) -> Result<Option<String>, AnyError> {
   let conn = get_webstorage(state, persistent)?;
@@ -137,25 +134,9 @@ pub fn op_webstorage_key(
   Ok(key)
 }
 
-#[derive(Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct SetArgs {
-  key_name: String,
-  key_value: String,
-}
-
-pub fn op_webstorage_set(
-  state: &mut OpState,
-  args: SetArgs,
-  persistent: bool,
-) -> Result<(), AnyError> {
-  let conn = get_webstorage(state, persistent)?;
-
-  let mut stmt = conn
-    .prepare_cached("SELECT SUM(pgsize) FROM dbstat WHERE name = 'data'")?;
-  let size: u32 = stmt.query_row(params![], |row| row.get(0))?;
-
-  if size >= MAX_STORAGE_BYTES {
+#[inline]
+fn size_check(input: usize) -> Result<(), AnyError> {
+  if input >= MAX_STORAGE_BYTES {
     return Err(
       deno_web::DomExceptionQuotaExceededError::new(
         "Exceeded maximum storage size",
@@ -164,16 +145,38 @@ pub fn op_webstorage_set(
     );
   }
 
+  Ok(())
+}
+
+#[op2(fast)]
+pub fn op_webstorage_set(
+  state: &mut OpState,
+  #[string] key: &str,
+  #[string] value: &str,
+  persistent: bool,
+) -> Result<(), AnyError> {
+  let conn = get_webstorage(state, persistent)?;
+
+  size_check(key.len() + value.len())?;
+
+  let mut stmt = conn
+    .prepare_cached("SELECT SUM(pgsize) FROM dbstat WHERE name = 'data'")?;
+  let size: u32 = stmt.query_row(params![], |row| row.get(0))?;
+
+  size_check(size as usize)?;
+
   let mut stmt = conn
     .prepare_cached("INSERT OR REPLACE INTO data (key, value) VALUES (?, ?)")?;
-  stmt.execute(params![args.key_name, args.key_value])?;
+  stmt.execute(params![key, value])?;
 
   Ok(())
 }
 
+#[op2]
+#[string]
 pub fn op_webstorage_get(
   state: &mut OpState,
-  key_name: String,
+  #[string] key_name: String,
   persistent: bool,
 ) -> Result<Option<String>, AnyError> {
   let conn = get_webstorage(state, persistent)?;
@@ -186,9 +189,10 @@ pub fn op_webstorage_get(
   Ok(val)
 }
 
+#[op2(fast)]
 pub fn op_webstorage_remove(
   state: &mut OpState,
-  key_name: String,
+  #[string] key_name: &str,
   persistent: bool,
 ) -> Result<(), AnyError> {
   let conn = get_webstorage(state, persistent)?;
@@ -199,10 +203,10 @@ pub fn op_webstorage_remove(
   Ok(())
 }
 
+#[op2(fast)]
 pub fn op_webstorage_clear(
   state: &mut OpState,
   persistent: bool,
-  _: (),
 ) -> Result<(), AnyError> {
   let conn = get_webstorage(state, persistent)?;
 
@@ -212,10 +216,11 @@ pub fn op_webstorage_clear(
   Ok(())
 }
 
+#[op2]
+#[serde]
 pub fn op_webstorage_iterate_keys(
   state: &mut OpState,
   persistent: bool,
-  _: (),
 ) -> Result<Vec<String>, AnyError> {
   let conn = get_webstorage(state, persistent)?;
 

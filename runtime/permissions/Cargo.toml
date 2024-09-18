@@ -1,0 +1,28 @@
+# Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
+
+[package]
+name = "deno_permissions"
+version = "0.28.0"
+authors.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+description = "Provides the deno permissions implementation."
+
+[lib]
+name = "deno_permissions"
+path = "lib.rs"
+
+[dependencies]
+deno_core.workspace = true
+deno_terminal.workspace = true
+fqdn = "0.3.4"
+libc.workspace = true
+log.workspace = true
+once_cell.workspace = true
+percent-encoding = { version = "2.3.1", features = [] }
+serde.workspace = true
+which.workspace = true
+
+[target.'cfg(windows)'.dependencies]
+winapi = { workspace = true, features = ["commapi", "knownfolders", "mswsock", "objbase", "psapi", "shlobj", "tlhelp32", "winbase", "winerror", "winuser", "winsock2", "processenv", "wincon", "wincontypes"] }

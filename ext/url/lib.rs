@@ -1,177 +1,223 @@
-// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
 mod urlpattern;
 
-use deno_core::error::generic_error;
 use deno_core::error::type_error;
-use deno_core::error::uri_error;
 use deno_core::error::AnyError;
-use deno_core::include_js_files;
-use deno_core::op_sync;
+use deno_core::op2;
 use deno_core::url::form_urlencoded;
 use deno_core::url::quirks;
 use deno_core::url::Url;
-use deno_core::Extension;
-use deno_core::ZeroCopyBuf;
-use std::panic::catch_unwind;
+use deno_core::JsBuffer;
+use deno_core::OpState;
 use std::path::PathBuf;
 
 use crate::urlpattern::op_urlpattern_parse;
 use crate::urlpattern::op_urlpattern_process_match_input;
 
-pub fn init() -> Extension {
-  Extension::builder()
-    .js(include_js_files!(
-      prefix "deno:ext/url",
-      "00_url.js",
-      "01_urlpattern.js",
-    ))
-    .ops(vec![
-      ("op_url_parse", op_sync(op_url_parse)),
-      ("op_url_reparse", op_sync(op_url_reparse)),
-      (
-        "op_url_parse_search_params",
-        op_sync(op_url_parse_search_params),
-      ),
-      (
-        "op_url_stringify_search_params",
-        op_sync(op_url_stringify_search_params),
-      ),
-      ("op_urlpattern_parse", op_sync(op_urlpattern_parse)),
-      (
-        "op_urlpattern_process_match_input",
-        op_sync(op_urlpattern_process_match_input),
-      ),
-    ])
-    .build()
+deno_core::extension!(
+  deno_url,
+  deps = [deno_webidl],
+  ops = [
+    op_url_reparse,
+    op_url_parse,
+    op_url_get_serialization,
+    op_url_parse_with_base,
+    op_url_parse_search_params,
+    op_url_stringify_search_params,
+    op_urlpattern_parse,
+    op_urlpattern_process_match_input
+  ],
+  esm = ["00_url.js", "01_urlpattern.js"],
+);
+
+/// Parse `href` with a `base_href`. Fills the out `buf` with URL components.
+#[op2(fast)]
+#[smi]
+pub fn op_url_parse_with_base(
+  state: &mut OpState,
+  #[string] href: &str,
+  #[string] base_href: &str,
+  #[buffer] buf: &mut [u32],
+) -> u32 {
+  let base_url = match Url::parse(base_href) {
+    Ok(url) => url,
+    Err(_) => return ParseStatus::Err as u32,
+  };
+  parse_url(state, href, Some(&base_url), buf)
 }
 
-// UrlParts is a \n joined string of the following parts:
-// #[derive(Serialize)]
-// pub struct UrlParts {
-//   href: String,
-//   hash: String,
-//   host: String,
-//   hostname: String,
-//   origin: String,
-//   password: String,
-//   pathname: String,
-//   port: String,
-//   protocol: String,
-//   search: String,
-//   username: String,
-// }
-// TODO: implement cleaner & faster serialization
-type UrlParts = String;
+#[repr(u32)]
+pub enum ParseStatus {
+  Ok = 0,
+  OkSerialization = 1,
+  Err,
+}
 
-/// Parse `UrlParseArgs::href` with an optional `UrlParseArgs::base_href`, or an
-/// optional part to "set" after parsing. Return `UrlParts`.
+struct UrlSerialization(String);
+
+#[op2]
+#[string]
+pub fn op_url_get_serialization(state: &mut OpState) -> String {
+  state.take::<UrlSerialization>().0
+}
+
+/// Parse `href` without a `base_url`. Fills the out `buf` with URL components.
+#[op2(fast)]
+#[smi]
 pub fn op_url_parse(
-  _state: &mut deno_core::OpState,
-  href: String,
-  base_href: Option<String>,
-) -> Result<UrlParts, AnyError> {
-  let base_url = base_href
-    .as_ref()
-    .map(|b| Url::parse(b).map_err(|_| type_error("Invalid base URL")))
-    .transpose()?;
-  let url = Url::options()
-    .base_url(base_url.as_ref())
-    .parse(&href)
-    .map_err(|_| type_error("Invalid URL"))?;
-
-  url_result(url, href, base_href)
+  state: &mut OpState,
+  #[string] href: &str,
+  #[buffer] buf: &mut [u32],
+) -> u32 {
+  parse_url(state, href, None, buf)
 }
 
-#[derive(
-  serde_repr::Serialize_repr, serde_repr::Deserialize_repr, PartialEq, Debug,
-)]
+/// `op_url_parse` and `op_url_parse_with_base` share the same implementation.
+///
+/// This function is used to parse the URL and fill the `buf` with internal
+/// offset values of the URL components.
+///
+/// If the serialized URL is the same as the input URL, then `UrlSerialization` is
+/// not set and returns `ParseStatus::Ok`.
+///
+/// If the serialized URL is different from the input URL, then `UrlSerialization` is
+/// set and returns `ParseStatus::OkSerialization`. JS side should check status and
+/// use `op_url_get_serialization` to get the serialized URL.
+///
+/// If the URL is invalid, then `UrlSerialization` is not set and returns `ParseStatus::Err`.
+///
+/// ```js
+/// const buf = new Uint32Array(8);
+/// const status = op_url_parse("http://example.com", buf.buffer);
+/// let serializedUrl = "";
+/// if (status === ParseStatus.Ok) {
+///   serializedUrl = "http://example.com";
+/// } else if (status === ParseStatus.OkSerialization) {
+///   serializedUrl = op_url_get_serialization();
+/// }
+/// ```
+#[inline]
+fn parse_url(
+  state: &mut OpState,
+  href: &str,
+  base_href: Option<&Url>,
+  buf: &mut [u32],
+) -> u32 {
+  match Url::options().base_url(base_href).parse(href) {
+    Ok(url) => {
+      let inner_url = quirks::internal_components(&url);
+
+      buf[0] = inner_url.scheme_end;
+      buf[1] = inner_url.username_end;
+      buf[2] = inner_url.host_start;
+      buf[3] = inner_url.host_end;
+      buf[4] = inner_url.port.unwrap_or(0) as u32;
+      buf[5] = inner_url.path_start;
+      buf[6] = inner_url.query_start.unwrap_or(0);
+      buf[7] = inner_url.fragment_start.unwrap_or(0);
+      let serialization: String = url.into();
+      if serialization != href {
+        state.put(UrlSerialization(serialization));
+        ParseStatus::OkSerialization as u32
+      } else {
+        ParseStatus::Ok as u32
+      }
+    }
+    Err(_) => ParseStatus::Err as u32,
+  }
+}
+
+#[derive(Eq, PartialEq, Debug)]
 #[repr(u8)]
 pub enum UrlSetter {
-  Hash = 1,
-  Host = 2,
-  Hostname = 3,
-  Password = 4,
-  Pathname = 5,
-  Port = 6,
-  Protocol = 7,
-  Search = 8,
-  Username = 9,
+  Hash = 0,
+  Host = 1,
+  Hostname = 2,
+  Password = 3,
+  Pathname = 4,
+  Port = 5,
+  Protocol = 6,
+  Search = 7,
+  Username = 8,
 }
 
+const NO_PORT: u32 = 65536;
+
+#[op2(fast)]
+#[smi]
 pub fn op_url_reparse(
-  _state: &mut deno_core::OpState,
-  href: String,
-  setter_opts: (UrlSetter, String),
-) -> Result<UrlParts, AnyError> {
-  let mut url = Url::options()
-    .parse(&href)
-    .map_err(|_| type_error("Invalid URL"))?;
+  state: &mut OpState,
+  #[string] href: String,
+  #[smi] setter: u8,
+  #[string] setter_value: String,
+  #[buffer] buf: &mut [u32],
+) -> u32 {
+  let mut url = match Url::options().parse(&href) {
+    Ok(url) => url,
+    Err(_) => return ParseStatus::Err as u32,
+  };
 
-  let (setter, setter_value) = setter_opts;
-  let value = setter_value.as_ref();
-
-  match setter {
-    UrlSetter::Hash => quirks::set_hash(&mut url, value),
-    UrlSetter::Host => quirks::set_host(&mut url, value)
-      .map_err(|_| uri_error("Invalid host"))?,
-    UrlSetter::Hostname => quirks::set_hostname(&mut url, value)
-      .map_err(|_| uri_error("Invalid hostname"))?,
-    UrlSetter::Password => quirks::set_password(&mut url, value)
-      .map_err(|_| uri_error("Invalid password"))?,
-    UrlSetter::Pathname => quirks::set_pathname(&mut url, value),
-    UrlSetter::Port => quirks::set_port(&mut url, value)
-      .map_err(|_| uri_error("Invalid port"))?,
-    UrlSetter::Protocol => quirks::set_protocol(&mut url, value)
-      .map_err(|_| uri_error("Invalid protocol"))?,
-    UrlSetter::Search => quirks::set_search(&mut url, value),
-    UrlSetter::Username => quirks::set_username(&mut url, value)
-      .map_err(|_| uri_error("Invalid username"))?,
+  if setter > 8 {
+    return ParseStatus::Err as u32;
   }
+  // SAFETY: checked to be less than 9.
+  let setter = unsafe { std::mem::transmute::<u8, UrlSetter>(setter) };
+  let value = setter_value.as_ref();
+  let e = match setter {
+    UrlSetter::Hash => {
+      quirks::set_hash(&mut url, value);
+      Ok(())
+    }
+    UrlSetter::Host => quirks::set_host(&mut url, value),
 
-  url_result(url, href, None)
+    UrlSetter::Hostname => quirks::set_hostname(&mut url, value),
+
+    UrlSetter::Password => quirks::set_password(&mut url, value),
+
+    UrlSetter::Pathname => {
+      quirks::set_pathname(&mut url, value);
+      Ok(())
+    }
+    UrlSetter::Port => quirks::set_port(&mut url, value),
+
+    UrlSetter::Protocol => quirks::set_protocol(&mut url, value),
+    UrlSetter::Search => {
+      quirks::set_search(&mut url, value);
+      Ok(())
+    }
+    UrlSetter::Username => quirks::set_username(&mut url, value),
+  };
+
+  match e {
+    Ok(_) => {
+      let inner_url = quirks::internal_components(&url);
+
+      buf[0] = inner_url.scheme_end;
+      buf[1] = inner_url.username_end;
+      buf[2] = inner_url.host_start;
+      buf[3] = inner_url.host_end;
+      buf[4] = inner_url.port.map(|p| p as u32).unwrap_or(NO_PORT);
+      buf[5] = inner_url.path_start;
+      buf[6] = inner_url.query_start.unwrap_or(0);
+      buf[7] = inner_url.fragment_start.unwrap_or(0);
+      let serialization: String = url.into();
+      if serialization != href {
+        state.put(UrlSerialization(serialization));
+        ParseStatus::OkSerialization as u32
+      } else {
+        ParseStatus::Ok as u32
+      }
+    }
+    Err(_) => ParseStatus::Err as u32,
+  }
 }
 
-fn url_result(
-  url: Url,
-  href: String,
-  base_href: Option<String>,
-) -> Result<UrlParts, AnyError> {
-  // TODO(nayeemrmn): Panic that occurs in rust-url for the `non-spec:`
-  // url-constructor wpt tests: https://github.com/servo/rust-url/issues/670.
-  let username = catch_unwind(|| quirks::username(&url)).map_err(|_| {
-    generic_error(format!(
-      "Internal error while parsing \"{}\"{}, \
-       see https://github.com/servo/rust-url/issues/670",
-      href,
-      base_href
-        .map(|b| format!(" against \"{}\"", b))
-        .unwrap_or_default()
-    ))
-  })?;
-
-  Ok(
-    [
-      quirks::href(&url),
-      quirks::hash(&url),
-      quirks::host(&url),
-      quirks::hostname(&url),
-      &quirks::origin(&url),
-      quirks::password(&url),
-      quirks::pathname(&url),
-      quirks::port(&url),
-      quirks::protocol(&url),
-      quirks::search(&url),
-      username,
-    ]
-    .join("\n"),
-  )
-}
-
+#[op2]
+#[serde]
 pub fn op_url_parse_search_params(
-  _state: &mut deno_core::OpState,
-  args: Option<String>,
-  zero_copy: Option<ZeroCopyBuf>,
+  #[string] args: Option<String>,
+  #[buffer] zero_copy: Option<JsBuffer>,
 ) -> Result<Vec<(String, String)>, AnyError> {
   let params = match (args, zero_copy) {
     (None, Some(zero_copy)) => form_urlencoded::parse(&zero_copy)
@@ -187,15 +233,15 @@ pub fn op_url_parse_search_params(
   Ok(params)
 }
 
+#[op2]
+#[string]
 pub fn op_url_stringify_search_params(
-  _state: &mut deno_core::OpState,
-  args: Vec<(String, String)>,
-  _: (),
-) -> Result<String, AnyError> {
+  #[serde] args: Vec<(String, String)>,
+) -> String {
   let search = form_urlencoded::Serializer::new(String::new())
     .extend_pairs(args)
     .finish();
-  Ok(search)
+  search
 }
 
 pub fn get_declaration() -> PathBuf {

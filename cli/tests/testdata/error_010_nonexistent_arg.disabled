@@ -1,4 +1,0 @@
-args: not-a-valid-filename.ts
-output: tests/error_010_nonexistent_arg.out
-exit_code: 1
-check_stderr: true

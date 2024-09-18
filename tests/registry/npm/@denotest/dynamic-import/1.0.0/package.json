@@ -1,0 +1,5 @@
+{
+  "name": "@denotest/dynamic-import",
+  "type": "module",
+  "version": "1.0.0"
+}

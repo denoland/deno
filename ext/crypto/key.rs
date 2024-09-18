@@ -1,4 +1,4 @@
-// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
 use ring::agreement::Algorithm as RingAlgorithm;
 use ring::digest;
@@ -17,7 +17,7 @@ pub enum KeyType {
   Secret,
 }
 
-#[derive(Serialize, Deserialize, Copy, Clone, PartialEq)]
+#[derive(Serialize, Deserialize, Copy, Clone, Eq, PartialEq)]
 pub enum CryptoHash {
   #[serde(rename = "SHA-1")]
   Sha1,
@@ -98,7 +98,7 @@ impl hkdf::KeyType for HkdfOutput<usize> {
   }
 }
 
-#[derive(Serialize, Deserialize, Copy, Clone, Debug, PartialEq)]
+#[derive(Serialize, Deserialize, Copy, Clone, Debug, Eq, PartialEq)]
 #[serde(rename_all = "camelCase")]
 pub enum KeyUsage {
   Encrypt,

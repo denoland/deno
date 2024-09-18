@@ -1,12 +1,17 @@
-// Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
 // deno-lint-ignore-file no-explicit-any no-var
 
 /// <reference no-default-lib="true" />
 /// <reference lib="esnext" />
 
-/** This Web Storage API interface provides access to a particular domain's session or local storage. It allows, for example, the addition, modification, or deletion of stored data items. */
-interface Storage {
+/** This Web Storage API interface provides access to a particular domain's
+ * session or local storage. It allows, for example, the addition, modification,
+ * or deletion of stored data items.
+ *
+ * @category Storage
+ */
+declare interface Storage {
   /**
    * Returns the number of key/value pairs currently present in the list associated with the object.
    */
@@ -36,7 +41,8 @@ interface Storage {
   [name: string]: any;
 }
 
+/** @category Storage */
 declare var Storage: {
-  prototype: Storage;
-  new (): Storage;
+  readonly prototype: Storage;
+  new (): never;
 };

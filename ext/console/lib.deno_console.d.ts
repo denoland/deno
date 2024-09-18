@@ -1,10 +1,11 @@
-// Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
 // deno-lint-ignore-file no-explicit-any
 
 /// <reference no-default-lib="true" />
 /// <reference lib="esnext" />
 
+/** @category I/O */
 declare interface Console {
   assert(condition?: boolean, ...data: any[]): void;
   clear(): void;
@@ -25,4 +26,13 @@ declare interface Console {
   timeLog(label?: string, ...data: any[]): void;
   trace(...data: any[]): void;
   warn(...data: any[]): void;
+
+  /** This method is a noop, unless used in inspector */
+  timeStamp(label?: string): void;
+
+  /** This method is a noop, unless used in inspector */
+  profile(label?: string): void;
+
+  /** This method is a noop, unless used in inspector */
+  profileEnd(label?: string): void;
 }

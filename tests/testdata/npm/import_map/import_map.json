@@ -1,0 +1,6 @@
+{
+  "imports": {
+    "chalk": "npm:chalk@5",
+    "@denotest/": "npm:/@denotest/dual-cjs-esm/"
+  }
+}

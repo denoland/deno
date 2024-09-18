@@ -1,17 +1,12 @@
-// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 // This file contains the implementation of a Github Action. Github uses
-// Node.js v12.x to run actions, so this is Node code and not Deno code.
+// Node.js v20.x to run actions, so this is Node code and not Deno code.
 
 const { spawn } = require("child_process");
+const { existsSync } = require("fs");
+const { utimes, mkdir, readFile, writeFile } = require("fs/promises");
 const { dirname, resolve } = require("path");
 const { StringDecoder } = require("string_decoder");
-const { promisify } = require("util");
-
-const fs = require("fs");
-const utimes = promisify(fs.utimes);
-const mkdir = promisify(fs.mkdir);
-const readFile = promisify(fs.readFile);
-const writeFile = promisify(fs.writeFile);
 
 process.on("unhandledRejection", abort);
 main().catch(abort);
@@ -151,7 +146,10 @@ async function* ls(dir = "") {
       case "120000": // Symbolic link.
         break;
       case "160000": // Git submodule.
-        yield* ls(path);
+        // sometimes we don't checkout all submodules
+        if (existsSync(path)) {
+          yield* ls(path);
+        }
         break;
       default: {
         // Regular file.

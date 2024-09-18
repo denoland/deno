@@ -1,43 +1,32 @@
-// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
-use crate::permissions::Permissions;
-use deno_core::anyhow::Context;
 use deno_core::error::AnyError;
-use deno_core::op_sync;
-use deno_core::Extension;
+use deno_core::op2;
 use deno_core::ModuleSpecifier;
 use deno_core::OpState;
 
-pub fn init(main_module: ModuleSpecifier) -> Extension {
-  Extension::builder()
-    .ops(vec![("op_main_module", op_sync(op_main_module))])
-    .state(move |state| {
-      state.put::<ModuleSpecifier>(main_module.clone());
-      Ok(())
-    })
-    .build()
+deno_core::extension!(
+  deno_runtime,
+  ops = [op_main_module, op_ppid],
+  options = { main_module: ModuleSpecifier },
+  state = |state, options| {
+    state.put::<ModuleSpecifier>(options.main_module);
+  },
+);
+
+#[op2]
+#[string]
+fn op_main_module(state: &mut OpState) -> Result<String, AnyError> {
+  let main_url = state.borrow::<ModuleSpecifier>();
+  let main_path = main_url.to_string();
+  Ok(main_path)
 }
 
-fn op_main_module(
-  state: &mut OpState,
-  _: (),
-  _: (),
-) -> Result<String, AnyError> {
-  let main = state.borrow::<ModuleSpecifier>().to_string();
-  let main_url = deno_core::resolve_url_or_path(&main)?;
-  if main_url.scheme() == "file" {
-    let main_path = std::env::current_dir()
-      .context("Failed to get current working directory")?
-      .join(main_url.to_string());
-    state
-      .borrow_mut::<Permissions>()
-      .read
-      .check_blind(&main_path, "main_module")?;
-  }
-  Ok(main)
-}
-
-pub fn ppid() -> i64 {
+/// This is an op instead of being done at initialization time because
+/// it's expensive to retrieve the ppid on Windows.
+#[op2(fast)]
+#[number]
+pub fn op_ppid() -> i64 {
   #[cfg(windows)]
   {
     // Adopted from rustup:
@@ -48,12 +37,15 @@ pub fn ppid() -> i64 {
     // - MIT license
     use std::mem;
     use winapi::shared::minwindef::DWORD;
-    use winapi::um::handleapi::{CloseHandle, INVALID_HANDLE_VALUE};
+    use winapi::um::handleapi::CloseHandle;
+    use winapi::um::handleapi::INVALID_HANDLE_VALUE;
     use winapi::um::processthreadsapi::GetCurrentProcessId;
-    use winapi::um::tlhelp32::{
-      CreateToolhelp32Snapshot, Process32First, Process32Next, PROCESSENTRY32,
-      TH32CS_SNAPPROCESS,
-    };
+    use winapi::um::tlhelp32::CreateToolhelp32Snapshot;
+    use winapi::um::tlhelp32::Process32First;
+    use winapi::um::tlhelp32::Process32Next;
+    use winapi::um::tlhelp32::PROCESSENTRY32;
+    use winapi::um::tlhelp32::TH32CS_SNAPPROCESS;
+    // SAFETY: winapi calls
     unsafe {
       // Take a snapshot of system processes, one of which is ours
       // and contains our parent's pid

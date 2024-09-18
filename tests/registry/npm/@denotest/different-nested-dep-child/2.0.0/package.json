@@ -1,0 +1,5 @@
+{
+  "name": "@denotest/different-nested-dep-child",
+  "type": "module",
+  "version": "2.0.0"
+}

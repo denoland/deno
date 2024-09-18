@@ -1,4 +1,4 @@
-// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
 // @ts-check
 /// <reference path="../../core/internal.d.ts" />
@@ -6,70 +6,56 @@
 /// <reference path="../web/internal.d.ts" />
 /// <reference lib="esnext" />
 
-"use strict";
+import { primordials } from "ext:core/mod.js";
+import { op_base64_atob, op_base64_btoa } from "ext:core/ops";
+const {
+  ObjectPrototypeIsPrototypeOf,
+  TypeErrorPrototype,
+} = primordials;
 
-((window) => {
-  const webidl = window.__bootstrap.webidl;
-  const {
-    forgivingBase64Encode,
-    forgivingBase64Decode,
-  } = window.__bootstrap.infra;
-  const { DOMException } = window.__bootstrap.domException;
-  const {
-    ArrayPrototypeMap,
-    StringPrototypeCharCodeAt,
-    ArrayPrototypeJoin,
-    StringFromCharCode,
-    TypedArrayFrom,
-    Uint8Array,
-  } = window.__bootstrap.primordials;
+import * as webidl from "ext:deno_webidl/00_webidl.js";
+import { DOMException } from "./01_dom_exception.js";
 
-  /**
-   * @param {string} data
-   * @returns {string}
-   */
-  function atob(data) {
-    const prefix = "Failed to execute 'atob'";
-    webidl.requiredArguments(arguments.length, 1, { prefix });
-    data = webidl.converters.DOMString(data, {
-      prefix,
-      context: "Argument 1",
-    });
-
-    const uint8Array = forgivingBase64Decode(data);
-    const result = ArrayPrototypeMap(
-      [...uint8Array],
-      (byte) => StringFromCharCode(byte),
-    );
-    return ArrayPrototypeJoin(result, "");
+/**
+ * @param {string} data
+ * @returns {string}
+ */
+function atob(data) {
+  const prefix = "Failed to execute 'atob'";
+  webidl.requiredArguments(arguments.length, 1, prefix);
+  data = webidl.converters.DOMString(data, prefix, "Argument 1");
+  try {
+    return op_base64_atob(data);
+  } catch (e) {
+    if (ObjectPrototypeIsPrototypeOf(TypeErrorPrototype, e)) {
+      throw new DOMException(
+        "Failed to decode base64: invalid character",
+        "InvalidCharacterError",
+      );
+    }
+    throw e;
   }
+}
 
-  /**
-   * @param {string} data
-   * @returns {string}
-   */
-  function btoa(data) {
-    const prefix = "Failed to execute 'btoa'";
-    webidl.requiredArguments(arguments.length, 1, { prefix });
-    data = webidl.converters.DOMString(data, {
-      prefix,
-      context: "Argument 1",
-    });
-    const byteArray = ArrayPrototypeMap([...data], (char) => {
-      const charCode = StringPrototypeCharCodeAt(char, 0);
-      if (charCode > 0xff) {
-        throw new DOMException(
-          "The string to be encoded contains characters outside of the Latin1 range.",
-          "InvalidCharacterError",
-        );
-      }
-      return charCode;
-    });
-    return forgivingBase64Encode(TypedArrayFrom(Uint8Array, byteArray));
+/**
+ * @param {string} data
+ * @returns {string}
+ */
+function btoa(data) {
+  const prefix = "Failed to execute 'btoa'";
+  webidl.requiredArguments(arguments.length, 1, prefix);
+  data = webidl.converters.DOMString(data, prefix, "Argument 1");
+  try {
+    return op_base64_btoa(data);
+  } catch (e) {
+    if (ObjectPrototypeIsPrototypeOf(TypeErrorPrototype, e)) {
+      throw new DOMException(
+        "The string to be encoded contains characters outside of the Latin1 range.",
+        "InvalidCharacterError",
+      );
+    }
+    throw e;
   }
+}
 
-  window.__bootstrap.base64 = {
-    atob,
-    btoa,
-  };
-})(globalThis);
+export { atob, btoa };

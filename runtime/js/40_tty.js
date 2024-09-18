@@ -1,29 +1,24 @@
-// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
-"use strict";
+// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
+import { core, primordials } from "ext:core/mod.js";
+import { op_console_size } from "ext:core/ops";
+const {
+  Uint32Array,
+} = primordials;
+const {
+  isTerminal,
+} = core;
 
-((window) => {
-  const core = window.Deno.core;
+const size = new Uint32Array(2);
 
-  function consoleSize(rid) {
-    return core.opSync("op_console_size", rid);
-  }
+function consoleSize() {
+  op_console_size(size);
+  return { columns: size[0], rows: size[1] };
+}
 
-  function isatty(rid) {
-    return core.opSync("op_isatty", rid);
-  }
+// Note: This function was soft-removed in Deno 2. Its types have been removed,
+// but its implementation has been kept to avoid breaking changes.
+function isatty(rid) {
+  return isTerminal(rid);
+}
 
-  const DEFAULT_SET_RAW_OPTIONS = {
-    cbreak: false,
-  };
-
-  function setRaw(rid, mode, options = {}) {
-    const rOptions = { ...DEFAULT_SET_RAW_OPTIONS, ...options };
-    core.opSync("op_set_raw", { rid, mode, options: rOptions });
-  }
-
-  window.__bootstrap.tty = {
-    consoleSize,
-    isatty,
-    setRaw,
-  };
-})(this);
+export { consoleSize, isatty };

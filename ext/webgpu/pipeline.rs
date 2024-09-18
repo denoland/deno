@@ -1,212 +1,183 @@
-// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
 use deno_core::error::AnyError;
+use deno_core::op2;
+use deno_core::OpState;
+use deno_core::Resource;
 use deno_core::ResourceId;
-use deno_core::{OpState, Resource};
 use serde::Deserialize;
 use serde::Serialize;
 use std::borrow::Cow;
+use std::collections::HashMap;
+use std::rc::Rc;
 
-use crate::sampler::GpuCompareFunction;
-use crate::texture::GpuTextureFormat;
-
-use super::error::{WebGpuError, WebGpuResult};
+use super::error::WebGpuError;
+use super::error::WebGpuResult;
 
 const MAX_BIND_GROUPS: usize = 8;
 
 pub(crate) struct WebGpuPipelineLayout(
+  pub(crate) crate::Instance,
   pub(crate) wgpu_core::id::PipelineLayoutId,
 );
 impl Resource for WebGpuPipelineLayout {
   fn name(&self) -> Cow<str> {
     "webGPUPipelineLayout".into()
   }
+
+  fn close(self: Rc<Self>) {
+    gfx_select!(self.1 => self.0.pipeline_layout_drop(self.1));
+  }
 }
 
 pub(crate) struct WebGpuComputePipeline(
+  pub(crate) crate::Instance,
   pub(crate) wgpu_core::id::ComputePipelineId,
 );
 impl Resource for WebGpuComputePipeline {
   fn name(&self) -> Cow<str> {
     "webGPUComputePipeline".into()
   }
+
+  fn close(self: Rc<Self>) {
+    gfx_select!(self.1 => self.0.compute_pipeline_drop(self.1));
+  }
 }
 
 pub(crate) struct WebGpuRenderPipeline(
+  pub(crate) crate::Instance,
   pub(crate) wgpu_core::id::RenderPipelineId,
 );
 impl Resource for WebGpuRenderPipeline {
   fn name(&self) -> Cow<str> {
     "webGPURenderPipeline".into()
   }
-}
 
-#[derive(Deserialize)]
-#[serde(rename_all = "kebab-case")]
-pub enum GpuIndexFormat {
-  Uint16,
-  Uint32,
-}
-
-impl From<GpuIndexFormat> for wgpu_types::IndexFormat {
-  fn from(value: GpuIndexFormat) -> wgpu_types::IndexFormat {
-    match value {
-      GpuIndexFormat::Uint16 => wgpu_types::IndexFormat::Uint16,
-      GpuIndexFormat::Uint32 => wgpu_types::IndexFormat::Uint32,
-    }
+  fn close(self: Rc<Self>) {
+    gfx_select!(self.1 => self.0.render_pipeline_drop(self.1));
   }
 }
 
 #[derive(Deserialize)]
-#[serde(rename_all = "kebab-case")]
-pub enum GPUStencilOperation {
-  Keep,
-  Zero,
-  Replace,
-  Invert,
-  IncrementClamp,
-  DecrementClamp,
-  IncrementWrap,
-  DecrementWrap,
-}
-
-impl From<GPUStencilOperation> for wgpu_types::StencilOperation {
-  fn from(value: GPUStencilOperation) -> wgpu_types::StencilOperation {
-    match value {
-      GPUStencilOperation::Keep => wgpu_types::StencilOperation::Keep,
-      GPUStencilOperation::Zero => wgpu_types::StencilOperation::Zero,
-      GPUStencilOperation::Replace => wgpu_types::StencilOperation::Replace,
-      GPUStencilOperation::Invert => wgpu_types::StencilOperation::Invert,
-      GPUStencilOperation::IncrementClamp => {
-        wgpu_types::StencilOperation::IncrementClamp
-      }
-      GPUStencilOperation::DecrementClamp => {
-        wgpu_types::StencilOperation::DecrementClamp
-      }
-      GPUStencilOperation::IncrementWrap => {
-        wgpu_types::StencilOperation::IncrementWrap
-      }
-      GPUStencilOperation::DecrementWrap => {
-        wgpu_types::StencilOperation::DecrementWrap
-      }
-    }
-  }
+#[serde(rename_all = "camelCase")]
+pub enum GPUAutoLayoutMode {
+  Auto,
 }
 
 #[derive(Deserialize)]
-#[serde(rename_all = "kebab-case")]
-pub enum GpuBlendFactor {
-  Zero,
-  One,
-  Src,
-  OneMinusSrc,
-  SrcAlpha,
-  OneMinusSrcAlpha,
-  Dst,
-  OneMinusDst,
-  DstAlpha,
-  OneMinusDstAlpha,
-  SrcAlphaSaturated,
-  Constant,
-  OneMinusConstant,
-}
-
-impl From<GpuBlendFactor> for wgpu_types::BlendFactor {
-  fn from(value: GpuBlendFactor) -> wgpu_types::BlendFactor {
-    match value {
-      GpuBlendFactor::Zero => wgpu_types::BlendFactor::Zero,
-      GpuBlendFactor::One => wgpu_types::BlendFactor::One,
-      GpuBlendFactor::Src => wgpu_types::BlendFactor::Src,
-      GpuBlendFactor::OneMinusSrc => wgpu_types::BlendFactor::OneMinusSrc,
-      GpuBlendFactor::SrcAlpha => wgpu_types::BlendFactor::SrcAlpha,
-      GpuBlendFactor::OneMinusSrcAlpha => {
-        wgpu_types::BlendFactor::OneMinusSrcAlpha
-      }
-      GpuBlendFactor::Dst => wgpu_types::BlendFactor::Dst,
-      GpuBlendFactor::OneMinusDst => wgpu_types::BlendFactor::OneMinusDst,
-      GpuBlendFactor::DstAlpha => wgpu_types::BlendFactor::DstAlpha,
-      GpuBlendFactor::OneMinusDstAlpha => {
-        wgpu_types::BlendFactor::OneMinusDstAlpha
-      }
-      GpuBlendFactor::SrcAlphaSaturated => {
-        wgpu_types::BlendFactor::SrcAlphaSaturated
-      }
-      GpuBlendFactor::Constant => wgpu_types::BlendFactor::Constant,
-      GpuBlendFactor::OneMinusConstant => {
-        wgpu_types::BlendFactor::OneMinusConstant
-      }
-    }
-  }
+#[serde(untagged)]
+pub enum GPUPipelineLayoutOrGPUAutoLayoutMode {
+  Layout(ResourceId),
+  Auto(GPUAutoLayoutMode),
 }
 
 #[derive(Deserialize)]
-#[serde(rename_all = "kebab-case")]
-pub enum GpuBlendOperation {
-  Add,
-  Subtract,
-  ReverseSubtract,
-  Min,
-  Max,
+#[serde(rename_all = "camelCase")]
+pub struct GpuProgrammableStage {
+  module: ResourceId,
+  entry_point: Option<String>,
+  constants: Option<HashMap<String, f64>>,
 }
 
-impl From<GpuBlendOperation> for wgpu_types::BlendOperation {
-  fn from(value: GpuBlendOperation) -> wgpu_types::BlendOperation {
-    match value {
-      GpuBlendOperation::Add => wgpu_types::BlendOperation::Add,
-      GpuBlendOperation::Subtract => wgpu_types::BlendOperation::Subtract,
-      GpuBlendOperation::ReverseSubtract => {
-        wgpu_types::BlendOperation::ReverseSubtract
-      }
-      GpuBlendOperation::Min => wgpu_types::BlendOperation::Min,
-      GpuBlendOperation::Max => wgpu_types::BlendOperation::Max,
+#[op2]
+#[serde]
+pub fn op_webgpu_create_compute_pipeline(
+  state: &mut OpState,
+  #[smi] device_rid: ResourceId,
+  #[string] label: Cow<str>,
+  #[serde] layout: GPUPipelineLayoutOrGPUAutoLayoutMode,
+  #[serde] compute: GpuProgrammableStage,
+) -> Result<WebGpuResult, AnyError> {
+  let instance = state.borrow::<super::Instance>();
+  let device_resource = state
+    .resource_table
+    .get::<super::WebGpuDevice>(device_rid)?;
+  let device = device_resource.1;
+
+  let pipeline_layout = match layout {
+    GPUPipelineLayoutOrGPUAutoLayoutMode::Layout(rid) => {
+      let id = state.resource_table.get::<WebGpuPipelineLayout>(rid)?;
+      Some(id.1)
     }
-  }
-}
+    GPUPipelineLayoutOrGPUAutoLayoutMode::Auto(GPUAutoLayoutMode::Auto) => None,
+  };
 
-#[derive(Deserialize)]
-#[serde(rename_all = "kebab-case")]
-pub enum GpuPrimitiveTopology {
-  PointList,
-  LineList,
-  LineStrip,
-  TriangleList,
-  TriangleStrip,
-}
+  let compute_shader_module_resource =
+    state
+      .resource_table
+      .get::<super::shader::WebGpuShaderModule>(compute.module)?;
 
-impl From<GpuPrimitiveTopology> for wgpu_types::PrimitiveTopology {
-  fn from(value: GpuPrimitiveTopology) -> wgpu_types::PrimitiveTopology {
-    match value {
-      GpuPrimitiveTopology::PointList => {
-        wgpu_types::PrimitiveTopology::PointList
-      }
-      GpuPrimitiveTopology::LineList => wgpu_types::PrimitiveTopology::LineList,
-      GpuPrimitiveTopology::LineStrip => {
-        wgpu_types::PrimitiveTopology::LineStrip
-      }
-      GpuPrimitiveTopology::TriangleList => {
-        wgpu_types::PrimitiveTopology::TriangleList
-      }
-      GpuPrimitiveTopology::TriangleStrip => {
-        wgpu_types::PrimitiveTopology::TriangleStrip
-      }
+  let descriptor = wgpu_core::pipeline::ComputePipelineDescriptor {
+    label: Some(label),
+    layout: pipeline_layout,
+    stage: wgpu_core::pipeline::ProgrammableStageDescriptor {
+      module: compute_shader_module_resource.1,
+      entry_point: compute.entry_point.map(Cow::from),
+      constants: Cow::Owned(compute.constants.unwrap_or_default()),
+      zero_initialize_workgroup_memory: true,
+    },
+  };
+  let implicit_pipelines = match layout {
+    GPUPipelineLayoutOrGPUAutoLayoutMode::Layout(_) => None,
+    GPUPipelineLayoutOrGPUAutoLayoutMode::Auto(GPUAutoLayoutMode::Auto) => {
+      Some(wgpu_core::device::ImplicitPipelineIds {
+        root_id: None,
+        group_ids: &[None; MAX_BIND_GROUPS],
+      })
     }
-  }
+  };
+
+  let (compute_pipeline, maybe_err) = gfx_select!(device => instance.device_create_compute_pipeline(
+    device,
+    &descriptor,
+    None,
+    implicit_pipelines
+  ));
+
+  let rid = state
+    .resource_table
+    .add(WebGpuComputePipeline(instance.clone(), compute_pipeline));
+
+  Ok(WebGpuResult::rid_err(rid, maybe_err))
 }
 
-#[derive(Deserialize)]
-#[serde(rename_all = "kebab-case")]
-pub enum GpuFrontFace {
-  Ccw,
-  Cw,
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PipelineLayout {
+  rid: ResourceId,
+  label: String,
+  err: Option<WebGpuError>,
 }
 
-impl From<GpuFrontFace> for wgpu_types::FrontFace {
-  fn from(value: GpuFrontFace) -> wgpu_types::FrontFace {
-    match value {
-      GpuFrontFace::Ccw => wgpu_types::FrontFace::Ccw,
-      GpuFrontFace::Cw => wgpu_types::FrontFace::Cw,
-    }
-  }
+#[op2]
+#[serde]
+pub fn op_webgpu_compute_pipeline_get_bind_group_layout(
+  state: &mut OpState,
+  #[smi] compute_pipeline_rid: ResourceId,
+  index: u32,
+) -> Result<PipelineLayout, AnyError> {
+  let instance = state.borrow::<super::Instance>();
+  let compute_pipeline_resource = state
+    .resource_table
+    .get::<WebGpuComputePipeline>(compute_pipeline_rid)?;
+  let compute_pipeline = compute_pipeline_resource.1;
+
+  let (bind_group_layout, maybe_err) = gfx_select!(compute_pipeline => instance.compute_pipeline_get_bind_group_layout(compute_pipeline, index, None));
+
+  let label = gfx_select!(bind_group_layout => instance.bind_group_layout_label(bind_group_layout));
+
+  let rid = state
+    .resource_table
+    .add(super::binding::WebGpuBindGroupLayout(
+      instance.clone(),
+      bind_group_layout,
+    ));
+
+  Ok(PipelineLayout {
+    rid,
+    label,
+    err: maybe_err.map(WebGpuError::from),
+  })
 }
 
 #[derive(Deserialize)]
@@ -229,210 +200,24 @@ impl From<GpuCullMode> for Option<wgpu_types::Face> {
 
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
-struct GpuProgrammableStage {
-  module: ResourceId,
-  entry_point: String,
-  // constants: HashMap<String, GPUPipelineConstantValue>
-}
-
-#[derive(Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct CreateComputePipelineArgs {
-  device_rid: ResourceId,
-  label: Option<String>,
-  layout: Option<ResourceId>,
-  compute: GpuProgrammableStage,
-}
-
-pub fn op_webgpu_create_compute_pipeline(
-  state: &mut OpState,
-  args: CreateComputePipelineArgs,
-  _: (),
-) -> Result<WebGpuResult, AnyError> {
-  let instance = state.borrow::<super::Instance>();
-  let device_resource = state
-    .resource_table
-    .get::<super::WebGpuDevice>(args.device_rid)?;
-  let device = device_resource.0;
-
-  let pipeline_layout = if let Some(rid) = args.layout {
-    let id = state.resource_table.get::<WebGpuPipelineLayout>(rid)?;
-    Some(id.0)
-  } else {
-    None
-  };
-
-  let compute_shader_module_resource =
-    state
-      .resource_table
-      .get::<super::shader::WebGpuShaderModule>(args.compute.module)?;
-
-  let descriptor = wgpu_core::pipeline::ComputePipelineDescriptor {
-    label: args.label.map(Cow::from),
-    layout: pipeline_layout,
-    stage: wgpu_core::pipeline::ProgrammableStageDescriptor {
-      module: compute_shader_module_resource.0,
-      entry_point: Cow::from(args.compute.entry_point),
-      // TODO(lucacasonato): support args.compute.constants
-    },
-  };
-  let implicit_pipelines = match args.layout {
-    Some(_) => None,
-    None => Some(wgpu_core::device::ImplicitPipelineIds {
-      root_id: std::marker::PhantomData,
-      group_ids: &[std::marker::PhantomData; MAX_BIND_GROUPS],
-    }),
-  };
-
-  let (compute_pipeline, maybe_err) = gfx_select!(device => instance.device_create_compute_pipeline(
-    device,
-    &descriptor,
-    std::marker::PhantomData,
-    implicit_pipelines
-  ));
-
-  let rid = state
-    .resource_table
-    .add(WebGpuComputePipeline(compute_pipeline));
-
-  Ok(WebGpuResult::rid_err(rid, maybe_err))
-}
-
-#[derive(Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct ComputePipelineGetBindGroupLayoutArgs {
-  compute_pipeline_rid: ResourceId,
-  index: u32,
-}
-
-#[derive(Serialize)]
-#[serde(rename_all = "camelCase")]
-pub struct PipelineLayout {
-  rid: ResourceId,
-  label: String,
-  err: Option<WebGpuError>,
-}
-
-pub fn op_webgpu_compute_pipeline_get_bind_group_layout(
-  state: &mut OpState,
-  args: ComputePipelineGetBindGroupLayoutArgs,
-  _: (),
-) -> Result<PipelineLayout, AnyError> {
-  let instance = state.borrow::<super::Instance>();
-  let compute_pipeline_resource = state
-    .resource_table
-    .get::<WebGpuComputePipeline>(args.compute_pipeline_rid)?;
-  let compute_pipeline = compute_pipeline_resource.0;
-
-  let (bind_group_layout, maybe_err) = gfx_select!(compute_pipeline => instance.compute_pipeline_get_bind_group_layout(compute_pipeline, args.index, std::marker::PhantomData));
-
-  let label = gfx_select!(bind_group_layout => instance.bind_group_layout_label(bind_group_layout));
-
-  let rid = state
-    .resource_table
-    .add(super::binding::WebGpuBindGroupLayout(bind_group_layout));
-
-  Ok(PipelineLayout {
-    rid,
-    label,
-    err: maybe_err.map(WebGpuError::from),
-  })
-}
-
-#[derive(Deserialize)]
-#[serde(rename_all = "camelCase")]
 struct GpuPrimitiveState {
-  topology: GpuPrimitiveTopology,
-  strip_index_format: Option<GpuIndexFormat>,
-  front_face: GpuFrontFace,
+  topology: wgpu_types::PrimitiveTopology,
+  strip_index_format: Option<wgpu_types::IndexFormat>,
+  front_face: wgpu_types::FrontFace,
   cull_mode: GpuCullMode,
-  clamp_depth: bool,
+  unclipped_depth: bool,
 }
 
 impl From<GpuPrimitiveState> for wgpu_types::PrimitiveState {
   fn from(value: GpuPrimitiveState) -> wgpu_types::PrimitiveState {
     wgpu_types::PrimitiveState {
-      topology: value.topology.into(),
-      strip_index_format: value.strip_index_format.map(Into::into),
-      front_face: value.front_face.into(),
+      topology: value.topology,
+      strip_index_format: value.strip_index_format,
+      front_face: value.front_face,
       cull_mode: value.cull_mode.into(),
-      clamp_depth: value.clamp_depth,
+      unclipped_depth: value.unclipped_depth,
       polygon_mode: Default::default(), // native-only
       conservative: false,              // native-only
-    }
-  }
-}
-#[derive(Deserialize)]
-#[serde(rename_all = "camelCase")]
-struct GpuBlendComponent {
-  src_factor: GpuBlendFactor,
-  dst_factor: GpuBlendFactor,
-  operation: GpuBlendOperation,
-}
-
-impl From<GpuBlendComponent> for wgpu_types::BlendComponent {
-  fn from(component: GpuBlendComponent) -> Self {
-    wgpu_types::BlendComponent {
-      src_factor: component.src_factor.into(),
-      dst_factor: component.dst_factor.into(),
-      operation: component.operation.into(),
-    }
-  }
-}
-
-#[derive(Deserialize)]
-#[serde(rename_all = "camelCase")]
-struct GpuBlendState {
-  color: GpuBlendComponent,
-  alpha: GpuBlendComponent,
-}
-
-impl From<GpuBlendState> for wgpu_types::BlendState {
-  fn from(state: GpuBlendState) -> wgpu_types::BlendState {
-    wgpu_types::BlendState {
-      color: state.color.into(),
-      alpha: state.alpha.into(),
-    }
-  }
-}
-
-#[derive(Deserialize)]
-#[serde(rename_all = "camelCase")]
-struct GpuColorTargetState {
-  format: GpuTextureFormat,
-  blend: Option<GpuBlendState>,
-  write_mask: u32,
-}
-
-impl TryFrom<GpuColorTargetState> for wgpu_types::ColorTargetState {
-  type Error = AnyError;
-  fn try_from(
-    state: GpuColorTargetState,
-  ) -> Result<wgpu_types::ColorTargetState, AnyError> {
-    Ok(wgpu_types::ColorTargetState {
-      format: state.format.try_into()?,
-      blend: state.blend.map(Into::into),
-      write_mask: wgpu_types::ColorWrites::from_bits_truncate(state.write_mask),
-    })
-  }
-}
-
-#[derive(Deserialize)]
-#[serde(rename_all = "camelCase")]
-struct GpuStencilFaceState {
-  compare: GpuCompareFunction,
-  fail_op: GPUStencilOperation,
-  depth_fail_op: GPUStencilOperation,
-  pass_op: GPUStencilOperation,
-}
-
-impl From<GpuStencilFaceState> for wgpu_types::StencilFaceState {
-  fn from(state: GpuStencilFaceState) -> Self {
-    wgpu_types::StencilFaceState {
-      compare: state.compare.into(),
-      fail_op: state.fail_op.into(),
-      depth_fail_op: state.depth_fail_op.into(),
-      pass_op: state.pass_op.into(),
     }
   }
 }
@@ -440,11 +225,11 @@ impl From<GpuStencilFaceState> for wgpu_types::StencilFaceState {
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
 struct GpuDepthStencilState {
-  format: GpuTextureFormat,
+  format: wgpu_types::TextureFormat,
   depth_write_enabled: bool,
-  depth_compare: GpuCompareFunction,
-  stencil_front: GpuStencilFaceState,
-  stencil_back: GpuStencilFaceState,
+  depth_compare: wgpu_types::CompareFunction,
+  stencil_front: wgpu_types::StencilFaceState,
+  stencil_back: wgpu_types::StencilFaceState,
   stencil_read_mask: u32,
   stencil_write_mask: u32,
   depth_bias: i32,
@@ -452,18 +237,15 @@ struct GpuDepthStencilState {
   depth_bias_clamp: f32,
 }
 
-impl TryFrom<GpuDepthStencilState> for wgpu_types::DepthStencilState {
-  type Error = AnyError;
-  fn try_from(
-    state: GpuDepthStencilState,
-  ) -> Result<wgpu_types::DepthStencilState, AnyError> {
-    Ok(wgpu_types::DepthStencilState {
-      format: state.format.try_into()?,
+impl From<GpuDepthStencilState> for wgpu_types::DepthStencilState {
+  fn from(state: GpuDepthStencilState) -> wgpu_types::DepthStencilState {
+    wgpu_types::DepthStencilState {
+      format: state.format,
       depth_write_enabled: state.depth_write_enabled,
-      depth_compare: state.depth_compare.into(),
+      depth_compare: state.depth_compare,
       stencil: wgpu_types::StencilState {
-        front: state.stencil_front.into(),
-        back: state.stencil_back.into(),
+        front: state.stencil_front,
+        back: state.stencil_back,
         read_mask: state.stencil_read_mask,
         write_mask: state.stencil_write_mask,
       },
@@ -472,122 +254,6 @@ impl TryFrom<GpuDepthStencilState> for wgpu_types::DepthStencilState {
         slope_scale: state.depth_bias_slope_scale,
         clamp: state.depth_bias_clamp,
       },
-    })
-  }
-}
-
-#[derive(Deserialize)]
-#[serde(rename_all = "camelCase")]
-struct GpuVertexAttribute {
-  format: GpuVertexFormat,
-  offset: u64,
-  shader_location: u32,
-}
-
-impl From<GpuVertexAttribute> for wgpu_types::VertexAttribute {
-  fn from(attribute: GpuVertexAttribute) -> Self {
-    wgpu_types::VertexAttribute {
-      format: attribute.format.into(),
-      offset: attribute.offset,
-      shader_location: attribute.shader_location,
-    }
-  }
-}
-
-#[derive(Deserialize)]
-#[serde(rename_all = "lowercase")]
-enum GpuVertexFormat {
-  Uint8x2,
-  Uint8x4,
-  Sint8x2,
-  Sint8x4,
-  Unorm8x2,
-  Unorm8x4,
-  Snorm8x2,
-  Snorm8x4,
-  Uint16x2,
-  Uint16x4,
-  Sint16x2,
-  Sint16x4,
-  Unorm16x2,
-  Unorm16x4,
-  Snorm16x2,
-  Snorm16x4,
-  Float16x2,
-  Float16x4,
-  Float32,
-  Float32x2,
-  Float32x3,
-  Float32x4,
-  Uint32,
-  Uint32x2,
-  Uint32x3,
-  Uint32x4,
-  Sint32,
-  Sint32x2,
-  Sint32x3,
-  Sint32x4,
-  Float64,
-  Float64x2,
-  Float64x3,
-  Float64x4,
-}
-
-impl From<GpuVertexFormat> for wgpu_types::VertexFormat {
-  fn from(vf: GpuVertexFormat) -> wgpu_types::VertexFormat {
-    use wgpu_types::VertexFormat;
-    match vf {
-      GpuVertexFormat::Uint8x2 => VertexFormat::Uint8x2,
-      GpuVertexFormat::Uint8x4 => VertexFormat::Uint8x4,
-      GpuVertexFormat::Sint8x2 => VertexFormat::Sint8x2,
-      GpuVertexFormat::Sint8x4 => VertexFormat::Sint8x4,
-      GpuVertexFormat::Unorm8x2 => VertexFormat::Unorm8x2,
-      GpuVertexFormat::Unorm8x4 => VertexFormat::Unorm8x4,
-      GpuVertexFormat::Snorm8x2 => VertexFormat::Snorm8x2,
-      GpuVertexFormat::Snorm8x4 => VertexFormat::Snorm8x4,
-      GpuVertexFormat::Uint16x2 => VertexFormat::Uint16x2,
-      GpuVertexFormat::Uint16x4 => VertexFormat::Uint16x4,
-      GpuVertexFormat::Sint16x2 => VertexFormat::Sint16x2,
-      GpuVertexFormat::Sint16x4 => VertexFormat::Sint16x4,
-      GpuVertexFormat::Unorm16x2 => VertexFormat::Unorm16x2,
-      GpuVertexFormat::Unorm16x4 => VertexFormat::Unorm16x4,
-      GpuVertexFormat::Snorm16x2 => VertexFormat::Snorm16x2,
-      GpuVertexFormat::Snorm16x4 => VertexFormat::Snorm16x4,
-      GpuVertexFormat::Float16x2 => VertexFormat::Float16x2,
-      GpuVertexFormat::Float16x4 => VertexFormat::Float16x4,
-      GpuVertexFormat::Float32 => VertexFormat::Float32,
-      GpuVertexFormat::Float32x2 => VertexFormat::Float32x2,
-      GpuVertexFormat::Float32x3 => VertexFormat::Float32x3,
-      GpuVertexFormat::Float32x4 => VertexFormat::Float32x4,
-      GpuVertexFormat::Uint32 => VertexFormat::Uint32,
-      GpuVertexFormat::Uint32x2 => VertexFormat::Uint32x2,
-      GpuVertexFormat::Uint32x3 => VertexFormat::Uint32x3,
-      GpuVertexFormat::Uint32x4 => VertexFormat::Uint32x4,
-      GpuVertexFormat::Sint32 => VertexFormat::Sint32,
-      GpuVertexFormat::Sint32x2 => VertexFormat::Sint32x2,
-      GpuVertexFormat::Sint32x3 => VertexFormat::Sint32x3,
-      GpuVertexFormat::Sint32x4 => VertexFormat::Sint32x4,
-      GpuVertexFormat::Float64 => VertexFormat::Float64,
-      GpuVertexFormat::Float64x2 => VertexFormat::Float64x2,
-      GpuVertexFormat::Float64x3 => VertexFormat::Float64x3,
-      GpuVertexFormat::Float64x4 => VertexFormat::Float64x4,
-    }
-  }
-}
-
-#[derive(Deserialize)]
-#[serde(rename_all = "camelCase")]
-enum GpuVertexStepMode {
-  Vertex,
-  Instance,
-}
-
-impl From<GpuVertexStepMode> for wgpu_types::VertexStepMode {
-  fn from(vsm: GpuVertexStepMode) -> wgpu_types::VertexStepMode {
-    use wgpu_types::VertexStepMode;
-    match vsm {
-      GpuVertexStepMode::Vertex => VertexStepMode::Vertex,
-      GpuVertexStepMode::Instance => VertexStepMode::Instance,
     }
   }
 }
@@ -596,8 +262,8 @@ impl From<GpuVertexStepMode> for wgpu_types::VertexStepMode {
 #[serde(rename_all = "camelCase")]
 struct GpuVertexBufferLayout {
   array_stride: u64,
-  step_mode: GpuVertexStepMode,
-  attributes: Vec<GpuVertexAttribute>,
+  step_mode: wgpu_types::VertexStepMode,
+  attributes: Vec<wgpu_types::VertexAttribute>,
 }
 
 impl<'a> From<GpuVertexBufferLayout>
@@ -608,10 +274,8 @@ impl<'a> From<GpuVertexBufferLayout>
   ) -> wgpu_core::pipeline::VertexBufferLayout<'a> {
     wgpu_core::pipeline::VertexBufferLayout {
       array_stride: layout.array_stride,
-      step_mode: layout.step_mode.into(),
-      attributes: Cow::Owned(
-        layout.attributes.into_iter().map(Into::into).collect(),
-      ),
+      step_mode: layout.step_mode,
+      attributes: Cow::Owned(layout.attributes),
     }
   }
 }
@@ -620,7 +284,8 @@ impl<'a> From<GpuVertexBufferLayout>
 #[serde(rename_all = "camelCase")]
 struct GpuVertexState {
   module: ResourceId,
-  entry_point: String,
+  entry_point: Option<String>,
+  constants: Option<HashMap<String, f64>>,
   buffers: Vec<Option<GpuVertexBufferLayout>>,
 }
 
@@ -645,42 +310,44 @@ impl From<GpuMultisampleState> for wgpu_types::MultisampleState {
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
 struct GpuFragmentState {
-  targets: Vec<GpuColorTargetState>,
+  targets: Vec<Option<wgpu_types::ColorTargetState>>,
   module: u32,
-  entry_point: String,
-  // TODO(lucacasonato): constants
+  entry_point: Option<String>,
+  constants: Option<HashMap<String, f64>>,
 }
 
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct CreateRenderPipelineArgs {
   device_rid: ResourceId,
-  label: Option<String>,
-  layout: Option<ResourceId>,
+  label: String,
+  layout: GPUPipelineLayoutOrGPUAutoLayoutMode,
   vertex: GpuVertexState,
   primitive: GpuPrimitiveState,
   depth_stencil: Option<GpuDepthStencilState>,
-  multisample: GpuMultisampleState,
+  multisample: wgpu_types::MultisampleState,
   fragment: Option<GpuFragmentState>,
 }
 
+#[op2]
+#[serde]
 pub fn op_webgpu_create_render_pipeline(
   state: &mut OpState,
-  args: CreateRenderPipelineArgs,
-  _: (),
+  #[serde] args: CreateRenderPipelineArgs,
 ) -> Result<WebGpuResult, AnyError> {
   let instance = state.borrow::<super::Instance>();
   let device_resource = state
     .resource_table
     .get::<super::WebGpuDevice>(args.device_rid)?;
-  let device = device_resource.0;
+  let device = device_resource.1;
 
-  let layout = if let Some(rid) = args.layout {
-    let pipeline_layout_resource =
-      state.resource_table.get::<WebGpuPipelineLayout>(rid)?;
-    Some(pipeline_layout_resource.0)
-  } else {
-    None
+  let layout = match args.layout {
+    GPUPipelineLayoutOrGPUAutoLayoutMode::Layout(rid) => {
+      let pipeline_layout_resource =
+        state.resource_table.get::<WebGpuPipelineLayout>(rid)?;
+      Some(pipeline_layout_resource.1)
+    }
+    GPUPipelineLayoutOrGPUAutoLayoutMode::Auto(GPUAutoLayoutMode::Auto) => None,
   };
 
   let vertex_shader_module_resource =
@@ -694,18 +361,15 @@ pub fn op_webgpu_create_render_pipeline(
         .resource_table
         .get::<super::shader::WebGpuShaderModule>(fragment.module)?;
 
-    let mut targets = Vec::with_capacity(fragment.targets.len());
-
-    for target in fragment.targets {
-      targets.push(target.try_into()?);
-    }
-
     Some(wgpu_core::pipeline::FragmentState {
       stage: wgpu_core::pipeline::ProgrammableStageDescriptor {
-        module: fragment_shader_module_resource.0,
-        entry_point: Cow::from(fragment.entry_point),
+        module: fragment_shader_module_resource.1,
+        entry_point: fragment.entry_point.map(Cow::from),
+        constants: Cow::Owned(fragment.constants.unwrap_or_default()),
+        // Required to be true for WebGPU
+        zero_initialize_workgroup_memory: true,
       },
-      targets: Cow::from(targets),
+      targets: Cow::Owned(fragment.targets),
     })
   } else {
     None
@@ -720,68 +384,72 @@ pub fn op_webgpu_create_render_pipeline(
     .collect();
 
   let descriptor = wgpu_core::pipeline::RenderPipelineDescriptor {
-    label: args.label.map(Cow::Owned),
+    label: Some(Cow::Owned(args.label)),
     layout,
     vertex: wgpu_core::pipeline::VertexState {
       stage: wgpu_core::pipeline::ProgrammableStageDescriptor {
-        module: vertex_shader_module_resource.0,
-        entry_point: Cow::Owned(args.vertex.entry_point),
+        module: vertex_shader_module_resource.1,
+        entry_point: args.vertex.entry_point.map(Cow::Owned),
+        constants: Cow::Owned(args.vertex.constants.unwrap_or_default()),
+        // Required to be true for WebGPU
+        zero_initialize_workgroup_memory: true,
       },
       buffers: Cow::Owned(vertex_buffers),
     },
     primitive: args.primitive.into(),
-    depth_stencil: args.depth_stencil.map(TryInto::try_into).transpose()?,
-    multisample: args.multisample.into(),
+    depth_stencil: args.depth_stencil.map(Into::into),
+    multisample: args.multisample,
     fragment,
+    multiview: None,
   };
 
   let implicit_pipelines = match args.layout {
-    Some(_) => None,
-    None => Some(wgpu_core::device::ImplicitPipelineIds {
-      root_id: std::marker::PhantomData,
-      group_ids: &[std::marker::PhantomData; MAX_BIND_GROUPS],
-    }),
+    GPUPipelineLayoutOrGPUAutoLayoutMode::Layout(_) => None,
+    GPUPipelineLayoutOrGPUAutoLayoutMode::Auto(GPUAutoLayoutMode::Auto) => {
+      Some(wgpu_core::device::ImplicitPipelineIds {
+        root_id: None,
+        group_ids: &[None; MAX_BIND_GROUPS],
+      })
+    }
   };
 
   let (render_pipeline, maybe_err) = gfx_select!(device => instance.device_create_render_pipeline(
     device,
     &descriptor,
-    std::marker::PhantomData,
+    None,
     implicit_pipelines
   ));
 
   let rid = state
     .resource_table
-    .add(WebGpuRenderPipeline(render_pipeline));
+    .add(WebGpuRenderPipeline(instance.clone(), render_pipeline));
 
   Ok(WebGpuResult::rid_err(rid, maybe_err))
 }
 
-#[derive(Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct RenderPipelineGetBindGroupLayoutArgs {
-  render_pipeline_rid: ResourceId,
-  index: u32,
-}
-
+#[op2]
+#[serde]
 pub fn op_webgpu_render_pipeline_get_bind_group_layout(
   state: &mut OpState,
-  args: RenderPipelineGetBindGroupLayoutArgs,
-  _: (),
+  #[smi] render_pipeline_rid: ResourceId,
+  index: u32,
 ) -> Result<PipelineLayout, AnyError> {
   let instance = state.borrow::<super::Instance>();
   let render_pipeline_resource = state
     .resource_table
-    .get::<WebGpuRenderPipeline>(args.render_pipeline_rid)?;
-  let render_pipeline = render_pipeline_resource.0;
+    .get::<WebGpuRenderPipeline>(render_pipeline_rid)?;
+  let render_pipeline = render_pipeline_resource.1;
 
-  let (bind_group_layout, maybe_err) = gfx_select!(render_pipeline => instance.render_pipeline_get_bind_group_layout(render_pipeline, args.index, std::marker::PhantomData));
+  let (bind_group_layout, maybe_err) = gfx_select!(render_pipeline => instance.render_pipeline_get_bind_group_layout(render_pipeline, index, None));
 
   let label = gfx_select!(bind_group_layout => instance.bind_group_layout_label(bind_group_layout));
 
   let rid = state
     .resource_table
-    .add(super::binding::WebGpuBindGroupLayout(bind_group_layout));
+    .add(super::binding::WebGpuBindGroupLayout(
+      instance.clone(),
+      bind_group_layout,
+    ));
 
   Ok(PipelineLayout {
     rid,

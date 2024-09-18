@@ -1,57 +1,49 @@
-// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
 use deno_core::anyhow::Context;
 use deno_core::error::AnyError;
+use std::path::Path;
+use std::path::PathBuf;
+
 pub use deno_core::normalize_path;
-use std::env::current_dir;
-use std::io::Error;
-use std::path::{Path, PathBuf};
+pub use deno_permissions::specifier_to_file_path;
 
-/// Similar to `std::fs::canonicalize()` but strips UNC prefixes on Windows.
-pub fn canonicalize_path(path: &Path) -> Result<PathBuf, Error> {
-  let mut canonicalized_path = path.canonicalize()?;
-  if cfg!(windows) {
-    canonicalized_path = PathBuf::from(
-      canonicalized_path
-        .display()
-        .to_string()
-        .trim_start_matches("\\\\?\\"),
-    );
-  }
-  Ok(canonicalized_path)
-}
-
+#[inline]
 pub fn resolve_from_cwd(path: &Path) -> Result<PathBuf, AnyError> {
-  let resolved_path = if path.is_absolute() {
-    path.to_owned()
+  if path.is_absolute() {
+    Ok(normalize_path(path))
   } else {
-    let cwd =
-      current_dir().context("Failed to get current working directory")?;
-    cwd.join(path)
-  };
-
-  Ok(normalize_path(&resolved_path))
+    #[allow(clippy::disallowed_methods)]
+    let cwd = std::env::current_dir()
+      .context("Failed to get current working directory")?;
+    Ok(normalize_path(cwd.join(path)))
+  }
 }
 
 #[cfg(test)]
 mod tests {
   use super::*;
 
+  fn current_dir() -> PathBuf {
+    #[allow(clippy::disallowed_methods)]
+    std::env::current_dir().unwrap()
+  }
+
   #[test]
   fn resolve_from_cwd_child() {
-    let cwd = current_dir().unwrap();
+    let cwd = current_dir();
     assert_eq!(resolve_from_cwd(Path::new("a")).unwrap(), cwd.join("a"));
   }
 
   #[test]
   fn resolve_from_cwd_dot() {
-    let cwd = current_dir().unwrap();
+    let cwd = current_dir();
     assert_eq!(resolve_from_cwd(Path::new(".")).unwrap(), cwd);
   }
 
   #[test]
   fn resolve_from_cwd_parent() {
-    let cwd = current_dir().unwrap();
+    let cwd = current_dir();
     assert_eq!(resolve_from_cwd(Path::new("a/..")).unwrap(), cwd);
   }
 
@@ -72,11 +64,11 @@ mod tests {
     }
   }
 
-  // TODO: Get a good expected value here for Windows.
-  #[cfg(not(windows))]
   #[test]
   fn resolve_from_cwd_absolute() {
-    let expected = Path::new("/a");
-    assert_eq!(resolve_from_cwd(expected).unwrap(), expected);
+    let expected = Path::new("a");
+    let cwd = current_dir();
+    let absolute_expected = cwd.join(expected);
+    assert_eq!(resolve_from_cwd(expected).unwrap(), absolute_expected);
   }
 }

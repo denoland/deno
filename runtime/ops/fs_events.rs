@@ -1,6 +1,5 @@
-// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
-use crate::permissions::Permissions;
 use deno_core::error::AnyError;
 use deno_core::parking_lot::Mutex;
 use deno_core::AsyncRefCell;
@@ -11,10 +10,11 @@ use deno_core::RcRef;
 use deno_core::Resource;
 use deno_core::ResourceId;
 
-use deno_core::op_async;
-use deno_core::op_sync;
-use deno_core::Extension;
+use deno_core::op2;
+
+use deno_permissions::PermissionsContainer;
 use notify::event::Event as NotifyEvent;
+use notify::event::ModifyKind;
 use notify::Error as NotifyError;
 use notify::EventKind;
 use notify::RecommendedWatcher;
@@ -29,14 +29,10 @@ use std::path::PathBuf;
 use std::rc::Rc;
 use tokio::sync::mpsc;
 
-pub fn init() -> Extension {
-  Extension::builder()
-    .ops(vec![
-      ("op_fs_events_open", op_sync(op_fs_events_open)),
-      ("op_fs_events_poll", op_async(op_fs_events_poll)),
-    ])
-    .build()
-}
+deno_core::extension!(
+  deno_fs_events,
+  ops = [op_fs_events_open, op_fs_events_poll],
+);
 
 struct FsEventsResource {
   #[allow(unused)]
@@ -76,7 +72,13 @@ impl From<NotifyEvent> for FsEvent {
       EventKind::Any => "any",
       EventKind::Access(_) => "access",
       EventKind::Create(_) => "create",
-      EventKind::Modify(_) => "modify",
+      EventKind::Modify(modify_kind) => match modify_kind {
+        ModifyKind::Name(_) => "rename",
+        ModifyKind::Any
+        | ModifyKind::Data(_)
+        | ModifyKind::Metadata(_)
+        | ModifyKind::Other => "modify",
+      },
       EventKind::Remove(_) => "remove",
       EventKind::Other => "other",
     };
@@ -97,29 +99,33 @@ pub struct OpenArgs {
   paths: Vec<String>,
 }
 
+#[op2]
+#[smi]
 fn op_fs_events_open(
   state: &mut OpState,
-  args: OpenArgs,
-  _: (),
+  #[serde] args: OpenArgs,
 ) -> Result<ResourceId, AnyError> {
   let (sender, receiver) = mpsc::channel::<Result<FsEvent, AnyError>>(16);
   let sender = Mutex::new(sender);
-  let mut watcher: RecommendedWatcher =
-    Watcher::new(move |res: Result<NotifyEvent, NotifyError>| {
+  let mut watcher: RecommendedWatcher = Watcher::new(
+    move |res: Result<NotifyEvent, NotifyError>| {
       let res2 = res.map(FsEvent::from).map_err(AnyError::from);
       let sender = sender.lock();
       // Ignore result, if send failed it means that watcher was already closed,
       // but not all messages have been flushed.
       let _ = sender.try_send(res2);
-    })?;
+    },
+    Default::default(),
+  )?;
   let recursive_mode = if args.recursive {
     RecursiveMode::Recursive
   } else {
     RecursiveMode::NonRecursive
   };
   for path in &args.paths {
-    let path = PathBuf::from(path);
-    state.borrow_mut::<Permissions>().read.check(&path)?;
+    let path = state
+      .borrow_mut::<PermissionsContainer>()
+      .check_read(path, "Deno.watchFs()")?;
     watcher.watch(&path, recursive_mode)?;
   }
   let resource = FsEventsResource {
@@ -131,10 +137,11 @@ fn op_fs_events_open(
   Ok(rid)
 }
 
+#[op2(async)]
+#[serde]
 async fn op_fs_events_poll(
   state: Rc<RefCell<OpState>>,
-  rid: ResourceId,
-  _: (),
+  #[smi] rid: ResourceId,
 ) -> Result<Option<FsEvent>, AnyError> {
   let resource = state.borrow().resource_table.get::<FsEventsResource>(rid)?;
   let mut receiver = RcRef::map(&resource, |r| &r.receiver).borrow_mut().await;

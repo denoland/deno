@@ -1,0 +1,13 @@
+{
+  cancelable: true,
+  message: "Uncaught Error: foo",
+  filename: "[WILDCARD]/set_timeout_error_handled.ts",
+  lineno: 18,
+  colno: 9,
+  error: Error: foo
+    at [WILDCARD]/set_timeout_error_handled.ts:18:9
+    at [WILDCARD]
+}
+onerror() called Error: foo
+    at [WILDCARD]/set_timeout_error_handled.ts:18:9
+    at [WILDCARD]

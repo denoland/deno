@@ -1,0 +1,21 @@
+{
+  "version": "4",
+  "specifiers": {
+    "npm:@denotest/add@1": "1.0.0",
+    "npm:@denotest/subtract@1": "1.0.0"
+  },
+  "npm": {
+    "@denotest/add@1.0.0": {
+      "integrity": "[WILDLINE]"
+    },
+    "@denotest/subtract@1.0.0": {
+      "integrity": "[WILDLINE]"
+    }
+  },
+  "workspace": {
+    "dependencies": [
+      "npm:@denotest/add@1",
+      "npm:@denotest/subtract@1"
+    ]
+  }
+}

@@ -1,0 +1,55 @@
+name: cargo_publish
+
+on: workflow_dispatch
+
+jobs:
+  build:
+    name: cargo publish
+    runs-on: ubuntu-20.04-xl
+    timeout-minutes: 90
+
+    env:
+      CARGO_TERM_COLOR: always
+      RUST_BACKTRACE: full
+      RUSTC_FORCE_INCREMENTAL: 1
+
+    steps:
+      - name: Configure git
+        run: |
+          git config --global core.symlinks true
+          git config --global fetch.parallel 32
+
+      - name: Clone repository
+        uses: actions/checkout@v4
+        with:
+          token: ${{ secrets.DENOBOT_PAT }}
+          submodules: recursive
+
+      - uses: dsherret/rust-toolchain-file@v1
+
+      - name: Install deno
+        uses: denoland/setup-deno@v1
+        with:
+          deno-version: v1.x
+
+      - name: Install protoc
+        uses: arduino/setup-protoc@v3
+        with:
+          version: '21.12'
+          repo-token: '${{ secrets.GITHUB_TOKEN }}'
+
+      - name: Publish
+        env:
+          CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_REGISTRY_TOKEN }}
+        run: ./tools/release/03_publish_crates.ts
+
+      - name: Create release tag and check forward commit to main
+        env:
+          # the default secrets.GITHUB_TOKEN won't trigger a workflow run
+          # when tagging, but it will if we provide a custom PAT
+          GITHUB_TOKEN: ${{ secrets.DENOBOT_PAT }}
+          GH_WORKFLOW_ACTOR: ${{ github.actor }}
+        run: |
+          git config user.email "${{ github.actor }}@users.noreply.github.com"
+          git config user.name "${{ github.actor }}"
+          ./tools/release/04_post_publish.ts

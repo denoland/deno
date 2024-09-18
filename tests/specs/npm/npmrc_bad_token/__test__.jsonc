@@ -1,0 +1,6 @@
+{
+  "tempDir": true,
+  "args": "install",
+  "output": "main.out",
+  "exitCode": 1
+}

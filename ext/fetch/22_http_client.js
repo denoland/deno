@@ -1,4 +1,4 @@
-// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
 // @ts-check
 /// <reference path="../webidl/internal.d.ts" />
@@ -9,33 +9,54 @@
 /// <reference path="../web/06_streams_types.d.ts" />
 /// <reference path="./lib.deno_fetch.d.ts" />
 /// <reference lib="esnext" />
-"use strict";
 
-((window) => {
-  const core = window.Deno.core;
+import { core, primordials } from "ext:core/mod.js";
+
+import { SymbolDispose } from "ext:deno_web/00_infra.js";
+import { op_fetch_custom_client } from "ext:core/ops";
+import { loadTlsKeyPair } from "ext:deno_net/02_tls.js";
+
+const { internalRidSymbol } = core;
+const { ObjectDefineProperty } = primordials;
+
+/**
+ * @param {Deno.CreateHttpClientOptions} options
+ * @returns {HttpClient}
+ */
+function createHttpClient(options) {
+  options.caCerts ??= [];
+  const keyPair = loadTlsKeyPair("Deno.createHttpClient", options);
+  return new HttpClient(
+    op_fetch_custom_client(
+      options,
+      keyPair,
+    ),
+  );
+}
+
+class HttpClient {
+  #rid;
 
   /**
-   * @param {Deno.CreateHttpClientOptions} options
-   * @returns {HttpClient}
+   * @param {number} rid
    */
-  function createHttpClient(options) {
-    options.caCerts ??= [];
-    return new HttpClient(core.opSync("op_fetch_custom_client", options));
+  constructor(rid) {
+    ObjectDefineProperty(this, internalRidSymbol, {
+      __proto__: null,
+      enumerable: false,
+      value: rid,
+    });
+    this.#rid = rid;
   }
 
-  class HttpClient {
-    /**
-     * @param {number} rid
-     */
-    constructor(rid) {
-      this.rid = rid;
-    }
-    close() {
-      core.close(this.rid);
-    }
+  close() {
+    core.close(this.#rid);
   }
 
-  window.__bootstrap.fetch ??= {};
-  window.__bootstrap.fetch.createHttpClient = createHttpClient;
-  window.__bootstrap.fetch.HttpClient = HttpClient;
-})(globalThis);
+  [SymbolDispose]() {
+    core.tryClose(this.#rid);
+  }
+}
+const HttpClientPrototype = HttpClient.prototype;
+
+export { createHttpClient, HttpClient, HttpClientPrototype };
