@@ -1573,21 +1573,21 @@ impl UnaryPermission<EnvDescriptor> {
   ) -> Result<(), AnyError> {
     skip_check_if_is_permission_fully_granted!(self);
 
-      let env_desc = EnvDescriptor::new(env);
-      let mut matched = false;
+    let env_desc = EnvDescriptor::new(env);
+    let mut matched = false;
 
-      for desc in &self.granted_list {
-          if desc.matches(env) {
-              matched = true;
-              break;
-          }
+    for desc in &self.granted_list {
+      if desc.matches(env) {
+        matched = true;
+        break;
       }
+    }
 
-      if matched {
-          self.granted_list.insert(env_desc);
-      }
+    if matched {
+      self.granted_list.insert(env_desc);
+    }
 
-      self.check_desc(Some(&EnvDescriptor::new(env)), false, api_name)
+    self.check_desc(Some(&EnvDescriptor::new(env)), false, api_name)
   }
 
   pub fn check_all(&mut self) -> Result<(), AnyError> {
