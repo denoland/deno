@@ -517,7 +517,9 @@ Process.prototype.on = function (
       // Ignores SIGBREAK if the platform is not windows.
     } else if (event === "SIGTERM" && Deno.build.os === "windows") {
       // Ignores SIGTERM on windows.
-    } else if (event !== "SIGBREAK" && event !== "SIGINT" && Deno.build.os === "windows") {
+    } else if (
+      event !== "SIGBREAK" && event !== "SIGINT" && Deno.build.os === "windows"
+    ) {
       // Ignores all signals except SIGBREAK and SIGINT on windows.
       console.warn(`Ignoring signal "${event}" on Windows`);
     } else {
@@ -544,7 +546,9 @@ Process.prototype.off = function (
   } else if (event.startsWith("SIG")) {
     if (event === "SIGBREAK" && Deno.build.os !== "windows") {
       // Ignores SIGBREAK if the platform is not windows.
-    } else if (event !== "SIGBREAK" && event !== "SIGINT" && Deno.build.os === "windows") {
+    } else if (
+      event !== "SIGBREAK" && event !== "SIGINT" && Deno.build.os === "windows"
+    ) {
       // Ignores all signals except SIGBREAK and SIGINT on windows.
     } else {
       EventEmitter.prototype.off.call(this, event, listener);

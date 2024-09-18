@@ -25,7 +25,7 @@ import {
   assertThrows,
   fail,
 } from "@std/assert";
-import { spy, assertSpyCall, assertSpyCalls } from "@std/testing/mock"
+import { assertSpyCall, assertSpyCalls, spy } from "@std/testing/mock";
 import { stripAnsiCode } from "@std/fmt/colors";
 import * as path from "@std/path";
 import { delay } from "@std/async/delay";
@@ -247,24 +247,24 @@ Deno.test({
 
     for (const signal of ignoredSignals) {
       using consoleSpy = spy(console, "warn");
-      const handler = () => {}
+      const handler = () => {};
       process.on(signal, handler);
       process.off(signal, handler);
       assertSpyCall(consoleSpy, 0, {
-        args: [`Ignoring signal "${signal}" on Windows`]
+        args: [`Ignoring signal "${signal}" on Windows`],
       });
     }
 
     {
       using consoleSpy = spy(console, "warn");
-      const handler = () => {}
+      const handler = () => {};
       process.on("SIGTERM", handler);
       process.off("SIGTERM", handler);
       // No warning is made for SIGTERM
       assertSpyCalls(consoleSpy, 0);
     }
   },
-})
+});
 
 Deno.test(
   { permissions: { run: true, read: true } },
