@@ -9,7 +9,6 @@ use test_util::TempDir;
 use test_util::TestContext;
 use util::TestContextBuilder;
 
-
 #[flaky_test::flaky_test]
 fn upgrade_invalid_lockfile() {
   let context = upgrade_context();
