@@ -6129,13 +6129,6 @@ mod tests {
         )),
         permissions: PermissionFlags {
           allow_all: true,
-          allow_net: Some(vec![]),
-          allow_env: Some(vec![]),
-          allow_run: Some(vec![]),
-          allow_read: Some(vec![]),
-          allow_sys: Some(vec![]),
-          allow_write: Some(vec![]),
-          allow_ffi: Some(vec![]),
           ..Default::default()
         },
         code_cache_enabled: true,
@@ -7068,13 +7061,6 @@ mod tests {
         }),
         permissions: PermissionFlags {
           allow_all: true,
-          allow_net: Some(vec![]),
-          allow_env: Some(vec![]),
-          allow_run: Some(vec![]),
-          allow_read: Some(vec![]),
-          allow_sys: Some(vec![]),
-          allow_write: Some(vec![]),
-          allow_ffi: Some(vec![]),
           ..Default::default()
         },
         ..Flags::default()
@@ -7094,13 +7080,6 @@ mod tests {
         }),
         permissions: PermissionFlags {
           allow_all: true,
-          allow_net: Some(vec![]),
-          allow_env: Some(vec![]),
-          allow_run: Some(vec![]),
-          allow_read: Some(vec![]),
-          allow_sys: Some(vec![]),
-          allow_write: Some(vec![]),
-          allow_ffi: Some(vec![]),
           ..Default::default()
         },
         ..Flags::default()
@@ -7125,13 +7104,6 @@ mod tests {
         }),
         permissions: PermissionFlags {
           allow_all: true,
-          allow_net: Some(vec![]),
-          allow_env: Some(vec![]),
-          allow_run: Some(vec![]),
-          allow_read: Some(vec![]),
-          allow_sys: Some(vec![]),
-          allow_write: Some(vec![]),
-          allow_ffi: Some(vec![]),
           ..Default::default()
         },
         ext: Some("ts".to_string()),
@@ -7165,13 +7137,6 @@ mod tests {
         inspect: Some("127.0.0.1:9229".parse().unwrap()),
         permissions: PermissionFlags {
           allow_all: true,
-          allow_net: Some(vec![]),
-          allow_env: Some(vec![]),
-          allow_run: Some(vec![]),
-          allow_read: Some(vec![]),
-          allow_sys: Some(vec![]),
-          allow_write: Some(vec![]),
-          allow_ffi: Some(vec![]),
           ..Default::default()
         },
         env_file: Some(".example.env".to_owned()),
@@ -7199,13 +7164,6 @@ mod tests {
         argv: svec!["arg1", "arg2"],
         permissions: PermissionFlags {
           allow_all: true,
-          allow_net: Some(vec![]),
-          allow_env: Some(vec![]),
-          allow_run: Some(vec![]),
-          allow_read: Some(vec![]),
-          allow_sys: Some(vec![]),
-          allow_write: Some(vec![]),
-          allow_ffi: Some(vec![]),
           ..Default::default()
         },
         ..Flags::default()
@@ -7273,13 +7231,6 @@ mod tests {
         inspect: Some("127.0.0.1:9229".parse().unwrap()),
         permissions: PermissionFlags {
           allow_all: true,
-          allow_net: Some(vec![]),
-          allow_env: Some(vec![]),
-          allow_run: Some(vec![]),
-          allow_read: Some(vec![]),
-          allow_sys: Some(vec![]),
-          allow_write: Some(vec![]),
-          allow_ffi: Some(vec![]),
           ..Default::default()
         },
         env_file: Some(".example.env".to_owned()),
