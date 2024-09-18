@@ -8,7 +8,7 @@
     },
     {
       "commandName": "./deno_copy",
-      "args": "upgrade --canary",
+      "args": "upgrade --canary --force",
       "output": "upgrade.out",
       "exitCode": 0,
       "flaky": true
