@@ -1651,7 +1651,8 @@ Future runs of this module will trigger no downloads or compilation unless --rel
 
 <y>Read more:</> <c>https://docs.deno.com/go/cache</>"),
     UnstableArgsConfig::ResolutionOnly,
-  )
+)
+  .hide(true)
   .defer(|cmd| {
     compile_args(cmd)
       .arg(check_arg(false))

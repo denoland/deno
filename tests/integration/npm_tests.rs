@@ -1821,7 +1821,10 @@ fn reload_info_not_found_cache_but_exists_remote() {
   {
     // create it
     temp_dir.write("deno.json", r#"{}"#);
-    test_context.new_command().args("cache main.ts").run();
+    test_context
+      .new_command()
+      .args("install --entrypoint main.ts")
+      .run();
     assert!(temp_dir.path().join("deno.lock").exists());
 
     // remove a version found in the lockfile
