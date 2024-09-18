@@ -2118,8 +2118,6 @@ Ignore formatting a file by adding an ignore comment at the top of the file:
         Arg::new("ext")
           .long("ext")
           .help("Set content type of the supplied file")
-          // prefer using ts for formatting instead of js because ts works in more scenarios
-          .default_value("ts")
           .hide_default_value(true)
           .value_parser([
             "ts", "tsx", "js", "jsx", "md", "json", "jsonc", "css", "scss",
