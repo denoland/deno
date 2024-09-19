@@ -158,7 +158,7 @@ const cloneRepoStep = [{
     // Use depth > 1, because sometimes we need to rebuild main and if
     // other commits have landed it will become impossible to rebuild if
     // the checkout is too shallow.
-    "fetch-depth": 5,
+    "fetch-depth": 50,
     submodules: false,
   },
 }];
