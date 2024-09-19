@@ -1087,6 +1087,7 @@ const ci = {
       if:
         "github.repository == 'denoland/deno' && github.ref == 'refs/heads/main'",
       steps: [
+        cloneRepoStep,
         authenticateWithGoogleCloud,
         {
           name: "Setup gcloud",
