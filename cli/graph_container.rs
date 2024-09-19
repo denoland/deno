@@ -65,6 +65,7 @@ impl MainModuleGraphContainer {
   pub async fn check_specifiers(
     &self,
     specifiers: &[ModuleSpecifier],
+    ext_overwrite: Option<&String>,
   ) -> Result<(), AnyError> {
     let mut graph_permit = self.acquire_update_permit().await;
     let graph = graph_permit.graph_mut();
@@ -76,6 +77,7 @@ impl MainModuleGraphContainer {
         false,
         self.cli_options.ts_type_lib_window(),
         FetchPermissionsOption::AllowAll,
+        ext_overwrite,
       )
       .await?;
     graph_permit.commit();
@@ -94,7 +96,7 @@ impl MainModuleGraphContainer {
       log::warn!("{} No matching files found.", colors::yellow("Warning"));
     }
 
-    self.check_specifiers(&specifiers).await
+    self.check_specifiers(&specifiers, None).await
   }
 
   pub fn collect_specifiers(

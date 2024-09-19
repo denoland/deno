@@ -16,12 +16,14 @@ use std::rc::Rc;
 use std::sync::Arc;
 
 use crate::args::LifecycleScriptsConfig;
+use crate::colors;
 use async_trait::async_trait;
 use deno_ast::ModuleSpecifier;
 use deno_core::anyhow::Context;
 use deno_core::error::AnyError;
 use deno_core::futures::stream::FuturesUnordered;
 use deno_core::futures::StreamExt;
+use deno_core::parking_lot::Mutex;
 use deno_core::url::Url;
 use deno_npm::resolution::NpmResolutionSnapshot;
 use deno_npm::NpmPackageCacheFolderId;
@@ -337,6 +339,7 @@ async fn sync_resolution_with_fs(
         deno_local_registry_dir: &deno_local_registry_dir,
       },
     );
+  let packages_with_deprecation_warnings = Arc::new(Mutex::new(Vec::new()));
   for package in &package_partitions.packages {
     if let Some(current_pkg) =
       newest_packages_by_name.get_mut(&package.id.nv.name)
@@ -363,6 +366,8 @@ async fn sync_resolution_with_fs(
 
       let folder_path = folder_path.clone();
       let bin_entries_to_setup = bin_entries.clone();
+      let packages_with_deprecation_warnings =
+        packages_with_deprecation_warnings.clone();
       cache_futures.push(async move {
         tarball_cache
           .ensure_package(&package.id.nv, &package.dist)
@@ -393,12 +398,9 @@ async fn sync_resolution_with_fs(
         }
 
         if let Some(deprecated) = &package.deprecated {
-          log::info!(
-            "{} {:?} is deprecated: {}",
-            crate::colors::yellow("Warning"),
-            package.id,
-            crate::colors::gray(deprecated),
-          );
+          packages_with_deprecation_warnings
+            .lock()
+            .push((package.id.clone(), deprecated.clone()));
         }
 
         // finally stop showing the progress bar
@@ -647,6 +649,33 @@ async fn sync_resolution_with_fs(
     }
   }
 
+  {
+    let packages_with_deprecation_warnings =
+      packages_with_deprecation_warnings.lock();
+    if !packages_with_deprecation_warnings.is_empty() {
+      log::warn!(
+        "{} The following packages are deprecated:",
+        colors::yellow("Warning")
+      );
+      let len = packages_with_deprecation_warnings.len();
+      for (idx, (package_id, msg)) in
+        packages_with_deprecation_warnings.iter().enumerate()
+      {
+        if idx != len - 1 {
+          log::warn!(
+            "┠─ {}",
+            colors::gray(format!("npm:{:?} ({})", package_id, msg))
+          );
+        } else {
+          log::warn!(
+            "┗─ {}",
+            colors::gray(format!("npm:{:?} ({})", package_id, msg))
+          );
+        }
+      }
+    }
+  }
+
   lifecycle_scripts
     .finish(
       snapshot,
@@ -719,19 +748,36 @@ impl<'a> super::common::lifecycle_scripts::LifecycleScriptsStrategy
     packages: &[(&NpmResolutionPackage, std::path::PathBuf)],
   ) -> Result<(), AnyError> {
     if !packages.is_empty() {
-      let packages_str = packages
+      log::warn!("{} Following packages contained npm lifecycle scripts ({}) that were not executed:", colors::yellow("Warning"), colors::gray("preinstall/install/postinstall"));
+
+      for (package, _) in packages {
+        log::warn!("┠─ {}", colors::gray(format!("npm:{}", package.id.nv)));
+      }
+
+      log::warn!("┃");
+      log::warn!(
+        "┠─ {}",
+        colors::italic("This may cause the packages to not work correctly.")
+      );
+      log::warn!("┗─ {}", colors::italic("To run lifecycle scripts, use the `--allow-scripts` flag with `deno install`:"));
+      let packages_comma_separated = packages
         .iter()
         .map(|(p, _)| format!("npm:{}", p.id.nv))
         .collect::<Vec<_>>()
-        .join(", ");
-      log::warn!("{}: Packages contained npm lifecycle scripts (preinstall/install/postinstall) that were not executed.
-    This may cause the packages to not work correctly. To run them, use the `--allow-scripts` flag with `deno install`
-    (e.g. `deno install --allow-scripts=pkg1,pkg2 <entrypoint>`):\n      {packages_str}", crate::colors::yellow("warning"));
+        .join(",");
+      log::warn!(
+        "   {}",
+        colors::bold(format!(
+          "deno install --allow-scripts={}",
+          packages_comma_separated
+        ))
+      );
+
       for (package, _) in packages {
-        std::fs::write(
-          warned_scripts_file(&self.deno_local_registry_dir, package),
+        let _ignore_err = fs::write(
+          ran_scripts_file(&self.deno_local_registry_dir, package),
           "",
-        )?;
+        );
       }
     }
     Ok(())

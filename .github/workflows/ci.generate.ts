@@ -813,12 +813,8 @@ const ci = {
           ].join("\n"),
           run: [
             'gsutil -h "Cache-Control: public, max-age=3600" cp ./target/release/*.zip gs://dl.deno.land/canary/$(git rev-parse HEAD)/',
-            'latest_canary_hash=$(gsutil cat gs://dl.deno.land/canary-$(rustc -vV | sed -n "s|host: ||p")-latest.txt)',
-            "git cat-file -e $latest_canary_hash",
-            "if [ $? -eq 0 ]; then",
-            "  echo ${{ github.sha }} > canary-latest.txt",
-            '  gsutil -h "Cache-Control: no-cache" cp canary-latest.txt gs://dl.deno.land/canary-$(rustc -vV | sed -n "s|host: ||p")-latest.txt',
-            "fi",
+            "echo ${{ github.sha }} > canary-latest.txt",
+            'gsutil -h "Cache-Control: no-cache" cp canary-latest.txt gs://dl.deno.land/canary-$(rustc -vV | sed -n "s|host: ||p")-latest.txt',
           ].join("\n"),
         },
         {
@@ -1096,12 +1092,8 @@ const ci = {
         {
           name: "Upload canary version file to dl.deno.land",
           run: [
-            "latest_canary_hash=$(gsutil cat gs://dl.deno.land/canary-latest.txt)",
-            "git cat-file -e $latest_canary_hash",
-            "if [ $? -eq 0]; then",
-            "  echo ${{ github.sha }} > canary-latest.txt",
-            '  gsutil -h "Cache-Control: no-cache" cp canary-latest.txt gs://dl.deno.land/canary-latest.txt',
-            "fi",
+            "echo ${{ github.sha }} > canary-latest.txt",
+            'gsutil -h "Cache-Control: no-cache" cp canary-latest.txt gs://dl.deno.land/canary-latest.txt',
           ].join("\n"),
         },
       ],

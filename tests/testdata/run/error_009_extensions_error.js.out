@@ -1,4 +1,4 @@
-[WILDCARD]error: Uncaught (in promise) TypeError: Failed to construct 'Event': 1 argument required, but only 0 present.
+[WILDCARD]error: Uncaught (in promise) TypeError: Failed to construct 'Event': 1 argument required, but only 0 present
 new Event();
 ^
     at [WILDCARD]
