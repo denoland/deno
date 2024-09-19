@@ -105,12 +105,6 @@
           },
           "markdownDescription": "Specify list of elements that should be exempt from being precompiled when the jsx `precompile` transform is used."
         },
-        "keyofStringsOnly": {
-          "description": "Make keyof only return strings instead of string, numbers or symbols. Legacy option.",
-          "type": "boolean",
-          "default": false,
-          "markdownDescription": "Make keyof only return strings instead of string, numbers or symbols. Legacy option.\n\nSee more: https://www.typescriptlang.org/tsconfig#keyofStringsOnly"
-        },
         "lib": {
           "description": "Specify a set of bundled library declaration files that describe the target runtime environment.",
           "type": "array",
@@ -157,23 +151,11 @@
           "default": true,
           "markdownDescription": "Enable error reporting when `this` is given the type `any`.\n\nSee more: https://www.typescriptlang.org/tsconfig#noImplicitThis"
         },
-        "noImplicitUseStrict": {
-          "description": "Disable adding 'use strict' directives in emitted JavaScript files.",
-          "type": "boolean",
-          "default": true,
-          "markdownDescription": "Disable adding 'use strict' directives in emitted JavaScript files.\n\nSee more: https://www.typescriptlang.org/tsconfig#noImplicitUseStrict"
-        },
         "noPropertyAccessFromIndexSignature": {
           "description": "Enforces using indexed accessors for keys declared using an indexed type.",
           "type": "boolean",
           "default": false,
           "markdownDescription": "Enforces using indexed accessors for keys declared using an indexed type.\n\nSee more: https://www.typescriptlang.org/tsconfig#noPropertyAccessFromIndexSignature"
-        },
-        "noStrictGenericChecks": {
-          "description": "Disable strict checking of generic signatures in function types.",
-          "type": "boolean",
-          "default": false,
-          "markdownDescription": "Disable strict checking of generic signatures in function types.\n\nSee more: https://www.typescriptlang.org/tsconfig#noStrictGenericChecks"
         },
         "noUnusedLocals": {
           "description": "Enable error reporting when a local variables aren't read.",
@@ -236,18 +218,6 @@
             "type": "string"
           },
           "markdownDescription": "Specify type package names to be included without being referenced in a source file.\n\nSee more: https://www.typescriptlang.org/tsconfig/#types"
-        },
-        "suppressExcessPropertyErrors": {
-          "description": "Disable reporting of excess property errors during the creation of object literals.",
-          "type": "boolean",
-          "default": false,
-          "markdownDescription": "Disable reporting of excess property errors during the creation of object literals.\n\nSee more: https://www.typescriptlang.org/tsconfig#suppressExcessPropertyErrors"
-        },
-        "suppressImplicitAnyIndexErrors": {
-          "description": "Suppress `noImplicitAny` errors when indexing objects that lack index signatures.",
-          "type": "boolean",
-          "default": false,
-          "markdownDescription": "Suppress `noImplicitAny` errors when indexing objects that lack index signatures.\n\nSee more: https://www.typescriptlang.org/tsconfig#suppressImplicitAnyIndexErrors"
         },
         "useUnknownInCatchVariables": {
           "description": "Default catch clause variables as `unknown` instead of `any`.",
