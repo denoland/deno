@@ -159,7 +159,18 @@ async fn serve_with_watch(
       !watch_flags.no_clear_screen,
     ),
     WatcherRestartMode::Automatic,
-    move |flags, watcher_communicator, _changed_paths| {
+    move |flags, watcher_communicator, changed_paths| {
+      if let Some(changed_paths_vec) = changed_paths {
+        log::info!("{}", crate::colors::intense_blue("Files Changed:"));
+        for (index, changed_path) in changed_paths_vec.iter().enumerate() {
+          log::info!(
+            "{}: {:?}",
+            crate::colors::intense_blue(index + 1),
+            changed_path
+          );
+        }
+      }
+
       Ok(async move {
         let factory = CliFactory::from_flags_for_watcher(
           flags,
