@@ -1,4 +1,4 @@
-const binaryName = Deno.build.os === "windows" ? "deno.exe" : "deno";
+const binaryName = Deno.build.os === "windows" ? "binary.exe" : "binary";
 const pathSep = Deno.build.os === "windows" ? "\\" : "/";
 
 Deno.mkdirSync("subdir");
@@ -6,7 +6,7 @@ Deno.copyFileSync(binaryName, "subdir/" + binaryName);
 
 try {
   const commandResult = new Deno.Command(
-    "deno",
+    "binary",
     {
       env: { "PATH": Deno.cwd() + pathSep + "subdir" },
       stdout: "inherit",
@@ -22,7 +22,7 @@ try {
 try {
   const child = Deno.run(
     {
-      cmd: ["deno"],
+      cmd: ["binary"],
       env: { "PATH": Deno.cwd() + pathSep + "subdir" },
       stdout: "inherit",
       stderr: "inherit",

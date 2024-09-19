@@ -1,6 +1,6 @@
 {
   "$id": "https://deno.land/x/deno/cli/schemas/config-file.v1.json",
-  "$schema": "http://json-schema.org/draft-07/schema",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
   "description": "A JSON representation of a Deno configuration file.",
   "required": [],
   "title": "Deno configuration file Schema",
@@ -9,6 +9,7 @@
     "compilerOptions": {
       "type": "object",
       "description": "Instructs the TypeScript compiler how to compile .ts files.",
+      "additionalProperties": false,
       "properties": {
         "allowJs": {
           "description": "Allow JavaScript files to be a part of your program. Use the `checkJS` option to get errors from these files.",
@@ -127,7 +128,7 @@
         "noImplicitOverride": {
           "description": "Ensure overriding members in derived classes are marked with an override modifier.",
           "type": "boolean",
-          "default": false,
+          "default": true,
           "markdownDescription": "Ensure overriding members in derived classes are marked with an override modifier.\n\nSee more: https://www.typescriptlang.org/tsconfig#noImplicitOverride"
         },
         "noImplicitReturns": {
@@ -404,8 +405,18 @@
       }
     },
     "nodeModulesDir": {
-      "description": "Enables or disables the use of a local node_modules folder for npm packages. Alternatively, use the `--node-modules-dir` flag or override the config via `--node-modules-dir=false`. Requires Deno 1.34 or later.",
-      "type": "boolean"
+      "oneOf": [
+        {
+          "description": "Sets the node_modules management mode for npm packages. Alternatively, use the `--node-modules-dir=<MODE>` flag. Requires Deno 2.0-rc.1 or later.",
+          "default": "none",
+          "enum": ["auto", "manual", "none"]
+        },
+        {
+          "description": "Enables or disables the use of a local node_modules folder for npm packages. Alternatively, use the `--node-modules-dir` flag or override the config via `--node-modules-dir=false`. Requires Deno 1.34 or later.",
+          "type": "boolean",
+          "deprecated": false
+        }
+      ]
     },
     "vendor": {
       "description": "Enables or disables the use of a local vendor folder as a local cache for remote modules and node_modules folder for npm packages. Alternatively, use the `--vendor` flag or override the config via `--vendor=false`. Requires Deno 1.36.1 or later.",

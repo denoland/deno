@@ -121,12 +121,7 @@ async fn run_subcommand(flags: Arc<Flags>) -> Result<i32, AnyError> {
       tools::installer::install_from_entrypoints(flags, &cache_flags.files).await
     }),
     DenoSubcommand::Check(check_flags) => spawn_subcommand(async move {
-      let factory = CliFactory::from_flags(flags);
-      let main_graph_container =
-        factory.main_module_graph_container().await?;
-      main_graph_container
-        .load_and_type_check_files(&check_flags.files)
-        .await
+      tools::check::check(flags, check_flags).await
     }),
     DenoSubcommand::Clean => spawn_subcommand(async move {
       tools::clean::clean()
@@ -364,13 +359,6 @@ fn get_suggestions_for_terminal_errors(e: &JsError) -> Vec<FixSuggestion> {
           "Run again with `--unstable-cron` flag to enable this API.",
         ),
       ];
-    } else if msg.contains("createHttpClient is not a function") {
-      return vec![
-        FixSuggestion::info("Deno.createHttpClient() is an unstable API."),
-        FixSuggestion::hint(
-          "Run again with `--unstable-http` flag to enable this API.",
-        ),
-      ];
     } else if msg.contains("WebSocketStream is not defined") {
       return vec![
         FixSuggestion::info("new WebSocketStream() is an unstable API."),
@@ -422,18 +410,6 @@ pub(crate) fn unstable_exit_cb(feature: &str, api_name: &str) {
     feature
   );
   std::process::exit(70);
-}
-
-// TODO(bartlomieju): remove when `--unstable` flag is removed.
-#[allow(clippy::print_stderr)]
-pub(crate) fn unstable_warn_cb(feature: &str, api_name: &str) {
-  eprintln!(
-    "⚠️  {}",
-    colors::yellow(format!(
-      "The `{}` API was used with `--unstable` flag. The `--unstable` flag is deprecated and will be removed in Deno 2.0. Use granular `--unstable-{}` instead.\nLearn more at: https://docs.deno.com/runtime/manual/tools/unstable_flags",
-      api_name, feature
-    ))
-  );
 }
 
 pub fn main() {
@@ -502,7 +478,7 @@ fn resolve_flags_and_init(
   };
 
   init_v8_flags(&default_v8_flags, &flags.v8_flags, get_v8_flags_from_env());
-  // TODO(bartlomieju): remove last argument in Deno 2.
+  // TODO(bartlomieju): remove last argument once Deploy no longer needs it
   deno_core::JsRuntime::init_platform(
     None, /* import assertions enabled */ false,
   );

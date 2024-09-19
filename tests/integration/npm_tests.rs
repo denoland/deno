@@ -58,26 +58,23 @@ itest!(cjs_invalid_name_exports {
   http_server: true,
 });
 
-itest!(cjs_require_esm_error {
-  args: "run --allow-read --quiet npm/cjs_require_esm_error/main.ts",
-  output: "npm/cjs_require_esm_error/main.out",
+itest!(cjs_require_esm {
+  args: "run --allow-read --quiet npm/cjs_require_esm/main.ts",
+  output: "npm/cjs_require_esm/main.out",
   envs: env_vars_for_npm_tests(),
   http_server: true,
-  exit_code: 1,
 });
 
-itest!(cjs_require_esm_mjs_error {
-  args: "run --allow-read --quiet npm/cjs_require_esm_mjs_error/main.ts",
-  output: "npm/cjs_require_esm_mjs_error/main.out",
+itest!(cjs_require_esm_mjs {
+  args: "run --allow-read --quiet npm/cjs_require_esm_mjs/main.ts",
+  output: "npm/cjs_require_esm_mjs/main.out",
   envs: env_vars_for_npm_tests(),
   http_server: true,
-  exit_code: 1,
 });
 
-itest!(require_esm_error {
-  args: "run --allow-read --quiet node/require_esm_error/main.ts",
-  output: "node/require_esm_error/main.out",
-  exit_code: 1,
+itest!(require_esm {
+  args: "run --allow-read --quiet node/require_esm/main.ts",
+  output: "node/require_esm/main.out",
 });
 
 itest!(dynamic_import_deno_ts_from_npm {
@@ -1824,7 +1821,10 @@ fn reload_info_not_found_cache_but_exists_remote() {
   {
     // create it
     temp_dir.write("deno.json", r#"{}"#);
-    test_context.new_command().args("cache main.ts").run();
+    test_context
+      .new_command()
+      .args("install --entrypoint main.ts")
+      .run();
     assert!(temp_dir.path().join("deno.lock").exists());
 
     // remove a version found in the lockfile

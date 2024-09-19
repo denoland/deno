@@ -16,6 +16,7 @@ use deno_runtime::deno_node::NodePermissions;
 use deno_runtime::deno_node::NodeRequireResolver;
 use deno_runtime::deno_node::NpmProcessStateProvider;
 use deno_runtime::deno_node::PackageJson;
+use deno_runtime::fs_util::specifier_to_file_path;
 use deno_semver::package::PackageReq;
 use deno_semver::Version;
 use node_resolver::errors::PackageFolderResolveError;
@@ -28,7 +29,6 @@ use node_resolver::NpmResolver;
 use crate::args::NpmProcessState;
 use crate::args::NpmProcessStateKind;
 use crate::util::fs::canonicalize_path_maybe_not_exists_with_fs;
-use deno_runtime::fs_util::specifier_to_file_path;
 
 use super::managed::normalize_pkg_name_for_node_modules_deno_folder;
 use super::CliNpmResolver;
@@ -280,7 +280,7 @@ impl NodeRequireResolver for ByonmCliNpmResolver {
       .components()
       .any(|c| c.as_os_str().to_ascii_lowercase() == "node_modules")
     {
-      permissions.check_read(path)?;
+      _ = permissions.check_read_path(path)?;
     }
     Ok(())
   }

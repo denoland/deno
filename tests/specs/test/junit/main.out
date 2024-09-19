@@ -1,0 +1,38 @@
+Check file:///[WILDCARD]/main.ts
+<?xml version="1.0" encoding="UTF-8"?>
+<testsuites name="deno test" tests="16" failures="0" errors="0" time="[WILDCARD]">
+    <testsuite name="./main.ts" tests="16" disabled="0" errors="0" failures="0">
+        <testcase name="test 0" classname="./main.ts" time="[WILDCARD]" line="1" col="6">
+        </testcase>
+        <testcase name="test 1" classname="./main.ts" time="[WILDCARD]" line="2" col="6">
+        </testcase>
+        <testcase name="test 2" classname="./main.ts" time="[WILDCARD]" line="3" col="6">
+        </testcase>
+        <testcase name="test 3" classname="./main.ts" time="[WILDCARD]" line="4" col="6">
+        </testcase>
+        <testcase name="test 4" classname="./main.ts" time="[WILDCARD]" line="5" col="6">
+        </testcase>
+        <testcase name="test 5" classname="./main.ts" time="[WILDCARD]" line="6" col="6">
+        </testcase>
+        <testcase name="test 6" classname="./main.ts" time="[WILDCARD]" line="7" col="6">
+        </testcase>
+        <testcase name="test 7" classname="./main.ts" time="[WILDCARD]" line="8" col="6">
+        </testcase>
+        <testcase name="test 8" classname="./main.ts" time="[WILDCARD]" line="9" col="6">
+        </testcase>
+        <testcase name="test 9" classname="./main.ts" time="[WILDCARD]" line="12" col="6">
+        </testcase>
+        <testcase name="test\b" classname="./main.ts" time="[WILDCARD]" line="16" col="6">
+        </testcase>
+        <testcase name="test\f" classname="./main.ts" time="[WILDCARD]" line="19" col="6">
+        </testcase>
+        <testcase name="test\t" classname="./main.ts" time="[WILDCARD]" line="23" col="6">
+        </testcase>
+        <testcase name="test\n" classname="./main.ts" time="[WILDCARD]" line="27" col="6">
+        </testcase>
+        <testcase name="test\r" classname="./main.ts" time="[WILDCARD]" line="31" col="6">
+        </testcase>
+        <testcase name="test\v" classname="./main.ts" time="[WILDCARD]" line="35" col="6">
+        </testcase>
+    </testsuite>
+</testsuites>

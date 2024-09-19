@@ -39,15 +39,18 @@ impl ServeClientBuilder {
 
     ServeClient::with_child(child)
   }
+
   fn map(
     self,
     f: impl FnOnce(util::TestCommandBuilder) -> util::TestCommandBuilder,
   ) -> Self {
     Self(f(self.0), self.1)
   }
+
   fn entry_point(self, file: impl AsRef<str>) -> Self {
     Self(self.0, Some(file.as_ref().into()))
   }
+
   fn worker_count(self, n: Option<u64>) -> Self {
     self.map(|t| {
       let t = t.arg("--parallel");
@@ -58,14 +61,17 @@ impl ServeClientBuilder {
       }
     })
   }
+
   fn new() -> Self {
     Self(
       util::deno_cmd()
+        .env("NO_COLOR", "1")
         .current_dir(util::testdata_path())
         .arg("serve")
         .arg("--port")
         .arg("0")
-        .stdout_piped(),
+        .stdout_piped()
+        .stderr_piped(),
       None,
     )
   }
@@ -75,6 +81,7 @@ impl ServeClient {
   fn builder() -> ServeClientBuilder {
     ServeClientBuilder::new()
   }
+
   fn with_child(child: DenoChild) -> Self {
     Self {
       child: RefCell::new(child),
@@ -106,12 +113,12 @@ impl ServeClient {
   fn output(self) -> String {
     let mut child = self.child.borrow_mut();
     child.kill().unwrap();
-    let mut stdout = child.stdout.take().unwrap();
+    let mut stderr = child.stderr.take().unwrap();
     child.wait().unwrap();
 
     let mut output_buf = self.output_buf.borrow_mut();
 
-    stdout.read_to_end(&mut output_buf).unwrap();
+    stderr.read_to_end(&mut output_buf).unwrap();
 
     String::from_utf8(std::mem::take(&mut *output_buf)).unwrap()
   }
@@ -128,8 +135,9 @@ impl ServeClient {
     let mut buffer = self.output_buf.borrow_mut();
     let mut temp_buf = [0u8; 64];
     let mut child = self.child.borrow_mut();
-    let stdout = child.stdout.as_mut().unwrap();
-    let port_regex = regex::bytes::Regex::new(r":(\d+)").unwrap();
+    let stderr = child.stderr.as_mut().unwrap();
+    let port_regex =
+      regex::bytes::Regex::new(r"Listening on https?:[^:]+:(\d+)/").unwrap();
 
     let start = std::time::Instant::now();
     // try to find the port number in the output
@@ -141,7 +149,7 @@ impl ServeClient {
           String::from_utf8_lossy(&buffer)
         );
       }
-      let read = stdout.read(&mut temp_buf).unwrap();
+      let read = stderr.read(&mut temp_buf).unwrap();
       buffer.extend_from_slice(&temp_buf[..read]);
       if let Some(p) = port_regex
         .captures(&buffer)
@@ -154,6 +162,9 @@ impl ServeClient {
       // I don't want to switch RefCell to Mutex just for this
       std::thread::sleep(Duration::from_millis(10));
     };
+
+    eprintln!("stderr: {}", String::from_utf8_lossy(&temp_buf));
+
     self
       .endpoint
       .replace(Some(format!("http://127.0.0.1:{port}")));

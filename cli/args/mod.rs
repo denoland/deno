@@ -27,7 +27,6 @@ use deno_npm::npm_rc::NpmRc;
 use deno_npm::npm_rc::ResolvedNpmRc;
 use deno_npm::resolution::ValidSerializedNpmResolutionSnapshot;
 use deno_npm::NpmSystemInfo;
-use deno_runtime::deno_permissions::PermissionsContainer;
 use deno_semver::npm::NpmPackageReqReference;
 use import_map::resolve_import_map_value_from_specifier;
 
@@ -810,6 +809,8 @@ impl CliOptions {
       }
     }
 
+    warn_insecure_allow_run_flags(&flags);
+
     let maybe_lockfile = maybe_lockfile.filter(|_| !force_global_cache);
     let deno_dir_provider =
       Arc::new(DenoDirProvider::new(flags.cache_path.clone()));
@@ -1082,7 +1083,7 @@ impl CliOptions {
             let specifier = specifier.clone();
             async move {
               let file = file_fetcher
-                .fetch(&specifier, &PermissionsContainer::allow_all())
+                .fetch_bypass_permissions(&specifier)
                 .await?
                 .into_text_decoded()?;
               Ok(file.source.to_string())
@@ -1130,7 +1131,7 @@ impl CliOptions {
         resolve_url_or_path(&compile_flags.source_file, self.initial_cwd())?
       }
       DenoSubcommand::Eval(_) => {
-        resolve_url_or_path("./$deno$eval", self.initial_cwd())?
+        resolve_url_or_path("./$deno$eval.ts", self.initial_cwd())?
       }
       DenoSubcommand::Repl(_) => {
         resolve_url_or_path("./$deno$repl.ts", self.initial_cwd())?
@@ -1501,8 +1502,8 @@ impl CliOptions {
     &self.flags.permissions
   }
 
-  pub fn permissions_options(&self) -> Result<PermissionsOptions, AnyError> {
-    self.flags.permissions.to_options(Some(&self.initial_cwd))
+  pub fn permissions_options(&self) -> PermissionsOptions {
+    self.flags.permissions.to_options()
   }
 
   pub fn reload_flag(&self) -> bool {
@@ -1596,18 +1597,6 @@ impl CliOptions {
         }
       });
 
-    // TODO(2.0): remove this code and enable these features in `99_main.js` by default.
-    let future_features = [
-      deno_runtime::deno_ffi::UNSTABLE_FEATURE_NAME.to_string(),
-      deno_runtime::deno_fs::UNSTABLE_FEATURE_NAME.to_string(),
-      deno_runtime::deno_webgpu::UNSTABLE_FEATURE_NAME.to_string(),
-    ];
-    future_features.iter().for_each(|future_feature| {
-      if !from_config_file.contains(future_feature) {
-        from_config_file.push(future_feature.to_string());
-      }
-    });
-
     if !from_config_file.is_empty() {
       // collect unstable granular flags
       let mut all_valid_unstable_flags: Vec<&str> =
@@ -1698,6 +1687,27 @@ impl CliOptions {
         Some(self.initial_cwd.clone())
       },
     }
+  }
+}
+
+/// Warns for specific uses of `--allow-run`. This function is not
+/// intended to catch every single possible insecure use of `--allow-run`,
+/// but is just an attempt to discourage some common pitfalls.
+fn warn_insecure_allow_run_flags(flags: &Flags) {
+  let permissions = &flags.permissions;
+  if permissions.allow_all {
+    return;
+  }
+  let Some(allow_run_list) = permissions.allow_run.as_ref() else {
+    return;
+  };
+
+  // discourage using --allow-run without an allow list
+  if allow_run_list.is_empty() {
+    log::warn!(
+      "{} --allow-run without an allow list is susceptible to exploits. Prefer specifying an allow list (https://docs.deno.com/runtime/fundamentals/security/#running-subprocesses)",
+      colors::yellow("Warning")
+    );
   }
 }
 

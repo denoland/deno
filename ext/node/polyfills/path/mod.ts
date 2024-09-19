@@ -36,6 +36,7 @@ export const {
   resolve,
   sep,
   toNamespacedPath,
+  _makeLong,
 } = path;
 export default path;
 export * from "ext:deno_node/path/common.ts";

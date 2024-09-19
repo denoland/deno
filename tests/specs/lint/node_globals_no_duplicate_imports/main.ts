@@ -1,7 +1,7 @@
 import {} from "node:console";
 
-const _foo = process.env.FOO;
+const _foo = setImmediate;
 
 import {} from "node:assert";
 
-const _bar = process.env.BAR;
+const _bar = setImmediate;

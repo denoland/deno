@@ -1,0 +1,4 @@
+{
+  "args": "info with_config/test.ts --config with_config/deno-override.json --import-map with_config/import_map.json",
+  "output": "with_config/with_config.out"
+}

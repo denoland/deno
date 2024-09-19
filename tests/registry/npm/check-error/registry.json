@@ -1,1 +1,116 @@
-{"_id":"check-error","_rev":"6-1db87ac4805efc323dfe959f3cc071bf","name":"check-error","description":"Error comparison and information related utility for node and the browser","dist-tags":{"latest":"1.0.2"},"versions":{"1.0.0":{"name":"check-error","description":"Error comparison and information related utility for node and the browser","keywords":["check-error","error","chai util"],"license":"MIT","author":{"name":"Jake Luer","email":"jake@alogicalparadox.com","url":"http://alogicalparadox.com"},"contributors":[{"name":"David Losert","url":"https://github.com/davelosert"},{"name":"Keith Cirkel","url":"https://github.com/keithamus"},{"name":"Miroslav Bajtoš","url":"https://github.com/bajtos"},{"name":"Lucas Fernandes da Costa","url":"https://github.com/lucasfcosta"}],"files":["index.js","check-error.js"],"main":"./index.js","repository":{"type":"git","url":"git+ssh://git@github.com/chaijs/check-error.git"},"scripts":{"build":"browserify --bare $npm_package_main --standalone checkError -o check-error.js","lint":"eslint --ignore-path .gitignore .","prepublish":"npm run build","semantic-release":"semantic-release pre && npm publish && semantic-release post","pretest":"npm run lint","test":"npm run test:node && npm run test:browser && npm run upload-coverage","test:browser":"karma start --singleRun=true","test:node":"istanbul cover _mocha","upload-coverage":"lcov-result-merger 'coverage/**/lcov.info' | coveralls; exit 0"},"config":{"ghooks":{"commit-msg":"validate-commit-msg"}},"eslintConfig":{"extends":["strict/es5"],"env":{"es6":true},"globals":{"HTMLElement":false},"rules":{"complexity":0,"max-statements":0}},"dependencies":{},"devDependencies":{"browserify":"^13.0.0","browserify-istanbul":"^1.0.0","coveralls":"2.11.9","eslint":"^2.4.0","eslint-config-strict":"^8.5.0","eslint-plugin-filenames":"^0.2.0","ghooks":"^1.0.1","istanbul":"^0.4.2","karma":"^0.13.22","karma-browserify":"^5.0.2","karma-coverage":"^0.5.5","karma-mocha":"^0.2.2","karma-phantomjs-launcher":"^1.0.0","karma-sauce-launcher":"^0.3.1","lcov-result-merger":"^1.0.2","mocha":"^2.4.5","phantomjs-prebuilt":"^2.1.5","semantic-release":"^4.3.5","simple-assert":"^1.0.0","travis-after-all":"^1.4.4","validate-commit-msg":"^2.3.1"},"engines":{"node":"*"},"version":"1.0.0","gitHead":"b61892d74797f418b93817afd9d02b1cf0b10ed9","bugs":{"url":"https://github.com/chaijs/check-error/issues"},"homepage":"https://github.com/chaijs/check-error#readme","_id":"check-error@1.0.0","_shasum":"4ba80ad494b9608e03fc4c33d6aef93d734bdf34","_from":".","_npmVersion":"3.9.5","_nodeVersion":"0.10.45","_npmUser":{"name":"chaijs","email":"chaijs@keithcirkel.co.uk"},"dist":{"shasum":"4ba80ad494b9608e03fc4c33d6aef93d734bdf34","tarball":"http://localhost:4260/check-error/check-error-1.0.0.tgz","integrity":"sha512-C8ZaPoYOcNm+CwHkyS4G2So8PiICnJSf4OA2J90AUk9Ebscc0Y/URqWuA4wUgMS50cM0sYemIWciSu4ZWA3Cmw==","signatures":[{"keyid":"SHA256:jl3bwswu80PjjokCgh0o2w5c2U4LhQAE57gj9cz1kzA","sig":"MEUCIBbSor5GYmG85XaVEgYWlWrcK2locB+WEtjNerBBfhRaAiEA1X++fKVaILip6PBY0UvBsbk/oy/jiaApnR2LyS7KU+A="}]},"maintainers":[{"name":"chaijs","email":"chaijs@keithcirkel.co.uk"}],"_npmOperationalInternal":{"host":"packages-16-east.internal.npmjs.com","tmp":"tmp/check-error-1.0.0.tgz_1464967937819_0.0839628055691719"}},"1.0.1":{"name":"check-error","description":"Error comparison and information related utility for node and the browser","keywords":["check-error","error","chai util"],"license":"MIT","author":{"name":"Jake Luer","email":"jake@alogicalparadox.com","url":"http://alogicalparadox.com"},"contributors":[{"name":"David Losert","url":"https://github.com/davelosert"},{"name":"Keith Cirkel","url":"https://github.com/keithamus"},{"name":"Miroslav Bajtoš","url":"https://github.com/bajtos"},{"name":"Lucas Fernandes da Costa","url":"https://github.com/lucasfcosta"}],"files":["index.js","check-error.js"],"main":"./index.js","repository":{"type":"git","url":"git+ssh://git@github.com/chaijs/check-error.git"},"scripts":{"build":"browserify --bare $npm_package_main --standalone checkError -o check-error.js","lint":"eslint --ignore-path .gitignore .","prepublish":"npm run build","semantic-release":"semantic-release pre && npm publish && semantic-release post","pretest":"npm run lint","test":"npm run test:node && npm run test:browser && npm run upload-coverage","test:browser":"karma start --singleRun=true","test:node":"istanbul cover _mocha","upload-coverage":"lcov-result-merger 'coverage/**/lcov.info' | coveralls; exit 0"},"config":{"ghooks":{"commit-msg":"validate-commit-msg"}},"eslintConfig":{"extends":["strict/es5"],"env":{"es6":true},"globals":{"HTMLElement":false},"rules":{"complexity":0,"max-statements":0}},"dependencies":{},"devDependencies":{"browserify":"^13.0.0","browserify-istanbul":"^1.0.0","coveralls":"2.11.9","eslint":"^2.4.0","eslint-config-strict":"^8.5.0","eslint-plugin-filenames":"^0.2.0","ghooks":"^1.0.1","istanbul":"^0.4.2","karma":"^0.13.22","karma-browserify":"^5.0.2","karma-coverage":"^0.5.5","karma-mocha":"^0.2.2","karma-phantomjs-launcher":"^1.0.0","karma-sauce-launcher":"^0.3.1","lcov-result-merger":"^1.0.2","mocha":"^2.4.5","phantomjs-prebuilt":"^2.1.5","semantic-release":"^4.3.5","simple-assert":"^1.0.0","travis-after-all":"^1.4.4","validate-commit-msg":"^2.3.1"},"engines":{"node":"*"},"version":"1.0.1","gitHead":"d257b8667423de02d1663c814579024ba90c808c","bugs":{"url":"https://github.com/chaijs/check-error/issues"},"homepage":"https://github.com/chaijs/check-error#readme","_id":"check-error@1.0.1","_shasum":"7ba748e678f51cf6b9fb131d41270ac9badb972a","_from":".","_npmVersion":"3.9.5","_nodeVersion":"0.10.45","_npmUser":{"name":"chaijs","email":"chaijs@keithcirkel.co.uk"},"dist":{"shasum":"7ba748e678f51cf6b9fb131d41270ac9badb972a","tarball":"http://localhost:4260/check-error/check-error-1.0.1.tgz","integrity":"sha512-/IRkp+vKbcfX3Ief3LXxDBpCMzBOuOkGFYqTbE1jkqnq98ucOLJMIyHkzQ+FGOk3JsP9442ftEHwawCrrPIEYw==","signatures":[{"keyid":"SHA256:jl3bwswu80PjjokCgh0o2w5c2U4LhQAE57gj9cz1kzA","sig":"MEYCIQCnGLbb4g+9IumvH52G+P447N5NNrC48zj1efJHaLmuMwIhAOOMxr1nQFzE0AaTxuzdZiOXR8xuaHK/LMEKSfUky5aD"}]},"maintainers":[{"name":"chaijs","email":"chaijs@keithcirkel.co.uk"}],"_npmOperationalInternal":{"host":"packages-12-west.internal.npmjs.com","tmp":"tmp/check-error-1.0.1.tgz_1465291333990_0.3948423690162599"}},"1.0.2":{"name":"check-error","description":"Error comparison and information related utility for node and the browser","keywords":["check-error","error","chai util"],"license":"MIT","author":{"name":"Jake Luer","email":"jake@alogicalparadox.com","url":"http://alogicalparadox.com"},"contributors":[{"name":"David Losert","url":"https://github.com/davelosert"},{"name":"Keith Cirkel","url":"https://github.com/keithamus"},{"name":"Miroslav Bajtoš","url":"https://github.com/bajtos"},{"name":"Lucas Fernandes da Costa","url":"https://github.com/lucasfcosta"}],"files":["index.js","check-error.js"],"main":"./index.js","repository":{"type":"git","url":"git+ssh://git@github.com/chaijs/check-error.git"},"scripts":{"build":"browserify --bare $npm_package_main --standalone checkError -o check-error.js","lint":"eslint --ignore-path .gitignore .","prepublish":"npm run build","semantic-release":"semantic-release pre && npm publish && semantic-release post","pretest":"npm run lint","test":"npm run test:node && npm run test:browser && npm run upload-coverage","test:browser":"karma start --singleRun=true","test:node":"istanbul cover _mocha","upload-coverage":"lcov-result-merger 'coverage/**/lcov.info' | coveralls; exit 0"},"config":{"ghooks":{"commit-msg":"validate-commit-msg"}},"eslintConfig":{"extends":["strict/es5"],"env":{"es6":true},"globals":{"HTMLElement":false},"rules":{"complexity":0,"max-statements":0}},"dependencies":{},"devDependencies":{"browserify":"^13.0.0","browserify-istanbul":"^1.0.0","coveralls":"2.11.9","eslint":"^2.4.0","eslint-config-strict":"^8.5.0","eslint-plugin-filenames":"^0.2.0","ghooks":"^1.0.1","istanbul":"^0.4.2","karma":"^0.13.22","karma-browserify":"^5.0.2","karma-coverage":"^0.5.5","karma-mocha":"^0.2.2","karma-phantomjs-launcher":"^1.0.0","karma-sauce-launcher":"^0.3.1","lcov-result-merger":"^1.0.2","mocha":"^2.4.5","phantomjs-prebuilt":"^2.1.5","semantic-release":"^4.3.5","simple-assert":"^1.0.0","travis-after-all":"^1.4.4","validate-commit-msg":"^2.3.1"},"engines":{"node":"*"},"version":"1.0.2","gitHead":"22a3985d2ec528015774206703332790aec4dea7","bugs":{"url":"https://github.com/chaijs/check-error/issues"},"homepage":"https://github.com/chaijs/check-error#readme","_id":"check-error@1.0.2","_shasum":"574d312edd88bb5dd8912e9286dd6c0aed4aac82","_from":".","_npmVersion":"3.10.2","_nodeVersion":"0.10.46","_npmUser":{"name":"chaijs","email":"chaijs@keithcirkel.co.uk"},"dist":{"shasum":"574d312edd88bb5dd8912e9286dd6c0aed4aac82","tarball":"http://localhost:4260/check-error/check-error-1.0.2.tgz","integrity":"sha512-BrgHpW9NURQgzoNyjfq0Wu6VFO6D7IZEmJNdtgNqpzGG8RuNFHt2jQxWlAs4HMe119chBnv+34syEZtc6IhLtA==","signatures":[{"keyid":"SHA256:jl3bwswu80PjjokCgh0o2w5c2U4LhQAE57gj9cz1kzA","sig":"MEYCIQDVWmYXeEYVwFkYTypixrwO19ECHIY0laL4EB4NGe4mSAIhAPe+o1k5NTKHNeVIxbUR1ph7taBOst3UuoDF/n5J2HId"}]},"maintainers":[{"name":"chaijs","email":"chaijs@keithcirkel.co.uk"}],"_npmOperationalInternal":{"host":"packages-12-west.internal.npmjs.com","tmp":"tmp/check-error-1.0.2.tgz_1467062034464_0.8010135267395526"}}},"readme":"<h1 align=center>\n  <a href=\"http://chaijs.com\" title=\"Chai Documentation\">\n    <img alt=\"ChaiJS\" src=\"http://chaijs.com/img/chai-logo.png\"/> check-error\n  </a>\n</h1>\n\n<p align=center>\n  Error comparison and information related utility for <a href=\"http://nodejs.org\">node</a> and the browser.\n</p>\n\n<p align=center>\n  <a href=\"./LICENSE\">\n    <img\n      alt=\"license:mit\"\n      src=\"https://img.shields.io/badge/license-mit-green.svg?style=flat-square\"\n    />\n  </a>\n  <a href=\"https://github.com/chaijs/check-error/releases\">\n    <img\n      alt=\"tag:?\"\n      src=\"https://img.shields.io/github/tag/chaijs/check-error.svg?style=flat-square\"\n    />\n  </a>\n  <a href=\"https://travis-ci.org/chaijs/check-error\">\n    <img\n      alt=\"build:?\"\n      src=\"https://img.shields.io/travis/chaijs/check-error/master.svg?style=flat-square\"\n    />\n  </a>\n  <a href=\"https://coveralls.io/r/chaijs/check-error\">\n    <img\n      alt=\"coverage:?\"\n      src=\"https://img.shields.io/coveralls/chaijs/check-error/master.svg?style=flat-square\"\n    />\n  </a>\n  <a href=\"https://www.npmjs.com/packages/check-error\">\n    <img\n      alt=\"npm:?\"\n      src=\"https://img.shields.io/npm/v/check-error.svg?style=flat-square\"\n    />\n  </a>\n  <a href=\"https://www.npmjs.com/packages/check-error\">\n    <img\n      alt=\"dependencies:?\"\n      src=\"https://img.shields.io/npm/dm/check-error.svg?style=flat-square\"\n    />\n  </a>\n  <a href=\"\">\n    <img\n      alt=\"devDependencies:?\"\n      src=\"https://img.shields.io/david/chaijs/check-error.svg?style=flat-square\"\n    />\n  </a>\n  <br/>\n  <a href=\"https://saucelabs.com/u/chaijs-check-error\">\n    <img\n      alt=\"Selenium Test Status\"\n      src=\"https://saucelabs.com/browser-matrix/chaijs-check-error.svg\"\n    />\n  </a>\n  <br>\n  <a href=\"https://chai-slack.herokuapp.com/\">\n    <img\n      alt=\"Join the Slack chat\"\n      src=\"https://img.shields.io/badge/slack-join%20chat-E2206F.svg?style=flat-square\"\n    />\n  </a>\n  <a href=\"https://gitter.im/chaijs/chai\">\n    <img\n      alt=\"Join the Gitter chat\"\n      src=\"https://img.shields.io/badge/gitter-join%20chat-D0104D.svg?style=flat-square\"\n    />\n  </a>\n</p>\n\n## What is Check-Error?\n\nCheck-Error is a module which you can use to retrieve an Error's information such as its `message` or `constructor` name and also to check whether two Errors are compatible based on their messages, constructors or even instances.\n\n## Installation\n\n### Node.js\n\n`check-error` is available on [npm](http://npmjs.org). To install it, type:\n\n    $ npm install check-error\n\n### Browsers\n\nYou can also use it within the browser; install via npm and use the `check-error.js` file found within the download. For example:\n\n```html\n<script src=\"./node_modules/check-error/check-error.js\"></script>\n```\n\n## Usage\n\nThe primary export of `check-error` is an object which has the following methods:\n\n* `compatibleInstance(err, errorLike)` - Checks if an error is compatible with another `errorLike` object. If `errorLike` is an error instance we do a strict comparison, otherwise we return `false` by default, because instances of objects can only be compatible if they're both error instances.\n* `compatibleConstructor(err, errorLike)` - Checks if an error's constructor is compatible with another `errorLike` object. If `err` has the same constructor as `errorLike` or if `err` is an instance of `errorLike`.\n* `compatibleMessage(err, errMatcher)` - Checks if an error message is compatible with an `errMatcher` RegExp or String (we check if the message contains the String).\n* `getConstructorName(errorLike)` - Retrieves the name of a constructor, an error's constructor or `errorLike` itself if it's not an error instance or constructor.\n* `getMessage(err)` - Retrieves the message of an error or `err` itself if it's a String. If `err` or `err.message` is undefined we return an empty String.\n\n```js\nvar checkError = require('check-error');\n```\n\n#### .compatibleInstance(err, errorLike)\n\n```js\nvar checkError = require('check-error');\n\nvar funcThatThrows = function() { throw new TypeError('I am a TypeError') };\nvar caughtErr;\n\ntry {\n  funcThatThrows();\n} catch(e) {\n  caughtErr = e;\n}\n\nvar sameInstance = caughtErr;\n\ncheckError.compatibleInstance(caughtErr, sameInstance); // true\ncheckError.compatibleInstance(caughtErr, new TypeError('Another error')); // false\n```\n\n#### .compatibleConstructor(err, errorLike)\n\n```js\nvar checkError = require('check-error');\n\nvar funcThatThrows = function() { throw new TypeError('I am a TypeError') };\nvar caughtErr;\n\ntry {\n  funcThatThrows();\n} catch(e) {\n  caughtErr = e;\n}\n\ncheckError.compatibleConstructor(caughtErr, Error); // true\ncheckError.compatibleConstructor(caughtErr, TypeError); // true\ncheckError.compatibleConstructor(caughtErr, RangeError); // false\n```\n\n#### .compatibleMessage(err, errMatcher)\n\n```js\nvar checkError = require('check-error');\n\nvar funcThatThrows = function() { throw new TypeError('I am a TypeError') };\nvar caughtErr;\n\ntry {\n  funcThatThrows();\n} catch(e) {\n  caughtErr = e;\n}\n\nvar sameInstance = caughtErr;\n\ncheckError.compatibleMessage(caughtErr, /TypeError$/); // true\ncheckError.compatibleMessage(caughtErr, 'I am a'); // true\ncheckError.compatibleMessage(caughtErr, /unicorn/); // false\ncheckError.compatibleMessage(caughtErr, 'I do not exist'); // false\n```\n\n#### .getConstructorName(errorLike)\n\n```js\nvar checkError = require('check-error');\n\nvar funcThatThrows = function() { throw new TypeError('I am a TypeError') };\nvar caughtErr;\n\ntry {\n  funcThatThrows();\n} catch(e) {\n  caughtErr = e;\n}\n\nvar sameInstance = caughtErr;\n\ncheckError.getConstructorName(caughtErr) // 'TypeError'\n```\n\n#### .getMessage(err)\n\n```js\nvar checkError = require('check-error');\n\nvar funcThatThrows = function() { throw new TypeError('I am a TypeError') };\nvar caughtErr;\n\ntry {\n  funcThatThrows();\n} catch(e) {\n  caughtErr = e;\n}\n\nvar sameInstance = caughtErr;\n\ncheckError.getMessage(caughtErr) // 'I am a TypeError'\n```\n","maintainers":[{"name":"chaijs","email":"chaijs@keithcirkel.co.uk"}],"time":{"modified":"2022-06-13T05:55:31.487Z","created":"2016-06-03T15:32:19.225Z","1.0.0":"2016-06-03T15:32:19.225Z","1.0.1":"2016-06-07T09:22:16.414Z","1.0.2":"2016-06-27T21:13:56.593Z"},"homepage":"https://github.com/chaijs/check-error#readme","keywords":["check-error","error","chai util"],"repository":{"type":"git","url":"git+ssh://git@github.com/chaijs/check-error.git"},"contributors":[{"name":"David Losert","url":"https://github.com/davelosert"},{"name":"Keith Cirkel","url":"https://github.com/keithamus"},{"name":"Miroslav Bajtoš","url":"https://github.com/bajtos"},{"name":"Lucas Fernandes da Costa","url":"https://github.com/lucasfcosta"}],"author":{"name":"Jake Luer","email":"jake@alogicalparadox.com","url":"http://alogicalparadox.com"},"bugs":{"url":"https://github.com/chaijs/check-error/issues"},"license":"MIT","readmeFilename":"README.md","users":{"justjavac":true}}
+{
+  "name": "check-error",
+  "description": "Error comparison and information related utility for node and the browser",
+  "dist-tags": {
+    "latest": "1.0.2"
+  },
+  "versions": {
+    "1.0.2": {
+      "name": "check-error",
+      "description": "Error comparison and information related utility for node and the browser",
+      "license": "MIT",
+      "author": {
+        "name": "Jake Luer",
+        "email": "jake@alogicalparadox.com",
+        "url": "http://alogicalparadox.com"
+      },
+      "files": [
+        "index.js",
+        "check-error.js"
+      ],
+      "main": "./index.js",
+      "repository": {
+        "type": "git",
+        "url": "git+ssh://git@github.com/chaijs/check-error.git"
+      },
+      "scripts": {
+        "build": "browserify --bare $npm_package_main --standalone checkError -o check-error.js",
+        "lint": "eslint --ignore-path .gitignore .",
+        "prepublish": "npm run build",
+        "semantic-release": "semantic-release pre && npm publish && semantic-release post",
+        "pretest": "npm run lint",
+        "test": "npm run test:node && npm run test:browser && npm run upload-coverage",
+        "test:browser": "karma start --singleRun=true",
+        "test:node": "istanbul cover _mocha",
+        "upload-coverage": "lcov-result-merger 'coverage/**/lcov.info' | coveralls; exit 0"
+      },
+      "config": {
+        "ghooks": {
+          "commit-msg": "validate-commit-msg"
+        }
+      },
+      "eslintConfig": {
+        "extends": [
+          "strict/es5"
+        ],
+        "env": {
+          "es6": true
+        },
+        "globals": {
+          "HTMLElement": false
+        },
+        "rules": {
+          "complexity": 0,
+          "max-statements": 0
+        }
+      },
+      "dependencies": {},
+      "devDependencies": {
+        "browserify": "^13.0.0",
+        "browserify-istanbul": "^1.0.0",
+        "coveralls": "2.11.9",
+        "eslint": "^2.4.0",
+        "eslint-config-strict": "^8.5.0",
+        "eslint-plugin-filenames": "^0.2.0",
+        "ghooks": "^1.0.1",
+        "istanbul": "^0.4.2",
+        "karma": "^0.13.22",
+        "karma-browserify": "^5.0.2",
+        "karma-coverage": "^0.5.5",
+        "karma-mocha": "^0.2.2",
+        "karma-phantomjs-launcher": "^1.0.0",
+        "karma-sauce-launcher": "^0.3.1",
+        "lcov-result-merger": "^1.0.2",
+        "mocha": "^2.4.5",
+        "phantomjs-prebuilt": "^2.1.5",
+        "semantic-release": "^4.3.5",
+        "simple-assert": "^1.0.0",
+        "travis-after-all": "^1.4.4",
+        "validate-commit-msg": "^2.3.1"
+      },
+      "engines": {
+        "node": "*"
+      },
+      "version": "1.0.2",
+      "gitHead": "22a3985d2ec528015774206703332790aec4dea7",
+      "bugs": {
+        "url": "https://github.com/chaijs/check-error/issues"
+      },
+      "_id": "check-error@1.0.2",
+      "_shasum": "574d312edd88bb5dd8912e9286dd6c0aed4aac82",
+      "_from": ".",
+      "_npmVersion": "3.10.2",
+      "_nodeVersion": "0.10.46",
+      "dist": {
+        "shasum": "574d312edd88bb5dd8912e9286dd6c0aed4aac82",
+        "tarball": "http://localhost:4260/check-error/check-error-1.0.2.tgz",
+        "integrity": "sha512-BrgHpW9NURQgzoNyjfq0Wu6VFO6D7IZEmJNdtgNqpzGG8RuNFHt2jQxWlAs4HMe119chBnv+34syEZtc6IhLtA=="
+      }
+    }
+  },
+  "homepage": "https://github.com/chaijs/check-error#readme",
+  "repository": {
+    "type": "git",
+    "url": "git+ssh://git@github.com/chaijs/check-error.git"
+  },
+  "author": {
+    "name": "Jake Luer",
+    "email": "jake@alogicalparadox.com",
+    "url": "http://alogicalparadox.com"
+  },
+  "bugs": {
+    "url": "https://github.com/chaijs/check-error/issues"
+  },
+  "license": "MIT",
+  "readmeFilename": "README.md"
+}

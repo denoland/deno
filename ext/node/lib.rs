@@ -3,8 +3,10 @@
 #![deny(clippy::print_stderr)]
 #![deny(clippy::print_stdout)]
 
+use std::borrow::Cow;
 use std::collections::HashSet;
 use std::path::Path;
+use std::path::PathBuf;
 
 use deno_core::error::AnyError;
 use deno_core::located_script_name;
@@ -49,21 +51,29 @@ pub trait NodePermissions {
     url: &Url,
     api_name: &str,
   ) -> Result<(), AnyError>;
+  #[must_use = "the resolved return value to mitigate time-of-check to time-of-use issues"]
   #[inline(always)]
-  fn check_read(&mut self, path: &Path) -> Result<(), AnyError> {
+  fn check_read(&mut self, path: &str) -> Result<PathBuf, AnyError> {
     self.check_read_with_api_name(path, None)
   }
+  #[must_use = "the resolved return value to mitigate time-of-check to time-of-use issues"]
   fn check_read_with_api_name(
     &mut self,
-    path: &Path,
+    path: &str,
     api_name: Option<&str>,
-  ) -> Result<(), AnyError>;
+  ) -> Result<PathBuf, AnyError>;
+  #[must_use = "the resolved return value to mitigate time-of-check to time-of-use issues"]
+  fn check_read_path<'a>(
+    &mut self,
+    path: &'a Path,
+  ) -> Result<Cow<'a, Path>, AnyError>;
   fn check_sys(&mut self, kind: &str, api_name: &str) -> Result<(), AnyError>;
+  #[must_use = "the resolved return value to mitigate time-of-check to time-of-use issues"]
   fn check_write_with_api_name(
     &mut self,
-    path: &Path,
+    path: &str,
     api_name: Option<&str>,
-  ) -> Result<(), AnyError>;
+  ) -> Result<PathBuf, AnyError>;
 }
 
 impl NodePermissions for deno_permissions::PermissionsContainer {
@@ -79,20 +89,27 @@ impl NodePermissions for deno_permissions::PermissionsContainer {
   #[inline(always)]
   fn check_read_with_api_name(
     &mut self,
-    path: &Path,
+    path: &str,
     api_name: Option<&str>,
-  ) -> Result<(), AnyError> {
+  ) -> Result<PathBuf, AnyError> {
     deno_permissions::PermissionsContainer::check_read_with_api_name(
       self, path, api_name,
     )
   }
 
+  fn check_read_path<'a>(
+    &mut self,
+    path: &'a Path,
+  ) -> Result<Cow<'a, Path>, AnyError> {
+    deno_permissions::PermissionsContainer::check_read_path(self, path, None)
+  }
+
   #[inline(always)]
   fn check_write_with_api_name(
     &mut self,
-    path: &Path,
+    path: &str,
     api_name: Option<&str>,
-  ) -> Result<(), AnyError> {
+  ) -> Result<PathBuf, AnyError> {
     deno_permissions::PermissionsContainer::check_write_with_api_name(
       self, path, api_name,
     )
@@ -286,6 +303,25 @@ deno_core::extension!(deno_node,
     ops::winerror::op_node_sys_to_uv_error,
     ops::v8::op_v8_cached_data_version_tag,
     ops::v8::op_v8_get_heap_statistics,
+    ops::v8::op_v8_get_wire_format_version,
+    ops::v8::op_v8_new_deserializer,
+    ops::v8::op_v8_new_serializer,
+    ops::v8::op_v8_read_double,
+    ops::v8::op_v8_read_header,
+    ops::v8::op_v8_read_raw_bytes,
+    ops::v8::op_v8_read_uint32,
+    ops::v8::op_v8_read_uint64,
+    ops::v8::op_v8_read_value,
+    ops::v8::op_v8_release_buffer,
+    ops::v8::op_v8_set_treat_array_buffer_views_as_host_objects,
+    ops::v8::op_v8_transfer_array_buffer,
+    ops::v8::op_v8_transfer_array_buffer_de,
+    ops::v8::op_v8_write_double,
+    ops::v8::op_v8_write_header,
+    ops::v8::op_v8_write_raw_bytes,
+    ops::v8::op_v8_write_uint32,
+    ops::v8::op_v8_write_uint64,
+    ops::v8::op_v8_write_value,
     ops::vm::op_vm_create_script,
     ops::vm::op_vm_create_context,
     ops::vm::op_vm_script_run_in_context,
@@ -339,6 +375,7 @@ deno_core::extension!(deno_node,
     ops::os::op_homedir<P>,
     op_node_build_os,
     op_npm_process_state,
+    ops::require::op_require_can_parse_as_esm,
     ops::require::op_require_init_paths,
     ops::require::op_require_node_module_paths<P>,
     ops::require::op_require_proxy_path,
@@ -370,6 +407,7 @@ deno_core::extension!(deno_node,
     ops::ipc::op_node_ipc_unref,
     ops::process::op_node_process_kill,
     ops::process::op_process_abort,
+    ops::tls::op_get_root_certificates,
   ],
   esm_entry_point = "ext:deno_node/02_init.js",
   esm = [
@@ -422,17 +460,12 @@ deno_core::extension!(deno_node,
     "_fs/_fs_write.mjs",
     "_fs/_fs_writeFile.ts",
     "_fs/_fs_writev.mjs",
-    "_http_agent.mjs",
-    "_http_common.ts",
-    "_http_outgoing.ts",
     "_next_tick.ts",
     "_process/exiting.ts",
     "_process/process.ts",
     "_process/streams.mjs",
     "_readline.mjs",
     "_stream.mjs",
-    "_tls_common.ts",
-    "_tls_wrap.ts",
     "_util/_util_callbackify.js",
     "_util/asserts.ts",
     "_util/async.ts",
@@ -527,15 +560,10 @@ deno_core::extension!(deno_node,
     "internal/streams/add-abort-signal.mjs",
     "internal/streams/buffer_list.mjs",
     "internal/streams/destroy.mjs",
-    "internal/streams/duplex.mjs",
     "internal/streams/end-of-stream.mjs",
     "internal/streams/lazy_transform.mjs",
-    "internal/streams/passthrough.mjs",
-    "internal/streams/readable.mjs",
     "internal/streams/state.mjs",
-    "internal/streams/transform.mjs",
     "internal/streams/utils.mjs",
-    "internal/streams/writable.mjs",
     "internal/test/binding.ts",
     "internal/timers.mjs",
     "internal/url.ts",
@@ -556,6 +584,17 @@ deno_core::extension!(deno_node,
     "path/mod.ts",
     "path/separator.ts",
     "readline/promises.ts",
+    "node:_http_agent" = "_http_agent.mjs",
+    "node:_http_common" = "_http_common.ts",
+    "node:_http_outgoing" = "_http_outgoing.ts",
+    "node:_http_server" = "_http_server.ts",
+    "node:_stream_duplex" = "internal/streams/duplex.mjs",
+    "node:_stream_passthrough" = "internal/streams/passthrough.mjs",
+    "node:_stream_readable" = "internal/streams/readable.mjs",
+    "node:_stream_transform" = "internal/streams/transform.mjs",
+    "node:_stream_writable" = "internal/streams/writable.mjs",
+    "node:_tls_common" = "_tls_common.ts",
+    "node:_tls_wrap" = "_tls_wrap.ts",
     "node:assert" = "assert.ts",
     "node:assert/strict" = "assert/strict.ts",
     "node:async_hooks" = "async_hooks.ts",
@@ -577,6 +616,7 @@ deno_core::extension!(deno_node,
     "node:http2" = "http2.ts",
     "node:https" = "https.ts",
     "node:inspector" = "inspector.ts",
+    "node:inspector/promises" = "inspector.ts",
     "node:module" = "01_require.js",
     "node:net" = "net.ts",
     "node:os" = "os.ts",
@@ -600,6 +640,7 @@ deno_core::extension!(deno_node,
     "node:timers" = "timers.ts",
     "node:timers/promises" = "timers/promises.ts",
     "node:tls" = "tls.ts",
+    "node:trace_events" = "trace_events.ts",
     "node:tty" = "tty.js",
     "node:url" = "url.ts",
     "node:util" = "util.ts",

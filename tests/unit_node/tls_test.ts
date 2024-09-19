@@ -1,19 +1,24 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
-import { assertEquals, assertInstanceOf } from "@std/assert";
+import {
+  assert,
+  assertEquals,
+  assertInstanceOf,
+  assertStringIncludes,
+  assertThrows,
+} from "@std/assert";
 import { delay } from "@std/async/delay";
 import { fromFileUrl, join } from "@std/path";
 import * as tls from "node:tls";
 import * as net from "node:net";
 import * as stream from "node:stream";
+import { execCode } from "../unit/test_util.ts";
 
 const tlsTestdataDir = fromFileUrl(
   new URL("../testdata/tls", import.meta.url),
 );
-const keyFile = join(tlsTestdataDir, "localhost.key");
-const certFile = join(tlsTestdataDir, "localhost.crt");
-const key = Deno.readTextFileSync(keyFile);
-const cert = Deno.readTextFileSync(certFile);
+const key = Deno.readTextFileSync(join(tlsTestdataDir, "localhost.key"));
+const cert = Deno.readTextFileSync(join(tlsTestdataDir, "localhost.crt"));
 const rootCaCert = Deno.readTextFileSync(join(tlsTestdataDir, "RootCA.pem"));
 
 for (
@@ -190,4 +195,35 @@ Deno.test("tlssocket._handle._parentWrap is set", () => {
       ._handle as any)!
       ._parentWrap;
   assertInstanceOf(parentWrap, stream.PassThrough);
+});
+
+Deno.test("tls.connect() throws InvalidData when there's error in certificate", async () => {
+  // Uses execCode to avoid `--unsafely-ignore-certificate-errors` option applied
+  const [status, output] = await execCode(`
+    import tls from "node:tls";
+    const conn = tls.connect({
+      host: "localhost",
+      port: 4557,
+    });
+
+    conn.on("error", (err) => {
+      console.log(err);
+    });
+  `);
+
+  assertEquals(status, 0);
+  assertStringIncludes(
+    output,
+    "InvalidData: invalid peer certificate: UnknownIssuer",
+  );
+});
+
+Deno.test("tls.rootCertificates is not empty", () => {
+  assert(tls.rootCertificates.length > 0);
+  assert(Object.isFrozen(tls.rootCertificates));
+  assert(tls.rootCertificates instanceof Array);
+  assert(tls.rootCertificates.every((cert) => typeof cert === "string"));
+  assertThrows(() => {
+    (tls.rootCertificates as string[]).push("new cert");
+  }, TypeError);
 });

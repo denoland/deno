@@ -44,6 +44,7 @@ use deno_http::DefaultHttpPropertyExtractor;
 use deno_io::Stdio;
 use deno_kv::dynamic::MultiBackendDbHandler;
 use deno_node::NodeExtInitServices;
+use deno_permissions::PermissionDescriptorParser;
 use deno_permissions::PermissionsContainer;
 use deno_terminal::colors;
 use deno_tls::RootCertStoreProvider;
@@ -356,6 +357,7 @@ pub struct WebWorker {
 }
 
 pub struct WebWorkerOptions {
+  // todo(dsherret): extract out the service structs from this options bag
   pub bootstrap: BootstrapOptions,
   pub extensions: Vec<Extension>,
   pub startup_snapshot: Option<&'static [u8]>,
@@ -377,6 +379,7 @@ pub struct WebWorkerOptions {
   pub cache_storage_dir: Option<std::path::PathBuf>,
   pub stdio: Stdio,
   pub feature_checker: Arc<FeatureChecker>,
+  pub permission_desc_parser: Arc<dyn PermissionDescriptorParser>,
   pub strace_ops: Option<Vec<String>>,
   pub close_on_idle: bool,
   pub maybe_worker_metadata: Option<WorkerMetadata>,
@@ -501,7 +504,9 @@ impl WebWorker {
       ),
       ops::fs_events::deno_fs_events::init_ops_and_esm(),
       ops::os::deno_os_worker::init_ops_and_esm(),
-      ops::permissions::deno_permissions::init_ops_and_esm(),
+      ops::permissions::deno_permissions::init_ops_and_esm(
+        options.permission_desc_parser.clone(),
+      ),
       ops::process::deno_process::init_ops_and_esm(),
       ops::signal::deno_signal::init_ops_and_esm(),
       ops::tty::deno_tty::init_ops_and_esm(),

@@ -148,11 +148,6 @@ itest!(_021_mjs_modules {
   output: "run/021_mjs_modules.ts.out",
 });
 
-itest!(_023_no_ext {
-  args: "run --reload --check run/023_no_ext",
-  output: "run/023_no_ext.out",
-});
-
 itest!(_025_reload_js_type_error {
   args: "run --quiet --reload run/025_reload_js_type_error.js",
   output: "run/025_reload_js_type_error.js.out",
@@ -253,12 +248,6 @@ itest!(_052_no_remote_flag {
   output: "run/052_no_remote_flag.out",
   exit_code: 1,
   http_server: true,
-});
-
-itest!(_056_make_temp_file_write_perm {
-  args:
-    "run --quiet --allow-read --allow-write=./subdir/ run/056_make_temp_file_write_perm.ts",
-  output: "run/056_make_temp_file_write_perm.out",
 });
 
 itest!(_058_tasks_microtasks_close {
@@ -488,9 +477,8 @@ itest!(_088_dynamic_import_already_evaluating {
   output: "run/088_dynamic_import_already_evaluating.ts.out",
 });
 
-// TODO(bartlomieju): remove --unstable once Deno.Command is stabilized
 itest!(_089_run_allow_list {
-  args: "run --unstable --allow-run=curl run/089_run_allow_list.ts",
+  args: "run --allow-run=curl run/089_run_allow_list.ts",
   envs: vec![
     ("LD_LIBRARY_PATH".to_string(), "".to_string()),
     ("DYLD_FALLBACK_LIBRARY_PATH".to_string(), "".to_string())
@@ -1560,7 +1548,7 @@ itest!(import_meta {
 });
 
 itest!(main_module {
-  args: "run --quiet --allow-read --reload run/main_module/main.ts",
+  args: "run --quiet  --reload run/main_module/main.ts",
   output: "run/main_module/main.out",
 });
 
@@ -1828,17 +1816,6 @@ itest!(unstable_cron_enabled {
   args:
     "run --quiet --reload --allow-read --unstable-cron run/unstable_cron.js",
   output: "run/unstable_cron.enabled.out",
-});
-
-itest!(unstable_http_disabled {
-  args: "run --quiet --reload --allow-read run/unstable_http.js",
-  output: "run/unstable_http.disabled.out",
-});
-
-itest!(unstable_http_enabled {
-  args:
-    "run --quiet --reload --allow-read --unstable-http run/unstable_http.js",
-  output: "run/unstable_http.enabled.out",
 });
 
 itest!(unstable_net_disabled {
@@ -2540,14 +2517,12 @@ mod permissions {
   use test_util::itest;
   use util::TestContext;
 
-  // TODO(bartlomieju): remove --unstable once Deno.Command is stabilized
   #[test]
   fn with_allow() {
     for permission in &util::PERMISSION_VARIANTS {
       let status = util::deno_cmd()
         .current_dir(util::testdata_path())
         .arg("run")
-        .arg("--unstable")
         .arg(format!("--allow-{permission}"))
         .arg("run/permission_test.ts")
         .arg(format!("{permission}Required"))
@@ -2559,13 +2534,12 @@ mod permissions {
     }
   }
 
-  // TODO(bartlomieju): remove --unstable once Deno.Command is stabilized
   #[test]
   fn without_allow() {
     for permission in &util::PERMISSION_VARIANTS {
       let (_, err) = util::run_and_collect_output(
         false,
-        &format!("run --unstable run/permission_test.ts {permission}Required"),
+        &format!("run run/permission_test.ts {permission}Required"),
         None,
         None,
         false,
@@ -3019,7 +2993,7 @@ mod permissions {
   fn _066_prompt() {
     TestContext::default()
       .new_command()
-      .args_vec(["run", "--quiet", "--unstable", "run/066_prompt.ts"])
+      .args_vec(["run", "--quiet", "run/066_prompt.ts"])
       .with_pty(|mut console| {
         console.expect("What is your name? Jane Doe");
         console.write_line_raw("");
@@ -3149,7 +3123,7 @@ fn issue9750() {
       console.write_line_raw("n");
       console.expect_all(&[
         "Denied env access to \"SECRET\".",
-        "PermissionDenied: Requires env access to \"SECRET\", run again with the --allow-env flag",
+        "NotCapable: Requires env access to \"SECRET\", run again with the --allow-env flag",
       ]);
     });
 }
@@ -3333,11 +3307,6 @@ itest!(import_attributes_type_check {
   exit_code: 1,
 });
 
-itest!(delete_window {
-  args: "run run/delete_window.js",
-  output_str: Some("true\n"),
-});
-
 itest!(colors_without_global_this {
   args: "run run/colors_without_globalThis.js",
   output_str: Some("true\n"),
@@ -3378,42 +3347,6 @@ itest!(
     exit_code: 1,
   }
 );
-
-// TODO(2.0): this should be rewritten to a spec test and first run `deno install`
-// itest!(package_json_auto_discovered_for_npm_binary {
-//   args: "run -L debug -A npm:@denotest/bin/cli-esm this is a test",
-//   output: "run/with_package_json/npm_binary/main.out",
-//   cwd: Some("run/with_package_json/npm_binary/"),
-//   copy_temp_dir: Some("run/with_package_json/"),
-//   envs: env_vars_for_npm_tests(),
-//   http_server: true,
-// });
-
-// TODO(2.0): this should be rewritten to a spec test and first run `deno install`
-#[test]
-#[ignore]
-fn package_json_with_deno_json() {
-  let context = TestContextBuilder::for_npm()
-    .use_copy_temp_dir("package_json/deno_json/")
-    .cwd("package_json/deno_json/")
-    .build();
-  let output = context.new_command().args("run --quiet -A main.ts").run();
-  output.assert_matches_file("package_json/deno_json/main.out");
-
-  assert!(context
-    .temp_dir()
-    .path()
-    .join("package_json/deno_json/deno.lock")
-    .exists());
-
-  // run again and ensure the top level install doesn't happen twice
-  let output = context
-    .new_command()
-    .args("run --log-level=debug -A main.ts")
-    .run();
-  let output = output.combined_output();
-  assert_contains!(output, "Skipping top level install.");
-}
 
 #[test]
 fn package_json_no_node_modules_dir_created() {
@@ -3575,7 +3508,6 @@ fn deno_no_prompt_environment_variable() {
   let output = util::deno_cmd()
     .current_dir(util::testdata_path())
     .arg("run")
-    .arg("--unstable")
     .arg("run/no_prompt.ts")
     .env("DENO_NO_PROMPT", "1")
     .spawn()
@@ -4056,7 +3988,7 @@ async fn test_resolve_dns() {
     let out = String::from_utf8_lossy(&output.stdout);
     assert!(!output.status.success());
     assert!(err.starts_with("Check file"));
-    assert!(err.contains(r#"error: Uncaught (in promise) PermissionDenied: Requires net access to "127.0.0.1:4553""#));
+    assert!(err.contains(r#"error: Uncaught (in promise) NotCapable: Requires net access to "127.0.0.1:4553""#));
     assert!(out.is_empty());
   }
 
@@ -4077,7 +4009,7 @@ async fn test_resolve_dns() {
     let out = String::from_utf8_lossy(&output.stdout);
     assert!(!output.status.success());
     assert!(err.starts_with("Check file"));
-    assert!(err.contains(r#"error: Uncaught (in promise) PermissionDenied: Requires net access to "127.0.0.1:4553""#));
+    assert!(err.contains(r#"error: Uncaught (in promise) NotCapable: Requires net access to "127.0.0.1:4553""#));
     assert!(out.is_empty());
   }
 
@@ -4089,7 +4021,6 @@ async fn http2_request_url() {
   let mut child = util::deno_cmd()
     .current_dir(util::testdata_path())
     .arg("run")
-    .arg("--unstable")
     .arg("--quiet")
     .arg("--allow-net")
     .arg("--allow-read")
@@ -4273,12 +4204,6 @@ itest!(error_cause_recursive {
   exit_code: 1,
 });
 
-itest!(default_file_extension_is_js {
-  args: "run --check file_extensions/js_without_extension",
-  output: "file_extensions/js_without_extension.out",
-  exit_code: 0,
-});
-
 itest!(js_without_extension {
   args: "run --ext js --check file_extensions/js_without_extension",
   output: "file_extensions/js_without_extension.out",
@@ -4384,7 +4309,6 @@ async fn websocket_server_multi_field_connection_header() {
   let root_ca = util::testdata_path().join("tls/RootCA.pem");
   let mut child = util::deno_cmd()
     .arg("run")
-    .arg("--unstable")
     .arg("--allow-net")
     .arg("--cert")
     .arg(root_ca)
@@ -4438,7 +4362,6 @@ async fn websocket_server_idletimeout() {
   let root_ca = util::testdata_path().join("tls/RootCA.pem");
   let mut child = util::deno_cmd()
     .arg("run")
-    .arg("--unstable")
     .arg("--allow-net")
     .arg("--cert")
     .arg(root_ca)
@@ -4735,20 +4658,6 @@ itest!(unsafe_proto {
 itest!(unsafe_proto_flag {
   args: "run -A --unstable-unsafe-proto run/unsafe_proto/main.js",
   output: "run/unsafe_proto/main_with_unsafe_proto_flag.out",
-  http_server: false,
-  exit_code: 0,
-});
-
-itest!(unstable_temporal_api {
-  args: "run --no-config --unstable-temporal --check run/unstable_temporal_api/main.ts",
-  output: "run/unstable_temporal_api/main.out",
-  http_server: false,
-  exit_code: 0,
-});
-
-itest!(unstable_temporal_api_config_file {
-  args: "run --check run/unstable_temporal_api/main.ts",
-  output: "run/unstable_temporal_api/main.out",
   http_server: false,
   exit_code: 0,
 });
@@ -5089,7 +4998,6 @@ async fn listen_tls_alpn() {
   let mut child = util::deno_cmd()
     .current_dir(util::testdata_path())
     .arg("run")
-    .arg("--unstable")
     .arg("--quiet")
     .arg("--allow-net")
     .arg("--allow-read")
@@ -5143,7 +5051,6 @@ async fn listen_tls_alpn_fail() {
   let mut child = util::deno_cmd()
     .current_dir(util::testdata_path())
     .arg("run")
-    .arg("--unstable")
     .arg("--quiet")
     .arg("--allow-net")
     .arg("--allow-read")
@@ -5206,4 +5113,28 @@ fn emit_failed_readonly_file_system() {
     .args("run --log-level=debug main.ts")
     .run();
   output.assert_matches_text("[WILDCARD]Error saving emit data ([WILDLINE]main.ts)[WILDCARD]Skipped emit cache save of [WILDLINE]other.ts[WILDCARD]hi[WILDCARD]");
+}
+
+#[cfg(windows)]
+#[test]
+fn handle_invalid_path_error() {
+  let deno_cmd = util::deno_cmd_with_deno_dir(&util::new_deno_dir());
+  let output = deno_cmd.arg("run").arg("file://asdf").output().unwrap();
+  assert!(
+    String::from_utf8_lossy(&output.stderr).contains("Invalid file path.")
+  );
+
+  let deno_cmd = util::deno_cmd_with_deno_dir(&util::new_deno_dir());
+  let output = deno_cmd.arg("run").arg("/a/b").output().unwrap();
+  assert!(String::from_utf8_lossy(&output.stderr).contains("Module not found"));
+
+  let deno_cmd = util::deno_cmd_with_deno_dir(&util::new_deno_dir());
+  let output = deno_cmd.arg("run").arg("//a/b").output().unwrap();
+  assert!(
+    String::from_utf8_lossy(&output.stderr).contains("Invalid file path.")
+  );
+
+  let deno_cmd = util::deno_cmd_with_deno_dir(&util::new_deno_dir());
+  let output = deno_cmd.arg("run").arg("///a/b").output().unwrap();
+  assert!(String::from_utf8_lossy(&output.stderr).contains("Module not found"));
 }
