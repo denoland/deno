@@ -43,10 +43,10 @@
           "markdownDescription": "Emit design-type metadata for decorated declarations in source files.\n\nSee more: https://www.typescriptlang.org/tsconfig/#emitDecoratorMetadata"
         },
         "exactOptionalPropertyTypes": {
-          "description": "Differentiate between undefined and not present when type checking",
+          "description": "Interpret optional property types as written, rather than adding 'undefined'.",
           "type": "boolean",
           "default": false,
-          "markdownDescription": "Differentiate between undefined and not present when type checking\n\nSee more: https://www.typescriptlang.org/tsconfig#exactOptionalPropertyTypes"
+          "markdownDescription": "Interpret optional property types as written, rather than adding 'undefined'.\n\nSee more: https://www.typescriptlang.org/tsconfig#exactOptionalPropertyTypes"
         },
         "experimentalDecorators": {
           "description": "Enable experimental support for legacy experimental decorators.",
