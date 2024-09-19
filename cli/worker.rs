@@ -526,7 +526,8 @@ impl CliMainWorkerFactory {
       let is_main_cjs = matches!(node_resolution, NodeResolution::CommonJs(_));
       (node_resolution.into_url(), is_main_cjs)
     } else {
-      (main_module, false)
+      let is_cjs = main_module.path().ends_with(".cjs");
+      (main_module, is_cjs)
     };
 
     let ModuleLoaderAndSourceMapGetter { module_loader } =
