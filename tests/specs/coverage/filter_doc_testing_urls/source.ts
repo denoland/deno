@@ -1,8 +1,6 @@
 /**
  * @example Usage
  * ```ts
- * import { add } from "./source.ts";
- *
  * add(1, 2); // 3
  * ```
  */
