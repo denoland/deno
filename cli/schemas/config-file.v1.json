@@ -55,6 +55,12 @@
           "deprecated": true,
           "markdownDescription": "Enable experimental support for legacy experimental decorators.\n\nSee more: https://www.typescriptlang.org/tsconfig#experimentalDecorators"
         },
+        "isolatedDeclarations": {
+          "description": "Require sufficient annotation on exports so other tools can trivially generate declaration files.",
+          "type": "boolean",
+          "default": false,
+          "markdownDescription": "Require sufficient annotation on exports so other tools can trivially generate declaration files.\n\nSee more: https://www.typescriptlang.org/tsconfig/#isolatedDeclarations"
+        },
         "jsx": {
           "description": "Specify what JSX code is generated.",
           "default": "react",
@@ -199,6 +205,12 @@
           "default": true,
           "markdownDescription": "Check that the arguments for `bind`, `call`, and `apply` methods match the original function.\n\nSee more: https://www.typescriptlang.org/tsconfig#strictBindCallApply"
         },
+        "strictBuiltinIteratorReturn": {
+          "description": "Built-in iterators are instantiated with a `TReturn` type of undefined instead of `any`.",
+          "type": "boolean",
+          "default": true,
+          "markdownDescription": "Built-in iterators are instantiated with a `TReturn` type of undefined instead of `any`.\n\nSee more: https://www.typescriptlang.org/tsconfig/#strictBuiltinIteratorReturn"
+        },
         "strictFunctionTypes": {
           "description": "When assigning functions, check to ensure parameters and the return values are subtype-compatible.",
           "type": "boolean",
@@ -217,6 +229,14 @@
           "default": true,
           "markdownDescription": "When type checking, take into account `null` and `undefined`.\n\nSee more: https://www.typescriptlang.org/tsconfig#strictNullChecks"
         },
+        "types": {
+          "description": "Specify type package names to be included without being referenced in a source file.",
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "markdownDescription": "Specify type package names to be included without being referenced in a source file.\n\nSee more: https://www.typescriptlang.org/tsconfig/#types"
+        },
         "suppressExcessPropertyErrors": {
           "description": "Disable reporting of excess property errors during the creation of object literals.",
           "type": "boolean",
@@ -234,6 +254,12 @@
           "type": "boolean",
           "default": true,
           "markdownDescription": "Default catch clause variables as `unknown` instead of `any`.\n\nSee more: https://www.typescriptlang.org/tsconfig#useUnknownInCatchVariables"
+        },
+        "verbatimModuleSyntax": {
+          "description": "Do not transform or elide any imports or exports not marked as type-only, ensuring they are written in the output file's format based on the 'module' setting.",
+          "type": "boolean",
+          "default": false,
+          "markdownDescription": "Do not transform or elide any imports or exports not marked as type-only, ensuring they are written in the output file's format based on the 'module' setting.\n\nSee more: https://www.typescriptlang.org/tsconfig/#verbatimModuleSyntax"
         }
       }
     },
