@@ -693,7 +693,7 @@ impl PermissionFlags {
       deny_sys: self.deny_sys.clone(),
       allow_write: handle_allow(self.allow_all, self.allow_write.clone()),
       deny_write: self.deny_write.clone(),
-      allow_imports: self.allow_imports.clone(),
+      allow_imports: handle_allow(self.allow_all, self.allow_imports.clone()),
       prompt: !resolve_no_prompt(self),
     }
   }
@@ -886,6 +886,17 @@ impl Flags {
       _ => {}
     }
 
+    match &self.permissions.allow_imports {
+      Some(net_allowlist) if net_allowlist.is_empty() => {
+        args.push("--allow-imports".to_string());
+      }
+      Some(net_allowlist) => {
+        let s = format!("--allow-imports={}", net_allowlist.join(","));
+        args.push(s);
+      }
+      _ => {}
+    }
+
     args
   }
 
@@ -996,6 +1007,7 @@ impl Flags {
     self.permissions.allow_write = None;
     self.permissions.allow_sys = None;
     self.permissions.allow_ffi = None;
+    self.permissions.allow_imports = None;
   }
 
   pub fn resolve_watch_exclude_set(
