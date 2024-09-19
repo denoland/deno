@@ -219,6 +219,9 @@ impl<'a> GlobalLifecycleScripts<'a> {
 impl<'a> super::common::lifecycle_scripts::LifecycleScriptsStrategy
   for GlobalLifecycleScripts<'a>
 {
+  fn can_run_scripts(&self) -> bool {
+    false
+  }
   fn package_path(&self, package: &NpmResolutionPackage) -> PathBuf {
     self.resolver.cache.package_folder_for_nv(&package.id.nv)
   }

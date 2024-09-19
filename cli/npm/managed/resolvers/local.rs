@@ -748,7 +748,7 @@ impl<'a> super::common::lifecycle_scripts::LifecycleScriptsStrategy
     packages: &[(&NpmResolutionPackage, std::path::PathBuf)],
   ) -> Result<(), AnyError> {
     if !packages.is_empty() {
-      log::warn!("{} Following packages contained npm lifecycle scripts ({}) that were not executed:", colors::yellow("Warning"), colors::gray("preinstall/install/postinstall"));
+      log::warn!("{} The following packages contained npm lifecycle scripts ({}) that were not executed:", colors::yellow("Warning"), colors::gray("preinstall/install/postinstall"));
 
       for (package, _) in packages {
         log::warn!("┠─ {}", colors::gray(format!("npm:{}", package.id.nv)));
@@ -775,7 +775,7 @@ impl<'a> super::common::lifecycle_scripts::LifecycleScriptsStrategy
 
       for (package, _) in packages {
         let _ignore_err = fs::write(
-          ran_scripts_file(&self.deno_local_registry_dir, package),
+          warned_scripts_file(&self.deno_local_registry_dir, package),
           "",
         );
       }

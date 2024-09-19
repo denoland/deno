@@ -1,7 +1,6 @@
 use super::bin_entries::BinEntries;
 use crate::args::LifecycleScriptsConfig;
 use deno_npm::resolution::NpmResolutionSnapshot;
-use deno_npm::NpmPackageId;
 use deno_semver::package::PackageNv;
 use std::borrow::Cow;
 use std::rc::Rc;
@@ -13,6 +12,9 @@ use deno_core::error::AnyError;
 use deno_npm::NpmResolutionPackage;
 
 pub trait LifecycleScriptsStrategy {
+  fn can_run_scripts(&self) -> bool {
+    true
+  }
   fn package_path(&self, package: &NpmResolutionPackage) -> PathBuf;
 
   fn warn_on_scripts_not_run(
@@ -84,6 +86,9 @@ fn is_broken_default_install_script(script: &str, package_path: &Path) -> bool {
 
 impl<'a> LifecycleScripts<'a> {
   fn can_run_scripts(&self, package_nv: &PackageNv) -> bool {
+    if !self.strategy.can_run_scripts() {
+      return false;
+    }
     use crate::args::PackagesAllowedScripts;
     match &self.config.allowed {
       PackagesAllowedScripts::All => true,
@@ -106,6 +111,11 @@ impl<'a> LifecycleScripts<'a> {
     package_path: Cow<Path>,
   ) {
     if has_lifecycle_scripts(package, &package_path) {
+      eprintln!(
+        "has lifecycle scripts! {} {}",
+        package.id.nv,
+        std::backtrace::Backtrace::capture()
+      );
       if self.can_run_scripts(&package.id.nv) {
         if !self.strategy.has_run(package, &package_path) {
           self
@@ -115,6 +125,7 @@ impl<'a> LifecycleScripts<'a> {
       } else if !self.strategy.has_run(package, &package_path)
         && !self.strategy.has_warned(package, &package_path)
       {
+        eprintln!("packages with scripts not run: {}", package.id.nv);
         self
           .packages_with_scripts_not_run
           .push((package, package_path.into_owned()));
