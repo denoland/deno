@@ -149,8 +149,8 @@ Deno.test(
     listener.close();
     await assertRejects(
       () => p,
-      Deno.errors.Interrupted,
-      "operation canceled",
+      Deno.errors.BadResource,
+      "Listener has been closed",
     );
   },
 );
@@ -161,7 +161,7 @@ Deno.test(
     const listener = Deno.listen({ port: 4510 });
     let acceptErrCount = 0;
     const checkErr = (e: Error) => {
-      if (e.message === "operation canceled") {
+      if (e.message === "Listener has been closed") {
         assertEquals(acceptErrCount, 1);
       } else if (e.message === "Another accept task is ongoing") {
         acceptErrCount++;
@@ -188,7 +188,7 @@ Deno.test(
     const listener = Deno.listen({ transport: "unix", path: filePath });
     let acceptErrCount = 0;
     const checkErr = (e: Error) => {
-      if (e.message === "operation canceled") {
+      if (e.message === "Listener has been closed") {
         assertEquals(acceptErrCount, 1);
       } else if (e instanceof Deno.errors.Busy) { // "Listener already in use"
         acceptErrCount++;
@@ -1307,7 +1307,7 @@ Deno.test(
 
       done = assertRejects(
         () => listener.accept(),
-        Deno.errors.Interrupted,
+        Deno.errors.BadResource,
       );
     }
 
@@ -1322,7 +1322,7 @@ Deno.test(
     listener.close();
     await assertRejects( // definitely closed
       () => listener.accept(),
-      Deno.errors.Interrupted,
+      Deno.errors.BadResource,
     );
     // calling [Symbol.dispose] after manual close is a no-op
   },
