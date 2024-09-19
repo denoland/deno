@@ -94,6 +94,7 @@ stable_deref_trait = "1.2.0"
 thiserror.workspace = true
 tokio.workspace = true
 url.workspace = true
+webpki-root-certs.workspace = true
 winapi.workspace = true
 x25519-dalek = { version = "2.0.0", features = ["static_secrets"] }
 x509-parser = "0.15.0"

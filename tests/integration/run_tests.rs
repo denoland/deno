@@ -148,11 +148,6 @@ itest!(_021_mjs_modules {
   output: "run/021_mjs_modules.ts.out",
 });
 
-itest!(_023_no_ext {
-  args: "run --reload --check run/023_no_ext",
-  output: "run/023_no_ext.out",
-});
-
 itest!(_025_reload_js_type_error {
   args: "run --quiet --reload run/025_reload_js_type_error.js",
   output: "run/025_reload_js_type_error.js.out",
@@ -4209,12 +4204,6 @@ itest!(error_cause_recursive {
   exit_code: 1,
 });
 
-itest!(default_file_extension_is_js {
-  args: "run --check file_extensions/js_without_extension",
-  output: "file_extensions/js_without_extension.out",
-  exit_code: 0,
-});
-
 itest!(js_without_extension {
   args: "run --ext js --check file_extensions/js_without_extension",
   output: "file_extensions/js_without_extension.out",
@@ -5124,4 +5113,28 @@ fn emit_failed_readonly_file_system() {
     .args("run --log-level=debug main.ts")
     .run();
   output.assert_matches_text("[WILDCARD]Error saving emit data ([WILDLINE]main.ts)[WILDCARD]Skipped emit cache save of [WILDLINE]other.ts[WILDCARD]hi[WILDCARD]");
+}
+
+#[cfg(windows)]
+#[test]
+fn handle_invalid_path_error() {
+  let deno_cmd = util::deno_cmd_with_deno_dir(&util::new_deno_dir());
+  let output = deno_cmd.arg("run").arg("file://asdf").output().unwrap();
+  assert!(
+    String::from_utf8_lossy(&output.stderr).contains("Invalid file path.")
+  );
+
+  let deno_cmd = util::deno_cmd_with_deno_dir(&util::new_deno_dir());
+  let output = deno_cmd.arg("run").arg("/a/b").output().unwrap();
+  assert!(String::from_utf8_lossy(&output.stderr).contains("Module not found"));
+
+  let deno_cmd = util::deno_cmd_with_deno_dir(&util::new_deno_dir());
+  let output = deno_cmd.arg("run").arg("//a/b").output().unwrap();
+  assert!(
+    String::from_utf8_lossy(&output.stderr).contains("Invalid file path.")
+  );
+
+  let deno_cmd = util::deno_cmd_with_deno_dir(&util::new_deno_dir());
+  let output = deno_cmd.arg("run").arg("///a/b").output().unwrap();
+  assert!(String::from_utf8_lossy(&output.stderr).contains("Module not found"));
 }
