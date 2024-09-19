@@ -1592,7 +1592,7 @@ Deno.test(
             Deno.upgradeWebSocket(request);
           },
           Deno.errors.Http,
-          "already upgraded",
+          "Already upgraded",
         );
         socket.onerror = (e) => {
           console.error(e);
@@ -3694,7 +3694,7 @@ Deno.test(
         } catch (cloneError) {
           assert(cloneError instanceof TypeError);
           assert(
-            cloneError.message.endsWith("Body is unusable."),
+            cloneError.message.endsWith("Body is unusable"),
           );
 
           ac.abort();
@@ -3743,7 +3743,7 @@ Deno.test({
         } catch (cloneError) {
           assert(cloneError instanceof TypeError);
           assert(
-            cloneError.message.endsWith("Body is unusable."),
+            cloneError.message.endsWith("Body is unusable"),
           );
 
           ac.abort();
@@ -3895,7 +3895,7 @@ async function readTrailers(
   const tp = new TextProtoReader(r);
   const result = await tp.readMimeHeader();
   if (result == null) {
-    throw new Deno.errors.InvalidData("Missing trailer header.");
+    throw new Deno.errors.InvalidData("Missing trailer header");
   }
   const undeclared = [...result.keys()].filter(
     (k) => !trailerNames.includes(k),
@@ -3923,7 +3923,7 @@ function parseTrailer(field: string | null): Headers | undefined {
   }
   const trailerNames = field.split(",").map((v) => v.trim().toLowerCase());
   if (trailerNames.length === 0) {
-    throw new Deno.errors.InvalidData("Empty trailer header.");
+    throw new Deno.errors.InvalidData("Empty trailer header");
   }
   const prohibited = trailerNames.filter((k) => isProhibitedForTrailer(k));
   if (prohibited.length > 0) {
