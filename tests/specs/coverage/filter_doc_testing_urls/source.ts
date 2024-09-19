@@ -1,6 +1,4 @@
-
 /**
- *
  * @example Usage
  * ```ts
  * import { add } from "./source.ts";
