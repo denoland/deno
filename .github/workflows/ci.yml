@@ -683,6 +683,15 @@ jobs:
       - build
     if: github.repository == 'denoland/deno' && github.ref == 'refs/heads/main'
     steps:
+      - name: Configure git
+        run: |-
+          git config --global core.symlinks true
+          git config --global fetch.parallel 32
+      - name: Clone repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 50
+          submodules: false
       - name: Authenticate with Google Cloud
         uses: google-github-actions/auth@v2
         with:
