@@ -33,7 +33,7 @@ jobs:
       - name: Clone repository
         uses: actions/checkout@v4
         with:
-          fetch-depth: 5
+          fetch-depth: 50
           submodules: false
         if: github.event.pull_request.draft == true
       - id: check
@@ -148,7 +148,7 @@ jobs:
       - name: Clone repository
         uses: actions/checkout@v4
         with:
-          fetch-depth: 5
+          fetch-depth: 50
           submodules: false
         if: '!(matrix.skip)'
       - name: Clone submodule ./tests/util/std
