@@ -84,6 +84,7 @@ const {
   NumberIsInteger,
   NumberIsNaN,
   NumberParseInt,
+  NumberPrototypeToFixed,
   NumberPrototypeToString,
   NumberPrototypeValueOf,
   ObjectAssign,
@@ -156,6 +157,7 @@ const {
   TypedArrayPrototypeGetByteLength,
   TypedArrayPrototypeGetLength,
   Uint8Array,
+  Uint32Array,
 } = primordials;
 
 let currentTime = DateNow;
@@ -3357,13 +3359,13 @@ class Console {
     const startTime = MapPrototypeGet(timerMap, label);
     let duration = currentTime() - startTime;
     if (duration < 1) {
-      duration = duration.toFixed(3);
+      duration = NumberPrototypeToFixed(duration, 3);
     } else if (duration < 10) {
-      duration = duration.toFixed(2);
+      duration = NumberPrototypeToFixed(duration, 2);
     } else if (duration < 100) {
-      duration = duration.toFixed(1);
+      duration = NumberPrototypeToFixed(duration, 1);
     } else {
-      duration = duration.toFixed(0);
+      duration = NumberPrototypeToFixed(duration, 0);
     }
 
     this.info(`${label}: ${duration}ms`, ...new SafeArrayIterator(args));
@@ -3381,13 +3383,13 @@ class Console {
     MapPrototypeDelete(timerMap, label);
     let duration = currentTime() - startTime;
     if (duration < 1) {
-      duration = duration.toFixed(3);
+      duration = NumberPrototypeToFixed(duration, 3);
     } else if (duration < 10) {
-      duration = duration.toFixed(2);
+      duration = NumberPrototypeToFixed(duration, 2);
     } else if (duration < 100) {
-      duration = duration.toFixed(1);
+      duration = NumberPrototypeToFixed(duration, 1);
     } else {
-      duration = duration.toFixed(0);
+      duration = NumberPrototypeToFixed(duration, 0);
     }
 
     this.info(`${label}: ${duration}ms`);
