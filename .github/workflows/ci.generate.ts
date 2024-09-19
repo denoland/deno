@@ -158,7 +158,7 @@ const cloneRepoStep = [{
     // Use depth > 1, because sometimes we need to rebuild main and if
     // other commits have landed it will become impossible to rebuild if
     // the checkout is too shallow.
-    "fetch-depth": 5,
+    "fetch-depth": 50,
     submodules: false,
   },
 }];
@@ -818,6 +818,8 @@ const ci = {
             "if [ $? -eq 0 ]; then",
             "  echo ${{ github.sha }} > canary-latest.txt",
             '  gsutil -h "Cache-Control: no-cache" cp canary-latest.txt gs://dl.deno.land/canary-$(rustc -vV | sed -n "s|host: ||p")-latest.txt',
+            "else",
+            '  echo "Skipping upload, because newer canary version is already available"',
             "fi",
           ].join("\n"),
         },
@@ -1101,6 +1103,8 @@ const ci = {
             "if [ $? -eq 0]; then",
             "  echo ${{ github.sha }} > canary-latest.txt",
             '  gsutil -h "Cache-Control: no-cache" cp canary-latest.txt gs://dl.deno.land/canary-latest.txt',
+            "else",
+            '  echo "Skipping upload, because newer canary version is already available"',
             "fi",
           ].join("\n"),
         },
