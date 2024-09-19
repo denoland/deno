@@ -125,9 +125,9 @@ impl CjsCodeAnalyzer for CliCjsCodeAnalyzer {
     let source = match source {
       Some(source) => source,
       None => {
-        if let Some(path) = specifier.to_file_path().ok() {
-          if let Some(source_from_file) =
-            self.fs.read_text_file_lossy_async(path, None).await.ok()
+        if let Ok(path) = specifier.to_file_path() {
+          if let Ok(source_from_file) =
+            self.fs.read_text_file_lossy_async(path, None).await
           {
             source_from_file
           } else {
