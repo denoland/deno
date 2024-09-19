@@ -1269,6 +1269,38 @@ foo();
           media_type: MediaType::TypeScript,
         }],
       },
+      // Unlike `extract_doc_tests`, `extract_snippet_files` does not remove
+      // the `export` keyword from the exported items.
+      Test {
+        input: Input {
+          source: r#"
+/**
+ * ```ts
+ * import { getLogger } from "@std/log";
+ *
+ * const logger = getLogger("my-awesome-module");
+ *
+ * export function foo() {
+ *   logger.debug("hello");
+ * }
+ * ```
+ *
+ * @module
+ */
+"#,
+          specifier: "file:///main.ts",
+        },
+        expected: vec![Expected {
+          source: r#"import { getLogger } from "@std/log";
+export function foo() {
+    logger.debug("hello");
+}
+const logger = getLogger("my-awesome-module");
+"#,
+          specifier: "file:///main.ts$3-12.ts",
+          media_type: MediaType::TypeScript,
+        }],
+      },
       Test {
         input: Input {
           source: r#"
