@@ -157,6 +157,12 @@
           "default": false,
           "markdownDescription": "Enforces using indexed accessors for keys declared using an indexed type.\n\nSee more: https://www.typescriptlang.org/tsconfig#noPropertyAccessFromIndexSignature"
         },
+        "noUncheckedIndexedAccess": {
+          "description": "Add `undefined` to a type when accessed using an index.",
+          "type": "boolean",
+          "default": false,
+          "markdownDescription": "Add `undefined` to a type when accessed using an index.\n\nSee more: https://www.typescriptlang.org/tsconfig#noUncheckedIndexedAccess"
+        },
         "noUnusedLocals": {
           "description": "Enable error reporting when a local variables aren't read.",
           "type": "boolean",
@@ -168,12 +174,6 @@
           "type": "boolean",
           "default": false,
           "markdownDescription": "Raise an error when a function parameter isn't read\n\nSee more: https://www.typescriptlang.org/tsconfig#noUnusedParameters"
-        },
-        "noUncheckedIndexedAccess": {
-          "description": "Add `undefined` to a type when accessed using an index.",
-          "type": "boolean",
-          "default": false,
-          "markdownDescription": "Add `undefined` to a type when accessed using an index.\n\nSee more: https://www.typescriptlang.org/tsconfig#noUncheckedIndexedAccess"
         },
         "strict": {
           "description": "Enable all strict type checking options.",
@@ -199,17 +199,17 @@
           "default": true,
           "markdownDescription": "When assigning functions, check to ensure parameters and the return values are subtype-compatible.\n\nSee more: https://www.typescriptlang.org/tsconfig#strictFunctionTypes"
         },
-        "strictPropertyInitialization": {
-          "description": "Check for class properties that are declared but not set in the constructor.",
-          "type": "boolean",
-          "default": true,
-          "markdownDescription": "Check for class properties that are declared but not set in the constructor.\n\nSee more: https://www.typescriptlang.org/tsconfig#strictPropertyInitialization"
-        },
         "strictNullChecks": {
           "description": "When type checking, take into account `null` and `undefined`.",
           "type": "boolean",
           "default": true,
           "markdownDescription": "When type checking, take into account `null` and `undefined`.\n\nSee more: https://www.typescriptlang.org/tsconfig#strictNullChecks"
+        },
+        "strictPropertyInitialization": {
+          "description": "Check for class properties that are declared but not set in the constructor.",
+          "type": "boolean",
+          "default": true,
+          "markdownDescription": "Check for class properties that are declared but not set in the constructor.\n\nSee more: https://www.typescriptlang.org/tsconfig#strictPropertyInitialization"
         },
         "types": {
           "description": "Specify type package names to be included without being referenced in a source file.",
