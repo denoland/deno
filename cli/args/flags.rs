@@ -4738,7 +4738,10 @@ fn serve_parse(
     format!("{host}:{port}")
   }])?;
   match &mut flags.permissions.allow_net {
-    None => flags.permissions.allow_net = Some(allowed),
+    None if !flags.permissions.allow_all => {
+      flags.permissions.allow_net = Some(allowed)
+    }
+    None => {}
     Some(v) => {
       if !v.is_empty() {
         v.extend(allowed);
@@ -10745,6 +10748,31 @@ mod tests {
         ..Flags::default()
       }
     );
+  }
+
+  #[test]
+  fn serve_with_allow_all() {
+    let r = flags_from_vec(svec!["deno", "serve", "--allow-all", "./main.ts"]);
+    let flags = r.unwrap();
+    assert_eq!(
+      &flags,
+      &Flags {
+        subcommand: DenoSubcommand::Serve(ServeFlags::new_default(
+          "./main.ts".into(),
+          8000,
+          "0.0.0.0"
+        )),
+        permissions: PermissionFlags {
+          allow_all: true,
+          allow_net: None,
+          ..Default::default()
+        },
+        code_cache_enabled: true,
+        ..Default::default()
+      }
+    );
+    // just make sure this doesn't panic
+    let _ = flags.permissions.to_options();
   }
 
   #[test]
