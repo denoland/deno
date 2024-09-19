@@ -368,11 +368,8 @@ impl Visit for ExportCollector {
     &mut self,
     export_default_expr: &ast::ExportDefaultExpr,
   ) {
-    match &*export_default_expr.expr {
-      ast::Expr::Ident(ident) => {
-        self.default_export = Some(ident.sym.clone());
-      }
-      _ => {}
+    if let ast::Expr::Ident(ident) = &*export_default_expr.expr {
+      self.default_export = Some(ident.sym.clone());
     }
   }
 
@@ -486,7 +483,7 @@ fn extract_sym_from_pat(pat: &ast::Pat) -> Vec<Atom> {
 /// });
 /// ```
 ///
-/// # Edge case - duplicate identifier
+/// # Edge case 1 - duplicate identifier
 ///
 /// If a given file imports, say, `doSomething` from an external module while
 /// the base file exports `doSomething` as well, the generated pseudo test file
@@ -503,6 +500,52 @@ fn extract_sym_from_pat(pat: &ast::Pat) -> Vec<Atom> {
 ///
 /// Deno.test("./base.ts$1-3.ts", async () => {
 ///   assertEquals(doSomething(1), 2);
+/// });
+/// ```
+///
+/// # Edge case 2 - exports can't be put inside `Deno.test` blocks
+///
+/// All exports like `export const foo = 42` must be at the top level of the
+/// module, making it impossible to wrap exports in `Deno.test` blocks. For
+/// example, when the following code snippet is provided:
+///
+/// ```ts
+/// const logger = createLogger("my-awesome-module");
+///
+/// export function sum(a: number, b: number): number {
+///   logger.debug("sum called");
+///   return a + b;
+/// }
+/// ```
+///
+/// If we applied the naive transformation to this, the generated pseudo test
+/// file would look like:
+///
+/// ```ts
+/// Deno.test("./base.ts$1-7.ts", async () => {
+///   const logger = createLogger("my-awesome-module");
+///
+///   export function sum(a: number, b: number): number {
+///     logger.debug("sum called");
+///     return a + b;
+///   }
+/// });
+/// ```
+///
+/// But obviously this violates the rule because `export function sum` is not
+/// at the top level of the module.
+///
+/// To address this issue, the `export` keyword is removed so that the item can
+/// stay in the `Deno.test` block's scope:
+///
+/// ```ts
+/// Deno.test("./base.ts$1-7.ts", async () => {
+///   const logger = createLogger("my-awesome-module");
+///
+///   function sum(a: number, b: number): number {
+///     logger.debug("sum called");
+///     return a + b;
+///   }
 /// });
 /// ```
 fn generate_pseudo_file(
@@ -567,9 +610,51 @@ impl<'a> VisitMut for Transform<'a> {
 
         for item in &module.body {
           match item {
-            ast::ModuleItem::ModuleDecl(decl) => {
-              module_decls.push(decl.clone());
-            }
+            ast::ModuleItem::ModuleDecl(decl) => match self.wrap_kind {
+              WrapKind::NoWrap => {
+                module_decls.push(decl.clone());
+              }
+              // We remove `export` keywords so that they can be put inside
+              // `Deno.test` block scope.
+              WrapKind::DenoTest => match decl {
+                ast::ModuleDecl::ExportDecl(export_decl) => {
+                  stmts.push(ast::Stmt::Decl(export_decl.decl.clone()));
+                }
+                ast::ModuleDecl::ExportDefaultDecl(export_default_decl) => {
+                  let stmt = match &export_default_decl.decl {
+                    ast::DefaultDecl::Class(class) => {
+                      let expr = ast::Expr::Class(class.clone());
+                      ast::Stmt::Expr(ast::ExprStmt {
+                        span: DUMMY_SP,
+                        expr: Box::new(expr),
+                      })
+                    }
+                    ast::DefaultDecl::Fn(func) => {
+                      let expr = ast::Expr::Fn(func.clone());
+                      ast::Stmt::Expr(ast::ExprStmt {
+                        span: DUMMY_SP,
+                        expr: Box::new(expr),
+                      })
+                    }
+                    ast::DefaultDecl::TsInterfaceDecl(ts_interface_decl) => {
+                      ast::Stmt::Decl(ast::Decl::TsInterface(
+                        ts_interface_decl.clone(),
+                      ))
+                    }
+                  };
+                  stmts.push(stmt);
+                }
+                ast::ModuleDecl::ExportDefaultExpr(export_default_expr) => {
+                  stmts.push(ast::Stmt::Expr(ast::ExprStmt {
+                    span: DUMMY_SP,
+                    expr: export_default_expr.expr.clone(),
+                  }));
+                }
+                _ => {
+                  module_decls.push(decl.clone());
+                }
+              },
+            },
             ast::ModuleItem::Stmt(stmt) => {
               stmts.push(stmt.clone());
             }
@@ -985,30 +1070,43 @@ Deno.test("file:///main.ts$3-7.ts", async ()=>{
           media_type: MediaType::TypeScript,
         }],
       },
-      // example code has an exported item `foo` - because `export` must be at
-      // the top level, `foo` is "hoisted" to the top level instead of being
-      // wrapped in `Deno.test`.
+      // https://github.com/denoland/deno/issues/25718
+      // A case where the example code has an exported item which references
+      // a variable from one upper scope.
+      // Naive application of `Deno.test` wrap would cause a reference error
+      // because the variable would go inside the `Deno.test` block while the
+      // exported item would be moved to the top level. To suppress the auto
+      // move of the exported item to the top level, the `export` keyword is
+      // removed so that the item stays in the same scope as the variable.
       Test {
         input: Input {
           source: r#"
 /**
  * ```ts
- * doSomething();
- * export const foo = 42;
+ * import { getLogger } from "@std/log";
+ *
+ * const logger = getLogger("my-awesome-module");
+ *
+ * export function foo() {
+ *   logger.debug("hello");
+ * }
  * ```
+ *
+ * @module
  */
-export function doSomething() {}
 "#,
           specifier: "file:///main.ts",
         },
         expected: vec![Expected {
-          source: r#"export const foo = 42;
-import { doSomething } from "file:///main.ts";
-Deno.test("file:///main.ts$3-7.ts", async ()=>{
-    doSomething();
+          source: r#"import { getLogger } from "@std/log";
+Deno.test("file:///main.ts$3-12.ts", async ()=>{
+    const logger = getLogger("my-awesome-module");
+    function foo() {
+        logger.debug("hello");
+    }
 });
 "#,
-          specifier: "file:///main.ts$3-7.ts",
+          specifier: "file:///main.ts$3-12.ts",
           media_type: MediaType::TypeScript,
         }],
       },
@@ -1143,26 +1241,23 @@ assertEquals(add(1, 2), 3);
           media_type: MediaType::TypeScript,
         }],
       },
-      // duplication of imported identifier and local identifier is fine, since
-      // we wrap the snippet in a block.
-      // This would be a problem if the local one is declared with `var`, as
-      // `var` is not block scoped but function scoped. For now we don't handle
-      // this case assuming that `var` is not used in modern code.
+      // If the snippet has a local variable with the same name as an exported
+      // item, the local variable takes precedence.
       Test {
         input: Input {
           source: r#"
-        /**
-         * ```ts
-         * const foo = createFoo();
-         * foo();
-         * ```
-         */
-        export function createFoo() {
-          return () => "created foo";
-        }
+/**
+ * ```ts
+ * const foo = createFoo();
+ * foo();
+ * ```
+ */
+export function createFoo() {
+  return () => "created foo";
+}
 
-        export const foo = () => "foo";
-        "#,
+export const foo = () => "foo";
+"#,
           specifier: "file:///main.ts",
         },
         expected: vec![Expected {
