@@ -1131,7 +1131,7 @@ impl CliOptions {
         resolve_url_or_path(&compile_flags.source_file, self.initial_cwd())?
       }
       DenoSubcommand::Eval(_) => {
-        resolve_url_or_path("./$deno$eval", self.initial_cwd())?
+        resolve_url_or_path("./$deno$eval.ts", self.initial_cwd())?
       }
       DenoSubcommand::Repl(_) => {
         resolve_url_or_path("./$deno$repl.ts", self.initial_cwd())?
@@ -1705,7 +1705,7 @@ fn warn_insecure_allow_run_flags(flags: &Flags) {
   // discourage using --allow-run without an allow list
   if allow_run_list.is_empty() {
     log::warn!(
-      "{} --allow-run can be trivially exploited. Prefer specifying an allow list (https://docs.deno.com/runtime/fundamentals/security/#running-subprocesses)",
+      "{} --allow-run without an allow list is susceptible to exploits. Prefer specifying an allow list (https://docs.deno.com/runtime/fundamentals/security/#running-subprocesses)",
       colors::yellow("Warning")
     );
   }

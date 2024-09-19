@@ -2051,7 +2051,7 @@ impl Permissions {
     specifier: &ModuleSpecifier,
   ) -> Result<(), AnyError> {
     match specifier.scheme() {
-      "file" => match specifier.to_file_path() {
+      "file" => match specifier_to_file_path(specifier) {
         Ok(path) => self.read.check(
           &PathQueryDescriptor {
             requested: path.to_string_lossy().into_owned(),
@@ -2075,6 +2075,52 @@ impl Permissions {
         Ok(())
       }
     }
+  }
+}
+
+/// Attempts to convert a specifier to a file path. By default, uses the Url
+/// crate's `to_file_path()` method, but falls back to try and resolve unix-style
+/// paths on Windows.
+pub fn specifier_to_file_path(
+  specifier: &ModuleSpecifier,
+) -> Result<PathBuf, AnyError> {
+  let result = if specifier.scheme() != "file" {
+    Err(())
+  } else if cfg!(windows) {
+    if specifier.host().is_some() {
+      Err(())
+    } else {
+      match specifier.to_file_path() {
+        Ok(path) => Ok(path),
+        Err(()) => {
+          // This might be a unix-style path which is used in the tests even on Windows.
+          // Attempt to see if we can convert it to a `PathBuf`. This code should be removed
+          // once/if https://github.com/servo/rust-url/issues/730 is implemented.
+          if specifier.scheme() == "file"
+            && specifier.port().is_none()
+            && specifier.path_segments().is_some()
+          {
+            let path_str = specifier.path();
+            match String::from_utf8(
+              percent_encoding::percent_decode(path_str.as_bytes()).collect(),
+            ) {
+              Ok(path_str) => Ok(PathBuf::from(path_str)),
+              Err(_) => Err(()),
+            }
+          } else {
+            Err(())
+          }
+        }
+      }
+    }
+  } else {
+    specifier.to_file_path()
+  };
+  match result {
+    Ok(path) => Ok(path),
+    Err(()) => Err(uri_error(format!(
+      "Invalid file path.\n  Specifier: {specifier}"
+    ))),
   }
 }
 
@@ -3366,12 +3412,9 @@ mod tests {
 
     let mut test_cases = vec![];
 
-    if cfg!(target_os = "windows") {
-      test_cases.push("file://");
-      test_cases.push("file:///");
-    } else {
-      test_cases.push("file://remotehost/");
-    }
+    test_cases.push("file://dir");
+    test_cases.push("file://asdf/");
+    test_cases.push("file://remotehost/");
 
     for url in test_cases {
       assert!(perms
@@ -4358,6 +4401,40 @@ mod tests {
         name,
         cmd_path
       );
+    }
+  }
+
+  #[test]
+  fn test_specifier_to_file_path() {
+    run_success_test("file:///", "/");
+    run_success_test("file:///test", "/test");
+    run_success_test("file:///dir/test/test.txt", "/dir/test/test.txt");
+    run_success_test(
+      "file:///dir/test%20test/test.txt",
+      "/dir/test test/test.txt",
+    );
+
+    assert_no_panic_specifier_to_file_path("file:/");
+    assert_no_panic_specifier_to_file_path("file://");
+    assert_no_panic_specifier_to_file_path("file://asdf/");
+    assert_no_panic_specifier_to_file_path("file://asdf/66666/a.ts");
+
+    fn run_success_test(specifier: &str, expected_path: &str) {
+      let result =
+        specifier_to_file_path(&ModuleSpecifier::parse(specifier).unwrap())
+          .unwrap();
+      assert_eq!(result, PathBuf::from(expected_path));
+    }
+    fn assert_no_panic_specifier_to_file_path(specifier: &str) {
+      let result =
+        specifier_to_file_path(&ModuleSpecifier::parse(specifier).unwrap());
+      match result {
+        Ok(_) => (),
+        Err(err) => assert_eq!(
+          err.to_string(),
+          format!("Invalid file path.\n  Specifier: {specifier}")
+        ),
+      }
     }
   }
 }

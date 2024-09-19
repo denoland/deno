@@ -120,7 +120,13 @@ pub async fn format(
             };
           }
 
-          format_files(caches, &fmt_flags, paths_with_options_batches).await?;
+          format_files(
+            caches,
+            cli_options,
+            &fmt_flags,
+            paths_with_options_batches,
+          )
+          .await?;
 
           Ok(())
         })
@@ -133,7 +139,8 @@ pub async fn format(
     let caches = factory.caches()?;
     let paths_with_options_batches =
       resolve_paths_with_options_batches(cli_options, &fmt_flags)?;
-    format_files(caches, &fmt_flags, paths_with_options_batches).await?;
+    format_files(caches, cli_options, &fmt_flags, paths_with_options_batches)
+      .await?;
   }
 
   Ok(())
@@ -172,6 +179,7 @@ fn resolve_paths_with_options_batches(
 
 async fn format_files(
   caches: &Arc<Caches>,
+  cli_options: &Arc<CliOptions>,
   fmt_flags: &FmtFlags,
   paths_with_options_batches: Vec<PathsWithOptions>,
 ) -> Result<(), AnyError> {
@@ -199,6 +207,7 @@ async fn format_files(
         fmt_options.options,
         fmt_options.unstable,
         incremental_cache.clone(),
+        cli_options.ext_flag().clone(),
       )
       .await?;
     incremental_cache.wait_completion().await;
@@ -211,11 +220,14 @@ fn collect_fmt_files(
   cli_options: &CliOptions,
   files: FilePatterns,
 ) -> Result<Vec<PathBuf>, AnyError> {
-  FileCollector::new(|e| is_supported_ext_fmt(e.path))
-    .ignore_git_folder()
-    .ignore_node_modules()
-    .set_vendor_folder(cli_options.vendor_dir_path().map(ToOwned::to_owned))
-    .collect_file_patterns(&deno_config::fs::RealDenoConfigFs, files)
+  FileCollector::new(|e| {
+    is_supported_ext_fmt(e.path)
+      || (e.path.extension().is_none() && cli_options.ext_flag().is_some())
+  })
+  .ignore_git_folder()
+  .ignore_node_modules()
+  .set_vendor_folder(cli_options.vendor_dir_path().map(ToOwned::to_owned))
+  .collect_file_patterns(&deno_config::fs::RealDenoConfigFs, files)
 }
 
 /// Formats markdown (using <https://github.com/dprint/dprint-plugin-markdown>) and its code blocks
@@ -311,6 +323,7 @@ fn format_markdown(
             codeblock_config.line_width = line_width;
             dprint_plugin_typescript::format_text(
               &fake_filename,
+              None,
               text.to_string(),
               &codeblock_config,
             )
@@ -405,6 +418,7 @@ pub fn format_html(
           typescript_config.line_width = hints.print_width as u32;
           dprint_plugin_typescript::format_text(
             &path,
+            None,
             text.to_string(),
             &typescript_config,
           )
@@ -447,8 +461,11 @@ pub fn format_file(
   file_text: &str,
   fmt_options: &FmtOptionsConfig,
   unstable_options: &UnstableFmtOptions,
+  ext: Option<String>,
 ) -> Result<Option<String>, AnyError> {
-  let ext = get_extension(file_path).unwrap_or_default();
+  let ext = ext
+    .or_else(|| get_extension(file_path))
+    .unwrap_or("ts".to_string());
 
   match ext.as_str() {
     "md" | "mkd" | "mkdn" | "mdwn" | "mdown" | "markdown" => {
@@ -491,13 +508,14 @@ pub fn format_file(
     "ipynb" => dprint_plugin_jupyter::format_text(
       file_text,
       |file_path: &Path, file_text: String| {
-        format_file(file_path, &file_text, fmt_options, unstable_options)
+        format_file(file_path, &file_text, fmt_options, unstable_options, None)
       },
     ),
     _ => {
       let config = get_resolved_typescript_config(fmt_options);
       dprint_plugin_typescript::format_text(
         file_path,
+        Some(&ext),
         file_text.to_string(),
         &config,
       )
@@ -523,6 +541,7 @@ trait Formatter {
     fmt_options: FmtOptionsConfig,
     unstable_options: UnstableFmtOptions,
     incremental_cache: Arc<IncrementalCache>,
+    ext: Option<String>,
   ) -> Result<(), AnyError>;
 
   fn finish(&self) -> Result<(), AnyError>;
@@ -542,6 +561,7 @@ impl Formatter for CheckFormatter {
     fmt_options: FmtOptionsConfig,
     unstable_options: UnstableFmtOptions,
     incremental_cache: Arc<IncrementalCache>,
+    ext: Option<String>,
   ) -> Result<(), AnyError> {
     // prevent threads outputting at the same time
     let output_lock = Arc::new(Mutex::new(0));
@@ -563,6 +583,7 @@ impl Formatter for CheckFormatter {
           &file_text,
           &fmt_options,
           &unstable_options,
+          ext.clone(),
         ) {
           Ok(Some(formatted_text)) => {
             not_formatted_files_count.fetch_add(1, Ordering::Relaxed);
@@ -640,6 +661,7 @@ impl Formatter for RealFormatter {
     fmt_options: FmtOptionsConfig,
     unstable_options: UnstableFmtOptions,
     incremental_cache: Arc<IncrementalCache>,
+    ext: Option<String>,
   ) -> Result<(), AnyError> {
     let output_lock = Arc::new(Mutex::new(0)); // prevent threads outputting at the same time
 
@@ -659,7 +681,13 @@ impl Formatter for RealFormatter {
           &file_path,
           &file_contents.text,
           |file_path, file_text| {
-            format_file(file_path, file_text, &fmt_options, &unstable_options)
+            format_file(
+              file_path,
+              file_text,
+              &fmt_options,
+              &unstable_options,
+              ext.clone(),
+            )
           },
         ) {
           Ok(Some(formatted_text)) => {
@@ -785,6 +813,7 @@ fn format_stdin(
     &source,
     &fmt_options.options,
     &fmt_options.unstable,
+    None,
   )?;
   if fmt_flags.check {
     #[allow(clippy::print_stdout)]
@@ -1266,6 +1295,7 @@ mod test {
         ..Default::default()
       },
       &UnstableFmtOptions::default(),
+      None,
     )
     .unwrap()
     .unwrap();

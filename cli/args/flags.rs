@@ -34,6 +34,7 @@ use deno_core::url::Url;
 use deno_graph::GraphKind;
 use deno_runtime::deno_permissions::parse_sys_kind;
 use deno_runtime::deno_permissions::PermissionsOptions;
+use deno_runtime::fs_util::specifier_to_file_path;
 use log::debug;
 use log::Level;
 use serde::Deserialize;
@@ -109,6 +110,8 @@ pub struct CacheFlags {
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct CheckFlags {
   pub files: Vec<String>,
+  pub doc: bool,
+  pub doc_only: bool,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -296,7 +299,6 @@ pub struct LintFlags {
   pub json: bool,
   pub compact: bool,
   pub watch: Option<WatchFlags>,
-  pub ext: Option<String>,
 }
 
 impl LintFlags {
@@ -663,21 +665,33 @@ impl PermissionFlags {
   }
 
   pub fn to_options(&self) -> PermissionsOptions {
+    fn handle_allow<T: Default>(
+      allow_all: bool,
+      value: Option<T>,
+    ) -> Option<T> {
+      if allow_all {
+        assert!(value.is_none());
+        Some(T::default())
+      } else {
+        value
+      }
+    }
+
     PermissionsOptions {
       allow_all: self.allow_all,
-      allow_env: self.allow_env.clone(),
+      allow_env: handle_allow(self.allow_all, self.allow_env.clone()),
       deny_env: self.deny_env.clone(),
-      allow_net: self.allow_net.clone(),
+      allow_net: handle_allow(self.allow_all, self.allow_net.clone()),
       deny_net: self.deny_net.clone(),
-      allow_ffi: self.allow_ffi.clone(),
+      allow_ffi: handle_allow(self.allow_all, self.allow_ffi.clone()),
       deny_ffi: self.deny_ffi.clone(),
-      allow_read: self.allow_read.clone(),
+      allow_read: handle_allow(self.allow_all, self.allow_read.clone()),
       deny_read: self.deny_read.clone(),
-      allow_run: self.allow_run.clone(),
+      allow_run: handle_allow(self.allow_all, self.allow_run.clone()),
       deny_run: self.deny_run.clone(),
-      allow_sys: self.allow_sys.clone(),
+      allow_sys: handle_allow(self.allow_all, self.allow_sys.clone()),
       deny_sys: self.deny_sys.clone(),
-      allow_write: self.allow_write.clone(),
+      allow_write: handle_allow(self.allow_all, self.allow_write.clone()),
       deny_write: self.deny_write.clone(),
       allow_imports: self.allow_imports.clone(),
       prompt: !resolve_no_prompt(self),
@@ -919,7 +933,7 @@ impl Flags {
           if module_specifier.scheme() == "file"
             || module_specifier.scheme() == "npm"
           {
-            if let Ok(p) = module_specifier.to_file_path() {
+            if let Ok(p) = specifier_to_file_path(&module_specifier) {
               Some(vec![p.parent().unwrap().to_path_buf()])
             } else {
               Some(vec![current_dir.to_path_buf()])
@@ -975,13 +989,13 @@ impl Flags {
   #[inline(always)]
   fn allow_all(&mut self) {
     self.permissions.allow_all = true;
-    self.permissions.allow_read = Some(vec![]);
-    self.permissions.allow_env = Some(vec![]);
-    self.permissions.allow_net = Some(vec![]);
-    self.permissions.allow_run = Some(vec![]);
-    self.permissions.allow_write = Some(vec![]);
-    self.permissions.allow_sys = Some(vec![]);
-    self.permissions.allow_ffi = Some(vec![]);
+    self.permissions.allow_read = None;
+    self.permissions.allow_env = None;
+    self.permissions.allow_net = None;
+    self.permissions.allow_run = None;
+    self.permissions.allow_write = None;
+    self.permissions.allow_sys = None;
+    self.permissions.allow_ffi = None;
   }
 
   pub fn resolve_watch_exclude_set(
@@ -1370,13 +1384,7 @@ where
 fn handle_repl_flags(flags: &mut Flags, repl_flags: ReplFlags) {
   // If user runs just `deno` binary we enter REPL and allow all permissions.
   if repl_flags.is_default_command {
-    flags.permissions.allow_net = Some(vec![]);
-    flags.permissions.allow_env = Some(vec![]);
-    flags.permissions.allow_run = Some(vec![]);
-    flags.permissions.allow_read = Some(vec![]);
-    flags.permissions.allow_sys = Some(vec![]);
-    flags.permissions.allow_write = Some(vec![]);
-    flags.permissions.allow_ffi = Some(vec![]);
+    flags.allow_all();
   }
   flags.subcommand = DenoSubcommand::Repl(repl_flags);
 }
@@ -1623,6 +1631,7 @@ If you specify a directory instead of a file, the path is expanded to all contai
       .arg(no_clear_screen_arg())
       .arg(script_arg().last(true))
       .arg(env_file_arg())
+      .arg(executable_ext_arg())
   })
 }
 
@@ -1645,7 +1654,8 @@ Future runs of this module will trigger no downloads or compilation unless --rel
 
 <y>Read more:</> <c>https://docs.deno.com/go/cache</>"),
     UnstableArgsConfig::ResolutionOnly,
-  )
+)
+  .hide(true)
   .defer(|cmd| {
     compile_args(cmd)
       .arg(check_arg(false))
@@ -1696,6 +1706,19 @@ Unless --reload is specified, this command will not re-download already cached d
             .action(ArgAction::SetTrue)
             .conflicts_with("no-remote")
             .hide(true)
+        )
+        .arg(
+          Arg::new("doc")
+            .long("doc")
+            .help("Type-check code blocks in JSDoc as well as actual code")
+            .action(ArgAction::SetTrue)
+        )
+        .arg(
+          Arg::new("doc-only")
+          .long("doc-only")
+          .help("Type-check code blocks in JSDoc and Markdown only")
+            .action(ArgAction::SetTrue)
+            .conflicts_with("doc")
         )
         .arg(
           Arg::new("file")
@@ -2106,9 +2129,6 @@ Ignore formatting a file by adding an ignore comment at the top of the file:
         Arg::new("ext")
           .long("ext")
           .help("Set content type of the supplied file")
-          // prefer using ts for formatting instead of js because ts works in more scenarios
-          .default_value("ts")
-          .hide_default_value(true)
           .value_parser([
             "ts", "tsx", "js", "jsx", "md", "json", "jsonc", "css", "scss",
             "sass", "less", "html", "svelte", "vue", "astro", "yml", "yaml",
@@ -2792,7 +2812,7 @@ or <c>**/__tests__/**</>:
       .arg(
         Arg::new("doc")
           .long("doc")
-          .help("Type-check code blocks in JSDoc and Markdown")
+          .help("Evaluate code blocks in JSDoc and Markdown")
           .action(ArgAction::SetTrue)
           .help_heading(TEST_HEADING),
       )
@@ -2891,6 +2911,7 @@ or <c>**/__tests__/**</>:
           .action(ArgAction::SetTrue)
       )
       .arg(env_file_arg())
+      .arg(executable_ext_arg())
     )
 }
 
@@ -4074,6 +4095,7 @@ fn bench_parse(
   flags.type_check_mode = TypeCheckMode::Local;
 
   runtime_args_parse(flags, matches, true, false)?;
+  ext_arg_parse(flags, matches);
 
   // NOTE: `deno bench` always uses `--no-prompt`, tests shouldn't ever do
   // interactive prompts, unless done by user code
@@ -4143,7 +4165,11 @@ fn check_parse(
   if matches.get_flag("all") || matches.get_flag("remote") {
     flags.type_check_mode = TypeCheckMode::All;
   }
-  flags.subcommand = DenoSubcommand::Check(CheckFlags { files });
+  flags.subcommand = DenoSubcommand::Check(CheckFlags {
+    files,
+    doc: matches.get_flag("doc"),
+    doc_only: matches.get_flag("doc-only"),
+  });
   Ok(())
 }
 
@@ -4593,8 +4619,9 @@ fn lint_parse(
   matches: &mut ArgMatches,
 ) -> clap::error::Result<()> {
   unstable_args_parse(flags, matches, UnstableArgsConfig::ResolutionOnly);
-
+  ext_arg_parse(flags, matches);
   config_args_parse(flags, matches);
+
   let files = match matches.remove_many::<String>("files") {
     Some(f) => f.collect(),
     None => vec![],
@@ -4621,7 +4648,6 @@ fn lint_parse(
 
   let json = matches.get_flag("json");
   let compact = matches.get_flag("compact");
-  let ext = matches.remove_one::<String>("ext");
 
   flags.subcommand = DenoSubcommand::Lint(LintFlags {
     files: FileFlags {
@@ -4636,7 +4662,6 @@ fn lint_parse(
     json,
     compact,
     watch: watch_arg_parse(matches)?,
-    ext,
   });
   Ok(())
 }
@@ -4675,7 +4700,7 @@ fn repl_parse(
 fn run_parse(
   flags: &mut Flags,
   matches: &mut ArgMatches,
-  app: Command,
+  mut app: Command,
   bare: bool,
 ) -> clap::error::Result<()> {
   runtime_args_parse(flags, matches, true, true)?;
@@ -4697,11 +4722,16 @@ fn run_parse(
       "[SCRIPT_ARG] may only be omitted with --v8-flags=--help, else to use the repl with arguments, please use the `deno repl` subcommand",
     ));
   } else {
-    flags.subcommand = DenoSubcommand::Task(TaskFlags {
-      cwd: None,
-      task: None,
-      is_run: true,
-    });
+    return Err(
+      app
+        .get_subcommands_mut()
+        .find(|subcommand| subcommand.get_name() == "run")
+        .unwrap()
+        .error(
+          clap::error::ErrorKind::MissingRequiredArgument,
+          "[SCRIPT_ARG] may only be omitted with --v8-flags=--help",
+        ),
+    );
   }
 
   Ok(())
@@ -4812,6 +4842,8 @@ fn test_parse(
 ) -> clap::error::Result<()> {
   flags.type_check_mode = TypeCheckMode::Local;
   runtime_args_parse(flags, matches, true, true)?;
+  ext_arg_parse(flags, matches);
+
   // NOTE: `deno test` always uses `--no-prompt`, tests shouldn't ever do
   // interactive prompts, unless done by user code
   flags.permissions.no_prompt = true;
@@ -5928,7 +5960,7 @@ mod tests {
     );
 
     let r = flags_from_vec(svec!["deno", "run", "--v8-flags=--expose-gc"]);
-    assert!(r.is_ok());
+    assert!(r.is_err());
   }
 
   #[test]
@@ -6143,13 +6175,6 @@ mod tests {
         )),
         permissions: PermissionFlags {
           allow_all: true,
-          allow_net: Some(vec![]),
-          allow_env: Some(vec![]),
-          allow_run: Some(vec![]),
-          allow_read: Some(vec![]),
-          allow_sys: Some(vec![]),
-          allow_write: Some(vec![]),
-          allow_ffi: Some(vec![]),
           ..Default::default()
         },
         code_cache_enabled: true,
@@ -6276,7 +6301,6 @@ mod tests {
           unstable_yaml: false,
           watch: Default::default(),
         }),
-        ext: Some("ts".to_string()),
         ..Flags::default()
       }
     );
@@ -6303,7 +6327,6 @@ mod tests {
           unstable_yaml: false,
           watch: Default::default(),
         }),
-        ext: Some("ts".to_string()),
         ..Flags::default()
       }
     );
@@ -6330,7 +6353,6 @@ mod tests {
           unstable_yaml: false,
           watch: Default::default(),
         }),
-        ext: Some("ts".to_string()),
         ..Flags::default()
       }
     );
@@ -6357,7 +6379,6 @@ mod tests {
           unstable_yaml: false,
           watch: Some(Default::default()),
         }),
-        ext: Some("ts".to_string()),
         ..Flags::default()
       }
     );
@@ -6397,7 +6418,6 @@ mod tests {
             exclude: vec![],
           })
         }),
-        ext: Some("ts".to_string()),
         ..Flags::default()
       }
     );
@@ -6431,7 +6451,6 @@ mod tests {
           unstable_yaml: false,
           watch: Some(Default::default()),
         }),
-        ext: Some("ts".to_string()),
         ..Flags::default()
       }
     );
@@ -6458,7 +6477,6 @@ mod tests {
           unstable_yaml: false,
           watch: Default::default(),
         }),
-        ext: Some("ts".to_string()),
         config_flag: ConfigFlag::Path("deno.jsonc".to_string()),
         ..Flags::default()
       }
@@ -6494,7 +6512,6 @@ mod tests {
           watch: Some(Default::default()),
         }),
         config_flag: ConfigFlag::Path("deno.jsonc".to_string()),
-        ext: Some("ts".to_string()),
         ..Flags::default()
       }
     );
@@ -6533,7 +6550,6 @@ mod tests {
           unstable_yaml: false,
           watch: Default::default(),
         }),
-        ext: Some("ts".to_string()),
         ..Flags::default()
       }
     );
@@ -6567,7 +6583,6 @@ mod tests {
           unstable_yaml: false,
           watch: Default::default(),
         }),
-        ext: Some("ts".to_string()),
         ..Flags::default()
       }
     );
@@ -6592,7 +6607,6 @@ mod tests {
           json: false,
           compact: false,
           watch: Default::default(),
-          ext: None,
         }),
         ..Flags::default()
       }
@@ -6621,7 +6635,6 @@ mod tests {
           json: false,
           compact: false,
           watch: Some(Default::default()),
-          ext: None,
         }),
         ..Flags::default()
       }
@@ -6655,7 +6668,6 @@ mod tests {
             no_clear_screen: true,
             exclude: vec![],
           }),
-          ext: None,
         }),
         ..Flags::default()
       }
@@ -6683,7 +6695,6 @@ mod tests {
           json: false,
           compact: false,
           watch: Default::default(),
-          ext: None,
         }),
         ..Flags::default()
       }
@@ -6706,7 +6717,6 @@ mod tests {
           json: false,
           compact: false,
           watch: Default::default(),
-          ext: None,
         }),
         ..Flags::default()
       }
@@ -6734,7 +6744,6 @@ mod tests {
           json: false,
           compact: false,
           watch: Default::default(),
-          ext: None,
         }),
         ..Flags::default()
       }
@@ -6763,7 +6772,6 @@ mod tests {
           json: false,
           compact: false,
           watch: Default::default(),
-          ext: None,
         }),
         ..Flags::default()
       }
@@ -6786,7 +6794,6 @@ mod tests {
           json: true,
           compact: false,
           watch: Default::default(),
-          ext: None,
         }),
         ..Flags::default()
       }
@@ -6816,7 +6823,6 @@ mod tests {
           json: true,
           compact: false,
           watch: Default::default(),
-          ext: None,
         }),
         config_flag: ConfigFlag::Path("Deno.jsonc".to_string()),
         ..Flags::default()
@@ -6847,7 +6853,6 @@ mod tests {
           json: false,
           compact: true,
           watch: Default::default(),
-          ext: None,
         }),
         config_flag: ConfigFlag::Path("Deno.jsonc".to_string()),
         ..Flags::default()
@@ -6889,10 +6894,53 @@ mod tests {
       Flags {
         subcommand: DenoSubcommand::Check(CheckFlags {
           files: svec!["script.ts"],
+          doc: false,
+          doc_only: false,
         }),
         type_check_mode: TypeCheckMode::Local,
         ..Flags::default()
       }
+    );
+
+    let r = flags_from_vec(svec!["deno", "check", "--doc", "script.ts"]);
+    assert_eq!(
+      r.unwrap(),
+      Flags {
+        subcommand: DenoSubcommand::Check(CheckFlags {
+          files: svec!["script.ts"],
+          doc: true,
+          doc_only: false,
+        }),
+        type_check_mode: TypeCheckMode::Local,
+        ..Flags::default()
+      }
+    );
+
+    let r = flags_from_vec(svec!["deno", "check", "--doc-only", "markdown.md"]);
+    assert_eq!(
+      r.unwrap(),
+      Flags {
+        subcommand: DenoSubcommand::Check(CheckFlags {
+          files: svec!["markdown.md"],
+          doc: false,
+          doc_only: true,
+        }),
+        type_check_mode: TypeCheckMode::Local,
+        ..Flags::default()
+      }
+    );
+
+    // `--doc` and `--doc-only` are mutually exclusive
+    let r = flags_from_vec(svec![
+      "deno",
+      "check",
+      "--doc",
+      "--doc-only",
+      "script.ts"
+    ]);
+    assert_eq!(
+      r.unwrap_err().kind(),
+      clap::error::ErrorKind::ArgumentConflict
     );
 
     for all_flag in ["--remote", "--all"] {
@@ -6902,6 +6950,8 @@ mod tests {
         Flags {
           subcommand: DenoSubcommand::Check(CheckFlags {
             files: svec!["script.ts"],
+            doc: false,
+            doc_only: false,
           }),
           type_check_mode: TypeCheckMode::All,
           ..Flags::default()
@@ -7037,13 +7087,6 @@ mod tests {
         }),
         permissions: PermissionFlags {
           allow_all: true,
-          allow_net: Some(vec![]),
-          allow_env: Some(vec![]),
-          allow_run: Some(vec![]),
-          allow_read: Some(vec![]),
-          allow_sys: Some(vec![]),
-          allow_write: Some(vec![]),
-          allow_ffi: Some(vec![]),
           ..Default::default()
         },
         ..Flags::default()
@@ -7063,13 +7106,6 @@ mod tests {
         }),
         permissions: PermissionFlags {
           allow_all: true,
-          allow_net: Some(vec![]),
-          allow_env: Some(vec![]),
-          allow_run: Some(vec![]),
-          allow_read: Some(vec![]),
-          allow_sys: Some(vec![]),
-          allow_write: Some(vec![]),
-          allow_ffi: Some(vec![]),
           ..Default::default()
         },
         ..Flags::default()
@@ -7094,13 +7130,6 @@ mod tests {
         }),
         permissions: PermissionFlags {
           allow_all: true,
-          allow_net: Some(vec![]),
-          allow_env: Some(vec![]),
-          allow_run: Some(vec![]),
-          allow_read: Some(vec![]),
-          allow_sys: Some(vec![]),
-          allow_write: Some(vec![]),
-          allow_ffi: Some(vec![]),
           ..Default::default()
         },
         ext: Some("ts".to_string()),
@@ -7134,13 +7163,6 @@ mod tests {
         inspect: Some("127.0.0.1:9229".parse().unwrap()),
         permissions: PermissionFlags {
           allow_all: true,
-          allow_net: Some(vec![]),
-          allow_env: Some(vec![]),
-          allow_run: Some(vec![]),
-          allow_read: Some(vec![]),
-          allow_sys: Some(vec![]),
-          allow_write: Some(vec![]),
-          allow_ffi: Some(vec![]),
           ..Default::default()
         },
         env_file: Some(".example.env".to_owned()),
@@ -7168,13 +7190,6 @@ mod tests {
         argv: svec!["arg1", "arg2"],
         permissions: PermissionFlags {
           allow_all: true,
-          allow_net: Some(vec![]),
-          allow_env: Some(vec![]),
-          allow_run: Some(vec![]),
-          allow_read: Some(vec![]),
-          allow_sys: Some(vec![]),
-          allow_write: Some(vec![]),
-          allow_ffi: Some(vec![]),
           ..Default::default()
         },
         ..Flags::default()
@@ -7195,19 +7210,7 @@ mod tests {
         }),
         unsafely_ignore_certificate_errors: None,
         permissions: PermissionFlags {
-          allow_net: Some(vec![]),
-          allow_env: Some(vec![]),
-          deny_env: None,
-          allow_run: Some(vec![]),
-          deny_run: None,
-          allow_read: Some(vec![]),
-          deny_read: None,
-          allow_sys: Some(vec![]),
-          deny_sys: None,
-          allow_write: Some(vec![]),
-          deny_write: None,
-          allow_ffi: Some(vec![]),
-          deny_ffi: None,
+          allow_all: true,
           ..Default::default()
         },
         ..Flags::default()
@@ -7254,13 +7257,6 @@ mod tests {
         inspect: Some("127.0.0.1:9229".parse().unwrap()),
         permissions: PermissionFlags {
           allow_all: true,
-          allow_net: Some(vec![]),
-          allow_env: Some(vec![]),
-          allow_run: Some(vec![]),
-          allow_read: Some(vec![]),
-          allow_sys: Some(vec![]),
-          allow_write: Some(vec![]),
-          allow_ffi: Some(vec![]),
           ..Default::default()
         },
         env_file: Some(".example.env".to_owned()),
@@ -10661,14 +10657,7 @@ mod tests {
         }),
         log_level: Some(Level::Debug),
         permissions: PermissionFlags {
-          allow_all: false,
-          allow_net: Some(vec![]),
-          allow_env: Some(vec![]),
-          allow_run: Some(vec![]),
-          allow_read: Some(vec![]),
-          allow_sys: Some(vec![]),
-          allow_write: Some(vec![]),
-          allow_ffi: Some(vec![]),
+          allow_all: true,
           ..Default::default()
         },
         ..Flags::default()

@@ -207,7 +207,7 @@ function createRespondWith(
       resp = await resp;
       if (!(ObjectPrototypeIsPrototypeOf(ResponsePrototype, resp))) {
         throw new TypeError(
-          "First argument to respondWith must be a Response or a promise resolving to a Response.",
+          "First argument to 'respondWith' must be a Response or a promise resolving to a Response",
         );
       }
 
@@ -220,7 +220,7 @@ function createRespondWith(
       let respBody = null;
       if (innerResp.body !== null) {
         if (innerResp.body.unusable()) {
-          throw new TypeError("Body is unusable.");
+          throw new TypeError("Body is unusable");
         }
         if (
           ObjectPrototypeIsPrototypeOf(
@@ -295,7 +295,7 @@ function createRespondWith(
         let reader;
         if (resourceBacking) {
           if (respBody.locked) {
-            throw new TypeError("ReadableStream is locked.");
+            throw new TypeError("ReadableStream is locked");
           }
           reader = respBody.getReader(); // Acquire JS lock.
           try {
