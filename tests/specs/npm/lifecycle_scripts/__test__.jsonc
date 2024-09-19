@@ -59,16 +59,8 @@
         },
         {
           // without running scripts (should warn)
-          "args": "cache all_lifecycles.js",
+          "args": "install -e all_lifecycles.js",
           "output": "all_lifecycles_not_run_global.out"
-        },
-        {
-          // now run scripts
-          "args": "cache --allow-scripts all_lifecycles.js",
-          // this test package covers running preinstall, install, and postinstall scripts
-          // it also exercises running bin packages (esbuild in this case), using `node` in a script
-          // (with and without node-only CLI flags), and using `npx` in a script
-          "output": "all_lifecycles.out"
         }
       ]
     },
@@ -121,19 +113,6 @@
           // we run the install script, we should use the correct binary (relative to the package)
           "args": "cache --allow-scripts conflicting_bin.js",
           "output": "conflicting_bin.out"
-        }
-      ]
-    },
-    "global_lifecycle_scripts_conflicting_bin": {
-      "steps": [
-        {
-          "args": ["eval", "Deno.removeSync('deno.json')"],
-          "output": ""
-        },
-        {
-          // see above for explanation
-          "args": "cache --allow-scripts conflicting_bin.js",
-          "output": "conflicting_bin_global.out"
         }
       ]
     },

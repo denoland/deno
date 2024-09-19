@@ -331,7 +331,12 @@ async fn sync_resolution_with_fs(
   let bin_entries =
     Rc::new(RefCell::new(super::common::bin_entries::BinEntries::new()));
   let mut lifecycle_scripts =
-    super::common::LifecycleScripts::new(lifecycle_scripts);
+    super::common::lifecycle_scripts::LifecycleScripts::new(
+      lifecycle_scripts,
+      LocalLifecycleScripts {
+        deno_local_registry_dir: &deno_local_registry_dir,
+      },
+    );
   for package in &package_partitions.packages {
     if let Some(current_pkg) =
       newest_packages_by_name.get_mut(&package.id.nv.name)
@@ -405,7 +410,7 @@ async fn sync_resolution_with_fs(
     let sub_node_modules = folder_path.join("node_modules");
     let package_path =
       join_package_name(&sub_node_modules, &package.id.nv.name);
-    lifecycle_scripts.add(package, package_path.into(), &folder_path);
+    lifecycle_scripts.add(package, package_path.into());
   }
 
   while let Some(result) = cache_futures.next().await {
@@ -647,10 +652,6 @@ async fn sync_resolution_with_fs(
       snapshot,
       &package_partitions.packages,
       Some(root_node_modules_dir_path),
-      |package| {
-        local_node_modules_package_path(&deno_local_registry_dir, package)
-      },
-      super::common::default_warn_not_run,
     )
     .await?;
 
@@ -659,6 +660,98 @@ async fn sync_resolution_with_fs(
   drop(pb_clear_guard);
 
   Ok(())
+}
+
+fn local_node_modules_package_folder_name(
+  local_registry_dir: &Path,
+  package: &NpmResolutionPackage,
+) -> PathBuf {
+  join_package_name(
+    &local_registry_dir
+      .join(get_package_folder_id_folder_name(
+        &package.get_package_cache_folder_id(),
+      ))
+      .join("node_modules"),
+    &package.id.nv.name,
+  )
+}
+
+fn ran_scripts_file(
+  local_registry_dir: &Path,
+  package: &NpmResolutionPackage,
+) -> PathBuf {
+  local_node_modules_package_folder_name(local_registry_dir, package)
+    .join(".scripts-run")
+}
+fn warned_scripts_file(
+  local_registry_dir: &Path,
+  package: &NpmResolutionPackage,
+) -> PathBuf {
+  local_node_modules_package_folder_name(local_registry_dir, package)
+    .join(".scripts-warned")
+}
+
+struct LocalLifecycleScripts<'a> {
+  deno_local_registry_dir: &'a Path,
+}
+
+impl<'a> super::common::lifecycle_scripts::LifecycleScriptsStrategy
+  for LocalLifecycleScripts<'a>
+{
+  fn package_path(&self, package: &NpmResolutionPackage) -> PathBuf {
+    local_node_modules_package_path(self.deno_local_registry_dir, package)
+  }
+
+  fn did_run_scripts(
+    &self,
+    package: &NpmResolutionPackage,
+    _package_path: &Path,
+  ) -> std::result::Result<(), deno_core::anyhow::Error> {
+    std::fs::write(
+      ran_scripts_file(&self.deno_local_registry_dir, package),
+      "",
+    )?;
+    Ok(())
+  }
+
+  fn warn_on_scripts_not_run(
+    &self,
+    packages: &[(&NpmResolutionPackage, std::path::PathBuf)],
+  ) -> Result<(), AnyError> {
+    if !packages.is_empty() {
+      let packages_str = packages
+        .iter()
+        .map(|(p, _)| format!("npm:{}", p.id.nv))
+        .collect::<Vec<_>>()
+        .join(", ");
+      log::warn!("{}: Packages contained npm lifecycle scripts (preinstall/install/postinstall) that were not executed.
+    This may cause the packages to not work correctly. To run them, use the `--allow-scripts` flag with `deno install`
+    (e.g. `deno install --allow-scripts=pkg1,pkg2 <entrypoint>`):\n      {packages_str}", crate::colors::yellow("warning"));
+      for (package, _) in packages {
+        std::fs::write(
+          warned_scripts_file(&self.deno_local_registry_dir, package),
+          "",
+        )?;
+      }
+    }
+    Ok(())
+  }
+
+  fn has_warned(
+    &self,
+    package: &NpmResolutionPackage,
+    _package_path: &Path,
+  ) -> bool {
+    warned_scripts_file(&self.deno_local_registry_dir, package).exists()
+  }
+
+  fn has_run(
+    &self,
+    package: &NpmResolutionPackage,
+    _package_path: &Path,
+  ) -> bool {
+    ran_scripts_file(&self.deno_local_registry_dir, package).exists()
+  }
 }
 
 // Uses BTreeMap to preserve the ordering of the elements in memory, to ensure

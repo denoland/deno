@@ -13,20 +13,22 @@ use deno_core::error::AnyError;
 use deno_core::url::Url;
 use deno_npm::NpmPackageCacheFolderId;
 use deno_npm::NpmPackageId;
+use deno_npm::NpmResolutionPackage;
 use deno_npm::NpmSystemInfo;
 use deno_runtime::deno_fs::FileSystem;
 use deno_runtime::deno_node::NodePermissions;
-use deno_semver::package::PackageNv;
 use node_resolver::errors::PackageFolderResolveError;
 use node_resolver::errors::PackageNotFoundError;
 use node_resolver::errors::ReferrerNotFoundError;
 
 use crate::args::LifecycleScriptsConfig;
+use crate::cache::FastInsecureHasher;
 
 use super::super::cache::NpmCache;
 use super::super::cache::TarballCache;
 use super::super::resolution::NpmResolution;
 use super::common::cache_packages;
+use super::common::lifecycle_scripts::LifecycleScriptsStrategy;
 use super::common::NpmPackageFsResolver;
 use super::common::RegistryReadPermissionChecker;
 
@@ -166,17 +168,16 @@ impl NpmPackageFsResolver for GlobalNpmPackageResolver {
     }
 
     let mut lifecycle_scripts =
-      super::common::LifecycleScripts::new(&self.lifecycle_scripts);
+      super::common::lifecycle_scripts::LifecycleScripts::new(
+        &self.lifecycle_scripts,
+        GlobalLifecycleScripts::new(self, &self.lifecycle_scripts.initial_cwd),
+      );
     for package in &package_partitions.packages {
       let package_folder = self.cache.package_folder_for_nv(&package.id.nv);
-      lifecycle_scripts.add(
-        package,
-        Cow::Borrowed(&package_folder),
-        &package_folder,
-      );
+      lifecycle_scripts.add(package, Cow::Borrowed(&package_folder));
     }
 
-    lifecycle_scripts.warn_not_run_scripts(warn_scripts_not_supported);
+    lifecycle_scripts.warn_not_run_scripts()?;
 
     Ok(())
   }
@@ -192,12 +193,74 @@ impl NpmPackageFsResolver for GlobalNpmPackageResolver {
   }
 }
 
-fn warn_scripts_not_supported(packages: &[(PathBuf, &PackageNv)]) {
-  let packages_str = packages
-    .iter()
-    .map(|(_, package_nv)| package_nv.to_string())
-    .collect::<Vec<String>>()
-    .join(", ");
-  log::warn!("{}: The following packages contained npm lifecycle scripts that were not executed: {}
+struct GlobalLifecycleScripts<'a> {
+  resolver: &'a GlobalNpmPackageResolver,
+  path_hash: u64,
+}
+
+impl<'a> GlobalLifecycleScripts<'a> {
+  fn new(resolver: &'a GlobalNpmPackageResolver, initial_cwd: &Path) -> Self {
+    let mut hasher = FastInsecureHasher::new_without_deno_version();
+    hasher.write(initial_cwd.as_os_str().as_encoded_bytes());
+    let path_hash = hasher.finish();
+    Self {
+      resolver,
+      path_hash,
+    }
+  }
+
+  fn warned_scripts_file(&self, package: &NpmResolutionPackage) -> PathBuf {
+    self
+      .package_path(package)
+      .join(format!(".scripts-warned-{}", self.path_hash))
+  }
+}
+
+impl<'a> super::common::lifecycle_scripts::LifecycleScriptsStrategy
+  for GlobalLifecycleScripts<'a>
+{
+  fn package_path(&self, package: &NpmResolutionPackage) -> PathBuf {
+    self.resolver.cache.package_folder_for_nv(&package.id.nv)
+  }
+
+  fn warn_on_scripts_not_run(
+    &self,
+    packages: &[(&NpmResolutionPackage, PathBuf)],
+  ) -> std::result::Result<(), deno_core::anyhow::Error> {
+    let packages_str = packages
+      .iter()
+      .map(|(package, _)| package.id.nv.to_string())
+      .collect::<Vec<String>>()
+      .join(", ");
+    log::warn!("{}: The following packages contained npm lifecycle scripts that were not executed: {}
     Lifecycle scripts are only supported when using a local `node_modules` directory. Add `{}` to your deno config to enable it.", crate::colors::yellow("warning"), crate::colors::cyan(&packages_str), crate::colors::cyan("\"nodeModulesDir\": \"auto\""));
+    for (package, _) in packages {
+      std::fs::write(self.warned_scripts_file(package), "")?;
+    }
+    Ok(())
+  }
+
+  fn did_run_scripts(
+    &self,
+    _package: &NpmResolutionPackage,
+    _package_path: &Path,
+  ) -> std::result::Result<(), deno_core::anyhow::Error> {
+    Ok(())
+  }
+
+  fn has_warned(
+    &self,
+    package: &NpmResolutionPackage,
+    _package_path: &Path,
+  ) -> bool {
+    self.warned_scripts_file(package).exists()
+  }
+
+  fn has_run(
+    &self,
+    _package: &NpmResolutionPackage,
+    _package_path: &Path,
+  ) -> bool {
+    false
+  }
 }
