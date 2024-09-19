@@ -430,10 +430,8 @@ fn collect_lint_files(
   files: FilePatterns,
 ) -> Result<Vec<PathBuf>, AnyError> {
   FileCollector::new(|e| {
-    cli_options.ext_flag().as_ref().is_some_and(|ext| {
-      is_script_ext(Path::new(&format!("placeholder.{ext}")))
-    }) || is_script_ext(e.path)
-      || e.path.extension().is_none()
+    is_script_ext(e.path)
+      || (e.path.extension().is_none() && cli_options.ext_flag().is_some())
   })
   .ignore_git_folder()
   .ignore_node_modules()
