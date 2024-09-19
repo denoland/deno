@@ -1,0 +1,9 @@
+Check [WILDCARD]/test.ts
+Check [WILDCARD]/source.ts$5-10.ts
+running 1 test from ./test.ts
+add() ... ok ([WILDCARD])
+running 1 test from ./source.ts$5-10.ts
+file:///[WILDCARD]/source.ts$5-10.ts ... ok ([WILDCARD])
+
+ok | 2 passed | 0 failed ([WILDCARD])
+
