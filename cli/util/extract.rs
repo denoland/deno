@@ -358,7 +358,21 @@ impl Visit for ExportCollector {
           self.default_export = Some(ident.sym.clone());
         }
       }
-      ast::DefaultDecl::TsInterfaceDecl(_) => {}
+      ast::DefaultDecl::TsInterfaceDecl(iface_decl) => {
+        self.default_export = Some(iface_decl.id.sym.clone());
+      }
+    }
+  }
+
+  fn visit_export_default_expr(
+    &mut self,
+    export_default_expr: &ast::ExportDefaultExpr,
+  ) {
+    match &*export_default_expr.expr {
+      ast::Expr::Ident(ident) => {
+        self.default_export = Some(ident.sym.clone());
+      }
+      _ => {}
     }
   }
 
@@ -880,6 +894,32 @@ Deno.test("file:///main.ts$13-16.ts", async ()=>{
           },
         ],
       },
+      Test {
+        input: Input {
+          source: r#"
+/**
+ * ```ts
+ * foo();
+ * ```
+ */
+export function foo() {}
+
+export const ONE = 1;
+const TWO = 2;
+export default TWO;
+"#,
+          specifier: "file:///main.ts",
+        },
+        expected: vec![Expected {
+          source: r#"import TWO, { ONE, foo } from "file:///main.ts";
+Deno.test("file:///main.ts$3-6.ts", async ()=>{
+    foo();
+});
+"#,
+          specifier: "file:///main.ts$3-6.ts",
+          media_type: MediaType::TypeScript,
+        }],
+      },
       // Avoid duplicate imports
       Test {
         input: Input {
@@ -1308,6 +1348,21 @@ assertEquals(add(1, 2), 3);
       },
       Test {
         input: r#"export default function foo() {}"#,
+        named_expected: atom_set!(),
+        default_expected: Some("foo".into()),
+      },
+      Test {
+        input: r#"export default class Foo {}"#,
+        named_expected: atom_set!(),
+        default_expected: Some("Foo".into()),
+      },
+      Test {
+        input: r#"export default interface Foo {}"#,
+        named_expected: atom_set!(),
+        default_expected: Some("Foo".into()),
+      },
+      Test {
+        input: r#"const foo = 42; export default foo;"#,
         named_expected: atom_set!(),
         default_expected: Some("foo".into()),
       },
