@@ -35,6 +35,13 @@
           "default": false,
           "markdownDescription": "Enable error reporting in type-checked JavaScript files.\n\nSee more: https://www.typescriptlang.org/tsconfig#checkJs"
         },
+        "emitDecoratorMetadata": {
+          "description": "Emit design-type metadata for decorated declarations in source files.",
+          "type": "boolean",
+          "default": false,
+          "deprecated": true,
+          "markdownDescription": "Emit design-type metadata for decorated declarations in source files.\n\nSee more: https://www.typescriptlang.org/tsconfig/#emitDecoratorMetadata"
+        },
         "exactOptionalPropertyTypes": {
           "description": "Differentiate between undefined and not present when type checking",
           "type": "boolean",
@@ -45,6 +52,7 @@
           "description": "Enable experimental support for legacy experimental decorators.",
           "type": "boolean",
           "default": false,
+          "deprecated": true,
           "markdownDescription": "Enable experimental support for legacy experimental decorators.\n\nSee more: https://www.typescriptlang.org/tsconfig#experimentalDecorators"
         },
         "jsx": {
