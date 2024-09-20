@@ -5,12 +5,8 @@
 
 import { $ } from "jsr:@david/dax@0.41.0";
 
-async function gitRevParse() {
-  return $`git rev-parse HEAD`;
-}
-
 async function uploadCanaryForCurrentArch(currentGitSha) {
-  const currentGitRev = await gitRevParse();
+  const currentGitRev = await $`git rev-parse HEAD`;
   await $`gsutil -h "Cache-Control: public, max-age=3600" cp ./target/release/*.zip gs://dl.deno.land/canary/${currentGitRev}/`;
   const llvmTriple = await $`rustc -vV | sed -n "s|host: ||p"`;
   const latestCanaryHash =
