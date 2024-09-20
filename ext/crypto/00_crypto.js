@@ -977,86 +977,24 @@ class SubtleCrypto {
 
     const normalizedAlgorithm = normalizeAlgorithm(algorithm, "importKey");
 
-    const algorithmName = normalizedAlgorithm.name;
+    // 8.
+    const result = await importKeyInner(
+      format,
+      keyData,
+      normalizedAlgorithm,
+      extractable,
+      keyUsages,
+    );
 
-    switch (algorithmName) {
-      case "HMAC": {
-        return importKeyHMAC(
-          format,
-          normalizedAlgorithm,
-          keyData,
-          extractable,
-          keyUsages,
-        );
-      }
-      case "ECDH":
-      case "ECDSA": {
-        return importKeyEC(
-          format,
-          normalizedAlgorithm,
-          keyData,
-          extractable,
-          keyUsages,
-        );
-      }
-      case "RSASSA-PKCS1-v1_5":
-      case "RSA-PSS":
-      case "RSA-OAEP": {
-        return importKeyRSA(
-          format,
-          normalizedAlgorithm,
-          keyData,
-          extractable,
-          keyUsages,
-        );
-      }
-      case "HKDF": {
-        return importKeyHKDF(format, keyData, extractable, keyUsages);
-      }
-      case "PBKDF2": {
-        return importKeyPBKDF2(format, keyData, extractable, keyUsages);
-      }
-      case "AES-CTR":
-      case "AES-CBC":
-      case "AES-GCM": {
-        return importKeyAES(
-          format,
-          normalizedAlgorithm,
-          keyData,
-          extractable,
-          keyUsages,
-          ["encrypt", "decrypt", "wrapKey", "unwrapKey"],
-        );
-      }
-      case "AES-KW": {
-        return importKeyAES(
-          format,
-          normalizedAlgorithm,
-          keyData,
-          extractable,
-          keyUsages,
-          ["wrapKey", "unwrapKey"],
-        );
-      }
-      case "X25519": {
-        return importKeyX25519(
-          format,
-          keyData,
-          extractable,
-          keyUsages,
-        );
-      }
-      case "Ed25519": {
-        return importKeyEd25519(
-          format,
-          keyData,
-          extractable,
-          keyUsages,
-        );
-      }
-      default:
-        throw new DOMException("Not implemented", "NotSupportedError");
+    // 9.
+    if (
+      ArrayPrototypeIncludes(["private", "secret"], result[_type]) &&
+      keyUsages.length == 0
+    ) {
+      throw new SyntaxError("Invalid key usage");
     }
+
+    return result;
   }
 
   /**
@@ -3346,6 +3284,95 @@ function importKeyEC(
 
         return key;
       }
+    }
+    default:
+      throw new DOMException("Not implemented", "NotSupportedError");
+  }
+}
+
+async function importKeyInner(
+  format,
+  normalizedAlgorithm,
+  keyData,
+  extractable,
+  keyUsages,
+) {
+  const algorithmName = normalizedAlgorithm.name;
+
+  switch (algorithmName) {
+    case "HMAC": {
+      return importKeyHMAC(
+        format,
+        normalizedAlgorithm,
+        keyData,
+        extractable,
+        keyUsages,
+      );
+    }
+    case "ECDH":
+    case "ECDSA": {
+      return importKeyEC(
+        format,
+        normalizedAlgorithm,
+        keyData,
+        extractable,
+        keyUsages,
+      );
+    }
+    case "RSASSA-PKCS1-v1_5":
+    case "RSA-PSS":
+    case "RSA-OAEP": {
+      return importKeyRSA(
+        format,
+        normalizedAlgorithm,
+        keyData,
+        extractable,
+        keyUsages,
+      );
+    }
+    case "HKDF": {
+      return importKeyHKDF(format, keyData, extractable, keyUsages);
+    }
+    case "PBKDF2": {
+      return importKeyPBKDF2(format, keyData, extractable, keyUsages);
+    }
+    case "AES-CTR":
+    case "AES-CBC":
+    case "AES-GCM": {
+      return importKeyAES(
+        format,
+        normalizedAlgorithm,
+        keyData,
+        extractable,
+        keyUsages,
+        ["encrypt", "decrypt", "wrapKey", "unwrapKey"],
+      );
+    }
+    case "AES-KW": {
+      return importKeyAES(
+        format,
+        normalizedAlgorithm,
+        keyData,
+        extractable,
+        keyUsages,
+        ["wrapKey", "unwrapKey"],
+      );
+    }
+    case "X25519": {
+      return importKeyX25519(
+        format,
+        keyData,
+        extractable,
+        keyUsages,
+      );
+    }
+    case "Ed25519": {
+      return importKeyEd25519(
+        format,
+        keyData,
+        extractable,
+        keyUsages,
+      );
     }
     default:
       throw new DOMException("Not implemented", "NotSupportedError");
