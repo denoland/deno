@@ -894,7 +894,7 @@ impl QueryDescriptor for NetDescriptor {
 // TODO(bartlomieju): rewrite to not use `AnyError` but a specific error implementations
 impl NetDescriptor {
   pub fn parse(hostname: &str) -> Result<Self, AnyError> {
-    if hostname.starts_with("http://") ||  hostname.starts_with("https://") {
+    if hostname.starts_with("http://") || hostname.starts_with("https://") {
       return Err(uri_error(format!("invalid value '{hostname}': URLs are not supported, only domains and ips")));
     }
 

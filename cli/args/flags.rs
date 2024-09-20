@@ -10804,7 +10804,12 @@ mod tests {
 
   #[test]
   fn net_flag_with_url() {
-    let r = flags_from_vec(svec!["deno", "run", "--allow-net=https://example.com", "script.ts"]);
+    let r = flags_from_vec(svec![
+      "deno",
+      "run",
+      "--allow-net=https://example.com",
+      "script.ts"
+    ]);
     assert_eq!(
       r.unwrap_err().to_string(),
       "error: invalid value 'https://example.com': URLs are not supported, only domains and ips"
