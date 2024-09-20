@@ -939,7 +939,6 @@ class SubtleCrypto {
    * @param {KeyUsages[]} keyUsages
    * @returns {Promise<any>}
    */
-  // deno-lint-ignore require-await
   async importKey(format, keyData, algorithm, extractable, keyUsages) {
     webidl.assertBranded(this, SubtleCryptoPrototype);
     const prefix = "Failed to execute 'importKey' on 'SubtleCrypto'";
@@ -3290,6 +3289,7 @@ function importKeyEC(
   }
 }
 
+// deno-lint-ignore require-await
 async function importKeyInner(
   format,
   normalizedAlgorithm,
