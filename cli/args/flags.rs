@@ -5084,12 +5084,12 @@ fn permission_args_parse(
   }
 
   if let Some(net_wl) = matches.remove_many::<String>("allow-net") {
-    let net_allowlist = flags_net::parse(net_wl.collect()).unwrap();
+    let net_allowlist = flags_net::parse(net_wl.collect())?;
     flags.permissions.allow_net = Some(net_allowlist);
   }
 
   if let Some(net_wl) = matches.remove_many::<String>("deny-net") {
-    let net_denylist = flags_net::parse(net_wl.collect()).unwrap();
+    let net_denylist = flags_net::parse(net_wl.collect())?;
     flags.permissions.deny_net = Some(net_denylist);
   }
 
@@ -10799,6 +10799,20 @@ mod tests {
     assert_eq!(
       escape_and_split_commas("foo,,,bar".to_string()).unwrap(),
       ["foo,", "bar"]
+    );
+  }
+
+  #[test]
+  fn net_flag_with_url() {
+    let r = flags_from_vec(svec![
+      "deno",
+      "run",
+      "--allow-net=https://example.com",
+      "script.ts"
+    ]);
+    assert_eq!(
+      r.unwrap_err().to_string(),
+      "error: invalid value 'https://example.com': URLs are not supported, only domains and ips"
     );
   }
 }
