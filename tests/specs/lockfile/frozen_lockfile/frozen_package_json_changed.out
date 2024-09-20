@@ -1,9 +1,9 @@
 Download http://localhost:4260/@denotest/bin
-error: The lockfile is out of date. Run `deno cache --frozen=false`, `deno install --frozen=false`, or rerun with `--frozen=false` to update it.
+error: The lockfile is out of date. Run `deno install --frozen=false`, or rerun with `--frozen=false` to update it.
 changes:
- 4 | -    "npm:@denotest/add@1": "npm:@denotest/add@1.0.0"
- 4 | +    "npm:@denotest/add@1": "npm:@denotest/add@1.0.0",
- 5 | +    "npm:@denotest/bin@0.7.0": "npm:@denotest/bin@0.7.0"
+ 4 | -    "npm:@denotest/add@1": "1.0.0"
+ 4 | +    "npm:@denotest/add@1": "1.0.0",
+ 5 | +    "npm:@denotest/bin@0.7.0": "0.7.0"
  9 | -    }
 10 | +    },
 11 | +    "@denotest/bin@0.7.0": {

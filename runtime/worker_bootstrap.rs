@@ -106,8 +106,6 @@ pub struct BootstrapOptions {
   pub is_stdout_tty: bool,
   pub is_stderr_tty: bool,
   pub color_level: deno_terminal::colors::ColorLevel,
-  // --unstable flag, deprecated
-  pub unstable: bool,
   // --unstable-* flags
   pub unstable_features: Vec<i32>,
   pub user_agent: String,
@@ -116,9 +114,6 @@ pub struct BootstrapOptions {
   pub argv0: Option<String>,
   pub node_debug: Option<String>,
   pub node_ipc_fd: Option<i64>,
-  pub disable_deprecated_api_warning: bool,
-  pub verbose_deprecated_api_warning: bool,
-  pub future: bool,
   pub mode: WorkerExecutionMode,
   // Used by `deno serve`
   pub serve_port: Option<u16>,
@@ -147,7 +142,6 @@ impl Default for BootstrapOptions {
       log_level: Default::default(),
       locale: "en".to_string(),
       location: Default::default(),
-      unstable: Default::default(),
       unstable_features: Default::default(),
       inspect: Default::default(),
       args: Default::default(),
@@ -155,9 +149,6 @@ impl Default for BootstrapOptions {
       argv0: None,
       node_debug: None,
       node_ipc_fd: None,
-      disable_deprecated_api_warning: false,
-      verbose_deprecated_api_warning: false,
-      future: false,
       mode: WorkerExecutionMode::None,
       serve_port: Default::default(),
       serve_host: Default::default(),
@@ -180,8 +171,6 @@ struct BootstrapV8<'a>(
   &'a str,
   // location
   Option<&'a str>,
-  // unstable
-  bool,
   // granular unstable flags
   &'a [i32],
   // inspect
@@ -194,12 +183,6 @@ struct BootstrapV8<'a>(
   Option<&'a str>,
   // node_debug
   Option<&'a str>,
-  // disable_deprecated_api_warning,
-  bool,
-  // verbose_deprecated_api_warning
-  bool,
-  // future
-  bool,
   // mode
   i32,
   // serve port
@@ -225,16 +208,12 @@ impl BootstrapOptions {
     let bootstrap = BootstrapV8(
       &self.deno_version,
       self.location.as_ref().map(|l| l.as_str()),
-      self.unstable,
       self.unstable_features.as_ref(),
       self.inspect,
       self.enable_testing_features,
       self.has_node_modules_dir,
       self.argv0.as_deref(),
       self.node_debug.as_deref(),
-      self.disable_deprecated_api_warning,
-      self.verbose_deprecated_api_warning,
-      self.future,
       self.mode.discriminant() as _,
       self.serve_port.unwrap_or_default(),
       self.serve_host.as_deref(),

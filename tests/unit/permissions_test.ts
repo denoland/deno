@@ -70,7 +70,7 @@ Deno.test(function permissionSysInvalidKindSync() {
 });
 
 Deno.test(async function permissionQueryReturnsEventTarget() {
-  const status = await Deno.permissions.query({ name: "hrtime" });
+  const status = await Deno.permissions.query({ name: "read", path: "." });
   assert(["granted", "denied", "prompt"].includes(status.state));
   let called = false;
   status.addEventListener("change", () => {
@@ -78,11 +78,13 @@ Deno.test(async function permissionQueryReturnsEventTarget() {
   });
   status.dispatchEvent(new Event("change"));
   assert(called);
-  assert(status === (await Deno.permissions.query({ name: "hrtime" })));
+  assert(
+    status === (await Deno.permissions.query({ name: "read", path: "." })),
+  );
 });
 
 Deno.test(function permissionQueryReturnsEventTargetSync() {
-  const status = Deno.permissions.querySync({ name: "hrtime" });
+  const status = Deno.permissions.querySync({ name: "read", path: "." });
   assert(["granted", "denied", "prompt"].includes(status.state));
   let called = false;
   status.addEventListener("change", () => {
@@ -90,7 +92,7 @@ Deno.test(function permissionQueryReturnsEventTargetSync() {
   });
   status.dispatchEvent(new Event("change"));
   assert(called);
-  assert(status === Deno.permissions.querySync({ name: "hrtime" }));
+  assert(status === Deno.permissions.querySync({ name: "read", path: "." }));
 });
 
 Deno.test(async function permissionQueryForReadReturnsSameStatus() {
@@ -118,7 +120,7 @@ Deno.test(function permissionQueryForReadReturnsSameStatusSync() {
 });
 
 Deno.test(function permissionsIllegalConstructor() {
-  assertThrows(() => new Deno.Permissions(), TypeError, "Illegal constructor.");
+  assertThrows(() => new Deno.Permissions(), TypeError, "Illegal constructor");
   assertEquals(Deno.Permissions.length, 0);
 });
 
@@ -126,7 +128,7 @@ Deno.test(function permissionStatusIllegalConstructor() {
   assertThrows(
     () => new Deno.PermissionStatus(),
     TypeError,
-    "Illegal constructor.",
+    "Illegal constructor",
   );
   assertEquals(Deno.PermissionStatus.length, 0);
 });

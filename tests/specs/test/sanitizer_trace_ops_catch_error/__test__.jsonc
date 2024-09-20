@@ -1,0 +1,5 @@
+{
+  "args": "test -A --trace-leaks main.ts",
+  "output": "main.out",
+  "exitCode": 0
+}

@@ -95,7 +95,7 @@ class GPUCanvasContext {
       "Failed to execute 'getCurrentTexture' on 'GPUCanvasContext'";
 
     if (this[_configuration] === null) {
-      throw new DOMException("context is not configured.", "InvalidStateError");
+      throw new DOMException("Context is not configured", "InvalidStateError");
     }
     const { createGPUTexture, assertDevice } = loadWebGPU();
 
@@ -199,7 +199,7 @@ class UnsafeWindowSurface {
 
   getContext(context) {
     if (context !== "webgpu") {
-      throw new TypeError("Only 'webgpu' context is supported.");
+      throw new TypeError("Only 'webgpu' context is supported");
     }
     this.#ctx = createCanvasContext({
       surfaceRid: this.#surfaceRid,

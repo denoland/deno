@@ -8,6 +8,6 @@ Deno.test({}, async function queueTestDbClose() {
     await db.listenQueue(() => {});
     assertFalse(false);
   } catch (e) {
-    assertEquals(e.message, "already closed");
+    assertEquals((e as Error).message, "Queue already closed");
   }
 });

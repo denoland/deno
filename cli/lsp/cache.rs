@@ -7,25 +7,15 @@ use crate::cache::LocalLspHttpCache;
 use crate::lsp::config::Config;
 use crate::lsp::logging::lsp_log;
 use crate::lsp::logging::lsp_warn;
-use deno_runtime::fs_util::specifier_to_file_path;
 
 use deno_core::url::Url;
 use deno_core::ModuleSpecifier;
+use deno_runtime::fs_util::specifier_to_file_path;
 use std::collections::BTreeMap;
 use std::fs;
 use std::path::Path;
 use std::sync::Arc;
 use std::time::SystemTime;
-
-/// In the LSP, we disallow the cache from automatically copying from
-/// the global cache to the local cache for technical reasons.
-///
-/// 1. We need to verify the checksums from the lockfile are correct when
-///    moving from the global to the local cache.
-/// 2. We need to verify the checksums for JSR https specifiers match what
-///    is found in the package's manifest.
-pub const LSP_DISALLOW_GLOBAL_TO_LOCAL_COPY: deno_cache_dir::GlobalToLocalCopy =
-  deno_cache_dir::GlobalToLocalCopy::Disallow;
 
 pub fn calculate_fs_version(
   cache: &LspCache,

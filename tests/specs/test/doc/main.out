@@ -1,0 +1,9 @@
+Check [WILDCARD]/main.ts$6-9.js
+Check [WILDCARD]/main.ts$10-13.jsx
+Check [WILDCARD]/main.ts$14-17.ts
+Check [WILDCARD]/main.ts$18-21.tsx
+Check [WILDCARD]/main.ts$30-35.ts
+error: TS2367 [ERROR]: This comparison appears to be unintentional because the types 'string' and 'number' have no overlap.
+    console.assert(check() == 42);
+                   ~~~~~~~~~~~~~
+    at [WILDCARD]/main.ts$30-35.ts:3:20

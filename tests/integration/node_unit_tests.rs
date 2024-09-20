@@ -57,6 +57,7 @@ util::unit_test_factory!(
     assertion_error_test,
     buffer_test,
     child_process_test,
+    cluster_test,
     console_test,
     crypto_cipher_gcm_test = crypto / crypto_cipher_gcm_test,
     crypto_cipher_test = crypto / crypto_cipher_test,
@@ -71,7 +72,6 @@ util::unit_test_factory!(
     dgram_test,
     domain_test,
     fs_test,
-    fetch_test,
     http_test,
     http2_test,
     inspector_test,
@@ -96,6 +96,7 @@ util::unit_test_factory!(
     util_test,
     v8_test,
     vm_test,
+    wasi_test,
     worker_threads_test,
     zlib_test
   ]
@@ -110,7 +111,8 @@ fn node_unit_test(test: String) {
     .arg("--config")
     .arg(deno_config_path())
     .arg("--no-lock")
-    .arg("--unstable")
+    .arg("--unstable-broadcast-channel")
+    .arg("--unstable-net")
     // TODO(kt3k): This option is required to pass tls_test.ts,
     // but this shouldn't be necessary. tls.connect currently doesn't
     // pass hostname option correctly and it causes cert errors.

@@ -62,11 +62,9 @@ where
 {
   let cron_handler = {
     let state = state.borrow();
-    // TODO(bartlomieju): replace with `state.feature_checker.check_or_exit`
-    // once we phase out `check_or_exit_with_legacy_fallback`
     state
       .feature_checker
-      .check_or_exit_with_legacy_fallback(UNSTABLE_FEATURE_NAME, "Deno.cron");
+      .check_or_exit(UNSTABLE_FEATURE_NAME, "Deno.cron");
     state.borrow::<Rc<C>>().clone()
   };
 
@@ -116,12 +114,15 @@ where
 
 fn validate_cron_name(name: &str) -> Result<(), AnyError> {
   if name.len() > 64 {
-    return Err(type_error("Cron name is too long"));
+    return Err(type_error(format!(
+      "Cron name cannot exceed 64 characters: current length {}",
+      name.len()
+    )));
   }
   if !name.chars().all(|c| {
     c.is_ascii_whitespace() || c.is_ascii_alphanumeric() || c == '_' || c == '-'
   }) {
-    return Err(type_error("Invalid cron name. Only alphanumeric characters, whitespace, hyphens, and underscores are allowed"));
+    return Err(type_error("Invalid cron name: only alphanumeric characters, whitespace, hyphens, and underscores are allowed"));
   }
   Ok(())
 }

@@ -1,5 +1,6 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
+use std::borrow::Cow;
 use std::collections::BTreeSet;
 use std::collections::HashSet;
 use std::path::Path;
@@ -199,7 +200,8 @@ impl<TCjsCodeAnalyzer: CjsCodeAnalyzer, TNodeResolverEnv: NodeResolverEnv>
             NodeResolutionMode::Execution,
           );
           let reexport_specifier = match result {
-            Ok(specifier) => specifier,
+            Ok(Some(specifier)) => specifier,
+            Ok(None) => continue,
             Err(err) => {
               errors.push(err);
               continue;
@@ -290,7 +292,7 @@ impl<TCjsCodeAnalyzer: CjsCodeAnalyzer, TNodeResolverEnv: NodeResolverEnv>
     referrer: &Url,
     conditions: &[&str],
     mode: NodeResolutionMode,
-  ) -> Result<Url, AnyError> {
+  ) -> Result<Option<Url>, AnyError> {
     if specifier.starts_with('/') {
       todo!();
     }
@@ -298,9 +300,12 @@ impl<TCjsCodeAnalyzer: CjsCodeAnalyzer, TNodeResolverEnv: NodeResolverEnv>
     let referrer_path = referrer.to_file_path().unwrap();
     if specifier.starts_with("./") || specifier.starts_with("../") {
       if let Some(parent) = referrer_path.parent() {
-        return self
-          .file_extension_probe(parent.join(specifier), &referrer_path)
-          .map(|p| to_file_specifier(&p));
+        return Some(
+          self
+            .file_extension_probe(parent.join(specifier), &referrer_path)
+            .map(|p| to_file_specifier(&p)),
+        )
+        .transpose();
       } else {
         todo!();
       }
@@ -310,28 +315,41 @@ impl<TCjsCodeAnalyzer: CjsCodeAnalyzer, TNodeResolverEnv: NodeResolverEnv>
     let (package_specifier, package_subpath) =
       parse_specifier(specifier).unwrap();
 
-    let module_dir = self.npm_resolver.resolve_package_folder_from_package(
-      package_specifier.as_str(),
-      referrer,
-    )?;
+    let module_dir = match self
+      .npm_resolver
+      .resolve_package_folder_from_package(package_specifier.as_str(), referrer)
+    {
+      Err(err)
+        if matches!(
+          err.as_kind(),
+          crate::errors::PackageFolderResolveErrorKind::PackageNotFound(..)
+        ) =>
+      {
+        return Ok(None);
+      }
+      other => other,
+    }?;
 
     let package_json_path = module_dir.join("package.json");
     let maybe_package_json =
       load_pkg_json(self.env.pkg_json_fs(), &package_json_path)?;
     if let Some(package_json) = maybe_package_json {
       if let Some(exports) = &package_json.exports {
-        return self
-          .node_resolver
-          .package_exports_resolve(
-            &package_json_path,
-            &package_subpath,
-            exports,
-            Some(referrer),
-            NodeModuleKind::Esm,
-            conditions,
-            mode,
-          )
-          .map_err(AnyError::from);
+        return Some(
+          self
+            .node_resolver
+            .package_exports_resolve(
+              &package_json_path,
+              &package_subpath,
+              exports,
+              Some(referrer),
+              NodeModuleKind::Esm,
+              conditions,
+              mode,
+            )
+            .map_err(AnyError::from),
+        )
+        .transpose();
       }
 
       // old school
@@ -344,19 +362,24 @@ impl<TCjsCodeAnalyzer: CjsCodeAnalyzer, TNodeResolverEnv: NodeResolverEnv>
             load_pkg_json(self.env.pkg_json_fs(), &package_json_path)?;
           if let Some(package_json) = maybe_package_json {
             if let Some(main) = package_json.main(NodeModuleKind::Cjs) {
-              return Ok(to_file_specifier(&d.join(main).clean()));
+              return Ok(Some(to_file_specifier(&d.join(main).clean())));
             }
           }
 
-          return Ok(to_file_specifier(&d.join("index.js").clean()));
+          return Ok(Some(to_file_specifier(&d.join("index.js").clean())));
         }
-        return self
-          .file_extension_probe(d, &referrer_path)
-          .map(|p| to_file_specifier(&p));
+        return Some(
+          self
+            .file_extension_probe(d, &referrer_path)
+            .map(|p| to_file_specifier(&p)),
+        )
+        .transpose();
       } else if let Some(main) = package_json.main(NodeModuleKind::Cjs) {
-        return Ok(to_file_specifier(&module_dir.join(main).clean()));
+        return Ok(Some(to_file_specifier(&module_dir.join(main).clean())));
       } else {
-        return Ok(to_file_specifier(&module_dir.join("index.js").clean()));
+        return Ok(Some(to_file_specifier(
+          &module_dir.join("index.js").clean(),
+        )));
       }
     }
 
@@ -372,7 +395,7 @@ impl<TCjsCodeAnalyzer: CjsCodeAnalyzer, TNodeResolverEnv: NodeResolverEnv>
         parent.join("node_modules").join(specifier)
       };
       if let Ok(path) = self.file_extension_probe(path, &referrer_path) {
-        return Ok(to_file_specifier(&path));
+        return Ok(Some(to_file_specifier(&path)));
       }
       last = parent;
     }
@@ -583,9 +606,16 @@ fn not_found(path: &str, referrer: &Path) -> AnyError {
   std::io::Error::new(std::io::ErrorKind::NotFound, msg).into()
 }
 
-fn escape_for_double_quote_string(text: &str) -> String {
-  text.replace('\\', "\\\\").replace('"', "\\\"")
+fn escape_for_double_quote_string(text: &str) -> Cow<str> {
+  // this should be rare, so doing a scan first before allocating is ok
+  if text.chars().any(|c| matches!(c, '"' | '\\')) {
+    // don't bother making this more complex for perf because it's rare
+    Cow::Owned(text.replace('\\', "\\\\").replace('"', "\\\""))
+  } else {
+    Cow::Borrowed(text)
+  }
 }
+
 #[cfg(test)]
 mod tests {
   use super::*;

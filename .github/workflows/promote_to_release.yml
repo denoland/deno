@@ -1,0 +1,62 @@
+name: promote_to_release
+
+on:
+  workflow_dispatch:
+    inputs:
+      releaseKind:
+        description: 'Kind of release'
+        type: choice
+        options:
+          - rc
+          - lts
+        required: true
+      commitHash:
+        description: Commit to promote to release
+        required: true
+
+jobs:
+  promote-to-release:
+    name: Promote to Release
+    runs-on: macOS-latest
+    if: github.repository == 'denoland/deno'
+    steps:
+      - name: Clone repository
+        uses: actions/checkout@v4
+        with:
+          token: ${{ secrets.DENOBOT_PAT }}
+          submodules: recursive
+
+      - name: Authenticate with Google Cloud
+        uses: google-github-actions/auth@v1
+        with:
+          project_id: denoland
+          credentials_json: ${{ secrets.GCP_SA_KEY }}
+          export_environment_variables: true
+          create_credentials_file: true
+
+      - name: Setup gcloud
+        uses: google-github-actions/setup-gcloud@v1
+        with:
+          project_id: denoland
+
+      - name: Install deno
+        uses: denoland/setup-deno@v1
+        with:
+          deno-version: v1.x
+
+      - name: Install rust-codesign
+        run: |-
+          ./tools/install_prebuilt.js rcodesign
+          echo $GITHUB_WORKSPACE/third_party/prebuilt/mac >> $GITHUB_PATH
+
+      - name: Promote to Release
+        env:
+          APPLE_CODESIGN_KEY: '${{ secrets.APPLE_CODESIGN_KEY }}'
+          APPLE_CODESIGN_PASSWORD: '${{ secrets.APPLE_CODESIGN_PASSWORD }}'
+        run: |
+          deno run -A ./tools/release/promote_to_release.ts ${{github.event.inputs.releaseKind}} ${{github.event.inputs.commitHash}}
+
+      - name: Upload archives to dl.deno.land
+        run: |
+          gsutil -h "Cache-Control: public, max-age=3600" cp ./*.zip gs://dl.deno.land/release/$(cat release-${{github.event.inputs.releaseKind}}-latest.txt)/
+          gsutil -h "Cache-Control: no-cache" cp release-${{github.event.inputs.releaseKind}}-latest.txt gs://dl.deno.land/release-${{github.event.inputs.releaseKind}}-latest.txt

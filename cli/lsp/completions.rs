@@ -19,7 +19,6 @@ use crate::util::path::relative_specifier;
 use deno_graph::source::ResolutionMode;
 use deno_graph::Range;
 use deno_runtime::deno_node::SUPPORTED_BUILTIN_NODE_MODULES;
-use deno_runtime::fs_util::specifier_to_file_path;
 
 use deno_ast::LineAndColumnIndex;
 use deno_ast::SourceTextInfo;
@@ -30,6 +29,7 @@ use deno_core::serde::Serialize;
 use deno_core::serde_json::json;
 use deno_core::url::Position;
 use deno_core::ModuleSpecifier;
+use deno_runtime::fs_util::specifier_to_file_path;
 use deno_semver::jsr::JsrPackageReqReference;
 use deno_semver::package::PackageNv;
 use import_map::ImportMap;
@@ -838,7 +838,7 @@ mod tests {
     fs_sources: &[(&str, &str)],
   ) -> Documents {
     let temp_dir = TempDir::new();
-    let cache = LspCache::new(Some(temp_dir.uri().join(".deno_dir").unwrap()));
+    let cache = LspCache::new(Some(temp_dir.url().join(".deno_dir").unwrap()));
     let mut documents = Documents::default();
     documents.update_config(
       &Default::default(),
@@ -859,7 +859,7 @@ mod tests {
         .set(&specifier, HashMap::default(), source.as_bytes())
         .expect("could not cache file");
       let document = documents
-        .get_or_load(&specifier, Some(&temp_dir.uri().join("$").unwrap()));
+        .get_or_load(&specifier, Some(&temp_dir.url().join("$").unwrap()));
       assert!(document.is_some(), "source could not be setup");
     }
     documents

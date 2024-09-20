@@ -1,4 +1,5 @@
 [WILDCARD]Config file found at '[WILDCARD]with_package_json[WILDCARD]with_stop[WILDCARD]some[WILDCARD]nested[WILDCARD]deno.json'
 [WILDCARD]
 error: Relative import path "chalk" not prefixed with / or ./ or ../
+  hint: If you want to use a JSR or npm package, try running `deno add jsr:chalk` or `deno add npm:chalk`
     at file:///[WILDCARD]with_package_json/with_stop/some/nested/dir/main.ts:3:19

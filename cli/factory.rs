@@ -1,11 +1,12 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
+use crate::args::check_warn_tsconfig;
 use crate::args::get_root_cert_store;
 use crate::args::CaData;
 use crate::args::CliOptions;
 use crate::args::DenoSubcommand;
 use crate::args::Flags;
-use crate::args::PackageJsonInstallDepsProvider;
+use crate::args::NpmInstallDepsProvider;
 use crate::args::StorageKeyResolver;
 use crate::args::TsConfigType;
 use crate::cache::Caches;
@@ -64,10 +65,13 @@ use deno_core::FeatureChecker;
 use deno_runtime::deno_fs;
 use deno_runtime::deno_node::DenoFsNodeResolverEnv;
 use deno_runtime::deno_node::NodeResolver;
+use deno_runtime::deno_permissions::Permissions;
+use deno_runtime::deno_permissions::PermissionsContainer;
 use deno_runtime::deno_tls::rustls::RootCertStore;
 use deno_runtime::deno_tls::RootCertStoreProvider;
 use deno_runtime::deno_web::BlobStore;
 use deno_runtime::inspector_server::InspectorServer;
+use deno_runtime::permissions::RuntimePermissionDescriptorParser;
 use log::warn;
 use node_resolver::analyze::NodeCodeTranslator;
 use once_cell::sync::OnceCell;
@@ -180,6 +184,7 @@ struct CliFactoryServices {
   node_code_translator: Deferred<Arc<CliNodeCodeTranslator>>,
   node_resolver: Deferred<Arc<NodeResolver>>,
   npm_resolver: Deferred<Arc<dyn CliNpmResolver>>,
+  permission_desc_parser: Deferred<Arc<RuntimePermissionDescriptorParser>>,
   sloppy_imports_resolver: Deferred<Option<Arc<SloppyImportsResolver>>>,
   text_only_progress_bar: Deferred<ProgressBar>,
   type_checker: Deferred<Arc<TypeChecker>>,
@@ -304,8 +309,11 @@ impl CliFactory {
       let global_cache = self.global_http_cache()?.clone();
       match self.cli_options()?.vendor_dir_path() {
         Some(local_path) => {
-          let local_cache =
-            LocalHttpCache::new(local_path.clone(), global_cache);
+          let local_cache = LocalHttpCache::new(
+            local_path.clone(),
+            global_cache,
+            deno_cache_dir::GlobalToLocalCopy::Allow,
+          );
           Ok(Arc::new(local_cache))
         }
         None => Ok(global_cache),
@@ -383,9 +391,7 @@ impl CliFactory {
             cache_setting: cli_options.cache_setting(),
             text_only_progress_bar: self.text_only_progress_bar().clone(),
             maybe_node_modules_path: cli_options.node_modules_dir_path().cloned(),
-            package_json_deps_provider: Arc::new(PackageJsonInstallDepsProvider::from_workspace(
-              cli_options.workspace(),
-            )),
+            npm_install_deps_provider: Arc::new(NpmInstallDepsProvider::from_workspace(cli_options.workspace())),
             npm_system_info: cli_options.npm_system_info(),
             npmrc: cli_options.npmrc().clone(),
             lifecycle_scripts: cli_options.lifecycle_scripts_config(),
@@ -519,9 +525,7 @@ impl CliFactory {
       let cli_options = self.cli_options()?;
       let ts_config_result =
         cli_options.resolve_ts_config_for_emit(TsConfigType::Emit)?;
-      if let Some(ignored_options) = ts_config_result.maybe_ignored_options {
-        warn!("{}", ignored_options);
-      }
+      check_warn_tsconfig(&ts_config_result);
       let (transpile_options, emit_options) =
         crate::args::ts_config_to_transpile_and_emit_options(
           ts_config_result.ts_config,
@@ -568,8 +572,12 @@ impl CliFactory {
         let caches = self.caches()?;
         let node_analysis_cache =
           NodeAnalysisCache::new(caches.node_analysis_db());
-        let cjs_esm_analyzer =
-          CliCjsCodeAnalyzer::new(node_analysis_cache, self.fs().clone());
+        let node_resolver = self.cli_node_resolver().await?.clone();
+        let cjs_esm_analyzer = CliCjsCodeAnalyzer::new(
+          node_analysis_cache,
+          self.fs().clone(),
+          node_resolver,
+        );
 
         Ok(Arc::new(NodeCodeTranslator::new(
           cjs_esm_analyzer,
@@ -616,7 +624,6 @@ impl CliFactory {
           self.parsed_source_cache().clone(),
           cli_options.maybe_lockfile().cloned(),
           self.maybe_file_watcher_reporter().clone(),
-          self.emit_cache()?.clone(),
           self.file_fetcher()?.clone(),
           self.global_http_cache()?.clone(),
         )))
@@ -709,20 +716,24 @@ impl CliFactory {
       .await
   }
 
+  pub fn permission_desc_parser(
+    &self,
+  ) -> Result<&Arc<RuntimePermissionDescriptorParser>, AnyError> {
+    self.services.permission_desc_parser.get_or_try_init(|| {
+      let fs = self.fs().clone();
+      Ok(Arc::new(RuntimePermissionDescriptorParser::new(fs)))
+    })
+  }
+
   pub fn feature_checker(&self) -> Result<&Arc<FeatureChecker>, AnyError> {
     self.services.feature_checker.get_or_try_init(|| {
       let cli_options = self.cli_options()?;
       let mut checker = FeatureChecker::default();
       checker.set_exit_cb(Box::new(crate::unstable_exit_cb));
-      checker.set_warn_cb(Box::new(crate::unstable_warn_cb));
-      if cli_options.legacy_unstable_flag() {
-        checker.enable_legacy_unstable();
-        checker.warn_on_legacy_unstable();
-      }
       let unstable_features = cli_options.unstable_features();
-      for (flag_name, _, _) in crate::UNSTABLE_GRANULAR_FLAGS {
-        if unstable_features.contains(&flag_name.to_string()) {
-          checker.enable_feature(flag_name);
+      for granular_flag in crate::UNSTABLE_GRANULAR_FLAGS {
+        if unstable_features.contains(&granular_flag.name.to_string()) {
+          checker.enable_feature(granular_flag.name);
         }
       }
 
@@ -744,6 +755,17 @@ impl CliFactory {
     ))
   }
 
+  pub fn create_permissions_container(
+    &self,
+  ) -> Result<PermissionsContainer, AnyError> {
+    let desc_parser = self.permission_desc_parser()?.clone();
+    let permissions = Permissions::from_options(
+      desc_parser.as_ref(),
+      &self.cli_options()?.permissions_options(),
+    )?;
+    Ok(PermissionsContainer::new(desc_parser, permissions))
+  }
+
   pub async fn create_cli_main_worker_factory(
     &self,
   ) -> Result<CliMainWorkerFactory, AnyError> {
@@ -759,11 +781,17 @@ impl CliFactory {
     };
 
     Ok(CliMainWorkerFactory::new(
-      StorageKeyResolver::from_options(cli_options),
-      cli_options.sub_command().clone(),
-      npm_resolver.clone(),
-      node_resolver.clone(),
       self.blob_store().clone(),
+      if cli_options.code_cache_enabled() {
+        Some(self.code_cache()?.clone())
+      } else {
+        None
+      },
+      self.feature_checker()?.clone(),
+      self.fs().clone(),
+      maybe_file_watcher_communicator,
+      self.maybe_inspector_server()?.clone(),
+      cli_options.maybe_lockfile().cloned(),
       Box::new(CliModuleLoaderFactory::new(
         cli_options,
         if cli_options.code_cache_enabled() {
@@ -784,26 +812,13 @@ impl CliFactory {
         self.parsed_source_cache().clone(),
         self.resolver().await?.clone(),
       )),
+      node_resolver.clone(),
+      npm_resolver.clone(),
+      self.permission_desc_parser()?.clone(),
       self.root_cert_store_provider().clone(),
-      self.fs().clone(),
-      maybe_file_watcher_communicator,
-      self.maybe_inspector_server()?.clone(),
-      cli_options.maybe_lockfile().cloned(),
-      self.feature_checker()?.clone(),
+      StorageKeyResolver::from_options(cli_options),
+      cli_options.sub_command().clone(),
       self.create_cli_main_worker_options()?,
-      cli_options.node_ipc_fd(),
-      cli_options.serve_port(),
-      cli_options.serve_host(),
-      cli_options.enable_future_features(),
-      // TODO(bartlomieju): temporarily disabled
-      // cli_options.disable_deprecated_api_warning,
-      true,
-      cli_options.verbose_deprecated_api_warning,
-      if cli_options.code_cache_enabled() {
-        Some(self.code_cache()?.clone())
-      } else {
-        None
-      },
     ))
   }
 
@@ -865,9 +880,11 @@ impl CliFactory {
       unsafely_ignore_certificate_errors: cli_options
         .unsafely_ignore_certificate_errors()
         .clone(),
-      unstable: cli_options.legacy_unstable_flag(),
       create_hmr_runner,
       create_coverage_collector,
+      node_ipc: cli_options.node_ipc_fd(),
+      serve_port: cli_options.serve_port(),
+      serve_host: cli_options.serve_host(),
     })
   }
 }

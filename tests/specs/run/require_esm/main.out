@@ -1,0 +1,13 @@
+[Module: null prototype] { sync_js: 1 }
+[Module: null prototype] { sync_mjs: 1 }
+error: Uncaught Error: Top-level await is not allowed in synchronous evaluation
+    at loadESMFromCJS (node:module:[WILDCARD])
+    at Module._compile (node:module:[WILDCARD])
+    at Object.Module._extensions..js (node:module:[WILDCARD])
+    at Module.load (node:module:[WILDCARD])
+    at Function.Module._load (node:module:[WILDCARD])
+    at Module.require (node:module:[WILDCARD])
+    at require (node:module:[WILDCARD])
+    at Object.<anonymous> (file:[WILDCARD]/tests/specs/run/require_esm/main.cjs:[WILDCARD])
+    at Object.<anonymous> (file:[WILDCARD]/tests/specs/run/require_esm/main.cjs:[WILDCARD])
+    at Module._compile (node:module:[WILDCARD])

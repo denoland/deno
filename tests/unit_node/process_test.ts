@@ -7,6 +7,8 @@ import process, {
   argv,
   argv0 as importedArgv0,
   env,
+  execArgv as importedExecArgv,
+  execPath as importedExecPath,
   geteuid,
   pid as importedPid,
   platform as importedPlatform,
@@ -23,6 +25,7 @@ import {
   assertThrows,
   fail,
 } from "@std/assert";
+import { assertSpyCall, assertSpyCalls, spy } from "@std/testing/mock";
 import { stripAnsiCode } from "@std/fmt/colors";
 import * as path from "@std/path";
 import { delay } from "@std/async/delay";
@@ -171,7 +174,6 @@ Deno.test({
       args: [
         "run",
         "--quiet",
-        "--unstable",
         "./testdata/process_exit.ts",
       ],
       cwd,
@@ -233,6 +235,33 @@ Deno.test({
       await process.status;
     } finally {
       clearTimeout(testTimeout);
+    }
+  },
+});
+
+Deno.test({
+  name: "process.on - ignored signals on windows",
+  ignore: Deno.build.os !== "windows",
+  fn() {
+    const ignoredSignals = ["SIGHUP", "SIGUSR1", "SIGUSR2"];
+
+    for (const signal of ignoredSignals) {
+      using consoleSpy = spy(console, "warn");
+      const handler = () => {};
+      process.on(signal, handler);
+      process.off(signal, handler);
+      assertSpyCall(consoleSpy, 0, {
+        args: [`Ignoring signal "${signal}" on Windows`],
+      });
+    }
+
+    {
+      using consoleSpy = spy(console, "warn");
+      const handler = () => {};
+      process.on("SIGTERM", handler);
+      process.off("SIGTERM", handler);
+      // No warning is made for SIGTERM
+      assertSpyCalls(consoleSpy, 0);
     }
   },
 });
@@ -459,6 +488,7 @@ Deno.test({
 Deno.test({
   name: "process.stdin",
   fn() {
+    // @ts-ignore `Deno.stdin.rid` was soft-removed in Deno 2.
     assertEquals(process.stdin.fd, Deno.stdin.rid);
     assertEquals(process.stdin.isTTY, Deno.stdin.isTerminal());
   },
@@ -638,6 +668,7 @@ Deno.test({
 Deno.test({
   name: "process.stdout",
   fn() {
+    // @ts-ignore `Deno.stdout.rid` was soft-removed in Deno 2.
     assertEquals(process.stdout.fd, Deno.stdout.rid);
     const isTTY = Deno.stdout.isTerminal();
     assertEquals(process.stdout.isTTY, isTTY);
@@ -666,6 +697,7 @@ Deno.test({
 Deno.test({
   name: "process.stderr",
   fn() {
+    // @ts-ignore `Deno.stderr.rid` was soft-removed in Deno 2.
     assertEquals(process.stderr.fd, Deno.stderr.rid);
     const isTTY = Deno.stderr.isTerminal();
     assertEquals(process.stderr.isTTY, isTTY);
@@ -890,7 +922,6 @@ Deno.test({
       args: [
         "run",
         "--quiet",
-        "--unstable",
         "./testdata/process_exit2.ts",
       ],
       cwd: testDir,
@@ -909,7 +940,6 @@ Deno.test({
       args: [
         "run",
         "--quiet",
-        "--unstable",
         "./testdata/process_really_exit.ts",
       ],
       cwd: testDir,
@@ -1120,4 +1150,18 @@ Deno.test("process.listeners - include SIG* events", () => {
 
 Deno.test(function processVersionsOwnProperty() {
   assert(Object.prototype.hasOwnProperty.call(process, "versions"));
+});
+
+Deno.test(function importedExecArgvTest() {
+  assert(Array.isArray(importedExecArgv));
+});
+
+Deno.test(function importedExecPathTest() {
+  assertEquals(importedExecPath, Deno.execPath());
+});
+
+Deno.test("process.cpuUsage()", () => {
+  const cpuUsage = process.cpuUsage();
+  assert(typeof cpuUsage.user === "number");
+  assert(typeof cpuUsage.system === "number");
 });

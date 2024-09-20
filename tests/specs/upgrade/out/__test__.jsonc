@@ -1,0 +1,29 @@
+{
+  "tempDir": true,
+  "steps": [
+    {
+      "args": "eval Deno.copyFileSync(Deno.execPath(),'./deno_copy');",
+      "exitCode": 0,
+      "output": ""
+    },
+    {
+      "commandName": "./deno_copy",
+      "args": "upgrade --force --version 1.43.2 --output ./deno_copy2",
+      "output": "upgrade.out",
+      "exitCode": 0,
+      "flaky": true
+    },
+    {
+      "commandName": "./deno_copy",
+      "args": ["eval", "if (Deno.version.deno === '1.43.2') { Deno.exit(1); }"],
+      "exitCode": 0,
+      "output": ""
+    },
+    {
+      "commandName": "./deno_copy2",
+      "args": "--version",
+      "exitCode": 0,
+      "output": "version.out"
+    }
+  ]
+}

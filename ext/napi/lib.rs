@@ -9,12 +9,13 @@ use core::ptr::NonNull;
 use deno_core::error::type_error;
 use deno_core::error::AnyError;
 use deno_core::op2;
+use deno_core::parking_lot::RwLock;
 use deno_core::url::Url;
 use deno_core::ExternalOpsTracker;
 use deno_core::OpState;
 use deno_core::V8CrossThreadTaskSpawner;
 use std::cell::RefCell;
-use std::path::Path;
+use std::collections::HashMap;
 use std::path::PathBuf;
 use std::rc::Rc;
 use std::thread_local;
@@ -480,18 +481,27 @@ deno_core::extension!(deno_napi,
 );
 
 pub trait NapiPermissions {
-  fn check(&mut self, path: Option<&Path>)
-    -> std::result::Result<(), AnyError>;
+  #[must_use = "the resolved return value to mitigate time-of-check to time-of-use issues"]
+  fn check(&mut self, path: &str) -> std::result::Result<PathBuf, AnyError>;
 }
 
 // NOTE(bartlomieju): for now, NAPI uses `--allow-ffi` flag, but that might
 // change in the future.
 impl NapiPermissions for deno_permissions::PermissionsContainer {
   #[inline(always)]
-  fn check(&mut self, path: Option<&Path>) -> Result<(), AnyError> {
+  fn check(&mut self, path: &str) -> Result<PathBuf, AnyError> {
     deno_permissions::PermissionsContainer::check_ffi(self, path)
   }
 }
+
+unsafe impl Sync for NapiModuleHandle {}
+unsafe impl Send for NapiModuleHandle {}
+#[derive(Clone, Copy)]
+struct NapiModuleHandle(*const NapiModule);
+
+static NAPI_LOADED_MODULES: std::sync::LazyLock<
+  RwLock<HashMap<PathBuf, NapiModuleHandle>>,
+> = std::sync::LazyLock::new(|| RwLock::new(HashMap::new()));
 
 #[op2(reentrant)]
 fn op_napi_open<NP, 'scope>(
@@ -508,15 +518,16 @@ where
 {
   // We must limit the OpState borrow because this function can trigger a
   // re-borrow through the NAPI module.
-  let (async_work_sender, cleanup_hooks, external_ops_tracker) = {
+  let (async_work_sender, cleanup_hooks, external_ops_tracker, path) = {
     let mut op_state = op_state.borrow_mut();
     let permissions = op_state.borrow_mut::<NP>();
-    permissions.check(Some(&PathBuf::from(&path)))?;
+    let path = permissions.check(&path)?;
     let napi_state = op_state.borrow::<NapiState>();
     (
       op_state.borrow::<V8CrossThreadTaskSpawner>().clone(),
       napi_state.env_cleanup_hooks.clone(),
       op_state.external_ops_tracker.clone(),
+      path,
     )
   };
 
@@ -575,8 +586,20 @@ where
   let exports = v8::Object::new(scope);
 
   let maybe_exports = if let Some(module_to_register) = maybe_module {
+    NAPI_LOADED_MODULES
+      .write()
+      .insert(path, NapiModuleHandle(module_to_register));
     // SAFETY: napi_register_module guarantees that `module_to_register` is valid.
     let nm = unsafe { &*module_to_register };
+    assert_eq!(nm.nm_version, 1);
+    // SAFETY: we are going blind, calling the register function on the other side.
+    unsafe { (nm.nm_register_func)(env_ptr, exports.into()) }
+  } else if let Some(module_to_register) =
+    { NAPI_LOADED_MODULES.read().get(&path).copied() }
+  {
+    // SAFETY: this originated from `napi_register_module`, so the
+    // pointer should still be valid.
+    let nm = unsafe { &*module_to_register.0 };
     assert_eq!(nm.nm_version, 1);
     // SAFETY: we are going blind, calling the register function on the other side.
     unsafe { (nm.nm_register_func)(env_ptr, exports.into()) }
@@ -589,7 +612,7 @@ where
   } else {
     return Err(type_error(format!(
       "Unable to find register Node-API module at {}",
-      path
+      path.display()
     )));
   };
 

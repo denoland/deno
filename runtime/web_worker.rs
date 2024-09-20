@@ -44,6 +44,7 @@ use deno_http::DefaultHttpPropertyExtractor;
 use deno_io::Stdio;
 use deno_kv::dynamic::MultiBackendDbHandler;
 use deno_node::NodeExtInitServices;
+use deno_permissions::PermissionDescriptorParser;
 use deno_permissions::PermissionsContainer;
 use deno_terminal::colors;
 use deno_tls::RootCertStoreProvider;
@@ -356,6 +357,7 @@ pub struct WebWorker {
 }
 
 pub struct WebWorkerOptions {
+  // todo(dsherret): extract out the service structs from this options bag
   pub bootstrap: BootstrapOptions,
   pub extensions: Vec<Extension>,
   pub startup_snapshot: Option<&'static [u8]>,
@@ -377,6 +379,7 @@ pub struct WebWorkerOptions {
   pub cache_storage_dir: Option<std::path::PathBuf>,
   pub stdio: Stdio,
   pub feature_checker: Arc<FeatureChecker>,
+  pub permission_desc_parser: Arc<dyn PermissionDescriptorParser>,
   pub strace_ops: Option<Vec<String>>,
   pub close_on_idle: bool,
   pub maybe_worker_metadata: Option<WorkerMetadata>,
@@ -480,6 +483,7 @@ impl WebWorker {
             proxy: None,
           },
         ),
+        deno_kv::KvConfig::builder().build(),
       ),
       deno_cron::deno_cron::init_ops_and_esm(LocalCronHandler::new()),
       deno_napi::deno_napi::init_ops_and_esm::<PermissionsContainer>(),
@@ -500,12 +504,20 @@ impl WebWorker {
       ),
       ops::fs_events::deno_fs_events::init_ops_and_esm(),
       ops::os::deno_os_worker::init_ops_and_esm(),
-      ops::permissions::deno_permissions::init_ops_and_esm(),
+      ops::permissions::deno_permissions::init_ops_and_esm(
+        options.permission_desc_parser.clone(),
+      ),
       ops::process::deno_process::init_ops_and_esm(),
       ops::signal::deno_signal::init_ops_and_esm(),
       ops::tty::deno_tty::init_ops_and_esm(),
       ops::http::deno_http_runtime::init_ops_and_esm(),
-      ops::bootstrap::deno_bootstrap::init_ops_and_esm(None),
+      ops::bootstrap::deno_bootstrap::init_ops_and_esm(
+        if options.startup_snapshot.is_some() {
+          None
+        } else {
+          Some(Default::default())
+        },
+      ),
       deno_permissions_web_worker::init_ops_and_esm(
         permissions,
         enable_testing_features,
@@ -538,13 +550,6 @@ impl WebWorker {
       options.bootstrap.enable_op_summary_metrics,
       options.strace_ops,
     );
-    let import_assertions_support = if options.bootstrap.future {
-      deno_core::ImportAssertionsSupport::Error
-    } else {
-      deno_core::ImportAssertionsSupport::CustomCallback(Box::new(
-        crate::shared::import_assertion_callback,
-      ))
-    };
 
     let mut js_runtime = JsRuntime::new(RuntimeOptions {
       module_loader: Some(options.module_loader.clone()),
@@ -565,7 +570,7 @@ impl WebWorker {
       validate_import_attributes_cb: Some(Box::new(
         validate_import_attributes_callback,
       )),
-      import_assertions_support,
+      import_assertions_support: deno_core::ImportAssertionsSupport::Error,
       ..Default::default()
     });
 

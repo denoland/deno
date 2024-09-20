@@ -161,14 +161,14 @@ class WebSocket extends EventTarget {
 
     if (wsURL.protocol !== "ws:" && wsURL.protocol !== "wss:") {
       throw new DOMException(
-        "Only ws & wss schemes are allowed in a WebSocket URL.",
+        `Only ws & wss schemes are allowed in a WebSocket URL: received ${wsURL.protocol}`,
         "SyntaxError",
       );
     }
 
     if (wsURL.hash !== "" || StringPrototypeEndsWith(wsURL.href, "#")) {
       throw new DOMException(
-        "Fragments are not allowed in a WebSocket URL.",
+        "Fragments are not allowed in a WebSocket URL",
         "SyntaxError",
       );
     }
@@ -195,7 +195,7 @@ class WebSocket extends EventTarget {
         )
     ) {
       throw new DOMException(
-        "Can't supply multiple times the same protocol.",
+        "Cannot supply multiple times the same protocol",
         "SyntaxError",
       );
     }
@@ -208,7 +208,7 @@ class WebSocket extends EventTarget {
       )
     ) {
       throw new DOMException(
-        "Invalid protocol value.",
+        "Invalid protocol value",
         "SyntaxError",
       );
     }
@@ -330,7 +330,7 @@ class WebSocket extends EventTarget {
     data = webidl.converters.WebSocketSend(data, prefix, "Argument 1");
 
     if (this[_readyState] !== OPEN) {
-      throw new DOMException("readyState not OPEN", "InvalidStateError");
+      throw new DOMException("'readyState' not OPEN", "InvalidStateError");
     }
 
     if (this[_sendQueue].length === 0) {
@@ -376,7 +376,7 @@ class WebSocket extends EventTarget {
         !(code === 1000 || (3000 <= code && code < 5000))
       ) {
         throw new DOMException(
-          "The close code must be either 1000 or in the range of 3000 to 4999.",
+          `The close code must be either 1000 or in the range of 3000 to 4999: received ${code}`,
           "InvalidAccessError",
         );
       }
@@ -387,7 +387,7 @@ class WebSocket extends EventTarget {
       TypedArrayPrototypeGetByteLength(core.encode(reason)) > 123
     ) {
       throw new DOMException(
-        "The close reason may not be longer than 123 bytes.",
+        "The close reason may not be longer than 123 bytes",
         "SyntaxError",
       );
     }
@@ -627,15 +627,19 @@ class WebSocket extends EventTarget {
 
 ObjectDefineProperties(WebSocket, {
   CONNECTING: {
+    __proto__: null,
     value: 0,
   },
   OPEN: {
+    __proto__: null,
     value: 1,
   },
   CLOSING: {
+    __proto__: null,
     value: 2,
   },
   CLOSED: {
+    __proto__: null,
     value: 3,
   },
 });

@@ -1,4 +1,4 @@
 {
-  "args": "eval --env=../../../testdata/env_unparsable console.log(Deno.env.get(\"Another_FOO\"))",
+  "args": "eval --env-file=env_unparsable console.log(Deno.env.get(\"ANOTHER_FOO\"));",
   "output": "main.out"
 }

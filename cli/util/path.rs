@@ -42,6 +42,21 @@ pub fn get_extension(file_path: &Path) -> Option<String> {
     .map(|e| e.to_lowercase());
 }
 
+pub fn specifier_has_extension(
+  specifier: &ModuleSpecifier,
+  searching_ext: &str,
+) -> bool {
+  let Some((_, ext)) = specifier.path().rsplit_once('.') else {
+    return false;
+  };
+  let searching_ext = searching_ext.strip_prefix('.').unwrap_or(searching_ext);
+  debug_assert!(!searching_ext.contains('.')); // exts like .d.ts are not implemented here
+  if ext.len() != searching_ext.len() {
+    return false;
+  }
+  ext.eq_ignore_ascii_case(searching_ext)
+}
+
 pub fn get_atomic_dir_path(file_path: &Path) -> PathBuf {
   let rand = gen_rand_path_component();
   let new_file_name = format!(
@@ -143,34 +158,6 @@ pub fn relative_specifier(
     format!("./{text}")
   };
   Some(to_percent_decoded_str(&text))
-}
-
-/// Gets a path with the specified file stem suffix.
-///
-/// Ex. `file.ts` with suffix `_2` returns `file_2.ts`
-pub fn path_with_stem_suffix(path: &Path, suffix: &str) -> PathBuf {
-  if let Some(file_name) = path.file_name().map(|f| f.to_string_lossy()) {
-    if let Some(file_stem) = path.file_stem().map(|f| f.to_string_lossy()) {
-      if let Some(ext) = path.extension().map(|f| f.to_string_lossy()) {
-        return if file_stem.to_lowercase().ends_with(".d") {
-          path.with_file_name(format!(
-            "{}{}.{}.{}",
-            &file_stem[..file_stem.len() - ".d".len()],
-            suffix,
-            // maintain casing
-            &file_stem[file_stem.len() - "d".len()..],
-            ext
-          ))
-        } else {
-          path.with_file_name(format!("{file_stem}{suffix}.{ext}"))
-        };
-      }
-    }
-
-    path.with_file_name(format!("{file_name}{suffix}"))
-  } else {
-    path.with_file_name(suffix)
-  }
 }
 
 #[cfg_attr(windows, allow(dead_code))]
@@ -406,43 +393,15 @@ mod test {
   }
 
   #[test]
-  fn test_path_with_stem_suffix() {
-    assert_eq!(
-      path_with_stem_suffix(&PathBuf::from("/"), "_2"),
-      PathBuf::from("/_2")
-    );
-    assert_eq!(
-      path_with_stem_suffix(&PathBuf::from("/test"), "_2"),
-      PathBuf::from("/test_2")
-    );
-    assert_eq!(
-      path_with_stem_suffix(&PathBuf::from("/test.txt"), "_2"),
-      PathBuf::from("/test_2.txt")
-    );
-    assert_eq!(
-      path_with_stem_suffix(&PathBuf::from("/test/subdir"), "_2"),
-      PathBuf::from("/test/subdir_2")
-    );
-    assert_eq!(
-      path_with_stem_suffix(&PathBuf::from("/test/subdir.other.txt"), "_2"),
-      PathBuf::from("/test/subdir.other_2.txt")
-    );
-    assert_eq!(
-      path_with_stem_suffix(&PathBuf::from("/test.d.ts"), "_2"),
-      PathBuf::from("/test_2.d.ts")
-    );
-    assert_eq!(
-      path_with_stem_suffix(&PathBuf::from("/test.D.TS"), "_2"),
-      PathBuf::from("/test_2.D.TS")
-    );
-    assert_eq!(
-      path_with_stem_suffix(&PathBuf::from("/test.d.mts"), "_2"),
-      PathBuf::from("/test_2.d.mts")
-    );
-    assert_eq!(
-      path_with_stem_suffix(&PathBuf::from("/test.d.cts"), "_2"),
-      PathBuf::from("/test_2.d.cts")
-    );
+  fn test_specifier_has_extension() {
+    fn get(specifier: &str, ext: &str) -> bool {
+      specifier_has_extension(&ModuleSpecifier::parse(specifier).unwrap(), ext)
+    }
+
+    assert!(get("file:///a/b/c.ts", "ts"));
+    assert!(get("file:///a/b/c.ts", ".ts"));
+    assert!(!get("file:///a/b/c.ts", ".cts"));
+    assert!(get("file:///a/b/c.CtS", ".cts"));
   }
 
   #[test]

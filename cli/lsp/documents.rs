@@ -2,7 +2,6 @@
 
 use super::cache::calculate_fs_version;
 use super::cache::LspCache;
-use super::cache::LSP_DISALLOW_GLOBAL_TO_LOCAL_COPY;
 use super::config::Config;
 use super::resolver::LspResolver;
 use super::testing::TestCollector;
@@ -12,7 +11,6 @@ use super::tsc;
 use super::tsc::AssetDocument;
 
 use crate::graph_util::CliJsrUrlProvider;
-use deno_runtime::fs_util::specifier_to_file_path;
 
 use dashmap::DashMap;
 use deno_ast::swc::visit::VisitWith;
@@ -29,6 +27,7 @@ use deno_core::ModuleSpecifier;
 use deno_graph::source::ResolutionMode;
 use deno_graph::Resolution;
 use deno_runtime::deno_node;
+use deno_runtime::fs_util::specifier_to_file_path;
 use deno_semver::jsr::JsrPackageReqReference;
 use deno_semver::npm::NpmPackageReqReference;
 use deno_semver::package::PackageReq;
@@ -61,6 +60,9 @@ pub enum LanguageId {
   Json,
   JsonC,
   Markdown,
+  Html,
+  Css,
+  Yaml,
   Unknown,
 }
 
@@ -74,6 +76,9 @@ impl LanguageId {
       LanguageId::Json => Some("json"),
       LanguageId::JsonC => Some("jsonc"),
       LanguageId::Markdown => Some("md"),
+      LanguageId::Html => Some("html"),
+      LanguageId::Css => Some("css"),
+      LanguageId::Yaml => Some("yaml"),
       LanguageId::Unknown => None,
     }
   }
@@ -86,6 +91,9 @@ impl LanguageId {
       LanguageId::Tsx => Some("text/tsx"),
       LanguageId::Json | LanguageId::JsonC => Some("application/json"),
       LanguageId::Markdown => Some("text/markdown"),
+      LanguageId::Html => Some("text/html"),
+      LanguageId::Css => Some("text/css"),
+      LanguageId::Yaml => Some("application/yaml"),
       LanguageId::Unknown => None,
     }
   }
@@ -110,6 +118,9 @@ impl FromStr for LanguageId {
       "json" => Ok(Self::Json),
       "jsonc" => Ok(Self::JsonC),
       "markdown" => Ok(Self::Markdown),
+      "html" => Ok(Self::Html),
+      "css" => Ok(Self::Css),
+      "yaml" => Ok(Self::Yaml),
       _ => Ok(Self::Unknown),
     }
   }
@@ -872,22 +883,19 @@ impl FileSystemDocuments {
     } else {
       let http_cache = cache.for_specifier(file_referrer);
       let cache_key = http_cache.cache_item_key(specifier).ok()?;
-      let bytes = http_cache
-        .read_file_bytes(&cache_key, None, LSP_DISALLOW_GLOBAL_TO_LOCAL_COPY)
-        .ok()??;
-      let specifier_headers = http_cache.read_headers(&cache_key).ok()??;
+      let cached_file = http_cache.get(&cache_key, None).ok()??;
       let (_, maybe_charset) =
         deno_graph::source::resolve_media_type_and_charset_from_headers(
           specifier,
-          Some(&specifier_headers),
+          Some(&cached_file.metadata.headers),
         );
       let content = deno_graph::source::decode_owned_source(
         specifier,
-        bytes,
+        cached_file.content,
         maybe_charset,
       )
       .ok()?;
-      let maybe_headers = Some(specifier_headers);
+      let maybe_headers = Some(cached_file.metadata.headers);
       Document::new(
         specifier.clone(),
         content.into(),
@@ -1243,7 +1251,7 @@ impl Documents {
   /// tsc when type checking.
   pub fn resolve(
     &self,
-    specifiers: &[String],
+    raw_specifiers: &[String],
     referrer: &ModuleSpecifier,
     file_referrer: Option<&ModuleSpecifier>,
   ) -> Vec<Option<(ModuleSpecifier, MediaType)>> {
@@ -1254,16 +1262,16 @@ impl Documents {
       .or(file_referrer);
     let dependencies = document.as_ref().map(|d| d.dependencies());
     let mut results = Vec::new();
-    for specifier in specifiers {
-      if specifier.starts_with("asset:") {
-        if let Ok(specifier) = ModuleSpecifier::parse(specifier) {
+    for raw_specifier in raw_specifiers {
+      if raw_specifier.starts_with("asset:") {
+        if let Ok(specifier) = ModuleSpecifier::parse(raw_specifier) {
           let media_type = MediaType::from_specifier(&specifier);
           results.push(Some((specifier, media_type)));
         } else {
           results.push(None);
         }
       } else if let Some(dep) =
-        dependencies.as_ref().and_then(|d| d.get(specifier))
+        dependencies.as_ref().and_then(|d| d.get(raw_specifier))
       {
         if let Some(specifier) = dep.maybe_type.maybe_specifier() {
           results.push(self.resolve_dependency(
@@ -1282,7 +1290,7 @@ impl Documents {
         }
       } else if let Ok(specifier) =
         self.resolver.as_graph_resolver(file_referrer).resolve(
-          specifier,
+          raw_specifier,
           &deno_graph::Range {
             specifier: referrer.clone(),
             start: deno_graph::Position::zeroed(),
@@ -1414,11 +1422,9 @@ impl Documents {
       if let Some(lockfile) = config_data.lockfile.as_ref() {
         let reqs = npm_reqs_by_scope.entry(Some(scope.clone())).or_default();
         let lockfile = lockfile.lock();
-        for key in lockfile.content.packages.specifiers.keys() {
-          if let Some(key) = key.strip_prefix("npm:") {
-            if let Ok(req) = PackageReq::from_str(key) {
-              reqs.insert(req);
-            }
+        for dep_req in lockfile.content.packages.specifiers.keys() {
+          if dep_req.kind == deno_semver::package::PackageKind::Npm {
+            reqs.insert(dep_req.req.clone());
           }
         }
       }
@@ -1518,12 +1524,16 @@ impl<'a> deno_graph::source::Loader for OpenDocumentsGraphLoader<'a> {
   fn cache_module_info(
     &self,
     specifier: &deno_ast::ModuleSpecifier,
+    media_type: MediaType,
     source: &Arc<[u8]>,
     module_info: &deno_graph::ModuleInfo,
   ) {
-    self
-      .inner_loader
-      .cache_module_info(specifier, source, module_info)
+    self.inner_loader.cache_module_info(
+      specifier,
+      media_type,
+      source,
+      module_info,
+    )
   }
 }
 
@@ -1607,7 +1617,7 @@ mod tests {
   async fn setup() -> (Documents, LspCache, TempDir) {
     let temp_dir = TempDir::new();
     temp_dir.create_dir_all(".deno_dir");
-    let cache = LspCache::new(Some(temp_dir.uri().join(".deno_dir").unwrap()));
+    let cache = LspCache::new(Some(temp_dir.url().join(".deno_dir").unwrap()));
     let config = Config::default();
     let resolver =
       Arc::new(LspResolver::from_config(&config, &cache, None).await);
@@ -1690,7 +1700,7 @@ console.log(b, "hello deno");
     // but we'll guard against it anyway
     let (mut documents, _, temp_dir) = setup().await;
     let file_path = temp_dir.path().join("file.ts");
-    let file_specifier = temp_dir.uri().join("file.ts").unwrap();
+    let file_specifier = temp_dir.url().join("file.ts").unwrap();
     file_path.write("");
 
     // open the document
@@ -1718,18 +1728,18 @@ console.log(b, "hello deno");
     let (mut documents, cache, temp_dir) = setup().await;
 
     let file1_path = temp_dir.path().join("file1.ts");
-    let file1_specifier = temp_dir.uri().join("file1.ts").unwrap();
+    let file1_specifier = temp_dir.url().join("file1.ts").unwrap();
     fs::write(&file1_path, "").unwrap();
 
     let file2_path = temp_dir.path().join("file2.ts");
-    let file2_specifier = temp_dir.uri().join("file2.ts").unwrap();
+    let file2_specifier = temp_dir.url().join("file2.ts").unwrap();
     fs::write(&file2_path, "").unwrap();
 
     let file3_path = temp_dir.path().join("file3.ts");
-    let file3_specifier = temp_dir.uri().join("file3.ts").unwrap();
+    let file3_specifier = temp_dir.url().join("file3.ts").unwrap();
     fs::write(&file3_path, "").unwrap();
 
-    let mut config = Config::new_with_roots([temp_dir.uri()]);
+    let mut config = Config::new_with_roots([temp_dir.url()]);
     let workspace_settings =
       serde_json::from_str(r#"{ "enable": true }"#).unwrap();
     config.set_workspace_settings(workspace_settings, vec![]);

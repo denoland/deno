@@ -13,6 +13,7 @@ use deno_core::error::AnyError;
 use deno_core::OpState;
 use deno_tls::rustls::RootCertStore;
 use deno_tls::RootCertStoreProvider;
+use std::borrow::Cow;
 use std::path::Path;
 use std::path::PathBuf;
 use std::sync::Arc;
@@ -22,12 +23,27 @@ pub const UNSTABLE_FEATURE_NAME: &str = "net";
 pub trait NetPermissions {
   fn check_net<T: AsRef<str>>(
     &mut self,
-    _host: &(T, Option<u16>),
-    _api_name: &str,
+    host: &(T, Option<u16>),
+    api_name: &str,
   ) -> Result<(), AnyError>;
-  fn check_read(&mut self, _p: &Path, _api_name: &str) -> Result<(), AnyError>;
-  fn check_write(&mut self, _p: &Path, _api_name: &str)
-    -> Result<(), AnyError>;
+  #[must_use = "the resolved return value to mitigate time-of-check to time-of-use issues"]
+  fn check_read(
+    &mut self,
+    p: &str,
+    api_name: &str,
+  ) -> Result<PathBuf, AnyError>;
+  #[must_use = "the resolved return value to mitigate time-of-check to time-of-use issues"]
+  fn check_write(
+    &mut self,
+    p: &str,
+    api_name: &str,
+  ) -> Result<PathBuf, AnyError>;
+  #[must_use = "the resolved return value to mitigate time-of-check to time-of-use issues"]
+  fn check_write_path<'a>(
+    &mut self,
+    p: &'a Path,
+    api_name: &str,
+  ) -> Result<Cow<'a, Path>, AnyError>;
 }
 
 impl NetPermissions for deno_permissions::PermissionsContainer {
@@ -43,29 +59,38 @@ impl NetPermissions for deno_permissions::PermissionsContainer {
   #[inline(always)]
   fn check_read(
     &mut self,
-    path: &Path,
+    path: &str,
     api_name: &str,
-  ) -> Result<(), AnyError> {
+  ) -> Result<PathBuf, AnyError> {
     deno_permissions::PermissionsContainer::check_read(self, path, api_name)
   }
 
   #[inline(always)]
   fn check_write(
     &mut self,
-    path: &Path,
+    path: &str,
     api_name: &str,
-  ) -> Result<(), AnyError> {
+  ) -> Result<PathBuf, AnyError> {
     deno_permissions::PermissionsContainer::check_write(self, path, api_name)
+  }
+
+  #[inline(always)]
+  fn check_write_path<'a>(
+    &mut self,
+    path: &'a Path,
+    api_name: &str,
+  ) -> Result<Cow<'a, Path>, AnyError> {
+    deno_permissions::PermissionsContainer::check_write_path(
+      self, path, api_name,
+    )
   }
 }
 
 /// Helper for checking unstable features. Used for sync ops.
 fn check_unstable(state: &OpState, api_name: &str) {
-  // TODO(bartlomieju): replace with `state.feature_checker.check_or_exit`
-  // once we phase out `check_or_exit_with_legacy_fallback`
   state
     .feature_checker
-    .check_or_exit_with_legacy_fallback(UNSTABLE_FEATURE_NAME, api_name);
+    .check_or_exit(UNSTABLE_FEATURE_NAME, api_name);
 }
 
 pub fn get_declaration() -> PathBuf {
@@ -115,7 +140,6 @@ deno_core::extension!(deno_net,
 
     ops_tls::op_tls_key_null,
     ops_tls::op_tls_key_static,
-    ops_tls::op_tls_key_static_from_file<P>,
     ops_tls::op_tls_cert_resolver_create,
     ops_tls::op_tls_cert_resolver_poll,
     ops_tls::op_tls_cert_resolver_resolve,

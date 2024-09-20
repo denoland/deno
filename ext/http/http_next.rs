@@ -90,13 +90,6 @@ static USE_WRITEV: Lazy<bool> = Lazy::new(|| {
   false
 });
 
-// NOTE(bartlomieju): currently we don't have any unstable HTTP features,
-// but let's keep this const here, because:
-//   a) we still need to support `--unstable-http` flag to not break user's CLI;
-//   b) we might add more unstable features in the future.
-#[allow(dead_code)]
-pub const UNSTABLE_FEATURE_NAME: &str = "http";
-
 /// All HTTP/2 connections start with this byte string.
 ///
 /// In HTTP/2, each endpoint is required to send a connection preface as a final confirmation
@@ -466,7 +459,7 @@ pub fn op_http_set_response_header(
   response_parts.headers.append(name, value);
 }
 
-#[op2]
+#[op2(fast)]
 pub fn op_http_set_response_headers(
   scope: &mut v8::HandleScope,
   external: *const c_void,

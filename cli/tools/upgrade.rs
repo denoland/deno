@@ -4,6 +4,7 @@
 
 use crate::args::Flags;
 use crate::args::UpgradeFlags;
+use crate::args::UPGRADE_USAGE;
 use crate::colors;
 use crate::factory::CliFactory;
 use crate::http_util::HttpClient;
@@ -35,7 +36,7 @@ use std::time::Duration;
 
 const RELEASE_URL: &str = "https://github.com/denoland/deno/releases";
 const CANARY_URL: &str = "https://dl.deno.land/canary";
-const RC_URL: &str = "https://dl.deno.land/release";
+const DL_RELEASE_URL: &str = "https://dl.deno.land/release";
 
 pub static ARCHIVE_NAME: Lazy<String> =
   Lazy::new(|| format!("deno-{}.zip", env!("TARGET")));
@@ -226,15 +227,70 @@ impl<
   }
 }
 
-fn get_minor_version(version: &str) -> &str {
-  version.rsplitn(2, '.').collect::<Vec<&str>>()[1]
+fn get_minor_version_blog_post_url(semver: &Version) -> String {
+  format!("https://deno.com/blog/v{}.{}", semver.major, semver.minor)
 }
 
-fn print_release_notes(current_version: &str, new_version: &str) {
-  // TODO(bartlomieju): we might want to reconsider this one for RC releases.
-  // TODO(bartlomieju): also maybe just parse using `Version::standard` instead
-  // of using `get_minor_version`?
-  if get_minor_version(current_version) == get_minor_version(new_version) {
+fn get_rc_version_blog_post_url(semver: &Version) -> String {
+  format!(
+    "https://deno.com/blog/v{}.{}-rc-{}",
+    semver.major, semver.minor, semver.pre[1]
+  )
+}
+
+async fn print_release_notes(
+  current_version: &str,
+  new_version: &str,
+  client: &HttpClient,
+) {
+  let Ok(current_semver) = Version::parse_standard(current_version) else {
+    return;
+  };
+  let Ok(new_semver) = Version::parse_standard(new_version) else {
+    return;
+  };
+
+  let is_switching_from_deno1_to_deno2 =
+    new_semver.major == 2 && current_semver.major == 1;
+  let is_deno_2_rc = new_semver.major == 2
+    && new_semver.minor == 0
+    && new_semver.patch == 0
+    && new_semver.pre.first() == Some(&"rc".to_string());
+
+  if is_deno_2_rc || is_switching_from_deno1_to_deno2 {
+    log::info!(
+      "{}\n\n  {}\n",
+      colors::gray("Migration guide:"),
+      colors::bold(
+        "https://docs.deno.com/runtime/manual/advanced/migrate_deprecations"
+      )
+    );
+  }
+
+  if is_deno_2_rc {
+    log::info!(
+      "{}\n\n  {}\n",
+      colors::gray("If you find a bug, please report to:"),
+      colors::bold("https://github.com/denoland/deno/issues/new")
+    );
+
+    // Check if there's blog post entry for this release
+    let blog_url_str = get_rc_version_blog_post_url(&new_semver);
+    let blog_url = Url::parse(&blog_url_str).unwrap();
+    if client.download(blog_url).await.is_ok() {
+      log::info!(
+        "{}\n\n  {}\n",
+        colors::gray("Blog post:"),
+        colors::bold(blog_url_str)
+      );
+    }
+    return;
+  }
+
+  let should_print = current_semver.major != new_semver.major
+    || current_semver.minor != new_semver.minor;
+
+  if !should_print {
     return;
   }
 
@@ -249,10 +305,7 @@ fn print_release_notes(current_version: &str, new_version: &str) {
   log::info!(
     "{}\n\n  {}\n",
     colors::gray("Blog post:"),
-    colors::bold(format!(
-      "https://deno.com/blog/v{}",
-      get_minor_version(new_version)
-    ))
+    colors::bold(get_minor_version_blog_post_url(&new_semver))
   );
 }
 
@@ -320,18 +373,25 @@ pub fn check_for_upgrades(
         log::info!(
           "{} {}",
           colors::green("A new canary release of Deno is available."),
-          colors::italic_gray("Run `deno upgrade --canary` to install it.")
+          colors::italic_gray("Run `deno upgrade canary` to install it.")
         );
       }
       ReleaseChannel::Rc => {
         log::info!(
           "{} {}",
           colors::green("A new release candidate of Deno is available."),
-          colors::italic_gray("Run `deno upgrade --rc` to install it.")
+          colors::italic_gray("Run `deno upgrade rc` to install it.")
         );
       }
-      // TODO(bartlomieju)
-      ReleaseChannel::Lts => unreachable!(),
+      ReleaseChannel::Lts => {
+        log::info!(
+          "{} {} → {} {}",
+          colors::green("A new LTS release of Deno is available:"),
+          colors::cyan(version::DENO_VERSION_INFO.deno),
+          colors::cyan(&upgrade_version),
+          colors::italic_gray("Run `deno upgrade lts` to install it.")
+        );
+      }
     }
 
     update_checker.store_prompted();
@@ -369,7 +429,7 @@ async fn check_for_upgrades_for_lsp_with_provider(
   }
 
   match release_channel {
-    ReleaseChannel::Stable | ReleaseChannel::Rc => {
+    ReleaseChannel::Stable | ReleaseChannel::Rc | ReleaseChannel::Lts => {
       if let Ok(current) = Version::parse_standard(&current_version) {
         if let Ok(latest) =
           Version::parse_standard(&latest_version.version_or_hash)
@@ -389,9 +449,6 @@ async fn check_for_upgrades_for_lsp_with_provider(
       latest_version: latest_version.version_or_hash,
       is_canary: true,
     })),
-
-    // TODO(bartlomieju)
-    ReleaseChannel::Lts => unreachable!(),
   }
 }
 
@@ -512,7 +569,9 @@ pub async fn upgrade(
       print_release_notes(
         version::DENO_VERSION_INFO.deno,
         &selected_version_to_upgrade.version_or_hash,
-      );
+        &client,
+      )
+      .await;
     }
     drop(temp_dir);
     return Ok(());
@@ -540,7 +599,9 @@ pub async fn upgrade(
     print_release_notes(
       version::DENO_VERSION_INFO.deno,
       &selected_version_to_upgrade.version_or_hash,
-    );
+      &client,
+    )
+    .await;
   }
 
   drop(temp_dir); // delete the temp dir
@@ -566,6 +627,7 @@ impl RequestedVersion {
     };
     let mut maybe_passed_version = upgrade_flags.version.clone();
 
+    // TODO(bartlomieju): prefer flags first? This whole logic could be cleaned up...
     if let Some(val) = &upgrade_flags.version_or_hash_or_channel {
       if let Ok(channel) = ReleaseChannel::deserialize(&val.to_lowercase()) {
         // TODO(bartlomieju): print error if any other flags passed?
@@ -591,12 +653,21 @@ impl RequestedVersion {
 
     let (channel, passed_version) = if is_canary {
       if !re_hash.is_match(&passed_version) {
-        bail!("Invalid commit hash passed");
+        bail!(
+          "Invalid commit hash passed ({})\n\nPass a semver, or a full 40 character git commit hash, or a release channel name.\n\nUsage:\n{}",
+          colors::gray(passed_version),
+          UPGRADE_USAGE
+        );
       }
+
       (ReleaseChannel::Canary, passed_version)
     } else {
       let Ok(semver) = Version::parse_standard(&passed_version) else {
-        bail!("Invalid version passed");
+        bail!(
+          "Invalid version passed ({})\n\nPass a semver, or a full 40 character git commit hash, or a release channel name.\n\nUsage:\n{}",
+          colors::gray(passed_version),
+          UPGRADE_USAGE
+        );
       };
 
       if semver.pre.contains(&"rc".to_string()) {
@@ -623,65 +694,26 @@ fn select_specific_version_for_upgrade(
   version: String,
   force: bool,
 ) -> Result<Option<AvailableVersion>, AnyError> {
-  match release_channel {
-    ReleaseChannel::Stable => {
-      let current_is_passed = if version::DENO_VERSION_INFO.release_channel
-        != ReleaseChannel::Canary
-      {
-        version::DENO_VERSION_INFO.deno == version
-      } else {
-        false
-      };
-
-      if !force && current_is_passed {
-        log::info!(
-          "Version {} is already installed",
-          version::DENO_VERSION_INFO.deno
-        );
-        return Ok(None);
-      }
-
-      Ok(Some(AvailableVersion {
-        version_or_hash: version,
-        release_channel,
-      }))
+  let current_is_passed = match release_channel {
+    ReleaseChannel::Stable | ReleaseChannel::Rc | ReleaseChannel::Lts => {
+      version::DENO_VERSION_INFO.release_channel == release_channel
+        && version::DENO_VERSION_INFO.deno == version
     }
-    ReleaseChannel::Canary => {
-      let current_is_passed = version::DENO_VERSION_INFO.git_hash == version;
-      if !force && current_is_passed {
-        log::info!(
-          "Version {} is already installed",
-          version::DENO_VERSION_INFO.deno
-        );
-        return Ok(None);
-      }
+    ReleaseChannel::Canary => version::DENO_VERSION_INFO.git_hash == version,
+  };
 
-      Ok(Some(AvailableVersion {
-        version_or_hash: version,
-        release_channel,
-      }))
-    }
-    ReleaseChannel::Rc => {
-      let current_is_passed = version::DENO_VERSION_INFO.release_channel
-        == ReleaseChannel::Rc
-        && version::DENO_VERSION_INFO.deno == version;
-
-      if !force && current_is_passed {
-        log::info!(
-          "Version {} is already installed",
-          version::DENO_VERSION_INFO.deno
-        );
-        return Ok(None);
-      }
-
-      Ok(Some(AvailableVersion {
-        version_or_hash: version,
-        release_channel,
-      }))
-    }
-    // TODO(bartlomieju)
-    ReleaseChannel::Lts => unreachable!(),
+  if !force && current_is_passed {
+    log::info!(
+      "Version {} is already installed",
+      version::DENO_VERSION_INFO.deno
+    );
+    return Ok(None);
   }
+
+  Ok(Some(AvailableVersion {
+    version_or_hash: version,
+    release_channel,
+  }))
 }
 
 async fn find_latest_version_to_upgrade(
@@ -695,52 +727,28 @@ async fn find_latest_version_to_upgrade(
   );
 
   let client = http_client_provider.get_or_create()?;
-  let latest_version_found =
-    fetch_latest_version(&client, release_channel, UpgradeCheckKind::Execution)
-      .await?;
+
+  let latest_version_found = match fetch_latest_version(
+    &client,
+    release_channel,
+    UpgradeCheckKind::Execution,
+  )
+  .await
+  {
+    Ok(v) => v,
+    Err(err) => {
+      if err.to_string().contains("Not found") {
+        bail!(
+          "No {} release available at the moment.",
+          release_channel.name()
+        );
+      } else {
+        return Err(err);
+      }
+    }
+  };
 
   let (maybe_newer_latest_version, current_version) = match release_channel {
-    ReleaseChannel::Stable => {
-      let current_version = version::DENO_VERSION_INFO.deno;
-
-      // If the current binary is not a stable channel, we can skip
-      // computation if we're on a newer release - we're not.
-      if version::DENO_VERSION_INFO.release_channel != ReleaseChannel::Stable {
-        (Some(latest_version_found), current_version)
-      } else {
-        let current = Version::parse_standard(current_version).unwrap();
-        let latest =
-          Version::parse_standard(&latest_version_found.version_or_hash)
-            .unwrap();
-        let current_is_most_recent = current >= latest;
-
-        if !force && current_is_most_recent {
-          (None, current_version)
-        } else {
-          (Some(latest_version_found), current_version)
-        }
-      }
-    }
-    ReleaseChannel::Rc => {
-      let current_version = version::DENO_VERSION_INFO.deno;
-
-      // If the current binary is not an rc channel, we can skip
-      // computation if we're on a newer release - we're not.
-      if version::DENO_VERSION_INFO.release_channel != ReleaseChannel::Rc {
-        (Some(latest_version_found), current_version)
-      } else {
-        let current = Version::parse_standard(current_version).unwrap();
-        let latest =
-          Version::parse_standard(&latest_version_found.version_or_hash)
-            .unwrap();
-        let current_is_most_recent = current >= latest;
-        if !force && current_is_most_recent {
-          (None, current_version)
-        } else {
-          (Some(latest_version_found), current_version)
-        }
-      }
-    }
     ReleaseChannel::Canary => {
       let current_version = version::DENO_VERSION_INFO.git_hash;
       let current_is_most_recent =
@@ -752,8 +760,26 @@ async fn find_latest_version_to_upgrade(
         (Some(latest_version_found), current_version)
       }
     }
-    // TODO(bartlomieju)
-    ReleaseChannel::Lts => unreachable!(),
+    ReleaseChannel::Stable | ReleaseChannel::Lts | ReleaseChannel::Rc => {
+      let current_version = version::DENO_VERSION_INFO.deno;
+
+      // If the current binary is not the same channel, we can skip
+      // computation if we're on a newer release - we're not.
+      if version::DENO_VERSION_INFO.release_channel != release_channel {
+        (Some(latest_version_found), current_version)
+      } else {
+        let current = Version::parse_standard(current_version)?;
+        let latest =
+          Version::parse_standard(&latest_version_found.version_or_hash)?;
+        let current_is_most_recent = current >= latest;
+
+        if !force && current_is_most_recent {
+          (None, current_version)
+        } else {
+          (Some(latest_version_found), current_version)
+        }
+      }
+    }
   };
 
   log::info!("");
@@ -833,7 +859,7 @@ fn get_latest_version_url(
       Cow::Owned(format!("canary-{target_tuple}-latest.txt"))
     }
     ReleaseChannel::Rc => Cow::Borrowed("release-rc-latest.txt"),
-    _ => unreachable!(),
+    ReleaseChannel::Lts => Cow::Borrowed("release-lts-latest.txt"),
   };
   let query_param = match check_kind {
     UpgradeCheckKind::Execution => "",
@@ -860,12 +886,14 @@ fn get_download_url(
       format!("{}/download/v{}/{}", RELEASE_URL, version, *ARCHIVE_NAME)
     }
     ReleaseChannel::Rc => {
-      format!("{}/v{}/{}", RC_URL, version, *ARCHIVE_NAME)
+      format!("{}/v{}/{}", DL_RELEASE_URL, version, *ARCHIVE_NAME)
     }
     ReleaseChannel::Canary => {
       format!("{}/{}/{}", CANARY_URL, version, *ARCHIVE_NAME)
     }
-    ReleaseChannel::Lts => unreachable!(),
+    ReleaseChannel::Lts => {
+      format!("{}/v{}/{}", DL_RELEASE_URL, version, *ARCHIVE_NAME)
+    }
   };
 
   Url::parse(&download_url).with_context(|| {
@@ -972,8 +1000,13 @@ fn check_exe(exe_path: &Path) -> Result<(), AnyError> {
     .arg("-V")
     .stderr(std::process::Stdio::inherit())
     .output()?;
-  assert!(output.status.success());
-  Ok(())
+  if !output.status.success() {
+    bail!(
+      "Failed to validate Deno executable. This may be because your OS is unsupported or the executable is corrupted"
+    )
+  } else {
+    Ok(())
+  }
 }
 
 #[derive(Debug)]
@@ -1050,6 +1083,8 @@ impl CheckVersionFile {
 mod test {
   use std::cell::RefCell;
   use std::rc::Rc;
+
+  use test_util::assert_contains;
 
   use super::*;
 
@@ -1148,6 +1183,27 @@ mod test {
         ReleaseChannel::Canary,
         "5c69b4861b52ab406e73b9cd85c254f0505cb20f".to_string()
       )
+    );
+
+    upgrade_flags.version_or_hash_or_channel =
+      Some("5c69b4861b52a".to_string());
+    let err = RequestedVersion::from_upgrade_flags(upgrade_flags.clone())
+      .unwrap_err()
+      .to_string();
+    assert_contains!(err, "Invalid version passed");
+    assert_contains!(
+      err,
+      "Pass a semver, or a full 40 character git commit hash, or a release channel name."
+    );
+
+    upgrade_flags.version_or_hash_or_channel = Some("11.asd.1324".to_string());
+    let err = RequestedVersion::from_upgrade_flags(upgrade_flags.clone())
+      .unwrap_err()
+      .to_string();
+    assert_contains!(err, "Invalid version passed");
+    assert_contains!(
+      err,
+      "Pass a semver, or a full 40 character git commit hash, or a release channel name."
     );
   }
 
@@ -1556,6 +1612,46 @@ mod test {
       ),
       "https://dl.deno.land/release-rc-latest.txt?lsp"
     );
+    assert_eq!(
+      get_latest_version_url(
+        ReleaseChannel::Lts,
+        "x86_64-pc-windows-msvc",
+        UpgradeCheckKind::Lsp
+      ),
+      "https://dl.deno.land/release-lts-latest.txt?lsp"
+    );
+    assert_eq!(
+      get_latest_version_url(
+        ReleaseChannel::Lts,
+        "aarch64-apple-darwin",
+        UpgradeCheckKind::Execution
+      ),
+      "https://dl.deno.land/release-lts-latest.txt"
+    );
+    assert_eq!(
+      get_latest_version_url(
+        ReleaseChannel::Lts,
+        "aarch64-apple-darwin",
+        UpgradeCheckKind::Lsp
+      ),
+      "https://dl.deno.land/release-lts-latest.txt?lsp"
+    );
+    assert_eq!(
+      get_latest_version_url(
+        ReleaseChannel::Lts,
+        "x86_64-pc-windows-msvc",
+        UpgradeCheckKind::Execution
+      ),
+      "https://dl.deno.land/release-lts-latest.txt"
+    );
+    assert_eq!(
+      get_latest_version_url(
+        ReleaseChannel::Lts,
+        "x86_64-pc-windows-msvc",
+        UpgradeCheckKind::Lsp
+      ),
+      "https://dl.deno.land/release-lts-latest.txt?lsp"
+    );
   }
 
   #[test]
@@ -1686,5 +1782,32 @@ mod test {
         })
       );
     }
+  }
+
+  #[test]
+  fn blog_post_links() {
+    let version = Version::parse_standard("1.46.0").unwrap();
+    assert_eq!(
+      get_minor_version_blog_post_url(&version),
+      "https://deno.com/blog/v1.46"
+    );
+
+    let version = Version::parse_standard("2.1.1").unwrap();
+    assert_eq!(
+      get_minor_version_blog_post_url(&version),
+      "https://deno.com/blog/v2.1"
+    );
+
+    let version = Version::parse_standard("2.0.0-rc.0").unwrap();
+    assert_eq!(
+      get_rc_version_blog_post_url(&version),
+      "https://deno.com/blog/v2.0-rc-0"
+    );
+
+    let version = Version::parse_standard("2.0.0-rc.2").unwrap();
+    assert_eq!(
+      get_rc_version_blog_post_url(&version),
+      "https://deno.com/blog/v2.0-rc-2"
+    );
   }
 }

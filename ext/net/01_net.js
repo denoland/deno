@@ -1,6 +1,6 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
-import { core, internals, primordials } from "ext:core/mod.js";
+import { core, primordials } from "ext:core/mod.js";
 const {
   BadResourcePrototype,
   InterruptedPrototype,
@@ -63,10 +63,6 @@ async function write(rid, data) {
   return await core.write(rid, data);
 }
 
-function shutdown(rid) {
-  return core.shutdown(rid);
-}
-
 async function resolveDns(query, recordType, options) {
   let cancelRid;
   let abortHandler;
@@ -105,28 +101,14 @@ class Conn {
   #writable;
 
   constructor(rid, remoteAddr, localAddr) {
-    if (internals.future) {
-      ObjectDefineProperty(this, "rid", {
-        enumerable: false,
-        value: undefined,
-      });
-    }
     ObjectDefineProperty(this, internalRidSymbol, {
+      __proto__: null,
       enumerable: false,
       value: rid,
     });
     this.#rid = rid;
     this.#remoteAddr = remoteAddr;
     this.#localAddr = localAddr;
-  }
-
-  get rid() {
-    internals.warnOnDeprecatedApi(
-      "Deno.Conn.rid",
-      new Error().stack,
-      "Use `Deno.Conn` instance methods instead.",
-    );
-    return this.#rid;
   }
 
   get remoteAddr() {
@@ -164,7 +146,7 @@ class Conn {
   }
 
   closeWrite() {
-    return shutdown(this.#rid);
+    return core.shutdown(this.#rid);
   }
 
   get readable() {
@@ -218,19 +200,11 @@ class TcpConn extends Conn {
   constructor(rid, remoteAddr, localAddr) {
     super(rid, remoteAddr, localAddr);
     ObjectDefineProperty(this, internalRidSymbol, {
+      __proto__: null,
       enumerable: false,
       value: rid,
     });
     this.#rid = rid;
-  }
-
-  get rid() {
-    internals.warnOnDeprecatedApi(
-      "Deno.TcpConn.rid",
-      new Error().stack,
-      "Use `Deno.TcpConn` instance methods instead.",
-    );
-    return this.#rid;
   }
 
   setNoDelay(noDelay = true) {
@@ -248,19 +222,11 @@ class UnixConn extends Conn {
   constructor(rid, remoteAddr, localAddr) {
     super(rid, remoteAddr, localAddr);
     ObjectDefineProperty(this, internalRidSymbol, {
+      __proto__: null,
       enumerable: false,
       value: rid,
     });
     this.#rid = rid;
-  }
-
-  get rid() {
-    internals.warnOnDeprecatedApi(
-      "Deno.UnixConn.rid",
-      new Error().stack,
-      "Use `Deno.UnixConn` instance methods instead.",
-    );
-    return this.#rid;
   }
 }
 
@@ -271,27 +237,13 @@ class Listener {
   #promise = null;
 
   constructor(rid, addr) {
-    if (internals.future) {
-      ObjectDefineProperty(this, "rid", {
-        enumerable: false,
-        value: undefined,
-      });
-    }
     ObjectDefineProperty(this, internalRidSymbol, {
+      __proto__: null,
       enumerable: false,
       value: rid,
     });
     this.#rid = rid;
     this.#addr = addr;
-  }
-
-  get rid() {
-    internals.warnOnDeprecatedApi(
-      "Deno.Listener.rid",
-      new Error().stack,
-      "Use `Deno.Listener` instance methods instead.",
-    );
-    return this.#rid;
   }
 
   get addr() {
@@ -647,7 +599,6 @@ export {
   Listener,
   listenOptionApiName,
   resolveDns,
-  shutdown,
   TcpConn,
   UnixConn,
   validatePort,

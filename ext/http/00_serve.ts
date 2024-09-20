@@ -123,7 +123,7 @@ function upgradeHttpRaw(req, conn) {
   if (inner._wantsUpgrade) {
     return inner._wantsUpgrade("upgradeHttpRaw", conn);
   }
-  throw new TypeError("upgradeHttpRaw may only be used with Deno.serve");
+  throw new TypeError("'upgradeHttpRaw' may only be used with Deno.serve");
 }
 
 function addTrailers(resp, headerList) {
@@ -170,10 +170,10 @@ class InnerRequest {
 
   _wantsUpgrade(upgradeType, ...originalArgs) {
     if (this.#upgraded) {
-      throw new Deno.errors.Http("already upgraded");
+      throw new Deno.errors.Http("Already upgraded");
     }
     if (this.#external === null) {
-      throw new Deno.errors.Http("already closed");
+      throw new Deno.errors.Http("Already closed");
     }
 
     // upgradeHttpRaw is sync
@@ -257,7 +257,7 @@ class InnerRequest {
 
     if (this.#methodAndUri === undefined) {
       if (this.#external === null) {
-        throw new TypeError("request closed");
+        throw new TypeError("Request closed");
       }
       // TODO(mmastrac): This is quite slow as we're serializing a large number of values. We may want to consider
       // splitting this up into multiple ops.
@@ -315,7 +315,7 @@ class InnerRequest {
     }
     if (this.#methodAndUri === undefined) {
       if (this.#external === null) {
-        throw new TypeError("request closed");
+        throw new TypeError("Request closed");
       }
       this.#methodAndUri = op_http_get_request_method_and_url(this.#external);
     }
@@ -329,7 +329,7 @@ class InnerRequest {
   get method() {
     if (this.#methodAndUri === undefined) {
       if (this.#external === null) {
-        throw new TypeError("request closed");
+        throw new TypeError("Request closed");
       }
       this.#methodAndUri = op_http_get_request_method_and_url(this.#external);
     }
@@ -338,7 +338,7 @@ class InnerRequest {
 
   get body() {
     if (this.#external === null) {
-      throw new TypeError("request closed");
+      throw new TypeError("Request closed");
     }
     if (this.#body !== undefined) {
       return this.#body;
@@ -356,7 +356,7 @@ class InnerRequest {
 
   get headerList() {
     if (this.#external === null) {
-      throw new TypeError("request closed");
+      throw new TypeError("Request closed");
     }
     const headers = [];
     const reqHeaders = op_http_get_request_headers(this.#external);
@@ -457,7 +457,7 @@ function fastSyncResponseOrStream(
   // At this point in the response it needs to be a stream
   if (!ObjectPrototypeIsPrototypeOf(ReadableStreamPrototype, stream)) {
     innerRequest?.close();
-    throw TypeError("invalid response");
+    throw new TypeError("Invalid response");
   }
   const resourceBacking = getReadableStreamResourceBacking(stream);
   let rid, autoClose;
@@ -506,21 +506,27 @@ function mapToCallback(context, callback, onError) {
 
       // Throwing Error if the handler return value is not a Response class
       if (!ObjectPrototypeIsPrototypeOf(ResponsePrototype, response)) {
-        throw TypeError(
+        throw new TypeError(
           "Return value from serve handler must be a response or a promise resolving to a response",
         );
       }
 
+      if (response.type === "error") {
+        throw new TypeError(
+          "Return value from serve handler must not be an error response (like Response.error())",
+        );
+      }
+
       if (response.bodyUsed) {
-        throw TypeError(
-          "The body of the Response returned from the serve handler has already been consumed.",
+        throw new TypeError(
+          "The body of the Response returned from the serve handler has already been consumed",
         );
       }
     } catch (error) {
       try {
         response = await onError(error);
         if (!ObjectPrototypeIsPrototypeOf(ResponsePrototype, response)) {
-          throw TypeError(
+          throw new TypeError(
             "Return value from onError handler must be a response or a promise resolving to a response",
           );
         }
@@ -583,6 +589,21 @@ type RawServeOptions = {
 
 const kLoadBalanced = Symbol("kLoadBalanced");
 
+function formatHostName(hostname: string): string {
+  // If the hostname is "0.0.0.0", we display "localhost" in console
+  // because browsers in Windows don't resolve "0.0.0.0".
+  // See the discussion in https://github.com/denoland/deno_std/issues/1165
+  if (
+    (Deno.build.os === "windows") &&
+    (hostname == "0.0.0.0" || hostname == "::")
+  ) {
+    return "localhost";
+  }
+
+  // Add brackets around ipv6 hostname
+  return StringPrototypeIncludes(hostname, ":") ? `[${hostname}]` : hostname;
+}
+
 function serve(arg1, arg2) {
   let options: RawServeOptions | undefined;
   let handler: RawHandler | undefined;
@@ -598,13 +619,15 @@ function serve(arg1, arg2) {
   if (handler === undefined) {
     if (options === undefined) {
       throw new TypeError(
-        "No handler was provided, so an options bag is mandatory.",
+        "Cannot serve HTTP requests: either a `handler` or `options` must be specified",
       );
     }
     handler = options.handler;
   }
   if (typeof handler !== "function") {
-    throw new TypeError("A handler function must be provided.");
+    throw new TypeError(
+      `Cannot serve HTTP requests: handler must be a function, received ${typeof handler}`,
+    );
   }
   if (options === undefined) {
     options = { __proto__: null };
@@ -631,7 +654,7 @@ function serve(arg1, arg2) {
         options.onListen(listener.addr);
       } else {
         // deno-lint-ignore no-console
-        console.log(`Listening on ${path}`);
+        console.error(`Listening on ${path}`);
       }
     });
   }
@@ -658,7 +681,7 @@ function serve(arg1, arg2) {
   if (wantsHttps) {
     if (!options.cert || !options.key) {
       throw new TypeError(
-        "Both cert and key must be provided to enable HTTPS.",
+        "Both 'cert' and 'key' must be provided to enable HTTPS",
       );
     }
     listenOpts.cert = options.cert;
@@ -672,24 +695,15 @@ function serve(arg1, arg2) {
   }
 
   const addr = listener.addr;
-  // If the hostname is "0.0.0.0", we display "localhost" in console
-  // because browsers in Windows don't resolve "0.0.0.0".
-  // See the discussion in https://github.com/denoland/deno_std/issues/1165
-  const hostname = (addr.hostname == "0.0.0.0" || addr.hostname == "::") &&
-      (Deno.build.os === "windows")
-    ? "localhost"
-    : addr.hostname;
-  addr.hostname = hostname;
 
   const onListen = (scheme) => {
     if (options.onListen) {
       options.onListen(addr);
     } else {
-      const host = StringPrototypeIncludes(addr.hostname, ":")
-        ? `[${addr.hostname}]`
-        : addr.hostname;
+      const host = formatHostName(addr.hostname);
+
       // deno-lint-ignore no-console
-      console.log(`Listening on ${scheme}${host}:${addr.port}/`);
+      console.error(`Listening on ${scheme}${host}:${addr.port}/`);
     }
   };
 
@@ -862,9 +876,11 @@ function registerDeclarativeServer(exports) {
             const nThreads = serveWorkerCount > 1
               ? ` with ${serveWorkerCount} threads`
               : "";
+            const host = formatHostName(hostname);
+
             // deno-lint-ignore no-console
-            console.debug(
-              `%cdeno serve%c: Listening on %chttp://${hostname}:${port}/%c${nThreads}`,
+            console.error(
+              `%cdeno serve%c: Listening on %chttp://${host}:${port}/%c${nThreads}`,
               "color: green",
               "color: inherit",
               "color: yellow",
@@ -872,8 +888,8 @@ function registerDeclarativeServer(exports) {
             );
           }
         },
-        handler: (req) => {
-          return exports.fetch(req);
+        handler: (req, connInfo) => {
+          return exports.fetch(req, connInfo);
         },
       });
     };

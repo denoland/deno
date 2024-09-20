@@ -25,9 +25,8 @@ Deno.test(
         return keys[sni]!;
       },
     };
-    const listener = Deno.listenTls(
-      <Deno.ListenTlsOptions & Deno.TlsCertifiedKeyConnectTls> opts,
-    );
+    // @ts-ignore Trust me
+    const listener = Deno.listenTls(opts);
 
     for (
       const server of ["server-1", "server-2", "fail-server-3", "fail-server-4"]

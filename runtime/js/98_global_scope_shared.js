@@ -31,6 +31,7 @@ import * as webidl from "ext:deno_webidl/00_webidl.js";
 import { DOMException } from "ext:deno_web/01_dom_exception.js";
 import * as abortSignal from "ext:deno_web/03_abort_signal.js";
 import * as imageData from "ext:deno_web/16_image_data.js";
+import process from "node:process";
 import { loadWebGPU } from "ext:deno_webgpu/00_init.js";
 import * as webgpuSurface from "ext:deno_webgpu/02_surface.js";
 import { unstableIds } from "ext:runtime/90_deno_ns.js";
@@ -137,12 +138,155 @@ const windowOrWorkerGlobalScope = {
   fetch: core.propWritable(fetch.fetch),
   EventSource: core.propWritable(eventSource.EventSource),
   performance: core.propWritable(performance.performance),
+  process: core.propWritable(process),
   reportError: core.propWritable(event.reportError),
   setInterval: core.propWritable(timers.setInterval),
   setTimeout: core.propWritable(timers.setTimeout),
   structuredClone: core.propWritable(messagePort.structuredClone),
   // Branding as a WebIDL object
   [webidl.brand]: core.propNonEnumerable(webidl.brand),
+  GPU: core.propNonEnumerableLazyLoaded((webgpu) => webgpu.GPU, loadWebGPU),
+  GPUAdapter: core.propNonEnumerableLazyLoaded(
+    (webgpu) => webgpu.GPUAdapter,
+    loadWebGPU,
+  ),
+  GPUAdapterInfo: core.propNonEnumerableLazyLoaded(
+    (webgpu) => webgpu.GPUAdapterInfo,
+    loadWebGPU,
+  ),
+  GPUBuffer: core.propNonEnumerableLazyLoaded(
+    (webgpu) => webgpu.GPUBuffer,
+    loadWebGPU,
+  ),
+  GPUBufferUsage: core.propNonEnumerableLazyLoaded(
+    (webgpu) => webgpu.GPUBufferUsage,
+    loadWebGPU,
+  ),
+  GPUCanvasContext: core.propNonEnumerable(webgpuSurface.GPUCanvasContext),
+  GPUColorWrite: core.propNonEnumerableLazyLoaded(
+    (webgpu) => webgpu.GPUColorWrite,
+    loadWebGPU,
+  ),
+  GPUCommandBuffer: core.propNonEnumerableLazyLoaded(
+    (webgpu) => webgpu.GPUCommandBuffer,
+    loadWebGPU,
+  ),
+  GPUCommandEncoder: core.propNonEnumerableLazyLoaded(
+    (webgpu) => webgpu.GPUCommandEncoder,
+    loadWebGPU,
+  ),
+  GPUComputePassEncoder: core.propNonEnumerableLazyLoaded(
+    (webgpu) => webgpu.GPUComputePassEncoder,
+    loadWebGPU,
+  ),
+  GPUComputePipeline: core.propNonEnumerableLazyLoaded(
+    (webgpu) => webgpu.GPUComputePipeline,
+    loadWebGPU,
+  ),
+  GPUDevice: core.propNonEnumerableLazyLoaded(
+    (webgpu) => webgpu.GPUDevice,
+    loadWebGPU,
+  ),
+  GPUDeviceLostInfo: core.propNonEnumerableLazyLoaded(
+    (webgpu) => webgpu.GPUDeviceLostInfo,
+    loadWebGPU,
+  ),
+  GPUError: core.propNonEnumerableLazyLoaded(
+    (webgpu) => webgpu.GPUError,
+    loadWebGPU,
+  ),
+  GPUBindGroup: core.propNonEnumerableLazyLoaded(
+    (webgpu) => webgpu.GPUBindGroup,
+    loadWebGPU,
+  ),
+  GPUBindGroupLayout: core.propNonEnumerableLazyLoaded(
+    (webgpu) => webgpu.GPUBindGroupLayout,
+    loadWebGPU,
+  ),
+  GPUInternalError: core.propNonEnumerableLazyLoaded(
+    (webgpu) => webgpu.GPUInternalError,
+    loadWebGPU,
+  ),
+  GPUPipelineError: core.propNonEnumerableLazyLoaded(
+    (webgpu) => webgpu.GPUPipelineError,
+    loadWebGPU,
+  ),
+  GPUUncapturedErrorEvent: core.propNonEnumerableLazyLoaded(
+    (webgpu) => webgpu.GPUUncapturedErrorEvent,
+    loadWebGPU,
+  ),
+  GPUPipelineLayout: core.propNonEnumerableLazyLoaded(
+    (webgpu) => webgpu.GPUPipelineLayout,
+    loadWebGPU,
+  ),
+  GPUQueue: core.propNonEnumerableLazyLoaded(
+    (webgpu) => webgpu.GPUQueue,
+    loadWebGPU,
+  ),
+  GPUQuerySet: core.propNonEnumerableLazyLoaded(
+    (webgpu) => webgpu.GPUQuerySet,
+    loadWebGPU,
+  ),
+  GPUMapMode: core.propNonEnumerableLazyLoaded(
+    (webgpu) => webgpu.GPUMapMode,
+    loadWebGPU,
+  ),
+  GPUOutOfMemoryError: core.propNonEnumerableLazyLoaded(
+    (webgpu) => webgpu.GPUOutOfMemoryError,
+    loadWebGPU,
+  ),
+  GPURenderBundle: core.propNonEnumerableLazyLoaded(
+    (webgpu) => webgpu.GPURenderBundle,
+    loadWebGPU,
+  ),
+  GPURenderBundleEncoder: core.propNonEnumerableLazyLoaded(
+    (webgpu) => webgpu.GPURenderBundleEncoder,
+    loadWebGPU,
+  ),
+  GPURenderPassEncoder: core.propNonEnumerableLazyLoaded(
+    (webgpu) => webgpu.GPURenderPassEncoder,
+    loadWebGPU,
+  ),
+  GPURenderPipeline: core.propNonEnumerableLazyLoaded(
+    (webgpu) => webgpu.GPURenderPipeline,
+    loadWebGPU,
+  ),
+  GPUSampler: core.propNonEnumerableLazyLoaded(
+    (webgpu) => webgpu.GPUSampler,
+    loadWebGPU,
+  ),
+  GPUShaderModule: core.propNonEnumerableLazyLoaded(
+    (webgpu) => webgpu.GPUShaderModule,
+    loadWebGPU,
+  ),
+  GPUShaderStage: core.propNonEnumerableLazyLoaded(
+    (webgpu) => webgpu.GPUShaderStage,
+    loadWebGPU,
+  ),
+  GPUSupportedFeatures: core.propNonEnumerableLazyLoaded(
+    (webgpu) => webgpu.GPUSupportedFeatures,
+    loadWebGPU,
+  ),
+  GPUSupportedLimits: core.propNonEnumerableLazyLoaded(
+    (webgpu) => webgpu.GPUSupportedLimits,
+    loadWebGPU,
+  ),
+  GPUTexture: core.propNonEnumerableLazyLoaded(
+    (webgpu) => webgpu.GPUTexture,
+    loadWebGPU,
+  ),
+  GPUTextureView: core.propNonEnumerableLazyLoaded(
+    (webgpu) => webgpu.GPUTextureView,
+    loadWebGPU,
+  ),
+  GPUTextureUsage: core.propNonEnumerableLazyLoaded(
+    (webgpu) => webgpu.GPUTextureUsage,
+    loadWebGPU,
+  ),
+  GPUValidationError: core.propNonEnumerableLazyLoaded(
+    (webgpu) => webgpu.GPUValidationError,
+    loadWebGPU,
+  ),
 };
 
 const unstableForWindowOrWorkerGlobalScope = { __proto__: null };
@@ -153,42 +297,7 @@ unstableForWindowOrWorkerGlobalScope[unstableIds.net] = {
   WebSocketStream: core.propNonEnumerable(webSocketStream.WebSocketStream),
   WebSocketError: core.propNonEnumerable(webSocketStream.WebSocketError),
 };
-// deno-fmt-ignore
-unstableForWindowOrWorkerGlobalScope[unstableIds.webgpu] = {
-  GPU: core.propNonEnumerableLazyLoaded((webgpu) => webgpu.GPU, loadWebGPU),
-  GPUAdapter: core.propNonEnumerableLazyLoaded((webgpu) => webgpu.GPUAdapter, loadWebGPU),
-  GPUAdapterInfo: core.propNonEnumerableLazyLoaded((webgpu) => webgpu.GPUAdapterInfo, loadWebGPU),
-  GPUSupportedLimits: core.propNonEnumerableLazyLoaded((webgpu) => webgpu.GPUSupportedLimits, loadWebGPU),
-  GPUSupportedFeatures: core.propNonEnumerableLazyLoaded((webgpu) => webgpu.GPUSupportedFeatures, loadWebGPU),
-  GPUDeviceLostInfo: core.propNonEnumerableLazyLoaded((webgpu) => webgpu.GPUDeviceLostInfo, loadWebGPU),
-  GPUDevice: core.propNonEnumerableLazyLoaded((webgpu) => webgpu.GPUDevice, loadWebGPU),
-  GPUQueue: core.propNonEnumerableLazyLoaded((webgpu) => webgpu.GPUQueue, loadWebGPU),
-  GPUBuffer: core.propNonEnumerableLazyLoaded((webgpu) => webgpu.GPUBuffer, loadWebGPU),
-  GPUBufferUsage: core.propNonEnumerableLazyLoaded((webgpu) => webgpu.GPUBufferUsage, loadWebGPU),
-  GPUMapMode: core.propNonEnumerableLazyLoaded((webgpu) => webgpu.GPUMapMode, loadWebGPU),
-  GPUTextureUsage: core.propNonEnumerableLazyLoaded((webgpu) => webgpu.GPUTextureUsage, loadWebGPU),
-  GPUTexture: core.propNonEnumerableLazyLoaded((webgpu) => webgpu.GPUTexture, loadWebGPU),
-  GPUTextureView: core.propNonEnumerableLazyLoaded((webgpu) => webgpu.GPUTextureView, loadWebGPU),
-  GPUSampler: core.propNonEnumerableLazyLoaded((webgpu) => webgpu.GPUSampler, loadWebGPU),
-  GPUBindGroupLayout: core.propNonEnumerableLazyLoaded((webgpu) => webgpu.GPUBindGroupLayout, loadWebGPU),
-  GPUPipelineLayout: core.propNonEnumerableLazyLoaded((webgpu) => webgpu.GPUPipelineLayout, loadWebGPU),
-  GPUBindGroup: core.propNonEnumerableLazyLoaded((webgpu) => webgpu.GPUBindGroup, loadWebGPU),
-  GPUShaderModule: core.propNonEnumerableLazyLoaded((webgpu) => webgpu.GPUShaderModule, loadWebGPU),
-  GPUShaderStage: core.propNonEnumerableLazyLoaded((webgpu) => webgpu.GPUShaderStage, loadWebGPU),
-  GPUComputePipeline: core.propNonEnumerableLazyLoaded((webgpu) => webgpu.GPUComputePipeline, loadWebGPU),
-  GPURenderPipeline: core.propNonEnumerableLazyLoaded((webgpu) => webgpu.GPURenderPipeline, loadWebGPU),
-  GPUColorWrite: core.propNonEnumerableLazyLoaded((webgpu) => webgpu.GPUColorWrite, loadWebGPU),
-  GPUCommandEncoder: core.propNonEnumerableLazyLoaded((webgpu) => webgpu.GPUCommandEncoder, loadWebGPU),
-  GPURenderPassEncoder: core.propNonEnumerableLazyLoaded((webgpu) => webgpu.GPURenderPassEncoder, loadWebGPU),
-  GPUComputePassEncoder: core.propNonEnumerableLazyLoaded((webgpu) => webgpu.GPUComputePassEncoder, loadWebGPU),
-  GPUCommandBuffer: core.propNonEnumerableLazyLoaded((webgpu) => webgpu.GPUCommandBuffer, loadWebGPU),
-  GPURenderBundleEncoder: core.propNonEnumerableLazyLoaded((webgpu) => webgpu.GPURenderBundleEncoder, loadWebGPU),
-  GPURenderBundle: core.propNonEnumerableLazyLoaded((webgpu) => webgpu.GPURenderBundle, loadWebGPU),
-  GPUQuerySet: core.propNonEnumerableLazyLoaded((webgpu) => webgpu.GPUQuerySet, loadWebGPU),
-  GPUError: core.propNonEnumerableLazyLoaded((webgpu) => webgpu.GPUError, loadWebGPU),
-  GPUValidationError: core.propNonEnumerableLazyLoaded((webgpu) => webgpu.GPUValidationError, loadWebGPU),
-  GPUOutOfMemoryError: core.propNonEnumerableLazyLoaded((webgpu) => webgpu.GPUOutOfMemoryError, loadWebGPU),
-  GPUCanvasContext: core.propNonEnumerable(webgpuSurface.GPUCanvasContext),
-};
+
+unstableForWindowOrWorkerGlobalScope[unstableIds.webgpu] = {};
 
 export { unstableForWindowOrWorkerGlobalScope, windowOrWorkerGlobalScope };

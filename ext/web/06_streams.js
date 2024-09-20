@@ -70,6 +70,7 @@ const {
   String,
   Symbol,
   SymbolAsyncIterator,
+  SymbolIterator,
   SymbolFor,
   TypeError,
   TypedArrayPrototypeGetBuffer,
@@ -523,10 +524,10 @@ function dequeueValue(container) {
 function enqueueValueWithSize(container, value, size) {
   assert(container[_queue] && typeof container[_queueTotalSize] === "number");
   if (isNonNegativeNumber(size) === false) {
-    throw RangeError("chunk size isn't a positive number");
+    throw new RangeError("chunk size isn't a positive number");
   }
   if (size === Infinity) {
-    throw RangeError("chunk size is invalid");
+    throw new RangeError("chunk size is invalid");
   }
   container[_queue].enqueue({ value, size });
   container[_queueTotalSize] += size;
@@ -542,7 +543,7 @@ function extractHighWaterMark(strategy, defaultHWM) {
   }
   const highWaterMark = strategy.highWaterMark;
   if (NumberIsNaN(highWaterMark) || highWaterMark < 0) {
-    throw RangeError(
+    throw new RangeError(
       `Expected highWaterMark to be a positive number or Infinity, got "${highWaterMark}".`,
     );
   }
@@ -1053,7 +1054,7 @@ async function readableStreamCollectIntoUint8Array(stream) {
     getReadableStreamResourceBackingUnrefable(stream);
   const reader = acquireReadableStreamDefaultReader(stream);
 
-  if (resourceBacking) {
+  if (resourceBacking && !isReadableStreamDisturbed(stream)) {
     // fast path, read whole body in a single op call
     try {
       readableStreamDisturb(stream);
@@ -5083,6 +5084,34 @@ function initializeCountSizeFunction(globalObject) {
   WeakMapPrototypeSet(countSizeFunctionWeakMap, globalObject, size);
 }
 
+// Ref: https://tc39.es/ecma262/#sec-getiterator
+function getAsyncOrSyncIterator(obj) {
+  let iterator;
+  if (obj[SymbolAsyncIterator] != null) {
+    iterator = obj[SymbolAsyncIterator]();
+    if (!isObject(iterator)) {
+      throw new TypeError(
+        "[Symbol.asyncIterator] returned a non-object value",
+      );
+    }
+  } else if (obj[SymbolIterator] != null) {
+    iterator = obj[SymbolIterator]();
+    if (!isObject(iterator)) {
+      throw new TypeError("[Symbol.iterator] returned a non-object value");
+    }
+  } else {
+    throw new TypeError("No iterator found");
+  }
+  if (typeof iterator.next !== "function") {
+    throw new TypeError("iterator.next is not a function");
+  }
+  return iterator;
+}
+
+function isObject(x) {
+  return (typeof x === "object" && x != null) || typeof x === "function";
+}
+
 const _resourceBacking = Symbol("[[resourceBacking]]");
 // This distinction exists to prevent unrefable streams being used in
 // regular fast streams that are unaware of refability
@@ -5168,22 +5197,21 @@ class ReadableStream {
   }
 
   static from(asyncIterable) {
-    const prefix = "Failed to execute 'ReadableStream.from'";
     webidl.requiredArguments(
       arguments.length,
       1,
-      prefix,
+      "Failed to execute 'ReadableStream.from'",
     );
-    asyncIterable = webidl.converters["async iterable<any>"](
-      asyncIterable,
-      prefix,
-      "Argument 1",
-    );
-    const iter = asyncIterable.open();
+    asyncIterable = webidl.converters.any(asyncIterable);
+
+    const iterator = getAsyncOrSyncIterator(asyncIterable);
 
     const stream = createReadableStream(noop, async () => {
       // deno-lint-ignore prefer-primordials
-      const res = await iter.next();
+      const res = await iterator.next();
+      if (!isObject(res)) {
+        throw new TypeError("iterator.next value is not an object");
+      }
       if (res.done) {
         readableStreamDefaultControllerClose(stream[_controller]);
       } else {
@@ -5193,8 +5221,17 @@ class ReadableStream {
         );
       }
     }, async (reason) => {
-      // deno-lint-ignore prefer-primordials
-      await iter.return(reason);
+      if (iterator.return == null) {
+        return undefined;
+      } else {
+        // deno-lint-ignore prefer-primordials
+        const res = await iterator.return(reason);
+        if (!isObject(res)) {
+          throw new TypeError("iterator.return value is not an object");
+        } else {
+          return undefined;
+        }
+      }
     }, 0);
     return stream;
   }
@@ -5383,6 +5420,7 @@ class ReadableStream {
 // TODO(lucacasonato): should be moved to webidl crate
 ReadableStream.prototype[SymbolAsyncIterator] = ReadableStream.prototype.values;
 ObjectDefineProperty(ReadableStream.prototype, SymbolAsyncIterator, {
+  __proto__: null,
   writable: true,
   enumerable: false,
   configurable: true,
@@ -6853,10 +6891,6 @@ webidl.converters.StreamPipeOptions = webidl
     },
     { key: "signal", converter: webidl.converters.AbortSignal },
   ]);
-
-webidl.converters["async iterable<any>"] = webidl.createAsyncIterableConverter(
-  webidl.converters.any,
-);
 
 internals.resourceForReadableStream = resourceForReadableStream;
 

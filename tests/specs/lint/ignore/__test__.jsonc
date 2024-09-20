@@ -1,0 +1,5 @@
+{
+  "args": "lint --ignore=without_config/file1.js,without_config/malformed.js,without_config/lint_with_config/ without_config",
+  "output": "expected_ignore.out",
+  "exitCode": 1
+}

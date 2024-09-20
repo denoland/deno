@@ -1,1 +1,109 @@
-{"_id":"package-json-from-dist","name":"package-json-from-dist","dist-tags":{"latest":"1.0.0"},"versions":{"1.0.0":{"name":"package-json-from-dist","version":"1.0.0","description":"Load the local package.json from either src or dist folder","main":"./dist/commonjs/index.js","exports":{"./package.json":"./package.json",".":{"import":{"types":"./dist/esm/index.d.ts","default":"./dist/esm/index.js"},"require":{"types":"./dist/commonjs/index.d.ts","default":"./dist/commonjs/index.js"}}},"scripts":{"preversion":"npm test","postversion":"npm publish","prepublishOnly":"git push origin --follow-tags","prepare":"tshy","pretest":"npm run prepare","presnap":"npm run prepare","test":"tap","snap":"tap","format":"prettier --write . --loglevel warn --ignore-path ../../.prettierignore --cache","typedoc":"typedoc"},"author":{"name":"Isaac Z. Schlueter","email":"i@izs.me","url":"https://izs.me"},"license":"BlueOak-1.0.0","repository":{"type":"git","url":"git+https://github.com/isaacs/package-json-from-dist.git"},"devDependencies":{"@types/node":"^20.12.12","prettier":"^3.2.5","tap":"^18.5.3","typedoc":"^0.24.8","typescript":"^5.1.6","tshy":"^1.14.0"},"prettier":{"semi":false,"printWidth":70,"tabWidth":2,"useTabs":false,"singleQuote":true,"jsxSingleQuote":false,"bracketSameLine":true,"arrowParens":"avoid","endOfLine":"lf","experimentalTernaries":true},"tshy":{"exports":{"./package.json":"./package.json",".":"./src/index.ts"}},"types":"./dist/commonjs/index.d.ts","type":"module","_id":"package-json-from-dist@1.0.0","gitHead":"b5d50a5510b66886238de2a0d508987da17bb7d8","bugs":{"url":"https://github.com/isaacs/package-json-from-dist/issues"},"homepage":"https://github.com/isaacs/package-json-from-dist#readme","_nodeVersion":"20.11.0","_npmVersion":"10.7.0","dist":{"integrity":"sha512-dATvCeZN/8wQsGywez1mzHtTlP22H8OEfPrVMLNr4/eGa+ijtLn/6M5f0dY8UKNrC2O9UCU6SSoG3qRKnt7STw==","shasum":"e501cd3094b278495eb4258d4c9f6d5ac3019f00","tarball":"http://localhost:4260/package-json-from-dist/package-json-from-dist-1.0.0.tgz","fileCount":13,"unpackedSize":33940,"signatures":[{"keyid":"SHA256:jl3bwswu80PjjokCgh0o2w5c2U4LhQAE57gj9cz1kzA","sig":"MEUCIBk1UxJB1c1W5JqTwhuKr1Dnao3WgyeqtoSK5jKUvZyTAiEA8nD3BvBEUOi8z1O5qVay68RDTcOeH1op6kTxNdKi7CI="}]},"_npmUser":{"name":"isaacs","email":"i@izs.me"},"directories":{},"maintainers":[{"name":"isaacs","email":"i@izs.me"}],"_npmOperationalInternal":{"host":"s3://npm-registry-packages","tmp":"tmp/package-json-from-dist_1.0.0_1715709475060_0.8231330692504244"},"_hasShrinkwrap":false}},"time":{"created":"2024-05-14T17:57:54.958Z","1.0.0":"2024-05-14T17:57:55.201Z","modified":"2024-05-14T17:57:55.487Z"},"maintainers":[{"name":"isaacs","email":"i@izs.me"}],"description":"Load the local package.json from either src or dist folder","homepage":"https://github.com/isaacs/package-json-from-dist#readme","repository":{"type":"git","url":"git+https://github.com/isaacs/package-json-from-dist.git"},"author":{"name":"Isaac Z. Schlueter","email":"i@izs.me","url":"https://izs.me"},"bugs":{"url":"https://github.com/isaacs/package-json-from-dist/issues"},"license":"BlueOak-1.0.0","readme":"# package-json-from-dist\n\nSometimes you want to load the `package.json` into your\nTypeScript program, and it's tempting to just `import\n'../package.json'`, since that seems to work.\n\nHowever, this requires `tsc` to make an entire copy of your\n`package.json` file into the `dist` folder, which is a problem if\nyou're using something like\n[tshy](https://github.com/isaacs/tshy), which uses the\n`package.json` file in dist for another purpose. Even when that\ndoes work, it's asking the module system to do a bunch of extra\nfs system calls, just to load a version number or something. (See\n[this issue](https://github.com/isaacs/tshy/issues/61).)\n\nThis module helps by just finding the package.json file\nappropriately, and reading and parsing it in the most normal\nfashion.\n\n## Caveats\n\nThis *only* works if your code builds into a target folder called\n`dist`, which is in the root of the package. It also requires\nthat you do not have a folder named `node_modules` anywhere\nwithin your dev environment, or else it'll get the wrong answers\nthere. (But, at least, that'll be in dev, so you're pretty likely\nto notice.)\n\nIf you build to some other location, then you'll need a different\napproach. (Feel free to fork this module and make it your own, or\njust put the code right inline, there's not much of it.)\n\n## USAGE\n\n```js\n// src/index.ts\nimport { findPackageJson, loadPackageJson } from 'package-json-from-dist'\n\nconst pj = findPackageJson(import.meta.url)\nconsole.log(`package.json found at ${pj}`)\n\nconst pkg = loadPackageJson(import.meta.url)\nconsole.log(`Hello from ${pkg.name}@${pkg.version}`)\n```\n\nIf your module is not directly in the `./src` folder, then you need\nto specify the path that you would expect to find the\n`package.json` when it's _not_ built to the `dist` folder.\n\n```js\n// src/components/something.ts\nimport { findPackageJson, loadPackageJson } from 'package-json-from-dist'\n\nconst pj = findPackageJson(import.meta.url, '../../package.json')\nconsole.log(`package.json found at ${pj}`)\n\nconst pkg = loadPackageJson(import.meta.url, '../../package.json')\nconsole.log(`Hello from ${pkg.name}@${pkg.version}`)\n```\n\nWhen running from CommmonJS, use `__filename` instead of\n`import.meta.url`.\n\n```js\n// src/index.cts\nimport { findPackageJson, loadPackageJson } from 'package-json-from-dist'\n\nconst pj = findPackageJson(__filename)\nconsole.log(`package.json found at ${pj}`)\n\nconst pkg = loadPackageJson(__filename)\nconsole.log(`Hello from ${pkg.name}@${pkg.version}`)\n```\n\nSince [tshy](https://github.com/isaacs/tshy) builds _both_\nCommonJS and ESM by default, you may find that you need a\nCommonJS override and some `//@ts-ignore` magic to make it work.\n\n`src/pkg.ts`:\n\n```js\nimport { findPackageJson, loadPackageJson } from 'package-json-from-dist'\n//@ts-ignore\nexport const pkg = loadPackageJson(import.meta.url)\n//@ts-ignore\nexport const pj = findPackageJson(import.meta.url)\n```\n\n`src/pkg-cjs.cts`:\n\n```js\nimport { findPackageJson, loadPackageJson } from 'package-json-from-dist'\nexport const pkg = loadPackageJson(__filename)\nexport const pj = findPackageJson(__filename)\n```\n","readmeFilename":"README.md"}
+{
+  "name": "package-json-from-dist",
+  "dist-tags": {
+    "latest": "1.0.0"
+  },
+  "versions": {
+    "1.0.0": {
+      "name": "package-json-from-dist",
+      "version": "1.0.0",
+      "description": "Load the local package.json from either src or dist folder",
+      "main": "./dist/commonjs/index.js",
+      "exports": {
+        "./package.json": "./package.json",
+        ".": {
+          "import": {
+            "types": "./dist/esm/index.d.ts",
+            "default": "./dist/esm/index.js"
+          },
+          "require": {
+            "types": "./dist/commonjs/index.d.ts",
+            "default": "./dist/commonjs/index.js"
+          }
+        }
+      },
+      "scripts": {
+        "preversion": "npm test",
+        "postversion": "npm publish",
+        "prepublishOnly": "git push origin --follow-tags",
+        "prepare": "tshy",
+        "pretest": "npm run prepare",
+        "presnap": "npm run prepare",
+        "test": "tap",
+        "snap": "tap",
+        "format": "prettier --write . --loglevel warn --ignore-path ../../.prettierignore --cache",
+        "typedoc": "typedoc"
+      },
+      "author": {
+        "name": "Isaac Z. Schlueter",
+        "email": "i@izs.me",
+        "url": "https://izs.me"
+      },
+      "license": "BlueOak-1.0.0",
+      "repository": {
+        "type": "git",
+        "url": "git+https://github.com/isaacs/package-json-from-dist.git"
+      },
+      "devDependencies": {
+        "@types/node": "^20.12.12",
+        "prettier": "^3.2.5",
+        "tap": "^18.5.3",
+        "typedoc": "^0.24.8",
+        "typescript": "^5.1.6",
+        "tshy": "^1.14.0"
+      },
+      "prettier": {
+        "semi": false,
+        "printWidth": 70,
+        "tabWidth": 2,
+        "useTabs": false,
+        "singleQuote": true,
+        "jsxSingleQuote": false,
+        "bracketSameLine": true,
+        "arrowParens": "avoid",
+        "endOfLine": "lf",
+        "experimentalTernaries": true
+      },
+      "tshy": {
+        "exports": {
+          "./package.json": "./package.json",
+          ".": "./src/index.ts"
+        }
+      },
+      "types": "./dist/commonjs/index.d.ts",
+      "type": "module",
+      "_id": "package-json-from-dist@1.0.0",
+      "gitHead": "b5d50a5510b66886238de2a0d508987da17bb7d8",
+      "bugs": {
+        "url": "https://github.com/isaacs/package-json-from-dist/issues"
+      },
+      "_nodeVersion": "20.11.0",
+      "_npmVersion": "10.7.0",
+      "dist": {
+        "integrity": "sha512-dATvCeZN/8wQsGywez1mzHtTlP22H8OEfPrVMLNr4/eGa+ijtLn/6M5f0dY8UKNrC2O9UCU6SSoG3qRKnt7STw==",
+        "shasum": "e501cd3094b278495eb4258d4c9f6d5ac3019f00",
+        "tarball": "http://localhost:4260/package-json-from-dist/package-json-from-dist-1.0.0.tgz",
+        "fileCount": 13,
+        "unpackedSize": 33940
+      },
+      "directories": {},
+      "_hasShrinkwrap": false
+    }
+  },
+  "description": "Load the local package.json from either src or dist folder",
+  "homepage": "https://github.com/isaacs/package-json-from-dist#readme",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/isaacs/package-json-from-dist.git"
+  },
+  "author": {
+    "name": "Isaac Z. Schlueter",
+    "email": "i@izs.me",
+    "url": "https://izs.me"
+  },
+  "bugs": {
+    "url": "https://github.com/isaacs/package-json-from-dist/issues"
+  },
+  "license": "BlueOak-1.0.0",
+  "readmeFilename": "README.md"
+}

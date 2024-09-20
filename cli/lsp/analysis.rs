@@ -6,11 +6,11 @@ use super::documents::Documents;
 use super::language_server;
 use super::resolver::LspResolver;
 use super::tsc;
+use super::urls::url_to_uri;
 
 use crate::args::jsr_url;
 use crate::tools::lint::CliLinter;
 use deno_lint::diagnostic::LintDiagnosticRange;
-use deno_runtime::fs_util::specifier_to_file_path;
 
 use deno_ast::SourceRange;
 use deno_ast::SourceRangedForSpanned;
@@ -24,6 +24,7 @@ use deno_core::serde_json;
 use deno_core::serde_json::json;
 use deno_core::ModuleSpecifier;
 use deno_runtime::deno_node::PathClean;
+use deno_runtime::fs_util::specifier_to_file_path;
 use deno_semver::jsr::JsrPackageNvReference;
 use deno_semver::jsr::JsrPackageReqReference;
 use deno_semver::npm::NpmPackageReqReference;
@@ -750,10 +751,11 @@ impl CodeActionCollection {
       .as_ref()
       .and_then(|d| serde_json::from_value::<Vec<DataQuickFix>>(d.clone()).ok())
     {
+      let uri = url_to_uri(specifier)?;
       for quick_fix in data_quick_fixes {
         let mut changes = HashMap::new();
         changes.insert(
-          specifier.clone(),
+          uri.clone(),
           quick_fix
             .changes
             .into_iter()
@@ -795,6 +797,7 @@ impl CodeActionCollection {
     maybe_text_info: Option<&SourceTextInfo>,
     maybe_parsed_source: Option<&deno_ast::ParsedSource>,
   ) -> Result<(), AnyError> {
+    let uri = url_to_uri(specifier)?;
     let code = diagnostic
       .code
       .as_ref()
@@ -811,7 +814,7 @@ impl CodeActionCollection {
 
     let mut changes = HashMap::new();
     changes.insert(
-      specifier.clone(),
+      uri.clone(),
       vec![lsp::TextEdit {
         new_text: prepend_whitespace(
           format!("// deno-lint-ignore {code}\n"),
@@ -892,7 +895,7 @@ impl CodeActionCollection {
     }
 
     let mut changes = HashMap::new();
-    changes.insert(specifier.clone(), vec![lsp::TextEdit { new_text, range }]);
+    changes.insert(uri.clone(), vec![lsp::TextEdit { new_text, range }]);
     let ignore_file_action = lsp::CodeAction {
       title: format!("Disable {code} for the entire file"),
       kind: Some(lsp::CodeActionKind::QUICKFIX),
@@ -913,7 +916,7 @@ impl CodeActionCollection {
 
     let mut changes = HashMap::new();
     changes.insert(
-      specifier.clone(),
+      uri,
       vec![lsp::TextEdit {
         new_text: "// deno-lint-ignore-file\n".to_string(),
         range: lsp::Range {
