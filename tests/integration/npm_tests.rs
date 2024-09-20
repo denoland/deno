@@ -145,17 +145,6 @@ itest!(mixed_case_package_name_local_dir {
   temp_cwd: true,
 });
 
-// TODO(2.0): this should be rewritten to a spec test and first run `deno install`
-// itest!(local_dir_resolves_symlinks {
-//   args: "run -A index.js",
-//   output: "npm/local_dir_resolves_symlinks/index.out",
-//   exit_code: 0,
-//   envs: env_vars_for_npm_tests(),
-//   cwd: Some("npm/local_dir_resolves_symlinks/"),
-//   copy_temp_dir: Some("npm/local_dir_resolves_symlinks/"),
-//   http_server: true,
-// });
-
 // FIXME(bartlomieju): npm: specifiers are not handled in dynamic imports
 // at the moment
 // itest!(dynamic_import {
