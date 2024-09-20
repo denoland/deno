@@ -125,10 +125,23 @@ impl CjsCodeAnalyzer for CliCjsCodeAnalyzer {
     let source = match source {
       Some(source) => source,
       None => {
-        self
-          .fs
-          .read_text_file_lossy_async(specifier.to_file_path().unwrap(), None)
-          .await?
+        if let Ok(path) = specifier.to_file_path() {
+          if let Ok(source_from_file) =
+            self.fs.read_text_file_lossy_async(path, None).await
+          {
+            source_from_file
+          } else {
+            return Ok(ExtNodeCjsAnalysis::Cjs(CjsAnalysisExports {
+              exports: vec![],
+              reexports: vec![],
+            }));
+          }
+        } else {
+          return Ok(ExtNodeCjsAnalysis::Cjs(CjsAnalysisExports {
+            exports: vec![],
+            reexports: vec![],
+          }));
+        }
       }
     };
     let analysis = self.inner_cjs_analysis(specifier, &source).await?;
