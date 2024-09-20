@@ -3896,6 +3896,7 @@ fn node_modules_dir_arg() -> Arg {
   Arg::new("node-modules-dir")
     .long("node-modules-dir")
     .num_args(0..=1)
+    .default_missing_value("auto")
     .value_parser(clap::builder::ValueParser::new(parse_node_modules_dir_mode))
     .value_name("MODE")
     .require_equals(true)
@@ -8494,7 +8495,7 @@ mod tests {
           watch: None,
           bare: true,
         }),
-        node_modules_dir: None,
+        node_modules_dir: Some(NodeModulesDirMode::Auto),
         code_cache_enabled: true,
         ..Flags::default()
       }
@@ -10814,5 +10815,24 @@ mod tests {
       r.unwrap_err().to_string(),
       "error: invalid value 'https://example.com': URLs are not supported, only domains and ips"
     );
+  }
+
+  #[test]
+  fn node_modules_dir_default() {
+    let r =
+      flags_from_vec(svec!["deno", "run", "--node-modules-dir", "./foo.ts"]);
+    let flags = r.unwrap();
+    assert_eq!(
+      flags,
+      Flags {
+        subcommand: DenoSubcommand::Run(RunFlags {
+          script: "./foo.ts".into(),
+          ..Default::default()
+        }),
+        node_modules_dir: Some(NodeModulesDirMode::Auto),
+        code_cache_enabled: true,
+        ..Default::default()
+      }
+    )
   }
 }
