@@ -391,8 +391,8 @@ export class ChildProcess extends EventEmitter {
           this.emit("exit", exitCode, signalCode);
           await this.#_waitForChildStreamsToClose();
           this.#closePipes();
-          nextTick(flushStdio, this);
           maybeClose(this);
+          nextTick(flushStdio, this);
         });
       })();
     } catch (err) {
