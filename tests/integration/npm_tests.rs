@@ -1561,28 +1561,6 @@ itest!(create_require {
   http_server: true,
 });
 
-// TODO(2.0): this should be rewritten to a spec test and first run `deno install`
-// itest!(node_modules_import_run {
-//   args: "run --quiet main.ts",
-//   output: "npm/node_modules_import/main.out",
-//   http_server: true,
-//   copy_temp_dir: Some("npm/node_modules_import/"),
-//   cwd: Some("npm/node_modules_import/"),
-//   envs: env_vars_for_npm_tests(),
-//   exit_code: 0,
-// });
-
-// TODO(2.0): this should be rewritten to a spec test and first run `deno install`
-// itest!(node_modules_import_check {
-//   args: "check --quiet main.ts",
-//   output: "npm/node_modules_import/main_check.out",
-//   envs: env_vars_for_npm_tests(),
-//   http_server: true,
-//   cwd: Some("npm/node_modules_import/"),
-//   copy_temp_dir: Some("npm/node_modules_import/"),
-//   exit_code: 1,
-// });
-
 itest!(non_existent_dep {
   args: "cache npm:@denotest/non-existent-dep",
   envs: env_vars_for_npm_tests(),
