@@ -454,7 +454,8 @@ fn filter_coverages(
 
   // Matches virtual file paths for doc testing
   // e.g. file:///path/to/mod.ts$23-29.ts
-  let doc_test_re = Regex::new(r"\$\d+-\d+\.(ts|js)$").unwrap();
+  let doc_test_re =
+    Regex::new(r"\$\d+-\d+\.(js|mjs|cjs|jsx|ts|mts|cts|tsx)$").unwrap();
 
   coverages
     .into_iter()
