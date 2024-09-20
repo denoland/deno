@@ -285,19 +285,9 @@ fn format_markdown(
             dprint_plugin_json::format_text(&fake_filename, text, &json_config)
           }
           "css" | "scss" | "sass" | "less" => {
-            if unstable_options.css {
-              format_css(&fake_filename, text, fmt_options)
-            } else {
-              Ok(None)
-            }
+            format_css(&fake_filename, text, fmt_options)
           }
-          "html" => {
-            if unstable_options.html {
-              format_html(&fake_filename, text, fmt_options)
-            } else {
-              Ok(None)
-            }
-          }
+          "html" => format_html(&fake_filename, text, fmt_options),
           "svelte" | "vue" | "astro" => {
             if unstable_options.component {
               format_html(&fake_filename, text, fmt_options)
@@ -305,18 +295,12 @@ fn format_markdown(
               Ok(None)
             }
           }
-          "yml" | "yaml" => {
-            if unstable_options.yaml {
-              pretty_yaml::format_text(
-                text,
-                &get_resolved_yaml_config(fmt_options),
-              )
-              .map(Some)
-              .map_err(AnyError::from)
-            } else {
-              Ok(None)
-            }
-          }
+          "yml" | "yaml" => pretty_yaml::format_text(
+            text,
+            &get_resolved_yaml_config(fmt_options),
+          )
+          .map(Some)
+          .map_err(AnyError::from),
           _ => {
             let mut codeblock_config =
               get_resolved_typescript_config(fmt_options);
@@ -473,19 +457,9 @@ pub fn format_file(
     }
     "json" | "jsonc" => format_json(file_path, file_text, fmt_options),
     "css" | "scss" | "sass" | "less" => {
-      if unstable_options.css {
-        format_css(file_path, file_text, fmt_options)
-      } else {
-        Ok(None)
-      }
+      format_css(file_path, file_text, fmt_options)
     }
-    "html" => {
-      if unstable_options.html {
-        format_html(file_path, file_text, fmt_options)
-      } else {
-        Ok(None)
-      }
-    }
+    "html" => format_html(file_path, file_text, fmt_options),
     "svelte" | "vue" | "astro" => {
       if unstable_options.component {
         format_html(file_path, file_text, fmt_options)
@@ -493,18 +467,12 @@ pub fn format_file(
         Ok(None)
       }
     }
-    "yml" | "yaml" => {
-      if unstable_options.yaml {
-        pretty_yaml::format_text(
-          file_text,
-          &get_resolved_yaml_config(fmt_options),
-        )
-        .map(Some)
-        .map_err(AnyError::from)
-      } else {
-        Ok(None)
-      }
-    }
+    "yml" | "yaml" => pretty_yaml::format_text(
+      file_text,
+      &get_resolved_yaml_config(fmt_options),
+    )
+    .map(Some)
+    .map_err(AnyError::from),
     "ipynb" => dprint_plugin_jupyter::format_text(
       file_text,
       |file_path: &Path, file_text: String| {

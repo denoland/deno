@@ -281,10 +281,7 @@ impl BenchOptions {
 
 #[derive(Clone, Debug, Default, PartialEq, Eq, Hash)]
 pub struct UnstableFmtOptions {
-  pub css: bool,
-  pub html: bool,
   pub component: bool,
-  pub yaml: bool,
 }
 
 #[derive(Clone, Debug)]
@@ -317,10 +314,7 @@ impl FmtOptions {
     Self {
       options: resolve_fmt_options(fmt_flags, fmt_config.options),
       unstable: UnstableFmtOptions {
-        css: unstable.css || fmt_flags.unstable_css,
-        html: unstable.html || fmt_flags.unstable_html,
         component: unstable.component || fmt_flags.unstable_component,
-        yaml: unstable.yaml || fmt_flags.unstable_yaml,
       },
       files: fmt_config.files,
     }
@@ -1301,10 +1295,7 @@ impl CliOptions {
   pub fn resolve_config_unstable_fmt_options(&self) -> UnstableFmtOptions {
     let workspace = self.workspace();
     UnstableFmtOptions {
-      css: workspace.has_unstable("fmt-css"),
-      html: workspace.has_unstable("fmt-html"),
       component: workspace.has_unstable("fmt-component"),
-      yaml: workspace.has_unstable("fmt-yaml"),
     }
   }
 
@@ -1609,10 +1600,7 @@ impl CliOptions {
         "sloppy-imports",
         "byonm",
         "bare-node-builtins",
-        "fmt-css",
-        "fmt-html",
         "fmt-component",
-        "fmt-yaml",
       ]);
       // add more unstable flags to the same vector holding granular flags
       all_valid_unstable_flags.append(&mut another_unstable_flags);

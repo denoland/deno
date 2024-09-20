@@ -1385,17 +1385,8 @@ impl Inner {
         .data_for_specifier(&specifier)
         .map(|d| &d.member_dir.workspace);
       let unstable_options = UnstableFmtOptions {
-        css: maybe_workspace
-          .map(|w| w.has_unstable("fmt-css"))
-          .unwrap_or(false),
-        html: maybe_workspace
-          .map(|w| w.has_unstable("fmt-html"))
-          .unwrap_or(false),
         component: maybe_workspace
           .map(|w| w.has_unstable("fmt-component"))
-          .unwrap_or(false),
-        yaml: maybe_workspace
-          .map(|w| w.has_unstable("fmt-yaml"))
           .unwrap_or(false),
       };
       let document = document.clone();
