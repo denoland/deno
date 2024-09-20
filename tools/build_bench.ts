@@ -1,4 +1,4 @@
-#!/usr/bin/env -S deno run --allow-env --allow-read --allow-write --allow-run
+#!/usr/bin/env -S deno run --allow-env --allow-read --allow-write --allow-run=git,cargo
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
 import $ from "https://deno.land/x/dax@0.32.0/mod.ts";

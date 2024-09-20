@@ -78,7 +78,7 @@ deno_semver.workspace = true
 deno_task_shell = "=0.17.0"
 deno_terminal.workspace = true
 eszip = "=0.78.0"
-libsui = "0.3.0"
+libsui = "0.3.1"
 napi_sym.workspace = true
 node_resolver.workspace = true
 
@@ -124,7 +124,7 @@ libz-sys.workspace = true
 log = { workspace = true, features = ["serde"] }
 lsp-types.workspace = true
 malva = "=0.10.1"
-markup_fmt = "=0.12.0"
+markup_fmt = "=0.13.0"
 memmem.workspace = true
 monch.workspace = true
 notify.workspace = true
