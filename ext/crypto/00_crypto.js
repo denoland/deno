@@ -979,8 +979,8 @@ class SubtleCrypto {
     // 8.
     const result = await importKeyInner(
       format,
-      keyData,
       normalizedAlgorithm,
+      keyData,
       extractable,
       keyUsages,
     );
