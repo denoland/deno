@@ -3615,9 +3615,8 @@ fn napi_is_detached_arraybuffer(
 
 mod uv {
   use deno_runtime::deno_napi::*;
+  use std::mem::MaybeUninit;
   use std::ptr::addr_of_mut;
-  use std::{mem::MaybeUninit, sync::atomic::AtomicBool};
-  // use crate::
 
   fn cvt(res: c_int) -> c_int {
     if libc::EDOM > 0 {
@@ -3646,10 +3645,9 @@ mod uv {
   #[cfg(unix)]
   mod mutex {
     use super::*;
+    type uv_mutex_t = libc::pthread_mutex_t;
     #[no_mangle]
-    unsafe extern "C" fn uv_mutex_init(
-      lock: *mut libc::pthread_mutex_t,
-    ) -> c_int {
+    unsafe extern "C" fn uv_mutex_init(lock: *mut uv_mutex_t) -> c_int {
       use std::mem::MaybeUninit;
       let mut attr = MaybeUninit::<libc::pthread_mutexattr_t>::uninit();
       unsafe {
@@ -3667,23 +3665,57 @@ mod uv {
     }
 
     #[no_mangle]
-    unsafe extern "C" fn uv_mutex_lock(lock: *mut libc::pthread_mutex_t) {
+    unsafe extern "C" fn uv_mutex_lock(lock: *mut uv_mutex_t) {
       unsafe {
         assert_ok(libc::pthread_mutex_lock(lock));
       }
     }
 
     #[no_mangle]
-    unsafe extern "C" fn uv_mutex_unlock(lock: *mut libc::pthread_mutex_t) {
+    unsafe extern "C" fn uv_mutex_unlock(lock: *mut uv_mutex_t) {
       unsafe {
         assert_ok(libc::pthread_mutex_unlock(lock));
       }
     }
 
     #[no_mangle]
-    unsafe extern "C" fn uv_mutex_destroy(lock: *mut libc::pthread_mutex_t) {
+    unsafe extern "C" fn uv_mutex_destroy(lock: *mut uv_mutex_t) {
       unsafe {
         assert_ok(libc::pthread_mutex_destroy(lock));
+      }
+    }
+  }
+  #[cfg(windows)]
+  mod mutex {
+    use windows_sys::Win32::System::Threading as win;
+    type uv_mutex_t = win::CRITICAL_SECTION;
+
+    #[no_mangle]
+    unsafe extern "C" fn uv_mutex_init(lock: *mut uv_mutex_t) -> c_int {
+      unsafe {
+        win::InitializeCriticalSection(lock);
+      }
+      0
+    }
+
+    #[no_mangle]
+    unsafe extern "C" fn uv_mutex_lock(lock: *mut uv_mutex_t) {
+      unsafe {
+        win::EnterCriticalSection(lock);
+      }
+    }
+
+    #[no_mangle]
+    unsafe extern "C" fn uv_mutex_unlock(lock: *mut uv_mutex_t) {
+      unsafe {
+        win::LeaveCriticalSection(lock);
+      }
+    }
+
+    #[no_mangle]
+    unsafe extern "C" fn uv_mutex_destroy(lock: *mut uv_mutex_t) {
+      unsafe {
+        win::DeleteCriticalSection(lock);
       }
     }
   }
@@ -3713,6 +3745,8 @@ mod uv {
     UV_HANDLE_TYPE_MAX,
   }
 
+  const UV_HANDLE_SIZE: usize = 96;
+
   #[repr(C)]
   struct uv_handle_t {
     // public members
@@ -3721,7 +3755,8 @@ mod uv {
     pub r#type: uv_handle_type,
 
     _padding: [MaybeUninit<u8>; const {
-      96 - size_of::<*mut c_void>()
+      UV_HANDLE_SIZE
+        - size_of::<*mut c_void>()
         - size_of::<*mut uv_loop_t>()
         - size_of::<uv_handle_type>()
     }],
