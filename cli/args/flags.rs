@@ -3930,6 +3930,7 @@ fn node_modules_dir_arg() -> Arg {
   Arg::new("node-modules-dir")
     .long("node-modules-dir")
     .num_args(0..=1)
+    .default_missing_value("auto")
     .value_parser(clap::builder::ValueParser::new(parse_node_modules_dir_mode))
     .value_name("MODE")
     .require_equals(true)
@@ -4772,7 +4773,10 @@ fn serve_parse(
     format!("{host}:{port}")
   }])?;
   match &mut flags.permissions.allow_net {
-    None => flags.permissions.allow_net = Some(allowed),
+    None if !flags.permissions.allow_all => {
+      flags.permissions.allow_net = Some(allowed)
+    }
+    None => {}
     Some(v) => {
       if !v.is_empty() {
         v.extend(allowed);
@@ -5115,12 +5119,12 @@ fn permission_args_parse(
   }
 
   if let Some(net_wl) = matches.remove_many::<String>("allow-net") {
-    let net_allowlist = flags_net::parse(net_wl.collect()).unwrap();
+    let net_allowlist = flags_net::parse(net_wl.collect())?;
     flags.permissions.allow_net = Some(net_allowlist);
   }
 
   if let Some(net_wl) = matches.remove_many::<String>("deny-net") {
-    let net_denylist = flags_net::parse(net_wl.collect()).unwrap();
+    let net_denylist = flags_net::parse(net_wl.collect())?;
     flags.permissions.deny_net = Some(net_denylist);
   }
 
@@ -8530,7 +8534,7 @@ mod tests {
           watch: None,
           bare: true,
         }),
-        node_modules_dir: None,
+        node_modules_dir: Some(NodeModulesDirMode::Auto),
         code_cache_enabled: true,
         ..Flags::default()
       }
@@ -10787,6 +10791,31 @@ mod tests {
   }
 
   #[test]
+  fn serve_with_allow_all() {
+    let r = flags_from_vec(svec!["deno", "serve", "--allow-all", "./main.ts"]);
+    let flags = r.unwrap();
+    assert_eq!(
+      &flags,
+      &Flags {
+        subcommand: DenoSubcommand::Serve(ServeFlags::new_default(
+          "./main.ts".into(),
+          8000,
+          "0.0.0.0"
+        )),
+        permissions: PermissionFlags {
+          allow_all: true,
+          allow_net: None,
+          ..Default::default()
+        },
+        code_cache_enabled: true,
+        ..Default::default()
+      }
+    );
+    // just make sure this doesn't panic
+    let _ = flags.permissions.to_options();
+  }
+
+  #[test]
   fn escape_and_split_commas_test() {
     assert_eq!(escape_and_split_commas("foo".to_string()).unwrap(), ["foo"]);
     assert!(escape_and_split_commas("foo,".to_string()).is_err());
@@ -10811,5 +10840,38 @@ mod tests {
       escape_and_split_commas("foo,,,bar".to_string()).unwrap(),
       ["foo,", "bar"]
     );
+  }
+
+  #[test]
+  fn net_flag_with_url() {
+    let r = flags_from_vec(svec![
+      "deno",
+      "run",
+      "--allow-net=https://example.com",
+      "script.ts"
+    ]);
+    assert_eq!(
+      r.unwrap_err().to_string(),
+      "error: invalid value 'https://example.com': URLs are not supported, only domains and ips"
+    );
+  }
+
+  #[test]
+  fn node_modules_dir_default() {
+    let r =
+      flags_from_vec(svec!["deno", "run", "--node-modules-dir", "./foo.ts"]);
+    let flags = r.unwrap();
+    assert_eq!(
+      flags,
+      Flags {
+        subcommand: DenoSubcommand::Run(RunFlags {
+          script: "./foo.ts".into(),
+          ..Default::default()
+        }),
+        node_modules_dir: Some(NodeModulesDirMode::Auto),
+        code_cache_enabled: true,
+        ..Default::default()
+      }
+    )
   }
 }
