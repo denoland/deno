@@ -691,37 +691,29 @@ async fn sync_resolution_with_fs(
   Ok(())
 }
 
-fn local_node_modules_package_folder_name(
+fn local_package_folder_name(
   local_registry_dir: &Path,
   package: &NpmResolutionPackage,
 ) -> PathBuf {
-  join_package_name(
-    &local_registry_dir
-      .join(get_package_folder_id_folder_name(
-        &package.get_package_cache_folder_id(),
-      ))
-      .join("node_modules"),
-    &package.id.nv.name,
-  )
-}
-
-fn ran_scripts_file(
-  local_registry_dir: &Path,
-  package: &NpmResolutionPackage,
-) -> PathBuf {
-  local_node_modules_package_folder_name(local_registry_dir, package)
-    .join(".scripts-run")
-}
-fn warned_scripts_file(
-  local_registry_dir: &Path,
-  package: &NpmResolutionPackage,
-) -> PathBuf {
-  local_node_modules_package_folder_name(local_registry_dir, package)
-    .join(".scripts-warned")
+  local_registry_dir.join(get_package_folder_id_folder_name(
+    &package.get_package_cache_folder_id(),
+  ))
 }
 
 struct LocalLifecycleScripts<'a> {
   deno_local_registry_dir: &'a Path,
+}
+
+impl<'a> LocalLifecycleScripts<'a> {
+  fn ran_scripts_file(&self, package: &NpmResolutionPackage) -> PathBuf {
+    local_package_folder_name(&self.deno_local_registry_dir, package)
+      .join(".scripts-run")
+  }
+
+  fn warned_scripts_file(&self, package: &NpmResolutionPackage) -> PathBuf {
+    local_package_folder_name(&self.deno_local_registry_dir, package)
+      .join(".scripts-warned")
+  }
 }
 
 impl<'a> super::common::lifecycle_scripts::LifecycleScriptsStrategy
@@ -734,12 +726,8 @@ impl<'a> super::common::lifecycle_scripts::LifecycleScriptsStrategy
   fn did_run_scripts(
     &self,
     package: &NpmResolutionPackage,
-    _package_path: &Path,
   ) -> std::result::Result<(), deno_core::anyhow::Error> {
-    std::fs::write(
-      ran_scripts_file(&self.deno_local_registry_dir, package),
-      "",
-    )?;
+    std::fs::write(self.ran_scripts_file(package), "")?;
     Ok(())
   }
 
@@ -774,29 +762,18 @@ impl<'a> super::common::lifecycle_scripts::LifecycleScriptsStrategy
       );
 
       for (package, _) in packages {
-        let _ignore_err = fs::write(
-          warned_scripts_file(&self.deno_local_registry_dir, package),
-          "",
-        );
+        let _ignore_err = fs::write(self.warned_scripts_file(package), "");
       }
     }
     Ok(())
   }
 
-  fn has_warned(
-    &self,
-    package: &NpmResolutionPackage,
-    _package_path: &Path,
-  ) -> bool {
-    warned_scripts_file(&self.deno_local_registry_dir, package).exists()
+  fn has_warned(&self, package: &NpmResolutionPackage) -> bool {
+    self.warned_scripts_file(package).exists()
   }
 
-  fn has_run(
-    &self,
-    package: &NpmResolutionPackage,
-    _package_path: &Path,
-  ) -> bool {
-    ran_scripts_file(&self.deno_local_registry_dir, package).exists()
+  fn has_run(&self, package: &NpmResolutionPackage) -> bool {
+    self.ran_scripts_file(package).exists()
   }
 }
 

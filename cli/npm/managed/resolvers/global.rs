@@ -246,24 +246,15 @@ impl<'a> super::common::lifecycle_scripts::LifecycleScriptsStrategy
   fn did_run_scripts(
     &self,
     _package: &NpmResolutionPackage,
-    _package_path: &Path,
   ) -> std::result::Result<(), deno_core::anyhow::Error> {
     Ok(())
   }
 
-  fn has_warned(
-    &self,
-    package: &NpmResolutionPackage,
-    _package_path: &Path,
-  ) -> bool {
+  fn has_warned(&self, package: &NpmResolutionPackage) -> bool {
     self.warned_scripts_file(package).exists()
   }
 
-  fn has_run(
-    &self,
-    _package: &NpmResolutionPackage,
-    _package_path: &Path,
-  ) -> bool {
+  fn has_run(&self, _package: &NpmResolutionPackage) -> bool {
     false
   }
 }

@@ -22,22 +22,13 @@ pub trait LifecycleScriptsStrategy {
     packages: &[(&NpmResolutionPackage, PathBuf)],
   ) -> Result<(), AnyError>;
 
-  fn has_warned(
-    &self,
-    package: &NpmResolutionPackage,
-    package_path: &Path,
-  ) -> bool;
+  fn has_warned(&self, package: &NpmResolutionPackage) -> bool;
 
-  fn has_run(
-    &self,
-    package: &NpmResolutionPackage,
-    package_path: &Path,
-  ) -> bool;
+  fn has_run(&self, package: &NpmResolutionPackage) -> bool;
 
   fn did_run_scripts(
     &self,
     package: &NpmResolutionPackage,
-    package_path: &Path,
   ) -> Result<(), AnyError>;
 }
 
@@ -117,13 +108,13 @@ impl<'a> LifecycleScripts<'a> {
         std::backtrace::Backtrace::capture()
       );
       if self.can_run_scripts(&package.id.nv) {
-        if !self.strategy.has_run(package, &package_path) {
+        if !self.strategy.has_run(package) {
           self
             .packages_with_scripts
             .push((package, package_path.into_owned()));
         }
-      } else if !self.strategy.has_run(package, &package_path)
-        && !self.strategy.has_warned(package, &package_path)
+      } else if !self.strategy.has_run(package)
+        && !self.strategy.has_warned(package)
       {
         eprintln!("packages with scripts not run: {}", package.id.nv);
         self
@@ -211,7 +202,7 @@ impl<'a> LifecycleScripts<'a> {
             }
           }
         }
-        self.strategy.did_run_scripts(package, &package_path)?;
+        self.strategy.did_run_scripts(package)?;
       }
     }
     if failed_packages.is_empty() {
