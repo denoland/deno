@@ -1,3 +1,5 @@
+// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
+
 use super::bin_entries::BinEntries;
 use crate::args::LifecycleScriptsConfig;
 use deno_npm::resolution::NpmResolutionSnapshot;
