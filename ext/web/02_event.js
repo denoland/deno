@@ -7,7 +7,6 @@
 
 import { core, primordials } from "ext:core/mod.js";
 const {
-  ArrayPrototypeFilter,
   ArrayPrototypeIncludes,
   ArrayPrototypeIndexOf,
   ArrayPrototypeMap,
@@ -982,12 +981,7 @@ class EventTarget {
     );
 
     const { listeners } = self[eventTargetData];
-    if (callback !== null && listeners[type]) {
-      listeners[type] = ArrayPrototypeFilter(
-        listeners[type],
-        (listener) => listener.callback !== callback,
-      );
-    } else if (callback === null || !listeners[type]) {
+    if (callback === null || !listeners[type]) {
       return;
     }
 
