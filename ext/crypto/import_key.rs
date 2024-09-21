@@ -7,14 +7,12 @@ use deno_core::JsBuffer;
 use deno_core::ToJsBuffer;
 use elliptic_curve::pkcs8::PrivateKeyInfo;
 use p256::pkcs8::EncodePrivateKey;
-use ring::signature::EcdsaKeyPair;
 use rsa::pkcs1::UintRef;
 use rsa::pkcs8::der::Encode;
 use serde::Deserialize;
 use serde::Serialize;
 use spki::der::Decode;
 
-use crate::key::CryptoNamedCurve;
 use crate::shared::*;
 
 #[derive(Deserialize)]
@@ -45,7 +43,9 @@ pub enum KeyData {
     y: String,
   },
   JwkPrivateEc {
+    #[allow(dead_code)]
     x: String,
+    #[allow(dead_code)]
     y: String,
     d: String,
   },
