@@ -547,11 +547,16 @@ fn napi_delete_async_work(env: *mut Env, work: napi_async_work) -> napi_status {
 }
 
 #[napi_sym]
-fn napi_get_uv_event_loop(env: *mut Env, uv_loop: *mut *mut ()) -> napi_status {
-  let env = check_env!(env);
+fn napi_get_uv_event_loop(
+  env_ptr: *mut Env,
+  uv_loop: *mut *mut (),
+) -> napi_status {
+  let env = check_env!(env_ptr);
   check_arg!(env, uv_loop);
-  // There is no uv_loop in Deno
-  napi_set_last_error(env, napi_generic_failure)
+  unsafe {
+    *uv_loop = env_ptr.cast();
+  }
+  0
 }
 
 #[napi_sym]
