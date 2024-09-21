@@ -196,7 +196,7 @@ impl<TCjsCodeAnalyzer: CjsCodeAnalyzer, TNodeResolverEnv: NodeResolverEnv>
             &referrer,
             // FIXME(bartlomieju): check if these conditions are okay, probably
             // should be `deno-require`, because `deno` is already used in `esm_resolver.rs`
-            &["deno", "require", "default"],
+            &["deno", "node", "require", "default"],
             NodeResolutionMode::Execution,
           );
           let reexport_specifier = match result {
