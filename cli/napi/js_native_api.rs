@@ -3821,7 +3821,7 @@ mod uv {
       let mut resource_name: MaybeUninit<napi_value> = MaybeUninit::uninit();
       assert_ok(napi_create_string_utf8(
         r#loop,
-        "test_async_resource".as_ptr() as *const c_char,
+        c"uv_async".as_ptr(),
         usize::MAX,
         resource_name.as_mut_ptr(),
       ));
