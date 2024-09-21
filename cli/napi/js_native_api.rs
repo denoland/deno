@@ -3618,14 +3618,6 @@ mod uv {
   use std::mem::MaybeUninit;
   use std::ptr::addr_of_mut;
 
-  fn cvt(res: c_int) -> c_int {
-    if libc::EDOM > 0 {
-      res
-    } else {
-      -res
-    }
-  }
-
   fn assert_ok(res: c_int) -> c_int {
     if res != 0 {
       eprintln!("bad result: {res}");
@@ -3660,7 +3652,11 @@ mod uv {
         ));
         let err = libc::pthread_mutex_init(lock, attr_ptr);
         assert_ok(libc::pthread_mutexattr_destroy(attr_ptr));
-        cvt(err)
+        if libc::EDOM > 0 {
+          err
+        } else {
+          -err
+        }
       }
     }
 
