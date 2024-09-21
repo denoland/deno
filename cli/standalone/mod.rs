@@ -580,8 +580,17 @@ pub async fn run(
   let cjs_resolutions = Arc::new(CjsResolutionStore::default());
   let cache_db = Caches::new(deno_dir_provider.clone());
   let node_analysis_cache = NodeAnalysisCache::new(cache_db.node_analysis_db());
-  let cjs_esm_code_analyzer =
-    CliCjsCodeAnalyzer::new(node_analysis_cache, fs.clone());
+  let cli_node_resolver = Arc::new(CliNodeResolver::new(
+    cjs_resolutions.clone(),
+    fs.clone(),
+    node_resolver.clone(),
+    npm_resolver.clone(),
+  ));
+  let cjs_esm_code_analyzer = CliCjsCodeAnalyzer::new(
+    node_analysis_cache,
+    fs.clone(),
+    cli_node_resolver.clone(),
+  );
   let node_code_translator = Arc::new(NodeCodeTranslator::new(
     cjs_esm_code_analyzer,
     deno_runtime::deno_node::DenoFsNodeResolverEnv::new(fs.clone()),
@@ -637,12 +646,6 @@ pub async fn run(
       metadata.workspace_resolver.pkg_json_resolution,
     )
   };
-  let cli_node_resolver = Arc::new(CliNodeResolver::new(
-    cjs_resolutions.clone(),
-    fs.clone(),
-    node_resolver.clone(),
-    npm_resolver.clone(),
-  ));
   let module_loader_factory = StandaloneModuleLoaderFactory {
     shared: Arc::new(SharedModuleLoaderState {
       eszip: WorkspaceEszip {

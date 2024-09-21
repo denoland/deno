@@ -1007,7 +1007,10 @@ Module.prototype._compile = function (content, filename, format) {
   try {
     compiledWrapper = wrapSafe(filename, content, this, format);
   } catch (err) {
-    if (err instanceof SyntaxError && op_require_can_parse_as_esm(content)) {
+    if (
+      format !== "commonjs" && err instanceof SyntaxError &&
+      op_require_can_parse_as_esm(content)
+    ) {
       return loadESMFromCJS(this, filename, content);
     }
     throw err;
@@ -1067,7 +1070,7 @@ Module._extensions[".js"] = function (module, filename) {
   let format;
   if (StringPrototypeEndsWith(filename, ".js")) {
     const pkg = op_require_read_closest_package_json(filename);
-    if (pkg?.typ === "module") {
+    if (pkg?.type === "module") {
       format = "module";
     } else if (pkg?.type === "commonjs") {
       format = "commonjs";
