@@ -1252,6 +1252,7 @@ dependencies = [
  "walkdir",
  "which 4.4.2",
  "winapi",
+ "windows-sys 0.52.0",
  "winres",
  "yoke",
  "zeromq",

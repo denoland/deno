@@ -387,6 +387,8 @@ fn main() {
         "Missing symbols list! Generate using tools/napi/generate_symbols_lists.js",
     );
 
+  println!("cargo:rustc-rerun-if-changed={}", symbols_path.display());
+
   #[cfg(target_os = "windows")]
   println!(
     "cargo:rustc-link-arg-bin=deno=/DEF:{}",
