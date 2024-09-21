@@ -102,11 +102,6 @@ impl<'a> LifecycleScripts<'a> {
     package_path: Cow<Path>,
   ) {
     if has_lifecycle_scripts(package, &package_path) {
-      eprintln!(
-        "has lifecycle scripts! {} {}",
-        package.id.nv,
-        std::backtrace::Backtrace::capture()
-      );
       if self.can_run_scripts(&package.id.nv) {
         if !self.strategy.has_run(package) {
           self
@@ -116,7 +111,6 @@ impl<'a> LifecycleScripts<'a> {
       } else if !self.strategy.has_run(package)
         && !self.strategy.has_warned(package)
       {
-        eprintln!("packages with scripts not run: {}", package.id.nv);
         self
           .packages_with_scripts_not_run
           .push((package, package_path.into_owned()));

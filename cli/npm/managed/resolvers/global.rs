@@ -7,6 +7,7 @@ use std::path::Path;
 use std::path::PathBuf;
 use std::sync::Arc;
 
+use crate::colors;
 use async_trait::async_trait;
 use deno_ast::ModuleSpecifier;
 use deno_core::error::AnyError;
@@ -230,13 +231,22 @@ impl<'a> super::common::lifecycle_scripts::LifecycleScriptsStrategy
     &self,
     packages: &[(&NpmResolutionPackage, PathBuf)],
   ) -> std::result::Result<(), deno_core::anyhow::Error> {
-    let packages_str = packages
-      .iter()
-      .map(|(package, _)| package.id.nv.to_string())
-      .collect::<Vec<String>>()
-      .join(", ");
-    log::warn!("{}: The following packages contained npm lifecycle scripts that were not executed: {}
-    Lifecycle scripts are only supported when using a local `node_modules` directory. Add `{}` to your deno config to enable it.", crate::colors::yellow("warning"), crate::colors::cyan(&packages_str), crate::colors::cyan("\"nodeModulesDir\": \"auto\""));
+    log::warn!("{} The following packages contained npm lifecycle scripts ({}) that were not executed:", colors::yellow("Warning"), colors::gray("preinstall/install/postinstall"));
+    for (package, _) in packages {
+      log::warn!("┠─ {}", colors::gray(format!("npm:{}", package.id.nv)));
+    }
+    log::warn!("┃");
+    log::warn!(
+      "┠─ {}",
+      colors::italic("This may cause the packages to not work correctly.")
+    );
+    log::warn!("┠─ {}", colors::italic("Lifecycle scripts are only supported when using a `node_modules` directory."));
+    log::warn!(
+      "┠─ {}",
+      colors::italic("Enable it in your deno config file:")
+    );
+    log::warn!("┖─ {}", colors::bold("\"nodeModulesDir\": \"auto\""));
+
     for (package, _) in packages {
       std::fs::write(self.warned_scripts_file(package), "")?;
     }

@@ -668,7 +668,7 @@ async fn sync_resolution_with_fs(
           );
         } else {
           log::warn!(
-            "┗─ {}",
+            "┖─ {}",
             colors::gray(format!("npm:{:?} ({})", package_id, msg))
           );
         }
@@ -747,7 +747,7 @@ impl<'a> super::common::lifecycle_scripts::LifecycleScriptsStrategy
         "┠─ {}",
         colors::italic("This may cause the packages to not work correctly.")
       );
-      log::warn!("┗─ {}", colors::italic("To run lifecycle scripts, use the `--allow-scripts` flag with `deno install`:"));
+      log::warn!("┖─ {}", colors::italic("To run lifecycle scripts, use the `--allow-scripts` flag with `deno install`:"));
       let packages_comma_separated = packages
         .iter()
         .map(|(p, _)| format!("npm:{}", p.id.nv))
