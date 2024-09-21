@@ -3687,6 +3687,7 @@ mod uv {
   }
   #[cfg(windows)]
   mod mutex {
+    use super::*;
     use windows_sys::Win32::System::Threading as win;
     type uv_mutex_t = win::CRITICAL_SECTION;
 
