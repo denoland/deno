@@ -1476,6 +1476,7 @@ dependencies = [
  "rand",
  "ring",
  "rsa",
+ "sec1",
  "serde",
  "serde_bytes",
  "sha1",
