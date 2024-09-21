@@ -14,6 +14,7 @@ description = "Fetch API implementation for Deno"
 path = "lib.rs"
 
 [dependencies]
+async-compression.workspace = true
 base64.workspace = true
 bytes.workspace = true
 data-url.workspace = true
@@ -37,7 +38,6 @@ tokio-rustls.workspace = true
 tokio-socks.workspace = true
 tokio-util = { workspace = true, features = ["io"] }
 tower.workspace = true
-tower-http.workspace = true
 tower-service.workspace = true
 
 [dev-dependencies]

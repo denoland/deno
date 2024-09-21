@@ -27,6 +27,7 @@ use deno_core::futures::FutureExt;
 use deno_core::futures::Stream;
 use deno_core::futures::StreamExt;
 use deno_core::futures::TryFutureExt;
+use deno_core::futures::TryStreamExt;
 use deno_core::op2;
 use deno_core::url::Url;
 use deno_core::AsyncRefCell;
@@ -51,11 +52,13 @@ use deno_tls::TlsKeysHolder;
 
 use bytes::Bytes;
 use data_url::DataUrl;
+use http::header;
 use http::header::HeaderName;
 use http::header::HeaderValue;
 use http::header::ACCEPT;
 use http::header::ACCEPT_ENCODING;
 use http::header::AUTHORIZATION;
+use http::header::CONTENT_ENCODING;
 use http::header::CONTENT_LENGTH;
 use http::header::HOST;
 use http::header::PROXY_AUTHORIZATION;
@@ -66,6 +69,7 @@ use http::Method;
 use http::Uri;
 use http_body_util::BodyExt;
 use hyper::body::Frame;
+use hyper::body::Incoming;
 use hyper_util::client::legacy::connect::HttpConnector;
 use hyper_util::client::legacy::connect::HttpInfo;
 use hyper_util::rt::TokioExecutor;
@@ -73,7 +77,6 @@ use hyper_util::rt::TokioTimer;
 use serde::Deserialize;
 use serde::Serialize;
 use tower::ServiceExt;
-use tower_http::decompression::Decompression;
 
 // Re-export data_url
 pub use data_url;
@@ -969,10 +972,9 @@ pub fn create_http_client(
   }
 
   let pooled_client = builder.build(connector);
-  let decompress = Decompression::new(pooled_client).gzip(true).br(true);
 
   Ok(Client {
-    inner: decompress,
+    inner: pooled_client,
     proxies,
     user_agent,
   })
@@ -988,7 +990,7 @@ pub fn op_utf8_to_byte_string(
 
 #[derive(Clone, Debug)]
 pub struct Client {
-  inner: Decompression<hyper_util::client::legacy::Client<Connector, ReqBody>>,
+  inner: hyper_util::client::legacy::Client<Connector, ReqBody>,
   // Used to check whether to include a proxy-authorization header
   proxies: Arc<proxy::Proxies>,
   user_agent: HeaderValue,
@@ -1068,6 +1070,12 @@ impl Client {
       req.headers_mut().insert(PROXY_AUTHORIZATION, auth.clone());
     }
 
+    if let header::Entry::Vacant(entry) =
+      req.headers_mut().entry(ACCEPT_ENCODING)
+    {
+      entry.insert(HeaderValue::from_static("gzip,br"));
+    }
+
     let uri = req.uri().clone();
 
     let resp = self
@@ -1075,8 +1083,63 @@ impl Client {
       .oneshot(req)
       .await
       .map_err(|e| ClientSendError { uri, source: e })?;
-    Ok(resp.map(|b| b.map_err(|e| anyhow!(e)).boxed()))
+    Ok(decompress(resp))
   }
+}
+
+/// Decompress the response body if it is compressed using gzip or brotli.
+fn decompress(resp: http::Response<Incoming>) -> http::Response<ResBody> {
+  let (mut parts, body) = resp.into_parts();
+
+  let body = match parts.headers.entry(CONTENT_ENCODING) {
+    header::Entry::Vacant(_) => body.map_err(|e| anyhow!(e)).boxed(),
+    header::Entry::Occupied(entry) => {
+      let (body, processed) = match entry.get().as_bytes() {
+        b"gzip" => {
+          let stream = body.into_data_stream();
+          let reader = tokio_util::io::StreamReader::new(
+            stream
+              .map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, e)),
+          );
+          let decoder =
+            async_compression::tokio::bufread::GzipDecoder::new(reader);
+          let decoded_stream = tokio_util::io::ReaderStream::new(decoder);
+          let framed_stream =
+            decoded_stream.map(|chunk| chunk.map(hyper::body::Frame::data));
+          let stream_body = http_body_util::StreamBody::new(framed_stream);
+          let body = BodyExt::map_err(stream_body, |e| anyhow!(e)).boxed();
+
+          (body, true)
+        }
+        b"br" => {
+          let stream = body.into_data_stream();
+          let reader = tokio_util::io::StreamReader::new(
+            stream
+              .map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, e)),
+          );
+          let decoder =
+            async_compression::tokio::bufread::BrotliDecoder::new(reader);
+          let decoded_stream = tokio_util::io::ReaderStream::new(decoder);
+          let framed_stream =
+            decoded_stream.map(|chunk| chunk.map(hyper::body::Frame::data));
+          let stream_body = http_body_util::StreamBody::new(framed_stream);
+          let body = BodyExt::map_err(stream_body, |e| anyhow!(e)).boxed();
+
+          (body, true)
+        }
+        _ => (body.map_err(|e| anyhow!(e)).boxed(), false),
+      };
+
+      if processed {
+        entry.remove();
+        parts.headers.remove(CONTENT_LENGTH);
+      }
+
+      body
+    }
+  };
+
+  http::Response::from_parts(parts, body)
 }
 
 pub type ReqBody = http_body_util::combinators::BoxBody<Bytes, Error>;

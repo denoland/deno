@@ -89,6 +89,7 @@ node_resolver = { version = "0.7.0", path = "./ext/node_resolver" }
 
 aes = "=0.8.3"
 anyhow = "1.0.57"
+async-compression = { version = "0.4", features = ["tokio", "brotli", "gzip"] }
 async-trait = "0.1.73"
 base32 = "=0.5.1"
 base64 = "0.21.7"
@@ -184,7 +185,6 @@ tokio-rustls = { version = "0.26.0", default-features = false, features = ["ring
 tokio-socks = "0.5.1"
 tokio-util = "0.7.4"
 tower = { version = "0.4.13", default-features = false, features = ["util"] }
-tower-http = { version = "0.5.2", features = ["decompression-br", "decompression-gzip"] }
 tower-lsp = { package = "deno_tower_lsp", version = "0.1.0", features = ["proposed"] }
 tower-service = "0.3.2"
 twox-hash = "=1.6.3"
