@@ -395,6 +395,10 @@ const ImageTypePatternTable = [
 
 /**
  * Ref: https://mimesniff.spec.whatwg.org/#image-type-pattern-matching-algorithm
+ * NOTE: Some browsers have implementation-defined image formats.
+ * For example, The AVIF image format is supported by all browsers today.
+ * However, the standardization seems to have hard going.
+ * See: https://github.com/whatwg/mimesniff/issues/143
  * @param {Uint8Array} input
  * @returns {string | undefined}
  */

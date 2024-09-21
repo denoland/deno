@@ -179,9 +179,6 @@ See: https://developer.mozilla.org/en-US/docs/Web/API/Blob/type\n",
         }
         // return an error if the MIME type is not supported in the variable list of ImageTypePatternTable below
         // ext/web/01_mimesniff.js
-        //
-        // NOTE: Chromium supports AVIF
-        // https://source.chromium.org/chromium/chromium/src/+/ef3f4e4ed97079dc57861d1195fb2389483bc195:third_party/blink/renderer/platform/image-decoders/image_decoder.cc;l=311
         x => {
           return Err(
             DOMExceptionInvalidStateError::new(
