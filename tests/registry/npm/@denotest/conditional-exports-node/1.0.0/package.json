@@ -1,0 +1,13 @@
+{
+  "name": "@denotest/conditional-exports",
+  "version": "1.0.0",
+  "type": "module",
+  "exports": {
+    ".": {
+      "node": "./good.cjs",
+      "require": "./bad.js",
+      "default": "./index.js"
+    },
+    "./*": "./*"
+  }
+}
