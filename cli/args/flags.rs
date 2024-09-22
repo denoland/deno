@@ -1715,7 +1715,7 @@ Future runs of this module will trigger no downloads or compilation unless --rel
       )
       .arg(frozen_lockfile_arg())
       .arg(allow_scripts_arg())
-      .args(import_permissions_args())
+      .arg(allow_imports_arg())
   })
 }
 
@@ -1775,7 +1775,7 @@ Unless --reload is specified, this command will not re-download already cached d
             .required_unless_present("help")
             .value_hint(ValueHint::FilePath),
         )
-        .args(import_permissions_args())
+        .arg(allow_imports_arg())
       }
     )
 }
@@ -2365,6 +2365,7 @@ The following information is shown:
           .help("UNSTABLE: Outputs the information in JSON format")
           .action(ArgAction::SetTrue),
       ))
+      .arg(allow_imports_arg())
 }
 
 fn install_subcommand() -> Command {
@@ -3524,10 +3525,6 @@ fn permission_args(app: Command, requires: Option<&'static str>) -> Command {
     )
 }
 
-fn import_permissions_args() -> Vec<Arg> {
-  vec![allow_all_arg(), allow_imports_arg()]
-}
-
 fn allow_all_arg() -> Arg {
   Arg::new("allow-all")
     .short('A')
@@ -4211,7 +4208,7 @@ fn cache_parse(
   unstable_args_parse(flags, matches, UnstableArgsConfig::ResolutionOnly);
   frozen_lockfile_arg_parse(flags, matches);
   allow_scripts_arg_parse(flags, matches)?;
-  parse_import_permissions(flags, matches);
+  parse_allow_imports(flags, matches);
   let files = matches.remove_many::<String>("file").unwrap().collect();
   flags.subcommand = DenoSubcommand::Cache(CacheFlags { files });
   Ok(())
@@ -4233,13 +4230,8 @@ fn check_parse(
     doc: matches.get_flag("doc"),
     doc_only: matches.get_flag("doc-only"),
   });
-  parse_import_permissions(flags, matches);
+  parse_allow_imports(flags, matches);
   Ok(())
-}
-
-fn parse_import_permissions(flags: &mut Flags, matches: &mut ArgMatches) {
-  parse_allow_all(matches, flags);
-  parse_allow_imports(matches, flags);
 }
 
 fn clean_parse(flags: &mut Flags, _matches: &mut ArgMatches) {
@@ -4510,6 +4502,7 @@ fn info_parse(
   lock_args_parse(flags, matches);
   no_remote_arg_parse(flags, matches);
   no_npm_arg_parse(flags, matches);
+  parse_allow_imports(flags, matches);
   let json = matches.get_flag("json");
   flags.subcommand = DenoSubcommand::Info(InfoFlags {
     file: matches.remove_one::<String>("file"),
@@ -5238,8 +5231,11 @@ fn permission_args_parse(
     );
   }
 
-  parse_allow_all(matches, flags);
-  parse_allow_imports(matches, flags);
+  if matches.get_flag("allow-all") {
+    flags.allow_all();
+  }
+
+  parse_allow_imports(flags, matches);
 
   if matches.get_flag("no-prompt") {
     flags.permissions.no_prompt = true;
@@ -5248,13 +5244,7 @@ fn permission_args_parse(
   Ok(())
 }
 
-fn parse_allow_all(matches: &mut ArgMatches, flags: &mut Flags) {
-  if matches.get_flag("allow-all") {
-    flags.allow_all();
-  }
-}
-
-fn parse_allow_imports(matches: &mut ArgMatches, flags: &mut Flags) {
+fn parse_allow_imports(flags: &mut Flags, matches: &mut ArgMatches) {
   if let Some(imports_wl) = matches.remove_many::<String>("allow-imports") {
     let imports_allowlist = flags_net::parse(imports_wl.collect()).unwrap();
     flags.permissions.allow_imports = Some(imports_allowlist);
