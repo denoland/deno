@@ -26,6 +26,7 @@ use deno_core::url::Url;
 use deno_runtime::deno_io::Stdio;
 use deno_runtime::deno_io::StdioPipe;
 use deno_runtime::deno_permissions::PermissionsContainer;
+use deno_runtime::deno_permissions::PermissionsContainerKind;
 use deno_runtime::WorkerExecutionMode;
 use deno_terminal::colors;
 use jupyter_runtime::jupyter::ConnectionInfo;
@@ -64,8 +65,10 @@ pub async fn kernel(
     resolve_url_or_path("./$deno$jupyter.ts", cli_options.initial_cwd())
       .unwrap();
   // TODO(bartlomieju): should we run with all permissions?
-  let permissions =
-    PermissionsContainer::allow_all(factory.permission_desc_parser()?.clone());
+  let permissions = PermissionsContainer::allow_all(
+    factory.permission_desc_parser()?.clone(),
+    PermissionsContainerKind::Root,
+  );
   let npm_resolver = factory.npm_resolver().await?.clone();
   let resolver = factory.resolver().await?.clone();
   let worker_factory = factory.create_cli_main_worker_factory().await?;

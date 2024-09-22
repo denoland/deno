@@ -32,6 +32,7 @@ use deno_core::unsync::spawn_blocking;
 use deno_core::ModuleSpecifier;
 use deno_runtime::deno_permissions::Permissions;
 use deno_runtime::deno_permissions::PermissionsContainer;
+use deno_runtime::deno_permissions::PermissionsContainerKind;
 use deno_runtime::tokio_util::create_and_run_current_thread;
 use indexmap::IndexMap;
 use std::borrow::Cow;
@@ -276,6 +277,7 @@ impl TestRun {
       let permissions_container = PermissionsContainer::new(
         permission_desc_parser.clone(),
         permissions.clone(),
+        PermissionsContainerKind::Root,
       );
       let worker_sender = test_event_sender_factory.worker();
       let fail_fast_tracker = fail_fast_tracker.clone();

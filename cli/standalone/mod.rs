@@ -30,6 +30,7 @@ use deno_runtime::deno_node::create_host_defined_options;
 use deno_runtime::deno_node::NodeResolver;
 use deno_runtime::deno_permissions::Permissions;
 use deno_runtime::deno_permissions::PermissionsContainer;
+use deno_runtime::deno_permissions::PermissionsContainerKind;
 use deno_runtime::deno_tls::rustls::RootCertStore;
 use deno_runtime::deno_tls::RootCertStoreProvider;
 use deno_runtime::deno_web::BlobStore;
@@ -685,7 +686,11 @@ pub async fn run(
       Arc::new(RuntimePermissionDescriptorParser::new(fs.clone()));
     let permissions =
       Permissions::from_options(desc_parser.as_ref(), &permissions)?;
-    PermissionsContainer::new(desc_parser, permissions)
+    PermissionsContainer::new(
+      desc_parser,
+      permissions,
+      PermissionsContainerKind::Root,
+    )
   };
   let feature_checker = Arc::new({
     let mut checker = FeatureChecker::default();

@@ -30,6 +30,7 @@ use deno_core::ModuleSpecifier;
 use deno_core::PollEventLoopOptions;
 use deno_runtime::deno_permissions::Permissions;
 use deno_runtime::deno_permissions::PermissionsContainer;
+use deno_runtime::deno_permissions::PermissionsContainerKind;
 use deno_runtime::permissions::RuntimePermissionDescriptorParser;
 use deno_runtime::tokio_util::create_and_run_current_thread;
 use deno_runtime::WorkerExecutionMode;
@@ -278,6 +279,7 @@ async fn bench_specifiers(
     let permissions_container = PermissionsContainer::new(
       permissions_desc_parser.clone(),
       permissions.clone(),
+      PermissionsContainerKind::Root,
     );
     let sender = sender.clone();
     let options = option_for_handles.clone();

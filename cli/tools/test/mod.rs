@@ -52,6 +52,7 @@ use deno_runtime::deno_io::Stdio;
 use deno_runtime::deno_io::StdioPipe;
 use deno_runtime::deno_permissions::Permissions;
 use deno_runtime::deno_permissions::PermissionsContainer;
+use deno_runtime::deno_permissions::PermissionsContainerKind;
 use deno_runtime::fmt_errors::format_js_error;
 use deno_runtime::permissions::RuntimePermissionDescriptorParser;
 use deno_runtime::tokio_util::create_and_run_current_thread;
@@ -1222,6 +1223,7 @@ async fn test_specifiers(
     let permissions_container = PermissionsContainer::new(
       permission_desc_parser.clone(),
       permissions.clone(),
+      PermissionsContainerKind::Root,
     );
     let worker_sender = test_event_sender_factory.worker();
     let fail_fast_tracker = fail_fast_tracker.clone();
