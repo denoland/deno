@@ -3294,7 +3294,7 @@ mod tests {
   #[test]
   fn test_check_net_url() {
     let parser = TestPermissionDescriptorParser;
-    let mut perms = Permissions::from_options(
+    let perms = Permissions::from_options(
       &parser,
       &PermissionsOptions {
         allow_net: Some(svec![
@@ -3351,7 +3351,7 @@ mod tests {
     ];
 
     for (url_str, is_ok) in url_tests {
-      let u = url::Url::parse(url_str).unwrap();
+      let u = Url::parse(url_str).unwrap();
       assert_eq!(is_ok, perms.check_net_url(&u, "api()").is_ok(), "{}", u);
     }
   }
