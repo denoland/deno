@@ -1129,6 +1129,7 @@ impl Default for LspTsConfig {
         "module": "esnext",
         "moduleDetection": "force",
         "noEmit": true,
+        "noImplicitOverride": true,
         "resolveJsonModule": true,
         "strict": true,
         "target": "esnext",

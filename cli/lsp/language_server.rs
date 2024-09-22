@@ -1,6 +1,5 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
-use base64::Engine;
 use deno_ast::MediaType;
 use deno_config::workspace::WorkspaceDirectory;
 use deno_config::workspace::WorkspaceDiscoverOptions;
@@ -18,6 +17,7 @@ use deno_graph::GraphKind;
 use deno_graph::Resolution;
 use deno_runtime::deno_tls::rustls::RootCertStore;
 use deno_runtime::deno_tls::RootCertStoreProvider;
+use deno_runtime::fs_util::specifier_to_file_path;
 use deno_semver::jsr::JsrPackageReqReference;
 use indexmap::Equivalent;
 use indexmap::IndexSet;
@@ -113,7 +113,6 @@ use crate::util::fs::remove_dir_all_if_exists;
 use crate::util::path::is_importable_ext;
 use crate::util::path::to_percent_decoded_str;
 use crate::util::sync::AsyncFlag;
-use deno_runtime::fs_util::specifier_to_file_path;
 
 struct LspRootCertStoreProvider(RootCertStore);
 
@@ -241,7 +240,7 @@ impl LanguageServer {
     }
   }
 
-  /// Similar to `deno cache` on the command line, where modules will be cached
+  /// Similar to `deno install --entrypoint` on the command line, where modules will be cached
   /// in the Deno cache, including any of their dependencies.
   pub async fn cache(
     &self,
@@ -968,16 +967,27 @@ impl Inner {
       (|| {
         let compiler_options = config_file.to_compiler_options().ok()?.options;
         let jsx_import_source = compiler_options.get("jsxImportSource")?;
-        let jsx_import_source = jsx_import_source.as_str()?;
+        let jsx_import_source = jsx_import_source.as_str()?.to_string();
         let referrer = config_file.specifier.clone();
-        let specifier = Url::parse(&format!(
-          "data:application/typescript;base64,{}",
-          base64::engine::general_purpose::STANDARD
-            .encode(format!("import '{jsx_import_source}/jsx-runtime';"))
-        ))
-        .unwrap();
+        let specifier = format!("{jsx_import_source}/jsx-runtime");
         self.task_queue.queue_task(Box::new(|ls: LanguageServer| {
           spawn(async move {
+            let specifier = {
+              let inner = ls.inner.read().await;
+              let resolver = inner.resolver.as_graph_resolver(Some(&referrer));
+              let Ok(specifier) = resolver.resolve(
+                &specifier,
+                &deno_graph::Range {
+                  specifier: referrer.clone(),
+                  start: deno_graph::Position::zeroed(),
+                  end: deno_graph::Position::zeroed(),
+                },
+                deno_graph::source::ResolutionMode::Types,
+              ) else {
+                return;
+              };
+              specifier
+            };
             if let Err(err) = ls.cache(vec![specifier], referrer, false).await {
               lsp_warn!("{:#}", err);
             }
@@ -1410,6 +1420,7 @@ impl Inner {
               document.content(),
               &fmt_options,
               &unstable_options,
+              None,
             )
           }
         };

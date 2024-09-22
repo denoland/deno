@@ -121,12 +121,7 @@ async fn run_subcommand(flags: Arc<Flags>) -> Result<i32, AnyError> {
       tools::installer::install_from_entrypoints(flags, &cache_flags.files).await
     }),
     DenoSubcommand::Check(check_flags) => spawn_subcommand(async move {
-      let factory = CliFactory::from_flags(flags);
-      let main_graph_container =
-        factory.main_module_graph_container().await?;
-      main_graph_container
-        .load_and_type_check_files(&check_flags.files)
-        .await
+      tools::check::check(flags, check_flags).await
     }),
     DenoSubcommand::Clean => spawn_subcommand(async move {
       tools::clean::clean()

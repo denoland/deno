@@ -108,7 +108,7 @@ pub use deno_cache_dir::HttpCache;
 /// a concise interface to the DENO_DIR when building module graphs.
 pub struct FetchCacher {
   file_fetcher: Arc<FileFetcher>,
-  file_header_overrides: HashMap<ModuleSpecifier, HashMap<String, String>>,
+  pub file_header_overrides: HashMap<ModuleSpecifier, HashMap<String, String>>,
   global_http_cache: Arc<GlobalHttpCache>,
   npm_resolver: Arc<dyn CliNpmResolver>,
   module_info_cache: Arc<ModuleInfoCache>,
