@@ -1,0 +1,6 @@
+{
+  "location_object_defined_property": {
+    "args": "run location.js",
+    "output": "location.out"
+  }
+}
