@@ -1,0 +1,7 @@
+Download http://localhost:4260/@denotest/check-error
+Download http://localhost:4260/@denotest/check-error/1.0.0.tgz
+Check file:///[WILDCARD]/check_errors/main.ts
+error: TS2339 [ERROR]: Property 'Asdf' does not exist on type 'typeof import("file:///[WILDCARD]/@denotest/check-error/1.0.0/index.d.ts")'.
+console.log(test.Asdf); // should error
+                 ~~~~
+    at file:///[WILDCARD]/check_errors/main.ts:3:18

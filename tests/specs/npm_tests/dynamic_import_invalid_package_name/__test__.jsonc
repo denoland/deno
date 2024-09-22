@@ -1,0 +1,8 @@
+{
+    "args": "run -A --reload dynamic_import_invalid_package_name/main.ts",
+    "output": "dynamic_import_invalid_package_name/main.out",
+    "envs": {
+        "NO_COLOR": "1",
+        "NPM_CONFIG_REGISTRY": "http://localhost:4260/"
+    }
+}

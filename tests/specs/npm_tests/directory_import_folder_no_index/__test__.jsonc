@@ -1,0 +1,9 @@
+{
+    "args": "run directory_import/folder_no_index.ts",
+    "output": "directory_import/folder_no_index.out",
+    "envs": {
+        "NO_COLOR": "1",
+        "NPM_CONFIG_REGISTRY": "http://localhost:4260/"
+    },
+    "exitCode": 1
+}

@@ -1,0 +1,8 @@
+{
+    "args": "run reserved_word_exports/main.ts",
+    "output": "reserved_word_exports/main.out",
+    "envs": {
+        "NO_COLOR": "1",
+        "NPM_CONFIG_REGISTRY": "http://localhost:4260/"
+    }
+}

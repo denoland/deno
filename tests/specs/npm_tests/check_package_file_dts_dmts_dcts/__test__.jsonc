@@ -1,0 +1,9 @@
+{
+    "args": "check file_dts_dmts_dcts/main.ts",
+    "output": "file_dts_dmts_dcts/main.out",
+    "envs": {
+        "NO_COLOR": "1",
+        "NPM_CONFIG_REGISTRY": "http://localhost:4260/"
+    },
+    "exitCode": 1
+}

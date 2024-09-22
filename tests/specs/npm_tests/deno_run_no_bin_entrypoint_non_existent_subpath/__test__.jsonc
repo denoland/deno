@@ -1,0 +1,9 @@
+{
+    "args": "run -A --quiet npm:@denotest/esm-basic/non-existent.js",
+    "output": "deno_run_no_bin_entrypoint_non_existent_subpath.out",
+    "envs": {
+        "NO_COLOR": "1",
+        "NPM_CONFIG_REGISTRY": "http://localhost:4260/"
+    },
+    "exitCode": 1
+}

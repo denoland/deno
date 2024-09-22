@@ -1,0 +1,9 @@
+{
+    "args": "run --allow-read --quiet cjs_this_in_exports/main.js",
+    "output": "cjs_this_in_exports/main.out",
+    "envs": {
+    "NO_COLOR": "1",
+    "NPM_CONFIG_REGISTRY": "http://localhost:4260/"
+    },
+    "exitCode": 1
+}

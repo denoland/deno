@@ -1,0 +1,8 @@
+{
+    "args": "run --allow-read cjs_sub_path/main.js",
+    "output": "cjs_sub_path/main.out",
+    "envs": {
+    "NO_COLOR": "1",
+    "NPM_CONFIG_REGISTRY": "http://localhost:4260/"
+    }
+}

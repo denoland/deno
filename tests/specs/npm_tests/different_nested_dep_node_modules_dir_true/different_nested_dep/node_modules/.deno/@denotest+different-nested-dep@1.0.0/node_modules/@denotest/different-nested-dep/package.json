@@ -1,0 +1,8 @@
+{
+  "name": "@denotest/different-nested-dep",
+  "version": "1.0.0",
+  "type": "module",
+  "dependencies": {
+    "@denotest/different-nested-dep-child": "1.0.0"
+  }
+}

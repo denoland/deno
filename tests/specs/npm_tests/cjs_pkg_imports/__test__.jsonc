@@ -1,0 +1,8 @@
+{
+    "args": "run -A cjs_pkg_imports/main.ts",
+    "output": "cjs_pkg_imports/main.out",
+    "envs": {
+        "NO_COLOR": "1",
+        "NPM_CONFIG_REGISTRY": "http://localhost:4260/"
+    }
+}
