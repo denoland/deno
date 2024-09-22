@@ -687,6 +687,7 @@ pub async fn run(
       Permissions::from_options(desc_parser.as_ref(), &permissions)?;
     PermissionsContainer::new(desc_parser, permissions)
   };
+  permissions.mark_loaded_static_graph();
   let feature_checker = Arc::new({
     let mut checker = FeatureChecker::default();
     checker.set_exit_cb(Box::new(crate::unstable_exit_cb));
@@ -713,6 +714,7 @@ pub async fn run(
     npm_resolver,
     permission_desc_parser,
     root_cert_store_provider,
+    permissions.clone(),
     StorageKeyResolver::empty(),
     crate::args::DenoSubcommand::Run(Default::default()),
     CliMainWorkerOptions {

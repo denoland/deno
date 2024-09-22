@@ -2146,6 +2146,10 @@ impl PermissionsContainer {
       "data" => Ok(()),
       "blob" => Ok(()),
       _ => {
+        if inner.import.is_allow_all() {
+          return Ok(()); // avoid allocation below
+        }
+
         let desc = self
           .descriptor_parser
           .parse_import_descriptor_from_url(specifier)?;

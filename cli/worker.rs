@@ -136,6 +136,7 @@ struct SharedWorkerState {
   npm_resolver: Arc<dyn CliNpmResolver>,
   permission_desc_parser: Arc<RuntimePermissionDescriptorParser>,
   root_cert_store_provider: Arc<dyn RootCertStoreProvider>,
+  root_permissions: PermissionsContainer,
   shared_array_buffer_store: SharedArrayBufferStore,
   storage_key_resolver: StorageKeyResolver,
   options: CliMainWorkerOptions,
@@ -432,6 +433,7 @@ impl CliMainWorkerFactory {
     npm_resolver: Arc<dyn CliNpmResolver>,
     permission_parser: Arc<RuntimePermissionDescriptorParser>,
     root_cert_store_provider: Arc<dyn RootCertStoreProvider>,
+    root_permissions: PermissionsContainer,
     storage_key_resolver: StorageKeyResolver,
     subcommand: DenoSubcommand,
     options: CliMainWorkerOptions,
@@ -452,6 +454,7 @@ impl CliMainWorkerFactory {
         npm_resolver,
         permission_desc_parser: permission_parser,
         root_cert_store_provider,
+        root_permissions,
         shared_array_buffer_store: Default::default(),
         storage_key_resolver,
         options,
@@ -481,7 +484,7 @@ impl CliMainWorkerFactory {
     &self,
     mode: WorkerExecutionMode,
     main_module: ModuleSpecifier,
-    permissions: PermissionsContainer,
+    dynamic_permissions: PermissionsContainer,
     custom_extensions: Vec<Extension>,
     stdio: deno_runtime::deno_io::Stdio,
   ) -> Result<CliMainWorker, AnyError> {
@@ -532,10 +535,8 @@ impl CliMainWorkerFactory {
 
     let ModuleLoaderAndSourceMapGetter { module_loader } =
       shared.module_loader_factory.create_for_main(
-        PermissionsContainer::allow_all(
-          self.shared.permission_desc_parser.clone(),
-        ),
-        permissions.clone(),
+        self.shared.root_permissions.clone(),
+        dynamic_permissions.clone(),
       );
     let maybe_inspector_server = shared.maybe_inspector_server.clone();
 
@@ -633,11 +634,9 @@ impl CliMainWorkerFactory {
       v8_code_cache: shared.code_cache.clone(),
     };
 
-    permissions.mark_loaded_static_graph();
-
     let mut worker = MainWorker::bootstrap_from_options(
       main_module.clone(),
-      permissions,
+      dynamic_permissions,
       options,
     );
 
