@@ -1,0 +1,23 @@
+{
+  "tempDir": true,
+  "tests": {
+    "stdin": {
+      "args": "fmt -",
+      "input": "const x: string = \"foo\";",
+      "output": "const x: string = \"foo\";\n"
+    },
+    "ext_flag": {
+      "args": "fmt --ext=ts as_ts.js",
+      "output": "Checked 1 file\n"
+    },
+    "extensionless": {
+      "args": "fmt extensionless",
+      "output": "error: No target files found.\n",
+      "exitCode": 1
+    },
+    "extensionless_with_flag": {
+      "args": "fmt --ext=ts extensionless",
+      "output": "Checked 1 file\n"
+    }
+  }
+}

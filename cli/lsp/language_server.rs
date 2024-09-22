@@ -240,7 +240,7 @@ impl LanguageServer {
     }
   }
 
-  /// Similar to `deno cache` on the command line, where modules will be cached
+  /// Similar to `deno install --entrypoint` on the command line, where modules will be cached
   /// in the Deno cache, including any of their dependencies.
   pub async fn cache(
     &self,
@@ -1420,6 +1420,7 @@ impl Inner {
               document.content(),
               &fmt_options,
               &unstable_options,
+              None,
             )
           }
         };
