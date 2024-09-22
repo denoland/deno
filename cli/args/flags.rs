@@ -685,20 +685,20 @@ impl PermissionFlags {
         }
       }
 
-      let raw_imports = [
+      let builtin_allowed_import_hosts = [
         "deno.land",
         "esm.sh",
         "jsr.io",
         "raw.githubusercontent.com",
         "gist.githubusercontent.com",
         "localhost",
-        "127.0.0.1",
-        "0.0.0.0",
       ];
 
       let mut imports = imports.unwrap_or_default();
-      imports.reserve(raw_imports.len() + 1);
-      imports.extend(raw_imports.iter().map(|s| s.to_string()));
+      imports.reserve(builtin_allowed_import_hosts.len() + 1);
+      imports.extend(builtin_allowed_import_hosts.iter().map(|s| s.to_string()));
+
+      // also add the JSR_URL env var
       if let Some(jsr_host) = custom_jsr_host_from_url(jsr_url()) {
         imports.push(jsr_host);
       }
