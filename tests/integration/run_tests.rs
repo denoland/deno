@@ -3504,6 +3504,17 @@ itest!(no_prompt_flag {
 });
 
 #[test]
+fn permission_request_with_no_prompt() {
+  TestContext::default()
+    .new_command()
+    .env("NO_COLOR", "1")
+    .args_vec(["run", "--quiet", "--no-prompt", "run/permission_request_no_prompt.ts"])
+    .with_pty(|mut console| {
+      console.expect("PermissionStatus { state: \"denied\", onchange: null }");
+    });
+}
+
+#[test]
 fn deno_no_prompt_environment_variable() {
   let output = util::deno_cmd()
     .current_dir(util::testdata_path())

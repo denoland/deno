@@ -1,4 +1,0 @@
-{
-  "args": "run --no-prompt main.ts",
-  "output": "main.out"
-}
