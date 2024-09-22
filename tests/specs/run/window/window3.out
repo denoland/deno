@@ -1,5 +1,5 @@
 error: Uncaught (in promise) ReferenceError: window is not defined
-window.navigator
+window.navigator;
 ^
     at [WILDCARD]window3.js:1:1
 

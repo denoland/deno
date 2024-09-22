@@ -1,1 +1,1 @@
-window.atob
+window.atob;

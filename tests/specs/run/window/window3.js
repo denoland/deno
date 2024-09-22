@@ -1,1 +1,1 @@
-window.navigator
+window.navigator;

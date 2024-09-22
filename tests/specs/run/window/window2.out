@@ -1,5 +1,5 @@
 error: Uncaught (in promise) ReferenceError: window is not defined
-window.atob
+window.atob;
 ^
     at [WILDCARD]window2.js:1:1
 
