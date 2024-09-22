@@ -678,16 +678,6 @@ impl PermissionFlags {
       }
     }
 
-    fn jsr_host() -> Option<String> {
-      let url = jsr_url();
-      let host = url.host()?;
-      if let Some(port) = url.port() {
-        Some(format!("{}:{}", host, port))
-      } else {
-        Some(host.to_string())
-      }
-    }
-
     fn handle_imports(imports: Option<Vec<String>>) -> Option<Vec<String>> {
       if let Some(items) = &imports {
         if items.is_empty() {
@@ -696,10 +686,10 @@ impl PermissionFlags {
       }
 
       let raw_imports = [
-        "deno.land",
-        "esm.sh",
-        "jsr.io",
-        "raw.githubusercontent.com",
+        "deno.land:443",
+        "esm.sh:443",
+        "jsr.io:443",
+        "raw.githubusercontent.com:443",
         "localhost",
         "127.0.0.1",
         "0.0.0.0",
@@ -708,7 +698,7 @@ impl PermissionFlags {
       let mut imports = imports.unwrap_or_default();
       imports.reserve(raw_imports.len() + 1);
       imports.extend(raw_imports.iter().map(|s| s.to_string()));
-      if let Some(jsr_host) = jsr_host() {
+      if let Some(jsr_host) = custom_jsr_host_from_url(jsr_url()) {
         imports.push(jsr_host);
       }
 
@@ -733,6 +723,24 @@ impl PermissionFlags {
       deny_write: self.deny_write.clone(),
       allow_imports: handle_imports(handle_allow(self.allow_all, self.allow_imports.clone())),
       prompt: !resolve_no_prompt(self),
+    }
+  }
+}
+
+/// Gets the jsr host from the provided url
+fn custom_jsr_host_from_url(url: &Url) -> Option<String> {
+  let host = url.host()?;
+  if let Some(port) = url.port() {
+    Some(format!("{}:{}", host, port))
+  } else {
+    use deno_core::url::Host::*;
+    match host {
+      Domain(domain) if domain == "jsr.io" && url.scheme() == "https" => None,
+      _ => match url.scheme() {
+        "https" => Some(format!("{}:443", host)),
+        "http" => Some(format!("{}:80", host)),
+        _ => None,
+      }
     }
   }
 }
@@ -10932,5 +10940,18 @@ mod tests {
         ..Default::default()
       }
     )
+  }
+
+  #[test]
+  fn test_custom_jsr_host_from_url() {
+    fn parse(text: &str) -> Option<String> {
+      custom_jsr_host_from_url(&Url::parse(text).unwrap())
+    }
+
+    assert_eq!(parse("https://jsr.io"), None);
+    assert_eq!(parse("http://jsr.io"), Some("jsr.io:80".to_string()));
+    assert_eq!(parse("https://example.com"), Some("example.com:443".to_string()));
+    assert_eq!(parse("http://example.com"), Some("example.com:80".to_string()));
+    assert_eq!(parse("file:///example.com"), None);
   }
 }
