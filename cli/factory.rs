@@ -67,7 +67,6 @@ use deno_runtime::deno_node::DenoFsNodeResolverEnv;
 use deno_runtime::deno_node::NodeResolver;
 use deno_runtime::deno_permissions::Permissions;
 use deno_runtime::deno_permissions::PermissionsContainer;
-use deno_runtime::deno_permissions::PermissionsContainerKind;
 use deno_runtime::deno_tls::rustls::RootCertStore;
 use deno_runtime::deno_tls::RootCertStoreProvider;
 use deno_runtime::deno_web::BlobStore;
@@ -771,11 +770,7 @@ impl CliFactory {
           desc_parser.as_ref(),
           &self.cli_options()?.permissions_options(),
         )?;
-        Ok(PermissionsContainer::new(
-          desc_parser,
-          permissions,
-          PermissionsContainerKind::Root,
-        ))
+        Ok(PermissionsContainer::new(desc_parser, permissions))
       })
   }
 

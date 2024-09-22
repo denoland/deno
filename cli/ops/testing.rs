@@ -20,7 +20,6 @@ use deno_runtime::deno_permissions::create_child_permissions;
 use deno_runtime::deno_permissions::ChildPermissionsArg;
 use deno_runtime::deno_permissions::PermissionDescriptorParser;
 use deno_runtime::deno_permissions::PermissionsContainer;
-use deno_runtime::deno_permissions::PermissionsContainerKind;
 use std::sync::atomic::AtomicUsize;
 use std::sync::atomic::Ordering;
 use std::sync::Arc;
@@ -68,11 +67,7 @@ pub fn op_pledge_test_permissions(
       &mut parent_permissions,
       args,
     )?;
-    PermissionsContainer::new(
-      permission_desc_parser,
-      perms,
-      PermissionsContainerKind::Root,
-    )
+    PermissionsContainer::new(permission_desc_parser, perms)
   };
   let parent_permissions = parent_permissions.clone();
 

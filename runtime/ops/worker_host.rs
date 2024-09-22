@@ -21,7 +21,6 @@ use deno_permissions::create_child_permissions;
 use deno_permissions::ChildPermissionsArg;
 use deno_permissions::PermissionDescriptorParser;
 use deno_permissions::PermissionsContainer;
-use deno_permissions::PermissionsContainerKind;
 use deno_web::deserialize_js_transferables;
 use deno_web::JsMessageData;
 use log::debug;
@@ -167,11 +166,7 @@ fn op_create_worker(
       &mut parent_permissions,
       child_permissions_arg,
     )?;
-    PermissionsContainer::new(
-      permission_desc_parser,
-      perms,
-      PermissionsContainerKind::Child,
-    )
+    PermissionsContainer::new(permission_desc_parser, perms)
   } else {
     parent_permissions.clone()
   };

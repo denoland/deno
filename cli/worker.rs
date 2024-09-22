@@ -25,7 +25,6 @@ use deno_runtime::deno_node;
 use deno_runtime::deno_node::NodeExtInitServices;
 use deno_runtime::deno_node::NodeResolver;
 use deno_runtime::deno_permissions::PermissionsContainer;
-use deno_runtime::deno_permissions::PermissionsContainerKind;
 use deno_runtime::deno_tls::RootCertStoreProvider;
 use deno_runtime::deno_web::BlobStore;
 use deno_runtime::fmt_errors::format_js_error;
@@ -535,7 +534,6 @@ impl CliMainWorkerFactory {
       shared.module_loader_factory.create_for_main(
         PermissionsContainer::allow_all(
           self.shared.permission_desc_parser.clone(),
-          PermissionsContainerKind::Root,
         ),
         permissions.clone(),
       );
@@ -845,7 +843,6 @@ mod tests {
   use deno_core::resolve_path;
   use deno_fs::RealFs;
   use deno_runtime::deno_permissions::Permissions;
-  use deno_runtime::deno_permissions::PermissionsContainerKind;
 
   fn create_test_worker() -> MainWorker {
     let main_module =
@@ -853,7 +850,6 @@ mod tests {
     let permissions = PermissionsContainer::new(
       Arc::new(RuntimePermissionDescriptorParser::new(Arc::new(RealFs))),
       Permissions::none_without_prompt(),
-      PermissionsContainerKind::Root,
     );
 
     let options = WorkerOptions {

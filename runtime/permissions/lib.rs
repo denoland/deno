@@ -2078,12 +2078,6 @@ pub fn specifier_to_file_path(
   }
 }
 
-#[derive(Debug, Clone, Copy)]
-pub enum PermissionsContainerKind {
-  Root,
-  Child,
-}
-
 /// Wrapper struct for `Permissions` that can be shared across threads.
 ///
 /// We need a way to have internal mutability for permissions as they might get
@@ -2098,27 +2092,23 @@ pub struct PermissionsContainer {
   // so that the code is not so verbose elsewhere.
   pub descriptor_parser: Arc<dyn PermissionDescriptorParser>,
   pub inner: Arc<Mutex<Permissions>>,
-  pub kind: PermissionsContainerKind,
 }
 
 impl PermissionsContainer {
   pub fn new(
     descriptor_parser: Arc<dyn PermissionDescriptorParser>,
     perms: Permissions,
-    kind: PermissionsContainerKind,
   ) -> Self {
     Self {
       descriptor_parser,
       inner: Arc::new(Mutex::new(perms)),
-      kind,
     }
   }
 
   pub fn allow_all(
     descriptor_parser: Arc<dyn PermissionDescriptorParser>,
-    kind: PermissionsContainerKind,
   ) -> Self {
-    Self::new(descriptor_parser, Permissions::allow_all(), kind)
+    Self::new(descriptor_parser, Permissions::allow_all())
   }
 
   #[inline(always)]
@@ -2126,13 +2116,9 @@ impl PermissionsContainer {
     &self,
     specifier: &ModuleSpecifier,
   ) -> Result<(), AnyError> {
+    let mut inner = self.inner.lock();
     match specifier.scheme() {
       "file" => {
-        // grant for the root?
-        if self.kind == PermissionsContainerKind::Root {
-          return Ok(());
-        }
-        let mut inner = self.inner.lock();
         if inner.read.is_allow_all() {
           return Ok(()); // avoid allocations below
         }
@@ -2154,14 +2140,9 @@ impl PermissionsContainer {
       "data" => Ok(()),
       "blob" => Ok(()),
       _ => {
-        let mut inner = self.inner.lock();
-        if inner.net.is_allow_all() && inner.import.is_allow_all() {
-          return Ok(()); // avoid allocations below
-        }
         let desc = self
           .descriptor_parser
           .parse_net_descriptor_from_url(specifier)?;
-        // todo(THIS PR): only query if in net, but prompt for allow import
         inner.net.check(&desc, Some("import()"))?;
         inner
           .import
@@ -3131,11 +3112,7 @@ mod tests {
       },
     )
     .unwrap();
-    let mut perms = PermissionsContainer::new(
-      Arc::new(parser),
-      perms,
-      PermissionsContainerKind::Root,
-    );
+    let mut perms = PermissionsContainer::new(Arc::new(parser), perms);
 
     let cases = [
       // Inside of /a/specific and /a/specific/dir/name
@@ -3332,11 +3309,7 @@ mod tests {
       },
     )
     .unwrap();
-    let mut perms = PermissionsContainer::new(
-      Arc::new(parser),
-      perms,
-      PermissionsContainerKind::Root,
-    );
+    let mut perms = PermissionsContainer::new(Arc::new(parser), perms);
 
     let url_tests = vec![
       // Any protocol + port for localhost should be ok, since we don't specify
@@ -3392,7 +3365,7 @@ mod tests {
       svec!["/a"]
     };
     let parser = TestPermissionDescriptorParser;
-    let perms = Permissions::from_options(
+    let mut perms = Permissions::from_options(
       &parser,
       &PermissionsOptions {
         allow_read: Some(read_allowlist),
@@ -3401,11 +3374,7 @@ mod tests {
       },
     )
     .unwrap();
-    let perms = PermissionsContainer::new(
-      Arc::new(parser),
-      perms,
-      PermissionsContainerKind::Root,
-    );
+    let mut perms = PermissionsContainer::new(Arc::new(parser), perms);
 
     let mut fixtures = vec![
       (
@@ -3453,7 +3422,6 @@ mod tests {
     let perms = PermissionsContainer::new(
       Arc::new(TestPermissionDescriptorParser),
       perms,
-      PermissionsContainerKind::Root,
     );
 
     let mut test_cases = vec![];
@@ -4043,11 +4011,7 @@ mod tests {
       },
     )
     .unwrap();
-    let mut perms = PermissionsContainer::new(
-      Arc::new(parser),
-      perms,
-      PermissionsContainerKind::Root,
-    );
+    let mut perms = PermissionsContainer::new(Arc::new(parser), perms);
     let cases = [
       ("allowed.domain.", true),
       ("1.1.1.1", true),
