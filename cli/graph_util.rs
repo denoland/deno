@@ -11,7 +11,6 @@ use crate::cache::ModuleInfoCache;
 use crate::cache::ParsedSourceCache;
 use crate::colors;
 use crate::errors::get_error_class_name;
-use crate::file_fetcher::FetchPermissionsOption;
 use crate::file_fetcher::FileFetcher;
 use crate::npm::CliNpmResolver;
 use crate::resolver::CliGraphResolver;
@@ -41,6 +40,7 @@ use deno_graph::ResolutionError;
 use deno_graph::SpecifierError;
 use deno_runtime::deno_fs::FileSystem;
 use deno_runtime::deno_node;
+use deno_runtime::deno_permissions::PermissionsContainer;
 use deno_runtime::fs_util::specifier_to_file_path;
 use deno_semver::jsr::JsrDepPackageReq;
 use deno_semver::package::PackageNv;
@@ -370,6 +370,7 @@ pub struct ModuleGraphBuilder {
   maybe_file_watcher_reporter: Option<FileWatcherReporter>,
   file_fetcher: Arc<FileFetcher>,
   global_http_cache: Arc<GlobalHttpCache>,
+  root_permissions_container: PermissionsContainer,
 }
 
 impl ModuleGraphBuilder {
@@ -386,6 +387,7 @@ impl ModuleGraphBuilder {
     maybe_file_watcher_reporter: Option<FileWatcherReporter>,
     file_fetcher: Arc<FileFetcher>,
     global_http_cache: Arc<GlobalHttpCache>,
+    root_permissions_container: PermissionsContainer,
   ) -> Self {
     Self {
       options,
@@ -399,6 +401,7 @@ impl ModuleGraphBuilder {
       maybe_file_watcher_reporter,
       file_fetcher,
       global_http_cache,
+      root_permissions_container,
     }
   }
 
@@ -670,12 +673,12 @@ impl ModuleGraphBuilder {
 
   /// Creates the default loader used for creating a graph.
   pub fn create_graph_loader(&self) -> cache::FetchCacher {
-    self.create_fetch_cacher(FetchPermissionsOption::AllowAll)
+    self.create_fetch_cacher(self.root_permissions_container.clone())
   }
 
   pub fn create_fetch_cacher(
     &self,
-    permissions: FetchPermissionsOption,
+    permissions: PermissionsContainer,
   ) -> cache::FetchCacher {
     cache::FetchCacher::new(
       self.file_fetcher.clone(),

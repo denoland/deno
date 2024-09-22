@@ -14,7 +14,6 @@ use deno_core::serde::Deserializer;
 use deno_core::serde::Serialize;
 use deno_core::serde_json;
 use deno_core::unsync::sync::AtomicFlag;
-use deno_core::url;
 use deno_core::url::Url;
 use deno_core::ModuleSpecifier;
 use deno_terminal::colors;
@@ -1036,6 +1035,10 @@ impl ImportDescriptor {
   pub fn parse(specifier: &str) -> Result<Self, AnyError> {
     Ok(ImportDescriptor(NetDescriptor::parse(specifier)?))
   }
+
+  pub fn from_url(url: &Url) -> Result<Self, AnyError> {
+    Ok(ImportDescriptor(NetDescriptor::from_url(url)?))
+  }
 }
 
 #[derive(Clone, Eq, PartialEq, Hash, Debug)]
@@ -1591,16 +1594,6 @@ impl UnaryPermission<NetDescriptor> {
     self.check_desc(Some(host), false, api_name)
   }
 
-  pub fn check_url(
-    &mut self,
-    url: &url::Url,
-    api_name: Option<&str>,
-  ) -> Result<(), AnyError> {
-    skip_check_if_is_permission_fully_granted!(self);
-    let descriptor = NetDescriptor::from_url(url)?;
-    self.check_desc(Some(&descriptor), false, api_name)
-  }
-
   pub fn check_all(&mut self) -> Result<(), AnyError> {
     skip_check_if_is_permission_fully_granted!(self);
     self.check_desc(None, false, None)
@@ -1630,16 +1623,6 @@ impl UnaryPermission<ImportDescriptor> {
   ) -> Result<(), AnyError> {
     skip_check_if_is_permission_fully_granted!(self);
     self.check_desc(Some(host), false, api_name)
-  }
-
-  pub fn check_url(
-    &mut self,
-    url: &url::Url,
-    api_name: Option<&str>,
-  ) -> Result<(), AnyError> {
-    skip_check_if_is_permission_fully_granted!(self);
-    let descriptor = ImportDescriptor(NetDescriptor::from_url(url)?);
-    self.check_desc(Some(&descriptor), false, api_name)
   }
 
   pub fn check_all(&mut self) -> Result<(), AnyError> {
@@ -2047,39 +2030,6 @@ impl Permissions {
       all: Permissions::new_all(false),
     }
   }
-
-  /// A helper function that determines if the module specifier is a local or
-  /// remote, and performs a read or net check for the specifier.
-  pub fn check_specifier(
-    &mut self,
-    specifier: &ModuleSpecifier,
-  ) -> Result<(), AnyError> {
-    match specifier.scheme() {
-      "file" => match specifier_to_file_path(specifier) {
-        Ok(path) => self.read.check(
-          &PathQueryDescriptor {
-            requested: path.to_string_lossy().into_owned(),
-            resolved: path,
-          }
-          .into_read(),
-          Some("import()"),
-        ),
-        Err(_) => Err(uri_error(format!(
-          "Invalid file path.\n  Specifier: {specifier}"
-        ))),
-      },
-      "data" => Ok(()),
-      "blob" => Ok(()),
-      _ => {
-        self.net.check_url(specifier, Some("import()"))?;
-        if let Some(host_str) = specifier.host_str() {
-          eprintln!("check_specifier::validate_host {:?}", host_str);
-        }
-        self.import.check_url(specifier, Some("import()"))?;
-        Ok(())
-      }
-    }
-  }
 }
 
 /// Attempts to convert a specifier to a file path. By default, uses the Url
@@ -2166,7 +2116,40 @@ impl PermissionsContainer {
     &self,
     specifier: &ModuleSpecifier,
   ) -> Result<(), AnyError> {
-    self.inner.lock().check_specifier(specifier)
+    let mut inner = self.inner.lock();
+    match specifier.scheme() {
+      "file" => {
+        if inner.read.is_allow_all() {
+          return Ok(()); // avoid allocations below
+        }
+
+        match specifier_to_file_path(specifier) {
+          Ok(path) => inner.read.check(
+            &PathQueryDescriptor {
+              requested: path.to_string_lossy().into_owned(),
+              resolved: path,
+            }
+            .into_read(),
+            Some("import()"),
+          ),
+          Err(_) => Err(uri_error(format!(
+            "Invalid file path.\n  Specifier: {specifier}"
+          ))),
+        }
+      }
+      "data" => Ok(()),
+      "blob" => Ok(()),
+      _ => {
+        let desc = self
+          .descriptor_parser
+          .parse_net_descriptor_from_url(specifier)?;
+        inner.net.check(&desc, Some("import()"))?;
+        inner
+          .import
+          .check(&ImportDescriptor(desc), Some("import()"))?;
+        Ok(())
+      }
+    }
   }
 
   #[must_use = "the resolved return value to mitigate time-of-check to time-of-use issues"]
@@ -2501,7 +2484,12 @@ impl PermissionsContainer {
     url: &Url,
     api_name: &str,
   ) -> Result<(), AnyError> {
-    self.inner.lock().net.check_url(url, Some(api_name))
+    let mut inner = self.inner.lock();
+    if inner.net.is_allow_all() {
+      return Ok(());
+    }
+    let desc = self.descriptor_parser.parse_net_descriptor_from_url(url)?;
+    inner.net.check(&desc, Some(api_name))
   }
 
   #[inline(always)]
@@ -2852,10 +2840,24 @@ pub trait PermissionDescriptorParser: Debug + Send + Sync {
   fn parse_net_descriptor(&self, text: &str)
     -> Result<NetDescriptor, AnyError>;
 
+  fn parse_net_descriptor_from_url(
+    &self,
+    url: &Url,
+  ) -> Result<NetDescriptor, AnyError> {
+    NetDescriptor::from_url(url)
+  }
+
   fn parse_import_descriptor(
     &self,
     text: &str,
   ) -> Result<ImportDescriptor, AnyError>;
+
+  fn parse_import_descriptor_from_url(
+    &self,
+    url: &Url,
+  ) -> Result<ImportDescriptor, AnyError> {
+    ImportDescriptor::from_url(url)
+  }
 
   fn parse_env_descriptor(&self, text: &str)
     -> Result<EnvDescriptor, AnyError>;
@@ -3291,8 +3293,9 @@ mod tests {
 
   #[test]
   fn test_check_net_url() {
+    let parser = TestPermissionDescriptorParser;
     let mut perms = Permissions::from_options(
-      &TestPermissionDescriptorParser,
+      &parser,
       &PermissionsOptions {
         allow_net: Some(svec![
           "localhost",
@@ -3306,6 +3309,7 @@ mod tests {
       },
     )
     .unwrap();
+    let mut perms = PermissionsContainer::new(Arc::new(parser), perms);
 
     let url_tests = vec![
       // Any protocol + port for localhost should be ok, since we don't specify
@@ -3348,7 +3352,7 @@ mod tests {
 
     for (url_str, is_ok) in url_tests {
       let u = url::Url::parse(url_str).unwrap();
-      assert_eq!(is_ok, perms.net.check_url(&u, None).is_ok(), "{}", u);
+      assert_eq!(is_ok, perms.check_net_url(&u, "api()").is_ok(), "{}", u);
     }
   }
 
@@ -3360,8 +3364,9 @@ mod tests {
     } else {
       svec!["/a"]
     };
+    let parser = TestPermissionDescriptorParser;
     let mut perms = Permissions::from_options(
-      &TestPermissionDescriptorParser,
+      &parser,
       &PermissionsOptions {
         allow_read: Some(read_allowlist),
         allow_net: Some(svec!["localhost"]),
@@ -3369,6 +3374,7 @@ mod tests {
       },
     )
     .unwrap();
+    let mut perms = PermissionsContainer::new(Arc::new(parser), perms);
 
     let mut fixtures = vec![
       (
@@ -3412,7 +3418,11 @@ mod tests {
   #[test]
   fn check_invalid_specifiers() {
     set_prompter(Box::new(TestPrompter));
-    let mut perms = Permissions::allow_all();
+    let perms = Permissions::allow_all();
+    let perms = PermissionsContainer::new(
+      Arc::new(TestPermissionDescriptorParser),
+      perms,
+    );
 
     let mut test_cases = vec![];
 

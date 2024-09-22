@@ -162,7 +162,7 @@ pub async fn run(
   let factory = CliFactory::from_flags(flags);
   let cli_options = factory.cli_options()?;
   let main_module = cli_options.resolve_main_module()?;
-  let permissions = factory.create_permissions_container()?;
+  let permissions = factory.root_permissions_container()?;
   let npm_resolver = factory.npm_resolver().await?.clone();
   let resolver = factory.resolver().await?.clone();
   let file_fetcher = factory.file_fetcher()?;
@@ -177,7 +177,7 @@ pub async fn run(
     .create_custom_worker(
       WorkerExecutionMode::Repl,
       main_module.clone(),
-      permissions,
+      permissions.clone(),
       vec![crate::ops::testing::deno_test::init_ops(test_event_sender)],
       Default::default(),
     )

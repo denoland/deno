@@ -44,13 +44,13 @@ pub async fn serve(
 
   maybe_npm_install(&factory).await?;
 
-  let permissions = factory.create_permissions_container()?;
+  let permissions = factory.root_permissions_container()?;
   let worker_factory = factory.create_cli_main_worker_factory().await?;
 
   do_serve(
     worker_factory,
     main_module,
-    permissions,
+    permissions.clone(),
     serve_flags.worker_count,
     false,
   )
@@ -172,11 +172,17 @@ async fn serve_with_watch(
 
         let _ = watcher_communicator.watch_paths(cli_options.watch_paths());
 
-        let permissions = factory.create_permissions_container()?;
+        let permissions = factory.root_permissions_container()?;
         let worker_factory = factory.create_cli_main_worker_factory().await?;
 
-        do_serve(worker_factory, main_module, permissions, worker_count, hmr)
-          .await?;
+        do_serve(
+          worker_factory,
+          main_module,
+          permissions.clone(),
+          worker_count,
+          hmr,
+        )
+        .await?;
 
         Ok(())
       })

@@ -104,7 +104,7 @@ impl ModuleLoadPreparer {
     roots: &[ModuleSpecifier],
     is_dynamic: bool,
     lib: TsTypeLib,
-    permissions: crate::file_fetcher::FetchPermissionsOption,
+    permissions: PermissionsContainer,
     ext_overwrite: Option<&String>,
   ) -> Result<(), AnyError> {
     log::debug!("Preparing module load.");
@@ -783,7 +783,7 @@ impl<TGraphContainer: ModuleGraphContainer> ModuleLoader
           &[specifier],
           is_dynamic,
           lib,
-          root_permissions.into(),
+          root_permissions,
           None,
         )
         .await?;
