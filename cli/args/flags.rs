@@ -695,7 +695,6 @@ impl PermissionFlags {
         }
       }
 
-      // if no flag is specified, then we allow these imports by default
       let raw_imports = [
         "deno.land",
         "esm.sh",
@@ -703,13 +702,16 @@ impl PermissionFlags {
         "raw.githubusercontent.com",
         "localhost",
         "127.0.0.1",
+        "0.0.0.0",
       ];
+
       let mut imports = imports.unwrap_or_default();
       imports.reserve(raw_imports.len() + 1);
       imports.extend(raw_imports.iter().map(|s| s.to_string()));
       if let Some(jsr_host) = jsr_host() {
         imports.push(jsr_host);
       }
+
       Some(imports)
     }
 
