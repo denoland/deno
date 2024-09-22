@@ -44,6 +44,7 @@ use crate::args::resolve_no_prompt;
 use crate::util::fs::canonicalize_path;
 
 use super::flags_net;
+use super::jsr_url;
 
 #[derive(Clone, Debug, Default, Eq, PartialEq)]
 pub enum ConfigFlag {
@@ -677,6 +678,41 @@ impl PermissionFlags {
       }
     }
 
+    fn jsr_host() -> Option<String> {
+      let url = jsr_url();
+      let host = url.host()?;
+      if let Some(port) = url.port() {
+        Some(format!("{}:{}", host, port))
+      } else {
+        Some(host.to_string())
+      }
+    }
+
+    fn handle_imports(imports: Option<Vec<String>>) -> Option<Vec<String>> {
+      if let Some(items) = &imports {
+        if items.is_empty() {
+          return imports;
+        }
+      }
+
+      // if no flag is specified, then we allow these imports by default
+      let raw_imports = [
+        "deno.land",
+        "esm.sh",
+        "jsr.io",
+        "raw.githubusercontent.com",
+        "localhost",
+        "127.0.0.1",
+      ];
+      let mut imports = imports.unwrap_or_default();
+      imports.reserve(raw_imports.len() + 1);
+      imports.extend(raw_imports.iter().map(|s| s.to_string()));
+      if let Some(jsr_host) = jsr_host() {
+        imports.push(jsr_host);
+      }
+      Some(imports)
+    }
+
     PermissionsOptions {
       allow_all: self.allow_all,
       allow_env: handle_allow(self.allow_all, self.allow_env.clone()),
@@ -693,7 +729,7 @@ impl PermissionFlags {
       deny_sys: self.deny_sys.clone(),
       allow_write: handle_allow(self.allow_all, self.allow_write.clone()),
       deny_write: self.deny_write.clone(),
-      allow_imports: handle_allow(self.allow_all, self.allow_imports.clone()),
+      allow_imports: handle_imports(handle_allow(self.allow_all, self.allow_imports.clone())),
       prompt: !resolve_no_prompt(self),
     }
   }
@@ -887,11 +923,11 @@ impl Flags {
     }
 
     match &self.permissions.allow_imports {
-      Some(net_allowlist) if net_allowlist.is_empty() => {
+      Some(allowlist) if allowlist.is_empty() => {
         args.push("--allow-imports".to_string());
       }
-      Some(net_allowlist) => {
-        let s = format!("--allow-imports={}", net_allowlist.join(","));
+      Some(allowlist) => {
+        let s = format!("--allow-imports={}", allowlist.join(","));
         args.push(s);
       }
       _ => {}
@@ -1679,6 +1715,7 @@ Future runs of this module will trigger no downloads or compilation unless --rel
       )
       .arg(frozen_lockfile_arg())
       .arg(allow_scripts_arg())
+      .args(import_permissions_args())
   })
 }
 
@@ -1738,6 +1775,7 @@ Unless --reload is specified, this command will not re-download already cached d
             .required_unless_present("help")
             .value_hint(ValueHint::FilePath),
         )
+        .args(import_permissions_args())
       }
     )
 }
@@ -3127,6 +3165,8 @@ fn permission_args(app: Command, requires: Option<&'static str>) -> Command {
                                            <p(245)>--allow-read  |  --allow-read="/etc,/var/log.txt"</>
   <g>-W, --allow-write[=<<PATH>...]</>          Allow file system write access. Optionally specify allowed paths.
                                            <p(245)>--allow-write  |  --allow-write="/etc,/var/log.txt"</>
+  <g>-I, --allow-imports[=<<IP_OR_HOSTNAME>...]</>  Allow importing from remote hosts. Optionally specify allowed IP addresses and host names, with ports as necessary.
+                                           <p(245)>--allow-imports  |  --allow-imports="example.com,github.com"</>
   <g>-N, --allow-net[=<<IP_OR_HOSTNAME>...]</>  Allow network access. Optionally specify allowed IP addresses and host names, with ports as necessary.
                                            <p(245)>--allow-net  |  --allow-net="localhost:8080,deno.land"</>
   <g>-E, --allow-env[=<<VARIABLE_NAME>...]</>   Allow access to environment variables. Optionally specify accessible environment variables.
@@ -3154,13 +3194,7 @@ fn permission_args(app: Command, requires: Option<&'static str>) -> Command {
 "#))
     .arg(
       {
-        let mut arg = Arg::new("allow-all")
-          .short('A')
-          .long("allow-all")
-          .action(ArgAction::SetTrue)
-          .help("Allow all permissions")
-          .hide(true)
-          ;
+        let mut arg = allow_all_arg().hide(true);
         if let Some(requires) = requires {
           arg = arg.requires(requires)
         }
@@ -3169,7 +3203,7 @@ fn permission_args(app: Command, requires: Option<&'static str>) -> Command {
     )
     .arg(
       {
-        let mut arg =  Arg::new("allow-read")
+        let mut arg = Arg::new("allow-read")
           .long("allow-read")
           .short('R')
           .num_args(0..)
@@ -3187,7 +3221,7 @@ fn permission_args(app: Command, requires: Option<&'static str>) -> Command {
     )
     .arg(
       {
-        let mut arg =   Arg::new("deny-read")
+        let mut arg = Arg::new("deny-read")
           .long("deny-read")
           .num_args(0..)
           .action(ArgAction::Append)
@@ -3204,7 +3238,7 @@ fn permission_args(app: Command, requires: Option<&'static str>) -> Command {
     )
     .arg(
       {
-        let mut arg =   Arg::new("allow-write")
+        let mut arg = Arg::new("allow-write")
           .long("allow-write")
           .short('W')
           .num_args(0..)
@@ -3222,7 +3256,7 @@ fn permission_args(app: Command, requires: Option<&'static str>) -> Command {
     )
     .arg(
       {
-        let mut arg =    Arg::new("deny-write")
+        let mut arg = Arg::new("deny-write")
           .long("deny-write")
           .num_args(0..)
           .action(ArgAction::Append)
@@ -3239,7 +3273,7 @@ fn permission_args(app: Command, requires: Option<&'static str>) -> Command {
     )
     .arg(
       {
-        let mut arg =   Arg::new("allow-net")
+        let mut arg = Arg::new("allow-net")
           .long("allow-net")
           .short('N')
           .num_args(0..)
@@ -3258,7 +3292,7 @@ fn permission_args(app: Command, requires: Option<&'static str>) -> Command {
     )
     .arg(
       {
-        let mut arg =  Arg::new("deny-net")
+        let mut arg = Arg::new("deny-net")
           .long("deny-net")
           .num_args(0..)
           .use_value_delimiter(true)
@@ -3352,7 +3386,7 @@ fn permission_args(app: Command, requires: Option<&'static str>) -> Command {
     )
     .arg(
       {
-        let mut arg =  Arg::new("deny-sys")
+        let mut arg = Arg::new("deny-sys")
           .long("deny-sys")
           .num_args(0..)
           .use_value_delimiter(true)
@@ -3387,7 +3421,7 @@ fn permission_args(app: Command, requires: Option<&'static str>) -> Command {
     )
     .arg(
       {
-        let mut arg =  Arg::new("deny-run")
+        let mut arg = Arg::new("deny-run")
           .long("deny-run")
           .num_args(0..)
           .use_value_delimiter(true)
@@ -3480,16 +3514,7 @@ fn permission_args(app: Command, requires: Option<&'static str>) -> Command {
     )
     .arg(
       {
-        let mut arg =   Arg::new("allow-imports")
-          .long("allow-imports")
-          .num_args(0..)
-          .use_value_delimiter(true)
-          .require_equals(true)
-          .value_name("IP_OR_HOSTNAME")
-          .help("Allow importing from remote hosts. Optionally specify allowed IP addresses and host names, with ports as necessary")
-          .value_parser(flags_net::validator)
-          .hide(true)
-          ;
+        let mut arg = allow_imports_arg().hide(true);
         if let Some(requires) = requires {
           arg = arg.requires(requires)
         }
@@ -3497,6 +3522,18 @@ fn permission_args(app: Command, requires: Option<&'static str>) -> Command {
       }
       
     )
+}
+
+fn import_permissions_args() -> Vec<Arg> {
+  vec![allow_all_arg(), allow_imports_arg()]
+}
+
+fn allow_all_arg() -> Arg {
+  Arg::new("allow-all")
+    .short('A')
+    .long("allow-all")
+    .action(ArgAction::SetTrue)
+    .help("Allow all permissions")
 }
 
 fn runtime_args(
@@ -3523,6 +3560,18 @@ fn runtime_args(
     .arg(seed_arg())
     .arg(enable_testing_features_arg())
     .arg(strace_ops_arg())
+}
+
+fn allow_imports_arg() -> Arg {
+  Arg::new("allow-imports")
+    .long("allow-imports")
+    .short('I')
+    .num_args(0..)
+    .use_value_delimiter(true)
+    .require_equals(true)
+    .value_name("IP_OR_HOSTNAME")
+    .help("Allow importing from remote hosts. Optionally specify allowed IP addresses and host names, with ports as necessary")
+    .value_parser(flags_net::validator)
 }
 
 fn inspect_args(app: Command) -> Command {
@@ -4162,6 +4211,7 @@ fn cache_parse(
   unstable_args_parse(flags, matches, UnstableArgsConfig::ResolutionOnly);
   frozen_lockfile_arg_parse(flags, matches);
   allow_scripts_arg_parse(flags, matches)?;
+  parse_import_permissions(flags, matches);
   let files = matches.remove_many::<String>("file").unwrap().collect();
   flags.subcommand = DenoSubcommand::Cache(CacheFlags { files });
   Ok(())
@@ -4183,7 +4233,13 @@ fn check_parse(
     doc: matches.get_flag("doc"),
     doc_only: matches.get_flag("doc-only"),
   });
+  parse_import_permissions(flags, matches);
   Ok(())
+}
+
+fn parse_import_permissions(flags: &mut Flags, matches: &mut ArgMatches) {
+  parse_allow_all(matches, flags);
+  parse_allow_imports(matches, flags);
 }
 
 fn clean_parse(flags: &mut Flags, _matches: &mut ArgMatches) {
@@ -5175,23 +5231,34 @@ fn permission_args_parse(
   }
 
   if matches.get_flag("allow-hrtime") || matches.get_flag("deny-hrtime") {
-    log::warn!("⚠️ Warning: `allow-hrtime` and `deny-hrtime` have been removed in Deno 2, as high resolution time is now always allowed.");
+    // use eprintln instead of log::warn because logging hasn't been initialized yet
+    eprintln!(
+      "{} `allow-hrtime` and `deny-hrtime` have been removed in Deno 2, as high resolution time is now always allowed.",
+      deno_runtime::colors::yellow("Warning")
+    );
   }
 
-  if matches.get_flag("allow-all") {
-    flags.allow_all();
-  }
-
-  if let Some(imports_wl) = matches.remove_many::<String>("allow-imports") {
-    let imports_allowlist = flags_net::parse(imports_wl.collect()).unwrap();
-    flags.permissions.allow_imports = Some(imports_allowlist);
-  }
+  parse_allow_all(matches, flags);
+  parse_allow_imports(matches, flags);
 
   if matches.get_flag("no-prompt") {
     flags.permissions.no_prompt = true;
   }
 
   Ok(())
+}
+
+fn parse_allow_all(matches: &mut ArgMatches, flags: &mut Flags) {
+  if matches.get_flag("allow-all") {
+    flags.allow_all();
+  }
+}
+
+fn parse_allow_imports(matches: &mut ArgMatches, flags: &mut Flags) {
+  if let Some(imports_wl) = matches.remove_many::<String>("allow-imports") {
+    let imports_allowlist = flags_net::parse(imports_wl.collect()).unwrap();
+    flags.permissions.allow_imports = Some(imports_allowlist);
+  }
 }
 
 fn unsafely_ignore_certificate_errors_parse(

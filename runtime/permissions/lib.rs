@@ -1793,6 +1793,9 @@ pub struct Permissions {
   pub ffi: UnaryPermission<FfiQueryDescriptor>,
   pub import: UnaryPermission<ImportDescriptor>,
   pub all: UnitPermission,
+  /// This should be set to true after the static module graph has
+  /// been loaded to enforce stricture permissions.
+  pub loaded_static_graph: bool,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq, Default, Serialize, Deserialize)]
@@ -1989,6 +1992,7 @@ impl Permissions {
         opts.prompt,
       )?,
       all: Permissions::new_all(opts.allow_all),
+      loaded_static_graph: false,
     })
   }
 
@@ -2004,6 +2008,7 @@ impl Permissions {
       ffi: UnaryPermission::allow_all(),
       import: UnaryPermission::allow_all(),
       all: Permissions::new_all(true),
+      loaded_static_graph: false,
     }
   }
 
@@ -2028,6 +2033,7 @@ impl Permissions {
       ffi: Permissions::new_unary(None, None, prompt).unwrap(),
       import: Permissions::new_unary(None, None, prompt).unwrap(),
       all: Permissions::new_all(false),
+      loaded_static_graph: false,
     }
   }
 }
@@ -2119,8 +2125,8 @@ impl PermissionsContainer {
     let mut inner = self.inner.lock();
     match specifier.scheme() {
       "file" => {
-        if inner.read.is_allow_all() {
-          return Ok(()); // avoid allocations below
+        if inner.read.is_allow_all() || !inner.loaded_static_graph {
+          return Ok(());
         }
 
         match specifier_to_file_path(specifier) {
@@ -2142,11 +2148,8 @@ impl PermissionsContainer {
       _ => {
         let desc = self
           .descriptor_parser
-          .parse_net_descriptor_from_url(specifier)?;
-        inner.net.check(&desc, Some("import()"))?;
-        inner
-          .import
-          .check(&ImportDescriptor(desc), Some("import()"))?;
+          .parse_import_descriptor_from_url(specifier)?;
+        inner.import.check(&desc, Some("import()"))?;
         Ok(())
       }
     }
@@ -2546,6 +2549,12 @@ impl PermissionsContainer {
       inner.check_partial(Some(&desc))?;
       Ok(desc.0.resolved)
     }
+  }
+
+  /// Mark that the static graph has been loaded. After this point, stricter
+  /// permissions will apply for imports.
+  pub fn mark_loaded_static_graph(&self) {
+    self.inner.lock().loaded_static_graph = true;
   }
 }
 
@@ -2968,6 +2977,7 @@ pub fn create_child_permissions(
     .create_child_permissions(child_permissions_arg.ffi, |text| {
       Ok(Some(parser.parse_ffi_descriptor(text)?))
     })?;
+  worker_perms.loaded_static_graph = true;
 
   Ok(worker_perms)
 }
@@ -3365,7 +3375,7 @@ mod tests {
       svec!["/a"]
     };
     let parser = TestPermissionDescriptorParser;
-    let mut perms = Permissions::from_options(
+    let perms = Permissions::from_options(
       &parser,
       &PermissionsOptions {
         allow_read: Some(read_allowlist),
@@ -3374,7 +3384,7 @@ mod tests {
       },
     )
     .unwrap();
-    let mut perms = PermissionsContainer::new(Arc::new(parser), perms);
+    let perms = PermissionsContainer::new(Arc::new(parser), perms);
 
     let mut fixtures = vec![
       (

@@ -633,6 +633,8 @@ impl CliMainWorkerFactory {
       v8_code_cache: shared.code_cache.clone(),
     };
 
+    permissions.mark_loaded_static_graph();
+
     let mut worker = MainWorker::bootstrap_from_options(
       main_module.clone(),
       permissions,
