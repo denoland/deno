@@ -476,6 +476,9 @@ impl<TQuery: QueryDescriptor> UnaryPermission<TQuery> {
     if state != PermissionState::Prompt {
       return state;
     }
+    if !self.prompt {
+      return PermissionState::Denied;
+    }
     let mut message = String::with_capacity(40);
     message.push_str(&format!("{} access", TQuery::flag_name()));
     if let Some(desc) = desc {
@@ -3438,7 +3441,8 @@ mod tests {
   fn test_request() {
     set_prompter(Box::new(TestPrompter));
     let parser = TestPermissionDescriptorParser;
-    let mut perms: Permissions = Permissions::none_without_prompt();
+    let mut perms: Permissions = Permissions::none_with_prompt();
+    let mut perms_no_prompt: Permissions = Permissions::none_without_prompt();
     let read_query =
       |path: &str| parser.parse_path_query(path).unwrap().into_read();
     let write_query =
@@ -3486,6 +3490,7 @@ mod tests {
       assert_eq!(perms.run.query(None), PermissionState::Prompt);
       prompt_value.set(false);
       assert_eq!(perms.run.request(Some(&run_query)), PermissionState::Granted);
+      assert_eq!(perms_no_prompt.read.request(Some(&read_query("/foo"))), PermissionState::Denied);
     };
   }
 
