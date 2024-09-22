@@ -686,10 +686,11 @@ impl PermissionFlags {
       }
 
       let raw_imports = [
-        "deno.land:443",
-        "esm.sh:443",
-        "jsr.io:443",
-        "raw.githubusercontent.com:443",
+        "deno.land",
+        "esm.sh",
+        "jsr.io",
+        "raw.githubusercontent.com",
+        "gist.githubusercontent.com",
         "localhost",
         "127.0.0.1",
         "0.0.0.0",
