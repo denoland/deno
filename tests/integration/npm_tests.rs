@@ -965,7 +965,6 @@ fn peer_deps_with_copied_folders_and_lockfile() {
 }
 
 
-<<<<<<< HEAD
 // TODO(2.0): this should be rewritten to a spec test and first run `deno install`
 // itest!(node_modules_import_run {
 //   args: "run --quiet main.ts",
@@ -988,35 +987,6 @@ fn peer_deps_with_copied_folders_and_lockfile() {
 //   exit_code: 1,
 // });
 
-=======
-itest!(non_existent_dep {
-  args: "cache npm:@denotest/non-existent-dep",
-  envs: env_vars_for_npm_tests(),
-  http_server: true,
-  exit_code: 1,
-  output_str: Some(concat!(
-    "[UNORDERED_START]\n",
-    "Download http://localhost:4260/@denotest/non-existent-dep\n",
-    "Download http://localhost:4260/@denotest/non-existent\n",
-    "[UNORDERED_END]\n",
-    "error: npm package '@denotest/non-existent' does not exist.\n"
-  )),
-});
-
-itest!(non_existent_dep_version {
-  args: "cache npm:@denotest/non-existent-dep-version",
-  envs: env_vars_for_npm_tests(),
-  http_server: true,
-  exit_code: 1,
-  output_str: Some(concat!(
-    "[UNORDERED_START]\n",
-    "Download http://localhost:4260/@denotest/non-existent-dep-version\n",
-    "Download http://localhost:4260/@denotest/esm-basic\n",
-    "[UNORDERED_END]\n",
-    "error: Could not find npm package '@denotest/esm-basic' matching '=99.99.99'.\n"
-  )),
-});
->>>>>>> 0cb00a6e89d83d4e16e6616f7af8819bd894b0da
 
 // TODO(2.0): this should be rewritten to a spec test and first run `deno install`
 #[test]
