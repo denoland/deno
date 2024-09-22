@@ -7435,16 +7435,6 @@ const dictMembersGPUCanvasConfiguration = [
     converter: webidl.converters["GPUPresentMode"],
   },
   {
-    key: "width",
-    converter: webidl.converters["long"],
-    required: true,
-  },
-  {
-    key: "height",
-    converter: webidl.converters["long"],
-    required: true,
-  },
-  {
     key: "viewFormats",
     converter: webidl.createSequenceConverter(
       webidl.converters["GPUTextureFormat"],
