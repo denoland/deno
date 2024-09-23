@@ -67,6 +67,64 @@ Deno.test(function anEventTargetCanBeSubclassed() {
   assertEquals(callCount, 0);
 });
 
+Deno.test(function removeEventListenerTest() {
+  const target = new EventTarget();
+  let callCount = 0;
+  const listener = () => {
+    ++callCount;
+  };
+
+  target.addEventListener("incr", listener, true);
+
+  target.dispatchEvent(new Event("incr"));
+  assertEquals(callCount, 1);
+
+  // Should not remove the listener because useCapture does not match
+  target.removeEventListener("incr", listener, false);
+
+  target.dispatchEvent(new Event("incr"));
+  assertEquals(callCount, 2);
+
+  // Should remove the listener because useCapture matches
+  target.removeEventListener("incr", listener, true);
+
+  target.dispatchEvent(new Event("incr"));
+  assertEquals(callCount, 2);
+
+  // Only the capture setting matters to removeEventListener
+  target.addEventListener("incr", listener, { passive: true });
+
+  target.dispatchEvent(new Event("incr"));
+  assertEquals(callCount, 3);
+
+  // Should not remove the listener because useCapture does not match
+  target.removeEventListener("incr", listener, { capture: true });
+  target.removeEventListener("incr", listener, true);
+
+  target.dispatchEvent(new Event("incr"));
+  assertEquals(callCount, 4);
+
+  // Should remove the listener because useCapture matches
+  target.removeEventListener("incr", listener);
+
+  target.dispatchEvent(new Event("incr"));
+  assertEquals(callCount, 4);
+
+  // Again, should remove the listener because useCapture matches
+  target.addEventListener("incr", listener, { passive: true });
+  target.removeEventListener("incr", listener, false);
+
+  target.dispatchEvent(new Event("incr"));
+  assertEquals(callCount, 4);
+
+  // Again, should remove the listener because useCapture matches
+  target.addEventListener("incr", listener, { passive: true });
+  target.removeEventListener("incr", listener, { capture: false });
+
+  target.dispatchEvent(new Event("incr"));
+  assertEquals(callCount, 4);
+});
+
 Deno.test(function removingNullEventListenerShouldSucceed() {
   const document = new EventTarget();
   assertEquals(document.removeEventListener("x", null, false), undefined);
