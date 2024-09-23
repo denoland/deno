@@ -10597,13 +10597,6 @@ fn lsp_format_markdown() {
 fn lsp_format_html() {
   let context = TestContextBuilder::new().use_temp_cwd().build();
   let temp_dir = context.temp_dir();
-  temp_dir.write(
-    "deno.json",
-    json!({
-      "unstable": ["fmt-html"],
-    })
-    .to_string(),
-  );
   let html_file =
     source_file(temp_dir.path().join("file.html"), "  <html></html>");
   let mut client = context.new_lsp_command().build();
@@ -10644,13 +10637,6 @@ fn lsp_format_html() {
 fn lsp_format_css() {
   let context = TestContextBuilder::new().use_temp_cwd().build();
   let temp_dir = context.temp_dir();
-  temp_dir.write(
-    "deno.json",
-    json!({
-      "unstable": ["fmt-css"],
-    })
-    .to_string(),
-  );
   let css_file = source_file(temp_dir.path().join("file.css"), "  foo {}");
   let mut client = context.new_lsp_command().build();
   client.initialize_default();
@@ -10690,13 +10676,6 @@ fn lsp_format_css() {
 fn lsp_format_yaml() {
   let context = TestContextBuilder::new().use_temp_cwd().build();
   let temp_dir = context.temp_dir();
-  temp_dir.write(
-    "deno.json",
-    json!({
-      "unstable": ["fmt-yaml"],
-    })
-    .to_string(),
-  );
   let yaml_file = source_file(temp_dir.path().join("file.yaml"), "  foo: 1");
   let mut client = context.new_lsp_command().build();
   client.initialize_default();
