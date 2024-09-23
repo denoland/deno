@@ -6,6 +6,7 @@ use deno_core::serde_json::Value;
 
 use pretty_assertions::assert_eq;
 use test_util as util;
+use test_util::itest;
 use url::Url;
 use util::assert_contains;
 use util::env_vars_for_npm_tests;
@@ -23,6 +24,25 @@ use util::TestContextBuilder;
 //   http_server: true,
 // });
 
+itest!(run_existing_npm_package {
+  args: "run --allow-read --node-modules-dir=auto npm:@denotest/bin",
+  output: "npm/run_existing_npm_package/main.out",
+  envs: env_vars_for_npm_tests(),
+  http_server: true,
+  temp_cwd: true,
+  cwd: Some("npm/run_existing_npm_package/"),
+  copy_temp_dir: Some("npm/run_existing_npm_package/"),
+});
+
+itest!(require_resolve_url_paths {
+  args: "run -A --quiet --node-modules-dir=auto url_paths.ts",
+  output: "npm/require_resolve_url/url_paths.out",
+  envs: env_vars_for_npm_tests(),
+  http_server: true,
+  exit_code: 0,
+  cwd: Some("npm/require_resolve_url/"),
+  copy_temp_dir: Some("npm/require_resolve_url/"),
+});
 #[test]
 fn parallel_downloading() {
   let (out, _err) = util::run_and_collect_output_with_args(
