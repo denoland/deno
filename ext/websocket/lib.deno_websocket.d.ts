@@ -6,14 +6,14 @@
 /// <reference lib="esnext" />
 
 /** @category WebSockets */
-declare interface CloseEventInit extends EventInit {
+interface CloseEventInit extends EventInit {
   code?: number;
   reason?: string;
   wasClean?: boolean;
 }
 
 /** @category WebSockets */
-declare interface CloseEvent extends Event {
+interface CloseEvent extends Event {
   /**
    * Returns the WebSocket connection close code provided by the server.
    */
@@ -35,7 +35,7 @@ declare var CloseEvent: {
 };
 
 /** @category WebSockets */
-declare interface WebSocketEventMap {
+interface WebSocketEventMap {
   close: CloseEvent;
   error: Event;
   message: MessageEvent;
@@ -52,7 +52,7 @@ declare interface WebSocketEventMap {
  * @tags allow-net
  * @category WebSockets
  */
-declare interface WebSocket extends EventTarget {
+interface WebSocket extends EventTarget {
   /**
    * Returns a string that indicates how binary data from the WebSocket object is exposed to scripts:
    *
@@ -130,4 +130,4 @@ declare var WebSocket: {
 };
 
 /** @category WebSockets */
-declare type BinaryType = "arraybuffer" | "blob";
+type BinaryType = "arraybuffer" | "blob";

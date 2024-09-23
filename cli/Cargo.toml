@@ -65,7 +65,7 @@ winres.workspace = true
 [dependencies]
 deno_ast = { workspace = true, features = ["bundler", "cjs", "codegen", "proposal", "react", "sourcemap", "transforms", "typescript", "view", "visit"] }
 deno_cache_dir = { workspace = true }
-deno_config = { version = "=0.34.3", features = ["workspace", "sync"] }
+deno_config = { version = "=0.35.0", features = ["workspace", "sync"] }
 deno_core = { workspace = true, features = ["include_js_files_for_snapshotting"] }
 deno_doc = { version = "0.148.0", features = ["html", "syntect"] }
 deno_graph = { version = "=0.82.1" }
@@ -78,7 +78,7 @@ deno_semver.workspace = true
 deno_task_shell = "=0.17.0"
 deno_terminal.workspace = true
 eszip = "=0.78.0"
-libsui = "0.3.0"
+libsui = "0.3.1"
 napi_sym.workspace = true
 node_resolver.workspace = true
 
@@ -124,7 +124,7 @@ libz-sys.workspace = true
 log = { workspace = true, features = ["serde"] }
 lsp-types.workspace = true
 malva = "=0.10.1"
-markup_fmt = "=0.12.0"
+markup_fmt = "=0.13.0"
 memmem.workspace = true
 monch.workspace = true
 notify.workspace = true
