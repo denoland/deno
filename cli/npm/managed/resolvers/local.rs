@@ -268,7 +268,10 @@ impl NpmPackageFsResolver for LocalNpmPackageResolver {
   }
 }
 
-fn local_node_modules_package_path(
+/// `node_modules/.deno/<package>/node_modules/<package_name>`
+///
+/// Where the actual package is stored.
+fn local_node_modules_package_contents_path(
   local_registry_dir: &Path,
   package: &NpmResolutionPackage,
 ) -> PathBuf {
@@ -691,7 +694,8 @@ async fn sync_resolution_with_fs(
   Ok(())
 }
 
-fn local_package_folder_name(
+/// `node_modules/.deno/<package>/`
+fn local_node_modules_package_folder(
   local_registry_dir: &Path,
   package: &NpmResolutionPackage,
 ) -> PathBuf {
@@ -705,13 +709,15 @@ struct LocalLifecycleScripts<'a> {
 }
 
 impl<'a> LocalLifecycleScripts<'a> {
+  /// `node_modules/.deno/<package>/.scripts-run`
   fn ran_scripts_file(&self, package: &NpmResolutionPackage) -> PathBuf {
-    local_package_folder_name(&self.deno_local_registry_dir, package)
+    local_node_modules_package_folder(self.deno_local_registry_dir, package)
       .join(".scripts-run")
   }
 
+  /// `node_modules/.deno/<package>/.scripts-warned`
   fn warned_scripts_file(&self, package: &NpmResolutionPackage) -> PathBuf {
-    local_package_folder_name(&self.deno_local_registry_dir, package)
+    local_node_modules_package_folder(self.deno_local_registry_dir, package)
       .join(".scripts-warned")
   }
 }
@@ -720,7 +726,10 @@ impl<'a> super::common::lifecycle_scripts::LifecycleScriptsStrategy
   for LocalLifecycleScripts<'a>
 {
   fn package_path(&self, package: &NpmResolutionPackage) -> PathBuf {
-    local_node_modules_package_path(self.deno_local_registry_dir, package)
+    local_node_modules_package_contents_path(
+      self.deno_local_registry_dir,
+      package,
+    )
   }
 
   fn did_run_scripts(

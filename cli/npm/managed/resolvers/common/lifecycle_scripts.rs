@@ -179,7 +179,7 @@ impl<'a> LifecycleScripts<'a> {
                 cwd: &package_path,
                 env_vars: env_vars.clone(),
                 custom_commands: custom_commands.clone(),
-                init_cwd: &init_cwd,
+                init_cwd,
                 argv: &[],
                 root_node_modules_dir: root_node_modules_dir_path,
               },
