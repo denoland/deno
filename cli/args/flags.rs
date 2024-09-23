@@ -1247,9 +1247,7 @@ pub fn flags_from_vec(args: Vec<OsString>) -> clap::error::Result<Flags> {
       .map(|arg| {
         format!(
           "--{}",
-          arg
-            .get_long()
-            .unwrap_or_else(|| arg.get_id().as_str())
+          arg.get_long().unwrap_or_else(|| arg.get_id().as_str())
         )
       });
 
