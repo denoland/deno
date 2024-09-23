@@ -1242,7 +1242,7 @@ pub fn flags_from_vec(args: Vec<OsString>) -> clap::error::Result<Flags> {
       .find(|arg| {
         matches
           .value_source(arg.get_id().as_str())
-          .is_some_and(|value| value != clap::parser::ValueSource::DefaultValue)
+          .is_some_and(|value| value == clap::parser::ValueSource::CommandLine)
       })
       .map(|arg| {
         format!(
