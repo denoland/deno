@@ -1156,7 +1156,7 @@ Deno.test(
   > {
     const caCert = Deno.readTextFileSync("tests/testdata/tls/RootCA.pem");
     const client = Deno.createHttpClient({ caCerts: [caCert] });
-    assert(client instanceof Deno.Deno.HttpClient);
+    assert(client instanceof Deno.HttpClient);
     const response = await fetch("https://localhost:5545/assets/fixture.json", {
       client,
     });
