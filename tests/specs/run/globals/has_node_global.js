@@ -1,0 +1,1 @@
+globalThis === globalThis.global;

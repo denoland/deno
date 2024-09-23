@@ -1,0 +1,9 @@
+{
+  "tests": {
+    "has_node_global": {
+      "args": "run has_node_global.js",
+      "exitCode": 0,
+      "output": "has_node_global.out"
+    }
+  }
+}
