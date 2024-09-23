@@ -265,6 +265,8 @@ fn format_markdown(
           | "svelte"
           | "vue"
           | "astro"
+          | "vto"
+          | "njk"
           | "yml"
           | "yaml"
       ) {
@@ -288,7 +290,7 @@ fn format_markdown(
             format_css(&fake_filename, text, fmt_options)
           }
           "html" => format_html(&fake_filename, text, fmt_options),
-          "svelte" | "vue" | "astro" => {
+          "svelte" | "vue" | "astro" | "vto" | "njk" => {
             if unstable_options.component {
               format_html(&fake_filename, text, fmt_options)
             } else {
@@ -460,7 +462,7 @@ pub fn format_file(
       format_css(file_path, file_text, fmt_options)
     }
     "html" => format_html(file_path, file_text, fmt_options),
-    "svelte" | "vue" | "astro" => {
+    "svelte" | "vue" | "astro" | "vto" | "njk" => {
       if unstable_options.component {
         format_html(file_path, file_text, fmt_options)
       } else {
@@ -1139,6 +1141,8 @@ fn is_supported_ext_fmt(path: &Path) -> bool {
         | "svelte"
         | "vue"
         | "astro"
+        | "vto"
+        | "njk"
         | "md"
         | "mkd"
         | "mkdn"
@@ -1197,6 +1201,10 @@ mod test {
     assert!(is_supported_ext_fmt(Path::new("foo.VUE")));
     assert!(is_supported_ext_fmt(Path::new("foo.astro")));
     assert!(is_supported_ext_fmt(Path::new("foo.AsTrO")));
+    assert!(is_supported_ext_fmt(Path::new("foo.vto")));
+    assert!(is_supported_ext_fmt(Path::new("foo.Vto")));
+    assert!(is_supported_ext_fmt(Path::new("foo.njk")));
+    assert!(is_supported_ext_fmt(Path::new("foo.NJk")));
     assert!(is_supported_ext_fmt(Path::new("foo.yml")));
     assert!(is_supported_ext_fmt(Path::new("foo.Yml")));
     assert!(is_supported_ext_fmt(Path::new("foo.yaml")));
