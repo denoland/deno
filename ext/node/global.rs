@@ -52,7 +52,6 @@ const fn str_to_utf16<const N: usize>(s: &str) -> [u16; N] {
 // - clearImmediate (node only)
 // - clearInterval (both, but different implementation)
 // - clearTimeout (both, but different implementation)
-// - global (node only)
 // - performance (both, but different implementation)
 // - setImmediate (node only)
 // - setInterval (both, but different implementation)
