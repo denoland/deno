@@ -1071,27 +1071,13 @@ impl CliOptions {
         None => None,
       }
     };
-    Ok(
-      self
-        .workspace()
-        .create_resolver(
-          CreateResolverOptions {
-            pkg_json_dep_resolution,
-            specified_import_map: cli_arg_specified_import_map,
-          },
-          |specifier| {
-            let specifier = specifier.clone();
-            async move {
-              let file = file_fetcher
-                .fetch_bypass_permissions(&specifier)
-                .await?
-                .into_text_decoded()?;
-              Ok(file.source.to_string())
-            }
-          },
-        )
-        .await?,
-    )
+    Ok(self.workspace().create_resolver(
+      CreateResolverOptions {
+        pkg_json_dep_resolution,
+        specified_import_map: cli_arg_specified_import_map,
+      },
+      |path| Ok(std::fs::read_to_string(path)?),
+    )?)
   }
 
   pub fn node_ipc_fd(&self) -> Option<i64> {
