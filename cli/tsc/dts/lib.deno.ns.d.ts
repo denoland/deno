@@ -6034,7 +6034,7 @@ declare namespace Deno {
    *
    * @category Fetch
    */
-  export interface HttpClient extends Disposable {
+  export class HttpClient implements Disposable {
     /** Close the HTTP client. */
     close(): void;
   }
