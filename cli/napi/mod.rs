@@ -18,3 +18,4 @@
 pub mod js_native_api;
 pub mod node_api;
 pub mod util;
+pub mod uv;
