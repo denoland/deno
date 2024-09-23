@@ -3,8 +3,10 @@
 #![deny(clippy::print_stderr)]
 #![deny(clippy::print_stdout)]
 
+use std::borrow::Cow;
 use std::collections::HashSet;
 use std::path::Path;
+use std::path::PathBuf;
 
 use deno_core::error::AnyError;
 use deno_core::located_script_name;
@@ -49,21 +51,29 @@ pub trait NodePermissions {
     url: &Url,
     api_name: &str,
   ) -> Result<(), AnyError>;
+  #[must_use = "the resolved return value to mitigate time-of-check to time-of-use issues"]
   #[inline(always)]
-  fn check_read(&mut self, path: &Path) -> Result<(), AnyError> {
+  fn check_read(&mut self, path: &str) -> Result<PathBuf, AnyError> {
     self.check_read_with_api_name(path, None)
   }
+  #[must_use = "the resolved return value to mitigate time-of-check to time-of-use issues"]
   fn check_read_with_api_name(
     &mut self,
-    path: &Path,
+    path: &str,
     api_name: Option<&str>,
-  ) -> Result<(), AnyError>;
+  ) -> Result<PathBuf, AnyError>;
+  #[must_use = "the resolved return value to mitigate time-of-check to time-of-use issues"]
+  fn check_read_path<'a>(
+    &mut self,
+    path: &'a Path,
+  ) -> Result<Cow<'a, Path>, AnyError>;
   fn check_sys(&mut self, kind: &str, api_name: &str) -> Result<(), AnyError>;
+  #[must_use = "the resolved return value to mitigate time-of-check to time-of-use issues"]
   fn check_write_with_api_name(
     &mut self,
-    path: &Path,
+    path: &str,
     api_name: Option<&str>,
-  ) -> Result<(), AnyError>;
+  ) -> Result<PathBuf, AnyError>;
 }
 
 impl NodePermissions for deno_permissions::PermissionsContainer {
@@ -79,20 +89,27 @@ impl NodePermissions for deno_permissions::PermissionsContainer {
   #[inline(always)]
   fn check_read_with_api_name(
     &mut self,
-    path: &Path,
+    path: &str,
     api_name: Option<&str>,
-  ) -> Result<(), AnyError> {
+  ) -> Result<PathBuf, AnyError> {
     deno_permissions::PermissionsContainer::check_read_with_api_name(
       self, path, api_name,
     )
   }
 
+  fn check_read_path<'a>(
+    &mut self,
+    path: &'a Path,
+  ) -> Result<Cow<'a, Path>, AnyError> {
+    deno_permissions::PermissionsContainer::check_read_path(self, path, None)
+  }
+
   #[inline(always)]
   fn check_write_with_api_name(
     &mut self,
-    path: &Path,
+    path: &str,
     api_name: Option<&str>,
-  ) -> Result<(), AnyError> {
+  ) -> Result<PathBuf, AnyError> {
     deno_permissions::PermissionsContainer::check_write_with_api_name(
       self, path, api_name,
     )
@@ -390,6 +407,7 @@ deno_core::extension!(deno_node,
     ops::ipc::op_node_ipc_unref,
     ops::process::op_node_process_kill,
     ops::process::op_process_abort,
+    ops::tls::op_get_root_certificates,
   ],
   esm_entry_point = "ext:deno_node/02_init.js",
   esm = [
@@ -598,6 +616,7 @@ deno_core::extension!(deno_node,
     "node:http2" = "http2.ts",
     "node:https" = "https.ts",
     "node:inspector" = "inspector.ts",
+    "node:inspector/promises" = "inspector.ts",
     "node:module" = "01_require.js",
     "node:net" = "net.ts",
     "node:os" = "os.ts",
@@ -621,6 +640,7 @@ deno_core::extension!(deno_node,
     "node:timers" = "timers.ts",
     "node:timers/promises" = "timers/promises.ts",
     "node:tls" = "tls.ts",
+    "node:trace_events" = "trace_events.ts",
     "node:tty" = "tty.js",
     "node:url" = "url.ts",
     "node:util" = "util.ts",

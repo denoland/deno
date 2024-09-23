@@ -1,0 +1,24 @@
+{
+  "version": 1,
+  "diagnostics": [
+    {
+      "filename": "[WILDCARD]main.ts",
+      "range": {
+        "start": {
+          "line": 1,
+          "col": 8,
+          "bytePos": 8
+        },
+        "end": {
+          "line": 1,
+          "col": 11,
+          "bytePos": 11
+        }
+      },
+      "message": "`any` type is not allowed",
+      "code": "no-explicit-any",
+      "hint": [WILDCARD]
+    }
+  ],
+  "errors": []
+}

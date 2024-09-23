@@ -1,0 +1,82 @@
+[WILDCARD]
+running 7 tests from [WILDCARD]invalid_usage.ts
+capturing ...
+  some step ... ok ([WILDCARD])
+capturing ... FAILED ([WILDCARD])
+top level missing await ...
+  step ... INCOMPLETE
+top level missing await ... FAILED (due to incomplete steps) ([WILDCARD])
+inner missing await ...
+  step ...
+    inner ... INCOMPLETE
+  step ... FAILED (due to incomplete steps) ([WILDCARD])
+inner missing await ... FAILED (due to 1 failed step) ([WILDCARD])
+parallel steps with sanitizers ...
+  step 1 ... INCOMPLETE
+  step 2 ... FAILED ([WILDCARD])
+parallel steps with sanitizers ... FAILED (due to incomplete steps) ([WILDCARD])
+parallel steps when first has sanitizer ...
+  step 1 ... ok ([WILDCARD])
+  step 2 ... FAILED ([WILDCARD])
+parallel steps when first has sanitizer ... FAILED (due to 1 failed step) ([WILDCARD])
+parallel steps when second has sanitizer ...
+  step 1 ... ok ([WILDCARD])
+  step 2 ... FAILED ([WILDCARD])
+parallel steps when second has sanitizer ... FAILED (due to 1 failed step) ([WILDCARD])
+parallel steps where only inner tests have sanitizers ...
+  step 1 ...
+    step inner ... ok ([WILDCARD])
+  step 1 ... ok ([WILDCARD])
+  step 2 ...
+    step inner ... FAILED ([WILDCARD])
+  step 2 ... FAILED (due to 1 failed step) ([WILDCARD])
+parallel steps where only inner tests have sanitizers ... FAILED (due to 1 failed step) ([WILDCARD])
+
+ ERRORS 
+
+capturing => [WILDCARD]invalid_usage.ts:[WILDCARD]
+error: Error: Cannot run test step after parent scope has finished execution. Ensure any `.step(...)` calls are executed before their parent scope completes execution.
+  await capturedContext.step("next step", () => {});
+                        ^
+    at TestContext.step ([WILDCARD])
+    at [WILDCARD]/invalid_usage.ts:[WILDCARD]
+
+top level missing await ... step => [WILDCARD]invalid_usage.ts:[WILDCARD]
+error: Didn't complete before parent. Await step with `await t.step(...)`.
+
+inner missing await ... step ... inner => [WILDCARD]invalid_usage.ts:[WILDCARD]
+error: Didn't complete before parent. Await step with `await t.step(...)`.
+
+parallel steps with sanitizers ... step 2 => [WILDCARD]invalid_usage.ts:[WILDCARD]
+error: Started test step while another test step with sanitizers was running:
+  * parallel steps with sanitizers ... step 1
+
+parallel steps with sanitizers ... step 1 => [WILDCARD]invalid_usage.ts:[WILDCARD]
+error: Didn't complete before parent. Await step with `await t.step(...)`.
+
+parallel steps when first has sanitizer ... step 2 => [WILDCARD]invalid_usage.ts:[WILDCARD]
+error: Started test step while another test step with sanitizers was running:
+  * parallel steps when first has sanitizer ... step 1
+
+parallel steps when second has sanitizer ... step 2 => [WILDCARD]invalid_usage.ts:[WILDCARD]
+error: Started test step with sanitizers while another test step was running:
+  * parallel steps when second has sanitizer ... step 1
+
+parallel steps where only inner tests have sanitizers ... step 2 ... step inner => [WILDCARD]invalid_usage.ts:[WILDCARD]
+error: Started test step with sanitizers while another test step was running:
+  * parallel steps where only inner tests have sanitizers ... step 1
+
+ FAILURES 
+
+capturing => [WILDCARD]invalid_usage.ts:1:6
+top level missing await ... step => [WILDCARD]invalid_usage.ts:[WILDCARD]
+inner missing await ... step ... inner => [WILDCARD]invalid_usage.ts:[WILDCARD]
+parallel steps with sanitizers ... step 2 => [WILDCARD]invalid_usage.ts:[WILDCARD]
+parallel steps with sanitizers ... step 1 => [WILDCARD]invalid_usage.ts:[WILDCARD]
+parallel steps when first has sanitizer ... step 2 => [WILDCARD]invalid_usage.ts:[WILDCARD]
+parallel steps when second has sanitizer ... step 2 => [WILDCARD]invalid_usage.ts:[WILDCARD]
+parallel steps where only inner tests have sanitizers ... step 2 ... step inner => [WILDCARD]invalid_usage.ts:[WILDCARD]
+
+FAILED | 0 passed (5 steps) | 7 failed (9 steps) ([WILDCARD])
+
+error: Test failed

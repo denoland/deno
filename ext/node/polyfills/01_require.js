@@ -99,6 +99,7 @@ import http from "node:http";
 import http2 from "node:http2";
 import https from "node:https";
 import inspector from "node:inspector";
+import inspectorPromises from "node:inspector/promises";
 import internalCp from "ext:deno_node/internal/child_process.ts";
 import internalCryptoCertificate from "ext:deno_node/internal/crypto/certificate.ts";
 import internalCryptoCipher from "ext:deno_node/internal/crypto/cipher.ts";
@@ -151,6 +152,7 @@ import test from "node:test";
 import timers from "node:timers";
 import timersPromises from "node:timers/promises";
 import tls from "node:tls";
+import traceEvents from "node:trace_events";
 import tty from "node:tty";
 import url from "node:url";
 import utilTypes from "node:util/types";
@@ -199,6 +201,7 @@ function setupBuiltinModules() {
     http2,
     https,
     inspector,
+    "inspector/promises": inspectorPromises,
     "internal/console/constructor": internalConsole,
     "internal/child_process": internalCp,
     "internal/crypto/certificate": internalCryptoCertificate,
@@ -260,6 +263,7 @@ function setupBuiltinModules() {
     timers,
     "timers/promises": timersPromises,
     tls,
+    traceEvents,
     tty,
     url,
     util,
@@ -1003,7 +1007,10 @@ Module.prototype._compile = function (content, filename, format) {
   try {
     compiledWrapper = wrapSafe(filename, content, this, format);
   } catch (err) {
-    if (err instanceof SyntaxError && op_require_can_parse_as_esm(content)) {
+    if (
+      format !== "commonjs" && err instanceof SyntaxError &&
+      op_require_can_parse_as_esm(content)
+    ) {
       return loadESMFromCJS(this, filename, content);
     }
     throw err;
@@ -1063,7 +1070,7 @@ Module._extensions[".js"] = function (module, filename) {
   let format;
   if (StringPrototypeEndsWith(filename, ".js")) {
     const pkg = op_require_read_closest_package_json(filename);
-    if (pkg?.typ === "module") {
+    if (pkg?.type === "module") {
       format = "module";
     } else if (pkg?.type === "commonjs") {
       format = "commonjs";

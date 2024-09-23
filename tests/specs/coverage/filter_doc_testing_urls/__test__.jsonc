@@ -1,0 +1,15 @@
+{
+  "tempDir": true,
+  "steps": [
+    {
+      "args": "test -A --coverage --doc",
+      "output": "test_coverage.out",
+      "exitCode": 0
+    },
+    {
+      "args": "coverage",
+      "output": "coverage_success.out",
+      "exitCode": 0
+    }
+  ]
+}

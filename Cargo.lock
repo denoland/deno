@@ -1146,7 +1146,7 @@ dependencies = [
 
 [[package]]
 name = "deno"
-version = "2.0.0-rc.2"
+version = "2.0.0-rc.4"
 dependencies = [
  "anstream",
  "async-trait",
@@ -1375,9 +1375,9 @@ dependencies = [
 
 [[package]]
 name = "deno_config"
-version = "0.34.2"
+version = "0.34.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "764368ba1424ea74f9a28d8e2e7633f57d008e73f76b12bc272f6d5903ca1e08"
+checksum = "187d7dd888a49bfda396632371139e940c5cf47b15bfcaeeb2ba50f82f6940ec"
 dependencies = [
  "anyhow",
  "deno_package_json",
@@ -1405,9 +1405,9 @@ dependencies = [
 
 [[package]]
 name = "deno_core"
-version = "0.308.0"
+version = "0.311.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "62fc8250fa9da059cc05b18328319a9048c73e4889ca929cc60877a8a1bfc4d4"
+checksum = "5e09bd55da542fa1fde753aff617c355b5d782e763ab2a19e4371a56d7844cac"
 dependencies = [
  "anyhow",
  "bincode",
@@ -1476,6 +1476,7 @@ dependencies = [
  "rand",
  "ring",
  "rsa",
+ "sec1",
  "serde",
  "serde_bytes",
  "sha1",
@@ -1701,9 +1702,9 @@ dependencies = [
 
 [[package]]
 name = "deno_lint"
-version = "0.65.0"
+version = "0.67.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "90a58ed695d2a04c43ff6f5fb03d1597f86e3748861c872ea5a9443da7512fc7"
+checksum = "871b60e32bfb6c110cbb9b0688dbf048f81e5d347fe4ce5a42239263de9dd938"
 dependencies = [
  "anyhow",
  "deno_ast",
@@ -1719,9 +1720,9 @@ dependencies = [
 
 [[package]]
 name = "deno_lockfile"
-version = "0.23.0"
+version = "0.23.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "fb68a4a666c69eabd8fe505d6fdc4ed4a2d962fe1680dbfa8b0c8a2975d58ed0"
+checksum = "579117d5815aa9bae0212637d6f4d5f45f9649bb2c8988dca434077545535039"
 dependencies = [
  "deno_semver",
  "serde",
@@ -1859,6 +1860,7 @@ dependencies = [
  "thiserror",
  "tokio",
  "url",
+ "webpki-root-certs",
  "winapi",
  "windows-sys 0.52.0",
  "x25519-dalek",
@@ -1868,9 +1870,9 @@ dependencies = [
 
 [[package]]
 name = "deno_npm"
-version = "0.25.0"
+version = "0.25.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "efb2dd7efaf478d780a6ca43e6127667d5329ed9a5ff89f42cec0dc21ee58342"
+checksum = "e61b112e9bb332e8e6b0d82fcea7664423933de476e1726dd23a924a2d94f4ef"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -1887,9 +1889,9 @@ dependencies = [
 
 [[package]]
 name = "deno_ops"
-version = "0.184.0"
+version = "0.187.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "24a465b7d691ad7cae41e8f51bd954b1e3ffd201b84dc30de2c16cf91034946e"
+checksum = "e040fd4def8a67538fe38c9955fd970efc9f44284bd69d44f8992a456afd665d"
 dependencies = [
  "proc-macro-rules",
  "proc-macro2",
@@ -1924,6 +1926,7 @@ dependencies = [
  "libc",
  "log",
  "once_cell",
+ "percent-encoding",
  "serde",
  "which 4.4.2",
  "winapi",
@@ -2518,9 +2521,9 @@ dependencies = [
 
 [[package]]
 name = "dprint-plugin-typescript"
-version = "0.91.7"
+version = "0.93.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "243879526ffc78aeb111719c3180f95820847c28eeeffb8d2585d1ec15a44fe4"
+checksum = "e9308d98b923b7c0335c2ee1560199e3f2321b1be82803107b4ba4ed5dac46cc"
 dependencies = [
  "anyhow",
  "deno_ast",
@@ -4206,9 +4209,9 @@ dependencies = [
 
 [[package]]
 name = "libsui"
-version = "0.3.0"
+version = "0.3.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "2d0f34a58599483cd44a31ff3622dbcca0c50679af60f98b705069dc729e70cf"
+checksum = "56e39af24eff8df7c8b9980ef56a1a1f4d2e77b34b2d5c0529f108c53ae96a7a"
 dependencies = [
  "editpe",
  "libc",
@@ -4339,9 +4342,9 @@ dependencies = [
 
 [[package]]
 name = "markup_fmt"
-version = "0.12.0"
+version = "0.13.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "33edf0c364d53d5518cf663824e7d5d5339c844daa54bb0208bee5202dde88f1"
+checksum = "74fc137a4a591720176339bf7e857586a48ff35c0caee7ad6cf709327901232c"
 dependencies = [
  "aho-corasick",
  "css_dataset",
@@ -5973,9 +5976,9 @@ dependencies = [
 
 [[package]]
 name = "rustls-pki-types"
-version = "1.7.0"
+version = "1.8.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "976295e77ce332211c0d24d92c0e83e50f5c5f046d11082cea19f3df13a3562d"
+checksum = "fc0a2ce646f8655401bb81e7927b812614bd5d91dbc968696be50603510fcaf0"
 
 [[package]]
 name = "rustls-tokio-stream"
@@ -6257,9 +6260,9 @@ dependencies = [
 
 [[package]]
 name = "serde_v8"
-version = "0.217.0"
+version = "0.220.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "467c0a7bfc67cd918f1f7ab7a5ab70a9e744e466ff428cd728ff2c03bc77874c"
+checksum = "6e7a65d91d79acc82aa229aeb084f4a39bda269069bc1520df40f679495388e4"
 dependencies = [
  "num-bigint",
  "serde",
@@ -8112,6 +8115,15 @@ checksum = "77afa9a11836342370f4817622a2f0f418b134426d91a82dfb48f532d2ec13ef"
 dependencies = [
  "js-sys",
  "wasm-bindgen",
+]
+
+[[package]]
+name = "webpki-root-certs"
+version = "0.26.5"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "e6d93b773107ba49bc84dd3b241e019c702d886fd5c457defe2ea8b1123a5dcd"
+dependencies = [
+ "rustls-pki-types",
 ]
 
 [[package]]

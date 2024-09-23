@@ -1,0 +1,39 @@
+Check [WILDCARD]/test/shuffle_with_seed/shuffle/bar_test.ts
+Check [WILDCARD]/test/shuffle_with_seed/shuffle/baz_test.ts
+Check [WILDCARD]/test/shuffle_with_seed/shuffle/foo_test.ts
+running 10 tests from [WILDCARD]shuffle/foo_test.ts
+test 3 ... ok ([WILDCARD])
+test 2 ... ok ([WILDCARD])
+test 7 ... ok ([WILDCARD])
+test 5 ... ok ([WILDCARD])
+test 8 ... ok ([WILDCARD])
+test 0 ... ok ([WILDCARD])
+test 9 ... ok ([WILDCARD])
+test 4 ... ok ([WILDCARD])
+test 6 ... ok ([WILDCARD])
+test 1 ... ok ([WILDCARD])
+running 10 tests from [WILDCARD]shuffle/baz_test.ts
+test 3 ... ok ([WILDCARD])
+test 2 ... ok ([WILDCARD])
+test 7 ... ok ([WILDCARD])
+test 5 ... ok ([WILDCARD])
+test 8 ... ok ([WILDCARD])
+test 0 ... ok ([WILDCARD])
+test 9 ... ok ([WILDCARD])
+test 4 ... ok ([WILDCARD])
+test 6 ... ok ([WILDCARD])
+test 1 ... ok ([WILDCARD])
+running 10 tests from [WILDCARD]shuffle/bar_test.ts
+test 3 ... ok ([WILDCARD])
+test 2 ... ok ([WILDCARD])
+test 7 ... ok ([WILDCARD])
+test 5 ... ok ([WILDCARD])
+test 8 ... ok ([WILDCARD])
+test 0 ... ok ([WILDCARD])
+test 9 ... ok ([WILDCARD])
+test 4 ... ok ([WILDCARD])
+test 6 ... ok ([WILDCARD])
+test 1 ... ok ([WILDCARD])
+
+ok | 30 passed | 0 failed ([WILDCARD])
+

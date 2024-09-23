@@ -9,9 +9,9 @@ use deno_core::error::AnyError;
 use deno_core::parking_lot::RwLock;
 use deno_graph::ModuleGraph;
 use deno_runtime::colors;
-use deno_runtime::deno_permissions::PermissionsContainer;
 
 use crate::args::CliOptions;
+use crate::file_fetcher::FetchPermissionsOption;
 use crate::module_loader::ModuleLoadPreparer;
 use crate::util::fs::collect_specifiers;
 use crate::util::path::is_script_ext;
@@ -65,6 +65,7 @@ impl MainModuleGraphContainer {
   pub async fn check_specifiers(
     &self,
     specifiers: &[ModuleSpecifier],
+    ext_overwrite: Option<&String>,
   ) -> Result<(), AnyError> {
     let mut graph_permit = self.acquire_update_permit().await;
     let graph = graph_permit.graph_mut();
@@ -75,7 +76,8 @@ impl MainModuleGraphContainer {
         specifiers,
         false,
         self.cli_options.ts_type_lib_window(),
-        PermissionsContainer::allow_all(),
+        FetchPermissionsOption::AllowAll,
+        ext_overwrite,
       )
       .await?;
     graph_permit.commit();
@@ -94,7 +96,7 @@ impl MainModuleGraphContainer {
       log::warn!("{} No matching files found.", colors::yellow("Warning"));
     }
 
-    self.check_specifiers(&specifiers).await
+    self.check_specifiers(&specifiers, None).await
   }
 
   pub fn collect_specifiers(

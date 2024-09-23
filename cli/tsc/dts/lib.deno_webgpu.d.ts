@@ -1370,8 +1370,6 @@ interface GPUCanvasConfiguration {
   viewFormats?: GPUTextureFormat[];
   colorSpace?: "srgb" | "display-p3";
   alphaMode?: GPUCanvasAlphaMode;
-  width: number;
-  height: number;
 }
 /** @category GPU */
 interface GPUCanvasContext {

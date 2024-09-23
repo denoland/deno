@@ -5,7 +5,7 @@ use deno_core::error::AnyError;
 use std::mem::size_of;
 use std::os::raw::c_char;
 use std::os::raw::c_short;
-use std::path::Path;
+use std::path::PathBuf;
 
 mod call;
 mod callback;
@@ -41,13 +41,28 @@ const _: () = {
 pub const UNSTABLE_FEATURE_NAME: &str = "ffi";
 
 pub trait FfiPermissions {
-  fn check_partial(&mut self, path: Option<&Path>) -> Result<(), AnyError>;
+  fn check_partial_no_path(&mut self) -> Result<(), AnyError>;
+  #[must_use = "the resolved return value to mitigate time-of-check to time-of-use issues"]
+  fn check_partial_with_path(
+    &mut self,
+    path: &str,
+  ) -> Result<PathBuf, AnyError>;
 }
 
 impl FfiPermissions for deno_permissions::PermissionsContainer {
   #[inline(always)]
-  fn check_partial(&mut self, path: Option<&Path>) -> Result<(), AnyError> {
-    deno_permissions::PermissionsContainer::check_ffi_partial(self, path)
+  fn check_partial_no_path(&mut self) -> Result<(), AnyError> {
+    deno_permissions::PermissionsContainer::check_ffi_partial_no_path(self)
+  }
+
+  #[inline(always)]
+  fn check_partial_with_path(
+    &mut self,
+    path: &str,
+  ) -> Result<PathBuf, AnyError> {
+    deno_permissions::PermissionsContainer::check_ffi_partial_with_path(
+      self, path,
+    )
   }
 }
 

@@ -1,0 +1,14 @@
+{
+  "tempDir": true,
+  "steps": [
+    {
+      "args": "install",
+      "output": "install.out"
+    },
+    {
+      "args": "check --quiet main.ts",
+      "output": "check.out",
+      "exitCode": 1
+    }
+  ]
+}

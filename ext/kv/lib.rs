@@ -129,11 +129,9 @@ where
 {
   let handler = {
     let state = state.borrow();
-    // TODO(bartlomieju): replace with `state.feature_checker.check_or_exit`
-    // once we phase out `check_or_exit_with_legacy_fallback`
     state
       .feature_checker
-      .check_or_exit_with_legacy_fallback(UNSTABLE_FEATURE_NAME, "Deno.openKv");
+      .check_or_exit(UNSTABLE_FEATURE_NAME, "Deno.openKv");
     state.borrow::<Rc<DBH>>().clone()
   };
   let db = handler.open(state.clone(), path).await?;
@@ -281,7 +279,7 @@ where
 
   if ranges.len() > config.max_read_ranges {
     return Err(type_error(format!(
-      "too many ranges (max {})",
+      "Too many ranges (max {})",
       config.max_read_ranges
     )));
   }
@@ -311,7 +309,7 @@ where
 
   if total_entries > config.max_read_entries {
     return Err(type_error(format!(
-      "too many entries (max {})",
+      "Too many entries (max {})",
       config.max_read_entries
     )));
   }
@@ -393,7 +391,7 @@ where
 
   if keys.len() > config.max_watched_keys {
     return Err(type_error(format!(
-      "too many keys (max {})",
+      "Too many keys (max {})",
       config.max_watched_keys
     )));
   }
@@ -544,10 +542,10 @@ fn mutation_from_v8(
       MutationKind::SetSuffixVersionstampedKey(value.try_into()?)
     }
     (op, Some(_)) => {
-      return Err(type_error(format!("invalid mutation '{op}' with value")))
+      return Err(type_error(format!("Invalid mutation '{op}' with value")))
     }
     (op, None) => {
-      return Err(type_error(format!("invalid mutation '{op}' without value")))
+      return Err(type_error(format!("Invalid mutation '{op}' without value")))
     }
   };
   Ok(Mutation {
@@ -613,7 +611,7 @@ impl RawSelector {
       (Some(prefix), Some(start), None) => {
         if !start.starts_with(&prefix) || start.len() == prefix.len() {
           return Err(type_error(
-            "start key is not in the keyspace defined by prefix",
+            "Start key is not in the keyspace defined by prefix",
           ));
         }
         Ok(Self::Prefixed {
@@ -625,7 +623,7 @@ impl RawSelector {
       (Some(prefix), None, Some(end)) => {
         if !end.starts_with(&prefix) || end.len() == prefix.len() {
           return Err(type_error(
-            "end key is not in the keyspace defined by prefix",
+            "End key is not in the keyspace defined by prefix",
           ));
         }
         Ok(Self::Prefixed {
@@ -636,7 +634,7 @@ impl RawSelector {
       }
       (None, Some(start), Some(end)) => {
         if start > end {
-          return Err(type_error("start key is greater than end key"));
+          return Err(type_error("Start key is greater than end key"));
         }
         Ok(Self::Range { start, end })
       }
@@ -644,7 +642,7 @@ impl RawSelector {
         let end = start.iter().copied().chain(Some(0)).collect();
         Ok(Self::Range { start, end })
       }
-      _ => Err(type_error("invalid range")),
+      _ => Err(type_error("Invalid range")),
     }
   }
 
@@ -706,7 +704,7 @@ fn encode_cursor(
 ) -> Result<String, AnyError> {
   let common_prefix = selector.common_prefix();
   if !boundary_key.starts_with(common_prefix) {
-    return Err(type_error("invalid boundary key"));
+    return Err(type_error("Invalid boundary key"));
   }
   Ok(BASE64_URL_SAFE.encode(&boundary_key[common_prefix.len()..]))
 }
@@ -788,14 +786,14 @@ where
 
   if checks.len() > config.max_checks {
     return Err(type_error(format!(
-      "too many checks (max {})",
+      "Too many checks (max {})",
       config.max_checks
     )));
   }
 
   if mutations.len() + enqueues.len() > config.max_mutations {
     return Err(type_error(format!(
-      "too many mutations (max {})",
+      "Too many mutations (max {})",
       config.max_mutations
     )));
   }
@@ -809,7 +807,7 @@ where
     .into_iter()
     .map(|mutation| mutation_from_v8((mutation, current_timestamp)))
     .collect::<Result<Vec<Mutation>, AnyError>>()
-    .with_context(|| "invalid mutation")?;
+    .with_context(|| "Invalid mutation")?;
   let enqueues = enqueues
     .into_iter()
     .map(|e| enqueue_from_v8(e, current_timestamp))
@@ -850,14 +848,14 @@ where
 
   if total_payload_size > config.max_total_mutation_size_bytes {
     return Err(type_error(format!(
-      "total mutation size too large (max {} bytes)",
+      "Total mutation size too large (max {} bytes)",
       config.max_total_mutation_size_bytes
     )));
   }
 
   if total_key_size > config.max_total_key_size_bytes {
     return Err(type_error(format!(
-      "total key size too large (max {} bytes)",
+      "Total key size too large (max {} bytes)",
       config.max_total_key_size_bytes
     )));
   }
@@ -891,7 +889,7 @@ fn op_kv_encode_cursor(
 fn check_read_key_size(key: &[u8], config: &KvConfig) -> Result<(), AnyError> {
   if key.len() > config.max_read_key_size_bytes {
     Err(type_error(format!(
-      "key too large for read (max {} bytes)",
+      "Key too large for read (max {} bytes)",
       config.max_read_key_size_bytes
     )))
   } else {
@@ -905,7 +903,7 @@ fn check_write_key_size(
 ) -> Result<usize, AnyError> {
   if key.len() > config.max_write_key_size_bytes {
     Err(type_error(format!(
-      "key too large for write (max {} bytes)",
+      "Key too large for write (max {} bytes)",
       config.max_write_key_size_bytes
     )))
   } else {
@@ -925,7 +923,7 @@ fn check_value_size(
 
   if payload.len() > config.max_value_size_bytes {
     Err(type_error(format!(
-      "value too large (max {} bytes)",
+      "Value too large (max {} bytes)",
       config.max_value_size_bytes
     )))
   } else {

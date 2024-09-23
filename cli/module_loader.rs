@@ -104,12 +104,33 @@ impl ModuleLoadPreparer {
     roots: &[ModuleSpecifier],
     is_dynamic: bool,
     lib: TsTypeLib,
-    permissions: PermissionsContainer,
+    permissions: crate::file_fetcher::FetchPermissionsOption,
+    ext_overwrite: Option<&String>,
   ) -> Result<(), AnyError> {
     log::debug!("Preparing module load.");
     let _pb_clear_guard = self.progress_bar.clear_guard();
 
     let mut cache = self.module_graph_builder.create_fetch_cacher(permissions);
+    if let Some(ext) = ext_overwrite {
+      let maybe_content_type = match ext.as_str() {
+        "ts" => Some("text/typescript"),
+        "tsx" => Some("text/tsx"),
+        "js" => Some("text/javascript"),
+        "jsx" => Some("text/jsx"),
+        _ => None,
+      };
+      if let Some(content_type) = maybe_content_type {
+        for root in roots {
+          cache.file_header_overrides.insert(
+            root.clone(),
+            std::collections::HashMap::from([(
+              "content-type".to_string(),
+              content_type.to_string(),
+            )]),
+          );
+        }
+      }
+    }
     log::debug!("Building module graph.");
     let has_type_checked = !graph.roots.is_empty();
 
@@ -762,7 +783,8 @@ impl<TGraphContainer: ModuleGraphContainer> ModuleLoader
           &[specifier],
           is_dynamic,
           lib,
-          root_permissions,
+          root_permissions.into(),
+          None,
         )
         .await?;
       update_permit.commit();
