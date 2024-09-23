@@ -1,9 +1,9 @@
 {
-    "args": "run mixed_case_package_name/global.ts",
-    "output": "mixed_case_package_name/global.out",
-    "exitCode": 0,
-    "envs": {
-        "NO_COLOR": "1",
-        "NPM_CONFIG_REGISTRY": "http://localhost:4260/"
-    }
+  "args": "run mixed_case_package_name/global.ts",
+  "output": "mixed_case_package_name/global.out",
+  "exitCode": 0,
+  "envs": {
+    "NO_COLOR": "1",
+    "NPM_CONFIG_REGISTRY": "http://localhost:4260/"
+  }
 }

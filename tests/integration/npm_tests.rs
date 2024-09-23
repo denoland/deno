@@ -14,7 +14,6 @@ use util::TestContextBuilder;
 
 // NOTE: See how to make test npm packages at ./testdata/npm/README.md
 
-
 // FIXME(bartlomieju): npm: specifiers are not handled in dynamic imports
 // at the moment
 // itest!(dynamic_import {
@@ -23,7 +22,6 @@ use util::TestContextBuilder;
 //   envs: env_vars_for_npm_tests(),
 //   http_server: true,
 // });
-
 
 #[test]
 fn parallel_downloading() {
@@ -304,7 +302,6 @@ fn deno_run_cjs_module() {
   assert!(deno_dir.path().join("test_dir").exists());
 }
 
-
 #[test]
 fn deno_run_bin_lockfile() {
   let context = TestContextBuilder::for_npm().use_temp_cwd().build();
@@ -317,7 +314,6 @@ fn deno_run_bin_lockfile() {
   output.assert_matches_file("npm/deno_run_esm.out");
   assert!(temp_dir.path().join("deno.lock").exists());
 }
-
 
 #[test]
 fn node_modules_dir_cache() {
@@ -402,7 +398,6 @@ fn ensure_registry_files_local() {
     }
   }
 }
-
 
 #[test]
 fn lock_file_missing_top_level_package() {
@@ -963,7 +958,6 @@ fn peer_deps_with_copied_folders_and_lockfile() {
   );
 }
 
-
 // TODO(2.0): this should be rewritten to a spec test and first run `deno install`
 // itest!(node_modules_import_run {
 //   args: "run --quiet main.ts",
@@ -985,7 +979,6 @@ fn peer_deps_with_copied_folders_and_lockfile() {
 //   copy_temp_dir: Some("npm/node_modules_import/"),
 //   exit_code: 1,
 // });
-
 
 // TODO(2.0): this should be rewritten to a spec test and first run `deno install`
 #[test]
@@ -1455,7 +1448,6 @@ fn top_level_install_package_json_explicit_opt_in() {
 
   assert!(node_modules_dir.join("@denotest").exists());
 }
-
 
 #[test]
 fn byonm_cjs_esm_packages() {
@@ -2058,7 +2050,6 @@ fn cjs_export_analysis_import_cjs_directly_relative_import() {
   let output = test_context.new_command().args("run main.ts").run();
   output.assert_matches_text("2\n");
 }
-
 
 #[test]
 fn different_nested_dep_byonm() {

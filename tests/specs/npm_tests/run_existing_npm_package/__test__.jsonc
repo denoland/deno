@@ -1,8 +1,8 @@
 {
-    "args": "run --allow-read --node-modules-dir=auto npm:@denotest/bin",
-    "output": "run_existing_npm_package/main.out",
-    "envs": {
-        "NO_COLOR": "1",
-        "NPM_CONFIG_REGISTRY": "http://localhost:4260/"
-    }
+  "args": "run --allow-read --node-modules-dir=auto npm:@denotest/bin",
+  "output": "run_existing_npm_package/main.out",
+  "envs": {
+    "NO_COLOR": "1",
+    "NPM_CONFIG_REGISTRY": "http://localhost:4260/"
+  }
 }

@@ -1,8 +1,8 @@
 {
-    "args": "check --all d_ext/main.ts",
-    "output": "d_ext/main.out",
-    "envs": {
-        "NO_COLOR": "1",
-        "NPM_CONFIG_REGISTRY": "http://localhost:4260/"
-    }
+  "args": "check --all d_ext/main.ts",
+  "output": "d_ext/main.out",
+  "envs": {
+    "NO_COLOR": "1",
+    "NPM_CONFIG_REGISTRY": "http://localhost:4260/"
+  }
 }

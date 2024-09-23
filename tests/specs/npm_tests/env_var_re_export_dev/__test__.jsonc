@@ -1,8 +1,8 @@
 {
-    "args": "run --allow-read --allow-env --quiet env_var_re_export/main.js",
-    "output": "dev\n",
-    "envs": {
-        "NO_COLOR": "1",
-        "NPM_CONFIG_REGISTRY": "http://localhost:4260/"
-    }
+  "args": "run --allow-read --allow-env --quiet env_var_re_export/main.js",
+  "output": "dev\n",
+  "envs": {
+    "NO_COLOR": "1",
+    "NPM_CONFIG_REGISTRY": "http://localhost:4260/"
+  }
 }

@@ -1,9 +1,9 @@
 {
-    "args": "run directory_import/folder_index_js.ts",
-    "output": "directory_import/folder_index_js.out",
-    "envs": {
-        "NO_COLOR": "1",
-        "NPM_CONFIG_REGISTRY": "http://localhost:4260/"
-    },
-    "exitCode": 1
+  "args": "run directory_import/folder_index_js.ts",
+  "output": "directory_import/folder_index_js.out",
+  "envs": {
+    "NO_COLOR": "1",
+    "NPM_CONFIG_REGISTRY": "http://localhost:4260/"
+  },
+  "exitCode": 1
 }

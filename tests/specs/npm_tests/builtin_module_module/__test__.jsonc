@@ -1,8 +1,8 @@
 {
-    "args": "run --allow-read --quiet builtin_module_module/main.js",
-    "output": "builtin_module_module/main.out",
-    "envs": {
-        "NO_COLOR": "1",
-        "NPM_CONFIG_REGISTRY": "http://localhost:4260/"
-    }
+  "args": "run --allow-read --quiet builtin_module_module/main.js",
+  "output": "builtin_module_module/main.out",
+  "envs": {
+    "NO_COLOR": "1",
+    "NPM_CONFIG_REGISTRY": "http://localhost:4260/"
+  }
 }

@@ -1,9 +1,9 @@
 {
-    "args": "check check_errors/main.ts",
-    "output": "check_errors/main_local.out",
-    "envs": {
-        "NO_COLOR": "1",
-        "NPM_CONFIG_REGISTRY": "http://localhost:4260/"
-    },
-    "exitCode": 1
+  "args": "check check_errors/main.ts",
+  "output": "check_errors/main_local.out",
+  "envs": {
+    "NO_COLOR": "1",
+    "NPM_CONFIG_REGISTRY": "http://localhost:4260/"
+  },
+  "exitCode": 1
 }

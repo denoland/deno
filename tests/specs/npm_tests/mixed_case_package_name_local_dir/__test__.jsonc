@@ -1,10 +1,9 @@
 {
-    "args":
-    "run --node-modules-dir=auto -A mixed_case_package_name/local.ts",
-    "output": "mixed_case_package_name/local.out",
-    "exitCode": 0,
-    "envs": {
-        "NO_COLOR": "1",
-        "NPM_CONFIG_REGISTRY": "http://localhost:4260/"
-    }
+  "args": "run --node-modules-dir=auto -A mixed_case_package_name/local.ts",
+  "output": "mixed_case_package_name/local.out",
+  "exitCode": 0,
+  "envs": {
+    "NO_COLOR": "1",
+    "NPM_CONFIG_REGISTRY": "http://localhost:4260/"
+  }
 }

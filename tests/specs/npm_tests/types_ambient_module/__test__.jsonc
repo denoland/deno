@@ -1,9 +1,9 @@
 {
-    "args": "check --quiet types_ambient_module/main.ts",
-    "output": "types_ambient_module/main.out",
-    "envs": {
-        "NO_COLOR": "1",
-        "NPM_CONFIG_REGISTRY": "http://localhost:4260/"
-    },
-    "exitCode": 1
+  "args": "check --quiet types_ambient_module/main.ts",
+  "output": "types_ambient_module/main.out",
+  "envs": {
+    "NO_COLOR": "1",
+    "NPM_CONFIG_REGISTRY": "http://localhost:4260/"
+  },
+  "exitCode": 1
 }
