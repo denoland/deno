@@ -1250,7 +1250,6 @@ pub fn flags_from_vec(args: Vec<OsString>) -> clap::error::Result<Flags> {
           arg
             .get_long()
             .unwrap_or_else(|| arg.get_id().as_str())
-            .to_string()
         )
       });
 
