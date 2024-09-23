@@ -3508,7 +3508,12 @@ fn permission_request_with_no_prompt() {
   TestContext::default()
     .new_command()
     .env("NO_COLOR", "1")
-    .args_vec(["run", "--quiet", "--no-prompt", "run/permission_request_no_prompt.ts"])
+    .args_vec([
+      "run",
+      "--quiet",
+      "--no-prompt",
+      "run/permission_request_no_prompt.ts",
+    ])
     .with_pty(|mut console| {
       console.expect("PermissionStatus { state: \"denied\", onchange: null }");
     });
