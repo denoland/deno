@@ -1451,9 +1451,10 @@ impl ConfigData {
     // Mark the import map as a watched file
     if let Some(import_map_specifier) = member_dir
       .workspace
-      .to_import_map_specifier()
+      .to_import_map_path()
       .ok()
       .flatten()
+      .and_then(|path| Url::from_file_path(path).ok())
     {
       add_watched_file(
         import_map_specifier.clone(),
@@ -1542,50 +1543,32 @@ impl ConfigData {
         None
       }
     };
-    let resolver = deno_core::unsync::spawn({
-      let workspace = member_dir.workspace.clone();
-      let file_fetcher = file_fetcher.cloned();
-      async move {
-        workspace
-          .create_resolver(
-            CreateResolverOptions {
-              pkg_json_dep_resolution,
-              specified_import_map,
-            },
-            move |specifier| {
-              let specifier = specifier.clone();
-              let file_fetcher = file_fetcher.clone().unwrap();
-              async move {
-                let file = file_fetcher
-                  .fetch_bypass_permissions(&specifier)
-                  .await?
-                  .into_text_decoded()?;
-                Ok(file.source.to_string())
-              }
-            },
-          )
-          .await
-          .inspect_err(|err| {
-            lsp_warn!(
-              "  Failed to load resolver: {}",
-              err // will contain the specifier
-            );
-          })
-          .ok()
-      }
-    })
-    .await
-    .unwrap()
-    .unwrap_or_else(|| {
-      // create a dummy resolver
-      WorkspaceResolver::new_raw(
-        scope.clone(),
-        None,
-        member_dir.workspace.resolver_jsr_pkgs().collect(),
-        member_dir.workspace.package_jsons().cloned().collect(),
-        pkg_json_dep_resolution,
+    let resolver = member_dir
+      .workspace
+      .create_resolver(
+        CreateResolverOptions {
+          pkg_json_dep_resolution,
+          specified_import_map,
+        },
+        |path| Ok(std::fs::read_to_string(path)?),
       )
-    });
+      .inspect_err(|err| {
+        lsp_warn!(
+          "  Failed to load resolver: {}",
+          err // will contain the specifier
+        );
+      })
+      .ok()
+      .unwrap_or_else(|| {
+        // create a dummy resolver
+        WorkspaceResolver::new_raw(
+          scope.clone(),
+          None,
+          member_dir.workspace.resolver_jsr_pkgs().collect(),
+          member_dir.workspace.package_jsons().cloned().collect(),
+          pkg_json_dep_resolution,
+        )
+      });
     if !resolver.diagnostics().is_empty() {
       lsp_warn!(
         "  Import map diagnostics:\n{}",
