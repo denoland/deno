@@ -6037,6 +6037,8 @@ declare namespace Deno {
   export class HttpClient implements Disposable {
     /** Close the HTTP client. */
     close(): void;
+
+    [Symbol.dispose](): void;
   }
 
   /**
