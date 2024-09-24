@@ -132,7 +132,7 @@ const denoNs = {
   UnsafePointerView: ffi.UnsafePointerView,
   UnsafeFnPointer: ffi.UnsafeFnPointer,
   umask: fs.umask,
-  httpClient: httpClient.httpClient,
+  HttpClient: httpClient.HttpClient,
   createHttpClient: httpClient.createHttpClient,
 };
 
@@ -158,15 +158,6 @@ const denoNsUnstableById = { __proto__: null };
 
 denoNsUnstableById[unstableIds.cron] = {
   cron: cron.cron,
-};
-
-denoNsUnstableById[unstableIds.ffi] = {};
-
-denoNsUnstableById[unstableIds.fs] = {};
-
-denoNsUnstableById[unstableIds.http] = {
-  HttpClient: httpClient.HttpClient,
-  createHttpClient: httpClient.createHttpClient,
 };
 
 denoNsUnstableById[unstableIds.kv] = {
