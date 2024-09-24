@@ -1,0 +1,5 @@
+{
+  "tempDir": true,
+  "args": "fmt --unstable-html",
+  "output": "[WILDLINE]badly_formatted.html\nChecked 1 file\n"
+}

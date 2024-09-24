@@ -158,7 +158,7 @@ const cloneRepoStep = [{
     // Use depth > 1, because sometimes we need to rebuild main and if
     // other commits have landed it will become impossible to rebuild if
     // the checkout is too shallow.
-    "fetch-depth": 50,
+    "fetch-depth": 5,
     submodules: false,
   },
 }];
@@ -354,7 +354,7 @@ const ci = {
       needs: ["pre_build"],
       if: "${{ needs.pre_build.outputs.skip_build != 'true' }}",
       "runs-on": "${{ matrix.runner }}",
-      "timeout-minutes": 150,
+      "timeout-minutes": 180,
       defaults: {
         run: {
           // GH actions does not fail fast by default on
@@ -813,14 +813,8 @@ const ci = {
           ].join("\n"),
           run: [
             'gsutil -h "Cache-Control: public, max-age=3600" cp ./target/release/*.zip gs://dl.deno.land/canary/$(git rev-parse HEAD)/',
-            'latest_canary_hash=$(gsutil cat gs://dl.deno.land/canary-$(rustc -vV | sed -n "s|host: ||p")-latest.txt)',
-            "git cat-file -e $latest_canary_hash",
-            "if [ $? -eq 0 ]; then",
-            "  echo ${{ github.sha }} > canary-latest.txt",
-            '  gsutil -h "Cache-Control: no-cache" cp canary-latest.txt gs://dl.deno.land/canary-$(rustc -vV | sed -n "s|host: ||p")-latest.txt',
-            "else",
-            '  echo "Skipping upload, because newer canary version is already available"',
-            "fi",
+            "echo ${{ github.sha }} > canary-latest.txt",
+            'gsutil -h "Cache-Control: no-cache" cp canary-latest.txt gs://dl.deno.land/canary-$(rustc -vV | sed -n "s|host: ||p")-latest.txt',
           ].join("\n"),
         },
         {
@@ -1098,14 +1092,8 @@ const ci = {
         {
           name: "Upload canary version file to dl.deno.land",
           run: [
-            "latest_canary_hash=$(gsutil cat gs://dl.deno.land/canary-latest.txt)",
-            "git cat-file -e $latest_canary_hash",
-            "if [ $? -eq 0]; then",
-            "  echo ${{ github.sha }} > canary-latest.txt",
-            '  gsutil -h "Cache-Control: no-cache" cp canary-latest.txt gs://dl.deno.land/canary-latest.txt',
-            "else",
-            '  echo "Skipping upload, because newer canary version is already available"',
-            "fi",
+            "echo ${{ github.sha }} > canary-latest.txt",
+            'gsutil -h "Cache-Control: no-cache" cp canary-latest.txt gs://dl.deno.land/canary-latest.txt',
           ].join("\n"),
         },
       ],

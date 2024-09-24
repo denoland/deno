@@ -206,10 +206,7 @@ pub struct FmtFlags {
   pub prose_wrap: Option<String>,
   pub no_semicolons: Option<bool>,
   pub watch: Option<WatchFlags>,
-  pub unstable_css: bool,
-  pub unstable_html: bool,
   pub unstable_component: bool,
-  pub unstable_yaml: bool,
 }
 
 impl FmtFlags {
@@ -1236,6 +1233,51 @@ pub fn flags_from_vec(args: Vec<OsString>) -> clap::error::Result<Flags> {
   }
 
   if let Some((subcommand, mut m)) = matches.remove_subcommand() {
+    let pre_subcommand_arg = app
+      .get_arguments()
+      .filter(|arg| !arg.is_global_set())
+      .find(|arg| {
+        matches
+          .value_source(arg.get_id().as_str())
+          .is_some_and(|value| value == clap::parser::ValueSource::CommandLine)
+      })
+      .map(|arg| {
+        format!(
+          "--{}",
+          arg.get_long().unwrap_or_else(|| arg.get_id().as_str())
+        )
+      });
+
+    if let Some(arg) = pre_subcommand_arg {
+      let usage = app.find_subcommand_mut(&subcommand).unwrap().render_usage();
+
+      let mut err =
+        clap::error::Error::new(ErrorKind::UnknownArgument).with_cmd(&app);
+      err.insert(
+        clap::error::ContextKind::InvalidArg,
+        clap::error::ContextValue::String(arg.clone()),
+      );
+
+      let valid = app.get_styles().get_valid();
+
+      let styled_suggestion = clap::builder::StyledStr::from(format!(
+        "'{}{subcommand} {arg}{}' exists",
+        valid.render(),
+        valid.render_reset()
+      ));
+
+      err.insert(
+        clap::error::ContextKind::Suggested,
+        clap::error::ContextValue::StyledStrs(vec![styled_suggestion]),
+      );
+      err.insert(
+        clap::error::ContextKind::Usage,
+        clap::error::ContextValue::StyledStr(usage),
+      );
+
+      return Err(err);
+    }
+
     match subcommand.as_str() {
       "add" => add_parse(&mut flags, &mut m),
       "remove" => remove_parse(&mut flags, &mut m),
@@ -2219,7 +2261,8 @@ Ignore formatting a file by adding an ignore comment at the top of the file:
           .help("Enable formatting CSS, SCSS, Sass and Less files")
           .value_parser(FalseyValueParser::new())
           .action(ArgAction::SetTrue)
-          .help_heading(FMT_HEADING),
+          .help_heading(FMT_HEADING)
+          .hide(true),
       )
       .arg(
         Arg::new("unstable-html")
@@ -2227,7 +2270,8 @@ Ignore formatting a file by adding an ignore comment at the top of the file:
           .help("Enable formatting HTML files")
           .value_parser(FalseyValueParser::new())
           .action(ArgAction::SetTrue)
-          .help_heading(FMT_HEADING),
+          .help_heading(FMT_HEADING)
+          .hide(true),
       )
       .arg(
         Arg::new("unstable-component")
@@ -2243,7 +2287,8 @@ Ignore formatting a file by adding an ignore comment at the top of the file:
           .help("Enable formatting YAML files")
           .value_parser(FalseyValueParser::new())
           .action(ArgAction::SetTrue)
-          .help_heading(FMT_HEADING),
+          .help_heading(FMT_HEADING)
+          .hide(true),
       )
   })
 }
@@ -3896,6 +3941,7 @@ fn node_modules_dir_arg() -> Arg {
   Arg::new("node-modules-dir")
     .long("node-modules-dir")
     .num_args(0..=1)
+    .default_missing_value("auto")
     .value_parser(clap::builder::ValueParser::new(parse_node_modules_dir_mode))
     .value_name("MODE")
     .require_equals(true)
@@ -4371,10 +4417,7 @@ fn fmt_parse(
   let single_quote = matches.remove_one::<bool>("single-quote");
   let prose_wrap = matches.remove_one::<String>("prose-wrap");
   let no_semicolons = matches.remove_one::<bool>("no-semicolons");
-  let unstable_css = matches.get_flag("unstable-css");
-  let unstable_html = matches.get_flag("unstable-html");
   let unstable_component = matches.get_flag("unstable-component");
-  let unstable_yaml = matches.get_flag("unstable-yaml");
 
   flags.subcommand = DenoSubcommand::Fmt(FmtFlags {
     check: matches.get_flag("check"),
@@ -4386,10 +4429,7 @@ fn fmt_parse(
     prose_wrap,
     no_semicolons,
     watch: watch_arg_parse(matches)?,
-    unstable_css,
-    unstable_html,
     unstable_component,
-    unstable_yaml,
   });
   Ok(())
 }
@@ -4698,16 +4738,10 @@ fn run_parse(
       "[SCRIPT_ARG] may only be omitted with --v8-flags=--help, else to use the repl with arguments, please use the `deno repl` subcommand",
     ));
   } else {
-    return Err(
-      app
-        .get_subcommands_mut()
-        .find(|subcommand| subcommand.get_name() == "run")
-        .unwrap()
-        .error(
-          clap::error::ErrorKind::MissingRequiredArgument,
-          "[SCRIPT_ARG] may only be omitted with --v8-flags=--help",
-        ),
-    );
+    return Err(app.find_subcommand_mut("run").unwrap().error(
+      clap::error::ErrorKind::MissingRequiredArgument,
+      "[SCRIPT_ARG] may only be omitted with --v8-flags=--help",
+    ));
   }
 
   Ok(())
@@ -4736,7 +4770,10 @@ fn serve_parse(
     format!("{host}:{port}")
   }])?;
   match &mut flags.permissions.allow_net {
-    None => flags.permissions.allow_net = Some(allowed),
+    None if !flags.permissions.allow_all => {
+      flags.permissions.allow_net = Some(allowed)
+    }
+    None => {}
     Some(v) => {
       if !v.is_empty() {
         v.extend(allowed);
@@ -5084,7 +5121,7 @@ fn permission_args_parse(
   }
 
   if let Some(net_wl) = matches.remove_many::<String>("deny-net") {
-    let net_denylist = flags_net::parse(net_wl.collect()).unwrap();
+    let net_denylist = flags_net::parse(net_wl.collect())?;
     flags.permissions.deny_net = Some(net_denylist);
   }
 
@@ -6265,10 +6302,7 @@ mod tests {
           single_quote: None,
           prose_wrap: None,
           no_semicolons: None,
-          unstable_css: false,
-          unstable_html: false,
           unstable_component: false,
-          unstable_yaml: false,
           watch: Default::default(),
         }),
         ..Flags::default()
@@ -6291,10 +6325,7 @@ mod tests {
           single_quote: None,
           prose_wrap: None,
           no_semicolons: None,
-          unstable_css: false,
-          unstable_html: false,
           unstable_component: false,
-          unstable_yaml: false,
           watch: Default::default(),
         }),
         ..Flags::default()
@@ -6317,10 +6348,7 @@ mod tests {
           single_quote: None,
           prose_wrap: None,
           no_semicolons: None,
-          unstable_css: false,
-          unstable_html: false,
           unstable_component: false,
-          unstable_yaml: false,
           watch: Default::default(),
         }),
         ..Flags::default()
@@ -6343,10 +6371,7 @@ mod tests {
           single_quote: None,
           prose_wrap: None,
           no_semicolons: None,
-          unstable_css: false,
-          unstable_html: false,
           unstable_component: false,
-          unstable_yaml: false,
           watch: Some(Default::default()),
         }),
         ..Flags::default()
@@ -6378,10 +6403,7 @@ mod tests {
           single_quote: None,
           prose_wrap: None,
           no_semicolons: None,
-          unstable_css: true,
-          unstable_html: true,
           unstable_component: true,
-          unstable_yaml: true,
           watch: Some(WatchFlags {
             hmr: false,
             no_clear_screen: true,
@@ -6415,10 +6437,7 @@ mod tests {
           single_quote: None,
           prose_wrap: None,
           no_semicolons: None,
-          unstable_css: false,
-          unstable_html: false,
           unstable_component: false,
-          unstable_yaml: false,
           watch: Some(Default::default()),
         }),
         ..Flags::default()
@@ -6441,10 +6460,7 @@ mod tests {
           single_quote: None,
           prose_wrap: None,
           no_semicolons: None,
-          unstable_css: false,
-          unstable_html: false,
           unstable_component: false,
-          unstable_yaml: false,
           watch: Default::default(),
         }),
         config_flag: ConfigFlag::Path("deno.jsonc".to_string()),
@@ -6475,10 +6491,7 @@ mod tests {
           single_quote: None,
           prose_wrap: None,
           no_semicolons: None,
-          unstable_css: false,
-          unstable_html: false,
           unstable_component: false,
-          unstable_yaml: false,
           watch: Some(Default::default()),
         }),
         config_flag: ConfigFlag::Path("deno.jsonc".to_string()),
@@ -6514,10 +6527,7 @@ mod tests {
           single_quote: Some(true),
           prose_wrap: Some("never".to_string()),
           no_semicolons: Some(true),
-          unstable_css: false,
-          unstable_html: false,
           unstable_component: false,
-          unstable_yaml: false,
           watch: Default::default(),
         }),
         ..Flags::default()
@@ -6547,10 +6557,7 @@ mod tests {
           single_quote: Some(false),
           prose_wrap: None,
           no_semicolons: Some(false),
-          unstable_css: false,
-          unstable_html: false,
           unstable_component: false,
-          unstable_yaml: false,
           watch: Default::default(),
         }),
         ..Flags::default()
@@ -8488,7 +8495,7 @@ mod tests {
           watch: None,
           bare: true,
         }),
-        node_modules_dir: None,
+        node_modules_dir: Some(NodeModulesDirMode::Auto),
         code_cache_enabled: true,
         ..Flags::default()
       }
@@ -10745,6 +10752,31 @@ mod tests {
   }
 
   #[test]
+  fn serve_with_allow_all() {
+    let r = flags_from_vec(svec!["deno", "serve", "--allow-all", "./main.ts"]);
+    let flags = r.unwrap();
+    assert_eq!(
+      &flags,
+      &Flags {
+        subcommand: DenoSubcommand::Serve(ServeFlags::new_default(
+          "./main.ts".into(),
+          8000,
+          "0.0.0.0"
+        )),
+        permissions: PermissionFlags {
+          allow_all: true,
+          allow_net: None,
+          ..Default::default()
+        },
+        code_cache_enabled: true,
+        ..Default::default()
+      }
+    );
+    // just make sure this doesn't panic
+    let _ = flags.permissions.to_options();
+  }
+
+  #[test]
   fn escape_and_split_commas_test() {
     assert_eq!(escape_and_split_commas("foo".to_string()).unwrap(), ["foo"]);
     assert!(escape_and_split_commas("foo,".to_string()).is_err());
@@ -10769,5 +10801,51 @@ mod tests {
       escape_and_split_commas("foo,,,bar".to_string()).unwrap(),
       ["foo,", "bar"]
     );
+  }
+
+  #[test]
+  fn net_flag_with_url() {
+    let r = flags_from_vec(svec![
+      "deno",
+      "run",
+      "--allow-net=https://example.com",
+      "script.ts"
+    ]);
+    assert_eq!(
+      r.unwrap_err().to_string(),
+      "error: invalid value 'https://example.com': URLs are not supported, only domains and ips"
+    );
+  }
+
+  #[test]
+  fn node_modules_dir_default() {
+    let r =
+      flags_from_vec(svec!["deno", "run", "--node-modules-dir", "./foo.ts"]);
+    let flags = r.unwrap();
+    assert_eq!(
+      flags,
+      Flags {
+        subcommand: DenoSubcommand::Run(RunFlags {
+          script: "./foo.ts".into(),
+          ..Default::default()
+        }),
+        node_modules_dir: Some(NodeModulesDirMode::Auto),
+        code_cache_enabled: true,
+        ..Default::default()
+      }
+    )
+  }
+
+  #[test]
+  fn flag_before_subcommand() {
+    let r = flags_from_vec(svec!["deno", "--allow-net", "repl"]);
+    assert_eq!(
+      r.unwrap_err().to_string(),
+      "error: unexpected argument '--allow-net' found
+
+  tip: 'repl --allow-net' exists
+
+Usage: deno repl [OPTIONS] [-- [ARGS]...]\n"
+    )
   }
 }
