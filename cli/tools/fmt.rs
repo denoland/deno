@@ -438,24 +438,36 @@ pub fn format_html(
   .map_err(|error| match error {
     markup_fmt::FormatError::Syntax(error) => {
       // TODO(bartlomieju): rework when better error support in `markup_fmt` lands
-      let error_str = format!("{}", error);
-      let error_str = error_str.strip_prefix("syntax error '").unwrap();
-      let reason = error_str
-        .split("' at")
-        .collect::<Vec<_>>()
-        .first()
-        .unwrap()
-        .to_string();
-      let url = Url::from_file_path(file_path).unwrap();
-      let error_msg = format!(
-        "Syntax error ({}) at {}:{}:{}\n",
-        reason,
-        url.as_str(),
-        error.line,
-        error.column
-      );
+      fn inner(
+        error: &markup_fmt::SyntaxError,
+        file_path: &Path,
+      ) -> Option<String> {
+        let error_str = format!("{}", error);
+        let error_str = error_str.strip_prefix("syntax error '")?;
 
-      AnyError::from(generic_error(error_msg))
+        let reason = error_str
+          .split("' at")
+          .collect::<Vec<_>>()
+          .first()
+          .map(|s| s.to_string())?;
+
+        let url = Url::from_file_path(file_path).ok()?;
+
+        let error_msg = format!(
+          "Syntax error ({}) at {}:{}:{}\n",
+          reason,
+          url.as_str(),
+          error.line,
+          error.column
+        );
+        Some(error_msg)
+      }
+
+      if let Some(error_msg) = inner(&error, file_path) {
+        AnyError::from(generic_error(error_msg))
+      } else {
+        AnyError::from(error)
+      }
     }
     markup_fmt::FormatError::External(errors) => {
       let last = errors.len() - 1;
