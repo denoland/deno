@@ -496,13 +496,16 @@ Object.defineProperties(
     _flushBody() {
       const socket = this.socket;
       const outputLength = this.outputData.length;
-      if (socket && socket.writable && outputLength > 0) {
-        console.log("flushing body");
-        for (let i = 0; i < outputLength; i++) {
-          const { data, encoding, callback } = this.outputData[i];
+      if (socket && outputLength > 0) {
+          const { data, encoding, callback } = this.outputData.shift();
+          console.log("flushBody: writing", { data });
           this._writeRaw(data, encoding, callback);
-        }
-        this.outputData = [];
+          if (this.outputData.length > 0) {
+            this.on("drain", () => {
+              console.log("drain emitted");
+              this._flushBody();
+            });
+          }
       }
     },
 
@@ -525,13 +528,14 @@ Object.defineProperties(
       // if socket is ready, write the data after headers are written.
       // if socket is not ready, buffer data in outputbuffer.
       if (this.socket && !this.socket.connecting) {
-        console.log("im never invoked");
+        console.log("_send(): im never invoked");
         if (!this._headerSent && this._header !== null) {
           this._writeHeader();
           this._headerSent = true;
         }
 
         if (this._headerSent) {
+          console.log("_send(): writeRaw", data, encoding, callback);
           return this._writeRaw(data, encoding, callback);
         }
       } else {
@@ -549,7 +553,7 @@ Object.defineProperties(
         //     });
         //   });
         // }
-        console.log("pushing to outputData:", this.outputData.length);
+        console.log("_send(): pushing to outputData:", this.outputData.length);
         this.outputData.push({ data, encoding, callback });
       }
     },
@@ -617,6 +621,10 @@ Object.defineProperties(
           if (this._bodyWriter.desiredSize > 0) {
             this._bodyWriter.write(data).then(() => {
               callback?.();
+              if (this.outputData.length == 0) {
+                console.log("emitting finish for", { data });
+                this.emit("finish");
+              }
               this.emit("drain");
             }).catch((e) => {
               this._requestSendError = e;

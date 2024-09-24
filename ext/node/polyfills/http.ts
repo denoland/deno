@@ -614,6 +614,7 @@ class ClientRequest extends OutgoingMessage {
         // sets up the request.
         this._flushHeaders();
         this.on("requestReady", () => {
+          console.log("onSocket: flushing body");
           this._flushBody();
         });
       });
@@ -624,8 +625,13 @@ class ClientRequest extends OutgoingMessage {
 
   // deno-lint-ignore no-explicit-any
   end(chunk?: any, encoding?: any, cb?: any): this {
+    console.log("end(): invoked");
+    this.on("drain", () => {
+      console.log("drain emitted");
+    });
     // Do nothing if request is already destroyed.
     if (this.destroyed) return this;
+    console.log("end(): not destroyed");
 
     if (typeof chunk === "function") {
       cb = chunk;
@@ -638,12 +644,14 @@ class ClientRequest extends OutgoingMessage {
 
     this.finished = true;
     if (chunk) {
+      console.log("end(): writing chunk", chunk);
       this.write_(chunk, encoding, null, true);
     } else if (!this._headerSent) {
       if (this.socket && !this.socket.connecting) {
+        console.log("end(): socket created and sending implicit header");
         this._contentLength = 0;
         console.log(
-          "end: _implicitHeader; socket.rid",
+          "end(): _implicitHeader; socket.rid",
           this.socket.rid,
           "socket.connecting",
           this.socket.connecting,
@@ -651,31 +659,71 @@ class ClientRequest extends OutgoingMessage {
         this._implicitHeader();
         this._send("", "latin1");
       } else {
-        this.on("socket", (socket) => {
-          socket.on("connect", () => {
-            console.log("connect emitted - sending implicit header");
-            this._contentLength = 0;
-            this._implicitHeader();
-            this._send("", "latin1");
-          });
-        });
-      }
-    }
-    (async () => {
-      try {
-        await this._bodyWriter?.close();
-      } catch (_) {
-        // The readable stream resource is dropped right after
-        // read is complete closing the writable stream resource.
-        // If we try to close the writer again, it will result in an
-        // error which we can safely ignore.
-      }
-      try {
-        cb?.();
-      } catch (_) {
         //
       }
-    })();
+    }
+    if (this.socket && this._bodyWriter) {
+      (async () => {
+        try {
+          // const { promise, resolve } = Promise.withResolvers();
+          // if (this.outputData.length > 0) {
+          //   this.on("flushBodyDone", () => {
+          //     console.log("end(): flushBody done emitted");
+          //     resolve(null);
+          //   })
+          // } else {
+          //   resolve(null);
+          // }
+          // // sleep for 10s
+          await new Promise((resolve) => setTimeout(resolve, 1000));
+          console.log("end(): closing bodyWriter", this._bodyWriter, {
+            buffer: this.outputData.length,
+          });
+          await this._bodyWriter.ready;
+          await this._bodyWriter?.close();
+          console.log("end(): bodyWriter closed");
+        } catch (err) {
+          console.log("err:", err);
+          console.log("end(): body writer closed", err);
+          // The readable stream resource is dropped right after
+          // read is complete closing the writable stream resource.
+          // If we try to close the writer again, it will result in an
+          // error which we can safely ignore.
+        }
+        try {
+          cb?.();
+        } catch (_) {
+          //
+        }
+      })();
+    } else {
+      this.on("finish", () => {
+        (async () => {
+          try {
+            console.log(
+              "end(): connect() closing bodyWriter",
+              this._bodyWriter,
+              { buffer: this.outputData.length },
+            );
+            await this._bodyWriter.ready;
+            await this._bodyWriter?.close();
+            console.log("end(): bodyWriter closed");
+          } catch (err) {
+            console.log("err:", err);
+            console.log("end(): body writer closed", err);
+            // The readable stream resource is dropped right after
+            // read is complete closing the writable stream resource.
+            // If we try to close the writer again, it will result in an
+            // error which we can safely ignore.
+          }
+          try {
+            cb?.();
+          } catch (_) {
+            //
+          }
+        })();
+      });
+    }
 
     return this;
   }
