@@ -423,18 +423,20 @@ class ClientRequest extends OutgoingMessage {
   }
 
   _writeHeader() {
-    console.trace("_writeHeader invoked");
+    console.trace("_writeHeader invoked am i working?");
     const url = this._createUrlStrFromOptions();
+    console.log({ url });
+    // const headers = [];
+    // for (const key in this[kOutHeaders]) {
+    //   if (Object.hasOwn(this[kOutHeaders], key)) {
+    //     const entry = this[kOutHeaders][key];
+    //     console.log("processing header");
+    //     this._processHeader(headers, entry[0], entry[1], false);
+    //     console.log("processing header done");
+    //   }
+    // }
 
-    const headers = [];
-    for (const key in this[kOutHeaders]) {
-      if (Object.hasOwn(this[kOutHeaders], key)) {
-        const entry = this[kOutHeaders][key];
-        this._processHeader(headers, entry[0], entry[1], false);
-      }
-    }
-
-    console.log({ headers });
+    // console.log("im here", { headers });
     // const client = this._getClient() ?? createHttpClient({ http2: false });
     // this._client = client;
 
@@ -615,11 +617,15 @@ class ClientRequest extends OutgoingMessage {
         // Flush the internal buffers once socket is ready.
         // Note: the order is important, as the headers flush
         // sets up the request.
-        this._flushHeaders();
-        this.on("requestReady", () => {
-          console.log("onSocket: flushing body");
-          this._flushBody();
-        });
+  try {
+    this._flushHeaders();
+    this.on("requestReady", () => {
+      console.log("onSocket: flushing body");
+      this._flushBody();
+    });
+  } catch (error) {
+    console.log("socket error: ", error);
+  }
       });
       this.socket = socket;
       this.emit("socket", socket);
@@ -773,25 +779,44 @@ class ClientRequest extends OutgoingMessage {
   }
 
   _createUrlStrFromOptions(): string {
+    console.log("_createUrlStrFromOptions");
     if (this.href) {
       return this.href;
     }
+    console.log("_createUrlStrFromOptions 2");
     const protocol = this.protocol ?? this.defaultProtocol;
+    console.log("_createUrlStrFromOptions 3");
     const auth = this.auth;
+    console.log("_createUrlStrFromOptions 4");
     const host = this.host ?? this.hostname ?? "localhost";
+    console.log("_createUrlStrFromOptions 5");
     const hash = this.hash ? `#${this.hash}` : "";
+    console.log("_createUrlStrFromOptions 6");
     const defaultPort = this.agent?.defaultPort;
+    console.log("_createUrlStrFromOptions 7");
     const port = this.port ?? defaultPort ?? 80;
+    console.log("_createUrlStrFromOptions 8");
     let path = this.path ?? "/";
     if (!path.startsWith("/")) {
       path = "/" + path;
     }
-    const url = new URL(
-      `${protocol}//${auth ? `${auth}@` : ""}${host}${
-        port === 80 ? "" : `:${port}`
-      }${path}`,
-    );
+    console.log("_createUrlStrFromOptions 9");
+// try {
+  console.log({ url: `${protocol}//${auth ? `${auth}@` : ""}${host}${
+    port === 80 ? "" : `:${port}`
+  }${path}` })
+  const url = new URL(
+    `${protocol}//${auth ? `${auth}@` : ""}${host}${
+      port === 80 ? "" : `:${port}`
+    }${path}`,
+  );
+  console.log(url);
+// } catch (error) {
+  // console.log({ error })
+// }
+    console.log("_createUrlStrFromOptions 10");
     url.hash = hash;
+    console.log("_createUrlStrFromOptions end");
     return url.href;
   }
 
