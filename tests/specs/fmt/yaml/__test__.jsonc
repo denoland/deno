@@ -1,0 +1,5 @@
+{
+  "tempDir": true,
+  "args": "fmt",
+  "output": "[WILDLINE]badly_formatted.yml\nChecked 1 file\n"
+}

@@ -7,14 +7,12 @@ use deno_core::JsBuffer;
 use deno_core::ToJsBuffer;
 use elliptic_curve::pkcs8::PrivateKeyInfo;
 use p256::pkcs8::EncodePrivateKey;
-use ring::signature::EcdsaKeyPair;
 use rsa::pkcs1::UintRef;
 use rsa::pkcs8::der::Encode;
 use serde::Deserialize;
 use serde::Serialize;
 use spki::der::Decode;
 
-use crate::key::CryptoNamedCurve;
 use crate::shared::*;
 
 #[derive(Deserialize)]
@@ -45,7 +43,9 @@ pub enum KeyData {
     y: String,
   },
   JwkPrivateEc {
+    #[allow(dead_code)]
     x: String,
+    #[allow(dead_code)]
     y: String,
     d: String,
   },
@@ -543,9 +543,7 @@ fn import_key_ec_jwk(
         raw_data: RustRawKeyData::Public(point_bytes.into()),
       })
     }
-    KeyData::JwkPrivateEc { d, x, y } => {
-      jwt_b64_int_or_err!(private_d, &d, "invalid JWK private key");
-      let point_bytes = import_key_ec_jwk_to_point(x, y, named_curve)?;
+    KeyData::JwkPrivateEc { d, .. } => {
       let pkcs8_der = match named_curve {
         EcNamedCurve::P256 => {
           let d = decode_b64url_to_field_bytes::<p256::NistP256>(&d)?;
@@ -562,26 +560,13 @@ fn import_key_ec_jwk(
             .map_err(|_| data_error("invalid JWK private key"))?
         }
         EcNamedCurve::P521 => {
-          return Err(data_error("Unsupported named curve"))
+          let d = decode_b64url_to_field_bytes::<p521::NistP521>(&d)?;
+          let pk = p521::SecretKey::from_bytes(&d)?;
+
+          pk.to_pkcs8_der()
+            .map_err(|_| data_error("invalid JWK private key"))?
         }
       };
-
-      // Import using ring, to validate key
-      let key_alg = match named_curve {
-        EcNamedCurve::P256 => CryptoNamedCurve::P256.into(),
-        EcNamedCurve::P384 => CryptoNamedCurve::P256.into(),
-        EcNamedCurve::P521 => {
-          return Err(data_error("Unsupported named curve"))
-        }
-      };
-
-      let rng = ring::rand::SystemRandom::new();
-      let _key_pair = EcdsaKeyPair::from_private_key_and_public_key(
-        key_alg,
-        private_d.as_bytes(),
-        point_bytes.as_ref(),
-        &rng,
-      );
 
       Ok(ImportKeyResult::Ec {
         raw_data: RustRawKeyData::Private(pkcs8_der.as_bytes().to_vec().into()),
@@ -649,24 +634,15 @@ fn import_key_ec(
       })
     }
     KeyData::Pkcs8(data) => {
-      // 2-7
-      // Deserialize PKCS8 - validate structure, extracts named_curve
-      let named_curve_alg = match named_curve {
-        EcNamedCurve::P256 | EcNamedCurve::P384 => {
-          let pk = PrivateKeyInfo::from_der(data.as_ref())
-            .map_err(|_| data_error("expected valid PKCS#8 data"))?;
-          pk.algorithm
-            .parameters
-            .ok_or_else(|| data_error("malformed parameters"))?
-            .try_into()
-            .unwrap()
-        }
-        EcNamedCurve::P521 => {
-          return Err(data_error("Unsupported named curve"))
-        }
-      };
+      let pk = PrivateKeyInfo::from_der(data.as_ref())
+        .map_err(|_| data_error("expected valid PKCS#8 data"))?;
+      let named_curve_alg = pk
+        .algorithm
+        .parameters
+        .ok_or_else(|| data_error("malformed parameters"))?
+        .try_into()
+        .unwrap();
 
-      // 8-9.
       let pk_named_curve = match named_curve_alg {
         // id-secp256r1
         ID_SECP256R1_OID => Some(EcNamedCurve::P256),
@@ -677,27 +653,8 @@ fn import_key_ec(
         _ => None,
       };
 
-      // 10.
-      if let Some(pk_named_curve) = pk_named_curve {
-        let signing_alg = match pk_named_curve {
-          EcNamedCurve::P256 => CryptoNamedCurve::P256.into(),
-          EcNamedCurve::P384 => CryptoNamedCurve::P384.into(),
-          EcNamedCurve::P521 => {
-            return Err(data_error("Unsupported named curve"))
-          }
-        };
-
-        let rng = ring::rand::SystemRandom::new();
-        // deserialize pkcs8 using ring crate, to VALIDATE public key
-        let _private_key = EcdsaKeyPair::from_pkcs8(signing_alg, &data, &rng)
-          .map_err(|_| data_error("invalid key"))?;
-
-        // 11.
-        if named_curve != pk_named_curve {
-          return Err(data_error("curve mismatch"));
-        }
-      } else {
-        return Err(data_error("Unsupported named curve"));
+      if pk_named_curve != Some(named_curve) {
+        return Err(data_error("curve mismatch"));
       }
 
       Ok(ImportKeyResult::Ec {

@@ -11,7 +11,7 @@
  *
  * @category Storage
  */
-declare interface Storage {
+interface Storage {
   /**
    * Returns the number of key/value pairs currently present in the list associated with the object.
    */
