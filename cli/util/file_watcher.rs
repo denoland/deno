@@ -131,16 +131,21 @@ impl PrintConfig {
 fn create_print_after_restart_fn(
   banner: &'static str,
   clear_screen: bool,
-) -> impl Fn() {
-  move || {
+) -> impl Fn(&Rc<RefCell<Option<Vec<PathBuf>>>>) {
+  move |changed_paths: &Rc<RefCell<Option<Vec<PathBuf>>>>| {
     #[allow(clippy::print_stderr)]
     if clear_screen && std::io::stderr().is_terminal() {
       eprint!("{}", CLEAR_SCREEN);
     }
-    info!(
-      "{} File change detected! Restarting!",
-      colors::intense_blue(banner),
-    );
+    if let Some(paths) = changed_paths.as_ref().take() {
+      info!(
+        "{} Restarting! File change detected: {:?}",
+        colors::intense_blue(banner),
+        paths[0],
+      );
+    } else {
+      info!("{} Restarting!", colors::intense_blue(banner));
+    }
   }
 }
 
@@ -331,7 +336,7 @@ where
     select! {
       _ = receiver_future => {},
       _ = restart_rx.recv() => {
-        print_after_restart();
+        print_after_restart(&changed_paths);
         continue;
       },
       success = operation_future => {
@@ -362,7 +367,7 @@ where
     select! {
       _ = receiver_future => {},
       _ = restart_rx.recv() => {
-        print_after_restart();
+        print_after_restart(&changed_paths);
         continue;
       },
     }
