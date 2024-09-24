@@ -380,6 +380,11 @@ fn get_suggestions_for_terminal_errors(e: &JsError) -> Vec<FixSuggestion> {
           "Run again with `--unstable-broadcast-channel` flag to enable this API.",
         ),
       ];
+    } else if msg.contains("window is not defined") {
+      return vec![
+        FixSuggestion::info("window global is not available in Deno 2."),
+        FixSuggestion::hint("Replace `window` with `globalThis`."),
+      ];
     }
   }
 

@@ -148,11 +148,6 @@ itest!(_021_mjs_modules {
   output: "run/021_mjs_modules.ts.out",
 });
 
-itest!(_023_no_ext {
-  args: "run --reload --check run/023_no_ext",
-  output: "run/023_no_ext.out",
-});
-
 itest!(_025_reload_js_type_error {
   args: "run --quiet --reload run/025_reload_js_type_error.js",
   output: "run/025_reload_js_type_error.js.out",
@@ -4207,12 +4202,6 @@ itest!(error_cause_recursive {
   args: "run run/error_cause_recursive.ts",
   output: "run/error_cause_recursive.ts.out",
   exit_code: 1,
-});
-
-itest!(default_file_extension_is_js {
-  args: "run --check file_extensions/js_without_extension",
-  output: "file_extensions/js_without_extension.out",
-  exit_code: 0,
 });
 
 itest!(js_without_extension {

@@ -236,11 +236,30 @@ Deno.test({
 
   assertThrows(
     () => {
-      new Deno.UnsafeWindowSurface("cocoa", null, null);
+      new Deno.UnsafeWindowSurface({
+        system: "cocoa",
+        windowHandle: null,
+        displayHandle: null,
+        width: 0,
+        height: 0,
+      });
     },
   );
 
   device.destroy();
+});
+
+Deno.test(function webgpuWindowSurfaceNoWidthHeight() {
+  assertThrows(
+    () => {
+      // @ts-expect-error width and height are required
+      new Deno.UnsafeWindowSurface({
+        system: "x11",
+        windowHandle: null,
+        displayHandle: null,
+      });
+    },
+  );
 });
 
 Deno.test(function getPreferredCanvasFormat() {
@@ -271,7 +290,7 @@ Deno.test({
   const invalidSize = [0, 0, 0];
 
   const msgIncludes =
-    "A sequence of number used as a GPUColor must have exactly 4 elements.";
+    "A sequence of number used as a GPUColor must have exactly 4 elements, received 3 elements";
 
   // validate the argument of descriptor.colorAttachments[@@iterator].clearValue property's length of GPUCommandEncoder.beginRenderPass when its a sequence
   // https://www.w3.org/TR/2024/WD-webgpu-20240409/#dom-gpucommandencoder-beginrenderpass
@@ -337,7 +356,7 @@ Deno.test({
   const overSize = [256, 256, 1, 1];
 
   const msgIncludes =
-    "A sequence of number used as a GPUExtent3D must have between 1 and 3 elements.";
+    "A sequence of number used as a GPUExtent3D must have between 1 and 3 elements";
 
   // validate the argument of descriptor.size property's length of GPUDevice.createTexture when its a sequence
   // https://www.w3.org/TR/2024/WD-webgpu-20240409/#dom-gpudevice-createtexture
@@ -437,7 +456,7 @@ Deno.test({
   const overSize = [256, 256, 1, 1];
 
   const msgIncludes =
-    "A sequence of number used as a GPUOrigin3D must have at most 3 elements.";
+    "A sequence of number used as a GPUOrigin3D must have at most 3 elements, received 4 elements";
 
   // validate the argument of destination.origin property's length of GPUCommandEncoder.copyBufferToTexture when its a sequence
   // https://www.w3.org/TR/2024/WD-webgpu-20240409/#dom-gpucommandencoder-copybuffertotexture

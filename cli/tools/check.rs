@@ -73,7 +73,7 @@ pub async fn check(
   };
 
   main_graph_container
-    .check_specifiers(&specifiers_for_typecheck)
+    .check_specifiers(&specifiers_for_typecheck, None)
     .await
 }
 
