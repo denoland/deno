@@ -1,0 +1,43 @@
+{
+  "tempDir": true,
+  "tests": {
+    "valid_device_paths": {
+      "if": "windows",
+      "args": "eval console.log({isTTY:Deno.openSync('CONOUT$',{read:true,write:true}).isTerminal()})",
+      "output": "{ isTTY: true }\n"
+    },
+    "valid_device_paths_i": {
+      "if": "windows",
+      "args": "eval console.log({isTTY:Deno.openSync('CONIN$',{read:true,write:true}).isTerminal()})",
+      "output": "{ isTTY: true }\n"
+    },
+    "valid_device_paths_with_prefix": {
+      "if": "windows",
+      "args": "eval console.log({isTTY:Deno.openSync('//./CONOUT$',{read:true,write:true}).isTerminal()})",
+      "output": "{ isTTY: true }\n"
+    },
+    "valid_device_paths_with_prefix_i": {
+      "if": "windows",
+      "args": "eval console.log({isTTY:Deno.openSync('//./CONIN$',{read:true,write:true}).isTerminal()})",
+      "output": "{ isTTY: true }\n"
+    },
+    "invalid_device_paths": {
+      "if": "windows",
+      "args": "eval console.log({isTTY:Deno.openSync('\\\\.\\INVALID$',{read:true,write:true}).isTerminal()})",
+      "output": "error: Uncaught (in promise) NotFound: The system cannot find the file specified. (os error 2): open '\\.INVALID$'\n[WILDCARD]",
+      "exitCode": 1
+    },
+    "invalid_device_paths_i": {
+      "if": "windows",
+      "args": "eval console.log({isTTY:Deno.openSync('//./INVALID$',{read:true,write:true}).isTerminal()})",
+      "output": "error: Uncaught (in promise) NotFound: The system cannot find the file specified. (os error 2): open '//./INVALID$'\n[WILDCARD]",
+      "exitCode": 1
+    },
+    "invalid_device_paths_ii": {
+      "if": "windows",
+      "args": "eval console.log({isTTY:Deno.openSync('C:\\Invalid\\Path',{read:true,write:true}).isTerminal()})",
+      "output": "error: Uncaught (in promise) NotFound: The system cannot find the file specified. (os error 2): open 'C:InvalidPath'\n[WILDCARD]",
+      "exitCode": 1
+    }
+  }
+}
