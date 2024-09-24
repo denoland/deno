@@ -171,7 +171,7 @@ impl NpmPackageFsResolver for GlobalNpmPackageResolver {
     let mut lifecycle_scripts =
       super::common::lifecycle_scripts::LifecycleScripts::new(
         &self.lifecycle_scripts,
-        GlobalLifecycleScripts::new(self, &self.lifecycle_scripts.initial_cwd),
+        GlobalLifecycleScripts::new(self, &self.lifecycle_scripts.root_dir),
       );
     for package in &package_partitions.packages {
       let package_folder = self.cache.package_folder_for_nv(&package.id.nv);
@@ -200,9 +200,9 @@ struct GlobalLifecycleScripts<'a> {
 }
 
 impl<'a> GlobalLifecycleScripts<'a> {
-  fn new(resolver: &'a GlobalNpmPackageResolver, initial_cwd: &Path) -> Self {
+  fn new(resolver: &'a GlobalNpmPackageResolver, root_dir: &Path) -> Self {
     let mut hasher = FastInsecureHasher::new_without_deno_version();
-    hasher.write(initial_cwd.as_os_str().as_encoded_bytes());
+    hasher.write(root_dir.to_string_lossy().as_bytes());
     let path_hash = hasher.finish();
     Self {
       resolver,

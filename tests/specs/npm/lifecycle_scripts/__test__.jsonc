@@ -61,6 +61,11 @@
           // without running scripts (should warn)
           "args": "install -e all_lifecycles.js",
           "output": "all_lifecycles_not_run_global.out"
+        },
+        {
+          // should not warn
+          "args": "install -e all_lifecycles.js",
+          "output": ""
         }
       ]
     },

@@ -1679,6 +1679,7 @@ impl CliOptions {
     LifecycleScriptsConfig {
       allowed: self.flags.allow_scripts.clone(),
       initial_cwd: self.initial_cwd.clone(),
+      root_dir: self.workspace().root_dir_path(),
     }
   }
 }
