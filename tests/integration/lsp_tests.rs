@@ -364,13 +364,6 @@ fn lsp_import_map_remote() {
     .build();
   let temp_dir = context.temp_dir();
   temp_dir.write(
-    "deno.json",
-    json!({
-      "importMap": "http://localhost:4545/import_maps/import_map_remote.json",
-    })
-    .to_string(),
-  );
-  temp_dir.write(
     "file.ts",
     r#"
       import { printHello } from "print_hello";

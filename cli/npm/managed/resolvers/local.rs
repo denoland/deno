@@ -2,8 +2,6 @@
 
 //! Code for local node_modules resolution.
 
-mod bin_entries;
-
 use std::borrow::Cow;
 use std::cell::RefCell;
 use std::cmp::Ordering;
@@ -20,11 +18,9 @@ use std::rc::Rc;
 use std::sync::Arc;
 
 use crate::args::LifecycleScriptsConfig;
-use crate::args::PackagesAllowedScripts;
 use crate::colors;
 use async_trait::async_trait;
 use deno_ast::ModuleSpecifier;
-use deno_core::anyhow;
 use deno_core::anyhow::Context;
 use deno_core::error::AnyError;
 use deno_core::futures::stream::FuturesUnordered;
@@ -274,77 +270,10 @@ impl NpmPackageFsResolver for LocalNpmPackageResolver {
   }
 }
 
-// take in all (non copy) packages from snapshot,
-// and resolve the set of available binaries to create
-// custom commands available to the task runner
-fn resolve_baseline_custom_commands(
-  snapshot: &NpmResolutionSnapshot,
-  packages: &[NpmResolutionPackage],
-  local_registry_dir: &Path,
-) -> Result<crate::task_runner::TaskCustomCommands, AnyError> {
-  let mut custom_commands = crate::task_runner::TaskCustomCommands::new();
-  custom_commands
-    .insert("npx".to_string(), Rc::new(crate::task_runner::NpxCommand));
-
-  custom_commands
-    .insert("npm".to_string(), Rc::new(crate::task_runner::NpmCommand));
-
-  custom_commands
-    .insert("node".to_string(), Rc::new(crate::task_runner::NodeCommand));
-
-  custom_commands.insert(
-    "node-gyp".to_string(),
-    Rc::new(crate::task_runner::NodeGypCommand),
-  );
-
-  // TODO: this recreates the bin entries which could be redoing some work, but the ones
-  // we compute earlier in `sync_resolution_with_fs` may not be exhaustive (because we skip
-  // doing it for packages that are set up already.
-  // realistically, scripts won't be run very often so it probably isn't too big of an issue.
-  resolve_custom_commands_from_packages(
-    custom_commands,
-    snapshot,
-    packages,
-    local_registry_dir,
-  )
-}
-
-// resolves the custom commands from an iterator of packages
-// and adds them to the existing custom commands.
-// note that this will overwrite any existing custom commands
-fn resolve_custom_commands_from_packages<
-  'a,
-  P: IntoIterator<Item = &'a NpmResolutionPackage>,
->(
-  mut commands: crate::task_runner::TaskCustomCommands,
-  snapshot: &'a NpmResolutionSnapshot,
-  packages: P,
-  local_registry_dir: &Path,
-) -> Result<crate::task_runner::TaskCustomCommands, AnyError> {
-  let mut bin_entries = bin_entries::BinEntries::new();
-  for package in packages {
-    let package_path =
-      local_node_modules_package_path(local_registry_dir, package);
-
-    if package.bin.is_some() {
-      bin_entries.add(package.clone(), package_path);
-    }
-  }
-  let bins = bin_entries.into_bin_files(snapshot);
-  for (bin_name, script_path) in bins {
-    commands.insert(
-      bin_name.clone(),
-      Rc::new(crate::task_runner::NodeModulesFileRunCommand {
-        command_name: bin_name,
-        path: script_path,
-      }),
-    );
-  }
-
-  Ok(commands)
-}
-
-fn local_node_modules_package_path(
+/// `node_modules/.deno/<package>/node_modules/<package_name>`
+///
+/// Where the actual package is stored.
+fn local_node_modules_package_contents_path(
   local_registry_dir: &Path,
   package: &NpmResolutionPackage,
 ) -> PathBuf {
@@ -354,62 +283,6 @@ fn local_node_modules_package_path(
     ))
     .join("node_modules")
     .join(&package.id.nv.name)
-}
-
-// resolves the custom commands from the dependencies of a package
-// and adds them to the existing custom commands.
-// note that this will overwrite any existing custom commands.
-fn resolve_custom_commands_from_deps(
-  baseline: crate::task_runner::TaskCustomCommands,
-  package: &NpmResolutionPackage,
-  snapshot: &NpmResolutionSnapshot,
-  local_registry_dir: &Path,
-) -> Result<crate::task_runner::TaskCustomCommands, AnyError> {
-  resolve_custom_commands_from_packages(
-    baseline,
-    snapshot,
-    package
-      .dependencies
-      .values()
-      .map(|id| snapshot.package_from_id(id).unwrap()),
-    local_registry_dir,
-  )
-}
-
-fn can_run_scripts(
-  allow_scripts: &PackagesAllowedScripts,
-  package_nv: &PackageNv,
-) -> bool {
-  match allow_scripts {
-    PackagesAllowedScripts::All => true,
-    // TODO: make this more correct
-    PackagesAllowedScripts::Some(allow_list) => allow_list.iter().any(|s| {
-      let s = s.strip_prefix("npm:").unwrap_or(s);
-      s == package_nv.name || s == package_nv.to_string()
-    }),
-    PackagesAllowedScripts::None => false,
-  }
-}
-
-// npm defaults to running `node-gyp rebuild` if there is a `binding.gyp` file
-// but it always fails if the package excludes the `binding.gyp` file when they publish.
-// (for example, `fsevents` hits this)
-fn is_broken_default_install_script(script: &str, package_path: &Path) -> bool {
-  script == "node-gyp rebuild" && !package_path.join("binding.gyp").exists()
-}
-
-fn has_lifecycle_scripts(
-  package: &NpmResolutionPackage,
-  package_path: &Path,
-) -> bool {
-  if let Some(install) = package.scripts.get("install") {
-    // default script
-    if !is_broken_default_install_script(install, package_path) {
-      return true;
-    }
-  }
-  package.scripts.contains_key("preinstall")
-    || package.scripts.contains_key("postinstall")
 }
 
 /// Creates a pnpm style folder structure.
@@ -462,9 +335,15 @@ async fn sync_resolution_with_fs(
   let mut cache_futures = FuturesUnordered::new();
   let mut newest_packages_by_name: HashMap<&String, &NpmResolutionPackage> =
     HashMap::with_capacity(package_partitions.packages.len());
-  let bin_entries = Rc::new(RefCell::new(bin_entries::BinEntries::new()));
-  let mut packages_with_scripts = Vec::with_capacity(2);
-  let mut packages_with_scripts_not_run = Vec::new();
+  let bin_entries =
+    Rc::new(RefCell::new(super::common::bin_entries::BinEntries::new()));
+  let mut lifecycle_scripts =
+    super::common::lifecycle_scripts::LifecycleScripts::new(
+      lifecycle_scripts,
+      LocalLifecycleScripts {
+        deno_local_registry_dir: &deno_local_registry_dir,
+      },
+    );
   let packages_with_deprecation_warnings = Arc::new(Mutex::new(Vec::new()));
   for package in &package_partitions.packages {
     if let Some(current_pkg) =
@@ -520,9 +399,7 @@ async fn sync_resolution_with_fs(
         .await??;
 
         if package.bin.is_some() {
-          bin_entries_to_setup
-            .borrow_mut()
-            .add(package.clone(), package_path);
+          bin_entries_to_setup.borrow_mut().add(package, package_path);
         }
 
         if let Some(deprecated) = &package.deprecated {
@@ -540,21 +417,7 @@ async fn sync_resolution_with_fs(
     let sub_node_modules = folder_path.join("node_modules");
     let package_path =
       join_package_name(&sub_node_modules, &package.id.nv.name);
-    if has_lifecycle_scripts(package, &package_path) {
-      let scripts_run = folder_path.join(".scripts-run");
-      let has_warned = folder_path.join(".scripts-warned");
-      if can_run_scripts(&lifecycle_scripts.allowed, &package.id.nv) {
-        if !scripts_run.exists() {
-          packages_with_scripts.push((
-            package.clone(),
-            package_path,
-            scripts_run,
-          ));
-        }
-      } else if !scripts_run.exists() && !has_warned.exists() {
-        packages_with_scripts_not_run.push((has_warned, package.id.nv.clone()));
-      }
-    }
+    lifecycle_scripts.add(package, package_path.into());
   }
 
   while let Some(result) = cache_futures.next().await {
@@ -791,78 +654,12 @@ async fn sync_resolution_with_fs(
     }
   }
 
-  drop(pb_clear_guard);
-
-  if !packages_with_scripts.is_empty() {
-    // get custom commands for each bin available in the node_modules dir (essentially
-    // the scripts that are in `node_modules/.bin`)
-    let base = resolve_baseline_custom_commands(
-      snapshot,
-      &package_partitions.packages,
-      &deno_local_registry_dir,
-    )?;
-    let init_cwd = lifecycle_scripts.initial_cwd.as_deref().unwrap();
-    let process_state = crate::npm::managed::npm_process_state(
-      snapshot.as_valid_serialized(),
-      Some(root_node_modules_dir_path),
-    );
-
-    let mut env_vars = crate::task_runner::real_env_vars();
-    let mut temp_file = tempfile::tempfile()?;
-    temp_file.write_all(process_state.as_bytes())?;
-    env_vars.insert(
-      crate::args::NPM_RESOLUTION_STATE_FD_ENV_VAR_NAME.to_string(),
-      temp_file.as_raw_fd().to_string(),
-    );
-    for (package, package_path, scripts_run_path) in packages_with_scripts {
-      // add custom commands for binaries from the package's dependencies. this will take precedence over the
-      // baseline commands, so if the package relies on a bin that conflicts with one higher in the dependency tree, the
-      // correct bin will be used.
-      let custom_commands = resolve_custom_commands_from_deps(
-        base.clone(),
-        &package,
-        snapshot,
-        &deno_local_registry_dir,
-      )?;
-      for script_name in ["preinstall", "install", "postinstall"] {
-        if let Some(script) = package.scripts.get(script_name) {
-          if script_name == "install"
-            && is_broken_default_install_script(script, &package_path)
-          {
-            continue;
-          }
-          let exit_code =
-            crate::task_runner::run_task(crate::task_runner::RunTaskOptions {
-              task_name: script_name,
-              script,
-              cwd: &package_path,
-              env_vars: env_vars.clone(),
-              custom_commands: custom_commands.clone(),
-              init_cwd,
-              argv: &[],
-              root_node_modules_dir: Some(root_node_modules_dir_path),
-            })
-            .await?;
-          if exit_code != 0 {
-            anyhow::bail!(
-              "script '{}' in '{}' failed with exit code {}",
-              script_name,
-              package.id.nv,
-              exit_code,
-            );
-          }
-        }
-      }
-      fs::write(scripts_run_path, "")?;
-    }
-  }
-
   {
     let packages_with_deprecation_warnings =
       packages_with_deprecation_warnings.lock();
     if !packages_with_deprecation_warnings.is_empty() {
       log::warn!(
-        "{} Following packages are deprecated:",
+        "{} The following packages are deprecated:",
         colors::yellow("Warning")
       );
       let len = packages_with_deprecation_warnings.len();
@@ -876,7 +673,7 @@ async fn sync_resolution_with_fs(
           );
         } else {
           log::warn!(
-            "┗─ {}",
+            "┖─ {}",
             colors::gray(format!("npm:{:?} ({})", package_id, msg))
           );
         }
@@ -884,41 +681,111 @@ async fn sync_resolution_with_fs(
     }
   }
 
-  if !packages_with_scripts_not_run.is_empty() {
-    log::warn!("{} Following packages contained npm lifecycle scripts ({}) that were not executed:", colors::yellow("Warning"), colors::gray("preinstall/install/postinstall"));
-
-    for (_, package_nv) in packages_with_scripts_not_run.iter() {
-      log::warn!("┠─ {}", colors::gray(format!("npm:{package_nv}")));
-    }
-
-    log::warn!("┃");
-    log::warn!(
-      "┠─ {}",
-      colors::italic("This may cause the packages to not work correctly.")
-    );
-    log::warn!("┗─ {}", colors::italic("To run lifecycle scripts, use the `--allow-scripts` flag with `deno install`:"));
-    let packages_comma_separated = packages_with_scripts_not_run
-      .iter()
-      .map(|(_, p)| format!("npm:{p}"))
-      .collect::<Vec<_>>()
-      .join(",");
-    log::warn!(
-      "   {}",
-      colors::bold(format!(
-        "deno install --allow-scripts={}",
-        packages_comma_separated
-      ))
-    );
-
-    for (scripts_warned_path, _) in packages_with_scripts_not_run {
-      let _ignore_err = fs::write(scripts_warned_path, "");
-    }
-  }
+  lifecycle_scripts
+    .finish(
+      snapshot,
+      &package_partitions.packages,
+      Some(root_node_modules_dir_path),
+    )
+    .await?;
 
   setup_cache.save();
   drop(single_process_lock);
+  drop(pb_clear_guard);
 
   Ok(())
+}
+
+/// `node_modules/.deno/<package>/`
+fn local_node_modules_package_folder(
+  local_registry_dir: &Path,
+  package: &NpmResolutionPackage,
+) -> PathBuf {
+  local_registry_dir.join(get_package_folder_id_folder_name(
+    &package.get_package_cache_folder_id(),
+  ))
+}
+
+struct LocalLifecycleScripts<'a> {
+  deno_local_registry_dir: &'a Path,
+}
+
+impl<'a> LocalLifecycleScripts<'a> {
+  /// `node_modules/.deno/<package>/.scripts-run`
+  fn ran_scripts_file(&self, package: &NpmResolutionPackage) -> PathBuf {
+    local_node_modules_package_folder(self.deno_local_registry_dir, package)
+      .join(".scripts-run")
+  }
+
+  /// `node_modules/.deno/<package>/.scripts-warned`
+  fn warned_scripts_file(&self, package: &NpmResolutionPackage) -> PathBuf {
+    local_node_modules_package_folder(self.deno_local_registry_dir, package)
+      .join(".scripts-warned")
+  }
+}
+
+impl<'a> super::common::lifecycle_scripts::LifecycleScriptsStrategy
+  for LocalLifecycleScripts<'a>
+{
+  fn package_path(&self, package: &NpmResolutionPackage) -> PathBuf {
+    local_node_modules_package_contents_path(
+      self.deno_local_registry_dir,
+      package,
+    )
+  }
+
+  fn did_run_scripts(
+    &self,
+    package: &NpmResolutionPackage,
+  ) -> std::result::Result<(), deno_core::anyhow::Error> {
+    std::fs::write(self.ran_scripts_file(package), "")?;
+    Ok(())
+  }
+
+  fn warn_on_scripts_not_run(
+    &self,
+    packages: &[(&NpmResolutionPackage, std::path::PathBuf)],
+  ) -> Result<(), AnyError> {
+    if !packages.is_empty() {
+      log::warn!("{} The following packages contained npm lifecycle scripts ({}) that were not executed:", colors::yellow("Warning"), colors::gray("preinstall/install/postinstall"));
+
+      for (package, _) in packages {
+        log::warn!("┠─ {}", colors::gray(format!("npm:{}", package.id.nv)));
+      }
+
+      log::warn!("┃");
+      log::warn!(
+        "┠─ {}",
+        colors::italic("This may cause the packages to not work correctly.")
+      );
+      log::warn!("┖─ {}", colors::italic("To run lifecycle scripts, use the `--allow-scripts` flag with `deno install`:"));
+      let packages_comma_separated = packages
+        .iter()
+        .map(|(p, _)| format!("npm:{}", p.id.nv))
+        .collect::<Vec<_>>()
+        .join(",");
+      log::warn!(
+        "   {}",
+        colors::bold(format!(
+          "deno install --allow-scripts={}",
+          packages_comma_separated
+        ))
+      );
+
+      for (package, _) in packages {
+        let _ignore_err = fs::write(self.warned_scripts_file(package), "");
+      }
+    }
+    Ok(())
+  }
+
+  fn has_warned(&self, package: &NpmResolutionPackage) -> bool {
+    self.warned_scripts_file(package).exists()
+  }
+
+  fn has_run(&self, package: &NpmResolutionPackage) -> bool {
+    self.ran_scripts_file(package).exists()
+  }
 }
 
 // Uses BTreeMap to preserve the ordering of the elements in memory, to ensure

@@ -1073,27 +1073,13 @@ impl CliOptions {
         None => None,
       }
     };
-    Ok(
-      self
-        .workspace()
-        .create_resolver(
-          CreateResolverOptions {
-            pkg_json_dep_resolution,
-            specified_import_map: cli_arg_specified_import_map,
-          },
-          |specifier| {
-            let specifier = specifier.clone();
-            async move {
-              let file = file_fetcher
-                .fetch_bypass_permissions(&specifier)
-                .await?
-                .into_text_decoded()?;
-              Ok(file.source.to_string())
-            }
-          },
-        )
-        .await?,
-    )
+    Ok(self.workspace().create_resolver(
+      CreateResolverOptions {
+        pkg_json_dep_resolution,
+        specified_import_map: cli_arg_specified_import_map,
+      },
+      |path| Ok(std::fs::read_to_string(path)?),
+    )?)
   }
 
   pub fn node_ipc_fd(&self) -> Option<i64> {
@@ -1674,14 +1660,8 @@ impl CliOptions {
   pub fn lifecycle_scripts_config(&self) -> LifecycleScriptsConfig {
     LifecycleScriptsConfig {
       allowed: self.flags.allow_scripts.clone(),
-      initial_cwd: if matches!(
-        self.flags.allow_scripts,
-        PackagesAllowedScripts::None
-      ) {
-        None
-      } else {
-        Some(self.initial_cwd.clone())
-      },
+      initial_cwd: self.initial_cwd.clone(),
+      root_dir: self.workspace().root_dir_path(),
     }
   }
 }
