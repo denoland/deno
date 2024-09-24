@@ -729,7 +729,7 @@ impl AddPackageReq {
         let mut package_req = req_ref.into_inner().req;
         // deno_semver defaults to a version req of `*` if none is specified
         // we want to default to `latest` instead
-        if &package_req.version_req == &*deno_semver::WILDCARD_VERSION_REQ
+        if package_req.version_req == *deno_semver::WILDCARD_VERSION_REQ
           && package_req.version_req.version_text() == "*"
           && !entry_text.contains("@*")
         {
