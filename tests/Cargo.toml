@@ -16,6 +16,12 @@ path = "lib.rs"
 run = []
 upgrade = []
 
+# should be first so this runs first
+[[test]]
+name = "setup"
+path = "setup/mod.rs"
+harness = false
+
 [[test]]
 name = "integration_tests"
 path = "integration/mod.rs"

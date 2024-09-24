@@ -84,7 +84,6 @@ impl MainModuleGraphContainer {
       )
       .await?;
     graph_permit.commit();
-    self.root_permissions.mark_loaded_static_graph();
     Ok(())
   }
 

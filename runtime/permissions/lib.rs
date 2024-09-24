@@ -1793,9 +1793,6 @@ pub struct Permissions {
   pub ffi: UnaryPermission<FfiQueryDescriptor>,
   pub import: UnaryPermission<ImportDescriptor>,
   pub all: UnitPermission,
-  /// This should be set to true after the static module graph has
-  /// been loaded to enforce stricture permissions.
-  pub loaded_static_graph: bool,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq, Default, Serialize, Deserialize)]
@@ -1992,7 +1989,6 @@ impl Permissions {
         opts.prompt,
       )?,
       all: Permissions::new_all(opts.allow_all),
-      loaded_static_graph: false,
     })
   }
 
@@ -2008,7 +2004,6 @@ impl Permissions {
       ffi: UnaryPermission::allow_all(),
       import: UnaryPermission::allow_all(),
       all: Permissions::new_all(true),
-      loaded_static_graph: false,
     }
   }
 
@@ -2033,7 +2028,6 @@ impl Permissions {
       ffi: Permissions::new_unary(None, None, prompt).unwrap(),
       import: Permissions::new_unary(None, None, prompt).unwrap(),
       all: Permissions::new_all(false),
-      loaded_static_graph: false,
     }
   }
 }
@@ -2084,6 +2078,12 @@ pub fn specifier_to_file_path(
   }
 }
 
+#[derive(Debug, Clone, Copy, Eq, PartialEq)]
+pub enum CheckSpecifierKind {
+  Static,
+  Dynamic,
+}
+
 /// Wrapper struct for `Permissions` that can be shared across threads.
 ///
 /// We need a way to have internal mutability for permissions as they might get
@@ -2121,11 +2121,12 @@ impl PermissionsContainer {
   pub fn check_specifier(
     &self,
     specifier: &ModuleSpecifier,
+    kind: CheckSpecifierKind,
   ) -> Result<(), AnyError> {
     let mut inner = self.inner.lock();
     match specifier.scheme() {
       "file" => {
-        if inner.read.is_allow_all() || !inner.loaded_static_graph {
+        if inner.read.is_allow_all() || kind == CheckSpecifierKind::Static {
           return Ok(());
         }
 
@@ -2554,12 +2555,6 @@ impl PermissionsContainer {
       Ok(desc.0.resolved)
     }
   }
-
-  /// Mark that the static graph has been loaded. After this point, stricter
-  /// permissions will apply for imports.
-  pub fn mark_loaded_static_graph(&self) {
-    self.inner.lock().loaded_static_graph = true;
-  }
 }
 
 const fn unit_permission_from_flag_bools(
@@ -2981,7 +2976,6 @@ pub fn create_child_permissions(
     .create_child_permissions(child_permissions_arg.ffi, |text| {
       Ok(Some(parser.parse_ffi_descriptor(text)?))
     })?;
-  worker_perms.loaded_static_graph = true;
 
   Ok(worker_perms)
 }
@@ -3421,7 +3415,9 @@ mod tests {
 
     for (specifier, expected) in fixtures {
       assert_eq!(
-        perms.check_specifier(&specifier).is_ok(),
+        perms
+          .check_specifier(&specifier, CheckSpecifierKind::Static)
+          .is_ok(),
         expected,
         "{}",
         specifier,
@@ -3446,7 +3442,10 @@ mod tests {
 
     for url in test_cases {
       assert!(perms
-        .check_specifier(&ModuleSpecifier::parse(url).unwrap())
+        .check_specifier(
+          &ModuleSpecifier::parse(url).unwrap(),
+          CheckSpecifierKind::Static
+        )
         .is_err());
     }
   }

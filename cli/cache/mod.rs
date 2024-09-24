@@ -4,6 +4,7 @@ use crate::args::CacheSetting;
 use crate::errors::get_error_class_name;
 use crate::file_fetcher::FetchNoFollowOptions;
 use crate::file_fetcher::FetchOptions;
+use crate::file_fetcher::FetchPermissionsOptionRef;
 use crate::file_fetcher::FileFetcher;
 use crate::file_fetcher::FileOrRedirect;
 use crate::npm::CliNpmResolver;
@@ -212,6 +213,7 @@ impl Loader for FetchCacher {
     let file_header_overrides = self.file_header_overrides.clone();
     let permissions = self.permissions.clone();
     let specifier = specifier.clone();
+    let is_dynamic = options.is_dynamic;
 
     async move {
       let maybe_cache_setting = match options.cache_setting {
@@ -230,7 +232,11 @@ impl Loader for FetchCacher {
         .fetch_no_follow_with_options(FetchNoFollowOptions {
           fetch_options: FetchOptions {
             specifier: &specifier,
-            permissions: crate::file_fetcher::FetchPermissionsOptionRef::Container(&permissions),
+            permissions: if is_dynamic {
+              FetchPermissionsOptionRef::DynamicContainer(&permissions)
+            } else {
+              FetchPermissionsOptionRef::StaticContainer(&permissions)
+            },
             maybe_accept: None,
             maybe_cache_setting: maybe_cache_setting.as_ref(),
           },

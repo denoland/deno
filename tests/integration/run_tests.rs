@@ -4430,7 +4430,7 @@ fn file_fetcher_preserves_permissions() {
     .args("repl --quiet")
     .with_pty(|mut console| {
       console.write_line(
-        "const a = await import('http://localhost:4545/run/019_media_types.ts');",
+        "const a = await import('http://deno-local.test:4545/run/019_media_types.ts');",
       );
       console.expect("Allow?");
       console.human_delay();

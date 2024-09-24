@@ -689,6 +689,7 @@ impl PermissionFlags {
         "raw.githubusercontent.com",
         "gist.githubusercontent.com",
         "localhost",
+        "127.0.0.1",
       ];
 
       let mut imports = imports.unwrap_or_default();
@@ -932,10 +933,10 @@ impl Flags {
 
     match &self.permissions.allow_imports {
       Some(allowlist) if allowlist.is_empty() => {
-        args.push("--allow-imports".to_string());
+        args.push("--allow-import".to_string());
       }
       Some(allowlist) => {
-        let s = format!("--allow-imports={}", allowlist.join(","));
+        let s = format!("--allow-import={}", allowlist.join(","));
         args.push(s);
       }
       _ => {}
@@ -3222,8 +3223,8 @@ fn permission_args(app: Command, requires: Option<&'static str>) -> Command {
                                            <p(245)>--allow-read  |  --allow-read="/etc,/var/log.txt"</>
   <g>-W, --allow-write[=<<PATH>...]</>          Allow file system write access. Optionally specify allowed paths.
                                            <p(245)>--allow-write  |  --allow-write="/etc,/var/log.txt"</>
-  <g>-I, --allow-imports[=<<IP_OR_HOSTNAME>...]</>  Allow importing from remote hosts. Optionally specify allowed IP addresses and host names, with ports as necessary.
-                                           <p(245)>--allow-imports  |  --allow-imports="example.com,github.com"</>
+  <g>-I, --allow-import[=<<IP_OR_HOSTNAME>...]</>  Allow importing from remote hosts. Optionally specify allowed IP addresses and host names, with ports as necessary.
+                                           <p(245)>--allow-import  |  --allow-import="example.com,github.com"</>
   <g>-N, --allow-net[=<<IP_OR_HOSTNAME>...]</>  Allow network access. Optionally specify allowed IP addresses and host names, with ports as necessary.
                                            <p(245)>--allow-net  |  --allow-net="localhost:8080,deno.land"</>
   <g>-E, --allow-env[=<<VARIABLE_NAME>...]</>   Allow access to environment variables. Optionally specify accessible environment variables.
@@ -3616,8 +3617,8 @@ fn runtime_args(
 }
 
 fn allow_imports_arg() -> Arg {
-  Arg::new("allow-imports")
-    .long("allow-imports")
+  Arg::new("allow-import")
+    .long("allow-import")
     .short('I')
     .num_args(0..)
     .use_value_delimiter(true)
@@ -5292,7 +5293,7 @@ fn permission_args_parse(
 }
 
 fn parse_allow_imports(flags: &mut Flags, matches: &mut ArgMatches) {
-  if let Some(imports_wl) = matches.remove_many::<String>("allow-imports") {
+  if let Some(imports_wl) = matches.remove_many::<String>("allow-import") {
     let imports_allowlist = flags_net::parse(imports_wl.collect()).unwrap();
     flags.permissions.allow_imports = Some(imports_allowlist);
   }

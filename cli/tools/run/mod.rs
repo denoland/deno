@@ -60,11 +60,8 @@ pub async fn run_script(
 
   maybe_npm_install(&factory).await?;
 
-  let permissions = factory.root_permissions_container()?;
   let worker_factory = factory.create_cli_main_worker_factory().await?;
-  let mut worker = worker_factory
-    .create_main_worker(mode, main_module, permissions.clone())
-    .await?;
+  let mut worker = worker_factory.create_main_worker(mode, main_module).await?;
 
   let exit_code = worker.run().await?;
   Ok(exit_code)
@@ -79,7 +76,6 @@ pub async fn run_from_stdin(flags: Arc<Flags>) -> Result<i32, AnyError> {
 
   let file_fetcher = factory.file_fetcher()?;
   let worker_factory = factory.create_cli_main_worker_factory().await?;
-  let permissions = factory.root_permissions_container()?;
   let mut source = Vec::new();
   std::io::stdin().read_to_end(&mut source)?;
   // Save a fake file into file fetcher cache
@@ -91,11 +87,7 @@ pub async fn run_from_stdin(flags: Arc<Flags>) -> Result<i32, AnyError> {
   });
 
   let mut worker = worker_factory
-    .create_main_worker(
-      WorkerExecutionMode::Run,
-      main_module,
-      permissions.clone(),
-    )
+    .create_main_worker(WorkerExecutionMode::Run, main_module)
     .await?;
   let exit_code = worker.run().await?;
   Ok(exit_code)
@@ -129,11 +121,10 @@ async fn run_with_watch(
 
         let _ = watcher_communicator.watch_paths(cli_options.watch_paths());
 
-        let permissions = factory.root_permissions_container()?;
         let mut worker = factory
           .create_cli_main_worker_factory()
           .await?
-          .create_main_worker(mode, main_module, permissions.clone())
+          .create_main_worker(mode, main_module)
           .await?;
 
         if watch_flags.hmr {
@@ -177,14 +168,9 @@ pub async fn eval_command(
     source: source_code.into_bytes().into(),
   });
 
-  let permissions = factory.root_permissions_container()?;
   let worker_factory = factory.create_cli_main_worker_factory().await?;
   let mut worker = worker_factory
-    .create_main_worker(
-      WorkerExecutionMode::Eval,
-      main_module,
-      permissions.clone(),
-    )
+    .create_main_worker(WorkerExecutionMode::Eval, main_module)
     .await?;
   let exit_code = worker.run().await?;
   Ok(exit_code)

@@ -173,7 +173,8 @@ fn get_validated_scheme(
 #[derive(Debug, Copy, Clone)]
 pub enum FetchPermissionsOptionRef<'a> {
   AllowAll,
-  Container(&'a PermissionsContainer),
+  DynamicContainer(&'a PermissionsContainer),
+  StaticContainer(&'a PermissionsContainer),
 }
 
 pub struct FetchOptions<'a> {
@@ -548,7 +549,10 @@ impl FileFetcher {
     permissions: &PermissionsContainer,
   ) -> Result<File, AnyError> {
     self
-      .fetch_inner(specifier, FetchPermissionsOptionRef::Container(permissions))
+      .fetch_inner(
+        specifier,
+        FetchPermissionsOptionRef::StaticContainer(permissions),
+      )
       .await
   }
 
@@ -623,8 +627,17 @@ impl FileFetcher {
       FetchPermissionsOptionRef::AllowAll => {
         // allow
       }
-      FetchPermissionsOptionRef::Container(permissions) => {
-        permissions.check_specifier(specifier)?;
+      FetchPermissionsOptionRef::StaticContainer(permissions) => {
+        permissions.check_specifier(
+          specifier,
+          deno_runtime::deno_permissions::CheckSpecifierKind::Static,
+        )?;
+      }
+      FetchPermissionsOptionRef::DynamicContainer(permissions) => {
+        permissions.check_specifier(
+          specifier,
+          deno_runtime::deno_permissions::CheckSpecifierKind::Dynamic,
+        )?;
       }
     }
     if let Some(file) = self.memory_files.get(specifier) {

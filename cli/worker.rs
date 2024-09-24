@@ -62,13 +62,11 @@ pub trait ModuleLoaderFactory: Send + Sync {
   fn create_for_main(
     &self,
     root_permissions: PermissionsContainer,
-    dynamic_permissions: PermissionsContainer,
   ) -> ModuleLoaderAndSourceMapGetter;
 
   fn create_for_worker(
     &self,
     root_permissions: PermissionsContainer,
-    dynamic_permissions: PermissionsContainer,
   ) -> ModuleLoaderAndSourceMapGetter;
 }
 
@@ -467,13 +465,12 @@ impl CliMainWorkerFactory {
     &self,
     mode: WorkerExecutionMode,
     main_module: ModuleSpecifier,
-    permissions: PermissionsContainer,
   ) -> Result<CliMainWorker, AnyError> {
     self
       .create_custom_worker(
         mode,
         main_module,
-        permissions,
+        self.shared.root_permissions.clone(),
         vec![],
         Default::default(),
       )
@@ -484,7 +481,7 @@ impl CliMainWorkerFactory {
     &self,
     mode: WorkerExecutionMode,
     main_module: ModuleSpecifier,
-    dynamic_permissions: PermissionsContainer,
+    permissions: PermissionsContainer,
     custom_extensions: Vec<Extension>,
     stdio: deno_runtime::deno_io::Stdio,
   ) -> Result<CliMainWorker, AnyError> {
@@ -533,11 +530,9 @@ impl CliMainWorkerFactory {
       (main_module, is_cjs)
     };
 
-    let ModuleLoaderAndSourceMapGetter { module_loader } =
-      shared.module_loader_factory.create_for_main(
-        self.shared.root_permissions.clone(),
-        dynamic_permissions.clone(),
-      );
+    let ModuleLoaderAndSourceMapGetter { module_loader } = shared
+      .module_loader_factory
+      .create_for_main(permissions.clone());
     let maybe_inspector_server = shared.maybe_inspector_server.clone();
 
     let create_web_worker_cb =
@@ -636,7 +631,7 @@ impl CliMainWorkerFactory {
 
     let mut worker = MainWorker::bootstrap_from_options(
       main_module.clone(),
-      dynamic_permissions,
+      permissions,
       options,
     );
 
@@ -738,11 +733,9 @@ fn create_web_worker_callback(
   Arc::new(move |args| {
     let maybe_inspector_server = shared.maybe_inspector_server.clone();
 
-    let ModuleLoaderAndSourceMapGetter { module_loader } =
-      shared.module_loader_factory.create_for_worker(
-        args.parent_permissions.clone(),
-        args.permissions.clone(),
-      );
+    let ModuleLoaderAndSourceMapGetter { module_loader } = shared
+      .module_loader_factory
+      .create_for_worker(args.permissions.clone());
     let create_web_worker_cb =
       create_web_worker_callback(shared.clone(), stdio.clone());
 

@@ -650,7 +650,7 @@ impl<'a> GraphDisplayContext<'a> {
           HttpsChecksumIntegrity(_) => "(checksum integrity error)",
           Decode(_) => "(loading decode error)",
           Loader(err) => match deno_core::error::get_custom_error_class(err) {
-            Some("NotCapable") => "(not capable, requires --allow-imports)",
+            Some("NotCapable") => "(not capable, requires --allow-import)",
             _ => "(loading error)",
           },
           Jsr(_) => "(loading error)",

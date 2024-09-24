@@ -131,7 +131,6 @@ struct SharedModuleLoaderState {
 struct EmbeddedModuleLoader {
   shared: Arc<SharedModuleLoaderState>,
   root_permissions: PermissionsContainer,
-  dynamic_permissions: PermissionsContainer,
 }
 
 pub const MODULE_NOT_FOUND: &str = "Module not found";
@@ -403,13 +402,11 @@ impl ModuleLoaderFactory for StandaloneModuleLoaderFactory {
   fn create_for_main(
     &self,
     root_permissions: PermissionsContainer,
-    dynamic_permissions: PermissionsContainer,
   ) -> ModuleLoaderAndSourceMapGetter {
     ModuleLoaderAndSourceMapGetter {
       module_loader: Rc::new(EmbeddedModuleLoader {
         shared: self.shared.clone(),
         root_permissions,
-        dynamic_permissions,
       }),
     }
   }
@@ -417,13 +414,11 @@ impl ModuleLoaderFactory for StandaloneModuleLoaderFactory {
   fn create_for_worker(
     &self,
     root_permissions: PermissionsContainer,
-    dynamic_permissions: PermissionsContainer,
   ) -> ModuleLoaderAndSourceMapGetter {
     ModuleLoaderAndSourceMapGetter {
       module_loader: Rc::new(EmbeddedModuleLoader {
         shared: self.shared.clone(),
         root_permissions,
-        dynamic_permissions,
       }),
     }
   }
@@ -687,7 +682,6 @@ pub async fn run(
       Permissions::from_options(desc_parser.as_ref(), &permissions)?;
     PermissionsContainer::new(desc_parser, permissions)
   };
-  permissions.mark_loaded_static_graph();
   let feature_checker = Arc::new({
     let mut checker = FeatureChecker::default();
     checker.set_exit_cb(Box::new(crate::unstable_exit_cb));
@@ -714,7 +708,7 @@ pub async fn run(
     npm_resolver,
     permission_desc_parser,
     root_cert_store_provider,
-    permissions.clone(),
+    permissions,
     StorageKeyResolver::empty(),
     crate::args::DenoSubcommand::Run(Default::default()),
     CliMainWorkerOptions {
@@ -754,7 +748,7 @@ pub async fn run(
   deno_core::JsRuntime::init_platform(None, true);
 
   let mut worker = worker_factory
-    .create_main_worker(WorkerExecutionMode::Run, main_module, permissions)
+    .create_main_worker(WorkerExecutionMode::Run, main_module)
     .await?;
 
   let exit_code = worker.run().await?;

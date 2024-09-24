@@ -253,12 +253,10 @@ impl CliModuleLoaderFactory {
     graph_container: TGraphContainer,
     lib: TsTypeLib,
     root_permissions: PermissionsContainer,
-    dynamic_permissions: PermissionsContainer,
   ) -> ModuleLoaderAndSourceMapGetter {
     let loader = Rc::new(CliModuleLoader(Rc::new(CliModuleLoaderInner {
       lib,
       root_permissions,
-      dynamic_permissions,
       graph_container,
       emitter: self.shared.emitter.clone(),
       parsed_source_cache: self.shared.parsed_source_cache.clone(),
@@ -274,20 +272,17 @@ impl ModuleLoaderFactory for CliModuleLoaderFactory {
   fn create_for_main(
     &self,
     root_permissions: PermissionsContainer,
-    dynamic_permissions: PermissionsContainer,
   ) -> ModuleLoaderAndSourceMapGetter {
     self.create_with_lib(
       (*self.shared.main_module_graph_container).clone(),
       self.shared.lib_window,
       root_permissions,
-      dynamic_permissions,
     )
   }
 
   fn create_for_worker(
     &self,
     root_permissions: PermissionsContainer,
-    dynamic_permissions: PermissionsContainer,
   ) -> ModuleLoaderAndSourceMapGetter {
     self.create_with_lib(
       // create a fresh module graph for the worker
@@ -296,7 +291,6 @@ impl ModuleLoaderFactory for CliModuleLoaderFactory {
       ))),
       self.shared.lib_worker,
       root_permissions,
-      dynamic_permissions,
     )
   }
 }
@@ -307,9 +301,6 @@ struct CliModuleLoaderInner<TGraphContainer: ModuleGraphContainer> {
   /// worker. These are "allow all" for main worker, and parent thread
   /// permissions for Web Worker.
   root_permissions: PermissionsContainer,
-  /// Permissions used to resolve dynamic imports, these get passed as
-  /// "root permissions" for Web Worker.
-  dynamic_permissions: PermissionsContainer,
   shared: Arc<SharedCliModuleLoaderState>,
   emitter: Arc<Emitter>,
   parsed_source_cache: Arc<ParsedSourceCache>,
@@ -769,11 +760,7 @@ impl<TGraphContainer: ModuleGraphContainer> ModuleLoader
         }
       }
 
-      let root_permissions = if is_dynamic {
-        inner.dynamic_permissions.clone()
-      } else {
-        inner.root_permissions.clone()
-      };
+      let root_permissions = inner.root_permissions.clone();
       let lib = inner.lib;
       let mut update_permit = graph_container.acquire_update_permit().await;
       let graph = update_permit.graph_mut();
