@@ -297,7 +297,7 @@ fn format_markdown(
               Ok(None)
             }
           }
-          "yml" | "yaml" => format_yaml(text, &fmt_options),
+          "yml" | "yaml" => format_yaml(text, fmt_options),
           _ => {
             let mut codeblock_config =
               get_resolved_typescript_config(fmt_options);
