@@ -31,6 +31,7 @@ pub mod strings;
 pub mod symbol;
 pub mod tsfn;
 pub mod typedarray;
+pub mod uv;
 
 #[macro_export]
 macro_rules! cstr {

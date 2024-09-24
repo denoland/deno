@@ -14,6 +14,7 @@ crate-type = ["cdylib"]
 
 [dependencies]
 napi-sys = { version = "=2.2.2", default-features = false, features = ["napi7"] }
+libuv-sys-lite = { path = "../../../libuv-sys-lite" }
 
 [dev-dependencies]
 test_util.workspace = true
