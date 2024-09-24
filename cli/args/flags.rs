@@ -5230,10 +5230,13 @@ fn permission_args_parse(
 
   if matches.get_flag("allow-hrtime") || matches.get_flag("deny-hrtime") {
     // use eprintln instead of log::warn because logging hasn't been initialized yet
-    eprintln!(
-      "{} `allow-hrtime` and `deny-hrtime` have been removed in Deno 2, as high resolution time is now always allowed.",
-      deno_runtime::colors::yellow("Warning")
-    );
+    #[allow(clippy::print_stderr)]
+    {
+      eprintln!(
+        "{} `allow-hrtime` and `deny-hrtime` have been removed in Deno 2, as high resolution time is now always allowed",
+        deno_runtime::colors::yellow("Warning")
+      );
+    }
   }
 
   if matches.get_flag("allow-all") {
