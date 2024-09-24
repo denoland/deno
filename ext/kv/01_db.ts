@@ -60,13 +60,15 @@ const maxQueueDelay = 30 * 24 * 60 * 60 * 1000;
 
 function validateQueueDelay(delay: number) {
   if (delay < 0) {
-    throw new TypeError("delay cannot be negative");
+    throw new TypeError(`Delay must be >= 0: received ${delay}`);
   }
   if (delay > maxQueueDelay) {
-    throw new TypeError("delay cannot be greater than 30 days");
+    throw new TypeError(
+      `Delay cannot be greater than 30 days: received ${delay}`,
+    );
   }
   if (NumberIsNaN(delay)) {
-    throw new TypeError("delay cannot be NaN");
+    throw new TypeError("Delay cannot be NaN");
   }
 }
 
@@ -75,7 +77,7 @@ const maxQueueBackoffInterval = 60 * 60 * 1000;
 
 function validateBackoffSchedule(backoffSchedule: number[]) {
   if (backoffSchedule.length > maxQueueBackoffIntervals) {
-    throw new TypeError("invalid backoffSchedule");
+    throw new TypeError("Invalid backoffSchedule");
   }
   for (let i = 0; i < backoffSchedule.length; ++i) {
     const interval = backoffSchedule[i];
@@ -83,7 +85,7 @@ function validateBackoffSchedule(backoffSchedule: number[]) {
       interval < 0 || interval > maxQueueBackoffInterval ||
       NumberIsNaN(interval)
     ) {
-      throw new TypeError("invalid backoffSchedule");
+      throw new TypeError("Invalid backoffSchedule");
     }
   }
 }
@@ -115,7 +117,7 @@ class Kv {
   constructor(rid: number = undefined, symbol: symbol = undefined) {
     if (kvSymbol !== symbol) {
       throw new TypeError(
-        "Deno.Kv can not be constructed, use Deno.openKv instead.",
+        "Deno.Kv can not be constructed: use Deno.openKv instead",
       );
     }
     this.#rid = rid;
@@ -213,7 +215,7 @@ class Kv {
     } = { __proto__: null },
   ): KvListIterator {
     if (options.limit !== undefined && options.limit <= 0) {
-      throw new Error("limit must be positive");
+      throw new Error(`Limit must be positive: received ${options.limit}`);
     }
 
     let batchSize = options.batchSize ?? (options.limit ?? 100);
@@ -291,7 +293,7 @@ class Kv {
     handler: (message: unknown) => Promise<void> | void,
   ): Promise<void> {
     if (this.#isClosed) {
-      throw new Error("already closed");
+      throw new Error("Queue already closed");
     }
     const finishMessageOps = new SafeMap<number, Promise<void>>();
     while (true) {
@@ -368,7 +370,7 @@ class Kv {
             if (updates[i] === "unchanged") {
               if (lastEntries[i] === undefined) {
                 throw new Error(
-                  "watch: invalid unchanged update (internal error)",
+                  "'watch': invalid unchanged update (internal error)",
                 );
               }
               continue;
@@ -449,7 +451,7 @@ class AtomicOperation {
         case "delete":
           type = "delete";
           if (mutation.value) {
-            throw new TypeError("invalid mutation 'delete' with value");
+            throw new TypeError("Invalid mutation 'delete' with value");
           }
           break;
         case "set":
@@ -462,7 +464,7 @@ class AtomicOperation {
         case "max":
           type = mutation.type;
           if (!ObjectHasOwn(mutation, "value")) {
-            throw new TypeError(`invalid mutation '${type}' without value`);
+            throw new TypeError(`Invalid mutation '${type}' without value`);
           }
           value = serializeValue(mutation.value);
           break;
@@ -559,7 +561,7 @@ class AtomicOperation {
 
   then() {
     throw new TypeError(
-      "`Deno.AtomicOperation` is not a promise. Did you forget to call `commit()`?",
+      "'Deno.AtomicOperation' is not a promise: did you forget to call 'commit()'",
     );
   }
 }
@@ -572,13 +574,15 @@ class KvU64 {
 
   constructor(value: bigint) {
     if (typeof value !== "bigint") {
-      throw new TypeError("value must be a bigint");
+      throw new TypeError(`Value must be a bigint: received ${typeof value}`);
     }
     if (value < MIN_U64) {
-      throw new RangeError("value must be a positive bigint");
+      throw new RangeError(
+        `Value must be a positive bigint: received ${value}`,
+      );
     }
     if (value > MAX_U64) {
-      throw new RangeError("value must fit in a 64-bit unsigned integer");
+      throw new RangeError("Value must fit in a 64-bit unsigned integer");
     }
     this.value = value;
     ObjectFreeze(this);
@@ -709,7 +713,7 @@ class KvListIterator extends AsyncIterator
     if (prefix) {
       if (start && end) {
         throw new TypeError(
-          "Selector can not specify both 'start' and 'end' key when specifying 'prefix'.",
+          "Selector can not specify both 'start' and 'end' key when specifying 'prefix'",
         );
       }
       if (start) {
@@ -724,7 +728,7 @@ class KvListIterator extends AsyncIterator
         this.#selector = { start, end };
       } else {
         throw new TypeError(
-          "Selector must specify either 'prefix' or both 'start' and 'end' key.",
+          "Selector must specify either 'prefix' or both 'start' and 'end' key",
         );
       }
     }

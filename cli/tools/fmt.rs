@@ -120,7 +120,13 @@ pub async fn format(
             };
           }
 
-          format_files(caches, &fmt_flags, paths_with_options_batches).await?;
+          format_files(
+            caches,
+            cli_options,
+            &fmt_flags,
+            paths_with_options_batches,
+          )
+          .await?;
 
           Ok(())
         })
@@ -133,7 +139,8 @@ pub async fn format(
     let caches = factory.caches()?;
     let paths_with_options_batches =
       resolve_paths_with_options_batches(cli_options, &fmt_flags)?;
-    format_files(caches, &fmt_flags, paths_with_options_batches).await?;
+    format_files(caches, cli_options, &fmt_flags, paths_with_options_batches)
+      .await?;
   }
 
   Ok(())
@@ -172,6 +179,7 @@ fn resolve_paths_with_options_batches(
 
 async fn format_files(
   caches: &Arc<Caches>,
+  cli_options: &Arc<CliOptions>,
   fmt_flags: &FmtFlags,
   paths_with_options_batches: Vec<PathsWithOptions>,
 ) -> Result<(), AnyError> {
@@ -199,6 +207,7 @@ async fn format_files(
         fmt_options.options,
         fmt_options.unstable,
         incremental_cache.clone(),
+        cli_options.ext_flag().clone(),
       )
       .await?;
     incremental_cache.wait_completion().await;
@@ -211,11 +220,14 @@ fn collect_fmt_files(
   cli_options: &CliOptions,
   files: FilePatterns,
 ) -> Result<Vec<PathBuf>, AnyError> {
-  FileCollector::new(|e| is_supported_ext_fmt(e.path))
-    .ignore_git_folder()
-    .ignore_node_modules()
-    .set_vendor_folder(cli_options.vendor_dir_path().map(ToOwned::to_owned))
-    .collect_file_patterns(&deno_config::fs::RealDenoConfigFs, files)
+  FileCollector::new(|e| {
+    is_supported_ext_fmt(e.path)
+      || (e.path.extension().is_none() && cli_options.ext_flag().is_some())
+  })
+  .ignore_git_folder()
+  .ignore_node_modules()
+  .set_vendor_folder(cli_options.vendor_dir_path().map(ToOwned::to_owned))
+  .collect_file_patterns(&deno_config::fs::RealDenoConfigFs, files)
 }
 
 /// Formats markdown (using <https://github.com/dprint/dprint-plugin-markdown>) and its code blocks
@@ -253,6 +265,8 @@ fn format_markdown(
           | "svelte"
           | "vue"
           | "astro"
+          | "vto"
+          | "njk"
           | "yml"
           | "yaml"
       ) {
@@ -273,38 +287,22 @@ fn format_markdown(
             dprint_plugin_json::format_text(&fake_filename, text, &json_config)
           }
           "css" | "scss" | "sass" | "less" => {
-            if unstable_options.css {
-              format_css(&fake_filename, text, fmt_options)
-            } else {
-              Ok(None)
-            }
+            format_css(&fake_filename, text, fmt_options)
           }
-          "html" => {
-            if unstable_options.html {
-              format_html(&fake_filename, text, fmt_options)
-            } else {
-              Ok(None)
-            }
-          }
-          "svelte" | "vue" | "astro" => {
+          "html" => format_html(&fake_filename, text, fmt_options),
+          "svelte" | "vue" | "astro" | "vto" | "njk" => {
             if unstable_options.component {
               format_html(&fake_filename, text, fmt_options)
             } else {
               Ok(None)
             }
           }
-          "yml" | "yaml" => {
-            if unstable_options.yaml {
-              pretty_yaml::format_text(
-                text,
-                &get_resolved_yaml_config(fmt_options),
-              )
-              .map(Some)
-              .map_err(AnyError::from)
-            } else {
-              Ok(None)
-            }
-          }
+          "yml" | "yaml" => pretty_yaml::format_text(
+            text,
+            &get_resolved_yaml_config(fmt_options),
+          )
+          .map(Some)
+          .map_err(AnyError::from),
           _ => {
             let mut codeblock_config =
               get_resolved_typescript_config(fmt_options);
@@ -449,8 +447,11 @@ pub fn format_file(
   file_text: &str,
   fmt_options: &FmtOptionsConfig,
   unstable_options: &UnstableFmtOptions,
+  ext: Option<String>,
 ) -> Result<Option<String>, AnyError> {
-  let ext = get_extension(file_path).unwrap_or_default();
+  let ext = ext
+    .or_else(|| get_extension(file_path))
+    .unwrap_or("ts".to_string());
 
   match ext.as_str() {
     "md" | "mkd" | "mkdn" | "mdwn" | "mdown" | "markdown" => {
@@ -458,49 +459,33 @@ pub fn format_file(
     }
     "json" | "jsonc" => format_json(file_path, file_text, fmt_options),
     "css" | "scss" | "sass" | "less" => {
-      if unstable_options.css {
-        format_css(file_path, file_text, fmt_options)
-      } else {
-        Ok(None)
-      }
+      format_css(file_path, file_text, fmt_options)
     }
-    "html" => {
-      if unstable_options.html {
-        format_html(file_path, file_text, fmt_options)
-      } else {
-        Ok(None)
-      }
-    }
-    "svelte" | "vue" | "astro" => {
+    "html" => format_html(file_path, file_text, fmt_options),
+    "svelte" | "vue" | "astro" | "vto" | "njk" => {
       if unstable_options.component {
         format_html(file_path, file_text, fmt_options)
       } else {
         Ok(None)
       }
     }
-    "yml" | "yaml" => {
-      if unstable_options.yaml {
-        pretty_yaml::format_text(
-          file_text,
-          &get_resolved_yaml_config(fmt_options),
-        )
-        .map(Some)
-        .map_err(AnyError::from)
-      } else {
-        Ok(None)
-      }
-    }
+    "yml" | "yaml" => pretty_yaml::format_text(
+      file_text,
+      &get_resolved_yaml_config(fmt_options),
+    )
+    .map(Some)
+    .map_err(AnyError::from),
     "ipynb" => dprint_plugin_jupyter::format_text(
       file_text,
       |file_path: &Path, file_text: String| {
-        format_file(file_path, &file_text, fmt_options, unstable_options)
+        format_file(file_path, &file_text, fmt_options, unstable_options, None)
       },
     ),
     _ => {
       let config = get_resolved_typescript_config(fmt_options);
       dprint_plugin_typescript::format_text(
         file_path,
-        None,
+        Some(&ext),
         file_text.to_string(),
         &config,
       )
@@ -526,6 +511,7 @@ trait Formatter {
     fmt_options: FmtOptionsConfig,
     unstable_options: UnstableFmtOptions,
     incremental_cache: Arc<IncrementalCache>,
+    ext: Option<String>,
   ) -> Result<(), AnyError>;
 
   fn finish(&self) -> Result<(), AnyError>;
@@ -545,6 +531,7 @@ impl Formatter for CheckFormatter {
     fmt_options: FmtOptionsConfig,
     unstable_options: UnstableFmtOptions,
     incremental_cache: Arc<IncrementalCache>,
+    ext: Option<String>,
   ) -> Result<(), AnyError> {
     // prevent threads outputting at the same time
     let output_lock = Arc::new(Mutex::new(0));
@@ -566,6 +553,7 @@ impl Formatter for CheckFormatter {
           &file_text,
           &fmt_options,
           &unstable_options,
+          ext.clone(),
         ) {
           Ok(Some(formatted_text)) => {
             not_formatted_files_count.fetch_add(1, Ordering::Relaxed);
@@ -643,6 +631,7 @@ impl Formatter for RealFormatter {
     fmt_options: FmtOptionsConfig,
     unstable_options: UnstableFmtOptions,
     incremental_cache: Arc<IncrementalCache>,
+    ext: Option<String>,
   ) -> Result<(), AnyError> {
     let output_lock = Arc::new(Mutex::new(0)); // prevent threads outputting at the same time
 
@@ -662,7 +651,13 @@ impl Formatter for RealFormatter {
           &file_path,
           &file_contents.text,
           |file_path, file_text| {
-            format_file(file_path, file_text, &fmt_options, &unstable_options)
+            format_file(
+              file_path,
+              file_text,
+              &fmt_options,
+              &unstable_options,
+              ext.clone(),
+            )
           },
         ) {
           Ok(Some(formatted_text)) => {
@@ -788,6 +783,7 @@ fn format_stdin(
     &source,
     &fmt_options.options,
     &fmt_options.unstable,
+    None,
   )?;
   if fmt_flags.check {
     #[allow(clippy::print_stdout)]
@@ -1145,6 +1141,8 @@ fn is_supported_ext_fmt(path: &Path) -> bool {
         | "svelte"
         | "vue"
         | "astro"
+        | "vto"
+        | "njk"
         | "md"
         | "mkd"
         | "mkdn"
@@ -1203,6 +1201,10 @@ mod test {
     assert!(is_supported_ext_fmt(Path::new("foo.VUE")));
     assert!(is_supported_ext_fmt(Path::new("foo.astro")));
     assert!(is_supported_ext_fmt(Path::new("foo.AsTrO")));
+    assert!(is_supported_ext_fmt(Path::new("foo.vto")));
+    assert!(is_supported_ext_fmt(Path::new("foo.Vto")));
+    assert!(is_supported_ext_fmt(Path::new("foo.njk")));
+    assert!(is_supported_ext_fmt(Path::new("foo.NJk")));
     assert!(is_supported_ext_fmt(Path::new("foo.yml")));
     assert!(is_supported_ext_fmt(Path::new("foo.Yml")));
     assert!(is_supported_ext_fmt(Path::new("foo.yaml")));
@@ -1269,6 +1271,7 @@ mod test {
         ..Default::default()
       },
       &UnstableFmtOptions::default(),
+      None,
     )
     .unwrap()
     .unwrap();

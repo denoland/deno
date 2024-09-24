@@ -2045,24 +2045,3 @@ Deno.test(async function p521Generate() {
   assert(key.privateKey instanceof CryptoKey);
   assert(key.publicKey instanceof CryptoKey);
 });
-
-Deno.test(async function invalidEcPointDataError() {
-  await assertRejects(async () => {
-    await crypto.subtle
-      .importKey(
-        "pkcs8",
-        // deno-fmt-ignore
-        new Uint8Array([
-          48, 102, 2, 1, 0, 48, 19, 6, 7, 42, 134, 72, 206, 61, 2, 1, 6, 8, 42, 134,
-          72, 206, 61, 3, 1, 7, 4, 76, 48, 74, 2, 1, 1, 4, 32, 255, 255, 255, 255,
-          0, 0, 0, 0, 255, 255, 255, 255, 255, 255, 255, 255, 188, 230, 250, 173,
-          167, 23, 158, 132, 243, 185, 202, 194, 252, 99, 37, 81, 161, 35, 3, 33, 0,
-          0, 255, 255, 255, 0, 0, 0, 0, 255, 255, 255, 255, 255, 255, 255, 255, 188,
-          230, 250, 173, 167, 23, 158, 132, 243, 185, 202, 194, 252, 99, 37, 81,
-        ]),
-        { name: "ECDSA", namedCurve: "P-256" },
-        true,
-        ["sign"],
-      );
-  }, DOMException);
-});

@@ -1,0 +1,5 @@
+{
+  "tempDir": true,
+  "args": "fmt",
+  "output": "[WILDLINE]badly_formatted.css\nChecked 1 file\n"
+}

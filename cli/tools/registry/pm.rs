@@ -437,18 +437,6 @@ pub async fn add(
   }
 
   let http_client = cli_factory.http_client_provider();
-
-  let mut selected_packages = Vec::with_capacity(add_flags.packages.len());
-  let mut package_reqs = Vec::with_capacity(add_flags.packages.len());
-
-  for entry_text in add_flags.packages.iter() {
-    let req = AddPackageReq::parse(entry_text).with_context(|| {
-      format!("Failed to parse package required: {}", entry_text)
-    })?;
-
-    package_reqs.push(req);
-  }
-
   let deps_http_cache = cli_factory.global_http_cache()?;
   let mut deps_file_fetcher = FileFetcher::new(
     deps_http_cache.clone(),
@@ -462,6 +450,37 @@ pub async fn add(
   let deps_file_fetcher = Arc::new(deps_file_fetcher);
   let jsr_resolver = Arc::new(JsrFetchResolver::new(deps_file_fetcher.clone()));
   let npm_resolver = Arc::new(NpmFetchResolver::new(deps_file_fetcher));
+
+  let mut selected_packages = Vec::with_capacity(add_flags.packages.len());
+  let mut package_reqs = Vec::with_capacity(add_flags.packages.len());
+
+  for entry_text in add_flags.packages.iter() {
+    let req = AddPackageReq::parse(entry_text).with_context(|| {
+      format!("Failed to parse package required: {}", entry_text)
+    })?;
+
+    match req {
+      Ok(add_req) => package_reqs.push(add_req),
+      Err(package_req) => {
+        if jsr_resolver.req_to_nv(&package_req).await.is_some() {
+          bail!(
+            "{entry_text} is missing a prefix. Did you mean `{}`?",
+            crate::colors::yellow(format!("deno {cmd_name} jsr:{package_req}"))
+          )
+        } else if npm_resolver.req_to_nv(&package_req).await.is_some() {
+          bail!(
+            "{entry_text} is missing a prefix. Did you mean `{}`?",
+            crate::colors::yellow(format!("deno {cmd_name} npm:{package_req}"))
+          )
+        } else {
+          bail!(
+            "{} was not found in either jsr or npm.",
+            crate::colors::red(entry_text)
+          );
+        }
+      }
+    }
+  }
 
   let package_futures = package_reqs
     .into_iter()
@@ -636,7 +655,7 @@ struct AddPackageReq {
 }
 
 impl AddPackageReq {
-  pub fn parse(entry_text: &str) -> Result<Self, AnyError> {
+  pub fn parse(entry_text: &str) -> Result<Result<Self, PackageReq>, AnyError> {
     enum Prefix {
       Jsr,
       Npm,
@@ -675,13 +694,13 @@ impl AddPackageReq {
       None => match parse_alias(entry_text) {
         Some((alias, text)) => {
           let (maybe_prefix, entry_text) = parse_prefix(text);
-          (
-            maybe_prefix.unwrap_or(Prefix::Jsr),
-            Some(alias.to_string()),
-            entry_text,
-          )
+          if maybe_prefix.is_none() {
+            return Ok(Err(PackageReq::from_str(entry_text)?));
+          }
+
+          (maybe_prefix.unwrap(), Some(alias.to_string()), entry_text)
         }
-        None => (Prefix::Jsr, None, entry_text),
+        None => return Ok(Err(PackageReq::from_str(entry_text)?)),
       },
     };
 
@@ -690,19 +709,19 @@ impl AddPackageReq {
         let req_ref =
           JsrPackageReqReference::from_str(&format!("jsr:{}", entry_text))?;
         let package_req = req_ref.into_inner().req;
-        Ok(AddPackageReq {
+        Ok(Ok(AddPackageReq {
           alias: maybe_alias.unwrap_or_else(|| package_req.name.to_string()),
           value: AddPackageReqValue::Jsr(package_req),
-        })
+        }))
       }
       Prefix::Npm => {
         let req_ref =
           NpmPackageReqReference::from_str(&format!("npm:{}", entry_text))?;
         let package_req = req_ref.into_inner().req;
-        Ok(AddPackageReq {
+        Ok(Ok(AddPackageReq {
           alias: maybe_alias.unwrap_or_else(|| package_req.name.to_string()),
           value: AddPackageReqValue::Npm(package_req),
-        })
+        }))
       }
     }
   }
@@ -847,42 +866,42 @@ fn update_config_file_content<
 
 #[cfg(test)]
 mod test {
-  use deno_semver::VersionReq;
-
   use super::*;
 
   #[test]
   fn test_parse_add_package_req() {
     assert_eq!(
-      AddPackageReq::parse("jsr:foo").unwrap(),
+      AddPackageReq::parse("jsr:foo").unwrap().unwrap(),
       AddPackageReq {
         alias: "foo".to_string(),
         value: AddPackageReqValue::Jsr(PackageReq::from_str("foo").unwrap())
       }
     );
     assert_eq!(
-      AddPackageReq::parse("alias@jsr:foo").unwrap(),
+      AddPackageReq::parse("alias@jsr:foo").unwrap().unwrap(),
       AddPackageReq {
         alias: "alias".to_string(),
         value: AddPackageReqValue::Jsr(PackageReq::from_str("foo").unwrap())
       }
     );
     assert_eq!(
-      AddPackageReq::parse("@alias/pkg@npm:foo").unwrap(),
+      AddPackageReq::parse("@alias/pkg@npm:foo").unwrap().unwrap(),
       AddPackageReq {
         alias: "@alias/pkg".to_string(),
         value: AddPackageReqValue::Npm(PackageReq::from_str("foo").unwrap())
       }
     );
     assert_eq!(
-      AddPackageReq::parse("@alias/pkg@jsr:foo").unwrap(),
+      AddPackageReq::parse("@alias/pkg@jsr:foo").unwrap().unwrap(),
       AddPackageReq {
         alias: "@alias/pkg".to_string(),
         value: AddPackageReqValue::Jsr(PackageReq::from_str("foo").unwrap())
       }
     );
     assert_eq!(
-      AddPackageReq::parse("alias@jsr:foo@^1.5.0").unwrap(),
+      AddPackageReq::parse("alias@jsr:foo@^1.5.0")
+        .unwrap()
+        .unwrap(),
       AddPackageReq {
         alias: "alias".to_string(),
         value: AddPackageReqValue::Jsr(
@@ -891,15 +910,11 @@ mod test {
       }
     );
     assert_eq!(
-      AddPackageReq::parse("@scope/pkg@tag").unwrap(),
-      AddPackageReq {
-        alias: "@scope/pkg".to_string(),
-        value: AddPackageReqValue::Jsr(PackageReq {
-          name: "@scope/pkg".to_string(),
-          // this is a tag
-          version_req: VersionReq::parse_from_specifier("tag").unwrap(),
-        }),
-      }
+      AddPackageReq::parse("@scope/pkg@tag")
+        .unwrap()
+        .unwrap_err()
+        .to_string(),
+      "@scope/pkg@tag",
     );
   }
 }
