@@ -514,7 +514,9 @@ Object.defineProperties(
     _flushHeaders() {
       console.log("flushHeaders");
       if (this.socket) {
-        if (!this._headerSent && this._header !== null) {
+        console.log("socket found: ", { headerSent: this._headerSent, header: this._header });
+        if (!this._headerSent) {
+          console.log("_writeHeader invoked");
           this._writeHeader();
           this._headerSent = true;
         }

@@ -434,8 +434,9 @@ class ClientRequest extends OutgoingMessage {
       }
     }
 
-    const client = this._getClient() ?? createHttpClient({ http2: false });
-    this._client = client;
+    console.log({ headers });
+    // const client = this._getClient() ?? createHttpClient({ http2: false });
+    // this._client = client;
 
     if (
       this.method === "POST" || this.method === "PATCH" || this.method === "PUT"
@@ -476,7 +477,7 @@ class ClientRequest extends OutgoingMessage {
         await op_node_http_wait_for_connection(connRid);
         this.emit("requestReady");
         const res = await op_node_http_await_response(rid);
-        console.log({ res });
+        console.log({ status: res.status });
         // if (this._req.cancelHandleRid !== null) {
         //   core.tryClose(this._req.cancelHandleRid);
         // }
@@ -484,7 +485,8 @@ class ClientRequest extends OutgoingMessage {
         //   this._timeout.removeEventListener("abort", this._timeoutCb);
         //   webClearTimeout(this._timeout[timerId]);
         // }
-        this._client.close();
+        // this._client.close();
+        console.log("IncomingMessageForClient constructed");
         const incoming = new IncomingMessageForClient(this.socket);
         incoming.req = this;
         this.res = incoming;
@@ -554,6 +556,7 @@ class ClientRequest extends OutgoingMessage {
           this._closed = true;
           this.emit("close");
         } else {
+          console.log("emitting response");
           {
             console.log("_bodyRid set", res.responseRid);
             incoming._bodyRid = res.responseRid;
