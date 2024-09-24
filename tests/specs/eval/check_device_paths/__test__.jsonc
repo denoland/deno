@@ -21,6 +21,26 @@
       "args": "eval console.log({isTTY:Deno.openSync('//./CONIN$',{read:true,write:true}).isTerminal()})",
       "output": "{ isTTY: true }\n"
     },
+    "valid_device_paths_with_prefix_ii": {
+      "if": "windows",
+      "args": "eval console.log({isTTY:Deno.openSync('//?/CONIN$',{read:true,write:true}).isTerminal()})",
+      "output": "{ isTTY: true }\n"
+    },
+    "valid_device_paths_with_prefix_iii": {
+      "if": "windows",
+      "args": "eval console.log({isTTY:Deno.openSync('//?/CONOUT$',{read:true,write:true}).isTerminal()})",
+      "output": "{ isTTY: true }\n"
+    },
+    "valid_device_paths_nul_i": {
+      "if": "windows",
+      "args": "eval console.log({isTTY:Deno.openSync('//./NUL',{read:true,write:true}).isTerminal()})",
+      "output": "{ isTTY: false }\n"
+    },
+    "valid_device_paths_nul_ii": {
+      "if": "windows",
+      "args": "eval console.log({isTTY:Deno.openSync('//?/NUL',{read:true,write:true}).isTerminal()})",
+      "output": "{ isTTY: false }\n"
+    },
     "invalid_device_paths": {
       "if": "windows",
       "args": "eval console.log({isTTY:Deno.openSync('\\\\.\\INVALID$',{read:true,write:true}).isTerminal()})",

@@ -1057,6 +1057,8 @@ pub fn open_with_access_check(
     let is_windows_device_path = cfg!(windows)
       && (path_bytes.starts_with(br"\\.\")
         || path_bytes.starts_with(b"//./")
+        || path_bytes.starts_with(b"//?/")
+        || path_bytes.starts_with(br"\\?\")
         || path_bytes.ends_with(b"$"))
       && !path_bytes.contains(&b':');
     let path = if is_windows_device_path {
