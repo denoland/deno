@@ -4,6 +4,7 @@ use crate::args::CacheSetting;
 use crate::errors::get_error_class_name;
 use crate::file_fetcher::FetchNoFollowOptions;
 use crate::file_fetcher::FetchOptions;
+use crate::file_fetcher::FetchPermissionsOption;
 use crate::file_fetcher::FileFetcher;
 use crate::file_fetcher::FileOrRedirect;
 use crate::npm::CliNpmResolver;
@@ -18,7 +19,6 @@ use deno_graph::source::CacheInfo;
 use deno_graph::source::LoadFuture;
 use deno_graph::source::LoadResponse;
 use deno_graph::source::Loader;
-use deno_runtime::deno_permissions::PermissionsContainer;
 use std::collections::HashMap;
 use std::path::Path;
 use std::path::PathBuf;
@@ -108,11 +108,11 @@ pub use deno_cache_dir::HttpCache;
 /// a concise interface to the DENO_DIR when building module graphs.
 pub struct FetchCacher {
   file_fetcher: Arc<FileFetcher>,
-  file_header_overrides: HashMap<ModuleSpecifier, HashMap<String, String>>,
+  pub file_header_overrides: HashMap<ModuleSpecifier, HashMap<String, String>>,
   global_http_cache: Arc<GlobalHttpCache>,
   npm_resolver: Arc<dyn CliNpmResolver>,
   module_info_cache: Arc<ModuleInfoCache>,
-  permissions: PermissionsContainer,
+  permissions: FetchPermissionsOption,
   cache_info_enabled: bool,
 }
 
@@ -123,7 +123,7 @@ impl FetchCacher {
     global_http_cache: Arc<GlobalHttpCache>,
     npm_resolver: Arc<dyn CliNpmResolver>,
     module_info_cache: Arc<ModuleInfoCache>,
-    permissions: PermissionsContainer,
+    permissions: FetchPermissionsOption,
   ) -> Self {
     Self {
       file_fetcher,
@@ -230,7 +230,7 @@ impl Loader for FetchCacher {
         .fetch_no_follow_with_options(FetchNoFollowOptions {
           fetch_options: FetchOptions {
             specifier: &specifier,
-            permissions: &permissions,
+            permissions: permissions.as_ref(),
             maybe_accept: None,
             maybe_cache_setting: maybe_cache_setting.as_ref(),
           },

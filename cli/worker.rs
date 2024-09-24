@@ -30,6 +30,7 @@ use deno_runtime::deno_web::BlobStore;
 use deno_runtime::fmt_errors::format_js_error;
 use deno_runtime::inspector_server::InspectorServer;
 use deno_runtime::ops::worker_host::CreateWebWorkerCb;
+use deno_runtime::permissions::RuntimePermissionDescriptorParser;
 use deno_runtime::web_worker::WebWorker;
 use deno_runtime::web_worker::WebWorkerOptions;
 use deno_runtime::worker::MainWorker;
@@ -121,23 +122,24 @@ pub struct CliMainWorkerOptions {
 }
 
 struct SharedWorkerState {
-  options: CliMainWorkerOptions,
-  subcommand: DenoSubcommand,
-  storage_key_resolver: StorageKeyResolver,
-  npm_resolver: Arc<dyn CliNpmResolver>,
-  node_resolver: Arc<NodeResolver>,
   blob_store: Arc<BlobStore>,
   broadcast_channel: InMemoryBroadcastChannel,
-  shared_array_buffer_store: SharedArrayBufferStore,
+  code_cache: Option<Arc<dyn code_cache::CodeCache>>,
   compiled_wasm_module_store: CompiledWasmModuleStore,
-  module_loader_factory: Box<dyn ModuleLoaderFactory>,
-  root_cert_store_provider: Arc<dyn RootCertStoreProvider>,
+  feature_checker: Arc<FeatureChecker>,
   fs: Arc<dyn deno_fs::FileSystem>,
   maybe_file_watcher_communicator: Option<Arc<WatcherCommunicator>>,
   maybe_inspector_server: Option<Arc<InspectorServer>>,
   maybe_lockfile: Option<Arc<CliLockfile>>,
-  feature_checker: Arc<FeatureChecker>,
-  code_cache: Option<Arc<dyn code_cache::CodeCache>>,
+  module_loader_factory: Box<dyn ModuleLoaderFactory>,
+  node_resolver: Arc<NodeResolver>,
+  npm_resolver: Arc<dyn CliNpmResolver>,
+  permission_desc_parser: Arc<RuntimePermissionDescriptorParser>,
+  root_cert_store_provider: Arc<dyn RootCertStoreProvider>,
+  shared_array_buffer_store: SharedArrayBufferStore,
+  storage_key_resolver: StorageKeyResolver,
+  options: CliMainWorkerOptions,
+  subcommand: DenoSubcommand,
 }
 
 impl SharedWorkerState {
@@ -418,40 +420,42 @@ pub struct CliMainWorkerFactory {
 impl CliMainWorkerFactory {
   #[allow(clippy::too_many_arguments)]
   pub fn new(
-    storage_key_resolver: StorageKeyResolver,
-    subcommand: DenoSubcommand,
-    npm_resolver: Arc<dyn CliNpmResolver>,
-    node_resolver: Arc<NodeResolver>,
     blob_store: Arc<BlobStore>,
-    module_loader_factory: Box<dyn ModuleLoaderFactory>,
-    root_cert_store_provider: Arc<dyn RootCertStoreProvider>,
+    code_cache: Option<Arc<dyn code_cache::CodeCache>>,
+    feature_checker: Arc<FeatureChecker>,
     fs: Arc<dyn deno_fs::FileSystem>,
     maybe_file_watcher_communicator: Option<Arc<WatcherCommunicator>>,
     maybe_inspector_server: Option<Arc<InspectorServer>>,
     maybe_lockfile: Option<Arc<CliLockfile>>,
-    feature_checker: Arc<FeatureChecker>,
-    code_cache: Option<Arc<dyn code_cache::CodeCache>>,
+    module_loader_factory: Box<dyn ModuleLoaderFactory>,
+    node_resolver: Arc<NodeResolver>,
+    npm_resolver: Arc<dyn CliNpmResolver>,
+    permission_parser: Arc<RuntimePermissionDescriptorParser>,
+    root_cert_store_provider: Arc<dyn RootCertStoreProvider>,
+    storage_key_resolver: StorageKeyResolver,
+    subcommand: DenoSubcommand,
     options: CliMainWorkerOptions,
   ) -> Self {
     Self {
       shared: Arc::new(SharedWorkerState {
-        options,
-        subcommand,
-        storage_key_resolver,
-        npm_resolver,
-        node_resolver,
         blob_store,
         broadcast_channel: Default::default(),
-        shared_array_buffer_store: Default::default(),
+        code_cache,
         compiled_wasm_module_store: Default::default(),
-        module_loader_factory,
-        root_cert_store_provider,
+        feature_checker,
         fs,
         maybe_file_watcher_communicator,
         maybe_inspector_server,
         maybe_lockfile,
-        feature_checker,
-        code_cache,
+        module_loader_factory,
+        node_resolver,
+        npm_resolver,
+        permission_desc_parser: permission_parser,
+        root_cert_store_provider,
+        shared_array_buffer_store: Default::default(),
+        storage_key_resolver,
+        options,
+        subcommand,
       }),
     }
   }
@@ -522,12 +526,17 @@ impl CliMainWorkerFactory {
       let is_main_cjs = matches!(node_resolution, NodeResolution::CommonJs(_));
       (node_resolution.into_url(), is_main_cjs)
     } else {
-      (main_module, false)
+      let is_cjs = main_module.path().ends_with(".cjs");
+      (main_module, is_cjs)
     };
 
-    let ModuleLoaderAndSourceMapGetter { module_loader } = shared
-      .module_loader_factory
-      .create_for_main(PermissionsContainer::allow_all(), permissions.clone());
+    let ModuleLoaderAndSourceMapGetter { module_loader } =
+      shared.module_loader_factory.create_for_main(
+        PermissionsContainer::allow_all(
+          self.shared.permission_desc_parser.clone(),
+        ),
+        permissions.clone(),
+      );
     let maybe_inspector_server = shared.maybe_inspector_server.clone();
 
     let create_web_worker_cb =
@@ -619,6 +628,7 @@ impl CliMainWorkerFactory {
       ),
       stdio,
       feature_checker,
+      permission_desc_parser: shared.permission_desc_parser.clone(),
       skip_op_registration: shared.options.skip_op_registration,
       v8_code_cache: shared.code_cache.clone(),
     };
@@ -809,6 +819,7 @@ fn create_web_worker_callback(
       stdio: stdio.clone(),
       cache_storage_dir,
       feature_checker,
+      permission_desc_parser: shared.permission_desc_parser.clone(),
       strace_ops: shared.options.strace_ops.clone(),
       close_on_idle: args.close_on_idle,
       maybe_worker_metadata: args.maybe_worker_metadata,
@@ -830,13 +841,16 @@ fn create_web_worker_callback(
 mod tests {
   use super::*;
   use deno_core::resolve_path;
+  use deno_fs::RealFs;
   use deno_runtime::deno_permissions::Permissions;
 
   fn create_test_worker() -> MainWorker {
     let main_module =
       resolve_path("./hello.js", &std::env::current_dir().unwrap()).unwrap();
-    let permissions =
-      PermissionsContainer::new(Permissions::none_without_prompt());
+    let permissions = PermissionsContainer::new(
+      Arc::new(RuntimePermissionDescriptorParser::new(Arc::new(RealFs))),
+      Permissions::none_without_prompt(),
+    );
 
     let options = WorkerOptions {
       startup_snapshot: crate::js::deno_isolate_init(),

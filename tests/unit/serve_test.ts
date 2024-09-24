@@ -678,6 +678,40 @@ Deno.test(
   },
 );
 
+Deno.test(
+  { permissions: { net: true } },
+  async function httpServerReturnErrorResponse() {
+    const ac = new AbortController();
+    const { promise, resolve } = Promise.withResolvers<void>();
+    let hadError = false;
+    const server = Deno.serve({
+      handler: () => {
+        return Response.error();
+      },
+      port: servePort,
+      signal: ac.signal,
+      onListen: onListen(resolve),
+      onError: () => {
+        hadError = true;
+        return new Response("Internal Server Error", { status: 500 });
+      },
+    });
+
+    await promise;
+
+    const resp = await fetch(`http://127.0.0.1:${servePort}/`, {
+      headers: { "connection": "close" },
+    });
+    assertEquals(resp.status, 500);
+    const text = await resp.text();
+    assertEquals(text, "Internal Server Error");
+    assert(hadError);
+
+    ac.abort();
+    await server.finished;
+  },
+);
+
 Deno.test({ permissions: { net: true } }, async function httpServerOverload1() {
   const ac = new AbortController();
   const deferred = Promise.withResolvers<void>();
@@ -792,8 +826,8 @@ Deno.test(
   async function httpServerDefaultOnListenCallback() {
     const ac = new AbortController();
 
-    const consoleLog = console.log;
-    console.log = (msg) => {
+    const consoleError = console.error;
+    console.error = (msg) => {
       try {
         const match = msg.match(
           /Listening on http:\/\/(localhost|0\.0\.0\.0):(\d+)\//,
@@ -818,7 +852,7 @@ Deno.test(
 
       await server.finished;
     } finally {
-      console.log = consoleLog;
+      console.error = consoleError;
     }
   },
 );
@@ -875,8 +909,8 @@ Deno.test({ permissions: { net: true } }, async function ipv6Hostname() {
   const ac = new AbortController();
   let url = "";
 
-  const consoleLog = console.log;
-  console.log = (msg) => {
+  const consoleError = console.error;
+  console.error = (msg) => {
     try {
       const match = msg.match(/Listening on (http:\/\/(.*?):(\d+)\/)/);
       assert(!!match, `Didn't match ${msg}`);
@@ -897,7 +931,7 @@ Deno.test({ permissions: { net: true } }, async function ipv6Hostname() {
     assert(new URL(url), `Not a valid URL "${url}"`);
     await server.shutdown();
   } finally {
-    console.log = consoleLog;
+    console.error = consoleError;
   }
 });
 
@@ -1558,7 +1592,7 @@ Deno.test(
             Deno.upgradeWebSocket(request);
           },
           Deno.errors.Http,
-          "already upgraded",
+          "Already upgraded",
         );
         socket.onerror = (e) => {
           console.error(e);
@@ -3660,7 +3694,7 @@ Deno.test(
         } catch (cloneError) {
           assert(cloneError instanceof TypeError);
           assert(
-            cloneError.message.endsWith("Body is unusable."),
+            cloneError.message.endsWith("Body is unusable"),
           );
 
           ac.abort();
@@ -3709,7 +3743,7 @@ Deno.test({
         } catch (cloneError) {
           assert(cloneError instanceof TypeError);
           assert(
-            cloneError.message.endsWith("Body is unusable."),
+            cloneError.message.endsWith("Body is unusable"),
           );
 
           ac.abort();
@@ -3861,7 +3895,7 @@ async function readTrailers(
   const tp = new TextProtoReader(r);
   const result = await tp.readMimeHeader();
   if (result == null) {
-    throw new Deno.errors.InvalidData("Missing trailer header.");
+    throw new Deno.errors.InvalidData("Missing trailer header");
   }
   const undeclared = [...result.keys()].filter(
     (k) => !trailerNames.includes(k),
@@ -3889,7 +3923,7 @@ function parseTrailer(field: string | null): Headers | undefined {
   }
   const trailerNames = field.split(",").map((v) => v.trim().toLowerCase());
   if (trailerNames.length === 0) {
-    throw new Deno.errors.InvalidData("Empty trailer header.");
+    throw new Deno.errors.InvalidData("Empty trailer header");
   }
   const prohibited = trailerNames.filter((k) => isProhibitedForTrailer(k));
   if (prohibited.length > 0) {

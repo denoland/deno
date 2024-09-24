@@ -1,0 +1,7 @@
+error: Uncaught (in promise) ReferenceError: window is not defined
+window.atob;
+^
+    at [WILDCARD]window2.js:1:1
+
+    info: window global is not available in Deno 2.
+    hint: Replace `window` with `globalThis`.

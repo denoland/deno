@@ -39,7 +39,6 @@ use deno_core::convert::ToV8;
 use deno_core::error::StdAnyError;
 use deno_core::futures::stream::FuturesOrdered;
 use deno_core::futures::StreamExt;
-use deno_runtime::fs_util::specifier_to_file_path;
 
 use dashmap::DashMap;
 use deno_ast::MediaType;
@@ -63,6 +62,7 @@ use deno_core::ModuleSpecifier;
 use deno_core::OpState;
 use deno_core::PollEventLoopOptions;
 use deno_core::RuntimeOptions;
+use deno_runtime::fs_util::specifier_to_file_path;
 use deno_runtime::inspector_server::InspectorServer;
 use deno_runtime::tokio_util::create_basic_runtime;
 use indexmap::IndexMap;
@@ -5475,7 +5475,6 @@ mod tests {
     let (temp_dir, ts_server, snapshot, _) = setup(
       json!({
         "target": "esnext",
-        "module": "esnext",
         "noEmit": true,
         "lib": [],
       }),
@@ -5521,7 +5520,6 @@ mod tests {
     let (temp_dir, ts_server, snapshot, _) = setup(
       json!({
         "target": "esnext",
-        "module": "esnext",
         "jsx": "react",
         "lib": ["esnext", "dom", "deno.ns"],
         "noEmit": true,
@@ -5547,7 +5545,6 @@ mod tests {
     let (temp_dir, ts_server, snapshot, _) = setup(
       json!({
         "target": "esnext",
-        "module": "esnext",
         "lib": ["deno.ns", "deno.window"],
         "noEmit": true,
       }),
@@ -5578,7 +5575,6 @@ mod tests {
     let (temp_dir, ts_server, snapshot, _) = setup(
       json!({
         "target": "esnext",
-        "module": "esnext",
         "lib": ["deno.ns", "deno.window"],
         "noEmit": true,
       }),
@@ -5624,7 +5620,6 @@ mod tests {
     let (temp_dir, ts_server, snapshot, _) = setup(
       json!({
         "target": "esnext",
-        "module": "esnext",
         "lib": ["deno.ns", "deno.window"],
         "noEmit": true,
       }),
@@ -5655,7 +5650,6 @@ mod tests {
     let (temp_dir, ts_server, snapshot, _) = setup(
       json!({
         "target": "esnext",
-        "module": "esnext",
         "lib": ["deno.ns", "deno.window"],
         "noEmit": true,
       }),
@@ -5722,7 +5716,6 @@ mod tests {
     let (temp_dir, ts_server, snapshot, _) = setup(
       json!({
         "target": "esnext",
-        "module": "esnext",
         "lib": ["deno.ns", "deno.window"],
         "noEmit": true,
       }),
@@ -5800,7 +5793,6 @@ mod tests {
     let (temp_dir, ts_server, snapshot, cache) = setup(
       json!({
         "target": "esnext",
-        "module": "esnext",
         "lib": ["deno.ns", "deno.window"],
         "noEmit": true,
       }),
@@ -5942,7 +5934,6 @@ mod tests {
     let (temp_dir, ts_server, snapshot, _) = setup(
       json!({
         "target": "esnext",
-        "module": "esnext",
         "lib": ["deno.ns", "deno.window"],
         "noEmit": true,
       }),
@@ -6093,7 +6084,6 @@ mod tests {
     let (temp_dir, ts_server, snapshot, _) = setup(
       json!({
         "target": "esnext",
-        "module": "esnext",
         "lib": ["deno.ns", "deno.window"],
         "noEmit": true,
       }),
@@ -6164,7 +6154,7 @@ mod tests {
     let change = changes.text_changes.first().unwrap();
     assert_eq!(
       change.new_text,
-      "import { someLongVariable } from './b.ts'\n"
+      "import type { someLongVariable } from './b.ts'\n"
     );
   }
 
@@ -6202,7 +6192,6 @@ mod tests {
     let (temp_dir, ts_server, snapshot, _) = setup(
       json!({
         "target": "esnext",
-        "module": "esnext",
         "lib": ["deno.ns", "deno.window"],
         "noEmit": true,
       }),
@@ -6273,7 +6262,6 @@ mod tests {
     let (temp_dir, _, snapshot, _) = setup(
       json!({
         "target": "esnext",
-        "module": "esnext",
         "lib": ["deno.ns", "deno.window"],
         "noEmit": true,
       }),

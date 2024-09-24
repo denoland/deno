@@ -5380,7 +5380,7 @@ fn lsp_jsr_auto_import_completion() {
     json!({ "triggerKind": 1 }),
   );
   assert!(!list.is_incomplete);
-  assert_eq!(list.items.len(), 267);
+  assert_eq!(list.items.len(), 268);
   let item = list.items.iter().find(|i| i.label == "add").unwrap();
   assert_eq!(&item.label, "add");
   assert_eq!(
@@ -5460,7 +5460,7 @@ fn lsp_jsr_auto_import_completion_import_map() {
     json!({ "triggerKind": 1 }),
   );
   assert!(!list.is_incomplete);
-  assert_eq!(list.items.len(), 267);
+  assert_eq!(list.items.len(), 268);
   let item = list.items.iter().find(|i| i.label == "add").unwrap();
   assert_eq!(&item.label, "add");
   assert_eq!(json!(&item.label_details), json!({ "description": "add" }));
@@ -5659,7 +5659,7 @@ fn lsp_jsr_code_action_missing_declaration() {
                       "character": 6,
                     },
                   },
-                  "newText": "import { ReturnType } from \"jsr:@denotest/types-file/types\";\n",
+                  "newText": "import type { ReturnType } from \"jsr:@denotest/types-file/types\";\n",
                 },
                 {
                   "range": {
@@ -6150,7 +6150,7 @@ export class DuckConfig {
               "start": { "line": 0, "character": 0 },
               "end": { "line": 0, "character": 0 }
             },
-            "newText": "import { DuckConfigOptions } from \"./file02.ts\";\n\n"
+            "newText": "import type { DuckConfigOptions } from \"./file02.ts\";\n\n"
           }]
         }]
       }
@@ -6266,7 +6266,7 @@ export class DuckConfig {
               "start": { "line": 0, "character": 0 },
               "end": { "line": 0, "character": 0 }
             },
-            "newText": "import { DuckConfig } from \"./file01.ts\";\nimport { DuckConfigOptions } from \"./file02.ts\";\n\n"
+            "newText": "import { DuckConfig } from \"./file01.ts\";\nimport type { DuckConfigOptions } from \"./file02.ts\";\n\n"
           }]
         }]
       },
@@ -6343,7 +6343,7 @@ fn lsp_code_actions_imports_dts() {
               "start": { "line": 0, "character": 0 },
               "end": { "line": 0, "character": 0 },
             },
-            "newText": "import { SomeType } from \"./decl.d.ts\";\n",
+            "newText": "import type { SomeType } from \"./decl.d.ts\";\n",
           }],
         }],
       },
@@ -6663,7 +6663,7 @@ fn lsp_code_actions_imports_respects_fmt_config() {
               "start": { "line": 0, "character": 0 },
               "end": { "line": 0, "character": 0 }
             },
-            "newText": "import { DuckConfigOptions } from './file01.ts'\n"
+            "newText": "import type { DuckConfigOptions } from './file01.ts'\n"
           }]
         }]
       }
@@ -6716,7 +6716,7 @@ fn lsp_code_actions_imports_respects_fmt_config() {
               "start": { "line": 0, "character": 0 },
               "end": { "line": 0, "character": 0 }
             },
-            "newText": "import { DuckConfigOptions } from './file01.ts'\n"
+            "newText": "import type { DuckConfigOptions } from './file01.ts'\n"
           }]
         }]
       },
@@ -6816,7 +6816,7 @@ fn lsp_quote_style_from_workspace_settings() {
               "start": { "line": 0, "character": 0 },
               "end": { "line": 0, "character": 0 },
             },
-            "newText": "import { DuckConfigOptions } from './file01.ts';\n",
+            "newText": "import type { DuckConfigOptions } from './file01.ts';\n",
           }],
         }],
       },
@@ -6860,7 +6860,7 @@ fn lsp_quote_style_from_workspace_settings() {
               "start": { "line": 0, "character": 0 },
               "end": { "line": 0, "character": 0 },
             },
-            "newText": "import { DuckConfigOptions } from \"./file01.ts\";\n",
+            "newText": "import type { DuckConfigOptions } from \"./file01.ts\";\n",
           }],
         }],
       },
@@ -7246,12 +7246,12 @@ fn lsp_completions_auto_import() {
       "uri": "file:///a/file.ts",
       "languageId": "typescript",
       "version": 1,
-      "text": "export {};\n\n",
+      "text": "const result = add(1, 2);\n",
     }
   }));
   let list = client.get_completion_list(
     "file:///a/file.ts",
-    (2, 0),
+    (0, 18),
     json!({ "triggerKind": 1 }),
   );
   assert!(!list.is_incomplete);
@@ -7259,46 +7259,7 @@ fn lsp_completions_auto_import() {
   let Some(item) = item else {
     panic!("completions items missing 'add' symbol");
   };
-  let mut item_value = serde_json::to_value(item).unwrap();
-  item_value["data"]["tsc"]["data"]["exportMapKey"] =
-    serde_json::Value::String("".to_string());
-
-  let req = json!({
-    "label": "add",
-    "labelDetails": {
-      "description": "./🦕.ts",
-    },
-    "kind": 3,
-    "sortText": "￿16_0",
-    "commitCharacters": [
-      ".",
-      ",",
-      ";",
-      "("
-    ],
-    "data": {
-      "tsc": {
-        "specifier": "file:///a/file.ts",
-        "position": 12,
-        "name": "add",
-        "source": "./%F0%9F%A6%95.ts",
-         "specifierRewrite": [
-           "./%F0%9F%A6%95.ts",
-           "./🦕.ts",
-         ],
-        "data": {
-          "exportName": "add",
-          "exportMapKey": "",
-          "moduleSpecifier": "./%F0%9F%A6%95.ts",
-          "fileName": "file:///a/%F0%9F%A6%95.ts"
-        },
-        "useCodeSnippet": false
-      }
-    }
-  });
-  assert_eq!(item_value, req);
-
-  let res = client.write_request("completionItem/resolve", req);
+  let res = client.write_request("completionItem/resolve", json!(item));
   assert_eq!(
     res,
     json!({
@@ -10636,13 +10597,6 @@ fn lsp_format_markdown() {
 fn lsp_format_html() {
   let context = TestContextBuilder::new().use_temp_cwd().build();
   let temp_dir = context.temp_dir();
-  temp_dir.write(
-    "deno.json",
-    json!({
-      "unstable": ["fmt-html"],
-    })
-    .to_string(),
-  );
   let html_file =
     source_file(temp_dir.path().join("file.html"), "  <html></html>");
   let mut client = context.new_lsp_command().build();
@@ -10683,13 +10637,6 @@ fn lsp_format_html() {
 fn lsp_format_css() {
   let context = TestContextBuilder::new().use_temp_cwd().build();
   let temp_dir = context.temp_dir();
-  temp_dir.write(
-    "deno.json",
-    json!({
-      "unstable": ["fmt-css"],
-    })
-    .to_string(),
-  );
   let css_file = source_file(temp_dir.path().join("file.css"), "  foo {}");
   let mut client = context.new_lsp_command().build();
   client.initialize_default();
@@ -10729,13 +10676,6 @@ fn lsp_format_css() {
 fn lsp_format_yaml() {
   let context = TestContextBuilder::new().use_temp_cwd().build();
   let temp_dir = context.temp_dir();
-  temp_dir.write(
-    "deno.json",
-    json!({
-      "unstable": ["fmt-yaml"],
-    })
-    .to_string(),
-  );
   let yaml_file = source_file(temp_dir.path().join("file.yaml"), "  foo: 1");
   let mut client = context.new_lsp_command().build();
   client.initialize_default();
@@ -11698,24 +11638,108 @@ fn lsp_jsx_import_source_config_file_automatic_cache() {
   // The caching is done on an asynchronous task spawned after init, so there's
   // a chance it wasn't done in time and we need to wait for another batch of
   // diagnostics.
+  let mut version = 1;
   while !diagnostics.all().is_empty() {
     std::thread::sleep(std::time::Duration::from_millis(50));
     // The post-cache diagnostics update triggers inconsistently on CI for some
     // reason. Force it with this notification.
-    diagnostics = client.did_open(json!({
-      "textDocument": {
-        "uri": temp_dir.url().join("file.tsx").unwrap(),
-        "languageId": "typescriptreact",
-        "version": 1,
-        "text": "
-          export function Foo() {
-            return <div></div>;
-          }
-        ",
-      },
-    }));
+    version += 1;
+    client.write_notification(
+      "textDocument/didChange",
+      json!({
+        "textDocument": {
+          "uri": temp_dir.url().join("file.tsx").unwrap(),
+          "version": version,
+        },
+        "contentChanges": [
+          {
+            "range": {
+              "start": { "line": 0, "character": 0 },
+              "end": { "line": 0, "character": 0 },
+            },
+            "text": "",
+          },
+        ],
+      }),
+    );
+    diagnostics = client.read_diagnostics();
   }
   assert_eq!(diagnostics.all(), vec![]);
+  client.shutdown();
+}
+
+#[ignore = "https://github.com/denoland/deno/issues/21770"]
+#[test]
+fn lsp_jsx_import_source_package_json_automatic_cache() {
+  let context = TestContextBuilder::new()
+    .use_http_server()
+    .use_temp_cwd()
+    .build();
+  let temp_dir = context.temp_dir();
+  temp_dir.write(
+    "deno.json",
+    json!({
+      "compilerOptions": {
+        "jsx": "react-jsx",
+        "jsxImportSource": "preact",
+      },
+      "nodeModulesDir": false,
+    })
+    .to_string(),
+  );
+  temp_dir.write(
+    "package.json",
+    json!({
+      "dependencies": {
+        "preact": "^10.19.6",
+      },
+    })
+    .to_string(),
+  );
+  let mut client = context.new_lsp_command().build();
+  client.initialize_default();
+  let mut diagnostics = client.did_open(json!({
+    "textDocument": {
+      "uri": temp_dir.url().join("file.tsx").unwrap(),
+      "languageId": "typescriptreact",
+      "version": 1,
+      "text": "
+        export function Foo() {
+          return <div></div>;
+        }
+      ",
+    },
+  }));
+  // The caching is done on an asynchronous task spawned after init, so there's
+  // a chance it wasn't done in time and we need to wait for another batch of
+  // diagnostics.
+  let mut version = 1;
+  while !diagnostics.all().is_empty() {
+    std::thread::sleep(std::time::Duration::from_millis(50));
+    // The post-cache diagnostics update triggers inconsistently on CI for some
+    // reason. Force it with this notification.
+    version += 1;
+    client.write_notification(
+      "textDocument/didChange",
+      json!({
+        "textDocument": {
+          "uri": temp_dir.url().join("file.tsx").unwrap(),
+          "version": version,
+        },
+        "contentChanges": [
+          {
+            "range": {
+              "start": { "line": 0, "character": 0 },
+              "end": { "line": 0, "character": 0 },
+            },
+            "text": "",
+          },
+        ],
+      }),
+    );
+    diagnostics = client.read_diagnostics();
+  }
+  assert_eq!(json!(diagnostics.all()), json!([]));
   client.shutdown();
 }
 

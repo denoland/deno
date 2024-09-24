@@ -52,11 +52,6 @@ itest!(check_npm_install_diagnostics {
   exit_code: 1,
 });
 
-itest!(check_export_equals_declaration_file {
-  args: "check --quiet check/export_equals_declaration_file/main.ts",
-  exit_code: 0,
-});
-
 itest!(check_static_response_json {
   args: "check --quiet check/response_json.ts",
   exit_code: 0,
@@ -190,8 +185,8 @@ fn reload_flag() {
 fn typecheck_declarations_ns() {
   let context = TestContextBuilder::for_jsr().build();
   let args = vec![
-    "test".to_string(),
-    "--doc".to_string(),
+    "check".to_string(),
+    "--doc-only".to_string(),
     util::root_path()
       .join("cli/tsc/dts/lib.deno.ns.d.ts")
       .to_string_lossy()
@@ -213,8 +208,8 @@ fn typecheck_declarations_ns() {
 fn typecheck_declarations_unstable() {
   let context = TestContext::default();
   let args = vec![
-    "test".to_string(),
-    "--doc".to_string(),
+    "check".to_string(),
+    "--doc-only".to_string(),
     util::root_path()
       .join("cli/tsc/dts/lib.deno.unstable.d.ts")
       .to_string_lossy()
@@ -250,39 +245,6 @@ itest!(check_dts {
   output: "check/dts/check_dts.out",
   exit_code: 1,
 });
-
-// TODO(2.0): this should be rewritten to a spec test and first run `deno install`
-// itest!(package_json_basic {
-//   args: "check main.ts",
-//   output: "package_json/basic/main.check.out",
-//   envs: env_vars_for_npm_tests(),
-//   http_server: true,
-//   cwd: Some("package_json/basic"),
-//   copy_temp_dir: Some("package_json/basic"),
-//   exit_code: 0,
-// });
-
-// TODO(2.0): this should be rewritten to a spec test and first run `deno install`
-// itest!(package_json_fail_check {
-//   args: "check --quiet fail_check.ts",
-//   output: "package_json/basic/fail_check.check.out",
-//   envs: env_vars_for_npm_tests(),
-//   http_server: true,
-//   cwd: Some("package_json/basic"),
-//   copy_temp_dir: Some("package_json/basic"),
-//   exit_code: 1,
-// });
-
-// TODO(2.0): this should be rewritten to a spec test and first run `deno install`
-// itest!(package_json_with_deno_json {
-//   args: "check --quiet main.ts",
-//   output: "package_json/deno_json/main.check.out",
-//   cwd: Some("package_json/deno_json/"),
-//   copy_temp_dir: Some("package_json/deno_json/"),
-//   envs: env_vars_for_npm_tests(),
-//   http_server: true,
-//   exit_code: 1,
-// });
 
 #[test]
 fn check_error_in_dep_then_fix() {

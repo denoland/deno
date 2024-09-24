@@ -27,7 +27,6 @@ use deno_npm::npm_rc::NpmRc;
 use deno_npm::npm_rc::ResolvedNpmRc;
 use deno_npm::resolution::ValidSerializedNpmResolutionSnapshot;
 use deno_npm::NpmSystemInfo;
-use deno_runtime::deno_permissions::PermissionsContainer;
 use deno_semver::npm::NpmPackageReqReference;
 use import_map::resolve_import_map_value_from_specifier;
 
@@ -283,10 +282,7 @@ impl BenchOptions {
 
 #[derive(Clone, Debug, Default, PartialEq, Eq, Hash)]
 pub struct UnstableFmtOptions {
-  pub css: bool,
-  pub html: bool,
   pub component: bool,
-  pub yaml: bool,
 }
 
 #[derive(Clone, Debug)]
@@ -319,10 +315,7 @@ impl FmtOptions {
     Self {
       options: resolve_fmt_options(fmt_flags, fmt_config.options),
       unstable: UnstableFmtOptions {
-        css: unstable.css || fmt_flags.unstable_css,
-        html: unstable.html || fmt_flags.unstable_html,
         component: unstable.component || fmt_flags.unstable_component,
-        yaml: unstable.yaml || fmt_flags.unstable_yaml,
       },
       files: fmt_config.files,
     }
@@ -818,6 +811,8 @@ impl CliOptions {
       }
     }
 
+    warn_insecure_allow_run_flags(&flags);
+
     let maybe_lockfile = maybe_lockfile.filter(|_| !force_global_cache);
     let deno_dir_provider =
       Arc::new(DenoDirProvider::new(flags.cache_path.clone()));
@@ -1090,7 +1085,7 @@ impl CliOptions {
             let specifier = specifier.clone();
             async move {
               let file = file_fetcher
-                .fetch(&specifier, &PermissionsContainer::allow_all())
+                .fetch_bypass_permissions(&specifier)
                 .await?
                 .into_text_decoded()?;
               Ok(file.source.to_string())
@@ -1138,7 +1133,7 @@ impl CliOptions {
         resolve_url_or_path(&compile_flags.source_file, self.initial_cwd())?
       }
       DenoSubcommand::Eval(_) => {
-        resolve_url_or_path("./$deno$eval", self.initial_cwd())?
+        resolve_url_or_path("./$deno$eval.ts", self.initial_cwd())?
       }
       DenoSubcommand::Repl(_) => {
         resolve_url_or_path("./$deno$repl.ts", self.initial_cwd())?
@@ -1308,10 +1303,7 @@ impl CliOptions {
   pub fn resolve_config_unstable_fmt_options(&self) -> UnstableFmtOptions {
     let workspace = self.workspace();
     UnstableFmtOptions {
-      css: workspace.has_unstable("fmt-css"),
-      html: workspace.has_unstable("fmt-html"),
       component: workspace.has_unstable("fmt-component"),
-      yaml: workspace.has_unstable("fmt-yaml"),
     }
   }
 
@@ -1509,8 +1501,8 @@ impl CliOptions {
     &self.flags.permissions
   }
 
-  pub fn permissions_options(&self) -> Result<PermissionsOptions, AnyError> {
-    self.flags.permissions.to_options(Some(&self.initial_cwd))
+  pub fn permissions_options(&self) -> PermissionsOptions {
+    self.flags.permissions.to_options()
   }
 
   pub fn reload_flag(&self) -> bool {
@@ -1616,10 +1608,7 @@ impl CliOptions {
         "sloppy-imports",
         "byonm",
         "bare-node-builtins",
-        "fmt-css",
-        "fmt-html",
         "fmt-component",
-        "fmt-yaml",
       ]);
       // add more unstable flags to the same vector holding granular flags
       all_valid_unstable_flags.append(&mut another_unstable_flags);
@@ -1694,6 +1683,27 @@ impl CliOptions {
         Some(self.initial_cwd.clone())
       },
     }
+  }
+}
+
+/// Warns for specific uses of `--allow-run`. This function is not
+/// intended to catch every single possible insecure use of `--allow-run`,
+/// but is just an attempt to discourage some common pitfalls.
+fn warn_insecure_allow_run_flags(flags: &Flags) {
+  let permissions = &flags.permissions;
+  if permissions.allow_all {
+    return;
+  }
+  let Some(allow_run_list) = permissions.allow_run.as_ref() else {
+    return;
+  };
+
+  // discourage using --allow-run without an allow list
+  if allow_run_list.is_empty() {
+    log::warn!(
+      "{} --allow-run without an allow list is susceptible to exploits. Prefer specifying an allow list (https://docs.deno.com/runtime/fundamentals/security/#running-subprocesses)",
+      colors::yellow("Warning")
+    );
   }
 }
 

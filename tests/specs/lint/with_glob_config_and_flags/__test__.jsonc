@@ -1,0 +1,16 @@
+{
+  "steps": [
+    {
+      "if": "windows",
+      "args": "lint --config deno.glob.json --ignore=gleb/nested/**/bar.ts",
+      "output": "with_glob_config_and_flags_windows.out",
+      "exitCode": 1
+    },
+    {
+      "if": "unix",
+      "args": "lint --config deno.glob.json --ignore=gleb/nested/**/bar.ts",
+      "output": "with_glob_config_and_flags_unix.out",
+      "exitCode": 1
+    }
+  ]
+}

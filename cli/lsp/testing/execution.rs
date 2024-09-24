@@ -31,6 +31,7 @@ use deno_core::unsync::spawn;
 use deno_core::unsync::spawn_blocking;
 use deno_core::ModuleSpecifier;
 use deno_runtime::deno_permissions::Permissions;
+use deno_runtime::deno_permissions::PermissionsContainer;
 use deno_runtime::tokio_util::create_and_run_current_thread;
 use indexmap::IndexMap;
 use std::borrow::Cow;
@@ -227,19 +228,15 @@ impl TestRun {
     // Various test files should not share the same permissions in terms of
     // `PermissionsContainer` - otherwise granting/revoking permissions in one
     // file would have impact on other files, which is undesirable.
-    let permissions =
-      Permissions::from_options(&cli_options.permissions_options()?)?;
+    let permission_desc_parser = factory.permission_desc_parser()?.clone();
+    let permissions = Permissions::from_options(
+      permission_desc_parser.as_ref(),
+      &cli_options.permissions_options(),
+    )?;
     let main_graph_container = factory.main_module_graph_container().await?;
-    test::check_specifiers(
-      factory.file_fetcher()?,
-      main_graph_container,
-      self
-        .queue
-        .iter()
-        .map(|s| (s.clone(), test::TestMode::Executable))
-        .collect(),
-    )
-    .await?;
+    main_graph_container
+      .check_specifiers(&self.queue.iter().cloned().collect::<Vec<_>>(), None)
+      .await?;
 
     let (concurrent_jobs, fail_fast) =
       if let DenoSubcommand::Test(test_flags) = cli_options.sub_command() {
@@ -276,7 +273,10 @@ impl TestRun {
     let join_handles = queue.into_iter().map(move |specifier| {
       let specifier = specifier.clone();
       let worker_factory = worker_factory.clone();
-      let permissions = permissions.clone();
+      let permissions_container = PermissionsContainer::new(
+        permission_desc_parser.clone(),
+        permissions.clone(),
+      );
       let worker_sender = test_event_sender_factory.worker();
       let fail_fast_tracker = fail_fast_tracker.clone();
       let lsp_filter = self.filters.get(&specifier);
@@ -305,7 +305,7 @@ impl TestRun {
           // channel.
           create_and_run_current_thread(test::test_specifier(
             worker_factory,
-            permissions,
+            permissions_container,
             specifier,
             worker_sender,
             fail_fast_tracker,

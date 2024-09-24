@@ -1,9 +1,11 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
 import {
+  assert,
   assertEquals,
   assertInstanceOf,
   assertStringIncludes,
+  assertThrows,
 } from "@std/assert";
 import { delay } from "@std/async/delay";
 import { fromFileUrl, join } from "@std/path";
@@ -214,4 +216,14 @@ Deno.test("tls.connect() throws InvalidData when there's error in certificate", 
     output,
     "InvalidData: invalid peer certificate: UnknownIssuer",
   );
+});
+
+Deno.test("tls.rootCertificates is not empty", () => {
+  assert(tls.rootCertificates.length > 0);
+  assert(Object.isFrozen(tls.rootCertificates));
+  assert(tls.rootCertificates instanceof Array);
+  assert(tls.rootCertificates.every((cert) => typeof cert === "string"));
+  assertThrows(() => {
+    (tls.rootCertificates as string[]).push("new cert");
+  }, TypeError);
 });

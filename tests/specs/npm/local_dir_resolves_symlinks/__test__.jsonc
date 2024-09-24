@@ -1,0 +1,14 @@
+{
+  "tempDir": true,
+  "steps": [
+    {
+      "args": "install",
+      "output": "install.out"
+    },
+    {
+      "args": "run -A index.js",
+      "output": "index.out",
+      "exitCode": 0
+    }
+  ]
+}

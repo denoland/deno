@@ -37,7 +37,6 @@ use deno_lint::linter::LintConfig as DenoLintConfig;
 use deno_npm::npm_rc::ResolvedNpmRc;
 use deno_package_json::PackageJsonCache;
 use deno_runtime::deno_node::PackageJson;
-use deno_runtime::deno_permissions::PermissionsContainer;
 use deno_runtime::fs_util::specifier_to_file_path;
 use indexmap::IndexSet;
 use lsp_types::ClientCapabilities;
@@ -1130,6 +1129,7 @@ impl Default for LspTsConfig {
         "module": "esnext",
         "moduleDetection": "force",
         "noEmit": true,
+        "noImplicitOverride": true,
         "resolveJsonModule": true,
         "strict": true,
         "target": "esnext",
@@ -1509,17 +1509,16 @@ impl ConfigData {
           ConfigWatchedFileType::ImportMap,
         );
         // spawn due to the lsp's `Send` requirement
-        let fetch_result = deno_core::unsync::spawn({
-          let file_fetcher = file_fetcher.cloned().unwrap();
-          let import_map_url = import_map_url.clone();
-          async move {
-            file_fetcher
-              .fetch(&import_map_url, &PermissionsContainer::allow_all())
-              .await
-          }
-        })
-        .await
-        .unwrap();
+        let fetch_result =
+          deno_core::unsync::spawn({
+            let file_fetcher = file_fetcher.cloned().unwrap();
+            let import_map_url = import_map_url.clone();
+            async move {
+              file_fetcher.fetch_bypass_permissions(&import_map_url).await
+            }
+          })
+          .await
+          .unwrap();
 
         let value_result = fetch_result.and_then(|f| {
           serde_json::from_slice::<Value>(&f.source).map_err(|e| e.into())
@@ -1558,7 +1557,7 @@ impl ConfigData {
               let file_fetcher = file_fetcher.clone().unwrap();
               async move {
                 let file = file_fetcher
-                  .fetch(&specifier, &PermissionsContainer::allow_all())
+                  .fetch_bypass_permissions(&specifier)
                   .await?
                   .into_text_decoded()?;
                 Ok(file.source.to_string())

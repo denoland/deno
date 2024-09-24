@@ -1,0 +1,5 @@
+{
+  "args": "test --doc --config ../../../config/deno.json doc_only",
+  "exitCode": 0,
+  "output": "main.out"
+}

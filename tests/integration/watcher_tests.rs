@@ -1022,6 +1022,8 @@ async fn test_watch_doc() {
   let mut child = util::deno_cmd()
     .current_dir(t.path())
     .arg("test")
+    .arg("--config")
+    .arg(util::deno_config_path())
     .arg("--watch")
     .arg("--doc")
     .arg(t.path())
@@ -1039,26 +1041,110 @@ async fn test_watch_doc() {
   wait_contains("Test finished", &mut stderr_lines).await;
 
   let foo_file = t.path().join("foo.ts");
+  let foo_file_url = foo_file.url_file();
   foo_file.write(
     r#"
-    export default function foo() {}
+    export function add(a: number, b: number) {
+      return a + b;
+    }
   "#,
   );
 
+  wait_contains("ok | 0 passed | 0 failed", &mut stdout_lines).await;
+  wait_contains("Test finished", &mut stderr_lines).await;
+
+  // Trigger a type error
   foo_file.write(
     r#"
     /**
      * ```ts
-     * import foo from "./foo.ts";
+     * const sum: string = add(1, 2);
      * ```
      */
-    export default function foo() {}
+    export function add(a: number, b: number) {
+      return a + b;
+    }
   "#,
   );
 
-  // We only need to scan for a Check file://.../foo.ts$3-6 line that
-  // corresponds to the documentation block being type-checked.
-  assert_contains!(skip_restarting_line(&mut stderr_lines).await, "foo.ts$3-6");
+  assert_eq!(
+    skip_restarting_line(&mut stderr_lines).await,
+    format!("Check {foo_file_url}$3-6.ts")
+  );
+  assert_eq!(
+    next_line(&mut stderr_lines).await.unwrap(),
+    "error: TS2322 [ERROR]: Type 'number' is not assignable to type 'string'."
+  );
+  assert_eq!(
+    next_line(&mut stderr_lines).await.unwrap(),
+    "    const sum: string = add(1, 2);"
+  );
+  assert_eq!(next_line(&mut stderr_lines).await.unwrap(), "          ~~~");
+  assert_eq!(
+    next_line(&mut stderr_lines).await.unwrap(),
+    format!("    at {foo_file_url}$3-6.ts:3:11")
+  );
+  wait_contains("Test failed", &mut stderr_lines).await;
+
+  // Trigger a runtime error
+  foo_file.write(
+    r#"
+    /**
+     * ```ts
+     * import { assertEquals } from "@std/assert/equals";
+     *
+     * assertEquals(add(1, 2), 4);
+     * ```
+     */
+    export function add(a: number, b: number) {
+      return a + b;
+    }
+  "#,
+  );
+
+  wait_contains("running 1 test from", &mut stdout_lines).await;
+  assert_contains!(
+    next_line(&mut stdout_lines).await.unwrap(),
+    &format!("{foo_file_url}$3-8.ts ... FAILED")
+  );
+  wait_contains("ERRORS", &mut stdout_lines).await;
+  wait_contains(
+    "error: AssertionError: Values are not equal.",
+    &mut stdout_lines,
+  )
+  .await;
+  wait_contains("-   3", &mut stdout_lines).await;
+  wait_contains("+   4", &mut stdout_lines).await;
+  wait_contains("FAILURES", &mut stdout_lines).await;
+  wait_contains("FAILED | 0 passed | 1 failed", &mut stdout_lines).await;
+
+  wait_contains("Test failed", &mut stderr_lines).await;
+
+  // Fix the runtime error
+  foo_file.write(
+    r#"
+    /**
+     * ```ts
+     * import { assertEquals } from "@std/assert/equals";
+     *
+     * assertEquals(add(1, 2), 3);
+     * ```
+     */
+    export function add(a: number, b: number) {
+      return a + b;
+    }
+  "#,
+  );
+
+  wait_contains("running 1 test from", &mut stdout_lines).await;
+  assert_contains!(
+    next_line(&mut stdout_lines).await.unwrap(),
+    &format!("{foo_file_url}$3-8.ts ... ok")
+  );
+  wait_contains("ok | 1 passed | 0 failed", &mut stdout_lines).await;
+
+  wait_contains("Test finished", &mut stderr_lines).await;
+
   check_alive_then_kill(child);
 }
 
@@ -1359,16 +1445,16 @@ async fn test_watch_serve() {
     .piped_output()
     .spawn()
     .unwrap();
-  let (mut stdout_lines, mut stderr_lines) = child_lines(&mut child);
+  let (mut _stdout_lines, mut stderr_lines) = child_lines(&mut child);
 
-  wait_contains("Listening on", &mut stdout_lines).await;
+  wait_contains("Listening on", &mut stderr_lines).await;
   // Note that we start serving very quickly, so we specifically want to wait for this message
   wait_contains(r#"Watching paths: [""#, &mut stderr_lines).await;
 
   file_to_watch.write(file_content);
 
   wait_contains("serving", &mut stderr_lines).await;
-  wait_contains("Listening on", &mut stdout_lines).await;
+  wait_contains("Listening on", &mut stderr_lines).await;
 
   check_alive_then_kill(child);
 }

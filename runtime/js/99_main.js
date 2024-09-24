@@ -3,6 +3,7 @@
 // Remove Intl.v8BreakIterator because it is a non-standard API.
 delete Intl.v8BreakIterator;
 
+import * as internalConsole from "ext:deno_console/01_console.js";
 import { core, internals, primordials } from "ext:core/mod.js";
 const ops = core.ops;
 import {
@@ -109,9 +110,6 @@ ObjectDefineProperties(Symbol, {
 
 let windowIsClosing = false;
 let globalThis_;
-
-// TODO(2.0): remove once all deprecated APIs are removed.
-function warnOnDeprecatedApi() {}
 
 function windowClose() {
   if (!windowIsClosing) {
@@ -505,7 +503,7 @@ function removeImportedOps() {
 // FIXME(bartlomieju): temporarily add whole `Deno.core` to
 // `Deno[Deno.internal]` namespace. It should be removed and only necessary
 // methods should be left there.
-ObjectAssign(internals, { core, warnOnDeprecatedApi });
+ObjectAssign(internals, { core });
 const internalSymbol = Symbol("Deno.internal");
 const finalDenoNs = {
   internal: internalSymbol,
@@ -578,36 +576,19 @@ function bootstrapMainRuntime(runtimeOptions, warmup = false) {
 
     if (mode === executionModes.serve) {
       if (serveIsMain && serveWorkerCount) {
-        // deno-lint-ignore no-console
-        const origLog = console.log;
-        // deno-lint-ignore no-console
-        const origError = console.error;
-        const prefix = `[serve-worker-0 ]`;
-        // deno-lint-ignore no-console
-        console.log = (...args) => {
-          return origLog(prefix, ...new primordials.SafeArrayIterator(args));
-        };
-        // deno-lint-ignore no-console
-        console.error = (...args) => {
-          return origError(prefix, ...new primordials.SafeArrayIterator(args));
-        };
+        // deno-lint-ignore no-global-assign
+        console = new internalConsole.Console((msg, level) =>
+          core.print("[serve-worker-0 ] " + msg, level > 1)
+        );
       } else if (serveWorkerCount !== null) {
-        // deno-lint-ignore no-console
-        const origLog = console.log;
-        // deno-lint-ignore no-console
-        const origError = console.error;
         const base = `serve-worker-${serveWorkerCount + 1}`;
         // 15 = "serve-worker-nn".length, assuming
         // serveWorkerCount < 100
         const prefix = `[${StringPrototypePadEnd(base, 15, " ")}]`;
-        // deno-lint-ignore no-console
-        console.log = (...args) => {
-          return origLog(prefix, ...new primordials.SafeArrayIterator(args));
-        };
-        // deno-lint-ignore no-console
-        console.error = (...args) => {
-          return origError(prefix, ...new primordials.SafeArrayIterator(args));
-        };
+        // deno-lint-ignore no-global-assign
+        console = new internalConsole.Console((msg, level) =>
+          core.print(`${prefix} ` + msg, level > 1)
+        );
       }
     }
 
@@ -657,11 +638,6 @@ function bootstrapMainRuntime(runtimeOptions, warmup = false) {
       });
     }
 
-    // TODO(iuioiua): remove in Deno v2. This allows us to dynamically delete
-    // class properties within constructors for classes that are not defined
-    // within the Deno namespace.
-    internals.future = true;
-
     removeImportedOps();
 
     performance.setTimeOrigin(DateNow());
@@ -678,6 +654,7 @@ function bootstrapMainRuntime(runtimeOptions, warmup = false) {
     if (location_ == null) {
       mainRuntimeGlobalProperties.location = {
         writable: true,
+        configurable: true,
       };
     } else {
       location.setLocationHref(location_);
@@ -850,9 +827,6 @@ function bootstrapMainRuntime(runtimeOptions, warmup = false) {
         nodeDebug,
       });
     }
-    if (internals.future) {
-      delete globalThis.window;
-    }
   } else {
     // Warmup
   }
@@ -880,11 +854,6 @@ function bootstrapWorkerRuntime(
       6: argv0,
       7: nodeDebug,
     } = runtimeOptions;
-
-    // TODO(iuioiua): remove in Deno v2. This allows us to dynamically delete
-    // class properties within constructors for classes that are not defined
-    // within the Deno namespace.
-    internals.future = true;
 
     performance.setTimeOrigin(DateNow());
     globalThis_ = globalThis;
