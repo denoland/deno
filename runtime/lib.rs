@@ -122,8 +122,8 @@ pub static UNSTABLE_GRANULAR_FLAGS: &[UnstableGranularFlag] = &[
   },
   UnstableGranularFlag {
     name: deno_webgpu::UNSTABLE_FEATURE_NAME,
-    help_text: "Enable unstable `WebGPU` API",
-    show_in_help: false,
+    help_text: "Enable unstable `WebGPU` APIs",
+    show_in_help: true,
     id: 11,
   },
   UnstableGranularFlag {

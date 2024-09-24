@@ -265,6 +265,8 @@ fn format_markdown(
           | "svelte"
           | "vue"
           | "astro"
+          | "vto"
+          | "njk"
           | "yml"
           | "yaml"
       ) {
@@ -285,38 +287,17 @@ fn format_markdown(
             dprint_plugin_json::format_text(&fake_filename, text, &json_config)
           }
           "css" | "scss" | "sass" | "less" => {
-            if unstable_options.css {
-              format_css(&fake_filename, text, fmt_options)
-            } else {
-              Ok(None)
-            }
+            format_css(&fake_filename, text, fmt_options)
           }
-          "html" => {
-            if unstable_options.html {
-              format_html(&fake_filename, text, fmt_options)
-            } else {
-              Ok(None)
-            }
-          }
-          "svelte" | "vue" | "astro" => {
+          "html" => format_html(&fake_filename, text, fmt_options),
+          "svelte" | "vue" | "astro" | "vto" | "njk" => {
             if unstable_options.component {
               format_html(&fake_filename, text, fmt_options)
             } else {
               Ok(None)
             }
           }
-          "yml" | "yaml" => {
-            if unstable_options.yaml {
-              pretty_yaml::format_text(
-                text,
-                &get_resolved_yaml_config(fmt_options),
-              )
-              .map(Some)
-              .map_err(AnyError::from)
-            } else {
-              Ok(None)
-            }
-          }
+          "yml" | "yaml" => format_yaml(text, fmt_options),
           _ => {
             let mut codeblock_config =
               get_resolved_typescript_config(fmt_options);
@@ -353,13 +334,33 @@ pub fn format_css(
   file_text: &str,
   fmt_options: &FmtOptionsConfig,
 ) -> Result<Option<String>, AnyError> {
-  malva::format_text(
+  let formatted_str = malva::format_text(
     file_text,
     malva::detect_syntax(file_path).unwrap_or(malva::Syntax::Css),
     &get_resolved_malva_config(fmt_options),
   )
-  .map(Some)
-  .map_err(AnyError::from)
+  .map_err(AnyError::from)?;
+
+  Ok(if formatted_str == file_text {
+    None
+  } else {
+    Some(formatted_str)
+  })
+}
+
+fn format_yaml(
+  file_text: &str,
+  fmt_options: &FmtOptionsConfig,
+) -> Result<Option<String>, AnyError> {
+  let formatted_str =
+    pretty_yaml::format_text(file_text, &get_resolved_yaml_config(fmt_options))
+      .map_err(AnyError::from)?;
+
+  Ok(if formatted_str == file_text {
+    None
+  } else {
+    Some(formatted_str)
+  })
 }
 
 pub fn format_html(
@@ -367,7 +368,7 @@ pub fn format_html(
   file_text: &str,
   fmt_options: &FmtOptionsConfig,
 ) -> Result<Option<String>, AnyError> {
-  markup_fmt::format_text(
+  let format_result = markup_fmt::format_text(
     file_text,
     markup_fmt::detect_language(file_path)
       .unwrap_or(markup_fmt::Language::Html),
@@ -433,7 +434,6 @@ pub fn format_html(
       }
     },
   )
-  .map(Some)
   .map_err(|error| match error {
     markup_fmt::FormatError::Syntax(error) => AnyError::from(error),
     markup_fmt::FormatError::External(errors) => {
@@ -452,6 +452,14 @@ pub fn format_html(
           .collect::<String>(),
       )
     }
+  });
+
+  let formatted_str = format_result?;
+
+  Ok(if formatted_str == file_text {
+    None
+  } else {
+    Some(formatted_str)
   })
 }
 
@@ -473,38 +481,17 @@ pub fn format_file(
     }
     "json" | "jsonc" => format_json(file_path, file_text, fmt_options),
     "css" | "scss" | "sass" | "less" => {
-      if unstable_options.css {
-        format_css(file_path, file_text, fmt_options)
-      } else {
-        Ok(None)
-      }
+      format_css(file_path, file_text, fmt_options)
     }
-    "html" => {
-      if unstable_options.html {
-        format_html(file_path, file_text, fmt_options)
-      } else {
-        Ok(None)
-      }
-    }
-    "svelte" | "vue" | "astro" => {
+    "html" => format_html(file_path, file_text, fmt_options),
+    "svelte" | "vue" | "astro" | "vto" | "njk" => {
       if unstable_options.component {
         format_html(file_path, file_text, fmt_options)
       } else {
         Ok(None)
       }
     }
-    "yml" | "yaml" => {
-      if unstable_options.yaml {
-        pretty_yaml::format_text(
-          file_text,
-          &get_resolved_yaml_config(fmt_options),
-        )
-        .map(Some)
-        .map_err(AnyError::from)
-      } else {
-        Ok(None)
-      }
-    }
+    "yml" | "yaml" => format_yaml(file_text, fmt_options),
     "ipynb" => dprint_plugin_jupyter::format_text(
       file_text,
       |file_path: &Path, file_text: String| {
@@ -1171,6 +1158,8 @@ fn is_supported_ext_fmt(path: &Path) -> bool {
         | "svelte"
         | "vue"
         | "astro"
+        | "vto"
+        | "njk"
         | "md"
         | "mkd"
         | "mkdn"
@@ -1229,6 +1218,10 @@ mod test {
     assert!(is_supported_ext_fmt(Path::new("foo.VUE")));
     assert!(is_supported_ext_fmt(Path::new("foo.astro")));
     assert!(is_supported_ext_fmt(Path::new("foo.AsTrO")));
+    assert!(is_supported_ext_fmt(Path::new("foo.vto")));
+    assert!(is_supported_ext_fmt(Path::new("foo.Vto")));
+    assert!(is_supported_ext_fmt(Path::new("foo.njk")));
+    assert!(is_supported_ext_fmt(Path::new("foo.NJk")));
     assert!(is_supported_ext_fmt(Path::new("foo.yml")));
     assert!(is_supported_ext_fmt(Path::new("foo.Yml")));
     assert!(is_supported_ext_fmt(Path::new("foo.yaml")));
