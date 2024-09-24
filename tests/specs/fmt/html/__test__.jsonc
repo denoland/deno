@@ -1,5 +1,13 @@
 {
   "tempDir": true,
-  "args": "fmt --unstable-html",
-  "output": "[WILDLINE]badly_formatted.html\nChecked 1 file\n"
+  "tests": {
+    "badly_formatted": {
+      "args": "fmt badly_formatted.html",
+      "output": "[WILDLINE]badly_formatted.html\nChecked 1 file\n"
+    },
+    "well_formatted": {
+      "args": "fmt --check well_formatted.html",
+      "output": "Checked 1 file\n"
+    }
+  }
 }
