@@ -33,6 +33,7 @@ use deno_core::error::AnyError;
 use deno_core::futures;
 use deno_core::parking_lot::Mutex;
 use deno_core::unsync::spawn_blocking;
+use deno_core::url::Url;
 use log::debug;
 use log::info;
 use log::warn;
@@ -435,7 +436,27 @@ pub fn format_html(
     },
   )
   .map_err(|error| match error {
-    markup_fmt::FormatError::Syntax(error) => AnyError::from(error),
+    markup_fmt::FormatError::Syntax(error) => {
+      // TODO(bartlomieju): rework when better error support in `markup_fmt` lands
+      let error_str = format!("{}", error);
+      let error_str = error_str.strip_prefix("syntax error '").unwrap();
+      let reason = error_str
+        .split("' at")
+        .collect::<Vec<_>>()
+        .first()
+        .unwrap()
+        .to_string();
+      let url = Url::from_file_path(file_path).unwrap();
+      let error_msg = format!(
+        "Syntax error ({}) at {}:{}:{}\n",
+        reason,
+        url.as_str(),
+        error.line,
+        error.column
+      );
+
+      AnyError::from(generic_error(error_msg))
+    }
     markup_fmt::FormatError::External(errors) => {
       let last = errors.len() - 1;
       AnyError::msg(
