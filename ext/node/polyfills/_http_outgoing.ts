@@ -497,15 +497,15 @@ Object.defineProperties(
       const socket = this.socket;
       const outputLength = this.outputData.length;
       if (socket && outputLength > 0) {
-          const { data, encoding, callback } = this.outputData.shift();
-          console.log("flushBody: writing", { data });
-          this._writeRaw(data, encoding, callback);
-          if (this.outputData.length > 0) {
-            this.on("drain", () => {
-              console.log("drain emitted");
-              this._flushBody();
-            });
-          }
+        const { data, encoding, callback } = this.outputData.shift();
+        console.log("flushBody: writing", { data });
+        this._writeRaw(data, encoding, callback);
+        if (this.outputData.length > 0) {
+          this.on("drain", () => {
+            console.log("drain emitted");
+            this._flushBody();
+          });
+        }
       }
     },
 
@@ -514,7 +514,10 @@ Object.defineProperties(
     _flushHeaders() {
       console.log("flushHeaders");
       if (this.socket) {
-        console.log("socket found: ", { headerSent: this._headerSent, header: this._header });
+        console.log("socket found: ", {
+          headerSent: this._headerSent,
+          header: this._header,
+        });
         if (!this._headerSent) {
           console.log("_writeHeader invoked");
           this._writeHeader();

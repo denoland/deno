@@ -617,15 +617,15 @@ class ClientRequest extends OutgoingMessage {
         // Flush the internal buffers once socket is ready.
         // Note: the order is important, as the headers flush
         // sets up the request.
-  try {
-    this._flushHeaders();
-    this.on("requestReady", () => {
-      console.log("onSocket: flushing body");
-      this._flushBody();
-    });
-  } catch (error) {
-    console.log("socket error: ", error);
-  }
+        try {
+          this._flushHeaders();
+          this.on("requestReady", () => {
+            console.log("onSocket: flushing body");
+            this._flushBody();
+          });
+        } catch (error) {
+          console.log("socket error: ", error);
+        }
       });
       this.socket = socket;
       this.emit("socket", socket);
@@ -801,19 +801,21 @@ class ClientRequest extends OutgoingMessage {
       path = "/" + path;
     }
     console.log("_createUrlStrFromOptions 9");
-// try {
-  console.log({ url: `${protocol}//${auth ? `${auth}@` : ""}${host}${
-    port === 80 ? "" : `:${port}`
-  }${path}` })
-  const url = new URL(
-    `${protocol}//${auth ? `${auth}@` : ""}${host}${
-      port === 80 ? "" : `:${port}`
-    }${path}`,
-  );
-  console.log(url);
-// } catch (error) {
-  // console.log({ error })
-// }
+    // try {
+    console.log({
+      url: `${protocol}//${auth ? `${auth}@` : ""}${host}${
+        port === 80 ? "" : `:${port}`
+      }${path}`,
+    });
+    const url = new URL(
+      `${protocol}//${auth ? `${auth}@` : ""}${host}${
+        port === 80 ? "" : `:${port}`
+      }${path}`,
+    );
+    console.log(url);
+    // } catch (error) {
+    // console.log({ error })
+    // }
     console.log("_createUrlStrFromOptions 10");
     url.hash = hash;
     console.log("_createUrlStrFromOptions end");
