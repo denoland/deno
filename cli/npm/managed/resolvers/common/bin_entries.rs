@@ -69,7 +69,11 @@ impl<'a> BinEntries<'a> {
   fn for_each_entry(
     &mut self,
     snapshot: &NpmResolutionSnapshot,
-    mut f: impl FnMut(
+    mut already_seen: impl FnMut(
+      &Path,
+      &str, // bin script
+    ) -> Result<(), AnyError>,
+    mut new: impl FnMut(
       &NpmResolutionPackage,
       &Path,
       &str, // bin name
@@ -90,18 +94,20 @@ impl<'a> BinEntries<'a> {
           deno_npm::registry::NpmPackageVersionBinEntry::String(script) => {
             let name = default_bin_name(package);
             if !seen.insert(name) {
+              already_seen(package_path, script)?;
               // we already set up a bin entry with this name
               continue;
             }
-            f(package, package_path, name, script)?;
+            new(package, package_path, name, script)?;
           }
           deno_npm::registry::NpmPackageVersionBinEntry::Map(entries) => {
             for (name, script) in entries {
               if !seen.insert(name) {
+                already_seen(package_path, script)?;
                 // we already set up a bin entry with this name
                 continue;
               }
-              f(package, package_path, name, script)?;
+              new(package, package_path, name, script)?;
             }
           }
         }
@@ -118,10 +124,14 @@ impl<'a> BinEntries<'a> {
   ) -> Vec<(String, PathBuf)> {
     let mut bins = Vec::new();
     self
-      .for_each_entry(snapshot, |_, package_path, name, script| {
-        bins.push((name.to_string(), package_path.join(script)));
-        Ok(())
-      })
+      .for_each_entry(
+        snapshot,
+        |_, _| Ok(()),
+        |_, package_path, name, script| {
+          bins.push((name.to_string(), package_path.join(script)));
+          Ok(())
+        },
+      )
       .unwrap();
     bins
   }
@@ -139,15 +149,26 @@ impl<'a> BinEntries<'a> {
       )?;
     }
 
-    self.for_each_entry(snapshot, |package, package_path, name, script| {
-      set_up_bin_entry(
-        package,
-        name,
-        script,
-        package_path,
-        bin_node_modules_dir_path,
-      )
-    })?;
+    self.for_each_entry(
+      snapshot,
+      |_package_path, _script| {
+        #[cfg(unix)]
+        {
+          let path = _package_path.join(_script);
+          make_executable_if_exists(&path)?;
+        }
+        Ok(())
+      },
+      |package, package_path, name, script| {
+        set_up_bin_entry(
+          package,
+          name,
+          script,
+          package_path,
+          bin_node_modules_dir_path,
+        )
+      },
+    )?;
 
     Ok(())
   }
@@ -255,6 +276,32 @@ fn set_up_bin_shim(
 }
 
 #[cfg(unix)]
+/// Make the file at `path` executable if it exists.
+/// Returns `true` if the file exists, `false` otherwise.
+fn make_executable_if_exists(path: &Path) -> Result<bool, AnyError> {
+  use std::io;
+  use std::os::unix::fs::PermissionsExt;
+  let mut perms = match std::fs::metadata(&path) {
+    Ok(metadata) => metadata.permissions(),
+    Err(err) => {
+      if err.kind() == io::ErrorKind::NotFound {
+        return Ok(false);
+      }
+      return Err(err.into());
+    }
+  };
+  if perms.mode() & 0o111 == 0 {
+    // if the original file is not executable, make it executable
+    perms.set_mode(perms.mode() | 0o111);
+    std::fs::set_permissions(&path, perms).with_context(|| {
+      format!("Setting permissions on '{}'", path.display())
+    })?;
+  }
+
+  Ok(true)
+}
+
+#[cfg(unix)]
 fn symlink_bin_entry(
   _package: &NpmResolutionPackage,
   bin_name: &str,
@@ -267,32 +314,20 @@ fn symlink_bin_entry(
   let link = bin_node_modules_dir_path.join(bin_name);
   let original = package_path.join(bin_script);
 
-  use std::os::unix::fs::PermissionsExt;
-  let mut perms = match std::fs::metadata(&original) {
-    Ok(metadata) => metadata.permissions(),
-    Err(err) => {
-      if err.kind() == io::ErrorKind::NotFound {
-        log::warn!(
-          "{} Trying to set up '{}' bin for \"{}\", but the entry point \"{}\" doesn't exist.",
-          deno_terminal::colors::yellow("Warning"),
-          bin_name,
-          package_path.display(),
-          original.display()
-        );
-        return Ok(());
-      }
-      return Err(err).with_context(|| {
-        format!("Can't set up '{}' bin at {}", bin_name, original.display())
-      });
-    }
-  };
-  if perms.mode() & 0o111 == 0 {
-    // if the original file is not executable, make it executable
-    perms.set_mode(perms.mode() | 0o111);
-    std::fs::set_permissions(&original, perms).with_context(|| {
-      format!("Setting permissions on '{}'", original.display())
-    })?;
+  let found = make_executable_if_exists(&original).with_context(|| {
+    format!("Can't set up '{}' bin at {}", bin_name, original.display())
+  })?;
+  if !found {
+    log::warn!(
+      "{} Trying to set up '{}' bin for \"{}\", but the entry point \"{}\" doesn't exist.",
+      deno_terminal::colors::yellow("Warning"),
+      bin_name,
+      package_path.display(),
+      original.display()
+    );
+    return Ok(());
   }
+
   let original_relative =
     crate::util::path::relative_path(bin_node_modules_dir_path, &original)
       .unwrap_or(original);
