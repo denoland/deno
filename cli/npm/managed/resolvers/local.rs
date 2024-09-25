@@ -526,7 +526,7 @@ async fn sync_resolution_with_fs(
               if version_str.contains('-') {
                 // Handle pre-release versions differently, if needed
                 log::warn!("{} Version '{}' for alias '{}' is a pre-release version.",  colors::yellow("Warning"), version_str, remote_alias);
-                false // or however you want to handle it
+                true // or however you want to handle it
               } else {
                 !remote.req.version_req.matches(&nv.get().version) // compatible version
               }
