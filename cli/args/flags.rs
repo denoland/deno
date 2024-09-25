@@ -10986,6 +10986,10 @@ Usage: deno repl [OPTIONS] [-- [ARGS]...]\n"
     }
 
     assert_eq!(parse("https://jsr.io"), None);
+    assert_eq!(
+      parse("http://127.0.0.1:4250"),
+      Some("127.0.0.1:4250".to_string())
+    );
     assert_eq!(parse("http://jsr.io"), Some("jsr.io:80".to_string()));
     assert_eq!(
       parse("https://example.com"),
