@@ -3,12 +3,11 @@ Download http://localhost:4260/@denotest/node-lifecycle-scripts
 Download http://localhost:4260/@denotest/bin
 Download http://localhost:4260/@denotest/node-lifecycle-scripts/1.0.0.tgz
 Download http://localhost:4260/@denotest/bin/1.0.0.tgz
-Initialize @denotest/node-lifecycle-scripts@1.0.0
-Initialize @denotest/bin@1.0.0
 [UNORDERED_END]
 Warning The following packages contained npm lifecycle scripts (preinstall/install/postinstall) that were not executed:
 ┠─ npm:@denotest/node-lifecycle-scripts@1.0.0
 ┃
 ┠─ This may cause the packages to not work correctly.
-┖─ To run lifecycle scripts, use the `--allow-scripts` flag with `deno install`:
-   deno install --allow-scripts=npm:@denotest/node-lifecycle-scripts@1.0.0
+┠─ Lifecycle scripts are only supported when using a `node_modules` directory.
+┠─ Enable it in your deno config file:
+┖─ "nodeModulesDir": "auto"

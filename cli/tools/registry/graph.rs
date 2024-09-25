@@ -128,7 +128,7 @@ impl GraphDiagnosticsCollector {
       follow_dynamic: true,
       // search the entire graph and not just the fast check subset
       prefer_fast_check_graph: false,
-      follow_type_only: true,
+      kind: deno_graph::GraphKind::All,
     };
     let mut iter = graph.walk(graph.roots.iter(), options);
     while let Some((specifier, entry)) = iter.next() {
