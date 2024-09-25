@@ -1,6 +1,22 @@
-[WILDCARD]
-Checking for slow types in the public API...
+[UNORDERED_START]
+Download http://127.0.0.1:4250/@denotest/add/meta.json
+Download http://127.0.0.1:4250/@denotest/deps/meta.json
+Download http://localhost:4260/@denotest/esm-basic
+Download http://127.0.0.1:4250/@denotest/add/1.0.0_meta.json
+Download http://127.0.0.1:4250/@denotest/deps/1.0.0_meta.json
+Download http://127.0.0.1:4250/@denotest/module-graph/meta.json
+Download http://127.0.0.1:4250/@denotest/no-module-graph/meta.json
+Download http://127.0.0.1:4250/@denotest/module-graph/1.4.0_meta.json
+Download http://127.0.0.1:4250/@denotest/no-module-graph/0.1.1_meta.json
+Download http://127.0.0.1:4250/@denotest/no-module-graph/0.1.1/mod.ts
+Download http://127.0.0.1:4250/@denotest/no-module-graph/0.1.1/TestClass.ts
+Download http://127.0.0.1:4250/@denotest/add/1.0.0/mod.ts
+Download http://127.0.0.1:4250/@denotest/deps/1.0.0/mod.ts
+Download http://127.0.0.1:4250/@denotest/module-graph/1.4.0/other.ts
+Download http://localhost:4260/@denotest/esm-basic/1.0.0.tgz
+[UNORDERED_END]
 Check file:///[WILDLINE]/mod.ts
+Checking for slow types in the public API...
 error[missing-constraint]: specifier 'jsr:@denotest/add' is missing a version constraint
  --> [WILDLINE]mod.ts:[WILDLINE]
   | 
