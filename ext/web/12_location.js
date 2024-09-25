@@ -28,7 +28,7 @@ const locationConstructorKey = Symbol("locationConstructorKey");
 class Location {
   constructor(href = null, key = null) {
     if (key != locationConstructorKey) {
-      throw new TypeError("Illegal constructor.");
+      throw new TypeError("Illegal constructor");
     }
     const url = new URL(href);
     url.username = "";
@@ -41,7 +41,7 @@ class Location {
         },
         set() {
           throw new DOMException(
-            `Cannot set "location.hash".`,
+            `Cannot set "location.hash"`,
             "NotSupportedError",
           );
         },
@@ -54,7 +54,7 @@ class Location {
         },
         set() {
           throw new DOMException(
-            `Cannot set "location.host".`,
+            `Cannot set "location.host"`,
             "NotSupportedError",
           );
         },
@@ -67,7 +67,7 @@ class Location {
         },
         set() {
           throw new DOMException(
-            `Cannot set "location.hostname".`,
+            `Cannot set "location.hostname"`,
             "NotSupportedError",
           );
         },
@@ -80,7 +80,7 @@ class Location {
         },
         set() {
           throw new DOMException(
-            `Cannot set "location.href".`,
+            `Cannot set "location.href"`,
             "NotSupportedError",
           );
         },
@@ -100,7 +100,7 @@ class Location {
         },
         set() {
           throw new DOMException(
-            `Cannot set "location.pathname".`,
+            `Cannot set "location.pathname"`,
             "NotSupportedError",
           );
         },
@@ -113,7 +113,7 @@ class Location {
         },
         set() {
           throw new DOMException(
-            `Cannot set "location.port".`,
+            `Cannot set "location.port"`,
             "NotSupportedError",
           );
         },
@@ -126,7 +126,7 @@ class Location {
         },
         set() {
           throw new DOMException(
-            `Cannot set "location.protocol".`,
+            `Cannot set "location.protocol"`,
             "NotSupportedError",
           );
         },
@@ -139,7 +139,7 @@ class Location {
         },
         set() {
           throw new DOMException(
-            `Cannot set "location.search".`,
+            `Cannot set "location.search"`,
             "NotSupportedError",
           );
         },
@@ -161,7 +161,7 @@ class Location {
         __proto__: null,
         value: function assign() {
           throw new DOMException(
-            `Cannot call "location.assign()".`,
+            `Cannot call "location.assign()"`,
             "NotSupportedError",
           );
         },
@@ -171,7 +171,7 @@ class Location {
         __proto__: null,
         value: function reload() {
           throw new DOMException(
-            `Cannot call "location.reload()".`,
+            `Cannot call "location.reload()"`,
             "NotSupportedError",
           );
         },
@@ -181,7 +181,7 @@ class Location {
         __proto__: null,
         value: function replace() {
           throw new DOMException(
-            `Cannot call "location.replace()".`,
+            `Cannot call "location.replace()"`,
             "NotSupportedError",
           );
         },
@@ -229,7 +229,7 @@ const workerLocationUrls = new SafeWeakMap();
 class WorkerLocation {
   constructor(href = null, key = null) {
     if (key != locationConstructorKey) {
-      throw new TypeError("Illegal constructor.");
+      throw new TypeError("Illegal constructor");
     }
     const url = new URL(href);
     url.username = "";
@@ -244,7 +244,7 @@ ObjectDefineProperties(WorkerLocation.prototype, {
     get() {
       const url = WeakMapPrototypeGet(workerLocationUrls, this);
       if (url == null) {
-        throw new TypeError("Illegal invocation.");
+        throw new TypeError("Illegal invocation");
       }
       return url.hash;
     },
@@ -256,7 +256,7 @@ ObjectDefineProperties(WorkerLocation.prototype, {
     get() {
       const url = WeakMapPrototypeGet(workerLocationUrls, this);
       if (url == null) {
-        throw new TypeError("Illegal invocation.");
+        throw new TypeError("Illegal invocation");
       }
       return url.host;
     },
@@ -268,7 +268,7 @@ ObjectDefineProperties(WorkerLocation.prototype, {
     get() {
       const url = WeakMapPrototypeGet(workerLocationUrls, this);
       if (url == null) {
-        throw new TypeError("Illegal invocation.");
+        throw new TypeError("Illegal invocation");
       }
       return url.hostname;
     },
@@ -280,7 +280,7 @@ ObjectDefineProperties(WorkerLocation.prototype, {
     get() {
       const url = WeakMapPrototypeGet(workerLocationUrls, this);
       if (url == null) {
-        throw new TypeError("Illegal invocation.");
+        throw new TypeError("Illegal invocation");
       }
       return url.href;
     },
@@ -292,7 +292,7 @@ ObjectDefineProperties(WorkerLocation.prototype, {
     get() {
       const url = WeakMapPrototypeGet(workerLocationUrls, this);
       if (url == null) {
-        throw new TypeError("Illegal invocation.");
+        throw new TypeError("Illegal invocation");
       }
       return url.origin;
     },
@@ -304,7 +304,7 @@ ObjectDefineProperties(WorkerLocation.prototype, {
     get() {
       const url = WeakMapPrototypeGet(workerLocationUrls, this);
       if (url == null) {
-        throw new TypeError("Illegal invocation.");
+        throw new TypeError("Illegal invocation");
       }
       return url.pathname;
     },
@@ -316,7 +316,7 @@ ObjectDefineProperties(WorkerLocation.prototype, {
     get() {
       const url = WeakMapPrototypeGet(workerLocationUrls, this);
       if (url == null) {
-        throw new TypeError("Illegal invocation.");
+        throw new TypeError("Illegal invocation");
       }
       return url.port;
     },
@@ -328,7 +328,7 @@ ObjectDefineProperties(WorkerLocation.prototype, {
     get() {
       const url = WeakMapPrototypeGet(workerLocationUrls, this);
       if (url == null) {
-        throw new TypeError("Illegal invocation.");
+        throw new TypeError("Illegal invocation");
       }
       return url.protocol;
     },
@@ -340,7 +340,7 @@ ObjectDefineProperties(WorkerLocation.prototype, {
     get() {
       const url = WeakMapPrototypeGet(workerLocationUrls, this);
       if (url == null) {
-        throw new TypeError("Illegal invocation.");
+        throw new TypeError("Illegal invocation");
       }
       return url.search;
     },
@@ -352,7 +352,7 @@ ObjectDefineProperties(WorkerLocation.prototype, {
     value: function toString() {
       const url = WeakMapPrototypeGet(workerLocationUrls, this);
       if (url == null) {
-        throw new TypeError("Illegal invocation.");
+        throw new TypeError("Illegal invocation");
       }
       return url.href;
     },
@@ -414,7 +414,7 @@ const locationDescriptor = {
     return location;
   },
   set() {
-    throw new DOMException(`Cannot set "location".`, "NotSupportedError");
+    throw new DOMException(`Cannot set "location"`, "NotSupportedError");
   },
   enumerable: true,
 };
@@ -422,7 +422,7 @@ const workerLocationDescriptor = {
   get() {
     if (workerLocation == null) {
       throw new Error(
-        `Assertion: "globalThis.location" must be defined in a worker.`,
+        `Assertion: "globalThis.location" must be defined in a worker`,
       );
     }
     return workerLocation;

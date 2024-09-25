@@ -50,7 +50,7 @@ function btoa(data) {
   } catch (e) {
     if (ObjectPrototypeIsPrototypeOf(TypeErrorPrototype, e)) {
       throw new DOMException(
-        "The string to be encoded contains characters outside of the Latin1 range.",
+        "Cannot encode string: string contains characters outside of the Latin1 range",
         "InvalidCharacterError",
       );
     }

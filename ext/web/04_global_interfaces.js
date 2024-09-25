@@ -16,7 +16,7 @@ const illegalConstructorKey = Symbol("illegalConstructorKey");
 class Window extends EventTarget {
   constructor(key = null) {
     if (key !== illegalConstructorKey) {
-      throw new TypeError("Illegal constructor.");
+      throw new TypeError("Illegal constructor");
     }
     super();
   }
@@ -29,7 +29,7 @@ class Window extends EventTarget {
 class WorkerGlobalScope extends EventTarget {
   constructor(key = null) {
     if (key != illegalConstructorKey) {
-      throw new TypeError("Illegal constructor.");
+      throw new TypeError("Illegal constructor");
     }
     super();
   }
@@ -42,7 +42,7 @@ class WorkerGlobalScope extends EventTarget {
 class DedicatedWorkerGlobalScope extends WorkerGlobalScope {
   constructor(key = null) {
     if (key != illegalConstructorKey) {
-      throw new TypeError("Illegal constructor.");
+      throw new TypeError("Illegal constructor");
     }
     super();
   }

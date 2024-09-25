@@ -196,7 +196,7 @@ class AbortSignal extends EventTarget {
 
   constructor(key = null) {
     if (key !== illegalConstructorKey) {
-      throw new TypeError("Illegal constructor.");
+      throw new TypeError("Illegal constructor");
     }
     super();
   }
