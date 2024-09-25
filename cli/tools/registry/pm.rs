@@ -905,7 +905,9 @@ mod test {
       AddPackageReq::parse("@alias/pkg@npm:foo").unwrap().unwrap(),
       AddPackageReq {
         alias: "@alias/pkg".to_string(),
-        value: AddPackageReqValue::Npm(PackageReq::from_str("foo").unwrap())
+        value: AddPackageReqValue::Npm(
+          PackageReq::from_str("foo@latest").unwrap()
+        )
       }
     );
     assert_eq!(
