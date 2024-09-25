@@ -55,7 +55,7 @@ use std::sync::Arc;
 #[derive(Clone, Copy)]
 pub struct GraphValidOptions {
   pub check_js: bool,
-  pub follow_type_only: bool,
+  pub kind: GraphKind,
   pub is_vendoring: bool,
   /// Whether to exit the process for lockfile errors.
   /// Otherwise, surfaces lockfile errors as errors.
@@ -84,7 +84,7 @@ pub fn graph_valid(
       roots.iter(),
       deno_graph::WalkOptions {
         check_js: options.check_js,
-        follow_type_only: options.follow_type_only,
+        kind: options.kind,
         follow_dynamic: options.is_vendoring,
         prefer_fast_check_graph: false,
       },
@@ -708,7 +708,11 @@ impl ModuleGraphBuilder {
       roots,
       GraphValidOptions {
         is_vendoring: false,
-        follow_type_only: self.options.type_check_mode().is_true(),
+        kind: if self.options.type_check_mode().is_true() {
+          GraphKind::All
+        } else {
+          GraphKind::CodeOnly
+        },
         check_js: self.options.check_js(),
         exit_lockfile_errors: true,
       },
@@ -928,7 +932,7 @@ pub fn has_graph_root_local_dependent_changed(
     std::iter::once(root),
     deno_graph::WalkOptions {
       follow_dynamic: true,
-      follow_type_only: true,
+      kind: GraphKind::All,
       prefer_fast_check_graph: true,
       check_js: true,
     },
