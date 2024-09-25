@@ -448,7 +448,8 @@ jobs:
           github.repository == 'denoland/deno')
         run: |-
           cd target/release
-          zip -r deno-${{ matrix.arch }}-unknown-linux-gnu.zip deno
+          shasum -a 256 deno > deno.sha256sum
+          zip -r deno-${{ matrix.arch }}-unknown-linux-gnu.zip deno deno.sha256sum
           strip denort
           zip -r denort-${{ matrix.arch }}-unknown-linux-gnu.zip denort
           ./deno types > lib.deno.d.ts
@@ -465,7 +466,8 @@ jobs:
           echo "Key is $(echo $APPLE_CODESIGN_KEY | base64 -d | wc -c) bytes"
           rcodesign sign target/release/deno --code-signature-flags=runtime --p12-password="$APPLE_CODESIGN_PASSWORD" --p12-file=<(echo $APPLE_CODESIGN_KEY | base64 -d) --entitlements-xml-file=cli/entitlements.plist
           cd target/release
-          zip -r deno-${{ matrix.arch }}-apple-darwin.zip deno
+          shasum -a 256 deno > deno.sha256sum
+          zip -r deno-${{ matrix.arch }}-apple-darwin.zip deno deno.sha256sum
           strip denort
           zip -r denort-${{ matrix.arch }}-apple-darwin.zip denort
       - name: Pre-release (windows)

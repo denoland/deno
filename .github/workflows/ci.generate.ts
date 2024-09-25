@@ -757,7 +757,8 @@ const ci = {
           ].join("\n"),
           run: [
             "cd target/release",
-            "zip -r deno-${{ matrix.arch }}-unknown-linux-gnu.zip deno",
+            "shasum -a 256 deno > deno.sha256sum",
+            "zip -r deno-${{ matrix.arch }}-unknown-linux-gnu.zip deno deno.sha256sum",
             "strip denort",
             "zip -r denort-${{ matrix.arch }}-unknown-linux-gnu.zip denort",
             "./deno types > lib.deno.d.ts",
@@ -783,7 +784,8 @@ const ci = {
             "--p12-file=<(echo $APPLE_CODESIGN_KEY | base64 -d) " +
             "--entitlements-xml-file=cli/entitlements.plist",
             "cd target/release",
-            "zip -r deno-${{ matrix.arch }}-apple-darwin.zip deno",
+            "shasum -a 256 deno > deno.sha256sum",
+            "zip -r deno-${{ matrix.arch }}-apple-darwin.zip deno deno.sha256sum",
             "strip denort",
             "zip -r denort-${{ matrix.arch }}-apple-darwin.zip denort",
           ]
