@@ -213,7 +213,7 @@ impl Loader for FetchCacher {
     let file_header_overrides = self.file_header_overrides.clone();
     let permissions = self.permissions.clone();
     let specifier = specifier.clone();
-    let is_dynamic = options.is_dynamic;
+    let is_statically_analyzable = !options.was_dynamic_root;
 
     async move {
       let maybe_cache_setting = match options.cache_setting {
@@ -232,10 +232,10 @@ impl Loader for FetchCacher {
         .fetch_no_follow_with_options(FetchNoFollowOptions {
           fetch_options: FetchOptions {
             specifier: &specifier,
-            permissions: if is_dynamic {
-              FetchPermissionsOptionRef::DynamicContainer(&permissions)
-            } else {
+            permissions: if is_statically_analyzable {
               FetchPermissionsOptionRef::StaticContainer(&permissions)
+            } else {
+              FetchPermissionsOptionRef::DynamicContainer(&permissions)
             },
             maybe_accept: None,
             maybe_cache_setting: maybe_cache_setting.as_ref(),

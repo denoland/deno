@@ -40,6 +40,59 @@ use prompter::PERMISSION_EMOJI;
 pub use prompter::set_prompt_callbacks;
 pub use prompter::PromptCallback;
 
+pub fn jsr_url() -> &'static Url {
+  static JSR_URL: Lazy<Url> = Lazy::new(|| {
+    let env_var_name = "JSR_URL";
+    if let Ok(registry_url) = std::env::var(env_var_name) {
+      // ensure there is a trailing slash for the directory
+      let registry_url = format!("{}/", registry_url.trim_end_matches('/'));
+      match Url::parse(&registry_url) {
+        Ok(url) => {
+          return url;
+        }
+        Err(err) => {
+          log::debug!(
+            "Invalid {} environment variable: {:#}",
+            env_var_name,
+            err,
+          );
+        }
+      }
+    }
+
+    Url::parse("https://jsr.io/").unwrap()
+  });
+
+  &JSR_URL
+}
+
+fn builtin_allowed_import_hosts() -> &'static [ImportDescriptor] {
+  static HOSTS: Lazy<Vec<ImportDescriptor>> = Lazy::new(|| {
+    let builtin_allowed_import_hosts = [
+      "deno.land",
+      "esm.sh",
+      "jsr.io",
+      "raw.githubusercontent.com",
+      "gist.githubusercontent.com",
+      "localhost",
+      "127.0.0.1",
+    ];
+
+    let mut hosts = Vec::with_capacity(builtin_allowed_import_hosts.len() + 1);
+    hosts.extend(
+      builtin_allowed_import_hosts
+        .iter()
+        .map(|s| ImportDescriptor::parse(s).unwrap()),
+    );
+    if let Ok(jsr_host) = ImportDescriptor::from_url(jsr_url()) {
+      hosts.push(jsr_host);
+    }
+    hosts
+  });
+
+  &HOSTS
+}
+
 /// Fast exit from permission check routines if this permission
 /// is in the "fully-granted" state.
 macro_rules! skip_check_if_is_permission_fully_granted {
@@ -1984,7 +2037,11 @@ impl Permissions {
       import: Permissions::new_unary(
         parse_maybe_vec(opts.allow_imports.as_deref(), |item| {
           parser.parse_import_descriptor(item)
-        })?,
+        })?
+        .map(|mut imports| {
+          imports.extend(builtin_allowed_import_hosts().iter().cloned());
+          imports
+        }),
         None,
         opts.prompt,
       )?,
@@ -2711,6 +2768,7 @@ pub struct ChildPermissionsArg {
   env: ChildUnaryPermissionArg,
   net: ChildUnaryPermissionArg,
   ffi: ChildUnaryPermissionArg,
+  import: ChildUnaryPermissionArg,
   read: ChildUnaryPermissionArg,
   run: ChildUnaryPermissionArg,
   sys: ChildUnaryPermissionArg,
@@ -2723,6 +2781,7 @@ impl ChildPermissionsArg {
       env: ChildUnaryPermissionArg::Inherit,
       net: ChildUnaryPermissionArg::Inherit,
       ffi: ChildUnaryPermissionArg::Inherit,
+      import: ChildUnaryPermissionArg::Inherit,
       read: ChildUnaryPermissionArg::Inherit,
       run: ChildUnaryPermissionArg::Inherit,
       sys: ChildUnaryPermissionArg::Inherit,
@@ -2735,6 +2794,7 @@ impl ChildPermissionsArg {
       env: ChildUnaryPermissionArg::NotGranted,
       net: ChildUnaryPermissionArg::NotGranted,
       ffi: ChildUnaryPermissionArg::NotGranted,
+      import: ChildUnaryPermissionArg::NotGranted,
       read: ChildUnaryPermissionArg::NotGranted,
       run: ChildUnaryPermissionArg::NotGranted,
       sys: ChildUnaryPermissionArg::NotGranted,
@@ -2798,6 +2858,11 @@ impl<'de> Deserialize<'de> for ChildPermissionsArg {
             let arg = serde_json::from_value::<ChildUnaryPermissionArg>(value);
             child_permissions_arg.ffi = arg.map_err(|e| {
               de::Error::custom(format!("(deno.permissions.ffi) {e}"))
+            })?;
+          } else if key == "import" {
+            let arg = serde_json::from_value::<ChildUnaryPermissionArg>(value);
+            child_permissions_arg.import = arg.map_err(|e| {
+              de::Error::custom(format!("(deno.permissions.import) {e}"))
             })?;
           } else if key == "read" {
             let arg = serde_json::from_value::<ChildUnaryPermissionArg>(value);
@@ -2926,6 +2991,7 @@ pub fn create_child_permissions(
       &child_permissions_arg.read,
       &child_permissions_arg.write,
       &child_permissions_arg.net,
+      &child_permissions_arg.import,
       &child_permissions_arg.env,
       &child_permissions_arg.sys,
       &child_permissions_arg.run,
@@ -2949,7 +3015,12 @@ pub fn create_child_permissions(
     .create_child_permissions(child_permissions_arg.write, |text| {
       Ok(Some(parser.parse_write_descriptor(text)?))
     })?;
-  worker_perms.net = main_perms
+  worker_perms.import = main_perms
+    .import
+    .create_child_permissions(child_permissions_arg.import, |text| {
+      Ok(Some(parser.parse_import_descriptor(text)?))
+    })?;
+  worker_perms.import.worker_perms.net = main_perms
     .net
     .create_child_permissions(child_permissions_arg.net, |text| {
       Ok(Some(parser.parse_net_descriptor(text)?))
@@ -4046,6 +4117,7 @@ mod tests {
         env: ChildUnaryPermissionArg::Inherit,
         net: ChildUnaryPermissionArg::Inherit,
         ffi: ChildUnaryPermissionArg::Inherit,
+        import: ChildUnaryPermissionArg::Inherit,
         read: ChildUnaryPermissionArg::Inherit,
         run: ChildUnaryPermissionArg::Inherit,
         sys: ChildUnaryPermissionArg::Inherit,
@@ -4058,6 +4130,7 @@ mod tests {
         env: ChildUnaryPermissionArg::NotGranted,
         net: ChildUnaryPermissionArg::NotGranted,
         ffi: ChildUnaryPermissionArg::NotGranted,
+        import: ChildUnaryPermissionArg::NotGranted,
         read: ChildUnaryPermissionArg::NotGranted,
         run: ChildUnaryPermissionArg::NotGranted,
         sys: ChildUnaryPermissionArg::NotGranted,
@@ -4091,6 +4164,7 @@ mod tests {
         "env": true,
         "net": true,
         "ffi": true,
+        "import": true,
         "read": true,
         "run": true,
         "sys": true,
@@ -4101,6 +4175,7 @@ mod tests {
         env: ChildUnaryPermissionArg::Granted,
         net: ChildUnaryPermissionArg::Granted,
         ffi: ChildUnaryPermissionArg::Granted,
+        import: ChildUnaryPermissionArg::Granted,
         read: ChildUnaryPermissionArg::Granted,
         run: ChildUnaryPermissionArg::Granted,
         sys: ChildUnaryPermissionArg::Granted,
@@ -4112,6 +4187,7 @@ mod tests {
         "env": false,
         "net": false,
         "ffi": false,
+        "import": false,
         "read": false,
         "run": false,
         "sys": false,
@@ -4122,6 +4198,7 @@ mod tests {
         env: ChildUnaryPermissionArg::NotGranted,
         net: ChildUnaryPermissionArg::NotGranted,
         ffi: ChildUnaryPermissionArg::NotGranted,
+        import: ChildUnaryPermissionArg::NotGranted,
         read: ChildUnaryPermissionArg::NotGranted,
         run: ChildUnaryPermissionArg::NotGranted,
         sys: ChildUnaryPermissionArg::NotGranted,
@@ -4133,6 +4210,7 @@ mod tests {
         "env": ["foo", "bar"],
         "net": ["foo", "bar:8000"],
         "ffi": ["foo", "file:///bar/baz"],
+        "import": ["example.com"],
         "read": ["foo", "file:///bar/baz"],
         "run": ["foo", "file:///bar/baz", "./qux"],
         "sys": ["hostname", "osRelease"],
@@ -4146,6 +4224,7 @@ mod tests {
           "foo",
           "file:///bar/baz"
         ]),
+        import: ChildUnaryPermissionArg::GrantedList(svec!["example.com"]),
         read: ChildUnaryPermissionArg::GrantedList(svec![
           "foo",
           "file:///bar/baz"

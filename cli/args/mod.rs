@@ -86,6 +86,8 @@ use deno_config::deno_json::FmtConfig;
 use deno_config::deno_json::LintConfig;
 use deno_config::deno_json::TestConfig;
 
+pub use deno_runtime::deno_permissions::jsr_url;
+
 pub fn npm_registry_url() -> &'static Url {
   static NPM_REGISTRY_DEFAULT_URL: Lazy<Url> = Lazy::new(|| {
     let env_var_name = "NPM_CONFIG_REGISTRY";
@@ -117,32 +119,6 @@ pub static DENO_DISABLE_PEDANTIC_NODE_WARNINGS: Lazy<bool> = Lazy::new(|| {
     .ok()
     .is_some()
 });
-
-pub fn jsr_url() -> &'static Url {
-  static JSR_URL: Lazy<Url> = Lazy::new(|| {
-    let env_var_name = "JSR_URL";
-    if let Ok(registry_url) = std::env::var(env_var_name) {
-      // ensure there is a trailing slash for the directory
-      let registry_url = format!("{}/", registry_url.trim_end_matches('/'));
-      match Url::parse(&registry_url) {
-        Ok(url) => {
-          return url;
-        }
-        Err(err) => {
-          log::debug!(
-            "Invalid {} environment variable: {:#}",
-            env_var_name,
-            err,
-          );
-        }
-      }
-    }
-
-    Url::parse("https://jsr.io/").unwrap()
-  });
-
-  &JSR_URL
-}
 
 pub fn jsr_api_url() -> &'static Url {
   static JSR_API_URL: Lazy<Url> = Lazy::new(|| {

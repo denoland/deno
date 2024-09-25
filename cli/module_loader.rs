@@ -252,10 +252,12 @@ impl CliModuleLoaderFactory {
     &self,
     graph_container: TGraphContainer,
     lib: TsTypeLib,
+    is_worker: bool,
     root_permissions: PermissionsContainer,
   ) -> ModuleLoaderAndSourceMapGetter {
     let loader = Rc::new(CliModuleLoader(Rc::new(CliModuleLoaderInner {
       lib,
+      is_worker,
       root_permissions,
       graph_container,
       emitter: self.shared.emitter.clone(),
@@ -276,6 +278,7 @@ impl ModuleLoaderFactory for CliModuleLoaderFactory {
     self.create_with_lib(
       (*self.shared.main_module_graph_container).clone(),
       self.shared.lib_window,
+      /* is worker */ false,
       root_permissions,
     )
   }
@@ -290,6 +293,7 @@ impl ModuleLoaderFactory for CliModuleLoaderFactory {
         self.shared.graph_kind,
       ))),
       self.shared.lib_worker,
+      /* is worker */ true,
       root_permissions,
     )
   }
@@ -297,6 +301,7 @@ impl ModuleLoaderFactory for CliModuleLoaderFactory {
 
 struct CliModuleLoaderInner<TGraphContainer: ModuleGraphContainer> {
   lib: TsTypeLib,
+  is_worker: bool,
   /// The initial set of permissions used to resolve the static imports in the
   /// worker. These are "allow all" for main worker, and parent thread
   /// permissions for Web Worker.
@@ -760,6 +765,7 @@ impl<TGraphContainer: ModuleGraphContainer> ModuleLoader
         }
       }
 
+      let is_dynamic = is_dynamic || inner.is_worker; // consider workers as dynamic for permissions
       let root_permissions = inner.root_permissions.clone();
       let lib = inner.lib;
       let mut update_permit = graph_container.acquire_update_permit().await;

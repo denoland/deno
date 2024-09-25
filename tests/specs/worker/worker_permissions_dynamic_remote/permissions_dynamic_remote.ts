@@ -4,7 +4,7 @@ new Worker(
     type: "module",
     deno: {
       permissions: {
-        net: false,
+        import: false,
       },
     },
   },
