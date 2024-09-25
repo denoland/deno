@@ -281,7 +281,7 @@ fn set_up_bin_shim(
 fn make_executable_if_exists(path: &Path) -> Result<bool, AnyError> {
   use std::io;
   use std::os::unix::fs::PermissionsExt;
-  let mut perms = match std::fs::metadata(&path) {
+  let mut perms = match std::fs::metadata(path) {
     Ok(metadata) => metadata.permissions(),
     Err(err) => {
       if err.kind() == io::ErrorKind::NotFound {
@@ -293,7 +293,7 @@ fn make_executable_if_exists(path: &Path) -> Result<bool, AnyError> {
   if perms.mode() & 0o111 == 0 {
     // if the original file is not executable, make it executable
     perms.set_mode(perms.mode() | 0o111);
-    std::fs::set_permissions(&path, perms).with_context(|| {
+    std::fs::set_permissions(path, perms).with_context(|| {
       format!("Setting permissions on '{}'", path.display())
     })?;
   }
