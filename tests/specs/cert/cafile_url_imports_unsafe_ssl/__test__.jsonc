@@ -1,5 +1,5 @@
 {
-  "args": "run --quiet --reload --unsafely-ignore-certificate-errors=localhost cafile_url_imports.ts",
+  "args": "run --quiet --allow-import --reload --unsafely-ignore-certificate-errors=localhost cafile_url_imports.ts",
   "flaky": true,
   "output": "cafile_url_imports_unsafe_ssl.ts.out"
 }

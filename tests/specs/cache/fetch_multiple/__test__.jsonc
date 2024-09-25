@@ -1,4 +1,4 @@
 {
-  "args": "cache --reload --check=all test.ts other.ts",
+  "args": "cache --reload --allow-import --check=all test.ts other.ts",
   "output": "fetch_multiple.out"
 }

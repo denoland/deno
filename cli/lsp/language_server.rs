@@ -3615,7 +3615,7 @@ impl Inner {
         // bit of a hack to force the lsp to cache the @types/node package
         type_check_mode: crate::args::TypeCheckMode::Local,
         permissions: crate::args::PermissionFlags {
-          allow_imports: Some(vec![]),
+          allow_import: Some(vec![]),
           ..Default::default()
         },
         ..Default::default()

@@ -657,7 +657,7 @@ pub async fn run(
   };
 
   let permissions = {
-    let mut permissions = metadata.permissions.to_options();
+    let mut permissions = metadata.permissions.to_options(&[]);
     // if running with an npm vfs, grant read access to it
     if let Some(vfs_root) = maybe_vfs_root {
       match &mut permissions.allow_read {

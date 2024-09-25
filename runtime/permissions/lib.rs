@@ -1812,7 +1812,7 @@ pub struct PermissionsOptions {
   pub deny_sys: Option<Vec<String>>,
   pub allow_write: Option<Vec<String>>,
   pub deny_write: Option<Vec<String>>,
-  pub allow_imports: Option<Vec<String>>,
+  pub allow_import: Option<Vec<String>>,
   pub prompt: bool,
 }
 
@@ -1982,7 +1982,7 @@ impl Permissions {
         opts.prompt,
       )?,
       import: Permissions::new_unary(
-        parse_maybe_vec(opts.allow_imports.as_deref(), |item| {
+        parse_maybe_vec(opts.allow_import.as_deref(), |item| {
           parser.parse_import_descriptor(item)
         })?,
         None,

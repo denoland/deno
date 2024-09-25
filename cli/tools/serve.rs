@@ -45,7 +45,13 @@ pub async fn serve(
 
   let worker_factory = factory.create_cli_main_worker_factory().await?;
 
-  do_serve(worker_factory, main_module, serve_flags.worker_count, false).await
+  do_serve(
+    worker_factory,
+    main_module.clone(),
+    serve_flags.worker_count,
+    false,
+  )
+  .await
 }
 
 async fn do_serve(
@@ -158,7 +164,8 @@ async fn serve_with_watch(
         let _ = watcher_communicator.watch_paths(cli_options.watch_paths());
         let worker_factory = factory.create_cli_main_worker_factory().await?;
 
-        do_serve(worker_factory, main_module, worker_count, hmr).await?;
+        do_serve(worker_factory, main_module.clone(), worker_count, hmr)
+          .await?;
 
         Ok(())
       })

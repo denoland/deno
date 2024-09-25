@@ -456,6 +456,7 @@ fn no_http_coverage_data() {
     .new_command()
     .args_vec(vec![
       "test".to_string(),
+      "--allow-import".to_string(),
       "--quiet".to_string(),
       "--no-check".to_string(),
       format!("--coverage={}", tempdir),

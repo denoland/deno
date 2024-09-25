@@ -189,7 +189,7 @@ pub async fn run(
     npm_resolver,
     resolver,
     worker,
-    main_module,
+    main_module.clone(),
     test_event_receiver,
   )
   .await?;

@@ -1,5 +1,5 @@
 {
-  "args": "bench --quiet check_local_by_default2.ts",
+  "args": "bench --allow-import --quiet check_local_by_default2.ts",
   "output": "check_local_by_default2.out",
   "exitCode": 1
 }

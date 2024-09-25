@@ -19,9 +19,19 @@
       "output": "compile.out",
       "exitCode": 1
     },
+    "doc": {
+      "args": "doc main.ts",
+      "output": "doc.out",
+      "exitCode": 1
+    },
     "run": {
       "args": "run main.ts",
       "output": "run.out",
+      "exitCode": 1
+    },
+    "serve": {
+      "args": "serve main.ts",
+      "output": "serve.out",
       "exitCode": 1
     },
     "builtin_host": {

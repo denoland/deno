@@ -1,4 +1,4 @@
 {
-  "args": "bench --quiet check_local_by_default.ts",
+  "args": "bench --allow-import --quiet check_local_by_default.ts",
   "output": "check_local_by_default.out"
 }

@@ -1,5 +1,6 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
+use std::borrow::Cow;
 use std::collections::HashSet;
 use std::env;
 use std::ffi::OsString;
@@ -640,7 +641,7 @@ pub struct PermissionFlags {
   pub allow_write: Option<Vec<String>>,
   pub deny_write: Option<Vec<String>>,
   pub no_prompt: bool,
-  pub allow_imports: Option<Vec<String>>,
+  pub allow_import: Option<Vec<String>>,
 }
 
 impl PermissionFlags {
@@ -660,10 +661,10 @@ impl PermissionFlags {
       || self.deny_sys.is_some()
       || self.allow_write.is_some()
       || self.deny_write.is_some()
-      || self.allow_imports.is_some()
+      || self.allow_import.is_some()
   }
 
-  pub fn to_options(&self) -> PermissionsOptions {
+  pub fn to_options(&self, cli_arg_urls: &[Cow<Url>]) -> PermissionsOptions {
     fn handle_allow<T: Default>(
       allow_all: bool,
       value: Option<T>,
@@ -676,7 +677,10 @@ impl PermissionFlags {
       }
     }
 
-    fn handle_imports(imports: Option<Vec<String>>) -> Option<Vec<String>> {
+    fn handle_imports(
+      cli_arg_urls: &[Cow<Url>],
+      imports: Option<Vec<String>>,
+    ) -> Option<Vec<String>> {
       if imports.is_some() {
         return imports;
       }
@@ -695,8 +699,14 @@ impl PermissionFlags {
         .extend(builtin_allowed_import_hosts.iter().map(|s| s.to_string()));
 
       // also add the JSR_URL env var
-      if let Some(jsr_host) = custom_jsr_host_from_url(jsr_url()) {
+      if let Some(jsr_host) = allow_import_host_from_url(jsr_url()) {
         imports.push(jsr_host);
+      }
+      // include the cli arg urls
+      for url in cli_arg_urls {
+        if let Some(host) = allow_import_host_from_url(url) {
+          imports.push(host);
+        }
       }
 
       Some(imports)
@@ -718,17 +728,17 @@ impl PermissionFlags {
       deny_sys: self.deny_sys.clone(),
       allow_write: handle_allow(self.allow_all, self.allow_write.clone()),
       deny_write: self.deny_write.clone(),
-      allow_imports: handle_imports(handle_allow(
-        self.allow_all,
-        self.allow_imports.clone(),
-      )),
+      allow_import: handle_imports(
+        cli_arg_urls,
+        handle_allow(self.allow_all, self.allow_import.clone()),
+      ),
       prompt: !resolve_no_prompt(self),
     }
   }
 }
 
-/// Gets the jsr host from the provided url
-fn custom_jsr_host_from_url(url: &Url) -> Option<String> {
+/// Gets the --allow-import host from the provided url
+fn allow_import_host_from_url(url: &Url) -> Option<String> {
   let host = url.host()?;
   if let Some(port) = url.port() {
     Some(format!("{}:{}", host, port))
@@ -932,7 +942,7 @@ impl Flags {
       _ => {}
     }
 
-    match &self.permissions.allow_imports {
+    match &self.permissions.allow_import {
       Some(allowlist) if allowlist.is_empty() => {
         args.push("--allow-import".to_string());
       }
@@ -1053,7 +1063,7 @@ impl Flags {
     self.permissions.allow_write = None;
     self.permissions.allow_sys = None;
     self.permissions.allow_ffi = None;
-    self.permissions.allow_imports = None;
+    self.permissions.allow_import = None;
   }
 
   pub fn resolve_watch_exclude_set(
@@ -1770,7 +1780,7 @@ Future runs of this module will trigger no downloads or compilation unless --rel
       )
       .arg(frozen_lockfile_arg())
       .arg(allow_scripts_arg())
-      .arg(allow_imports_arg())
+      .arg(allow_import_arg())
   })
 }
 
@@ -1830,7 +1840,7 @@ Unless --reload is specified, this command will not re-download already cached d
             .required_unless_present("help")
             .value_hint(ValueHint::FilePath),
         )
-        .arg(allow_imports_arg())
+        .arg(allow_import_arg())
       }
     )
 }
@@ -2059,6 +2069,7 @@ Show documentation for runtime built-ins:
         .arg(no_lock_arg())
         .arg(no_npm_arg())
         .arg(no_remote_arg())
+        .arg(allow_import_arg())
         .arg(
           Arg::new("json")
             .long("json")
@@ -2423,7 +2434,7 @@ The following information is shown:
           .help("UNSTABLE: Outputs the information in JSON format")
           .action(ArgAction::SetTrue),
       ))
-      .arg(allow_imports_arg())
+      .arg(allow_import_arg())
 }
 
 fn install_subcommand() -> Command {
@@ -3573,9 +3584,12 @@ fn permission_args(app: Command, requires: Option<&'static str>) -> Command {
     )
     .arg(
       {
-        let mut arg = allow_imports_arg().hide(true);
+        let mut arg = allow_import_arg().hide(true);
         if let Some(requires) = requires {
-          arg = arg.requires(requires)
+          // allow this for install --global
+          if requires != "global" {
+            arg = arg.requires(requires)
+          }
         }
         arg
       }
@@ -3616,7 +3630,7 @@ fn runtime_args(
     .arg(strace_ops_arg())
 }
 
-fn allow_imports_arg() -> Arg {
+fn allow_import_arg() -> Arg {
   Arg::new("allow-import")
     .long("allow-import")
     .short('I')
@@ -4265,7 +4279,7 @@ fn cache_parse(
   unstable_args_parse(flags, matches, UnstableArgsConfig::ResolutionOnly);
   frozen_lockfile_arg_parse(flags, matches);
   allow_scripts_arg_parse(flags, matches)?;
-  parse_allow_imports(flags, matches);
+  allow_import_parse(flags, matches);
   let files = matches.remove_many::<String>("file").unwrap().collect();
   flags.subcommand = DenoSubcommand::Cache(CacheFlags { files });
   Ok(())
@@ -4287,7 +4301,7 @@ fn check_parse(
     doc: matches.get_flag("doc"),
     doc_only: matches.get_flag("doc-only"),
   });
-  parse_allow_imports(flags, matches);
+  allow_import_parse(flags, matches);
   Ok(())
 }
 
@@ -4413,6 +4427,7 @@ fn doc_parse(
   no_lock_arg_parse(flags, matches);
   no_npm_arg_parse(flags, matches);
   no_remote_arg_parse(flags, matches);
+  allow_import_parse(flags, matches);
 
   let source_files_val = matches.remove_many::<String>("source_file");
   let source_files = if let Some(val) = source_files_val {
@@ -4553,7 +4568,7 @@ fn info_parse(
   lock_args_parse(flags, matches);
   no_remote_arg_parse(flags, matches);
   no_npm_arg_parse(flags, matches);
-  parse_allow_imports(flags, matches);
+  allow_import_parse(flags, matches);
   let json = matches.get_flag("json");
   flags.subcommand = DenoSubcommand::Info(InfoFlags {
     file: matches.remove_one::<String>("file"),
@@ -4589,6 +4604,7 @@ fn install_parse(
         force,
       }),
     });
+
     return Ok(());
   }
 
@@ -5283,7 +5299,7 @@ fn permission_args_parse(
     flags.allow_all();
   }
 
-  parse_allow_imports(flags, matches);
+  allow_import_parse(flags, matches);
 
   if matches.get_flag("no-prompt") {
     flags.permissions.no_prompt = true;
@@ -5292,10 +5308,10 @@ fn permission_args_parse(
   Ok(())
 }
 
-fn parse_allow_imports(flags: &mut Flags, matches: &mut ArgMatches) {
+fn allow_import_parse(flags: &mut Flags, matches: &mut ArgMatches) {
   if let Some(imports_wl) = matches.remove_many::<String>("allow-import") {
     let imports_allowlist = flags_net::parse(imports_wl.collect()).unwrap();
-    flags.permissions.allow_imports = Some(imports_allowlist);
+    flags.permissions.allow_import = Some(imports_allowlist);
   }
 }
 
@@ -10887,7 +10903,7 @@ mod tests {
       }
     );
     // just make sure this doesn't panic
-    let _ = flags.permissions.to_options();
+    let _ = flags.permissions.to_options(&[]);
   }
 
   #[test]
@@ -10964,9 +10980,9 @@ Usage: deno repl [OPTIONS] [-- [ARGS]...]\n"
   }
 
   #[test]
-  fn test_custom_jsr_host_from_url() {
+  fn test_allow_import_host_from_url() {
     fn parse(text: &str) -> Option<String> {
-      custom_jsr_host_from_url(&Url::parse(text).unwrap())
+      allow_import_host_from_url(&Url::parse(text).unwrap())
     }
 
     assert_eq!(parse("https://jsr.io"), None);
