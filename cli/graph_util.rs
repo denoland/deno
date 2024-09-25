@@ -249,6 +249,18 @@ impl ModuleGraphCreator {
     package_configs: &[JsrPackageConfig],
     build_fast_check_graph: bool,
   ) -> Result<ModuleGraph, AnyError> {
+    fn graph_has_external_remote(graph: &ModuleGraph) -> bool {
+      // skip type checking when there are any external remote modules
+      // because those will be surfaced as errors later and will cause
+      // type checking to crash
+      graph.modules().any(|module| match module {
+        deno_graph::Module::External(external_module) => {
+          matches!(external_module.specifier.scheme(), "http" | "https")
+        }
+        _ => false,
+      })
+    }
+
     let mut roots = Vec::new();
     for package_config in package_configs {
       roots.extend(package_config.config_file.resolve_export_value_urls()?);
@@ -262,9 +274,12 @@ impl ModuleGraphCreator {
       })
       .await?;
     self.graph_valid(&graph)?;
-    if self.options.type_check_mode().is_true() {
+    if self.options.type_check_mode().is_true()
+      && !graph_has_external_remote(&graph)
+    {
       self.type_check_graph(graph.clone()).await?;
     }
+
     if build_fast_check_graph {
       let fast_check_workspace_members = package_configs
         .iter()
@@ -279,6 +294,7 @@ impl ModuleGraphCreator {
         },
       )?;
     }
+
     Ok(graph)
   }
 
@@ -682,11 +698,17 @@ impl ModuleGraphBuilder {
   ) -> cache::FetchCacher {
     cache::FetchCacher::new(
       self.file_fetcher.clone(),
-      self.options.resolve_file_header_overrides(),
       self.global_http_cache.clone(),
       self.npm_resolver.clone(),
       self.module_info_cache.clone(),
-      permissions,
+      cache::FetchCacherOptions {
+        file_header_overrides: self.options.resolve_file_header_overrides(),
+        permissions,
+        is_deno_publish: matches!(
+          self.options.sub_command(),
+          crate::args::DenoSubcommand::Publish { .. }
+        ),
+      },
     )
   }
 

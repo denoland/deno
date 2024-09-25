@@ -1,5 +1,6 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
+use crate::args::jsr_url;
 use crate::args::CacheSetting;
 use crate::errors::get_error_class_name;
 use crate::file_fetcher::FetchNoFollowOptions;
@@ -105,6 +106,13 @@ pub type LocalLspHttpCache =
   deno_cache_dir::LocalLspHttpCache<RealDenoCacheEnv>;
 pub use deno_cache_dir::HttpCache;
 
+pub struct FetchCacherOptions {
+  pub file_header_overrides: HashMap<ModuleSpecifier, HashMap<String, String>>,
+  pub permissions: PermissionsContainer,
+  /// If we're publishing for `deno publish`.
+  pub is_deno_publish: bool,
+}
+
 /// A "wrapper" for the FileFetcher and DiskCache for the Deno CLI that provides
 /// a concise interface to the DENO_DIR when building module graphs.
 pub struct FetchCacher {
@@ -115,24 +123,25 @@ pub struct FetchCacher {
   module_info_cache: Arc<ModuleInfoCache>,
   permissions: PermissionsContainer,
   cache_info_enabled: bool,
+  is_deno_publish: bool,
 }
 
 impl FetchCacher {
   pub fn new(
     file_fetcher: Arc<FileFetcher>,
-    file_header_overrides: HashMap<ModuleSpecifier, HashMap<String, String>>,
     global_http_cache: Arc<GlobalHttpCache>,
     npm_resolver: Arc<dyn CliNpmResolver>,
     module_info_cache: Arc<ModuleInfoCache>,
-    permissions: PermissionsContainer,
+    options: FetchCacherOptions,
   ) -> Self {
     Self {
       file_fetcher,
-      file_header_overrides,
       global_http_cache,
       npm_resolver,
       module_info_cache,
-      permissions,
+      file_header_overrides: options.file_header_overrides,
+      permissions: options.permissions,
+      is_deno_publish: options.is_deno_publish,
       cache_info_enabled: false,
     }
   }
@@ -207,6 +216,19 @@ impl Loader for FetchCacher {
           },
         ))));
       }
+    }
+
+    if self.is_deno_publish
+      && matches!(specifier.scheme(), "http" | "https")
+      && !specifier.as_str().starts_with(jsr_url().as_str())
+    {
+      // mark non-JSR remote modules as external so we don't need --allow-import
+      // permissions as these will error out later when publishing
+      return Box::pin(futures::future::ready(Ok(Some(
+        LoadResponse::External {
+          specifier: specifier.clone(),
+        },
+      ))));
     }
 
     let file_fetcher = self.file_fetcher.clone();
