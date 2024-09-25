@@ -8,6 +8,10 @@
     "well_formatted": {
       "args": "fmt --check well_formatted.html",
       "output": "Checked 1 file\n"
+    },
+    "broken": {
+      "args": "fmt broken.html",
+      "output": "broken.out"
     }
   }
 }
