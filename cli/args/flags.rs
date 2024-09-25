@@ -682,17 +682,17 @@ impl PermissionFlags {
       }
 
       let builtin_allowed_import_hosts = [
-        "deno.land",
-        "esm.sh",
-        "jsr.io",
-        "raw.githubusercontent.com",
-        "gist.githubusercontent.com",
-        "localhost",
-        "127.0.0.1",
+        "deno.land:443",
+        "esm.sh:443",
+        "jsr.io:443",
+        "raw.githubusercontent.com:443",
+        "gist.githubusercontent.com:443",
       ];
 
-      let mut imports = Vec::with_capacity(builtin_allowed_import_hosts.len() + 1);
-      imports.extend(builtin_allowed_import_hosts.iter().map(|s| s.to_string()));
+      let mut imports =
+        Vec::with_capacity(builtin_allowed_import_hosts.len() + 1);
+      imports
+        .extend(builtin_allowed_import_hosts.iter().map(|s| s.to_string()));
 
       // also add the JSR_URL env var
       if let Some(jsr_host) = custom_jsr_host_from_url(jsr_url()) {
@@ -718,7 +718,10 @@ impl PermissionFlags {
       deny_sys: self.deny_sys.clone(),
       allow_write: handle_allow(self.allow_all, self.allow_write.clone()),
       deny_write: self.deny_write.clone(),
-      allow_imports: handle_imports(handle_allow(self.allow_all, self.allow_imports.clone())),
+      allow_imports: handle_imports(handle_allow(
+        self.allow_all,
+        self.allow_imports.clone(),
+      )),
       prompt: !resolve_no_prompt(self),
     }
   }
@@ -737,7 +740,7 @@ fn custom_jsr_host_from_url(url: &Url) -> Option<String> {
         "https" => Some(format!("{}:443", host)),
         "http" => Some(format!("{}:80", host)),
         _ => None,
-      }
+      },
     }
   }
 }
@@ -3576,7 +3579,6 @@ fn permission_args(app: Command, requires: Option<&'static str>) -> Command {
         }
         arg
       }
-      
     )
 }
 
@@ -10969,8 +10971,14 @@ Usage: deno repl [OPTIONS] [-- [ARGS]...]\n"
 
     assert_eq!(parse("https://jsr.io"), None);
     assert_eq!(parse("http://jsr.io"), Some("jsr.io:80".to_string()));
-    assert_eq!(parse("https://example.com"), Some("example.com:443".to_string()));
-    assert_eq!(parse("http://example.com"), Some("example.com:80".to_string()));
+    assert_eq!(
+      parse("https://example.com"),
+      Some("example.com:443".to_string())
+    );
+    assert_eq!(
+      parse("http://example.com"),
+      Some("example.com:80".to_string())
+    );
     assert_eq!(parse("file:///example.com"), None);
   }
 }
