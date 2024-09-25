@@ -24,6 +24,7 @@ fn append_to_hosts(host: &str, ip: &str) {
     return;
   }
 
+  #[allow(clippy::print_stderr)]
   if std::io::stderr().is_terminal() && std::env::var("CI").is_err() {
     eprintln!(
       concat!(
