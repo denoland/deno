@@ -20,9 +20,14 @@
       "exitCode": 1
     },
     "doc": {
-      "args": "doc main.ts",
+      "args": "doc doc.ts",
       "output": "doc.out",
-      "exitCode": 1
+      "exitCode": 0
+    },
+    "doc_allowed": {
+      "args": "doc --allow-import doc.ts",
+      "output": "doc_allowed.out",
+      "exitCode": 0
     },
     "run": {
       "args": "run main.ts",
