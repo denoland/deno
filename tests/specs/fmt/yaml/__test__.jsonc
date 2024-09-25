@@ -1,0 +1,13 @@
+{
+  "tempDir": true,
+  "tests": {
+    "badly_formatted": {
+      "args": "fmt badly_formatted.yml",
+      "output": "[WILDLINE]badly_formatted.yml\nChecked 1 file\n"
+    },
+    "well_formatted": {
+      "args": "fmt --check well_formatted.yml",
+      "output": "Checked 1 file\n"
+    }
+  }
+}

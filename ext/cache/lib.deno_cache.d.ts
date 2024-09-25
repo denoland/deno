@@ -9,7 +9,7 @@
 declare var caches: CacheStorage;
 
 /** @category Cache */
-declare interface CacheStorage {
+interface CacheStorage {
   /** Open a cache storage for the provided name. */
   open(cacheName: string): Promise<Cache>;
   /** Check if cache already exists for the provided name. */
@@ -19,7 +19,7 @@ declare interface CacheStorage {
 }
 
 /** @category Cache */
-declare interface Cache {
+interface Cache {
   /**
    * Put the provided request/response into the cache.
    *
@@ -65,7 +65,7 @@ declare var CacheStorage: {
 };
 
 /** @category Cache */
-declare interface CacheQueryOptions {
+interface CacheQueryOptions {
   ignoreMethod?: boolean;
   ignoreSearch?: boolean;
   ignoreVary?: boolean;
