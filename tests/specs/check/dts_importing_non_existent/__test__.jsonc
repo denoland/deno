@@ -1,0 +1,4 @@
+{
+  "args": "check index.js",
+  "output": "check.out"
+}
