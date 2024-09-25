@@ -251,7 +251,7 @@ impl ModuleGraphCreator {
   ) -> Result<ModuleGraph, AnyError> {
     fn graph_has_external_remote(graph: &ModuleGraph) -> bool {
       // skip type checking when there are any external remote modules
-      // because those will be surfaced as errors later and will cause
+      // because those will be surfaced as errors later and would cause
       // type checking to crash
       graph.modules().any(|module| match module {
         deno_graph::Module::External(external_module) => {
