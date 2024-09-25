@@ -657,7 +657,17 @@ async fn sync_resolution_with_fs(
           Entry::Occupied(nv) => {
             alias_clashes
               || remote.req.name != nv.get().name // alias to a different package (in case of duplicate aliases)
-              || !remote.req.version_req.matches(&nv.get().version) // incompatible version
+                || {
+              let version_str = nv.get().version.to_string();
+              // Check for pre-release tag
+              if version_str.contains('-') {
+                // Handle pre-release versions differently, if needed
+                log::warn!("{} Version '{}' for alias '{}' is a pre-release version.",  colors::yellow("Warning"), version_str, remote_alias);
+                false // or however you want to handle it
+              } else {
+                !remote.req.version_req.matches(&nv.get().version) // compatible version
+              }
+            }
           }
           Entry::Vacant(entry) => {
             entry.insert(&remote_pkg.id.nv);
