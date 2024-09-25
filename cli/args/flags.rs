@@ -3228,39 +3228,40 @@ fn permission_args(app: Command, requires: Option<&'static str>) -> Command {
     .after_help(cstr!(r#"<y>Permission options:</>
 <y>Docs</>: <c>https://docs.deno.com/go/permissions</>
 
-  <g>-A, --allow-all</>                        Allow all permissions.
-  <g>--no-prompt</>                        Always throw if required permission wasn't passed.
-                                           <p(245)>Can also be set via the DENO_NO_PROMPT environment variable.</>
-  <g>-R, --allow-read[=<<PATH>...]</>           Allow file system read access. Optionally specify allowed paths.
-                                           <p(245)>--allow-read  |  --allow-read="/etc,/var/log.txt"</>
-  <g>-W, --allow-write[=<<PATH>...]</>          Allow file system write access. Optionally specify allowed paths.
-                                           <p(245)>--allow-write  |  --allow-write="/etc,/var/log.txt"</>
-  <g>-I, --allow-import[=<<IP_OR_HOSTNAME>...]</>  Allow importing from remote hosts. Optionally specify allowed IP addresses and host names, with ports as necessary.
-                                           <p(245)>--allow-import  |  --allow-import="example.com,github.com"</>
-  <g>-N, --allow-net[=<<IP_OR_HOSTNAME>...]</>  Allow network access. Optionally specify allowed IP addresses and host names, with ports as necessary.
-                                           <p(245)>--allow-net  |  --allow-net="localhost:8080,deno.land"</>
-  <g>-E, --allow-env[=<<VARIABLE_NAME>...]</>   Allow access to environment variables. Optionally specify accessible environment variables.
-                                           <p(245)>--allow-env  |  --allow-env="PORT,HOME,PATH"</>
-  <g>-S, --allow-sys[=<<API_NAME>...]</>        Allow access to OS information. Optionally allow specific APIs by function name.
-                                           <p(245)>--allow-sys  |  --allow-sys="systemMemoryInfo,osRelease"</>
-      <g>--allow-run[=<<PROGRAM_NAME>...]</>    Allow running subprocesses. Optionally specify allowed runnable program names.
-                                           <p(245)>--allow-run  |  --allow-run="whoami,ps"</>
-      <g>--allow-ffi[=<<PATH>...]</>            (Unstable) Allow loading dynamic libraries. Optionally specify allowed directories or files.
-                                           <p(245)>--allow-ffi  |  --allow-ffi="./libfoo.so"</>
-  <g>    --deny-read[=<<PATH>...]</>            Deny file system read access. Optionally specify denied paths.
-                                           <p(245)>--deny-read  |  --deny-read="/etc,/var/log.txt"</>
-  <g>    --deny-write[=<<PATH>...]</>           Deny file system write access. Optionally specify denied paths.
-                                           <p(245)>--deny-write  |  --deny-write="/etc,/var/log.txt"</>
-  <g>    --deny-net[=<<IP_OR_HOSTNAME>...]</>   Deny network access. Optionally specify defined IP addresses and host names, with ports as necessary.
-                                           <p(245)>--deny-net  |  --deny-net="localhost:8080,deno.land"</>
-  <g>    --deny-env[=<<VARIABLE_NAME>...]</>    Deny access to environment variables. Optionally specify inacessible environment variables.
-                                           <p(245)>--deny-env  |  --deny-env="PORT,HOME,PATH"</>
-  <g>-S, --deny-sys[=<<API_NAME>...]</>         Deny access to OS information. Optionally deny specific APIs by function name.
-                                           <p(245)>--deny-sys  |  --deny-sys="systemMemoryInfo,osRelease"</>
-      <g>--deny-run[=<<PROGRAM_NAME>...]</>     Deny running subprocesses. Optionally specify denied runnable program names.
-                                           <p(245)>--deny-run  |  --deny-run="whoami,ps"</>
-      <g>--deny-ffi[=<<PATH>...]</>             (Unstable) Deny loading dynamic libraries. Optionally specify denied directories or files.
-                                           <p(245)>--deny-ffi  |  --deny-ffi="./libfoo.so"</>
+  <g>-A, --allow-all</>                          Allow all permissions.
+  <g>--no-prompt</>                              Always throw if required permission wasn't passed.
+                                             <p(245)>Can also be set via the DENO_NO_PROMPT environment variable.</>
+  <g>-R, --allow-read[=<<PATH>...]</>             Allow file system read access. Optionally specify allowed paths.
+                                             <p(245)>--allow-read  |  --allow-read="/etc,/var/log.txt"</>
+  <g>-W, --allow-write[=<<PATH>...]</>            Allow file system write access. Optionally specify allowed paths.
+                                             <p(245)>--allow-write  |  --allow-write="/etc,/var/log.txt"</>
+  <g>-I, --allow-import[=<<IP_OR_HOSTNAME>...]</> Allow importing from remote hosts. Optionally specify allowed IP addresses and host names, with ports as necessary.
+                                            Allowed by default: deno.land, jsr.io, esm.sh, raw.githubusercontent.com, user.githubusercontent.com
+                                             <p(245)>--allow-import  |  --allow-import="example.com,github.com"</>
+  <g>-N, --allow-net[=<<IP_OR_HOSTNAME>...]</>    Allow network access. Optionally specify allowed IP addresses and host names, with ports as necessary.
+                                             <p(245)>--allow-net  |  --allow-net="localhost:8080,deno.land"</>
+  <g>-E, --allow-env[=<<VARIABLE_NAME>...]</>     Allow access to environment variables. Optionally specify accessible environment variables.
+                                             <p(245)>--allow-env  |  --allow-env="PORT,HOME,PATH"</>
+  <g>-S, --allow-sys[=<<API_NAME>...]</>          Allow access to OS information. Optionally allow specific APIs by function name.
+                                             <p(245)>--allow-sys  |  --allow-sys="systemMemoryInfo,osRelease"</>
+      <g>--allow-run[=<<PROGRAM_NAME>...]</>      Allow running subprocesses. Optionally specify allowed runnable program names.
+                                             <p(245)>--allow-run  |  --allow-run="whoami,ps"</>
+      <g>--allow-ffi[=<<PATH>...]</>              (Unstable) Allow loading dynamic libraries. Optionally specify allowed directories or files.
+                                             <p(245)>--allow-ffi  |  --allow-ffi="./libfoo.so"</>
+  <g>    --deny-read[=<<PATH>...]</>              Deny file system read access. Optionally specify denied paths.
+                                             <p(245)>--deny-read  |  --deny-read="/etc,/var/log.txt"</>
+  <g>    --deny-write[=<<PATH>...]</>             Deny file system write access. Optionally specify denied paths.
+                                             <p(245)>--deny-write  |  --deny-write="/etc,/var/log.txt"</>
+  <g>    --deny-net[=<<IP_OR_HOSTNAME>...]</>     Deny network access. Optionally specify defined IP addresses and host names, with ports as necessary.
+                                             <p(245)>--deny-net  |  --deny-net="localhost:8080,deno.land"</>
+  <g>    --deny-env[=<<VARIABLE_NAME>...]</>      Deny access to environment variables. Optionally specify inacessible environment variables.
+                                             <p(245)>--deny-env  |  --deny-env="PORT,HOME,PATH"</>
+  <g>-S, --deny-sys[=<<API_NAME>...]</>           Deny access to OS information. Optionally deny specific APIs by function name.
+                                             <p(245)>--deny-sys  |  --deny-sys="systemMemoryInfo,osRelease"</>
+      <g>--deny-run[=<<PROGRAM_NAME>...]</>       Deny running subprocesses. Optionally specify denied runnable program names.
+                                             <p(245)>--deny-run  |  --deny-run="whoami,ps"</>
+      <g>--deny-ffi[=<<PATH>...]</>               (Unstable) Deny loading dynamic libraries. Optionally specify denied directories or files.
+                                             <p(245)>--deny-ffi  |  --deny-ffi="./libfoo.so"</>
 "#))
     .arg(
       {
@@ -3638,7 +3639,10 @@ fn allow_import_arg() -> Arg {
     .use_value_delimiter(true)
     .require_equals(true)
     .value_name("IP_OR_HOSTNAME")
-    .help("Allow importing from remote hosts. Optionally specify allowed IP addresses and host names, with ports as necessary")
+    .help(concat!(
+      "Allow importing from remote hosts. Optionally specify allowed IP addresses and host names, with ports as necessary. ",
+      "Allowed by default: deno.land, jsr.io, esm.sh, raw.githubusercontent.com, user.githubusercontent.com"
+    ))
     .value_parser(flags_net::validator)
 }
 
@@ -6341,7 +6345,7 @@ mod tests {
 
   #[test]
   fn short_permission_flags() {
-    let r = flags_from_vec(svec!["deno", "run", "-RNESW", "gist.ts"]);
+    let r = flags_from_vec(svec!["deno", "run", "-RNESWI", "gist.ts"]);
     assert_eq!(
       r.unwrap(),
       Flags {
@@ -6352,6 +6356,7 @@ mod tests {
           allow_read: Some(vec![]),
           allow_write: Some(vec![]),
           allow_env: Some(vec![]),
+          allow_import: Some(vec![]),
           allow_net: Some(vec![]),
           allow_sys: Some(vec![]),
           ..Default::default()
