@@ -1,0 +1,8 @@
+{
+  "args": "run --allow-read --node-modules-dir=auto npm:@denotest/bin/cli-esm dev --help",
+  "output": "run_existing_npm_package_with_subpath/main.out",
+  "envs": {
+    "NO_COLOR": "1",
+    "NPM_CONFIG_REGISTRY": "http://localhost:4260/"
+  }
+}
