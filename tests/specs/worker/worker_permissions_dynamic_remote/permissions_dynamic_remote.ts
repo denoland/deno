@@ -4,7 +4,8 @@ new Worker(
     type: "module",
     deno: {
       permissions: {
-        import: ["localhost"],
+        // dynamic_remote.ts will import from example.com
+        import: false,
       },
     },
   },

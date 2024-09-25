@@ -45,7 +45,7 @@
     },
     "builtin_host_replaced": {
       "args": "run --quiet --allow-import=other.host builtin_host.ts",
-      "output": "error: Requires import access[WILDCARD]",
+      "output": "[WILDCARD]Requires import access[WILDCARD]",
       "exitCode": 1
     }
   }
