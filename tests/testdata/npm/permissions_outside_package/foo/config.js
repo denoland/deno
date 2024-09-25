@@ -1,4 +1,0 @@
-module.exports = {
-  "name": "foobar",
-  "version": "0.0.1",
-};
