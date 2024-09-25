@@ -545,7 +545,8 @@ pub enum CaData {
 #[derive(Clone, Debug, Eq, PartialEq, Default)]
 pub struct LifecycleScriptsConfig {
   pub allowed: PackagesAllowedScripts,
-  pub initial_cwd: Option<PathBuf>,
+  pub initial_cwd: PathBuf,
+  pub root_dir: PathBuf,
 }
 
 #[derive(Debug, Clone, Eq, PartialEq, Default)]

@@ -275,7 +275,7 @@ impl LanguageServer {
         &roots,
         graph_util::GraphValidOptions {
           is_vendoring: false,
-          follow_type_only: true,
+          kind: GraphKind::All,
           check_js: false,
           exit_lockfile_errors: false,
         },
