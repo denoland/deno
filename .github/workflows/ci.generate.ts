@@ -801,7 +801,8 @@ const ci = {
           ].join("\n"),
           shell: "pwsh",
           run: [
-            "Compress-Archive -CompressionLevel Optimal -Force -Path target/release/deno.exe -DestinationPath target/release/deno-${{ matrix.arch }}-pc-windows-msvc.zip",
+            "Get-FileHash target/release/deno.exe -Algorithm SHA256 | Format-List > target/release/deno.sha256sum",
+            "Compress-Archive -CompressionLevel Optimal -Force -Path target/release/deno.exe,target/release/deno.sha256sum -DestinationPath target/release/deno-${{ matrix.arch }}-pc-windows-msvc.zip",
             "Compress-Archive -CompressionLevel Optimal -Force -Path target/release/denort.exe -DestinationPath target/release/denort-${{ matrix.arch }}-pc-windows-msvc.zip",
           ].join("\n"),
         },
