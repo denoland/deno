@@ -677,10 +677,8 @@ impl PermissionFlags {
     }
 
     fn handle_imports(imports: Option<Vec<String>>) -> Option<Vec<String>> {
-      if let Some(items) = &imports {
-        if items.is_empty() {
-          return imports;
-        }
+      if imports.is_some() {
+        return imports;
       }
 
       let builtin_allowed_import_hosts = [
@@ -693,8 +691,7 @@ impl PermissionFlags {
         "127.0.0.1",
       ];
 
-      let mut imports = imports.unwrap_or_default();
-      imports.reserve(builtin_allowed_import_hosts.len() + 1);
+      let mut imports = Vec::with_capacity(builtin_allowed_import_hosts.len() + 1);
       imports.extend(builtin_allowed_import_hosts.iter().map(|s| s.to_string()));
 
       // also add the JSR_URL env var

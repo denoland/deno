@@ -253,12 +253,14 @@ impl CliModuleLoaderFactory {
     graph_container: TGraphContainer,
     lib: TsTypeLib,
     is_worker: bool,
-    root_permissions: PermissionsContainer,
+    parent_permissions: PermissionsContainer,
+    permissions: PermissionsContainer,
   ) -> ModuleLoaderAndSourceMapGetter {
     let loader = Rc::new(CliModuleLoader(Rc::new(CliModuleLoaderInner {
       lib,
       is_worker,
-      root_permissions,
+      parent_permissions,
+      permissions,
       graph_container,
       emitter: self.shared.emitter.clone(),
       parsed_source_cache: self.shared.parsed_source_cache.clone(),
@@ -279,13 +281,15 @@ impl ModuleLoaderFactory for CliModuleLoaderFactory {
       (*self.shared.main_module_graph_container).clone(),
       self.shared.lib_window,
       /* is worker */ false,
+      root_permissions.clone(),
       root_permissions,
     )
   }
 
   fn create_for_worker(
     &self,
-    root_permissions: PermissionsContainer,
+    parent_permissions: PermissionsContainer,
+    permissions: PermissionsContainer,
   ) -> ModuleLoaderAndSourceMapGetter {
     self.create_with_lib(
       // create a fresh module graph for the worker
@@ -294,7 +298,8 @@ impl ModuleLoaderFactory for CliModuleLoaderFactory {
       ))),
       self.shared.lib_worker,
       /* is worker */ true,
-      root_permissions,
+      parent_permissions,
+      permissions,
     )
   }
 }
@@ -305,7 +310,8 @@ struct CliModuleLoaderInner<TGraphContainer: ModuleGraphContainer> {
   /// The initial set of permissions used to resolve the static imports in the
   /// worker. These are "allow all" for main worker, and parent thread
   /// permissions for Web Worker.
-  root_permissions: PermissionsContainer,
+  parent_permissions: PermissionsContainer,
+  permissions: PermissionsContainer,
   shared: Arc<SharedCliModuleLoaderState>,
   emitter: Arc<Emitter>,
   parsed_source_cache: Arc<ParsedSourceCache>,
@@ -765,8 +771,12 @@ impl<TGraphContainer: ModuleGraphContainer> ModuleLoader
         }
       }
 
+      let permissions = if is_dynamic {
+        inner.permissions.clone()
+      } else {
+        inner.parent_permissions.clone()
+      };
       let is_dynamic = is_dynamic || inner.is_worker; // consider workers as dynamic for permissions
-      let root_permissions = inner.root_permissions.clone();
       let lib = inner.lib;
       let mut update_permit = graph_container.acquire_update_permit().await;
       let graph = update_permit.graph_mut();
@@ -776,7 +786,7 @@ impl<TGraphContainer: ModuleGraphContainer> ModuleLoader
           &[specifier],
           is_dynamic,
           lib,
-          root_permissions,
+          permissions,
           None,
         )
         .await?;

@@ -130,7 +130,6 @@ struct SharedModuleLoaderState {
 #[derive(Clone)]
 struct EmbeddedModuleLoader {
   shared: Arc<SharedModuleLoaderState>,
-  root_permissions: PermissionsContainer,
 }
 
 pub const MODULE_NOT_FOUND: &str = "Module not found";
@@ -401,24 +400,23 @@ struct StandaloneModuleLoaderFactory {
 impl ModuleLoaderFactory for StandaloneModuleLoaderFactory {
   fn create_for_main(
     &self,
-    root_permissions: PermissionsContainer,
+    _root_permissions: PermissionsContainer,
   ) -> ModuleLoaderAndSourceMapGetter {
     ModuleLoaderAndSourceMapGetter {
       module_loader: Rc::new(EmbeddedModuleLoader {
         shared: self.shared.clone(),
-        root_permissions,
       }),
     }
   }
 
   fn create_for_worker(
     &self,
-    root_permissions: PermissionsContainer,
+    _parent_permissions: PermissionsContainer,
+    _permissions: PermissionsContainer,
   ) -> ModuleLoaderAndSourceMapGetter {
     ModuleLoaderAndSourceMapGetter {
       module_loader: Rc::new(EmbeddedModuleLoader {
         shared: self.shared.clone(),
-        root_permissions,
       }),
     }
   }

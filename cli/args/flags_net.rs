@@ -44,6 +44,9 @@ pub fn validator(host_and_port: &str) -> Result<String, String> {
 pub fn parse(paths: Vec<String>) -> clap::error::Result<Vec<String>> {
   let mut out: Vec<String> = vec![];
   for host_and_port in paths.into_iter() {
+    if host_and_port.is_empty() {
+      continue;
+    }
     if let Ok(port) = host_and_port.parse::<BarePort>() {
       // we got bare port, let's add default hosts
       for host in ["0.0.0.0", "127.0.0.1", "localhost"].iter() {

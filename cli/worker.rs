@@ -66,7 +66,8 @@ pub trait ModuleLoaderFactory: Send + Sync {
 
   fn create_for_worker(
     &self,
-    root_permissions: PermissionsContainer,
+    parent_permissions: PermissionsContainer,
+    permissions: PermissionsContainer,
   ) -> ModuleLoaderAndSourceMapGetter;
 }
 
@@ -733,9 +734,11 @@ fn create_web_worker_callback(
   Arc::new(move |args| {
     let maybe_inspector_server = shared.maybe_inspector_server.clone();
 
-    let ModuleLoaderAndSourceMapGetter { module_loader } = shared
-      .module_loader_factory
-      .create_for_worker(args.permissions.clone());
+    let ModuleLoaderAndSourceMapGetter { module_loader } =
+      shared.module_loader_factory.create_for_worker(
+        args.parent_permissions.clone(),
+        args.permissions.clone(),
+      );
     let create_web_worker_cb =
       create_web_worker_callback(shared.clone(), stdio.clone());
 
