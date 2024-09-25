@@ -655,14 +655,6 @@ struct AddPackageReq {
   value: AddPackageReqValue,
 }
 
-static LATEST_REQ: std::sync::LazyLock<VersionReq> =
-  std::sync::LazyLock::new(|| {
-    VersionReq::from_raw_text_and_inner(
-      "latest".into(),
-      deno_semver::RangeSetOrTag::Tag("latest".into()),
-    )
-  });
-
 impl AddPackageReq {
   pub fn parse(entry_text: &str) -> Result<Result<Self, PackageReq>, AnyError> {
     enum Prefix {
@@ -733,7 +725,10 @@ impl AddPackageReq {
           && package_req.version_req.version_text() == "*"
           && !entry_text.contains("@*")
         {
-          package_req.version_req = LATEST_REQ.clone();
+          package_req.version_req = VersionReq::from_raw_text_and_inner(
+            "latest".into(),
+            deno_semver::RangeSetOrTag::Tag("latest".into()),
+          );
         }
         Ok(Ok(AddPackageReq {
           alias: maybe_alias.unwrap_or_else(|| package_req.name.to_string()),
