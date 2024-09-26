@@ -159,7 +159,8 @@ async fn serve_with_watch(
       !watch_flags.no_clear_screen,
     ),
     WatcherRestartMode::Automatic,
-    move |flags, watcher_communicator, _changed_paths| {
+    move |flags, watcher_communicator, changed_paths| {
+      watcher_communicator.show_path_changed(changed_paths.clone());
       Ok(async move {
         let factory = CliFactory::from_flags_for_watcher(
           flags,

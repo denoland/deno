@@ -82,6 +82,7 @@ pub async fn format(
       file_watcher::PrintConfig::new("Fmt", !watch_flags.no_clear_screen),
       move |flags, watcher_communicator, changed_paths| {
         let fmt_flags = fmt_flags.clone();
+        watcher_communicator.show_path_changed(changed_paths.clone());
         Ok(async move {
           let factory = CliFactory::from_flags(flags);
           let cli_options = factory.cli_options()?;

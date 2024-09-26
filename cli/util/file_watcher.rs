@@ -128,23 +128,12 @@ impl PrintConfig {
   }
 }
 
-fn create_print_after_restart_fn(
-  banner: &'static str,
-  clear_screen: bool,
-) -> impl Fn(&Rc<RefCell<Option<Vec<PathBuf>>>>) {
-  move |changed_paths: &Rc<RefCell<Option<Vec<PathBuf>>>>| {
+// what happens is racing state between the show_file_changed_on_watch and this function.
+fn create_print_after_restart_fn(clear_screen: bool) -> impl Fn() {
+  move || {
     #[allow(clippy::print_stderr)]
     if clear_screen && std::io::stderr().is_terminal() {
       eprint!("{}", CLEAR_SCREEN);
-    }
-    if let Some(paths) = changed_paths.as_ref().take() {
-      info!(
-        "{} Restarting! File change detected: {:?}",
-        colors::intense_blue(banner),
-        paths[0],
-      );
-    } else {
-      info!("{} Restarting!", colors::intense_blue(banner));
     }
   }
 }
@@ -194,6 +183,14 @@ impl WatcherCommunicator {
 
   pub fn print(&self, msg: String) {
     log::info!("{} {}", self.banner, msg);
+  }
+
+  pub fn show_path_changed(&self, changed_paths: Option<Vec<PathBuf>>) {
+    if let Some(paths) = changed_paths {
+      self.print(
+        format!("Restarting! File change detected: {:?}", paths[0]).to_string(),
+      )
+    }
   }
 }
 
@@ -269,7 +266,7 @@ where
     clear_screen,
   } = print_config;
 
-  let print_after_restart = create_print_after_restart_fn(banner, clear_screen);
+  let print_after_restart = create_print_after_restart_fn(clear_screen);
   let watcher_communicator = Arc::new(WatcherCommunicator {
     paths_to_watch_tx: paths_to_watch_tx.clone(),
     changed_paths_rx: changed_paths_rx.resubscribe(),
@@ -336,7 +333,7 @@ where
     select! {
       _ = receiver_future => {},
       _ = restart_rx.recv() => {
-        print_after_restart(&changed_paths);
+        print_after_restart();
         continue;
       },
       success = operation_future => {
@@ -367,7 +364,7 @@ where
     select! {
       _ = receiver_future => {},
       _ = restart_rx.recv() => {
-        print_after_restart(&changed_paths);
+        print_after_restart();
         continue;
       },
     }
