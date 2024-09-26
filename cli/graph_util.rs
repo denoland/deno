@@ -56,8 +56,9 @@ use std::sync::Arc;
 pub struct GraphValidOptions {
   pub check_js: bool,
   pub kind: GraphKind,
-  /// Whether to exit the process for lockfile errors.
-  /// Otherwise, surfaces lockfile errors as errors.
+  /// Whether to exit the process for integrity check errors such as
+  /// lockfile checksum mismatches and JSR integrity failures.
+  /// Otherwise, surfaces integrity errors as errors.
   pub exit_integrity_errors: bool,
 }
 
