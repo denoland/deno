@@ -128,6 +128,12 @@ where
 
 /// Abstraction over `FromRawFd` (unix) and `FromRawHandle` (windows)
 pub trait FromRawIoHandle: Sized {
+  /// Constructs a type from a raw io handle (fd/HANDLE).
+  ///
+  /// # Safety
+  ///
+  /// Refer to the standard library docs ([unix](https://doc.rust-lang.org/stable/std/os/windows/io/trait.FromRawHandle.html#tymethod.from_raw_handle)) ([windows](https://doc.rust-lang.org/stable/std/os/fd/trait.FromRawFd.html#tymethod.from_raw_fd))
+  ///
   unsafe fn from_raw_io_handle(handle: RawIoHandle) -> Self;
 }
 
@@ -137,6 +143,7 @@ where
   T: std::os::unix::io::FromRawFd,
 {
   unsafe fn from_raw_io_handle(fd: RawIoHandle) -> T {
+    // SAFETY: upheld by caller
     unsafe { T::from_raw_fd(fd) }
   }
 }
@@ -147,6 +154,7 @@ where
   T: std::os::windows::io::FromRawHandle,
 {
   unsafe fn from_raw_io_handle(fd: RawIoHandle) -> T {
+    // SAFETY: upheld by caller
     unsafe { T::from_raw_handle(fd) }
   }
 }
