@@ -5137,21 +5137,23 @@ fn emit_failed_readonly_file_system() {
 fn handle_invalid_path_error() {
   let deno_cmd = util::deno_cmd_with_deno_dir(&util::new_deno_dir());
   let output = deno_cmd.arg("run").arg("file://asdf").output().unwrap();
-  assert!(
-    String::from_utf8_lossy(&output.stderr).contains("Invalid file path.")
+  assert_contains!(
+    String::from_utf8_lossy(&output.stderr),
+    "Invalid file path."
   );
 
   let deno_cmd = util::deno_cmd_with_deno_dir(&util::new_deno_dir());
   let output = deno_cmd.arg("run").arg("/a/b").output().unwrap();
-  assert!(String::from_utf8_lossy(&output.stderr).contains("Module not found"));
+  assert_contains!(String::from_utf8_lossy(&output.stderr), "Module not found");
 
   let deno_cmd = util::deno_cmd_with_deno_dir(&util::new_deno_dir());
   let output = deno_cmd.arg("run").arg("//a/b").output().unwrap();
-  assert!(
-    String::from_utf8_lossy(&output.stderr).contains("Invalid file path.")
+  assert_contains!(
+    String::from_utf8_lossy(&output.stderr),
+    "Invalid file path."
   );
 
   let deno_cmd = util::deno_cmd_with_deno_dir(&util::new_deno_dir());
   let output = deno_cmd.arg("run").arg("///a/b").output().unwrap();
-  assert!(String::from_utf8_lossy(&output.stderr).contains("Module not found"));
+  assert_contains!(String::from_utf8_lossy(&output.stderr), "Module not found");
 }

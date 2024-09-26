@@ -23,6 +23,7 @@ use deno_graph::source::LoaderChecksum;
 
 use deno_runtime::deno_permissions::PermissionsContainer;
 use deno_runtime::deno_web::BlobStore;
+use deno_runtime::fs_util::specifier_to_file_path;
 use log::debug;
 use std::borrow::Cow;
 use std::collections::HashMap;
@@ -135,7 +136,7 @@ impl MemoryFiles {
 
 /// Fetch a source file from the local file system.
 fn fetch_local(specifier: &ModuleSpecifier) -> Result<File, AnyError> {
-  let local = specifier.to_file_path().map_err(|_| {
+  let local = specifier_to_file_path(specifier).map_err(|_| {
     uri_error(format!("Invalid file path.\n  Specifier: {specifier}"))
   })?;
   // If it doesnt have a extension, we want to treat it as typescript by default
