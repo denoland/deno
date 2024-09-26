@@ -3391,7 +3391,7 @@ mod tests {
       &parser,
       &PermissionsOptions {
         allow_read: Some(read_allowlist),
-        allow_net: Some(svec!["localhost"]),
+        allow_import: Some(svec!["localhost"]),
         ..Default::default()
       },
     )
@@ -3401,66 +3401,67 @@ mod tests {
     let mut fixtures = vec![
       (
         ModuleSpecifier::parse("http://localhost:4545/mod.ts").unwrap(),
+        CheckSpecifierKind::Static,
+        true,
+      ),
+      (
+        ModuleSpecifier::parse("http://localhost:4545/mod.ts").unwrap(),
+        CheckSpecifierKind::Dynamic,
         true,
       ),
       (
         ModuleSpecifier::parse("http://deno.land/x/mod.ts").unwrap(),
+        CheckSpecifierKind::Dynamic,
         false,
       ),
       (
         ModuleSpecifier::parse("data:text/plain,Hello%2C%20Deno!").unwrap(),
+        CheckSpecifierKind::Dynamic,
         true,
       ),
     ];
 
     if cfg!(target_os = "windows") {
-      fixtures
-        .push((ModuleSpecifier::parse("file:///C:/a/mod.ts").unwrap(), true));
+      fixtures.push((
+        ModuleSpecifier::parse("file:///C:/a/mod.ts").unwrap(),
+        CheckSpecifierKind::Dynamic,
+        true,
+      ));
       fixtures.push((
         ModuleSpecifier::parse("file:///C:/b/mod.ts").unwrap(),
+        CheckSpecifierKind::Static,
+        true,
+      ));
+      fixtures.push((
+        ModuleSpecifier::parse("file:///C:/b/mod.ts").unwrap(),
+        CheckSpecifierKind::Dynamic,
         false,
       ));
     } else {
-      fixtures
-        .push((ModuleSpecifier::parse("file:///a/mod.ts").unwrap(), true));
-      fixtures
-        .push((ModuleSpecifier::parse("file:///b/mod.ts").unwrap(), false));
+      fixtures.push((
+        ModuleSpecifier::parse("file:///a/mod.ts").unwrap(),
+        CheckSpecifierKind::Dynamic,
+        true,
+      ));
+      fixtures.push((
+        ModuleSpecifier::parse("file:///b/mod.ts").unwrap(),
+        CheckSpecifierKind::Static,
+        true,
+      ));
+      fixtures.push((
+        ModuleSpecifier::parse("file:///b/mod.ts").unwrap(),
+        CheckSpecifierKind::Dynamic,
+        false,
+      ));
     }
 
-    for (specifier, expected) in fixtures {
+    for (specifier, kind, expected) in fixtures {
       assert_eq!(
-        perms
-          .check_specifier(&specifier, CheckSpecifierKind::Static)
-          .is_ok(),
+        perms.check_specifier(&specifier, kind).is_ok(),
         expected,
         "{}",
         specifier,
       );
-    }
-  }
-
-  #[test]
-  fn check_invalid_specifiers() {
-    set_prompter(Box::new(TestPrompter));
-    let perms = Permissions::allow_all();
-    let perms = PermissionsContainer::new(
-      Arc::new(TestPermissionDescriptorParser),
-      perms,
-    );
-
-    let mut test_cases = vec![];
-
-    test_cases.push("file://dir");
-    test_cases.push("file://asdf/");
-    test_cases.push("file://remotehost/");
-
-    for url in test_cases {
-      assert!(perms
-        .check_specifier(
-          &ModuleSpecifier::parse(url).unwrap(),
-          CheckSpecifierKind::Static
-        )
-        .is_err());
     }
   }
 
