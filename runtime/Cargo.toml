@@ -118,11 +118,11 @@ rustyline = { workspace = true, features = ["custom-bindings"] }
 serde.workspace = true
 signal-hook = "0.3.17"
 signal-hook-registry = "1.4.0"
+tempfile.workspace = true
 tokio.workspace = true
 tokio-metrics.workspace = true
 twox-hash.workspace = true
 uuid.workspace = true
-tempfile.workspace = true
 which.workspace = true
 
 [target.'cfg(windows)'.dependencies]
