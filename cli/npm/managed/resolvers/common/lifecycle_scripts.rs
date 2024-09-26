@@ -113,6 +113,12 @@ impl<'a> LifecycleScripts<'a> {
       } else if !self.strategy.has_run(package)
         && (self.config.explicit_install || !self.strategy.has_warned(package))
       {
+        // Skip adding `esbuild` as it is known that it can work properly without lifecycle script
+        // being run, and it's also very popular - any project using Vite would raise warnings.
+        if package.id.nv.name == "esbuild" {
+          return;
+        }
+
         self
           .packages_with_scripts_not_run
           .push((package, package_path.into_owned()));
