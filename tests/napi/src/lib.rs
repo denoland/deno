@@ -170,6 +170,7 @@ unsafe extern "C" fn napi_register_module_v1(
   symbol::init(env, exports);
   make_callback::init(env, exports);
   object::init(env, exports);
+  uv::init(env, exports);
 
   init_cleanup_hook(env, exports);
 

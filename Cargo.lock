@@ -4243,7 +4243,9 @@ dependencies = [
 
 [[package]]
 name = "libuv-sys-lite"
-version = "0.1.0"
+version = "1.48.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "e1dc55d0b43c6f4c0081954b65cf898ee49bb33ad2a338db867edaf5a8a53b9f"
 dependencies = [
  "bindgen 0.70.1",
 ]
