@@ -111,7 +111,7 @@ impl<'a> LifecycleScripts<'a> {
             .push((package, package_path.into_owned()));
         }
       } else if !self.strategy.has_run(package)
-        && !self.strategy.has_warned(package)
+        && (self.config.explicit_install || !self.strategy.has_warned(package))
       {
         self
           .packages_with_scripts_not_run
