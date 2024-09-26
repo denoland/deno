@@ -107,15 +107,8 @@ where
     .borrow_mut()
     .resource_table
     .take::<TcpStreamResource>(conn_rid)?;
-  eprintln!(
-    "rc: strong_count: {strong_count} weak_count: {weak_count}",
-    strong_count = Rc::strong_count(&resource_rc),
-    weak_count = Rc::weak_count(&resource_rc)
-  );
-  let resource = Rc::try_unwrap(resource_rc).map_err(|e| {
-    eprintln!("error: {:?}", e);
-    bad_resource("TCP stream is currently in use")
-  })?;
+  let resource = Rc::try_unwrap(resource_rc)
+    .map_err(|e| bad_resource("TCP stream is currently in use"))?;
   let (read_half, write_half) = resource.into_inner();
   let tcp_stream = read_half.reunite(write_half)?;
   let io = TokioIo::new(tcp_stream);
@@ -128,11 +121,9 @@ where
 
   // Spawn a task to poll the connection, driving the HTTP state
   let _handle = tokio::task::spawn(async move {
-    eprintln!("rs: connection started");
     conn_start.store(true, std::sync::atomic::Ordering::Relaxed);
     let _ = notify.send(());
     conn.await?;
-    eprintln!("rs: connection completed");
     Ok::<_, AnyError>(())
   });
 
@@ -199,9 +190,6 @@ where
     request.headers_mut().insert(CONTENT_LENGTH, len.into());
   }
 
-  eprintln!("rs: sending request: {request:?}");
-  // let req_fut = sender.send_request(request);
-  // let res = tokio::time::timeout(Duration::from_secs(10), req_fut).await??;
   let res = sender.send_request(request).map_err(Error::from).boxed();
   let rid = state
     .borrow_mut()
@@ -248,15 +236,7 @@ pub async fn op_node_http_await_response(
   let resource = Rc::try_unwrap(resource)
     .map_err(|_| bad_resource("NodeHttpClientResponse"))?;
 
-  eprintln!(
-    "rs: awaiting response: {}",
-    resource
-      .connection_started
-      .load(std::sync::atomic::Ordering::Relaxed)
-  );
   let res = resource.response.await?;
-  // let res = tokio::time::timeout(Duration::from_secs(10), req_fut).await??;
-  eprintln!("rs: received response");
 
   let status = res.status();
   let mut res_headers = Vec::new();
@@ -280,7 +260,6 @@ pub async fn op_node_http_await_response(
   let body = body.boxed();
 
   let res = http::Response::from_parts(parts, body);
-  println!("res: {res:?}");
 
   let response_rid = state
     .borrow_mut()
@@ -556,7 +535,6 @@ impl Stream for NodeHttpResourceToBodyAdapter {
         Poll::Ready(res) => match res {
           Ok(buf) if buf.is_empty() => Poll::Ready(None),
           Ok(buf) => {
-            println!("rs: reading: {len}", len = buf.len());
             this.1 = Some(this.0.clone().read(64 * 1024));
             Poll::Ready(Some(Ok(buf.to_vec().into())))
           }

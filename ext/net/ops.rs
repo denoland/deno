@@ -328,7 +328,6 @@ where
   let rid = state_
     .resource_table
     .add(TcpStreamResource::new(tcp_stream.into_split()));
-  eprintln!("adding TcpStreamResource in op_net_connect_tcp: {rid}");
 
   Ok((rid, IpAddr::from(local_addr), IpAddr::from(remote_addr)))
 }
@@ -655,7 +654,6 @@ pub fn op_set_nodelay_inner(
 ) -> Result<(), AnyError> {
   let resource: Rc<TcpStreamResource> =
     state.resource_table.get::<TcpStreamResource>(rid)?;
-  println!("setting nodelay (rid: {rid}): {nodelay}");
   resource.set_nodelay(nodelay)
 }
 
@@ -676,7 +674,6 @@ pub fn op_set_keepalive_inner(
 ) -> Result<(), AnyError> {
   let resource: Rc<TcpStreamResource> =
     state.resource_table.get::<TcpStreamResource>(rid)?;
-  eprintln!("setting keepalive (rid: {rid}): {keepalive}");
   resource.set_keepalive(keepalive)
 }
 

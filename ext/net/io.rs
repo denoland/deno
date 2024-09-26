@@ -100,12 +100,10 @@ impl Resource for TcpStreamResource {
   }
 
   fn shutdown(self: Rc<Self>) -> AsyncResult<()> {
-    eprintln!("shutdown TcpStreamResource");
     Box::pin(self.shutdown())
   }
 
   fn close(self: Rc<Self>) {
-    eprintln!("close TcpStreamResource");
     self.cancel_read_ops();
   }
 }

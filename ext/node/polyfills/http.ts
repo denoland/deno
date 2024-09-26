@@ -50,7 +50,6 @@ import { Agent, globalAgent } from "node:_http_agent";
 import { urlToHttpOptions } from "ext:deno_node/internal/url.ts";
 import { kEmptyObject, once } from "ext:deno_node/internal/util.mjs";
 import { constants, TCP } from "ext:deno_node/internal_binding/tcp_wrap.ts";
-// import { notImplemented, warnNotImplemented } from "ext:deno_node/_utils.ts";
 import { notImplemented } from "ext:deno_node/_utils.ts";
 
 import {
@@ -64,10 +63,7 @@ import {
 } from "ext:deno_node/internal/errors.ts";
 import { getTimerDuration } from "ext:deno_node/internal/timers.mjs";
 import { serve, upgradeHttpRaw } from "ext:deno_http/00_serve.ts";
-import { createHttpClient } from "ext:deno_fetch/22_http_client.js";
 import { headersEntries } from "ext:deno_fetch/20_headers.js";
-// import { timerId } from "ext:deno_web/03_abort_signal.js";
-// import { clearTimeout as webClearTimeout } from "ext:deno_web/02_timers.js";
 import { resourceForReadableStream } from "ext:deno_web/06_streams.js";
 import { TcpConn } from "ext:deno_net/01_net.js";
 import { STATUS_CODES } from "node:_http_server";
@@ -388,7 +384,6 @@ class ClientRequest extends OutgoingMessage {
     }
 
     if (this.agent) {
-      console.log("use this.agent");
       this.agent.addRequest(this, optsWithoutSignal);
     } else {
       // No agent, default to Connection:close.
@@ -416,29 +411,13 @@ class ClientRequest extends OutgoingMessage {
         }
       } else {
         debug("CLIENT use net.createConnection", optsWithoutSignal);
-        console.log("use net.createConnection");
         this.onSocket(netCreateConnection(optsWithoutSignal));
       }
     }
   }
 
   _writeHeader() {
-    console.trace("_writeHeader invoked am i working?");
     const url = this._createUrlStrFromOptions();
-    console.log({ url });
-    // const headers = [];
-    // for (const key in this[kOutHeaders]) {
-    //   if (Object.hasOwn(this[kOutHeaders], key)) {
-    //     const entry = this[kOutHeaders][key];
-    //     console.log("processing header");
-    //     this._processHeader(headers, entry[0], entry[1], false);
-    //     console.log("processing header done");
-    //   }
-    // }
-
-    // console.log("im here", { headers });
-    // const client = this._getClient() ?? createHttpClient({ http2: false });
-    // this._client = client;
 
     if (
       this.method === "POST" || this.method === "PATCH" || this.method === "PUT"
@@ -455,18 +434,8 @@ class ClientRequest extends OutgoingMessage {
       this._bodyWriteRid = resourceForReadableStream(readable);
     }
 
-    // this._req = op_node_http_request(
-    //   this.method,
-    //   url,
-    //   headers,
-    //   client[internalRidSymbol],
-    //   this._bodyWriteRid,
-    // );
-
     (async () => {
       try {
-        console.trace("js: sending request", this.socket.rid);
-        // console.log("this.socket", this.socket);
         const [rid, connRid] = await op_node_http_request_with_conn(
           this.method,
           url,
@@ -474,21 +443,10 @@ class ClientRequest extends OutgoingMessage {
           this._bodyWriteRid,
           this.socket.rid,
         );
-        console.log("js: request sent", { rid, connRid });
         // Emit request ready to let the request body to be written.
         await op_node_http_wait_for_connection(connRid);
         this.emit("requestReady");
         const res = await op_node_http_await_response(rid);
-        console.log({ status: res.status });
-        // if (this._req.cancelHandleRid !== null) {
-        //   core.tryClose(this._req.cancelHandleRid);
-        // }
-        // if (this._timeout) {
-        //   this._timeout.removeEventListener("abort", this._timeoutCb);
-        //   webClearTimeout(this._timeout[timerId]);
-        // }
-        // this._client.close();
-        console.log("IncomingMessageForClient constructed");
         const incoming = new IncomingMessageForClient(this.socket);
         incoming.req = this;
         this.res = incoming;
@@ -558,18 +516,10 @@ class ClientRequest extends OutgoingMessage {
           this._closed = true;
           this.emit("close");
         } else {
-          console.log("emitting response");
-          {
-            console.log("_bodyRid set", res.responseRid);
-            incoming._bodyRid = res.responseRid;
-          }
+          incoming._bodyRid = res.responseRid;
           this.emit("response", incoming);
         }
       } catch (err) {
-        // if (this._req.cancelHandleRid !== null) {
-        //   core.tryClose(this._req.cancelHandleRid);
-        // }
-
         if (this._requestSendError !== undefined) {
           // if the request body stream errored, we want to propagate that error
           // instead of the original error from opFetchSend
@@ -613,19 +563,13 @@ class ClientRequest extends OutgoingMessage {
   onSocket(socket, _err) {
     nextTick(() => {
       socket.on("connect", () => {
-        console.log("connect emitted");
         // Flush the internal buffers once socket is ready.
         // Note: the order is important, as the headers flush
         // sets up the request.
-        try {
-          this._flushHeaders();
-          this.on("requestReady", () => {
-            console.log("onSocket: flushing body");
-            this._flushBody();
-          });
-        } catch (error) {
-          console.log("socket error: ", error);
-        }
+        this._flushHeaders();
+        this.on("requestReady", () => {
+          this._flushBody();
+        });
       });
       this.socket = socket;
       this.emit("socket", socket);
@@ -634,13 +578,8 @@ class ClientRequest extends OutgoingMessage {
 
   // deno-lint-ignore no-explicit-any
   end(chunk?: any, encoding?: any, cb?: any): this {
-    console.log("end(): invoked");
-    this.on("drain", () => {
-      console.log("drain emitted");
-    });
     // Do nothing if request is already destroyed.
     if (this.destroyed) return this;
-    console.log("end(): not destroyed");
 
     if (typeof chunk === "function") {
       cb = chunk;
@@ -653,18 +592,10 @@ class ClientRequest extends OutgoingMessage {
 
     this.finished = true;
     if (chunk) {
-      console.log("end(): writing chunk", chunk);
       this.write_(chunk, encoding, null, true);
     } else if (!this._headerSent) {
       if (this.socket && !this.socket.connecting) {
-        console.log("end(): socket created and sending implicit header");
         this._contentLength = 0;
-        console.log(
-          "end(): _implicitHeader; socket.rid",
-          this.socket.rid,
-          "socket.connecting",
-          this.socket.connecting,
-        );
         this._implicitHeader();
         this._send("", "latin1");
       } else {
@@ -674,26 +605,9 @@ class ClientRequest extends OutgoingMessage {
     if (this.socket && this._bodyWriter) {
       (async () => {
         try {
-          // const { promise, resolve } = Promise.withResolvers();
-          // if (this.outputData.length > 0) {
-          //   this.on("flushBodyDone", () => {
-          //     console.log("end(): flushBody done emitted");
-          //     resolve(null);
-          //   })
-          // } else {
-          //   resolve(null);
-          // }
-          // // sleep for 10s
-          await new Promise((resolve) => setTimeout(resolve, 1000));
-          console.log("end(): closing bodyWriter", this._bodyWriter, {
-            buffer: this.outputData.length,
-          });
           await this._bodyWriter.ready;
           await this._bodyWriter?.close();
-          console.log("end(): bodyWriter closed");
         } catch (err) {
-          console.log("err:", err);
-          console.log("end(): body writer closed", err);
           // The readable stream resource is dropped right after
           // read is complete closing the writable stream resource.
           // If we try to close the writer again, it will result in an
@@ -709,17 +623,9 @@ class ClientRequest extends OutgoingMessage {
       this.on("finish", () => {
         (async () => {
           try {
-            console.log(
-              "end(): connect() closing bodyWriter",
-              this._bodyWriter,
-              { buffer: this.outputData.length },
-            );
             await this._bodyWriter.ready;
             await this._bodyWriter?.close();
-            console.log("end(): bodyWriter closed");
           } catch (err) {
-            console.log("err:", err);
-            console.log("end(): body writer closed", err);
             // The readable stream resource is dropped right after
             // read is complete closing the writable stream resource.
             // If we try to close the writer again, it will result in an
@@ -743,7 +649,6 @@ class ClientRequest extends OutgoingMessage {
     }
     this.aborted = true;
     this.emit("abort");
-    //process.nextTick(emitAbortNT, this);
     this.destroy();
   }
 
@@ -779,46 +684,25 @@ class ClientRequest extends OutgoingMessage {
   }
 
   _createUrlStrFromOptions(): string {
-    console.log("_createUrlStrFromOptions");
     if (this.href) {
       return this.href;
     }
-    console.log("_createUrlStrFromOptions 2");
     const protocol = this.protocol ?? this.defaultProtocol;
-    console.log("_createUrlStrFromOptions 3");
     const auth = this.auth;
-    console.log("_createUrlStrFromOptions 4");
     const host = this.host ?? this.hostname ?? "localhost";
-    console.log("_createUrlStrFromOptions 5");
     const hash = this.hash ? `#${this.hash}` : "";
-    console.log("_createUrlStrFromOptions 6");
     const defaultPort = this.agent?.defaultPort;
-    console.log("_createUrlStrFromOptions 7");
     const port = this.port ?? defaultPort ?? 80;
-    console.log("_createUrlStrFromOptions 8");
     let path = this.path ?? "/";
     if (!path.startsWith("/")) {
       path = "/" + path;
     }
-    console.log("_createUrlStrFromOptions 9");
-    // try {
-    console.log({
-      url: `${protocol}//${auth ? `${auth}@` : ""}${host}${
-        port === 80 ? "" : `:${port}`
-      }${path}`,
-    });
     const url = new URL(
       `${protocol}//${auth ? `${auth}@` : ""}${host}${
         port === 80 ? "" : `:${port}`
       }${path}`,
     );
-    console.log(url);
-    // } catch (error) {
-    // console.log({ error })
-    // }
-    console.log("_createUrlStrFromOptions 10");
     url.hash = hash;
-    console.log("_createUrlStrFromOptions end");
     return url.href;
   }
 
@@ -1040,7 +924,6 @@ export class IncomingMessageForClient extends NodeReadable {
     const buf = new Uint8Array(16 * 1024);
 
     core.read(this._bodyRid, buf).then((bytesRead) => {
-      console.log(`bytes read from ${this._bodyRid}:`, bytesRead);
       if (bytesRead === 0) {
         this.push(null);
       } else {
