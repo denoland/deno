@@ -3236,7 +3236,7 @@ fn permission_args(app: Command, requires: Option<&'static str>) -> Command {
   <g>-W, --allow-write[=<<PATH>...]</>            Allow file system write access. Optionally specify allowed paths.
                                              <p(245)>--allow-write  |  --allow-write="/etc,/var/log.txt"</>
   <g>-I, --allow-import[=<<IP_OR_HOSTNAME>...]</> Allow importing from remote hosts. Optionally specify allowed IP addresses and host names, with ports as necessary.
-                                            Allowed by default: deno.land, jsr.io, esm.sh, raw.githubusercontent.com, user.githubusercontent.com
+                                            Default value: <p(245)>deno.land:443,jsr.io:443,esm.sh:443,raw.githubusercontent.com:443,user.githubusercontent.com:443</>
                                              <p(245)>--allow-import  |  --allow-import="example.com,github.com"</>
   <g>-N, --allow-net[=<<IP_OR_HOSTNAME>...]</>    Allow network access. Optionally specify allowed IP addresses and host names, with ports as necessary.
                                              <p(245)>--allow-net  |  --allow-net="localhost:8080,deno.land"</>
@@ -3639,9 +3639,8 @@ fn allow_import_arg() -> Arg {
     .use_value_delimiter(true)
     .require_equals(true)
     .value_name("IP_OR_HOSTNAME")
-    .help(concat!(
-      "Allow importing from remote hosts. Optionally specify allowed IP addresses and host names, with ports as necessary. ",
-      "Allowed by default: deno.land, jsr.io, esm.sh, raw.githubusercontent.com, user.githubusercontent.com"
+    .help(cstr!(
+      "Allow importing from remote hosts. Optionally specify allowed IP addresses and host names, with ports as necessary. Default value: <p(245)>deno.land:443,jsr.io:443,esm.sh:443,raw.githubusercontent.com:443,user.githubusercontent.com:443</>"
     ))
     .value_parser(flags_net::validator)
 }

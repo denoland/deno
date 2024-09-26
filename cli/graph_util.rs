@@ -250,9 +250,10 @@ impl ModuleGraphCreator {
     build_fast_check_graph: bool,
   ) -> Result<ModuleGraph, AnyError> {
     fn graph_has_external_remote(graph: &ModuleGraph) -> bool {
-      // skip type checking when there are any external remote modules
-      // because those will be surfaced as errors later and would cause
-      // type checking to crash
+      // Earlier on, we marked external non-JSR modules as external.
+      // If the graph contains any of those, it would cause type checking
+      // to crash, so since publishing is going to fail anyway, skip type
+      // checking.
       graph.modules().any(|module| match module {
         deno_graph::Module::External(external_module) => {
           matches!(external_module.specifier.scheme(), "http" | "https")
