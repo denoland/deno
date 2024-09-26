@@ -77,34 +77,49 @@ pub(crate) fn accept_err(e: std::io::Error) -> AnyError {
   }
 }
 
-#[op2(async)]
+use deno_core::error::JsError;
+use deno_core::futures::Future;
+use deno_core::v8;
+
+#[op2(async, reentrant)]
 #[serde]
-pub async fn op_net_accept_tcp(
+pub fn op_net_accept_tcp(
+  scope: &mut v8::HandleScope,
   state: Rc<RefCell<OpState>>,
   #[smi] rid: ResourceId,
-) -> Result<(ResourceId, IpAddr, IpAddr), AnyError> {
-  let resource = state
-    .borrow()
-    .resource_table
-    .get::<NetworkListenerResource<TcpListener>>(rid)
-    .map_err(|_| bad_resource("Listener has been closed"))?;
-  let listener = RcRef::map(&resource, |r| &r.listener)
-    .try_borrow_mut()
-    .ok_or_else(|| custom_error("Busy", "Another accept task is ongoing"))?;
-  let cancel = RcRef::map(resource, |r| &r.cancel);
-  let (tcp_stream, _socket_addr) = listener
-    .accept()
-    .try_or_cancel(cancel)
-    .await
-    .map_err(accept_err)?;
-  let local_addr = tcp_stream.local_addr()?;
-  let remote_addr = tcp_stream.peer_addr()?;
+) -> Result<
+  impl Future<Output = Result<(ResourceId, IpAddr, IpAddr), AnyError>>,
+  AnyError,
+> {
+  let msg = v8::String::new(scope, "asdf").unwrap();
+  let error = v8::Exception::error(scope, msg.into());
+  let js_error = JsError::from_v8_exception(scope, error);
+  eprintln!("js error {:#?}", js_error);
 
-  let mut state = state.borrow_mut();
-  let rid = state
-    .resource_table
-    .add(TcpStreamResource::new(tcp_stream.into_split()));
-  Ok((rid, IpAddr::from(local_addr), IpAddr::from(remote_addr)))
+  Ok(async move {
+    let resource = state
+      .borrow()
+      .resource_table
+      .get::<NetworkListenerResource<TcpListener>>(rid)
+      .map_err(|_| bad_resource("Listener has been closed"))?;
+    let listener = RcRef::map(&resource, |r| &r.listener)
+      .try_borrow_mut()
+      .ok_or_else(|| custom_error("Busy", "Another accept task is ongoing"))?;
+    let cancel = RcRef::map(resource, |r| &r.cancel);
+    let (tcp_stream, _socket_addr) = listener
+      .accept()
+      .try_or_cancel(cancel)
+      .await
+      .map_err(accept_err)?;
+    let local_addr = tcp_stream.local_addr()?;
+    let remote_addr = tcp_stream.peer_addr()?;
+
+    let mut state = state.borrow_mut();
+    let rid = state
+      .resource_table
+      .add(TcpStreamResource::new(tcp_stream.into_split()));
+    Ok((rid, IpAddr::from(local_addr), IpAddr::from(remote_addr)))
+  })
 }
 
 #[op2(async)]

@@ -40,7 +40,8 @@ function loadavg() {
 }
 
 function hostname() {
-  return op_hostname();
+  const stack = (new Error()).stack;
+  return op_hostname(stack);
 }
 
 function osRelease() {
