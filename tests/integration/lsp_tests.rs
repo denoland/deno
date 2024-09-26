@@ -364,13 +364,6 @@ fn lsp_import_map_remote() {
     .build();
   let temp_dir = context.temp_dir();
   temp_dir.write(
-    "deno.json",
-    json!({
-      "importMap": "http://localhost:4545/import_maps/import_map_remote.json",
-    })
-    .to_string(),
-  );
-  temp_dir.write(
     "file.ts",
     r#"
       import { printHello } from "print_hello";
@@ -897,7 +890,7 @@ fn lsp_format_vendor_path() {
   // put this dependency in the global cache
   context
     .new_command()
-    .args("cache http://localhost:4545/run/002_hello.ts")
+    .args("cache --allow-import http://localhost:4545/run/002_hello.ts")
     .run()
     .skip_output_check();
 
@@ -10597,13 +10590,6 @@ fn lsp_format_markdown() {
 fn lsp_format_html() {
   let context = TestContextBuilder::new().use_temp_cwd().build();
   let temp_dir = context.temp_dir();
-  temp_dir.write(
-    "deno.json",
-    json!({
-      "unstable": ["fmt-html"],
-    })
-    .to_string(),
-  );
   let html_file =
     source_file(temp_dir.path().join("file.html"), "  <html></html>");
   let mut client = context.new_lsp_command().build();
@@ -10644,13 +10630,6 @@ fn lsp_format_html() {
 fn lsp_format_css() {
   let context = TestContextBuilder::new().use_temp_cwd().build();
   let temp_dir = context.temp_dir();
-  temp_dir.write(
-    "deno.json",
-    json!({
-      "unstable": ["fmt-css"],
-    })
-    .to_string(),
-  );
   let css_file = source_file(temp_dir.path().join("file.css"), "  foo {}");
   let mut client = context.new_lsp_command().build();
   client.initialize_default();
@@ -10690,13 +10669,6 @@ fn lsp_format_css() {
 fn lsp_format_yaml() {
   let context = TestContextBuilder::new().use_temp_cwd().build();
   let temp_dir = context.temp_dir();
-  temp_dir.write(
-    "deno.json",
-    json!({
-      "unstable": ["fmt-yaml"],
-    })
-    .to_string(),
-  );
   let yaml_file = source_file(temp_dir.path().join("file.yaml"), "  foo: 1");
   let mut client = context.new_lsp_command().build();
   client.initialize_default();

@@ -18,7 +18,7 @@ fn xdg_cache_home_dir() {
     .env_clear()
     .env("XDG_CACHE_HOME", &xdg_cache_home)
     .args(
-      "cache --reload --no-check http://localhost:4548/subdir/redirects/a.ts",
+      "cache --allow-import --reload --no-check http://localhost:4548/subdir/redirects/a.ts",
     )
     .run()
     .skip_output_check()

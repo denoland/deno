@@ -11,7 +11,6 @@ use crate::cache::ModuleInfoCache;
 use crate::cache::ParsedSourceCache;
 use crate::colors;
 use crate::errors::get_error_class_name;
-use crate::file_fetcher::FetchPermissionsOption;
 use crate::file_fetcher::FileFetcher;
 use crate::npm::CliNpmResolver;
 use crate::resolver::CliGraphResolver;
@@ -41,6 +40,7 @@ use deno_graph::ResolutionError;
 use deno_graph::SpecifierError;
 use deno_runtime::deno_fs::FileSystem;
 use deno_runtime::deno_node;
+use deno_runtime::deno_permissions::PermissionsContainer;
 use deno_runtime::fs_util::specifier_to_file_path;
 use deno_semver::jsr::JsrDepPackageReq;
 use deno_semver::package::PackageNv;
@@ -55,7 +55,7 @@ use std::sync::Arc;
 #[derive(Clone, Copy)]
 pub struct GraphValidOptions {
   pub check_js: bool,
-  pub follow_type_only: bool,
+  pub kind: GraphKind,
   pub is_vendoring: bool,
   /// Whether to exit the process for lockfile errors.
   /// Otherwise, surfaces lockfile errors as errors.
@@ -84,7 +84,7 @@ pub fn graph_valid(
       roots.iter(),
       deno_graph::WalkOptions {
         check_js: options.check_js,
-        follow_type_only: options.follow_type_only,
+        kind: options.kind,
         follow_dynamic: options.is_vendoring,
         prefer_fast_check_graph: false,
       },
@@ -249,6 +249,19 @@ impl ModuleGraphCreator {
     package_configs: &[JsrPackageConfig],
     build_fast_check_graph: bool,
   ) -> Result<ModuleGraph, AnyError> {
+    fn graph_has_external_remote(graph: &ModuleGraph) -> bool {
+      // Earlier on, we marked external non-JSR modules as external.
+      // If the graph contains any of those, it would cause type checking
+      // to crash, so since publishing is going to fail anyway, skip type
+      // checking.
+      graph.modules().any(|module| match module {
+        deno_graph::Module::External(external_module) => {
+          matches!(external_module.specifier.scheme(), "http" | "https")
+        }
+        _ => false,
+      })
+    }
+
     let mut roots = Vec::new();
     for package_config in package_configs {
       roots.extend(package_config.config_file.resolve_export_value_urls()?);
@@ -262,9 +275,12 @@ impl ModuleGraphCreator {
       })
       .await?;
     self.graph_valid(&graph)?;
-    if self.options.type_check_mode().is_true() {
+    if self.options.type_check_mode().is_true()
+      && !graph_has_external_remote(&graph)
+    {
       self.type_check_graph(graph.clone()).await?;
     }
+
     if build_fast_check_graph {
       let fast_check_workspace_members = package_configs
         .iter()
@@ -279,6 +295,7 @@ impl ModuleGraphCreator {
         },
       )?;
     }
+
     Ok(graph)
   }
 
@@ -370,6 +387,7 @@ pub struct ModuleGraphBuilder {
   maybe_file_watcher_reporter: Option<FileWatcherReporter>,
   file_fetcher: Arc<FileFetcher>,
   global_http_cache: Arc<GlobalHttpCache>,
+  root_permissions_container: PermissionsContainer,
 }
 
 impl ModuleGraphBuilder {
@@ -386,6 +404,7 @@ impl ModuleGraphBuilder {
     maybe_file_watcher_reporter: Option<FileWatcherReporter>,
     file_fetcher: Arc<FileFetcher>,
     global_http_cache: Arc<GlobalHttpCache>,
+    root_permissions_container: PermissionsContainer,
   ) -> Self {
     Self {
       options,
@@ -399,6 +418,7 @@ impl ModuleGraphBuilder {
       maybe_file_watcher_reporter,
       file_fetcher,
       global_http_cache,
+      root_permissions_container,
     }
   }
 
@@ -670,20 +690,26 @@ impl ModuleGraphBuilder {
 
   /// Creates the default loader used for creating a graph.
   pub fn create_graph_loader(&self) -> cache::FetchCacher {
-    self.create_fetch_cacher(FetchPermissionsOption::AllowAll)
+    self.create_fetch_cacher(self.root_permissions_container.clone())
   }
 
   pub fn create_fetch_cacher(
     &self,
-    permissions: FetchPermissionsOption,
+    permissions: PermissionsContainer,
   ) -> cache::FetchCacher {
     cache::FetchCacher::new(
       self.file_fetcher.clone(),
-      self.options.resolve_file_header_overrides(),
       self.global_http_cache.clone(),
       self.npm_resolver.clone(),
       self.module_info_cache.clone(),
-      permissions,
+      cache::FetchCacherOptions {
+        file_header_overrides: self.options.resolve_file_header_overrides(),
+        permissions,
+        is_deno_publish: matches!(
+          self.options.sub_command(),
+          crate::args::DenoSubcommand::Publish { .. }
+        ),
+      },
     )
   }
 
@@ -708,7 +734,11 @@ impl ModuleGraphBuilder {
       roots,
       GraphValidOptions {
         is_vendoring: false,
-        follow_type_only: self.options.type_check_mode().is_true(),
+        kind: if self.options.type_check_mode().is_true() {
+          GraphKind::All
+        } else {
+          GraphKind::CodeOnly
+        },
         check_js: self.options.check_js(),
         exit_lockfile_errors: true,
       },
@@ -928,7 +958,7 @@ pub fn has_graph_root_local_dependent_changed(
     std::iter::once(root),
     deno_graph::WalkOptions {
       follow_dynamic: true,
-      follow_type_only: true,
+      kind: GraphKind::All,
       prefer_fast_check_graph: true,
       check_js: true,
     },

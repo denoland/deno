@@ -185,6 +185,7 @@ struct CliFactoryServices {
   node_resolver: Deferred<Arc<NodeResolver>>,
   npm_resolver: Deferred<Arc<dyn CliNpmResolver>>,
   permission_desc_parser: Deferred<Arc<RuntimePermissionDescriptorParser>>,
+  root_permissions_container: Deferred<PermissionsContainer>,
   sloppy_imports_resolver: Deferred<Option<Arc<SloppyImportsResolver>>>,
   text_only_progress_bar: Deferred<ProgressBar>,
   type_checker: Deferred<Arc<TypeChecker>>,
@@ -626,6 +627,7 @@ impl CliFactory {
           self.maybe_file_watcher_reporter().clone(),
           self.file_fetcher()?.clone(),
           self.global_http_cache()?.clone(),
+          self.root_permissions_container()?.clone(),
         )))
       })
       .await
@@ -659,6 +661,7 @@ impl CliFactory {
         Ok(Arc::new(MainModuleGraphContainer::new(
           self.cli_options()?.clone(),
           self.module_load_preparer().await?.clone(),
+          self.root_permissions_container()?.clone(),
         )))
       })
       .await
@@ -755,15 +758,20 @@ impl CliFactory {
     ))
   }
 
-  pub fn create_permissions_container(
+  pub fn root_permissions_container(
     &self,
-  ) -> Result<PermissionsContainer, AnyError> {
-    let desc_parser = self.permission_desc_parser()?.clone();
-    let permissions = Permissions::from_options(
-      desc_parser.as_ref(),
-      &self.cli_options()?.permissions_options(),
-    )?;
-    Ok(PermissionsContainer::new(desc_parser, permissions))
+  ) -> Result<&PermissionsContainer, AnyError> {
+    self
+      .services
+      .root_permissions_container
+      .get_or_try_init(|| {
+        let desc_parser = self.permission_desc_parser()?.clone();
+        let permissions = Permissions::from_options(
+          desc_parser.as_ref(),
+          &self.cli_options()?.permissions_options(),
+        )?;
+        Ok(PermissionsContainer::new(desc_parser, permissions))
+      })
   }
 
   pub async fn create_cli_main_worker_factory(
@@ -816,6 +824,7 @@ impl CliFactory {
       npm_resolver.clone(),
       self.permission_desc_parser()?.clone(),
       self.root_cert_store_provider().clone(),
+      self.root_permissions_container()?.clone(),
       StorageKeyResolver::from_options(cli_options),
       cli_options.sub_command().clone(),
       self.create_cli_main_worker_options()?,

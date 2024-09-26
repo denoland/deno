@@ -73,7 +73,7 @@ itest!(_005_more_imports {
 });
 
 itest!(_006_url_imports {
-  args: "run --quiet --reload run/006_url_imports.ts",
+  args: "run --quiet --reload --allow-import run/006_url_imports.ts",
   output: "run/006_url_imports.ts.out",
   http_server: true,
 });
@@ -105,24 +105,25 @@ itest!(_016_double_await {
 });
 
 itest!(_017_import_redirect {
-  args: "run --quiet --reload run/017_import_redirect.ts",
+  args: "run --quiet --allow-import --reload run/017_import_redirect.ts",
   output: "run/017_import_redirect.ts.out",
 });
 
 itest!(_017_import_redirect_check {
-  args: "run --quiet --reload --check run/017_import_redirect.ts",
+  args:
+    "run --quiet --allow-import --reload --check run/017_import_redirect.ts",
   output: "run/017_import_redirect.ts.out",
 });
 
 itest!(_017_import_redirect_vendor_dir {
   args:
-    "run --quiet --reload --vendor --check $TESTDATA/run/017_import_redirect.ts",
+    "run --quiet --allow-import --reload --vendor --check $TESTDATA/run/017_import_redirect.ts",
   output: "run/017_import_redirect.ts.out",
   temp_cwd: true,
 });
 
 itest!(_017_import_redirect_info {
-  args: "info --quiet --reload run/017_import_redirect.ts",
+  args: "info --quiet --allow-import --reload run/017_import_redirect.ts",
   output: "run/017_import_redirect_info.out",
 });
 
@@ -132,7 +133,7 @@ itest!(_018_async_catch {
 });
 
 itest!(_019_media_types {
-  args: "run --reload run/019_media_types.ts",
+  args: "run --reload --allow-import run/019_media_types.ts",
   output: "run/019_media_types.ts.out",
   http_server: true,
 });
@@ -154,14 +155,14 @@ itest!(_025_reload_js_type_error {
 });
 
 itest!(_027_redirect_typescript {
-  args: "run --quiet --reload run/027_redirect_typescript.ts",
+  args: "run --quiet --reload --allow-import run/027_redirect_typescript.ts",
   output: "run/027_redirect_typescript.ts.out",
   http_server: true,
 });
 
 itest!(_027_redirect_typescript_vendor_dir {
   args:
-    "run --quiet --reload --vendor $TESTDATA/run/027_redirect_typescript.ts",
+    "run --quiet --reload --vendor --allow-import $TESTDATA/run/027_redirect_typescript.ts",
   output: "run/027_redirect_typescript.ts.out",
   http_server: true,
   temp_cwd: true,
@@ -175,14 +176,14 @@ itest!(_028_args {
 
 itest!(_033_import_map_remote {
   args:
-    "run --quiet --reload --import-map=http://127.0.0.1:4545/import_maps/import_map_remote.json import_maps/test_remote.ts",
+    "run --quiet --reload --allow-import --import-map=http://127.0.0.1:4545/import_maps/import_map_remote.json import_maps/test_remote.ts",
   output: "run/033_import_map_remote.out",
   http_server: true,
 });
 
 itest!(_033_import_map_vendor_dir_remote {
   args:
-    "run --quiet --reload --import-map=http://127.0.0.1:4545/import_maps/import_map_remote.json --vendor $TESTDATA/import_maps/test_remote.ts",
+    "run --quiet --reload --allow-import --import-map=http://127.0.0.1:4545/import_maps/import_map_remote.json --vendor $TESTDATA/import_maps/test_remote.ts",
   output: "run/033_import_map_remote.out",
   http_server: true,
   temp_cwd: true,
@@ -190,7 +191,7 @@ itest!(_033_import_map_vendor_dir_remote {
 
 itest!(_033_import_map_data_uri {
   args:
-    "run --quiet --reload --import-map=data:application/json;charset=utf-8;base64,ewogICJpbXBvcnRzIjogewogICAgInRlc3Rfc2VydmVyLyI6ICJodHRwOi8vbG9jYWxob3N0OjQ1NDUvIgogIH0KfQ== run/import_maps/test_data.ts",
+    "run --quiet --reload --allow-import --import-map=data:application/json;charset=utf-8;base64,ewogICJpbXBvcnRzIjogewogICAgInRlc3Rfc2VydmVyLyI6ICJodHRwOi8vbG9jYWxob3N0OjQ1NDUvIgogIH0KfQ== run/import_maps/test_data.ts",
   output: "run/import_maps/test_data.ts.out",
   http_server: true,
 });
@@ -201,7 +202,7 @@ itest!(onload {
 });
 
 itest!(_035_cached_only_flag {
-  args: "run --reload --check --cached-only http://127.0.0.1:4545/run/019_media_types.ts",
+  args: "run --reload --check --allow-import --cached-only http://127.0.0.1:4545/run/019_media_types.ts",
   output: "run/035_cached_only_flag.out",
   exit_code: 1,
   http_server: true,
@@ -237,14 +238,14 @@ itest!(_047_jsx {
 });
 
 itest!(_048_media_types_jsx {
-  args: "run  --reload run/048_media_types_jsx.ts",
+  args: "run  --reload --allow-import run/048_media_types_jsx.ts",
   output: "run/048_media_types_jsx.ts.out",
   http_server: true,
 });
 
 itest!(_052_no_remote_flag {
   args:
-    "run --reload --check --no-remote http://127.0.0.1:4545/run/019_media_types.ts",
+    "run --reload --check --allow-import --no-remote http://127.0.0.1:4545/run/019_media_types.ts",
   output: "run/052_no_remote_flag.out",
   exit_code: 1,
   http_server: true,
@@ -467,7 +468,7 @@ itest!(dynamic_import_already_rejected {
 });
 
 itest!(dynamic_import_concurrent_non_statically_analyzable {
-  args: "run --allow-read --allow-net --quiet run/dynamic_import_concurrent_non_statically_analyzable/main.ts",
+  args: "run --allow-import --allow-read --allow-net --quiet run/dynamic_import_concurrent_non_statically_analyzable/main.ts",
   output: "run/dynamic_import_concurrent_non_statically_analyzable/main.out",
   http_server: true,
 });
@@ -802,7 +803,7 @@ itest!(private_field_presence_no_check {
 
 itest!(lock_write_fetch {
   args:
-    "run --quiet --allow-read --allow-write --allow-env --allow-run run/lock_write_fetch/main.ts",
+    "run --quiet --allow-import --allow-read --allow-write --allow-env --allow-run run/lock_write_fetch/main.ts",
   output: "run/lock_write_fetch/main.out",
   http_server: true,
   exit_code: 0,
@@ -810,26 +811,27 @@ itest!(lock_write_fetch {
 
 itest!(lock_check_ok {
   args:
-    "run --quiet --lock=run/lock_check_ok.json http://127.0.0.1:4545/run/003_relative_import.ts",
+    "run --quiet --allow-import --lock=run/lock_check_ok.json http://127.0.0.1:4545/run/003_relative_import.ts",
   output: "run/003_relative_import.ts.out",
   http_server: true,
 });
 
 itest!(lock_check_ok2 {
-  args: "run --lock=run/lock_check_ok2.json run/019_media_types.ts",
+  args:
+    "run --allow-import --lock=run/lock_check_ok2.json run/019_media_types.ts",
   output: "run/019_media_types.ts.out",
   http_server: true,
 });
 
 itest!(lock_v2_check_ok {
   args:
-    "run --quiet --lock=run/lock_v2_check_ok.json http://127.0.0.1:4545/run/003_relative_import.ts",
+    "run --allow-import --quiet --lock=run/lock_v2_check_ok.json http://127.0.0.1:4545/run/003_relative_import.ts",
   output: "run/003_relative_import.ts.out",
   http_server: true,
 });
 
 itest!(lock_v2_check_ok2 {
-  args: "run --lock=run/lock_v2_check_ok2.json run/019_media_types.ts",
+  args: "run --allow-import --lock=run/lock_v2_check_ok2.json run/019_media_types.ts",
   output: "run/019_media_types.ts.out",
   http_server: true,
 });
@@ -849,7 +851,7 @@ fn lock_redirects() {
   );
   context
     .new_command()
-    .args("run main.ts")
+    .args("run --allow-import main.ts")
     .run()
     .skip_output_check();
   let initial_lockfile_text = r#"{
@@ -865,7 +867,7 @@ fn lock_redirects() {
   assert_eq!(temp_dir.read_to_string("deno.lock"), initial_lockfile_text);
   context
     .new_command()
-    .args("run main.ts")
+    .args("run --allow-import main.ts")
     .run()
     .assert_matches_text("Hello World\n");
   assert_eq!(temp_dir.read_to_string("deno.lock"), initial_lockfile_text);
@@ -892,7 +894,7 @@ fn lock_redirects() {
   // it should use the echo script instead
   context
     .new_command()
-    .args("run main.ts Hi there")
+    .args("run --allow-import main.ts Hi there")
     .run()
     .assert_matches_text(concat!(
       "Download http://localhost:4545/echo.ts\n",
@@ -1260,7 +1262,7 @@ itest!(config_types {
 
 itest!(config_types_remote {
   http_server: true,
-  args: "run --reload --quiet --check=all --config run/config_types/remote.tsconfig.json run/config_types/main.ts",
+  args: "run --allow-import --reload --quiet --check=all --config run/config_types/remote.tsconfig.json run/config_types/main.ts",
   output: "run/config_types/main.out",
 });
 
@@ -1365,9 +1367,10 @@ itest!(error_015_dynamic_import_permissions {
   http_server: true,
 });
 
-// We have an allow-net flag but not allow-read, it should still result in error.
+// We have an allow-import flag but not allow-read, it should still result in error.
 itest!(error_016_dynamic_import_permissions2 {
-  args: "run --reload --allow-net run/error_016_dynamic_import_permissions2.js",
+  args:
+    "run --reload --allow-import run/error_016_dynamic_import_permissions2.js",
   output: "run/error_016_dynamic_import_permissions2.out",
   exit_code: 1,
   http_server: true,
@@ -1428,7 +1431,7 @@ itest!(error_025_tab_indent {
 });
 
 itest!(error_026_remote_import_error {
-  args: "run run/error_026_remote_import_error.ts",
+  args: "run --allow-import run/error_026_remote_import_error.ts",
   output: "run/error_026_remote_import_error.ts.out",
   exit_code: 1,
   http_server: true,
@@ -1471,18 +1474,18 @@ itest!(error_type_definitions {
 });
 
 itest!(error_local_static_import_from_remote_ts {
-    args: "run --reload http://localhost:4545/run/error_local_static_import_from_remote.ts",
-    exit_code: 1,
-    http_server: true,
-    output: "run/error_local_static_import_from_remote.ts.out",
-  });
+  args: "run --allow-import --reload http://localhost:4545/run/error_local_static_import_from_remote.ts",
+  exit_code: 1,
+  http_server: true,
+  output: "run/error_local_static_import_from_remote.ts.out",
+});
 
 itest!(error_local_static_import_from_remote_js {
-    args: "run --reload http://localhost:4545/run/error_local_static_import_from_remote.js",
-    exit_code: 1,
-    http_server: true,
-    output: "run/error_local_static_import_from_remote.js.out",
-  });
+  args: "run --allow-import --reload http://localhost:4545/run/error_local_static_import_from_remote.js",
+  exit_code: 1,
+  http_server: true,
+  output: "run/error_local_static_import_from_remote.js.out",
+});
 
 itest!(exit_error42 {
   exit_code: 42,
@@ -1531,7 +1534,7 @@ itest!(finalization_registry {
 });
 
 itest!(https_import {
-  args: "run --quiet --reload --cert tls/RootCA.pem run/https_import.ts",
+  args: "run --allow-import --quiet --reload --cert tls/RootCA.pem run/https_import.ts",
   output: "run/https_import.ts.out",
   http_server: true,
 });
@@ -1542,18 +1545,18 @@ itest!(if_main {
 });
 
 itest!(import_meta {
-  args: "run --quiet --reload --import-map=run/import_meta/importmap.json run/import_meta/main.ts",
+  args: "run --allow-import --quiet --reload --import-map=run/import_meta/importmap.json run/import_meta/main.ts",
   output: "run/import_meta/main.out",
   http_server: true,
 });
 
 itest!(main_module {
-  args: "run --quiet  --reload run/main_module/main.ts",
+  args: "run --quiet --reload run/main_module/main.ts",
   output: "run/main_module/main.out",
 });
 
 itest!(no_check {
-  args: "run --quiet --reload --no-check run/006_url_imports.ts",
+  args: "run --allow-import --quiet --reload --no-check run/006_url_imports.ts",
   output: "run/006_url_imports.ts.out",
   http_server: true,
 });
@@ -1569,14 +1572,15 @@ itest!(decorators_tc39_proposal {
 });
 
 itest!(check_remote {
-  args: "run --quiet --reload --check=all run/no_check_remote.ts",
+  args:
+    "run --quiet --allow-import --reload --check=all run/no_check_remote.ts",
   output: "run/no_check_remote.ts.disabled.out",
   exit_code: 1,
   http_server: true,
 });
 
 itest!(no_check_remote {
-  args: "run --quiet --reload --no-check=remote run/no_check_remote.ts",
+  args: "run --allow-import --quiet --reload --no-check=remote run/no_check_remote.ts",
   output: "run/no_check_remote.ts.enabled.out",
   http_server: true,
 });
@@ -1603,13 +1607,15 @@ itest!(type_definitions_for_export {
 });
 
 itest!(type_directives_01 {
-  args: "run --reload --check=all -L debug run/type_directives_01.ts",
+  args:
+    "run --allow-import --reload --check=all -L debug run/type_directives_01.ts",
   output: "run/type_directives_01.ts.out",
   http_server: true,
 });
 
 itest!(type_directives_02 {
-  args: "run --reload --check=all -L debug run/type_directives_02.ts",
+  args:
+    "run --allow-import --reload --check=all -L debug run/type_directives_02.ts",
   output: "run/type_directives_02.ts.out",
 });
 
@@ -1629,13 +1635,13 @@ fn type_directives_js_main() {
 }
 
 itest!(type_directives_redirect {
-  args: "run --reload --check run/type_directives_redirect.ts",
+  args: "run --allow-import --reload --check run/type_directives_redirect.ts",
   output: "run/type_directives_redirect.ts.out",
   http_server: true,
 });
 
 itest!(type_headers_deno_types {
-  args: "run --reload --check run/type_headers_deno_types.ts",
+  args: "run --allow-import --reload --check run/type_headers_deno_types.ts",
   output: "run/type_headers_deno_types.ts.out",
   http_server: true,
 });
@@ -1839,20 +1845,20 @@ itest!(unstable_kv_enabled {
 });
 
 itest!(import_compression {
-  args: "run --quiet --reload --allow-net run/import_compression/main.ts",
+  args: "run --allow-import --quiet --reload --allow-net run/import_compression/main.ts",
   output: "run/import_compression/main.out",
   http_server: true,
 });
 
 itest!(disallow_http_from_https_js {
-  args: "run --quiet --reload --cert tls/RootCA.pem https://localhost:5545/run/disallow_http_from_https.js",
+  args: "run --allow-import --quiet --reload --cert tls/RootCA.pem https://localhost:5545/run/disallow_http_from_https.js",
   output: "run/disallow_http_from_https_js.out",
   http_server: true,
   exit_code: 1,
 });
 
 itest!(disallow_http_from_https_ts {
-  args: "run --quiet --reload --cert tls/RootCA.pem https://localhost:5545/run/disallow_http_from_https.ts",
+  args: "run --allow-import --quiet --reload --cert tls/RootCA.pem https://localhost:5545/run/disallow_http_from_https.ts",
   output: "run/disallow_http_from_https_ts.out",
   http_server: true,
   exit_code: 1,
@@ -1904,7 +1910,7 @@ itest!(es_private_fields {
 });
 
 itest!(ts_import_from_js {
-  args: "run --quiet --reload run/ts_import_from_js/main.js",
+  args: "run --allow-import --quiet --reload run/ts_import_from_js/main.js",
   output: "run/ts_import_from_js/main.out",
   http_server: true,
 });
@@ -1915,100 +1921,101 @@ itest!(jsx_import_from_ts {
 });
 
 itest!(jsx_import_source_pragma {
-  args: "run --reload run/jsx_import_source_pragma.tsx",
+  args: "run --reload --allow-import run/jsx_import_source_pragma.tsx",
   output: "run/jsx_import_source.out",
   http_server: true,
 });
 
 itest!(jsx_import_source_pragma_with_config {
   args:
-    "run --reload --config jsx/deno-jsx.jsonc --no-lock run/jsx_import_source_pragma.tsx",
+    "run --reload --allow-import --config jsx/deno-jsx.jsonc --no-lock run/jsx_import_source_pragma.tsx",
   output: "run/jsx_import_source.out",
   http_server: true,
 });
 
 itest!(jsx_import_source_pragma_with_dev_config {
   args:
-    "run --reload --config jsx/deno-jsxdev.jsonc --no-lock run/jsx_import_source_pragma.tsx",
+    "run --reload --allow-import --config jsx/deno-jsxdev.jsonc --no-lock run/jsx_import_source_pragma.tsx",
   output: "run/jsx_import_source_dev.out",
   http_server: true,
 });
 
 itest!(jsx_import_source_no_pragma {
   args:
-    "run --reload --config jsx/deno-jsx.jsonc --no-lock run/jsx_import_source_no_pragma.tsx",
+    "run --allow-import --reload --config jsx/deno-jsx.jsonc --no-lock run/jsx_import_source_no_pragma.tsx",
   output: "run/jsx_import_source.out",
   http_server: true,
 });
 
 itest!(jsx_import_source_no_pragma_dev {
-  args: "run --reload --config jsx/deno-jsxdev.jsonc --no-lock run/jsx_import_source_no_pragma.tsx",
+  args: "run --allow-import --reload --config jsx/deno-jsxdev.jsonc --no-lock run/jsx_import_source_no_pragma.tsx",
   output: "run/jsx_import_source_dev.out",
   http_server: true,
 });
 
 itest!(jsx_import_source_pragma_import_map {
-  args: "run --reload --import-map jsx/import-map.json run/jsx_import_source_pragma_import_map.tsx",
+  args: "run --allow-import --reload --import-map jsx/import-map.json run/jsx_import_source_pragma_import_map.tsx",
   output: "run/jsx_import_source_import_map.out",
   http_server: true,
 });
 
 itest!(jsx_import_source_pragma_import_map_dev {
-  args: "run --reload --import-map jsx/import-map.json --config jsx/deno-jsxdev-import-map.jsonc run/jsx_import_source_pragma_import_map.tsx",
+  args: "run --allow-import --reload --import-map jsx/import-map.json --config jsx/deno-jsxdev-import-map.jsonc run/jsx_import_source_pragma_import_map.tsx",
   output: "run/jsx_import_source_import_map_dev.out",
   http_server: true,
 });
 
 itest!(jsx_import_source_precompile_import_map {
-  args: "run --reload --check --import-map jsx/import-map.json --no-lock --config jsx/deno-jsx-precompile.jsonc run/jsx_precompile/no_pragma.tsx",
+  args: "run --allow-import --reload --check --import-map jsx/import-map.json --no-lock --config jsx/deno-jsx-precompile.jsonc run/jsx_precompile/no_pragma.tsx",
   output: "run/jsx_precompile/no_pragma.out",
   http_server: true,
 });
 
 itest!(jsx_import_source_precompile_import_map_skip_element {
-  args: "run --reload --check --import-map jsx/import-map.json --no-lock --config jsx/deno-jsx-precompile-skip.jsonc run/jsx_precompile/skip.tsx",
+  args: "run --allow-import --reload --check --import-map jsx/import-map.json --no-lock --config jsx/deno-jsx-precompile-skip.jsonc run/jsx_precompile/skip.tsx",
   output: "run/jsx_precompile/skip.out",
   http_server: true,
 });
 
 itest!(jsx_import_source_import_map {
-  args: "run --reload --import-map jsx/import-map.json --no-lock --config jsx/deno-jsx-import-map.jsonc run/jsx_import_source_no_pragma.tsx",
+  args: "run --allow-import --reload --import-map jsx/import-map.json --no-lock --config jsx/deno-jsx-import-map.jsonc run/jsx_import_source_no_pragma.tsx",
   output: "run/jsx_import_source_import_map.out",
   http_server: true,
 });
 
 itest!(jsx_import_source_import_map_dev {
-  args: "run --reload --import-map jsx/import-map.json --no-lock --config jsx/deno-jsxdev-import-map.jsonc run/jsx_import_source_no_pragma.tsx",
+  args: "run --allow-import --reload --import-map jsx/import-map.json --no-lock --config jsx/deno-jsxdev-import-map.jsonc run/jsx_import_source_no_pragma.tsx",
   output: "run/jsx_import_source_import_map_dev.out",
   http_server: true,
 });
 
 itest!(jsx_import_source_import_map_scoped {
-  args: "run --reload --import-map jsx/import-map-scoped.json --no-lock --config jsx/deno-jsx-import-map.jsonc subdir/jsx_import_source_no_pragma.tsx",
+  args: "run --allow-import --reload --import-map jsx/import-map-scoped.json --no-lock --config jsx/deno-jsx-import-map.jsonc subdir/jsx_import_source_no_pragma.tsx",
   output: "run/jsx_import_source_import_map.out",
   http_server: true,
 });
 
 itest!(jsx_import_source_import_map_scoped_dev {
-  args: "run --reload --import-map jsx/import-map-scoped.json --no-lock --config jsx/deno-jsxdev-import-map.jsonc subdir/jsx_import_source_no_pragma.tsx",
+  args: "run --allow-import --reload --import-map jsx/import-map-scoped.json --no-lock --config jsx/deno-jsxdev-import-map.jsonc subdir/jsx_import_source_no_pragma.tsx",
   output: "run/jsx_import_source_import_map_dev.out",
   http_server: true,
 });
 
 itest!(jsx_import_source_pragma_no_check {
-  args: "run --reload --no-check run/jsx_import_source_pragma.tsx",
+  args:
+    "run --allow-import --reload --no-check run/jsx_import_source_pragma.tsx",
   output: "run/jsx_import_source.out",
   http_server: true,
 });
 
 itest!(jsx_import_source_pragma_with_config_no_check {
-  args: "run --reload --config jsx/deno-jsx.jsonc --no-lock --no-check run/jsx_import_source_pragma.tsx",
+  args: "run --allow-import --reload --config jsx/deno-jsx.jsonc --no-lock --no-check run/jsx_import_source_pragma.tsx",
   output: "run/jsx_import_source.out",
   http_server: true,
 });
 
 itest!(jsx_import_source_pragma_with_config_vendor_dir {
-  args: "run --reload --config jsx/deno-jsx.jsonc --no-lock --vendor $TESTDATA/run/jsx_import_source_pragma.tsx",
+  args: "run --allow-import --reload --config jsx/deno-jsx.jsonc --no-lock --vendor $TESTDATA/run/jsx_import_source_pragma.tsx",
   output: "run/jsx_import_source.out",
   http_server: true,
   temp_cwd: true,
@@ -2017,19 +2024,19 @@ itest!(jsx_import_source_pragma_with_config_vendor_dir {
 
 itest!(jsx_import_source_no_pragma_no_check {
   args:
-    "run --reload --config jsx/deno-jsx.jsonc --no-lock --no-check run/jsx_import_source_no_pragma.tsx",
+    "run --allow-import --reload --config jsx/deno-jsx.jsonc --no-lock --no-check run/jsx_import_source_no_pragma.tsx",
   output: "run/jsx_import_source.out",
   http_server: true,
 });
 
 itest!(jsx_import_source_pragma_import_map_no_check {
-  args: "run --reload --import-map jsx/import-map.json --no-check run/jsx_import_source_pragma_import_map.tsx",
+  args: "run --allow-import --reload --import-map jsx/import-map.json --no-check run/jsx_import_source_pragma_import_map.tsx",
   output: "run/jsx_import_source_import_map.out",
   http_server: true,
 });
 
 itest!(jsx_import_source_import_map_no_check {
-  args: "run --reload --import-map jsx/import-map.json --no-lock --config jsx/deno-jsx-import-map.jsonc --no-check run/jsx_import_source_no_pragma.tsx",
+  args: "run --allow-import --reload --import-map jsx/import-map.json --no-lock --config jsx/deno-jsx-import-map.jsonc --no-check run/jsx_import_source_no_pragma.tsx",
   output: "run/jsx_import_source_import_map.out",
   http_server: true,
 });
@@ -2093,7 +2100,7 @@ itest!(import_data_url_import_relative {
 });
 
 itest!(import_data_url_imports {
-  args: "run --quiet --reload run/import_data_url_imports.ts",
+  args: "run --allow-import --quiet --reload run/import_data_url_imports.ts",
   output: "run/import_data_url_imports.ts.out",
   http_server: true,
 });
@@ -2127,7 +2134,7 @@ itest!(import_blob_url_import_relative {
 
 itest!(import_blob_url_imports {
   args:
-    "run --quiet --reload --allow-net=localhost:4545 run/import_blob_url_imports.ts",
+    "run --allow-import --quiet --reload --allow-net=localhost:4545 run/import_blob_url_imports.ts",
   output: "run/import_blob_url_imports.ts.out",
   http_server: true,
 });
@@ -2143,13 +2150,13 @@ itest!(import_blob_url {
 });
 
 itest!(import_file_with_colon {
-  args: "run --quiet --reload run/import_file_with_colon.ts",
+  args: "run --allow-import --quiet --reload run/import_file_with_colon.ts",
   output: "run/import_file_with_colon.ts.out",
   http_server: true,
 });
 
 itest!(import_extensionless {
-  args: "run --quiet --reload run/import_extensionless.ts",
+  args: "run --allow-import --quiet --reload run/import_extensionless.ts",
   output: "run/import_extensionless.ts.out",
   http_server: true,
 });
@@ -2195,7 +2202,7 @@ itest!(inline_js_source_map_2_with_inline_contents {
 // was not commented out. The source line is remapped using source contents that
 // from the module graph.
 itest!(inline_js_source_map_with_contents_from_graph {
-  args: "run --quiet run/inline_js_source_map_with_contents_from_graph.js",
+  args: "run --allow-import --quiet run/inline_js_source_map_with_contents_from_graph.js",
   output: "run/inline_js_source_map_with_contents_from_graph.js.out",
   exit_code: 1,
   http_server: true,
@@ -3031,14 +3038,14 @@ mod permissions {
   });
 
   itest!(dynamic_import_permissions_remote_remote {
-    args: "run --quiet --reload --allow-net=localhost:4545 dynamic_import/permissions_remote_remote.ts",
+    args: "run --quiet --reload --allow-import=localhost:4545 dynamic_import/permissions_remote_remote.ts",
     output: "dynamic_import/permissions_remote_remote.ts.out",
     http_server: true,
     exit_code: 1,
   });
 
   itest!(dynamic_import_permissions_data_remote {
-    args: "run --quiet --reload --allow-net=localhost:4545 dynamic_import/permissions_data_remote.ts",
+    args: "run --quiet --reload --allow-import=localhost:4545 dynamic_import/permissions_data_remote.ts",
     output: "dynamic_import/permissions_data_remote.ts.out",
     http_server: true,
     exit_code: 1,
@@ -3329,7 +3336,7 @@ itest!(no_config_auto_discovery_for_local_script {
 });
 
 itest!(config_not_auto_discovered_for_remote_script {
-  args: "run --quiet http://127.0.0.1:4545/run/with_config/server_side_work.ts",
+  args: "run --allow-import --quiet http://127.0.0.1:4545/run/with_config/server_side_work.ts",
   output_str: Some("ok\n"),
   http_server: true,
 });
@@ -3468,6 +3475,7 @@ fn check_local_then_remote() {
   let output = util::deno_cmd_with_deno_dir(&deno_dir)
     .current_dir(util::testdata_path())
     .arg("run")
+    .arg("--allow-import")
     .arg("--check")
     .arg("run/remote_type_error/main.ts")
     .spawn()
@@ -3478,6 +3486,7 @@ fn check_local_then_remote() {
   let output = util::deno_cmd_with_deno_dir(&deno_dir)
     .current_dir(util::testdata_path())
     .arg("run")
+    .arg("--allow-import")
     .arg("--check=all")
     .arg("run/remote_type_error/main.ts")
     .env("NO_COLOR", "1")
@@ -3671,6 +3680,7 @@ fn cache_test() {
     .env("DENO_DIR", deno_dir.path())
     .current_dir(util::testdata_path())
     .arg("cache")
+    .arg("--allow-import=localhost:4545")
     .arg("--check=all")
     .arg("-L")
     .arg("debug")
@@ -3686,6 +3696,7 @@ fn cache_test() {
     .env("NO_COLOR", "1")
     .current_dir(util::testdata_path())
     .arg("run")
+    .arg("--allow-import=localhost:4545")
     .arg(module_url.to_string())
     .output()
     .expect("Failed to spawn script");
@@ -3835,6 +3846,7 @@ fn basic_auth_tokens() {
   let output = util::deno_cmd()
     .current_dir(util::root_path())
     .arg("run")
+    .arg("--allow-import")
     .arg("http://127.0.0.1:4554/run/001_hello.js")
     .piped_output()
     .spawn()
@@ -3856,6 +3868,7 @@ fn basic_auth_tokens() {
   let output = util::deno_cmd()
     .current_dir(util::root_path())
     .arg("run")
+    .arg("--allow-import")
     .arg("http://127.0.0.1:4554/run/001_hello.js")
     .env("DENO_AUTH_TOKENS", "testuser123:testpassabc@127.0.0.1:4554")
     .piped_output()
@@ -4420,7 +4433,7 @@ async fn websocket_server_idletimeout() {
 }
 
 itest!(no_lock_flag {
-  args: "run --no-lock run/no_lock_flag/main.ts",
+  args: "run --allow-import --no-lock run/no_lock_flag/main.ts",
   output: "run/no_lock_flag/main.out",
   http_server: true,
   exit_code: 0,
@@ -4579,7 +4592,9 @@ pub fn vendor_dir_config_file() {
 console.log(returnsHi());"#,
   );
 
-  let deno_run_cmd = test_context.new_command().args("run --quiet main.ts");
+  let deno_run_cmd = test_context
+    .new_command()
+    .args("run --allow-import --quiet main.ts");
   deno_run_cmd.run().assert_matches_text("Hi\n");
 
   assert!(vendor_dir.exists());
@@ -4590,13 +4605,15 @@ console.log(returnsHi());"#,
   assert!(!vendor_dir.exists());
   test_context
     .new_command()
-    .args("cache --quiet --vendor main.ts")
+    .args("cache --allow-import --quiet --vendor main.ts")
     .run();
   assert!(vendor_dir.exists());
   rm_vendor_dir();
 
   temp_dir.write("deno.json", r#"{ "vendor": true }"#);
-  let cache_command = test_context.new_command().args("cache --quiet main.ts");
+  let cache_command = test_context
+    .new_command()
+    .args("cache --allow-import --quiet main.ts");
   cache_command.run();
 
   assert!(vendor_dir.exists());
@@ -4624,7 +4641,7 @@ console.log(returnsHi());"#,
   test_context
     .new_command()
     // http_localhost_4545/subdir/#capitals_c75d7/main.js
-    .args("cache http://localhost:4545/subdir/CAPITALS/main.js")
+    .args("cache --allow-import http://localhost:4545/subdir/CAPITALS/main.js")
     .run()
     .skip_output_check();
   assert_eq!(
@@ -4641,7 +4658,7 @@ console.log(returnsHi());"#,
   test_context
     .new_command()
     // todo(dsherret): seems wrong that we don't auto-discover the config file to get the vendor directory for this
-    .args("run --vendor http://localhost:4545/subdir/CAPITALS/hello_there.ts")
+    .args("run --allow-import --vendor http://localhost:4545/subdir/CAPITALS/hello_there.ts")
     .run()
     .assert_matches_text("hello there\n");
 
@@ -5136,21 +5153,23 @@ fn emit_failed_readonly_file_system() {
 fn handle_invalid_path_error() {
   let deno_cmd = util::deno_cmd_with_deno_dir(&util::new_deno_dir());
   let output = deno_cmd.arg("run").arg("file://asdf").output().unwrap();
-  assert!(
-    String::from_utf8_lossy(&output.stderr).contains("Invalid file path.")
+  assert_contains!(
+    String::from_utf8_lossy(&output.stderr),
+    "Invalid file path."
   );
 
   let deno_cmd = util::deno_cmd_with_deno_dir(&util::new_deno_dir());
   let output = deno_cmd.arg("run").arg("/a/b").output().unwrap();
-  assert!(String::from_utf8_lossy(&output.stderr).contains("Module not found"));
+  assert_contains!(String::from_utf8_lossy(&output.stderr), "Module not found");
 
   let deno_cmd = util::deno_cmd_with_deno_dir(&util::new_deno_dir());
   let output = deno_cmd.arg("run").arg("//a/b").output().unwrap();
-  assert!(
-    String::from_utf8_lossy(&output.stderr).contains("Invalid file path.")
+  assert_contains!(
+    String::from_utf8_lossy(&output.stderr),
+    "Invalid file path."
   );
 
   let deno_cmd = util::deno_cmd_with_deno_dir(&util::new_deno_dir());
   let output = deno_cmd.arg("run").arg("///a/b").output().unwrap();
-  assert!(String::from_utf8_lossy(&output.stderr).contains("Module not found"));
+  assert_contains!(String::from_utf8_lossy(&output.stderr), "Module not found");
 }

@@ -1,8 +1,0 @@
-Download http://localhost:4260/@denotest/bin
-Download http://localhost:4260/@denotest/bin/1.0.0.tgz
-Initialize @denotest/bin@1.0.0
-Task bin cli-esm testing this out "asdf"
-testing
-this
-out
-asdf

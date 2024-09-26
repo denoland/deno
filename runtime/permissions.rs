@@ -12,6 +12,7 @@ use deno_permissions::AllowRunDescriptorParseResult;
 use deno_permissions::DenyRunDescriptor;
 use deno_permissions::EnvDescriptor;
 use deno_permissions::FfiDescriptor;
+use deno_permissions::ImportDescriptor;
 use deno_permissions::NetDescriptor;
 use deno_permissions::PathQueryDescriptor;
 use deno_permissions::ReadDescriptor;
@@ -73,6 +74,13 @@ impl deno_permissions::PermissionDescriptorParser
     text: &str,
   ) -> Result<NetDescriptor, AnyError> {
     NetDescriptor::parse(text)
+  }
+
+  fn parse_import_descriptor(
+    &self,
+    text: &str,
+  ) -> Result<ImportDescriptor, AnyError> {
+    ImportDescriptor::parse(text)
   }
 
   fn parse_env_descriptor(

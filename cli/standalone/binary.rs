@@ -427,13 +427,9 @@ impl<'a> DenoCompileBinaryWriter<'a> {
             binary_name
           )
         }
-        ReleaseChannel::Stable => {
+        _ => {
           format!("release/v{}/{}", env!("CARGO_PKG_VERSION"), binary_name)
         }
-        _ => bail!(
-          "`deno compile` current doesn't support {} release channel",
-          crate::version::DENO_VERSION_INFO.release_channel.name()
-        ),
       };
 
     let download_directory = self.deno_dir.dl_folder_path();

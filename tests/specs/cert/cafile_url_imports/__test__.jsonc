@@ -1,5 +1,5 @@
 {
-  "args": "run --quiet --reload --cert RootCA.pem cafile_url_imports.ts",
+  "args": "run --quiet --reload --allow-import --cert RootCA.pem cafile_url_imports.ts",
   "flaky": true,
   "output": "cafile_url_imports.ts.out"
 }
