@@ -13,8 +13,8 @@ repository.workspace = true
 crate-type = ["cdylib"]
 
 [dependencies]
-napi-sys = { version = "=2.2.2", default-features = false, features = ["napi7"] }
 libuv-sys-lite = "1.48.0"
+napi-sys = { version = "=2.2.2", default-features = false, features = ["napi7"] }
 
 [dev-dependencies]
 test_util.workspace = true
