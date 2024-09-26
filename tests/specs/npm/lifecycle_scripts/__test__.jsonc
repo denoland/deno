@@ -91,7 +91,7 @@
         {
           // should warn because this is an explicit install
           "args": "install -e all_lifecycles.js",
-          "output": "only_warns_first_install.out"
+          "output": "warns_again_on_install.out"
         }
       ]
     },
