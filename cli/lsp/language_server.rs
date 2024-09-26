@@ -274,10 +274,9 @@ impl LanguageServer {
         factory.fs(),
         &roots,
         graph_util::GraphValidOptions {
-          is_vendoring: false,
           kind: GraphKind::All,
           check_js: false,
-          exit_lockfile_errors: false,
+          exit_integrity_errors: false,
         },
       )?;
 
