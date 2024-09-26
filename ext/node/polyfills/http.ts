@@ -145,13 +145,6 @@ class FakeSocket extends EventEmitter {
 }
 
 function emitErrorEvent(request, error) {
-  // TODO: enable this when we implement dc for ClientRequest
-  // if (onClientRequestErrorChannel.hasSubscribers) {
-  //   onClientRequestErrorChannel.publish({
-  //     request,
-  //     error,
-  //   });
-  // }
   request.emit("error", error);
 }
 
@@ -579,10 +572,12 @@ class ClientRequest extends OutgoingMessage {
 
   onSocket(socket, err) {
     nextTick(() => {
+      // deno-lint-ignore no-this-alias
       const req = this;
       if (req.destroyed || err) {
         req.destroyed = true;
 
+        // deno-lint-ignore no-inner-declarations
         function _destroy(req, err) {
           if (!req.aborted && !err) {
             err = new connResetException("socket hang up");
