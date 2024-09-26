@@ -548,6 +548,8 @@ pub struct LifecycleScriptsConfig {
   pub allowed: PackagesAllowedScripts,
   pub initial_cwd: PathBuf,
   pub root_dir: PathBuf,
+  /// Part of an explicit `deno install`?
+  pub explicit_install: bool,
 }
 
 #[derive(Debug, Clone, Eq, PartialEq, Default)]

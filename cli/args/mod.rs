@@ -1686,6 +1686,10 @@ impl CliOptions {
       allowed: self.flags.allow_scripts.clone(),
       initial_cwd: self.initial_cwd.clone(),
       root_dir: self.workspace().root_dir_path(),
+      explicit_install: matches!(
+        self.sub_command(),
+        DenoSubcommand::Install(_) | DenoSubcommand::Cache(_)
+      ),
     }
   }
 }

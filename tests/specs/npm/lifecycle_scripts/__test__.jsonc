@@ -64,12 +64,17 @@
         },
         {
           // should not warn
-          "args": "install -e all_lifecycles.js",
+          "args": "run all_lifecycles_global.js",
           "output": ""
+        },
+        {
+          // should warn still
+          "args": "install -e all_lifecycles.js",
+          "output": "all_lifecycles_not_run_global_cached.out"
         }
       ]
     },
-    "only_warns_first": {
+    "only_warns_first_run": {
       "steps": [
         {
           // without running scripts (should warn)
@@ -82,6 +87,11 @@
           "args": "run all_lifecycles.js",
           "output": "only_warns_first2.out",
           "exitCode": 1
+        },
+        {
+          // should warn because this is an explicit install
+          "args": "install -e all_lifecycles.js",
+          "output": "only_warns_first_install.out"
         }
       ]
     },
