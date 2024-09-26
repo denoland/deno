@@ -455,10 +455,6 @@ class ClientRequest extends OutgoingMessage {
         await op_node_http_wait_for_connection(connRid);
         this.emit("requestReady");
         const res = await op_node_http_await_response(rid);
-        if (this._timeout) {
-          this._timeout.removeEventListener("abort", this._timeoutCb);
-          webClearTimeout(this._timeout[timerId]);
-        }
         const incoming = new IncomingMessageForClient(this.socket);
         incoming.req = this;
         this.res = incoming;
