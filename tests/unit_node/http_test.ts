@@ -524,7 +524,8 @@ Deno.test("[node/http] send request with chunked body", async () => {
   };
   const abortController = new AbortController();
   const servePromise = Deno.serve({
-    hostname,
+    // TODO(kt3k): Enable this line for better compatibility with Node.js
+    // hostname,
     port,
     signal: abortController.signal,
     onListen: undefined,
@@ -571,7 +572,8 @@ Deno.test("[node/http] send request with chunked body as default", async () => {
   };
   const abortController = new AbortController();
   const servePromise = Deno.serve({
-    hostname,
+    // TODO(kt3k): Enable this line for better compatibility with Node.js
+    // hostname,
     port,
     signal: abortController.signal,
     onListen: undefined,
