@@ -7,7 +7,9 @@ use crate::args::Flags;
 use crate::colors;
 use crate::display;
 use crate::factory::CliFactory;
-use crate::graph_util::graph_exit_lock_errors;
+use crate::graph_util::graph_exit_integrity_errors;
+use crate::graph_util::graph_walk_errors;
+use crate::graph_util::GraphWalkErrorsOptions;
 use crate::tsc::get_types_declaration_file_text;
 use crate::util::fs::collect_specifiers;
 use deno_ast::diagnostics::Diagnostic;
@@ -107,7 +109,7 @@ pub async fn doc(
     }
     DocSourceFileFlag::Paths(ref source_files) => {
       let module_graph_creator = factory.module_graph_creator().await?;
-      let maybe_lockfile = cli_options.maybe_lockfile();
+      let fs = factory.fs();
 
       let module_specifiers = collect_specifiers(
         FilePatterns {
@@ -127,8 +129,18 @@ pub async fn doc(
         .create_graph(GraphKind::TypesOnly, module_specifiers.clone())
         .await?;
 
-      if maybe_lockfile.is_some() {
-        graph_exit_lock_errors(&graph);
+      graph_exit_integrity_errors(&graph);
+      let errors = graph_walk_errors(
+        &graph,
+        fs,
+        &module_specifiers,
+        GraphWalkErrorsOptions {
+          check_js: false,
+          kind: GraphKind::TypesOnly,
+        },
+      );
+      for error in errors {
+        log::warn!("{} {}", colors::yellow("Warning"), error);
       }
 
       let doc_parser = doc::DocParser::new(

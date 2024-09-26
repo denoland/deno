@@ -29,7 +29,7 @@ use crate::args::Flags;
 use crate::args::InfoFlags;
 use crate::display;
 use crate::factory::CliFactory;
-use crate::graph_util::graph_exit_lock_errors;
+use crate::graph_util::graph_exit_integrity_errors;
 use crate::npm::CliNpmResolver;
 use crate::npm::ManagedCliNpmResolver;
 use crate::util::checksum;
@@ -75,7 +75,7 @@ pub async fn info(
 
     // write out the lockfile if there is one
     if let Some(lockfile) = &maybe_lockfile {
-      graph_exit_lock_errors(&graph);
+      graph_exit_integrity_errors(&graph);
       lockfile.write_if_changed()?;
     }
 
