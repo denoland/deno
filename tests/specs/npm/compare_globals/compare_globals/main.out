@@ -1,0 +1,30 @@
+[UNORDERED_START]
+Download http://localhost:4260/@types/node
+Download http://localhost:4260/undici-types
+Download http://localhost:4260/@denotest/globals
+[UNORDERED_END]
+[UNORDERED_START]
+Download http://localhost:4260/@denotest/globals/1.0.0.tgz
+Download http://localhost:4260/@types/node/node-22.5.4.tgz
+Download http://localhost:4260/undici-types/undici-types-6.19.8.tgz
+[UNORDERED_END]
+Check file:///[WILDCARD]/compare_globals/main.ts
+true
+true
+[]
+setTimeout 1 false
+setTimeout 2 function
+setTimeout 3 function
+setTimeout 4 function
+setTimeout 5 undefined
+window 1 false
+window 2 false
+false
+false
+self 1 true
+self 2 true
+false
+false
+bar
+bar
+true

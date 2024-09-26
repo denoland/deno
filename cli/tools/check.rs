@@ -51,6 +51,7 @@ pub async fn check(
 
   let specifiers_for_typecheck = if check_flags.doc || check_flags.doc_only {
     let file_fetcher = factory.file_fetcher()?;
+    let root_permissions = factory.root_permissions_container()?;
 
     let mut specifiers_for_typecheck = if check_flags.doc {
       specifiers.clone()
@@ -59,7 +60,7 @@ pub async fn check(
     };
 
     for s in specifiers {
-      let file = file_fetcher.fetch_bypass_permissions(&s).await?;
+      let file = file_fetcher.fetch(&s, root_permissions).await?;
       let snippet_files = extract::extract_snippet_files(file)?;
       for snippet_file in snippet_files {
         specifiers_for_typecheck.push(snippet_file.specifier.clone());

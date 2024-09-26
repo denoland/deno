@@ -14,7 +14,6 @@ use deno_core::serde::Deserializer;
 use deno_core::serde::Serialize;
 use deno_core::serde_json;
 use deno_core::unsync::sync::AtomicFlag;
-use deno_core::url;
 use deno_core::url::Url;
 use deno_core::ModuleSpecifier;
 use deno_terminal::colors;
@@ -950,6 +949,15 @@ impl NetDescriptor {
 
     Ok(NetDescriptor(host, port))
   }
+
+  pub fn from_url(url: &Url) -> Result<Self, AnyError> {
+    let host = url
+      .host_str()
+      .ok_or_else(|| type_error(format!("Missing host in url: '{}'", url)))?;
+    let host = Host::parse(host)?;
+    let port = url.port_or_known_default();
+    Ok(NetDescriptor(host, port))
+  }
 }
 
 impl fmt::Display for NetDescriptor {
@@ -963,6 +971,73 @@ impl fmt::Display for NetDescriptor {
       write!(f, ":{}", port)?;
     }
     Ok(())
+  }
+}
+
+#[derive(Clone, Eq, PartialEq, Hash, Debug)]
+pub struct ImportDescriptor(NetDescriptor);
+
+impl QueryDescriptor for ImportDescriptor {
+  type AllowDesc = ImportDescriptor;
+  type DenyDesc = ImportDescriptor;
+
+  fn flag_name() -> &'static str {
+    "import"
+  }
+
+  fn display_name(&self) -> Cow<str> {
+    self.0.display_name()
+  }
+
+  fn from_allow(allow: &Self::AllowDesc) -> Self {
+    Self(NetDescriptor::from_allow(&allow.0))
+  }
+
+  fn as_allow(&self) -> Option<Self::AllowDesc> {
+    self.0.as_allow().map(ImportDescriptor)
+  }
+
+  fn as_deny(&self) -> Self::DenyDesc {
+    Self(self.0.as_deny())
+  }
+
+  fn check_in_permission(
+    &self,
+    perm: &mut UnaryPermission<Self>,
+    api_name: Option<&str>,
+  ) -> Result<(), AnyError> {
+    skip_check_if_is_permission_fully_granted!(perm);
+    perm.check_desc(Some(self), false, api_name)
+  }
+
+  fn matches_allow(&self, other: &Self::AllowDesc) -> bool {
+    self.0.matches_allow(&other.0)
+  }
+
+  fn matches_deny(&self, other: &Self::DenyDesc) -> bool {
+    self.0.matches_deny(&other.0)
+  }
+
+  fn revokes(&self, other: &Self::AllowDesc) -> bool {
+    self.0.revokes(&other.0)
+  }
+
+  fn stronger_than_deny(&self, other: &Self::DenyDesc) -> bool {
+    self.0.stronger_than_deny(&other.0)
+  }
+
+  fn overlaps_deny(&self, other: &Self::DenyDesc) -> bool {
+    self.0.overlaps_deny(&other.0)
+  }
+}
+
+impl ImportDescriptor {
+  pub fn parse(specifier: &str) -> Result<Self, AnyError> {
+    Ok(ImportDescriptor(NetDescriptor::parse(specifier)?))
+  }
+
+  pub fn from_url(url: &Url) -> Result<Self, AnyError> {
+    Ok(ImportDescriptor(NetDescriptor::from_url(url)?))
   }
 }
 
@@ -1519,19 +1594,35 @@ impl UnaryPermission<NetDescriptor> {
     self.check_desc(Some(host), false, api_name)
   }
 
-  pub fn check_url(
+  pub fn check_all(&mut self) -> Result<(), AnyError> {
+    skip_check_if_is_permission_fully_granted!(self);
+    self.check_desc(None, false, None)
+  }
+}
+
+impl UnaryPermission<ImportDescriptor> {
+  pub fn query(&self, host: Option<&ImportDescriptor>) -> PermissionState {
+    self.query_desc(host, AllowPartial::TreatAsPartialGranted)
+  }
+
+  pub fn request(
     &mut self,
-    url: &url::Url,
+    host: Option<&ImportDescriptor>,
+  ) -> PermissionState {
+    self.request_desc(host)
+  }
+
+  pub fn revoke(&mut self, host: Option<&ImportDescriptor>) -> PermissionState {
+    self.revoke_desc(host)
+  }
+
+  pub fn check(
+    &mut self,
+    host: &ImportDescriptor,
     api_name: Option<&str>,
   ) -> Result<(), AnyError> {
     skip_check_if_is_permission_fully_granted!(self);
-    let host = url
-      .host_str()
-      .ok_or_else(|| type_error(format!("Missing host in url: '{}'", url)))?;
-    let host = Host::parse(host)?;
-    let port = url.port_or_known_default();
-    let descriptor = NetDescriptor(host, port);
-    self.check_desc(Some(&descriptor), false, api_name)
+    self.check_desc(Some(host), false, api_name)
   }
 
   pub fn check_all(&mut self) -> Result<(), AnyError> {
@@ -1700,6 +1791,7 @@ pub struct Permissions {
   pub sys: UnaryPermission<SysDescriptor>,
   pub run: UnaryPermission<RunQueryDescriptor>,
   pub ffi: UnaryPermission<FfiQueryDescriptor>,
+  pub import: UnaryPermission<ImportDescriptor>,
   pub all: UnitPermission,
 }
 
@@ -1720,6 +1812,7 @@ pub struct PermissionsOptions {
   pub deny_sys: Option<Vec<String>>,
   pub allow_write: Option<Vec<String>>,
   pub deny_write: Option<Vec<String>>,
+  pub allow_import: Option<Vec<String>>,
   pub prompt: bool,
 }
 
@@ -1888,6 +1981,13 @@ impl Permissions {
         })?,
         opts.prompt,
       )?,
+      import: Permissions::new_unary(
+        parse_maybe_vec(opts.allow_import.as_deref(), |item| {
+          parser.parse_import_descriptor(item)
+        })?,
+        None,
+        opts.prompt,
+      )?,
       all: Permissions::new_all(opts.allow_all),
     })
   }
@@ -1902,6 +2002,7 @@ impl Permissions {
       sys: UnaryPermission::allow_all(),
       run: UnaryPermission::allow_all(),
       ffi: UnaryPermission::allow_all(),
+      import: UnaryPermission::allow_all(),
       all: Permissions::new_all(true),
     }
   }
@@ -1925,33 +2026,8 @@ impl Permissions {
       sys: Permissions::new_unary(None, None, prompt).unwrap(),
       run: Permissions::new_unary(None, None, prompt).unwrap(),
       ffi: Permissions::new_unary(None, None, prompt).unwrap(),
+      import: Permissions::new_unary(None, None, prompt).unwrap(),
       all: Permissions::new_all(false),
-    }
-  }
-
-  /// A helper function that determines if the module specifier is a local or
-  /// remote, and performs a read or net check for the specifier.
-  pub fn check_specifier(
-    &mut self,
-    specifier: &ModuleSpecifier,
-  ) -> Result<(), AnyError> {
-    match specifier.scheme() {
-      "file" => match specifier_to_file_path(specifier) {
-        Ok(path) => self.read.check(
-          &PathQueryDescriptor {
-            requested: path.to_string_lossy().into_owned(),
-            resolved: path,
-          }
-          .into_read(),
-          Some("import()"),
-        ),
-        Err(_) => Err(uri_error(format!(
-          "Invalid file path.\n  Specifier: {specifier}"
-        ))),
-      },
-      "data" => Ok(()),
-      "blob" => Ok(()),
-      _ => self.net.check_url(specifier, Some("import()")),
     }
   }
 }
@@ -2002,6 +2078,12 @@ pub fn specifier_to_file_path(
   }
 }
 
+#[derive(Debug, Clone, Copy, Eq, PartialEq)]
+pub enum CheckSpecifierKind {
+  Static,
+  Dynamic,
+}
+
 /// Wrapper struct for `Permissions` that can be shared across threads.
 ///
 /// We need a way to have internal mutability for permissions as they might get
@@ -2039,8 +2121,43 @@ impl PermissionsContainer {
   pub fn check_specifier(
     &self,
     specifier: &ModuleSpecifier,
+    kind: CheckSpecifierKind,
   ) -> Result<(), AnyError> {
-    self.inner.lock().check_specifier(specifier)
+    let mut inner = self.inner.lock();
+    match specifier.scheme() {
+      "file" => {
+        if inner.read.is_allow_all() || kind == CheckSpecifierKind::Static {
+          return Ok(());
+        }
+
+        match specifier_to_file_path(specifier) {
+          Ok(path) => inner.read.check(
+            &PathQueryDescriptor {
+              requested: path.to_string_lossy().into_owned(),
+              resolved: path,
+            }
+            .into_read(),
+            Some("import()"),
+          ),
+          Err(_) => Err(uri_error(format!(
+            "Invalid file path.\n  Specifier: {specifier}"
+          ))),
+        }
+      }
+      "data" => Ok(()),
+      "blob" => Ok(()),
+      _ => {
+        if inner.import.is_allow_all() {
+          return Ok(()); // avoid allocation below
+        }
+
+        let desc = self
+          .descriptor_parser
+          .parse_import_descriptor_from_url(specifier)?;
+        inner.import.check(&desc, Some("import()"))?;
+        Ok(())
+      }
+    }
   }
 
   #[must_use = "the resolved return value to mitigate time-of-check to time-of-use issues"]
@@ -2375,7 +2492,12 @@ impl PermissionsContainer {
     url: &Url,
     api_name: &str,
   ) -> Result<(), AnyError> {
-    self.inner.lock().net.check_url(url, Some(api_name))
+    let mut inner = self.inner.lock();
+    if inner.net.is_allow_all() {
+      return Ok(());
+    }
+    let desc = self.descriptor_parser.parse_net_descriptor_from_url(url)?;
+    inner.net.check(&desc, Some(api_name))
   }
 
   #[inline(always)]
@@ -2589,6 +2711,7 @@ pub struct ChildPermissionsArg {
   env: ChildUnaryPermissionArg,
   net: ChildUnaryPermissionArg,
   ffi: ChildUnaryPermissionArg,
+  import: ChildUnaryPermissionArg,
   read: ChildUnaryPermissionArg,
   run: ChildUnaryPermissionArg,
   sys: ChildUnaryPermissionArg,
@@ -2601,6 +2724,7 @@ impl ChildPermissionsArg {
       env: ChildUnaryPermissionArg::Inherit,
       net: ChildUnaryPermissionArg::Inherit,
       ffi: ChildUnaryPermissionArg::Inherit,
+      import: ChildUnaryPermissionArg::Inherit,
       read: ChildUnaryPermissionArg::Inherit,
       run: ChildUnaryPermissionArg::Inherit,
       sys: ChildUnaryPermissionArg::Inherit,
@@ -2613,6 +2737,7 @@ impl ChildPermissionsArg {
       env: ChildUnaryPermissionArg::NotGranted,
       net: ChildUnaryPermissionArg::NotGranted,
       ffi: ChildUnaryPermissionArg::NotGranted,
+      import: ChildUnaryPermissionArg::NotGranted,
       read: ChildUnaryPermissionArg::NotGranted,
       run: ChildUnaryPermissionArg::NotGranted,
       sys: ChildUnaryPermissionArg::NotGranted,
@@ -2677,6 +2802,11 @@ impl<'de> Deserialize<'de> for ChildPermissionsArg {
             child_permissions_arg.ffi = arg.map_err(|e| {
               de::Error::custom(format!("(deno.permissions.ffi) {e}"))
             })?;
+          } else if key == "import" {
+            let arg = serde_json::from_value::<ChildUnaryPermissionArg>(value);
+            child_permissions_arg.import = arg.map_err(|e| {
+              de::Error::custom(format!("(deno.permissions.import) {e}"))
+            })?;
           } else if key == "read" {
             let arg = serde_json::from_value::<ChildUnaryPermissionArg>(value);
             child_permissions_arg.read = arg.map_err(|e| {
@@ -2725,6 +2855,25 @@ pub trait PermissionDescriptorParser: Debug + Send + Sync {
 
   fn parse_net_descriptor(&self, text: &str)
     -> Result<NetDescriptor, AnyError>;
+
+  fn parse_net_descriptor_from_url(
+    &self,
+    url: &Url,
+  ) -> Result<NetDescriptor, AnyError> {
+    NetDescriptor::from_url(url)
+  }
+
+  fn parse_import_descriptor(
+    &self,
+    text: &str,
+  ) -> Result<ImportDescriptor, AnyError>;
+
+  fn parse_import_descriptor_from_url(
+    &self,
+    url: &Url,
+  ) -> Result<ImportDescriptor, AnyError> {
+    ImportDescriptor::from_url(url)
+  }
 
   fn parse_env_descriptor(&self, text: &str)
     -> Result<EnvDescriptor, AnyError>;
@@ -2785,6 +2934,7 @@ pub fn create_child_permissions(
       &child_permissions_arg.read,
       &child_permissions_arg.write,
       &child_permissions_arg.net,
+      &child_permissions_arg.import,
       &child_permissions_arg.env,
       &child_permissions_arg.sys,
       &child_permissions_arg.run,
@@ -2807,6 +2957,11 @@ pub fn create_child_permissions(
     .write
     .create_child_permissions(child_permissions_arg.write, |text| {
       Ok(Some(parser.parse_write_descriptor(text)?))
+    })?;
+  worker_perms.import = main_perms
+    .import
+    .create_child_permissions(child_permissions_arg.import, |text| {
+      Ok(Some(parser.parse_import_descriptor(text)?))
     })?;
   worker_perms.net = main_perms
     .net
@@ -2895,6 +3050,13 @@ mod tests {
       text: &str,
     ) -> Result<NetDescriptor, AnyError> {
       NetDescriptor::parse(text)
+    }
+
+    fn parse_import_descriptor(
+      &self,
+      text: &str,
+    ) -> Result<ImportDescriptor, AnyError> {
+      ImportDescriptor::parse(text)
     }
 
     fn parse_env_descriptor(
@@ -3153,8 +3315,9 @@ mod tests {
 
   #[test]
   fn test_check_net_url() {
-    let mut perms = Permissions::from_options(
-      &TestPermissionDescriptorParser,
+    let parser = TestPermissionDescriptorParser;
+    let perms = Permissions::from_options(
+      &parser,
       &PermissionsOptions {
         allow_net: Some(svec![
           "localhost",
@@ -3168,6 +3331,7 @@ mod tests {
       },
     )
     .unwrap();
+    let mut perms = PermissionsContainer::new(Arc::new(parser), perms);
 
     let url_tests = vec![
       // Any protocol + port for localhost should be ok, since we don't specify
@@ -3209,8 +3373,8 @@ mod tests {
     ];
 
     for (url_str, is_ok) in url_tests {
-      let u = url::Url::parse(url_str).unwrap();
-      assert_eq!(is_ok, perms.net.check_url(&u, None).is_ok(), "{}", u);
+      let u = Url::parse(url_str).unwrap();
+      assert_eq!(is_ok, perms.check_net_url(&u, "api()").is_ok(), "{}", u);
     }
   }
 
@@ -3222,70 +3386,82 @@ mod tests {
     } else {
       svec!["/a"]
     };
-    let mut perms = Permissions::from_options(
-      &TestPermissionDescriptorParser,
+    let parser = TestPermissionDescriptorParser;
+    let perms = Permissions::from_options(
+      &parser,
       &PermissionsOptions {
         allow_read: Some(read_allowlist),
-        allow_net: Some(svec!["localhost"]),
+        allow_import: Some(svec!["localhost"]),
         ..Default::default()
       },
     )
     .unwrap();
+    let perms = PermissionsContainer::new(Arc::new(parser), perms);
 
     let mut fixtures = vec![
       (
         ModuleSpecifier::parse("http://localhost:4545/mod.ts").unwrap(),
+        CheckSpecifierKind::Static,
+        true,
+      ),
+      (
+        ModuleSpecifier::parse("http://localhost:4545/mod.ts").unwrap(),
+        CheckSpecifierKind::Dynamic,
         true,
       ),
       (
         ModuleSpecifier::parse("http://deno.land/x/mod.ts").unwrap(),
+        CheckSpecifierKind::Dynamic,
         false,
       ),
       (
         ModuleSpecifier::parse("data:text/plain,Hello%2C%20Deno!").unwrap(),
+        CheckSpecifierKind::Dynamic,
         true,
       ),
     ];
 
     if cfg!(target_os = "windows") {
-      fixtures
-        .push((ModuleSpecifier::parse("file:///C:/a/mod.ts").unwrap(), true));
+      fixtures.push((
+        ModuleSpecifier::parse("file:///C:/a/mod.ts").unwrap(),
+        CheckSpecifierKind::Dynamic,
+        true,
+      ));
       fixtures.push((
         ModuleSpecifier::parse("file:///C:/b/mod.ts").unwrap(),
+        CheckSpecifierKind::Static,
+        true,
+      ));
+      fixtures.push((
+        ModuleSpecifier::parse("file:///C:/b/mod.ts").unwrap(),
+        CheckSpecifierKind::Dynamic,
         false,
       ));
     } else {
-      fixtures
-        .push((ModuleSpecifier::parse("file:///a/mod.ts").unwrap(), true));
-      fixtures
-        .push((ModuleSpecifier::parse("file:///b/mod.ts").unwrap(), false));
+      fixtures.push((
+        ModuleSpecifier::parse("file:///a/mod.ts").unwrap(),
+        CheckSpecifierKind::Dynamic,
+        true,
+      ));
+      fixtures.push((
+        ModuleSpecifier::parse("file:///b/mod.ts").unwrap(),
+        CheckSpecifierKind::Static,
+        true,
+      ));
+      fixtures.push((
+        ModuleSpecifier::parse("file:///b/mod.ts").unwrap(),
+        CheckSpecifierKind::Dynamic,
+        false,
+      ));
     }
 
-    for (specifier, expected) in fixtures {
+    for (specifier, kind, expected) in fixtures {
       assert_eq!(
-        perms.check_specifier(&specifier).is_ok(),
+        perms.check_specifier(&specifier, kind).is_ok(),
         expected,
         "{}",
         specifier,
       );
-    }
-  }
-
-  #[test]
-  fn check_invalid_specifiers() {
-    set_prompter(Box::new(TestPrompter));
-    let mut perms = Permissions::allow_all();
-
-    let mut test_cases = vec![];
-
-    test_cases.push("file://dir");
-    test_cases.push("file://asdf/");
-    test_cases.push("file://remotehost/");
-
-    for url in test_cases {
-      assert!(perms
-        .check_specifier(&ModuleSpecifier::parse(url).unwrap())
-        .is_err());
     }
   }
 
@@ -3885,6 +4061,7 @@ mod tests {
         env: ChildUnaryPermissionArg::Inherit,
         net: ChildUnaryPermissionArg::Inherit,
         ffi: ChildUnaryPermissionArg::Inherit,
+        import: ChildUnaryPermissionArg::Inherit,
         read: ChildUnaryPermissionArg::Inherit,
         run: ChildUnaryPermissionArg::Inherit,
         sys: ChildUnaryPermissionArg::Inherit,
@@ -3897,6 +4074,7 @@ mod tests {
         env: ChildUnaryPermissionArg::NotGranted,
         net: ChildUnaryPermissionArg::NotGranted,
         ffi: ChildUnaryPermissionArg::NotGranted,
+        import: ChildUnaryPermissionArg::NotGranted,
         read: ChildUnaryPermissionArg::NotGranted,
         run: ChildUnaryPermissionArg::NotGranted,
         sys: ChildUnaryPermissionArg::NotGranted,
@@ -3930,6 +4108,7 @@ mod tests {
         "env": true,
         "net": true,
         "ffi": true,
+        "import": true,
         "read": true,
         "run": true,
         "sys": true,
@@ -3940,6 +4119,7 @@ mod tests {
         env: ChildUnaryPermissionArg::Granted,
         net: ChildUnaryPermissionArg::Granted,
         ffi: ChildUnaryPermissionArg::Granted,
+        import: ChildUnaryPermissionArg::Granted,
         read: ChildUnaryPermissionArg::Granted,
         run: ChildUnaryPermissionArg::Granted,
         sys: ChildUnaryPermissionArg::Granted,
@@ -3951,6 +4131,7 @@ mod tests {
         "env": false,
         "net": false,
         "ffi": false,
+        "import": false,
         "read": false,
         "run": false,
         "sys": false,
@@ -3961,6 +4142,7 @@ mod tests {
         env: ChildUnaryPermissionArg::NotGranted,
         net: ChildUnaryPermissionArg::NotGranted,
         ffi: ChildUnaryPermissionArg::NotGranted,
+        import: ChildUnaryPermissionArg::NotGranted,
         read: ChildUnaryPermissionArg::NotGranted,
         run: ChildUnaryPermissionArg::NotGranted,
         sys: ChildUnaryPermissionArg::NotGranted,
@@ -3972,6 +4154,7 @@ mod tests {
         "env": ["foo", "bar"],
         "net": ["foo", "bar:8000"],
         "ffi": ["foo", "file:///bar/baz"],
+        "import": ["example.com"],
         "read": ["foo", "file:///bar/baz"],
         "run": ["foo", "file:///bar/baz", "./qux"],
         "sys": ["hostname", "osRelease"],
@@ -3985,6 +4168,7 @@ mod tests {
           "foo",
           "file:///bar/baz"
         ]),
+        import: ChildUnaryPermissionArg::GrantedList(svec!["example.com"]),
         read: ChildUnaryPermissionArg::GrantedList(svec![
           "foo",
           "file:///bar/baz"

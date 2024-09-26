@@ -1,0 +1,8 @@
+{
+  "args": "run --allow-read cjs_local_global_decls/main.ts",
+  "output": "cjs_local_global_decls/main.out",
+  "envs": {
+    "NO_COLOR": "1",
+    "NPM_CONFIG_REGISTRY": "http://localhost:4260/"
+  }
+}

@@ -1,10 +1,11 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
+use crate::args::jsr_url;
 use crate::args::CacheSetting;
 use crate::errors::get_error_class_name;
 use crate::file_fetcher::FetchNoFollowOptions;
 use crate::file_fetcher::FetchOptions;
-use crate::file_fetcher::FetchPermissionsOption;
+use crate::file_fetcher::FetchPermissionsOptionRef;
 use crate::file_fetcher::FileFetcher;
 use crate::file_fetcher::FileOrRedirect;
 use crate::npm::CliNpmResolver;
@@ -19,6 +20,7 @@ use deno_graph::source::CacheInfo;
 use deno_graph::source::LoadFuture;
 use deno_graph::source::LoadResponse;
 use deno_graph::source::Loader;
+use deno_runtime::deno_permissions::PermissionsContainer;
 use std::collections::HashMap;
 use std::path::Path;
 use std::path::PathBuf;
@@ -104,6 +106,13 @@ pub type LocalLspHttpCache =
   deno_cache_dir::LocalLspHttpCache<RealDenoCacheEnv>;
 pub use deno_cache_dir::HttpCache;
 
+pub struct FetchCacherOptions {
+  pub file_header_overrides: HashMap<ModuleSpecifier, HashMap<String, String>>,
+  pub permissions: PermissionsContainer,
+  /// If we're publishing for `deno publish`.
+  pub is_deno_publish: bool,
+}
+
 /// A "wrapper" for the FileFetcher and DiskCache for the Deno CLI that provides
 /// a concise interface to the DENO_DIR when building module graphs.
 pub struct FetchCacher {
@@ -112,26 +121,27 @@ pub struct FetchCacher {
   global_http_cache: Arc<GlobalHttpCache>,
   npm_resolver: Arc<dyn CliNpmResolver>,
   module_info_cache: Arc<ModuleInfoCache>,
-  permissions: FetchPermissionsOption,
+  permissions: PermissionsContainer,
   cache_info_enabled: bool,
+  is_deno_publish: bool,
 }
 
 impl FetchCacher {
   pub fn new(
     file_fetcher: Arc<FileFetcher>,
-    file_header_overrides: HashMap<ModuleSpecifier, HashMap<String, String>>,
     global_http_cache: Arc<GlobalHttpCache>,
     npm_resolver: Arc<dyn CliNpmResolver>,
     module_info_cache: Arc<ModuleInfoCache>,
-    permissions: FetchPermissionsOption,
+    options: FetchCacherOptions,
   ) -> Self {
     Self {
       file_fetcher,
-      file_header_overrides,
       global_http_cache,
       npm_resolver,
       module_info_cache,
-      permissions,
+      file_header_overrides: options.file_header_overrides,
+      permissions: options.permissions,
+      is_deno_publish: options.is_deno_publish,
       cache_info_enabled: false,
     }
   }
@@ -208,10 +218,24 @@ impl Loader for FetchCacher {
       }
     }
 
+    if self.is_deno_publish
+      && matches!(specifier.scheme(), "http" | "https")
+      && !specifier.as_str().starts_with(jsr_url().as_str())
+    {
+      // mark non-JSR remote modules as external so we don't need --allow-import
+      // permissions as these will error out later when publishing
+      return Box::pin(futures::future::ready(Ok(Some(
+        LoadResponse::External {
+          specifier: specifier.clone(),
+        },
+      ))));
+    }
+
     let file_fetcher = self.file_fetcher.clone();
     let file_header_overrides = self.file_header_overrides.clone();
     let permissions = self.permissions.clone();
     let specifier = specifier.clone();
+    let is_statically_analyzable = !options.was_dynamic_root;
 
     async move {
       let maybe_cache_setting = match options.cache_setting {
@@ -230,7 +254,11 @@ impl Loader for FetchCacher {
         .fetch_no_follow_with_options(FetchNoFollowOptions {
           fetch_options: FetchOptions {
             specifier: &specifier,
-            permissions: permissions.as_ref(),
+            permissions: if is_statically_analyzable {
+              FetchPermissionsOptionRef::StaticContainer(&permissions)
+            } else {
+              FetchPermissionsOptionRef::DynamicContainer(&permissions)
+            },
             maybe_accept: None,
             maybe_cache_setting: maybe_cache_setting.as_ref(),
           },

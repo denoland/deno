@@ -1,0 +1,2 @@
+error: Error getting response at http://localhost:4260/chalk for package "chalk": An npm specifier not found in cache: "chalk", --cached-only is specified.
+    at file:///[WILDCARD]/main.ts:1:19

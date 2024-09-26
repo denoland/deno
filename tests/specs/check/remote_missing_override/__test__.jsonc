@@ -1,0 +1,4 @@
+{
+  "args": "check --allow-import --all main.ts",
+  "output": "Download [WILDLINE]\nCheck [WILDLINE]\n"
+}
