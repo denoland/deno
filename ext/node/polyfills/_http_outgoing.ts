@@ -516,6 +516,7 @@ Object.defineProperties(
           this._headerSent = true;
         }
       } else {
+        // deno-lint-ignore no-console
         console.warn("socket not found");
       }
     },

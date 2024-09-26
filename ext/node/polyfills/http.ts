@@ -69,7 +69,6 @@ import { TcpConn } from "ext:deno_net/01_net.js";
 import { STATUS_CODES } from "node:_http_server";
 import { methods as METHODS } from "node:_http_common";
 
-const { internalRidSymbol } = core;
 const { ArrayIsArray } = primordials;
 
 type Chunk = string | Buffer | Uint8Array;
@@ -615,7 +614,7 @@ class ClientRequest extends OutgoingMessage {
         try {
           await this._bodyWriter.ready;
           await this._bodyWriter?.close();
-        } catch (err) {
+        } catch {
           // The readable stream resource is dropped right after
           // read is complete closing the writable stream resource.
           // If we try to close the writer again, it will result in an
@@ -623,7 +622,7 @@ class ClientRequest extends OutgoingMessage {
         }
         try {
           cb?.();
-        } catch (_) {
+        } catch {
           //
         }
       })();
@@ -633,7 +632,7 @@ class ClientRequest extends OutgoingMessage {
           try {
             await this._bodyWriter.ready;
             await this._bodyWriter?.close();
-          } catch (err) {
+          } catch {
             // The readable stream resource is dropped right after
             // read is complete closing the writable stream resource.
             // If we try to close the writer again, it will result in an
@@ -641,7 +640,7 @@ class ClientRequest extends OutgoingMessage {
           }
           try {
             cb?.();
-          } catch (_) {
+          } catch {
             //
           }
         })();

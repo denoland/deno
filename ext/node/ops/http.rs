@@ -4,8 +4,6 @@ use std::borrow::Cow;
 use std::cell::RefCell;
 use std::pin::Pin;
 use std::rc::Rc;
-use std::sync::atomic::AtomicBool;
-use std::sync::Arc;
 use std::task::Context;
 use std::task::Poll;
 
@@ -80,7 +78,6 @@ pub struct NodeHttpClientResponse {
   response:
     Pin<Box<dyn Future<Output = Result<Response<Incoming>, Error>> + Send>>,
   url: String,
-  connection_started: Arc<AtomicBool>,
 }
 
 impl deno_core::Resource for NodeHttpClientResponse {
@@ -108,20 +105,16 @@ where
     .resource_table
     .take::<TcpStreamResource>(conn_rid)?;
   let resource = Rc::try_unwrap(resource_rc)
-    .map_err(|e| bad_resource("TCP stream is currently in use"))?;
+    .map_err(|_e| bad_resource("TCP stream is currently in use"))?;
   let (read_half, write_half) = resource.into_inner();
   let tcp_stream = read_half.reunite(write_half)?;
   let io = TokioIo::new(tcp_stream);
   let (mut sender, conn) = hyper::client::conn::http1::handshake(io).await?;
 
-  let connection_started = Arc::new(AtomicBool::new(false));
-  let conn_start = connection_started.clone();
-
   let (notify, receiver) = tokio::sync::oneshot::channel::<()>();
 
   // Spawn a task to poll the connection, driving the HTTP state
   let _handle = tokio::task::spawn(async move {
-    conn_start.store(true, std::sync::atomic::Ordering::Relaxed);
     let _ = notify.send(());
     conn.await?;
     Ok::<_, AnyError>(())
@@ -197,7 +190,6 @@ where
     .add(NodeHttpClientResponse {
       response: res,
       url: url.clone(),
-      connection_started,
     });
   let conn_rid = state
     .borrow_mut()
