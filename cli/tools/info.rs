@@ -82,7 +82,11 @@ pub async fn info(
     if info_flags.json {
       let mut json_graph = serde_json::json!(graph);
       if let Some(output) = json_graph.as_object_mut() {
-        output.insert("version".to_string(), JSON_SCHEMA_VERSION.into());
+        output.shift_insert(
+          0,
+          "version".to_string(),
+          JSON_SCHEMA_VERSION.into(),
+        );
       }
       add_npm_packages_to_json(&mut json_graph, npm_resolver.as_ref());
       display::write_json_to_stdout(&json_graph)?;
