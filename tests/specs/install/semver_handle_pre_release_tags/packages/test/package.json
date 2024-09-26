@@ -1,0 +1,8 @@
+{
+  "nodeModulesDir": "auto",
+  "name": "@test/auth",
+  "version": "0.0.1",
+  "dependencies": {
+    "next-auth": "beta"
+  }
+}
