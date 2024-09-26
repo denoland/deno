@@ -122,6 +122,7 @@ tokio.workspace = true
 tokio-metrics.workspace = true
 twox-hash.workspace = true
 uuid.workspace = true
+tempfile.workspace = true
 which.workspace = true
 
 [target.'cfg(windows)'.dependencies]

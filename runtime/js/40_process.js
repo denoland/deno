@@ -160,6 +160,7 @@ function run({
 export const kExtraStdio = Symbol("extraStdio");
 export const kIpc = Symbol("ipc");
 export const kDetached = Symbol("detached");
+export const kNeedsNpmProcessState = Symbol("needsNpmProcessState");
 
 const illegalConstructorKey = Symbol("illegalConstructorKey");
 
@@ -178,6 +179,7 @@ function spawnChildInner(command, apiName, {
   [kDetached]: detached = false,
   [kExtraStdio]: extraStdio = [],
   [kIpc]: ipc = -1,
+  [kNeedsNpmProcessState]: needsNpmProcessState = false,
 } = { __proto__: null }) {
   const child = op_spawn_child({
     cmd: pathFromURL(command),
@@ -194,6 +196,7 @@ function spawnChildInner(command, apiName, {
     ipc,
     extraStdio,
     detached,
+    needsNpmProcessState,
   }, apiName);
   return new ChildProcess(illegalConstructorKey, {
     ...child,

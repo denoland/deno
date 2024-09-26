@@ -70,6 +70,7 @@ use std::env;
 use std::io::BufReader;
 use std::io::Cursor;
 use std::io::Read;
+use std::io::Seek;
 use std::net::SocketAddr;
 use std::num::NonZeroUsize;
 use std::path::Path;
@@ -751,14 +752,22 @@ static NPM_PROCESS_STATE: Lazy<Option<NpmProcessState>> = Lazy::new(|| {
   let fd = std::env::var(NPM_RESOLUTION_STATE_FD_ENV_VAR_NAME).ok()?;
   std::env::remove_var(NPM_RESOLUTION_STATE_FD_ENV_VAR_NAME);
   let fd = fd.parse::<deno_runtime::deno_io::RawIoHandle>().ok()?;
-  #[cfg(unix)]
   let mut file = {
-    use std::os::fd::FromRawFd;
-    unsafe { std::fs::File::from_raw_fd(fd) }
+    use deno_runtime::deno_io::FromRawIoHandle;
+    unsafe { std::fs::File::from_raw_io_handle(fd) }
   };
   let mut buf = Vec::new();
+  // seek to beginning, this file might have been read before
+  file.seek(std::io::SeekFrom::Start(0)).unwrap();
   file.read_to_end(&mut buf).unwrap();
-  let state: NpmProcessState = serde_json::from_slice(&buf).ok()?;
+  let state: NpmProcessState = serde_json::from_slice(&buf)
+    .inspect_err(|e| {
+      log::warn!(
+        "failed to deserialize npm process state: {e} {}",
+        String::from_utf8_lossy(&buf)
+      )
+    })
+    .ok()?;
   Some(state)
 });
 
