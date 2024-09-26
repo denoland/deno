@@ -1688,7 +1688,9 @@ impl CliOptions {
       root_dir: self.workspace().root_dir_path(),
       explicit_install: matches!(
         self.sub_command(),
-        DenoSubcommand::Install(_) | DenoSubcommand::Cache(_)
+        DenoSubcommand::Install(_)
+          | DenoSubcommand::Cache(_)
+          | DenoSubcommand::Add(_)
       ),
     }
   }
