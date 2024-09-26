@@ -329,10 +329,11 @@ pub fn take_network_stream_resource(
   // The stream we're attempting to unwrap may be in use somewhere else. If that's the case, we cannot proceed
   // with the process of unwrapping this connection, so we just return a bad resource error.
   // See also: https://github.com/denoland/deno/pull/16242
+
   if let Ok(resource_rc) = resource_table.take::<TcpStreamResource>(stream_rid)
   {
     // This TCP connection might be used somewhere else.
-    let resource = Rc::try_unwrap(resource_rc)
+    let resource: crate::io::FullDuplexResource<tokio::net::tcp::OwnedReadHalf, tokio::net::tcp::OwnedWriteHalf> = Rc::try_unwrap(resource_rc)
       .map_err(|_| bad_resource("TCP stream is currently in use"))?;
     let (read_half, write_half) = resource.into_inner();
     let tcp_stream = read_half.reunite(write_half)?;
