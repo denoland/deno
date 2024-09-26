@@ -21,6 +21,7 @@ use crate::util::file_watcher::WatcherCommunicator;
 use crate::util::fs::canonicalize_path;
 use deno_config::workspace::JsrPackageConfig;
 use deno_graph::source::LoaderChecksum;
+use deno_graph::FillFromLockfileOptions;
 use deno_graph::JsrLoadError;
 use deno_graph::ModuleLoadError;
 use deno_graph::WorkspaceFastCheckOption;
@@ -44,7 +45,6 @@ use deno_runtime::deno_permissions::PermissionsContainer;
 use deno_runtime::fs_util::specifier_to_file_path;
 use deno_semver::jsr::JsrDepPackageReq;
 use deno_semver::package::PackageNv;
-use deno_semver::Version;
 use import_map::ImportMapError;
 use std::collections::HashSet;
 use std::error::Error;
@@ -573,33 +573,19 @@ impl ModuleGraphBuilder {
       // populate the information from the lockfile
       if let Some(lockfile) = &self.lockfile {
         let lockfile = lockfile.lock();
-        for (from, to) in &lockfile.content.redirects {
-          if let Ok(from) = ModuleSpecifier::parse(from) {
-            if let Ok(to) = ModuleSpecifier::parse(to) {
-              if !matches!(from.scheme(), "file" | "npm" | "jsr") {
-                graph.redirects.insert(from, to);
-              }
-            }
-          }
-        }
-        for (req_dep, value) in &lockfile.content.packages.specifiers {
-          match req_dep.kind {
-            deno_semver::package::PackageKind::Jsr => {
-              if let Ok(version) = Version::parse_standard(value) {
-                graph.packages.add_nv(
-                  req_dep.req.clone(),
-                  PackageNv {
-                    name: req_dep.req.name.clone(),
-                    version,
-                  },
-                );
-              }
-            }
-            deno_semver::package::PackageKind::Npm => {
-              // ignore
-            }
-          }
-        }
+        graph.fill_from_lockfile(FillFromLockfileOptions {
+          redirects: lockfile
+            .content
+            .redirects
+            .iter()
+            .map(|(from, to)| (from.as_str(), to.as_str())),
+          package_specifiers: lockfile
+            .content
+            .packages
+            .specifiers
+            .iter()
+            .map(|(dep, id)| (dep, id.as_str())),
+        });
       }
     }
 
