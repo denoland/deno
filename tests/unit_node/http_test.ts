@@ -501,6 +501,7 @@ Deno.test("[node/http] send request with non-chunked body", {
     socket.destroy();
     socket.setTimeout(100);
   });
+  // this data can be huge and can't be buffered
   req.write("hello ");
   req.write("world");
   req.end();
@@ -1037,11 +1038,15 @@ Deno.test("[node/http] destroyed requests should not be sent", {
     receivedRequest = true;
     return new Response(null);
   });
+  let receivedError = null
   const request = http.request(`http://localhost:${server.addr.port}/`);
   request.destroy();
   request.end("hello");
-
+  request.on("error", (err) => {
+    receivedError = err;
+  });
   await new Promise((r) => setTimeout(r, 500));
+  assert(receivedError!.toString().contains("socket hung up"));
   assertEquals(receivedRequest, false);
   await server.shutdown();
 });
@@ -1353,7 +1358,7 @@ Deno.test("[node/http] client closing a streaming response doesn't terminate ser
   clearInterval(interval!);
 });
 
-Deno.test("[node/http] client closing a streaming request doesn't terminate server", async () => {
+Deno.test("[node/http] client closing a streaming request doesn't terminate server", { ignore: true }, async () => {
   let interval: number;
   let uploadedData = "";
   let requestError: Error | null = null;

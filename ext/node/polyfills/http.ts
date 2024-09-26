@@ -144,6 +144,17 @@ class FakeSocket extends EventEmitter {
   }
 }
 
+function emitErrorEvent(request, error) {
+  // TODO: enable this when we implement dc for ClientRequest
+  // if (onClientRequestErrorChannel.hasSubscribers) {
+  //   onClientRequestErrorChannel.publish({
+  //     request,
+  //     error,
+  //   });
+  // }
+  request.emit("error", error);
+}
+
 /** ClientRequest represents the http(s) request from the client */
 class ClientRequest extends OutgoingMessage {
   defaultProtocol = "http:";
@@ -566,20 +577,54 @@ class ClientRequest extends OutgoingMessage {
     return undefined;
   }
 
-  // TODO(bartlomieju): handle error
-  onSocket(socket, _err) {
+  onSocket(socket, err) {
     nextTick(() => {
-      socket.on("connect", () => {
-        // Flush the internal buffers once socket is ready.
-        // Note: the order is important, as the headers flush
-        // sets up the request.
-        this._flushHeaders();
-        this.on("requestReady", () => {
-          this._flushBody();
+      const req = this;
+      if (req.destroyed || err) {
+        req.destroyed = true;
+
+        function _destroy(req, err) {
+          if (!req.aborted && !err) {
+            err = new connResetException("socket hang up");
+          }
+          if (err) {
+            emitErrorEvent(req, err);
+          }
+          req._closed = true;
+          req.emit("close");
+        }
+
+        if (socket) {
+          if (!err && req.agent && !socket.destroyed) {
+            socket.emit("free");
+          } else {
+            finished(socket.destroy(err || req[kError]), (er) => {
+              if (er?.code === "ERR_STREAM_PREMATURE_CLOSE") {
+                er = null;
+              }
+              _destroy(req, er || err);
+            });
+            return;
+          }
+        }
+
+        _destroy(req, err || req[kError]);
+      } else {
+        // Note: this code is specific to deno to initiate a request.
+        socket.on("connect", () => {
+          // Flush the internal buffers once socket is ready.
+          // Note: the order is important, as the headers flush
+          // sets up the request.
+          this._flushHeaders();
+          this.on("requestReady", () => {
+            this._flushBody();
+          });
         });
-      });
-      this.socket = socket;
-      this.emit("socket", socket);
+        this.socket = socket;
+        this.emit("socket", socket);
+        // tickOnSocket(req, socket);
+        // req._flush();
+      }
     });
   }
 
