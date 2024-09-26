@@ -1020,13 +1020,16 @@ Deno.test(
 
 Deno.test(
   "[node/http] client destroy before sending request should not error",
-  {
-    ignore: true,
-  },
-  () => {
+  async () => {
+    const { resolve, promise } = Promise.withResolvers<void>();
     const request = http.request("http://localhost:5929/");
     // Calling this would throw
     request.destroy();
+    request.on("error", (e) => {
+      assertEquals(e.message, "socket hang up");
+      resolve();
+    });
+    await promise;
   },
 );
 
