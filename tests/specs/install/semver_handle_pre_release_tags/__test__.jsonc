@@ -1,0 +1,6 @@
+{
+  "tempDir": true,
+  "if": "windows",
+  "args": "install",
+  "output": "[WILDCARD]Warning Version '5.0.0-beta.21' for alias 'next-auth' is a pre-release version.[WILDCARD]"
+}

@@ -1,0 +1,13 @@
+{
+  "nodeModulesDir": "auto",
+  "name": "deno-test",
+  "version": "0.1.0",
+  "private": true,
+  "dependencies": {
+    "next-auth": "beta",
+    "@test/auth": "*"
+  },
+  "workspaces": [
+    "packages/*"
+  ]
+}
