@@ -333,7 +333,10 @@ pub fn take_network_stream_resource(
   if let Ok(resource_rc) = resource_table.take::<TcpStreamResource>(stream_rid)
   {
     // This TCP connection might be used somewhere else.
-    let resource: crate::io::FullDuplexResource<tokio::net::tcp::OwnedReadHalf, tokio::net::tcp::OwnedWriteHalf> = Rc::try_unwrap(resource_rc)
+    let resource: crate::io::FullDuplexResource<
+      tokio::net::tcp::OwnedReadHalf,
+      tokio::net::tcp::OwnedWriteHalf,
+    > = Rc::try_unwrap(resource_rc)
       .map_err(|_| bad_resource("TCP stream is currently in use"))?;
     let (read_half, write_half) = resource.into_inner();
     let tcp_stream = read_half.reunite(write_half)?;

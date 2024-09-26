@@ -452,68 +452,66 @@ Deno.test("[node/http] http.IncomingMessage can be created without url", () => {
 });
 */
 
-Deno.test(
-  "[node/http] send request with non-chunked body",
-  { ignore: true },
-  async () => {
-    let requestHeaders: Headers;
-    let requestBody = "";
+Deno.test("[node/http] send request with non-chunked body", {
+  ignore: true,
+}, async () => {
+  let requestHeaders: Headers;
+  let requestBody = "";
 
-    const hostname = "localhost";
-    const port = 4505;
+  const hostname = "localhost";
+  const port = 4505;
 
-    const handler = async (req: Request) => {
-      requestHeaders = req.headers;
-      requestBody = await req.text();
-      return new Response("ok");
-    };
-    const abortController = new AbortController();
-    const servePromise = Deno.serve({
-      // TODO(k3k): Enable this line for better compatibility with Node.js
-      // hostname,
-      port,
-      signal: abortController.signal,
-      onListen: undefined,
-    }, handler).finished;
+  const handler = async (req: Request) => {
+    requestHeaders = req.headers;
+    requestBody = await req.text();
+    return new Response("ok");
+  };
+  const abortController = new AbortController();
+  const servePromise = Deno.serve({
+    // TODO(k3k): Enable this line for better compatibility with Node.js
+    // hostname,
+    port,
+    signal: abortController.signal,
+    onListen: undefined,
+  }, handler).finished;
 
-    const opts: RequestOptions = {
-      host: hostname,
-      port,
-      method: "POST",
-      headers: {
-        "Content-Type": "text/plain; charset=utf-8",
-        "Content-Length": "11",
-      },
-    };
-    const req = http.request(opts, (res) => {
-      res.on("data", () => {});
-      res.on("end", () => {
-        abortController.abort();
-      });
-      assertEquals(res.statusCode, 200);
-      assertEquals(requestHeaders.get("content-length"), "11");
-      assertEquals(requestHeaders.has("transfer-encoding"), false);
-      assertEquals(requestBody, "hello world");
+  const opts: RequestOptions = {
+    host: hostname,
+    port,
+    method: "POST",
+    headers: {
+      "Content-Type": "text/plain; charset=utf-8",
+      "Content-Length": "11",
+    },
+  };
+  const req = http.request(opts, (res) => {
+    res.on("data", () => {});
+    res.on("end", () => {
+      abortController.abort();
     });
-    req.on("socket", (socket) => {
-      assert(socket.writable);
-      assert(socket.readable);
-      socket.setKeepAlive();
-      socket.destroy();
-      socket.setTimeout(100);
-    });
-    req.write("hello ");
-    req.write("world");
-    req.end();
+    assertEquals(res.statusCode, 200);
+    assertEquals(requestHeaders.get("content-length"), "11");
+    assertEquals(requestHeaders.has("transfer-encoding"), false);
+    assertEquals(requestBody, "hello world");
+  });
+  req.on("socket", (socket) => {
+    assert(socket.writable);
+    assert(socket.readable);
+    socket.setKeepAlive();
+    socket.destroy();
+    socket.setTimeout(100);
+  });
+  req.write("hello ");
+  req.write("world");
+  req.end();
 
-    await Promise.all([
-      servePromise,
-      // wait 100ms because of the socket.setTimeout(100) above
-      // in order to not cause a flaky test sanitizer failure
-      await new Promise((resolve) => setTimeout(resolve, 100)),
-    ]);
-  },
-);
+  await Promise.all([
+    servePromise,
+    // wait 100ms because of the socket.setTimeout(100) above
+    // in order to not cause a flaky test sanitizer failure
+    await new Promise((resolve) => setTimeout(resolve, 100)),
+  ]);
+});
 
 Deno.test("[node/http] send request with chunked body", async () => {
   let requestHeaders: Headers;
@@ -694,31 +692,29 @@ Deno.test("[node/http] ClientRequest handle non-string headers", {
   assertEquals(headers!["1"], "2");
 });
 
-Deno.test(
-  "[node/http] ClientRequest uses HTTP/1.1",
-  { ignore: true },
-  async () => {
-    let body = "";
-    const { promise, resolve, reject } = Promise.withResolvers<void>();
-    const req = https.request("https://localhost:5545/http_version", {
-      method: "POST",
-      headers: { 1: 2 },
-    }, (resp) => {
-      resp.on("data", (chunk) => {
-        body += chunk;
-      });
-
-      resp.on("end", () => {
-        resolve();
-      });
+Deno.test("[node/http] ClientRequest uses HTTP/1.1", {
+  ignore: true,
+}, async () => {
+  let body = "";
+  const { promise, resolve, reject } = Promise.withResolvers<void>();
+  const req = https.request("https://localhost:5545/http_version", {
+    method: "POST",
+    headers: { 1: 2 },
+  }, (resp) => {
+    resp.on("data", (chunk) => {
+      body += chunk;
     });
-    req.once("error", (e) => reject(e));
-    req.end();
-    await promise;
-    console.log(body);
-    assertEquals(body, "HTTP/1.1");
-  },
-);
+
+    resp.on("end", () => {
+      resolve();
+    });
+  });
+  req.once("error", (e) => reject(e));
+  req.end();
+  await promise;
+  console.log(body);
+  assertEquals(body, "HTTP/1.1");
+});
 
 Deno.test("[node/http] ClientRequest setTimeout", async () => {
   let body = "";
@@ -806,30 +802,28 @@ Deno.test("[node/http] ClientRequest PUT", async () => {
   assertEquals(body, "hello world");
 });
 
-Deno.test(
-  "[node/http] ClientRequest search params",
-  { ignore: true },
-  async () => {
-    let body = "";
-    const { promise, resolve, reject } = Promise.withResolvers<void>();
-    const req = http.request({
-      host: "localhost:4545",
-      path: "search_params?foo=bar",
-    }, (resp) => {
-      resp.on("data", (chunk) => {
-        body += chunk;
-      });
-
-      resp.on("end", () => {
-        resolve();
-      });
+Deno.test("[node/http] ClientRequest search params", {
+  ignore: true,
+}, async () => {
+  let body = "";
+  const { promise, resolve, reject } = Promise.withResolvers<void>();
+  const req = http.request({
+    host: "localhost:4545",
+    path: "search_params?foo=bar",
+  }, (resp) => {
+    resp.on("data", (chunk) => {
+      body += chunk;
     });
-    req.once("error", (e) => reject(e));
-    req.end();
-    await promise;
-    assertEquals(body, "foo=bar");
-  },
-);
+
+    resp.on("end", () => {
+      resolve();
+    });
+  });
+  req.once("error", (e) => reject(e));
+  req.end();
+  await promise;
+  assertEquals(body, "foo=bar");
+});
 
 Deno.test("[node/http] HTTPS server", async () => {
   const deferred = Promise.withResolvers<void>();
@@ -1025,7 +1019,9 @@ Deno.test(
 
 Deno.test(
   "[node/http] client destroy before sending request should not error",
-  { ignore: true },
+  {
+    ignore: true,
+  },
   () => {
     const request = http.request("http://localhost:5929/");
     // Calling this would throw
@@ -1033,24 +1029,22 @@ Deno.test(
   },
 );
 
-Deno.test(
-  "[node/http] destroyed requests should not be sent",
-  { ignore: true },
-  async () => {
-    let receivedRequest = false;
-    const server = Deno.serve(() => {
-      receivedRequest = true;
-      return new Response(null);
-    });
-    const request = http.request(`http://localhost:${server.addr.port}/`);
-    request.destroy();
-    request.end("hello");
+Deno.test("[node/http] destroyed requests should not be sent", {
+  ignore: true,
+}, async () => {
+  let receivedRequest = false;
+  const server = Deno.serve(() => {
+    receivedRequest = true;
+    return new Response(null);
+  });
+  const request = http.request(`http://localhost:${server.addr.port}/`);
+  request.destroy();
+  request.end("hello");
 
-    await new Promise((r) => setTimeout(r, 500));
-    assertEquals(receivedRequest, false);
-    await server.shutdown();
-  },
-);
+  await new Promise((r) => setTimeout(r, 500));
+  assertEquals(receivedRequest, false);
+  await server.shutdown();
+});
 
 Deno.test("[node/http] node:http exports globalAgent", async () => {
   const http = await import("node:http");
@@ -1078,7 +1072,9 @@ Deno.test("[node/https] node:https exports globalAgent", async () => {
 
 Deno.test(
   "[node/http] node:http request.setHeader(header, null) doesn't throw",
-  { ignore: true },
+  {
+    ignore: true,
+  },
   () => {
     {
       const req = http.request("http://localhost:4545/");
@@ -1634,7 +1630,9 @@ Deno.test("[node/http] In ClientRequest, option.hostname has precedence over opt
 
 Deno.test(
   "[node/http] upgraded socket closes when the server closed without closing handshake",
-  { ignore: true },
+  {
+    ignore: true,
+  },
   async () => {
     const clientSocketClosed = Promise.withResolvers<void>();
     const serverProcessClosed = Promise.withResolvers<void>();
