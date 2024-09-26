@@ -769,6 +769,7 @@ pub struct CliOptions {
   // application need not concern itself with, so keep these private
   flags: Arc<Flags>,
   initial_cwd: PathBuf,
+  main_module_cell: std::sync::OnceLock<Result<ModuleSpecifier, AnyError>>,
   maybe_node_modules_folder: Option<PathBuf>,
   npmrc: Arc<ResolvedNpmRc>,
   maybe_lockfile: Option<Arc<CliLockfile>>,
@@ -825,6 +826,7 @@ impl CliOptions {
       npmrc,
       maybe_node_modules_folder,
       overrides: Default::default(),
+      main_module_cell: std::sync::OnceLock::new(),
       start_dir,
       deno_dir_provider,
     })
@@ -1105,40 +1107,43 @@ impl CliOptions {
     self.flags.env_file.as_ref()
   }
 
-  pub fn resolve_main_module(&self) -> Result<ModuleSpecifier, AnyError> {
-    let main_module = match &self.flags.subcommand {
-      DenoSubcommand::Compile(compile_flags) => {
-        resolve_url_or_path(&compile_flags.source_file, self.initial_cwd())?
-      }
-      DenoSubcommand::Eval(_) => {
-        resolve_url_or_path("./$deno$eval.ts", self.initial_cwd())?
-      }
-      DenoSubcommand::Repl(_) => {
-        resolve_url_or_path("./$deno$repl.ts", self.initial_cwd())?
-      }
-      DenoSubcommand::Run(run_flags) => {
-        if run_flags.is_stdin() {
-          std::env::current_dir()
-            .context("Unable to get CWD")
-            .and_then(|cwd| {
-              resolve_url_or_path("./$deno$stdin.ts", &cwd)
-                .map_err(AnyError::from)
-            })?
-        } else if NpmPackageReqReference::from_str(&run_flags.script).is_ok() {
-          ModuleSpecifier::parse(&run_flags.script)?
-        } else {
-          resolve_url_or_path(&run_flags.script, self.initial_cwd())?
-        }
-      }
-      DenoSubcommand::Serve(run_flags) => {
-        resolve_url_or_path(&run_flags.script, self.initial_cwd())?
-      }
-      _ => {
-        bail!("No main module.")
-      }
-    };
+  pub fn resolve_main_module(&self) -> Result<&ModuleSpecifier, AnyError> {
+    self
+      .main_module_cell
+      .get_or_init(|| {
+        let main_module = match &self.flags.subcommand {
+          DenoSubcommand::Compile(compile_flags) => {
+            resolve_url_or_path(&compile_flags.source_file, self.initial_cwd())?
+          }
+          DenoSubcommand::Eval(_) => {
+            resolve_url_or_path("./$deno$eval.ts", self.initial_cwd())?
+          }
+          DenoSubcommand::Repl(_) => {
+            resolve_url_or_path("./$deno$repl.ts", self.initial_cwd())?
+          }
+          DenoSubcommand::Run(run_flags) => {
+            if run_flags.is_stdin() {
+              resolve_url_or_path("./$deno$stdin.ts", self.initial_cwd())?
+            } else if NpmPackageReqReference::from_str(&run_flags.script)
+              .is_ok()
+            {
+              ModuleSpecifier::parse(&run_flags.script)?
+            } else {
+              resolve_url_or_path(&run_flags.script, self.initial_cwd())?
+            }
+          }
+          DenoSubcommand::Serve(run_flags) => {
+            resolve_url_or_path(&run_flags.script, self.initial_cwd())?
+          }
+          _ => {
+            bail!("No main module.")
+          }
+        };
 
-    Ok(main_module)
+        Ok(main_module)
+      })
+      .as_ref()
+      .map_err(|err| deno_core::anyhow::anyhow!("{}", err))
   }
 
   pub fn resolve_file_header_overrides(
@@ -1159,7 +1164,7 @@ impl CliOptions {
       (maybe_main_specifier, maybe_content_type)
     {
       HashMap::from([(
-        main_specifier,
+        main_specifier.clone(),
         HashMap::from([("content-type".to_string(), content_type.to_string())]),
       )])
     } else {
@@ -1480,7 +1485,34 @@ impl CliOptions {
   }
 
   pub fn permissions_options(&self) -> PermissionsOptions {
-    self.flags.permissions.to_options()
+    fn files_to_urls(files: &[String]) -> Vec<Cow<'_, Url>> {
+      files
+        .iter()
+        .filter_map(|f| Url::parse(f).ok().map(Cow::Owned))
+        .collect()
+    }
+
+    // get a list of urls to imply for --allow-import
+    let cli_arg_urls = self
+      .resolve_main_module()
+      .ok()
+      .map(|url| vec![Cow::Borrowed(url)])
+      .or_else(|| match &self.flags.subcommand {
+        DenoSubcommand::Cache(cache_flags) => {
+          Some(files_to_urls(&cache_flags.files))
+        }
+        DenoSubcommand::Check(check_flags) => {
+          Some(files_to_urls(&check_flags.files))
+        }
+        DenoSubcommand::Install(InstallFlags {
+          kind: InstallKind::Global(flags),
+        }) => Url::parse(&flags.module_url)
+          .ok()
+          .map(|url| vec![Cow::Owned(url)]),
+        _ => None,
+      })
+      .unwrap_or_default();
+    self.flags.permissions.to_options(&cli_arg_urls)
   }
 
   pub fn reload_flag(&self) -> bool {
@@ -1652,14 +1684,8 @@ impl CliOptions {
   pub fn lifecycle_scripts_config(&self) -> LifecycleScriptsConfig {
     LifecycleScriptsConfig {
       allowed: self.flags.allow_scripts.clone(),
-      initial_cwd: if matches!(
-        self.flags.allow_scripts,
-        PackagesAllowedScripts::None
-      ) {
-        None
-      } else {
-        Some(self.initial_cwd.clone())
-      },
+      initial_cwd: self.initial_cwd.clone(),
+      root_dir: self.workspace().root_dir_path(),
     }
   }
 }

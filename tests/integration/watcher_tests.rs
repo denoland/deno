@@ -1399,6 +1399,7 @@ async fn run_watch_reload_once() {
   let mut child = util::deno_cmd()
     .current_dir(t.path())
     .arg("run")
+    .arg("--allow-import")
     .arg("--watch")
     .arg("--reload")
     .arg(&file_to_watch)

@@ -385,6 +385,13 @@ fn get_suggestions_for_terminal_errors(e: &JsError) -> Vec<FixSuggestion> {
         FixSuggestion::info("window global is not available in Deno 2."),
         FixSuggestion::hint("Replace `window` with `globalThis`."),
       ];
+    } else if msg.contains("UnsafeWindowSurface is not a constructor") {
+      return vec![
+        FixSuggestion::info("Deno.UnsafeWindowSurface is an unstable API."),
+        FixSuggestion::hint(
+          "Run again with `--unstable-webgpu` flag to enable this API.",
+        ),
+      ];
     }
   }
 
