@@ -1366,9 +1366,6 @@ Deno.test("[node/http] client closing a streaming response doesn't terminate ser
 
 Deno.test(
   "[node/http] client closing a streaming request doesn't terminate server",
-  {
-    ignore: true,
-  },
   async () => {
     let interval: number;
     let uploadedData = "";
