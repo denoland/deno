@@ -1,6 +1,5 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 use std::io;
-use std::os::fd::AsRawFd;
 use std::pin::Pin;
 use std::process::Stdio;
 

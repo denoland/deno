@@ -76,6 +76,81 @@ pub use bi_pipe::BiPipeResource;
 pub use bi_pipe::BiPipeWrite;
 pub use bi_pipe::RawBiPipeHandle;
 
+/// Abstraction over `AsRawFd` (unix) and `AsRawHandle` (windows)
+pub trait AsRawIoHandle {
+  fn as_raw_io_handle(&self) -> RawIoHandle;
+}
+
+#[cfg(unix)]
+impl<T> AsRawIoHandle for T
+where
+  T: std::os::unix::io::AsRawFd,
+{
+  fn as_raw_io_handle(&self) -> RawIoHandle {
+    self.as_raw_fd()
+  }
+}
+
+#[cfg(windows)]
+impl<T> AsRawIoHandle for T
+where
+  T: std::os::windows::io::AsRawHandle,
+{
+  fn as_raw_io_handle(&self) -> RawIoHandle {
+    self.as_raw_handle()
+  }
+}
+
+/// Abstraction over `IntoRawFd` (unix) and `IntoRawHandle` (windows)
+pub trait IntoRawIoHandle {
+  fn into_raw_io_handle(self) -> RawIoHandle;
+}
+
+#[cfg(unix)]
+impl<T> IntoRawIoHandle for T
+where
+  T: std::os::unix::io::IntoRawFd,
+{
+  fn into_raw_io_handle(self) -> RawIoHandle {
+    self.into_raw_fd()
+  }
+}
+
+#[cfg(windows)]
+impl<T> IntoRawIoHandle for T
+where
+  T: std::os::windows::io::IntoRawHandle,
+{
+  fn into_raw_io_handle(self) -> RawIoHandle {
+    self.into_raw_handle()
+  }
+}
+
+/// Abstraction over `FromRawFd` (unix) and `FromRawHandle` (windows)
+pub trait FromRawIoHandle: Sized {
+  unsafe fn from_raw_io_handle(handle: RawIoHandle) -> Self;
+}
+
+#[cfg(unix)]
+impl<T> FromRawIoHandle for T
+where
+  T: std::os::unix::io::FromRawFd,
+{
+  unsafe fn from_raw_io_handle(fd: RawIoHandle) -> T {
+    unsafe { T::from_raw_fd(fd) }
+  }
+}
+
+#[cfg(windows)]
+impl<T> FromRawIoHandle for T
+where
+  T: std::os::windows::io::FromRawHandle,
+{
+  unsafe fn from_raw_io_handle(fd: RawIoHandle) -> T {
+    unsafe { T::from_raw_handle(fd) }
+  }
+}
+
 #[cfg(unix)]
 pub type RawIoHandle = std::os::fd::RawFd;
 
