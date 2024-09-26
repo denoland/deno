@@ -4,6 +4,7 @@ use super::bin_entries::BinEntries;
 use crate::args::LifecycleScriptsConfig;
 use deno_npm::resolution::NpmResolutionSnapshot;
 use deno_semver::package::PackageNv;
+use deno_semver::Version;
 use std::borrow::Cow;
 use std::rc::Rc;
 
@@ -115,8 +116,13 @@ impl<'a> LifecycleScripts<'a> {
       {
         // Skip adding `esbuild` as it is known that it can work properly without lifecycle script
         // being run, and it's also very popular - any project using Vite would raise warnings.
-        if package.id.nv.name == "esbuild" {
-          return;
+        {
+          let nv = &package.id.nv;
+          if nv.name == "esbuild"
+            && nv.version >= Version::parse_standard("0.18.0").unwrap()
+          {
+            return;
+          }
         }
 
         self
