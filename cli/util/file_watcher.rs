@@ -128,7 +128,6 @@ impl PrintConfig {
   }
 }
 
-// what happens is racing state between the show_file_changed_on_watch and this function.
 fn create_print_after_restart_fn(clear_screen: bool) -> impl Fn() {
   move || {
     #[allow(clippy::print_stderr)]
