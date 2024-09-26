@@ -2,6 +2,7 @@ Download http://localhost:4548/subdir/redirects/redirect1.js
 Download http://localhost:4546/subdir/redirects/redirect1.js
 Download http://localhost:4545/subdir/redirects/redirect1.js
 {
+  "version": 1,
   "roots": [
     "file:///[WILDLINE]/multiple_redirects/main.ts"
   ],
@@ -43,6 +44,5 @@ Download http://localhost:4545/subdir/redirects/redirect1.js
     "http://localhost:4546/subdir/redirects/redirect1.js": "http://localhost:4545/subdir/redirects/redirect1.js",
     "http://localhost:4548/subdir/redirects/redirect1.js": "http://localhost:4546/subdir/redirects/redirect1.js"
   },
-  "version": 1,
   "npmPackages": {}
 }
