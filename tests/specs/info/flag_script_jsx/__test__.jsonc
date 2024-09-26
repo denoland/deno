@@ -1,0 +1,4 @@
+{
+  "args": "info --allow-import http://127.0.0.1:4545/run/048_media_types_jsx.ts",
+  "output": "049_info_flag_script_jsx.out"
+}

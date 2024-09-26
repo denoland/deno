@@ -644,8 +644,21 @@ impl<'a> GraphDisplayContext<'a> {
       ModuleError::InvalidTypeAssertion { .. } => {
         self.build_error_msg(specifier, "(invalid import attribute)")
       }
-      ModuleError::LoadingErr(_, _, _) => {
-        self.build_error_msg(specifier, "(loading error)")
+      ModuleError::LoadingErr(_, _, err) => {
+        use deno_graph::ModuleLoadError::*;
+        let message = match err {
+          HttpsChecksumIntegrity(_) => "(checksum integrity error)",
+          Decode(_) => "(loading decode error)",
+          Loader(err) => match deno_core::error::get_custom_error_class(err) {
+            Some("NotCapable") => "(not capable, requires --allow-import)",
+            _ => "(loading error)",
+          },
+          Jsr(_) => "(loading error)",
+          NodeUnknownBuiltinModule(_) => "(unknown node built-in error)",
+          Npm(_) => "(npm loading error)",
+          TooManyRedirects => "(too many redirects error)",
+        };
+        self.build_error_msg(specifier, message.as_ref())
       }
       ModuleError::ParseErr(_, _) => {
         self.build_error_msg(specifier, "(parsing error)")

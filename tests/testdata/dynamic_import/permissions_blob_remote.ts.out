@@ -1,5 +1,5 @@
-error: Uncaught (in promise) TypeError: Requires net access to "example.com:443", run again with the --allow-net flag
+error: Uncaught (in promise) TypeError: Requires import access to "example.com:443", run again with the --allow-import flag
     at blob:null/[WILDCARD]:1:8
 await import(URL.createObjectURL(blob));
 ^
-    at async file:///[WILDCARD]/dynamic_import/permissions_blob_remote.ts:4:1
+    at async file:///[WILDCARD]/dynamic_import/permissions_blob_remote.ts:3:1

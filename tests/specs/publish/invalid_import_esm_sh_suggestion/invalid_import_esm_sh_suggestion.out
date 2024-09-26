@@ -1,7 +1,4 @@
-[WILDCARD]
-Check file:///[WILDCARD]/mod.ts
 Checking for slow types in the public API...
-Check file:///[WILDCARD]mod.ts
 error[invalid-external-import]: invalid import to a non-JSR 'http' specifier
  --> [WILDCARD]mod.ts:1:8
   | 

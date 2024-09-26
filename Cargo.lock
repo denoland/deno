@@ -1584,9 +1584,9 @@ dependencies = [
 
 [[package]]
 name = "deno_graph"
-version = "0.82.2"
+version = "0.82.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "9328b62ffc7e806f1c92fd7a22e4ff3046fcb53f2d46e3e1297482b2c4c2bb9d"
+checksum = "938ed2efa1dd9fdcceeebc169b2b7910506b8dacc992cfdcffd84aa6a3eb8db0"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -8119,9 +8119,9 @@ dependencies = [
 
 [[package]]
 name = "webpki-root-certs"
-version = "0.26.5"
+version = "0.26.6"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "e6d93b773107ba49bc84dd3b241e019c702d886fd5c457defe2ea8b1123a5dcd"
+checksum = "e8c6dfa3ac045bc517de14c7b1384298de1dbd229d38e08e169d9ae8c170937c"
 dependencies = [
  "rustls-pki-types",
 ]

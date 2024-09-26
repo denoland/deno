@@ -1,4 +1,4 @@
 {
-  "args": "test --quiet main.ts",
+  "args": "test --allow-import --quiet main.ts",
   "output": "main.out"
 }
