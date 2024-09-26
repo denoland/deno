@@ -1032,10 +1032,10 @@ Deno.test(
 
 Deno.test(
   "[node/http] destroyed requests should not be sent",
-  { ignore: true },
   async () => {
     let receivedRequest = false;
-    const server = Deno.serve(() => {
+    const ac = new AbortController();
+    const server = Deno.serve({ signal: ac.signal }, () => {
       receivedRequest = true;
       return new Response(null);
     });
@@ -1045,11 +1045,12 @@ Deno.test(
     request.end("hello");
     request.on("error", (err) => {
       receivedError = err;
+      ac.abort();
     });
     await new Promise((r) => setTimeout(r, 500));
-    assert(receivedError!.toString().contains("socket hung up"));
+    assert(receivedError!.message.includes("socket hang up"));
     assertEquals(receivedRequest, false);
-    await server.shutdown();
+    await server.finished;
   },
 );
 
