@@ -437,25 +437,15 @@ pub fn format_html(
   )
   .map_err(|error| match error {
     markup_fmt::FormatError::Syntax(error) => {
-      // TODO(bartlomieju): rework when better error support in `markup_fmt` lands
       fn inner(
         error: &markup_fmt::SyntaxError,
         file_path: &Path,
       ) -> Option<String> {
-        let error_str = format!("{}", error);
-        let error_str = error_str.strip_prefix("syntax error '")?;
-
-        let reason = error_str
-          .split("' at")
-          .collect::<Vec<_>>()
-          .first()
-          .map(|s| s.to_string())?;
-
         let url = Url::from_file_path(file_path).ok()?;
 
         let error_msg = format!(
           "Syntax error ({}) at {}:{}:{}\n",
-          reason,
+          error.kind,
           url.as_str(),
           error.line,
           error.column
