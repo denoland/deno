@@ -712,13 +712,13 @@ function checkOpenOptions(options) {
     ).length === 0
   ) {
     throw new Error(
-      "Cannot open file: `options` requires at least one option to be true",
+      "'options' requires at least one option to be true",
     );
   }
 
   if (options.truncate && !options.write) {
     throw new Error(
-      "Cannot open file: 'truncate' option requires 'write' to be true",
+      "'truncate' option requires 'write' to be true",
     );
   }
 
@@ -728,7 +728,7 @@ function checkOpenOptions(options) {
 
   if (createOrCreateNewWithoutWriteOrAppend) {
     throw new Error(
-      "Cannot open file: 'create' or 'createNew' options require 'write' or 'append' to be true",
+      "'create' or 'createNew' options require 'write' or 'append' to be true",
     );
   }
 }
