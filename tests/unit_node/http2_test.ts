@@ -10,7 +10,7 @@ import * as net from "node:net";
 import { assert, assertEquals } from "@std/assert";
 import { curlRequest } from "../unit/test_util.ts";
 
-for (const url of ["http://127.0.0.1:4246", "https://127.0.0.1:4247"]) {
+for (const url of ["http://localhost:4246", "https://localhost:4247"]) {
   Deno.test(`[node/http2 client] ${url}`, {
     ignore: Deno.build.os === "windows",
   }, async () => {
@@ -155,7 +155,7 @@ Deno.test("[node/http2.createServer()]", {
     res.end();
   });
   server.listen(0);
-  const port = (<net.AddressInfo> server.address()).port;
+  const port = (server.address() as net.AddressInfo).port;
   const endpoint = `http://localhost:${port}`;
 
   const response = await curlRequest([
