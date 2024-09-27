@@ -8,7 +8,8 @@ class Frac {
     return this.num / this.den;
   }
   display() {
-    console.log(`${this.num / this.den}`);
+    const result = this.num / this.den;
+    process.stdout.write(`${result}`);
   }
 }
 const f = new Frac(1, 2);
