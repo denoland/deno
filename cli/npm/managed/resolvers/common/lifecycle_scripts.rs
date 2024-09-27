@@ -4,6 +4,7 @@ use super::bin_entries::BinEntries;
 use crate::args::LifecycleScriptsConfig;
 use deno_npm::resolution::NpmResolutionSnapshot;
 use deno_semver::package::PackageNv;
+use deno_semver::Version;
 use std::borrow::Cow;
 use std::rc::Rc;
 
@@ -111,8 +112,19 @@ impl<'a> LifecycleScripts<'a> {
             .push((package, package_path.into_owned()));
         }
       } else if !self.strategy.has_run(package)
-        && !self.strategy.has_warned(package)
+        && (self.config.explicit_install || !self.strategy.has_warned(package))
       {
+        // Skip adding `esbuild` as it is known that it can work properly without lifecycle script
+        // being run, and it's also very popular - any project using Vite would raise warnings.
+        {
+          let nv = &package.id.nv;
+          if nv.name == "esbuild"
+            && nv.version >= Version::parse_standard("0.18.0").unwrap()
+          {
+            return;
+          }
+        }
+
         self
           .packages_with_scripts_not_run
           .push((package, package_path.into_owned()));

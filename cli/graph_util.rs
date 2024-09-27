@@ -21,6 +21,7 @@ use crate::util::file_watcher::WatcherCommunicator;
 use crate::util::fs::canonicalize_path;
 use deno_config::workspace::JsrPackageConfig;
 use deno_graph::source::LoaderChecksum;
+use deno_graph::FillFromLockfileOptions;
 use deno_graph::JsrLoadError;
 use deno_graph::ModuleLoadError;
 use deno_graph::WorkspaceFastCheckOption;
@@ -44,7 +45,6 @@ use deno_runtime::deno_permissions::PermissionsContainer;
 use deno_runtime::fs_util::specifier_to_file_path;
 use deno_semver::jsr::JsrDepPackageReq;
 use deno_semver::package::PackageNv;
-use deno_semver::Version;
 use import_map::ImportMapError;
 use std::collections::HashSet;
 use std::error::Error;
@@ -52,14 +52,14 @@ use std::ops::Deref;
 use std::path::PathBuf;
 use std::sync::Arc;
 
-#[derive(Clone, Copy)]
+#[derive(Clone)]
 pub struct GraphValidOptions {
   pub check_js: bool,
   pub kind: GraphKind,
-  pub is_vendoring: bool,
-  /// Whether to exit the process for lockfile errors.
-  /// Otherwise, surfaces lockfile errors as errors.
-  pub exit_lockfile_errors: bool,
+  /// Whether to exit the process for integrity check errors such as
+  /// lockfile checksum mismatches and JSR integrity failures.
+  /// Otherwise, surfaces integrity errors as errors.
+  pub exit_integrity_errors: bool,
 }
 
 /// Check if `roots` and their deps are available. Returns `Ok(())` if
@@ -75,17 +75,54 @@ pub fn graph_valid(
   roots: &[ModuleSpecifier],
   options: GraphValidOptions,
 ) -> Result<(), AnyError> {
-  if options.exit_lockfile_errors {
-    graph_exit_lock_errors(graph);
+  if options.exit_integrity_errors {
+    graph_exit_integrity_errors(graph);
   }
 
-  let mut errors = graph
+  let mut errors = graph_walk_errors(
+    graph,
+    fs,
+    roots,
+    GraphWalkErrorsOptions {
+      check_js: options.check_js,
+      kind: options.kind,
+    },
+  );
+  if let Some(error) = errors.next() {
+    Err(error)
+  } else {
+    // finally surface the npm resolution result
+    if let Err(err) = &graph.npm_dep_graph_result {
+      return Err(custom_error(
+        get_error_class_name(err),
+        format_deno_graph_error(err.as_ref().deref()),
+      ));
+    }
+    Ok(())
+  }
+}
+
+#[derive(Clone)]
+pub struct GraphWalkErrorsOptions {
+  pub check_js: bool,
+  pub kind: GraphKind,
+}
+
+/// Walks the errors found in the module graph that should be surfaced to users
+/// and enhances them with CLI information.
+pub fn graph_walk_errors<'a>(
+  graph: &'a ModuleGraph,
+  fs: &'a Arc<dyn FileSystem>,
+  roots: &'a [ModuleSpecifier],
+  options: GraphWalkErrorsOptions,
+) -> impl Iterator<Item = AnyError> + 'a {
+  graph
     .walk(
       roots.iter(),
       deno_graph::WalkOptions {
         check_js: options.check_js,
         kind: options.kind,
-        follow_dynamic: options.is_vendoring,
+        follow_dynamic: false,
         prefer_fast_check_graph: false,
       },
     )
@@ -109,7 +146,7 @@ pub fn graph_valid(
           )
         }
         ModuleGraphError::ModuleError(error) => {
-          enhanced_lockfile_error_message(error)
+          enhanced_integrity_error_message(error)
             .or_else(|| enhanced_sloppy_imports_error_message(fs, error))
             .unwrap_or_else(|| format_deno_graph_error(error))
         }
@@ -132,56 +169,18 @@ pub fn graph_valid(
         return None;
       }
 
-      if options.is_vendoring {
-        // warn about failing dynamic imports when vendoring, but don't fail completely
-        if matches!(
-          error,
-          ModuleGraphError::ModuleError(ModuleError::MissingDynamic(_, _))
-        ) {
-          log::warn!("Ignoring: {}", message);
-          return None;
-        }
-
-        // ignore invalid downgrades and invalid local imports when vendoring
-        match &error {
-          ModuleGraphError::ResolutionError(err)
-          | ModuleGraphError::TypesResolutionError(err) => {
-            if matches!(
-              err,
-              ResolutionError::InvalidDowngrade { .. }
-                | ResolutionError::InvalidLocalImport { .. }
-            ) {
-              return None;
-            }
-          }
-          ModuleGraphError::ModuleError(_) => {}
-        }
-      }
-
       Some(custom_error(get_error_class_name(&error.into()), message))
-    });
-  if let Some(error) = errors.next() {
-    Err(error)
-  } else {
-    // finally surface the npm resolution result
-    if let Err(err) = &graph.npm_dep_graph_result {
-      return Err(custom_error(
-        get_error_class_name(err),
-        format_deno_graph_error(err.as_ref().deref()),
-      ));
-    }
-    Ok(())
-  }
+    })
 }
 
-pub fn graph_exit_lock_errors(graph: &ModuleGraph) {
+pub fn graph_exit_integrity_errors(graph: &ModuleGraph) {
   for error in graph.module_errors() {
-    exit_for_lockfile_error(error);
+    exit_for_integrity_error(error);
   }
 }
 
-fn exit_for_lockfile_error(err: &ModuleError) {
-  if let Some(err_message) = enhanced_lockfile_error_message(err) {
+fn exit_for_integrity_error(err: &ModuleError) {
+  if let Some(err_message) = enhanced_integrity_error_message(err) {
     log::error!("{} {}", colors::red("error:"), err_message);
     std::process::exit(10);
   }
@@ -573,33 +572,19 @@ impl ModuleGraphBuilder {
       // populate the information from the lockfile
       if let Some(lockfile) = &self.lockfile {
         let lockfile = lockfile.lock();
-        for (from, to) in &lockfile.content.redirects {
-          if let Ok(from) = ModuleSpecifier::parse(from) {
-            if let Ok(to) = ModuleSpecifier::parse(to) {
-              if !matches!(from.scheme(), "file" | "npm" | "jsr") {
-                graph.redirects.insert(from, to);
-              }
-            }
-          }
-        }
-        for (req_dep, value) in &lockfile.content.packages.specifiers {
-          match req_dep.kind {
-            deno_semver::package::PackageKind::Jsr => {
-              if let Ok(version) = Version::parse_standard(value) {
-                graph.packages.add_nv(
-                  req_dep.req.clone(),
-                  PackageNv {
-                    name: req_dep.req.name.clone(),
-                    version,
-                  },
-                );
-              }
-            }
-            deno_semver::package::PackageKind::Npm => {
-              // ignore
-            }
-          }
-        }
+        graph.fill_from_lockfile(FillFromLockfileOptions {
+          redirects: lockfile
+            .content
+            .redirects
+            .iter()
+            .map(|(from, to)| (from.as_str(), to.as_str())),
+          package_specifiers: lockfile
+            .content
+            .packages
+            .specifiers
+            .iter()
+            .map(|(dep, id)| (dep, id.as_str())),
+        });
       }
     }
 
@@ -733,14 +718,13 @@ impl ModuleGraphBuilder {
       &self.fs,
       roots,
       GraphValidOptions {
-        is_vendoring: false,
         kind: if self.options.type_check_mode().is_true() {
           GraphKind::All
         } else {
           GraphKind::CodeOnly
         },
         check_js: self.options.check_js(),
-        exit_lockfile_errors: true,
+        exit_integrity_errors: true,
       },
     )
   }
@@ -794,7 +778,7 @@ fn enhanced_sloppy_imports_error_message(
   }
 }
 
-fn enhanced_lockfile_error_message(err: &ModuleError) -> Option<String> {
+fn enhanced_integrity_error_message(err: &ModuleError) -> Option<String> {
   match err {
     ModuleError::LoadingErr(
       specifier,

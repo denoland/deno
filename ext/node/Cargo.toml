@@ -87,7 +87,7 @@ sha1.workspace = true
 sha2.workspace = true
 sha3 = { version = "0.10.8", features = ["oid"] }
 signature.workspace = true
-simd-json = "0.13.4"
+simd-json = "0.14.0"
 sm3 = "0.4.2"
 spki.workspace = true
 stable_deref_trait = "1.2.0"

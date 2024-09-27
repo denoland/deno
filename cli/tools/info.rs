@@ -29,7 +29,7 @@ use crate::args::Flags;
 use crate::args::InfoFlags;
 use crate::display;
 use crate::factory::CliFactory;
-use crate::graph_util::graph_exit_lock_errors;
+use crate::graph_util::graph_exit_integrity_errors;
 use crate::npm::CliNpmResolver;
 use crate::npm::ManagedCliNpmResolver;
 use crate::util::checksum;
@@ -75,14 +75,18 @@ pub async fn info(
 
     // write out the lockfile if there is one
     if let Some(lockfile) = &maybe_lockfile {
-      graph_exit_lock_errors(&graph);
+      graph_exit_integrity_errors(&graph);
       lockfile.write_if_changed()?;
     }
 
     if info_flags.json {
       let mut json_graph = serde_json::json!(graph);
       if let Some(output) = json_graph.as_object_mut() {
-        output.insert("version".to_string(), JSON_SCHEMA_VERSION.into());
+        output.shift_insert(
+          0,
+          "version".to_string(),
+          JSON_SCHEMA_VERSION.into(),
+        );
       }
       add_npm_packages_to_json(&mut json_graph, npm_resolver.as_ref());
       display::write_json_to_stdout(&json_graph)?;
