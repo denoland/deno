@@ -3020,40 +3020,41 @@ function inspectArgs(args, inspectOptions = { __proto__: null }) {
             if (typeof value === "symbol") {
               formattedArg = "NaN";
             } else {
-            formattedArg = `${NumberParseFloat(value)}`;
-          }
-        } else if (ArrayPrototypeIncludes(["O", "o"], char)) {
-          // Format as an object.
-          formattedArg = formatValue(ctx, args[a++], 0);
-        } else if (char == "c") {
-          const value = args[a++];
-          if (!noColor) {
-            const css = parseCss(value);
-            formattedArg = cssToAnsi(css, prevCss);
-            if (formattedArg != "") {
-              usedStyle = true;
-              prevCss = css;
+              formattedArg = `${NumberParseFloat(value)}`;
             }
-          } else {
-            formattedArg = "";
+          } else if (ArrayPrototypeIncludes(["O", "o"], char)) {
+            // Format as an object.
+            formattedArg = formatValue(ctx, args[a++], 0);
+          } else if (char == "c") {
+            const value = args[a++];
+            if (!noColor) {
+              const css = parseCss(value);
+              formattedArg = cssToAnsi(css, prevCss);
+              if (formattedArg != "") {
+                usedStyle = true;
+                prevCss = css;
+              }
+            } else {
+              formattedArg = "";
+            }
+          }
+
+          if (formattedArg != null) {
+            string += StringPrototypeSlice(first, appendedChars, i - 1) +
+              formattedArg;
+            appendedChars = i + 1;
           }
         }
-
-        if (formattedArg != null) {
-          string += StringPrototypeSlice(first, appendedChars, i - 1) +
-            formattedArg;
+        if (char == "%") {
+          string += StringPrototypeSlice(first, appendedChars, i - 1) + "%";
           appendedChars = i + 1;
         }
       }
-      if (char == "%") {
-        string += StringPrototypeSlice(first, appendedChars, i - 1) + "%";
-        appendedChars = i + 1;
-      }
     }
-  }
-  string += StringPrototypeSlice(first, appendedChars);
-  if (usedStyle) {
-    string += "\x1b[0m";
+    string += StringPrototypeSlice(first, appendedChars);
+    if (usedStyle) {
+      string += "\x1b[0m";
+    }
   }
 
   for (; a < args.length; a++) {
@@ -3522,7 +3523,8 @@ function createFilteredInspectProxy({ object, keys, evaluate }) {
       enumerable: true,
       value: object[key],
     };
-  }}
+  }
+}
 
 // Expose these fields to internalObject for tests.
 internals.Console = Console;
