@@ -576,7 +576,7 @@ class FsFile {
     this.#rid = rid;
     if (!symbol || symbol !== SymbolFor("Deno.internal.FsFile")) {
       throw new TypeError(
-        "`Deno.FsFile` cannot be constructed, use `Deno.open()` or `Deno.openSync()` instead",
+        "'Deno.FsFile' cannot be constructed, use 'Deno.open()' or 'Deno.openSync()' instead",
       );
     }
   }
