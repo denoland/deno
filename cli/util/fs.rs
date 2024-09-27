@@ -38,9 +38,97 @@ pub fn atomic_write_file_with_retries<T: AsRef<[u8]>>(
   data: T,
   mode: u32,
 ) -> std::io::Result<()> {
+  struct RealAtomicWriteFileFs {
+    mode: u32,
+  }
+
+  impl AtomicWriteFileFs for RealAtomicWriteFileFs {
+    fn write_file(&self, path: &Path, bytes: &[u8]) -> std::io::Result<()> {
+      write_file(path, bytes, self.mode)
+    }
+    fn rename_file(&self, from: &Path, to: &Path) -> std::io::Result<()> {
+      std::fs::rename(from, to)
+    }
+    fn remove_file(&self, path: &Path) -> std::io::Result<()> {
+      std::fs::remove_file(path)
+    }
+    fn create_dir_all(&self, dir_path: &Path) -> std::io::Result<()> {
+      std::fs::create_dir_all(dir_path)
+    }
+    fn path_exists(&self, path: &Path) -> bool {
+      path.exists()
+    }
+  }
+
+  atomic_write_file_with_retries_and_fs(
+    &RealAtomicWriteFileFs { mode },
+    file_path,
+    data.as_ref(),
+  )
+}
+
+pub trait AtomicWriteFileFs {
+  fn write_file(&self, path: &Path, bytes: &[u8]) -> std::io::Result<()>;
+  fn rename_file(&self, from: &Path, to: &Path) -> std::io::Result<()>;
+  fn remove_file(&self, path: &Path) -> std::io::Result<()>;
+  fn create_dir_all(&self, dir_path: &Path) -> std::io::Result<()>;
+  fn path_exists(&self, path: &Path) -> bool;
+}
+
+pub struct AtomicWriteFileFsAdapter<'a> {
+  pub fs: &'a dyn FileSystem,
+  pub write_mode: u32,
+}
+
+impl<'a> AtomicWriteFileFs for AtomicWriteFileFsAdapter<'a> {
+  fn write_file(&self, path: &Path, bytes: &[u8]) -> std::io::Result<()> {
+    self
+      .fs
+      .write_file_sync(
+        path,
+        deno_runtime::deno_fs::OpenOptions::write(
+          true,
+          false,
+          false,
+          Some(self.write_mode),
+        ),
+        None,
+        bytes,
+      )
+      .map_err(|e| e.into_io_error())
+  }
+
+  fn rename_file(&self, from: &Path, to: &Path) -> std::io::Result<()> {
+    self.fs.rename_sync(from, to).map_err(|e| e.into_io_error())
+  }
+
+  fn remove_file(&self, path: &Path) -> std::io::Result<()> {
+    self
+      .fs
+      .remove_sync(path, false)
+      .map_err(|e| e.into_io_error())
+  }
+
+  fn create_dir_all(&self, dir_path: &Path) -> std::io::Result<()> {
+    self
+      .fs
+      .mkdir_sync(dir_path, /* recursive */ true, self.write_mode)
+      .map_err(|e| e.into_io_error())
+  }
+
+  fn path_exists(&self, path: &Path) -> bool {
+    self.fs.exists_sync(path)
+  }
+}
+
+pub fn atomic_write_file_with_retries_and_fs<T: AsRef<[u8]>>(
+  fs: &impl AtomicWriteFileFs,
+  file_path: &Path,
+  data: T,
+) -> std::io::Result<()> {
   let mut count = 0;
   loop {
-    match atomic_write_file(file_path, data.as_ref(), mode) {
+    match atomic_write_file(fs, file_path, data.as_ref()) {
       Ok(()) => return Ok(()),
       Err(err) => {
         if count >= 5 {
@@ -61,63 +149,54 @@ pub fn atomic_write_file_with_retries<T: AsRef<[u8]>>(
 ///
 /// This also handles creating the directory if a NotFound error
 /// occurs.
-fn atomic_write_file<T: AsRef<[u8]>>(
+fn atomic_write_file(
+  fs: &impl AtomicWriteFileFs,
   file_path: &Path,
-  data: T,
-  mode: u32,
+  data: &[u8],
 ) -> std::io::Result<()> {
   fn atomic_write_file_raw(
+    fs: &impl AtomicWriteFileFs,
     temp_file_path: &Path,
     file_path: &Path,
     data: &[u8],
-    mode: u32,
   ) -> std::io::Result<()> {
-    write_file(temp_file_path, data, mode)?;
-    std::fs::rename(temp_file_path, file_path).map_err(|err| {
+    fs.write_file(temp_file_path, data)?;
+    fs.rename_file(temp_file_path, file_path).map_err(|err| {
       // clean up the created temp file on error
-      let _ = std::fs::remove_file(temp_file_path);
+      let _ = fs.remove_file(temp_file_path);
       err
     })
   }
 
-  fn inner(file_path: &Path, data: &[u8], mode: u32) -> std::io::Result<()> {
-    let temp_file_path = get_atomic_file_path(file_path);
+  let temp_file_path = get_atomic_file_path(file_path);
 
-    if let Err(write_err) =
-      atomic_write_file_raw(&temp_file_path, file_path, data, mode)
-    {
-      if write_err.kind() == ErrorKind::NotFound {
-        let parent_dir_path = file_path.parent().unwrap();
-        match std::fs::create_dir_all(parent_dir_path) {
-          Ok(()) => {
-            return atomic_write_file_raw(
-              &temp_file_path,
-              file_path,
-              data,
-              mode,
-            )
+  if let Err(write_err) =
+    atomic_write_file_raw(fs, &temp_file_path, file_path, data)
+  {
+    if write_err.kind() == ErrorKind::NotFound {
+      let parent_dir_path = file_path.parent().unwrap();
+      match fs.create_dir_all(parent_dir_path) {
+        Ok(()) => {
+          return atomic_write_file_raw(fs, &temp_file_path, file_path, data)
             .map_err(|err| add_file_context_to_err(file_path, err));
-          }
-          Err(create_err) => {
-            if !parent_dir_path.exists() {
-              return Err(Error::new(
-                create_err.kind(),
-                format!(
-                  "{:#} (for '{}')\nCheck the permission of the directory.",
-                  create_err,
-                  parent_dir_path.display()
-                ),
-              ));
-            }
+        }
+        Err(create_err) => {
+          if !fs.path_exists(parent_dir_path) {
+            return Err(Error::new(
+              create_err.kind(),
+              format!(
+                "{:#} (for '{}')\nCheck the permission of the directory.",
+                create_err,
+                parent_dir_path.display()
+              ),
+            ));
           }
         }
       }
-      return Err(add_file_context_to_err(file_path, write_err));
     }
-    Ok(())
+    return Err(add_file_context_to_err(file_path, write_err));
   }
-
-  inner(file_path, data.as_ref(), mode)
+  Ok(())
 }
 
 /// Creates a std::fs::File handling if the parent does not exist.

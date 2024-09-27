@@ -10,6 +10,8 @@ use crate::file_fetcher::FileFetcher;
 use crate::file_fetcher::FileOrRedirect;
 use crate::npm::CliNpmResolver;
 use crate::util::fs::atomic_write_file_with_retries;
+use crate::util::fs::atomic_write_file_with_retries_and_fs;
+use crate::util::fs::AtomicWriteFileFsAdapter;
 use crate::util::path::specifier_has_extension;
 
 use deno_ast::MediaType;
@@ -77,6 +79,14 @@ impl deno_cache_dir::DenoCacheEnv for RealDenoCacheEnv {
     atomic_write_file_with_retries(path, bytes, CACHE_PERM)
   }
 
+  fn canonicalize_path(&self, path: &Path) -> std::io::Result<PathBuf> {
+    crate::util::fs::canonicalize_path(path)
+  }
+
+  fn create_dir_all(&self, path: &Path) -> std::io::Result<()> {
+    std::fs::create_dir_all(path)
+  }
+
   fn remove_file(&self, path: &Path) -> std::io::Result<()> {
     std::fs::remove_file(path)
   }
@@ -93,6 +103,73 @@ impl deno_cache_dir::DenoCacheEnv for RealDenoCacheEnv {
 
   fn is_file(&self, path: &Path) -> bool {
     path.is_file()
+  }
+
+  fn time_now(&self) -> SystemTime {
+    SystemTime::now()
+  }
+}
+
+#[derive(Debug, Clone)]
+pub struct DenoCacheEnvFsAdapter<'a>(
+  pub &'a dyn deno_runtime::deno_fs::FileSystem,
+);
+
+impl<'a> deno_cache_dir::DenoCacheEnv for DenoCacheEnvFsAdapter<'a> {
+  fn read_file_bytes(&self, path: &Path) -> std::io::Result<Vec<u8>> {
+    self
+      .0
+      .read_file_sync(path, None)
+      .map_err(|err| err.into_io_error())
+  }
+
+  fn atomic_write_file(
+    &self,
+    path: &Path,
+    bytes: &[u8],
+  ) -> std::io::Result<()> {
+    atomic_write_file_with_retries_and_fs(
+      &AtomicWriteFileFsAdapter {
+        fs: self.0,
+        write_mode: CACHE_PERM,
+      },
+      path,
+      bytes,
+    )
+  }
+
+  fn canonicalize_path(&self, path: &Path) -> std::io::Result<PathBuf> {
+    self.0.realpath_sync(path).map_err(|e| e.into_io_error())
+  }
+
+  fn create_dir_all(&self, path: &Path) -> std::io::Result<()> {
+    self
+      .0
+      .mkdir_sync(path, true, CACHE_PERM)
+      .map_err(|e| e.into_io_error())
+  }
+
+  fn remove_file(&self, path: &Path) -> std::io::Result<()> {
+    self
+      .0
+      .remove_sync(path, false)
+      .map_err(|e| e.into_io_error())
+  }
+
+  fn modified(&self, path: &Path) -> std::io::Result<Option<SystemTime>> {
+    self
+      .0
+      .stat_sync(path)
+      .map(|stat| {
+        stat
+          .mtime
+          .map(|ts| SystemTime::UNIX_EPOCH + std::time::Duration::from_secs(ts))
+      })
+      .map_err(|e| e.into_io_error())
+  }
+
+  fn is_file(&self, path: &Path) -> bool {
+    self.0.is_file_sync(path)
   }
 
   fn time_now(&self) -> SystemTime {
