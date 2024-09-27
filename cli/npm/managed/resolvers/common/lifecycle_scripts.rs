@@ -2,6 +2,7 @@
 
 use super::bin_entries::BinEntries;
 use crate::args::LifecycleScriptsConfig;
+use deno_core::anyhow::Context;
 use deno_npm::resolution::NpmResolutionSnapshot;
 use deno_runtime::deno_io::FromRawIoHandle;
 use deno_semver::package::PackageNv;
@@ -162,7 +163,7 @@ impl<'a> LifecycleScripts<'a> {
       let temp_file_fd =
         deno_runtime::ops::process::npm_process_state_tempfile(
           process_state.as_bytes(),
-        )?;
+        ).context("failed to create npm process state tempfile for running lifecycle scripts")?;
       // SAFETY: fd/handle is valid
       let _temp_file =
         unsafe { std::fs::File::from_raw_io_handle(temp_file_fd) }; // make sure the file gets closed
