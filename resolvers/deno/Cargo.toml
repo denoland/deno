@@ -1,0 +1,24 @@
+# Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
+
+[package]
+name = "deno_resolver"
+version = "0.0.1"
+authors.workspace = true
+edition.workspace = true
+license.workspace = true
+readme = "README.md"
+repository.workspace = true
+description = "Deno resolution algorithm"
+
+[lib]
+path = "lib.rs"
+
+[features]
+
+[dependencies]
+deno_media_type.workspace = true
+deno_path_util.workspace = true
+url.workspace = true
+
+[dev-dependencies]
+test_util.workspace = true

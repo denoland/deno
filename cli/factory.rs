@@ -41,8 +41,9 @@ use crate::resolver::CjsResolutionStore;
 use crate::resolver::CliGraphResolver;
 use crate::resolver::CliGraphResolverOptions;
 use crate::resolver::CliNodeResolver;
+use crate::resolver::CliSloppyImportsResolver;
 use crate::resolver::NpmModuleLoader;
-use crate::resolver::SloppyImportsResolver;
+use crate::resolver::SloppyImportsCachedFs;
 use crate::standalone::DenoCompileBinaryWriter;
 use crate::tools::check::TypeChecker;
 use crate::tools::coverage::CoverageCollector;
@@ -186,7 +187,7 @@ struct CliFactoryServices {
   npm_resolver: Deferred<Arc<dyn CliNpmResolver>>,
   permission_desc_parser: Deferred<Arc<RuntimePermissionDescriptorParser>>,
   root_permissions_container: Deferred<PermissionsContainer>,
-  sloppy_imports_resolver: Deferred<Option<Arc<SloppyImportsResolver>>>,
+  sloppy_imports_resolver: Deferred<Option<Arc<CliSloppyImportsResolver>>>,
   text_only_progress_bar: Deferred<ProgressBar>,
   type_checker: Deferred<Arc<TypeChecker>>,
   cjs_resolutions: Deferred<Arc<CjsResolutionStore>>,
@@ -404,17 +405,16 @@ impl CliFactory {
 
   pub fn sloppy_imports_resolver(
     &self,
-  ) -> Result<Option<&Arc<SloppyImportsResolver>>, AnyError> {
+  ) -> Result<Option<&Arc<CliSloppyImportsResolver>>, AnyError> {
     self
       .services
       .sloppy_imports_resolver
       .get_or_try_init(|| {
-        Ok(
-          self
-            .cli_options()?
-            .unstable_sloppy_imports()
-            .then(|| Arc::new(SloppyImportsResolver::new(self.fs().clone()))),
-        )
+        Ok(self.cli_options()?.unstable_sloppy_imports().then(|| {
+          Arc::new(CliSloppyImportsResolver::new(SloppyImportsCachedFs::new(
+            self.fs().clone(),
+          )))
+        }))
       })
       .map(|maybe| maybe.as_ref())
   }

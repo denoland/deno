@@ -71,9 +71,10 @@ deno_doc = { version = "0.150.0", features = ["html", "syntect"] }
 deno_graph = { version = "=0.82.3" }
 deno_lint = { version = "=0.67.0", features = ["docs"] }
 deno_lockfile.workspace = true
-deno_npm = "=0.25.2"
+deno_npm.workspace = true
 deno_package_json.workspace = true
 deno_path_util.workspace = true
+deno_resolver.workspace = true
 deno_runtime = { workspace = true, features = ["include_js_files_for_snapshotting"] }
 deno_semver.workspace = true
 deno_task_shell = "=0.17.0"
@@ -85,7 +86,6 @@ node_resolver.workspace = true
 
 anstream = "0.6.14"
 async-trait.workspace = true
-base32.workspace = true
 base64.workspace = true
 bincode = "=1.3.3"
 bytes.workspace = true
@@ -96,7 +96,7 @@ clap_complete = "=4.5.24"
 clap_complete_fig = "=4.5.2"
 color-print = "0.3.5"
 console_static_text.workspace = true
-dashmap = "5.5.3"
+dashmap.workspace = true
 data-encoding.workspace = true
 dissimilar = "=1.0.4"
 dotenvy = "0.15.7"

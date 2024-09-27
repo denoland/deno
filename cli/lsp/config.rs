@@ -59,7 +59,8 @@ use crate::args::LintOptions;
 use crate::cache::FastInsecureHasher;
 use crate::file_fetcher::FileFetcher;
 use crate::lsp::logging::lsp_warn;
-use crate::resolver::SloppyImportsResolver;
+use crate::resolver::CliSloppyImportsResolver;
+use crate::resolver::SloppyImportsCachedFs;
 use crate::tools::lint::CliLinter;
 use crate::tools::lint::CliLinterOptions;
 use crate::tools::lint::LintRuleProvider;
@@ -1181,7 +1182,7 @@ pub struct ConfigData {
   pub lockfile: Option<Arc<CliLockfile>>,
   pub npmrc: Option<Arc<ResolvedNpmRc>>,
   pub resolver: Arc<WorkspaceResolver>,
-  pub sloppy_imports_resolver: Option<Arc<SloppyImportsResolver>>,
+  pub sloppy_imports_resolver: Option<Arc<CliSloppyImportsResolver>>,
   pub import_map_from_settings: Option<ModuleSpecifier>,
   watched_files: HashMap<ModuleSpecifier, ConfigWatchedFileType>,
 }
@@ -1584,9 +1585,11 @@ impl ConfigData {
       .is_ok()
       || member_dir.workspace.has_unstable("sloppy-imports");
     let sloppy_imports_resolver = unstable_sloppy_imports.then(|| {
-      Arc::new(SloppyImportsResolver::new_without_stat_cache(Arc::new(
-        deno_runtime::deno_fs::RealFs,
-      )))
+      Arc::new(CliSloppyImportsResolver::new(
+        SloppyImportsCachedFs::new_without_stat_cache(Arc::new(
+          deno_runtime::deno_fs::RealFs,
+        )),
+      ))
     });
     let resolver = Arc::new(resolver);
     let lint_rule_provider = LintRuleProvider::new(
