@@ -1,6 +1,6 @@
 {
   "$id": "https://deno.land/x/deno/cli/schemas/config-file.v1.json",
-  "$schema": "http://json-schema.org/draft-07/schema",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
   "description": "A JSON representation of a Deno configuration file.",
   "required": [],
   "title": "Deno configuration file Schema",
@@ -9,6 +9,7 @@
     "compilerOptions": {
       "type": "object",
       "description": "Instructs the TypeScript compiler how to compile .ts files.",
+      "additionalProperties": false,
       "properties": {
         "allowJs": {
           "description": "Allow JavaScript files to be a part of your program. Use the `checkJS` option to get errors from these files.",
@@ -34,17 +35,31 @@
           "default": false,
           "markdownDescription": "Enable error reporting in type-checked JavaScript files.\n\nSee more: https://www.typescriptlang.org/tsconfig#checkJs"
         },
-        "exactOptionalPropertyTypes": {
-          "description": "Differentiate between undefined and not present when type checking",
+        "emitDecoratorMetadata": {
+          "description": "Emit design-type metadata for decorated declarations in source files.",
           "type": "boolean",
           "default": false,
-          "markdownDescription": "Differentiate between undefined and not present when type checking\n\nSee more: https://www.typescriptlang.org/tsconfig#exactOptionalPropertyTypes"
+          "deprecated": true,
+          "markdownDescription": "Emit design-type metadata for decorated declarations in source files.\n\nSee more: https://www.typescriptlang.org/tsconfig/#emitDecoratorMetadata"
+        },
+        "exactOptionalPropertyTypes": {
+          "description": "Interpret optional property types as written, rather than adding 'undefined'.",
+          "type": "boolean",
+          "default": false,
+          "markdownDescription": "Interpret optional property types as written, rather than adding 'undefined'.\n\nSee more: https://www.typescriptlang.org/tsconfig#exactOptionalPropertyTypes"
         },
         "experimentalDecorators": {
           "description": "Enable experimental support for legacy experimental decorators.",
           "type": "boolean",
           "default": false,
+          "deprecated": true,
           "markdownDescription": "Enable experimental support for legacy experimental decorators.\n\nSee more: https://www.typescriptlang.org/tsconfig#experimentalDecorators"
+        },
+        "isolatedDeclarations": {
+          "description": "Require sufficient annotation on exports so other tools can trivially generate declaration files.",
+          "type": "boolean",
+          "default": false,
+          "markdownDescription": "Require sufficient annotation on exports so other tools can trivially generate declaration files.\n\nSee more: https://www.typescriptlang.org/tsconfig/#isolatedDeclarations"
         },
         "jsx": {
           "description": "Specify what JSX code is generated.",
@@ -90,12 +105,6 @@
           },
           "markdownDescription": "Specify list of elements that should be exempt from being precompiled when the jsx `precompile` transform is used."
         },
-        "keyofStringsOnly": {
-          "description": "Make keyof only return strings instead of string, numbers or symbols. Legacy option.",
-          "type": "boolean",
-          "default": false,
-          "markdownDescription": "Make keyof only return strings instead of string, numbers or symbols. Legacy option.\n\nSee more: https://www.typescriptlang.org/tsconfig#keyofStringsOnly"
-        },
         "lib": {
           "description": "Specify a set of bundled library declaration files that describe the target runtime environment.",
           "type": "array",
@@ -127,7 +136,7 @@
         "noImplicitOverride": {
           "description": "Ensure overriding members in derived classes are marked with an override modifier.",
           "type": "boolean",
-          "default": false,
+          "default": true,
           "markdownDescription": "Ensure overriding members in derived classes are marked with an override modifier.\n\nSee more: https://www.typescriptlang.org/tsconfig#noImplicitOverride"
         },
         "noImplicitReturns": {
@@ -142,23 +151,17 @@
           "default": true,
           "markdownDescription": "Enable error reporting when `this` is given the type `any`.\n\nSee more: https://www.typescriptlang.org/tsconfig#noImplicitThis"
         },
-        "noImplicitUseStrict": {
-          "description": "Disable adding 'use strict' directives in emitted JavaScript files.",
-          "type": "boolean",
-          "default": true,
-          "markdownDescription": "Disable adding 'use strict' directives in emitted JavaScript files.\n\nSee more: https://www.typescriptlang.org/tsconfig#noImplicitUseStrict"
-        },
         "noPropertyAccessFromIndexSignature": {
           "description": "Enforces using indexed accessors for keys declared using an indexed type.",
           "type": "boolean",
           "default": false,
           "markdownDescription": "Enforces using indexed accessors for keys declared using an indexed type.\n\nSee more: https://www.typescriptlang.org/tsconfig#noPropertyAccessFromIndexSignature"
         },
-        "noStrictGenericChecks": {
-          "description": "Disable strict checking of generic signatures in function types.",
+        "noUncheckedIndexedAccess": {
+          "description": "Add `undefined` to a type when accessed using an index.",
           "type": "boolean",
           "default": false,
-          "markdownDescription": "Disable strict checking of generic signatures in function types.\n\nSee more: https://www.typescriptlang.org/tsconfig#noStrictGenericChecks"
+          "markdownDescription": "Add `undefined` to a type when accessed using an index.\n\nSee more: https://www.typescriptlang.org/tsconfig#noUncheckedIndexedAccess"
         },
         "noUnusedLocals": {
           "description": "Enable error reporting when a local variables aren't read.",
@@ -172,12 +175,6 @@
           "default": false,
           "markdownDescription": "Raise an error when a function parameter isn't read\n\nSee more: https://www.typescriptlang.org/tsconfig#noUnusedParameters"
         },
-        "noUncheckedIndexedAccess": {
-          "description": "Add `undefined` to a type when accessed using an index.",
-          "type": "boolean",
-          "default": false,
-          "markdownDescription": "Add `undefined` to a type when accessed using an index.\n\nSee more: https://www.typescriptlang.org/tsconfig#noUncheckedIndexedAccess"
-        },
         "strict": {
           "description": "Enable all strict type checking options.",
           "type": "boolean",
@@ -190,17 +187,17 @@
           "default": true,
           "markdownDescription": "Check that the arguments for `bind`, `call`, and `apply` methods match the original function.\n\nSee more: https://www.typescriptlang.org/tsconfig#strictBindCallApply"
         },
+        "strictBuiltinIteratorReturn": {
+          "description": "Built-in iterators are instantiated with a `TReturn` type of undefined instead of `any`.",
+          "type": "boolean",
+          "default": true,
+          "markdownDescription": "Built-in iterators are instantiated with a `TReturn` type of undefined instead of `any`.\n\nSee more: https://www.typescriptlang.org/tsconfig/#strictBuiltinIteratorReturn"
+        },
         "strictFunctionTypes": {
           "description": "When assigning functions, check to ensure parameters and the return values are subtype-compatible.",
           "type": "boolean",
           "default": true,
           "markdownDescription": "When assigning functions, check to ensure parameters and the return values are subtype-compatible.\n\nSee more: https://www.typescriptlang.org/tsconfig#strictFunctionTypes"
-        },
-        "strictPropertyInitialization": {
-          "description": "Check for class properties that are declared but not set in the constructor.",
-          "type": "boolean",
-          "default": true,
-          "markdownDescription": "Check for class properties that are declared but not set in the constructor.\n\nSee more: https://www.typescriptlang.org/tsconfig#strictPropertyInitialization"
         },
         "strictNullChecks": {
           "description": "When type checking, take into account `null` and `undefined`.",
@@ -208,23 +205,31 @@
           "default": true,
           "markdownDescription": "When type checking, take into account `null` and `undefined`.\n\nSee more: https://www.typescriptlang.org/tsconfig#strictNullChecks"
         },
-        "suppressExcessPropertyErrors": {
-          "description": "Disable reporting of excess property errors during the creation of object literals.",
+        "strictPropertyInitialization": {
+          "description": "Check for class properties that are declared but not set in the constructor.",
           "type": "boolean",
-          "default": false,
-          "markdownDescription": "Disable reporting of excess property errors during the creation of object literals.\n\nSee more: https://www.typescriptlang.org/tsconfig#suppressExcessPropertyErrors"
+          "default": true,
+          "markdownDescription": "Check for class properties that are declared but not set in the constructor.\n\nSee more: https://www.typescriptlang.org/tsconfig#strictPropertyInitialization"
         },
-        "suppressImplicitAnyIndexErrors": {
-          "description": "Suppress `noImplicitAny` errors when indexing objects that lack index signatures.",
-          "type": "boolean",
-          "default": false,
-          "markdownDescription": "Suppress `noImplicitAny` errors when indexing objects that lack index signatures.\n\nSee more: https://www.typescriptlang.org/tsconfig#suppressImplicitAnyIndexErrors"
+        "types": {
+          "description": "Specify type package names to be included without being referenced in a source file.",
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "markdownDescription": "Specify type package names to be included without being referenced in a source file.\n\nSee more: https://www.typescriptlang.org/tsconfig/#types"
         },
         "useUnknownInCatchVariables": {
           "description": "Default catch clause variables as `unknown` instead of `any`.",
           "type": "boolean",
-          "default": false,
+          "default": true,
           "markdownDescription": "Default catch clause variables as `unknown` instead of `any`.\n\nSee more: https://www.typescriptlang.org/tsconfig#useUnknownInCatchVariables"
+        },
+        "verbatimModuleSyntax": {
+          "description": "Do not transform or elide any imports or exports not marked as type-only, ensuring they are written in the output file's format based on the 'module' setting.",
+          "type": "boolean",
+          "default": false,
+          "markdownDescription": "Do not transform or elide any imports or exports not marked as type-only, ensuring they are written in the output file's format based on the 'module' setting.\n\nSee more: https://www.typescriptlang.org/tsconfig/#verbatimModuleSyntax"
         }
       }
     },
@@ -277,25 +282,6 @@
           "description": "List of files, directories or globs that will not be linted.",
           "items": {
             "type": "string"
-          }
-        },
-        "files": {
-          "type": "object",
-          "properties": {
-            "include": {
-              "type": "array",
-              "description": "List of files, directories or globs that will be linted.",
-              "items": {
-                "type": "string"
-              }
-            },
-            "exclude": {
-              "type": "array",
-              "description": "List of files, directories or globs that will not be linted.",
-              "items": {
-                "type": "string"
-              }
-            }
           }
         },
         "rules": {
@@ -353,25 +339,6 @@
           "description": "List of files, directories or globs that will not be formatted.",
           "items": {
             "type": "string"
-          }
-        },
-        "files": {
-          "type": "object",
-          "properties": {
-            "include": {
-              "type": "array",
-              "description": "List of files, directories or globs that will be formatted.",
-              "items": {
-                "type": "string"
-              }
-            },
-            "exclude": {
-              "type": "array",
-              "description": "List of files, directories or globs that will not be formatted.",
-              "items": {
-                "type": "string"
-              }
-            }
           }
         },
         "useTabs": {
@@ -442,8 +409,18 @@
       }
     },
     "nodeModulesDir": {
-      "description": "Enables or disables the use of a local node_modules folder for npm packages. Alternatively, use the `--node-modules-dir` flag or override the config via `--node-modules-dir=false`. Requires Deno 1.34 or later.",
-      "type": "boolean"
+      "oneOf": [
+        {
+          "description": "Sets the node_modules management mode for npm packages. Alternatively, use the `--node-modules-dir=<MODE>` flag. Requires Deno 2.0-rc.1 or later.",
+          "default": "none",
+          "enum": ["auto", "manual", "none"]
+        },
+        {
+          "description": "Enables or disables the use of a local node_modules folder for npm packages. Alternatively, use the `--node-modules-dir` flag or override the config via `--node-modules-dir=false`. Requires Deno 1.34 or later.",
+          "type": "boolean",
+          "deprecated": false
+        }
+      ]
     },
     "vendor": {
       "description": "Enables or disables the use of a local vendor folder as a local cache for remote modules and node_modules folder for npm packages. Alternatively, use the `--vendor` flag or override the config via `--vendor=false`. Requires Deno 1.36.1 or later.",
@@ -476,25 +453,6 @@
           "description": "List of files, directories or globs that will not be searched for tests.",
           "items": {
             "type": "string"
-          }
-        },
-        "files": {
-          "type": "object",
-          "properties": {
-            "include": {
-              "type": "array",
-              "description": "List of files, directories or globs that will be searched for tests.",
-              "items": {
-                "type": "string"
-              }
-            },
-            "exclude": {
-              "type": "array",
-              "description": "List of files, directories or globs that will not be searched for tests.",
-              "items": {
-                "type": "string"
-              }
-            }
           }
         }
       }
@@ -535,25 +493,6 @@
           "description": "List of files, directories or globs that will not be searched for benchmarks.",
           "items": {
             "type": "string"
-          }
-        },
-        "files": {
-          "type": "object",
-          "properties": {
-            "include": {
-              "type": "array",
-              "description": "List of files, directories or globs that will be searched for benchmarks.",
-              "items": {
-                "type": "string"
-              }
-            },
-            "exclude": {
-              "type": "array",
-              "description": "List of files, directories or globs that will not be searched for benchmarks.",
-              "items": {
-                "type": "string"
-              }
-            }
           }
         }
       }
@@ -622,6 +561,11 @@
         {
           "type": "object",
           "description": "A map of package exports to files in this JSR package.",
+          "propertyNames": {
+            "description": "Package export name",
+            "examples": [".", "./foo", "./bar"],
+            "pattern": "^\\.(/.*)?$"
+          },
           "patternProperties": {
             "^\\.(/.*)?$": {
               "type": "string",

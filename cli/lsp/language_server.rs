@@ -1,6 +1,5 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
-use base64::Engine;
 use deno_ast::MediaType;
 use deno_config::workspace::WorkspaceDirectory;
 use deno_config::workspace::WorkspaceDiscoverOptions;
@@ -18,6 +17,7 @@ use deno_graph::GraphKind;
 use deno_graph::Resolution;
 use deno_runtime::deno_tls::rustls::RootCertStore;
 use deno_runtime::deno_tls::RootCertStoreProvider;
+use deno_runtime::fs_util::specifier_to_file_path;
 use deno_semver::jsr::JsrPackageReqReference;
 use indexmap::Equivalent;
 use indexmap::IndexSet;
@@ -113,7 +113,6 @@ use crate::util::fs::remove_dir_all_if_exists;
 use crate::util::path::is_importable_ext;
 use crate::util::path::to_percent_decoded_str;
 use crate::util::sync::AsyncFlag;
-use deno_runtime::fs_util::specifier_to_file_path;
 
 struct LspRootCertStoreProvider(RootCertStore);
 
@@ -241,7 +240,7 @@ impl LanguageServer {
     }
   }
 
-  /// Similar to `deno cache` on the command line, where modules will be cached
+  /// Similar to `deno install --entrypoint` on the command line, where modules will be cached
   /// in the Deno cache, including any of their dependencies.
   pub async fn cache(
     &self,
@@ -275,10 +274,9 @@ impl LanguageServer {
         factory.fs(),
         &roots,
         graph_util::GraphValidOptions {
-          is_vendoring: false,
-          follow_type_only: true,
+          kind: GraphKind::All,
           check_js: false,
-          exit_lockfile_errors: false,
+          exit_integrity_errors: false,
         },
       )?;
 
@@ -966,19 +964,29 @@ impl Inner {
       .await;
     for config_file in self.config.tree.config_files() {
       (|| {
-        let compiler_options = config_file.to_compiler_options().ok()?.0;
-        let compiler_options_obj = compiler_options.as_object()?;
-        let jsx_import_source = compiler_options_obj.get("jsxImportSource")?;
-        let jsx_import_source = jsx_import_source.as_str()?;
+        let compiler_options = config_file.to_compiler_options().ok()?.options;
+        let jsx_import_source = compiler_options.get("jsxImportSource")?;
+        let jsx_import_source = jsx_import_source.as_str()?.to_string();
         let referrer = config_file.specifier.clone();
-        let specifier = Url::parse(&format!(
-          "data:application/typescript;base64,{}",
-          base64::engine::general_purpose::STANDARD
-            .encode(format!("import '{jsx_import_source}/jsx-runtime';"))
-        ))
-        .unwrap();
+        let specifier = format!("{jsx_import_source}/jsx-runtime");
         self.task_queue.queue_task(Box::new(|ls: LanguageServer| {
           spawn(async move {
+            let specifier = {
+              let inner = ls.inner.read().await;
+              let resolver = inner.resolver.as_graph_resolver(Some(&referrer));
+              let Ok(specifier) = resolver.resolve(
+                &specifier,
+                &deno_graph::Range {
+                  specifier: referrer.clone(),
+                  start: deno_graph::Position::zeroed(),
+                  end: deno_graph::Position::zeroed(),
+                },
+                deno_graph::source::ResolutionMode::Types,
+              ) else {
+                return;
+              };
+              specifier
+            };
             if let Err(err) = ls.cache(vec![specifier], referrer, false).await {
               lsp_warn!("{:#}", err);
             }
@@ -1376,17 +1384,8 @@ impl Inner {
         .data_for_specifier(&specifier)
         .map(|d| &d.member_dir.workspace);
       let unstable_options = UnstableFmtOptions {
-        css: maybe_workspace
-          .map(|w| w.has_unstable("fmt-css"))
-          .unwrap_or(false),
-        html: maybe_workspace
-          .map(|w| w.has_unstable("fmt-html"))
-          .unwrap_or(false),
         component: maybe_workspace
           .map(|w| w.has_unstable("fmt-component"))
-          .unwrap_or(false),
-        yaml: maybe_workspace
-          .map(|w| w.has_unstable("fmt-yaml"))
           .unwrap_or(false),
       };
       let document = document.clone();
@@ -1411,6 +1410,7 @@ impl Inner {
               document.content(),
               &fmt_options,
               &unstable_options,
+              None,
             )
           }
         };
@@ -3613,6 +3613,11 @@ impl Inner {
         }),
         // bit of a hack to force the lsp to cache the @types/node package
         type_check_mode: crate::args::TypeCheckMode::Local,
+        permissions: crate::args::PermissionFlags {
+          // allow remote import permissions in the lsp for now
+          allow_import: Some(vec![]),
+          ..Default::default()
+        },
         ..Default::default()
       }),
       initial_cwd,
@@ -3860,7 +3865,11 @@ impl Inner {
 
   </details>
 "#,
-        serde_json::to_string_pretty(&workspace_settings).unwrap(),
+        serde_json::to_string_pretty(&workspace_settings)
+          .inspect_err(|e| {
+            dbg!(e);
+          })
+          .unwrap(),
         documents_specifiers.len(),
         documents_specifiers
           .into_iter()

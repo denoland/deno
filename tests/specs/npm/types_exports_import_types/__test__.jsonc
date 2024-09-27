@@ -1,0 +1,9 @@
+{
+  "args": "check --all types_exports_import_types/main.ts",
+  "output": "types_exports_import_types/main.out",
+  "envs": {
+    "NO_COLOR": "1",
+    "NPM_CONFIG_REGISTRY": "http://localhost:4260/"
+  },
+  "exitCode": 1
+}

@@ -1,6 +1,5 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
-use crate::check_unstable;
 use crate::symbol::NativeType;
 use crate::FfiPermissions;
 use crate::ForeignFunction;
@@ -174,7 +173,7 @@ unsafe extern "C" fn deno_ffi_callback(
         let tc_scope = &mut TryCatch::new(scope);
         args.run(tc_scope);
         if tc_scope.exception().is_some() {
-          log::error!("Illegal unhandled exception in nonblocking callback.");
+          log::error!("Illegal unhandled exception in nonblocking callback");
         }
       });
     }
@@ -557,9 +556,8 @@ pub fn op_ffi_unsafe_callback_create<FP, 'scope>(
 where
   FP: FfiPermissions + 'static,
 {
-  check_unstable(state, "Deno.UnsafeCallback");
   let permissions = state.borrow_mut::<FP>();
-  permissions.check_partial(None)?;
+  permissions.check_partial_no_path()?;
 
   let thread_id: u32 = LOCAL_THREAD_ID.with(|s| {
     let value = *s.borrow();

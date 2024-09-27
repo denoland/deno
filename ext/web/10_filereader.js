@@ -454,36 +454,42 @@ webidl.configureInterface(FileReader);
 const FileReaderPrototype = FileReader.prototype;
 
 ObjectDefineProperty(FileReader, "EMPTY", {
+  __proto__: null,
   writable: false,
   enumerable: true,
   configurable: false,
   value: 0,
 });
 ObjectDefineProperty(FileReader, "LOADING", {
+  __proto__: null,
   writable: false,
   enumerable: true,
   configurable: false,
   value: 1,
 });
 ObjectDefineProperty(FileReader, "DONE", {
+  __proto__: null,
   writable: false,
   enumerable: true,
   configurable: false,
   value: 2,
 });
 ObjectDefineProperty(FileReader.prototype, "EMPTY", {
+  __proto__: null,
   writable: false,
   enumerable: true,
   configurable: false,
   value: 0,
 });
 ObjectDefineProperty(FileReader.prototype, "LOADING", {
+  __proto__: null,
   writable: false,
   enumerable: true,
   configurable: false,
   value: 1,
 });
 ObjectDefineProperty(FileReader.prototype, "DONE", {
+  __proto__: null,
   writable: false,
   enumerable: true,
   configurable: false,

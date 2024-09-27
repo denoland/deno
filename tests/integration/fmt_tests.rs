@@ -291,12 +291,6 @@ itest!(fmt_with_config {
   output: "fmt/fmt_with_config.out",
 });
 
-itest!(fmt_with_deprecated_config {
-  args:
-    "fmt --config fmt/with_config/deno.deprecated.jsonc fmt/with_config/subdir",
-  output: "fmt/fmt_with_deprecated_config.out",
-});
-
 itest!(fmt_with_config_default {
   args: "fmt fmt/with_config/subdir",
   output: "fmt/fmt_with_config.out",

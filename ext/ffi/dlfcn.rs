@@ -1,6 +1,5 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
-use crate::check_unstable;
 use crate::ir::out_buffer_as_ptr;
 use crate::symbol::NativeType;
 use crate::symbol::Symbol;
@@ -20,7 +19,6 @@ use serde_value::ValueDeserializer;
 use std::borrow::Cow;
 use std::collections::HashMap;
 use std::ffi::c_void;
-use std::path::PathBuf;
 use std::rc::Rc;
 
 pub struct DynamicLibraryResource {
@@ -122,16 +120,13 @@ pub fn op_ffi_load<'scope, FP>(
 where
   FP: FfiPermissions + 'static,
 {
-  let path = args.path;
-
-  check_unstable(state, "Deno.dlopen");
   let permissions = state.borrow_mut::<FP>();
-  permissions.check_partial(Some(&PathBuf::from(&path)))?;
+  let path = permissions.check_partial_with_path(&args.path)?;
 
   let lib = Library::open(&path).map_err(|e| {
     dlopen2::Error::OpeningLibraryError(std::io::Error::new(
       std::io::ErrorKind::Other,
-      format_error(e, path),
+      format_error(e, &path),
     ))
   })?;
   let mut resource = DynamicLibraryResource {
@@ -292,7 +287,10 @@ fn sync_fn_impl<'s>(
 
 // `path` is only used on Windows.
 #[allow(unused_variables)]
-pub(crate) fn format_error(e: dlopen2::Error, path: String) -> String {
+pub(crate) fn format_error(
+  e: dlopen2::Error,
+  path: &std::path::Path,
+) -> String {
   match e {
     #[cfg(target_os = "windows")]
     // This calls FormatMessageW with library path
@@ -302,7 +300,6 @@ pub(crate) fn format_error(e: dlopen2::Error, path: String) -> String {
     //
     // https://github.com/denoland/deno/issues/11632
     dlopen2::Error::OpeningLibraryError(e) => {
-      use std::ffi::OsStr;
       use std::os::windows::ffi::OsStrExt;
       use winapi::shared::minwindef::DWORD;
       use winapi::shared::winerror::ERROR_INSUFFICIENT_BUFFER;
@@ -326,7 +323,8 @@ pub(crate) fn format_error(e: dlopen2::Error, path: String) -> String {
 
       let mut buf = vec![0; 500];
 
-      let path = OsStr::new(&path)
+      let path = path
+        .as_os_str()
         .encode_wide()
         .chain(Some(0))
         .collect::<Vec<_>>();
@@ -386,7 +384,7 @@ mod tests {
       std::io::Error::from_raw_os_error(0x000000C1),
     );
     assert_eq!(
-      format_error(err, "foo.dll".to_string()),
+      format_error(err, &std::path::PathBuf::from("foo.dll")),
       "foo.dll is not a valid Win32 application.\r\n".to_string(),
     );
   }

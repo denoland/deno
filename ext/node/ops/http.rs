@@ -272,6 +272,7 @@ pub async fn op_node_http_fetch_response_upgrade(
       loop {
         let read = upgraded_rx.read(&mut buf).await?;
         if read == 0 {
+          read_tx.shutdown().await?;
           break;
         }
         read_tx.write_all(&buf[..read]).await?;

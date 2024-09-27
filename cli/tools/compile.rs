@@ -1,5 +1,6 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
+use crate::args::check_warn_tsconfig;
 use crate::args::CompileFlags;
 use crate::args::Flags;
 use crate::factory::CliFactory;
@@ -79,6 +80,7 @@ pub async fn compile(
 
   let ts_config_for_emit = cli_options
     .resolve_ts_config_for_emit(deno_config::deno_json::TsConfigType::Emit)?;
+  check_warn_tsconfig(&ts_config_for_emit);
   let (transpile_options, emit_options) =
     crate::args::ts_config_to_transpile_and_emit_options(
       ts_config_for_emit.ts_config,
@@ -133,7 +135,7 @@ pub async fn compile(
       file,
       eszip,
       root_dir_url,
-      &module_specifier,
+      module_specifier,
       &compile_flags,
       cli_options,
     )

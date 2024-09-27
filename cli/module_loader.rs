@@ -2,7 +2,6 @@
 
 use std::borrow::Cow;
 use std::cell::RefCell;
-use std::collections::HashSet;
 use std::path::PathBuf;
 use std::pin::Pin;
 use std::rc::Rc;
@@ -44,7 +43,6 @@ use deno_core::error::generic_error;
 use deno_core::error::AnyError;
 use deno_core::futures::future::FutureExt;
 use deno_core::futures::Future;
-use deno_core::parking_lot::Mutex;
 use deno_core::resolve_url;
 use deno_core::ModuleCodeString;
 use deno_core::ModuleLoader;
@@ -107,11 +105,32 @@ impl ModuleLoadPreparer {
     is_dynamic: bool,
     lib: TsTypeLib,
     permissions: PermissionsContainer,
+    ext_overwrite: Option<&String>,
   ) -> Result<(), AnyError> {
     log::debug!("Preparing module load.");
     let _pb_clear_guard = self.progress_bar.clear_guard();
 
     let mut cache = self.module_graph_builder.create_fetch_cacher(permissions);
+    if let Some(ext) = ext_overwrite {
+      let maybe_content_type = match ext.as_str() {
+        "ts" => Some("text/typescript"),
+        "tsx" => Some("text/tsx"),
+        "js" => Some("text/javascript"),
+        "jsx" => Some("text/jsx"),
+        _ => None,
+      };
+      if let Some(content_type) = maybe_content_type {
+        for root in roots {
+          cache.file_header_overrides.insert(
+            root.clone(),
+            std::collections::HashMap::from([(
+              "content-type".to_string(),
+              content_type.to_string(),
+            )]),
+          );
+        }
+      }
+    }
     log::debug!("Building module graph.");
     let has_type_checked = !graph.roots.is_empty();
 
@@ -233,18 +252,19 @@ impl CliModuleLoaderFactory {
     &self,
     graph_container: TGraphContainer,
     lib: TsTypeLib,
-    root_permissions: PermissionsContainer,
-    dynamic_permissions: PermissionsContainer,
+    is_worker: bool,
+    parent_permissions: PermissionsContainer,
+    permissions: PermissionsContainer,
   ) -> ModuleLoaderAndSourceMapGetter {
     let loader = Rc::new(CliModuleLoader(Rc::new(CliModuleLoaderInner {
       lib,
-      root_permissions,
-      dynamic_permissions,
+      is_worker,
+      parent_permissions,
+      permissions,
       graph_container,
       emitter: self.shared.emitter.clone(),
       parsed_source_cache: self.shared.parsed_source_cache.clone(),
       shared: self.shared.clone(),
-      prevent_v8_code_cache: Default::default(),
     })));
     ModuleLoaderAndSourceMapGetter {
       module_loader: loader,
@@ -256,20 +276,20 @@ impl ModuleLoaderFactory for CliModuleLoaderFactory {
   fn create_for_main(
     &self,
     root_permissions: PermissionsContainer,
-    dynamic_permissions: PermissionsContainer,
   ) -> ModuleLoaderAndSourceMapGetter {
     self.create_with_lib(
       (*self.shared.main_module_graph_container).clone(),
       self.shared.lib_window,
+      /* is worker */ false,
+      root_permissions.clone(),
       root_permissions,
-      dynamic_permissions,
     )
   }
 
   fn create_for_worker(
     &self,
-    root_permissions: PermissionsContainer,
-    dynamic_permissions: PermissionsContainer,
+    parent_permissions: PermissionsContainer,
+    permissions: PermissionsContainer,
   ) -> ModuleLoaderAndSourceMapGetter {
     self.create_with_lib(
       // create a fresh module graph for the worker
@@ -277,29 +297,25 @@ impl ModuleLoaderFactory for CliModuleLoaderFactory {
         self.shared.graph_kind,
       ))),
       self.shared.lib_worker,
-      root_permissions,
-      dynamic_permissions,
+      /* is worker */ true,
+      parent_permissions,
+      permissions,
     )
   }
 }
 
 struct CliModuleLoaderInner<TGraphContainer: ModuleGraphContainer> {
   lib: TsTypeLib,
+  is_worker: bool,
   /// The initial set of permissions used to resolve the static imports in the
   /// worker. These are "allow all" for main worker, and parent thread
   /// permissions for Web Worker.
-  root_permissions: PermissionsContainer,
-  /// Permissions used to resolve dynamic imports, these get passed as
-  /// "root permissions" for Web Worker.
-  dynamic_permissions: PermissionsContainer,
+  parent_permissions: PermissionsContainer,
+  permissions: PermissionsContainer,
   shared: Arc<SharedCliModuleLoaderState>,
   emitter: Arc<Emitter>,
   parsed_source_cache: Arc<ParsedSourceCache>,
   graph_container: TGraphContainer,
-  // NOTE(bartlomieju): this is temporary, for deprecated import assertions.
-  // Should be removed in Deno 2.
-  // Modules stored here should not be V8 code-cached.
-  prevent_v8_code_cache: Arc<Mutex<HashSet<String>>>,
 }
 
 impl<TGraphContainer: ModuleGraphContainer>
@@ -401,7 +417,7 @@ impl<TGraphContainer: ModuleGraphContainer>
 
   fn inner_resolve(
     &self,
-    specifier: &str,
+    raw_specifier: &str,
     referrer: &ModuleSpecifier,
   ) -> Result<ModuleSpecifier, AnyError> {
     if self.shared.node_resolver.in_npm_package(referrer) {
@@ -409,7 +425,7 @@ impl<TGraphContainer: ModuleGraphContainer>
         self
           .shared
           .node_resolver
-          .resolve(specifier, referrer, NodeResolutionMode::Execution)?
+          .resolve(raw_specifier, referrer, NodeResolutionMode::Execution)?
           .into_url(),
       );
     }
@@ -418,7 +434,7 @@ impl<TGraphContainer: ModuleGraphContainer>
     let resolution = match graph.get(referrer) {
       Some(Module::Js(module)) => module
         .dependencies
-        .get(specifier)
+        .get(raw_specifier)
         .map(|d| &d.maybe_code)
         .unwrap_or(&Resolution::None),
       _ => &Resolution::None,
@@ -433,7 +449,7 @@ impl<TGraphContainer: ModuleGraphContainer>
         ));
       }
       Resolution::None => Cow::Owned(self.shared.resolver.resolve(
-        specifier,
+        raw_specifier,
         &deno_graph::Range {
           specifier: referrer.clone(),
           start: deno_graph::Position::zeroed(),
@@ -755,11 +771,12 @@ impl<TGraphContainer: ModuleGraphContainer> ModuleLoader
         }
       }
 
-      let root_permissions = if is_dynamic {
-        inner.dynamic_permissions.clone()
+      let permissions = if is_dynamic {
+        inner.permissions.clone()
       } else {
-        inner.root_permissions.clone()
+        inner.parent_permissions.clone()
       };
+      let is_dynamic = is_dynamic || inner.is_worker; // consider workers as dynamic for permissions
       let lib = inner.lib;
       let mut update_permit = graph_container.acquire_update_permit().await;
       let graph = update_permit.graph_mut();
@@ -769,7 +786,8 @@ impl<TGraphContainer: ModuleGraphContainer> ModuleLoader
           &[specifier],
           is_dynamic,
           lib,
-          root_permissions,
+          permissions,
+          None,
         )
         .await?;
       update_permit.commit();
@@ -785,14 +803,6 @@ impl<TGraphContainer: ModuleGraphContainer> ModuleLoader
     code_cache: &[u8],
   ) -> Pin<Box<dyn Future<Output = ()>>> {
     if let Some(cache) = self.0.shared.code_cache.as_ref() {
-      if self
-        .0
-        .prevent_v8_code_cache
-        .lock()
-        .contains(specifier.as_str())
-      {
-        return std::future::ready(()).boxed_local();
-      }
       // This log line is also used by tests.
       log::debug!(
         "Updating V8 code cache for ES module: {specifier}, [{source_hash:?}]"
@@ -805,19 +815,6 @@ impl<TGraphContainer: ModuleGraphContainer> ModuleLoader
       );
     }
     std::future::ready(()).boxed_local()
-  }
-
-  fn purge_and_prevent_code_cache(&self, specifier: &str) {
-    if let Some(cache) = self.0.shared.code_cache.as_ref() {
-      // This log line is also used by tests.
-      log::debug!("Remove V8 code cache for ES module: {specifier}");
-      cache.remove_code_cache(specifier);
-      self
-        .0
-        .prevent_v8_code_cache
-        .lock()
-        .insert(specifier.to_string());
-    }
   }
 
   fn get_source_map(&self, file_name: &str) -> Option<Vec<u8>> {

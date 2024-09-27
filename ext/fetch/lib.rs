@@ -28,7 +28,6 @@ use deno_core::futures::Stream;
 use deno_core::futures::StreamExt;
 use deno_core::futures::TryFutureExt;
 use deno_core::op2;
-use deno_core::unsync::spawn;
 use deno_core::url::Url;
 use deno_core::AsyncRefCell;
 use deno_core::AsyncResult;
@@ -70,12 +69,9 @@ use hyper::body::Frame;
 use hyper_util::client::legacy::connect::HttpConnector;
 use hyper_util::client::legacy::connect::HttpInfo;
 use hyper_util::rt::TokioExecutor;
-use hyper_util::rt::TokioIo;
 use hyper_util::rt::TokioTimer;
 use serde::Deserialize;
 use serde::Serialize;
-use tokio::io::AsyncReadExt;
-use tokio::io::AsyncWriteExt;
 use tower::ServiceExt;
 use tower_http::decompression::Decompression;
 
@@ -127,7 +123,6 @@ deno_core::extension!(deno_fetch,
   ops = [
     op_fetch<FP>,
     op_fetch_send,
-    op_fetch_response_upgrade,
     op_utf8_to_byte_string,
     op_fetch_custom_client<FP>,
   ],
@@ -177,7 +172,7 @@ impl FetchHandler for DefaultFileFetchHandler {
   ) -> (CancelableResponseFuture, Option<Rc<CancelHandle>>) {
     let fut = async move {
       Ok(Err(type_error(
-        "NetworkError when attempting to fetch resource.",
+        "NetworkError when attempting to fetch resource",
       )))
     };
     (Box::pin(fut), None)
@@ -304,10 +299,15 @@ impl Drop for ResourceToBodyAdapter {
 pub trait FetchPermissions {
   fn check_net_url(
     &mut self,
-    _url: &Url,
+    url: &Url,
     api_name: &str,
   ) -> Result<(), AnyError>;
-  fn check_read(&mut self, _p: &Path, api_name: &str) -> Result<(), AnyError>;
+  #[must_use = "the resolved return value to mitigate time-of-check to time-of-use issues"]
+  fn check_read<'a>(
+    &mut self,
+    p: &'a Path,
+    api_name: &str,
+  ) -> Result<Cow<'a, Path>, AnyError>;
 }
 
 impl FetchPermissions for deno_permissions::PermissionsContainer {
@@ -321,12 +321,16 @@ impl FetchPermissions for deno_permissions::PermissionsContainer {
   }
 
   #[inline(always)]
-  fn check_read(
+  fn check_read<'a>(
     &mut self,
-    path: &Path,
+    path: &'a Path,
     api_name: &str,
-  ) -> Result<(), AnyError> {
-    deno_permissions::PermissionsContainer::check_read(self, path, api_name)
+  ) -> Result<Cow<'a, Path>, AnyError> {
+    deno_permissions::PermissionsContainer::check_read_path(
+      self,
+      path,
+      Some(api_name),
+    )
   }
 }
 
@@ -361,14 +365,18 @@ where
   let (request_rid, cancel_handle_rid) = match scheme {
     "file" => {
       let path = url.to_file_path().map_err(|_| {
-        type_error("NetworkError when attempting to fetch resource.")
+        type_error("NetworkError when attempting to fetch resource")
       })?;
       let permissions = state.borrow_mut::<FP>();
-      permissions.check_read(&path, "fetch()")?;
+      let path = permissions.check_read(&path, "fetch()")?;
+      let url = match path {
+        Cow::Owned(path) => Url::from_file_path(path).unwrap(),
+        Cow::Borrowed(_) => url,
+      };
 
       if method != Method::GET {
         return Err(type_error(format!(
-          "Fetching files only supports the GET method. Received {method}."
+          "Fetching files only supports the GET method: received {method}"
         )));
       }
 
@@ -394,7 +402,7 @@ where
       let uri = url
         .as_str()
         .parse::<Uri>()
-        .map_err(|_| type_error("Invalid URL"))?;
+        .map_err(|_| type_error(format!("Invalid URL {url}")))?;
 
       let mut con_len = None;
       let body = if has_body {
@@ -522,7 +530,9 @@ where
       // because the URL isn't an object URL.
       return Err(type_error("Blob for the given URL not found."));
     }
-    _ => return Err(type_error(format!("scheme '{scheme}' not supported"))),
+    _ => {
+      return Err(type_error(format!("Url scheme '{scheme}' not supported")))
+    }
   };
 
   Ok(FetchReturn {
@@ -586,7 +596,7 @@ pub async fn op_fetch_send(
 
       return Err(type_error(err.to_string()));
     }
-    Err(_) => return Err(type_error("request was cancelled")),
+    Err(_) => return Err(type_error("Request was cancelled")),
   };
 
   let status = res.status();
@@ -623,114 +633,6 @@ pub async fn op_fetch_send(
     remote_addr_port,
     error: None,
   })
-}
-
-#[op2(async)]
-#[smi]
-pub async fn op_fetch_response_upgrade(
-  state: Rc<RefCell<OpState>>,
-  #[smi] rid: ResourceId,
-) -> Result<ResourceId, AnyError> {
-  let raw_response = state
-    .borrow_mut()
-    .resource_table
-    .take::<FetchResponseResource>(rid)?;
-  let raw_response = Rc::try_unwrap(raw_response)
-    .expect("Someone is holding onto FetchResponseResource");
-
-  let (read, write) = tokio::io::duplex(1024);
-  let (read_rx, write_tx) = tokio::io::split(read);
-  let (mut write_rx, mut read_tx) = tokio::io::split(write);
-  let upgraded = raw_response.upgrade().await?;
-  {
-    // Stage 3: Pump the data
-    let (mut upgraded_rx, mut upgraded_tx) =
-      tokio::io::split(TokioIo::new(upgraded));
-
-    spawn(async move {
-      let mut buf = [0; 1024];
-      loop {
-        let read = upgraded_rx.read(&mut buf).await?;
-        if read == 0 {
-          break;
-        }
-        read_tx.write_all(&buf[..read]).await?;
-      }
-      Ok::<_, AnyError>(())
-    });
-    spawn(async move {
-      let mut buf = [0; 1024];
-      loop {
-        let read = write_rx.read(&mut buf).await?;
-        if read == 0 {
-          break;
-        }
-        upgraded_tx.write_all(&buf[..read]).await?;
-      }
-      Ok::<_, AnyError>(())
-    });
-  }
-
-  Ok(
-    state
-      .borrow_mut()
-      .resource_table
-      .add(UpgradeStream::new(read_rx, write_tx)),
-  )
-}
-
-struct UpgradeStream {
-  read: AsyncRefCell<tokio::io::ReadHalf<tokio::io::DuplexStream>>,
-  write: AsyncRefCell<tokio::io::WriteHalf<tokio::io::DuplexStream>>,
-  cancel_handle: CancelHandle,
-}
-
-impl UpgradeStream {
-  pub fn new(
-    read: tokio::io::ReadHalf<tokio::io::DuplexStream>,
-    write: tokio::io::WriteHalf<tokio::io::DuplexStream>,
-  ) -> Self {
-    Self {
-      read: AsyncRefCell::new(read),
-      write: AsyncRefCell::new(write),
-      cancel_handle: CancelHandle::new(),
-    }
-  }
-
-  async fn read(self: Rc<Self>, buf: &mut [u8]) -> Result<usize, AnyError> {
-    let cancel_handle = RcRef::map(self.clone(), |this| &this.cancel_handle);
-    async {
-      let read = RcRef::map(self, |this| &this.read);
-      let mut read = read.borrow_mut().await;
-      Ok(Pin::new(&mut *read).read(buf).await?)
-    }
-    .try_or_cancel(cancel_handle)
-    .await
-  }
-
-  async fn write(self: Rc<Self>, buf: &[u8]) -> Result<usize, AnyError> {
-    let cancel_handle = RcRef::map(self.clone(), |this| &this.cancel_handle);
-    async {
-      let write = RcRef::map(self, |this| &this.write);
-      let mut write = write.borrow_mut().await;
-      Ok(Pin::new(&mut *write).write(buf).await?)
-    }
-    .try_or_cancel(cancel_handle)
-    .await
-  }
-}
-
-impl Resource for UpgradeStream {
-  fn name(&self) -> Cow<str> {
-    "fetchUpgradedStream".into()
-  }
-
-  deno_core::impl_readable_byob!();
-  deno_core::impl_writable!();
-
-  fn close(self: Rc<Self>) {
-    self.cancel_handle.cancel();
-  }
 }
 
 type CancelableResponseResult =
@@ -1016,9 +918,11 @@ pub fn create_http_client(
   let mut http_connector = HttpConnector::new();
   http_connector.enforce_http(false);
 
-  let user_agent = user_agent
-    .parse::<HeaderValue>()
-    .map_err(|_| type_error("illegal characters in User-Agent"))?;
+  let user_agent = user_agent.parse::<HeaderValue>().map_err(|_| {
+    type_error(format!(
+      "Illegal characters in User-Agent: received {user_agent}"
+    ))
+  })?;
 
   let mut builder =
     hyper_util::client::legacy::Builder::new(TokioExecutor::new());
@@ -1060,7 +964,7 @@ pub fn create_http_client(
     }
     (true, true) => {}
     (false, false) => {
-      return Err(type_error("Either `http1` or `http2` needs to be true"))
+      return Err(type_error("Cannot create Http Client: either `http1` or `http2` needs to be set to true"))
     }
   }
 

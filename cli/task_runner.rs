@@ -213,8 +213,8 @@ impl ShellCommand for NodeGypCommand {
   ) -> LocalBoxFuture<'static, ExecuteResult> {
     // at the moment this shell command is just to give a warning if node-gyp is not found
     // in the future, we could try to run/install node-gyp for the user with deno
-    if which::which("node-gyp").is_err() {
-      log::warn!("{}: node-gyp was used in a script, but was not listed as a dependency. Either add it as a dependency or install it globally (e.g. `npm install -g node-gyp`)", crate::colors::yellow("warning"));
+    if context.state.resolve_command_path("node-gyp").is_err() {
+      log::warn!("{} node-gyp was used in a script, but was not listed as a dependency. Either add it as a dependency or install it globally (e.g. `npm install -g node-gyp`)", crate::colors::yellow("Warning"));
     }
     ExecutableCommand::new(
       "node-gyp".to_string(),

@@ -57,7 +57,7 @@ Deno.test({ permissions: { write: false } }, function writeFileSyncPerm() {
   // The following should fail due to no write permission
   assertThrows(() => {
     Deno.writeFileSync(filename, data);
-  }, Deno.errors.PermissionDenied);
+  }, Deno.errors.NotCapable);
 });
 
 Deno.test(
@@ -190,7 +190,7 @@ Deno.test(
     // The following should fail due to no write permission
     await assertRejects(async () => {
       await Deno.writeFile(filename, data);
-    }, Deno.errors.PermissionDenied);
+    }, Deno.errors.NotCapable);
   },
 );
 

@@ -12,6 +12,7 @@ use super::language_server::StateSnapshot;
 use super::performance::Performance;
 use super::tsc;
 use super::tsc::TsServer;
+use super::urls::uri_parse_unencoded;
 use super::urls::url_to_uri;
 use super::urls::LspUrlMap;
 
@@ -53,11 +54,9 @@ use deno_semver::package::PackageReq;
 use import_map::ImportMap;
 use import_map::ImportMapError;
 use log::error;
-use lsp_types::Uri;
 use std::collections::HashMap;
 use std::collections::HashSet;
 use std::path::PathBuf;
-use std::str::FromStr;
 use std::sync::atomic::AtomicUsize;
 use std::sync::Arc;
 use std::thread;
@@ -738,7 +737,7 @@ fn to_lsp_related_information(
         if let (Some(file_name), Some(start), Some(end)) =
           (&ri.file_name, &ri.start, &ri.end)
         {
-          let uri = Uri::from_str(file_name).unwrap();
+          let uri = uri_parse_unencoded(file_name).unwrap();
           Some(lsp::DiagnosticRelatedInformation {
             location: lsp::Location {
               uri,

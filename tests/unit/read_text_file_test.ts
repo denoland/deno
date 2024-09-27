@@ -28,7 +28,7 @@ Deno.test({ permissions: { read: true } }, function readTextFileSyncByUrl() {
 Deno.test({ permissions: { read: false } }, function readTextFileSyncPerm() {
   assertThrows(() => {
     Deno.readTextFileSync("tests/testdata/assets/fixture.json");
-  }, Deno.errors.PermissionDenied);
+  }, Deno.errors.NotCapable);
 });
 
 Deno.test({ permissions: { read: true } }, function readTextFileSyncNotFound() {
@@ -61,7 +61,7 @@ Deno.test({ permissions: { read: true } }, async function readTextFileByUrl() {
 Deno.test({ permissions: { read: false } }, async function readTextFilePerm() {
   await assertRejects(async () => {
     await Deno.readTextFile("tests/testdata/assets/fixture.json");
-  }, Deno.errors.PermissionDenied);
+  }, Deno.errors.NotCapable);
 });
 
 Deno.test({ permissions: { read: true } }, function readTextFileSyncLoop() {

@@ -1,0 +1,5 @@
+{
+  "args": "test --fail-fast fail_fast.ts fail_fast_other.ts",
+  "exitCode": 1,
+  "output": "fail_fast.out"
+}

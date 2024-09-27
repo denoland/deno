@@ -6,6 +6,17 @@ https://github.com/denoland/deno/releases
 We also have one-line install commands at:
 https://github.com/denoland/deno_install
 
+### 1.46.3 / 2024.09.04
+
+- feat(upgrade): print info links for Deno 2 RC releases (#25225)
+- fix(cli): Map error kind to `PermissionDenied` when symlinking fails due to
+  permissions (#25398)
+- fix(cli/tools): correct `deno init --serve` template behavior (#25318)
+- fix(ext/node): session close during stream setup (#25170)
+- fix(publish): ensure provenance is spec compliant (#25200)
+- fix(upgrade): more informative information on invalid version (#25319)
+- fix: fix jupyter display function type (#25326)
+
 ### 1.46.2 / 2024.08.29
 
 - Revert "feat(fetch): accept async iterables for body" (#25207)

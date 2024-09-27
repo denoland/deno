@@ -2,7 +2,7 @@
 
 [package]
 name = "deno_runtime"
-version = "0.176.0"
+version = "0.177.0"
 authors.workspace = true
 edition.workspace = true
 license.workspace = true
@@ -118,6 +118,7 @@ rustyline = { workspace = true, features = ["custom-bindings"] }
 serde.workspace = true
 signal-hook = "0.3.17"
 signal-hook-registry = "1.4.0"
+tempfile.workspace = true
 tokio.workspace = true
 tokio-metrics.workspace = true
 twox-hash.workspace = true

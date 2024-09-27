@@ -1,1 +1,53 @@
-{"_id":"jsbn","_rev":"17-5ec312e4eb830ea8b59e5b97b8f9aa5d","name":"jsbn","description":"The jsbn library is a fast, portable implementation of large-number math in pure JavaScript, enabling public-key crypto and other applications on desktop and mobile browsers.","dist-tags":{"latest":"1.1.0"},"versions":{"0.0.0":{"name":"jsbn","version":"0.0.0","description":"The jsbn library is a fast, portable implementation of large-number math in pure JavaScript, enabling public-key crypto and other applications on desktop and mobile browsers.","main":"index.js","scripts":{"test":"mocha test.js"},"repository":{"type":"git","url":"https://github.com/andyperlitch/jsbn.git"},"keywords":["biginteger","bignumber","big","integer"],"author":{"name":"Tom Wu"},"license":"BSD","_id":"jsbn@0.0.0","dist":{"shasum":"c52701bdcedbdf7084e1cfc701a7f86464ad7828","tarball":"http://localhost:4260/jsbn/jsbn-0.0.0.tgz","integrity":"sha512-0QJ9Y7EnU2hLfA/xQYrCbJGGIb+eI7qbDVkWIyaKMLpE9EqLA9NUJkvqWagQs4Rl+WndRP+HycMgw2Cfoe0tww==","signatures":[{"keyid":"SHA256:jl3bwswu80PjjokCgh0o2w5c2U4LhQAE57gj9cz1kzA","sig":"MEYCIQCrObdq5uZcfdpMj9p9U4+q2Zv139VkgTd12/tNiIglqgIhALMDwgCwSwuPr1ep4PCa9xkaoyZrBE+FUfXdWYUCWz2k"}]},"_npmVersion":"1.1.71","_npmUser":{"name":"andyperlitch","email":"andyperlitch@gmail.com"},"maintainers":[{"name":"andyperlitch","email":"andyperlitch@gmail.com"}]},"0.1.0":{"name":"jsbn","version":"0.1.0","description":"The jsbn library is a fast, portable implementation of large-number math in pure JavaScript, enabling public-key crypto and other applications on desktop and mobile browsers.","main":"index.js","scripts":{"test":"mocha test.js"},"repository":{"type":"git","url":"https://github.com/andyperlitch/jsbn.git"},"keywords":["biginteger","bignumber","big","integer"],"author":{"name":"Tom Wu"},"license":"BSD","gitHead":"148a967b112806e63ddeeed78ee7938eef74c84a","bugs":{"url":"https://github.com/andyperlitch/jsbn/issues"},"homepage":"https://github.com/andyperlitch/jsbn","_id":"jsbn@0.1.0","_shasum":"650987da0dd74f4ebf5a11377a2aa2d273e97dfd","_from":".","_npmVersion":"2.7.4","_nodeVersion":"0.12.2","_npmUser":{"name":"andyperlitch","email":"andyperlitch@gmail.com"},"dist":{"shasum":"650987da0dd74f4ebf5a11377a2aa2d273e97dfd","tarball":"http://localhost:4260/jsbn/jsbn-0.1.0.tgz","integrity":"sha512-nSJUKpgMhIK31baMn1+o+ykqan4LBGpeoQguOposJRYzectoBq94PDeRu8wwaJwHMoD7FTGjILdRyWZRuL9pAw==","signatures":[{"keyid":"SHA256:jl3bwswu80PjjokCgh0o2w5c2U4LhQAE57gj9cz1kzA","sig":"MEQCICqj0Xg3FD04Jlv+iJvyTMPm3osiCOaGJtLiMYOlYoe0AiBN+laxfc/LBCl3sYBVD1Wm6nlcULmhixdgZi8OfQSSGQ=="}]},"maintainers":[{"name":"andyperlitch","email":"andyperlitch@gmail.com"}]},"0.1.1":{"name":"jsbn","version":"0.1.1","description":"The jsbn library is a fast, portable implementation of large-number math in pure JavaScript, enabling public-key crypto and other applications on desktop and mobile browsers.","main":"index.js","scripts":{"test":"mocha test.js"},"repository":{"type":"git","url":"git+https://github.com/andyperlitch/jsbn.git"},"keywords":["biginteger","bignumber","big","integer"],"author":{"name":"Tom Wu"},"license":"MIT","gitHead":"ed7e7ab56bd2b8a4447bc0c1ef08548b6dad89a2","bugs":{"url":"https://github.com/andyperlitch/jsbn/issues"},"homepage":"https://github.com/andyperlitch/jsbn#readme","_id":"jsbn@0.1.1","_shasum":"a5e654c2e5a2deb5f201d96cefbca80c0ef2f513","_from":".","_npmVersion":"3.10.3","_nodeVersion":"6.3.1","_npmUser":{"name":"andyperlitch","email":"andyperlitch@gmail.com"},"dist":{"shasum":"a5e654c2e5a2deb5f201d96cefbca80c0ef2f513","tarball":"http://localhost:4260/jsbn/jsbn-0.1.1.tgz","integrity":"sha512-UVU9dibq2JcFWxQPA6KCqj5O42VOmAY3zQUfEKxU0KpTGXwNoCjkX1e13eHNvw/xPynt6pU0rZ1htjWTNTSXsg==","signatures":[{"keyid":"SHA256:jl3bwswu80PjjokCgh0o2w5c2U4LhQAE57gj9cz1kzA","sig":"MEUCIEB9vLNWeVH1BP+yWhuxtB66uWV2B3p7UGVy8zVtXbChAiEA/TnvkHJ5Zi62QlLPFspOoyRjCmmqysWdzFZn2uI9cIs="}]},"maintainers":[{"name":"andyperlitch","email":"andyperlitch@gmail.com"}],"_npmOperationalInternal":{"host":"packages-18-east.internal.npmjs.com","tmp":"tmp/jsbn-0.1.1.tgz_1486886593983_0.3002306066919118"}},"1.1.0":{"name":"jsbn","version":"1.1.0","description":"The jsbn library is a fast, portable implementation of large-number math in pure JavaScript, enabling public-key crypto and other applications on desktop and mobile browsers.","main":"index.js","scripts":{"test":"mocha test.js"},"repository":{"type":"git","url":"git+https://github.com/andyperlitch/jsbn.git"},"keywords":["biginteger","bignumber","big","integer"],"author":{"name":"Tom Wu"},"license":"MIT","gitHead":"038459dc74668bfb43b45d78b33ffc9c8e7bf34a","bugs":{"url":"https://github.com/andyperlitch/jsbn/issues"},"homepage":"https://github.com/andyperlitch/jsbn#readme","_id":"jsbn@1.1.0","_shasum":"b01307cb29b618a1ed26ec79e911f803c4da0040","_from":".","_npmVersion":"3.10.3","_nodeVersion":"6.3.1","_npmUser":{"name":"andyperlitch","email":"andyperlitch@gmail.com"},"dist":{"shasum":"b01307cb29b618a1ed26ec79e911f803c4da0040","tarball":"http://localhost:4260/jsbn/jsbn-1.1.0.tgz","integrity":"sha512-4bYVV3aAMtDTTu4+xsDYa6sy9GyJ69/amsu9sYF2zqjiEoZA5xJi3BrfX3uY+/IekIu7MwdObdbDWpoZdBv3/A==","signatures":[{"keyid":"SHA256:jl3bwswu80PjjokCgh0o2w5c2U4LhQAE57gj9cz1kzA","sig":"MEYCIQDfJzg5+rvckY7nqgg7aTMuYjwBDvKXH5BcVsTfxV+YNAIhANWVA/9k8GQvH9wvGEr+V8bayMMkhduMellPjQv/T0A+"}]},"maintainers":[{"name":"andyperlitch","email":"andyperlitch@gmail.com"}],"_npmOperationalInternal":{"host":"packages-18-east.internal.npmjs.com","tmp":"tmp/jsbn-1.1.0.tgz_1487006094900_0.6323277573101223"}}},"readme":"# jsbn: javascript big number\n\n[Tom Wu's Original Website](http://www-cs-students.stanford.edu/~tjw/jsbn/)\n\nI felt compelled to put this on github and publish to npm. I haven't tested every other big integer library out there, but the few that I have tested in comparison to this one have not even come close in performance. I am aware of the `bi` module on npm, however it has been modified and I wanted to publish the original without modifications. This is jsbn and jsbn2 from Tom Wu's original website above, with the module pattern applied to prevent global leaks and to allow for use with node.js on the server side.\n\n## usage\n\n    var BigInteger = require('jsbn').BigInteger;\n\n    var bi = new BigInteger('91823918239182398123');\n    console.log(bi.bitLength()); // 67\n\n\n## API\n\n### bi.toString()\n\nreturns the base-10 number as a string\n\n### bi.negate()\n\nreturns a new BigInteger equal to the negation of `bi`\n\n### bi.abs\n\nreturns new BI of absolute value\n\n### bi.compareTo\n\n\n\n### bi.bitLength\n\n\n\n### bi.mod\n\n\n\n### bi.modPowInt\n\n\n\n### bi.clone\n\n\n\n### bi.intValue\n\n\n\n### bi.byteValue\n\n\n\n### bi.shortValue\n\n\n\n### bi.signum\n\n\n\n### bi.toByteArray\n\n\n\n### bi.equals\n\n\n\n### bi.min\n\n\n\n### bi.max\n\n\n\n### bi.and\n\n\n\n### bi.or\n\n\n\n### bi.xor\n\n\n\n### bi.andNot\n\n\n\n### bi.not\n\n\n\n### bi.shiftLeft\n\n\n\n### bi.shiftRight\n\n\n\n### bi.getLowestSetBit\n\n\n\n### bi.bitCount\n\n\n\n### bi.testBit\n\n\n\n### bi.setBit\n\n\n\n### bi.clearBit\n\n\n\n### bi.flipBit\n\n\n\n### bi.add\n\n\n\n### bi.subtract\n\n\n\n### bi.multiply\n\n\n\n### bi.divide\n\n\n\n### bi.remainder\n\n\n\n### bi.divideAndRemainder\n\n\n\n### bi.modPow\n\n\n\n### bi.modInverse\n\n\n\n### bi.pow\n\n\n\n### bi.gcd\n\n\n\n### bi.isProbablePrime\n","maintainers":[{"name":"andyperlitch","email":"andyperlitch@gmail.com"}],"time":{"modified":"2022-06-19T05:51:03.585Z","created":"2013-04-27T07:44:44.931Z","0.0.0":"2013-04-27T07:44:45.756Z","0.1.0":"2015-10-29T18:06:00.085Z","0.1.1":"2017-02-12T08:03:16.073Z","1.1.0":"2017-02-13T17:14:56.780Z"},"author":{"name":"Tom Wu"},"repository":{"type":"git","url":"git+https://github.com/andyperlitch/jsbn.git"},"users":{"angleman":true,"blixt":true,"tjwebb":true,"diosney":true,"leodutra":true,"ninozhang":true,"ph4r05":true,"mojaray2k":true,"may":true},"homepage":"https://github.com/andyperlitch/jsbn#readme","keywords":["biginteger","bignumber","big","integer"],"bugs":{"url":"https://github.com/andyperlitch/jsbn/issues"},"license":"MIT","readmeFilename":"README.md"}
+{
+  "name": "jsbn",
+  "description": "The jsbn library is a fast, portable implementation of large-number math in pure JavaScript, enabling public-key crypto and other applications on desktop and mobile browsers.",
+  "dist-tags": {
+    "latest": "1.1.0"
+  },
+  "versions": {
+    "1.1.0": {
+      "name": "jsbn",
+      "version": "1.1.0",
+      "description": "The jsbn library is a fast, portable implementation of large-number math in pure JavaScript, enabling public-key crypto and other applications on desktop and mobile browsers.",
+      "main": "index.js",
+      "scripts": {
+        "test": "mocha test.js"
+      },
+      "repository": {
+        "type": "git",
+        "url": "git+https://github.com/andyperlitch/jsbn.git"
+      },
+      "author": {
+        "name": "Tom Wu"
+      },
+      "license": "MIT",
+      "gitHead": "038459dc74668bfb43b45d78b33ffc9c8e7bf34a",
+      "bugs": {
+        "url": "https://github.com/andyperlitch/jsbn/issues"
+      },
+      "_id": "jsbn@1.1.0",
+      "_shasum": "b01307cb29b618a1ed26ec79e911f803c4da0040",
+      "_from": ".",
+      "_npmVersion": "3.10.3",
+      "_nodeVersion": "6.3.1",
+      "dist": {
+        "shasum": "b01307cb29b618a1ed26ec79e911f803c4da0040",
+        "tarball": "http://localhost:4260/jsbn/jsbn-1.1.0.tgz",
+        "integrity": "sha512-4bYVV3aAMtDTTu4+xsDYa6sy9GyJ69/amsu9sYF2zqjiEoZA5xJi3BrfX3uY+/IekIu7MwdObdbDWpoZdBv3/A=="
+      }
+    }
+  },
+  "author": {
+    "name": "Tom Wu"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/andyperlitch/jsbn.git"
+  },
+  "homepage": "https://github.com/andyperlitch/jsbn#readme",
+  "bugs": {
+    "url": "https://github.com/andyperlitch/jsbn/issues"
+  },
+  "license": "MIT",
+  "readmeFilename": "README.md"
+}

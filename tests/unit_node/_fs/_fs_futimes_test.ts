@@ -15,6 +15,7 @@ Deno.test({
     using file = await Deno.open(filePath, { create: true, write: true });
 
     await new Promise<void>((resolve, reject) => {
+      // @ts-ignore (iuioiua) `file.rid` should no longer be needed once FDs are used
       futimes(file.rid, randomDate, randomDate, (err: Error | null) => {
         if (err !== null) reject();
         else resolve();
@@ -73,6 +74,7 @@ Deno.test({
     using file = Deno.openSync(filePath, { create: true, write: true });
 
     try {
+      // @ts-ignore (iuioiua) `file.rid` should no longer be needed once FDs are used
       futimesSync(file.rid, randomDate, randomDate);
 
       const fileInfo: Deno.FileInfo = Deno.lstatSync(filePath);

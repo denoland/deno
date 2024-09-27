@@ -1,2 +1,0 @@
-error: Uncaught (in promise) Error: require() of ES Module [WILDCARD]esm_mjs.mjs from [WILDCARD]require_mjs.js not supported. Instead change the require to a dynamic import() which is available in all CommonJS modules.
-    [WILDCARD]

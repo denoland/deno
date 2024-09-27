@@ -35,7 +35,7 @@ Deno.test({ permissions: { read: true } }, function readDirSyncWithUrl() {
 Deno.test({ permissions: { read: false } }, function readDirSyncPerm() {
   assertThrows(() => {
     Deno.readDirSync("tests/");
-  }, Deno.errors.PermissionDenied);
+  }, Deno.errors.NotCapable);
 });
 
 Deno.test({ permissions: { read: true } }, function readDirSyncNotDir() {
@@ -79,7 +79,7 @@ Deno.test({ permissions: { read: true } }, async function readDirWithUrl() {
 Deno.test({ permissions: { read: false } }, async function readDirPerm() {
   await assertRejects(async () => {
     await Deno.readDir("tests/")[Symbol.asyncIterator]().next();
-  }, Deno.errors.PermissionDenied);
+  }, Deno.errors.NotCapable);
 });
 
 Deno.test(

@@ -37,12 +37,13 @@ use deno_lint::linter::LintConfig as DenoLintConfig;
 use deno_npm::npm_rc::ResolvedNpmRc;
 use deno_package_json::PackageJsonCache;
 use deno_runtime::deno_node::PackageJson;
-use deno_runtime::deno_permissions::PermissionsContainer;
 use deno_runtime::fs_util::specifier_to_file_path;
 use indexmap::IndexSet;
 use lsp_types::ClientCapabilities;
 use std::collections::BTreeMap;
 use std::collections::HashMap;
+use std::ops::Deref;
+use std::ops::DerefMut;
 use std::path::Path;
 use std::path::PathBuf;
 use std::sync::Arc;
@@ -68,6 +69,54 @@ pub const SETTINGS_SECTION: &str = "deno";
 
 fn is_true() -> bool {
   true
+}
+
+/// Wrapper that defaults if it fails to deserialize. Good for individual
+/// settings.
+#[derive(Debug, Default, Clone, Eq, PartialEq)]
+pub struct SafeValue<T> {
+  inner: T,
+}
+
+impl<'de, T: Default + for<'de2> Deserialize<'de2>> Deserialize<'de>
+  for SafeValue<T>
+{
+  fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+  where
+    D: serde::Deserializer<'de>,
+  {
+    Ok(Self {
+      inner: Deserialize::deserialize(deserializer).unwrap_or_default(),
+    })
+  }
+}
+
+impl<T: Serialize> Serialize for SafeValue<T> {
+  fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+  where
+    S: serde::Serializer,
+  {
+    self.inner.serialize(serializer)
+  }
+}
+
+impl<T> Deref for SafeValue<T> {
+  type Target = T;
+  fn deref(&self) -> &Self::Target {
+    &self.inner
+  }
+}
+
+impl<T> DerefMut for SafeValue<T> {
+  fn deref_mut(&mut self) -> &mut T {
+    &mut self.inner
+  }
+}
+
+impl<T> SafeValue<T> {
+  pub fn as_deref(&self) -> &T {
+    &self.inner
+  }
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq)]
@@ -538,7 +587,7 @@ pub struct WorkspaceSettings {
   pub unsafely_ignore_certificate_errors: Option<Vec<String>>,
 
   #[serde(default)]
-  pub unstable: bool,
+  pub unstable: SafeValue<Vec<String>>,
 
   #[serde(default)]
   pub javascript: LanguageWorkspaceSettings,
@@ -568,7 +617,7 @@ impl Default for WorkspaceSettings {
       testing: Default::default(),
       tls_certificate: None,
       unsafely_ignore_certificate_errors: None,
-      unstable: false,
+      unstable: Default::default(),
       javascript: Default::default(),
       typescript: Default::default(),
     }
@@ -1080,11 +1129,11 @@ impl Default for LspTsConfig {
         "module": "esnext",
         "moduleDetection": "force",
         "noEmit": true,
+        "noImplicitOverride": true,
         "resolveJsonModule": true,
         "strict": true,
         "target": "esnext",
         "useDefineForClassFields": true,
-        "useUnknownInCatchVariables": false,
         "jsx": "react",
         "jsxFactory": "React.createElement",
         "jsxFragmentFactory": "React.Fragment",
@@ -1387,10 +1436,8 @@ impl ConfigData {
       }
     }
 
-    let node_modules_dir = member_dir
-      .workspace
-      .node_modules_dir_mode()
-      .unwrap_or_default();
+    let node_modules_dir =
+      member_dir.workspace.node_modules_dir().unwrap_or_default();
     let byonm = match node_modules_dir {
       Some(mode) => mode == NodeModulesDirMode::Manual,
       None => member_dir.workspace.root_pkg_json().is_some(),
@@ -1404,9 +1451,10 @@ impl ConfigData {
     // Mark the import map as a watched file
     if let Some(import_map_specifier) = member_dir
       .workspace
-      .to_import_map_specifier()
+      .to_import_map_path()
       .ok()
       .flatten()
+      .and_then(|path| Url::from_file_path(path).ok())
     {
       add_watched_file(
         import_map_specifier.clone(),
@@ -1462,17 +1510,16 @@ impl ConfigData {
           ConfigWatchedFileType::ImportMap,
         );
         // spawn due to the lsp's `Send` requirement
-        let fetch_result = deno_core::unsync::spawn({
-          let file_fetcher = file_fetcher.cloned().unwrap();
-          let import_map_url = import_map_url.clone();
-          async move {
-            file_fetcher
-              .fetch(&import_map_url, &PermissionsContainer::allow_all())
-              .await
-          }
-        })
-        .await
-        .unwrap();
+        let fetch_result =
+          deno_core::unsync::spawn({
+            let file_fetcher = file_fetcher.cloned().unwrap();
+            let import_map_url = import_map_url.clone();
+            async move {
+              file_fetcher.fetch_bypass_permissions(&import_map_url).await
+            }
+          })
+          .await
+          .unwrap();
 
         let value_result = fetch_result.and_then(|f| {
           serde_json::from_slice::<Value>(&f.source).map_err(|e| e.into())
@@ -1496,50 +1543,32 @@ impl ConfigData {
         None
       }
     };
-    let resolver = deno_core::unsync::spawn({
-      let workspace = member_dir.workspace.clone();
-      let file_fetcher = file_fetcher.cloned();
-      async move {
-        workspace
-          .create_resolver(
-            CreateResolverOptions {
-              pkg_json_dep_resolution,
-              specified_import_map,
-            },
-            move |specifier| {
-              let specifier = specifier.clone();
-              let file_fetcher = file_fetcher.clone().unwrap();
-              async move {
-                let file = file_fetcher
-                  .fetch(&specifier, &PermissionsContainer::allow_all())
-                  .await?
-                  .into_text_decoded()?;
-                Ok(file.source.to_string())
-              }
-            },
-          )
-          .await
-          .inspect_err(|err| {
-            lsp_warn!(
-              "  Failed to load resolver: {}",
-              err // will contain the specifier
-            );
-          })
-          .ok()
-      }
-    })
-    .await
-    .unwrap()
-    .unwrap_or_else(|| {
-      // create a dummy resolver
-      WorkspaceResolver::new_raw(
-        scope.clone(),
-        None,
-        member_dir.workspace.resolver_jsr_pkgs().collect(),
-        member_dir.workspace.package_jsons().cloned().collect(),
-        pkg_json_dep_resolution,
+    let resolver = member_dir
+      .workspace
+      .create_resolver(
+        CreateResolverOptions {
+          pkg_json_dep_resolution,
+          specified_import_map,
+        },
+        |path| Ok(std::fs::read_to_string(path)?),
       )
-    });
+      .inspect_err(|err| {
+        lsp_warn!(
+          "  Failed to load resolver: {}",
+          err // will contain the specifier
+        );
+      })
+      .ok()
+      .unwrap_or_else(|| {
+        // create a dummy resolver
+        WorkspaceResolver::new_raw(
+          scope.clone(),
+          None,
+          member_dir.workspace.resolver_jsr_pkgs().collect(),
+          member_dir.workspace.package_jsons().cloned().collect(),
+          pkg_json_dep_resolution,
+        )
+      });
     if !resolver.diagnostics().is_empty() {
       lsp_warn!(
         "  Import map diagnostics:\n{}",
@@ -1697,9 +1726,14 @@ impl ConfigTree {
   }
 
   pub fn is_watched_file(&self, specifier: &ModuleSpecifier) -> bool {
-    if specifier.path().ends_with("/deno.json")
-      || specifier.path().ends_with("/deno.jsonc")
-      || specifier.path().ends_with("/package.json")
+    let path = specifier.path();
+    if path.ends_with("/deno.json")
+      || path.ends_with("/deno.jsonc")
+      || path.ends_with("/package.json")
+      || path.ends_with("/node_modules/.package-lock.json")
+      || path.ends_with("/node_modules/.yarn-integrity.json")
+      || path.ends_with("/node_modules/.modules.yaml")
+      || path.ends_with("/node_modules/.deno/.setup-cache.bin")
     {
       return true;
     }
@@ -1868,7 +1902,7 @@ fn resolve_node_modules_dir(
   // `nodeModulesDir: true` setting in the deno.json file. This is to
   // reduce the chance of modifying someone's node_modules directory
   // without them having asked us to do so.
-  let node_modules_mode = workspace.node_modules_dir_mode().ok().flatten();
+  let node_modules_mode = workspace.node_modules_dir().ok().flatten();
   let explicitly_disabled = node_modules_mode == Some(NodeModulesDirMode::None);
   if explicitly_disabled {
     return None;
@@ -2139,7 +2173,7 @@ mod tests {
         },
         tls_certificate: None,
         unsafely_ignore_certificate_errors: None,
-        unstable: false,
+        unstable: Default::default(),
         javascript: LanguageWorkspaceSettings {
           inlay_hints: InlayHintsSettings {
             parameter_names: InlayHintsParamNamesOptions {

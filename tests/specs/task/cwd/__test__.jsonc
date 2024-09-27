@@ -1,0 +1,8 @@
+{
+  "args": "task -q --config deno.json --cwd .. echo_cwd",
+  "output": "task_cwd.out",
+  "envs": {
+    "NO_COLOR": "1"
+  },
+  "exitCode": 0
+}

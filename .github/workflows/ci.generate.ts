@@ -5,7 +5,7 @@ import { stringify } from "jsr:@std/yaml@^0.221/stringify";
 // Bump this number when you want to purge the cache.
 // Note: the tools/release/01_bump_crate_versions.ts script will update this version
 // automatically via regex, so ensure that this line maintains this format.
-const cacheVersion = 14;
+const cacheVersion = 15;
 
 const ubuntuX86Runner = "ubuntu-22.04";
 const ubuntuX86XlRunner = "ubuntu-22.04-xl";
@@ -14,6 +14,7 @@ const windowsX86Runner = "windows-2022";
 const windowsX86XlRunner = "windows-2022-xl";
 const macosX86Runner = "macos-13";
 const macosArmRunner = "macos-14";
+const macosArmXlRunner = "macos-14-xlarge";
 
 const Runners = {
   linuxX86: {
@@ -41,6 +42,12 @@ const Runners = {
     os: "macos",
     arch: "aarch64",
     runner: macosArmRunner,
+  },
+  macosArmXl: {
+    os: "macos",
+    arch: "aarch64",
+    runner:
+      `\${{ github.repository == 'denoland/deno' && '${macosArmXlRunner}' || '${macosArmRunner}' }}`,
   },
   windowsX86: {
     os: "windows",
@@ -354,7 +361,7 @@ const ci = {
       needs: ["pre_build"],
       if: "${{ needs.pre_build.outputs.skip_build != 'true' }}",
       "runs-on": "${{ matrix.runner }}",
-      "timeout-minutes": 150,
+      "timeout-minutes": 180,
       defaults: {
         run: {
           // GH actions does not fail fast by default on
@@ -378,7 +385,7 @@ const ci = {
             job: "test",
             profile: "debug",
           }, {
-            ...Runners.macosArm,
+            ...Runners.macosArmXl,
             job: "test",
             profile: "release",
             skip_pr: true,
@@ -649,7 +656,7 @@ const ci = {
           name: "test_format.js",
           if: "matrix.job == 'lint' && matrix.os == 'linux'",
           run:
-            "deno run --unstable --allow-write --allow-read --allow-run --allow-net ./tools/format.js --check",
+            "deno run --allow-write --allow-read --allow-run --allow-net ./tools/format.js --check",
         },
         {
           name: "Lint PR title",
@@ -664,7 +671,7 @@ const ci = {
           name: "lint.js",
           if: "matrix.job == 'lint'",
           run:
-            "deno run --unstable --allow-write --allow-read --allow-run --allow-net ./tools/lint.js",
+            "deno run --allow-write --allow-read --allow-run --allow-net ./tools/lint.js",
         },
         {
           name: "jsdoc_checker.js",
@@ -826,7 +833,7 @@ const ci = {
             "!startsWith(github.ref, 'refs/tags/')",
           ].join("\n"),
           run:
-            "target/release/deno run -A --unstable --config tests/config/deno.json ext/websocket/autobahn/fuzzingclient.js",
+            "target/release/deno run -A --config tests/config/deno.json ext/websocket/autobahn/fuzzingclient.js",
         },
         {
           name: "Test (full, debug)",
@@ -879,9 +886,9 @@ const ci = {
             DENO_BIN: "./target/debug/deno",
           },
           run: [
-            "deno run -A --unstable --lock=tools/deno.lock.json --config tests/config/deno.json\\",
+            "deno run -A --lock=tools/deno.lock.json --config tests/config/deno.json\\",
             "        ./tests/wpt/wpt.ts setup",
-            "deno run -A --unstable --lock=tools/deno.lock.json --config tests/config/deno.json\\",
+            "deno run -A --lock=tools/deno.lock.json --config tests/config/deno.json\\",
             '         ./tests/wpt/wpt.ts run --quiet --binary="$DENO_BIN"',
           ].join("\n"),
         },
@@ -892,9 +899,9 @@ const ci = {
             DENO_BIN: "./target/release/deno",
           },
           run: [
-            "deno run -A --unstable --lock=tools/deno.lock.json --config tests/config/deno.json\\",
+            "deno run -A --lock=tools/deno.lock.json --config tests/config/deno.json\\",
             "         ./tests/wpt/wpt.ts setup",
-            "deno run -A --unstable --lock=tools/deno.lock.json --config tests/config/deno.json\\",
+            "deno run -A --lock=tools/deno.lock.json --config tests/config/deno.json\\",
             "         ./tests/wpt/wpt.ts run --quiet --release         \\",
             '                            --binary="$DENO_BIN"          \\',
             "                            --json=wpt.json               \\",
@@ -958,8 +965,7 @@ const ci = {
             "git clone --depth 1 --branch gh-pages                             \\",
             "    https://${DENOBOT_PAT}@github.com/denoland/benchmark_data.git \\",
             "    gh-pages",
-            "./target/release/deno run --allow-all --unstable \\",
-            "    ./tools/build_benchmark_jsons.js --release",
+            "./target/release/deno run --allow-all ./tools/build_benchmark_jsons.js --release",
             "cd gh-pages",
             'git config user.email "propelml@gmail.com"',
             'git config user.name "denobot"',

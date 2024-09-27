@@ -7,7 +7,7 @@ const serveUrl = `ws://localhost:${servePort}/`;
 Deno.test({ permissions: "none" }, function websocketPermissionless() {
   assertThrows(
     () => new WebSocket("ws://localhost"),
-    Deno.errors.PermissionDenied,
+    Deno.errors.NotCapable,
   );
 });
 

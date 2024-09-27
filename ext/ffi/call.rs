@@ -1,7 +1,6 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
 use crate::callback::PtrSymbol;
-use crate::check_unstable;
 use crate::dlfcn::DynamicLibraryResource;
 use crate::ir::*;
 use crate::symbol::NativeType;
@@ -285,11 +284,10 @@ pub fn op_ffi_call_ptr_nonblocking<FP>(
 where
   FP: FfiPermissions + 'static,
 {
-  check_unstable(&state.borrow(), "Deno.UnsafeFnPointer#call");
   {
     let mut state = state.borrow_mut();
     let permissions = state.borrow_mut::<FP>();
-    permissions.check_partial(None)?;
+    permissions.check_partial_no_path()?;
   };
 
   let symbol = PtrSymbol::new(pointer, &def)?;
@@ -334,7 +332,9 @@ pub fn op_ffi_call_nonblocking(
     let symbols = &resource.symbols;
     *symbols
       .get(&symbol)
-      .ok_or_else(|| type_error("Invalid FFI symbol name"))?
+      .ok_or_else(|| {
+        type_error(format!("Invalid FFI symbol name: '{symbol}'"))
+      })?
       .clone()
   };
 
@@ -381,11 +381,10 @@ pub fn op_ffi_call_ptr<FP>(
 where
   FP: FfiPermissions + 'static,
 {
-  check_unstable(&state.borrow(), "Deno.UnsafeFnPointer#call");
   {
     let mut state = state.borrow_mut();
     let permissions = state.borrow_mut::<FP>();
-    permissions.check_partial(None)?;
+    permissions.check_partial_no_path()?;
   };
 
   let symbol = PtrSymbol::new(pointer, &def)?;

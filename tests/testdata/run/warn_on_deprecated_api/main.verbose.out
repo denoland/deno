@@ -1,5 +1,4 @@
 Download http://localhost:4545/run/warn_on_deprecated_api/mod.ts
-warning: Use of deprecated "Deno.run()" API. This API will be removed in Deno 2.
 
 See the Deno 1 to 2 Migration Guide for more information at https://docs.deno.com/runtime/manual/advanced/migrate_deprecations
 
@@ -9,7 +8,6 @@ Stack trace:
 hint: Use "Deno.Command()" API instead.
 
 hello world
-warning: Use of deprecated "Deno.run()" API. This API will be removed in Deno 2.
 
 See the Deno 1 to 2 Migration Guide for more information at https://docs.deno.com/runtime/manual/advanced/migrate_deprecations
 
@@ -20,7 +18,6 @@ Stack trace:
 hint: Use "Deno.Command()" API instead.
 
 hello world
-warning: Use of deprecated "Deno.run()" API. This API will be removed in Deno 2.
 
 See the Deno 1 to 2 Migration Guide for more information at https://docs.deno.com/runtime/manual/advanced/migrate_deprecations
 
@@ -31,7 +28,6 @@ Stack trace:
 hint: Use "Deno.Command()" API instead.
 
 hello world
-warning: Use of deprecated "Deno.run()" API. This API will be removed in Deno 2.
 
 See the Deno 1 to 2 Migration Guide for more information at https://docs.deno.com/runtime/manual/advanced/migrate_deprecations
 
@@ -51,7 +47,6 @@ hello world
 hello world
 hello world
 hello world
-warning: Use of deprecated "Deno.run()" API. This API will be removed in Deno 2.
 
 See the Deno 1 to 2 Migration Guide for more information at https://docs.deno.com/runtime/manual/advanced/migrate_deprecations
 

@@ -176,6 +176,7 @@ struct StepMetaData {
   pub command_name: Option<String>,
   #[serde(default)]
   pub envs: HashMap<String, String>,
+  pub input: Option<String>,
   pub output: String,
   #[serde(default)]
   pub exit_code: i32,
@@ -405,6 +406,10 @@ fn run_step(
     #[allow(deprecated)]
     true => command.show_output(),
     false => command,
+  };
+  let command = match &step.input {
+    Some(input) => command.stdin_text(input),
+    None => command,
   };
   let output = command.run();
   if step.output.ends_with(".out") {

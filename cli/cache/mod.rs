@@ -1,13 +1,16 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
+use crate::args::jsr_url;
 use crate::args::CacheSetting;
 use crate::errors::get_error_class_name;
 use crate::file_fetcher::FetchNoFollowOptions;
 use crate::file_fetcher::FetchOptions;
+use crate::file_fetcher::FetchPermissionsOptionRef;
 use crate::file_fetcher::FileFetcher;
 use crate::file_fetcher::FileOrRedirect;
 use crate::npm::CliNpmResolver;
 use crate::util::fs::atomic_write_file_with_retries;
+use crate::util::path::specifier_has_extension;
 
 use deno_ast::MediaType;
 use deno_core::futures;
@@ -103,37 +106,42 @@ pub type LocalLspHttpCache =
   deno_cache_dir::LocalLspHttpCache<RealDenoCacheEnv>;
 pub use deno_cache_dir::HttpCache;
 
+pub struct FetchCacherOptions {
+  pub file_header_overrides: HashMap<ModuleSpecifier, HashMap<String, String>>,
+  pub permissions: PermissionsContainer,
+  /// If we're publishing for `deno publish`.
+  pub is_deno_publish: bool,
+}
+
 /// A "wrapper" for the FileFetcher and DiskCache for the Deno CLI that provides
 /// a concise interface to the DENO_DIR when building module graphs.
 pub struct FetchCacher {
-  emit_cache: Arc<EmitCache>,
   file_fetcher: Arc<FileFetcher>,
-  file_header_overrides: HashMap<ModuleSpecifier, HashMap<String, String>>,
+  pub file_header_overrides: HashMap<ModuleSpecifier, HashMap<String, String>>,
   global_http_cache: Arc<GlobalHttpCache>,
   npm_resolver: Arc<dyn CliNpmResolver>,
   module_info_cache: Arc<ModuleInfoCache>,
   permissions: PermissionsContainer,
   cache_info_enabled: bool,
+  is_deno_publish: bool,
 }
 
 impl FetchCacher {
   pub fn new(
-    emit_cache: Arc<EmitCache>,
     file_fetcher: Arc<FileFetcher>,
-    file_header_overrides: HashMap<ModuleSpecifier, HashMap<String, String>>,
     global_http_cache: Arc<GlobalHttpCache>,
     npm_resolver: Arc<dyn CliNpmResolver>,
     module_info_cache: Arc<ModuleInfoCache>,
-    permissions: PermissionsContainer,
+    options: FetchCacherOptions,
   ) -> Self {
     Self {
-      emit_cache,
       file_fetcher,
-      file_header_overrides,
       global_http_cache,
       npm_resolver,
       module_info_cache,
-      permissions,
+      file_header_overrides: options.file_header_overrides,
+      permissions: options.permissions,
+      is_deno_publish: options.is_deno_publish,
       cache_info_enabled: false,
     }
   }
@@ -144,15 +152,7 @@ impl FetchCacher {
     self.cache_info_enabled = true;
   }
 
-  // DEPRECATED: Where the file is stored and how it's stored should be an implementation
-  // detail of the cache.
-  //
-  // todo(dsheret): remove once implementing
-  //  * https://github.com/denoland/deno/issues/17707
-  //  * https://github.com/denoland/deno/issues/17703
-  #[deprecated(
-    note = "There should not be a way to do this because the file may not be cached at a local path in the future."
-  )]
+  /// Only use this for `deno info`.
   fn get_local_path(&self, specifier: &ModuleSpecifier) -> Option<PathBuf> {
     // TODO(@kitsonk) fix when deno_graph does not query cache for synthetic
     // modules
@@ -179,15 +179,7 @@ impl Loader for FetchCacher {
     #[allow(deprecated)]
     let local = self.get_local_path(specifier)?;
     if local.is_file() {
-      let emit = self
-        .emit_cache
-        .get_emit_filepath(specifier)
-        .filter(|p| p.is_file());
-      Some(CacheInfo {
-        local: Some(local),
-        emit,
-        map: None,
-      })
+      Some(CacheInfo { local: Some(local) })
     } else {
       None
     }
@@ -200,27 +192,50 @@ impl Loader for FetchCacher {
   ) -> LoadFuture {
     use deno_graph::source::CacheSetting as LoaderCacheSetting;
 
-    if specifier.scheme() == "file"
-      && specifier.path().contains("/node_modules/")
-    {
-      // The specifier might be in a completely different symlinked tree than
-      // what the node_modules url is in (ex. `/my-project-1/node_modules`
-      // symlinked to `/my-project-2/node_modules`), so first we checked if the path
-      // is in a node_modules dir to avoid needlessly canonicalizing, then now compare
-      // against the canonicalized specifier.
-      let specifier =
-        crate::node::resolve_specifier_into_node_modules(specifier);
-      if self.npm_resolver.in_npm_package(&specifier) {
+    if specifier.scheme() == "file" {
+      if specifier.path().contains("/node_modules/") {
+        // The specifier might be in a completely different symlinked tree than
+        // what the node_modules url is in (ex. `/my-project-1/node_modules`
+        // symlinked to `/my-project-2/node_modules`), so first we checked if the path
+        // is in a node_modules dir to avoid needlessly canonicalizing, then now compare
+        // against the canonicalized specifier.
+        let specifier =
+          crate::node::resolve_specifier_into_node_modules(specifier);
+        if self.npm_resolver.in_npm_package(&specifier) {
+          return Box::pin(futures::future::ready(Ok(Some(
+            LoadResponse::External { specifier },
+          ))));
+        }
+      }
+
+      // make local CJS modules external to the graph
+      if specifier_has_extension(specifier, "cjs") {
         return Box::pin(futures::future::ready(Ok(Some(
-          LoadResponse::External { specifier },
+          LoadResponse::External {
+            specifier: specifier.clone(),
+          },
         ))));
       }
+    }
+
+    if self.is_deno_publish
+      && matches!(specifier.scheme(), "http" | "https")
+      && !specifier.as_str().starts_with(jsr_url().as_str())
+    {
+      // mark non-JSR remote modules as external so we don't need --allow-import
+      // permissions as these will error out later when publishing
+      return Box::pin(futures::future::ready(Ok(Some(
+        LoadResponse::External {
+          specifier: specifier.clone(),
+        },
+      ))));
     }
 
     let file_fetcher = self.file_fetcher.clone();
     let file_header_overrides = self.file_header_overrides.clone();
     let permissions = self.permissions.clone();
     let specifier = specifier.clone();
+    let is_statically_analyzable = !options.was_dynamic_root;
 
     async move {
       let maybe_cache_setting = match options.cache_setting {
@@ -239,7 +254,11 @@ impl Loader for FetchCacher {
         .fetch_no_follow_with_options(FetchNoFollowOptions {
           fetch_options: FetchOptions {
             specifier: &specifier,
-            permissions: &permissions,
+            permissions: if is_statically_analyzable {
+              FetchPermissionsOptionRef::StaticContainer(&permissions)
+            } else {
+              FetchPermissionsOptionRef::DynamicContainer(&permissions)
+            },
             maybe_accept: None,
             maybe_cache_setting: maybe_cache_setting.as_ref(),
           },
@@ -293,6 +312,7 @@ impl Loader for FetchCacher {
   fn cache_module_info(
     &self,
     specifier: &ModuleSpecifier,
+    media_type: MediaType,
     source: &Arc<[u8]>,
     module_info: &deno_graph::ModuleInfo,
   ) {
@@ -300,7 +320,7 @@ impl Loader for FetchCacher {
     let source_hash = CacheDBHash::from_source(source);
     let result = self.module_info_cache.set_module_info(
       specifier,
-      MediaType::from_specifier(specifier),
+      media_type,
       source_hash,
       module_info,
     );

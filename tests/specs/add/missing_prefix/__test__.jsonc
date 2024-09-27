@@ -1,0 +1,15 @@
+{
+  "tempDir": true,
+  "steps": [
+    {
+      "args": "add ajv",
+      "output": "error: ajv is missing a prefix. Did you mean `deno add npm:ajv`?\n",
+      "exitCode": 1
+    },
+    {
+      "args": "add @std/testing",
+      "output": "error: @std/testing is missing a prefix. Did you mean `deno add jsr:@std/testing`?\n",
+      "exitCode": 1
+    }
+  ]
+}

@@ -7,6 +7,7 @@ pub mod console;
 pub mod diff;
 pub mod display;
 pub mod draw_thread;
+pub mod extract;
 pub mod file_watcher;
 pub mod fs;
 pub mod logger;

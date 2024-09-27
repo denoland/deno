@@ -367,7 +367,7 @@ fn standalone_runtime_flags() {
     .run()
     .assert_stdout_matches_text("0.147205063401058\n")
     .assert_stderr_matches_text(
-      "[WILDCARD]PermissionDenied: Requires write access to[WILDCARD]",
+      "[WILDCARD]NotCapable: Requires write access to[WILDCARD]",
     )
     .assert_exit_code(1);
 }
@@ -539,6 +539,7 @@ fn check_local_by_default() {
     .new_command()
     .args_vec([
       "compile",
+      "--allow-import",
       "--output",
       &exe.to_string_lossy(),
       "./compile/check_local_by_default.ts",
@@ -561,6 +562,7 @@ fn check_local_by_default2() {
     .new_command()
     .args_vec([
       "compile",
+      "--allow-import",
       "--output",
       &exe.to_string_lossy(),
       "./compile/check_local_by_default2.ts"

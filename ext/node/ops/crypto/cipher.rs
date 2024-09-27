@@ -4,6 +4,7 @@ use aes::cipher::block_padding::Pkcs7;
 use aes::cipher::BlockDecryptMut;
 use aes::cipher::BlockEncryptMut;
 use aes::cipher::KeyIvInit;
+use deno_core::error::range_error;
 use deno_core::error::type_error;
 use deno_core::error::AnyError;
 use deno_core::Resource;
@@ -157,6 +158,13 @@ impl Cipher {
         Aes256Gcm(Box::new(cipher))
       }
       "aes256" | "aes-256-cbc" => {
+        if key.len() != 32 {
+          return Err(range_error("Invalid key length"));
+        }
+        if iv.len() != 16 {
+          return Err(type_error("Invalid initialization vector"));
+        }
+
         Aes256Cbc(Box::new(cbc::Encryptor::new(key.into(), iv.into())))
       }
       _ => return Err(type_error(format!("Unknown cipher {algorithm_name}"))),
@@ -346,6 +354,13 @@ impl Decipher {
         Aes256Gcm(Box::new(decipher))
       }
       "aes256" | "aes-256-cbc" => {
+        if key.len() != 32 {
+          return Err(range_error("Invalid key length"));
+        }
+        if iv.len() != 16 {
+          return Err(type_error("Invalid initialization vector"));
+        }
+
         Aes256Cbc(Box::new(cbc::Decryptor::new(key.into(), iv.into())))
       }
       _ => return Err(type_error(format!("Unknown cipher {algorithm_name}"))),

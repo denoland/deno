@@ -94,22 +94,22 @@ pub async fn op_net_accept_unix(
 #[serde]
 pub async fn op_net_connect_unix<NP>(
   state: Rc<RefCell<OpState>>,
-  #[string] path: String,
+  #[string] address_path: String,
 ) -> Result<(ResourceId, Option<String>, Option<String>), AnyError>
 where
   NP: NetPermissions + 'static,
 {
-  let address_path = Path::new(&path);
-  {
+  let address_path = {
     let mut state_ = state.borrow_mut();
-    state_
+    let address_path = state_
       .borrow_mut::<NP>()
-      .check_read(address_path, "Deno.connect()")?;
-    state_
+      .check_read(&address_path, "Deno.connect()")?;
+    _ = state_
       .borrow_mut::<NP>()
-      .check_write(address_path, "Deno.connect()")?;
-  }
-  let unix_stream = UnixStream::connect(Path::new(&path)).await?;
+      .check_write_path(&address_path, "Deno.connect()")?;
+    address_path
+  };
+  let unix_stream = UnixStream::connect(&address_path).await?;
   let local_addr = unix_stream.local_addr()?;
   let remote_addr = unix_stream.peer_addr()?;
   let local_addr_path = local_addr.as_pathname().map(pathstring).transpose()?;
@@ -148,18 +148,17 @@ pub async fn op_net_recv_unixpacket(
 pub async fn op_net_send_unixpacket<NP>(
   state: Rc<RefCell<OpState>>,
   #[smi] rid: ResourceId,
-  #[string] path: String,
+  #[string] address_path: String,
   #[buffer] zero_copy: JsBuffer,
 ) -> Result<usize, AnyError>
 where
   NP: NetPermissions + 'static,
 {
-  let address_path = Path::new(&path);
-  {
+  let address_path = {
     let mut s = state.borrow_mut();
     s.borrow_mut::<NP>()
-      .check_write(address_path, "Deno.DatagramConn.send()")?;
-  }
+      .check_write(&address_path, "Deno.DatagramConn.send()")?
+  };
 
   let resource = state
     .borrow()
@@ -178,17 +177,16 @@ where
 #[serde]
 pub fn op_net_listen_unix<NP>(
   state: &mut OpState,
-  #[string] path: String,
+  #[string] address_path: String,
   #[string] api_name: String,
 ) -> Result<(ResourceId, Option<String>), AnyError>
 where
   NP: NetPermissions + 'static,
 {
-  let address_path = Path::new(&path);
   let permissions = state.borrow_mut::<NP>();
   let api_call_expr = format!("{}()", api_name);
-  permissions.check_read(address_path, &api_call_expr)?;
-  permissions.check_write(address_path, &api_call_expr)?;
+  let address_path = permissions.check_read(&address_path, &api_call_expr)?;
+  _ = permissions.check_write_path(&address_path, &api_call_expr)?;
   let listener = UnixListener::bind(address_path)?;
   let local_addr = listener.local_addr()?;
   let pathname = local_addr.as_pathname().map(pathstring).transpose()?;
@@ -199,15 +197,15 @@ where
 
 pub fn net_listen_unixpacket<NP>(
   state: &mut OpState,
-  path: String,
+  address_path: String,
 ) -> Result<(ResourceId, Option<String>), AnyError>
 where
   NP: NetPermissions + 'static,
 {
-  let address_path = Path::new(&path);
   let permissions = state.borrow_mut::<NP>();
-  permissions.check_read(address_path, "Deno.listenDatagram()")?;
-  permissions.check_write(address_path, "Deno.listenDatagram()")?;
+  let address_path =
+    permissions.check_read(&address_path, "Deno.listenDatagram()")?;
+  _ = permissions.check_write_path(&address_path, "Deno.listenDatagram()")?;
   let socket = UnixDatagram::bind(address_path)?;
   let local_addr = socket.local_addr()?;
   let pathname = local_addr.as_pathname().map(pathstring).transpose()?;

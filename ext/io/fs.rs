@@ -22,7 +22,7 @@ pub enum FsError {
   Io(io::Error),
   FileBusy,
   NotSupported,
-  PermissionDenied(&'static str),
+  NotCapable(&'static str),
 }
 
 impl FsError {
@@ -31,7 +31,7 @@ impl FsError {
       Self::Io(err) => err.kind(),
       Self::FileBusy => io::ErrorKind::Other,
       Self::NotSupported => io::ErrorKind::Other,
-      Self::PermissionDenied(_) => io::ErrorKind::PermissionDenied,
+      Self::NotCapable(_) => io::ErrorKind::Other,
     }
   }
 
@@ -40,7 +40,7 @@ impl FsError {
       FsError::Io(err) => err,
       FsError::FileBusy => io::Error::new(self.kind(), "file busy"),
       FsError::NotSupported => io::Error::new(self.kind(), "not supported"),
-      FsError::PermissionDenied(err) => {
+      FsError::NotCapable(err) => {
         io::Error::new(self.kind(), format!("requires {err} access"))
       }
     }
@@ -65,8 +65,8 @@ impl From<FsError> for AnyError {
       FsError::Io(err) => AnyError::from(err),
       FsError::FileBusy => resource_unavailable(),
       FsError::NotSupported => not_supported(),
-      FsError::PermissionDenied(err) => {
-        custom_error("PermissionDenied", format!("permission denied: {err}"))
+      FsError::NotCapable(err) => {
+        custom_error("NotCapable", format!("permission denied: {err}"))
       }
     }
   }

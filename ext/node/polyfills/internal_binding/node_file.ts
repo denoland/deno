@@ -30,7 +30,7 @@
 
 import { assert } from "ext:deno_node/_util/asserts.ts";
 import * as io from "ext:deno_io/12_io.js";
-import * as fs from "ext:deno_fs/30_fs.js";
+import { op_fs_seek_sync } from "ext:core/ops";
 
 /**
  * Write to the given file from the given buffer synchronously.
@@ -63,7 +63,7 @@ export function writeBuffer(
   );
 
   if (position) {
-    fs.seekSync(fd, position, io.SeekMode.Current);
+    op_fs_seek_sync(fd, position, io.SeekMode.Current);
   }
 
   const subarray = buffer.subarray(offset, offset + length);

@@ -41,7 +41,6 @@ extension!(runtime,
     "06_util.js",
     "10_permissions.js",
     "11_workers.js",
-    "13_buffer.js",
     "30_os.js",
     "40_fs_events.js",
     "40_process.js",
@@ -115,27 +114,4 @@ pub fn maybe_transpile_source(
   let source_text = String::from_utf8(transpiled_source.source)?;
 
   Ok((source_text.into(), maybe_source_map))
-}
-
-pub fn import_assertion_callback(
-  args: deno_core::ImportAssertionsSupportCustomCallbackArgs,
-) {
-  let mut msg = deno_terminal::colors::yellow("⚠️  Import assertions are deprecated. Use `with` keyword, instead of 'assert' keyword.").to_string();
-  if let Some(specifier) = args.maybe_specifier {
-    if let Some(source_line) = args.maybe_source_line {
-      msg.push_str("\n\n");
-      msg.push_str(&source_line);
-      msg.push_str("\n\n");
-    }
-    msg.push_str(&format!(
-      "  at {}:{}:{}\n",
-      specifier,
-      args.maybe_line_number.unwrap(),
-      args.column_number
-    ));
-    #[allow(clippy::print_stderr)]
-    {
-      eprintln!("{}", msg);
-    }
-  }
 }

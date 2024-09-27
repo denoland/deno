@@ -5,10 +5,11 @@ use crate::args::DocHtmlFlag;
 use crate::args::DocSourceFileFlag;
 use crate::args::Flags;
 use crate::colors;
-use crate::display::write_json_to_stdout;
-use crate::display::write_to_stdout_ignore_sigpipe;
+use crate::display;
 use crate::factory::CliFactory;
-use crate::graph_util::graph_exit_lock_errors;
+use crate::graph_util::graph_exit_integrity_errors;
+use crate::graph_util::graph_walk_errors;
+use crate::graph_util::GraphWalkErrorsOptions;
 use crate::tsc::get_types_declaration_file_text;
 use crate::util::fs::collect_specifiers;
 use deno_ast::diagnostics::Diagnostic;
@@ -17,6 +18,7 @@ use deno_config::glob::PathOrPatternSet;
 use deno_core::anyhow::bail;
 use deno_core::anyhow::Context;
 use deno_core::error::AnyError;
+use deno_core::serde_json;
 use deno_doc as doc;
 use deno_doc::html::UrlResolveKind;
 use deno_graph::source::NullFileSystem;
@@ -30,6 +32,8 @@ use indexmap::IndexMap;
 use std::collections::BTreeMap;
 use std::rc::Rc;
 use std::sync::Arc;
+
+const JSON_SCHEMA_VERSION: u8 = 1;
 
 async fn generate_doc_nodes_for_builtin_types(
   doc_flags: DocFlags,
@@ -105,7 +109,7 @@ pub async fn doc(
     }
     DocSourceFileFlag::Paths(ref source_files) => {
       let module_graph_creator = factory.module_graph_creator().await?;
-      let maybe_lockfile = cli_options.maybe_lockfile();
+      let fs = factory.fs();
 
       let module_specifiers = collect_specifiers(
         FilePatterns {
@@ -125,8 +129,18 @@ pub async fn doc(
         .create_graph(GraphKind::TypesOnly, module_specifiers.clone())
         .await?;
 
-      if maybe_lockfile.is_some() {
-        graph_exit_lock_errors(&graph);
+      graph_exit_integrity_errors(&graph);
+      let errors = graph_walk_errors(
+        &graph,
+        fs,
+        &module_specifiers,
+        GraphWalkErrorsOptions {
+          check_js: false,
+          kind: GraphKind::TypesOnly,
+        },
+      );
+      for error in errors {
+        log::warn!("{} {}", colors::yellow("Warning"), error);
       }
 
       let doc_parser = doc::DocParser::new(
@@ -228,7 +242,11 @@ pub async fn doc(
       doc_nodes_by_url.into_values().flatten().collect::<Vec<_>>();
 
     if doc_flags.json {
-      write_json_to_stdout(&doc_nodes)
+      let json_output = serde_json::json!({
+        "version": JSON_SCHEMA_VERSION,
+        "nodes": &doc_nodes
+      });
+      display::write_json_to_stdout(&json_output)
     } else if doc_flags.lint {
       // don't output docs if running with only the --lint flag
       log::info!(
@@ -553,7 +571,8 @@ fn print_docs_to_stdout(
     )
   };
 
-  write_to_stdout_ignore_sigpipe(details.as_bytes()).map_err(AnyError::from)
+  display::write_to_stdout_ignore_sigpipe(details.as_bytes())
+    .map_err(AnyError::from)
 }
 
 fn check_diagnostics(diagnostics: &[DocDiagnostic]) -> Result<(), AnyError> {

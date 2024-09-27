@@ -1,0 +1,8 @@
+{
+  "args": "task --config deno.json non_existent",
+  "output": "task_non_existent.out",
+  "envs": {
+    "NO_COLOR": "1"
+  },
+  "exitCode": 1
+}
