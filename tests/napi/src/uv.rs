@@ -78,7 +78,7 @@ impl Drop for KeepAlive {
 }
 
 struct Async {
-  mutex: uv_mutex_t,
+  mutex: *mut uv_mutex_t,
   env: napi_env,
   value: u32,
   callback: napi_ref,
@@ -100,7 +100,8 @@ unsafe extern "C" fn close_cb(handle: *mut uv_handle_t) {
   let env = (*async_).env;
   assert_napi_ok!(napi_delete_reference(env, (*async_).callback));
 
-  uv_mutex_destroy(addr_of_mut!((*async_).mutex));
+  uv_mutex_destroy((*async_).mutex);
+  let _ = Box::from_raw((*async_).mutex);
   let _ = Box::from_raw(async_);
   let _ = Box::from_raw(handle);
 }
@@ -108,7 +109,7 @@ unsafe extern "C" fn close_cb(handle: *mut uv_handle_t) {
 unsafe extern "C" fn callback(handle: *mut uv_async_t) {
   eprintln!("callback");
   let async_ = (*handle).data as *mut Async;
-  uv_mutex_lock(addr_of_mut!((*async_).mutex));
+  uv_mutex_lock((*async_).mutex);
   let env = (*async_).env;
   let mut js_cb = null_mut();
   assert_napi_ok!(napi_get_reference_value(
@@ -133,7 +134,7 @@ unsafe extern "C" fn callback(handle: *mut uv_async_t) {
     args.as_ptr(),
     &mut result,
   ));
-  uv_mutex_unlock(addr_of_mut!((*async_).mutex));
+  uv_mutex_unlock((*async_).mutex);
   if value == 5 {
     uv_close(handle.cast(), Some(close_cb));
   }
@@ -143,10 +144,10 @@ unsafe fn uv_async_send(ptr: UvAsyncPtr) {
   assert_napi_ok!(libuv_sys_lite::uv_async_send(ptr.0));
 }
 
-fn make_uv_mutex() -> uv_mutex_t {
-  let mut mutex = MaybeUninit::<uv_mutex_t>::uninit();
-  assert_napi_ok!(libuv_sys_lite::uv_mutex_init(mutex.as_mut_ptr()));
-  unsafe { mutex.assume_init() }
+fn make_uv_mutex() -> *mut uv_mutex_t {
+  let mutex = new_raw(MaybeUninit::<uv_mutex_t>::uninit());
+  assert_napi_ok!(libuv_sys_lite::uv_mutex_init(mutex.cast()));
+  mutex.cast()
 }
 
 #[allow(unused_unsafe)]
@@ -180,9 +181,9 @@ extern "C" fn test_uv_async(
       move || {
         let data = (*uv_async.0).data as *mut Async;
         for _ in 0..5 {
-          uv_mutex_lock(addr_of_mut!((*data).mutex));
+          uv_mutex_lock((*data).mutex);
           (*data).value += 1;
-          uv_mutex_unlock(addr_of_mut!((*data).mutex));
+          uv_mutex_unlock((*data).mutex);
           std::thread::sleep(Duration::from_millis(10));
           uv_async_send(uv_async);
         }
