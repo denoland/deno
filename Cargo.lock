@@ -1146,7 +1146,7 @@ dependencies = [
 
 [[package]]
 name = "deno"
-version = "2.0.0-rc.4"
+version = "2.0.0-rc.6"
 dependencies = [
  "anstream",
  "async-trait",
@@ -1489,9 +1489,9 @@ dependencies = [
 
 [[package]]
 name = "deno_doc"
-version = "0.148.0"
+version = "0.150.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "144fa07977ba9eeeb98bcd267b7f0a6f8033f0f1f20fd210e669b3c4f30cefa2"
+checksum = "c762829006b555837691b7016828eb1f93acf0a4ff344357b946898ea5b5610d"
 dependencies = [
  "ammonia",
  "anyhow",
@@ -1584,9 +1584,9 @@ dependencies = [
 
 [[package]]
 name = "deno_graph"
-version = "0.82.1"
+version = "0.82.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "78b63015c73aa203da206b5d35b4c1eaa23bc7fed37ab325da62d525a5524a04"
+checksum = "938ed2efa1dd9fdcceeebc169b2b7910506b8dacc992cfdcffd84aa6a3eb8db0"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -4278,9 +4278,9 @@ dependencies = [
 
 [[package]]
 name = "markup_fmt"
-version = "0.13.0"
+version = "0.13.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "74fc137a4a591720176339bf7e857586a48ff35c0caee7ad6cf709327901232c"
+checksum = "9dab5ae899659fbe5c8835b2c8ca8d3e357974a3e454138925b404004973361f"
 dependencies = [
  "aho-corasick",
  "css_dataset",
@@ -8054,9 +8054,9 @@ dependencies = [
 
 [[package]]
 name = "webpki-root-certs"
-version = "0.26.5"
+version = "0.26.6"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "e6d93b773107ba49bc84dd3b241e019c702d886fd5c457defe2ea8b1123a5dcd"
+checksum = "e8c6dfa3ac045bc517de14c7b1384298de1dbd229d38e08e169d9ae8c170937c"
 dependencies = [
  "rustls-pki-types",
 ]

@@ -1,2 +1,2 @@
-error: Uncaught (in worker "") Requires net access to "localhost:4545", run again with the --allow-net flag
+error: Uncaught (in worker "") Requires import access to "localhost:4545", run again with the --allow-import flag
 [WILDCARD]

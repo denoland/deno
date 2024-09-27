@@ -1,0 +1,2 @@
+error: Module not found "file:///[WILDLINE]/test".
+    at file:///[WILDLINE]/index.d.ts:1:22

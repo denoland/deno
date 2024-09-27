@@ -62,13 +62,12 @@ pub trait ModuleLoaderFactory: Send + Sync {
   fn create_for_main(
     &self,
     root_permissions: PermissionsContainer,
-    dynamic_permissions: PermissionsContainer,
   ) -> ModuleLoaderAndSourceMapGetter;
 
   fn create_for_worker(
     &self,
-    root_permissions: PermissionsContainer,
-    dynamic_permissions: PermissionsContainer,
+    parent_permissions: PermissionsContainer,
+    permissions: PermissionsContainer,
   ) -> ModuleLoaderAndSourceMapGetter;
 }
 
@@ -136,6 +135,7 @@ struct SharedWorkerState {
   npm_resolver: Arc<dyn CliNpmResolver>,
   permission_desc_parser: Arc<RuntimePermissionDescriptorParser>,
   root_cert_store_provider: Arc<dyn RootCertStoreProvider>,
+  root_permissions: PermissionsContainer,
   shared_array_buffer_store: SharedArrayBufferStore,
   storage_key_resolver: StorageKeyResolver,
   options: CliMainWorkerOptions,
@@ -432,6 +432,7 @@ impl CliMainWorkerFactory {
     npm_resolver: Arc<dyn CliNpmResolver>,
     permission_parser: Arc<RuntimePermissionDescriptorParser>,
     root_cert_store_provider: Arc<dyn RootCertStoreProvider>,
+    root_permissions: PermissionsContainer,
     storage_key_resolver: StorageKeyResolver,
     subcommand: DenoSubcommand,
     options: CliMainWorkerOptions,
@@ -452,6 +453,7 @@ impl CliMainWorkerFactory {
         npm_resolver,
         permission_desc_parser: permission_parser,
         root_cert_store_provider,
+        root_permissions,
         shared_array_buffer_store: Default::default(),
         storage_key_resolver,
         options,
@@ -464,13 +466,12 @@ impl CliMainWorkerFactory {
     &self,
     mode: WorkerExecutionMode,
     main_module: ModuleSpecifier,
-    permissions: PermissionsContainer,
   ) -> Result<CliMainWorker, AnyError> {
     self
       .create_custom_worker(
         mode,
         main_module,
-        permissions,
+        self.shared.root_permissions.clone(),
         vec![],
         Default::default(),
       )
@@ -530,13 +531,9 @@ impl CliMainWorkerFactory {
       (main_module, is_cjs)
     };
 
-    let ModuleLoaderAndSourceMapGetter { module_loader } =
-      shared.module_loader_factory.create_for_main(
-        PermissionsContainer::allow_all(
-          self.shared.permission_desc_parser.clone(),
-        ),
-        permissions.clone(),
-      );
+    let ModuleLoaderAndSourceMapGetter { module_loader } = shared
+      .module_loader_factory
+      .create_for_main(permissions.clone());
     let maybe_inspector_server = shared.maybe_inspector_server.clone();
 
     let create_web_worker_cb =

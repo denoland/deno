@@ -23,6 +23,7 @@ use deno_graph::source::LoaderChecksum;
 
 use deno_runtime::deno_permissions::PermissionsContainer;
 use deno_runtime::deno_web::BlobStore;
+use deno_runtime::fs_util::specifier_to_file_path;
 use log::debug;
 use std::borrow::Cow;
 use std::collections::HashMap;
@@ -135,7 +136,7 @@ impl MemoryFiles {
 
 /// Fetch a source file from the local file system.
 fn fetch_local(specifier: &ModuleSpecifier) -> Result<File, AnyError> {
-  let local = specifier.to_file_path().map_err(|_| {
+  let local = specifier_to_file_path(specifier).map_err(|_| {
     uri_error(format!("Invalid file path.\n  Specifier: {specifier}"))
   })?;
   // If it doesnt have a extension, we want to treat it as typescript by default
@@ -173,30 +174,8 @@ fn get_validated_scheme(
 #[derive(Debug, Copy, Clone)]
 pub enum FetchPermissionsOptionRef<'a> {
   AllowAll,
-  Container(&'a PermissionsContainer),
-}
-
-#[derive(Debug, Clone)]
-pub enum FetchPermissionsOption {
-  AllowAll,
-  Container(PermissionsContainer),
-}
-
-impl FetchPermissionsOption {
-  pub fn as_ref(&self) -> FetchPermissionsOptionRef {
-    match self {
-      FetchPermissionsOption::AllowAll => FetchPermissionsOptionRef::AllowAll,
-      FetchPermissionsOption::Container(container) => {
-        FetchPermissionsOptionRef::Container(container)
-      }
-    }
-  }
-}
-
-impl From<PermissionsContainer> for FetchPermissionsOption {
-  fn from(value: PermissionsContainer) -> Self {
-    Self::Container(value)
-  }
+  DynamicContainer(&'a PermissionsContainer),
+  StaticContainer(&'a PermissionsContainer),
 }
 
 pub struct FetchOptions<'a> {
@@ -564,7 +543,6 @@ impl FileFetcher {
   }
 
   /// Fetch a source file and asynchronously return it.
-  #[allow(dead_code)] // todo(25469): undo when merging
   #[inline(always)]
   pub async fn fetch(
     &self,
@@ -572,7 +550,10 @@ impl FileFetcher {
     permissions: &PermissionsContainer,
   ) -> Result<File, AnyError> {
     self
-      .fetch_inner(specifier, FetchPermissionsOptionRef::Container(permissions))
+      .fetch_inner(
+        specifier,
+        FetchPermissionsOptionRef::StaticContainer(permissions),
+      )
       .await
   }
 
@@ -647,8 +628,17 @@ impl FileFetcher {
       FetchPermissionsOptionRef::AllowAll => {
         // allow
       }
-      FetchPermissionsOptionRef::Container(permissions) => {
-        permissions.check_specifier(specifier)?;
+      FetchPermissionsOptionRef::StaticContainer(permissions) => {
+        permissions.check_specifier(
+          specifier,
+          deno_runtime::deno_permissions::CheckSpecifierKind::Static,
+        )?;
+      }
+      FetchPermissionsOptionRef::DynamicContainer(permissions) => {
+        permissions.check_specifier(
+          specifier,
+          deno_runtime::deno_permissions::CheckSpecifierKind::Dynamic,
+        )?;
       }
     }
     if let Some(file) = self.memory_files.get(specifier) {

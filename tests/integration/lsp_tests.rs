@@ -890,7 +890,7 @@ fn lsp_format_vendor_path() {
   // put this dependency in the global cache
   context
     .new_command()
-    .args("cache http://localhost:4545/run/002_hello.ts")
+    .args("cache --allow-import http://localhost:4545/run/002_hello.ts")
     .run()
     .skip_output_check();
 

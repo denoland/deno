@@ -294,7 +294,7 @@ fn check_local_by_default() {
   let script_path_str = script_path.to_string_lossy().to_string();
   context
     .new_command()
-    .args_vec(["install", "-g", script_path_str.as_str()])
+    .args_vec(["install", "-g", "--allow-import", script_path_str.as_str()])
     .envs([
       ("HOME", temp_dir_str.as_str()),
       ("USERPROFILE", temp_dir_str.as_str()),
@@ -318,7 +318,7 @@ fn check_local_by_default2() {
   let script_path_str = script_path.to_string_lossy().to_string();
   context
     .new_command()
-    .args_vec(["install", "-g", script_path_str.as_str()])
+    .args_vec(["install", "-g", "--allow-import", script_path_str.as_str()])
     .envs([
       ("HOME", temp_dir_str.as_str()),
       ("NO_COLOR", "1"),
