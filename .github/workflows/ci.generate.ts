@@ -14,7 +14,6 @@ const windowsX86Runner = "windows-2022";
 const windowsX86XlRunner = "windows-2022-xl";
 const macosX86Runner = "macos-13";
 const macosArmRunner = "macos-14";
-const macosArmXlRunner = "macos-14-xlarge";
 
 const Runners = {
   linuxX86: {
@@ -42,12 +41,6 @@ const Runners = {
     os: "macos",
     arch: "aarch64",
     runner: macosArmRunner,
-  },
-  macosArmXl: {
-    os: "macos",
-    arch: "aarch64",
-    runner:
-      `\${{ github.repository == 'denoland/deno' && '${macosArmXlRunner}' || '${macosArmRunner}' }}`,
   },
   windowsX86: {
     os: "windows",
@@ -385,7 +378,7 @@ const ci = {
             job: "test",
             profile: "debug",
           }, {
-            ...Runners.macosArmXl,
+            ...Runners.macosArm,
             job: "test",
             profile: "release",
             skip_pr: true,
