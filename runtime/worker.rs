@@ -49,6 +49,7 @@ use crate::code_cache::CodeCache;
 use crate::code_cache::CodeCacheType;
 use crate::inspector_server::InspectorServer;
 use crate::ops;
+use crate::ops::process::NpmProcessStateProviderRc;
 use crate::permissions::RuntimePermissionDescriptorParser;
 use crate::shared::maybe_transpile_source;
 use crate::shared::runtime;
@@ -158,6 +159,7 @@ pub struct WorkerOptions {
   /// executed tries to load modules.
   pub module_loader: Rc<dyn ModuleLoader>,
   pub node_services: Option<NodeExtInitServices>,
+  pub npm_process_state_provider: Option<NpmProcessStateProviderRc>,
   pub permission_desc_parser:
     Arc<dyn deno_permissions::PermissionDescriptorParser>,
   // Callbacks invoked when creating new instance of WebWorker
@@ -235,6 +237,7 @@ impl Default for WorkerOptions {
       extensions: Default::default(),
       startup_snapshot: Default::default(),
       create_params: Default::default(),
+      npm_process_state_provider: Default::default(),
       bootstrap: Default::default(),
       stdio: Default::default(),
       feature_checker: Default::default(),
@@ -437,7 +440,9 @@ impl MainWorker {
       ops::permissions::deno_permissions::init_ops_and_esm(
         options.permission_desc_parser,
       ),
-      ops::process::deno_process::init_ops_and_esm(),
+      ops::process::deno_process::init_ops_and_esm(
+        options.npm_process_state_provider,
+      ),
       ops::signal::deno_signal::init_ops_and_esm(),
       ops::tty::deno_tty::init_ops_and_esm(),
       ops::http::deno_http_runtime::init_ops_and_esm(),
