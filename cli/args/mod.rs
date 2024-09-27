@@ -751,13 +751,14 @@ pub(crate) const NPM_RESOLUTION_STATE_FD_ENV_VAR_NAME: &str =
 static NPM_PROCESS_STATE: Lazy<Option<NpmProcessState>> = Lazy::new(|| {
   let fd = std::env::var(NPM_RESOLUTION_STATE_FD_ENV_VAR_NAME).ok()?;
   std::env::remove_var(NPM_RESOLUTION_STATE_FD_ENV_VAR_NAME);
-  let fd = fd.parse::<deno_runtime::deno_io::RawIoHandle>().ok()?;
+  let fd = fd.parse::<usize>().ok()?;
   let mut file = {
     use deno_runtime::deno_io::FromRawIoHandle;
-    unsafe { std::fs::File::from_raw_io_handle(fd) }
+    unsafe { std::fs::File::from_raw_io_handle(fd as _) }
   };
   let mut buf = Vec::new();
-  // seek to beginning, this file might have been read before
+  // seek to beginning. when the file is written the position will be inherited by this subprocess,
+  // and also this file might have been read before
   file.seek(std::io::SeekFrom::Start(0)).unwrap();
   file.read_to_end(&mut buf).unwrap();
   let state: NpmProcessState = serde_json::from_slice(&buf)
