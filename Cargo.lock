@@ -1985,6 +1985,7 @@ dependencies = [
  "serde",
  "signal-hook",
  "signal-hook-registry",
+ "tempfile",
  "test_server",
  "tokio",
  "tokio-metrics",

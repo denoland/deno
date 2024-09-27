@@ -3,6 +3,8 @@ use std::io;
 use std::pin::Pin;
 use std::process::Stdio;
 
+pub type RawPipeHandle = super::RawIoHandle;
+
 // The synchronous read end of a unidirectional pipe.
 pub struct PipeRead {
   file: std::fs::File,
