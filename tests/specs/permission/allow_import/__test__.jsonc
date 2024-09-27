@@ -34,6 +34,11 @@
       "output": "run.out",
       "exitCode": 1
     },
+    "run_allow_all": {
+      "args": "run --quiet --allow-all success.ts",
+      "output": "3\n",
+      "exitCode": 0
+    },
     "serve": {
       "args": "serve main.ts",
       "output": "serve.out",

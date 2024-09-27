@@ -3603,6 +3603,14 @@ fn allow_all_arg() -> Arg {
   Arg::new("allow-all")
     .short('A')
     .long("allow-all")
+    .conflicts_with("allow-read")
+    .conflicts_with("allow-write")
+    .conflicts_with("allow-net")
+    .conflicts_with("allow-env")
+    .conflicts_with("allow-run")
+    .conflicts_with("allow-sys")
+    .conflicts_with("allow-ffi")
+    .conflicts_with("allow-import")
     .action(ArgAction::SetTrue)
     .help("Allow all permissions")
 }
@@ -11006,5 +11014,24 @@ Usage: deno repl [OPTIONS] [-- [ARGS]...]\n"
       Some("example.com:80".to_string())
     );
     assert_eq!(parse("file:///example.com"), None);
+  }
+
+  #[test]
+  fn allow_all_conflicts_allow_perms() {
+    let flags = [
+      "--allow-read",
+      "--allow-write",
+      "--allow-net",
+      "--allow-env",
+      "--allow-run",
+      "--allow-sys",
+      "--allow-ffi",
+      "--allow-import",
+    ];
+    for flag in flags {
+      let r =
+        flags_from_vec(svec!["deno", "run", "--allow-all", flag, "foo.ts"]);
+      assert!(r.is_err());
+    }
   }
 }
