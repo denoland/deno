@@ -81,7 +81,7 @@ Deno.test(
     // `Deno.startTls` cannot consume the connection.
     await assertRejects(
       () => Deno.startTls(clientConn, { hostname }),
-      Deno.errors.BadResource,
+      Deno.errors.Busy,
     );
 
     serverConn.close();
