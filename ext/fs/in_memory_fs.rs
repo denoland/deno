@@ -12,12 +12,12 @@ use std::path::PathBuf;
 use std::rc::Rc;
 use std::sync::Arc;
 
-use deno_core::normalize_path;
 use deno_core::parking_lot::Mutex;
 use deno_io::fs::File;
 use deno_io::fs::FsError;
 use deno_io::fs::FsResult;
 use deno_io::fs::FsStat;
+use deno_path_util::normalize_path;
 
 use crate::interface::AccessCheckCb;
 use crate::interface::FsDirEntry;

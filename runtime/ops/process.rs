@@ -619,7 +619,7 @@ fn resolve_cmd(cmd: &str, env: &RunEnv) -> Result<PathBuf, AnyError> {
 }
 
 fn resolve_path(path: &str, cwd: &Path) -> PathBuf {
-  deno_core::normalize_path(cwd.join(path))
+  deno_path_util::normalize_path(cwd.join(path))
 }
 
 fn check_run_permission(

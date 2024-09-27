@@ -11,13 +11,13 @@ use std::path::Path;
 use std::path::PathBuf;
 use std::rc::Rc;
 
-use deno_core::normalize_path;
 use deno_core::unsync::spawn_blocking;
 use deno_io::fs::File;
 use deno_io::fs::FsError;
 use deno_io::fs::FsResult;
 use deno_io::fs::FsStat;
 use deno_io::StdFileResourceInner;
+use deno_path_util::normalize_path;
 
 use crate::interface::AccessCheckCb;
 use crate::interface::FsDirEntry;
