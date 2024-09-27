@@ -84,6 +84,7 @@ const {
   NumberIsInteger,
   NumberIsNaN,
   NumberParseInt,
+  NumberParseFloat,
   NumberPrototypeToFixed,
   NumberPrototypeToString,
   NumberPrototypeValueOf,
@@ -3008,54 +3009,51 @@ function inspectArgs(args, inspectOptions = { __proto__: null }) {
           } else if (ArrayPrototypeIncludes(["d", "i"], char)) {
             // Format as an integer.
             const value = args[a++];
-            if (typeof value == "bigint") {
-              formattedArg = `${value}n`;
-            } else if (typeof value == "number") {
-              formattedArg = `${NumberParseInt(String(value))}`;
-            } else {
+            if (typeof value === "symbol") {
               formattedArg = "NaN";
+            } else {
+              formattedArg = `${NumberParseInt(value)}`;
             }
           } else if (char == "f") {
             // Format as a floating point value.
             const value = args[a++];
-            if (typeof value == "number") {
-              formattedArg = `${value}`;
-            } else {
+            if (typeof value === "symbol") {
               formattedArg = "NaN";
-            }
-          } else if (ArrayPrototypeIncludes(["O", "o"], char)) {
-            // Format as an object.
-            formattedArg = formatValue(ctx, args[a++], 0);
-          } else if (char == "c") {
-            const value = args[a++];
-            if (!noColor) {
-              const css = parseCss(value);
-              formattedArg = cssToAnsi(css, prevCss);
-              if (formattedArg != "") {
-                usedStyle = true;
-                prevCss = css;
-              }
             } else {
-              formattedArg = "";
-            }
+            formattedArg = `${NumberParseFloat(value)}`;
           }
-
-          if (formattedArg != null) {
-            string += StringPrototypeSlice(first, appendedChars, i - 1) +
-              formattedArg;
-            appendedChars = i + 1;
+        } else if (ArrayPrototypeIncludes(["O", "o"], char)) {
+          // Format as an object.
+          formattedArg = formatValue(ctx, args[a++], 0);
+        } else if (char == "c") {
+          const value = args[a++];
+          if (!noColor) {
+            const css = parseCss(value);
+            formattedArg = cssToAnsi(css, prevCss);
+            if (formattedArg != "") {
+              usedStyle = true;
+              prevCss = css;
+            }
+          } else {
+            formattedArg = "";
           }
         }
-        if (char == "%") {
-          string += StringPrototypeSlice(first, appendedChars, i - 1) + "%";
+
+        if (formattedArg != null) {
+          string += StringPrototypeSlice(first, appendedChars, i - 1) +
+            formattedArg;
           appendedChars = i + 1;
         }
       }
+      if (char == "%") {
+        string += StringPrototypeSlice(first, appendedChars, i - 1) + "%";
+        appendedChars = i + 1;
+      }
     }
-    string += StringPrototypeSlice(first, appendedChars);
-    if (usedStyle) {
-      string += "\x1b[0m";
-    }
+  }
+  string += StringPrototypeSlice(first, appendedChars);
+  if (usedStyle) {
+    string += "\x1b[0m";
   }
 
   for (; a < args.length; a++) {
@@ -3524,8 +3522,7 @@ function createFilteredInspectProxy({ object, keys, evaluate }) {
       enumerable: true,
       value: object[key],
     };
-  }
-}
+  }}
 
 // Expose these fields to internalObject for tests.
 internals.Console = Console;
