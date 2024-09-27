@@ -152,15 +152,23 @@ impl<'a> LifecycleScripts<'a> {
       );
 
       let mut env_vars = crate::task_runner::real_env_vars();
+      // we want to pass the current state of npm resolution down to the deno subprocess
+      // (that may be running as part of the script). we do this with an inherited temp file
+      //
+      // SAFETY: we are sharing a single temp file across all of the scripts. the file position
+      // will be shared among these, which is okay since we run only one script at a time.
+      // However, if we concurrently run scripts in the future we will
+      // have to have multiple temp files.
       let temp_file_fd =
         deno_runtime::ops::process::npm_process_state_tempfile(
           process_state.as_bytes(),
         )?;
       // SAFETY: fd/handle is valid
       let _temp_file =
-        unsafe { std::fs::File::from_raw_io_handle(temp_file_fd) };
+        unsafe { std::fs::File::from_raw_io_handle(temp_file_fd) }; // make sure the file gets closed
       env_vars.insert(
-        crate::args::NPM_RESOLUTION_STATE_FD_ENV_VAR_NAME.to_string(),
+        deno_runtime::ops::process::NPM_RESOLUTION_STATE_FD_ENV_VAR_NAME
+          .to_string(),
         (temp_file_fd as usize).to_string(),
       );
       for (package, package_path) in self.packages_with_scripts {

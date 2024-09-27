@@ -744,11 +744,8 @@ pub enum NpmProcessStateKind {
   Byonm,
 }
 
-pub(crate) const NPM_RESOLUTION_STATE_FD_ENV_VAR_NAME: &str =
-  "DENO_DONT_USE_INTERNAL_NODE_COMPAT_STATE_FD";
-
-// static NPM_PROCESS_STATE: Lazy<Option<NpmProcessState>> = Lazy::new(|| None);
 static NPM_PROCESS_STATE: Lazy<Option<NpmProcessState>> = Lazy::new(|| {
+  use deno_runtime::ops::process::NPM_RESOLUTION_STATE_FD_ENV_VAR_NAME;
   let fd = std::env::var(NPM_RESOLUTION_STATE_FD_ENV_VAR_NAME).ok()?;
   std::env::remove_var(NPM_RESOLUTION_STATE_FD_ENV_VAR_NAME);
   let fd = fd.parse::<usize>().ok()?;
@@ -757,13 +754,18 @@ static NPM_PROCESS_STATE: Lazy<Option<NpmProcessState>> = Lazy::new(|| {
     unsafe { std::fs::File::from_raw_io_handle(fd as _) }
   };
   let mut buf = Vec::new();
-  // seek to beginning. when the file is written the position will be inherited by this subprocess,
+  // seek to beginning. after the file is written the position will be inherited by this subprocess,
   // and also this file might have been read before
   file.seek(std::io::SeekFrom::Start(0)).unwrap();
-  file.read_to_end(&mut buf).unwrap();
+  file
+    .read_to_end(&mut buf)
+    .inspect_err(|e| {
+      log::error!("failed to read npm process state from fd {fd}: {e}");
+    })
+    .ok()?;
   let state: NpmProcessState = serde_json::from_slice(&buf)
     .inspect_err(|e| {
-      log::warn!(
+      log::error!(
         "failed to deserialize npm process state: {e} {}",
         String::from_utf8_lossy(&buf)
       )

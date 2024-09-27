@@ -265,7 +265,16 @@ pub fn npm_process_state_tempfile(
   let handle = temp_file.into_raw_io_handle();
   #[cfg(windows)]
   {
-    // file handles are inherited by default on windows
+    use windows_sys::Win32::Foundation::HANDLE_FLAG_INHERIT;
+    // make the handle inheritable
+    // SAFETY: winapi call, handle is valid
+    unsafe {
+      windows_sys::Win32::Foundation::SetHandleInformation(
+        handle as _,
+        HANDLE_FLAG_INHERIT,
+        HANDLE_FLAG_INHERIT,
+      );
+    }
     Ok(handle)
   }
   #[cfg(unix)]
@@ -285,6 +294,9 @@ pub fn npm_process_state_tempfile(
   }
 }
 
+pub const NPM_RESOLUTION_STATE_FD_ENV_VAR_NAME: &str =
+  "DENO_DONT_USE_INTERNAL_NODE_COMPAT_STATE_FD";
+
 fn create_command(
   state: &mut OpState,
   mut args: SpawnArgs,
@@ -295,7 +307,7 @@ fn create_command(
     let process_state = provider.get_npm_process_state();
     let fd = npm_process_state_tempfile(process_state.as_bytes())?;
     args.env.push((
-      "DENO_DONT_USE_INTERNAL_NODE_COMPAT_STATE_FD".to_string(),
+      NPM_RESOLUTION_STATE_FD_ENV_VAR_NAME.to_string(),
       (fd as usize).to_string(),
     ));
     Some(fd)
