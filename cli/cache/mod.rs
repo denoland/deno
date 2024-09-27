@@ -145,7 +145,7 @@ impl<'a> deno_cache_dir::DenoCacheEnv for DenoCacheEnvFsAdapter<'a> {
   fn create_dir_all(&self, path: &Path) -> std::io::Result<()> {
     self
       .0
-      .mkdir_sync(path, true, CACHE_PERM)
+      .mkdir_sync(path, true, 0)
       .map_err(|e| e.into_io_error())
   }
 
