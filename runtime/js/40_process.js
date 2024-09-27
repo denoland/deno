@@ -424,6 +424,7 @@ function spawnSync(command, {
     windowsRawArguments,
     extraStdio: [],
     detached: false,
+    needsNpmProcessState: false,
   });
   return {
     success: result.status.success,
