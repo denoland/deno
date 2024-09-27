@@ -296,7 +296,7 @@ fn create_command(
     let fd = npm_process_state_tempfile(process_state.as_bytes())?;
     args.env.push((
       "DENO_DONT_USE_INTERNAL_NODE_COMPAT_STATE_FD".to_string(),
-      fd.to_string(),
+      (fd as usize).to_string(),
     ));
     Some(fd)
   } else {

@@ -161,7 +161,7 @@ impl<'a> LifecycleScripts<'a> {
         unsafe { std::fs::File::from_raw_io_handle(temp_file_fd) };
       env_vars.insert(
         crate::args::NPM_RESOLUTION_STATE_FD_ENV_VAR_NAME.to_string(),
-        temp_file_fd.to_string(),
+        (temp_file_fd as usize).to_string(),
       );
       for (package, package_path) in self.packages_with_scripts {
         // add custom commands for binaries from the package's dependencies. this will take precedence over the
