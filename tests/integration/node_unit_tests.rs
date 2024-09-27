@@ -113,15 +113,18 @@ fn node_unit_test(test: String) {
     .arg("--no-lock")
     .arg("--unstable-broadcast-channel")
     .arg("--unstable-net")
-    // TODO(kt3k): This option is required to pass tls_test.ts,
-    // but this shouldn't be necessary. tls.connect currently doesn't
-    // pass hostname option correctly and it causes cert errors.
-    .arg("--unsafely-ignore-certificate-errors")
     .arg("-A");
+
+  // Some tests require the root CA cert file to be loaded.
+  if test == "http2_test" || test == "http_test" {
+    deno = deno.arg("--cert=./tests/testdata/tls/RootCA.pem");
+  }
+
   // Parallel tests for crypto
   if test.starts_with("crypto/") {
     deno = deno.arg("--parallel");
   }
+
   let mut deno = deno
     .arg(
       util::tests_path()
