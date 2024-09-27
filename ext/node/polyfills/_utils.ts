@@ -179,7 +179,7 @@ export function validateIntegerRange(
 
   if (value < min || value > max) {
     throw new Error(
-      `${name} must be >= ${min} && <= ${max}. Value was ${value}`,
+      `${name} must be >= ${min} && <= ${max}: received ${value}`,
     );
   }
 }

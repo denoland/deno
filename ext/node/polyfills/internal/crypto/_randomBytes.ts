@@ -11,7 +11,7 @@ export const MAX_SIZE = 4294967295;
 function generateRandomBytes(size: number) {
   if (size > MAX_SIZE) {
     throw new RangeError(
-      `The value of "size" is out of range. It must be >= 0 && <= ${MAX_SIZE}. Received ${size}`,
+      `The value of "size" is out of range, it must be >= 0 && <= ${MAX_SIZE}: received ${size}`,
     );
   }
 

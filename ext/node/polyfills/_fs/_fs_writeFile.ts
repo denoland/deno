@@ -42,7 +42,7 @@ export function writeFile(
     optOrCallback instanceof Function ? undefined : optOrCallback;
 
   if (!callbackFn) {
-    throw new TypeError("Callback must be a function.");
+    throw new TypeError("Callback must be a function");
   }
 
   pathOrRid = pathOrRid instanceof URL ? pathFromURL(pathOrRid) : pathOrRid;

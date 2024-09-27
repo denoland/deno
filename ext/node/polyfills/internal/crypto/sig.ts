@@ -259,7 +259,9 @@ export function signOneShot(
   let result: Buffer;
   if (op_node_get_asymmetric_key_type(handle) === "ed25519") {
     if (algorithm != null && algorithm !== "sha512") {
-      throw new TypeError("Only 'sha512' is supported for Ed25519 keys");
+      throw new TypeError(
+        `Only 'sha512' is supported for Ed25519 keys: received '${algorithm}'`,
+      );
     }
     result = new Buffer(64);
     op_node_sign_ed25519(handle, data, result);
@@ -314,7 +316,9 @@ export function verifyOneShot(
   let result: boolean;
   if (op_node_get_asymmetric_key_type(handle) === "ed25519") {
     if (algorithm != null && algorithm !== "sha512") {
-      throw new TypeError("Only 'sha512' is supported for Ed25519 keys");
+      throw new TypeError(
+        `Only 'sha512' is supported for Ed25519 keys: received '${algorithm}'`,
+      );
     }
     result = op_node_verify_ed25519(handle, data, signature);
   } else if (algorithm == null) {

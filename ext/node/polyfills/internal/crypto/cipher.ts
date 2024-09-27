@@ -189,7 +189,7 @@ export class Cipheriv extends Transform implements Cipher {
     this.#needsBlockCache =
       !(cipher == "aes-128-gcm" || cipher == "aes-256-gcm");
     if (this.#context == 0) {
-      throw new TypeError("Unknown cipher");
+      throw new TypeError(`Unknown cipher: ${cipher}`);
     }
   }
 
@@ -347,7 +347,7 @@ export class Decipheriv extends Transform implements Cipher {
     this.#needsBlockCache =
       !(cipher == "aes-128-gcm" || cipher == "aes-256-gcm");
     if (this.#context == 0) {
-      throw new TypeError("Unknown cipher");
+      throw new TypeError(`Unknown cipher: ${cipher}`);
     }
   }
 

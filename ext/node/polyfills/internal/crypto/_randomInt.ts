@@ -35,15 +35,15 @@ export default function randomInt(
     !Number.isSafeInteger(min) ||
     typeof max === "number" && !Number.isSafeInteger(max)
   ) {
-    throw new Error("max or min is not a Safe Number");
+    throw new Error('"max" or "min" is not a Safe Number');
   }
 
   if (max - min > Math.pow(2, 48)) {
-    throw new RangeError("max - min should be less than 2^48!");
+    throw new RangeError("max - min must be less than 2^48");
   }
 
   if (min >= max) {
-    throw new Error("Min is bigger than Max!");
+    throw new Error('"min" is bigger than "max"');
   }
 
   min = Math.ceil(min);

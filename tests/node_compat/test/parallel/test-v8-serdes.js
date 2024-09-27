@@ -265,15 +265,15 @@ const objects = [
   serializer.writeHeader();
   assert.throws(
     () => serializer.writeRawBytes(INVALID_SOURCE),
-    /^TypeError: source must be a TypedArray or a DataView$/,
+    /^TypeError: Cannot write bytes: 'source' must be a 'TypedArray' or a 'DataView'$/,
   );
   assert.throws(
     () => v8.deserialize(INVALID_SOURCE),
-    /^TypeError: buffer must be a TypedArray or a DataView$/,
+    /^TypeError: Cannot deserialize: 'buffer' must be a 'TypedArray' or a 'DataView'$/,
   );
   assert.throws(
     () => new v8.Deserializer(INVALID_SOURCE),
-    /^TypeError: buffer must be a TypedArray or a DataView$/,
+    /^TypeError: Cannot construct 'Deserializer': 'buffer' must be a 'TypedArray' or a 'DataView'$/,
   );
 }
 

@@ -120,7 +120,7 @@ export function equal(c: unknown, d: unknown): boolean {
           !(ObjectPrototypeIsPrototypeOf(WeakMapPrototype, a) &&
             ObjectPrototypeIsPrototypeOf(WeakMapPrototype, b))
         ) return false;
-        throw new TypeError("cannot compare WeakMap instances");
+        throw new TypeError("Cannot compare WeakMap instances");
       }
       if (
         ObjectPrototypeIsPrototypeOf(WeakSetPrototype, a) ||
@@ -130,7 +130,7 @@ export function equal(c: unknown, d: unknown): boolean {
           !(ObjectPrototypeIsPrototypeOf(WeakSetPrototype, a) &&
             ObjectPrototypeIsPrototypeOf(WeakSetPrototype, b))
         ) return false;
-        throw new TypeError("cannot compare WeakSet instances");
+        throw new TypeError("Cannot compare WeakSet instances");
       }
       if (seen.get(a) === b) {
         return true;
