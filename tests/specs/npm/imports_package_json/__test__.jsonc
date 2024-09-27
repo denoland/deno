@@ -1,0 +1,8 @@
+{
+  "args": "run --no-lock --node-modules-dir=none imports_package_json/main.js",
+  "output": "imports_package_json/main.out",
+  "envs": {
+    "NO_COLOR": "1",
+    "NPM_CONFIG_REGISTRY": "http://localhost:4260/"
+  }
+}

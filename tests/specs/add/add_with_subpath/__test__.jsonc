@@ -2,11 +2,11 @@
   "tempDir": true,
   "steps": [
     {
-      "args": "add @std/testing/bdd npm:preact/hooks",
+      "args": "add jsr:@std/testing/bdd npm:preact/hooks",
       "output": "add.out"
     },
     {
-      "args": "add @std/testing/bdd@1 npm:preact/hooks@10",
+      "args": "add jsr:@std/testing/bdd@1 npm:preact/hooks@10",
       "output": "wrong_constraint_jsr.out",
       "exitCode": 1
     },

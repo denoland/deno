@@ -246,7 +246,7 @@ impl CliLockfile {
       // has an extra newline at the end
       let diff = diff.trim_end();
       Err(deno_core::anyhow::anyhow!(
-        "The lockfile is out of date. Run `deno cache --frozen=false`, `deno install --frozen=false`, or rerun with `--frozen=false` to update it.\nchanges:\n{diff}"
+        "The lockfile is out of date. Run `deno install --frozen=false`, or rerun with `--frozen=false` to update it.\nchanges:\n{diff}"
       ))
     } else {
       Ok(())

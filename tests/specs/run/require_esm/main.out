@@ -1,6 +1,6 @@
 [Module: null prototype] { sync_js: 1 }
 [Module: null prototype] { sync_mjs: 1 }
-error: Uncaught (in promise) Error: Top-level await is not allowed in synchronous evaluation
+error: Uncaught Error: Top-level await is not allowed in synchronous evaluation
     at loadESMFromCJS (node:module:[WILDCARD])
     at Module._compile (node:module:[WILDCARD])
     at Object.Module._extensions..js (node:module:[WILDCARD])

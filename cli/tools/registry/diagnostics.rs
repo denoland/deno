@@ -3,7 +3,6 @@
 use std::borrow::Cow;
 use std::path::PathBuf;
 use std::sync::Arc;
-use std::sync::Mutex;
 
 use deno_ast::diagnostics::Diagnostic;
 use deno_ast::diagnostics::DiagnosticLevel;
@@ -21,6 +20,7 @@ use deno_ast::SourceRanged;
 use deno_ast::SourceTextInfo;
 use deno_core::anyhow::anyhow;
 use deno_core::error::AnyError;
+use deno_core::parking_lot::Mutex;
 use deno_core::url::Url;
 use deno_graph::FastCheckDiagnostic;
 use deno_semver::Version;
@@ -36,7 +36,7 @@ impl PublishDiagnosticsCollector {
   pub fn print_and_error(&self) -> Result<(), AnyError> {
     let mut errors = 0;
     let mut has_slow_types_errors = false;
-    let mut diagnostics = self.diagnostics.lock().unwrap().take();
+    let mut diagnostics = self.diagnostics.lock().take();
 
     diagnostics.sort_by_cached_key(|d| d.sorting_key());
 
@@ -75,8 +75,16 @@ impl PublishDiagnosticsCollector {
     }
   }
 
+  pub fn has_error(&self) -> bool {
+    self
+      .diagnostics
+      .lock()
+      .iter()
+      .any(|d| matches!(d.level(), DiagnosticLevel::Error))
+  }
+
   pub fn push(&self, diagnostic: PublishDiagnostic) {
-    self.diagnostics.lock().unwrap().push(diagnostic);
+    self.diagnostics.lock().push(diagnostic);
   }
 }
 

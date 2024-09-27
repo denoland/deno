@@ -31,17 +31,6 @@
 //   http_server: true,
 // });
 
-// TODO(2.0): not entirely clear what's wrong with this test
-// itest!(task_both_package_json_selected {
-//   args: "task bin asdf",
-//   cwd: Some("task/both/"),
-//   output: "task/both/package_json_selected.out",
-//   copy_temp_dir: Some("task/both/"),
-//   envs: env_vars_for_npm_tests(),
-//   exit_code: 0,
-//   http_server: true,
-// });
-
 // TODO(2.0): not entirely clear what's wrong with this test but it hangs for more than 60s
 // itest!(task_npx_on_own {
 //   args: "task on-own",

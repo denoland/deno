@@ -1,0 +1,5 @@
+Check file:///[WILDCARD]/main.ts
+error: TS4114 [ERROR]: This member must have an 'override' modifier because it overrides a member in the base class 'Greet'.
+  greet() {}
+  ~~~~~
+    at file:///[WILDCARD]/no_implicit_override/main.ts:6:3

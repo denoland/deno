@@ -1,0 +1,8 @@
+{
+  "args": "run --allow-read --quiet cjs-invalid-name-exports/main.ts",
+  "output": "cjs-invalid-name-exports/main.out",
+  "envs": {
+    "NO_COLOR": "1",
+    "NPM_CONFIG_REGISTRY": "http://localhost:4260/"
+  }
+}

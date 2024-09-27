@@ -254,7 +254,9 @@ fn export_key_ec(
           point.as_ref().to_vec()
         }
         EcNamedCurve::P521 => {
-          return Err(data_error("Unsupported named curve"))
+          let point = key_data.as_ec_public_key_p521()?;
+
+          point.as_ref().to_vec()
         }
       };
       Ok(ExportKeyResult::Raw(subject_public_key.into()))
@@ -272,7 +274,9 @@ fn export_key_ec(
           point.as_ref().to_vec()
         }
         EcNamedCurve::P521 => {
-          return Err(data_error("Unsupported named curve"))
+          let point = key_data.as_ec_public_key_p521()?;
+
+          point.as_ref().to_vec()
         }
       };
 
@@ -285,9 +289,10 @@ fn export_key_ec(
           oid: elliptic_curve::ALGORITHM_OID,
           parameters: Some((&p384::NistP384::OID).into()),
         },
-        EcNamedCurve::P521 => {
-          return Err(data_error("Unsupported named curve"))
-        }
+        EcNamedCurve::P521 => AlgorithmIdentifierOwned {
+          oid: elliptic_curve::ALGORITHM_OID,
+          parameters: Some((&p521::NistP521::OID).into()),
+        },
       };
 
       let alg_id = match algorithm {
@@ -351,7 +356,24 @@ fn export_key_ec(
           ))
         }
       }
-      EcNamedCurve::P521 => Err(data_error("Unsupported named curve")),
+      EcNamedCurve::P521 => {
+        let point = key_data.as_ec_public_key_p521()?;
+        let coords = point.coordinates();
+
+        if let p521::elliptic_curve::sec1::Coordinates::Uncompressed { x, y } =
+          coords
+        {
+          Ok(ExportKeyResult::JwkPublicEc {
+            x: bytes_to_b64(x),
+            y: bytes_to_b64(y),
+          })
+        } else {
+          Err(custom_error(
+            "DOMExceptionOperationError",
+            "failed to decode public key",
+          ))
+        }
+      }
     },
     ExportKeyFormat::JwkPrivate => {
       let private_key = key_data.as_ec_private_key()?;

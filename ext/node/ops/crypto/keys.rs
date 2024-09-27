@@ -752,7 +752,15 @@ impl KeyObjectHandle {
               | KeyObjectHandle::Secret(_) => unreachable!(),
             }
           }
-          // TODO: handle x509 certificates as public keys
+          "CERTIFICATE" => {
+            let (_, pem) = x509_parser::pem::parse_x509_pem(pem.as_bytes())
+              .map_err(|_| type_error("invalid x509 certificate"))?;
+
+            let cert = pem.parse_x509()?;
+            let public_key = cert.tbs_certificate.subject_pki;
+
+            return KeyObjectHandle::new_x509_public_key(&public_key);
+          }
           _ => {
             return Err(type_error(format!("unsupported PEM label: {}", label)))
           }

@@ -17,6 +17,7 @@ use deno_graph::GraphKind;
 use deno_graph::Resolution;
 use deno_runtime::deno_tls::rustls::RootCertStore;
 use deno_runtime::deno_tls::RootCertStoreProvider;
+use deno_runtime::fs_util::specifier_to_file_path;
 use deno_semver::jsr::JsrPackageReqReference;
 use indexmap::Equivalent;
 use indexmap::IndexSet;
@@ -112,7 +113,6 @@ use crate::util::fs::remove_dir_all_if_exists;
 use crate::util::path::is_importable_ext;
 use crate::util::path::to_percent_decoded_str;
 use crate::util::sync::AsyncFlag;
-use deno_runtime::fs_util::specifier_to_file_path;
 
 struct LspRootCertStoreProvider(RootCertStore);
 
@@ -240,7 +240,7 @@ impl LanguageServer {
     }
   }
 
-  /// Similar to `deno cache` on the command line, where modules will be cached
+  /// Similar to `deno install --entrypoint` on the command line, where modules will be cached
   /// in the Deno cache, including any of their dependencies.
   pub async fn cache(
     &self,
@@ -274,10 +274,9 @@ impl LanguageServer {
         factory.fs(),
         &roots,
         graph_util::GraphValidOptions {
-          is_vendoring: false,
-          follow_type_only: true,
+          kind: GraphKind::All,
           check_js: false,
-          exit_lockfile_errors: false,
+          exit_integrity_errors: false,
         },
       )?;
 
@@ -1385,17 +1384,8 @@ impl Inner {
         .data_for_specifier(&specifier)
         .map(|d| &d.member_dir.workspace);
       let unstable_options = UnstableFmtOptions {
-        css: maybe_workspace
-          .map(|w| w.has_unstable("fmt-css"))
-          .unwrap_or(false),
-        html: maybe_workspace
-          .map(|w| w.has_unstable("fmt-html"))
-          .unwrap_or(false),
         component: maybe_workspace
           .map(|w| w.has_unstable("fmt-component"))
-          .unwrap_or(false),
-        yaml: maybe_workspace
-          .map(|w| w.has_unstable("fmt-yaml"))
           .unwrap_or(false),
       };
       let document = document.clone();
@@ -1420,6 +1410,7 @@ impl Inner {
               document.content(),
               &fmt_options,
               &unstable_options,
+              None,
             )
           }
         };
@@ -3622,6 +3613,11 @@ impl Inner {
         }),
         // bit of a hack to force the lsp to cache the @types/node package
         type_check_mode: crate::args::TypeCheckMode::Local,
+        permissions: crate::args::PermissionFlags {
+          // allow remote import permissions in the lsp for now
+          allow_import: Some(vec![]),
+          ..Default::default()
+        },
         ..Default::default()
       }),
       initial_cwd,

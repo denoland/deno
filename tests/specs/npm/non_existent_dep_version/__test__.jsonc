@@ -1,0 +1,9 @@
+{
+  "args": "cache npm:@denotest/non-existent-dep-version",
+  "envs": {
+    "NO_COLOR": "1",
+    "NPM_CONFIG_REGISTRY": "http://localhost:4260/"
+  },
+  "exitCode": 1,
+  "output": "[UNORDERED_START]\nDownload http://localhost:4260/@denotest/non-existent-dep-version\nDownload http://localhost:4260/@denotest/esm-basic\n[UNORDERED_END]\nerror: Could not find npm package '@denotest/esm-basic' matching '=99.99.99'.\n"
+}

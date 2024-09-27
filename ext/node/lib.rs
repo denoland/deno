@@ -407,6 +407,7 @@ deno_core::extension!(deno_node,
     ops::ipc::op_node_ipc_unref,
     ops::process::op_node_process_kill,
     ops::process::op_process_abort,
+    ops::tls::op_get_root_certificates,
   ],
   esm_entry_point = "ext:deno_node/02_init.js",
   esm = [

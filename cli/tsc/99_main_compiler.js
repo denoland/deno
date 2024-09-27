@@ -1154,6 +1154,7 @@ delete Object.prototype.__proto__;
         "moduleResolution": "NodeNext",
         "moduleDetection": "force",
         "noEmit": true,
+        "noImplicitOverride": true,
         "resolveJsonModule": true,
         "strict": true,
         "target": "esnext",

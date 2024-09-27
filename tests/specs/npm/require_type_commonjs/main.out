@@ -1,0 +1,10 @@
+error: Uncaught (in promise) SyntaxError: Unexpected token 'export'
+    at Object.evalContext (ext:core/01_core.js:[WILDCARD])
+    at wrapSafe (node:module:[WILDCARD])
+    at Module._compile (node:module:[WILDCARD])
+    at Object.Module._extensions..js (node:module:[WILDCARD])
+    at Module.load (node:module:[WILDCARD])
+    at Function.Module._load (node:module:[WILDCARD])
+    at Module.require (node:module:[WILDCARD])
+    at require (node:module:[WILDCARD])
+    at file:///[WILDCARD]/@denotest/type-commonjs/1.0.0/index.js:3:13
