@@ -68,10 +68,8 @@ unsafe extern "C" fn uv_mutex_unlock(lock: *mut uv_mutex_t) {
 }
 
 #[no_mangle]
-unsafe extern "C" fn uv_mutex_destroy(lock: *mut uv_mutex_t) {
-  unsafe {
-    std::ptr::drop_in_place(addr_of_mut!((*lock).mutex));
-  }
+unsafe extern "C" fn uv_mutex_destroy(_lock: *mut uv_mutex_t) {
+  // no cleanup required
 }
 
 #[repr(C)]
