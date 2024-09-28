@@ -176,7 +176,7 @@ nix.workspace = true
 
 [dev-dependencies]
 deno_bench_util.workspace = true
-libuv-sys-lite = "=1.48.1"
+libuv-sys-lite = "=1.48.2"
 pretty_assertions.workspace = true
 test_util.workspace = true
 

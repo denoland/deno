@@ -1084,7 +1084,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "b28bfe653d79bd16c77f659305b195b82bb5ce0c0eb2a4846b82ddbd77586813"
 dependencies = [
  "bitflags 2.6.0",
- "libloading 0.7.4",
+ "libloading 0.8.5",
  "winapi",
 ]
 
@@ -4244,9 +4244,9 @@ dependencies = [
 
 [[package]]
 name = "libuv-sys-lite"
-version = "1.48.1"
+version = "1.48.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "b83f92c5ef1865b1bce2559abd3a86885c4806da09bbb6e29529ba353b704d09"
+checksum = "ca8dfd1a173826d193e3b955e07c22765829890f62c677a59c4a410cb4f47c01"
 dependencies = [
  "bindgen 0.70.1",
  "libloading 0.8.5",
@@ -8219,7 +8219,7 @@ dependencies = [
  "js-sys",
  "khronos-egl",
  "libc",
- "libloading 0.7.4",
+ "libloading 0.8.5",
  "log",
  "metal",
  "naga",

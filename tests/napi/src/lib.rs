@@ -139,6 +139,7 @@ unsafe extern "C" fn napi_register_module_v1(
   #[cfg(windows)]
   {
     napi_sys::setup();
+    libuv_sys_lite::setup();
   }
 
   // We create a fresh exports object and leave the passed
