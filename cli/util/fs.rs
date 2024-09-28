@@ -787,8 +787,8 @@ pub fn specifier_from_file_path(
 mod tests {
   use super::*;
   use deno_core::futures;
-  use deno_core::normalize_path;
   use deno_core::parking_lot::Mutex;
+  use deno_path_util::normalize_path;
   use pretty_assertions::assert_eq;
   use test_util::PathRef;
   use test_util::TempDir;

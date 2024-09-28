@@ -13,7 +13,7 @@ use deno_core::error::AnyError;
 use deno_core::serde_json;
 use deno_npm::registry::NpmPackageInfo;
 use deno_runtime::deno_node::NodeRequireResolver;
-use deno_runtime::deno_node::NpmProcessStateProvider;
+use deno_runtime::ops::process::NpmProcessStateProvider;
 use deno_semver::package::PackageNv;
 use deno_semver::package::PackageReq;
 use node_resolver::NpmResolver;

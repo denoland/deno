@@ -1146,7 +1146,7 @@ dependencies = [
 
 [[package]]
 name = "deno"
-version = "2.0.0-rc.6"
+version = "2.0.0-rc.7"
 dependencies = [
  "anstream",
  "async-trait",
@@ -1174,6 +1174,7 @@ dependencies = [
  "deno_lockfile",
  "deno_npm",
  "deno_package_json",
+ "deno_path_util",
  "deno_runtime",
  "deno_semver",
  "deno_task_shell",
@@ -1571,6 +1572,7 @@ dependencies = [
  "base32",
  "deno_core",
  "deno_io",
+ "deno_path_util",
  "deno_permissions",
  "filetime",
  "junction",
@@ -1683,6 +1685,7 @@ dependencies = [
  "chrono",
  "deno_core",
  "deno_fetch",
+ "deno_path_util",
  "deno_permissions",
  "deno_tls",
  "denokv_proto",
@@ -1801,6 +1804,7 @@ dependencies = [
  "deno_media_type",
  "deno_net",
  "deno_package_json",
+ "deno_path_util",
  "deno_permissions",
  "deno_whoami",
  "der",
@@ -1918,10 +1922,22 @@ dependencies = [
 ]
 
 [[package]]
+name = "deno_path_util"
+version = "0.1.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "625b490bc4734ff778926d7034650a2ddcef2fd42b71e30bb722249156d5a144"
+dependencies = [
+ "percent-encoding",
+ "thiserror",
+ "url",
+]
+
+[[package]]
 name = "deno_permissions"
 version = "0.28.0"
 dependencies = [
  "deno_core",
+ "deno_path_util",
  "deno_terminal 0.2.0",
  "fqdn",
  "libc",
@@ -1954,6 +1970,7 @@ dependencies = [
  "deno_napi",
  "deno_net",
  "deno_node",
+ "deno_path_util",
  "deno_permissions",
  "deno_terminal 0.2.0",
  "deno_tls",
@@ -1986,6 +2003,7 @@ dependencies = [
  "serde",
  "signal-hook",
  "signal-hook-registry",
+ "tempfile",
  "test_server",
  "tokio",
  "tokio-metrics",

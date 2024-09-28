@@ -22,12 +22,12 @@ use deno_graph::NpmLoadError;
 use deno_graph::NpmResolvePkgReqsResult;
 use deno_npm::resolution::NpmResolutionError;
 use deno_package_json::PackageJsonDepValue;
+use deno_path_util::url_to_file_path;
 use deno_runtime::colors;
 use deno_runtime::deno_fs;
 use deno_runtime::deno_fs::FileSystem;
 use deno_runtime::deno_node::is_builtin_node_module;
 use deno_runtime::deno_node::NodeResolver;
-use deno_runtime::fs_util::specifier_to_file_path;
 use deno_semver::npm::NpmPackageReqReference;
 use deno_semver::package::PackageReq;
 use node_resolver::errors::ClosestPkgJsonError;
@@ -992,7 +992,7 @@ impl SloppyImportsResolver {
       return None;
     }
 
-    let path = specifier_to_file_path(specifier).ok()?;
+    let path = url_to_file_path(specifier).ok()?;
 
     #[derive(Clone, Copy)]
     enum SloppyImportsResolutionReason {

@@ -10,13 +10,13 @@ use deno_core::anyhow::bail;
 use deno_core::error::AnyError;
 use deno_core::serde_json;
 use deno_package_json::PackageJsonDepValue;
+use deno_path_util::url_to_file_path;
 use deno_runtime::deno_fs::FileSystem;
 use deno_runtime::deno_node::DenoPkgJsonFsAdapter;
 use deno_runtime::deno_node::NodePermissions;
 use deno_runtime::deno_node::NodeRequireResolver;
-use deno_runtime::deno_node::NpmProcessStateProvider;
 use deno_runtime::deno_node::PackageJson;
-use deno_runtime::fs_util::specifier_to_file_path;
+use deno_runtime::ops::process::NpmProcessStateProvider;
 use deno_semver::package::PackageReq;
 use deno_semver::Version;
 use node_resolver::errors::PackageFolderResolveError;
@@ -126,7 +126,7 @@ impl ByonmCliNpmResolver {
     }
 
     // attempt to resolve the npm specifier from the referrer's package.json,
-    if let Ok(file_path) = specifier_to_file_path(referrer) {
+    if let Ok(file_path) = url_to_file_path(referrer) {
       let mut current_path = file_path.as_path();
       while let Some(dir_path) = current_path.parent() {
         let package_json_path = dir_path.join("package.json");
@@ -221,7 +221,7 @@ impl NpmResolver for ByonmCliNpmResolver {
       name: &str,
       referrer: &ModuleSpecifier,
     ) -> Result<PathBuf, PackageFolderResolveError> {
-      let maybe_referrer_file = specifier_to_file_path(referrer).ok();
+      let maybe_referrer_file = url_to_file_path(referrer).ok();
       let maybe_start_folder =
         maybe_referrer_file.as_ref().and_then(|f| f.parent());
       if let Some(start_folder) = maybe_start_folder {

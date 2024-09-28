@@ -20,13 +20,13 @@ use deno_config::workspace::WorkspaceDiscoverOptions;
 use deno_config::workspace::WorkspaceDiscoverStart;
 use deno_config::workspace::WorkspaceLintConfig;
 use deno_config::workspace::WorkspaceResolver;
-use deno_core::normalize_path;
 use deno_core::resolve_url_or_path;
 use deno_graph::GraphKind;
 use deno_npm::npm_rc::NpmRc;
 use deno_npm::npm_rc::ResolvedNpmRc;
 use deno_npm::resolution::ValidSerializedNpmResolutionSnapshot;
 use deno_npm::NpmSystemInfo;
+use deno_path_util::normalize_path;
 use deno_semver::npm::NpmPackageReqReference;
 use import_map::resolve_import_map_value_from_specifier;
 
@@ -69,6 +69,8 @@ use std::collections::HashMap;
 use std::env;
 use std::io::BufReader;
 use std::io::Cursor;
+use std::io::Read;
+use std::io::Seek;
 use std::net::SocketAddr;
 use std::num::NonZeroUsize;
 use std::path::Path;
@@ -742,15 +744,33 @@ pub enum NpmProcessStateKind {
   Byonm,
 }
 
-pub(crate) const NPM_RESOLUTION_STATE_ENV_VAR_NAME: &str =
-  "DENO_DONT_USE_INTERNAL_NODE_COMPAT_STATE";
-
 static NPM_PROCESS_STATE: Lazy<Option<NpmProcessState>> = Lazy::new(|| {
-  let state = std::env::var(NPM_RESOLUTION_STATE_ENV_VAR_NAME).ok()?;
-  let state: NpmProcessState = serde_json::from_str(&state).ok()?;
-  // remove the environment variable so that sub processes
-  // that are spawned do not also use this.
-  std::env::remove_var(NPM_RESOLUTION_STATE_ENV_VAR_NAME);
+  use deno_runtime::ops::process::NPM_RESOLUTION_STATE_FD_ENV_VAR_NAME;
+  let fd = std::env::var(NPM_RESOLUTION_STATE_FD_ENV_VAR_NAME).ok()?;
+  std::env::remove_var(NPM_RESOLUTION_STATE_FD_ENV_VAR_NAME);
+  let fd = fd.parse::<usize>().ok()?;
+  let mut file = {
+    use deno_runtime::deno_io::FromRawIoHandle;
+    unsafe { std::fs::File::from_raw_io_handle(fd as _) }
+  };
+  let mut buf = Vec::new();
+  // seek to beginning. after the file is written the position will be inherited by this subprocess,
+  // and also this file might have been read before
+  file.seek(std::io::SeekFrom::Start(0)).unwrap();
+  file
+    .read_to_end(&mut buf)
+    .inspect_err(|e| {
+      log::error!("failed to read npm process state from fd {fd}: {e}");
+    })
+    .ok()?;
+  let state: NpmProcessState = serde_json::from_slice(&buf)
+    .inspect_err(|e| {
+      log::error!(
+        "failed to deserialize npm process state: {e} {}",
+        String::from_utf8_lossy(&buf)
+      )
+    })
+    .ok()?;
   Some(state)
 });
 
