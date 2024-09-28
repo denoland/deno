@@ -1150,7 +1150,6 @@ version = "2.0.0-rc.7"
 dependencies = [
  "anstream",
  "async-trait",
- "base32",
  "base64 0.21.7",
  "bincode",
  "bytes",
@@ -1175,6 +1174,7 @@ dependencies = [
  "deno_npm",
  "deno_package_json",
  "deno_path_util",
+ "deno_resolver",
  "deno_runtime",
  "deno_semver",
  "deno_task_shell",
@@ -1947,6 +1947,16 @@ dependencies = [
  "serde",
  "which 4.4.2",
  "winapi",
+]
+
+[[package]]
+name = "deno_resolver"
+version = "0.0.1"
+dependencies = [
+ "deno_media_type",
+ "deno_path_util",
+ "test_server",
+ "url",
 ]
 
 [[package]]

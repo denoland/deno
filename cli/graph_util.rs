@@ -14,7 +14,8 @@ use crate::errors::get_error_class_name;
 use crate::file_fetcher::FileFetcher;
 use crate::npm::CliNpmResolver;
 use crate::resolver::CliGraphResolver;
-use crate::resolver::SloppyImportsResolver;
+use crate::resolver::CliSloppyImportsResolver;
+use crate::resolver::SloppyImportsCachedFs;
 use crate::tools::check;
 use crate::tools::check::TypeChecker;
 use crate::util::file_watcher::WatcherCommunicator;
@@ -31,7 +32,6 @@ use deno_core::error::AnyError;
 use deno_core::parking_lot::Mutex;
 use deno_core::ModuleSpecifier;
 use deno_graph::source::Loader;
-use deno_graph::source::ResolutionMode;
 use deno_graph::source::ResolveError;
 use deno_graph::GraphKind;
 use deno_graph::ModuleError;
@@ -40,6 +40,7 @@ use deno_graph::ModuleGraphError;
 use deno_graph::ResolutionError;
 use deno_graph::SpecifierError;
 use deno_path_util::url_to_file_path;
+use deno_resolver::sloppy_imports::SloppyImportsResolutionMode;
 use deno_runtime::deno_fs::FileSystem;
 use deno_runtime::deno_node;
 use deno_runtime::deno_permissions::PermissionsContainer;
@@ -765,8 +766,8 @@ fn enhanced_sloppy_imports_error_message(
   match error {
     ModuleError::LoadingErr(specifier, _, ModuleLoadError::Loader(_)) // ex. "Is a directory" error
     | ModuleError::Missing(specifier, _) => {
-      let additional_message = SloppyImportsResolver::new(fs.clone())
-        .resolve(specifier, ResolutionMode::Execution)?
+      let additional_message = CliSloppyImportsResolver::new(SloppyImportsCachedFs::new(fs.clone()))
+        .resolve(specifier, SloppyImportsResolutionMode::Execution)?
         .as_suggestion_message();
       Some(format!(
         "{} {} or run with --unstable-sloppy-imports",
