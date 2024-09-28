@@ -1,5 +1,7 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
+use deno_core::parking_lot::Mutex;
+use deno_core::parking_lot::MutexGuard;
 use deno_runtime::deno_napi::*;
 use std::mem::MaybeUninit;
 use std::ptr::addr_of_mut;
@@ -21,86 +23,63 @@ use crate::napi::node_api::napi_delete_async_work;
 use crate::napi::node_api::napi_queue_async_work;
 use std::ffi::c_int;
 
-#[cfg(unix)]
-mod mutex {
-  use super::*;
-  type uv_mutex_t = libc::pthread_mutex_t;
-  #[no_mangle]
-  unsafe extern "C" fn uv_mutex_init(lock: *mut uv_mutex_t) -> c_int {
-    use std::mem::MaybeUninit;
-    let mut attr = MaybeUninit::<libc::pthread_mutexattr_t>::uninit();
-    unsafe {
-      assert_ok(libc::pthread_mutexattr_init(attr.as_mut_ptr()));
-      let mut attr = attr.assume_init();
-      let attr_ptr = addr_of_mut!(attr);
-      assert_ok(libc::pthread_mutexattr_settype(
-        attr_ptr,
-        libc::PTHREAD_MUTEX_ERRORCHECK,
-      ));
-      let err = libc::pthread_mutex_init(lock, attr_ptr);
-      assert_ok(libc::pthread_mutexattr_destroy(attr_ptr));
-      if libc::EDOM > 0 {
-        err
-      } else {
-        -err
-      }
-    }
+const UV_MUTEX_SIZE: usize = {
+  #[cfg(unix)]
+  {
+    std::mem::size_of::<libc::pthread_mutex_t>()
   }
+  #[cfg(windows)]
+  {
+    std::mem::size_of::<windows_sys::Win32::System::Threading::CRITICAL_SECTION>(
+    )
+  }
+};
 
-  #[no_mangle]
-  unsafe extern "C" fn uv_mutex_lock(lock: *mut uv_mutex_t) {
-    unsafe {
-      assert_ok(libc::pthread_mutex_lock(lock));
-    }
-  }
-
-  #[no_mangle]
-  unsafe extern "C" fn uv_mutex_unlock(lock: *mut uv_mutex_t) {
-    unsafe {
-      assert_ok(libc::pthread_mutex_unlock(lock));
-    }
-  }
-
-  #[no_mangle]
-  unsafe extern "C" fn uv_mutex_destroy(lock: *mut uv_mutex_t) {
-    unsafe {
-      assert_ok(libc::pthread_mutex_destroy(lock));
-    }
-  }
+#[repr(C)]
+struct uv_mutex_t {
+  mutex: Mutex<()>,
+  guard: Option<MutexGuard<'static, ()>>,
+  _padding: [MaybeUninit<usize>; const {
+    (UV_MUTEX_SIZE
+      - size_of::<Mutex<()>>()
+      - size_of::<Option<MutexGuard<'static, ()>>>())
+      / size_of::<usize>()
+  }],
 }
-#[cfg(windows)]
-mod mutex {
-  use super::*;
-  use windows_sys::Win32::System::Threading as win;
-  type uv_mutex_t = win::CRITICAL_SECTION;
 
-  #[no_mangle]
-  unsafe extern "C" fn uv_mutex_init(lock: *mut uv_mutex_t) -> c_int {
-    unsafe {
-      win::InitializeCriticalSection(lock);
-    }
+#[no_mangle]
+unsafe extern "C" fn uv_mutex_init(lock: *mut uv_mutex_t) -> c_int {
+  unsafe {
+    addr_of_mut!((*lock).mutex).write(Mutex::new(()));
+    addr_of_mut!((*lock).guard).write(None);
     0
   }
+}
 
-  #[no_mangle]
-  unsafe extern "C" fn uv_mutex_lock(lock: *mut uv_mutex_t) {
-    unsafe {
-      win::EnterCriticalSection(lock);
-    }
+#[no_mangle]
+unsafe extern "C" fn uv_mutex_lock(lock: *mut uv_mutex_t) {
+  unsafe {
+    let guard = (*lock).mutex.lock();
+    addr_of_mut!((*lock).guard).replace(Some(guard));
   }
+}
 
-  #[no_mangle]
-  unsafe extern "C" fn uv_mutex_unlock(lock: *mut uv_mutex_t) {
-    unsafe {
-      win::LeaveCriticalSection(lock);
-    }
+#[no_mangle]
+unsafe extern "C" fn uv_mutex_unlock(lock: *mut uv_mutex_t) {
+  unsafe {
+    let Some(guard) = addr_of_mut!((*lock).guard).replace(None) else {
+      eprintln!("uv_mutex_unlock when not locked");
+      std::process::abort();
+    };
+    drop(guard);
   }
+}
 
-  #[no_mangle]
-  unsafe extern "C" fn uv_mutex_destroy(lock: *mut uv_mutex_t) {
-    unsafe {
-      win::DeleteCriticalSection(lock);
-    }
+#[no_mangle]
+unsafe extern "C" fn uv_mutex_destroy(lock: *mut uv_mutex_t) {
+  unsafe {
+    std::ptr::drop_in_place(addr_of_mut!((*lock).mutex));
+    std::ptr::drop_in_place(addr_of_mut!((*lock).guard));
   }
 }
 
@@ -138,11 +117,12 @@ struct uv_handle_t {
   pub r#loop: *mut uv_loop_t,
   pub r#type: uv_handle_type,
 
-  _padding: [MaybeUninit<u8>; const {
-    UV_HANDLE_SIZE
+  _padding: [MaybeUninit<usize>; const {
+    (UV_HANDLE_SIZE
       - size_of::<*mut c_void>()
       - size_of::<*mut uv_loop_t>()
-      - size_of::<uv_handle_type>()
+      - size_of::<uv_handle_type>())
+      / size_of::<usize>()
   }],
 }
 
@@ -161,13 +141,14 @@ struct uv_async_t {
   // private
   async_cb: uv_async_cb,
   work: napi_async_work,
-  _padding: [MaybeUninit<u8>; const {
-    UV_ASYNC_SIZE
+  _padding: [MaybeUninit<usize>; const {
+    (UV_ASYNC_SIZE
       - size_of::<*mut c_void>()
       - size_of::<*mut uv_loop_t>()
       - size_of::<uv_handle_type>()
       - size_of::<uv_async_cb>()
-      - size_of::<napi_async_work>()
+      - size_of::<napi_async_work>())
+      / size_of::<usize>()
   }],
 }
 
@@ -233,5 +214,29 @@ unsafe extern "C" fn async_exec_wrap(_env: napi_env, data: *mut c_void) {
   let data: *mut uv_async_t = data.cast();
   unsafe {
     ((*data).async_cb)(data);
+  }
+}
+
+#[cfg(test)]
+mod tests {
+  use super::*;
+
+  #[test]
+  fn sizes() {
+    assert_eq!(
+      std::mem::size_of::<libuv_sys_lite::uv_mutex_t>(),
+      UV_MUTEX_SIZE
+    );
+    assert_eq!(
+      std::mem::size_of::<libuv_sys_lite::uv_handle_t>(),
+      UV_HANDLE_SIZE
+    );
+    assert_eq!(
+      std::mem::size_of::<libuv_sys_lite::uv_async_t>(),
+      UV_ASYNC_SIZE
+    );
+    assert_eq!(std::mem::size_of::<uv_mutex_t>(), UV_MUTEX_SIZE);
+    assert_eq!(std::mem::size_of::<uv_handle_t>(), UV_HANDLE_SIZE);
+    assert_eq!(std::mem::size_of::<uv_async_t>(), UV_ASYNC_SIZE);
   }
 }

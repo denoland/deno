@@ -708,7 +708,7 @@ checksum = "0b023947811758c97c59bf9d1c188fd619ad4718dcaa767947df1cadb14f39f4"
 dependencies = [
  "glob",
  "libc",
- "libloading 0.8.3",
+ "libloading 0.8.5",
 ]
 
 [[package]]
@@ -1084,7 +1084,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "b28bfe653d79bd16c77f659305b195b82bb5ce0c0eb2a4846b82ddbd77586813"
 dependencies = [
  "bitflags 2.6.0",
- "libloading 0.8.3",
+ "libloading 0.7.4",
  "winapi",
 ]
 
@@ -1224,6 +1224,7 @@ dependencies = [
  "lazy-regex",
  "libc",
  "libsui",
+ "libuv-sys-lite",
  "libz-sys",
  "log",
  "lsp-types",
@@ -4024,7 +4025,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "6aae1df220ece3c0ada96b8153459b67eebe9ae9212258bb0134ae60416fdf76"
 dependencies = [
  "libc",
- "libloading 0.8.3",
+ "libloading 0.8.5",
  "pkg-config",
 ]
 
@@ -4193,9 +4194,9 @@ dependencies = [
 
 [[package]]
 name = "libloading"
-version = "0.8.3"
+version = "0.8.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "0c2a198fb6b0eada2a8df47933734e6d35d350665a33a3593d7164fa52c75c19"
+checksum = "4979f22fdb869068da03c9f7528f8297c6fd2606bc3a4affe42e6a823fdb8da4"
 dependencies = [
  "cfg-if",
  "windows-targets 0.52.4",
@@ -4243,11 +4244,12 @@ dependencies = [
 
 [[package]]
 name = "libuv-sys-lite"
-version = "1.48.0"
+version = "1.48.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "e1dc55d0b43c6f4c0081954b65cf898ee49bb33ad2a338db867edaf5a8a53b9f"
+checksum = "b83f92c5ef1865b1bce2559abd3a86885c4806da09bbb6e29529ba353b704d09"
 dependencies = [
  "bindgen 0.70.1",
+ "libloading 0.8.5",
 ]
 
 [[package]]
@@ -8217,7 +8219,7 @@ dependencies = [
  "js-sys",
  "khronos-egl",
  "libc",
- "libloading 0.8.3",
+ "libloading 0.7.4",
  "log",
  "metal",
  "naga",

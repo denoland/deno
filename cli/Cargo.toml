@@ -178,6 +178,7 @@ nix.workspace = true
 deno_bench_util.workspace = true
 pretty_assertions.workspace = true
 test_util.workspace = true
+libuv-sys-lite = "=1.48.1"
 
 [package.metadata.winres]
 # This section defines the metadata that appears in the deno.exe PE header.
