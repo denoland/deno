@@ -112,7 +112,7 @@ impl<'a> AtomicWriteFileFs for AtomicWriteFileFsAdapter<'a> {
   fn create_dir_all(&self, dir_path: &Path) -> std::io::Result<()> {
     self
       .fs
-      .mkdir_sync(dir_path, /* recursive */ true, 0o777)
+      .mkdir_sync(dir_path, /* recursive */ true, None)
       .map_err(|e| e.into_io_error())
   }
 

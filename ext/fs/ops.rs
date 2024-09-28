@@ -197,7 +197,7 @@ where
     .check_write(&path, "Deno.mkdirSync()")?;
 
   let fs = state.borrow::<FileSystemRc>();
-  fs.mkdir_sync(&path, recursive, mode)
+  fs.mkdir_sync(&path, recursive, Some(mode))
     .context_path("mkdir", &path)?;
 
   Ok(())
@@ -221,7 +221,7 @@ where
     (state.borrow::<FileSystemRc>().clone(), path)
   };
 
-  fs.mkdir_async(path.clone(), recursive, mode)
+  fs.mkdir_async(path.clone(), recursive, Some(mode))
     .await
     .context_path("mkdir", &path)?;
 
@@ -886,7 +886,7 @@ where
   const MAX_TRIES: u32 = 10;
   for _ in 0..MAX_TRIES {
     let path = tmp_name(&mut rng, &dir, prefix.as_deref(), suffix.as_deref())?;
-    match fs.mkdir_sync(&path, false, 0o700) {
+    match fs.mkdir_sync(&path, false, Some(0o700)) {
       Ok(_) => {
         // PERMISSIONS: ensure the absolute path is not leaked
         let path = strip_dir_prefix(&dir, dir_arg.as_deref(), path)?;
@@ -928,7 +928,11 @@ where
   const MAX_TRIES: u32 = 10;
   for _ in 0..MAX_TRIES {
     let path = tmp_name(&mut rng, &dir, prefix.as_deref(), suffix.as_deref())?;
-    match fs.clone().mkdir_async(path.clone(), false, 0o700).await {
+    match fs
+      .clone()
+      .mkdir_async(path.clone(), false, Some(0o700))
+      .await
+    {
       Ok(_) => {
         // PERMISSIONS: ensure the absolute path is not leaked
         let path = strip_dir_prefix(&dir, dir_arg.as_deref(), path)?;
