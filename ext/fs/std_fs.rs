@@ -101,7 +101,7 @@ impl FileSystem for RealFs {
     &self,
     path: &Path,
     recursive: bool,
-    mode: u32,
+    mode: Option<u32>,
   ) -> FsResult<()> {
     mkdir(path, recursive, mode)
   }
@@ -109,7 +109,7 @@ impl FileSystem for RealFs {
     &self,
     path: PathBuf,
     recursive: bool,
-    mode: u32,
+    mode: Option<u32>,
   ) -> FsResult<()> {
     spawn_blocking(move || mkdir(&path, recursive, mode)).await?
   }
@@ -407,11 +407,11 @@ impl FileSystem for RealFs {
   }
 }
 
-fn mkdir(path: &Path, recursive: bool, mode: u32) -> FsResult<()> {
+fn mkdir(path: &Path, recursive: bool, mode: Option<u32>) -> FsResult<()> {
   let mut builder = fs::DirBuilder::new();
   builder.recursive(recursive);
   #[cfg(unix)]
-  {
+  if let Some(mode) = mode {
     use std::os::unix::fs::DirBuilderExt;
     builder.mode(mode);
   }
