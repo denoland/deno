@@ -1,7 +1,6 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
 use deno_core::parking_lot::Mutex;
-use deno_core::parking_lot::MutexGuard;
 use deno_runtime::deno_napi::*;
 use std::mem::MaybeUninit;
 use std::ptr::addr_of_mut;
@@ -38,12 +37,8 @@ const UV_MUTEX_SIZE: usize = {
 #[repr(C)]
 struct uv_mutex_t {
   mutex: Mutex<()>,
-  guard: Option<MutexGuard<'static, ()>>,
   _padding: [MaybeUninit<usize>; const {
-    (UV_MUTEX_SIZE
-      - size_of::<Mutex<()>>()
-      - size_of::<Option<MutexGuard<'static, ()>>>())
-      / size_of::<usize>()
+    (UV_MUTEX_SIZE - size_of::<Mutex<()>>()) / size_of::<usize>()
   }],
 }
 
@@ -51,7 +46,6 @@ struct uv_mutex_t {
 unsafe extern "C" fn uv_mutex_init(lock: *mut uv_mutex_t) -> c_int {
   unsafe {
     addr_of_mut!((*lock).mutex).write(Mutex::new(()));
-    addr_of_mut!((*lock).guard).write(None);
     0
   }
 }
@@ -60,18 +54,16 @@ unsafe extern "C" fn uv_mutex_init(lock: *mut uv_mutex_t) -> c_int {
 unsafe extern "C" fn uv_mutex_lock(lock: *mut uv_mutex_t) {
   unsafe {
     let guard = (*lock).mutex.lock();
-    addr_of_mut!((*lock).guard).replace(Some(guard));
+    // forget the guard so it doesn't unlock when it goes out of scope.
+    // we're going to unlock it manually
+    std::mem::forget(guard);
   }
 }
 
 #[no_mangle]
 unsafe extern "C" fn uv_mutex_unlock(lock: *mut uv_mutex_t) {
   unsafe {
-    let Some(guard) = addr_of_mut!((*lock).guard).replace(None) else {
-      eprintln!("uv_mutex_unlock when not locked");
-      std::process::abort();
-    };
-    drop(guard);
+    (*lock).mutex.force_unlock();
   }
 }
 
@@ -79,7 +71,6 @@ unsafe extern "C" fn uv_mutex_unlock(lock: *mut uv_mutex_t) {
 unsafe extern "C" fn uv_mutex_destroy(lock: *mut uv_mutex_t) {
   unsafe {
     std::ptr::drop_in_place(addr_of_mut!((*lock).mutex));
-    std::ptr::drop_in_place(addr_of_mut!((*lock).guard));
   }
 }
 
