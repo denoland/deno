@@ -36,8 +36,8 @@ use deno_core::ModuleSpecifier;
 use deno_lint::linter::LintConfig as DenoLintConfig;
 use deno_npm::npm_rc::ResolvedNpmRc;
 use deno_package_json::PackageJsonCache;
+use deno_path_util::url_to_file_path;
 use deno_runtime::deno_node::PackageJson;
-use deno_runtime::fs_util::specifier_to_file_path;
 use indexmap::IndexSet;
 use lsp_types::ClientCapabilities;
 use std::collections::BTreeMap;
@@ -801,7 +801,7 @@ impl Settings {
   /// Returns `None` if the value should be deferred to the presence of a
   /// `deno.json` file.
   pub fn specifier_enabled(&self, specifier: &ModuleSpecifier) -> Option<bool> {
-    let Ok(path) = specifier_to_file_path(specifier) else {
+    let Ok(path) = url_to_file_path(specifier) else {
       // Non-file URLs are not disabled by these settings.
       return Some(true);
     };
@@ -810,7 +810,7 @@ impl Settings {
     let mut disable_paths = vec![];
     let mut enable_paths = None;
     if let Some(folder_uri) = folder_uri {
-      if let Ok(folder_path) = specifier_to_file_path(folder_uri) {
+      if let Ok(folder_path) = url_to_file_path(folder_uri) {
         disable_paths = settings
           .disable_paths
           .iter()
@@ -847,12 +847,12 @@ impl Settings {
     &self,
     specifier: &ModuleSpecifier,
   ) -> (&WorkspaceSettings, Option<&ModuleSpecifier>) {
-    let Ok(path) = specifier_to_file_path(specifier) else {
+    let Ok(path) = url_to_file_path(specifier) else {
       return (&self.unscoped, self.first_folder.as_ref());
     };
     for (folder_uri, settings) in self.by_workspace_folder.iter().rev() {
       if let Some(settings) = settings {
-        let Ok(folder_path) = specifier_to_file_path(folder_uri) else {
+        let Ok(folder_path) = url_to_file_path(folder_uri) else {
           continue;
         };
         if path.starts_with(folder_path) {
@@ -1767,7 +1767,7 @@ impl ConfigTree {
         let config_file_path = (|| {
           let config_setting = ws_settings.config.as_ref()?;
           let config_uri = folder_uri.join(config_setting).ok()?;
-          specifier_to_file_path(&config_uri).ok()
+          url_to_file_path(&config_uri).ok()
         })();
         if config_file_path.is_some() || ws_settings.import_map.is_some() {
           scopes.insert(
@@ -1844,7 +1844,7 @@ impl ConfigTree {
     let scope = config_file.specifier.join(".").unwrap();
     let json_text = serde_json::to_string(&config_file.json).unwrap();
     let test_fs = deno_runtime::deno_fs::InMemoryFs::default();
-    let config_path = specifier_to_file_path(&config_file.specifier).unwrap();
+    let config_path = url_to_file_path(&config_file.specifier).unwrap();
     test_fs.setup_text_files(vec![(
       config_path.to_string_lossy().to_string(),
       json_text,

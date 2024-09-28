@@ -39,10 +39,10 @@ use deno_graph::ModuleGraph;
 use deno_graph::ModuleGraphError;
 use deno_graph::ResolutionError;
 use deno_graph::SpecifierError;
+use deno_path_util::url_to_file_path;
 use deno_runtime::deno_fs::FileSystem;
 use deno_runtime::deno_node;
 use deno_runtime::deno_permissions::PermissionsContainer;
-use deno_runtime::fs_util::specifier_to_file_path;
 use deno_semver::jsr::JsrDepPackageReq;
 use deno_semver::package::PackageNv;
 use import_map::ImportMapError;
@@ -948,7 +948,7 @@ pub fn has_graph_root_local_dependent_changed(
     },
   );
   while let Some((s, _)) = dependent_specifiers.next() {
-    if let Ok(path) = specifier_to_file_path(s) {
+    if let Ok(path) = url_to_file_path(s) {
       if let Ok(path) = canonicalize_path(&path) {
         if canonicalized_changed_paths.contains(&path) {
           return true;
