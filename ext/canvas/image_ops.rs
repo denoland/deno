@@ -371,12 +371,14 @@ where
   out
 }
 
-#[rustfmt::skip]
 /// Convert the color space of the image from the ICC profile to sRGB.
 pub(crate) fn to_srgb_from_icc_profile(
   image: DynamicImage,
   icc_profile: Option<Vec<u8>>,
-  unmatch_color_handler: fn(ColorType, DynamicImage) -> Result<DynamicImage, AnyError>,
+  unmatch_color_handler: fn(
+    ColorType,
+    DynamicImage,
+  ) -> Result<DynamicImage, AnyError>,
 ) -> Result<DynamicImage, AnyError> {
   match icc_profile {
     // If there is no color profile information, return the image as is.
@@ -389,28 +391,68 @@ pub(crate) fn to_srgb_from_icc_profile(
         let color = image.color();
         match color {
           ColorType::L8 => {
-            Ok(DynamicImage::ImageLuma8(process_icc_profile_conversion(&image.to_luma8(), color, icc_profile,srgb_icc_profile)))
+            Ok(DynamicImage::ImageLuma8(process_icc_profile_conversion(
+              &image.to_luma8(),
+              color,
+              icc_profile,
+              srgb_icc_profile,
+            )))
           }
           ColorType::L16 => {
-            Ok(DynamicImage::ImageLuma16(process_icc_profile_conversion(&image.to_luma16(),color, icc_profile,srgb_icc_profile)))
+            Ok(DynamicImage::ImageLuma16(process_icc_profile_conversion(
+              &image.to_luma16(),
+              color,
+              icc_profile,
+              srgb_icc_profile,
+            )))
           }
           ColorType::La8 => {
-            Ok(DynamicImage::ImageLumaA8(process_icc_profile_conversion(&image.to_luma_alpha8(), color, icc_profile,srgb_icc_profile)))
+            Ok(DynamicImage::ImageLumaA8(process_icc_profile_conversion(
+              &image.to_luma_alpha8(),
+              color,
+              icc_profile,
+              srgb_icc_profile,
+            )))
           }
           ColorType::La16 => {
-            Ok(DynamicImage::ImageLumaA16(process_icc_profile_conversion(&image.to_luma_alpha16(), color, icc_profile,srgb_icc_profile)))
-          },
+            Ok(DynamicImage::ImageLumaA16(process_icc_profile_conversion(
+              &image.to_luma_alpha16(),
+              color,
+              icc_profile,
+              srgb_icc_profile,
+            )))
+          }
           ColorType::Rgb8 => {
-            Ok(DynamicImage::ImageRgb8(process_icc_profile_conversion(&image.to_rgb8(), color, icc_profile,srgb_icc_profile)))
+            Ok(DynamicImage::ImageRgb8(process_icc_profile_conversion(
+              &image.to_rgb8(),
+              color,
+              icc_profile,
+              srgb_icc_profile,
+            )))
           }
           ColorType::Rgb16 => {
-            Ok(DynamicImage::ImageRgb16(process_icc_profile_conversion(&image.to_rgb16(), color, icc_profile,srgb_icc_profile)))
+            Ok(DynamicImage::ImageRgb16(process_icc_profile_conversion(
+              &image.to_rgb16(),
+              color,
+              icc_profile,
+              srgb_icc_profile,
+            )))
           }
           ColorType::Rgba8 => {
-            Ok(DynamicImage::ImageRgba8(process_icc_profile_conversion(&image.to_rgba8(), color, icc_profile,srgb_icc_profile)))
+            Ok(DynamicImage::ImageRgba8(process_icc_profile_conversion(
+              &image.to_rgba8(),
+              color,
+              icc_profile,
+              srgb_icc_profile,
+            )))
           }
           ColorType::Rgba16 => {
-            Ok(DynamicImage::ImageRgba16(process_icc_profile_conversion(&image.to_rgba16(),color, icc_profile,srgb_icc_profile)))
+            Ok(DynamicImage::ImageRgba16(process_icc_profile_conversion(
+              &image.to_rgba16(),
+              color,
+              icc_profile,
+              srgb_icc_profile,
+            )))
           }
           x => unmatch_color_handler(x, image),
         }
