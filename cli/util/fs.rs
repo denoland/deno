@@ -20,7 +20,6 @@ use deno_core::error::AnyError;
 use deno_core::unsync::spawn_blocking;
 use deno_core::ModuleSpecifier;
 use deno_runtime::deno_fs::FileSystem;
-use deno_runtime::deno_node::PathClean;
 
 use crate::util::path::get_atomic_file_path;
 use crate::util::progress_bar::ProgressBar;
@@ -290,46 +289,16 @@ pub fn canonicalize_path(path: &Path) -> Result<PathBuf, Error> {
 pub fn canonicalize_path_maybe_not_exists(
   path: &Path,
 ) -> Result<PathBuf, Error> {
-  canonicalize_path_maybe_not_exists_with_custom_fn(path, canonicalize_path)
+  deno_path_util::canonicalize_path_maybe_not_exists(path, &canonicalize_path)
 }
 
 pub fn canonicalize_path_maybe_not_exists_with_fs(
   path: &Path,
   fs: &dyn FileSystem,
 ) -> Result<PathBuf, Error> {
-  canonicalize_path_maybe_not_exists_with_custom_fn(path, |path| {
+  deno_path_util::canonicalize_path_maybe_not_exists(path, &|path| {
     fs.realpath_sync(path).map_err(|err| err.into_io_error())
   })
-}
-
-fn canonicalize_path_maybe_not_exists_with_custom_fn(
-  path: &Path,
-  canonicalize: impl Fn(&Path) -> Result<PathBuf, Error>,
-) -> Result<PathBuf, Error> {
-  let path = path.to_path_buf().clean();
-  let mut path = path.as_path();
-  let mut names_stack = Vec::new();
-  loop {
-    match canonicalize(path) {
-      Ok(mut canonicalized_path) => {
-        for name in names_stack.into_iter().rev() {
-          canonicalized_path = canonicalized_path.join(name);
-        }
-        return Ok(canonicalized_path);
-      }
-      Err(err) if err.kind() == ErrorKind::NotFound => {
-        names_stack.push(match path.file_name() {
-          Some(name) => name.to_owned(),
-          None => return Err(err),
-        });
-        path = match path.parent() {
-          Some(parent) => parent,
-          None => return Err(err),
-        };
-      }
-      Err(err) => return Err(err),
-    }
-  }
 }
 
 /// Collects module specifiers that satisfy the given predicate as a file path, by recursively walking `include`.

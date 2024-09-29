@@ -16,8 +16,13 @@ path = "lib.rs"
 [features]
 
 [dependencies]
+anyhow.workspace = true
+base32.workspace = true
 deno_media_type.workspace = true
+deno_package_json.workspace = true
 deno_path_util.workspace = true
+deno_semver.workspace = true
+node_resolver.workspace = true
 url.workspace = true
 
 [dev-dependencies]

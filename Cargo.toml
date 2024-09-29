@@ -405,3 +405,6 @@ opt-level = 3
 opt-level = 3
 [profile.release.package.zstd-sys]
 opt-level = 3
+
+[patch.crates-io]
+deno_path_util = { path = "../deno_path_util" }

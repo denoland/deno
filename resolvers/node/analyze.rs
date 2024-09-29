@@ -6,6 +6,8 @@ use std::collections::HashSet;
 use std::path::Path;
 use std::path::PathBuf;
 
+use deno_path_util::url_from_file_path;
+use deno_path_util::url_to_file_path;
 use futures::future::LocalBoxFuture;
 use futures::stream::FuturesUnordered;
 use futures::FutureExt;
@@ -18,7 +20,6 @@ use url::Url;
 
 use crate::env::NodeResolverEnv;
 use crate::package_json::load_pkg_json;
-use crate::path::to_file_specifier;
 use crate::resolution::NodeResolverRc;
 use crate::NodeModuleKind;
 use crate::NodeResolutionMode;
@@ -135,8 +136,7 @@ impl<TCjsCodeAnalyzer: CjsCodeAnalyzer, TNodeResolverEnv: NodeResolverEnv>
 
     source.push(format!(
       "const mod = require(\"{}\");",
-      entry_specifier
-        .to_file_path()
+      url_to_file_path(entry_specifier)
         .unwrap()
         .to_str()
         .unwrap()
@@ -297,15 +297,13 @@ impl<TCjsCodeAnalyzer: CjsCodeAnalyzer, TNodeResolverEnv: NodeResolverEnv>
       todo!();
     }
 
-    let referrer_path = referrer.to_file_path().unwrap();
+    let referrer_path = url_to_file_path(referrer).unwrap();
     if specifier.starts_with("./") || specifier.starts_with("../") {
       if let Some(parent) = referrer_path.parent() {
-        return Some(
-          self
-            .file_extension_probe(parent.join(specifier), &referrer_path)
-            .map(|p| to_file_specifier(&p)),
-        )
-        .transpose();
+        return self
+          .file_extension_probe(parent.join(specifier), &referrer_path)
+          .and_then(|p| url_from_file_path(&p).map_err(AnyError::from))
+          .map(Some);
       } else {
         todo!();
       }
@@ -362,24 +360,22 @@ impl<TCjsCodeAnalyzer: CjsCodeAnalyzer, TNodeResolverEnv: NodeResolverEnv>
             load_pkg_json(self.env.pkg_json_fs(), &package_json_path)?;
           if let Some(package_json) = maybe_package_json {
             if let Some(main) = package_json.main(NodeModuleKind::Cjs) {
-              return Ok(Some(to_file_specifier(&d.join(main).clean())));
+              return Ok(Some(url_from_file_path(&d.join(main).clean())?));
             }
           }
 
-          return Ok(Some(to_file_specifier(&d.join("index.js").clean())));
+          return Ok(Some(url_from_file_path(&d.join("index.js").clean())?));
         }
-        return Some(
-          self
-            .file_extension_probe(d, &referrer_path)
-            .map(|p| to_file_specifier(&p)),
-        )
-        .transpose();
+        return self
+          .file_extension_probe(d, &referrer_path)
+          .and_then(|p| url_from_file_path(&p).map_err(AnyError::from))
+          .map(Some);
       } else if let Some(main) = package_json.main(NodeModuleKind::Cjs) {
-        return Ok(Some(to_file_specifier(&module_dir.join(main).clean())));
+        return Ok(Some(url_from_file_path(&module_dir.join(main).clean())?));
       } else {
-        return Ok(Some(to_file_specifier(
+        return Ok(Some(url_from_file_path(
           &module_dir.join("index.js").clean(),
-        )));
+        )?));
       }
     }
 
@@ -395,7 +391,7 @@ impl<TCjsCodeAnalyzer: CjsCodeAnalyzer, TNodeResolverEnv: NodeResolverEnv>
         parent.join("node_modules").join(specifier)
       };
       if let Ok(path) = self.file_extension_probe(path, &referrer_path) {
-        return Ok(Some(to_file_specifier(&path)));
+        return Ok(Some(url_from_file_path(&path)?));
       }
       last = parent;
     }

@@ -5,6 +5,7 @@ use std::path::Path;
 use std::path::PathBuf;
 
 use deno_media_type::MediaType;
+use deno_path_util::url_from_file_path;
 use deno_path_util::url_to_file_path;
 use url::Url;
 
@@ -343,7 +344,7 @@ impl<Fs: SloppyImportResolverFs> SloppyImportsResolver<Fs> {
 
     for (probe_path, reason) in probe_paths {
       if self.fs.is_file(&probe_path) {
-        if let Ok(specifier) = Url::from_file_path(probe_path) {
+        if let Ok(specifier) = url_from_file_path(&probe_path) {
           match reason {
             SloppyImportsResolutionReason::JsToTs => {
               return Some(SloppyImportsResolution::JsToTs(specifier));
@@ -386,6 +387,7 @@ mod test {
       struct RealSloppyImportsResolverFs;
       impl SloppyImportResolverFs for RealSloppyImportsResolverFs {
         fn stat_sync(&self, path: &Path) -> Option<SloppyImportsFsEntry> {
+          #[allow(clippy::disallowed_methods)]
           let stat = std::fs::metadata(path).ok()?;
           if stat.is_dir() {
             Some(SloppyImportsFsEntry::Dir)
