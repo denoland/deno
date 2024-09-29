@@ -68,7 +68,6 @@ impl<T: Primitive> PremultiplyAlpha for Rgba<T> {
   }
 }
 
-// make public if needed
 fn process_premultiply_alpha<I, P, S>(image: &I) -> ImageBuffer<P, Vec<S>>
 where
   I: GenericImageView<Pixel = P>,
@@ -98,16 +97,16 @@ pub(crate) fn premultiply_alpha(
   let color = image.color();
   match color {
     ColorType::La8 => Ok(DynamicImage::ImageLumaA8(process_premultiply_alpha(
-      &image.to_luma_alpha8(),
+      image.as_luma_alpha8().unwrap(),
     ))),
-    ColorType::Rgba8 => Ok(DynamicImage::ImageRgba8(
-      process_premultiply_alpha(&image.to_rgba8()),
-    )),
     ColorType::La16 => Ok(DynamicImage::ImageLumaA16(
-      process_premultiply_alpha(&image.to_luma_alpha16()),
+      process_premultiply_alpha(image.as_luma_alpha16().unwrap()),
+    )),
+    ColorType::Rgba8 => Ok(DynamicImage::ImageRgba8(
+      process_premultiply_alpha(image.as_rgba8().unwrap()),
     )),
     ColorType::Rgba16 => Ok(DynamicImage::ImageRgba16(
-      process_premultiply_alpha(&image.to_rgba16()),
+      process_premultiply_alpha(image.as_rgba16().unwrap()),
     )),
     x => unmatch_color_handler(x, image),
   }
@@ -187,7 +186,17 @@ impl<T: Primitive + SaturatingMul + Ord> UnpremultiplyAlpha for LumaA<T> {
   }
 }
 
-// make public if needed
+fn is_premultiplied_alpha<I, P, S>(image: &I) -> bool
+where
+  I: GenericImageView<Pixel = P>,
+  P: Pixel<Subpixel = S> + UnpremultiplyAlpha + 'static,
+  S: Primitive + 'static,
+{
+  image
+    .pixels()
+    .any(|(_, _, pixel)| pixel.is_premultiplied_alpha())
+}
+
 fn process_unpremultiply_alpha<I, P, S>(image: &I) -> ImageBuffer<P, Vec<S>>
 where
   I: GenericImageView<Pixel = P>,
@@ -197,17 +206,8 @@ where
   let (width, height) = image.dimensions();
   let mut out = ImageBuffer::new(width, height);
 
-  let is_premultiplied_alpha = image
-    .pixels()
-    .any(|(_, _, pixel)| pixel.is_premultiplied_alpha());
-
   for (x, y, pixel) in image.pixels() {
-    let pixel = if is_premultiplied_alpha {
-      pixel.unpremultiply_alpha()
-    } else {
-      // return the original
-      pixel
-    };
+    let pixel = pixel.unpremultiply_alpha();
 
     out.put_pixel(x, y, pixel);
   }
@@ -225,16 +225,32 @@ pub(crate) fn unpremultiply_alpha(
 ) -> Result<DynamicImage, AnyError> {
   match image.color() {
     ColorType::La8 => Ok(DynamicImage::ImageLumaA8(
-      process_unpremultiply_alpha(&image.to_luma_alpha8()),
-    )),
-    ColorType::Rgba8 => Ok(DynamicImage::ImageRgba8(
-      process_unpremultiply_alpha(&image.to_rgba8()),
+      if is_premultiplied_alpha(image.as_luma_alpha8().unwrap()) {
+        process_unpremultiply_alpha(image.as_luma_alpha8().unwrap())
+      } else {
+        image.into_luma_alpha8()
+      },
     )),
     ColorType::La16 => Ok(DynamicImage::ImageLumaA16(
-      process_unpremultiply_alpha(&image.to_luma_alpha16()),
+      if is_premultiplied_alpha(image.as_luma_alpha16().unwrap()) {
+        process_unpremultiply_alpha(image.as_luma_alpha16().unwrap())
+      } else {
+        image.into_luma_alpha16()
+      },
+    )),
+    ColorType::Rgba8 => Ok(DynamicImage::ImageRgba8(
+      if is_premultiplied_alpha(image.as_rgba8().unwrap()) {
+        process_unpremultiply_alpha(image.as_rgba8().unwrap())
+      } else {
+        image.into_rgba8()
+      },
     )),
     ColorType::Rgba16 => Ok(DynamicImage::ImageRgba16(
-      process_unpremultiply_alpha(&image.to_rgba16()),
+      if is_premultiplied_alpha(image.as_rgba16().unwrap()) {
+        process_unpremultiply_alpha(image.as_rgba16().unwrap())
+      } else {
+        image.into_rgba16()
+      },
     )),
     x => unmatch_color_handler(x, image),
   }
@@ -319,7 +335,6 @@ impl_transform_color_profile!(Rgb<u16>);
 impl_transform_color_profile!(Rgba<u8>);
 impl_transform_color_profile!(Rgba<u16>);
 
-// make public if needed
 fn process_icc_profile_conversion<I, P, S>(
   image: &I,
   color: ColorType,
@@ -392,7 +407,7 @@ pub(crate) fn to_srgb_from_icc_profile(
         match color {
           ColorType::L8 => {
             Ok(DynamicImage::ImageLuma8(process_icc_profile_conversion(
-              &image.to_luma8(),
+              image.as_luma8().unwrap(),
               color,
               icc_profile,
               srgb_icc_profile,
@@ -400,7 +415,7 @@ pub(crate) fn to_srgb_from_icc_profile(
           }
           ColorType::L16 => {
             Ok(DynamicImage::ImageLuma16(process_icc_profile_conversion(
-              &image.to_luma16(),
+              image.as_luma16().unwrap(),
               color,
               icc_profile,
               srgb_icc_profile,
@@ -408,7 +423,7 @@ pub(crate) fn to_srgb_from_icc_profile(
           }
           ColorType::La8 => {
             Ok(DynamicImage::ImageLumaA8(process_icc_profile_conversion(
-              &image.to_luma_alpha8(),
+              image.as_luma_alpha8().unwrap(),
               color,
               icc_profile,
               srgb_icc_profile,
@@ -416,7 +431,7 @@ pub(crate) fn to_srgb_from_icc_profile(
           }
           ColorType::La16 => {
             Ok(DynamicImage::ImageLumaA16(process_icc_profile_conversion(
-              &image.to_luma_alpha16(),
+              image.as_luma_alpha16().unwrap(),
               color,
               icc_profile,
               srgb_icc_profile,
@@ -424,7 +439,7 @@ pub(crate) fn to_srgb_from_icc_profile(
           }
           ColorType::Rgb8 => {
             Ok(DynamicImage::ImageRgb8(process_icc_profile_conversion(
-              &image.to_rgb8(),
+              image.as_rgb8().unwrap(),
               color,
               icc_profile,
               srgb_icc_profile,
@@ -432,7 +447,7 @@ pub(crate) fn to_srgb_from_icc_profile(
           }
           ColorType::Rgb16 => {
             Ok(DynamicImage::ImageRgb16(process_icc_profile_conversion(
-              &image.to_rgb16(),
+              image.as_rgb16().unwrap(),
               color,
               icc_profile,
               srgb_icc_profile,
@@ -440,7 +455,7 @@ pub(crate) fn to_srgb_from_icc_profile(
           }
           ColorType::Rgba8 => {
             Ok(DynamicImage::ImageRgba8(process_icc_profile_conversion(
-              &image.to_rgba8(),
+              image.as_rgba8().unwrap(),
               color,
               icc_profile,
               srgb_icc_profile,
@@ -448,7 +463,7 @@ pub(crate) fn to_srgb_from_icc_profile(
           }
           ColorType::Rgba16 => {
             Ok(DynamicImage::ImageRgba16(process_icc_profile_conversion(
-              &image.to_rgba16(),
+              image.as_rgba16().unwrap(),
               color,
               icc_profile,
               srgb_icc_profile,
@@ -591,7 +606,6 @@ pub(crate) fn to_srgb_from_icc_profile(
 //   }
 // }
 
-// // make public if needed
 // fn process_srgb_to_display_p3<I, P, S>(image: &I) -> ImageBuffer<P, Vec<S>>
 // where
 //   I: GenericImageView<Pixel = P>,
@@ -620,21 +634,23 @@ pub(crate) fn to_srgb_from_icc_profile(
 // ) -> Result<DynamicImage, AnyError> {
 //   match image.color() {
 //     // The conversion of the lumincance color types to the display-p3 color space is meaningless.
-//     ColorType::L8 => Ok(DynamicImage::ImageLuma8(image.to_luma8())),
-//     ColorType::L16 => Ok(DynamicImage::ImageLuma16(image.to_luma16())),
-//     ColorType::La8 => Ok(DynamicImage::ImageLumaA8(image.to_luma_alpha8())),
-//     ColorType::La16 => Ok(DynamicImage::ImageLumaA16(image.to_luma_alpha16())),
+//     ColorType::L8 => Ok(DynamicImage::ImageLuma8(image.into_luma8())),
+//     ColorType::L16 => Ok(DynamicImage::ImageLuma16(image.into_luma16())),
+//     ColorType::La8 => Ok(DynamicImage::ImageLumaA8(image.into_luma_alpha8())),
+//     ColorType::La16 => {
+//       Ok(DynamicImage::ImageLumaA16(image.into_luma_alpha16()))
+//     }
 //     ColorType::Rgb8 => Ok(DynamicImage::ImageRgb8(process_srgb_to_display_p3(
-//       &image.to_rgb8(),
+//       image.as_rgb8().unwrap(),
 //     ))),
 //     ColorType::Rgb16 => Ok(DynamicImage::ImageRgb16(
-//       process_srgb_to_display_p3(&image.to_rgb16()),
+//       process_srgb_to_display_p3(image.as_rgb16().unwrap()),
 //     )),
 //     ColorType::Rgba8 => Ok(DynamicImage::ImageRgba8(
-//       process_srgb_to_display_p3(&image.to_rgba8()),
+//       process_srgb_to_display_p3(image.as_rgba8().unwrap()),
 //     )),
 //     ColorType::Rgba16 => Ok(DynamicImage::ImageRgba16(
-//       process_srgb_to_display_p3(&image.to_rgba16()),
+//       process_srgb_to_display_p3(image.as_rgba16().unwrap()),
 //     )),
 //     x => unmatch_color_handler(x, image),
 //   }
