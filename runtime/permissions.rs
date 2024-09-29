@@ -101,7 +101,7 @@ impl deno_permissions::PermissionDescriptorParser
     if text.is_empty() {
       Err(AnyError::msg("Empty sys not allowed"))
     } else {
-      Ok(SysDescriptor(text.to_string()))
+      Ok(SysDescriptor::parse(text.to_string())?)
     }
   }
 

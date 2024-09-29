@@ -2,7 +2,6 @@
 
 use std::sync::atomic::AtomicUsize;
 use std::sync::atomic::Ordering;
-use std::sync::Arc;
 use std::time;
 
 use deno_core::error::generic_error;
@@ -12,9 +11,7 @@ use deno_core::op2;
 use deno_core::v8;
 use deno_core::ModuleSpecifier;
 use deno_core::OpState;
-use deno_runtime::deno_permissions::create_child_permissions;
 use deno_runtime::deno_permissions::ChildPermissionsArg;
-use deno_runtime::deno_permissions::PermissionDescriptorParser;
 use deno_runtime::deno_permissions::PermissionsContainer;
 use tokio::sync::mpsc::UnboundedSender;
 use uuid::Uuid;
@@ -61,19 +58,8 @@ pub fn op_pledge_test_permissions(
   #[serde] args: ChildPermissionsArg,
 ) -> Result<Uuid, AnyError> {
   let token = Uuid::new_v4();
-  let permission_desc_parser = state
-    .borrow::<Arc<dyn PermissionDescriptorParser>>()
-    .clone();
   let parent_permissions = state.borrow_mut::<PermissionsContainer>();
-  let worker_permissions = {
-    let mut parent_permissions = parent_permissions.inner.lock();
-    let perms = create_child_permissions(
-      permission_desc_parser.as_ref(),
-      &mut parent_permissions,
-      args,
-    )?;
-    PermissionsContainer::new(permission_desc_parser, perms)
-  };
+  let worker_permissions = parent_permissions.create_child_permissions(args)?;
   let parent_permissions = parent_permissions.clone();
 
   if state.try_take::<PermissionsHolder>().is_some() {
@@ -83,7 +69,6 @@ pub fn op_pledge_test_permissions(
   state.put::<PermissionsHolder>(PermissionsHolder(token, parent_permissions));
 
   // NOTE: This call overrides current permission set for the worker
-  state.put(worker_permissions.inner.clone());
   state.put::<PermissionsContainer>(worker_permissions);
 
   Ok(token)
@@ -100,7 +85,6 @@ pub fn op_restore_test_permissions(
     }
 
     let permissions = permissions_holder.1;
-    state.put(permissions.inner.clone());
     state.put::<PermissionsContainer>(permissions);
     Ok(())
   } else {
