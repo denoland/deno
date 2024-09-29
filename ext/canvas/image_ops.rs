@@ -89,13 +89,8 @@ where
 /// Premultiply the alpha channel of the image.
 pub(crate) fn premultiply_alpha(
   image: DynamicImage,
-  unmatch_color_handler: fn(
-    ColorType,
-    DynamicImage,
-  ) -> Result<DynamicImage, AnyError>,
 ) -> Result<DynamicImage, AnyError> {
-  let color = image.color();
-  match color {
+  match image.color() {
     ColorType::La8 => Ok(DynamicImage::ImageLumaA8(process_premultiply_alpha(
       image.as_luma_alpha8().unwrap(),
     ))),
@@ -108,7 +103,8 @@ pub(crate) fn premultiply_alpha(
     ColorType::Rgba16 => Ok(DynamicImage::ImageRgba16(
       process_premultiply_alpha(image.as_rgba16().unwrap()),
     )),
-    x => unmatch_color_handler(x, image),
+    // If the image does not have an alpha channel, return the image as is.
+    _ => Ok(image),
   }
 }
 
@@ -218,10 +214,6 @@ where
 /// Invert the premultiplied alpha channel of the image.
 pub(crate) fn unpremultiply_alpha(
   image: DynamicImage,
-  unmatch_color_handler: fn(
-    ColorType,
-    DynamicImage,
-  ) -> Result<DynamicImage, AnyError>,
 ) -> Result<DynamicImage, AnyError> {
   match image.color() {
     ColorType::La8 => Ok(DynamicImage::ImageLumaA8(
@@ -252,7 +244,8 @@ pub(crate) fn unpremultiply_alpha(
         image.into_rgba16()
       },
     )),
-    x => unmatch_color_handler(x, image),
+    // If the image does not have an alpha channel, return the image as is.
+    _ => Ok(image),
   }
 }
 

@@ -260,37 +260,24 @@ fn apply_premultiply_alpha(
   image_bitmap_source: &ImageBitmapSource,
   premultiply_alpha: &PremultiplyAlpha,
 ) -> Result<DynamicImage, AnyError> {
-  let color = image.color();
-  if !color.has_alpha() {
-    Ok(image)
-  } else {
-    fn unmatch_color_handler(
-      _: ColorType,
-      image: DynamicImage,
-    ) -> Result<DynamicImage, AnyError> {
-      Ok(image)
-    }
-    match premultiply_alpha {
-      // 1.
-      PremultiplyAlpha::Default => Ok(image),
+  match premultiply_alpha {
+    // 1.
+    PremultiplyAlpha::Default => Ok(image),
 
-      // https://html.spec.whatwg.org/multipage/canvas.html#convert-from-premultiplied
+    // https://html.spec.whatwg.org/multipage/canvas.html#convert-from-premultiplied
 
-      // 2.
-      PremultiplyAlpha::Premultiply => {
-        process_premultiply_alpha(image, unmatch_color_handler)
+    // 2.
+    PremultiplyAlpha::Premultiply => process_premultiply_alpha(image),
+    // 3.
+    PremultiplyAlpha::None => {
+      // NOTE: It's not clear how to handle the case of ImageData.
+      // https://issues.chromium.org/issues/339759426
+      // https://github.com/whatwg/html/issues/5365
+      if *image_bitmap_source == ImageBitmapSource::ImageData {
+        return Ok(image);
       }
-      // 3.
-      PremultiplyAlpha::None => {
-        // NOTE: It's not clear how to handle the case of ImageData.
-        // https://issues.chromium.org/issues/339759426
-        // https://github.com/whatwg/html/issues/5365
-        if *image_bitmap_source == ImageBitmapSource::ImageData {
-          return Ok(image);
-        }
 
-        unpremultiply_alpha(image, unmatch_color_handler)
-      }
+      unpremultiply_alpha(image)
     }
   }
 }
