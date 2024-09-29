@@ -256,22 +256,20 @@ function createImageBitmap(
     // TODO(Hajime-san): this should be real async
     const processedImage = op_create_image_bitmap(
       buf,
-      {
-        width,
-        height,
-        sx,
-        sy,
-        sw,
-        sh,
-        imageOrientation: options.imageOrientation ?? "from-image",
-        premultiplyAlpha: options.premultiplyAlpha ?? "default",
-        colorSpaceConversion: options.colorSpaceConversion ?? "default",
-        resizeWidth: options.resizeWidth,
-        resizeHeight: options.resizeHeight,
-        resizeQuality: options.resizeQuality ?? "low",
-        imageBitmapSource,
-        mimeType,
-      },
+      width,
+      height,
+      sx,
+      sy,
+      sw,
+      sh,
+      options.imageOrientation ?? "from-image",
+      options.premultiplyAlpha ?? "default",
+      options.colorSpaceConversion ?? "default",
+      options.resizeWidth,
+      options.resizeHeight,
+      options.resizeQuality ?? "low",
+      imageBitmapSource,
+      mimeType,
     );
     imageBitmap[_bitmapData] = processedImage.data;
     imageBitmap[_width] = processedImage.width;

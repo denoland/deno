@@ -71,25 +71,6 @@ enum ResizeQuality {
   High,
 }
 
-#[derive(Debug, Deserialize)]
-#[serde(rename_all = "camelCase")]
-struct OpCreateImageBitmapArgs {
-  width: u32,
-  height: u32,
-  sx: Option<i32>,
-  sy: Option<i32>,
-  sw: Option<i32>,
-  sh: Option<i32>,
-  image_orientation: ImageOrientation,
-  premultiply_alpha: PremultiplyAlpha,
-  color_space_conversion: ColorSpaceConversion,
-  resize_width: Option<u32>,
-  resize_height: Option<u32>,
-  resize_quality: ResizeQuality,
-  image_bitmap_source: ImageBitmapSource,
-  mime_type: String,
-}
-
 #[derive(Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
 struct OpCreateImageBitmapReturn {
@@ -105,7 +86,7 @@ fn decode_bitmap_data(
   width: u32,
   height: u32,
   image_bitmap_source: &ImageBitmapSource,
-  mime_type: String,
+  mime_type: &str,
 ) -> Result<DecodeBitmapDataReturn, AnyError> {
   let (image, width, height, icc_profile) = match image_bitmap_source {
     ImageBitmapSource::Blob => {
@@ -116,7 +97,7 @@ fn decode_bitmap_data(
         ))
         .into()
       }
-      let (image, icc_profile) = match &*mime_type {
+      let (image, icc_profile) = match mime_type {
         // Should we support the "image/apng" MIME type here?
         "image/png" => {
           let mut decoder: PngDecoder<ImageDecoderFromReaderType> =
@@ -284,46 +265,27 @@ fn apply_premultiply_alpha(
 
 #[op2]
 #[serde]
+#[allow(clippy::too_many_arguments)]
 pub(super) fn op_create_image_bitmap(
-  #[buffer] zero_copy: JsBuffer,
-  #[serde] args: OpCreateImageBitmapArgs,
+  #[buffer] buf: JsBuffer,
+  width: u32,
+  height: u32,
+  sx: Option<i32>,
+  sy: Option<i32>,
+  sw: Option<i32>,
+  sh: Option<i32>,
+  #[serde] image_orientation: ImageOrientation,
+  #[serde] premultiply_alpha: PremultiplyAlpha,
+  #[serde] color_space_conversion: ColorSpaceConversion,
+  resize_width: Option<u32>,
+  resize_height: Option<u32>,
+  #[serde] resize_quality: ResizeQuality,
+  #[serde] image_bitmap_source: ImageBitmapSource,
+  #[string] mime_type: &str,
 ) -> Result<OpCreateImageBitmapReturn, AnyError> {
-  let buf = &*zero_copy;
-  let OpCreateImageBitmapArgs {
-    width,
-    height,
-    sh,
-    sw,
-    sx,
-    sy,
-    image_orientation,
-    premultiply_alpha,
-    color_space_conversion,
-    resize_width,
-    resize_height,
-    resize_quality,
-    image_bitmap_source,
-    mime_type,
-  } = OpCreateImageBitmapArgs {
-    width: args.width,
-    height: args.height,
-    sx: args.sx,
-    sy: args.sy,
-    sw: args.sw,
-    sh: args.sh,
-    image_orientation: args.image_orientation,
-    premultiply_alpha: args.premultiply_alpha,
-    color_space_conversion: args.color_space_conversion,
-    resize_width: args.resize_width,
-    resize_height: args.resize_height,
-    resize_quality: args.resize_quality,
-    image_bitmap_source: args.image_bitmap_source,
-    mime_type: args.mime_type,
-  };
-
   // 6. Switch on image:
   let (image, width, height, icc_profile) =
-    decode_bitmap_data(buf, width, height, &image_bitmap_source, mime_type)?;
+    decode_bitmap_data(&buf, width, height, &image_bitmap_source, mime_type)?;
 
   // crop bitmap data
   // 2.
