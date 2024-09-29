@@ -271,9 +271,9 @@ function createImageBitmap(
       imageBitmapSource,
       mimeType,
     );
-    imageBitmap[_bitmapData] = processedImage.data;
-    imageBitmap[_width] = processedImage.width;
-    imageBitmap[_height] = processedImage.height;
+    imageBitmap[_bitmapData] = processedImage[0];
+    imageBitmap[_width] = processedImage[1];
+    imageBitmap[_height] = processedImage[2];
     return imageBitmap;
   })();
 }

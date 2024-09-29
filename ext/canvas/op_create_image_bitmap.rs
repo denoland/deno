@@ -22,7 +22,6 @@ use image::DynamicImage;
 use image::ImageError;
 use image::RgbaImage;
 use serde::Deserialize;
-use serde::Serialize;
 
 use crate::error::image_error_message;
 use crate::error::DOMExceptionInvalidStateError;
@@ -69,14 +68,6 @@ enum ResizeQuality {
   Low,
   Medium,
   High,
-}
-
-#[derive(Debug, Serialize)]
-#[serde(rename_all = "camelCase")]
-struct OpCreateImageBitmapReturn {
-  data: ToJsBuffer,
-  width: u32,
-  height: u32,
 }
 
 type DecodeBitmapDataReturn = (DynamicImage, u32, u32, Option<Vec<u8>>);
@@ -282,7 +273,7 @@ pub(super) fn op_create_image_bitmap(
   #[serde] resize_quality: ResizeQuality,
   #[serde] image_bitmap_source: ImageBitmapSource,
   #[string] mime_type: &str,
-) -> Result<OpCreateImageBitmapReturn, AnyError> {
+) -> Result<(ToJsBuffer, u32, u32), AnyError> {
   // 6. Switch on image:
   let (image, width, height, icc_profile) =
     decode_bitmap_data(&buf, width, height, &image_bitmap_source, mime_type)?;
@@ -381,9 +372,5 @@ pub(super) fn op_create_image_bitmap(
   let image =
     apply_premultiply_alpha(image, &image_bitmap_source, &premultiply_alpha)?;
 
-  Ok(OpCreateImageBitmapReturn {
-    data: image.into_bytes().into(),
-    width: output_width,
-    height: output_height,
-  })
+  Ok((image.into_bytes().into(), output_width, output_height))
 }
