@@ -19,6 +19,8 @@ use crate::args::LifecycleScriptsConfig;
 use crate::colors;
 use async_trait::async_trait;
 use deno_ast::ModuleSpecifier;
+use deno_cache_dir::npm::mixed_case_package_name_decode;
+use deno_cache_dir::npm::mixed_case_package_name_encode;
 use deno_core::anyhow::Context;
 use deno_core::error::AnyError;
 use deno_core::futures::stream::FuturesUnordered;
@@ -42,8 +44,6 @@ use serde::Serialize;
 
 use crate::args::NpmInstallDepsProvider;
 use crate::cache::CACHE_PERM;
-use crate::npm::cache_dir::mixed_case_package_name_decode;
-use crate::npm::cache_dir::mixed_case_package_name_encode;
 use crate::util::fs::atomic_write_file_with_retries;
 use crate::util::fs::canonicalize_path_maybe_not_exists_with_fs;
 use crate::util::fs::clone_dir_recursive;

@@ -29,13 +29,13 @@ use deno_config::glob::PathOrPatternSet;
 use deno_core::anyhow::bail;
 use deno_core::anyhow::Context;
 use deno_core::error::AnyError;
-use deno_core::normalize_path;
 use deno_core::resolve_url_or_path;
 use deno_core::url::Url;
 use deno_graph::GraphKind;
+use deno_path_util::normalize_path;
+use deno_path_util::url_to_file_path;
 use deno_runtime::deno_permissions::parse_sys_kind;
 use deno_runtime::deno_permissions::PermissionsOptions;
-use deno_runtime::fs_util::specifier_to_file_path;
 use log::debug;
 use log::Level;
 use serde::Deserialize;
@@ -548,6 +548,8 @@ pub struct LifecycleScriptsConfig {
   pub allowed: PackagesAllowedScripts,
   pub initial_cwd: PathBuf,
   pub root_dir: PathBuf,
+  /// Part of an explicit `deno install`
+  pub explicit_install: bool,
 }
 
 #[derive(Debug, Clone, Eq, PartialEq, Default)]
@@ -1000,7 +1002,7 @@ impl Flags {
           if module_specifier.scheme() == "file"
             || module_specifier.scheme() == "npm"
           {
-            if let Ok(p) = specifier_to_file_path(&module_specifier) {
+            if let Ok(p) = url_to_file_path(&module_specifier) {
               Some(vec![p.parent().unwrap().to_path_buf()])
             } else {
               Some(vec![current_dir.to_path_buf()])
@@ -3601,6 +3603,14 @@ fn allow_all_arg() -> Arg {
   Arg::new("allow-all")
     .short('A')
     .long("allow-all")
+    .conflicts_with("allow-read")
+    .conflicts_with("allow-write")
+    .conflicts_with("allow-net")
+    .conflicts_with("allow-env")
+    .conflicts_with("allow-run")
+    .conflicts_with("allow-sys")
+    .conflicts_with("allow-ffi")
+    .conflicts_with("allow-import")
     .action(ArgAction::SetTrue)
     .help("Allow all permissions")
 }
@@ -11004,5 +11014,24 @@ Usage: deno repl [OPTIONS] [-- [ARGS]...]\n"
       Some("example.com:80".to_string())
     );
     assert_eq!(parse("file:///example.com"), None);
+  }
+
+  #[test]
+  fn allow_all_conflicts_allow_perms() {
+    let flags = [
+      "--allow-read",
+      "--allow-write",
+      "--allow-net",
+      "--allow-env",
+      "--allow-run",
+      "--allow-sys",
+      "--allow-ffi",
+      "--allow-import",
+    ];
+    for flag in flags {
+      let r =
+        flags_from_vec(svec!["deno", "run", "--allow-all", flag, "foo.ts"]);
+      assert!(r.is_err());
+    }
   }
 }

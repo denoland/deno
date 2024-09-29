@@ -29,6 +29,7 @@ use deno_runtime::deno_tls::RootCertStoreProvider;
 use deno_runtime::deno_web::BlobStore;
 use deno_runtime::fmt_errors::format_js_error;
 use deno_runtime::inspector_server::InspectorServer;
+use deno_runtime::ops::process::NpmProcessStateProviderRc;
 use deno_runtime::ops::worker_host::CreateWebWorkerCb;
 use deno_runtime::permissions::RuntimePermissionDescriptorParser;
 use deno_runtime::web_worker::WebWorker;
@@ -147,12 +148,12 @@ impl SharedWorkerState {
     NodeExtInitServices {
       node_require_resolver: self.npm_resolver.clone().into_require_resolver(),
       node_resolver: self.node_resolver.clone(),
-      npm_process_state_provider: self
-        .npm_resolver
-        .clone()
-        .into_process_state_provider(),
       npm_resolver: self.npm_resolver.clone().into_npm_resolver(),
     }
+  }
+
+  pub fn npm_process_state_provider(&self) -> NpmProcessStateProviderRc {
+    self.npm_resolver.clone().into_process_state_provider()
   }
 }
 
@@ -614,6 +615,7 @@ impl CliMainWorkerFactory {
       module_loader,
       fs: shared.fs.clone(),
       node_services: Some(shared.create_node_init_services()),
+      npm_process_state_provider: Some(shared.npm_process_state_provider()),
       get_error_class_fn: Some(&errors::get_error_class_name),
       cache_storage_dir,
       origin_storage_dir,
@@ -820,6 +822,7 @@ fn create_web_worker_callback(
       strace_ops: shared.options.strace_ops.clone(),
       close_on_idle: args.close_on_idle,
       maybe_worker_metadata: args.maybe_worker_metadata,
+      npm_process_state_provider: Some(shared.npm_process_state_provider()),
     };
 
     WebWorker::bootstrap_from_options(

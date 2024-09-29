@@ -1,6 +1,7 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 use crate::inspector_server::InspectorServer;
 use crate::ops;
+use crate::ops::process::NpmProcessStateProviderRc;
 use crate::ops::worker_host::WorkersTable;
 use crate::shared::maybe_transpile_source;
 use crate::shared::runtime;
@@ -383,6 +384,7 @@ pub struct WebWorkerOptions {
   pub strace_ops: Option<Vec<String>>,
   pub close_on_idle: bool,
   pub maybe_worker_metadata: Option<WorkerMetadata>,
+  pub npm_process_state_provider: Option<NpmProcessStateProviderRc>,
 }
 
 impl WebWorker {
@@ -507,7 +509,9 @@ impl WebWorker {
       ops::permissions::deno_permissions::init_ops_and_esm(
         options.permission_desc_parser.clone(),
       ),
-      ops::process::deno_process::init_ops_and_esm(),
+      ops::process::deno_process::init_ops_and_esm(
+        options.npm_process_state_provider,
+      ),
       ops::signal::deno_signal::init_ops_and_esm(),
       ops::tty::deno_tty::init_ops_and_esm(),
       ops::http::deno_http_runtime::init_ops_and_esm(),

@@ -10,10 +10,10 @@ use deno_graph::source::Resolver;
 use deno_graph::GraphImport;
 use deno_graph::ModuleSpecifier;
 use deno_npm::NpmSystemInfo;
+use deno_path_util::url_to_file_path;
 use deno_runtime::deno_fs;
 use deno_runtime::deno_node::NodeResolver;
 use deno_runtime::deno_node::PackageJson;
-use deno_runtime::fs_util::specifier_to_file_path;
 use deno_semver::jsr::JsrPackageReqReference;
 use deno_semver::npm::NpmPackageReqReference;
 use deno_semver::package::PackageNv;
@@ -443,7 +443,7 @@ async fn create_npm_resolver(
       fs: Arc::new(deno_fs::RealFs),
       root_node_modules_dir: config_data.and_then(|config_data| {
         config_data.node_modules_dir.clone().or_else(|| {
-          specifier_to_file_path(&config_data.scope)
+          url_to_file_path(&config_data.scope)
             .ok()
             .map(|p| p.join("node_modules/"))
         })

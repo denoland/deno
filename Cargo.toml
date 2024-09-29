@@ -21,13 +21,14 @@ members = [
   "ext/napi",
   "ext/net",
   "ext/node",
-  "ext/node_resolver",
   "ext/url",
   "ext/web",
   "ext/webgpu",
   "ext/webidl",
   "ext/websocket",
   "ext/webstorage",
+  "resolvers/deno",
+  "resolvers/node",
   "runtime",
   "runtime/permissions",
   "tests",
@@ -50,6 +51,8 @@ deno_core = { version = "0.311.0" }
 deno_bench_util = { version = "0.162.0", path = "./bench_util" }
 deno_lockfile = "=0.23.1"
 deno_media_type = { version = "0.1.4", features = ["module_specifier"] }
+deno_npm = "=0.25.2"
+deno_path_util = "=0.1.1"
 deno_permissions = { version = "0.28.0", path = "./runtime/permissions" }
 deno_runtime = { version = "0.177.0", path = "./runtime" }
 deno_semver = "=0.5.13"
@@ -85,7 +88,10 @@ deno_webgpu = { version = "0.135.0", path = "./ext/webgpu" }
 deno_webidl = { version = "0.168.0", path = "./ext/webidl" }
 deno_websocket = { version = "0.173.0", path = "./ext/websocket" }
 deno_webstorage = { version = "0.163.0", path = "./ext/webstorage" }
-node_resolver = { version = "0.7.0", path = "./ext/node_resolver" }
+
+# resolvers
+deno_resolver = { version = "0.0.1", path = "./resolvers/deno" }
+node_resolver = { version = "0.7.0", path = "./resolvers/node" }
 
 aes = "=0.8.3"
 anyhow = "1.0.57"
@@ -101,9 +107,10 @@ cbc = { version = "=0.1.2", features = ["alloc"] }
 #       Instead use util::time::utc_now()
 chrono = { version = "0.4", default-features = false, features = ["std", "serde"] }
 console_static_text = "=0.8.1"
+dashmap = "5.5.3"
 data-encoding = "2.3.3"
 data-url = "=0.3.0"
-deno_cache_dir = "=0.11.1"
+deno_cache_dir = "=0.12.0"
 deno_package_json = { version = "=0.1.1", default-features = false }
 dlopen2 = "0.6.1"
 ecb = "=0.1.2"

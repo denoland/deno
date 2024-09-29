@@ -1,7 +1,6 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
 mod byonm;
-mod cache_dir;
 mod common;
 mod managed;
 
@@ -14,7 +13,7 @@ use deno_core::error::AnyError;
 use deno_core::serde_json;
 use deno_npm::registry::NpmPackageInfo;
 use deno_runtime::deno_node::NodeRequireResolver;
-use deno_runtime::deno_node::NpmProcessStateProvider;
+use deno_runtime::ops::process::NpmProcessStateProvider;
 use deno_semver::package::PackageNv;
 use deno_semver::package::PackageReq;
 use node_resolver::NpmResolver;
@@ -24,7 +23,6 @@ use crate::file_fetcher::FileFetcher;
 
 pub use self::byonm::ByonmCliNpmResolver;
 pub use self::byonm::CliNpmResolverByonmCreateOptions;
-pub use self::cache_dir::NpmCacheDir;
 pub use self::managed::CliNpmResolverManagedCreateOptions;
 pub use self::managed::CliNpmResolverManagedSnapshotOption;
 pub use self::managed::ManagedCliNpmResolver;

@@ -62,7 +62,7 @@ use deno_core::ModuleSpecifier;
 use deno_core::OpState;
 use deno_core::PollEventLoopOptions;
 use deno_core::RuntimeOptions;
-use deno_runtime::fs_util::specifier_to_file_path;
+use deno_path_util::url_to_file_path;
 use deno_runtime::inspector_server::InspectorServer;
 use deno_runtime::tokio_util::create_basic_runtime;
 use indexmap::IndexMap;
@@ -3191,7 +3191,7 @@ impl CallHierarchyItem {
     let use_file_name = self.is_source_file_item();
     let maybe_file_path = if uri.scheme().is_some_and(|s| s.as_str() == "file")
     {
-      specifier_to_file_path(&uri_to_url(&uri)).ok()
+      url_to_file_path(&uri_to_url(&uri)).ok()
     } else {
       None
     };
