@@ -1,6 +1,7 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
 use bytemuck::cast_slice;
+use bytemuck::cast_slice_mut;
 use deno_core::error::AnyError;
 use image::ColorType;
 use image::DynamicImage;
@@ -279,54 +280,60 @@ impl<T: Primitive + Pod> SliceToPixel for Rgba<T> {
   }
 }
 
-/// Convert the pixel slice to an array to avoid the copy to Vec.  
-/// I implemented this trait because of I couldn't find a way to effectively combine   
-/// the `Transform` struct of `lcms2` and `Pixel` trait of `image`.  
-/// If there is an implementation that is safer and can withstand changes, I would like to adopt it.
-pub(crate) trait SliceToArray<const N: usize> {
-  fn slice_to_array(pixel: &[u8]) -> [u8; N];
+pub(crate) trait TransformColorProfile {
+  fn transform_color_profile<P, S>(
+    &mut self,
+    transformer: &Transform<u8, u8>,
+  ) -> P
+  where
+    P: Pixel<Subpixel = S> + SliceToPixel + 'static,
+    S: Primitive + 'static;
 }
 
-macro_rules! impl_slice_to_array {
-  ($type:ty, $n:expr) => {
-    impl<T: Primitive + Pod> SliceToArray<$n> for $type {
-      fn slice_to_array(pixel: &[u8]) -> [u8; $n] {
-        let mut dst = [0_u8; $n];
-        dst.copy_from_slice(&pixel[..$n]);
+macro_rules! impl_transform_color_profile {
+  ($type:ty) => {
+    impl TransformColorProfile for $type {
+      fn transform_color_profile<P, S>(
+        &mut self,
+        transformer: &Transform<u8, u8>,
+      ) -> P
+      where
+        P: Pixel<Subpixel = S> + SliceToPixel + 'static,
+        S: Primitive + 'static,
+      {
+        let mut pixel = cast_slice_mut(self.0.as_mut_slice());
+        transformer.transform_in_place(&mut pixel);
 
-        dst
+        P::slice_to_pixel(&pixel)
       }
     }
   };
 }
 
-impl_slice_to_array!(Luma<T>, 1);
-impl_slice_to_array!(Luma<T>, 2);
-impl_slice_to_array!(LumaA<T>, 2);
-impl_slice_to_array!(LumaA<T>, 4);
-impl_slice_to_array!(Rgb<T>, 3);
-impl_slice_to_array!(Rgb<T>, 6);
-impl_slice_to_array!(Rgba<T>, 4);
-impl_slice_to_array!(Rgba<T>, 8);
+impl_transform_color_profile!(Luma<u8>);
+impl_transform_color_profile!(Luma<u16>);
+impl_transform_color_profile!(LumaA<u8>);
+impl_transform_color_profile!(LumaA<u16>);
+impl_transform_color_profile!(Rgb<u8>);
+impl_transform_color_profile!(Rgb<u16>);
+impl_transform_color_profile!(Rgba<u8>);
+impl_transform_color_profile!(Rgba<u16>);
 
 // make public if needed
-fn process_icc_profile_conversion<P, S, const N: usize>(
-  image: &DynamicImage,
+fn process_icc_profile_conversion<I, P, S>(
+  image: &I,
+  color: ColorType,
   input_icc_profile: Profile,
   output_icc_profile: Profile,
 ) -> ImageBuffer<P, Vec<S>>
 where
-  P: Pixel<Subpixel = S> + SliceToPixel + SliceToArray<N> + 'static,
+  I: GenericImageView<Pixel = P>,
+  P: Pixel<Subpixel = S> + SliceToPixel + TransformColorProfile + 'static,
   S: Primitive + 'static,
 {
   let (width, height) = image.dimensions();
   let mut out = ImageBuffer::new(width, height);
-  let chunk_size = image.color().bytes_per_pixel() as usize;
-  let pixel_iter = image
-    .as_bytes()
-    .chunks_exact(chunk_size)
-    .zip(image.pixels());
-  let pixel_format = match image.color() {
+  let pixel_format = match color {
     ColorType::L8 => PixelFormat::GRAY_8,
     ColorType::L16 => PixelFormat::GRAY_16,
     ColorType::La8 => PixelFormat::GRAYA_8,
@@ -337,12 +344,10 @@ where
     ColorType::Rgba16 => PixelFormat::RGBA_16,
     // This arm usually doesn't reach, but it should be handled with returning the original image.
     _ => {
-      return {
-        for (pixel, (x, y, _)) in pixel_iter {
-          out.put_pixel(x, y, P::slice_to_pixel(pixel));
-        }
-        out
+      for (x, y, pixel) in image.pixels() {
+        out.put_pixel(x, y, pixel);
       }
+      return out;
     }
   };
   let transformer = Transform::new(
@@ -353,19 +358,14 @@ where
     output_icc_profile.header_rendering_intent(),
   );
 
-  for (pixel, (x, y, _)) in pixel_iter {
+  for (x, y, mut pixel) in image.pixels() {
     let pixel = match transformer {
-      Ok(ref transformer) => {
-        let mut dst = P::slice_to_array(pixel);
-        transformer.transform_in_place(&mut dst);
-
-        dst
-      }
+      Ok(ref transformer) => pixel.transform_color_profile(transformer),
       // This arm will reach when the ffi call fails.
-      Err(_) => P::slice_to_array(pixel),
+      Err(_) => pixel,
     };
 
-    out.put_pixel(x, y, P::slice_to_pixel(&pixel));
+    out.put_pixel(x, y, pixel);
   }
 
   out
@@ -386,30 +386,31 @@ pub(crate) fn to_srgb_from_icc_profile(
       Err(_) => Ok(image),
       Ok(icc_profile) => {
         let srgb_icc_profile = Profile::new_srgb();
-        match image.color() {
+        let color = image.color();
+        match color {
           ColorType::L8 => {
-            Ok(DynamicImage::ImageLuma8(process_icc_profile_conversion::<_,_,1>(&image,icc_profile,srgb_icc_profile)))
+            Ok(DynamicImage::ImageLuma8(process_icc_profile_conversion(&image.to_luma8(), color, icc_profile,srgb_icc_profile)))
           }
           ColorType::L16 => {
-            Ok(DynamicImage::ImageLuma16(process_icc_profile_conversion::<_,_,2>(&image,icc_profile,srgb_icc_profile)))
+            Ok(DynamicImage::ImageLuma16(process_icc_profile_conversion(&image.to_luma16(),color, icc_profile,srgb_icc_profile)))
           }
           ColorType::La8 => {
-            Ok(DynamicImage::ImageLumaA8(process_icc_profile_conversion::<_,_,2>(&image,icc_profile,srgb_icc_profile)))
+            Ok(DynamicImage::ImageLumaA8(process_icc_profile_conversion(&image.to_luma_alpha8(), color, icc_profile,srgb_icc_profile)))
           }
           ColorType::La16 => {
-            Ok(DynamicImage::ImageLumaA16(process_icc_profile_conversion::<_, _, 4>(&image,icc_profile,srgb_icc_profile)))
+            Ok(DynamicImage::ImageLumaA16(process_icc_profile_conversion(&image.to_luma_alpha16(), color, icc_profile,srgb_icc_profile)))
           },
           ColorType::Rgb8 => {
-            Ok(DynamicImage::ImageRgb8(process_icc_profile_conversion::<_,_,3>(&image,icc_profile,srgb_icc_profile)))
+            Ok(DynamicImage::ImageRgb8(process_icc_profile_conversion(&image.to_rgb8(), color, icc_profile,srgb_icc_profile)))
           }
           ColorType::Rgb16 => {
-            Ok(DynamicImage::ImageRgb16(process_icc_profile_conversion::<_,_,6>(&image,icc_profile,srgb_icc_profile)))
+            Ok(DynamicImage::ImageRgb16(process_icc_profile_conversion(&image.to_rgb16(), color, icc_profile,srgb_icc_profile)))
           }
           ColorType::Rgba8 => {
-            Ok(DynamicImage::ImageRgba8(process_icc_profile_conversion::<_,_,4>(&image,icc_profile,srgb_icc_profile)))
+            Ok(DynamicImage::ImageRgba8(process_icc_profile_conversion(&image.to_rgba8(), color, icc_profile,srgb_icc_profile)))
           }
           ColorType::Rgba16 => {
-            Ok(DynamicImage::ImageRgba16(process_icc_profile_conversion::<_,_,8>(&image,icc_profile,srgb_icc_profile)))
+            Ok(DynamicImage::ImageRgba16(process_icc_profile_conversion(&image.to_rgba16(),color, icc_profile,srgb_icc_profile)))
           }
           x => unmatch_color_handler(x, image),
         }
