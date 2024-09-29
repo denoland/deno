@@ -307,6 +307,11 @@ impl LintFlags {
   }
 }
 
+#[derive(Clone, Debug, Default, Eq, PartialEq)]
+pub struct OutdatedFlags {
+  pub filters: Vec<String>,
+}
+
 #[derive(Clone, Debug, Eq, PartialEq, Default)]
 pub struct ReplFlags {
   pub eval_files: Option<Vec<String>>,
@@ -456,6 +461,7 @@ pub enum DenoSubcommand {
   Uninstall(UninstallFlags),
   Lsp,
   Lint(LintFlags),
+  Outdated(OutdatedFlags),
   Repl(ReplFlags),
   Run(RunFlags),
   Serve(ServeFlags),
@@ -1375,6 +1381,7 @@ pub fn flags_from_vec(args: Vec<OsString>) -> clap::error::Result<Flags> {
       "jupyter" => jupyter_parse(&mut flags, &mut m),
       "lint" => lint_parse(&mut flags, &mut m)?,
       "lsp" => lsp_parse(&mut flags, &mut m),
+      "outdated" => outdated_parse(&mut flags, &mut m)?,
       "repl" => repl_parse(&mut flags, &mut m)?,
       "run" => run_parse(&mut flags, &mut m, app, false)?,
       "serve" => serve_parse(&mut flags, &mut m, app)?,
@@ -1594,6 +1601,7 @@ pub fn clap_root() -> Command {
         .subcommand(uninstall_subcommand())
         .subcommand(lsp_subcommand())
         .subcommand(lint_subcommand())
+        .subcommand(outdated_subcommand())
         .subcommand(publish_subcommand())
         .subcommand(repl_subcommand())
         .subcommand(task_subcommand())
@@ -2738,6 +2746,22 @@ To ignore linting on an entire file, you can add an ignore comment at the top of
       .arg(watch_arg(false))
       .arg(watch_exclude_arg())
       .arg(no_clear_screen_arg())
+  })
+}
+
+fn outdated_subcommand() -> Command {
+  command(
+    "outdated",
+    "Check for outdated dependencies",
+    UnstableArgsConfig::None,
+  )
+  .defer(|cmd| {
+    cmd.arg(
+      Arg::new("filters")
+        .num_args(0..)
+        .action(ArgAction::Append)
+        .help("List of filters used for checking outdated packages"),
+    )
   })
 }
 
@@ -4754,6 +4778,18 @@ fn uninstall_parse(flags: &mut Flags, matches: &mut ArgMatches) {
 
 fn lsp_parse(flags: &mut Flags, _matches: &mut ArgMatches) {
   flags.subcommand = DenoSubcommand::Lsp;
+}
+
+fn outdated_parse(
+  flags: &mut Flags,
+  matches: &mut ArgMatches,
+) -> clap::error::Result<()> {
+  let filters = match matches.remove_many::<String>("filters") {
+    Some(f) => f.collect(),
+    None => vec![],
+  };
+  flags.subcommand = DenoSubcommand::Outdated(OutdatedFlags { filters });
+  Ok(())
 }
 
 fn lint_parse(

@@ -461,11 +461,15 @@ impl ManagedCliNpmResolver {
     self.resolve_pkg_folder_from_pkg_id(&pkg_id)
   }
 
-  fn resolve_pkg_id_from_pkg_req(
+  pub fn resolve_pkg_id_from_pkg_req(
     &self,
     req: &PackageReq,
   ) -> Result<NpmPackageId, PackageReqNotFoundError> {
     self.resolution.resolve_pkg_id_from_pkg_req(req)
+  }
+
+  pub fn npm_deps_provider(&self) -> Arc<NpmInstallDepsProvider> {
+    self.npm_install_deps_provider.clone()
   }
 
   /// Ensures that the top level `package.json` dependencies are installed.

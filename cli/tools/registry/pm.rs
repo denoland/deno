@@ -2,6 +2,7 @@
 
 mod cache_deps;
 
+use crate::args::OutdatedFlags;
 pub use cache_deps::cache_top_level_deps;
 use deno_semver::jsr::JsrPackageReqReference;
 use deno_semver::npm::NpmPackageReqReference;
@@ -568,6 +569,7 @@ pub async fn add(
   Ok(())
 }
 
+#[derive(Debug, PartialEq)]
 struct SelectedPackage {
   import_name: String,
   package_name: String,
@@ -575,6 +577,7 @@ struct SelectedPackage {
   selected_version: String,
 }
 
+#[derive(Debug, PartialEq)]
 enum PackageAndVersion {
   NotFound {
     package: String,
@@ -876,6 +879,190 @@ fn update_config_file_content<
   .unwrap_or(new_text)
 }
 
+#[derive(Debug)]
+struct OutdatedPackage {
+  registry: String,
+  name: String,
+  current: String,
+  wanted: String,
+  latest: String,
+}
+
+pub async fn outdated(
+  flags: Arc<Flags>,
+  outdated_flags: OutdatedFlags,
+) -> Result<(), AnyError> {
+  let factory = CliFactory::from_flags(flags);
+  let npm_resolver = factory.npm_resolver().await?;
+  let http_client = factory.http_client_provider();
+  let deps_http_cache = factory.global_http_cache()?;
+  let mut deps_file_fetcher = FileFetcher::new(
+    deps_http_cache.clone(),
+    CacheSetting::ReloadAll,
+    true,
+    http_client.clone(),
+    Default::default(),
+    None,
+  );
+  deps_file_fetcher.set_download_log_level(log::Level::Trace);
+  let deps_file_fetcher = Arc::new(deps_file_fetcher);
+  let jsr_resolver = Arc::new(JsrFetchResolver::new(deps_file_fetcher.clone()));
+  let npm_resolver2 = Arc::new(NpmFetchResolver::new(deps_file_fetcher));
+
+  // TODO:
+  // let top_level_deps =
+  //   crate::tools::registry::get_top_level_deps(&factory, None).await?;
+  // eprintln!("top_level_deps {:#?}", top_level_deps);
+
+  let mut outdated_packages = vec![];
+
+  if let Some(managed_npm_resolver) = npm_resolver.as_managed() {
+    let npm_deps_provider = managed_npm_resolver.npm_deps_provider();
+    let pkgs = npm_deps_provider.remote_pkgs();
+
+    // eprintln!("pkgs {:#?}", pkgs);
+
+    for pkg in pkgs {
+      let Ok(current_version) =
+        managed_npm_resolver.resolve_pkg_id_from_pkg_req(&pkg.req)
+      else {
+        continue;
+      };
+
+      let PackageAndVersion::Selected(package_and_version) =
+        find_package_and_select_version_for_req(
+          jsr_resolver.clone(),
+          npm_resolver2.clone(),
+          AddPackageReq::parse(&format!("npm:{}", pkg.req))
+            .unwrap()
+            .unwrap(),
+        )
+        .await?
+      else {
+        continue;
+      };
+
+      // eprintln!("package and version {:#?}", package_and_version);
+
+      let PackageAndVersion::Selected(package_and_version2) =
+        find_package_and_select_version_for_req(
+          jsr_resolver.clone(),
+          npm_resolver2.clone(),
+          AddPackageReq::parse(&format!("npm:{}", pkg.req.name))
+            .unwrap()
+            .unwrap(),
+        )
+        .await?
+      else {
+        continue;
+      };
+
+      // eprintln!("package and version2 {:#?}", package_and_version2);
+
+      if package_and_version == package_and_version2 {
+        continue;
+      }
+
+      outdated_packages.push(OutdatedPackage {
+        registry: "npm".to_string(),
+        name: pkg.req.name.to_string(),
+        current: current_version.nv.version.to_string(),
+        wanted: package_and_version.selected_version,
+        latest: package_and_version2.selected_version,
+      })
+    }
+  }
+
+  if outdated_packages.is_empty() {
+    println!("No outdated packages found");
+  } else {
+    display_table(&outdated_packages);
+    // TODO: print a table
+    // println!("----------------------------------------------");
+    // println!(
+    //   "|   Package  | Current |  {}  |  {}  |",
+    //   crate::colors::green("Update"),
+    //   crate::colors::cyan("Latest")
+    // );
+    // println!("----------------------------------------------");
+
+    // for pkg in outdated_packages {
+    //   println!(
+    //     "| {}:{} |  {}    |  {}  |  {}  |",
+    //     crate::colors::gray(pkg.registry),
+    //     pkg.name,
+    //     pkg.current,
+    //     pkg.wanted,
+    //     pkg.latest
+    //   );
+    //   println!("----------------------------------------------");
+    // }
+  }
+  Ok(())
+}
+
+fn display_table(packages: &[OutdatedPackage]) {
+  const HEADERS: [&str; 4] = ["Package", "Current", "Update", "Latest"];
+
+  let mut longest_cells: Vec<_> = HEADERS.iter().map(|h| h.len()).collect();
+
+  for package in packages {
+    longest_cells[0] = std::cmp::max(
+      HEADERS[0].len(),
+      package.registry.len() + package.name.len() + 1,
+    );
+    longest_cells[1] = std::cmp::max(HEADERS[1].len(), package.current.len());
+    longest_cells[2] = std::cmp::max(HEADERS[2].len(), package.wanted.len());
+    longest_cells[3] = std::cmp::max(HEADERS[3].len(), package.latest.len());
+  }
+
+  let width = longest_cells
+    .clone()
+    .into_iter()
+    .reduce(|acc, e| acc + e + 5)
+    .unwrap_or(0)
+    + 2;
+  println!("{}", "-".repeat(width));
+  println!(
+    "| {}{} | {}{} | {}{} | {}{} |",
+    " ".repeat(longest_cells[0] + 1 - HEADERS[0].len()),
+    HEADERS[0],
+    " ".repeat(longest_cells[1] + 1 - HEADERS[1].len()),
+    HEADERS[1],
+    " ".repeat(longest_cells[2] + 1 - HEADERS[2].len()),
+    HEADERS[2],
+    " ".repeat(longest_cells[3] + 1 - HEADERS[3].len()),
+    HEADERS[3],
+  );
+  println!("{}", "-".repeat(width));
+  for pkg in packages {
+    // println!(
+    //   "{} {} {} {} {} {} {} {}",
+    //   longest_cells[0] + 1 - pkg.name.len() - pkg.registry.len() - 1,
+    //   pkg.name.len(),
+    //   longest_cells[1] + 1 - pkg.current.len(),
+    //   pkg.current.len(),
+    //   longest_cells[2] + 1 - pkg.wanted.len(),
+    //   pkg.wanted.len(),
+    //   longest_cells[3] + 1 - pkg.latest.len(),
+    //   pkg.latest.len(),
+    // );
+    println!(
+      "| {}{}:{} | {}{} | {}{} | {}{} |",
+      crate::colors::gray(&pkg.registry),
+      " "
+        .repeat(longest_cells[0] + 1 - pkg.name.len() - pkg.registry.len() - 1),
+      pkg.name,
+      " ".repeat(longest_cells[1] + 1 - pkg.current.len()),
+      pkg.current,
+      " ".repeat(longest_cells[2] + 1 - pkg.wanted.len()),
+      pkg.wanted,
+      " ".repeat(longest_cells[3] + 1 - pkg.latest.len()),
+      pkg.latest,
+    );
+    println!("{}", "-".repeat(width));
+  }
+}
 #[cfg(test)]
 mod test {
   use super::*;
