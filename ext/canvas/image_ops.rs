@@ -34,7 +34,7 @@ impl<T: Primitive> PremultiplyAlpha for LumaA<T> {
     let normalized_alpha = alpha.to_f32().unwrap() / max_t.to_f32().unwrap();
 
     if normalized_alpha == 0.0 {
-      return LumaA::<T>([pixel[0], pixel[alpha_index]]);
+      return LumaA([pixel[0], pixel[alpha_index]]);
     }
 
     for rgb in pixel.iter_mut().take(alpha_index) {
@@ -42,7 +42,7 @@ impl<T: Primitive> PremultiplyAlpha for LumaA<T> {
         .unwrap()
     }
 
-    LumaA::<T>([pixel[0], pixel[alpha_index]])
+    LumaA([pixel[0], pixel[alpha_index]])
   }
 }
 
@@ -56,7 +56,7 @@ impl<T: Primitive> PremultiplyAlpha for Rgba<T> {
     let normalized_alpha = alpha.to_f32().unwrap() / max_t.to_f32().unwrap();
 
     if normalized_alpha == 0.0 {
-      return Rgba::<T>([pixel[0], pixel[1], pixel[2], pixel[alpha_index]]);
+      return Rgba([pixel[0], pixel[1], pixel[2], pixel[alpha_index]]);
     }
 
     for rgb in pixel.iter_mut().take(alpha_index) {
@@ -64,7 +64,7 @@ impl<T: Primitive> PremultiplyAlpha for Rgba<T> {
         .unwrap()
     }
 
-    Rgba::<T>([pixel[0], pixel[1], pixel[2], pixel[alpha_index]])
+    Rgba([pixel[0], pixel[1], pixel[2], pixel[alpha_index]])
   }
 }
 
@@ -152,7 +152,7 @@ impl<T: Primitive + SaturatingMul + Ord> UnpremultiplyAlpha for Rgba<T> {
       .unwrap();
     }
 
-    Rgba::<T>([pixel[0], pixel[1], pixel[2], pixel[alpha_index]])
+    Rgba([pixel[0], pixel[1], pixel[2], pixel[alpha_index]])
   }
 }
 
@@ -183,7 +183,7 @@ impl<T: Primitive + SaturatingMul + Ord> UnpremultiplyAlpha for LumaA<T> {
       .unwrap();
     }
 
-    LumaA::<T>([pixel[0], pixel[alpha_index]])
+    LumaA([pixel[0], pixel[alpha_index]])
   }
 }
 
@@ -249,7 +249,7 @@ impl<T: Primitive + Pod> SliceToPixel for Luma<T> {
     let pixel: &[T] = cast_slice(pixel);
     let pixel = [pixel[0]];
 
-    Luma::<T>(pixel)
+    Luma(pixel)
   }
 }
 
@@ -258,7 +258,7 @@ impl<T: Primitive + Pod> SliceToPixel for LumaA<T> {
     let pixel: &[T] = cast_slice(pixel);
     let pixel = [pixel[0], pixel[1]];
 
-    LumaA::<T>(pixel)
+    LumaA(pixel)
   }
 }
 
@@ -267,7 +267,7 @@ impl<T: Primitive + Pod> SliceToPixel for Rgb<T> {
     let pixel: &[T] = cast_slice(pixel);
     let pixel = [pixel[0], pixel[1], pixel[2]];
 
-    Rgb::<T>(pixel)
+    Rgb(pixel)
   }
 }
 
@@ -276,7 +276,7 @@ impl<T: Primitive + Pod> SliceToPixel for Rgba<T> {
     let pixel: &[T] = cast_slice(pixel);
     let pixel = [pixel[0], pixel[1], pixel[2], pixel[3]];
 
-    Rgba::<T>(pixel)
+    Rgba(pixel)
   }
 }
 
@@ -535,7 +535,7 @@ pub(crate) fn to_srgb_from_icc_profile(
 
 //     let (r, g, b) = apply_conversion_matrix_srgb_to_display_p3(r, g, b);
 
-//     Rgb::<T>([r, g, b])
+//     Rgb([r, g, b])
 //   }
 // }
 
@@ -545,7 +545,7 @@ pub(crate) fn to_srgb_from_icc_profile(
 
 //     let (r, g, b) = apply_conversion_matrix_srgb_to_display_p3(r, g, b);
 
-//     Rgba::<T>([r, g, b, a])
+//     Rgba([r, g, b, a])
 //   }
 // }
 
