@@ -43,15 +43,12 @@ async fn main() -> Result<(), AnyError> {
     main_module.clone(),
     WorkerServiceOptions {
       module_loader: Rc::new(FsModuleLoader),
-      permissions: PermissionsContainer::allow_all(
-        permission_desc_parser.clone(),
-      ),
+      permissions: PermissionsContainer::allow_all(permission_desc_parser),
       blob_store: Default::default(),
       broadcast_channel: Default::default(),
       feature_checker: Default::default(),
       node_services: Default::default(),
       npm_process_state_provider: Default::default(),
-      permission_desc_parser,
       root_cert_store_provider: Default::default(),
       shared_array_buffer_store: Default::default(),
       compiled_wasm_module_store: Default::default(),

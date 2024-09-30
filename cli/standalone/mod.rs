@@ -693,8 +693,6 @@ pub async fn run(
     }
     checker
   });
-  let permission_desc_parser =
-    Arc::new(RuntimePermissionDescriptorParser::new(fs.clone()));
   let worker_factory = CliMainWorkerFactory::new(
     Arc::new(BlobStore::default()),
     // Code cache is not supported for standalone binary yet.
@@ -707,7 +705,6 @@ pub async fn run(
     Box::new(module_loader_factory),
     node_resolver,
     npm_resolver,
-    permission_desc_parser,
     root_cert_store_provider,
     permissions,
     StorageKeyResolver::empty(),

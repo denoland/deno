@@ -34,8 +34,8 @@ use deno_core::url::Url;
 use deno_graph::GraphKind;
 use deno_path_util::normalize_path;
 use deno_path_util::url_to_file_path;
-use deno_runtime::deno_permissions::parse_sys_kind;
 use deno_runtime::deno_permissions::PermissionsOptions;
+use deno_runtime::deno_permissions::SysDescriptor;
 use log::debug;
 use log::Level;
 use serde::Deserialize;
@@ -3448,7 +3448,7 @@ fn permission_args(app: Command, requires: Option<&'static str>) -> Command {
           .require_equals(true)
           .value_name("API_NAME")
           .help("Allow access to OS information. Optionally allow specific APIs by function name")
-          .value_parser(|key: &str| parse_sys_kind(key).map(ToString::to_string))
+          .value_parser(|key: &str| SysDescriptor::parse(key.to_string()).map(|s| s.into_string()))
           .hide(true)
           ;
         if let Some(requires) = requires {
@@ -3466,7 +3466,7 @@ fn permission_args(app: Command, requires: Option<&'static str>) -> Command {
           .require_equals(true)
           .value_name("API_NAME")
           .help("Deny access to OS information. Optionally deny specific APIs by function name")
-          .value_parser(|key: &str| parse_sys_kind(key).map(ToString::to_string))
+          .value_parser(|key: &str| SysDescriptor::parse(key.to_string()).map(|s| s.into_string()))
           .hide(true)
           ;
         if let Some(requires) = requires {

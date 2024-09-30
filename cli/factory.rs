@@ -824,7 +824,6 @@ impl CliFactory {
       )),
       node_resolver.clone(),
       npm_resolver.clone(),
-      self.permission_desc_parser()?.clone(),
       self.root_cert_store_provider().clone(),
       self.root_permissions_container()?.clone(),
       StorageKeyResolver::from_options(cli_options),

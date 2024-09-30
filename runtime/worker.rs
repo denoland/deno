@@ -139,8 +139,6 @@ pub struct WorkerServiceOptions {
   pub module_loader: Rc<dyn ModuleLoader>,
   pub node_services: Option<NodeExtInitServices>,
   pub npm_process_state_provider: Option<NpmProcessStateProviderRc>,
-  pub permission_desc_parser:
-    Arc<dyn deno_permissions::PermissionDescriptorParser>,
   pub permissions: PermissionsContainer,
   pub root_cert_store_provider: Option<Arc<dyn RootCertStoreProvider>>,
 
@@ -422,9 +420,7 @@ impl MainWorker {
       ),
       ops::fs_events::deno_fs_events::init_ops_and_esm(),
       ops::os::deno_os::init_ops_and_esm(exit_code.clone()),
-      ops::permissions::deno_permissions::init_ops_and_esm(
-        services.permission_desc_parser,
-      ),
+      ops::permissions::deno_permissions::init_ops_and_esm(),
       ops::process::deno_process::init_ops_and_esm(
         services.npm_process_state_provider,
       ),
