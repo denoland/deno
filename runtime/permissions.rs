@@ -109,7 +109,7 @@ impl deno_permissions::PermissionDescriptorParser
     &self,
     text: &str,
   ) -> Result<AllowRunDescriptorParseResult, AnyError> {
-    Ok(AllowRunDescriptor::parse(text, &self.resolve_cwd()?)?)
+    AllowRunDescriptor::parse(text, &self.resolve_cwd()?)
   }
 
   fn parse_deny_run_descriptor(

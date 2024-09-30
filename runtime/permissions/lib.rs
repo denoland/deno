@@ -1128,27 +1128,28 @@ pub enum RunQueryDescriptor {
 
 impl RunQueryDescriptor {
   pub fn parse(requested: &str) -> Result<RunQueryDescriptor, AnyError> {
-    if is_path(requested) {
+    let resolved_path = if is_path(requested) {
       let path = PathBuf::from(requested);
-      let resolved = if path.is_absolute() {
+      if path.is_absolute() {
         normalize_path(path)
       } else {
         let cwd = std::env::current_dir().context("failed resolving cwd")?;
         normalize_path(cwd.join(path))
-      };
-      Ok(RunQueryDescriptor::Path {
-        requested: requested.to_string(),
-        resolved,
-      })
+      }
     } else {
       match which::which(requested) {
-        Ok(resolved) => Ok(RunQueryDescriptor::Path {
-          requested: requested.to_string(),
-          resolved,
-        }),
-        Err(_) => Ok(RunQueryDescriptor::Name(requested.to_string())),
+        Ok(resolved) => resolved,
+        Err(_) => return Ok(RunQueryDescriptor::Name(requested.to_string())),
       }
-    }
+    };
+    let resolved_path = resolved_path
+      .canonicalize()
+      .map(normalize_path)
+      .unwrap_or(resolved_path);
+    Ok(RunQueryDescriptor::Path {
+      requested: requested.to_string(),
+      resolved: resolved_path,
+    })
   }
 }
 
@@ -1282,9 +1283,8 @@ impl AllowRunDescriptor {
   pub fn parse(
     text: &str,
     cwd: &Path,
-  ) -> Result<AllowRunDescriptorParseResult, which::Error> {
+  ) -> Result<AllowRunDescriptorParseResult, AnyError> {
     let is_path = is_path(text);
-    // todo(dsherret): canonicalize in #25458
     let path = if is_path {
       resolve_from_known_cwd(Path::new(text), cwd)
     } else {
@@ -1292,7 +1292,7 @@ impl AllowRunDescriptor {
         Ok(path) => path,
         Err(err) => match err {
           which::Error::BadAbsolutePath | which::Error::BadRelativePath => {
-            return Err(err);
+            return Err(err.into());
           }
           which::Error::CannotFindBinaryPath
           | which::Error::CannotGetCurrentDir
@@ -1302,6 +1302,7 @@ impl AllowRunDescriptor {
         },
       }
     };
+    let path = path.canonicalize().map(normalize_path).unwrap_or(path);
     Ok(AllowRunDescriptorParseResult::Descriptor(
       AllowRunDescriptor(path),
     ))

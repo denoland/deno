@@ -674,18 +674,26 @@ fn resolve_cmd(cmd: &str, env: &RunEnv) -> Result<PathBuf, AnyError> {
   let is_path = cmd.contains('/');
   #[cfg(windows)]
   let is_path = is_path || cmd.contains('\\') || Path::new(&cmd).is_absolute();
-  if is_path {
-    Ok(resolve_path(cmd, &env.cwd))
+  let path = if is_path {
+    resolve_path(cmd, &env.cwd)
   } else {
     let path = env.envs.get(&OsString::from("PATH"));
     match which::which_in(cmd, path, &env.cwd) {
-      Ok(cmd) => Ok(cmd),
+      Ok(cmd) => cmd,
       Err(which::Error::CannotFindBinaryPath) => {
-        Err(std::io::Error::from(std::io::ErrorKind::NotFound).into())
+        return Err(std::io::Error::from(std::io::ErrorKind::NotFound).into());
       }
-      Err(err) => Err(err.into()),
+      Err(err) => return Err(err.into()),
     }
-  }
+  };
+  Ok(
+    // ok to ignore, because a real file system is necessary to spawn a process
+    #[allow(clippy::disallowed_methods)]
+    path
+      .canonicalize()
+      .map(deno_path_util::normalize_path)
+      .unwrap_or(path),
+  )
 }
 
 fn resolve_path(path: &str, cwd: &Path) -> PathBuf {
