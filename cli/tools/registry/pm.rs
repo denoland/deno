@@ -1058,6 +1058,8 @@ pub async fn outdated(
     }
   }
 
+  if !outdated_flags.filters.is_empty() {}
+
   if outdated_packages.is_empty() {
     println!("No outdated packages found");
   } else {
