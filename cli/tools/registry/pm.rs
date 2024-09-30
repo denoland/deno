@@ -891,9 +891,18 @@ struct OutdatedPackage {
 
 pub async fn outdated(
   flags: Arc<Flags>,
+  // TODO(bartlomieju): support filters
   outdated_flags: OutdatedFlags,
 ) -> Result<(), AnyError> {
   let factory = CliFactory::from_flags(flags);
+  let options = factory.cli_options()?;
+
+  // TODO(bartlomieju): check if lockfile is out of date?
+  if options.maybe_lockfile().is_none() {
+    bail!(
+      "No lockfile provided. Install dependencies first using `deno install`."
+    );
+  }
   let npm_resolver = factory.npm_resolver().await?;
   let http_client = factory.http_client_provider();
   let deps_http_cache = factory.global_http_cache()?;
@@ -1011,7 +1020,7 @@ fn display_table(packages: &[OutdatedPackage]) {
     colors::intense_blue(HEADERS[3]),
   );
   println!(
-    "├{}┼{}┼{}┼{}┤",
+    "│{}┼{}┼{}┼{}│",
     "─".repeat(longest_cells[0] + 3),
     "─".repeat(longest_cells[1] + 3),
     "─".repeat(longest_cells[2] + 3),
@@ -1033,7 +1042,7 @@ fn display_table(packages: &[OutdatedPackage]) {
     );
     if idx < packages.len() - 1 {
       println!(
-        "├{}┼{}┼{}┼{}┤",
+        "│{}┼{}┼{}┼{}│",
         "─".repeat(longest_cells[0] + 3),
         "─".repeat(longest_cells[1] + 3),
         "─".repeat(longest_cells[2] + 3),
