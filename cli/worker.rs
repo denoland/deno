@@ -34,8 +34,10 @@ use deno_runtime::ops::worker_host::CreateWebWorkerCb;
 use deno_runtime::permissions::RuntimePermissionDescriptorParser;
 use deno_runtime::web_worker::WebWorker;
 use deno_runtime::web_worker::WebWorkerOptions;
+use deno_runtime::web_worker::WebWorkerServiceOptions;
 use deno_runtime::worker::MainWorker;
 use deno_runtime::worker::WorkerOptions;
+use deno_runtime::worker::WorkerServiceOptions;
 use deno_runtime::BootstrapOptions;
 use deno_runtime::WorkerExecutionMode;
 use deno_runtime::WorkerLogLevel;
@@ -570,6 +572,23 @@ impl CliMainWorkerFactory {
       }
     }
 
+    let services = WorkerServiceOptions {
+      root_cert_store_provider: Some(shared.root_cert_store_provider.clone()),
+      module_loader,
+      fs: shared.fs.clone(),
+      node_services: Some(shared.create_node_init_services()),
+      npm_process_state_provider: Some(shared.npm_process_state_provider()),
+      blob_store: shared.blob_store.clone(),
+      broadcast_channel: shared.broadcast_channel.clone(),
+      shared_array_buffer_store: Some(shared.shared_array_buffer_store.clone()),
+      compiled_wasm_module_store: Some(
+        shared.compiled_wasm_module_store.clone(),
+      ),
+      feature_checker,
+      permissions,
+      permission_desc_parser: shared.permission_desc_parser.clone(),
+      v8_code_cache: shared.code_cache.clone(),
+    };
     let options = WorkerOptions {
       bootstrap: BootstrapOptions {
         deno_version: crate::version::DENO_VERSION_INFO.deno.to_string(),
@@ -604,7 +623,6 @@ impl CliMainWorkerFactory {
         .options
         .unsafely_ignore_certificate_errors
         .clone(),
-      root_cert_store_provider: Some(shared.root_cert_store_provider.clone()),
       seed: shared.options.seed,
       format_js_error_fn: Some(Arc::new(format_js_error)),
       create_web_worker_cb,
@@ -612,29 +630,16 @@ impl CliMainWorkerFactory {
       should_break_on_first_statement: shared.options.inspect_brk,
       should_wait_for_inspector_session: shared.options.inspect_wait,
       strace_ops: shared.options.strace_ops.clone(),
-      module_loader,
-      fs: shared.fs.clone(),
-      node_services: Some(shared.create_node_init_services()),
-      npm_process_state_provider: Some(shared.npm_process_state_provider()),
       get_error_class_fn: Some(&errors::get_error_class_name),
       cache_storage_dir,
       origin_storage_dir,
-      blob_store: shared.blob_store.clone(),
-      broadcast_channel: shared.broadcast_channel.clone(),
-      shared_array_buffer_store: Some(shared.shared_array_buffer_store.clone()),
-      compiled_wasm_module_store: Some(
-        shared.compiled_wasm_module_store.clone(),
-      ),
       stdio,
-      feature_checker,
-      permission_desc_parser: shared.permission_desc_parser.clone(),
       skip_op_registration: shared.options.skip_op_registration,
-      v8_code_cache: shared.code_cache.clone(),
     };
 
     let mut worker = MainWorker::bootstrap_from_options(
       main_module.clone(),
-      permissions,
+      services,
       options,
     );
 
@@ -766,7 +771,27 @@ fn create_web_worker_callback(
       }
     }
 
+    let services = WebWorkerServiceOptions {
+      root_cert_store_provider: Some(shared.root_cert_store_provider.clone()),
+      module_loader,
+      fs: shared.fs.clone(),
+      node_services: Some(shared.create_node_init_services()),
+      blob_store: shared.blob_store.clone(),
+      broadcast_channel: shared.broadcast_channel.clone(),
+      shared_array_buffer_store: Some(shared.shared_array_buffer_store.clone()),
+      compiled_wasm_module_store: Some(
+        shared.compiled_wasm_module_store.clone(),
+      ),
+      maybe_inspector_server,
+      feature_checker,
+      permission_desc_parser: shared.permission_desc_parser.clone(),
+      npm_process_state_provider: Some(shared.npm_process_state_provider()),
+      permissions: args.permissions,
+    };
     let options = WebWorkerOptions {
+      name: args.name,
+      main_module: args.main_module.clone(),
+      worker_id: args.worker_id,
       bootstrap: BootstrapOptions {
         deno_version: crate::version::DENO_VERSION_INFO.deno.to_string(),
         args: shared.options.argv.clone(),
@@ -777,7 +802,7 @@ fn create_web_worker_callback(
         enable_op_summary_metrics: shared.options.enable_op_summary_metrics,
         enable_testing_features: shared.options.enable_testing_features,
         locale: deno_core::v8::icu::get_language_tag(),
-        location: Some(args.main_module.clone()),
+        location: Some(args.main_module),
         no_color: !colors::use_color(),
         color_level: colors::get_color_level(),
         is_stdout_tty: deno_terminal::is_stdout_tty(),
@@ -799,39 +824,19 @@ fn create_web_worker_callback(
         .options
         .unsafely_ignore_certificate_errors
         .clone(),
-      root_cert_store_provider: Some(shared.root_cert_store_provider.clone()),
       seed: shared.options.seed,
       create_web_worker_cb,
       format_js_error_fn: Some(Arc::new(format_js_error)),
-      module_loader,
-      fs: shared.fs.clone(),
-      node_services: Some(shared.create_node_init_services()),
       worker_type: args.worker_type,
-      maybe_inspector_server,
       get_error_class_fn: Some(&errors::get_error_class_name),
-      blob_store: shared.blob_store.clone(),
-      broadcast_channel: shared.broadcast_channel.clone(),
-      shared_array_buffer_store: Some(shared.shared_array_buffer_store.clone()),
-      compiled_wasm_module_store: Some(
-        shared.compiled_wasm_module_store.clone(),
-      ),
       stdio: stdio.clone(),
       cache_storage_dir,
-      feature_checker,
-      permission_desc_parser: shared.permission_desc_parser.clone(),
       strace_ops: shared.options.strace_ops.clone(),
       close_on_idle: args.close_on_idle,
       maybe_worker_metadata: args.maybe_worker_metadata,
-      npm_process_state_provider: Some(shared.npm_process_state_provider()),
     };
 
-    WebWorker::bootstrap_from_options(
-      args.name,
-      args.permissions,
-      args.main_module,
-      args.worker_id,
-      options,
-    )
+    WebWorker::bootstrap_from_options(services, options)
   })
 }
 
@@ -841,23 +846,43 @@ fn create_web_worker_callback(
 mod tests {
   use super::*;
   use deno_core::resolve_path;
+  use deno_core::FsModuleLoader;
   use deno_fs::RealFs;
   use deno_runtime::deno_permissions::Permissions;
 
   fn create_test_worker() -> MainWorker {
     let main_module =
       resolve_path("./hello.js", &std::env::current_dir().unwrap()).unwrap();
-    let permissions = PermissionsContainer::new(
-      Arc::new(RuntimePermissionDescriptorParser::new(Arc::new(RealFs))),
-      Permissions::none_without_prompt(),
-    );
-
+    let fs = Arc::new(RealFs);
+    let permission_desc_parser =
+      Arc::new(RuntimePermissionDescriptorParser::new(fs.clone()));
     let options = WorkerOptions {
       startup_snapshot: crate::js::deno_isolate_init(),
       ..Default::default()
     };
 
-    MainWorker::bootstrap_from_options(main_module, permissions, options)
+    MainWorker::bootstrap_from_options(
+      main_module,
+      WorkerServiceOptions {
+        module_loader: Rc::new(FsModuleLoader),
+        permissions: PermissionsContainer::new(
+          permission_desc_parser.clone(),
+          Permissions::none_without_prompt(),
+        ),
+        blob_store: Default::default(),
+        broadcast_channel: Default::default(),
+        feature_checker: Default::default(),
+        node_services: Default::default(),
+        npm_process_state_provider: Default::default(),
+        permission_desc_parser,
+        root_cert_store_provider: Default::default(),
+        shared_array_buffer_store: Default::default(),
+        compiled_wasm_module_store: Default::default(),
+        v8_code_cache: Default::default(),
+        fs,
+      },
+      options,
+    )
   }
 
   #[tokio::test]

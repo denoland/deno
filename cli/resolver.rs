@@ -66,8 +66,7 @@ pub struct CliNodeResolver {
   cjs_resolutions: Arc<CjsResolutionStore>,
   fs: Arc<dyn deno_fs::FileSystem>,
   node_resolver: Arc<NodeResolver>,
-  // todo(dsherret): remove this pub(crate)
-  pub(crate) npm_resolver: Arc<dyn CliNpmResolver>,
+  npm_resolver: Arc<dyn CliNpmResolver>,
 }
 
 impl CliNodeResolver {

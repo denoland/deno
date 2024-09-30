@@ -782,6 +782,7 @@ impl CliFactory {
     let npm_resolver = self.npm_resolver().await?;
     let fs = self.fs();
     let cli_node_resolver = self.cli_node_resolver().await?;
+    let cli_npm_resolver = self.npm_resolver().await?.clone();
     let maybe_file_watcher_communicator = if cli_options.has_hmr() {
       Some(self.watcher_communicator.clone().unwrap())
     } else {
@@ -811,6 +812,7 @@ impl CliFactory {
         self.main_module_graph_container().await?.clone(),
         self.module_load_preparer().await?.clone(),
         cli_node_resolver.clone(),
+        cli_npm_resolver.clone(),
         NpmModuleLoader::new(
           self.cjs_resolutions().clone(),
           self.node_code_translator().await?.clone(),
