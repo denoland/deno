@@ -80,10 +80,6 @@ impl CodeCache {
       data,
     ));
   }
-
-  pub fn remove_code_cache(&self, specifier: &str) {
-    Self::ensure_ok(self.inner.remove_code_cache(specifier))
-  }
 }
 
 impl code_cache::CodeCache for CodeCache {
@@ -159,15 +155,6 @@ impl CodeCacheInner {
       source_hash,
       data
     ];
-    self.conn.execute(sql, params)?;
-    Ok(())
-  }
-
-  pub fn remove_code_cache(&self, specifier: &str) -> Result<(), AnyError> {
-    let sql = "
-      DELETE FROM codecache
-      WHERE specifier=$1;";
-    let params = params![specifier];
     self.conn.execute(sql, params)?;
     Ok(())
   }

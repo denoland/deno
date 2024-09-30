@@ -74,7 +74,7 @@ Deno.test("Built-in Node modules have `node:` prefix", () => {
     createRequire();
   } catch (e) {
     thrown = true;
-    const stackLines = e.stack.split("\n");
+    const stackLines = (e as Error).stack!.split("\n");
     // Assert that built-in node modules have `node:<mod_name>` specifiers.
     assert(stackLines.some((line: string) => line.includes("(node:module:")));
   }

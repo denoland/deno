@@ -12,6 +12,7 @@ use crate::lsp::client::Client;
 use crate::lsp::client::TestingNotification;
 use crate::lsp::config;
 use crate::lsp::logging::lsp_log;
+use crate::lsp::urls::uri_parse_unencoded;
 use crate::lsp::urls::uri_to_url;
 use crate::lsp::urls::url_to_uri;
 use crate::tools::test;
@@ -30,13 +31,13 @@ use deno_core::unsync::spawn;
 use deno_core::unsync::spawn_blocking;
 use deno_core::ModuleSpecifier;
 use deno_runtime::deno_permissions::Permissions;
+use deno_runtime::deno_permissions::PermissionsContainer;
 use deno_runtime::tokio_util::create_and_run_current_thread;
 use indexmap::IndexMap;
-use lsp_types::Uri;
+use std::borrow::Cow;
 use std::collections::HashMap;
 use std::collections::HashSet;
 use std::num::NonZeroUsize;
-use std::str::FromStr;
 use std::sync::Arc;
 use std::time::Duration;
 use std::time::Instant;
@@ -219,26 +220,23 @@ impl TestRun {
   ) -> Result<(), AnyError> {
     let args = self.get_args();
     lsp_log!("Executing test run with arguments: {}", args.join(" "));
-    let flags =
-      Arc::new(flags_from_vec(args.into_iter().map(From::from).collect())?);
+    let flags = Arc::new(flags_from_vec(
+      args.into_iter().map(|s| From::from(s.as_ref())).collect(),
+    )?);
     let factory = CliFactory::from_flags(flags);
     let cli_options = factory.cli_options()?;
     // Various test files should not share the same permissions in terms of
     // `PermissionsContainer` - otherwise granting/revoking permissions in one
     // file would have impact on other files, which is undesirable.
-    let permissions =
-      Permissions::from_options(&cli_options.permissions_options()?)?;
+    let permission_desc_parser = factory.permission_desc_parser()?.clone();
+    let permissions = Permissions::from_options(
+      permission_desc_parser.as_ref(),
+      &cli_options.permissions_options(),
+    )?;
     let main_graph_container = factory.main_module_graph_container().await?;
-    test::check_specifiers(
-      factory.file_fetcher()?,
-      main_graph_container,
-      self
-        .queue
-        .iter()
-        .map(|s| (s.clone(), test::TestMode::Executable))
-        .collect(),
-    )
-    .await?;
+    main_graph_container
+      .check_specifiers(&self.queue.iter().cloned().collect::<Vec<_>>(), None)
+      .await?;
 
     let (concurrent_jobs, fail_fast) =
       if let DenoSubcommand::Test(test_flags) = cli_options.sub_command() {
@@ -275,7 +273,10 @@ impl TestRun {
     let join_handles = queue.into_iter().map(move |specifier| {
       let specifier = specifier.clone();
       let worker_factory = worker_factory.clone();
-      let permissions = permissions.clone();
+      let permissions_container = PermissionsContainer::new(
+        permission_desc_parser.clone(),
+        permissions.clone(),
+      );
       let worker_sender = test_event_sender_factory.worker();
       let fail_fast_tracker = fail_fast_tracker.clone();
       let lsp_filter = self.filters.get(&specifier);
@@ -304,7 +305,7 @@ impl TestRun {
           // channel.
           create_and_run_current_thread(test::test_specifier(
             worker_factory,
-            permissions,
+            permissions_container,
             specifier,
             worker_sender,
             fail_fast_tracker,
@@ -452,37 +453,42 @@ impl TestRun {
     Ok(())
   }
 
-  fn get_args(&self) -> Vec<&str> {
-    let mut args = vec!["deno", "test"];
+  fn get_args(&self) -> Vec<Cow<str>> {
+    let mut args = vec![Cow::Borrowed("deno"), Cow::Borrowed("test")];
     args.extend(
       self
         .workspace_settings
         .testing
         .args
         .iter()
-        .map(|s| s.as_str()),
+        .map(|s| Cow::Borrowed(s.as_str())),
     );
-    args.push("--trace-leaks");
-    if self.workspace_settings.unstable && !args.contains(&"--unstable") {
-      args.push("--unstable");
+    args.push(Cow::Borrowed("--trace-leaks"));
+    for unstable_feature in self.workspace_settings.unstable.as_deref() {
+      let flag = format!("--unstable-{unstable_feature}");
+      if !args.contains(&Cow::Borrowed(&flag)) {
+        args.push(Cow::Owned(flag));
+      }
     }
     if let Some(config) = &self.workspace_settings.config {
-      if !args.contains(&"--config") && !args.contains(&"-c") {
-        args.push("--config");
-        args.push(config.as_str());
+      if !args.contains(&Cow::Borrowed("--config"))
+        && !args.contains(&Cow::Borrowed("-c"))
+      {
+        args.push(Cow::Borrowed("--config"));
+        args.push(Cow::Borrowed(config.as_str()));
       }
     }
     if let Some(import_map) = &self.workspace_settings.import_map {
-      if !args.contains(&"--import-map") {
-        args.push("--import-map");
-        args.push(import_map.as_str());
+      if !args.contains(&Cow::Borrowed("--import-map")) {
+        args.push(Cow::Borrowed("--import-map"));
+        args.push(Cow::Borrowed(import_map.as_str()));
       }
     }
     if self.kind == lsp_custom::TestRunKind::Debug
-      && !args.contains(&"--inspect")
-      && !args.contains(&"--inspect-brk")
+      && !args.contains(&Cow::Borrowed("--inspect"))
+      && !args.contains(&Cow::Borrowed("--inspect-brk"))
     {
-      args.push("--inspect");
+      args.push(Cow::Borrowed("--inspect"));
     }
     args
   }
@@ -529,7 +535,7 @@ impl LspTestDescription {
     &self,
     tests: &IndexMap<usize, LspTestDescription>,
   ) -> lsp_custom::TestIdentifier {
-    let uri = Uri::from_str(&self.location().file_name).unwrap();
+    let uri = uri_parse_unencoded(&self.location().file_name).unwrap();
     let static_id = self.static_id();
     let mut root_desc = self;
     while let Some(parent_id) = root_desc.parent_id() {

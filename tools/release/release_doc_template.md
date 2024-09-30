@@ -151,13 +151,6 @@ verify on GitHub that everything looks correct.
 - [ ] This will open a PR. Review and merge it.
 - [ ] Create a `$VERSION` tag (_without_ `v` prefix).
 
-## Updating `deno-lambda`
-
-- [ ] Run the version bump workflow:
-      https://github.com/denoland/deno-lambda/actions/workflows/bump.yml
-- [ ] This will open a PR. Review and merge it.
-- [ ] Create a `$VERSION` tag (_without_ `v` prefix).
-
 ## All done!
 
 - [ ] Write a message in company's #cli channel:

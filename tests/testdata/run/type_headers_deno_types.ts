@@ -12,7 +12,7 @@
  * header.
  */
 
-// @deno-types="http://127.0.0.1:4545/run/type_headers_deno_types.foo.d.ts"
-import { foo } from "http://127.0.0.1:4545/run/type_headers_deno_types.foo.js";
+// @deno-types="http://localhost:4545/run/type_headers_deno_types.foo.d.ts"
+import { foo } from "http://localhost:4545/run/type_headers_deno_types.foo.js";
 
 foo("hello");

@@ -18,4 +18,3 @@ globalThis.performance = performance;
 globalThis.setImmediate = setImmediate;
 globalThis.setInterval = setInterval;
 globalThis.setTimeout = setTimeout;
-delete globalThis.window;

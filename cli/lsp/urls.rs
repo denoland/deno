@@ -55,6 +55,25 @@ const COMPONENT: &percent_encoding::AsciiSet = &percent_encoding::CONTROLS
   .add(b'+')
   .add(b',');
 
+/// Characters that may be left unencoded in a `Url` path but not valid in a
+/// `Uri` path.
+const URL_TO_URI_PATH: &percent_encoding::AsciiSet =
+  &percent_encoding::CONTROLS
+    .add(b'[')
+    .add(b']')
+    .add(b'^')
+    .add(b'|');
+
+/// Characters that may be left unencoded in a `Url` query but not valid in a
+/// `Uri` query.
+const URL_TO_URI_QUERY: &percent_encoding::AsciiSet =
+  &URL_TO_URI_PATH.add(b'\\').add(b'`').add(b'{').add(b'}');
+
+/// Characters that may be left unencoded in a `Url` fragment but not valid in
+/// a `Uri` fragment.
+const URL_TO_URI_FRAGMENT: &percent_encoding::AsciiSet =
+  &URL_TO_URI_PATH.add(b'#').add(b'\\').add(b'{').add(b'}');
+
 fn hash_data_specifier(specifier: &ModuleSpecifier) -> String {
   let mut file_name_str = specifier.path().to_string();
   if let Some(query) = specifier.query() {
@@ -122,8 +141,33 @@ impl LspUrlMapInner {
   }
 }
 
+pub fn uri_parse_unencoded(s: &str) -> Result<Uri, AnyError> {
+  url_to_uri(&Url::parse(s)?)
+}
+
 pub fn url_to_uri(url: &Url) -> Result<Uri, AnyError> {
-  Ok(Uri::from_str(url.as_str()).inspect_err(|err| {
+  let components = deno_core::url::quirks::internal_components(url);
+  let mut input = String::with_capacity(url.as_str().len());
+  input.push_str(&url.as_str()[..components.path_start as usize]);
+  input.push_str(
+    &percent_encoding::utf8_percent_encode(url.path(), URL_TO_URI_PATH)
+      .to_string(),
+  );
+  if let Some(query) = url.query() {
+    input.push('?');
+    input.push_str(
+      &percent_encoding::utf8_percent_encode(query, URL_TO_URI_QUERY)
+        .to_string(),
+    );
+  }
+  if let Some(fragment) = url.fragment() {
+    input.push('#');
+    input.push_str(
+      &percent_encoding::utf8_percent_encode(fragment, URL_TO_URI_FRAGMENT)
+        .to_string(),
+    );
+  }
+  Ok(Uri::from_str(&input).inspect_err(|err| {
     lsp_warn!("Could not convert URL \"{url}\" to URI: {err}")
   })?)
 }
@@ -189,7 +233,7 @@ impl LspUrlMap {
         } else {
           to_deno_uri(specifier)
         };
-        let uri = Uri::from_str(&uri_str)?;
+        let uri = uri_parse_unencoded(&uri_str)?;
         inner.put(specifier.clone(), uri.clone());
         uri
       };

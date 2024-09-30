@@ -135,7 +135,7 @@ pub async fn compile(
       file,
       eszip,
       root_dir_url,
-      &module_specifier,
+      module_specifier,
       &compile_flags,
       cli_options,
     )

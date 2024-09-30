@@ -1894,6 +1894,25 @@ Deno.test(function consoleLogShouldNotThrowErrorWhenInputIsProxiedTypedArray() {
   });
 });
 
+Deno.test(function consoleLogWhenCauseIsAssignedShouldNotPrintCauseTwice() {
+  mockConsole((console, out) => {
+    const typeError = new TypeError("Type incorrect");
+    const syntaxError = new SyntaxError("Improper syntax");
+    typeError.cause = syntaxError;
+    console.log(typeError);
+    const result = stripAnsiCode(out.toString());
+    // Filter out stack trace lines, keeping only the first line and the cause line
+    const filteredOutput = result
+      .split("\n")
+      .filter((line) => !line.trim().startsWith("at"))
+      .join("\n");
+
+    const expectedResult =
+      "TypeError: Type incorrect\nCaused by SyntaxError: Improper syntax\n";
+    assertEquals(filteredOutput.trim(), expectedResult.trim());
+  });
+});
+
 // console.log(new Proxy(new RegExp(), {}))
 Deno.test(function consoleLogShouldNotThrowErrorWhenInputIsProxiedRegExp() {
   mockConsole((console, out) => {

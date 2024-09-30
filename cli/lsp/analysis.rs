@@ -11,7 +11,6 @@ use super::urls::url_to_uri;
 use crate::args::jsr_url;
 use crate::tools::lint::CliLinter;
 use deno_lint::diagnostic::LintDiagnosticRange;
-use deno_runtime::fs_util::specifier_to_file_path;
 
 use deno_ast::SourceRange;
 use deno_ast::SourceRangedForSpanned;
@@ -24,6 +23,7 @@ use deno_core::serde::Serialize;
 use deno_core::serde_json;
 use deno_core::serde_json::json;
 use deno_core::ModuleSpecifier;
+use deno_path_util::url_to_file_path;
 use deno_runtime::deno_node::PathClean;
 use deno_semver::jsr::JsrPackageNvReference;
 use deno_semver::jsr::JsrPackageReqReference;
@@ -401,7 +401,7 @@ impl<'a> TsResponseImportMapper<'a> {
       .flatten()?;
     let root_folder = package_json.path.parent()?;
 
-    let specifier_path = specifier_to_file_path(specifier).ok()?;
+    let specifier_path = url_to_file_path(specifier).ok()?;
     let mut search_paths = vec![specifier_path.clone()];
     // TypeScript will provide a .js extension for quick fixes, so do
     // a search for the .d.ts file instead

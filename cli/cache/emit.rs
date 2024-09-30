@@ -82,19 +82,6 @@ impl EmitCache {
     Ok(())
   }
 
-  /// Gets the filepath which stores the emit.
-  pub fn get_emit_filepath(
-    &self,
-    specifier: &ModuleSpecifier,
-  ) -> Option<PathBuf> {
-    Some(
-      self
-        .disk_cache
-        .location
-        .join(self.get_emit_filename(specifier)?),
-    )
-  }
-
   fn get_emit_filename(&self, specifier: &ModuleSpecifier) -> Option<PathBuf> {
     self
       .disk_cache

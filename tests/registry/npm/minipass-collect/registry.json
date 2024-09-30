@@ -1,1 +1,74 @@
-{"_id":"minipass-collect","_rev":"5-a0713db37a46904b71776ef9702a0de8","name":"minipass-collect","dist-tags":{"latest":"2.0.1"},"versions":{"1.0.0":{"name":"minipass-collect","version":"1.0.0","description":"A Minipass stream that collects all the data into a single chunk","author":{"name":"Isaac Z. Schlueter","email":"i@izs.me","url":"https://izs.me"},"license":"ISC","scripts":{"test":"tap","snap":"tap","preversion":"npm test","postversion":"npm publish","postpublish":"git push origin --follow-tags"},"tap":{"check-coverage":true},"devDependencies":{"tap":"^14.6.4"},"dependencies":{"minipass":"^2.5.1"},"gitHead":"a35731a6b23dfd35854ae2fe20c3e209bc43de80","_id":"minipass-collect@1.0.0","_nodeVersion":"12.8.1","_npmVersion":"6.11.3","dist":{"integrity":"sha512-Fvc482x6pBH+5Eg2JyMbFOLhjcwRIv1dmZGQwnALZ1wjR1+OX6tInTc3IoTJugbkNrzWFL1Y5Y7np14geHmCvA==","shasum":"248d067baa462694188962cc6cf532aa19269ca2","tarball":"http://localhost:4260/minipass-collect/minipass-collect-1.0.0.tgz","fileCount":4,"unpackedSize":3638,"npm-signature":"-----BEGIN PGP SIGNATURE-----\r\nVersion: OpenPGP.js v3.0.4\r\nComment: https://openpgpjs.org\r\n\r\nwsFcBAEBCAAQBQJdfro2CRA9TVsSAnZWagAA/dAQAKICTZujxH8gboXPtySe\n6FQTNdzCFWPjruF6dKVMMTV3YHbHqMqEL+NgOeKvc8RLcLy5/i7w5L6JTZ3U\nbk2acMP0IG0WCSX66E/cxBLcpUzJegbE8cQA9isQuoUVw0rWo7DlTumfHrR/\nDlysPSmoaRPc3en1BEP+Sxn5p+lvRyd7WpaoPzJWLPF09rsyclb6FE0/fKwi\nP48XCDWICR0Eq64r87Lx1NbNb6EN233fkOL63gpsXW017oNjYFEEYHaYYqqh\n2QZisiRZk53F7T1POf2mk8IjUnNYA3aw8K7BNA9oV/h3UaBhMIAWiqem/G0V\ngZTPinU1qOZRSI9DiFLEk5arPH1iQ4ufQRFJ/f3DHLaycoeC2mE8ILrxMMBu\nXqG1KUGDl7uYX5cuByewWUkU49dc5sGDEFV06MqCZcsy5RFDvBXtPTmSlhMK\ng7Fw1tf7mhSHvpQTXo7kE+Hmx3ErACWdFw6yg+zTJeLIcbH4VzgxURgZ0cgD\nnNo+rozuyGWwev/BTbHEC+gmqE61Agx+lcVu2HqBdZ6mk0uHxOEf9cLE6T5b\ntWJBo1fTiF2YGRGnY11J4C5hyMuFSpykBDCWa3pcj6c/wfXgyD+payxWLObf\nTMN6QYyIBHCyAm/jciqKLGAyetba8gCWiUnMvH3D0tSYjtKuSAkqNlZc6Tug\ntfQn\r\n=uLVM\r\n-----END PGP SIGNATURE-----\r\n","signatures":[{"keyid":"SHA256:jl3bwswu80PjjokCgh0o2w5c2U4LhQAE57gj9cz1kzA","sig":"MEUCIQCAM0lC9PpTOm4Po3bSR0KJDvjtu1mwv7nsB1NPEQ3lPQIgSuQTIJnf9vbcD3nBKLY8kPfRwNPEllxzAWUsVH/Syr0="}]},"maintainers":[{"name":"isaacs","email":"i@izs.me"}],"_npmUser":{"name":"isaacs","email":"i@izs.me"},"directories":{},"_npmOperationalInternal":{"host":"s3://npm-registry-packages","tmp":"tmp/minipass-collect_1.0.0_1568586294266_0.059989271495353824"},"_hasShrinkwrap":false},"1.0.1":{"name":"minipass-collect","version":"1.0.1","description":"A Minipass stream that collects all the data into a single chunk","author":{"name":"Isaac Z. Schlueter","email":"i@izs.me","url":"https://izs.me"},"license":"ISC","scripts":{"test":"tap","snap":"tap","preversion":"npm test","postversion":"npm publish","postpublish":"git push origin --follow-tags"},"tap":{"check-coverage":true},"devDependencies":{"tap":"^14.6.4"},"dependencies":{"minipass":"^2.5.1"},"gitHead":"b4ab479a0a07bb49c6315b7d01c0ae07c340ce96","_id":"minipass-collect@1.0.1","_nodeVersion":"12.8.1","_npmVersion":"6.11.3","dist":{"integrity":"sha512-mg9mz9bTiormVPZ0+1ywhx378ZL64RXpzyFByQ/qpLg2ZpXgyMNYnSSrE2GMW/q0JwaEfzcJySPcItQI/eTTHA==","shasum":"4e145371e0032332d398bb0e18bdbd56b7131443","tarball":"http://localhost:4260/minipass-collect/minipass-collect-1.0.1.tgz","fileCount":4,"unpackedSize":4258,"npm-signature":"-----BEGIN PGP SIGNATURE-----\r\nVersion: OpenPGP.js v3.0.4\r\nComment: https://openpgpjs.org\r\n\r\nwsFcBAEBCAAQBQJdfsMOCRA9TVsSAnZWagAABkEQAJmk7XJw59RCPe9JBFwI\ntwP1q17g4samFMfHiff88dsjl6yznSab+3ZNefSFOB/WlIrFZFW/1g3F6u6V\n25rHU1Gc3aoTAaQt6CywvicSKHZKFmobGIGfyHOp4R9+J4+vpfnzajUy2E0Q\nj3WhWu+uu9+8o1TGAcPZqCl4T4tjoaZY0yl1SeluTuBJ5blIP75ybXxdnn1l\n6GlAHf1+/RIvKOiYX3LkHxcDDUjvPVY8pWBS3/nQXOY/P3/9MBCOY/NfO+mH\nsIndgMB+mhvVjW1h/T0Nl2F3nWY5uB3EfJgrW49RttcxYpHpp49+j/IYvzIr\neEG90inAsu9uVGZPNPd5hInF/h/qVWQhKae1HiNEeTtIvcd2U9kqO2oTkH6q\n89yJ01ohuLdMlKleaAV/n3Am42ynZaQEV+GiR9CmsZkV5EBsCz9wPPAmOsAl\nwJu8pVKqNN1S8bltsQn0wqSaj0vKzql/48ZSibiLB+q0OA32gkiHr4zZVrda\n0z1bhV1NO7795V6FKO/OQvw6e5F/mwEv/HU1g+pqAosbudqq6Yee6E+NL1US\n2i/KRNvePh/menHEQxWtHuuZWOhGtLWgTkNnuGYyz2Ootww0vpK30Rg+RODS\nZQHPN9o0sQ77NeTN2G1akoeLf9XUAHqqn+NcvLKVdh8b+QJCeCXt5LnTRfLW\nWntW\r\n=LciM\r\n-----END PGP SIGNATURE-----\r\n","signatures":[{"keyid":"SHA256:jl3bwswu80PjjokCgh0o2w5c2U4LhQAE57gj9cz1kzA","sig":"MEUCIBkaUnGRGKcG9pVrdYciYpc9AF9V0lqVBukIwk1ZH0+gAiEA+49QzgnzWfXvvmO9cwoJc0BoL5iFL/AVd50AnaaGQoc="}]},"maintainers":[{"name":"isaacs","email":"i@izs.me"}],"_npmUser":{"name":"isaacs","email":"i@izs.me"},"directories":{},"_npmOperationalInternal":{"host":"s3://npm-registry-packages","tmp":"tmp/minipass-collect_1.0.1_1568588558407_0.11337844967850974"},"_hasShrinkwrap":false},"1.0.2":{"name":"minipass-collect","version":"1.0.2","description":"A Minipass stream that collects all the data into a single chunk","author":{"name":"Isaac Z. Schlueter","email":"i@izs.me","url":"https://izs.me"},"license":"ISC","scripts":{"test":"tap","snap":"tap","preversion":"npm test","postversion":"npm publish","postpublish":"git push origin --follow-tags"},"tap":{"check-coverage":true},"devDependencies":{"tap":"^14.6.9"},"dependencies":{"minipass":"^3.0.0"},"engines":{"node":">= 8"},"gitHead":"95c7358c4b4f940568f209dd408730a6943ecb8e","_id":"minipass-collect@1.0.2","_nodeVersion":"12.8.1","_npmVersion":"6.12.0-next.0","dist":{"integrity":"sha512-6T6lH0H8OG9kITm/Jm6tdooIbogG9e0tLgpY6mphXSm/A9u8Nq1ryBG+Qspiub9LjWlBPsPS3tWQ/Botq4FdxA==","shasum":"22b813bf745dc6edba2576b940022ad6edc8c617","tarball":"http://localhost:4260/minipass-collect/minipass-collect-1.0.2.tgz","fileCount":4,"unpackedSize":4870,"npm-signature":"-----BEGIN PGP SIGNATURE-----\r\nVersion: OpenPGP.js v3.0.4\r\nComment: https://openpgpjs.org\r\n\r\nwsFcBAEBCAAQBQJdkmwkCRA9TVsSAnZWagAAoUcQAKLpcA5ZfbCVNA8pTrEa\ne5C7ub3A0cVTL/Njf0FP0/IFQZh5GYx2xHofzMPPwcwWPCQZdc12a0/bAiif\nUq6sxb3cjObiMhl6GhlJ3CpRWNe7mQ7C9ba6r70LVA/mgL7BHi08NtT3pzc5\nQ3BwFXYG2nAXRubLFE6Glmrg+QVipAbL3Y1ORWtrqGwEOxYkvnhJKmwNLtVD\nFDvAzrfbovg5xvv3OaUYHhfJf29UY0c9B2KRJD+y6KkAmIdUn9/FSzgNwYUV\nsq7+/RcI6c0/2XwI7jYymc0/InI46XUuU9wzen/7/tim05nyQ18ViTwfzKoJ\n9hX/DCy3NrEoRJalDuuKpY6WpaPxESaiJchmH05rq7yXn/WAnBwI6UphPlhA\n3vLm39y7lKWbfkUsXT07T/VnW+P+yZW2WE8FAflQgEIr/R6m+RKHt7DYRdvD\newWo7rB81hPYlG4Lzp5OcujZrd4XBtYMf1N3ZLC9qsp0FbrnisAdtTb4TKic\nYCmY+f7cutXVWuTxUB5KWZhN231gE8JH8S2YXscaEG9ooAAB2VppRK7cYI93\n7PdGsawPCIteyrbemj+FxmMSokVpy+GvpX95LqzNsT/r9+KGH6i75N2nZ6Gf\nabLbSCYgpyzQcY3DdPnOmsGBn9R9gvZUpIcTxdKK+P49PLrYHz0XpgQnb7MM\ntm8r\r\n=c5M/\r\n-----END PGP SIGNATURE-----\r\n","signatures":[{"keyid":"SHA256:jl3bwswu80PjjokCgh0o2w5c2U4LhQAE57gj9cz1kzA","sig":"MEUCIHXcaUg3pJ5KSgOZKL3AYxMUkltcdJ7xufM5W62Bk3qLAiEAje+eA6aNBvvtSeiSB8WYvmoqP/slhLu1gH9gInMcbmY="}]},"maintainers":[{"name":"isaacs","email":"i@izs.me"}],"_npmUser":{"name":"isaacs","email":"i@izs.me"},"directories":{},"_npmOperationalInternal":{"host":"s3://npm-registry-packages","tmp":"tmp/minipass-collect_1.0.2_1569877028029_0.9003110762470692"},"_hasShrinkwrap":false},"2.0.0":{"name":"minipass-collect","version":"2.0.0","description":"A Minipass stream that collects all the data into a single chunk","author":{"name":"Isaac Z. Schlueter","email":"i@izs.me","url":"https://izs.me"},"license":"ISC","scripts":{"test":"tap","snap":"tap","preversion":"npm test","postversion":"npm publish","postpublish":"git push origin --follow-tags"},"tap":{"check-coverage":true},"devDependencies":{"tap":"^16.3.8"},"dependencies":{"minipass":"^7.0.3"},"engines":{"node":">=16 || 14 >=14.17"},"repository":{"type":"git","url":"git+https://github.com/isaacs/minipass-collect.git"},"_id":"minipass-collect@2.0.0","gitHead":"d8e57d6279b07e8c260c7bd46f98bdd7940b48d5","bugs":{"url":"https://github.com/isaacs/minipass-collect/issues"},"homepage":"https://github.com/isaacs/minipass-collect#readme","_nodeVersion":"18.16.0","_npmVersion":"9.8.1","dist":{"integrity":"sha512-EW7cdtsjxTfFMM2QR5zmtCccbUpVa0iDokDpwlrT0T7ibNt3Z4oNVRVXyLroO/VO1MDuHAG31dYYjg7muwST+Q==","shasum":"ada7d50f061476a526596ce0884493df32e38092","tarball":"http://localhost:4260/minipass-collect/minipass-collect-2.0.0.tgz","fileCount":4,"unpackedSize":4960,"signatures":[{"keyid":"SHA256:jl3bwswu80PjjokCgh0o2w5c2U4LhQAE57gj9cz1kzA","sig":"MEQCIC0+Q+dS3Go5tALgrS3XFKcw1Qm/3sCgmDjLpV9Loo3fAiA6kKwzFiUdzKXET5IwisRlC27KBzR6IRwiM1788xgTvQ=="}]},"_npmUser":{"name":"isaacs","email":"i@izs.me"},"directories":{},"maintainers":[{"name":"isaacs","email":"i@izs.me"}],"_npmOperationalInternal":{"host":"s3://npm-registry-packages","tmp":"tmp/minipass-collect_2.0.0_1692560262624_0.08111170747017726"},"_hasShrinkwrap":false},"2.0.1":{"name":"minipass-collect","version":"2.0.1","description":"A Minipass stream that collects all the data into a single chunk","author":{"name":"Isaac Z. Schlueter","email":"i@izs.me","url":"https://izs.me"},"license":"ISC","scripts":{"test":"tap","snap":"tap","preversion":"npm test","postversion":"npm publish","prepublishOnly":"git push origin --follow-tags"},"tap":{"check-coverage":true},"devDependencies":{"tap":"^16.3.8"},"dependencies":{"minipass":"^7.0.3"},"engines":{"node":">=16 || 14 >=14.17"},"repository":{"type":"git","url":"git+https://github.com/isaacs/minipass-collect.git"},"_id":"minipass-collect@2.0.1","gitHead":"a0a97f9e714fd60a3a14373c09f486309b5cc371","bugs":{"url":"https://github.com/isaacs/minipass-collect/issues"},"homepage":"https://github.com/isaacs/minipass-collect#readme","_nodeVersion":"18.16.0","_npmVersion":"9.8.1","dist":{"integrity":"sha512-D7V8PO9oaz7PWGLbCACuI1qEOsq7UKfLotx/C0Aet43fCUB/wfQ7DYeq2oR/svFJGYDHPr38SHATeaj/ZoKHKw==","shasum":"1621bc77e12258a12c60d34e2276ec5c20680863","tarball":"http://localhost:4260/minipass-collect/minipass-collect-2.0.1.tgz","fileCount":4,"unpackedSize":4963,"signatures":[{"keyid":"SHA256:jl3bwswu80PjjokCgh0o2w5c2U4LhQAE57gj9cz1kzA","sig":"MEUCIGHm7nziWUCc9523LXf4MAFCd60uXbf2OoL2HVQAfgfnAiEAoWPujoOaz1kdIW34UYkfRWW0c500oT2p2EStSmrRRFI="}]},"_npmUser":{"name":"isaacs","email":"i@izs.me"},"directories":{},"maintainers":[{"name":"isaacs","email":"i@izs.me"}],"_npmOperationalInternal":{"host":"s3://npm-registry-packages","tmp":"tmp/minipass-collect_2.0.1_1692560311900_0.939722760324172"},"_hasShrinkwrap":false}},"time":{"created":"2019-09-15T22:24:54.265Z","1.0.0":"2019-09-15T22:24:54.411Z","modified":"2023-08-20T19:38:32.235Z","1.0.1":"2019-09-15T23:02:38.518Z","1.0.2":"2019-09-30T20:57:08.179Z","2.0.0":"2023-08-20T19:37:42.797Z","2.0.1":"2023-08-20T19:38:32.048Z"},"maintainers":[{"name":"isaacs","email":"i@izs.me"}],"description":"A Minipass stream that collects all the data into a single chunk","author":{"name":"Isaac Z. Schlueter","email":"i@izs.me","url":"https://izs.me"},"license":"ISC","readme":"# minipass-collect\n\nA Minipass stream that collects all the data into a single chunk\n\nNote that this buffers ALL data written to it, so it's only good for\nsituations where you are sure the entire stream fits in memory.\n\nNote: this is primarily useful for the `Collect.PassThrough` class, since\nMinipass streams already have a `.collect()` method which returns a promise\nthat resolves to the array of chunks, and a `.concat()` method that returns\nthe data concatenated into a single Buffer or String.\n\n## USAGE\n\n```js\nconst Collect = require('minipass-collect')\n\nconst collector = new Collect()\ncollector.on('data', allTheData => {\n  console.log('all the data!', allTheData)\n})\n\nsomeSourceOfData.pipe(collector)\n\n// note that you can also simply do:\nsomeSourceOfData.pipe(new Minipass()).concat().then(data => ...)\n// or even, if someSourceOfData is a Minipass:\nsomeSourceOfData.concat().then(data => ...)\n// but you might prefer to have it stream-shaped rather than\n// Promise-shaped in some scenarios.\n```\n\nIf you want to collect the data, but _also_ act as a passthrough stream,\nthen use `Collect.PassThrough` instead (for example to memoize streaming\nresponses), and listen on the `collect` event.\n\n```js\nconst Collect = require('minipass-collect')\n\nconst collector = new Collect.PassThrough()\ncollector.on('collect', allTheData => {\n  console.log('all the data!', allTheData)\n})\n\nsomeSourceOfData.pipe(collector).pipe(someOtherStream)\n```\n\nAll [minipass options](http://npm.im/minipass) are supported.\n","readmeFilename":"README.md","homepage":"https://github.com/isaacs/minipass-collect#readme","repository":{"type":"git","url":"git+https://github.com/isaacs/minipass-collect.git"},"bugs":{"url":"https://github.com/isaacs/minipass-collect/issues"}}
+{
+  "name": "minipass-collect",
+  "dist-tags": {
+    "latest": "2.0.1"
+  },
+  "versions": {
+    "2.0.1": {
+      "name": "minipass-collect",
+      "version": "2.0.1",
+      "description": "A Minipass stream that collects all the data into a single chunk",
+      "author": {
+        "name": "Isaac Z. Schlueter",
+        "email": "i@izs.me",
+        "url": "https://izs.me"
+      },
+      "license": "ISC",
+      "scripts": {
+        "test": "tap",
+        "snap": "tap",
+        "preversion": "npm test",
+        "postversion": "npm publish",
+        "prepublishOnly": "git push origin --follow-tags"
+      },
+      "tap": {
+        "check-coverage": true
+      },
+      "devDependencies": {
+        "tap": "^16.3.8"
+      },
+      "dependencies": {
+        "minipass": "^7.0.3"
+      },
+      "engines": {
+        "node": ">=16 || 14 >=14.17"
+      },
+      "repository": {
+        "type": "git",
+        "url": "git+https://github.com/isaacs/minipass-collect.git"
+      },
+      "_id": "minipass-collect@2.0.1",
+      "gitHead": "a0a97f9e714fd60a3a14373c09f486309b5cc371",
+      "bugs": {
+        "url": "https://github.com/isaacs/minipass-collect/issues"
+      },
+      "_nodeVersion": "18.16.0",
+      "_npmVersion": "9.8.1",
+      "dist": {
+        "integrity": "sha512-D7V8PO9oaz7PWGLbCACuI1qEOsq7UKfLotx/C0Aet43fCUB/wfQ7DYeq2oR/svFJGYDHPr38SHATeaj/ZoKHKw==",
+        "shasum": "1621bc77e12258a12c60d34e2276ec5c20680863",
+        "tarball": "http://localhost:4260/minipass-collect/minipass-collect-2.0.1.tgz",
+        "fileCount": 4,
+        "unpackedSize": 4963
+      },
+      "directories": {},
+      "_hasShrinkwrap": false
+    }
+  },
+  "description": "A Minipass stream that collects all the data into a single chunk",
+  "author": {
+    "name": "Isaac Z. Schlueter",
+    "email": "i@izs.me",
+    "url": "https://izs.me"
+  },
+  "license": "ISC",
+  "readmeFilename": "README.md",
+  "homepage": "https://github.com/isaacs/minipass-collect#readme",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/isaacs/minipass-collect.git"
+  },
+  "bugs": {
+    "url": "https://github.com/isaacs/minipass-collect/issues"
+  }
+}

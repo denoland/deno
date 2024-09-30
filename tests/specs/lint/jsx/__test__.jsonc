@@ -1,0 +1,16 @@
+{
+  "steps": [
+    {
+      "args": "lint",
+      "cwd": "./react",
+      "output": "react.out",
+      "exitCode": 0
+    },
+    {
+      "args": "lint",
+      "cwd": "./react-jsx",
+      "output": "react-jsx.out",
+      "exitCode": 1
+    }
+  ]
+}

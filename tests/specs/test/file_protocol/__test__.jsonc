@@ -1,0 +1,4 @@
+{
+  "args": "test main.ts",
+  "output": "main.out"
+}

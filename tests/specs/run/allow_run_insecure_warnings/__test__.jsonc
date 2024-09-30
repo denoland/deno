@@ -1,0 +1,8 @@
+{
+  "tests": {
+    "no_allow_list": {
+      "args": "run --allow-run main.ts",
+      "output": "no_allow_list.out"
+    }
+  }
+}

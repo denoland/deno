@@ -12,12 +12,12 @@ use std::path::PathBuf;
 use std::rc::Rc;
 use std::sync::Arc;
 
-use deno_core::normalize_path;
 use deno_core::parking_lot::Mutex;
 use deno_io::fs::File;
 use deno_io::fs::FsError;
 use deno_io::fs::FsResult;
 use deno_io::fs::FsStat;
+use deno_path_util::normalize_path;
 
 use crate::interface::AccessCheckCb;
 use crate::interface::FsDirEntry;
@@ -44,7 +44,7 @@ impl InMemoryFs {
   pub fn setup_text_files(&self, files: Vec<(String, String)>) {
     for (path, text) in files {
       let path = PathBuf::from(path);
-      self.mkdir_sync(path.parent().unwrap(), true, 0).unwrap();
+      self.mkdir_sync(path.parent().unwrap(), true, None).unwrap();
       self
         .write_file_sync(
           &path,
@@ -101,7 +101,7 @@ impl FileSystem for InMemoryFs {
     &self,
     path: &Path,
     recursive: bool,
-    _mode: u32,
+    _mode: Option<u32>,
   ) -> FsResult<()> {
     let path = normalize_path(path);
 
@@ -119,7 +119,7 @@ impl FileSystem for InMemoryFs {
         },
         None => {
           if recursive {
-            self.mkdir_sync(parent, true, 0)?;
+            self.mkdir_sync(parent, true, None)?;
           } else {
             return Err(FsError::Io(Error::new(
               ErrorKind::NotFound,
@@ -149,7 +149,7 @@ impl FileSystem for InMemoryFs {
     &self,
     path: PathBuf,
     recursive: bool,
-    mode: u32,
+    mode: Option<u32>,
   ) -> FsResult<()> {
     self.mkdir_sync(&path, recursive, mode)
   }

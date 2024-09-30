@@ -1,6 +1,5 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
-// @ts-expect-error: @types/node is outdated
 import events, { addAbortListener, EventEmitter } from "node:events";
 
 EventEmitter.captureRejections = true;

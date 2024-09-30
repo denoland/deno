@@ -1,6 +1,13 @@
-[WILDCARD]
+[UNORDERED_START]
+Download http://localhost:4260/preact
+Download http://localhost:4260/preact-render-to-string
+Download http://localhost:4260/pretty-format
+Download http://localhost:4260/preact-render-to-string/preact-render-to-string-6.4.0.tgz
+Download http://localhost:4260/preact/preact-10.19.6.tgz
+Download http://localhost:4260/pretty-format/pretty-format-3.8.0.tgz
+[UNORDERED_END]
+Check file:///[WILDLINE]/mod.ts
 Checking for slow types in the public API...
-Check file:///[WILDCARD]/mod.ts
 error[missing-constraint]: specifier 'npm:preact/jsx-runtime' is missing a version constraint
  --> [WILDLINE]
   = hint: specify a version constraint for the specifier

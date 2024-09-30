@@ -1,5 +1,8 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
+pub mod bin_entries;
+pub mod lifecycle_scripts;
+
 use std::collections::HashMap;
 use std::io::ErrorKind;
 use std::path::Path;
@@ -30,7 +33,7 @@ pub trait NpmPackageFsResolver: Send + Sync {
   fn root_dir_url(&self) -> &Url;
 
   /// The local node_modules folder if it is applicable to the implementation.
-  fn node_modules_path(&self) -> Option<&PathBuf>;
+  fn node_modules_path(&self) -> Option<&Path>;
 
   fn maybe_package_folder(&self, package_id: &NpmPackageId) -> Option<PathBuf>;
 
@@ -127,13 +130,14 @@ impl RegistryReadPermissionChecker {
       }
     }
 
-    permissions.check_read(path)
+    _ = permissions.check_read_path(path)?;
+    Ok(())
   }
 }
 
 /// Caches all the packages in parallel.
 pub async fn cache_packages(
-  packages: Vec<NpmResolutionPackage>,
+  packages: &[NpmResolutionPackage],
   tarball_cache: &Arc<TarballCache>,
 ) -> Result<(), AnyError> {
   let mut futures_unordered = futures::stream::FuturesUnordered::new();

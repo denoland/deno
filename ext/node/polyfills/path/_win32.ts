@@ -953,6 +953,8 @@ export function parse(path: string): ParsedPath {
   return ret;
 }
 
+export const _makeLong = toNamespacedPath;
+
 export default {
   basename,
   delimiter,
@@ -967,4 +969,5 @@ export default {
   resolve,
   sep,
   toNamespacedPath,
+  _makeLong,
 };

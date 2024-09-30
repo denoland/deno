@@ -5,6 +5,7 @@ const closeDeferred = Promise.withResolvers<void>();
 
 const listener = Deno.listen({ port: 4509 });
 console.log("READY");
+// @ts-ignore `Deno.serveHttp()` was soft-removed in Deno 2.
 const httpConn = Deno.serveHttp(await listener.accept());
 const { request, respondWith } = (await httpConn.nextRequest())!;
 const { response, socket } = Deno.upgradeWebSocket(request, {

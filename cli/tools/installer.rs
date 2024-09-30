@@ -198,14 +198,15 @@ pub async fn infer_name_from_url(
   Some(stem.to_string())
 }
 
-pub fn uninstall(uninstall_flags: UninstallFlags) -> Result<(), AnyError> {
-  if !uninstall_flags.global {
-    log::warn!("⚠️ `deno install` behavior will change in Deno 2. To preserve the current behavior use the `-g` or `--global` flag.");
-  }
-
+pub async fn uninstall(
+  flags: Arc<Flags>,
+  uninstall_flags: UninstallFlags,
+) -> Result<(), AnyError> {
   let uninstall_flags = match uninstall_flags.kind {
     UninstallKind::Global(flags) => flags,
-    UninstallKind::Local => unreachable!(),
+    UninstallKind::Local(remove_flags) => {
+      return super::registry::remove(flags, remove_flags).await;
+    }
   };
 
   let cwd = std::env::current_dir().context("Unable to get CWD")?;
@@ -332,10 +333,6 @@ pub async fn install_command(
 ) -> Result<(), AnyError> {
   match install_flags.kind {
     InstallKind::Global(global_flags) => {
-      if !install_flags.global {
-        log::warn!("⚠️ `deno install` behavior will change in Deno 2. To preserve the current behavior use the `-g` or `--global` flag.");
-      }
-
       install_global(flags, global_flags).await
     }
     InstallKind::Local(local_flags) => {
@@ -491,10 +488,6 @@ async fn resolve_shim_data(
     TypeCheckMode::All => executable_args.push("--check=all".to_string()),
     TypeCheckMode::None => {}
     TypeCheckMode::Local => executable_args.push("--check".to_string()),
-  }
-
-  if flags.unstable_config.legacy_flag_enabled {
-    executable_args.push("--unstable".to_string());
   }
 
   for feature in &flags.unstable_config.features {
@@ -825,13 +818,7 @@ mod tests {
 
     create_install_shim(
       &HttpClientProvider::new(None, None),
-      &Flags {
-        unstable_config: UnstableConfig {
-          legacy_flag_enabled: true,
-          ..Default::default()
-        },
-        ..Flags::default()
-      },
+      &Flags::default(),
       InstallFlagsGlobal {
         module_url: "http://localhost:4545/echo_server.ts".to_string(),
         args: vec![],
@@ -853,12 +840,11 @@ mod tests {
     let content = fs::read_to_string(file_path).unwrap();
     if cfg!(windows) {
       assert!(content.contains(
-        r#""run" "--unstable" "--no-config" "http://localhost:4545/echo_server.ts""#
+        r#""run" "--no-config" "http://localhost:4545/echo_server.ts""#
       ));
     } else {
-      assert!(content.contains(
-        r#"run --unstable --no-config 'http://localhost:4545/echo_server.ts'"#
-      ));
+      assert!(content
+        .contains(r#"run --no-config 'http://localhost:4545/echo_server.ts'"#));
     }
   }
 
@@ -889,13 +875,7 @@ mod tests {
   async fn install_unstable_legacy() {
     let shim_data = resolve_shim_data(
       &HttpClientProvider::new(None, None),
-      &Flags {
-        unstable_config: UnstableConfig {
-          legacy_flag_enabled: true,
-          ..Default::default()
-        },
-        ..Default::default()
-      },
+      &Default::default(),
       &InstallFlagsGlobal {
         module_url: "http://localhost:4545/echo_server.ts".to_string(),
         args: vec![],
@@ -910,12 +890,7 @@ mod tests {
     assert_eq!(shim_data.name, "echo_server");
     assert_eq!(
       shim_data.args,
-      vec![
-        "run",
-        "--unstable",
-        "--no-config",
-        "http://localhost:4545/echo_server.ts",
-      ]
+      vec!["run", "--no-config", "http://localhost:4545/echo_server.ts",]
     );
   }
 
@@ -1512,8 +1487,8 @@ mod tests {
     assert!(content.contains(&expected_string));
   }
 
-  #[test]
-  fn uninstall_basic() {
+  #[tokio::test]
+  async fn uninstall_basic() {
     let temp_dir = TempDir::new();
     let bin_dir = temp_dir.path().join("bin");
     std::fs::create_dir(&bin_dir).unwrap();
@@ -1540,13 +1515,16 @@ mod tests {
       File::create(file_path).unwrap();
     }
 
-    uninstall(UninstallFlags {
-      kind: UninstallKind::Global(UninstallFlagsGlobal {
-        name: "echo_test".to_string(),
-        root: Some(temp_dir.path().to_string()),
-      }),
-      global: false,
-    })
+    uninstall(
+      Default::default(),
+      UninstallFlags {
+        kind: UninstallKind::Global(UninstallFlagsGlobal {
+          name: "echo_test".to_string(),
+          root: Some(temp_dir.path().to_string()),
+        }),
+      },
+    )
+    .await
     .unwrap();
 
     assert!(!file_path.exists());

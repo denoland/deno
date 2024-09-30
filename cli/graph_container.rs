@@ -45,12 +45,14 @@ pub struct MainModuleGraphContainer {
   inner: Arc<RwLock<Arc<ModuleGraph>>>,
   cli_options: Arc<CliOptions>,
   module_load_preparer: Arc<ModuleLoadPreparer>,
+  root_permissions: PermissionsContainer,
 }
 
 impl MainModuleGraphContainer {
   pub fn new(
     cli_options: Arc<CliOptions>,
     module_load_preparer: Arc<ModuleLoadPreparer>,
+    root_permissions: PermissionsContainer,
   ) -> Self {
     Self {
       update_queue: Default::default(),
@@ -59,12 +61,14 @@ impl MainModuleGraphContainer {
       )))),
       cli_options,
       module_load_preparer,
+      root_permissions,
     }
   }
 
   pub async fn check_specifiers(
     &self,
     specifiers: &[ModuleSpecifier],
+    ext_overwrite: Option<&String>,
   ) -> Result<(), AnyError> {
     let mut graph_permit = self.acquire_update_permit().await;
     let graph = graph_permit.graph_mut();
@@ -75,7 +79,8 @@ impl MainModuleGraphContainer {
         specifiers,
         false,
         self.cli_options.ts_type_lib_window(),
-        PermissionsContainer::allow_all(),
+        self.root_permissions.clone(),
+        ext_overwrite,
       )
       .await?;
     graph_permit.commit();
@@ -94,7 +99,7 @@ impl MainModuleGraphContainer {
       log::warn!("{} No matching files found.", colors::yellow("Warning"));
     }
 
-    self.check_specifiers(&specifiers).await
+    self.check_specifiers(&specifiers, None).await
   }
 
   pub fn collect_specifiers(

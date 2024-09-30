@@ -67,6 +67,7 @@ pub use pipe::AsyncPipeRead;
 pub use pipe::AsyncPipeWrite;
 pub use pipe::PipeRead;
 pub use pipe::PipeWrite;
+pub use pipe::RawPipeHandle;
 
 pub use bi_pipe::bi_pipe_pair_raw;
 pub use bi_pipe::BiPipe;
@@ -74,6 +75,112 @@ pub use bi_pipe::BiPipeRead;
 pub use bi_pipe::BiPipeResource;
 pub use bi_pipe::BiPipeWrite;
 pub use bi_pipe::RawBiPipeHandle;
+
+/// Abstraction over `AsRawFd` (unix) and `AsRawHandle` (windows)
+pub trait AsRawIoHandle {
+  fn as_raw_io_handle(&self) -> RawIoHandle;
+}
+
+#[cfg(unix)]
+impl<T> AsRawIoHandle for T
+where
+  T: std::os::unix::io::AsRawFd,
+{
+  fn as_raw_io_handle(&self) -> RawIoHandle {
+    self.as_raw_fd()
+  }
+}
+
+#[cfg(windows)]
+impl<T> AsRawIoHandle for T
+where
+  T: std::os::windows::io::AsRawHandle,
+{
+  fn as_raw_io_handle(&self) -> RawIoHandle {
+    self.as_raw_handle()
+  }
+}
+
+/// Abstraction over `IntoRawFd` (unix) and `IntoRawHandle` (windows)
+pub trait IntoRawIoHandle {
+  fn into_raw_io_handle(self) -> RawIoHandle;
+}
+
+#[cfg(unix)]
+impl<T> IntoRawIoHandle for T
+where
+  T: std::os::unix::io::IntoRawFd,
+{
+  fn into_raw_io_handle(self) -> RawIoHandle {
+    self.into_raw_fd()
+  }
+}
+
+#[cfg(windows)]
+impl<T> IntoRawIoHandle for T
+where
+  T: std::os::windows::io::IntoRawHandle,
+{
+  fn into_raw_io_handle(self) -> RawIoHandle {
+    self.into_raw_handle()
+  }
+}
+
+/// Abstraction over `FromRawFd` (unix) and `FromRawHandle` (windows)
+pub trait FromRawIoHandle: Sized {
+  /// Constructs a type from a raw io handle (fd/HANDLE).
+  ///
+  /// # Safety
+  ///
+  /// Refer to the standard library docs ([unix](https://doc.rust-lang.org/stable/std/os/windows/io/trait.FromRawHandle.html#tymethod.from_raw_handle)) ([windows](https://doc.rust-lang.org/stable/std/os/fd/trait.FromRawFd.html#tymethod.from_raw_fd))
+  ///
+  unsafe fn from_raw_io_handle(handle: RawIoHandle) -> Self;
+}
+
+#[cfg(unix)]
+impl<T> FromRawIoHandle for T
+where
+  T: std::os::unix::io::FromRawFd,
+{
+  unsafe fn from_raw_io_handle(fd: RawIoHandle) -> T {
+    // SAFETY: upheld by caller
+    unsafe { T::from_raw_fd(fd) }
+  }
+}
+
+#[cfg(windows)]
+impl<T> FromRawIoHandle for T
+where
+  T: std::os::windows::io::FromRawHandle,
+{
+  unsafe fn from_raw_io_handle(fd: RawIoHandle) -> T {
+    // SAFETY: upheld by caller
+    unsafe { T::from_raw_handle(fd) }
+  }
+}
+
+#[cfg(unix)]
+pub type RawIoHandle = std::os::fd::RawFd;
+
+#[cfg(windows)]
+pub type RawIoHandle = std::os::windows::io::RawHandle;
+
+pub fn close_raw_handle(handle: RawIoHandle) {
+  #[cfg(unix)]
+  {
+    // SAFETY: libc call
+    unsafe {
+      libc::close(handle);
+    }
+  }
+  #[cfg(windows)]
+  {
+    // SAFETY: win32 call
+    unsafe {
+      windows_sys::Win32::Foundation::CloseHandle(handle as _);
+    }
+  }
+}
 
 // Store the stdio fd/handles in global statics in order to keep them
 // alive for the duration of the application since the last handle/fd

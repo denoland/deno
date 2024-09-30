@@ -132,14 +132,17 @@ class MessagePort extends EventTarget {
   constructor() {
     super();
     ObjectDefineProperty(this, MessagePortReceiveMessageOnPortSymbol, {
+      __proto__: null,
       value: false,
       enumerable: false,
     });
     ObjectDefineProperty(this, nodeWorkerThreadCloseCb, {
+      __proto__: null,
       value: null,
       enumerable: false,
     });
     ObjectDefineProperty(this, nodeWorkerThreadCloseCbInvoked, {
+      __proto__: null,
       value: false,
       enumerable: false,
     });

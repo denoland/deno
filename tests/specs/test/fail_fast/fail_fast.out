@@ -1,0 +1,20 @@
+Check [WILDCARD]/fail_fast.ts
+Check [WILDCARD]/fail_fast_other.ts
+running 10 tests from ./fail_fast.ts
+test 1 ... FAILED ([WILDCARD])
+
+ ERRORS 
+
+test 1 => ./fail_fast.ts:[WILDCARD]
+error: Error
+  throw new Error();
+        ^
+    at [WILDCARD]/fail_fast.ts:2:9
+
+ FAILURES 
+
+test 1 => ./fail_fast.ts:[WILDCARD]
+
+FAILED | 0 passed | 1 failed ([WILDCARD])
+
+error: Test failed

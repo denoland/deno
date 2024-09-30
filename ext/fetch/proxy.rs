@@ -97,7 +97,7 @@ pub(crate) fn from_env() -> Proxies {
   if env::var_os("REQUEST_METHOD").is_none() {
     if let Some(proxy) = parse_env_var("HTTP_PROXY", Filter::Http) {
       intercepts.push(proxy);
-    } else if let Some(proxy) = parse_env_var("http_proxy", Filter::Https) {
+    } else if let Some(proxy) = parse_env_var("http_proxy", Filter::Http) {
       intercepts.push(proxy);
     }
   }

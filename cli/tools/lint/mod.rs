@@ -117,6 +117,7 @@ pub async fn lint(
           for paths_with_options in paths_with_options_batches {
             linter
               .lint_files(
+                cli_options,
                 paths_with_options.options,
                 lint_config.clone(),
                 paths_with_options.dir,
@@ -155,7 +156,7 @@ pub async fn lint(
           start_dir.maybe_deno_json().map(|c| c.as_ref()),
         )?;
       let mut file_path = cli_options.initial_cwd().join(STDIN_FILE_NAME);
-      if let Some(ext) = &lint_flags.ext {
+      if let Some(ext) = cli_options.ext_flag() {
         file_path.set_extension(ext);
       }
       let r = lint_stdin(&file_path, lint_rules, deno_lint_config);
@@ -179,6 +180,7 @@ pub async fn lint(
       for paths_with_options in paths_with_options_batches {
         linter
           .lint_files(
+            cli_options,
             paths_with_options.options,
             deno_lint_config.clone(),
             paths_with_options.dir,
@@ -264,6 +266,7 @@ impl WorkspaceLinter {
 
   pub async fn lint_files(
     &mut self,
+    cli_options: &Arc<CliOptions>,
     lint_options: LintOptions,
     lint_config: LintConfig,
     member_dir: WorkspaceDirectory,
@@ -348,6 +351,7 @@ impl WorkspaceLinter {
       let reporter_lock = self.reporter_lock.clone();
       let maybe_incremental_cache = maybe_incremental_cache.clone();
       let linter = linter.clone();
+      let cli_options = cli_options.clone();
       async move {
         run_parallelized(paths, {
           move |file_path| {
@@ -361,7 +365,11 @@ impl WorkspaceLinter {
               }
             }
 
-            let r = linter.lint_file(&file_path, file_text);
+            let r = linter.lint_file(
+              &file_path,
+              file_text,
+              cli_options.ext_flag().as_deref(),
+            );
             if let Ok((file_source, file_diagnostics)) = &r {
               if let Some(incremental_cache) = &maybe_incremental_cache {
                 if file_diagnostics.is_empty() {
@@ -421,11 +429,14 @@ fn collect_lint_files(
   cli_options: &CliOptions,
   files: FilePatterns,
 ) -> Result<Vec<PathBuf>, AnyError> {
-  FileCollector::new(|e| is_script_ext(e.path))
-    .ignore_git_folder()
-    .ignore_node_modules()
-    .set_vendor_folder(cli_options.vendor_dir_path().map(ToOwned::to_owned))
-    .collect_file_patterns(&deno_config::fs::RealDenoConfigFs, files)
+  FileCollector::new(|e| {
+    is_script_ext(e.path)
+      || (e.path.extension().is_none() && cli_options.ext_flag().is_some())
+  })
+  .ignore_git_folder()
+  .ignore_node_modules()
+  .set_vendor_folder(cli_options.vendor_dir_path().map(ToOwned::to_owned))
+  .collect_file_patterns(&deno_config::fs::RealDenoConfigFs, files)
 }
 
 #[allow(clippy::print_stdout)]
@@ -497,7 +508,7 @@ fn lint_stdin(
   });
 
   linter
-    .lint_file(file_path, deno_ast::strip_bom(source_code))
+    .lint_file(file_path, deno_ast::strip_bom(source_code), None)
     .map_err(AnyError::from)
 }
 

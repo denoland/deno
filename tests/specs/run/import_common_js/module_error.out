@@ -1,0 +1,7 @@
+error: Uncaught (in promise) ReferenceError: module is not defined
+module.exports = {
+^
+    at [WILDCARD]module_error.js:1:1
+
+    info: Deno does not support CommonJS modules without `.cjs` extension.
+    hint: Rewrite this module to ESM or change the file extension to `.cjs`.

@@ -75,6 +75,7 @@ Deno.test({
       read: true,
     });
     await new Promise<void>((resolve, reject) => {
+      // @ts-ignore (iuioiua) `file.rid` should no longer be needed once FDs are used
       appendFile(file.rid, "hello world", (err) => {
         if (err) reject();
         else resolve();
@@ -166,6 +167,7 @@ Deno.test({
       write: true,
       read: true,
     });
+    // @ts-ignore (iuioiua) `file.rid` should no longer be needed once FDs are used
     appendFileSync(file.rid, "hello world");
     const data = Deno.readFileSync(tempFile);
     assertEquals(decoder.decode(data), "hello world");

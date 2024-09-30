@@ -19,10 +19,16 @@ import {
   TextDecoderStream,
   TextEncoderStream,
 } from "ext:deno_web/08_text_encoding.js";
+import {
+  CompressionStream,
+  DecompressionStream,
+} from "ext:deno_web/14_compression.js";
 
 export {
   ByteLengthQueuingStrategy,
+  CompressionStream,
   CountQueuingStrategy,
+  DecompressionStream,
   ReadableByteStreamController,
   ReadableStream,
   ReadableStreamBYOBReader,
@@ -39,19 +45,21 @@ export {
 };
 
 export default {
+  ByteLengthQueuingStrategy,
+  CompressionStream,
+  CountQueuingStrategy,
+  DecompressionStream,
+  ReadableByteStreamController,
   ReadableStream,
   ReadableStreamBYOBReader,
   ReadableStreamBYOBRequest,
-  ReadableStreamDefaultReader,
-  ReadableByteStreamController,
   ReadableStreamDefaultController,
+  ReadableStreamDefaultReader,
+  TextDecoderStream,
+  TextEncoderStream,
   TransformStream,
   TransformStreamDefaultController,
   WritableStream,
-  WritableStreamDefaultWriter,
   WritableStreamDefaultController,
-  ByteLengthQueuingStrategy,
-  CountQueuingStrategy,
-  TextEncoderStream,
-  TextDecoderStream,
+  WritableStreamDefaultWriter,
 };
