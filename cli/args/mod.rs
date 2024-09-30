@@ -1144,10 +1144,6 @@ impl CliOptions {
           DenoSubcommand::Run(run_flags) => {
             if run_flags.is_stdin() {
               resolve_url_or_path("./$deno$stdin.ts", self.initial_cwd())?
-            } else if NpmPackageReqReference::from_str(&run_flags.script)
-              .is_ok()
-            {
-              ModuleSpecifier::parse(&run_flags.script)?
             } else {
               resolve_url_or_path(&run_flags.script, self.initial_cwd())?
             }
