@@ -3815,7 +3815,9 @@ fn location_arg() -> Arg {
       url.set_password(None).unwrap();
       Ok(url)
     })
-    .help(cstr!("Value of <p(245)>globalThis.location</> used by some web APIs"))
+    .help(cstr!(
+      "Value of <p(245)>globalThis.location</> used by some web APIs"
+    ))
     .value_hint(ValueHint::Url)
 }
 
