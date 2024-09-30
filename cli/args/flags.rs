@@ -2429,7 +2429,7 @@ The following information is shown:
       .arg(
         location_arg()
           .conflicts_with("file")
-          .help(cstr!("Show files used for origin bound APIs like the Web Storage API when running a script with <c>--location=<HREF></>"))
+          .help(cstr!("Show files used for origin bound APIs like the Web Storage API when running a script with <c>--location=<<HREF>></>"))
       )
       .arg(no_check_arg().hide(true)) // TODO(lucacasonato): remove for 2.0
       .arg(no_config_arg())
