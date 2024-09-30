@@ -21,6 +21,7 @@ use crate::tools::check::TypeChecker;
 use crate::util::file_watcher::WatcherCommunicator;
 use crate::util::fs::canonicalize_path;
 use deno_config::workspace::JsrPackageConfig;
+use deno_core::anyhow::bail;
 use deno_graph::source::LoaderChecksum;
 use deno_graph::FillFromLockfileOptions;
 use deno_graph::JsrLoadError;
@@ -592,6 +593,12 @@ impl ModuleGraphBuilder {
     let initial_redirects_len = graph.redirects.len();
     let initial_package_deps_len = graph.packages.package_deps_sum();
     let initial_package_mappings_len = graph.packages.mappings().len();
+
+    if roots.iter().any(|r| r.scheme() == "npm")
+      && self.npm_resolver.as_byonm().is_some()
+    {
+      bail!("Resolving npm specifier entrypoints this way is currently not supported with \"nodeModules\": \"manual\". In the meantime, try with --node-modules-dir=auto instead");
+    }
 
     graph.build(roots, loader, options).await;
 
