@@ -1923,9 +1923,9 @@ dependencies = [
 
 [[package]]
 name = "deno_path_util"
-version = "0.1.1"
+version = "0.2.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "625b490bc4734ff778926d7034650a2ddcef2fd42b71e30bb722249156d5a144"
+checksum = "4889646c1ce8437a6fde3acb057fd7e2d039e62c61f5063fc125ed1ede114dc6"
 dependencies = [
  "percent-encoding",
  "thiserror",
@@ -1953,8 +1953,13 @@ dependencies = [
 name = "deno_resolver"
 version = "0.0.1"
 dependencies = [
+ "anyhow",
+ "base32",
  "deno_media_type",
+ "deno_package_json",
  "deno_path_util",
+ "deno_semver",
+ "node_resolver",
  "test_server",
  "url",
 ]
@@ -4557,6 +4562,7 @@ dependencies = [
  "async-trait",
  "deno_media_type",
  "deno_package_json",
+ "deno_path_util",
  "futures",
  "lazy-regex",
  "once_cell",

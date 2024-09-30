@@ -4,6 +4,7 @@ mod byonm;
 mod common;
 mod managed;
 
+use std::path::Path;
 use std::path::PathBuf;
 use std::sync::Arc;
 
@@ -12,6 +13,7 @@ use deno_ast::ModuleSpecifier;
 use deno_core::error::AnyError;
 use deno_core::serde_json;
 use deno_npm::registry::NpmPackageInfo;
+use deno_resolver::npm::ByonmNpmResolver;
 use deno_runtime::deno_node::NodeRequireResolver;
 use deno_runtime::ops::process::NpmProcessStateProvider;
 use deno_semver::package::PackageNv;
@@ -21,15 +23,15 @@ use node_resolver::NpmResolver;
 use crate::args::npm_registry_url;
 use crate::file_fetcher::FileFetcher;
 
-pub use self::byonm::ByonmCliNpmResolver;
-pub use self::byonm::CliNpmResolverByonmCreateOptions;
+pub use self::byonm::CliByonmNpmResolver;
+pub use self::byonm::CliByonmNpmResolverCreateOptions;
 pub use self::managed::CliNpmResolverManagedCreateOptions;
 pub use self::managed::CliNpmResolverManagedSnapshotOption;
 pub use self::managed::ManagedCliNpmResolver;
 
 pub enum CliNpmResolverCreateOptions {
   Managed(CliNpmResolverManagedCreateOptions),
-  Byonm(CliNpmResolverByonmCreateOptions),
+  Byonm(CliByonmNpmResolverCreateOptions),
 }
 
 pub async fn create_cli_npm_resolver_for_lsp(
@@ -40,7 +42,7 @@ pub async fn create_cli_npm_resolver_for_lsp(
     Managed(options) => {
       managed::create_managed_npm_resolver_for_lsp(options).await
     }
-    Byonm(options) => byonm::create_byonm_npm_resolver(options),
+    Byonm(options) => Arc::new(ByonmNpmResolver::new(options)),
   }
 }
 
@@ -50,14 +52,14 @@ pub async fn create_cli_npm_resolver(
   use CliNpmResolverCreateOptions::*;
   match options {
     Managed(options) => managed::create_managed_npm_resolver(options).await,
-    Byonm(options) => Ok(byonm::create_byonm_npm_resolver(options)),
+    Byonm(options) => Ok(Arc::new(ByonmNpmResolver::new(options))),
   }
 }
 
 pub enum InnerCliNpmResolverRef<'a> {
   Managed(&'a ManagedCliNpmResolver),
   #[allow(dead_code)]
-  Byonm(&'a ByonmCliNpmResolver),
+  Byonm(&'a CliByonmNpmResolver),
 }
 
 pub trait CliNpmResolver: NpmResolver {
@@ -78,14 +80,14 @@ pub trait CliNpmResolver: NpmResolver {
     }
   }
 
-  fn as_byonm(&self) -> Option<&ByonmCliNpmResolver> {
+  fn as_byonm(&self) -> Option<&CliByonmNpmResolver> {
     match self.as_inner() {
       InnerCliNpmResolverRef::Managed(_) => None,
       InnerCliNpmResolverRef::Byonm(inner) => Some(inner),
     }
   }
 
-  fn root_node_modules_path(&self) -> Option<&PathBuf>;
+  fn root_node_modules_path(&self) -> Option<&Path>;
 
   fn resolve_pkg_folder_from_deno_module_req(
     &self,
