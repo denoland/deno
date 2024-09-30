@@ -55,7 +55,7 @@ deno_npm = "=0.25.2"
 deno_path_util = "=0.1.1"
 deno_permissions = { version = "0.28.0", path = "./runtime/permissions" }
 deno_runtime = { version = "0.177.0", path = "./runtime" }
-deno_semver = "=0.5.13"
+deno_semver = "=0.5.14"
 deno_terminal = "0.2.0"
 napi_sym = { version = "0.98.0", path = "./cli/napi/sym" }
 test_util = { package = "test_server", path = "./tests/util/server" }
