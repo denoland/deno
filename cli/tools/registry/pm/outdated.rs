@@ -62,7 +62,7 @@ pub async fn outdated(
 
   let top_level_deps =
     find_top_level_deps(&factory, Some(jsr_resolver.clone())).await?;
-  eprintln!("top_level_deps {:#?}", top_level_deps);
+  // eprintln!("top_level_deps {:#?}", top_level_deps);
 
   let mut outdated_packages = vec![];
 
@@ -119,14 +119,14 @@ pub async fn outdated(
       continue;
     };
 
-    eprintln!(
-      "wanted_package_and_version {:#?}",
-      wanted_package_and_version
-    );
-    eprintln!(
-      "latest_package_and_version {:#?}",
-      latest_package_and_version
-    );
+    // eprintln!(
+    //   "wanted_package_and_version {:#?}",
+    //   wanted_package_and_version
+    // );
+    // eprintln!(
+    //   "latest_package_and_version {:#?}",
+    //   latest_package_and_version
+    // );
     // if wanted_package_and_version == latest_package_and_version {
     //   continue;
     // }
