@@ -12,6 +12,7 @@ use deno_core::serde::Deserialize;
 use deno_core::serde::Deserializer;
 use deno_core::serde::Serialize;
 use deno_core::serde_json;
+use deno_core::strip_unc_prefix;
 use deno_core::unsync::sync::AtomicFlag;
 use deno_core::url::Url;
 use deno_core::ModuleSpecifier;
@@ -1144,7 +1145,7 @@ impl RunQueryDescriptor {
     };
     let resolved_path = resolved_path
       .canonicalize()
-      .map(normalize_path)
+      .map(strip_unc_prefix)
       .unwrap_or(resolved_path);
     Ok(RunQueryDescriptor::Path {
       requested: requested.to_string(),
@@ -1302,7 +1303,7 @@ impl AllowRunDescriptor {
         },
       }
     };
-    let path = path.canonicalize().map(normalize_path).unwrap_or(path);
+    let path = path.canonicalize().map(strip_unc_prefix).unwrap_or(path);
     Ok(AllowRunDescriptorParseResult::Descriptor(
       AllowRunDescriptor(path),
     ))

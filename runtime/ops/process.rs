@@ -691,7 +691,7 @@ fn resolve_cmd(cmd: &str, env: &RunEnv) -> Result<PathBuf, AnyError> {
     #[allow(clippy::disallowed_methods)]
     path
       .canonicalize()
-      .map(deno_path_util::normalize_path)
+      .map(deno_path_util::strip_unc_prefix)
       .unwrap_or(path),
   )
 }
