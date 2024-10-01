@@ -1176,7 +1176,6 @@ static DENO_HELP: &str = cstr!(
   <y>Tooling:</>
     <g>bench</>        Run benchmarks
                   <p(245)>deno bench bench.ts</>
-    <g>cache</>        Cache the dependencies
     <g>check</>        Type-check the dependencies
     <g>clean</>        Remove the cache directory
     <g>compile</>      Compile the script into a self contained executable
