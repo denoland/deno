@@ -3274,7 +3274,7 @@ fn permission_args(app: Command, requires: Option<&'static str>) -> Command {
                                              <p(245)>--deny-net  |  --deny-net="localhost:8080,deno.land"</>
   <g>    --deny-env[=<<VARIABLE_NAME>...]</>      Deny access to environment variables. Optionally specify inacessible environment variables.
                                              <p(245)>--deny-env  |  --deny-env="PORT,HOME,PATH"</>
-  <g>-S, --deny-sys[=<<API_NAME>...]</>           Deny access to OS information. Optionally deny specific APIs by function name.
+  <g>    --deny-sys[=<<API_NAME>...]</>           Deny access to OS information. Optionally deny specific APIs by function name.
                                              <p(245)>--deny-sys  |  --deny-sys="systemMemoryInfo,osRelease"</>
       <g>--deny-run[=<<PROGRAM_NAME>...]</>       Deny running subprocesses. Optionally specify denied runnable program names.
                                              <p(245)>--deny-run  |  --deny-run="whoami,ps"</>
