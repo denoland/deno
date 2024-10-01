@@ -94,7 +94,7 @@ impl LspCache {
     let deno_dir = DenoDir::new(global_cache_path)
       .expect("should be infallible with absolute custom root");
     let global = Arc::new(GlobalHttpCache::new(
-      deno_dir.deps_folder_path(),
+      deno_dir.remote_folder_path(),
       crate::cache::RealDenoCacheEnv,
     ));
     Self {
