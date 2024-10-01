@@ -186,13 +186,6 @@ async fn run_subcommand(flags: Arc<Flags>) -> Result<i32, AnyError> {
           Err(script_err) => {
             if let Some(ResolvePkgFolderFromDenoReqError::Byonm(ByonmResolvePkgFolderFromDenoReqError::UnmatchedReq(req))) = script_err.downcast_ref::<ResolvePkgFolderFromDenoReqError>() {
               if flags.node_modules_dir.is_none() {
-                let message = format!(
-                  concat!("Need to install the following packages:\nnpm:{}\nOk to proceed?"),
-                  req
-                );
-                if !crate::util::console::confirm(&message, true) {
-                  deno_core::anyhow::bail!("canceled");
-                }
                 let mut flags = flags.deref().clone();
                 let watch = match &flags.subcommand {
                   DenoSubcommand::Run(run_flags) => run_flags.watch.clone(),
