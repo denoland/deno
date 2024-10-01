@@ -452,9 +452,7 @@ Deno.test("[node/http] http.IncomingMessage can be created without url", () => {
 });
 */
 
-Deno.test("[node/http] send request with non-chunked body", {
-  ignore: true,
-}, async () => {
+Deno.test("[node/http] send request with non-chunked body", async () => {
   let requestHeaders: Headers;
   let requestBody = "";
 
@@ -498,10 +496,8 @@ Deno.test("[node/http] send request with non-chunked body", {
     assert(socket.writable);
     assert(socket.readable);
     socket.setKeepAlive();
-    socket.destroy();
     socket.setTimeout(100);
   });
-  // this data can be huge and can't be buffered
   req.write("hello ");
   req.write("world");
   req.end();
