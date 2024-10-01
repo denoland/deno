@@ -32,7 +32,11 @@ import {
 import { normalizeEncoding } from "ext:deno_node/internal/util.mjs";
 import { validateBuffer } from "ext:deno_node/internal/validators.mjs";
 import { isUint8Array } from "ext:deno_node/internal/util/types.ts";
-import { ERR_INVALID_STATE, NodeError } from "ext:deno_node/internal/errors.ts";
+import {
+  ERR_INVALID_STATE,
+  genericNodeError,
+  NodeError,
+} from "ext:deno_node/internal/errors.ts";
 import {
   forgivingBase64Encode,
   forgivingBase64UrlEncode,
@@ -2609,6 +2613,8 @@ export function transcode(source, fromEnco, toEnco) {
   if (source.length === 0) {
     return Buffer.alloc(0);
   }
+  fromEnco = fromEnco === "binary" ? "latin1" : fromEnco;
+  toEnco = toEnco === "binary" ? "latin1" : toEnco;
   const returnSource = fromEnco === "ascii" && toEnco === "utf8" ||
     fromEnco === "ascii" && toEnco === "latin1" ||
     fromEnco === "ucs2" && toEnco === "utf16le" ||
@@ -2617,10 +2623,17 @@ export function transcode(source, fromEnco, toEnco) {
     return Buffer.from(source);
   }
 
-  // TODO(@satyarohith): return appropriate error codes when transcode fails.
-  // The fix should enable the commented tests in test-icu-transcode.js
-  const result = op_transcode(new Uint8Array(source), fromEnco, toEnco);
-  return Buffer.from(result, toEnco);
+  try {
+    const result = op_transcode(new Uint8Array(source), fromEnco, toEnco);
+    return Buffer.from(result, toEnco);
+  } catch (_) {
+    const code = "U_ILLEGAL_ARGUMENT_ERROR";
+    const err = genericNodeError(
+      `Unable to transcode Buffer [${code}]`,
+      { code: code, errno: 1 },
+    );
+    throw err;
+  }
 }
 
 export default {
