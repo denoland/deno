@@ -184,7 +184,7 @@ async fn run_subcommand(flags: Arc<Flags>) -> Result<i32, AnyError> {
         match result {
           Ok(v) => Ok(v),
           Err(script_err) => {
-            if let Some(ResolvePkgFolderFromDenoReqError::Byonm(ByonmResolvePkgFolderFromDenoReqError::UnmatchedReq(req))) = script_err.downcast_ref::<ResolvePkgFolderFromDenoReqError>() {
+            if let Some(ResolvePkgFolderFromDenoReqError::Byonm(ByonmResolvePkgFolderFromDenoReqError::UnmatchedReq(_))) = script_err.downcast_ref::<ResolvePkgFolderFromDenoReqError>() {
               if flags.node_modules_dir.is_none() {
                 let mut flags = flags.deref().clone();
                 let watch = match &flags.subcommand {
@@ -192,9 +192,8 @@ async fn run_subcommand(flags: Arc<Flags>) -> Result<i32, AnyError> {
                   _ => unreachable!(),
                 };
                 flags.node_modules_dir = Some(deno_config::deno_json::NodeModulesDirMode::None);
-                if flags.lock.is_none() {
-                  flags.no_lock = true;
-                }
+                // use the current lockfile, but don't write it out
+                // todo(THIS PR): add something to prevent this from writing to to the lockfile
                 return tools::run::run_script(WorkerExecutionMode::Run, Arc::new(flags), watch).await;
               }
             }

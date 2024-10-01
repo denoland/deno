@@ -1,8 +1,5 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
-use std::io::IsTerminal;
-use std::io::Write;
-
 use deno_runtime::ops::tty::ConsoleSize;
 
 /// Gets the console size.
