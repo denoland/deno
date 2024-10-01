@@ -21,6 +21,7 @@ async-trait.workspace = true
 base32.workspace = true
 deno_core.workspace = true
 deno_io.workspace = true
+deno_path_util.workspace = true
 deno_permissions.workspace = true
 filetime.workspace = true
 libc.workspace = true

@@ -19,8 +19,8 @@ use super::urls::LspUrlMap;
 use crate::graph_util;
 use crate::graph_util::enhanced_resolution_error_message;
 use crate::lsp::lsp_custom::DiagnosticBatchNotificationParams;
-use crate::resolver::SloppyImportsResolution;
-use crate::resolver::SloppyImportsResolver;
+use crate::resolver::CliSloppyImportsResolver;
+use crate::resolver::SloppyImportsCachedFs;
 use crate::tools::lint::CliLinter;
 use crate::tools::lint::CliLinterOptions;
 use crate::tools::lint::LintRuleProvider;
@@ -40,11 +40,12 @@ use deno_core::unsync::spawn_blocking;
 use deno_core::unsync::JoinHandle;
 use deno_core::url::Url;
 use deno_core::ModuleSpecifier;
-use deno_graph::source::ResolutionMode;
 use deno_graph::source::ResolveError;
 use deno_graph::Resolution;
 use deno_graph::ResolutionError;
 use deno_graph::SpecifierError;
+use deno_resolver::sloppy_imports::SloppyImportsResolution;
+use deno_resolver::sloppy_imports::SloppyImportsResolutionMode;
 use deno_runtime::deno_fs;
 use deno_runtime::deno_node;
 use deno_runtime::tokio_util::create_basic_runtime;
@@ -1263,7 +1264,9 @@ impl DenoDiagnostic {
       Self::NotInstalledJsr(pkg_req, specifier) => (lsp::DiagnosticSeverity::ERROR, format!("JSR package \"{pkg_req}\" is not installed or doesn't exist."), Some(json!({ "specifier": specifier }))),
       Self::NotInstalledNpm(pkg_req, specifier) => (lsp::DiagnosticSeverity::ERROR, format!("NPM package \"{pkg_req}\" is not installed or doesn't exist."), Some(json!({ "specifier": specifier }))),
       Self::NoLocal(specifier) => {
-        let maybe_sloppy_resolution = SloppyImportsResolver::new(Arc::new(deno_fs::RealFs)).resolve(specifier, ResolutionMode::Execution);
+        let maybe_sloppy_resolution = CliSloppyImportsResolver::new(
+          SloppyImportsCachedFs::new(Arc::new(deno_fs::RealFs))
+        ).resolve(specifier, SloppyImportsResolutionMode::Execution);
         let data = maybe_sloppy_resolution.as_ref().map(|res| {
           json!({
             "specifier": specifier,

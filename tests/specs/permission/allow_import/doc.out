@@ -1,0 +1,7 @@
+Warning Requires import access to "localhost:4545", run again with the --allow-import flag
+    at file:///[WILDLINE]/doc.ts:1:15
+Defined in file:///[WILDLINE]/doc.ts:3:1
+
+class Test
+
+

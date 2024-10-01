@@ -23,6 +23,7 @@ use crate::graph_container::ModuleGraphUpdatePermit;
 use crate::graph_util::CreateGraphOptions;
 use crate::graph_util::ModuleGraphBuilder;
 use crate::node;
+use crate::npm::CliNpmResolver;
 use crate::resolver::CliGraphResolver;
 use crate::resolver::CliNodeResolver;
 use crate::resolver::ModuleCodeStringSource;
@@ -104,7 +105,7 @@ impl ModuleLoadPreparer {
     roots: &[ModuleSpecifier],
     is_dynamic: bool,
     lib: TsTypeLib,
-    permissions: crate::file_fetcher::FetchPermissionsOption,
+    permissions: PermissionsContainer,
     ext_overwrite: Option<&String>,
   ) -> Result<(), AnyError> {
     log::debug!("Preparing module load.");
@@ -203,6 +204,7 @@ struct SharedCliModuleLoaderState {
   main_module_graph_container: Arc<MainModuleGraphContainer>,
   module_load_preparer: Arc<ModuleLoadPreparer>,
   node_resolver: Arc<CliNodeResolver>,
+  npm_resolver: Arc<dyn CliNpmResolver>,
   npm_module_loader: NpmModuleLoader,
   parsed_source_cache: Arc<ParsedSourceCache>,
   resolver: Arc<CliGraphResolver>,
@@ -221,6 +223,7 @@ impl CliModuleLoaderFactory {
     main_module_graph_container: Arc<MainModuleGraphContainer>,
     module_load_preparer: Arc<ModuleLoadPreparer>,
     node_resolver: Arc<CliNodeResolver>,
+    npm_resolver: Arc<dyn CliNpmResolver>,
     npm_module_loader: NpmModuleLoader,
     parsed_source_cache: Arc<ParsedSourceCache>,
     resolver: Arc<CliGraphResolver>,
@@ -241,6 +244,7 @@ impl CliModuleLoaderFactory {
         main_module_graph_container,
         module_load_preparer,
         node_resolver,
+        npm_resolver,
         npm_module_loader,
         parsed_source_cache,
         resolver,
@@ -252,13 +256,15 @@ impl CliModuleLoaderFactory {
     &self,
     graph_container: TGraphContainer,
     lib: TsTypeLib,
-    root_permissions: PermissionsContainer,
-    dynamic_permissions: PermissionsContainer,
+    is_worker: bool,
+    parent_permissions: PermissionsContainer,
+    permissions: PermissionsContainer,
   ) -> ModuleLoaderAndSourceMapGetter {
     let loader = Rc::new(CliModuleLoader(Rc::new(CliModuleLoaderInner {
       lib,
-      root_permissions,
-      dynamic_permissions,
+      is_worker,
+      parent_permissions,
+      permissions,
       graph_container,
       emitter: self.shared.emitter.clone(),
       parsed_source_cache: self.shared.parsed_source_cache.clone(),
@@ -274,20 +280,20 @@ impl ModuleLoaderFactory for CliModuleLoaderFactory {
   fn create_for_main(
     &self,
     root_permissions: PermissionsContainer,
-    dynamic_permissions: PermissionsContainer,
   ) -> ModuleLoaderAndSourceMapGetter {
     self.create_with_lib(
       (*self.shared.main_module_graph_container).clone(),
       self.shared.lib_window,
+      /* is worker */ false,
+      root_permissions.clone(),
       root_permissions,
-      dynamic_permissions,
     )
   }
 
   fn create_for_worker(
     &self,
-    root_permissions: PermissionsContainer,
-    dynamic_permissions: PermissionsContainer,
+    parent_permissions: PermissionsContainer,
+    permissions: PermissionsContainer,
   ) -> ModuleLoaderAndSourceMapGetter {
     self.create_with_lib(
       // create a fresh module graph for the worker
@@ -295,21 +301,21 @@ impl ModuleLoaderFactory for CliModuleLoaderFactory {
         self.shared.graph_kind,
       ))),
       self.shared.lib_worker,
-      root_permissions,
-      dynamic_permissions,
+      /* is worker */ true,
+      parent_permissions,
+      permissions,
     )
   }
 }
 
 struct CliModuleLoaderInner<TGraphContainer: ModuleGraphContainer> {
   lib: TsTypeLib,
+  is_worker: bool,
   /// The initial set of permissions used to resolve the static imports in the
   /// worker. These are "allow all" for main worker, and parent thread
   /// permissions for Web Worker.
-  root_permissions: PermissionsContainer,
-  /// Permissions used to resolve dynamic imports, these get passed as
-  /// "root permissions" for Web Worker.
-  dynamic_permissions: PermissionsContainer,
+  parent_permissions: PermissionsContainer,
+  permissions: PermissionsContainer,
   shared: Arc<SharedCliModuleLoaderState>,
   emitter: Arc<Emitter>,
   parsed_source_cache: Arc<ParsedSourceCache>,
@@ -476,7 +482,6 @@ impl<TGraphContainer: ModuleGraphContainer>
       Some(Module::Npm(module)) => {
         let package_folder = self
           .shared
-          .node_resolver
           .npm_resolver
           .as_managed()
           .unwrap() // byonm won't create a Module::Npm
@@ -769,11 +774,12 @@ impl<TGraphContainer: ModuleGraphContainer> ModuleLoader
         }
       }
 
-      let root_permissions = if is_dynamic {
-        inner.dynamic_permissions.clone()
+      let permissions = if is_dynamic {
+        inner.permissions.clone()
       } else {
-        inner.root_permissions.clone()
+        inner.parent_permissions.clone()
       };
+      let is_dynamic = is_dynamic || inner.is_worker; // consider workers as dynamic for permissions
       let lib = inner.lib;
       let mut update_permit = graph_container.acquire_update_permit().await;
       let graph = update_permit.graph_mut();
@@ -783,7 +789,7 @@ impl<TGraphContainer: ModuleGraphContainer> ModuleLoader
           &[specifier],
           is_dynamic,
           lib,
-          root_permissions.into(),
+          permissions,
           None,
         )
         .await?;

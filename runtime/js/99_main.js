@@ -487,7 +487,6 @@ const NOT_IMPORTED_OPS = [
   // to not depend on them.
   "op_set_exit_code",
   "op_napi_open",
-  "op_npm_process_state",
 ];
 
 function removeImportedOps() {

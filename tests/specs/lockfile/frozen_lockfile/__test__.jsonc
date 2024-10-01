@@ -180,7 +180,7 @@
           "output": "[WILDCARD]"
         },
         {
-          "args": "run --frozen --allow-net http-dynamic.ts",
+          "args": "run --frozen --allow-import http-dynamic.ts",
           "output": "frozen_new_dep_dynamic_http.out",
           "exitCode": 1
         }

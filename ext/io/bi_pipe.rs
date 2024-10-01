@@ -11,11 +11,7 @@ use deno_core::RcRef;
 use tokio::io::AsyncReadExt;
 use tokio::io::AsyncWriteExt;
 
-#[cfg(unix)]
-pub type RawBiPipeHandle = std::os::fd::RawFd;
-
-#[cfg(windows)]
-pub type RawBiPipeHandle = std::os::windows::io::RawHandle;
+pub type RawBiPipeHandle = super::RawIoHandle;
 
 /// One end of a bidirectional pipe. This implements the
 /// `Resource` trait.

@@ -15,9 +15,9 @@ use deno_core::url::Url;
 use deno_core::ModuleSpecifier;
 use deno_graph::GraphKind;
 use deno_graph::Resolution;
+use deno_path_util::url_to_file_path;
 use deno_runtime::deno_tls::rustls::RootCertStore;
 use deno_runtime::deno_tls::RootCertStoreProvider;
-use deno_runtime::fs_util::specifier_to_file_path;
 use deno_semver::jsr::JsrPackageReqReference;
 use indexmap::Equivalent;
 use indexmap::IndexSet;
@@ -274,10 +274,9 @@ impl LanguageServer {
         factory.fs(),
         &roots,
         graph_util::GraphValidOptions {
-          is_vendoring: false,
-          follow_type_only: true,
+          kind: GraphKind::All,
           check_js: false,
-          exit_lockfile_errors: false,
+          exit_integrity_errors: false,
         },
       )?;
 
@@ -627,7 +626,7 @@ impl Inner {
     let maybe_root_path = self
       .config
       .root_uri()
-      .and_then(|uri| specifier_to_file_path(uri).ok());
+      .and_then(|uri| url_to_file_path(uri).ok());
     let root_cert_store = get_root_cert_store(
       maybe_root_path,
       workspace_settings.certificate_stores.clone(),
@@ -803,7 +802,7 @@ impl Inner {
     let mut roots = config
       .workspace_folders
       .iter()
-      .filter_map(|p| specifier_to_file_path(&p.0).ok())
+      .filter_map(|p| url_to_file_path(&p.0).ok())
       .collect::<Vec<_>>();
     roots.sort();
     let roots = roots
@@ -1125,7 +1124,7 @@ impl Inner {
     {
       return;
     }
-    match specifier_to_file_path(&specifier) {
+    match url_to_file_path(&specifier) {
       Ok(path) if is_importable_ext(&path) => {}
       _ => return,
     }
@@ -1363,7 +1362,7 @@ impl Inner {
     {
       specifier = uri_to_url(&params.text_document.uri);
     }
-    let file_path = specifier_to_file_path(&specifier).map_err(|err| {
+    let file_path = url_to_file_path(&specifier).map_err(|err| {
       error!("{:#}", err);
       LspError::invalid_request()
     })?;
@@ -2509,7 +2508,7 @@ impl Inner {
     let maybe_root_path_owned = self
       .config
       .root_uri()
-      .and_then(|uri| specifier_to_file_path(uri).ok());
+      .and_then(|uri| url_to_file_path(uri).ok());
     let mut resolved_items = Vec::<CallHierarchyIncomingCall>::new();
     for item in incoming_calls.iter() {
       if let Some(resolved) = item.try_resolve_call_hierarchy_incoming_call(
@@ -2555,7 +2554,7 @@ impl Inner {
     let maybe_root_path_owned = self
       .config
       .root_uri()
-      .and_then(|uri| specifier_to_file_path(uri).ok());
+      .and_then(|uri| url_to_file_path(uri).ok());
     let mut resolved_items = Vec::<CallHierarchyOutgoingCall>::new();
     for item in outgoing_calls.iter() {
       if let Some(resolved) = item.try_resolve_call_hierarchy_outgoing_call(
@@ -2604,7 +2603,7 @@ impl Inner {
       let maybe_root_path_owned = self
         .config
         .root_uri()
-        .and_then(|uri| specifier_to_file_path(uri).ok());
+        .and_then(|uri| url_to_file_path(uri).ok());
       let mut resolved_items = Vec::<CallHierarchyItem>::new();
       match one_or_many {
         tsc::OneOrMany::One(item) => {
@@ -3614,6 +3613,11 @@ impl Inner {
         }),
         // bit of a hack to force the lsp to cache the @types/node package
         type_check_mode: crate::args::TypeCheckMode::Local,
+        permissions: crate::args::PermissionFlags {
+          // allow remote import permissions in the lsp for now
+          allow_import: Some(vec![]),
+          ..Default::default()
+        },
         ..Default::default()
       }),
       initial_cwd,

@@ -1,0 +1,13 @@
+[UNORDERED_START]
+Download http://localhost:4260/@denotest/MixedCase
+Download http://localhost:4260/@denotest/CAPITALS
+[UNORDERED_END]
+[UNORDERED_START]
+Download http://localhost:4260/@denotest/CAPITALS/1.0.0.tgz
+Initialize @denotest/CAPITALS@1.0.0
+Download http://localhost:4260/@denotest/MixedCase/1.0.0.tgz
+Initialize @denotest/MixedCase@1.0.0
+[UNORDERED_END]
+5
+true
+true

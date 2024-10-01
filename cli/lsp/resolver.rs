@@ -10,10 +10,10 @@ use deno_graph::source::Resolver;
 use deno_graph::GraphImport;
 use deno_graph::ModuleSpecifier;
 use deno_npm::NpmSystemInfo;
+use deno_path_util::url_to_file_path;
 use deno_runtime::deno_fs;
 use deno_runtime::deno_node::NodeResolver;
 use deno_runtime::deno_node::PackageJson;
-use deno_runtime::fs_util::specifier_to_file_path;
 use deno_semver::jsr::JsrPackageReqReference;
 use deno_semver::npm::NpmPackageReqReference;
 use deno_semver::package::PackageNv;
@@ -42,13 +42,14 @@ use crate::lsp::config::Config;
 use crate::lsp::config::ConfigData;
 use crate::lsp::logging::lsp_warn;
 use crate::npm::create_cli_npm_resolver_for_lsp;
+use crate::npm::CliByonmNpmResolverCreateOptions;
 use crate::npm::CliNpmResolver;
-use crate::npm::CliNpmResolverByonmCreateOptions;
 use crate::npm::CliNpmResolverCreateOptions;
 use crate::npm::CliNpmResolverManagedCreateOptions;
 use crate::npm::CliNpmResolverManagedSnapshotOption;
 use crate::npm::ManagedCliNpmResolver;
 use crate::resolver::CjsResolutionStore;
+use crate::resolver::CliDenoResolverFs;
 use crate::resolver::CliGraphResolver;
 use crate::resolver::CliGraphResolverOptions;
 use crate::resolver::CliNodeResolver;
@@ -439,11 +440,11 @@ async fn create_npm_resolver(
 ) -> Option<Arc<dyn CliNpmResolver>> {
   let enable_byonm = config_data.map(|d| d.byonm).unwrap_or(false);
   let options = if enable_byonm {
-    CliNpmResolverCreateOptions::Byonm(CliNpmResolverByonmCreateOptions {
-      fs: Arc::new(deno_fs::RealFs),
+    CliNpmResolverCreateOptions::Byonm(CliByonmNpmResolverCreateOptions {
+      fs: CliDenoResolverFs(Arc::new(deno_fs::RealFs)),
       root_node_modules_dir: config_data.and_then(|config_data| {
         config_data.node_modules_dir.clone().or_else(|| {
-          specifier_to_file_path(&config_data.scope)
+          url_to_file_path(&config_data.scope)
             .ok()
             .map(|p| p.join("node_modules/"))
         })
