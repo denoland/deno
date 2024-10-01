@@ -58,15 +58,15 @@ assert.throws(
   }
 );
 
-// assert.throws(
-//   () => buffer.transcode(Buffer.from('a'), 'b', 'utf8'),
-//   /^Error: Unable to transcode Buffer \[U_ILLEGAL_ARGUMENT_ERROR\]/
-// );
+assert.throws(
+  () => buffer.transcode(Buffer.from('a'), 'b', 'utf8'),
+  /^Error: Unable to transcode Buffer \[U_ILLEGAL_ARGUMENT_ERROR\]/
+);
 
-// assert.throws(
-//   () => buffer.transcode(Buffer.from('a'), 'uf8', 'b'),
-//   /^Error: Unable to transcode Buffer \[U_ILLEGAL_ARGUMENT_ERROR\]$/
-// );
+assert.throws(
+  () => buffer.transcode(Buffer.from('a'), 'uf8', 'b'),
+  /^Error: Unable to transcode Buffer \[U_ILLEGAL_ARGUMENT_ERROR\]$/
+);
 
 assert.deepStrictEqual(
   buffer.transcode(Buffer.from('hi', 'ascii'), 'ascii', 'utf16le'),
