@@ -6,7 +6,7 @@
 // deno-lint-ignore-file prefer-primordials
 
 import { core } from "ext:core/mod.js";
-import { op_is_ascii, op_is_utf8 } from "ext:core/ops";
+import { op_is_ascii, op_is_utf8, op_transcode } from "ext:core/ops";
 
 import { TextDecoder, TextEncoder } from "ext:deno_web/08_text_encoding.js";
 import { codes } from "ext:deno_node/internal/error_codes.ts";
@@ -2598,6 +2598,31 @@ export function isAscii(input) {
   ], input);
 }
 
+export function transcode(source, fromEnco, toEnco) {
+  if (!isUint8Array(source)) {
+    throw new codes.ERR_INVALID_ARG_TYPE(
+      "source",
+      ["Buffer", "Uint8Array"],
+      source,
+    );
+  }
+  if (source.length === 0) {
+    return Buffer.alloc(0);
+  }
+  const returnSource = fromEnco === "ascii" && toEnco === "utf8" ||
+    fromEnco === "ascii" && toEnco === "latin1" ||
+    fromEnco === "ucs2" && toEnco === "utf16le" ||
+    fromEnco === "utf16le" && toEnco === "ucs2";
+  if (returnSource) {
+    return Buffer.from(source);
+  }
+
+  // TODO(@satyarohith): return appropriate error codes when transcode fails.
+  // The fix should enable the commented tests in test-icu-transcode.js
+  const result = op_transcode(new Uint8Array(source), fromEnco, toEnco);
+  return Buffer.from(result, toEnco);
+}
+
 export default {
   atob,
   btoa,
@@ -2610,4 +2635,5 @@ export default {
   kMaxLength,
   kStringMaxLength,
   SlowBuffer,
+  transcode,
 };
