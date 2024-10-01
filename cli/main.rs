@@ -407,7 +407,7 @@ fn get_suggestions_for_terminal_errors(e: &JsError) -> Vec<FixSuggestion> {
         FixSuggestion::info_multiline(
           &[
             "Trying to execute an npm package using Node-API addons,",
-            "these packages require local `node_modules` directory to be present"
+            "these packages require local `node_modules` directory to be present."
           ]
         ),
         FixSuggestion::hint_multiline(
