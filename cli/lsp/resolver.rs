@@ -328,11 +328,11 @@ impl LspResolver {
   ) -> Option<(ModuleSpecifier, MediaType)> {
     let resolver = self.get_scope_resolver(file_referrer);
     let node_resolver = resolver.node_resolver.as_ref()?;
-    Some(NodeResolution::into_specifier_and_media_type(
+    Some(NodeResolution::into_specifier_and_media_type(Some(
       node_resolver
         .resolve_req_reference(req_ref, referrer, NodeResolutionMode::Types)
-        .ok(),
-    ))
+        .ok()?,
+    )))
   }
 
   pub fn in_node_modules(&self, specifier: &ModuleSpecifier) -> bool {
