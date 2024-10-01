@@ -669,7 +669,7 @@ function bootstrapMainRuntime(runtimeOptions, warmup = false) {
       close: core.propWritable(windowClose),
       closed: core.propGetterOnly(() => windowIsClosing),
     });
-    ObjectSetPrototypeOf(globalThis, Window.prototype);
+    ObjectSetPrototypeOf(globalThis, GlobalThis.prototype);
 
     if (inspectFlag) {
       const consoleFromDeno = globalThis.console;

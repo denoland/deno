@@ -111,7 +111,7 @@ const NavigatorPrototype = Navigator.prototype;
 const mainRuntimeGlobalProperties = {
   Location: location.locationConstructorDescriptor,
   location: location.locationDescriptor,
-  Window: globalInterfaces.windowConstructorDescriptor,
+  GlobalThis: globalInterfaces.globalThisConstructorDescriptor,
   self: core.propGetterOnly(() => globalThis),
   Navigator: core.propNonEnumerable(Navigator),
   navigator: core.propGetterOnly(() => navigator),

@@ -13,7 +13,7 @@ import { EventTarget } from "./02_event.js";
 
 const illegalConstructorKey = Symbol("illegalConstructorKey");
 
-class Window extends EventTarget {
+class GlobalThis extends EventTarget {
   constructor(key = null) {
     if (key !== illegalConstructorKey) {
       throw new TypeError("Illegal constructor.");
@@ -22,7 +22,7 @@ class Window extends EventTarget {
   }
 
   get [SymbolToStringTag]() {
-    return "Window";
+    return "GlobalThis";
   }
 }
 
@@ -59,10 +59,10 @@ const dedicatedWorkerGlobalScopeConstructorDescriptor = {
   writable: true,
 };
 
-const windowConstructorDescriptor = {
+const globalThisConstructorDescriptor = {
   configurable: true,
   enumerable: false,
-  value: Window,
+  value: GlobalThis,
   writable: true,
 };
 
@@ -76,8 +76,8 @@ const workerGlobalScopeConstructorDescriptor = {
 export {
   DedicatedWorkerGlobalScope,
   dedicatedWorkerGlobalScopeConstructorDescriptor,
-  Window,
-  windowConstructorDescriptor,
+  GlobalThis,
+  globalThisConstructorDescriptor,
   WorkerGlobalScope,
   workerGlobalScopeConstructorDescriptor,
 };
