@@ -32,12 +32,13 @@ use crate::module_loader::ModuleLoadPreparer;
 use crate::node::CliCjsCodeAnalyzer;
 use crate::node::CliNodeCodeTranslator;
 use crate::npm::create_cli_npm_resolver;
+use crate::npm::CliByonmNpmResolverCreateOptions;
 use crate::npm::CliNpmResolver;
-use crate::npm::CliNpmResolverByonmCreateOptions;
 use crate::npm::CliNpmResolverCreateOptions;
 use crate::npm::CliNpmResolverManagedCreateOptions;
 use crate::npm::CliNpmResolverManagedSnapshotOption;
 use crate::resolver::CjsResolutionStore;
+use crate::resolver::CliDenoResolverFs;
 use crate::resolver::CliGraphResolver;
 use crate::resolver::CliGraphResolverOptions;
 use crate::resolver::CliNodeResolver;
@@ -300,7 +301,7 @@ impl CliFactory {
   pub fn global_http_cache(&self) -> Result<&Arc<GlobalHttpCache>, AnyError> {
     self.services.global_http_cache.get_or_try_init(|| {
       Ok(Arc::new(GlobalHttpCache::new(
-        self.deno_dir()?.deps_folder_path(),
+        self.deno_dir()?.remote_folder_path(),
         crate::cache::RealDenoCacheEnv,
       )))
     })
@@ -361,8 +362,8 @@ impl CliFactory {
         let cli_options = self.cli_options()?;
         // For `deno install` we want to force the managed resolver so it can set up `node_modules/` directory.
         create_cli_npm_resolver(if cli_options.use_byonm() && !matches!(cli_options.sub_command(), DenoSubcommand::Install(_) | DenoSubcommand::Add(_) | DenoSubcommand::Remove(_)) {
-          CliNpmResolverCreateOptions::Byonm(CliNpmResolverByonmCreateOptions {
-            fs: fs.clone(),
+          CliNpmResolverCreateOptions::Byonm(CliByonmNpmResolverCreateOptions {
+            fs: CliDenoResolverFs(fs.clone()),
             root_node_modules_dir: Some(match cli_options.node_modules_dir_path() {
               Some(node_modules_path) => node_modules_path.to_path_buf(),
               // path needs to be canonicalized for node resolution
@@ -824,7 +825,6 @@ impl CliFactory {
       )),
       node_resolver.clone(),
       npm_resolver.clone(),
-      self.permission_desc_parser()?.clone(),
       self.root_cert_store_provider().clone(),
       self.root_permissions_container()?.clone(),
       StorageKeyResolver::from_options(cli_options),

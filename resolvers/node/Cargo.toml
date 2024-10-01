@@ -21,6 +21,7 @@ anyhow.workspace = true
 async-trait.workspace = true
 deno_media_type.workspace = true
 deno_package_json.workspace = true
+deno_path_util.workspace = true
 futures.workspace = true
 lazy-regex.workspace = true
 once_cell.workspace = true

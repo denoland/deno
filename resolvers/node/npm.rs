@@ -3,6 +3,8 @@
 use std::path::Path;
 use std::path::PathBuf;
 
+use deno_path_util::url_from_directory_path;
+use deno_path_util::url_from_file_path;
 use url::Url;
 
 use crate::errors;
@@ -24,7 +26,7 @@ pub trait NpmResolver: std::fmt::Debug + MaybeSend + MaybeSync {
   fn in_npm_package(&self, specifier: &Url) -> bool;
 
   fn in_npm_package_at_dir_path(&self, path: &Path) -> bool {
-    let specifier = match Url::from_directory_path(path.to_path_buf().clean()) {
+    let specifier = match url_from_directory_path(&path.to_path_buf().clean()) {
       Ok(p) => p,
       Err(_) => return false,
     };
@@ -32,7 +34,7 @@ pub trait NpmResolver: std::fmt::Debug + MaybeSend + MaybeSync {
   }
 
   fn in_npm_package_at_file_path(&self, path: &Path) -> bool {
-    let specifier = match Url::from_file_path(path.to_path_buf().clean()) {
+    let specifier = match url_from_file_path(&path.to_path_buf().clean()) {
       Ok(p) => p,
       Err(_) => return false,
     };

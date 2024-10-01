@@ -31,7 +31,6 @@ use deno_runtime::fmt_errors::format_js_error;
 use deno_runtime::inspector_server::InspectorServer;
 use deno_runtime::ops::process::NpmProcessStateProviderRc;
 use deno_runtime::ops::worker_host::CreateWebWorkerCb;
-use deno_runtime::permissions::RuntimePermissionDescriptorParser;
 use deno_runtime::web_worker::WebWorker;
 use deno_runtime::web_worker::WebWorkerOptions;
 use deno_runtime::web_worker::WebWorkerServiceOptions;
@@ -136,7 +135,6 @@ struct SharedWorkerState {
   module_loader_factory: Box<dyn ModuleLoaderFactory>,
   node_resolver: Arc<NodeResolver>,
   npm_resolver: Arc<dyn CliNpmResolver>,
-  permission_desc_parser: Arc<RuntimePermissionDescriptorParser>,
   root_cert_store_provider: Arc<dyn RootCertStoreProvider>,
   root_permissions: PermissionsContainer,
   shared_array_buffer_store: SharedArrayBufferStore,
@@ -433,7 +431,6 @@ impl CliMainWorkerFactory {
     module_loader_factory: Box<dyn ModuleLoaderFactory>,
     node_resolver: Arc<NodeResolver>,
     npm_resolver: Arc<dyn CliNpmResolver>,
-    permission_parser: Arc<RuntimePermissionDescriptorParser>,
     root_cert_store_provider: Arc<dyn RootCertStoreProvider>,
     root_permissions: PermissionsContainer,
     storage_key_resolver: StorageKeyResolver,
@@ -454,7 +451,6 @@ impl CliMainWorkerFactory {
         module_loader_factory,
         node_resolver,
         npm_resolver,
-        permission_desc_parser: permission_parser,
         root_cert_store_provider,
         root_permissions,
         shared_array_buffer_store: Default::default(),
@@ -586,7 +582,6 @@ impl CliMainWorkerFactory {
       ),
       feature_checker,
       permissions,
-      permission_desc_parser: shared.permission_desc_parser.clone(),
       v8_code_cache: shared.code_cache.clone(),
     };
     let options = WorkerOptions {
@@ -784,7 +779,6 @@ fn create_web_worker_callback(
       ),
       maybe_inspector_server,
       feature_checker,
-      permission_desc_parser: shared.permission_desc_parser.clone(),
       npm_process_state_provider: Some(shared.npm_process_state_provider()),
       permissions: args.permissions,
     };
@@ -849,6 +843,7 @@ mod tests {
   use deno_core::FsModuleLoader;
   use deno_fs::RealFs;
   use deno_runtime::deno_permissions::Permissions;
+  use deno_runtime::permissions::RuntimePermissionDescriptorParser;
 
   fn create_test_worker() -> MainWorker {
     let main_module =
@@ -866,7 +861,7 @@ mod tests {
       WorkerServiceOptions {
         module_loader: Rc::new(FsModuleLoader),
         permissions: PermissionsContainer::new(
-          permission_desc_parser.clone(),
+          permission_desc_parser,
           Permissions::none_without_prompt(),
         ),
         blob_store: Default::default(),
@@ -874,7 +869,6 @@ mod tests {
         feature_checker: Default::default(),
         node_services: Default::default(),
         npm_process_state_provider: Default::default(),
-        permission_desc_parser,
         root_cert_store_provider: Default::default(),
         shared_array_buffer_store: Default::default(),
         compiled_wasm_module_store: Default::default(),

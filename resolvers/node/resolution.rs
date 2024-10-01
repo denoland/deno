@@ -8,6 +8,8 @@ use anyhow::bail;
 use anyhow::Error as AnyError;
 use deno_media_type::MediaType;
 use deno_package_json::PackageJsonRc;
+use deno_path_util::strip_unc_prefix;
+use deno_path_util::url_from_file_path;
 use serde_json::Map;
 use serde_json::Value;
 use url::Url;
@@ -47,8 +49,6 @@ use crate::errors::TypesNotFoundErrorData;
 use crate::errors::UnsupportedDirImportError;
 use crate::errors::UnsupportedEsmUrlSchemeError;
 use crate::errors::UrlToNodeResolutionError;
-use crate::path::strip_unc_prefix;
-use crate::path::to_file_specifier;
 use crate::NpmResolverRc;
 use crate::PathClean;
 use deno_package_json::PackageJson;
@@ -394,7 +394,7 @@ impl<TEnv: NodeResolverEnv> NodeResolver<TEnv> {
           message: err.to_string(),
         }
       })?;
-    let url = to_file_specifier(&package_folder.join(bin_entry));
+    let url = url_from_file_path(&package_folder.join(bin_entry)).unwrap();
 
     let resolve_response = self.url_to_node_resolution(url)?;
     // TODO(bartlomieju): skipped checking errors for commonJS resolution and
@@ -485,12 +485,12 @@ impl<TEnv: NodeResolverEnv> NodeResolver<TEnv> {
       || lowercase_path.ends_with(".d.cts")
       || lowercase_path.ends_with(".d.mts")
     {
-      return Ok(to_file_specifier(path));
+      return Ok(url_from_file_path(path).unwrap());
     }
     if let Some(path) =
       probe_extensions(&self.env, path, &lowercase_path, referrer_kind)
     {
-      return Ok(to_file_specifier(&path));
+      return Ok(url_from_file_path(&path).unwrap());
     }
     if self.env.is_dir_sync(path) {
       let resolution_result = self.resolve_package_dir_subpath(
@@ -514,15 +514,15 @@ impl<TEnv: NodeResolverEnv> NodeResolver<TEnv> {
         &index_path.to_string_lossy().to_lowercase(),
         referrer_kind,
       ) {
-        return Ok(to_file_specifier(&path));
+        return Ok(url_from_file_path(&path).unwrap());
       }
     }
     // allow resolving .css files for types resolution
     if lowercase_path.ends_with(".css") {
-      return Ok(to_file_specifier(path));
+      return Ok(url_from_file_path(path).unwrap());
     }
     Err(TypesNotFoundError(Box::new(TypesNotFoundErrorData {
-      code_specifier: to_file_specifier(path),
+      code_specifier: url_from_file_path(path).unwrap(),
       maybe_referrer: maybe_referrer.cloned(),
     })))
   }
@@ -673,7 +673,8 @@ impl<TEnv: NodeResolverEnv> NodeResolver<TEnv> {
             } else {
               format!("{target}{subpath}")
             };
-            let package_json_url = to_file_specifier(package_json_path);
+            let package_json_url =
+              url_from_file_path(package_json_path).unwrap();
             let result = match self.package_resolve(
               &export_target,
               &package_json_url,
@@ -760,7 +761,7 @@ impl<TEnv: NodeResolverEnv> NodeResolver<TEnv> {
       );
     }
     if subpath.is_empty() {
-      return Ok(to_file_specifier(&resolved_path));
+      return Ok(url_from_file_path(&resolved_path).unwrap());
     }
     if invalid_segment_re.is_match(subpath) {
       let request = if pattern {
@@ -782,9 +783,11 @@ impl<TEnv: NodeResolverEnv> NodeResolver<TEnv> {
       let resolved_path_str = resolved_path.to_string_lossy();
       let replaced = pattern_re
         .replace(&resolved_path_str, |_caps: &regex::Captures| subpath);
-      return Ok(to_file_specifier(&PathBuf::from(replaced.to_string())));
+      return Ok(
+        url_from_file_path(&PathBuf::from(replaced.to_string())).unwrap(),
+      );
     }
-    Ok(to_file_specifier(&resolved_path.join(subpath).clean()))
+    Ok(url_from_file_path(&resolved_path.join(subpath).clean()).unwrap())
   }
 
   #[allow(clippy::too_many_arguments)]
@@ -871,7 +874,7 @@ impl<TEnv: NodeResolverEnv> NodeResolver<TEnv> {
         mode,
       )?;
       if mode.is_types() && url.scheme() == "file" {
-        let path = url.to_file_path().unwrap();
+        let path = deno_path_util::url_to_file_path(&url).unwrap();
         return Ok(Some(self.path_to_declaration_url(
           &path,
           maybe_referrer,
@@ -1307,7 +1310,7 @@ impl<TEnv: NodeResolverEnv> NodeResolver<TEnv> {
     if mode.is_types() {
       Ok(self.path_to_declaration_url(&file_path, referrer, referrer_kind)?)
     } else {
-      Ok(to_file_specifier(&file_path))
+      Ok(url_from_file_path(&file_path).unwrap())
     }
   }
 
@@ -1338,7 +1341,7 @@ impl<TEnv: NodeResolverEnv> NodeResolver<TEnv> {
     &self,
     url: &Url,
   ) -> Result<Option<PackageJsonRc>, ClosestPkgJsonError> {
-    let Ok(file_path) = url.to_file_path() else {
+    let Ok(file_path) = deno_path_util::url_to_file_path(url) else {
       return Ok(None);
     };
     self.get_closest_package_json_from_path(&file_path)
@@ -1433,7 +1436,7 @@ impl<TEnv: NodeResolverEnv> NodeResolver<TEnv> {
     if let Some(main) = maybe_main {
       let guess = package_json.path.parent().unwrap().join(main).clean();
       if self.env.is_file_sync(&guess) {
-        return Ok(to_file_specifier(&guess));
+        return Ok(url_from_file_path(&guess).unwrap());
       }
 
       // todo(dsherret): investigate exactly how node and typescript handles this
@@ -1463,7 +1466,7 @@ impl<TEnv: NodeResolverEnv> NodeResolver<TEnv> {
           .clean();
         if self.env.is_file_sync(&guess) {
           // TODO(bartlomieju): emitLegacyIndexDeprecation()
-          return Ok(to_file_specifier(&guess));
+          return Ok(url_from_file_path(&guess).unwrap());
         }
       }
     }
@@ -1496,14 +1499,15 @@ impl<TEnv: NodeResolverEnv> NodeResolver<TEnv> {
       let guess = directory.join(index_file_name).clean();
       if self.env.is_file_sync(&guess) {
         // TODO(bartlomieju): emitLegacyIndexDeprecation()
-        return Ok(to_file_specifier(&guess));
+        return Ok(url_from_file_path(&guess).unwrap());
       }
     }
 
     if mode.is_types() {
       Err(
         TypesNotFoundError(Box::new(TypesNotFoundErrorData {
-          code_specifier: to_file_specifier(&directory.join("index.js")),
+          code_specifier: url_from_file_path(&directory.join("index.js"))
+            .unwrap(),
           maybe_referrer: maybe_referrer.cloned(),
         }))
         .into(),
@@ -1511,7 +1515,7 @@ impl<TEnv: NodeResolverEnv> NodeResolver<TEnv> {
     } else {
       Err(
         ModuleNotFoundError {
-          specifier: to_file_specifier(&directory.join("index.js")),
+          specifier: url_from_file_path(&directory.join("index.js")).unwrap(),
           typ: "module",
           maybe_referrer: maybe_referrer.cloned(),
         }
@@ -1611,9 +1615,7 @@ fn resolve_bin_entry_value<'a>(
 }
 
 fn to_file_path(url: &Url) -> PathBuf {
-  url
-    .to_file_path()
-    .unwrap_or_else(|_| panic!("Provided URL was not file:// URL: {url}"))
+  deno_path_util::url_to_file_path(url).unwrap()
 }
 
 fn to_file_path_string(url: &Url) -> String {
@@ -1692,7 +1694,7 @@ fn with_known_extension(path: &Path, ext: &str) -> PathBuf {
 }
 
 fn to_specifier_display_string(url: &Url) -> String {
-  if let Ok(path) = url.to_file_path() {
+  if let Ok(path) = deno_path_util::url_to_file_path(url) {
     path.display().to_string()
   } else {
     url.to_string()

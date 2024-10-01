@@ -190,9 +190,7 @@ async fn run_task(opts: RunTaskOptions<'_>) -> Result<i32, AnyError> {
     custom_commands,
     init_cwd: opts.cli_options.initial_cwd(),
     argv: cli_options.argv(),
-    root_node_modules_dir: npm_resolver
-      .root_node_modules_path()
-      .map(|p| p.as_path()),
+    root_node_modules_dir: npm_resolver.root_node_modules_path(),
   })
   .await
 }

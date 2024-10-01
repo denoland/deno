@@ -2,7 +2,6 @@
 
 use crate::ops;
 use crate::ops::bootstrap::SnapshotOptions;
-use crate::permissions::RuntimePermissionDescriptorParser;
 use crate::shared::maybe_transpile_source;
 use crate::shared::runtime;
 use deno_cache::SqliteBackedCache;
@@ -299,9 +298,7 @@ pub fn create_runtime_snapshot(
     ),
     ops::fs_events::deno_fs_events::init_ops(),
     ops::os::deno_os::init_ops(Default::default()),
-    ops::permissions::deno_permissions::init_ops(Arc::new(
-      RuntimePermissionDescriptorParser::new(fs),
-    )),
+    ops::permissions::deno_permissions::init_ops(),
     ops::process::deno_process::init_ops(None),
     ops::signal::deno_signal::init_ops(),
     ops::tty::deno_tty::init_ops(),

@@ -1,16 +1,5 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
-use crate::inspector_server::InspectorServer;
-use crate::ops;
-use crate::ops::process::NpmProcessStateProviderRc;
-use crate::ops::worker_host::WorkersTable;
-use crate::shared::maybe_transpile_source;
-use crate::shared::runtime;
-use crate::tokio_util::create_and_run_current_thread;
-use crate::worker::create_op_metrics;
-use crate::worker::import_meta_resolve_callback;
-use crate::worker::validate_import_attributes_callback;
-use crate::worker::FormatJsErrorFn;
-use crate::BootstrapOptions;
+
 use deno_broadcast_channel::InMemoryBroadcastChannel;
 use deno_cache::CreateCache;
 use deno_cache::SqliteBackedCache;
@@ -45,7 +34,6 @@ use deno_http::DefaultHttpPropertyExtractor;
 use deno_io::Stdio;
 use deno_kv::dynamic::MultiBackendDbHandler;
 use deno_node::NodeExtInitServices;
-use deno_permissions::PermissionDescriptorParser;
 use deno_permissions::PermissionsContainer;
 use deno_terminal::colors;
 use deno_tls::RootCertStoreProvider;
@@ -66,6 +54,19 @@ use std::sync::atomic::Ordering;
 use std::sync::Arc;
 use std::task::Context;
 use std::task::Poll;
+
+use crate::inspector_server::InspectorServer;
+use crate::ops;
+use crate::ops::process::NpmProcessStateProviderRc;
+use crate::ops::worker_host::WorkersTable;
+use crate::shared::maybe_transpile_source;
+use crate::shared::runtime;
+use crate::tokio_util::create_and_run_current_thread;
+use crate::worker::create_op_metrics;
+use crate::worker::import_meta_resolve_callback;
+use crate::worker::validate_import_attributes_callback;
+use crate::worker::FormatJsErrorFn;
+use crate::BootstrapOptions;
 
 pub struct WorkerMetadata {
   pub buffer: DetachedBuffer,
@@ -348,7 +349,6 @@ pub struct WebWorkerServiceOptions {
   pub node_services: Option<NodeExtInitServices>,
   pub npm_process_state_provider: Option<NpmProcessStateProviderRc>,
   pub permissions: PermissionsContainer,
-  pub permission_desc_parser: Arc<dyn PermissionDescriptorParser>,
   pub root_cert_store_provider: Option<Arc<dyn RootCertStoreProvider>>,
   pub shared_array_buffer_store: Option<SharedArrayBufferStore>,
 }
@@ -505,9 +505,7 @@ impl WebWorker {
       ),
       ops::fs_events::deno_fs_events::init_ops_and_esm(),
       ops::os::deno_os_worker::init_ops_and_esm(),
-      ops::permissions::deno_permissions::init_ops_and_esm(
-        services.permission_desc_parser,
-      ),
+      ops::permissions::deno_permissions::init_ops_and_esm(),
       ops::process::deno_process::init_ops_and_esm(
         services.npm_process_state_provider,
       ),
