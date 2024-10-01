@@ -1,7 +1,7 @@
 {
   "version": 1,
   "denoDir": "[WILDCARD]",
-  "modulesCache": "[WILDCARD]deps",
+  "modulesCache": "[WILDCARD]remote",
   "npmCache": "[WILDCARD]npm",
   "typescriptCache": "[WILDCARD]gen",
   "registryCache": "[WILDCARD]registries",
