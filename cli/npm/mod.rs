@@ -14,11 +14,13 @@ use deno_core::error::AnyError;
 use deno_core::serde_json;
 use deno_npm::registry::NpmPackageInfo;
 use deno_resolver::npm::ByonmNpmResolver;
+use deno_resolver::npm::ByonmResolvePkgFolderFromDenoReqError;
 use deno_runtime::deno_node::NodeRequireResolver;
 use deno_runtime::ops::process::NpmProcessStateProvider;
 use deno_semver::package::PackageNv;
 use deno_semver::package::PackageReq;
 use node_resolver::NpmResolver;
+use thiserror::Error;
 
 use crate::args::npm_registry_url;
 use crate::file_fetcher::FileFetcher;
@@ -28,6 +30,14 @@ pub use self::byonm::CliByonmNpmResolverCreateOptions;
 pub use self::managed::CliNpmResolverManagedCreateOptions;
 pub use self::managed::CliNpmResolverManagedSnapshotOption;
 pub use self::managed::ManagedCliNpmResolver;
+
+#[derive(Debug, Error)]
+pub enum ResolvePkgFolderFromDenoReqError {
+  #[error(transparent)]
+  Managed(deno_core::error::AnyError),
+  #[error(transparent)]
+  Byonm(#[from] ByonmResolvePkgFolderFromDenoReqError),
+}
 
 pub enum CliNpmResolverCreateOptions {
   Managed(CliNpmResolverManagedCreateOptions),
@@ -93,7 +103,7 @@ pub trait CliNpmResolver: NpmResolver {
     &self,
     req: &PackageReq,
     referrer: &ModuleSpecifier,
-  ) -> Result<PathBuf, AnyError>;
+  ) -> Result<PathBuf, ResolvePkgFolderFromDenoReqError>;
 
   /// Returns a hash returning the state of the npm resolver
   /// or `None` if the state currently can't be determined.

@@ -21,6 +21,7 @@ use crate::resolver::CliDenoResolverFs;
 
 use super::CliNpmResolver;
 use super::InnerCliNpmResolverRef;
+use super::ResolvePkgFolderFromDenoReqError;
 
 pub type CliByonmNpmResolverCreateOptions =
   ByonmNpmResolverCreateOptions<CliDenoResolverFs>;
@@ -90,10 +91,11 @@ impl CliNpmResolver for CliByonmNpmResolver {
     &self,
     req: &PackageReq,
     referrer: &Url,
-  ) -> Result<PathBuf, AnyError> {
+  ) -> Result<PathBuf, ResolvePkgFolderFromDenoReqError> {
     ByonmNpmResolver::resolve_pkg_folder_from_deno_module_req(
       self, req, referrer,
     )
+    .map_err(ResolvePkgFolderFromDenoReqError::Byonm)
   }
 
   fn check_state_hash(&self) -> Option<u64> {
