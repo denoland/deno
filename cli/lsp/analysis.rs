@@ -1190,28 +1190,45 @@ impl CodeActionCollection {
         }
         i.full_range.as_ref()
       })?;
-      let workspace_resolver = document.workspace_resolver()?;
-      let resolution = workspace_resolver
-        .resolve(&dep_key, document.specifier())
-        .ok()?;
-      let specifier = match resolution {
-        MappedResolution::Normal { specifier, .. }
-        | MappedResolution::ImportMap { specifier, .. } => specifier,
-        _ => {
+      let referrer = document.specifier();
+      let file_referrer = document.file_referrer();
+      let config_data = language_server
+        .config
+        .tree
+        .data_for_specifier(file_referrer?)?;
+      let workspace_resolver = config_data.resolver.clone();
+      let npm_ref = if let Ok(resolution) =
+        workspace_resolver.resolve(&dep_key, document.specifier())
+      {
+        let specifier = match resolution {
+          MappedResolution::Normal { specifier, .. }
+          | MappedResolution::ImportMap { specifier, .. } => specifier,
+          _ => {
+            return None;
+          }
+        };
+        NpmPackageReqReference::from_specifier(&specifier).ok()?
+      } else {
+        // Only resolve bare package.json deps for byonm.
+        if !config_data.byonm {
           return None;
         }
+        if !language_server
+          .resolver
+          .is_bare_package_json_dep(&dep_key, referrer)
+        {
+          return None;
+        }
+        NpmPackageReqReference::from_str(&format!("npm:{}", &dep_key)).ok()?
       };
-      let npm_ref = NpmPackageReqReference::from_specifier(&specifier).ok()?;
       let package_name = &npm_ref.req().name;
       if package_name.starts_with("@types/") {
         return None;
       }
-      let referrer = document.specifier();
-      let file_referrer = document.file_referrer();
-      let maybe_managed_npm_resolver = language_server
+      let managed_npm_resolver = language_server
         .resolver
         .maybe_managed_npm_resolver(file_referrer);
-      if let Some(npm_resolver) = maybe_managed_npm_resolver {
+      if let Some(npm_resolver) = managed_npm_resolver {
         if !npm_resolver.is_pkg_req_folder_cached(npm_ref.req()) {
           return None;
         }
@@ -1232,7 +1249,7 @@ impl CodeActionCollection {
         .ok()
         .and_then(|versions| versions.first().cloned())?;
       let types_specifier_text =
-        if let Some(npm_resolver) = maybe_managed_npm_resolver {
+        if let Some(npm_resolver) = managed_npm_resolver {
           let mut specifier_text = if let Some(req) =
             npm_resolver.top_package_req_for_name(&types_package_name)
           {

@@ -373,6 +373,26 @@ impl LspResolver {
     Some(NodeResolution::into_specifier_and_media_type(Some(resolution)).1)
   }
 
+  pub fn is_bare_package_json_dep(
+    &self,
+    specifier_text: &str,
+    referrer: &ModuleSpecifier,
+  ) -> bool {
+    let resolver = self.get_scope_resolver(Some(referrer));
+    let Some(node_resolver) = resolver.node_resolver.as_ref() else {
+      return false;
+    };
+    node_resolver
+      .resolve_if_for_npm_pkg(
+        specifier_text,
+        referrer,
+        NodeResolutionMode::Types,
+      )
+      .ok()
+      .flatten()
+      .is_some()
+  }
+
   pub fn get_closest_package_json(
     &self,
     referrer: &ModuleSpecifier,

@@ -17,7 +17,6 @@ use deno_ast::swc::visit::VisitWith;
 use deno_ast::MediaType;
 use deno_ast::ParsedSource;
 use deno_ast::SourceTextInfo;
-use deno_config::workspace::WorkspaceResolver;
 use deno_core::error::custom_error;
 use deno_core::error::AnyError;
 use deno_core::futures::future;
@@ -758,12 +757,6 @@ impl Document {
     if let Some(open_data) = self.open_data.as_ref() {
       *open_data.maybe_semantic_tokens.lock() = Some(semantic_tokens);
     }
-  }
-
-  pub fn workspace_resolver(&self) -> Option<Arc<WorkspaceResolver>> {
-    let config_data =
-      self.config.tree.data_for_specifier(self.file_referrer()?)?;
-    Some(config_data.resolver.clone())
   }
 }
 
