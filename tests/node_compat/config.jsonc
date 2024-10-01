@@ -80,7 +80,6 @@
       "test-fs-rmdir-recursive.js",
       "test-fs-write-file.js",
       "test-http-url.parse-https.request.js",
-      "test-icu-transcode.js",
       "test-net-better-error-messages-path.js",
       "test-net-connect-buffer.js",
       "test-net-connect-buffer2.js",
