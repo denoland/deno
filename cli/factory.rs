@@ -32,17 +32,19 @@ use crate::module_loader::ModuleLoadPreparer;
 use crate::node::CliCjsCodeAnalyzer;
 use crate::node::CliNodeCodeTranslator;
 use crate::npm::create_cli_npm_resolver;
+use crate::npm::CliByonmNpmResolverCreateOptions;
 use crate::npm::CliNpmResolver;
-use crate::npm::CliNpmResolverByonmCreateOptions;
 use crate::npm::CliNpmResolverCreateOptions;
 use crate::npm::CliNpmResolverManagedCreateOptions;
 use crate::npm::CliNpmResolverManagedSnapshotOption;
 use crate::resolver::CjsResolutionStore;
+use crate::resolver::CliDenoResolverFs;
 use crate::resolver::CliGraphResolver;
 use crate::resolver::CliGraphResolverOptions;
 use crate::resolver::CliNodeResolver;
+use crate::resolver::CliSloppyImportsResolver;
 use crate::resolver::NpmModuleLoader;
-use crate::resolver::SloppyImportsResolver;
+use crate::resolver::SloppyImportsCachedFs;
 use crate::standalone::DenoCompileBinaryWriter;
 use crate::tools::check::TypeChecker;
 use crate::tools::coverage::CoverageCollector;
@@ -185,7 +187,8 @@ struct CliFactoryServices {
   node_resolver: Deferred<Arc<NodeResolver>>,
   npm_resolver: Deferred<Arc<dyn CliNpmResolver>>,
   permission_desc_parser: Deferred<Arc<RuntimePermissionDescriptorParser>>,
-  sloppy_imports_resolver: Deferred<Option<Arc<SloppyImportsResolver>>>,
+  root_permissions_container: Deferred<PermissionsContainer>,
+  sloppy_imports_resolver: Deferred<Option<Arc<CliSloppyImportsResolver>>>,
   text_only_progress_bar: Deferred<ProgressBar>,
   type_checker: Deferred<Arc<TypeChecker>>,
   cjs_resolutions: Deferred<Arc<CjsResolutionStore>>,
@@ -359,8 +362,8 @@ impl CliFactory {
         let cli_options = self.cli_options()?;
         // For `deno install` we want to force the managed resolver so it can set up `node_modules/` directory.
         create_cli_npm_resolver(if cli_options.use_byonm() && !matches!(cli_options.sub_command(), DenoSubcommand::Install(_) | DenoSubcommand::Add(_) | DenoSubcommand::Remove(_)) {
-          CliNpmResolverCreateOptions::Byonm(CliNpmResolverByonmCreateOptions {
-            fs: fs.clone(),
+          CliNpmResolverCreateOptions::Byonm(CliByonmNpmResolverCreateOptions {
+            fs: CliDenoResolverFs(fs.clone()),
             root_node_modules_dir: Some(match cli_options.node_modules_dir_path() {
               Some(node_modules_path) => node_modules_path.to_path_buf(),
               // path needs to be canonicalized for node resolution
@@ -403,17 +406,16 @@ impl CliFactory {
 
   pub fn sloppy_imports_resolver(
     &self,
-  ) -> Result<Option<&Arc<SloppyImportsResolver>>, AnyError> {
+  ) -> Result<Option<&Arc<CliSloppyImportsResolver>>, AnyError> {
     self
       .services
       .sloppy_imports_resolver
       .get_or_try_init(|| {
-        Ok(
-          self
-            .cli_options()?
-            .unstable_sloppy_imports()
-            .then(|| Arc::new(SloppyImportsResolver::new(self.fs().clone()))),
-        )
+        Ok(self.cli_options()?.unstable_sloppy_imports().then(|| {
+          Arc::new(CliSloppyImportsResolver::new(SloppyImportsCachedFs::new(
+            self.fs().clone(),
+          )))
+        }))
       })
       .map(|maybe| maybe.as_ref())
   }
@@ -626,6 +628,7 @@ impl CliFactory {
           self.maybe_file_watcher_reporter().clone(),
           self.file_fetcher()?.clone(),
           self.global_http_cache()?.clone(),
+          self.root_permissions_container()?.clone(),
         )))
       })
       .await
@@ -659,6 +662,7 @@ impl CliFactory {
         Ok(Arc::new(MainModuleGraphContainer::new(
           self.cli_options()?.clone(),
           self.module_load_preparer().await?.clone(),
+          self.root_permissions_container()?.clone(),
         )))
       })
       .await
@@ -755,15 +759,20 @@ impl CliFactory {
     ))
   }
 
-  pub fn create_permissions_container(
+  pub fn root_permissions_container(
     &self,
-  ) -> Result<PermissionsContainer, AnyError> {
-    let desc_parser = self.permission_desc_parser()?.clone();
-    let permissions = Permissions::from_options(
-      desc_parser.as_ref(),
-      &self.cli_options()?.permissions_options(),
-    )?;
-    Ok(PermissionsContainer::new(desc_parser, permissions))
+  ) -> Result<&PermissionsContainer, AnyError> {
+    self
+      .services
+      .root_permissions_container
+      .get_or_try_init(|| {
+        let desc_parser = self.permission_desc_parser()?.clone();
+        let permissions = Permissions::from_options(
+          desc_parser.as_ref(),
+          &self.cli_options()?.permissions_options(),
+        )?;
+        Ok(PermissionsContainer::new(desc_parser, permissions))
+      })
   }
 
   pub async fn create_cli_main_worker_factory(
@@ -774,6 +783,7 @@ impl CliFactory {
     let npm_resolver = self.npm_resolver().await?;
     let fs = self.fs();
     let cli_node_resolver = self.cli_node_resolver().await?;
+    let cli_npm_resolver = self.npm_resolver().await?.clone();
     let maybe_file_watcher_communicator = if cli_options.has_hmr() {
       Some(self.watcher_communicator.clone().unwrap())
     } else {
@@ -803,6 +813,7 @@ impl CliFactory {
         self.main_module_graph_container().await?.clone(),
         self.module_load_preparer().await?.clone(),
         cli_node_resolver.clone(),
+        cli_npm_resolver.clone(),
         NpmModuleLoader::new(
           self.cjs_resolutions().clone(),
           self.node_code_translator().await?.clone(),
@@ -814,8 +825,8 @@ impl CliFactory {
       )),
       node_resolver.clone(),
       npm_resolver.clone(),
-      self.permission_desc_parser()?.clone(),
       self.root_cert_store_provider().clone(),
+      self.root_permissions_container()?.clone(),
       StorageKeyResolver::from_options(cli_options),
       cli_options.sub_command().clone(),
       self.create_cli_main_worker_options()?,

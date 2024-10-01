@@ -88,6 +88,7 @@ deno_kv.workspace = true
 deno_napi.workspace = true
 deno_net.workspace = true
 deno_node.workspace = true
+deno_path_util.workspace = true
 deno_permissions.workspace = true
 deno_terminal.workspace = true
 deno_tls.workspace = true
@@ -118,6 +119,7 @@ rustyline = { workspace = true, features = ["custom-bindings"] }
 serde.workspace = true
 signal-hook = "0.3.17"
 signal-hook-registry = "1.4.0"
+tempfile.workspace = true
 tokio.workspace = true
 tokio-metrics.workspace = true
 twox-hash.workspace = true

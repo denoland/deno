@@ -9,14 +9,14 @@ use util::TestContext;
 use util::TestContextBuilder;
 
 itest!(check_all {
-  args: "check --quiet --all check/all/check_all.ts",
+  args: "check --allow-import --quiet --all check/all/check_all.ts",
   output: "check/all/check_all.out",
   http_server: true,
   exit_code: 1,
 });
 
 itest!(check_all_local {
-  args: "check --quiet check/all/check_all.ts",
+  args: "check --allow-import --quiet check/all/check_all.ts",
   output_str: Some(""),
   http_server: true,
 });
@@ -227,6 +227,7 @@ fn ts_no_recheck_on_redirect() {
   let test_context = TestContext::default();
   let check_command = test_context.new_command().args_vec([
     "run",
+    "--allow-import",
     "--check",
     "run/017_import_redirect.ts",
   ]);

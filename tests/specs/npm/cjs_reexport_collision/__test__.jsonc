@@ -1,0 +1,8 @@
+{
+  "args": "run -A --quiet cjs_reexport_collision/main.ts",
+  "output": "cjs_reexport_collision/main.out",
+  "envs": {
+    "NO_COLOR": "1",
+    "NPM_CONFIG_REGISTRY": "http://localhost:4260/"
+  }
+}

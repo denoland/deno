@@ -43,7 +43,9 @@
       // TODO(littledivy): windows ipc streams not yet implemented
       "test-child-process-fork-ref.js",
       "test-child-process-fork-ref2.js",
-      "test-child-process-ipc-next-tick.js",
+      // TODO(bartlomieju): this test is very flaky on CI
+      // https://github.com/denoland/deno/issues/25855
+      // "test-child-process-ipc-next-tick.js",
       "test-child-process-ipc.js",
       "test-child-process-spawnsync-env.js",
       "test-child-process-stdio-inherit.js",

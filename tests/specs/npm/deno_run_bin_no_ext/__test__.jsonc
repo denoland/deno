@@ -1,0 +1,8 @@
+{
+  "args": "run -A --quiet npm:@denotest/bin/cli-no-ext this is a test",
+  "output": "deno_run_no_ext.out",
+  "envs": {
+    "NO_COLOR": "1",
+    "NPM_CONFIG_REGISTRY": "http://localhost:4260/"
+  }
+}

@@ -43,7 +43,8 @@ use crate::cache::ParsedSourceCache;
 use crate::factory::CliFactory;
 use crate::graph_util::ModuleGraphCreator;
 use crate::http_util::HttpClient;
-use crate::resolver::SloppyImportsResolver;
+use crate::resolver::CliSloppyImportsResolver;
+use crate::resolver::SloppyImportsCachedFs;
 use crate::tools::check::CheckOptions;
 use crate::tools::lint::collect_no_slow_type_diagnostics;
 use crate::tools::registry::diagnostics::PublishDiagnostic;
@@ -108,7 +109,9 @@ pub async fn publish(
   }
   let specifier_unfurler = Arc::new(SpecifierUnfurler::new(
     if cli_options.unstable_sloppy_imports() {
-      Some(SloppyImportsResolver::new(cli_factory.fs().clone()))
+      Some(CliSloppyImportsResolver::new(SloppyImportsCachedFs::new(
+        cli_factory.fs().clone(),
+      )))
     } else {
       None
     },
@@ -341,13 +344,11 @@ impl PublishPreparer {
       bail!("Exiting due to DENO_INTERNAL_FAST_CHECK_OVERWRITE")
     } else {
       log::info!("Checking for slow types in the public API...");
-      let mut any_pkg_had_diagnostics = false;
       for package in package_configs {
         let export_urls = package.config_file.resolve_export_value_urls()?;
         let diagnostics =
           collect_no_slow_type_diagnostics(&graph, &export_urls);
         if !diagnostics.is_empty() {
-          any_pkg_had_diagnostics = true;
           for diagnostic in diagnostics {
             diagnostics_collector
               .push(PublishDiagnostic::FastCheck(diagnostic));
@@ -355,7 +356,9 @@ impl PublishPreparer {
         }
       }
 
-      if any_pkg_had_diagnostics {
+      // skip type checking the slow type graph if there are any errors because
+      // errors like remote modules existing will cause type checking to crash
+      if diagnostics_collector.has_error() {
         Ok(Arc::new(graph))
       } else {
         // fast check passed, type check the output as a temporary measure

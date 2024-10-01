@@ -1,0 +1,8 @@
+{
+  "args": "run --allow-read permissions_outside_package/main.ts",
+  "output": "permissions_outside_package/main.out",
+  "envs": {
+    "NO_COLOR": "1",
+    "NPM_CONFIG_REGISTRY": "http://localhost:4260/"
+  }
+}
