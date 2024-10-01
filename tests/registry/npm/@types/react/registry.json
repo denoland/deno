@@ -9,7 +9,7 @@
       "_id": "@types/react@18.3.10",
       "dist": {
         "shasum": "6edc26dc22ff8c9c226d3c7bf8357b013c842219",
-        "tarball": "https://registry.npmjs.org/@types/react/-/react-18.3.10.tgz",
+        "tarball": "http://localhost:4260/@types/react/react-18.3.10.tgz",
         "fileCount": 17,
         "integrity": "sha512-02sAAlBnP39JgXwkAq3PeU9DVaaGpZyF3MGcC0MKgQVkZor5IiiDAipVaxQHtDJAmO4GIy/rVBy/LzVj76Cyqg==",
         "signatures": [
