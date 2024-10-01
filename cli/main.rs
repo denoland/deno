@@ -412,8 +412,8 @@ fn get_suggestions_for_terminal_errors(e: &JsError) -> Vec<FixSuggestion> {
         ),
         FixSuggestion::hint_multiline(
           &[
-            "Add `\"nodeModulesDir\": \"auto\" option to `deno.json`,",
-            "and then run `deno install --allow-scripts=npm:<package>` to setup `node_modules` directory."
+            "Add `\"nodeModulesDir\": \"auto\" option to `deno.json`, and then run",
+            "`deno install --allow-scripts=npm:<package> --entrypoint <script>` to setup `node_modules` directory."
           ]
         )
       ];
