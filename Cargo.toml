@@ -111,7 +111,7 @@ dashmap = "5.5.3"
 data-encoding = "2.3.3"
 data-url = "=0.3.0"
 deno_cache_dir = "=0.13.0"
-deno_package_json = { version = "=0.1.1", default-features = false }
+deno_package_json = { version = "0.1.1", default-features = false }
 dlopen2 = "0.6.1"
 ecb = "=0.1.2"
 elliptic-curve = { version = "0.13.4", features = ["alloc", "arithmetic", "ecdh", "std", "pem", "jwk"] }
