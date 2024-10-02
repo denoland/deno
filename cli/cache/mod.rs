@@ -87,10 +87,6 @@ impl deno_cache_dir::DenoCacheEnv for RealDenoCacheEnv {
     std::fs::create_dir_all(path)
   }
 
-  fn remove_file(&self, path: &Path) -> std::io::Result<()> {
-    std::fs::remove_file(path)
-  }
-
   fn modified(&self, path: &Path) -> std::io::Result<Option<SystemTime>> {
     match std::fs::metadata(path) {
       Ok(metadata) => Ok(Some(
@@ -146,13 +142,6 @@ impl<'a> deno_cache_dir::DenoCacheEnv for DenoCacheEnvFsAdapter<'a> {
     self
       .0
       .mkdir_sync(path, true, None)
-      .map_err(|e| e.into_io_error())
-  }
-
-  fn remove_file(&self, path: &Path) -> std::io::Result<()> {
-    self
-      .0
-      .remove_sync(path, false)
       .map_err(|e| e.into_io_error())
   }
 

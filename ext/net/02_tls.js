@@ -124,17 +124,19 @@ function loadTlsKeyPair(api, {
 
   // Check for "pem" format
   if (keyFormat !== undefined && keyFormat !== "pem") {
-    throw new TypeError('If `keyFormat` is specified, it must be "pem"');
+    throw new TypeError(
+      `If "keyFormat" is specified, it must be "pem": received "${keyFormat}"`,
+    );
   }
 
   if (cert !== undefined && key === undefined) {
     throw new TypeError(
-      `If \`cert\` is specified, \`key\` must be specified as well for \`${api}\`.`,
+      `If \`cert\` is specified, \`key\` must be specified as well for \`${api}\``,
     );
   }
   if (cert === undefined && key !== undefined) {
     throw new TypeError(
-      `If \`key\` is specified, \`cert\` must be specified as well for \`${api}\`.`,
+      `If \`key\` is specified, \`cert\` must be specified as well for \`${api}\``,
     );
   }
 
