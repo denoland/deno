@@ -1,4 +1,0 @@
-{
-  "args": "check --allow-import --quiet check/all/check_all.ts",
-  "output": ""
-}
