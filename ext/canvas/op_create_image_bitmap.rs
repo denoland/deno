@@ -358,6 +358,10 @@ pub(super) fn op_create_image_bitmap(
   let image = image.resize_exact(output_width, output_height, filter_type);
 
   // 8.
+  // issues for imageOrientation
+  // https://github.com/whatwg/html/issues/8085
+  // https://github.com/whatwg/html/issues/7210
+  // https://github.com/whatwg/html/issues/8118
   let image = if image_orientation == ImageOrientation::FlipY {
     image.flipv()
   } else {
