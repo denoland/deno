@@ -1,6 +1,6 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
-import { assertEquals, assertRejects } from "./test_util.ts";
+import { assertEquals, assertNotEquals, assertRejects } from "./test_util.ts";
 
 const prefix = "tests/testdata/image";
 
@@ -78,19 +78,59 @@ Deno.test(async function imageBitmapScale() {
   ]));
 });
 
-Deno.test(async function imageBitmapFlipY() {
-  const data = generateNumberedData(9);
-  const imageData = new ImageData(data, 3, 3);
-  const imageBitmap = await createImageBitmap(imageData, {
-    imageOrientation: "flipY",
+Deno.test("imageOrientation", async (t) => {
+  await t.step('"ImageData" imageOrientation: "flipY"', async () => {
+    const data = generateNumberedData(9);
+    const imageData = new ImageData(data, 3, 3);
+    const imageBitmap = await createImageBitmap(imageData, {
+      imageOrientation: "flipY",
+    });
+    // @ts-ignore: Deno[Deno.internal].core allowed
+    // deno-fmt-ignore
+    assertEquals(Deno[Deno.internal].getBitmapData(imageBitmap), new Uint8Array([
+      7, 0, 0, 1, 8, 0, 0, 1, 9, 0, 0, 1,
+      4, 0, 0, 1, 5, 0, 0, 1, 6, 0, 0, 1,
+      1, 0, 0, 1, 2, 0, 0, 1, 3, 0, 0, 1,
+    ]));
   });
-  // @ts-ignore: Deno[Deno.internal].core allowed
-  // deno-fmt-ignore
-  assertEquals(Deno[Deno.internal].getBitmapData(imageBitmap), new Uint8Array([
-    7, 0, 0, 1,   8, 0, 0, 1,   9, 0, 0, 1,
-    4, 0, 0, 1,   5, 0, 0, 1,   6, 0, 0, 1,
-    1, 0, 0, 1,   2, 0, 0, 1,   3, 0, 0, 1,
-  ]));
+
+  const imageData = new Blob(
+    [await Deno.readFile(`${prefix}/squares_6.jpg`)],
+    { type: "image/jpeg" },
+  );
+  const WIDTH = 320;
+  const CHANNELS = 3;
+  const TARGET_PIXEL_X = 40;
+  const START = TARGET_PIXEL_X * WIDTH * CHANNELS;
+  const END = START + CHANNELS;
+  // reference:
+  // https://github.com/web-platform-tests/wpt/blob/a1f4bbf4c6e1a9a861a145a34cd097ea260b5a49/html/canvas/element/manual/imagebitmap/createImageBitmap-exif-orientation.html#L30
+  await t.step('"Blob" imageOrientation: "from-image"', async () => {
+    const imageBitmap = await createImageBitmap(imageData);
+    // @ts-ignore: Deno[Deno.internal].core allowed
+    const targetPixel = Deno[Deno.internal].getBitmapData(imageBitmap).slice(
+      START,
+      END,
+    );
+    // FIXME: When the implementation is fixed, fix this to assertEquals
+    // However, in the case of jpg images, numerical errors may occur.
+    assertNotEquals(targetPixel, new Uint8Array([255, 1, 0]));
+  });
+  // reference:
+  // https://github.com/web-platform-tests/wpt/blob/a1f4bbf4c6e1a9a861a145a34cd097ea260b5a49/html/canvas/element/manual/imagebitmap/createImageBitmap-exif-orientation.html#L55
+  await t.step('"Blob" imageOrientation: "flipY"', async () => {
+    const imageBitmap = await createImageBitmap(imageData, {
+      imageOrientation: "flipY",
+    });
+    // @ts-ignore: Deno[Deno.internal].core allowed
+    const targetPixel = Deno[Deno.internal].getBitmapData(imageBitmap).slice(
+      START,
+      END,
+    );
+    // FIXME: When the implementation is fixed, fix this to assertEquals
+    // However, in the case of jpg images, numerical errors may occur.
+    assertNotEquals(targetPixel, new Uint8Array([254, 128, 129]));
+  });
 });
 
 Deno.test("imageBitmapPremultiplyAlpha", async (t) => {

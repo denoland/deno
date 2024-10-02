@@ -361,7 +361,17 @@ pub(super) fn op_create_image_bitmap(
   let image = if image_orientation == ImageOrientation::FlipY {
     image.flipv()
   } else {
+    // TODO(Hajime-san): If the EXIF ​​contains image orientation information, decode the image in the appropriate orientation.
+    // The image create is expected to release this feature soon.
+    // https://github.com/image-rs/image/blob/bd0f7451a367de7ae3d898dcf1e96e9d0a1c4fa1/CHANGES.md#version-0253
+    // https://github.com/image-rs/image/issues/1958
+    // https://github.com/image-rs/image/pull/2299
+    // https://github.com/image-rs/image/pull/2328
+    // if image_bitmap_source == ImageBitmapSource::Blob {
+    //   image.apply_orientation()
+    // } else {
     image
+    // }
   };
 
   // 9.
