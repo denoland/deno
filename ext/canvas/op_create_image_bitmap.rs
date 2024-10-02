@@ -9,6 +9,7 @@ use deno_core::op2;
 use deno_core::JsBuffer;
 use deno_core::ToJsBuffer;
 use deno_terminal::colors::cyan;
+use deno_terminal::colors::yellow;
 use image::codecs::bmp::BmpDecoder;
 use image::codecs::gif::GifDecoder;
 use image::codecs::ico::IcoDecoder;
@@ -142,10 +143,13 @@ fn decode_bitmap_data(
           return Err(
             DOMExceptionInvalidStateError::new(
               &format!("The MIME type of source image is not specified.
-INFO: The behavior of the Blob constructor in browsers is different from the spec.
-It needs to specify the MIME type like {} that works well between Deno and browsers.
-See: https://developer.mozilla.org/en-US/docs/Web/API/Blob/type\n",
-              cyan("new Blob([blobParts], { type: 'image/png' })")
+{} When you want to get a `Blob` from `fetch`, make sure to go through a file server that returns the appropriate content-type response header,
+      and specify the URL to the file server like {}.
+      Alternatively, if you are reading a local file using `Deno.readFile` etc.,
+      set the appropriate MIME type like {}.\n",
+              cyan("hint:"),
+              cyan("await(await fetch('http://localhost:8000/sample.png').blob()"),
+              cyan("new Blob([await Deno.readFile('sample.png')], { type: 'image/png' })")
             )).into(),
           )
         }
@@ -155,9 +159,10 @@ See: https://developer.mozilla.org/en-US/docs/Web/API/Blob/type\n",
           return Err(
             DOMExceptionInvalidStateError::new(
               &format!("The the MIME type {} of source image is not a supported format.
-INFO: The following MIME types are supported:
-See: https://mimesniff.spec.whatwg.org/#image-type-pattern-matching-algorithm\n",
-              x
+{} The following MIME types are supported:
+      https://mimesniff.spec.whatwg.org/#image-type-pattern-matching-algorithm\n",
+              x,
+              yellow("info:")
             )).into()
           )
         }
