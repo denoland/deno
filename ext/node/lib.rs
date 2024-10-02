@@ -167,6 +167,7 @@ deno_core::extension!(deno_node,
 
     ops::buffer::op_is_ascii,
     ops::buffer::op_is_utf8,
+    ops::buffer::op_transcode,
     ops::crypto::op_node_check_prime_async,
     ops::crypto::op_node_check_prime_bytes_async,
     ops::crypto::op_node_check_prime_bytes,
