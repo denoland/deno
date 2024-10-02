@@ -16,6 +16,7 @@ use deno_io::fs::FileResource;
 use deno_io::ChildStderrResource;
 use deno_io::ChildStdinResource;
 use deno_io::ChildStdoutResource;
+use deno_io::IntoRawIoHandle;
 use deno_permissions::PermissionsContainer;
 use deno_permissions::RunQueryDescriptor;
 use serde::Deserialize;
@@ -24,6 +25,7 @@ use std::borrow::Cow;
 use std::cell::RefCell;
 use std::collections::HashMap;
 use std::ffi::OsString;
+use std::io::Write;
 use std::path::Path;
 use std::path::PathBuf;
 use std::process::ExitStatus;
@@ -117,6 +119,27 @@ impl StdioOrRid {
   }
 }
 
+#[allow(clippy::disallowed_types)]
+pub type NpmProcessStateProviderRc =
+  deno_fs::sync::MaybeArc<dyn NpmProcessStateProvider>;
+
+pub trait NpmProcessStateProvider:
+  std::fmt::Debug + deno_fs::sync::MaybeSend + deno_fs::sync::MaybeSync
+{
+  /// Gets a string containing the serialized npm state of the process.
+  ///
+  /// This will be set on the `DENO_DONT_USE_INTERNAL_NODE_COMPAT_STATE` environment
+  /// variable when doing a `child_process.fork`. The implementor can then check this environment
+  /// variable on startup to repopulate the internal npm state.
+  fn get_npm_process_state(&self) -> String {
+    // This method is only used in the CLI.
+    String::new()
+  }
+}
+
+#[derive(Debug)]
+pub struct EmptyNpmProcessStateProvider;
+impl NpmProcessStateProvider for EmptyNpmProcessStateProvider {}
 deno_core::extension!(
   deno_process,
   ops = [
@@ -128,6 +151,10 @@ deno_core::extension!(
     deprecated::op_run_status,
     deprecated::op_kill,
   ],
+  options = { get_npm_process_state: Option<NpmProcessStateProviderRc>  },
+  state = |state, options| {
+    state.put::<NpmProcessStateProviderRc>(options.get_npm_process_state.unwrap_or(deno_fs::sync::MaybeArc::new(EmptyNpmProcessStateProvider)));
+  },
 );
 
 /// Second member stores the pid separately from the RefCell. It's needed for
@@ -161,6 +188,7 @@ pub struct SpawnArgs {
 
   extra_stdio: Vec<Stdio>,
   detached: bool,
+  needs_npm_process_state: bool,
 }
 
 #[derive(Deserialize)]
@@ -229,11 +257,64 @@ type CreateCommand = (
   Vec<deno_io::RawBiPipeHandle>,
 );
 
+pub fn npm_process_state_tempfile(
+  contents: &[u8],
+) -> Result<deno_io::RawIoHandle, AnyError> {
+  let mut temp_file = tempfile::tempfile()?;
+  temp_file.write_all(contents)?;
+  let handle = temp_file.into_raw_io_handle();
+  #[cfg(windows)]
+  {
+    use windows_sys::Win32::Foundation::HANDLE_FLAG_INHERIT;
+    // make the handle inheritable
+    // SAFETY: winapi call, handle is valid
+    unsafe {
+      windows_sys::Win32::Foundation::SetHandleInformation(
+        handle as _,
+        HANDLE_FLAG_INHERIT,
+        HANDLE_FLAG_INHERIT,
+      );
+    }
+    Ok(handle)
+  }
+  #[cfg(unix)]
+  {
+    // SAFETY: libc call, fd is valid
+    let inheritable = unsafe {
+      // duplicate the FD to get a new one that doesn't have the CLOEXEC flag set
+      // so it can be inherited by the child process
+      libc::dup(handle)
+    };
+    // SAFETY: libc call, fd is valid
+    unsafe {
+      // close the old one
+      libc::close(handle);
+    }
+    Ok(inheritable)
+  }
+}
+
+pub const NPM_RESOLUTION_STATE_FD_ENV_VAR_NAME: &str =
+  "DENO_DONT_USE_INTERNAL_NODE_COMPAT_STATE_FD";
+
 fn create_command(
   state: &mut OpState,
   mut args: SpawnArgs,
   api_name: &str,
 ) -> Result<CreateCommand, AnyError> {
+  let maybe_npm_process_state = if args.needs_npm_process_state {
+    let provider = state.borrow::<NpmProcessStateProviderRc>();
+    let process_state = provider.get_npm_process_state();
+    let fd = npm_process_state_tempfile(process_state.as_bytes())?;
+    args.env.push((
+      NPM_RESOLUTION_STATE_FD_ENV_VAR_NAME.to_string(),
+      (fd as usize).to_string(),
+    ));
+    Some(fd)
+  } else {
+    None
+  };
+
   let (cmd, run_env) = compute_run_cmd_and_check_permissions(
     &args.cmd,
     args.cwd.as_deref(),
@@ -301,6 +382,9 @@ fn create_command(
     let mut fds_to_dup = Vec::new();
     let mut fds_to_close = Vec::new();
     let mut ipc_rid = None;
+    if let Some(fd) = maybe_npm_process_state {
+      fds_to_close.push(fd);
+    }
     if let Some(ipc) = args.ipc {
       if ipc >= 0 {
         let (ipc_fd1, ipc_fd2) = deno_io::bi_pipe_pair_raw()?;
@@ -369,6 +453,9 @@ fn create_command(
   {
     let mut ipc_rid = None;
     let mut handles_to_close = Vec::with_capacity(1);
+    if let Some(handle) = maybe_npm_process_state {
+      handles_to_close.push(handle);
+    }
     if let Some(ipc) = args.ipc {
       if ipc >= 0 {
         let (hd1, hd2) = deno_io::bi_pipe_pair_raw()?;
@@ -506,23 +593,6 @@ fn spawn_child(
   })
 }
 
-fn close_raw_handle(handle: deno_io::RawBiPipeHandle) {
-  #[cfg(unix)]
-  {
-    // SAFETY: libc call
-    unsafe {
-      libc::close(handle);
-    }
-  }
-  #[cfg(windows)]
-  {
-    // SAFETY: win32 call
-    unsafe {
-      windows_sys::Win32::Foundation::CloseHandle(handle as _);
-    }
-  }
-}
-
 fn compute_run_cmd_and_check_permissions(
   arg_cmd: &str,
   arg_cwd: Option<&str>,
@@ -619,7 +689,7 @@ fn resolve_cmd(cmd: &str, env: &RunEnv) -> Result<PathBuf, AnyError> {
 }
 
 fn resolve_path(path: &str, cwd: &Path) -> PathBuf {
-  deno_core::normalize_path(cwd.join(path))
+  deno_path_util::normalize_path(cwd.join(path))
 }
 
 fn check_run_permission(
@@ -690,7 +760,7 @@ fn op_spawn_child(
     create_command(state, args, &api_name)?;
   let child = spawn_child(state, command, pipe_rid, extra_pipe_rids, detached);
   for handle in handles_to_close {
-    close_raw_handle(handle);
+    deno_io::close_raw_handle(handle);
   }
   child
 }

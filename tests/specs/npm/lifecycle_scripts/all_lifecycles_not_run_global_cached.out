@@ -1,0 +1,7 @@
+Warning The following packages contained npm lifecycle scripts (preinstall/install/postinstall) that were not executed:
+┠─ npm:@denotest/node-lifecycle-scripts@1.0.0
+┃
+┠─ This may cause the packages to not work correctly.
+┠─ Lifecycle scripts are only supported when using a `node_modules` directory.
+┠─ Enable it in your deno config file:
+┖─ "nodeModulesDir": "auto"

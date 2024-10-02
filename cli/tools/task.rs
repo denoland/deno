@@ -16,7 +16,7 @@ use deno_core::anyhow::anyhow;
 use deno_core::anyhow::bail;
 use deno_core::anyhow::Context;
 use deno_core::error::AnyError;
-use deno_core::normalize_path;
+use deno_path_util::normalize_path;
 use deno_task_shell::ShellCommand;
 
 use crate::args::CliOptions;
@@ -36,19 +36,7 @@ pub async fn execute_script(
   let cli_options = factory.cli_options()?;
   let start_dir = &cli_options.start_dir;
   if !start_dir.has_deno_or_pkg_json() {
-    if task_flags.is_run {
-      bail!(
-        r#"deno run couldn't find deno.json(c).
-If you meant to run a script, specify it, e.g., `deno run ./script.ts`.
-To run a task, ensure the config file exists.
-Examples:
-- Script: `deno run ./script.ts`
-- Task: `deno run dev`
-See https://docs.deno.com/go/config"#
-      )
-    } else {
-      bail!("deno task couldn't find deno.json(c). See https://docs.deno.com/go/config")
-    }
+    bail!("deno task couldn't find deno.json(c). See https://docs.deno.com/go/config")
   }
   let force_use_pkg_json =
     std::env::var_os(crate::task_runner::USE_PKG_JSON_HIDDEN_ENV_VAR_NAME)
@@ -202,9 +190,7 @@ async fn run_task(opts: RunTaskOptions<'_>) -> Result<i32, AnyError> {
     custom_commands,
     init_cwd: opts.cli_options.initial_cwd(),
     argv: cli_options.argv(),
-    root_node_modules_dir: npm_resolver
-      .root_node_modules_path()
-      .map(|p| p.as_path()),
+    root_node_modules_dir: npm_resolver.root_node_modules_path(),
   })
   .await
 }

@@ -1,0 +1,5 @@
+{
+  "args": "info --quiet cjs_with_deps/main.js",
+  "output": "cjs_with_deps/main_info.out",
+  "exitCode": 0
+}

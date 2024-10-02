@@ -16,7 +16,6 @@ use deno_core::url::Url;
 use deno_core::v8;
 use deno_core::v8::ExternalReference;
 use deno_core::JsRuntime;
-use deno_core::OpState;
 use deno_fs::sync::MaybeSend;
 use deno_fs::sync::MaybeSync;
 use node_resolver::NpmResolverRc;
@@ -121,24 +120,6 @@ impl NodePermissions for deno_permissions::PermissionsContainer {
 }
 
 #[allow(clippy::disallowed_types)]
-pub type NpmProcessStateProviderRc =
-  deno_fs::sync::MaybeArc<dyn NpmProcessStateProvider>;
-
-pub trait NpmProcessStateProvider:
-  std::fmt::Debug + MaybeSend + MaybeSync
-{
-  /// Gets a string containing the serialized npm state of the process.
-  ///
-  /// This will be set on the `DENO_DONT_USE_INTERNAL_NODE_COMPAT_STATE` environment
-  /// variable when doing a `child_process.fork`. The implementor can then check this environment
-  /// variable on startup to repopulate the internal npm state.
-  fn get_npm_process_state(&self) -> String {
-    // This method is only used in the CLI.
-    String::new()
-  }
-}
-
-#[allow(clippy::disallowed_types)]
 pub type NodeRequireResolverRc =
   deno_fs::sync::MaybeArc<dyn NodeRequireResolver>;
 
@@ -165,17 +146,9 @@ fn op_node_build_os() -> String {
   env!("TARGET").split('-').nth(2).unwrap().to_string()
 }
 
-#[op2]
-#[string]
-fn op_npm_process_state(state: &mut OpState) -> Result<String, AnyError> {
-  let npm_resolver = state.borrow_mut::<NpmProcessStateProviderRc>();
-  Ok(npm_resolver.get_npm_process_state())
-}
-
 pub struct NodeExtInitServices {
   pub node_require_resolver: NodeRequireResolverRc,
   pub node_resolver: NodeResolverRc,
-  pub npm_process_state_provider: NpmProcessStateProviderRc,
   pub npm_resolver: NpmResolverRc,
 }
 
@@ -194,6 +167,7 @@ deno_core::extension!(deno_node,
 
     ops::buffer::op_is_ascii,
     ops::buffer::op_is_utf8,
+    ops::buffer::op_transcode,
     ops::crypto::op_node_check_prime_async,
     ops::crypto::op_node_check_prime_bytes_async,
     ops::crypto::op_node_check_prime_bytes,
@@ -374,7 +348,6 @@ deno_core::extension!(deno_node,
     ops::os::op_cpus<P>,
     ops::os::op_homedir<P>,
     op_node_build_os,
-    op_npm_process_state,
     ops::require::op_require_can_parse_as_esm,
     ops::require::op_require_init_paths,
     ops::require::op_require_node_module_paths<P>,
@@ -407,6 +380,7 @@ deno_core::extension!(deno_node,
     ops::ipc::op_node_ipc_unref,
     ops::process::op_node_process_kill,
     ops::process::op_process_abort,
+    ops::tls::op_get_root_certificates,
   ],
   esm_entry_point = "ext:deno_node/02_init.js",
   esm = [
@@ -615,6 +589,7 @@ deno_core::extension!(deno_node,
     "node:http2" = "http2.ts",
     "node:https" = "https.ts",
     "node:inspector" = "inspector.ts",
+    "node:inspector/promises" = "inspector.ts",
     "node:module" = "01_require.js",
     "node:net" = "net.ts",
     "node:os" = "os.ts",
@@ -660,7 +635,6 @@ deno_core::extension!(deno_node,
       state.put(init.node_require_resolver.clone());
       state.put(init.node_resolver.clone());
       state.put(init.npm_resolver.clone());
-      state.put(init.npm_process_state_provider.clone());
     }
   },
   global_template_middleware = global_template_middleware,

@@ -539,6 +539,7 @@ fn check_local_by_default() {
     .new_command()
     .args_vec([
       "compile",
+      "--allow-import",
       "--output",
       &exe.to_string_lossy(),
       "./compile/check_local_by_default.ts",
@@ -561,6 +562,7 @@ fn check_local_by_default2() {
     .new_command()
     .args_vec([
       "compile",
+      "--allow-import",
       "--output",
       &exe.to_string_lossy(),
       "./compile/check_local_by_default2.ts"

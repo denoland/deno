@@ -1,0 +1,4 @@
+{
+  "args": "run -A --quiet sub_paths/main.jsx",
+  "output": "sub_paths/main.out"
+}

@@ -1,10 +1,7 @@
-Download http://localhost:4545/welcome.ts
-Download http://localhost:4545/echo.ts
+[# notice that the remote module is not downloaded here. This is so we do not need to add an --allow-import permission here]
 Download http://localhost:4260/chalk
 Download http://localhost:4260/chalk/chalk-5.0.1.tgz
-Check file:///[WILDCARD]/mod.ts
 Checking for slow types in the public API...
-Check file://[WILDCARD]mod.ts
 error[invalid-external-import]: invalid import to a non-JSR 'http' specifier
  --> [WILDCARD]mod.ts:1:8
   | 

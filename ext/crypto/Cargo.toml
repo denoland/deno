@@ -33,6 +33,7 @@ p521 = "0.13.3"
 rand.workspace = true
 ring = { workspace = true, features = ["std"] }
 rsa.workspace = true
+sec1.workspace = true
 serde.workspace = true
 serde_bytes.workspace = true
 sha1.workspace = true

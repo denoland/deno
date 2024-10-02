@@ -354,7 +354,7 @@ const ci = {
       needs: ["pre_build"],
       if: "${{ needs.pre_build.outputs.skip_build != 'true' }}",
       "runs-on": "${{ matrix.runner }}",
-      "timeout-minutes": 150,
+      "timeout-minutes": 180,
       defaults: {
         run: {
           // GH actions does not fail fast by default on
@@ -757,8 +757,10 @@ const ci = {
           ].join("\n"),
           run: [
             "cd target/release",
+            "shasum -a 256 deno > deno-${{ matrix.arch }}-unknown-linux-gnu.sha256sum",
             "zip -r deno-${{ matrix.arch }}-unknown-linux-gnu.zip deno",
             "strip denort",
+            "shasum -a 256 denort > denort-${{ matrix.arch }}-unknown-linux-gnu.sha256sum",
             "zip -r denort-${{ matrix.arch }}-unknown-linux-gnu.zip denort",
             "./deno types > lib.deno.d.ts",
           ].join("\n"),
@@ -783,8 +785,10 @@ const ci = {
             "--p12-file=<(echo $APPLE_CODESIGN_KEY | base64 -d) " +
             "--entitlements-xml-file=cli/entitlements.plist",
             "cd target/release",
+            "shasum -a 256 deno > deno-${{ matrix.arch }}-apple-darwin.sha256sum",
             "zip -r deno-${{ matrix.arch }}-apple-darwin.zip deno",
             "strip denort",
+            "shasum -a 256 denort > denort-${{ matrix.arch }}-apple-darwin.sha256sum",
             "zip -r denort-${{ matrix.arch }}-apple-darwin.zip denort",
           ]
             .join("\n"),
@@ -799,7 +803,9 @@ const ci = {
           ].join("\n"),
           shell: "pwsh",
           run: [
+            "Get-FileHash target/release/deno.exe -Algorithm SHA256 | Format-List > target/release/deno-${{ matrix.arch }}-pc-windows-msvc.sha256sum",
             "Compress-Archive -CompressionLevel Optimal -Force -Path target/release/deno.exe -DestinationPath target/release/deno-${{ matrix.arch }}-pc-windows-msvc.zip",
+            "Get-FileHash target/release/denort.exe -Algorithm SHA256 | Format-List > target/release/denort-${{ matrix.arch }}-pc-windows-msvc.sha256sum",
             "Compress-Archive -CompressionLevel Optimal -Force -Path target/release/denort.exe -DestinationPath target/release/denort-${{ matrix.arch }}-pc-windows-msvc.zip",
           ].join("\n"),
         },
@@ -813,6 +819,7 @@ const ci = {
           ].join("\n"),
           run: [
             'gsutil -h "Cache-Control: public, max-age=3600" cp ./target/release/*.zip gs://dl.deno.land/canary/$(git rev-parse HEAD)/',
+            'gsutil -h "Cache-Control: public, max-age=3600" cp ./target/release/*.sha256sum gs://dl.deno.land/canary/$(git rev-parse HEAD)/',
             "echo ${{ github.sha }} > canary-latest.txt",
             'gsutil -h "Cache-Control: no-cache" cp canary-latest.txt gs://dl.deno.land/canary-$(rustc -vV | sed -n "s|host: ||p")-latest.txt',
           ].join("\n"),
@@ -994,8 +1001,10 @@ const ci = {
             "github.repository == 'denoland/deno' &&",
             "startsWith(github.ref, 'refs/tags/')",
           ].join("\n"),
-          run:
+          run: [
             'gsutil -h "Cache-Control: public, max-age=3600" cp ./target/release/*.zip gs://dl.deno.land/release/${GITHUB_REF#refs/*/}/',
+            'gsutil -h "Cache-Control: public, max-age=3600" cp ./target/release/*.sha256sum gs://dl.deno.land/release/${GITHUB_REF#refs/*/}/',
+          ].join("\n"),
         },
         {
           name: "Upload release to dl.deno.land (windows)",
@@ -1009,8 +1018,10 @@ const ci = {
           env: {
             CLOUDSDK_PYTHON: "${{env.pythonLocation}}\\python.exe",
           },
-          run:
+          run: [
             'gsutil -h "Cache-Control: public, max-age=3600" cp ./target/release/*.zip gs://dl.deno.land/release/${GITHUB_REF#refs/*/}/',
+            'gsutil -h "Cache-Control: public, max-age=3600" cp ./target/release/*.sha256sum gs://dl.deno.land/release/${GITHUB_REF#refs/*/}/',
+          ].join("\n"),
         },
         {
           name: "Create release notes",
@@ -1040,15 +1051,25 @@ const ci = {
           with: {
             files: [
               "target/release/deno-x86_64-pc-windows-msvc.zip",
+              "target/release/deno-x86_64-pc-windows-msvc.sha256sum",
               "target/release/denort-x86_64-pc-windows-msvc.zip",
+              "target/release/denort-x86_64-pc-windows-msvc.sha256sum",
               "target/release/deno-x86_64-unknown-linux-gnu.zip",
+              "target/release/deno-x86_64-unknown-linux-gnu.sha256sum",
               "target/release/denort-x86_64-unknown-linux-gnu.zip",
+              "target/release/denort-x86_64-unknown-linux-gnu.sha256sum",
               "target/release/deno-x86_64-apple-darwin.zip",
+              "target/release/deno-x86_64-apple-darwin.sha256sum",
               "target/release/denort-x86_64-apple-darwin.zip",
+              "target/release/denort-x86_64-apple-darwin.sha256sum",
               "target/release/deno-aarch64-unknown-linux-gnu.zip",
+              "target/release/deno-aarch64-unknown-linux-gnu.sha256sum",
               "target/release/denort-aarch64-unknown-linux-gnu.zip",
+              "target/release/denort-aarch64-unknown-linux-gnu.sha256sum",
               "target/release/deno-aarch64-apple-darwin.zip",
+              "target/release/deno-aarch64-apple-darwin.sha256sum",
               "target/release/denort-aarch64-apple-darwin.zip",
+              "target/release/denort-aarch64-apple-darwin.sha256sum",
               "target/release/deno_src.tar.gz",
               "target/release/lib.deno.d.ts",
             ].join("\n"),
@@ -1067,6 +1088,7 @@ const ci = {
               "./target",
               "!./target/*/gn_out",
               "!./target/*/*.zip",
+              "!./target/*/*.sha256sum",
               "!./target/*/*.tar.gz",
             ].join("\n"),
             key: prCacheKeyPrefix + "${{ github.sha }}",

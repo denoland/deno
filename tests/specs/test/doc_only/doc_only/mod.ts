@@ -1,6 +1,8 @@
 /**
  * ```ts
- * import "./mod.ts";
+ * import { assertEquals } from "@std/assert/equals";
+ *
+ * assertEquals(42, 40 + 2);
  * ```
  */
 Deno.test("unreachable", function () {

@@ -121,12 +121,7 @@ async fn run_subcommand(flags: Arc<Flags>) -> Result<i32, AnyError> {
       tools::installer::install_from_entrypoints(flags, &cache_flags.files).await
     }),
     DenoSubcommand::Check(check_flags) => spawn_subcommand(async move {
-      let factory = CliFactory::from_flags(flags);
-      let main_graph_container =
-        factory.main_module_graph_container().await?;
-      main_graph_container
-        .load_and_type_check_files(&check_flags.files)
-        .await
+      tools::check::check(flags, check_flags).await
     }),
     DenoSubcommand::Clean => spawn_subcommand(async move {
       tools::clean::clean()
@@ -384,6 +379,43 @@ fn get_suggestions_for_terminal_errors(e: &JsError) -> Vec<FixSuggestion> {
         FixSuggestion::hint(
           "Run again with `--unstable-broadcast-channel` flag to enable this API.",
         ),
+      ];
+    } else if msg.contains("window is not defined") {
+      return vec![
+        FixSuggestion::info("window global is not available in Deno 2."),
+        FixSuggestion::hint("Replace `window` with `globalThis`."),
+      ];
+    } else if msg.contains("UnsafeWindowSurface is not a constructor") {
+      return vec![
+        FixSuggestion::info("Deno.UnsafeWindowSurface is an unstable API."),
+        FixSuggestion::hint(
+          "Run again with `--unstable-webgpu` flag to enable this API.",
+        ),
+      ];
+    // Try to capture errors like:
+    // ```
+    // Uncaught Error: Cannot find module '../build/Release/canvas.node'
+    // Require stack:
+    // - /.../deno/npm/registry.npmjs.org/canvas/2.11.2/lib/bindings.js
+    // - /.../.cache/deno/npm/registry.npmjs.org/canvas/2.11.2/lib/canvas.js
+    // ```
+    } else if msg.contains("Cannot find module")
+      && msg.contains("Require stack")
+      && msg.contains(".node'")
+    {
+      return vec![
+        FixSuggestion::info_multiline(
+          &[
+            "Trying to execute an npm package using Node-API addons,",
+            "these packages require local `node_modules` directory to be present."
+          ]
+        ),
+        FixSuggestion::hint_multiline(
+          &[
+            "Add `\"nodeModulesDir\": \"auto\" option to `deno.json`, and then run",
+            "`deno install --allow-scripts=npm:<package> --entrypoint <script>` to setup `node_modules` directory."
+          ]
+        )
       ];
     }
   }

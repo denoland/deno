@@ -493,7 +493,6 @@ const NOT_IMPORTED_OPS = [
   // to not depend on them.
   "op_set_exit_code",
   "op_napi_open",
-  "op_npm_process_state",
 ];
 
 function removeImportedOps() {
@@ -660,6 +659,7 @@ function bootstrapMainRuntime(runtimeOptions, warmup = false) {
     if (location_ == null) {
       mainRuntimeGlobalProperties.location = {
         writable: true,
+        configurable: true,
       };
     } else {
       location.setLocationHref(location_);

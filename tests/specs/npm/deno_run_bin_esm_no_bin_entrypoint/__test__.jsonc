@@ -1,0 +1,4 @@
+{
+  "args": "run -A --quiet npm:@denotest/bin@0.6.0/cli.mjs this is a test",
+  "output": "deno_run_esm.out"
+}

@@ -36,8 +36,8 @@ use deno_core::ModuleSpecifier;
 use deno_lint::linter::LintConfig as DenoLintConfig;
 use deno_npm::npm_rc::ResolvedNpmRc;
 use deno_package_json::PackageJsonCache;
+use deno_path_util::url_to_file_path;
 use deno_runtime::deno_node::PackageJson;
-use deno_runtime::fs_util::specifier_to_file_path;
 use indexmap::IndexSet;
 use lsp_types::ClientCapabilities;
 use std::collections::BTreeMap;
@@ -59,7 +59,8 @@ use crate::args::LintOptions;
 use crate::cache::FastInsecureHasher;
 use crate::file_fetcher::FileFetcher;
 use crate::lsp::logging::lsp_warn;
-use crate::resolver::SloppyImportsResolver;
+use crate::resolver::CliSloppyImportsResolver;
+use crate::resolver::SloppyImportsCachedFs;
 use crate::tools::lint::CliLinter;
 use crate::tools::lint::CliLinterOptions;
 use crate::tools::lint::LintRuleProvider;
@@ -801,7 +802,7 @@ impl Settings {
   /// Returns `None` if the value should be deferred to the presence of a
   /// `deno.json` file.
   pub fn specifier_enabled(&self, specifier: &ModuleSpecifier) -> Option<bool> {
-    let Ok(path) = specifier_to_file_path(specifier) else {
+    let Ok(path) = url_to_file_path(specifier) else {
       // Non-file URLs are not disabled by these settings.
       return Some(true);
     };
@@ -810,7 +811,7 @@ impl Settings {
     let mut disable_paths = vec![];
     let mut enable_paths = None;
     if let Some(folder_uri) = folder_uri {
-      if let Ok(folder_path) = specifier_to_file_path(folder_uri) {
+      if let Ok(folder_path) = url_to_file_path(folder_uri) {
         disable_paths = settings
           .disable_paths
           .iter()
@@ -847,12 +848,12 @@ impl Settings {
     &self,
     specifier: &ModuleSpecifier,
   ) -> (&WorkspaceSettings, Option<&ModuleSpecifier>) {
-    let Ok(path) = specifier_to_file_path(specifier) else {
+    let Ok(path) = url_to_file_path(specifier) else {
       return (&self.unscoped, self.first_folder.as_ref());
     };
     for (folder_uri, settings) in self.by_workspace_folder.iter().rev() {
       if let Some(settings) = settings {
-        let Ok(folder_path) = specifier_to_file_path(folder_uri) else {
+        let Ok(folder_path) = url_to_file_path(folder_uri) else {
           continue;
         };
         if path.starts_with(folder_path) {
@@ -1129,6 +1130,7 @@ impl Default for LspTsConfig {
         "module": "esnext",
         "moduleDetection": "force",
         "noEmit": true,
+        "noImplicitOverride": true,
         "resolveJsonModule": true,
         "strict": true,
         "target": "esnext",
@@ -1180,7 +1182,7 @@ pub struct ConfigData {
   pub lockfile: Option<Arc<CliLockfile>>,
   pub npmrc: Option<Arc<ResolvedNpmRc>>,
   pub resolver: Arc<WorkspaceResolver>,
-  pub sloppy_imports_resolver: Option<Arc<SloppyImportsResolver>>,
+  pub sloppy_imports_resolver: Option<Arc<CliSloppyImportsResolver>>,
   pub import_map_from_settings: Option<ModuleSpecifier>,
   watched_files: HashMap<ModuleSpecifier, ConfigWatchedFileType>,
 }
@@ -1450,9 +1452,10 @@ impl ConfigData {
     // Mark the import map as a watched file
     if let Some(import_map_specifier) = member_dir
       .workspace
-      .to_import_map_specifier()
+      .to_import_map_path()
       .ok()
       .flatten()
+      .and_then(|path| Url::from_file_path(path).ok())
     {
       add_watched_file(
         import_map_specifier.clone(),
@@ -1541,50 +1544,32 @@ impl ConfigData {
         None
       }
     };
-    let resolver = deno_core::unsync::spawn({
-      let workspace = member_dir.workspace.clone();
-      let file_fetcher = file_fetcher.cloned();
-      async move {
-        workspace
-          .create_resolver(
-            CreateResolverOptions {
-              pkg_json_dep_resolution,
-              specified_import_map,
-            },
-            move |specifier| {
-              let specifier = specifier.clone();
-              let file_fetcher = file_fetcher.clone().unwrap();
-              async move {
-                let file = file_fetcher
-                  .fetch_bypass_permissions(&specifier)
-                  .await?
-                  .into_text_decoded()?;
-                Ok(file.source.to_string())
-              }
-            },
-          )
-          .await
-          .inspect_err(|err| {
-            lsp_warn!(
-              "  Failed to load resolver: {}",
-              err // will contain the specifier
-            );
-          })
-          .ok()
-      }
-    })
-    .await
-    .unwrap()
-    .unwrap_or_else(|| {
-      // create a dummy resolver
-      WorkspaceResolver::new_raw(
-        scope.clone(),
-        None,
-        member_dir.workspace.resolver_jsr_pkgs().collect(),
-        member_dir.workspace.package_jsons().cloned().collect(),
-        pkg_json_dep_resolution,
+    let resolver = member_dir
+      .workspace
+      .create_resolver(
+        CreateResolverOptions {
+          pkg_json_dep_resolution,
+          specified_import_map,
+        },
+        |path| Ok(std::fs::read_to_string(path)?),
       )
-    });
+      .inspect_err(|err| {
+        lsp_warn!(
+          "  Failed to load resolver: {}",
+          err // will contain the specifier
+        );
+      })
+      .ok()
+      .unwrap_or_else(|| {
+        // create a dummy resolver
+        WorkspaceResolver::new_raw(
+          scope.clone(),
+          None,
+          member_dir.workspace.resolver_jsr_pkgs().collect(),
+          member_dir.workspace.package_jsons().cloned().collect(),
+          pkg_json_dep_resolution,
+        )
+      });
     if !resolver.diagnostics().is_empty() {
       lsp_warn!(
         "  Import map diagnostics:\n{}",
@@ -1600,9 +1585,11 @@ impl ConfigData {
       .is_ok()
       || member_dir.workspace.has_unstable("sloppy-imports");
     let sloppy_imports_resolver = unstable_sloppy_imports.then(|| {
-      Arc::new(SloppyImportsResolver::new_without_stat_cache(Arc::new(
-        deno_runtime::deno_fs::RealFs,
-      )))
+      Arc::new(CliSloppyImportsResolver::new(
+        SloppyImportsCachedFs::new_without_stat_cache(Arc::new(
+          deno_runtime::deno_fs::RealFs,
+        )),
+      ))
     });
     let resolver = Arc::new(resolver);
     let lint_rule_provider = LintRuleProvider::new(
@@ -1783,7 +1770,7 @@ impl ConfigTree {
         let config_file_path = (|| {
           let config_setting = ws_settings.config.as_ref()?;
           let config_uri = folder_uri.join(config_setting).ok()?;
-          specifier_to_file_path(&config_uri).ok()
+          url_to_file_path(&config_uri).ok()
         })();
         if config_file_path.is_some() || ws_settings.import_map.is_some() {
           scopes.insert(
@@ -1860,7 +1847,7 @@ impl ConfigTree {
     let scope = config_file.specifier.join(".").unwrap();
     let json_text = serde_json::to_string(&config_file.json).unwrap();
     let test_fs = deno_runtime::deno_fs::InMemoryFs::default();
-    let config_path = specifier_to_file_path(&config_file.specifier).unwrap();
+    let config_path = url_to_file_path(&config_file.specifier).unwrap();
     test_fs.setup_text_files(vec![(
       config_path.to_string_lossy().to_string(),
       json_text,
