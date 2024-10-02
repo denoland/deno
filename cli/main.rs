@@ -392,6 +392,31 @@ fn get_suggestions_for_terminal_errors(e: &JsError) -> Vec<FixSuggestion> {
           "Run again with `--unstable-webgpu` flag to enable this API.",
         ),
       ];
+    // Try to capture errors like:
+    // ```
+    // Uncaught Error: Cannot find module '../build/Release/canvas.node'
+    // Require stack:
+    // - /.../deno/npm/registry.npmjs.org/canvas/2.11.2/lib/bindings.js
+    // - /.../.cache/deno/npm/registry.npmjs.org/canvas/2.11.2/lib/canvas.js
+    // ```
+    } else if msg.contains("Cannot find module")
+      && msg.contains("Require stack")
+      && msg.contains(".node'")
+    {
+      return vec![
+        FixSuggestion::info_multiline(
+          &[
+            "Trying to execute an npm package using Node-API addons,",
+            "these packages require local `node_modules` directory to be present."
+          ]
+        ),
+        FixSuggestion::hint_multiline(
+          &[
+            "Add `\"nodeModulesDir\": \"auto\" option to `deno.json`, and then run",
+            "`deno install --allow-scripts=npm:<package> --entrypoint <script>` to setup `node_modules` directory."
+          ]
+        )
+      ];
     }
   }
 

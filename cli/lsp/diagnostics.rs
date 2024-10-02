@@ -1517,17 +1517,19 @@ fn diagnose_dependency(
   let import_ranges: Vec<_> = dependency
     .imports
     .iter()
-    .map(|i| documents::to_lsp_range(&i.range))
+    .map(|i| documents::to_lsp_range(&i.specifier_range))
     .collect();
   // TODO(nayeemrmn): This is a crude way of detecting `@deno-types` which has
   // a different specifier and therefore needs a separate call to
   // `diagnose_resolution()`. It would be much cleaner if that were modelled as
   // a separate dependency: https://github.com/denoland/deno_graph/issues/247.
   let is_types_deno_types = !dependency.maybe_type.is_none()
-    && !dependency
-      .imports
-      .iter()
-      .any(|i| dependency.maybe_type.includes(&i.range.start).is_some());
+    && !dependency.imports.iter().any(|i| {
+      dependency
+        .maybe_type
+        .includes(&i.specifier_range.start)
+        .is_some()
+    });
 
   diagnostics.extend(
     diagnose_resolution(

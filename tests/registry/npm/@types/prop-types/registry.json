@@ -1,0 +1,48 @@
+{
+  "name": "@types/prop-types",
+  "dist-tags": { "latest": "15.7.13" },
+  "versions": {
+    "15.7.13": {
+      "name": "@types/prop-types",
+      "version": "15.7.13",
+      "license": "MIT",
+      "_id": "@types/prop-types@15.7.13",
+      "dist": {
+        "shasum": "2af91918ee12d9d32914feb13f5326658461b451",
+        "tarball": "http://localhost:4260/@types/prop-types/prop-types-15.7.13.tgz",
+        "fileCount": 5,
+        "integrity": "sha512-hCZTSvwbzWGvhqxp/RqVqwU999pBf2vp7hzIjiYOsl8wqOmUxkQ6ddw1cV3l8811+kdUFus/q4d1Y3E3SyEifA==",
+        "signatures": [
+          {
+            "sig": "MEUCIQCz+S+fZxW5ahdAmLsMoCnFlj4QvsEH0h70sXmSVc1EDgIgBDq1TH20PzRBFVHHY3gRc7JeNsAOozAmrQqCy+v1syk=",
+            "keyid": "SHA256:jl3bwswu80PjjokCgh0o2w5c2U4LhQAE57gj9cz1kzA"
+          }
+        ],
+        "unpackedSize": 6965
+      },
+      "main": "",
+      "types": "index.d.ts",
+      "scripts": {},
+      "repository": {
+        "url": "https://github.com/DefinitelyTyped/DefinitelyTyped.git",
+        "type": "git",
+        "directory": "types/prop-types"
+      },
+      "description": "TypeScript definitions for prop-types",
+      "directories": {},
+      "dependencies": {},
+      "_hasShrinkwrap": false,
+      "typeScriptVersion": "4.8",
+      "typesPublisherContentHash": "463997a2d1b4bb7e18554d9d12146cc74169e8bda6a4b9008306c38797ae14d3"
+    }
+  },
+  "license": "MIT",
+  "homepage": "https://github.com/DefinitelyTyped/DefinitelyTyped/tree/master/types/prop-types",
+  "repository": {
+    "url": "https://github.com/DefinitelyTyped/DefinitelyTyped.git",
+    "type": "git",
+    "directory": "types/prop-types"
+  },
+  "description": "TypeScript definitions for prop-types",
+  "readmeFilename": ""
+}

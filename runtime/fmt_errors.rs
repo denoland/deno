@@ -27,23 +27,43 @@ enum FixSuggestionKind {
 }
 
 #[derive(Debug)]
+enum FixSuggestionMessage<'a> {
+  Single(&'a str),
+  Multiline(&'a [&'a str]),
+}
+
+#[derive(Debug)]
 pub struct FixSuggestion<'a> {
   kind: FixSuggestionKind,
-  message: &'a str,
+  message: FixSuggestionMessage<'a>,
 }
 
 impl<'a> FixSuggestion<'a> {
   pub fn info(message: &'a str) -> Self {
     Self {
       kind: FixSuggestionKind::Info,
-      message,
+      message: FixSuggestionMessage::Single(message),
+    }
+  }
+
+  pub fn info_multiline(messages: &'a [&'a str]) -> Self {
+    Self {
+      kind: FixSuggestionKind::Info,
+      message: FixSuggestionMessage::Multiline(messages),
     }
   }
 
   pub fn hint(message: &'a str) -> Self {
     Self {
       kind: FixSuggestionKind::Hint,
-      message,
+      message: FixSuggestionMessage::Single(message),
+    }
+  }
+
+  pub fn hint_multiline(messages: &'a [&'a str]) -> Self {
+    Self {
+      kind: FixSuggestionKind::Hint,
+      message: FixSuggestionMessage::Multiline(messages),
     }
   }
 }
@@ -238,7 +258,21 @@ fn format_js_error_inner(
         FixSuggestionKind::Hint => write!(s, "{} ", cyan("hint:")).unwrap(),
         FixSuggestionKind::Info => write!(s, "{} ", yellow("info:")).unwrap(),
       };
-      write!(s, "{}", suggestion.message).unwrap();
+      match suggestion.message {
+        FixSuggestionMessage::Single(msg) => {
+          write!(s, "{}", msg).unwrap();
+        }
+        FixSuggestionMessage::Multiline(messages) => {
+          for (idx, message) in messages.iter().enumerate() {
+            if idx != 0 {
+              writeln!(s).unwrap();
+              write!(s, "          ").unwrap();
+            }
+            write!(s, "{}", message).unwrap();
+          }
+        }
+      }
+
       if index != (suggestions.len() - 1) {
         writeln!(s).unwrap();
       }
