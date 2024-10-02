@@ -47,7 +47,6 @@ use self::cache::NpmCache;
 use self::registry::CliNpmRegistryApi;
 use self::resolution::NpmResolution;
 use self::resolvers::create_npm_fs_resolver;
-pub use self::resolvers::normalize_pkg_name_for_node_modules_deno_folder;
 use self::resolvers::NpmPackageFsResolver;
 
 use super::CliNpmResolver;
@@ -429,6 +428,16 @@ impl ManagedCliNpmResolver {
     self.resolution.snapshot()
   }
 
+  pub fn top_package_req_for_name(&self, name: &str) -> Option<PackageReq> {
+    let package_reqs = self.resolution.package_reqs();
+    let mut entries = package_reqs
+      .iter()
+      .filter(|(_, nv)| nv.name == name)
+      .collect::<Vec<_>>();
+    entries.sort_by_key(|(_, nv)| &nv.version);
+    Some(entries.last()?.0.clone())
+  }
+
   pub fn serialized_valid_snapshot_for_system(
     &self,
     system_info: &NpmSystemInfo,
@@ -575,7 +584,7 @@ impl NpmProcessStateProvider for ManagedCliNpmResolver {
   fn get_npm_process_state(&self) -> String {
     npm_process_state(
       self.resolution.serialized_valid_snapshot(),
-      self.fs_resolver.node_modules_path().map(|p| p.as_path()),
+      self.fs_resolver.node_modules_path(),
     )
   }
 }
@@ -632,7 +641,7 @@ impl CliNpmResolver for ManagedCliNpmResolver {
     InnerCliNpmResolverRef::Managed(self)
   }
 
-  fn root_node_modules_path(&self) -> Option<&PathBuf> {
+  fn root_node_modules_path(&self) -> Option<&Path> {
     self.fs_resolver.node_modules_path()
   }
 

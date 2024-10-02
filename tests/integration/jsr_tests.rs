@@ -191,7 +191,7 @@ fn reload_info_not_found_cache_but_exists_remote() {
       Url::parse(&format!("http://127.0.0.1:4250/{}/meta.json", package))
         .unwrap();
     let cache = deno_cache_dir::GlobalHttpCache::new(
-      deno_dir.path().join("deps").to_path_buf(),
+      deno_dir.path().join("remote").to_path_buf(),
       deno_cache_dir::TestRealDenoCacheEnv,
     );
     let entry = cache

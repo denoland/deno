@@ -61,13 +61,52 @@ pub struct ModuleCodeStringSource {
   pub media_type: MediaType,
 }
 
+#[derive(Debug, Clone)]
+pub struct CliDenoResolverFs(pub Arc<dyn FileSystem>);
+
+impl deno_resolver::fs::DenoResolverFs for CliDenoResolverFs {
+  fn read_to_string_lossy(&self, path: &Path) -> std::io::Result<String> {
+    self
+      .0
+      .read_text_file_lossy_sync(path, None)
+      .map_err(|e| e.into_io_error())
+  }
+
+  fn realpath_sync(&self, path: &Path) -> std::io::Result<PathBuf> {
+    self.0.realpath_sync(path).map_err(|e| e.into_io_error())
+  }
+
+  fn is_dir_sync(&self, path: &Path) -> bool {
+    self.0.is_dir_sync(path)
+  }
+
+  fn read_dir_sync(
+    &self,
+    dir_path: &Path,
+  ) -> std::io::Result<Vec<deno_resolver::fs::DirEntry>> {
+    self
+      .0
+      .read_dir_sync(dir_path)
+      .map(|entries| {
+        entries
+          .into_iter()
+          .map(|e| deno_resolver::fs::DirEntry {
+            name: e.name,
+            is_file: e.is_file,
+            is_directory: e.is_directory,
+          })
+          .collect::<Vec<_>>()
+      })
+      .map_err(|err| err.into_io_error())
+  }
+}
+
 #[derive(Debug)]
 pub struct CliNodeResolver {
   cjs_resolutions: Arc<CjsResolutionStore>,
   fs: Arc<dyn deno_fs::FileSystem>,
   node_resolver: Arc<NodeResolver>,
-  // todo(dsherret): remove this pub(crate)
-  pub(crate) npm_resolver: Arc<dyn CliNpmResolver>,
+  npm_resolver: Arc<dyn CliNpmResolver>,
 }
 
 impl CliNodeResolver {
