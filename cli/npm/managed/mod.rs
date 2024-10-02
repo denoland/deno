@@ -428,6 +428,16 @@ impl ManagedCliNpmResolver {
     self.resolution.snapshot()
   }
 
+  pub fn top_package_req_for_name(&self, name: &str) -> Option<PackageReq> {
+    let package_reqs = self.resolution.package_reqs();
+    let mut entries = package_reqs
+      .iter()
+      .filter(|(_, nv)| nv.name == name)
+      .collect::<Vec<_>>();
+    entries.sort_by_key(|(_, nv)| &nv.version);
+    Some(entries.last()?.0.clone())
+  }
+
   pub fn serialized_valid_snapshot_for_system(
     &self,
     system_info: &NpmSystemInfo,
