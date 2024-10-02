@@ -264,7 +264,7 @@ impl<Fs: DenoResolverFs> ByonmNpmResolver<Fs> {
           continue;
         };
         let mut tags = contents.split(',').map(str::trim);
-        if tags.find(|t| t == &tag).is_some() {
+        if tags.any(|t| &t == &tag) {
           if let Some((best_version_version, _)) = &best_version {
             if version > *best_version_version {
               best_version = Some((version, entry.name));
