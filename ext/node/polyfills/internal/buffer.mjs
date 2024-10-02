@@ -2613,8 +2613,16 @@ export function transcode(source, fromEnco, toEnco) {
   if (source.length === 0) {
     return Buffer.alloc(0);
   }
+  const code = "U_ILLEGAL_ARGUMENT_ERROR";
+  const illegalArgumentError = genericNodeError(
+    `Unable to transcode Buffer [${code}]`,
+    { code: code, errno: 1 },
+  );
   fromEnco = normalizeEncoding(fromEnco);
   toEnco = normalizeEncoding(toEnco);
+  if (!fromEnco || !toEnco) {
+    throw illegalArgumentError;
+  }
   // Return the provided source when transcode is not required
   // for the from/to encoding pair.
   const returnSource = fromEnco === toEnco ||
@@ -2627,13 +2635,12 @@ export function transcode(source, fromEnco, toEnco) {
   try {
     const result = op_transcode(new Uint8Array(source), fromEnco, toEnco);
     return Buffer.from(result, toEnco);
-  } catch (_) {
-    const code = "U_ILLEGAL_ARGUMENT_ERROR";
-    const err = genericNodeError(
-      `Unable to transcode Buffer [${code}]`,
-      { code: code, errno: 1 },
-    );
-    throw err;
+  } catch (err) {
+    if (err.message.includes("Unable to transcode Buffer")) {
+      throw illegalArgumentError;
+    } else {
+      throw err;
+    }
   }
 }
 
