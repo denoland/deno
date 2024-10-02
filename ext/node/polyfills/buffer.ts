@@ -13,4 +13,5 @@ export {
   kMaxLength,
   kStringMaxLength,
   SlowBuffer,
+  transcode,
 } from "ext:deno_node/internal/buffer.mjs";

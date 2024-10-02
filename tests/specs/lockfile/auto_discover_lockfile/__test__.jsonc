@@ -1,5 +1,5 @@
 {
-  "args": "run main.ts",
+  "args": "run --allow-import main.ts",
   "output": "main.out",
   "exitCode": 10
 }

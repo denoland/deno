@@ -2,8 +2,11 @@
 
 use super::bin_entries::BinEntries;
 use crate::args::LifecycleScriptsConfig;
+use deno_core::anyhow::Context;
 use deno_npm::resolution::NpmResolutionSnapshot;
+use deno_runtime::deno_io::FromRawIoHandle;
 use deno_semver::package::PackageNv;
+use deno_semver::Version;
 use std::borrow::Cow;
 use std::rc::Rc;
 
@@ -111,8 +114,19 @@ impl<'a> LifecycleScripts<'a> {
             .push((package, package_path.into_owned()));
         }
       } else if !self.strategy.has_run(package)
-        && !self.strategy.has_warned(package)
+        && (self.config.explicit_install || !self.strategy.has_warned(package))
       {
+        // Skip adding `esbuild` as it is known that it can work properly without lifecycle script
+        // being run, and it's also very popular - any project using Vite would raise warnings.
+        {
+          let nv = &package.id.nv;
+          if nv.name == "esbuild"
+            && nv.version >= Version::parse_standard("0.18.0").unwrap()
+          {
+            return;
+          }
+        }
+
         self
           .packages_with_scripts_not_run
           .push((package, package_path.into_owned()));
@@ -151,9 +165,24 @@ impl<'a> LifecycleScripts<'a> {
       );
 
       let mut env_vars = crate::task_runner::real_env_vars();
+      // we want to pass the current state of npm resolution down to the deno subprocess
+      // (that may be running as part of the script). we do this with an inherited temp file
+      //
+      // SAFETY: we are sharing a single temp file across all of the scripts. the file position
+      // will be shared among these, which is okay since we run only one script at a time.
+      // However, if we concurrently run scripts in the future we will
+      // have to have multiple temp files.
+      let temp_file_fd =
+        deno_runtime::ops::process::npm_process_state_tempfile(
+          process_state.as_bytes(),
+        ).context("failed to create npm process state tempfile for running lifecycle scripts")?;
+      // SAFETY: fd/handle is valid
+      let _temp_file =
+        unsafe { std::fs::File::from_raw_io_handle(temp_file_fd) }; // make sure the file gets closed
       env_vars.insert(
-        crate::args::NPM_RESOLUTION_STATE_ENV_VAR_NAME.to_string(),
-        process_state,
+        deno_runtime::ops::process::NPM_RESOLUTION_STATE_FD_ENV_VAR_NAME
+          .to_string(),
+        (temp_file_fd as usize).to_string(),
       );
       for (package, package_path) in self.packages_with_scripts {
         // add custom commands for binaries from the package's dependencies. this will take precedence over the

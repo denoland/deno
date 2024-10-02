@@ -16,6 +16,7 @@ pub async fn cache_top_level_deps(
 ) -> Result<(), AnyError> {
   let npm_resolver = factory.npm_resolver().await?;
   let cli_options = factory.cli_options()?;
+  let root_permissions = factory.root_permissions_container()?;
   if let Some(npm_resolver) = npm_resolver.as_managed() {
     if !npm_resolver.ensure_top_level_package_json_install().await? {
       if let Some(lockfile) = cli_options.maybe_lockfile() {
@@ -106,7 +107,7 @@ pub async fn cache_top_level_deps(
         &roots,
         false,
         deno_config::deno_json::TsTypeLib::DenoWorker,
-        crate::file_fetcher::FetchPermissionsOption::AllowAll,
+        root_permissions.clone(),
         None,
       )
       .await?;

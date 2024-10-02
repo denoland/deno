@@ -298,10 +298,10 @@ where
     .resource_table
     .take::<TcpStreamResource>(rid)?;
   // This TCP connection might be used somewhere else. If it's the case, we cannot proceed with the
-  // process of starting a TLS connection on top of this TCP connection, so we just return a bad
-  // resource error. See also: https://github.com/denoland/deno/pull/16242
+  // process of starting a TLS connection on top of this TCP connection, so we just return a Busy error.
+  // See also: https://github.com/denoland/deno/pull/16242
   let resource = Rc::try_unwrap(resource_rc)
-    .map_err(|_| bad_resource("TCP stream is currently in use"))?;
+    .map_err(|_| custom_error("Busy", "TCP stream is currently in use"))?;
   let (read_half, write_half) = resource.into_inner();
   let tcp_stream = read_half.reunite(write_half)?;
 
@@ -526,7 +526,6 @@ pub async fn op_net_accept_tls(
     match listener.accept().try_or_cancel(&cancel_handle).await {
       Ok(tuple) => tuple,
       Err(err) if err.kind() == ErrorKind::Interrupted => {
-        // FIXME(bartlomieju): compatibility with current JS implementation.
         return Err(bad_resource("Listener has been closed"));
       }
       Err(err) => return Err(err.into()),

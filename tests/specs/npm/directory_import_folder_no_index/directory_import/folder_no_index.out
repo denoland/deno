@@ -1,0 +1,6 @@
+Download http://localhost:4260/@denotest/sub-folders
+Download http://localhost:4260/@denotest/sub-folders/1.0.0.tgz
+error: Directory import [WILDCARD]folder_no_index is not supported resolving import from file:///[WILDCARD]/folder_no_index.ts
+
+Caused by:
+    [WILDCARD]

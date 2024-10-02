@@ -1,5 +1,6 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
+use std::borrow::Cow;
 use std::collections::HashSet;
 use std::env;
 use std::ffi::OsString;
@@ -28,13 +29,13 @@ use deno_config::glob::PathOrPatternSet;
 use deno_core::anyhow::bail;
 use deno_core::anyhow::Context;
 use deno_core::error::AnyError;
-use deno_core::normalize_path;
 use deno_core::resolve_url_or_path;
 use deno_core::url::Url;
 use deno_graph::GraphKind;
-use deno_runtime::deno_permissions::parse_sys_kind;
+use deno_path_util::normalize_path;
+use deno_path_util::url_to_file_path;
 use deno_runtime::deno_permissions::PermissionsOptions;
-use deno_runtime::fs_util::specifier_to_file_path;
+use deno_runtime::deno_permissions::SysDescriptor;
 use log::debug;
 use log::Level;
 use serde::Deserialize;
@@ -44,6 +45,7 @@ use crate::args::resolve_no_prompt;
 use crate::util::fs::canonicalize_path;
 
 use super::flags_net;
+use super::jsr_url;
 
 #[derive(Clone, Debug, Default, Eq, PartialEq)]
 pub enum ConfigFlag {
@@ -546,6 +548,8 @@ pub struct LifecycleScriptsConfig {
   pub allowed: PackagesAllowedScripts,
   pub initial_cwd: PathBuf,
   pub root_dir: PathBuf,
+  /// Part of an explicit `deno install`
+  pub explicit_install: bool,
 }
 
 #[derive(Debug, Clone, Eq, PartialEq, Default)]
@@ -639,6 +643,7 @@ pub struct PermissionFlags {
   pub allow_write: Option<Vec<String>>,
   pub deny_write: Option<Vec<String>>,
   pub no_prompt: bool,
+  pub allow_import: Option<Vec<String>>,
 }
 
 impl PermissionFlags {
@@ -658,9 +663,10 @@ impl PermissionFlags {
       || self.deny_sys.is_some()
       || self.allow_write.is_some()
       || self.deny_write.is_some()
+      || self.allow_import.is_some()
   }
 
-  pub fn to_options(&self) -> PermissionsOptions {
+  pub fn to_options(&self, cli_arg_urls: &[Cow<Url>]) -> PermissionsOptions {
     fn handle_allow<T: Default>(
       allow_all: bool,
       value: Option<T>,
@@ -671,6 +677,41 @@ impl PermissionFlags {
       } else {
         value
       }
+    }
+
+    fn handle_imports(
+      cli_arg_urls: &[Cow<Url>],
+      imports: Option<Vec<String>>,
+    ) -> Option<Vec<String>> {
+      if imports.is_some() {
+        return imports;
+      }
+
+      let builtin_allowed_import_hosts = [
+        "deno.land:443",
+        "esm.sh:443",
+        "jsr.io:443",
+        "raw.githubusercontent.com:443",
+        "gist.githubusercontent.com:443",
+      ];
+
+      let mut imports =
+        Vec::with_capacity(builtin_allowed_import_hosts.len() + 1);
+      imports
+        .extend(builtin_allowed_import_hosts.iter().map(|s| s.to_string()));
+
+      // also add the JSR_URL env var
+      if let Some(jsr_host) = allow_import_host_from_url(jsr_url()) {
+        imports.push(jsr_host);
+      }
+      // include the cli arg urls
+      for url in cli_arg_urls {
+        if let Some(host) = allow_import_host_from_url(url) {
+          imports.push(host);
+        }
+      }
+
+      Some(imports)
     }
 
     PermissionsOptions {
@@ -689,7 +730,29 @@ impl PermissionFlags {
       deny_sys: self.deny_sys.clone(),
       allow_write: handle_allow(self.allow_all, self.allow_write.clone()),
       deny_write: self.deny_write.clone(),
+      allow_import: handle_imports(
+        cli_arg_urls,
+        handle_allow(self.allow_all, self.allow_import.clone()),
+      ),
       prompt: !resolve_no_prompt(self),
+    }
+  }
+}
+
+/// Gets the --allow-import host from the provided url
+fn allow_import_host_from_url(url: &Url) -> Option<String> {
+  let host = url.host()?;
+  if let Some(port) = url.port() {
+    Some(format!("{}:{}", host, port))
+  } else {
+    use deno_core::url::Host::*;
+    match host {
+      Domain(domain) if domain == "jsr.io" && url.scheme() == "https" => None,
+      _ => match url.scheme() {
+        "https" => Some(format!("{}:443", host)),
+        "http" => Some(format!("{}:80", host)),
+        _ => None,
+      },
     }
   }
 }
@@ -881,6 +944,17 @@ impl Flags {
       _ => {}
     }
 
+    match &self.permissions.allow_import {
+      Some(allowlist) if allowlist.is_empty() => {
+        args.push("--allow-import".to_string());
+      }
+      Some(allowlist) => {
+        let s = format!("--allow-import={}", allowlist.join(","));
+        args.push(s);
+      }
+      _ => {}
+    }
+
     args
   }
 
@@ -928,7 +1002,7 @@ impl Flags {
           if module_specifier.scheme() == "file"
             || module_specifier.scheme() == "npm"
           {
-            if let Ok(p) = specifier_to_file_path(&module_specifier) {
+            if let Ok(p) = url_to_file_path(&module_specifier) {
               Some(vec![p.parent().unwrap().to_path_buf()])
             } else {
               Some(vec![current_dir.to_path_buf()])
@@ -991,6 +1065,7 @@ impl Flags {
     self.permissions.allow_write = None;
     self.permissions.allow_sys = None;
     self.permissions.allow_ffi = None;
+    self.permissions.allow_import = None;
   }
 
   pub fn resolve_watch_exclude_set(
@@ -1101,7 +1176,6 @@ static DENO_HELP: &str = cstr!(
   <y>Tooling:</>
     <g>bench</>        Run benchmarks
                   <p(245)>deno bench bench.ts</>
-    <g>cache</>        Cache the dependencies
     <g>check</>        Type-check the dependencies
     <g>clean</>        Remove the cache directory
     <g>compile</>      Compile the script into a self contained executable
@@ -1183,28 +1257,7 @@ pub fn flags_from_vec(args: Vec<OsString>) -> clap::error::Result<Flags> {
         .get_arguments()
         .any(|arg| arg.get_id().as_str() == "unstable")
     {
-      subcommand = subcommand
-        .mut_arg("unstable", |arg| {
-          let new_help = arg
-            .get_help()
-            .unwrap()
-            .to_string()
-            .split_once("\n")
-            .unwrap()
-            .0
-            .to_string();
-          arg.help_heading(UNSTABLE_HEADING).help(new_help)
-        })
-        .mut_args(|arg| {
-          // long_help here is being used as a metadata, see unstable args definition
-          if arg.get_help_heading() == Some(UNSTABLE_HEADING)
-            && arg.get_long_help().is_some()
-          {
-            arg.hide(false)
-          } else {
-            arg
-          }
-        });
+      subcommand = enable_unstable(subcommand);
     }
 
     help_parse(&mut flags, subcommand);
@@ -1337,6 +1390,31 @@ pub fn flags_from_vec(args: Vec<OsString>) -> clap::error::Result<Flags> {
   }
 
   Ok(flags)
+}
+
+fn enable_unstable(command: Command) -> Command {
+  command
+    .mut_arg("unstable", |arg| {
+      let new_help = arg
+        .get_help()
+        .unwrap()
+        .to_string()
+        .split_once("\n")
+        .unwrap()
+        .0
+        .to_string();
+      arg.help_heading(UNSTABLE_HEADING).help(new_help)
+    })
+    .mut_args(|arg| {
+      // long_help here is being used as a metadata, see unstable args definition
+      if arg.get_help_heading() == Some(UNSTABLE_HEADING)
+        && arg.get_long_help().is_some()
+      {
+        arg.hide(false)
+      } else {
+        arg
+      }
+    })
 }
 
 macro_rules! heading {
@@ -1707,6 +1785,7 @@ Future runs of this module will trigger no downloads or compilation unless --rel
       )
       .arg(frozen_lockfile_arg())
       .arg(allow_scripts_arg())
+      .arg(allow_import_arg())
   })
 }
 
@@ -1766,6 +1845,7 @@ Unless --reload is specified, this command will not re-download already cached d
             .required_unless_present("help")
             .value_hint(ValueHint::FilePath),
         )
+        .arg(allow_import_arg())
       }
     )
 }
@@ -1775,10 +1855,14 @@ fn compile_subcommand() -> Command {
     "compile",
     cstr!("Compiles the given script into a self contained executable.
 
-  <p(245)>deno compile -A jsr:@std/http/file-server</>
+  <p(245)>deno compile --allow-read --allow-net jsr:@std/http/file-server</>
   <p(245)>deno compile --output file_server jsr:@std/http/file-server</>
 
 Any flags specified which affect runtime behavior will be applied to the resulting binary.
+
+This allows distribution of a Deno application to systems that do not have Deno installed.
+Under the hood, it bundles a slimmed down version of the Deno runtime along with your
+JavaScript or TypeScript code.
 
 Cross-compiling to different target architectures is supported using the <c>--target</> flag.
 On the first invocation with deno will download the proper binary and cache it in <c>$DENO_DIR</>.
@@ -1994,6 +2078,7 @@ Show documentation for runtime built-ins:
         .arg(no_lock_arg())
         .arg(no_npm_arg())
         .arg(no_remote_arg())
+        .arg(allow_import_arg())
         .arg(
           Arg::new("json")
             .long("json")
@@ -2145,6 +2230,9 @@ Supported file types which are behind corresponding unstable flags (see formatti
 Format stdin and write to stdout:
   <p(245)>cat file.ts | deno fmt -</>
 
+Check if the files are formatted:
+  <p(245)>deno fmt --check</>
+
 Ignore formatting code by preceding it with an ignore comment:
   <p(245)>// deno-fmt-ignore</>
 
@@ -2295,7 +2383,7 @@ Ignore formatting a file by adding an ignore comment at the top of the file:
 }
 
 fn init_subcommand() -> Command {
-  command("init", "Initialize a new project", UnstableArgsConfig::None).defer(
+  command("init", "scaffolds a basic Deno project with a script, test, and configuration file", UnstableArgsConfig::None).defer(
     |cmd| {
       cmd
         .arg(Arg::new("dir").value_hint(ValueHint::DirPath))
@@ -2340,7 +2428,7 @@ The following information is shown:
       .arg(
         location_arg()
           .conflicts_with("file")
-          .help("Show files used for origin bound APIs like the Web Storage API when running a script with '--location=<HREF>'")
+          .help(cstr!("Show files used for origin bound APIs like the Web Storage API when running a script with <c>--location=<<HREF>></>"))
       )
       .arg(no_check_arg().hide(true)) // TODO(lucacasonato): remove for 2.0
       .arg(no_config_arg())
@@ -2358,6 +2446,7 @@ The following information is shown:
           .help("UNSTABLE: Outputs the information in JSON format")
           .action(ArgAction::SetTrue),
       ))
+      .arg(allow_import_arg())
 }
 
 fn install_subcommand() -> Command {
@@ -2381,7 +2470,7 @@ If the <bold>--global</> flag is set, installs a script as an executable in the 
   <p(245)>deno install --global --allow-net --allow-read jsr:@std/http/file-server</>
   <p(245)>deno install -g https://examples.deno.land/color-logging.ts</>
 
-To change the executable name, use -n/--name:
+To change the executable name, use <c>-n</>/<c>--name</>:
   <p(245)>deno install -g --allow-net --allow-read -n serve jsr:@std/http/file-server</>
 
 The executable name is inferred by default:
@@ -2663,7 +2752,12 @@ To ignore linting on an entire file, you can add an ignore comment at the top of
 }
 
 fn repl_subcommand() -> Command {
-  command("repl", "Read Eval Print Loop", UnstableArgsConfig::ResolutionAndRuntime)
+  command("repl", cstr!(
+    "Starts a read-eval-print-loop, which lets you interactively build up program state in the global context.
+It is especially useful for quick prototyping and checking snippets of code.
+
+TypeScript is supported, however it is not type-checked, only transpiled."
+  ), UnstableArgsConfig::ResolutionAndRuntime)
     .defer(|cmd| runtime_args(cmd, true, true)
       .arg(check_arg(false))
       .arg(
@@ -2746,8 +2840,6 @@ fn serve_subcommand() -> Command {
 
 The serve command uses the default exports of the main module to determine which servers to start.
 
-See https://docs.deno.com/runtime/manual/tools/serve for more detailed information.
-
 Start a server defined in server.ts:
   <p(245)>deno serve server.ts</>
 
@@ -2758,7 +2850,7 @@ Start a server defined in server.ts, watching for changes and running on port 50
     .arg(
       Arg::new("port")
         .long("port")
-        .help("The TCP port to serve on, defaulting to 8000. Pass 0 to pick a random free port")
+        .help(cstr!("The TCP port to serve on. Pass 0 to pick a random free port <p(245)>[default: 8000]</>"))
         .value_parser(value_parser!(u16)),
     )
     .arg(
@@ -2968,11 +3060,13 @@ fn parallel_arg(descr: &str) -> Arg {
 fn types_subcommand() -> Command {
   command(
     "types",
-    "Print runtime TypeScript declarations.
+    cstr!(
+      "Print runtime TypeScript declarations.
 
   <p(245)>deno types > lib.deno.d.ts</>
 
-The declaration file could be saved and used for typing information.",
+The declaration file could be saved and used for typing information."
+    ),
     UnstableArgsConfig::None,
   )
 }
@@ -3082,7 +3176,7 @@ See the Deno 1.x to 2.x Migration Guide for migration instructions: https://docs
 }
 
 fn publish_subcommand() -> Command {
-  command("publish", "Publish the current working directory's package or workspace", UnstableArgsConfig::ResolutionOnly)
+  command("publish", "Publish the current working directory's package or workspace to JSR", UnstableArgsConfig::ResolutionOnly)
     .defer(|cmd| {
       cmd
       .arg(
@@ -3151,47 +3245,44 @@ fn permission_args(app: Command, requires: Option<&'static str>) -> Command {
     .after_help(cstr!(r#"<y>Permission options:</>
 <y>Docs</>: <c>https://docs.deno.com/go/permissions</>
 
-  <g>-A, --allow-all</>                        Allow all permissions.
-  <g>--no-prompt</>                        Always throw if required permission wasn't passed.
-                                           <p(245)>Can also be set via the DENO_NO_PROMPT environment variable.</>
-  <g>-R, --allow-read[=<<PATH>...]</>           Allow file system read access. Optionally specify allowed paths.
-                                           <p(245)>--allow-read  |  --allow-read="/etc,/var/log.txt"</>
-  <g>-W, --allow-write[=<<PATH>...]</>          Allow file system write access. Optionally specify allowed paths.
-                                           <p(245)>--allow-write  |  --allow-write="/etc,/var/log.txt"</>
-  <g>-N, --allow-net[=<<IP_OR_HOSTNAME>...]</>  Allow network access. Optionally specify allowed IP addresses and host names, with ports as necessary.
-                                           <p(245)>--allow-net  |  --allow-net="localhost:8080,deno.land"</>
-  <g>-E, --allow-env[=<<VARIABLE_NAME>...]</>   Allow access to environment variables. Optionally specify accessible environment variables.
-                                           <p(245)>--allow-env  |  --allow-env="PORT,HOME,PATH"</>
-  <g>-S, --allow-sys[=<<API_NAME>...]</>        Allow access to OS information. Optionally allow specific APIs by function name.
-                                           <p(245)>--allow-sys  |  --allow-sys="systemMemoryInfo,osRelease"</>
-      <g>--allow-run[=<<PROGRAM_NAME>...]</>    Allow running subprocesses. Optionally specify allowed runnable program names.
-                                           <p(245)>--allow-run  |  --allow-run="whoami,ps"</>
-      <g>--allow-ffi[=<<PATH>...]</>            (Unstable) Allow loading dynamic libraries. Optionally specify allowed directories or files.
-                                           <p(245)>--allow-ffi  |  --allow-ffi="./libfoo.so"</>
-  <g>    --deny-read[=<<PATH>...]</>            Deny file system read access. Optionally specify denied paths.
-                                           <p(245)>--deny-read  |  --deny-read="/etc,/var/log.txt"</>
-  <g>    --deny-write[=<<PATH>...]</>           Deny file system write access. Optionally specify denied paths.
-                                           <p(245)>--deny-write  |  --deny-write="/etc,/var/log.txt"</>
-  <g>    --deny-net[=<<IP_OR_HOSTNAME>...]</>   Deny network access. Optionally specify defined IP addresses and host names, with ports as necessary.
-                                           <p(245)>--deny-net  |  --deny-net="localhost:8080,deno.land"</>
-  <g>    --deny-env[=<<VARIABLE_NAME>...]</>    Deny access to environment variables. Optionally specify inacessible environment variables.
-                                           <p(245)>--deny-env  |  --deny-env="PORT,HOME,PATH"</>
-  <g>-S, --deny-sys[=<<API_NAME>...]</>         Deny access to OS information. Optionally deny specific APIs by function name.
-                                           <p(245)>--deny-sys  |  --deny-sys="systemMemoryInfo,osRelease"</>
-      <g>--deny-run[=<<PROGRAM_NAME>...]</>     Deny running subprocesses. Optionally specify denied runnable program names.
-                                           <p(245)>--deny-run  |  --deny-run="whoami,ps"</>
-      <g>--deny-ffi[=<<PATH>...]</>             (Unstable) Deny loading dynamic libraries. Optionally specify denied directories or files.
-                                           <p(245)>--deny-ffi  |  --deny-ffi="./libfoo.so"</>
+  <g>-A, --allow-all</>                          Allow all permissions.
+  <g>--no-prompt</>                              Always throw if required permission wasn't passed.
+                                             <p(245)>Can also be set via the DENO_NO_PROMPT environment variable.</>
+  <g>-R, --allow-read[=<<PATH>...]</>             Allow file system read access. Optionally specify allowed paths.
+                                             <p(245)>--allow-read  |  --allow-read="/etc,/var/log.txt"</>
+  <g>-W, --allow-write[=<<PATH>...]</>            Allow file system write access. Optionally specify allowed paths.
+                                             <p(245)>--allow-write  |  --allow-write="/etc,/var/log.txt"</>
+  <g>-I, --allow-import[=<<IP_OR_HOSTNAME>...]</> Allow importing from remote hosts. Optionally specify allowed IP addresses and host names, with ports as necessary.
+                                            Default value: <p(245)>deno.land:443,jsr.io:443,esm.sh:443,raw.githubusercontent.com:443,user.githubusercontent.com:443</>
+                                             <p(245)>--allow-import  |  --allow-import="example.com,github.com"</>
+  <g>-N, --allow-net[=<<IP_OR_HOSTNAME>...]</>    Allow network access. Optionally specify allowed IP addresses and host names, with ports as necessary.
+                                             <p(245)>--allow-net  |  --allow-net="localhost:8080,deno.land"</>
+  <g>-E, --allow-env[=<<VARIABLE_NAME>...]</>     Allow access to environment variables. Optionally specify accessible environment variables.
+                                             <p(245)>--allow-env  |  --allow-env="PORT,HOME,PATH"</>
+  <g>-S, --allow-sys[=<<API_NAME>...]</>          Allow access to OS information. Optionally allow specific APIs by function name.
+                                             <p(245)>--allow-sys  |  --allow-sys="systemMemoryInfo,osRelease"</>
+      <g>--allow-run[=<<PROGRAM_NAME>...]</>      Allow running subprocesses. Optionally specify allowed runnable program names.
+                                             <p(245)>--allow-run  |  --allow-run="whoami,ps"</>
+      <g>--allow-ffi[=<<PATH>...]</>              (Unstable) Allow loading dynamic libraries. Optionally specify allowed directories or files.
+                                             <p(245)>--allow-ffi  |  --allow-ffi="./libfoo.so"</>
+  <g>    --deny-read[=<<PATH>...]</>              Deny file system read access. Optionally specify denied paths.
+                                             <p(245)>--deny-read  |  --deny-read="/etc,/var/log.txt"</>
+  <g>    --deny-write[=<<PATH>...]</>             Deny file system write access. Optionally specify denied paths.
+                                             <p(245)>--deny-write  |  --deny-write="/etc,/var/log.txt"</>
+  <g>    --deny-net[=<<IP_OR_HOSTNAME>...]</>     Deny network access. Optionally specify defined IP addresses and host names, with ports as necessary.
+                                             <p(245)>--deny-net  |  --deny-net="localhost:8080,deno.land"</>
+  <g>    --deny-env[=<<VARIABLE_NAME>...]</>      Deny access to environment variables. Optionally specify inacessible environment variables.
+                                             <p(245)>--deny-env  |  --deny-env="PORT,HOME,PATH"</>
+  <g>    --deny-sys[=<<API_NAME>...]</>           Deny access to OS information. Optionally deny specific APIs by function name.
+                                             <p(245)>--deny-sys  |  --deny-sys="systemMemoryInfo,osRelease"</>
+      <g>--deny-run[=<<PROGRAM_NAME>...]</>       Deny running subprocesses. Optionally specify denied runnable program names.
+                                             <p(245)>--deny-run  |  --deny-run="whoami,ps"</>
+      <g>--deny-ffi[=<<PATH>...]</>               (Unstable) Deny loading dynamic libraries. Optionally specify denied directories or files.
+                                             <p(245)>--deny-ffi  |  --deny-ffi="./libfoo.so"</>
 "#))
     .arg(
       {
-        let mut arg = Arg::new("allow-all")
-          .short('A')
-          .long("allow-all")
-          .action(ArgAction::SetTrue)
-          .help("Allow all permissions")
-          .hide(true)
-          ;
+        let mut arg = allow_all_arg().hide(true);
         if let Some(requires) = requires {
           arg = arg.requires(requires)
         }
@@ -3200,7 +3291,7 @@ fn permission_args(app: Command, requires: Option<&'static str>) -> Command {
     )
     .arg(
       {
-        let mut arg =  Arg::new("allow-read")
+        let mut arg = Arg::new("allow-read")
           .long("allow-read")
           .short('R')
           .num_args(0..)
@@ -3218,7 +3309,7 @@ fn permission_args(app: Command, requires: Option<&'static str>) -> Command {
     )
     .arg(
       {
-        let mut arg =   Arg::new("deny-read")
+        let mut arg = Arg::new("deny-read")
           .long("deny-read")
           .num_args(0..)
           .action(ArgAction::Append)
@@ -3235,7 +3326,7 @@ fn permission_args(app: Command, requires: Option<&'static str>) -> Command {
     )
     .arg(
       {
-        let mut arg =   Arg::new("allow-write")
+        let mut arg = Arg::new("allow-write")
           .long("allow-write")
           .short('W')
           .num_args(0..)
@@ -3253,7 +3344,7 @@ fn permission_args(app: Command, requires: Option<&'static str>) -> Command {
     )
     .arg(
       {
-        let mut arg =    Arg::new("deny-write")
+        let mut arg = Arg::new("deny-write")
           .long("deny-write")
           .num_args(0..)
           .action(ArgAction::Append)
@@ -3270,7 +3361,7 @@ fn permission_args(app: Command, requires: Option<&'static str>) -> Command {
     )
     .arg(
       {
-        let mut arg =   Arg::new("allow-net")
+        let mut arg = Arg::new("allow-net")
           .long("allow-net")
           .short('N')
           .num_args(0..)
@@ -3289,7 +3380,7 @@ fn permission_args(app: Command, requires: Option<&'static str>) -> Command {
     )
     .arg(
       {
-        let mut arg =  Arg::new("deny-net")
+        let mut arg = Arg::new("deny-net")
           .long("deny-net")
           .num_args(0..)
           .use_value_delimiter(true)
@@ -3372,7 +3463,7 @@ fn permission_args(app: Command, requires: Option<&'static str>) -> Command {
           .require_equals(true)
           .value_name("API_NAME")
           .help("Allow access to OS information. Optionally allow specific APIs by function name")
-          .value_parser(|key: &str| parse_sys_kind(key).map(ToString::to_string))
+          .value_parser(|key: &str| SysDescriptor::parse(key.to_string()).map(|s| s.into_string()))
           .hide(true)
           ;
         if let Some(requires) = requires {
@@ -3383,14 +3474,14 @@ fn permission_args(app: Command, requires: Option<&'static str>) -> Command {
     )
     .arg(
       {
-        let mut arg =  Arg::new("deny-sys")
+        let mut arg = Arg::new("deny-sys")
           .long("deny-sys")
           .num_args(0..)
           .use_value_delimiter(true)
           .require_equals(true)
           .value_name("API_NAME")
           .help("Deny access to OS information. Optionally deny specific APIs by function name")
-          .value_parser(|key: &str| parse_sys_kind(key).map(ToString::to_string))
+          .value_parser(|key: &str| SysDescriptor::parse(key.to_string()).map(|s| s.into_string()))
           .hide(true)
           ;
         if let Some(requires) = requires {
@@ -3418,7 +3509,7 @@ fn permission_args(app: Command, requires: Option<&'static str>) -> Command {
     )
     .arg(
       {
-        let mut arg =  Arg::new("deny-run")
+        let mut arg = Arg::new("deny-run")
           .long("deny-run")
           .num_args(0..)
           .use_value_delimiter(true)
@@ -3474,8 +3565,7 @@ fn permission_args(app: Command, requires: Option<&'static str>) -> Command {
           .long("allow-hrtime")
           .action(ArgAction::SetTrue)
           .help("REMOVED in Deno 2.0")
-          .hide(true)
-          ;
+          .hide(true);
         if let Some(requires) = requires {
           arg = arg.requires(requires)
         }
@@ -3488,8 +3578,7 @@ fn permission_args(app: Command, requires: Option<&'static str>) -> Command {
           .long("deny-hrtime")
           .action(ArgAction::SetTrue)
           .help("REMOVED in Deno 2.0")
-          .hide(true)
-          ;
+          .hide(true);
         if let Some(requires) = requires {
           arg = arg.requires(requires)
         }
@@ -3509,6 +3598,34 @@ fn permission_args(app: Command, requires: Option<&'static str>) -> Command {
         arg
       }
     )
+    .arg(
+      {
+        let mut arg = allow_import_arg().hide(true);
+        if let Some(requires) = requires {
+          // allow this for install --global
+          if requires != "global" {
+            arg = arg.requires(requires)
+          }
+        }
+        arg
+      }
+    )
+}
+
+fn allow_all_arg() -> Arg {
+  Arg::new("allow-all")
+    .short('A')
+    .long("allow-all")
+    .conflicts_with("allow-read")
+    .conflicts_with("allow-write")
+    .conflicts_with("allow-net")
+    .conflicts_with("allow-env")
+    .conflicts_with("allow-run")
+    .conflicts_with("allow-sys")
+    .conflicts_with("allow-ffi")
+    .conflicts_with("allow-import")
+    .action(ArgAction::SetTrue)
+    .help("Allow all permissions")
 }
 
 fn runtime_args(
@@ -3535,6 +3652,20 @@ fn runtime_args(
     .arg(seed_arg())
     .arg(enable_testing_features_arg())
     .arg(strace_ops_arg())
+}
+
+fn allow_import_arg() -> Arg {
+  Arg::new("allow-import")
+    .long("allow-import")
+    .short('I')
+    .num_args(0..)
+    .use_value_delimiter(true)
+    .require_equals(true)
+    .value_name("IP_OR_HOSTNAME")
+    .help(cstr!(
+      "Allow importing from remote hosts. Optionally specify allowed IP addresses and host names, with ports as necessary. Default value: <p(245)>deno.land:443,jsr.io:443,esm.sh:443,raw.githubusercontent.com:443,user.githubusercontent.com:443</>"
+    ))
+    .value_parser(flags_net::validator)
 }
 
 fn inspect_args(app: Command) -> Command {
@@ -3683,7 +3814,9 @@ fn location_arg() -> Arg {
       url.set_password(None).unwrap();
       Ok(url)
     })
-    .help("Value of 'globalThis.location' used by some web APIs")
+    .help(cstr!(
+      "Value of <p(245)>globalThis.location</> used by some web APIs"
+    ))
     .value_hint(ValueHint::Url)
 }
 
@@ -4174,6 +4307,7 @@ fn cache_parse(
   unstable_args_parse(flags, matches, UnstableArgsConfig::ResolutionOnly);
   frozen_lockfile_arg_parse(flags, matches);
   allow_scripts_arg_parse(flags, matches)?;
+  allow_import_parse(flags, matches);
   let files = matches.remove_many::<String>("file").unwrap().collect();
   flags.subcommand = DenoSubcommand::Cache(CacheFlags { files });
   Ok(())
@@ -4195,6 +4329,7 @@ fn check_parse(
     doc: matches.get_flag("doc"),
     doc_only: matches.get_flag("doc-only"),
   });
+  allow_import_parse(flags, matches);
   Ok(())
 }
 
@@ -4320,6 +4455,7 @@ fn doc_parse(
   no_lock_arg_parse(flags, matches);
   no_npm_arg_parse(flags, matches);
   no_remote_arg_parse(flags, matches);
+  allow_import_parse(flags, matches);
 
   let source_files_val = matches.remove_many::<String>("source_file");
   let source_files = if let Some(val) = source_files_val {
@@ -4460,6 +4596,7 @@ fn info_parse(
   lock_args_parse(flags, matches);
   no_remote_arg_parse(flags, matches);
   no_npm_arg_parse(flags, matches);
+  allow_import_parse(flags, matches);
   let json = matches.get_flag("json");
   flags.subcommand = DenoSubcommand::Info(InfoFlags {
     file: matches.remove_one::<String>("file"),
@@ -4495,6 +4632,7 @@ fn install_parse(
         force,
       }),
     });
+
     return Ok(());
   }
 
@@ -4532,7 +4670,7 @@ fn json_reference_parse(
   app.build();
 
   fn serialize_command(
-    command: &mut Command,
+    mut command: Command,
     top_level: bool,
   ) -> deno_core::serde_json::Value {
     let args = command
@@ -4540,7 +4678,7 @@ fn json_reference_parse(
       .filter(|arg| {
         !arg.is_hide_set()
           && if top_level {
-            true
+            arg.is_global_set()
           } else {
             !arg.is_global_set()
           }
@@ -4549,40 +4687,49 @@ fn json_reference_parse(
         let name = arg.get_id().as_str();
         let short = arg.get_short();
         let long = arg.get_long();
-        let aliases = arg.get_visible_aliases();
         let required = arg.is_required_set();
-        let help = arg.get_help().map(|help| help.to_string());
+        let help = arg.get_help().map(|help| help.ansi().to_string());
+        let help_heading = arg
+          .get_help_heading()
+          .map(|help_heading| help_heading.to_string());
         let usage = arg.to_string();
 
         json!({
           "name": name,
           "short": short,
           "long": long,
-          "aliases": aliases,
           "required": required,
           "help": help,
+          "help_heading": help_heading,
           "usage": usage,
         })
       })
       .collect::<Vec<_>>();
 
     let name = command.get_name().to_string();
-    let about = command.get_about().map(|about| about.to_string());
-    let visible_aliases = command
-      .get_visible_aliases()
-      .map(|s| s.to_string())
-      .collect::<Vec<_>>();
-    let usage = command.render_usage().to_string();
+    let about = command.get_about().map(|about| about.ansi().to_string());
+    let usage = command.render_usage().ansi().to_string();
 
     let subcommands = command
-      .get_subcommands_mut()
-      .map(|command| serialize_command(command, false))
+      .get_subcommands()
+      .map(|command| {
+        serialize_command(
+          if command
+            .get_arguments()
+            .any(|arg| arg.get_id().as_str() == "unstable")
+          {
+            enable_unstable(command.clone())
+          } else {
+            command.clone()
+          },
+          false,
+        )
+      })
       .collect::<Vec<_>>();
 
     json!({
       "name": name,
       "about": about,
-      "visible_aliases": visible_aliases,
       "args": args,
       "subcommands": subcommands,
       "usage": usage,
@@ -4590,7 +4737,7 @@ fn json_reference_parse(
   }
 
   flags.subcommand = DenoSubcommand::JSONReference(JSONReferenceFlags {
-    json: serialize_command(&mut app, true),
+    json: serialize_command(app, true),
   })
 }
 
@@ -5175,18 +5322,34 @@ fn permission_args_parse(
   }
 
   if matches.get_flag("allow-hrtime") || matches.get_flag("deny-hrtime") {
-    log::warn!("⚠️ Warning: `allow-hrtime` and `deny-hrtime` have been removed in Deno 2, as high resolution time is now always allowed.");
+    // use eprintln instead of log::warn because logging hasn't been initialized yet
+    #[allow(clippy::print_stderr)]
+    {
+      eprintln!(
+        "{} `allow-hrtime` and `deny-hrtime` have been removed in Deno 2, as high resolution time is now always allowed",
+        deno_runtime::colors::yellow("Warning")
+      );
+    }
   }
 
   if matches.get_flag("allow-all") {
     flags.allow_all();
   }
 
+  allow_import_parse(flags, matches);
+
   if matches.get_flag("no-prompt") {
     flags.permissions.no_prompt = true;
   }
 
   Ok(())
+}
+
+fn allow_import_parse(flags: &mut Flags, matches: &mut ArgMatches) {
+  if let Some(imports_wl) = matches.remove_many::<String>("allow-import") {
+    let imports_allowlist = flags_net::parse(imports_wl.collect()).unwrap();
+    flags.permissions.allow_import = Some(imports_allowlist);
+  }
 }
 
 fn unsafely_ignore_certificate_errors_parse(
@@ -6215,7 +6378,7 @@ mod tests {
 
   #[test]
   fn short_permission_flags() {
-    let r = flags_from_vec(svec!["deno", "run", "-RNESW", "gist.ts"]);
+    let r = flags_from_vec(svec!["deno", "run", "-RNESWI", "gist.ts"]);
     assert_eq!(
       r.unwrap(),
       Flags {
@@ -6226,6 +6389,7 @@ mod tests {
           allow_read: Some(vec![]),
           allow_write: Some(vec![]),
           allow_env: Some(vec![]),
+          allow_import: Some(vec![]),
           allow_net: Some(vec![]),
           allow_sys: Some(vec![]),
           ..Default::default()
@@ -10777,7 +10941,7 @@ mod tests {
       }
     );
     // just make sure this doesn't panic
-    let _ = flags.permissions.to_options();
+    let _ = flags.permissions.to_options(&[]);
   }
 
   #[test]
@@ -10851,5 +11015,47 @@ mod tests {
 
 Usage: deno repl [OPTIONS] [-- [ARGS]...]\n"
     )
+  }
+
+  #[test]
+  fn test_allow_import_host_from_url() {
+    fn parse(text: &str) -> Option<String> {
+      allow_import_host_from_url(&Url::parse(text).unwrap())
+    }
+
+    assert_eq!(parse("https://jsr.io"), None);
+    assert_eq!(
+      parse("http://127.0.0.1:4250"),
+      Some("127.0.0.1:4250".to_string())
+    );
+    assert_eq!(parse("http://jsr.io"), Some("jsr.io:80".to_string()));
+    assert_eq!(
+      parse("https://example.com"),
+      Some("example.com:443".to_string())
+    );
+    assert_eq!(
+      parse("http://example.com"),
+      Some("example.com:80".to_string())
+    );
+    assert_eq!(parse("file:///example.com"), None);
+  }
+
+  #[test]
+  fn allow_all_conflicts_allow_perms() {
+    let flags = [
+      "--allow-read",
+      "--allow-write",
+      "--allow-net",
+      "--allow-env",
+      "--allow-run",
+      "--allow-sys",
+      "--allow-ffi",
+      "--allow-import",
+    ];
+    for flag in flags {
+      let r =
+        flags_from_vec(svec!["deno", "run", "--allow-all", flag, "foo.ts"]);
+      assert!(r.is_err());
+    }
   }
 }

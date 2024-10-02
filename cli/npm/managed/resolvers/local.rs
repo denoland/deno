@@ -19,6 +19,7 @@ use crate::args::LifecycleScriptsConfig;
 use crate::colors;
 use async_trait::async_trait;
 use deno_ast::ModuleSpecifier;
+use deno_cache_dir::npm::mixed_case_package_name_decode;
 use deno_core::anyhow::Context;
 use deno_core::error::AnyError;
 use deno_core::futures::stream::FuturesUnordered;
@@ -30,6 +31,7 @@ use deno_npm::NpmPackageCacheFolderId;
 use deno_npm::NpmPackageId;
 use deno_npm::NpmResolutionPackage;
 use deno_npm::NpmSystemInfo;
+use deno_resolver::npm::normalize_pkg_name_for_node_modules_deno_folder;
 use deno_runtime::deno_fs;
 use deno_runtime::deno_node::NodePermissions;
 use deno_semver::package::PackageNv;
@@ -42,8 +44,6 @@ use serde::Serialize;
 
 use crate::args::NpmInstallDepsProvider;
 use crate::cache::CACHE_PERM;
-use crate::npm::cache_dir::mixed_case_package_name_decode;
-use crate::npm::cache_dir::mixed_case_package_name_encode;
 use crate::util::fs::atomic_write_file_with_retries;
 use crate::util::fs::canonicalize_path_maybe_not_exists_with_fs;
 use crate::util::fs::clone_dir_recursive;
@@ -159,8 +159,8 @@ impl NpmPackageFsResolver for LocalNpmPackageResolver {
     &self.root_node_modules_url
   }
 
-  fn node_modules_path(&self) -> Option<&PathBuf> {
-    Some(&self.root_node_modules_path)
+  fn node_modules_path(&self) -> Option<&Path> {
+    Some(self.root_node_modules_path.as_ref())
   }
 
   fn maybe_package_folder(&self, id: &NpmPackageId) -> Option<PathBuf> {
@@ -917,20 +917,6 @@ impl SetupCache {
         .entry(parent_name.to_string())
         .or_default(),
     }
-  }
-}
-
-/// Normalizes a package name for use at `node_modules/.deno/<pkg-name>@<version>[_<copy_index>]`
-pub fn normalize_pkg_name_for_node_modules_deno_folder(name: &str) -> Cow<str> {
-  let name = if name.to_lowercase() == name {
-    Cow::Borrowed(name)
-  } else {
-    Cow::Owned(format!("_{}", mixed_case_package_name_encode(name)))
-  };
-  if name.starts_with('@') {
-    name.replace('/', "+").into()
-  } else {
-    name
   }
 }
 

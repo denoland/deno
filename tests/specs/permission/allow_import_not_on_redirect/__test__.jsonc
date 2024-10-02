@@ -1,0 +1,5 @@
+{
+  "args": "run --allow-import=localhost:4547 --quiet --reload main.js",
+  "output": "main.out",
+  "exitCode": 1
+}
