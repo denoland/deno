@@ -24,27 +24,26 @@ pub fn op_transcode(
   match (from_encoding, to_encoding) {
     ("utf8", "ascii") => Ok(utf8_to_ascii(source)),
     ("utf8", "latin1") => Ok(utf8_to_latin1(source)),
-    ("utf8", "ucs2") => utf8_to_ucs2(source),
-    ("ucs2", "utf8") | ("utf16le", "utf8") => ucs2_to_utf8(source),
-    ("latin1", "ucs2")
-    | ("latin1", "utf16le")
-    | ("ascii", "ucs2")
-    | ("ascii", "utf16le") => Ok(latin1_ascii_to_ucs2(source)),
+    ("utf8", "utf16le") => utf8_to_utf16le(source),
+    ("utf16le", "utf8") => utf16le_to_utf8(source),
+    ("latin1", "utf16le") | ("ascii", "utf16le") => {
+      Ok(latin1_ascii_to_utf16le(source))
+    }
     (from, to) => Err(anyhow!("Unable to transcode Buffer {from}->{to}")),
   }
 }
 
-fn latin1_ascii_to_ucs2(ascii: &[u8]) -> Vec<u8> {
-  let mut result = Vec::with_capacity(ascii.len() * 2);
-  for &byte in ascii {
+fn latin1_ascii_to_utf16le(source: &[u8]) -> Vec<u8> {
+  let mut result = Vec::with_capacity(source.len() * 2);
+  for &byte in source {
     result.push(byte);
     result.push(0);
   }
   result
 }
 
-fn ucs2_to_utf8(ucs2_bytes: &[u8]) -> Result<Vec<u8>> {
-  let ucs2_vec: Vec<u16> = ucs2_bytes
+fn utf16le_to_utf8(source: &[u8]) -> Result<Vec<u8>> {
+  let ucs2_vec: Vec<u16> = source
     .chunks(2)
     .map(|chunk| u16::from_le_bytes([chunk[0], chunk[1]]))
     .collect();
@@ -53,27 +52,27 @@ fn ucs2_to_utf8(ucs2_bytes: &[u8]) -> Result<Vec<u8>> {
     .map_err(|e| anyhow!("Invalid UTF-16 sequence: {}", e))
 }
 
-fn utf8_to_ucs2(utf8_bytes: &[u8]) -> Result<Vec<u8>> {
-  let utf8_string = std::str::from_utf8(utf8_bytes)?;
+fn utf8_to_utf16le(source: &[u8]) -> Result<Vec<u8>> {
+  let utf8_string = std::str::from_utf8(source)?;
   let ucs2_vec: Vec<u16> = utf8_string.encode_utf16().collect();
   let bytes: Vec<u8> = ucs2_vec.iter().flat_map(|&x| x.to_le_bytes()).collect();
   Ok(bytes)
 }
 
-fn utf8_to_latin1(utf8_bytes: &[u8]) -> Vec<u8> {
-  let mut latin1_bytes = Vec::new();
+fn utf8_to_latin1(source: &[u8]) -> Vec<u8> {
+  let mut latin1_bytes = Vec::with_capacity(source.len());
   let mut i = 0;
-  while i < utf8_bytes.len() {
-    match utf8_bytes[i] {
+  while i < source.len() {
+    match source[i] {
       byte if byte <= 0x7F => {
         // ASCII character
         latin1_bytes.push(byte);
         i += 1;
       }
-      byte if (0xC2..=0xDF).contains(&byte) && i + 1 < utf8_bytes.len() => {
+      byte if (0xC2..=0xDF).contains(&byte) && i + 1 < source.len() => {
         // 2-byte UTF-8 sequence
         let codepoint =
-          ((byte as u16 & 0x1F) << 6) | (utf8_bytes[i + 1] as u16 & 0x3F);
+          ((byte as u16 & 0x1F) << 6) | (source[i + 1] as u16 & 0x3F);
         latin1_bytes.push(if codepoint <= 0xFF {
           codepoint as u8
         } else {
@@ -86,7 +85,7 @@ fn utf8_to_latin1(utf8_bytes: &[u8]) -> Vec<u8> {
         latin1_bytes.push(b'?');
         // Skip to the next valid UTF-8 start byte
         i += 1;
-        while i < utf8_bytes.len() && (utf8_bytes[i] & 0xC0) == 0x80 {
+        while i < source.len() && (source[i] & 0xC0) == 0x80 {
           i += 1;
         }
       }
@@ -96,7 +95,7 @@ fn utf8_to_latin1(utf8_bytes: &[u8]) -> Vec<u8> {
 }
 
 fn utf8_to_ascii(source: &[u8]) -> Vec<u8> {
-  let mut ascii_bytes = Vec::new();
+  let mut ascii_bytes = Vec::with_capacity(source.len());
   let mut i = 0;
   while i < source.len() {
     match source[i] {

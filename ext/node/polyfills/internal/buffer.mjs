@@ -2613,12 +2613,13 @@ export function transcode(source, fromEnco, toEnco) {
   if (source.length === 0) {
     return Buffer.alloc(0);
   }
-  fromEnco = fromEnco === "binary" ? "latin1" : fromEnco;
-  toEnco = toEnco === "binary" ? "latin1" : toEnco;
-  const returnSource = fromEnco === "ascii" && toEnco === "utf8" ||
-    fromEnco === "ascii" && toEnco === "latin1" ||
-    fromEnco === "ucs2" && toEnco === "utf16le" ||
-    fromEnco === "utf16le" && toEnco === "ucs2";
+  fromEnco = normalizeEncoding(fromEnco);
+  toEnco = normalizeEncoding(toEnco);
+  // Return the provided source when transcode is not required
+  // for the from/to encoding pair.
+  const returnSource = fromEnco === toEnco ||
+    fromEnco === "ascii" && toEnco === "utf8" ||
+    fromEnco === "ascii" && toEnco === "latin1";
   if (returnSource) {
     return Buffer.from(source);
   }
