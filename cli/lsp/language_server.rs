@@ -96,6 +96,7 @@ use crate::args::CaData;
 use crate::args::CacheSetting;
 use crate::args::CliOptions;
 use crate::args::Flags;
+use crate::args::InternalFlags;
 use crate::args::UnstableFmtOptions;
 use crate::factory::CliFactory;
 use crate::file_fetcher::FileFetcher;
@@ -3600,7 +3601,10 @@ impl Inner {
     };
     let cli_options = CliOptions::new(
       Arc::new(Flags {
-        cache_path: Some(self.cache.deno_dir().root.clone()),
+        internal: InternalFlags {
+          cache_path: Some(self.cache.deno_dir().root.clone()),
+          ..Default::default()
+        },
         ca_stores: workspace_settings.certificate_stores.clone(),
         ca_data: workspace_settings.tls_certificate.clone().map(CaData::File),
         unsafely_ignore_certificate_errors: workspace_settings

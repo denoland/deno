@@ -193,7 +193,9 @@ async fn run_subcommand(flags: Arc<Flags>) -> Result<i32, AnyError> {
                 };
                 flags.node_modules_dir = Some(deno_config::deno_json::NodeModulesDirMode::None);
                 // use the current lockfile, but don't write it out
-                // todo(THIS PR): add something to prevent this from writing to to the lockfile
+                if flags.frozen_lockfile.is_none() {
+                  flags.internal.lockfile_skip_write = true;
+                }
                 return tools::run::run_script(WorkerExecutionMode::Run, Arc::new(flags), watch).await;
               }
             }
