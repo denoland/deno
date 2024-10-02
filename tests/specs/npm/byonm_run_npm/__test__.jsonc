@@ -1,8 +1,17 @@
 {
   "tests": {
     "not_in_deps": {
-      "args": "run -A --quiet npm:cowsay moo",
-      "output": "not_in_deps.out"
+      "steps": [{
+        "args": "run -A --quiet npm:cowsay moo",
+        "output": "not_in_deps.out"
+      }, {
+        // ensure it doesn't make any lockfile modifications and thus doesn't write to the lockfile
+        "args": [
+          "eval",
+          "try { Deno.statSync('deno.lock') } catch (e) { console.log(e instanceof Deno.errors.NotFound); }"
+        ],
+        "output": "true\n"
+      }]
     },
     "in_deps": {
       "tempDir": true,
