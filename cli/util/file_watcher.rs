@@ -181,7 +181,7 @@ impl WatcherCommunicator {
   }
 
   pub fn print(&self, msg: String) {
-    log::info!("{} {}", self.banner, msg);
+    log::info!("{} {}", self.banner, colors::gray(msg));
   }
 
   pub fn show_path_changed(&self, changed_paths: Option<Vec<PathBuf>>) {
