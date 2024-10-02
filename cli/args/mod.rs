@@ -44,6 +44,7 @@ pub use deno_config::glob::FilePatterns;
 pub use deno_json::check_warn_tsconfig;
 pub use flags::*;
 pub use lockfile::CliLockfile;
+pub use lockfile::CliLockfileReadFromPathOptions;
 pub use package_json::NpmInstallDepsProvider;
 
 use deno_ast::ModuleSpecifier;
@@ -828,7 +829,7 @@ impl CliOptions {
 
     let maybe_lockfile = maybe_lockfile.filter(|_| !force_global_cache);
     let deno_dir_provider =
-      Arc::new(DenoDirProvider::new(flags.cache_path.clone()));
+      Arc::new(DenoDirProvider::new(flags.internal.cache_path.clone()));
     let maybe_node_modules_folder = resolve_node_modules_folder(
       &initial_cwd,
       &flags,

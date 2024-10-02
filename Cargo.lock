@@ -1985,6 +1985,7 @@ dependencies = [
  "deno_semver",
  "node_resolver",
  "test_server",
+ "thiserror",
  "url",
 ]
 

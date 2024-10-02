@@ -581,6 +581,15 @@ pub struct UnstableConfig {
 }
 
 #[derive(Clone, Debug, Eq, PartialEq, Default)]
+pub struct InternalFlags {
+  /// Used when the language server is configured with an
+  /// explicit cache option.
+  pub cache_path: Option<PathBuf>,
+  /// Only reads to the lockfile instead of writing to it.
+  pub lockfile_skip_write: bool,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Default)]
 pub struct Flags {
   /// Vector of CLI arguments - these are user script arguments, all Deno
   /// specific flags are removed.
@@ -591,9 +600,6 @@ pub struct Flags {
   pub ca_stores: Option<Vec<String>>,
   pub ca_data: Option<CaData>,
   pub cache_blocklist: Vec<String>,
-  /// This is not exposed as an option in the CLI, it is used internally when
-  /// the language server is configured with an explicit cache option.
-  pub cache_path: Option<PathBuf>,
   pub cached_only: bool,
   pub type_check_mode: TypeCheckMode,
   pub config_flag: ConfigFlag,
@@ -602,6 +608,8 @@ pub struct Flags {
   pub enable_op_summary_metrics: bool,
   pub enable_testing_features: bool,
   pub ext: Option<String>,
+  /// Flags that aren't exposed in the CLI, but are used internally.
+  pub internal: InternalFlags,
   pub ignore: Vec<String>,
   pub import_map_path: Option<String>,
   pub env_file: Option<String>,
