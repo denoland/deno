@@ -518,9 +518,9 @@ async fn sync_resolution_with_fs(
         // linked into the root
         match found_names.entry(remote_alias) {
           Entry::Occupied(nv) => {
-            alias_clashes
-              || remote.req.name != nv.get().name // alias to a different package (in case of duplicate aliases)
-              || !remote.req.version_req.matches(&nv.get().version) // incompatible version
+            // alias to a different package (in case of duplicate aliases)
+            // or the version doesn't match the version in the root node_modules
+            alias_clashes || &remote_pkg.id.nv != *nv.get()
           }
           Entry::Vacant(entry) => {
             entry.insert(&remote_pkg.id.nv);
