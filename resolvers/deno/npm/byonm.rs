@@ -142,7 +142,7 @@ impl<Fs: DenoResolverFs> ByonmNpmResolver<Fs> {
           return Ok(resolved);
         }
 
-        return Err(ByonmResolvePkgFolderFromDenoReqError::MissingAlias(alias));
+        Err(ByonmResolvePkgFolderFromDenoReqError::MissingAlias(alias))
       }
       None => {
         // now check if node_modules/.deno/ matches this constraint
@@ -150,9 +150,9 @@ impl<Fs: DenoResolverFs> ByonmNpmResolver<Fs> {
           return Ok(folder);
         }
 
-        return Err(ByonmResolvePkgFolderFromDenoReqError::UnmatchedReq(
+        Err(ByonmResolvePkgFolderFromDenoReqError::UnmatchedReq(
           req.clone(),
-        ));
+        ))
       }
     }
   }

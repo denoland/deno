@@ -1,0 +1,21 @@
+{
+  "tests": {
+    "not_in_deps": {
+      "args": "run -A --quiet npm:cowsay moo",
+      "output": "not_in_deps.out"
+    },
+    "in_deps": {
+      "tempDir": true,
+      "steps": [{
+        "args": "install npm:cowsay",
+        "output": "[WILDCARD]"
+      }, {
+        "args": "run --allow-write overwrite.ts",
+        "output": "[WILDCARD]"
+      }, {
+        "args": "run -A npm:cowsay moo",
+        "output": "replaced\n"
+      }]
+    }
+  }
+}
