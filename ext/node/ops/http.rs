@@ -283,9 +283,11 @@ where
 
   let mut request = http::Request::new(body);
   *request.method_mut() = method.clone();
-  *request.uri_mut() = url_parsed
-    .path()
-    .to_string()
+  let path = url_parsed.path();
+  let query = url_parsed.query();
+  *request.uri_mut() = query
+    .map(|query| format!("{}?{}", path, query))
+    .unwrap_or_else(|| path.to_string())
     .parse()
     .map_err(|_| type_error("Invalid URL"))?;
   *request.headers_mut() = header_map;
