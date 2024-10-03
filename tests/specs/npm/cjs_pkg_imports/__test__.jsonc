@@ -1,0 +1,4 @@
+{
+  "args": "run -A cjs_pkg_imports/main.ts",
+  "output": "cjs_pkg_imports/main.out"
+}

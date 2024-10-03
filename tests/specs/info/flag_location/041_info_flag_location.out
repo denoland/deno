@@ -1,0 +1,7 @@
+DENO_DIR location: [WILDCARD]
+Remote modules cache: [WILDCARD]remote
+npm modules cache: [WILDCARD]npm
+Emitted modules cache: [WILDCARD]gen
+Language server registries cache: [WILDCARD]registries
+Origin storage: [WILDCARD]location_data[WILDCARD]
+Local Storage: [WILDCARD]location_data[WILDCARD]local_storage

@@ -10,7 +10,7 @@
  *
  * @category Platform
  */
-declare interface ImportMeta {
+interface ImportMeta {
   /** A string representation of the fully qualified module URL. When the
    * module is loaded locally, the value will be a file URL (e.g.
    * `file:///path/module.ts`).
@@ -89,7 +89,7 @@ declare interface ImportMeta {
  *
  * @category Performance
  */
-declare interface Performance {
+interface Performance {
   /** Stores a timestamp with the associated name (a "mark"). */
   mark(markName: string, options?: PerformanceMarkOptions): PerformanceMark;
 
@@ -109,7 +109,7 @@ declare interface Performance {
  *
  * @category Performance
  */
-declare interface PerformanceMarkOptions {
+interface PerformanceMarkOptions {
   /** Metadata to be included in the mark. */
   // deno-lint-ignore no-explicit-any
   detail?: any;
@@ -126,7 +126,7 @@ declare interface PerformanceMarkOptions {
  *
  * @category Performance
  */
-declare interface PerformanceMeasureOptions {
+interface PerformanceMeasureOptions {
   /** Metadata to be included in the measure. */
   // deno-lint-ignore no-explicit-any
   detail?: any;
@@ -317,6 +317,7 @@ declare namespace Deno {
      *
      * @category Errors */
     export class NotADirectory extends Error {}
+
     /**
      * Raised when trying to perform an operation while the relevant Deno
      * permission (like `--allow-read`) has not been granted.
@@ -326,6 +327,8 @@ declare namespace Deno {
      *
      * @category Errors */
     export class NotCapable extends Error {}
+
+    export {}; // only export exports
   }
 
   /** The current process ID of this instance of the Deno CLI.
@@ -5407,7 +5410,9 @@ declare namespace Deno {
    *
    * @category FFI
    */
-  export type NativeStructType = { readonly struct: readonly NativeType[] };
+  export interface NativeStructType {
+    readonly struct: readonly NativeType[];
+  }
 
   /**
    * @category FFI
@@ -5700,7 +5705,9 @@ declare namespace Deno {
    *
    * @category FFI
    */
-  export type PointerObject<T = unknown> = { [brand]: T };
+  export interface PointerObject<T = unknown> {
+    [brand]: T;
+  }
 
   /** Pointers are represented either with a {@linkcode PointerObject}
    * object or a `null` if the pointer is null.
@@ -6034,9 +6041,11 @@ declare namespace Deno {
    *
    * @category Fetch
    */
-  export interface HttpClient extends Disposable {
+  export class HttpClient implements Disposable {
     /** Close the HTTP client. */
     close(): void;
+
+    [Symbol.dispose](): void;
   }
 
   /**
@@ -6137,4 +6146,6 @@ declare namespace Deno {
       | CreateHttpClientOptions
       | (CreateHttpClientOptions & TlsCertifiedKeyPem),
   ): HttpClient;
+
+  export {}; // only export exports
 }

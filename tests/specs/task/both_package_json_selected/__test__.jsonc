@@ -1,0 +1,10 @@
+{
+  "tempDir": true,
+  "steps": [
+    {
+      "args": "install",
+      "output": "install.out"
+    },
+    { "args": "task bin asdf", "output": "package_json_selected.out" }
+  ]
+}

@@ -1,0 +1,5 @@
+{
+  "args": "check --quiet --config exclude_option/deno.exclude_glob.json exclude_option/ignored/index.ts",
+  "output": "",
+  "exitCode": 0
+}

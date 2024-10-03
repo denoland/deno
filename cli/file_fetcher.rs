@@ -21,6 +21,7 @@ use deno_core::url::Url;
 use deno_core::ModuleSpecifier;
 use deno_graph::source::LoaderChecksum;
 
+use deno_path_util::url_to_file_path;
 use deno_runtime::deno_permissions::PermissionsContainer;
 use deno_runtime::deno_web::BlobStore;
 use log::debug;
@@ -135,7 +136,7 @@ impl MemoryFiles {
 
 /// Fetch a source file from the local file system.
 fn fetch_local(specifier: &ModuleSpecifier) -> Result<File, AnyError> {
-  let local = specifier.to_file_path().map_err(|_| {
+  let local = url_to_file_path(specifier).map_err(|_| {
     uri_error(format!("Invalid file path.\n  Specifier: {specifier}"))
   })?;
   // If it doesnt have a extension, we want to treat it as typescript by default
@@ -173,30 +174,8 @@ fn get_validated_scheme(
 #[derive(Debug, Copy, Clone)]
 pub enum FetchPermissionsOptionRef<'a> {
   AllowAll,
-  Container(&'a PermissionsContainer),
-}
-
-#[derive(Debug, Clone)]
-pub enum FetchPermissionsOption {
-  AllowAll,
-  Container(PermissionsContainer),
-}
-
-impl FetchPermissionsOption {
-  pub fn as_ref(&self) -> FetchPermissionsOptionRef {
-    match self {
-      FetchPermissionsOption::AllowAll => FetchPermissionsOptionRef::AllowAll,
-      FetchPermissionsOption::Container(container) => {
-        FetchPermissionsOptionRef::Container(container)
-      }
-    }
-  }
-}
-
-impl From<PermissionsContainer> for FetchPermissionsOption {
-  fn from(value: PermissionsContainer) -> Self {
-    Self::Container(value)
-  }
+  DynamicContainer(&'a PermissionsContainer),
+  StaticContainer(&'a PermissionsContainer),
 }
 
 pub struct FetchOptions<'a> {
@@ -564,7 +543,6 @@ impl FileFetcher {
   }
 
   /// Fetch a source file and asynchronously return it.
-  #[allow(dead_code)] // todo(25469): undo when merging
   #[inline(always)]
   pub async fn fetch(
     &self,
@@ -572,7 +550,10 @@ impl FileFetcher {
     permissions: &PermissionsContainer,
   ) -> Result<File, AnyError> {
     self
-      .fetch_inner(specifier, FetchPermissionsOptionRef::Container(permissions))
+      .fetch_inner(
+        specifier,
+        FetchPermissionsOptionRef::StaticContainer(permissions),
+      )
       .await
   }
 
@@ -647,8 +628,17 @@ impl FileFetcher {
       FetchPermissionsOptionRef::AllowAll => {
         // allow
       }
-      FetchPermissionsOptionRef::Container(permissions) => {
-        permissions.check_specifier(specifier)?;
+      FetchPermissionsOptionRef::StaticContainer(permissions) => {
+        permissions.check_specifier(
+          specifier,
+          deno_runtime::deno_permissions::CheckSpecifierKind::Static,
+        )?;
+      }
+      FetchPermissionsOptionRef::DynamicContainer(permissions) => {
+        permissions.check_specifier(
+          specifier,
+          deno_runtime::deno_permissions::CheckSpecifierKind::Dynamic,
+        )?;
       }
     }
     if let Some(file) = self.memory_files.get(specifier) {
@@ -736,7 +726,7 @@ mod tests {
     maybe_temp_dir: Option<TempDir>,
   ) -> (FileFetcher, TempDir, Arc<BlobStore>) {
     let temp_dir = maybe_temp_dir.unwrap_or_default();
-    let location = temp_dir.path().join("deps").to_path_buf();
+    let location = temp_dir.path().join("remote").to_path_buf();
     let blob_store: Arc<BlobStore> = Default::default();
     let file_fetcher = FileFetcher::new(
       Arc::new(GlobalHttpCache::new(location, RealDenoCacheEnv)),
@@ -974,7 +964,7 @@ mod tests {
 
     // This creates a totally new instance, simulating another Deno process
     // invocation and indicates to "cache bust".
-    let location = temp_dir.path().join("deps").to_path_buf();
+    let location = temp_dir.path().join("remote").to_path_buf();
     let file_fetcher = FileFetcher::new(
       Arc::new(GlobalHttpCache::new(
         location,
@@ -1000,7 +990,7 @@ mod tests {
   async fn test_fetch_uses_cache() {
     let _http_server_guard = test_util::http_server();
     let temp_dir = TempDir::new();
-    let location = temp_dir.path().join("deps").to_path_buf();
+    let location = temp_dir.path().join("remote").to_path_buf();
     let specifier =
       resolve_url("http://localhost:4545/subdir/mismatch_ext.ts").unwrap();
 
@@ -1166,7 +1156,7 @@ mod tests {
   async fn test_fetch_uses_cache_with_redirects() {
     let _http_server_guard = test_util::http_server();
     let temp_dir = TempDir::new();
-    let location = temp_dir.path().join("deps").to_path_buf();
+    let location = temp_dir.path().join("remote").to_path_buf();
     let specifier =
       resolve_url("http://localhost:4548/subdir/mismatch_ext.ts").unwrap();
     let redirected_specifier =
@@ -1334,7 +1324,7 @@ mod tests {
   async fn test_fetch_no_remote() {
     let _http_server_guard = test_util::http_server();
     let temp_dir = TempDir::new();
-    let location = temp_dir.path().join("deps").to_path_buf();
+    let location = temp_dir.path().join("remote").to_path_buf();
     let file_fetcher = FileFetcher::new(
       Arc::new(GlobalHttpCache::new(
         location,
@@ -1360,7 +1350,7 @@ mod tests {
   async fn test_fetch_cache_only() {
     let _http_server_guard = test_util::http_server();
     let temp_dir = TempDir::new();
-    let location = temp_dir.path().join("deps").to_path_buf();
+    let location = temp_dir.path().join("remote").to_path_buf();
     let file_fetcher_01 = FileFetcher::new(
       Arc::new(GlobalHttpCache::new(location.clone(), RealDenoCacheEnv)),
       CacheSetting::Only,
