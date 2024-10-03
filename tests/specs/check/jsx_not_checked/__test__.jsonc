@@ -1,0 +1,5 @@
+{
+  "args": "check jsx_not_checked/main.jsx",
+  "output": "jsx_not_checked/main.out",
+  "exitCode": 1
+}
