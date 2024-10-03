@@ -258,49 +258,9 @@ async function run() {
     await Deno.writeTextFile(wptreport, JSON.stringify(report) + "\n");
   }
 
-  const resultTests: Record<
-    string,
-    { passed: string[]; failed: string[]; testSucceeded: boolean }
-  > = {};
-  for (const { test, result } of results) {
-    if (!resultTests[test.path]) {
-      resultTests[test.path] = {
-        passed: [],
-        failed: [],
-        testSucceeded: result.status === 0 && result.harnessStatus !== null,
-      };
-    }
-    for (const case_ of result.cases) {
-      if (case_.passed) {
-        resultTests[test.path].passed.push(case_.name);
-      } else {
-        resultTests[test.path].failed.push(case_.name);
-      }
-    }
-  }
-
-  const currentExpectation = getExpectation();
-
-  for (const [path, result] of Object.entries(resultTests)) {
-    const { passed, failed, testSucceeded } = result;
-    let finalExpectation: boolean | string[];
-    if (failed.length == 0 && testSucceeded) {
-      finalExpectation = true;
-    } else if (failed.length > 0 && passed.length > 0 && testSucceeded) {
-      finalExpectation = failed;
-    } else {
-      finalExpectation = false;
-    }
-
-    insertExpectation(
-      path.slice(1).split("/"),
-      currentExpectation,
-      finalExpectation,
-    );
-  }
-
+  const newExpectations = newExpectation(results);
   const tmp = Deno.makeTempFileSync();
-  saveExpectation(currentExpectation, tmp);
+  saveExpectation(newExpectations, tmp);
 
   const code = reportFinal(results, endTime - startTime);
 
@@ -441,6 +401,19 @@ async function update() {
     await Deno.writeTextFile(json, JSON.stringify(results) + "\n");
   }
 
+  const newExpectations = newExpectation(results);
+  saveExpectation(newExpectations);
+
+  reportFinal(results, endTime - startTime);
+
+  console.log(blue("Updated expectation.json to match reality."));
+
+  Deno.exit(0);
+}
+
+function newExpectation(
+  results: { test: TestToRun; result: TestResult }[],
+): Expectation {
   const resultTests: Record<
     string,
     { passed: string[]; failed: string[]; testSucceeded: boolean }
@@ -482,13 +455,7 @@ async function update() {
     );
   }
 
-  saveExpectation(currentExpectation);
-
-  reportFinal(results, endTime - startTime);
-
-  console.log(blue("Updated expectation.json to match reality."));
-
-  Deno.exit(0);
+  return currentExpectation;
 }
 
 function insertExpectation(
