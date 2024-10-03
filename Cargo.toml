@@ -228,7 +228,6 @@ winapi = "=0.3.9"
 windows-sys = { version = "0.52.0", features = ["Win32_Foundation", "Win32_Media", "Win32_Storage_FileSystem", "Win32_System_IO", "Win32_System_WindowsProgramming", "Wdk", "Wdk_System", "Wdk_System_SystemInformation", "Win32_Security", "Win32_System_Pipes", "Wdk_Storage_FileSystem", "Win32_System_Registry", "Win32_System_Kernel"] }
 winres = "=0.1.12"
 
-# NB: the `bench` and `release` profiles must remain EXACTLY the same.
 [profile.release]
 codegen-units = 1
 incremental = true
@@ -246,13 +245,6 @@ inherits = "release"
 codegen-units = 128
 lto = "thin"
 
-# NB: the `bench` and `release` profiles must remain EXACTLY the same.
-[profile.bench]
-codegen-units = 1
-incremental = true
-lto = true
-opt-level = 'z' # Optimize for size
-
 # Key generation is too slow on `debug`
 [profile.dev.package.num-bigint-dig]
 opt-level = 3
@@ -261,80 +253,6 @@ opt-level = 3
 [profile.dev.package.v8]
 opt-level = 1
 
-# Optimize these packages for performance.
-# NB: the `bench` and `release` profiles must remain EXACTLY the same.
-[profile.bench.package.async-compression]
-opt-level = 3
-[profile.bench.package.base64-simd]
-opt-level = 3
-[profile.bench.package.brotli]
-opt-level = 3
-[profile.bench.package.brotli-decompressor]
-opt-level = 3
-[profile.bench.package.bytes]
-opt-level = 3
-[profile.bench.package.deno_bench_util]
-opt-level = 3
-[profile.bench.package.deno_broadcast_channel]
-opt-level = 3
-[profile.bench.package.deno_core]
-opt-level = 3
-[profile.bench.package.deno_crypto]
-opt-level = 3
-[profile.bench.package.deno_fetch]
-opt-level = 3
-[profile.bench.package.deno_ffi]
-opt-level = 3
-[profile.bench.package.deno_http]
-opt-level = 3
-[profile.bench.package.deno_napi]
-opt-level = 3
-[profile.bench.package.deno_net]
-opt-level = 3
-[profile.bench.package.deno_node]
-opt-level = 3
-[profile.bench.package.deno_runtime]
-opt-level = 3
-[profile.bench.package.deno_tls]
-opt-level = 3
-[profile.bench.package.deno_url]
-opt-level = 3
-[profile.bench.package.deno_web]
-opt-level = 3
-[profile.bench.package.deno_websocket]
-opt-level = 3
-[profile.bench.package.fastwebsockets]
-opt-level = 3
-[profile.bench.package.flate2]
-opt-level = 3
-[profile.bench.package.futures-util]
-opt-level = 3
-[profile.bench.package.hyper]
-opt-level = 3
-[profile.bench.package.miniz_oxide]
-opt-level = 3
-[profile.bench.package.num-bigint-dig]
-opt-level = 3
-[profile.bench.package.rand]
-opt-level = 3
-[profile.bench.package.serde]
-opt-level = 3
-[profile.bench.package.serde_v8]
-opt-level = 3
-[profile.bench.package.test_napi]
-opt-level = 3
-[profile.bench.package.tokio]
-opt-level = 3
-[profile.bench.package.url]
-opt-level = 3
-[profile.bench.package.v8]
-opt-level = 3
-[profile.bench.package.zstd]
-opt-level = 3
-[profile.bench.package.zstd-sys]
-opt-level = 3
-
-# NB: the `bench` and `release` profiles must remain EXACTLY the same.
 [profile.release.package.async-compression]
 opt-level = 3
 [profile.release.package.base64-simd]
