@@ -558,12 +558,7 @@ pub async fn add(
     result.context("Failed to update configuration file")?;
   }
 
-  // clear the previously cached package.json from memory before reloading it
-  node_resolver::PackageJsonThreadLocalCache::clear();
-  // make a new CliFactory to pick up the updated config file
-  let cli_factory = CliFactory::from_flags(flags);
-  // cache deps
-  cache_deps::cache_top_level_deps(&cli_factory, Some(jsr_resolver)).await?;
+  npm_install_after_modification(flags, Some(jsr_resolver)).await?;
 
   Ok(())
 }
@@ -786,12 +781,31 @@ pub async fn remove(
       config.commit().await?;
     }
 
-    // Update deno.lock
-    node_resolver::PackageJsonThreadLocalCache::clear();
-    let cli_factory = CliFactory::from_flags(flags);
-    cache_deps::cache_top_level_deps(&cli_factory, None).await?;
+    npm_install_after_modification(flags, None).await?;
   }
 
+  Ok(())
+}
+
+async fn npm_install_after_modification(
+  flags: Arc<Flags>,
+  // todo(dsherret): why is this dependency being passed here?
+  // Maybe we should remove it? If not, document why this is being done.
+  jsr_resolver: Option<Arc<crate::jsr::JsrFetchResolver>>,
+) -> Result<(), AnyError> {
+  // clear the previously cached package.json from memory before reloading it
+  node_resolver::PackageJsonThreadLocalCache::clear();
+
+  // make a new CliFactory to pick up the updated config file
+  let cli_factory = CliFactory::from_flags(flags);
+
+  // surface any errors in the package.json
+  let npm_resolver = cli_factory.npm_resolver().await?;
+  if let Some(npm_resolver) = npm_resolver.as_managed() {
+    npm_resolver.ensure_no_pkg_json_dep_errors()?;
+  }
+  // npm install
+  cache_deps::cache_top_level_deps(&cli_factory, jsr_resolver).await?;
   Ok(())
 }
 

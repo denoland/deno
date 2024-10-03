@@ -2,44 +2,29 @@
   "tempDir": true,
   "tests": {
     // should run fine when not referencing a failing dep entry
-    "run_ok": {
-      "steps": [
-        {
-          "args": "install",
-          "output": "install.out"
-        },
-        {
-          "args": "run ok.ts",
-          "output": "ok.ts.out"
-        }
-      ]
+    "run_ok_auto": {
+      "args": "run --quiet --node-modules-dir=auto ok.ts",
+      "output": "ok.ts.out"
     },
     // should fail when referencing a failing dep entry
-    "run_error": {
-      "steps": [
-        {
-          "args": "install",
-          "output": "install.out"
-        },
-        {
-          "args": "run error.ts",
-          "exitCode": 1,
-          "output": "error.ts.out"
-        }
-      ]
+    "run_error_auto": {
+      "args": "run --node-modules-dir=auto error.ts",
+      "exitCode": 1,
+      "output": "error_auto.out"
     },
-    // should output a warning about the failing dep entry
+    "install_error_byonm": {
+      "args": "install",
+      "output": "install.out",
+      "exitCode": 1
+    },
+    "add_error_byonm": {
+      "args": "add npm:cowsay",
+      "output": "add.out",
+      "exitCode": 1
+    },
     "task_test": {
-      "steps": [
-        {
-          "args": "install",
-          "output": "install.out"
-        },
-        {
-          "args": "task test",
-          "output": "task.out"
-        }
-      ]
+      "args": "task --node-modules-dir=auto test",
+      "output": "task.out"
     }
   }
 }

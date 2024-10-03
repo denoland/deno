@@ -20,6 +20,7 @@ use deno_npm::resolution::ValidSerializedNpmResolutionSnapshot;
 use deno_npm::NpmPackageId;
 use deno_npm::NpmResolutionPackage;
 use deno_npm::NpmSystemInfo;
+use deno_runtime::colors;
 use deno_runtime::deno_fs::FileSystem;
 use deno_runtime::deno_node::NodePermissions;
 use deno_runtime::deno_node::NodeRequireResolver;
@@ -478,6 +479,25 @@ impl ManagedCliNpmResolver {
     self.resolution.resolve_pkg_id_from_pkg_req(req)
   }
 
+  pub fn ensure_no_pkg_json_dep_errors(&self) -> Result<(), AnyError> {
+    for err in self.npm_install_deps_provider.pkg_json_dep_errors() {
+      match err {
+        deno_package_json::PackageJsonDepValueParseError::VersionReq(_) => {
+          return Err(
+            AnyError::from(err.clone())
+              .context("Failed to install from package.json"),
+          );
+        }
+        deno_package_json::PackageJsonDepValueParseError::Unsupported {
+          ..
+        } => {
+          log::warn!("{} {} in package.json", colors::yellow("Warning"), err)
+        }
+      }
+    }
+    Ok(())
+  }
+
   /// Ensures that the top level `package.json` dependencies are installed.
   /// This may set up the `node_modules` directory.
   ///
@@ -489,6 +509,7 @@ impl ManagedCliNpmResolver {
     if !self.top_level_install_flag.raise() {
       return Ok(false); // already did this
     }
+
     let pkg_json_remote_pkgs = self.npm_install_deps_provider.remote_pkgs();
     if pkg_json_remote_pkgs.is_empty() {
       return Ok(false);
