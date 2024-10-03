@@ -51,6 +51,7 @@ use self::resolvers::NpmPackageFsResolver;
 
 use super::CliNpmResolver;
 use super::InnerCliNpmResolverRef;
+use super::ResolvePkgFolderFromDenoReqError;
 
 mod cache;
 mod registry;
@@ -649,9 +650,13 @@ impl CliNpmResolver for ManagedCliNpmResolver {
     &self,
     req: &PackageReq,
     _referrer: &ModuleSpecifier,
-  ) -> Result<PathBuf, AnyError> {
-    let pkg_id = self.resolve_pkg_id_from_pkg_req(req)?;
-    self.resolve_pkg_folder_from_pkg_id(&pkg_id)
+  ) -> Result<PathBuf, ResolvePkgFolderFromDenoReqError> {
+    let pkg_id = self
+      .resolve_pkg_id_from_pkg_req(req)
+      .map_err(|err| ResolvePkgFolderFromDenoReqError::Managed(err.into()))?;
+    self
+      .resolve_pkg_folder_from_pkg_id(&pkg_id)
+      .map_err(ResolvePkgFolderFromDenoReqError::Managed)
   }
 
   fn check_state_hash(&self) -> Option<u64> {

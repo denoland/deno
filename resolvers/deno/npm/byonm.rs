@@ -5,8 +5,6 @@ use std::path::Path;
 use std::path::PathBuf;
 use std::sync::Arc;
 
-use anyhow::bail;
-use anyhow::Error as AnyError;
 use deno_package_json::PackageJson;
 use deno_package_json::PackageJsonDepValue;
 use deno_path_util::url_to_file_path;
@@ -18,12 +16,25 @@ use node_resolver::errors::PackageJsonLoadError;
 use node_resolver::errors::PackageNotFoundError;
 use node_resolver::load_pkg_json;
 use node_resolver::NpmResolver;
+use thiserror::Error;
 use url::Url;
 
 use crate::fs::DenoPkgJsonFsAdapter;
 use crate::fs::DenoResolverFs;
 
 use super::local::normalize_pkg_name_for_node_modules_deno_folder;
+
+#[derive(Debug, Error)]
+pub enum ByonmResolvePkgFolderFromDenoReqError {
+  #[error("Could not find \"{}\" in a node_modules folder. Deno expects the node_modules/ directory to be up to date. Did you forget to run `deno install`?", .0)]
+  MissingAlias(String),
+  #[error(transparent)]
+  PackageJson(#[from] PackageJsonLoadError),
+  #[error("Could not find a matching package for 'npm:{}' in the node_modules directory. Ensure you have all your JSR and npm dependencies listed in your deno.json or package.json, then run `deno install`. Alternatively, turn on auto-install by specifying `\"nodeModulesDir\": \"auto\"` in your deno.json file.", .0)]
+  UnmatchedReq(PackageReq),
+  #[error(transparent)]
+  Io(#[from] std::io::Error),
+}
 
 pub struct ByonmNpmResolverCreateOptions<Fs: DenoResolverFs> {
   pub fs: Fs,
@@ -100,12 +111,12 @@ impl<Fs: DenoResolverFs> ByonmNpmResolver<Fs> {
     &self,
     req: &PackageReq,
     referrer: &Url,
-  ) -> Result<PathBuf, AnyError> {
+  ) -> Result<PathBuf, ByonmResolvePkgFolderFromDenoReqError> {
     fn node_resolve_dir<Fs: DenoResolverFs>(
       fs: &Fs,
       alias: &str,
       start_dir: &Path,
-    ) -> Result<Option<PathBuf>, AnyError> {
+    ) -> std::io::Result<Option<PathBuf>> {
       for ancestor in start_dir.ancestors() {
         let node_modules_folder = ancestor.join("node_modules");
         let sub_dir = join_package_name(&node_modules_folder, alias);
@@ -131,14 +142,7 @@ impl<Fs: DenoResolverFs> ByonmNpmResolver<Fs> {
           return Ok(resolved);
         }
 
-        bail!(
-          concat!(
-            "Could not find \"{}\" in a node_modules folder. ",
-            "Deno expects the node_modules/ directory to be up to date. ",
-            "Did you forget to run `deno install`?"
-          ),
-          alias,
-        );
+        Err(ByonmResolvePkgFolderFromDenoReqError::MissingAlias(alias))
       }
       None => {
         // now check if node_modules/.deno/ matches this constraint
@@ -146,16 +150,9 @@ impl<Fs: DenoResolverFs> ByonmNpmResolver<Fs> {
           return Ok(folder);
         }
 
-        bail!(
-          concat!(
-            "Could not find a matching package for 'npm:{}' in the node_modules ",
-            "directory. Ensure you have all your JSR and npm dependencies listed ",
-            "in your deno.json or package.json, then run `deno install`. Alternatively, ",
-            r#"turn on auto-install by specifying `"nodeModulesDir": "auto"` in your "#,
-            "deno.json file."
-          ),
-          req,
-        );
+        Err(ByonmResolvePkgFolderFromDenoReqError::UnmatchedReq(
+          req.clone(),
+        ))
       }
     }
   }
@@ -164,7 +161,7 @@ impl<Fs: DenoResolverFs> ByonmNpmResolver<Fs> {
     &self,
     req: &PackageReq,
     referrer: &Url,
-  ) -> Result<Option<(Arc<PackageJson>, String)>, AnyError> {
+  ) -> Result<Option<(Arc<PackageJson>, String)>, PackageJsonLoadError> {
     fn resolve_alias_from_pkg_json(
       req: &PackageReq,
       pkg_json: &PackageJson,
@@ -256,7 +253,24 @@ impl<Fs: DenoResolverFs> ByonmNpmResolver<Fs> {
       let Ok(version) = Version::parse_from_npm(version) else {
         continue;
       };
-      if req.version_req.matches(&version) {
+      if let Some(tag) = req.version_req.tag() {
+        let initialized_file =
+          node_modules_deno_dir.join(&entry.name).join(".initialized");
+        let Ok(contents) = self.fs.read_to_string_lossy(&initialized_file)
+        else {
+          continue;
+        };
+        let mut tags = contents.split(',').map(str::trim);
+        if tags.any(|t| t == tag) {
+          if let Some((best_version_version, _)) = &best_version {
+            if version > *best_version_version {
+              best_version = Some((version, entry.name));
+            }
+          } else {
+            best_version = Some((version, entry.name));
+          }
+        }
+      } else if req.version_req.matches(&version) {
         if let Some((best_version_version, _)) = &best_version {
           if version > *best_version_version {
             best_version = Some((version, entry.name));
