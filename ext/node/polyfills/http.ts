@@ -650,42 +650,27 @@ class ClientRequest extends OutgoingMessage {
         this._send("", "latin1");
       }
     }
+    const finish = async () => {
+      try {
+        await this._bodyWriter.ready;
+        await this._bodyWriter?.close();
+      } catch {
+        // The readable stream resource is dropped right after
+        // read is complete closing the writable stream resource.
+        // If we try to close the writer again, it will result in an
+        // error which we can safely ignore.
+      }
+      try {
+        cb?.();
+      } catch {
+        //
+      }
+    };
+
     if (this.socket && this._bodyWriter) {
-      (async () => {
-        try {
-          await this._bodyWriter.ready;
-          await this._bodyWriter?.close();
-        } catch {
-          // The readable stream resource is dropped right after
-          // read is complete closing the writable stream resource.
-          // If we try to close the writer again, it will result in an
-          // error which we can safely ignore.
-        }
-        try {
-          cb?.();
-        } catch {
-          //
-        }
-      })();
+      finish();
     } else {
-      this.on("finish", () => {
-        (async () => {
-          try {
-            await this._bodyWriter.ready;
-            await this._bodyWriter?.close();
-          } catch {
-            // The readable stream resource is dropped right after
-            // read is complete closing the writable stream resource.
-            // If we try to close the writer again, it will result in an
-            // error which we can safely ignore.
-          }
-          try {
-            cb?.();
-          } catch {
-            //
-          }
-        })();
-      });
+      this.on("finish", finish);
     }
 
     return this;
