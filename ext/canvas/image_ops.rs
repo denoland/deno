@@ -2,6 +2,7 @@
 
 use bytemuck::cast_slice;
 use bytemuck::cast_slice_mut;
+use deno_core::error::type_error;
 use deno_core::error::AnyError;
 use image::ColorType;
 use image::DynamicImage;
@@ -19,6 +20,15 @@ use lcms2::Profile;
 use lcms2::Transform;
 use num_traits::NumCast;
 use num_traits::SaturatingMul;
+
+use crate::error::image_error_message;
+
+/// Image formats that is 32-bit depth are not supported currently due to the following reasons:
+/// - e.g. OpenEXR, it's not covered by the spec.
+/// - JPEG XL supported by WebKit, but it cannot be called a standard today.  
+///   https://github.com/whatwg/mimesniff/issues/143
+const NOT_SUPPORTED_BIT_DEPTH: &str =
+  "The 32-bit depth image format is not supported.";
 
 pub(crate) trait PremultiplyAlpha {
   fn premultiply_alpha(&self) -> Self;
@@ -103,6 +113,12 @@ pub(crate) fn premultiply_alpha(
     ColorType::Rgba16 => Ok(DynamicImage::ImageRgba16(
       process_premultiply_alpha(image.as_rgba16().unwrap()),
     )),
+    ColorType::Rgb32F | ColorType::Rgba32F => {
+      Err(type_error(image_error_message(
+        "processing un-premultiply alpha",
+        NOT_SUPPORTED_BIT_DEPTH,
+      )))
+    }
     // If the image does not have an alpha channel, return the image as is.
     _ => Ok(image),
   }
@@ -244,6 +260,12 @@ pub(crate) fn unpremultiply_alpha(
         image.into_rgba16()
       },
     )),
+    ColorType::Rgb32F | ColorType::Rgba32F => {
+      Err(type_error(image_error_message(
+        "processing un-premultiply alpha",
+        NOT_SUPPORTED_BIT_DEPTH,
+      )))
+    }
     // If the image does not have an alpha channel, return the image as is.
     _ => Ok(image),
   }
@@ -350,13 +372,7 @@ where
     ColorType::Rgb16 => PixelFormat::RGB_16,
     ColorType::Rgba8 => PixelFormat::RGBA_8,
     ColorType::Rgba16 => PixelFormat::RGBA_16,
-    // This arm usually doesn't reach, but it should be handled with returning the original image.
-    _ => {
-      for (x, y, pixel) in image.pixels() {
-        out.put_pixel(x, y, pixel);
-      }
-      return out;
-    }
+    _ => unreachable!("{}", NOT_SUPPORTED_BIT_DEPTH),
   };
   let transformer = Transform::new(
     &input_icc_profile,
@@ -383,10 +399,6 @@ where
 pub(crate) fn to_srgb_from_icc_profile(
   image: DynamicImage,
   icc_profile: Option<Vec<u8>>,
-  unmatch_color_handler: fn(
-    ColorType,
-    DynamicImage,
-  ) -> Result<DynamicImage, AnyError>,
 ) -> Result<DynamicImage, AnyError> {
   match icc_profile {
     // If there is no color profile information, return the image as is.
@@ -462,7 +474,10 @@ pub(crate) fn to_srgb_from_icc_profile(
               srgb_icc_profile,
             )))
           }
-          x => unmatch_color_handler(x, image),
+          _ => Err(type_error(image_error_message(
+            "processing un-premultiply alpha",
+            NOT_SUPPORTED_BIT_DEPTH,
+          ))),
         }
       }
     },
@@ -618,20 +633,11 @@ pub(crate) fn to_srgb_from_icc_profile(
 // }
 
 // /// Convert the color space of the image from sRGB to Display-P3.
-// fn srgb_to_display_p3(
-//   image: DynamicImage,
-//   unmatch_color_handler: fn(
-//     ColorType,
-//     DynamicImage,
-//   ) -> Result<DynamicImage, AnyError>,
-// ) -> Result<DynamicImage, AnyError> {
+// fn srgb_to_display_p3(image: DynamicImage) -> Result<DynamicImage, AnyError> {
 //   match image.color() {
 //     // The conversion of the lumincance color types to the display-p3 color space is meaningless.
-//     ColorType::L8 => Ok(DynamicImage::ImageLuma8(image.into_luma8())),
-//     ColorType::L16 => Ok(DynamicImage::ImageLuma16(image.into_luma16())),
-//     ColorType::La8 => Ok(DynamicImage::ImageLumaA8(image.into_luma_alpha8())),
-//     ColorType::La16 => {
-//       Ok(DynamicImage::ImageLumaA16(image.into_luma_alpha16()))
+//     ColorType::L8 | ColorType::L16 | ColorType::La8 | ColorType::La16 => {
+//       Ok(image)
 //     }
 //     ColorType::Rgb8 => Ok(DynamicImage::ImageRgb8(process_srgb_to_display_p3(
 //       image.as_rgb8().unwrap(),
@@ -645,7 +651,10 @@ pub(crate) fn to_srgb_from_icc_profile(
 //     ColorType::Rgba16 => Ok(DynamicImage::ImageRgba16(
 //       process_srgb_to_display_p3(image.as_rgba16().unwrap()),
 //     )),
-//     x => unmatch_color_handler(x, image),
+//     _ => Err(type_error(image_error_message(
+//       "processing ICC color profile conversion to sRGB",
+//       NOT_SUPPORTED_BIT_DEPTH,
+//     ))),
 //   }
 // }
 

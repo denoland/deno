@@ -18,7 +18,6 @@ use image::codecs::png::PngDecoder;
 use image::codecs::webp::WebPDecoder;
 use image::imageops::overlay;
 use image::imageops::FilterType;
-use image::ColorType;
 use image::DynamicImage;
 use image::ImageError;
 use image::RgbaImage;
@@ -218,16 +217,7 @@ fn apply_color_space_conversion(
     // return the decoded image as is.
     ColorSpaceConversion::None => Ok(image),
     ColorSpaceConversion::Default => {
-      fn unmatch_color_handler(
-        x: ColorType,
-        _: DynamicImage,
-      ) -> Result<DynamicImage, AnyError> {
-        Err(type_error(image_error_message(
-          "apply colorspaceConversion: default",
-          &format!("The color type {:?} is not supported.", x),
-        )))
-      }
-      to_srgb_from_icc_profile(image, icc_profile, unmatch_color_handler)
+      to_srgb_from_icc_profile(image, icc_profile)
     }
   }
 }
