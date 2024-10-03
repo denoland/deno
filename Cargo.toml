@@ -393,6 +393,8 @@ opt-level = 3
 opt-level = 3
 [profile.release.package.serde_v8]
 opt-level = 3
+[profile.release.package.libsui]
+opt-level = 3
 [profile.release.package.test_napi]
 opt-level = 3
 [profile.release.package.tokio]
