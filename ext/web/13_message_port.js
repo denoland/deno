@@ -205,7 +205,7 @@ class MessagePort extends EventTarget {
           );
           if (
             typeof this[nodeWorkerThreadCloseCb] === "function" &&
-            !this[_refed]
+            (!this[_refed] || messageEventListenerCount === 0)
           ) {
             core.unrefOpPromise(this[_dataPromise]);
           }
