@@ -453,7 +453,7 @@ class ClientRequest extends OutgoingMessage {
         const encrypted = parsedUrl.protocol === "https:";
         let encryptedRid;
         if (encrypted) {
-          const { 0: rid, 1: localAddr, 2: remoteAddr } = op_tls_start({
+          const [rid, _localAddr, _remoteAddr] = op_tls_start({
             rid: this.socket.rid,
             hostname: parsedUrl.hostname,
             caCerts: [],
