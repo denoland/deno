@@ -621,3 +621,116 @@ Deno.test({
     worker.terminate();
   },
 });
+
+Deno.test({
+  name: "[node/worker_threads] receiveMessageOnPort doesn't exit receive loop",
+  async fn() {
+    const worker = new workerThreads.Worker(
+      `
+      import { parentPort, receiveMessageOnPort } from "node:worker_threads";
+      parentPort.on("message", (msg) => {
+        const port = msg.port;
+        port.on("message", (msg2) => {
+          if (msg2 === "c") {
+            port.postMessage("done");
+            port.unref();
+            parentPort.unref();
+          }
+        });
+        parentPort.postMessage("ready");
+        const msg2 = receiveMessageOnPort(port);
+      });
+      `,
+      { eval: true },
+    );
+
+    const { port1, port2 } = new workerThreads.MessageChannel();
+
+    worker.postMessage({ port: port2 }, [port2]);
+
+    const done = Promise.withResolvers<boolean>();
+
+    port1.on("message", (msg) => {
+      assertEquals(msg, "done");
+      worker.unref();
+      port1.close();
+      done.resolve(true);
+    });
+    worker.on("message", (msg) => {
+      assertEquals(msg, "ready");
+      port1.postMessage("a");
+      port1.postMessage("b");
+      port1.postMessage("c");
+    });
+
+    const timeout = setTimeout(() => {
+      fail("Test timed out");
+    }, 20_000);
+    try {
+      const result = await done.promise;
+      assertEquals(result, true);
+    } finally {
+      clearTimeout(timeout);
+    }
+  },
+});
+
+Deno.test({
+  name: "[node/worker_threads] MessagePort.unref doesn't exit receive loop",
+  async fn() {
+    const worker = new workerThreads.Worker(
+      `
+      import { parentPort } from "node:worker_threads";
+      const assertEquals = (a, b) => {
+        if (a !== b) {
+          throw new Error();
+        }
+      };
+      let state = 0;
+      parentPort.on("message", (msg) => {
+        const port = msg.port;
+        const expect = ["a", "b", "c"];
+        port.on("message", (msg2) => {
+          assertEquals(msg2, expect[state++]);
+          if (msg2 === "c") {
+            port.postMessage({ type: "done", got: msg2 });
+            parentPort.unref();
+          }
+        });
+        port.unref();
+        parentPort.postMessage("ready");
+      });
+      `,
+      { eval: true },
+    );
+
+    const { port1, port2 } = new workerThreads.MessageChannel();
+
+    const done = Promise.withResolvers<boolean>();
+
+    port1.on("message", (msg) => {
+      assertEquals(msg.type, "done");
+      assertEquals(msg.got, "c");
+      worker.unref();
+      port1.close();
+      done.resolve(true);
+    });
+    worker.on("message", (msg) => {
+      assertEquals(msg, "ready");
+      port1.postMessage("a");
+      port1.postMessage("b");
+      port1.postMessage("c");
+    });
+    worker.postMessage({ port: port2 }, [port2]);
+
+    const timeout = setTimeout(() => {
+      fail("Test timed out");
+    }, 20_000);
+    try {
+      const result = await done.promise;
+      assertEquals(result, true);
+    } finally {
+      clearTimeout(timeout);
+    }
+  },
+});

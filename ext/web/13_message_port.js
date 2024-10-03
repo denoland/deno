@@ -22,6 +22,7 @@ const {
   Symbol,
   SymbolFor,
   SymbolIterator,
+  PromiseResolve,
   SafeArrayIterator,
   TypeError,
 } = primordials;
@@ -122,12 +123,16 @@ function nodeWorkerThreadMaybeInvokeCloseCb(port) {
   }
 }
 
+const _dataPromise = Symbol("dataPromise");
+
 class MessagePort extends EventTarget {
   /** @type {number | null} */
   [_id] = null;
   /** @type {boolean} */
   [_enabled] = false;
   [_refed] = false;
+  /** @type {Promise<any> | undefined} */
+  [_dataPromise] = undefined;
 
   constructor() {
     super();
@@ -193,24 +198,21 @@ class MessagePort extends EventTarget {
       this[_enabled] = true;
       while (true) {
         if (this[_id] === null) break;
-        // Exit if no message event listeners are present in Node compat mode.
-        if (
-          typeof this[nodeWorkerThreadCloseCb] == "function" &&
-          messageEventListenerCount === 0
-        ) break;
         let data;
         try {
-          data = await op_message_port_recv_message(
+          this[_dataPromise] = op_message_port_recv_message(
             this[_id],
           );
+          if (
+            typeof this[nodeWorkerThreadCloseCb] === "function" &&
+            !this[_refed]
+          ) {
+            core.unrefOpPromise(this[_dataPromise]);
+          }
+          data = await this[_dataPromise];
+          this[_dataPromise] = undefined;
         } catch (err) {
           if (ObjectPrototypeIsPrototypeOf(InterruptedPrototype, err)) {
-            // If we were interrupted, check if the interruption is coming
-            // from `receiveMessageOnPort` API from Node compat, if so, continue.
-            if (this[MessagePortReceiveMessageOnPortSymbol]) {
-              this[MessagePortReceiveMessageOnPortSymbol] = false;
-              continue;
-            }
             break;
           }
           nodeWorkerThreadMaybeInvokeCloseCb(this);
@@ -251,7 +253,11 @@ class MessagePort extends EventTarget {
       messageEventListenerCount++;
     } else if (!ref && this[_refed]) {
       this[_refed] = false;
-      messageEventListenerCount = 0;
+      if (
+        typeof this[nodeWorkerThreadCloseCb] == "function" && this[_dataPromise]
+      ) {
+        core.unrefOpPromise(this[_dataPromise]);
+      }
     }
   }
 
@@ -295,7 +301,17 @@ class MessagePort extends EventTarget {
 }
 
 defineEventHandler(MessagePort.prototype, "message", function (self) {
-  self.start();
+  if (self[nodeWorkerThreadCloseCb]) {
+    (async () => {
+      // delay `start()` until he end of this event loop turn, to give `receiveMessageOnPort`
+      // a chance to receive a message first. this is primarily to resolve an issue with
+      // a pattern used in `npm:piscina` that results in an indefinite hang
+      await PromiseResolve();
+      self.start();
+    })();
+  } else {
+    self.start();
+  }
 });
 defineEventHandler(MessagePort.prototype, "messageerror");
 
