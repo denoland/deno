@@ -8,7 +8,9 @@ import {
   op_node_http_await_response,
   op_node_http_fetch_response_upgrade,
   op_node_http_request_with_conn,
+  op_node_http_request_with_tls_conn,
   op_node_http_wait_for_connection,
+  op_tls_start,
 } from "ext:core/ops";
 
 import { TextEncoder } from "ext:deno_web/08_text_encoding.js";
@@ -447,12 +449,28 @@ class ClientRequest extends OutgoingMessage {
 
     (async () => {
       try {
-        const [rid, connRid] = await op_node_http_request_with_conn(
+        const parsedUrl = new URL(url);
+        const encrypted = parsedUrl.protocol === "https:";
+        let encryptedRid;
+        if (encrypted) {
+          const { 0: rid, 1: localAddr, 2: remoteAddr } = op_tls_start({
+            rid: this.socket.rid,
+            hostname: parsedUrl.hostname,
+            caCerts: [],
+            alpnProtocols: ["http/1.0", "http/1.1"],
+          });
+          encryptedRid = rid;
+        }
+        const op = encrypted
+          ? op_node_http_request_with_tls_conn
+          : op_node_http_request_with_conn;
+        const connectionRid = encrypted ? encryptedRid : this.socket.rid;
+        const [rid, connRid] = await op(
           this.method,
           url,
           headers,
           this._bodyWriteRid,
-          this.socket.rid,
+          connectionRid,
         );
         // Emit request ready to let the request body to be written.
         await op_node_http_wait_for_connection(connRid);

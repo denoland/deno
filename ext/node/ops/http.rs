@@ -35,6 +35,7 @@ use deno_core::Resource;
 use deno_core::ResourceId;
 use deno_fetch::ResBody;
 use deno_net::io::TcpStreamResource;
+use deno_net::ops_tls::TlsStreamResource;
 use http::header::HeaderMap;
 use http::header::HeaderName;
 use http::header::HeaderValue;
@@ -109,6 +110,120 @@ where
   let (read_half, write_half) = resource.into_inner();
   let tcp_stream = read_half.reunite(write_half)?;
   let io = TokioIo::new(tcp_stream);
+  let (mut sender, conn) = hyper::client::conn::http1::handshake(io).await?;
+
+  let (notify, receiver) = tokio::sync::oneshot::channel::<()>();
+
+  // Spawn a task to poll the connection, driving the HTTP state
+  let _handle = tokio::task::spawn(async move {
+    let _ = notify.send(());
+    conn.await?;
+    Ok::<_, AnyError>(())
+  });
+
+  // Create the request.
+  let method = Method::from_bytes(&method)?;
+  let mut url_parsed = Url::parse(&url)?;
+  let maybe_authority = deno_fetch::extract_authority(&mut url_parsed);
+
+  {
+    let mut state_ = state.borrow_mut();
+    let permissions = state_.borrow_mut::<P>();
+    permissions.check_net_url(&url_parsed, "ClientRequest")?;
+  }
+
+  let mut header_map = HeaderMap::new();
+  for (key, value) in headers {
+    let name = HeaderName::from_bytes(&key)
+      .map_err(|err| type_error(err.to_string()))?;
+    let v = HeaderValue::from_bytes(&value)
+      .map_err(|err| type_error(err.to_string()))?;
+
+    header_map.append(name, v);
+  }
+
+  let (body, con_len) = if let Some(body) = body {
+    (
+      BodyExt::boxed(NodeHttpResourceToBodyAdapter::new(
+        state.borrow_mut().resource_table.take_any(body)?,
+      )),
+      None,
+    )
+  } else {
+    // POST and PUT requests should always have a 0 length content-length,
+    // if there is no body. https://fetch.spec.whatwg.org/#http-network-or-cache-fetch
+    let len = if matches!(method, Method::POST | Method::PUT) {
+      Some(0)
+    } else {
+      None
+    };
+    (
+      http_body_util::Empty::new()
+        .map_err(|never| match never {})
+        .boxed(),
+      len,
+    )
+  };
+
+  let mut request = http::Request::new(body);
+  *request.method_mut() = method.clone();
+  *request.uri_mut() = url_parsed
+    .path()
+    .to_string()
+    .parse()
+    .map_err(|_| type_error("Invalid URL"))?;
+  *request.headers_mut() = header_map;
+
+  if let Some((username, password)) = maybe_authority {
+    request.headers_mut().insert(
+      AUTHORIZATION,
+      deno_fetch::basic_auth(&username, password.as_deref()),
+    );
+  }
+  if let Some(len) = con_len {
+    request.headers_mut().insert(CONTENT_LENGTH, len.into());
+  }
+
+  let res = sender.send_request(request).map_err(Error::from).boxed();
+  let rid = state
+    .borrow_mut()
+    .resource_table
+    .add(NodeHttpClientResponse {
+      response: res,
+      url: url.clone(),
+    });
+  let conn_rid = state
+    .borrow_mut()
+    .resource_table
+    .add(NodeHttpConnReady { recv: receiver });
+
+  Ok((rid, conn_rid))
+}
+
+// TODO(@satyarohith): deduplicate the code.
+#[op2(async)]
+#[serde]
+pub async fn op_node_http_request_with_tls_conn<P>(
+  state: Rc<RefCell<OpState>>,
+  #[serde] method: ByteString,
+  #[string] url: String,
+  #[serde] headers: Vec<(ByteString, ByteString)>,
+  #[smi] body: Option<ResourceId>,
+  #[smi] conn_rid: ResourceId,
+) -> Result<(ResourceId, ResourceId), AnyError>
+where
+  P: crate::NodePermissions + 'static,
+{
+  // Establish the connection/client.
+  let resource_rc = state
+    .borrow_mut()
+    .resource_table
+    .take::<TlsStreamResource>(conn_rid)?;
+  let resource = Rc::try_unwrap(resource_rc)
+    .map_err(|_e| bad_resource("TLS stream is currently in use"))?;
+  let (read_half, write_half) = resource.into_inner();
+  let tls_stream = read_half.unsplit(write_half);
+  let io = TokioIo::new(tls_stream);
   let (mut sender, conn) = hyper::client::conn::http1::handshake(io).await?;
 
   let (notify, receiver) = tokio::sync::oneshot::channel::<()>();
