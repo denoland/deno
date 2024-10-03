@@ -47,10 +47,10 @@ pub fn op_crypto_derive_bits_x25519(
   let sh_sec = x25519_dalek::x25519(k, u);
   let point = MontgomeryPoint(sh_sec);
   if point.ct_eq(&MONTGOMERY_IDENTITY).unwrap_u8() == 1 {
-    return false;
+    return true;
   }
   secret.copy_from_slice(&sh_sec);
-  true
+  false
 }
 
 // id-X25519 OBJECT IDENTIFIER ::= { 1 3 101 110 }
