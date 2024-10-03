@@ -8,7 +8,6 @@ import {
   op_node_http_await_response,
   op_node_http_fetch_response_upgrade,
   op_node_http_request_with_conn,
-  op_node_http_request_with_tls_conn,
   op_node_http_wait_for_connection,
   op_tls_start,
 } from "ext:core/ops";
