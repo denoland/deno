@@ -6,6 +6,7 @@
 #![allow(unused_imports)]
 
 use deno_ast::MediaType;
+use deno_cache_dir::npm::NpmCacheDir;
 use deno_config::workspace::MappedResolution;
 use deno_config::workspace::MappedResolutionError;
 use deno_config::workspace::ResolverWorkspaceJsrPackage;
@@ -55,15 +56,16 @@ use crate::args::StorageKeyResolver;
 use crate::cache::Caches;
 use crate::cache::DenoDirProvider;
 use crate::cache::NodeAnalysisCache;
+use crate::cache::RealDenoCacheEnv;
 use crate::http_util::HttpClientProvider;
 use crate::node::CliCjsCodeAnalyzer;
 use crate::npm::create_cli_npm_resolver;
-use crate::npm::CliNpmResolverByonmCreateOptions;
+use crate::npm::CliByonmNpmResolverCreateOptions;
 use crate::npm::CliNpmResolverCreateOptions;
 use crate::npm::CliNpmResolverManagedCreateOptions;
 use crate::npm::CliNpmResolverManagedSnapshotOption;
-use crate::npm::NpmCacheDir;
 use crate::resolver::CjsResolutionStore;
+use crate::resolver::CliDenoResolverFs;
 use crate::resolver::CliNodeResolver;
 use crate::resolver::NpmModuleLoader;
 use crate::util::progress_bar::ProgressBar;
@@ -464,6 +466,7 @@ pub async fn run(
   let main_module = root_dir_url.join(&metadata.entrypoint_key).unwrap();
   let root_node_modules_path = root_path.join("node_modules");
   let npm_cache_dir = NpmCacheDir::new(
+    &RealDenoCacheEnv,
     root_node_modules_path.clone(),
     vec![npm_registry_url.clone()],
   );
@@ -528,8 +531,8 @@ pub async fn run(
       let fs = Arc::new(DenoCompileFileSystem::new(vfs))
         as Arc<dyn deno_fs::FileSystem>;
       let npm_resolver = create_cli_npm_resolver(
-        CliNpmResolverCreateOptions::Byonm(CliNpmResolverByonmCreateOptions {
-          fs: fs.clone(),
+        CliNpmResolverCreateOptions::Byonm(CliByonmNpmResolverCreateOptions {
+          fs: CliDenoResolverFs(fs.clone()),
           root_node_modules_dir,
         }),
       )
@@ -691,8 +694,6 @@ pub async fn run(
     }
     checker
   });
-  let permission_desc_parser =
-    Arc::new(RuntimePermissionDescriptorParser::new(fs.clone()));
   let worker_factory = CliMainWorkerFactory::new(
     Arc::new(BlobStore::default()),
     // Code cache is not supported for standalone binary yet.
@@ -705,7 +706,6 @@ pub async fn run(
     Box::new(module_loader_factory),
     node_resolver,
     npm_resolver,
-    permission_desc_parser,
     root_cert_store_provider,
     permissions,
     StorageKeyResolver::empty(),

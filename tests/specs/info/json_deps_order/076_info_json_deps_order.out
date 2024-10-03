@@ -1,4 +1,5 @@
 {
+  "version": 1,
   "roots": [
     "file://[WILDCARD]/076_info_json_deps_order.ts"
   ],
@@ -160,6 +161,5 @@
     }
   ],
   "redirects": {},
-  "version": 1,
   "npmPackages": {}
 }

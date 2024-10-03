@@ -63,9 +63,3 @@ Deno.test(function urlPatternWithPrototypePollution() {
     RegExp.prototype.exec = originalExec;
   }
 });
-
-Deno.test(function urlPatternEmptyFallback() {
-  const p = new URLPattern({ pathname: "/foo/bar{/:qaz}?" });
-  const match = p.exec("https://example.com/foo/bar");
-  assertEquals(match!.pathname.groups.qaz, "");
-});

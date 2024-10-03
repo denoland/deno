@@ -73,7 +73,7 @@ impl NpmPackageFsResolver for GlobalNpmPackageResolver {
     self.cache.root_dir_url()
   }
 
-  fn node_modules_path(&self) -> Option<&PathBuf> {
+  fn node_modules_path(&self) -> Option<&Path> {
     None
   }
 

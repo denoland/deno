@@ -23,6 +23,7 @@ use crate::graph_container::ModuleGraphUpdatePermit;
 use crate::graph_util::CreateGraphOptions;
 use crate::graph_util::ModuleGraphBuilder;
 use crate::node;
+use crate::npm::CliNpmResolver;
 use crate::resolver::CliGraphResolver;
 use crate::resolver::CliNodeResolver;
 use crate::resolver::ModuleCodeStringSource;
@@ -203,6 +204,7 @@ struct SharedCliModuleLoaderState {
   main_module_graph_container: Arc<MainModuleGraphContainer>,
   module_load_preparer: Arc<ModuleLoadPreparer>,
   node_resolver: Arc<CliNodeResolver>,
+  npm_resolver: Arc<dyn CliNpmResolver>,
   npm_module_loader: NpmModuleLoader,
   parsed_source_cache: Arc<ParsedSourceCache>,
   resolver: Arc<CliGraphResolver>,
@@ -221,6 +223,7 @@ impl CliModuleLoaderFactory {
     main_module_graph_container: Arc<MainModuleGraphContainer>,
     module_load_preparer: Arc<ModuleLoadPreparer>,
     node_resolver: Arc<CliNodeResolver>,
+    npm_resolver: Arc<dyn CliNpmResolver>,
     npm_module_loader: NpmModuleLoader,
     parsed_source_cache: Arc<ParsedSourceCache>,
     resolver: Arc<CliGraphResolver>,
@@ -241,6 +244,7 @@ impl CliModuleLoaderFactory {
         main_module_graph_container,
         module_load_preparer,
         node_resolver,
+        npm_resolver,
         npm_module_loader,
         parsed_source_cache,
         resolver,
@@ -478,7 +482,6 @@ impl<TGraphContainer: ModuleGraphContainer>
       Some(Module::Npm(module)) => {
         let package_folder = self
           .shared
-          .node_resolver
           .npm_resolver
           .as_managed()
           .unwrap() // byonm won't create a Module::Npm

@@ -6,7 +6,6 @@ use deno_core::error::custom_error;
 use deno_core::error::type_error;
 use deno_core::error::uri_error;
 use deno_core::error::AnyError;
-use deno_core::normalize_path;
 use deno_core::parking_lot::Mutex;
 use deno_core::serde::de;
 use deno_core::serde::Deserialize;
@@ -16,6 +15,8 @@ use deno_core::serde_json;
 use deno_core::unsync::sync::AtomicFlag;
 use deno_core::url::Url;
 use deno_core::ModuleSpecifier;
+use deno_path_util::normalize_path;
+use deno_path_util::url_to_file_path;
 use deno_terminal::colors;
 use fqdn::FQDN;
 use once_cell::sync::Lazy;
@@ -1358,7 +1359,23 @@ fn denies_run_name(name: &str, cmd_path: &Path) -> bool {
 }
 
 #[derive(Clone, Eq, PartialEq, Hash, Debug)]
-pub struct SysDescriptor(pub String);
+pub struct SysDescriptor(String);
+
+impl SysDescriptor {
+  pub fn parse(kind: String) -> Result<Self, AnyError> {
+    match kind.as_str() {
+      "hostname" | "osRelease" | "osUptime" | "loadavg"
+      | "networkInterfaces" | "systemMemoryInfo" | "uid" | "gid" | "cpus"
+      | "homedir" | "getegid" | "username" | "statfs" | "getPriority"
+      | "setPriority" => Ok(Self(kind)),
+      _ => Err(type_error(format!("unknown system info kind \"{kind}\""))),
+    }
+  }
+
+  pub fn into_string(self) -> String {
+    self.0
+  }
+}
 
 impl QueryDescriptor for SysDescriptor {
   type AllowDesc = SysDescriptor;
@@ -1411,15 +1428,6 @@ impl QueryDescriptor for SysDescriptor {
 
   fn overlaps_deny(&self, _other: &Self::DenyDesc) -> bool {
     false
-  }
-}
-
-pub fn parse_sys_kind(kind: &str) -> Result<&str, AnyError> {
-  match kind {
-    "hostname" | "osRelease" | "osUptime" | "loadavg" | "networkInterfaces"
-    | "systemMemoryInfo" | "uid" | "gid" | "cpus" | "homedir" | "getegid"
-    | "username" | "statfs" | "getPriority" | "setPriority" => Ok(kind),
-    _ => Err(type_error(format!("unknown system info kind \"{kind}\""))),
   }
 }
 
@@ -1666,28 +1674,25 @@ impl UnaryPermission<EnvDescriptor> {
 }
 
 impl UnaryPermission<SysDescriptor> {
-  pub fn query(&self, kind: Option<&str>) -> PermissionState {
-    self.query_desc(
-      kind.map(|k| SysDescriptor(k.to_string())).as_ref(),
-      AllowPartial::TreatAsPartialGranted,
-    )
+  pub fn query(&self, kind: Option<&SysDescriptor>) -> PermissionState {
+    self.query_desc(kind, AllowPartial::TreatAsPartialGranted)
   }
 
-  pub fn request(&mut self, kind: Option<&str>) -> PermissionState {
-    self.request_desc(kind.map(|k| SysDescriptor(k.to_string())).as_ref())
+  pub fn request(&mut self, kind: Option<&SysDescriptor>) -> PermissionState {
+    self.request_desc(kind)
   }
 
-  pub fn revoke(&mut self, kind: Option<&str>) -> PermissionState {
-    self.revoke_desc(kind.map(|k| SysDescriptor(k.to_string())).as_ref())
+  pub fn revoke(&mut self, kind: Option<&SysDescriptor>) -> PermissionState {
+    self.revoke_desc(kind)
   }
 
   pub fn check(
     &mut self,
-    kind: &str,
+    kind: &SysDescriptor,
     api_name: Option<&str>,
   ) -> Result<(), AnyError> {
     skip_check_if_is_permission_fully_granted!(self);
-    self.check_desc(Some(&SysDescriptor(kind.to_string())), false, api_name)
+    self.check_desc(Some(kind), false, api_name)
   }
 
   pub fn check_all(&mut self) -> Result<(), AnyError> {
@@ -2035,52 +2040,6 @@ impl Permissions {
   }
 }
 
-/// Attempts to convert a specifier to a file path. By default, uses the Url
-/// crate's `to_file_path()` method, but falls back to try and resolve unix-style
-/// paths on Windows.
-pub fn specifier_to_file_path(
-  specifier: &ModuleSpecifier,
-) -> Result<PathBuf, AnyError> {
-  let result = if specifier.scheme() != "file" {
-    Err(())
-  } else if cfg!(windows) {
-    if specifier.host().is_some() {
-      Err(())
-    } else {
-      match specifier.to_file_path() {
-        Ok(path) => Ok(path),
-        Err(()) => {
-          // This might be a unix-style path which is used in the tests even on Windows.
-          // Attempt to see if we can convert it to a `PathBuf`. This code should be removed
-          // once/if https://github.com/servo/rust-url/issues/730 is implemented.
-          if specifier.scheme() == "file"
-            && specifier.port().is_none()
-            && specifier.path_segments().is_some()
-          {
-            let path_str = specifier.path();
-            match String::from_utf8(
-              percent_encoding::percent_decode(path_str.as_bytes()).collect(),
-            ) {
-              Ok(path_str) => Ok(PathBuf::from(path_str)),
-              Err(_) => Err(()),
-            }
-          } else {
-            Err(())
-          }
-        }
-      }
-    }
-  } else {
-    specifier.to_file_path()
-  };
-  match result {
-    Ok(path) => Ok(path),
-    Err(()) => Err(uri_error(format!(
-      "Invalid file path.\n  Specifier: {specifier}"
-    ))),
-  }
-}
-
 #[derive(Debug, Clone, Copy, Eq, PartialEq)]
 pub enum CheckSpecifierKind {
   Static,
@@ -2095,12 +2054,8 @@ pub enum CheckSpecifierKind {
 /// to send permissions to a new thread.
 #[derive(Clone, Debug)]
 pub struct PermissionsContainer {
-  // todo(dsherret): make both of these private as the functionality
-  // can just be methods on PermissionsContainer. Additionally, a separate
-  // struct should be created in here that handles creating child permissions
-  // so that the code is not so verbose elsewhere.
-  pub descriptor_parser: Arc<dyn PermissionDescriptorParser>,
-  pub inner: Arc<Mutex<Permissions>>,
+  descriptor_parser: Arc<dyn PermissionDescriptorParser>,
+  inner: Arc<Mutex<Permissions>>,
 }
 
 impl PermissionsContainer {
@@ -2120,6 +2075,96 @@ impl PermissionsContainer {
     Self::new(descriptor_parser, Permissions::allow_all())
   }
 
+  pub fn create_child_permissions(
+    &self,
+    child_permissions_arg: ChildPermissionsArg,
+  ) -> Result<PermissionsContainer, AnyError> {
+    fn is_granted_unary(arg: &ChildUnaryPermissionArg) -> bool {
+      match arg {
+        ChildUnaryPermissionArg::Inherit | ChildUnaryPermissionArg::Granted => {
+          true
+        }
+        ChildUnaryPermissionArg::NotGranted
+        | ChildUnaryPermissionArg::GrantedList(_) => false,
+      }
+    }
+
+    let mut worker_perms = Permissions::none_without_prompt();
+
+    let mut inner = self.inner.lock();
+    worker_perms.all = inner
+      .all
+      .create_child_permissions(ChildUnitPermissionArg::Inherit)?;
+
+    // downgrade the `worker_perms.all` based on the other values
+    if worker_perms.all.query() == PermissionState::Granted {
+      let unary_perms = [
+        &child_permissions_arg.read,
+        &child_permissions_arg.write,
+        &child_permissions_arg.net,
+        &child_permissions_arg.import,
+        &child_permissions_arg.env,
+        &child_permissions_arg.sys,
+        &child_permissions_arg.run,
+        &child_permissions_arg.ffi,
+      ];
+      let allow_all = unary_perms.into_iter().all(is_granted_unary);
+      if !allow_all {
+        worker_perms.all.revoke();
+      }
+    }
+
+    // WARNING: When adding a permission here, ensure it is handled
+    // in the worker_perms.all block above
+    worker_perms.read = inner
+      .read
+      .create_child_permissions(child_permissions_arg.read, |text| {
+        Ok(Some(self.descriptor_parser.parse_read_descriptor(text)?))
+      })?;
+    worker_perms.write = inner
+      .write
+      .create_child_permissions(child_permissions_arg.write, |text| {
+        Ok(Some(self.descriptor_parser.parse_write_descriptor(text)?))
+      })?;
+    worker_perms.import = inner
+      .import
+      .create_child_permissions(child_permissions_arg.import, |text| {
+        Ok(Some(self.descriptor_parser.parse_import_descriptor(text)?))
+      })?;
+    worker_perms.net = inner
+      .net
+      .create_child_permissions(child_permissions_arg.net, |text| {
+        Ok(Some(self.descriptor_parser.parse_net_descriptor(text)?))
+      })?;
+    worker_perms.env = inner
+      .env
+      .create_child_permissions(child_permissions_arg.env, |text| {
+        Ok(Some(self.descriptor_parser.parse_env_descriptor(text)?))
+      })?;
+    worker_perms.sys = inner
+      .sys
+      .create_child_permissions(child_permissions_arg.sys, |text| {
+        Ok(Some(self.descriptor_parser.parse_sys_descriptor(text)?))
+      })?;
+    worker_perms.run = inner.run.create_child_permissions(
+      child_permissions_arg.run,
+      |text| match self.descriptor_parser.parse_allow_run_descriptor(text)? {
+        AllowRunDescriptorParseResult::Unresolved(_) => Ok(None),
+        AllowRunDescriptorParseResult::Descriptor(desc) => Ok(Some(desc)),
+      },
+    )?;
+    worker_perms.ffi = inner
+      .ffi
+      .create_child_permissions(child_permissions_arg.ffi, |text| {
+        Ok(Some(self.descriptor_parser.parse_ffi_descriptor(text)?))
+      })?;
+
+    Ok(PermissionsContainer::new(
+      self.descriptor_parser.clone(),
+      worker_perms,
+    ))
+  }
+
   #[inline(always)]
   pub fn check_specifier(
     &self,
@@ -2133,7 +2178,7 @@ impl PermissionsContainer {
           return Ok(());
         }
 
-        match specifier_to_file_path(specifier) {
+        match url_to_file_path(specifier) {
           Ok(path) => inner.read.check(
             &PathQueryDescriptor {
               requested: path.to_string_lossy().into_owned(),
@@ -2355,7 +2400,10 @@ impl PermissionsContainer {
 
   #[inline(always)]
   pub fn check_sys(&self, kind: &str, api_name: &str) -> Result<(), AnyError> {
-    self.inner.lock().sys.check(kind, Some(api_name))
+    self.inner.lock().sys.check(
+      &self.descriptor_parser.parse_sys_descriptor(kind)?,
+      Some(api_name),
+    )
   }
 
   #[inline(always)]
@@ -2557,6 +2605,336 @@ impl PermissionsContainer {
       inner.check_partial(Some(&desc))?;
       Ok(desc.0.resolved)
     }
+  }
+
+  // query
+
+  #[inline(always)]
+  pub fn query_read(
+    &self,
+    path: Option<&str>,
+  ) -> Result<PermissionState, AnyError> {
+    Ok(
+      self.inner.lock().read.query(
+        path
+          .map(|path| {
+            Result::<_, AnyError>::Ok(
+              self.descriptor_parser.parse_path_query(path)?.into_read(),
+            )
+          })
+          .transpose()?
+          .as_ref(),
+      ),
+    )
+  }
+
+  #[inline(always)]
+  pub fn query_write(
+    &self,
+    path: Option<&str>,
+  ) -> Result<PermissionState, AnyError> {
+    Ok(
+      self.inner.lock().write.query(
+        path
+          .map(|path| {
+            Result::<_, AnyError>::Ok(
+              self.descriptor_parser.parse_path_query(path)?.into_write(),
+            )
+          })
+          .transpose()?
+          .as_ref(),
+      ),
+    )
+  }
+
+  #[inline(always)]
+  pub fn query_net(
+    &self,
+    host: Option<&str>,
+  ) -> Result<PermissionState, AnyError> {
+    Ok(
+      self.inner.lock().net.query(
+        match host {
+          None => None,
+          Some(h) => Some(self.descriptor_parser.parse_net_descriptor(h)?),
+        }
+        .as_ref(),
+      ),
+    )
+  }
+
+  #[inline(always)]
+  pub fn query_env(&self, var: Option<&str>) -> PermissionState {
+    self.inner.lock().env.query(var)
+  }
+
+  #[inline(always)]
+  pub fn query_sys(
+    &self,
+    kind: Option<&str>,
+  ) -> Result<PermissionState, AnyError> {
+    Ok(
+      self.inner.lock().sys.query(
+        kind
+          .map(|kind| self.descriptor_parser.parse_sys_descriptor(kind))
+          .transpose()?
+          .as_ref(),
+      ),
+    )
+  }
+
+  #[inline(always)]
+  pub fn query_run(
+    &self,
+    cmd: Option<&str>,
+  ) -> Result<PermissionState, AnyError> {
+    Ok(
+      self.inner.lock().run.query(
+        cmd
+          .map(|request| self.descriptor_parser.parse_run_query(request))
+          .transpose()?
+          .as_ref(),
+      ),
+    )
+  }
+
+  #[inline(always)]
+  pub fn query_ffi(
+    &self,
+    path: Option<&str>,
+  ) -> Result<PermissionState, AnyError> {
+    Ok(
+      self.inner.lock().ffi.query(
+        path
+          .map(|path| {
+            Result::<_, AnyError>::Ok(
+              self.descriptor_parser.parse_path_query(path)?.into_ffi(),
+            )
+          })
+          .transpose()?
+          .as_ref(),
+      ),
+    )
+  }
+
+  // revoke
+
+  #[inline(always)]
+  pub fn revoke_read(
+    &self,
+    path: Option<&str>,
+  ) -> Result<PermissionState, AnyError> {
+    Ok(
+      self.inner.lock().read.revoke(
+        path
+          .map(|path| {
+            Result::<_, AnyError>::Ok(
+              self.descriptor_parser.parse_path_query(path)?.into_read(),
+            )
+          })
+          .transpose()?
+          .as_ref(),
+      ),
+    )
+  }
+
+  #[inline(always)]
+  pub fn revoke_write(
+    &self,
+    path: Option<&str>,
+  ) -> Result<PermissionState, AnyError> {
+    Ok(
+      self.inner.lock().write.revoke(
+        path
+          .map(|path| {
+            Result::<_, AnyError>::Ok(
+              self.descriptor_parser.parse_path_query(path)?.into_write(),
+            )
+          })
+          .transpose()?
+          .as_ref(),
+      ),
+    )
+  }
+
+  #[inline(always)]
+  pub fn revoke_net(
+    &self,
+    host: Option<&str>,
+  ) -> Result<PermissionState, AnyError> {
+    Ok(
+      self.inner.lock().net.revoke(
+        match host {
+          None => None,
+          Some(h) => Some(self.descriptor_parser.parse_net_descriptor(h)?),
+        }
+        .as_ref(),
+      ),
+    )
+  }
+
+  #[inline(always)]
+  pub fn revoke_env(&self, var: Option<&str>) -> PermissionState {
+    self.inner.lock().env.revoke(var)
+  }
+
+  #[inline(always)]
+  pub fn revoke_sys(
+    &self,
+    kind: Option<&str>,
+  ) -> Result<PermissionState, AnyError> {
+    Ok(
+      self.inner.lock().sys.revoke(
+        kind
+          .map(|kind| self.descriptor_parser.parse_sys_descriptor(kind))
+          .transpose()?
+          .as_ref(),
+      ),
+    )
+  }
+
+  #[inline(always)]
+  pub fn revoke_run(
+    &self,
+    cmd: Option<&str>,
+  ) -> Result<PermissionState, AnyError> {
+    Ok(
+      self.inner.lock().run.revoke(
+        cmd
+          .map(|request| self.descriptor_parser.parse_run_query(request))
+          .transpose()?
+          .as_ref(),
+      ),
+    )
+  }
+
+  #[inline(always)]
+  pub fn revoke_ffi(
+    &self,
+    path: Option<&str>,
+  ) -> Result<PermissionState, AnyError> {
+    Ok(
+      self.inner.lock().ffi.revoke(
+        path
+          .map(|path| {
+            Result::<_, AnyError>::Ok(
+              self.descriptor_parser.parse_path_query(path)?.into_ffi(),
+            )
+          })
+          .transpose()?
+          .as_ref(),
+      ),
+    )
+  }
+
+  // request
+
+  #[inline(always)]
+  pub fn request_read(
+    &self,
+    path: Option<&str>,
+  ) -> Result<PermissionState, AnyError> {
+    Ok(
+      self.inner.lock().read.request(
+        path
+          .map(|path| {
+            Result::<_, AnyError>::Ok(
+              self.descriptor_parser.parse_path_query(path)?.into_read(),
+            )
+          })
+          .transpose()?
+          .as_ref(),
+      ),
+    )
+  }
+
+  #[inline(always)]
+  pub fn request_write(
+    &self,
+    path: Option<&str>,
+  ) -> Result<PermissionState, AnyError> {
+    Ok(
+      self.inner.lock().write.request(
+        path
+          .map(|path| {
+            Result::<_, AnyError>::Ok(
+              self.descriptor_parser.parse_path_query(path)?.into_write(),
+            )
+          })
+          .transpose()?
+          .as_ref(),
+      ),
+    )
+  }
+
+  #[inline(always)]
+  pub fn request_net(
+    &self,
+    host: Option<&str>,
+  ) -> Result<PermissionState, AnyError> {
+    Ok(
+      self.inner.lock().net.request(
+        match host {
+          None => None,
+          Some(h) => Some(self.descriptor_parser.parse_net_descriptor(h)?),
+        }
+        .as_ref(),
+      ),
+    )
+  }
+
+  #[inline(always)]
+  pub fn request_env(&self, var: Option<&str>) -> PermissionState {
+    self.inner.lock().env.request(var)
+  }
+
+  #[inline(always)]
+  pub fn request_sys(
+    &self,
+    kind: Option<&str>,
+  ) -> Result<PermissionState, AnyError> {
+    Ok(
+      self.inner.lock().sys.request(
+        kind
+          .map(|kind| self.descriptor_parser.parse_sys_descriptor(kind))
+          .transpose()?
+          .as_ref(),
+      ),
+    )
+  }
+
+  #[inline(always)]
+  pub fn request_run(
+    &self,
+    cmd: Option<&str>,
+  ) -> Result<PermissionState, AnyError> {
+    Ok(
+      self.inner.lock().run.request(
+        cmd
+          .map(|request| self.descriptor_parser.parse_run_query(request))
+          .transpose()?
+          .as_ref(),
+      ),
+    )
+  }
+
+  #[inline(always)]
+  pub fn request_ffi(
+    &self,
+    path: Option<&str>,
+  ) -> Result<PermissionState, AnyError> {
+    Ok(
+      self.inner.lock().ffi.request(
+        path
+          .map(|path| {
+            Result::<_, AnyError>::Ok(
+              self.descriptor_parser.parse_path_query(path)?.into_ffi(),
+            )
+          })
+          .transpose()?
+          .as_ref(),
+      ),
+    )
   }
 }
 
@@ -2910,93 +3288,6 @@ pub trait PermissionDescriptorParser: Debug + Send + Sync {
   ) -> Result<RunQueryDescriptor, AnyError>;
 }
 
-pub fn create_child_permissions(
-  parser: &dyn PermissionDescriptorParser,
-  main_perms: &mut Permissions,
-  child_permissions_arg: ChildPermissionsArg,
-) -> Result<Permissions, AnyError> {
-  fn is_granted_unary(arg: &ChildUnaryPermissionArg) -> bool {
-    match arg {
-      ChildUnaryPermissionArg::Inherit | ChildUnaryPermissionArg::Granted => {
-        true
-      }
-      ChildUnaryPermissionArg::NotGranted
-      | ChildUnaryPermissionArg::GrantedList(_) => false,
-    }
-  }
-
-  let mut worker_perms = Permissions::none_without_prompt();
-
-  worker_perms.all = main_perms
-    .all
-    .create_child_permissions(ChildUnitPermissionArg::Inherit)?;
-
-  // downgrade the `worker_perms.all` based on the other values
-  if worker_perms.all.query() == PermissionState::Granted {
-    let unary_perms = [
-      &child_permissions_arg.read,
-      &child_permissions_arg.write,
-      &child_permissions_arg.net,
-      &child_permissions_arg.import,
-      &child_permissions_arg.env,
-      &child_permissions_arg.sys,
-      &child_permissions_arg.run,
-      &child_permissions_arg.ffi,
-    ];
-    let allow_all = unary_perms.into_iter().all(is_granted_unary);
-    if !allow_all {
-      worker_perms.all.revoke();
-    }
-  }
-
-  // WARNING: When adding a permission here, ensure it is handled
-  // in the worker_perms.all block above
-  worker_perms.read = main_perms
-    .read
-    .create_child_permissions(child_permissions_arg.read, |text| {
-      Ok(Some(parser.parse_read_descriptor(text)?))
-    })?;
-  worker_perms.write = main_perms
-    .write
-    .create_child_permissions(child_permissions_arg.write, |text| {
-      Ok(Some(parser.parse_write_descriptor(text)?))
-    })?;
-  worker_perms.import = main_perms
-    .import
-    .create_child_permissions(child_permissions_arg.import, |text| {
-      Ok(Some(parser.parse_import_descriptor(text)?))
-    })?;
-  worker_perms.net = main_perms
-    .net
-    .create_child_permissions(child_permissions_arg.net, |text| {
-      Ok(Some(parser.parse_net_descriptor(text)?))
-    })?;
-  worker_perms.env = main_perms
-    .env
-    .create_child_permissions(child_permissions_arg.env, |text| {
-      Ok(Some(parser.parse_env_descriptor(text)?))
-    })?;
-  worker_perms.sys = main_perms
-    .sys
-    .create_child_permissions(child_permissions_arg.sys, |text| {
-      Ok(Some(parser.parse_sys_descriptor(text)?))
-    })?;
-  worker_perms.run = main_perms.run.create_child_permissions(
-    child_permissions_arg.run,
-    |text| match parser.parse_allow_run_descriptor(text)? {
-      AllowRunDescriptorParseResult::Unresolved(_) => Ok(None),
-      AllowRunDescriptorParseResult::Descriptor(desc) => Ok(Some(desc)),
-    },
-  )?;
-  worker_perms.ffi = main_perms
-    .ffi
-    .create_child_permissions(child_permissions_arg.ffi, |text| {
-      Ok(Some(parser.parse_ffi_descriptor(text)?))
-    })?;
-
-  Ok(worker_perms)
-}
-
 static IS_STANDALONE: AtomicFlag = AtomicFlag::lowered();
 
 pub fn mark_standalone() {
@@ -3020,7 +3311,7 @@ mod tests {
       ($($x:expr),*) => (vec![$($x.to_string()),*]);
   }
 
-  #[derive(Debug)]
+  #[derive(Debug, Clone)]
   struct TestPermissionDescriptorParser;
 
   impl TestPermissionDescriptorParser {
@@ -3073,7 +3364,7 @@ mod tests {
       &self,
       text: &str,
     ) -> Result<SysDescriptor, AnyError> {
-      Ok(SysDescriptor(text.to_string()))
+      SysDescriptor::parse(text.to_string())
     }
 
     fn parse_allow_run_descriptor(
@@ -3582,15 +3873,16 @@ mod tests {
       assert_eq!(perms4.env.query(None), PermissionState::GrantedPartial);
       assert_eq!(perms4.env.query(Some("HOME")), PermissionState::Denied);
       assert_eq!(perms4.env.query(Some("AWAY")), PermissionState::Granted);
+      let sys_desc = |name: &str| SysDescriptor::parse(name.to_string()).unwrap();
       assert_eq!(perms1.sys.query(None), PermissionState::Granted);
-      assert_eq!(perms1.sys.query(Some("HOME")), PermissionState::Granted);
+      assert_eq!(perms1.sys.query(Some(&sys_desc("osRelease"))), PermissionState::Granted);
       assert_eq!(perms2.sys.query(None), PermissionState::Prompt);
-      assert_eq!(perms2.sys.query(Some("hostname")), PermissionState::Granted);
+      assert_eq!(perms2.sys.query(Some(&sys_desc("hostname"))), PermissionState::Granted);
       assert_eq!(perms3.sys.query(None), PermissionState::Prompt);
-      assert_eq!(perms3.sys.query(Some("hostname")), PermissionState::Denied);
+      assert_eq!(perms3.sys.query(Some(&sys_desc("hostname"))), PermissionState::Denied);
       assert_eq!(perms4.sys.query(None), PermissionState::GrantedPartial);
-      assert_eq!(perms4.sys.query(Some("hostname")), PermissionState::Denied);
-      assert_eq!(perms4.sys.query(Some("uid")), PermissionState::Granted);
+      assert_eq!(perms4.sys.query(Some(&sys_desc("hostname"))), PermissionState::Denied);
+      assert_eq!(perms4.sys.query(Some(&sys_desc("uid"))), PermissionState::Granted);
       assert_eq!(perms1.run.query(None), PermissionState::Granted);
       let deno_run_query = RunQueryDescriptor::Path {
         requested: "deno".to_string(),
@@ -3653,10 +3945,11 @@ mod tests {
       prompt_value.set(false);
       assert_eq!(perms.env.request(Some("HOME")), PermissionState::Granted);
       prompt_value.set(true);
-      assert_eq!(perms.sys.request(Some("hostname")), PermissionState::Granted);
+      let sys_desc = |name: &str| SysDescriptor::parse(name.to_string()).unwrap();
+      assert_eq!(perms.sys.request(Some(&sys_desc("hostname"))), PermissionState::Granted);
       assert_eq!(perms.sys.query(None), PermissionState::Prompt);
       prompt_value.set(false);
-      assert_eq!(perms.sys.request(Some("hostname")), PermissionState::Granted);
+      assert_eq!(perms.sys.request(Some(&sys_desc("hostname"))), PermissionState::Granted);
       prompt_value.set(true);
       let run_query = RunQueryDescriptor::Path {
         requested: "deno".to_string(),
@@ -3974,12 +4267,13 @@ mod tests {
     assert!(perms.env.check("PATH", None).is_ok());
 
     prompt_value.set(false);
-    assert!(perms.sys.check("hostname", None).is_err());
+    let sys_desc = |name: &str| SysDescriptor::parse(name.to_string()).unwrap();
+    assert!(perms.sys.check(&sys_desc("hostname"), None).is_err());
     prompt_value.set(true);
-    assert!(perms.sys.check("hostname", None).is_err());
-    assert!(perms.sys.check("osRelease", None).is_ok());
+    assert!(perms.sys.check(&sys_desc("hostname"), None).is_err());
+    assert!(perms.sys.check(&sys_desc("osRelease"), None).is_ok());
     prompt_value.set(false);
-    assert!(perms.sys.check("osRelease", None).is_ok());
+    assert!(perms.sys.check(&sys_desc("osRelease"), None).is_ok());
   }
 
   #[test]
@@ -4199,7 +4493,7 @@ mod tests {
   fn test_create_child_permissions() {
     set_prompter(Box::new(TestPrompter));
     let parser = TestPermissionDescriptorParser;
-    let mut main_perms = Permissions::from_options(
+    let main_perms = Permissions::from_options(
       &parser,
       &PermissionsOptions {
         allow_env: Some(vec![]),
@@ -4208,18 +4502,19 @@ mod tests {
       },
     )
     .unwrap();
+    let main_perms = PermissionsContainer::new(Arc::new(parser), main_perms);
     assert_eq!(
-      create_child_permissions(
-        &parser,
-        &mut main_perms.clone(),
-        ChildPermissionsArg {
+      main_perms
+        .create_child_permissions(ChildPermissionsArg {
           env: ChildUnaryPermissionArg::Inherit,
           net: ChildUnaryPermissionArg::GrantedList(svec!["foo"]),
           ffi: ChildUnaryPermissionArg::NotGranted,
           ..ChildPermissionsArg::none()
-        }
-      )
-      .unwrap(),
+        })
+        .unwrap()
+        .inner
+        .lock()
+        .clone(),
       Permissions {
         env: Permissions::new_unary(Some(HashSet::new()), None, false).unwrap(),
         net: Permissions::new_unary(
@@ -4231,40 +4526,31 @@ mod tests {
         ..Permissions::none_without_prompt()
       }
     );
-    assert!(create_child_permissions(
-      &parser,
-      &mut main_perms.clone(),
-      ChildPermissionsArg {
+    assert!(main_perms
+      .create_child_permissions(ChildPermissionsArg {
         net: ChildUnaryPermissionArg::Granted,
         ..ChildPermissionsArg::none()
-      }
-    )
-    .is_err());
-    assert!(create_child_permissions(
-      &parser,
-      &mut main_perms.clone(),
-      ChildPermissionsArg {
+      })
+      .is_err());
+    assert!(main_perms
+      .create_child_permissions(ChildPermissionsArg {
         net: ChildUnaryPermissionArg::GrantedList(svec!["foo", "bar", "baz"]),
         ..ChildPermissionsArg::none()
-      }
-    )
-    .is_err());
-    assert!(create_child_permissions(
-      &parser,
-      &mut main_perms,
-      ChildPermissionsArg {
+      })
+      .is_err());
+    assert!(main_perms
+      .create_child_permissions(ChildPermissionsArg {
         ffi: ChildUnaryPermissionArg::GrantedList(svec!["foo"]),
         ..ChildPermissionsArg::none()
-      }
-    )
-    .is_err());
+      })
+      .is_err());
   }
 
   #[test]
   fn test_create_child_permissions_with_prompt() {
     set_prompter(Box::new(TestPrompter));
     let prompt_value = PERMISSION_PROMPT_STUB_VALUE_SETTER.lock();
-    let mut main_perms = Permissions::from_options(
+    let main_perms = Permissions::from_options(
       &TestPermissionDescriptorParser,
       &PermissionsOptions {
         prompt: true,
@@ -4272,20 +4558,24 @@ mod tests {
       },
     )
     .unwrap();
+    let main_perms = PermissionsContainer::new(
+      Arc::new(TestPermissionDescriptorParser),
+      main_perms,
+    );
     prompt_value.set(true);
-    let worker_perms = create_child_permissions(
-      &TestPermissionDescriptorParser,
-      &mut main_perms,
-      ChildPermissionsArg {
+    let worker_perms = main_perms
+      .create_child_permissions(ChildPermissionsArg {
         read: ChildUnaryPermissionArg::Granted,
         run: ChildUnaryPermissionArg::GrantedList(svec!["foo", "bar"]),
         ..ChildPermissionsArg::none()
-      },
-    )
-    .unwrap();
-    assert_eq!(main_perms, worker_perms);
+      })
+      .unwrap();
     assert_eq!(
-      main_perms.run.granted_list,
+      main_perms.inner.lock().clone(),
+      worker_perms.inner.lock().clone()
+    );
+    assert_eq!(
+      main_perms.inner.lock().run.granted_list,
       HashSet::from([
         AllowRunDescriptor(PathBuf::from("/bar")),
         AllowRunDescriptor(PathBuf::from("/foo")),
@@ -4298,7 +4588,7 @@ mod tests {
     set_prompter(Box::new(TestPrompter));
     let prompt_value = PERMISSION_PROMPT_STUB_VALUE_SETTER.lock();
     let parser = TestPermissionDescriptorParser;
-    let mut main_perms = Permissions::from_options(
+    let main_perms = Permissions::from_options(
       &parser,
       &PermissionsOptions {
         prompt: true,
@@ -4306,20 +4596,21 @@ mod tests {
       },
     )
     .unwrap();
+    let main_perms =
+      PermissionsContainer::new(Arc::new(parser.clone()), main_perms);
     prompt_value.set(false);
     assert!(main_perms
+      .inner
+      .lock()
       .write
       .check(&parser.parse_path_query("foo").unwrap().into_write(), None)
       .is_err());
-    let worker_perms = create_child_permissions(
-      &TestPermissionDescriptorParser,
-      &mut main_perms.clone(),
-      ChildPermissionsArg::none(),
-    )
-    .unwrap();
+    let worker_perms = main_perms
+      .create_child_permissions(ChildPermissionsArg::none())
+      .unwrap();
     assert_eq!(
-      worker_perms.write.flag_denied_list,
-      main_perms.write.flag_denied_list
+      worker_perms.inner.lock().write.flag_denied_list.clone(),
+      main_perms.inner.lock().write.flag_denied_list
     );
   }
 
@@ -4456,40 +4747,6 @@ mod tests {
         name,
         cmd_path
       );
-    }
-  }
-
-  #[test]
-  fn test_specifier_to_file_path() {
-    run_success_test("file:///", "/");
-    run_success_test("file:///test", "/test");
-    run_success_test("file:///dir/test/test.txt", "/dir/test/test.txt");
-    run_success_test(
-      "file:///dir/test%20test/test.txt",
-      "/dir/test test/test.txt",
-    );
-
-    assert_no_panic_specifier_to_file_path("file:/");
-    assert_no_panic_specifier_to_file_path("file://");
-    assert_no_panic_specifier_to_file_path("file://asdf/");
-    assert_no_panic_specifier_to_file_path("file://asdf/66666/a.ts");
-
-    fn run_success_test(specifier: &str, expected_path: &str) {
-      let result =
-        specifier_to_file_path(&ModuleSpecifier::parse(specifier).unwrap())
-          .unwrap();
-      assert_eq!(result, PathBuf::from(expected_path));
-    }
-    fn assert_no_panic_specifier_to_file_path(specifier: &str) {
-      let result =
-        specifier_to_file_path(&ModuleSpecifier::parse(specifier).unwrap());
-      match result {
-        Ok(_) => (),
-        Err(err) => assert_eq!(
-          err.to_string(),
-          format!("Invalid file path.\n  Specifier: {specifier}")
-        ),
-      }
     }
   }
 }

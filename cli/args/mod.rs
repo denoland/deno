@@ -20,13 +20,13 @@ use deno_config::workspace::WorkspaceDiscoverOptions;
 use deno_config::workspace::WorkspaceDiscoverStart;
 use deno_config::workspace::WorkspaceLintConfig;
 use deno_config::workspace::WorkspaceResolver;
-use deno_core::normalize_path;
 use deno_core::resolve_url_or_path;
 use deno_graph::GraphKind;
 use deno_npm::npm_rc::NpmRc;
 use deno_npm::npm_rc::ResolvedNpmRc;
 use deno_npm::resolution::ValidSerializedNpmResolutionSnapshot;
 use deno_npm::NpmSystemInfo;
+use deno_path_util::normalize_path;
 use deno_semver::npm::NpmPackageReqReference;
 use import_map::resolve_import_map_value_from_specifier;
 
@@ -44,6 +44,7 @@ pub use deno_config::glob::FilePatterns;
 pub use deno_json::check_warn_tsconfig;
 pub use flags::*;
 pub use lockfile::CliLockfile;
+pub use lockfile::CliLockfileReadFromPathOptions;
 pub use package_json::NpmInstallDepsProvider;
 
 use deno_ast::ModuleSpecifier;
@@ -69,6 +70,8 @@ use std::collections::HashMap;
 use std::env;
 use std::io::BufReader;
 use std::io::Cursor;
+use std::io::Read;
+use std::io::Seek;
 use std::net::SocketAddr;
 use std::num::NonZeroUsize;
 use std::path::Path;
@@ -742,15 +745,33 @@ pub enum NpmProcessStateKind {
   Byonm,
 }
 
-pub(crate) const NPM_RESOLUTION_STATE_ENV_VAR_NAME: &str =
-  "DENO_DONT_USE_INTERNAL_NODE_COMPAT_STATE";
-
 static NPM_PROCESS_STATE: Lazy<Option<NpmProcessState>> = Lazy::new(|| {
-  let state = std::env::var(NPM_RESOLUTION_STATE_ENV_VAR_NAME).ok()?;
-  let state: NpmProcessState = serde_json::from_str(&state).ok()?;
-  // remove the environment variable so that sub processes
-  // that are spawned do not also use this.
-  std::env::remove_var(NPM_RESOLUTION_STATE_ENV_VAR_NAME);
+  use deno_runtime::ops::process::NPM_RESOLUTION_STATE_FD_ENV_VAR_NAME;
+  let fd = std::env::var(NPM_RESOLUTION_STATE_FD_ENV_VAR_NAME).ok()?;
+  std::env::remove_var(NPM_RESOLUTION_STATE_FD_ENV_VAR_NAME);
+  let fd = fd.parse::<usize>().ok()?;
+  let mut file = {
+    use deno_runtime::deno_io::FromRawIoHandle;
+    unsafe { std::fs::File::from_raw_io_handle(fd as _) }
+  };
+  let mut buf = Vec::new();
+  // seek to beginning. after the file is written the position will be inherited by this subprocess,
+  // and also this file might have been read before
+  file.seek(std::io::SeekFrom::Start(0)).unwrap();
+  file
+    .read_to_end(&mut buf)
+    .inspect_err(|e| {
+      log::error!("failed to read npm process state from fd {fd}: {e}");
+    })
+    .ok()?;
+  let state: NpmProcessState = serde_json::from_slice(&buf)
+    .inspect_err(|e| {
+      log::error!(
+        "failed to deserialize npm process state: {e} {}",
+        String::from_utf8_lossy(&buf)
+      )
+    })
+    .ok()?;
   Some(state)
 });
 
@@ -808,7 +829,7 @@ impl CliOptions {
 
     let maybe_lockfile = maybe_lockfile.filter(|_| !force_global_cache);
     let deno_dir_provider =
-      Arc::new(DenoDirProvider::new(flags.cache_path.clone()));
+      Arc::new(DenoDirProvider::new(flags.internal.cache_path.clone()));
     let maybe_node_modules_folder = resolve_node_modules_folder(
       &initial_cwd,
       &flags,
@@ -1124,10 +1145,6 @@ impl CliOptions {
           DenoSubcommand::Run(run_flags) => {
             if run_flags.is_stdin() {
               resolve_url_or_path("./$deno$stdin.ts", self.initial_cwd())?
-            } else if NpmPackageReqReference::from_str(&run_flags.script)
-              .is_ok()
-            {
-              ModuleSpecifier::parse(&run_flags.script)?
             } else {
               resolve_url_or_path(&run_flags.script, self.initial_cwd())?
             }
@@ -1327,11 +1344,9 @@ impl CliOptions {
       )?;
 
     Ok(deno_lint::linter::LintConfig {
-      default_jsx_factory: transpile_options
-        .jsx_automatic
+      default_jsx_factory: (!transpile_options.jsx_automatic)
         .then(|| transpile_options.jsx_factory.clone()),
-      default_jsx_fragment_factory: transpile_options
-        .jsx_automatic
+      default_jsx_fragment_factory: (!transpile_options.jsx_automatic)
         .then(|| transpile_options.jsx_fragment_factory.clone()),
     })
   }
@@ -1686,6 +1701,12 @@ impl CliOptions {
       allowed: self.flags.allow_scripts.clone(),
       initial_cwd: self.initial_cwd.clone(),
       root_dir: self.workspace().root_dir_path(),
+      explicit_install: matches!(
+        self.sub_command(),
+        DenoSubcommand::Install(_)
+          | DenoSubcommand::Cache(_)
+          | DenoSubcommand::Add(_)
+      ),
     }
   }
 }
