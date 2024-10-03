@@ -734,3 +734,91 @@ Deno.test({
     }
   },
 });
+
+Deno.test({
+  name: "[node/worker_threads] npm:piscina wait loop hang regression",
+  async fn() {
+    const worker = new workerThreads.Worker(
+      `
+      import { assert, assertEquals } from "@std/assert";
+      import { parentPort, receiveMessageOnPort } from "node:worker_threads";
+
+      assert(parentPort !== null);
+
+      let currentTasks = 0;
+      let lastSeen = 0;
+
+      parentPort.on("message", (msg) => {
+        (async () => {
+          assert(typeof msg === "object" && msg !== null);
+          assert(msg.buf !== undefined);
+          assert(msg.port !== undefined);
+          const { buf, port } = msg;
+          port.postMessage("ready");
+          port.on("message", (msg) => onMessage(msg, buf, port));
+          atomicsWaitLoop(buf, port);
+        })();
+      });
+
+      function onMessage(msg, buf, port) {
+        currentTasks++;
+        (async () => {
+          assert(msg.taskName !== undefined);
+          port.postMessage({ type: "response", taskName: msg.taskName });
+          currentTasks--;
+          atomicsWaitLoop(buf, port);
+        })();
+      }
+
+      function atomicsWaitLoop(buf, port) {
+        while (currentTasks === 0) {
+          Atomics.wait(buf, 0, lastSeen);
+          lastSeen = Atomics.load(buf, 0);
+          let task;
+          while ((task = receiveMessageOnPort(port)) !== undefined) {
+            onMessage(task.message, buf, port);
+          }
+        }
+      }
+      `,
+      { eval: true },
+    );
+
+    const sab = new SharedArrayBuffer(4);
+    const buf = new Int32Array(sab);
+    const { port1, port2 } = new workerThreads.MessageChannel();
+
+    const done = Promise.withResolvers<boolean>();
+
+    port1.unref();
+
+    worker.postMessage({
+      type: "init",
+      buf,
+      port: port2,
+    }, [port2]);
+
+    let count = 0;
+    port1.on("message", (msg) => {
+      if (count++ === 0) {
+        assertEquals(msg, "ready");
+      } else {
+        assertEquals(msg.type, "response");
+        port1.close();
+        done.resolve(true);
+      }
+    });
+
+    port1.postMessage({
+      taskName: "doThing",
+    });
+
+    Atomics.add(buf, 0, 1);
+    Atomics.notify(buf, 0, 1);
+
+    worker.unref();
+
+    const result = await done.promise;
+    assertEquals(result, true);
+  },
+});
