@@ -162,6 +162,8 @@ class ClientRequest extends OutgoingMessage {
   useChunkedEncodingByDefault: boolean;
   path: string;
   _req: { requestRid: number; cancelHandleRid: number | null } | undefined;
+  _encrypted = false;
+  socket: Socket;
 
   constructor(
     input: string | URL,
@@ -450,27 +452,24 @@ class ClientRequest extends OutgoingMessage {
     (async () => {
       try {
         const parsedUrl = new URL(url);
-        const encrypted = parsedUrl.protocol === "https:";
-        let encryptedRid;
-        if (encrypted) {
-          const [rid, _localAddr, _remoteAddr] = op_tls_start({
+        let baseConnRid = this.socket.rid;
+        if (this._encrypted) {
+          [baseConnRid] = op_tls_start({
             rid: this.socket.rid,
             hostname: parsedUrl.hostname,
             caCerts: [],
             alpnProtocols: ["http/1.0", "http/1.1"],
           });
-          encryptedRid = rid;
         }
-        const op = encrypted
+        const op = this._encrypted
           ? op_node_http_request_with_tls_conn
           : op_node_http_request_with_conn;
-        const connectionRid = encrypted ? encryptedRid : this.socket.rid;
         const [rid, connRid] = await op(
           this.method,
           url,
           headers,
           this._bodyWriteRid,
-          connectionRid,
+          baseConnRid,
         );
         // Emit request ready to let the request body to be written.
         await op_node_http_wait_for_connection(connRid);
