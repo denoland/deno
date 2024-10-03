@@ -1,4 +1,5 @@
 {
+  "ignore": true, // TODO(kt3k): This case fails when downloading https://nodejs.org/download/release/v20.11.1/node-v20.11.1-headers.tar.gz
   "tempDir": true,
   "tests": {
     "node_gyp": {
