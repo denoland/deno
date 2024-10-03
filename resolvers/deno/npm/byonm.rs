@@ -253,7 +253,24 @@ impl<Fs: DenoResolverFs> ByonmNpmResolver<Fs> {
       let Ok(version) = Version::parse_from_npm(version) else {
         continue;
       };
-      if req.version_req.matches(&version) {
+      if let Some(tag) = req.version_req.tag() {
+        let initialized_file =
+          node_modules_deno_dir.join(&entry.name).join(".initialized");
+        let Ok(contents) = self.fs.read_to_string_lossy(&initialized_file)
+        else {
+          continue;
+        };
+        let mut tags = contents.split(',').map(str::trim);
+        if tags.any(|t| t == tag) {
+          if let Some((best_version_version, _)) = &best_version {
+            if version > *best_version_version {
+              best_version = Some((version, entry.name));
+            }
+          } else {
+            best_version = Some((version, entry.name));
+          }
+        }
+      } else if req.version_req.matches(&version) {
         if let Some((best_version_version, _)) = &best_version {
           if version > *best_version_version {
             best_version = Some((version, entry.name));
