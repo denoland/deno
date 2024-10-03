@@ -461,15 +461,13 @@ class ClientRequest extends OutgoingMessage {
             alpnProtocols: ["http/1.0", "http/1.1"],
           });
         }
-        const op = this._encrypted
-          ? op_node_http_request_with_tls_conn
-          : op_node_http_request_with_conn;
-        const [rid, connRid] = await op(
+        const [rid, connRid] = await op_node_http_request_with_conn(
           this.method,
           url,
           headers,
           this._bodyWriteRid,
           baseConnRid,
+          this._encrypted,
         );
         // Emit request ready to let the request body to be written.
         await op_node_http_wait_for_connection(connRid);
