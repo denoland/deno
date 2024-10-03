@@ -410,8 +410,8 @@ impl ContextifyContext {
   fn sandbox<'a>(
     &self,
     scope: &mut v8::HandleScope<'a>,
-  ) -> v8::Local<'a, v8::Object> {
-    self.sandbox.get(scope).unwrap()
+  ) -> Option<v8::Local<'a, v8::Object>> {
+    self.sandbox.get(scope)
   }
 
   fn microtask_queue(&self) -> Option<&v8::MicrotaskQueue> {
@@ -600,7 +600,9 @@ fn property_query<'s>(
 
   let context = ctx.context(scope);
   let scope = &mut v8::ContextScope::new(scope, context);
-  let sandbox = ctx.sandbox(scope);
+  let Some(sandbox) = ctx.sandbox(scope) else {
+    return v8::Intercepted::No;
+  };
 
   match sandbox.has_real_named_property(scope, property) {
     None => v8::Intercepted::No,
@@ -645,7 +647,9 @@ fn property_getter<'s>(
     return v8::Intercepted::No;
   };
 
-  let sandbox = ctx.sandbox(scope);
+  let Some(sandbox) = ctx.sandbox(scope) else {
+    return v8::Intercepted::No;
+  };
 
   let tc_scope = &mut v8::TryCatch::new(scope);
   let maybe_rv = sandbox.get_real_named_property(tc_scope, key).or_else(|| {
@@ -689,14 +693,14 @@ fn property_setter<'s>(
     None => (v8::PropertyAttribute::NONE, false),
   };
   let mut read_only = attributes.is_read_only();
-
-  let (attributes, is_declared_on_sandbox) = match ctx
-    .sandbox(scope)
-    .get_real_named_property_attributes(scope, key)
-  {
-    Some(attr) => (attr, true),
-    None => (v8::PropertyAttribute::NONE, false),
+  let Some(sandbox) = ctx.sandbox(scope) else {
+    return v8::Intercepted::No;
   };
+  let (attributes, is_declared_on_sandbox) =
+    match sandbox.get_real_named_property_attributes(scope, key) {
+      Some(attr) => (attr, true),
+      None => (v8::PropertyAttribute::NONE, false),
+    };
   read_only |= attributes.is_read_only();
 
   if read_only {
@@ -731,14 +735,12 @@ fn property_setter<'s>(
     return v8::Intercepted::No;
   };
 
-  if ctx.sandbox(scope).set(scope, key.into(), value).is_none() {
+  if sandbox.set(scope, key.into(), value).is_none() {
     return v8::Intercepted::No;
   }
 
   if is_declared_on_sandbox {
-    if let Some(desc) =
-      ctx.sandbox(scope).get_own_property_descriptor(scope, key)
-    {
+    if let Some(desc) = sandbox.get_own_property_descriptor(scope, key) {
       if !desc.is_undefined() {
         let desc_obj: v8::Local<v8::Object> = desc.try_into().unwrap();
         // We have to specify the return value for any contextual or get/set
@@ -774,7 +776,9 @@ fn property_descriptor<'s>(
   };
 
   let context = ctx.context(scope);
-  let sandbox = ctx.sandbox(scope);
+  let Some(sandbox) = ctx.sandbox(scope) else {
+    return v8::Intercepted::No;
+  };
   let scope = &mut v8::ContextScope::new(scope, context);
 
   if sandbox.has_own_property(scope, key).unwrap_or(false) {
@@ -818,7 +822,9 @@ fn property_definer<'s>(
     return v8::Intercepted::No;
   }
 
-  let sandbox = ctx.sandbox(scope);
+  let Some(sandbox) = ctx.sandbox(scope) else {
+    return v8::Intercepted::No;
+  };
 
   let define_prop_on_sandbox =
     |scope: &mut v8::HandleScope,
@@ -880,7 +886,10 @@ fn property_deleter<'s>(
   };
 
   let context = ctx.context(scope);
-  let sandbox = ctx.sandbox(scope);
+  let Some(sandbox) = ctx.sandbox(scope) else {
+    return v8::Intercepted::No;
+  };
+
   let context_scope = &mut v8::ContextScope::new(scope, context);
   if sandbox.delete(context_scope, key.into()).unwrap_or(false) {
     return v8::Intercepted::No;
@@ -900,7 +909,10 @@ fn property_enumerator<'s>(
   };
 
   let context = ctx.context(scope);
-  let sandbox = ctx.sandbox(scope);
+  let Some(sandbox) = ctx.sandbox(scope) else {
+    return;
+  };
+
   let context_scope = &mut v8::ContextScope::new(scope, context);
   let Some(properties) = sandbox
     .get_property_names(context_scope, v8::GetPropertyNamesArgs::default())
@@ -921,12 +933,14 @@ fn indexed_property_enumerator<'s>(
   };
   let context = ctx.context(scope);
   let scope = &mut v8::ContextScope::new(scope, context);
+  let Some(sandbox) = ctx.sandbox(scope) else {
+    return;
+  };
 
   // By default, GetPropertyNames returns string and number property names, and
   // doesn't convert the numbers to strings.
-  let Some(properties) = ctx
-    .sandbox(scope)
-    .get_property_names(scope, v8::GetPropertyNamesArgs::default())
+  let Some(properties) =
+    sandbox.get_property_names(scope, v8::GetPropertyNamesArgs::default())
   else {
     return;
   };
@@ -1019,7 +1033,10 @@ fn indexed_property_deleter<'s>(
   };
 
   let context = ctx.context(scope);
-  let sandbox = ctx.sandbox(scope);
+  let Some(sandbox) = ctx.sandbox(scope) else {
+    return v8::Intercepted::No;
+  };
+
   let context_scope = &mut v8::ContextScope::new(scope, context);
   if !sandbox.delete_index(context_scope, index).unwrap_or(false) {
     return v8::Intercepted::No;

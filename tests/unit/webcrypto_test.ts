@@ -2046,23 +2046,42 @@ Deno.test(async function p521Generate() {
   assert(key.publicKey instanceof CryptoKey);
 });
 
-Deno.test(async function invalidEcPointDataError() {
-  await assertRejects(async () => {
-    await crypto.subtle
-      .importKey(
-        "pkcs8",
-        // deno-fmt-ignore
-        new Uint8Array([
-          48, 102, 2, 1, 0, 48, 19, 6, 7, 42, 134, 72, 206, 61, 2, 1, 6, 8, 42, 134,
-          72, 206, 61, 3, 1, 7, 4, 76, 48, 74, 2, 1, 1, 4, 32, 255, 255, 255, 255,
-          0, 0, 0, 0, 255, 255, 255, 255, 255, 255, 255, 255, 188, 230, 250, 173,
-          167, 23, 158, 132, 243, 185, 202, 194, 252, 99, 37, 81, 161, 35, 3, 33, 0,
-          0, 255, 255, 255, 0, 0, 0, 0, 255, 255, 255, 255, 255, 255, 255, 255, 188,
-          230, 250, 173, 167, 23, 158, 132, 243, 185, 202, 194, 252, 99, 37, 81,
-        ]),
-        { name: "ECDSA", namedCurve: "P-256" },
-        true,
-        ["sign"],
-      );
-  }, DOMException);
+Deno.test(async function x25519SharedSecret() {
+  const alicesKeyPair = await crypto.subtle.generateKey(
+    {
+      name: "X25519",
+    },
+    false,
+    ["deriveBits"],
+  ) as CryptoKeyPair;
+
+  const bobsKeyPair = await crypto.subtle.generateKey(
+    {
+      name: "X25519",
+    },
+    false,
+    ["deriveBits"],
+  ) as CryptoKeyPair;
+
+  const sharedSecret1 = await crypto.subtle.deriveBits(
+    {
+      name: "X25519",
+      public: bobsKeyPair.publicKey,
+    },
+    alicesKeyPair.privateKey,
+    128,
+  );
+
+  const sharedSecret2 = await crypto.subtle.deriveBits(
+    {
+      name: "X25519",
+      public: alicesKeyPair.publicKey,
+    },
+    bobsKeyPair.privateKey,
+    128,
+  );
+
+  assertEquals(sharedSecret1.byteLength, sharedSecret2.byteLength);
+  assertEquals(sharedSecret1.byteLength, 16);
+  assertEquals(new Uint8Array(sharedSecret1), new Uint8Array(sharedSecret2));
 });

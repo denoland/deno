@@ -29,6 +29,8 @@ const _configuration = Symbol("[[configuration]]");
 const _canvas = Symbol("[[canvas]]");
 const _currentTexture = Symbol("[[currentTexture]]");
 const _present = Symbol("[[present]]");
+const _dim = Symbol("[[dimensions]]");
+
 class GPUCanvasContext {
   /** @type {number} */
   [_surfaceRid];
@@ -36,6 +38,7 @@ class GPUCanvasContext {
   [_canvas];
   /** @type {GPUTexture | undefined} */
   [_currentTexture];
+  [_dim];
 
   get canvas() {
     webidl.assertBranded(this, GPUCanvasContextPrototype);
@@ -69,8 +72,8 @@ class GPUCanvasContext {
       format: configuration.format,
       viewFormats: configuration.viewFormats,
       usage: configuration.usage,
-      width: configuration.width,
-      height: configuration.height,
+      width: this[_dim].width,
+      height: this[_dim].height,
       alphaMode: configuration.alphaMode,
     });
 
@@ -92,7 +95,7 @@ class GPUCanvasContext {
       "Failed to execute 'getCurrentTexture' on 'GPUCanvasContext'";
 
     if (this[_configuration] === null) {
-      throw new DOMException("context is not configured.", "InvalidStateError");
+      throw new DOMException("Context is not configured", "InvalidStateError");
     }
     const { createGPUTexture, assertDevice } = loadWebGPU();
 
@@ -110,8 +113,8 @@ class GPUCanvasContext {
     const texture = createGPUTexture(
       {
         size: {
-          width: this[_configuration].width,
-          height: this[_configuration].height,
+          width: this[_dim].width,
+          height: this[_dim].height,
           depthOrArrayLayers: 1,
         },
         mipLevelCount: 1,
@@ -163,6 +166,8 @@ function createCanvasContext(options) {
   const canvasContext = webidl.createBranded(GPUCanvasContext);
   canvasContext[_surfaceRid] = options.surfaceRid;
   canvasContext[_canvas] = options.canvas;
+  canvasContext[_dim] = { width: options.width, height: options.height };
+
   return canvasContext;
 }
 
@@ -172,16 +177,34 @@ function createCanvasContext(options) {
 class UnsafeWindowSurface {
   #ctx;
   #surfaceRid;
+  #options;
 
-  constructor(system, win, display) {
-    this.#surfaceRid = op_webgpu_surface_create(system, win, display);
+  constructor(options) {
+    if (typeof options !== "object") {
+      throw new TypeError("options must be provided.");
+    }
+    if (
+      typeof options.width !== "number" || typeof options.height !== "number"
+    ) {
+      throw new TypeError("width and height must be provided.");
+    }
+
+    this.#surfaceRid = op_webgpu_surface_create(
+      options.system,
+      options.windowHandle,
+      options.displayHandle,
+    );
+    this.#options = options;
   }
 
   getContext(context) {
     if (context !== "webgpu") {
-      throw new TypeError("Only 'webgpu' context is supported.");
+      throw new TypeError("Only 'webgpu' context is supported");
     }
-    this.#ctx = createCanvasContext({ surfaceRid: this.#surfaceRid });
+    this.#ctx = createCanvasContext({
+      surfaceRid: this.#surfaceRid,
+      ...this.#options,
+    });
     return this.#ctx;
   }
 

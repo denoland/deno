@@ -25,6 +25,7 @@ import {
   assertThrows,
   fail,
 } from "@std/assert";
+import { assertSpyCall, assertSpyCalls, spy } from "@std/testing/mock";
 import { stripAnsiCode } from "@std/fmt/colors";
 import * as path from "@std/path";
 import { delay } from "@std/async/delay";
@@ -234,6 +235,33 @@ Deno.test({
       await process.status;
     } finally {
       clearTimeout(testTimeout);
+    }
+  },
+});
+
+Deno.test({
+  name: "process.on - ignored signals on windows",
+  ignore: Deno.build.os !== "windows",
+  fn() {
+    const ignoredSignals = ["SIGHUP", "SIGUSR1", "SIGUSR2"];
+
+    for (const signal of ignoredSignals) {
+      using consoleSpy = spy(console, "warn");
+      const handler = () => {};
+      process.on(signal, handler);
+      process.off(signal, handler);
+      assertSpyCall(consoleSpy, 0, {
+        args: [`Ignoring signal "${signal}" on Windows`],
+      });
+    }
+
+    {
+      using consoleSpy = spy(console, "warn");
+      const handler = () => {};
+      process.on("SIGTERM", handler);
+      process.off("SIGTERM", handler);
+      // No warning is made for SIGTERM
+      assertSpyCalls(consoleSpy, 0);
     }
   },
 });

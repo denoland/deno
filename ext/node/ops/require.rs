@@ -3,7 +3,6 @@
 use deno_core::anyhow::Context;
 use deno_core::error::generic_error;
 use deno_core::error::AnyError;
-use deno_core::normalize_path;
 use deno_core::op2;
 use deno_core::url::Url;
 use deno_core::v8;
@@ -12,6 +11,7 @@ use deno_core::ModuleSpecifier;
 use deno_core::OpState;
 use deno_fs::FileSystemRc;
 use deno_package_json::PackageJsonRc;
+use deno_path_util::normalize_path;
 use node_resolver::NodeModuleKind;
 use node_resolver::NodeResolutionMode;
 use node_resolver::REQUIRE_CONDITIONS;
@@ -104,7 +104,7 @@ where
   } else {
     let current_dir =
       &(fs.cwd().map_err(AnyError::from)).context("Unable to get CWD")?;
-    deno_core::normalize_path(current_dir.join(from))
+    deno_path_util::normalize_path(current_dir.join(from))
   };
 
   ensure_read_permission::<P>(state, &from)?;

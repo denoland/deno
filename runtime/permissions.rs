@@ -6,12 +6,13 @@ use std::path::PathBuf;
 use deno_core::anyhow::bail;
 use deno_core::anyhow::Context;
 use deno_core::error::AnyError;
-use deno_core::normalize_path;
+use deno_path_util::normalize_path;
 use deno_permissions::AllowRunDescriptor;
 use deno_permissions::AllowRunDescriptorParseResult;
 use deno_permissions::DenyRunDescriptor;
 use deno_permissions::EnvDescriptor;
 use deno_permissions::FfiDescriptor;
+use deno_permissions::ImportDescriptor;
 use deno_permissions::NetDescriptor;
 use deno_permissions::PathQueryDescriptor;
 use deno_permissions::ReadDescriptor;
@@ -75,6 +76,13 @@ impl deno_permissions::PermissionDescriptorParser
     NetDescriptor::parse(text)
   }
 
+  fn parse_import_descriptor(
+    &self,
+    text: &str,
+  ) -> Result<ImportDescriptor, AnyError> {
+    ImportDescriptor::parse(text)
+  }
+
   fn parse_env_descriptor(
     &self,
     text: &str,
@@ -93,7 +101,7 @@ impl deno_permissions::PermissionDescriptorParser
     if text.is_empty() {
       Err(AnyError::msg("Empty sys not allowed"))
     } else {
-      Ok(SysDescriptor(text.to_string()))
+      Ok(SysDescriptor::parse(text.to_string())?)
     }
   }
 

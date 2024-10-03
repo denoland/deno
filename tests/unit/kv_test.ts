@@ -707,7 +707,7 @@ dbTest("list prefix with start equal to prefix", async (db) => {
   await assertRejects(
     async () => await collect(db.list({ prefix: ["a"], start: ["a"] })),
     TypeError,
-    "start key is not in the keyspace defined by prefix",
+    "Start key is not in the keyspace defined by prefix",
   );
 });
 
@@ -716,7 +716,7 @@ dbTest("list prefix with start out of bounds", async (db) => {
   await assertRejects(
     async () => await collect(db.list({ prefix: ["b"], start: ["a"] })),
     TypeError,
-    "start key is not in the keyspace defined by prefix",
+    "Start key is not in the keyspace defined by prefix",
   );
 });
 
@@ -740,7 +740,7 @@ dbTest("list prefix with end equal to prefix", async (db) => {
   await assertRejects(
     async () => await collect(db.list({ prefix: ["a"], end: ["a"] })),
     TypeError,
-    "end key is not in the keyspace defined by prefix",
+    "End key is not in the keyspace defined by prefix",
   );
 });
 
@@ -749,7 +749,7 @@ dbTest("list prefix with end out of bounds", async (db) => {
   await assertRejects(
     async () => await collect(db.list({ prefix: ["a"], end: ["b"] })),
     TypeError,
-    "end key is not in the keyspace defined by prefix",
+    "End key is not in the keyspace defined by prefix",
   );
 });
 
@@ -1061,7 +1061,7 @@ dbTest("list range with start greater than end", async (db) => {
   await assertRejects(
     async () => await collect(db.list({ start: ["b"], end: ["a"] })),
     TypeError,
-    "start key is greater than end key",
+    "Start key is greater than end key",
   );
 });
 
@@ -1177,13 +1177,13 @@ dbTest("key size limit", async (db) => {
   await assertRejects(
     async () => await db.set([firstInvalidKey], 1),
     TypeError,
-    "key too large for write (max 2048 bytes)",
+    "Key too large for write (max 2048 bytes)",
   );
 
   await assertRejects(
     async () => await db.get([firstInvalidKey]),
     TypeError,
-    "key too large for read (max 2049 bytes)",
+    "Key too large for read (max 2049 bytes)",
   );
 });
 
@@ -1201,7 +1201,7 @@ dbTest("value size limit", async (db) => {
   await assertRejects(
     async () => await db.set(["b"], firstInvalidValue),
     TypeError,
-    "value too large (max 65536 bytes)",
+    "Value too large (max 65536 bytes)",
   );
 });
 
@@ -1225,7 +1225,7 @@ dbTest("operation size limit", async (db) => {
   await assertRejects(
     async () => await db.getMany(firstInvalidKeys),
     TypeError,
-    "too many ranges (max 10)",
+    "Too many ranges (max 10)",
   );
 
   const res2 = await collect(db.list({ prefix: ["a"] }, { batchSize: 1000 }));
@@ -1234,7 +1234,7 @@ dbTest("operation size limit", async (db) => {
   await assertRejects(
     async () => await collect(db.list({ prefix: ["a"] }, { batchSize: 1001 })),
     TypeError,
-    "too many entries (max 1000)",
+    "Too many entries (max 1000)",
   );
 
   // when batchSize is not specified, limit is used but is clamped to 500
@@ -1271,7 +1271,7 @@ dbTest("operation size limit", async (db) => {
         .commit();
     },
     TypeError,
-    "too many checks (max 100)",
+    "Too many checks (max 100)",
   );
 
   const validMutateKeys: Deno.KvKey[] = new Array(1000).fill(0).map((
@@ -1311,7 +1311,7 @@ dbTest("operation size limit", async (db) => {
         .commit();
     },
     TypeError,
-    "too many mutations (max 1000)",
+    "Too many mutations (max 1000)",
   );
 });
 
@@ -1339,7 +1339,7 @@ dbTest("total mutation size limit", async (db) => {
       await atomic.commit();
     },
     TypeError,
-    "total mutation size too large (max 819200 bytes)",
+    "Total mutation size too large (max 819200 bytes)",
   );
 });
 
@@ -1354,7 +1354,7 @@ dbTest("total key size limit", async (db) => {
   await assertRejects(
     () => atomic.commit(),
     TypeError,
-    "total key size too large (max 81920 bytes)",
+    "Total key size too large (max 81920 bytes)",
   );
 });
 
@@ -1655,7 +1655,7 @@ queueTest("queue retries with backoffSchedule", async (db) => {
   let count = 0;
   const listener = db.listenQueue((_msg) => {
     count += 1;
-    throw new TypeError("dequeue error");
+    throw new TypeError("Dequeue error");
   });
   try {
     await db.enqueue("test", { backoffSchedule: [1] });
@@ -1945,20 +1945,20 @@ Deno.test({
   },
 });
 
-dbTest("invalid backoffSchedule", async (db) => {
+dbTest("Invalid backoffSchedule", async (db) => {
   await assertRejects(
     async () => {
       await db.enqueue("foo", { backoffSchedule: [1, 1, 1, 1, 1, 1] });
     },
     TypeError,
-    "invalid backoffSchedule",
+    "Invalid backoffSchedule",
   );
   await assertRejects(
     async () => {
       await db.enqueue("foo", { backoffSchedule: [3600001] });
     },
     TypeError,
-    "invalid backoffSchedule",
+    "Invalid backoffSchedule",
   );
 });
 

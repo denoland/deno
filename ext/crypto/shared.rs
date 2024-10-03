@@ -98,11 +98,9 @@ impl V8RawKeyData {
 
   pub fn as_ec_public_key_p256(&self) -> Result<p256::EncodedPoint, AnyError> {
     match self {
-      V8RawKeyData::Public(data) => {
-        // public_key is a serialized EncodedPoint
-        p256::EncodedPoint::from_bytes(data)
-          .map_err(|_| type_error("expected valid public EC key"))
-      }
+      V8RawKeyData::Public(data) => p256::PublicKey::from_sec1_bytes(data)
+        .map(|p| p.to_encoded_point(false))
+        .map_err(|_| type_error("expected valid public EC key")),
       V8RawKeyData::Private(data) => {
         let signing_key = p256::SecretKey::from_pkcs8_der(data)
           .map_err(|_| type_error("expected valid private EC key"))?;
@@ -115,13 +113,28 @@ impl V8RawKeyData {
 
   pub fn as_ec_public_key_p384(&self) -> Result<p384::EncodedPoint, AnyError> {
     match self {
+      V8RawKeyData::Public(data) => p384::PublicKey::from_sec1_bytes(data)
+        .map(|p| p.to_encoded_point(false))
+        .map_err(|_| type_error("expected valid public EC key")),
+      V8RawKeyData::Private(data) => {
+        let signing_key = p384::SecretKey::from_pkcs8_der(data)
+          .map_err(|_| type_error("expected valid private EC key"))?;
+        Ok(signing_key.public_key().to_encoded_point(false))
+      }
+      // Should never reach here.
+      V8RawKeyData::Secret(_) => unreachable!(),
+    }
+  }
+
+  pub fn as_ec_public_key_p521(&self) -> Result<p521::EncodedPoint, AnyError> {
+    match self {
       V8RawKeyData::Public(data) => {
         // public_key is a serialized EncodedPoint
-        p384::EncodedPoint::from_bytes(data)
+        p521::EncodedPoint::from_bytes(data)
           .map_err(|_| type_error("expected valid public EC key"))
       }
       V8RawKeyData::Private(data) => {
-        let signing_key = p384::SecretKey::from_pkcs8_der(data)
+        let signing_key = p521::SecretKey::from_pkcs8_der(data)
           .map_err(|_| type_error("expected valid private EC key"))?;
         Ok(signing_key.public_key().to_encoded_point(false))
       }

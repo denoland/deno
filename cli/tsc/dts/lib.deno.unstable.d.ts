@@ -28,9 +28,13 @@ declare namespace Deno {
    */
   export class UnsafeWindowSurface {
     constructor(
-      system: "cocoa" | "win32" | "x11" | "wayland",
-      windowHandle: Deno.PointerValue<unknown>,
-      displayHandle: Deno.PointerValue<unknown>,
+      options: {
+        system: "cocoa" | "win32" | "x11" | "wayland";
+        windowHandle: Deno.PointerValue<unknown>;
+        displayHandle: Deno.PointerValue<unknown>;
+        width: number;
+        height: number;
+      },
     );
     getContext(context: "webgpu"): GPUCanvasContext;
     present(): void;
@@ -208,7 +212,7 @@ declare namespace Deno {
    * @category Cloud
    * @experimental
    */
-  export function openKv(path?: string): Promise<Deno.Kv>;
+  export function openKv(path?: string): Promise<Kv>;
 
   /** **UNSTABLE**: New API, yet to be vetted.
    *
@@ -471,7 +475,11 @@ declare namespace Deno {
    * @category Cloud
    * @experimental
    */
-  export type KvEntry<T> = { key: KvKey; value: T; versionstamp: string };
+  export interface KvEntry<T> {
+    key: KvKey;
+    value: T;
+    versionstamp: string;
+  }
 
   /**
    * **UNSTABLE**: New API, yet to be vetted.
@@ -676,7 +684,7 @@ declare namespace Deno {
       value: unknown,
       options?: {
         delay?: number;
-        keysIfUndelivered?: Deno.KvKey[];
+        keysIfUndelivered?: KvKey[];
         backoffSchedule?: number[];
       },
     ): this;
@@ -907,7 +915,7 @@ declare namespace Deno {
       value: unknown,
       options?: {
         delay?: number;
-        keysIfUndelivered?: Deno.KvKey[];
+        keysIfUndelivered?: KvKey[];
         backoffSchedule?: number[];
       },
     ): Promise<KvCommitResult>;
@@ -1037,10 +1045,10 @@ declare namespace Deno {
      * @category Jupyter
      * @experimental
      */
-    export type VegaObject = {
+    export interface VegaObject {
       $schema: string;
       [key: string]: unknown;
-    };
+    }
 
     /**
      * A collection of supported media types and data for Jupyter frontends.
@@ -1048,7 +1056,7 @@ declare namespace Deno {
      * @category Jupyter
      * @experimental
      */
-    export type MediaBundle = {
+    export interface MediaBundle {
       "text/plain"?: string;
       "text/html"?: string;
       "image/svg+xml"?: string;
@@ -1074,7 +1082,7 @@ declare namespace Deno {
 
       // Must support a catch all for custom media types / mimetypes
       [key: string]: string | object | undefined;
-    };
+    }
 
     /**
      * @category Jupyter
@@ -1086,9 +1094,9 @@ declare namespace Deno {
      * @category Jupyter
      * @experimental
      */
-    export type Displayable = {
+    export interface Displayable {
       [$display]: () => MediaBundle | Promise<MediaBundle>;
-    };
+    }
 
     /**
      * Display function for Jupyter Deno Kernel.
@@ -1213,7 +1221,11 @@ declare namespace Deno {
         buffers?: Uint8Array[];
       },
     ): Promise<void>;
+
+    export {}; // only export exports
   }
+
+  export {}; // only export exports
 }
 
 /** **UNSTABLE**: New API, yet to be vetted.
@@ -1221,7 +1233,7 @@ declare namespace Deno {
  * @category Workers
  * @experimental
  */
-declare interface WorkerOptions {
+interface WorkerOptions {
   /** **UNSTABLE**: New API, yet to be vetted.
    *
    * Configure permissions options to change the level of access the worker will
@@ -1262,7 +1274,7 @@ declare interface WorkerOptions {
  * @category WebSockets
  * @experimental
  */
-declare interface WebSocketStreamOptions {
+interface WebSocketStreamOptions {
   protocols?: string[];
   signal?: AbortSignal;
   headers?: HeadersInit;
@@ -1273,7 +1285,7 @@ declare interface WebSocketStreamOptions {
  * @category WebSockets
  * @experimental
  */
-declare interface WebSocketConnection {
+interface WebSocketConnection {
   readable: ReadableStream<string | Uint8Array>;
   writable: WritableStream<string | Uint8Array>;
   extensions: string;
@@ -1285,7 +1297,7 @@ declare interface WebSocketConnection {
  * @category WebSockets
  * @experimental
  */
-declare interface WebSocketCloseInfo {
+interface WebSocketCloseInfo {
   code?: number;
   reason?: string;
 }
@@ -1296,7 +1308,7 @@ declare interface WebSocketCloseInfo {
  * @category WebSockets
  * @experimental
  */
-declare interface WebSocketStream {
+interface WebSocketStream {
   url: string;
   opened: Promise<WebSocketConnection>;
   closed: Promise<WebSocketCloseInfo>;
@@ -1320,7 +1332,7 @@ declare var WebSocketStream: {
  * @category WebSockets
  * @experimental
  */
-declare interface WebSocketError extends DOMException {
+interface WebSocketError extends DOMException {
   readonly closeCode: number;
   readonly reason: string;
 }
@@ -2880,7 +2892,7 @@ declare namespace Temporal {
  * @category Temporal
  * @experimental
  */
-declare interface Date {
+interface Date {
   toTemporalInstant(): Temporal.Instant;
 }
 
@@ -2982,7 +2994,7 @@ declare namespace Intl {
  * @category Platform
  * @experimental
  */
-declare interface Float16Array {
+interface Float16Array {
   /**
    * The size in bytes of each element in the array.
    */
@@ -3297,7 +3309,7 @@ declare interface Float16Array {
  * @category Platform
  * @experimental
  */
-declare interface Float16ArrayConstructor {
+interface Float16ArrayConstructor {
   readonly prototype: Float16Array;
   new (length: number): Float16Array;
   new (array: ArrayLike<number> | ArrayBufferLike): Float16Array;
@@ -3346,7 +3358,7 @@ declare var Float16Array: Float16ArrayConstructor;
  * @category Platform
  * @experimental
  */
-declare interface Float16Array {
+interface Float16Array {
   [Symbol.iterator](): IterableIterator<number>;
   /**
    * Returns an array of key, value pairs for every entry in the array
@@ -3366,7 +3378,7 @@ declare interface Float16Array {
  * @category Platform
  * @experimental
  */
-declare interface Float16Constructor {
+interface Float16Constructor {
   new (elements: Iterable<number>): Float16Array;
 
   /**
@@ -3386,7 +3398,7 @@ declare interface Float16Constructor {
  * @category Platform
  * @experimental
  */
-declare interface Float16Array {
+interface Float16Array {
   readonly [Symbol.toStringTag]: "Float16Array";
 }
 
@@ -3394,7 +3406,7 @@ declare interface Float16Array {
  * @category Platform
  * @experimental
  */
-declare interface Float16Array {
+interface Float16Array {
   /**
    * Determines whether an array includes a certain element, returning true or false as appropriate.
    * @param searchElement The element to search for.
@@ -3407,7 +3419,7 @@ declare interface Float16Array {
  * @category Platform
  * @experimental
  */
-declare interface Float16ArrayConstructor {
+interface Float16ArrayConstructor {
   new (): Float16Array;
 }
 
@@ -3415,7 +3427,7 @@ declare interface Float16ArrayConstructor {
  * @category Platform
  * @experimental
  */
-declare interface Float16Array {
+interface Float16Array {
   /**
    * Returns the item located at the specified index.
    * @param index The zero-based index of the desired code unit. A negative index will count back from the last item.
@@ -3427,7 +3439,7 @@ declare interface Float16Array {
  * @category Platform
  * @experimental
  */
-declare interface Float16Array {
+interface Float16Array {
   /**
    * Returns the value of the last element in the array where predicate is true, and undefined
    * otherwise.
@@ -3503,7 +3515,7 @@ declare interface Float16Array {
  * @category Platform
  * @experimental
  */
-declare interface DataView {
+interface DataView {
   /**
    * Gets the Float16 value at the specified byte offset from the start of the view. There is
    * no alignment constraint; multi-byte values may be fetched from any offset.

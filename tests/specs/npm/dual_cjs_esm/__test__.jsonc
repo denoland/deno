@@ -1,0 +1,4 @@
+{
+  "args": "run -A --quiet dual_cjs_esm/main.ts",
+  "output": "dual_cjs_esm/main.out"
+}

@@ -1,12 +1,12 @@
 {
   "tests": {
     "true": {
-      "args": "run --config=true.json main.ts",
+      "args": "run --allow-import --config=true.json main.ts",
       "output": "true.main.out",
       "exitCode": 10
     },
     "false": {
-      "args": "run --config=false.json main.ts",
+      "args": "run --allow-import --config=false.json main.ts",
       "output": "false.main.out"
     }
   }

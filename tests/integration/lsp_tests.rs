@@ -364,13 +364,6 @@ fn lsp_import_map_remote() {
     .build();
   let temp_dir = context.temp_dir();
   temp_dir.write(
-    "deno.json",
-    json!({
-      "importMap": "http://localhost:4545/import_maps/import_map_remote.json",
-    })
-    .to_string(),
-  );
-  temp_dir.write(
     "file.ts",
     r#"
       import { printHello } from "print_hello";
@@ -897,7 +890,7 @@ fn lsp_format_vendor_path() {
   // put this dependency in the global cache
   context
     .new_command()
-    .args("cache http://localhost:4545/run/002_hello.ts")
+    .args("cache --allow-import http://localhost:4545/run/002_hello.ts")
     .run()
     .skip_output_check();
 
@@ -5914,6 +5907,135 @@ fn lsp_code_actions_deno_cache_all() {
 }
 
 #[test]
+fn lsp_code_actions_deno_types_for_npm() {
+  let context = TestContextBuilder::new()
+    .use_http_server()
+    .use_temp_cwd()
+    .add_npm_env_vars()
+    .build();
+  let temp_dir = context.temp_dir();
+  temp_dir.write("deno.json", json!({}).to_string());
+  temp_dir.write(
+    "package.json",
+    json!({
+      "dependencies": {
+        "react": "^18.2.0",
+        "@types/react": "^18.3.10",
+      },
+    })
+    .to_string(),
+  );
+  temp_dir.create_dir_all("managed_node_modules");
+  temp_dir.write(
+    "managed_node_modules/deno.json",
+    json!({
+      "nodeModulesDir": false,
+    })
+    .to_string(),
+  );
+  context.run_npm("install");
+  let mut client = context.new_lsp_command().build();
+  client.initialize_default();
+  client.did_open(json!({
+    "textDocument": {
+      "uri": temp_dir.url().join("file.ts").unwrap(),
+      "languageId": "typescript",
+      "version": 1,
+      "text": "import \"react\";\n",
+    }
+  }));
+  let res = client.write_request(
+    "textDocument/codeAction",
+    json!({
+      "textDocument": {
+        "uri": temp_dir.url().join("file.ts").unwrap(),
+      },
+      "range": {
+        "start": { "line": 0, "character": 7 },
+        "end": { "line": 0, "character": 7 },
+      },
+      "context": { "diagnostics": [], "only": ["quickfix"] },
+    }),
+  );
+  assert_eq!(
+    res,
+    json!([
+      {
+        "title": "Add @deno-types directive for \"@types/react\"",
+        "kind": "quickfix",
+        "edit": {
+          "changes": {
+            temp_dir.url().join("file.ts").unwrap(): [
+              {
+                "range": {
+                  "start": { "line": 0, "character": 0 },
+                  "end": { "line": 0, "character": 0 },
+                },
+                "newText": "// @deno-types=\"@types/react\"\n",
+              },
+            ],
+          },
+        },
+      },
+    ]),
+  );
+  client.did_open(json!({
+    "textDocument": {
+      "uri": temp_dir.url().join("managed_node_modules/file.ts").unwrap(),
+      "languageId": "typescript",
+      "version": 1,
+      "text": "import \"npm:react\";\n",
+    }
+  }));
+  client.write_request(
+    "workspace/executeCommand",
+    json!({
+      "command": "deno.cache",
+      "arguments": [
+        [],
+        temp_dir.url().join("managed_node_modules/file.ts").unwrap(),
+      ],
+    }),
+  );
+  let res = client.write_request(
+    "textDocument/codeAction",
+    json!({
+      "textDocument": {
+        "uri": temp_dir.url().join("managed_node_modules/file.ts").unwrap(),
+      },
+      "range": {
+        "start": { "line": 0, "character": 7 },
+        "end": { "line": 0, "character": 7 },
+      },
+      "context": { "diagnostics": [], "only": ["quickfix"] },
+    }),
+  );
+  assert_eq!(
+    res,
+    json!([
+      {
+        "title": "Add @deno-types directive for \"npm:@types/react@^18.3.10\"",
+        "kind": "quickfix",
+        "edit": {
+          "changes": {
+            temp_dir.url().join("managed_node_modules/file.ts").unwrap(): [
+              {
+                "range": {
+                  "start": { "line": 0, "character": 0 },
+                  "end": { "line": 0, "character": 0 },
+                },
+                "newText": "// @deno-types=\"npm:@types/react@^18.3.10\"\n",
+              },
+            ],
+          },
+        },
+      },
+    ]),
+  );
+  client.shutdown();
+}
+
+#[test]
 fn lsp_cache_on_save() {
   let context = TestContextBuilder::new()
     .use_http_server()
@@ -10597,13 +10719,6 @@ fn lsp_format_markdown() {
 fn lsp_format_html() {
   let context = TestContextBuilder::new().use_temp_cwd().build();
   let temp_dir = context.temp_dir();
-  temp_dir.write(
-    "deno.json",
-    json!({
-      "unstable": ["fmt-html"],
-    })
-    .to_string(),
-  );
   let html_file =
     source_file(temp_dir.path().join("file.html"), "  <html></html>");
   let mut client = context.new_lsp_command().build();
@@ -10644,13 +10759,6 @@ fn lsp_format_html() {
 fn lsp_format_css() {
   let context = TestContextBuilder::new().use_temp_cwd().build();
   let temp_dir = context.temp_dir();
-  temp_dir.write(
-    "deno.json",
-    json!({
-      "unstable": ["fmt-css"],
-    })
-    .to_string(),
-  );
   let css_file = source_file(temp_dir.path().join("file.css"), "  foo {}");
   let mut client = context.new_lsp_command().build();
   client.initialize_default();
@@ -10690,13 +10798,6 @@ fn lsp_format_css() {
 fn lsp_format_yaml() {
   let context = TestContextBuilder::new().use_temp_cwd().build();
   let temp_dir = context.temp_dir();
-  temp_dir.write(
-    "deno.json",
-    json!({
-      "unstable": ["fmt-yaml"],
-    })
-    .to_string(),
-  );
   let yaml_file = source_file(temp_dir.path().join("file.yaml"), "  foo: 1");
   let mut client = context.new_lsp_command().build();
   client.initialize_default();
