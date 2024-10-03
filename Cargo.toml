@@ -51,7 +51,7 @@ deno_core = { version = "0.311.0" }
 deno_bench_util = { version = "0.164.0", path = "./bench_util" }
 deno_lockfile = "=0.23.1"
 deno_media_type = { version = "0.1.4", features = ["module_specifier"] }
-deno_npm = "=0.25.2"
+deno_npm = "=0.25.3"
 deno_path_util = "=0.2.0"
 deno_permissions = { version = "0.30.0", path = "./runtime/permissions" }
 deno_runtime = { version = "0.179.0", path = "./runtime" }
