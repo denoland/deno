@@ -18,6 +18,7 @@ import {
   checkPy3Available,
   escapeLoneSurrogates,
   Expectation,
+  EXPECTATION_PATH,
   generateRunInfo,
   getExpectation,
   getExpectFailForCase,
@@ -30,6 +31,7 @@ import {
   noIgnore,
   quiet,
   rest,
+  runGitDiff,
   runPy,
   updateManifest,
   wptreport,
@@ -256,7 +258,56 @@ async function run() {
     await Deno.writeTextFile(wptreport, JSON.stringify(report) + "\n");
   }
 
+  const resultTests: Record<
+    string,
+    { passed: string[]; failed: string[]; testSucceeded: boolean }
+  > = {};
+  for (const { test, result } of results) {
+    if (!resultTests[test.path]) {
+      resultTests[test.path] = {
+        passed: [],
+        failed: [],
+        testSucceeded: result.status === 0 && result.harnessStatus !== null,
+      };
+    }
+    for (const case_ of result.cases) {
+      if (case_.passed) {
+        resultTests[test.path].passed.push(case_.name);
+      } else {
+        resultTests[test.path].failed.push(case_.name);
+      }
+    }
+  }
+
+  const currentExpectation = getExpectation();
+
+  for (const [path, result] of Object.entries(resultTests)) {
+    const { passed, failed, testSucceeded } = result;
+    let finalExpectation: boolean | string[];
+    if (failed.length == 0 && testSucceeded) {
+      finalExpectation = true;
+    } else if (failed.length > 0 && passed.length > 0 && testSucceeded) {
+      finalExpectation = failed;
+    } else {
+      finalExpectation = false;
+    }
+
+    insertExpectation(
+      path.slice(1).split("/"),
+      currentExpectation,
+      finalExpectation,
+    );
+  }
+
+  const tmp = Deno.makeTempFileSync();
+  saveExpectation(currentExpectation, tmp);
+
   const code = reportFinal(results, endTime - startTime);
+
+  // Run git diff to see what changed
+  await runGitDiff([EXPECTATION_PATH, tmp]);
+  Deno.removeSync(tmp);
+
   Deno.exit(code);
 }
 
