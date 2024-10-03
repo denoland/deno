@@ -1074,30 +1074,24 @@ Deno.test("[node/https] node:https exports globalAgent", async () => {
   );
 });
 
-Deno.test(
-  "[node/http] node:http request.setHeader(header, null) doesn't throw",
+Deno.test("[node/http] node:http request.setHeader(header, null) doesn't throw", () => {
   {
-    ignore: true,
-  },
-  () => {
-    {
-      const req = http.request("http://localhost:4545/");
-      req.on("error", () => {});
-      // @ts-expect-error - null is not a valid header value
-      req.setHeader("foo", null);
-      req.end();
-      req.destroy();
-    }
-    {
-      const req = https.request("https://localhost:4545/");
-      req.on("error", () => {});
-      // @ts-expect-error - null is not a valid header value
-      req.setHeader("foo", null);
-      req.end();
-      req.destroy();
-    }
-  },
-);
+    const req = http.request("http://localhost:4545/");
+    req.on("error", () => {});
+    // @ts-expect-error - null is not a valid header value
+    req.setHeader("foo", null);
+    req.end();
+    req.destroy();
+  }
+  {
+    const req = https.request("https://localhost:4545/");
+    req.on("error", () => {});
+    // @ts-expect-error - null is not a valid header value
+    req.setHeader("foo", null);
+    req.end();
+    req.destroy();
+  }
+});
 
 Deno.test("[node/http] ServerResponse getHeader", async () => {
   const { promise, resolve } = Promise.withResolvers<void>();
