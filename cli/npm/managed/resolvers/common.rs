@@ -127,7 +127,7 @@ impl RegistryReadPermissionChecker {
       if let Some(registry_path_canon) = canonicalize(&self.registry_path)? {
         if let Some(path_canon) = canonicalize(path)? {
           if path_canon.starts_with(registry_path_canon) {
-            return Ok(Cow::Borrowed(path));
+            return Ok(Cow::Owned(path_canon));
           }
         } else if path.starts_with(registry_path_canon)
           || path.starts_with(&self.registry_path)
