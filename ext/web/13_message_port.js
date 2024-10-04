@@ -42,7 +42,10 @@ import {
 import { isDetachedBuffer } from "./06_streams.js";
 import { DOMException } from "./01_dom_exception.js";
 
-let messageEventListenerCount = 0;
+// counter of how many message ports are actively refed
+// either due to the existence of "message" event listeners or
+// explicit calls to ref/unref (in the case of node message ports)
+let refedMessagePortsCount = 0;
 
 class MessageChannel {
   /** @type {MessagePort} */
@@ -94,6 +97,7 @@ const MessagePortReceiveMessageOnPortSymbol = Symbol(
 );
 const _enabled = Symbol("enabled");
 const _refed = Symbol("refed");
+const _messageEventListenerCount = Symbol("messageEventListenerCount");
 const nodeWorkerThreadCloseCb = Symbol("nodeWorkerThreadCloseCb");
 const nodeWorkerThreadCloseCbInvoked = Symbol("nodeWorkerThreadCloseCbInvoked");
 export const refMessagePort = Symbol("refMessagePort");
@@ -110,6 +114,9 @@ function createMessagePort(id) {
   port[core.hostObjectBrand] = core.hostObjectBrand;
   setEventTargetData(port);
   port[_id] = id;
+  port[_enabled] = false;
+  port[_messageEventListenerCount] = 0;
+  port[_refed] = false;
   return port;
 }
 
@@ -123,6 +130,7 @@ function nodeWorkerThreadMaybeInvokeCloseCb(port) {
   }
 }
 
+const _isRefed = Symbol("isRefed");
 const _dataPromise = Symbol("dataPromise");
 
 class MessagePort extends EventTarget {
@@ -133,6 +141,7 @@ class MessagePort extends EventTarget {
   [_refed] = false;
   /** @type {Promise<any> | undefined} */
   [_dataPromise] = undefined;
+  [_messageEventListenerCount] = 0;
 
   constructor() {
     super();
@@ -205,7 +214,7 @@ class MessagePort extends EventTarget {
           );
           if (
             typeof this[nodeWorkerThreadCloseCb] === "function" &&
-            (!this[_refed] || messageEventListenerCount === 0)
+            !this[_refed]
           ) {
             core.unrefOpPromise(this[_dataPromise]);
           }
@@ -248,15 +257,25 @@ class MessagePort extends EventTarget {
   }
 
   [refMessagePort](ref) {
-    if (ref && !this[_refed]) {
-      this[_refed] = true;
-      messageEventListenerCount++;
-    } else if (!ref && this[_refed]) {
-      this[_refed] = false;
-      if (
-        typeof this[nodeWorkerThreadCloseCb] == "function" && this[_dataPromise]
-      ) {
-        core.unrefOpPromise(this[_dataPromise]);
+    if (ref) {
+      if (!this[_refed]) {
+        refedMessagePortsCount++;
+        if (
+          this[_dataPromise]
+        ) {
+          core.refOpPromise(this[_dataPromise]);
+        }
+        this[_refed] = true;
+      }
+    } else if (!ref) {
+      if (this[_refed]) {
+        refedMessagePortsCount--;
+        if (
+          this[_dataPromise]
+        ) {
+          core.unrefOpPromise(this[_dataPromise]);
+        }
+        this[_refed] = false;
       }
     }
   }
@@ -272,15 +291,20 @@ class MessagePort extends EventTarget {
 
   removeEventListener(...args) {
     if (args[0] == "message") {
-      messageEventListenerCount--;
+      if (--this[_messageEventListenerCount] === 0 && this[_refed]) {
+        refedMessagePortsCount--;
+        this[_refed] = false;
+      }
     }
     super.removeEventListener(...new SafeArrayIterator(args));
   }
 
   addEventListener(...args) {
     if (args[0] == "message") {
-      messageEventListenerCount++;
-      if (!this[_refed]) this[_refed] = true;
+      if (++this[_messageEventListenerCount] === 1 && !this[_refed]) {
+        refedMessagePortsCount++;
+        this[_refed] = true;
+      }
     }
     super.addEventListener(...new SafeArrayIterator(args));
   }
@@ -479,12 +503,12 @@ function structuredClone(value, options) {
 export {
   deserializeJsMessageData,
   MessageChannel,
-  messageEventListenerCount,
   MessagePort,
   MessagePortIdSymbol,
   MessagePortPrototype,
   MessagePortReceiveMessageOnPortSymbol,
   nodeWorkerThreadCloseCb,
+  refedMessagePortsCount,
   serializeJsMessageData,
   structuredClone,
 };
