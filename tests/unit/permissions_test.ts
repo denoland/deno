@@ -167,19 +167,20 @@ Deno.test(
 Deno.test(
   { permissions: { read: [], write: [], ffi: [], run: [] } },
   function permissionURLSync() {
-  Deno.permissions.querySync({
-    name: "read",
-    path: new URL(".", import.meta.url),
-  });
-  Deno.permissions.querySync({
-    name: "write",
-    path: new URL(".", import.meta.url),
-  });
-  Deno.permissions.querySync({
-    name: "run",
-    command: new URL(".", import.meta.url),
-  });
-});
+    Deno.permissions.querySync({
+      name: "read",
+      path: new URL(".", import.meta.url),
+    });
+    Deno.permissions.querySync({
+      name: "write",
+      path: new URL(".", import.meta.url),
+    });
+    Deno.permissions.querySync({
+      name: "run",
+      command: new URL(".", import.meta.url),
+    });
+  },
+);
 
 Deno.test(async function permissionDescriptorValidation() {
   for (const value of [undefined, null, {}]) {
