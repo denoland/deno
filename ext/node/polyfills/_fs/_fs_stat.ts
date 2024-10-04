@@ -425,5 +425,5 @@ export function statSync(
 }
 
 function getPathname(path: string | URL) {
-  return typeof path === "string" : path : path.pathname;
+  return typeof path === "string" ? path : path.pathname;
 }
