@@ -100,22 +100,22 @@ where
 pub(crate) fn premultiply_alpha(
   image: DynamicImage,
 ) -> Result<DynamicImage, AnyError> {
-  match image.color() {
-    ColorType::La8 => Ok(DynamicImage::ImageLumaA8(process_premultiply_alpha(
-      image.as_luma_alpha8().unwrap(),
-    ))),
-    ColorType::La16 => Ok(DynamicImage::ImageLumaA16(
-      process_premultiply_alpha(image.as_luma_alpha16().unwrap()),
-    )),
-    ColorType::Rgba8 => Ok(DynamicImage::ImageRgba8(
-      process_premultiply_alpha(image.as_rgba8().unwrap()),
-    )),
-    ColorType::Rgba16 => Ok(DynamicImage::ImageRgba16(
-      process_premultiply_alpha(image.as_rgba16().unwrap()),
-    )),
-    ColorType::Rgb32F | ColorType::Rgba32F => {
+  match image {
+    DynamicImage::ImageLumaA8(image) => {
+      Ok(process_premultiply_alpha(&image).into())
+    }
+    DynamicImage::ImageLumaA16(image) => {
+      Ok(process_premultiply_alpha(&image).into())
+    }
+    DynamicImage::ImageRgba8(image) => {
+      Ok(process_premultiply_alpha(&image).into())
+    }
+    DynamicImage::ImageRgba16(image) => {
+      Ok(process_premultiply_alpha(&image).into())
+    }
+    DynamicImage::ImageRgb32F(_) | DynamicImage::ImageRgba32F(_) => {
       Err(type_error(image_error_message(
-        "processing un-premultiply alpha",
+        "processing premultiply alpha",
         NOT_SUPPORTED_BIT_DEPTH,
       )))
     }
@@ -231,36 +231,30 @@ where
 pub(crate) fn unpremultiply_alpha(
   image: DynamicImage,
 ) -> Result<DynamicImage, AnyError> {
-  match image.color() {
-    ColorType::La8 => Ok(DynamicImage::ImageLumaA8(
-      if is_premultiplied_alpha(image.as_luma_alpha8().unwrap()) {
-        process_unpremultiply_alpha(image.as_luma_alpha8().unwrap())
+  match image {
+    DynamicImage::ImageLumaA8(image) => Ok(if is_premultiplied_alpha(&image) {
+      process_unpremultiply_alpha(&image).into()
+    } else {
+      image.into()
+    }),
+    DynamicImage::ImageLumaA16(image) => {
+      Ok(if is_premultiplied_alpha(&image) {
+        process_unpremultiply_alpha(&image).into()
       } else {
-        image.into_luma_alpha8()
-      },
-    )),
-    ColorType::La16 => Ok(DynamicImage::ImageLumaA16(
-      if is_premultiplied_alpha(image.as_luma_alpha16().unwrap()) {
-        process_unpremultiply_alpha(image.as_luma_alpha16().unwrap())
-      } else {
-        image.into_luma_alpha16()
-      },
-    )),
-    ColorType::Rgba8 => Ok(DynamicImage::ImageRgba8(
-      if is_premultiplied_alpha(image.as_rgba8().unwrap()) {
-        process_unpremultiply_alpha(image.as_rgba8().unwrap())
-      } else {
-        image.into_rgba8()
-      },
-    )),
-    ColorType::Rgba16 => Ok(DynamicImage::ImageRgba16(
-      if is_premultiplied_alpha(image.as_rgba16().unwrap()) {
-        process_unpremultiply_alpha(image.as_rgba16().unwrap())
-      } else {
-        image.into_rgba16()
-      },
-    )),
-    ColorType::Rgb32F | ColorType::Rgba32F => {
+        image.into()
+      })
+    }
+    DynamicImage::ImageRgba8(image) => Ok(if is_premultiplied_alpha(&image) {
+      process_unpremultiply_alpha(&image).into()
+    } else {
+      image.into()
+    }),
+    DynamicImage::ImageRgba16(image) => Ok(if is_premultiplied_alpha(&image) {
+      process_unpremultiply_alpha(&image).into()
+    } else {
+      image.into()
+    }),
+    DynamicImage::ImageRgb32F(_) | DynamicImage::ImageRgba32F(_) => {
       Err(type_error(image_error_message(
         "processing un-premultiply alpha",
         NOT_SUPPORTED_BIT_DEPTH,
@@ -409,71 +403,79 @@ pub(crate) fn to_srgb_from_icc_profile(
       Ok(icc_profile) => {
         let srgb_icc_profile = Profile::new_srgb();
         let color = image.color();
-        match color {
-          ColorType::L8 => {
-            Ok(DynamicImage::ImageLuma8(process_icc_profile_conversion(
-              image.as_luma8().unwrap(),
+        match image {
+          DynamicImage::ImageLuma8(image) => Ok(
+            process_icc_profile_conversion(
+              &image,
               color,
               icc_profile,
               srgb_icc_profile,
-            )))
-          }
-          ColorType::L16 => {
-            Ok(DynamicImage::ImageLuma16(process_icc_profile_conversion(
-              image.as_luma16().unwrap(),
+            )
+            .into(),
+          ),
+          DynamicImage::ImageLuma16(image) => Ok(
+            process_icc_profile_conversion(
+              &image,
               color,
               icc_profile,
               srgb_icc_profile,
-            )))
-          }
-          ColorType::La8 => {
-            Ok(DynamicImage::ImageLumaA8(process_icc_profile_conversion(
-              image.as_luma_alpha8().unwrap(),
+            )
+            .into(),
+          ),
+          DynamicImage::ImageLumaA8(image) => Ok(
+            process_icc_profile_conversion(
+              &image,
               color,
               icc_profile,
               srgb_icc_profile,
-            )))
-          }
-          ColorType::La16 => {
-            Ok(DynamicImage::ImageLumaA16(process_icc_profile_conversion(
-              image.as_luma_alpha16().unwrap(),
+            )
+            .into(),
+          ),
+          DynamicImage::ImageLumaA16(image) => Ok(
+            process_icc_profile_conversion(
+              &image,
               color,
               icc_profile,
               srgb_icc_profile,
-            )))
-          }
-          ColorType::Rgb8 => {
-            Ok(DynamicImage::ImageRgb8(process_icc_profile_conversion(
-              image.as_rgb8().unwrap(),
+            )
+            .into(),
+          ),
+          DynamicImage::ImageRgb8(image) => Ok(
+            process_icc_profile_conversion(
+              &image,
               color,
               icc_profile,
               srgb_icc_profile,
-            )))
-          }
-          ColorType::Rgb16 => {
-            Ok(DynamicImage::ImageRgb16(process_icc_profile_conversion(
-              image.as_rgb16().unwrap(),
+            )
+            .into(),
+          ),
+          DynamicImage::ImageRgb16(image) => Ok(
+            process_icc_profile_conversion(
+              &image,
               color,
               icc_profile,
               srgb_icc_profile,
-            )))
-          }
-          ColorType::Rgba8 => {
-            Ok(DynamicImage::ImageRgba8(process_icc_profile_conversion(
-              image.as_rgba8().unwrap(),
+            )
+            .into(),
+          ),
+          DynamicImage::ImageRgba8(image) => Ok(
+            process_icc_profile_conversion(
+              &image,
               color,
               icc_profile,
               srgb_icc_profile,
-            )))
-          }
-          ColorType::Rgba16 => {
-            Ok(DynamicImage::ImageRgba16(process_icc_profile_conversion(
-              image.as_rgba16().unwrap(),
+            )
+            .into(),
+          ),
+          DynamicImage::ImageRgba16(image) => Ok(
+            process_icc_profile_conversion(
+              &image,
               color,
               icc_profile,
               srgb_icc_profile,
-            )))
-          }
+            )
+            .into(),
+          ),
           _ => Err(type_error(image_error_message(
             "processing un-premultiply alpha",
             NOT_SUPPORTED_BIT_DEPTH,
@@ -634,23 +636,24 @@ pub(crate) fn to_srgb_from_icc_profile(
 
 // /// Convert the color space of the image from sRGB to Display-P3.
 // fn srgb_to_display_p3(image: DynamicImage) -> Result<DynamicImage, AnyError> {
-//   match image.color() {
+//   match image {
 //     // The conversion of the lumincance color types to the display-p3 color space is meaningless.
-//     ColorType::L8 | ColorType::L16 | ColorType::La8 | ColorType::La16 => {
-//       Ok(image)
+//     DynamicImage::ImageLuma8(_)
+//     | DynamicImage::ImageLuma16(_)
+//     | DynamicImage::ImageLumaA8(_)
+//     | DynamicImage::ImageLumaA16(_) => Ok(image),
+//     DynamicImage::ImageRgb8(image) => {
+//       Ok(process_srgb_to_display_p3(&image).into())
 //     }
-//     ColorType::Rgb8 => Ok(DynamicImage::ImageRgb8(process_srgb_to_display_p3(
-//       image.as_rgb8().unwrap(),
-//     ))),
-//     ColorType::Rgb16 => Ok(DynamicImage::ImageRgb16(
-//       process_srgb_to_display_p3(image.as_rgb16().unwrap()),
-//     )),
-//     ColorType::Rgba8 => Ok(DynamicImage::ImageRgba8(
-//       process_srgb_to_display_p3(image.as_rgba8().unwrap()),
-//     )),
-//     ColorType::Rgba16 => Ok(DynamicImage::ImageRgba16(
-//       process_srgb_to_display_p3(image.as_rgba16().unwrap()),
-//     )),
+//     DynamicImage::ImageRgb16(image) => {
+//       Ok(process_srgb_to_display_p3(&image).into())
+//     }
+//     DynamicImage::ImageRgba8(image) => {
+//       Ok(process_srgb_to_display_p3(&image).into())
+//     }
+//     DynamicImage::ImageRgba16(image) => {
+//       Ok(process_srgb_to_display_p3(&image).into())
+//     }
 //     _ => Err(type_error(image_error_message(
 //       "processing ICC color profile conversion to sRGB",
 //       NOT_SUPPORTED_BIT_DEPTH,
