@@ -530,8 +530,7 @@ where
   P: NodePermissions + 'static,
 {
   let filename = PathBuf::from(filename);
-  let filename =
-    ensure_read_permission::<P>(state, filename.parent().unwrap())?;
+  // permissions: allow reading the closest package.json files
   let node_resolver = state.borrow::<NodeResolverRc>().clone();
   node_resolver
     .get_closest_package_json_from_path(&filename)
