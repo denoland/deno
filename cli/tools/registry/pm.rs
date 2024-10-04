@@ -789,8 +789,7 @@ pub async fn remove(
 
 async fn npm_install_after_modification(
   flags: Arc<Flags>,
-  // todo(dsherret): why is this dependency being passed here?
-  // Maybe we should remove it? If not, document why this is being done.
+  // explicitly provided to prevent redownloading
   jsr_resolver: Option<Arc<crate::jsr::JsrFetchResolver>>,
 ) -> Result<(), AnyError> {
   // clear the previously cached package.json from memory before reloading it
@@ -798,7 +797,6 @@ async fn npm_install_after_modification(
 
   // make a new CliFactory to pick up the updated config file
   let cli_factory = CliFactory::from_flags(flags);
-
   // surface any errors in the package.json
   let npm_resolver = cli_factory.npm_resolver().await?;
   if let Some(npm_resolver) = npm_resolver.as_managed() {
@@ -806,6 +804,7 @@ async fn npm_install_after_modification(
   }
   // npm install
   cache_deps::cache_top_level_deps(&cli_factory, jsr_resolver).await?;
+
   Ok(())
 }
 
