@@ -406,6 +406,7 @@
       "test-http-outgoing-settimeout.js",
       "test-http-url.parse-https.request.js",
       "test-http-url.parse-only-support-http-https-protocol.js",
+      "test-icu-transcode.js",
       "test-net-access-byteswritten.js",
       "test-net-better-error-messages-listen-path.js",
       "test-net-better-error-messages-path.js",

@@ -48,16 +48,16 @@ repository = "https://github.com/denoland/deno"
 deno_ast = { version = "=0.42.1", features = ["transpiling"] }
 deno_core = { version = "0.311.0" }
 
-deno_bench_util = { version = "0.162.0", path = "./bench_util" }
+deno_bench_util = { version = "0.164.0", path = "./bench_util" }
 deno_lockfile = "=0.23.1"
 deno_media_type = { version = "0.1.4", features = ["module_specifier"] }
-deno_npm = "=0.25.2"
+deno_npm = "=0.25.3"
 deno_path_util = "=0.2.0"
-deno_permissions = { version = "0.28.0", path = "./runtime/permissions" }
-deno_runtime = { version = "0.177.0", path = "./runtime" }
+deno_permissions = { version = "0.30.0", path = "./runtime/permissions" }
+deno_runtime = { version = "0.179.0", path = "./runtime" }
 deno_semver = "=0.5.14"
 deno_terminal = "0.2.0"
-napi_sym = { version = "0.98.0", path = "./cli/napi/sym" }
+napi_sym = { version = "0.100.0", path = "./cli/napi/sym" }
 test_util = { package = "test_server", path = "./tests/util/server" }
 
 denokv_proto = "0.8.1"
@@ -66,32 +66,32 @@ denokv_remote = "0.8.1"
 denokv_sqlite = { default-features = false, version = "0.8.2" }
 
 # exts
-deno_broadcast_channel = { version = "0.162.0", path = "./ext/broadcast_channel" }
-deno_cache = { version = "0.100.0", path = "./ext/cache" }
-deno_canvas = { version = "0.37.0", path = "./ext/canvas" }
-deno_console = { version = "0.168.0", path = "./ext/console" }
-deno_cron = { version = "0.48.0", path = "./ext/cron" }
-deno_crypto = { version = "0.182.0", path = "./ext/crypto" }
-deno_fetch = { version = "0.192.0", path = "./ext/fetch" }
-deno_ffi = { version = "0.155.0", path = "./ext/ffi" }
-deno_fs = { version = "0.78.0", path = "./ext/fs" }
-deno_http = { version = "0.166.0", path = "./ext/http" }
-deno_io = { version = "0.78.0", path = "./ext/io" }
-deno_kv = { version = "0.76.0", path = "./ext/kv" }
-deno_napi = { version = "0.99.0", path = "./ext/napi" }
-deno_net = { version = "0.160.0", path = "./ext/net" }
-deno_node = { version = "0.105.0", path = "./ext/node" }
-deno_tls = { version = "0.155.0", path = "./ext/tls" }
-deno_url = { version = "0.168.0", path = "./ext/url" }
-deno_web = { version = "0.199.0", path = "./ext/web" }
-deno_webgpu = { version = "0.135.0", path = "./ext/webgpu" }
-deno_webidl = { version = "0.168.0", path = "./ext/webidl" }
-deno_websocket = { version = "0.173.0", path = "./ext/websocket" }
-deno_webstorage = { version = "0.163.0", path = "./ext/webstorage" }
+deno_broadcast_channel = { version = "0.164.0", path = "./ext/broadcast_channel" }
+deno_cache = { version = "0.102.0", path = "./ext/cache" }
+deno_canvas = { version = "0.39.0", path = "./ext/canvas" }
+deno_console = { version = "0.170.0", path = "./ext/console" }
+deno_cron = { version = "0.50.0", path = "./ext/cron" }
+deno_crypto = { version = "0.184.0", path = "./ext/crypto" }
+deno_fetch = { version = "0.194.0", path = "./ext/fetch" }
+deno_ffi = { version = "0.157.0", path = "./ext/ffi" }
+deno_fs = { version = "0.80.0", path = "./ext/fs" }
+deno_http = { version = "0.168.0", path = "./ext/http" }
+deno_io = { version = "0.80.0", path = "./ext/io" }
+deno_kv = { version = "0.78.0", path = "./ext/kv" }
+deno_napi = { version = "0.101.0", path = "./ext/napi" }
+deno_net = { version = "0.162.0", path = "./ext/net" }
+deno_node = { version = "0.107.0", path = "./ext/node" }
+deno_tls = { version = "0.157.0", path = "./ext/tls" }
+deno_url = { version = "0.170.0", path = "./ext/url" }
+deno_web = { version = "0.201.0", path = "./ext/web" }
+deno_webgpu = { version = "0.137.0", path = "./ext/webgpu" }
+deno_webidl = { version = "0.170.0", path = "./ext/webidl" }
+deno_websocket = { version = "0.175.0", path = "./ext/websocket" }
+deno_webstorage = { version = "0.165.0", path = "./ext/webstorage" }
 
 # resolvers
-deno_resolver = { version = "0.0.1", path = "./resolvers/deno" }
-node_resolver = { version = "0.7.0", path = "./resolvers/node" }
+deno_resolver = { version = "0.2.0", path = "./resolvers/deno" }
+node_resolver = { version = "0.9.0", path = "./resolvers/node" }
 
 aes = "=0.8.3"
 anyhow = "1.0.57"
@@ -111,7 +111,7 @@ dashmap = "5.5.3"
 data-encoding = "2.3.3"
 data-url = "=0.3.0"
 deno_cache_dir = "=0.13.0"
-deno_package_json = { version = "=0.1.1", default-features = false }
+deno_package_json = { version = "0.1.2", default-features = false }
 dlopen2 = "0.6.1"
 ecb = "=0.1.2"
 elliptic-curve = { version = "0.13.4", features = ["alloc", "arithmetic", "ecdh", "std", "pem", "jwk"] }
@@ -225,10 +225,9 @@ nix = "=0.26.2"
 # windows deps
 junction = "=0.2.0"
 winapi = "=0.3.9"
-windows-sys = { version = "0.52.0", features = ["Win32_Foundation", "Win32_Media", "Win32_Storage_FileSystem", "Win32_System_IO", "Win32_System_WindowsProgramming", "Wdk", "Wdk_System", "Wdk_System_SystemInformation", "Win32_System_Pipes", "Wdk_Storage_FileSystem", "Win32_System_Registry"] }
+windows-sys = { version = "0.52.0", features = ["Win32_Foundation", "Win32_Media", "Win32_Storage_FileSystem", "Win32_System_IO", "Win32_System_WindowsProgramming", "Wdk", "Wdk_System", "Wdk_System_SystemInformation", "Win32_Security", "Win32_System_Pipes", "Wdk_Storage_FileSystem", "Win32_System_Registry", "Win32_System_Kernel"] }
 winres = "=0.1.12"
 
-# NB: the `bench` and `release` profiles must remain EXACTLY the same.
 [profile.release]
 codegen-units = 1
 incremental = true
@@ -246,13 +245,6 @@ inherits = "release"
 codegen-units = 128
 lto = "thin"
 
-# NB: the `bench` and `release` profiles must remain EXACTLY the same.
-[profile.bench]
-codegen-units = 1
-incremental = true
-lto = true
-opt-level = 'z' # Optimize for size
-
 # Key generation is too slow on `debug`
 [profile.dev.package.num-bigint-dig]
 opt-level = 3
@@ -261,80 +253,6 @@ opt-level = 3
 [profile.dev.package.v8]
 opt-level = 1
 
-# Optimize these packages for performance.
-# NB: the `bench` and `release` profiles must remain EXACTLY the same.
-[profile.bench.package.async-compression]
-opt-level = 3
-[profile.bench.package.base64-simd]
-opt-level = 3
-[profile.bench.package.brotli]
-opt-level = 3
-[profile.bench.package.brotli-decompressor]
-opt-level = 3
-[profile.bench.package.bytes]
-opt-level = 3
-[profile.bench.package.deno_bench_util]
-opt-level = 3
-[profile.bench.package.deno_broadcast_channel]
-opt-level = 3
-[profile.bench.package.deno_core]
-opt-level = 3
-[profile.bench.package.deno_crypto]
-opt-level = 3
-[profile.bench.package.deno_fetch]
-opt-level = 3
-[profile.bench.package.deno_ffi]
-opt-level = 3
-[profile.bench.package.deno_http]
-opt-level = 3
-[profile.bench.package.deno_napi]
-opt-level = 3
-[profile.bench.package.deno_net]
-opt-level = 3
-[profile.bench.package.deno_node]
-opt-level = 3
-[profile.bench.package.deno_runtime]
-opt-level = 3
-[profile.bench.package.deno_tls]
-opt-level = 3
-[profile.bench.package.deno_url]
-opt-level = 3
-[profile.bench.package.deno_web]
-opt-level = 3
-[profile.bench.package.deno_websocket]
-opt-level = 3
-[profile.bench.package.fastwebsockets]
-opt-level = 3
-[profile.bench.package.flate2]
-opt-level = 3
-[profile.bench.package.futures-util]
-opt-level = 3
-[profile.bench.package.hyper]
-opt-level = 3
-[profile.bench.package.miniz_oxide]
-opt-level = 3
-[profile.bench.package.num-bigint-dig]
-opt-level = 3
-[profile.bench.package.rand]
-opt-level = 3
-[profile.bench.package.serde]
-opt-level = 3
-[profile.bench.package.serde_v8]
-opt-level = 3
-[profile.bench.package.test_napi]
-opt-level = 3
-[profile.bench.package.tokio]
-opt-level = 3
-[profile.bench.package.url]
-opt-level = 3
-[profile.bench.package.v8]
-opt-level = 3
-[profile.bench.package.zstd]
-opt-level = 3
-[profile.bench.package.zstd-sys]
-opt-level = 3
-
-# NB: the `bench` and `release` profiles must remain EXACTLY the same.
 [profile.release.package.async-compression]
 opt-level = 3
 [profile.release.package.base64-simd]
@@ -392,6 +310,8 @@ opt-level = 3
 [profile.release.package.serde]
 opt-level = 3
 [profile.release.package.serde_v8]
+opt-level = 3
+[profile.release.package.libsui]
 opt-level = 3
 [profile.release.package.test_napi]
 opt-level = 3

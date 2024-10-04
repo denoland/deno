@@ -118,7 +118,6 @@
         }
       ]
     },
-
     "lockfile_config": {
       "steps": [
         {
@@ -146,7 +145,6 @@
         }
       ]
     },
-
     "non_analyzable_dynamic_npm": {
       "steps": [
         {

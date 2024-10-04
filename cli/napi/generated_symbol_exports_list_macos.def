@@ -151,3 +151,10 @@ _napi_check_object_type_tag
 _node_api_post_finalizer
 _napi_add_async_cleanup_hook
 _napi_remove_async_cleanup_hook
+_uv_mutex_init
+_uv_mutex_lock
+_uv_mutex_unlock
+_uv_mutex_destroy
+_uv_async_init
+_uv_async_send
+_uv_close

@@ -313,20 +313,6 @@ export class DefaultDeserializer extends Deserializer {
     );
   }
 }
-export const promiseHooks = {
-  onInit() {
-    notImplemented("v8.promiseHooks.onInit");
-  },
-  onSettled() {
-    notImplemented("v8.promiseHooks.onSetttled");
-  },
-  onBefore() {
-    notImplemented("v8.promiseHooks.onBefore");
-  },
-  createHook() {
-    notImplemented("v8.promiseHooks.createHook");
-  },
-};
 export default {
   cachedDataVersionTag,
   getHeapCodeStatistics,
@@ -343,5 +329,4 @@ export default {
   Deserializer,
   DefaultSerializer,
   DefaultDeserializer,
-  promiseHooks,
 };
