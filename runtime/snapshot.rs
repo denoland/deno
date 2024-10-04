@@ -97,6 +97,9 @@ impl deno_node::NodePermissions for Permissions {
   ) -> Result<PathBuf, deno_core::error::AnyError> {
     unreachable!("snapshotting!")
   }
+  fn query_read_all(&mut self) -> bool {
+    unreachable!("snapshotting!")
+  }
   fn check_write_with_api_name(
     &mut self,
     _p: &str,

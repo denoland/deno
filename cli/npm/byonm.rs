@@ -1,5 +1,6 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
+use std::borrow::Cow;
 use std::path::Path;
 use std::path::PathBuf;
 use std::sync::Arc;
@@ -32,18 +33,19 @@ pub type CliByonmNpmResolver = ByonmNpmResolver<CliDenoResolverFs>;
 struct CliByonmWrapper(Arc<CliByonmNpmResolver>);
 
 impl NodeRequireResolver for CliByonmWrapper {
-  fn ensure_read_permission(
+  fn ensure_read_permission<'a>(
     &self,
     permissions: &mut dyn NodePermissions,
-    path: &Path,
-  ) -> Result<(), AnyError> {
+    path: &'a Path,
+  ) -> Result<Cow<'a, Path>, AnyError> {
     if !path
       .components()
       .any(|c| c.as_os_str().to_ascii_lowercase() == "node_modules")
     {
-      _ = permissions.check_read_path(path)?;
+      permissions.check_read_path(path)
+    } else {
+      Ok(Cow::Borrowed(path))
     }
-    Ok(())
   }
 }
 
