@@ -7,6 +7,7 @@ use deno_core::url::Url;
 use deno_core::OpState;
 use deno_fs::FileSystemRc;
 use node_resolver::NodeResolution;
+use std::borrow::Cow;
 use std::path::Path;
 use std::path::PathBuf;
 
@@ -14,10 +15,11 @@ use crate::NodePermissions;
 use crate::NodeRequireResolverRc;
 use crate::NodeResolverRc;
 
-fn ensure_read_permission<P>(
+#[must_use = "the resolved return value to mitigate time-of-check to time-of-use issues"]
+fn ensure_read_permission<'a, P>(
   state: &mut OpState,
-  file_path: &Path,
-) -> Result<(), AnyError>
+  file_path: &'a Path,
+) -> Result<Cow<'a, Path>, AnyError>
 where
   P: NodePermissions + 'static,
 {
@@ -47,7 +49,7 @@ where
         "Relative path entries must start with '.' or '..'",
       ));
     }
-    ensure_read_permission::<P>(state, &path)?;
+    let path = ensure_read_permission::<P>(state, &path)?;
     let fs = state.borrow::<FileSystemRc>();
     let canonicalized_path =
       deno_core::strip_unc_prefix(fs.realpath_sync(&path)?);
@@ -57,7 +59,7 @@ where
   let url_path = url
     .to_file_path()
     .map_err(|e| generic_error(format!("URL to Path-String: {:#?}", e)))?;
-  ensure_read_permission::<P>(state, &url_path)?;
+  let url_path = ensure_read_permission::<P>(state, &url_path)?;
   let fs = state.borrow::<FileSystemRc>();
   if !fs.exists_sync(&url_path) {
     return Err(generic_error(format!("File not found [{:?}]", url_path)));
