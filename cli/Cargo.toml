@@ -77,7 +77,7 @@ deno_path_util.workspace = true
 deno_resolver.workspace = true
 deno_runtime = { workspace = true, features = ["include_js_files_for_snapshotting"] }
 deno_semver.workspace = true
-deno_task_shell = "=0.17.0"
+deno_task_shell = "=0.18.1"
 deno_terminal.workspace = true
 eszip = "=0.79.1"
 libsui = "0.4.0"

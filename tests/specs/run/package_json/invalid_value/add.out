@@ -1,0 +1,8 @@
+Add npm:cowsay@1.5.0
+error: Failed to install from package.json
+
+Caused by:
+    0: Invalid version requirement
+    1: Unexpected character.
+         invalid stuff that won't parse
+         ~
