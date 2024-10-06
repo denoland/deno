@@ -1,22 +1,29 @@
 {
   "tempDir": true,
-  // TODO(2.0): update the tests, should probably run install first
-  "ignore": true,
   "tests": {
     // should run fine when not referencing a failing dep entry
-    "run_ok": {
-      "args": "run ok.ts",
+    "run_ok_auto": {
+      "args": "run --quiet --node-modules-dir=auto ok.ts",
       "output": "ok.ts.out"
     },
     // should fail when referencing a failing dep entry
-    "run_error": {
-      "args": "run error.ts",
+    "run_error_auto": {
+      "args": "run --node-modules-dir=auto error.ts",
       "exitCode": 1,
-      "output": "error.ts.out"
+      "output": "error_auto.out"
     },
-    // should output a warning about the failing dep entry
+    "install_error_byonm": {
+      "args": "install",
+      "output": "install.out",
+      "exitCode": 1
+    },
+    "add_error_byonm": {
+      "args": "add npm:cowsay",
+      "output": "add.out",
+      "exitCode": 1
+    },
     "task_test": {
-      "args": "task test",
+      "args": "task --node-modules-dir=auto test",
       "output": "task.out"
     }
   }

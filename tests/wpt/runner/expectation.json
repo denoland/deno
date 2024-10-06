@@ -54,23 +54,12 @@
       "pbkdf2.https.any.worker.html?7001-8000": true,
       "pbkdf2.https.any.worker.html?8001-last": true,
       "cfrg_curves_bits.https.any.html": [
-        "X25519 key derivation checks for all-zero value result with a key of order 0",
-        "X25519 key derivation checks for all-zero value result with a key of order 1",
-        "X25519 key derivation checks for all-zero value result with a key of order 8",
-        "X25519 key derivation checks for all-zero value result with a key of order p-1 (order 2)",
-        "X25519 key derivation checks for all-zero value result with a key of order p (=0, order 4)",
-        "X25519 key derivation checks for all-zero value result with a key of order p+1 (=1, order 1)",
         "X448 key derivation checks for all-zero value result with a key of order 0",
         "X448 key derivation checks for all-zero value result with a key of order 1",
         "X448 key derivation checks for all-zero value result with a key of order p-1 (order 2)",
         "X448 key derivation checks for all-zero value result with a key of order p (=0, order 4)",
         "X448 key derivation checks for all-zero value result with a key of order p+1 (=1, order 1)",
-        "X25519 good parameters",
-        "X25519 mixed case parameters",
-        "X25519 short result",
-        "X25519 non-multiple of 8 bits",
         "X25519 mismatched algorithms",
-        "X25519 no deriveBits usage for base key",
         "X448 good parameters",
         "X448 mixed case parameters",
         "X448 short result",
@@ -83,23 +72,12 @@
         "X448 asking for too many bits"
       ],
       "cfrg_curves_bits.https.any.worker.html": [
-        "X25519 key derivation checks for all-zero value result with a key of order 0",
-        "X25519 key derivation checks for all-zero value result with a key of order 1",
-        "X25519 key derivation checks for all-zero value result with a key of order 8",
-        "X25519 key derivation checks for all-zero value result with a key of order p-1 (order 2)",
-        "X25519 key derivation checks for all-zero value result with a key of order p (=0, order 4)",
-        "X25519 key derivation checks for all-zero value result with a key of order p+1 (=1, order 1)",
         "X448 key derivation checks for all-zero value result with a key of order 0",
         "X448 key derivation checks for all-zero value result with a key of order 1",
         "X448 key derivation checks for all-zero value result with a key of order p-1 (order 2)",
         "X448 key derivation checks for all-zero value result with a key of order p (=0, order 4)",
         "X448 key derivation checks for all-zero value result with a key of order p+1 (=1, order 1)",
-        "X25519 good parameters",
-        "X25519 mixed case parameters",
-        "X25519 short result",
-        "X25519 non-multiple of 8 bits",
         "X25519 mismatched algorithms",
-        "X25519 no deriveBits usage for base key",
         "X448 good parameters",
         "X448 mixed case parameters",
         "X448 short result",
@@ -112,21 +90,12 @@
         "X448 asking for too many bits"
       ],
       "cfrg_curves_keys.https.any.html": [
-        "X25519 deriveBits checks for all-zero value result with a key of order 0",
-        "X25519 deriveBits checks for all-zero value result with a key of order 1",
-        "X25519 deriveBits checks for all-zero value result with a key of order 8",
-        "X25519 deriveBits checks for all-zero value result with a key of order p-1 (order 2)",
-        "X25519 deriveBits checks for all-zero value result with a key of order p (=0, order 4)",
-        "X25519 deriveBits checks for all-zero value result with a key of order p+1 (=1, order 1)",
         "X448 deriveBits checks for all-zero value result with a key of order 0",
         "X448 deriveBits checks for all-zero value result with a key of order 1",
         "X448 deriveBits checks for all-zero value result with a key of order p-1 (order 2)",
         "X448 deriveBits checks for all-zero value result with a key of order p (=0, order 4)",
         "X448 deriveBits checks for all-zero value result with a key of order p+1 (=1, order 1)",
-        "Key derivation using a X25519 generated keys.",
         "Key derivation using a X448 generated keys.",
-        "X25519 good parameters",
-        "X25519 mixed case parameters",
         "X25519 mismatched algorithms",
         "X448 good parameters",
         "X448 mixed case parameters",
@@ -137,21 +106,12 @@
         "X448 public property value is a secret key"
       ],
       "cfrg_curves_keys.https.any.worker.html": [
-        "X25519 deriveBits checks for all-zero value result with a key of order 0",
-        "X25519 deriveBits checks for all-zero value result with a key of order 1",
-        "X25519 deriveBits checks for all-zero value result with a key of order 8",
-        "X25519 deriveBits checks for all-zero value result with a key of order p-1 (order 2)",
-        "X25519 deriveBits checks for all-zero value result with a key of order p (=0, order 4)",
-        "X25519 deriveBits checks for all-zero value result with a key of order p+1 (=1, order 1)",
         "X448 deriveBits checks for all-zero value result with a key of order 0",
         "X448 deriveBits checks for all-zero value result with a key of order 1",
         "X448 deriveBits checks for all-zero value result with a key of order p-1 (order 2)",
         "X448 deriveBits checks for all-zero value result with a key of order p (=0, order 4)",
         "X448 deriveBits checks for all-zero value result with a key of order p+1 (=1, order 1)",
-        "Key derivation using a X25519 generated keys.",
         "Key derivation using a X448 generated keys.",
-        "X25519 good parameters",
-        "X25519 mixed case parameters",
         "X25519 mismatched algorithms",
         "X448 good parameters",
         "X448 mixed case parameters",
@@ -161,20 +121,8 @@
         "X448 public property value is a private key",
         "X448 public property value is a secret key"
       ],
-      "derived_bits_length.https.any.html": [
-        "X25519 derivation with 256 as 'length' parameter",
-        "X25519 derivation with 0 as 'length' parameter",
-        "X25519 derivation with null as 'length' parameter",
-        "X25519 derivation with undefined as 'length' parameter",
-        "X25519 derivation with omitted as 'length' parameter"
-      ],
-      "derived_bits_length.https.any.worker.html": [
-        "X25519 derivation with 256 as 'length' parameter",
-        "X25519 derivation with 0 as 'length' parameter",
-        "X25519 derivation with null as 'length' parameter",
-        "X25519 derivation with undefined as 'length' parameter",
-        "X25519 derivation with omitted as 'length' parameter"
-      ]
+      "derived_bits_length.https.any.html": true,
+      "derived_bits_length.https.any.worker.html": true
     },
     "digest": {
       "digest.https.any.html": true,
@@ -1530,20 +1478,8 @@
       "crypto-subtle-secure-context-available.https.sub.html": true
     },
     "wrapKey_unwrapKey": {
-      "wrapKey_unwrapKey.https.any.html": [
-        "Can wrap and unwrap X25519 private key keys as non-extractable using pkcs8 and AES-CTR",
-        "Can wrap and unwrap X25519 private key keys as non-extractable using pkcs8 and AES-CBC",
-        "Can wrap and unwrap X25519 private key keys as non-extractable using pkcs8 and AES-GCM",
-        "Can wrap and unwrap X25519 private key keys as non-extractable using pkcs8 and AES-KW",
-        "Can wrap and unwrap X25519 private key keys as non-extractable using pkcs8 and RSA-OAEP"
-      ],
-      "wrapKey_unwrapKey.https.any.worker.html": [
-        "Can wrap and unwrap X25519 private key keys as non-extractable using pkcs8 and AES-CTR",
-        "Can wrap and unwrap X25519 private key keys as non-extractable using pkcs8 and AES-CBC",
-        "Can wrap and unwrap X25519 private key keys as non-extractable using pkcs8 and AES-GCM",
-        "Can wrap and unwrap X25519 private key keys as non-extractable using pkcs8 and AES-KW",
-        "Can wrap and unwrap X25519 private key keys as non-extractable using pkcs8 and RSA-OAEP"
-      ]
+      "wrapKey_unwrapKey.https.any.html": true,
+      "wrapKey_unwrapKey.https.any.worker.html": true
     }
   },
   "console": {

@@ -6,6 +6,7 @@ use std::sync::Arc;
 use deno_config::workspace::Workspace;
 use deno_core::serde_json;
 use deno_package_json::PackageJsonDepValue;
+use deno_package_json::PackageJsonDepValueParseError;
 use deno_semver::npm::NpmPackageReqReference;
 use deno_semver::package::PackageReq;
 
@@ -26,6 +27,7 @@ pub struct InstallNpmWorkspacePkg {
 pub struct NpmInstallDepsProvider {
   remote_pkgs: Vec<InstallNpmRemotePkg>,
   workspace_pkgs: Vec<InstallNpmWorkspacePkg>,
+  pkg_json_dep_errors: Vec<PackageJsonDepValueParseError>,
 }
 
 impl NpmInstallDepsProvider {
@@ -37,6 +39,7 @@ impl NpmInstallDepsProvider {
     // todo(dsherret): estimate capacity?
     let mut workspace_pkgs = Vec::new();
     let mut remote_pkgs = Vec::new();
+    let mut pkg_json_dep_errors = Vec::new();
     let workspace_npm_pkgs = workspace.npm_packages();
 
     for (_, folder) in workspace.config_folders() {
@@ -83,8 +86,12 @@ impl NpmInstallDepsProvider {
         let deps = pkg_json.resolve_local_package_json_deps();
         let mut pkg_pkgs = Vec::with_capacity(deps.len());
         for (alias, dep) in deps {
-          let Ok(dep) = dep else {
-            continue;
+          let dep = match dep {
+            Ok(dep) => dep,
+            Err(err) => {
+              pkg_json_dep_errors.push(err);
+              continue;
+            }
           };
           match dep {
             PackageJsonDepValue::Req(pkg_req) => {
@@ -131,14 +138,19 @@ impl NpmInstallDepsProvider {
     Self {
       remote_pkgs,
       workspace_pkgs,
+      pkg_json_dep_errors,
     }
   }
 
-  pub fn remote_pkgs(&self) -> &Vec<InstallNpmRemotePkg> {
+  pub fn remote_pkgs(&self) -> &[InstallNpmRemotePkg] {
     &self.remote_pkgs
   }
 
-  pub fn workspace_pkgs(&self) -> &Vec<InstallNpmWorkspacePkg> {
+  pub fn workspace_pkgs(&self) -> &[InstallNpmWorkspacePkg] {
     &self.workspace_pkgs
+  }
+
+  pub fn pkg_json_dep_errors(&self) -> &[PackageJsonDepValueParseError] {
+    &self.pkg_json_dep_errors
   }
 }
