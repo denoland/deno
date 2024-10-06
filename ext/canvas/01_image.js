@@ -249,10 +249,7 @@ function createImageBitmap(
       buf = new Uint8Array(TypedArrayPrototypeGetBuffer(image[_data]));
     }
 
-    let sx;
-    if (typeof sxOrOptions === "number") {
-      sx = sxOrOptions;
-    }
+    const sx = typeof sxOrOptions === "number" ? sxOrOptions : undefined;
     // TODO(Hajime-san): this should be real async
     const processedImage = op_create_image_bitmap(
       buf,
