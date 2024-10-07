@@ -1060,7 +1060,7 @@ dependencies = [
  "cpufeatures",
  "curve25519-dalek-derive",
  "digest",
- "fiat-crypto",
+ "fiat-crypto 0.2.7",
  "rustc_version 0.4.0",
  "subtle",
  "zeroize",
@@ -1493,6 +1493,7 @@ dependencies = [
  "curve25519-dalek",
  "deno_core",
  "deno_web",
+ "ed448-goldilocks",
  "elliptic-curve",
  "num-traits",
  "once_cell",
@@ -2717,6 +2718,18 @@ dependencies = [
 ]
 
 [[package]]
+name = "ed448-goldilocks"
+version = "0.8.3"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "06924531e9e90130842b012e447f85bdaf9161bc8a0f8092be8cb70b01ebe092"
+dependencies = [
+ "fiat-crypto 0.1.20",
+ "hex",
+ "subtle",
+ "zeroize",
+]
+
+[[package]]
 name = "editpe"
 version = "0.1.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2977,6 +2990,12 @@ dependencies = [
  "rand_core",
  "subtle",
 ]
+
+[[package]]
+name = "fiat-crypto"
+version = "0.1.20"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "e825f6987101665dea6ec934c09ec6d721de7bc1bf92248e1d5810c8cd636b77"
 
 [[package]]
 name = "fiat-crypto"
