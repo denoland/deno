@@ -25,7 +25,6 @@ use clap::ValueHint;
 use color_print::cstr;
 use deno_config::deno_json::NodeModulesDirMode;
 use deno_config::glob::FilePatterns;
-use deno_config::glob::PathOrPattern;
 use deno_config::glob::PathOrPatternSet;
 use deno_core::anyhow::bail;
 use deno_core::anyhow::Context;
@@ -70,18 +69,23 @@ impl FileFlags {
     let include = if self.include.is_empty() {
       None
     } else {
+      let mut unique_patterns = Vec::new();
+      for pattern in &self.include {
+        if pattern != "." && !unique_patterns.contains(pattern) {
+          unique_patterns.push(pattern.clone());
+        }
+      }
+
       let path_or_pattern_set =
         PathOrPatternSet::from_include_relative_path_or_patterns(
           base,
-          &self.include,
+          &unique_patterns,
         )?;
 
-      let deduped_set = FileFlags::remove_duplicates(path_or_pattern_set);
-      let final_set = FileFlags::remove_base_path(deduped_set, base);
-      if final_set.inner().is_empty() {
+      if path_or_pattern_set.inner().is_empty() {
         None
       } else {
-        Some(final_set)
+        Some(path_or_pattern_set)
       }
     };
 
@@ -95,42 +99,6 @@ impl FileFlags {
       exclude,
       base: base.to_path_buf(),
     })
-  }
-
-  fn remove_duplicates(pattern_set: PathOrPatternSet) -> PathOrPatternSet {
-    let mut seen_paths: HashSet<PathBuf> = HashSet::new();
-    let filtered_patterns: Vec<PathOrPattern> = pattern_set
-      .inner()
-      .iter()
-      .filter(|pattern| match pattern {
-        PathOrPattern::Path(path) | PathOrPattern::NegatedPath(path) => {
-          seen_paths.insert(path.clone())
-        }
-        _ => true,
-      })
-      .cloned()
-      .collect();
-
-    PathOrPatternSet::new(filtered_patterns)
-  }
-
-  fn remove_base_path(
-    pattern_set: PathOrPatternSet,
-    base: &Path,
-  ) -> PathOrPatternSet {
-    let filtered_patterns: Vec<PathOrPattern> = pattern_set
-      .inner()
-      .iter()
-      .filter(|pattern| match pattern {
-        PathOrPattern::Path(path) | PathOrPattern::NegatedPath(path) => {
-          path != base
-        }
-        _ => true,
-      })
-      .cloned()
-      .collect();
-
-    PathOrPatternSet::new(filtered_patterns)
   }
 }
 #[derive(Clone, Debug, Default, Eq, PartialEq)]
@@ -11124,7 +11092,7 @@ Usage: deno repl [OPTIONS] [-- [ARGS]...]\n"
     let base = PathBuf::from("/base");
     let file_flags = FileFlags {
       include: vec![
-        String::from("/base"),
+        String::from("."),
         String::from("/base/path/to/file"),
         String::from("relative/path1"),
         String::from("relative/path2"),
