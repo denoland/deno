@@ -161,7 +161,17 @@ async fn run_subcommand(flags: Arc<Flags>) -> Result<i32, AnyError> {
     DenoSubcommand::Uninstall(uninstall_flags) => spawn_subcommand(async {
       tools::installer::uninstall(flags, uninstall_flags).await
     }),
-    DenoSubcommand::Lsp => spawn_subcommand(async { lsp::start().await }),
+    DenoSubcommand::Lsp => spawn_subcommand(async { 
+      eprintln!(
+        "{} command is intended to be run by text editors and IDEs and shouldn't be run manually.
+
+Visit https://docs.deno.com/runtime/getting_started/setup_your_environment/ for instruction
+how to setup your favorite text editor.
+
+Press Ctrl+C to exit.
+      ", colors::cyan("deno lsp"));
+      lsp::start().await
+    }),
     DenoSubcommand::Lint(lint_flags) => spawn_subcommand(async {
       if lint_flags.rules {
         tools::lint::print_rules_list(
