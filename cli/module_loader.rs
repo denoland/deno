@@ -354,6 +354,10 @@ impl<TGraphContainer: ModuleGraphContainer>
       _ => ModuleType::JavaScript,
     };
 
+    eprintln!(
+      "module type {:?} requested {:?}",
+      module_type, requested_module_type
+    );
     // If we loaded a JSON file, but the "requested_module_type" (that is computed from
     // import attributes) is not JSON we need to fail.
     if module_type == ModuleType::Json
