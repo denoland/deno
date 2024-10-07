@@ -1434,8 +1434,30 @@
       "crypto-subtle-secure-context-available.https.sub.html": true
     },
     "wrapKey_unwrapKey": {
-      "wrapKey_unwrapKey.https.any.html": true,
-      "wrapKey_unwrapKey.https.any.worker.html": true
+      "wrapKey_unwrapKey.https.any.html": [
+        "Can wrap and unwrap X448 private key keys using pkcs8 and AES-CTR",
+        "Can wrap and unwrap X448 private key keys as non-extractable using pkcs8 and AES-CTR",
+        "Can wrap and unwrap X448 private key keys using pkcs8 and AES-CBC",
+        "Can wrap and unwrap X448 private key keys as non-extractable using pkcs8 and AES-CBC",
+        "Can wrap and unwrap X448 private key keys using pkcs8 and AES-GCM",
+        "Can wrap and unwrap X448 private key keys as non-extractable using pkcs8 and AES-GCM",
+        "Can wrap and unwrap X448 private key keys using pkcs8 and AES-KW",
+        "Can wrap and unwrap X448 private key keys as non-extractable using pkcs8 and AES-KW",
+        "Can wrap and unwrap X448 private key keys using pkcs8 and RSA-OAEP",
+        "Can wrap and unwrap X448 private key keys as non-extractable using pkcs8 and RSA-OAEP"
+      ],
+      "wrapKey_unwrapKey.https.any.worker.html": [
+        "Can wrap and unwrap X448 private key keys using pkcs8 and AES-CTR",
+        "Can wrap and unwrap X448 private key keys as non-extractable using pkcs8 and AES-CTR",
+        "Can wrap and unwrap X448 private key keys using pkcs8 and AES-CBC",
+        "Can wrap and unwrap X448 private key keys as non-extractable using pkcs8 and AES-CBC",
+        "Can wrap and unwrap X448 private key keys using pkcs8 and AES-GCM",
+        "Can wrap and unwrap X448 private key keys as non-extractable using pkcs8 and AES-GCM",
+        "Can wrap and unwrap X448 private key keys using pkcs8 and AES-KW",
+        "Can wrap and unwrap X448 private key keys as non-extractable using pkcs8 and AES-KW",
+        "Can wrap and unwrap X448 private key keys using pkcs8 and RSA-OAEP",
+        "Can wrap and unwrap X448 private key keys as non-extractable using pkcs8 and RSA-OAEP"
+      ]
     }
   },
   "console": {
