@@ -57,6 +57,7 @@ use standalone::MODULE_NOT_FOUND;
 use standalone::UNSUPPORTED_SCHEME;
 use std::env;
 use std::future::Future;
+use std::io::IsTerminal;
 use std::ops::Deref;
 use std::path::PathBuf;
 use std::sync::Arc;
@@ -162,14 +163,16 @@ async fn run_subcommand(flags: Arc<Flags>) -> Result<i32, AnyError> {
       tools::installer::uninstall(flags, uninstall_flags).await
     }),
     DenoSubcommand::Lsp => spawn_subcommand(async {
-      log::warn!(
-        "{} command is intended to be run by text editors and IDEs and shouldn't be run manually.
-
-Visit https://docs.deno.com/runtime/getting_started/setup_your_environment/ for instruction
-how to setup your favorite text editor.
-
-Press Ctrl+C to exit.
-      ", colors::cyan("deno lsp"));
+      if std::io::stderr().is_terminal() {
+        log::warn!(
+          "{} command is intended to be run by text editors and IDEs and shouldn't be run manually.
+  
+  Visit https://docs.deno.com/runtime/getting_started/setup_your_environment/ for instruction
+  how to setup your favorite text editor.
+  
+  Press Ctrl+C to exit.
+        ", colors::cyan("deno lsp"));
+      }
       lsp::start().await
     }),
     DenoSubcommand::Lint(lint_flags) => spawn_subcommand(async {
