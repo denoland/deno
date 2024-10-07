@@ -8,8 +8,6 @@ use deno_core::error::AnyError;
 use deno_core::op2;
 use deno_core::JsBuffer;
 use deno_core::ToJsBuffer;
-use deno_terminal::colors::cyan;
-use deno_terminal::colors::yellow;
 use image::codecs::bmp::BmpDecoder;
 use image::codecs::gif::GifDecoder;
 use image::codecs::ico::IcoDecoder;
@@ -21,7 +19,6 @@ use image::imageops::FilterType;
 use image::DynamicImage;
 use image::ImageError;
 use image::RgbaImage;
-use serde::Deserialize;
 
 use crate::error::image_error_message;
 use crate::error::DOMExceptionInvalidStateError;
@@ -31,43 +28,48 @@ use crate::image_ops::premultiply_alpha as process_premultiply_alpha;
 use crate::image_ops::to_srgb_from_icc_profile;
 use crate::image_ops::unpremultiply_alpha;
 
-#[derive(Debug, Deserialize, PartialEq)]
-// Follow the cases defined in the spec
+#[derive(Debug, PartialEq)]
 enum ImageBitmapSource {
   Blob,
   ImageData,
 }
 
-#[derive(Debug, Deserialize, PartialEq)]
-#[serde(rename_all = "camelCase")]
+#[derive(Debug, PartialEq)]
 enum ImageOrientation {
   FlipY,
-  #[serde(rename = "from-image")]
   FromImage,
 }
 
-#[derive(Debug, Deserialize, PartialEq)]
-#[serde(rename_all = "camelCase")]
+#[derive(Debug, PartialEq)]
 enum PremultiplyAlpha {
   Default,
   Premultiply,
   None,
 }
 
-#[derive(Debug, Deserialize, PartialEq)]
-#[serde(rename_all = "camelCase")]
+#[derive(Debug, PartialEq)]
 enum ColorSpaceConversion {
   Default,
   None,
 }
 
-#[derive(Debug, Deserialize, PartialEq)]
-#[serde(rename_all = "camelCase")]
+#[derive(Debug, PartialEq)]
 enum ResizeQuality {
   Pixelated,
   Low,
   Medium,
   High,
+}
+
+#[derive(Debug, PartialEq)]
+enum MimeType {
+  NoMatch,
+  Png,
+  Jpeg,
+  Gif,
+  Bmp,
+  Ico,
+  Webp,
 }
 
 type DecodeBitmapDataReturn = (DynamicImage, u32, u32, Option<Vec<u8>>);
@@ -77,7 +79,7 @@ fn decode_bitmap_data(
   width: u32,
   height: u32,
   image_bitmap_source: &ImageBitmapSource,
-  mime_type: &str,
+  mime_type: MimeType,
 ) -> Result<DecodeBitmapDataReturn, AnyError> {
   let (image, width, height, icc_profile) = match image_bitmap_source {
     ImageBitmapSource::Blob => {
@@ -90,81 +92,80 @@ fn decode_bitmap_data(
       }
       let (image, icc_profile) = match mime_type {
         // Should we support the "image/apng" MIME type here?
-        "image/png" => {
+        MimeType::Png => {
           let mut decoder: PngDecoder<ImageDecoderFromReaderType> =
-            ImageDecoderFromReader::to_decoder(BufReader::new(Cursor::new(
-              buf,
-            )), image_decoding_error)?;
+            ImageDecoderFromReader::to_decoder(
+              BufReader::new(Cursor::new(buf)),
+              image_decoding_error,
+            )?;
           let icc_profile = decoder.get_icc_profile();
-          (decoder.to_intermediate_image(image_decoding_error)?, icc_profile)
+          (
+            decoder.to_intermediate_image(image_decoding_error)?,
+            icc_profile,
+          )
         }
-        "image/jpeg" => {
+        MimeType::Jpeg => {
           let mut decoder: JpegDecoder<ImageDecoderFromReaderType> =
-            ImageDecoderFromReader::to_decoder(BufReader::new(Cursor::new(
-              buf,
-            )), image_decoding_error)?;
+            ImageDecoderFromReader::to_decoder(
+              BufReader::new(Cursor::new(buf)),
+              image_decoding_error,
+            )?;
           let icc_profile = decoder.get_icc_profile();
-          (decoder.to_intermediate_image(image_decoding_error)?, icc_profile)
+          (
+            decoder.to_intermediate_image(image_decoding_error)?,
+            icc_profile,
+          )
         }
-        "image/gif" => {
+        MimeType::Gif => {
           let mut decoder: GifDecoder<ImageDecoderFromReaderType> =
-            ImageDecoderFromReader::to_decoder(BufReader::new(Cursor::new(
-              buf,
-            )), image_decoding_error)?;
+            ImageDecoderFromReader::to_decoder(
+              BufReader::new(Cursor::new(buf)),
+              image_decoding_error,
+            )?;
           let icc_profile = decoder.get_icc_profile();
-          (decoder.to_intermediate_image(image_decoding_error)?, icc_profile)
+          (
+            decoder.to_intermediate_image(image_decoding_error)?,
+            icc_profile,
+          )
         }
-        "image/bmp" => {
+        MimeType::Bmp => {
           let mut decoder: BmpDecoder<ImageDecoderFromReaderType> =
-            ImageDecoderFromReader::to_decoder(BufReader::new(Cursor::new(
-              buf,
-            )), image_decoding_error)?;
+            ImageDecoderFromReader::to_decoder(
+              BufReader::new(Cursor::new(buf)),
+              image_decoding_error,
+            )?;
           let icc_profile = decoder.get_icc_profile();
-          (decoder.to_intermediate_image(image_decoding_error)?, icc_profile)
+          (
+            decoder.to_intermediate_image(image_decoding_error)?,
+            icc_profile,
+          )
         }
-        "image/x-icon" => {
+        MimeType::Ico => {
           let mut decoder: IcoDecoder<ImageDecoderFromReaderType> =
-            ImageDecoderFromReader::to_decoder(BufReader::new(Cursor::new(
-              buf,
-            )), image_decoding_error)?;
+            ImageDecoderFromReader::to_decoder(
+              BufReader::new(Cursor::new(buf)),
+              image_decoding_error,
+            )?;
           let icc_profile = decoder.get_icc_profile();
-          (decoder.to_intermediate_image(image_decoding_error)?, icc_profile)
+          (
+            decoder.to_intermediate_image(image_decoding_error)?,
+            icc_profile,
+          )
         }
-        "image/webp" => {
+        MimeType::Webp => {
           let mut decoder: WebPDecoder<ImageDecoderFromReaderType> =
-            ImageDecoderFromReader::to_decoder(BufReader::new(Cursor::new(
-              buf,
-            )), image_decoding_error)?;
+            ImageDecoderFromReader::to_decoder(
+              BufReader::new(Cursor::new(buf)),
+              image_decoding_error,
+            )?;
           let icc_profile = decoder.get_icc_profile();
-          (decoder.to_intermediate_image(image_decoding_error)?, icc_profile)
-        }
-        "" => {
-          return Err(
-            DOMExceptionInvalidStateError::new(
-              &format!("The MIME type of source image is not specified.
-{} When you want to get a `Blob` from `fetch`, make sure to go through a file server that returns the appropriate content-type response header,
-      and specify the URL to the file server like {}.
-      Alternatively, if you are reading a local file using `Deno.readFile` etc.,
-      set the appropriate MIME type like {}.\n",
-              cyan("hint:"),
-              cyan("await(await fetch('http://localhost:8000/sample.png').blob()"),
-              cyan("new Blob([await Deno.readFile('sample.png')], { type: 'image/png' })")
-            )).into(),
+          (
+            decoder.to_intermediate_image(image_decoding_error)?,
+            icc_profile,
           )
         }
-        // return an error if the MIME type is not supported in the variable list of ImageTypePatternTable below
-        // ext/web/01_mimesniff.js
-        x => {
-          return Err(
-            DOMExceptionInvalidStateError::new(
-              &format!("The the MIME type {} of source image is not a supported format.
-{} The following MIME types are supported:
-      https://mimesniff.spec.whatwg.org/#image-type-pattern-matching-algorithm\n",
-              x,
-              yellow("info:")
-            )).into()
-          )
-        }
+        // This pattern is unreachable due to current block is already checked by the ImageBitmapSource above.
+        MimeType::NoMatch => unreachable!(),
       };
 
       let width = image.width();
@@ -249,6 +250,107 @@ fn apply_premultiply_alpha(
   }
 }
 
+#[derive(Debug, PartialEq)]
+struct ParsedArgs {
+  resize_width: Option<u32>,
+  resize_height: Option<u32>,
+  sx: Option<i32>,
+  sy: Option<i32>,
+  sw: Option<i32>,
+  sh: Option<i32>,
+  image_orientation: ImageOrientation,
+  premultiply_alpha: PremultiplyAlpha,
+  color_space_conversion: ColorSpaceConversion,
+  resize_quality: ResizeQuality,
+  image_bitmap_source: ImageBitmapSource,
+  mime_type: MimeType,
+}
+
+#[allow(clippy::too_many_arguments)]
+fn parse_args(
+  sx: i32,
+  sy: i32,
+  sw: i32,
+  sh: i32,
+  image_orientation: u8,
+  premultiply_alpha: u8,
+  color_space_conversion: u8,
+  resize_width: u32,
+  resize_height: u32,
+  resize_quality: u8,
+  image_bitmap_source: u8,
+  mime_type: u8,
+) -> ParsedArgs {
+  let resize_width = if resize_width == 0 {
+    None
+  } else {
+    Some(resize_width)
+  };
+  let resize_height = if resize_height == 0 {
+    None
+  } else {
+    Some(resize_height)
+  };
+  let sx = if sx == 0 { None } else { Some(sx) };
+  let sy = if sy == 0 { None } else { Some(sy) };
+  let sw = if sw == 0 { None } else { Some(sw) };
+  let sh = if sh == 0 { None } else { Some(sh) };
+
+  // Their unreachable wildcard patterns are validated in JavaScript-side.
+  let image_orientation = match image_orientation {
+    0 => ImageOrientation::FromImage,
+    1 => ImageOrientation::FlipY,
+    _ => unreachable!(),
+  };
+  let premultiply_alpha = match premultiply_alpha {
+    0 => PremultiplyAlpha::Default,
+    1 => PremultiplyAlpha::Premultiply,
+    2 => PremultiplyAlpha::None,
+    _ => unreachable!(),
+  };
+  let color_space_conversion = match color_space_conversion {
+    0 => ColorSpaceConversion::Default,
+    1 => ColorSpaceConversion::None,
+    _ => unreachable!(),
+  };
+  let resize_quality = match resize_quality {
+    0 => ResizeQuality::Low,
+    1 => ResizeQuality::Pixelated,
+    2 => ResizeQuality::Medium,
+    3 => ResizeQuality::High,
+    _ => unreachable!(),
+  };
+  let image_bitmap_source = match image_bitmap_source {
+    0 => ImageBitmapSource::Blob,
+    1 => ImageBitmapSource::ImageData,
+    _ => unreachable!(),
+  };
+  let mime_type = match mime_type {
+    0 => MimeType::NoMatch,
+    1 => MimeType::Png,
+    2 => MimeType::Jpeg,
+    3 => MimeType::Gif,
+    4 => MimeType::Bmp,
+    5 => MimeType::Ico,
+    6 => MimeType::Webp,
+    _ => unreachable!(),
+  };
+  ParsedArgs {
+    resize_width,
+    resize_height,
+    sx,
+    sy,
+    sw,
+    sh,
+    image_orientation,
+    premultiply_alpha,
+    color_space_conversion,
+    resize_quality,
+    image_bitmap_source,
+    mime_type,
+  }
+}
+
 #[op2]
 #[serde]
 #[allow(clippy::too_many_arguments)]
@@ -256,19 +358,47 @@ pub(super) fn op_create_image_bitmap(
   #[buffer] buf: JsBuffer,
   width: u32,
   height: u32,
-  sx: Option<i32>,
-  sy: Option<i32>,
-  sw: Option<i32>,
-  sh: Option<i32>,
-  #[serde] image_orientation: ImageOrientation,
-  #[serde] premultiply_alpha: PremultiplyAlpha,
-  #[serde] color_space_conversion: ColorSpaceConversion,
-  resize_width: Option<u32>,
-  resize_height: Option<u32>,
-  #[serde] resize_quality: ResizeQuality,
-  #[serde] image_bitmap_source: ImageBitmapSource,
-  #[string] mime_type: &str,
+  sx: i32,
+  sy: i32,
+  sw: i32,
+  sh: i32,
+  image_orientation: u8,
+  premultiply_alpha: u8,
+  color_space_conversion: u8,
+  resize_width: u32,
+  resize_height: u32,
+  resize_quality: u8,
+  image_bitmap_source: u8,
+  mime_type: u8,
 ) -> Result<(ToJsBuffer, u32, u32), AnyError> {
+  let ParsedArgs {
+    resize_width,
+    resize_height,
+    sx,
+    sy,
+    sw,
+    sh,
+    image_orientation,
+    premultiply_alpha,
+    color_space_conversion,
+    resize_quality,
+    image_bitmap_source,
+    mime_type,
+  } = parse_args(
+    sx,
+    sy,
+    sw,
+    sh,
+    image_orientation,
+    premultiply_alpha,
+    color_space_conversion,
+    resize_width,
+    resize_height,
+    resize_quality,
+    image_bitmap_source,
+    mime_type,
+  );
+
   // 6. Switch on image:
   let (image, width, height, icc_profile) =
     decode_bitmap_data(&buf, width, height, &image_bitmap_source, mime_type)?;
@@ -382,4 +512,31 @@ pub(super) fn op_create_image_bitmap(
     apply_premultiply_alpha(image, &image_bitmap_source, &premultiply_alpha)?;
 
   Ok((image.into_bytes().into(), output_width, output_height))
+}
+
+#[cfg(test)]
+mod tests {
+  use super::*;
+
+  #[test]
+  fn test_parse_args() {
+    let parsed_args = parse_args(0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0);
+    assert_eq!(
+      parsed_args,
+      ParsedArgs {
+        resize_width: None,
+        resize_height: None,
+        sx: None,
+        sy: None,
+        sw: None,
+        sh: None,
+        image_orientation: ImageOrientation::FromImage,
+        premultiply_alpha: PremultiplyAlpha::Default,
+        color_space_conversion: ColorSpaceConversion::Default,
+        resize_quality: ResizeQuality::Low,
+        image_bitmap_source: ImageBitmapSource::Blob,
+        mime_type: MimeType::NoMatch,
+      }
+    );
+  }
 }

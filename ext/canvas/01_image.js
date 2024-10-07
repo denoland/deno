@@ -233,38 +233,111 @@ function createImageBitmap(
 
   // 4.
   return (async () => {
+    //
+    // For performance reasons, the arguments passed to op are represented as numbers that don't need to be serialized.
+    //
+
     let width = 0;
     let height = 0;
-    let mimeType = "";
+    // If the of image doesn't have a MIME type, mark it as 0.
+    let mimeType = 0;
     let imageBitmapSource, buf;
     if (isBlob) {
-      imageBitmapSource = imageBitmapSources[0];
+      imageBitmapSource = 0;
       buf = new Uint8Array(await image.arrayBuffer());
-      mimeType = sniffImage(image.type);
-    }
-    if (isImageData) {
+      const mimeTypeString = sniffImage(image.type);
+
+      if (mimeTypeString === "image/png") {
+        mimeType = 1;
+      } else if (mimeTypeString === "image/jpeg") {
+        mimeType = 2;
+      } else if (mimeTypeString === "image/gif") {
+        mimeType = 3;
+      } else if (mimeTypeString === "image/bmp") {
+        mimeType = 4;
+      } else if (mimeTypeString === "image/x-icon") {
+        mimeType = 5;
+      } else if (mimeTypeString === "image/webp") {
+        mimeType = 6;
+      } else if (mimeTypeString === "") {
+        return PromiseReject(
+          new DOMException(
+            `The MIME type of source image is not specified.
+hint: When you want to get a "Blob" from "fetch", make sure to go through a file server that returns the appropriate content-type response header,
+      and specify the URL to the file server like "await(await fetch('http://localhost:8000/sample.png').blob()".
+      Alternatively, if you are reading a local file using 'Deno.readFile' etc.,
+      set the appropriate MIME type like "new Blob([await Deno.readFile('sample.png')], { type: 'image/png' })".\n`,
+            "InvalidStateError",
+          ),
+        );
+      } else {
+        return PromiseReject(
+          new DOMException(
+            `The the MIME type ${mimeTypeString} of source image is not a supported format.
+info: The following MIME types are supported:
+      https://mimesniff.spec.whatwg.org/#image-type-pattern-matching-algorithm\n`,
+            "InvalidStateError",
+          ),
+        );
+      }
+    } else if (isImageData) {
       width = image[_width];
       height = image[_height];
-      imageBitmapSource = imageBitmapSources[1];
+      imageBitmapSource = 1;
       buf = new Uint8Array(TypedArrayPrototypeGetBuffer(image[_data]));
     }
 
-    const sx = typeof sxOrOptions === "number" ? sxOrOptions : undefined;
+    // If those options are not provided, assign 0 to mean undefined(None).
+    const _sx = typeof sxOrOptions === "number" ? sxOrOptions : 0;
+    const _sy = sy ?? 0;
+    const _sw = sw ?? 0;
+    const _sh = sh ?? 0;
+
+    // If those options are not provided, assign 0 to mean undefined(None).
+    const resizeWidth = options.resizeWidth ?? 0;
+    const resizeHeight = options.resizeHeight ?? 0;
+
+    // If the imageOrientation option is set "from-image" or not set, assign 0.
+    const imageOrientation = options.imageOrientation === "flipY" ? 1 : 0;
+
+    // If the premultiplyAlpha option is "default" or not set, assign 0.
+    let premultiplyAlpha = 0;
+    if (options.premultiplyAlpha === "premultiply") {
+      premultiplyAlpha = 1;
+    } else if (options.premultiplyAlpha === "none") {
+      premultiplyAlpha = 2;
+    }
+
+    // If the colorSpaceConversion option is "default" or not set, assign 0.
+    const colorSpaceConversion = options.colorSpaceConversion === "none"
+      ? 1
+      : 0;
+
+    // If the resizeQuality option is "low" or not set, assign 0.
+    let resizeQuality = 0;
+    if (options.resizeQuality === "pixelated") {
+      resizeQuality = 1;
+    } else if (options.resizeQuality === "medium") {
+      resizeQuality = 2;
+    } else if (options.resizeQuality === "high") {
+      resizeQuality = 3;
+    }
+
     // TODO(Hajime-san): this should be real async
     const processedImage = op_create_image_bitmap(
       buf,
       width,
       height,
-      sx,
-      sy,
-      sw,
-      sh,
-      options.imageOrientation ?? "from-image",
-      options.premultiplyAlpha ?? "default",
-      options.colorSpaceConversion ?? "default",
-      options.resizeWidth,
-      options.resizeHeight,
-      options.resizeQuality ?? "low",
+      _sx,
+      _sy,
+      _sw,
+      _sh,
+      imageOrientation,
+      premultiplyAlpha,
+      colorSpaceConversion,
+      resizeWidth,
+      resizeHeight,
+      resizeQuality,
       imageBitmapSource,
       mimeType,
     );
