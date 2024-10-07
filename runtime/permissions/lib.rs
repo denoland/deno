@@ -2285,6 +2285,11 @@ impl PermissionsContainer {
     self.inner.lock().read.check_all(Some(api_name))
   }
 
+  #[inline(always)]
+  pub fn query_read_all(&self) -> bool {
+    self.inner.lock().read.query(None) == PermissionState::Granted
+  }
+
   #[must_use = "the resolved return value to mitigate time-of-check to time-of-use issues"]
   #[inline(always)]
   pub fn check_write(
@@ -2614,8 +2619,13 @@ impl PermissionsContainer {
     &self,
     path: Option<&str>,
   ) -> Result<PermissionState, AnyError> {
+    let inner = self.inner.lock();
+    let permission = &inner.read;
+    if permission.is_allow_all() {
+      return Ok(PermissionState::Granted);
+    }
     Ok(
-      self.inner.lock().read.query(
+      permission.query(
         path
           .map(|path| {
             Result::<_, AnyError>::Ok(
@@ -2633,8 +2643,13 @@ impl PermissionsContainer {
     &self,
     path: Option<&str>,
   ) -> Result<PermissionState, AnyError> {
+    let inner = self.inner.lock();
+    let permission = &inner.write;
+    if permission.is_allow_all() {
+      return Ok(PermissionState::Granted);
+    }
     Ok(
-      self.inner.lock().write.query(
+      permission.query(
         path
           .map(|path| {
             Result::<_, AnyError>::Ok(
@@ -2652,8 +2667,13 @@ impl PermissionsContainer {
     &self,
     host: Option<&str>,
   ) -> Result<PermissionState, AnyError> {
+    let inner = self.inner.lock();
+    let permission = &inner.net;
+    if permission.is_allow_all() {
+      return Ok(PermissionState::Granted);
+    }
     Ok(
-      self.inner.lock().net.query(
+      permission.query(
         match host {
           None => None,
           Some(h) => Some(self.descriptor_parser.parse_net_descriptor(h)?),
@@ -2665,7 +2685,12 @@ impl PermissionsContainer {
 
   #[inline(always)]
   pub fn query_env(&self, var: Option<&str>) -> PermissionState {
-    self.inner.lock().env.query(var)
+    let inner = self.inner.lock();
+    let permission = &inner.env;
+    if permission.is_allow_all() {
+      return PermissionState::Granted;
+    }
+    permission.query(var)
   }
 
   #[inline(always)]
@@ -2673,8 +2698,13 @@ impl PermissionsContainer {
     &self,
     kind: Option<&str>,
   ) -> Result<PermissionState, AnyError> {
+    let inner = self.inner.lock();
+    let permission = &inner.sys;
+    if permission.is_allow_all() {
+      return Ok(PermissionState::Granted);
+    }
     Ok(
-      self.inner.lock().sys.query(
+      permission.query(
         kind
           .map(|kind| self.descriptor_parser.parse_sys_descriptor(kind))
           .transpose()?
@@ -2688,8 +2718,13 @@ impl PermissionsContainer {
     &self,
     cmd: Option<&str>,
   ) -> Result<PermissionState, AnyError> {
+    let inner = self.inner.lock();
+    let permission = &inner.run;
+    if permission.is_allow_all() {
+      return Ok(PermissionState::Granted);
+    }
     Ok(
-      self.inner.lock().run.query(
+      permission.query(
         cmd
           .map(|request| self.descriptor_parser.parse_run_query(request))
           .transpose()?
@@ -2703,8 +2738,13 @@ impl PermissionsContainer {
     &self,
     path: Option<&str>,
   ) -> Result<PermissionState, AnyError> {
+    let inner = self.inner.lock();
+    let permission = &inner.ffi;
+    if permission.is_allow_all() {
+      return Ok(PermissionState::Granted);
+    }
     Ok(
-      self.inner.lock().ffi.query(
+      permission.query(
         path
           .map(|path| {
             Result::<_, AnyError>::Ok(

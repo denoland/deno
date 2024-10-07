@@ -239,7 +239,6 @@ pub fn op_message_port_recv_message_sync(
   #[smi] rid: ResourceId,
 ) -> Result<Option<JsMessageData>, AnyError> {
   let resource = state.resource_table.get::<MessagePortResource>(rid)?;
-  resource.cancel.cancel();
   let mut rx = resource.port.rx.borrow_mut();
 
   match rx.try_recv() {
