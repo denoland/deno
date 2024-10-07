@@ -199,12 +199,6 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: 18
-      - name: Install protoc
-        uses: arduino/setup-protoc@v3
-        with:
-          version: '21.12'
-          repo-token: '${{ secrets.GITHUB_TOKEN }}'
-        if: '!(matrix.skip)'
       - if: |-
           !(matrix.skip) && (matrix.profile == 'release' &&
           matrix.job == 'test' &&
