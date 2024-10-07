@@ -161,7 +161,7 @@ async fn run_subcommand(flags: Arc<Flags>) -> Result<i32, AnyError> {
     DenoSubcommand::Uninstall(uninstall_flags) => spawn_subcommand(async {
       tools::installer::uninstall(flags, uninstall_flags).await
     }),
-    DenoSubcommand::Lsp => spawn_subcommand(async { 
+    DenoSubcommand::Lsp => spawn_subcommand(async {
       log::warn!(
         "{} command is intended to be run by text editors and IDEs and shouldn't be run manually.
 
