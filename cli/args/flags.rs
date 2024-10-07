@@ -25,6 +25,7 @@ use clap::ValueHint;
 use color_print::cstr;
 use deno_config::deno_json::NodeModulesDirMode;
 use deno_config::glob::FilePatterns;
+use deno_config::glob::PathOrPattern;
 use deno_config::glob::PathOrPatternSet;
 use deno_core::anyhow::bail;
 use deno_core::anyhow::Context;
@@ -69,29 +70,18 @@ impl FileFlags {
     let include = if self.include.is_empty() {
       None
     } else {
-      let include_paths: Vec<PathBuf> = self
-        .include
-        .iter()
-        .map(|path| base.join(path))
-        .filter(|path| path != base)
-        .collect();
+      let path_or_pattern_set =
+        PathOrPatternSet::from_include_relative_path_or_patterns(
+          base,
+          &self.include,
+        )?;
 
-      let unique_include_paths: Vec<PathBuf> = include_paths
-        .into_iter()
-        .collect::<std::collections::HashSet<_>>()
-        .into_iter()
-        .collect();
-
-      if unique_include_paths.is_empty() {
+      let deduped_set = FileFlags::remove_duplicates(path_or_pattern_set);
+      let final_set = FileFlags::remove_base_path(deduped_set, base);
+      if final_set.inner().is_empty() {
         None
       } else {
-        Some(PathOrPatternSet::from_include_relative_path_or_patterns(
-          base,
-          &unique_include_paths
-            .iter()
-            .map(|path| path.to_string_lossy().into_owned())
-            .collect::<Vec<String>>(),
-        )?)
+        Some(final_set)
       }
     };
 
@@ -106,8 +96,43 @@ impl FileFlags {
       base: base.to_path_buf(),
     })
   }
-}
 
+  fn remove_duplicates(pattern_set: PathOrPatternSet) -> PathOrPatternSet {
+    let mut seen_paths: HashSet<PathBuf> = HashSet::new();
+    let filtered_patterns: Vec<PathOrPattern> = pattern_set
+      .inner()
+      .iter()
+      .filter(|pattern| match pattern {
+        PathOrPattern::Path(path) | PathOrPattern::NegatedPath(path) => {
+          seen_paths.insert(path.clone())
+        }
+        _ => true,
+      })
+      .cloned()
+      .collect();
+
+    PathOrPatternSet::new(filtered_patterns)
+  }
+
+  fn remove_base_path(
+    pattern_set: PathOrPatternSet,
+    base: &Path,
+  ) -> PathOrPatternSet {
+    let filtered_patterns: Vec<PathOrPattern> = pattern_set
+      .inner()
+      .iter()
+      .filter(|pattern| match pattern {
+        PathOrPattern::Path(path) | PathOrPattern::NegatedPath(path) => {
+          path != base
+        }
+        _ => true,
+      })
+      .cloned()
+      .collect();
+
+    PathOrPatternSet::new(filtered_patterns)
+  }
+}
 #[derive(Clone, Debug, Default, Eq, PartialEq)]
 pub struct AddFlags {
   pub packages: Vec<String>,
