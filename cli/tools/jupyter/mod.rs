@@ -357,54 +357,70 @@ pub struct JupyterReplSession {
 
 impl JupyterReplSession {
   pub async fn start(&mut self) {
+    let mut poll_worker = true;
     loop {
-      let Some(msg) = self.rx.recv().await else {
-        break;
-      };
-      let resp = match msg {
-        JupyterReplRequest::LspCompletions {
-          line_text,
-          position,
-        } => JupyterReplResponse::LspCompletions(
-          self.lsp_completions(&line_text, position).await,
-        ),
-        JupyterReplRequest::JsGetProperties { object_id } => {
-          JupyterReplResponse::JsGetProperties(
-            self.get_properties(object_id).await,
-          )
+      tokio::select! {
+        maybe_message = self.rx.recv() {
+          let Some(msg) = maybe_message else {
+            break;
+          }
+          if self.handle_message(msg).is_err() {
+            break;
+          }
+          poll_worker = true;
         }
-        JupyterReplRequest::JsEvaluate { expr } => {
-          JupyterReplResponse::JsEvaluate(self.evaluate(expr).await)
+        _ = self.repl_session.run_event_loop(), if poll_worker => {
+          poll_worker = false;
         }
-        JupyterReplRequest::JsGlobalLexicalScopeNames => {
-          JupyterReplResponse::JsGlobalLexicalScopeNames(
-            self.global_lexical_scope_names().await,
-          )
-        }
-        JupyterReplRequest::JsEvaluateLineWithObjectWrapping { line } => {
-          JupyterReplResponse::JsEvaluateLineWithObjectWrapping(
-            self.evaluate_line_with_object_wrapping(&line).await,
-          )
-        }
-        JupyterReplRequest::JsCallFunctionOnArgs {
-          function_declaration,
-          args,
-        } => JupyterReplResponse::JsCallFunctionOnArgs(
-          self
-            .call_function_on_args(function_declaration, &args)
-            .await,
-        ),
-        JupyterReplRequest::JsCallFunctionOn { arg0, arg1 } => {
-          JupyterReplResponse::JsCallFunctionOn(
-            self.call_function_on(arg0, arg1).await,
-          )
-        }
-      };
-
-      let Ok(()) = self.tx.send(resp) else {
-        break;
-      };
+      }
     }
+  }
+
+  async fn handle_message(
+    &mut self,
+    msg: JupyterReplMessage,
+  ) -> Result<(), AnyError> {
+    let resp = match msg {
+      JupyterReplRequest::LspCompletions {
+        line_text,
+        position,
+      } => JupyterReplResponse::LspCompletions(
+        self.lsp_completions(&line_text, position).await,
+      ),
+      JupyterReplRequest::JsGetProperties { object_id } => {
+        JupyterReplResponse::JsGetProperties(
+          self.get_properties(object_id).await,
+        )
+      }
+      JupyterReplRequest::JsEvaluate { expr } => {
+        JupyterReplResponse::JsEvaluate(self.evaluate(expr).await)
+      }
+      JupyterReplRequest::JsGlobalLexicalScopeNames => {
+        JupyterReplResponse::JsGlobalLexicalScopeNames(
+          self.global_lexical_scope_names().await,
+        )
+      }
+      JupyterReplRequest::JsEvaluateLineWithObjectWrapping { line } => {
+        JupyterReplResponse::JsEvaluateLineWithObjectWrapping(
+          self.evaluate_line_with_object_wrapping(&line).await,
+        )
+      }
+      JupyterReplRequest::JsCallFunctionOnArgs {
+        function_declaration,
+        args,
+      } => JupyterReplResponse::JsCallFunctionOnArgs(
+        self
+          .call_function_on_args(function_declaration, &args)
+          .await,
+      ),
+      JupyterReplRequest::JsCallFunctionOn { arg0, arg1 } => {
+        JupyterReplResponse::JsCallFunctionOn(
+          self.call_function_on(arg0, arg1).await,
+        )
+      }
+    };
+
+    self.tx.send(resp)
   }
 
   pub async fn lsp_completions(
