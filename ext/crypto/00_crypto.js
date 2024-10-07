@@ -4460,7 +4460,7 @@ function exportKeyX448(format, key, innerKey) {
       // 1.
       if (key[_type] !== "private") {
         throw new DOMException(
-          "Key is not a public key",
+          "Key is not a private key",
           "InvalidAccessError",
         );
       }
