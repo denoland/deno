@@ -360,15 +360,17 @@ impl JupyterReplSession {
     let mut poll_worker = true;
     loop {
       tokio::select! {
-        maybe_message = self.rx.recv() {
+        biased;
+
+        maybe_message = self.rx.recv() => {
           let Some(msg) = maybe_message else {
             break;
-          }
-          if self.handle_message(msg).is_err() {
+          };
+          if self.handle_message(msg).await.is_err() {
             break;
           }
           poll_worker = true;
-        }
+        },
         _ = self.repl_session.run_event_loop(), if poll_worker => {
           poll_worker = false;
         }
@@ -378,7 +380,7 @@ impl JupyterReplSession {
 
   async fn handle_message(
     &mut self,
-    msg: JupyterReplMessage,
+    msg: JupyterReplRequest,
   ) -> Result<(), AnyError> {
     let resp = match msg {
       JupyterReplRequest::LspCompletions {
@@ -420,7 +422,7 @@ impl JupyterReplSession {
       }
     };
 
-    self.tx.send(resp)
+    self.tx.send(resp).map_err(|e| e.into())
   }
 
   pub async fn lsp_completions(
