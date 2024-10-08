@@ -1,32 +1,32 @@
-// deno-lint-ignore-file no-window-prefix no-prototype-builtins
+// deno-lint-ignore-file no-prototype-builtins
 import { assert } from "@std/assert";
 import "./imported.ts";
 
-assert(window.hasOwnProperty("onload"));
-assert(window.onload === null);
+assert(globalThis.hasOwnProperty("onload"));
+assert(globalThis.onload === null);
 
 const eventHandler = (e: Event) => {
   assert(e.type === "beforeunload" ? e.cancelable : !e.cancelable);
   console.log(`got ${e.type} event in event handler (main)`);
 };
 
-window.addEventListener("load", eventHandler);
+globalThis.addEventListener("load", eventHandler);
 
-window.addEventListener("beforeunload", eventHandler);
+globalThis.addEventListener("beforeunload", eventHandler);
 
-window.addEventListener("unload", eventHandler);
+globalThis.addEventListener("unload", eventHandler);
 
-window.onload = (e: Event) => {
+globalThis.onload = (e: Event) => {
   assert(!e.cancelable);
   console.log(`got ${e.type} event in onload function`);
 };
 
-window.onbeforeunload = (e: BeforeUnloadEvent) => {
+globalThis.onbeforeunload = (e: BeforeUnloadEvent) => {
   assert(e.cancelable);
   console.log(`got ${e.type} event in onbeforeunload function`);
 };
 
-window.onunload = (e: Event) => {
+globalThis.onunload = (e: Event) => {
   assert(!e.cancelable);
   console.log(`got ${e.type} event in onunload function`);
 };

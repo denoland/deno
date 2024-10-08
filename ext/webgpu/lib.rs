@@ -403,13 +403,6 @@ pub fn op_webgpu_request_adapter(
 ) -> Result<GpuAdapterResOrErr, AnyError> {
   let mut state = state.borrow_mut();
 
-  // TODO(bartlomieju): replace with `state.feature_checker.check_or_exit`
-  // once we phase out `check_or_exit_with_legacy_fallback`
-  state.feature_checker.check_or_exit_with_legacy_fallback(
-    UNSTABLE_FEATURE_NAME,
-    "navigator.gpu.requestAdapter",
-  );
-
   let backends = std::env::var("DENO_WEBGPU_BACKEND").map_or_else(
     |_| wgpu_types::Backends::all(),
     |s| wgpu_core::instance::parse_backends_from_comma_list(&s),

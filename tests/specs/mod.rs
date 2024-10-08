@@ -53,7 +53,11 @@ struct MultiTestMetaData {
   #[serde(default)]
   pub envs: HashMap<String, String>,
   #[serde(default)]
+  pub cwd: Option<String>,
+  #[serde(default)]
   pub tests: BTreeMap<String, JsonMap>,
+  #[serde(default)]
+  pub ignore: bool,
 }
 
 impl MultiTestMetaData {
@@ -73,6 +77,10 @@ impl MultiTestMetaData {
       if multi_test_meta_data.temp_dir && !value.contains_key("tempDir") {
         value.insert("tempDir".to_string(), true.into());
       }
+      if multi_test_meta_data.cwd.is_some() && !value.contains_key("cwd") {
+        value
+          .insert("cwd".to_string(), multi_test_meta_data.cwd.clone().into());
+      }
       if !multi_test_meta_data.envs.is_empty() {
         if !value.contains_key("envs") {
           value.insert("envs".to_string(), JsonMap::default().into());
@@ -83,6 +91,9 @@ impl MultiTestMetaData {
             envs_obj.insert(key.into(), value.clone().into());
           }
         }
+      }
+      if multi_test_meta_data.ignore && !value.contains_key("ignore") {
+        value.insert("ignore".to_string(), true.into());
       }
     }
 
@@ -112,11 +123,15 @@ struct MultiStepMetaData {
   #[serde(default)]
   pub base: Option<String>,
   #[serde(default)]
+  pub cwd: Option<String>,
+  #[serde(default)]
   pub envs: HashMap<String, String>,
   #[serde(default)]
   pub repeat: Option<usize>,
   #[serde(default)]
   pub steps: Vec<StepMetaData>,
+  #[serde(default)]
+  pub ignore: bool,
 }
 
 #[derive(Clone, Deserialize)]
@@ -130,16 +145,20 @@ struct SingleTestMetaData {
   pub repeat: Option<usize>,
   #[serde(flatten)]
   pub step: StepMetaData,
+  #[serde(default)]
+  pub ignore: bool,
 }
 
 impl SingleTestMetaData {
   pub fn into_multi(self) -> MultiStepMetaData {
     MultiStepMetaData {
       base: self.base,
+      cwd: None,
       temp_dir: self.temp_dir,
       repeat: self.repeat,
       envs: Default::default(),
       steps: vec![self.step],
+      ignore: self.ignore,
     }
   }
 }
@@ -157,6 +176,7 @@ struct StepMetaData {
   pub command_name: Option<String>,
   #[serde(default)]
   pub envs: HashMap<String, String>,
+  pub input: Option<String>,
   pub output: String,
   #[serde(default)]
   pub exit_code: i32,
@@ -227,7 +247,9 @@ fn run_test(test: &CollectedTest<serde_json::Value>) -> TestResult {
   let diagnostic_logger = Rc::new(RefCell::new(Vec::<u8>::new()));
   let result = TestResult::from_maybe_panic_or_result(AssertUnwindSafe(|| {
     let metadata = deserialize_value(metadata_value);
-    if let Some(repeat) = metadata.repeat {
+    if metadata.ignore {
+      TestResult::Ignored
+    } else if let Some(repeat) = metadata.repeat {
       TestResult::SubTests(
         (0..repeat)
           .map(|i| {
@@ -371,7 +393,7 @@ fn run_step(
     VecOrString::Vec(args) => command.args_vec(args),
     VecOrString::String(text) => command.args(text),
   };
-  let command = match &step.cwd {
+  let command = match step.cwd.as_ref().or(metadata.cwd.as_ref()) {
     Some(cwd) => command.current_dir(cwd),
     None => command,
   };
@@ -384,6 +406,10 @@ fn run_step(
     #[allow(deprecated)]
     true => command.show_output(),
     false => command,
+  };
+  let command = match &step.input {
+    Some(input) => command.stdin_text(input),
+    None => command,
   };
   let output = command.run();
   if step.output.ends_with(".out") {

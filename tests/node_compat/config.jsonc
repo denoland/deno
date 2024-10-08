@@ -8,6 +8,7 @@
       "elipses.txt",
       "empty.txt",
       "exit.js",
+      "parent-process-nonpersistent.js",
       "print-chars.js",
       "x.txt"
     ],
@@ -25,6 +26,7 @@
       "test-buffer-from.js",
       "test-buffer-includes.js",
       "test-buffer-indexof.js",
+      "test-child-process-detached.js",
       "test-child-process-exec-abortcontroller-promisified.js",
       "test-child-process-exec-encoding.js",
       "test-child-process-exec-kill-throws.js",
@@ -41,7 +43,9 @@
       // TODO(littledivy): windows ipc streams not yet implemented
       "test-child-process-fork-ref.js",
       "test-child-process-fork-ref2.js",
-      "test-child-process-ipc-next-tick.js",
+      // TODO(bartlomieju): this test is very flaky on CI
+      // https://github.com/denoland/deno/issues/25855
+      // "test-child-process-ipc-next-tick.js",
       "test-child-process-ipc.js",
       "test-child-process-spawnsync-env.js",
       "test-child-process-stdio-inherit.js",
@@ -104,6 +108,7 @@
       "test-util-promisify.js",
       "test-util-types.js",
       "test-util.js",
+      "test-v8-serdes.js",
       "test-webcrypto-sign-verify.js",
       "test-whatwg-url-properties.js",
       // needs replace ".on" => ".addEventListener" in L29
@@ -134,6 +139,7 @@
     "fixtures": [
       "a.js",
       "child_process_should_emit_error.js",
+      "child-process-persistent.js",
       "child-process-spawn-node.js",
       "echo.js",
       "elipses.txt",
@@ -334,6 +340,7 @@
       "test-fs-open-numeric-flags.js",
       "test-fs-open.js",
       "test-fs-opendir.js",
+      "test-fs-promises-writefile-with-fd.js",
       "test-fs-read-stream-autoClose.js",
       "test-fs-read-stream-concurrent-reads.js",
       "test-fs-read-stream-double-close.js",
@@ -399,6 +406,7 @@
       "test-http-outgoing-settimeout.js",
       "test-http-url.parse-https.request.js",
       "test-http-url.parse-only-support-http-https-protocol.js",
+      "test-icu-transcode.js",
       "test-net-access-byteswritten.js",
       "test-net-better-error-messages-listen-path.js",
       "test-net-better-error-messages-path.js",
@@ -764,6 +772,7 @@
   },
   "windowsIgnore": {
     "parallel": [
+      "test-child-process-detached.js",
       "test-child-process-exec-abortcontroller-promisified.js",
       "test-console-log-throw-primitive.js",
       "test-console-no-swallow-stack-overflow.js",

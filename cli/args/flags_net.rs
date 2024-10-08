@@ -50,7 +50,7 @@ pub fn parse(paths: Vec<String>) -> clap::error::Result<Vec<String>> {
         out.push(format!("{}:{}", host, port.0));
       }
     } else {
-      host_and_port.parse::<NetDescriptor>().map_err(|e| {
+      NetDescriptor::parse(&host_and_port).map_err(|e| {
         clap::Error::raw(clap::error::ErrorKind::InvalidValue, format!("{e:?}"))
       })?;
       out.push(host_and_port)

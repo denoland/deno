@@ -1,6 +1,5 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
-// deno-lint-ignore-file no-window-prefix no-window
 import {
   assert,
   assertEquals,
@@ -19,32 +18,16 @@ Deno.test(function noInternalGlobals() {
   }
 });
 
-Deno.test(function windowExists() {
-  assert(window != null);
-});
-
 Deno.test(function selfExists() {
   assert(self != null);
 });
 
-Deno.test(function windowWindowExists() {
-  assert(window.window === window);
-});
-
-Deno.test(function windowSelfExists() {
-  assert(window.self === window);
-});
-
-Deno.test(function globalThisEqualsWindow() {
-  assert(globalThis === window);
+Deno.test(function globalThisWindowEqualsUndefined() {
+  assert(globalThis.window === undefined);
 });
 
 Deno.test(function globalThisEqualsSelf() {
   assert(globalThis === self);
-});
-
-Deno.test(function globalThisInstanceofWindow() {
-  assert(globalThis instanceof Window);
 });
 
 Deno.test(function globalThisConstructorLength() {
@@ -63,10 +46,6 @@ Deno.test(function navigatorInstanceofNavigator() {
 
 Deno.test(function DenoNamespaceExists() {
   assert(Deno != null);
-});
-
-Deno.test(function DenoNamespaceEqualsWindowDeno() {
-  assert(Deno === window.Deno);
 });
 
 Deno.test(function DenoNamespaceIsNotFrozen() {
@@ -119,7 +98,7 @@ Deno.test(async function windowQueueMicrotask() {
       res();
     };
   });
-  window.queueMicrotask(resolve1!);
+  globalThis.queueMicrotask(resolve1!);
   setTimeout(resolve2!, 0);
   await p1;
   await p2;
@@ -138,12 +117,9 @@ Deno.test(function webApiGlobalThis() {
 Deno.test(function windowNameIsDefined() {
   assertEquals(typeof globalThis.name, "string");
   assertEquals(name, "");
-  assertEquals(window.name, name);
   name = "foobar";
-  assertEquals(window.name, "foobar");
   assertEquals(name, "foobar");
   name = "";
-  assertEquals(window.name, "");
   assertEquals(name, "");
 });
 

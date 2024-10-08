@@ -148,3 +148,18 @@ fn raw_window(
 
   Ok((win_handle, display_handle))
 }
+
+#[cfg(not(any(
+  target_os = "macos",
+  target_os = "windows",
+  target_os = "linux",
+  target_os = "freebsd",
+  target_os = "openbsd",
+)))]
+fn raw_window(
+  _system: &str,
+  _window: *const c_void,
+  _display: *const c_void,
+) -> Result<RawHandles, AnyError> {
+  Err(type_error("Unsupported platform"))
+}

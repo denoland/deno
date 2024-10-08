@@ -1,4 +1,4 @@
-window.onunload = () => {
+globalThis.onunload = () => {
   console.log("onunload is called");
   // This second exit call doesn't trigger unload event,
   // and therefore actually stops the process.

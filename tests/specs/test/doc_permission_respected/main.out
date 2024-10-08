@@ -1,0 +1,25 @@
+Check [WILDCARD]/main.ts
+Check [WILDCARD]/main.ts$3-6.ts
+Check [WILDCARD]/main.ts$8-11.ts
+running 0 tests from ./main.ts
+running 1 test from ./main.ts$3-6.ts
+[WILDCARD]/main.ts$3-6.ts ... ok ([WILDCARD]ms)
+running 1 test from ./main.ts$8-11.ts
+[WILDCARD]/main.ts$8-11.ts ... FAILED ([WILDCARD]ms)
+
+ ERRORS 
+
+[WILDCARD]/main.ts$8-11.ts => ./main.ts$8-11.ts:1:6
+error: NotCapable: Requires env access to "USER", run again with the --allow-env flag
+    const _user = Deno.env.get("USER");
+                           ^
+    at Object.getEnv [as get] ([WILDCARD])
+    at [WILDCARD]/main.ts$8-11.ts:2:28
+
+ FAILURES 
+
+[WILDCARD]/main.ts$8-11.ts => ./main.ts$8-11.ts:1:6
+
+FAILED | 1 passed | 1 failed ([WILDCARD]ms)
+
+error: Test failed

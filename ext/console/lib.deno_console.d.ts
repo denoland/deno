@@ -6,7 +6,7 @@
 /// <reference lib="esnext" />
 
 /** @category I/O */
-declare interface Console {
+interface Console {
   assert(condition?: boolean, ...data: any[]): void;
   clear(): void;
   count(label?: string): void;

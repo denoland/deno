@@ -1,0 +1,14 @@
+{
+  "steps": [
+    {
+      "args": "install http://example.com",
+      "output": "install_http.out",
+      "exitCode": 1
+    },
+    {
+      "args": "install https://example.com",
+      "output": "install_https.out",
+      "exitCode": 1
+    }
+  ]
+}

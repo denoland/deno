@@ -34,7 +34,9 @@ pub trait ProgressBarRenderer: Send + Sync + std::fmt::Debug {
 
 /// Indicatif style progress bar.
 #[derive(Debug)]
-pub struct BarProgressBarRenderer;
+pub struct BarProgressBarRenderer {
+  pub display_human_download_size: bool,
+}
 
 impl ProgressBarRenderer for BarProgressBarRenderer {
   fn render(&self, data: ProgressData) -> String {
@@ -48,13 +50,16 @@ impl ProgressBarRenderer for BarProgressBarRenderer {
       if total_size == 0 {
         (String::new(), 0)
       } else {
-        let total_size_str = human_download_size(total_size, total_size);
-        (
-          format!(
-            " {}/{}",
+        let (pos_str, total_size_str) = if self.display_human_download_size {
+          (
             human_download_size(pos, total_size),
-            total_size_str,
-          ),
+            human_download_size(total_size, total_size),
+          )
+        } else {
+          (pos.to_string(), total_size.to_string())
+        };
+        (
+          format!(" {}/{}", pos_str, total_size_str,),
           2 + total_size_str.len() * 2,
         )
       }
@@ -244,7 +249,9 @@ mod test {
 
   #[test]
   fn should_render_bar_progress() {
-    let renderer = BarProgressBarRenderer;
+    let renderer = BarProgressBarRenderer {
+      display_human_download_size: true,
+    };
     let mut data = ProgressData {
       display_entries: vec![ProgressDataDisplayEntry {
         prompt: ProgressMessagePrompt::Download,

@@ -1,5 +1,6 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
+use std::collections::HashSet;
 use std::path::Path;
 
 use deno_ast::MediaType;
@@ -93,9 +94,16 @@ impl CliLinter {
     &self,
     file_path: &Path,
     source_code: String,
+    ext: Option<&str>,
   ) -> Result<(ParsedSource, Vec<LintDiagnostic>), AnyError> {
     let specifier = specifier_from_file_path(file_path)?;
-    let media_type = MediaType::from_specifier(&specifier);
+    let media_type = if let Some(ext) = ext {
+      MediaType::from_str(&format!("placeholder.{ext}"))
+    } else if file_path.extension().is_none() {
+      MediaType::TypeScript
+    } else {
+      MediaType::from_specifier(&specifier)
+    };
 
     if self.fix {
       self.lint_file_and_fix(&specifier, media_type, source_code, file_path)
@@ -225,14 +233,23 @@ fn apply_lint_fixes(
   if quick_fixes.is_empty() {
     return None;
   }
+
+  let mut import_fixes = HashSet::new();
   // remove any overlapping text changes, we'll circle
   // back for another pass to fix the remaining
   quick_fixes.sort_by_key(|change| change.range.start);
   for i in (1..quick_fixes.len()).rev() {
     let cur = &quick_fixes[i];
     let previous = &quick_fixes[i - 1];
-    let is_overlapping = cur.range.start < previous.range.end;
-    if is_overlapping {
+    // hack: deduplicate import fixes to avoid creating errors
+    if previous.new_text.trim_start().starts_with("import ") {
+      import_fixes.insert(previous.new_text.trim().to_string());
+    }
+    let is_overlapping = cur.range.start <= previous.range.end;
+    if is_overlapping
+      || (cur.new_text.trim_start().starts_with("import ")
+        && import_fixes.contains(cur.new_text.trim()))
+    {
       quick_fixes.remove(i);
     }
   }

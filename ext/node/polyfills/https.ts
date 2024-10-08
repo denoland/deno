@@ -11,7 +11,7 @@ import {
   IncomingMessageForClient as IncomingMessage,
   type RequestOptions,
 } from "node:http";
-import { Agent as HttpAgent } from "ext:deno_node/_http_agent.mjs";
+import { Agent as HttpAgent } from "node:_http_agent";
 import { createHttpClient } from "ext:deno_fetch/22_http_client.js";
 import { type ServerHandler, ServerImpl as HttpServer } from "node:http";
 import { validateObject } from "ext:deno_node/internal/validators.mjs";

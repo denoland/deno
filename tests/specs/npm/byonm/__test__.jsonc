@@ -2,9 +2,6 @@
   "tempDir": true,
   "tests": {
     "future_not_installed": {
-      "envs": {
-        "DENO_FUTURE": "1"
-      },
       "steps": [{
         "args": "run -A not_installed.ts",
         "output": "future_not_installed.out",
@@ -12,9 +9,6 @@
       }]
     },
     "future_invalid_sub_path": {
-      "envs": {
-        "DENO_FUTURE": "1"
-      },
       "steps": [{
         "args": "install",
         "output": "[WILDCARD]"

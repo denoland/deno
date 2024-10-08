@@ -15,7 +15,7 @@
     "output": "true\n"
   }, {
     "args": "clean",
-    "output": "Removed [WILDLINE]/deno_dir\n"
+    "output": "Removed [WILDLINE]/deno_dir ([WILDCARD]files, [WILDCARD])\n"
   }, {
     "envs": {
       // use a new dir to avoid creating the old one

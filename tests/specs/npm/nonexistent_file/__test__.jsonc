@@ -1,0 +1,5 @@
+{
+  "args": "run -A --quiet nonexistent_file/main.js",
+  "output": "nonexistent_file/main.out",
+  "exitCode": 1
+}

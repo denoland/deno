@@ -1,9 +1,11 @@
 Download http://localhost:4260/@denotest/node-addon
 Download http://localhost:4260/node-gyp
 [WILDCARD]
-warning: Packages contained npm lifecycle scripts (preinstall/install/postinstall) that were not executed.
-    This may cause the packages to not work correctly. To run them, use the `--allow-scripts` flag with `deno cache`
-    (e.g. `deno cache --allow-scripts=pkg1,pkg2 <entrypoint>`):
-      npm:@denotest/node-addon@1.0.0
+Warning The following packages contained npm lifecycle scripts (preinstall/install/postinstall) that were not executed:
+┠─ npm:@denotest/node-addon@1.0.0
+┃
+┠─ This may cause the packages to not work correctly.
+┖─ To run lifecycle scripts, use the `--allow-scripts` flag with `deno install`:
+   deno install --allow-scripts=npm:@denotest/node-addon@1.0.0
 error: Uncaught (in promise) Error: Cannot find module './build/Release/node_addon'
 [WILDCARD]

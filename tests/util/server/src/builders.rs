@@ -208,11 +208,6 @@ impl TestContextBuilder {
     self
   }
 
-  pub fn add_future_env_vars(mut self) -> Self {
-    self = self.env("DENO_FUTURE", "1");
-    self
-  }
-
   pub fn add_jsr_env_vars(mut self) -> Self {
     for (key, value) in env_vars_for_jsr_tests() {
       self = self.env(key, value);

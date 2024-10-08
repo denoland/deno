@@ -1,4 +1,4 @@
-// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 // Copyright Joyent, Inc. and Node.js contributors. All rights reserved. MIT license.
 
 import { primordials } from "ext:core/mod.js";
@@ -65,22 +65,26 @@ export function createWritableStdioStream(writer, name, warmup = false) {
   stream.once("close", () => writer?.close());
   ObjectDefineProperties(stream, {
     columns: {
+      __proto__: null,
       enumerable: true,
       configurable: true,
       get: () =>
         writer?.isTerminal() ? Deno.consoleSize?.().columns : undefined,
     },
     rows: {
+      __proto__: null,
       enumerable: true,
       configurable: true,
       get: () => writer?.isTerminal() ? Deno.consoleSize?.().rows : undefined,
     },
     isTTY: {
+      __proto__: null,
       enumerable: true,
       configurable: true,
       get: () => writer?.isTerminal(),
     },
     getWindowSize: {
+      __proto__: null,
       enumerable: true,
       configurable: true,
       value: () =>
@@ -203,6 +207,7 @@ export const initStdin = (warmup = false) => {
   stdin.on("close", () => io.stdin?.close());
   stdin.fd = io.stdin ? io.STDIN_RID : -1;
   ObjectDefineProperty(stdin, "isTTY", {
+    __proto__: null,
     enumerable: true,
     configurable: true,
     get() {
@@ -216,6 +221,7 @@ export const initStdin = (warmup = false) => {
     return stdin;
   };
   ObjectDefineProperty(stdin, "isRaw", {
+    __proto__: null,
     enumerable: true,
     configurable: true,
     get() {

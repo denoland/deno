@@ -1,0 +1,8 @@
+running 4 tests from ./main.ts
+console.log ... ok ([WILDCARD])
+console.error ... ok ([WILDCARD])
+console.info ... ok ([WILDCARD])
+console.warn ... ok ([WILDCARD])
+
+ok | 4 passed | 0 failed ([WILDCARD])
+

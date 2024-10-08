@@ -1,0 +1,8 @@
+{
+  "args": "test main.js",
+  "exitCode": 1,
+  "envs": {
+    "RUST_BACKTRACE": "0"
+  },
+  "output": "\n============================================================\nDeno has panicked. This is a bug in Deno. Please report this\nat https://github.com/denoland/deno/issues/new.\nIf you can reliably reproduce this panic, include the\nreproduction steps and re-run with the RUST_BACKTRACE=1 env\nvar set and include the backtrace in your report.\n\nPlatform: [WILDCARD]\nVersion: [WILDCARD]\nArgs: [[WILDCARD], \"test\", \"main.js\"]\n\nthread 'tokio-runtime-worker' panicked at [WILDCARD]testing.rs:[WILDCARD]:\npledge test permissions called before restoring previous pledge\nnote: run with `RUST_BACKTRACE=1` environment variable to display a backtrace\n"
+}

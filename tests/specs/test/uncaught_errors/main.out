@@ -1,0 +1,59 @@
+running 3 tests from [WILDCARD]/uncaught_errors_1.ts
+foo 1 ... FAILED ([WILDCARD])
+foo 2 ... ok ([WILDCARD])
+foo 3 ...
+Uncaught error from [WILDCARD]/uncaught_errors_1.ts FAILED
+foo 3 ... cancelled (0ms)
+running 3 tests from [WILDCARD]/uncaught_errors_2.ts
+bar 1 ... ok ([WILDCARD])
+bar 2 ... FAILED ([WILDCARD])
+bar 3 ... FAILED ([WILDCARD])
+Uncaught error from [WILDCARD]/uncaught_errors_3.ts FAILED
+
+ ERRORS 
+
+foo 1 => [WILDCARD]/uncaught_errors_1.ts:1:6
+error: Error: foo 1 message
+  throw new Error("foo 1 message");
+        ^
+    at [WILDCARD]/uncaught_errors_1.ts:2:9
+
+[WILDCARD]/uncaught_errors_1.ts (uncaught error)
+error: (in promise) Error: foo 3 message
+  Promise.reject(new Error("foo 3 message"));
+                 ^
+    at [WILDCARD]/uncaught_errors_1.ts:8:18
+This error was not caught from a test and caused the test runner to fail on the referenced module.
+It most likely originated from a dangling promise, event/timeout handler or top-level code.
+
+bar 2 => [WILDCARD]/uncaught_errors_2.ts:3:6
+error: Error: bar 2
+  throw new Error("bar 2");
+        ^
+    at [WILDCARD]/uncaught_errors_2.ts:4:9
+
+bar 3 => [WILDCARD]/uncaught_errors_2.ts:6:6
+error: Error: bar 3 message
+  throw new Error("bar 3 message");
+        ^
+    at [WILDCARD]/uncaught_errors_2.ts:7:9
+
+[WILDCARD]/uncaught_errors_3.ts (uncaught error)
+error: (in promise) Error: baz
+throw new Error("baz");
+      ^
+    at [WILDCARD]/uncaught_errors_3.ts:1:7
+This error was not caught from a test and caused the test runner to fail on the referenced module.
+It most likely originated from a dangling promise, event/timeout handler or top-level code.
+
+ FAILURES 
+
+foo 1 => [WILDCARD]/uncaught_errors_1.ts:1:6
+[WILDCARD]/uncaught_errors_1.ts (uncaught error)
+bar 2 => [WILDCARD]/uncaught_errors_2.ts:3:6
+bar 3 => [WILDCARD]/uncaught_errors_2.ts:6:6
+[WILDCARD]/uncaught_errors_3.ts (uncaught error)
+
+FAILED | 2 passed | 6 failed ([WILDCARD])
+
+error: Test failed

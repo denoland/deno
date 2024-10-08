@@ -175,7 +175,7 @@ function assertDevice(self, prefix, context) {
   const deviceRid = device?.rid;
   if (deviceRid === undefined) {
     throw new DOMException(
-      `${prefix}: ${context} references an invalid or destroyed device.`,
+      `${prefix}: ${context} references an invalid or destroyed device`,
       "OperationError",
     );
   }
@@ -196,7 +196,7 @@ function assertDeviceMatch(
   const resourceDevice = assertDevice(resource, prefix, resourceContext);
   if (resourceDevice.rid !== self.rid) {
     throw new DOMException(
-      `${prefix}: ${resourceContext} belongs to a different device than ${selfContext}.`,
+      `${prefix}: ${resourceContext} belongs to a different device than ${selfContext}`,
       "OperationError",
     );
   }
@@ -213,7 +213,7 @@ function assertResource(self, prefix, context) {
   const rid = self[_rid];
   if (rid === undefined) {
     throw new DOMException(
-      `${prefix}: ${context} an invalid or destroyed resource.`,
+      `${prefix}: ${context} an invalid or destroyed resource`,
       "OperationError",
     );
   }
@@ -469,7 +469,7 @@ class GPUAdapter {
         !SetPrototypeHas(this[_adapter].features[webidl.setlikeInner], feature)
       ) {
         throw new TypeError(
-          `${prefix}: requiredFeatures must be a subset of the adapter features.`,
+          `${prefix}: requiredFeatures must be a subset of the adapter features`,
         );
       }
     }
@@ -907,6 +907,7 @@ const GPUDeviceLostInfoPrototype = GPUDeviceLostInfo.prototype;
 function GPUObjectBaseMixin(name, type) {
   type.prototype[_label] = null;
   ObjectDefineProperty(type.prototype, "label", {
+    __proto__: null,
     /**
      * @return {string | null}
      */
@@ -1818,12 +1819,12 @@ class GPUDevice extends EventTarget {
     const prefix = "Failed to execute 'popErrorScope' on 'GPUDevice'";
     const device = assertDevice(this, prefix, "this");
     if (device.isLost) {
-      throw new DOMException("Device has been lost.", "OperationError");
+      throw new DOMException("Device has been lost", "OperationError");
     }
     const scope = ArrayPrototypePop(device.errorScopeStack);
     if (!scope) {
       throw new DOMException(
-        "There are no error scopes on the error scope stack.",
+        "There are no error scopes on the error scope stack",
         "OperationError",
       );
     }
@@ -2194,25 +2195,25 @@ class GPUBuffer {
     }
     if ((offset % 8) !== 0) {
       throw new DOMException(
-        `${prefix}: offset must be a multiple of 8.`,
+        `${prefix}: offset must be a multiple of 8, received ${offset}`,
         "OperationError",
       );
     }
     if ((rangeSize % 4) !== 0) {
       throw new DOMException(
-        `${prefix}: rangeSize must be a multiple of 4.`,
+        `${prefix}: rangeSize must be a multiple of 4, received ${rangeSize}`,
         "OperationError",
       );
     }
     if ((offset + rangeSize) > this[_size]) {
       throw new DOMException(
-        `${prefix}: offset + rangeSize must be less than or equal to buffer size.`,
+        `${prefix}: offset + rangeSize must be less than or equal to buffer size`,
         "OperationError",
       );
     }
     if (this[_state] !== "unmapped") {
       throw new DOMException(
-        `${prefix}: GPUBuffer is not currently unmapped.`,
+        `${prefix}: GPUBuffer is not currently unmapped`,
         "OperationError",
       );
     }
@@ -2220,19 +2221,19 @@ class GPUBuffer {
     const writeMode = (mode & 0x0002) === 0x0002;
     if ((readMode && writeMode) || (!readMode && !writeMode)) {
       throw new DOMException(
-        `${prefix}: exactly one of READ or WRITE map mode must be set.`,
+        `${prefix}: exactly one of READ or WRITE map mode must be set`,
         "OperationError",
       );
     }
     if (readMode && !((this[_usage] && 0x0001) === 0x0001)) {
       throw new DOMException(
-        `${prefix}: READ map mode not valid because buffer does not have MAP_READ usage.`,
+        `${prefix}: READ map mode not valid because buffer does not have MAP_READ usage`,
         "OperationError",
       );
     }
     if (writeMode && !((this[_usage] && 0x0002) === 0x0002)) {
       throw new DOMException(
-        `${prefix}: WRITE map mode not valid because buffer does not have MAP_WRITE usage.`,
+        `${prefix}: WRITE map mode not valid because buffer does not have MAP_WRITE usage`,
         "OperationError",
       );
     }
@@ -2279,7 +2280,7 @@ class GPUBuffer {
 
     const mappedRanges = this[_mappedRanges];
     if (!mappedRanges) {
-      throw new DOMException(`${prefix}: invalid state.`, "OperationError");
+      throw new DOMException(`${prefix}: invalid state`, "OperationError");
     }
     for (let i = 0; i < mappedRanges.length; ++i) {
       const { 0: buffer, 1: _rid, 2: start } = mappedRanges[i];
@@ -2290,7 +2291,7 @@ class GPUBuffer {
         (end >= offset && end < (offset + rangeSize))
       ) {
         throw new DOMException(
-          `${prefix}: requested buffer overlaps with another mapped range.`,
+          `${prefix}: requested buffer overlaps with another mapped range`,
           "OperationError",
         );
       }
@@ -2316,14 +2317,14 @@ class GPUBuffer {
     const bufferRid = assertResource(this, prefix, "this");
     if (this[_state] === "unmapped" || this[_state] === "destroyed") {
       throw new DOMException(
-        `${prefix}: buffer is not ready to be unmapped.`,
+        `${prefix}: buffer is not ready to be unmapped`,
         "OperationError",
       );
     }
     if (this[_state] === "pending") {
       // TODO(lucacasonato): this is not spec compliant.
       throw new DOMException(
-        `${prefix}: can not unmap while mapping. This is a Deno limitation.`,
+        `${prefix}: can not unmap while mapping, this is a Deno limitation`,
         "OperationError",
       );
     } else if (
@@ -2337,7 +2338,7 @@ class GPUBuffer {
         const mapMode = this[_mapMode];
         if (mapMode === undefined) {
           throw new DOMException(
-            `${prefix}: invalid state.`,
+            `${prefix}: invalid state`,
             "OperationError",
           );
         }
@@ -2348,7 +2349,7 @@ class GPUBuffer {
 
       const mappedRanges = this[_mappedRanges];
       if (!mappedRanges) {
-        throw new DOMException(`${prefix}: invalid state.`, "OperationError");
+        throw new DOMException(`${prefix}: invalid state`, "OperationError");
       }
       for (let i = 0; i < mappedRanges.length; ++i) {
         const { 0: buffer, 1: mappedRid } = mappedRanges[i];
@@ -5539,7 +5540,7 @@ webidl.converters["GPUExtent3D"] = (V, opts) => {
       if (V.length < min || V.length > max) {
         throw webidl.makeException(
           TypeError,
-          `A sequence of number used as a GPUExtent3D must have between ${min} and ${max} elements.`,
+          `A sequence of number used as a GPUExtent3D must have between ${min} and ${max} elements, received ${V.length} elements`,
           opts,
         );
       }
@@ -5549,7 +5550,7 @@ webidl.converters["GPUExtent3D"] = (V, opts) => {
   }
   throw webidl.makeException(
     TypeError,
-    "can not be converted to sequence<GPUIntegerCoordinate> or GPUExtent3DDict.",
+    "can not be converted to sequence<GPUIntegerCoordinate> or GPUExtent3DDict",
     opts,
   );
 };
@@ -6883,7 +6884,7 @@ webidl.converters["GPUOrigin3D"] = (V, opts) => {
       if (V.length > length) {
         throw webidl.makeException(
           TypeError,
-          `A sequence of number used as a GPUOrigin3D must have at most ${length} elements.`,
+          `A sequence of number used as a GPUOrigin3D must have at most ${length} elements, received ${V.length} elements`,
           opts,
         );
       }
@@ -6893,7 +6894,7 @@ webidl.converters["GPUOrigin3D"] = (V, opts) => {
   }
   throw webidl.makeException(
     TypeError,
-    "can not be converted to sequence<GPUIntegerCoordinate> or GPUOrigin3DDict.",
+    "can not be converted to sequence<GPUIntegerCoordinate> or GPUOrigin3DDict",
     opts,
   );
 };
@@ -6960,7 +6961,7 @@ webidl.converters["GPUOrigin2D"] = (V, opts) => {
       if (V.length > length) {
         throw webidl.makeException(
           TypeError,
-          `A sequence of number used as a GPUOrigin2D must have at most ${length} elements.`,
+          `A sequence of number used as a GPUOrigin2D must have at most ${length} elements, received ${V.length} elements`,
           opts,
         );
       }
@@ -6970,7 +6971,7 @@ webidl.converters["GPUOrigin2D"] = (V, opts) => {
   }
   throw webidl.makeException(
     TypeError,
-    "can not be converted to sequence<GPUIntegerCoordinate> or GPUOrigin2DDict.",
+    "can not be converted to sequence<GPUIntegerCoordinate> or GPUOrigin2DDict",
     opts,
   );
 };
@@ -7054,7 +7055,7 @@ webidl.converters["GPUColor"] = (V, opts) => {
       if (V.length !== length) {
         throw webidl.makeException(
           TypeError,
-          `A sequence of number used as a GPUColor must have exactly ${length} elements.`,
+          `A sequence of number used as a GPUColor must have exactly ${length} elements, received ${V.length} elements`,
           opts,
         );
       }
@@ -7064,7 +7065,7 @@ webidl.converters["GPUColor"] = (V, opts) => {
   }
   throw webidl.makeException(
     TypeError,
-    "can not be converted to sequence<double> or GPUColorDict.",
+    "can not be converted to sequence<double> or GPUColorDict",
     opts,
   );
 };
@@ -7432,16 +7433,6 @@ const dictMembersGPUCanvasConfiguration = [
   {
     key: "presentMode",
     converter: webidl.converters["GPUPresentMode"],
-  },
-  {
-    key: "width",
-    converter: webidl.converters["long"],
-    required: true,
-  },
-  {
-    key: "height",
-    converter: webidl.converters["long"],
-    required: true,
   },
   {
     key: "viewFormats",

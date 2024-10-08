@@ -1,5 +1,5 @@
 ok
-[WILDCARD]error: Uncaught (in promise) PermissionDenied: Requires env access to "NOT_NODE_DEBUG", run again with the --allow-env flag
+[WILDCARD]error: Uncaught (in promise) NotCapable: Requires env access to "NOT_NODE_DEBUG", run again with the --allow-env flag
 Deno.env.get("NOT_NODE_DEBUG");
          ^
     at [WILDCARD]

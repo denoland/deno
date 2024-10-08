@@ -452,6 +452,11 @@ fn filter_coverages(
   let exclude: Vec<Regex> =
     exclude.iter().map(|e| Regex::new(e).unwrap()).collect();
 
+  // Matches virtual file paths for doc testing
+  // e.g. file:///path/to/mod.ts$23-29.ts
+  let doc_test_re =
+    Regex::new(r"\$\d+-\d+\.(js|mjs|cjs|jsx|ts|mts|cts|tsx)$").unwrap();
+
   coverages
     .into_iter()
     .filter(|e| {
@@ -460,6 +465,7 @@ fn filter_coverages(
         || e.url.ends_with("$deno$test.js")
         || e.url.ends_with(".snap")
         || is_supported_test_path(Path::new(e.url.as_str()))
+        || doc_test_re.is_match(e.url.as_str())
         || Url::parse(&e.url)
           .ok()
           .map(|url| npm_resolver.in_npm_package(&url))

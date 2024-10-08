@@ -6,7 +6,7 @@
 /// <reference lib="esnext" />
 
 /** @category Platform */
-declare interface DomIterable<K, V> {
+interface DomIterable<K, V> {
   keys(): IterableIterator<K>;
   values(): IterableIterator<V>;
   entries(): IterableIterator<[K, V]>;
@@ -18,7 +18,7 @@ declare interface DomIterable<K, V> {
 }
 
 /** @category Fetch */
-declare type FormDataEntryValue = File | string;
+type FormDataEntryValue = File | string;
 
 /** Provides a way to easily construct a set of key/value pairs representing
  * form fields and their values, which can then be easily sent using the
@@ -27,7 +27,7 @@ declare type FormDataEntryValue = File | string;
  *
  * @category Fetch
  */
-declare interface FormData extends DomIterable<string, FormDataEntryValue> {
+interface FormData extends DomIterable<string, FormDataEntryValue> {
   append(name: string, value: string | Blob, fileName?: string): void;
   delete(name: string): void;
   get(name: string): FormDataEntryValue | null;
@@ -43,7 +43,7 @@ declare var FormData: {
 };
 
 /** @category Fetch */
-declare interface Body {
+interface Body {
   /** A simple getter used to expose a `ReadableStream` of the body contents. */
   readonly body: ReadableStream<Uint8Array> | null;
   /** Stores a `Boolean` that declares whether the body has been used in a
@@ -77,7 +77,7 @@ declare interface Body {
 }
 
 /** @category Fetch */
-declare type HeadersInit = Iterable<string[]> | Record<string, string>;
+type HeadersInit = Iterable<string[]> | Record<string, string>;
 
 /** This Fetch API interface allows you to perform various actions on HTTP
  * request and response headers. These actions include retrieving, setting,
@@ -89,7 +89,7 @@ declare type HeadersInit = Iterable<string[]> | Record<string, string>;
  *
  * @category Fetch
  */
-declare interface Headers extends DomIterable<string, string> {
+interface Headers extends DomIterable<string, string> {
   /** Appends a new value onto an existing header inside a `Headers` object, or
    * adds the header if it does not already exist.
    */
@@ -130,9 +130,9 @@ declare var Headers: {
 };
 
 /** @category Fetch */
-declare type RequestInfo = Request | string;
+type RequestInfo = Request | string;
 /** @category Fetch */
-declare type RequestCache =
+type RequestCache =
   | "default"
   | "force-cache"
   | "no-cache"
@@ -140,13 +140,13 @@ declare type RequestCache =
   | "only-if-cached"
   | "reload";
 /** @category Fetch */
-declare type RequestCredentials = "include" | "omit" | "same-origin";
+type RequestCredentials = "include" | "omit" | "same-origin";
 /** @category Fetch */
-declare type RequestMode = "cors" | "navigate" | "no-cors" | "same-origin";
+type RequestMode = "cors" | "navigate" | "no-cors" | "same-origin";
 /** @category Fetch */
-declare type RequestRedirect = "error" | "follow" | "manual";
+type RequestRedirect = "error" | "follow" | "manual";
 /** @category Fetch */
-declare type ReferrerPolicy =
+type ReferrerPolicy =
   | ""
   | "no-referrer"
   | "no-referrer-when-downgrade"
@@ -157,16 +157,15 @@ declare type ReferrerPolicy =
   | "strict-origin-when-cross-origin"
   | "unsafe-url";
 /** @category Fetch */
-declare type BodyInit =
+type BodyInit =
   | Blob
   | BufferSource
   | FormData
   | URLSearchParams
   | ReadableStream<Uint8Array>
-  | AsyncIterable<Uint8Array>
   | string;
 /** @category Fetch */
-declare type RequestDestination =
+type RequestDestination =
   | ""
   | "audio"
   | "audioworklet"
@@ -187,7 +186,7 @@ declare type RequestDestination =
   | "xslt";
 
 /** @category Fetch */
-declare interface RequestInit {
+interface RequestInit {
   /**
    * A BodyInit object or null to set request's body.
    */
@@ -255,7 +254,7 @@ declare interface RequestInit {
  *
  * @category Fetch
  */
-declare interface Request extends Body {
+interface Request extends Body {
   /**
    * Returns the cache mode associated with request, which is a string
    * indicating how the request will interact with the browser's cache when
@@ -351,14 +350,14 @@ declare var Request: {
 };
 
 /** @category Fetch */
-declare interface ResponseInit {
+interface ResponseInit {
   headers?: HeadersInit;
   status?: number;
   statusText?: string;
 }
 
 /** @category Fetch */
-declare type ResponseType =
+type ResponseType =
   | "basic"
   | "cors"
   | "default"
@@ -370,7 +369,7 @@ declare type ResponseType =
  *
  * @category Fetch
  */
-declare interface Response extends Body {
+interface Response extends Body {
   readonly headers: Headers;
   readonly ok: boolean;
   readonly redirected: boolean;
@@ -414,14 +413,14 @@ declare function fetch(
 /**
  * @category Fetch
  */
-declare interface EventSourceInit {
+interface EventSourceInit {
   withCredentials?: boolean;
 }
 
 /**
  * @category Fetch
  */
-declare interface EventSourceEventMap {
+interface EventSourceEventMap {
   "error": Event;
   "message": MessageEvent;
   "open": Event;
@@ -430,7 +429,7 @@ declare interface EventSourceEventMap {
 /**
  * @category Fetch
  */
-declare interface EventSource extends EventTarget {
+interface EventSource extends EventTarget {
   onerror: ((this: EventSource, ev: Event) => any) | null;
   onmessage: ((this: EventSource, ev: MessageEvent) => any) | null;
   onopen: ((this: EventSource, ev: Event) => any) | null;

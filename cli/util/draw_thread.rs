@@ -40,7 +40,7 @@ struct InternalEntry {
 struct InternalState {
   // this ensures only one actual draw thread is running
   drawer_id: usize,
-  hide: bool,
+  hide_count: usize,
   has_draw_thread: bool,
   next_entry_id: u16,
   entries: Vec<InternalEntry>,
@@ -56,7 +56,7 @@ impl InternalState {
 static INTERNAL_STATE: Lazy<Arc<Mutex<InternalState>>> = Lazy::new(|| {
   Arc::new(Mutex::new(InternalState {
     drawer_id: 0,
-    hide: false,
+    hide_count: 0,
     has_draw_thread: false,
     entries: Vec::new(),
     next_entry_id: 0,
@@ -113,7 +113,7 @@ impl DrawThread {
   pub fn hide() {
     let internal_state = &*INTERNAL_STATE;
     let mut internal_state = internal_state.lock();
-    internal_state.hide = true;
+    internal_state.hide_count += 1;
 
     Self::clear_and_stop_draw_thread(&mut internal_state);
   }
@@ -122,9 +122,12 @@ impl DrawThread {
   pub fn show() {
     let internal_state = &*INTERNAL_STATE;
     let mut internal_state = internal_state.lock();
-    internal_state.hide = false;
-
-    Self::maybe_start_draw_thread(&mut internal_state);
+    if internal_state.hide_count > 0 {
+      internal_state.hide_count -= 1;
+      if internal_state.hide_count == 0 {
+        Self::maybe_start_draw_thread(&mut internal_state);
+      }
+    }
   }
 
   fn finish_entry(entry_id: u16) {
@@ -153,7 +156,7 @@ impl DrawThread {
 
   fn maybe_start_draw_thread(internal_state: &mut InternalState) {
     if internal_state.has_draw_thread
-      || internal_state.hide
+      || internal_state.hide_count > 0
       || internal_state.entries.is_empty()
       || !DrawThread::is_supported()
     {

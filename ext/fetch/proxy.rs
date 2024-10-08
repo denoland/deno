@@ -23,6 +23,7 @@ use hyper_util::client::legacy::connect::Connected;
 use hyper_util::client::legacy::connect::Connection;
 use hyper_util::rt::TokioIo;
 use ipnet::IpNet;
+use percent_encoding::percent_decode_str;
 use tokio::net::TcpStream;
 use tokio_rustls::client::TlsStream;
 use tokio_rustls::TlsConnector;
@@ -96,7 +97,7 @@ pub(crate) fn from_env() -> Proxies {
   if env::var_os("REQUEST_METHOD").is_none() {
     if let Some(proxy) = parse_env_var("HTTP_PROXY", Filter::Http) {
       intercepts.push(proxy);
-    } else if let Some(proxy) = parse_env_var("http_proxy", Filter::Https) {
+    } else if let Some(proxy) = parse_env_var("http_proxy", Filter::Http) {
       intercepts.push(proxy);
     }
   }
@@ -192,10 +193,12 @@ impl Target {
 
     if let Some((userinfo, host_port)) = authority.as_str().split_once('@') {
       let (user, pass) = userinfo.split_once(':')?;
+      let user = percent_decode_str(user).decode_utf8_lossy();
+      let pass = percent_decode_str(pass).decode_utf8_lossy();
       if is_socks {
         socks_auth = Some((user.into(), pass.into()));
       } else {
-        http_auth = Some(basic_auth(user, Some(pass)));
+        http_auth = Some(basic_auth(&user, Some(&pass)));
       }
       builder = builder.authority(host_port);
     } else {
@@ -769,6 +772,16 @@ fn test_proxy_parse_from_env() {
       assert_eq!(dst, "http://127.0.0.1:6666");
       assert!(auth.is_some());
       assert!(auth.unwrap().is_sensitive());
+    }
+    _ => panic!("bad target"),
+  }
+
+  // percent encoded user info
+  match parse("us%2Fer:p%2Fass@127.0.0.1:6666") {
+    Target::Http { dst, auth } => {
+      assert_eq!(dst, "http://127.0.0.1:6666");
+      let auth = auth.unwrap();
+      assert_eq!(auth.to_str().unwrap(), "Basic dXMvZXI6cC9hc3M=");
     }
     _ => panic!("bad target"),
   }

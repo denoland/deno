@@ -19,7 +19,6 @@ use crate::util::path::relative_specifier;
 use deno_graph::source::ResolutionMode;
 use deno_graph::Range;
 use deno_runtime::deno_node::SUPPORTED_BUILTIN_NODE_MODULES;
-use deno_runtime::fs_util::specifier_to_file_path;
 
 use deno_ast::LineAndColumnIndex;
 use deno_ast::SourceTextInfo;
@@ -30,6 +29,7 @@ use deno_core::serde::Serialize;
 use deno_core::serde_json::json;
 use deno_core::url::Position;
 use deno_core::ModuleSpecifier;
+use deno_path_util::url_to_file_path;
 use deno_semver::jsr::JsrPackageReqReference;
 use deno_semver::package::PackageNv;
 use import_map::ImportMap;
@@ -249,7 +249,7 @@ pub async fn get_import_completions(
       .collect();
     let mut is_incomplete = false;
     if let Some(import_map) = maybe_import_map {
-      items.extend(get_base_import_map_completions(import_map));
+      items.extend(get_base_import_map_completions(import_map, specifier));
     }
     if let Some(origin_items) =
       module_registries.get_origin_completions(&text, &range)
@@ -268,20 +268,20 @@ pub async fn get_import_completions(
 /// map as completion items.
 fn get_base_import_map_completions(
   import_map: &ImportMap,
+  referrer: &ModuleSpecifier,
 ) -> Vec<lsp::CompletionItem> {
   import_map
-    .imports()
-    .keys()
-    .map(|key| {
+    .entries_for_referrer(referrer)
+    .map(|entry| {
       // for some strange reason, keys that start with `/` get stored in the
       // import map as `file:///`, and so when we pull the keys out, we need to
       // change the behavior
-      let mut label = if key.starts_with("file://") {
-        FILE_PROTO_RE.replace(key, "").to_string()
+      let mut label = if entry.key.starts_with("file://") {
+        FILE_PROTO_RE.replace(entry.key, "").to_string()
       } else {
-        key.to_string()
+        entry.key.to_string()
       };
-      let kind = if key.ends_with('/') {
+      let kind = if entry.key.ends_with('/') {
         label.pop();
         Some(lsp::CompletionItemKind::FOLDER)
       } else {
@@ -380,7 +380,7 @@ fn get_local_completions(
       ResolutionMode::Execution,
     )
     .ok()?;
-  let resolved_parent_path = specifier_to_file_path(&resolved_parent).ok()?;
+  let resolved_parent_path = url_to_file_path(&resolved_parent).ok()?;
   let raw_parent =
     &text[..text.char_indices().rfind(|(_, c)| *c == '/')?.0 + 1];
   if resolved_parent_path.is_dir() {
@@ -838,7 +838,7 @@ mod tests {
     fs_sources: &[(&str, &str)],
   ) -> Documents {
     let temp_dir = TempDir::new();
-    let cache = LspCache::new(Some(temp_dir.uri().join(".deno_dir").unwrap()));
+    let cache = LspCache::new(Some(temp_dir.url().join(".deno_dir").unwrap()));
     let mut documents = Documents::default();
     documents.update_config(
       &Default::default(),
@@ -859,7 +859,7 @@ mod tests {
         .set(&specifier, HashMap::default(), source.as_bytes())
         .expect("could not cache file");
       let document = documents
-        .get_or_load(&specifier, Some(&temp_dir.uri().join("$").unwrap()));
+        .get_or_load(&specifier, Some(&temp_dir.url().join("$").unwrap()));
       assert!(document.is_some(), "source could not be setup");
     }
     documents

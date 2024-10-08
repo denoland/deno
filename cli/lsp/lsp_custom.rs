@@ -17,7 +17,7 @@ pub struct TaskDefinition {
   // TODO(nayeemrmn): Rename this to `command` in vscode_deno.
   #[serde(rename = "detail")]
   pub command: String,
-  pub source_uri: lsp::Url,
+  pub source_uri: lsp::Uri,
 }
 
 #[derive(Debug, Deserialize, Serialize)]
@@ -75,8 +75,8 @@ pub enum DenoConfigurationType {
 #[derive(Debug, Eq, Hash, PartialEq, Clone, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct DenoConfigurationChangeEvent {
-  pub scope_uri: lsp::Url,
-  pub file_uri: lsp::Url,
+  pub scope_uri: lsp::Uri,
+  pub file_uri: lsp::Uri,
   #[serde(rename = "type")]
   pub typ: DenoConfigurationChangeType,
   pub configuration_type: DenoConfigurationType,

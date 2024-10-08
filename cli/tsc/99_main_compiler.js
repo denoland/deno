@@ -32,28 +32,15 @@ delete Object.prototype.__proto__;
   /** @type {ReadonlySet<string>} */
   const unstableDenoProps = new Set([
     "AtomicOperation",
-    "CreateHttpClientOptions",
     "DatagramConn",
-    "HttpClient",
     "Kv",
     "KvListIterator",
     "KvU64",
-    "UnsafeCallback",
-    "UnsafePointer",
-    "UnsafePointerView",
-    "UnsafeFnPointer",
     "UnixConnectOptions",
     "UnixListenOptions",
-    "createHttpClient",
-    "dlopen",
-    "flock",
-    "flockSync",
-    "funlock",
-    "funlockSync",
     "listen",
     "listenDatagram",
     "openKv",
-    "umask",
   ]);
   const unstableMsgSuggestion =
     "If not, try changing the 'lib' compiler option to include 'deno.unstable' " +
@@ -130,27 +117,6 @@ delete Object.prototype.__proto__;
     }
   }
 
-  class SpecifierIsCjsCache {
-    /** @type {Set<string>} */
-    #cache = new Set();
-
-    /** @param {[string, ts.Extension]} param */
-    maybeAdd([specifier, ext]) {
-      if (ext === ".cjs" || ext === ".d.cts" || ext === ".cts") {
-        this.#cache.add(specifier);
-      }
-    }
-
-    add(specifier) {
-      this.#cache.add(specifier);
-    }
-
-    /** @param specifier {string} */
-    has(specifier) {
-      return this.#cache.has(specifier);
-    }
-  }
-
   // In the case of the LSP, this will only ever contain the assets.
   /** @type {Map<string, ts.SourceFile>} */
   const sourceFileCache = new Map();
@@ -167,7 +133,8 @@ delete Object.prototype.__proto__;
   /** @type {Map<string, boolean>} */
   const isNodeSourceFileCache = new Map();
 
-  const isCjsCache = new SpecifierIsCjsCache();
+  /** @type {Map<string, boolean>} */
+  const isCjsCache = new Map();
 
   // Maps asset specifiers to the first scope that the asset was loaded into.
   /** @type {Map<string, string | null>} */
@@ -248,7 +215,7 @@ delete Object.prototype.__proto__;
           scriptSnapshot,
           {
             ...getCreateSourceFileOptions(sourceFileOptions),
-            impliedNodeFormat: isCjsCache.has(fileName)
+            impliedNodeFormat: (isCjsCache.get(fileName) ?? false)
               ? ts.ModuleKind.CommonJS
               : ts.ModuleKind.ESNext,
             // in the lsp we want to be able to show documentation
@@ -495,6 +462,8 @@ delete Object.prototype.__proto__;
     // TS2792: Cannot find module. Did you mean to set the 'moduleResolution'
     // option to 'node', or to add aliases to the 'paths' option?
     2792,
+    // TS2307: Cannot find module '{0}' or its corresponding type declarations.
+    2307,
     // TS5009: Cannot find the common subdirectory path for the input files.
     5009,
     // TS5055: Cannot write file
@@ -547,6 +516,7 @@ delete Object.prototype.__proto__;
   /** @typedef {{
    *    ls: ts.LanguageService & { [k:string]: any },
    *    compilerOptions: ts.CompilerOptions,
+   *    forceEnabledVerbatimModuleSyntax: boolean,
    *  }} LanguageServiceEntry */
   /** @type {{ unscoped: LanguageServiceEntry, byScope: Map<string, LanguageServiceEntry> }} */
   const languageServiceEntries = {
@@ -649,18 +619,13 @@ delete Object.prototype.__proto__;
       if (!fileInfo) {
         return undefined;
       }
-      let { data, scriptKind, version, isCjs } = fileInfo;
+      const { data, scriptKind, version, isCjs } = fileInfo;
       assert(
         data != null,
         `"data" is unexpectedly null for "${specifier}".`,
       );
 
-      // use the cache for non-lsp
-      if (isCjs == null) {
-        isCjs = isCjsCache.has(specifier);
-      } else if (isCjs) {
-        isCjsCache.add(specifier);
-      }
+      isCjsCache.set(specifier, isCjs);
 
       sourceFile = ts.createSourceFile(
         specifier,
@@ -735,11 +700,10 @@ delete Object.prototype.__proto__;
           /** @type {[string, ts.Extension] | undefined} */
           const resolved = ops.op_resolve(
             containingFilePath,
-            isCjsCache.has(containingFilePath),
+            isCjsCache.get(containingFilePath) ?? false,
             [fileReference.fileName],
           )?.[0];
           if (resolved) {
-            isCjsCache.maybeAdd(resolved);
             return {
               primary: true,
               resolvedFileName: resolved[0],
@@ -769,13 +733,12 @@ delete Object.prototype.__proto__;
       /** @type {Array<[string, ts.Extension] | undefined>} */
       const resolved = ops.op_resolve(
         base,
-        isCjsCache.has(base),
+        isCjsCache.get(base) ?? false,
         specifiers,
       );
       if (resolved) {
         const result = resolved.map((item) => {
           if (item) {
-            isCjsCache.maybeAdd(item);
             const [resolvedFileName, extension] = item;
             return {
               resolvedFileName,
@@ -854,9 +817,7 @@ delete Object.prototype.__proto__;
         if (!fileInfo) {
           return undefined;
         }
-        if (fileInfo.isCjs) {
-          isCjsCache.add(specifier);
-        }
+        isCjsCache.set(specifier, fileInfo.isCjs);
         sourceTextCache.set(specifier, fileInfo.data);
         scriptVersionCache.set(specifier, fileInfo.version);
         sourceText = fileInfo.data;
@@ -984,6 +945,8 @@ delete Object.prototype.__proto__;
     Object.assign(options, {
       allowNonTsExtensions: true,
       allowImportingTsExtensions: true,
+      module: ts.ModuleKind.NodeNext,
+      moduleResolution: ts.ModuleResolutionKind.NodeNext,
     });
     if (errors.length > 0 && logDebug) {
       debug(ts.formatDiagnostics(errors, host));
@@ -1063,7 +1026,7 @@ delete Object.prototype.__proto__;
         : ts.sortAndDeduplicateDiagnostics(
           checkFiles.map((s) => program.getSemanticDiagnostics(s)).flat(),
         )),
-    ].filter((diagnostic) => !IGNORED_DIAGNOSTICS.includes(diagnostic.code));
+    ].filter(filterMapDiagnostic.bind(null, false));
 
     // emit the tsbuildinfo file
     // @ts-ignore: emitBuildInfo is not exposed (https://github.com/microsoft/TypeScript/issues/49871)
@@ -1076,6 +1039,44 @@ delete Object.prototype.__proto__;
       stats: performanceEnd(),
     });
     debug("<<< exec stop");
+  }
+
+  /**
+   * @param {boolean} isLsp
+   * @param {ts.Diagnostic} diagnostic
+   */
+  function filterMapDiagnostic(isLsp, diagnostic) {
+    if (IGNORED_DIAGNOSTICS.includes(diagnostic.code)) {
+      return false;
+    }
+    if (isLsp) {
+      // TS1484: `...` is a type and must be imported using a type-only import when 'verbatimModuleSyntax' is enabled.
+      // We force-enable `verbatimModuleSyntax` in the LSP so the `type`
+      // modifier is used when auto-importing types. But we don't want this
+      // diagnostic unless it was explicitly enabled by the user.
+      if (diagnostic.code == 1484) {
+        const entry = (lastRequestScope
+          ? languageServiceEntries.byScope.get(lastRequestScope)
+          : null) ?? languageServiceEntries.unscoped;
+        if (entry.forceEnabledVerbatimModuleSyntax) {
+          return false;
+        }
+      }
+    }
+    // make the diagnostic for using an `export =` in an es module a warning
+    if (diagnostic.code === 1203) {
+      diagnostic.category = ts.DiagnosticCategory.Warning;
+      if (typeof diagnostic.messageText === "string") {
+        const message =
+          " This will start erroring in a future version of Deno 2 " +
+          "in order to align with TypeScript.";
+        // seems typescript shares objects, so check if it's already been set
+        if (!diagnostic.messageText.endsWith(message)) {
+          diagnostic.messageText += message;
+        }
+      }
+    }
+    return true;
   }
 
   /**
@@ -1149,18 +1150,21 @@ delete Object.prototype.__proto__;
         "experimentalDecorators": false,
         "isolatedModules": true,
         "lib": ["deno.ns", "deno.window", "deno.unstable"],
-        "module": "esnext",
+        "module": "NodeNext",
+        "moduleResolution": "NodeNext",
         "moduleDetection": "force",
         "noEmit": true,
+        "noImplicitOverride": true,
         "resolveJsonModule": true,
         "strict": true,
         "target": "esnext",
         "useDefineForClassFields": true,
-        "useUnknownInCatchVariables": false,
+        "verbatimModuleSyntax": true,
         "jsx": "react",
         "jsxFactory": "React.createElement",
         "jsxFragmentFactory": "React.Fragment",
       }),
+      forceEnabledVerbatimModuleSyntax: true,
     };
     setLogDebug(enableDebugLogging, "TSLS");
     debug("serverInit()");
@@ -1226,8 +1230,17 @@ delete Object.prototype.__proto__;
           const ls = oldEntry
             ? oldEntry.ls
             : ts.createLanguageService(host, documentRegistry);
+          let forceEnabledVerbatimModuleSyntax = false;
+          if (!config["verbatimModuleSyntax"]) {
+            config["verbatimModuleSyntax"] = true;
+            forceEnabledVerbatimModuleSyntax = true;
+          }
           const compilerOptions = lspTsConfigToCompilerOptions(config);
-          newByScope.set(scope, { ls, compilerOptions });
+          newByScope.set(scope, {
+            ls,
+            compilerOptions,
+            forceEnabledVerbatimModuleSyntax,
+          });
           languageServiceEntries.byScope.delete(scope);
         }
         for (const oldEntry of languageServiceEntries.byScope.values()) {
@@ -1292,7 +1305,7 @@ delete Object.prototype.__proto__;
               ...ls.getSemanticDiagnostics(specifier),
               ...ls.getSuggestionDiagnostics(specifier),
               ...ls.getSyntacticDiagnostics(specifier),
-            ].filter(({ code }) => !IGNORED_DIAGNOSTICS.includes(code)));
+            ].filter(filterMapDiagnostic.bind(null, true)));
           }
           return respond(id, diagnosticMap);
         } catch (e) {
@@ -1338,48 +1351,38 @@ delete Object.prototype.__proto__;
   // A build time only op that provides some setup information that is used to
   // ensure the snapshot is setup properly.
   /** @type {{ buildSpecifier: string; libs: string[]; nodeBuiltInModuleNames: string[] }} */
-  const { buildSpecifier, libs, nodeBuiltInModuleNames } = ops.op_build_info();
-
-  ts.deno.setNodeBuiltInModuleNames(nodeBuiltInModuleNames);
+  const { buildSpecifier, libs } = ops.op_build_info();
 
   // list of globals that should be kept in Node's globalThis
   ts.deno.setNodeOnlyGlobalNames([
-    // when bumping the @types/node version we should check if
-    // anything needs to be updated here
-    "NodeRequire",
-    "RequireResolve",
-    "RequireResolve",
-    "process",
-    "console",
-    "__filename",
     "__dirname",
-    "require",
-    "module",
+    "__filename",
+    "Buffer",
+    "BufferConstructor",
+    "BufferEncoding",
+    "clearImmediate",
+    "clearInterval",
+    "clearTimeout",
+    "console",
+    "Console",
+    "ErrorConstructor",
     "exports",
     "gc",
-    "BufferEncoding",
-    "BufferConstructor",
-    "WithImplicitCoercion",
-    "Buffer",
-    "Console",
-    "ImportMeta",
-    "setTimeout",
-    "setInterval",
-    "setImmediate",
     "Global",
-    "AbortController",
-    "AbortSignal",
-    "Blob",
-    "BroadcastChannel",
-    "MessageChannel",
-    "MessagePort",
-    "Event",
-    "EventTarget",
-    "performance",
-    "TextDecoder",
-    "TextEncoder",
-    "URL",
-    "URLSearchParams",
+    "ImportMeta",
+    "localStorage",
+    "module",
+    "NodeModule",
+    "NodeRequire",
+    "process",
+    "queueMicrotask",
+    "RequestInit",
+    "require",
+    "ResponseInit",
+    "sessionStorage",
+    "setImmediate",
+    "setInterval",
+    "setTimeout",
   ]);
 
   for (const lib of libs) {

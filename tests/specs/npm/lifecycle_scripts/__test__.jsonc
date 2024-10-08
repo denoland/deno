@@ -1,7 +1,7 @@
 {
+  "tempDir": true,
   "tests": {
     "node_gyp": {
-      "tempDir": true,
       "steps": [
         {
           "args": "cache --allow-scripts=npm:@denotest/node-addon main.js",
@@ -14,7 +14,6 @@
       ]
     },
     "run_without_scripts": {
-      "tempDir": true,
       "steps": [
         {
           "args": "run -A main.js",
@@ -24,11 +23,9 @@
       ]
     },
     "implicit_node_gyp": {
-      "tempDir": true,
       "steps": [
         {
           "envs": {
-            // I don't think this will work on windows
             "PATH": ""
           },
           "args": "cache --allow-scripts implicit_node_gyp.js",
@@ -38,7 +35,6 @@
       ]
     },
     "lifecycle_scripts": {
-      "tempDir": true,
       "steps": [
         {
           // without running scripts (should warn)
@@ -55,8 +51,30 @@
         }
       ]
     },
-    "only_warns_first": {
-      "tempDir": true,
+    "global_lifecycle_scripts": {
+      "steps": [
+        {
+          "args": ["eval", "Deno.removeSync('deno.json')"],
+          "output": ""
+        },
+        {
+          // without running scripts (should warn)
+          "args": "install -e all_lifecycles.js",
+          "output": "all_lifecycles_not_run_global.out"
+        },
+        {
+          // should not warn
+          "args": "run all_lifecycles_global.js",
+          "output": ""
+        },
+        {
+          // should warn still
+          "args": "install -e all_lifecycles.js",
+          "output": "all_lifecycles_not_run_global_cached.out"
+        }
+      ]
+    },
+    "only_warns_first_run": {
       "steps": [
         {
           // without running scripts (should warn)
@@ -69,15 +87,24 @@
           "args": "run all_lifecycles.js",
           "output": "only_warns_first2.out",
           "exitCode": 1
+        },
+        {
+          // should warn because this is an explicit install
+          "args": "install -e all_lifecycles.js",
+          "output": "warns_again_on_install.out"
         }
       ]
     },
     "future_install_lifecycle_scripts": {
       "tempDir": true,
-      "envs": {
-        "DENO_FUTURE": "1"
-      },
       "steps": [
+        {
+          "args": [
+            "eval",
+            "Deno.removeSync('./deno.json')"
+          ],
+          "output": "[WILDCARD]"
+        },
         {
           "args": [
             "eval",
@@ -92,7 +119,6 @@
       ]
     },
     "lifecycle_scripts_conflicting_bin": {
-      "tempDir": true,
       "steps": [
         {
           // we import @denotest/says-hello-on-install, which executes `say-hello` from `@denotest/say-hello` in its
@@ -106,7 +132,6 @@
       ]
     },
     "fsevents_default_install_script": {
-      "tempDir": true,
       "steps": [
         {
           "if": "mac",
@@ -121,27 +146,25 @@
       ]
     },
     "lifecycle_scripts_no_deno_json": {
-      "tempDir": true,
       "steps": [
         {
           "args": ["eval", "Deno.removeSync('deno.json')"],
           "output": ""
         },
         {
-          "args": "cache --allow-scripts --node-modules-dir=true no_deno_json.js",
+          "args": "cache --allow-scripts --node-modules-dir=auto no_deno_json.js",
           "output": "no_deno_json.out"
         }
       ]
     },
     "lifecycle_scripts_no_deno_json_conflicting_bin": {
-      "tempDir": true,
       "steps": [
         {
           "args": ["eval", "Deno.removeSync('deno.json')"],
           "output": ""
         },
         {
-          "args": "cache --allow-scripts --node-modules-dir=true conflicting_bin.js",
+          "args": "cache --allow-scripts --node-modules-dir=auto conflicting_bin.js",
           "output": "conflicting_bin.out"
         }
       ]

@@ -1,7 +1,5 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
-// deno-lint-ignore-file no-deprecated-deno-api
-
 import {
   assert,
   assertEquals,
@@ -13,151 +11,25 @@ import { copy } from "@std/io/copy";
 // Note tests for Deno.FsFile.setRaw is in integration tests.
 
 Deno.test(function filesStdioFileDescriptors() {
+  // @ts-ignore `Deno.stdin.rid` was soft-removed in Deno 2.
   assertEquals(Deno.stdin.rid, 0);
+  // @ts-ignore `Deno.stdout.rid` was soft-removed in Deno 2.
   assertEquals(Deno.stdout.rid, 1);
+  // @ts-ignore `Deno.stderr.rid` was soft-removed in Deno 2.
   assertEquals(Deno.stderr.rid, 2);
 });
 
-Deno.test({ permissions: { read: true } }, async function filesCopyToStdout() {
-  const filename = "tests/testdata/assets/fixture.json";
-  using file = await Deno.open(filename);
-  assert(file instanceof Deno.File);
-  assert(file instanceof Deno.FsFile);
-  assert(file.rid > 2);
-  const bytesWritten = await copy(file, Deno.stdout);
-  const fileSize = Deno.statSync(filename).size;
-  assertEquals(bytesWritten, fileSize);
-});
-
-Deno.test({ permissions: { read: true } }, async function filesIter() {
-  const filename = "tests/testdata/assets/hello.txt";
-  using file = await Deno.open(filename);
-
-  let totalSize = 0;
-  for await (const buf of Deno.iter(file)) {
-    totalSize += buf.byteLength;
-  }
-
-  assertEquals(totalSize, 12);
-});
-
 Deno.test(
   { permissions: { read: true } },
-  async function filesIterCustomBufSize() {
-    const filename = "tests/testdata/assets/hello.txt";
+  async function filesCopyToStdout() {
+    const filename = "tests/testdata/assets/fixture.json";
     using file = await Deno.open(filename);
-
-    let totalSize = 0;
-    let iterations = 0;
-    for await (const buf of Deno.iter(file, { bufSize: 6 })) {
-      totalSize += buf.byteLength;
-      iterations += 1;
-    }
-
-    assertEquals(totalSize, 12);
-    assertEquals(iterations, 2);
+    assert(file instanceof Deno.FsFile);
+    const bytesWritten = await copy(file, Deno.stdout);
+    const fileSize = Deno.statSync(filename).size;
+    assertEquals(bytesWritten, fileSize);
   },
 );
-
-Deno.test({ permissions: { read: true } }, function filesIterSync() {
-  const filename = "tests/testdata/assets/hello.txt";
-  using file = Deno.openSync(filename);
-
-  let totalSize = 0;
-  for (const buf of Deno.iterSync(file)) {
-    totalSize += buf.byteLength;
-  }
-
-  assertEquals(totalSize, 12);
-});
-
-Deno.test(
-  { permissions: { read: true } },
-  function filesIterSyncCustomBufSize() {
-    const filename = "tests/testdata/assets/hello.txt";
-    using file = Deno.openSync(filename);
-
-    let totalSize = 0;
-    let iterations = 0;
-    for (const buf of Deno.iterSync(file, { bufSize: 6 })) {
-      totalSize += buf.byteLength;
-      iterations += 1;
-    }
-
-    assertEquals(totalSize, 12);
-    assertEquals(iterations, 2);
-  },
-);
-
-Deno.test(async function readerIter() {
-  // ref: https://github.com/denoland/deno/issues/2330
-  const encoder = new TextEncoder();
-
-  class TestReader implements Deno.Reader {
-    #offset = 0;
-    #buf: Uint8Array;
-
-    constructor(s: string) {
-      this.#buf = new Uint8Array(encoder.encode(s));
-    }
-
-    read(p: Uint8Array): Promise<number | null> {
-      const n = Math.min(p.byteLength, this.#buf.byteLength - this.#offset);
-      p.set(this.#buf.slice(this.#offset, this.#offset + n));
-      this.#offset += n;
-
-      if (n === 0) {
-        return Promise.resolve(null);
-      }
-
-      return Promise.resolve(n);
-    }
-  }
-
-  const reader = new TestReader("hello world!");
-
-  let totalSize = 0;
-  for await (const buf of Deno.iter(reader)) {
-    totalSize += buf.byteLength;
-  }
-
-  assertEquals(totalSize, 12);
-});
-
-Deno.test(async function readerIterSync() {
-  // ref: https://github.com/denoland/deno/issues/2330
-  const encoder = new TextEncoder();
-
-  class TestReader implements Deno.ReaderSync {
-    #offset = 0;
-    #buf: Uint8Array;
-
-    constructor(s: string) {
-      this.#buf = new Uint8Array(encoder.encode(s));
-    }
-
-    readSync(p: Uint8Array): number | null {
-      const n = Math.min(p.byteLength, this.#buf.byteLength - this.#offset);
-      p.set(this.#buf.slice(this.#offset, this.#offset + n));
-      this.#offset += n;
-
-      if (n === 0) {
-        return null;
-      }
-
-      return n;
-    }
-  }
-
-  const reader = new TestReader("hello world!");
-
-  let totalSize = 0;
-  for await (const buf of Deno.iterSync(reader)) {
-    totalSize += buf.byteLength;
-  }
-
-  assertEquals(totalSize, 12);
-});
 
 Deno.test(
   {
@@ -253,7 +125,7 @@ Deno.test(
     for (const options of openOptions) {
       await assertRejects(async () => {
         await Deno.open(filename, options);
-      }, Deno.errors.PermissionDenied);
+      }, Deno.errors.NotCapable);
     }
   },
 );
@@ -296,7 +168,7 @@ Deno.test(async function openOptions() {
 Deno.test({ permissions: { read: false } }, async function readPermFailure() {
   await assertRejects(async () => {
     await Deno.open("package.json", { read: true });
-  }, Deno.errors.PermissionDenied);
+  }, Deno.errors.NotCapable);
 });
 
 Deno.test(
@@ -355,7 +227,7 @@ Deno.test(
     const filename = "tests/hello.txt";
     await assertRejects(async () => {
       await Deno.open(filename, { read: true });
-    }, Deno.errors.PermissionDenied);
+    }, Deno.errors.NotCapable);
   },
 );
 
@@ -908,14 +780,14 @@ Deno.test({ permissions: { read: true } }, function fsFileIsTerminal() {
 });
 
 Deno.test(
-  { permissions: { read: true, run: true, hrtime: true } },
+  { permissions: { read: true, run: true } },
   async function fsFileLockFileSync() {
     await runFlockTests({ sync: true });
   },
 );
 
 Deno.test(
-  { permissions: { read: true, run: true, hrtime: true } },
+  { permissions: { read: true, run: true } },
   async function fsFileLockFileAsync() {
     await runFlockTests({ sync: false });
   },
@@ -1055,7 +927,7 @@ function runFlockTestProcess(opts: { exclusive: boolean; sync: boolean }) {
 `;
 
   const process = new Deno.Command(Deno.execPath(), {
-    args: ["eval", "--unstable", scriptText],
+    args: ["eval", scriptText],
     stdin: "piped",
     stdout: "piped",
     stderr: "null",

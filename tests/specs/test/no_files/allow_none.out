@@ -1,5 +1,0 @@
-⚠️ The `--allow-none` flag is deprecated and will be removed in Deno 2.0.
-Use the `--permit-no-files` flag instead.
-
-ok | 0 passed | 0 failed (0ms)
-

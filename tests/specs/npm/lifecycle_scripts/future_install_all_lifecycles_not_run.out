@@ -6,7 +6,9 @@ Download http://localhost:4260/@denotest/bin/1.0.0.tgz
 Initialize @denotest/node-lifecycle-scripts@1.0.0
 Initialize @denotest/bin@1.0.0
 [UNORDERED_END]
-warning: Packages contained npm lifecycle scripts (preinstall/install/postinstall) that were not executed.
-    This may cause the packages to not work correctly. To run them, use the `--allow-scripts` flag with `deno cache` or `deno install`
-    (e.g. `deno cache --allow-scripts=pkg1,pkg2 <entrypoint>` or `deno install --allow-scripts=pkg1,pkg2`):
-      npm:@denotest/node-lifecycle-scripts@1.0.0
+Warning The following packages contained npm lifecycle scripts (preinstall/install/postinstall) that were not executed:
+┠─ npm:@denotest/node-lifecycle-scripts@1.0.0
+┃
+┠─ This may cause the packages to not work correctly.
+┖─ To run lifecycle scripts, use the `--allow-scripts` flag with `deno install`:
+   deno install --allow-scripts=npm:@denotest/node-lifecycle-scripts@1.0.0

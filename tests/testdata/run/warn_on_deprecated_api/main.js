@@ -1,5 +1,6 @@
 import { runEcho as runEcho2 } from "http://localhost:4545/run/warn_on_deprecated_api/mod.ts";
 
+// @ts-ignore `Deno.run()` was soft-removed in Deno 2.
 const p = Deno.run({
   cmd: [
     Deno.execPath(),
@@ -11,6 +12,7 @@ await p.status();
 p.close();
 
 async function runEcho() {
+  // @ts-ignore `Deno.run()` was soft-removed in Deno 2.
   const p = Deno.run({
     cmd: [
       Deno.execPath(),

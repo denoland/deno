@@ -1,0 +1,16 @@
+{
+  "steps": [
+    { "args": "run -R index.cjs", "output": "index.out" },
+    { "args": "run -R main.ts", "output": "main.out" },
+    {
+      "args": "run module_error.js",
+      "output": "module_error.out",
+      "exitCode": 1
+    },
+    {
+      "args": "run exports_error.js",
+      "output": "exports_error.out",
+      "exitCode": 1
+    }
+  ]
+}

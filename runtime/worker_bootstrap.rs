@@ -10,7 +10,6 @@ use deno_terminal::colors;
 
 /// The execution mode for this worker. Some modes may have implicit behaviour.
 #[derive(Copy, Clone)]
-#[repr(u8)]
 pub enum WorkerExecutionMode {
   /// No special behaviour.
   None,
@@ -28,9 +27,37 @@ pub enum WorkerExecutionMode {
   /// `deno bench`
   Bench,
   /// `deno serve`
-  Serve,
+  Serve {
+    is_main: bool,
+    worker_count: Option<usize>,
+  },
   /// `deno jupyter`
   Jupyter,
+}
+
+impl WorkerExecutionMode {
+  pub fn discriminant(&self) -> u8 {
+    match self {
+      WorkerExecutionMode::None => 0,
+      WorkerExecutionMode::Worker => 1,
+      WorkerExecutionMode::Run => 2,
+      WorkerExecutionMode::Repl => 3,
+      WorkerExecutionMode::Eval => 4,
+      WorkerExecutionMode::Test => 5,
+      WorkerExecutionMode::Bench => 6,
+      WorkerExecutionMode::Serve { .. } => 7,
+      WorkerExecutionMode::Jupyter => 8,
+    }
+  }
+  pub fn serve_info(&self) -> (Option<bool>, Option<usize>) {
+    match *self {
+      WorkerExecutionMode::Serve {
+        is_main,
+        worker_count,
+      } => (Some(is_main), worker_count),
+      _ => (None, None),
+    }
+  }
 }
 
 /// The log level to use when printing diagnostic log messages, warnings,
@@ -65,6 +92,7 @@ impl From<log::Level> for WorkerLogLevel {
 /// Common bootstrap options for MainWorker & WebWorker
 #[derive(Clone)]
 pub struct BootstrapOptions {
+  pub deno_version: String,
   /// Sets `Deno.args` in JS runtime.
   pub args: Vec<String>,
   pub cpu_count: usize,
@@ -78,8 +106,6 @@ pub struct BootstrapOptions {
   pub is_stdout_tty: bool,
   pub is_stderr_tty: bool,
   pub color_level: deno_terminal::colors::ColorLevel,
-  // --unstable flag, deprecated
-  pub unstable: bool,
   // --unstable-* flags
   pub unstable_features: Vec<i32>,
   pub user_agent: String,
@@ -88,9 +114,6 @@ pub struct BootstrapOptions {
   pub argv0: Option<String>,
   pub node_debug: Option<String>,
   pub node_ipc_fd: Option<i64>,
-  pub disable_deprecated_api_warning: bool,
-  pub verbose_deprecated_api_warning: bool,
-  pub future: bool,
   pub mode: WorkerExecutionMode,
   // Used by `deno serve`
   pub serve_port: Option<u16>,
@@ -107,6 +130,7 @@ impl Default for BootstrapOptions {
     let user_agent = format!("Deno/{runtime_version}");
 
     Self {
+      deno_version: runtime_version.to_string(),
       user_agent,
       cpu_count,
       no_color: !colors::use_color(),
@@ -118,7 +142,6 @@ impl Default for BootstrapOptions {
       log_level: Default::default(),
       locale: "en".to_string(),
       location: Default::default(),
-      unstable: Default::default(),
       unstable_features: Default::default(),
       inspect: Default::default(),
       args: Default::default(),
@@ -126,9 +149,6 @@ impl Default for BootstrapOptions {
       argv0: None,
       node_debug: None,
       node_ipc_fd: None,
-      disable_deprecated_api_warning: false,
-      verbose_deprecated_api_warning: false,
-      future: false,
       mode: WorkerExecutionMode::None,
       serve_port: Default::default(),
       serve_host: Default::default(),
@@ -147,10 +167,10 @@ impl Default for BootstrapOptions {
 /// Keep this in sync with `99_main.js`.
 #[derive(Serialize)]
 struct BootstrapV8<'a>(
+  // deno version
+  &'a str,
   // location
   Option<&'a str>,
-  // unstable
-  bool,
   // granular unstable flags
   &'a [i32],
   // inspect
@@ -163,18 +183,16 @@ struct BootstrapV8<'a>(
   Option<&'a str>,
   // node_debug
   Option<&'a str>,
-  // disable_deprecated_api_warning,
-  bool,
-  // verbose_deprecated_api_warning
-  bool,
-  // future
-  bool,
   // mode
   i32,
   // serve port
   u16,
   // serve host
   Option<&'a str>,
+  // serve is main
+  Option<bool>,
+  // serve worker count
+  Option<usize>,
 );
 
 impl BootstrapOptions {
@@ -186,21 +204,21 @@ impl BootstrapOptions {
     let scope = RefCell::new(scope);
     let ser = deno_core::serde_v8::Serializer::new(&scope);
 
+    let (serve_is_main, serve_worker_count) = self.mode.serve_info();
     let bootstrap = BootstrapV8(
+      &self.deno_version,
       self.location.as_ref().map(|l| l.as_str()),
-      self.unstable,
       self.unstable_features.as_ref(),
       self.inspect,
       self.enable_testing_features,
       self.has_node_modules_dir,
       self.argv0.as_deref(),
       self.node_debug.as_deref(),
-      self.disable_deprecated_api_warning,
-      self.verbose_deprecated_api_warning,
-      self.future,
-      self.mode as u8 as _,
+      self.mode.discriminant() as _,
       self.serve_port.unwrap_or_default(),
       self.serve_host.as_deref(),
+      serve_is_main,
+      serve_worker_count,
     );
 
     bootstrap.serialize(ser).unwrap()

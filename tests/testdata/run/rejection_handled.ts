@@ -1,9 +1,9 @@
-window.addEventListener("unhandledrejection", (event) => {
+globalThis.addEventListener("unhandledrejection", (event) => {
   console.log("unhandledrejection", event.reason, event.promise);
   event.preventDefault();
 });
 
-window.addEventListener("rejectionhandled", (event) => {
+globalThis.addEventListener("rejectionhandled", (event) => {
   console.log("rejectionhandled", event.reason, event.promise);
 });
 

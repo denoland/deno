@@ -90,8 +90,11 @@ impl VfsBuilder {
     let read_dir = std::fs::read_dir(path)
       .with_context(|| format!("Reading {}", path.display()))?;
 
-    for entry in read_dir {
-      let entry = entry?;
+    let mut dir_entries =
+      read_dir.into_iter().collect::<Result<Vec<_>, _>>()?;
+    dir_entries.sort_by_cached_key(|entry| entry.file_name()); // determinism
+
+    for entry in dir_entries {
       let file_type = entry.file_type()?;
       let path = entry.path();
 

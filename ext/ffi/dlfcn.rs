@@ -1,15 +1,16 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
-use crate::check_unstable;
 use crate::ir::out_buffer_as_ptr;
 use crate::symbol::NativeType;
 use crate::symbol::Symbol;
 use crate::turbocall;
+use crate::turbocall::Turbocall;
 use crate::FfiPermissions;
 use deno_core::error::generic_error;
 use deno_core::error::AnyError;
 use deno_core::op2;
 use deno_core::v8;
+use deno_core::GarbageCollected;
 use deno_core::OpState;
 use deno_core::Resource;
 use dlopen2::raw::Library;
@@ -18,7 +19,6 @@ use serde_value::ValueDeserializer;
 use std::borrow::Cow;
 use std::collections::HashMap;
 use std::ffi::c_void;
-use std::path::PathBuf;
 use std::rc::Rc;
 
 pub struct DynamicLibraryResource {
@@ -120,16 +120,13 @@ pub fn op_ffi_load<'scope, FP>(
 where
   FP: FfiPermissions + 'static,
 {
-  let path = args.path;
-
-  check_unstable(state, "Deno.dlopen");
   let permissions = state.borrow_mut::<FP>();
-  permissions.check_partial(Some(&PathBuf::from(&path)))?;
+  let path = permissions.check_partial_with_path(&args.path)?;
 
   let lib = Library::open(&path).map_err(|e| {
     dlopen2::Error::OpeningLibraryError(std::io::Error::new(
       std::io::ErrorKind::Other,
-      format_error(e, path),
+      format_error(e, &path),
     ))
   })?;
   let mut resource = DynamicLibraryResource {
@@ -208,89 +205,92 @@ where
   Ok(out.into())
 }
 
+struct FunctionData {
+  // Held in a box to keep memory while function is alive.
+  #[allow(unused)]
+  symbol: Box<Symbol>,
+  // Held in a box to keep inner data alive while function is alive.
+  #[allow(unused)]
+  turbocall: Option<Turbocall>,
+}
+
+impl GarbageCollected for FunctionData {}
+
 // Create a JavaScript function for synchronous FFI call to
 // the given symbol.
 fn make_sync_fn<'s>(
   scope: &mut v8::HandleScope<'s>,
-  sym: Box<Symbol>,
+  symbol: Box<Symbol>,
 ) -> v8::Local<'s, v8::Function> {
-  let sym = Box::leak(sym);
-  let builder = v8::FunctionTemplate::builder(
-    |scope: &mut v8::HandleScope,
-     args: v8::FunctionCallbackArguments,
-     mut rv: v8::ReturnValue| {
-      let external: v8::Local<v8::External> = args.data().try_into().unwrap();
-      // SAFETY: The pointer will not be deallocated until the function is
-      // garbage collected.
-      let symbol = unsafe { &*(external.value() as *const Symbol) };
-      let out_buffer = match symbol.result_type {
-        NativeType::Struct(_) => {
-          let argc = args.length();
-          out_buffer_as_ptr(
-            scope,
-            Some(
-              v8::Local::<v8::TypedArray>::try_from(args.get(argc - 1))
-                .unwrap(),
-            ),
-          )
-        }
-        _ => None,
-      };
-      match crate::call::ffi_call_sync(scope, args, symbol, out_buffer) {
-        Ok(result) => {
-          let result =
-            // SAFETY: Same return type declared to libffi; trust user to have it right beyond that.
-            unsafe { result.to_v8(scope, symbol.result_type.clone()) };
-          rv.set(result);
-        }
-        Err(err) => {
-          deno_core::_ops::throw_type_error(scope, err.to_string());
-        }
-      };
-    },
-  )
-  .data(v8::External::new(scope, sym as *mut Symbol as *mut _).into());
+  let turbocall = if turbocall::is_compatible(&symbol) {
+    let trampoline = turbocall::compile_trampoline(&symbol);
+    let turbocall = turbocall::make_template(&symbol, trampoline);
+    Some(turbocall)
+  } else {
+    None
+  };
 
-  let mut fast_call_alloc = None;
+  let c_function = turbocall.as_ref().map(|turbocall| {
+    v8::fast_api::CFunction::new(
+      turbocall.trampoline.ptr(),
+      &turbocall.c_function_info,
+    )
+  });
 
-  let func = if turbocall::is_compatible(sym) {
-    let trampoline = turbocall::compile_trampoline(sym);
-    let func = builder.build_fast(
-      scope,
-      &turbocall::make_template(sym, &trampoline),
-      None,
-      None,
-      None,
-    );
-    fast_call_alloc = Some(Box::into_raw(Box::new(trampoline)));
-    func
+  let data = FunctionData { symbol, turbocall };
+  let data = deno_core::cppgc::make_cppgc_object(scope, data);
+
+  let builder = v8::FunctionTemplate::builder(sync_fn_impl).data(data.into());
+
+  let func = if let Some(c_function) = c_function {
+    builder.build_fast(scope, &[c_function])
   } else {
     builder.build(scope)
   };
-  let func = func.get_function(scope).unwrap();
+  func.get_function(scope).unwrap()
+}
 
-  let weak = v8::Weak::with_finalizer(
+fn sync_fn_impl<'s>(
+  scope: &mut v8::HandleScope<'s>,
+  args: v8::FunctionCallbackArguments<'s>,
+  mut rv: v8::ReturnValue,
+) {
+  let data = deno_core::cppgc::try_unwrap_cppgc_object::<FunctionData>(
     scope,
-    func,
-    Box::new(move |_| {
-      // SAFETY: This is never called twice. pointer obtained
-      // from Box::into_raw, hence, satisfies memory layout requirements.
-      let _ = unsafe { Box::from_raw(sym) };
-      if let Some(fast_call_ptr) = fast_call_alloc {
-        // fast-call compiled trampoline is unmapped when the MMAP handle is dropped
-        // SAFETY: This is never called twice. pointer obtained
-        // from Box::into_raw, hence, satisfies memory layout requirements.
-        let _ = unsafe { Box::from_raw(fast_call_ptr) };
-      }
-    }),
-  );
-
-  weak.to_local(scope).unwrap()
+    args.data(),
+  )
+  .unwrap();
+  let out_buffer = match data.symbol.result_type {
+    NativeType::Struct(_) => {
+      let argc = args.length();
+      out_buffer_as_ptr(
+        scope,
+        Some(
+          v8::Local::<v8::TypedArray>::try_from(args.get(argc - 1)).unwrap(),
+        ),
+      )
+    }
+    _ => None,
+  };
+  match crate::call::ffi_call_sync(scope, args, &data.symbol, out_buffer) {
+    Ok(result) => {
+      let result =
+            // SAFETY: Same return type declared to libffi; trust user to have it right beyond that.
+            unsafe { result.to_v8(scope, data.symbol.result_type.clone()) };
+      rv.set(result);
+    }
+    Err(err) => {
+      deno_core::_ops::throw_type_error(scope, err.to_string());
+    }
+  };
 }
 
 // `path` is only used on Windows.
 #[allow(unused_variables)]
-pub(crate) fn format_error(e: dlopen2::Error, path: String) -> String {
+pub(crate) fn format_error(
+  e: dlopen2::Error,
+  path: &std::path::Path,
+) -> String {
   match e {
     #[cfg(target_os = "windows")]
     // This calls FormatMessageW with library path
@@ -300,7 +300,6 @@ pub(crate) fn format_error(e: dlopen2::Error, path: String) -> String {
     //
     // https://github.com/denoland/deno/issues/11632
     dlopen2::Error::OpeningLibraryError(e) => {
-      use std::ffi::OsStr;
       use std::os::windows::ffi::OsStrExt;
       use winapi::shared::minwindef::DWORD;
       use winapi::shared::winerror::ERROR_INSUFFICIENT_BUFFER;
@@ -324,7 +323,8 @@ pub(crate) fn format_error(e: dlopen2::Error, path: String) -> String {
 
       let mut buf = vec![0; 500];
 
-      let path = OsStr::new(&path)
+      let path = path
+        .as_os_str()
         .encode_wide()
         .chain(Some(0))
         .collect::<Vec<_>>();
@@ -384,7 +384,7 @@ mod tests {
       std::io::Error::from_raw_os_error(0x000000C1),
     );
     assert_eq!(
-      format_error(err, "foo.dll".to_string()),
+      format_error(err, &std::path::PathBuf::from("foo.dll")),
       "foo.dll is not a valid Win32 application.\r\n".to_string(),
     );
   }

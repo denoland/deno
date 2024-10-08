@@ -1,0 +1,17 @@
+{
+  // won't need --allow-import because it's implied from the main module
+  "tests": {
+    "run": {
+      "args": "run http://localhost:4545/run/002_hello.ts",
+      "output": "Download http://localhost:4545/run/002_hello.ts\nHello World\n"
+    },
+    "cache": {
+      "args": "cache http://localhost:4545/run/002_hello.ts",
+      "output": "Download http://localhost:4545/run/002_hello.ts\n"
+    },
+    "check": {
+      "args": "check http://localhost:4545/run/002_hello.ts",
+      "output": "Download http://localhost:4545/run/002_hello.ts\nCheck http://localhost:4545/run/002_hello.ts\n"
+    }
+  }
+}

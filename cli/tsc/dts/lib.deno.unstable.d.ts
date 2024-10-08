@@ -3,827 +3,11 @@
 /// <reference no-default-lib="true" />
 /// <reference lib="deno.ns" />
 /// <reference lib="deno.broadcast_channel" />
-/// <reference lib="deno.webgpu" />
 /// <reference lib="esnext" />
 /// <reference lib="es2022.intl" />
 
 declare namespace Deno {
   export {}; // stop default export type behavior
-
-  /** Information for a HTTP request.
-   *
-   * @category HTTP Server
-   * @experimental
-   */
-  export interface ServeHandlerInfo {
-    /** The remote address of the connection. */
-    remoteAddr: Deno.NetAddr;
-    /** The completion promise */
-    completed: Promise<void>;
-  }
-
-  /** **UNSTABLE**: New API, yet to be vetted.
-   *
-   * Retrieve the process umask.  If `mask` is provided, sets the process umask.
-   * This call always returns what the umask was before the call.
-   *
-   * ```ts
-   * console.log(Deno.umask());  // e.g. 18 (0o022)
-   * const prevUmaskValue = Deno.umask(0o077);  // e.g. 18 (0o022)
-   * console.log(Deno.umask());  // e.g. 63 (0o077)
-   * ```
-   *
-   * This API is under consideration to determine if permissions are required to
-   * call it.
-   *
-   * *Note*: This API is not implemented on Windows
-   *
-   * @category File System
-   * @experimental
-   */
-  export function umask(mask?: number): number;
-
-  /** **UNSTABLE**: New API, yet to be vetted.
-   *
-   * All plain number types for interfacing with foreign functions.
-   *
-   * @category FFI
-   * @experimental
-   */
-  export type NativeNumberType =
-    | "u8"
-    | "i8"
-    | "u16"
-    | "i16"
-    | "u32"
-    | "i32"
-    | "f32"
-    | "f64";
-
-  /** **UNSTABLE**: New API, yet to be vetted.
-   *
-   * All BigInt number types for interfacing with foreign functions.
-   *
-   * @category FFI
-   * @experimental
-   */
-  export type NativeBigIntType =
-    | "u64"
-    | "i64"
-    | "usize"
-    | "isize";
-
-  /** **UNSTABLE**: New API, yet to be vetted.
-   *
-   * The native boolean type for interfacing to foreign functions.
-   *
-   * @category FFI
-   * @experimental
-   */
-  export type NativeBooleanType = "bool";
-
-  /** **UNSTABLE**: New API, yet to be vetted.
-   *
-   * The native pointer type for interfacing to foreign functions.
-   *
-   * @category FFI
-   * @experimental
-   */
-  export type NativePointerType = "pointer";
-
-  /** **UNSTABLE**: New API, yet to be vetted.
-   *
-   * The native buffer type for interfacing to foreign functions.
-   *
-   * @category FFI
-   * @experimental
-   */
-  export type NativeBufferType = "buffer";
-
-  /** **UNSTABLE**: New API, yet to be vetted.
-   *
-   * The native function type for interfacing with foreign functions.
-   *
-   * @category FFI
-   * @experimental
-   */
-  export type NativeFunctionType = "function";
-
-  /** **UNSTABLE**: New API, yet to be vetted.
-   *
-   * The native void type for interfacing with foreign functions.
-   *
-   * @category FFI
-   * @experimental
-   */
-  export type NativeVoidType = "void";
-
-  /** **UNSTABLE**: New API, yet to be vetted.
-   *
-   * The native struct type for interfacing with foreign functions.
-   *
-   * @category FFI
-   * @experimental
-   */
-  export type NativeStructType = { readonly struct: readonly NativeType[] };
-
-  /**
-   * @category FFI
-   * @experimental
-   */
-  export const brand: unique symbol;
-
-  /**
-   * @category FFI
-   * @experimental
-   */
-  export type NativeU8Enum<T extends number> = "u8" & { [brand]: T };
-  /**
-   * @category FFI
-   * @experimental
-   */
-  export type NativeI8Enum<T extends number> = "i8" & { [brand]: T };
-  /**
-   * @category FFI
-   * @experimental
-   */
-  export type NativeU16Enum<T extends number> = "u16" & { [brand]: T };
-  /**
-   * @category FFI
-   * @experimental
-   */
-  export type NativeI16Enum<T extends number> = "i16" & { [brand]: T };
-  /**
-   * @category FFI
-   * @experimental
-   */
-  export type NativeU32Enum<T extends number> = "u32" & { [brand]: T };
-  /**
-   * @category FFI
-   * @experimental
-   */
-  export type NativeI32Enum<T extends number> = "i32" & { [brand]: T };
-  /**
-   * @category FFI
-   * @experimental
-   */
-  export type NativeTypedPointer<T extends PointerObject> = "pointer" & {
-    [brand]: T;
-  };
-  /**
-   * @category FFI
-   * @experimental
-   */
-  export type NativeTypedFunction<T extends UnsafeCallbackDefinition> =
-    & "function"
-    & {
-      [brand]: T;
-    };
-
-  /** **UNSTABLE**: New API, yet to be vetted.
-   *
-   * All supported types for interfacing with foreign functions.
-   *
-   * @category FFI
-   * @experimental
-   */
-  export type NativeType =
-    | NativeNumberType
-    | NativeBigIntType
-    | NativeBooleanType
-    | NativePointerType
-    | NativeBufferType
-    | NativeFunctionType
-    | NativeStructType;
-
-  /** **UNSTABLE**: New API, yet to be vetted.
-   *
-   * @category FFI
-   * @experimental
-   */
-  export type NativeResultType = NativeType | NativeVoidType;
-
-  /** **UNSTABLE**: New API, yet to be vetted.
-   *
-   * Type conversion for foreign symbol parameters and unsafe callback return
-   * types.
-   *
-   * @category FFI
-   * @experimental
-   */
-  export type ToNativeType<T extends NativeType = NativeType> = T extends
-    NativeStructType ? BufferSource
-    : T extends NativeNumberType ? T extends NativeU8Enum<infer U> ? U
-      : T extends NativeI8Enum<infer U> ? U
-      : T extends NativeU16Enum<infer U> ? U
-      : T extends NativeI16Enum<infer U> ? U
-      : T extends NativeU32Enum<infer U> ? U
-      : T extends NativeI32Enum<infer U> ? U
-      : number
-    : T extends NativeBigIntType ? bigint
-    : T extends NativeBooleanType ? boolean
-    : T extends NativePointerType
-      ? T extends NativeTypedPointer<infer U> ? U | null : PointerValue
-    : T extends NativeFunctionType
-      ? T extends NativeTypedFunction<infer U> ? PointerValue<U> | null
-      : PointerValue
-    : T extends NativeBufferType ? BufferSource | null
-    : never;
-
-  /** **UNSTABLE**: New API, yet to be vetted.
-   *
-   * Type conversion for unsafe callback return types.
-   *
-   * @category FFI
-   * @experimental
-   */
-  export type ToNativeResultType<
-    T extends NativeResultType = NativeResultType,
-  > = T extends NativeStructType ? BufferSource
-    : T extends NativeNumberType ? T extends NativeU8Enum<infer U> ? U
-      : T extends NativeI8Enum<infer U> ? U
-      : T extends NativeU16Enum<infer U> ? U
-      : T extends NativeI16Enum<infer U> ? U
-      : T extends NativeU32Enum<infer U> ? U
-      : T extends NativeI32Enum<infer U> ? U
-      : number
-    : T extends NativeBigIntType ? bigint
-    : T extends NativeBooleanType ? boolean
-    : T extends NativePointerType
-      ? T extends NativeTypedPointer<infer U> ? U | null : PointerValue
-    : T extends NativeFunctionType
-      ? T extends NativeTypedFunction<infer U> ? PointerObject<U> | null
-      : PointerValue
-    : T extends NativeBufferType ? BufferSource | null
-    : T extends NativeVoidType ? void
-    : never;
-
-  /** **UNSTABLE**: New API, yet to be vetted.
-   *
-   * A utility type for conversion of parameter types of foreign functions.
-   *
-   * @category FFI
-   * @experimental
-   */
-  export type ToNativeParameterTypes<T extends readonly NativeType[]> =
-    //
-    [(T[number])[]] extends [T] ? ToNativeType<T[number]>[]
-      : [readonly (T[number])[]] extends [T]
-        ? readonly ToNativeType<T[number]>[]
-      : T extends readonly [...NativeType[]] ? {
-          [K in keyof T]: ToNativeType<T[K]>;
-        }
-      : never;
-
-  /** **UNSTABLE**: New API, yet to be vetted.
-   *
-   * Type conversion for foreign symbol return types and unsafe callback
-   * parameters.
-   *
-   * @category FFI
-   * @experimental
-   */
-  export type FromNativeType<T extends NativeType = NativeType> = T extends
-    NativeStructType ? Uint8Array
-    : T extends NativeNumberType ? T extends NativeU8Enum<infer U> ? U
-      : T extends NativeI8Enum<infer U> ? U
-      : T extends NativeU16Enum<infer U> ? U
-      : T extends NativeI16Enum<infer U> ? U
-      : T extends NativeU32Enum<infer U> ? U
-      : T extends NativeI32Enum<infer U> ? U
-      : number
-    : T extends NativeBigIntType ? bigint
-    : T extends NativeBooleanType ? boolean
-    : T extends NativePointerType
-      ? T extends NativeTypedPointer<infer U> ? U | null : PointerValue
-    : T extends NativeBufferType ? PointerValue
-    : T extends NativeFunctionType
-      ? T extends NativeTypedFunction<infer U> ? PointerObject<U> | null
-      : PointerValue
-    : never;
-
-  /** **UNSTABLE**: New API, yet to be vetted.
-   *
-   * Type conversion for foreign symbol return types.
-   *
-   * @category FFI
-   * @experimental
-   */
-  export type FromNativeResultType<
-    T extends NativeResultType = NativeResultType,
-  > = T extends NativeStructType ? Uint8Array
-    : T extends NativeNumberType ? T extends NativeU8Enum<infer U> ? U
-      : T extends NativeI8Enum<infer U> ? U
-      : T extends NativeU16Enum<infer U> ? U
-      : T extends NativeI16Enum<infer U> ? U
-      : T extends NativeU32Enum<infer U> ? U
-      : T extends NativeI32Enum<infer U> ? U
-      : number
-    : T extends NativeBigIntType ? bigint
-    : T extends NativeBooleanType ? boolean
-    : T extends NativePointerType
-      ? T extends NativeTypedPointer<infer U> ? U | null : PointerValue
-    : T extends NativeBufferType ? PointerValue
-    : T extends NativeFunctionType
-      ? T extends NativeTypedFunction<infer U> ? PointerObject<U> | null
-      : PointerValue
-    : T extends NativeVoidType ? void
-    : never;
-
-  /** **UNSTABLE**: New API, yet to be vetted.
-   *
-   * @category FFI
-   * @experimental
-   */
-  export type FromNativeParameterTypes<
-    T extends readonly NativeType[],
-  > =
-    //
-    [(T[number])[]] extends [T] ? FromNativeType<T[number]>[]
-      : [readonly (T[number])[]] extends [T]
-        ? readonly FromNativeType<T[number]>[]
-      : T extends readonly [...NativeType[]] ? {
-          [K in keyof T]: FromNativeType<T[K]>;
-        }
-      : never;
-
-  /** **UNSTABLE**: New API, yet to be vetted.
-   *
-   * The interface for a foreign function as defined by its parameter and result
-   * types.
-   *
-   * @category FFI
-   * @experimental
-   */
-  export interface ForeignFunction<
-    Parameters extends readonly NativeType[] = readonly NativeType[],
-    Result extends NativeResultType = NativeResultType,
-    NonBlocking extends boolean = boolean,
-  > {
-    /** Name of the symbol.
-     *
-     * Defaults to the key name in symbols object. */
-    name?: string;
-    /** The parameters of the foreign function. */
-    parameters: Parameters;
-    /** The result (return value) of the foreign function. */
-    result: Result;
-    /** When `true`, function calls will run on a dedicated blocking thread and
-     * will return a `Promise` resolving to the `result`. */
-    nonblocking?: NonBlocking;
-    /** When `true`, dlopen will not fail if the symbol is not found.
-     * Instead, the symbol will be set to `null`.
-     *
-     * @default {false} */
-    optional?: boolean;
-  }
-
-  /** **UNSTABLE**: New API, yet to be vetted.
-   *
-   * @category FFI
-   * @experimental
-   */
-  export interface ForeignStatic<Type extends NativeType = NativeType> {
-    /** Name of the symbol, defaults to the key name in symbols object. */
-    name?: string;
-    /** The type of the foreign static value. */
-    type: Type;
-    /** When `true`, dlopen will not fail if the symbol is not found.
-     * Instead, the symbol will be set to `null`.
-     *
-     * @default {false} */
-    optional?: boolean;
-  }
-
-  /** **UNSTABLE**: New API, yet to be vetted.
-   *
-   * A foreign library interface descriptor.
-   *
-   * @category FFI
-   * @experimental
-   */
-  export interface ForeignLibraryInterface {
-    [name: string]: ForeignFunction | ForeignStatic;
-  }
-
-  /** **UNSTABLE**: New API, yet to be vetted.
-   *
-   * A utility type that infers a foreign symbol.
-   *
-   * @category FFI
-   * @experimental
-   */
-  export type StaticForeignSymbol<T extends ForeignFunction | ForeignStatic> =
-    T extends ForeignFunction ? FromForeignFunction<T>
-      : T extends ForeignStatic ? FromNativeType<T["type"]>
-      : never;
-
-  /** **UNSTABLE**: New API, yet to be vetted.
-   *
-   *  @category FFI
-   *  @experimental
-   */
-  export type FromForeignFunction<T extends ForeignFunction> =
-    T["parameters"] extends readonly [] ? () => StaticForeignSymbolReturnType<T>
-      : (
-        ...args: ToNativeParameterTypes<T["parameters"]>
-      ) => StaticForeignSymbolReturnType<T>;
-
-  /** **UNSTABLE**: New API, yet to be vetted.
-   *
-   * @category FFI
-   * @experimental
-   */
-  export type StaticForeignSymbolReturnType<T extends ForeignFunction> =
-    ConditionalAsync<T["nonblocking"], FromNativeResultType<T["result"]>>;
-
-  /** **UNSTABLE**: New API, yet to be vetted.
-   *
-   * @category FFI
-   * @experimental
-   */
-  export type ConditionalAsync<IsAsync extends boolean | undefined, T> =
-    IsAsync extends true ? Promise<T> : T;
-
-  /** **UNSTABLE**: New API, yet to be vetted.
-   *
-   * A utility type that infers a foreign library interface.
-   *
-   * @category FFI
-   * @experimental
-   */
-  export type StaticForeignLibraryInterface<T extends ForeignLibraryInterface> =
-    {
-      [K in keyof T]: T[K]["optional"] extends true
-        ? StaticForeignSymbol<T[K]> | null
-        : StaticForeignSymbol<T[K]>;
-    };
-
-  /** **UNSTABLE**: New API, yet to be vetted.
-   *
-   * A non-null pointer, represented as an object
-   * at runtime. The object's prototype is `null`
-   * and cannot be changed. The object cannot be
-   * assigned to either and is thus entirely read-only.
-   *
-   * To interact with memory through a pointer use the
-   * {@linkcode UnsafePointerView} class. To create a
-   * pointer from an address or the get the address of
-   * a pointer use the static methods of the
-   * {@linkcode UnsafePointer} class.
-   *
-   * @category FFI
-   * @experimental
-   */
-  export type PointerObject<T = unknown> = { [brand]: T };
-
-  /** **UNSTABLE**: New API, yet to be vetted.
-   *
-   * Pointers are represented either with a {@linkcode PointerObject}
-   * object or a `null` if the pointer is null.
-   *
-   * @category FFI
-   * @experimental
-   */
-  export type PointerValue<T = unknown> = null | PointerObject<T>;
-
-  /** **UNSTABLE**: New API, yet to be vetted.
-   *
-   * A collection of static functions for interacting with pointer objects.
-   *
-   * @category FFI
-   * @experimental
-   */
-  export class UnsafePointer {
-    /** Create a pointer from a numeric value. This one is <i>really</i> dangerous! */
-    static create<T = unknown>(value: bigint): PointerValue<T>;
-    /** Returns `true` if the two pointers point to the same address. */
-    static equals<T = unknown>(a: PointerValue<T>, b: PointerValue<T>): boolean;
-    /** Return the direct memory pointer to the typed array in memory. */
-    static of<T = unknown>(
-      value: Deno.UnsafeCallback | BufferSource,
-    ): PointerValue<T>;
-    /** Return a new pointer offset from the original by `offset` bytes. */
-    static offset<T = unknown>(
-      value: PointerObject,
-      offset: number,
-    ): PointerValue<T>;
-    /** Get the numeric value of a pointer */
-    static value(value: PointerValue): bigint;
-  }
-
-  /** **UNSTABLE**: New API, yet to be vetted.
-   *
-   * An unsafe pointer view to a memory location as specified by the `pointer`
-   * value. The `UnsafePointerView` API follows the standard built in interface
-   * {@linkcode DataView} for accessing the underlying types at an memory
-   * location (numbers, strings and raw bytes).
-   *
-   * @category FFI
-   * @experimental
-   */
-  export class UnsafePointerView {
-    constructor(pointer: PointerObject);
-
-    pointer: PointerObject;
-
-    /** Gets a boolean at the specified byte offset from the pointer. */
-    getBool(offset?: number): boolean;
-    /** Gets an unsigned 8-bit integer at the specified byte offset from the
-     * pointer. */
-    getUint8(offset?: number): number;
-    /** Gets a signed 8-bit integer at the specified byte offset from the
-     * pointer. */
-    getInt8(offset?: number): number;
-    /** Gets an unsigned 16-bit integer at the specified byte offset from the
-     * pointer. */
-    getUint16(offset?: number): number;
-    /** Gets a signed 16-bit integer at the specified byte offset from the
-     * pointer. */
-    getInt16(offset?: number): number;
-    /** Gets an unsigned 32-bit integer at the specified byte offset from the
-     * pointer. */
-    getUint32(offset?: number): number;
-    /** Gets a signed 32-bit integer at the specified byte offset from the
-     * pointer. */
-    getInt32(offset?: number): number;
-    /** Gets an unsigned 64-bit integer at the specified byte offset from the
-     * pointer. */
-    getBigUint64(offset?: number): bigint;
-    /** Gets a signed 64-bit integer at the specified byte offset from the
-     * pointer. */
-    getBigInt64(offset?: number): bigint;
-    /** Gets a signed 32-bit float at the specified byte offset from the
-     * pointer. */
-    getFloat32(offset?: number): number;
-    /** Gets a signed 64-bit float at the specified byte offset from the
-     * pointer. */
-    getFloat64(offset?: number): number;
-    /** Gets a pointer at the specified byte offset from the pointer */
-    getPointer<T = unknown>(offset?: number): PointerValue<T>;
-    /** Gets a C string (`null` terminated string) at the specified byte offset
-     * from the pointer. */
-    getCString(offset?: number): string;
-    /** Gets a C string (`null` terminated string) at the specified byte offset
-     * from the specified pointer. */
-    static getCString(
-      pointer: PointerObject,
-      offset?: number,
-    ): string;
-    /** Gets an `ArrayBuffer` of length `byteLength` at the specified byte
-     * offset from the pointer. */
-    getArrayBuffer(byteLength: number, offset?: number): ArrayBuffer;
-    /** Gets an `ArrayBuffer` of length `byteLength` at the specified byte
-     * offset from the specified pointer. */
-    static getArrayBuffer(
-      pointer: PointerObject,
-      byteLength: number,
-      offset?: number,
-    ): ArrayBuffer;
-    /** Copies the memory of the pointer into a typed array.
-     *
-     * Length is determined from the typed array's `byteLength`.
-     *
-     * Also takes optional byte offset from the pointer. */
-    copyInto(destination: BufferSource, offset?: number): void;
-    /** Copies the memory of the specified pointer into a typed array.
-     *
-     * Length is determined from the typed array's `byteLength`.
-     *
-     * Also takes optional byte offset from the pointer. */
-    static copyInto(
-      pointer: PointerObject,
-      destination: BufferSource,
-      offset?: number,
-    ): void;
-  }
-
-  /** **UNSTABLE**: New API, yet to be vetted.
-   *
-   * An unsafe pointer to a function, for calling functions that are not present
-   * as symbols.
-   *
-   * @category FFI
-   * @experimental
-   */
-  export class UnsafeFnPointer<const Fn extends ForeignFunction> {
-    /** The pointer to the function. */
-    pointer: PointerObject<Fn>;
-    /** The definition of the function. */
-    definition: Fn;
-
-    constructor(pointer: PointerObject<NoInfer<Fn>>, definition: Fn);
-    /** @deprecated Properly type {@linkcode pointer} using {@linkcode NativeTypedFunction} or {@linkcode UnsafeCallbackDefinition} types. */
-    constructor(pointer: PointerObject, definition: Fn);
-
-    /** Call the foreign function. */
-    call: FromForeignFunction<Fn>;
-  }
-
-  /** **UNSTABLE**: New API, yet to be vetted.
-   *
-   * Definition of a unsafe callback function.
-   *
-   * @category FFI
-   * @experimental
-   */
-  export interface UnsafeCallbackDefinition<
-    Parameters extends readonly NativeType[] = readonly NativeType[],
-    Result extends NativeResultType = NativeResultType,
-  > {
-    /** The parameters of the callbacks. */
-    parameters: Parameters;
-    /** The current result of the callback. */
-    result: Result;
-  }
-
-  /** **UNSTABLE**: New API, yet to be vetted.
-   *
-   * An unsafe callback function.
-   *
-   * @category FFI
-   * @experimental
-   */
-  export type UnsafeCallbackFunction<
-    Parameters extends readonly NativeType[] = readonly NativeType[],
-    Result extends NativeResultType = NativeResultType,
-  > = Parameters extends readonly [] ? () => ToNativeResultType<Result> : (
-    ...args: FromNativeParameterTypes<Parameters>
-  ) => ToNativeResultType<Result>;
-
-  /** **UNSTABLE**: New API, yet to be vetted.
-   *
-   * An unsafe function pointer for passing JavaScript functions as C function
-   * pointers to foreign function calls.
-   *
-   * The function pointer remains valid until the `close()` method is called.
-   *
-   * All `UnsafeCallback` are always thread safe in that they can be called from
-   * foreign threads without crashing. However, they do not wake up the Deno event
-   * loop by default.
-   *
-   * If a callback is to be called from foreign threads, use the `threadSafe()`
-   * static constructor or explicitly call `ref()` to have the callback wake up
-   * the Deno event loop when called from foreign threads. This also stops
-   * Deno's process from exiting while the callback still exists and is not
-   * unref'ed.
-   *
-   * Use `deref()` to then allow Deno's process to exit. Calling `deref()` on
-   * a ref'ed callback does not stop it from waking up the Deno event loop when
-   * called from foreign threads.
-   *
-   * @category FFI
-   * @experimental
-   */
-  export class UnsafeCallback<
-    const Definition extends UnsafeCallbackDefinition =
-      UnsafeCallbackDefinition,
-  > {
-    constructor(
-      definition: Definition,
-      callback: UnsafeCallbackFunction<
-        Definition["parameters"],
-        Definition["result"]
-      >,
-    );
-
-    /** The pointer to the unsafe callback. */
-    readonly pointer: PointerObject<Definition>;
-    /** The definition of the unsafe callback. */
-    readonly definition: Definition;
-    /** The callback function. */
-    readonly callback: UnsafeCallbackFunction<
-      Definition["parameters"],
-      Definition["result"]
-    >;
-
-    /**
-     * Creates an {@linkcode UnsafeCallback} and calls `ref()` once to allow it to
-     * wake up the Deno event loop when called from foreign threads.
-     *
-     * This also stops Deno's process from exiting while the callback still
-     * exists and is not unref'ed.
-     */
-    static threadSafe<
-      Definition extends UnsafeCallbackDefinition = UnsafeCallbackDefinition,
-    >(
-      definition: Definition,
-      callback: UnsafeCallbackFunction<
-        Definition["parameters"],
-        Definition["result"]
-      >,
-    ): UnsafeCallback<Definition>;
-
-    /**
-     * Increments the callback's reference counting and returns the new
-     * reference count.
-     *
-     * After `ref()` has been called, the callback always wakes up the
-     * Deno event loop when called from foreign threads.
-     *
-     * If the callback's reference count is non-zero, it keeps Deno's
-     * process from exiting.
-     */
-    ref(): number;
-
-    /**
-     * Decrements the callback's reference counting and returns the new
-     * reference count.
-     *
-     * Calling `unref()` does not stop a callback from waking up the Deno
-     * event loop when called from foreign threads.
-     *
-     * If the callback's reference counter is zero, it no longer keeps
-     * Deno's process from exiting.
-     */
-    unref(): number;
-
-    /**
-     * Removes the C function pointer associated with this instance.
-     *
-     * Continuing to use the instance or the C function pointer after closing
-     * the `UnsafeCallback` will lead to errors and crashes.
-     *
-     * Calling this method sets the callback's reference counting to zero,
-     * stops the callback from waking up the Deno event loop when called from
-     * foreign threads and no longer keeps Deno's process from exiting.
-     */
-    close(): void;
-  }
-
-  /** **UNSTABLE**: New API, yet to be vetted.
-   *
-   * A dynamic library resource.  Use {@linkcode Deno.dlopen} to load a dynamic
-   * library and return this interface.
-   *
-   * @category FFI
-   * @experimental
-   */
-  export interface DynamicLibrary<S extends ForeignLibraryInterface> {
-    /** All of the registered library along with functions for calling them. */
-    symbols: StaticForeignLibraryInterface<S>;
-    /** Removes the pointers associated with the library symbols.
-     *
-     * Continuing to use symbols that are part of the library will lead to
-     * errors and crashes.
-     *
-     * Calling this method will also immediately set any references to zero and
-     * will no longer keep Deno's process from exiting.
-     */
-    close(): void;
-  }
-
-  /** **UNSTABLE**: New API, yet to be vetted.
-   *
-   * Opens an external dynamic library and registers symbols, making foreign
-   * functions available to be called.
-   *
-   * Requires `allow-ffi` permission. Loading foreign dynamic libraries can in
-   * theory bypass all of the sandbox permissions. While it is a separate
-   * permission users should acknowledge in practice that is effectively the
-   * same as running with the `allow-all` permission.
-   *
-   * @example Given a C library which exports a foreign function named `add()`
-   *
-   * ```ts
-   * // Determine library extension based on
-   * // your OS.
-   * let libSuffix = "";
-   * switch (Deno.build.os) {
-   *   case "windows":
-   *     libSuffix = "dll";
-   *     break;
-   *   case "darwin":
-   *     libSuffix = "dylib";
-   *     break;
-   *   default:
-   *     libSuffix = "so";
-   *     break;
-   * }
-   *
-   * const libName = `./libadd.${libSuffix}`;
-   * // Open library and define exported symbols
-   * const dylib = Deno.dlopen(
-   *   libName,
-   *   {
-   *     "add": { parameters: ["isize", "isize"], result: "isize" },
-   *   } as const,
-   * );
-   *
-   * // Call the symbol `add`
-   * const result = dylib.symbols.add(35n, 34n); // 69n
-   *
-   * console.log(`Result from external addition of 35 and 34: ${result}`);
-   * ```
-   *
-   * @tags allow-ffi
-   * @category FFI
-   * @experimental
-   */
-  export function dlopen<const S extends ForeignLibraryInterface>(
-    filename: string | URL,
-    symbols: S,
-  ): DynamicLibrary<S>;
 
   /** **UNSTABLE**: New API, yet to be vetted.
    *
@@ -844,222 +28,17 @@ declare namespace Deno {
    */
   export class UnsafeWindowSurface {
     constructor(
-      system: "cocoa" | "win32" | "x11" | "wayland",
-      windowHandle: Deno.PointerValue<unknown>,
-      displayHandle: Deno.PointerValue<unknown>,
+      options: {
+        system: "cocoa" | "win32" | "x11" | "wayland";
+        windowHandle: Deno.PointerValue<unknown>;
+        displayHandle: Deno.PointerValue<unknown>;
+        width: number;
+        height: number;
+      },
     );
     getContext(context: "webgpu"): GPUCanvasContext;
     present(): void;
   }
-
-  /** **UNSTABLE**: New API, yet to be vetted.
-   *
-   * These are unstable options which can be used with {@linkcode Deno.run}.
-   *
-   * @category Subprocess
-   * @experimental
-   */
-  export interface UnstableRunOptions extends RunOptions {
-    /** If `true`, clears the environment variables before executing the
-     * sub-process.
-     *
-     * @default {false} */
-    clearEnv?: boolean;
-    /** For POSIX systems, sets the group ID for the sub process. */
-    gid?: number;
-    /** For POSIX systems, sets the user ID for the sub process. */
-    uid?: number;
-  }
-
-  /** **UNSTABLE**: New API, yet to be vetted.
-   *
-   * Spawns new subprocess. RunOptions must contain at a minimum the `opt.cmd`,
-   * an array of program arguments, the first of which is the binary.
-   *
-   * ```ts
-   * const p = Deno.run({
-   *   cmd: ["curl", "https://example.com"],
-   * });
-   * const status = await p.status();
-   * ```
-   *
-   * Subprocess uses same working directory as parent process unless `opt.cwd`
-   * is specified.
-   *
-   * Environmental variables from parent process can be cleared using `opt.clearEnv`.
-   * Doesn't guarantee that only `opt.env` variables are present,
-   * as the OS may set environmental variables for processes.
-   *
-   * Environmental variables for subprocess can be specified using `opt.env`
-   * mapping.
-   *
-   * `opt.uid` sets the child process’s user ID. This translates to a setuid call
-   * in the child process. Failure in the setuid call will cause the spawn to fail.
-   *
-   * `opt.gid` is similar to `opt.uid`, but sets the group ID of the child process.
-   * This has the same semantics as the uid field.
-   *
-   * By default subprocess inherits stdio of parent process. To change
-   * this this, `opt.stdin`, `opt.stdout`, and `opt.stderr` can be set
-   * independently to a resource ID (_rid_) of an open file, `"inherit"`,
-   * `"piped"`, or `"null"`:
-   *
-   * - _number_: the resource ID of an open file/resource. This allows you to
-   *   read or write to a file.
-   * - `"inherit"`: The default if unspecified. The subprocess inherits from the
-   *   parent.
-   * - `"piped"`: A new pipe should be arranged to connect the parent and child
-   *   sub-process.
-   * - `"null"`: This stream will be ignored. This is the equivalent of attaching
-   *   the stream to `/dev/null`.
-   *
-   * Details of the spawned process are returned as an instance of
-   * {@linkcode Deno.Process}.
-   *
-   * Requires `allow-run` permission.
-   *
-   * @tags allow-run
-   * @category Subprocess
-   * @experimental
-   */
-  export function run<T extends UnstableRunOptions = UnstableRunOptions>(
-    opt: T,
-  ): Process<T>;
-
-  /** **UNSTABLE**: New API, yet to be vetted.
-   *
-   * A custom `HttpClient` for use with {@linkcode fetch} function. This is
-   * designed to allow custom certificates or proxies to be used with `fetch()`.
-   *
-   * @example ```ts
-   * const caCert = await Deno.readTextFile("./ca.pem");
-   * const client = Deno.createHttpClient({ caCerts: [ caCert ] });
-   * const req = await fetch("https://myserver.com", { client });
-   * ```
-   *
-   * @category Fetch
-   * @experimental
-   */
-  export interface HttpClient extends Disposable {
-    /** Close the HTTP client. */
-    close(): void;
-  }
-
-  /** **UNSTABLE**: New API, yet to be vetted.
-   *
-   * The options used when creating a {@linkcode Deno.HttpClient}.
-   *
-   * @category Fetch
-   * @experimental
-   */
-  export interface CreateHttpClientOptions {
-    /** A list of root certificates that will be used in addition to the
-     * default root certificates to verify the peer's certificate.
-     *
-     * Must be in PEM format. */
-    caCerts?: string[];
-    /** A HTTP proxy to use for new connections. */
-    proxy?: Proxy;
-    /** Sets the maximum number of idle connections per host allowed in the pool. */
-    poolMaxIdlePerHost?: number;
-    /** Set an optional timeout for idle sockets being kept-alive.
-     * Set to false to disable the timeout. */
-    poolIdleTimeout?: number | false;
-    /**
-     * Whether HTTP/1.1 is allowed or not.
-     *
-     * @default {true}
-     */
-    http1?: boolean;
-    /** Whether HTTP/2 is allowed or not.
-     *
-     * @default {true}
-     */
-    http2?: boolean;
-    /** Whether setting the host header is allowed or not.
-     *
-     * @default {false}
-     */
-    allowHost?: boolean;
-  }
-
-  /** **UNSTABLE**: New API, yet to be vetted.
-   *
-   * The definition of a proxy when specifying
-   * {@linkcode Deno.CreateHttpClientOptions}.
-   *
-   * @category Fetch
-   * @experimental
-   */
-  export interface Proxy {
-    /** The string URL of the proxy server to use. */
-    url: string;
-    /** The basic auth credentials to be used against the proxy server. */
-    basicAuth?: BasicAuth;
-  }
-
-  /** **UNSTABLE**: New API, yet to be vetted.
-   *
-   * Basic authentication credentials to be used with a {@linkcode Deno.Proxy}
-   * server when specifying {@linkcode Deno.CreateHttpClientOptions}.
-   *
-   * @category Fetch
-   * @experimental
-   */
-  export interface BasicAuth {
-    /** The username to be used against the proxy server. */
-    username: string;
-    /** The password to be used against the proxy server. */
-    password: string;
-  }
-
-  /** **UNSTABLE**: New API, yet to be vetted.
-   *
-   * Create a custom HttpClient to use with {@linkcode fetch}. This is an
-   * extension of the web platform Fetch API which allows Deno to use custom
-   * TLS certificates and connect via a proxy while using `fetch()`.
-   *
-   * @example ```ts
-   * const caCert = await Deno.readTextFile("./ca.pem");
-   * const client = Deno.createHttpClient({ caCerts: [ caCert ] });
-   * const response = await fetch("https://myserver.com", { client });
-   * ```
-   *
-   * @example ```ts
-   * const client = Deno.createHttpClient({
-   *   proxy: { url: "http://myproxy.com:8080" }
-   * });
-   * const response = await fetch("https://myserver.com", { client });
-   * ```
-   *
-   * @category Fetch
-   * @experimental
-   */
-  export function createHttpClient(
-    options: CreateHttpClientOptions,
-  ): HttpClient;
-
-  /** **UNSTABLE**: New API, yet to be vetted.
-   *
-   * Create a custom HttpClient to use with {@linkcode fetch}. This is an
-   * extension of the web platform Fetch API which allows Deno to use custom
-   * TLS certificates and connect via a proxy while using `fetch()`.
-   *
-   * @example ```ts
-   * const caCert = await Deno.readTextFile("./ca.pem");
-   * // Load a client key and certificate that we'll use to connect
-   * const key = await Deno.readTextFile("./key.key");
-   * const cert = await Deno.readTextFile("./cert.crt");
-   * const client = Deno.createHttpClient({ caCerts: [ caCert ], key, cert });
-   * const response = await fetch("https://myserver.com", { client });
-   * ```
-   *
-   * @category Fetch
-   * @experimental
-   */
-  export function createHttpClient(
-    options: CreateHttpClientOptions & TlsCertifiedKeyOptions,
-  ): HttpClient;
 
   /** **UNSTABLE**: New API, yet to be vetted.
    *
@@ -1218,44 +197,6 @@ declare namespace Deno {
 
   /** **UNSTABLE**: New API, yet to be vetted.
    *
-   * Acquire an advisory file-system lock for the provided file.
-   *
-   * @param [exclusive=false]
-   * @category File System
-   * @experimental
-   */
-  export function flock(rid: number, exclusive?: boolean): Promise<void>;
-
-  /** **UNSTABLE**: New API, yet to be vetted.
-   *
-   * Acquire an advisory file-system lock synchronously for the provided file.
-   *
-   * @param [exclusive=false]
-   * @category File System
-   * @experimental
-   */
-  export function flockSync(rid: number, exclusive?: boolean): void;
-
-  /** **UNSTABLE**: New API, yet to be vetted.
-   *
-   * Release an advisory file-system lock for the provided file.
-   *
-   * @category File System
-   * @experimental
-   */
-  export function funlock(rid: number): Promise<void>;
-
-  /** **UNSTABLE**: New API, yet to be vetted.
-   *
-   * Release an advisory file-system lock for the provided file synchronously.
-   *
-   * @category File System
-   * @experimental
-   */
-  export function funlockSync(rid: number): void;
-
-  /** **UNSTABLE**: New API, yet to be vetted.
-   *
    * Open a new {@linkcode Deno.Kv} connection to persist data.
    *
    * When a path is provided, the database will be persisted to disk at that
@@ -1271,7 +212,7 @@ declare namespace Deno {
    * @category Cloud
    * @experimental
    */
-  export function openKv(path?: string): Promise<Deno.Kv>;
+  export function openKv(path?: string): Promise<Kv>;
 
   /** **UNSTABLE**: New API, yet to be vetted.
    *
@@ -1534,7 +475,11 @@ declare namespace Deno {
    * @category Cloud
    * @experimental
    */
-  export type KvEntry<T> = { key: KvKey; value: T; versionstamp: string };
+  export interface KvEntry<T> {
+    key: KvKey;
+    value: T;
+    versionstamp: string;
+  }
 
   /**
    * **UNSTABLE**: New API, yet to be vetted.
@@ -1739,7 +684,7 @@ declare namespace Deno {
       value: unknown,
       options?: {
         delay?: number;
-        keysIfUndelivered?: Deno.KvKey[];
+        keysIfUndelivered?: KvKey[];
         backoffSchedule?: number[];
       },
     ): this;
@@ -1970,7 +915,7 @@ declare namespace Deno {
       value: unknown,
       options?: {
         delay?: number;
-        keysIfUndelivered?: Deno.KvKey[];
+        keysIfUndelivered?: KvKey[];
         backoffSchedule?: number[];
       },
     ): Promise<KvCommitResult>;
@@ -2100,10 +1045,10 @@ declare namespace Deno {
      * @category Jupyter
      * @experimental
      */
-    export type VegaObject = {
+    export interface VegaObject {
       $schema: string;
       [key: string]: unknown;
-    };
+    }
 
     /**
      * A collection of supported media types and data for Jupyter frontends.
@@ -2111,7 +1056,7 @@ declare namespace Deno {
      * @category Jupyter
      * @experimental
      */
-    export type MediaBundle = {
+    export interface MediaBundle {
       "text/plain"?: string;
       "text/html"?: string;
       "image/svg+xml"?: string;
@@ -2137,7 +1082,7 @@ declare namespace Deno {
 
       // Must support a catch all for custom media types / mimetypes
       [key: string]: string | object | undefined;
-    };
+    }
 
     /**
      * @category Jupyter
@@ -2149,9 +1094,9 @@ declare namespace Deno {
      * @category Jupyter
      * @experimental
      */
-    export type Displayable = {
+    export interface Displayable {
       [$display]: () => MediaBundle | Promise<MediaBundle>;
-    };
+    }
 
     /**
      * Display function for Jupyter Deno Kernel.
@@ -2163,7 +1108,10 @@ declare namespace Deno {
      * @category Jupyter
      * @experimental
      */
-    export function display(obj: unknown, options?: DisplayOptions): void;
+    export function display(
+      obj: unknown,
+      options?: DisplayOptions,
+    ): Promise<void>;
 
     /**
      * Show Markdown in Jupyter frontends with a tagged template function.
@@ -2236,12 +1184,12 @@ declare namespace Deno {
      * Format an object for displaying in Deno
      *
      * @param obj - The object to be displayed
-     * @returns MediaBundle
+     * @returns Promise<MediaBundle>
      *
      * @category Jupyter
      * @experimental
      */
-    export function format(obj: unknown): MediaBundle;
+    export function format(obj: unknown): Promise<MediaBundle>;
 
     /**
      * Broadcast a message on IO pub channel.
@@ -2273,30 +1221,19 @@ declare namespace Deno {
         buffers?: Uint8Array[];
       },
     ): Promise<void>;
-  }
-}
 
-/** **UNSTABLE**: New API, yet to be vetted.
- *
- * The [Fetch API](https://developer.mozilla.org/en-US/docs/Web/API/Fetch_API)
- * which also supports setting a {@linkcode Deno.HttpClient} which provides a
- * way to connect via proxies and use custom TLS certificates.
- *
- * @tags allow-net, allow-read
- * @category Fetch
- * @experimental
- */
-declare function fetch(
-  input: Request | URL | string,
-  init?: RequestInit & { client: Deno.HttpClient },
-): Promise<Response>;
+    export {}; // only export exports
+  }
+
+  export {}; // only export exports
+}
 
 /** **UNSTABLE**: New API, yet to be vetted.
  *
  * @category Workers
  * @experimental
  */
-declare interface WorkerOptions {
+interface WorkerOptions {
   /** **UNSTABLE**: New API, yet to be vetted.
    *
    * Configure permissions options to change the level of access the worker will
@@ -2337,7 +1274,7 @@ declare interface WorkerOptions {
  * @category WebSockets
  * @experimental
  */
-declare interface WebSocketStreamOptions {
+interface WebSocketStreamOptions {
   protocols?: string[];
   signal?: AbortSignal;
   headers?: HeadersInit;
@@ -2348,7 +1285,7 @@ declare interface WebSocketStreamOptions {
  * @category WebSockets
  * @experimental
  */
-declare interface WebSocketConnection {
+interface WebSocketConnection {
   readable: ReadableStream<string | Uint8Array>;
   writable: WritableStream<string | Uint8Array>;
   extensions: string;
@@ -2360,7 +1297,7 @@ declare interface WebSocketConnection {
  * @category WebSockets
  * @experimental
  */
-declare interface WebSocketCloseInfo {
+interface WebSocketCloseInfo {
   code?: number;
   reason?: string;
 }
@@ -2371,7 +1308,7 @@ declare interface WebSocketCloseInfo {
  * @category WebSockets
  * @experimental
  */
-declare interface WebSocketStream {
+interface WebSocketStream {
   url: string;
   opened: Promise<WebSocketConnection>;
   closed: Promise<WebSocketCloseInfo>;
@@ -2395,7 +1332,7 @@ declare var WebSocketStream: {
  * @category WebSockets
  * @experimental
  */
-declare interface WebSocketError extends DOMException {
+interface WebSocketError extends DOMException {
   readonly closeCode: number;
   readonly reason: string;
 }
@@ -2992,8 +1929,7 @@ declare namespace Temporal {
     };
 
   /**
-   * Options to control behavior of `Duration.compare()`, `Duration.add()`, and
-   * `Duration.subtract()`
+   * Options to control behavior of `Duration.compare()`
    *
    * @category Temporal
    * @experimental
@@ -3196,9 +2132,6 @@ declare namespace Temporal {
         | "nanosecond"
       >,
     ): Temporal.Instant;
-    toZonedDateTime(
-      calendarAndTimeZone: { timeZone: TimeZoneLike; calendar: CalendarLike },
-    ): Temporal.ZonedDateTime;
     toZonedDateTimeISO(tzLike: TimeZoneLike): Temporal.ZonedDateTime;
     toLocaleString(
       locales?: string | string[],
@@ -3211,355 +2144,18 @@ declare namespace Temporal {
   }
 
   /**
-   * @category Temporal
-   * @experimental
-   */
-  export type YearOrEraAndEraYear = { era: string; eraYear: number } | {
-    year: number;
-  };
-  /**
-   * @category Temporal
-   * @experimental
-   */
-  export type MonthCodeOrMonthAndYear =
-    | (YearOrEraAndEraYear & { month: number })
-    | {
-      monthCode: string;
-    };
-  /**
-   * @category Temporal
-   * @experimental
-   */
-  export type MonthOrMonthCode = { month: number } | { monthCode: string };
-
-  /**
-   * @category Temporal
-   * @experimental
-   */
-  export interface CalendarProtocol {
-    id: string;
-    year(
-      date:
-        | Temporal.PlainDate
-        | Temporal.PlainDateTime
-        | Temporal.PlainYearMonth
-        | PlainDateLike
-        | string,
-    ): number;
-    month(
-      date:
-        | Temporal.PlainDate
-        | Temporal.PlainDateTime
-        | Temporal.PlainYearMonth
-        | Temporal.PlainMonthDay
-        | PlainDateLike
-        | string,
-    ): number;
-    monthCode(
-      date:
-        | Temporal.PlainDate
-        | Temporal.PlainDateTime
-        | Temporal.PlainYearMonth
-        | Temporal.PlainMonthDay
-        | PlainDateLike
-        | string,
-    ): string;
-    day(
-      date:
-        | Temporal.PlainDate
-        | Temporal.PlainDateTime
-        | Temporal.PlainMonthDay
-        | PlainDateLike
-        | string,
-    ): number;
-    era(
-      date:
-        | Temporal.PlainDate
-        | Temporal.PlainDateTime
-        | PlainDateLike
-        | string,
-    ): string | undefined;
-    eraYear(
-      date:
-        | Temporal.PlainDate
-        | Temporal.PlainDateTime
-        | PlainDateLike
-        | string,
-    ): number | undefined;
-    dayOfWeek(
-      date:
-        | Temporal.PlainDate
-        | Temporal.PlainDateTime
-        | PlainDateLike
-        | string,
-    ): number;
-    dayOfYear(
-      date:
-        | Temporal.PlainDate
-        | Temporal.PlainDateTime
-        | PlainDateLike
-        | string,
-    ): number;
-    weekOfYear(
-      date:
-        | Temporal.PlainDate
-        | Temporal.PlainDateTime
-        | PlainDateLike
-        | string,
-    ): number | undefined;
-    yearOfWeek(
-      date:
-        | Temporal.PlainDate
-        | Temporal.PlainDateTime
-        | PlainDateLike
-        | string,
-    ): number | undefined;
-    daysInWeek(
-      date:
-        | Temporal.PlainDate
-        | Temporal.PlainDateTime
-        | PlainDateLike
-        | string,
-    ): number;
-    daysInMonth(
-      date:
-        | Temporal.PlainDate
-        | Temporal.PlainDateTime
-        | Temporal.PlainYearMonth
-        | PlainDateLike
-        | string,
-    ): number;
-    daysInYear(
-      date:
-        | Temporal.PlainDate
-        | Temporal.PlainDateTime
-        | Temporal.PlainYearMonth
-        | PlainDateLike
-        | string,
-    ): number;
-    monthsInYear(
-      date:
-        | Temporal.PlainDate
-        | Temporal.PlainDateTime
-        | Temporal.PlainYearMonth
-        | PlainDateLike
-        | string,
-    ): number;
-    inLeapYear(
-      date:
-        | Temporal.PlainDate
-        | Temporal.PlainDateTime
-        | Temporal.PlainYearMonth
-        | PlainDateLike
-        | string,
-    ): boolean;
-    dateFromFields(
-      fields: YearOrEraAndEraYear & MonthOrMonthCode & { day: number },
-      options?: AssignmentOptions,
-    ): Temporal.PlainDate;
-    yearMonthFromFields(
-      fields: YearOrEraAndEraYear & MonthOrMonthCode,
-      options?: AssignmentOptions,
-    ): Temporal.PlainYearMonth;
-    monthDayFromFields(
-      fields: MonthCodeOrMonthAndYear & { day: number },
-      options?: AssignmentOptions,
-    ): Temporal.PlainMonthDay;
-    dateAdd(
-      date: Temporal.PlainDate | PlainDateLike | string,
-      duration: Temporal.Duration | DurationLike | string,
-      options?: ArithmeticOptions,
-    ): Temporal.PlainDate;
-    dateUntil(
-      one: Temporal.PlainDate | PlainDateLike | string,
-      two: Temporal.PlainDate | PlainDateLike | string,
-      options?: DifferenceOptions<"year" | "month" | "week" | "day">,
-    ): Temporal.Duration;
-    fields(fields: Iterable<string>): Iterable<string>;
-    mergeFields(
-      fields: Record<string, unknown>,
-      additionalFields: Record<string, unknown>,
-    ): Record<string, unknown>;
-    toString?(): string;
-    toJSON?(): string;
-  }
-
-  /**
-   * Any of these types can be passed to Temporal methods instead of a Temporal.Calendar.
+   * Any of these types can be passed to Temporal methods instead of a calendar ID.
    *
    * @category Temporal
    * @experimental
    */
   export type CalendarLike =
     | string
-    | CalendarProtocol
     | ZonedDateTime
     | PlainDateTime
     | PlainDate
     | PlainYearMonth
     | PlainMonthDay;
-
-  /**
-   * A `Temporal.Calendar` is a representation of a calendar system. It includes
-   * information about how many days are in each year, how many months are in
-   * each year, how many days are in each month, and how to do arithmetic in
-   * that calendar system.
-   *
-   * See https://tc39.es/proposal-temporal/docs/calendar.html for more details.
-   *
-   * @category Temporal
-   * @experimental
-   */
-  export class Calendar implements CalendarProtocol {
-    static from(item: CalendarLike): Temporal.Calendar | CalendarProtocol;
-    constructor(calendarIdentifier: string);
-    readonly id: string;
-    year(
-      date:
-        | Temporal.PlainDate
-        | Temporal.PlainDateTime
-        | Temporal.PlainYearMonth
-        | PlainDateLike
-        | string,
-    ): number;
-    month(
-      date:
-        | Temporal.PlainDate
-        | Temporal.PlainDateTime
-        | Temporal.PlainYearMonth
-        | Temporal.PlainMonthDay
-        | PlainDateLike
-        | string,
-    ): number;
-    monthCode(
-      date:
-        | Temporal.PlainDate
-        | Temporal.PlainDateTime
-        | Temporal.PlainYearMonth
-        | Temporal.PlainMonthDay
-        | PlainDateLike
-        | string,
-    ): string;
-    day(
-      date:
-        | Temporal.PlainDate
-        | Temporal.PlainDateTime
-        | Temporal.PlainMonthDay
-        | PlainDateLike
-        | string,
-    ): number;
-    era(
-      date:
-        | Temporal.PlainDate
-        | Temporal.PlainDateTime
-        | PlainDateLike
-        | string,
-    ): string | undefined;
-    eraYear(
-      date:
-        | Temporal.PlainDate
-        | Temporal.PlainDateTime
-        | PlainDateLike
-        | string,
-    ): number | undefined;
-    dayOfWeek(
-      date:
-        | Temporal.PlainDate
-        | Temporal.PlainDateTime
-        | PlainDateLike
-        | string,
-    ): number;
-    dayOfYear(
-      date:
-        | Temporal.PlainDate
-        | Temporal.PlainDateTime
-        | PlainDateLike
-        | string,
-    ): number;
-    weekOfYear(
-      date:
-        | Temporal.PlainDate
-        | Temporal.PlainDateTime
-        | PlainDateLike
-        | string,
-    ): number | undefined;
-    yearOfWeek(
-      date:
-        | Temporal.PlainDate
-        | Temporal.PlainDateTime
-        | PlainDateLike
-        | string,
-    ): number | undefined;
-    daysInWeek(
-      date:
-        | Temporal.PlainDate
-        | Temporal.PlainDateTime
-        | PlainDateLike
-        | string,
-    ): number;
-    daysInMonth(
-      date:
-        | Temporal.PlainDate
-        | Temporal.PlainDateTime
-        | Temporal.PlainYearMonth
-        | PlainDateLike
-        | string,
-    ): number;
-    daysInYear(
-      date:
-        | Temporal.PlainDate
-        | Temporal.PlainDateTime
-        | Temporal.PlainYearMonth
-        | PlainDateLike
-        | string,
-    ): number;
-    monthsInYear(
-      date:
-        | Temporal.PlainDate
-        | Temporal.PlainDateTime
-        | Temporal.PlainYearMonth
-        | PlainDateLike
-        | string,
-    ): number;
-    inLeapYear(
-      date:
-        | Temporal.PlainDate
-        | Temporal.PlainDateTime
-        | Temporal.PlainYearMonth
-        | PlainDateLike
-        | string,
-    ): boolean;
-    dateFromFields(
-      fields: YearOrEraAndEraYear & MonthOrMonthCode & { day: number },
-      options?: AssignmentOptions,
-    ): Temporal.PlainDate;
-    yearMonthFromFields(
-      fields: YearOrEraAndEraYear & MonthOrMonthCode,
-      options?: AssignmentOptions,
-    ): Temporal.PlainYearMonth;
-    monthDayFromFields(
-      fields: MonthCodeOrMonthAndYear & { day: number },
-      options?: AssignmentOptions,
-    ): Temporal.PlainMonthDay;
-    dateAdd(
-      date: Temporal.PlainDate | PlainDateLike | string,
-      duration: Temporal.Duration | DurationLike | string,
-      options?: ArithmeticOptions,
-    ): Temporal.PlainDate;
-    dateUntil(
-      one: Temporal.PlainDate | PlainDateLike | string,
-      two: Temporal.PlainDate | PlainDateLike | string,
-      options?: DifferenceOptions<"year" | "month" | "week" | "day">,
-    ): Temporal.Duration;
-    fields(fields: Iterable<string>): string[];
-    mergeFields(
-      fields: Record<string, unknown>,
-      additionalFields: Record<string, unknown>,
-    ): Record<string, unknown>;
-    toString(): string;
-    toJSON(): string;
-    readonly [Symbol.toStringTag]: "Temporal.Calendar";
-  }
 
   /**
    * @category Temporal
@@ -3573,17 +2169,6 @@ declare namespace Temporal {
     monthCode?: string;
     day?: number;
     calendar?: CalendarLike;
-  };
-
-  /**
-   * @category Temporal
-   * @experimental
-   */
-  export type PlainDateISOFields = {
-    isoYear: number;
-    isoMonth: number;
-    isoDay: number;
-    calendar: string | CalendarProtocol;
   };
 
   /**
@@ -3611,7 +2196,7 @@ declare namespace Temporal {
       isoYear: number,
       isoMonth: number,
       isoDay: number,
-      calendar?: CalendarLike,
+      calendar?: string,
     );
     readonly era: string | undefined;
     readonly eraYear: number | undefined;
@@ -3656,7 +2241,6 @@ declare namespace Temporal {
     ): Temporal.PlainDateTime;
     toZonedDateTime(
       timeZoneAndTime:
-        | TimeZoneProtocol
         | string
         | {
           timeZone: TimeZoneLike;
@@ -3665,7 +2249,6 @@ declare namespace Temporal {
     ): Temporal.ZonedDateTime;
     toPlainYearMonth(): Temporal.PlainYearMonth;
     toPlainMonthDay(): Temporal.PlainMonthDay;
-    getISOFields(): PlainDateISOFields;
     toLocaleString(
       locales?: string | string[],
       options?: Intl.DateTimeFormatOptions,
@@ -3694,23 +2277,6 @@ declare namespace Temporal {
     microsecond?: number;
     nanosecond?: number;
     calendar?: CalendarLike;
-  };
-
-  /**
-   * @category Temporal
-   * @experimental
-   */
-  export type PlainDateTimeISOFields = {
-    isoYear: number;
-    isoMonth: number;
-    isoDay: number;
-    isoHour: number;
-    isoMinute: number;
-    isoSecond: number;
-    isoMillisecond: number;
-    isoMicrosecond: number;
-    isoNanosecond: number;
-    calendar: string | CalendarProtocol;
   };
 
   /**
@@ -3745,7 +2311,7 @@ declare namespace Temporal {
       millisecond?: number,
       microsecond?: number,
       nanosecond?: number,
-      calendar?: CalendarLike,
+      calendar?: string,
     );
     readonly era: string | undefined;
     readonly eraYear: number | undefined;
@@ -3833,7 +2399,6 @@ declare namespace Temporal {
     ): Temporal.ZonedDateTime;
     toPlainDate(): Temporal.PlainDate;
     toPlainTime(): Temporal.PlainTime;
-    getISOFields(): PlainDateTimeISOFields;
     toLocaleString(
       locales?: string | string[],
       options?: Intl.DateTimeFormatOptions,
@@ -3876,7 +2441,7 @@ declare namespace Temporal {
     constructor(
       isoMonth: number,
       isoDay: number,
-      calendar?: CalendarLike,
+      calendar?: string,
       referenceISOYear?: number,
     );
     readonly monthCode: string;
@@ -3888,7 +2453,6 @@ declare namespace Temporal {
       options?: AssignmentOptions,
     ): Temporal.PlainMonthDay;
     toPlainDate(year: { year: number }): Temporal.PlainDate;
-    getISOFields(): PlainDateISOFields;
     toLocaleString(
       locales?: string | string[],
       options?: Intl.DateTimeFormatOptions,
@@ -3910,19 +2474,6 @@ declare namespace Temporal {
     millisecond?: number;
     microsecond?: number;
     nanosecond?: number;
-  };
-
-  /**
-   * @category Temporal
-   * @experimental
-   */
-  export type PlainTimeISOFields = {
-    isoHour: number;
-    isoMinute: number;
-    isoSecond: number;
-    isoMillisecond: number;
-    isoMicrosecond: number;
-    isoNanosecond: number;
   };
 
   /**
@@ -4011,7 +2562,6 @@ declare namespace Temporal {
         | "nanosecond"
       >,
     ): Temporal.PlainTime;
-    getISOFields(): PlainTimeISOFields;
     toLocaleString(
       locales?: string | string[],
       options?: Intl.DateTimeFormatOptions,
@@ -4023,76 +2573,12 @@ declare namespace Temporal {
   }
 
   /**
-   * A plain object implementing the protocol for a custom time zone.
+   * Any of these types can be passed to Temporal methods instead of a time zone ID.
    *
    * @category Temporal
    * @experimental
    */
-  export interface TimeZoneProtocol {
-    id: string;
-    getOffsetNanosecondsFor(instant: Temporal.Instant | string): number;
-    getOffsetStringFor?(instant: Temporal.Instant | string): string;
-    getPlainDateTimeFor?(
-      instant: Temporal.Instant | string,
-      calendar?: CalendarLike,
-    ): Temporal.PlainDateTime;
-    getInstantFor?(
-      dateTime: Temporal.PlainDateTime | PlainDateTimeLike | string,
-      options?: ToInstantOptions,
-    ): Temporal.Instant;
-    getPossibleInstantsFor(
-      dateTime: Temporal.PlainDateTime | PlainDateTimeLike | string,
-    ): Temporal.Instant[];
-    toString?(): string;
-    toJSON?(): string;
-  }
-
-  /**
-   * Any of these types can be passed to Temporal methods instead of a Temporal.TimeZone.
-   *
-   * @category Temporal
-   * @experimental
-   */
-  export type TimeZoneLike = string | TimeZoneProtocol | ZonedDateTime;
-
-  /**
-   * A `Temporal.TimeZone` is a representation of a time zone: either an
-   * {@link https://www.iana.org/time-zones|IANA time zone}, including
-   * information about the time zone such as the offset between the local time
-   * and UTC at a particular time, and daylight saving time (DST) changes; or
-   * simply a particular UTC offset with no DST.
-   *
-   * `Temporal.ZonedDateTime` is the only Temporal type to contain a time zone.
-   * Other types, like `Temporal.Instant` and `Temporal.PlainDateTime`, do not
-   * contain any time zone information, and a `Temporal.TimeZone` object is
-   * required to convert between them.
-   *
-   * See https://tc39.es/proposal-temporal/docs/timezone.html for more details.
-   *
-   * @category Temporal
-   * @experimental
-   */
-  export class TimeZone implements TimeZoneProtocol {
-    static from(timeZone: TimeZoneLike): Temporal.TimeZone | TimeZoneProtocol;
-    constructor(timeZoneIdentifier: string);
-    readonly id: string;
-    getOffsetNanosecondsFor(instant: Temporal.Instant | string): number;
-    getOffsetStringFor(instant: Temporal.Instant | string): string;
-    getPlainDateTimeFor(
-      instant: Temporal.Instant | string,
-      calendar?: CalendarLike,
-    ): Temporal.PlainDateTime;
-    getInstantFor(
-      dateTime: Temporal.PlainDateTime | PlainDateTimeLike | string,
-      options?: ToInstantOptions,
-    ): Temporal.Instant;
-    getPossibleInstantsFor(
-      dateTime: Temporal.PlainDateTime | PlainDateTimeLike | string,
-    ): Temporal.Instant[];
-    toString(): string;
-    toJSON(): string;
-    readonly [Symbol.toStringTag]: "Temporal.TimeZone";
-  }
+  export type TimeZoneLike = string | ZonedDateTime;
 
   /**
    * @category Temporal
@@ -4129,7 +2615,7 @@ declare namespace Temporal {
     constructor(
       isoYear: number,
       isoMonth: number,
-      calendar?: CalendarLike,
+      calendar?: string,
       referenceISODay?: number,
     );
     readonly era: string | undefined;
@@ -4166,7 +2652,6 @@ declare namespace Temporal {
       options?: DifferenceOptions<"year" | "month">,
     ): Temporal.Duration;
     toPlainDate(day: { day: number }): Temporal.PlainDate;
-    getISOFields(): PlainDateISOFields;
     toLocaleString(
       locales?: string | string[],
       options?: Intl.DateTimeFormatOptions,
@@ -4203,25 +2688,6 @@ declare namespace Temporal {
    * @category Temporal
    * @experimental
    */
-  export type ZonedDateTimeISOFields = {
-    isoYear: number;
-    isoMonth: number;
-    isoDay: number;
-    isoHour: number;
-    isoMinute: number;
-    isoSecond: number;
-    isoMillisecond: number;
-    isoMicrosecond: number;
-    isoNanosecond: number;
-    offset: string;
-    timeZone: string | TimeZoneProtocol;
-    calendar: string | CalendarProtocol;
-  };
-
-  /**
-   * @category Temporal
-   * @experimental
-   */
   export class ZonedDateTime {
     static from(
       item: Temporal.ZonedDateTime | ZonedDateTimeLike | string,
@@ -4231,11 +2697,7 @@ declare namespace Temporal {
       one: Temporal.ZonedDateTime | ZonedDateTimeLike | string,
       two: Temporal.ZonedDateTime | ZonedDateTimeLike | string,
     ): ComparisonResult;
-    constructor(
-      epochNanoseconds: bigint,
-      timeZone: TimeZoneLike,
-      calendar?: CalendarLike,
-    );
+    constructor(epochNanoseconds: bigint, timeZone: string, calendar?: string);
     readonly era: string | undefined;
     readonly eraYear: number | undefined;
     readonly year: number;
@@ -4262,9 +2724,7 @@ declare namespace Temporal {
     readonly inLeapYear: boolean;
     readonly offsetNanoseconds: number;
     readonly offset: string;
-    readonly epochSeconds: number;
     readonly epochMilliseconds: number;
-    readonly epochMicroseconds: bigint;
     readonly epochNanoseconds: bigint;
     equals(other: Temporal.ZonedDateTime | ZonedDateTimeLike | string): boolean;
     with(
@@ -4333,7 +2793,6 @@ declare namespace Temporal {
     toPlainDateTime(): Temporal.PlainDateTime;
     toPlainDate(): Temporal.PlainDate;
     toPlainTime(): Temporal.PlainTime;
-    getISOFields(): ZonedDateTimeISOFields;
     toLocaleString(
       locales?: string | string[],
       options?: Intl.DateTimeFormatOptions,
@@ -4374,8 +2833,7 @@ declare namespace Temporal {
      *
      * @param {TimeZoneLike} [tzLike] -
      * {@link https://en.wikipedia.org/wiki/List_of_tz_database_time_zones|IANA time zone identifier}
-     * string (e.g. `'Europe/London'`), `Temporal.TimeZone` instance, or an
-     * object implementing the time zone protocol. If omitted, the environment's
+     * string (e.g. `'Europe/London'`). If omitted, the environment's
      * current time zone will be used.
      */
     zonedDateTimeISO: (tzLike?: TimeZoneLike) => Temporal.ZonedDateTime;
@@ -4391,8 +2849,7 @@ declare namespace Temporal {
      *
      * @param {TimeZoneLike} [tzLike] -
      * {@link https://en.wikipedia.org/wiki/List_of_tz_database_time_zones|IANA time zone identifier}
-     * string (e.g. `'Europe/London'`), `Temporal.TimeZone` instance, or an
-     * object implementing the time zone protocol. If omitted, the environment's
+     * string (e.g. `'Europe/London'`). If omitted, the environment's
      * current time zone will be used.
      */
     plainDateTimeISO: (tzLike?: TimeZoneLike) => Temporal.PlainDateTime;
@@ -4403,8 +2860,7 @@ declare namespace Temporal {
      *
      * @param {TimeZoneLike} [tzLike] -
      * {@link https://en.wikipedia.org/wiki/List_of_tz_database_time_zones|IANA time zone identifier}
-     * string (e.g. `'Europe/London'`), `Temporal.TimeZone` instance, or an
-     * object implementing the time zone protocol. If omitted, the environment's
+     * string (e.g. `'Europe/London'`). If omitted, the environment's
      * current time zone will be used.
      */
     plainDateISO: (tzLike?: TimeZoneLike) => Temporal.PlainDate;
@@ -4414,8 +2870,7 @@ declare namespace Temporal {
      *
      * @param {TimeZoneLike} [tzLike] -
      * {@link https://en.wikipedia.org/wiki/List_of_tz_database_time_zones|IANA time zone identifier}
-     * string (e.g. `'Europe/London'`), `Temporal.TimeZone` instance, or an
-     * object implementing the time zone protocol. If omitted, the environment's
+     * string (e.g. `'Europe/London'`). If omitted, the environment's
      * current time zone will be used.
      */
     plainTimeISO: (tzLike?: TimeZoneLike) => Temporal.PlainTime;
@@ -4437,7 +2892,7 @@ declare namespace Temporal {
  * @category Temporal
  * @experimental
  */
-declare interface Date {
+interface Date {
   toTemporalInstant(): Temporal.Instant;
 }
 
@@ -4539,7 +2994,7 @@ declare namespace Intl {
  * @category Platform
  * @experimental
  */
-declare interface Float16Array {
+interface Float16Array {
   /**
    * The size in bytes of each element in the array.
    */
@@ -4854,7 +3309,7 @@ declare interface Float16Array {
  * @category Platform
  * @experimental
  */
-declare interface Float16ArrayConstructor {
+interface Float16ArrayConstructor {
   readonly prototype: Float16Array;
   new (length: number): Float16Array;
   new (array: ArrayLike<number> | ArrayBufferLike): Float16Array;
@@ -4903,7 +3358,7 @@ declare var Float16Array: Float16ArrayConstructor;
  * @category Platform
  * @experimental
  */
-declare interface Float16 {
+interface Float16Array {
   [Symbol.iterator](): IterableIterator<number>;
   /**
    * Returns an array of key, value pairs for every entry in the array
@@ -4923,8 +3378,8 @@ declare interface Float16 {
  * @category Platform
  * @experimental
  */
-declare interface Float16Constructor {
-  new (elements: Iterable<number>): Float16;
+interface Float16Constructor {
+  new (elements: Iterable<number>): Float16Array;
 
   /**
    * Creates an array from an array-like or iterable object.
@@ -4936,14 +3391,14 @@ declare interface Float16Constructor {
     arrayLike: Iterable<number>,
     mapfn?: (v: number, k: number) => number,
     thisArg?: any,
-  ): Float16;
+  ): Float16Array;
 }
 
 /**
  * @category Platform
  * @experimental
  */
-declare interface Float16Array {
+interface Float16Array {
   readonly [Symbol.toStringTag]: "Float16Array";
 }
 
@@ -4951,7 +3406,7 @@ declare interface Float16Array {
  * @category Platform
  * @experimental
  */
-declare interface Float16Array {
+interface Float16Array {
   /**
    * Determines whether an array includes a certain element, returning true or false as appropriate.
    * @param searchElement The element to search for.
@@ -4964,7 +3419,7 @@ declare interface Float16Array {
  * @category Platform
  * @experimental
  */
-declare interface Float16ArrayConstructor {
+interface Float16ArrayConstructor {
   new (): Float16Array;
 }
 
@@ -4972,7 +3427,7 @@ declare interface Float16ArrayConstructor {
  * @category Platform
  * @experimental
  */
-declare interface Float16Array {
+interface Float16Array {
   /**
    * Returns the item located at the specified index.
    * @param index The zero-based index of the desired code unit. A negative index will count back from the last item.
@@ -4984,7 +3439,7 @@ declare interface Float16Array {
  * @category Platform
  * @experimental
  */
-declare interface Float16Array {
+interface Float16Array {
   /**
    * Returns the value of the last element in the array where predicate is true, and undefined
    * otherwise.
@@ -5060,7 +3515,7 @@ declare interface Float16Array {
  * @category Platform
  * @experimental
  */
-declare interface DataView {
+interface DataView {
   /**
    * Gets the Float16 value at the specified byte offset from the start of the view. There is
    * no alignment constraint; multi-byte values may be fetched from any offset.

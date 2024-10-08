@@ -367,7 +367,7 @@ fn standalone_runtime_flags() {
     .run()
     .assert_stdout_matches_text("0.147205063401058\n")
     .assert_stderr_matches_text(
-      "[WILDCARD]PermissionDenied: Requires write access to[WILDCARD]",
+      "[WILDCARD]NotCapable: Requires write access to[WILDCARD]",
     )
     .assert_exit_code(1);
 }
@@ -539,6 +539,7 @@ fn check_local_by_default() {
     .new_command()
     .args_vec([
       "compile",
+      "--allow-import",
       "--output",
       &exe.to_string_lossy(),
       "./compile/check_local_by_default.ts",
@@ -561,6 +562,7 @@ fn check_local_by_default2() {
     .new_command()
     .args_vec([
       "compile",
+      "--allow-import",
       "--output",
       &exe.to_string_lossy(),
       "./compile/check_local_by_default2.ts"
@@ -726,7 +728,9 @@ fn dynamic_import_unanalyzable() {
     .assert_exit_code(0);
 }
 
+// TODO(2.0): this test should first run `deno install`?
 #[test]
+#[ignore]
 fn compile_npm_specifiers() {
   let context = TestContextBuilder::for_npm().use_temp_cwd().build();
 
@@ -850,7 +854,7 @@ fn compile_npm_file_system() {
     compile_args: vec!["-A"],
     run_args: vec![],
     output_file: "compile/npm_fs/main.out",
-    node_modules_dir: true,
+    node_modules_local: true,
     input_name: Some("binary"),
     expected_name: "binary",
     exit_code: 0,
@@ -865,7 +869,7 @@ fn compile_npm_bin_esm() {
     compile_args: vec![],
     run_args: vec!["this", "is", "a", "test"],
     output_file: "npm/deno_run_esm.out",
-    node_modules_dir: false,
+    node_modules_local: false,
     input_name: None,
     expected_name: "cli-esm",
     exit_code: 0,
@@ -880,7 +884,7 @@ fn compile_npm_bin_cjs() {
     compile_args: vec![],
     run_args: vec!["this", "is", "a", "test"],
     output_file: "npm/deno_run_cjs.out",
-    node_modules_dir: false,
+    node_modules_local: false,
     input_name: None,
     expected_name: "cli-cjs",
     exit_code: 0,
@@ -895,7 +899,7 @@ fn compile_npm_cowsay_main() {
     compile_args: vec!["--allow-read"],
     run_args: vec!["Hello"],
     output_file: "npm/deno_run_cowsay.out",
-    node_modules_dir: false,
+    node_modules_local: false,
     input_name: None,
     expected_name: "cowsay",
     exit_code: 0,
@@ -910,7 +914,7 @@ fn compile_npm_vfs_implicit_read_permissions() {
     compile_args: vec![],
     run_args: vec![],
     output_file: "compile/vfs_implicit_read_permission/main.out",
-    node_modules_dir: false,
+    node_modules_local: false,
     input_name: Some("binary"),
     expected_name: "binary",
     exit_code: 0,
@@ -925,7 +929,7 @@ fn compile_npm_no_permissions() {
     compile_args: vec![],
     run_args: vec!["Hello"],
     output_file: "npm/deno_run_cowsay_no_permissions.out",
-    node_modules_dir: false,
+    node_modules_local: false,
     input_name: None,
     expected_name: "cowsay",
     exit_code: 1,
@@ -940,7 +944,7 @@ fn compile_npm_cowsay_explicit() {
     compile_args: vec!["--allow-read"],
     run_args: vec!["Hello"],
     output_file: "npm/deno_run_cowsay.out",
-    node_modules_dir: false,
+    node_modules_local: false,
     input_name: None,
     expected_name: "cowsay",
     exit_code: 0,
@@ -955,7 +959,7 @@ fn compile_npm_cowthink() {
     compile_args: vec!["--allow-read"],
     run_args: vec!["Hello"],
     output_file: "npm/deno_run_cowthink.out",
-    node_modules_dir: false,
+    node_modules_local: false,
     input_name: None,
     expected_name: "cowthink",
     exit_code: 0,
@@ -965,7 +969,7 @@ fn compile_npm_cowthink() {
 struct RunNpmBinCompileOptions<'a> {
   input_specifier: &'a str,
   copy_temp_dir: Option<&'a str>,
-  node_modules_dir: bool,
+  node_modules_local: bool,
   output_file: &'a str,
   input_name: Option<&'a str>,
   expected_name: &'a str,
@@ -986,8 +990,8 @@ fn run_npm_bin_compile_test(opts: RunNpmBinCompileOptions) {
 
   args.extend(opts.compile_args.iter().map(|s| s.to_string()));
 
-  if opts.node_modules_dir {
-    args.push("--node-modules-dir".to_string());
+  if opts.node_modules_local {
+    args.push("--node-modules-dir=auto".to_string());
   }
 
   if let Some(bin_name) = opts.input_name {
@@ -1050,7 +1054,7 @@ fn compile_node_modules_symlink_outside() {
   // compile folder
   let output = context
     .new_command()
-    .args("compile --allow-read --node-modules-dir --output bin main.ts")
+    .args("compile --allow-read --node-modules-dir=auto --output bin main.ts")
     .run();
   output.assert_exit_code(0);
   output.assert_matches_file(
@@ -1073,7 +1077,7 @@ fn compile_node_modules_symlink_outside() {
   // compile
   let output = context
     .new_command()
-    .args("compile --allow-read --node-modules-dir --output bin main.ts")
+    .args("compile --allow-read --node-modules-dir=auto --output bin main.ts")
     .run();
   output.assert_exit_code(0);
   output.assert_matches_file(
@@ -1103,7 +1107,7 @@ console.log(getValue());"#,
   // compile folder
   let output = context
     .new_command()
-    .args("compile --allow-read --node-modules-dir --output bin main.ts")
+    .args("compile --allow-read --node-modules-dir=auto --output bin main.ts")
     .run();
   output.assert_exit_code(0);
   output.assert_matches_text(

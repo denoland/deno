@@ -1,0 +1,102 @@
+Check file:///[WILDCARD]/pass.ts
+Check file:///[WILDCARD]/fail.ts
+<?xml version="1.0" encoding="UTF-8"?>
+<testsuites name="deno test" tests="26" failures="10" errors="0" time="[WILDCARD]">
+    <testsuite name="./pass.ts" tests="16" disabled="0" errors="0" failures="0">
+        <testcase name="test 0" classname="./pass.ts" time="[WILDCARD]" line="1" col="6">
+        </testcase>
+        <testcase name="test 1" classname="./pass.ts" time="[WILDCARD]" line="2" col="6">
+        </testcase>
+        <testcase name="test 2" classname="./pass.ts" time="[WILDCARD]" line="3" col="6">
+        </testcase>
+        <testcase name="test 3" classname="./pass.ts" time="[WILDCARD]" line="4" col="6">
+        </testcase>
+        <testcase name="test 4" classname="./pass.ts" time="[WILDCARD]" line="5" col="6">
+        </testcase>
+        <testcase name="test 5" classname="./pass.ts" time="[WILDCARD]" line="6" col="6">
+        </testcase>
+        <testcase name="test 6" classname="./pass.ts" time="[WILDCARD]" line="7" col="6">
+        </testcase>
+        <testcase name="test 7" classname="./pass.ts" time="[WILDCARD]" line="8" col="6">
+        </testcase>
+        <testcase name="test 8" classname="./pass.ts" time="[WILDCARD]" line="9" col="6">
+        </testcase>
+        <testcase name="test 9" classname="./pass.ts" time="[WILDCARD]" line="12" col="6">
+        </testcase>
+        <testcase name="test\b" classname="./pass.ts" time="[WILDCARD]" line="16" col="6">
+        </testcase>
+        <testcase name="test\f" classname="./pass.ts" time="[WILDCARD]" line="19" col="6">
+        </testcase>
+        <testcase name="test\t" classname="./pass.ts" time="[WILDCARD]" line="23" col="6">
+        </testcase>
+        <testcase name="test\n" classname="./pass.ts" time="[WILDCARD]" line="27" col="6">
+        </testcase>
+        <testcase name="test\r" classname="./pass.ts" time="[WILDCARD]" line="31" col="6">
+        </testcase>
+        <testcase name="test\v" classname="./pass.ts" time="[WILDCARD]" line="35" col="6">
+        </testcase>
+    </testsuite>
+    <testsuite name="./fail.ts" tests="10" disabled="0" errors="0" failures="10">
+        <testcase name="test 0" classname="./fail.ts" time="[WILDCARD]" line="1" col="6">
+            <failure message="Uncaught Error">Error
+  throw new Error();
+        ^
+    at file:///[WILDCARD]/fail.ts:2:9</failure>
+        </testcase>
+        <testcase name="test 1" classname="./fail.ts" time="[WILDCARD]" line="4" col="6">
+            <failure message="Uncaught Error">Error
+  throw new Error();
+        ^
+    at file:///[WILDCARD]/fail.ts:5:9</failure>
+        </testcase>
+        <testcase name="test 2" classname="./fail.ts" time="[WILDCARD]" line="7" col="6">
+            <failure message="Uncaught Error">Error
+  throw new Error();
+        ^
+    at file:///[WILDCARD]/fail.ts:8:9</failure>
+        </testcase>
+        <testcase name="test 3" classname="./fail.ts" time="[WILDCARD]" line="10" col="6">
+            <failure message="Uncaught Error">Error
+  throw new Error();
+        ^
+    at file:///[WILDCARD]/fail.ts:11:9</failure>
+        </testcase>
+        <testcase name="test 4" classname="./fail.ts" time="[WILDCARD]" line="13" col="6">
+            <failure message="Uncaught Error">Error
+  throw new Error();
+        ^
+    at file:///[WILDCARD]/fail.ts:14:9</failure>
+        </testcase>
+        <testcase name="test 5" classname="./fail.ts" time="[WILDCARD]" line="16" col="6">
+            <failure message="Uncaught Error">Error
+  throw new Error();
+        ^
+    at file:///[WILDCARD]/fail.ts:17:9</failure>
+        </testcase>
+        <testcase name="test 6" classname="./fail.ts" time="[WILDCARD]" line="19" col="6">
+            <failure message="Uncaught Error">Error
+  throw new Error();
+        ^
+    at file:///[WILDCARD]/fail.ts:20:9</failure>
+        </testcase>
+        <testcase name="test 7" classname="./fail.ts" time="[WILDCARD]" line="22" col="6">
+            <failure message="Uncaught Error">Error
+  throw new Error();
+        ^
+    at file:///[WILDCARD]/fail.ts:23:9</failure>
+        </testcase>
+        <testcase name="test 8" classname="./fail.ts" time="[WILDCARD]" line="25" col="6">
+            <failure message="Uncaught Error">Error
+  throw new Error();
+        ^
+    at file:///[WILDCARD]/fail.ts:26:9</failure>
+        </testcase>
+        <testcase name="test 9" classname="./fail.ts" time="[WILDCARD]" line="28" col="6">
+            <failure message="Uncaught Error">Error
+  throw new Error();
+        ^
+    at file:///[WILDCARD]/fail.ts:29:9</failure>
+        </testcase>
+    </testsuite>
+</testsuites>
+error: Test failed

@@ -20,6 +20,54 @@ struct IndexedErrorReference<'a> {
   index: usize,
 }
 
+#[derive(Debug)]
+enum FixSuggestionKind {
+  Info,
+  Hint,
+}
+
+#[derive(Debug)]
+enum FixSuggestionMessage<'a> {
+  Single(&'a str),
+  Multiline(&'a [&'a str]),
+}
+
+#[derive(Debug)]
+pub struct FixSuggestion<'a> {
+  kind: FixSuggestionKind,
+  message: FixSuggestionMessage<'a>,
+}
+
+impl<'a> FixSuggestion<'a> {
+  pub fn info(message: &'a str) -> Self {
+    Self {
+      kind: FixSuggestionKind::Info,
+      message: FixSuggestionMessage::Single(message),
+    }
+  }
+
+  pub fn info_multiline(messages: &'a [&'a str]) -> Self {
+    Self {
+      kind: FixSuggestionKind::Info,
+      message: FixSuggestionMessage::Multiline(messages),
+    }
+  }
+
+  pub fn hint(message: &'a str) -> Self {
+    Self {
+      kind: FixSuggestionKind::Hint,
+      message: FixSuggestionMessage::Single(message),
+    }
+  }
+
+  pub fn hint_multiline(messages: &'a [&'a str]) -> Self {
+    Self {
+      kind: FixSuggestionKind::Hint,
+      message: FixSuggestionMessage::Multiline(messages),
+    }
+  }
+}
+
 struct AnsiColors;
 
 impl deno_core::error::ErrorFormat for AnsiColors {
@@ -129,6 +177,7 @@ fn format_aggregated_error(
         index: nested_circular_reference_index,
       }),
       false,
+      vec![],
     );
 
     for line in error_string.trim_start_matches("Uncaught ").lines() {
@@ -143,6 +192,7 @@ fn format_js_error_inner(
   js_error: &JsError,
   circular: Option<IndexedErrorReference>,
   include_source_code: bool,
+  suggestions: Vec<FixSuggestion>,
 ) -> String {
   let mut s = String::new();
 
@@ -190,7 +240,7 @@ fn format_js_error_inner(
     let error_string = if is_caused_by_circular {
       cyan(format!("[Circular *{}]", circular.unwrap().index)).to_string()
     } else {
-      format_js_error_inner(cause, circular, false)
+      format_js_error_inner(cause, circular, false, vec![])
     };
 
     write!(
@@ -200,6 +250,35 @@ fn format_js_error_inner(
     )
     .unwrap();
   }
+  if !suggestions.is_empty() {
+    write!(s, "\n\n").unwrap();
+    for (index, suggestion) in suggestions.iter().enumerate() {
+      write!(s, "    ").unwrap();
+      match suggestion.kind {
+        FixSuggestionKind::Hint => write!(s, "{} ", cyan("hint:")).unwrap(),
+        FixSuggestionKind::Info => write!(s, "{} ", yellow("info:")).unwrap(),
+      };
+      match suggestion.message {
+        FixSuggestionMessage::Single(msg) => {
+          write!(s, "{}", msg).unwrap();
+        }
+        FixSuggestionMessage::Multiline(messages) => {
+          for (idx, message) in messages.iter().enumerate() {
+            if idx != 0 {
+              writeln!(s).unwrap();
+              write!(s, "          ").unwrap();
+            }
+            write!(s, "{}", message).unwrap();
+          }
+        }
+      }
+
+      if index != (suggestions.len() - 1) {
+        writeln!(s).unwrap();
+      }
+    }
+  }
+
   s
 }
 
@@ -211,7 +290,21 @@ pub fn format_js_error(js_error: &JsError) -> String {
       index: 1,
     });
 
-  format_js_error_inner(js_error, circular, true)
+  format_js_error_inner(js_error, circular, true, vec![])
+}
+
+/// Format a [`JsError`] for terminal output, printing additional suggestions.
+pub fn format_js_error_with_suggestions(
+  js_error: &JsError,
+  suggestions: Vec<FixSuggestion>,
+) -> String {
+  let circular =
+    find_recursive_cause(js_error).map(|reference| IndexedErrorReference {
+      reference,
+      index: 1,
+    });
+
+  format_js_error_inner(js_error, circular, true, suggestions)
 }
 
 #[cfg(test)]

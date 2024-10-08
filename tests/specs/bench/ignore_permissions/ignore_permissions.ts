@@ -7,7 +7,6 @@ Deno.bench({
     env: true,
     run: true,
     ffi: true,
-    hrtime: true,
   },
   ignore: true,
   fn() {

@@ -5,6 +5,9 @@ use crate::cache::FastInsecureHasher;
 use crate::cache::ParsedSourceCache;
 
 use deno_ast::SourceMapOption;
+use deno_ast::SourceRange;
+use deno_ast::SourceRanged;
+use deno_ast::SourceRangedForSpanned;
 use deno_ast::TranspileResult;
 use deno_core::error::AnyError;
 use deno_core::futures::stream::FuturesUnordered;
@@ -259,6 +262,7 @@ impl<'a> EmitParsedSourceHelper<'a> {
     // the cache in order to not transpile owned
     let parsed_source = parsed_source_cache
       .remove_or_parse_module(specifier, source, media_type)?;
+    ensure_no_import_assertion(&parsed_source)?;
     Ok(parsed_source.transpile(transpile_options, emit_options)?)
   }
 
@@ -283,4 +287,74 @@ impl<'a> EmitParsedSourceHelper<'a> {
     );
     transpiled_source.source.into_boxed_slice().into()
   }
+}
+
+// todo(dsherret): this is a temporary measure until we have swc erroring for this
+fn ensure_no_import_assertion(
+  parsed_source: &deno_ast::ParsedSource,
+) -> Result<(), AnyError> {
+  fn has_import_assertion(text: &str) -> bool {
+    // good enough
+    text.contains(" assert ") && !text.contains(" with ")
+  }
+
+  fn create_err(
+    parsed_source: &deno_ast::ParsedSource,
+    range: SourceRange,
+  ) -> AnyError {
+    let text_info = parsed_source.text_info_lazy();
+    let loc = text_info.line_and_column_display(range.start);
+    let mut msg = "Import assertions are deprecated. Use `with` keyword, instead of 'assert' keyword.".to_string();
+    msg.push_str("\n\n");
+    msg.push_str(range.text_fast(text_info));
+    msg.push_str("\n\n");
+    msg.push_str(&format!(
+      "  at {}:{}:{}\n",
+      parsed_source.specifier(),
+      loc.line_number,
+      loc.column_number,
+    ));
+    deno_core::anyhow::anyhow!("{}", msg)
+  }
+
+  let Some(module) = parsed_source.program_ref().as_module() else {
+    return Ok(());
+  };
+
+  for item in &module.body {
+    match item {
+      deno_ast::swc::ast::ModuleItem::ModuleDecl(decl) => match decl {
+        deno_ast::swc::ast::ModuleDecl::Import(n) => {
+          if n.with.is_some()
+            && has_import_assertion(n.text_fast(parsed_source.text_info_lazy()))
+          {
+            return Err(create_err(parsed_source, n.range()));
+          }
+        }
+        deno_ast::swc::ast::ModuleDecl::ExportAll(n) => {
+          if n.with.is_some()
+            && has_import_assertion(n.text_fast(parsed_source.text_info_lazy()))
+          {
+            return Err(create_err(parsed_source, n.range()));
+          }
+        }
+        deno_ast::swc::ast::ModuleDecl::ExportNamed(n) => {
+          if n.with.is_some()
+            && has_import_assertion(n.text_fast(parsed_source.text_info_lazy()))
+          {
+            return Err(create_err(parsed_source, n.range()));
+          }
+        }
+        deno_ast::swc::ast::ModuleDecl::ExportDecl(_)
+        | deno_ast::swc::ast::ModuleDecl::ExportDefaultDecl(_)
+        | deno_ast::swc::ast::ModuleDecl::ExportDefaultExpr(_)
+        | deno_ast::swc::ast::ModuleDecl::TsImportEquals(_)
+        | deno_ast::swc::ast::ModuleDecl::TsExportAssignment(_)
+        | deno_ast::swc::ast::ModuleDecl::TsNamespaceExport(_) => {}
+      },
+      deno_ast::swc::ast::ModuleItem::Stmt(_) => {}
+    }
+  }
+
+  Ok(())
 }

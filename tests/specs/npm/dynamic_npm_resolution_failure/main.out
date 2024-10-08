@@ -4,11 +4,11 @@ Download http://localhost:4260/@denotest/dep-cannot-parse
 [UNORDERED_END]
 Download http://localhost:4260/chalk/chalk-5.0.1.tgz
 Hi
-TypeError: Error in @denotest/dep-cannot-parse@1.0.0 parsing version requirement for dependency: @denotest/esm-basic@unknown-scheme:unknown
-
-Invalid npm version requirement. Unexpected character.
-  unknown-scheme:unknown
-  ~
+TypeError: Error in @denotest/dep-cannot-parse@1.0.0 parsing version requirement for dependency "@denotest/esm-basic": "unknown-scheme:unknown"
+    0: Invalid version requirement
+    1: Unexpected character.
+         unknown-scheme:unknown
+         ~
     at async file:///[WILDLINE]main.ts:5:3 {
   code: "ERR_MODULE_NOT_FOUND"
 }

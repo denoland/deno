@@ -1,0 +1,4 @@
+{
+  "name": "@denotest/add",
+  "exports": "./mod.ts"
+}

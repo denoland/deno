@@ -4,9 +4,10 @@ use deno_core::serde::Deserialize;
 use deno_core::serde_json;
 use deno_core::serde_json::json;
 use deno_core::serde_json::Value;
-use deno_core::url::Url;
+use lsp_types::Uri;
 use std::collections::HashMap;
 use std::path::Path;
+use std::str::FromStr;
 use std::time::Duration;
 use test_util::lsp::LspClientBuilder;
 use test_util::PathRef;
@@ -91,7 +92,7 @@ fn bench_deco_apps_edits(deno_exe: &Path) -> Duration {
     .build();
   client.initialize(|c| {
     c.set_workspace_folders(vec![lsp_types::WorkspaceFolder {
-      uri: Url::from_file_path(&apps).unwrap(),
+      uri: apps.uri_dir(),
       name: "apps".to_string(),
     }]);
     c.set_deno_enable(true);
@@ -283,7 +284,7 @@ fn bench_find_replace(deno_exe: &Path) -> Duration {
       "textDocument/didChange",
       lsp::DidChangeTextDocumentParams {
         text_document: lsp::VersionedTextDocumentIdentifier {
-          uri: Url::parse(&file_name).unwrap(),
+          uri: Uri::from_str(&file_name).unwrap(),
           version: 2,
         },
         content_changes: vec![lsp::TextDocumentContentChangeEvent {
@@ -310,7 +311,7 @@ fn bench_find_replace(deno_exe: &Path) -> Duration {
       "textDocument/formatting",
       lsp::DocumentFormattingParams {
         text_document: lsp::TextDocumentIdentifier {
-          uri: Url::parse(&file_name).unwrap(),
+          uri: Uri::from_str(&file_name).unwrap(),
         },
         options: lsp::FormattingOptions {
           tab_size: 2,

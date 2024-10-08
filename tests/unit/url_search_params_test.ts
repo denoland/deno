@@ -330,7 +330,7 @@ Deno.test(
   function urlSearchParamsOverridingAppendNotChangeConstructorAndSet() {
     let overriddenAppendCalled = 0;
     class CustomSearchParams extends URLSearchParams {
-      append(name: string, value: string) {
+      override append(name: string, value: string) {
         ++overriddenAppendCalled;
         super.append(name, value);
       }
@@ -345,7 +345,7 @@ Deno.test(
 
 Deno.test(function urlSearchParamsOverridingEntriesNotChangeForEach() {
   class CustomSearchParams extends URLSearchParams {
-    *entries(): IterableIterator<[string, string]> {
+    override *entries(): IterableIterator<[string, string]> {
       yield* [];
     }
   }

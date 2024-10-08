@@ -1,0 +1,22 @@
+[UNORDERED_START]
+Download http://localhost:4260/@denotest/node-lifecycle-scripts
+Download http://localhost:4260/@denotest/bin
+Download http://localhost:4260/@denotest/node-lifecycle-scripts/1.0.0.tgz
+Download http://localhost:4260/@denotest/bin/1.0.0.tgz
+Initialize @denotest/node-lifecycle-scripts@1.0.0
+Initialize @denotest/bin@1.0.0
+[UNORDERED_END]
+preinstall
+deno preinstall.js
+node preinstall.js
+install
+hello from install script
+postinstall[WILDCARD]
+ _____________
+< postinstall >
+ -------------
+        \   ^__^
+         \  (oo)\_______
+            (__)\       )\/\
+                ||----w |
+                ||     ||

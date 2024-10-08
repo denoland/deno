@@ -1,0 +1,59 @@
+[WILDCARD]
+running 3 tests from [WILDCARD]failing_steps.ts
+nested failure ...
+  step 1 ...
+    inner 1 ... FAILED ([WILDCARD])
+    inner 2 ... ok ([WILDCARD])
+  step 1 ... FAILED (due to 1 failed step) ([WILDCARD])
+nested failure ... FAILED (due to 1 failed step) ([WILDCARD])
+multiple test step failures ...
+  step 1 ... FAILED ([WILDCARD])
+  step 2 ... FAILED ([WILDCARD])
+multiple test step failures ... FAILED (due to 2 failed steps) ([WILDCARD])
+failing step in failing test ...
+  step 1 ... FAILED ([WILDCARD])
+failing step in failing test ... FAILED ([WILDCARD])
+
+ ERRORS 
+
+nested failure ... step 1 ... inner 1 => [WILDCARD]failing_steps.ts:[WILDCARD]
+error: Error: Failed.
+      throw new Error("Failed.");
+            ^
+    at [WILDCARD]/failing_steps.ts:[WILDCARD]
+
+multiple test step failures ... step 1 => [WILDCARD]failing_steps.ts:[WILDCARD]
+error: Error: Fail.
+    throw new Error("Fail.");
+          ^
+    at [WILDCARD]/failing_steps.ts:[WILDCARD]
+
+multiple test step failures ... step 2 => [WILDCARD]failing_steps.ts:[WILDCARD]
+error: Error: Fail.
+  await t.step("step 2", () => Promise.reject(new Error("Fail.")));
+                                              ^
+    at [WILDCARD]/failing_steps.ts:[WILDCARD]
+
+failing step in failing test ... step 1 => [WILDCARD]failing_steps.ts:[WILDCARD]
+error: Error: Fail.
+    throw new Error("Fail.");
+          ^
+    at [WILDCARD]/failing_steps.ts:[WILDCARD]
+
+failing step in failing test => [WILDCARD]failing_steps.ts:[WILDCARD]
+error: Error: Fail test.
+  throw new Error("Fail test.");
+        ^
+    at [WILDCARD]/failing_steps.ts:[WILDCARD]
+
+ FAILURES 
+
+nested failure ... step 1 ... inner 1 => [WILDCARD]failing_steps.ts:[WILDCARD]
+multiple test step failures ... step 1 => [WILDCARD]failing_steps.ts:[WILDCARD]
+multiple test step failures ... step 2 => [WILDCARD]failing_steps.ts:[WILDCARD]
+failing step in failing test ... step 1 => [WILDCARD]failing_steps.ts:[WILDCARD]
+failing step in failing test => [WILDCARD]failing_steps.ts:[WILDCARD]
+
+FAILED | 0 passed (1 step) | 3 failed (5 steps) ([WILDCARD])
+
+error: Test failed

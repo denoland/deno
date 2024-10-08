@@ -2,7 +2,7 @@
 
 [package]
 name = "deno_crypto"
-version = "0.178.0"
+version = "0.185.0"
 authors.workspace = true
 edition.workspace = true
 license.workspace = true
@@ -24,6 +24,7 @@ ctr = "0.9.1"
 curve25519-dalek = "4.1.3"
 deno_core.workspace = true
 deno_web.workspace = true
+ed448-goldilocks = { version = "0.8.3", features = ["zeroize"] }
 elliptic-curve = { version = "0.13.1", features = ["std", "pem"] }
 num-traits = "0.2.14"
 once_cell.workspace = true
@@ -33,6 +34,7 @@ p521 = "0.13.3"
 rand.workspace = true
 ring = { workspace = true, features = ["std"] }
 rsa.workspace = true
+sec1.workspace = true
 serde.workspace = true
 serde_bytes.workspace = true
 sha1.workspace = true

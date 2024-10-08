@@ -188,7 +188,7 @@ async fn init_subcommand_serve() {
   assert_contains!(stderr, "Project initialized");
   assert_contains!(stderr, "deno serve -R main.ts");
   assert_contains!(stderr, "deno task dev");
-  assert_contains!(stderr, "deno -R test");
+  assert_contains!(stderr, "deno test -R");
 
   assert!(cwd.join("deno.json").exists());
 
@@ -209,7 +209,7 @@ async fn init_subcommand_serve() {
   let output = context
     .new_command()
     .env("NO_COLOR", "1")
-    .args("-R test")
+    .args("test -R")
     .split_output()
     .run();
 

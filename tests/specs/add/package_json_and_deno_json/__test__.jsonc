@@ -1,0 +1,46 @@
+{
+  "tempDir": true,
+  "tests": {
+    "npm_prefers_package_json": {
+      "steps": [
+        {
+          "args": "add npm:@denotest/esm-basic jsr:@denotest/add npm:@denotest/say-hello",
+          "output": "add.out"
+        },
+        {
+          "args": [
+            "eval",
+            "console.log(Deno.readTextFileSync('package.json').trim())"
+          ],
+          "output": "npm_prefer_package.json.out"
+        },
+        {
+          "args": [
+            "eval",
+            "console.log(Deno.readTextFileSync('deno.json').trim())"
+          ],
+          "output": "npm_prefer_deno.json.out"
+        }
+      ]
+    },
+    "only_creates_deno_json_if_no_config": {
+      "steps": [
+        {
+          "args": ["eval", "Deno.removeSync('deno.json')"],
+          "output": ""
+        },
+        {
+          "args": "add npm:@denotest/esm-basic",
+          "output": "add_esm_basic.out"
+        },
+        {
+          "args": [
+            "eval",
+            "try { Deno.statSync('deno.json'); console.log('bad'); } catch (e) { if (e instanceof Deno.errors.NotFound) { console.log('good'); } else { console.log('bad error', e); }}"
+          ],
+          "output": "good\n"
+        }
+      ]
+    }
+  }
+}

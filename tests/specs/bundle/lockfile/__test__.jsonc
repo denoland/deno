@@ -1,5 +1,0 @@
-{
-  "args": "bundle --lock=check_error.json http://127.0.0.1:4545/subdir/mod1.ts",
-  "output": "check_error.out",
-  "exitCode": 10
-}

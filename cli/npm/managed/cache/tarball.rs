@@ -167,7 +167,7 @@ impl TarballCache {
       let tarball_uri = Url::parse(&dist.tarball)?;
       let maybe_registry_config =
         tarball_cache.npmrc.tarball_config(&tarball_uri);
-      let maybe_auth_header = maybe_registry_config.and_then(|c| maybe_auth_header_for_npm_registry(c));
+      let maybe_auth_header = maybe_registry_config.and_then(|c| maybe_auth_header_for_npm_registry(c).ok()?);
 
       let guard = tarball_cache.progress_bar.update(&dist.tarball);
       let result = tarball_cache.http_client_provider
