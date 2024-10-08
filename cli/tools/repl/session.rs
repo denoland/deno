@@ -653,7 +653,7 @@ impl ReplSession {
       .into_source()
       .into_string()?
       .text;
-    eprintln!("transpile {}", transpiled_src);
+
     let value = self
       .evaluate_expression(&format!("'use strict'; void 0;{transpiled_src}"))
       .await?;
