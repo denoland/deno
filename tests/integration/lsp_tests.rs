@@ -8977,7 +8977,7 @@ fn lsp_npm_open_from_global_cache_resolution() {
   client.initialize_default();
   client.did_open(json!({
     "textDocument": {
-      "uri": temp_dir.uri().join("file.ts").unwrap(),
+      "uri": temp_dir.url().join("file.ts").unwrap(),
       "languageId": "typescript",
       "version": 1,
       "text": "import \"npm:@vue/compiler-core@3.2.38\";",
@@ -8992,24 +8992,24 @@ fn lsp_npm_open_from_global_cache_resolution() {
     .unwrap()
     .unwrap()
     .file_name();
-  let npm_dir_uri = context
+  let npm_dir_url = context
     .deno_dir()
-    .uri()
+    .url()
     .join(&format!("npm/{}/", registry_dir_name.to_string_lossy()))
     .unwrap();
   client.did_open(json!({
     "textDocument": {
-      "uri": npm_dir_uri.join("@vue/compiler-core/3.2.38/dist/compiler-core.d.ts").unwrap(),
+      "uri": npm_dir_url.join("@vue/compiler-core/3.2.38/dist/compiler-core.d.ts").unwrap(),
       "languageId": "typescript",
       "version": 1,
-      "text": std::fs::read_to_string(npm_dir_uri.join("@vue/compiler-core/3.2.38/dist/compiler-core.d.ts").unwrap().to_file_path().unwrap()).unwrap(),
+      "text": std::fs::read_to_string(npm_dir_url.join("@vue/compiler-core/3.2.38/dist/compiler-core.d.ts").unwrap().to_file_path().unwrap()).unwrap(),
     }
   }));
   let res = client.write_request(
     "textDocument/hover",
     json!({
       "textDocument": {
-        "uri": npm_dir_uri.join("@vue/compiler-core/3.2.38/dist/compiler-core.d.ts").unwrap(),
+        "uri": npm_dir_url.join("@vue/compiler-core/3.2.38/dist/compiler-core.d.ts").unwrap(),
       },
       "position": { "line": 2, "character": 34 }
     }),
@@ -9019,7 +9019,7 @@ fn lsp_npm_open_from_global_cache_resolution() {
     json!({
       "contents": {
         "kind": "markdown",
-        "value": format!("**Resolved Dependency**\n\n**Code**: file&#8203;{}\n\n**Types**: file&#8203;{}\n", npm_dir_uri.join("&#8203;@vue/shared/3.2.38/index.js").unwrap().as_str().trim_start_matches("file"), npm_dir_uri.join("&#8203;@vue/shared/3.2.38/dist/shared.d.ts").unwrap().as_str().trim_start_matches("file")),
+        "value": format!("**Resolved Dependency**\n\n**Code**: file&#8203;{}\n\n**Types**: file&#8203;{}\n", npm_dir_url.join("&#8203;@vue/shared/3.2.38/index.js").unwrap().as_str().trim_start_matches("file"), npm_dir_url.join("&#8203;@vue/shared/3.2.38/dist/shared.d.ts").unwrap().as_str().trim_start_matches("file")),
       },
       "range": {
         "start": { "line": 2, "character": 34 },
