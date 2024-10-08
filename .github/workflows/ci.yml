@@ -68,12 +68,12 @@ jobs:
             skip: '${{ !contains(github.event.pull_request.labels.*.name, ''ci-full'') && (github.event_name == ''pull_request'') }}'
           - os: macos
             arch: aarch64
-            runner: macos-14
+            runner: ghcr.io/cirruslabs/macos-runner:sonoma
             job: test
             profile: debug
           - os: macos
             arch: aarch64
-            runner: '${{ (!contains(github.event.pull_request.labels.*.name, ''ci-full'') && (github.event_name == ''pull_request'')) && ''ubuntu-22.04'' || ''macos-14'' }}'
+            runner: '${{ (!contains(github.event.pull_request.labels.*.name, ''ci-full'') && (github.event_name == ''pull_request'')) && ''ubuntu-22.04'' || ''ghcr.io/cirruslabs/macos-runner:sonoma'' }}'
             job: test
             profile: release
             skip: '${{ !contains(github.event.pull_request.labels.*.name, ''ci-full'') && (github.event_name == ''pull_request'') }}'
