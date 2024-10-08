@@ -1301,7 +1301,9 @@ function getKeys(value, showHidden) {
       ArrayPrototypePushApply(keys, ArrayPrototypeFilter(symbols, filter));
     }
   }
-  keys = ArrayPrototypeFilter(keys, (key) => key !== "cause");
+  if (value instanceof Error) {
+    keys = ArrayPrototypeFilter(keys, (key) => key !== "cause");
+  }
   return keys;
 }
 
