@@ -44,6 +44,7 @@ use std::cmp::Ordering;
 use std::collections::HashMap;
 use std::collections::HashSet;
 use std::path::Path;
+use text_lines::LineAndColumnIndex;
 use tower_lsp::lsp_types as lsp;
 use tower_lsp::lsp_types::Position;
 use tower_lsp::lsp_types::Range;
@@ -1207,14 +1208,36 @@ impl CodeActionCollection {
         range.end.line as usize,
         range.end.character as usize,
       );
-      let import_range = dependency.imports.iter().find_map(|i| {
+      let import_start = dependency.imports.iter().find_map(|i| {
         if json!(i.kind) != json!("es") && json!(i.kind) != json!("tsType") {
           return None;
         }
         if !i.specifier_range.includes(&position) {
           return None;
         }
-        i.full_range.as_ref()
+
+        // find the top level statement that contains the specifier
+        let parsed_source = document.maybe_parsed_source()?.as_ref().ok()?;
+        let text_info = parsed_source.text_info_lazy();
+        let specifier_range = SourceRange::new(
+          text_info.loc_to_source_pos(LineAndColumnIndex {
+            line_index: i.specifier_range.start.line,
+            column_index: i.specifier_range.start.character,
+          }),
+          text_info.loc_to_source_pos(LineAndColumnIndex {
+            line_index: i.specifier_range.end.line,
+            column_index: i.specifier_range.end.character,
+          }),
+        );
+
+        match parsed_source.program_ref() {
+          deno_ast::swc::ast::Program::Module(module) => module
+            .body
+            .iter()
+            .find(|i| i.range().contains(&specifier_range))
+            .map(|i| text_info.line_and_column_index(i.range().start)),
+          deno_ast::swc::ast::Program::Script(_) => return None,
+        }
       })?;
       let referrer = document.specifier();
       let file_referrer = document.file_referrer();
@@ -1301,8 +1324,8 @@ impl CodeActionCollection {
         .specifier_to_uri(referrer, file_referrer)
         .ok()?;
       let position = lsp::Position {
-        line: import_range.start.line as u32,
-        character: import_range.start.character as u32,
+        line: import_start.line_index as u32,
+        character: import_start.column_index as u32,
       };
       let new_text = format!(
         "{}// @deno-types=\"{}\"\n",
