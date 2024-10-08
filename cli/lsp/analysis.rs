@@ -2,6 +2,7 @@
 
 use super::diagnostics::DenoDiagnostic;
 use super::diagnostics::DiagnosticSource;
+use super::documents::Document;
 use super::documents::Documents;
 use super::language_server;
 use super::resolver::LspResolver;
@@ -9,7 +10,9 @@ use super::tsc;
 use super::urls::url_to_uri;
 
 use crate::args::jsr_url;
+use crate::lsp::search::PackageSearchApi;
 use crate::tools::lint::CliLinter;
+use deno_config::workspace::MappedResolution;
 use deno_lint::diagnostic::LintDiagnosticRange;
 
 use deno_ast::SourceRange;
@@ -225,6 +228,7 @@ pub struct TsResponseImportMapper<'a> {
   documents: &'a Documents,
   maybe_import_map: Option<&'a ImportMap>,
   resolver: &'a LspResolver,
+  file_referrer: ModuleSpecifier,
 }
 
 impl<'a> TsResponseImportMapper<'a> {
@@ -232,11 +236,13 @@ impl<'a> TsResponseImportMapper<'a> {
     documents: &'a Documents,
     maybe_import_map: Option<&'a ImportMap>,
     resolver: &'a LspResolver,
+    file_referrer: &ModuleSpecifier,
   ) -> Self {
     Self {
       documents,
       maybe_import_map,
       resolver,
+      file_referrer: file_referrer.clone(),
     }
   }
 
@@ -257,8 +263,6 @@ impl<'a> TsResponseImportMapper<'a> {
       }
     }
 
-    let file_referrer = self.documents.get_file_referrer(referrer);
-
     if let Some(jsr_path) = specifier.as_str().strip_prefix(jsr_url().as_str())
     {
       let mut segments = jsr_path.split('/');
@@ -273,7 +277,7 @@ impl<'a> TsResponseImportMapper<'a> {
       let export = self.resolver.jsr_lookup_export_for_path(
         &nv,
         &path,
-        file_referrer.as_deref(),
+        Some(&self.file_referrer),
       )?;
       let sub_path = (export != ".").then_some(export);
       let mut req = None;
@@ -299,7 +303,7 @@ impl<'a> TsResponseImportMapper<'a> {
       req = req.or_else(|| {
         self
           .resolver
-          .jsr_lookup_req_for_nv(&nv, file_referrer.as_deref())
+          .jsr_lookup_req_for_nv(&nv, Some(&self.file_referrer))
       });
       let spec_str = if let Some(req) = req {
         let req_ref = PackageReqReference { req, sub_path };
@@ -329,7 +333,7 @@ impl<'a> TsResponseImportMapper<'a> {
 
     if let Some(npm_resolver) = self
       .resolver
-      .maybe_managed_npm_resolver(file_referrer.as_deref())
+      .maybe_managed_npm_resolver(Some(&self.file_referrer))
     {
       if npm_resolver.in_npm_package(specifier) {
         if let Ok(Some(pkg_id)) =
@@ -465,6 +469,26 @@ impl<'a> TsResponseImportMapper<'a> {
     }
     None
   }
+
+  pub fn is_valid_import(
+    &self,
+    specifier_text: &str,
+    referrer: &ModuleSpecifier,
+  ) -> bool {
+    self
+      .resolver
+      .as_graph_resolver(Some(&self.file_referrer))
+      .resolve(
+        specifier_text,
+        &deno_graph::Range {
+          specifier: referrer.clone(),
+          start: deno_graph::Position::zeroed(),
+          end: deno_graph::Position::zeroed(),
+        },
+        deno_graph::source::ResolutionMode::Types,
+      )
+      .is_ok()
+  }
 }
 
 fn try_reverse_map_package_json_exports(
@@ -577,7 +601,7 @@ fn fix_ts_import_action(
   referrer: &ModuleSpecifier,
   action: &tsc::CodeFixAction,
   import_mapper: &TsResponseImportMapper,
-) -> Result<tsc::CodeFixAction, AnyError> {
+) -> Result<Option<tsc::CodeFixAction>, AnyError> {
   if matches!(
     action.fix_name.as_str(),
     "import" | "fixMissingFunctionDeclaration"
@@ -620,19 +644,21 @@ fn fix_ts_import_action(
           })
           .collect();
 
-        return Ok(tsc::CodeFixAction {
+        return Ok(Some(tsc::CodeFixAction {
           description,
           changes,
           commands: None,
           fix_name: action.fix_name.clone(),
           fix_id: None,
           fix_all_description: None,
-        });
+        }));
+      } else if !import_mapper.is_valid_import(specifier, referrer) {
+        return Ok(None);
       }
     }
   }
 
-  Ok(action.clone())
+  Ok(Some(action.clone()))
 }
 
 /// Determines if two TypeScript diagnostic codes are effectively equivalent.
@@ -973,11 +999,14 @@ impl CodeActionCollection {
         "The action returned from TypeScript is unsupported.",
       ));
     }
-    let action = fix_ts_import_action(
+    let Some(action) = fix_ts_import_action(
       specifier,
       action,
       &language_server.get_ts_response_import_mapper(specifier),
-    )?;
+    )?
+    else {
+      return Ok(());
+    };
     let edit = ts_changes_to_edit(&action.changes, language_server)?;
     let code_action = lsp::CodeAction {
       title: action.description.clone(),
@@ -1150,6 +1179,162 @@ impl CodeActionCollection {
       }),
       ..Default::default()
     }));
+  }
+
+  pub async fn add_source_actions(
+    &mut self,
+    document: &Document,
+    range: &lsp::Range,
+    language_server: &language_server::Inner,
+  ) {
+    async fn deno_types_for_npm_action(
+      document: &Document,
+      range: &lsp::Range,
+      language_server: &language_server::Inner,
+    ) -> Option<lsp::CodeAction> {
+      let (dep_key, dependency, _) =
+        document.get_maybe_dependency(&range.end)?;
+      if dependency.maybe_deno_types_specifier.is_some() {
+        return None;
+      }
+      if dependency.maybe_code.maybe_specifier().is_none()
+        && dependency.maybe_type.maybe_specifier().is_none()
+      {
+        // We're using byonm and the package is not cached.
+        return None;
+      }
+      let position = deno_graph::Position::new(
+        range.end.line as usize,
+        range.end.character as usize,
+      );
+      let import_range = dependency.imports.iter().find_map(|i| {
+        if json!(i.kind) != json!("es") && json!(i.kind) != json!("tsType") {
+          return None;
+        }
+        if !i.specifier_range.includes(&position) {
+          return None;
+        }
+        i.full_range.as_ref()
+      })?;
+      let referrer = document.specifier();
+      let file_referrer = document.file_referrer();
+      let config_data = language_server
+        .config
+        .tree
+        .data_for_specifier(file_referrer?)?;
+      let workspace_resolver = config_data.resolver.clone();
+      let npm_ref = if let Ok(resolution) =
+        workspace_resolver.resolve(&dep_key, document.specifier())
+      {
+        let specifier = match resolution {
+          MappedResolution::Normal { specifier, .. }
+          | MappedResolution::ImportMap { specifier, .. } => specifier,
+          _ => {
+            return None;
+          }
+        };
+        NpmPackageReqReference::from_specifier(&specifier).ok()?
+      } else {
+        // Only resolve bare package.json deps for byonm.
+        if !config_data.byonm {
+          return None;
+        }
+        if !language_server
+          .resolver
+          .is_bare_package_json_dep(&dep_key, referrer)
+        {
+          return None;
+        }
+        NpmPackageReqReference::from_str(&format!("npm:{}", &dep_key)).ok()?
+      };
+      let package_name = &npm_ref.req().name;
+      if package_name.starts_with("@types/") {
+        return None;
+      }
+      let managed_npm_resolver = language_server
+        .resolver
+        .maybe_managed_npm_resolver(file_referrer);
+      if let Some(npm_resolver) = managed_npm_resolver {
+        if !npm_resolver.is_pkg_req_folder_cached(npm_ref.req()) {
+          return None;
+        }
+      }
+      if language_server
+        .resolver
+        .npm_to_file_url(&npm_ref, document.specifier(), file_referrer)
+        .is_some()
+      {
+        // The package import has types.
+        return None;
+      }
+      let types_package_name = format!("@types/{package_name}");
+      let types_package_version = language_server
+        .npm_search_api
+        .versions(&types_package_name)
+        .await
+        .ok()
+        .and_then(|versions| versions.first().cloned())?;
+      let types_specifier_text =
+        if let Some(npm_resolver) = managed_npm_resolver {
+          let mut specifier_text = if let Some(req) =
+            npm_resolver.top_package_req_for_name(&types_package_name)
+          {
+            format!("npm:{req}")
+          } else {
+            format!("npm:{}@^{}", &types_package_name, types_package_version)
+          };
+          let specifier = ModuleSpecifier::parse(&specifier_text).ok()?;
+          if let Some(file_referrer) = file_referrer {
+            if let Some(text) = language_server
+              .get_ts_response_import_mapper(file_referrer)
+              .check_specifier(&specifier, referrer)
+            {
+              specifier_text = text;
+            }
+          }
+          specifier_text
+        } else {
+          types_package_name.clone()
+        };
+      let uri = language_server
+        .url_map
+        .specifier_to_uri(referrer, file_referrer)
+        .ok()?;
+      let position = lsp::Position {
+        line: import_range.start.line as u32,
+        character: import_range.start.character as u32,
+      };
+      let new_text = format!(
+        "{}// @deno-types=\"{}\"\n",
+        if position.character == 0 { "" } else { "\n" },
+        &types_specifier_text
+      );
+      let text_edit = lsp::TextEdit {
+        range: lsp::Range {
+          start: position,
+          end: position,
+        },
+        new_text,
+      };
+      Some(lsp::CodeAction {
+        title: format!(
+          "Add @deno-types directive for \"{}\"",
+          &types_specifier_text
+        ),
+        kind: Some(lsp::CodeActionKind::QUICKFIX),
+        diagnostics: None,
+        edit: Some(lsp::WorkspaceEdit {
+          changes: Some([(uri, vec![text_edit])].into_iter().collect()),
+          ..Default::default()
+        }),
+        ..Default::default()
+      })
+    }
+    if let Some(action) =
+      deno_types_for_npm_action(document, range, language_server).await
+    {
+      self.actions.push(CodeActionKind::Deno(action));
+    }
   }
 }
 

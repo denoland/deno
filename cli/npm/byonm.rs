@@ -1,5 +1,6 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
+use std::borrow::Cow;
 use std::path::Path;
 use std::path::PathBuf;
 use std::sync::Arc;
@@ -21,6 +22,7 @@ use crate::resolver::CliDenoResolverFs;
 
 use super::CliNpmResolver;
 use super::InnerCliNpmResolverRef;
+use super::ResolvePkgFolderFromDenoReqError;
 
 pub type CliByonmNpmResolverCreateOptions =
   ByonmNpmResolverCreateOptions<CliDenoResolverFs>;
@@ -31,18 +33,19 @@ pub type CliByonmNpmResolver = ByonmNpmResolver<CliDenoResolverFs>;
 struct CliByonmWrapper(Arc<CliByonmNpmResolver>);
 
 impl NodeRequireResolver for CliByonmWrapper {
-  fn ensure_read_permission(
+  fn ensure_read_permission<'a>(
     &self,
     permissions: &mut dyn NodePermissions,
-    path: &Path,
-  ) -> Result<(), AnyError> {
+    path: &'a Path,
+  ) -> Result<Cow<'a, Path>, AnyError> {
     if !path
       .components()
       .any(|c| c.as_os_str().to_ascii_lowercase() == "node_modules")
     {
-      _ = permissions.check_read_path(path)?;
+      permissions.check_read_path(path)
+    } else {
+      Ok(Cow::Borrowed(path))
     }
-    Ok(())
   }
 }
 
@@ -90,10 +93,11 @@ impl CliNpmResolver for CliByonmNpmResolver {
     &self,
     req: &PackageReq,
     referrer: &Url,
-  ) -> Result<PathBuf, AnyError> {
+  ) -> Result<PathBuf, ResolvePkgFolderFromDenoReqError> {
     ByonmNpmResolver::resolve_pkg_folder_from_deno_module_req(
       self, req, referrer,
     )
+    .map_err(ResolvePkgFolderFromDenoReqError::Byonm)
   }
 
   fn check_state_hash(&self) -> Option<u64> {

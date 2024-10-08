@@ -5907,6 +5907,135 @@ fn lsp_code_actions_deno_cache_all() {
 }
 
 #[test]
+fn lsp_code_actions_deno_types_for_npm() {
+  let context = TestContextBuilder::new()
+    .use_http_server()
+    .use_temp_cwd()
+    .add_npm_env_vars()
+    .build();
+  let temp_dir = context.temp_dir();
+  temp_dir.write("deno.json", json!({}).to_string());
+  temp_dir.write(
+    "package.json",
+    json!({
+      "dependencies": {
+        "react": "^18.2.0",
+        "@types/react": "^18.3.10",
+      },
+    })
+    .to_string(),
+  );
+  temp_dir.create_dir_all("managed_node_modules");
+  temp_dir.write(
+    "managed_node_modules/deno.json",
+    json!({
+      "nodeModulesDir": false,
+    })
+    .to_string(),
+  );
+  context.run_npm("install");
+  let mut client = context.new_lsp_command().build();
+  client.initialize_default();
+  client.did_open(json!({
+    "textDocument": {
+      "uri": temp_dir.url().join("file.ts").unwrap(),
+      "languageId": "typescript",
+      "version": 1,
+      "text": "import \"react\";\n",
+    }
+  }));
+  let res = client.write_request(
+    "textDocument/codeAction",
+    json!({
+      "textDocument": {
+        "uri": temp_dir.url().join("file.ts").unwrap(),
+      },
+      "range": {
+        "start": { "line": 0, "character": 7 },
+        "end": { "line": 0, "character": 7 },
+      },
+      "context": { "diagnostics": [], "only": ["quickfix"] },
+    }),
+  );
+  assert_eq!(
+    res,
+    json!([
+      {
+        "title": "Add @deno-types directive for \"@types/react\"",
+        "kind": "quickfix",
+        "edit": {
+          "changes": {
+            temp_dir.url().join("file.ts").unwrap(): [
+              {
+                "range": {
+                  "start": { "line": 0, "character": 0 },
+                  "end": { "line": 0, "character": 0 },
+                },
+                "newText": "// @deno-types=\"@types/react\"\n",
+              },
+            ],
+          },
+        },
+      },
+    ]),
+  );
+  client.did_open(json!({
+    "textDocument": {
+      "uri": temp_dir.url().join("managed_node_modules/file.ts").unwrap(),
+      "languageId": "typescript",
+      "version": 1,
+      "text": "import \"npm:react\";\n",
+    }
+  }));
+  client.write_request(
+    "workspace/executeCommand",
+    json!({
+      "command": "deno.cache",
+      "arguments": [
+        [],
+        temp_dir.url().join("managed_node_modules/file.ts").unwrap(),
+      ],
+    }),
+  );
+  let res = client.write_request(
+    "textDocument/codeAction",
+    json!({
+      "textDocument": {
+        "uri": temp_dir.url().join("managed_node_modules/file.ts").unwrap(),
+      },
+      "range": {
+        "start": { "line": 0, "character": 7 },
+        "end": { "line": 0, "character": 7 },
+      },
+      "context": { "diagnostics": [], "only": ["quickfix"] },
+    }),
+  );
+  assert_eq!(
+    res,
+    json!([
+      {
+        "title": "Add @deno-types directive for \"npm:@types/react@^18.3.10\"",
+        "kind": "quickfix",
+        "edit": {
+          "changes": {
+            temp_dir.url().join("managed_node_modules/file.ts").unwrap(): [
+              {
+                "range": {
+                  "start": { "line": 0, "character": 0 },
+                  "end": { "line": 0, "character": 0 },
+                },
+                "newText": "// @deno-types=\"npm:@types/react@^18.3.10\"\n",
+              },
+            ],
+          },
+        },
+      },
+    ]),
+  );
+  client.shutdown();
+}
+
+#[test]
 fn lsp_cache_on_save() {
   let context = TestContextBuilder::new()
     .use_http_server()
@@ -8371,6 +8500,74 @@ fn lsp_completions_auto_import_and_quick_fix_with_import_map() {
         }
       ]
     })
+  );
+  client.shutdown();
+}
+
+// Regression test for https://github.com/denoland/deno/issues/25775.
+#[test]
+fn lsp_quick_fix_missing_import_exclude_bare_node_builtins() {
+  let context = TestContextBuilder::new()
+    .use_http_server()
+    .use_temp_cwd()
+    .add_npm_env_vars()
+    .build();
+  let temp_dir = context.temp_dir();
+  temp_dir.write(
+    "package.json",
+    json!({
+      "dependencies": {
+        "@types/node": "*",
+      },
+    })
+    .to_string(),
+  );
+  context.run_npm("install");
+  let mut client = context.new_lsp_command().build();
+  client.initialize_default();
+  let diagnostics = client.did_open(json!({
+    "textDocument": {
+      "uri": temp_dir.url().join("file.ts").unwrap(),
+      "languageId": "typescript",
+      "version": 1,
+      // Include node:buffer import to ensure @types/node is in the dep graph.
+      "text": "import \"node:buffer\";\nassert();\n",
+    },
+  }));
+  let diagnostic = diagnostics
+    .all()
+    .into_iter()
+    .find(|d| d.message == "Cannot find name 'assert'.")
+    .unwrap();
+  let res = client.write_request(
+    "textDocument/codeAction",
+    json!({
+      "textDocument": {
+        "uri": temp_dir.url().join("file.ts").unwrap(),
+      },
+      "range": {
+        "start": { "line": 1, "character": 0 },
+        "end": { "line": 1, "character": 6 },
+      },
+      "context": {
+        "diagnostics": [&diagnostic],
+        "only": ["quickfix"],
+      },
+    }),
+  );
+  let code_actions =
+    serde_json::from_value::<Vec<lsp::CodeAction>>(res).unwrap();
+  let titles = code_actions
+    .iter()
+    .map(|a| a.title.clone())
+    .collect::<Vec<_>>();
+  assert_eq!(
+    json!(titles),
+    json!([
+      "Add import from \"node:assert\"",
+      "Add import from \"node:console\"",
+      "Add missing function declaration 'assert'",
+    ]),
   );
   client.shutdown();
 }

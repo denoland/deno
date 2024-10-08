@@ -66,6 +66,7 @@ pub trait NodePermissions {
     &mut self,
     path: &'a Path,
   ) -> Result<Cow<'a, Path>, AnyError>;
+  fn query_read_all(&mut self) -> bool;
   fn check_sys(&mut self, kind: &str, api_name: &str) -> Result<(), AnyError>;
   #[must_use = "the resolved return value to mitigate time-of-check to time-of-use issues"]
   fn check_write_with_api_name(
@@ -103,6 +104,10 @@ impl NodePermissions for deno_permissions::PermissionsContainer {
     deno_permissions::PermissionsContainer::check_read_path(self, path, None)
   }
 
+  fn query_read_all(&mut self) -> bool {
+    deno_permissions::PermissionsContainer::query_read_all(self)
+  }
+
   #[inline(always)]
   fn check_write_with_api_name(
     &mut self,
@@ -124,11 +129,12 @@ pub type NodeRequireResolverRc =
   deno_fs::sync::MaybeArc<dyn NodeRequireResolver>;
 
 pub trait NodeRequireResolver: std::fmt::Debug + MaybeSend + MaybeSync {
-  fn ensure_read_permission(
+  #[must_use = "the resolved return value to mitigate time-of-check to time-of-use issues"]
+  fn ensure_read_permission<'a>(
     &self,
     permissions: &mut dyn NodePermissions,
-    path: &Path,
-  ) -> Result<(), AnyError>;
+    path: &'a Path,
+  ) -> Result<Cow<'a, Path>, AnyError>;
 }
 
 pub static NODE_ENV_VAR_ALLOWLIST: Lazy<HashSet<String>> = Lazy::new(|| {
@@ -167,6 +173,7 @@ deno_core::extension!(deno_node,
 
     ops::buffer::op_is_ascii,
     ops::buffer::op_is_utf8,
+    ops::buffer::op_transcode,
     ops::crypto::op_node_check_prime_async,
     ops::crypto::op_node_check_prime_bytes_async,
     ops::crypto::op_node_check_prime_bytes,

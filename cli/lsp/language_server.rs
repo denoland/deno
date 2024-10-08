@@ -96,6 +96,7 @@ use crate::args::CaData;
 use crate::args::CacheSetting;
 use crate::args::CliOptions;
 use crate::args::Flags;
+use crate::args::InternalFlags;
 use crate::args::UnstableFmtOptions;
 use crate::factory::CliFactory;
 use crate::file_fetcher::FileFetcher;
@@ -207,11 +208,11 @@ pub struct Inner {
   module_registry: ModuleRegistry,
   /// A lazily create "server" for handling test run requests.
   maybe_testing_server: Option<testing::TestServer>,
-  npm_search_api: CliNpmSearchApi,
+  pub npm_search_api: CliNpmSearchApi,
   project_version: usize,
   /// A collection of measurements which instrument that performance of the LSP.
   performance: Arc<Performance>,
-  resolver: Arc<LspResolver>,
+  pub resolver: Arc<LspResolver>,
   task_queue: LanguageServerTaskQueue,
   /// A memoized version of fixable diagnostic codes retrieved from TypeScript.
   ts_fixable_diagnostics: Vec<String>,
@@ -1612,8 +1613,8 @@ impl Inner {
         None => false,
       })
       .collect();
+    let mut code_actions = CodeActionCollection::default();
     if !fixable_diagnostics.is_empty() {
-      let mut code_actions = CodeActionCollection::default();
       let file_diagnostics = self
         .diagnostics_server
         .get_ts_diagnostics(&specifier, asset_or_doc.document_lsp_version());
@@ -1721,9 +1722,14 @@ impl Inner {
             .add_cache_all_action(&specifier, no_cache_diagnostics.to_owned());
         }
       }
-      code_actions.set_preferred_fixes();
-      all_actions.extend(code_actions.get_response());
     }
+    if let Some(document) = asset_or_doc.document() {
+      code_actions
+        .add_source_actions(document, &params.range, self)
+        .await;
+    }
+    code_actions.set_preferred_fixes();
+    all_actions.extend(code_actions.get_response());
 
     // Refactor
     let only = params
@@ -1912,6 +1918,7 @@ impl Inner {
         // as the import map is an implementation detail
         .and_then(|d| d.resolver.maybe_import_map()),
       self.resolver.as_ref(),
+      file_referrer,
     )
   }
 
@@ -3600,7 +3607,10 @@ impl Inner {
     };
     let cli_options = CliOptions::new(
       Arc::new(Flags {
-        cache_path: Some(self.cache.deno_dir().root.clone()),
+        internal: InternalFlags {
+          cache_path: Some(self.cache.deno_dir().root.clone()),
+          ..Default::default()
+        },
         ca_stores: workspace_settings.certificate_stores.clone(),
         ca_data: workspace_settings.tls_certificate.clone().map(CaData::File),
         unsafely_ignore_certificate_errors: workspace_settings

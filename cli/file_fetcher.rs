@@ -726,7 +726,7 @@ mod tests {
     maybe_temp_dir: Option<TempDir>,
   ) -> (FileFetcher, TempDir, Arc<BlobStore>) {
     let temp_dir = maybe_temp_dir.unwrap_or_default();
-    let location = temp_dir.path().join("deps").to_path_buf();
+    let location = temp_dir.path().join("remote").to_path_buf();
     let blob_store: Arc<BlobStore> = Default::default();
     let file_fetcher = FileFetcher::new(
       Arc::new(GlobalHttpCache::new(location, RealDenoCacheEnv)),
@@ -964,7 +964,7 @@ mod tests {
 
     // This creates a totally new instance, simulating another Deno process
     // invocation and indicates to "cache bust".
-    let location = temp_dir.path().join("deps").to_path_buf();
+    let location = temp_dir.path().join("remote").to_path_buf();
     let file_fetcher = FileFetcher::new(
       Arc::new(GlobalHttpCache::new(
         location,
@@ -990,7 +990,7 @@ mod tests {
   async fn test_fetch_uses_cache() {
     let _http_server_guard = test_util::http_server();
     let temp_dir = TempDir::new();
-    let location = temp_dir.path().join("deps").to_path_buf();
+    let location = temp_dir.path().join("remote").to_path_buf();
     let specifier =
       resolve_url("http://localhost:4545/subdir/mismatch_ext.ts").unwrap();
 
@@ -1156,7 +1156,7 @@ mod tests {
   async fn test_fetch_uses_cache_with_redirects() {
     let _http_server_guard = test_util::http_server();
     let temp_dir = TempDir::new();
-    let location = temp_dir.path().join("deps").to_path_buf();
+    let location = temp_dir.path().join("remote").to_path_buf();
     let specifier =
       resolve_url("http://localhost:4548/subdir/mismatch_ext.ts").unwrap();
     let redirected_specifier =
@@ -1324,7 +1324,7 @@ mod tests {
   async fn test_fetch_no_remote() {
     let _http_server_guard = test_util::http_server();
     let temp_dir = TempDir::new();
-    let location = temp_dir.path().join("deps").to_path_buf();
+    let location = temp_dir.path().join("remote").to_path_buf();
     let file_fetcher = FileFetcher::new(
       Arc::new(GlobalHttpCache::new(
         location,
@@ -1350,7 +1350,7 @@ mod tests {
   async fn test_fetch_cache_only() {
     let _http_server_guard = test_util::http_server();
     let temp_dir = TempDir::new();
-    let location = temp_dir.path().join("deps").to_path_buf();
+    let location = temp_dir.path().join("remote").to_path_buf();
     let file_fetcher_01 = FileFetcher::new(
       Arc::new(GlobalHttpCache::new(location.clone(), RealDenoCacheEnv)),
       CacheSetting::Only,

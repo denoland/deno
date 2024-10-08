@@ -21,7 +21,6 @@ fn help_output() {
     "Install script as an executable",
     "Uninstall a script previously installed with deno install",
     "Run benchmarks",
-    "Cache the dependencies",
     "Type-check the dependencies",
     "Compile the script into a self contained executable",
     "Print coverage reports",
