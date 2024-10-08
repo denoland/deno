@@ -67,7 +67,7 @@ deno_ast = { workspace = true, features = ["bundler", "cjs", "codegen", "proposa
 deno_cache_dir = { workspace = true }
 deno_config = { version = "=0.37.1", features = ["workspace", "sync"] }
 deno_core = { workspace = true, features = ["include_js_files_for_snapshotting"] }
-deno_doc = { version = "0.150.1", features = ["html", "syntect"] }
+deno_doc = { version = "0.152.0", features = ["html"] }
 deno_graph = { version = "=0.83.1" }
 deno_lint = { version = "=0.67.0", features = ["docs"] }
 deno_lockfile.workspace = true
@@ -76,7 +76,7 @@ deno_package_json.workspace = true
 deno_path_util.workspace = true
 deno_resolver.workspace = true
 deno_runtime = { workspace = true, features = ["include_js_files_for_snapshotting"] }
-deno_semver.workspace = true
+deno_semver.workspace = true¥
 deno_task_shell = "=0.18.1"
 deno_terminal.workspace = true
 eszip = "=0.79.1"

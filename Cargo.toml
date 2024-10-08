@@ -139,7 +139,7 @@ ipnet = "2.3"
 jsonc-parser = { version = "=0.23.0", features = ["serde"] }
 lazy-regex = "3"
 libc = "0.2.126"
-libz-sys = { version = "1.1", default-features = false }
+libz-sys = { version = "1.1.20", default-features = false }
 log = "0.4.20"
 lsp-types = "=0.97.0" # used by tower-lsp and "proposed" feature is unstable in patch releases
 memmem = "0.1.1"
