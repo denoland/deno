@@ -1342,7 +1342,7 @@ pub fn flags_from_vec(args: Vec<OsString>) -> clap::error::Result<Flags> {
     }
 
     match subcommand.as_str() {
-      "add" => add_parse(&mut flags, &mut m),
+      "add" => add_parse(&mut flags, &mut m)?,
       "remove" => remove_parse(&mut flags, &mut m),
       "bench" => bench_parse(&mut flags, &mut m)?,
       "bundle" => bundle_parse(&mut flags, &mut m),
@@ -4236,8 +4236,13 @@ fn allow_scripts_arg_parse(
   Ok(())
 }
 
-fn add_parse(flags: &mut Flags, matches: &mut ArgMatches) {
+fn add_parse(
+  flags: &mut Flags,
+  matches: &mut ArgMatches,
+) -> clap::error::Result<()> {
+  allow_scripts_arg_parse(flags, matches)?;
   flags.subcommand = DenoSubcommand::Add(add_parse_inner(matches, None));
+  Ok(())
 }
 
 fn add_parse_inner(
