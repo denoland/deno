@@ -2813,6 +2813,7 @@ fn run_args(command: Command, top_level: bool) -> Command {
     })
     .arg(env_file_arg())
     .arg(no_code_cache_arg())
+    .arg(allow_scripts_arg())
 }
 
 fn run_subcommand() -> Command {
@@ -4881,6 +4882,7 @@ fn run_parse(
 ) -> clap::error::Result<()> {
   runtime_args_parse(flags, matches, true, true)?;
   ext_arg_parse(flags, matches);
+  allow_scripts_arg_parse(flags, matches)?;
 
   flags.code_cache_enabled = !matches.get_flag("no-code-cache");
 
