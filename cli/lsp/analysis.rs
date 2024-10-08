@@ -1188,6 +1188,34 @@ impl CodeActionCollection {
     range: &lsp::Range,
     language_server: &language_server::Inner,
   ) {
+    fn import_start_from_specifier(
+      document: &Document,
+      import: &deno_graph::Import,
+    ) -> Option<LineAndColumnIndex> {
+      // find the top level statement that contains the specifier
+      let parsed_source = document.maybe_parsed_source()?.as_ref().ok()?;
+      let text_info = parsed_source.text_info_lazy();
+      let specifier_range = SourceRange::new(
+        text_info.loc_to_source_pos(LineAndColumnIndex {
+          line_index: import.specifier_range.start.line,
+          column_index: import.specifier_range.start.character,
+        }),
+        text_info.loc_to_source_pos(LineAndColumnIndex {
+          line_index: import.specifier_range.end.line,
+          column_index: import.specifier_range.end.character,
+        }),
+      );
+
+      match parsed_source.program_ref() {
+        deno_ast::swc::ast::Program::Module(module) => module
+          .body
+          .iter()
+          .find(|i| i.range().contains(&specifier_range))
+          .map(|i| text_info.line_and_column_index(i.range().start)),
+        deno_ast::swc::ast::Program::Script(_) => None,
+      }
+    }
+
     async fn deno_types_for_npm_action(
       document: &Document,
       range: &lsp::Range,
@@ -1216,28 +1244,7 @@ impl CodeActionCollection {
           return None;
         }
 
-        // find the top level statement that contains the specifier
-        let parsed_source = document.maybe_parsed_source()?.as_ref().ok()?;
-        let text_info = parsed_source.text_info_lazy();
-        let specifier_range = SourceRange::new(
-          text_info.loc_to_source_pos(LineAndColumnIndex {
-            line_index: i.specifier_range.start.line,
-            column_index: i.specifier_range.start.character,
-          }),
-          text_info.loc_to_source_pos(LineAndColumnIndex {
-            line_index: i.specifier_range.end.line,
-            column_index: i.specifier_range.end.character,
-          }),
-        );
-
-        match parsed_source.program_ref() {
-          deno_ast::swc::ast::Program::Module(module) => module
-            .body
-            .iter()
-            .find(|i| i.range().contains(&specifier_range))
-            .map(|i| text_info.line_and_column_index(i.range().start)),
-          deno_ast::swc::ast::Program::Script(_) => return None,
-        }
+        import_start_from_specifier(document, i)
       })?;
       let referrer = document.specifier();
       let file_referrer = document.file_referrer();
