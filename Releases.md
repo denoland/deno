@@ -8,7 +8,7 @@ https://github.com/denoland/deno_install
 
 ### 2.0.0 / 2024.10.09
 
-Read announcement blog post at: https://deno.com/blog/v2.0
+Read announcement blog post at: https://deno.com/blog/v2
 
 - BREAKING: `DENO_FUTURE=1` by default, or welcome to Deno 2.0 (#25213)
 - BREAKING: disallow `new Deno.FsFile()` (#25478)
