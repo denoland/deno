@@ -13,7 +13,7 @@ const ubuntuARMRunner = "ubicloud-standard-16-arm";
 const windowsX86Runner = "windows-2022";
 const windowsX86XlRunner = "windows-2022-xl";
 const macosX86Runner = "macos-13";
-const macosArmRunner = "ghcr.io/cirruslabs/macos-runner:sonoma";
+const macosArmRunner = "self-hosted";
 
 const Runners = {
   linuxX86: {
