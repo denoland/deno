@@ -2910,6 +2910,7 @@ List all available tasks:
           .help("Specify the directory to run the task in")
           .value_hint(ValueHint::DirPath),
       )
+      .arg(node_modules_dir_arg())
   })
 }
 
@@ -4974,6 +4975,7 @@ fn task_parse(flags: &mut Flags, matches: &mut ArgMatches) {
     .unwrap_or(ConfigFlag::Discover);
 
   unstable_args_parse(flags, matches, UnstableArgsConfig::ResolutionAndRuntime);
+  node_modules_arg_parse(flags, matches);
 
   let mut task_flags = TaskFlags {
     cwd: matches.remove_one::<String>("cwd"),

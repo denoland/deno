@@ -228,6 +228,7 @@ pub struct TsResponseImportMapper<'a> {
   documents: &'a Documents,
   maybe_import_map: Option<&'a ImportMap>,
   resolver: &'a LspResolver,
+  file_referrer: ModuleSpecifier,
 }
 
 impl<'a> TsResponseImportMapper<'a> {
@@ -235,11 +236,13 @@ impl<'a> TsResponseImportMapper<'a> {
     documents: &'a Documents,
     maybe_import_map: Option<&'a ImportMap>,
     resolver: &'a LspResolver,
+    file_referrer: &ModuleSpecifier,
   ) -> Self {
     Self {
       documents,
       maybe_import_map,
       resolver,
+      file_referrer: file_referrer.clone(),
     }
   }
 
@@ -260,8 +263,6 @@ impl<'a> TsResponseImportMapper<'a> {
       }
     }
 
-    let file_referrer = self.documents.get_file_referrer(referrer);
-
     if let Some(jsr_path) = specifier.as_str().strip_prefix(jsr_url().as_str())
     {
       let mut segments = jsr_path.split('/');
@@ -276,7 +277,7 @@ impl<'a> TsResponseImportMapper<'a> {
       let export = self.resolver.jsr_lookup_export_for_path(
         &nv,
         &path,
-        file_referrer.as_deref(),
+        Some(&self.file_referrer),
       )?;
       let sub_path = (export != ".").then_some(export);
       let mut req = None;
@@ -302,7 +303,7 @@ impl<'a> TsResponseImportMapper<'a> {
       req = req.or_else(|| {
         self
           .resolver
-          .jsr_lookup_req_for_nv(&nv, file_referrer.as_deref())
+          .jsr_lookup_req_for_nv(&nv, Some(&self.file_referrer))
       });
       let spec_str = if let Some(req) = req {
         let req_ref = PackageReqReference { req, sub_path };
@@ -332,7 +333,7 @@ impl<'a> TsResponseImportMapper<'a> {
 
     if let Some(npm_resolver) = self
       .resolver
-      .maybe_managed_npm_resolver(file_referrer.as_deref())
+      .maybe_managed_npm_resolver(Some(&self.file_referrer))
     {
       if npm_resolver.in_npm_package(specifier) {
         if let Ok(Some(pkg_id)) =
@@ -468,6 +469,26 @@ impl<'a> TsResponseImportMapper<'a> {
     }
     None
   }
+
+  pub fn is_valid_import(
+    &self,
+    specifier_text: &str,
+    referrer: &ModuleSpecifier,
+  ) -> bool {
+    self
+      .resolver
+      .as_graph_resolver(Some(&self.file_referrer))
+      .resolve(
+        specifier_text,
+        &deno_graph::Range {
+          specifier: referrer.clone(),
+          start: deno_graph::Position::zeroed(),
+          end: deno_graph::Position::zeroed(),
+        },
+        deno_graph::source::ResolutionMode::Types,
+      )
+      .is_ok()
+  }
 }
 
 fn try_reverse_map_package_json_exports(
@@ -580,7 +601,7 @@ fn fix_ts_import_action(
   referrer: &ModuleSpecifier,
   action: &tsc::CodeFixAction,
   import_mapper: &TsResponseImportMapper,
-) -> Result<tsc::CodeFixAction, AnyError> {
+) -> Result<Option<tsc::CodeFixAction>, AnyError> {
   if matches!(
     action.fix_name.as_str(),
     "import" | "fixMissingFunctionDeclaration"
@@ -623,19 +644,21 @@ fn fix_ts_import_action(
           })
           .collect();
 
-        return Ok(tsc::CodeFixAction {
+        return Ok(Some(tsc::CodeFixAction {
           description,
           changes,
           commands: None,
           fix_name: action.fix_name.clone(),
           fix_id: None,
           fix_all_description: None,
-        });
+        }));
+      } else if !import_mapper.is_valid_import(specifier, referrer) {
+        return Ok(None);
       }
     }
   }
 
-  Ok(action.clone())
+  Ok(Some(action.clone()))
 }
 
 /// Determines if two TypeScript diagnostic codes are effectively equivalent.
@@ -976,11 +999,14 @@ impl CodeActionCollection {
         "The action returned from TypeScript is unsupported.",
       ));
     }
-    let action = fix_ts_import_action(
+    let Some(action) = fix_ts_import_action(
       specifier,
       action,
       &language_server.get_ts_response_import_mapper(specifier),
-    )?;
+    )?
+    else {
+      return Ok(());
+    };
     let edit = ts_changes_to_edit(&action.changes, language_server)?;
     let code_action = lsp::CodeAction {
       title: action.description.clone(),
