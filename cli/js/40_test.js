@@ -27,6 +27,7 @@ const {
 } = primordials;
 
 import { setExitHandler } from "ext:runtime/30_os.js";
+import console from "node:console";
 
 // Capture `Deno` global so that users deleting or mangling it, won't
 // have impact on our sanitizers.
@@ -519,7 +520,7 @@ function wrapTest(desc) {
 globalThis.Deno.test = test;
 
 /**
- * @typedef {{ name: string, kind: "group" | "test", ignore: boolean, children: BddItem[], fn: null | (() => any), parent: BddItem | null }} BddItem
+ * @typedef {{ name: string, kind: "group" | "test", ignore: boolean, children: BddItem[], fn: null | (() => any), parent: BddItem | null, beforeAll: null | (() => void | Promise<void>), afterAll: null | (() => void | Promise<void>), beforeEach: null | (() => void | Promise<void>), afterEach: null | (() => void | Promise<void>) }} BddItem
  */
 
 /** @type {BddItem} */
@@ -531,6 +532,10 @@ const BDD_ROOT = {
   fn: null,
   children: [],
   parent: null,
+  beforeAll: null,
+  beforeEach: null,
+  afterAll: null,
+  afterEach: null,
 };
 
 /** @type {BddItem[]} */
@@ -547,7 +552,6 @@ const onlys = [];
  */
 function itInner(name, fn, ignore, only) {
   const parent = bddStack.at(-1);
-  console.log("it inner", parent);
   /** @type {BddItem} */
   const item = {
     kind: "test",
@@ -557,6 +561,10 @@ function itInner(name, fn, ignore, only) {
     only,
     children: [],
     parent,
+    beforeAll: null,
+    beforeEach: null,
+    afterAll: null,
+    afterEach: null,
   };
   if (only) onlys.push(item);
   parent.children.push(item);
@@ -567,7 +575,6 @@ function itInner(name, fn, ignore, only) {
  * @param {() => any} fn
  */
 function it(name, fn) {
-  console.log("calling it");
   itInner(name, fn, false, false);
 }
 /**
@@ -603,6 +610,10 @@ function describeInner(name, fn, ignore, only) {
     only,
     children: [],
     parent,
+    beforeAll: null,
+    beforeEach: null,
+    afterAll: null,
+    afterEach: null,
   };
   if (only) onlys.push(item);
   parent.children.push(item);
@@ -641,21 +652,25 @@ describe.skip = describe.ignore;
  * @param {() => any} fn
  */
 function beforeAll(fn) {
+  bddStack.at(-1).beforeAll = fn;
 }
 /**
  * @param {() => any} fn
  */
 function afterAll(fn) {
+  bddStack.at(-1).afterAll = fn;
 }
 /**
  * @param {() => any} fn
  */
 function beforeEach(fn) {
+  bddStack.at(-1).beforeEach = fn;
 }
 /**
  * @param {() => any} fn
  */
 function afterEach(fn) {
+  bddStack.at(-1).afterEach = fn;
 }
 
 globalThis.before = beforeAll;
@@ -699,19 +714,25 @@ function getLabel(item) {
  * @param {BddItem} group
  */
 async function runGroup(group) {
-  console.log("run group", group);
+  await group.beforeAll?.();
+
   for (let i = 0; i < group.children.length; i++) {
+    await group.beforeEach?.();
+
     const child = group.children[i];
     if (child.kind === "test") {
       const name = getLabel(child);
-      console.log("running", name);
-      try {
-        await child.fn();
-      } catch (_) {}
+      console.log("running:", name);
+
+      await child.fn();
     } else {
       await runGroup(child);
     }
+
+    await group.afterEach?.();
   }
+
+  await group.afterAll?.();
 }
 
 // Check if we're running the `deno test` command
@@ -719,7 +740,6 @@ if (typeof op_register_test === "function") {
   // Wait a tick and check if there are any bdd tests to run
   setTimeout(async () => {
     if (bddStack.length > 0) {
-      console.log("RUN TESTS");
       await runBddTests(BDD_ROOT);
     }
   }, 0);
