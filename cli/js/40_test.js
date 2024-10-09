@@ -517,3 +517,210 @@ function wrapTest(desc) {
 }
 
 globalThis.Deno.test = test;
+
+/**
+ * @typedef {{ name: string, kind: "group" | "test", ignore: boolean, children: BddItem[], fn: null | (() => any), parent: BddItem | null }} BddItem
+ */
+
+/** @type {BddItem} */
+const BDD_ROOT = {
+  name: "__<root>__",
+  kind: "group",
+  ignore: false,
+  only: false,
+  fn: null,
+  children: [],
+  parent: null,
+};
+
+/** @type {BddItem[]} */
+const bddStack = [BDD_ROOT];
+
+/** @type {BddItem[]} */
+const onlys = [];
+
+/**
+ * @param {string} name
+ * @param {fn: () => any} fn
+ * @param {boolean} ignore
+ * @param {boolean} only
+ */
+function itInner(name, fn, ignore, only) {
+  const parent = bddStack.at(-1);
+  console.log("it inner", parent);
+  /** @type {BddItem} */
+  const item = {
+    kind: "test",
+    name,
+    fn,
+    ignore,
+    only,
+    children: [],
+    parent,
+  };
+  if (only) onlys.push(item);
+  parent.children.push(item);
+}
+
+/**
+ * @param {string} name
+ * @param {() => any} fn
+ */
+function it(name, fn) {
+  console.log("calling it");
+  itInner(name, fn, false, false);
+}
+/**
+ * @param {string} name
+ * @param {() => any} fn
+ */
+it.only = (name, fn) => {
+  itInner(name, fn, false, true);
+};
+/**
+ * @param {string} name
+ * @param {() => any} fn
+ */
+it.ignore = (name, fn) => {
+  itInner(name, fn, true, false);
+};
+it.skip = it.ignore;
+
+/**
+ * @param {string} name
+ * @param {() => void} fn
+ * @param {boolean} ignore
+ * @param {boolean} only
+ */
+function describeInner(name, fn, ignore, only) {
+  const parent = bddStack.at(-1);
+  /** @type {BddItem} */
+  const item = {
+    name,
+    kind: "group",
+    fn: null,
+    ignore,
+    only,
+    children: [],
+    parent,
+  };
+  if (only) onlys.push(item);
+  parent.children.push(item);
+  bddStack.push(item);
+  try {
+    fn();
+  } finally {
+    bddStack.pop();
+  }
+}
+
+/**
+ * @param {string} name
+ * @param {() => void} fn
+ */
+function describe(name, fn) {
+  describeInner(name, fn, false, false);
+}
+/**
+ * @param {string} name
+ * @param {() => void} fn
+ */
+describe.only = (name, fn) => {
+  describeInner(name, fn, false, true);
+};
+/**
+ * @param {string} name
+ * @param {() => void} fn
+ */
+describe.ignore = (name, fn) => {
+  describeInner(name, fn, true, false);
+};
+describe.skip = describe.ignore;
+
+/**
+ * @param {() => any} fn
+ */
+function beforeAll(fn) {
+}
+/**
+ * @param {() => any} fn
+ */
+function afterAll(fn) {
+}
+/**
+ * @param {() => any} fn
+ */
+function beforeEach(fn) {
+}
+/**
+ * @param {() => any} fn
+ */
+function afterEach(fn) {
+}
+
+globalThis.before = beforeAll;
+globalThis.beforeAll = beforeAll;
+globalThis.after = afterAll;
+globalThis.afterAll = afterAll;
+globalThis.beforeEach = beforeEach;
+globalThis.afterEach = afterEach;
+globalThis.it = it;
+globalThis.describe = describe;
+
+/**
+ * @param {BddItem} root
+ */
+async function runBddTests(root) {
+  if (onlys.length > 0) {
+    // TODO
+    return;
+  }
+
+  await runGroup(root);
+  console.log({ onlys });
+}
+
+/**
+ * @param {BddItem} item
+ */
+function getLabel(item) {
+  let name = item.name;
+
+  let tmp = item.parent;
+  while (tmp !== null && tmp !== BDD_ROOT) {
+    name = `${tmp.name} > ${name}`;
+    tmp = tmp.parent;
+  }
+
+  return name;
+}
+
+/**
+ * @param {BddItem} group
+ */
+async function runGroup(group) {
+  console.log("run group", group);
+  for (let i = 0; i < group.children.length; i++) {
+    const child = group.children[i];
+    if (child.kind === "test") {
+      const name = getLabel(child);
+      console.log("running", name);
+      try {
+        await child.fn();
+      } catch (_) {}
+    } else {
+      await runGroup(child);
+    }
+  }
+}
+
+// Check if we're running the `deno test` command
+if (typeof op_register_test === "function") {
+  // Wait a tick and check if there are any bdd tests to run
+  setTimeout(async () => {
+    if (bddStack.length > 0) {
+      console.log("RUN TESTS");
+      await runBddTests(BDD_ROOT);
+    }
+  }, 0);
+}
