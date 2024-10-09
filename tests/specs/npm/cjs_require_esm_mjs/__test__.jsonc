@@ -1,0 +1,4 @@
+{
+  "args": "run --allow-read --quiet cjs_require_esm_mjs/main.ts",
+  "output": "cjs_require_esm_mjs/main.out"
+}

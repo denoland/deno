@@ -1,0 +1,5 @@
+{
+  "args": "info --quiet --json peer_deps_with_copied_folders/main.ts",
+  "output": "peer_deps_with_copied_folders/main_info_json.out",
+  "exitCode": 0
+}

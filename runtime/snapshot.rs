@@ -2,7 +2,6 @@
 
 use crate::ops;
 use crate::ops::bootstrap::SnapshotOptions;
-use crate::permissions::RuntimePermissionDescriptorParser;
 use crate::shared::maybe_transpile_source;
 use crate::shared::runtime;
 use deno_cache::SqliteBackedCache;
@@ -96,6 +95,9 @@ impl deno_node::NodePermissions for Permissions {
     _p: &str,
     _api_name: Option<&str>,
   ) -> Result<PathBuf, deno_core::error::AnyError> {
+    unreachable!("snapshotting!")
+  }
+  fn query_read_all(&mut self) -> bool {
     unreachable!("snapshotting!")
   }
   fn check_write_with_api_name(
@@ -299,10 +301,8 @@ pub fn create_runtime_snapshot(
     ),
     ops::fs_events::deno_fs_events::init_ops(),
     ops::os::deno_os::init_ops(Default::default()),
-    ops::permissions::deno_permissions::init_ops(Arc::new(
-      RuntimePermissionDescriptorParser::new(fs),
-    )),
-    ops::process::deno_process::init_ops(),
+    ops::permissions::deno_permissions::init_ops(),
+    ops::process::deno_process::init_ops(None),
     ops::signal::deno_signal::init_ops(),
     ops::tty::deno_tty::init_ops(),
     ops::http::deno_http_runtime::init_ops(),

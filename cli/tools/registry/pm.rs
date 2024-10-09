@@ -5,6 +5,7 @@ mod cache_deps;
 pub use cache_deps::cache_top_level_deps;
 use deno_semver::jsr::JsrPackageReqReference;
 use deno_semver::npm::NpmPackageReqReference;
+use deno_semver::VersionReq;
 
 use std::borrow::Cow;
 use std::path::PathBuf;
@@ -557,12 +558,7 @@ pub async fn add(
     result.context("Failed to update configuration file")?;
   }
 
-  // clear the previously cached package.json from memory before reloading it
-  node_resolver::PackageJsonThreadLocalCache::clear();
-  // make a new CliFactory to pick up the updated config file
-  let cli_factory = CliFactory::from_flags(flags);
-  // cache deps
-  cache_deps::cache_top_level_deps(&cli_factory, Some(jsr_resolver)).await?;
+  npm_install_after_modification(flags, Some(jsr_resolver)).await?;
 
   Ok(())
 }
@@ -717,7 +713,18 @@ impl AddPackageReq {
       Prefix::Npm => {
         let req_ref =
           NpmPackageReqReference::from_str(&format!("npm:{}", entry_text))?;
-        let package_req = req_ref.into_inner().req;
+        let mut package_req = req_ref.into_inner().req;
+        // deno_semver defaults to a version req of `*` if none is specified
+        // we want to default to `latest` instead
+        if package_req.version_req == *deno_semver::WILDCARD_VERSION_REQ
+          && package_req.version_req.version_text() == "*"
+          && !entry_text.contains("@*")
+        {
+          package_req.version_req = VersionReq::from_raw_text_and_inner(
+            "latest".into(),
+            deno_semver::RangeSetOrTag::Tag("latest".into()),
+          );
+        }
         Ok(Ok(AddPackageReq {
           alias: maybe_alias.unwrap_or_else(|| package_req.name.to_string()),
           value: AddPackageReqValue::Npm(package_req),
@@ -774,11 +781,29 @@ pub async fn remove(
       config.commit().await?;
     }
 
-    // Update deno.lock
-    node_resolver::PackageJsonThreadLocalCache::clear();
-    let cli_factory = CliFactory::from_flags(flags);
-    cache_deps::cache_top_level_deps(&cli_factory, None).await?;
+    npm_install_after_modification(flags, None).await?;
   }
+
+  Ok(())
+}
+
+async fn npm_install_after_modification(
+  flags: Arc<Flags>,
+  // explicitly provided to prevent redownloading
+  jsr_resolver: Option<Arc<crate::jsr::JsrFetchResolver>>,
+) -> Result<(), AnyError> {
+  // clear the previously cached package.json from memory before reloading it
+  node_resolver::PackageJsonThreadLocalCache::clear();
+
+  // make a new CliFactory to pick up the updated config file
+  let cli_factory = CliFactory::from_flags(flags);
+  // surface any errors in the package.json
+  let npm_resolver = cli_factory.npm_resolver().await?;
+  if let Some(npm_resolver) = npm_resolver.as_managed() {
+    npm_resolver.ensure_no_pkg_json_dep_errors()?;
+  }
+  // npm install
+  cache_deps::cache_top_level_deps(&cli_factory, jsr_resolver).await?;
 
   Ok(())
 }
@@ -888,7 +913,9 @@ mod test {
       AddPackageReq::parse("@alias/pkg@npm:foo").unwrap().unwrap(),
       AddPackageReq {
         alias: "@alias/pkg".to_string(),
-        value: AddPackageReqValue::Npm(PackageReq::from_str("foo").unwrap())
+        value: AddPackageReqValue::Npm(
+          PackageReq::from_str("foo@latest").unwrap()
+        )
       }
     );
     assert_eq!(

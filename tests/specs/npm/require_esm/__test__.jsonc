@@ -1,0 +1,4 @@
+{
+  "args": "run --allow-read --quiet require_esm/main.ts",
+  "output": "require_esm/main.out"
+}

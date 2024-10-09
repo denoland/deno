@@ -1,9 +1,0 @@
-{
-  "args": "test -A --no-check test_no_sanitizers/test.js",
-  "output": "test_no_sanitizers/test.out",
-  "envs": {
-    "NO_COLOR": "1",
-    "NPM_CONFIG_REGISTRY": "http://localhost:4260/"
-  },
-  "exitCode": 0
-}

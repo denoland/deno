@@ -2045,3 +2045,43 @@ Deno.test(async function p521Generate() {
   assert(key.privateKey instanceof CryptoKey);
   assert(key.publicKey instanceof CryptoKey);
 });
+
+Deno.test(async function x25519SharedSecret() {
+  const alicesKeyPair = await crypto.subtle.generateKey(
+    {
+      name: "X25519",
+    },
+    false,
+    ["deriveBits"],
+  ) as CryptoKeyPair;
+
+  const bobsKeyPair = await crypto.subtle.generateKey(
+    {
+      name: "X25519",
+    },
+    false,
+    ["deriveBits"],
+  ) as CryptoKeyPair;
+
+  const sharedSecret1 = await crypto.subtle.deriveBits(
+    {
+      name: "X25519",
+      public: bobsKeyPair.publicKey,
+    },
+    alicesKeyPair.privateKey,
+    128,
+  );
+
+  const sharedSecret2 = await crypto.subtle.deriveBits(
+    {
+      name: "X25519",
+      public: alicesKeyPair.publicKey,
+    },
+    bobsKeyPair.privateKey,
+    128,
+  );
+
+  assertEquals(sharedSecret1.byteLength, sharedSecret2.byteLength);
+  assertEquals(sharedSecret1.byteLength, 16);
+  assertEquals(new Uint8Array(sharedSecret1), new Uint8Array(sharedSecret2));
+});

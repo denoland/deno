@@ -143,6 +143,9 @@ function createStorage(persistent) {
       if (ReflectHas(target, key)) {
         return undefined;
       }
+      if (typeof key === "symbol") {
+        return undefined;
+      }
       const value = target.getItem(key);
       if (value === null) {
         return undefined;

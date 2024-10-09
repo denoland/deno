@@ -1632,7 +1632,6 @@ NOTE: This file should not be manually edited. Please edit `tests/node_compat/co
 - [parallel/test-icu-minimum-version.js](https://github.com/nodejs/node/tree/v18.12.1/test/parallel/test-icu-minimum-version.js)
 - [parallel/test-icu-punycode.js](https://github.com/nodejs/node/tree/v18.12.1/test/parallel/test-icu-punycode.js)
 - [parallel/test-icu-stringwidth.js](https://github.com/nodejs/node/tree/v18.12.1/test/parallel/test-icu-stringwidth.js)
-- [parallel/test-icu-transcode.js](https://github.com/nodejs/node/tree/v18.12.1/test/parallel/test-icu-transcode.js)
 - [parallel/test-inspect-address-in-use.js](https://github.com/nodejs/node/tree/v18.12.1/test/parallel/test-inspect-address-in-use.js)
 - [parallel/test-inspect-async-hook-setup-at-inspect.js](https://github.com/nodejs/node/tree/v18.12.1/test/parallel/test-inspect-async-hook-setup-at-inspect.js)
 - [parallel/test-inspect-publish-uid.js](https://github.com/nodejs/node/tree/v18.12.1/test/parallel/test-inspect-publish-uid.js)

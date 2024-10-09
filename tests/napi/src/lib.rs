@@ -31,6 +31,7 @@ pub mod strings;
 pub mod symbol;
 pub mod tsfn;
 pub mod typedarray;
+pub mod uv;
 
 #[macro_export]
 macro_rules! cstr {
@@ -138,6 +139,7 @@ unsafe extern "C" fn napi_register_module_v1(
   #[cfg(windows)]
   {
     napi_sys::setup();
+    libuv_sys_lite::setup();
   }
 
   // We create a fresh exports object and leave the passed
@@ -169,6 +171,7 @@ unsafe extern "C" fn napi_register_module_v1(
   symbol::init(env, exports);
   make_callback::init(env, exports);
   object::init(env, exports);
+  uv::init(env, exports);
 
   init_cleanup_hook(env, exports);
 

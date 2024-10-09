@@ -121,13 +121,17 @@ pub trait FileSystem: std::fmt::Debug + MaybeSend + MaybeSync {
     access_check: Option<AccessCheckCb<'a>>,
   ) -> FsResult<Rc<dyn File>>;
 
-  fn mkdir_sync(&self, path: &Path, recursive: bool, mode: u32)
-    -> FsResult<()>;
+  fn mkdir_sync(
+    &self,
+    path: &Path,
+    recursive: bool,
+    mode: Option<u32>,
+  ) -> FsResult<()>;
   async fn mkdir_async(
     &self,
     path: PathBuf,
     recursive: bool,
-    mode: u32,
+    mode: Option<u32>,
   ) -> FsResult<()>;
 
   fn chmod_sync(&self, path: &Path, mode: u32) -> FsResult<()>;
