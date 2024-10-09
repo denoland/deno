@@ -1918,6 +1918,7 @@ impl Inner {
         // as the import map is an implementation detail
         .and_then(|d| d.resolver.maybe_import_map()),
       self.resolver.as_ref(),
+      file_referrer,
     )
   }
 
