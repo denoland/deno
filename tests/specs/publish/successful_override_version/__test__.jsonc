@@ -1,0 +1,4 @@
+{
+  "args": "publish --override-version 1.1.0 --token 'sadfasdf'",
+  "output": "successful_override_version.out"
+}
