@@ -121,13 +121,6 @@ pub struct CliMainWorkerOptions {
   pub serve_port: Option<u16>,
   pub serve_host: Option<String>,
 }
-
-impl CliMainWorkerOptions {
-  pub fn set_hmr(&mut self, value: bool) {
-    self.hmr = value;
-  }
-}
-
 pub struct SharedWorkerState {
   blob_store: Arc<BlobStore>,
   broadcast_channel: InMemoryBroadcastChannel,
@@ -181,7 +174,6 @@ impl CliMainWorker {
   }
 
   pub async fn run(&mut self) -> Result<i32, AnyError> {
-    // dbg!(&self.shared.options.hmr);
     let mut maybe_coverage_collector =
       self.maybe_setup_coverage_collector().await?;
     let mut maybe_hmr_runner = self.maybe_setup_hmr_runner().await?;
@@ -203,7 +195,6 @@ impl CliMainWorker {
 
     loop {
       if let Some(hmr_runner) = maybe_hmr_runner.as_mut() {
-        // dbg!("running as hmr");
         let watcher_communicator =
           self.shared.maybe_file_watcher_communicator.clone().unwrap();
 
@@ -213,7 +204,6 @@ impl CliMainWorker {
         let result;
         select! {
           hmr_result = hmr_future => {
-            // dbg!("------------------ getting hmr result ------------------");
             result = hmr_result;
           },
           event_loop_result = event_loop_future => {
@@ -335,7 +325,6 @@ impl CliMainWorker {
     impl Drop for FileWatcherModuleExecutor {
       fn drop(&mut self) {
         if self.pending_unload {
-          // dbg!("Unloading Unloading Unloading Unloading");
           let _ = self.inner.worker.dispatch_unload_event();
         }
       }
@@ -378,7 +367,6 @@ impl CliMainWorker {
     };
 
     let session = self.worker.create_inspector_session();
-    // dbg!("Inspector session created");
 
     let mut hmr_runner = setup_hmr_runner(session);
 
@@ -390,7 +378,6 @@ impl CliMainWorker {
         PollEventLoopOptions::default(),
       )
       .await?;
-    // dbg!("Succesfully returning Hmr_runner");
     Ok(Some(hmr_runner))
   }
 
