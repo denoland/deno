@@ -142,6 +142,28 @@ interface PerformanceMeasureOptions {
   end?: string | number;
 }
 
+interface BddTestFunction {
+  (name: string, fn: () => void | Promise<void>): void;
+  only(name: string, fn: () => void | Promise<void>): void;
+  ignore(name: string, fn: () => void | Promise<void>): void;
+  skip(name: string, fn: () => void | Promise<void>): void;
+}
+declare const it: BddTestFunction;
+
+interface BddTestGroup {
+  (name: string, fn: () => void | Promise<void>): void;
+  only(name: string, fn: () => void | Promise<void>): void;
+  ignore(name: string, fn: () => void | Promise<void>): void;
+  skip(name: string, fn: () => void | Promise<void>): void;
+}
+declare const describe: BddTestGroup;
+
+type BddLifecycleFn = (fn: () => unknown) => void;
+declare const beforeAll: BddLifecycleFn;
+declare const beforeEach: BddLifecycleFn;
+declare const afterAll: BddLifecycleFn;
+declare const afterEach: BddLifecycleFn;
+
 /** The global namespace where Deno specific, non-standard APIs are located. */
 declare namespace Deno {
   /** A set of error constructors that are raised by Deno APIs.

@@ -222,23 +222,87 @@ pub struct TestLocation {
 }
 
 #[derive(Default)]
-pub(crate) struct TestContainer(
-  TestDescriptions,
-  Vec<v8::Global<v8::Function>>,
-);
+pub(crate) struct TestContainer {
+  has_tests: bool,
+  pub has_only: bool,
+  pub groups: Vec<TestGroup>,
+  pub stack: Vec<usize>,
+  pub tests: (TestDescriptions, Vec<v8::Global<v8::Function>>),
+}
 
 impl TestContainer {
+  pub fn new() -> Self {
+    let root = TestGroup {
+      id: 0,
+      parent_id: 0,
+      children: vec![],
+      ignore: false,
+      name: "<root>".to_string(),
+      only: false,
+      after_all: None,
+      after_each: None,
+      before_all: None,
+      before_each: None,
+    };
+
+    let stack = vec![root.id];
+
+    Self {
+      has_tests: false,
+      groups: vec![root],
+      has_only: false,
+      stack,
+      tests: (
+        TestDescriptions {
+          ..Default::default()
+        },
+        vec![],
+      ),
+    }
+  }
+
   pub fn register(
     &mut self,
-    description: TestDescription,
+    mut description: TestDescription,
     function: v8::Global<v8::Function>,
   ) {
-    self.0.tests.insert(description.id, description);
-    self.1.push(function)
+    self.has_tests = true;
+
+    if description.only {
+      self.has_only = true
+    }
+
+    if let Some(last_id) = self.stack.last() {
+      description.parent_id = *last_id;
+
+      let last: &mut TestGroup =
+        self.groups.get_mut::<usize>(*last_id).unwrap();
+      last.children.push(TestGroupChild::Test(description.id));
+    }
+
+    self.tests.0.tests.insert(description.id, description);
+    self.tests.1.push(function);
+  }
+
+  pub fn register_group(&mut self, mut group: TestGroup) {
+    if let Some(last_id) = self.stack.last() {
+      group.parent_id = *last_id;
+
+      let last: &mut TestGroup =
+        self.groups.get_mut::<usize>(*last_id).unwrap();
+      last.children.push(TestGroupChild::Group(group.id));
+    }
+
+    self.stack.push(group.id);
+    self.groups.push(group);
+  }
+
+  pub fn group_pop(&mut self) {
+    self.stack.pop();
   }
 
   pub fn is_empty(&self) -> bool {
-    self.1.is_empty()
+    self.has_tests
   }
 }
 
@@ -270,6 +334,7 @@ impl<'a> IntoIterator for &'a TestDescriptions {
 #[serde(rename_all = "camelCase")]
 pub struct TestDescription {
   pub id: usize,
+  pub parent_id: usize,
   pub name: String,
   pub ignore: bool,
   pub only: bool,
@@ -298,6 +363,32 @@ impl From<&TestDescription> for TestFailureDescription {
       location: value.location.clone(),
     }
   }
+}
+
+#[derive(Debug, Clone)]
+pub struct TestGroupLifecycleFn {
+  pub function: v8::Global<v8::Function>,
+  pub location: TestLocation,
+}
+
+#[derive(Debug, Default, Clone)]
+pub struct TestGroup {
+  pub id: usize,
+  pub parent_id: usize,
+  pub name: String,
+  pub ignore: bool,
+  pub only: bool,
+  pub children: Vec<TestGroupChild>,
+  pub before_all: Option<TestGroupLifecycleFn>,
+  pub before_each: Option<TestGroupLifecycleFn>,
+  pub after_all: Option<TestGroupLifecycleFn>,
+  pub after_each: Option<TestGroupLifecycleFn>,
+}
+
+#[derive(Debug, Clone)]
+pub enum TestGroupChild {
+  Group(usize),
+  Test(usize),
 }
 
 #[derive(Debug, Default, Clone, PartialEq)]
@@ -788,6 +879,12 @@ pub fn send_test_event(
   )
 }
 
+enum TestRunItem {
+  Lifecycle(usize),
+  Group(usize),
+  Test(usize),
+}
+
 pub async fn run_tests_for_worker(
   worker: &mut MainWorker,
   specifier: &ModuleSpecifier,
@@ -796,10 +893,22 @@ pub async fn run_tests_for_worker(
 ) -> Result<(), AnyError> {
   let state_rc = worker.js_runtime.op_state();
   // Take whatever tests have been registered
-  let TestContainer(tests, test_functions) =
+  let tc =
     std::mem::take(&mut *state_rc.borrow_mut().borrow_mut::<TestContainer>());
 
-  let tests: Arc<TestDescriptions> = tests.into();
+  eprintln!("{:#?}", tc.stack);
+
+  let to_run: Vec<TestRunItem> = vec![];
+
+  if let Some(seed) = options.shuffle {
+    // tests_to_run.shuffle(&mut SmallRng::seed_from_u64(seed));
+  }
+  // FILTER
+
+  eprintln!("sorted, {:#?}", tc.stack);
+
+  let test_functions = tc.tests.1;
+  let tests: Arc<TestDescriptions> = tc.tests.0.into();
   send_test_event(&state_rc, TestEvent::Register(tests.clone()))?;
   let res = run_tests_for_worker_inner(
     worker,

@@ -7,6 +7,9 @@ import { escapeName, withPermissions } from "ext:cli/40_test_common.js";
 const {
   op_register_test_step,
   op_register_test,
+  op_register_test_group,
+  op_test_group_pop,
+  op_register_test_group_lifecycle,
   op_test_event_step_result_failed,
   op_test_event_step_result_ignored,
   op_test_event_step_result_ok,
@@ -27,7 +30,6 @@ const {
 } = primordials;
 
 import { setExitHandler } from "ext:runtime/30_os.js";
-import console from "node:console";
 
 // Capture `Deno` global so that users deleting or mangling it, won't
 // have impact on our sanitizers.
@@ -499,6 +501,12 @@ function createTestContext(desc) {
   };
 }
 
+/** @type { only: boolean[], ignore: boolean[] } */
+const bddStack = {
+  only: [],
+  ignore: [],
+};
+
 /**
  * Wrap a user test function in one which returns a structured result.
  * @template T {Function}
@@ -520,54 +528,47 @@ function wrapTest(desc) {
 globalThis.Deno.test = test;
 
 /**
- * @typedef {{ name: string, kind: "group" | "test", ignore: boolean, children: BddItem[], fn: null | (() => any), parent: BddItem | null, beforeAll: null | (() => void | Promise<void>), afterAll: null | (() => void | Promise<void>), beforeEach: null | (() => void | Promise<void>), afterEach: null | (() => void | Promise<void>) }} BddItem
- */
-
-/** @type {BddItem} */
-const BDD_ROOT = {
-  name: "__<root>__",
-  kind: "group",
-  ignore: false,
-  only: false,
-  fn: null,
-  children: [],
-  parent: null,
-  beforeAll: null,
-  beforeEach: null,
-  afterAll: null,
-  afterEach: null,
-};
-
-/** @type {BddItem[]} */
-const bddStack = [BDD_ROOT];
-
-/** @type {BddItem[]} */
-const onlys = [];
-
-/**
  * @param {string} name
  * @param {fn: () => any} fn
  * @param {boolean} ignore
  * @param {boolean} only
  */
 function itInner(name, fn, ignore, only) {
-  const parent = bddStack.at(-1);
-  /** @type {BddItem} */
-  const item = {
-    kind: "test",
-    name,
-    fn,
+  // No-op if we're not running in `deno test` subcommand.
+  if (typeof op_register_test !== "function") {
+    return;
+  }
+
+  if (cachedOrigin == undefined) {
+    cachedOrigin = op_test_get_origin();
+  }
+
+  const location = core.currentUserCallSite();
+  const sanitizeOps = false;
+  const sanitizeResources = false;
+  const testFn = async () => {
+    if (ignore) return "ignored";
+
+    try {
+      await fn();
+      return "ok";
+    } catch (error) {
+      return { failed: { jsError: core.destructureError(error) } };
+    }
+  };
+
+  op_register_test(
+    testFn,
+    escapeName(name),
     ignore,
     only,
-    children: [],
-    parent,
-    beforeAll: null,
-    beforeEach: null,
-    afterAll: null,
-    afterEach: null,
-  };
-  if (only) onlys.push(item);
-  parent.children.push(item);
+    sanitizeOps,
+    sanitizeResources,
+    location.fileName,
+    location.lineNumber,
+    location.columnNumber,
+    registerTestIdRetBufU8,
+  );
 }
 
 /**
@@ -600,28 +601,16 @@ it.skip = it.ignore;
  * @param {boolean} only
  */
 function describeInner(name, fn, ignore, only) {
-  const parent = bddStack.at(-1);
-  /** @type {BddItem} */
-  const item = {
-    name,
-    kind: "group",
-    fn: null,
-    ignore,
-    only,
-    children: [],
-    parent,
-    beforeAll: null,
-    beforeEach: null,
-    afterAll: null,
-    afterEach: null,
-  };
-  if (only) onlys.push(item);
-  parent.children.push(item);
-  bddStack.push(item);
+  // No-op if we're not running in `deno test` subcommand.
+  if (typeof op_register_test !== "function") {
+    return;
+  }
+
+  op_register_test_group(name, ignore, only);
   try {
     fn();
   } finally {
-    bddStack.pop();
+    op_test_group_pop();
   }
 }
 
@@ -648,29 +637,65 @@ describe.ignore = (name, fn) => {
 };
 describe.skip = describe.ignore;
 
+// Keep in sync on the rust side
+const BEFORE_ALL = 1;
+const BEFORE_EACH = 2;
+const AFTER_ALL = 3;
+const AFTER_EACH = 4;
+
 /**
  * @param {() => any} fn
  */
 function beforeAll(fn) {
-  bddStack.at(-1).beforeAll = fn;
+  const location = core.currentUserCallSite();
+  op_register_test_group_lifecycle(
+    BEFORE_ALL,
+    fn,
+    location.fileName,
+    location.lineNumber,
+    location.columnNumber,
+  );
 }
+
 /**
  * @param {() => any} fn
  */
 function afterAll(fn) {
-  bddStack.at(-1).afterAll = fn;
+  const location = core.currentUserCallSite();
+  op_register_test_group_lifecycle(
+    AFTER_ALL,
+    fn,
+    location.fileName,
+    location.lineNumber,
+    location.columnNumber,
+  );
 }
+
 /**
  * @param {() => any} fn
  */
 function beforeEach(fn) {
-  bddStack.at(-1).beforeEach = fn;
+  const location = core.currentUserCallSite();
+  op_register_test_group_lifecycle(
+    BEFORE_EACH,
+    fn,
+    location.fileName,
+    location.lineNumber,
+    location.columnNumber,
+  );
 }
 /**
  * @param {() => any} fn
  */
 function afterEach(fn) {
-  bddStack.at(-1).afterEach = fn;
+  const location = core.currentUserCallSite();
+  op_register_test_group_lifecycle(
+    AFTER_EACH,
+    fn,
+    location.fileName,
+    location.lineNumber,
+    location.columnNumber,
+  );
 }
 
 globalThis.before = beforeAll;
@@ -681,66 +706,3 @@ globalThis.beforeEach = beforeEach;
 globalThis.afterEach = afterEach;
 globalThis.it = it;
 globalThis.describe = describe;
-
-/**
- * @param {BddItem} root
- */
-async function runBddTests(root) {
-  if (onlys.length > 0) {
-    // TODO
-    return;
-  }
-
-  await runGroup(root);
-  console.log({ onlys });
-}
-
-/**
- * @param {BddItem} item
- */
-function getLabel(item) {
-  let name = item.name;
-
-  let tmp = item.parent;
-  while (tmp !== null && tmp !== BDD_ROOT) {
-    name = `${tmp.name} > ${name}`;
-    tmp = tmp.parent;
-  }
-
-  return name;
-}
-
-/**
- * @param {BddItem} group
- */
-async function runGroup(group) {
-  await group.beforeAll?.();
-
-  for (let i = 0; i < group.children.length; i++) {
-    await group.beforeEach?.();
-
-    const child = group.children[i];
-    if (child.kind === "test") {
-      const name = getLabel(child);
-      console.log("running:", name);
-
-      await child.fn();
-    } else {
-      await runGroup(child);
-    }
-
-    await group.afterEach?.();
-  }
-
-  await group.afterAll?.();
-}
-
-// Check if we're running the `deno test` command
-if (typeof op_register_test === "function") {
-  // Wait a tick and check if there are any bdd tests to run
-  setTimeout(async () => {
-    if (bddStack.length > 0) {
-      await runBddTests(BDD_ROOT);
-    }
-  }, 0);
-}

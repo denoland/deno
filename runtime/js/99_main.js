@@ -483,6 +483,9 @@ const NOT_IMPORTED_OPS = [
   "op_restore_test_permissions",
   "op_register_test_step",
   "op_register_test",
+  "op_register_test_group",
+  "op_test_group_pop",
+  "op_register_test_group_lifecycle",
   "op_test_get_origin",
   "op_pledge_test_permissions",
 
