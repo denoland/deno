@@ -5,7 +5,7 @@
       "steps": [
         {
           "args": "cache --allow-scripts=npm:@denotest/node-addon main.js",
-          "output": "[WILDCARD]gyp info ok \n"
+          "output": "[WILDCARD]Initialize @denotest/node-addon@1.0.0: running 'install' script\n"
         },
         {
           "args": "run -A main.js",
@@ -128,6 +128,13 @@
           // we run the install script, we should use the correct binary (relative to the package)
           "args": "cache --allow-scripts conflicting_bin.js",
           "output": "conflicting_bin.out"
+        },
+        {
+          "args": [
+            "eval",
+            "console.log(Deno.readTextFileSync('./say-hello-output.txt'))"
+          ],
+          "output": "conflicting_bin2.out"
         }
       ]
     },

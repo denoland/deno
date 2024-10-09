@@ -1675,6 +1675,7 @@ You can add multiple dependencies at once:
           .action(ArgAction::Append),
       )
       .arg(add_dev_arg())
+      .arg(allow_scripts_arg())
   })
 }
 
@@ -1717,7 +1718,7 @@ If you specify a directory instead of a file, the path is expanded to all contai
     UnstableArgsConfig::ResolutionAndRuntime,
   )
   .defer(|cmd| {
-    runtime_args(cmd, true, false)
+    runtime_args(cmd, true, false, true)
       .arg(check_arg(true))
       .arg(
         Arg::new("json")
@@ -1881,7 +1882,7 @@ On the first invocation with deno will download the proper binary and cache it i
     UnstableArgsConfig::ResolutionAndRuntime,
   )
   .defer(|cmd| {
-    runtime_args(cmd, true, false)
+    runtime_args(cmd, true, false, true)
       .arg(check_arg(true))
       .arg(
         Arg::new("include")
@@ -2202,7 +2203,7 @@ This command has implicit access to all permissions.
     UnstableArgsConfig::ResolutionAndRuntime,
   )
   .defer(|cmd| {
-    runtime_args(cmd, false, true)
+    runtime_args(cmd, false, true, true)
       .arg(check_arg(false))
       .arg(executable_ext_arg())
       .arg(
@@ -2501,7 +2502,7 @@ The installation root is determined, in order of precedence:
 These must be added to the path manually if required."), UnstableArgsConfig::ResolutionAndRuntime)
     .visible_alias("i")
     .defer(|cmd| {
-      permission_args(runtime_args(cmd, false, true), Some("global"))
+      permission_args(runtime_args(cmd, false, true, false), Some("global"))
         .arg(check_arg(true))
         .arg(allow_scripts_arg())
         .arg(
@@ -2767,7 +2768,7 @@ It is especially useful for quick prototyping and checking snippets of code.
 
 TypeScript is supported, however it is not type-checked, only transpiled."
   ), UnstableArgsConfig::ResolutionAndRuntime)
-    .defer(|cmd| runtime_args(cmd, true, true)
+    .defer(|cmd| runtime_args(cmd, true, true, true)
       .arg(check_arg(false))
       .arg(
         Arg::new("eval-file")
@@ -2799,7 +2800,7 @@ TypeScript is supported, however it is not type-checked, only transpiled."
 }
 
 fn run_args(command: Command, top_level: bool) -> Command {
-  runtime_args(command, true, true)
+  runtime_args(command, true, true, true)
     .arg(check_arg(false))
     .arg(watch_arg(true))
     .arg(hmr_arg(true))
@@ -2813,7 +2814,6 @@ fn run_args(command: Command, top_level: bool) -> Command {
     })
     .arg(env_file_arg())
     .arg(no_code_cache_arg())
-    .arg(allow_scripts_arg())
 }
 
 fn run_subcommand() -> Command {
@@ -2856,7 +2856,7 @@ Start a server defined in server.ts:
 Start a server defined in server.ts, watching for changes and running on port 5050:
   <p(245)>deno serve --watch --port 5050 server.ts</>
 
-<y>Read more:</> <c>https://docs.deno.com/go/serve</>"), UnstableArgsConfig::ResolutionAndRuntime), true, true)
+<y>Read more:</> <c>https://docs.deno.com/go/serve</>"), UnstableArgsConfig::ResolutionAndRuntime), true, true, true)
     .arg(
       Arg::new("port")
         .long("port")
@@ -2930,7 +2930,7 @@ or <c>**/__tests__/**</>:
           UnstableArgsConfig::ResolutionAndRuntime
     )
     .defer(|cmd|
-      runtime_args(cmd, true, true)
+      runtime_args(cmd, true, true, true)
       .arg(check_arg(true))
       .arg(
         Arg::new("ignore")
@@ -3643,6 +3643,7 @@ fn runtime_args(
   app: Command,
   include_perms: bool,
   include_inspector: bool,
+  include_allow_scripts: bool,
 ) -> Command {
   let app = compile_args(app);
   let app = if include_perms {
@@ -3652,6 +3653,11 @@ fn runtime_args(
   };
   let app = if include_inspector {
     inspect_args(app)
+  } else {
+    app
+  };
+  let app = if include_allow_scripts {
+    app.arg(allow_scripts_arg())
   } else {
     app
   };
@@ -4268,7 +4274,7 @@ fn bench_parse(
 ) -> clap::error::Result<()> {
   flags.type_check_mode = TypeCheckMode::Local;
 
-  runtime_args_parse(flags, matches, true, false)?;
+  runtime_args_parse(flags, matches, true, false, true)?;
   ext_arg_parse(flags, matches);
 
   // NOTE: `deno bench` always uses `--no-prompt`, tests shouldn't ever do
@@ -4358,7 +4364,7 @@ fn compile_parse(
   matches: &mut ArgMatches,
 ) -> clap::error::Result<()> {
   flags.type_check_mode = TypeCheckMode::Local;
-  runtime_args_parse(flags, matches, true, false)?;
+  runtime_args_parse(flags, matches, true, false, true)?;
 
   let mut script = matches.remove_many::<String>("script_arg").unwrap();
   let source_file = script.next().unwrap();
@@ -4533,7 +4539,7 @@ fn eval_parse(
   flags: &mut Flags,
   matches: &mut ArgMatches,
 ) -> clap::error::Result<()> {
-  runtime_args_parse(flags, matches, false, true)?;
+  runtime_args_parse(flags, matches, false, true, false)?;
   unstable_args_parse(flags, matches, UnstableArgsConfig::ResolutionAndRuntime);
   flags.allow_all();
 
@@ -4626,7 +4632,7 @@ fn install_parse(
   flags: &mut Flags,
   matches: &mut ArgMatches,
 ) -> clap::error::Result<()> {
-  runtime_args_parse(flags, matches, true, true)?;
+  runtime_args_parse(flags, matches, true, true, false)?;
 
   let global = matches.get_flag("global");
   if global {
@@ -4852,7 +4858,7 @@ fn repl_parse(
   flags: &mut Flags,
   matches: &mut ArgMatches,
 ) -> clap::error::Result<()> {
-  runtime_args_parse(flags, matches, true, true)?;
+  runtime_args_parse(flags, matches, true, true, true)?;
   unsafely_ignore_certificate_errors_parse(flags, matches);
 
   let eval_files = matches
@@ -4885,9 +4891,8 @@ fn run_parse(
   mut app: Command,
   bare: bool,
 ) -> clap::error::Result<()> {
-  runtime_args_parse(flags, matches, true, true)?;
+  runtime_args_parse(flags, matches, true, true, true)?;
   ext_arg_parse(flags, matches);
-  allow_scripts_arg_parse(flags, matches)?;
 
   flags.code_cache_enabled = !matches.get_flag("no-code-cache");
 
@@ -4927,7 +4932,7 @@ fn serve_parse(
 
   let worker_count = parallel_arg_parse(matches).map(|v| v.get());
 
-  runtime_args_parse(flags, matches, true, true)?;
+  runtime_args_parse(flags, matches, true, true, true)?;
   // If the user didn't pass --allow-net, add this port to the network
   // allowlist. If the host is 0.0.0.0, we add :{port} and allow the same network perms
   // as if it was passed to --allow-net directly.
@@ -5022,7 +5027,7 @@ fn test_parse(
   matches: &mut ArgMatches,
 ) -> clap::error::Result<()> {
   flags.type_check_mode = TypeCheckMode::Local;
-  runtime_args_parse(flags, matches, true, true)?;
+  runtime_args_parse(flags, matches, true, true, true)?;
   ext_arg_parse(flags, matches);
 
   // NOTE: `deno test` always uses `--no-prompt`, tests shouldn't ever do
@@ -5387,6 +5392,7 @@ fn runtime_args_parse(
   matches: &mut ArgMatches,
   include_perms: bool,
   include_inspector: bool,
+  include_allow_scripts: bool,
 ) -> clap::error::Result<()> {
   unstable_args_parse(flags, matches, UnstableArgsConfig::ResolutionAndRuntime);
   compile_args_parse(flags, matches)?;
@@ -5397,6 +5403,9 @@ fn runtime_args_parse(
   }
   if include_inspector {
     inspect_arg_parse(flags, matches);
+  }
+  if include_allow_scripts {
+    allow_scripts_arg_parse(flags, matches)?;
   }
   location_arg_parse(flags, matches);
   v8_flags_arg_parse(flags, matches);
@@ -8869,8 +8878,12 @@ mod tests {
 
   #[test]
   fn test_no_colon_in_value_name() {
-    let app =
-      runtime_args(Command::new("test_inspect_completion_value"), true, true);
+    let app = runtime_args(
+      Command::new("test_inspect_completion_value"),
+      true,
+      true,
+      false,
+    );
     let inspect_args = app
       .get_arguments()
       .filter(|arg| arg.get_id() == "inspect")
