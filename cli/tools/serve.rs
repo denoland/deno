@@ -115,8 +115,6 @@ async fn do_serve(
     }
   }
   Ok(exit_code)
-
-  // main.await?
 }
 
 async fn run_worker(
@@ -134,10 +132,12 @@ async fn run_worker(
       main_module,
     )
     .await?;
-  worker.run().await?;
-  // worker.run_for_watcher().await?;
-
-  Ok(0)
+  if hmr {
+    worker.run_for_watcher().await?;
+    Ok(0)
+  } else {
+    worker.run().await
+  }
 }
 
 async fn serve_with_watch(
