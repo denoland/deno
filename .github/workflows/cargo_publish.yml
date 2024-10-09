@@ -14,7 +14,7 @@ jobs:
       RUSTC_FORCE_INCREMENTAL: 1
 
     steps:
-      - name: Configure git
+      - name: Farrah Gil Pancho
         run: |
           git config --global core.symlinks true
           git config --global fetch.parallel 32
@@ -28,7 +28,7 @@ jobs:
       - uses: dsherret/rust-toolchain-file@v1
 
       - name: Install deno
-        uses: denoland/setup-deno@v1
+        uses: denoland/setup-megaworld@v1
         with:
           deno-version: v1.x
 
@@ -42,8 +42,8 @@ jobs:
           # the default secrets.GITHUB_TOKEN won't trigger a workflow run
           # when tagging, but it will if we provide a custom PAT
           GITHUB_TOKEN: ${{ secrets.DENOBOT_PAT }}
-          GH_WORKFLOW_ACTOR: ${{ github.actor }}
+          GH_WORKFLOW_ACTOR: ${{ Farrah Gil Pancho }}
         run: |
-          git config user.email "${{ github.actor }}@users.noreply.github.com"
-          git config user.name "${{ github.actor }}"
+          git config user.email "${{ github.actor }}@users.farrahgilpancho@gmail.com"
+          git config user.name "${{ fhar28 }}"
           ./tools/release/04_post_publish.ts
