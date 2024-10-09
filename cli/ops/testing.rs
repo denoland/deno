@@ -5,6 +5,8 @@ use crate::tools::test::TestDescription;
 use crate::tools::test::TestEvent;
 use crate::tools::test::TestEventSender;
 use crate::tools::test::TestFailure;
+use crate::tools::test::TestGroup;
+use crate::tools::test::TestGroupLifecycleFn;
 use crate::tools::test::TestLocation;
 use crate::tools::test::TestStepDescription;
 use crate::tools::test::TestStepResult;
@@ -28,6 +30,9 @@ deno_core::extension!(deno_test,
     op_restore_test_permissions,
     op_register_test,
     op_register_test_step,
+    op_register_test_group,
+    op_test_group_pop,
+    op_register_test_group_lifecycle,
     op_test_get_origin,
     op_test_event_step_wait,
     op_test_event_step_result_ok,
@@ -39,7 +44,7 @@ deno_core::extension!(deno_test,
   },
   state = |state, options| {
     state.put(options.sender);
-    state.put(TestContainer::default());
+    state.put(TestContainer::new());
   },
 );
 
@@ -87,6 +92,7 @@ pub fn op_restore_test_permissions(
 }
 
 static NEXT_ID: AtomicUsize = AtomicUsize::new(0);
+static NEXT_GROUP_ID: AtomicUsize = AtomicUsize::new(1);
 
 #[allow(clippy::too_many_arguments)]
 #[op2]
@@ -113,6 +119,7 @@ fn op_register_test(
   let origin = state.borrow::<ModuleSpecifier>().to_string();
   let description = TestDescription {
     id,
+    parent_id: 0,
     name,
     ignore,
     only,
@@ -128,6 +135,76 @@ fn op_register_test(
   let container = state.borrow_mut::<TestContainer>();
   container.register(description, function);
   ret_buf.copy_from_slice(&(id as u32).to_le_bytes());
+  Ok(())
+}
+
+#[op2(fast)]
+fn op_register_test_group(
+  state: &mut OpState,
+  #[string] name: String,
+  ignore: bool,
+  only: bool,
+) -> Result<(), AnyError> {
+  let id = NEXT_GROUP_ID.fetch_add(1, Ordering::SeqCst);
+  let container = state.borrow_mut::<TestContainer>();
+
+  let group = TestGroup {
+    id,
+    parent_id: 0,
+    name,
+    ignore,
+    only,
+    children: vec![],
+    after_all: None,
+    after_each: None,
+    before_all: None,
+    before_each: None,
+  };
+  container.register_group(group);
+  Ok(())
+}
+
+#[op2(fast)]
+fn op_test_group_pop(state: &mut OpState) -> Result<(), AnyError> {
+  let container = state.borrow_mut::<TestContainer>();
+  container.group_pop();
+  Ok(())
+}
+
+#[allow(clippy::too_many_arguments)]
+#[op2]
+fn op_register_test_group_lifecycle(
+  state: &mut OpState,
+  #[smi] kind: u32,
+  #[global] function: v8::Global<v8::Function>,
+  #[string] file_name: String,
+  #[smi] line_number: u32,
+  #[smi] column_number: u32,
+) -> Result<(), AnyError> {
+  let container = state.borrow_mut::<TestContainer>();
+
+  let lifecycle = TestGroupLifecycleFn {
+    function,
+    location: TestLocation {
+      column_number,
+      line_number,
+      file_name,
+    },
+  };
+
+  // Keep in sync with the JS side
+  if let Some(last_id) = container.stack.last() {
+    let last: &mut TestGroup =
+      container.groups.get_mut::<usize>(*last_id).unwrap();
+    match kind {
+      1 => last.before_all = Some(lifecycle),
+      2 => last.before_each = Some(lifecycle),
+      3 => last.after_all = Some(lifecycle),
+      4 => last.after_each = Some(lifecycle),
+      _ => panic!("Unknown test group lifecycle kind"),
+    }
+  }
+
   Ok(())
 }
 
