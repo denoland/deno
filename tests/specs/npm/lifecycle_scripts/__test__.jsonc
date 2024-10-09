@@ -38,7 +38,7 @@
       "steps": [
         {
           // without running scripts (should warn)
-          "args": "cache all_lifecycles.js",
+          "args": "run all_lifecycles.js",
           "output": "all_lifecycles_not_run.out"
         },
         {
@@ -48,6 +48,23 @@
           // it also exercises running bin packages (esbuild in this case), using `node` in a script
           // (with and without node-only CLI flags), and using `npx` in a script
           "output": "all_lifecycles.out"
+        }
+      ]
+    },
+    "deno_run_lifecycle_scripts": {
+      "steps": [
+        {
+          // without running scripts (should warn)
+          "args": "run all_lifecycles.js",
+          "output": "all_lifecycles_not_run.out"
+        },
+        {
+          // now run scripts
+          "args": "run --allow-scripts all_lifecycles.js",
+          // this test package covers running preinstall, install, and postinstall scripts
+          // it also exercises running bin packages (esbuild in this case), using `node` in a script
+          // (with and without node-only CLI flags), and using `npx` in a script
+          "output": "all_lifecycles_deno_run.out"
         }
       ]
     },
@@ -79,14 +96,12 @@
         {
           // without running scripts (should warn)
           "args": "run all_lifecycles.js",
-          "output": "only_warns_first1.out",
-          "exitCode": 1
+          "output": "only_warns_first1.out"
         },
         {
           // without running scripts (does not warn)
           "args": "run all_lifecycles.js",
-          "output": "only_warns_first2.out",
-          "exitCode": 1
+          "output": "only_warns_first2.out"
         },
         {
           // should warn because this is an explicit install
