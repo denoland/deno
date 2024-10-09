@@ -53,6 +53,7 @@ use super::logging::lsp_log;
 use crate::args::discover_npmrc_from_workspace;
 use crate::args::has_flag_env_var;
 use crate::args::CliLockfile;
+use crate::args::CliLockfileReadFromPathOptions;
 use crate::args::ConfigFile;
 use crate::args::LintFlags;
 use crate::args::LintOptions;
@@ -1931,7 +1932,11 @@ fn resolve_lockfile_from_path(
   lockfile_path: PathBuf,
   frozen: bool,
 ) -> Option<CliLockfile> {
-  match CliLockfile::read_from_path(lockfile_path, frozen) {
+  match CliLockfile::read_from_path(CliLockfileReadFromPathOptions {
+    file_path: lockfile_path,
+    frozen,
+    skip_write: false,
+  }) {
     Ok(value) => {
       if value.filename.exists() {
         if let Ok(specifier) = ModuleSpecifier::from_file_path(&value.filename)

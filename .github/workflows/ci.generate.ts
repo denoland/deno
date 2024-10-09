@@ -5,7 +5,7 @@ import { stringify } from "jsr:@std/yaml@^0.221/stringify";
 // Bump this number when you want to purge the cache.
 // Note: the tools/release/01_bump_crate_versions.ts script will update this version
 // automatically via regex, so ensure that this line maintains this format.
-const cacheVersion = 16;
+const cacheVersion = 18;
 
 const ubuntuX86Runner = "ubuntu-22.04";
 const ubuntuX86XlRunner = "ubuntu-22.04-xl";
@@ -190,11 +190,6 @@ const installNodeStep = {
   name: "Install Node",
   uses: "actions/setup-node@v4",
   with: { "node-version": 18 },
-};
-const installProtocStep = {
-  name: "Install protoc",
-  uses: "arduino/setup-protoc@v3",
-  with: { "version": "21.12", "repo-token": "${{ secrets.GITHUB_TOKEN }}" },
 };
 const installDenoStep = {
   name: "Install Deno",
@@ -494,7 +489,6 @@ const ci = {
           if: "matrix.job == 'bench' || matrix.job == 'test'",
           ...installNodeStep,
         },
-        installProtocStep,
         {
           if: [
             "matrix.profile == 'release' &&",

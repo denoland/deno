@@ -11,6 +11,7 @@ use deno_core::futures::StreamExt;
 use deno_semver::package::PackageReq;
 
 pub async fn cache_top_level_deps(
+  // todo(dsherret): don't pass the factory into this function. Instead use ctor deps
   factory: &CliFactory,
   jsr_resolver: Option<Arc<crate::jsr::JsrFetchResolver>>,
 ) -> Result<(), AnyError> {

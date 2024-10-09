@@ -581,6 +581,15 @@ pub struct UnstableConfig {
 }
 
 #[derive(Clone, Debug, Eq, PartialEq, Default)]
+pub struct InternalFlags {
+  /// Used when the language server is configured with an
+  /// explicit cache option.
+  pub cache_path: Option<PathBuf>,
+  /// Only reads to the lockfile instead of writing to it.
+  pub lockfile_skip_write: bool,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Default)]
 pub struct Flags {
   /// Vector of CLI arguments - these are user script arguments, all Deno
   /// specific flags are removed.
@@ -591,9 +600,6 @@ pub struct Flags {
   pub ca_stores: Option<Vec<String>>,
   pub ca_data: Option<CaData>,
   pub cache_blocklist: Vec<String>,
-  /// This is not exposed as an option in the CLI, it is used internally when
-  /// the language server is configured with an explicit cache option.
-  pub cache_path: Option<PathBuf>,
   pub cached_only: bool,
   pub type_check_mode: TypeCheckMode,
   pub config_flag: ConfigFlag,
@@ -602,6 +608,8 @@ pub struct Flags {
   pub enable_op_summary_metrics: bool,
   pub enable_testing_features: bool,
   pub ext: Option<String>,
+  /// Flags that aren't exposed in the CLI, but are used internally.
+  pub internal: InternalFlags,
   pub ignore: Vec<String>,
   pub import_map_path: Option<String>,
   pub env_file: Option<String>,
@@ -688,9 +696,10 @@ impl PermissionFlags {
       }
 
       let builtin_allowed_import_hosts = [
+        "jsr.io:443",
         "deno.land:443",
         "esm.sh:443",
-        "jsr.io:443",
+        "cdn.jsdelivr.net:443",
         "raw.githubusercontent.com:443",
         "gist.githubusercontent.com:443",
       ];
@@ -2901,6 +2910,7 @@ List all available tasks:
           .help("Specify the directory to run the task in")
           .value_hint(ValueHint::DirPath),
       )
+      .arg(node_modules_dir_arg())
   })
 }
 
@@ -3253,7 +3263,7 @@ fn permission_args(app: Command, requires: Option<&'static str>) -> Command {
   <g>-W, --allow-write[=<<PATH>...]</>            Allow file system write access. Optionally specify allowed paths.
                                              <p(245)>--allow-write  |  --allow-write="/etc,/var/log.txt"</>
   <g>-I, --allow-import[=<<IP_OR_HOSTNAME>...]</> Allow importing from remote hosts. Optionally specify allowed IP addresses and host names, with ports as necessary.
-                                            Default value: <p(245)>deno.land:443,jsr.io:443,esm.sh:443,raw.githubusercontent.com:443,user.githubusercontent.com:443</>
+                                            Default value: <p(245)>deno.land:443,jsr.io:443,esm.sh:443,cdn.jsdelivr.net:443,raw.githubusercontent.com:443,user.githubusercontent.com:443</>
                                              <p(245)>--allow-import  |  --allow-import="example.com,github.com"</>
   <g>-N, --allow-net[=<<IP_OR_HOSTNAME>...]</>    Allow network access. Optionally specify allowed IP addresses and host names, with ports as necessary.
                                              <p(245)>--allow-net  |  --allow-net="localhost:8080,deno.land"</>
@@ -3663,7 +3673,7 @@ fn allow_import_arg() -> Arg {
     .require_equals(true)
     .value_name("IP_OR_HOSTNAME")
     .help(cstr!(
-      "Allow importing from remote hosts. Optionally specify allowed IP addresses and host names, with ports as necessary. Default value: <p(245)>deno.land:443,jsr.io:443,esm.sh:443,raw.githubusercontent.com:443,user.githubusercontent.com:443</>"
+      "Allow importing from remote hosts. Optionally specify allowed IP addresses and host names, with ports as necessary. Default value: <p(245)>deno.land:443,jsr.io:443,esm.sh:443,cdn.jsdelivr.net:443,raw.githubusercontent.com:443,user.githubusercontent.com:443</>"
     ))
     .value_parser(flags_net::validator)
 }
@@ -4965,6 +4975,7 @@ fn task_parse(flags: &mut Flags, matches: &mut ArgMatches) {
     .unwrap_or(ConfigFlag::Discover);
 
   unstable_args_parse(flags, matches, UnstableArgsConfig::ResolutionAndRuntime);
+  node_modules_arg_parse(flags, matches);
 
   let mut task_flags = TaskFlags {
     cwd: matches.remove_one::<String>("cwd"),

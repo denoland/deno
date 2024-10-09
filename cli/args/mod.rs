@@ -44,6 +44,7 @@ pub use deno_config::glob::FilePatterns;
 pub use deno_json::check_warn_tsconfig;
 pub use flags::*;
 pub use lockfile::CliLockfile;
+pub use lockfile::CliLockfileReadFromPathOptions;
 pub use package_json::NpmInstallDepsProvider;
 
 use deno_ast::ModuleSpecifier;
@@ -824,11 +825,9 @@ impl CliOptions {
       }
     }
 
-    warn_insecure_allow_run_flags(&flags);
-
     let maybe_lockfile = maybe_lockfile.filter(|_| !force_global_cache);
     let deno_dir_provider =
-      Arc::new(DenoDirProvider::new(flags.cache_path.clone()));
+      Arc::new(DenoDirProvider::new(flags.internal.cache_path.clone()));
     let maybe_node_modules_folder = resolve_node_modules_folder(
       &initial_cwd,
       &flags,
@@ -1707,27 +1706,6 @@ impl CliOptions {
           | DenoSubcommand::Add(_)
       ),
     }
-  }
-}
-
-/// Warns for specific uses of `--allow-run`. This function is not
-/// intended to catch every single possible insecure use of `--allow-run`,
-/// but is just an attempt to discourage some common pitfalls.
-fn warn_insecure_allow_run_flags(flags: &Flags) {
-  let permissions = &flags.permissions;
-  if permissions.allow_all {
-    return;
-  }
-  let Some(allow_run_list) = permissions.allow_run.as_ref() else {
-    return;
-  };
-
-  // discourage using --allow-run without an allow list
-  if allow_run_list.is_empty() {
-    log::warn!(
-      "{} --allow-run without an allow list is susceptible to exploits. Prefer specifying an allow list (https://docs.deno.com/runtime/fundamentals/security/#running-subprocesses)",
-      colors::yellow("Warning")
-    );
   }
 }
 

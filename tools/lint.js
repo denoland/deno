@@ -1,4 +1,4 @@
-#!/usr/bin/env -S deno run --allow-write --allow-read --allow-run --allow-net --config=tests/config/deno.json
+#!/usr/bin/env -S deno run --allow-all --config=tests/config/deno.json
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
 // deno-lint-ignore-file no-console
@@ -220,7 +220,7 @@ async function ensureNoNewITests() {
     "repl_tests.rs": 0,
     "run_tests.rs": 331,
     "shared_library_tests.rs": 0,
-    "task_tests.rs": 3,
+    "task_tests.rs": 2,
     "test_tests.rs": 0,
     "upgrade_tests.rs": 0,
     "vendor_tests.rs": 1,

@@ -173,7 +173,7 @@ export function readSync(
   validateBuffer(buffer);
 
   if (length == null) {
-    length = 0;
+    length = buffer.byteLength;
   }
 
   if (typeof offsetOrOpt === "number") {
