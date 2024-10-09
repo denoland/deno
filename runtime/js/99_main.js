@@ -486,6 +486,7 @@ const NOT_IMPORTED_OPS = [
   "op_register_test_group",
   "op_test_group_pop",
   "op_register_test_group_lifecycle",
+  "op_register_test_run_fn",
   "op_test_get_origin",
   "op_pledge_test_permissions",
 

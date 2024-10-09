@@ -224,6 +224,7 @@ pub struct TestLocation {
 #[derive(Default)]
 pub(crate) struct TestContainer {
   has_tests: bool,
+  pub run_fn: Option<v8::Global<v8::Function>>,
   pub has_only: bool,
   pub groups: Vec<TestGroup>,
   pub stack: Vec<usize>,
@@ -249,6 +250,7 @@ impl TestContainer {
 
     Self {
       has_tests: false,
+      run_fn: None,
       groups: vec![root],
       has_only: false,
       stack,
@@ -899,6 +901,25 @@ pub async fn run_tests_for_worker(
   eprintln!("{:#?}", tc.stack);
 
   let to_run: Vec<TestRunItem> = vec![];
+  if let Some(function) = &tc.run_fn {
+    let seed = if let Some(seed) = options.shuffle {
+      seed
+    } else {
+      0
+    };
+
+    let args = {
+      let scope = &mut worker.js_runtime.handle_scope();
+      let seed_value: v8::Local<v8::Value> =
+        v8::BigInt::new_from_u64(scope, seed as u64).into();
+      [v8::Global::new(scope, seed_value)]
+    };
+    let call = worker.js_runtime.call_with_args(&function, &args);
+    let result = worker
+      .js_runtime
+      .with_event_loop_promise(call, PollEventLoopOptions::default())
+      .await;
+  }
 
   if let Some(seed) = options.shuffle {
     // tests_to_run.shuffle(&mut SmallRng::seed_from_u64(seed));
