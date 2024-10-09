@@ -33,6 +33,7 @@ deno_core::extension!(deno_test,
     op_register_test_group,
     op_test_group_pop,
     op_register_test_group_lifecycle,
+    op_register_test_run_fn,
     op_test_get_origin,
     op_test_event_step_wait,
     op_test_event_step_result_ok,
@@ -168,6 +169,16 @@ fn op_register_test_group(
 fn op_test_group_pop(state: &mut OpState) -> Result<(), AnyError> {
   let container = state.borrow_mut::<TestContainer>();
   container.group_pop();
+  Ok(())
+}
+
+#[op2]
+fn op_register_test_run_fn(
+  state: &mut OpState,
+  #[global] function: v8::Global<v8::Function>,
+) -> Result<(), AnyError> {
+  let container = state.borrow_mut::<TestContainer>();
+  container.run_fn = Some(function);
   Ok(())
 }
 

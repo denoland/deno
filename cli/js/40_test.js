@@ -10,6 +10,7 @@ const {
   op_register_test_group,
   op_test_group_pop,
   op_register_test_group_lifecycle,
+  op_register_test_run_fn,
   op_test_event_step_result_failed,
   op_test_event_step_result_ignored,
   op_test_event_step_result_ok,
@@ -501,12 +502,6 @@ function createTestContext(desc) {
   };
 }
 
-/** @type { only: boolean[], ignore: boolean[] } */
-const bddStack = {
-  only: [],
-  ignore: [],
-};
-
 /**
  * Wrap a user test function in one which returns a structured result.
  * @template T {Function}
@@ -526,6 +521,29 @@ function wrapTest(desc) {
 }
 
 globalThis.Deno.test = test;
+
+/** @typedef {{ name: string, fn: () => any, only: boolean, ignore: boolean }} BddTest */
+
+/** @typedef {() => unknown | Promise<unknown>} TestLifecycleFn */
+
+/** @typedef {{ name: string, ignore: boolean, only: boolean, children: Array<TestGroup | BddTest>, beforeAll: TestLifecycleFn | null, afterAll: TestLifecycleFn | null, beforeEach: TestLifecycleFn | null, afterEach: TestLifecycleFn | null}} TestGroup */
+
+const ROOT_TEST_GROUP = {
+  name: "__<root>__",
+  ignore: false,
+  only: false,
+  children: [],
+  beforeAll: null,
+  beforeEach: null,
+  afterAll: null,
+  afterEach: null,
+};
+/** @type {{ hasOnly: boolean, stack: TestGroup[], total: number }} */
+const BDD_CONTEXT = {
+  hasOnly: false,
+  stack: [ROOT_TEST_GROUP],
+  total: 0,
+};
 
 /**
  * @param {string} name
@@ -557,6 +575,16 @@ function itInner(name, fn, ignore, only) {
     }
   };
 
+  /** @type {BddTest} */
+  const testDef = {
+    name,
+    fn: testFn,
+    ignore,
+    only,
+  };
+  BDD_CONTEXT.stack.at(-1).children.push(testDef);
+  BDD_CONTEXT.total++;
+
   op_register_test(
     testFn,
     escapeName(name),
@@ -583,6 +611,7 @@ function it(name, fn) {
  * @param {() => any} fn
  */
 it.only = (name, fn) => {
+  BDD_CONTEXT.hasOnly = true;
   itInner(name, fn, false, true);
 };
 /**
@@ -606,11 +635,25 @@ function describeInner(name, fn, ignore, only) {
     return;
   }
 
-  op_register_test_group(name, ignore, only);
+  const parent = BDD_CONTEXT.stack.at(-1);
+  /** @type {TestGroup} */
+  const group = {
+    name,
+    ignore,
+    only,
+    children: [],
+    beforeAll: null,
+    beforeEach: null,
+    afterAll: null,
+    afterEach: null,
+  };
+  parent.children.push(group);
+  BDD_CONTEXT.stack.push(group);
+
   try {
     fn();
   } finally {
-    op_test_group_pop();
+    BDD_CONTEXT.stack.pop();
   }
 }
 
@@ -626,6 +669,7 @@ function describe(name, fn) {
  * @param {() => void} fn
  */
 describe.only = (name, fn) => {
+  BDD_CONTEXT.hasOnly = true;
   describeInner(name, fn, false, true);
 };
 /**
@@ -637,65 +681,31 @@ describe.ignore = (name, fn) => {
 };
 describe.skip = describe.ignore;
 
-// Keep in sync on the rust side
-const BEFORE_ALL = 1;
-const BEFORE_EACH = 2;
-const AFTER_ALL = 3;
-const AFTER_EACH = 4;
-
 /**
  * @param {() => any} fn
  */
 function beforeAll(fn) {
-  const location = core.currentUserCallSite();
-  op_register_test_group_lifecycle(
-    BEFORE_ALL,
-    fn,
-    location.fileName,
-    location.lineNumber,
-    location.columnNumber,
-  );
+  BDD_CONTEXT.stack.at(-1).beforeAll = fn;
 }
 
 /**
  * @param {() => any} fn
  */
 function afterAll(fn) {
-  const location = core.currentUserCallSite();
-  op_register_test_group_lifecycle(
-    AFTER_ALL,
-    fn,
-    location.fileName,
-    location.lineNumber,
-    location.columnNumber,
-  );
+  BDD_CONTEXT.stack.at(-1).afterAll = fn;
 }
 
 /**
  * @param {() => any} fn
  */
 function beforeEach(fn) {
-  const location = core.currentUserCallSite();
-  op_register_test_group_lifecycle(
-    BEFORE_EACH,
-    fn,
-    location.fileName,
-    location.lineNumber,
-    location.columnNumber,
-  );
+  BDD_CONTEXT.stack.at(-1).beforeEach = fn;
 }
 /**
  * @param {() => any} fn
  */
 function afterEach(fn) {
-  const location = core.currentUserCallSite();
-  op_register_test_group_lifecycle(
-    AFTER_EACH,
-    fn,
-    location.fileName,
-    location.lineNumber,
-    location.columnNumber,
-  );
+  BDD_CONTEXT.stack.at(-1).afterEach = fn;
 }
 
 globalThis.before = beforeAll;
@@ -706,3 +716,86 @@ globalThis.beforeEach = beforeEach;
 globalThis.afterEach = afterEach;
 globalThis.it = it;
 globalThis.describe = describe;
+
+/**
+ * This function is called from Rust.
+ * @param {bigint} seed
+ * @param {...any} rest
+ */
+async function runTests(seed, ...rest) {
+  console.log("RUN TESTS", seed, rest, ROOT_TEST_GROUP);
+
+  // Filter tests
+
+  await runGroup(seed, ROOT_TEST_GROUP);
+}
+
+/**
+ * @param {bigint} seed
+ * @param {TestGroup} group
+ */
+async function runGroup(seed, group) {
+  // Bail out if group has no tests or sub groups
+
+  /** @type {BddTest[]} */
+  const tests = [];
+  /** @type {TestGroup[]} */
+  const groups = [];
+
+  for (let i = 0; i < group.children[i]; i++) {
+    const child = group.children[i];
+    if ("beforeAll" in child) {
+      groups.push(child);
+    } else {
+      tests.push(child);
+    }
+  }
+
+  if (seed > 0) {
+    shuffle(tests, seed);
+    shuffle(groups, seed);
+  }
+
+  await group.beforeAll?.();
+
+  for (let i = 0; i < tests.length; i++) {
+    const test = tests[i];
+
+    await group.beforeEach?.();
+    await test.fn();
+    await group.afterEach?.();
+  }
+
+  for (let i = 0; i < groups.length; i++) {
+    const childGroup = groups[i];
+
+    await group.beforeEach?.();
+    await runGroup(seed, childGroup);
+    await group.afterEach?.();
+  }
+
+  await group.afterAll?.();
+}
+
+/**
+ * @template T
+ * @param {T[]} arr
+ * @param {bigint} seed
+ */
+function shuffle(arr, seed) {
+  let m = arr.length;
+  let t;
+  let i;
+
+  while (m) {
+    i = Math.floor(seed * m--);
+    t = arr[m];
+    arr[m] = arr[i];
+    arr[i] = t;
+  }
+}
+
+// No-op if we're not running in `deno test` subcommand.
+if (typeof op_register_test === "function") {
+  op_register_test_run_fn(runTests);
+}
