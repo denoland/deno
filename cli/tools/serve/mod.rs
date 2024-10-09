@@ -11,9 +11,12 @@ use super::run::maybe_npm_install;
 use crate::args::Flags;
 use crate::args::ServeFlags;
 use crate::args::WatchFlagsWithPaths;
+// use crate::factory::CliFactory;
 use crate::factory::CliFactory;
 use crate::util::file_watcher::WatcherRestartMode;
 use crate::worker::CliMainWorkerFactory;
+
+pub mod hmr;
 
 pub async fn serve(
   flags: Arc<Flags>,
@@ -44,12 +47,19 @@ pub async fn serve(
   maybe_npm_install(&factory).await?;
 
   let worker_factory = factory.create_cli_main_worker_factory().await?;
-
+  // dbg!(&serve_flags);
+  let hmr = serve_flags
+    .watch
+    .unwrap_or(WatchFlagsWithPaths {
+      hmr: false,
+      ..Default::default()
+    })
+    .hmr;
   do_serve(
     worker_factory,
     main_module.clone(),
     serve_flags.worker_count,
-    false,
+    hmr,
   )
   .await
 }
@@ -69,6 +79,7 @@ async fn do_serve(
       main_module.clone(),
     )
     .await?;
+  // dbg!(&worker_factory.shared.options.hmr);
   let worker_count = match worker_count {
     None | Some(1) => return worker.run().await,
     Some(c) => c,
@@ -88,6 +99,7 @@ async fn do_serve(
       .name(format!("serve-worker-{i}"))
       .spawn(move || {
         deno_runtime::tokio_util::create_and_run_current_thread(async move {
+          // dbg!(hmr);
           let result = run_worker(i, worker_factory, main_module, hmr).await;
           let _ = tx.send(result);
         });
@@ -119,7 +131,7 @@ async fn run_worker(
   main_module: ModuleSpecifier,
   hmr: bool,
 ) -> Result<i32, AnyError> {
-  let mut worker = worker_factory
+  let mut worker: crate::worker::CliMainWorker = worker_factory
     .create_main_worker(
       deno_runtime::WorkerExecutionMode::Serve {
         is_main: false,
@@ -128,11 +140,17 @@ async fn run_worker(
       main_module,
     )
     .await?;
+  // dbg!(&worker.shared.options.hmr);
   if hmr {
+    // dbg!("For Watcher");
+    worker.run().await
+    // worker.run_for_watcher().await?;
+    // Ok(0)
+  } else {
+    // dbg!("Normal worker run");
+    // worker.run().await
     worker.run_for_watcher().await?;
     Ok(0)
-  } else {
-    worker.run().await
   }
 }
 

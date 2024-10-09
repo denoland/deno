@@ -65,13 +65,13 @@ pub struct HmrRunner {
 impl crate::worker::HmrRunner for HmrRunner {
   // TODO(bartlomieju): this code is duplicated in `cli/tools/coverage/mod.rs`
   async fn start(&mut self) -> Result<(), AnyError> {
-    // dbg!("HMR runner start");
+    dbg!("HMR runner start");
     self.enable_debugger().await
   }
 
   // TODO(bartlomieju): this code is duplicated in `cli/tools/coverage/mod.rs`
   async fn stop(&mut self) -> Result<(), AnyError> {
-    // dbg!("HMR runner stop");
+    dbg!("HMR runner stop");
     self
       .watcher_communicator
       .change_restart_mode(WatcherRestartMode::Automatic);
@@ -79,7 +79,7 @@ impl crate::worker::HmrRunner for HmrRunner {
   }
 
   async fn run(&mut self) -> Result<(), AnyError> {
-    // dbg!("HMR runner run");
+    dbg!("HMR runner run");
     self
       .watcher_communicator
       .change_restart_mode(WatcherRestartMode::Manual);
@@ -179,7 +179,7 @@ impl HmrRunner {
     session: LocalInspectorSession,
     watcher_communicator: Arc<WatcherCommunicator>,
   ) -> Self {
-    // dbg!("HMR runner new");
+    dbg!("HMR runner new");
     Self {
       session,
       emitter,
@@ -190,7 +190,7 @@ impl HmrRunner {
 
   // TODO(bartlomieju): this code is duplicated in `cli/tools/coverage/mod.rs`
   async fn enable_debugger(&mut self) -> Result<(), AnyError> {
-    // dbg!("HMR runner enable_debugger");
+    dbg!("HMR runner enable_debugger");
     self
       .session
       .post_message::<()>("Debugger.enable", None)
@@ -204,7 +204,7 @@ impl HmrRunner {
 
   // TODO(bartlomieju): this code is duplicated in `cli/tools/coverage/mod.rs`
   async fn disable_debugger(&mut self) -> Result<(), AnyError> {
-    // dbg!("HMR runner disable_debugger");
+    dbg!("HMR runner disable_debugger");
     self
       .session
       .post_message::<()>("Debugger.disable", None)
@@ -221,7 +221,7 @@ impl HmrRunner {
     script_id: &str,
     source: &str,
   ) -> Result<cdp::SetScriptSourceResponse, AnyError> {
-    // dbg!("HMR runner set_script_source");
+    dbg!("HMR runner set_script_source");
     let result = self
       .session
       .post_message(
@@ -243,7 +243,7 @@ impl HmrRunner {
     &mut self,
     script_id: &str,
   ) -> Result<(), AnyError> {
-    // dbg!("HMR runner start");
+    dbg!("HMR runner dispatch_hmr_event");
     let expr = format!(
       "dispatchEvent(new CustomEvent(\"hmr\", {{ detail: {{ path: \"{}\" }} }}));",
       script_id

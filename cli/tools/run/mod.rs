@@ -130,6 +130,7 @@ async fn run_with_watch(
           .await?;
 
         if watch_flags.hmr {
+          // dbg!()
           worker.run().await?;
         } else {
           worker.run_for_watcher().await?;
