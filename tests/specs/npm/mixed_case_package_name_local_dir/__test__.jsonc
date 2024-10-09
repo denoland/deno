@@ -1,0 +1,6 @@
+{
+  "tempDir": true,
+  "args": "run --node-modules-dir=auto -A mixed_case_package_name/local.ts",
+  "output": "mixed_case_package_name/local.out",
+  "exitCode": 0
+}

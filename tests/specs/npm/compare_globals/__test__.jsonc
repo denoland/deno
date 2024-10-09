@@ -1,0 +1,4 @@
+{
+  "args": "run --allow-read --check=all compare_globals/main.ts",
+  "output": "compare_globals/main.out"
+}

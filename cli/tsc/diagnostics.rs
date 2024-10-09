@@ -140,7 +140,9 @@ impl Diagnostic {
   pub fn include_when_remote(&self) -> bool {
     /// TS6133: value is declared but its value is never read (noUnusedParameters and noUnusedLocals)
     const TS6133: u64 = 6133;
-    self.code != TS6133
+    /// TS4114: This member must have an 'override' modifier because it overrides a member in the base class 'X'.
+    const TS4114: u64 = 4114;
+    !matches!(self.code, TS6133 | TS4114)
   }
 
   fn fmt_category_and_code(&self, f: &mut fmt::Formatter) -> fmt::Result {

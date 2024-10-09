@@ -8,6 +8,7 @@ use std::path::PathBuf;
 use std::sync::Arc;
 
 use deno_ast::ModuleSpecifier;
+use deno_cache_dir::npm::NpmCacheDir;
 use deno_core::anyhow::bail;
 use deno_core::anyhow::Context;
 use deno_core::error::AnyError;
@@ -18,10 +19,10 @@ use deno_npm::npm_rc::ResolvedNpmRc;
 use deno_npm::registry::NpmPackageInfo;
 use deno_npm::NpmPackageCacheFolderId;
 use deno_semver::package::PackageNv;
+use deno_semver::Version;
 
 use crate::args::CacheSetting;
 use crate::cache::CACHE_PERM;
-use crate::npm::NpmCacheDir;
 use crate::util::fs::atomic_write_file_with_retries;
 use crate::util::fs::hard_link_dir_recursive;
 
@@ -87,9 +88,12 @@ impl NpmCache {
   ) -> Result<(), AnyError> {
     let registry_url = self.npmrc.get_registry_url(&folder_id.nv.name);
     assert_ne!(folder_id.copy_index, 0);
-    let package_folder = self
-      .cache_dir
-      .package_folder_for_id(folder_id, registry_url);
+    let package_folder = self.cache_dir.package_folder_for_id(
+      &folder_id.nv.name,
+      &folder_id.nv.version.to_string(),
+      folder_id.copy_index,
+      registry_url,
+    );
 
     if package_folder.exists()
       // if this file exists, then the package didn't successfully initialize
@@ -100,9 +104,12 @@ impl NpmCache {
       return Ok(());
     }
 
-    let original_package_folder = self
-      .cache_dir
-      .package_folder_for_nv(&folder_id.nv, registry_url);
+    let original_package_folder = self.cache_dir.package_folder_for_id(
+      &folder_id.nv.name,
+      &folder_id.nv.version.to_string(),
+      0, // original copy index
+      registry_url,
+    );
 
     // it seems Windows does an "AccessDenied" error when moving a
     // directory with hard links, so that's why this solution is done
@@ -114,7 +121,12 @@ impl NpmCache {
 
   pub fn package_folder_for_id(&self, id: &NpmPackageCacheFolderId) -> PathBuf {
     let registry_url = self.npmrc.get_registry_url(&id.nv.name);
-    self.cache_dir.package_folder_for_id(id, registry_url)
+    self.cache_dir.package_folder_for_id(
+      &id.nv.name,
+      &id.nv.version.to_string(),
+      id.copy_index,
+      registry_url,
+    )
   }
 
   pub fn package_folder_for_nv(&self, package: &PackageNv) -> PathBuf {
@@ -127,7 +139,12 @@ impl NpmCache {
     package: &PackageNv,
     registry_url: &Url,
   ) -> PathBuf {
-    self.cache_dir.package_folder_for_nv(package, registry_url)
+    self.cache_dir.package_folder_for_id(
+      &package.name,
+      &package.version.to_string(),
+      0, // original copy_index
+      registry_url,
+    )
   }
 
   pub fn package_name_folder(&self, name: &str) -> PathBuf {
@@ -146,6 +163,15 @@ impl NpmCache {
     self
       .cache_dir
       .resolve_package_folder_id_from_specifier(specifier)
+      .and_then(|cache_id| {
+        Some(NpmPackageCacheFolderId {
+          nv: PackageNv {
+            name: cache_id.name,
+            version: Version::parse_from_npm(&cache_id.version).ok()?,
+          },
+          copy_index: cache_id.copy_index,
+        })
+      })
   }
 
   pub fn load_package_info(

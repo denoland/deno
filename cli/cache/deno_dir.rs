@@ -126,9 +126,9 @@ impl DenoDir {
     self.root.join("registries")
   }
 
-  /// Path to the dependencies cache folder.
-  pub fn deps_folder_path(&self) -> PathBuf {
-    self.root.join("deps")
+  /// Path to the remote cache folder.
+  pub fn remote_folder_path(&self) -> PathBuf {
+    self.root.join("remote")
   }
 
   /// Path to the origin data cache folder.

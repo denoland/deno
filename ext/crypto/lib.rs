@@ -64,6 +64,7 @@ mod import_key;
 mod key;
 mod shared;
 mod x25519;
+mod x448;
 
 pub use crate::decrypt::op_crypto_decrypt;
 pub use crate::encrypt::op_crypto_encrypt;
@@ -98,6 +99,14 @@ deno_core::extension!(deno_crypto,
     x25519::op_crypto_derive_bits_x25519,
     x25519::op_crypto_import_spki_x25519,
     x25519::op_crypto_import_pkcs8_x25519,
+    x25519::op_crypto_export_spki_x25519,
+    x25519::op_crypto_export_pkcs8_x25519,
+    x448::op_crypto_generate_x448_keypair,
+    x448::op_crypto_derive_bits_x448,
+    x448::op_crypto_import_spki_x448,
+    x448::op_crypto_import_pkcs8_x448,
+    x448::op_crypto_export_spki_x448,
+    x448::op_crypto_export_pkcs8_x448,
     ed25519::op_crypto_generate_ed25519_keypair,
     ed25519::op_crypto_import_spki_ed25519,
     ed25519::op_crypto_import_pkcs8_ed25519,
@@ -106,8 +115,6 @@ deno_core::extension!(deno_crypto,
     ed25519::op_crypto_export_spki_ed25519,
     ed25519::op_crypto_export_pkcs8_ed25519,
     ed25519::op_crypto_jwk_x_ed25519,
-    x25519::op_crypto_export_spki_x25519,
-    x25519::op_crypto_export_pkcs8_x25519,
   ],
   esm = [ "00_crypto.js" ],
   options = {

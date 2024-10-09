@@ -16,24 +16,25 @@ use deno_lint::diagnostic::LintDiagnosticRange;
 use deno_lint::diagnostic::LintFix;
 use deno_lint::diagnostic::LintFixChange;
 use deno_lint::rules::LintRule;
+use deno_resolver::sloppy_imports::SloppyImportsResolution;
+use deno_resolver::sloppy_imports::SloppyImportsResolutionMode;
 use text_lines::LineAndColumnIndex;
 
 use crate::graph_util::CliJsrUrlProvider;
-use crate::resolver::SloppyImportsResolution;
-use crate::resolver::SloppyImportsResolver;
+use crate::resolver::CliSloppyImportsResolver;
 
 use super::ExtendedLintRule;
 
 #[derive(Debug)]
 pub struct NoSloppyImportsRule {
-  sloppy_imports_resolver: Option<Arc<SloppyImportsResolver>>,
+  sloppy_imports_resolver: Option<Arc<CliSloppyImportsResolver>>,
   // None for making printing out the lint rules easy
   workspace_resolver: Option<Arc<WorkspaceResolver>>,
 }
 
 impl NoSloppyImportsRule {
   pub fn new(
-    sloppy_imports_resolver: Option<Arc<SloppyImportsResolver>>,
+    sloppy_imports_resolver: Option<Arc<CliSloppyImportsResolver>>,
     workspace_resolver: Option<Arc<WorkspaceResolver>>,
   ) -> Self {
     NoSloppyImportsRule {
@@ -172,7 +173,7 @@ impl LintRule for NoSloppyImportsRule {
 #[derive(Debug)]
 struct SloppyImportCaptureResolver<'a> {
   workspace_resolver: &'a WorkspaceResolver,
-  sloppy_imports_resolver: &'a SloppyImportsResolver,
+  sloppy_imports_resolver: &'a CliSloppyImportsResolver,
   captures: RefCell<HashMap<Range, SloppyImportsResolution>>,
 }
 
@@ -194,7 +195,13 @@ impl<'a> deno_graph::source::Resolver for SloppyImportCaptureResolver<'a> {
       }
       | deno_config::workspace::MappedResolution::ImportMap {
         specifier, ..
-      } => match self.sloppy_imports_resolver.resolve(&specifier, mode) {
+      } => match self.sloppy_imports_resolver.resolve(
+        &specifier,
+        match mode {
+          ResolutionMode::Execution => SloppyImportsResolutionMode::Execution,
+          ResolutionMode::Types => SloppyImportsResolutionMode::Types,
+        },
+      ) {
         Some(res) => {
           self
             .captures

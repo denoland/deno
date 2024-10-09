@@ -9,9 +9,9 @@ use deno_core::error::AnyError;
 use deno_core::parking_lot::RwLock;
 use deno_graph::ModuleGraph;
 use deno_runtime::colors;
+use deno_runtime::deno_permissions::PermissionsContainer;
 
 use crate::args::CliOptions;
-use crate::file_fetcher::FetchPermissionsOption;
 use crate::module_loader::ModuleLoadPreparer;
 use crate::util::fs::collect_specifiers;
 use crate::util::path::is_script_ext;
@@ -45,12 +45,14 @@ pub struct MainModuleGraphContainer {
   inner: Arc<RwLock<Arc<ModuleGraph>>>,
   cli_options: Arc<CliOptions>,
   module_load_preparer: Arc<ModuleLoadPreparer>,
+  root_permissions: PermissionsContainer,
 }
 
 impl MainModuleGraphContainer {
   pub fn new(
     cli_options: Arc<CliOptions>,
     module_load_preparer: Arc<ModuleLoadPreparer>,
+    root_permissions: PermissionsContainer,
   ) -> Self {
     Self {
       update_queue: Default::default(),
@@ -59,6 +61,7 @@ impl MainModuleGraphContainer {
       )))),
       cli_options,
       module_load_preparer,
+      root_permissions,
     }
   }
 
@@ -76,7 +79,7 @@ impl MainModuleGraphContainer {
         specifiers,
         false,
         self.cli_options.ts_type_lib_window(),
-        FetchPermissionsOption::AllowAll,
+        self.root_permissions.clone(),
         ext_overwrite,
       )
       .await?;

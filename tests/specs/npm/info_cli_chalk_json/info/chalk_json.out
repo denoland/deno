@@ -1,0 +1,57 @@
+{
+  "version": 1,
+  "roots": [
+    "npm:chalk@4"
+  ],
+  "modules": [
+    {
+      "kind": "npm",
+      "specifier": "npm:/chalk@4.1.2",
+      "npmPackage": "chalk@4.1.2"
+    }
+  ],
+  "redirects": {
+    "npm:chalk@4": "npm:/chalk@4.1.2"
+  },
+  "npmPackages": {
+    "ansi-styles@4.3.0": {
+      "name": "ansi-styles",
+      "version": "4.3.0",
+      "dependencies": [
+        "color-convert@2.0.1"
+      ]
+    },
+    "chalk@4.1.2": {
+      "name": "chalk",
+      "version": "4.1.2",
+      "dependencies": [
+        "ansi-styles@4.3.0",
+        "supports-color@7.2.0"
+      ]
+    },
+    "color-convert@2.0.1": {
+      "name": "color-convert",
+      "version": "2.0.1",
+      "dependencies": [
+        "color-name@1.1.4"
+      ]
+    },
+    "color-name@1.1.4": {
+      "name": "color-name",
+      "version": "1.1.4",
+      "dependencies": []
+    },
+    "has-flag@4.0.0": {
+      "name": "has-flag",
+      "version": "4.0.0",
+      "dependencies": []
+    },
+    "supports-color@7.2.0": {
+      "name": "supports-color",
+      "version": "7.2.0",
+      "dependencies": [
+        "has-flag@4.0.0"
+      ]
+    }
+  }
+}

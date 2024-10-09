@@ -1,0 +1,5 @@
+{
+  "args": "cache npm:@denotest/non-existent-dep",
+  "exitCode": 1,
+  "output": "[UNORDERED_START]\nDownload http://localhost:4260/@denotest/non-existent-dep\nDownload http://localhost:4260/@denotest/non-existent\n[UNORDERED_END]\nerror: npm package '@denotest/non-existent' does not exist.\n"
+}

@@ -26,8 +26,8 @@ use deno_core::parking_lot::Mutex;
 use deno_core::ModuleSpecifier;
 use deno_graph::source::ResolutionMode;
 use deno_graph::Resolution;
+use deno_path_util::url_to_file_path;
 use deno_runtime::deno_node;
-use deno_runtime::fs_util::specifier_to_file_path;
 use deno_semver::jsr::JsrPackageReqReference;
 use deno_semver::npm::NpmPackageReqReference;
 use deno_semver::package::PackageReq;
@@ -849,7 +849,7 @@ impl FileSystemDocuments {
     file_referrer: Option<&ModuleSpecifier>,
   ) -> Option<Arc<Document>> {
     let doc = if specifier.scheme() == "file" {
-      let path = specifier_to_file_path(specifier).ok()?;
+      let path = url_to_file_path(specifier).ok()?;
       let bytes = fs::read(path).ok()?;
       let content =
         deno_graph::source::decode_owned_source(specifier, bytes, None).ok()?;
@@ -1136,7 +1136,7 @@ impl Documents {
         return true;
       }
       if specifier.scheme() == "file" {
-        return specifier_to_file_path(&specifier)
+        return url_to_file_path(&specifier)
           .map(|p| p.is_file())
           .unwrap_or(false);
       }
@@ -1325,7 +1325,7 @@ impl Documents {
       let fs_docs = &self.file_system_docs;
       // Clean up non-existent documents.
       fs_docs.docs.retain(|specifier, _| {
-        let Ok(path) = specifier_to_file_path(specifier) else {
+        let Ok(path) = url_to_file_path(specifier) else {
           // Remove non-file schemed docs (deps). They may not be dependencies
           // anymore after updating resolvers.
           return false;
