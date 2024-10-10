@@ -44,12 +44,18 @@ pub async fn serve(
   maybe_npm_install(&factory).await?;
 
   let worker_factory = factory.create_cli_main_worker_factory().await?;
-
+  let hmr = serve_flags
+    .watch
+    .unwrap_or(WatchFlagsWithPaths {
+      hmr: false,
+      ..Default::default()
+    })
+    .hmr;
   do_serve(
     worker_factory,
     main_module.clone(),
     serve_flags.worker_count,
-    false,
+    hmr,
   )
   .await
 }
@@ -109,8 +115,6 @@ async fn do_serve(
     }
   }
   Ok(exit_code)
-
-  // main.await?
 }
 
 async fn run_worker(
@@ -119,7 +123,7 @@ async fn run_worker(
   main_module: ModuleSpecifier,
   hmr: bool,
 ) -> Result<i32, AnyError> {
-  let mut worker = worker_factory
+  let mut worker: crate::worker::CliMainWorker = worker_factory
     .create_main_worker(
       deno_runtime::WorkerExecutionMode::Serve {
         is_main: false,

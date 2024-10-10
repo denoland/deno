@@ -121,8 +121,7 @@ pub struct CliMainWorkerOptions {
   pub serve_port: Option<u16>,
   pub serve_host: Option<String>,
 }
-
-struct SharedWorkerState {
+pub struct SharedWorkerState {
   blob_store: Arc<BlobStore>,
   broadcast_channel: InMemoryBroadcastChannel,
   code_cache: Option<Arc<dyn code_cache::CodeCache>>,
@@ -139,7 +138,7 @@ struct SharedWorkerState {
   root_permissions: PermissionsContainer,
   shared_array_buffer_store: SharedArrayBufferStore,
   storage_key_resolver: StorageKeyResolver,
-  options: CliMainWorkerOptions,
+  pub options: CliMainWorkerOptions,
   subcommand: DenoSubcommand,
 }
 
@@ -161,7 +160,7 @@ pub struct CliMainWorker {
   main_module: ModuleSpecifier,
   is_main_cjs: bool,
   worker: MainWorker,
-  shared: Arc<SharedWorkerState>,
+  pub shared: Arc<SharedWorkerState>,
 }
 
 impl CliMainWorker {
@@ -415,7 +414,7 @@ impl CliMainWorker {
 
 #[derive(Clone)]
 pub struct CliMainWorkerFactory {
-  shared: Arc<SharedWorkerState>,
+  pub shared: Arc<SharedWorkerState>,
 }
 
 impl CliMainWorkerFactory {
