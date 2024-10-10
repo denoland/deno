@@ -713,6 +713,7 @@ async fn sync_resolution_with_fs(
       snapshot,
       &package_partitions.packages,
       Some(root_node_modules_dir_path),
+      progress_bar,
     )
     .await?;
 

@@ -2,6 +2,8 @@
 
 use super::bin_entries::BinEntries;
 use crate::args::LifecycleScriptsConfig;
+use crate::task_runner::TaskStdio;
+use crate::util::progress_bar::ProgressBar;
 use deno_core::anyhow::Context;
 use deno_npm::resolution::NpmResolutionSnapshot;
 use deno_runtime::deno_io::FromRawIoHandle;
@@ -148,6 +150,7 @@ impl<'a> LifecycleScripts<'a> {
     snapshot: &NpmResolutionSnapshot,
     packages: &[NpmResolutionPackage],
     root_node_modules_dir_path: Option<&Path>,
+    progress_bar: &ProgressBar,
   ) -> Result<(), AnyError> {
     self.warn_not_run_scripts()?;
     let get_package_path =
@@ -201,7 +204,15 @@ impl<'a> LifecycleScripts<'a> {
             {
               continue;
             }
-            let exit_code = crate::task_runner::run_task(
+            let _guard = progress_bar.update_with_prompt(
+              crate::util::progress_bar::ProgressMessagePrompt::Initialize,
+              &format!("{}: running '{script_name}' script", package.id.nv),
+            );
+            let crate::task_runner::TaskResult {
+              exit_code,
+              stderr,
+              stdout,
+            } = crate::task_runner::run_task(
               crate::task_runner::RunTaskOptions {
                 task_name: script_name,
                 script,
@@ -211,15 +222,37 @@ impl<'a> LifecycleScripts<'a> {
                 init_cwd,
                 argv: &[],
                 root_node_modules_dir: root_node_modules_dir_path,
+                stdio: Some(crate::task_runner::TaskIo {
+                  stderr: TaskStdio::piped(),
+                  stdout: TaskStdio::piped(),
+                }),
               },
             )
             .await?;
+            let stdout = stdout.unwrap();
+            let stderr = stderr.unwrap();
             if exit_code != 0 {
               log::warn!(
-                "error: script '{}' in '{}' failed with exit code {}",
+                "error: script '{}' in '{}' failed with exit code {}{}{}",
                 script_name,
                 package.id.nv,
                 exit_code,
+                if !stdout.trim_ascii().is_empty() {
+                  format!(
+                    "\nstdout:\n{}\n",
+                    String::from_utf8_lossy(&stdout).trim()
+                  )
+                } else {
+                  String::new()
+                },
+                if !stderr.trim_ascii().is_empty() {
+                  format!(
+                    "\nstderr:\n{}\n",
+                    String::from_utf8_lossy(&stderr).trim()
+                  )
+                } else {
+                  String::new()
+                },
               );
               failed_packages.push(&package.id.nv);
               // assume if earlier script fails, later ones will fail too
