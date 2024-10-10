@@ -532,13 +532,24 @@ pub async fn upgrade(
     return Ok(());
   };
 
-  let download_url = get_download_url(
+  // TODO: print we're downloading something?
+  // log::info!("{}", colors::gray(format!("Downloading {}", &download_url)));
+  let binary_path = crate::download_deno_binary::download_deno_binary(
+    &http_client_provider,
+    factory.deno_dir()?,
+    crate::download_deno_binary::BinaryKind::Deno,
+    env!("TARGET"),
     &selected_version_to_upgrade.version_or_hash,
     requested_version.release_channel(),
-  )?;
-  log::info!("{}", colors::gray(format!("Downloading {}", &download_url)));
-  let Some(archive_data) = download_package(&client, download_url).await?
-  else {
+  )
+  .await?;
+
+  // let download_url = get_download_url(
+  //   &selected_version_to_upgrade.version_or_hash,
+  //   requested_version.release_channel(),
+  // )?;
+
+  let Ok(archive_data) = tokio::fs::read(&binary_path).await else {
     log::error!("Download could not be found, aborting");
     std::process::exit(1)
   };
