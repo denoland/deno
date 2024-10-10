@@ -63,6 +63,10 @@ export function createWritableStdioStream(writer, name, warmup = false) {
   stream.destroySoon = stream.destroy;
   stream._isStdio = true;
   stream.once("close", () => writer?.close());
+
+  // We cannot call `writer?.isTerminal()` eagerly here
+  let getIsTTY = () => writer?.isTerminal()
+
   ObjectDefineProperties(stream, {
     columns: {
       __proto__: null,
@@ -81,7 +85,11 @@ export function createWritableStdioStream(writer, name, warmup = false) {
       __proto__: null,
       enumerable: true,
       configurable: true,
-      get: () => writer?.isTerminal(),
+      // Allow users to overwrite it
+      get: () => getIsTTY(),
+      set: (value) => {
+        (getIsTTY = () => value)
+      },
     },
     getWindowSize: {
       __proto__: null,
