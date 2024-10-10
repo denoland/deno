@@ -9,6 +9,7 @@
 //!   Diagnostics are compile-time type errors, whereas JsErrors are runtime
 //!   exceptions.
 
+use deno_canvas::CanvasError;
 use deno_core::error::AnyError;
 use deno_core::serde_json;
 use deno_core::url;
@@ -153,12 +154,21 @@ pub fn get_nix_error_class(error: &nix::Error) -> &'static str {
   }
 }
 
+fn get_canvas_error(e: &CanvasError) -> &'static str {
+  match e {
+    CanvasError::UnsupportedColorType(_) => "TypeError",
+    CanvasError::Image(_) => "Error",
+  }
+}
+
 pub fn get_error_class_name(e: &AnyError) -> Option<&'static str> {
   deno_core::error::get_custom_error_class(e)
     .or_else(|| deno_webgpu::error::get_error_class_name(e))
     .or_else(|| deno_web::get_error_class_name(e))
     .or_else(|| deno_webstorage::get_not_supported_error_class_name(e))
     .or_else(|| deno_websocket::get_network_error_class_name(e))
+    .or_else(|| deno_websocket::get_network_error_class_name(e))
+    .or_else(|| e.downcast_ref::<CanvasError>().map(get_canvas_error))
     .or_else(|| {
       e.downcast_ref::<dlopen2::Error>()
         .map(get_dlopen_error_class)

@@ -1384,6 +1384,7 @@ dependencies = [
  "deno_webgpu",
  "image",
  "serde",
+ "thiserror",
 ]
 
 [[package]]
