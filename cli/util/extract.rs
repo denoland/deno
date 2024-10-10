@@ -254,7 +254,11 @@ impl ExportCollector {
     let mut import_specifiers = vec![];
 
     if let Some(default_export) = &self.default_export {
-      if !symbols_to_exclude.contains(default_export) {
+      // If the default export conflicts with a named export, a named one
+      // takes precedence.
+      if !symbols_to_exclude.contains(default_export)
+        && !self.named_exports.contains(default_export)
+      {
         import_specifiers.push(ast::ImportSpecifier::Default(
           ast::ImportDefaultSpecifier {
             span: DUMMY_SP,
@@ -1137,6 +1141,30 @@ Deno.test("file:///README.md$6-12.js", async ()=>{
           media_type: MediaType::JavaScript,
         }],
       },
+      // https://github.com/denoland/deno/issues/26009
+      Test {
+        input: Input {
+          source: r#"
+/**
+ * ```ts
+ * console.log(Foo)
+ * ```
+ */
+export class Foo {}
+export default Foo
+"#,
+          specifier: "file:///main.ts",
+        },
+        expected: vec![Expected {
+          source: r#"import { Foo } from "file:///main.ts";
+Deno.test("file:///main.ts$3-6.ts", async ()=>{
+    console.log(Foo);
+});
+"#,
+          specifier: "file:///main.ts$3-6.ts",
+          media_type: MediaType::TypeScript,
+        }],
+      },
     ];
 
     for test in tests {
@@ -1324,6 +1352,28 @@ assertEquals(add(1, 2), 3);
 "#,
           specifier: "file:///README.md$6-12.js",
           media_type: MediaType::JavaScript,
+        }],
+      },
+      // https://github.com/denoland/deno/issues/26009
+      Test {
+        input: Input {
+          source: r#"
+/**
+ * ```ts
+ * console.log(Foo)
+ * ```
+ */
+export class Foo {}
+export default Foo
+"#,
+          specifier: "file:///main.ts",
+        },
+        expected: vec![Expected {
+          source: r#"import { Foo } from "file:///main.ts";
+console.log(Foo);
+"#,
+          specifier: "file:///main.ts$3-6.ts",
+          media_type: MediaType::TypeScript,
         }],
       },
     ];
@@ -1580,6 +1630,16 @@ declare global {
 "#,
         named_expected: atom_set!(),
         default_expected: None,
+      },
+      // The identifier `Foo` conflicts, but `ExportCollector` doesn't do
+      // anything about it. It is handled by `to_import_specifiers` method.
+      Test {
+        input: r#"
+export class Foo {}
+export default Foo
+"#,
+        named_expected: atom_set!("Foo"),
+        default_expected: Some("Foo".into()),
       },
     ];
 
