@@ -333,6 +333,7 @@ function testInner(
   testDesc.name = escapeName(testDesc.name);
 
   op_register_test(
+    ROOT_TEST_GROUP.id,
     testDesc.fn,
     testDesc.name,
     testDesc.ignore,
@@ -539,6 +540,7 @@ globalThis.Deno.test = test;
 /**
  * @typedef {{
  *   id: number,
+ *   parentId: number,
  *   name: string,
  *   fn: () => any,
  *   only: boolean,
@@ -549,6 +551,7 @@ globalThis.Deno.test = test;
  *
  * @typedef {{
  *   id: number,
+ *   parentId: number,
  *   name: string,
  *   ignore: boolean,
  *   only: boolean,
@@ -563,6 +566,7 @@ globalThis.Deno.test = test;
 /** @type {TestGroup} */
 const ROOT_TEST_GROUP = {
   id: 0,
+  parentId: 0,
   name: "__DENO_TEST_ROOT__",
   ignore: false,
   only: false,
@@ -577,7 +581,7 @@ if (typeof op_register_test === "function") {
   op_test_group_register(
     registerTestGroupIdRetBufU8,
     ROOT_TEST_GROUP.name,
-    true,
+    ROOT_TEST_GROUP.parentId,
   );
   ROOT_TEST_GROUP.id = registerTestGroupIdRetBuf[0];
 }
@@ -621,18 +625,22 @@ function itInner(name, fn, ignore, only) {
     }
   };
 
+  const parent = getGroupParent();
+
   /** @type {BddTest} */
   const testDef = {
     id: 0,
+    parentId: parent.id,
     name,
     fn: testFn,
     ignore,
     only,
   };
-  getGroupParent().children.push(testDef);
+  parent.children.push(testDef);
   BDD_CONTEXT.total++;
 
   op_register_test(
+    parent.id,
     testFn,
     escapeName(name),
     ignore,
@@ -696,13 +704,14 @@ function describeInner(name, fn, ignore, only) {
     return;
   }
 
-  op_test_group_register(registerTestGroupIdRetBufU8, name, false);
+  const parent = getGroupParent();
+  op_test_group_register(registerTestGroupIdRetBufU8, name, parent.id);
   const id = registerTestGroupIdRetBuf[0];
 
-  const parent = getGroupParent();
   /** @type {TestGroup} */
   const group = {
     id,
+    parentId: parent.id,
     name,
     ignore,
     only,
@@ -829,7 +838,7 @@ async function runTests(seed, ...rest) {
     ROOT_TEST_GROUP.only = ROOT_TEST_GROUP.children.some((child) => child.only);
   }
 
-  console.log("RUN TESTS", seed, rest, ROOT_TEST_GROUP);
+  // console.log("RUN TESTS", BDD_CONTEXT.hasOnly, seed, rest, ROOT_TEST_GROUP);
   try {
     await runGroup(seed, ROOT_TEST_GROUP);
   } finally {
@@ -844,7 +853,11 @@ async function runTests(seed, ...rest) {
 async function runGroup(seed, group) {
   op_test_group_event_start(group.id);
 
-  if (seed > 0 && group.children.length > 1) {
+  if (BDD_CONTEXT.hasOnly && !group.only) {
+    group.ignore = true;
+  }
+
+  if (seed > 0 && !group.ignore && group.children.length > 1) {
     shuffle(group.children, seed);
   }
 
@@ -854,26 +867,20 @@ async function runGroup(seed, group) {
   // - groups last
   group.children.sort(sortTestItems);
 
-  // Short circuit if the whole group is ignored
-  if (group.ignore) {
-    // FIXME
-    return;
-  }
-
   try {
-    if (group.beforeAll !== null) {
+    if (!group.ignore && group.beforeAll !== null) {
       await group.beforeAll();
     }
 
     for (let i = 0; i < group.children.length; i++) {
       const child = group.children[i];
 
-      if (group.beforeEach !== null) {
+      if (!group.ignore && group.beforeEach !== null) {
         await group.beforeEach();
       }
       if (isTestGroup(child)) {
         await runGroup(seed, child);
-      } else if (child.ignore) {
+      } else if (child.ignore || BDD_CONTEXT.hasOnly && !child.only) {
         op_test_event_result_ignored(child.id);
       } else {
         op_test_event_start(child.id);
@@ -889,12 +896,12 @@ async function runGroup(seed, group) {
         }
       }
 
-      if (group.afterEach !== null) {
+      if (!group.ignore && group.afterEach !== null) {
         await group.afterEach();
       }
     }
 
-    if (group.afterAll !== null) {
+    if (!group.ignore && group.afterAll !== null) {
       await group.afterAll();
     }
   } finally {
@@ -910,12 +917,12 @@ function sortTestItems(a, b) {
   const isAGroup = isTestGroup(a);
   const isBGroup = isTestGroup(b);
   if (isAGroup && isBGroup) return 0;
-  if (isAGroup && !isBGroup) return -1;
-  if (!isAGroup && isBGroup) return 1;
+  if (isAGroup && !isBGroup) return 1;
+  if (!isAGroup && isBGroup) return -1;
 
   if (a.ignore && b.ignore) return 0;
-  if (a.ignore && !b.ignore) return -1;
-  if (!a.ignore && b.ignore) return 1;
+  if (a.ignore && !b.ignore) return 1;
+  if (!a.ignore && b.ignore) return -1;
 
   return 0;
 }

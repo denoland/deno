@@ -292,6 +292,7 @@ impl<'a> IntoIterator for &'a TestDescriptions {
 #[serde(rename_all = "camelCase")]
 pub struct TestDescription {
   pub id: usize,
+  pub parent_id: usize,
   pub name: String,
   pub ignore: bool,
   pub only: bool,
@@ -306,7 +307,7 @@ pub struct TestDescription {
 pub struct TestGroupDescription {
   pub id: usize,
   pub name: String,
-  pub is_root: bool,
+  pub parent_id: usize,
 }
 
 /// May represent a failure of a test or test step.
