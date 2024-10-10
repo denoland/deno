@@ -4,13 +4,16 @@ import { assert, assertEquals, assertThrows } from "@std/assert";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import {
+  closeSync,
   constants,
   createWriteStream,
   existsSync,
   lstatSync,
   mkdtempSync,
+  openSync,
   promises,
   readFileSync,
+  readSync,
   stat,
   Stats,
   statSync,
@@ -240,3 +243,11 @@ Deno.test(
     assertEquals(res, [0, 1, 2, 3, 4, 5]);
   },
 );
+
+Deno.test("[node/fs] readSync works", () => {
+  const fd = openSync("tests/testdata/assets/hello.txt", "r");
+  const buf = new Uint8Array(256);
+  const bytesRead = readSync(fd!, buf);
+  assertEquals(bytesRead, 12);
+  closeSync(fd!);
+});

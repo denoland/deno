@@ -257,11 +257,11 @@ impl NpmPackageFsResolver for LocalNpmPackageResolver {
     .await
   }
 
-  fn ensure_read_permission(
+  fn ensure_read_permission<'a>(
     &self,
     permissions: &mut dyn NodePermissions,
-    path: &Path,
-  ) -> Result<(), AnyError> {
+    path: &'a Path,
+  ) -> Result<Cow<'a, Path>, AnyError> {
     self
       .registry_read_permission_checker
       .ensure_registry_read_permission(permissions, path)

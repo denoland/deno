@@ -926,9 +926,7 @@ fn lock_redirects() {
   );
 }
 
-// TODO(2.0): this should be rewritten to a spec test and first run `deno install`
 #[test]
-#[ignore]
 fn lock_deno_json_package_json_deps() {
   let context = TestContextBuilder::new()
     .use_temp_cwd()
@@ -942,6 +940,7 @@ fn lock_deno_json_package_json_deps() {
 
   // add a jsr and npm dependency
   deno_json.write_json(&json!({
+    "nodeModulesDir": "auto",
     "imports": {
       "esm-basic": "npm:@denotest/esm-basic",
       "module_graph": "jsr:@denotest/module-graph@1.4",
@@ -984,6 +983,7 @@ fn lock_deno_json_package_json_deps() {
   // now remove the npm dependency from the deno.json and move
   // it to a package.json that uses an alias
   deno_json.write_json(&json!({
+    "nodeModulesDir": "auto",
     "imports": {
       "module_graph": "jsr:@denotest/module-graph@1.4",
     }
@@ -1060,7 +1060,9 @@ fn lock_deno_json_package_json_deps() {
   }));
 
   // now remove the deps from the deno.json
-  deno_json.write("{}");
+  deno_json.write_json(&json!({
+    "nodeModulesDir": "auto"
+  }));
   main_ts.write("");
   context
     .new_command()
@@ -5148,6 +5150,8 @@ fn emit_failed_readonly_file_system() {
   output.assert_matches_text("[WILDCARD]Error saving emit data ([WILDLINE]main.ts)[WILDCARD]Skipped emit cache save of [WILDLINE]other.ts[WILDCARD]hi[WILDCARD]");
 }
 
+// todo(dsherret): waiting on fix in https://github.com/servo/rust-url/issues/505
+#[ignore]
 #[cfg(windows)]
 #[test]
 fn handle_invalid_path_error() {
