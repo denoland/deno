@@ -6,6 +6,7 @@ use super::*;
 
 pub struct PrettyTestReporter {
   parallel: bool,
+  groups: IndexMap<usize, TestGroupDescription>,
   echo_output: bool,
   in_new_line: bool,
   phase: &'static str,
@@ -39,6 +40,7 @@ impl PrettyTestReporter {
       phase: "",
       filter,
       repl,
+      groups: IndexMap::new(),
       scope_test_id: None,
       cwd,
       did_have_user_output: false,
@@ -70,7 +72,21 @@ impl PrettyTestReporter {
       )
       .unwrap();
     }
-    write!(&mut self.writer, "{} ...", description.name).unwrap();
+
+    let mut group_names = "".to_string();
+    let mut parent_id = description.parent_id;
+    while parent_id > 0 {
+      if let Some((_, parent)) = self.groups.get_index(parent_id) {
+        group_names = format!("{} :: {}", parent.name, group_names);
+
+        parent_id = parent.parent_id;
+      } else {
+        break;
+      }
+    }
+
+    write!(&mut self.writer, "{}{} ...", group_names, description.name)
+      .unwrap();
     self.in_new_line = false;
     // flush for faster feedback when line buffered
     std::io::stdout().flush().unwrap();
@@ -167,7 +183,9 @@ impl PrettyTestReporter {
 }
 
 impl TestReporter for PrettyTestReporter {
-  fn report_register_group(&mut self, _description: &TestGroupDescription) {}
+  fn report_register_group(&mut self, description: &TestGroupDescription) {
+    self.groups.insert(description.id, description.clone());
+  }
 
   fn report_register(&mut self, _description: &TestDescription) {}
   fn report_plan(&mut self, plan: &TestPlan) {

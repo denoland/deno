@@ -103,6 +103,7 @@ static NEXT_GROUP_ID: AtomicUsize = AtomicUsize::new(0);
 #[op2]
 fn op_register_test(
   state: &mut OpState,
+  #[smi] parent_id: usize,
   #[global] function: v8::Global<v8::Function>,
   #[string] name: String,
   ignore: bool,
@@ -124,6 +125,7 @@ fn op_register_test(
   let origin = state.borrow::<ModuleSpecifier>().to_string();
   let description = TestDescription {
     id,
+    parent_id,
     name,
     ignore,
     only,
@@ -147,11 +149,15 @@ fn op_test_group_register(
   state: &mut OpState,
   #[buffer] ret_buf: &mut [u8],
   #[string] name: String,
-  is_root: bool,
+  #[smi] parent_id: usize,
 ) -> Result<(), AnyError> {
   let id = NEXT_GROUP_ID.fetch_add(1, Ordering::SeqCst);
   let sender = state.borrow_mut::<TestEventSender>();
-  let description = TestGroupDescription { id, name, is_root };
+  let description = TestGroupDescription {
+    id,
+    parent_id,
+    name,
+  };
   sender.send(TestEvent::GroupRegister(description)).ok();
   ret_buf.copy_from_slice(&(id as u32).to_le_bytes());
   Ok(())
