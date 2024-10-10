@@ -4301,7 +4301,6 @@ fn bench_parse(
     no_run,
     watch: watch_arg_parse(matches)?,
   });
-
   Ok(())
 }
 
@@ -4376,7 +4375,6 @@ fn compile_parse(
     icon,
     include,
   });
-
   Ok(())
 }
 
@@ -5352,7 +5350,6 @@ fn permission_args_parse(
   if matches.get_flag("no-prompt") {
     flags.permissions.no_prompt = true;
   }
-
   Ok(())
 }
 
