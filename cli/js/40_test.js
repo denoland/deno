@@ -544,7 +544,8 @@ globalThis.Deno.test = test;
  *   name: string,
  *   fn: () => any,
  *   only: boolean,
- *   ignore: boolean
+ *   ignore: boolean,
+ *   location: TestLocationInfo,
  * }} BddTest
  *
  * @typedef {() => unknown | Promise<unknown>} TestLifecycleFn
@@ -560,7 +561,22 @@ globalThis.Deno.test = test;
  *   afterAll: TestLifecycleFn | null,
  *   beforeEach: TestLifecycleFn | null,
  *   afterEach: TestLifecycleFn | null
+ *   sanitizeOps: boolean,
+ *   sanitizeResources: boolean,
+ *   sanitizeExit: boolean,
+ *   permissions?: Deno.PermissionOptions,
  * }} TestGroup
+ *
+ * @typedef {{
+ *   only: boolean,
+ *   ignore: boolean,
+ *   name: string,
+ *   fn: () => any,
+ *   sanitizeOps: boolean,
+ *   sanitizeResources: boolean,
+ *   sanitizeExit: boolean,
+ *   permissions?: Deno.PermissionOptions,
+ * }} BddArgs
  */
 
 /** @type {TestGroup} */
@@ -575,6 +591,10 @@ const ROOT_TEST_GROUP = {
   beforeEach: null,
   afterAll: null,
   afterEach: null,
+  sanitizeExit: false,
+  sanitizeOps: false,
+  sanitizeResources: false,
+  permissions: undefined,
 };
 // No-op if we're not running in `deno test` subcommand.
 if (typeof op_register_test === "function") {
@@ -594,12 +614,90 @@ const BDD_CONTEXT = {
 };
 
 /**
- * @param {string} name
- * @param {() => any} fn
- * @param {boolean} ignore
- * @param {boolean} only
+ * @overload
+ * @param {() => any} nameOrFnOrOptions
+ * @returns {BddArgs}
  */
-function itInner(name, fn, ignore, only) {
+/**
+ * @overload
+ * @param {BddArgs} nameOrFnOrOptions
+ * @returns {BddArgs}
+ */
+/**
+ * @overload
+ * @param {string} nameOrFnOrOptions
+ * @param {() => any} fnOrOptions
+ * @returns {BddArgs}
+ */
+/**
+ * @overload
+ * @param {string} nameOrFnOrOptions
+ * @param {BddArgs} fnOrOptions
+ * @param {() => any} maybeFn
+ * @returns {BddArgs}
+ */
+/**
+ * @param {string | (() => any) | BddArgs} nameOrFnOrOptions
+ * @param {(() => any) | BddArgs} [fnOrOptions]
+ * @param {(() => any)} [maybeFn]
+ * @returns {BddArgs}
+ */
+function normalizeBddArgs(nameOrFnOrOptions, fnOrOptions, maybeFn) {
+  let name = "";
+  let fn;
+  let only = false;
+  let ignore = false;
+  let sanitizeExit = false;
+  let sanitizeOps = false;
+  let sanitizeResources = false;
+  let permissions;
+
+  if (typeof nameOrFnOrOptions === "function") {
+    name = nameOrFnOrOptions.name;
+    fn = nameOrFnOrOptions;
+  } else if (typeof nameOrFnOrOptions === "object") {
+    return nameOrFnOrOptions;
+  } else if (typeof fnOrOptions === "function") {
+    name = nameOrFnOrOptions;
+    fn = fnOrOptions;
+  } else if (fnOrOptions !== undefined && maybeFn !== undefined) {
+    name = nameOrFnOrOptions;
+    only = fnOrOptions.only;
+    ignore = fnOrOptions.ignore;
+    sanitizeExit = fnOrOptions.sanitizeExit,
+      sanitizeOps = fnOrOptions.sanitizeOps,
+      sanitizeResources = fnOrOptions.sanitizeResources;
+    permissions = fnOrOptions.permissions;
+    fn = maybeFn;
+  } else {
+    throw new TypeError(`Invalid arguments passed to "Deno.test/it/describe"`);
+  }
+
+  return {
+    name: escapeName(name),
+    fn,
+    only,
+    ignore,
+    sanitizeExit,
+    sanitizeOps,
+    sanitizeResources,
+    permissions,
+  };
+}
+
+/**
+ * @param {BddArgs} args
+ */
+function itInner({
+  name,
+  fn,
+  ignore,
+  only,
+  sanitizeExit,
+  sanitizeOps,
+  sanitizeResources,
+  permissions,
+}) {
   if (
     !ignore && BDD_CONTEXT.stack.length > 1 &&
     BDD_CONTEXT.stack.some((x) => x.ignore)
@@ -612,18 +710,6 @@ function itInner(name, fn, ignore, only) {
   }
 
   const location = core.currentUserCallSite();
-  const sanitizeOps = false;
-  const sanitizeResources = false;
-  const testFn = async () => {
-    if (ignore) return "ignored";
-
-    try {
-      await fn();
-      return "ok";
-    } catch (error) {
-      return { failed: { jsError: core.destructureError(error) } };
-    }
-  };
 
   const parent = getGroupParent();
 
@@ -632,16 +718,17 @@ function itInner(name, fn, ignore, only) {
     id: 0,
     parentId: parent.id,
     name,
-    fn: testFn,
+    fn,
     ignore,
     only,
+    location,
   };
   parent.children.push(testDef);
   BDD_CONTEXT.total++;
 
   op_register_test(
     parent.id,
-    testFn,
+    fn,
     escapeName(name),
     ignore,
     only,
@@ -657,26 +744,37 @@ function itInner(name, fn, ignore, only) {
 }
 
 /**
- * @param {string} name
- * @param {() => any} fn
+ * @param {string | (() => any) | BddArgs} nameOrFnOrOptions
+ * @param {(() => any) | BddArgs} [fnOrOptions]
+ * @param {(() => any)} [maybeFn]
  */
-function it(name, fn) {
-  itInner(name, fn, false, false);
+function it(nameOrFnOrOptions, fnOrOptions, maybeFn) {
+  const args = normalizeBddArgs(nameOrFnOrOptions, fnOrOptions, maybeFn);
+  if (args.only) BDD_CONTEXT.hasOnly = true;
+  itInner(args);
 }
 /**
- * @param {string} name
- * @param {() => any} fn
+ * @param {string | (() => any) | BddArgs} nameOrFnOrOptions
+ * @param {(() => any) | BddArgs} [fnOrOptions]
+ * @param {(() => any)} [maybeFn]
  */
-it.only = (name, fn) => {
+it.only = (nameOrFnOrOptions, fnOrOptions, maybeFn) => {
+  const args = normalizeBddArgs(nameOrFnOrOptions, fnOrOptions, maybeFn);
   BDD_CONTEXT.hasOnly = true;
-  itInner(name, fn, false, true);
+  args.only = true;
+  args.ignore = false;
+  itInner(args);
 };
 /**
- * @param {string} name
- * @param {() => any} fn
+ * @param {string | (() => any) | BddArgs} nameOrFnOrOptions
+ * @param {(() => any) | BddArgs} [fnOrOptions]
+ * @param {(() => any)} [maybeFn]
  */
-it.ignore = (name, fn) => {
-  itInner(name, fn, true, false);
+it.ignore = (nameOrFnOrOptions, fnOrOptions, maybeFn) => {
+  const args = normalizeBddArgs(nameOrFnOrOptions, fnOrOptions, maybeFn);
+  args.ignore = true;
+  args.only = false;
+  itInner(args);
 };
 it.skip = it.ignore;
 
@@ -693,12 +791,20 @@ function getGroupParent() {
 }
 
 /**
- * @param {string} name
- * @param {() => void} fn
- * @param {boolean} ignore
- * @param {boolean} only
+ * @param {BddArgs} args
  */
-function describeInner(name, fn, ignore, only) {
+function describeInner(
+  {
+    name,
+    fn,
+    ignore,
+    only,
+    sanitizeExit,
+    sanitizeOps,
+    sanitizeResources,
+    permissions,
+  },
+) {
   // No-op if we're not running in `deno test` subcommand.
   if (typeof op_register_test !== "function") {
     return;
@@ -720,6 +826,10 @@ function describeInner(name, fn, ignore, only) {
     beforeEach: null,
     afterAll: null,
     afterEach: null,
+    sanitizeExit,
+    sanitizeOps,
+    sanitizeResources,
+    permissions,
   };
   parent.children.push(group);
   BDD_CONTEXT.stack.push(group);
@@ -769,26 +879,37 @@ function describeInner(name, fn, ignore, only) {
 }
 
 /**
- * @param {string} name
- * @param {() => void} fn
+ * @param {string | (() => any) | BddArgs} nameOrFnOrOptions
+ * @param {(() => any) | BddArgs} [fnOrOptions]
+ * @param {(() => any)} [maybeFn]
  */
-function describe(name, fn) {
-  describeInner(name, fn, false, false);
+function describe(nameOrFnOrOptions, fnOrOptions, maybeFn) {
+  const args = normalizeBddArgs(nameOrFnOrOptions, fnOrOptions, maybeFn);
+  if (args.only) BDD_CONTEXT.hasOnly = true;
+  describeInner(args);
 }
 /**
- * @param {string} name
- * @param {() => void} fn
+ * @param {string | (() => any) | BddArgs} nameOrFnOrOptions
+ * @param {(() => any) | BddArgs} [fnOrOptions]
+ * @param {(() => any)} [maybeFn]
  */
-describe.only = (name, fn) => {
+describe.only = (nameOrFnOrOptions, fnOrOptions, maybeFn) => {
+  const args = normalizeBddArgs(nameOrFnOrOptions, fnOrOptions, maybeFn);
   BDD_CONTEXT.hasOnly = true;
-  describeInner(name, fn, false, true);
+  args.only = true;
+  args.ignore = false;
+  describeInner(args);
 };
 /**
- * @param {string} name
- * @param {() => void} fn
+ * @param {string | (() => any) | BddArgs} nameOrFnOrOptions
+ * @param {(() => any) | BddArgs} [fnOrOptions]
+ * @param {(() => any)} [maybeFn]
  */
-describe.ignore = (name, fn) => {
-  describeInner(name, fn, true, false);
+describe.ignore = (nameOrFnOrOptions, fnOrOptions, maybeFn) => {
+  const args = normalizeBddArgs(nameOrFnOrOptions, fnOrOptions, maybeFn);
+  args.only = false;
+  args.ignore = true;
+  describeInner(args);
 };
 describe.skip = describe.ignore;
 
