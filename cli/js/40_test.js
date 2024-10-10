@@ -1,5 +1,7 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
+// @ts-check
+
 import { core, primordials } from "ext:core/mod.js";
 import { escapeName, withPermissions } from "ext:cli/40_test_common.js";
 
@@ -33,6 +35,14 @@ import { setExitHandler } from "ext:runtime/30_os.js";
 const DenoNs = globalThis.Deno;
 
 /**
+ * @typedef {() => Promise<"ignored" | "ok" | { failed: any}>} TestFunction
+ *
+ * @typedef {{
+ *   fileName: string,
+ *   lineNumber: number,
+ *   columnNumber: number
+ * }} TestLocation
+ *
  * @typedef {{
  *   id: number,
  *   name: string,
@@ -40,17 +50,17 @@ const DenoNs = globalThis.Deno;
  *   origin: string,
  *   location: TestLocation,
  *   ignore: boolean,
- *   only: boolean.
+ *   only: boolean,
  *   sanitizeOps: boolean,
  *   sanitizeResources: boolean,
  *   sanitizeExit: boolean,
- *   permissions: PermissionOptions,
+ *   permissions: Deno.PermissionOptions,
  * }} TestDescription
  *
  * @typedef {{
  *   id: number,
  *   name: string,
- *   fn: TestFunction
+ *   fn: TestFunction,
  *   origin: string,
  *   location: TestLocation,
  *   ignore: boolean,
@@ -79,12 +89,12 @@ const DenoNs = globalThis.Deno;
  * @typedef {{
  *   id: number,
  *   name: string,
- *   fn: BenchFunction
+ *   fn: BenchFunction,
  *   origin: string,
  *   ignore: boolean,
- *   only: boolean.
+ *   only: boolean,
  *   sanitizeExit: boolean,
- *   permissions: PermissionOptions,
+ *   permissions: Deno.PermissionOptions,
  * }} BenchDescription
  */
 
@@ -125,6 +135,11 @@ function assertExit(fn, isTest) {
   };
 }
 
+/**
+ * @param {*} fn
+ * @param {TestDescription | TestStepDescription} desc
+ * @returns {() => Promise<"ignored" | "ok" | { failed: any}>}
+ */
 function wrapOuter(fn, desc) {
   return async function outerWrapped() {
     try {
@@ -145,9 +160,10 @@ function wrapOuter(fn, desc) {
 }
 
 function wrapInner(fn) {
-  /** @param desc {TestDescription | TestStepDescription} */
+  /** @param {TestDescription | TestStepDescription} desc */
   return async function innerWrapped(desc) {
     function getRunningStepDescs() {
+      /** @type {TestStepDescription[]} */
       const results = [];
       let childDesc = desc;
       while (childDesc.parent != null) {
@@ -206,7 +222,11 @@ function wrapInner(fn) {
 const registerTestIdRetBuf = new Uint32Array(1);
 const registerTestIdRetBufU8 = new Uint8Array(registerTestIdRetBuf.buffer);
 
-// As long as we're using one isolate per test, we can cache the origin since it won't change
+/**
+ * As long as we're using one isolate per test, we can cache the origin
+ * since it won't change.
+ * @type {string | undefined}
+ */
 let cachedOrigin = undefined;
 
 function testInner(
@@ -355,6 +375,10 @@ test.only = function (
   return testInner(nameOrFnOrOptions, optionsOrFn, maybeFn, { only: true });
 };
 
+/**
+ * @param {TestDescription | TestStepDescription} desc
+ * @returns {string}
+ */
 function getFullName(desc) {
   if ("parent" in desc) {
     return `${getFullName(desc.parent)} ... ${desc.name}`;
@@ -362,10 +386,19 @@ function getFullName(desc) {
   return desc.name;
 }
 
+/**
+ * @param {TestDescription | TestStepDescription} desc
+ * @returns {boolean}
+ */
 function usesSanitizer(desc) {
   return desc.sanitizeResources || desc.sanitizeOps || desc.sanitizeExit;
 }
 
+/**
+ * @param {TestStepDescription} desc
+ * @param {*} result
+ * @param {number} elapsed
+ */
 function stepReportResult(desc, result, elapsed) {
   const state = MapPrototypeGet(testStates, desc.id);
   for (const childDesc of state.children) {
@@ -380,7 +413,9 @@ function stepReportResult(desc, result, elapsed) {
   }
 }
 
-/** @param desc {TestDescription | TestStepDescription} */
+/**
+ * @param {TestDescription | TestStepDescription} desc
+ */
 function createTestContext(desc) {
   let parent;
   let level;
@@ -412,8 +447,8 @@ function createTestContext(desc) {
      */
     origin: desc.origin,
     /**
-     * @param nameOrFnOrOptions {string | TestStepDefinition | ((t: TestContext) => void | Promise<void>)}
-     * @param maybeFn {((t: TestContext) => void | Promise<void>) | undefined}
+     * @param {string | TestStepDescription | ((t: TestContext) => void | Promise<void>)} nameOrFnOrOptions
+     * @param {((t: TestContext) => void | Promise<void>) | undefined} maybeFn
      */
     async step(nameOrFnOrOptions, maybeFn) {
       if (MapPrototypeGet(testStates, desc.id).completed) {
@@ -423,6 +458,7 @@ function createTestContext(desc) {
         );
       }
 
+      /** @type {TestStepDescription & { fn: any }} */
       let stepDesc;
       if (typeof nameOrFnOrOptions === "string") {
         if (typeof maybeFn !== "function") {
@@ -500,10 +536,8 @@ function createTestContext(desc) {
 
 /**
  * Wrap a user test function in one which returns a structured result.
- * @template T {Function}
- * @param testFn {T}
- * @param desc {TestDescription | TestStepDescription}
- * @returns {T}
+ * @param {TestDescription | TestStepDescription} desc
+ * @returns {TestFunction}
  */
 function wrapTest(desc) {
   let testFn = wrapInner(desc.fn);
