@@ -18,3 +18,4 @@ async-trait.workspace = true
 deno_core.workspace = true
 tokio.workspace = true
 uuid.workspace = true
+thiserror.workspace = true
