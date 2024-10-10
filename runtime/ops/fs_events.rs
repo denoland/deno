@@ -20,13 +20,13 @@ use notify::EventKind;
 use notify::RecommendedWatcher;
 use notify::RecursiveMode;
 use notify::Watcher;
-use serde::Deserialize;
 use serde::Serialize;
 use std::borrow::Cow;
 use std::cell::RefCell;
 use std::convert::From;
 use std::path::PathBuf;
 use std::rc::Rc;
+use std::sync::Arc;
 use tokio::sync::mpsc;
 
 deno_core::extension!(
@@ -35,8 +35,6 @@ deno_core::extension!(
 );
 
 struct FsEventsResource {
-  #[allow(unused)]
-  watcher: RecommendedWatcher,
   receiver: AsyncRefCell<mpsc::Receiver<Result<FsEvent, AnyError>>>,
   cancel: CancelHandle,
 }
@@ -59,7 +57,7 @@ impl Resource for FsEventsResource {
 ///
 /// Feel free to expand this struct as long as you can add tests to demonstrate
 /// the complexity.
-#[derive(Serialize, Debug)]
+#[derive(Serialize, Debug, Clone)]
 struct FsEvent {
   kind: &'static str,
   paths: Vec<PathBuf>,
@@ -93,43 +91,78 @@ impl From<NotifyEvent> for FsEvent {
   }
 }
 
-#[derive(Deserialize)]
-pub struct OpenArgs {
-  recursive: bool,
+struct WatcherState {
+  senders:
+    Arc<Mutex<Vec<(Vec<String>, mpsc::Sender<Result<FsEvent, AnyError>>)>>>,
+  watcher: RecommendedWatcher,
+}
+
+fn start_watcher(
+  state: &mut OpState,
   paths: Vec<String>,
+  sender: mpsc::Sender<Result<FsEvent, AnyError>>,
+) -> Result<(), AnyError> {
+  if let Some(watcher) = state.try_borrow_mut::<WatcherState>() {
+    watcher.senders.lock().push((paths, sender));
+    return Ok(());
+  }
+
+  let senders = Arc::new(Mutex::new(vec![(paths, sender)]));
+
+  let sender_clone = senders.clone();
+  let watcher: RecommendedWatcher = Watcher::new(
+    move |res: Result<NotifyEvent, NotifyError>| {
+      let res2 = res.map(FsEvent::from).map_err(AnyError::from);
+      for (paths, sender) in sender_clone.lock().iter() {
+        // Ignore result, if send failed it means that watcher was already closed,
+        // but not all messages have been flushed.
+
+        // Only send the event if the path matches one of the paths that the user is watching
+        if let Ok(event) = &res2 {
+          if paths.iter().any(|path| {
+            event
+              .paths
+              .iter()
+              .any(|event_path| event_path.starts_with(path))
+          }) {
+            let _ = sender.send(Ok(event.clone()));
+          }
+        }
+      }
+    },
+    Default::default(),
+  )?;
+
+  state.put::<WatcherState>(WatcherState { watcher, senders });
+
+  Ok(())
 }
 
 #[op2]
 #[smi]
 fn op_fs_events_open(
   state: &mut OpState,
-  #[serde] args: OpenArgs,
+  recursive: bool,
+  #[serde] paths: Vec<String>,
 ) -> Result<ResourceId, AnyError> {
   let (sender, receiver) = mpsc::channel::<Result<FsEvent, AnyError>>(16);
-  let sender = Mutex::new(sender);
-  let mut watcher: RecommendedWatcher = Watcher::new(
-    move |res: Result<NotifyEvent, NotifyError>| {
-      let res2 = res.map(FsEvent::from).map_err(AnyError::from);
-      let sender = sender.lock();
-      // Ignore result, if send failed it means that watcher was already closed,
-      // but not all messages have been flushed.
-      let _ = sender.try_send(res2);
-    },
-    Default::default(),
-  )?;
-  let recursive_mode = if args.recursive {
+
+  start_watcher(state, paths.clone(), sender)?;
+
+  let recursive_mode = if recursive {
     RecursiveMode::Recursive
   } else {
     RecursiveMode::NonRecursive
   };
-  for path in &args.paths {
+  for path in &paths {
     let path = state
       .borrow_mut::<PermissionsContainer>()
       .check_read(path, "Deno.watchFs()")?;
-    watcher.watch(&path, recursive_mode)?;
+
+    let watcher = state.borrow_mut::<WatcherState>();
+    watcher.watcher.watch(&path, recursive_mode)?;
   }
   let resource = FsEventsResource {
-    watcher,
     receiver: AsyncRefCell::new(receiver),
     cancel: Default::default(),
   };
