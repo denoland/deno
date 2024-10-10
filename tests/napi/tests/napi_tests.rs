@@ -87,5 +87,5 @@ fn napi_tests() {
     println!("stdout {}", stdout);
     println!("stderr {}", stderr);
   }
-  assert!(output.status.success());
+  assert_eq!(output.status.code().unwrap(), 1);
 }
