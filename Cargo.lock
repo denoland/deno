@@ -1774,6 +1774,9 @@ dependencies = [
  "deno_core",
  "deno_permissions",
  "libloading 0.7.4",
+ "minhook",
+ "widestring",
+ "winapi",
 ]
 
 [[package]]
@@ -4408,6 +4411,16 @@ name = "mime"
 version = "0.3.17"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "6877bb514081ee2a7ff5ef9de3281f14a4dd4bceac4c09388074a6b5df8a139a"
+
+[[package]]
+name = "minhook"
+version = "0.5.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "a48ae87876aaa4622bad562f6565cc1961ab8a3394e45247211f20f110286b5e"
+dependencies = [
+ "cc",
+ "tracing",
+]
 
 [[package]]
 name = "minimal-lexical"
