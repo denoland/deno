@@ -7,10 +7,9 @@ import {
   assertStrictEquals,
   assertThrows,
 } from "./test_util.ts";
-import { BufReader, BufWriter } from "@std/io";
 import { readAll } from "@std/io/read-all";
 import { writeAll } from "@std/io/write-all";
-import { TextProtoReader } from "../testdata/run/textproto.ts";
+import { toText } from "@std/streams/to-text";
 
 const encoder = new TextEncoder();
 const decoder = new TextDecoder();
@@ -114,28 +113,13 @@ Deno.test(
     );
 
     const conn = await Deno.connectTls({ hostname, port, caCerts });
-    const w = new BufWriter(conn);
-    const r = new BufReader(conn);
-    const body = `GET / HTTP/1.1\r\nHost: ${hostname}:${port}\r\n\r\n`;
-    const writeResult = await w.write(encoder.encode(body));
-    assertEquals(body.length, writeResult);
-    await w.flush();
-    const tpr = new TextProtoReader(r);
-    const statusLine = await tpr.readLine();
-    assert(statusLine !== null, `line must be read: ${String(statusLine)}`);
-    const m = statusLine.match(/^(.+?) (.+?) (.+?)$/);
-    assert(m !== null, "must be matched");
-    const [_, proto, status, ok] = m;
-    assertEquals(proto, "HTTP/1.1");
-    assertEquals(status, "200");
-    assertEquals(ok, "OK");
-    const headers = await tpr.readMimeHeader();
-    assert(headers !== null);
-    const contentLength = parseInt(headers.get("content-length")!);
-    const bodyBuf = new Uint8Array(contentLength);
-    await r.readFull(bodyBuf);
-    assertEquals(decoder.decode(bodyBuf), "Hello World\n");
-    conn.close();
+    await conn.writable.getWriter().write(
+      encoder.encode(`GET / HTTP/1.1\r\nHost: ${hostname}:${port}\r\n\r\n`),
+    );
+    assertEquals(
+      await toText(conn.readable),
+      "HTTP/1.1 200 OK\r\nContent-Length: 12\r\n\r\nHello World\n",
+    );
     listener.close();
     await promise;
   },
@@ -165,28 +149,13 @@ Deno.test(
     );
 
     const conn = await Deno.connectTls({ hostname, port, caCerts });
-    const w = new BufWriter(conn);
-    const r = new BufReader(conn);
-    const body = `GET / HTTP/1.1\r\nHost: ${hostname}:${port}\r\n\r\n`;
-    const writeResult = await w.write(encoder.encode(body));
-    assertEquals(body.length, writeResult);
-    await w.flush();
-    const tpr = new TextProtoReader(r);
-    const statusLine = await tpr.readLine();
-    assert(statusLine !== null, `line must be read: ${String(statusLine)}`);
-    const m = statusLine.match(/^(.+?) (.+?) (.+?)$/);
-    assert(m !== null, "must be matched");
-    const [_, proto, status, ok] = m;
-    assertEquals(proto, "HTTP/1.1");
-    assertEquals(status, "200");
-    assertEquals(ok, "OK");
-    const headers = await tpr.readMimeHeader();
-    assert(headers !== null);
-    const contentLength = parseInt(headers.get("content-length")!);
-    const bodyBuf = new Uint8Array(contentLength);
-    await r.readFull(bodyBuf);
-    assertEquals(decoder.decode(bodyBuf), "Hello World\n");
-    conn.close();
+    await conn.writable.getWriter().write(
+      encoder.encode(`GET / HTTP/1.1\r\nHost: ${hostname}:${port}\r\n\r\n`),
+    );
+    assertEquals(
+      await toText(conn.readable),
+      "HTTP/1.1 200 OK\r\nContent-Length: 12\r\n\r\nHello World\n",
+    );
     listener.close();
     await promise;
   },
@@ -985,58 +954,6 @@ Deno.test(
     assertStrictEquals(res4, "o".repeat(count4));
 
     listener.close();
-  },
-);
-
-Deno.test(
-  // Ignored because gmail appears to reject us on CI sometimes
-  { ignore: true, permissions: { read: true, net: true } },
-  async function startTls() {
-    const hostname = "smtp.gmail.com";
-    const port = 587;
-    const encoder = new TextEncoder();
-
-    const conn = await Deno.connect({
-      hostname,
-      port,
-    });
-
-    let writer = new BufWriter(conn);
-    let reader = new TextProtoReader(new BufReader(conn));
-
-    let line: string | null = (await reader.readLine()) as string;
-    assert(line.startsWith("220"));
-
-    await writer.write(encoder.encode(`EHLO ${hostname}\r\n`));
-    await writer.flush();
-
-    while ((line = (await reader.readLine()) as string)) {
-      assert(line.startsWith("250"));
-      if (line.startsWith("250 ")) break;
-    }
-
-    await writer.write(encoder.encode("STARTTLS\r\n"));
-    await writer.flush();
-
-    line = await reader.readLine();
-
-    // Received the message that the server is ready to establish TLS
-    assertEquals(line, "220 2.0.0 Ready to start TLS");
-
-    const tlsConn = await Deno.startTls(conn, { hostname });
-    writer = new BufWriter(tlsConn);
-    reader = new TextProtoReader(new BufReader(tlsConn));
-
-    // After that use TLS communication again
-    await writer.write(encoder.encode(`EHLO ${hostname}\r\n`));
-    await writer.flush();
-
-    while ((line = (await reader.readLine()) as string)) {
-      assert(line.startsWith("250"));
-      if (line.startsWith("250 ")) break;
-    }
-
-    tlsConn.close();
   },
 );
 
