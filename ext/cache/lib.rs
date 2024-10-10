@@ -235,7 +235,9 @@ where
     state.put(cache);
     Ok(state.borrow::<CA>().clone())
   } else {
-    Err(CacheError::Other(type_error("CacheStorage is not available in this context")))
+    Err(CacheError::Other(type_error(
+      "CacheStorage is not available in this context",
+    )))
   }
 }
 

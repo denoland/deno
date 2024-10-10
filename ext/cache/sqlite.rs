@@ -24,16 +24,16 @@ use tokio::io::AsyncReadExt;
 use tokio::io::AsyncWrite;
 use tokio::io::AsyncWriteExt;
 
+use crate::deserialize_headers;
 use crate::get_header;
 use crate::serialize_headers;
 use crate::vary_header_matches;
 use crate::Cache;
 use crate::CacheDeleteRequest;
+use crate::CacheError;
 use crate::CacheMatchRequest;
 use crate::CacheMatchResponseMeta;
 use crate::CachePutRequest;
-use crate::deserialize_headers;
-use crate::CacheError;
 
 #[derive(Clone)]
 pub struct SqliteBackedCache {
@@ -199,7 +199,11 @@ impl Cache for SqliteBackedCache {
       let mut file = tokio::fs::File::create(response_path).await?;
       let mut buf = BufMutView::new(64 * 1024);
       loop {
-        let (size, buf2) = resource.clone().read_byob(buf).await.map_err(CacheError::Other)?;
+        let (size, buf2) = resource
+          .clone()
+          .read_byob(buf)
+          .await
+          .map_err(CacheError::Other)?;
         if size == 0 {
           break;
         }
