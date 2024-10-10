@@ -14,7 +14,6 @@ import {
   promises,
   readFileSync,
   readSync,
-  stat,
   Stats,
   statSync,
   writeFileSync,
@@ -24,6 +23,7 @@ import {
   cp,
   FileHandle,
   open,
+  stat,
   writeFile,
 } from "node:fs/promises";
 import process from "node:process";
@@ -138,24 +138,28 @@ Deno.test(
 );
 
 Deno.test(
-  "[node/fs stat] throw error with path information",
-  () => {
+  "[node/fs/promises stat] throw error with path information",
+  async () => {
     const file = "non-exist-file";
     const fileUrl = new URL(file, import.meta.url);
 
-    stat(file, (error: unknown) => {
+    try {
+      await stat(file);
+    } catch (error: unknown) {
       assertEquals(
         `${error}`,
         "Error: ENOENT: no such file or directory, stat 'non-exist-file'",
       );
-    });
+    }
 
-    stat(fileUrl, (error: unknown) => {
+    try {
+      await stat(fileUrl);
+    } catch (error: unknown) {
       assertEquals(
         `${error}`,
         `Error: ENOENT: no such file or directory, stat '${fileUrl.pathname}'`,
       );
-    });
+    }
   },
 );
 
