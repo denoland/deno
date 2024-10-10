@@ -32,7 +32,8 @@ use crate::CacheDeleteRequest;
 use crate::CacheMatchRequest;
 use crate::CacheMatchResponseMeta;
 use crate::CachePutRequest;
-use crate::{deserialize_headers, CacheError};
+use crate::deserialize_headers;
+use crate::CacheError;
 
 #[derive(Clone)]
 pub struct SqliteBackedCache {
