@@ -136,6 +136,7 @@ const windowOrWorkerGlobalScope = {
   Crypto: core.propNonEnumerable(crypto.Crypto),
   SubtleCrypto: core.propNonEnumerable(crypto.SubtleCrypto),
   fetch: core.propWritable(fetch.fetch),
+  global: core.propWritable(globalThis),
   EventSource: core.propWritable(eventSource.EventSource),
   performance: core.propWritable(performance.performance),
   process: core.propWritable(process),
