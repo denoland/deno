@@ -1190,7 +1190,7 @@ export class ECDH {
 
     const c = ellipticCurves.find((x) => x.name == curve);
     if (c == undefined) {
-      throw new Error("invalid curve");
+      throw new Error(`Invalid curve: ${curve}`);
     }
 
     this.#curve = c;
