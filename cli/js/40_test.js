@@ -1,5 +1,7 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
+// @ts-check
+
 import { core, primordials } from "ext:core/mod.js";
 import { escapeName, withPermissions } from "ext:cli/40_test_common.js";
 
@@ -7,14 +9,18 @@ import { escapeName, withPermissions } from "ext:cli/40_test_common.js";
 const {
   op_register_test_step,
   op_register_test,
-  op_register_test_group,
-  op_test_group_pop,
-  op_register_test_group_lifecycle,
+  op_test_group_register,
+  op_test_group_event_start,
+  op_test_group_event_end,
   op_register_test_run_fn,
   op_test_event_step_result_failed,
   op_test_event_step_result_ignored,
   op_test_event_step_result_ok,
   op_test_event_step_wait,
+  op_test_event_start,
+  op_test_event_result_ok,
+  op_test_event_result_ignored,
+  op_test_event_result_failed,
   op_test_get_origin,
 } = core.ops;
 const {
@@ -44,11 +50,11 @@ const DenoNs = globalThis.Deno;
  *   origin: string,
  *   location: TestLocation,
  *   ignore: boolean,
- *   only: boolean.
+ *   only: boolean,
  *   sanitizeOps: boolean,
  *   sanitizeResources: boolean,
  *   sanitizeExit: boolean,
- *   permissions: PermissionOptions,
+ *   permissions: Deno.PermissionOptions,
  * }} TestDescription
  *
  * @typedef {{
@@ -86,9 +92,9 @@ const DenoNs = globalThis.Deno;
  *   fn: BenchFunction
  *   origin: string,
  *   ignore: boolean,
- *   only: boolean.
+ *   only: boolean,
  *   sanitizeExit: boolean,
- *   permissions: PermissionOptions,
+ *   permissions: Deno.PermissionOptions,
  * }} BenchDescription
  */
 
@@ -149,7 +155,7 @@ function wrapOuter(fn, desc) {
 }
 
 function wrapInner(fn) {
-  /** @param desc {TestDescription | TestStepDescription} */
+  /** @param  {TestDescription | TestStepDescription} desc */
   return async function innerWrapped(desc) {
     function getRunningStepDescs() {
       const results = [];
@@ -210,7 +216,16 @@ function wrapInner(fn) {
 const registerTestIdRetBuf = new Uint32Array(1);
 const registerTestIdRetBufU8 = new Uint8Array(registerTestIdRetBuf.buffer);
 
-// As long as we're using one isolate per test, we can cache the origin since it won't change
+const registerTestGroupIdRetBuf = new Uint32Array(1);
+const registerTestGroupIdRetBufU8 = new Uint8Array(
+  registerTestGroupIdRetBuf.buffer,
+);
+
+/**
+ * As long as we're using one isolate per test, we can cache the origin
+ * since it won't change.
+ * @type {string | undefined}
+ */
 let cachedOrigin = undefined;
 
 function testInner(
@@ -384,7 +399,7 @@ function stepReportResult(desc, result, elapsed) {
   }
 }
 
-/** @param desc {TestDescription | TestStepDescription} */
+/** @param {TestDescription | TestStepDescription} desc */
 function createTestContext(desc) {
   let parent;
   let level;
@@ -416,8 +431,8 @@ function createTestContext(desc) {
      */
     origin: desc.origin,
     /**
-     * @param nameOrFnOrOptions {string | TestStepDefinition | ((t: TestContext) => void | Promise<void>)}
-     * @param maybeFn {((t: TestContext) => void | Promise<void>) | undefined}
+     * @param {string | TestStepDescription | ((t: TestContext) => void | Promise<void>)} nameOrFnOrOptions
+     * @param {((t: TestContext) => void | Promise<void>) | undefined} maybeFn
      */
     async step(nameOrFnOrOptions, maybeFn) {
       if (MapPrototypeGet(testStates, desc.id).completed) {
@@ -504,9 +519,8 @@ function createTestContext(desc) {
 
 /**
  * Wrap a user test function in one which returns a structured result.
- * @template T {Function}
- * @param testFn {T}
- * @param desc {TestDescription | TestStepDescription}
+ * @template {Function} T
+ * @param {TestDescription | TestStepDescription} desc
  * @returns {T}
  */
 function wrapTest(desc) {
@@ -522,14 +536,34 @@ function wrapTest(desc) {
 
 globalThis.Deno.test = test;
 
-/** @typedef {{ name: string, fn: () => any, only: boolean, ignore: boolean }} BddTest */
+/**
+ * @typedef {{
+ *   id: number,
+ *   name: string,
+ *   fn: () => any,
+ *   only: boolean,
+ *   ignore: boolean
+ * }} BddTest
+ *
+ * @typedef {() => unknown | Promise<unknown>} TestLifecycleFn
+ *
+ * @typedef {{
+ *   id: number,
+ *   name: string,
+ *   ignore: boolean,
+ *   only: boolean,
+ *   children: Array<TestGroup | BddTest>,
+ *   beforeAll: TestLifecycleFn | null,
+ *   afterAll: TestLifecycleFn | null,
+ *   beforeEach: TestLifecycleFn | null,
+ *   afterEach: TestLifecycleFn | null
+ * }} TestGroup
+ */
 
-/** @typedef {() => unknown | Promise<unknown>} TestLifecycleFn */
-
-/** @typedef {{ name: string, ignore: boolean, only: boolean, children: Array<TestGroup | BddTest>, beforeAll: TestLifecycleFn | null, afterAll: TestLifecycleFn | null, beforeEach: TestLifecycleFn | null, afterEach: TestLifecycleFn | null}} TestGroup */
-
+/** @type {TestGroup} */
 const ROOT_TEST_GROUP = {
-  name: "__<root>__",
+  id: 0,
+  name: "__DENO_TEST_ROOT__",
   ignore: false,
   only: false,
   children: [],
@@ -538,6 +572,16 @@ const ROOT_TEST_GROUP = {
   afterAll: null,
   afterEach: null,
 };
+// No-op if we're not running in `deno test` subcommand.
+if (typeof op_register_test === "function") {
+  op_test_group_register(
+    registerTestGroupIdRetBufU8,
+    ROOT_TEST_GROUP.name,
+    true,
+  );
+  ROOT_TEST_GROUP.id = registerTestGroupIdRetBuf[0];
+}
+
 /** @type {{ hasOnly: boolean, stack: TestGroup[], total: number }} */
 const BDD_CONTEXT = {
   hasOnly: false,
@@ -547,14 +591,16 @@ const BDD_CONTEXT = {
 
 /**
  * @param {string} name
- * @param {fn: () => any} fn
+ * @param {() => any} fn
  * @param {boolean} ignore
  * @param {boolean} only
  */
 function itInner(name, fn, ignore, only) {
-  // No-op if we're not running in `deno test` subcommand.
-  if (typeof op_register_test !== "function") {
-    return;
+  if (
+    !ignore && BDD_CONTEXT.stack.length > 1 &&
+    BDD_CONTEXT.stack.some((x) => x.ignore)
+  ) {
+    ignore = true;
   }
 
   if (cachedOrigin == undefined) {
@@ -577,12 +623,13 @@ function itInner(name, fn, ignore, only) {
 
   /** @type {BddTest} */
   const testDef = {
+    id: 0,
     name,
     fn: testFn,
     ignore,
     only,
   };
-  BDD_CONTEXT.stack.at(-1).children.push(testDef);
+  getGroupParent().children.push(testDef);
   BDD_CONTEXT.total++;
 
   op_register_test(
@@ -597,6 +644,8 @@ function itInner(name, fn, ignore, only) {
     location.columnNumber,
     registerTestIdRetBufU8,
   );
+
+  testDef.id = registerTestIdRetBuf[0];
 }
 
 /**
@@ -623,6 +672,18 @@ it.ignore = (name, fn) => {
 };
 it.skip = it.ignore;
 
+/** @type {(x: TestGroup | BddTest) => x is TestGroup} */
+function isTestGroup(x) {
+  return "beforeAll" in x;
+}
+
+/**
+ * @returns {TestGroup}
+ */
+function getGroupParent() {
+  return /** @type {TestGroup} */ (BDD_CONTEXT.stack.at(-1));
+}
+
 /**
  * @param {string} name
  * @param {() => void} fn
@@ -635,9 +696,13 @@ function describeInner(name, fn, ignore, only) {
     return;
   }
 
-  const parent = BDD_CONTEXT.stack.at(-1);
+  op_test_group_register(registerTestGroupIdRetBufU8, name, false);
+  const id = registerTestGroupIdRetBuf[0];
+
+  const parent = getGroupParent();
   /** @type {TestGroup} */
   const group = {
+    id,
     name,
     ignore,
     only,
@@ -653,6 +718,43 @@ function describeInner(name, fn, ignore, only) {
   try {
     fn();
   } finally {
+    let allIgnore = true;
+    let onlyChildCount = 0;
+
+    for (let i = 0; i < group.children.length; i++) {
+      const child = group.children[i];
+
+      if (!child.ignore) allIgnore = false;
+      if (!isTestGroup(child) && child.only) {
+        onlyChildCount++;
+      }
+    }
+
+    if (!group.ignore) {
+      group.ignore = allIgnore;
+    }
+
+    if (!group.ignore) {
+      if (onlyChildCount > 0) {
+        group.only = true;
+
+        if (onlyChildCount < group.children.length - 1) {
+          for (let i = 0; i < group.children.length; i++) {
+            const child = group.children[i];
+
+            if (!isTestGroup(child) && !child.only) {
+              child.ignore = true;
+            }
+          }
+        }
+      } else if (group.only) {
+        for (let i = 0; i < group.children.length; i++) {
+          const child = group.children[i];
+          child.only = true;
+        }
+      }
+    }
+
     BDD_CONTEXT.stack.pop();
   }
 }
@@ -685,27 +787,27 @@ describe.skip = describe.ignore;
  * @param {() => any} fn
  */
 function beforeAll(fn) {
-  BDD_CONTEXT.stack.at(-1).beforeAll = fn;
+  getGroupParent().beforeAll = fn;
 }
 
 /**
  * @param {() => any} fn
  */
 function afterAll(fn) {
-  BDD_CONTEXT.stack.at(-1).afterAll = fn;
+  getGroupParent().afterAll = fn;
 }
 
 /**
  * @param {() => any} fn
  */
 function beforeEach(fn) {
-  BDD_CONTEXT.stack.at(-1).beforeEach = fn;
+  getGroupParent().beforeEach = fn;
 }
 /**
  * @param {() => any} fn
  */
 function afterEach(fn) {
-  BDD_CONTEXT.stack.at(-1).afterEach = fn;
+  getGroupParent().afterEach = fn;
 }
 
 globalThis.before = beforeAll;
@@ -719,68 +821,109 @@ globalThis.describe = describe;
 
 /**
  * This function is called from Rust.
- * @param {bigint} seed
+ * @param {number} seed
  * @param {...any} rest
  */
 async function runTests(seed, ...rest) {
+  if (BDD_CONTEXT.hasOnly) {
+    ROOT_TEST_GROUP.only = ROOT_TEST_GROUP.children.some((child) => child.only);
+  }
+
   console.log("RUN TESTS", seed, rest, ROOT_TEST_GROUP);
-
-  // Filter tests
-
-  await runGroup(seed, ROOT_TEST_GROUP);
+  try {
+    await runGroup(seed, ROOT_TEST_GROUP);
+  } finally {
+    //
+  }
 }
 
 /**
- * @param {bigint} seed
+ * @param {number} seed
  * @param {TestGroup} group
  */
 async function runGroup(seed, group) {
-  // Bail out if group has no tests or sub groups
+  op_test_group_event_start(group.id);
 
-  /** @type {BddTest[]} */
-  const tests = [];
-  /** @type {TestGroup[]} */
-  const groups = [];
+  if (seed > 0 && group.children.length > 1) {
+    shuffle(group.children, seed);
+  }
 
-  for (let i = 0; i < group.children[i]; i++) {
-    const child = group.children[i];
-    if ("beforeAll" in child) {
-      groups.push(child);
-    } else {
-      tests.push(child);
+  // Sort tests:
+  // - non-ignored tests first (might be shuffled earlier)
+  // - ignored tests second
+  // - groups last
+  group.children.sort(sortTestItems);
+
+  // Short circuit if the whole group is ignored
+  if (group.ignore) {
+    // FIXME
+    return;
+  }
+
+  try {
+    if (group.beforeAll !== null) {
+      await group.beforeAll();
     }
+
+    for (let i = 0; i < group.children.length; i++) {
+      const child = group.children[i];
+
+      if (group.beforeEach !== null) {
+        await group.beforeEach();
+      }
+      if (isTestGroup(child)) {
+        await runGroup(seed, child);
+      } else if (child.ignore) {
+        op_test_event_result_ignored(child.id);
+      } else {
+        op_test_event_start(child.id);
+
+        const start = DateNow();
+        try {
+          await child.fn();
+          const elapsed = DateNow() - start;
+          op_test_event_result_ok(child.id, elapsed);
+        } catch (err) {
+          const elapsed = DateNow() - start;
+          op_test_event_result_failed(child.id, elapsed);
+        }
+      }
+
+      if (group.afterEach !== null) {
+        await group.afterEach();
+      }
+    }
+
+    if (group.afterAll !== null) {
+      await group.afterAll();
+    }
+  } finally {
+    op_test_group_event_end(group.id);
   }
+}
 
-  if (seed > 0) {
-    shuffle(tests, seed);
-    shuffle(groups, seed);
-  }
+/**
+ * @param {TestGroup | BddTest} a
+ * @param {TestGroup | BddTest} b
+ */
+function sortTestItems(a, b) {
+  const isAGroup = isTestGroup(a);
+  const isBGroup = isTestGroup(b);
+  if (isAGroup && isBGroup) return 0;
+  if (isAGroup && !isBGroup) return -1;
+  if (!isAGroup && isBGroup) return 1;
 
-  await group.beforeAll?.();
+  if (a.ignore && b.ignore) return 0;
+  if (a.ignore && !b.ignore) return -1;
+  if (!a.ignore && b.ignore) return 1;
 
-  for (let i = 0; i < tests.length; i++) {
-    const test = tests[i];
-
-    await group.beforeEach?.();
-    await test.fn();
-    await group.afterEach?.();
-  }
-
-  for (let i = 0; i < groups.length; i++) {
-    const childGroup = groups[i];
-
-    await group.beforeEach?.();
-    await runGroup(seed, childGroup);
-    await group.afterEach?.();
-  }
-
-  await group.afterAll?.();
+  return 0;
 }
 
 /**
  * @template T
  * @param {T[]} arr
- * @param {bigint} seed
+ * @param {number} seed
  */
 function shuffle(arr, seed) {
   let m = arr.length;
@@ -788,11 +931,20 @@ function shuffle(arr, seed) {
   let i;
 
   while (m) {
-    i = Math.floor(seed * m--);
+    i = Math.floor(randomize(seed) * m--);
     t = arr[m];
     arr[m] = arr[i];
     arr[i] = t;
   }
+}
+
+/**
+ * @param {number} seed
+ * @returns {number}
+ */
+function randomize(seed) {
+  const x = Math.sin(seed++) * 10000;
+  return x - Math.floor(x);
 }
 
 // No-op if we're not running in `deno test` subcommand.

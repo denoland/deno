@@ -17,6 +17,7 @@ pub use tap::TapTestReporter;
 
 pub trait TestReporter {
   fn report_register(&mut self, description: &TestDescription);
+  fn report_register_group(&mut self, description: &TestGroupDescription);
   fn report_plan(&mut self, plan: &TestPlan);
   fn report_wait(&mut self, description: &TestDescription);
   fn report_slow(&mut self, description: &TestDescription, elapsed: u64);

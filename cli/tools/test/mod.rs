@@ -226,34 +226,15 @@ pub(crate) struct TestContainer {
   has_tests: bool,
   pub run_fn: Option<v8::Global<v8::Function>>,
   pub has_only: bool,
-  pub groups: Vec<TestGroup>,
-  pub stack: Vec<usize>,
   pub tests: (TestDescriptions, Vec<v8::Global<v8::Function>>),
 }
 
 impl TestContainer {
   pub fn new() -> Self {
-    let root = TestGroup {
-      id: 0,
-      parent_id: 0,
-      children: vec![],
-      ignore: false,
-      name: "<root>".to_string(),
-      only: false,
-      after_all: None,
-      after_each: None,
-      before_all: None,
-      before_each: None,
-    };
-
-    let stack = vec![root.id];
-
     Self {
       has_tests: false,
       run_fn: None,
-      groups: vec![root],
       has_only: false,
-      stack,
       tests: (
         TestDescriptions {
           ..Default::default()
@@ -265,7 +246,7 @@ impl TestContainer {
 
   pub fn register(
     &mut self,
-    mut description: TestDescription,
+    description: TestDescription,
     function: v8::Global<v8::Function>,
   ) {
     self.has_tests = true;
@@ -274,33 +255,8 @@ impl TestContainer {
       self.has_only = true
     }
 
-    if let Some(last_id) = self.stack.last() {
-      description.parent_id = *last_id;
-
-      let last: &mut TestGroup =
-        self.groups.get_mut::<usize>(*last_id).unwrap();
-      last.children.push(TestGroupChild::Test(description.id));
-    }
-
     self.tests.0.tests.insert(description.id, description);
     self.tests.1.push(function);
-  }
-
-  pub fn register_group(&mut self, mut group: TestGroup) {
-    if let Some(last_id) = self.stack.last() {
-      group.parent_id = *last_id;
-
-      let last: &mut TestGroup =
-        self.groups.get_mut::<usize>(*last_id).unwrap();
-      last.children.push(TestGroupChild::Group(group.id));
-    }
-
-    self.stack.push(group.id);
-    self.groups.push(group);
-  }
-
-  pub fn group_pop(&mut self) {
-    self.stack.pop();
   }
 
   pub fn is_empty(&self) -> bool {
@@ -336,7 +292,6 @@ impl<'a> IntoIterator for &'a TestDescriptions {
 #[serde(rename_all = "camelCase")]
 pub struct TestDescription {
   pub id: usize,
-  pub parent_id: usize,
   pub name: String,
   pub ignore: bool,
   pub only: bool,
@@ -344,6 +299,14 @@ pub struct TestDescription {
   pub location: TestLocation,
   pub sanitize_ops: bool,
   pub sanitize_resources: bool,
+}
+
+#[derive(Debug, Clone, PartialEq, Deserialize, Eq, Hash)]
+#[serde(rename_all = "camelCase")]
+pub struct TestGroupDescription {
+  pub id: usize,
+  pub name: String,
+  pub is_root: bool,
 }
 
 /// May represent a failure of a test or test step.
@@ -365,32 +328,6 @@ impl From<&TestDescription> for TestFailureDescription {
       location: value.location.clone(),
     }
   }
-}
-
-#[derive(Debug, Clone)]
-pub struct TestGroupLifecycleFn {
-  pub function: v8::Global<v8::Function>,
-  pub location: TestLocation,
-}
-
-#[derive(Debug, Default, Clone)]
-pub struct TestGroup {
-  pub id: usize,
-  pub parent_id: usize,
-  pub name: String,
-  pub ignore: bool,
-  pub only: bool,
-  pub children: Vec<TestGroupChild>,
-  pub before_all: Option<TestGroupLifecycleFn>,
-  pub before_each: Option<TestGroupLifecycleFn>,
-  pub after_all: Option<TestGroupLifecycleFn>,
-  pub after_each: Option<TestGroupLifecycleFn>,
-}
-
-#[derive(Debug, Clone)]
-pub enum TestGroupChild {
-  Group(usize),
-  Test(usize),
 }
 
 #[derive(Debug, Default, Clone, PartialEq)]
@@ -561,6 +498,9 @@ pub enum TestStdioStream {
 pub enum TestEvent {
   Register(Arc<TestDescriptions>),
   Plan(TestPlan),
+  GroupRegister(TestGroupDescription),
+  GroupWait(usize),
+  GroupResult(usize),
   Wait(usize),
   Output(Vec<u8>),
   Slow(usize, u64),
@@ -881,12 +821,6 @@ pub fn send_test_event(
   )
 }
 
-enum TestRunItem {
-  Lifecycle(usize),
-  Group(usize),
-  Test(usize),
-}
-
 pub async fn run_tests_for_worker(
   worker: &mut MainWorker,
   specifier: &ModuleSpecifier,
@@ -898,9 +832,9 @@ pub async fn run_tests_for_worker(
   let tc =
     std::mem::take(&mut *state_rc.borrow_mut().borrow_mut::<TestContainer>());
 
-  eprintln!("{:#?}", tc.stack);
+  let tests: Arc<TestDescriptions> = tc.tests.0.into();
+  send_test_event(&state_rc, TestEvent::Register(tests.clone()))?;
 
-  let to_run: Vec<TestRunItem> = vec![];
   if let Some(function) = &tc.run_fn {
     let seed = if let Some(seed) = options.shuffle {
       seed
@@ -911,14 +845,16 @@ pub async fn run_tests_for_worker(
     let args = {
       let scope = &mut worker.js_runtime.handle_scope();
       let seed_value: v8::Local<v8::Value> =
-        v8::BigInt::new_from_u64(scope, seed as u64).into();
+        v8::Number::new(scope, seed as f64).into();
       [v8::Global::new(scope, seed_value)]
     };
     let call = worker.js_runtime.call_with_args(&function, &args);
+    // FIXME: result
     let result = worker
       .js_runtime
       .with_event_loop_promise(call, PollEventLoopOptions::default())
       .await;
+    return Ok(());
   }
 
   if let Some(seed) = options.shuffle {
@@ -926,11 +862,7 @@ pub async fn run_tests_for_worker(
   }
   // FILTER
 
-  eprintln!("sorted, {:#?}", tc.stack);
-
   let test_functions = tc.tests.1;
-  let tests: Arc<TestDescriptions> = tc.tests.0.into();
-  send_test_event(&state_rc, TestEvent::Register(tests.clone()))?;
   let res = run_tests_for_worker_inner(
     worker,
     specifier,
@@ -1401,6 +1333,9 @@ pub async fn report_tests(
 
   while let Some((_, event)) = receiver.recv().await {
     match event {
+      TestEvent::GroupRegister(description) => {
+        reporter.report_register_group(&description);
+      }
       TestEvent::Register(description) => {
         for (_, description) in description.into_iter() {
           reporter.report_register(description);
@@ -1489,6 +1424,7 @@ pub async fn report_tests(
         }
         std::process::exit(130);
       }
+      _ => {}
     }
   }
 

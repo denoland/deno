@@ -167,6 +167,8 @@ impl PrettyTestReporter {
 }
 
 impl TestReporter for PrettyTestReporter {
+  fn report_register_group(&mut self, _description: &TestGroupDescription) {}
+
   fn report_register(&mut self, _description: &TestDescription) {}
   fn report_plan(&mut self, plan: &TestPlan) {
     self.write_output_end();

@@ -80,6 +80,8 @@ impl JunitTestReporter {
 }
 
 impl TestReporter for JunitTestReporter {
+  fn report_register_group(&mut self, _description: &TestGroupDescription) {}
+
   fn report_register(&mut self, description: &TestDescription) {
     let mut case = quick_junit::TestCase::new(
       description.name.clone(),
