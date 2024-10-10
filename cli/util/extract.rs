@@ -254,7 +254,11 @@ impl ExportCollector {
     let mut import_specifiers = vec![];
 
     if let Some(default_export) = &self.default_export {
-      if !symbols_to_exclude.contains(default_export) {
+      // If the default export conflicts with a named export, a named one
+      // takes precedence.
+      if !symbols_to_exclude.contains(default_export)
+        && !self.named_exports.contains(default_export)
+      {
         import_specifiers.push(ast::ImportSpecifier::Default(
           ast::ImportDefaultSpecifier {
             span: DUMMY_SP,
