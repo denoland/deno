@@ -469,6 +469,8 @@ const NOT_IMPORTED_OPS = [
 
   // Related to `Deno.jupyter` API
   "op_jupyter_broadcast",
+  "op_jupyter_comm_recv",
+  "op_jupyter_comm_open",
   "op_jupyter_input",
 
   // Related to `Deno.test()` API
