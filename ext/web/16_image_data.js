@@ -84,35 +84,35 @@ class ImageData {
 
       if (dataLength === 0) {
         throw new DOMException(
-          "Failed to construct 'ImageData': The input data has zero elements.",
+          "Failed to construct 'ImageData': the input data has zero elements",
           "InvalidStateError",
         );
       }
 
       if (dataLength % 4 !== 0) {
         throw new DOMException(
-          "Failed to construct 'ImageData': The input data length is not a multiple of 4.",
+          `Failed to construct 'ImageData': the input data length is not a multiple of 4, received ${dataLength}`,
           "InvalidStateError",
         );
       }
 
       if (sourceWidth < 1) {
         throw new DOMException(
-          "Failed to construct 'ImageData': The source width is zero or not a number.",
+          "Failed to construct 'ImageData': the source width is zero or not a number",
           "IndexSizeError",
         );
       }
 
       if (webidl.type(sourceHeight) !== "Undefined" && sourceHeight < 1) {
         throw new DOMException(
-          "Failed to construct 'ImageData': The source height is zero or not a number.",
+          "Failed to construct 'ImageData': the source height is zero or not a number",
           "IndexSizeError",
         );
       }
 
       if (dataLength / 4 % sourceWidth !== 0) {
         throw new DOMException(
-          "Failed to construct 'ImageData': The input data length is not a multiple of (4 * width).",
+          "Failed to construct 'ImageData': the input data length is not a multiple of (4 * width)",
           "IndexSizeError",
         );
       }
@@ -122,7 +122,7 @@ class ImageData {
         (sourceWidth * sourceHeight * 4 !== dataLength)
       ) {
         throw new DOMException(
-          "Failed to construct 'ImageData': The input data length is not equal to (4 * width * height).",
+          "Failed to construct 'ImageData': the input data length is not equal to (4 * width * height)",
           "IndexSizeError",
         );
       }
@@ -159,14 +159,14 @@ class ImageData {
 
     if (sourceWidth < 1) {
       throw new DOMException(
-        "Failed to construct 'ImageData': The source width is zero or not a number.",
+        "Failed to construct 'ImageData': the source width is zero or not a number",
         "IndexSizeError",
       );
     }
 
     if (sourceHeight < 1) {
       throw new DOMException(
-        "Failed to construct 'ImageData': The source height is zero or not a number.",
+        "Failed to construct 'ImageData': the source height is zero or not a number",
         "IndexSizeError",
       );
     }

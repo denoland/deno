@@ -65,7 +65,7 @@ class FileReader extends EventTarget {
     // 1. If fr's state is "loading", throw an InvalidStateError DOMException.
     if (this[state] === "loading") {
       throw new DOMException(
-        "Invalid FileReader state.",
+        "Invalid FileReader state",
         "InvalidStateError",
       );
     }

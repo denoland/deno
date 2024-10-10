@@ -271,7 +271,7 @@ function addPaddingToBase64url(base64url) {
   if (base64url.length % 4 === 2) return base64url + "==";
   if (base64url.length % 4 === 3) return base64url + "=";
   if (base64url.length % 4 === 1) {
-    throw new TypeError("Illegal base64url string!");
+    throw new TypeError("Illegal base64url string");
   }
   return base64url;
 }
@@ -382,7 +382,7 @@ function assert(cond, msg = "Assertion failed.") {
 function serializeJSValueToJSONString(value) {
   const result = JSONStringify(value);
   if (result === undefined) {
-    throw new TypeError("Value is not JSON serializable.");
+    throw new TypeError("Value is not JSON serializable");
   }
   return result;
 }
@@ -429,7 +429,7 @@ function pathFromURLWin32(url) {
  */
 function pathFromURLPosix(url) {
   if (url.hostname !== "") {
-    throw new TypeError(`Host must be empty.`);
+    throw new TypeError("Host must be empty");
   }
 
   return decodeURIComponent(
@@ -444,7 +444,7 @@ function pathFromURLPosix(url) {
 function pathFromURL(pathOrUrl) {
   if (ObjectPrototypeIsPrototypeOf(URLPrototype, pathOrUrl)) {
     if (pathOrUrl.protocol != "file:") {
-      throw new TypeError("Must be a file URL.");
+      throw new TypeError("Must be a file URL");
     }
 
     return core.build.os == "windows"
