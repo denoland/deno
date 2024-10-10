@@ -1353,6 +1353,7 @@ dependencies = [
  "rusqlite",
  "serde",
  "sha2",
+ "thiserror",
  "tokio",
 ]
 
