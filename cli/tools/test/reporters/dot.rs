@@ -88,6 +88,7 @@ fn fmt_cancelled() -> String {
 
 #[allow(clippy::print_stdout)]
 impl TestReporter for DotTestReporter {
+  fn report_register_group(&mut self, _description: &TestGroupDescription) {}
   fn report_register(&mut self, _description: &TestDescription) {}
 
   fn report_plan(&mut self, plan: &TestPlan) {

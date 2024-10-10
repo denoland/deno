@@ -421,6 +421,7 @@ impl TestRun {
             }
             test::TestEvent::ForceEndReport => {}
             test::TestEvent::Sigint => {}
+            _ => {} // FIXME
           }
         }
 

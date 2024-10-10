@@ -13,6 +13,12 @@ impl CompoundTestReporter {
 }
 
 impl TestReporter for CompoundTestReporter {
+  fn report_register_group(&mut self, description: &TestGroupDescription) {
+    for reporter in &mut self.test_reporters {
+      reporter.report_register_group(description)
+    }
+  }
+
   fn report_register(&mut self, description: &TestDescription) {
     for reporter in &mut self.test_reporters {
       reporter.report_register(description);
