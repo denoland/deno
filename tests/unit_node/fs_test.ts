@@ -139,7 +139,7 @@ Deno.test(
 
 Deno.test(
   "[node/fs stat] throw error with path information",
-  async () => {
+  () => {
     const file = "non-exist-file";
     const fileUrl = new URL(file, import.meta.url);
 
