@@ -65,7 +65,7 @@ export function createWritableStdioStream(writer, name, warmup = false) {
   stream.once("close", () => writer?.close());
 
   // We cannot call `writer?.isTerminal()` eagerly here
-  let getIsTTY = () => writer?.isTerminal()
+  let getIsTTY = () => writer?.isTerminal();
 
   ObjectDefineProperties(stream, {
     columns: {
@@ -88,7 +88,7 @@ export function createWritableStdioStream(writer, name, warmup = false) {
       // Allow users to overwrite it
       get: () => getIsTTY(),
       set: (value) => {
-        (getIsTTY = () => value)
+        getIsTTY = () => value;
       },
     },
     getWindowSize: {
