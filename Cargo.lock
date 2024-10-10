@@ -1464,6 +1464,7 @@ dependencies = [
  "chrono",
  "deno_core",
  "saffron",
+ "thiserror",
  "tokio",
 ]
 
