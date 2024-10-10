@@ -58,9 +58,9 @@ pub fn install() -> Result<(), AnyError> {
 
   let f = std::fs::File::create(kernel_json_path)?;
   serde_json::to_writer_pretty(f, &json_data)?;
-  install_icon(&user_data_dir, "logo-32x32.png", DENO_ICON_32)?;
-  install_icon(&user_data_dir, "logo-64x64.png", DENO_ICON_64)?;
-  install_icon(&user_data_dir, "logo-svg.svg", DENO_ICON_SVG)?;
+  install_icon(&kernel_dir, "logo-32x32.png", DENO_ICON_32)?;
+  install_icon(&kernel_dir, "logo-64x64.png", DENO_ICON_64)?;
+  install_icon(&kernel_dir, "logo-svg.svg", DENO_ICON_SVG)?;
 
   log::info!("✅ Deno kernelspec installed successfully.");
   Ok(())
