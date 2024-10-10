@@ -426,6 +426,7 @@ pub struct PublishFlags {
   pub allow_slow_types: bool,
   pub allow_dirty: bool,
   pub no_provenance: bool,
+  pub override_version: Option<String>, 
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -3189,12 +3190,12 @@ fn publish_subcommand() -> Command {
   command("publish", "Publish the current working directory's package or workspace to JSR", UnstableArgsConfig::ResolutionOnly)
     .defer(|cmd| {
       cmd
-      .arg(
-        Arg::new("token")
-          .long("token")
-          .help("The API token to use when publishing. If unset, interactive authentication is be used")
-          .help_heading(PUBLISH_HEADING)
-      )
+        .arg(
+          Arg::new("token")
+            .long("token")
+            .help("The API token to use when publishing. If unset, interactive authentication is be used")
+            .help_heading(PUBLISH_HEADING)
+        )
         .arg(config_arg())
         .arg(no_config_arg())
         .arg(
@@ -3202,29 +3203,37 @@ fn publish_subcommand() -> Command {
             .long("dry-run")
             .help("Prepare the package for publishing performing all checks and validations without uploading")
             .action(ArgAction::SetTrue)
-          .help_heading(PUBLISH_HEADING),
+            .help_heading(PUBLISH_HEADING),
         )
         .arg(
           Arg::new("allow-slow-types")
             .long("allow-slow-types")
             .help("Allow publishing with slow types")
             .action(ArgAction::SetTrue)
-          .help_heading(PUBLISH_HEADING),
+            .help_heading(PUBLISH_HEADING),
         )
         .arg(
           Arg::new("allow-dirty")
             .long("allow-dirty")
             .help("Allow publishing if the repository has uncommitted changed")
             .action(ArgAction::SetTrue)
-          .help_heading(PUBLISH_HEADING),
-        ).arg(
-        Arg::new("no-provenance")
-          .long("no-provenance")
-          .help(cstr!("Disable provenance attestation.
+            .help_heading(PUBLISH_HEADING),
+        )
+        .arg(
+          Arg::new("no-provenance")
+            .long("no-provenance")
+            .help(cstr!("Disable provenance attestation.
   <p(245)>Enabled by default on Github actions, publicly links the package to where it was built and published from.</>"))
-          .action(ArgAction::SetTrue)
-        .help_heading(PUBLISH_HEADING)
-      )
+            .action(ArgAction::SetTrue)
+            .help_heading(PUBLISH_HEADING)
+        )
+        .arg(
+          Arg::new("override-version")
+            .long("override-version")
+            .help("Override the version specified in the configuration file")
+            .value_name("VERSION")
+            .help_heading(PUBLISH_HEADING)
+        )
         .arg(check_arg(/* type checks by default */ true))
         .arg(no_check_arg())
     })
@@ -5154,6 +5163,7 @@ fn publish_parse(flags: &mut Flags, matches: &mut ArgMatches) {
     allow_slow_types: matches.get_flag("allow-slow-types"),
     allow_dirty: matches.get_flag("allow-dirty"),
     no_provenance: matches.get_flag("no-provenance"),
+    override_version: matches.remove_one("override-version"),
   });
 }
 
@@ -10611,6 +10621,7 @@ mod tests {
       "--allow-slow-types",
       "--allow-dirty",
       "--token=asdf",
+      "--override-version=1.0.1",
     ]);
     assert_eq!(
       r.unwrap(),
@@ -10621,6 +10632,7 @@ mod tests {
           allow_slow_types: true,
           allow_dirty: true,
           no_provenance: true,
+          override_version: Some("1.0.1".to_string()),
         }),
         type_check_mode: TypeCheckMode::Local,
         ..Flags::default()
