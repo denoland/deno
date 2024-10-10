@@ -112,7 +112,7 @@ export const globalAgent = new Agent({
 
 /** HttpsClientRequest class loosely follows http.ClientRequest class API. */
 class HttpsClientRequest extends ClientRequest {
-  override _encrypted: true;
+  override _encrypted = true;
   override defaultProtocol = "https:";
   override _getClient(): Deno.HttpClient | undefined {
     if (caCerts === null) {
