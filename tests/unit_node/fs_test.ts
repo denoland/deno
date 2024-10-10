@@ -11,6 +11,7 @@ import {
   mkdtempSync,
   promises,
   readFileSync,
+  stat,
   Stats,
   statSync,
   writeFileSync,
@@ -114,6 +115,44 @@ Deno.test(
     const stat = statSync("tests/testdata/assets/fixture.json");
     assert(stat);
     assert(stat instanceof Stats);
+  },
+);
+
+Deno.test(
+  "[node/fs statSync] throw error with path information",
+  () => {
+    const file = "non-exist-file";
+    const fileUrl = new URL(file, import.meta.url);
+
+    assertThrows(() => {
+      statSync(file);
+    }, "Error: ENOENT: no such file or directory, stat 'non-exist-file'");
+
+    assertThrows(() => {
+      statSync(fileUrl);
+    }, `Error: ENOENT: no such file or directory, stat '${fileUrl.pathname}'`);
+  },
+);
+
+Deno.test(
+  "[node/fs stat] throw error with path information",
+  async () => {
+    const file = "non-exist-file";
+    const fileUrl = new URL(file, import.meta.url);
+
+    stat(file, (error: unknown) => {
+      assertEquals(
+        `${error}`,
+        "Error: ENOENT: no such file or directory, stat 'non-exist-file'",
+      );
+    });
+
+    stat(fileUrl, (error: unknown) => {
+      assertEquals(
+        `${error}`,
+        `Error: ENOENT: no such file or directory, stat '${fileUrl.pathname}'`,
+      );
+    });
   },
 );
 
