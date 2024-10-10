@@ -76,7 +76,22 @@ deno_core::extension!(
 #[op2]
 #[string]
 fn op_exec_path(state: &mut OpState) -> Result<String, AnyError> {
-  let current_exe = env::current_exe().unwrap();
+  // Rust has platform-dependent symlink resolution, so we need to be clever
+  // if we want to get the called path to the executable.
+  // See:
+  // https://github.com/rust-lang/rust/issues/43617
+  // https://github.com/rivy/rs.coreutils/commit/c457dfbbc469333e7f116971b610a8e3fa1cdf66
+  let current_exe = match std::env::args().next() {
+    Some(ref s) if !s.is_empty() => {
+      let argv0 = std::path::PathBuf::from(s);
+      if argv0.is_absolute() {
+        argv0
+      } else {
+        std::env::current_dir().unwrap().join(argv0)
+      }
+    }
+    _ => std::env::current_exe().unwrap(),
+  };
   state
     .borrow_mut::<PermissionsContainer>()
     .check_read_blind(&current_exe, "exec_path", "Deno.execPath()")?;
