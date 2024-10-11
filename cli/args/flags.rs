@@ -426,7 +426,7 @@ pub struct PublishFlags {
   pub allow_slow_types: bool,
   pub allow_dirty: bool,
   pub no_provenance: bool,
-  pub override_version: Option<String>, 
+  pub override_version: Option<String>,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
