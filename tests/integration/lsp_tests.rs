@@ -1342,6 +1342,7 @@ fn lsp_import_map_import_completions() {
         "/#/": "./src/",
         "fs": "https://example.com/fs/index.js",
         "std/": "https://example.com/std@0.123.0/",
+        "lib/": "./lib/",
       },
       "scopes": {
         "file:///": {
@@ -1364,17 +1365,18 @@ fn lsp_import_map_import_completions() {
       "uri": uri,
       "languageId": "typescript",
       "version": 1,
-      "text": "import * as a from \"/~/b.ts\";\nimport * as b from \"\""
-    }
+      "text": r#"
+        import * as b from "";
+        import * as b from "/~/";
+        import * as b from "lib/";
+      "#,
+    },
   }));
 
   let res = client.get_completion(
     &uri,
-    (1, 20),
-    json!({
-      "triggerKind": 2,
-      "triggerCharacter": "\""
-    }),
+    (1, 28),
+    json!({ "triggerKind": 2, "triggerCharacter": "\"" }),
   );
   assert_eq!(
     json!(res),
@@ -1410,6 +1412,13 @@ fn lsp_import_map_import_completions() {
           "insertText": "std",
           "commitCharacters": ["\"", "'"],
         }, {
+          "label": "lib",
+          "kind": 19,
+          "detail": "(import map)",
+          "sortText": "lib",
+          "insertText": "lib",
+          "commitCharacters": ["\"", "'"],
+        }, {
           "label": "fs",
           "kind": 17,
           "detail": "(import map)",
@@ -1435,32 +1444,10 @@ fn lsp_import_map_import_completions() {
     })
   );
 
-  client.write_notification(
-    "textDocument/didChange",
-    json!({
-      "textDocument": {
-        "uri": uri,
-        "version": 2
-      },
-      "contentChanges": [
-        {
-          "range": {
-            "start": { "line": 1, "character": 20 },
-            "end": { "line": 1, "character": 20 }
-          },
-          "text": "/~/"
-        }
-      ]
-    }),
-  );
-
   let res = client.get_completion(
-    uri,
-    (1, 23),
-    json!({
-      "triggerKind": 2,
-      "triggerCharacter": "/"
-    }),
+    &uri,
+    (2, 31),
+    json!({ "triggerKind": 2, "triggerCharacter": "/" }),
   );
   assert_eq!(
     json!(res),
@@ -1475,15 +1462,44 @@ fn lsp_import_map_import_completions() {
           "filterText": "/~/b.ts",
           "textEdit": {
             "range": {
-              "start": { "line": 1, "character": 20 },
-              "end": { "line": 1, "character": 23 }
+              "start": { "line": 2, "character": 28 },
+              "end": { "line": 2, "character": 31 },
             },
-            "newText": "/~/b.ts"
+            "newText": "/~/b.ts",
           },
           "commitCharacters": ["\"", "'"],
-        }
-      ]
-    })
+        },
+      ],
+    }),
+  );
+
+  let res = client.get_completion(
+    &uri,
+    (3, 32),
+    json!({ "triggerKind": 2, "triggerCharacter": "/" }),
+  );
+  assert_eq!(
+    json!(res),
+    json!({
+      "isIncomplete": false,
+      "items": [
+        {
+          "label": "b.ts",
+          "kind": 17,
+          "detail": "(local)",
+          "sortText": "1",
+          "filterText": "lib/b.ts",
+          "textEdit": {
+            "range": {
+              "start": { "line": 3, "character": 28 },
+              "end": { "line": 3, "character": 32 },
+            },
+            "newText": "lib/b.ts",
+          },
+          "commitCharacters": ["\"", "'"],
+        },
+      ],
+    }),
   );
 
   client.shutdown();
