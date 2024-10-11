@@ -1498,6 +1498,8 @@ dependencies = [
  "sha2",
  "signature",
  "spki",
+ "thiserror",
+ "tokio",
  "uuid",
  "x25519-dalek",
 ]
@@ -1583,6 +1585,7 @@ dependencies = [
  "serde",
  "serde-value",
  "serde_json",
+ "thiserror",
  "winapi",
 ]
 

@@ -3,7 +3,6 @@
 use std::borrow::Cow;
 
 use deno_core::error::custom_error;
-use deno_core::error::type_error;
 use deno_core::error::AnyError;
 use deno_core::JsBuffer;
 use deno_core::ToJsBuffer;
@@ -63,47 +62,73 @@ pub enum RustRawKeyData {
   Public(ToJsBuffer),
 }
 
+#[derive(Debug, thiserror::Error)]
+pub enum SharedError {
+  #[error("expected valid private key")]
+  ExpectedValidPrivateKey,
+  #[error("expected valid public key")]
+  ExpectedValidPublicKey,
+  #[error("expected valid private EC key")]
+  ExpectedValidPrivateECKey,
+  #[error("expected valid public EC key")]
+  ExpectedValidPublicECKey,
+  #[error("expected private key")]
+  ExpectedPrivateKey,
+  #[error("expected public key")]
+  ExpectedPublicKey,
+  #[error("expected secret key")]
+  ExpectedSecretKey,
+  #[error("failed to decode private key")]
+  FailedDecodePrivateKey,
+  #[error("failed to decode public key")]
+  FailedDecodePublicKey,
+  #[error("unsupported format")]
+  UnsupportedFormat,
+}
+
 impl V8RawKeyData {
-  pub fn as_rsa_public_key(&self) -> Result<Cow<'_, [u8]>, AnyError> {
+  pub fn as_rsa_public_key(&self) -> Result<Cow<'_, [u8]>, SharedError> {
     match self {
       V8RawKeyData::Public(data) => Ok(Cow::Borrowed(data)),
       V8RawKeyData::Private(data) => {
         let private_key = RsaPrivateKey::from_pkcs1_der(data)
-          .map_err(|_| type_error("expected valid private key"))?;
+          .map_err(|_| SharedError::ExpectedValidPrivateKey)?;
 
         let public_key_doc = private_key
           .to_public_key()
           .to_pkcs1_der()
-          .map_err(|_| type_error("expected valid public key"))?;
+          .map_err(|_| SharedError::ExpectedValidPublicKey)?;
 
         Ok(Cow::Owned(public_key_doc.as_bytes().into()))
       }
-      _ => Err(type_error("expected public key")),
+      _ => Err(SharedError::ExpectedPublicKey),
     }
   }
 
-  pub fn as_rsa_private_key(&self) -> Result<&[u8], AnyError> {
+  pub fn as_rsa_private_key(&self) -> Result<&[u8], SharedError> {
     match self {
       V8RawKeyData::Private(data) => Ok(data),
-      _ => Err(type_error("expected private key")),
+      _ => Err(SharedError::ExpectedPrivateKey),
     }
   }
 
-  pub fn as_secret_key(&self) -> Result<&[u8], AnyError> {
+  pub fn as_secret_key(&self) -> Result<&[u8], SharedError> {
     match self {
       V8RawKeyData::Secret(data) => Ok(data),
-      _ => Err(type_error("expected secret key")),
+      _ => Err(SharedError::ExpectedSecretKey),
     }
   }
 
-  pub fn as_ec_public_key_p256(&self) -> Result<p256::EncodedPoint, AnyError> {
+  pub fn as_ec_public_key_p256(
+    &self,
+  ) -> Result<p256::EncodedPoint, SharedError> {
     match self {
       V8RawKeyData::Public(data) => p256::PublicKey::from_sec1_bytes(data)
         .map(|p| p.to_encoded_point(false))
-        .map_err(|_| type_error("expected valid public EC key")),
+        .map_err(|_| SharedError::ExpectedValidPublicECKey),
       V8RawKeyData::Private(data) => {
         let signing_key = p256::SecretKey::from_pkcs8_der(data)
-          .map_err(|_| type_error("expected valid private EC key"))?;
+          .map_err(|_| SharedError::ExpectedValidPrivateECKey)?;
         Ok(signing_key.public_key().to_encoded_point(false))
       }
       // Should never reach here.
@@ -111,14 +136,16 @@ impl V8RawKeyData {
     }
   }
 
-  pub fn as_ec_public_key_p384(&self) -> Result<p384::EncodedPoint, AnyError> {
+  pub fn as_ec_public_key_p384(
+    &self,
+  ) -> Result<p384::EncodedPoint, SharedError> {
     match self {
       V8RawKeyData::Public(data) => p384::PublicKey::from_sec1_bytes(data)
         .map(|p| p.to_encoded_point(false))
-        .map_err(|_| type_error("expected valid public EC key")),
+        .map_err(|_| SharedError::ExpectedValidPublicECKey),
       V8RawKeyData::Private(data) => {
         let signing_key = p384::SecretKey::from_pkcs8_der(data)
-          .map_err(|_| type_error("expected valid private EC key"))?;
+          .map_err(|_| SharedError::ExpectedValidPrivateECKey)?;
         Ok(signing_key.public_key().to_encoded_point(false))
       }
       // Should never reach here.
@@ -126,16 +153,18 @@ impl V8RawKeyData {
     }
   }
 
-  pub fn as_ec_public_key_p521(&self) -> Result<p521::EncodedPoint, AnyError> {
+  pub fn as_ec_public_key_p521(
+    &self,
+  ) -> Result<p521::EncodedPoint, SharedError> {
     match self {
       V8RawKeyData::Public(data) => {
         // public_key is a serialized EncodedPoint
         p521::EncodedPoint::from_bytes(data)
-          .map_err(|_| type_error("expected valid public EC key"))
+          .map_err(|_| SharedError::ExpectedValidPublicECKey)
       }
       V8RawKeyData::Private(data) => {
         let signing_key = p521::SecretKey::from_pkcs8_der(data)
-          .map_err(|_| type_error("expected valid private EC key"))?;
+          .map_err(|_| SharedError::ExpectedValidPrivateECKey)?;
         Ok(signing_key.public_key().to_encoded_point(false))
       }
       // Should never reach here.
@@ -143,26 +172,10 @@ impl V8RawKeyData {
     }
   }
 
-  pub fn as_ec_private_key(&self) -> Result<&[u8], AnyError> {
+  pub fn as_ec_private_key(&self) -> Result<&[u8], SharedError> {
     match self {
       V8RawKeyData::Private(data) => Ok(data),
-      _ => Err(type_error("expected private key")),
+      _ => Err(SharedError::ExpectedPrivateKey),
     }
   }
-}
-
-pub fn data_error(msg: impl Into<Cow<'static, str>>) -> AnyError {
-  custom_error("DOMExceptionDataError", msg)
-}
-
-pub fn not_supported_error(msg: impl Into<Cow<'static, str>>) -> AnyError {
-  custom_error("DOMExceptionNotSupportedError", msg)
-}
-
-pub fn operation_error(msg: impl Into<Cow<'static, str>>) -> AnyError {
-  custom_error("DOMExceptionOperationError", msg)
-}
-
-pub fn unsupported_format() -> AnyError {
-  not_supported_error("unsupported format")
 }

@@ -1,6 +1,5 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
-use deno_core::error::custom_error;
-use deno_core::error::AnyError;
+
 use deno_core::op2;
 use deno_core::ToJsBuffer;
 use ed448_goldilocks::curve::MontgomeryPoint;
@@ -12,6 +11,14 @@ use rand::RngCore;
 use spki::der::asn1::BitString;
 use spki::der::Decode;
 use spki::der::Encode;
+
+#[derive(Debug, thiserror::Error)]
+pub enum X448Error {
+  #[error("Failed to export key")]
+  FailedExport,
+  #[error(transparent)]
+  Der(#[from] spki::der::Error),
+}
 
 #[op2(fast)]
 pub fn op_crypto_generate_x448_keypair(
@@ -56,7 +63,7 @@ const X448_OID: const_oid::ObjectIdentifier =
 #[serde]
 pub fn op_crypto_export_spki_x448(
   #[buffer] pubkey: &[u8],
-) -> Result<ToJsBuffer, AnyError> {
+) -> Result<ToJsBuffer, X448Error> {
   let key_info = spki::SubjectPublicKeyInfo {
     algorithm: spki::AlgorithmIdentifierRef {
       oid: X448_OID,
@@ -67,9 +74,7 @@ pub fn op_crypto_export_spki_x448(
   Ok(
     key_info
       .to_der()
-      .map_err(|_| {
-        custom_error("DOMExceptionOperationError", "Failed to export key")
-      })?
+      .map_err(|_| X448Error::FailedExport)?
       .into(),
   )
 }
@@ -78,7 +83,7 @@ pub fn op_crypto_export_spki_x448(
 #[serde]
 pub fn op_crypto_export_pkcs8_x448(
   #[buffer] pkey: &[u8],
-) -> Result<ToJsBuffer, AnyError> {
+) -> Result<ToJsBuffer, X448Error> {
   use rsa::pkcs1::der::Encode;
 
   let pk_info = rsa::pkcs8::PrivateKeyInfo {
