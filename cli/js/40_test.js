@@ -546,6 +546,10 @@ globalThis.Deno.test = test;
  *   only: boolean,
  *   ignore: boolean,
  *   location: TestLocationInfo,
+ *   sanitizeOps: boolean,
+ *   sanitizeResources: boolean,
+ *   sanitizeExit: boolean,
+ *   permissions?: Deno.PermissionOptions,
  * }} BddTest
  *
  * @typedef {() => unknown | Promise<unknown>} TestLifecycleFn
@@ -713,22 +717,31 @@ function itInner({
 
   const parent = getGroupParent();
 
+  let testFn = fn;
+  if (permissions !== undefined) {
+    testFn = withPermissions(testFn);
+  }
+
   /** @type {BddTest} */
   const testDef = {
     id: 0,
     parentId: parent.id,
     name,
-    fn,
+    fn: testFn,
     ignore,
     only,
     location,
+    sanitizeExit,
+    sanitizeOps,
+    sanitizeResources,
+    permissions,
   };
   parent.children.push(testDef);
   BDD_CONTEXT.total++;
 
   op_register_test(
-    parent.id,
-    fn,
+    testDef.parentId,
+    testDef.fn,
     escapeName(name),
     ignore,
     only,
@@ -1001,7 +1014,9 @@ async function runGroup(seed, group) {
       }
       if (isTestGroup(child)) {
         await runGroup(seed, child);
-      } else if (child.ignore || BDD_CONTEXT.hasOnly && !child.only) {
+      } else if (
+        child.ignore || group.ignore || BDD_CONTEXT.hasOnly && !child.only
+      ) {
         op_test_event_result_ignored(child.id);
       } else {
         op_test_event_start(child.id);
