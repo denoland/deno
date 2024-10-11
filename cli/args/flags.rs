@@ -2767,8 +2767,13 @@ It is especially useful for quick prototyping and checking snippets of code.
 
 TypeScript is supported, however it is not type-checked, only transpiled."
   ), UnstableArgsConfig::ResolutionAndRuntime)
-    .defer(|cmd| runtime_args(cmd, true, true)
-      .arg(check_arg(false))
+    .defer(|cmd| {
+      let cmd = compile_args_without_check_args(cmd);
+      let cmd = inspect_args(cmd);
+      let cmd = permission_args(cmd, None);
+      let cmd = runtime_misc_args(cmd);
+
+      cmd
       .arg(
         Arg::new("eval-file")
           .long("eval-file")
@@ -2787,7 +2792,7 @@ TypeScript is supported, however it is not type-checked, only transpiled."
       .after_help(cstr!("<y>Environment variables:</>
   <g>DENO_REPL_HISTORY</>  Set REPL history file path. History file is disabled when the value is empty.
                        <p(245)>[default: $DENO_DIR/deno_history.txt]</>"))
-    )
+    })
     .arg(env_file_arg())
     .arg(
       Arg::new("args")
@@ -3654,6 +3659,10 @@ fn runtime_args(
   } else {
     app
   };
+  runtime_misc_args(app)
+}
+
+fn runtime_misc_args(app: Command) -> Command {
   app
     .arg(frozen_lockfile_arg())
     .arg(cached_only_arg())
@@ -4846,8 +4855,18 @@ fn repl_parse(
   flags: &mut Flags,
   matches: &mut ArgMatches,
 ) -> clap::error::Result<()> {
-  runtime_args_parse(flags, matches, true, true)?;
-  unsafely_ignore_certificate_errors_parse(flags, matches);
+  unstable_args_parse(flags, matches, UnstableArgsConfig::ResolutionAndRuntime);
+  compile_args_without_check_parse(flags, matches)?;
+  cached_only_arg_parse(flags, matches);
+  frozen_lockfile_arg_parse(flags, matches);
+  permission_args_parse(flags, matches)?;
+  inspect_arg_parse(flags, matches);
+  location_arg_parse(flags, matches);
+  v8_flags_arg_parse(flags, matches);
+  seed_arg_parse(flags, matches);
+  enable_testing_features_arg_parse(flags, matches);
+  env_file_arg_parse(flags, matches);
+  strace_ops_parse(flags, matches);
 
   let eval_files = matches
     .remove_many::<String>("eval-file")
@@ -7390,7 +7409,7 @@ mod tests {
   #[test]
   fn repl_with_flags() {
     #[rustfmt::skip]
-    let r = flags_from_vec(svec!["deno", "repl", "-A", "--import-map", "import_map.json", "--no-remote", "--config", "tsconfig.json", "--no-check", "--reload", "--lock", "lock.json", "--cert", "example.crt", "--cached-only", "--location", "https:foo", "--v8-flags=--help", "--seed", "1", "--inspect=127.0.0.1:9229", "--unsafely-ignore-certificate-errors", "--env=.example.env"]);
+    let r = flags_from_vec(svec!["deno", "repl", "-A", "--import-map", "import_map.json", "--no-remote", "--config", "tsconfig.json", "--reload", "--lock", "lock.json", "--cert", "example.crt", "--cached-only", "--location", "https:foo", "--v8-flags=--help", "--seed", "1", "--inspect=127.0.0.1:9229", "--unsafely-ignore-certificate-errors", "--env=.example.env"]);
     assert_eq!(
       r.unwrap(),
       Flags {
@@ -7438,7 +7457,6 @@ mod tests {
           allow_write: Some(vec![]),
           ..Default::default()
         },
-        type_check_mode: TypeCheckMode::None,
         ..Flags::default()
       }
     );
@@ -7460,7 +7478,6 @@ mod tests {
           eval: None,
           is_default_command: false,
         }),
-        type_check_mode: TypeCheckMode::None,
         ..Flags::default()
       }
     );
