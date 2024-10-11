@@ -1054,7 +1054,7 @@ async function readableStreamCollectIntoUint8Array(stream) {
     getReadableStreamResourceBackingUnrefable(stream);
   const reader = acquireReadableStreamDefaultReader(stream);
 
-  if (resourceBacking) {
+  if (resourceBacking && !isReadableStreamDisturbed(stream)) {
     // fast path, read whole body in a single op call
     try {
       readableStreamDisturb(stream);

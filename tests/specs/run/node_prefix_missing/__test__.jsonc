@@ -1,0 +1,35 @@
+{
+  "tests": {
+    "basic": {
+      "args": "run --quiet main.ts",
+      "output": "main.ts.out",
+      "exitCode": 1
+    },
+    "unstable_bare_node_builtins_enabled": {
+      "args": "run --unstable-bare-node-builtins main.ts",
+      "output": "feature_enabled.out"
+    },
+    "unstable_bare_node_builtins_enbaled_by_env": {
+      "args": "run main.ts",
+      "envs": {
+        "DENO_UNSTABLE_BARE_NODE_BUILTINS": "1"
+      },
+      "output": "feature_enabled.out"
+    },
+    "enabled_by_config": {
+      "args": "run --config=config.json main.ts",
+      "output": "feature_enabled.out"
+    },
+    "byonm_missing": {
+      "cwd": "byonm",
+      "exitCode": 1,
+      "args": "run missing.ts",
+      "output": "byonm/missing.out"
+    },
+    "byonm_has": {
+      "cwd": "byonm",
+      "args": "run has.ts",
+      "output": "byonm/has.out"
+    }
+  }
+}

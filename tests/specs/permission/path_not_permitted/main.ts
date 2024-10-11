@@ -1,4 +1,4 @@
-const binaryName = Deno.build.os === "windows" ? "deno.exe" : "deno";
+const binaryName = Deno.build.os === "windows" ? "binary.exe" : "binary";
 Deno.copyFileSync(Deno.execPath(), binaryName);
 
 console.log("Running...");
@@ -9,9 +9,12 @@ new Deno.Command(
       "run",
       "--allow-write",
       "--allow-read",
-      `--allow-run=deno`,
+      `--allow-run=binary`,
       "sub.ts",
     ],
+    env: {
+      PATH: Deno.cwd(),
+    },
     stderr: "inherit",
     stdout: "inherit",
   },

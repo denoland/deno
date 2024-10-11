@@ -18,6 +18,7 @@ Deno.test({
     await file.truncate(size);
 
     await new Promise<void>((resolve, reject) => {
+      // @ts-ignore (iuioiua) `file.rid` should no longer be needed once FDs are used
       fsync(file.rid, (err: Error | null) => {
         if (err !== null) reject();
         else resolve();
@@ -53,6 +54,7 @@ Deno.test({
     file.truncateSync(size);
 
     try {
+      // @ts-ignore (iuioiua) `file.rid` should no longer be needed once FDs are used
       fsyncSync(file.rid);
       assertEquals(Deno.statSync(filePath).size, size);
     } finally {

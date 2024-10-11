@@ -1,6 +1,6 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
-import { core, internals, primordials } from "ext:core/mod.js";
+import { core, primordials } from "ext:core/mod.js";
 const {
   isDate,
   internalRidSymbol,
@@ -15,15 +15,15 @@ import {
   op_fs_copy_file_async,
   op_fs_copy_file_sync,
   op_fs_cwd,
-  op_fs_fdatasync_async,
-  op_fs_fdatasync_sync,
   op_fs_file_stat_async,
   op_fs_file_stat_sync,
+  op_fs_file_sync_async,
+  op_fs_file_sync_data_async,
+  op_fs_file_sync_data_sync,
+  op_fs_file_sync_sync,
   op_fs_file_truncate_async,
   op_fs_flock_async,
   op_fs_flock_sync,
-  op_fs_fsync_async,
-  op_fs_fsync_sync,
   op_fs_ftruncate_sync,
   op_fs_funlock_async,
   op_fs_funlock_sync,
@@ -517,22 +517,6 @@ async function symlink(
   );
 }
 
-function fdatasyncSync(rid) {
-  op_fs_fdatasync_sync(rid);
-}
-
-async function fdatasync(rid) {
-  await op_fs_fdatasync_async(rid);
-}
-
-function fsyncSync(rid) {
-  op_fs_fsync_sync(rid);
-}
-
-async function fsync(rid) {
-  await op_fs_fsync_async(rid);
-}
-
 function openSync(
   path,
   options,
@@ -597,15 +581,6 @@ class FsFile {
     }
   }
 
-  get rid() {
-    internals.warnOnDeprecatedApi(
-      "Deno.FsFile.rid",
-      new Error().stack,
-      "Use `Deno.FsFile` methods directly instead.",
-    );
-    return this.#rid;
-  }
-
   write(p) {
     return write(this.#rid, p);
   }
@@ -648,11 +623,11 @@ class FsFile {
   }
 
   async syncData() {
-    await op_fs_fdatasync_async(this.#rid);
+    await op_fs_file_sync_data_async(this.#rid);
   }
 
   syncDataSync() {
-    op_fs_fdatasync_sync(this.#rid);
+    op_fs_file_sync_data_sync(this.#rid);
   }
 
   close() {
@@ -674,11 +649,11 @@ class FsFile {
   }
 
   async sync() {
-    await op_fs_fsync_async(this.#rid);
+    await op_fs_file_sync_async(this.#rid);
   }
 
   syncSync() {
-    op_fs_fsync_sync(this.#rid);
+    op_fs_file_sync_sync(this.#rid);
   }
 
   async utime(atime, mtime) {
@@ -914,11 +889,7 @@ export {
   create,
   createSync,
   cwd,
-  fdatasync,
-  fdatasyncSync,
   FsFile,
-  fsync,
-  fsyncSync,
   link,
   linkSync,
   lstat,

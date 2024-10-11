@@ -1,6 +1,5 @@
 {
   "args": "task",
-  "envs": { "NO_COLOR": "1" },
   "output": "task.out",
-  "exitCode": 1
+  "exitCode": 0
 }

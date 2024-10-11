@@ -11,13 +11,13 @@ use std::path::Path;
 use std::path::PathBuf;
 use std::rc::Rc;
 
-use deno_core::normalize_path;
 use deno_core::unsync::spawn_blocking;
 use deno_io::fs::File;
 use deno_io::fs::FsError;
 use deno_io::fs::FsResult;
 use deno_io::fs::FsStat;
 use deno_io::StdFileResourceInner;
+use deno_path_util::normalize_path;
 
 use crate::interface::AccessCheckCb;
 use crate::interface::FsDirEntry;
@@ -101,7 +101,7 @@ impl FileSystem for RealFs {
     &self,
     path: &Path,
     recursive: bool,
-    mode: u32,
+    mode: Option<u32>,
   ) -> FsResult<()> {
     mkdir(path, recursive, mode)
   }
@@ -109,7 +109,7 @@ impl FileSystem for RealFs {
     &self,
     path: PathBuf,
     recursive: bool,
-    mode: u32,
+    mode: Option<u32>,
   ) -> FsResult<()> {
     spawn_blocking(move || mkdir(&path, recursive, mode)).await?
   }
@@ -407,11 +407,11 @@ impl FileSystem for RealFs {
   }
 }
 
-fn mkdir(path: &Path, recursive: bool, mode: u32) -> FsResult<()> {
+fn mkdir(path: &Path, recursive: bool, mode: Option<u32>) -> FsResult<()> {
   let mut builder = fs::DirBuilder::new();
   builder.recursive(recursive);
   #[cfg(unix)]
-  {
+  if let Some(mode) = mode {
     use std::os::unix::fs::DirBuilderExt;
     builder.mode(mode);
   }
@@ -1069,8 +1069,10 @@ fn open_with_access_check(
     };
     (*access_check)(false, &path, &options)?;
     // On Linux, /proc may contain magic links that we don't want to resolve
-    let needs_canonicalization = !is_windows_device_path
-      && (!cfg!(target_os = "linux") || path.starts_with("/proc"));
+    let is_linux_special_path = cfg!(target_os = "linux")
+      && (path.starts_with("/proc") || path.starts_with("/dev"));
+    let needs_canonicalization =
+      !is_windows_device_path && !is_linux_special_path;
     let path = if needs_canonicalization {
       match path.canonicalize() {
         Ok(path) => path,

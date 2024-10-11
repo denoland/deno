@@ -1,0 +1,5 @@
+{
+  "args": "test --parallel --reload main.ts",
+  "exitCode": 1,
+  "output": "main.out"
+}

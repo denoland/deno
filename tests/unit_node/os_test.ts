@@ -8,6 +8,7 @@ import {
   assertNotEquals,
   assertThrows,
 } from "@std/assert";
+import console from "node:console";
 
 Deno.test({
   name: "build architecture is a string",
@@ -298,7 +299,14 @@ Deno.test({
       args: ["eval", "while (true) { console.log('foo') }"],
     }).spawn();
     assertThrows(
-      () => os.setPriority(child.pid, os.constants.priority.PRIORITY_HIGH),
+      () => {
+        try {
+          os.setPriority(child.pid, os.constants.priority.PRIORITY_HIGH);
+        } catch (err) {
+          console.error(err);
+          throw err;
+        }
+      },
       Deno.errors.PermissionDenied,
     );
     os.getPriority(child.pid);

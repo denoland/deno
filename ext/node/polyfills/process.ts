@@ -267,9 +267,11 @@ memoryUsage.rss = function (): number {
 
 // Returns a negative error code than can be recognized by errnoException
 function _kill(pid: number, sig: number): number {
+  const maybeMapErrno = (res: number) =>
+    res === 0 ? res : uv.mapSysErrnoToUvErrno(res);
   // signal 0 does not exist in constants.os.signals, thats why it have to be handled explicitly
   if (sig === 0) {
-    return op_node_process_kill(pid, 0);
+    return maybeMapErrno(op_node_process_kill(pid, 0));
   }
   const maybeSignal = Object.entries(constants.os.signals).find((
     [_, numericCode],
@@ -278,7 +280,7 @@ function _kill(pid: number, sig: number): number {
   if (!maybeSignal) {
     return uv.codeMap.get("EINVAL");
   }
-  return op_node_process_kill(pid, sig);
+  return maybeMapErrno(op_node_process_kill(pid, sig));
 }
 
 export function dlopen(module, filename, _flags) {
@@ -515,6 +517,12 @@ Process.prototype.on = function (
       // Ignores SIGBREAK if the platform is not windows.
     } else if (event === "SIGTERM" && Deno.build.os === "windows") {
       // Ignores SIGTERM on windows.
+    } else if (
+      event !== "SIGBREAK" && event !== "SIGINT" && Deno.build.os === "windows"
+    ) {
+      // Ignores all signals except SIGBREAK and SIGINT on windows.
+      // deno-lint-ignore no-console
+      console.warn(`Ignoring signal "${event}" on Windows`);
     } else {
       EventEmitter.prototype.on.call(this, event, listener);
       Deno.addSignalListener(event as Deno.Signal, listener);
@@ -539,8 +547,10 @@ Process.prototype.off = function (
   } else if (event.startsWith("SIG")) {
     if (event === "SIGBREAK" && Deno.build.os !== "windows") {
       // Ignores SIGBREAK if the platform is not windows.
-    } else if (event === "SIGTERM" && Deno.build.os === "windows") {
-      // Ignores SIGTERM on windows.
+    } else if (
+      event !== "SIGBREAK" && event !== "SIGINT" && Deno.build.os === "windows"
+    ) {
+      // Ignores all signals except SIGBREAK and SIGINT on windows.
     } else {
       EventEmitter.prototype.off.call(this, event, listener);
       Deno.removeSignalListener(event as Deno.Signal, listener);
@@ -745,6 +755,8 @@ Object.defineProperty(Process.prototype, "allowedNodeEnvironmentFlags", {
     return ALLOWED_FLAGS;
   },
 });
+
+export const allowedNodeEnvironmentFlags = ALLOWED_FLAGS;
 
 Process.prototype.features = { inspector: false };
 

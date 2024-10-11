@@ -106,8 +106,6 @@ pub struct BootstrapOptions {
   pub is_stdout_tty: bool,
   pub is_stderr_tty: bool,
   pub color_level: deno_terminal::colors::ColorLevel,
-  // --unstable flag, deprecated
-  pub unstable: bool,
   // --unstable-* flags
   pub unstable_features: Vec<i32>,
   pub user_agent: String,
@@ -144,7 +142,6 @@ impl Default for BootstrapOptions {
       log_level: Default::default(),
       locale: "en".to_string(),
       location: Default::default(),
-      unstable: Default::default(),
       unstable_features: Default::default(),
       inspect: Default::default(),
       args: Default::default(),
@@ -174,8 +171,6 @@ struct BootstrapV8<'a>(
   &'a str,
   // location
   Option<&'a str>,
-  // unstable
-  bool,
   // granular unstable flags
   &'a [i32],
   // inspect
@@ -213,7 +208,6 @@ impl BootstrapOptions {
     let bootstrap = BootstrapV8(
       &self.deno_version,
       self.location.as_ref().map(|l| l.as_str()),
-      self.unstable,
       self.unstable_features.as_ref(),
       self.inspect,
       self.enable_testing_features,

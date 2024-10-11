@@ -11,11 +11,13 @@ use deno_core::futures::StreamExt;
 use deno_semver::package::PackageReq;
 
 pub async fn cache_top_level_deps(
+  // todo(dsherret): don't pass the factory into this function. Instead use ctor deps
   factory: &CliFactory,
   jsr_resolver: Option<Arc<crate::jsr::JsrFetchResolver>>,
 ) -> Result<(), AnyError> {
   let npm_resolver = factory.npm_resolver().await?;
   let cli_options = factory.cli_options()?;
+  let root_permissions = factory.root_permissions_container()?;
   if let Some(npm_resolver) = npm_resolver.as_managed() {
     if !npm_resolver.ensure_top_level_package_json_install().await? {
       if let Some(lockfile) = cli_options.maybe_lockfile() {
@@ -106,7 +108,8 @@ pub async fn cache_top_level_deps(
         &roots,
         false,
         deno_config::deno_json::TsTypeLib::DenoWorker,
-        deno_runtime::deno_permissions::PermissionsContainer::allow_all(),
+        root_permissions.clone(),
+        None,
       )
       .await?;
   }

@@ -7,7 +7,7 @@ import { assert, assertEquals, assertThrows, delay } from "./test_util.ts";
 Deno.test({ permissions: { read: false } }, function watchFsPermissions() {
   assertThrows(() => {
     Deno.watchFs(".");
-  }, Deno.errors.PermissionDenied);
+  }, Deno.errors.NotCapable);
 });
 
 Deno.test({ permissions: { read: true } }, function watchFsInvalidPath() {
@@ -90,8 +90,6 @@ Deno.test(
   },
 );
 
-// TODO(kt3k): This test is for the backward compatibility of `.return` method.
-// This should be removed at 2.0
 Deno.test(
   { permissions: { read: true, write: true } },
   async function watchFsReturn() {

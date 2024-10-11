@@ -21,7 +21,7 @@ import {
   _checkInvalidHeaderChar as checkInvalidHeaderChar,
   _checkIsHttpToken as checkIsHttpToken,
   chunkExpression as RE_TE_CHUNKED,
-} from "ext:deno_node/_http_common.ts";
+} from "node:_http_common";
 import {
   defaultTriggerAsyncIdScope,
   symbols,
@@ -54,6 +54,8 @@ let debug = debuglog("http", (fn) => {
 
 const HIGH_WATER_MARK = getDefaultHighWaterMark();
 
+export const kUniqueHeaders = Symbol("kUniqueHeaders");
+export const kHighWaterMark = Symbol("kHighWaterMark");
 const kCorked = Symbol("corked");
 
 const nop = () => {};
@@ -891,6 +893,8 @@ function _onFinish(outmsg: any) {
 }
 
 export default {
+  kUniqueHeaders,
+  kHighWaterMark,
   validateHeaderName,
   validateHeaderValue,
   parseUniqueHeadersOption,

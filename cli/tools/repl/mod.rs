@@ -16,8 +16,6 @@ use deno_core::error::AnyError;
 use deno_core::futures::StreamExt;
 use deno_core::serde_json;
 use deno_core::unsync::spawn_blocking;
-use deno_runtime::deno_permissions::Permissions;
-use deno_runtime::deno_permissions::PermissionsContainer;
 use deno_runtime::WorkerExecutionMode;
 use rustyline::error::ReadlineError;
 
@@ -151,9 +149,7 @@ async fn read_eval_file(
   let specifier =
     deno_core::resolve_url_or_path(eval_file, cli_options.initial_cwd())?;
 
-  let file = file_fetcher
-    .fetch(&specifier, &PermissionsContainer::allow_all())
-    .await?;
+  let file = file_fetcher.fetch_bypass_permissions(&specifier).await?;
 
   Ok(file.into_text_decoded()?.source)
 }
@@ -166,9 +162,7 @@ pub async fn run(
   let factory = CliFactory::from_flags(flags);
   let cli_options = factory.cli_options()?;
   let main_module = cli_options.resolve_main_module()?;
-  let permissions = PermissionsContainer::new(Permissions::from_options(
-    &cli_options.permissions_options()?,
-  )?);
+  let permissions = factory.root_permissions_container()?;
   let npm_resolver = factory.npm_resolver().await?.clone();
   let resolver = factory.resolver().await?.clone();
   let file_fetcher = factory.file_fetcher()?;
@@ -183,7 +177,7 @@ pub async fn run(
     .create_custom_worker(
       WorkerExecutionMode::Repl,
       main_module.clone(),
-      permissions,
+      permissions.clone(),
       vec![crate::ops::testing::deno_test::init_ops(test_event_sender)],
       Default::default(),
     )
@@ -195,7 +189,7 @@ pub async fn run(
     npm_resolver,
     resolver,
     worker,
-    main_module,
+    main_module.clone(),
     test_event_receiver,
   )
   .await?;

@@ -21,7 +21,6 @@ export async function assertCallbackErrorUncaught(
   const p = new Deno.Command(Deno.execPath(), {
     args: [
       "eval",
-      "--unstable",
       `${prelude ?? ""}
   
         ${invocation}(err) => {

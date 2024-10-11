@@ -1,6 +1,0 @@
-error: Uncaught (in worker "") (in promise) TypeError: Requires net access to "example.com:443", run again with the --allow-net flag
-await import("" + "https://example.com/some/file.ts");
-^
-    at async http://localhost:4545/workers/dynamic_remote.ts:2:1
-[WILDCARD]error: Uncaught (in promise) Error: Unhandled error in child worker.
-    at Worker.#pollControl [WILDCARD]

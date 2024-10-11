@@ -712,7 +712,7 @@ function requiredArguments(length, required, prefix) {
   if (length < required) {
     const errMsg = `${prefix ? prefix + ": " : ""}${required} argument${
       required === 1 ? "" : "s"
-    } required, but only ${length} present.`;
+    } required, but only ${length} present`;
     throw new TypeError(errMsg);
   }
 }
@@ -818,7 +818,7 @@ function createDictionaryConverter(name, ...dictionaries) {
       } else if (member.required) {
         throw makeException(
           TypeError,
-          `can not be converted to '${name}' because '${key}' is required in '${name}'.`,
+          `can not be converted to '${name}' because '${key}' is required in '${name}'`,
           prefix,
           context,
         );
@@ -845,7 +845,7 @@ function createEnumConverter(name, values) {
       throw new TypeError(
         `${
           prefix ? prefix + ": " : ""
-        }The provided value '${S}' is not a valid enum value of type ${name}.`,
+        }The provided value '${S}' is not a valid enum value of type ${name}`,
       );
     }
 
@@ -925,7 +925,7 @@ function createRecordConverter(keyConverter, valueConverter) {
     if (type(V) !== "Object") {
       throw makeException(
         TypeError,
-        "can not be converted to dictionary.",
+        "can not be converted to dictionary",
         prefix,
         context,
       );
@@ -996,7 +996,7 @@ function createInterfaceConverter(name, prototype) {
     if (!ObjectPrototypeIsPrototypeOf(prototype, V) || V[brand] !== brand) {
       throw makeException(
         TypeError,
-        `is not of type ${name}.`,
+        `is not of type ${name}`,
         prefix,
         context,
       );

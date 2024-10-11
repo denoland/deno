@@ -7,9 +7,11 @@ export {
   Buffer,
   constants,
   default,
+  INSPECT_MAX_BYTES,
   isAscii,
   isUtf8,
   kMaxLength,
   kStringMaxLength,
   SlowBuffer,
+  transcode,
 } from "ext:deno_node/internal/buffer.mjs";

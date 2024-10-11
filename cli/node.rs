@@ -16,6 +16,7 @@ use serde::Serialize;
 
 use crate::cache::CacheDBHash;
 use crate::cache::NodeAnalysisCache;
+use crate::resolver::CliNodeResolver;
 use crate::util::fs::canonicalize_path_maybe_not_exists;
 
 pub type CliNodeCodeTranslator =
@@ -54,11 +55,20 @@ pub enum CliCjsAnalysis {
 pub struct CliCjsCodeAnalyzer {
   cache: NodeAnalysisCache,
   fs: deno_fs::FileSystemRc,
+  node_resolver: Arc<CliNodeResolver>,
 }
 
 impl CliCjsCodeAnalyzer {
-  pub fn new(cache: NodeAnalysisCache, fs: deno_fs::FileSystemRc) -> Self {
-    Self { cache, fs }
+  pub fn new(
+    cache: NodeAnalysisCache,
+    fs: deno_fs::FileSystemRc,
+    node_resolver: Arc<CliNodeResolver>,
+  ) -> Self {
+    Self {
+      cache,
+      fs,
+      node_resolver,
+    }
   }
 
   async fn inner_cjs_analysis(
@@ -73,12 +83,28 @@ impl CliCjsCodeAnalyzer {
       return Ok(analysis);
     }
 
-    let media_type = MediaType::from_specifier(specifier);
+    let mut media_type = MediaType::from_specifier(specifier);
     if media_type == MediaType::Json {
       return Ok(CliCjsAnalysis::Cjs {
         exports: vec![],
         reexports: vec![],
       });
+    }
+
+    if media_type == MediaType::JavaScript {
+      if let Some(package_json) =
+        self.node_resolver.get_closest_package_json(specifier)?
+      {
+        match package_json.typ.as_str() {
+          "commonjs" => {
+            media_type = MediaType::Cjs;
+          }
+          "module" => {
+            media_type = MediaType::Mjs;
+          }
+          _ => {}
+        }
+      }
     }
 
     let analysis = deno_core::unsync::spawn_blocking({
@@ -98,6 +124,13 @@ impl CliCjsCodeAnalyzer {
           Ok(CliCjsAnalysis::Cjs {
             exports: analysis.exports,
             reexports: analysis.reexports,
+          })
+        } else if media_type == MediaType::Cjs {
+          // FIXME: `deno_ast` should internally handle MediaType::Cjs implying that
+          // the result must never be Esm
+          Ok(CliCjsAnalysis::Cjs {
+            exports: vec![],
+            reexports: vec![],
           })
         } else {
           Ok(CliCjsAnalysis::Esm)
@@ -125,10 +158,23 @@ impl CjsCodeAnalyzer for CliCjsCodeAnalyzer {
     let source = match source {
       Some(source) => source,
       None => {
-        self
-          .fs
-          .read_text_file_lossy_async(specifier.to_file_path().unwrap(), None)
-          .await?
+        if let Ok(path) = specifier.to_file_path() {
+          if let Ok(source_from_file) =
+            self.fs.read_text_file_lossy_async(path, None).await
+          {
+            source_from_file
+          } else {
+            return Ok(ExtNodeCjsAnalysis::Cjs(CjsAnalysisExports {
+              exports: vec![],
+              reexports: vec![],
+            }));
+          }
+        } else {
+          return Ok(ExtNodeCjsAnalysis::Cjs(CjsAnalysisExports {
+            exports: vec![],
+            reexports: vec![],
+          }));
+        }
       }
     };
     let analysis = self.inner_cjs_analysis(specifier, &source).await?;

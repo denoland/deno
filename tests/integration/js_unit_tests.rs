@@ -84,7 +84,6 @@ util::unit_test_factory!(
     structured_clone_test,
     symbol_test,
     symlink_test,
-    sync_test,
     test_util,
     testing_test,
     text_encoding_test,
@@ -123,9 +122,8 @@ fn js_unit_test(test: String) {
     .arg("--no-lock")
     // TODO(bartlomieju): would be better if we could apply this unstable
     // flag to particular files, but there's many of them that rely on unstable
-    // net APIs (`reusePort` in `listen` and `listenTls`; `listenDatagram`, `createHttpClient`)
+    // net APIs (`reusePort` in `listen` and `listenTls`; `listenDatagram`)
     .arg("--unstable-net")
-    .arg("--unstable-http")
     .arg("--location=http://127.0.0.1:4545/")
     .arg("--no-prompt");
 
@@ -145,8 +143,19 @@ fn js_unit_test(test: String) {
     deno = deno.arg("--unstable-worker-options");
   }
 
-  // TODO(mmastrac): it would be better to just load a test CA for all tests
-  if test == "websocket_test" || test == "tls_sni_test" {
+  // Some tests require the root CA cert file to be loaded.
+  if test == "websocket_test" {
+    deno = deno.arg(format!(
+      "--cert={}",
+      util::testdata_path()
+        .join("tls")
+        .join("RootCA.pem")
+        .to_string_lossy()
+    ));
+  };
+
+  if test == "tls_sni_test" {
+    // TODO(lucacasonato): fix the SNI in the certs so that this is not needed
     deno = deno.arg("--unsafely-ignore-certificate-errors");
   }
 

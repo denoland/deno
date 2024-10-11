@@ -1,0 +1,5 @@
+{
+  "args": "test exit_sanitizer.ts",
+  "output": "exit_sanitizer.out",
+  "exitCode": 1
+}

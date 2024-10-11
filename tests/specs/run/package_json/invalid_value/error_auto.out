@@ -1,0 +1,8 @@
+Download http://localhost:4260/@denotest/esm-basic
+Download http://localhost:4260/@denotest/esm-basic/1.0.0.tgz
+Initialize @denotest/esm-basic@1.0.0
+error: Invalid version requirement
+    0: Unexpected character.
+         invalid stuff that won't parse
+         ~
+    at file:///[WILDCARD]/error.ts:2:23

@@ -62,11 +62,9 @@ where
 {
   let cron_handler = {
     let state = state.borrow();
-    // TODO(bartlomieju): replace with `state.feature_checker.check_or_exit`
-    // once we phase out `check_or_exit_with_legacy_fallback`
     state
       .feature_checker
-      .check_or_exit_with_legacy_fallback(UNSTABLE_FEATURE_NAME, "Deno.cron");
+      .check_or_exit(UNSTABLE_FEATURE_NAME, "Deno.cron");
     state.borrow::<Rc<C>>().clone()
   };
 

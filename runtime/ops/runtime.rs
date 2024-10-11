@@ -4,7 +4,6 @@ use deno_core::error::AnyError;
 use deno_core::op2;
 use deno_core::ModuleSpecifier;
 use deno_core::OpState;
-use deno_permissions::PermissionsContainer;
 
 deno_core::extension!(
   deno_runtime,
@@ -20,12 +19,6 @@ deno_core::extension!(
 fn op_main_module(state: &mut OpState) -> Result<String, AnyError> {
   let main_url = state.borrow::<ModuleSpecifier>();
   let main_path = main_url.to_string();
-  if main_url.scheme() == "file" {
-    let main_path = main_url.to_file_path().unwrap();
-    state
-      .borrow_mut::<PermissionsContainer>()
-      .check_read_blind(&main_path, "main_module", "Deno.mainModule")?;
-  }
   Ok(main_path)
 }
 

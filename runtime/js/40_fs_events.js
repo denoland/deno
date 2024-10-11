@@ -1,6 +1,6 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
-import { core, internals, primordials } from "ext:core/mod.js";
+import { core, primordials } from "ext:core/mod.js";
 import { op_fs_events_open, op_fs_events_poll } from "ext:core/ops";
 const {
   BadResourcePrototype,
@@ -11,7 +11,6 @@ const {
   ObjectPrototypeIsPrototypeOf,
   PromiseResolve,
   SymbolAsyncIterator,
-  ObjectDefineProperty,
 } = primordials;
 
 import { SymbolDispose } from "ext:deno_web/00_infra.js";
@@ -21,13 +20,6 @@ class FsWatcher {
   #promise;
 
   constructor(paths, options) {
-    if (internals.future) {
-      ObjectDefineProperty(this, "rid", {
-        __proto__: null,
-        enumerable: false,
-        value: undefined,
-      });
-    }
     const { recursive } = options;
     this.#rid = op_fs_events_open({ recursive, paths });
   }
@@ -57,10 +49,7 @@ class FsWatcher {
     }
   }
 
-  // TODO(kt3k): This is deprecated. Will be removed in v2.0.
-  // See https://github.com/denoland/deno/issues/10577 for details
   return(value) {
-    internals.warnOnDeprecatedApi("Deno.FsWatcher.return()", new Error().stack);
     core.close(this.#rid);
     return PromiseResolve({ value, done: true });
   }

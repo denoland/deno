@@ -1,0 +1,29 @@
+{
+  "tests": {
+    "broadcast_channel": {
+      "args": "run broadcast_channel.ts",
+      "exitCode": 1,
+      "output": "broadcast_channel.out"
+    },
+    "cron": {
+      "args": "run cron.ts",
+      "exitCode": 1,
+      "output": "cron.out"
+    },
+    "http_wss": {
+      "args": "run http_wss.ts",
+      "exitCode": 1,
+      "output": "http_wss.out"
+    },
+    "kv": {
+      "args": "run kv.ts",
+      "exitCode": 1,
+      "output": "kv.out"
+    },
+    "temporal": {
+      "args": "run temporal.ts",
+      "exitCode": 1,
+      "output": "temporal.out"
+    }
+  }
+}

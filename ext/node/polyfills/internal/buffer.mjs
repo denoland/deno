@@ -6,7 +6,7 @@
 // deno-lint-ignore-file prefer-primordials
 
 import { core } from "ext:core/mod.js";
-import { op_is_ascii, op_is_utf8 } from "ext:core/ops";
+import { op_is_ascii, op_is_utf8, op_transcode } from "ext:core/ops";
 
 import { TextDecoder, TextEncoder } from "ext:deno_web/08_text_encoding.js";
 import { codes } from "ext:deno_node/internal/error_codes.ts";
@@ -32,7 +32,11 @@ import {
 import { normalizeEncoding } from "ext:deno_node/internal/util.mjs";
 import { validateBuffer } from "ext:deno_node/internal/validators.mjs";
 import { isUint8Array } from "ext:deno_node/internal/util/types.ts";
-import { ERR_INVALID_STATE, NodeError } from "ext:deno_node/internal/errors.ts";
+import {
+  ERR_INVALID_STATE,
+  genericNodeError,
+  NodeError,
+} from "ext:deno_node/internal/errors.ts";
 import {
   forgivingBase64Encode,
   forgivingBase64UrlEncode,
@@ -65,7 +69,7 @@ const customInspectSymbol =
     ? Symbol["for"]("nodejs.util.inspect.custom")
     : null;
 
-const INSPECT_MAX_BYTES = 50;
+export const INSPECT_MAX_BYTES = 50;
 
 export const constants = {
   MAX_LENGTH: kMaxLength,
@@ -2598,6 +2602,48 @@ export function isAscii(input) {
   ], input);
 }
 
+export function transcode(source, fromEnco, toEnco) {
+  if (!isUint8Array(source)) {
+    throw new codes.ERR_INVALID_ARG_TYPE(
+      "source",
+      ["Buffer", "Uint8Array"],
+      source,
+    );
+  }
+  if (source.length === 0) {
+    return Buffer.alloc(0);
+  }
+  const code = "U_ILLEGAL_ARGUMENT_ERROR";
+  const illegalArgumentError = genericNodeError(
+    `Unable to transcode Buffer [${code}]`,
+    { code: code, errno: 1 },
+  );
+  fromEnco = normalizeEncoding(fromEnco);
+  toEnco = normalizeEncoding(toEnco);
+  if (!fromEnco || !toEnco) {
+    throw illegalArgumentError;
+  }
+  // Return the provided source when transcode is not required
+  // for the from/to encoding pair.
+  const returnSource = fromEnco === toEnco ||
+    fromEnco === "ascii" && toEnco === "utf8" ||
+    fromEnco === "ascii" && toEnco === "latin1";
+  if (returnSource) {
+    return Buffer.from(source);
+  }
+
+  try {
+    const result = op_transcode(new Uint8Array(source), fromEnco, toEnco);
+    return Buffer.from(result, toEnco);
+  } catch (err) {
+    if (err.message.includes("Unable to transcode Buffer")) {
+      throw illegalArgumentError;
+    } else {
+      throw err;
+    }
+  }
+}
+
 export default {
   atob,
   btoa,
@@ -2606,7 +2652,9 @@ export default {
   constants,
   isAscii,
   isUtf8,
+  INSPECT_MAX_BYTES,
   kMaxLength,
   kStringMaxLength,
   SlowBuffer,
+  transcode,
 };

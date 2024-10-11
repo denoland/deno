@@ -3,17 +3,19 @@
 use deno_core::anyhow::Context;
 use deno_core::error::generic_error;
 use deno_core::error::AnyError;
-use deno_core::normalize_path;
 use deno_core::op2;
 use deno_core::url::Url;
+use deno_core::v8;
 use deno_core::JsRuntimeInspector;
 use deno_core::ModuleSpecifier;
 use deno_core::OpState;
 use deno_fs::FileSystemRc;
 use deno_package_json::PackageJsonRc;
+use deno_path_util::normalize_path;
 use node_resolver::NodeModuleKind;
 use node_resolver::NodeResolutionMode;
 use node_resolver::REQUIRE_CONDITIONS;
+use std::borrow::Cow;
 use std::cell::RefCell;
 use std::path::Path;
 use std::path::PathBuf;
@@ -24,10 +26,11 @@ use crate::NodeRequireResolverRc;
 use crate::NodeResolverRc;
 use crate::NpmResolverRc;
 
-fn ensure_read_permission<P>(
+#[must_use = "the resolved return value to mitigate time-of-check to time-of-use issues"]
+fn ensure_read_permission<'a, P>(
   state: &mut OpState,
-  file_path: &Path,
-) -> Result<(), AnyError>
+  file_path: &'a Path,
+) -> Result<Cow<'a, Path>, AnyError>
 where
   P: NodePermissions + 'static,
 {
@@ -103,10 +106,10 @@ where
   } else {
     let current_dir =
       &(fs.cwd().map_err(AnyError::from)).context("Unable to get CWD")?;
-    deno_core::normalize_path(current_dir.join(from))
+    deno_path_util::normalize_path(current_dir.join(from))
   };
 
-  ensure_read_permission::<P>(state, &from)?;
+  let from = ensure_read_permission::<P>(state, &from)?;
 
   if cfg!(windows) {
     // return root node_modules when path is 'D:\\'.
@@ -128,7 +131,7 @@ where
   }
 
   let mut paths = Vec::with_capacity(from.components().count());
-  let mut current_path = from.as_path();
+  let mut current_path = from.as_ref();
   let mut maybe_parent = Some(current_path);
   while let Some(parent) = maybe_parent {
     if !parent.ends_with("node_modules") {
@@ -266,7 +269,7 @@ where
   P: NodePermissions + 'static,
 {
   let path = PathBuf::from(path);
-  ensure_read_permission::<P>(state, &path)?;
+  let path = ensure_read_permission::<P>(state, &path)?;
   let fs = state.borrow::<FileSystemRc>();
   if let Ok(metadata) = fs.stat_sync(&path) {
     if metadata.is_file {
@@ -289,7 +292,7 @@ where
   P: NodePermissions + 'static,
 {
   let path = PathBuf::from(request);
-  ensure_read_permission::<P>(state, &path)?;
+  let path = ensure_read_permission::<P>(state, &path)?;
   let fs = state.borrow::<FileSystemRc>();
   let canonicalized_path =
     deno_core::strip_unc_prefix(fs.realpath_sync(&path)?);
@@ -361,7 +364,7 @@ where
     if parent_id == "<repl>" || parent_id == "internal/preload" {
       let fs = state.borrow::<FileSystemRc>();
       if let Ok(cwd) = fs.cwd() {
-        ensure_read_permission::<P>(state, &cwd)?;
+        let cwd = ensure_read_permission::<P>(state, &cwd)?;
         return Ok(Some(cwd.to_string_lossy().into_owned()));
       }
     }
@@ -442,7 +445,7 @@ where
   P: NodePermissions + 'static,
 {
   let file_path = PathBuf::from(file_path);
-  ensure_read_permission::<P>(state, &file_path)?;
+  let file_path = ensure_read_permission::<P>(state, &file_path)?;
   let fs = state.borrow::<FileSystemRc>();
   Ok(fs.read_text_file_lossy_sync(&file_path, None)?)
 }
@@ -527,7 +530,7 @@ where
   P: NodePermissions + 'static,
 {
   let filename = PathBuf::from(filename);
-  ensure_read_permission::<P>(state, filename.parent().unwrap())?;
+  // permissions: allow reading the closest package.json files
   let node_resolver = state.borrow::<NodeResolverRc>().clone();
   node_resolver
     .get_closest_package_json_from_path(&filename)
@@ -566,7 +569,7 @@ where
   P: NodePermissions + 'static,
 {
   let referrer_path = PathBuf::from(&referrer_filename);
-  ensure_read_permission::<P>(state, &referrer_path)?;
+  let referrer_path = ensure_read_permission::<P>(state, &referrer_path)?;
   let node_resolver = state.borrow::<NodeResolverRc>();
   let Some(pkg) =
     node_resolver.get_closest_package_json_from_path(&referrer_path)?
@@ -591,12 +594,14 @@ where
   }
 }
 
-#[op2(fast)]
-pub fn op_require_break_on_next_statement(state: &mut OpState) {
-  let inspector = state.borrow::<Rc<RefCell<JsRuntimeInspector>>>();
-  inspector
-    .borrow_mut()
-    .wait_for_session_and_break_on_next_statement()
+#[op2(fast, reentrant)]
+pub fn op_require_break_on_next_statement(state: Rc<RefCell<OpState>>) {
+  let inspector_rc = {
+    let state = state.borrow();
+    state.borrow::<Rc<RefCell<JsRuntimeInspector>>>().clone()
+  };
+  let mut inspector = inspector_rc.borrow_mut();
+  inspector.wait_for_session_and_break_on_next_statement()
 }
 
 fn url_to_file_path_string(url: &Url) -> Result<String, AnyError> {
@@ -611,4 +616,30 @@ fn url_to_file_path(url: &Url) -> Result<PathBuf, AnyError> {
       deno_core::anyhow::bail!("failed to convert '{}' to file path", url)
     }
   }
+}
+
+#[op2(fast)]
+pub fn op_require_can_parse_as_esm(
+  scope: &mut v8::HandleScope,
+  #[string] source: &str,
+) -> bool {
+  let scope = &mut v8::TryCatch::new(scope);
+  let Some(source) = v8::String::new(scope, source) else {
+    return false;
+  };
+  let origin = v8::ScriptOrigin::new(
+    scope,
+    source.into(),
+    0,
+    0,
+    false,
+    0,
+    None,
+    true,
+    false,
+    true,
+    None,
+  );
+  let mut source = v8::script_compiler::Source::new(source, Some(&origin));
+  v8::script_compiler::compile_module(scope, &mut source).is_some()
 }

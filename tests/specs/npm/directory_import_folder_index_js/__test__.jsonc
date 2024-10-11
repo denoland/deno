@@ -1,0 +1,5 @@
+{
+  "args": "run directory_import/folder_index_js.ts",
+  "output": "directory_import/folder_index_js.out",
+  "exitCode": 1
+}

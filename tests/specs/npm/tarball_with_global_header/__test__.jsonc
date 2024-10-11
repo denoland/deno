@@ -1,0 +1,4 @@
+{
+  "args": "run -A --quiet tarball_with_global_header/main.js",
+  "output": "tarball_with_global_header/main.out"
+}

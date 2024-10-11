@@ -1,0 +1,5 @@
+{
+  "args": "run -A worker_nested_error.ts",
+  "output": "worker_nested_error.ts.out",
+  "exitCode": 1
+}

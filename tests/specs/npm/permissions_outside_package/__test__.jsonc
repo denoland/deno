@@ -1,0 +1,4 @@
+{
+  "args": "run --allow-read permissions_outside_package/main.ts",
+  "output": "permissions_outside_package/main.out"
+}

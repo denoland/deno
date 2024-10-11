@@ -1,0 +1,4 @@
+{
+  "args": "run -A --quiet --check=all cjs_module_export_assignment_number/main.ts",
+  "output": "cjs_module_export_assignment_number/main.out"
+}

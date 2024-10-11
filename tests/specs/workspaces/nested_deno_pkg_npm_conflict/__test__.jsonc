@@ -5,9 +5,9 @@
     "output": "[WILDCARD]"
   }, {
     "args": "run --allow-read main.js",
-    "output": "4\n0.5.0\n"
+    "output": "4\n1.0.0\n"
   }, {
     "args": "run --allow-read member/main.js",
-    "output": "3\n1.0.0\n"
+    "output": "3\n"
   }]
 }

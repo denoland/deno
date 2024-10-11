@@ -1,0 +1,6 @@
+Check file:///[WILDLINE]/main.ts
+TS1203 [WARN]: Export assignment cannot be used when targeting ECMAScript modules. Consider using 'export default' or another module format instead. This will start erroring in a future version of Deno 2 in order to align with TypeScript.
+export = other;
+~~~~~~~~~~~~~~~
+    at file:///[WILDLINE]/other.d.ts:1:1
+

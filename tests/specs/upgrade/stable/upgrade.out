@@ -1,0 +1,10 @@
+Current Deno version: [WILDCARD]
+Looking up stable version
+
+Found latest stable version [WILDCARD]
+
+Downloading https://github.com/denoland/deno/releases/download/[WILDCARD]/deno-[WILDCARD].zip
+Deno is upgrading to version [WILDCARD]
+
+Upgraded successfully to Deno [WILDCARD] (stable)
+

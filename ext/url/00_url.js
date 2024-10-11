@@ -139,7 +139,7 @@ class URLSearchParams {
           throw new TypeError(
             `${prefix}: Item ${
               i + 0
-            } in the parameter list does have length 2 exactly.`,
+            } in the parameter list does have length 2 exactly`,
           );
         }
         return [pair[0], pair[1]];

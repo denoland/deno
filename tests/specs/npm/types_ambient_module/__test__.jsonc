@@ -1,0 +1,5 @@
+{
+  "args": "check --quiet types_ambient_module/main.ts",
+  "output": "types_ambient_module/main.out",
+  "exitCode": 1
+}

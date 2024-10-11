@@ -33,6 +33,7 @@ import {
   op_get_non_index_property_names,
   op_preview_entries,
 } from "ext:core/ops";
+import * as ops from "ext:core/ops";
 const {
   Array,
   ArrayBufferPrototypeGetByteLength,
@@ -83,6 +84,7 @@ const {
   NumberIsInteger,
   NumberIsNaN,
   NumberParseInt,
+  NumberPrototypeToFixed,
   NumberPrototypeToString,
   NumberPrototypeValueOf,
   ObjectAssign,
@@ -151,10 +153,22 @@ const {
   SymbolPrototypeToString,
   SymbolPrototypeValueOf,
   SymbolToStringTag,
+  TypedArrayPrototypeGetBuffer,
   TypedArrayPrototypeGetByteLength,
   TypedArrayPrototypeGetLength,
   Uint8Array,
+  Uint32Array,
 } = primordials;
+
+let currentTime = DateNow;
+if (ops.op_now) {
+  const hrU8 = new Uint8Array(8);
+  const hr = new Uint32Array(TypedArrayPrototypeGetBuffer(hrU8));
+  currentTime = function opNow() {
+    ops.op_now(hrU8);
+    return (hr[0] * 1000 + hr[1] / 1e6);
+  };
+}
 
 let noColorStdout = () => false;
 let noColorStderr = () => false;
@@ -844,14 +858,6 @@ function formatRaw(ctx, value, recurseTimes, typedArray, proxyDetails) {
           ObjectPrototypeIsPrototypeOf(
             globalThis.Temporal.Duration.prototype,
             value,
-          ) ||
-          ObjectPrototypeIsPrototypeOf(
-            globalThis.Temporal.TimeZone.prototype,
-            value,
-          ) ||
-          ObjectPrototypeIsPrototypeOf(
-            globalThis.Temporal.Calendar.prototype,
-            value,
           )
         )
       ) {
@@ -1294,6 +1300,9 @@ function getKeys(value, showHidden) {
       const filter = (key) => ObjectPrototypePropertyIsEnumerable(value, key);
       ArrayPrototypePushApply(keys, ArrayPrototypeFilter(symbols, filter));
     }
+  }
+  if (ObjectPrototypeIsPrototypeOf(ErrorPrototype, value)) {
+    keys = ArrayPrototypeFilter(keys, (key) => key !== "cause");
   }
   return keys;
 }
@@ -3338,7 +3347,7 @@ class Console {
       return;
     }
 
-    MapPrototypeSet(timerMap, label, DateNow());
+    MapPrototypeSet(timerMap, label, currentTime());
   };
 
   timeLog = (label = "default", ...args) => {
@@ -3350,7 +3359,16 @@ class Console {
     }
 
     const startTime = MapPrototypeGet(timerMap, label);
-    const duration = DateNow() - startTime;
+    let duration = currentTime() - startTime;
+    if (duration < 1) {
+      duration = NumberPrototypeToFixed(duration, 3);
+    } else if (duration < 10) {
+      duration = NumberPrototypeToFixed(duration, 2);
+    } else if (duration < 100) {
+      duration = NumberPrototypeToFixed(duration, 1);
+    } else {
+      duration = NumberPrototypeToFixed(duration, 0);
+    }
 
     this.info(`${label}: ${duration}ms`, ...new SafeArrayIterator(args));
   };
@@ -3365,7 +3383,16 @@ class Console {
 
     const startTime = MapPrototypeGet(timerMap, label);
     MapPrototypeDelete(timerMap, label);
-    const duration = DateNow() - startTime;
+    let duration = currentTime() - startTime;
+    if (duration < 1) {
+      duration = NumberPrototypeToFixed(duration, 3);
+    } else if (duration < 10) {
+      duration = NumberPrototypeToFixed(duration, 2);
+    } else if (duration < 100) {
+      duration = NumberPrototypeToFixed(duration, 1);
+    } else {
+      duration = NumberPrototypeToFixed(duration, 0);
+    }
 
     this.info(`${label}: ${duration}ms`);
   };
