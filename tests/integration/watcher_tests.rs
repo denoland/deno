@@ -944,6 +944,7 @@ async fn test_watch_basic() {
   // Confirm that restarting occurs when a new file is updated
   another_test.write("Deno.test('another one', () => 3 + 3); Deno.test('another another one', () => 4 + 4)");
   assert_contains!(next_line(&mut stderr_lines).await.unwrap(), "Restarting");
+  next_line(&mut stdout_lines).await;
   assert_contains!(
     next_line(&mut stdout_lines).await.unwrap(),
     "running 2 tests"
