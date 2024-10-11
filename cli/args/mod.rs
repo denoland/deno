@@ -1576,6 +1576,11 @@ impl CliOptions {
       || self.workspace().has_unstable("bare-node-builtins")
   }
 
+  pub fn unstable_package_json_type(&self) -> bool {
+    self.flags.unstable_config.package_json_type
+      || self.workspace().has_unstable("package-json-type")
+  }
+
   fn byonm_enabled(&self) -> bool {
     // check if enabled via unstable
     self.node_modules_dir().ok().flatten() == Some(NodeModulesDirMode::Manual)

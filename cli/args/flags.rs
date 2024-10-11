@@ -575,7 +575,8 @@ fn parse_packages_allowed_scripts(s: &str) -> Result<String, AnyError> {
 pub struct UnstableConfig {
   // TODO(bartlomieju): remove in Deno 2.5
   pub legacy_flag_enabled: bool, // --unstable
-  pub bare_node_builtins: bool,  // --unstable-bare-node-builts
+  pub bare_node_builtins: bool,
+  pub package_json_type: bool,
   pub sloppy_imports: bool,
   pub features: Vec<String>, // --unstabe-kv --unstable-cron
 }
@@ -4166,13 +4167,27 @@ impl Iterator for UnstableArgsIter {
         })
         .help_heading(UNSTABLE_HEADING)
     } else if self.idx == 2 {
+      Arg::new("unstable-package-json-type")
+        .long("unstable-package-json-type")
+        .help("Reads the package.json type field in a project to treat .js files as .cjs")
+        .env("DENO_UNSTABLE_PACKAGE_JSON_TYPE")
+        .value_parser(FalseyValueParser::new())
+        .action(ArgAction::SetTrue)
+        .hide(true)
+        .long_help(match self.cfg {
+          UnstableArgsConfig::None => None,
+          UnstableArgsConfig::ResolutionOnly
+          | UnstableArgsConfig::ResolutionAndRuntime => Some("true"),
+        })
+        .help_heading(UNSTABLE_HEADING)
+    } else if self.idx == 3 {
       Arg::new("unstable-byonm")
         .long("unstable-byonm")
         .value_parser(FalseyValueParser::new())
         .action(ArgAction::SetTrue)
         .hide(true)
         .help_heading(UNSTABLE_HEADING)
-    } else if self.idx == 3 {
+    } else if self.idx == 4 {
       Arg::new("unstable-sloppy-imports")
       .long("unstable-sloppy-imports")
       .help("Enable unstable resolving of specifiers by extension probing, .js to .ts, and directory probing")
@@ -4185,8 +4200,8 @@ impl Iterator for UnstableArgsIter {
         UnstableArgsConfig::ResolutionOnly | UnstableArgsConfig::ResolutionAndRuntime => Some("true")
       })
       .help_heading(UNSTABLE_HEADING)
-    } else if self.idx > 3 {
-      let granular_flag = crate::UNSTABLE_GRANULAR_FLAGS.get(self.idx - 4)?;
+    } else if self.idx > 4 {
+      let granular_flag = crate::UNSTABLE_GRANULAR_FLAGS.get(self.idx - 5)?;
       Arg::new(format!("unstable-{}", granular_flag.name))
         .long(format!("unstable-{}", granular_flag.name))
         .help(granular_flag.help_text)
@@ -5662,6 +5677,8 @@ fn unstable_args_parse(
 
   flags.unstable_config.bare_node_builtins =
     matches.get_flag("unstable-bare-node-builtins");
+  flags.unstable_config.package_json_type =
+    matches.get_flag("unstable-package-json-type");
   flags.unstable_config.sloppy_imports =
     matches.get_flag("unstable-sloppy-imports");
 

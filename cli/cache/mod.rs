@@ -183,6 +183,7 @@ pub struct FetchCacherOptions {
   pub permissions: PermissionsContainer,
   /// If we're publishing for `deno publish`.
   pub is_deno_publish: bool,
+  pub unstable_package_json_type: bool,
 }
 
 /// A "wrapper" for the FileFetcher and DiskCache for the Deno CLI that provides
@@ -197,6 +198,7 @@ pub struct FetchCacher {
   permissions: PermissionsContainer,
   cache_info_enabled: bool,
   is_deno_publish: bool,
+  unstable_package_json_type: bool,
 }
 
 impl FetchCacher {
@@ -217,6 +219,7 @@ impl FetchCacher {
       file_header_overrides: options.file_header_overrides,
       permissions: options.permissions,
       is_deno_publish: options.is_deno_publish,
+      unstable_package_json_type: options.unstable_package_json_type,
       cache_info_enabled: false,
     }
   }
@@ -291,19 +294,19 @@ impl Loader for FetchCacher {
           },
         ))));
       }
-      // todo(THIS PR): make all this conditional on an unstable flag
-      // and the existence of a package.json in the workspace above
-      // this package
-      if specifier_has_extension(specifier, "js") {
+
+      if self.unstable_package_json_type
+        && specifier_has_extension(specifier, "js")
+      {
         if let Ok(Some(pkg_json)) =
-          self.node_resolver.get_closest_package_json(&specifier)
+          self.node_resolver.get_closest_package_json(specifier)
         {
           if pkg_json.typ == "commonjs" {
             if let Ok(path) = specifier.to_file_path() {
               if let Ok(bytes) = std::fs::read(&path) {
                 let text = from_utf8_lossy_owned(bytes);
                 let start_pos = StartSourcePos::START_SOURCE_POS;
-                // todo: extract out to a reusable function
+                // todo(THIS PR): extract out to a reusable function
                 // and probably just parse and cache because I don't think this
                 // will catch stuff like `import.meta` (where its existence means
                 // it's an es module)
@@ -326,6 +329,8 @@ impl Loader for FetchCacher {
                   )
                 });
                 if !is_es_module {
+                  // todo(THIS PR): Ideally we only load the file once from the file system
+                  self.node_resolver.mark_cjs_resolution(specifier.clone());
                   return Box::pin(futures::future::ready(Ok(Some(
                     LoadResponse::External {
                       specifier: specifier.clone(),

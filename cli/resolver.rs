@@ -43,7 +43,6 @@ use node_resolver::NodeModuleKind;
 use node_resolver::NodeResolution;
 use node_resolver::NodeResolutionMode;
 use node_resolver::PackageJson;
-use std::borrow::Cow;
 use std::path::Path;
 use std::path::PathBuf;
 use std::sync::Arc;
@@ -53,6 +52,7 @@ use crate::args::DENO_DISABLE_PEDANTIC_NODE_WARNINGS;
 use crate::node::CliNodeCodeTranslator;
 use crate::npm::CliNpmResolver;
 use crate::npm::InnerCliNpmResolverRef;
+use crate::util::path::specifier_has_extension;
 use crate::util::sync::AtomicFlag;
 use crate::util::text_encoding::from_utf8_lossy_owned;
 
@@ -216,7 +216,7 @@ impl CliNodeResolver {
     referrer: &ModuleSpecifier,
     mode: NodeResolutionMode,
   ) -> Result<NodeResolution, NodeResolveError> {
-    let referrer_kind = if self.cjs_resolutions.contains(referrer) {
+    let referrer_kind = if self.cjs_resolutions.is_known_cjs(referrer) {
       NodeModuleKind::Cjs
     } else {
       NodeModuleKind::Esm
@@ -311,9 +311,7 @@ impl CliNodeResolver {
       if self.in_npm_package(&specifier) {
         let resolution =
           self.node_resolver.url_to_node_resolution(specifier)?;
-        if let NodeResolution::CommonJs(specifier) = &resolution {
-          self.cjs_resolutions.insert(specifier.clone());
-        }
+        let resolution = self.handle_node_resolution(resolution);
         return Ok(Some(resolution.into_url()));
       }
     }
@@ -334,12 +332,17 @@ impl CliNodeResolver {
   ) -> NodeResolution {
     if let NodeResolution::CommonJs(specifier) = &resolution {
       // remember that this was a common js resolution
-      self.cjs_resolutions.insert(specifier.clone());
+      self.mark_cjs_resolution(specifier.clone());
     }
     resolution
   }
+
+  pub fn mark_cjs_resolution(&self, specifier: ModuleSpecifier) {
+    self.cjs_resolutions.insert(specifier);
+  }
 }
 
+// todo(dsherret): move to module_loader.rs
 #[derive(Clone)]
 pub struct NpmModuleLoader {
   cjs_resolutions: Arc<CjsResolutionStore>,
@@ -363,18 +366,9 @@ impl NpmModuleLoader {
     }
   }
 
-  pub async fn load_if_in_npm_package(
-    &self,
-    specifier: &ModuleSpecifier,
-    maybe_referrer: Option<&ModuleSpecifier>,
-  ) -> Option<Result<ModuleCodeStringSource, AnyError>> {
-    if self.node_resolver.in_npm_package(specifier)
-      || (specifier.scheme() == "file" && specifier.path().ends_with(".cjs"))
-    {
-      Some(self.load(specifier, maybe_referrer).await)
-    } else {
-      None
-    }
+  pub fn if_in_npm_package(&self, specifier: &ModuleSpecifier) -> bool {
+    self.node_resolver.in_npm_package(specifier)
+      || self.cjs_resolutions.is_known_cjs(specifier)
   }
 
   pub async fn load(
@@ -419,9 +413,7 @@ impl NpmModuleLoader {
         }
       })?;
 
-    let code = if self.cjs_resolutions.contains(specifier)
-      || (specifier.scheme() == "file" && specifier.path().ends_with(".cjs"))
-    {
+    let code = if self.cjs_resolutions.is_known_cjs(specifier) {
       // translate cjs to esm if it's cjs and inject node globals
       let code = from_utf8_lossy_owned(code);
       ModuleSourceCode::String(
@@ -448,7 +440,15 @@ impl NpmModuleLoader {
 pub struct CjsResolutionStore(DashSet<ModuleSpecifier>);
 
 impl CjsResolutionStore {
-  pub fn contains(&self, specifier: &ModuleSpecifier) -> bool {
+  pub fn is_known_cjs(&self, specifier: &ModuleSpecifier) -> bool {
+    if specifier.scheme() != "file" {
+      return false;
+    }
+
+    if specifier_has_extension(specifier, "cjs") {
+      return true;
+    }
+
     self.0.contains(specifier)
   }
 

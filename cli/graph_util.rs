@@ -14,6 +14,7 @@ use crate::errors::get_error_class_name;
 use crate::file_fetcher::FileFetcher;
 use crate::npm::CliNpmResolver;
 use crate::resolver::CliGraphResolver;
+use crate::resolver::CliNodeResolver;
 use crate::resolver::CliSloppyImportsResolver;
 use crate::resolver::SloppyImportsCachedFs;
 use crate::tools::check;
@@ -381,6 +382,7 @@ pub struct ModuleGraphBuilder {
   caches: Arc<cache::Caches>,
   fs: Arc<dyn FileSystem>,
   resolver: Arc<CliGraphResolver>,
+  node_resolver: Arc<CliNodeResolver>,
   npm_resolver: Arc<dyn CliNpmResolver>,
   module_info_cache: Arc<ModuleInfoCache>,
   parsed_source_cache: Arc<ParsedSourceCache>,
@@ -398,6 +400,7 @@ impl ModuleGraphBuilder {
     caches: Arc<cache::Caches>,
     fs: Arc<dyn FileSystem>,
     resolver: Arc<CliGraphResolver>,
+    node_resolver: Arc<CliNodeResolver>,
     npm_resolver: Arc<dyn CliNpmResolver>,
     module_info_cache: Arc<ModuleInfoCache>,
     parsed_source_cache: Arc<ParsedSourceCache>,
@@ -412,6 +415,7 @@ impl ModuleGraphBuilder {
       caches,
       fs,
       resolver,
+      node_resolver,
       npm_resolver,
       module_info_cache,
       parsed_source_cache,
@@ -693,6 +697,7 @@ impl ModuleGraphBuilder {
     cache::FetchCacher::new(
       self.file_fetcher.clone(),
       self.global_http_cache.clone(),
+      self.node_resolver.clone(),
       self.npm_resolver.clone(),
       self.module_info_cache.clone(),
       cache::FetchCacherOptions {
@@ -702,6 +707,7 @@ impl ModuleGraphBuilder {
           self.options.sub_command(),
           crate::args::DenoSubcommand::Publish { .. }
         ),
+        unstable_package_json_type: self.options.unstable_package_json_type(),
       },
     )
   }

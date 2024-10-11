@@ -621,6 +621,7 @@ impl CliFactory {
           self.caches()?.clone(),
           self.fs().clone(),
           self.resolver().await?.clone(),
+          self.cli_node_resolver().await?.clone(),
           self.npm_resolver().await?.clone(),
           self.module_info_cache()?.clone(),
           self.parsed_source_cache().clone(),
@@ -792,6 +793,7 @@ impl CliFactory {
 
     Ok(CliMainWorkerFactory::new(
       self.blob_store().clone(),
+      self.cjs_resolutions().clone(),
       if cli_options.code_cache_enabled() {
         Some(self.code_cache()?.clone())
       } else {
@@ -896,6 +898,7 @@ impl CliFactory {
       node_ipc: cli_options.node_ipc_fd(),
       serve_port: cli_options.serve_port(),
       serve_host: cli_options.serve_host(),
+      unstable_package_json_type: cli_options.unstable_package_json_type(),
     })
   }
 }
