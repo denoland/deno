@@ -1,5 +1,6 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
+use std::borrow::Cow;
 use std::ops::Range;
 
 use base64::prelude::BASE64_STANDARD;
@@ -8,6 +9,15 @@ use deno_core::ModuleSourceCode;
 
 static SOURCE_MAP_PREFIX: &[u8] =
   b"//# sourceMappingURL=data:application/json;base64,";
+
+pub fn from_utf8_lossy_owned(bytes: Vec<u8>) -> String {
+  match String::from_utf8_lossy(&bytes) {
+    Cow::Owned(code) => code,
+    // SAFETY: `String::from_utf8_lossy` guarantees that the result is valid
+    // UTF-8 if `Cow::Borrowed` is returned.
+    Cow::Borrowed(_) => unsafe { String::from_utf8_unchecked(bytes) },
+  }
+}
 
 pub fn source_map_from_code(code: &[u8]) -> Option<Vec<u8>> {
   let range = find_source_map_range(code)?;

@@ -9,12 +9,18 @@ use crate::file_fetcher::FetchPermissionsOptionRef;
 use crate::file_fetcher::FileFetcher;
 use crate::file_fetcher::FileOrRedirect;
 use crate::npm::CliNpmResolver;
+use crate::resolver::CliNodeResolver;
 use crate::util::fs::atomic_write_file_with_retries;
 use crate::util::fs::atomic_write_file_with_retries_and_fs;
 use crate::util::fs::AtomicWriteFileFsAdapter;
 use crate::util::path::specifier_has_extension;
+use crate::util::text_encoding::from_utf8_lossy_owned;
 
+use deno_ast::swc::parser::token::Keyword;
+use deno_ast::swc::parser::token::Token;
+use deno_ast::swc::parser::token::Word;
 use deno_ast::MediaType;
+use deno_ast::StartSourcePos;
 use deno_core::futures;
 use deno_core::futures::FutureExt;
 use deno_core::ModuleSpecifier;
@@ -185,6 +191,7 @@ pub struct FetchCacher {
   file_fetcher: Arc<FileFetcher>,
   pub file_header_overrides: HashMap<ModuleSpecifier, HashMap<String, String>>,
   global_http_cache: Arc<GlobalHttpCache>,
+  node_resolver: Arc<CliNodeResolver>,
   npm_resolver: Arc<dyn CliNpmResolver>,
   module_info_cache: Arc<ModuleInfoCache>,
   permissions: PermissionsContainer,
@@ -196,6 +203,7 @@ impl FetchCacher {
   pub fn new(
     file_fetcher: Arc<FileFetcher>,
     global_http_cache: Arc<GlobalHttpCache>,
+    node_resolver: Arc<CliNodeResolver>,
     npm_resolver: Arc<dyn CliNpmResolver>,
     module_info_cache: Arc<ModuleInfoCache>,
     options: FetchCacherOptions,
@@ -203,6 +211,7 @@ impl FetchCacher {
     Self {
       file_fetcher,
       global_http_cache,
+      node_resolver,
       npm_resolver,
       module_info_cache,
       file_header_overrides: options.file_header_overrides,
@@ -281,6 +290,52 @@ impl Loader for FetchCacher {
             specifier: specifier.clone(),
           },
         ))));
+      }
+      // todo(THIS PR): make all this conditional on an unstable flag
+      // and the existence of a package.json in the workspace above
+      // this package
+      if specifier_has_extension(specifier, "js") {
+        if let Ok(Some(pkg_json)) =
+          self.node_resolver.get_closest_package_json(&specifier)
+        {
+          if pkg_json.typ == "commonjs" {
+            if let Ok(path) = specifier.to_file_path() {
+              if let Ok(bytes) = std::fs::read(&path) {
+                let text = from_utf8_lossy_owned(bytes);
+                let start_pos = StartSourcePos::START_SOURCE_POS;
+                // todo: extract out to a reusable function
+                // and probably just parse and cache because I don't think this
+                // will catch stuff like `import.meta` (where its existence means
+                // it's an es module)
+                let mut lexer = deno_ast::swc::parser::lexer::Lexer::new(
+                  deno_ast::get_syntax(MediaType::JavaScript),
+                  deno_ast::ES_VERSION,
+                  deno_ast::swc::parser::StringInput::new(
+                    &text,
+                    start_pos.as_byte_pos(),
+                    (start_pos + text.len()).as_byte_pos(),
+                  ),
+                  None,
+                );
+                let is_es_module = lexer.any(|t| {
+                  matches!(
+                    t.token,
+                    Token::Word(Word::Keyword(
+                      Keyword::Export | Keyword::Import
+                    ))
+                  )
+                });
+                if !is_es_module {
+                  return Box::pin(futures::future::ready(Ok(Some(
+                    LoadResponse::External {
+                      specifier: specifier.clone(),
+                    },
+                  ))));
+                }
+              }
+            }
+          }
+        }
       }
     }
 

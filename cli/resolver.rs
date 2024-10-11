@@ -54,6 +54,7 @@ use crate::node::CliNodeCodeTranslator;
 use crate::npm::CliNpmResolver;
 use crate::npm::InnerCliNpmResolverRef;
 use crate::util::sync::AtomicFlag;
+use crate::util::text_encoding::from_utf8_lossy_owned;
 
 pub struct ModuleCodeStringSource {
   pub code: ModuleSourceCode,
@@ -422,12 +423,7 @@ impl NpmModuleLoader {
       || (specifier.scheme() == "file" && specifier.path().ends_with(".cjs"))
     {
       // translate cjs to esm if it's cjs and inject node globals
-      let code = match String::from_utf8_lossy(&code) {
-        Cow::Owned(code) => code,
-        // SAFETY: `String::from_utf8_lossy` guarantees that the result is valid
-        // UTF-8 if `Cow::Borrowed` is returned.
-        Cow::Borrowed(_) => unsafe { String::from_utf8_unchecked(code) },
-      };
+      let code = from_utf8_lossy_owned(code);
       ModuleSourceCode::String(
         self
           .node_code_translator
