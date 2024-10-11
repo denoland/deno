@@ -1585,7 +1585,6 @@ dependencies = [
  "serde",
  "serde-value",
  "serde_json",
- "thiserror",
  "winapi",
 ]
 
