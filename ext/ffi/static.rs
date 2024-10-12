@@ -2,13 +2,23 @@
 
 use crate::dlfcn::DynamicLibraryResource;
 use crate::symbol::NativeType;
-use deno_core::error::type_error;
-use deno_core::error::AnyError;
 use deno_core::op2;
 use deno_core::v8;
 use deno_core::OpState;
 use deno_core::ResourceId;
 use std::ptr;
+
+#[derive(Debug, thiserror::Error)]
+pub enum StaticError {
+  #[error(transparent)]
+  Dlfcn(super::DlfcnError),
+  #[error("Invalid FFI static type 'void'")]
+  InvalidTypeVoid,
+  #[error("Invalid FFI static type 'struct'")]
+  InvalidTypeStruct,
+  #[error(transparent)]
+  Resource(deno_core::error::AnyError),
+}
 
 #[op2]
 pub fn op_ffi_get_static<'scope>(
@@ -18,24 +28,27 @@ pub fn op_ffi_get_static<'scope>(
   #[string] name: String,
   #[serde] static_type: NativeType,
   optional: bool,
-) -> Result<v8::Local<'scope, v8::Value>, AnyError> {
-  let resource = state.resource_table.get::<DynamicLibraryResource>(rid)?;
+) -> Result<v8::Local<'scope, v8::Value>, StaticError> {
+  let resource = state
+    .resource_table
+    .get::<DynamicLibraryResource>(rid)
+    .map_err(StaticError::Resource)?;
 
   let data_ptr = match resource.get_static(name) {
-    Ok(data_ptr) => Ok(data_ptr),
+    Ok(data_ptr) => data_ptr,
     Err(err) => {
       if optional {
         let null: v8::Local<v8::Value> = v8::null(scope).into();
         return Ok(null);
       } else {
-        Err(err)
+        return Err(StaticError::Dlfcn(err));
       }
     }
-  }?;
+  };
 
   Ok(match static_type {
     NativeType::Void => {
-      return Err(type_error("Invalid FFI static type 'void'"));
+      return Err(StaticError::InvalidTypeVoid);
     }
     NativeType::Bool => {
       // SAFETY: ptr is user provided
@@ -132,7 +145,7 @@ pub fn op_ffi_get_static<'scope>(
       external
     }
     NativeType::Struct(_) => {
-      return Err(type_error("Invalid FFI static type 'struct'"));
+      return Err(StaticError::InvalidTypeStruct);
     }
   })
 }

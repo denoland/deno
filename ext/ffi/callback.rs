@@ -3,7 +3,6 @@
 use crate::symbol::NativeType;
 use crate::FfiPermissions;
 use crate::ForeignFunction;
-use deno_core::error::AnyError;
 use deno_core::op2;
 use deno_core::v8;
 use deno_core::v8::TryCatch;
@@ -34,6 +33,16 @@ thread_local! {
   static LOCAL_THREAD_ID: RefCell<u32> = const { RefCell::new(0) };
 }
 
+#[derive(Debug, thiserror::Error)]
+pub enum CallbackError {
+  #[error(transparent)]
+  Resource(deno_core::error::AnyError),
+  #[error(transparent)]
+  Permission(deno_core::error::AnyError),
+  #[error(transparent)]
+  Other(deno_core::error::AnyError),
+}
+
 #[derive(Clone)]
 pub struct PtrSymbol {
   pub cif: libffi::middle::Cif,
@@ -44,7 +53,7 @@ impl PtrSymbol {
   pub fn new(
     fn_ptr: *mut c_void,
     def: &ForeignFunction,
-  ) -> Result<Self, AnyError> {
+  ) -> Result<Self, CallbackError> {
     let ptr = libffi::middle::CodePtr::from_ptr(fn_ptr as _);
     let cif = libffi::middle::Cif::new(
       def
@@ -52,8 +61,13 @@ impl PtrSymbol {
         .clone()
         .into_iter()
         .map(libffi::middle::Type::try_from)
-        .collect::<Result<Vec<_>, _>>()?,
-      def.result.clone().try_into()?,
+        .collect::<Result<Vec<_>, _>>()
+        .map_err(CallbackError::Other)?,
+      def
+        .result
+        .clone()
+        .try_into()
+        .map_err(CallbackError::Other)?,
     );
 
     Ok(Self { cif, ptr })
@@ -522,10 +536,15 @@ unsafe fn do_ffi_callback(
 pub fn op_ffi_unsafe_callback_ref(
   state: Rc<RefCell<OpState>>,
   #[smi] rid: ResourceId,
-) -> Result<impl Future<Output = Result<(), AnyError>>, AnyError> {
+) -> Result<
+  impl Future<Output = Result<(), deno_core::error::AnyError>>,
+  CallbackError,
+> {
   let state = state.borrow();
-  let callback_resource =
-    state.resource_table.get::<UnsafeCallbackResource>(rid)?;
+  let callback_resource = state
+    .resource_table
+    .get::<UnsafeCallbackResource>(rid)
+    .map_err(CallbackError::Resource)?;
 
   Ok(async move {
     let info: &mut CallbackInfo =
@@ -552,12 +571,14 @@ pub fn op_ffi_unsafe_callback_create<FP, 'scope>(
   scope: &mut v8::HandleScope<'scope>,
   #[serde] args: RegisterCallbackArgs,
   cb: v8::Local<v8::Function>,
-) -> Result<v8::Local<'scope, v8::Value>, AnyError>
+) -> Result<v8::Local<'scope, v8::Value>, CallbackError>
 where
   FP: FfiPermissions + 'static,
 {
   let permissions = state.borrow_mut::<FP>();
-  permissions.check_partial_no_path()?;
+  permissions
+    .check_partial_no_path()
+    .map_err(CallbackError::Permission)?;
 
   let thread_id: u32 = LOCAL_THREAD_ID.with(|s| {
     let value = *s.borrow();
@@ -593,8 +614,10 @@ where
       .parameters
       .into_iter()
       .map(libffi::middle::Type::try_from)
-      .collect::<Result<Vec<_>, _>>()?,
-    libffi::middle::Type::try_from(args.result)?,
+      .collect::<Result<Vec<_>, _>>()
+      .map_err(CallbackError::Other)?,
+    libffi::middle::Type::try_from(args.result)
+      .map_err(CallbackError::Other)?,
   );
 
   // SAFETY: CallbackInfo is leaked, is not null and stays valid as long as the callback exists.
@@ -624,14 +647,16 @@ pub fn op_ffi_unsafe_callback_close(
   state: &mut OpState,
   scope: &mut v8::HandleScope,
   #[smi] rid: ResourceId,
-) -> Result<(), AnyError> {
+) -> Result<(), CallbackError> {
   // SAFETY: This drops the closure and the callback info associated with it.
   // Any retained function pointers to the closure become dangling pointers.
   // It is up to the user to know that it is safe to call the `close()` on the
   // UnsafeCallback instance.
   unsafe {
-    let callback_resource =
-      state.resource_table.take::<UnsafeCallbackResource>(rid)?;
+    let callback_resource = state
+      .resource_table
+      .take::<UnsafeCallbackResource>(rid)
+      .map_err(CallbackError::Resource)?;
     let info = Box::from_raw(callback_resource.info);
     let _ = v8::Global::from_raw(scope, info.callback);
     let _ = v8::Global::from_raw(scope, info.context);
