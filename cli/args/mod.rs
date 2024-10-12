@@ -1625,21 +1625,17 @@ impl CliOptions {
       });
 
     if !from_config_file.is_empty() {
-      // collect unstable granular flags
-      let mut all_valid_unstable_flags: Vec<&str> =
-        crate::UNSTABLE_GRANULAR_FLAGS
-          .iter()
-          .map(|granular_flag| granular_flag.name)
-          .collect();
-
-      let mut another_unstable_flags = Vec::from([
-        "sloppy-imports",
-        "byonm",
-        "bare-node-builtins",
-        "fmt-component",
-      ]);
-      // add more unstable flags to the same vector holding granular flags
-      all_valid_unstable_flags.append(&mut another_unstable_flags);
+      let all_valid_unstable_flags: Vec<&str> = crate::UNSTABLE_GRANULAR_FLAGS
+        .iter()
+        .map(|granular_flag| granular_flag.name)
+        .chain([
+          "sloppy-imports",
+          "byonm",
+          "bare-node-builtins",
+          "fmt-component",
+          "package-json-type",
+        ])
+        .collect();
 
       // check and warn if the unstable flag of config file isn't supported, by
       // iterating through the vector holding the unstable flags

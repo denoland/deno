@@ -1,0 +1,14 @@
+{
+  "tests": {
+    "main_cjs": {
+      "args": "run --allow-read=. main_cjs.js",
+      "output": "main_cjs.out",
+      "exitCode": 1
+    },
+    "main_esm": {
+      "args": "run --allow-read=. main_esm.js",
+      "output": "main_esm.out",
+      "exitCode": 1
+    }
+  }
+}

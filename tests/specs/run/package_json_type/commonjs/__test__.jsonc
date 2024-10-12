@@ -1,0 +1,17 @@
+{
+  "tests": {
+    "main_cjs": {
+      "args": "run --allow-read=. main_cjs.js",
+      "output": "3\n"
+    },
+    "main_esm": {
+      "args": "run --allow-read=. main_esm.js",
+      "output": "3\n"
+    },
+    "main_mix": {
+      "args": "run --allow-read=. main_mix.js",
+      "output": "main_mix.out",
+      "exitCode": 1
+    }
+  }
+}
