@@ -5,6 +5,7 @@
 use std::fmt;
 use std::path::PathBuf;
 
+use deno_core::error::custom_error;
 use deno_core::error::AnyError;
 use deno_core::op2;
 use deno_core::OpState;
@@ -137,12 +138,10 @@ pub fn op_webstorage_key(
 #[inline]
 fn size_check(input: usize) -> Result<(), AnyError> {
   if input >= MAX_STORAGE_BYTES {
-    return Err(
-      deno_web::DomExceptionQuotaExceededError::new(
-        "Exceeded maximum storage size",
-      )
-      .into(),
-    );
+    return Err(custom_error(
+      "DOMExceptionQuotaExceededError",
+      "Exceeded maximum storage size",
+    ));
   }
 
   Ok(())

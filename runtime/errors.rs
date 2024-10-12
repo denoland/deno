@@ -13,6 +13,11 @@ use deno_core::error::AnyError;
 use deno_core::serde_json;
 use deno_core::url;
 use deno_core::ModuleResolutionError;
+use deno_web::BlobError;
+use deno_web::CompressionError;
+use deno_web::MessagePortError;
+use deno_web::StreamResourceError;
+use deno_web::WebError;
 use std::env;
 use std::error::Error;
 use std::io;
@@ -153,12 +158,74 @@ pub fn get_nix_error_class(error: &nix::Error) -> &'static str {
   }
 }
 
+fn get_web_error_class(e: &WebError) -> &'static str {
+  match e {
+    WebError::Base64Decode => "DOMExceptionInvalidCharacterError",
+    WebError::InvalidEncodingLabel(_) => "RangeError",
+    WebError::BufferTooLong => "TypeError",
+    WebError::ValueTooLarge => "RangeError",
+    WebError::BufferTooSmall => "RangeError",
+    WebError::DataInvalid => "RangeError",
+    WebError::DataError(_) => "Error",
+  }
+}
+
+fn get_web_compression_error_class(e: &CompressionError) -> &'static str {
+  match e {
+    CompressionError::UnsupportedFormat => "TypeError",
+    CompressionError::ResourceClosed => "TypeError",
+    CompressionError::IoTypeError(_) => "TypeError",
+    CompressionError::Io(e) => get_io_error_class(e),
+  }
+}
+
+fn get_web_message_port_error_class(e: &MessagePortError) -> &'static str {
+  match e {
+    MessagePortError::InvalidTransfer => "TypeError",
+    MessagePortError::NotReady => "TypeError",
+    MessagePortError::TransferSelf => "TypeError",
+    MessagePortError::Canceled(_) => "Error",
+    MessagePortError::Resource(e) => get_error_class_name(e).unwrap_or("Error"),
+  }
+}
+
+fn get_web_stream_resource_error_class(
+  e: &StreamResourceError,
+) -> &'static str {
+  match e {
+    StreamResourceError::Canceled(_) => "Error",
+    StreamResourceError::Js(_) => "TypeError",
+  }
+}
+
+fn get_web_blob_error_class(e: &BlobError) -> &'static str {
+  match e {
+    BlobError::BlobPartNotFound => "TypeError",
+    BlobError::SizeLargerThanBlobPart => "TypeError",
+    BlobError::BlobURLsNotSupported => "TypeError",
+    BlobError::Url(_) => "Error",
+  }
+}
+
 pub fn get_error_class_name(e: &AnyError) -> Option<&'static str> {
   deno_core::error::get_custom_error_class(e)
     .or_else(|| deno_webgpu::error::get_error_class_name(e))
-    .or_else(|| deno_web::get_error_class_name(e))
     .or_else(|| deno_webstorage::get_not_supported_error_class_name(e))
     .or_else(|| deno_websocket::get_network_error_class_name(e))
+    .or_else(|| e.downcast_ref::<WebError>().map(get_web_error_class))
+    .or_else(|| {
+      e.downcast_ref::<CompressionError>()
+        .map(get_web_compression_error_class)
+    })
+    .or_else(|| {
+      e.downcast_ref::<MessagePortError>()
+        .map(get_web_message_port_error_class)
+    })
+    .or_else(|| {
+      e.downcast_ref::<StreamResourceError>()
+        .map(get_web_stream_resource_error_class)
+    })
+    .or_else(|| e.downcast_ref::<BlobError>().map(get_web_blob_error_class))
     .or_else(|| {
       e.downcast_ref::<dlopen2::Error>()
         .map(get_dlopen_error_class)
