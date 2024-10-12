@@ -348,3 +348,8 @@ Deno.test("[util] aborted()", async () => {
   await promise;
   assertEquals(done, true);
 });
+
+Deno.test("[util] styleText()", () => {
+  const redText = util.styleText("red", "error");
+  assertEquals(redText, "\x1B[31merror\x1B[39m");
+});
