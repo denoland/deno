@@ -366,7 +366,7 @@ pub fn ffi_parse_buffer_arg(
     let byte_offset = value.byte_offset();
     let pointer = value
       .buffer(scope)
-      .ok_or_else(|| IRError::InvalidArrayBufferView)?
+      .ok_or(IRError::InvalidArrayBufferView)?
       .data();
     if let Some(non_null) = pointer {
       // SAFETY: Pointer is non-null, and V8 guarantees that the byte_offset
@@ -402,7 +402,7 @@ pub fn ffi_parse_struct_arg(
     let byte_offset = value.byte_offset();
     let pointer = value
       .buffer(scope)
-      .ok_or_else(|| IRError::InvalidArrayBufferView)?
+      .ok_or(IRError::InvalidArrayBufferView)?
       .data();
     if let Some(non_null) = pointer {
       // SAFETY: Pointer is non-null, and V8 guarantees that the byte_offset
