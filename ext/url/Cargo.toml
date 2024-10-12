@@ -21,6 +21,7 @@ urlpattern = "0.3.0"
 deno_bench_util.workspace = true
 deno_console.workspace = true
 deno_webidl.workspace = true
+thiserror.workspace = true
 
 [[bench]]
 name = "url_ops"
