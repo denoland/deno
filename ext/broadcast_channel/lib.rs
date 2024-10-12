@@ -10,34 +10,69 @@ use std::path::PathBuf;
 use std::rc::Rc;
 
 use async_trait::async_trait;
-use deno_core::error::AnyError;
 use deno_core::op2;
 use deno_core::JsBuffer;
 use deno_core::OpState;
 use deno_core::Resource;
 use deno_core::ResourceId;
+use tokio::sync::broadcast::error::SendError as BroadcastSendError;
+use tokio::sync::mpsc::error::SendError as MpscSendError;
 
 pub const UNSTABLE_FEATURE_NAME: &str = "broadcast-channel";
+
+#[derive(Debug, thiserror::Error)]
+pub enum BroadcastChannelError {
+  #[error(transparent)]
+  Resource(deno_core::error::AnyError),
+  #[error(transparent)]
+  MPSCSendError(MpscSendError<Box<dyn std::fmt::Debug + Send + Sync>>),
+  #[error(transparent)]
+  BroadcastSendError(
+    BroadcastSendError<Box<dyn std::fmt::Debug + Send + Sync>>,
+  ),
+  #[error(transparent)]
+  Other(deno_core::error::AnyError),
+}
+
+impl<T: std::fmt::Debug + Send + Sync + 'static> From<MpscSendError<T>>
+  for BroadcastChannelError
+{
+  fn from(value: MpscSendError<T>) -> Self {
+    BroadcastChannelError::MPSCSendError(MpscSendError(Box::new(value.0)))
+  }
+}
+impl<T: std::fmt::Debug + Send + Sync + 'static> From<BroadcastSendError<T>>
+  for BroadcastChannelError
+{
+  fn from(value: BroadcastSendError<T>) -> Self {
+    BroadcastChannelError::BroadcastSendError(BroadcastSendError(Box::new(
+      value.0,
+    )))
+  }
+}
 
 #[async_trait]
 pub trait BroadcastChannel: Clone {
   type Resource: Resource;
 
-  fn subscribe(&self) -> Result<Self::Resource, AnyError>;
+  fn subscribe(&self) -> Result<Self::Resource, BroadcastChannelError>;
 
-  fn unsubscribe(&self, resource: &Self::Resource) -> Result<(), AnyError>;
+  fn unsubscribe(
+    &self,
+    resource: &Self::Resource,
+  ) -> Result<(), BroadcastChannelError>;
 
   async fn send(
     &self,
     resource: &Self::Resource,
     name: String,
     data: Vec<u8>,
-  ) -> Result<(), AnyError>;
+  ) -> Result<(), BroadcastChannelError>;
 
   async fn recv(
     &self,
     resource: &Self::Resource,
-  ) -> Result<Option<Message>, AnyError>;
+  ) -> Result<Option<Message>, BroadcastChannelError>;
 }
 
 pub type Message = (String, Vec<u8>);
@@ -46,7 +81,7 @@ pub type Message = (String, Vec<u8>);
 #[smi]
 pub fn op_broadcast_subscribe<BC>(
   state: &mut OpState,
-) -> Result<ResourceId, AnyError>
+) -> Result<ResourceId, BroadcastChannelError>
 where
   BC: BroadcastChannel + 'static,
 {
@@ -62,11 +97,14 @@ where
 pub fn op_broadcast_unsubscribe<BC>(
   state: &mut OpState,
   #[smi] rid: ResourceId,
-) -> Result<(), AnyError>
+) -> Result<(), BroadcastChannelError>
 where
   BC: BroadcastChannel + 'static,
 {
-  let resource = state.resource_table.get::<BC::Resource>(rid)?;
+  let resource = state
+    .resource_table
+    .get::<BC::Resource>(rid)
+    .map_err(BroadcastChannelError::Resource)?;
   let bc = state.borrow::<BC>();
   bc.unsubscribe(&resource)
 }
@@ -77,11 +115,15 @@ pub async fn op_broadcast_send<BC>(
   #[smi] rid: ResourceId,
   #[string] name: String,
   #[buffer] buf: JsBuffer,
-) -> Result<(), AnyError>
+) -> Result<(), BroadcastChannelError>
 where
   BC: BroadcastChannel + 'static,
 {
-  let resource = state.borrow().resource_table.get::<BC::Resource>(rid)?;
+  let resource = state
+    .borrow()
+    .resource_table
+    .get::<BC::Resource>(rid)
+    .map_err(BroadcastChannelError::Resource)?;
   let bc = state.borrow().borrow::<BC>().clone();
   bc.send(&resource, name, buf.to_vec()).await
 }
@@ -91,11 +133,15 @@ where
 pub async fn op_broadcast_recv<BC>(
   state: Rc<RefCell<OpState>>,
   #[smi] rid: ResourceId,
-) -> Result<Option<Message>, AnyError>
+) -> Result<Option<Message>, BroadcastChannelError>
 where
   BC: BroadcastChannel + 'static,
 {
-  let resource = state.borrow().resource_table.get::<BC::Resource>(rid)?;
+  let resource = state
+    .borrow()
+    .resource_table
+    .get::<BC::Resource>(rid)
+    .map_err(BroadcastChannelError::Resource)?;
   let bc = state.borrow().borrow::<BC>().clone();
   bc.recv(&resource).await
 }

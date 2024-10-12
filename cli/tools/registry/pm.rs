@@ -130,8 +130,10 @@ impl NpmConfig {
   fn add(&mut self, selected: SelectedPackage, dev: bool) {
     let (name, version) = package_json_dependency_entry(selected);
     if dev {
+      self.dependencies.swap_remove(&name);
       self.dev_dependencies.insert(name, version);
     } else {
+      self.dev_dependencies.swap_remove(&name);
       self.dependencies.insert(name, version);
     }
   }
