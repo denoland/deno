@@ -2,7 +2,6 @@
 
 use std::rc::Rc;
 
-use deno_core::error::AnyError;
 use deno_core::AsyncRefCell;
 use deno_core::AsyncResult;
 use deno_core::CancelHandle;
@@ -71,13 +70,16 @@ impl BiPipeResource {
   pub async fn read(
     self: Rc<Self>,
     data: &mut [u8],
-  ) -> Result<usize, AnyError> {
+  ) -> Result<usize, std::io::Error> {
     let mut rd = RcRef::map(&self, |r| &r.read_half).borrow_mut().await;
     let cancel_handle = RcRef::map(&self, |r| &r.cancel);
-    Ok(rd.read(data).try_or_cancel(cancel_handle).await?)
+    rd.read(data).try_or_cancel(cancel_handle).await
   }
 
-  pub async fn write(self: Rc<Self>, data: &[u8]) -> Result<usize, AnyError> {
+  pub async fn write(
+    self: Rc<Self>,
+    data: &[u8],
+  ) -> Result<usize, std::io::Error> {
     let mut wr = RcRef::map(self, |r| &r.write_half).borrow_mut().await;
     let nwritten = wr.write(data).await?;
     wr.flush().await?;
@@ -270,8 +272,8 @@ impl_async_write!(for BiPipe -> self.write_end);
 
 /// Creates both sides of a bidirectional pipe, returning the raw
 /// handles to the underlying OS resources.
-pub fn bi_pipe_pair_raw() -> Result<(RawBiPipeHandle, RawBiPipeHandle), AnyError>
-{
+pub fn bi_pipe_pair_raw(
+) -> Result<(RawBiPipeHandle, RawBiPipeHandle), std::io::Error> {
   #[cfg(unix)]
   {
     // SockFlag is broken on macOS
