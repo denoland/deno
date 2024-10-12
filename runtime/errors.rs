@@ -9,6 +9,9 @@
 //!   Diagnostics are compile-time type errors, whereas JsErrors are runtime
 //!   exceptions.
 
+use deno_broadcast_channel::BroadcastChannelError;
+use deno_cache::CacheError;
+use deno_canvas::CanvasError;
 use deno_core::error::AnyError;
 use deno_core::serde_json;
 use deno_core::url;
@@ -170,6 +173,38 @@ pub fn get_cron_error_class(e: &CronError) -> &'static str {
   }
 }
 
+fn get_canvas_error(e: &CanvasError) -> &'static str {
+  match e {
+    CanvasError::UnsupportedColorType(_) => "TypeError",
+    CanvasError::Image(_) => "Error",
+  }
+}
+
+pub fn get_cache_error(error: &CacheError) -> &'static str {
+  match error {
+    CacheError::Sqlite(_) => "Error",
+    CacheError::JoinError(_) => "Error",
+    CacheError::Resource(err) => {
+      deno_core::error::get_custom_error_class(err).unwrap_or("Error")
+    }
+    CacheError::Other(e) => get_error_class_name(e).unwrap_or("Error"),
+    CacheError::Io(err) => get_io_error_class(err),
+  }
+}
+
+fn get_broadcast_channel_error(error: &BroadcastChannelError) -> &'static str {
+  match error {
+    BroadcastChannelError::Resource(err) => {
+      deno_core::error::get_custom_error_class(err).unwrap()
+    }
+    BroadcastChannelError::MPSCSendError(_) => "Error",
+    BroadcastChannelError::BroadcastSendError(_) => "Error",
+    BroadcastChannelError::Other(err) => {
+      get_error_class_name(err).unwrap_or("Error")
+    }
+  }
+}
+
 pub fn get_error_class_name(e: &AnyError) -> Option<&'static str> {
   deno_core::error::get_custom_error_class(e)
     .or_else(|| deno_webgpu::error::get_error_class_name(e))
@@ -177,6 +212,12 @@ pub fn get_error_class_name(e: &AnyError) -> Option<&'static str> {
     .or_else(|| deno_webstorage::get_not_supported_error_class_name(e))
     .or_else(|| deno_websocket::get_network_error_class_name(e))
     .or_else(|| e.downcast_ref::<CronError>().map(get_cron_error_class))
+    .or_else(|| e.downcast_ref::<CanvasError>().map(get_canvas_error))
+    .or_else(|| e.downcast_ref::<CacheError>().map(get_cache_error))
+    .or_else(|| {
+      e.downcast_ref::<BroadcastChannelError>()
+        .map(get_broadcast_channel_error)
+    })
     .or_else(|| {
       e.downcast_ref::<dlopen2::Error>()
         .map(get_dlopen_error_class)
