@@ -17,6 +17,7 @@ use deno_core::serde_json;
 use deno_core::url;
 use deno_core::ModuleResolutionError;
 use deno_cron::CronError;
+use deno_tls::TlsError;
 use std::env;
 use std::error::Error;
 use std::io;
@@ -157,6 +158,17 @@ pub fn get_nix_error_class(error: &nix::Error) -> &'static str {
   }
 }
 
+fn get_tls_error_class(e: &TlsError) -> &'static str {
+  match e {
+    TlsError::Rustls(_) => "Error",
+    TlsError::UnableAddPemFileToCert(e) => get_io_error_class(e),
+    TlsError::CertInvalid
+    | TlsError::CertsNotFound
+    | TlsError::KeysNotFound
+    | TlsError::KeyDecode => "InvalidData",
+  }
+}
+
 pub fn get_cron_error_class(e: &CronError) -> &'static str {
   match e {
     CronError::Resource(e) => {
@@ -211,6 +223,7 @@ pub fn get_error_class_name(e: &AnyError) -> Option<&'static str> {
     .or_else(|| deno_web::get_error_class_name(e))
     .or_else(|| deno_webstorage::get_not_supported_error_class_name(e))
     .or_else(|| deno_websocket::get_network_error_class_name(e))
+    .or_else(|| e.downcast_ref::<TlsError>().map(get_tls_error_class))
     .or_else(|| e.downcast_ref::<CronError>().map(get_cron_error_class))
     .or_else(|| e.downcast_ref::<CanvasError>().map(get_canvas_error))
     .or_else(|| e.downcast_ref::<CacheError>().map(get_cache_error))
