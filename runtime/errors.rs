@@ -156,9 +156,9 @@ pub fn get_nix_error_class(error: &nix::Error) -> &'static str {
 
 fn get_napi_error_class(e: &NApiError) -> &'static str {
   match e {
-    NApiError::InvalidPath => "TypeError",
-    NApiError::LibLoading(_) => "TypeError",
-    NApiError::ModuleNotFound(_) => "TypeError",
+    NApiError::InvalidPath
+    | NApiError::LibLoading(_)
+    | NApiError::ModuleNotFound(_) => "TypeError",
     NApiError::Permission(e) => get_error_class_name(e).unwrap_or("Error"),
   }
 }
