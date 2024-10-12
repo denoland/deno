@@ -9,6 +9,7 @@
 //!   Diagnostics are compile-time type errors, whereas JsErrors are runtime
 //!   exceptions.
 
+use deno_broadcast_channel::BroadcastChannelError;
 use deno_cache::CacheError;
 use deno_core::error::AnyError;
 use deno_core::serde_json;
@@ -166,6 +167,19 @@ pub fn get_cache_error(error: &CacheError) -> &'static str {
   }
 }
 
+fn get_broadcast_channel_error(error: &BroadcastChannelError) -> &'static str {
+  match error {
+    BroadcastChannelError::Resource(err) => {
+      deno_core::error::get_custom_error_class(err).unwrap()
+    }
+    BroadcastChannelError::MPSCSendError(_) => "Error",
+    BroadcastChannelError::BroadcastSendError(_) => "Error",
+    BroadcastChannelError::Other(err) => {
+      get_error_class_name(err).unwrap_or("Error")
+    }
+  }
+}
+
 pub fn get_error_class_name(e: &AnyError) -> Option<&'static str> {
   deno_core::error::get_custom_error_class(e)
     .or_else(|| deno_webgpu::error::get_error_class_name(e))
@@ -173,6 +187,10 @@ pub fn get_error_class_name(e: &AnyError) -> Option<&'static str> {
     .or_else(|| deno_webstorage::get_not_supported_error_class_name(e))
     .or_else(|| deno_websocket::get_network_error_class_name(e))
     .or_else(|| e.downcast_ref::<CacheError>().map(get_cache_error))
+    .or_else(|| {
+      e.downcast_ref::<BroadcastChannelError>()
+        .map(get_broadcast_channel_error)
+    })
     .or_else(|| {
       e.downcast_ref::<dlopen2::Error>()
         .map(get_dlopen_error_class)
