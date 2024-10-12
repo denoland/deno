@@ -13,6 +13,7 @@ use deno_core::error::AnyError;
 use deno_core::serde_json;
 use deno_core::url;
 use deno_core::ModuleResolutionError;
+use deno_webstorage::WebStorageError;
 use std::env;
 use std::error::Error;
 use std::io;
@@ -153,12 +154,24 @@ pub fn get_nix_error_class(error: &nix::Error) -> &'static str {
   }
 }
 
+fn get_webstorage_class_name(e: &WebStorageError) -> &'static str {
+  match e {
+    WebStorageError::ContextNotSupported => "DOMExceptionNotSupportedError",
+    WebStorageError::Sqlite(_) => todo!(),
+    WebStorageError::Io(e) => get_io_error_class(e),
+    WebStorageError::StorageExceeded => "DOMExceptionQuotaExceededError",
+  }
+}
+
 pub fn get_error_class_name(e: &AnyError) -> Option<&'static str> {
   deno_core::error::get_custom_error_class(e)
     .or_else(|| deno_webgpu::error::get_error_class_name(e))
     .or_else(|| deno_web::get_error_class_name(e))
-    .or_else(|| deno_webstorage::get_not_supported_error_class_name(e))
     .or_else(|| deno_websocket::get_network_error_class_name(e))
+    .or_else(|| {
+      e.downcast_ref::<WebStorageError>()
+        .map(get_webstorage_class_name)
+    })
     .or_else(|| {
       e.downcast_ref::<dlopen2::Error>()
         .map(get_dlopen_error_class)
