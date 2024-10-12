@@ -295,7 +295,7 @@ pub fn bi_pipe_pair_raw(
       )
     };
     if ret != 0 {
-      return Err(std::io::Error::last_os_error().into());
+      return Err(std::io::Error::last_os_error());
     }
 
     if cfg!(target_os = "macos") {
@@ -413,7 +413,7 @@ pub fn bi_pipe_pair_raw(
         0,
       );
       if hd2 == INVALID_HANDLE_VALUE {
-        return Err(io::Error::last_os_error().into());
+        return Err(io::Error::last_os_error());
       }
 
       // Will not block because we have create the pair.
