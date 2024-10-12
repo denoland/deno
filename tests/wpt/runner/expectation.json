@@ -11625,9 +11625,6 @@
         "ctor-1.html": false,
         "ctor-null.html": false,
         "ctor-undefined.html": false,
-        "same-origin.html": [
-          "non-parsable URL"
-        ],
         "terminate.html": true,
         "use-base-url.html": false
       },
