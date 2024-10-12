@@ -1136,3 +1136,22 @@ fn eval_file_promise_error() {
   assert_contains!(out, "Uncaught undefined");
   assert!(err.is_empty());
 }
+
+#[test]
+fn repl_json_imports() {
+  let context = TestContextBuilder::default().use_temp_cwd().build();
+  let temp_dir = context.temp_dir();
+  temp_dir.write("./data.json", r#"{"hello": "world"}"#);
+  context
+    .new_command()
+    .env("NO_COLOR", "1")
+    .args_vec(["repl", "-A"])
+    .with_pty(|mut console| {
+      console.write_line_raw(
+        "import data from './data.json' with { type: 'json' };",
+      );
+      console.expect("undefined");
+      console.write_line_raw("data");
+      console.expect(r#"{ hello: "world" }"#);
+    });
+}
