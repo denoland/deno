@@ -2,8 +2,6 @@
 
 use std::borrow::Cow;
 
-use deno_core::error::custom_error;
-use deno_core::error::AnyError;
 use deno_core::JsBuffer;
 use deno_core::ToJsBuffer;
 use elliptic_curve::sec1::ToEncodedPoint;

@@ -678,7 +678,7 @@ fn import_key_ec(
       let named_curve_alg = pk
         .algorithm
         .parameters
-        .ok_or_else(|| ImportKeyError::MalformedParameters)?
+        .ok_or(ImportKeyError::MalformedParameters)?
         .try_into()
         .unwrap();
 
@@ -716,7 +716,7 @@ fn import_key_ec(
         pk_info
           .algorithm
           .parameters
-          .ok_or_else(|| ImportKeyError::MalformedParameters)?,
+          .ok_or(ImportKeyError::MalformedParameters)?,
       )
       .map_err(|_| ImportKeyError::MalformedParameters)?;
 
