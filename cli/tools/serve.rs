@@ -46,11 +46,8 @@ pub async fn serve(
   let worker_factory = factory.create_cli_main_worker_factory().await?;
   let hmr = serve_flags
     .watch
-    .unwrap_or(WatchFlagsWithPaths {
-      hmr: false,
-      ..Default::default()
-    })
-    .hmr;
+    .map(|watch_flags| watch_flags.hmr)
+    .unwrap_or(false);
   do_serve(
     worker_factory,
     main_module.clone(),
