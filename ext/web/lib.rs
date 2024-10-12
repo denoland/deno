@@ -196,7 +196,7 @@ fn op_encoding_normalize_label(
   #[string] label: String,
 ) -> Result<String, WebError> {
   let encoding = Encoding::for_label_no_replacement(label.as_bytes())
-    .ok_or_else(|| WebError::InvalidEncodingLabel(label))?;
+    .ok_or(WebError::InvalidEncodingLabel(label))?;
   Ok(encoding.name().to_lowercase())
 }
 
@@ -252,7 +252,7 @@ fn op_encoding_decode_single(
 
   let max_buffer_length = decoder
     .max_utf16_buffer_length(data.len())
-    .ok_or_else(|| WebError::ValueTooLarge)?;
+    .ok_or(WebError::ValueTooLarge)?;
 
   let mut output = vec![0; max_buffer_length];
 
@@ -314,7 +314,7 @@ fn op_encoding_decode(
 
   let max_buffer_length = decoder
     .max_utf16_buffer_length(data.len())
-    .ok_or_else(|| WebError::ValueTooLarge)?;
+    .ok_or(WebError::ValueTooLarge)?;
 
   let mut output = vec![0; max_buffer_length];
 
