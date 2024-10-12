@@ -131,7 +131,7 @@ deno_core::extension!(deno_web,
 pub enum WebError {
   #[error("Failed to decode base64")]
   Base64Decode,
-  #[error("The encoding label provided ('{0}') is invalid")]
+  #[error("The encoding label provided ('{0}') is invalid.")]
   InvalidEncodingLabel(String),
   #[error("buffer exceeds maximum length")]
   BufferTooLong,
