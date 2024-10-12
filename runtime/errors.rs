@@ -13,6 +13,7 @@ use deno_core::error::AnyError;
 use deno_core::serde_json;
 use deno_core::url;
 use deno_core::ModuleResolutionError;
+use deno_napi::NApiError;
 use std::env;
 use std::error::Error;
 use std::io;
@@ -153,12 +154,22 @@ pub fn get_nix_error_class(error: &nix::Error) -> &'static str {
   }
 }
 
+fn get_napi_error_class(e: &NApiError) -> &'static str {
+  match e {
+    NApiError::InvalidPath => "TypeError",
+    NApiError::LibLoading(_) => "TypeError",
+    NApiError::ModuleNotFound(_) => "TypeError",
+    NApiError::Permission(e) => get_error_class_name(e).unwrap_or("Error"),
+  }
+}
+
 pub fn get_error_class_name(e: &AnyError) -> Option<&'static str> {
   deno_core::error::get_custom_error_class(e)
     .or_else(|| deno_webgpu::error::get_error_class_name(e))
     .or_else(|| deno_web::get_error_class_name(e))
     .or_else(|| deno_webstorage::get_not_supported_error_class_name(e))
     .or_else(|| deno_websocket::get_network_error_class_name(e))
+    .or_else(|| e.downcast_ref::<NApiError>().map(get_napi_error_class))
     .or_else(|| {
       e.downcast_ref::<dlopen2::Error>()
         .map(get_dlopen_error_class)

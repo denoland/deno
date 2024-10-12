@@ -17,3 +17,4 @@ path = "lib.rs"
 deno_core.workspace = true
 deno_permissions.workspace = true
 libloading = { version = "0.7" }
+thiserror.workspace = true

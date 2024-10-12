@@ -1774,6 +1774,7 @@ dependencies = [
  "deno_core",
  "deno_permissions",
  "libloading 0.7.4",
+ "thiserror",
 ]
 
 [[package]]
