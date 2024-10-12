@@ -158,10 +158,10 @@ fn get_tls_error_class(e: &TlsError) -> &'static str {
   match e {
     TlsError::Rustls(_) => "Error",
     TlsError::UnableAddPemFileToCert(e) => get_io_error_class(e),
-    TlsError::CertInvalid => "InvalidData",
-    TlsError::CertsNotFound => "InvalidData",
-    TlsError::KeysNotFound => "InvalidData",
-    TlsError::KeyDecode => "InvalidData",
+    TlsError::CertInvalid
+    | TlsError::CertsNotFound
+    | TlsError::KeysNotFound
+    | TlsError::KeyDecode => "InvalidData",
   }
 }
 
