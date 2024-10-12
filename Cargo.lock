@@ -1340,6 +1340,7 @@ version = "0.165.0"
 dependencies = [
  "async-trait",
  "deno_core",
+ "thiserror",
  "tokio",
  "uuid",
 ]
@@ -1353,6 +1354,7 @@ dependencies = [
  "rusqlite",
  "serde",
  "sha2",
+ "thiserror",
  "tokio",
 ]
 
@@ -1384,6 +1386,7 @@ dependencies = [
  "deno_webgpu",
  "image",
  "serde",
+ "thiserror",
 ]
 
 [[package]]
@@ -1504,9 +1507,9 @@ dependencies = [
 
 [[package]]
 name = "deno_doc"
-version = "0.152.0"
+version = "0.153.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "a8d237256ad99d6064b271324485120028e843329fd0fa0e93175d5e98f17033"
+checksum = "6925db7ad16bee4bdcb7e654d2475e2fbd5e1d7dd4c6ee5f030ee858b4a2a8ee"
 dependencies = [
  "anyhow",
  "cfg-if",
@@ -7154,18 +7157,18 @@ dependencies = [
 
 [[package]]
 name = "thiserror"
-version = "1.0.61"
+version = "1.0.64"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "c546c80d6be4bc6a00c0f01730c08df82eaa7a7a61f11d656526506112cc1709"
+checksum = "d50af8abc119fb8bb6dbabcfa89656f46f84aa0ac7688088608076ad2b459a84"
 dependencies = [
  "thiserror-impl",
 ]
 
 [[package]]
 name = "thiserror-impl"
-version = "1.0.61"
+version = "1.0.64"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "46c3384250002a6d5af4d114f2845d37b57521033f30d5c3f46c4d70e1197533"
+checksum = "08904e7672f5eb876eaaf87e0ce17857500934f4981c4a0ab2b4aa98baac7fc3"
 dependencies = [
  "proc-macro2",
  "quote",
