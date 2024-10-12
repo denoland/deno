@@ -3,13 +3,13 @@
 use std::sync::Arc;
 
 use async_trait::async_trait;
-use deno_core::error::AnyError;
 use deno_core::parking_lot::Mutex;
 use tokio::sync::broadcast;
 use tokio::sync::mpsc;
 use uuid::Uuid;
 
 use crate::BroadcastChannel;
+use crate::BroadcastChannelError;
 
 #[derive(Clone)]
 pub struct InMemoryBroadcastChannel(Arc<Mutex<broadcast::Sender<Message>>>);
@@ -41,7 +41,7 @@ impl Default for InMemoryBroadcastChannel {
 impl BroadcastChannel for InMemoryBroadcastChannel {
   type Resource = InMemoryBroadcastChannelResource;
 
-  fn subscribe(&self) -> Result<Self::Resource, AnyError> {
+  fn subscribe(&self) -> Result<Self::Resource, BroadcastChannelError> {
     let (cancel_tx, cancel_rx) = mpsc::unbounded_channel();
     let broadcast_rx = self.0.lock().subscribe();
     let rx = tokio::sync::Mutex::new((broadcast_rx, cancel_rx));
@@ -53,7 +53,10 @@ impl BroadcastChannel for InMemoryBroadcastChannel {
     })
   }
 
-  fn unsubscribe(&self, resource: &Self::Resource) -> Result<(), AnyError> {
+  fn unsubscribe(
+    &self,
+    resource: &Self::Resource,
+  ) -> Result<(), BroadcastChannelError> {
     Ok(resource.cancel_tx.send(())?)
   }
 
@@ -62,7 +65,7 @@ impl BroadcastChannel for InMemoryBroadcastChannel {
     resource: &Self::Resource,
     name: String,
     data: Vec<u8>,
-  ) -> Result<(), AnyError> {
+  ) -> Result<(), BroadcastChannelError> {
     let name = Arc::new(name);
     let data = Arc::new(data);
     let uuid = resource.uuid;
@@ -73,7 +76,7 @@ impl BroadcastChannel for InMemoryBroadcastChannel {
   async fn recv(
     &self,
     resource: &Self::Resource,
-  ) -> Result<Option<crate::Message>, AnyError> {
+  ) -> Result<Option<crate::Message>, BroadcastChannelError> {
     let mut g = resource.rx.lock().await;
     let (broadcast_rx, cancel_rx) = &mut *g;
     loop {
