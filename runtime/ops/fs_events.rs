@@ -91,9 +91,10 @@ impl From<NotifyEvent> for FsEvent {
   }
 }
 
+type WatchSender = (Vec<String>, mpsc::Sender<Result<FsEvent, AnyError>>);
+
 struct WatcherState {
-  senders:
-    Arc<Mutex<Vec<(Vec<String>, mpsc::Sender<Result<FsEvent, AnyError>>)>>>,
+  senders: Arc<Mutex<Vec<WatchSender>>>,
   watcher: RecommendedWatcher,
 }
 
@@ -125,7 +126,7 @@ fn start_watcher(
               .iter()
               .any(|event_path| event_path.starts_with(path))
           }) {
-            let _ = sender.send(Ok(event.clone()));
+            let _ = sender.try_send(Ok(event.clone()));
           }
         }
       }
