@@ -189,7 +189,10 @@ fn get_web_message_port_error_class(e: &MessagePortError) -> &'static str {
     MessagePortError::InvalidTransfer => "TypeError",
     MessagePortError::NotReady => "TypeError",
     MessagePortError::TransferSelf => "TypeError",
-    MessagePortError::Canceled(_) => "Error",
+    MessagePortError::Canceled(e) => {
+      let io_err: io::Error = e.to_owned().into();
+      get_io_error_class(&io_err)
+    }
     MessagePortError::Resource(e) => get_error_class_name(e).unwrap_or("Error"),
   }
 }
@@ -198,7 +201,10 @@ fn get_web_stream_resource_error_class(
   e: &StreamResourceError,
 ) -> &'static str {
   match e {
-    StreamResourceError::Canceled(_) => "Error",
+    StreamResourceError::Canceled(e) => {
+      let io_err: io::Error = e.to_owned().into();
+      get_io_error_class(&io_err)
+    }
     StreamResourceError::Js(_) => "TypeError",
   }
 }
