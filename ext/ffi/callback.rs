@@ -536,10 +536,7 @@ unsafe fn do_ffi_callback(
 pub fn op_ffi_unsafe_callback_ref(
   state: Rc<RefCell<OpState>>,
   #[smi] rid: ResourceId,
-) -> Result<
-  impl Future<Output = Result<(), deno_core::error::AnyError>>,
-  CallbackError,
-> {
+) -> Result<impl Future<Output = ()>, CallbackError> {
   let state = state.borrow();
   let callback_resource = state
     .resource_table
@@ -555,7 +552,6 @@ pub fn op_ffi_unsafe_callback_ref(
       .into_future()
       .or_cancel(callback_resource.cancel.clone())
       .await;
-    Ok(())
   })
 }
 
