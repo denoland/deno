@@ -464,11 +464,13 @@ pub async fn run(
   let root_dir_url =
     Arc::new(ModuleSpecifier::from_directory_path(&root_path).unwrap());
   let main_module = root_dir_url.join(&metadata.entrypoint_key).unwrap();
-  // Make sure `main_module` points to a valid file path.
-  let _ = std::fs::write(
-    root_path.join(&metadata.entrypoint_key),
-    "// virtual entrypoint file",
-  );
+
+  // Make sure `main_module` has a valid directory path.
+  let path = root_path.join(&metadata.entrypoint_key);
+  if let Some(parent) = path.parent() {
+    let _ = std::fs::create_dir_all(parent);
+  }
+
   let root_node_modules_path = root_path.join("node_modules");
   let npm_cache_dir = NpmCacheDir::new(
     &RealDenoCacheEnv,
