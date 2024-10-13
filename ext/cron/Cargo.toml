@@ -19,4 +19,5 @@ async-trait.workspace = true
 chrono = { workspace = true, features = ["now"] }
 deno_core.workspace = true
 saffron.workspace = true
+thiserror.workspace = true
 tokio.workspace = true
