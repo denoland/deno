@@ -44,7 +44,7 @@ mod macros {
         #[cfg(all(not(target_arch = "wasm32"), windows))]
         wgpu_types::Backend::Dx12 => $($c)*.$method::<wgpu_core::api::Dx12> $params,
         #[cfg(any(
-            all(unix, not(target_os = "macos"), not(target_os = "ios")),
+            all(not(target_os = "macos"), not(target_os = "ios")),
             feature = "angle",
             target_arch = "wasm32"
         ))]
