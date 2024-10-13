@@ -3,7 +3,7 @@
   "steps": [
     {
       "args": "compile -A --output out main.ts",
-      "output": "compile.out"
+      "output": ""
     },
     {
       "commandName": "./out",
