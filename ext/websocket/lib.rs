@@ -349,6 +349,7 @@ pub fn create_ws_client_config(
     TlsKeys::Null,
     socket_use,
   )
+  .map_err(|e| e.into())
 }
 
 /// Headers common to both http/1.1 and h2 requests.

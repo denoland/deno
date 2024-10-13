@@ -21,5 +21,6 @@ rustls-pemfile.workspace = true
 rustls-tokio-stream.workspace = true
 rustls-webpki.workspace = true
 serde.workspace = true
+thiserror.workspace = true
 tokio.workspace = true
 webpki-roots.workspace = true
