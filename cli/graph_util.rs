@@ -6,6 +6,7 @@ use crate::args::CliLockfile;
 use crate::args::CliOptions;
 use crate::args::DENO_DISABLE_PEDANTIC_NODE_WARNINGS;
 use crate::cache;
+use crate::cache::EsmOrCjsChecker;
 use crate::cache::GlobalHttpCache;
 use crate::cache::ModuleInfoCache;
 use crate::cache::ParsedSourceCache;
@@ -380,6 +381,7 @@ pub struct BuildFastCheckGraphOptions<'a> {
 pub struct ModuleGraphBuilder {
   options: Arc<CliOptions>,
   caches: Arc<cache::Caches>,
+  esm_or_cjs_checker: Arc<EsmOrCjsChecker>,
   fs: Arc<dyn FileSystem>,
   resolver: Arc<CliGraphResolver>,
   node_resolver: Arc<CliNodeResolver>,
@@ -398,6 +400,7 @@ impl ModuleGraphBuilder {
   pub fn new(
     options: Arc<CliOptions>,
     caches: Arc<cache::Caches>,
+    esm_or_cjs_checker: Arc<EsmOrCjsChecker>,
     fs: Arc<dyn FileSystem>,
     resolver: Arc<CliGraphResolver>,
     node_resolver: Arc<CliNodeResolver>,
@@ -413,6 +416,7 @@ impl ModuleGraphBuilder {
     Self {
       options,
       caches,
+      esm_or_cjs_checker,
       fs,
       resolver,
       node_resolver,
@@ -695,6 +699,7 @@ impl ModuleGraphBuilder {
     permissions: PermissionsContainer,
   ) -> cache::FetchCacher {
     cache::FetchCacher::new(
+      self.esm_or_cjs_checker.clone(),
       self.file_fetcher.clone(),
       self.global_http_cache.clone(),
       self.node_resolver.clone(),

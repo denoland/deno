@@ -16,11 +16,7 @@ use crate::util::fs::AtomicWriteFileFsAdapter;
 use crate::util::path::specifier_has_extension;
 use crate::util::text_encoding::from_utf8_lossy_owned;
 
-use deno_ast::swc::parser::token::Keyword;
-use deno_ast::swc::parser::token::Token;
-use deno_ast::swc::parser::token::Word;
 use deno_ast::MediaType;
-use deno_ast::StartSourcePos;
 use deno_core::futures;
 use deno_core::futures::FutureExt;
 use deno_core::ModuleSpecifier;
@@ -63,6 +59,7 @@ pub use fast_check::FastCheckCache;
 pub use incremental::IncrementalCache;
 pub use module_info::ModuleInfoCache;
 pub use node::NodeAnalysisCache;
+pub use parsed_source::EsmOrCjsChecker;
 pub use parsed_source::LazyGraphSourceParser;
 pub use parsed_source::ParsedSourceCache;
 
@@ -189,20 +186,22 @@ pub struct FetchCacherOptions {
 /// A "wrapper" for the FileFetcher and DiskCache for the Deno CLI that provides
 /// a concise interface to the DENO_DIR when building module graphs.
 pub struct FetchCacher {
-  file_fetcher: Arc<FileFetcher>,
   pub file_header_overrides: HashMap<ModuleSpecifier, HashMap<String, String>>,
+  esm_or_cjs_checker: Arc<EsmOrCjsChecker>,
+  file_fetcher: Arc<FileFetcher>,
   global_http_cache: Arc<GlobalHttpCache>,
   node_resolver: Arc<CliNodeResolver>,
   npm_resolver: Arc<dyn CliNpmResolver>,
   module_info_cache: Arc<ModuleInfoCache>,
   permissions: PermissionsContainer,
-  cache_info_enabled: bool,
   is_deno_publish: bool,
   unstable_package_json_type: bool,
+  cache_info_enabled: bool,
 }
 
 impl FetchCacher {
   pub fn new(
+    esm_or_cjs_checker: Arc<EsmOrCjsChecker>,
     file_fetcher: Arc<FileFetcher>,
     global_http_cache: Arc<GlobalHttpCache>,
     node_resolver: Arc<CliNodeResolver>,
@@ -212,6 +211,7 @@ impl FetchCacher {
   ) -> Self {
     Self {
       file_fetcher,
+      esm_or_cjs_checker,
       global_http_cache,
       node_resolver,
       npm_resolver,
@@ -304,30 +304,17 @@ impl Loader for FetchCacher {
           if pkg_json.typ == "commonjs" {
             if let Ok(path) = specifier.to_file_path() {
               if let Ok(bytes) = std::fs::read(&path) {
-                let text = from_utf8_lossy_owned(bytes);
-                let start_pos = StartSourcePos::START_SOURCE_POS;
-                // todo(THIS PR): extract out to a reusable function
-                // and probably just parse and cache because I don't think this
-                // will catch stuff like `import.meta` (where its existence means
-                // it's an es module)
-                let mut lexer = deno_ast::swc::parser::lexer::Lexer::new(
-                  deno_ast::get_syntax(MediaType::JavaScript),
-                  deno_ast::ES_VERSION,
-                  deno_ast::swc::parser::StringInput::new(
-                    &text,
-                    start_pos.as_byte_pos(),
-                    (start_pos + text.len()).as_byte_pos(),
-                  ),
-                  None,
-                );
-                let is_es_module = lexer.any(|t| {
-                  matches!(
-                    t.token,
-                    Token::Word(Word::Keyword(
-                      Keyword::Export | Keyword::Import
-                    ))
-                  )
-                });
+                let text: Arc<str> = from_utf8_lossy_owned(bytes).into();
+                let is_es_module = match self.esm_or_cjs_checker.is_esm(
+                  specifier,
+                  text,
+                  MediaType::JavaScript,
+                ) {
+                  Ok(value) => value,
+                  Err(err) => {
+                    return Box::pin(futures::future::ready(Err(err.into())));
+                  }
+                };
                 if !is_es_module {
                   // todo(THIS PR): Ideally we only load the file once from the file system
                   self.node_resolver.mark_cjs_resolution(specifier.clone());

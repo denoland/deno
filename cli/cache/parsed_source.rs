@@ -5,6 +5,7 @@ use std::sync::Arc;
 
 use deno_ast::MediaType;
 use deno_ast::ModuleSpecifier;
+use deno_ast::ParseDiagnostic;
 use deno_ast::ParsedSource;
 use deno_core::parking_lot::Mutex;
 use deno_graph::CapturingModuleParser;
@@ -147,5 +148,47 @@ impl deno_graph::ParsedSourceStore for ParsedSourceCache {
       sources.insert(specifier.clone(), parsed_source.clone());
       Some(parsed_source)
     }
+  }
+}
+
+pub struct EsmOrCjsChecker {
+  parsed_source_cache: Arc<ParsedSourceCache>,
+}
+
+impl EsmOrCjsChecker {
+  pub fn new(parsed_source_cache: Arc<ParsedSourceCache>) -> Self {
+    Self {
+      parsed_source_cache,
+    }
+  }
+
+  pub fn is_esm(
+    &self,
+    specifier: &ModuleSpecifier,
+    source: Arc<str>,
+    media_type: MediaType,
+  ) -> Result<bool, ParseDiagnostic> {
+    // todo(dsherret): add a file cache here to avoid parsing with swc on each load
+    let source = match self.parsed_source_cache.get_parsed_source(specifier) {
+      Some(source) => source.clone(),
+      None => {
+        let source = deno_ast::parse_program(deno_ast::ParseParams {
+          specifier: specifier.clone(),
+          text: source,
+          media_type,
+          capture_tokens: false,
+          scope_analysis: false,
+          maybe_syntax: None,
+        })?;
+        self
+          .parsed_source_cache
+          .set_parsed_source(specifier.clone(), source.clone());
+        source
+      }
+    };
+    Ok(match source.program_ref() {
+      deno_ast::swc::ast::Program::Module(_) => true,
+      deno_ast::swc::ast::Program::Script(_) => false,
+    })
   }
 }
