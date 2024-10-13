@@ -2,6 +2,7 @@
 
 use std::borrow::Cow;
 use std::ops::Range;
+use std::sync::Arc;
 
 use base64::prelude::BASE64_STANDARD;
 use base64::Engine;
@@ -93,6 +94,13 @@ fn find_source_map_range(code: &[u8]) -> Option<Range<usize>> {
   } else {
     None
   }
+}
+
+/// Converts an `Arc<str>` to an `Arc<[u8]>`.
+pub fn arc_str_to_bytes(arc_str: Arc<str>) -> Arc<[u8]> {
+  let raw = Arc::into_raw(arc_str);
+  // SAFETY: This is safe because they have the same memory layout.
+  unsafe { Arc::from_raw(raw as *const [u8]) }
 }
 
 #[cfg(test)]

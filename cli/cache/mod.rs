@@ -14,6 +14,7 @@ use crate::util::fs::atomic_write_file_with_retries;
 use crate::util::fs::atomic_write_file_with_retries_and_fs;
 use crate::util::fs::AtomicWriteFileFsAdapter;
 use crate::util::path::specifier_has_extension;
+use crate::util::text_encoding::arc_str_to_bytes;
 use crate::util::text_encoding::from_utf8_lossy_owned;
 
 use deno_ast::MediaType;
@@ -307,7 +308,7 @@ impl Loader for FetchCacher {
                 let text: Arc<str> = from_utf8_lossy_owned(bytes).into();
                 let is_es_module = match self.esm_or_cjs_checker.is_esm(
                   specifier,
-                  text,
+                  text.clone(),
                   MediaType::JavaScript,
                 ) {
                   Ok(value) => value,
@@ -316,11 +317,18 @@ impl Loader for FetchCacher {
                   }
                 };
                 if !is_es_module {
-                  // todo(THIS PR): Ideally we only load the file once from the file system
                   self.node_resolver.mark_cjs_resolution(specifier.clone());
                   return Box::pin(futures::future::ready(Ok(Some(
                     LoadResponse::External {
                       specifier: specifier.clone(),
+                    },
+                  ))));
+                } else {
+                  return Box::pin(futures::future::ready(Ok(Some(
+                    LoadResponse::Module {
+                      specifier: specifier.clone(),
+                      content: arc_str_to_bytes(text),
+                      maybe_headers: None,
                     },
                   ))));
                 }
