@@ -5,7 +5,6 @@ use std::collections::HashSet;
 use std::fmt;
 use std::fmt::Write;
 use std::sync::Arc;
-use std::env;
 
 use deno_ast::ModuleSpecifier;
 use deno_core::anyhow::bail;
