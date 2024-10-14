@@ -170,7 +170,7 @@ fn get_web_error_class(e: &WebError) -> &'static str {
     WebError::BufferTooLong => "TypeError",
     WebError::ValueTooLarge => "RangeError",
     WebError::BufferTooSmall => "RangeError",
-    WebError::DataInvalid => "RangeError",
+    WebError::DataInvalid => "TypeError",
     WebError::DataError(_) => "Error",
   }
 }
