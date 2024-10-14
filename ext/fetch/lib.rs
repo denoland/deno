@@ -182,6 +182,11 @@ pub enum FetchError {
   ClientSend(#[from] ClientSendError),
   #[error(transparent)]
   RequestBuilderHook(deno_core::error::AnyError),
+  #[error(transparent)]
+  Io(#[from] std::io::Error),
+  // Only used for node upgrade
+  #[error(transparent)]
+  Hyper(#[from] hyper::Error),
 }
 
 pub type CancelableResponseFuture =
@@ -524,14 +529,12 @@ where
       let cancel_handle = CancelHandle::new_rc();
       let cancel_handle_ = cancel_handle.clone();
 
-      let fut = {
-        async move {
-          client
-            .send(request)
-            .map_err(Into::into)
-            .or_cancel(cancel_handle_)
-            .await
-        }
+      let fut = async move {
+        client
+          .send(request)
+          .map_err(Into::into)
+          .or_cancel(cancel_handle_)
+          .await
       };
 
       let request_rid = state.resource_table.add(FetchRequestResource {
@@ -622,17 +625,18 @@ pub async fn op_fetch_send(
       // If any error in the chain is a hyper body error, return that as a special result we can use to
       // reconstruct an error chain (eg: `new TypeError(..., { cause: new Error(...) })`).
       // TODO(mmastrac): it would be a lot easier if we just passed a v8::Global through here instead
-      let mut err_ref: &dyn std::error::Error = err.as_ref();
-      while let Some(err_src) = std::error::Error::source(err_ref) {
-        if let Some(err_src) = err_src.downcast_ref::<hyper::Error>() {
-          if let Some(err_src) = std::error::Error::source(err_src) {
-            return Ok(FetchResponse {
-              error: Some((err.to_string(), err_src.to_string())),
-              ..Default::default()
-            });
+
+      if let FetchError::ClientSend(err_src) = &err {
+        if let Some(client_err) = std::error::Error::source(&err_src.source) {
+          if let Some(err_src) = client_err.downcast_ref::<hyper::Error>() {
+            if let Some(err_src) = std::error::Error::source(err_src) {
+              return Ok(FetchResponse {
+                error: Some((err.to_string(), err_src.to_string())),
+                ..Default::default()
+              });
+            }
           }
         }
-        err_ref = err_src;
       }
 
       return Err(err);
@@ -1061,7 +1065,7 @@ const STAR_STAR: HeaderValue = HeaderValue::from_static("*/*");
 #[derive(Debug)]
 pub struct ClientSendError {
   uri: Uri,
-  source: hyper_util::client::legacy::Error,
+  pub source: hyper_util::client::legacy::Error,
 }
 
 impl ClientSendError {

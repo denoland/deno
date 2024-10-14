@@ -235,11 +235,13 @@ fn get_fetch_error(error: &FetchError) -> &'static str {
     FetchError::SchemeNotSupported(_) => "TypeError",
     FetchError::RequestCanceled => "TypeError",
     FetchError::Http(_) => "Error",
-    FetchError::ClientCreate(e) => get_url_parse_error_class(e),
+    FetchError::ClientCreate(e) => get_http_client_create_error(e),
     FetchError::Url(e) => get_url_parse_error_class(e),
     FetchError::Method(_) => "TypeError",
     FetchError::ClientSend(_) => "TypeError",
     FetchError::RequestBuilderHook(_) => "TypeError",
+    FetchError::Io(e) => get_io_error_class(e),
+    FetchError::Hyper(e) => get_hyper_error_class(e),
   }
 }
 
