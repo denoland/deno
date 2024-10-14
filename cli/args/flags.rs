@@ -4207,7 +4207,7 @@ impl Iterator for UnstableArgsIter {
         UnstableArgsConfig::ResolutionOnly | UnstableArgsConfig::ResolutionAndRuntime => Some("true")
       })
       .help_heading(UNSTABLE_HEADING)
-    } else if self.idx > 4 {
+    } else {
       let granular_flag = crate::UNSTABLE_GRANULAR_FLAGS.get(self.idx - 5)?;
       Arg::new(format!("unstable-{}", granular_flag.name))
         .long(format!("unstable-{}", granular_flag.name))
@@ -4226,8 +4226,6 @@ impl Iterator for UnstableArgsIter {
         } else {
           None
         })
-    } else {
-      return None;
     };
     self.idx += 1;
     Some(arg.display_order(self.idx + 1000))
