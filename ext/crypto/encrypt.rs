@@ -16,8 +16,6 @@ use aes_gcm::Nonce;
 use ctr::Ctr128BE;
 use ctr::Ctr32BE;
 use ctr::Ctr64BE;
-use deno_core::error::type_error;
-use deno_core::error::AnyError;
 use deno_core::op2;
 use deno_core::unsync::spawn_blocking;
 use deno_core::JsBuffer;
@@ -73,12 +71,30 @@ pub enum EncryptAlgorithm {
   },
 }
 
+#[derive(Debug, thiserror::Error)]
+pub enum EncryptError {
+  #[error(transparent)]
+  General(#[from] SharedError),
+  #[error("invalid length")]
+  InvalidLength,
+  #[error("invalid key or iv")]
+  InvalidKeyOrIv,
+  #[error("iv length not equal to 12 or 16")]
+  InvalidIvLength,
+  #[error("invalid counter length. Currently supported 32/64/128 bits")]
+  InvalidCounterLength,
+  #[error("tried to encrypt too much data")]
+  TooMuchData,
+  #[error("Encryption failed")]
+  Failed,
+}
+
 #[op2(async)]
 #[serde]
 pub async fn op_crypto_encrypt(
   #[serde] opts: EncryptOptions,
   #[buffer] data: JsBuffer,
-) -> Result<ToJsBuffer, AnyError> {
+) -> Result<ToJsBuffer, EncryptError> {
   let key = opts.key;
   let fun = move || match opts.algorithm {
     EncryptAlgorithm::RsaOaep { hash, label } => {
@@ -108,12 +124,12 @@ fn encrypt_rsa_oaep(
   hash: ShaHash,
   label: Vec<u8>,
   data: &[u8],
-) -> Result<Vec<u8>, AnyError> {
+) -> Result<Vec<u8>, EncryptError> {
   let label = String::from_utf8_lossy(&label).to_string();
 
   let public_key = key.as_rsa_public_key()?;
   let public_key = rsa::RsaPublicKey::from_pkcs1_der(&public_key)
-    .map_err(|_| operation_error("failed to decode public key"))?;
+    .map_err(|_| SharedError::FailedDecodePublicKey)?;
   let mut rng = OsRng;
   let padding = match hash {
     ShaHash::Sha1 => rsa::Oaep {
@@ -139,7 +155,7 @@ fn encrypt_rsa_oaep(
   };
   let encrypted = public_key
     .encrypt(&mut rng, padding, data)
-    .map_err(|_| operation_error("Encryption failed"))?;
+    .map_err(|_| EncryptError::Failed)?;
   Ok(encrypted)
 }
 
@@ -148,7 +164,7 @@ fn encrypt_aes_cbc(
   length: usize,
   iv: Vec<u8>,
   data: &[u8],
-) -> Result<Vec<u8>, AnyError> {
+) -> Result<Vec<u8>, EncryptError> {
   let key = key.as_secret_key()?;
   let ciphertext = match length {
     128 => {
@@ -156,7 +172,7 @@ fn encrypt_aes_cbc(
       type Aes128CbcEnc = cbc::Encryptor<aes::Aes128>;
 
       let cipher = Aes128CbcEnc::new_from_slices(key, &iv)
-        .map_err(|_| operation_error("invalid key or iv".to_string()))?;
+        .map_err(|_| EncryptError::InvalidKeyOrIv)?;
       cipher.encrypt_padded_vec_mut::<Pkcs7>(data)
     }
     192 => {
@@ -164,7 +180,7 @@ fn encrypt_aes_cbc(
       type Aes192CbcEnc = cbc::Encryptor<aes::Aes192>;
 
       let cipher = Aes192CbcEnc::new_from_slices(key, &iv)
-        .map_err(|_| operation_error("invalid key or iv".to_string()))?;
+        .map_err(|_| EncryptError::InvalidKeyOrIv)?;
       cipher.encrypt_padded_vec_mut::<Pkcs7>(data)
     }
     256 => {
@@ -172,10 +188,10 @@ fn encrypt_aes_cbc(
       type Aes256CbcEnc = cbc::Encryptor<aes::Aes256>;
 
       let cipher = Aes256CbcEnc::new_from_slices(key, &iv)
-        .map_err(|_| operation_error("invalid key or iv".to_string()))?;
+        .map_err(|_| EncryptError::InvalidKeyOrIv)?;
       cipher.encrypt_padded_vec_mut::<Pkcs7>(data)
     }
-    _ => return Err(type_error("invalid length")),
+    _ => return Err(EncryptError::InvalidLength),
   };
   Ok(ciphertext)
 }
@@ -186,31 +202,31 @@ fn encrypt_aes_gcm_general<N: ArrayLength<u8>>(
   length: usize,
   ciphertext: &mut [u8],
   additional_data: Vec<u8>,
-) -> Result<aes_gcm::Tag, AnyError> {
+) -> Result<aes_gcm::Tag, EncryptError> {
   let nonce = Nonce::<N>::from_slice(&iv);
   let tag = match length {
     128 => {
       let cipher = aes_gcm::AesGcm::<Aes128, N>::new_from_slice(key)
-        .map_err(|_| operation_error("Encryption failed"))?;
+        .map_err(|_| EncryptError::Failed)?;
       cipher
         .encrypt_in_place_detached(nonce, &additional_data, ciphertext)
-        .map_err(|_| operation_error("Encryption failed"))?
+        .map_err(|_| EncryptError::Failed)?
     }
     192 => {
       let cipher = aes_gcm::AesGcm::<Aes192, N>::new_from_slice(key)
-        .map_err(|_| operation_error("Encryption failed"))?;
+        .map_err(|_| EncryptError::Failed)?;
       cipher
         .encrypt_in_place_detached(nonce, &additional_data, ciphertext)
-        .map_err(|_| operation_error("Encryption failed"))?
+        .map_err(|_| EncryptError::Failed)?
     }
     256 => {
       let cipher = aes_gcm::AesGcm::<Aes256, N>::new_from_slice(key)
-        .map_err(|_| operation_error("Encryption failed"))?;
+        .map_err(|_| EncryptError::Failed)?;
       cipher
         .encrypt_in_place_detached(nonce, &additional_data, ciphertext)
-        .map_err(|_| operation_error("Encryption failed"))?
+        .map_err(|_| EncryptError::Failed)?
     }
-    _ => return Err(type_error("invalid length")),
+    _ => return Err(EncryptError::InvalidLength),
   };
 
   Ok(tag)
@@ -223,7 +239,7 @@ fn encrypt_aes_gcm(
   iv: Vec<u8>,
   additional_data: Option<Vec<u8>>,
   data: &[u8],
-) -> Result<Vec<u8>, AnyError> {
+) -> Result<Vec<u8>, EncryptError> {
   let key = key.as_secret_key()?;
   let additional_data = additional_data.unwrap_or_default();
 
@@ -244,7 +260,7 @@ fn encrypt_aes_gcm(
       &mut ciphertext,
       additional_data,
     )?,
-    _ => return Err(type_error("iv length not equal to 12 or 16")),
+    _ => return Err(EncryptError::InvalidIvLength),
   };
 
   // Truncated tag to the specified tag length.
@@ -261,7 +277,7 @@ fn encrypt_aes_ctr_gen<B>(
   key: &[u8],
   counter: &[u8],
   data: &[u8],
-) -> Result<Vec<u8>, AnyError>
+) -> Result<Vec<u8>, EncryptError>
 where
   B: KeyIvInit + StreamCipher,
 {
@@ -270,7 +286,7 @@ where
   let mut ciphertext = data.to_vec();
   cipher
     .try_apply_keystream(&mut ciphertext)
-    .map_err(|_| operation_error("tried to encrypt too much data"))?;
+    .map_err(|_| EncryptError::TooMuchData)?;
 
   Ok(ciphertext)
 }
@@ -281,7 +297,7 @@ fn encrypt_aes_ctr(
   counter: &[u8],
   ctr_length: usize,
   data: &[u8],
-) -> Result<Vec<u8>, AnyError> {
+) -> Result<Vec<u8>, EncryptError> {
   let key = key.as_secret_key()?;
 
   match ctr_length {
@@ -289,22 +305,20 @@ fn encrypt_aes_ctr(
       128 => encrypt_aes_ctr_gen::<Ctr32BE<aes::Aes128>>(key, counter, data),
       192 => encrypt_aes_ctr_gen::<Ctr32BE<aes::Aes192>>(key, counter, data),
       256 => encrypt_aes_ctr_gen::<Ctr32BE<aes::Aes256>>(key, counter, data),
-      _ => Err(type_error("invalid length")),
+      _ => Err(EncryptError::InvalidLength),
     },
     64 => match key_length {
       128 => encrypt_aes_ctr_gen::<Ctr64BE<aes::Aes128>>(key, counter, data),
       192 => encrypt_aes_ctr_gen::<Ctr64BE<aes::Aes192>>(key, counter, data),
       256 => encrypt_aes_ctr_gen::<Ctr64BE<aes::Aes256>>(key, counter, data),
-      _ => Err(type_error("invalid length")),
+      _ => Err(EncryptError::InvalidLength),
     },
     128 => match key_length {
       128 => encrypt_aes_ctr_gen::<Ctr128BE<aes::Aes128>>(key, counter, data),
       192 => encrypt_aes_ctr_gen::<Ctr128BE<aes::Aes192>>(key, counter, data),
       256 => encrypt_aes_ctr_gen::<Ctr128BE<aes::Aes256>>(key, counter, data),
-      _ => Err(type_error("invalid length")),
+      _ => Err(EncryptError::InvalidLength),
     },
-    _ => Err(type_error(
-      "invalid counter length. Currently supported 32/64/128 bits",
-    )),
+    _ => Err(EncryptError::InvalidCounterLength),
   }
 }

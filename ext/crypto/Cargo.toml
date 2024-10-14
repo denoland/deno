@@ -41,5 +41,7 @@ sha1.workspace = true
 sha2.workspace = true
 signature.workspace = true
 spki.workspace = true
+thiserror.workspace = true
+tokio.workspace = true
 uuid.workspace = true
 x25519-dalek = "2.0.0"
