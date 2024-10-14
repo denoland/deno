@@ -29,6 +29,13 @@ use repr::*;
 use symbol::NativeType;
 use symbol::Symbol;
 
+pub use call::CallError;
+pub use callback::CallbackError;
+pub use dlfcn::DlfcnError;
+pub use ir::IRError;
+pub use r#static::StaticError;
+pub use repr::ReprError;
+
 #[cfg(not(target_pointer_width = "64"))]
 compile_error!("platform not supported");
 
