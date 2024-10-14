@@ -2163,6 +2163,7 @@ dependencies = [
  "deno_console",
  "deno_core",
  "deno_webidl",
+ "thiserror",
  "urlpattern",
 ]
 
