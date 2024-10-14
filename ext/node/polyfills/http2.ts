@@ -331,8 +331,8 @@ export class Http2Session extends EventEmitter {
     if (typeof error === "number") {
       code = error;
       error = code !== constants.NGHTTP2_NO_ERROR
-        ? new ERR_HTTP2_SESSION_ERROR(code)
-        : undefined;
+          ? new ERR_HTTP2_SESSION_ERROR(code)
+          : undefined;
     }
     if (code === undefined && error != null) {
       code = constants.NGHTTP2_INTERNAL_ERROR;
@@ -882,6 +882,7 @@ export class ClientHttp2Stream extends Duplex {
       trailersReady: false,
       endAfterHeaders: false,
       shutdownWritableCalled: false,
+      serverEndedCall: false,
     };
     this[kDenoResponse] = undefined;
     this[kDenoRid] = undefined;
@@ -1109,7 +1110,9 @@ export class ClientHttp2Stream extends Duplex {
       }
 
       debugHttp2(">>> chunk", chunk, finished, this[kDenoResponse].bodyRid);
-      if (chunk === null) {
+      if (finished || chunk === null) {
+        this[kState].serverEndedCall = true;
+
         const trailerList = await op_http2_client_get_response_trailers(
           this[kDenoResponse].bodyRid,
         );
@@ -1170,13 +1173,13 @@ export class ClientHttp2Stream extends Duplex {
       this.#rid,
       trailerList,
     ).then(() => {
-      stream[kMaybeDestroy]();
-      core.tryClose(this.#rid);
+        stream[kMaybeDestroy]();
+        core.tryClose(this.#rid);
     }).catch((e) => {
-      debugHttp2(">>> send trailers error", e);
-      core.tryClose(this.#rid);
-      stream._destroy(e);
-    });
+        debugHttp2(">>> send trailers error", e);
+        core.tryClose(this.#rid);
+        stream._destroy(e);
+      });
   }
 
   get closed(): boolean {
@@ -1237,7 +1240,9 @@ export class ClientHttp2Stream extends Duplex {
     this[kSession] = undefined;
 
     session[kMaybeDestroy]();
-    callback(err);
+    if (callback) {
+      callback(err);
+    }
   }
 
   [kMaybeDestroy](code = constants.NGHTTP2_NO_ERROR) {
@@ -1279,6 +1284,9 @@ function shutdownWritable(stream, callback, streamRid) {
   state.shutdownWritableCalled = true;
   if (state.flags & STREAM_FLAGS_HAS_TRAILERS) {
     onStreamTrailers(stream);
+    callback();
+  } else if (state.serverEndedCall) {
+    debugHttp2(">>> stream finished");
     callback();
   } else {
     op_http2_client_send_data(streamRid, new Uint8Array(), true)
@@ -1379,32 +1387,32 @@ function finishCloseStream(stream, code) {
       stream[kDenoRid],
       code,
     ).then(() => {
-      debugHttp2(
-        ">>> finishCloseStream close2",
-        stream[kDenoRid],
+        debugHttp2(
+          ">>> finishCloseStream close2",
+          stream[kDenoRid],
         stream[kDenoResponse].bodyRid,
-      );
-      core.tryClose(stream[kDenoRid]);
-      if (stream[kDenoResponse]) {
-        core.tryClose(stream[kDenoResponse].bodyRid);
-      }
-      nextTick(() => {
-        stream.emit("close");
-      });
+        );
+        core.tryClose(stream[kDenoRid]);
+        if (stream[kDenoResponse]) {
+          core.tryClose(stream[kDenoResponse].bodyRid);
+        }
+        nextTick(() => {
+          stream.emit("close");
+        });
     }).catch(() => {
-      debugHttp2(
-        ">>> finishCloseStream close2 catch",
-        stream[kDenoRid],
+        debugHttp2(
+          ">>> finishCloseStream close2 catch",
+          stream[kDenoRid],
         stream[kDenoResponse]?.bodyRid,
-      );
-      core.tryClose(stream[kDenoRid]);
-      if (stream[kDenoResponse]) {
-        core.tryClose(stream[kDenoResponse].bodyRid);
-      }
-      nextTick(() => {
-        stream.emit("close");
+        );
+        core.tryClose(stream[kDenoRid]);
+        if (stream[kDenoResponse]) {
+          core.tryClose(stream[kDenoResponse].bodyRid);
+        }
+        nextTick(() => {
+          stream.emit("close");
+        });
       });
-    });
   }
 }
 
@@ -1621,54 +1629,54 @@ export class Http2Server extends Server {
     this.on(
       "connection",
       (conn: Deno.Conn) => {
-        try {
-          const session = new ServerHttp2Session();
-          this.emit("session", session);
-          this.#server = serveHttpOnConnection(
-            conn,
-            this.#abortController.signal,
-            async (req: Request) => {
-              try {
+      try {
+        const session = new ServerHttp2Session();
+        this.emit("session", session);
+        this.#server = serveHttpOnConnection(
+          conn,
+          this.#abortController.signal,
+          async (req: Request) => {
+            try {
                 const controllerDeferred = Promise.withResolvers<
                   ReadableStreamDefaultController<Uint8Array>
                 >();
-                const body = new ReadableStream({
-                  start(controller) {
-                    controllerDeferred.resolve(controller);
-                  },
-                });
-                const headers: Http2Headers = {};
-                for (const [name, value] of req.headers) {
-                  headers[name] = value;
-                }
+              const body = new ReadableStream({
+                start(controller) {
+                  controllerDeferred.resolve(controller);
+                },
+              });
+              const headers: Http2Headers = {};
+              for (const [name, value] of req.headers) {
+                headers[name] = value;
+              }
                 headers[constants.HTTP2_HEADER_PATH] =
                   new URL(req.url).pathname;
-                const stream = new ServerHttp2Stream(
-                  session,
-                  Promise.resolve(headers),
-                  controllerDeferred.promise,
-                  req.body,
-                  body,
+              const stream = new ServerHttp2Stream(
+                session,
+                Promise.resolve(headers),
+                controllerDeferred.promise,
+                req.body,
+                body,
                   req,
-                );
-                this.emit("stream", stream, headers);
-                return await stream._deferred.promise;
-              } catch (e) {
-                // deno-lint-ignore no-console
-                console.log(">>> Error in serveHttpOnConnection", e);
-              }
-              return new Response("");
-            },
-            () => {
+              );
+              this.emit("stream", stream, headers);
+              return await stream._deferred.promise;
+            } catch (e) {
               // deno-lint-ignore no-console
-              console.log(">>> error");
-            },
+              console.log(">>> Error in serveHttpOnConnection", e);
+            }
+            return new Response("");
+          },
+          () => {
+            // deno-lint-ignore no-console
+            console.log(">>> error");
+          },
             () => {},
-          );
-        } catch (e) {
-          // deno-lint-ignore no-console
-          console.log(">>> Error in Http2Server", e);
-        }
+        );
+      } catch (e) {
+        // deno-lint-ignore no-console
+        console.log(">>> Error in Http2Server", e);
+      }
       },
     );
     this.#options = options;
