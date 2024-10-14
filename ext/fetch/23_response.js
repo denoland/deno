@@ -35,6 +35,7 @@ const {
   ArrayPrototypePush,
   ObjectDefineProperties,
   ObjectPrototypeIsPrototypeOf,
+  ObjectSetPrototypeOf,
   RangeError,
   RegExpPrototypeExec,
   SafeArrayIterator,
@@ -307,11 +308,6 @@ class Response {
    * @param {ResponseInit} init
    */
   constructor(body = null, init = undefined) {
-    if (body === _brand) {
-      this[_brand] = _brand;
-      return;
-    }
-
     const prefix = "Failed to construct 'Response'";
     body = webidl.converters["BodyInit_DOMString?"](body, prefix, "Argument 1");
     init = webidl.converters["ResponseInit_fast"](init, prefix, "Argument 2");
@@ -499,9 +495,11 @@ function toInnerResponse(response) {
  * @returns {Response}
  */
 function fromInnerResponse(inner, guard) {
-  const response = new Response(_brand);
+  const response = {};
+  ObjectSetPrototypeOf(response, Response.prototype);
   response[_response] = inner;
   response[_headers] = headersFromHeaderList(inner.headerList, guard);
+  response[_brand] = _brand;
   return response;
 }
 
