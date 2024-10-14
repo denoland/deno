@@ -1529,7 +1529,7 @@ pub fn clap_root() -> Command {
   );
 
   run_args(Command::new("deno"), true)
-    .args(unstable_args(UnstableArgsConfig::ResolutionAndRuntime))
+    .with_unstable_args(UnstableArgsConfig::ResolutionAndRuntime)
     .next_line_help(false)
     .bin_name("deno")
     .styles(
@@ -1631,7 +1631,7 @@ fn command(
 ) -> Command {
   Command::new(name)
     .about(about)
-    .args(unstable_args(unstable_args_config))
+    .with_unstable_args(unstable_args_config)
 }
 
 fn help_subcommand(app: &Command) -> Command {
@@ -4143,23 +4143,29 @@ enum UnstableArgsConfig {
   ResolutionAndRuntime,
 }
 
-struct UnstableArgsIter {
-  idx: usize,
-  cfg: UnstableArgsConfig,
+trait CommandExt {
+  fn with_unstable_args(self, cfg: UnstableArgsConfig) -> Self;
 }
 
-impl Iterator for UnstableArgsIter {
-  type Item = Arg;
+impl CommandExt for Command {
+  fn with_unstable_args(self, cfg: UnstableArgsConfig) -> Self {
+    let mut next_display_order = {
+      let mut value = 1000;
+      move || {
+        value += 1;
+        value
+      }
+    };
 
-  fn next(&mut self) -> Option<Self::Item> {
-    let arg = if self.idx == 0 {
+    let mut cmd = self.arg(
       Arg::new("unstable")
-        .long("unstable")
-        .help(cstr!("Enable all unstable features and APIs. Instead of using this flag, consider enabling individual unstable features
+      .long("unstable")
+      .help(cstr!("Enable all unstable features and APIs. Instead of using this flag, consider enabling individual unstable features
   <p(245)>To view the list of individual unstable feature flags, run this command again with --help=unstable</>"))
-        .action(ArgAction::SetTrue)
-        .hide(matches!(self.cfg, UnstableArgsConfig::None))
-    } else if self.idx == 1 {
+      .action(ArgAction::SetTrue)
+      .hide(matches!(cfg, UnstableArgsConfig::None))
+      .display_order(next_display_order())
+    ).arg(
       Arg::new("unstable-bare-node-builtins")
         .long("unstable-bare-node-builtins")
         .help("Enable unstable bare node builtins feature")
@@ -4167,13 +4173,14 @@ impl Iterator for UnstableArgsIter {
         .value_parser(FalseyValueParser::new())
         .action(ArgAction::SetTrue)
         .hide(true)
-        .long_help(match self.cfg {
+        .long_help(match cfg {
           UnstableArgsConfig::None => None,
           UnstableArgsConfig::ResolutionOnly
           | UnstableArgsConfig::ResolutionAndRuntime => Some("true"),
         })
         .help_heading(UNSTABLE_HEADING)
-    } else if self.idx == 2 {
+        .display_order(next_display_order()),
+    ).arg(
       Arg::new("unstable-detect-cjs")
         .long("unstable-detect-cjs")
         .help("Reads the package.json type field in a project to treat .js files as .cjs")
@@ -4181,20 +4188,22 @@ impl Iterator for UnstableArgsIter {
         .value_parser(FalseyValueParser::new())
         .action(ArgAction::SetTrue)
         .hide(true)
-        .long_help(match self.cfg {
+        .long_help(match cfg {
           UnstableArgsConfig::None => None,
           UnstableArgsConfig::ResolutionOnly
           | UnstableArgsConfig::ResolutionAndRuntime => Some("true"),
         })
         .help_heading(UNSTABLE_HEADING)
-    } else if self.idx == 3 {
+        .display_order(next_display_order())
+    ).arg(
       Arg::new("unstable-byonm")
         .long("unstable-byonm")
         .value_parser(FalseyValueParser::new())
         .action(ArgAction::SetTrue)
         .hide(true)
         .help_heading(UNSTABLE_HEADING)
-    } else if self.idx == 4 {
+        .display_order(next_display_order()),
+    ).arg(
       Arg::new("unstable-sloppy-imports")
       .long("unstable-sloppy-imports")
       .help("Enable unstable resolving of specifiers by extension probing, .js to .ts, and directory probing")
@@ -4202,38 +4211,39 @@ impl Iterator for UnstableArgsIter {
       .value_parser(FalseyValueParser::new())
       .action(ArgAction::SetTrue)
       .hide(true)
-      .long_help(match self.cfg {
+      .long_help(match cfg {
         UnstableArgsConfig::None => None,
         UnstableArgsConfig::ResolutionOnly | UnstableArgsConfig::ResolutionAndRuntime => Some("true")
       })
       .help_heading(UNSTABLE_HEADING)
-    } else {
-      let granular_flag = crate::UNSTABLE_GRANULAR_FLAGS.get(self.idx - 5)?;
-      Arg::new(format!("unstable-{}", granular_flag.name))
-        .long(format!("unstable-{}", granular_flag.name))
-        .help(granular_flag.help_text)
-        .action(ArgAction::SetTrue)
-        .hide(true)
-        .help_heading(UNSTABLE_HEADING)
-        // we don't render long help, so using it here as a sort of metadata
-        .long_help(if granular_flag.show_in_help {
-          match self.cfg {
-            UnstableArgsConfig::None | UnstableArgsConfig::ResolutionOnly => {
-              None
-            }
-            UnstableArgsConfig::ResolutionAndRuntime => Some("true"),
-          }
-        } else {
-          None
-        })
-    };
-    self.idx += 1;
-    Some(arg.display_order(self.idx + 1000))
-  }
-}
+      .display_order(next_display_order())
+    );
 
-fn unstable_args(cfg: UnstableArgsConfig) -> impl IntoIterator<Item = Arg> {
-  UnstableArgsIter { idx: 0, cfg }
+    for granular_flag in crate::UNSTABLE_GRANULAR_FLAGS.iter() {
+      cmd = cmd.arg(
+        Arg::new(format!("unstable-{}", granular_flag.name))
+          .long(format!("unstable-{}", granular_flag.name))
+          .help(granular_flag.help_text)
+          .action(ArgAction::SetTrue)
+          .hide(true)
+          .help_heading(UNSTABLE_HEADING)
+          // we don't render long help, so using it here as a sort of metadata
+          .long_help(if granular_flag.show_in_help {
+            match cfg {
+              UnstableArgsConfig::None | UnstableArgsConfig::ResolutionOnly => {
+                None
+              }
+              UnstableArgsConfig::ResolutionAndRuntime => Some("true"),
+            }
+          } else {
+            None
+          })
+          .display_order(next_display_order()),
+      );
+    }
+
+    cmd
+  }
 }
 
 fn allow_scripts_arg_parse(
