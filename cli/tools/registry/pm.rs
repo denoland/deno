@@ -748,6 +748,9 @@ fn generate_imports(mut packages_to_version: Vec<(String, String)>) -> String {
   let mut contents = vec![];
   let len = packages_to_version.len();
   for (index, (package, version)) in packages_to_version.iter().enumerate() {
+    if index == 0 {
+      contents.push(String::new()); // force a newline at the start
+    }
     // TODO(bartlomieju): fix it, once we start support specifying version on the cli
     contents.push(format!("\"{}\": \"{}\"", package, version));
     if index != len - 1 {
