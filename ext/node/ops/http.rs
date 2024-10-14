@@ -65,6 +65,7 @@ pub struct NodeHttpResponse {
   pub error: Option<String>,
 }
 
+#[derive(Debug)]
 pub struct NodeHttpConnReady {
   recv: tokio::sync::oneshot::Receiver<()>,
 }
@@ -107,7 +108,9 @@ where
       .resource_table
       .take::<TlsStreamResource>(conn_rid)?;
     let resource = Rc::try_unwrap(resource_rc)
-      .map_err(|_e| bad_resource("TLS stream is currently in use"))?;
+      .map_err(|_e| bad_resource("TLS stream is currently in use"));
+    eprintln!("op_node_http_request_with_conn(tls): {resource:?}");
+    let resource = resource?;
     let (read_half, write_half) = resource.into_inner();
     let tcp_stream = read_half.unsplit(write_half);
     let io = TokioIo::new(tcp_stream);
@@ -131,7 +134,9 @@ where
       .resource_table
       .take::<TcpStreamResource>(conn_rid)?;
     let resource = Rc::try_unwrap(resource_rc)
-      .map_err(|_e| bad_resource("TCP stream is currently in use"))?;
+      .map_err(|_| bad_resource("TCP stream is currently in use"));
+    eprintln!("op_node_http_request_with_conn(tcp): {resource:?}");
+    let resource = resource?;
     let (read_half, write_half) = resource.into_inner();
     let tcp_stream = read_half.reunite(write_half)?;
     let io = TokioIo::new(tcp_stream);
@@ -243,7 +248,9 @@ pub async fn op_node_http_wait_for_connection(
     .resource_table
     .take::<NodeHttpConnReady>(rid)?;
   let resource =
-    Rc::try_unwrap(resource).map_err(|_| bad_resource("NodeHttpConnReady"))?;
+    Rc::try_unwrap(resource).map_err(|_| bad_resource("NodeHttpConnReady"));
+  eprintln!("op_node_http_wait_for_connection: {resource:?}");
+  let resource = resource?;
   resource.recv.await?;
   Ok(rid)
 }
@@ -560,8 +567,10 @@ impl Stream for NodeHttpResourceToBodyAdapter {
         Poll::Ready(res) => match res {
           Ok(buf) if buf.is_empty() => Poll::Ready(None),
           Ok(buf) => {
+            let bytes: Bytes = buf.to_vec().into();
+            eprintln!("buf: {:?}", bytes.len());
             this.1 = Some(this.0.clone().read(64 * 1024));
-            Poll::Ready(Some(Ok(buf.to_vec().into())))
+            Poll::Ready(Some(Ok(bytes)))
           }
           Err(err) => Poll::Ready(Some(Err(err))),
         },

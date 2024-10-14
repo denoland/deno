@@ -500,7 +500,7 @@ Object.defineProperties(
         const { data, encoding, callback } = this.outputData.shift();
         this._writeRaw(data, encoding, callback);
         if (this.outputData.length > 0) {
-          this.on("drain", () => {
+          this.once("drain", () => {
             this._flushBody();
           });
         }
@@ -523,6 +523,7 @@ Object.defineProperties(
 
     // deno-lint-ignore no-explicit-any
     _send(data: any, encoding?: string | null, callback?: () => void) {
+      console.trace("send invoked");
       // if socket is ready, write the data after headers are written.
       // if socket is not ready, buffer data in outputbuffer.
       if (this.socket && !this.socket.connecting) {
@@ -532,6 +533,7 @@ Object.defineProperties(
         }
 
         if (this._headerSent) {
+          console.log("writeRaw invoked");
           return this._writeRaw(data, encoding, callback);
         }
       } else {
@@ -581,6 +583,7 @@ Object.defineProperties(
       encoding?: string | null,
       callback?: () => void,
     ) {
+      console.log("flushing data", data);
       if (typeof data === "string") {
         data = Buffer.from(data, encoding);
       }

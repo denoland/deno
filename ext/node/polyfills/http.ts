@@ -451,8 +451,11 @@ class ClientRequest extends OutgoingMessage {
     (async () => {
       try {
         const parsedUrl = new URL(url);
+        console.log("starting conn");
         let baseConnRid = this.socket.rid;
+        console.log("socket:", baseConnRid);
         if (this._encrypted) {
+          console.log("encrypted");
           [baseConnRid] = op_tls_start({
             rid: this.socket.rid,
             hostname: parsedUrl.hostname,
@@ -468,10 +471,13 @@ class ClientRequest extends OutgoingMessage {
           baseConnRid,
           this._encrypted,
         );
+        console.log("request rid:", rid);
         // Emit request ready to let the request body to be written.
         await op_node_http_wait_for_connection(connRid);
+        console.log("request ready");
         this.emit("requestReady");
         const res = await op_node_http_await_response(rid);
+        console.log("response received");
         const incoming = new IncomingMessageForClient(this.socket);
         incoming.req = this;
         this.res = incoming;
@@ -597,6 +603,7 @@ class ClientRequest extends OutgoingMessage {
             err = new connResetException("socket hang up");
           }
           if (err) {
+            console.log("error event", err);
             emitErrorEvent(req, err);
           }
           req._closed = true;
