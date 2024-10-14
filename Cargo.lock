@@ -8714,3 +8714,8 @@ dependencies = [
  "cc",
  "pkg-config",
 ]
+
+[[patch.unused]]
+name = "deno_core"
+version = "0.312.0"
+source = "git+https://github.com/lucacasonato/deno_core?branch=boolean_coerce#220079840de3e2374689ff4783064ee8ed4476a6"
