@@ -969,7 +969,7 @@ fn check_write_key_size(
   config: &KvConfig,
 ) -> Result<usize, KvError> {
   if key.len() > config.max_write_key_size_bytes {
-    Err(KvError::KeyTooLargeToRead(config.max_write_key_size_bytes))
+    Err(KvError::KeyTooLargeToWrite(config.max_write_key_size_bytes))
   } else {
     Ok(key.len())
   }
