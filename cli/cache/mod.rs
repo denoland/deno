@@ -181,7 +181,7 @@ pub struct FetchCacherOptions {
   pub permissions: PermissionsContainer,
   /// If we're publishing for `deno publish`.
   pub is_deno_publish: bool,
-  pub unstable_cjs_detection: bool,
+  pub unstable_detect_cjs: bool,
 }
 
 /// A "wrapper" for the FileFetcher and DiskCache for the Deno CLI that provides
@@ -196,7 +196,7 @@ pub struct FetchCacher {
   module_info_cache: Arc<ModuleInfoCache>,
   permissions: PermissionsContainer,
   is_deno_publish: bool,
-  unstable_cjs_detection: bool,
+  unstable_detect_cjs: bool,
   cache_info_enabled: bool,
 }
 
@@ -220,7 +220,7 @@ impl FetchCacher {
       file_header_overrides: options.file_header_overrides,
       permissions: options.permissions,
       is_deno_publish: options.is_deno_publish,
-      unstable_cjs_detection: options.unstable_cjs_detection,
+      unstable_detect_cjs: options.unstable_detect_cjs,
       cache_info_enabled: false,
     }
   }
@@ -296,8 +296,7 @@ impl Loader for FetchCacher {
         ))));
       }
 
-      if self.unstable_cjs_detection && specifier_has_extension(specifier, "js")
-      {
+      if self.unstable_detect_cjs && specifier_has_extension(specifier, "js") {
         if let Ok(Some(pkg_json)) =
           self.node_resolver.get_closest_package_json(specifier)
         {

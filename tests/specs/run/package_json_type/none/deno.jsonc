@@ -1,5 +1,5 @@
 {
   "unstable": [
-    "cjs-detection"
+    "detect-cjs"
   ]
 }

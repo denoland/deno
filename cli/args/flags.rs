@@ -576,7 +576,7 @@ pub struct UnstableConfig {
   // TODO(bartlomieju): remove in Deno 2.5
   pub legacy_flag_enabled: bool, // --unstable
   pub bare_node_builtins: bool,
-  pub cjs_detection: bool,
+  pub detect_cjs: bool,
   pub sloppy_imports: bool,
   pub features: Vec<String>, // --unstabe-kv --unstable-cron
 }
@@ -4174,8 +4174,8 @@ impl Iterator for UnstableArgsIter {
         })
         .help_heading(UNSTABLE_HEADING)
     } else if self.idx == 2 {
-      Arg::new("unstable-cjs-detection")
-        .long("unstable-cjs-detection")
+      Arg::new("unstable-detect-cjs")
+        .long("unstable-detect-cjs")
         .help("Reads the package.json type field in a project to treat .js files as .cjs")
         .env("DENO_UNSTABLE_PACKAGE_JSON_TYPE")
         .value_parser(FalseyValueParser::new())
@@ -5693,8 +5693,7 @@ fn unstable_args_parse(
 
   flags.unstable_config.bare_node_builtins =
     matches.get_flag("unstable-bare-node-builtins");
-  flags.unstable_config.cjs_detection =
-    matches.get_flag("unstable-cjs-detection");
+  flags.unstable_config.detect_cjs = matches.get_flag("unstable-detect-cjs");
   flags.unstable_config.sloppy_imports =
     matches.get_flag("unstable-sloppy-imports");
 

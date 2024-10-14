@@ -122,7 +122,7 @@ pub struct CliMainWorkerOptions {
   pub node_ipc: Option<i64>,
   pub serve_port: Option<u16>,
   pub serve_host: Option<String>,
-  pub unstable_cjs_detection: bool,
+  pub unstable_detect_cjs: bool,
 }
 
 struct SharedWorkerState {
@@ -535,7 +535,7 @@ impl CliMainWorkerFactory {
       let is_main_cjs = matches!(node_resolution, NodeResolution::CommonJs(_));
       (node_resolution.into_url(), is_main_cjs)
     } else {
-      let is_maybe_cjs_js_ext = self.shared.options.unstable_cjs_detection
+      let is_maybe_cjs_js_ext = self.shared.options.unstable_detect_cjs
         && specifier_has_extension(&main_module, "js")
         && self
           .shared

@@ -712,7 +712,7 @@ impl ModuleGraphBuilder {
           self.options.sub_command(),
           crate::args::DenoSubcommand::Publish { .. }
         ),
-        unstable_cjs_detection: self.options.unstable_cjs_detection(),
+        unstable_detect_cjs: self.options.unstable_detect_cjs(),
       },
     )
   }

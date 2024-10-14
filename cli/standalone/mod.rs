@@ -740,7 +740,7 @@ pub async fn run(
       node_ipc: None,
       serve_port: None,
       serve_host: None,
-      unstable_cjs_detection: metadata.unstable_config.cjs_detection,
+      unstable_detect_cjs: metadata.unstable_config.detect_cjs,
     },
   );
 
