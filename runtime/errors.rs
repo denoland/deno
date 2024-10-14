@@ -225,7 +225,7 @@ fn get_net_error(error: &NetError) -> &'static str {
     NetError::SocketClosed => "BadResource",
     NetError::SocketClosedNotConnected => "NotConnected",
     NetError::SocketBusy => "Busy",
-    NetError::Std(e) => get_io_error_class(e),
+    NetError::Io(e) => get_io_error_class(e),
     NetError::AcceptTaskOngoing => "Busy",
     NetError::RootCertStore(e)
     | NetError::Permission(e)

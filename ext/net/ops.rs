@@ -78,7 +78,7 @@ pub enum NetError {
   #[error("Socket already in use")]
   SocketBusy,
   #[error(transparent)]
-  Std(#[from] std::io::Error),
+  Io(#[from] std::io::Error),
   #[error("Another accept task is ongoing")]
   AcceptTaskOngoing,
   #[error(transparent)]
@@ -127,7 +127,7 @@ pub(crate) fn accept_err(e: std::io::Error) -> NetError {
   if let std::io::ErrorKind::Interrupted = e.kind() {
     NetError::ListenerClosed
   } else {
-    NetError::Std(e)
+    NetError::Io(e)
   }
 }
 
