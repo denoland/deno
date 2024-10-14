@@ -4184,7 +4184,6 @@ impl CommandExt for Command {
       Arg::new("unstable-detect-cjs")
         .long("unstable-detect-cjs")
         .help("Reads the package.json type field in a project to treat .js files as .cjs")
-        .env("DENO_UNSTABLE_PACKAGE_JSON_TYPE")
         .value_parser(FalseyValueParser::new())
         .action(ArgAction::SetTrue)
         .hide(true)
