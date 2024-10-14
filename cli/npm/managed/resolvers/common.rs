@@ -3,6 +3,7 @@
 pub mod bin_entries;
 pub mod lifecycle_scripts;
 
+use std::borrow::Cow;
 use std::collections::HashMap;
 use std::io::ErrorKind;
 use std::path::Path;
@@ -33,7 +34,7 @@ pub trait NpmPackageFsResolver: Send + Sync {
   fn root_dir_url(&self) -> &Url;
 
   /// The local node_modules folder if it is applicable to the implementation.
-  fn node_modules_path(&self) -> Option<&PathBuf>;
+  fn node_modules_path(&self) -> Option<&Path>;
 
   fn maybe_package_folder(&self, package_id: &NpmPackageId) -> Option<PathBuf>;
 
@@ -62,11 +63,12 @@ pub trait NpmPackageFsResolver: Send + Sync {
 
   async fn cache_packages(&self) -> Result<(), AnyError>;
 
-  fn ensure_read_permission(
+  #[must_use = "the resolved return value to mitigate time-of-check to time-of-use issues"]
+  fn ensure_read_permission<'a>(
     &self,
     permissions: &mut dyn NodePermissions,
-    path: &Path,
-  ) -> Result<(), AnyError>;
+    path: &'a Path,
+  ) -> Result<Cow<'a, Path>, AnyError>;
 }
 
 #[derive(Debug)]
@@ -85,11 +87,15 @@ impl RegistryReadPermissionChecker {
     }
   }
 
-  pub fn ensure_registry_read_permission(
+  pub fn ensure_registry_read_permission<'a>(
     &self,
     permissions: &mut dyn NodePermissions,
-    path: &Path,
-  ) -> Result<(), AnyError> {
+    path: &'a Path,
+  ) -> Result<Cow<'a, Path>, AnyError> {
+    if permissions.query_read_all() {
+      return Ok(Cow::Borrowed(path)); // skip permissions checks below
+    }
+
     // allow reading if it's in the node_modules
     let is_path_in_node_modules = path.starts_with(&self.registry_path)
       && path
@@ -118,20 +124,20 @@ impl RegistryReadPermissionChecker {
             },
           }
         };
-      let Some(registry_path_canon) = canonicalize(&self.registry_path)? else {
-        return Ok(()); // not exists, allow reading
-      };
-      let Some(path_canon) = canonicalize(path)? else {
-        return Ok(()); // not exists, allow reading
-      };
-
-      if path_canon.starts_with(registry_path_canon) {
-        return Ok(());
+      if let Some(registry_path_canon) = canonicalize(&self.registry_path)? {
+        if let Some(path_canon) = canonicalize(path)? {
+          if path_canon.starts_with(registry_path_canon) {
+            return Ok(Cow::Owned(path_canon));
+          }
+        } else if path.starts_with(registry_path_canon)
+          || path.starts_with(&self.registry_path)
+        {
+          return Ok(Cow::Borrowed(path));
+        }
       }
     }
 
-    _ = permissions.check_read_path(path)?;
-    Ok(())
+    permissions.check_read_path(path)
   }
 }
 

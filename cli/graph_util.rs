@@ -14,12 +14,14 @@ use crate::errors::get_error_class_name;
 use crate::file_fetcher::FileFetcher;
 use crate::npm::CliNpmResolver;
 use crate::resolver::CliGraphResolver;
-use crate::resolver::SloppyImportsResolver;
+use crate::resolver::CliSloppyImportsResolver;
+use crate::resolver::SloppyImportsCachedFs;
 use crate::tools::check;
 use crate::tools::check::TypeChecker;
 use crate::util::file_watcher::WatcherCommunicator;
 use crate::util::fs::canonicalize_path;
 use deno_config::workspace::JsrPackageConfig;
+use deno_core::anyhow::bail;
 use deno_graph::source::LoaderChecksum;
 use deno_graph::FillFromLockfileOptions;
 use deno_graph::JsrLoadError;
@@ -31,7 +33,6 @@ use deno_core::error::AnyError;
 use deno_core::parking_lot::Mutex;
 use deno_core::ModuleSpecifier;
 use deno_graph::source::Loader;
-use deno_graph::source::ResolutionMode;
 use deno_graph::source::ResolveError;
 use deno_graph::GraphKind;
 use deno_graph::ModuleError;
@@ -39,10 +40,11 @@ use deno_graph::ModuleGraph;
 use deno_graph::ModuleGraphError;
 use deno_graph::ResolutionError;
 use deno_graph::SpecifierError;
+use deno_path_util::url_to_file_path;
+use deno_resolver::sloppy_imports::SloppyImportsResolutionMode;
 use deno_runtime::deno_fs::FileSystem;
 use deno_runtime::deno_node;
 use deno_runtime::deno_permissions::PermissionsContainer;
-use deno_runtime::fs_util::specifier_to_file_path;
 use deno_semver::jsr::JsrDepPackageReq;
 use deno_semver::package::PackageNv;
 use import_map::ImportMapError;
@@ -592,6 +594,12 @@ impl ModuleGraphBuilder {
     let initial_package_deps_len = graph.packages.package_deps_sum();
     let initial_package_mappings_len = graph.packages.mappings().len();
 
+    if roots.iter().any(|r| r.scheme() == "npm")
+      && self.npm_resolver.as_byonm().is_some()
+    {
+      bail!("Resolving npm specifier entrypoints this way is currently not supported with \"nodeModules\": \"manual\". In the meantime, try with --node-modules-dir=auto instead");
+    }
+
     graph.build(roots, loader, options).await;
 
     let has_redirects_changed = graph.redirects.len() != initial_redirects_len;
@@ -765,8 +773,8 @@ fn enhanced_sloppy_imports_error_message(
   match error {
     ModuleError::LoadingErr(specifier, _, ModuleLoadError::Loader(_)) // ex. "Is a directory" error
     | ModuleError::Missing(specifier, _) => {
-      let additional_message = SloppyImportsResolver::new(fs.clone())
-        .resolve(specifier, ResolutionMode::Execution)?
+      let additional_message = CliSloppyImportsResolver::new(SloppyImportsCachedFs::new(fs.clone()))
+        .resolve(specifier, SloppyImportsResolutionMode::Execution)?
         .as_suggestion_message();
       Some(format!(
         "{} {} or run with --unstable-sloppy-imports",
@@ -948,7 +956,7 @@ pub fn has_graph_root_local_dependent_changed(
     },
   );
   while let Some((s, _)) = dependent_specifiers.next() {
-    if let Ok(path) = specifier_to_file_path(s) {
+    if let Ok(path) = url_to_file_path(s) {
       if let Ok(path) = canonicalize_path(&path) {
         if canonicalized_changed_paths.contains(&path) {
           return true;

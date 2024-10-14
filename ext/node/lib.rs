@@ -16,7 +16,6 @@ use deno_core::url::Url;
 use deno_core::v8;
 use deno_core::v8::ExternalReference;
 use deno_core::JsRuntime;
-use deno_core::OpState;
 use deno_fs::sync::MaybeSend;
 use deno_fs::sync::MaybeSync;
 use node_resolver::NpmResolverRc;
@@ -67,6 +66,7 @@ pub trait NodePermissions {
     &mut self,
     path: &'a Path,
   ) -> Result<Cow<'a, Path>, AnyError>;
+  fn query_read_all(&mut self) -> bool;
   fn check_sys(&mut self, kind: &str, api_name: &str) -> Result<(), AnyError>;
   #[must_use = "the resolved return value to mitigate time-of-check to time-of-use issues"]
   fn check_write_with_api_name(
@@ -104,6 +104,10 @@ impl NodePermissions for deno_permissions::PermissionsContainer {
     deno_permissions::PermissionsContainer::check_read_path(self, path, None)
   }
 
+  fn query_read_all(&mut self) -> bool {
+    deno_permissions::PermissionsContainer::query_read_all(self)
+  }
+
   #[inline(always)]
   fn check_write_with_api_name(
     &mut self,
@@ -121,33 +125,16 @@ impl NodePermissions for deno_permissions::PermissionsContainer {
 }
 
 #[allow(clippy::disallowed_types)]
-pub type NpmProcessStateProviderRc =
-  deno_fs::sync::MaybeArc<dyn NpmProcessStateProvider>;
-
-pub trait NpmProcessStateProvider:
-  std::fmt::Debug + MaybeSend + MaybeSync
-{
-  /// Gets a string containing the serialized npm state of the process.
-  ///
-  /// This will be set on the `DENO_DONT_USE_INTERNAL_NODE_COMPAT_STATE` environment
-  /// variable when doing a `child_process.fork`. The implementor can then check this environment
-  /// variable on startup to repopulate the internal npm state.
-  fn get_npm_process_state(&self) -> String {
-    // This method is only used in the CLI.
-    String::new()
-  }
-}
-
-#[allow(clippy::disallowed_types)]
 pub type NodeRequireResolverRc =
   deno_fs::sync::MaybeArc<dyn NodeRequireResolver>;
 
 pub trait NodeRequireResolver: std::fmt::Debug + MaybeSend + MaybeSync {
-  fn ensure_read_permission(
+  #[must_use = "the resolved return value to mitigate time-of-check to time-of-use issues"]
+  fn ensure_read_permission<'a>(
     &self,
     permissions: &mut dyn NodePermissions,
-    path: &Path,
-  ) -> Result<(), AnyError>;
+    path: &'a Path,
+  ) -> Result<Cow<'a, Path>, AnyError>;
 }
 
 pub static NODE_ENV_VAR_ALLOWLIST: Lazy<HashSet<String>> = Lazy::new(|| {
@@ -165,17 +152,9 @@ fn op_node_build_os() -> String {
   env!("TARGET").split('-').nth(2).unwrap().to_string()
 }
 
-#[op2]
-#[string]
-fn op_npm_process_state(state: &mut OpState) -> Result<String, AnyError> {
-  let npm_resolver = state.borrow_mut::<NpmProcessStateProviderRc>();
-  Ok(npm_resolver.get_npm_process_state())
-}
-
 pub struct NodeExtInitServices {
   pub node_require_resolver: NodeRequireResolverRc,
   pub node_resolver: NodeResolverRc,
-  pub npm_process_state_provider: NpmProcessStateProviderRc,
   pub npm_resolver: NpmResolverRc,
 }
 
@@ -194,6 +173,7 @@ deno_core::extension!(deno_node,
 
     ops::buffer::op_is_ascii,
     ops::buffer::op_is_utf8,
+    ops::buffer::op_transcode,
     ops::crypto::op_node_check_prime_async,
     ops::crypto::op_node_check_prime_bytes_async,
     ops::crypto::op_node_check_prime_bytes,
@@ -374,7 +354,6 @@ deno_core::extension!(deno_node,
     ops::os::op_cpus<P>,
     ops::os::op_homedir<P>,
     op_node_build_os,
-    op_npm_process_state,
     ops::require::op_require_can_parse_as_esm,
     ops::require::op_require_init_paths,
     ops::require::op_require_node_module_paths<P>,
@@ -662,7 +641,6 @@ deno_core::extension!(deno_node,
       state.put(init.node_require_resolver.clone());
       state.put(init.node_resolver.clone());
       state.put(init.npm_resolver.clone());
-      state.put(init.npm_process_state_provider.clone());
     }
   },
   global_template_middleware = global_template_middleware,

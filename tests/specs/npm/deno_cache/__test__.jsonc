@@ -1,8 +1,4 @@
 {
   "args": "cache --reload npm:chalk npm:mkdirp",
-  "output": "deno_cache.out",
-  "envs": {
-    "NO_COLOR": "1",
-    "NPM_CONFIG_REGISTRY": "http://localhost:4260/"
-  }
+  "output": "deno_cache.out"
 }

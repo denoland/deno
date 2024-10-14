@@ -29,7 +29,7 @@ use deno_core::serde::Serialize;
 use deno_core::serde_json::json;
 use deno_core::url::Position;
 use deno_core::ModuleSpecifier;
-use deno_runtime::fs_util::specifier_to_file_path;
+use deno_path_util::url_to_file_path;
 use deno_semver::jsr::JsrPackageReqReference;
 use deno_semver::package::PackageNv;
 use import_map::ImportMap;
@@ -200,15 +200,11 @@ pub async fn get_import_completions(
   {
     // completions for import map specifiers
     Some(lsp::CompletionResponse::List(completion_list))
-  } else if text.starts_with("./")
-    || text.starts_with("../")
-    || text.starts_with('/')
+  } else if let Some(completion_list) =
+    get_local_completions(specifier, &text, &range, resolver)
   {
     // completions for local relative modules
-    Some(lsp::CompletionResponse::List(CompletionList {
-      is_incomplete: false,
-      items: get_local_completions(specifier, &text, &range, resolver)?,
-    }))
+    Some(lsp::CompletionResponse::List(completion_list))
   } else if !text.is_empty() {
     // completion of modules from a module registry or cache
     check_auto_config_registry(
@@ -363,15 +359,15 @@ fn get_local_completions(
   text: &str,
   range: &lsp::Range,
   resolver: &LspResolver,
-) -> Option<Vec<lsp::CompletionItem>> {
+) -> Option<CompletionList> {
   if base.scheme() != "file" {
     return None;
   }
-  let parent = base.join(text).ok()?.join(".").ok()?;
+  let parent = &text[..text.char_indices().rfind(|(_, c)| *c == '/')?.0 + 1];
   let resolved_parent = resolver
     .as_graph_resolver(Some(base))
     .resolve(
-      parent.as_str(),
+      parent,
       &Range {
         specifier: base.clone(),
         start: deno_graph::Position::zeroed(),
@@ -380,63 +376,63 @@ fn get_local_completions(
       ResolutionMode::Execution,
     )
     .ok()?;
-  let resolved_parent_path = specifier_to_file_path(&resolved_parent).ok()?;
-  let raw_parent =
-    &text[..text.char_indices().rfind(|(_, c)| *c == '/')?.0 + 1];
+  let resolved_parent_path = url_to_file_path(&resolved_parent).ok()?;
   if resolved_parent_path.is_dir() {
     let cwd = std::env::current_dir().ok()?;
-    let items = std::fs::read_dir(resolved_parent_path).ok()?;
-    Some(
-      items
-        .filter_map(|de| {
-          let de = de.ok()?;
-          let label = de.path().file_name()?.to_string_lossy().to_string();
-          let entry_specifier = resolve_path(de.path().to_str()?, &cwd).ok()?;
-          if entry_specifier == *base {
-            return None;
-          }
-          let full_text = format!("{raw_parent}{label}");
-          let text_edit = Some(lsp::CompletionTextEdit::Edit(lsp::TextEdit {
-            range: *range,
-            new_text: full_text.clone(),
-          }));
-          let filter_text = Some(full_text);
-          match de.file_type() {
-            Ok(file_type) if file_type.is_dir() => Some(lsp::CompletionItem {
-              label,
-              kind: Some(lsp::CompletionItemKind::FOLDER),
-              detail: Some("(local)".to_string()),
-              filter_text,
-              sort_text: Some("1".to_string()),
-              text_edit,
-              commit_characters: Some(
-                IMPORT_COMMIT_CHARS.iter().map(|&c| c.into()).collect(),
-              ),
-              ..Default::default()
-            }),
-            Ok(file_type) if file_type.is_file() => {
-              if is_importable_ext(&de.path()) {
-                Some(lsp::CompletionItem {
-                  label,
-                  kind: Some(lsp::CompletionItemKind::FILE),
-                  detail: Some("(local)".to_string()),
-                  filter_text,
-                  sort_text: Some("1".to_string()),
-                  text_edit,
-                  commit_characters: Some(
-                    IMPORT_COMMIT_CHARS.iter().map(|&c| c.into()).collect(),
-                  ),
-                  ..Default::default()
-                })
-              } else {
-                None
-              }
+    let entries = std::fs::read_dir(resolved_parent_path).ok()?;
+    let items = entries
+      .filter_map(|de| {
+        let de = de.ok()?;
+        let label = de.path().file_name()?.to_string_lossy().to_string();
+        let entry_specifier = resolve_path(de.path().to_str()?, &cwd).ok()?;
+        if entry_specifier == *base {
+          return None;
+        }
+        let full_text = format!("{parent}{label}");
+        let text_edit = Some(lsp::CompletionTextEdit::Edit(lsp::TextEdit {
+          range: *range,
+          new_text: full_text.clone(),
+        }));
+        let filter_text = Some(full_text);
+        match de.file_type() {
+          Ok(file_type) if file_type.is_dir() => Some(lsp::CompletionItem {
+            label,
+            kind: Some(lsp::CompletionItemKind::FOLDER),
+            detail: Some("(local)".to_string()),
+            filter_text,
+            sort_text: Some("1".to_string()),
+            text_edit,
+            commit_characters: Some(
+              IMPORT_COMMIT_CHARS.iter().map(|&c| c.into()).collect(),
+            ),
+            ..Default::default()
+          }),
+          Ok(file_type) if file_type.is_file() => {
+            if is_importable_ext(&de.path()) {
+              Some(lsp::CompletionItem {
+                label,
+                kind: Some(lsp::CompletionItemKind::FILE),
+                detail: Some("(local)".to_string()),
+                filter_text,
+                sort_text: Some("1".to_string()),
+                text_edit,
+                commit_characters: Some(
+                  IMPORT_COMMIT_CHARS.iter().map(|&c| c.into()).collect(),
+                ),
+                ..Default::default()
+              })
+            } else {
+              None
             }
-            _ => None,
           }
-        })
-        .collect(),
-    )
+          _ => None,
+        }
+      })
+      .collect();
+    Some(CompletionList {
+      is_incomplete: false,
+      items,
+    })
   } else {
     None
   }
@@ -921,11 +917,11 @@ mod tests {
         },
       },
       &Default::default(),
-    );
-    assert!(actual.is_some());
-    let actual = actual.unwrap();
-    assert_eq!(actual.len(), 3);
-    for item in actual {
+    )
+    .unwrap();
+    assert!(!actual.is_incomplete);
+    assert_eq!(actual.items.len(), 3);
+    for item in actual.items {
       match item.text_edit {
         Some(lsp::CompletionTextEdit::Edit(text_edit)) => {
           assert!(["./b", "./f.mjs", "./g.json"]

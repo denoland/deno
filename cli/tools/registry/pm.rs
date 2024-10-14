@@ -130,8 +130,10 @@ impl NpmConfig {
   fn add(&mut self, selected: SelectedPackage, dev: bool) {
     let (name, version) = package_json_dependency_entry(selected);
     if dev {
+      self.dependencies.swap_remove(&name);
       self.dev_dependencies.insert(name, version);
     } else {
+      self.dev_dependencies.swap_remove(&name);
       self.dependencies.insert(name, version);
     }
   }
@@ -361,7 +363,14 @@ fn package_json_dependency_entry(
   selected: SelectedPackage,
 ) -> (String, String) {
   if let Some(npm_package) = selected.package_name.strip_prefix("npm:") {
-    (npm_package.into(), selected.version_req)
+    if selected.import_name == npm_package {
+      (npm_package.into(), selected.version_req)
+    } else {
+      (
+        selected.import_name,
+        format!("npm:{}@{}", npm_package, selected.version_req),
+      )
+    }
   } else if let Some(jsr_package) = selected.package_name.strip_prefix("jsr:") {
     let jsr_package = jsr_package.strip_prefix('@').unwrap_or(jsr_package);
     let scope_replaced = jsr_package.replace('/', "__");
@@ -558,12 +567,7 @@ pub async fn add(
     result.context("Failed to update configuration file")?;
   }
 
-  // clear the previously cached package.json from memory before reloading it
-  node_resolver::PackageJsonThreadLocalCache::clear();
-  // make a new CliFactory to pick up the updated config file
-  let cli_factory = CliFactory::from_flags(flags);
-  // cache deps
-  cache_deps::cache_top_level_deps(&cli_factory, Some(jsr_resolver)).await?;
+  npm_install_after_modification(flags, Some(jsr_resolver)).await?;
 
   Ok(())
 }
@@ -744,6 +748,9 @@ fn generate_imports(mut packages_to_version: Vec<(String, String)>) -> String {
   let mut contents = vec![];
   let len = packages_to_version.len();
   for (index, (package, version)) in packages_to_version.iter().enumerate() {
+    if index == 0 {
+      contents.push(String::new()); // force a newline at the start
+    }
     // TODO(bartlomieju): fix it, once we start support specifying version on the cli
     contents.push(format!("\"{}\": \"{}\"", package, version));
     if index != len - 1 {
@@ -786,11 +793,29 @@ pub async fn remove(
       config.commit().await?;
     }
 
-    // Update deno.lock
-    node_resolver::PackageJsonThreadLocalCache::clear();
-    let cli_factory = CliFactory::from_flags(flags);
-    cache_deps::cache_top_level_deps(&cli_factory, None).await?;
+    npm_install_after_modification(flags, None).await?;
   }
+
+  Ok(())
+}
+
+async fn npm_install_after_modification(
+  flags: Arc<Flags>,
+  // explicitly provided to prevent redownloading
+  jsr_resolver: Option<Arc<crate::jsr::JsrFetchResolver>>,
+) -> Result<(), AnyError> {
+  // clear the previously cached package.json from memory before reloading it
+  node_resolver::PackageJsonThreadLocalCache::clear();
+
+  // make a new CliFactory to pick up the updated config file
+  let cli_factory = CliFactory::from_flags(flags);
+  // surface any errors in the package.json
+  let npm_resolver = cli_factory.npm_resolver().await?;
+  if let Some(npm_resolver) = npm_resolver.as_managed() {
+    npm_resolver.ensure_no_pkg_json_dep_errors()?;
+  }
+  // npm install
+  cache_deps::cache_top_level_deps(&cli_factory, jsr_resolver).await?;
 
   Ok(())
 }

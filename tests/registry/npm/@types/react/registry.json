@@ -1,0 +1,71 @@
+{
+  "name": "@types/react",
+  "dist-tags": { "latest": "18.3.10" },
+  "versions": {
+    "18.3.10": {
+      "name": "@types/react",
+      "version": "18.3.10",
+      "license": "MIT",
+      "_id": "@types/react@18.3.10",
+      "dist": {
+        "shasum": "6edc26dc22ff8c9c226d3c7bf8357b013c842219",
+        "tarball": "http://localhost:4260/@types/react/react-18.3.10.tgz",
+        "fileCount": 17,
+        "integrity": "sha512-02sAAlBnP39JgXwkAq3PeU9DVaaGpZyF3MGcC0MKgQVkZor5IiiDAipVaxQHtDJAmO4GIy/rVBy/LzVj76Cyqg==",
+        "signatures": [
+          {
+            "sig": "MEUCIF6O9Y11lCvdqbD+e81mjGbAGN3pZa2cxxwi5Z+3bQr6AiEA0tDSc8Y9i7TjXbsZ2SnO/taFI6v99xnkZRDv5m6to7k=",
+            "keyid": "SHA256:jl3bwswu80PjjokCgh0o2w5c2U4LhQAE57gj9cz1kzA"
+          }
+        ],
+        "unpackedSize": 438614
+      },
+      "main": "",
+      "types": "index.d.ts",
+      "exports": {
+        ".": {
+          "types": { "default": "./index.d.ts" },
+          "types@<=5.0": { "default": "./ts5.0/index.d.ts" }
+        },
+        "./canary": {
+          "types": { "default": "./canary.d.ts" },
+          "types@<=5.0": { "default": "./ts5.0/canary.d.ts" }
+        },
+        "./jsx-runtime": {
+          "types": { "default": "./jsx-runtime.d.ts" },
+          "types@<=5.0": { "default": "./ts5.0/jsx-runtime.d.ts" }
+        },
+        "./experimental": {
+          "types": { "default": "./experimental.d.ts" },
+          "types@<=5.0": { "default": "./ts5.0/experimental.d.ts" }
+        },
+        "./package.json": "./package.json",
+        "./jsx-dev-runtime": {
+          "types": { "default": "./jsx-dev-runtime.d.ts" },
+          "types@<=5.0": { "default": "./ts5.0/jsx-dev-runtime.d.ts" }
+        }
+      },
+      "scripts": {},
+      "repository": {
+        "url": "https://github.com/DefinitelyTyped/DefinitelyTyped.git",
+        "type": "git",
+        "directory": "types/react"
+      },
+      "description": "TypeScript definitions for react",
+      "directories": {},
+      "dependencies": { "csstype": "^3.0.2", "@types/prop-types": "*" },
+      "_hasShrinkwrap": false,
+      "typeScriptVersion": "4.8",
+      "typesPublisherContentHash": "3fbf914f5052668104237c78a8f67cca37176346a3caed94eea6d5c504795f08"
+    }
+  },
+  "license": "MIT",
+  "homepage": "https://github.com/DefinitelyTyped/DefinitelyTyped/tree/master/types/react",
+  "repository": {
+    "url": "https://github.com/DefinitelyTyped/DefinitelyTyped.git",
+    "type": "git",
+    "directory": "types/react"
+  },
+  "description": "TypeScript definitions for react",
+  "readmeFilename": ""
+}

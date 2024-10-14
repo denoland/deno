@@ -195,7 +195,7 @@ pub async fn doc(
             kind_with_drilldown:
               deno_doc::html::DocNodeKindWithDrilldown::Other(node.kind()),
             inner: Rc::new(node),
-            drilldown_parent_kind: None,
+            drilldown_name: None,
             parent: None,
           })
           .collect::<Vec<_>>(),
@@ -262,7 +262,7 @@ pub async fn doc(
 }
 
 struct DocResolver {
-  deno_ns: std::collections::HashSet<Vec<String>>,
+  deno_ns: std::collections::HashMap<Vec<String>, Option<Rc<ShortPath>>>,
   strip_trailing_html: bool,
 }
 
@@ -286,7 +286,7 @@ impl deno_doc::html::HrefResolver for DocResolver {
   }
 
   fn resolve_global_symbol(&self, symbol: &[String]) -> Option<String> {
-    if self.deno_ns.contains(symbol) {
+    if self.deno_ns.contains_key(symbol) {
       Some(format!(
         "https://deno.land/api@v{}?s={}",
         env!("CARGO_PKG_VERSION"),
@@ -455,7 +455,7 @@ impl deno_doc::html::HrefResolver for NodeDocResolver {
 fn generate_docs_directory(
   doc_nodes_by_url: IndexMap<ModuleSpecifier, Vec<doc::DocNode>>,
   html_options: &DocHtmlFlag,
-  deno_ns: std::collections::HashSet<Vec<String>>,
+  deno_ns: std::collections::HashMap<Vec<String>, Option<Rc<ShortPath>>>,
   rewrite_map: Option<IndexMap<ModuleSpecifier, String>>,
 ) -> Result<(), AnyError> {
   let cwd = std::env::current_dir().context("Failed to get CWD")?;
@@ -513,7 +513,6 @@ fn generate_docs_directory(
     rewrite_map,
     href_resolver,
     usage_composer: None,
-    composable_output: false,
     category_docs,
     disable_search: internal_env.is_some(),
     symbol_redirect_map,

@@ -56,7 +56,12 @@ import { StringPrototypeSlice } from "ext:deno_node/internal/primordials.mjs";
 import { StreamBase } from "ext:deno_node/internal_binding/stream_wrap.ts";
 import { Pipe, socketType } from "ext:deno_node/internal_binding/pipe_wrap.ts";
 import { Socket } from "node:net";
-import { kDetached, kExtraStdio, kIpc } from "ext:runtime/40_process.js";
+import {
+  kDetached,
+  kExtraStdio,
+  kIpc,
+  kNeedsNpmProcessState,
+} from "ext:runtime/40_process.js";
 
 export function mapValues<T, O>(
   record: Readonly<Record<string, T>>,
@@ -281,6 +286,8 @@ export class ChildProcess extends EventEmitter {
         [kIpc]: ipc, // internal
         [kExtraStdio]: extraStdioNormalized,
         [kDetached]: detached,
+        // deno-lint-ignore no-explicit-any
+        [kNeedsNpmProcessState]: (options ?? {} as any)[kNeedsNpmProcessState],
       }).spawn();
       this.pid = this.#process.pid;
 

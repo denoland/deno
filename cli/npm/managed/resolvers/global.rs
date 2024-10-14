@@ -73,7 +73,7 @@ impl NpmPackageFsResolver for GlobalNpmPackageResolver {
     self.cache.root_dir_url()
   }
 
-  fn node_modules_path(&self) -> Option<&PathBuf> {
+  fn node_modules_path(&self) -> Option<&Path> {
     None
   }
 
@@ -183,11 +183,11 @@ impl NpmPackageFsResolver for GlobalNpmPackageResolver {
     Ok(())
   }
 
-  fn ensure_read_permission(
+  fn ensure_read_permission<'a>(
     &self,
     permissions: &mut dyn NodePermissions,
-    path: &Path,
-  ) -> Result<(), AnyError> {
+    path: &'a Path,
+  ) -> Result<Cow<'a, Path>, AnyError> {
     self
       .registry_read_permission_checker
       .ensure_registry_read_permission(permissions, path)

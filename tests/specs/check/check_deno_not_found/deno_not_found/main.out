@@ -1,0 +1,4 @@
+error: TS2304 [ERROR]: Cannot find name 'Deno'. Do you need to change your target library? Try changing the 'lib' compiler option to include 'deno.ns' or add a triple-slash directive to the top of your entrypoint (main file): /// <reference lib="deno.ns" />
+Deno;
+~~~~
+    at file:///[WILDCARD]/deno_not_found/main.ts:4:1

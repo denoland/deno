@@ -1913,6 +1913,21 @@ Deno.test(function consoleLogWhenCauseIsAssignedShouldNotPrintCauseTwice() {
   });
 });
 
+Deno.test(function consoleLogCauseNotFilteredOnNonError() {
+  mockConsole((console, out) => {
+    const foo = {
+      a: 1,
+      b: 2,
+      cause: 3,
+    };
+    console.log(foo);
+
+    const result = stripAnsiCode(out.toString());
+    const expected = "{ a: 1, b: 2, cause: 3 }\n";
+    assertEquals(result.trim(), expected.trim());
+  });
+});
+
 // console.log(new Proxy(new RegExp(), {}))
 Deno.test(function consoleLogShouldNotThrowErrorWhenInputIsProxiedRegExp() {
   mockConsole((console, out) => {

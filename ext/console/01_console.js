@@ -1302,7 +1302,9 @@ function getKeys(value, showHidden) {
       ArrayPrototypePushApply(keys, ArrayPrototypeFilter(symbols, filter));
     }
   }
-  keys = ArrayPrototypeFilter(keys, (key) => key !== "cause");
+  if (ObjectPrototypeIsPrototypeOf(ErrorPrototype, value)) {
+    keys = ArrayPrototypeFilter(keys, (key) => key !== "cause");
+  }
   return keys;
 }
 

@@ -6,7 +6,7 @@ use std::path::PathBuf;
 use deno_core::anyhow::bail;
 use deno_core::anyhow::Context;
 use deno_core::error::AnyError;
-use deno_core::normalize_path;
+use deno_path_util::normalize_path;
 use deno_permissions::AllowRunDescriptor;
 use deno_permissions::AllowRunDescriptorParseResult;
 use deno_permissions::DenyRunDescriptor;
@@ -101,7 +101,7 @@ impl deno_permissions::PermissionDescriptorParser
     if text.is_empty() {
       Err(AnyError::msg("Empty sys not allowed"))
     } else {
-      Ok(SysDescriptor(text.to_string()))
+      Ok(SysDescriptor::parse(text.to_string())?)
     }
   }
 
