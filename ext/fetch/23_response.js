@@ -35,7 +35,6 @@ const {
   ArrayPrototypePush,
   ObjectDefineProperties,
   ObjectPrototypeIsPrototypeOf,
-  ObjectSetPrototypeOf,
   RangeError,
   RegExpPrototypeExec,
   SafeArrayIterator,
@@ -312,6 +311,7 @@ class Response {
     body = webidl.converters["BodyInit_DOMString?"](body, prefix, "Argument 1");
     init = webidl.converters["ResponseInit_fast"](init, prefix, "Argument 2");
 
+    this[_brand] = _brand;
     this[_response] = newInnerResponse();
     this[_headers] = headersFromHeaderList(
       this[_response].headerList,
@@ -323,7 +323,6 @@ class Response {
       bodyWithType = extractBody(body);
     }
     initializeAResponse(this, init, bodyWithType);
-    this[_brand] = _brand;
   }
 
   /**
@@ -495,11 +494,9 @@ function toInnerResponse(response) {
  * @returns {Response}
  */
 function fromInnerResponse(inner, guard) {
-  const response = {};
-  ObjectSetPrototypeOf(response, Response.prototype);
+  const response = webidl.createBranded(Response);
   response[_response] = inner;
   response[_headers] = headersFromHeaderList(inner.headerList, guard);
-  response[_brand] = _brand;
   return response;
 }
 
