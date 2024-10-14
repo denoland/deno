@@ -586,6 +586,7 @@ pub async fn run(
     node_analysis_cache,
     fs.clone(),
     cli_node_resolver.clone(),
+    None,
   );
   let node_code_translator = Arc::new(NodeCodeTranslator::new(
     cjs_esm_code_analyzer,

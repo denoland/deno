@@ -587,6 +587,7 @@ impl CliFactory {
           node_analysis_cache,
           self.fs().clone(),
           node_resolver,
+          Some(self.parsed_source_cache().clone()),
         );
 
         Ok(Arc::new(NodeCodeTranslator::new(

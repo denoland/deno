@@ -176,7 +176,7 @@ impl EsmOrCjsChecker {
           specifier: specifier.clone(),
           text: source,
           media_type,
-          capture_tokens: false,
+          capture_tokens: true, // capture because it's used for cjs export analysis
           scope_analysis: false,
           maybe_syntax: None,
         })?;
@@ -186,9 +186,6 @@ impl EsmOrCjsChecker {
         source
       }
     };
-    Ok(match source.program_ref() {
-      deno_ast::swc::ast::Program::Module(_) => true,
-      deno_ast::swc::ast::Program::Script(_) => false,
-    })
+    Ok(source.is_module())
   }
 }
