@@ -907,7 +907,7 @@ impl CliFactory {
       node_ipc: cli_options.node_ipc_fd(),
       serve_port: cli_options.serve_port(),
       serve_host: cli_options.serve_host(),
-      unstable_package_json_type: cli_options.unstable_package_json_type(),
+      unstable_cjs_detection: cli_options.unstable_cjs_detection(),
     })
   }
 }

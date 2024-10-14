@@ -739,7 +739,7 @@ pub async fn run(
       node_ipc: None,
       serve_port: None,
       serve_host: None,
-      unstable_package_json_type: metadata.unstable_config.package_json_type,
+      unstable_cjs_detection: metadata.unstable_config.cjs_detection,
     },
   );
 

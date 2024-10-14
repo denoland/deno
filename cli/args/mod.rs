@@ -1576,9 +1576,9 @@ impl CliOptions {
       || self.workspace().has_unstable("bare-node-builtins")
   }
 
-  pub fn unstable_package_json_type(&self) -> bool {
-    self.flags.unstable_config.package_json_type
-      || self.workspace().has_unstable("package-json-type")
+  pub fn unstable_cjs_detection(&self) -> bool {
+    self.flags.unstable_config.cjs_detection
+      || self.workspace().has_unstable("cjs-detection")
   }
 
   fn byonm_enabled(&self) -> bool {
@@ -1633,7 +1633,7 @@ impl CliOptions {
           "byonm",
           "bare-node-builtins",
           "fmt-component",
-          "package-json-type",
+          "cjs-detection",
         ])
         .collect();
 

@@ -712,7 +712,7 @@ impl ModuleGraphBuilder {
           self.options.sub_command(),
           crate::args::DenoSubcommand::Publish { .. }
         ),
-        unstable_package_json_type: self.options.unstable_package_json_type(),
+        unstable_cjs_detection: self.options.unstable_cjs_detection(),
       },
     )
   }

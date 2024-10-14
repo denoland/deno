@@ -9,6 +9,10 @@
       "args": "run --allow-read=. main_esm.js",
       "output": "main_esm.out",
       "exitCode": 1
+    },
+    "sub_folder_cjs": {
+      "args": "run --allow-read=. sub_folder_cjs.js",
+      "output": "3\n"
     }
   }
 }
