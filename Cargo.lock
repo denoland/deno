@@ -2165,6 +2165,7 @@ dependencies = [
  "deno_console",
  "deno_core",
  "deno_webidl",
+ "thiserror",
  "urlpattern",
 ]
 
@@ -2237,6 +2238,7 @@ dependencies = [
  "deno_core",
  "deno_web",
  "rusqlite",
+ "thiserror",
 ]
 
 [[package]]
