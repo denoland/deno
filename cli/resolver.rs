@@ -445,11 +445,7 @@ impl CjsResolutionStore {
       return false;
     }
 
-    if specifier_has_extension(specifier, "cjs") {
-      return true;
-    }
-
-    self.0.contains(specifier)
+    specifier_has_extension(specifier, "cjs") || self.0.contains(specifier)
   }
 
   pub fn insert(&self, specifier: ModuleSpecifier) {
