@@ -233,7 +233,10 @@ fn get_net_error(error: &NetError) -> &'static str {
     NetError::NoResolvedAddress => "Error",
     NetError::AddrParse(_) => "Error",
     NetError::Map(e) => get_net_map_error(e),
-    NetError::Canceled(_) => "Error",
+    NetError::Canceled(e) => {
+      let io_err: io::Error = e.to_owned().into();
+      get_io_error_class(&io_err)
+    },
     NetError::DnsNotFound(_) => "NotFound",
     NetError::DnsNotConnected(_) => "NotConnected",
     NetError::DnsTimedOut(_) => "TimedOut",
