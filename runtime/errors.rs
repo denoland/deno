@@ -9,10 +9,15 @@
 //!   Diagnostics are compile-time type errors, whereas JsErrors are runtime
 //!   exceptions.
 
+use deno_broadcast_channel::BroadcastChannelError;
+use deno_cache::CacheError;
+use deno_canvas::CanvasError;
 use deno_core::error::AnyError;
 use deno_core::serde_json;
 use deno_core::url;
 use deno_core::ModuleResolutionError;
+use deno_cron::CronError;
+use deno_tls::TlsError;
 use deno_ffi::CallError;
 use deno_ffi::CallbackError;
 use deno_ffi::DlfcnError;
@@ -218,6 +223,65 @@ fn get_ffi_call_error_class(e: &CallError) -> &'static str {
   }
 }
 
+fn get_tls_error_class(e: &TlsError) -> &'static str {
+  match e {
+    TlsError::Rustls(_) => "Error",
+    TlsError::UnableAddPemFileToCert(e) => get_io_error_class(e),
+    TlsError::CertInvalid
+    | TlsError::CertsNotFound
+    | TlsError::KeysNotFound
+    | TlsError::KeyDecode => "InvalidData",
+  }
+}
+
+pub fn get_cron_error_class(e: &CronError) -> &'static str {
+  match e {
+    CronError::Resource(e) => {
+      deno_core::error::get_custom_error_class(e).unwrap_or("Error")
+    }
+    CronError::NameExceeded(_) => "TypeError",
+    CronError::NameInvalid => "TypeError",
+    CronError::AlreadyExists => "TypeError",
+    CronError::TooManyCrons => "TypeError",
+    CronError::InvalidCron => "TypeError",
+    CronError::InvalidBackoff => "TypeError",
+    CronError::AcquireError(_) => "Error",
+    CronError::Other(e) => get_error_class_name(e).unwrap_or("Error"),
+  }
+}
+
+fn get_canvas_error(e: &CanvasError) -> &'static str {
+  match e {
+    CanvasError::UnsupportedColorType(_) => "TypeError",
+    CanvasError::Image(_) => "Error",
+  }
+}
+
+pub fn get_cache_error(error: &CacheError) -> &'static str {
+  match error {
+    CacheError::Sqlite(_) => "Error",
+    CacheError::JoinError(_) => "Error",
+    CacheError::Resource(err) => {
+      deno_core::error::get_custom_error_class(err).unwrap_or("Error")
+    }
+    CacheError::Other(e) => get_error_class_name(e).unwrap_or("Error"),
+    CacheError::Io(err) => get_io_error_class(err),
+  }
+}
+
+fn get_broadcast_channel_error(error: &BroadcastChannelError) -> &'static str {
+  match error {
+    BroadcastChannelError::Resource(err) => {
+      deno_core::error::get_custom_error_class(err).unwrap()
+    }
+    BroadcastChannelError::MPSCSendError(_) => "Error",
+    BroadcastChannelError::BroadcastSendError(_) => "Error",
+    BroadcastChannelError::Other(err) => {
+      get_error_class_name(err).unwrap_or("Error")
+    }
+  }
+}
+
 pub fn get_error_class_name(e: &AnyError) -> Option<&'static str> {
   deno_core::error::get_custom_error_class(e)
     .or_else(|| deno_webgpu::error::get_error_class_name(e))
@@ -239,6 +303,14 @@ pub fn get_error_class_name(e: &AnyError) -> Option<&'static str> {
         .map(get_ffi_callback_error_class)
     })
     .or_else(|| e.downcast_ref::<CallError>().map(get_ffi_call_error_class))
+    .or_else(|| e.downcast_ref::<TlsError>().map(get_tls_error_class))
+    .or_else(|| e.downcast_ref::<CronError>().map(get_cron_error_class))
+    .or_else(|| e.downcast_ref::<CanvasError>().map(get_canvas_error))
+    .or_else(|| e.downcast_ref::<CacheError>().map(get_cache_error))
+    .or_else(|| {
+      e.downcast_ref::<BroadcastChannelError>()
+        .map(get_broadcast_channel_error)
+    })
     .or_else(|| {
       e.downcast_ref::<dlopen2::Error>()
         .map(get_dlopen_error_class)
