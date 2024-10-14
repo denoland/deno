@@ -47,8 +47,7 @@ use deno_core::error::JsError;
 use deno_core::futures::FutureExt;
 use deno_core::unsync::JoinHandle;
 use deno_npm::resolution::SnapshotFromLockfileError;
-use deno_runtime::fmt_errors::format_js_error_with_suggestions;
-use deno_runtime::fmt_errors::FixSuggestion;
+use deno_runtime::fmt_errors::format_js_error;
 use deno_runtime::tokio_util::create_and_run_current_thread_with_maybe_metrics;
 use deno_terminal::colors;
 use factory::CliFactory;
@@ -367,7 +366,7 @@ fn exit_for_error(error: AnyError) -> ! {
   let mut error_code = 1;
 
   if let Some(e) = error.downcast_ref::<JsError>() {
-    error_string = format_js_error(e, suggestions);
+    error_string = format_js_error(e);
   } else if let Some(SnapshotFromLockfileError::IntegrityCheckFailed(e)) =
     error.downcast_ref::<SnapshotFromLockfileError>()
   {
