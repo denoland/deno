@@ -168,7 +168,7 @@ impl EsmOrCjsChecker {
     source: Arc<str>,
     media_type: MediaType,
   ) -> Result<bool, ParseDiagnostic> {
-    // todo(dsherret): add a file cache here to avoid parsing with swc on each load
+    // todo(dsherret): add a file cache here to avoid parsing with swc on each run
     let source = match self.parsed_source_cache.get_parsed_source(specifier) {
       Some(source) => source.clone(),
       None => {
