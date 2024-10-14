@@ -16,6 +16,8 @@ use deno_core::error::AnyError;
 use deno_core::serde_json;
 use deno_core::url;
 use deno_core::ModuleResolutionError;
+use deno_cron::CronError;
+use deno_tls::TlsError;
 use deno_webstorage::WebStorageError;
 use std::env;
 use std::error::Error;
@@ -166,6 +168,33 @@ fn get_webstorage_class_name(e: &WebStorageError) -> &'static str {
   }
 }
 
+fn get_tls_error_class(e: &TlsError) -> &'static str {
+  match e {
+    TlsError::Rustls(_) => "Error",
+    TlsError::UnableAddPemFileToCert(e) => get_io_error_class(e),
+    TlsError::CertInvalid
+    | TlsError::CertsNotFound
+    | TlsError::KeysNotFound
+    | TlsError::KeyDecode => "InvalidData",
+  }
+}
+
+pub fn get_cron_error_class(e: &CronError) -> &'static str {
+  match e {
+    CronError::Resource(e) => {
+      deno_core::error::get_custom_error_class(e).unwrap_or("Error")
+    }
+    CronError::NameExceeded(_) => "TypeError",
+    CronError::NameInvalid => "TypeError",
+    CronError::AlreadyExists => "TypeError",
+    CronError::TooManyCrons => "TypeError",
+    CronError::InvalidCron => "TypeError",
+    CronError::InvalidBackoff => "TypeError",
+    CronError::AcquireError(_) => "Error",
+    CronError::Other(e) => get_error_class_name(e).unwrap_or("Error"),
+  }
+}
+
 fn get_canvas_error(e: &CanvasError) -> &'static str {
   match e {
     CanvasError::UnsupportedColorType(_) => "TypeError",
@@ -203,7 +232,8 @@ pub fn get_error_class_name(e: &AnyError) -> Option<&'static str> {
     .or_else(|| deno_webgpu::error::get_error_class_name(e))
     .or_else(|| deno_web::get_error_class_name(e))
     .or_else(|| deno_websocket::get_network_error_class_name(e))
-    .or_else(|| deno_websocket::get_network_error_class_name(e))
+    .or_else(|| e.downcast_ref::<TlsError>().map(get_tls_error_class))
+    .or_else(|| e.downcast_ref::<CronError>().map(get_cron_error_class))
     .or_else(|| e.downcast_ref::<CanvasError>().map(get_canvas_error))
     .or_else(|| e.downcast_ref::<CacheError>().map(get_cache_error))
     .or_else(|| {
