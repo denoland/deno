@@ -391,7 +391,7 @@ pub fn bi_pipe_pair_raw(
             continue;
           }
 
-          return Err(err.into());
+          return Err(err);
         }
 
         break (path, hd1);
@@ -421,7 +421,7 @@ pub fn bi_pipe_pair_raw(
         let err = std::io::Error::last_os_error();
         if err.raw_os_error() != Some(ERROR_PIPE_CONNECTED as i32) {
           CloseHandle(hd2);
-          return Err(err.into());
+          return Err(err);
         }
       }
 
