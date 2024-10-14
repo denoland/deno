@@ -136,7 +136,7 @@ pub enum KvError {
   InvalidBoundaryKey,
   #[error("Key too large for read (max {0} bytes)")]
   KeyTooLargeToRead(usize),
-  #[error("Key too large for read (max {0} bytes)")]
+  #[error("Key too large for write (max {0} bytes)")]
   KeyTooLargeToWrite(usize),
   #[error("Total mutation size too large (max {0} bytes)")]
   TotalMutationTooLarge(usize),
@@ -865,7 +865,7 @@ where
   };
 
   if checks.len() > config.max_checks {
-    return Err(KvError::TooManyMutations(config.max_checks));
+    return Err(KvError::TooManyChecks(config.max_checks));
   }
 
   if mutations.len() + enqueues.len() > config.max_mutations {
