@@ -100,7 +100,7 @@ pub enum NetError {
   #[error(transparent)]
   DnsTimedOut(ResolveError),
   #[error(transparent)]
-  Dns(ResolveError),
+  Dns(#[from] ResolveError),
   #[error("Provided record type is not supported")]
   UnsupportedRecordType,
   #[error("File name or path {0:?} is not valid UTF-8")]

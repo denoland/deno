@@ -162,7 +162,9 @@ impl UnixStreamResource {
     unreachable!()
   }
   #[allow(clippy::unused_async)]
-  pub async fn shutdown(self: Rc<Self>) -> Result<(), AnyError> {
+  pub async fn shutdown(
+    self: Rc<Self>,
+  ) -> Result<(), deno_core::error::AnyError> {
     unreachable!()
   }
   pub fn cancel_read_ops(&self) {
