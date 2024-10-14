@@ -691,6 +691,16 @@ Deno.test({
       assertStrictEquals(process.stdout.clearLine, undefined);
       assertStrictEquals(process.stdout.clearScreenDown, undefined);
     }
+
+    // Allows overwriting `process.stdout.isTTY`
+    // https://github.com/denoland/deno/issues/26123
+    const original = process.stdout.isTTY;
+    try {
+      process.stdout.isTTY = !isTTY;
+      assertEquals(process.stdout.isTTY, !isTTY);
+    } finally {
+      process.stdout.isTTY = original;
+    }
   },
 });
 
@@ -1164,4 +1174,9 @@ Deno.test("process.cpuUsage()", () => {
   const cpuUsage = process.cpuUsage();
   assert(typeof cpuUsage.user === "number");
   assert(typeof cpuUsage.system === "number");
+});
+
+Deno.test("process.stdout.columns writable", () => {
+  process.stdout.columns = 80;
+  assertEquals(process.stdout.columns, 80);
 });
