@@ -380,7 +380,7 @@ pub fn format_js_error(js_error: &JsError) -> String {
       reference,
       index: 1,
     });
-  let suggestions = get_suggestions_for_terminal_errors(e);
+  let suggestions = get_suggestions_for_terminal_errors(js_error);
   format_js_error_inner(js_error, circular, true, suggestions)
 }
 
