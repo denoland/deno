@@ -116,7 +116,7 @@ impl TlsStreamResource {
   ) -> Result<usize, std::io::Error> {
     let mut rd = RcRef::map(&self, |r| &r.rd).borrow_mut().await;
     let cancel_handle = RcRef::map(&self, |r| &r.cancel_handle);
-    Ok(rd.read(data).try_or_cancel(cancel_handle).await?)
+    rd.read(data).try_or_cancel(cancel_handle).await
   }
 
   pub async fn write(
