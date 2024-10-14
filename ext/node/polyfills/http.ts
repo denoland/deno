@@ -625,7 +625,7 @@ class ClientRequest extends OutgoingMessage {
           // Note: the order is important, as the headers flush
           // sets up the request.
           this._flushHeaders();
-          this.on("requestReady", () => {
+          this.once("requestReady", () => {
             this._flushBody();
           });
         });
