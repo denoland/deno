@@ -363,7 +363,14 @@ fn package_json_dependency_entry(
   selected: SelectedPackage,
 ) -> (String, String) {
   if let Some(npm_package) = selected.package_name.strip_prefix("npm:") {
-    (npm_package.into(), selected.version_req)
+    if selected.import_name == npm_package {
+      (npm_package.into(), selected.version_req)
+    } else {
+      (
+        selected.import_name,
+        format!("npm:{}@{}", npm_package, selected.version_req),
+      )
+    }
   } else if let Some(jsr_package) = selected.package_name.strip_prefix("jsr:") {
     let jsr_package = jsr_package.strip_prefix('@').unwrap_or(jsr_package);
     let scope_replaced = jsr_package.replace('/', "__");
