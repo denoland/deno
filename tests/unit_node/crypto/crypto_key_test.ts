@@ -658,7 +658,7 @@ z6TExWlQMjt66nV7R8cRAkzmABrG+NW3e8Zpac7Lkuv+zu0S+K7c
 });
 
 // https://github.com/denoland/deno/issues/26188
-Deno.test("generateKeyPair large pem", async function () {
+Deno.test("generateKeyPair large pem", function () {
   const passphrase = "mypassphrase";
   const cipher = "aes-256-cbc";
   const modulusLength = 4096;
