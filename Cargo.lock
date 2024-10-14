@@ -1804,6 +1804,7 @@ dependencies = [
  "rustls-tokio-stream",
  "serde",
  "socket2",
+ "thiserror",
  "tokio",
  "trust-dns-proto",
  "trust-dns-resolver",

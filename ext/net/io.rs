@@ -1,7 +1,6 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
-use deno_core::error::generic_error;
-use deno_core::error::AnyError;
+use deno_core::futures::TryFutureExt;
 use deno_core::AsyncMutFuture;
 use deno_core::AsyncRefCell;
 use deno_core::AsyncResult;
@@ -69,23 +68,34 @@ where
   pub async fn read(
     self: Rc<Self>,
     data: &mut [u8],
-  ) -> Result<usize, AnyError> {
+  ) -> Result<usize, std::io::Error> {
     let mut rd = self.rd_borrow_mut().await;
     let nread = rd.read(data).try_or_cancel(self.cancel_handle()).await?;
     Ok(nread)
   }
 
-  pub async fn write(self: Rc<Self>, data: &[u8]) -> Result<usize, AnyError> {
+  pub async fn write(
+    self: Rc<Self>,
+    data: &[u8],
+  ) -> Result<usize, std::io::Error> {
     let mut wr = self.wr_borrow_mut().await;
     let nwritten = wr.write(data).await?;
     Ok(nwritten)
   }
 
-  pub async fn shutdown(self: Rc<Self>) -> Result<(), AnyError> {
+  pub async fn shutdown(self: Rc<Self>) -> Result<(), std::io::Error> {
     let mut wr = self.wr_borrow_mut().await;
     wr.shutdown().await?;
     Ok(())
   }
+}
+
+#[derive(Debug, thiserror::Error)]
+pub enum MapError {
+  #[error(transparent)]
+  Io(std::io::Error),
+  #[error("Unable to get resources")]
+  NoResources,
 }
 
 pub type TcpStreamResource =
@@ -100,7 +110,7 @@ impl Resource for TcpStreamResource {
   }
 
   fn shutdown(self: Rc<Self>) -> AsyncResult<()> {
-    Box::pin(self.shutdown())
+    Box::pin(self.shutdown().map_err(Into::into))
   }
 
   fn close(self: Rc<Self>) {
@@ -109,31 +119,30 @@ impl Resource for TcpStreamResource {
 }
 
 impl TcpStreamResource {
-  pub fn set_nodelay(self: Rc<Self>, nodelay: bool) -> Result<(), AnyError> {
-    self.map_socket(Box::new(move |socket| Ok(socket.set_nodelay(nodelay)?)))
+  pub fn set_nodelay(self: Rc<Self>, nodelay: bool) -> Result<(), MapError> {
+    self.map_socket(Box::new(move |socket| socket.set_nodelay(nodelay)))
   }
 
   pub fn set_keepalive(
     self: Rc<Self>,
     keepalive: bool,
-  ) -> Result<(), AnyError> {
-    self
-      .map_socket(Box::new(move |socket| Ok(socket.set_keepalive(keepalive)?)))
+  ) -> Result<(), MapError> {
+    self.map_socket(Box::new(move |socket| socket.set_keepalive(keepalive)))
   }
 
   #[allow(clippy::type_complexity)]
   fn map_socket(
     self: Rc<Self>,
-    map: Box<dyn FnOnce(SockRef) -> Result<(), AnyError>>,
-  ) -> Result<(), AnyError> {
+    map: Box<dyn FnOnce(SockRef) -> Result<(), std::io::Error>>,
+  ) -> Result<(), MapError> {
     if let Some(wr) = RcRef::map(self, |r| &r.wr).try_borrow() {
       let stream = wr.as_ref().as_ref();
       let socket = socket2::SockRef::from(stream);
 
-      return map(socket);
+      return map(socket).map_err(MapError::Io);
     }
 
-    Err(generic_error("Unable to get resources"))
+    Err(MapError::NoResources)
   }
 }
 
@@ -170,7 +179,7 @@ impl Resource for UnixStreamResource {
   }
 
   fn shutdown(self: Rc<Self>) -> AsyncResult<()> {
-    Box::pin(self.shutdown())
+    Box::pin(self.shutdown().map_err(Into::into))
   }
 
   fn close(self: Rc<Self>) {
