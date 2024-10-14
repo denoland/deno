@@ -12,5 +12,4 @@ Warning The following packages contained npm lifecycle scripts (preinstall/insta
 ┠─ This may cause the packages to not work correctly.
 ┖─ To run lifecycle scripts, use the `--allow-scripts` flag with `deno install`:
    deno install --allow-scripts=npm:@denotest/node-lifecycle-scripts@1.0.0
-error: Uncaught SyntaxError: The requested module 'npm:@denotest/node-lifecycle-scripts' does not provide an export named 'value'
-[WILDCARD]
+value is 42
