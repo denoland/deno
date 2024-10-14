@@ -963,6 +963,56 @@ globalThis.it = it;
 globalThis.describe = describe;
 
 /**
+ * @param {number} seed
+ */
+function prepareTests(seed) {
+  const hasOnly = BDD_CONTEXT.hasOnly;
+
+  if (hasOnly) {
+    ROOT_TEST_GROUP.only = ROOT_TEST_GROUP.children.some((child) => child.only);
+  }
+
+  const stack = [ROOT_TEST_GROUP];
+  /** @type {TestGroup | undefined} */
+  let group;
+  // deno-lint-ignore no-extra-boolean-cast
+  while (!!(group = stack.pop())) {
+    if (hasOnly && !group.only) {
+      group.ignore = true;
+    }
+
+    if (seed > 0 && !group.ignore && group.children.length > 1) {
+      shuffle(group.children, seed);
+    }
+
+    // Sort tests:
+    // - non-ignored tests first (might be shuffled earlier)
+    // - ignored tests second
+    // - groups last
+    group.children.sort(sortTestItems);
+
+    for (let i = 0; i < group.children.length; i++) {
+      const child = group.children[i];
+
+      if (group.ignore) {
+        child.ignore = true;
+      }
+
+      if (isTestGroup(child)) {
+        stack.push(child);
+      }
+    }
+  }
+}
+
+/**
+ * @param {*} seed
+ * @param {*} group
+ */
+function prepareGroup(seed, group) {
+}
+
+/**
  * This function is called from Rust.
  * @param {number} seed
  * @param {...any} rest

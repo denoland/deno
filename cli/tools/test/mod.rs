@@ -855,6 +855,8 @@ pub async fn run_tests_for_worker(
       .js_runtime
       .with_event_loop_promise(call, PollEventLoopOptions::default())
       .await;
+
+    _ = send_test_event(&state_rc, TestEvent::Completed);
     return Ok(());
   }
 
