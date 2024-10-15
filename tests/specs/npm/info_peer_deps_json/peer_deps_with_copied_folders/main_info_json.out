@@ -1,7 +1,7 @@
 {
   "version": 1,
   "roots": [
-    "[WILDCARD]/peer_deps_with_copied_folders/main.ts"
+    "file://[WILDCARD]/main.ts"
   ],
   "modules": [
     {
@@ -46,6 +46,16 @@
       "size": 171,
       "mediaType": "TypeScript",
       "specifier": "file://[WILDCARD]/main.ts"
+    },
+    {
+      "kind": "npm",
+      "specifier": "npm:/@denotest/peer-dep-test-child@1.0.0",
+      "npmPackage": "@denotest/peer-dep-test-child@1.0.0_@denotest+peer-dep-test-peer@1.0.0"
+    },
+    {
+      "kind": "npm",
+      "specifier": "npm:/@denotest/peer-dep-test-child@2.0.0",
+      "npmPackage": "@denotest/peer-dep-test-child@2.0.0_@denotest+peer-dep-test-peer@2.0.0"
     }
   ],
   "redirects": {
@@ -59,7 +69,8 @@
       "dependencies": [
         "@denotest/peer-dep-test-grandchild@1.0.0_@denotest+peer-dep-test-peer@1.0.0",
         "@denotest/peer-dep-test-peer@1.0.0"
-      ]
+      ],
+      "registryUrl": "http://localhost:4260/"
     },
     "@denotest/peer-dep-test-child@2.0.0_@denotest+peer-dep-test-peer@2.0.0": {
       "name": "@denotest/peer-dep-test-child",
@@ -67,31 +78,36 @@
       "dependencies": [
         "@denotest/peer-dep-test-grandchild@1.0.0_@denotest+peer-dep-test-peer@2.0.0",
         "@denotest/peer-dep-test-peer@2.0.0"
-      ]
+      ],
+      "registryUrl": "http://localhost:4260/"
     },
     "@denotest/peer-dep-test-grandchild@1.0.0_@denotest+peer-dep-test-peer@1.0.0": {
       "name": "@denotest/peer-dep-test-grandchild",
       "version": "1.0.0",
       "dependencies": [
         "@denotest/peer-dep-test-peer@1.0.0"
-      ]
+      ],
+      "registryUrl": "http://localhost:4260/"
     },
     "@denotest/peer-dep-test-grandchild@1.0.0_@denotest+peer-dep-test-peer@2.0.0": {
       "name": "@denotest/peer-dep-test-grandchild",
       "version": "1.0.0",
       "dependencies": [
         "@denotest/peer-dep-test-peer@2.0.0"
-      ]
+      ],
+      "registryUrl": "http://localhost:4260/"
     },
     "@denotest/peer-dep-test-peer@1.0.0": {
       "name": "@denotest/peer-dep-test-peer",
       "version": "1.0.0",
-      "dependencies": []
+      "dependencies": [],
+      "registryUrl": "http://localhost:4260/"
     },
     "@denotest/peer-dep-test-peer@2.0.0": {
       "name": "@denotest/peer-dep-test-peer",
       "version": "2.0.0",
-      "dependencies": []
+      "dependencies": [],
+      "registryUrl": "http://localhost:4260/"
     }
   }
 }

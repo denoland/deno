@@ -119,7 +119,7 @@ fn encodings_iter_inner<'s>(
       };
       Some(Ok((encoding, qval)))
     })
-    .map(|r| r?) // flatten Result<Result<...
+    .flatten()
 }
 
 #[cfg(test)]
