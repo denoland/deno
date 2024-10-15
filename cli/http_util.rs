@@ -470,15 +470,20 @@ impl HttpClient {
     }
   }
 
-  pub async fn download_with_progress(
+  pub async fn download_with_progress_and_retries(
     &self,
     url: Url,
     maybe_header: Option<(HeaderName, HeaderValue)>,
     progress_guard: &UpdateGuard,
   ) -> Result<Option<Vec<u8>>, DownloadError> {
-    self
-      .download_inner(url, maybe_header, Some(progress_guard))
-      .await
+    crate::util::retry::retry(|| {
+      self.download_inner(
+        url.clone(),
+        maybe_header.clone(),
+        Some(progress_guard),
+      )
+    })
+    .await
   }
 
   pub async fn get_redirected_url(
