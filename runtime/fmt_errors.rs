@@ -1,5 +1,6 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 //! This mod provides DenoError to unify errors across Deno.
+use color_print::cstr;
 use deno_core::error::format_frame;
 use deno_core::error::JsError;
 use deno_terminal::colors::cyan;
@@ -369,10 +370,12 @@ fn get_suggestions_for_terminal_errors(e: &JsError) -> Vec<FixSuggestion> {
       ];
     } else if msg.contains("document is not defined") {
       return vec![
-        FixSuggestion::info("document global is not available in Deno."),
+        FixSuggestion::info(cstr!(
+          "<u>document</> global is not available in Deno."
+        )),
         FixSuggestion::hint_multiline(&[
-          "Use a library like `happy-dom`, `deno_dom`, `linkedom` or `JSDom` and",
-          "setup the `document` global according to the library documentation.",
+          cstr!("Use a library like <u>happy-dom</>, <u>deno_dom</>, <u>linkedom</> or <u>JSDom</>"),
+          cstr!("and setup the <u>document</> global according to the library documentation."),
         ]),
       ];
     }
