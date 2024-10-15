@@ -92,7 +92,7 @@ where
 
 #[derive(Debug, thiserror::Error)]
 pub enum MapError {
-  #[error(transparent)]
+  #[error("{0}")]
   Io(std::io::Error),
   #[error("Unable to get resources")]
   NoResources,

@@ -77,29 +77,29 @@ pub enum NetError {
   SocketClosedNotConnected,
   #[error("Socket already in use")]
   SocketBusy,
-  #[error(transparent)]
+  #[error("{0}")]
   Io(#[from] std::io::Error),
   #[error("Another accept task is ongoing")]
   AcceptTaskOngoing,
-  #[error(transparent)]
+  #[error("{0}")]
   Permission(deno_core::error::AnyError),
-  #[error(transparent)]
+  #[error("{0}")]
   Resource(deno_core::error::AnyError),
   #[error("No resolved address found")]
   NoResolvedAddress,
-  #[error(transparent)]
+  #[error("{0}")]
   AddrParse(#[from] std::net::AddrParseError),
-  #[error(transparent)]
+  #[error("{0}")]
   Map(crate::io::MapError),
-  #[error(transparent)]
+  #[error("{0}")]
   Canceled(#[from] deno_core::Canceled),
-  #[error(transparent)]
+  #[error("{0}")]
   DnsNotFound(ResolveError),
-  #[error(transparent)]
+  #[error("{0}")]
   DnsNotConnected(ResolveError),
-  #[error(transparent)]
+  #[error("{0}")]
   DnsTimedOut(ResolveError),
-  #[error(transparent)]
+  #[error("{0}")]
   Dns(#[from] ResolveError),
   #[error("Provided record type is not supported")]
   UnsupportedRecordType,
@@ -111,15 +111,15 @@ pub enum NetError {
   InvalidHostname(String), // TypeError
   #[error("TCP stream is currently in use")]
   TcpStreamBusy,
-  #[error(transparent)]
+  #[error("{0}")]
   Rustls(#[from] deno_tls::rustls::Error),
-  #[error(transparent)]
+  #[error("{0}")]
   Tls(#[from] deno_tls::TlsError),
   #[error("Error creating TLS certificate: Deno.listenTls requires a key")]
   ListenTlsRequiresKey, // InvalidData
-  #[error(transparent)]
+  #[error("{0}")]
   RootCertStore(deno_core::anyhow::Error),
-  #[error(transparent)]
+  #[error("{0}")]
   Reunite(tokio::net::tcp::ReuniteError),
 }
 
