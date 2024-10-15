@@ -692,7 +692,7 @@ impl Drop for TsFn {
 
     if let Some(finalizer) = self.thread_finalize_cb {
       unsafe {
-        (finalizer)(self.env as _, self.thread_finalize_data, ptr::null_mut());
+        (finalizer)(self.env as _, self.thread_finalize_data, self.context);
       }
     }
   }
