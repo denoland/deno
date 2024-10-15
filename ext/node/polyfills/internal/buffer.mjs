@@ -36,6 +36,7 @@ const {
   String,
   StringFromCharCode,
   StringPrototypeCharCodeAt,
+  StringPrototypeIncludes,
   StringPrototypeReplace,
   StringPrototypeToLowerCase,
   StringPrototypeTrim,
@@ -2722,7 +2723,7 @@ export function transcode(source, fromEnco, toEnco) {
     const result = op_transcode(new Uint8Array(source), fromEnco, toEnco);
     return Buffer.from(result, toEnco);
   } catch (err) {
-    if (err.message.includes("Unable to transcode Buffer")) {
+    if (StringPrototypeIncludes(err.message, "Unable to transcode Buffer")) {
       throw illegalArgumentError;
     } else {
       throw err;
