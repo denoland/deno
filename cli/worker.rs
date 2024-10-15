@@ -51,9 +51,11 @@ use crate::args::DenoSubcommand;
 use crate::args::StorageKeyResolver;
 use crate::errors;
 use crate::npm::CliNpmResolver;
+use crate::resolver::CjsResolutionStore;
 use crate::util::checksum;
 use crate::util::file_watcher::WatcherCommunicator;
 use crate::util::file_watcher::WatcherRestartMode;
+use crate::util::path::specifier_has_extension;
 use crate::version;
 
 pub struct ModuleLoaderAndSourceMapGetter {
@@ -120,11 +122,13 @@ pub struct CliMainWorkerOptions {
   pub node_ipc: Option<i64>,
   pub serve_port: Option<u16>,
   pub serve_host: Option<String>,
+  pub unstable_detect_cjs: bool,
 }
 
 struct SharedWorkerState {
   blob_store: Arc<BlobStore>,
   broadcast_channel: InMemoryBroadcastChannel,
+  cjs_resolution_store: Arc<CjsResolutionStore>,
   code_cache: Option<Arc<dyn code_cache::CodeCache>>,
   compiled_wasm_module_store: CompiledWasmModuleStore,
   feature_checker: Arc<FeatureChecker>,
@@ -422,6 +426,7 @@ impl CliMainWorkerFactory {
   #[allow(clippy::too_many_arguments)]
   pub fn new(
     blob_store: Arc<BlobStore>,
+    cjs_resolution_store: Arc<CjsResolutionStore>,
     code_cache: Option<Arc<dyn code_cache::CodeCache>>,
     feature_checker: Arc<FeatureChecker>,
     fs: Arc<dyn deno_fs::FileSystem>,
@@ -441,6 +446,7 @@ impl CliMainWorkerFactory {
       shared: Arc::new(SharedWorkerState {
         blob_store,
         broadcast_channel: Default::default(),
+        cjs_resolution_store,
         code_cache,
         compiled_wasm_module_store: Default::default(),
         feature_checker,
@@ -486,6 +492,9 @@ impl CliMainWorkerFactory {
     stdio: deno_runtime::deno_io::Stdio,
   ) -> Result<CliMainWorker, AnyError> {
     let shared = &self.shared;
+    let ModuleLoaderAndSourceMapGetter { module_loader } = shared
+      .module_loader_factory
+      .create_for_main(permissions.clone());
     let (main_module, is_main_cjs) = if let Ok(package_ref) =
       NpmPackageReqReference::from_specifier(&main_module)
     {
@@ -526,13 +535,28 @@ impl CliMainWorkerFactory {
       let is_main_cjs = matches!(node_resolution, NodeResolution::CommonJs(_));
       (node_resolution.into_url(), is_main_cjs)
     } else {
-      let is_cjs = main_module.path().ends_with(".cjs");
+      let is_maybe_cjs_js_ext = self.shared.options.unstable_detect_cjs
+        && specifier_has_extension(&main_module, "js")
+        && self
+          .shared
+          .node_resolver
+          .get_closest_package_json(&main_module)
+          .ok()
+          .flatten()
+          .map(|pkg_json| pkg_json.typ == "commonjs")
+          .unwrap_or(false);
+      let is_cjs = if is_maybe_cjs_js_ext {
+        // fill the cjs resolution store by preparing the module load
+        module_loader
+          .prepare_load(&main_module, None, false)
+          .await?;
+        self.shared.cjs_resolution_store.is_known_cjs(&main_module)
+      } else {
+        specifier_has_extension(&main_module, "cjs")
+      };
       (main_module, is_cjs)
     };
 
-    let ModuleLoaderAndSourceMapGetter { module_loader } = shared
-      .module_loader_factory
-      .create_for_main(permissions.clone());
     let maybe_inspector_server = shared.maybe_inspector_server.clone();
 
     let create_web_worker_cb =
