@@ -62,12 +62,13 @@ const _body = Symbol("body");
 const _brand = webidl.brand;
 
 // it's slightly faster to cache these
-const webidlConvertersBodyInitDomString = webidl.converters["BodyInit_DOMString?"];
-const webidlConvertersUSVString = webidl.converters["USVString"]
+const webidlConvertersBodyInitDomString =
+  webidl.converters["BodyInit_DOMString?"];
+const webidlConvertersUSVString = webidl.converters["USVString"];
 const webidlConvertersUnsignedShort = webidl.converters["unsigned short"];
 const webidlConvertersAny = webidl.converters["any"];
 const webidlConvertersByteString = webidl.converters["ByteString"];
-const webidlConvertersHeadersInit = webidl.converters["HeadersInit"]
+const webidlConvertersHeadersInit = webidl.converters["HeadersInit"];
 
 /**
  * @typedef InnerResponse
@@ -232,7 +233,6 @@ function initializeAResponse(response, init, bodyWithType) {
     }
   }
 }
-
 
 class Response {
   get [_mimeType]() {
@@ -452,47 +452,49 @@ webidl.converters["Response"] = webidl.createInterfaceConverter(
   "Response",
   ResponsePrototype,
 );
-const webidlConvertersResponseInit = webidl.converters["ResponseInit"] = webidl.createDictionaryConverter(
-  "ResponseInit",
-  [{
-    key: "status",
-    defaultValue: 200,
-    converter: webidlConvertersUnsignedShort,
-  }, {
-    key: "statusText",
-    defaultValue: "",
-    converter: webidlConvertersByteString,
-  }, {
-    key: "headers",
-    converter: webidlConvertersHeadersInit,
-  }],
-);
-const webidlConvertersResponseInitFast = webidl.converters["ResponseInit_fast"] = function (
-  init,
-  prefix,
-  context,
-  opts,
-) {
-  if (init === undefined || init === null) {
-    return { status: 200, statusText: "", headers: undefined };
-  }
-  // Fast path, if not a proxy
-  if (typeof init === "object" && !core.isProxy(init)) {
-    // Not a proxy fast path
-    const status = init.status !== undefined
-      ? webidlConvertersUnsignedShort(init.status)
-      : 200;
-    const statusText = init.statusText !== undefined
-      ? webidlConvertersByteString(init.statusText)
-      : "";
-    const headers = init.headers !== undefined
-      ? webidlConvertersHeadersInit(init.headers)
-      : undefined;
-    return { status, statusText, headers };
-  }
-  // Slow default path
-  return webidlConvertersResponseInit(init, prefix, context, opts);
-};
+const webidlConvertersResponseInit = webidl.converters["ResponseInit"] = webidl
+  .createDictionaryConverter(
+    "ResponseInit",
+    [{
+      key: "status",
+      defaultValue: 200,
+      converter: webidlConvertersUnsignedShort,
+    }, {
+      key: "statusText",
+      defaultValue: "",
+      converter: webidlConvertersByteString,
+    }, {
+      key: "headers",
+      converter: webidlConvertersHeadersInit,
+    }],
+  );
+const webidlConvertersResponseInitFast = webidl
+  .converters["ResponseInit_fast"] = function (
+    init,
+    prefix,
+    context,
+    opts,
+  ) {
+    if (init === undefined || init === null) {
+      return { status: 200, statusText: "", headers: undefined };
+    }
+    // Fast path, if not a proxy
+    if (typeof init === "object" && !core.isProxy(init)) {
+      // Not a proxy fast path
+      const status = init.status !== undefined
+        ? webidlConvertersUnsignedShort(init.status)
+        : 200;
+      const statusText = init.statusText !== undefined
+        ? webidlConvertersByteString(init.statusText)
+        : "";
+      const headers = init.headers !== undefined
+        ? webidlConvertersHeadersInit(init.headers)
+        : undefined;
+      return { status, statusText, headers };
+    }
+    // Slow default path
+    return webidlConvertersResponseInit(init, prefix, context, opts);
+  };
 
 /**
  * @param {Response} response
