@@ -62,6 +62,10 @@ use std::ops::Deref;
 use std::path::PathBuf;
 use std::sync::Arc;
 
+#[cfg(feature = "dhat-heap")]
+#[global_allocator]
+static ALLOC: dhat::Alloc = dhat::Alloc;
+
 /// Ensures that all subcommands return an i32 exit code and an [`AnyError`] error type.
 trait SubcommandOutput {
   fn output(self) -> Result<i32, AnyError>;
@@ -480,6 +484,9 @@ pub(crate) fn unstable_exit_cb(feature: &str, api_name: &str) {
 }
 
 pub fn main() {
+  #[cfg(feature = "dhat-heap")]
+  let profiler = dhat::Profiler::new_heap();
+
   setup_panic_hook();
 
   util::unix::raise_fd_limit();
@@ -500,7 +507,12 @@ pub fn main() {
     run_subcommand(Arc::new(flags)).await
   };
 
-  match create_and_run_current_thread_with_maybe_metrics(future) {
+  let result = create_and_run_current_thread_with_maybe_metrics(future);
+
+  #[cfg(feature = "dhat-heap")]
+  drop(profiler);
+
+  match result {
     Ok(exit_code) => std::process::exit(exit_code),
     Err(err) => exit_for_error(err),
   }
