@@ -1422,9 +1422,9 @@ dependencies = [
 
 [[package]]
 name = "deno_core"
-version = "0.312.0"
+version = "0.313.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "ed5b20008c84715322782af2f94ff7ebc34eb50294ae098daf36b63a5b9bdd24"
+checksum = "29f36be738d78e39b6603a6b07f1cf91e28baf3681f87205f07482999e0d0bc2"
 dependencies = [
  "anyhow",
  "bincode",
@@ -1903,9 +1903,9 @@ dependencies = [
 
 [[package]]
 name = "deno_npm"
-version = "0.25.3"
+version = "0.25.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "8050bcc2513046cbc0134ae1bc0f3b251a58b95012f3b81e0ea09a7f069c301b"
+checksum = "e6b4dc4a9f1cff63d5638e7d93042f24f46300d1cc77b86f3caaa699a7ddccf7"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -1922,9 +1922,9 @@ dependencies = [
 
 [[package]]
 name = "deno_ops"
-version = "0.188.0"
+version = "0.189.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "ba1c7a8d9169e23de729000d6903dd0dee39e521e226d1ffbb9c5336665afae6"
+checksum = "e8f998ad1d5b36064109367ffe67b1088385eb3d8025efc95e445bc013a147a2"
 dependencies = [
  "proc-macro-rules",
  "proc-macro2",
@@ -6175,9 +6175,9 @@ dependencies = [
 
 [[package]]
 name = "serde_v8"
-version = "0.221.0"
+version = "0.222.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "3ca142cf34468e22063560302e6cc5e45f48e95a0dd25b3e22d6c32c32251135"
+checksum = "27130b5cd87f6f06228940a1f3a7ecc988ea13d1bede1398a48d74cb59dabc9a"
 dependencies = [
  "num-bigint",
  "serde",
