@@ -1586,9 +1586,7 @@ export class ServerImpl extends EventEmitter {
       port = options.port | 0;
     }
 
-    // TODO(bnoordhuis) Node prefers [::] when host is omitted,
-    // we on the other hand default to 0.0.0.0.
-    let hostname = options.host ?? "0.0.0.0";
+    let hostname = options.host ?? "[::]";
     if (hostname == "localhost") {
       hostname = "127.0.0.1";
     }

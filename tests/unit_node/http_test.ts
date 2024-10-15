@@ -318,10 +318,10 @@ Deno.test("[node/http] IncomingRequest socket has remoteAddress + remotePort", a
     // deno-lint-ignore no-explicit-any
     const port = (server.address() as any).port;
     const res = await fetch(
-      `http://127.0.0.1:${port}/`,
+      `http://localhost:${port}/`,
     );
     await res.arrayBuffer();
-    assertEquals(remoteAddress, "127.0.0.1");
+    assertEquals(remoteAddress, "::1");
     assertEquals(typeof remotePort, "number");
     server.close(() => resolve());
   });
