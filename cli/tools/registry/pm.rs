@@ -393,14 +393,17 @@ impl std::fmt::Display for AddCommandName {
 
 fn load_configs(
   flags: &Arc<Flags>,
+  has_jsr_specifiers: impl FnOnce() -> bool,
 ) -> Result<(CliFactory, Option<NpmConfig>, Option<DenoConfig>), AnyError> {
   let cli_factory = CliFactory::from_flags(flags.clone());
   let options = cli_factory.cli_options()?;
   let npm_config = NpmConfig::from_options(options)?;
   let (cli_factory, deno_config) = match DenoConfig::from_options(options)? {
     Some(config) => (cli_factory, Some(config)),
-    None if npm_config.is_some() => (cli_factory, None),
-    None => {
+    None if npm_config.is_some() && !has_jsr_specifiers() => {
+      (cli_factory, None)
+    }
+    _ => {
       let factory = create_deno_json(flags, options)?;
       let options = factory.cli_options()?.clone();
       (
@@ -420,7 +423,9 @@ pub async fn add(
   add_flags: AddFlags,
   cmd_name: AddCommandName,
 ) -> Result<(), AnyError> {
-  let (cli_factory, npm_config, deno_config) = load_configs(&flags)?;
+  let (cli_factory, npm_config, deno_config) = load_configs(&flags, || {
+    add_flags.packages.iter().any(|s| s.starts_with("jsr:"))
+  })?;
   let mut npm_config = ConfigUpdater::maybe_new(npm_config).await?;
   let mut deno_config = ConfigUpdater::maybe_new(deno_config).await?;
 
@@ -754,7 +759,7 @@ pub async fn remove(
   flags: Arc<Flags>,
   remove_flags: RemoveFlags,
 ) -> Result<(), AnyError> {
-  let (_, npm_config, deno_config) = load_configs(&flags)?;
+  let (_, npm_config, deno_config) = load_configs(&flags, || false)?;
 
   let mut configs = [
     ConfigUpdater::maybe_new(npm_config).await?,
