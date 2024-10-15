@@ -552,7 +552,8 @@ impl CliMainWorkerFactory {
           .await?;
         self.shared.cjs_resolution_store.is_known_cjs(&main_module)
       } else {
-        specifier_has_extension(&main_module, "cjs")
+        main_module.scheme() == "file"
+          && specifier_has_extension(&main_module, "cjs")
       };
       (main_module, is_cjs)
     };
