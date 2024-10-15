@@ -372,7 +372,7 @@ fn get_suggestions_for_terminal_errors(e: &JsError) -> Vec<FixSuggestion> {
         FixSuggestion::info("document global is not available in Deno."),
         FixSuggestion::hint_multiline(&[
           "Use a library like `happy-dom`, `deno_dom`, `linkedom` or `JSDom`",
-          "and setup `document` global according to their documentation.",
+          "and setup `document` global according to the library documentation.",
         ]),
       ];
     }
