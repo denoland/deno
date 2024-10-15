@@ -575,7 +575,8 @@ fn parse_packages_allowed_scripts(s: &str) -> Result<String, AnyError> {
 pub struct UnstableConfig {
   // TODO(bartlomieju): remove in Deno 2.5
   pub legacy_flag_enabled: bool, // --unstable
-  pub bare_node_builtins: bool,  // --unstable-bare-node-builts
+  pub bare_node_builtins: bool,
+  pub detect_cjs: bool,
   pub sloppy_imports: bool,
   pub features: Vec<String>, // --unstabe-kv --unstable-cron
 }
@@ -1342,7 +1343,7 @@ pub fn flags_from_vec(args: Vec<OsString>) -> clap::error::Result<Flags> {
     }
 
     match subcommand.as_str() {
-      "add" => add_parse(&mut flags, &mut m),
+      "add" => add_parse(&mut flags, &mut m)?,
       "remove" => remove_parse(&mut flags, &mut m),
       "bench" => bench_parse(&mut flags, &mut m)?,
       "bundle" => bundle_parse(&mut flags, &mut m),
@@ -1528,7 +1529,7 @@ pub fn clap_root() -> Command {
   );
 
   run_args(Command::new("deno"), true)
-    .args(unstable_args(UnstableArgsConfig::ResolutionAndRuntime))
+    .with_unstable_args(UnstableArgsConfig::ResolutionAndRuntime)
     .next_line_help(false)
     .bin_name("deno")
     .styles(
@@ -1630,7 +1631,7 @@ fn command(
 ) -> Command {
   Command::new(name)
     .about(about)
-    .args(unstable_args(unstable_args_config))
+    .with_unstable_args(unstable_args_config)
 }
 
 fn help_subcommand(app: &Command) -> Command {
@@ -1675,6 +1676,7 @@ You can add multiple dependencies at once:
           .action(ArgAction::Append),
       )
       .arg(add_dev_arg())
+      .arg(allow_scripts_arg())
   })
 }
 
@@ -1717,7 +1719,7 @@ If you specify a directory instead of a file, the path is expanded to all contai
     UnstableArgsConfig::ResolutionAndRuntime,
   )
   .defer(|cmd| {
-    runtime_args(cmd, true, false)
+    runtime_args(cmd, true, false, true)
       .arg(check_arg(true))
       .arg(
         Arg::new("json")
@@ -1881,7 +1883,7 @@ On the first invocation with deno will download the proper binary and cache it i
     UnstableArgsConfig::ResolutionAndRuntime,
   )
   .defer(|cmd| {
-    runtime_args(cmd, true, false)
+    runtime_args(cmd, true, false, true)
       .arg(check_arg(true))
       .arg(
         Arg::new("include")
@@ -2202,7 +2204,7 @@ This command has implicit access to all permissions.
     UnstableArgsConfig::ResolutionAndRuntime,
   )
   .defer(|cmd| {
-    runtime_args(cmd, false, true)
+    runtime_args(cmd, false, true, true)
       .arg(check_arg(false))
       .arg(executable_ext_arg())
       .arg(
@@ -2501,7 +2503,7 @@ The installation root is determined, in order of precedence:
 These must be added to the path manually if required."), UnstableArgsConfig::ResolutionAndRuntime)
     .visible_alias("i")
     .defer(|cmd| {
-      permission_args(runtime_args(cmd, false, true), Some("global"))
+      permission_args(runtime_args(cmd, false, true, false), Some("global"))
         .arg(check_arg(true))
         .arg(allow_scripts_arg())
         .arg(
@@ -2767,7 +2769,7 @@ It is especially useful for quick prototyping and checking snippets of code.
 
 TypeScript is supported, however it is not type-checked, only transpiled."
   ), UnstableArgsConfig::ResolutionAndRuntime)
-    .defer(|cmd| runtime_args(cmd, true, true)
+    .defer(|cmd| runtime_args(cmd, true, true, true)
       .arg(check_arg(false))
       .arg(
         Arg::new("eval-file")
@@ -2799,7 +2801,7 @@ TypeScript is supported, however it is not type-checked, only transpiled."
 }
 
 fn run_args(command: Command, top_level: bool) -> Command {
-  runtime_args(command, true, true)
+  runtime_args(command, true, true, true)
     .arg(check_arg(false))
     .arg(watch_arg(true))
     .arg(hmr_arg(true))
@@ -2855,7 +2857,7 @@ Start a server defined in server.ts:
 Start a server defined in server.ts, watching for changes and running on port 5050:
   <p(245)>deno serve --watch --port 5050 server.ts</>
 
-<y>Read more:</> <c>https://docs.deno.com/go/serve</>"), UnstableArgsConfig::ResolutionAndRuntime), true, true)
+<y>Read more:</> <c>https://docs.deno.com/go/serve</>"), UnstableArgsConfig::ResolutionAndRuntime), true, true, true)
     .arg(
       Arg::new("port")
         .long("port")
@@ -2929,7 +2931,7 @@ or <c>**/__tests__/**</>:
           UnstableArgsConfig::ResolutionAndRuntime
     )
     .defer(|cmd|
-      runtime_args(cmd, true, true)
+      runtime_args(cmd, true, true, true)
       .arg(check_arg(true))
       .arg(
         Arg::new("ignore")
@@ -3642,6 +3644,7 @@ fn runtime_args(
   app: Command,
   include_perms: bool,
   include_inspector: bool,
+  include_allow_scripts: bool,
 ) -> Command {
   let app = compile_args(app);
   let app = if include_perms {
@@ -3651,6 +3654,11 @@ fn runtime_args(
   };
   let app = if include_inspector {
     inspect_args(app)
+  } else {
+    app
+  };
+  let app = if include_allow_scripts {
+    app.arg(allow_scripts_arg())
   } else {
     app
   };
@@ -4135,23 +4143,29 @@ enum UnstableArgsConfig {
   ResolutionAndRuntime,
 }
 
-struct UnstableArgsIter {
-  idx: usize,
-  cfg: UnstableArgsConfig,
+trait CommandExt {
+  fn with_unstable_args(self, cfg: UnstableArgsConfig) -> Self;
 }
 
-impl Iterator for UnstableArgsIter {
-  type Item = Arg;
+impl CommandExt for Command {
+  fn with_unstable_args(self, cfg: UnstableArgsConfig) -> Self {
+    let mut next_display_order = {
+      let mut value = 1000;
+      move || {
+        value += 1;
+        value
+      }
+    };
 
-  fn next(&mut self) -> Option<Self::Item> {
-    let arg = if self.idx == 0 {
+    let mut cmd = self.arg(
       Arg::new("unstable")
-        .long("unstable")
-        .help(cstr!("Enable all unstable features and APIs. Instead of using this flag, consider enabling individual unstable features
+      .long("unstable")
+      .help(cstr!("Enable all unstable features and APIs. Instead of using this flag, consider enabling individual unstable features
   <p(245)>To view the list of individual unstable feature flags, run this command again with --help=unstable</>"))
-        .action(ArgAction::SetTrue)
-        .hide(matches!(self.cfg, UnstableArgsConfig::None))
-    } else if self.idx == 1 {
+      .action(ArgAction::SetTrue)
+      .hide(matches!(cfg, UnstableArgsConfig::None))
+      .display_order(next_display_order())
+    ).arg(
       Arg::new("unstable-bare-node-builtins")
         .long("unstable-bare-node-builtins")
         .help("Enable unstable bare node builtins feature")
@@ -4159,20 +4173,36 @@ impl Iterator for UnstableArgsIter {
         .value_parser(FalseyValueParser::new())
         .action(ArgAction::SetTrue)
         .hide(true)
-        .long_help(match self.cfg {
+        .long_help(match cfg {
           UnstableArgsConfig::None => None,
           UnstableArgsConfig::ResolutionOnly
           | UnstableArgsConfig::ResolutionAndRuntime => Some("true"),
         })
         .help_heading(UNSTABLE_HEADING)
-    } else if self.idx == 2 {
+        .display_order(next_display_order()),
+    ).arg(
+      Arg::new("unstable-detect-cjs")
+        .long("unstable-detect-cjs")
+        .help("Reads the package.json type field in a project to treat .js files as .cjs")
+        .value_parser(FalseyValueParser::new())
+        .action(ArgAction::SetTrue)
+        .hide(true)
+        .long_help(match cfg {
+          UnstableArgsConfig::None => None,
+          UnstableArgsConfig::ResolutionOnly
+          | UnstableArgsConfig::ResolutionAndRuntime => Some("true"),
+        })
+        .help_heading(UNSTABLE_HEADING)
+        .display_order(next_display_order())
+    ).arg(
       Arg::new("unstable-byonm")
         .long("unstable-byonm")
         .value_parser(FalseyValueParser::new())
         .action(ArgAction::SetTrue)
         .hide(true)
         .help_heading(UNSTABLE_HEADING)
-    } else if self.idx == 3 {
+        .display_order(next_display_order()),
+    ).arg(
       Arg::new("unstable-sloppy-imports")
       .long("unstable-sloppy-imports")
       .help("Enable unstable resolving of specifiers by extension probing, .js to .ts, and directory probing")
@@ -4180,40 +4210,39 @@ impl Iterator for UnstableArgsIter {
       .value_parser(FalseyValueParser::new())
       .action(ArgAction::SetTrue)
       .hide(true)
-      .long_help(match self.cfg {
+      .long_help(match cfg {
         UnstableArgsConfig::None => None,
         UnstableArgsConfig::ResolutionOnly | UnstableArgsConfig::ResolutionAndRuntime => Some("true")
       })
       .help_heading(UNSTABLE_HEADING)
-    } else if self.idx > 3 {
-      let granular_flag = crate::UNSTABLE_GRANULAR_FLAGS.get(self.idx - 4)?;
-      Arg::new(format!("unstable-{}", granular_flag.name))
-        .long(format!("unstable-{}", granular_flag.name))
-        .help(granular_flag.help_text)
-        .action(ArgAction::SetTrue)
-        .hide(true)
-        .help_heading(UNSTABLE_HEADING)
-        // we don't render long help, so using it here as a sort of metadata
-        .long_help(if granular_flag.show_in_help {
-          match self.cfg {
-            UnstableArgsConfig::None | UnstableArgsConfig::ResolutionOnly => {
-              None
-            }
-            UnstableArgsConfig::ResolutionAndRuntime => Some("true"),
-          }
-        } else {
-          None
-        })
-    } else {
-      return None;
-    };
-    self.idx += 1;
-    Some(arg.display_order(self.idx + 1000))
-  }
-}
+      .display_order(next_display_order())
+    );
 
-fn unstable_args(cfg: UnstableArgsConfig) -> impl IntoIterator<Item = Arg> {
-  UnstableArgsIter { idx: 0, cfg }
+    for granular_flag in crate::UNSTABLE_GRANULAR_FLAGS.iter() {
+      cmd = cmd.arg(
+        Arg::new(format!("unstable-{}", granular_flag.name))
+          .long(format!("unstable-{}", granular_flag.name))
+          .help(granular_flag.help_text)
+          .action(ArgAction::SetTrue)
+          .hide(true)
+          .help_heading(UNSTABLE_HEADING)
+          // we don't render long help, so using it here as a sort of metadata
+          .long_help(if granular_flag.show_in_help {
+            match cfg {
+              UnstableArgsConfig::None | UnstableArgsConfig::ResolutionOnly => {
+                None
+              }
+              UnstableArgsConfig::ResolutionAndRuntime => Some("true"),
+            }
+          } else {
+            None
+          })
+          .display_order(next_display_order()),
+      );
+    }
+
+    cmd
+  }
 }
 
 fn allow_scripts_arg_parse(
@@ -4235,8 +4264,13 @@ fn allow_scripts_arg_parse(
   Ok(())
 }
 
-fn add_parse(flags: &mut Flags, matches: &mut ArgMatches) {
+fn add_parse(
+  flags: &mut Flags,
+  matches: &mut ArgMatches,
+) -> clap::error::Result<()> {
+  allow_scripts_arg_parse(flags, matches)?;
   flags.subcommand = DenoSubcommand::Add(add_parse_inner(matches, None));
+  Ok(())
 }
 
 fn add_parse_inner(
@@ -4262,7 +4296,7 @@ fn bench_parse(
 ) -> clap::error::Result<()> {
   flags.type_check_mode = TypeCheckMode::Local;
 
-  runtime_args_parse(flags, matches, true, false)?;
+  runtime_args_parse(flags, matches, true, false, true)?;
   ext_arg_parse(flags, matches);
 
   // NOTE: `deno bench` always uses `--no-prompt`, tests shouldn't ever do
@@ -4352,7 +4386,7 @@ fn compile_parse(
   matches: &mut ArgMatches,
 ) -> clap::error::Result<()> {
   flags.type_check_mode = TypeCheckMode::Local;
-  runtime_args_parse(flags, matches, true, false)?;
+  runtime_args_parse(flags, matches, true, false, true)?;
 
   let mut script = matches.remove_many::<String>("script_arg").unwrap();
   let source_file = script.next().unwrap();
@@ -4527,7 +4561,7 @@ fn eval_parse(
   flags: &mut Flags,
   matches: &mut ArgMatches,
 ) -> clap::error::Result<()> {
-  runtime_args_parse(flags, matches, false, true)?;
+  runtime_args_parse(flags, matches, false, true, false)?;
   unstable_args_parse(flags, matches, UnstableArgsConfig::ResolutionAndRuntime);
   flags.allow_all();
 
@@ -4620,7 +4654,7 @@ fn install_parse(
   flags: &mut Flags,
   matches: &mut ArgMatches,
 ) -> clap::error::Result<()> {
-  runtime_args_parse(flags, matches, true, true)?;
+  runtime_args_parse(flags, matches, true, true, false)?;
 
   let global = matches.get_flag("global");
   if global {
@@ -4846,7 +4880,7 @@ fn repl_parse(
   flags: &mut Flags,
   matches: &mut ArgMatches,
 ) -> clap::error::Result<()> {
-  runtime_args_parse(flags, matches, true, true)?;
+  runtime_args_parse(flags, matches, true, true, true)?;
   unsafely_ignore_certificate_errors_parse(flags, matches);
 
   let eval_files = matches
@@ -4879,7 +4913,7 @@ fn run_parse(
   mut app: Command,
   bare: bool,
 ) -> clap::error::Result<()> {
-  runtime_args_parse(flags, matches, true, true)?;
+  runtime_args_parse(flags, matches, true, true, true)?;
   ext_arg_parse(flags, matches);
 
   flags.code_cache_enabled = !matches.get_flag("no-code-cache");
@@ -4920,7 +4954,7 @@ fn serve_parse(
 
   let worker_count = parallel_arg_parse(matches).map(|v| v.get());
 
-  runtime_args_parse(flags, matches, true, true)?;
+  runtime_args_parse(flags, matches, true, true, true)?;
   // If the user didn't pass --allow-net, add this port to the network
   // allowlist. If the host is 0.0.0.0, we add :{port} and allow the same network perms
   // as if it was passed to --allow-net directly.
@@ -5015,7 +5049,7 @@ fn test_parse(
   matches: &mut ArgMatches,
 ) -> clap::error::Result<()> {
   flags.type_check_mode = TypeCheckMode::Local;
-  runtime_args_parse(flags, matches, true, true)?;
+  runtime_args_parse(flags, matches, true, true, true)?;
   ext_arg_parse(flags, matches);
 
   // NOTE: `deno test` always uses `--no-prompt`, tests shouldn't ever do
@@ -5380,6 +5414,7 @@ fn runtime_args_parse(
   matches: &mut ArgMatches,
   include_perms: bool,
   include_inspector: bool,
+  include_allow_scripts: bool,
 ) -> clap::error::Result<()> {
   unstable_args_parse(flags, matches, UnstableArgsConfig::ResolutionAndRuntime);
   compile_args_parse(flags, matches)?;
@@ -5390,6 +5425,9 @@ fn runtime_args_parse(
   }
   if include_inspector {
     inspect_arg_parse(flags, matches);
+  }
+  if include_allow_scripts {
+    allow_scripts_arg_parse(flags, matches)?;
   }
   location_arg_parse(flags, matches);
   v8_flags_arg_parse(flags, matches);
@@ -5662,6 +5700,7 @@ fn unstable_args_parse(
 
   flags.unstable_config.bare_node_builtins =
     matches.get_flag("unstable-bare-node-builtins");
+  flags.unstable_config.detect_cjs = matches.get_flag("unstable-detect-cjs");
   flags.unstable_config.sloppy_imports =
     matches.get_flag("unstable-sloppy-imports");
 
@@ -8862,8 +8901,12 @@ mod tests {
 
   #[test]
   fn test_no_colon_in_value_name() {
-    let app =
-      runtime_args(Command::new("test_inspect_completion_value"), true, true);
+    let app = runtime_args(
+      Command::new("test_inspect_completion_value"),
+      true,
+      true,
+      false,
+    );
     let inspect_args = app
       .get_arguments()
       .filter(|arg| arg.get_id() == "inspect")

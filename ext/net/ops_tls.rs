@@ -250,7 +250,7 @@ pub fn op_tls_cert_resolver_resolve_error(
   #[string] sni: String,
   #[string] error: String,
 ) {
-  lookup.resolve(sni, Err(anyhow!(error)))
+  lookup.resolve(sni, Err(error))
 }
 
 #[op2]
