@@ -296,7 +296,7 @@ where
   let authority: v8::Local<v8::Value> = match request_properties.authority {
     Some(authority) => v8::String::new_from_utf8(
       scope,
-      authority.as_ref(),
+      authority.as_bytes(),
       v8::NewStringType::Normal,
     )
     .unwrap()

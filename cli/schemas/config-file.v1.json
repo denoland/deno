@@ -528,6 +528,7 @@
           "bare-node-builtins",
           "byonm",
           "cron",
+          "detect-cjs",
           "ffi",
           "fs",
           "http",

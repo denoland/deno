@@ -40,7 +40,7 @@ pub fn maybe_auth_header_for_npm_registry(
       header::AUTHORIZATION,
       header::HeaderValue::from_str(&format!(
         "Basic {}",
-        BASE64_STANDARD.encode(&format!(
+        BASE64_STANDARD.encode(format!(
           "{}:{}",
           username.unwrap(),
           password.unwrap()
