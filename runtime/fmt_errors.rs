@@ -287,14 +287,20 @@ fn get_suggestions_for_terminal_errors(e: &JsError) -> Vec<FixSuggestion> {
   if let Some(msg) = &e.message {
     if msg.contains("module is not defined")
       || msg.contains("exports is not defined")
+      || msg.contains("require is not defined")
     {
       return vec![
-        FixSuggestion::info(
-          "Deno does not support CommonJS modules without `.cjs` extension.",
-        ),
-        FixSuggestion::hint(
-          "Rewrite this module to ESM or change the file extension to `.cjs`.",
-        ),
+        FixSuggestion::info_multiline(&[
+          cstr!("Deno supports CommonJS modules in <u>.cjs</> files, or when there's a <u>package.json</>"),
+          cstr!("with <i>\"type\": \"commonjs\"</> option and <i>--unstable-detect-cjs</> flag is used.")
+        ]),
+        FixSuggestion::hint_multiline(&[
+          "Rewrite this module to ESM,",
+          cstr!("or change the file extension to <u>.cjs</u>,"),
+          cstr!("or add <u>package.json</> next to the file with <i>\"type\": \"commonjs\"</> option"),
+          cstr!("and pass <i>--unstable-detect-cjs</> flag."),
+        ]),
+        FixSuggestion::hint("See https://docs.deno.com/go/commonjs for details"),
       ];
     } else if msg.contains("openKv is not a function") {
       return vec![
