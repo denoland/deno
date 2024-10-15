@@ -1,0 +1,5 @@
+3
+error: Uncaught (in promise) ReferenceError: require is not defined
+console.log(require("./add").add(1, 2));
+        ^
+    at file:///[WILDLINE]main_mix.js:[WILDLINE]

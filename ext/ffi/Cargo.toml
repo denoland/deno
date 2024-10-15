@@ -24,6 +24,8 @@ log.workspace = true
 serde.workspace = true
 serde-value = "0.7"
 serde_json = "1.0"
+thiserror.workspace = true
+tokio.workspace = true
 
 [target.'cfg(windows)'.dependencies]
 winapi = { workspace = true, features = ["errhandlingapi", "minwindef", "ntdef", "winbase", "winnt"] }

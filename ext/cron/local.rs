@@ -10,8 +10,6 @@ use std::rc::Weak;
 use std::sync::Arc;
 
 use async_trait::async_trait;
-use deno_core::error::type_error;
-use deno_core::error::AnyError;
 use deno_core::futures;
 use deno_core::futures::FutureExt;
 use deno_core::unsync::spawn;
@@ -21,6 +19,7 @@ use tokio::sync::mpsc::WeakSender;
 use tokio::sync::OwnedSemaphorePermit;
 use tokio::sync::Semaphore;
 
+use crate::CronError;
 use crate::CronHandle;
 use crate::CronHandler;
 use crate::CronSpec;
@@ -81,7 +80,7 @@ impl LocalCronHandler {
   async fn cron_loop(
     runtime_state: Rc<RefCell<RuntimeState>>,
     mut cron_schedule_rx: mpsc::Receiver<(String, bool)>,
-  ) -> Result<(), AnyError> {
+  ) -> Result<(), CronError> {
     loop {
       let earliest_deadline = runtime_state
         .borrow()
@@ -154,7 +153,7 @@ impl LocalCronHandler {
 impl RuntimeState {
   fn get_ready_crons(
     &mut self,
-  ) -> Result<Vec<(String, WeakSender<()>)>, AnyError> {
+  ) -> Result<Vec<(String, WeakSender<()>)>, CronError> {
     let now = chrono::Utc::now().timestamp_millis() as u64;
 
     let ready = {
@@ -191,7 +190,7 @@ impl RuntimeState {
 impl CronHandler for LocalCronHandler {
   type EH = CronExecutionHandle;
 
-  fn create(&self, spec: CronSpec) -> Result<Self::EH, AnyError> {
+  fn create(&self, spec: CronSpec) -> Result<Self::EH, CronError> {
     // Ensure that the cron loop is started.
     self.cron_loop_join_handle.get_or_init(|| {
       let (cron_schedule_tx, cron_schedule_rx) =
@@ -208,17 +207,17 @@ impl CronHandler for LocalCronHandler {
     let mut runtime_state = self.runtime_state.borrow_mut();
 
     if runtime_state.crons.len() > MAX_CRONS {
-      return Err(type_error("Too many crons"));
+      return Err(CronError::TooManyCrons);
     }
     if runtime_state.crons.contains_key(&spec.name) {
-      return Err(type_error("Cron with this name already exists"));
+      return Err(CronError::AlreadyExists);
     }
 
     // Validate schedule expression.
     spec
       .cron_schedule
       .parse::<saffron::Cron>()
-      .map_err(|_| type_error("Invalid cron schedule"))?;
+      .map_err(|_| CronError::InvalidCron)?;
 
     // Validate backoff_schedule.
     if let Some(backoff_schedule) = &spec.backoff_schedule {
@@ -263,7 +262,7 @@ struct Inner {
 
 #[async_trait(?Send)]
 impl CronHandle for CronExecutionHandle {
-  async fn next(&self, prev_success: bool) -> Result<bool, AnyError> {
+  async fn next(&self, prev_success: bool) -> Result<bool, CronError> {
     self.inner.borrow_mut().permit.take();
 
     if self
@@ -300,7 +299,7 @@ impl CronHandle for CronExecutionHandle {
   }
 }
 
-fn compute_next_deadline(cron_expression: &str) -> Result<u64, AnyError> {
+fn compute_next_deadline(cron_expression: &str) -> Result<u64, CronError> {
   let now = chrono::Utc::now();
 
   if let Ok(test_schedule) = env::var("DENO_CRON_TEST_SCHEDULE_OFFSET") {
@@ -311,19 +310,21 @@ fn compute_next_deadline(cron_expression: &str) -> Result<u64, AnyError> {
 
   let cron = cron_expression
     .parse::<saffron::Cron>()
-    .map_err(|_| anyhow::anyhow!("invalid cron expression"))?;
+    .map_err(|_| CronError::InvalidCron)?;
   let Some(next_deadline) = cron.next_after(now) else {
-    return Err(anyhow::anyhow!("invalid cron expression"));
+    return Err(CronError::InvalidCron);
   };
   Ok(next_deadline.timestamp_millis() as u64)
 }
 
-fn validate_backoff_schedule(backoff_schedule: &[u32]) -> Result<(), AnyError> {
+fn validate_backoff_schedule(
+  backoff_schedule: &[u32],
+) -> Result<(), CronError> {
   if backoff_schedule.len() > MAX_BACKOFF_COUNT {
-    return Err(type_error("Invalid backoff schedule"));
+    return Err(CronError::InvalidBackoff);
   }
   if backoff_schedule.iter().any(|s| *s > MAX_BACKOFF_MS) {
-    return Err(type_error("Invalid backoff schedule"));
+    return Err(CronError::InvalidBackoff);
   }
   Ok(())
 }
