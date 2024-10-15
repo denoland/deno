@@ -1997,6 +1997,7 @@ dependencies = [
 name = "deno_runtime"
 version = "0.180.0"
 dependencies = [
+ "color-print",
  "deno_ast",
  "deno_broadcast_channel",
  "deno_cache",
