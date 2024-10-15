@@ -177,6 +177,52 @@ function isCanvasLike(obj) {
   return obj !== null && typeof obj === "object" && "toDataURL" in obj;
 }
 
+function isJpg(obj) {
+  // Check if obj is a Uint8Array
+  if (!(obj instanceof Uint8Array)) {
+    return false;
+  }
+
+  // JPG files start with the magic bytes FF D8
+  if (obj.length < 2 || obj[0] !== 0xFF || obj[1] !== 0xD8) {
+    return false;
+  }
+
+  // JPG files end with the magic bytes FF D9
+  if (
+    obj.length < 2 || obj[obj.length - 2] !== 0xFF ||
+    obj[obj.length - 1] !== 0xD9
+  ) {
+    return false;
+  }
+
+  return true;
+}
+
+function isPng(obj) {
+  // Check if obj is a Uint8Array
+  if (!(obj instanceof Uint8Array)) {
+    return false;
+  }
+
+  // PNG files start with a specific 8-byte signature
+  const pngSignature = [137, 80, 78, 71, 13, 10, 26, 10];
+
+  // Check if the array is at least as long as the signature
+  if (obj.length < pngSignature.length) {
+    return false;
+  }
+
+  // Check each byte of the signature
+  for (let i = 0; i < pngSignature.length; i++) {
+    if (obj[i] !== pngSignature[i]) {
+      return false;
+    }
+  }
+
+  return true;
+}
+
 /** Possible HTML and SVG Elements */
 function isSVGElementLike(obj) {
   return obj !== null && typeof obj === "object" && "outerHTML" in obj &&
@@ -232,6 +278,16 @@ async function format(obj) {
   }
   if (isDataFrameLike(obj)) {
     return extractDataFrame(obj);
+  }
+  if (isJpg(obj)) {
+    return {
+      "image/jpg": core.ops.op_base64_encode(obj),
+    };
+  }
+  if (isPng(obj)) {
+    return {
+      "image/png": core.ops.op_base64_encode(obj),
+    };
   }
   if (isSVGElementLike(obj)) {
     return {
@@ -313,6 +369,20 @@ const html = createTaggedTemplateDisplayable("text/html");
  *    </svg>`
  */
 const svg = createTaggedTemplateDisplayable("image/svg+xml");
+
+function image(obj) {
+  if (isJpg(obj)) {
+    return makeDisplayable({ "image/jpg": core.ops.op_base64_encode(obj) });
+  }
+
+  if (isPng(obj)) {
+    return makeDisplayable({ "image/png": core.ops.op_base64_encode(obj) });
+  }
+
+  throw new TypeError(
+    "Object is not a valid image. `Deno.jupyter.image` supports JPG and PNG images",
+  );
+}
 
 function isMediaBundle(obj) {
   if (obj == null || typeof obj !== "object" || Array.isArray(obj)) {
@@ -465,6 +535,7 @@ function enableJupyter() {
     md,
     html,
     svg,
+    image,
     $display,
   };
 }
