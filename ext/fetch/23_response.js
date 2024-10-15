@@ -61,6 +61,7 @@ const _mimeType = Symbol("mime type");
 const _body = Symbol("body");
 const _brand = webidl.brand;
 
+// it's slightly faster to cache these
 const webidlConvertersBodyInitDomString = webidl.converters["BodyInit_DOMString?"];
 const webidlConvertersUSVString = webidl.converters["USVString"]
 const webidlConvertersUnsignedShort = webidl.converters["unsigned short"];
