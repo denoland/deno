@@ -1422,9 +1422,9 @@ dependencies = [
 
 [[package]]
 name = "deno_core"
-version = "0.311.0"
+version = "0.313.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "5e09bd55da542fa1fde753aff617c355b5d782e763ab2a19e4371a56d7844cac"
+checksum = "29f36be738d78e39b6603a6b07f1cf91e28baf3681f87205f07482999e0d0bc2"
 dependencies = [
  "anyhow",
  "bincode",
@@ -1587,6 +1587,8 @@ dependencies = [
  "serde",
  "serde-value",
  "serde_json",
+ "thiserror",
+ "tokio",
  "winapi",
 ]
 
@@ -1920,9 +1922,9 @@ dependencies = [
 
 [[package]]
 name = "deno_ops"
-version = "0.187.0"
+version = "0.189.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "e040fd4def8a67538fe38c9955fd970efc9f44284bd69d44f8992a456afd665d"
+checksum = "e8f998ad1d5b36064109367ffe67b1088385eb3d8025efc95e445bc013a147a2"
 dependencies = [
  "proc-macro-rules",
  "proc-macro2",
@@ -2163,6 +2165,7 @@ dependencies = [
  "deno_console",
  "deno_core",
  "deno_webidl",
+ "thiserror",
  "urlpattern",
 ]
 
@@ -2235,6 +2238,7 @@ dependencies = [
  "deno_core",
  "deno_web",
  "rusqlite",
+ "thiserror",
 ]
 
 [[package]]
@@ -6171,9 +6175,9 @@ dependencies = [
 
 [[package]]
 name = "serde_v8"
-version = "0.220.0"
+version = "0.222.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "6e7a65d91d79acc82aa229aeb084f4a39bda269069bc1520df40f679495388e4"
+checksum = "27130b5cd87f6f06228940a1f3a7ecc988ea13d1bede1398a48d74cb59dabc9a"
 dependencies = [
  "num-bigint",
  "serde",

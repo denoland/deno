@@ -586,6 +586,7 @@ pub async fn run(
     node_analysis_cache,
     fs.clone(),
     cli_node_resolver.clone(),
+    None,
   );
   let node_code_translator = Arc::new(NodeCodeTranslator::new(
     cjs_esm_code_analyzer,
@@ -651,7 +652,7 @@ pub async fn run(
       workspace_resolver,
       node_resolver: cli_node_resolver.clone(),
       npm_module_loader: Arc::new(NpmModuleLoader::new(
-        cjs_resolutions,
+        cjs_resolutions.clone(),
         node_code_translator,
         fs.clone(),
         cli_node_resolver,
@@ -696,6 +697,7 @@ pub async fn run(
   });
   let worker_factory = CliMainWorkerFactory::new(
     Arc::new(BlobStore::default()),
+    cjs_resolutions,
     // Code cache is not supported for standalone binary yet.
     None,
     feature_checker,
@@ -738,6 +740,7 @@ pub async fn run(
       node_ipc: None,
       serve_port: None,
       serve_host: None,
+      unstable_detect_cjs: metadata.unstable_config.detect_cjs,
     },
   );
 

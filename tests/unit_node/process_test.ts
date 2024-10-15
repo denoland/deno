@@ -1175,3 +1175,8 @@ Deno.test("process.cpuUsage()", () => {
   assert(typeof cpuUsage.user === "number");
   assert(typeof cpuUsage.system === "number");
 });
+
+Deno.test("process.stdout.columns writable", () => {
+  process.stdout.columns = 80;
+  assertEquals(process.stdout.columns, 80);
+});
