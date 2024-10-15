@@ -311,7 +311,7 @@ pub struct Document {
   resolver: Arc<LspResolver>,
   specifier: ModuleSpecifier,
   text: Arc<str>,
-  text_info_cell: once_cell::sync::OnceCell<SourceTextInfo>,
+  text_info_cell: std::sync::OnceLock<SourceTextInfo>,
 }
 
 impl Document {
@@ -386,7 +386,7 @@ impl Document {
       resolver,
       specifier,
       text,
-      text_info_cell: once_cell::sync::OnceCell::new(),
+      text_info_cell: std::sync::OnceLock::new(),
     })
   }
 
@@ -484,7 +484,7 @@ impl Document {
       resolver,
       specifier: self.specifier.clone(),
       text: self.text.clone(),
-      text_info_cell: once_cell::sync::OnceCell::new(),
+      text_info_cell: std::sync::OnceLock::new(),
     })
   }
 
@@ -553,7 +553,7 @@ impl Document {
       dependencies,
       maybe_types_dependency,
       text,
-      text_info_cell: once_cell::sync::OnceCell::new(),
+      text_info_cell: std::sync::OnceLock::new(),
       line_index,
       maybe_headers: self.maybe_headers.clone(),
       maybe_navigation_tree: Mutex::new(None),
@@ -582,7 +582,7 @@ impl Document {
       dependencies: self.dependencies.clone(),
       maybe_types_dependency: self.maybe_types_dependency.clone(),
       text: self.text.clone(),
-      text_info_cell: once_cell::sync::OnceCell::new(),
+      text_info_cell: std::sync::OnceLock::new(),
       line_index: self.line_index.clone(),
       maybe_headers: self.maybe_headers.clone(),
       maybe_navigation_tree: Mutex::new(
@@ -609,7 +609,7 @@ impl Document {
       dependencies: self.dependencies.clone(),
       maybe_types_dependency: self.maybe_types_dependency.clone(),
       text: self.text.clone(),
-      text_info_cell: once_cell::sync::OnceCell::new(),
+      text_info_cell: std::sync::OnceLock::new(),
       line_index: self.line_index.clone(),
       maybe_headers: self.maybe_headers.clone(),
       maybe_navigation_tree: Mutex::new(

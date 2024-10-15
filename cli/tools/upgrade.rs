@@ -22,7 +22,6 @@ use deno_core::error::AnyError;
 use deno_core::unsync::spawn;
 use deno_core::url::Url;
 use deno_semver::Version;
-use once_cell::sync::Lazy;
 use std::borrow::Cow;
 use std::env;
 use std::fs;
@@ -32,14 +31,15 @@ use std::path::Path;
 use std::path::PathBuf;
 use std::process::Command;
 use std::sync::Arc;
+use std::sync::LazyLock;
 use std::time::Duration;
 
 const RELEASE_URL: &str = "https://github.com/denoland/deno/releases";
 const CANARY_URL: &str = "https://dl.deno.land/canary";
 const DL_RELEASE_URL: &str = "https://dl.deno.land/release";
 
-pub static ARCHIVE_NAME: Lazy<String> =
-  Lazy::new(|| format!("deno-{}.zip", env!("TARGET")));
+pub static ARCHIVE_NAME: LazyLock<String> =
+  LazyLock::new(|| format!("deno-{}.zip", env!("TARGET")));
 
 // How often query server for new version. In hours.
 const UPGRADE_CHECK_INTERVAL: i64 = 24;

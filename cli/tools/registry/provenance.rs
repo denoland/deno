@@ -15,7 +15,6 @@ use deno_core::error::AnyError;
 use deno_core::serde_json;
 use deno_core::url::Url;
 use http_body_util::BodyExt;
-use once_cell::sync::Lazy;
 use p256::elliptic_curve;
 use p256::pkcs8::AssociatedOid;
 use ring::rand::SystemRandom;
@@ -29,6 +28,7 @@ use spki::der::pem::LineEnding;
 use spki::der::EncodePem;
 use std::collections::HashMap;
 use std::env;
+use std::sync::LazyLock;
 
 const PAE_PREFIX: &str = "DSSEv1";
 
@@ -365,7 +365,7 @@ pub async fn attest(
   Ok(bundle)
 }
 
-static DEFAULT_FULCIO_URL: Lazy<String> = Lazy::new(|| {
+static DEFAULT_FULCIO_URL: LazyLock<String> = LazyLock::new(|| {
   env::var("FULCIO_URL")
     .unwrap_or_else(|_| "https://fulcio.sigstore.dev".to_string())
 });
@@ -573,7 +573,7 @@ fn extract_jwt_subject(token: &str) -> Result<String, AnyError> {
   }
 }
 
-static DEFAULT_REKOR_URL: Lazy<String> = Lazy::new(|| {
+static DEFAULT_REKOR_URL: LazyLock<String> = LazyLock::new(|| {
   env::var("REKOR_URL")
     .unwrap_or_else(|_| "https://rekor.sigstore.dev".to_string())
 });
