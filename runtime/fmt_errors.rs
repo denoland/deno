@@ -282,6 +282,105 @@ fn format_js_error_inner(
   s
 }
 
+fn get_suggestions_for_terminal_errors(e: &JsError) -> Vec<FixSuggestion> {
+  if let Some(msg) = &e.message {
+    if msg.contains("module is not defined")
+      || msg.contains("exports is not defined")
+    {
+      return vec![
+        FixSuggestion::info(
+          "Deno does not support CommonJS modules without `.cjs` extension.",
+        ),
+        FixSuggestion::hint(
+          "Rewrite this module to ESM or change the file extension to `.cjs`.",
+        ),
+      ];
+    } else if msg.contains("openKv is not a function") {
+      return vec![
+        FixSuggestion::info("Deno.openKv() is an unstable API."),
+        FixSuggestion::hint(
+          "Run again with `--unstable-kv` flag to enable this API.",
+        ),
+      ];
+    } else if msg.contains("cron is not a function") {
+      return vec![
+        FixSuggestion::info("Deno.cron() is an unstable API."),
+        FixSuggestion::hint(
+          "Run again with `--unstable-cron` flag to enable this API.",
+        ),
+      ];
+    } else if msg.contains("WebSocketStream is not defined") {
+      return vec![
+        FixSuggestion::info("new WebSocketStream() is an unstable API."),
+        FixSuggestion::hint(
+          "Run again with `--unstable-net` flag to enable this API.",
+        ),
+      ];
+    } else if msg.contains("Temporal is not defined") {
+      return vec![
+        FixSuggestion::info("Temporal is an unstable API."),
+        FixSuggestion::hint(
+          "Run again with `--unstable-temporal` flag to enable this API.",
+        ),
+      ];
+    } else if msg.contains("BroadcastChannel is not defined") {
+      return vec![
+        FixSuggestion::info("BroadcastChannel is an unstable API."),
+        FixSuggestion::hint(
+          "Run again with `--unstable-broadcast-channel` flag to enable this API.",
+        ),
+      ];
+    } else if msg.contains("window is not defined") {
+      return vec![
+        FixSuggestion::info("window global is not available in Deno 2."),
+        FixSuggestion::hint("Replace `window` with `globalThis`."),
+      ];
+    } else if msg.contains("UnsafeWindowSurface is not a constructor") {
+      return vec![
+        FixSuggestion::info("Deno.UnsafeWindowSurface is an unstable API."),
+        FixSuggestion::hint(
+          "Run again with `--unstable-webgpu` flag to enable this API.",
+        ),
+      ];
+    // Try to capture errors like:
+    // ```
+    // Uncaught Error: Cannot find module '../build/Release/canvas.node'
+    // Require stack:
+    // - /.../deno/npm/registry.npmjs.org/canvas/2.11.2/lib/bindings.js
+    // - /.../.cache/deno/npm/registry.npmjs.org/canvas/2.11.2/lib/canvas.js
+    // ```
+    } else if msg.contains("Cannot find module")
+      && msg.contains("Require stack")
+      && msg.contains(".node'")
+    {
+      return vec![
+        FixSuggestion::info_multiline(
+          &[
+            "Trying to execute an npm package using Node-API addons,",
+            "these packages require local `node_modules` directory to be present."
+          ]
+        ),
+        FixSuggestion::hint_multiline(
+          &[
+            "Add `\"nodeModulesDir\": \"auto\" option to `deno.json`, and then run",
+            "`deno install --allow-scripts=npm:<package> --entrypoint <script>` to setup `node_modules` directory."
+          ]
+        )
+      ];
+    } else if msg.contains("document is not defined") {
+      return vec![
+        FixSuggestion::info("document global is not available in Deno."),
+        FixSuggestion::hint_multiline(&[
+          "Use a library like `happy-dom`, `deno_dom`, `linkedom` or `JSDom`",
+          "and setup `document` global according to their documentation.",
+        ]),
+      ];
+    }
+  }
+
+  vec![]
+}
+
 /// Format a [`JsError`] for terminal output.
 pub fn format_js_error(js_error: &JsError) -> String {
   let circular =
@@ -289,21 +388,7 @@ pub fn format_js_error(js_error: &JsError) -> String {
       reference,
       index: 1,
     });
-
-  format_js_error_inner(js_error, circular, true, vec![])
-}
-
-/// Format a [`JsError`] for terminal output, printing additional suggestions.
-pub fn format_js_error_with_suggestions(
-  js_error: &JsError,
-  suggestions: Vec<FixSuggestion>,
-) -> String {
-  let circular =
-    find_recursive_cause(js_error).map(|reference| IndexedErrorReference {
-      reference,
-      index: 1,
-    });
-
+  let suggestions = get_suggestions_for_terminal_errors(js_error);
   format_js_error_inner(js_error, circular, true, suggestions)
 }
 
