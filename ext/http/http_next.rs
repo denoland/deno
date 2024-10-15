@@ -266,7 +266,6 @@ fn set_promise_complete(http: Rc<HttpRecord>, status: u16) {
   http.complete();
 }
 
-
 #[op2]
 pub fn op_http_get_request_method_authority_and_path<'scope, HTTP>(
   scope: &mut v8::HandleScope<'scope>,

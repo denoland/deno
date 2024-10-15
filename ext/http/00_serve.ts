@@ -13,13 +13,13 @@ import {
   op_http_close_after_finish,
   op_http_get_request_headers,
   op_http_get_request_method_authority_and_path,
+  op_http_get_request_peer_address_and_port,
   op_http_read_request_body,
   op_http_serve,
   op_http_serve_on,
   op_http_set_promise_complete,
   op_http_set_response_body_bytes,
   op_http_set_response_body_resource,
-  op_http_get_request_peer_address_and_port,
   op_http_set_response_body_text,
   op_http_set_response_header,
   op_http_set_response_headers,
@@ -261,7 +261,8 @@ class InnerRequest {
       if (this.#external === null) {
         throw new TypeError("Request closed");
       }
-      this.#methodAuthorityAndPath = op_http_get_request_method_authority_and_path(this.#external);
+      this.#methodAuthorityAndPath =
+        op_http_get_request_method_authority_and_path(this.#external);
     }
 
     const path = this.#methodAuthorityAndPath[2];
@@ -317,7 +318,9 @@ class InnerRequest {
       if (this.#external === null) {
         throw new TypeError("Request closed");
       }
-      this.#peerAddressAndPort = op_http_get_request_peer_address_and_port(this.#external);
+      this.#peerAddressAndPort = op_http_get_request_peer_address_and_port(
+        this.#external,
+      );
     }
     return {
       transport: "tcp",
@@ -331,7 +334,8 @@ class InnerRequest {
       if (this.#external === null) {
         throw new TypeError("Request closed");
       }
-      this.#methodAuthorityAndPath = op_http_get_request_method_authority_and_path(this.#external);
+      this.#methodAuthorityAndPath =
+        op_http_get_request_method_authority_and_path(this.#external);
     }
     return this.#methodAuthorityAndPath[0];
   }
