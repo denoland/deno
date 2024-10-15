@@ -2,6 +2,7 @@
 
 use std::borrow::Cow;
 use std::cell::RefCell;
+use std::fmt::Debug;
 use std::pin::Pin;
 use std::rc::Rc;
 use std::task::Context;
@@ -80,6 +81,14 @@ pub struct NodeHttpClientResponse {
   response:
     Pin<Box<dyn Future<Output = Result<Response<Incoming>, Error>> + Send>>,
   url: String,
+}
+
+impl Debug for NodeHttpClientResponse {
+  fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+    f.debug_struct("NodeHttpClientResponse")
+      .field("url", &self.url)
+      .finish()
+  }
 }
 
 impl deno_core::Resource for NodeHttpClientResponse {
@@ -266,11 +275,17 @@ pub async fn op_node_http_await_response(
     .resource_table
     .take::<NodeHttpClientResponse>(rid)?;
   let resource = Rc::try_unwrap(resource)
-    .map_err(|_| bad_resource("NodeHttpClientResponse"))?;
+    .map_err(|_| bad_resource("NodeHttpClientResponse"));
+  eprintln!("resource: {resource:?}");
+  let resource = resource?;
 
-  let res = resource.response.await?;
+  eprintln!("op_node_http_await_response: awating for res");
+  let res = resource.response.await;
+  eprintln!("op_node_http_await_response: res: {res:?}");
+  let res = res?;
 
   let status = res.status();
+  eprintln!("op_node_http_await_response: {status}");
   let mut res_headers = Vec::new();
   for (key, val) in res.headers().iter() {
     res_headers.push((key.as_str().into(), val.as_bytes().into()));
@@ -568,7 +583,7 @@ impl Stream for NodeHttpResourceToBodyAdapter {
           Ok(buf) if buf.is_empty() => Poll::Ready(None),
           Ok(buf) => {
             let bytes: Bytes = buf.to_vec().into();
-            eprintln!("buf: {:?}", bytes.len());
+            eprintln!("buf: {:?}", bytes);
             this.1 = Some(this.0.clone().read(64 * 1024));
             Poll::Ready(Some(Ok(bytes)))
           }
