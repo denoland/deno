@@ -75,10 +75,17 @@ export function getaddrinfo(
 
   const recordTypes: ("A" | "AAAA")[] = [];
 
-  if (family === 0 || family === 6) {
+  if (family === 6) {
     recordTypes.push("AAAA");
-  }
-  if (family === 0 || family === 4) {
+  } else if (family === 4) {
+    recordTypes.push("A");
+  } else if (family === 0 && hostname === "localhost") {
+    // Ipv6 is preferred over Ipv4 for localhost
+    recordTypes.push("AAAA");
+    recordTypes.push("A");
+  } else if (family === 0) {
+    // Only get Ipv4 addresses for the other hostnames
+    // This simulates what `getaddrinfo` does when the family is not specified
     recordTypes.push("A");
   }
 
