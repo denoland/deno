@@ -488,13 +488,11 @@ pub async fn op_http2_client_get_response_body_chunk(
   loop {
     let result = poll_fn(|cx| poll_data_or_trailers(cx, &mut body)).await;
     if let Err(err) = result {
-      let reason = err.reason();
-      if let Some(reason) = reason {
-        if reason == Reason::CANCEL {
-          return Ok((None, false, true));
-        }
+      match err.reason() {
+        Some(Reason::NO_ERROR) => return Ok((None, true, false)),
+        Some(Reason::CANCEL) => return Ok((None, false, true)),
+        _ => return Err(err.into()),
       }
-      return Err(err.into());
     }
     match result.unwrap() {
       DataOrTrailers::Data(data) => {

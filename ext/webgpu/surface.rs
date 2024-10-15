@@ -88,14 +88,18 @@ pub fn op_webgpu_surface_get_current_texture(
   let instance = state.borrow::<super::Instance>();
   let device_resource = state
     .resource_table
-    .get::<super::WebGpuDevice>(device_rid).map_err(SurfaceError::Resource)?;
+    .get::<super::WebGpuDevice>(device_rid)
+    .map_err(SurfaceError::Resource)?;
   let device = device_resource.1;
-  let surface_resource =
-    state.resource_table.get::<WebGpuSurface>(surface_rid).map_err(SurfaceError::Resource)?;
+  let surface_resource = state
+    .resource_table
+    .get::<WebGpuSurface>(surface_rid)
+    .map_err(SurfaceError::Resource)?;
   let surface = surface_resource.1;
 
   let output =
-    gfx_select!(device => instance.surface_get_current_texture(surface, None)).map_err(SurfaceError::Surface)?;
+    gfx_select!(device => instance.surface_get_current_texture(surface, None))
+      .map_err(SurfaceError::Surface)?;
 
   match output.status {
     SurfaceStatus::Good | SurfaceStatus::Suboptimal => {
@@ -120,13 +124,17 @@ pub fn op_webgpu_surface_present(
   let instance = state.borrow::<super::Instance>();
   let device_resource = state
     .resource_table
-    .get::<super::WebGpuDevice>(device_rid).map_err(SurfaceError::Resource)?;
+    .get::<super::WebGpuDevice>(device_rid)
+    .map_err(SurfaceError::Resource)?;
   let device = device_resource.1;
-  let surface_resource =
-    state.resource_table.get::<WebGpuSurface>(surface_rid).map_err(SurfaceError::Resource)?;
+  let surface_resource = state
+    .resource_table
+    .get::<WebGpuSurface>(surface_rid)
+    .map_err(SurfaceError::Resource)?;
   let surface = surface_resource.1;
 
-  let _ = gfx_select!(device => instance.surface_present(surface)).map_err(SurfaceError::Surface)?;
+  let _ = gfx_select!(device => instance.surface_present(surface))
+    .map_err(SurfaceError::Surface)?;
 
   Ok(())
 }

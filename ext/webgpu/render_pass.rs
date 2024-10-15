@@ -343,10 +343,12 @@ pub fn op_webgpu_render_pass_set_index_buffer(
 ) -> Result<WebGpuResult, RenderPassError> {
   let buffer_resource = state
     .resource_table
-    .get::<super::buffer::WebGpuBuffer>(buffer).map_err(RenderPassError::Resource)?;
+    .get::<super::buffer::WebGpuBuffer>(buffer)
+    .map_err(RenderPassError::Resource)?;
   let render_pass_resource = state
     .resource_table
-    .get::<WebGpuRenderPass>(render_pass_rid).map_err(RenderPassError::Resource)?;
+    .get::<WebGpuRenderPass>(render_pass_rid)
+    .map_err(RenderPassError::Resource)?;
 
   let size = if let Some(size) = size {
     Some(std::num::NonZeroU64::new(size).ok_or(RenderPassError::InvalidSize)?)
@@ -376,10 +378,12 @@ pub fn op_webgpu_render_pass_set_vertex_buffer(
 ) -> Result<WebGpuResult, RenderPassError> {
   let buffer_resource = state
     .resource_table
-    .get::<super::buffer::WebGpuBuffer>(buffer).map_err(RenderPassError::Resource)?;
+    .get::<super::buffer::WebGpuBuffer>(buffer)
+    .map_err(RenderPassError::Resource)?;
   let render_pass_resource = state
     .resource_table
-    .get::<WebGpuRenderPass>(render_pass_rid).map_err(RenderPassError::Resource)?;
+    .get::<WebGpuRenderPass>(render_pass_rid)
+    .map_err(RenderPassError::Resource)?;
 
   let size = if let Some(size) = size {
     Some(std::num::NonZeroU64::new(size).ok_or(RenderPassError::InvalidSize)?)
