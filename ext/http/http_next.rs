@@ -266,8 +266,9 @@ fn set_promise_complete(http: Rc<HttpRecord>, status: u16) {
   http.complete();
 }
 
+
 #[op2]
-pub fn op_http_get_request_method_and_url<'scope, HTTP>(
+pub fn op_http_get_request_method_authority_and_path<'scope, HTTP>(
   scope: &mut v8::HandleScope<'scope>,
   external: *const c_void,
 ) -> v8::Local<'scope, v8::Array>
@@ -276,7 +277,7 @@ where
 {
   let http =
     // SAFETY: op is called with external.
-    unsafe { clone_external!(external, "op_http_get_request_method_and_url") };
+    unsafe { clone_external!(external, "op_http_get_request_method_authority_and_path") };
   let request_info = http.request_info();
   let request_parts = http.request_parts();
   let request_properties = HTTP::request_properties(
@@ -315,6 +316,22 @@ where
       .unwrap()
       .into();
 
+  let vec = [method, authority, path];
+  v8::Array::new_with_elements(scope, vec.as_slice())
+}
+
+#[op2]
+pub fn op_http_get_request_peer_address_and_port<'scope, HTTP>(
+  scope: &mut v8::HandleScope<'scope>,
+  external: *const c_void,
+) -> v8::Local<'scope, v8::Array>
+where
+  HTTP: HttpPropertyExtractor,
+{
+  let http =
+    // SAFETY: op is called with external.
+    unsafe { clone_external!(external, "op_http_get_request_peer_address_and_port") };
+  let request_info = http.request_info();
   let peer_address: v8::Local<v8::Value> = v8::String::new_from_utf8(
     scope,
     request_info.peer_address.as_bytes(),
@@ -328,7 +345,7 @@ where
     None => v8::undefined(scope).into(),
   };
 
-  let vec = [method, authority, path, peer_address, port];
+  let vec = [peer_address, port];
   v8::Array::new_with_elements(scope, vec.as_slice())
 }
 
