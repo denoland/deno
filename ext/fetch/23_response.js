@@ -61,6 +61,13 @@ const _mimeType = Symbol("mime type");
 const _body = Symbol("body");
 const _brand = webidl.brand;
 
+const webidlConvertersBodyInitDomString = webidl.converters["BodyInit_DOMString?"];
+const webidlConvertersUSVString = webidl.converters["USVString"]
+const webidlConvertersUnsignedShort = webidl.converters["unsigned short"];
+const webidlConvertersAny = webidl.converters["any"];
+const webidlConvertersByteString = webidl.converters["ByteString"];
+const webidlConvertersHeadersInit = webidl.converters["HeadersInit"]
+
 /**
  * @typedef InnerResponse
  * @property {"basic" | "cors" | "default" | "error" | "opaque" | "opaqueredirect"} type
@@ -225,6 +232,7 @@ function initializeAResponse(response, init, bodyWithType) {
   }
 }
 
+
 class Response {
   get [_mimeType]() {
     const values = getDecodeSplitHeader(
@@ -259,8 +267,8 @@ class Response {
    */
   static redirect(url, status = 302) {
     const prefix = "Failed to execute 'Response.redirect'";
-    url = webidl.converters["USVString"](url, prefix, "Argument 1");
-    status = webidl.converters["unsigned short"](status, prefix, "Argument 2");
+    url = webidlConvertersUSVString(url, prefix, "Argument 1");
+    status = webidlConvertersUnsignedShort(status, prefix, "Argument 2");
 
     const baseURL = getLocationHref();
     const parsedURL = new URL(url, baseURL);
@@ -286,8 +294,8 @@ class Response {
    */
   static json(data = undefined, init = { __proto__: null }) {
     const prefix = "Failed to execute 'Response.json'";
-    data = webidl.converters.any(data);
-    init = webidl.converters["ResponseInit_fast"](init, prefix, "Argument 2");
+    data = webidlConvertersAny(data);
+    init = webidlConvertersResponseInitFast(init, prefix, "Argument 2");
 
     const str = serializeJSValueToJSONString(data);
     const res = extractBody(str);
@@ -313,8 +321,8 @@ class Response {
     }
 
     const prefix = "Failed to construct 'Response'";
-    body = webidl.converters["BodyInit_DOMString?"](body, prefix, "Argument 1");
-    init = webidl.converters["ResponseInit_fast"](init, prefix, "Argument 2");
+    body = webidlConvertersBodyInitDomString(body, prefix, "Argument 1");
+    init = webidlConvertersResponseInitFast(init, prefix, "Argument 2");
 
     this[_response] = newInnerResponse();
     this[_headers] = headersFromHeaderList(
@@ -443,22 +451,22 @@ webidl.converters["Response"] = webidl.createInterfaceConverter(
   "Response",
   ResponsePrototype,
 );
-webidl.converters["ResponseInit"] = webidl.createDictionaryConverter(
+const webidlConvertersResponseInit = webidl.converters["ResponseInit"] = webidl.createDictionaryConverter(
   "ResponseInit",
   [{
     key: "status",
     defaultValue: 200,
-    converter: webidl.converters["unsigned short"],
+    converter: webidlConvertersUnsignedShort,
   }, {
     key: "statusText",
     defaultValue: "",
-    converter: webidl.converters["ByteString"],
+    converter: webidlConvertersByteString,
   }, {
     key: "headers",
-    converter: webidl.converters["HeadersInit"],
+    converter: webidlConvertersHeadersInit,
   }],
 );
-webidl.converters["ResponseInit_fast"] = function (
+const webidlConvertersResponseInitFast = webidl.converters["ResponseInit_fast"] = function (
   init,
   prefix,
   context,
@@ -471,18 +479,18 @@ webidl.converters["ResponseInit_fast"] = function (
   if (typeof init === "object" && !core.isProxy(init)) {
     // Not a proxy fast path
     const status = init.status !== undefined
-      ? webidl.converters["unsigned short"](init.status)
+      ? webidlConvertersUnsignedShort(init.status)
       : 200;
     const statusText = init.statusText !== undefined
-      ? webidl.converters["ByteString"](init.statusText)
+      ? webidlConvertersByteString(init.statusText)
       : "";
     const headers = init.headers !== undefined
-      ? webidl.converters["HeadersInit"](init.headers)
+      ? webidlConvertersHeadersInit(init.headers)
       : undefined;
     return { status, statusText, headers };
   }
   // Slow default path
-  return webidl.converters["ResponseInit"](init, prefix, context, opts);
+  return webidlConvertersResponseInit(init, prefix, context, opts);
 };
 
 /**
