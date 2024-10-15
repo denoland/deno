@@ -1,7 +1,7 @@
-error: Uncaught (in promise) ReferenceError: module is not defined
-module.exports = {
-^
-    at [WILDCARD]module_error.js:1:1
+error: Uncaught (in promise) ReferenceError: require is not defined
+const process = require("process");
+                ^
+    at [WILDCARD]require_error.js:1:17
 
     info: Deno supports CommonJS modules in .cjs files, or when there's a package.json
           with "type": "commonjs" option and --unstable-detect-cjs flag is used.
