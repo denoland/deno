@@ -476,13 +476,16 @@ impl HttpClient {
     maybe_header: Option<(HeaderName, HeaderValue)>,
     progress_guard: &UpdateGuard,
   ) -> Result<Option<Vec<u8>>, DownloadError> {
-    crate::util::retry::retry(|| {
-      self.download_inner(
-        url.clone(),
-        maybe_header.clone(),
-        Some(progress_guard),
-      )
-    })
+    crate::util::retry::retry(
+      || {
+        self.download_inner(
+          url.clone(),
+          maybe_header.clone(),
+          Some(progress_guard),
+        )
+      },
+      |e| matches!(e, DownloadError::BadResponse(_) | DownloadError::Fetch(_)),
+    )
     .await
   }
 
