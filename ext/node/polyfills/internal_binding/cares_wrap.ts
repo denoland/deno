@@ -75,11 +75,11 @@ export function getaddrinfo(
 
   const recordTypes: ("A" | "AAAA")[] = [];
 
-  if (family === 0 || family === 4) {
-    recordTypes.push("A");
-  }
   if (family === 0 || family === 6) {
     recordTypes.push("AAAA");
+  }
+  if (family === 0 || family === 4) {
+    recordTypes.push("A");
   }
 
   (async () => {
