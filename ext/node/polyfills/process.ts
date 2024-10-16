@@ -522,7 +522,6 @@ Process.prototype.on = function (
     ) {
       // Ignores all signals except SIGBREAK and SIGINT on windows.
       // deno-lint-ignore no-console
-      console.warn(`Ignoring signal "${event}" on Windows`);
     } else {
       EventEmitter.prototype.on.call(this, event, listener);
       Deno.addSignalListener(event as Deno.Signal, listener);
