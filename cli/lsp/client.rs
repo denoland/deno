@@ -92,19 +92,6 @@ impl Client {
     });
   }
 
-  pub fn send_did_refresh_deno_configuration_tree_notification(
-    &self,
-    params: lsp_custom::DidRefreshDenoConfigurationTreeNotificationParams,
-  ) {
-    // do on a task in case the caller currently is in the lsp lock
-    let client = self.0.clone();
-    spawn(async move {
-      client
-        .send_did_refresh_deno_configuration_tree_notification(params)
-        .await;
-    });
-  }
-
   pub fn send_did_change_deno_configuration_notification(
     &self,
     params: lsp_custom::DidChangeDenoConfigurationNotificationParams,
@@ -182,10 +169,6 @@ trait ClientTrait: Send + Sync {
     params: lsp_custom::DiagnosticBatchNotificationParams,
   );
   async fn send_test_notification(&self, params: TestingNotification);
-  async fn send_did_refresh_deno_configuration_tree_notification(
-    &self,
-    params: lsp_custom::DidRefreshDenoConfigurationTreeNotificationParams,
-  );
   async fn send_did_change_deno_configuration_notification(
     &self,
     params: lsp_custom::DidChangeDenoConfigurationNotificationParams,
@@ -264,18 +247,6 @@ impl ClientTrait for TowerClient {
           .await
       }
     }
-  }
-
-  async fn send_did_refresh_deno_configuration_tree_notification(
-    &self,
-    params: lsp_custom::DidRefreshDenoConfigurationTreeNotificationParams,
-  ) {
-    self
-      .0
-      .send_notification::<lsp_custom::DidRefreshDenoConfigurationTreeNotification>(
-        params,
-      )
-      .await
   }
 
   async fn send_did_change_deno_configuration_notification(
@@ -394,12 +365,6 @@ impl ClientTrait for ReplClient {
   }
 
   async fn send_test_notification(&self, _params: TestingNotification) {}
-
-  async fn send_did_refresh_deno_configuration_tree_notification(
-    &self,
-    _params: lsp_custom::DidRefreshDenoConfigurationTreeNotificationParams,
-  ) {
-  }
 
   async fn send_did_change_deno_configuration_notification(
     &self,
