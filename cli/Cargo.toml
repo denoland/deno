@@ -67,7 +67,7 @@ deno_ast = { workspace = true, features = ["bundler", "cjs", "codegen", "proposa
 deno_cache_dir = { workspace = true }
 deno_config = { version = "=0.37.1", features = ["workspace", "sync"] }
 deno_core = { workspace = true, features = ["include_js_files_for_snapshotting"] }
-deno_doc = { version = "0.152.0", features = ["html"] }
+deno_doc = { version = "0.153.0", features = ["html"] }
 deno_graph = { version = "=0.83.3" }
 deno_lint = { version = "=0.67.0", features = ["docs"] }
 deno_lockfile.workspace = true
@@ -94,7 +94,7 @@ chrono = { workspace = true, features = ["now"] }
 clap = { version = "=4.5.16", features = ["env", "string", "wrap_help", "error-context"] }
 clap_complete = "=4.5.24"
 clap_complete_fig = "=4.5.2"
-color-print = "0.3.5"
+color-print.workspace = true
 console_static_text.workspace = true
 dashmap.workspace = true
 data-encoding.workspace = true

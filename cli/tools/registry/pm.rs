@@ -130,8 +130,10 @@ impl NpmConfig {
   fn add(&mut self, selected: SelectedPackage, dev: bool) {
     let (name, version) = package_json_dependency_entry(selected);
     if dev {
+      self.dependencies.swap_remove(&name);
       self.dev_dependencies.insert(name, version);
     } else {
+      self.dev_dependencies.swap_remove(&name);
       self.dependencies.insert(name, version);
     }
   }
@@ -361,7 +363,14 @@ fn package_json_dependency_entry(
   selected: SelectedPackage,
 ) -> (String, String) {
   if let Some(npm_package) = selected.package_name.strip_prefix("npm:") {
-    (npm_package.into(), selected.version_req)
+    if selected.import_name == npm_package {
+      (npm_package.into(), selected.version_req)
+    } else {
+      (
+        selected.import_name,
+        format!("npm:{}@{}", npm_package, selected.version_req),
+      )
+    }
   } else if let Some(jsr_package) = selected.package_name.strip_prefix("jsr:") {
     let jsr_package = jsr_package.strip_prefix('@').unwrap_or(jsr_package);
     let scope_replaced = jsr_package.replace('/', "__");
@@ -391,14 +400,17 @@ impl std::fmt::Display for AddCommandName {
 
 fn load_configs(
   flags: &Arc<Flags>,
+  has_jsr_specifiers: impl FnOnce() -> bool,
 ) -> Result<(CliFactory, Option<NpmConfig>, Option<DenoConfig>), AnyError> {
   let cli_factory = CliFactory::from_flags(flags.clone());
   let options = cli_factory.cli_options()?;
   let npm_config = NpmConfig::from_options(options)?;
   let (cli_factory, deno_config) = match DenoConfig::from_options(options)? {
     Some(config) => (cli_factory, Some(config)),
-    None if npm_config.is_some() => (cli_factory, None),
-    None => {
+    None if npm_config.is_some() && !has_jsr_specifiers() => {
+      (cli_factory, None)
+    }
+    _ => {
       let factory = create_deno_json(flags, options)?;
       let options = factory.cli_options()?.clone();
       (
@@ -418,7 +430,9 @@ pub async fn add(
   add_flags: AddFlags,
   cmd_name: AddCommandName,
 ) -> Result<(), AnyError> {
-  let (cli_factory, npm_config, deno_config) = load_configs(&flags)?;
+  let (cli_factory, npm_config, deno_config) = load_configs(&flags, || {
+    add_flags.packages.iter().any(|s| s.starts_with("jsr:"))
+  })?;
   let mut npm_config = ConfigUpdater::maybe_new(npm_config).await?;
   let mut deno_config = ConfigUpdater::maybe_new(deno_config).await?;
 
@@ -739,6 +753,9 @@ fn generate_imports(mut packages_to_version: Vec<(String, String)>) -> String {
   let mut contents = vec![];
   let len = packages_to_version.len();
   for (index, (package, version)) in packages_to_version.iter().enumerate() {
+    if index == 0 {
+      contents.push(String::new()); // force a newline at the start
+    }
     // TODO(bartlomieju): fix it, once we start support specifying version on the cli
     contents.push(format!("\"{}\": \"{}\"", package, version));
     if index != len - 1 {
@@ -752,7 +769,7 @@ pub async fn remove(
   flags: Arc<Flags>,
   remove_flags: RemoveFlags,
 ) -> Result<(), AnyError> {
-  let (_, npm_config, deno_config) = load_configs(&flags)?;
+  let (_, npm_config, deno_config) = load_configs(&flags, || false)?;
 
   let mut configs = [
     ConfigUpdater::maybe_new(npm_config).await?,

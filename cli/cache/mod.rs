@@ -9,10 +9,13 @@ use crate::file_fetcher::FetchPermissionsOptionRef;
 use crate::file_fetcher::FileFetcher;
 use crate::file_fetcher::FileOrRedirect;
 use crate::npm::CliNpmResolver;
+use crate::resolver::CliNodeResolver;
 use crate::util::fs::atomic_write_file_with_retries;
 use crate::util::fs::atomic_write_file_with_retries_and_fs;
 use crate::util::fs::AtomicWriteFileFsAdapter;
 use crate::util::path::specifier_has_extension;
+use crate::util::text_encoding::arc_str_to_bytes;
+use crate::util::text_encoding::from_utf8_lossy_owned;
 
 use deno_ast::MediaType;
 use deno_core::futures;
@@ -57,6 +60,7 @@ pub use fast_check::FastCheckCache;
 pub use incremental::IncrementalCache;
 pub use module_info::ModuleInfoCache;
 pub use node::NodeAnalysisCache;
+pub use parsed_source::EsmOrCjsChecker;
 pub use parsed_source::LazyGraphSourceParser;
 pub use parsed_source::ParsedSourceCache;
 
@@ -177,37 +181,46 @@ pub struct FetchCacherOptions {
   pub permissions: PermissionsContainer,
   /// If we're publishing for `deno publish`.
   pub is_deno_publish: bool,
+  pub unstable_detect_cjs: bool,
 }
 
 /// A "wrapper" for the FileFetcher and DiskCache for the Deno CLI that provides
 /// a concise interface to the DENO_DIR when building module graphs.
 pub struct FetchCacher {
-  file_fetcher: Arc<FileFetcher>,
   pub file_header_overrides: HashMap<ModuleSpecifier, HashMap<String, String>>,
+  esm_or_cjs_checker: Arc<EsmOrCjsChecker>,
+  file_fetcher: Arc<FileFetcher>,
   global_http_cache: Arc<GlobalHttpCache>,
+  node_resolver: Arc<CliNodeResolver>,
   npm_resolver: Arc<dyn CliNpmResolver>,
   module_info_cache: Arc<ModuleInfoCache>,
   permissions: PermissionsContainer,
-  cache_info_enabled: bool,
   is_deno_publish: bool,
+  unstable_detect_cjs: bool,
+  cache_info_enabled: bool,
 }
 
 impl FetchCacher {
   pub fn new(
+    esm_or_cjs_checker: Arc<EsmOrCjsChecker>,
     file_fetcher: Arc<FileFetcher>,
     global_http_cache: Arc<GlobalHttpCache>,
+    node_resolver: Arc<CliNodeResolver>,
     npm_resolver: Arc<dyn CliNpmResolver>,
     module_info_cache: Arc<ModuleInfoCache>,
     options: FetchCacherOptions,
   ) -> Self {
     Self {
       file_fetcher,
+      esm_or_cjs_checker,
       global_http_cache,
+      node_resolver,
       npm_resolver,
       module_info_cache,
       file_header_overrides: options.file_header_overrides,
       permissions: options.permissions,
       is_deno_publish: options.is_deno_publish,
+      unstable_detect_cjs: options.unstable_detect_cjs,
       cache_info_enabled: false,
     }
   }
@@ -281,6 +294,46 @@ impl Loader for FetchCacher {
             specifier: specifier.clone(),
           },
         ))));
+      }
+
+      if self.unstable_detect_cjs && specifier_has_extension(specifier, "js") {
+        if let Ok(Some(pkg_json)) =
+          self.node_resolver.get_closest_package_json(specifier)
+        {
+          if pkg_json.typ == "commonjs" {
+            if let Ok(path) = specifier.to_file_path() {
+              if let Ok(bytes) = std::fs::read(&path) {
+                let text: Arc<str> = from_utf8_lossy_owned(bytes).into();
+                let is_es_module = match self.esm_or_cjs_checker.is_esm(
+                  specifier,
+                  text.clone(),
+                  MediaType::JavaScript,
+                ) {
+                  Ok(value) => value,
+                  Err(err) => {
+                    return Box::pin(futures::future::ready(Err(err.into())));
+                  }
+                };
+                if !is_es_module {
+                  self.node_resolver.mark_cjs_resolution(specifier.clone());
+                  return Box::pin(futures::future::ready(Ok(Some(
+                    LoadResponse::External {
+                      specifier: specifier.clone(),
+                    },
+                  ))));
+                } else {
+                  return Box::pin(futures::future::ready(Ok(Some(
+                    LoadResponse::Module {
+                      specifier: specifier.clone(),
+                      content: arc_str_to_bytes(text),
+                      maybe_headers: None,
+                    },
+                  ))));
+                }
+              }
+            }
+          }
+        }
       }
     }
 
