@@ -337,13 +337,54 @@ async function formatInner(obj, raw) {
 internals.jupyter = { formatInner };
 
 function enableJupyter() {
-  const { op_jupyter_broadcast, op_jupyter_input } = core.ops;
+  const {
+    op_jupyter_broadcast,
+    op_jupyter_input,
+    op_jupyter_comm_recv,
+    op_jupyter_comm_open,
+  } = core.ops;
 
   function input(
     prompt,
     password,
   ) {
     return op_jupyter_input(prompt, password);
+  }
+
+  function comm(commId, targetName, msgCallback) {
+    op_jupyter_comm_open(commId, targetName);
+
+    let closed = false;
+
+    // TODO(bartlomieju): return something, so we can close this comm.
+    (async () => {
+      while (true) {
+        const [data, buffers] = await op_jupyter_comm_recv(commId);
+
+        if (!data) {
+          closed = true;
+          break;
+        }
+
+        msgCallback?.(data, buffers);
+      }
+    })();
+
+    return {
+      close() {
+        if (closed) {
+          return;
+        }
+
+        closed = true;
+      },
+      send(data, buffers = []) {
+        return broadcast("comm_msg", {
+          comm_id: commId,
+          data: data,
+        }, { buffers });
+      },
+    };
   }
 
   async function broadcast(
