@@ -1662,7 +1662,7 @@ fn add_subcommand() -> Command {
   <p(245)>deno add jsr:@std/path</>
 
 You can add multiple dependencies at once:
-  <p(245)>deno add jsr:@std/path Jsr:@std/assert</>"
+  <p(245)>deno add jsr:@std/path jsr:@std/assert</>"
     ),
     UnstableArgsConfig::None,
   )
