@@ -79,7 +79,7 @@ pub enum WebsocketError {
   Resource(deno_core::error::AnyError),
   #[error(transparent)]
   Uri(#[from] http::uri::InvalidUri),
-  #[error(transparent)]
+  #[error("{0}")]
   Io(#[from] std::io::Error),
   #[error(transparent)]
   WebSocket(#[from] fastwebsockets::WebSocketError),
