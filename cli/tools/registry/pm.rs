@@ -779,24 +779,28 @@ pub async fn remove(
   let mut removed_packages = vec![];
 
   for package in &remove_flags.packages {
-    let mut removed = false;
+    let req = AddRmPackageReq::parse(package).with_context(|| {
+      format!("Failed to parse package required: {}", package)
+    })?;
+    let mut parsed_pkg_name = None;
     for config in configs.iter_mut().flatten() {
-      let req = AddRmPackageReq::parse(package).with_context(|| {
-        format!("Failed to parse package required: {}", package)
-      })?;
-      match req {
+      match &req {
         Ok(rm_pkg) => {
-          removed |= config.remove(&rm_pkg.alias);
+          if config.remove(&rm_pkg.alias) && parsed_pkg_name.is_none() {
+            parsed_pkg_name = Some(rm_pkg.alias.clone());
+          }
         }
         Err(pkg) => {
           // An alias or a package name without registry/version
           // constraints. Try to remove the package anyway.
-          removed |= config.remove(&pkg.name);
+          if config.remove(&pkg.name) && parsed_pkg_name.is_none() {
+            parsed_pkg_name = Some(pkg.name.clone());
+          }
         }
       }
     }
-    if removed {
-      removed_packages.push(package.clone());
+    if let Some(pkg) = parsed_pkg_name {
+      removed_packages.push(pkg);
     }
   }
 
