@@ -69,7 +69,7 @@ export function scryptSync(
   const blen = p * 128 * r;
 
   if (32 * r * (N + 2) * 4 + blen > maxmem) {
-    throw new Error("exceeds max memory");
+    throw new Error('"scryptSync" exceeds max memory');
   }
 
   const buf = Buffer.alloc(keylen);
@@ -104,7 +104,7 @@ export function scrypt(
 
   const blen = p * 128 * r;
   if (32 * r * (N + 2) * 4 + blen > maxmem) {
-    throw new Error("exceeds max memory");
+    throw new Error('"scryptSync" exceeds max memory');
   }
 
   try {
