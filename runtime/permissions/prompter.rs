@@ -366,7 +366,7 @@ impl PermissionPrompter for TtyPrompter {
 
       let mut input = String::new();
       let result = stdin_lock.read_line(&mut input);
-      let input = input.trim_end_matches(|c| c == '\r' || c == '\n');
+      let input = input.trim_end_matches(['\r', '\n']);
       if result.is_err() || input.len() != 1 {
         break PromptResponse::Deny;
       };
