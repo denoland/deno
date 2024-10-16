@@ -160,11 +160,11 @@ fn atomic_write_file(
     data: &[u8],
   ) -> std::io::Result<()> {
     fs.write_file(temp_file_path, data)?;
-    fs.rename_file(temp_file_path, file_path).map_err(|err| {
-      // clean up the created temp file on error
-      let _ = fs.remove_file(temp_file_path);
-      err
-    })
+    fs.rename_file(temp_file_path, file_path)
+      .inspect_err(|_err| {
+        // clean up the created temp file on error
+        let _ = fs.remove_file(temp_file_path);
+      })
   }
 
   let temp_file_path = get_atomic_file_path(file_path);
@@ -277,7 +277,7 @@ pub fn write_file_2<T: AsRef<[u8]>>(
 
 /// Similar to `std::fs::canonicalize()` but strips UNC prefixes on Windows.
 pub fn canonicalize_path(path: &Path) -> Result<PathBuf, Error> {
-  Ok(deno_core::strip_unc_prefix(path.canonicalize()?))
+  Ok(deno_path_util::strip_unc_prefix(path.canonicalize()?))
 }
 
 /// Canonicalizes a path which might be non-existent by going up the

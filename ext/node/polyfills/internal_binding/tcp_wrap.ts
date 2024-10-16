@@ -303,8 +303,8 @@ export class TCP extends ConnectionWrap {
    * @param noDelay
    * @return An error status code.
    */
-  setNoDelay(_noDelay: boolean): number {
-    // TODO(bnoordhuis) https://github.com/denoland/deno/pull/13103
+  setNoDelay(noDelay: boolean): number {
+    this[kStreamBaseField].setNoDelay(noDelay);
     return 0;
   }
 

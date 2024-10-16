@@ -39,6 +39,7 @@ import {
   formatWithOptions,
   inspect,
   stripVTControlCharacters,
+  styleText,
 } from "ext:deno_node/internal/util/inspect.mjs";
 import { codes } from "ext:deno_node/internal/error_codes.ts";
 import types from "node:util/types";
@@ -63,6 +64,7 @@ export {
   parseArgs,
   promisify,
   stripVTControlCharacters,
+  styleText,
   types,
 };
 
@@ -354,4 +356,5 @@ export default {
   debuglog,
   debug: debuglog,
   isDeepStrictEqual,
+  styleText,
 };

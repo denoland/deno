@@ -11,6 +11,11 @@
       "args": "run exports_error.js",
       "output": "exports_error.out",
       "exitCode": 1
+    },
+    {
+      "args": "run require_error.js",
+      "output": "require_error.out",
+      "exitCode": 1
     }
   ]
 }

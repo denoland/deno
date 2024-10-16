@@ -182,17 +182,21 @@ async fn run_task(opts: RunTaskOptions<'_>) -> Result<i32, AnyError> {
     &task_runner::get_script_with_args(script, cli_options.argv()),
   );
 
-  task_runner::run_task(task_runner::RunTaskOptions {
-    task_name,
-    script,
-    cwd,
-    env_vars,
-    custom_commands,
-    init_cwd: opts.cli_options.initial_cwd(),
-    argv: cli_options.argv(),
-    root_node_modules_dir: npm_resolver.root_node_modules_path(),
-  })
-  .await
+  Ok(
+    task_runner::run_task(task_runner::RunTaskOptions {
+      task_name,
+      script,
+      cwd,
+      env_vars,
+      custom_commands,
+      init_cwd: opts.cli_options.initial_cwd(),
+      argv: cli_options.argv(),
+      root_node_modules_dir: npm_resolver.root_node_modules_path(),
+      stdio: None,
+    })
+    .await?
+    .exit_code,
+  )
 }
 
 fn output_task(task_name: &str, script: &str) {
