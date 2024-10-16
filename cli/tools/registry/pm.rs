@@ -637,11 +637,29 @@ async fn find_package_and_select_version_for_req(
           package_req: req,
         });
       };
-      let range_symbol = if req.version_req.version_text().starts_with('~') {
-        '~'
-      } else {
-        '^'
+
+      // Check if the version requirement is for an exact version
+      // rather than a range.
+      let is_exact = match req.version_req.inner() {
+        deno_semver::RangeSetOrTag::RangeSet(range_set) => {
+          let items = &range_set.0;
+          if let Some(first) = items.first() {
+            first.start == first.end && items.len() == 1
+          } else {
+            false
+          }
+        }
+        deno_semver::RangeSetOrTag::Tag(_) => false,
       };
+
+      let range_symbol = if req.version_req.version_text().starts_with('~') {
+        "~"
+      } else if is_exact {
+        ""
+      } else {
+        "^"
+      };
+
       Ok(PackageAndVersion::Selected(SelectedPackage {
         import_name: add_package_req.alias,
         package_name: npm_prefixed_name,
