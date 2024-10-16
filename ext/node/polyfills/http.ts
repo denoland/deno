@@ -50,6 +50,7 @@ import { urlToHttpOptions } from "ext:deno_node/internal/url.ts";
 import { kEmptyObject } from "ext:deno_node/internal/util.mjs";
 import { constants, TCP } from "ext:deno_node/internal_binding/tcp_wrap.ts";
 import { notImplemented, warnNotImplemented } from "ext:deno_node/_utils.ts";
+import { isWindows } from "ext:deno_node/_util/os.ts";
 import {
   connResetException,
   ERR_HTTP_HEADERS_SENT,
@@ -1586,7 +1587,8 @@ export class ServerImpl extends EventEmitter {
       port = options.port | 0;
     }
 
-    let hostname = options.host ?? "[::]";
+    // Use 0.0.0.0 for Windows, and [::] for other platforms.
+    let hostname = options.host ?? (isWindows ? "0.0.0.0" : "[::]");
     if (hostname == "localhost") {
       hostname = "127.0.0.1";
     }

@@ -1871,8 +1871,13 @@ function _setupListenHandle(
 
     // Try to bind to the unspecified IPv6 address, see if IPv6 is available
     if (!address && typeof fd !== "number") {
-      address = DEFAULT_IPV6_ADDR;
-      addressType = 6;
+      if (isWindows) {
+        address = DEFAULT_IPV4_ADDR;
+        addressType = 4;
+      } else {
+        address = DEFAULT_IPV6_ADDR;
+        addressType = 6;
+      }
     }
 
     if (rval === null) {
