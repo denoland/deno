@@ -255,6 +255,20 @@ fn console_log() {
     console.write_line("'world'");
     console.expect("\"world\"");
   });
+
+  // https://github.com/denoland/deno/issues/21428
+  let (out, err) = util::run_and_collect_output_with_args(
+    true,
+    vec![
+      "repl",
+      "--eval-file=./../specs/repl/console_log/093_console_log_format.js",
+    ],
+    None,
+    None,
+    false,
+  );
+  assert_contains!(out, "0.5");
+  assert!(err.is_empty());
 }
 
 #[test]

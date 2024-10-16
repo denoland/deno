@@ -1,3 +1,5 @@
 {
-  "dependencies": { "@denotest/deprecated-package": "^1.0.0" }
+  "dependencies": {
+    "@denotest/deprecated-package": "^1.0.0"
+  }
 }
