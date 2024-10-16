@@ -23,6 +23,7 @@ use deno_ffi::DlfcnError;
 use deno_ffi::IRError;
 use deno_ffi::ReprError;
 use deno_ffi::StaticError;
+use deno_fs::FsOpsError;
 use deno_tls::TlsError;
 use deno_webstorage::WebStorageError;
 use std::env;
@@ -292,6 +293,29 @@ fn get_broadcast_channel_error(error: &BroadcastChannelError) -> &'static str {
   }
 }
 
+fn get_fs_error(error: &FsOpsError) -> &'static str {
+  match error {
+    FsOpsError::Io(e) => get_io_error_class(e),
+    FsOpsError::OperationError(_) => "Error",
+    FsOpsError::Permission(e)
+    | FsOpsError::Resource(e)
+    | FsOpsError::Other(e) => get_error_class_name(e).unwrap_or("Error"),
+    FsOpsError::InvalidUtf8(_) => "InvalidData",
+    FsOpsError::StripPrefix(_) => "Error",
+    FsOpsError::Canceled(e) => {
+      let io_err: io::Error = e.to_owned().into();
+      get_io_error_class(&io_err)
+    }
+    FsOpsError::InvalidSeekMode(_) => "TypeError",
+    FsOpsError::InvalidControlCharacter(_) => "Error",
+    FsOpsError::InvalidCharacter(_) => "Error",
+    #[cfg(windows)]
+    FsOpsError::InvalidTrailingCharacter => "Error",
+    FsOpsError::NotCapableAccess { .. } => "NotCapable",
+    FsOpsError::NotCapable(_) => "NotCapable",
+  }
+}
+
 pub fn get_error_class_name(e: &AnyError) -> Option<&'static str> {
   deno_core::error::get_custom_error_class(e)
     .or_else(|| deno_webgpu::error::get_error_class_name(e))
@@ -299,6 +323,7 @@ pub fn get_error_class_name(e: &AnyError) -> Option<&'static str> {
     .or_else(|| deno_websocket::get_network_error_class_name(e))
     .or_else(|| e.downcast_ref::<IRError>().map(|_| "TypeError"))
     .or_else(|| e.downcast_ref::<ReprError>().map(get_ffi_repr_error_class))
+    .or_else(|| e.downcast_ref::<FsOpsError>().map(get_fs_error))
     .or_else(|| {
       e.downcast_ref::<DlfcnError>()
         .map(get_ffi_dlfcn_error_class)
