@@ -32,7 +32,7 @@ fn help_output() {
     "Initialize a new project",
     "Run tests",
     "Publish the current working directory's package or workspace",
-    "Generate shell completions",
+    "Output shell completions",
     "Print runtime TypeScript declarations",
     "Start the language server",
     #[cfg(feature = "upgrade")]

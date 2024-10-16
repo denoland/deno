@@ -1190,7 +1190,7 @@ static DENO_HELP: &str = cstr!(
     <g>clean</>        Remove the cache directory
     <g>compile</>      Compile the script into a self contained executable
                   <p(245)>deno compile main.ts  |  deno compile --target=x86_64-unknown-linux-gnu</>
-    <g>completions</>  Generate shell completions
+    <g>completions</>  Output shell completions
     <g>coverage</>     Print coverage reports
     <g>doc</>          Generate and show documentation for a module or built-ins
                   <p(245)>deno doc  |  deno doc --json  |  deno doc --html mod.ts</>
