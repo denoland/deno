@@ -24,6 +24,7 @@ use deno_ffi::IRError;
 use deno_ffi::ReprError;
 use deno_ffi::StaticError;
 use deno_fs::FsOpsError;
+use deno_io::fs::FsError;
 use deno_tls::TlsError;
 use deno_webstorage::WebStorageError;
 use std::env;
@@ -296,7 +297,12 @@ fn get_broadcast_channel_error(error: &BroadcastChannelError) -> &'static str {
 fn get_fs_error(error: &FsOpsError) -> &'static str {
   match error {
     FsOpsError::Io(e) => get_io_error_class(e),
-    FsOpsError::OperationError(_) => "Error",
+    FsOpsError::OperationError(e) => match &e.err {
+      FsError::Io(e) => get_io_error_class(e),
+      FsError::FileBusy => "Busy",
+      FsError::NotSupported => "NotSupported",
+      FsError::NotCapable(_) => "NotCapable",
+    },
     FsOpsError::Permission(e)
     | FsOpsError::Resource(e)
     | FsOpsError::Other(e) => get_error_class_name(e).unwrap_or("Error"),

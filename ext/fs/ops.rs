@@ -1747,7 +1747,7 @@ pub async fn op_fs_futime_async(
 pub struct OperationError {
   operation: &'static str,
   kind: OperationErrorKind,
-  err: FsError,
+  pub err: FsError,
 }
 
 impl std::fmt::Display for OperationError {
