@@ -520,8 +520,7 @@ Process.prototype.on = function (
     } else if (
       event !== "SIGBREAK" && event !== "SIGINT" && Deno.build.os === "windows"
     ) {
-      // Ignores all signals except SIGBREAK and SIGINT on windows.
-      // deno-lint-ignore no-console
+      // TODO: Ignores all signals except SIGBREAK and SIGINT on windows.
     } else {
       EventEmitter.prototype.on.call(this, event, listener);
       Deno.addSignalListener(event as Deno.Signal, listener);
