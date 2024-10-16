@@ -35,9 +35,9 @@ use crate::OpenOptions;
 #[derive(Debug, thiserror::Error)]
 pub enum FsOpsError {
   #[error("{0}")]
-  Io(std::io::Error),
+  Io(#[source] std::io::Error),
   #[error("{0}")]
-  OperationError(OperationError),
+  OperationError(#[source] OperationError),
   #[error(transparent)]
   Permission(deno_core::error::AnyError),
   #[error(transparent)]
@@ -1445,6 +1445,8 @@ where
   };
 
   let fut = fs.read_file_async(path.clone(), Some(&mut access_check));
+
+  dbg!("foo");
 
   let buf = if let Some(cancel_handle) = cancel_handle {
     let res = fut.or_cancel(cancel_handle).await;
