@@ -8,13 +8,7 @@ https://github.com/denoland/deno_install
 
 ### 2.0.1 / 2024.10.16
 
-- Reland feat(lsp): deno/didRefreshDenoConfigurationTree notifications (#26325)
-- Revert "feat(lsp): "deno/didRefreshDenoConfigurationTree" notificatio…
-  (#26320)
-- feat(cli): improve deno info output for npm packages (#25906)
 - feat(lsp): "deno/didRefreshDenoConfigurationTree" notifications (#26215)
-- feat(npm): support `--allow-scripts` on `deno run` (and `deno add`,
-  `deno test`, etc) (#26075)
 - feat(unstable): `--unstable-detect-cjs` for respecting explicit
   `"type": "commonjs"` (#26149)
 - fix(add): create deno.json when running `deno add jsr:<pkg>` (#26275)
@@ -24,6 +18,7 @@ https://github.com/denoland/deno_install
 - fix(cli): consolidate pkg parser for install & remove (#26298)
 - fix(cli): named export takes precedence over default export in doc testing
   (#26112)
+- fix(cli): improve deno info output for npm packages (#25906)
 - fix(console/ext/repl): support using parseFloat() (#25900)
 - fix(ext/console): apply coloring for console.table (#26280)
 - fix(ext/napi): pass user context to napi_threadsafe_fn finalizers (#26229)
@@ -46,6 +41,8 @@ https://github.com/denoland/deno_install
 - fix(lsp): relative completions for bare import-mapped specifiers (#26137)
 - fix(node): make `process.stdout.isTTY` writable (#26130)
 - fix(node/util): export `styleText` from `node:util` (#26194)
+- fix(npm): support `--allow-scripts` on `deno run` (and `deno add`,
+  `deno test`, etc) (#26075)
 - fix(repl): importing json files (#26053)
 - fix(repl): remove check flags (#26140)
 - fix(unstable/worker): ensure import permissions are passed (#26101)
