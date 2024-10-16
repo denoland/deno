@@ -178,7 +178,19 @@ pub async fn eval_command(
   Ok(exit_code)
 }
 
+fn get_npm_config_user_agent() -> String {
+  format!(
+    "deno/{} npm/? deno/{} {} {}",
+    env!("CARGO_PKG_VERSION"),
+    env!("CARGO_PKG_VERSION"),
+    std::env::consts::OS,
+    std::env::consts::ARCH
+  )
+}
+
 pub async fn maybe_npm_install(factory: &CliFactory) -> Result<(), AnyError> {
+  std::env::set_var("npm_config_user_agent", get_npm_config_user_agent());
+
   // ensure an "npm install" is done if the user has explicitly
   // opted into using a managed node_modules directory
   if factory.cli_options()?.node_modules_dir()?
