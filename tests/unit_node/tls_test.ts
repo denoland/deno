@@ -39,7 +39,8 @@ for (
       alpnProtocols: alpnServer,
     });
     const outgoing = tls.connect({
-      host: "localhost",
+      host: "::1",
+      servername: "localhost",
       port: listener.addr.port,
       ALPNProtocols: alpnClient,
       secureContext: {
@@ -73,7 +74,8 @@ Deno.test("tls.connect makes tls connection", async () => {
   await delay(200);
 
   const conn = tls.connect({
-    host: "localhost",
+    host: "::1",
+    servername: "localhost",
     port,
     secureContext: {
       ca: rootCaCert,
@@ -114,7 +116,8 @@ Deno.test("tls.connect mid-read tcp->tls upgrade", async () => {
   await delay(200);
 
   const conn = tls.connect({
-    host: "localhost",
+    host: "::1",
+    servername: "localhost",
     port: 8443,
     secureContext: {
       ca: rootCaCert,
