@@ -38,6 +38,10 @@ path = "./bench/lsp_bench_standalone.rs"
 
 [features]
 default = ["upgrade", "__vendored_zlib_ng"]
+# A feature that enables heap profiling with dhat on Linux.
+# 1. Compile with `cargo build --profile=release-with-debug --features=dhat-heap`
+# 2. Run the executable. It will output a dhat-heap.json file.
+# 3. Open the json file in https://nnethercote.github.io/dh_view/dh_view.html
 dhat-heap = ["dhat"]
 # A feature that enables the upgrade subcommand and the background check for
 # available updates (of deno binary). This is typically disabled for (Linux)
@@ -99,6 +103,7 @@ color-print = "0.3.5"
 console_static_text.workspace = true
 dashmap.workspace = true
 data-encoding.workspace = true
+dhat = { version = "0.3.3", optional = true }
 dissimilar = "=1.0.4"
 dotenvy = "0.15.7"
 dprint-plugin-json = "=0.19.3"
@@ -167,13 +172,6 @@ yoke.workspace = true
 zeromq.workspace = true
 zip = { version = "2.1.6", default-features = false, features = ["deflate-flate2"] }
 zstd.workspace = true
-
-# Heap profiling
-# ==============
-# 1. Compile with `cargo build --profile=release-with-debug --features=dhat-heap` on linux
-# 2. Run the executable. It will output a dhat-heap.json file.
-# 3. Open the json file in https://nnethercote.github.io/dh_view/dh_view.html
-dhat = { version = "0.3.3", optional = true }
 
 [target.'cfg(windows)'.dependencies]
 junction.workspace = true
