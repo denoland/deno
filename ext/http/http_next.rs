@@ -305,15 +305,25 @@ where
   };
 
   // Only extract the path part - we handle authority elsewhere
-  let path = match &request_parts.uri.path_and_query() {
-    Some(path_and_query) => path_and_query.to_string(),
-    None => "".to_owned(),
+  let path = match request_parts.uri.path_and_query() {
+    Some(path_and_query) => {
+      let path = path_and_query.as_str();
+      if matches!(path.as_bytes().first(), Some(b'/' | b'*')) {
+        Cow::Borrowed(path)
+      } else {
+        Cow::Owned(format!("/{}", path))
+      }
+    }
+    None => Cow::Borrowed(""),
   };
 
-  let path: v8::Local<v8::Value> =
-    v8::String::new_from_utf8(scope, path.as_ref(), v8::NewStringType::Normal)
-      .unwrap()
-      .into();
+  let path: v8::Local<v8::Value> = v8::String::new_from_utf8(
+    scope,
+    path.as_bytes(),
+    v8::NewStringType::Normal,
+  )
+  .unwrap()
+  .into();
 
   let vec = [method, authority, path];
   v8::Array::new_with_elements(scope, vec.as_slice())
