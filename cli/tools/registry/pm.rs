@@ -594,20 +594,6 @@ enum PackageAndVersion {
   Selected(SelectedPackage),
 }
 
-fn is_exact_version_req(req: &PackageReq) -> bool {
-  match req.version_req.inner() {
-    RangeSetOrTag::RangeSet(range_set) => {
-      let items = &range_set.0;
-      if let Some(first) = items.first() {
-        first.start == first.end && items.len() == 1
-      } else {
-        false
-      }
-    }
-    RangeSetOrTag::Tag(_) => false,
-  }
-}
-
 async fn find_package_and_select_version_for_req(
   jsr_resolver: Arc<JsrFetchResolver>,
   npm_resolver: Arc<NpmFetchResolver>,
@@ -633,7 +619,7 @@ async fn find_package_and_select_version_for_req(
       };
       let range_symbol = if req.version_req.version_text().starts_with('~') {
         "~"
-      } else if is_exact_version_req(&req) {
+      } else if req.version_req.version_text() == nv.version.to_string() {
         ""
       } else {
         "^"
@@ -657,7 +643,7 @@ async fn find_package_and_select_version_for_req(
 
       let range_symbol = if req.version_req.version_text().starts_with('~') {
         "~"
-      } else if is_exact_version_req(&req) {
+      } else if req.version_req.version_text() == nv.version.to_string() {
         ""
       } else {
         "^"
