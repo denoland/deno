@@ -281,7 +281,7 @@ async function format(obj) {
   }
   if (isJpg(obj)) {
     return {
-      "image/jpg": core.ops.op_base64_encode(obj),
+      "image/jpeg": core.ops.op_base64_encode(obj),
     };
   }
   if (isPng(obj)) {
@@ -371,8 +371,16 @@ const html = createTaggedTemplateDisplayable("text/html");
 const svg = createTaggedTemplateDisplayable("image/svg+xml");
 
 function image(obj) {
+  if (typeof obj === "string") {
+    try {
+      obj = Deno.readFileSync(obj);
+    } catch {
+      // pass
+    }
+  }
+
   if (isJpg(obj)) {
-    return makeDisplayable({ "image/jpg": core.ops.op_base64_encode(obj) });
+    return makeDisplayable({ "image/jpeg": core.ops.op_base64_encode(obj) });
   }
 
   if (isPng(obj)) {
@@ -380,7 +388,7 @@ function image(obj) {
   }
 
   throw new TypeError(
-    "Object is not a valid image. `Deno.jupyter.image` supports JPG and PNG images",
+    "Object is not a valid image or a path to an image. `Deno.jupyter.image` supports displaying JPG or PNG images.",
   );
 }
 
