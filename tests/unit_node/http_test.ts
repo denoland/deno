@@ -314,14 +314,14 @@ Deno.test("[node/http] IncomingRequest socket has remoteAddress + remotePort", a
     remotePort = req.socket.remotePort;
     res.end();
   });
-  server.listen(async () => {
+  server.listen({ host: "0.0.0.0" }, async () => {
     // deno-lint-ignore no-explicit-any
     const port = (server.address() as any).port;
     const res = await fetch(
-      `http://localhost:${port}/`,
+      `http://127.0.0.1:${port}/`,
     );
     await res.arrayBuffer();
-    assertEquals(remoteAddress, "::1");
+    assertEquals(remoteAddress, "127.0.0.1");
     assertEquals(typeof remotePort, "number");
     server.close(() => resolve());
   });
