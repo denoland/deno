@@ -1191,8 +1191,12 @@ function toDenoArgs(args: string[]): string[] {
     }
 
     if (flagInfo === undefined) {
-      // Not a known flag that expects a value. Just copy it to the output.
-      denoArgs.push(arg);
+      if (arg === "--no-warnings") {
+        denoArgs.push("--quiet");
+      } else {
+        // Not a known flag that expects a value. Just copy it to the output.
+        denoArgs.push(arg);
+      }
       continue;
     }
 

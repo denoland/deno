@@ -1,5 +1,6 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 //! This mod provides DenoError to unify errors across Deno.
+use color_print::cstr;
 use deno_core::error::format_frame;
 use deno_core::error::JsError;
 use deno_terminal::colors::cyan;
@@ -286,14 +287,20 @@ fn get_suggestions_for_terminal_errors(e: &JsError) -> Vec<FixSuggestion> {
   if let Some(msg) = &e.message {
     if msg.contains("module is not defined")
       || msg.contains("exports is not defined")
+      || msg.contains("require is not defined")
     {
       return vec![
-        FixSuggestion::info(
-          "Deno does not support CommonJS modules without `.cjs` extension.",
-        ),
-        FixSuggestion::hint(
-          "Rewrite this module to ESM or change the file extension to `.cjs`.",
-        ),
+        FixSuggestion::info_multiline(&[
+          cstr!("Deno supports CommonJS modules in <u>.cjs</> files, or when there's a <u>package.json</>"),
+          cstr!("with <i>\"type\": \"commonjs\"</> option and <i>--unstable-detect-cjs</> flag is used.")
+        ]),
+        FixSuggestion::hint_multiline(&[
+          "Rewrite this module to ESM,",
+          cstr!("or change the file extension to <u>.cjs</u>,"),
+          cstr!("or add <u>package.json</> next to the file with <i>\"type\": \"commonjs\"</> option"),
+          cstr!("and pass <i>--unstable-detect-cjs</> flag."),
+        ]),
+        FixSuggestion::hint("See https://docs.deno.com/go/commonjs for details"),
       ];
     } else if msg.contains("openKv is not a function") {
       return vec![
@@ -366,6 +373,16 @@ fn get_suggestions_for_terminal_errors(e: &JsError) -> Vec<FixSuggestion> {
             "`deno install --allow-scripts=npm:<package> --entrypoint <script>` to setup `node_modules` directory."
           ]
         )
+      ];
+    } else if msg.contains("document is not defined") {
+      return vec![
+        FixSuggestion::info(cstr!(
+          "<u>document</> global is not available in Deno."
+        )),
+        FixSuggestion::hint_multiline(&[
+          cstr!("Use a library like <u>happy-dom</>, <u>deno_dom</>, <u>linkedom</> or <u>JSDom</>"),
+          cstr!("and setup the <u>document</> global according to the library documentation."),
+        ]),
       ];
     }
   }

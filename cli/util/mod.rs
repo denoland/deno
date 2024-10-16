@@ -14,6 +14,7 @@ pub mod logger;
 pub mod path;
 pub mod progress_bar;
 pub mod result;
+pub mod retry;
 pub mod sync;
 pub mod text_encoding;
 pub mod unix;
