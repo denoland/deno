@@ -5,6 +5,7 @@ mod cache_deps;
 pub use cache_deps::cache_top_level_deps;
 use deno_semver::jsr::JsrPackageReqReference;
 use deno_semver::npm::NpmPackageReqReference;
+use deno_semver::RangeSetOrTag;
 use deno_semver::VersionReq;
 
 use std::borrow::Cow;
@@ -593,6 +594,20 @@ enum PackageAndVersion {
   Selected(SelectedPackage),
 }
 
+fn is_exact_version_req(req: &PackageReq) -> bool {
+  match req.version_req.inner() {
+    RangeSetOrTag::RangeSet(range_set) => {
+      let items = &range_set.0;
+      if let Some(first) = items.first() {
+        first.start == first.end && items.len() == 1
+      } else {
+        false
+      }
+    }
+    RangeSetOrTag::Tag(_) => false,
+  }
+}
+
 async fn find_package_and_select_version_for_req(
   jsr_resolver: Arc<JsrFetchResolver>,
   npm_resolver: Arc<NpmFetchResolver>,
@@ -617,9 +632,11 @@ async fn find_package_and_select_version_for_req(
         });
       };
       let range_symbol = if req.version_req.version_text().starts_with('~') {
-        '~'
+        "~"
+      } else if is_exact_version_req(&req) {
+        ""
       } else {
-        '^'
+        "^"
       };
       Ok(PackageAndVersion::Selected(SelectedPackage {
         import_name: add_package_req.alias,
@@ -638,23 +655,9 @@ async fn find_package_and_select_version_for_req(
         });
       };
 
-      // Check if the version requirement is for an exact version
-      // rather than a range.
-      let is_exact = match req.version_req.inner() {
-        deno_semver::RangeSetOrTag::RangeSet(range_set) => {
-          let items = &range_set.0;
-          if let Some(first) = items.first() {
-            first.start == first.end && items.len() == 1
-          } else {
-            false
-          }
-        }
-        deno_semver::RangeSetOrTag::Tag(_) => false,
-      };
-
       let range_symbol = if req.version_req.version_text().starts_with('~') {
         "~"
-      } else if is_exact {
+      } else if is_exact_version_req(&req) {
         ""
       } else {
         "^"
