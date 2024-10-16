@@ -295,7 +295,7 @@ where
   let path = ensure_read_permission::<P>(state, &path)?;
   let fs = state.borrow::<FileSystemRc>();
   let canonicalized_path =
-    deno_core::strip_unc_prefix(fs.realpath_sync(&path)?);
+    deno_path_util::strip_unc_prefix(fs.realpath_sync(&path)?);
   Ok(canonicalized_path.to_string_lossy().into_owned())
 }
 
