@@ -5,7 +5,6 @@ mod cache_deps;
 pub use cache_deps::cache_top_level_deps;
 use deno_semver::jsr::JsrPackageReqReference;
 use deno_semver::npm::NpmPackageReqReference;
-use deno_semver::RangeSetOrTag;
 use deno_semver::VersionReq;
 
 use std::borrow::Cow;
