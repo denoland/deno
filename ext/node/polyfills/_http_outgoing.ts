@@ -68,7 +68,7 @@ export function OutgoingMessage() {
   // Queue that holds all currently pending data, until the response will be
   // assigned to the socket (until it will its turn in the HTTP pipeline).
   this.outputData = [];
-  this.pendingWrites = 0;
+
   // `outputSize` is an approximate measure of how much data is queued on this
   // response. `_onPendingData` will be invoked to update similar global
   // per-connection counter. That counter will be used to pause/unpause the
@@ -493,20 +493,6 @@ Object.defineProperties(
       return ret;
     },
 
-    _flushBody() {
-      const socket = this.socket;
-      const outputLength = this.outputData.length;
-      if (socket && outputLength > 0) {
-        const { data, encoding, callback } = this.outputData.shift();
-        this._writeRaw(data, encoding, callback);
-        if (this.outputData.length > 0) {
-          this.once("drain", () => {
-            this._flushBody();
-          });
-        }
-      }
-    },
-
     /** Right after socket is ready, we need to writeHeader() to setup the request and
      *  client. This is invoked by onSocket(). */
     _flushHeaders() {
@@ -520,7 +506,9 @@ Object.defineProperties(
     _send(data: any, encoding?: string | null, callback?: () => void) {
       // if socket is ready, write the data after headers are written.
       // if socket is not ready, buffer data in outputbuffer.
-      if (this.socket && !this.socket.connecting && this.pendingWrites === 0) {
+      if (
+        this.socket && !this.socket.connecting && this.outputData.length === 0
+      ) {
         if (!this._headerSent) {
           this._writeHeader();
           this._headerSent = true;
@@ -539,39 +527,20 @@ Object.defineProperties(
       throw new ERR_METHOD_NOT_IMPLEMENTED("_writeHeader()");
     },
 
-    // async _flushBuffer() {
-    //   const outputLength = this.outputData.length;
-    //   if (outputLength <= 0 || !this.socket || !this._bodyWriter) {
-    //     return undefined;
-    //   }
+    _flushBuffer() {
+      const outputLength = this.outputData.length;
+      if (outputLength <= 0 || !this.socket || !this._bodyWriter) {
+        return undefined;
+      }
 
-    //   const outputData = this.outputData;
-    //   let ret;
-    //   // Retain for(;;) loop for performance reasons
-    //   // Refs: https://github.com/nodejs/node/pull/30958
-    //   for (let i = 0; i < outputLength; i++) {
-    //     let { data, encoding, callback } = outputData[i];
-    //     if (typeof data === "string") {
-    //       data = Buffer.from(data, encoding);
-    //     }
-    //     if (data instanceof Buffer) {
-    //       data = new Uint8Array(data.buffer, data.byteOffset, data.byteLength);
-    //     }
-    //     await this._bodyWriter.ready;
-    //     ret = await this._bodyWriter.write(data).then(() => {
-    //       callback?.();
-    //       this.emit("drain");
-    //     }).catch((e) => {
-    //       this._requestSendError = e;
-    //     });
-    //   }
+      const { data, encoding, callback } = this.outputData.shift();
+      const ret = this._writeRaw(data, encoding, callback);
+      if (this.outputData.length > 0) {
+        this.once("drain", this._flushBuffer);
+      }
 
-    //   this.outputData = [];
-    //   this.pendingWrites = 0;
-    //   this.outputSize = 0;
-
-    //   return ret;
-    // },
+      return ret;
+    },
 
     _writeRaw(
       // deno-lint-ignore no-explicit-any
@@ -579,15 +548,6 @@ Object.defineProperties(
       encoding?: string | null,
       callback?: () => void,
     ) {
-      this.pendingWrites = this.pendingWrites + 1;
-      const time = Date.now();
-      console.trace(
-        "write invoked:",
-        time.toString().slice(-6),
-        "pending",
-        this.pendingWrites,
-        this.outputData.length,
-      );
       if (typeof data === "string") {
         data = Buffer.from(data, encoding);
       }
@@ -599,23 +559,8 @@ Object.defineProperties(
           if (this._bodyWriter.desiredSize > 0) {
             this._bodyWriter.write(data).then(() => {
               callback?.();
-              this.pendingWrites = this.pendingWrites - 1;
-              console.log(
-                "write done:",
-                time.toString().slice(-6),
-                "pending",
-                this.pendingWrites,
-                this.outputData.length,
-              );
               this.emit("drain");
             }).catch((e) => {
-              console.log(
-                "write error:",
-                time.toString().slice(-6),
-                "pending",
-                this.pendingWrites,
-                this.outputData.length,
-              );
               this._requestSendError = e;
             });
           }

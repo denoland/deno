@@ -2359,7 +2359,7 @@ var require_readable = __commonJS({
       return readableAddChunk(this, chunk, encoding, true);
     };
     function readableAddChunk(stream, chunk, encoding, addToFront) {
-      console.trace("readableAddChunk",  chunk ? new TextDecoder().decode(chunk.slice(-20)) : chunk);
+      debug("readableAddChunk", chunk);
       const state = stream._readableState;
       let err;
       if (!state.objectMode) {

@@ -621,8 +621,7 @@ class ClientRequest extends OutgoingMessage {
           // sets up the request.
           this._flushHeaders();
           this.once("requestReady", () => {
-            console.log("flushing Body");
-            this._flushBody();
+            this._flushBuffer();
           });
         });
         this.socket = socket;
@@ -662,12 +661,12 @@ class ClientRequest extends OutgoingMessage {
     }
     const finish = async () => {
       try {
-        console.log(
-          "finish(): outputData:",
-          this.outputData.length,
-          "pendingWrites",
-          this.pendingWrites,
-        );
+        // console.log(
+        //   "finish(): outputData:",
+        //   this.outputData.length,
+        //   "pendingWrites",
+        //   this.pendingWrites,
+        // );
         await this._bodyWriter.ready;
         await this._bodyWriter?.close();
       } catch {
@@ -683,14 +682,11 @@ class ClientRequest extends OutgoingMessage {
       }
     };
 
-    console.log("pendingWrites", this.pendingWrites, "outputData", this.outputData.length);
-    if (this.socket && this._bodyWriter && this.pendingWrites === 0) {
+    if (this.socket && this._bodyWriter) {
       finish();
     } else {
-      console.log("setting drain event", this.pendingWrites, "outputData", this.outputData.length);
       this.on("drain", () => {
-        console.log("drain event", this.pendingWrites);
-        if (this.pendingWrites === 0) {
+        if (this.outputData.length === 0) {
           finish();
         }
       });
