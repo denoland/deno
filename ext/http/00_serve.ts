@@ -79,7 +79,6 @@ import {
 import {
   listen,
   listenOptionApiName,
-  TcpConn,
   UpgradedConn,
 } from "ext:deno_net/01_net.js";
 import { hasTlsKeyPairOptions, listenTls } from "ext:deno_net/02_tls.js";
