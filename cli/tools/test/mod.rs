@@ -1659,6 +1659,7 @@ pub async fn run_tests_with_watch(
     ),
     move |flags, watcher_communicator, changed_paths| {
       let test_flags = test_flags.clone();
+      watcher_communicator.show_path_changed(changed_paths.clone());
       Ok(async move {
         let factory = CliFactory::from_flags_for_watcher(
           flags,
