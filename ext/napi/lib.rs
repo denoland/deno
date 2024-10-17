@@ -6,8 +6,6 @@
 #![deny(clippy::missing_safety_doc)]
 
 use core::ptr::NonNull;
-use deno_core::error::type_error;
-use deno_core::error::AnyError;
 use deno_core::op2;
 use deno_core::parking_lot::RwLock;
 use deno_core::url::Url;
@@ -19,6 +17,18 @@ use std::collections::HashMap;
 use std::path::PathBuf;
 use std::rc::Rc;
 use std::thread_local;
+
+#[derive(Debug, thiserror::Error)]
+pub enum NApiError {
+  #[error("Invalid path")]
+  InvalidPath,
+  #[error(transparent)]
+  LibLoading(#[from] libloading::Error),
+  #[error("Unable to find register Node-API module at {}", .0.display())]
+  ModuleNotFound(PathBuf),
+  #[error(transparent)]
+  Permission(deno_core::error::AnyError),
+}
 
 #[cfg(unix)]
 use libloading::os::unix::*;
@@ -482,14 +492,20 @@ deno_core::extension!(deno_napi,
 
 pub trait NapiPermissions {
   #[must_use = "the resolved return value to mitigate time-of-check to time-of-use issues"]
-  fn check(&mut self, path: &str) -> std::result::Result<PathBuf, AnyError>;
+  fn check(
+    &mut self,
+    path: &str,
+  ) -> Result<PathBuf, deno_core::error::AnyError>;
 }
 
 // NOTE(bartlomieju): for now, NAPI uses `--allow-ffi` flag, but that might
 // change in the future.
 impl NapiPermissions for deno_permissions::PermissionsContainer {
   #[inline(always)]
-  fn check(&mut self, path: &str) -> Result<PathBuf, AnyError> {
+  fn check(
+    &mut self,
+    path: &str,
+  ) -> Result<PathBuf, deno_core::error::AnyError> {
     deno_permissions::PermissionsContainer::check_ffi(self, path)
   }
 }
@@ -512,7 +528,7 @@ fn op_napi_open<NP, 'scope>(
   global: v8::Local<'scope, v8::Object>,
   buffer_constructor: v8::Local<'scope, v8::Function>,
   report_error: v8::Local<'scope, v8::Function>,
-) -> std::result::Result<v8::Local<'scope, v8::Value>, AnyError>
+) -> Result<v8::Local<'scope, v8::Value>, NApiError>
 where
   NP: NapiPermissions + 'static,
 {
@@ -521,7 +537,7 @@ where
   let (async_work_sender, cleanup_hooks, external_ops_tracker, path) = {
     let mut op_state = op_state.borrow_mut();
     let permissions = op_state.borrow_mut::<NP>();
-    let path = permissions.check(&path)?;
+    let path = permissions.check(&path).map_err(NApiError::Permission)?;
     let napi_state = op_state.borrow::<NapiState>();
     (
       op_state.borrow::<V8CrossThreadTaskSpawner>().clone(),
@@ -540,7 +556,7 @@ where
   let type_tag = v8::Global::new(scope, type_tag);
 
   let url_filename =
-    Url::from_file_path(&path).map_err(|_| type_error("Invalid path"))?;
+    Url::from_file_path(&path).map_err(|_| NApiError::InvalidPath)?;
   let env_shared =
     EnvShared::new(napi_wrap, type_tag, format!("{url_filename}\0"));
 
@@ -565,17 +581,11 @@ where
 
   // SAFETY: opening a DLL calls dlopen
   #[cfg(unix)]
-  let library = match unsafe { Library::open(Some(&path), flags) } {
-    Ok(lib) => lib,
-    Err(e) => return Err(type_error(e.to_string())),
-  };
+  let library = unsafe { Library::open(Some(&path), flags) }?;
 
   // SAFETY: opening a DLL calls dlopen
   #[cfg(not(unix))]
-  let library = match unsafe { Library::load_with_flags(&path, flags) } {
-    Ok(lib) => lib,
-    Err(e) => return Err(type_error(e.to_string())),
-  };
+  let library = unsafe { Library::load_with_flags(&path, flags) }?;
 
   let maybe_module = MODULE_TO_REGISTER.with(|cell| {
     let mut slot = cell.borrow_mut();
@@ -610,10 +620,7 @@ where
     // SAFETY: we are going blind, calling the register function on the other side.
     unsafe { init(env_ptr, exports.into()) }
   } else {
-    return Err(type_error(format!(
-      "Unable to find register Node-API module at {}",
-      path.display()
-    )));
+    return Err(NApiError::ModuleNotFound(path));
   };
 
   let exports = maybe_exports.unwrap_or(exports.into());
