@@ -5,7 +5,6 @@ use std::path::PathBuf;
 
 use crate::http_util::HttpClient;
 use crate::http_util::HttpClientProvider;
-use crate::util::archive;
 use crate::util::progress_bar::ProgressBar;
 use crate::util::progress_bar::ProgressBarStyle;
 use deno_core::anyhow::bail;
@@ -14,30 +13,15 @@ use deno_core::error::AnyError;
 use crate::cache::DenoDir;
 use crate::shared::ReleaseChannel;
 
-#[derive(Clone, Copy, Debug)]
-pub enum BinaryKind {
-  Deno,
-  Denort,
-}
-
-impl BinaryKind {
-  fn name(&self) -> &str {
-    match self {
-      BinaryKind::Deno => "deno",
-      BinaryKind::Denort => "denort",
-    }
-  }
-}
-
 pub async fn download_deno_binary(
   http_client_provider: &HttpClientProvider,
   deno_dir: &DenoDir,
-  binary_kind: BinaryKind,
+  binary_kind: &str,
   target: &str,
   version_or_git_hash: &str,
   release_channel: ReleaseChannel,
 ) -> Result<PathBuf, AnyError> {
-  let binary_name = format!("{}-{}.zip", binary_kind.name(), target);
+  let binary_name = format!("{}-{}.zip", binary_kind, target);
   let binary_path_suffix = match release_channel {
     ReleaseChannel::Canary => {
       format!("canary/{}/{}", version_or_git_hash, binary_name,)
@@ -88,18 +72,3 @@ async fn download_base_binary(
   tokio::fs::write(output_path, bytes).await?;
   Ok(())
 }
-
-// pub fn unarchive_deno_binary() -> Result<Vec<u8>, AnyError> {
-//   let archive_data = std::fs::read(binary_path)?;
-//   let temp_dir = tempfile::TempDir::new()?;
-//   let base_binary_path = archive::unpack_into_dir(archive::UnpackArgs {
-//     exe_name: "denort",
-//     archive_name: &binary_name,
-//     archive_data: &archive_data,
-//     is_windows: target.contains("windows"),
-//     dest_path: temp_dir.path(),
-//   })?;
-//   let base_binary = std::fs::read(base_binary_path)?;
-//   drop(temp_dir); // delete the temp dir
-//   Ok(base_binary)
-// }

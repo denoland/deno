@@ -6,13 +6,12 @@ use crate::args::Flags;
 use crate::args::UpgradeFlags;
 use crate::args::UPGRADE_USAGE;
 use crate::colors;
+use crate::download_deno_binary::download_deno_binary;
 use crate::factory::CliFactory;
 use crate::http_util::HttpClient;
 use crate::http_util::HttpClientProvider;
 use crate::shared::ReleaseChannel;
 use crate::util::archive;
-use crate::util::progress_bar::ProgressBar;
-use crate::util::progress_bar::ProgressBarStyle;
 use crate::version;
 
 use async_trait::async_trait;
@@ -34,11 +33,7 @@ use std::process::Command;
 use std::sync::Arc;
 use std::time::Duration;
 
-const RELEASE_URL: &str = "https://github.com/denoland/deno/releases";
-const CANARY_URL: &str = "https://dl.deno.land/canary";
-const DL_RELEASE_URL: &str = "https://dl.deno.land/release";
-
-pub static ARCHIVE_NAME: Lazy<String> =
+static ARCHIVE_NAME: Lazy<String> =
   Lazy::new(|| format!("deno-{}.zip", env!("TARGET")));
 
 // How often query server for new version. In hours.
@@ -532,22 +527,15 @@ pub async fn upgrade(
     return Ok(());
   };
 
-  // TODO: print we're downloading something?
-  // log::info!("{}", colors::gray(format!("Downloading {}", &download_url)));
-  let binary_path = crate::download_deno_binary::download_deno_binary(
+  let binary_path = download_deno_binary(
     &http_client_provider,
     factory.deno_dir()?,
-    crate::download_deno_binary::BinaryKind::Deno,
+    "deno",
     env!("TARGET"),
     &selected_version_to_upgrade.version_or_hash,
     requested_version.release_channel(),
   )
   .await?;
-
-  // let download_url = get_download_url(
-  //   &selected_version_to_upgrade.version_or_hash,
-  //   requested_version.release_channel(),
-  // )?;
 
   let Ok(archive_data) = tokio::fs::read(&binary_path).await else {
     log::error!("Download could not be found, aborting");
@@ -886,48 +874,6 @@ fn base_upgrade_url() -> Cow<'static, str> {
   } else {
     Cow::Borrowed("https://dl.deno.land")
   }
-}
-
-fn get_download_url(
-  version: &str,
-  release_channel: ReleaseChannel,
-) -> Result<Url, AnyError> {
-  let download_url = match release_channel {
-    ReleaseChannel::Stable => {
-      format!("{}/download/v{}/{}", RELEASE_URL, version, *ARCHIVE_NAME)
-    }
-    ReleaseChannel::Rc => {
-      format!("{}/v{}/{}", DL_RELEASE_URL, version, *ARCHIVE_NAME)
-    }
-    ReleaseChannel::Canary => {
-      format!("{}/{}/{}", CANARY_URL, version, *ARCHIVE_NAME)
-    }
-    ReleaseChannel::Lts => {
-      format!("{}/v{}/{}", DL_RELEASE_URL, version, *ARCHIVE_NAME)
-    }
-  };
-
-  Url::parse(&download_url).with_context(|| {
-    format!(
-      "Failed to parse URL to download new release: {}",
-      download_url
-    )
-  })
-}
-
-async fn download_package(
-  client: &HttpClient,
-  download_url: Url,
-) -> Result<Option<Vec<u8>>, AnyError> {
-  let progress_bar = ProgressBar::new(ProgressBarStyle::DownloadBars);
-  // provide an empty string here in order to prefer the downloading
-  // text above which will stay alive after the progress bars are complete
-  let progress = progress_bar.update("");
-  let maybe_bytes = client
-    .download_with_progress(download_url.clone(), None, &progress)
-    .await
-    .with_context(|| format!("Failed downloading {download_url}. The version you requested may not have been built for the current architecture."))?;
-  Ok(maybe_bytes)
 }
 
 fn replace_exe(from: &Path, to: &Path) -> Result<(), std::io::Error> {

@@ -49,6 +49,7 @@ use crate::args::NpmInstallDepsProvider;
 use crate::args::PermissionFlags;
 use crate::args::UnstableConfig;
 use crate::cache::DenoDir;
+use crate::download_deno_binary::download_deno_binary;
 use crate::file_fetcher::FileFetcher;
 use crate::http_util::HttpClientProvider;
 use crate::npm::CliNpmResolver;
@@ -416,12 +417,14 @@ impl<'a> DenoCompileBinaryWriter<'a> {
     }
 
     let target = compile_flags.resolve_target();
-    let binary_name = format!("denort-{target}.zip");
-    // TODO: print we're downloading something?
-    let binary_path = crate::download_deno_binary::download_deno_binary(
+
+    let exe_name = "denort";
+    let archive_name = format!("{exe_name}-{target}.zip");
+
+    let binary_path = download_deno_binary(
       &self.http_client_provider,
       self.deno_dir,
-      crate::download_deno_binary::BinaryKind::Denort,
+      exe_name,
       &target,
       crate::version::DENO_VERSION_INFO.version_or_git_hash(),
       crate::version::DENO_VERSION_INFO.release_channel,
@@ -431,8 +434,8 @@ impl<'a> DenoCompileBinaryWriter<'a> {
     let archive_data = std::fs::read(binary_path)?;
     let temp_dir = tempfile::TempDir::new()?;
     let base_binary_path = archive::unpack_into_dir(archive::UnpackArgs {
-      exe_name: "denort",
-      archive_name: &binary_name,
+      exe_name,
+      archive_name: &archive_name,
       archive_data: &archive_data,
       is_windows: target.contains("windows"),
       dest_path: temp_dir.path(),
