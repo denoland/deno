@@ -327,6 +327,7 @@ fn generate_coverage_report(
 
   coverage_report.found_lines =
     if let Some(source_map) = maybe_source_map.as_ref() {
+      let script_source_lines = script_source.lines().collect::<Vec<_>>();
       let mut found_lines = line_counts
         .iter()
         .enumerate()
@@ -334,7 +335,23 @@ fn generate_coverage_report(
           // get all the mappings from this destination line to a different src line
           let mut results = source_map
             .tokens()
-            .filter(move |token| token.get_dst_line() as usize == index)
+            .filter(|token| {
+              let dst_line = token.get_dst_line() as usize;
+              dst_line == index && {
+                let dst_col = token.get_dst_col() as usize;
+                let content = script_source_lines
+                  .get(dst_line)
+                  .and_then(|line| {
+                    line.get(dst_col..std::cmp::min(dst_col + 2, line.len()))
+                  })
+                  .unwrap_or("");
+
+                !content.is_empty()
+                  && content != "/*"
+                  && content != "*/"
+                  && content != "//"
+              }
+            })
             .map(move |token| (token.get_src_line() as usize, *count))
             .collect::<Vec<_>>();
           // only keep the results that point at different src lines
