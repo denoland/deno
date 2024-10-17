@@ -219,13 +219,10 @@ class TcpConn extends Conn {
       value: rid,
     });
     this.#rid = rid;
-    this.#isTcpStream = isTcpStream;
   }
 
   setNoDelay(noDelay = true) {
-    if (this.#isTcpStream) {
-      return op_set_nodelay(this.#rid, noDelay);
-    }
+    return op_set_nodelay(this.#rid, noDelay);
   }
 
   setKeepAlive(keepAlive = true) {

@@ -517,7 +517,7 @@ class ClientRequest extends OutgoingMessage {
           );
           assert(typeof res.remoteAddrIp !== "undefined");
           assert(typeof res.remoteAddrIp !== "undefined");
-          const conn = new TcpConn(
+          const conn = new UpgradedConn(
             upgradeRid,
             {
               transport: "tcp",
