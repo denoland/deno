@@ -422,7 +422,7 @@ impl<'a> DenoCompileBinaryWriter<'a> {
     let archive_name = format!("{exe_name}-{target}.zip");
 
     let binary_path = download_deno_binary(
-      &self.http_client_provider,
+      self.http_client_provider,
       self.deno_dir,
       exe_name,
       &target,

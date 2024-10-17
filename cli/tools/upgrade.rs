@@ -528,7 +528,7 @@ pub async fn upgrade(
   };
 
   let binary_path = download_deno_binary(
-    &http_client_provider,
+    http_client_provider,
     factory.deno_dir()?,
     "deno",
     env!("TARGET"),
