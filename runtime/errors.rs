@@ -23,6 +23,7 @@ use deno_ffi::DlfcnError;
 use deno_ffi::IRError;
 use deno_ffi::ReprError;
 use deno_ffi::StaticError;
+use deno_net::ops::NetError;
 use deno_tls::TlsError;
 use deno_webstorage::WebStorageError;
 use std::env;
@@ -292,6 +293,48 @@ fn get_broadcast_channel_error(error: &BroadcastChannelError) -> &'static str {
   }
 }
 
+fn get_net_error(error: &NetError) -> &'static str {
+  match error {
+    NetError::ListenerClosed => "BadResource",
+    NetError::ListenerBusy => "Busy",
+    NetError::SocketClosed => "BadResource",
+    NetError::SocketClosedNotConnected => "NotConnected",
+    NetError::SocketBusy => "Busy",
+    NetError::Io(e) => get_io_error_class(e),
+    NetError::AcceptTaskOngoing => "Busy",
+    NetError::RootCertStore(e)
+    | NetError::Permission(e)
+    | NetError::Resource(e) => get_error_class_name(e).unwrap_or("Error"),
+    NetError::NoResolvedAddress => "Error",
+    NetError::AddrParse(_) => "Error",
+    NetError::Map(e) => get_net_map_error(e),
+    NetError::Canceled(e) => {
+      let io_err: io::Error = e.to_owned().into();
+      get_io_error_class(&io_err)
+    }
+    NetError::DnsNotFound(_) => "NotFound",
+    NetError::DnsNotConnected(_) => "NotConnected",
+    NetError::DnsTimedOut(_) => "TimedOut",
+    NetError::Dns(_) => "Error",
+    NetError::UnsupportedRecordType => "NotSupported",
+    NetError::InvalidUtf8(_) => "InvalidData",
+    NetError::UnexpectedKeyType => "Error",
+    NetError::InvalidHostname(_) => "TypeError",
+    NetError::TcpStreamBusy => "Busy",
+    NetError::Rustls(_) => "Error",
+    NetError::Tls(e) => get_tls_error_class(e),
+    NetError::ListenTlsRequiresKey => "InvalidData",
+    NetError::Reunite(_) => "Error",
+  }
+}
+
+fn get_net_map_error(error: &deno_net::io::MapError) -> &'static str {
+  match error {
+    deno_net::io::MapError::Io(e) => get_io_error_class(e),
+    deno_net::io::MapError::NoResources => "Error",
+  }
+}
+
 pub fn get_error_class_name(e: &AnyError) -> Option<&'static str> {
   deno_core::error::get_custom_error_class(e)
     .or_else(|| deno_webgpu::error::get_error_class_name(e))
@@ -316,6 +359,11 @@ pub fn get_error_class_name(e: &AnyError) -> Option<&'static str> {
     .or_else(|| e.downcast_ref::<CronError>().map(get_cron_error_class))
     .or_else(|| e.downcast_ref::<CanvasError>().map(get_canvas_error))
     .or_else(|| e.downcast_ref::<CacheError>().map(get_cache_error))
+    .or_else(|| e.downcast_ref::<NetError>().map(get_net_error))
+    .or_else(|| {
+      e.downcast_ref::<deno_net::io::MapError>()
+        .map(get_net_map_error)
+    })
     .or_else(|| {
       e.downcast_ref::<BroadcastChannelError>()
         .map(get_broadcast_channel_error)
