@@ -1,7 +1,5 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
-use deno_core::error::type_error;
-use deno_core::error::AnyError;
 use deno_core::op2;
 use deno_core::OpState;
 use deno_core::ResourceId;
@@ -16,6 +14,47 @@ use std::ptr::NonNull;
 
 use crate::surface::WebGpuSurface;
 
+#[derive(Debug, thiserror::Error)]
+pub enum ByowError {
+  #[error("Cannot create surface outside of WebGPU context. Did you forget to call `navigator.gpu.requestAdapter()`?")]
+  WebGPUNotInitiated,
+  #[error("Invalid parameters")]
+  InvalidParameters,
+  #[error(transparent)]
+  CreateSurface(wgpu_core::instance::CreateSurfaceError),
+  #[cfg(target_os = "windows")]
+  #[error("Invalid system on Windows")]
+  InvalidSystem,
+  #[cfg(target_os = "macos")]
+  #[error("Invalid system on macOS")]
+  InvalidSystem,
+  #[cfg(any(
+    target_os = "linux",
+    target_os = "freebsd",
+    target_os = "openbsd"
+  ))]
+  #[error("Invalid system on Linux/BSD")]
+  InvalidSystem,
+  #[cfg(any(
+    target_os = "windows",
+    target_os = "linux",
+    target_os = "freebsd",
+    target_os = "openbsd"
+  ))]
+  #[error("window is null")]
+  NullWindow,
+  #[cfg(any(
+    target_os = "linux",
+    target_os = "freebsd",
+    target_os = "openbsd"
+  ))]
+  #[error("display is null")]
+  NullDisplay,
+  #[cfg(target_os = "macos")]
+  #[error("ns_view is null")]
+  NSViewDisplay,
+}
+
 #[op2(fast)]
 #[smi]
 pub fn op_webgpu_surface_create(
@@ -23,10 +62,10 @@ pub fn op_webgpu_surface_create(
   #[string] system: &str,
   p1: *const c_void,
   p2: *const c_void,
-) -> Result<ResourceId, AnyError> {
-  let instance = state.try_borrow::<super::Instance>().ok_or_else(|| {
-    type_error("Cannot create surface outside of WebGPU context. Did you forget to call `navigator.gpu.requestAdapter()`?")
-  })?;
+) -> Result<ResourceId, ByowError> {
+  let instance = state
+    .try_borrow::<super::Instance>()
+    .ok_or(ByowError::WebGPUNotInitiated)?;
   // Security note:
   //
   // The `p1` and `p2` parameters are pointers to platform-specific window
@@ -41,13 +80,15 @@ pub fn op_webgpu_surface_create(
   //
   // - Only FFI can export v8::External to user code.
   if p1.is_null() {
-    return Err(type_error("Invalid parameters"));
+    return Err(ByowError::InvalidParameters);
   }
 
   let (win_handle, display_handle) = raw_window(system, p1, p2)?;
   // SAFETY: see above comment
   let surface = unsafe {
-    instance.instance_create_surface(display_handle, win_handle, None)?
+    instance
+      .instance_create_surface(display_handle, win_handle, None)
+      .map_err(ByowError::CreateSurface)?
   };
 
   let rid = state
@@ -66,15 +107,14 @@ fn raw_window(
   system: &str,
   _ns_window: *const c_void,
   ns_view: *const c_void,
-) -> Result<RawHandles, AnyError> {
+) -> Result<RawHandles, ByowError> {
   if system != "cocoa" {
-    return Err(type_error("Invalid system on macOS"));
+    return Err(ByowError::InvalidSystem);
   }
 
   let win_handle = raw_window_handle::RawWindowHandle::AppKit(
     raw_window_handle::AppKitWindowHandle::new(
-      NonNull::new(ns_view as *mut c_void)
-        .ok_or(type_error("ns_view is null"))?,
+      NonNull::new(ns_view as *mut c_void).ok_or(ByowError::NSViewDisplay)?,
     ),
   );
 
@@ -92,13 +132,13 @@ fn raw_window(
 ) -> Result<RawHandles, AnyError> {
   use raw_window_handle::WindowsDisplayHandle;
   if system != "win32" {
-    return Err(type_error("Invalid system on Windows"));
+    return Err(ByowError::InvalidSystem);
   }
 
   let win_handle = {
     let mut handle = raw_window_handle::Win32WindowHandle::new(
       std::num::NonZeroIsize::new(window as isize)
-        .ok_or(type_error("window is null"))?,
+        .ok_or(ByowError::NullWindow)?,
     );
     handle.hinstance = std::num::NonZeroIsize::new(hinstance as isize);
 
@@ -131,19 +171,17 @@ fn raw_window(
   } else if system == "wayland" {
     win_handle = raw_window_handle::RawWindowHandle::Wayland(
       raw_window_handle::WaylandWindowHandle::new(
-        NonNull::new(window as *mut c_void)
-          .ok_or(type_error("window is null"))?,
+        NonNull::new(window as *mut c_void).ok_or(ByowError::NullWindow)?,
       ),
     );
 
     display_handle = raw_window_handle::RawDisplayHandle::Wayland(
       raw_window_handle::WaylandDisplayHandle::new(
-        NonNull::new(display as *mut c_void)
-          .ok_or(type_error("display is null"))?,
+        NonNull::new(display as *mut c_void).ok_or(ByowError::NullDisplay)?,
       ),
     );
   } else {
-    return Err(type_error("Invalid system on Linux/BSD"));
+    return Err(ByowError::InvalidSystem);
   }
 
   Ok((win_handle, display_handle))
@@ -160,6 +198,6 @@ fn raw_window(
   _system: &str,
   _window: *const c_void,
   _display: *const c_void,
-) -> Result<RawHandles, AnyError> {
-  Err(type_error("Unsupported platform"))
+) -> Result<RawHandles, deno_core::error::AnyError> {
+  Err(deno_core::error::type_error("Unsupported platform"))
 }
