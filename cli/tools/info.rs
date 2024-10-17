@@ -52,9 +52,7 @@ pub async fn info(
     let npmrc = cli_options.npmrc();
     let resolver = factory.workspace_resolver().await?;
 
-    let cwd_url =
-      url::Url::from_file_path(cli_options.initial_cwd().join("__dummy__"))
-        .unwrap();
+    let cwd_url = url::Url::from_file_path(cli_options.initial_cwd()).unwrap();
 
     let maybe_import_specifier = if let Some(import_map) =
       resolver.maybe_import_map()
