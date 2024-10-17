@@ -703,16 +703,20 @@ function _lookupAndConnect(
         } else {
           self._unrefTimer();
 
-          defaultTriggerAsyncIdScope(
-            self[asyncIdSymbol],
-            _internalConnect,
-            self,
-            ip,
-            port,
-            addressType,
-            localAddress,
-            localPort,
-          );
+          defaultTriggerAsyncIdScope(self[asyncIdSymbol], nextTick, () => {
+            if (self.connecting) {
+              defaultTriggerAsyncIdScope(
+                self[asyncIdSymbol],
+                _internalConnect,
+                self,
+                ip,
+                port,
+                addressType,
+                localAddress,
+                localPort,
+              );
+            }
+          });
         }
       },
     );
@@ -839,6 +843,10 @@ export class Socket extends Duplex {
         this.read(0);
       }
     }
+  }
+
+  get rid() {
+    return this._handle.rid;
   }
 
   /**
