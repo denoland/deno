@@ -134,6 +134,8 @@ export function fork(
         execArgv.splice(index, rm);
       } else if (flag.startsWith("--no-warnings")) {
         execArgv[index] = "--quiet";
+      } else if (flag.startsWith("--experimental")) {
+        // Do Nothing
       } else {
         index++;
       }
