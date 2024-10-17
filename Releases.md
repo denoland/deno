@@ -8,9 +8,6 @@ https://github.com/denoland/deno_install
 
 ### 2.0.2 / 2024.10.17
 
-- feat(permissions): expose PermissionPrompter and set_prompter function
-  (#26327)
-- feat(permissions): expose PromptResponse (#26358)
 - fix(cli): set napi object property properly (#26344)
 - fix(ext/node): add null check for kStreamBaseField (#26368)
 - fix(install): don't attempt to cache specifiers that point to directories
