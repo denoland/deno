@@ -1651,17 +1651,14 @@ Deno.test("[node/http] In ClientRequest, option.hostname has precedence over opt
   await responseReceived.promise;
 });
 
-Deno.test(
-  "[node/http] upgraded socket closes when the server closed without closing handshake",
-  {
-    ignore: true,
-  },
-  async () => {
-    const clientSocketClosed = Promise.withResolvers<void>();
-    const serverProcessClosed = Promise.withResolvers<void>();
+const IGNORED_Y =
+  "[node/http] upgraded socket closes when the server closed without closing handshake";
+Deno.test(IGNORED_Y, { ignore: true }, async () => {
+  const clientSocketClosed = Promise.withResolvers<void>();
+  const serverProcessClosed = Promise.withResolvers<void>();
 
-    // Uses the server in different process to shutdown it without closing handshake
-    const server = `
+  // Uses the server in different process to shutdown it without closing handshake
+  const server = `
     Deno.serve({ port: 1337 }, (req) => {
       if (req.headers.get("upgrade") != "websocket") {
         return new Response("ok");
@@ -1676,50 +1673,49 @@ Deno.test(
     });
   `;
 
-    const p = new Deno.Command("deno", { args: ["eval", server] }).spawn();
+  const p = new Deno.Command("deno", { args: ["eval", server] }).spawn();
 
-    // Wait for the server to respond
-    await retry(async () => {
-      const resp = await fetch("http://localhost:1337");
-      const _text = await resp.text();
+  // Wait for the server to respond
+  await retry(async () => {
+    const resp = await fetch("http://localhost:1337");
+    const _text = await resp.text();
+  });
+
+  const options = {
+    port: 1337,
+    host: "127.0.0.1",
+    headers: {
+      "Connection": "Upgrade",
+      "Upgrade": "websocket",
+      "Sec-WebSocket-Key": "dGhlIHNhbXBsZSBub25jZQ==",
+    },
+  };
+
+  http.request(options).on("upgrade", (_res, socket) => {
+    socket.on("close", () => {
+      console.log("client socket closed");
+      clientSocketClosed.resolve();
     });
+    socket.on("data", async (data) => {
+      // receives pong message
+      assertEquals(data, Buffer.from("8104706f6e67", "hex"));
 
-    const options = {
-      port: 1337,
-      host: "127.0.0.1",
-      headers: {
-        "Connection": "Upgrade",
-        "Upgrade": "websocket",
-        "Sec-WebSocket-Key": "dGhlIHNhbXBsZSBub25jZQ==",
-      },
-    };
+      p.kill();
+      await p.status;
 
-    http.request(options).on("upgrade", (_res, socket) => {
-      socket.on("close", () => {
-        console.log("client socket closed");
-        clientSocketClosed.resolve();
-      });
-      socket.on("data", async (data) => {
-        // receives pong message
-        assertEquals(data, Buffer.from("8104706f6e67", "hex"));
+      console.log("process closed");
+      serverProcessClosed.resolve();
 
-        p.kill();
-        await p.status;
-
-        console.log("process closed");
-        serverProcessClosed.resolve();
-
-        // sending some additional message
-        socket.write(Buffer.from("81847de88e01", "hex"));
-        socket.write(Buffer.from("0d81e066", "hex"));
-      });
-
-      // sending ping message
+      // sending some additional message
       socket.write(Buffer.from("81847de88e01", "hex"));
       socket.write(Buffer.from("0d81e066", "hex"));
-    }).end();
+    });
 
-    await clientSocketClosed.promise;
-    await serverProcessClosed.promise;
-  },
-);
+    // sending ping message
+    socket.write(Buffer.from("81847de88e01", "hex"));
+    socket.write(Buffer.from("0d81e066", "hex"));
+  }).end();
+
+  await clientSocketClosed.promise;
+  await serverProcessClosed.promise;
+});
