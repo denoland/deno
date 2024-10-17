@@ -75,6 +75,11 @@ pub async fn cache_top_level_deps(
           if entry.key.ends_with('/') && specifier.as_str().ends_with('/') {
             continue;
           }
+          if let Ok(path) = specifier.to_file_path() {
+            if !path.is_file() {
+              continue;
+            }
+          }
           roots.push(specifier.clone());
         }
       }
