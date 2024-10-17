@@ -39,6 +39,8 @@ use prompter::PromptResponse;
 use prompter::PERMISSION_EMOJI;
 
 pub use prompter::set_prompt_callbacks;
+pub use prompter::set_prompter;
+pub use prompter::PermissionPrompter;
 pub use prompter::PromptCallback;
 
 /// Fast exit from permission check routines if this permission

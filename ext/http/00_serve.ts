@@ -76,7 +76,11 @@ import {
   ReadableStreamPrototype,
   resourceForReadableStream,
 } from "ext:deno_web/06_streams.js";
-import { listen, listenOptionApiName, TcpConn } from "ext:deno_net/01_net.js";
+import {
+  listen,
+  listenOptionApiName,
+  UpgradedConn,
+} from "ext:deno_net/01_net.js";
 import { hasTlsKeyPairOptions, listenTls } from "ext:deno_net/02_tls.js";
 import { SymbolAsyncDispose } from "ext:deno_web/00_infra.js";
 
@@ -189,7 +193,7 @@ class InnerRequest {
 
       const upgradeRid = op_http_upgrade_raw(external);
 
-      const conn = new TcpConn(
+      const conn = new UpgradedConn(
         upgradeRid,
         underlyingConn?.remoteAddr,
         underlyingConn?.localAddr,

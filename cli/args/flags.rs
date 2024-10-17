@@ -1659,10 +1659,10 @@ fn add_subcommand() -> Command {
     "add",
     cstr!(
       "Add dependencies to your configuration file.
-  <p(245)>deno add @std/path</>
+  <p(245)>deno add jsr:@std/path</>
 
 You can add multiple dependencies at once:
-  <p(245)>deno add @std/path @std/assert</>"
+  <p(245)>deno add jsr:@std/path jsr:@std/assert</>"
     ),
     UnstableArgsConfig::None,
   )
@@ -2470,7 +2470,7 @@ in the package cache. If no dependency is specified, installs all dependencies l
 If the <p(245)>--entrypoint</> flag is passed, installs the dependencies of the specified entrypoint(s).
 
   <p(245)>deno install</>
-  <p(245)>deno install @std/bytes</>
+  <p(245)>deno install jsr:@std/bytes</>
   <p(245)>deno install npm:chalk</>
   <p(245)>deno install --entrypoint entry1.ts entry2.ts</>
 
