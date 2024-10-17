@@ -401,6 +401,7 @@ pub fn get_error_class_name(e: &AnyError) -> Option<&'static str> {
     .or_else(|| {
       e.downcast_ref::<HttpClientCreateError>()
         .map(get_http_client_create_error)
+    })
     .or_else(|| e.downcast_ref::<NetError>().map(get_net_error))
     .or_else(|| {
       e.downcast_ref::<deno_net::io::MapError>()
