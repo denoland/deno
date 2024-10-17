@@ -246,7 +246,11 @@ pub async fn op_http_upgrade_websocket_next(
 
   // Stage 3: take the extracted raw network stream and upgrade it to a websocket, then return it
   let (stream, bytes) = extract_network_stream(upgraded);
-  ws_create_server_stream(&mut state.borrow_mut(), stream, bytes)
+  Ok(ws_create_server_stream(
+    &mut state.borrow_mut(),
+    stream,
+    bytes,
+  ))
 }
 
 #[op2(fast)]
