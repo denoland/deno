@@ -1,6 +1,6 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
-use once_cell::sync::OnceCell;
+use std::sync::OnceLock;
 
 use super::DiskCache;
 
@@ -11,7 +11,7 @@ use std::path::PathBuf;
 /// where functionality wants to continue if the DENO_DIR can't be created.
 pub struct DenoDirProvider {
   maybe_custom_root: Option<PathBuf>,
-  deno_dir: OnceCell<std::io::Result<DenoDir>>,
+  deno_dir: OnceLock<std::io::Result<DenoDir>>,
 }
 
 impl DenoDirProvider {
