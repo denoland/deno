@@ -223,7 +223,9 @@ Deno.test("[node/fs] copyFile COPYFILE_EXCL works", async () => {
   await writeFile(src, "");
   await copyFile(src, dest, fsPromiseConstants.COPYFILE_EXCL);
   assert(existsSync(dest));
-  assertRejects(() => copyFile(src, dest, fsPromiseConstants.COPYFILE_EXCL));
+  await assertRejects(() =>
+    copyFile(src, dest, fsPromiseConstants.COPYFILE_EXCL)
+  );
   const dest2 = join(dir, "dest2.txt");
   copyFileSync(src, dest2, fsPromiseConstants.COPYFILE_EXCL);
   assert(existsSync(dest2));
