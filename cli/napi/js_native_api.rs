@@ -264,6 +264,16 @@ fn napi_define_class<'s>(
       Err(status) => return status,
     };
 
+    let mut accessor_property = v8::PropertyAttribute::NONE;
+
+    if p.attributes & napi_enumerable == 0 {
+      accessor_property = accessor_property | v8::PropertyAttribute::DONT_ENUM;
+    }
+    if p.attributes & napi_configurable == 0 {
+      accessor_property =
+        accessor_property | v8::PropertyAttribute::DONT_DELETE;
+    }
+
     if p.getter.is_some() || p.setter.is_some() {
       let getter = p.getter.map(|g| {
         create_function_template(&mut env.scope(), env_ptr, None, g, p.data)
@@ -271,8 +281,6 @@ fn napi_define_class<'s>(
       let setter = p.setter.map(|s| {
         create_function_template(&mut env.scope(), env_ptr, None, s, p.data)
       });
-
-      let mut accessor_property = v8::PropertyAttribute::NONE;
       if getter.is_some()
         && setter.is_some()
         && (p.attributes & napi_writable) == 0
@@ -280,15 +288,6 @@ fn napi_define_class<'s>(
         accessor_property =
           accessor_property | v8::PropertyAttribute::READ_ONLY;
       }
-      if p.attributes & napi_enumerable == 0 {
-        accessor_property =
-          accessor_property | v8::PropertyAttribute::DONT_ENUM;
-      }
-      if p.attributes & napi_configurable == 0 {
-        accessor_property =
-          accessor_property | v8::PropertyAttribute::DONT_DELETE;
-      }
-
       let proto = tpl.prototype_template(&mut env.scope());
       proto.set_accessor_property(name, getter, setter, accessor_property);
     } else if let Some(method) = p.method {
@@ -300,10 +299,14 @@ fn napi_define_class<'s>(
         p.data,
       );
       let proto = tpl.prototype_template(&mut env.scope());
-      proto.set(name, function.into());
+      proto.set_with_attr(name, function.into(), accessor_property);
     } else {
       let proto = tpl.prototype_template(&mut env.scope());
-      proto.set(name, p.value.unwrap().into());
+      if (p.attributes & napi_writable) == 0 {
+        accessor_property =
+          accessor_property | v8::PropertyAttribute::READ_ONLY;
+      }
+      proto.set_with_attr(name, p.value.unwrap().into(), accessor_property);
     }
   }
 
