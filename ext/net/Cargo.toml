@@ -21,6 +21,7 @@ pin-project.workspace = true
 rustls-tokio-stream.workspace = true
 serde.workspace = true
 socket2.workspace = true
+thiserror.workspace = true
 tokio.workspace = true
 trust-dns-proto = "0.23"
 trust-dns-resolver = { version = "0.23", features = ["tokio-runtime", "serde-config"] }
