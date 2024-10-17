@@ -615,5 +615,6 @@ export {
   resolveDns,
   TcpConn,
   UnixConn,
+  UpgradedConn,
   validatePort,
 };
