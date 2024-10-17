@@ -1851,7 +1851,6 @@ NOTE: This file should not be manually edited. Please edit `tests/node_compat/co
 - [parallel/test-net-socket-ready-without-cb.js](https://github.com/nodejs/node/tree/v18.12.1/test/parallel/test-net-socket-ready-without-cb.js)
 - [parallel/test-net-socket-reset-send.js](https://github.com/nodejs/node/tree/v18.12.1/test/parallel/test-net-socket-reset-send.js)
 - [parallel/test-net-socket-reset-twice.js](https://github.com/nodejs/node/tree/v18.12.1/test/parallel/test-net-socket-reset-twice.js)
-- [parallel/test-net-socket-setnodelay.js](https://github.com/nodejs/node/tree/v18.12.1/test/parallel/test-net-socket-setnodelay.js)
 - [parallel/test-net-socket-timeout-unref.js](https://github.com/nodejs/node/tree/v18.12.1/test/parallel/test-net-socket-timeout-unref.js)
 - [parallel/test-net-socket-timeout.js](https://github.com/nodejs/node/tree/v18.12.1/test/parallel/test-net-socket-timeout.js)
 - [parallel/test-net-socket-write-after-close.js](https://github.com/nodejs/node/tree/v18.12.1/test/parallel/test-net-socket-write-after-close.js)

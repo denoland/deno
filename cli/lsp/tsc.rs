@@ -3939,7 +3939,7 @@ pub struct OutliningSpan {
   kind: OutliningSpanKind,
 }
 
-const FOLD_END_PAIR_CHARACTERS: &[u8] = &[b'}', b']', b')', b'`'];
+const FOLD_END_PAIR_CHARACTERS: &[u8] = b"}])`";
 
 impl OutliningSpan {
   pub fn to_folding_range(
