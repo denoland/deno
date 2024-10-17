@@ -23,6 +23,9 @@ use deno_ffi::DlfcnError;
 use deno_ffi::IRError;
 use deno_ffi::ReprError;
 use deno_ffi::StaticError;
+use deno_kv::KvCheckError;
+use deno_kv::KvError;
+use deno_kv::KvMutationError;
 use deno_net::ops::NetError;
 use deno_tls::TlsError;
 use deno_webstorage::WebStorageError;
@@ -293,6 +296,47 @@ fn get_broadcast_channel_error(error: &BroadcastChannelError) -> &'static str {
   }
 }
 
+fn get_kv_error(error: &KvError) -> &'static str {
+  match error {
+    KvError::DatabaseHandler(e) | KvError::Resource(e) | KvError::Kv(e) => {
+      get_error_class_name(e).unwrap_or("Error")
+    }
+    KvError::TooManyRanges(_) => "TypeError",
+    KvError::TooManyEntries(_) => "TypeError",
+    KvError::TooManyChecks(_) => "TypeError",
+    KvError::TooManyMutations(_) => "TypeError",
+    KvError::TooManyKeys(_) => "TypeError",
+    KvError::InvalidLimit => "TypeError",
+    KvError::InvalidBoundaryKey => "TypeError",
+    KvError::KeyTooLargeToRead(_) => "TypeError",
+    KvError::KeyTooLargeToWrite(_) => "TypeError",
+    KvError::TotalMutationTooLarge(_) => "TypeError",
+    KvError::TotalKeyTooLarge(_) => "TypeError",
+    KvError::Io(e) => get_io_error_class(e),
+    KvError::QueueMessageNotFound => "TypeError",
+    KvError::StartKeyNotInKeyspace => "TypeError",
+    KvError::EndKeyNotInKeyspace => "TypeError",
+    KvError::StartKeyGreaterThanEndKey => "TypeError",
+    KvError::InvalidCheck(e) => match e {
+      KvCheckError::InvalidVersionstamp => "TypeError",
+      KvCheckError::Io(e) => get_io_error_class(e),
+    },
+    KvError::InvalidMutation(e) => match e {
+      KvMutationError::BigInt(_) => "Error",
+      KvMutationError::Io(e) => get_io_error_class(e),
+      KvMutationError::InvalidMutationWithValue(_) => "TypeError",
+      KvMutationError::InvalidMutationWithoutValue(_) => "TypeError",
+    },
+    KvError::InvalidEnqueue(e) => get_io_error_class(e),
+    KvError::EmptyKey => "TypeError",
+    KvError::ValueTooLarge(_) => "TypeError",
+    KvError::EnqueuePayloadTooLarge(_) => "TypeError",
+    KvError::InvalidCursor => "TypeError",
+    KvError::CursorOutOfBounds => "TypeError",
+    KvError::InvalidRange => "TypeError",
+  }
+}
+
 fn get_net_error(error: &NetError) -> &'static str {
   match error {
     NetError::ListenerClosed => "BadResource",
@@ -359,6 +403,7 @@ pub fn get_error_class_name(e: &AnyError) -> Option<&'static str> {
     .or_else(|| e.downcast_ref::<CronError>().map(get_cron_error_class))
     .or_else(|| e.downcast_ref::<CanvasError>().map(get_canvas_error))
     .or_else(|| e.downcast_ref::<CacheError>().map(get_cache_error))
+    .or_else(|| e.downcast_ref::<KvError>().map(get_kv_error))
     .or_else(|| e.downcast_ref::<NetError>().map(get_net_error))
     .or_else(|| {
       e.downcast_ref::<deno_net::io::MapError>()
