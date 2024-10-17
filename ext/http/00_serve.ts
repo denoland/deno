@@ -499,10 +499,14 @@ function mapToCallback(context, callback, onError) {
       innerRequest = new InnerRequest(req, context);
       const request = fromInnerRequest(innerRequest, "immutable");
       innerRequest.request = request;
-      response = await callback(
+      response = callback(
         request,
         new ServeHandlerInfo(innerRequest),
       );
+
+      if (typeof result === "object" && "then" in result) {
+        response = await response;
+      }
 
       // Throwing Error if the handler return value is not a Response class
       if (!ObjectPrototypeIsPrototypeOf(ResponsePrototype, response)) {
