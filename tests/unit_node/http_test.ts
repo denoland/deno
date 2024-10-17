@@ -1143,6 +1143,34 @@ Deno.test("[node/http] ServerResponse appendHeader set-cookie", async () => {
   await promise;
 });
 
+Deno.test("[node/http] ServerResponse header names case insensitive", async () => {
+  const { promise, resolve } = Promise.withResolvers<void>();
+  const server = http.createServer((_req, res) => {
+    res.setHeader("Content-Length", "12345");
+    res.removeHeader("content-length");
+    assertEquals(res.getHeader("Content-Length"), undefined);
+    assert(!res.hasHeader("Content-Length"));
+    res.appendHeader("content-length", "12345");
+    res.removeHeader("Content-Length");
+    assertEquals(res.getHeader("content-length"), undefined);
+    assert(!res.hasHeader("content-length"));
+    res.end("Hello World");
+  });
+
+  server.listen(async () => {
+    const { port } = server.address() as { port: number };
+    const res = await fetch(`http://localhost:${port}`);
+    assertEquals(res.headers.get("Content-Length"), null);
+    assertEquals(res.headers.get("content-length"), null);
+    assertEquals(await res.text(), "Hello World");
+    server.close(() => {
+      resolve();
+    });
+  });
+
+  await promise;
+});
+
 Deno.test("[node/http] IncomingMessage override", () => {
   const req = new http.IncomingMessage(new net.Socket());
   // https://github.com/dougmoscrop/serverless-http/blob/3aaa6d0fe241109a8752efb011c242d249f32368/lib/request.js#L20-L30
