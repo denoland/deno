@@ -5,6 +5,7 @@ use std::sync::Arc;
 use deno_ast::MediaType;
 use deno_ast::ModuleSpecifier;
 use deno_core::error::AnyError;
+use deno_graph::ParsedSourceStore;
 use deno_runtime::deno_fs;
 use deno_runtime::deno_node::DenoFsNodeResolverEnv;
 use node_resolver::analyze::CjsAnalysis as ExtNodeCjsAnalysis;
@@ -16,6 +17,7 @@ use serde::Serialize;
 
 use crate::cache::CacheDBHash;
 use crate::cache::NodeAnalysisCache;
+use crate::cache::ParsedSourceCache;
 use crate::resolver::CliNodeResolver;
 use crate::util::fs::canonicalize_path_maybe_not_exists;
 
@@ -56,6 +58,7 @@ pub struct CliCjsCodeAnalyzer {
   cache: NodeAnalysisCache,
   fs: deno_fs::FileSystemRc,
   node_resolver: Arc<CliNodeResolver>,
+  parsed_source_cache: Option<Arc<ParsedSourceCache>>,
 }
 
 impl CliCjsCodeAnalyzer {
@@ -63,11 +66,13 @@ impl CliCjsCodeAnalyzer {
     cache: NodeAnalysisCache,
     fs: deno_fs::FileSystemRc,
     node_resolver: Arc<CliNodeResolver>,
+    parsed_source_cache: Option<Arc<ParsedSourceCache>>,
   ) -> Self {
     Self {
       cache,
       fs,
       node_resolver,
+      parsed_source_cache,
     }
   }
 
@@ -107,18 +112,26 @@ impl CliCjsCodeAnalyzer {
       }
     }
 
+    let maybe_parsed_source = self
+      .parsed_source_cache
+      .as_ref()
+      .and_then(|c| c.remove_parsed_source(specifier));
+
     let analysis = deno_core::unsync::spawn_blocking({
       let specifier = specifier.clone();
       let source: Arc<str> = source.into();
       move || -> Result<_, deno_ast::ParseDiagnostic> {
-        let parsed_source = deno_ast::parse_program(deno_ast::ParseParams {
-          specifier,
-          text: source,
-          media_type,
-          capture_tokens: true,
-          scope_analysis: false,
-          maybe_syntax: None,
-        })?;
+        let parsed_source =
+          maybe_parsed_source.map(Ok).unwrap_or_else(|| {
+            deno_ast::parse_program(deno_ast::ParseParams {
+              specifier,
+              text: source,
+              media_type,
+              capture_tokens: true,
+              scope_analysis: false,
+              maybe_syntax: None,
+            })
+          })?;
         if parsed_source.is_script() {
           let analysis = parsed_source.analyze_cjs();
           Ok(CliCjsAnalysis::Cjs {

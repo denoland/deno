@@ -34,8 +34,8 @@ pub struct HttpConnectionProperties {
   pub stream_type: NetworkStreamType,
 }
 
-pub struct HttpRequestProperties {
-  pub authority: Option<String>,
+pub struct HttpRequestProperties<'a> {
+  pub authority: Option<Cow<'a, str>>,
 }
 
 /// Pluggable trait to determine listen, connection and request properties
@@ -84,11 +84,11 @@ pub trait HttpPropertyExtractor {
   ) -> NetworkStream;
 
   /// Determines the request properties.
-  fn request_properties(
-    connection_properties: &HttpConnectionProperties,
-    uri: &Uri,
-    headers: &HeaderMap,
-  ) -> HttpRequestProperties;
+  fn request_properties<'a>(
+    connection_properties: &'a HttpConnectionProperties,
+    uri: &'a Uri,
+    headers: &'a HeaderMap,
+  ) -> HttpRequestProperties<'a>;
 }
 
 pub struct DefaultHttpPropertyExtractor {}
@@ -180,18 +180,17 @@ impl HttpPropertyExtractor for DefaultHttpPropertyExtractor {
     }
   }
 
-  fn request_properties(
-    connection_properties: &HttpConnectionProperties,
-    uri: &Uri,
-    headers: &HeaderMap,
-  ) -> HttpRequestProperties {
+  fn request_properties<'a>(
+    connection_properties: &'a HttpConnectionProperties,
+    uri: &'a Uri,
+    headers: &'a HeaderMap,
+  ) -> HttpRequestProperties<'a> {
     let authority = req_host(
       uri,
       headers,
       connection_properties.stream_type,
       connection_properties.local_port.unwrap_or_default(),
-    )
-    .map(|s| s.into_owned());
+    );
 
     HttpRequestProperties { authority }
   }
