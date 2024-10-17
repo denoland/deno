@@ -460,9 +460,7 @@ class ClientRequest extends OutgoingMessage {
             alpnProtocols: ["http/1.0", "http/1.1"],
           });
         }
-        let rid;
-        let connRid;
-        [rid, connRid] = await op_node_http_request_with_conn(
+        const [rid, connRid] = await op_node_http_request_with_conn(
           this.method,
           url,
           headers,
