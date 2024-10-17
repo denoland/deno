@@ -28,7 +28,7 @@ pub enum CacheError {
   Resource(deno_core::error::AnyError),
   #[error(transparent)]
   Other(deno_core::error::AnyError),
-  #[error(transparent)]
+  #[error("{0}")]
   Io(#[from] std::io::Error),
 }
 
