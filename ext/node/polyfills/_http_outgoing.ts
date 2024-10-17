@@ -391,11 +391,7 @@ Object.defineProperties(
         msg._implicitHeader();
       }
 
-      try {
-        return msg._send(chunk, encoding, callback);
-      } catch (error) {
-        console.log("error from msg._send()", error);
-      }
+      return msg._send(chunk, encoding, callback);
     },
 
     // deno-lint-ignore no-explicit-any
@@ -514,42 +510,23 @@ Object.defineProperties(
     /** Right after socket is ready, we need to writeHeader() to setup the request and
      *  client. This is invoked by onSocket(). */
     _flushHeaders() {
-      console.trace("_flushHeaders", {
-        socket: !!this.socket,
-        headerSent: this._headerSent,
-      });
-      if (this.socket && !this._headerSent) {
+      if (!this._headerSent) {
         this._headerSent = true;
         this._writeHeader();
-      } else {
-        // deno-lint-ignore no-console
-        console.warn("socket not found");
       }
-      console.trace("_flushHeaders after", {
-        socket: !!this.socket,
-        headerSent: this._headerSent,
-      });
     },
 
     // deno-lint-ignore no-explicit-any
     _send(data: any, encoding?: string | null, callback?: () => void) {
-      console.trace("send invoked", {
-        data: new TextDecoder().decode(data.slice(-20, -1)),
-      });
       // if socket is ready, write the data after headers are written.
       // if socket is not ready, buffer data in outputbuffer.
       if (this.socket && !this.socket.connecting) {
-        console.log("writing headers again:", {
-          headerSent: this._headerSent,
-          header: this._header,
-        });
         if (!this._headerSent) {
           this._writeHeader();
           this._headerSent = true;
         }
 
         if (this._headerSent) {
-          console.log("writeRaw invoked");
           return this._writeRaw(data, encoding, callback);
         }
       } else {
@@ -599,7 +576,6 @@ Object.defineProperties(
       encoding?: string | null,
       callback?: () => void,
     ) {
-      console.log("flushing data", data);
       if (typeof data === "string") {
         data = Buffer.from(data, encoding);
       }
@@ -607,20 +583,9 @@ Object.defineProperties(
         data = new Uint8Array(data.buffer, data.byteOffset, data.byteLength);
       }
       if (data.buffer.byteLength > 0) {
-        console.log("waiting for bodyWriter to be ready", {
-          data: new TextDecoder().decode(data.slice(-20, -1)),
-        });
         this._bodyWriter.ready.then(() => {
-          console.log("bodyWriter is ready", {
-            desirezedSize: this._bodyWriter.desiredSize,
-          });
           if (this._bodyWriter.desiredSize > 0) {
             this._bodyWriter.write(data).then(() => {
-              console.log("writing done: ", {
-                last_bytes: new TextDecoder().decode(data.slice(-20, -1)),
-                length: data.length,
-                buffer: this.outputData.length,
-              });
               callback?.();
               if (this.outputData.length == 0) {
                 this.emit("finish");
@@ -766,8 +731,6 @@ Object.defineProperties(
 
       const { header } = state;
       this._header = header + "\r\n";
-      // console.log("_headerSent set to false");
-      // this._headerSent = false;
 
       // Wait until the first body chunk, or close(), is sent to flush,
       // UNLESS we're sending Expect: 100-continue.

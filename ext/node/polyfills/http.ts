@@ -398,7 +398,6 @@ class ClientRequest extends OutgoingMessage {
       if (typeof optsWithoutSignal.createConnection === "function") {
         const oncreate = once((err, socket) => {
           if (err) {
-            console.log("emitting error", { err });
             this.emit("error", err);
           } else {
             this.onSocket(socket);
@@ -424,7 +423,6 @@ class ClientRequest extends OutgoingMessage {
   }
 
   _writeHeader() {
-    console.trace("_writeHeader invoked");
     const url = this._createUrlStrFromOptions();
 
     const headers = [];
@@ -453,11 +451,8 @@ class ClientRequest extends OutgoingMessage {
     (async () => {
       try {
         const parsedUrl = new URL(url);
-        console.trace("starting conn");
         let baseConnRid = this.socket.rid;
-        console.log("socket:", baseConnRid);
         if (this._encrypted) {
-          console.log("encrypted");
           [baseConnRid] = op_tls_start({
             rid: this.socket.rid,
             hostname: parsedUrl.hostname,
@@ -467,39 +462,18 @@ class ClientRequest extends OutgoingMessage {
         }
         let rid;
         let connRid;
-        try {
-          console.log(
-            "sending request with conn",
-            this._bodyWriteRid,
-            baseConnRid,
-            this._encrypted,
-          );
-          [rid, connRid] = await op_node_http_request_with_conn(
-            this.method,
-            url,
-            headers,
-            this._bodyWriteRid,
-            baseConnRid,
-            this._encrypted,
-          );
-        } catch (error) {
-          console.error("error from request with conn", error);
-        }
+        [rid, connRid] = await op_node_http_request_with_conn(
+          this.method,
+          url,
+          headers,
+          this._bodyWriteRid,
+          baseConnRid,
+          this._encrypted,
+        )
+        await op_node_http_wait_for_connection(connRid);
         // Emit request ready to let the request body to be written.
-        try {
-          await op_node_http_wait_for_connection(connRid);
-        } catch (error) {
-          console.error("error from wait for connection", error);
-        }
-        console.log("request ready");
         this.emit("requestReady");
-        let res;
-        try {
-          res = await op_node_http_await_response(rid);
-          console.log("response received", { res });
-        } catch (error) {
-          console.log("error from await response", error);
-        }
+        const res = await op_node_http_await_response(rid);
         const incoming = new IncomingMessageForClient(this.socket);
         incoming.req = this;
         this.res = incoming;
@@ -538,43 +512,26 @@ class ClientRequest extends OutgoingMessage {
           if (this.method === "CONNECT") {
             throw new Error("not implemented CONNECT");
           }
-          let upgradeRid;
-          try {
-            upgradeRid = await op_node_http_fetch_response_upgrade(
-              res.responseRid,
-            );
-          } catch (error) {
-            console.log("error from fetch response upgrade", error);
-          }
-          assert(typeof res.remoteAddrIp !== "undefined");
-          assert(typeof res.remoteAddrIp !== "undefined");
-          let conn;
-          try {
-            conn = new TcpConn(
-              upgradeRid,
-              {
-                transport: "tcp",
-                hostname: res.remoteAddrIp,
-                port: res.remoteAddrIp,
-              },
-              // TODO(bartlomieju): figure out actual values
-              {
-                transport: "tcp",
-                hostname: "127.0.0.1",
-                port: 80,
-              },
-            );
-          } catch (error) {
-            console.log("error from new connectin");
-          }
-          let socket;
-          try {
-            socket = new Socket({
-              handle: new TCP(constants.SERVER, conn),
-            });
-          } catch (error) {
-            console.log("error from new Socket", error);
-          }
+          const upgradeRid = await op_node_http_fetch_response_upgrade(
+            res.responseRid,
+          );
+          const conn = new TcpConn(
+            upgradeRid,
+            {
+              transport: "tcp",
+              hostname: res.remoteAddrIp,
+              port: res.remoteAddrIp,
+            },
+            // TODO(bartlomieju): figure out actual values
+            {
+              transport: "tcp",
+              hostname: "127.0.0.1",
+              port: 80,
+            },
+          );
+          const socket = new Socket({
+            handle: new TCP(constants.SERVER, conn),
+          });
 
           this.upgradeOrConnect = true;
 
@@ -604,10 +561,8 @@ class ClientRequest extends OutgoingMessage {
           // Node.js seems ignoring this error
         } else if (err.message.includes("The signal has been aborted")) {
           // Remap this error
-          console.log("emitting socket hung up error");
           this.emit("error", connResetException("socket hang up"));
         } else {
-          console.log("emitting error event", err);
           this.emit("error", err);
         }
       }
@@ -641,7 +596,6 @@ class ClientRequest extends OutgoingMessage {
             err = new connResetException("socket hang up");
           }
           if (err) {
-            console.log("error event", err);
             emitErrorEvent(req, err);
           }
           req._closed = true;

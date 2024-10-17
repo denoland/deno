@@ -118,7 +118,6 @@ where
       .take::<TlsStreamResource>(conn_rid)?;
     let resource = Rc::try_unwrap(resource_rc)
       .map_err(|_e| bad_resource("TLS stream is currently in use"));
-    eprintln!("op_node_http_request_with_conn(tls): {resource:?}");
     let resource = resource?;
     let (read_half, write_half) = resource.into_inner();
     let tcp_stream = read_half.unsplit(write_half);
@@ -144,7 +143,6 @@ where
       .take::<TcpStreamResource>(conn_rid)?;
     let resource = Rc::try_unwrap(resource_rc)
       .map_err(|_| bad_resource("TCP stream is currently in use"));
-    eprintln!("op_node_http_request_with_conn(tcp): {resource:?}");
     let resource = resource?;
     let (read_half, write_half) = resource.into_inner();
     let tcp_stream = read_half.reunite(write_half)?;
@@ -258,7 +256,6 @@ pub async fn op_node_http_wait_for_connection(
     .take::<NodeHttpConnReady>(rid)?;
   let resource =
     Rc::try_unwrap(resource).map_err(|_| bad_resource("NodeHttpConnReady"));
-  eprintln!("op_node_http_wait_for_connection: {resource:?}");
   let resource = resource?;
   resource.recv.await?;
   Ok(rid)
@@ -276,16 +273,12 @@ pub async fn op_node_http_await_response(
     .take::<NodeHttpClientResponse>(rid)?;
   let resource = Rc::try_unwrap(resource)
     .map_err(|_| bad_resource("NodeHttpClientResponse"));
-  eprintln!("resource: {resource:?}");
   let resource = resource?;
 
-  eprintln!("op_node_http_await_response: awating for res");
   let res = resource.response.await;
-  eprintln!("op_node_http_await_response: res: {res:?}");
   let res = res?;
 
   let status = res.status();
-  eprintln!("op_node_http_await_response: {status}");
   let mut res_headers = Vec::new();
   for (key, val) in res.headers().iter() {
     res_headers.push((key.as_str().into(), val.as_bytes().into()));
@@ -583,7 +576,6 @@ impl Stream for NodeHttpResourceToBodyAdapter {
           Ok(buf) if buf.is_empty() => Poll::Ready(None),
           Ok(buf) => {
             let bytes: Bytes = buf.to_vec().into();
-            eprintln!("buf: {:?}", bytes);
             this.1 = Some(this.0.clone().read(64 * 1024));
             Poll::Ready(Some(Ok(bytes)))
           }
