@@ -79,18 +79,15 @@ impl KeyObjectHandle {
       AsymmetricPrivateKey::RsaPss(key) => {
         let mut hash_algorithm = None;
         let mut salt_length = None;
-        match &key.details {
-          Some(details) => {
-            if details.hash_algorithm != details.mf1_hash_algorithm {
-              return Err(type_error(
-                "rsa-pss with different mf1 hash algorithm and hash algorithm is not supported",
-              ));
-            }
-            hash_algorithm = Some(details.hash_algorithm);
-            salt_length = Some(details.salt_length as usize);
+        if let Some(details) = &key.details {
+          if details.hash_algorithm != details.mf1_hash_algorithm {
+            return Err(type_error(
+              "rsa-pss with different mf1 hash algorithm and hash algorithm is not supported",
+            ));
           }
-          None => {}
-        };
+          hash_algorithm = Some(details.hash_algorithm);
+          salt_length = Some(details.salt_length as usize);
+        }
         if let Some(s) = pss_salt_length {
           salt_length = Some(s as usize);
         }
@@ -215,18 +212,15 @@ impl KeyObjectHandle {
       AsymmetricPublicKey::RsaPss(key) => {
         let mut hash_algorithm = None;
         let mut salt_length = None;
-        match &key.details {
-          Some(details) => {
-            if details.hash_algorithm != details.mf1_hash_algorithm {
-              return Err(type_error(
-                "rsa-pss with different mf1 hash algorithm and hash algorithm is not supported",
-              ));
-            }
-            hash_algorithm = Some(details.hash_algorithm);
-            salt_length = Some(details.salt_length as usize);
+        if let Some(details) = &key.details {
+          if details.hash_algorithm != details.mf1_hash_algorithm {
+            return Err(type_error(
+              "rsa-pss with different mf1 hash algorithm and hash algorithm is not supported",
+            ));
           }
-          None => {}
-        };
+          hash_algorithm = Some(details.hash_algorithm);
+          salt_length = Some(details.salt_length as usize);
+        }
         if let Some(s) = pss_salt_length {
           salt_length = Some(s as usize);
         }

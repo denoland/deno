@@ -527,7 +527,7 @@ impl<'a> GraphDisplayContext<'a> {
 
   fn build_module_info(&mut self, module: &Module, type_dep: bool) -> TreeNode {
     enum PackageOrSpecifier {
-      Package(NpmResolutionPackage),
+      Package(Box<NpmResolutionPackage>),
       Specifier(ModuleSpecifier),
     }
 
@@ -535,7 +535,7 @@ impl<'a> GraphDisplayContext<'a> {
 
     let package_or_specifier = match module.npm() {
       Some(npm) => match self.npm_info.resolve_package(npm.nv_reference.nv()) {
-        Some(package) => Package(package.clone()),
+        Some(package) => Package(Box::new(package.clone())),
         None => Specifier(module.specifier().clone()), // should never happen
       },
       None => Specifier(module.specifier().clone()),
