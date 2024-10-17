@@ -469,7 +469,7 @@ class ClientRequest extends OutgoingMessage {
           this._bodyWriteRid,
           baseConnRid,
           this._encrypted,
-        )
+        );
         await op_node_http_wait_for_connection(connRid);
         // Emit request ready to let the request body to be written.
         this.emit("requestReady");
