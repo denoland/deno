@@ -26,6 +26,7 @@ use deno_ffi::StaticError;
 use deno_kv::KvCheckError;
 use deno_kv::KvError;
 use deno_kv::KvMutationError;
+use deno_napi::NApiError;
 use deno_net::ops::NetError;
 use deno_tls::TlsError;
 use deno_web::BlobError;
@@ -171,6 +172,15 @@ pub fn get_nix_error_class(error: &nix::Error) -> &'static str {
     nix::Error::UnknownErrno => "Error",
     &nix::Error::ENOTSUP => unreachable!(),
     _ => "Error",
+  }
+}
+
+fn get_napi_error_class(e: &NApiError) -> &'static str {
+  match e {
+    NApiError::InvalidPath
+    | NApiError::LibLoading(_)
+    | NApiError::ModuleNotFound(_) => "TypeError",
+    NApiError::Permission(e) => get_error_class_name(e).unwrap_or("Error"),
   }
 }
 
@@ -443,6 +453,7 @@ pub fn get_error_class_name(e: &AnyError) -> Option<&'static str> {
   deno_core::error::get_custom_error_class(e)
     .or_else(|| deno_webgpu::error::get_error_class_name(e))
     .or_else(|| deno_websocket::get_network_error_class_name(e))
+    .or_else(|| e.downcast_ref::<NApiError>().map(get_napi_error_class))
     .or_else(|| e.downcast_ref::<WebError>().map(get_web_error_class))
     .or_else(|| {
       e.downcast_ref::<CompressionError>()
