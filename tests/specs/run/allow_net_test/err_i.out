@@ -1,0 +1,4 @@
+error: invalid host: '*.amazon.com'
+
+Caused by:
+    invalid char found in FQDN

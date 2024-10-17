@@ -1,0 +1,28 @@
+{
+  "tempDir": true,
+  "steps": [
+    {
+      "args": " run --allow-net=api.notion.com.,www.google.com. host.js",
+      "output": ""
+    },
+    {
+      "args": " run --allow-net host.js",
+      "output": ""
+    },
+    {
+      "args": " run --allow-net=*.amazon.com  host.js",
+      "output": "err_i.out",
+      "exitCode": 1
+    },
+    {
+      "args": " run --allow-net=[::1]:  host.js",
+      "output": "error: invalid port in '[::1]:': ''\n",
+      "exitCode": 1
+    },
+    {
+      "args": " run --allow-net=[::1*]:1  host.js",
+      "output": "err_ii.out",
+      "exitCode": 1
+    }
+  ]
+}
