@@ -11,6 +11,7 @@ use deno_core::anyhow::bail;
 use deno_core::error::AnyError;
 use deno_core::resolve_url_or_path;
 use deno_core::serde_json;
+use deno_core::url;
 use deno_graph::Dependency;
 use deno_graph::GraphKind;
 use deno_graph::Module;
@@ -51,11 +52,26 @@ pub async fn info(
     let npmrc = cli_options.npmrc();
     let resolver = factory.workspace_resolver().await?;
 
+    // Ensure that we're one level deeper as teh workspace member logic
+    // assumes that a file URL and only checks parent segments. Without
+    // this workspace member resolution would fail if cwd is equal to a
+    // workspace member directory.
+    let cwd_url =
+      url::Url::from_file_path(cli_options.initial_cwd().join("__dummy__"))
+        .unwrap();
+
     let maybe_import_specifier =
       if let Some(import_map) = resolver.maybe_import_map() {
-        if let Ok(imports_specifier) =
-          import_map.resolve(&specifier, import_map.base_url())
-        {
+        let member = cli_options.workspace().resolve_member_dir(&cwd_url);
+
+        // Import map resolution assumes a file URL
+        let base = if member.has_deno_or_pkg_json() {
+          &member.dir_url().join("deno.json").unwrap()
+        } else {
+          import_map.base_url()
+        };
+
+        if let Ok(imports_specifier) = import_map.resolve(&specifier, base) {
           Some(imports_specifier)
         } else {
           None
