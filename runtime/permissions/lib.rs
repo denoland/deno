@@ -35,13 +35,13 @@ use std::sync::Arc;
 
 pub mod prompter;
 use prompter::permission_prompt;
-use prompter::PromptResponse;
 use prompter::PERMISSION_EMOJI;
 
 pub use prompter::set_prompt_callbacks;
 pub use prompter::set_prompter;
 pub use prompter::PermissionPrompter;
 pub use prompter::PromptCallback;
+pub use prompter::PromptResponse;
 
 /// Fast exit from permission check routines if this permission
 /// is in the "fully-granted" state.
