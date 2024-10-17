@@ -67,7 +67,7 @@ import { headersEntries } from "ext:deno_fetch/20_headers.js";
 import { timerId } from "ext:deno_web/03_abort_signal.js";
 import { clearTimeout as webClearTimeout } from "ext:deno_web/02_timers.js";
 import { resourceForReadableStream } from "ext:deno_web/06_streams.js";
-import { TcpConn } from "ext:deno_net/01_net.js";
+import { UpgradedConn } from "ext:deno_net/01_net.js";
 import { STATUS_CODES } from "node:_http_server";
 import { methods as METHODS } from "node:_http_common";
 
@@ -517,7 +517,7 @@ class ClientRequest extends OutgoingMessage {
           );
           assert(typeof res.remoteAddrIp !== "undefined");
           assert(typeof res.remoteAddrIp !== "undefined");
-          const conn = new TcpConn(
+          const conn = new UpgradedConn(
             upgradeRid,
             {
               transport: "tcp",
