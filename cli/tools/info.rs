@@ -52,10 +52,6 @@ pub async fn info(
     let npmrc = cli_options.npmrc();
     let resolver = factory.workspace_resolver().await?;
 
-    // Ensure that we're one level deeper as teh workspace member logic
-    // assumes that a file URL and only checks parent segments. Without
-    // this workspace member resolution would fail if cwd is equal to a
-    // workspace member directory.
     let cwd_url =
       url::Url::from_file_path(cli_options.initial_cwd().join("__dummy__"))
         .unwrap();
