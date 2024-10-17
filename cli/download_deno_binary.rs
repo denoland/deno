@@ -59,7 +59,11 @@ async fn download_base_binary(
     // text above which will stay alive after the progress bars are complete
     let progress = progress_bars.update("");
     http_client
-      .download_with_progress(download_url.parse()?, None, &progress)
+      .download_with_progress_and_retries(
+        download_url.parse()?,
+        None,
+        &progress,
+      )
       .await?
   };
   let Some(bytes) = maybe_bytes else {
