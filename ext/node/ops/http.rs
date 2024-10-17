@@ -66,17 +66,6 @@ pub struct NodeHttpResponse {
   pub error: Option<String>,
 }
 
-#[derive(Debug)]
-pub struct NodeHttpConnReady {
-  recv: tokio::sync::oneshot::Receiver<()>,
-}
-
-impl deno_core::Resource for NodeHttpConnReady {
-  fn name(&self) -> Cow<str> {
-    "nodeHttpConnReady".into()
-  }
-}
-
 pub struct NodeHttpClientResponse {
   response:
     Pin<Box<dyn Future<Output = Result<Response<Incoming>, Error>> + Send>>,
@@ -107,11 +96,11 @@ pub async fn op_node_http_request_with_conn<P>(
   #[smi] body: Option<ResourceId>,
   #[smi] conn_rid: ResourceId,
   encrypted: bool,
-) -> Result<(ResourceId, ResourceId), AnyError>
+) -> Result<ResourceId, AnyError>
 where
   P: crate::NodePermissions + 'static,
 {
-  let (_handle, mut sender, receiver) = if encrypted {
+  let (_handle, mut sender) = if encrypted {
     let resource_rc = state
       .borrow_mut()
       .resource_table
@@ -123,18 +112,12 @@ where
     let tcp_stream = read_half.unsplit(write_half);
     let io = TokioIo::new(tcp_stream);
     let (sender, conn) = hyper::client::conn::http1::handshake(io).await?;
-
-    let (notify, receiver) = tokio::sync::oneshot::channel::<()>();
-
-    // Spawn a task to poll the connection, driving the HTTP state
     (
       tokio::task::spawn(async move {
-        let _ = notify.send(());
         conn.await?;
         Ok::<_, AnyError>(())
       }),
       sender,
-      receiver,
     )
   } else {
     let resource_rc = state
@@ -149,17 +132,13 @@ where
     let io = TokioIo::new(tcp_stream);
     let (sender, conn) = hyper::client::conn::http1::handshake(io).await?;
 
-    let (notify, receiver) = tokio::sync::oneshot::channel::<()>();
-
     // Spawn a task to poll the connection, driving the HTTP state
     (
       tokio::task::spawn(async move {
-        let _ = notify.send(());
         conn.await?;
         Ok::<_, AnyError>(())
       }),
       sender,
-      receiver,
     )
   };
 
@@ -236,28 +215,7 @@ where
       response: res,
       url: url.clone(),
     });
-  let conn_rid = state
-    .borrow_mut()
-    .resource_table
-    .add(NodeHttpConnReady { recv: receiver });
 
-  Ok((rid, conn_rid))
-}
-
-#[op2(async)]
-#[serde]
-pub async fn op_node_http_wait_for_connection(
-  state: Rc<RefCell<OpState>>,
-  #[smi] rid: ResourceId,
-) -> Result<ResourceId, AnyError> {
-  let resource = state
-    .borrow_mut()
-    .resource_table
-    .take::<NodeHttpConnReady>(rid)?;
-  let resource =
-    Rc::try_unwrap(resource).map_err(|_| bad_resource("NodeHttpConnReady"));
-  let resource = resource?;
-  resource.recv.await?;
   Ok(rid)
 }
 

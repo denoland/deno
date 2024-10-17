@@ -282,6 +282,10 @@ impl BoundedBufferChannelInner {
   }
 
   pub fn close(&mut self) {
+    eprintln!(
+      "stream_resource: close() len={} current_size={} closed={}",
+      self.len, self.current_size, self.closed
+    );
     self.closed = true;
     // Wake up reads and writes, since they'll both be able to proceed forever now
     if let Some(waker) = self.write_waker.take() {

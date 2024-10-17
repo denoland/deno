@@ -8,7 +8,6 @@ import {
   op_node_http_await_response,
   op_node_http_fetch_response_upgrade,
   op_node_http_request_with_conn,
-  op_node_http_wait_for_connection,
   op_tls_start,
 } from "ext:core/ops";
 
@@ -460,7 +459,7 @@ class ClientRequest extends OutgoingMessage {
             alpnProtocols: ["http/1.0", "http/1.1"],
           });
         }
-        const [rid, connRid] = await op_node_http_request_with_conn(
+        const rid = await op_node_http_request_with_conn(
           this.method,
           url,
           headers,
@@ -468,7 +467,6 @@ class ClientRequest extends OutgoingMessage {
           baseConnRid,
           this._encrypted,
         );
-        await op_node_http_wait_for_connection(connRid);
         // Emit request ready to let the request body to be written.
         this.emit("requestReady");
         const res = await op_node_http_await_response(rid);
@@ -623,6 +621,7 @@ class ClientRequest extends OutgoingMessage {
           // sets up the request.
           this._flushHeaders();
           this.once("requestReady", () => {
+            console.log("flushing Body");
             this._flushBody();
           });
         });
@@ -663,6 +662,12 @@ class ClientRequest extends OutgoingMessage {
     }
     const finish = async () => {
       try {
+        console.log(
+          "finish(): outputData:",
+          this.outputData.length,
+          "pendingWrites",
+          this.pendingWrites,
+        );
         await this._bodyWriter.ready;
         await this._bodyWriter?.close();
       } catch {
@@ -678,11 +683,14 @@ class ClientRequest extends OutgoingMessage {
       }
     };
 
-    if (this.socket && this._bodyWriter && this.outputData.length === 0) {
+    console.log("pendingWrites", this.pendingWrites, "outputData", this.outputData.length);
+    if (this.socket && this._bodyWriter && this.pendingWrites === 0) {
       finish();
     } else {
+      console.log("setting drain event", this.pendingWrites, "outputData", this.outputData.length);
       this.on("drain", () => {
-        if (this.outputData.length === 0) {
+        console.log("drain event", this.pendingWrites);
+        if (this.pendingWrites === 0) {
           finish();
         }
       });
