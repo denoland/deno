@@ -1,7 +1,5 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
-use deno_core::error::type_error;
-use deno_core::error::AnyError;
 use deno_core::op2;
 use deno_core::ToJsBuffer;
 use image::imageops::FilterType;
@@ -12,6 +10,14 @@ use image::RgbaImage;
 use serde::Deserialize;
 use serde::Serialize;
 use std::path::PathBuf;
+
+#[derive(Debug, thiserror::Error)]
+pub enum CanvasError {
+  #[error("Color type '{0:?}' not supported")]
+  UnsupportedColorType(ColorType),
+  #[error(transparent)]
+  Image(#[from] image::ImageError),
+}
 
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "snake_case")]
@@ -43,7 +49,7 @@ struct ImageProcessArgs {
 fn op_image_process(
   #[buffer] buf: &[u8],
   #[serde] args: ImageProcessArgs,
-) -> Result<ToJsBuffer, AnyError> {
+) -> ToJsBuffer {
   let view =
     RgbaImage::from_vec(args.width, args.height, buf.to_vec()).unwrap();
 
@@ -105,7 +111,7 @@ fn op_image_process(
     }
   }
 
-  Ok(image_out.to_vec().into())
+  image_out.to_vec().into()
 }
 
 #[derive(Debug, Serialize)]
@@ -117,17 +123,16 @@ struct DecodedPng {
 
 #[op2]
 #[serde]
-fn op_image_decode_png(#[buffer] buf: &[u8]) -> Result<DecodedPng, AnyError> {
+fn op_image_decode_png(
+  #[buffer] buf: &[u8],
+) -> Result<DecodedPng, CanvasError> {
   let png = image::codecs::png::PngDecoder::new(buf)?;
 
   let (width, height) = png.dimensions();
 
   // TODO(@crowlKats): maybe use DynamicImage https://docs.rs/image/0.24.7/image/enum.DynamicImage.html ?
   if png.color_type() != ColorType::Rgba8 {
-    return Err(type_error(format!(
-      "Color type '{:?}' not supported",
-      png.color_type()
-    )));
+    return Err(CanvasError::UnsupportedColorType(png.color_type()));
   }
 
   // read_image will assert that the buffer is the correct size, so we need to fill it with zeros
