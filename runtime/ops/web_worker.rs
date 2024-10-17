@@ -50,6 +50,7 @@ async fn op_worker_recv_message(
     .recv(state.clone())
     .or_cancel(handle.cancel)
     .await?
+    .map_err(|e| e.into())
 }
 
 #[op2(fast)]
