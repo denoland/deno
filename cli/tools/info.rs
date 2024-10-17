@@ -60,25 +60,17 @@ pub async fn info(
       url::Url::from_file_path(cli_options.initial_cwd().join("__dummy__"))
         .unwrap();
 
-    let maybe_import_specifier =
-      if let Some(import_map) = resolver.maybe_import_map() {
-        let member = cli_options.workspace().resolve_member_dir(&cwd_url);
-
-        // Import map resolution assumes a file URL
-        let base = if member.has_deno_or_pkg_json() {
-          &member.dir_url().join("deno.json").unwrap()
-        } else {
-          import_map.base_url()
-        };
-
-        if let Ok(imports_specifier) = import_map.resolve(&specifier, base) {
-          Some(imports_specifier)
-        } else {
-          None
-        }
+    let maybe_import_specifier = if let Some(import_map) =
+      resolver.maybe_import_map()
+    {
+      if let Ok(imports_specifier) = import_map.resolve(&specifier, &cwd_url) {
+        Some(imports_specifier)
       } else {
         None
-      };
+      }
+    } else {
+      None
+    };
 
     let specifier = match maybe_import_specifier {
       Some(specifier) => specifier,
