@@ -19,7 +19,14 @@ use deno_core::ModuleResolutionError;
 use deno_cron::CronError;
 use deno_fetch::FetchError;
 use deno_fetch::HttpClientCreateError;
+use deno_ffi::CallError;
+use deno_ffi::CallbackError;
+use deno_ffi::DlfcnError;
+use deno_ffi::IRError;
+use deno_ffi::ReprError;
+use deno_ffi::StaticError;
 use deno_tls::TlsError;
+use deno_webstorage::WebStorageError;
 use std::env;
 use std::error::Error;
 use std::io;
@@ -160,6 +167,74 @@ pub fn get_nix_error_class(error: &nix::Error) -> &'static str {
   }
 }
 
+fn get_ffi_repr_error_class(e: &ReprError) -> &'static str {
+  match e {
+    ReprError::InvalidOffset => "TypeError",
+    ReprError::InvalidArrayBuffer => "TypeError",
+    ReprError::DestinationLengthTooShort => "RangeError",
+    ReprError::InvalidCString => "TypeError",
+    ReprError::CStringTooLong => "TypeError",
+    ReprError::InvalidBool => "TypeError",
+    ReprError::InvalidU8 => "TypeError",
+    ReprError::InvalidI8 => "TypeError",
+    ReprError::InvalidU16 => "TypeError",
+    ReprError::InvalidI16 => "TypeError",
+    ReprError::InvalidU32 => "TypeError",
+    ReprError::InvalidI32 => "TypeError",
+    ReprError::InvalidU64 => "TypeError",
+    ReprError::InvalidI64 => "TypeError",
+    ReprError::InvalidF32 => "TypeError",
+    ReprError::InvalidF64 => "TypeError",
+    ReprError::InvalidPointer => "TypeError",
+    ReprError::Permission(e) => get_error_class_name(e).unwrap_or("Error"),
+  }
+}
+
+fn get_ffi_dlfcn_error_class(e: &DlfcnError) -> &'static str {
+  match e {
+    DlfcnError::RegisterSymbol { .. } => "Error",
+    DlfcnError::Dlopen(_) => "Error",
+    DlfcnError::Permission(e) => get_error_class_name(e).unwrap_or("Error"),
+    DlfcnError::Other(e) => get_error_class_name(e).unwrap_or("Error"),
+  }
+}
+
+fn get_ffi_static_error_class(e: &StaticError) -> &'static str {
+  match e {
+    StaticError::Dlfcn(e) => get_ffi_dlfcn_error_class(e),
+    StaticError::InvalidTypeVoid => "TypeError",
+    StaticError::InvalidTypeStruct => "TypeError",
+    StaticError::Resource(e) => get_error_class_name(e).unwrap_or("Error"),
+  }
+}
+
+fn get_ffi_callback_error_class(e: &CallbackError) -> &'static str {
+  match e {
+    CallbackError::Resource(e) => get_error_class_name(e).unwrap_or("Error"),
+    CallbackError::Other(e) => get_error_class_name(e).unwrap_or("Error"),
+    CallbackError::Permission(e) => get_error_class_name(e).unwrap_or("Error"),
+  }
+}
+
+fn get_ffi_call_error_class(e: &CallError) -> &'static str {
+  match e {
+    CallError::IR(_) => "TypeError",
+    CallError::NonblockingCallFailure(_) => "Error",
+    CallError::InvalidSymbol(_) => "TypeError",
+    CallError::Permission(e) => get_error_class_name(e).unwrap_or("Error"),
+    CallError::Callback(e) => get_ffi_callback_error_class(e),
+  }
+}
+
+fn get_webstorage_class_name(e: &WebStorageError) -> &'static str {
+  match e {
+    WebStorageError::ContextNotSupported => "DOMExceptionNotSupportedError",
+    WebStorageError::Sqlite(_) => todo!(),
+    WebStorageError::Io(e) => get_io_error_class(e),
+    WebStorageError::StorageExceeded => "DOMExceptionQuotaExceededError",
+  }
+}
+
 fn get_tls_error_class(e: &TlsError) -> &'static str {
   match e {
     TlsError::Rustls(_) => "Error",
@@ -259,8 +334,22 @@ pub fn get_error_class_name(e: &AnyError) -> Option<&'static str> {
   deno_core::error::get_custom_error_class(e)
     .or_else(|| deno_webgpu::error::get_error_class_name(e))
     .or_else(|| deno_web::get_error_class_name(e))
-    .or_else(|| deno_webstorage::get_not_supported_error_class_name(e))
     .or_else(|| deno_websocket::get_network_error_class_name(e))
+    .or_else(|| e.downcast_ref::<IRError>().map(|_| "TypeError"))
+    .or_else(|| e.downcast_ref::<ReprError>().map(get_ffi_repr_error_class))
+    .or_else(|| {
+      e.downcast_ref::<DlfcnError>()
+        .map(get_ffi_dlfcn_error_class)
+    })
+    .or_else(|| {
+      e.downcast_ref::<StaticError>()
+        .map(get_ffi_static_error_class)
+    })
+    .or_else(|| {
+      e.downcast_ref::<CallbackError>()
+        .map(get_ffi_callback_error_class)
+    })
+    .or_else(|| e.downcast_ref::<CallError>().map(get_ffi_call_error_class))
     .or_else(|| e.downcast_ref::<TlsError>().map(get_tls_error_class))
     .or_else(|| e.downcast_ref::<CronError>().map(get_cron_error_class))
     .or_else(|| e.downcast_ref::<CanvasError>().map(get_canvas_error))
@@ -273,6 +362,14 @@ pub fn get_error_class_name(e: &AnyError) -> Option<&'static str> {
     .or_else(|| {
       e.downcast_ref::<BroadcastChannelError>()
         .map(get_broadcast_channel_error)
+    })
+    .or_else(|| {
+      e.downcast_ref::<WebStorageError>()
+        .map(get_webstorage_class_name)
+    })
+    .or_else(|| {
+      e.downcast_ref::<deno_url::UrlPatternError>()
+        .map(|_| "TypeError")
     })
     .or_else(|| {
       e.downcast_ref::<dlopen2::Error>()

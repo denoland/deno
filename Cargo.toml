@@ -46,12 +46,12 @@ repository = "https://github.com/denoland/deno"
 
 [workspace.dependencies]
 deno_ast = { version = "=0.42.2", features = ["transpiling"] }
-deno_core = { version = "0.311.0" }
+deno_core = { version = "0.314.1" }
 
 deno_bench_util = { version = "0.165.0", path = "./bench_util" }
 deno_lockfile = "=0.23.1"
 deno_media_type = { version = "0.1.4", features = ["module_specifier"] }
-deno_npm = "=0.25.3"
+deno_npm = "=0.25.4"
 deno_path_util = "=0.2.1"
 deno_permissions = { version = "0.31.0", path = "./runtime/permissions" }
 deno_runtime = { version = "0.180.0", path = "./runtime" }
@@ -106,6 +106,7 @@ cbc = { version = "=0.1.2", features = ["alloc"] }
 # Note: Do not use the "clock" feature of chrono, as it links us to CoreFoundation on macOS.
 #       Instead use util::time::utc_now()
 chrono = { version = "0.4", default-features = false, features = ["std", "serde"] }
+color-print = "0.3.5"
 console_static_text = "=0.8.1"
 dashmap = "5.5.3"
 data-encoding = "2.3.3"

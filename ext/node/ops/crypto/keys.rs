@@ -2024,7 +2024,9 @@ pub fn op_node_export_public_key_pem(
     _ => unreachable!("export_der would have errored"),
   };
 
-  let mut out = vec![0; 2048];
+  let pem_len = der::pem::encapsulated_len(label, LineEnding::LF, data.len())
+    .map_err(|_| type_error("very large data"))?;
+  let mut out = vec![0; pem_len];
   let mut writer = PemWriter::new(label, LineEnding::LF, &mut out)?;
   writer.write(&data)?;
   let len = writer.finish()?;
@@ -2063,7 +2065,9 @@ pub fn op_node_export_private_key_pem(
     _ => unreachable!("export_der would have errored"),
   };
 
-  let mut out = vec![0; 2048];
+  let pem_len = der::pem::encapsulated_len(label, LineEnding::LF, data.len())
+    .map_err(|_| type_error("very large data"))?;
+  let mut out = vec![0; pem_len];
   let mut writer = PemWriter::new(label, LineEnding::LF, &mut out)?;
   writer.write(&data)?;
   let len = writer.finish()?;
