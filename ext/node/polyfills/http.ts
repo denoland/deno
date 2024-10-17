@@ -530,6 +530,7 @@ class ClientRequest extends OutgoingMessage {
               hostname: "127.0.0.1",
               port: 80,
             },
+            false,
           );
           const socket = new Socket({
             handle: new TCP(constants.SERVER, conn),

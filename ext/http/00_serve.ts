@@ -193,6 +193,7 @@ class InnerRequest {
         upgradeRid,
         underlyingConn?.remoteAddr,
         underlyingConn?.localAddr,
+        false,
       );
 
       return { response: UPGRADE_RESPONSE_SENTINEL, conn };

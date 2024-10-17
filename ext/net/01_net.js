@@ -196,8 +196,11 @@ class Conn {
 
 class TcpConn extends Conn {
   #rid = 0;
+  // whether the connectino is backed by a
+  // full TCP stream (as opposed to an UpgradeStream)
+  #isTcpStream = true;
 
-  constructor(rid, remoteAddr, localAddr) {
+  constructor(rid, remoteAddr, localAddr, isTcpStream) {
     super(rid, remoteAddr, localAddr);
     ObjectDefineProperty(this, internalRidSymbol, {
       __proto__: null,
@@ -205,10 +208,13 @@ class TcpConn extends Conn {
       value: rid,
     });
     this.#rid = rid;
+    this.#isTcpStream = isTcpStream;
   }
 
   setNoDelay(noDelay = true) {
-    return op_set_nodelay(this.#rid, noDelay);
+    if (this.#isTcpStream) {
+      return op_set_nodelay(this.#rid, noDelay);
+    }
   }
 
   setKeepAlive(keepAlive = true) {
