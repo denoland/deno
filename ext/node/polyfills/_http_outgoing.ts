@@ -556,6 +556,7 @@ Object.defineProperties(
         if (data instanceof Buffer) {
           data = new Uint8Array(data.buffer, data.byteOffset, data.byteLength);
         }
+        await this._bodyWriter.ready;
         ret = await this._bodyWriter.write(data).then(() => {
           callback?.();
           this.emit("drain");
@@ -587,9 +588,6 @@ Object.defineProperties(
           if (this._bodyWriter.desiredSize > 0) {
             this._bodyWriter.write(data).then(() => {
               callback?.();
-              if (this.outputData.length == 0) {
-                this.emit("finish");
-              }
               this.emit("drain");
             }).catch((e) => {
               this._requestSendError = e;

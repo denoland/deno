@@ -678,10 +678,14 @@ class ClientRequest extends OutgoingMessage {
       }
     };
 
-    if (this.socket && this._bodyWriter) {
+    if (this.socket && this._bodyWriter && this.outputData.length === 0) {
       finish();
     } else {
-      this.on("finish", finish);
+      this.on("drain", () => {
+        if (this.outputData.length === 0) {
+          finish();
+        }
+      });
     }
 
     return this;

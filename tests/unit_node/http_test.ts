@@ -998,7 +998,7 @@ Deno.test(
     request.on("close", () => {});
     request.end();
     setTimeout(() => {
-      request.destroy(new Error());
+      request.destroy();
       resolve();
     }, 100);
 
@@ -1463,9 +1463,7 @@ Deno.test(
   },
 );
 
-Deno.test("[node/http] http.request() post streaming body works", {
-  ignore: true,
-}, async () => {
+Deno.test("[node/http] http.request() post streaming body works", async () => {
   const server = http.createServer((req, res) => {
     if (req.method === "POST") {
       let receivedBytes = 0;
