@@ -532,6 +532,7 @@ Object.defineProperties(
       } else {
         this.outputData.push({ data, encoding, callback });
       }
+      return false;
     },
 
     _writeHeader() {
