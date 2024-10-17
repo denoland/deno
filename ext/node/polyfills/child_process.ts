@@ -135,7 +135,7 @@ export function fork(
       } else if (flag.startsWith("--no-warnings")) {
         execArgv[index] = "--quiet";
       } else if (flag.startsWith("--experimental")) {
-        // Do Nothing
+        execArgv[index] = "";
       } else {
         index++;
       }

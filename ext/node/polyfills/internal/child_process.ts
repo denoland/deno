@@ -1194,7 +1194,7 @@ function toDenoArgs(args: string[]): string[] {
       if (arg === "--no-warnings") {
         denoArgs.push("--quiet");
       } else if (arg.startsWith("--experimental")) {
-        // Do Nothing
+        denoArgs.push("");
       } else {
         // Not a known flag that expects a value. Just copy it to the output.
         denoArgs.push(arg);
