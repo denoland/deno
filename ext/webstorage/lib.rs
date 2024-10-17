@@ -2,11 +2,8 @@
 
 // NOTE to all: use **cached** prepared statements when interfacing with SQLite.
 
-use std::fmt;
 use std::path::PathBuf;
 
-use deno_core::error::custom_error;
-use deno_core::error::AnyError;
 use deno_core::op2;
 use deno_core::OpState;
 use rusqlite::params;
@@ -14,6 +11,18 @@ use rusqlite::Connection;
 use rusqlite::OptionalExtension;
 
 pub use rusqlite;
+
+#[derive(Debug, thiserror::Error)]
+pub enum WebStorageError {
+  #[error("LocalStorage is not supported in this context.")]
+  ContextNotSupported,
+  #[error(transparent)]
+  Sqlite(#[from] rusqlite::Error),
+  #[error(transparent)]
+  Io(std::io::Error),
+  #[error("Exceeded maximum storage size")]
+  StorageExceeded,
+}
 
 #[derive(Clone)]
 struct OriginStorageDir(PathBuf);
@@ -52,15 +61,13 @@ struct SessionStorage(Connection);
 fn get_webstorage(
   state: &mut OpState,
   persistent: bool,
-) -> Result<&Connection, AnyError> {
+) -> Result<&Connection, WebStorageError> {
   let conn = if persistent {
     if state.try_borrow::<LocalStorage>().is_none() {
-      let path = state.try_borrow::<OriginStorageDir>().ok_or_else(|| {
-        DomExceptionNotSupportedError::new(
-          "LocalStorage is not supported in this context.",
-        )
-      })?;
-      std::fs::create_dir_all(&path.0)?;
+      let path = state
+        .try_borrow::<OriginStorageDir>()
+        .ok_or(WebStorageError::ContextNotSupported)?;
+      std::fs::create_dir_all(&path.0).map_err(WebStorageError::Io)?;
       let conn = Connection::open(path.0.join("local_storage"))?;
       // Enable write-ahead-logging and tweak some other stuff.
       let initial_pragmas = "
@@ -107,7 +114,7 @@ fn get_webstorage(
 pub fn op_webstorage_length(
   state: &mut OpState,
   persistent: bool,
-) -> Result<u32, AnyError> {
+) -> Result<u32, WebStorageError> {
   let conn = get_webstorage(state, persistent)?;
 
   let mut stmt = conn.prepare_cached("SELECT COUNT(*) FROM data")?;
@@ -122,7 +129,7 @@ pub fn op_webstorage_key(
   state: &mut OpState,
   #[smi] index: u32,
   persistent: bool,
-) -> Result<Option<String>, AnyError> {
+) -> Result<Option<String>, WebStorageError> {
   let conn = get_webstorage(state, persistent)?;
 
   let mut stmt =
@@ -136,12 +143,9 @@ pub fn op_webstorage_key(
 }
 
 #[inline]
-fn size_check(input: usize) -> Result<(), AnyError> {
+fn size_check(input: usize) -> Result<(), WebStorageError> {
   if input >= MAX_STORAGE_BYTES {
-    return Err(custom_error(
-      "DOMExceptionQuotaExceededError",
-      "Exceeded maximum storage size",
-    ));
+    return Err(WebStorageError::StorageExceeded);
   }
 
   Ok(())
@@ -153,7 +157,7 @@ pub fn op_webstorage_set(
   #[string] key: &str,
   #[string] value: &str,
   persistent: bool,
-) -> Result<(), AnyError> {
+) -> Result<(), WebStorageError> {
   let conn = get_webstorage(state, persistent)?;
 
   size_check(key.len() + value.len())?;
@@ -177,7 +181,7 @@ pub fn op_webstorage_get(
   state: &mut OpState,
   #[string] key_name: String,
   persistent: bool,
-) -> Result<Option<String>, AnyError> {
+) -> Result<Option<String>, WebStorageError> {
   let conn = get_webstorage(state, persistent)?;
 
   let mut stmt = conn.prepare_cached("SELECT value FROM data WHERE key = ?")?;
@@ -193,7 +197,7 @@ pub fn op_webstorage_remove(
   state: &mut OpState,
   #[string] key_name: &str,
   persistent: bool,
-) -> Result<(), AnyError> {
+) -> Result<(), WebStorageError> {
   let conn = get_webstorage(state, persistent)?;
 
   let mut stmt = conn.prepare_cached("DELETE FROM data WHERE key = ?")?;
@@ -206,7 +210,7 @@ pub fn op_webstorage_remove(
 pub fn op_webstorage_clear(
   state: &mut OpState,
   persistent: bool,
-) -> Result<(), AnyError> {
+) -> Result<(), WebStorageError> {
   let conn = get_webstorage(state, persistent)?;
 
   let mut stmt = conn.prepare_cached("DELETE FROM data")?;
@@ -220,7 +224,7 @@ pub fn op_webstorage_clear(
 pub fn op_webstorage_iterate_keys(
   state: &mut OpState,
   persistent: bool,
-) -> Result<Vec<String>, AnyError> {
+) -> Result<Vec<String>, WebStorageError> {
   let conn = get_webstorage(state, persistent)?;
 
   let mut stmt = conn.prepare_cached("SELECT key FROM data")?;
@@ -230,32 +234,4 @@ pub fn op_webstorage_iterate_keys(
     .collect();
 
   Ok(keys)
-}
-
-#[derive(Debug)]
-pub struct DomExceptionNotSupportedError {
-  pub msg: String,
-}
-
-impl DomExceptionNotSupportedError {
-  pub fn new(msg: &str) -> Self {
-    DomExceptionNotSupportedError {
-      msg: msg.to_string(),
-    }
-  }
-}
-
-impl fmt::Display for DomExceptionNotSupportedError {
-  fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-    f.pad(&self.msg)
-  }
-}
-
-impl std::error::Error for DomExceptionNotSupportedError {}
-
-pub fn get_not_supported_error_class_name(
-  e: &AnyError,
-) -> Option<&'static str> {
-  e.downcast_ref::<DomExceptionNotSupportedError>()
-    .map(|_| "DOMExceptionNotSupportedError")
 }

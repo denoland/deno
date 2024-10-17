@@ -52,7 +52,7 @@ where
     let path = ensure_read_permission::<P>(state, &path)?;
     let fs = state.borrow::<FileSystemRc>();
     let canonicalized_path =
-      deno_core::strip_unc_prefix(fs.realpath_sync(&path)?);
+      deno_path_util::strip_unc_prefix(fs.realpath_sync(&path)?);
     Url::from_file_path(canonicalized_path)
       .map_err(|e| generic_error(format!("URL from Path-String: {:#?}", e)))?
   };

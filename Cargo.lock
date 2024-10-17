@@ -1154,7 +1154,7 @@ dependencies = [
 
 [[package]]
 name = "deno"
-version = "2.0.0"
+version = "2.0.1"
 dependencies = [
  "anstream",
  "async-trait",
@@ -1188,6 +1188,7 @@ dependencies = [
  "deno_task_shell",
  "deno_terminal 0.2.0",
  "deno_tower_lsp",
+ "dhat",
  "dissimilar",
  "dotenvy",
  "dprint-plugin-json",
@@ -1327,7 +1328,7 @@ dependencies = [
 
 [[package]]
 name = "deno_bench_util"
-version = "0.165.0"
+version = "0.166.0"
 dependencies = [
  "bencher",
  "deno_core",
@@ -1336,7 +1337,7 @@ dependencies = [
 
 [[package]]
 name = "deno_broadcast_channel"
-version = "0.165.0"
+version = "0.166.0"
 dependencies = [
  "async-trait",
  "deno_core",
@@ -1347,7 +1348,7 @@ dependencies = [
 
 [[package]]
 name = "deno_cache"
-version = "0.103.0"
+version = "0.104.0"
 dependencies = [
  "async-trait",
  "deno_core",
@@ -1380,7 +1381,7 @@ dependencies = [
 
 [[package]]
 name = "deno_canvas"
-version = "0.40.0"
+version = "0.41.0"
 dependencies = [
  "deno_core",
  "deno_webgpu",
@@ -1415,16 +1416,16 @@ dependencies = [
 
 [[package]]
 name = "deno_console"
-version = "0.171.0"
+version = "0.172.0"
 dependencies = [
  "deno_core",
 ]
 
 [[package]]
 name = "deno_core"
-version = "0.311.0"
+version = "0.314.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "5e09bd55da542fa1fde753aff617c355b5d782e763ab2a19e4371a56d7844cac"
+checksum = "1fcd11ab87426c611b7170138a768dad7170c8fb66d8095b773d25e58fd254ea"
 dependencies = [
  "anyhow",
  "bincode",
@@ -1460,7 +1461,7 @@ checksum = "a13951ea98c0a4c372f162d669193b4c9d991512de9f2381dd161027f34b26b1"
 
 [[package]]
 name = "deno_cron"
-version = "0.51.0"
+version = "0.52.0"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -1473,7 +1474,7 @@ dependencies = [
 
 [[package]]
 name = "deno_crypto"
-version = "0.185.0"
+version = "0.186.0"
 dependencies = [
  "aes",
  "aes-gcm",
@@ -1508,9 +1509,9 @@ dependencies = [
 
 [[package]]
 name = "deno_doc"
-version = "0.153.0"
+version = "0.154.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "6925db7ad16bee4bdcb7e654d2475e2fbd5e1d7dd4c6ee5f030ee858b4a2a8ee"
+checksum = "17e204e45b0d79750880114e37b34abe19ad0710d8435a8da8f23a528fe98de4"
 dependencies = [
  "anyhow",
  "cfg-if",
@@ -1527,23 +1528,13 @@ dependencies = [
  "regex",
  "serde",
  "serde_json",
+ "syntect",
  "termcolor",
- "tree-sitter-bash",
- "tree-sitter-css",
- "tree-sitter-highlight",
- "tree-sitter-html",
- "tree-sitter-javascript",
- "tree-sitter-json",
- "tree-sitter-md",
- "tree-sitter-regex",
- "tree-sitter-rust",
- "tree-sitter-typescript",
- "tree-sitter-xml",
 ]
 
 [[package]]
 name = "deno_fetch"
-version = "0.195.0"
+version = "0.196.0"
 dependencies = [
  "base64 0.21.7",
  "bytes",
@@ -1575,7 +1566,7 @@ dependencies = [
 
 [[package]]
 name = "deno_ffi"
-version = "0.158.0"
+version = "0.159.0"
 dependencies = [
  "deno_core",
  "deno_permissions",
@@ -1587,12 +1578,14 @@ dependencies = [
  "serde",
  "serde-value",
  "serde_json",
+ "thiserror",
+ "tokio",
  "winapi",
 ]
 
 [[package]]
 name = "deno_fs"
-version = "0.81.0"
+version = "0.82.0"
 dependencies = [
  "async-trait",
  "base32",
@@ -1642,7 +1635,7 @@ dependencies = [
 
 [[package]]
 name = "deno_http"
-version = "0.169.0"
+version = "0.170.0"
 dependencies = [
  "async-compression",
  "async-trait",
@@ -1681,7 +1674,7 @@ dependencies = [
 
 [[package]]
 name = "deno_io"
-version = "0.81.0"
+version = "0.82.0"
 dependencies = [
  "async-trait",
  "deno_core",
@@ -1702,7 +1695,7 @@ dependencies = [
 
 [[package]]
 name = "deno_kv"
-version = "0.79.0"
+version = "0.80.0"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -1727,6 +1720,7 @@ dependencies = [
  "rand",
  "rusqlite",
  "serde",
+ "thiserror",
  "url",
 ]
 
@@ -1773,7 +1767,7 @@ dependencies = [
 
 [[package]]
 name = "deno_napi"
-version = "0.102.0"
+version = "0.103.0"
 dependencies = [
  "deno_core",
  "deno_permissions",
@@ -1795,7 +1789,7 @@ dependencies = [
 
 [[package]]
 name = "deno_net"
-version = "0.163.0"
+version = "0.164.0"
 dependencies = [
  "deno_core",
  "deno_permissions",
@@ -1804,6 +1798,7 @@ dependencies = [
  "rustls-tokio-stream",
  "serde",
  "socket2",
+ "thiserror",
  "tokio",
  "trust-dns-proto",
  "trust-dns-resolver",
@@ -1811,7 +1806,7 @@ dependencies = [
 
 [[package]]
 name = "deno_node"
-version = "0.108.0"
+version = "0.109.0"
 dependencies = [
  "aead-gcm-stream",
  "aes",
@@ -1901,9 +1896,9 @@ dependencies = [
 
 [[package]]
 name = "deno_npm"
-version = "0.25.3"
+version = "0.25.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "8050bcc2513046cbc0134ae1bc0f3b251a58b95012f3b81e0ea09a7f069c301b"
+checksum = "e6b4dc4a9f1cff63d5638e7d93042f24f46300d1cc77b86f3caaa699a7ddccf7"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -1920,9 +1915,9 @@ dependencies = [
 
 [[package]]
 name = "deno_ops"
-version = "0.187.0"
+version = "0.190.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "e040fd4def8a67538fe38c9955fd970efc9f44284bd69d44f8992a456afd665d"
+checksum = "a48a3e06cace18a2c49e148da067678c6af80e70757a8c3991301397cf6b9919"
 dependencies = [
  "proc-macro-rules",
  "proc-macro2",
@@ -1960,7 +1955,7 @@ dependencies = [
 
 [[package]]
 name = "deno_permissions"
-version = "0.31.0"
+version = "0.32.0"
 dependencies = [
  "deno_core",
  "deno_path_util",
@@ -1977,7 +1972,7 @@ dependencies = [
 
 [[package]]
 name = "deno_resolver"
-version = "0.3.0"
+version = "0.4.0"
 dependencies = [
  "anyhow",
  "base32",
@@ -1993,8 +1988,9 @@ dependencies = [
 
 [[package]]
 name = "deno_runtime"
-version = "0.180.0"
+version = "0.181.0"
 dependencies = [
+ "color-print",
  "deno_ast",
  "deno_broadcast_channel",
  "deno_cache",
@@ -2108,7 +2104,7 @@ dependencies = [
 
 [[package]]
 name = "deno_tls"
-version = "0.158.0"
+version = "0.159.0"
 dependencies = [
  "deno_core",
  "deno_native_certs",
@@ -2157,18 +2153,19 @@ dependencies = [
 
 [[package]]
 name = "deno_url"
-version = "0.171.0"
+version = "0.172.0"
 dependencies = [
  "deno_bench_util",
  "deno_console",
  "deno_core",
  "deno_webidl",
+ "thiserror",
  "urlpattern",
 ]
 
 [[package]]
 name = "deno_web"
-version = "0.202.0"
+version = "0.203.0"
 dependencies = [
  "async-trait",
  "base64-simd 0.8.0",
@@ -2190,7 +2187,7 @@ dependencies = [
 
 [[package]]
 name = "deno_webgpu"
-version = "0.138.0"
+version = "0.139.0"
 dependencies = [
  "deno_core",
  "raw-window-handle",
@@ -2202,7 +2199,7 @@ dependencies = [
 
 [[package]]
 name = "deno_webidl"
-version = "0.171.0"
+version = "0.172.0"
 dependencies = [
  "deno_bench_util",
  "deno_core",
@@ -2210,7 +2207,7 @@ dependencies = [
 
 [[package]]
 name = "deno_websocket"
-version = "0.176.0"
+version = "0.177.0"
 dependencies = [
  "bytes",
  "deno_core",
@@ -2231,11 +2228,12 @@ dependencies = [
 
 [[package]]
 name = "deno_webstorage"
-version = "0.166.0"
+version = "0.167.0"
 dependencies = [
  "deno_core",
  "deno_web",
  "rusqlite",
+ "thiserror",
 ]
 
 [[package]]
@@ -2420,6 +2418,22 @@ name = "deunicode"
 version = "1.4.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "b6e854126756c496b8c81dec88f9a706b15b875c5849d4097a3854476b9fdf94"
+
+[[package]]
+name = "dhat"
+version = "0.3.3"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "98cd11d84628e233de0ce467de10b8633f4ddaecafadefc86e13b84b8739b827"
+dependencies = [
+ "backtrace",
+ "lazy_static",
+ "mintex",
+ "parking_lot",
+ "rustc-hash 1.1.0",
+ "serde",
+ "serde_json",
+ "thousands",
+]
 
 [[package]]
 name = "diff"
@@ -4432,6 +4446,12 @@ dependencies = [
 ]
 
 [[package]]
+name = "mintex"
+version = "0.1.3"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "9bec4598fddb13cc7b528819e697852653252b760f1228b7642679bf2ff2cd07"
+
+[[package]]
 name = "mio"
 version = "0.8.11"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -4494,7 +4514,7 @@ dependencies = [
 
 [[package]]
 name = "napi_sym"
-version = "0.101.0"
+version = "0.102.0"
 dependencies = [
  "quote",
  "serde",
@@ -4563,7 +4583,7 @@ dependencies = [
 
 [[package]]
 name = "node_resolver"
-version = "0.10.0"
+version = "0.11.0"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -4738,6 +4758,28 @@ name = "once_cell"
 version = "1.19.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "3fdb12b2476b595f9358c5161aa467c2438859caa136dec86c26fdd2efe17b92"
+
+[[package]]
+name = "onig"
+version = "6.4.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "8c4b31c8722ad9171c6d77d3557db078cab2bd50afcc9d09c8b315c59df8ca4f"
+dependencies = [
+ "bitflags 1.3.2",
+ "libc",
+ "once_cell",
+ "onig_sys",
+]
+
+[[package]]
+name = "onig_sys"
+version = "69.8.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "7b829e3d7e9cc74c7e315ee8edb185bf4190da5acde74afd7fc59c35b1f086e7"
+dependencies = [
+ "cc",
+ "pkg-config",
+]
 
 [[package]]
 name = "opaque-debug"
@@ -6172,9 +6214,9 @@ dependencies = [
 
 [[package]]
 name = "serde_v8"
-version = "0.220.0"
+version = "0.223.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "6e7a65d91d79acc82aa229aeb084f4a39bda269069bc1520df40f679495388e4"
+checksum = "c127bb9f2024433d06789b242477c808fd7f7dc4c3278576dd5bc99c4e5c75ff"
 dependencies = [
  "num-bigint",
  "serde",
@@ -7028,6 +7070,26 @@ dependencies = [
 ]
 
 [[package]]
+name = "syntect"
+version = "5.2.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "874dcfa363995604333cf947ae9f751ca3af4522c60886774c4963943b4746b1"
+dependencies = [
+ "bincode",
+ "bitflags 1.3.2",
+ "flate2",
+ "fnv",
+ "once_cell",
+ "onig",
+ "regex-syntax",
+ "serde",
+ "serde_derive",
+ "serde_json",
+ "thiserror",
+ "walkdir",
+]
+
+[[package]]
 name = "tap"
 version = "1.0.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -7176,6 +7238,12 @@ dependencies = [
  "quote",
  "syn 2.0.72",
 ]
+
+[[package]]
+name = "thousands"
+version = "0.2.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "3bf63baf9f5039dadc247375c29eb13706706cfde997d0330d05aa63a77d8820"
 
 [[package]]
 name = "thread_local"
@@ -7456,128 +7524,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "c06d3da6113f116aaee68e4d601191614c9053067f9ab7f6edbcb161237daa54"
 dependencies = [
  "once_cell",
-]
-
-[[package]]
-name = "tree-sitter"
-version = "0.22.6"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "df7cc499ceadd4dcdf7ec6d4cbc34ece92c3fa07821e287aedecd4416c516dca"
-dependencies = [
- "cc",
- "regex",
-]
-
-[[package]]
-name = "tree-sitter-bash"
-version = "0.21.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "b5244703ad2e08a616d859a0557d7aa290adcd5e0990188a692e628ffe9dce40"
-dependencies = [
- "cc",
- "tree-sitter",
-]
-
-[[package]]
-name = "tree-sitter-css"
-version = "0.21.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "5e08e324b1cf60fd3291774b49724c66de2ce8fcf4d358d0b4b82e37b41b1c9b"
-dependencies = [
- "cc",
- "tree-sitter",
-]
-
-[[package]]
-name = "tree-sitter-highlight"
-version = "0.22.6"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "eaca0fe34fa96eec6aaa8e63308dbe1bafe65a6317487c287f93938959b21907"
-dependencies = [
- "lazy_static",
- "regex",
- "thiserror",
- "tree-sitter",
-]
-
-[[package]]
-name = "tree-sitter-html"
-version = "0.20.4"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "8766b5ad3721517f8259e6394aefda9c686aebf7a8c74ab8624f2c3b46902fd5"
-dependencies = [
- "cc",
- "tree-sitter",
-]
-
-[[package]]
-name = "tree-sitter-javascript"
-version = "0.21.4"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "8710a71bc6779e33811a8067bdda3ed08bed1733296ff915e44faf60f8c533d7"
-dependencies = [
- "cc",
- "tree-sitter",
-]
-
-[[package]]
-name = "tree-sitter-json"
-version = "0.21.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "5b737dcb73c35d74b7d64a5f3dde158113c86a012bf3cee2bfdf2150d23b05db"
-dependencies = [
- "cc",
- "tree-sitter",
-]
-
-[[package]]
-name = "tree-sitter-md"
-version = "0.2.3"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "d9c3cfd068f2527250bbd8ff407431164e12b17863e7eafb76e311dd3f96965a"
-dependencies = [
- "cc",
- "tree-sitter",
-]
-
-[[package]]
-name = "tree-sitter-regex"
-version = "0.21.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "5ff1286fe9651b2797484839ffa37aa76c8618d4ccb6836d7e31765dfd60c0d5"
-dependencies = [
- "cc",
- "tree-sitter",
-]
-
-[[package]]
-name = "tree-sitter-rust"
-version = "0.21.2"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "277690f420bf90741dea984f3da038ace46c4fe6047cba57a66822226cde1c93"
-dependencies = [
- "cc",
- "tree-sitter",
-]
-
-[[package]]
-name = "tree-sitter-typescript"
-version = "0.21.2"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "ecb35d98a688378e56c18c9c159824fd16f730ccbea19aacf4f206e5d5438ed9"
-dependencies = [
- "cc",
- "tree-sitter",
-]
-
-[[package]]
-name = "tree-sitter-xml"
-version = "0.6.4"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "65c3a1b08e9842143f84fde1a18ac40ee77ca80a80b14077e4ca67a3b4808b8b"
-dependencies = [
- "cc",
- "tree-sitter",
 ]
 
 [[package]]

@@ -1,6 +1,5 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
-use deno_core::error::AnyError;
 use std::net::SocketAddr;
 use std::net::ToSocketAddrs;
 use tokio::net::lookup_host;
@@ -9,7 +8,7 @@ use tokio::net::lookup_host;
 pub async fn resolve_addr(
   hostname: &str,
   port: u16,
-) -> Result<impl Iterator<Item = SocketAddr> + '_, AnyError> {
+) -> Result<impl Iterator<Item = SocketAddr> + '_, std::io::Error> {
   let addr_port_pair = make_addr_port_pair(hostname, port);
   let result = lookup_host(addr_port_pair).await?;
   Ok(result)
@@ -19,7 +18,7 @@ pub async fn resolve_addr(
 pub fn resolve_addr_sync(
   hostname: &str,
   port: u16,
-) -> Result<impl Iterator<Item = SocketAddr>, AnyError> {
+) -> Result<impl Iterator<Item = SocketAddr>, std::io::Error> {
   let addr_port_pair = make_addr_port_pair(hostname, port);
   let result = addr_port_pair.to_socket_addrs()?;
   Ok(result)

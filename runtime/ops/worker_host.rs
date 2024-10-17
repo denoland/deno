@@ -10,6 +10,7 @@ use crate::web_worker::WorkerControlEvent;
 use crate::web_worker::WorkerId;
 use crate::web_worker::WorkerMetadata;
 use crate::worker::FormatJsErrorFn;
+use deno_core::error::custom_error;
 use deno_core::error::AnyError;
 use deno_core::op2;
 use deno_core::serde::Deserialize;
@@ -136,12 +137,10 @@ fn op_create_worker(
   let worker_type = args.worker_type;
   if let WebWorkerType::Classic = worker_type {
     if let TestingFeaturesEnabled(false) = state.borrow() {
-      return Err(
-        deno_webstorage::DomExceptionNotSupportedError::new(
-          "Classic workers are not supported.",
-        )
-        .into(),
-      );
+      return Err(custom_error(
+        "DOMExceptionNotSupportedError",
+        "Classic workers are not supported.",
+      ));
     }
   }
 

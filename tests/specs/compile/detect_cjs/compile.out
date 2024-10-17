@@ -1,0 +1,3 @@
+Warning --unstable-detect-cjs is not properly supported in deno compile. The compiled executable may encounter runtime errors.
+Check file:///[WILDLINE]/main.js
+Compile file:///[WILDLINE]
