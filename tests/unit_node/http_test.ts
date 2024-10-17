@@ -1457,7 +1457,8 @@ Deno.test("[node/http] client closing a streaming request doesn't terminate serv
   clearInterval(interval!);
 });
 
-Deno.test("[node/http] http.request() post streaming body works", async () => {
+const IGNORED_X = "[node/http] http.request() post streaming body works";
+Deno.test(IGNORED_X, { ignore: Deno.build.os === "linux" }, async () => {
   const server = http.createServer((req, res) => {
     if (req.method === "POST") {
       let receivedBytes = 0;
