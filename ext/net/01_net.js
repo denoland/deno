@@ -194,13 +194,24 @@ class Conn {
   }
 }
 
+class UpgradedConn extends Conn {
+  #rid = 0;
+
+  constructor(rid, remoteAddr, localAddr) {
+    super(rid, remoteAddr, localAddr);
+    ObjectDefineProperty(this, internalRidSymbol, {
+      __proto__: null,
+      enumerable: false,
+      value: rid,
+    });
+    this.#rid = rid;
+  }
+}
+
 class TcpConn extends Conn {
   #rid = 0;
-  // whether the connectino is backed by a
-  // full TCP stream (as opposed to an UpgradeStream)
-  #isTcpStream = true;
 
-  constructor(rid, remoteAddr, localAddr, isTcpStream) {
+  constructor(rid, remoteAddr, localAddr) {
     super(rid, remoteAddr, localAddr);
     ObjectDefineProperty(this, internalRidSymbol, {
       __proto__: null,
