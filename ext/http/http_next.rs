@@ -739,7 +739,19 @@ pub fn op_http_set_response_body_text(
   let http =
     // SAFETY: external is deleted before calling this op.
     unsafe { take_external!(external, "op_http_set_response_body_text") };
+
   if !text.is_empty() {
+    {
+      let mut response_parts = http.response_parts();
+      if !response_parts.headers.contains_key(CONTENT_TYPE) {
+        response_parts.headers.append(
+          CONTENT_TYPE,
+          HeaderValue::from_static("text/plain; charset=utf-8"),
+        );
+      }
+    }
+
+    // set content-type to text/plain; charset=utf-8 if not set
     set_response(http, Some(text.len()), status, false, |compression| {
       ResponseBytesInner::from_vec(compression, text.into_bytes())
     });

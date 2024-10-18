@@ -564,6 +564,12 @@ function mapToCallback(context, callback, onError) {
     const headers = inner.headerList;
     if (headers && headers.length > 0) {
       if (headers.length == 1) {
+        if (
+          inner.canInferContentType &&
+          headers[0][0] === "Content-Type"
+        ) {
+          continue;
+        }
         op_http_set_response_header(req, headers[0][0], headers[0][1]);
       } else {
         op_http_set_response_headers(req, headers);

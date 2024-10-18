@@ -122,6 +122,7 @@ function cloneInnerResponse(response) {
     body,
     headerList,
     urlList,
+    canInferContentType: response.canInferContentType,
     status: response.status,
     statusMessage: response.statusMessage,
     aborted: response.aborted,
@@ -142,6 +143,7 @@ function newInnerResponse(status = 200, statusMessage = "") {
     headerList: [],
     urlList: [],
     status,
+    canInferContentType: false,
     statusMessage,
     aborted: false,
     url() {
@@ -178,6 +180,8 @@ function abortedNetworkError() {
  * @param {{ body: fetchBody.InnerBody, contentType: string | null } | null} bodyWithType
  */
 function initializeAResponse(response, init, bodyWithType) {
+  let canInferContentType = false;
+
   // 1.
   if ((init.status < 200 || init.status > 599) && init.status != 101) {
     throw new RangeError(
@@ -228,10 +232,14 @@ function initializeAResponse(response, init, bodyWithType) {
         }
       }
       if (!hasContentType) {
+        // keep case in sync with `extractBody`
+        canInferContentType = contentType === "text/plain;charset=UTF-8";
         ArrayPrototypePush(list, ["Content-Type", contentType]);
       }
     }
   }
+
+  return canInferContentType;
 }
 
 class Response {
@@ -335,7 +343,11 @@ class Response {
     if (body !== null) {
       bodyWithType = extractBody(body);
     }
-    initializeAResponse(this, init, bodyWithType);
+    this[_response].canInferContentType = initializeAResponse(
+      this,
+      init,
+      bodyWithType,
+    );
     this[_brand] = _brand;
   }
 
