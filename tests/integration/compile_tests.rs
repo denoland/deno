@@ -1111,7 +1111,7 @@ console.log(getValue());"#,
     .run();
   output.assert_exit_code(0);
   output.assert_matches_text(
-    r#"Download http://localhost:4260/@denotest/esm-basic
+    r#"Download http://localhost:4260/@denotest%2fesm-basic
 Download http://localhost:4260/@denotest/esm-basic/1.0.0.tgz
 Initialize @denotest/esm-basic@1.0.0
 Check file:///[WILDCARD]/main.ts
