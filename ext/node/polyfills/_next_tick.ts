@@ -87,8 +87,7 @@ export function runNextTicks() {
   //   runMicrotasks();
   // if (!hasTickScheduled() && !hasRejectionToWarn())
   //   return;
-  if (!core.hasTickScheduled()) {
-    core.runMicrotasks();
+  if (queue.isEmpty() || !core.hasTickScheduled()) {
     return true;
   }
 
