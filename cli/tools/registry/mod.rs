@@ -89,7 +89,7 @@ pub async fn publish(
 
   let cli_options = cli_factory.cli_options()?;
   let directory_path = cli_options.initial_cwd();
-  let publish_configs = cli_options.start_dir.jsr_packages_for_publish();
+  let mut publish_configs = cli_options.start_dir.jsr_packages_for_publish();
   if publish_configs.is_empty() {
     match cli_options.start_dir.maybe_deno_json() {
       Some(deno_json) => {
@@ -107,6 +107,19 @@ pub async fn publish(
       }
     }
   }
+
+  if let Some(version) = &publish_flags.override_version {
+    publish_configs = publish_configs
+      .into_iter()
+      .map(|mut config| {
+        let mut config_file = config.config_file.as_ref().clone();
+        config_file.json.version = Some(version.clone());
+        config.config_file = Arc::new(config_file);
+        config
+      })
+      .collect();
+  }
+
   let specifier_unfurler = Arc::new(SpecifierUnfurler::new(
     if cli_options.unstable_sloppy_imports() {
       Some(CliSloppyImportsResolver::new(SloppyImportsCachedFs::new(
@@ -409,9 +422,12 @@ impl PublishPreparer {
     let deno_json = &package.config_file;
     let config_path = deno_json.specifier.to_file_path().unwrap();
     let root_dir = config_path.parent().unwrap().to_path_buf();
-    let Some(version) = deno_json.json.version.clone() else {
-      bail!("{} is missing 'version' field", deno_json.specifier);
-    };
+    let version = deno_json.json.version.clone().ok_or_else(|| {
+      deno_core::anyhow::anyhow!(
+        "{} is missing 'version' field",
+        deno_json.specifier
+      )
+    })?;
     if deno_json.json.exports.is_none() {
       let mut suggested_entrypoint = None;
 
@@ -424,21 +440,21 @@ impl PublishPreparer {
 
       let exports_content = format!(
         r#"{{
-  "name": "{}",
-  "version": "{}",
-  "exports": "{}"
-}}"#,
+      "name": "{}",
+      "version": "{}",
+      "exports": "{}"
+    }}"#,
         package.name,
         version,
         suggested_entrypoint.unwrap_or("<path_to_entrypoint>")
       );
 
       bail!(
-      "You did not specify an entrypoint to \"{}\" package in {}. Add `exports` mapping in the configuration file, eg:\n{}",
-      package.name,
-      deno_json.specifier,
-      exports_content
-    );
+          "You did not specify an entrypoint to \"{}\" package in {}. Add `exports` mapping in the configuration file, eg:\n{}",
+          package.name,
+          deno_json.specifier,
+          exports_content
+        );
     }
     let Some(name_no_at) = package.name.strip_prefix('@') else {
       bail!("Invalid package name, use '@<scope_name>/<package_name> format");
