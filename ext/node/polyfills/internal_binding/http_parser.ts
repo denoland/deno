@@ -23,8 +23,12 @@
 import { primordials } from "ext:core/mod.js";
 import { AsyncWrap } from "ext:deno_node/internal_binding/async_wrap.ts";
 
-const { ObjectDefineProperty, ObjectEntries, ObjectSetPrototypeOf } =
-  primordials;
+const {
+  ObjectDefineProperty,
+  ObjectEntries,
+  ObjectSetPrototypeOf,
+  SafeArrayIterator,
+} = primordials;
 
 export const methods = [
   "DELETE",
@@ -120,9 +124,9 @@ export function HTTPParser() {
 ObjectSetPrototypeOf(HTTPParser.prototype, AsyncWrap.prototype);
 
 function defineProps(obj: object, props: Record<string, unknown>) {
-  for (const [key, value] of ObjectEntries(props)) {
-    ObjectDefineProperty(obj, key, {
-      value,
+  for (const entry of new SafeArrayIterator(ObjectEntries(props))) {
+    ObjectDefineProperty(obj, entry[0], {
+      value: entry[1],
       enumerable: true,
       writable: true,
       configurable: true,
