@@ -3256,7 +3256,7 @@ class Console {
 
     const stringifyValue = (value) =>
       inspectValueWithQuotes(value, {
-        ...getDefaultInspectOptions(),
+        ...getConsoleInspectOptions(noColorStdout()),
         depth: 1,
         compact: true,
       });

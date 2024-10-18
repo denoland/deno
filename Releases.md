@@ -6,6 +6,77 @@ https://github.com/denoland/deno/releases
 We also have one-line install commands at:
 https://github.com/denoland/deno_install
 
+### 2.0.2 / 2024.10.17
+
+- fix(cli): set napi object property properly (#26344)
+- fix(ext/node): add null check for kStreamBaseField (#26368)
+- fix(install): don't attempt to cache specifiers that point to directories
+  (#26369)
+- fix(jupyter): fix panics for overslow subtraction (#26371)
+- fix(jupyter): update to the new logo (#26353)
+- fix(net): don't try to set nodelay on upgrade streams (#26342)
+- fix(node/fs): copyFile with `COPYFILE_EXCL` should not throw if the
+  destination doesn't exist (#26360)
+- fix(node/http): normalize header names in `ServerResponse` (#26339)
+- fix(runtime): send ws ping frames from inspector server (#26352)
+- fix: don't warn on ignored signals on windows (#26332)
+
+### 2.0.1 / 2024.10.16
+
+- feat(lsp): "deno/didRefreshDenoConfigurationTree" notifications (#26215)
+- feat(unstable): `--unstable-detect-cjs` for respecting explicit
+  `"type": "commonjs"` (#26149)
+- fix(add): create deno.json when running `deno add jsr:<pkg>` (#26275)
+- fix(add): exact version should not have range `^` specifier (#26302)
+- fix(child_process): map node `--no-warnings` flag to `--quiet` (#26288)
+- fix(cli): add prefix to install commands in help (#26318)
+- fix(cli): consolidate pkg parser for install & remove (#26298)
+- fix(cli): named export takes precedence over default export in doc testing
+  (#26112)
+- fix(cli): improve deno info output for npm packages (#25906)
+- fix(console/ext/repl): support using parseFloat() (#25900)
+- fix(ext/console): apply coloring for console.table (#26280)
+- fix(ext/napi): pass user context to napi_threadsafe_fn finalizers (#26229)
+- fix(ext/node): allow writing to tty columns (#26201)
+- fix(ext/node): compute pem length (upper bound) for key exports (#26231)
+- fix(ext/node): fix dns.lookup result ordering (#26264)
+- fix(ext/node): handle http2 server ending stream (#26235)
+- fix(ext/node): implement TCP.setNoDelay (#26263)
+- fix(ext/node): timingSafeEqual account for AB byteOffset (#26292)
+- fix(ext/node): use primordials in `ext/node/polyfills/internal/buffer.mjs`
+  (#24993)
+- fix(ext/webgpu): allow GL backend on Windows (#26206)
+- fix(install): duplicate dependencies in `package.json` (#26128)
+- fix(install): handle pkg with dep on self when pkg part of peer dep resolution
+  (#26277)
+- fix(install): retry downloads of registry info / tarballs (#26278)
+- fix(install): support installing npm package with alias (#26246)
+- fix(jupyter): copy kernels icons to the kernel directory (#26084)
+- fix(jupyter): keep running event loop when waiting for messages (#26049)
+- fix(lsp): relative completions for bare import-mapped specifiers (#26137)
+- fix(node): make `process.stdout.isTTY` writable (#26130)
+- fix(node/util): export `styleText` from `node:util` (#26194)
+- fix(npm): support `--allow-scripts` on `deno run` (and `deno add`,
+  `deno test`, etc) (#26075)
+- fix(repl): importing json files (#26053)
+- fix(repl): remove check flags (#26140)
+- fix(unstable/worker): ensure import permissions are passed (#26101)
+- fix: add hint for missing `document` global in terminal error (#26218)
+- fix: do not panic on wsl share file paths on windows (#26081)
+- fix: do not panic running remote cjs module (#26259)
+- fix: do not panic when using methods on classes and interfaces in deno doc
+  html output (#26100)
+- fix: improve suggestions and hints when using CommonJS modules (#26287)
+- fix: node-api function call should use preamble (#26297)
+- fix: panic in `prepare_stack_trace_callback` when global interceptor throws
+  (#26241)
+- fix: use syntect for deno doc html generation (#26322)
+- perf(http): avoid clone getting request method and url (#26250)
+- perf(http): cache webidl.converters lookups in ext/fetch/23_response.js
+  (#26256)
+- perf(http): make heap allocation for path conditional (#26289)
+- perf: use fast calls for microtask ops (#26236)
+
 ### 2.0.0 / 2024.10.09
 
 Read announcement blog post at: https://deno.com/blog/v2

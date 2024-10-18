@@ -2,7 +2,7 @@
 
 [package]
 name = "deno_napi"
-version = "0.102.0"
+version = "0.104.0"
 authors.workspace = true
 edition.workspace = true
 license.workspace = true
@@ -17,3 +17,4 @@ path = "lib.rs"
 deno_core.workspace = true
 deno_permissions.workspace = true
 libloading = { version = "0.7" }
+thiserror.workspace = true
