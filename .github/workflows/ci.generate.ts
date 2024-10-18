@@ -40,7 +40,8 @@ const Runners = {
   macosArm: {
     os: "macos",
     arch: "aarch64",
-    runner: macosArmRunner,
+    runner:
+      `\${{ github.repository == 'denoland/deno' && 'self-hosted' || '${macosArmRunner}' }}`,
   },
   windowsX86: {
     os: "windows",
