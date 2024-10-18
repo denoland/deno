@@ -28,16 +28,17 @@ import {
   op_homedir,
   op_node_os_get_priority,
   op_node_os_set_priority,
-  op_node_os_username,
+  op_node_os_user_info,
 } from "ext:core/ops";
 
 import { validateIntegerRange } from "ext:deno_node/_utils.ts";
 import process from "node:process";
 import { isWindows } from "ext:deno_node/_util/os.ts";
-import { ERR_OS_NO_HOMEDIR } from "ext:deno_node/internal/errors.ts";
 import { os } from "ext:deno_node/internal_binding/constants.ts";
 import { osUptime } from "ext:runtime/30_os.js";
 import { Buffer } from "ext:deno_node/internal/buffer.mjs";
+import { primordials } from "ext:core/mod.js";
+const { StringPrototypeEndsWith, StringPrototypeSlice } = primordials;
 
 export const constants = os;
 
@@ -136,6 +137,8 @@ export function arch(): string {
 (uptime as any)[Symbol.toPrimitive] = (): number => uptime();
 // deno-lint-ignore no-explicit-any
 (machine as any)[Symbol.toPrimitive] = (): string => machine();
+// deno-lint-ignore no-explicit-any
+(tmpdir as any)[Symbol.toPrimitive] = (): string | null => tmpdir();
 
 export function cpus(): CPUCoreInfo[] {
   return op_cpus();
@@ -268,26 +271,27 @@ export function setPriority(pid: number, priority?: number) {
 export function tmpdir(): string | null {
   /* This follows the node js implementation, but has a few
      differences:
-     * On windows, if none of the environment variables are defined,
-       we return null.
-     * On unix we use a plain Deno.env.get, instead of safeGetenv,
+     * We use a plain Deno.env.get, instead of safeGetenv,
        which special cases setuid binaries.
-     * Node removes a single trailing / or \, we remove all.
   */
   if (isWindows) {
-    const temp = Deno.env.get("TEMP") || Deno.env.get("TMP");
-    if (temp) {
-      return temp.replace(/(?<!:)[/\\]*$/, "");
+    let temp = Deno.env.get("TEMP") || Deno.env.get("TMP") ||
+      (Deno.env.get("SystemRoot") || Deno.env.get("windir")) + "\\temp";
+    if (
+      temp.length > 1 && StringPrototypeEndsWith(temp, "\\") &&
+      !StringPrototypeEndsWith(temp, ":\\")
+    ) {
+      temp = StringPrototypeSlice(temp, 0, -1);
     }
-    const base = Deno.env.get("SYSTEMROOT") || Deno.env.get("WINDIR");
-    if (base) {
-      return base + "\\temp";
-    }
-    return null;
+
+    return temp;
   } else { // !isWindows
-    const temp = Deno.env.get("TMPDIR") || Deno.env.get("TMP") ||
+    let temp = Deno.env.get("TMPDIR") || Deno.env.get("TMP") ||
       Deno.env.get("TEMP") || "/tmp";
-    return temp.replace(/(?<!^)\/*$/, "");
+    if (temp.length > 1 && StringPrototypeEndsWith(temp, "/")) {
+      temp = StringPrototypeSlice(temp, 0, -1);
+    }
+    return temp;
   }
 }
 
@@ -320,7 +324,6 @@ export function uptime(): number {
   return osUptime();
 }
 
-/** Not yet implemented */
 export function userInfo(
   options: UserInfoOptions = { encoding: "utf-8" },
 ): UserInfo {
@@ -331,20 +334,10 @@ export function userInfo(
     uid = -1;
     gid = -1;
   }
-
-  // TODO(@crowlKats): figure out how to do this correctly:
-  //  The value of homedir returned by os.userInfo() is provided by the operating system.
-  //  This differs from the result of os.homedir(), which queries environment
-  //  variables for the home directory before falling back to the operating system response.
-  let _homedir = homedir();
-  if (!_homedir) {
-    throw new ERR_OS_NO_HOMEDIR();
-  }
-  let shell = isWindows ? null : (Deno.env.get("SHELL") || null);
-  let username = op_node_os_username();
+  let { username, homedir, shell } = op_node_os_user_info(uid);
 
   if (options?.encoding === "buffer") {
-    _homedir = _homedir ? Buffer.from(_homedir) : _homedir;
+    homedir = homedir ? Buffer.from(homedir) : homedir;
     shell = shell ? Buffer.from(shell) : shell;
     username = Buffer.from(username);
   }
@@ -352,7 +345,7 @@ export function userInfo(
   return {
     uid,
     gid,
-    homedir: _homedir,
+    homedir,
     shell,
     username,
   };
