@@ -852,7 +852,7 @@ Deno.test("[node/http] HTTPS server", async () => {
 
 Deno.test(
   "[node/http] client upgrade",
-  { permissions: { net: true }, ignore: true },
+  { permissions: { net: true } },
   async () => {
     const { promise: serverClosed, resolve: resolveServer } = Promise
       .withResolvers<void>();
@@ -1648,9 +1648,7 @@ Deno.test("[node/http] In ClientRequest, option.hostname has precedence over opt
   await responseReceived.promise;
 });
 
-const IGNORED_Y =
-  "[node/http] upgraded socket closes when the server closed without closing handshake";
-Deno.test(IGNORED_Y, { ignore: true }, async () => {
+Deno.test("[node/http] upgraded socket closes when the server closed without closing handshake", async () => {
   const clientSocketClosed = Promise.withResolvers<void>();
   const serverProcessClosed = Promise.withResolvers<void>();
 

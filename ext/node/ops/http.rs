@@ -114,7 +114,7 @@ where
     let (sender, conn) = hyper::client::conn::http1::handshake(io).await?;
     (
       tokio::task::spawn(async move {
-        conn.await?;
+        conn.with_upgrades().await?;
         Ok::<_, AnyError>(())
       }),
       sender,
@@ -135,7 +135,7 @@ where
     // Spawn a task to poll the connection, driving the HTTP state
     (
       tokio::task::spawn(async move {
-        conn.await?;
+        conn.with_upgrades().await?;
         Ok::<_, AnyError>(())
       }),
       sender,
