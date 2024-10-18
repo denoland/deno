@@ -21,7 +21,7 @@ class FsWatcher {
 
   constructor(paths, options) {
     const { recursive } = options;
-    this.#rid = op_fs_events_open({ recursive, paths });
+    this.#rid = op_fs_events_open(recursive, paths);
   }
 
   unref() {
