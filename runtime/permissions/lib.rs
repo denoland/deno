@@ -1054,6 +1054,20 @@ impl EnvDescriptor {
   pub fn new(env: impl AsRef<str>) -> Self {
     Self(EnvVarName::new(env))
   }
+  pub fn matches(&self, env: &str) -> bool {
+    let pattern = self.0.as_ref();
+    if let Some(prefix) = pattern.strip_suffix('*') {
+      if env.starts_with(prefix) {
+        return true;
+      }
+    }
+    if let Some(suffix) = pattern.strip_prefix('*') {
+      if env.ends_with(suffix) {
+        return true;
+      }
+    }
+    env == pattern
+  }
 }
 
 impl QueryDescriptor for EnvDescriptor {
@@ -1666,6 +1680,21 @@ impl UnaryPermission<EnvDescriptor> {
     api_name: Option<&str>,
   ) -> Result<(), AnyError> {
     skip_check_if_is_permission_fully_granted!(self);
+
+    let env_desc = EnvDescriptor::new(env);
+    let mut matched = false;
+
+    for desc in &self.granted_list {
+      if desc.matches(env) {
+        matched = true;
+        break;
+      }
+    }
+
+    if matched {
+      self.granted_list.insert(env_desc);
+    }
+
     self.check_desc(Some(&EnvDescriptor::new(env)), false, api_name)
   }
 
