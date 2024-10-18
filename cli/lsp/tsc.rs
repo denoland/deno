@@ -2183,6 +2183,50 @@ impl NavigateToItem {
 }
 
 #[derive(Debug, Clone, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct InlayHintDisplayPart {
+  pub text: String,
+  pub span: Option<TextSpan>,
+  pub file: Option<String>,
+}
+
+impl InlayHintDisplayPart {
+  pub fn to_lsp(
+    &self,
+    language_server: &language_server::Inner,
+  ) -> lsp::InlayHintLabelPart {
+    let location = self.file.as_ref().map(|f| {
+      let specifier =
+        resolve_url(f).unwrap_or_else(|_| INVALID_SPECIFIER.clone());
+      let file_referrer =
+        language_server.documents.get_file_referrer(&specifier);
+      let uri = language_server
+        .url_map
+        .specifier_to_uri(&specifier, file_referrer.as_deref())
+        .unwrap_or_else(|_| INVALID_URI.clone());
+      let range = self
+        .span
+        .as_ref()
+        .and_then(|s| {
+          let asset_or_doc =
+            language_server.get_asset_or_document(&specifier).ok()?;
+          Some(s.to_range(asset_or_doc.line_index()))
+        })
+        .unwrap_or_else(|| {
+          lsp::Range::new(lsp::Position::new(0, 0), lsp::Position::new(0, 0))
+        });
+      lsp::Location { uri, range }
+    });
+    lsp::InlayHintLabelPart {
+      value: self.text.clone(),
+      tooltip: None,
+      location,
+      command: None,
+    }
+  }
+}
+
+#[derive(Debug, Clone, Deserialize)]
 pub enum InlayHintKind {
   Type,
   Parameter,
@@ -2203,6 +2247,7 @@ impl InlayHintKind {
 #[serde(rename_all = "camelCase")]
 pub struct InlayHint {
   pub text: String,
+  pub display_parts: Option<Vec<InlayHintDisplayPart>>,
   pub position: u32,
   pub kind: InlayHintKind,
   pub whitespace_before: Option<bool>,
@@ -2210,10 +2255,23 @@ pub struct InlayHint {
 }
 
 impl InlayHint {
-  pub fn to_lsp(&self, line_index: Arc<LineIndex>) -> lsp::InlayHint {
+  pub fn to_lsp(
+    &self,
+    line_index: Arc<LineIndex>,
+    language_server: &language_server::Inner,
+  ) -> lsp::InlayHint {
     lsp::InlayHint {
       position: line_index.position_tsc(self.position.into()),
-      label: lsp::InlayHintLabel::String(self.text.clone()),
+      label: if let Some(display_parts) = &self.display_parts {
+        lsp::InlayHintLabel::LabelParts(
+          display_parts
+            .iter()
+            .map(|p| p.to_lsp(language_server))
+            .collect(),
+        )
+      } else {
+        lsp::InlayHintLabel::String(self.text.clone())
+      },
       kind: self.kind.to_lsp(),
       padding_left: self.whitespace_before,
       padding_right: self.whitespace_after,
@@ -4892,6 +4950,8 @@ pub struct UserPreferences {
   pub allow_rename_of_import_path: Option<bool>,
   #[serde(skip_serializing_if = "Option::is_none")]
   pub auto_import_file_exclude_patterns: Option<Vec<String>>,
+  #[serde(skip_serializing_if = "Option::is_none")]
+  pub interactive_inlay_hints: Option<bool>,
 }
 
 impl UserPreferences {
@@ -4909,6 +4969,7 @@ impl UserPreferences {
       include_completions_with_snippet_text: Some(
         config.snippet_support_capable(),
       ),
+      interactive_inlay_hints: Some(true),
       provide_refactor_not_applicable_reason: Some(true),
       quote_preference: Some(fmt_config.into()),
       use_label_details_in_completion_entries: Some(true),
