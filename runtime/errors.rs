@@ -17,6 +17,11 @@ use deno_core::serde_json;
 use deno_core::url;
 use deno_core::ModuleResolutionError;
 use deno_cron::CronError;
+use deno_crypto::DecryptError;
+use deno_crypto::EncryptError;
+use deno_crypto::ExportKeyError;
+use deno_crypto::GenerateKeyError;
+use deno_crypto::ImportKeyError;
 use deno_fetch::FetchError;
 use deno_fetch::HttpClientCreateError;
 use deno_ffi::CallError;
@@ -38,6 +43,8 @@ use deno_web::CompressionError;
 use deno_web::MessagePortError;
 use deno_web::StreamResourceError;
 use deno_web::WebError;
+use deno_websocket::HandshakeError;
+use deno_websocket::WebsocketError;
 use deno_webstorage::WebStorageError;
 use std::env;
 use std::error::Error;
@@ -176,6 +183,165 @@ pub fn get_nix_error_class(error: &nix::Error) -> &'static str {
     nix::Error::UnknownErrno => "Error",
     &nix::Error::ENOTSUP => unreachable!(),
     _ => "Error",
+  }
+}
+
+fn get_crypto_decrypt_error_class(e: &DecryptError) -> &'static str {
+  match e {
+    DecryptError::General(e) => get_crypto_shared_error_class(e),
+    DecryptError::Pkcs1(_) => "Error",
+    DecryptError::Failed => "DOMExceptionOperationError",
+    DecryptError::InvalidLength => "TypeError",
+    DecryptError::InvalidCounterLength => "TypeError",
+    DecryptError::InvalidTagLength => "TypeError",
+    DecryptError::InvalidKeyOrIv => "DOMExceptionOperationError",
+    DecryptError::TooMuchData => "DOMExceptionOperationError",
+    DecryptError::InvalidIvLength => "TypeError",
+    DecryptError::Rsa(_) => "DOMExceptionOperationError",
+  }
+}
+
+fn get_crypto_encrypt_error_class(e: &EncryptError) -> &'static str {
+  match e {
+    EncryptError::General(e) => get_crypto_shared_error_class(e),
+    EncryptError::InvalidKeyOrIv => "DOMExceptionOperationError",
+    EncryptError::Failed => "DOMExceptionOperationError",
+    EncryptError::InvalidLength => "TypeError",
+    EncryptError::InvalidIvLength => "TypeError",
+    EncryptError::InvalidCounterLength => "TypeError",
+    EncryptError::TooMuchData => "DOMExceptionOperationError",
+  }
+}
+
+fn get_crypto_shared_error_class(e: &deno_crypto::SharedError) -> &'static str {
+  match e {
+    deno_crypto::SharedError::ExpectedValidPrivateKey => "TypeError",
+    deno_crypto::SharedError::ExpectedValidPublicKey => "TypeError",
+    deno_crypto::SharedError::ExpectedValidPrivateECKey => "TypeError",
+    deno_crypto::SharedError::ExpectedValidPublicECKey => "TypeError",
+    deno_crypto::SharedError::ExpectedPrivateKey => "TypeError",
+    deno_crypto::SharedError::ExpectedPublicKey => "TypeError",
+    deno_crypto::SharedError::ExpectedSecretKey => "TypeError",
+    deno_crypto::SharedError::FailedDecodePrivateKey => {
+      "DOMExceptionOperationError"
+    }
+    deno_crypto::SharedError::FailedDecodePublicKey => {
+      "DOMExceptionOperationError"
+    }
+    deno_crypto::SharedError::UnsupportedFormat => {
+      "DOMExceptionNotSupportedError"
+    }
+  }
+}
+
+fn get_crypto_ed25519_error_class(
+  e: &deno_crypto::Ed25519Error,
+) -> &'static str {
+  match e {
+    deno_crypto::Ed25519Error::FailedExport => "DOMExceptionOperationError",
+    deno_crypto::Ed25519Error::Der(_) => "Error",
+    deno_crypto::Ed25519Error::KeyRejected(_) => "Error",
+  }
+}
+
+fn get_crypto_export_key_error_class(e: &ExportKeyError) -> &'static str {
+  match e {
+    ExportKeyError::General(e) => get_crypto_shared_error_class(e),
+    ExportKeyError::Der(_) => "Error",
+    ExportKeyError::UnsupportedNamedCurve => "DOMExceptionNotSupportedError",
+  }
+}
+
+fn get_crypto_generate_key_error_class(e: &GenerateKeyError) -> &'static str {
+  match e {
+    GenerateKeyError::General(e) => get_crypto_shared_error_class(e),
+    GenerateKeyError::BadPublicExponent => "DOMExceptionOperationError",
+    GenerateKeyError::InvalidHMACKeyLength => "DOMExceptionOperationError",
+    GenerateKeyError::FailedRSAKeySerialization => "DOMExceptionOperationError",
+    GenerateKeyError::InvalidAESKeyLength => "DOMExceptionOperationError",
+    GenerateKeyError::FailedRSAKeyGeneration => "DOMExceptionOperationError",
+    GenerateKeyError::FailedECKeyGeneration => "DOMExceptionOperationError",
+    GenerateKeyError::FailedKeyGeneration => "DOMExceptionOperationError",
+  }
+}
+
+fn get_crypto_import_key_error_class(e: &ImportKeyError) -> &'static str {
+  match e {
+    ImportKeyError::General(e) => get_crypto_shared_error_class(e),
+    ImportKeyError::InvalidModulus => "DOMExceptionDataError",
+    ImportKeyError::InvalidPublicExponent => "DOMExceptionDataError",
+    ImportKeyError::InvalidPrivateExponent => "DOMExceptionDataError",
+    ImportKeyError::InvalidFirstPrimeFactor => "DOMExceptionDataError",
+    ImportKeyError::InvalidSecondPrimeFactor => "DOMExceptionDataError",
+    ImportKeyError::InvalidFirstCRTExponent => "DOMExceptionDataError",
+    ImportKeyError::InvalidSecondCRTExponent => "DOMExceptionDataError",
+    ImportKeyError::InvalidCRTCoefficient => "DOMExceptionDataError",
+    ImportKeyError::InvalidB64Coordinate => "DOMExceptionDataError",
+    ImportKeyError::InvalidRSAPublicKey => "DOMExceptionDataError",
+    ImportKeyError::InvalidRSAPrivateKey => "DOMExceptionDataError",
+    ImportKeyError::UnsupportedAlgorithm => "DOMExceptionDataError",
+    ImportKeyError::PublicKeyTooLong => "DOMExceptionDataError",
+    ImportKeyError::PrivateKeyTooLong => "DOMExceptionDataError",
+    ImportKeyError::InvalidP256ECPoint => "DOMExceptionDataError",
+    ImportKeyError::InvalidP384ECPoint => "DOMExceptionDataError",
+    ImportKeyError::InvalidP521ECPoint => "DOMExceptionDataError",
+    ImportKeyError::UnsupportedNamedCurve => "DOMExceptionDataError",
+    ImportKeyError::CurveMismatch => "DOMExceptionDataError",
+    ImportKeyError::InvalidKeyData => "DOMExceptionDataError",
+    ImportKeyError::InvalidJWKPrivateKey => "DOMExceptionDataError",
+    ImportKeyError::EllipticCurve(_) => "DOMExceptionDataError",
+    ImportKeyError::ExpectedValidPkcs8Data => "DOMExceptionDataError",
+    ImportKeyError::MalformedParameters => "DOMExceptionDataError",
+    ImportKeyError::Spki(_) => "DOMExceptionDataError",
+    ImportKeyError::InvalidP256ECSPKIData => "DOMExceptionDataError",
+    ImportKeyError::InvalidP384ECSPKIData => "DOMExceptionDataError",
+    ImportKeyError::InvalidP521ECSPKIData => "DOMExceptionDataError",
+    ImportKeyError::Der(_) => "DOMExceptionDataError",
+  }
+}
+
+fn get_crypto_x448_error_class(e: &deno_crypto::X448Error) -> &'static str {
+  match e {
+    deno_crypto::X448Error::FailedExport => "DOMExceptionOperationError",
+    deno_crypto::X448Error::Der(_) => "Error",
+  }
+}
+
+fn get_crypto_x25519_error_class(e: &deno_crypto::X25519Error) -> &'static str {
+  match e {
+    deno_crypto::X25519Error::FailedExport => "DOMExceptionOperationError",
+    deno_crypto::X25519Error::Der(_) => "Error",
+  }
+}
+
+fn get_crypto_error_class(e: &deno_crypto::Error) -> &'static str {
+  match e {
+    deno_crypto::Error::Der(_) => "Error",
+    deno_crypto::Error::JoinError(_) => "Error",
+    deno_crypto::Error::MissingArgumentHash => "TypeError",
+    deno_crypto::Error::MissingArgumentSaltLength => "TypeError",
+    deno_crypto::Error::Other(e) => get_error_class_name(e).unwrap_or("Error"),
+    deno_crypto::Error::UnsupportedAlgorithm => "TypeError",
+    deno_crypto::Error::KeyRejected(_) => "Error",
+    deno_crypto::Error::RSA(_) => "Error",
+    deno_crypto::Error::Pkcs1(_) => "Error",
+    deno_crypto::Error::Unspecified(_) => "Error",
+    deno_crypto::Error::InvalidKeyFormat => "TypeError",
+    deno_crypto::Error::MissingArgumentPublicKey => "TypeError",
+    deno_crypto::Error::P256Ecdsa(_) => "Error",
+    deno_crypto::Error::DecodePrivateKey => "TypeError",
+    deno_crypto::Error::MissingArgumentNamedCurve => "TypeError",
+    deno_crypto::Error::MissingArgumentInfo => "TypeError",
+    deno_crypto::Error::HKDFLengthTooLarge => "DOMExceptionOperationError",
+    deno_crypto::Error::General(e) => get_crypto_shared_error_class(e),
+    deno_crypto::Error::Base64Decode(_) => "Error",
+    deno_crypto::Error::DataInvalidSize => "TypeError",
+    deno_crypto::Error::InvalidKeyLength => "TypeError",
+    deno_crypto::Error::EncryptionError => "DOMExceptionOperationError",
+    deno_crypto::Error::DecryptionError => "DOMExceptionOperationError",
+    deno_crypto::Error::ArrayBufferViewLengthExceeded(_) => {
+      "DOMExceptionQuotaExceededError"
+    }
   }
 }
 
@@ -406,6 +572,43 @@ fn get_http_client_create_error(error: &HttpClientCreateError) -> &'static str {
   }
 }
 
+fn get_websocket_error(error: &WebsocketError) -> &'static str {
+  match error {
+    WebsocketError::Permission(e) | WebsocketError::Resource(e) => {
+      get_error_class_name(e).unwrap_or("Error")
+    }
+    WebsocketError::Url(e) => get_url_parse_error_class(e),
+    WebsocketError::Io(e) => get_io_error_class(e),
+    WebsocketError::WebSocket(_) => "TypeError",
+    WebsocketError::ConnectionFailed(_) => "DOMExceptionNetworkError",
+    WebsocketError::Uri(_) => "Error",
+    WebsocketError::Canceled(e) => {
+      let io_err: io::Error = e.to_owned().into();
+      get_io_error_class(&io_err)
+    }
+  }
+}
+
+fn get_websocket_handshake_error(error: &HandshakeError) -> &'static str {
+  match error {
+    HandshakeError::RootStoreError(e) => {
+      get_error_class_name(e).unwrap_or("Error")
+    }
+    HandshakeError::Tls(e) => get_tls_error_class(e),
+    HandshakeError::MissingPath => "TypeError",
+    HandshakeError::Http(_) => "Error",
+    HandshakeError::InvalidHostname(_) => "TypeError",
+    HandshakeError::Io(e) => get_io_error_class(e),
+    HandshakeError::Rustls(_) => "Error",
+    HandshakeError::H2(_) => "Error",
+    HandshakeError::NoH2Alpn => "Error",
+    HandshakeError::InvalidStatusCode(_) => "Error",
+    HandshakeError::WebSocket(_) => "TypeError",
+    HandshakeError::HeaderName(_) => "TypeError",
+    HandshakeError::HeaderValue(_) => "TypeError",
+  }
+}
+
 fn get_fs_error(error: &FsOpsError) -> &'static str {
   match error {
     FsOpsError::Io(e) => get_io_error_class(e),
@@ -520,7 +723,6 @@ fn get_net_map_error(error: &deno_net::io::MapError) -> &'static str {
 pub fn get_error_class_name(e: &AnyError) -> Option<&'static str> {
   deno_core::error::get_custom_error_class(e)
     .or_else(|| deno_webgpu::error::get_error_class_name(e))
-    .or_else(|| deno_websocket::get_network_error_class_name(e))
     .or_else(|| e.downcast_ref::<NApiError>().map(get_napi_error_class))
     .or_else(|| e.downcast_ref::<WebError>().map(get_web_error_class))
     .or_else(|| {
@@ -556,6 +758,11 @@ pub fn get_error_class_name(e: &AnyError) -> Option<&'static str> {
     .or_else(|| e.downcast_ref::<CronError>().map(get_cron_error_class))
     .or_else(|| e.downcast_ref::<CanvasError>().map(get_canvas_error))
     .or_else(|| e.downcast_ref::<CacheError>().map(get_cache_error))
+    .or_else(|| e.downcast_ref::<WebsocketError>().map(get_websocket_error))
+    .or_else(|| {
+      e.downcast_ref::<HandshakeError>()
+        .map(get_websocket_handshake_error)
+    })
     .or_else(|| e.downcast_ref::<KvError>().map(get_kv_error))
     .or_else(|| e.downcast_ref::<FetchError>().map(get_fetch_error))
     .or_else(|| {
@@ -570,6 +777,46 @@ pub fn get_error_class_name(e: &AnyError) -> Option<&'static str> {
     .or_else(|| {
       e.downcast_ref::<BroadcastChannelError>()
         .map(get_broadcast_channel_error)
+    })
+    .or_else(|| {
+      e.downcast_ref::<DecryptError>()
+        .map(get_crypto_decrypt_error_class)
+    })
+    .or_else(|| {
+      e.downcast_ref::<EncryptError>()
+        .map(get_crypto_encrypt_error_class)
+    })
+    .or_else(|| {
+      e.downcast_ref::<deno_crypto::SharedError>()
+        .map(get_crypto_shared_error_class)
+    })
+    .or_else(|| {
+      e.downcast_ref::<deno_crypto::Ed25519Error>()
+        .map(get_crypto_ed25519_error_class)
+    })
+    .or_else(|| {
+      e.downcast_ref::<ExportKeyError>()
+        .map(get_crypto_export_key_error_class)
+    })
+    .or_else(|| {
+      e.downcast_ref::<GenerateKeyError>()
+        .map(get_crypto_generate_key_error_class)
+    })
+    .or_else(|| {
+      e.downcast_ref::<ImportKeyError>()
+        .map(get_crypto_import_key_error_class)
+    })
+    .or_else(|| {
+      e.downcast_ref::<deno_crypto::X448Error>()
+        .map(get_crypto_x448_error_class)
+    })
+    .or_else(|| {
+      e.downcast_ref::<deno_crypto::X25519Error>()
+        .map(get_crypto_x25519_error_class)
+    })
+    .or_else(|| {
+      e.downcast_ref::<deno_crypto::Error>()
+        .map(get_crypto_error_class)
     })
     .or_else(|| {
       e.downcast_ref::<WebStorageError>()

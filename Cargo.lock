@@ -1503,6 +1503,8 @@ dependencies = [
  "sha2",
  "signature",
  "spki",
+ "thiserror",
+ "tokio",
  "uuid",
  "x25519-dalek",
 ]
@@ -2226,6 +2228,7 @@ dependencies = [
  "once_cell",
  "rustls-tokio-stream",
  "serde",
+ "thiserror",
  "tokio",
 ]
 
