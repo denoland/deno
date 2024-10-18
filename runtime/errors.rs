@@ -9,6 +9,9 @@
 //!   Diagnostics are compile-time type errors, whereas JsErrors are runtime
 //!   exceptions.
 
+use crate::ops::signal::SignalError;
+use crate::ops::tty::TtyError;
+use crate::ops::worker_host::CreateWorkerError;
 use deno_broadcast_channel::BroadcastChannelError;
 use deno_cache::CacheError;
 use deno_canvas::CanvasError;
@@ -39,6 +42,7 @@ use deno_web::WebError;
 use deno_websocket::HandshakeError;
 use deno_websocket::WebsocketError;
 use deno_webstorage::WebStorageError;
+use rustyline::error::ReadlineError;
 use std::env;
 use std::error::Error;
 use std::io;
@@ -518,11 +522,63 @@ fn get_net_map_error(error: &deno_net::io::MapError) -> &'static str {
   }
 }
 
+fn get_create_worker_error(error: &CreateWorkerError) -> &'static str {
+  match error {
+    CreateWorkerError::ClassicWorkers => "DOMExceptionNotSupportedError",
+    CreateWorkerError::Permission(e) => {
+      get_error_class_name(e).unwrap_or("Error")
+    }
+    CreateWorkerError::ModuleResolution(e) => {
+      get_module_resolution_error_class(e)
+    }
+    CreateWorkerError::Io(e) => get_io_error_class(e),
+  }
+}
+
+fn get_tty_error(error: &TtyError) -> &'static str {
+  match error {
+    TtyError::Resource(e) | TtyError::Other(e) => {
+      get_error_class_name(e).unwrap_or("Error")
+    }
+    TtyError::Io(e) => get_io_error_class(e),
+  }
+}
+
+fn get_readline_error(error: &ReadlineError) -> &'static str {
+  match error {
+    ReadlineError::Io(e) => get_io_error_class(e),
+    ReadlineError::Eof => "Error",
+    ReadlineError::Interrupted => "Error",
+    ReadlineError::Errno(e) => get_io_error_class(e.into()),
+    ReadlineError::WindowResized => "Error",
+    #[cfg(windows)]
+    ReadlineError::Decode(_) => "Error",
+    #[cfg(windows)]
+    ReadlineError::SystemError(_) => "Error",
+  }
+}
+
+fn get_signal_error(error: &SignalError) -> &'static str {
+  match error {
+    SignalError::InvalidSignalStr(_) => "TypeError",
+    SignalError::InvalidSignalInt(_) => "TypeError",
+    SignalError::SignalNotAllowed(_) => "TypeError",
+    SignalError::Io(e) => get_io_error_class(e),
+  }
+}
+
 pub fn get_error_class_name(e: &AnyError) -> Option<&'static str> {
   deno_core::error::get_custom_error_class(e)
     .or_else(|| deno_webgpu::error::get_error_class_name(e))
     .or_else(|| e.downcast_ref::<NApiError>().map(get_napi_error_class))
     .or_else(|| e.downcast_ref::<WebError>().map(get_web_error_class))
+    .or_else(|| {
+      e.downcast_ref::<CreateWorkerError>()
+        .map(get_create_worker_error)
+    })
+    .or_else(|| e.downcast_ref::<TtyError>().map(get_tty_error))
+    .or_else(|| e.downcast_ref::<ReadlineError>().map(get_readline_error))
+    .or_else(|| e.downcast_ref::<SignalError>().map(get_signal_error))
     .or_else(|| {
       e.downcast_ref::<CompressionError>()
         .map(get_web_compression_error_class)
