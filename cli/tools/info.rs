@@ -123,6 +123,7 @@ fn print_cache_info(
   let registry_cache = dir.registries_folder_path();
   let mut origin_dir = dir.origin_data_folder_path();
   let deno_dir = dir.root_path_for_display().to_string();
+  let deno_cache_dir = std::env::temp_dir().join("deno_cache");
 
   if let Some(location) = &location {
     origin_dir =
@@ -140,6 +141,7 @@ fn print_cache_info(
       "typescriptCache": typescript_cache,
       "registryCache": registry_cache,
       "originStorage": origin_dir,
+      "denoCacheDir": deno_cache_dir,
     });
 
     if location.is_some() {
@@ -173,6 +175,11 @@ fn print_cache_info(
       "{} {}",
       colors::bold("Origin storage:"),
       origin_dir.display()
+    );
+    println!(
+      "{} {}",
+      colors::bold("Deno Cache:"),
+      deno_cache_dir.display()
     );
     if location.is_some() {
       println!(
