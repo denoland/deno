@@ -25,8 +25,17 @@ use deno_ffi::DlfcnError;
 use deno_ffi::IRError;
 use deno_ffi::ReprError;
 use deno_ffi::StaticError;
+use deno_kv::KvCheckError;
+use deno_kv::KvError;
+use deno_kv::KvMutationError;
+use deno_napi::NApiError;
 use deno_net::ops::NetError;
 use deno_tls::TlsError;
+use deno_web::BlobError;
+use deno_web::CompressionError;
+use deno_web::MessagePortError;
+use deno_web::StreamResourceError;
+use deno_web::WebError;
 use deno_webstorage::WebStorageError;
 use std::env;
 use std::error::Error;
@@ -165,6 +174,70 @@ pub fn get_nix_error_class(error: &nix::Error) -> &'static str {
     nix::Error::UnknownErrno => "Error",
     &nix::Error::ENOTSUP => unreachable!(),
     _ => "Error",
+  }
+}
+
+fn get_napi_error_class(e: &NApiError) -> &'static str {
+  match e {
+    NApiError::InvalidPath
+    | NApiError::LibLoading(_)
+    | NApiError::ModuleNotFound(_) => "TypeError",
+    NApiError::Permission(e) => get_error_class_name(e).unwrap_or("Error"),
+  }
+}
+
+fn get_web_error_class(e: &WebError) -> &'static str {
+  match e {
+    WebError::Base64Decode => "DOMExceptionInvalidCharacterError",
+    WebError::InvalidEncodingLabel(_) => "RangeError",
+    WebError::BufferTooLong => "TypeError",
+    WebError::ValueTooLarge => "RangeError",
+    WebError::BufferTooSmall => "RangeError",
+    WebError::DataInvalid => "TypeError",
+    WebError::DataError(_) => "Error",
+  }
+}
+
+fn get_web_compression_error_class(e: &CompressionError) -> &'static str {
+  match e {
+    CompressionError::UnsupportedFormat => "TypeError",
+    CompressionError::ResourceClosed => "TypeError",
+    CompressionError::IoTypeError(_) => "TypeError",
+    CompressionError::Io(e) => get_io_error_class(e),
+  }
+}
+
+fn get_web_message_port_error_class(e: &MessagePortError) -> &'static str {
+  match e {
+    MessagePortError::InvalidTransfer => "TypeError",
+    MessagePortError::NotReady => "TypeError",
+    MessagePortError::TransferSelf => "TypeError",
+    MessagePortError::Canceled(e) => {
+      let io_err: io::Error = e.to_owned().into();
+      get_io_error_class(&io_err)
+    }
+    MessagePortError::Resource(e) => get_error_class_name(e).unwrap_or("Error"),
+  }
+}
+
+fn get_web_stream_resource_error_class(
+  e: &StreamResourceError,
+) -> &'static str {
+  match e {
+    StreamResourceError::Canceled(e) => {
+      let io_err: io::Error = e.to_owned().into();
+      get_io_error_class(&io_err)
+    }
+    StreamResourceError::Js(_) => "TypeError",
+  }
+}
+
+fn get_web_blob_error_class(e: &BlobError) -> &'static str {
+  match e {
+    BlobError::BlobPartNotFound => "TypeError",
+    BlobError::SizeLargerThanBlobPart => "TypeError",
+    BlobError::BlobURLsNotSupported => "TypeError",
+    BlobError::Url(_) => "Error",
   }
 }
 
@@ -331,6 +404,47 @@ fn get_http_client_create_error(error: &HttpClientCreateError) -> &'static str {
   }
 }
 
+fn get_kv_error(error: &KvError) -> &'static str {
+  match error {
+    KvError::DatabaseHandler(e) | KvError::Resource(e) | KvError::Kv(e) => {
+      get_error_class_name(e).unwrap_or("Error")
+    }
+    KvError::TooManyRanges(_) => "TypeError",
+    KvError::TooManyEntries(_) => "TypeError",
+    KvError::TooManyChecks(_) => "TypeError",
+    KvError::TooManyMutations(_) => "TypeError",
+    KvError::TooManyKeys(_) => "TypeError",
+    KvError::InvalidLimit => "TypeError",
+    KvError::InvalidBoundaryKey => "TypeError",
+    KvError::KeyTooLargeToRead(_) => "TypeError",
+    KvError::KeyTooLargeToWrite(_) => "TypeError",
+    KvError::TotalMutationTooLarge(_) => "TypeError",
+    KvError::TotalKeyTooLarge(_) => "TypeError",
+    KvError::Io(e) => get_io_error_class(e),
+    KvError::QueueMessageNotFound => "TypeError",
+    KvError::StartKeyNotInKeyspace => "TypeError",
+    KvError::EndKeyNotInKeyspace => "TypeError",
+    KvError::StartKeyGreaterThanEndKey => "TypeError",
+    KvError::InvalidCheck(e) => match e {
+      KvCheckError::InvalidVersionstamp => "TypeError",
+      KvCheckError::Io(e) => get_io_error_class(e),
+    },
+    KvError::InvalidMutation(e) => match e {
+      KvMutationError::BigInt(_) => "Error",
+      KvMutationError::Io(e) => get_io_error_class(e),
+      KvMutationError::InvalidMutationWithValue(_) => "TypeError",
+      KvMutationError::InvalidMutationWithoutValue(_) => "TypeError",
+    },
+    KvError::InvalidEnqueue(e) => get_io_error_class(e),
+    KvError::EmptyKey => "TypeError",
+    KvError::ValueTooLarge(_) => "TypeError",
+    KvError::EnqueuePayloadTooLarge(_) => "TypeError",
+    KvError::InvalidCursor => "TypeError",
+    KvError::CursorOutOfBounds => "TypeError",
+    KvError::InvalidRange => "TypeError",
+  }
+}
+
 fn get_net_error(error: &NetError) -> &'static str {
   match error {
     NetError::ListenerClosed => "BadResource",
@@ -376,8 +490,22 @@ fn get_net_map_error(error: &deno_net::io::MapError) -> &'static str {
 pub fn get_error_class_name(e: &AnyError) -> Option<&'static str> {
   deno_core::error::get_custom_error_class(e)
     .or_else(|| deno_webgpu::error::get_error_class_name(e))
-    .or_else(|| deno_web::get_error_class_name(e))
     .or_else(|| deno_websocket::get_network_error_class_name(e))
+    .or_else(|| e.downcast_ref::<NApiError>().map(get_napi_error_class))
+    .or_else(|| e.downcast_ref::<WebError>().map(get_web_error_class))
+    .or_else(|| {
+      e.downcast_ref::<CompressionError>()
+        .map(get_web_compression_error_class)
+    })
+    .or_else(|| {
+      e.downcast_ref::<MessagePortError>()
+        .map(get_web_message_port_error_class)
+    })
+    .or_else(|| {
+      e.downcast_ref::<StreamResourceError>()
+        .map(get_web_stream_resource_error_class)
+    })
+    .or_else(|| e.downcast_ref::<BlobError>().map(get_web_blob_error_class))
     .or_else(|| e.downcast_ref::<IRError>().map(|_| "TypeError"))
     .or_else(|| e.downcast_ref::<ReprError>().map(get_ffi_repr_error_class))
     .or_else(|| {
@@ -397,6 +525,7 @@ pub fn get_error_class_name(e: &AnyError) -> Option<&'static str> {
     .or_else(|| e.downcast_ref::<CronError>().map(get_cron_error_class))
     .or_else(|| e.downcast_ref::<CanvasError>().map(get_canvas_error))
     .or_else(|| e.downcast_ref::<CacheError>().map(get_cache_error))
+    .or_else(|| e.downcast_ref::<KvError>().map(get_kv_error))
     .or_else(|| e.downcast_ref::<FetchError>().map(get_fetch_error))
     .or_else(|| {
       e.downcast_ref::<HttpClientCreateError>()
