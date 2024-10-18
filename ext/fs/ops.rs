@@ -1752,6 +1752,11 @@ pub struct OperationError {
 
 impl std::fmt::Display for OperationError {
   fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+    if let FsError::Io(e) = &self.err {
+      std::fmt::Display::fmt(&e, f)?;
+      f.write_str(": ")?;
+    }
+
     f.write_str(self.operation)?;
 
     match &self.kind {
