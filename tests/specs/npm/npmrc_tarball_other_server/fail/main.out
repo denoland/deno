@@ -1,4 +1,4 @@
-Download http://localhost:4261/@denotest%2tarballs-privateserver2
+Download http://localhost:4261/@denotest%2ftarballs-privateserver2
 Download http://localhost:4262/@denotest/tarballs-privateserver2/1.0.0.tgz
 error: Failed caching npm package '@denotest/tarballs-privateserver2@1.0.0'.
 
