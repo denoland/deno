@@ -504,7 +504,7 @@ function mapToCallback(context, callback, onError) {
         new ServeHandlerInfo(innerRequest),
       );
 
-      if (typeof result === "object" && "then" in result) {
+      if (typeof result === "object" && ObjectHasOwn(result, "then")) {
         response = await response;
       }
 
