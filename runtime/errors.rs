@@ -555,9 +555,9 @@ fn get_http_next_error(error: &HttpNextError) -> &'static str {
       get_io_error_class(&io_err)
     }
     HttpNextError::UpgradeUnavailable(_) => "Error",
-    HttpNextError::HttpPropertyExtractor(e)
-    | HttpNextError::Resource(e)
-    | HttpNextError::Other(e) => get_error_class_name(e).unwrap_or("Error"),
+    HttpNextError::HttpPropertyExtractor(e) | HttpNextError::Resource(e) => {
+      get_error_class_name(e).unwrap_or("Error")
+    }
   }
 }
 

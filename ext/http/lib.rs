@@ -1101,8 +1101,11 @@ async fn op_http_upgrade_websocket(
     _ => return Err(HttpError::UpgradeBodyUsed),
   };
 
-  let (transport, bytes) =
-    extract_network_stream(hyper_v014::upgrade::on(request).await.map_err(|err| HttpError::HyperV014(Arc::new(err)))?);
+  let (transport, bytes) = extract_network_stream(
+    hyper_v014::upgrade::on(request)
+      .await
+      .map_err(|err| HttpError::HyperV014(Arc::new(err)))?,
+  );
   Ok(ws_create_server_stream(
     &mut state.borrow_mut(),
     transport,

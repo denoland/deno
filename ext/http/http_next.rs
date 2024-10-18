@@ -163,8 +163,6 @@ pub enum HttpNextError {
   HttpPropertyExtractor(deno_core::error::AnyError),
   #[error(transparent)]
   UpgradeUnavailable(#[from] crate::service::UpgradeUnavailableError),
-  #[error(transparent)]
-  Other(deno_core::error::AnyError),
 }
 
 #[op2(fast)]
