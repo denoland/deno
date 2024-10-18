@@ -4,13 +4,10 @@
 // deno-lint-ignore-file prefer-primordials
 
 import { TextEncoder } from "ext:deno_web/08_text_encoding.js";
-import {
-  intoCallbackAPIWithIntercept,
-  MaybeEmpty,
-  notImplemented,
-} from "ext:deno_node/_utils.ts";
+import { MaybeEmpty, notImplemented } from "ext:deno_node/_utils.ts";
 import { pathFromURL } from "ext:deno_web/00_infra.js";
 import { promisify } from "ext:deno_node/internal/util.mjs";
+import { denoErrorToNodeError } from "ext:deno_node/internal/errors.ts";
 
 type ReadlinkCallback = (
   err: MaybeEmpty<Error>,
@@ -69,12 +66,17 @@ export function readlink(
 
   const encoding = getEncoding(optOrCallback);
 
-  intoCallbackAPIWithIntercept<string, Uint8Array | string>(
-    Deno.readLink,
-    (data: string): string | Uint8Array => maybeEncode(data, encoding),
-    cb,
-    path,
-  );
+  Deno.readLink(path).then((data: string) => {
+    const res = maybeEncode(data, encoding);
+    if (cb) cb(null, res);
+  }, (err: Error) => {
+    if (cb) {
+      (cb as (e: Error) => void)(denoErrorToNodeError(err, {
+        syscall: "readlink",
+        path,
+      }));
+    }
+  });
 }
 
 export const readlinkPromise = promisify(readlink) as (
@@ -88,5 +90,12 @@ export function readlinkSync(
 ): string | Uint8Array {
   path = path instanceof URL ? pathFromURL(path) : path;
 
-  return maybeEncode(Deno.readLinkSync(path), getEncoding(opt));
+  try {
+    return maybeEncode(Deno.readLinkSync(path), getEncoding(opt));
+  } catch (error) {
+    throw denoErrorToNodeError(error, {
+      syscall: "readlink",
+      path,
+    });
+  }
 }
