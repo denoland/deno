@@ -176,7 +176,7 @@ mod tests {
 
   fn assert_response(
     result: Result<Option<(Response<Body>, Bytes)>, WebSocketUpgradeError>,
-    expected: Result<ExpectedResponseAndHead, &'static str>,
+    expected: Result<ExpectedResponseAndHead, WebSocketUpgradeError>,
     chunk_info: Option<(usize, usize)>,
   ) {
     let formatted = format!("{result:?}");
@@ -207,8 +207,8 @@ mod tests {
         "Expected Ok(None), was {formatted}",
       ),
       Err(e) => assert_eq!(
-        e,
-        result.err().map(|e| format!("{e:?}")).unwrap_or_default(),
+        format!("{e:?}"),
+        format!("{:?}", result.unwrap_err()),
         "Expected error, was {formatted}",
       ),
     }
@@ -216,7 +216,7 @@ mod tests {
 
   fn validate_upgrade_all_at_once(
     s: &str,
-    expected: Result<ExpectedResponseAndHead, &'static str>,
+    expected: Result<ExpectedResponseAndHead, WebSocketUpgradeError>,
   ) {
     let mut upgrade = WebSocketUpgrade::default();
     let res = upgrade.write(s.as_bytes());
@@ -227,7 +227,7 @@ mod tests {
   fn validate_upgrade_chunks(
     s: &str,
     size: usize,
-    expected: Result<ExpectedResponseAndHead, &'static str>,
+    expected: Result<ExpectedResponseAndHead, WebSocketUpgradeError>,
   ) {
     let chunk_info = Some((s.as_bytes().len(), size));
     let mut upgrade = WebSocketUpgrade::default();
@@ -244,7 +244,7 @@ mod tests {
 
   fn validate_upgrade(
     s: &str,
-    expected: fn() -> Result<ExpectedResponseAndHead, &'static str>,
+    expected: fn() -> Result<ExpectedResponseAndHead, WebSocketUpgradeError>,
   ) {
     validate_upgrade_all_at_once(s, expected());
     validate_upgrade_chunks(s, 1, expected());
@@ -333,7 +333,7 @@ mod tests {
   #[test]
   fn upgrade_invalid_status() {
     validate_upgrade("HTTP/1.1 200 OK\nConnection: Upgrade\n\n", || {
-      Err("invalid HTTP status line")
+      Err(WebSocketUpgradeError::InvalidHttpStatusLine)
     });
   }
 
@@ -345,7 +345,11 @@ mod tests {
       .join("\n");
     validate_upgrade(
       &format!("HTTP/1.1 101 Switching Protocols\n{headers}\n\n"),
-      || Err("too many headers"),
+      || {
+        Err(WebSocketUpgradeError::HttpParse(
+          httparse::Error::TooManyHeaders,
+        ))
+      },
     );
   }
 }
