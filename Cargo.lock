@@ -1214,7 +1214,6 @@ dependencies = [
  "lazy-regex",
  "libc",
  "libsui",
- "libuv-sys-lite",
  "libz-sys",
  "log",
  "lsp-types",
@@ -1222,7 +1221,6 @@ dependencies = [
  "markup_fmt",
  "memmem",
  "monch",
- "napi_sym",
  "nix",
  "node_resolver",
  "notify",
@@ -1263,7 +1261,6 @@ dependencies = [
  "walkdir",
  "which 4.4.2",
  "winapi",
- "windows-sys 0.52.0",
  "winres",
  "zeromq",
  "zip",
@@ -1774,8 +1771,13 @@ version = "0.104.0"
 dependencies = [
  "deno_core",
  "deno_permissions",
+ "libc",
  "libloading 0.7.4",
+ "libuv-sys-lite",
+ "log",
+ "napi_sym",
  "thiserror",
+ "windows-sys 0.52.0",
 ]
 
 [[package]]

@@ -1,7 +1,7 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
+use crate::*;
 use deno_core::parking_lot::Mutex;
-use deno_runtime::deno_napi::*;
 use std::mem::MaybeUninit;
 use std::ptr::addr_of_mut;
 
@@ -16,10 +16,10 @@ fn assert_ok(res: c_int) -> c_int {
   res
 }
 
-use crate::napi::js_native_api::napi_create_string_utf8;
-use crate::napi::node_api::napi_create_async_work;
-use crate::napi::node_api::napi_delete_async_work;
-use crate::napi::node_api::napi_queue_async_work;
+use js_native_api::napi_create_string_utf8;
+use node_api::napi_create_async_work;
+use node_api::napi_delete_async_work;
+use node_api::napi_queue_async_work;
 use std::ffi::c_int;
 
 const UV_MUTEX_SIZE: usize = {

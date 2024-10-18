@@ -2,7 +2,8 @@
 
 A proc_macro for Deno's Node-API implementation. It does the following things:
 
-- Marks the symbol as `#[no_mangle]` and rewrites it as `pub extern "C" $name`.
+- Marks the symbol as `#[no_mangle]` and rewrites it as
+  `unsafe extern "C" $name`.
 - Asserts that the function symbol is present in
   [`symbol_exports.json`](./symbol_exports.json).
 - Maps `deno_napi::Result` to raw `napi_result`.
