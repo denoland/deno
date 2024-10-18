@@ -1058,7 +1058,7 @@ fn reload_info_not_found_cache_but_exists_remote() {
     .run();
   output.assert_matches_text(concat!(
     "[UNORDERED_START]\n",
-    "Download http://localhost:4260/@denotest/esm-basic\n",
+    "Download http://localhost:4260/@denotest%2fesm-basic\n",
     "Download http://localhost:4260/@denotest/esm-import-cjs-default\n",
     "Download http://localhost:4260/@denotest/cjs-default-export\n",
     "Download http://localhost:4260/@denotest/cjs-default-export/1.0.0.tgz\n",
@@ -1419,7 +1419,7 @@ fn top_level_install_package_json_explicit_opt_in() {
   temp_dir.write("main.ts", "console.log(5);");
   let output = test_context.new_command().args("cache main.ts").run();
   output.assert_matches_text(concat!(
-    "Download http://localhost:4260/@denotest/esm-basic\n",
+    "Download http://localhost:4260/@denotest%2fesm-basic\n",
     "Download http://localhost:4260/@denotest/esm-basic/1.0.0.tgz\n",
     "Initialize @denotest/esm-basic@1.0.0\n",
   ));
