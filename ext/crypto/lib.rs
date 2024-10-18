@@ -149,10 +149,7 @@ pub fn op_crypto_get_random_values(
   #[buffer] out: &mut [u8],
 ) -> Result<(), AnyError> {
   if out.len() > 65536 {
-    return Err(
-      deno_web::DomExceptionQuotaExceededError::new(&format!("The ArrayBufferView's byte length ({}) exceeds the number of bytes of entropy available via this API (65536)", out.len()))
-        .into(),
-    );
+    return Err(custom_error("DOMExceptionQuotaExceededError", format!("The ArrayBufferView's byte length ({}) exceeds the number of bytes of entropy available via this API (65536)", out.len())));
   }
 
   let maybe_seeded_rng = state.try_borrow_mut::<StdRng>();
