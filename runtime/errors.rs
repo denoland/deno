@@ -403,7 +403,7 @@ fn get_websocket_handshake_error(error: &HandshakeError) -> &'static str {
     HandshakeError::Canceled(e) => {
       let io_err: io::Error = e.to_owned().into();
       get_io_error_class(&io_err)
-    },
+    }
   }
 }
 
