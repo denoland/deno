@@ -876,7 +876,7 @@ fn auto_discover_lock_file() {
     .run();
   output
     .assert_matches_text(
-r#"Download http://localhost:4260/@denotest/bin
+r#"Download http://localhost:4260/@denotest%2fbin
 error: Integrity check failed for package: "npm:@denotest/bin@1.0.0". Unable to verify that the package
 is the same as when the lockfile was generated.
 
