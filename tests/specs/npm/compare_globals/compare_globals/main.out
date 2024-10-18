@@ -1,7 +1,7 @@
 [UNORDERED_START]
-Download http://localhost:4260/@types/node
+Download http://localhost:4260/@types%2fnode
 Download http://localhost:4260/undici-types
-Download http://localhost:4260/@denotest/globals
+Download http://localhost:4260/@denotest%2fglobals
 [UNORDERED_END]
 [UNORDERED_START]
 Download http://localhost:4260/@denotest/globals/1.0.0.tgz
