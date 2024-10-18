@@ -23,6 +23,10 @@ use deno_ffi::DlfcnError;
 use deno_ffi::IRError;
 use deno_ffi::ReprError;
 use deno_ffi::StaticError;
+use deno_kv::KvCheckError;
+use deno_kv::KvError;
+use deno_kv::KvMutationError;
+use deno_net::ops::NetError;
 use deno_tls::TlsError;
 use deno_websocket::HandshakeError;
 use deno_websocket::WebsocketError;
@@ -328,6 +332,89 @@ fn get_websocket_handshake_error(error: &HandshakeError) -> &'static str {
   }
 }
 
+fn get_kv_error(error: &KvError) -> &'static str {
+  match error {
+    KvError::DatabaseHandler(e) | KvError::Resource(e) | KvError::Kv(e) => {
+      get_error_class_name(e).unwrap_or("Error")
+    }
+    KvError::TooManyRanges(_) => "TypeError",
+    KvError::TooManyEntries(_) => "TypeError",
+    KvError::TooManyChecks(_) => "TypeError",
+    KvError::TooManyMutations(_) => "TypeError",
+    KvError::TooManyKeys(_) => "TypeError",
+    KvError::InvalidLimit => "TypeError",
+    KvError::InvalidBoundaryKey => "TypeError",
+    KvError::KeyTooLargeToRead(_) => "TypeError",
+    KvError::KeyTooLargeToWrite(_) => "TypeError",
+    KvError::TotalMutationTooLarge(_) => "TypeError",
+    KvError::TotalKeyTooLarge(_) => "TypeError",
+    KvError::Io(e) => get_io_error_class(e),
+    KvError::QueueMessageNotFound => "TypeError",
+    KvError::StartKeyNotInKeyspace => "TypeError",
+    KvError::EndKeyNotInKeyspace => "TypeError",
+    KvError::StartKeyGreaterThanEndKey => "TypeError",
+    KvError::InvalidCheck(e) => match e {
+      KvCheckError::InvalidVersionstamp => "TypeError",
+      KvCheckError::Io(e) => get_io_error_class(e),
+    },
+    KvError::InvalidMutation(e) => match e {
+      KvMutationError::BigInt(_) => "Error",
+      KvMutationError::Io(e) => get_io_error_class(e),
+      KvMutationError::InvalidMutationWithValue(_) => "TypeError",
+      KvMutationError::InvalidMutationWithoutValue(_) => "TypeError",
+    },
+    KvError::InvalidEnqueue(e) => get_io_error_class(e),
+    KvError::EmptyKey => "TypeError",
+    KvError::ValueTooLarge(_) => "TypeError",
+    KvError::EnqueuePayloadTooLarge(_) => "TypeError",
+    KvError::InvalidCursor => "TypeError",
+    KvError::CursorOutOfBounds => "TypeError",
+    KvError::InvalidRange => "TypeError",
+  }
+}
+
+fn get_net_error(error: &NetError) -> &'static str {
+  match error {
+    NetError::ListenerClosed => "BadResource",
+    NetError::ListenerBusy => "Busy",
+    NetError::SocketClosed => "BadResource",
+    NetError::SocketClosedNotConnected => "NotConnected",
+    NetError::SocketBusy => "Busy",
+    NetError::Io(e) => get_io_error_class(e),
+    NetError::AcceptTaskOngoing => "Busy",
+    NetError::RootCertStore(e)
+    | NetError::Permission(e)
+    | NetError::Resource(e) => get_error_class_name(e).unwrap_or("Error"),
+    NetError::NoResolvedAddress => "Error",
+    NetError::AddrParse(_) => "Error",
+    NetError::Map(e) => get_net_map_error(e),
+    NetError::Canceled(e) => {
+      let io_err: io::Error = e.to_owned().into();
+      get_io_error_class(&io_err)
+    }
+    NetError::DnsNotFound(_) => "NotFound",
+    NetError::DnsNotConnected(_) => "NotConnected",
+    NetError::DnsTimedOut(_) => "TimedOut",
+    NetError::Dns(_) => "Error",
+    NetError::UnsupportedRecordType => "NotSupported",
+    NetError::InvalidUtf8(_) => "InvalidData",
+    NetError::UnexpectedKeyType => "Error",
+    NetError::InvalidHostname(_) => "TypeError",
+    NetError::TcpStreamBusy => "Busy",
+    NetError::Rustls(_) => "Error",
+    NetError::Tls(e) => get_tls_error_class(e),
+    NetError::ListenTlsRequiresKey => "InvalidData",
+    NetError::Reunite(_) => "Error",
+  }
+}
+
+fn get_net_map_error(error: &deno_net::io::MapError) -> &'static str {
+  match error {
+    deno_net::io::MapError::Io(e) => get_io_error_class(e),
+    deno_net::io::MapError::NoResources => "Error",
+  }
+}
+
 pub fn get_error_class_name(e: &AnyError) -> Option<&'static str> {
   deno_core::error::get_custom_error_class(e)
     .or_else(|| deno_webgpu::error::get_error_class_name(e))
@@ -355,6 +442,12 @@ pub fn get_error_class_name(e: &AnyError) -> Option<&'static str> {
     .or_else(|| {
       e.downcast_ref::<HandshakeError>()
         .map(get_websocket_handshake_error)
+    })
+    .or_else(|| e.downcast_ref::<KvError>().map(get_kv_error))
+    .or_else(|| e.downcast_ref::<NetError>().map(get_net_error))
+    .or_else(|| {
+      e.downcast_ref::<deno_net::io::MapError>()
+        .map(get_net_map_error)
     })
     .or_else(|| {
       e.downcast_ref::<BroadcastChannelError>()

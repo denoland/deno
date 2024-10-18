@@ -300,7 +300,9 @@ export class TCP extends ConnectionWrap {
    * @return An error status code.
    */
   setNoDelay(noDelay: boolean): number {
-    this[kStreamBaseField].setNoDelay(noDelay);
+    if ("setNoDelay" in this[kStreamBaseField]) {
+      this[kStreamBaseField].setNoDelay(noDelay);
+    }
     return 0;
   }
 
