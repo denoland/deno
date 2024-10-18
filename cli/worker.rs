@@ -491,6 +491,10 @@ impl CliMainWorkerFactory {
     custom_extensions: Vec<Extension>,
     stdio: deno_runtime::deno_io::Stdio,
   ) -> Result<CliMainWorker, AnyError> {
+    std::env::set_var(
+      "npm_config_user_agent",
+      crate::npm::get_npm_config_user_agent(),
+    );
     let shared = &self.shared;
     let ModuleLoaderAndSourceMapGetter { module_loader } = shared
       .module_loader_factory

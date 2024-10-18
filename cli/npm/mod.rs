@@ -189,3 +189,13 @@ impl NpmFetchResolver {
     info
   }
 }
+
+pub fn get_npm_config_user_agent() -> String {
+  format!(
+    "deno/{} npm/? deno/{} {} {}",
+    env!("CARGO_PKG_VERSION"),
+    env!("CARGO_PKG_VERSION"),
+    std::env::consts::OS,
+    std::env::consts::ARCH
+  )
+}
