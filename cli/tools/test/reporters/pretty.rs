@@ -181,7 +181,7 @@ impl TestReporter for PrettyTestReporter {
     let inflection = if plan.total == 1 { "test" } else { "tests" };
     writeln!(
       &mut self.writer,
-      "{}",
+      "\n{}",
       colors::gray(format!(
         "running {} {} from {}",
         plan.total,
