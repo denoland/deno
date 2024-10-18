@@ -129,7 +129,7 @@ fn raw_window(
   system: &str,
   window: *const c_void,
   hinstance: *const c_void,
-) -> Result<RawHandles, AnyError> {
+) -> Result<RawHandles, ByowError> {
   use raw_window_handle::WindowsDisplayHandle;
   if system != "win32" {
     return Err(ByowError::InvalidSystem);
@@ -155,7 +155,7 @@ fn raw_window(
   system: &str,
   window: *const c_void,
   display: *const c_void,
-) -> Result<RawHandles, AnyError> {
+) -> Result<RawHandles, ByowError> {
   let (win_handle, display_handle);
   if system == "x11" {
     win_handle = raw_window_handle::RawWindowHandle::Xlib(
