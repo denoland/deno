@@ -378,8 +378,12 @@ fn get_websocket_error(error: &WebsocketError) -> &'static str {
     WebsocketError::Url(e) => get_url_parse_error_class(e),
     WebsocketError::Io(e) => get_io_error_class(e),
     WebsocketError::WebSocket(_) => "TypeError",
-    WebsocketError::ConnectionFailed(e) => get_websocket_handshake_error(e),
+    WebsocketError::ConnectionFailed(_) => "DOMExceptionNetworkError",
     WebsocketError::Uri(_) => "Error",
+    WebsocketError::Canceled(e) => {
+      let io_err: io::Error = e.to_owned().into();
+      get_io_error_class(&io_err)
+    }
   }
 }
 
@@ -400,10 +404,6 @@ fn get_websocket_handshake_error(error: &HandshakeError) -> &'static str {
     HandshakeError::WebSocket(_) => "TypeError",
     HandshakeError::HeaderName(_) => "TypeError",
     HandshakeError::HeaderValue(_) => "TypeError",
-    HandshakeError::Canceled(e) => {
-      let io_err: io::Error = e.to_owned().into();
-      get_io_error_class(&io_err)
-    }
   }
 }
 

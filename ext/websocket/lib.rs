@@ -1,6 +1,7 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 use crate::stream::WebSocketStream;
 use bytes::Bytes;
+use deno_core::futures::TryFutureExt;
 use deno_core::op2;
 use deno_core::unsync::spawn;
 use deno_core::url;
@@ -85,6 +86,8 @@ pub enum WebsocketError {
   WebSocket(#[from] fastwebsockets::WebSocketError),
   #[error("failed to connect to WebSocket: {0}")]
   ConnectionFailed(#[from] HandshakeError),
+  #[error(transparent)]
+  Canceled(#[from] deno_core::Canceled),
 }
 
 #[derive(Clone)]
@@ -209,8 +212,6 @@ pub enum HandshakeError {
   HeaderName(#[from] http::header::InvalidHeaderName),
   #[error(transparent)]
   HeaderValue(#[from] http::header::InvalidHeaderValue),
-  #[error(transparent)]
-  Canceled(#[from] deno_core::Canceled),
 }
 
 async fn handshake_websocket(
@@ -482,7 +483,8 @@ where
 
   let uri: Uri = url.parse()?;
 
-  let handshake = handshake_websocket(&state, &uri, &protocols, headers);
+  let handshake = handshake_websocket(&state, &uri, &protocols, headers)
+    .map_err(WebsocketError::ConnectionFailed);
   let (stream, response) = match cancel_resource {
     Some(rc) => handshake.try_or_cancel(rc).await?,
     None => handshake.await?,
