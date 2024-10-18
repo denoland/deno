@@ -1446,8 +1446,6 @@ where
 
   let fut = fs.read_file_async(path.clone(), Some(&mut access_check));
 
-  dbg!("foo");
-
   let buf = if let Some(cancel_handle) = cancel_handle {
     let res = fut.or_cancel(cancel_handle).await;
 
