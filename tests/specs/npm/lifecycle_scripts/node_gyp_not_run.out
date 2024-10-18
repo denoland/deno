@@ -1,4 +1,4 @@
-Download http://localhost:4260/@denotest/node-addon
+Download http://localhost:4260/@denotest2fnode-addon
 Download http://localhost:4260/node-gyp
 [WILDCARD]
 Warning The following packages contained npm lifecycle scripts (preinstall/install/postinstall) that were not executed:
