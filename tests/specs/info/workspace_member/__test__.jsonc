@@ -1,0 +1,16 @@
+{
+  "tests": {
+    "member_folder": {
+      "args": "info --quiet foo",
+      "cwd": "member",
+      "output": "info_workspace_member.out",
+      "exitCode": 0
+    },
+    "member_folder_sub": {
+      "args": "info --quiet foo",
+      "cwd": "member/sub",
+      "output": "info_workspace_member_sub.out",
+      "exitCode": 0
+    }
+  }
+}
