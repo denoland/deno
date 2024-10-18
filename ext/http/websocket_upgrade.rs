@@ -4,7 +4,6 @@ use std::marker::PhantomData;
 
 use bytes::Bytes;
 use bytes::BytesMut;
-use deno_core::error::AnyError;
 use httparse::Status;
 use hyper::header::HeaderName;
 use hyper::header::HeaderValue;
@@ -13,12 +12,30 @@ use memmem::Searcher;
 use memmem::TwoWaySearcher;
 use once_cell::sync::OnceCell;
 
-use crate::http_error;
+#[derive(Debug, thiserror::Error)]
+pub enum WebSocketUpgradeError {
+  #[error("invalid headers")]
+  InvalidHeaders,
+  #[error("{0}")]
+  HttpParse(#[from] httparse::Error),
+  #[error("{0}")]
+  Http(#[from] http::Error),
+  #[error("{0}")]
+  Utf8(#[from] std::str::Utf8Error),
+  #[error("{0}")]
+  InvalidHeaderName(#[from] http::header::InvalidHeaderName),
+  #[error("{0}")]
+  InvalidHeaderValue(#[from] http::header::InvalidHeaderValue),
+  #[error("invalid HTTP status line")]
+  InvalidHttpStatusLine,
+  #[error("attempted to write to completed upgrade buffer")]
+  UpgradeBufferAlreadyCompleted,
+}
 
 /// Given a buffer that ends in `\n\n` or `\r\n\r\n`, returns a parsed [`Request<Body>`].
 fn parse_response<T: Default>(
   header_bytes: &[u8],
-) -> Result<(usize, Response<T>), AnyError> {
+) -> Result<(usize, Response<T>), WebSocketUpgradeError> {
   let mut headers = [httparse::EMPTY_HEADER; 16];
   let status = httparse::parse_headers(header_bytes, &mut headers)?;
   match status {
@@ -32,7 +49,7 @@ fn parse_response<T: Default>(
       }
       Ok((index, resp))
     }
-    _ => Err(http_error("invalid headers")),
+    _ => Err(WebSocketUpgradeError::InvalidHeaders),
   }
 }
 
@@ -69,11 +86,14 @@ pub struct WebSocketUpgrade<T: Default> {
 impl<T: Default> WebSocketUpgrade<T> {
   /// Ensures that the status line starts with "HTTP/1.1 101 " which matches all of the node.js
   /// WebSocket libraries that are known. We don't care about the trailing status text.
-  fn validate_status(&self, status: &[u8]) -> Result<(), AnyError> {
+  fn validate_status(
+    &self,
+    status: &[u8],
+  ) -> Result<(), WebSocketUpgradeError> {
     if status.starts_with(b"HTTP/1.1 101 ") {
       Ok(())
     } else {
-      Err(http_error("invalid HTTP status line"))
+      Err(WebSocketUpgradeError::InvalidHttpStatusLine)
     }
   }
 
@@ -82,7 +102,7 @@ impl<T: Default> WebSocketUpgrade<T> {
   pub fn write(
     &mut self,
     bytes: &[u8],
-  ) -> Result<Option<(Response<T>, Bytes)>, AnyError> {
+  ) -> Result<Option<(Response<T>, Bytes)>, WebSocketUpgradeError> {
     use WebSocketUpgradeState::*;
 
     match self.state {
@@ -142,9 +162,7 @@ impl<T: Default> WebSocketUpgrade<T> {
           Ok(None)
         }
       }
-      Complete => {
-        Err(http_error("attempted to write to completed upgrade buffer"))
-      }
+      Complete => Err(WebSocketUpgradeError::UpgradeBufferAlreadyCompleted),
     }
   }
 }
@@ -157,7 +175,7 @@ mod tests {
   type ExpectedResponseAndHead = Option<(Response<Body>, &'static [u8])>;
 
   fn assert_response(
-    result: Result<Option<(Response<Body>, Bytes)>, AnyError>,
+    result: Result<Option<(Response<Body>, Bytes)>, WebSocketUpgradeError>,
     expected: Result<ExpectedResponseAndHead, &'static str>,
     chunk_info: Option<(usize, usize)>,
   ) {
