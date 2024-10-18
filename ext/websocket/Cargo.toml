@@ -28,4 +28,5 @@ hyper-util.workspace = true
 once_cell.workspace = true
 rustls-tokio-stream.workspace = true
 serde.workspace = true
+thiserror.workspace = true
 tokio.workspace = true

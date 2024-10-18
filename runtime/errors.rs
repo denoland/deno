@@ -36,6 +36,8 @@ use deno_web::CompressionError;
 use deno_web::MessagePortError;
 use deno_web::StreamResourceError;
 use deno_web::WebError;
+use deno_websocket::HandshakeError;
+use deno_websocket::WebsocketError;
 use deno_webstorage::WebStorageError;
 use std::env;
 use std::error::Error;
@@ -368,6 +370,43 @@ fn get_broadcast_channel_error(error: &BroadcastChannelError) -> &'static str {
   }
 }
 
+fn get_websocket_error(error: &WebsocketError) -> &'static str {
+  match error {
+    WebsocketError::Permission(e) | WebsocketError::Resource(e) => {
+      get_error_class_name(e).unwrap_or("Error")
+    }
+    WebsocketError::Url(e) => get_url_parse_error_class(e),
+    WebsocketError::Io(e) => get_io_error_class(e),
+    WebsocketError::WebSocket(_) => "TypeError",
+    WebsocketError::ConnectionFailed(_) => "DOMExceptionNetworkError",
+    WebsocketError::Uri(_) => "Error",
+    WebsocketError::Canceled(e) => {
+      let io_err: io::Error = e.to_owned().into();
+      get_io_error_class(&io_err)
+    }
+  }
+}
+
+fn get_websocket_handshake_error(error: &HandshakeError) -> &'static str {
+  match error {
+    HandshakeError::RootStoreError(e) => {
+      get_error_class_name(e).unwrap_or("Error")
+    }
+    HandshakeError::Tls(e) => get_tls_error_class(e),
+    HandshakeError::MissingPath => "TypeError",
+    HandshakeError::Http(_) => "Error",
+    HandshakeError::InvalidHostname(_) => "TypeError",
+    HandshakeError::Io(e) => get_io_error_class(e),
+    HandshakeError::Rustls(_) => "Error",
+    HandshakeError::H2(_) => "Error",
+    HandshakeError::NoH2Alpn => "Error",
+    HandshakeError::InvalidStatusCode(_) => "Error",
+    HandshakeError::WebSocket(_) => "TypeError",
+    HandshakeError::HeaderName(_) => "TypeError",
+    HandshakeError::HeaderValue(_) => "TypeError",
+  }
+}
+
 fn get_fs_error(error: &FsOpsError) -> &'static str {
   match error {
     FsOpsError::Io(e) => get_io_error_class(e),
@@ -482,7 +521,6 @@ fn get_net_map_error(error: &deno_net::io::MapError) -> &'static str {
 pub fn get_error_class_name(e: &AnyError) -> Option<&'static str> {
   deno_core::error::get_custom_error_class(e)
     .or_else(|| deno_webgpu::error::get_error_class_name(e))
-    .or_else(|| deno_websocket::get_network_error_class_name(e))
     .or_else(|| e.downcast_ref::<NApiError>().map(get_napi_error_class))
     .or_else(|| e.downcast_ref::<WebError>().map(get_web_error_class))
     .or_else(|| {
@@ -518,6 +556,11 @@ pub fn get_error_class_name(e: &AnyError) -> Option<&'static str> {
     .or_else(|| e.downcast_ref::<CronError>().map(get_cron_error_class))
     .or_else(|| e.downcast_ref::<CanvasError>().map(get_canvas_error))
     .or_else(|| e.downcast_ref::<CacheError>().map(get_cache_error))
+    .or_else(|| e.downcast_ref::<WebsocketError>().map(get_websocket_error))
+    .or_else(|| {
+      e.downcast_ref::<HandshakeError>()
+        .map(get_websocket_handshake_error)
+    })
     .or_else(|| e.downcast_ref::<KvError>().map(get_kv_error))
     .or_else(|| e.downcast_ref::<NetError>().map(get_net_error))
     .or_else(|| {
