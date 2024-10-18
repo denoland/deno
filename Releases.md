@@ -6,6 +6,21 @@ https://github.com/denoland/deno/releases
 We also have one-line install commands at:
 https://github.com/denoland/deno_install
 
+### 2.0.2 / 2024.10.17
+
+- fix(cli): set napi object property properly (#26344)
+- fix(ext/node): add null check for kStreamBaseField (#26368)
+- fix(install): don't attempt to cache specifiers that point to directories
+  (#26369)
+- fix(jupyter): fix panics for overslow subtraction (#26371)
+- fix(jupyter): update to the new logo (#26353)
+- fix(net): don't try to set nodelay on upgrade streams (#26342)
+- fix(node/fs): copyFile with `COPYFILE_EXCL` should not throw if the
+  destination doesn't exist (#26360)
+- fix(node/http): normalize header names in `ServerResponse` (#26339)
+- fix(runtime): send ws ping frames from inspector server (#26352)
+- fix: don't warn on ignored signals on windows (#26332)
+
 ### 2.0.1 / 2024.10.16
 
 - feat(lsp): "deno/didRefreshDenoConfigurationTree" notifications (#26215)

@@ -242,6 +242,14 @@ impl RegistryInfoDownloader {
 
   fn get_package_url(&self, name: &str) -> Url {
     let registry_url = self.npmrc.get_registry_url(name);
+    // The '/' character in scoped package names "@scope/name" must be
+    // encoded for older third party registries. Newer registries and
+    // npm itself support both ways
+    //   - encoded: https://registry.npmjs.org/@rollup%2fplugin-json
+    //   - non-ecoded: https://registry.npmjs.org/@rollup/plugin-json
+    // To support as many third party registries as possible we'll
+    // always encode the '/' character.
+
     // list of all characters used in npm packages:
     //  !, ', (, ), *, -, ., /, [0-9], @, [A-Za-z], _, ~
     const ASCII_SET: percent_encoding::AsciiSet =
@@ -253,11 +261,14 @@ impl RegistryInfoDownloader {
         .remove(b'*')
         .remove(b'-')
         .remove(b'.')
-        .remove(b'/')
         .remove(b'@')
         .remove(b'_')
         .remove(b'~');
     let name = percent_encoding::utf8_percent_encode(name, &ASCII_SET);
-    registry_url.join(&name.to_string()).unwrap()
+    registry_url
+      // Ensure that scoped package name percent encoding is lower cased
+      // to match npm.
+      .join(&name.to_string().replace("%2F", "%2f"))
+      .unwrap()
   }
 }

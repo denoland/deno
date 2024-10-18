@@ -359,7 +359,7 @@ async fn op_host_recv_message(
       }
       Ok(ret)
     }
-    Ok(Err(err)) => Err(err),
+    Ok(Err(err)) => Err(err.into()),
     Err(_) => {
       // The worker was terminated.
       Ok(None)

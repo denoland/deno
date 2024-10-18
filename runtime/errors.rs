@@ -23,14 +23,24 @@ use deno_ffi::DlfcnError;
 use deno_ffi::IRError;
 use deno_ffi::ReprError;
 use deno_ffi::StaticError;
+use deno_fs::FsOpsError;
 use deno_http::HttpError;
 use deno_http::HttpNextError;
 use deno_http::WebSocketUpgradeError;
+use deno_io::fs::FsError;
 use deno_kv::KvCheckError;
 use deno_kv::KvError;
 use deno_kv::KvMutationError;
+use deno_napi::NApiError;
 use deno_net::ops::NetError;
 use deno_tls::TlsError;
+use deno_web::BlobError;
+use deno_web::CompressionError;
+use deno_web::MessagePortError;
+use deno_web::StreamResourceError;
+use deno_web::WebError;
+use deno_websocket::HandshakeError;
+use deno_websocket::WebsocketError;
 use deno_webstorage::WebStorageError;
 use std::env;
 use std::error::Error;
@@ -172,6 +182,70 @@ pub fn get_nix_error_class(error: &nix::Error) -> &'static str {
   }
 }
 
+fn get_napi_error_class(e: &NApiError) -> &'static str {
+  match e {
+    NApiError::InvalidPath
+    | NApiError::LibLoading(_)
+    | NApiError::ModuleNotFound(_) => "TypeError",
+    NApiError::Permission(e) => get_error_class_name(e).unwrap_or("Error"),
+  }
+}
+
+fn get_web_error_class(e: &WebError) -> &'static str {
+  match e {
+    WebError::Base64Decode => "DOMExceptionInvalidCharacterError",
+    WebError::InvalidEncodingLabel(_) => "RangeError",
+    WebError::BufferTooLong => "TypeError",
+    WebError::ValueTooLarge => "RangeError",
+    WebError::BufferTooSmall => "RangeError",
+    WebError::DataInvalid => "TypeError",
+    WebError::DataError(_) => "Error",
+  }
+}
+
+fn get_web_compression_error_class(e: &CompressionError) -> &'static str {
+  match e {
+    CompressionError::UnsupportedFormat => "TypeError",
+    CompressionError::ResourceClosed => "TypeError",
+    CompressionError::IoTypeError(_) => "TypeError",
+    CompressionError::Io(e) => get_io_error_class(e),
+  }
+}
+
+fn get_web_message_port_error_class(e: &MessagePortError) -> &'static str {
+  match e {
+    MessagePortError::InvalidTransfer => "TypeError",
+    MessagePortError::NotReady => "TypeError",
+    MessagePortError::TransferSelf => "TypeError",
+    MessagePortError::Canceled(e) => {
+      let io_err: io::Error = e.to_owned().into();
+      get_io_error_class(&io_err)
+    }
+    MessagePortError::Resource(e) => get_error_class_name(e).unwrap_or("Error"),
+  }
+}
+
+fn get_web_stream_resource_error_class(
+  e: &StreamResourceError,
+) -> &'static str {
+  match e {
+    StreamResourceError::Canceled(e) => {
+      let io_err: io::Error = e.to_owned().into();
+      get_io_error_class(&io_err)
+    }
+    StreamResourceError::Js(_) => "TypeError",
+  }
+}
+
+fn get_web_blob_error_class(e: &BlobError) -> &'static str {
+  match e {
+    BlobError::BlobPartNotFound => "TypeError",
+    BlobError::SizeLargerThanBlobPart => "TypeError",
+    BlobError::BlobURLsNotSupported => "TypeError",
+    BlobError::Url(_) => "Error",
+  }
+}
+
 fn get_ffi_repr_error_class(e: &ReprError) -> &'static str {
   match e {
     ReprError::InvalidOffset => "TypeError",
@@ -296,6 +370,71 @@ fn get_broadcast_channel_error(error: &BroadcastChannelError) -> &'static str {
     BroadcastChannelError::Other(err) => {
       get_error_class_name(err).unwrap_or("Error")
     }
+  }
+}
+
+fn get_websocket_error(error: &WebsocketError) -> &'static str {
+  match error {
+    WebsocketError::Permission(e) | WebsocketError::Resource(e) => {
+      get_error_class_name(e).unwrap_or("Error")
+    }
+    WebsocketError::Url(e) => get_url_parse_error_class(e),
+    WebsocketError::Io(e) => get_io_error_class(e),
+    WebsocketError::WebSocket(_) => "TypeError",
+    WebsocketError::ConnectionFailed(_) => "DOMExceptionNetworkError",
+    WebsocketError::Uri(_) => "Error",
+    WebsocketError::Canceled(e) => {
+      let io_err: io::Error = e.to_owned().into();
+      get_io_error_class(&io_err)
+    }
+  }
+}
+
+fn get_websocket_handshake_error(error: &HandshakeError) -> &'static str {
+  match error {
+    HandshakeError::RootStoreError(e) => {
+      get_error_class_name(e).unwrap_or("Error")
+    }
+    HandshakeError::Tls(e) => get_tls_error_class(e),
+    HandshakeError::MissingPath => "TypeError",
+    HandshakeError::Http(_) => "Error",
+    HandshakeError::InvalidHostname(_) => "TypeError",
+    HandshakeError::Io(e) => get_io_error_class(e),
+    HandshakeError::Rustls(_) => "Error",
+    HandshakeError::H2(_) => "Error",
+    HandshakeError::NoH2Alpn => "Error",
+    HandshakeError::InvalidStatusCode(_) => "Error",
+    HandshakeError::WebSocket(_) => "TypeError",
+    HandshakeError::HeaderName(_) => "TypeError",
+    HandshakeError::HeaderValue(_) => "TypeError",
+  }
+}
+
+fn get_fs_error(error: &FsOpsError) -> &'static str {
+  match error {
+    FsOpsError::Io(e) => get_io_error_class(e),
+    FsOpsError::OperationError(e) => match &e.err {
+      FsError::Io(e) => get_io_error_class(e),
+      FsError::FileBusy => "Busy",
+      FsError::NotSupported => "NotSupported",
+      FsError::NotCapable(_) => "NotCapable",
+    },
+    FsOpsError::Permission(e)
+    | FsOpsError::Resource(e)
+    | FsOpsError::Other(e) => get_error_class_name(e).unwrap_or("Error"),
+    FsOpsError::InvalidUtf8(_) => "InvalidData",
+    FsOpsError::StripPrefix(_) => "Error",
+    FsOpsError::Canceled(e) => {
+      let io_err: io::Error = e.to_owned().into();
+      get_io_error_class(&io_err)
+    }
+    FsOpsError::InvalidSeekMode(_) => "TypeError",
+    FsOpsError::InvalidControlCharacter(_) => "Error",
+    FsOpsError::InvalidCharacter(_) => "Error",
+    #[cfg(windows)]
+    FsOpsError::InvalidTrailingCharacter => "Error",
+    FsOpsError::NotCapableAccess { .. } => "NotCapable",
+    FsOpsError::NotCapable(_) => "NotCapable",
   }
 }
 
@@ -438,8 +577,21 @@ fn get_websocket_upgrade_error(error: &WebSocketUpgradeError) -> &'static str {
 pub fn get_error_class_name(e: &AnyError) -> Option<&'static str> {
   deno_core::error::get_custom_error_class(e)
     .or_else(|| deno_webgpu::error::get_error_class_name(e))
-    .or_else(|| deno_web::get_error_class_name(e))
-    .or_else(|| deno_websocket::get_network_error_class_name(e))
+    .or_else(|| e.downcast_ref::<NApiError>().map(get_napi_error_class))
+    .or_else(|| e.downcast_ref::<WebError>().map(get_web_error_class))
+    .or_else(|| {
+      e.downcast_ref::<CompressionError>()
+        .map(get_web_compression_error_class)
+    })
+    .or_else(|| {
+      e.downcast_ref::<MessagePortError>()
+        .map(get_web_message_port_error_class)
+    })
+    .or_else(|| {
+      e.downcast_ref::<StreamResourceError>()
+        .map(get_web_stream_resource_error_class)
+    })
+    .or_else(|| e.downcast_ref::<BlobError>().map(get_web_blob_error_class))
     .or_else(|| e.downcast_ref::<IRError>().map(|_| "TypeError"))
     .or_else(|| e.downcast_ref::<ReprError>().map(get_ffi_repr_error_class))
     .or_else(|| e.downcast_ref::<HttpError>().map(get_http_error))
@@ -448,6 +600,7 @@ pub fn get_error_class_name(e: &AnyError) -> Option<&'static str> {
       e.downcast_ref::<WebSocketUpgradeError>()
         .map(get_websocket_upgrade_error)
     })
+    .or_else(|| e.downcast_ref::<FsOpsError>().map(get_fs_error))
     .or_else(|| {
       e.downcast_ref::<DlfcnError>()
         .map(get_ffi_dlfcn_error_class)
@@ -465,6 +618,11 @@ pub fn get_error_class_name(e: &AnyError) -> Option<&'static str> {
     .or_else(|| e.downcast_ref::<CronError>().map(get_cron_error_class))
     .or_else(|| e.downcast_ref::<CanvasError>().map(get_canvas_error))
     .or_else(|| e.downcast_ref::<CacheError>().map(get_cache_error))
+    .or_else(|| e.downcast_ref::<WebsocketError>().map(get_websocket_error))
+    .or_else(|| {
+      e.downcast_ref::<HandshakeError>()
+        .map(get_websocket_handshake_error)
+    })
     .or_else(|| e.downcast_ref::<KvError>().map(get_kv_error))
     .or_else(|| e.downcast_ref::<NetError>().map(get_net_error))
     .or_else(|| {

@@ -1,4 +1,4 @@
-Download http://localhost:4260/@denotest/typescript-file
+Download http://localhost:4260/@denotest%2ftypescript-file
 Download http://localhost:4260/@denotest/typescript-file/1.0.0.tgz
 error: Could not resolve 'npm:@denotest/typescript-file@1.0.0'.
 

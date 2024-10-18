@@ -1101,15 +1101,13 @@ async fn op_http_upgrade_websocket(
     _ => return Err(HttpError::UpgradeBodyUsed),
   };
 
-  let (transport, bytes) = extract_network_stream(
-    hyper_v014::upgrade::on(request)
-      .await
-      .map_err(|err| HttpError::HyperV014(Arc::new(err)))?,
-  );
-  let ws_rid =
-    ws_create_server_stream(&mut state.borrow_mut(), transport, bytes)
-      .map_err(HttpError::Other)?;
-  Ok(ws_rid)
+  let (transport, bytes) =
+    extract_network_stream(hyper_v014::upgrade::on(request).await.map_err(|err| HttpError::HyperV014(Arc::new(err)))?);
+  Ok(ws_create_server_stream(
+    &mut state.borrow_mut(),
+    transport,
+    bytes,
+  ))
 }
 
 // Needed so hyper can use non Send futures
