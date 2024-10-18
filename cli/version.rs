@@ -1,6 +1,6 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
-use once_cell::sync::Lazy;
+use std::sync::LazyLock;
 
 use crate::shared::ReleaseChannel;
 
@@ -12,7 +12,7 @@ const IS_CANARY: bool = option_env!("DENO_CANARY").is_some();
 // TODO(bartlomieju): this is temporary, to allow Homebrew to cut RC releases as well
 const IS_RC: bool = option_env!("DENO_RC").is_some();
 
-pub static DENO_VERSION_INFO: Lazy<DenoVersionInfo> = Lazy::new(|| {
+pub static DENO_VERSION_INFO: LazyLock<DenoVersionInfo> = LazyLock::new(|| {
   let release_channel = libsui::find_section("denover")
     .and_then(|buf| std::str::from_utf8(buf).ok())
     .and_then(|str_| ReleaseChannel::deserialize(str_).ok())
