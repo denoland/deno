@@ -22,6 +22,8 @@ use deno_crypto::EncryptError;
 use deno_crypto::ExportKeyError;
 use deno_crypto::GenerateKeyError;
 use deno_crypto::ImportKeyError;
+use deno_fetch::FetchError;
+use deno_fetch::HttpClientCreateError;
 use deno_ffi::CallError;
 use deno_ffi::CallbackError;
 use deno_ffi::DlfcnError;
@@ -537,6 +539,42 @@ fn get_broadcast_channel_error(error: &BroadcastChannelError) -> &'static str {
   }
 }
 
+fn get_fetch_error(error: &FetchError) -> &'static str {
+  match error {
+    FetchError::Resource(e) | FetchError::Permission(e) => {
+      get_error_class_name(e).unwrap_or("Error")
+    }
+    FetchError::NetworkError => "TypeError",
+    FetchError::FsNotGet(_) => "TypeError",
+    FetchError::InvalidUrl(_) => "TypeError",
+    FetchError::InvalidHeaderName(_) => "TypeError",
+    FetchError::InvalidHeaderValue(_) => "TypeError",
+    FetchError::DataUrl(_) => "TypeError",
+    FetchError::Base64(_) => "TypeError",
+    FetchError::BlobNotFound => "TypeError",
+    FetchError::SchemeNotSupported(_) => "TypeError",
+    FetchError::RequestCanceled => "TypeError",
+    FetchError::Http(_) => "Error",
+    FetchError::ClientCreate(e) => get_http_client_create_error(e),
+    FetchError::Url(e) => get_url_parse_error_class(e),
+    FetchError::Method(_) => "TypeError",
+    FetchError::ClientSend(_) => "TypeError",
+    FetchError::RequestBuilderHook(_) => "TypeError",
+    FetchError::Io(e) => get_io_error_class(e),
+    FetchError::Hyper(e) => get_hyper_error_class(e),
+  }
+}
+
+fn get_http_client_create_error(error: &HttpClientCreateError) -> &'static str {
+  match error {
+    HttpClientCreateError::Tls(_) => "TypeError",
+    HttpClientCreateError::InvalidUserAgent(_) => "TypeError",
+    HttpClientCreateError::InvalidProxyUrl => "TypeError",
+    HttpClientCreateError::HttpVersionSelectionInvalid => "TypeError",
+    HttpClientCreateError::RootCertStore(_) => "TypeError",
+  }
+}
+
 fn get_websocket_error(error: &WebsocketError) -> &'static str {
   match error {
     WebsocketError::Permission(e) | WebsocketError::Resource(e) => {
@@ -788,6 +826,11 @@ pub fn get_error_class_name(e: &AnyError) -> Option<&'static str> {
         .map(get_websocket_handshake_error)
     })
     .or_else(|| e.downcast_ref::<KvError>().map(get_kv_error))
+    .or_else(|| e.downcast_ref::<FetchError>().map(get_fetch_error))
+    .or_else(|| {
+      e.downcast_ref::<HttpClientCreateError>()
+        .map(get_http_client_create_error)
+    })
     .or_else(|| e.downcast_ref::<NetError>().map(get_net_error))
     .or_else(|| {
       e.downcast_ref::<deno_net::io::MapError>()

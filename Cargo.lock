@@ -1557,6 +1557,7 @@ dependencies = [
  "rustls-webpki",
  "serde",
  "serde_json",
+ "thiserror",
  "tokio",
  "tokio-rustls",
  "tokio-socks",
