@@ -333,6 +333,9 @@ fn get_crypto_error_class(e: &deno_crypto::Error) -> &'static str {
     deno_crypto::Error::InvalidKeyLength => "TypeError",
     deno_crypto::Error::EncryptionError => "DOMExceptionOperationError",
     deno_crypto::Error::DecryptionError => "DOMExceptionOperationError",
+    deno_crypto::Error::ArrayBufferViewLengthExceeded(_) => {
+      "DOMExceptionQuotaExceededError"
+    }
   }
 }
 
