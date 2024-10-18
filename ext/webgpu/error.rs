@@ -1,11 +1,9 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
-use deno_core::error::AnyError;
 use deno_core::ResourceId;
 use serde::Serialize;
 use std::convert::From;
 use std::error::Error;
-use std::fmt;
 use wgpu_core::binding_model::CreateBindGroupError;
 use wgpu_core::binding_model::CreateBindGroupLayoutError;
 use wgpu_core::binding_model::CreatePipelineLayoutError;
@@ -285,30 +283,4 @@ impl From<ConfigureSurfaceError> for WebGpuError {
   fn from(err: ConfigureSurfaceError) -> Self {
     WebGpuError::Validation(fmt_err(&err))
   }
-}
-
-#[derive(Debug)]
-pub struct DomExceptionOperationError {
-  pub msg: String,
-}
-
-impl DomExceptionOperationError {
-  pub fn new(msg: &str) -> Self {
-    DomExceptionOperationError {
-      msg: msg.to_string(),
-    }
-  }
-}
-
-impl fmt::Display for DomExceptionOperationError {
-  fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-    f.pad(&self.msg)
-  }
-}
-
-impl std::error::Error for DomExceptionOperationError {}
-
-pub fn get_error_class_name(e: &AnyError) -> Option<&'static str> {
-  e.downcast_ref::<DomExceptionOperationError>()
-    .map(|_| "DOMExceptionOperationError")
 }

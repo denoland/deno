@@ -1,7 +1,5 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
-use deno_core::error::type_error;
-use deno_core::error::AnyError;
 use deno_core::op2;
 use deno_core::OpState;
 use deno_core::Resource;
@@ -13,8 +11,17 @@ use std::sync::Arc;
 use std::sync::Mutex;
 use std::time::Duration;
 
-use super::error::DomExceptionOperationError;
 use super::error::WebGpuResult;
+
+#[derive(Debug, thiserror::Error)]
+pub enum BufferError {
+  #[error(transparent)]
+  Resource(deno_core::error::AnyError),
+  #[error("usage is not valid")]
+  InvalidUsage,
+  #[error(transparent)]
+  Access(wgpu_core::resource::BufferAccessError),
+}
 
 pub(crate) struct WebGpuBuffer(
   pub(crate) super::Instance,
@@ -46,18 +53,19 @@ pub fn op_webgpu_create_buffer(
   #[number] size: u64,
   usage: u32,
   mapped_at_creation: bool,
-) -> Result<WebGpuResult, AnyError> {
+) -> Result<WebGpuResult, BufferError> {
   let instance = state.borrow::<super::Instance>();
   let device_resource = state
     .resource_table
-    .get::<super::WebGpuDevice>(device_rid)?;
+    .get::<super::WebGpuDevice>(device_rid)
+    .map_err(BufferError::Resource)?;
   let device = device_resource.1;
 
   let descriptor = wgpu_core::resource::BufferDescriptor {
     label: Some(label),
     size,
     usage: wgpu_types::BufferUsages::from_bits(usage)
-      .ok_or_else(|| type_error("usage is not valid"))?,
+      .ok_or(BufferError::InvalidUsage)?,
     mapped_at_creation,
   };
 
@@ -77,18 +85,21 @@ pub async fn op_webgpu_buffer_get_map_async(
   mode: u32,
   #[number] offset: u64,
   #[number] size: u64,
-) -> Result<WebGpuResult, AnyError> {
+) -> Result<WebGpuResult, BufferError> {
   let device;
   let done = Arc::new(Mutex::new(None));
   {
     let state_ = state.borrow();
     let instance = state_.borrow::<super::Instance>();
-    let buffer_resource =
-      state_.resource_table.get::<WebGpuBuffer>(buffer_rid)?;
+    let buffer_resource = state_
+      .resource_table
+      .get::<WebGpuBuffer>(buffer_rid)
+      .map_err(BufferError::Resource)?;
     let buffer = buffer_resource.1;
     let device_resource = state_
       .resource_table
-      .get::<super::WebGpuDevice>(device_rid)?;
+      .get::<super::WebGpuDevice>(device_rid)
+      .map_err(BufferError::Resource)?;
     device = device_resource.1;
 
     let done_ = done.clone();
@@ -120,9 +131,7 @@ pub async fn op_webgpu_buffer_get_map_async(
     let result = done.lock().unwrap().take();
     match result {
       Some(Ok(())) => return Ok(WebGpuResult::empty()),
-      Some(Err(e)) => {
-        return Err(DomExceptionOperationError::new(&e.to_string()).into())
-      }
+      Some(Err(e)) => return Err(BufferError::Access(e)),
       None => {
         {
           let state = state.borrow();
@@ -143,9 +152,12 @@ pub fn op_webgpu_buffer_get_mapped_range(
   #[number] offset: u64,
   #[number] size: Option<u64>,
   #[buffer] buf: &mut [u8],
-) -> Result<WebGpuResult, AnyError> {
+) -> Result<WebGpuResult, BufferError> {
   let instance = state.borrow::<super::Instance>();
-  let buffer_resource = state.resource_table.get::<WebGpuBuffer>(buffer_rid)?;
+  let buffer_resource = state
+    .resource_table
+    .get::<WebGpuBuffer>(buffer_rid)
+    .map_err(BufferError::Resource)?;
   let buffer = buffer_resource.1;
 
   let (slice_pointer, range_size) =
@@ -154,7 +166,7 @@ pub fn op_webgpu_buffer_get_mapped_range(
       offset,
       size
     ))
-    .map_err(|e| DomExceptionOperationError::new(&e.to_string()))?;
+    .map_err(BufferError::Access)?;
 
   // SAFETY: guarantee to be safe from wgpu
   let slice = unsafe {
@@ -176,12 +188,16 @@ pub fn op_webgpu_buffer_unmap(
   #[smi] buffer_rid: ResourceId,
   #[smi] mapped_rid: ResourceId,
   #[buffer] buf: Option<&[u8]>,
-) -> Result<WebGpuResult, AnyError> {
+) -> Result<WebGpuResult, BufferError> {
   let mapped_resource = state
     .resource_table
-    .take::<WebGpuBufferMapped>(mapped_rid)?;
+    .take::<WebGpuBufferMapped>(mapped_rid)
+    .map_err(BufferError::Resource)?;
   let instance = state.borrow::<super::Instance>();
-  let buffer_resource = state.resource_table.get::<WebGpuBuffer>(buffer_rid)?;
+  let buffer_resource = state
+    .resource_table
+    .get::<WebGpuBuffer>(buffer_rid)
+    .map_err(BufferError::Resource)?;
   let buffer = buffer_resource.1;
 
   if let Some(buf) = buf {

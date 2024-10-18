@@ -1,6 +1,5 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
-use deno_core::error::AnyError;
 use deno_core::op2;
 use deno_core::OpState;
 use deno_core::Resource;
@@ -31,7 +30,7 @@ pub fn op_webgpu_create_shader_module(
   #[smi] device_rid: ResourceId,
   #[string] label: Cow<str>,
   #[string] code: Cow<str>,
-) -> Result<WebGpuResult, AnyError> {
+) -> Result<WebGpuResult, deno_core::error::AnyError> {
   let instance = state.borrow::<super::Instance>();
   let device_resource = state
     .resource_table
