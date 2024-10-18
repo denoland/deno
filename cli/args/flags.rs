@@ -1178,7 +1178,7 @@ static DENO_HELP: &str = cstr!(
 
   <y>Dependency management:</>
     <g>add</>          Add dependencies
-                  <p(245)>deno add @std/assert  |  deno add npm:express</>
+                  <p(245)>deno add jsr:@std/assert  |  deno add npm:express</>
     <g>install</>      Install script as an executable
     <g>uninstall</>    Uninstall a script previously installed with deno install
     <g>remove</>       Remove dependencies from the configuration file

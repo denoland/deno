@@ -1600,6 +1600,7 @@ dependencies = [
  "rand",
  "rayon",
  "serde",
+ "thiserror",
  "winapi",
  "windows-sys 0.52.0",
 ]
