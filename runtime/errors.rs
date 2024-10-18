@@ -28,6 +28,8 @@ use deno_ffi::DlfcnError;
 use deno_ffi::IRError;
 use deno_ffi::ReprError;
 use deno_ffi::StaticError;
+use deno_fs::FsOpsError;
+use deno_io::fs::FsError;
 use deno_kv::KvCheckError;
 use deno_kv::KvError;
 use deno_kv::KvMutationError;
@@ -530,6 +532,34 @@ fn get_broadcast_channel_error(error: &BroadcastChannelError) -> &'static str {
   }
 }
 
+fn get_fs_error(error: &FsOpsError) -> &'static str {
+  match error {
+    FsOpsError::Io(e) => get_io_error_class(e),
+    FsOpsError::OperationError(e) => match &e.err {
+      FsError::Io(e) => get_io_error_class(e),
+      FsError::FileBusy => "Busy",
+      FsError::NotSupported => "NotSupported",
+      FsError::NotCapable(_) => "NotCapable",
+    },
+    FsOpsError::Permission(e)
+    | FsOpsError::Resource(e)
+    | FsOpsError::Other(e) => get_error_class_name(e).unwrap_or("Error"),
+    FsOpsError::InvalidUtf8(_) => "InvalidData",
+    FsOpsError::StripPrefix(_) => "Error",
+    FsOpsError::Canceled(e) => {
+      let io_err: io::Error = e.to_owned().into();
+      get_io_error_class(&io_err)
+    }
+    FsOpsError::InvalidSeekMode(_) => "TypeError",
+    FsOpsError::InvalidControlCharacter(_) => "Error",
+    FsOpsError::InvalidCharacter(_) => "Error",
+    #[cfg(windows)]
+    FsOpsError::InvalidTrailingCharacter => "Error",
+    FsOpsError::NotCapableAccess { .. } => "NotCapable",
+    FsOpsError::NotCapable(_) => "NotCapable",
+  }
+}
+
 fn get_kv_error(error: &KvError) -> &'static str {
   match error {
     KvError::DatabaseHandler(e) | KvError::Resource(e) | KvError::Kv(e) => {
@@ -634,6 +664,7 @@ pub fn get_error_class_name(e: &AnyError) -> Option<&'static str> {
     .or_else(|| e.downcast_ref::<BlobError>().map(get_web_blob_error_class))
     .or_else(|| e.downcast_ref::<IRError>().map(|_| "TypeError"))
     .or_else(|| e.downcast_ref::<ReprError>().map(get_ffi_repr_error_class))
+    .or_else(|| e.downcast_ref::<FsOpsError>().map(get_fs_error))
     .or_else(|| {
       e.downcast_ref::<DlfcnError>()
         .map(get_ffi_dlfcn_error_class)
