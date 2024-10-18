@@ -1381,6 +1381,7 @@ Deno.test("[node/http] client closing a streaming request doesn't terminate serv
   let interval: number;
   let uploadedData = "";
   let requestError: Error | null = null;
+  const deferred1 = Promise.withResolvers<void>();
   const server = http.createServer((req, res) => {
     res.writeHead(200, { "Content-Type": "text/plain" });
     interval = setInterval(() => {
@@ -1393,13 +1394,13 @@ Deno.test("[node/http] client closing a streaming request doesn't terminate serv
       clearInterval(interval);
     });
     req.on("error", (err) => {
+      deferred1.resolve();
       requestError = err;
       clearInterval(interval);
       res.end();
     });
   });
 
-  const deferred1 = Promise.withResolvers<void>();
   server.listen(0, () => {
     // deno-lint-ignore no-explicit-any
     const port = (server.address() as any).port;
@@ -1429,9 +1430,6 @@ Deno.test("[node/http] client closing a streaming request doesn't terminate serv
 
         if (sentChunks >= 3) {
           client.destroy();
-          setTimeout(() => {
-            deferred1.resolve();
-          }, 40);
         } else {
           setTimeout(writeChunk, 10);
         }
@@ -1457,8 +1455,7 @@ Deno.test("[node/http] client closing a streaming request doesn't terminate serv
   clearInterval(interval!);
 });
 
-const IGNORED_X = "[node/http] http.request() post streaming body works";
-Deno.test(IGNORED_X, { ignore: Deno.build.os === "linux" }, async () => {
+Deno.test("[node/http] http.request() post streaming body works", async () => {
   const server = http.createServer((req, res) => {
     if (req.method === "POST") {
       let receivedBytes = 0;
