@@ -1181,6 +1181,32 @@ declare namespace Deno {
     ): Displayable;
 
     /**
+     * Display a JPG or PNG image.
+     *
+     * ```
+     * Deno.jupyter.image("./cat.jpg");
+     * Deno.jupyter.image("./dog.png");
+     * ```
+     *
+     * @category Jupyter
+     * @experimental
+     */
+    export function image(path: string): Displayable;
+
+    /**
+     * Display a JPG or PNG image.
+     *
+     * ```
+     * const img = Deno.readFileSync("./cat.jpg");
+     * Deno.jupyter.image(img);
+     * ```
+     *
+     * @category Jupyter
+     * @experimental
+     */
+    export function image(data: Uint8Array): Displayable;
+
+    /**
      * Format an object for displaying in Deno
      *
      * @param obj - The object to be displayed
