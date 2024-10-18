@@ -31,6 +31,7 @@ import {
 const {
   ArrayPrototypePush,
   ObjectHasOwn,
+  ReflectHas,
   ObjectPrototypeIsPrototypeOf,
   PromisePrototypeCatch,
   PromisePrototypeThen,
@@ -504,7 +505,7 @@ function mapToCallback(context, callback, onError) {
         new ServeHandlerInfo(innerRequest),
       );
 
-      if (typeof response === "object" && ObjectHasOwn(response, "then")) {
+      if (typeof response === "object" && ReflectHas(response, "then")) {
         response = await response;
       }
 
