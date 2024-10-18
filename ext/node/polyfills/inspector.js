@@ -6,15 +6,16 @@ import { EventEmitter } from "node:events";
 import { core, primordials } from "ext:core/mod.js";
 import {
   op_get_extras_binding_object,
-  op_inspector_open,
-  op_inspector_connect,
-  op_inspector_dispatch,
-  op_inspector_disconnect,
   op_inspector_close,
+  op_inspector_connect,
+  op_inspector_disconnect,
+  op_inspector_dispatch,
+  op_inspector_open,
+  op_inspector_receive,
   op_inspector_wait,
 } from "ext:core/ops";
 import {
-    isUint32,
+  isUint32,
   validateFunction,
   validateInt32,
   validateObject,
@@ -25,8 +26,8 @@ import {
   ERR_INSPECTOR_ALREADY_CONNECTED,
   ERR_INSPECTOR_CLOSED,
   ERR_INSPECTOR_COMMAND,
-  ERR_INSPECTOR_NOT_CONNECTED,
   ERR_INSPECTOR_NOT_ACTIVE,
+  ERR_INSPECTOR_NOT_CONNECTED,
   ERR_INSPECTOR_NOT_WORKER,
 } from "ext:deno_node/internal/errors.ts";
 
@@ -43,20 +44,39 @@ class Session extends EventEmitter {
   #messageCallbacks = new SafeMap();
 
   connect() {
-    if (this.#connection)
-      throw new ERR_INSPECTOR_ALREADY_CONNECTED('The inspector session');
-    this.#connection = op_inspector_connect((message) => this.#onMessage(message), false);
+    if (this.#connection) {
+      throw new ERR_INSPECTOR_ALREADY_CONNECTED("The inspector session");
+    }
+    const connection = op_inspector_connect(false);
+    this.#connection = connection;
+    (async () => {
+      while (true) {
+        const message = await op_inspector_receive(connection);
+        if (!message) break;
+        this.#onMessage(message);
+      }
+    })();
   }
 
   connectToMainThread() {
-    if (isMainThread)
+    if (isMainThread) {
       throw new ERR_INSPECTOR_NOT_WORKER();
-    if (this.#connection)
-      throw new ERR_INSPECTOR_ALREADY_CONNECTED('The inspector session');
-    this.#connection = op_inspector_connect((message) => queueMicrotask(() => this.#onMessage(message)), true);
+    }
+    if (this.#connection) {
+      throw new ERR_INSPECTOR_ALREADY_CONNECTED("The inspector session");
+    }
+    const connection = op_inspector_connect(true);
+    this.#connection = connection;
+    (async () => {
+      while (true) {
+        const message = await op_inspector_receive(connection);
+        if (!message) break;
+        this.#onMessage(message);
+      }
+    })();
   }
 
-  #onMessage() {
+  #onMessage(message) {
     const parsed = JSONParse(message);
     try {
       if (parsed.id) {
@@ -65,7 +85,10 @@ class Session extends EventEmitter {
         if (callback) {
           if (parsed.error) {
             return callback(
-              new ERR_INSPECTOR_COMMAND(parsed.error.code, parsed.error.message),
+              new ERR_INSPECTOR_COMMAND(
+                parsed.error.code,
+                parsed.error.message,
+              ),
             );
           }
 
@@ -73,7 +96,7 @@ class Session extends EventEmitter {
         }
       } else {
         this.emit(parsed.method, parsed);
-        this.emit('inspectorNotification', parsed);
+        this.emit("inspectorNotification", parsed);
       }
     } catch (error) {
       process.emitWarning(error);
@@ -81,16 +104,16 @@ class Session extends EventEmitter {
   }
 
   post(method, params, callback) {
-    validateString(method, 'method');
-    if (!callback && typeof params === 'function') {
+    validateString(method, "method");
+    if (!callback && typeof params === "function") {
       callback = params;
       params = null;
     }
     if (params) {
-      validateObject(params, 'params');
+      validateObject(params, "params");
     }
     if (callback) {
-      validateFunction(callback, 'callback');
+      validateFunction(callback, "callback");
     }
 
     if (!this.#connection) {
@@ -108,8 +131,9 @@ class Session extends EventEmitter {
   }
 
   disconnect() {
-    if (!this.#connection)
+    if (!this.#connection) {
       return;
+    }
     op_inspector_disconnect(this.#connection);
     this.#connection = null;
     const remainingCallbacks = this.#messageCallbacks.values();
@@ -130,13 +154,19 @@ function open(port, host, wait) {
   // open() function requires the port to fit into a 16-bit unsigned integer,
   // causing an integer overflow otherwise, so we at least need to prevent that.
   if (isUint32(port)) {
-    validateInt32(port, 'port', 0, 65535);
+    validateInt32(port, "port", 0, 65535);
   }
   op_inspector_open(port, host);
-  if (wait)
+  if (wait) {
     op_inspector_wait();
+  }
 
-  return { __proto__: null, [SymbolDispose]() { _debugEnd(); } };
+  return {
+    __proto__: null,
+    [SymbolDispose]() {
+      _debugEnd();
+    },
+  };
 }
 
 function close() {
@@ -148,36 +178,35 @@ function url() {
 }
 
 function waitForDebugger() {
-  if (!op_inspector_wait())
+  if (!op_inspector_wait()) {
     throw new ERR_INSPECTOR_NOT_ACTIVE();
+  }
 }
 
+function emitProtocolEvent() {}
+
 function broadcastToFrontend(eventName, params) {
-  validateString(eventName, 'eventName');
+  validateString(eventName, "eventName");
   if (params) {
-    validateObject(params, 'params');
+    validateObject(params, "params");
   }
   emitProtocolEvent(eventName, JSONStringify(params ?? {}));
 }
 
 const Network = {
-  requestWillBeSent: (params) => broadcastToFrontend('Network.requestWillBeSent', params),
-  responseReceived: (params) => broadcastToFrontend('Network.responseReceived', params),
-  loadingFinished: (params) => broadcastToFrontend('Network.loadingFinished', params),
-  loadingFailed: (params) => broadcastToFrontend('Network.loadingFailed', params),
+  requestWillBeSent: (params) =>
+    broadcastToFrontend("Network.requestWillBeSent", params),
+  responseReceived: (params) =>
+    broadcastToFrontend("Network.responseReceived", params),
+  loadingFinished: (params) =>
+    broadcastToFrontend("Network.loadingFinished", params),
+  loadingFailed: (params) =>
+    broadcastToFrontend("Network.loadingFailed", params),
 };
 
 const console = op_get_extras_binding_object().console;
 
-export {
-  open,
-  close,
-  url,
-  waitForDebugger,
-  console,
-  Session,
-  Network,
-};
+export { close, console, Network, open, Session, url, waitForDebugger };
 
 export default {
   open,

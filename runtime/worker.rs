@@ -21,9 +21,9 @@ use deno_core::Extension;
 use deno_core::FeatureChecker;
 use deno_core::GetErrorClassFn;
 use deno_core::InspectorSessionKind;
-use deno_core::InspectorSessionOptions;
 use deno_core::JsRuntime;
 use deno_core::LocalInspectorSession;
+use deno_core::LocalInspectorSessionOptions;
 use deno_core::ModuleCodeString;
 use deno_core::ModuleId;
 use deno_core::ModuleLoader;
@@ -488,7 +488,7 @@ impl MainWorker {
       extension_transpiler: Some(Rc::new(|specifier, source| {
         maybe_transpile_source(specifier, source)
       })),
-      inspector: options.maybe_inspector_server.is_some(),
+      inspector: true,
       is_main: true,
       feature_checker: Some(services.feature_checker.clone()),
       op_metrics_factory_fn,
@@ -546,6 +546,12 @@ impl MainWorker {
       js_runtime.op_state().borrow_mut().put(op_summary_metrics);
     }
 
+    // Put inspector handle into the op state so we can put a breakpoint when
+    // executing a CJS entrypoint.
+    let op_state = js_runtime.op_state();
+    let inspector = js_runtime.inspector();
+    op_state.borrow_mut().put(inspector);
+
     if let Some(server) = options.maybe_inspector_server.clone() {
       server.register_inspector(
         main_module.to_string(),
@@ -553,13 +559,8 @@ impl MainWorker {
         options.should_break_on_first_statement
           || options.should_wait_for_inspector_session,
       );
-
-      // Put inspector handle into the op state so we can put a breakpoint when
-      // executing a CJS entrypoint.
-      let op_state = js_runtime.op_state();
-      let inspector = js_runtime.inspector();
-      op_state.borrow_mut().put(inspector);
     }
+
     let (
       bootstrap_fn_global,
       dispatch_load_event_fn_global,
@@ -795,7 +796,7 @@ impl MainWorker {
   pub fn create_inspector_session(&mut self) -> LocalInspectorSession {
     self.js_runtime.maybe_init_inspector();
     self.js_runtime.inspector().borrow().create_local_session(
-      InspectorSessionOptions {
+      LocalInspectorSessionOptions {
         kind: InspectorSessionKind::Blocking,
       },
     )
