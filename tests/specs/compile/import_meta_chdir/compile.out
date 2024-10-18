@@ -1,0 +1,6 @@
+Download http://localhost:4260/@types/node
+Download http://localhost:4260/undici-types
+Download http://localhost:4260/@types/node/node-22.5.4.tgz
+Download http://localhost:4260/undici-types/undici-types-6.19.8.tgz
+Check [WILDCARD]main.ts
+Compile [WILDCARD]main.ts to out[WILDCARD]
