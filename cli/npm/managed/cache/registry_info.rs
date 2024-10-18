@@ -202,10 +202,13 @@ impl RegistryInfoDownloader {
     let guard = self.progress_bar.update(package_url.as_str());
     let name = name.to_string();
     async move {
-      let maybe_bytes = downloader
-        .http_client_provider
-        .get_or_create()?
-        .download_with_progress(package_url, maybe_auth_header, &guard)
+      let client = downloader.http_client_provider.get_or_create()?;
+      let maybe_bytes = client
+        .download_with_progress_and_retries(
+          package_url,
+          maybe_auth_header,
+          &guard,
+        )
         .await?;
       match maybe_bytes {
         Some(bytes) => {

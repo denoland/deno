@@ -40,10 +40,39 @@ extern "C" fn test_object_get(
   obj
 }
 
+extern "C" fn test_object_attr_property(
+  env: napi_env,
+  info: napi_callback_info,
+) -> napi_value {
+  let (args, argc, _) = napi_get_callback_info!(env, info, 1);
+  assert_eq!(argc, 1);
+
+  let obj = args[0];
+  let mut property = napi_new_property!(env, "self", test_object_new);
+  property.attributes = PropertyAttributes::enumerable;
+  property.method = None;
+  property.value = obj;
+  let mut method_property = napi_new_property!(env, "method", test_object_new);
+  method_property.attributes = PropertyAttributes::enumerable;
+  let properties = &[property, method_property];
+  assert_napi_ok!(napi_define_properties(
+    env,
+    obj,
+    properties.len(),
+    properties.as_ptr()
+  ));
+  obj
+}
+
 pub fn init(env: napi_env, exports: napi_value) {
   let properties = &[
     napi_new_property!(env, "test_object_new", test_object_new),
     napi_new_property!(env, "test_object_get", test_object_get),
+    napi_new_property!(
+      env,
+      "test_object_attr_property",
+      test_object_attr_property
+    ),
   ];
 
   assert_napi_ok!(napi_define_properties(

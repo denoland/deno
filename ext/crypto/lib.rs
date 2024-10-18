@@ -178,6 +178,8 @@ pub enum Error {
   EncryptionError,
   #[error("decryption error - integrity check failed")]
   DecryptionError,
+  #[error("The ArrayBufferView's byte length ({0}) exceeds the number of bytes of entropy available via this API (65536)")]
+  ArrayBufferViewLengthExceeded(usize),
   #[error(transparent)]
   Other(deno_core::error::AnyError),
 }
@@ -204,10 +206,7 @@ pub fn op_crypto_get_random_values(
   #[buffer] out: &mut [u8],
 ) -> Result<(), Error> {
   if out.len() > 65536 {
-    return Err(
-      Error::Other(deno_web::DomExceptionQuotaExceededError::new(&format!("The ArrayBufferView's byte length ({}) exceeds the number of bytes of entropy available via this API (65536)", out.len()))
-        .into()),
-    );
+    return Err(Error::ArrayBufferViewLengthExceeded(out.len()));
   }
 
   let maybe_seeded_rng = state.try_borrow_mut::<StdRng>();
