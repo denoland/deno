@@ -1,5 +1,5 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
-use deno_runtime::deno_napi::*;
+use crate::*;
 use libc::INT_MAX;
 
 #[repr(transparent)]
@@ -90,9 +90,7 @@ macro_rules! check_env {
 macro_rules! return_error_status_if_false {
   ($env: expr, $condition: expr, $status: ident) => {
     if !$condition {
-      return Err(
-        $crate::napi::util::napi_set_last_error($env, $status).into(),
-      );
+      return Err($crate::util::napi_set_last_error($env, $status).into());
     }
   };
 }
@@ -101,7 +99,7 @@ macro_rules! return_error_status_if_false {
 macro_rules! return_status_if_false {
   ($env: expr, $condition: expr, $status: ident) => {
     if !$condition {
-      return $crate::napi::util::napi_set_last_error($env, $status);
+      return $crate::util::napi_set_last_error($env, $status);
     }
   };
 }
@@ -222,7 +220,7 @@ macro_rules! check_arg {
   ($env: expr, $ptr: expr) => {
     $crate::return_status_if_false!(
       $env,
-      !$crate::napi::util::Nullable::is_null(&$ptr),
+      !$crate::util::Nullable::is_null(&$ptr),
       napi_invalid_arg
     );
   };
@@ -240,7 +238,7 @@ macro_rules! napi_wrap {
         return napi_pending_exception;
       }
 
-      $crate::napi::util::napi_clear_last_error(env);
+      $crate::util::napi_clear_last_error(env);
 
       let scope_env = unsafe { &mut *env_ptr };
       let scope = &mut scope_env.scope();
@@ -259,11 +257,11 @@ macro_rules! napi_wrap {
         let env = unsafe { &mut *env_ptr };
         let global = v8::Global::new(env.isolate(), exception);
         env.last_exception = Some(global);
-        return $crate::napi::util::napi_set_last_error(env_ptr, napi_pending_exception);
+        return $crate::util::napi_set_last_error(env_ptr, napi_pending_exception);
       }
 
       if result != napi_ok {
-        return $crate::napi::util::napi_set_last_error(env_ptr, result);
+        return $crate::util::napi_set_last_error(env_ptr, result);
       }
 
       return result;

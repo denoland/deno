@@ -1222,7 +1222,6 @@ dependencies = [
  "markup_fmt",
  "memmem",
  "monch",
- "napi_sym",
  "nix 0.26.2",
  "node_resolver",
  "notify",
@@ -1774,7 +1773,10 @@ version = "0.104.0"
 dependencies = [
  "deno_core",
  "deno_permissions",
+ "libc",
  "libloading 0.7.4",
+ "log",
+ "napi_sym",
  "thiserror",
 ]
 
