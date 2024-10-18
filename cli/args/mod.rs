@@ -1450,6 +1450,12 @@ impl CliOptions {
     }) = &self.flags.subcommand
     {
       *hmr
+    } else if let DenoSubcommand::Serve(ServeFlags {
+      watch: Some(WatchFlagsWithPaths { hmr, .. }),
+      ..
+    }) = &self.flags.subcommand
+    {
+      *hmr
     } else {
       false
     }
