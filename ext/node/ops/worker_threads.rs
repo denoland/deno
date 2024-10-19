@@ -67,7 +67,8 @@ where
     if path.is_relative() && !specifier.starts_with('.') {
       return Err(WorkerThreadsFilenameError::InvalidRelativeUrl);
     }
-    let path = ensure_read_permission::<P>(state, &path).map_err(WorkerThreadsFilenameError::Permission)?;
+    let path = ensure_read_permission::<P>(state, &path)
+      .map_err(WorkerThreadsFilenameError::Permission)?;
     let fs = state.borrow::<FileSystemRc>();
     let canonicalized_path =
       deno_path_util::strip_unc_prefix(fs.realpath_sync(&path)?);
@@ -77,17 +78,24 @@ where
   let url_path = url
     .to_file_path()
     .map_err(|_| WorkerThreadsFilenameError::UrlToPathString)?;
-  let url_path = ensure_read_permission::<P>(state, &url_path).map_err(WorkerThreadsFilenameError::Permission)?;
+  let url_path = ensure_read_permission::<P>(state, &url_path)
+    .map_err(WorkerThreadsFilenameError::Permission)?;
   let fs = state.borrow::<FileSystemRc>();
   if !fs.exists_sync(&url_path) {
-    return Err(
-      WorkerThreadsFilenameError::FileNotFound(url_path.to_path_buf()));
+    return Err(WorkerThreadsFilenameError::FileNotFound(
+      url_path.to_path_buf(),
+    ));
   }
   let node_resolver = state.borrow::<NodeResolverRc>();
-  match node_resolver.url_to_node_resolution(url).map_err(WorkerThreadsFilenameError::UrlToNodeResolution)? {
+  match node_resolver
+    .url_to_node_resolution(url)
+    .map_err(WorkerThreadsFilenameError::UrlToNodeResolution)?
+  {
     NodeResolution::Esm(u) => Ok(u.to_string()),
     NodeResolution::CommonJs(u) => wrap_cjs(u),
-    NodeResolution::BuiltIn(_) => Err(WorkerThreadsFilenameError::NeitherEsmNorCjs),
+    NodeResolution::BuiltIn(_) => {
+      Err(WorkerThreadsFilenameError::NeitherEsmNorCjs)
+    }
   }
 }
 

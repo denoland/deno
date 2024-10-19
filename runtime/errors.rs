@@ -860,14 +860,17 @@ fn get_websocket_upgrade_error(error: &WebSocketUpgradeError) -> &'static str {
 }
 
 mod node {
+  use super::get_error_class_name;
+  use super::get_io_error_class;
+  use super::get_serde_json_error_class;
+  use super::get_url_parse_error_class;
   pub use deno_node::ops::blocklist::BlocklistError;
   pub use deno_node::ops::fs::FsError;
   pub use deno_node::ops::idna::IdnaError;
-  use deno_node::ops::ipc::{IpcError};
-  use deno_node::ops::ipc::{IpcJsonStreamError};
-  use deno_node::ops::worker_threads::WorkerThreadsFilenameError;
-  use super::{get_error_class_name, get_serde_json_error_class, get_url_parse_error_class};
-  use super::{get_io_error_class};
+  pub use deno_node::ops::ipc::IpcError;
+  pub use deno_node::ops::ipc::IpcJsonStreamError;
+  pub use deno_node::ops::require::RequireError;
+  pub use deno_node::ops::worker_threads::WorkerThreadsFilenameError;
 
   pub fn get_blocklist_error(error: &BlocklistError) -> &'static str {
     match error {
@@ -914,9 +917,13 @@ mod node {
     }
   }
 
-  pub fn get_worker_threads_filename_error(error: &WorkerThreadsFilenameError) -> &'static str {
+  pub fn get_worker_threads_filename_error(
+    error: &WorkerThreadsFilenameError,
+  ) -> &'static str {
     match error {
-      WorkerThreadsFilenameError::Permission(e) => get_error_class_name(e).unwrap_or("Error"),
+      WorkerThreadsFilenameError::Permission(e) => {
+        get_error_class_name(e).unwrap_or("Error")
+      }
       WorkerThreadsFilenameError::UrlParse(e) => get_url_parse_error_class(e),
       WorkerThreadsFilenameError::InvalidRelativeUrl => "Error",
       WorkerThreadsFilenameError::UrlFromPathString => "Error",
@@ -924,15 +931,46 @@ mod node {
       WorkerThreadsFilenameError::UrlToPath => "Error",
       WorkerThreadsFilenameError::FileNotFound(_) => "Error",
       WorkerThreadsFilenameError::NeitherEsmNorCjs => "Error",
-      WorkerThreadsFilenameError::UrlToNodeResolution(_) => {}
+      WorkerThreadsFilenameError::UrlToNodeResolution(_) => "Error",
+    }
+  }
+
+  pub fn get_require_error(error: &RequireError) -> &'static str {
+    match error {
+      RequireError::UrlParse(e) => get_url_parse_error_class(e),
+      RequireError::Permission(e) => get_error_class_name(e).unwrap_or("Error"),
+      RequireError::PackageExportsResolve(_) => "Error",
+      RequireError::PackageJsonLoad(_) => "Error",
+      RequireError::ClosestPkgJson(_) => "Error",
+      RequireError::FilePathConversion(_) => "Error",
     }
   }
 }
 
 pub fn get_error_class_name(e: &AnyError) -> Option<&'static str> {
   deno_core::error::get_custom_error_class(e)
-    .or_else(|| e.downcast_ref::<node::BlocklistError>().map(node::get_blocklist_error))
+    .or_else(|| {
+      e.downcast_ref::<node::BlocklistError>()
+        .map(node::get_blocklist_error)
+    })
     .or_else(|| e.downcast_ref::<node::FsError>().map(node::get_fs_error))
+    .or_else(|| {
+      e.downcast_ref::<node::IdnaError>()
+        .map(node::get_idna_error)
+    })
+    .or_else(|| {
+      e.downcast_ref::<node::IpcJsonStreamError>()
+        .map(node::get_ipc_json_stream_error)
+    })
+    .or_else(|| e.downcast_ref::<node::IpcError>().map(node::get_ipc_error))
+    .or_else(|| {
+      e.downcast_ref::<node::WorkerThreadsFilenameError>()
+        .map(node::get_worker_threads_filename_error)
+    })
+    .or_else(|| {
+      e.downcast_ref::<node::RequireError>()
+        .map(node::get_require_error)
+    })
     .or_else(|| e.downcast_ref::<NApiError>().map(get_napi_error_class))
     .or_else(|| e.downcast_ref::<WebError>().map(get_web_error_class))
     .or_else(|| {

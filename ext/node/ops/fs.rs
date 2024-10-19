@@ -51,7 +51,8 @@ where
     let mut state = state.borrow_mut();
     let path = state
       .borrow_mut::<P>()
-      .check_read_with_api_name(&path, Some("node:fs.exists()")).map_err(FsError::Permission)?;
+      .check_read_with_api_name(&path, Some("node:fs.exists()"))
+      .map_err(FsError::Permission)?;
     (state.borrow::<FileSystemRc>().clone(), path)
   };
 
@@ -69,10 +70,12 @@ where
 {
   let path = state
     .borrow_mut::<P>()
-    .check_read_with_api_name(path, Some("node:fs.cpSync")).map_err(FsError::Permission)?;
+    .check_read_with_api_name(path, Some("node:fs.cpSync"))
+    .map_err(FsError::Permission)?;
   let new_path = state
     .borrow_mut::<P>()
-    .check_write_with_api_name(new_path, Some("node:fs.cpSync")).map_err(FsError::Permission)?;
+    .check_write_with_api_name(new_path, Some("node:fs.cpSync"))
+    .map_err(FsError::Permission)?;
 
   let fs = state.borrow::<FileSystemRc>();
   fs.cp_sync(&path, &new_path)?;
@@ -92,10 +95,12 @@ where
     let mut state = state.borrow_mut();
     let path = state
       .borrow_mut::<P>()
-      .check_read_with_api_name(&path, Some("node:fs.cpSync")).map_err(FsError::Permission)?;
+      .check_read_with_api_name(&path, Some("node:fs.cpSync"))
+      .map_err(FsError::Permission)?;
     let new_path = state
       .borrow_mut::<P>()
-      .check_write_with_api_name(&new_path, Some("node:fs.cpSync")).map_err(FsError::Permission)?;
+      .check_write_with_api_name(&new_path, Some("node:fs.cpSync"))
+      .map_err(FsError::Permission)?;
     (state.borrow::<FileSystemRc>().clone(), path, new_path)
   };
 
@@ -129,10 +134,12 @@ where
     let mut state = state.borrow_mut();
     let path = state
       .borrow_mut::<P>()
-      .check_read_with_api_name(&path, Some("node:fs.statfs")).map_err(FsError::Permission)?;
+      .check_read_with_api_name(&path, Some("node:fs.statfs"))
+      .map_err(FsError::Permission)?;
     state
       .borrow_mut::<P>()
-      .check_sys("statfs", "node:fs.statfs").map_err(FsError::Permission)?;
+      .check_sys("statfs", "node:fs.statfs")
+      .map_err(FsError::Permission)?;
     path
   };
   #[cfg(unix)]
@@ -198,10 +205,7 @@ where
     // call below.
     #[allow(clippy::disallowed_methods)]
     let path = path.canonicalize()?;
-    let root = path
-      .ancestors()
-      .last()
-      .ok_or(FsError::PathHasNoRoot)?;
+    let root = path.ancestors().last().ok_or(FsError::PathHasNoRoot)?;
     let mut root = OsStr::new(root).encode_wide().collect::<Vec<_>>();
     root.push(0);
     let mut sectors_per_cluster = 0;
@@ -259,7 +263,8 @@ where
 {
   let path = state
     .borrow_mut::<P>()
-    .check_write_with_api_name(path, Some("node:fs.lutimes")).map_err(FsError::Permission)?;
+    .check_write_with_api_name(path, Some("node:fs.lutimes"))
+    .map_err(FsError::Permission)?;
 
   let fs = state.borrow::<FileSystemRc>();
   fs.lutime_sync(&path, atime_secs, atime_nanos, mtime_secs, mtime_nanos)?;
@@ -282,7 +287,8 @@ where
     let mut state = state.borrow_mut();
     let path = state
       .borrow_mut::<P>()
-      .check_write_with_api_name(&path, Some("node:fs.lutimesSync")).map_err(FsError::Permission)?;
+      .check_write_with_api_name(&path, Some("node:fs.lutimesSync"))
+      .map_err(FsError::Permission)?;
     (state.borrow::<FileSystemRc>().clone(), path)
   };
 
@@ -304,7 +310,8 @@ where
 {
   let path = state
     .borrow_mut::<P>()
-    .check_write_with_api_name(&path, Some("node:fs.lchownSync")).map_err(FsError::Permission)?;
+    .check_write_with_api_name(&path, Some("node:fs.lchownSync"))
+    .map_err(FsError::Permission)?;
   let fs = state.borrow::<FileSystemRc>();
   fs.lchown_sync(&path, uid, gid)?;
   Ok(())
@@ -324,7 +331,8 @@ where
     let mut state = state.borrow_mut();
     let path = state
       .borrow_mut::<P>()
-      .check_write_with_api_name(&path, Some("node:fs.lchown")).map_err(FsError::Permission)?;
+      .check_write_with_api_name(&path, Some("node:fs.lchown"))
+      .map_err(FsError::Permission)?;
     (state.borrow::<FileSystemRc>().clone(), path)
   };
   fs.lchown_async(path, uid, gid).await?;

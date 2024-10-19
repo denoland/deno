@@ -272,7 +272,9 @@ pub fn op_v8_new_deserializer(
   let offset = buffer.byte_offset();
   let len = buffer.byte_length();
   let backing_store = buffer.get_backing_store().ok_or_else(|| {
-    deno_core::error::generic_error("deserialization buffer has no backing store")
+    deno_core::error::generic_error(
+      "deserialization buffer has no backing store",
+    )
   })?;
   let (buf_slice, buf_ptr) = if let Some(data) = backing_store.data() {
     // SAFETY: the offset is valid for the underlying buffer because we're getting it directly from v8

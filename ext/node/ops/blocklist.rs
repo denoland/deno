@@ -29,7 +29,7 @@ pub enum BlocklistError {
   #[error("{0}")]
   AddrParse(#[from] std::net::AddrParseError),
   #[error("{0}")]
-  IpNetwork(#[from]  ipnetwork::IpNetworkError),
+  IpNetwork(#[from] ipnetwork::IpNetworkError),
   #[error("Invalid address")]
   InvalidAddress,
   #[error("IP version mismatch between start and end addresses")]
@@ -207,13 +207,21 @@ impl BlockList {
     Ok(true)
   }
 
-  pub fn add_subnet(&mut self, addr: &str, prefix: u8) -> Result<(), BlocklistError> {
+  pub fn add_subnet(
+    &mut self,
+    addr: &str,
+    prefix: u8,
+  ) -> Result<(), BlocklistError> {
     let ip: IpAddr = addr.parse()?;
     self.map_addr_add_network(ip, Some(prefix))?;
     Ok(())
   }
 
-  pub fn check(&self, addr: &str, r#type: &str) -> Result<bool, BlocklistError> {
+  pub fn check(
+    &self,
+    addr: &str,
+    r#type: &str,
+  ) -> Result<bool, BlocklistError> {
     let addr: IpAddr = addr.parse()?;
     let family = r#type.to_lowercase();
     if family == "ipv4" && addr.is_ipv4() || family == "ipv6" && addr.is_ipv6()

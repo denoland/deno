@@ -178,7 +178,6 @@ mod impl_ {
     ))
   }
 
-
   #[derive(Debug, thiserror::Error)]
   pub enum IpcError {
     #[error(transparent)]
@@ -190,7 +189,6 @@ mod impl_ {
     #[error("failed to serialize json value: {0}")]
     SerdeJson(serde_json::Error),
   }
-
 
   #[op2(async)]
   pub fn op_node_ipc_write<'a>(
@@ -213,7 +211,8 @@ mod impl_ {
     let stream = state
       .borrow()
       .resource_table
-      .get::<IpcJsonStreamResource>(rid).map_err(IpcError::Resource)?;
+      .get::<IpcJsonStreamResource>(rid)
+      .map_err(IpcError::Resource)?;
     let old = stream
       .queued_bytes
       .fetch_add(serialized.len(), std::sync::atomic::Ordering::Relaxed);
@@ -250,7 +249,8 @@ mod impl_ {
     let stream = state
       .borrow()
       .resource_table
-      .get::<IpcJsonStreamResource>(rid).map_err(IpcError::Resource)?;
+      .get::<IpcJsonStreamResource>(rid)
+      .map_err(IpcError::Resource)?;
 
     let cancel = stream.cancel.clone();
     let mut stream = RcRef::map(stream, |r| &r.read_half).borrow_mut().await;
@@ -497,7 +497,8 @@ mod impl_ {
         &mut json,
         &mut self.read_buffer,
       )
-      .await.map_err(IpcJsonStreamError::Io)?;
+      .await
+      .map_err(IpcJsonStreamError::Io)?;
       if nread == 0 {
         // EOF.
         return Ok(None);
@@ -507,7 +508,8 @@ mod impl_ {
         Some(v) => v,
         None => {
           // Took more than a single read and some buffering.
-          simd_json::from_slice(&mut self.buffer[..nread]).map_err(IpcJsonStreamError::SimdJson)?
+          simd_json::from_slice(&mut self.buffer[..nread])
+            .map_err(IpcJsonStreamError::SimdJson)?
         }
       };
 
