@@ -866,6 +866,7 @@ mod node {
   use super::get_url_parse_error_class;
   pub use deno_node::ops::blocklist::BlocklistError;
   pub use deno_node::ops::fs::FsError;
+  use deno_node::ops::http2::Http2Error;
   pub use deno_node::ops::idna::IdnaError;
   pub use deno_node::ops::ipc::IpcError;
   pub use deno_node::ops::ipc::IpcJsonStreamError;
@@ -943,6 +944,14 @@ mod node {
       RequireError::PackageJsonLoad(_) => "Error",
       RequireError::ClosestPkgJson(_) => "Error",
       RequireError::FilePathConversion(_) => "Error",
+    }
+  }
+
+  pub fn get_http2_error(error: &Http2Error) -> &'static str {
+    match error {
+      Http2Error::Resource(e) => get_error_class_name(e).unwrap_or("Error"),
+      Http2Error::UrlParse(e) => get_url_parse_error_class(e),
+      Http2Error::H2(_) => "Error",
     }
   }
 }
