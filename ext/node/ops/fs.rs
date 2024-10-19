@@ -22,6 +22,8 @@ pub enum FsError {
   #[cfg(not(any(unix, windows)))]
   #[error("Unsupported platform.")]
   UnsupportedPlatform,
+  #[error(transparent)]
+  Fs(#[from] deno_io::fs::FsError),
 }
 
 #[op2(fast)]

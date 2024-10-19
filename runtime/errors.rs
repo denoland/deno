@@ -695,15 +695,10 @@ fn get_websocket_handshake_error(error: &HandshakeError) -> &'static str {
   }
 }
 
-fn get_fs_error(error: &FsOpsError) -> &'static str {
+fn get_fs_ops_error(error: &FsOpsError) -> &'static str {
   match error {
     FsOpsError::Io(e) => get_io_error_class(e),
-    FsOpsError::OperationError(e) => match &e.err {
-      FsError::Io(e) => get_io_error_class(e),
-      FsError::FileBusy => "Busy",
-      FsError::NotSupported => "NotSupported",
-      FsError::NotCapable(_) => "NotCapable",
-    },
+    FsOpsError::OperationError(e) => get_fs_error(&e.err),
     FsOpsError::Permission(e)
     | FsOpsError::Resource(e)
     | FsOpsError::Other(e) => get_error_class_name(e).unwrap_or("Error"),
@@ -859,6 +854,15 @@ fn get_websocket_upgrade_error(error: &WebSocketUpgradeError) -> &'static str {
   }
 }
 
+fn get_fs_error(e: &FsError) -> &'static str {
+  match &e {
+    FsError::Io(e) => get_io_error_class(e),
+    FsError::FileBusy => "Busy",
+    FsError::NotSupported => "NotSupported",
+    FsError::NotCapable(_) => "NotCapable",
+  }
+}
+
 mod node {
   use super::get_error_class_name;
   use super::get_io_error_class;
@@ -891,8 +895,11 @@ mod node {
     match error {
       FsError::Permission(e) => get_error_class_name(e).unwrap_or("Error"),
       FsError::Io(e) => get_io_error_class(e),
+      #[cfg(windows)]
       FsError::PathHasNoRoot => "Error",
+      #[cfg(not(any(unix, windows)))]
       FsError::UnsupportedPlatform => "Error",
+      FsError::Fs(e) => super::get_fs_error(e),
     }
   }
 
@@ -938,6 +945,7 @@ mod node {
       WorkerThreadsFilenameError::FileNotFound(_) => "Error",
       WorkerThreadsFilenameError::NeitherEsmNorCjs => "Error",
       WorkerThreadsFilenameError::UrlToNodeResolution(_) => "Error",
+      WorkerThreadsFilenameError::Fs(e) => super::get_fs_error(e),
     }
   }
 
@@ -950,6 +958,9 @@ mod node {
       RequireError::ClosestPkgJson(_) => "Error",
       RequireError::FilePathConversion(_) => "Error",
       RequireError::PackageImportsResolve(_) => "Error",
+      RequireError::Fs(e) | RequireError::UnableToGetCwd(e) => {
+        super::get_fs_error(e)
+      }
     }
   }
 
@@ -965,6 +976,7 @@ mod node {
     match error {
       OsError::Priority(e) => match e {
         PriorityError::Io(e) => get_io_error_class(e),
+        #[cfg(windows)]
         PriorityError::InvalidPriority => "TypeError",
       },
       OsError::Permission(e) => get_error_class_name(e).unwrap_or("Error"),
@@ -1060,7 +1072,7 @@ pub fn get_error_class_name(e: &AnyError) -> Option<&'static str> {
       e.downcast_ref::<WebSocketUpgradeError>()
         .map(get_websocket_upgrade_error)
     })
-    .or_else(|| e.downcast_ref::<FsOpsError>().map(get_fs_error))
+    .or_else(|| e.downcast_ref::<FsOpsError>().map(get_fs_ops_error))
     .or_else(|| {
       e.downcast_ref::<DlfcnError>()
         .map(get_ffi_dlfcn_error_class)

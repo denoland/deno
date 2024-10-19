@@ -435,7 +435,8 @@ pub async fn op_http2_client_get_response(
   let resource = state
     .borrow()
     .resource_table
-    .get::<Http2ClientStream>(stream_rid)?;
+    .get::<Http2ClientStream>(stream_rid)
+    .map_err(Http2Error::Resource)?;
   let mut response_future =
     RcRef::map(&resource, |r| &r.response).borrow_mut().await;
 

@@ -51,9 +51,15 @@ pub enum RequireError {
   #[error(transparent)]
   ClosestPkgJson(#[from] node_resolver::errors::ClosestPkgJsonError),
   #[error(transparent)]
-  PackageImportsResolve(#[from] node_resolver::errors::PackageImportsResolveError),
+  PackageImportsResolve(
+    #[from] node_resolver::errors::PackageImportsResolveError,
+  ),
   #[error("failed to convert '{0}' to file path")]
   FilePathConversion(Url),
+  #[error(transparent)]
+  Fs(#[from] deno_io::fs::FsError),
+  #[error("Unable to get CWD: {0}")]
+  UnableToGetCwd(deno_io::fs::FsError),
 }
 
 #[op2]
@@ -121,7 +127,7 @@ where
   let from = if from.starts_with("file:///") {
     url_to_file_path(&Url::parse(&from)?)?
   } else {
-    let current_dir = &fs.cwd().context("Unable to get CWD")?;
+    let current_dir = &fs.cwd().map_err(RequireError::UnableToGetCwd)?;
     normalize_path(current_dir.join(from))
   };
 
@@ -590,7 +596,8 @@ where
   P: NodePermissions + 'static,
 {
   let referrer_path = PathBuf::from(&referrer_filename);
-  let referrer_path = ensure_read_permission::<P>(state, &referrer_path)?;
+  let referrer_path = ensure_read_permission::<P>(state, &referrer_path)
+    .map_err(RequireError::Permission)?;
   let node_resolver = state.borrow::<NodeResolverRc>();
   let Some(pkg) =
     node_resolver.get_closest_package_json_from_path(&referrer_path)?

@@ -46,6 +46,8 @@ pub enum WorkerThreadsFilenameError {
   NeitherEsmNorCjs,
   #[error("{0}")]
   UrlToNodeResolution(node_resolver::errors::UrlToNodeResolutionError),
+  #[error(transparent)]
+  Fs(#[from] deno_io::fs::FsError),
 }
 
 #[op2]
