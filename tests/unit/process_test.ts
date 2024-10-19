@@ -495,6 +495,9 @@ Deno.test(
       error = e;
     }
 
+    console.log(error);
+    throw error;
+
     assert(
       error instanceof Deno.errors.NotFound ||
         // On Windows, the underlying Windows API may return

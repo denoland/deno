@@ -835,7 +835,7 @@ fn get_tty_error(error: &TtyError) -> &'static str {
       get_error_class_name(e).unwrap_or("Error")
     }
     TtyError::Io(e) => get_io_error_class(e),
-    TtyError::Errno(e) => get_io_error_class(&(*e).into()),
+    TtyError::Errno(e) => get_nix_error_class(e),
   }
 }
 
@@ -845,7 +845,7 @@ fn get_readline_error(error: &ReadlineError) -> &'static str {
     ReadlineError::Eof => "Error",
     ReadlineError::Interrupted => "Error",
     #[cfg(unix)]
-    ReadlineError::Errno(e) => get_io_error_class(&(*e).into()),
+    ReadlineError::Errno(e) => get_nix_error_class(e),
     ReadlineError::WindowResized => "Error",
     #[cfg(windows)]
     ReadlineError::Decode(_) => "Error",
@@ -904,7 +904,7 @@ fn get_process_error(error: &ProcessError) -> &'static str {
     ProcessError::Signal(e) => get_signal_error(e),
     ProcessError::MissingCmd => "Error",
     ProcessError::InvalidPid => "TypeError",
-    ProcessError::Errno(e) => get_io_error_class(&(*e).into()),
+    ProcessError::Errno(e) => get_nix_error_class(e),
   }
 }
 

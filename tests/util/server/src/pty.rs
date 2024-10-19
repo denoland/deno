@@ -297,10 +297,12 @@ fn setup_pty(fd: i32) {
   use nix::sys::termios::tcsetattr;
   use nix::sys::termios::SetArg;
 
-  let mut term = tcgetattr(fd).unwrap();
+  let as_fd = unsafe { std::os::fd::BorrowedFd::borrow_raw(fd) };
+
+  let mut term = tcgetattr(as_fd).unwrap();
   // disable cooked mode
   term.local_flags.remove(termios::LocalFlags::ICANON);
-  tcsetattr(fd, SetArg::TCSANOW, &term).unwrap();
+  tcsetattr(as_fd, SetArg::TCSANOW, &term).unwrap();
 
   // turn on non-blocking mode so we get timeouts
   let flags = fcntl(fd, FcntlArg::F_GETFL).unwrap();
