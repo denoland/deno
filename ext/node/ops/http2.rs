@@ -129,7 +129,8 @@ pub async fn op_http2_connect(
   // No permission check necessary because we're using an existing connection
   let network_stream = {
     let mut state = state.borrow_mut();
-    take_network_stream_resource(&mut state.resource_table, rid).map_err(Http2Error::Resource)?
+    take_network_stream_resource(&mut state.resource_table, rid)
+      .map_err(Http2Error::Resource)?
   };
 
   let url = Url::parse(&url)?;
@@ -155,7 +156,8 @@ pub async fn op_http2_listen(
   #[smi] rid: ResourceId,
 ) -> Result<ResourceId, Http2Error> {
   let stream =
-    take_network_stream_resource(&mut state.borrow_mut().resource_table, rid).map_err(Http2Error::Resource)?;
+    take_network_stream_resource(&mut state.borrow_mut().resource_table, rid)
+      .map_err(Http2Error::Resource)?;
 
   let conn = h2::server::Builder::new().handshake(stream).await?;
   Ok(
@@ -180,7 +182,8 @@ pub async fn op_http2_accept(
   let resource = state
     .borrow()
     .resource_table
-    .get::<Http2ServerConnection>(rid).map_err(Http2Error::Resource)?;
+    .get::<Http2ServerConnection>(rid)
+    .map_err(Http2Error::Resource)?;
   let mut conn = RcRef::map(&resource, |r| &r.conn).borrow_mut().await;
   if let Some(res) = conn.accept().await {
     let (req, resp) = res?;
@@ -246,7 +249,8 @@ pub async fn op_http2_send_response(
   let resource = state
     .borrow()
     .resource_table
-    .get::<Http2ServerSendResponse>(rid).map_err(Http2Error::Resource)?;
+    .get::<Http2ServerSendResponse>(rid)
+    .map_err(Http2Error::Resource)?;
   let mut send_response = RcRef::map(resource, |r| &r.send_response)
     .borrow_mut()
     .await;
@@ -272,7 +276,11 @@ pub async fn op_http2_poll_client_connection(
   state: Rc<RefCell<OpState>>,
   #[smi] rid: ResourceId,
 ) -> Result<(), Http2Error> {
-  let resource = state.borrow().resource_table.get::<Http2ClientConn>(rid).map_err(Http2Error::Resource)?;
+  let resource = state
+    .borrow()
+    .resource_table
+    .get::<Http2ClientConn>(rid)
+    .map_err(Http2Error::Resource)?;
 
   let cancel_handle = RcRef::map(resource.clone(), |this| &this.cancel_handle);
   let mut conn = RcRef::map(resource, |this| &this.conn).borrow_mut().await;
@@ -302,7 +310,8 @@ pub async fn op_http2_client_request(
   let resource = state
     .borrow()
     .resource_table
-    .get::<Http2Client>(client_rid).map_err(Http2Error::Resource)?;
+    .get::<Http2Client>(client_rid)
+    .map_err(Http2Error::Resource)?;
 
   let url = resource.url.clone();
 
@@ -335,7 +344,10 @@ pub async fn op_http2_client_request(
 
   let resource = {
     let state = state.borrow();
-    state.resource_table.get::<Http2Client>(client_rid).map_err(Http2Error::Resource)?
+    state
+      .resource_table
+      .get::<Http2Client>(client_rid)
+      .map_err(Http2Error::Resource)?
   };
   let mut client = RcRef::map(&resource, |r| &r.client).borrow_mut().await;
   poll_fn(|cx| client.poll_ready(cx)).await?;
@@ -358,7 +370,8 @@ pub async fn op_http2_client_send_data(
   let resource = state
     .borrow()
     .resource_table
-    .get::<Http2ClientStream>(stream_rid).map_err(Http2Error::Resource)?;
+    .get::<Http2ClientStream>(stream_rid)
+    .map_err(Http2Error::Resource)?;
   let mut stream = RcRef::map(&resource, |r| &r.stream).borrow_mut().await;
 
   stream.send_data(data.to_vec().into(), end_of_stream)?;
@@ -389,7 +402,8 @@ pub async fn op_http2_client_send_trailers(
   let resource = state
     .borrow()
     .resource_table
-    .get::<Http2ClientStream>(stream_rid).map_err(Http2Error::Resource)?;
+    .get::<Http2ClientStream>(stream_rid)
+    .map_err(Http2Error::Resource)?;
   let mut stream = RcRef::map(&resource, |r| &r.stream).borrow_mut().await;
 
   let mut trailers_map = http::HeaderMap::new();
@@ -491,7 +505,8 @@ pub async fn op_http2_client_get_response_body_chunk(
   let resource = state
     .borrow()
     .resource_table
-    .get::<Http2ClientResponseBody>(body_rid).map_err(Http2Error::Resource)?;
+    .get::<Http2ClientResponseBody>(body_rid)
+    .map_err(Http2Error::Resource)?;
   let mut body = RcRef::map(&resource, |r| &r.body).borrow_mut().await;
 
   loop {

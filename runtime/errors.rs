@@ -866,12 +866,17 @@ mod node {
   use super::get_url_parse_error_class;
   pub use deno_node::ops::blocklist::BlocklistError;
   pub use deno_node::ops::fs::FsError;
-  use deno_node::ops::http2::Http2Error;
+  pub use deno_node::ops::http2::Http2Error;
   pub use deno_node::ops::idna::IdnaError;
   pub use deno_node::ops::ipc::IpcError;
   pub use deno_node::ops::ipc::IpcJsonStreamError;
+  use deno_node::ops::os::priority::PriorityError;
+  pub use deno_node::ops::os::OsError;
   pub use deno_node::ops::require::RequireError;
   pub use deno_node::ops::worker_threads::WorkerThreadsFilenameError;
+  pub use deno_node::ops::zlib::brotli::BrotliError;
+  pub use deno_node::ops::zlib::mode::ModeError;
+  pub use deno_node::ops::zlib::ZlibError;
 
   pub fn get_blocklist_error(error: &BlocklistError) -> &'static str {
     match error {
@@ -944,6 +949,7 @@ mod node {
       RequireError::PackageJsonLoad(_) => "Error",
       RequireError::ClosestPkgJson(_) => "Error",
       RequireError::FilePathConversion(_) => "Error",
+      RequireError::PackageImportsResolve(_) => "Error",
     }
   }
 
@@ -952,6 +958,40 @@ mod node {
       Http2Error::Resource(e) => get_error_class_name(e).unwrap_or("Error"),
       Http2Error::UrlParse(e) => get_url_parse_error_class(e),
       Http2Error::H2(_) => "Error",
+    }
+  }
+
+  pub fn get_os_error(error: &OsError) -> &'static str {
+    match error {
+      OsError::Priority(e) => match e {
+        PriorityError::Io(e) => get_io_error_class(e),
+        PriorityError::InvalidPriority => "TypeError",
+      },
+      OsError::Permission(e) => get_error_class_name(e).unwrap_or("Error"),
+      OsError::FailedToGetCpuInfo => "TypeError",
+    }
+  }
+
+  pub fn get_brotli_error(error: &BrotliError) -> &'static str {
+    match error {
+      BrotliError::InvalidEncoderMode => "TypeError",
+      BrotliError::CompressFailed => "TypeError",
+      BrotliError::DecompressFailed => "TypeError",
+      BrotliError::Join(_) => "Error",
+      BrotliError::Resource(e) => get_error_class_name(e).unwrap_or("Error"),
+      BrotliError::Io(e) => get_io_error_class(e),
+    }
+  }
+
+  pub fn get_mode_error(_: &ModeError) -> &'static str {
+    "Error"
+  }
+
+  pub fn get_zlib_error(e: &ZlibError) -> &'static str {
+    match e {
+      ZlibError::NotInitialized => "TypeError",
+      ZlibError::Mode(e) => get_mode_error(e),
+      ZlibError::Other(e) => get_error_class_name(e).unwrap_or("Error"),
     }
   }
 }
@@ -979,6 +1019,23 @@ pub fn get_error_class_name(e: &AnyError) -> Option<&'static str> {
     .or_else(|| {
       e.downcast_ref::<node::RequireError>()
         .map(node::get_require_error)
+    })
+    .or_else(|| {
+      e.downcast_ref::<node::Http2Error>()
+        .map(node::get_http2_error)
+    })
+    .or_else(|| e.downcast_ref::<node::OsError>().map(node::get_os_error))
+    .or_else(|| {
+      e.downcast_ref::<node::BrotliError>()
+        .map(node::get_brotli_error)
+    })
+    .or_else(|| {
+      e.downcast_ref::<node::ModeError>()
+        .map(node::get_mode_error)
+    })
+    .or_else(|| {
+      e.downcast_ref::<node::ZlibError>()
+        .map(node::get_zlib_error)
     })
     .or_else(|| e.downcast_ref::<NApiError>().map(get_napi_error_class))
     .or_else(|| e.downcast_ref::<WebError>().map(get_web_error_class))

@@ -50,6 +50,8 @@ pub enum RequireError {
   PackageJsonLoad(#[from] node_resolver::errors::PackageJsonLoadError),
   #[error(transparent)]
   ClosestPkgJson(#[from] node_resolver::errors::ClosestPkgJsonError),
+  #[error(transparent)]
+  PackageImportsResolve(#[from] node_resolver::errors::PackageImportsResolveError),
   #[error("failed to convert '{0}' to file path")]
   FilePathConversion(Url),
 }
