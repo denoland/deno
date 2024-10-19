@@ -1,9 +1,9 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 use bytes::Bytes;
-use deno_core::error::AnyError;
 use deno_core::futures::stream::Peekable;
 use deno_core::futures::Stream;
 use deno_core::futures::StreamExt;
+use deno_core::futures::TryFutureExt;
 use deno_core::AsyncRefCell;
 use deno_core::AsyncResult;
 use deno_core::BufView;
@@ -22,7 +22,7 @@ use std::task::Poll;
 struct ReadFuture(Incoming);
 
 impl Stream for ReadFuture {
-  type Item = Result<Bytes, AnyError>;
+  type Item = Result<Bytes, hyper::Error>;
 
   fn poll_next(
     self: Pin<&mut Self>,
@@ -37,13 +37,13 @@ impl Stream for ReadFuture {
           if let Ok(data) = frame.into_data() {
             // Ensure that we never yield an empty frame
             if !data.is_empty() {
-              break Poll::Ready(Some(Ok::<_, AnyError>(data)));
+              break Poll::Ready(Some(Ok(data)));
             }
           }
           // Loop again so we don't lose the waker
           continue;
         }
-        Some(Err(e)) => Poll::Ready(Some(Err(e.into()))),
+        Some(Err(e)) => Poll::Ready(Some(Err(e))),
         None => Poll::Ready(None),
       };
     }
@@ -58,7 +58,7 @@ impl HttpRequestBody {
     Self(AsyncRefCell::new(ReadFuture(body).peekable()), size_hint)
   }
 
-  async fn read(self: Rc<Self>, limit: usize) -> Result<BufView, AnyError> {
+  async fn read(self: Rc<Self>, limit: usize) -> Result<BufView, hyper::Error> {
     let peekable = RcRef::map(self, |this| &this.0);
     let mut peekable = peekable.borrow_mut().await;
     match Pin::new(&mut *peekable).peek_mut().await {
@@ -82,7 +82,7 @@ impl Resource for HttpRequestBody {
   }
 
   fn read(self: Rc<Self>, limit: usize) -> AsyncResult<BufView> {
-    Box::pin(HttpRequestBody::read(self, limit))
+    Box::pin(HttpRequestBody::read(self, limit).map_err(Into::into))
   }
 
   fn size_hint(&self) -> (u64, Option<u64>) {
