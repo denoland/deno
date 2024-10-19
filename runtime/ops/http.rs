@@ -23,6 +23,7 @@ pub enum HttpStartError {
   UnixSocketInUse,
   #[error(transparent)]
   ReuniteTcp(#[from] tokio::net::tcp::ReuniteError),
+  #[cfg(unix)]
   #[error(transparent)]
   ReuniteUnix(#[from] tokio::net::unix::ReuniteError),
   #[error("{0}")]

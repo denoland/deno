@@ -835,7 +835,8 @@ fn get_tty_error(error: &TtyError) -> &'static str {
       get_error_class_name(e).unwrap_or("Error")
     }
     TtyError::Io(e) => get_io_error_class(e),
-    TtyError::Errno(e) => get_nix_error_class(e),
+    #[cfg(unix)]
+    TtyError::Nix(e) => get_nix_error_class(e),
   }
 }
 
@@ -904,7 +905,8 @@ fn get_process_error(error: &ProcessError) -> &'static str {
     ProcessError::Signal(e) => get_signal_error(e),
     ProcessError::MissingCmd => "Error",
     ProcessError::InvalidPid => "TypeError",
-    ProcessError::Errno(e) => get_nix_error_class(e),
+    #[cfg(unix)]
+    ProcessError::Nix(e) => get_nix_error_class(e),
   }
 }
 

@@ -200,8 +200,9 @@ pub enum ProcessError {
   },
   #[error("{0}")]
   Io(#[from] std::io::Error),
+  #[cfg(unix)]
   #[error(transparent)]
-  Errno(nix::errno::Errno),
+  Nix(nix::Error),
   #[error("failed resolving cwd: {0}")]
   FailedResolvingCwd(#[source] std::io::Error),
   #[error(transparent)]
@@ -1067,8 +1068,8 @@ mod deprecated {
     use nix::sys::signal::kill as unix_kill;
     use nix::sys::signal::Signal;
     use nix::unistd::Pid;
-    let sig = Signal::try_from(signo).map_err(ProcessError::Errno)?;
-    unix_kill(Pid::from_raw(pid), Some(sig)).map_err(ProcessError::Errno)
+    let sig = Signal::try_from(signo).map_err(ProcessError::Nix)?;
+    unix_kill(Pid::from_raw(pid), Some(sig)).map_err(ProcessError::Nix)
   }
 
   #[cfg(not(unix))]

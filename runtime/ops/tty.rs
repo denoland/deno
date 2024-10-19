@@ -70,7 +70,7 @@ pub enum TtyError {
   #[error("{0}")]
   Io(#[from] std::io::Error),
   #[error(transparent)]
-  Errno(nix::errno::Errno),
+  Nix(nix::Error),
   #[error(transparent)]
   Other(deno_core::error::AnyError),
 }
@@ -213,7 +213,7 @@ fn op_set_raw(
 
     // SAFETY: winapi call
     if unsafe { consoleapi::SetConsoleMode(handle, new_mode) } == FALSE {
-      return Err(crate::ops::tty::TtyError(Error::last_os_error()));
+      return Err(TtyError::Io(Error::last_os_error()));
     }
 
     Ok(())
@@ -267,7 +267,7 @@ fn op_set_raw(
         None => {
           // Save original mode.
           let original_mode =
-            termios::tcgetattr(raw_fd).map_err(TtyError::Errno)?;
+            termios::tcgetattr(raw_fd).map_err(TtyError::Nix)?;
           tty_mode_store.set(rid, original_mode.clone());
           original_mode
         }
@@ -290,12 +290,12 @@ fn op_set_raw(
       raw.control_chars[termios::SpecialCharacterIndices::VMIN as usize] = 1;
       raw.control_chars[termios::SpecialCharacterIndices::VTIME as usize] = 0;
       termios::tcsetattr(raw_fd, termios::SetArg::TCSADRAIN, &raw)
-        .map_err(TtyError::Errno)?;
+        .map_err(TtyError::Nix)?;
     } else {
       // Try restore saved mode.
       if let Some(mode) = tty_mode_store.take(rid) {
         termios::tcsetattr(raw_fd, termios::SetArg::TCSADRAIN, &mode)
-          .map_err(TtyError::Errno)?;
+          .map_err(TtyError::Nix)?;
       }
     }
 
