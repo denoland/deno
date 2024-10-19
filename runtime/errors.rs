@@ -29,6 +29,9 @@ use deno_ffi::IRError;
 use deno_ffi::ReprError;
 use deno_ffi::StaticError;
 use deno_fs::FsOpsError;
+use deno_http::HttpError;
+use deno_http::HttpNextError;
+use deno_http::WebSocketUpgradeError;
 use deno_io::fs::FsError;
 use deno_kv::KvCheckError;
 use deno_kv::KvError;
@@ -765,6 +768,59 @@ fn get_net_map_error(error: &deno_net::io::MapError) -> &'static str {
   }
 }
 
+fn get_http_error(error: &HttpError) -> &'static str {
+  match error {
+    HttpError::Canceled(e) => {
+      let io_err: io::Error = e.to_owned().into();
+      get_io_error_class(&io_err)
+    }
+    HttpError::HyperV014(e) => get_hyper_v014_error_class(e),
+    HttpError::InvalidHeaderName(_) => "Error",
+    HttpError::InvalidHeaderValue(_) => "Error",
+    HttpError::Http(_) => "Error",
+    HttpError::ResponseHeadersAlreadySent => "Http",
+    HttpError::ConnectionClosedWhileSendingResponse => "Http",
+    HttpError::AlreadyInUse => "Http",
+    HttpError::Io(e) => get_io_error_class(e),
+    HttpError::NoResponseHeaders => "Http",
+    HttpError::ResponseAlreadyCompleted => "Http",
+    HttpError::UpgradeBodyUsed => "Http",
+    HttpError::Resource(e) | HttpError::Other(e) => {
+      get_error_class_name(e).unwrap_or("Error")
+    }
+  }
+}
+
+fn get_http_next_error(error: &HttpNextError) -> &'static str {
+  match error {
+    HttpNextError::Io(e) => get_io_error_class(e),
+    HttpNextError::WebSocketUpgrade(e) => get_websocket_upgrade_error(e),
+    HttpNextError::Hyper(e) => get_hyper_error_class(e),
+    HttpNextError::JoinError(_) => "Error",
+    HttpNextError::Canceled(e) => {
+      let io_err: io::Error = e.to_owned().into();
+      get_io_error_class(&io_err)
+    }
+    HttpNextError::UpgradeUnavailable(_) => "Error",
+    HttpNextError::HttpPropertyExtractor(e) | HttpNextError::Resource(e) => {
+      get_error_class_name(e).unwrap_or("Error")
+    }
+  }
+}
+
+fn get_websocket_upgrade_error(error: &WebSocketUpgradeError) -> &'static str {
+  match error {
+    WebSocketUpgradeError::InvalidHeaders => "Http",
+    WebSocketUpgradeError::HttpParse(_) => "Error",
+    WebSocketUpgradeError::Http(_) => "Error",
+    WebSocketUpgradeError::Utf8(_) => "Error",
+    WebSocketUpgradeError::InvalidHeaderName(_) => "Error",
+    WebSocketUpgradeError::InvalidHeaderValue(_) => "Error",
+    WebSocketUpgradeError::InvalidHttpStatusLine => "Http",
+    WebSocketUpgradeError::UpgradeBufferAlreadyCompleted => "Http",
+  }
+}
+
 pub fn get_error_class_name(e: &AnyError) -> Option<&'static str> {
   deno_core::error::get_custom_error_class(e)
     .or_else(|| e.downcast_ref::<NApiError>().map(get_napi_error_class))
@@ -784,6 +840,12 @@ pub fn get_error_class_name(e: &AnyError) -> Option<&'static str> {
     .or_else(|| e.downcast_ref::<BlobError>().map(get_web_blob_error_class))
     .or_else(|| e.downcast_ref::<IRError>().map(|_| "TypeError"))
     .or_else(|| e.downcast_ref::<ReprError>().map(get_ffi_repr_error_class))
+    .or_else(|| e.downcast_ref::<HttpError>().map(get_http_error))
+    .or_else(|| e.downcast_ref::<HttpNextError>().map(get_http_next_error))
+    .or_else(|| {
+      e.downcast_ref::<WebSocketUpgradeError>()
+        .map(get_websocket_upgrade_error)
+    })
     .or_else(|| e.downcast_ref::<FsOpsError>().map(get_fs_error))
     .or_else(|| {
       e.downcast_ref::<DlfcnError>()
