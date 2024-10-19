@@ -13,6 +13,7 @@ use std::cell::RefCell;
 use std::rc::Rc;
 
 use self::sync_fetch::op_worker_sync_fetch;
+pub use sync_fetch::SyncFetchError;
 
 deno_core::extension!(
   deno_web_worker,

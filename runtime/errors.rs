@@ -15,6 +15,7 @@ use crate::ops::os::OsError;
 use crate::ops::process::ProcessError;
 use crate::ops::signal::SignalError;
 use crate::ops::tty::TtyError;
+use crate::ops::web_worker::SyncFetchError;
 use crate::ops::worker_host::CreateWorkerError;
 use deno_broadcast_channel::BroadcastChannelError;
 use deno_cache::CacheError;
@@ -956,6 +957,7 @@ fn get_websocket_upgrade_error(error: &WebSocketUpgradeError) -> &'static str {
     WebSocketUpgradeError::UpgradeBufferAlreadyCompleted => "Http",
   }
 }
+
 fn get_os_error(error: &OsError) -> &'static str {
   match error {
     OsError::Permission(e) => get_error_class_name(e).unwrap_or("Error"),
@@ -965,6 +967,22 @@ fn get_os_error(error: &OsError) -> &'static str {
     OsError::EnvInvalidValue(_) => "TypeError",
     OsError::Io(e) => get_io_error_class(e),
     OsError::Var(e) => get_env_var_error_class(e),
+  }
+}
+
+fn get_sync_fetch_error(error: &SyncFetchError) -> &'static str {
+  match error {
+    SyncFetchError::BlobUrlsNotSupportedInContext => "TypeError",
+    SyncFetchError::Io(e) => get_io_error_class(e),
+    SyncFetchError::InvalidScriptUrl => "TypeError",
+    SyncFetchError::InvalidStatusCode(_) => "TypeError",
+    SyncFetchError::ClassicScriptSchemeUnsupportedInWorkers(_) => "TypeError",
+    SyncFetchError::InvalidUri(_) => "Error",
+    SyncFetchError::InvalidMimeType(_) => "DOMExceptionNetworkError",
+    SyncFetchError::MissingMimeType => "DOMExceptionNetworkError",
+    SyncFetchError::Fetch(e) => get_fetch_error(e),
+    SyncFetchError::Join(_) => "Error",
+    SyncFetchError::Other(e) => get_error_class_name(e).unwrap_or("Error"),
   }
 }
 
@@ -983,6 +1001,7 @@ pub fn get_error_class_name(e: &AnyError) -> Option<&'static str> {
     .or_else(|| e.downcast_ref::<HttpStartError>().map(get_http_start_error))
     .or_else(|| e.downcast_ref::<ProcessError>().map(get_process_error))
     .or_else(|| e.downcast_ref::<OsError>().map(get_os_error))
+    .or_else(|| e.downcast_ref::<SyncFetchError>().map(get_sync_fetch_error))
     .or_else(|| {
       e.downcast_ref::<CompressionError>()
         .map(get_web_compression_error_class)
