@@ -98,6 +98,15 @@ struct WatcherState {
   watcher: RecommendedWatcher,
 }
 
+fn starts_with_canonicalized(path: &PathBuf, prefix: &str) -> bool {
+  let path = std::fs::canonicalize(path).ok();
+  let prefix = std::fs::canonicalize(prefix).ok();
+  match (path, prefix) {
+    (Some(path), Some(prefix)) => path.starts_with(prefix),
+    _ => false,
+  }
+}
+
 fn start_watcher(
   state: &mut OpState,
   paths: Vec<String>,
@@ -121,10 +130,10 @@ fn start_watcher(
         // Only send the event if the path matches one of the paths that the user is watching
         if let Ok(event) = &res2 {
           if paths.iter().any(|path| {
-            event
-              .paths
-              .iter()
-              .any(|event_path| event_path.starts_with(path))
+            event.paths.iter().any(|event_path| {
+              same_file::is_same_file(event_path, path).unwrap_or(false)
+                || starts_with_canonicalized(event_path, path)
+            })
           }) {
             let _ = sender.try_send(Ok(event.clone()));
           }
