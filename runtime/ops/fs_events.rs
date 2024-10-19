@@ -98,7 +98,8 @@ struct WatcherState {
   watcher: RecommendedWatcher,
 }
 
-fn starts_with_canonicalized(path: &PathBuf, prefix: &str) -> bool {
+fn starts_with_canonicalized(path: &Path, prefix: &str) -> bool {
+  #[allow(clippy::disallowed_methods)]
   let path = path.canonicalize().ok();
   #[allow(clippy::disallowed_methods)]
   let prefix = std::fs::canonicalize(prefix).ok();
