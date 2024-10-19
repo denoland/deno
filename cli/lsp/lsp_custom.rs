@@ -46,6 +46,30 @@ pub struct DiagnosticBatchNotificationParams {
   pub messages_len: usize,
 }
 
+#[derive(Debug, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct DenoConfigurationData {
+  pub scope_uri: lsp::Uri,
+  pub workspace_root_scope_uri: Option<lsp::Uri>,
+  pub deno_json: Option<lsp::TextDocumentIdentifier>,
+  pub package_json: Option<lsp::TextDocumentIdentifier>,
+}
+
+#[derive(Debug, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct DidRefreshDenoConfigurationTreeNotificationParams {
+  pub data: Vec<DenoConfigurationData>,
+}
+
+pub enum DidRefreshDenoConfigurationTreeNotification {}
+
+impl lsp::notification::Notification
+  for DidRefreshDenoConfigurationTreeNotification
+{
+  type Params = DidRefreshDenoConfigurationTreeNotificationParams;
+  const METHOD: &'static str = "deno/didRefreshDenoConfigurationTree";
+}
+
 #[derive(Debug, Eq, Hash, PartialEq, Copy, Clone, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub enum DenoConfigurationChangeType {
@@ -88,13 +112,15 @@ pub struct DidChangeDenoConfigurationNotificationParams {
   pub changes: Vec<DenoConfigurationChangeEvent>,
 }
 
+// TODO(nayeemrmn): This is being replaced by
+// `DidRefreshDenoConfigurationTreeNotification` for Deno > v2.0.0. Remove it
+// soon.
 pub enum DidChangeDenoConfigurationNotification {}
 
 impl lsp::notification::Notification
   for DidChangeDenoConfigurationNotification
 {
   type Params = DidChangeDenoConfigurationNotificationParams;
-
   const METHOD: &'static str = "deno/didChangeDenoConfiguration";
 }
 
@@ -102,7 +128,6 @@ pub enum DidUpgradeCheckNotification {}
 
 impl lsp::notification::Notification for DidUpgradeCheckNotification {
   type Params = DidUpgradeCheckNotificationParams;
-
   const METHOD: &'static str = "deno/didUpgradeCheck";
 }
 
@@ -125,6 +150,5 @@ pub enum DiagnosticBatchNotification {}
 
 impl lsp::notification::Notification for DiagnosticBatchNotification {
   type Params = DiagnosticBatchNotificationParams;
-
   const METHOD: &'static str = "deno/internalTestDiagnosticBatch";
 }

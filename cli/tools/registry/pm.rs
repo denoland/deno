@@ -617,9 +617,11 @@ async fn find_package_and_select_version_for_req(
         });
       };
       let range_symbol = if req.version_req.version_text().starts_with('~') {
-        '~'
+        "~"
+      } else if req.version_req.version_text() == nv.version.to_string() {
+        ""
       } else {
-        '^'
+        "^"
       };
       Ok(PackageAndVersion::Selected(SelectedPackage {
         import_name: add_package_req.alias,
@@ -637,11 +639,15 @@ async fn find_package_and_select_version_for_req(
           package_req: req,
         });
       };
+
       let range_symbol = if req.version_req.version_text().starts_with('~') {
-        '~'
+        "~"
+      } else if req.version_req.version_text() == nv.version.to_string() {
+        ""
       } else {
-        '^'
+        "^"
       };
+
       Ok(PackageAndVersion::Selected(SelectedPackage {
         import_name: add_package_req.alias,
         package_name: npm_prefixed_name,

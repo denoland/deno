@@ -80,6 +80,10 @@ pub fn set_prompt_callbacks(
   *MAYBE_AFTER_PROMPT_CALLBACK.lock() = Some(after_callback);
 }
 
+pub fn set_prompter(prompter: Box<dyn PermissionPrompter>) {
+  *PERMISSION_PROMPTER.lock() = prompter;
+}
+
 pub type PromptCallback = Box<dyn FnMut() + Send + Sync>;
 
 pub trait PermissionPrompter: Send + Sync {
@@ -475,9 +479,5 @@ pub mod tests {
     pub fn set(&self, value: bool) {
       STUB_PROMPT_VALUE.store(value, Ordering::SeqCst);
     }
-  }
-
-  pub fn set_prompter(prompter: Box<dyn PermissionPrompter>) {
-    *PERMISSION_PROMPTER.lock() = prompter;
   }
 }

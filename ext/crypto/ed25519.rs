@@ -2,8 +2,6 @@
 
 use base64::prelude::BASE64_URL_SAFE_NO_PAD;
 use base64::Engine;
-use deno_core::error::custom_error;
-use deno_core::error::AnyError;
 use deno_core::op2;
 use deno_core::ToJsBuffer;
 use elliptic_curve::pkcs8::PrivateKeyInfo;
@@ -14,6 +12,16 @@ use ring::signature::KeyPair;
 use spki::der::asn1::BitString;
 use spki::der::Decode;
 use spki::der::Encode;
+
+#[derive(Debug, thiserror::Error)]
+pub enum Ed25519Error {
+  #[error("Failed to export key")]
+  FailedExport,
+  #[error(transparent)]
+  Der(#[from] rsa::pkcs1::der::Error),
+  #[error(transparent)]
+  KeyRejected(#[from] ring::error::KeyRejected),
+}
 
 #[op2(fast)]
 pub fn op_crypto_generate_ed25519_keypair(
@@ -116,7 +124,7 @@ pub fn op_crypto_import_pkcs8_ed25519(
 #[serde]
 pub fn op_crypto_export_spki_ed25519(
   #[buffer] pubkey: &[u8],
-) -> Result<ToJsBuffer, AnyError> {
+) -> Result<ToJsBuffer, Ed25519Error> {
   let key_info = spki::SubjectPublicKeyInfo {
     algorithm: spki::AlgorithmIdentifierOwned {
       // id-Ed25519
@@ -128,9 +136,7 @@ pub fn op_crypto_export_spki_ed25519(
   Ok(
     key_info
       .to_der()
-      .map_err(|_| {
-        custom_error("DOMExceptionOperationError", "Failed to export key")
-      })?
+      .map_err(|_| Ed25519Error::FailedExport)?
       .into(),
   )
 }
@@ -139,7 +145,7 @@ pub fn op_crypto_export_spki_ed25519(
 #[serde]
 pub fn op_crypto_export_pkcs8_ed25519(
   #[buffer] pkey: &[u8],
-) -> Result<ToJsBuffer, AnyError> {
+) -> Result<ToJsBuffer, Ed25519Error> {
   use rsa::pkcs1::der::Encode;
 
   // This should probably use OneAsymmetricKey instead
@@ -164,7 +170,7 @@ pub fn op_crypto_export_pkcs8_ed25519(
 #[string]
 pub fn op_crypto_jwk_x_ed25519(
   #[buffer] pkey: &[u8],
-) -> Result<String, AnyError> {
+) -> Result<String, Ed25519Error> {
   let pair = Ed25519KeyPair::from_seed_unchecked(pkey)?;
   Ok(BASE64_URL_SAFE_NO_PAD.encode(pair.public_key().as_ref()))
 }
