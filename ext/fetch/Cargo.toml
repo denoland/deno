@@ -2,7 +2,7 @@
 
 [package]
 name = "deno_fetch"
-version = "0.195.0"
+version = "0.197.0"
 authors.workspace = true
 edition.workspace = true
 license.workspace = true
@@ -32,6 +32,7 @@ percent-encoding.workspace = true
 rustls-webpki.workspace = true
 serde.workspace = true
 serde_json.workspace = true
+thiserror.workspace = true
 tokio.workspace = true
 tokio-rustls.workspace = true
 tokio-socks.workspace = true

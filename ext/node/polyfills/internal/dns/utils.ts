@@ -416,20 +416,10 @@ export function emitInvalidHostnameWarning(hostname: string) {
   );
 }
 
-let dnsOrder = getOptionValue("--dns-result-order") || "ipv4first";
+let dnsOrder = getOptionValue("--dns-result-order") || "verbatim";
 
 export function getDefaultVerbatim() {
-  switch (dnsOrder) {
-    case "verbatim": {
-      return true;
-    }
-    case "ipv4first": {
-      return false;
-    }
-    default: {
-      return false;
-    }
-  }
+  return dnsOrder !== "ipv4first";
 }
 
 /**

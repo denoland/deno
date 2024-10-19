@@ -1,8 +1,8 @@
 [UNORDERED_START]
-Download http://localhost:4260/@denotest/conditional-exports
+Download http://localhost:4260/@denotest%2fconditional-exports
 Download http://localhost:4260/supports-esm
 Download http://localhost:4260/has-package-exports
-Download http://localhost:4260/@ljharb/has-package-exports-patterns
+Download http://localhost:4260/@ljharb%2fhas-package-exports-patterns
 [UNORDERED_END]
 [UNORDERED_START]
 Download http://localhost:4260/@denotest/conditional-exports/1.0.0.tgz

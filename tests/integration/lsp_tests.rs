@@ -1050,6 +1050,191 @@ fn lsp_workspace_enable_paths_no_workspace_configuration() {
 }
 
 #[test]
+fn lsp_did_refresh_deno_configuration_tree_notification() {
+  let context = TestContextBuilder::new().use_temp_cwd().build();
+  let temp_dir = context.temp_dir();
+  temp_dir.create_dir_all("workspace/member1");
+  temp_dir.create_dir_all("workspace/member2");
+  temp_dir.create_dir_all("non_workspace1");
+  temp_dir.create_dir_all("non_workspace2");
+  temp_dir.write(
+    "workspace/deno.json",
+    json!({
+      "workspace": [
+        "member1",
+        "member2",
+      ],
+    })
+    .to_string(),
+  );
+  temp_dir.write("workspace/member1/deno.json", json!({}).to_string());
+  temp_dir.write("workspace/member1/package.json", json!({}).to_string());
+  temp_dir.write("workspace/member2/package.json", json!({}).to_string());
+  temp_dir.write("non_workspace1/deno.json", json!({}).to_string());
+  let mut client = context.new_lsp_command().build();
+  client.initialize_default();
+  let res = client
+    .read_notification_with_method::<Value>(
+      "deno/didRefreshDenoConfigurationTree",
+    )
+    .unwrap();
+  assert_eq!(
+    res,
+    json!({
+      "data": [
+        {
+          "scopeUri": temp_dir.url().join("non_workspace1/").unwrap(),
+          "workspaceRootScopeUri": null,
+          "denoJson": {
+            "uri": temp_dir.url().join("non_workspace1/deno.json").unwrap(),
+          },
+          "packageJson": null,
+        },
+        {
+          "scopeUri": temp_dir.url().join("workspace/").unwrap(),
+          "workspaceRootScopeUri": null,
+          "denoJson": {
+            "uri": temp_dir.url().join("workspace/deno.json").unwrap(),
+          },
+          "packageJson": null,
+        },
+        {
+          "scopeUri": temp_dir.url().join("workspace/member1/").unwrap(),
+          "workspaceRootScopeUri": temp_dir.url().join("workspace/").unwrap(),
+          "denoJson": {
+            "uri": temp_dir.url().join("workspace/member1/deno.json").unwrap(),
+          },
+          "packageJson": {
+            "uri": temp_dir.url().join("workspace/member1/package.json").unwrap(),
+          },
+        },
+        {
+          "scopeUri": temp_dir.url().join("workspace/member2/").unwrap(),
+          "workspaceRootScopeUri": temp_dir.url().join("workspace/").unwrap(),
+          "denoJson": null,
+          "packageJson": {
+            "uri": temp_dir.url().join("workspace/member2/package.json").unwrap(),
+          },
+        },
+      ],
+    }),
+  );
+  temp_dir.write("non_workspace2/deno.json", json!({}).to_string());
+  client.did_change_watched_files(json!({
+    "changes": [{
+      "uri": temp_dir.url().join("non_workspace2/deno.json").unwrap(),
+      "type": 1,
+    }],
+  }));
+  let res = client
+    .read_notification_with_method::<Value>(
+      "deno/didRefreshDenoConfigurationTree",
+    )
+    .unwrap();
+  assert_eq!(
+    res,
+    json!({
+      "data": [
+        {
+          "scopeUri": temp_dir.url().join("non_workspace1/").unwrap(),
+          "workspaceRootScopeUri": null,
+          "denoJson": {
+            "uri": temp_dir.url().join("non_workspace1/deno.json").unwrap(),
+          },
+          "packageJson": null,
+        },
+        {
+          "scopeUri": temp_dir.url().join("non_workspace2/").unwrap(),
+          "workspaceRootScopeUri": null,
+          "denoJson": {
+            "uri": temp_dir.url().join("non_workspace2/deno.json").unwrap(),
+          },
+          "packageJson": null,
+        },
+        {
+          "scopeUri": temp_dir.url().join("workspace/").unwrap(),
+          "workspaceRootScopeUri": null,
+          "denoJson": {
+            "uri": temp_dir.url().join("workspace/deno.json").unwrap(),
+          },
+          "packageJson": null,
+        },
+        {
+          "scopeUri": temp_dir.url().join("workspace/member1/").unwrap(),
+          "workspaceRootScopeUri": temp_dir.url().join("workspace/").unwrap(),
+          "denoJson": {
+            "uri": temp_dir.url().join("workspace/member1/deno.json").unwrap(),
+          },
+          "packageJson": {
+            "uri": temp_dir.url().join("workspace/member1/package.json").unwrap(),
+          },
+        },
+        {
+          "scopeUri": temp_dir.url().join("workspace/member2/").unwrap(),
+          "workspaceRootScopeUri": temp_dir.url().join("workspace/").unwrap(),
+          "denoJson": null,
+          "packageJson": {
+            "uri": temp_dir.url().join("workspace/member2/package.json").unwrap(),
+          },
+        },
+      ],
+    }),
+  );
+  client.change_configuration(json!({
+    "deno": {
+      "disablePaths": ["non_workspace1"],
+    },
+  }));
+  let res = client
+    .read_notification_with_method::<Value>(
+      "deno/didRefreshDenoConfigurationTree",
+    )
+    .unwrap();
+  assert_eq!(
+    res,
+    json!({
+      "data": [
+        {
+          "scopeUri": temp_dir.url().join("non_workspace2/").unwrap(),
+          "workspaceRootScopeUri": null,
+          "denoJson": {
+            "uri": temp_dir.url().join("non_workspace2/deno.json").unwrap(),
+          },
+          "packageJson": null,
+        },
+        {
+          "scopeUri": temp_dir.url().join("workspace/").unwrap(),
+          "workspaceRootScopeUri": null,
+          "denoJson": {
+            "uri": temp_dir.url().join("workspace/deno.json").unwrap(),
+          },
+          "packageJson": null,
+        },
+        {
+          "scopeUri": temp_dir.url().join("workspace/member1/").unwrap(),
+          "workspaceRootScopeUri": temp_dir.url().join("workspace/").unwrap(),
+          "denoJson": {
+            "uri": temp_dir.url().join("workspace/member1/deno.json").unwrap(),
+          },
+          "packageJson": {
+            "uri": temp_dir.url().join("workspace/member1/package.json").unwrap(),
+          },
+        },
+        {
+          "scopeUri": temp_dir.url().join("workspace/member2/").unwrap(),
+          "workspaceRootScopeUri": temp_dir.url().join("workspace/").unwrap(),
+          "denoJson": null,
+          "packageJson": {
+            "uri": temp_dir.url().join("workspace/member2/package.json").unwrap(),
+          },
+        },
+      ],
+    }),
+  );
+  client.shutdown();
+}
+
+#[test]
 fn lsp_did_change_deno_configuration_notification() {
   let context = TestContextBuilder::new().use_temp_cwd().build();
   let temp_dir = context.temp_dir();
@@ -9403,14 +9588,15 @@ fn lsp_auto_discover_registry() {
       "triggerCharacter": "@"
     }),
   );
-  let (method, res) = client.read_notification();
-  assert_eq!(method, "deno/registryState");
+  let res = client
+    .read_notification_with_method::<Value>("deno/registryState")
+    .unwrap();
   assert_eq!(
     res,
-    Some(json!({
+    json!({
       "origin": "http://localhost:4545",
       "suggestions": true,
-    }))
+    }),
   );
   client.shutdown();
 }
@@ -10117,7 +10303,6 @@ fn lsp_diagnostics_refresh_dependents() {
   assert_eq!(json!(diagnostics.all()), json!([])); // no diagnostics now
 
   client.shutdown();
-  assert_eq!(client.queue_len(), 0);
 }
 
 // Regression test for https://github.com/denoland/deno/issues/10897.

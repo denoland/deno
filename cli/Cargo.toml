@@ -2,7 +2,7 @@
 
 [package]
 name = "deno"
-version = "2.0.0"
+version = "2.0.2"
 authors.workspace = true
 default-run = "deno"
 edition.workspace = true
@@ -38,6 +38,11 @@ path = "./bench/lsp_bench_standalone.rs"
 
 [features]
 default = ["upgrade", "__vendored_zlib_ng"]
+# A feature that enables heap profiling with dhat on Linux.
+# 1. Compile with `cargo build --profile=release-with-debug --features=dhat-heap`
+# 2. Run the executable. It will output a dhat-heap.json file.
+# 3. Open the json file in https://nnethercote.github.io/dh_view/dh_view.html
+dhat-heap = ["dhat"]
 # A feature that enables the upgrade subcommand and the background check for
 # available updates (of deno binary). This is typically disabled for (Linux)
 # distribution packages.
@@ -67,7 +72,7 @@ deno_ast = { workspace = true, features = ["bundler", "cjs", "codegen", "proposa
 deno_cache_dir = { workspace = true }
 deno_config = { version = "=0.37.1", features = ["workspace", "sync"] }
 deno_core = { workspace = true, features = ["include_js_files_for_snapshotting"] }
-deno_doc = { version = "0.153.0", features = ["html"] }
+deno_doc = { version = "0.154.0", default-features = false, features = ["rust", "html", "syntect"] }
 deno_graph = { version = "=0.83.3" }
 deno_lint = { version = "=0.67.0", features = ["docs"] }
 deno_lockfile.workspace = true
@@ -94,10 +99,11 @@ chrono = { workspace = true, features = ["now"] }
 clap = { version = "=4.5.16", features = ["env", "string", "wrap_help", "error-context"] }
 clap_complete = "=4.5.24"
 clap_complete_fig = "=4.5.2"
-color-print = "0.3.5"
+color-print.workspace = true
 console_static_text.workspace = true
 dashmap.workspace = true
 data-encoding.workspace = true
+dhat = { version = "0.3.3", optional = true }
 dissimilar = "=1.0.4"
 dotenvy = "0.15.7"
 dprint-plugin-json = "=0.19.3"
