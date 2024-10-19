@@ -136,7 +136,8 @@ fn op_fs_events_open(
   for path in &args.paths {
     let path = state
       .borrow_mut::<PermissionsContainer>()
-      .check_read(path, "Deno.watchFs()").map_err(FsEventsError::Permission)?;
+      .check_read(path, "Deno.watchFs()")
+      .map_err(FsEventsError::Permission)?;
     watcher.watch(&path, recursive_mode)?;
   }
   let resource = FsEventsResource {
@@ -154,7 +155,11 @@ async fn op_fs_events_poll(
   state: Rc<RefCell<OpState>>,
   #[smi] rid: ResourceId,
 ) -> Result<Option<FsEvent>, FsEventsError> {
-  let resource = state.borrow().resource_table.get::<FsEventsResource>(rid).map_err(FsEventsError::Resource)?;
+  let resource = state
+    .borrow()
+    .resource_table
+    .get::<FsEventsResource>(rid)
+    .map_err(FsEventsError::Resource)?;
   let mut receiver = RcRef::map(&resource, |r| &r.receiver).borrow_mut().await;
   let cancel = RcRef::map(resource, |r| &r.cancel);
   let maybe_result = receiver.recv().or_cancel(cancel).await?;

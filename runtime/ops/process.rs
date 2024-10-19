@@ -32,11 +32,11 @@ use tokio::process::Command;
 #[cfg(windows)]
 use std::os::windows::process::CommandExt;
 
+use crate::ops::signal::SignalError;
 #[cfg(unix)]
 use std::os::unix::prelude::ExitStatusExt;
 #[cfg(unix)]
 use std::os::unix::process::CommandExt;
-use crate::ops::signal::SignalError;
 
 pub const UNSTABLE_FEATURE_NAME: &str = "process";
 
@@ -107,7 +107,8 @@ impl StdioOrRid {
     match &self {
       StdioOrRid::Stdio(val) => Ok(val.as_stdio()),
       StdioOrRid::Rid(rid) => {
-        FileResource::with_file(state, *rid, |file| Ok(file.as_stdio()?)).map_err(ProcessError::Resource)
+        FileResource::with_file(state, *rid, |file| Ok(file.as_stdio()?))
+          .map_err(ProcessError::Resource)
       }
     }
   }
@@ -194,7 +195,8 @@ pub enum ProcessError {
   #[error("Failed to spawn '{command}': {error}")]
   SpawnFailed {
     command: String,
-    #[source] error: Box<ProcessError>,
+    #[source]
+    error: Box<ProcessError>,
   },
   #[error("{0}")]
   Io(#[from] std::io::Error),
@@ -627,14 +629,18 @@ fn compute_run_cmd_and_check_permissions(
   state: &mut OpState,
   api_name: &str,
 ) -> Result<(PathBuf, RunEnv), ProcessError> {
-  let run_env = compute_run_env(arg_cwd, arg_envs, arg_clear_env).map_err(|e| ProcessError::SpawnFailed {
-    command: arg_cmd.to_string(),
-    error: Box::new(e),
-  })?;
-  let cmd = resolve_cmd(arg_cmd, &run_env).map_err(|e| ProcessError::SpawnFailed {
-    command: arg_cmd.to_string(),
-    error: Box::new(e),
-  })?;
+  let run_env =
+    compute_run_env(arg_cwd, arg_envs, arg_clear_env).map_err(|e| {
+      ProcessError::SpawnFailed {
+        command: arg_cmd.to_string(),
+        error: Box::new(e),
+      }
+    })?;
+  let cmd =
+    resolve_cmd(arg_cmd, &run_env).map_err(|e| ProcessError::SpawnFailed {
+      command: arg_cmd.to_string(),
+      error: Box::new(e),
+    })?;
   check_run_permission(
     state,
     &RunQueryDescriptor::Path {
@@ -643,7 +649,8 @@ fn compute_run_cmd_and_check_permissions(
     },
     &run_env,
     api_name,
-  ).map_err(ProcessError::Permission)?;
+  )
+  .map_err(ProcessError::Permission)?;
   Ok((cmd, run_env))
 }
 
@@ -663,7 +670,8 @@ fn compute_run_env(
   arg_clear_env: bool,
 ) -> Result<RunEnv, ProcessError> {
   #[allow(clippy::disallowed_methods)]
-  let cwd = std::env::current_dir().map_err(ProcessError::FailedResolvingCwd)?;
+  let cwd =
+    std::env::current_dir().map_err(ProcessError::FailedResolvingCwd)?;
   let cwd = arg_cwd
     .map(|cwd_arg| resolve_path(cwd_arg, &cwd))
     .unwrap_or(cwd);
@@ -805,8 +813,15 @@ async fn op_spawn_wait(
   let resource = state
     .borrow_mut()
     .resource_table
-    .get::<ChildResource>(rid).map_err(ProcessError::Resource)?;
-  let result = resource.0.try_borrow_mut().map_err(ProcessError::BorrowMut)?.wait().await?.try_into()?;
+    .get::<ChildResource>(rid)
+    .map_err(ProcessError::Resource)?;
+  let result = resource
+    .0
+    .try_borrow_mut()
+    .map_err(ProcessError::BorrowMut)?
+    .wait()
+    .await?
+    .try_into()?;
   if let Ok(resource) = state.borrow_mut().resource_table.take_any(rid) {
     resource.close();
   }
@@ -823,11 +838,9 @@ fn op_spawn_sync(
   let stderr = matches!(args.stdio.stderr, StdioOrRid::Stdio(Stdio::Piped));
   let (mut command, _, _, _) =
     create_command(state, args, "Deno.Command().outputSync()")?;
-  let output = command.output().map_err(|e| {
-    ProcessError::SpawnFailed {
-      command: command.get_program().to_string_lossy().to_string(),
-      error: Box::new(e.into()),
-    }
+  let output = command.output().map_err(|e| ProcessError::SpawnFailed {
+    command: command.get_program().to_string_lossy().to_string(),
+    error: Box::new(e.into()),
   })?;
 
   Ok(SpawnOutput {
@@ -1022,7 +1035,8 @@ mod deprecated {
     let resource = state
       .borrow_mut()
       .resource_table
-      .get::<ChildResource>(rid).map_err(ProcessError::Resource)?;
+      .get::<ChildResource>(rid)
+      .map_err(ProcessError::Resource)?;
     let mut child = resource.borrow_mut().await;
     let run_status = child.wait().await?;
     let code = run_status.code();
@@ -1050,8 +1064,10 @@ mod deprecated {
     use nix::sys::signal::kill as unix_kill;
     use nix::sys::signal::Signal;
     use nix::unistd::Pid;
-    let sig = Signal::try_from(signo).map_err(|e| ProcessError::Io(e.into()))?;
-    unix_kill(Pid::from_raw(pid), Some(sig)).map_err(|e| ProcessError::Io(e.into()))
+    let sig =
+      Signal::try_from(signo).map_err(|e| ProcessError::Io(e.into()))?;
+    unix_kill(Pid::from_raw(pid), Some(sig))
+      .map_err(|e| ProcessError::Io(e.into()))
   }
 
   #[cfg(not(unix))]
@@ -1108,7 +1124,8 @@ mod deprecated {
   ) -> Result<(), ProcessError> {
     state
       .borrow_mut::<PermissionsContainer>()
-      .check_run_all(&api_name).map_err(ProcessError::Permission)?;
+      .check_run_all(&api_name)
+      .map_err(ProcessError::Permission)?;
     kill(pid, &signal)?;
     Ok(())
   }

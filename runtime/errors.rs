@@ -9,6 +9,10 @@
 //!   Diagnostics are compile-time type errors, whereas JsErrors are runtime
 //!   exceptions.
 
+use crate::ops::fs_events::FsEventsError;
+use crate::ops::http::HttpStartError;
+use crate::ops::os::OsError;
+use crate::ops::process::ProcessError;
 use crate::ops::signal::SignalError;
 use crate::ops::tty::TtyError;
 use crate::ops::worker_host::CreateWorkerError;
@@ -57,9 +61,6 @@ use std::env;
 use std::error::Error;
 use std::io;
 use std::sync::Arc;
-use crate::ops::fs_events::FsEventsError;
-use crate::ops::http::HttpStartError;
-use crate::ops::process::ProcessError;
 
 fn get_dlopen_error_class(error: &dlopen2::Error) -> &'static str {
   use dlopen2::Error::*;
@@ -863,8 +864,7 @@ fn get_signal_error(error: &SignalError) -> &'static str {
 
 fn get_fs_events_error(error: &FsEventsError) -> &'static str {
   match error {
-    FsEventsError::Resource(e) |
-    FsEventsError::Permission(e) => {
+    FsEventsError::Resource(e) | FsEventsError::Permission(e) => {
       get_error_class_name(e).unwrap_or("Error")
     }
     FsEventsError::Notify(e) => get_notify_error_class(e),
@@ -890,9 +890,12 @@ fn get_http_start_error(error: &HttpStartError) -> &'static str {
 fn get_process_error(error: &ProcessError) -> &'static str {
   match error {
     ProcessError::SpawnFailed { error, .. } => get_process_error(error),
-    ProcessError::FailedResolvingCwd(e) | ProcessError::Io(e) => get_io_error_class(e),
-    ProcessError::Permission(e) |
-    ProcessError::Resource(e) => get_error_class_name(e).unwrap_or("Error"),
+    ProcessError::FailedResolvingCwd(e) | ProcessError::Io(e) => {
+      get_io_error_class(e)
+    }
+    ProcessError::Permission(e) | ProcessError::Resource(e) => {
+      get_error_class_name(e).unwrap_or("Error")
+    }
     ProcessError::BorrowMut(_) => "Error",
     ProcessError::Which(_) => "Error",
     ProcessError::ChildProcessAlreadyTerminated => "TypeError",
@@ -953,6 +956,17 @@ fn get_websocket_upgrade_error(error: &WebSocketUpgradeError) -> &'static str {
     WebSocketUpgradeError::UpgradeBufferAlreadyCompleted => "Http",
   }
 }
+fn get_os_error(error: &OsError) -> &'static str {
+  match error {
+    OsError::Permission(e) => get_error_class_name(e).unwrap_or("Error"),
+    OsError::InvalidUtf8(_) => "InvalidData",
+    OsError::EnvEmptyKey => "TypeError",
+    OsError::EnvInvalidKey(_) => "TypeError",
+    OsError::EnvInvalidValue(_) => "TypeError",
+    OsError::Io(e) => get_io_error_class(e),
+    OsError::Var(e) => get_env_var_error_class(e),
+  }
+}
 
 pub fn get_error_class_name(e: &AnyError) -> Option<&'static str> {
   deno_core::error::get_custom_error_class(e)
@@ -967,6 +981,8 @@ pub fn get_error_class_name(e: &AnyError) -> Option<&'static str> {
     .or_else(|| e.downcast_ref::<SignalError>().map(get_signal_error))
     .or_else(|| e.downcast_ref::<FsEventsError>().map(get_fs_events_error))
     .or_else(|| e.downcast_ref::<HttpStartError>().map(get_http_start_error))
+    .or_else(|| e.downcast_ref::<ProcessError>().map(get_process_error))
+    .or_else(|| e.downcast_ref::<OsError>().map(get_os_error))
     .or_else(|| {
       e.downcast_ref::<CompressionError>()
         .map(get_web_compression_error_class)

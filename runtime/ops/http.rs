@@ -80,7 +80,12 @@ fn op_http_start(
     let (read_half, write_half) = resource.into_inner();
     let unix_stream = read_half.reunite(write_half)?;
     let addr = unix_stream.local_addr()?;
-    return Ok(http_create_conn_resource(state, unix_stream, addr, "http+unix"));
+    return Ok(http_create_conn_resource(
+      state,
+      unix_stream,
+      addr,
+      "http+unix",
+    ));
   }
 
   Err(HttpStartError::Other(deno_core::error::bad_resource_id()))
