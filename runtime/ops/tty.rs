@@ -258,6 +258,7 @@ fn op_set_raw(
     let tty_mode_store = state.borrow::<TtyModeStore>().clone();
     let previous_mode = tty_mode_store.get(rid);
 
+    // SAFETY: Nix crate requires value to implement the AsFd trait
     let raw_fd = unsafe { std::os::fd::BorrowedFd::borrow_raw(handle_or_fd) };
 
     if is_raw {

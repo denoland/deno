@@ -297,6 +297,7 @@ fn setup_pty(fd: i32) {
   use nix::sys::termios::tcsetattr;
   use nix::sys::termios::SetArg;
 
+  // SAFETY: Nix crate requires value to implement the AsFd trait
   let as_fd = unsafe { std::os::fd::BorrowedFd::borrow_raw(fd) };
 
   let mut term = tcgetattr(as_fd).unwrap();
