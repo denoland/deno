@@ -25,6 +25,7 @@ serde = { workspace = true, features = ["derive"] }
 tokio = { workspace = true, features = ["full"] }
 wgpu-types = { workspace = true, features = ["serde"] }
 raw-window-handle = { workspace = true }
+thiserror.workspace = true
 
 [target.'cfg(not(target_arch = "wasm32"))'.dependencies.wgpu-core]
 workspace = true
