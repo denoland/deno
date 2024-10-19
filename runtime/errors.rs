@@ -835,6 +835,7 @@ fn get_tty_error(error: &TtyError) -> &'static str {
       get_error_class_name(e).unwrap_or("Error")
     }
     TtyError::Io(e) => get_io_error_class(e),
+    TtyError::Errno(e) => get_io_error_class(&(*e).into()),
   }
 }
 
