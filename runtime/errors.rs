@@ -189,6 +189,89 @@ pub fn get_nix_error_class(error: &nix::Error) -> &'static str {
   }
 }
 
+fn get_webgpu_error_class(e: &deno_webgpu::InitError) -> &'static str {
+  match e {
+    deno_webgpu::InitError::Resource(e) => {
+      get_error_class_name(e).unwrap_or("Error")
+    }
+    deno_webgpu::InitError::InvalidAdapter(_) => "Error",
+    deno_webgpu::InitError::RequestDevice(_) => "DOMExceptionOperationError",
+    deno_webgpu::InitError::InvalidDevice(_) => "Error",
+  }
+}
+
+fn get_webgpu_buffer_error_class(
+  e: &deno_webgpu::buffer::BufferError,
+) -> &'static str {
+  match e {
+    deno_webgpu::buffer::BufferError::Resource(e) => {
+      get_error_class_name(e).unwrap_or("Error")
+    }
+    deno_webgpu::buffer::BufferError::InvalidUsage => "TypeError",
+    deno_webgpu::buffer::BufferError::Access(_) => "DOMExceptionOperationError",
+  }
+}
+
+fn get_webgpu_bundle_error_class(
+  e: &deno_webgpu::bundle::BundleError,
+) -> &'static str {
+  match e {
+    deno_webgpu::bundle::BundleError::Resource(e) => {
+      get_error_class_name(e).unwrap_or("Error")
+    }
+    deno_webgpu::bundle::BundleError::InvalidSize => "TypeError",
+  }
+}
+
+fn get_webgpu_byow_error_class(
+  e: &deno_webgpu::byow::ByowError,
+) -> &'static str {
+  match e {
+    deno_webgpu::byow::ByowError::WebGPUNotInitiated => "TypeError",
+    deno_webgpu::byow::ByowError::InvalidParameters => "TypeError",
+    deno_webgpu::byow::ByowError::CreateSurface(_) => "Error",
+    deno_webgpu::byow::ByowError::InvalidSystem => "TypeError",
+    #[cfg(any(
+      target_os = "windows",
+      target_os = "linux",
+      target_os = "freebsd",
+      target_os = "openbsd"
+    ))]
+    deno_webgpu::byow::ByowError::NullWindow => "TypeError",
+    #[cfg(any(
+      target_os = "linux",
+      target_os = "freebsd",
+      target_os = "openbsd"
+    ))]
+    deno_webgpu::byow::ByowError::NullDisplay => "TypeError",
+    #[cfg(target_os = "macos")]
+    deno_webgpu::byow::ByowError::NSViewDisplay => "TypeError",
+  }
+}
+
+fn get_webgpu_render_pass_error_class(
+  e: &deno_webgpu::render_pass::RenderPassError,
+) -> &'static str {
+  match e {
+    deno_webgpu::render_pass::RenderPassError::Resource(e) => {
+      get_error_class_name(e).unwrap_or("Error")
+    }
+    deno_webgpu::render_pass::RenderPassError::InvalidSize => "TypeError",
+  }
+}
+
+fn get_webgpu_surface_error_class(
+  e: &deno_webgpu::surface::SurfaceError,
+) -> &'static str {
+  match e {
+    deno_webgpu::surface::SurfaceError::Resource(e) => {
+      get_error_class_name(e).unwrap_or("Error")
+    }
+    deno_webgpu::surface::SurfaceError::Surface(_) => "Error",
+    deno_webgpu::surface::SurfaceError::InvalidStatus => "Error",
+  }
+}
+
 fn get_crypto_decrypt_error_class(e: &DecryptError) -> &'static str {
   match e {
     DecryptError::General(e) => get_crypto_shared_error_class(e),
@@ -778,7 +861,6 @@ fn get_websocket_upgrade_error(error: &WebSocketUpgradeError) -> &'static str {
 
 pub fn get_error_class_name(e: &AnyError) -> Option<&'static str> {
   deno_core::error::get_custom_error_class(e)
-    .or_else(|| deno_webgpu::error::get_error_class_name(e))
     .or_else(|| e.downcast_ref::<NApiError>().map(get_napi_error_class))
     .or_else(|| e.downcast_ref::<WebError>().map(get_web_error_class))
     .or_else(|| {
@@ -839,6 +921,30 @@ pub fn get_error_class_name(e: &AnyError) -> Option<&'static str> {
     .or_else(|| {
       e.downcast_ref::<BroadcastChannelError>()
         .map(get_broadcast_channel_error)
+    })
+    .or_else(|| {
+      e.downcast_ref::<deno_webgpu::InitError>()
+        .map(get_webgpu_error_class)
+    })
+    .or_else(|| {
+      e.downcast_ref::<deno_webgpu::buffer::BufferError>()
+        .map(get_webgpu_buffer_error_class)
+    })
+    .or_else(|| {
+      e.downcast_ref::<deno_webgpu::bundle::BundleError>()
+        .map(get_webgpu_bundle_error_class)
+    })
+    .or_else(|| {
+      e.downcast_ref::<deno_webgpu::byow::ByowError>()
+        .map(get_webgpu_byow_error_class)
+    })
+    .or_else(|| {
+      e.downcast_ref::<deno_webgpu::render_pass::RenderPassError>()
+        .map(get_webgpu_render_pass_error_class)
+    })
+    .or_else(|| {
+      e.downcast_ref::<deno_webgpu::surface::SurfaceError>()
+        .map(get_webgpu_surface_error_class)
     })
     .or_else(|| {
       e.downcast_ref::<DecryptError>()
