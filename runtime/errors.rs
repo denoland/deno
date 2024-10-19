@@ -47,6 +47,9 @@ use std::env;
 use std::error::Error;
 use std::io;
 use std::sync::Arc;
+use crate::ops::fs_events::FsEventsError;
+use crate::ops::http::HttpStartError;
+use crate::ops::process::ProcessError;
 
 fn get_dlopen_error_class(error: &dlopen2::Error) -> &'static str {
   use dlopen2::Error::*;
@@ -532,6 +535,7 @@ fn get_create_worker_error(error: &CreateWorkerError) -> &'static str {
       get_module_resolution_error_class(e)
     }
     CreateWorkerError::Io(e) => get_io_error_class(e),
+    CreateWorkerError::MessagePort(e) => get_web_message_port_error_class(e),
   }
 }
 
@@ -549,12 +553,14 @@ fn get_readline_error(error: &ReadlineError) -> &'static str {
     ReadlineError::Io(e) => get_io_error_class(e),
     ReadlineError::Eof => "Error",
     ReadlineError::Interrupted => "Error",
-    ReadlineError::Errno(e) => get_io_error_class(e.into()),
+    #[cfg(unix)]
+    ReadlineError::Errno(e) => get_io_error_class(&(*e).into()),
     ReadlineError::WindowResized => "Error",
     #[cfg(windows)]
     ReadlineError::Decode(_) => "Error",
     #[cfg(windows)]
     ReadlineError::SystemError(_) => "Error",
+    _ => "Error",
   }
 }
 
@@ -564,6 +570,46 @@ fn get_signal_error(error: &SignalError) -> &'static str {
     SignalError::InvalidSignalInt(_) => "TypeError",
     SignalError::SignalNotAllowed(_) => "TypeError",
     SignalError::Io(e) => get_io_error_class(e),
+  }
+}
+
+fn get_fs_events_error(error: &FsEventsError) -> &'static str {
+  match error {
+    FsEventsError::Resource(e) |
+    FsEventsError::Permission(e) => {
+      get_error_class_name(e).unwrap_or("Error")
+    }
+    FsEventsError::Notify(e) => get_notify_error_class(e),
+    FsEventsError::Canceled(e) => {
+      let io_err: io::Error = e.to_owned().into();
+      get_io_error_class(&io_err)
+    }
+  }
+}
+
+fn get_http_start_error(error: &HttpStartError) -> &'static str {
+  match error {
+    HttpStartError::TcpStreamInUse => "Busy",
+    HttpStartError::TlsStreamInUse => "Busy",
+    HttpStartError::UnixSocketInUse => "Busy",
+    HttpStartError::ReuniteTcp(_) => "Error",
+    HttpStartError::ReuniteUnix(_) => "Error",
+    HttpStartError::Io(e) => get_io_error_class(e),
+    HttpStartError::Other(e) => get_error_class_name(e).unwrap_or("Error"),
+  }
+}
+
+fn get_process_error(error: &ProcessError) -> &'static str {
+  match error {
+    ProcessError::SpawnFailed { error, .. } => get_process_error(error),
+    ProcessError::FailedResolvingCwd(e) | ProcessError::Io(e) => get_io_error_class(e),
+    ProcessError::Permission(e) |
+    ProcessError::Resource(e) => get_error_class_name(e).unwrap_or("Error"),
+    ProcessError::BorrowMut(_) => "Error",
+    ProcessError::Which(_) => "Error",
+    ProcessError::ChildProcessAlreadyTerminated => "TypeError",
+    ProcessError::Signal(e) => get_signal_error(e),
+    ProcessError::MissingCmd => "Error",
   }
 }
 
@@ -579,6 +625,8 @@ pub fn get_error_class_name(e: &AnyError) -> Option<&'static str> {
     .or_else(|| e.downcast_ref::<TtyError>().map(get_tty_error))
     .or_else(|| e.downcast_ref::<ReadlineError>().map(get_readline_error))
     .or_else(|| e.downcast_ref::<SignalError>().map(get_signal_error))
+    .or_else(|| e.downcast_ref::<FsEventsError>().map(get_fs_events_error))
+    .or_else(|| e.downcast_ref::<HttpStartError>().map(get_http_start_error))
     .or_else(|| {
       e.downcast_ref::<CompressionError>()
         .map(get_web_compression_error_class)

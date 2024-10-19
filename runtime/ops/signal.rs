@@ -195,7 +195,7 @@ macro_rules! signal_dict {
       }
     }
 
-    pub fn signal_int_to_str(s: libc::c_int) -> Result<&'static str, AnyError> {
+    pub fn signal_int_to_str(s: libc::c_int) -> Result<&'static str, SignalError> {
       match s {
         $($number => Ok(first_literal!($($name),+)),)*
         _ => Err(SignalError::InvalidSignalInt(s)),

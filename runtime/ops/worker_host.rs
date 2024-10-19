@@ -126,6 +126,8 @@ pub enum CreateWorkerError {
   Permission(deno_core::error::AnyError),
   #[error(transparent)]
   ModuleResolution(#[from] deno_core::ModuleResolutionError),
+  #[error(transparent)]
+  MessagePort(#[from] MessagePortError),
   #[error("{0}")]
   Io(#[from] std::io::Error),
 }
