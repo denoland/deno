@@ -69,6 +69,7 @@ pub enum TtyError {
   Resource(deno_core::error::AnyError),
   #[error("{0}")]
   Io(#[from] std::io::Error),
+  #[cfg(unix)]
   #[error(transparent)]
   Nix(nix::Error),
   #[error(transparent)]

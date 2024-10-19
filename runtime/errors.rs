@@ -884,6 +884,7 @@ fn get_http_start_error(error: &HttpStartError) -> &'static str {
     HttpStartError::TlsStreamInUse => "Busy",
     HttpStartError::UnixSocketInUse => "Busy",
     HttpStartError::ReuniteTcp(_) => "Error",
+    #[cfg(unix)]
     HttpStartError::ReuniteUnix(_) => "Error",
     HttpStartError::Io(e) => get_io_error_class(e),
     HttpStartError::Other(e) => get_error_class_name(e).unwrap_or("Error"),
