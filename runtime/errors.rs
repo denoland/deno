@@ -859,8 +859,80 @@ fn get_websocket_upgrade_error(error: &WebSocketUpgradeError) -> &'static str {
   }
 }
 
+mod node {
+  pub use deno_node::ops::blocklist::BlocklistError;
+  pub use deno_node::ops::fs::FsError;
+  pub use deno_node::ops::idna::IdnaError;
+  use deno_node::ops::ipc::{IpcError};
+  use deno_node::ops::ipc::{IpcJsonStreamError};
+  use deno_node::ops::worker_threads::WorkerThreadsFilenameError;
+  use super::{get_error_class_name, get_serde_json_error_class, get_url_parse_error_class};
+  use super::{get_io_error_class};
+
+  pub fn get_blocklist_error(error: &BlocklistError) -> &'static str {
+    match error {
+      BlocklistError::AddrParse(_) => "Error",
+      BlocklistError::IpNetwork(_) => "Error",
+      BlocklistError::InvalidAddress => "Error",
+      BlocklistError::IpVersionMismatch => "Error",
+    }
+  }
+
+  pub fn get_fs_error(error: &FsError) -> &'static str {
+    match error {
+      FsError::Permission(e) => get_error_class_name(e).unwrap_or("Error"),
+      FsError::Io(e) => get_io_error_class(e),
+      FsError::PathHasNoRoot => "Error",
+      FsError::UnsupportedPlatform => "Error",
+    }
+  }
+
+  pub fn get_idna_error(error: &IdnaError) -> &'static str {
+    match error {
+      IdnaError::InvalidInput => "RangeError",
+      IdnaError::InputTooLong => "Error",
+      IdnaError::IllegalInput => "RangeError",
+    }
+  }
+
+  pub fn get_ipc_json_stream_error(error: &IpcJsonStreamError) -> &'static str {
+    match error {
+      IpcJsonStreamError::Io(e) => get_io_error_class(e),
+      IpcJsonStreamError::SimdJson(_) => "Error",
+    }
+  }
+
+  pub fn get_ipc_error(error: &IpcError) -> &'static str {
+    match error {
+      IpcError::Resource(e) => get_error_class_name(e).unwrap_or("Error"),
+      IpcError::IpcJsonStream(e) => get_ipc_json_stream_error(e),
+      IpcError::Canceled(e) => {
+        let io_err: std::io::Error = e.to_owned().into();
+        get_io_error_class(&io_err)
+      }
+      IpcError::SerdeJson(e) => get_serde_json_error_class(e),
+    }
+  }
+
+  pub fn get_worker_threads_filename_error(error: &WorkerThreadsFilenameError) -> &'static str {
+    match error {
+      WorkerThreadsFilenameError::Permission(e) => get_error_class_name(e).unwrap_or("Error"),
+      WorkerThreadsFilenameError::UrlParse(e) => get_url_parse_error_class(e),
+      WorkerThreadsFilenameError::InvalidRelativeUrl => "Error",
+      WorkerThreadsFilenameError::UrlFromPathString => "Error",
+      WorkerThreadsFilenameError::UrlToPathString => "Error",
+      WorkerThreadsFilenameError::UrlToPath => "Error",
+      WorkerThreadsFilenameError::FileNotFound(_) => "Error",
+      WorkerThreadsFilenameError::NeitherEsmNorCjs => "Error",
+      WorkerThreadsFilenameError::UrlToNodeResolution(_) => {}
+    }
+  }
+}
+
 pub fn get_error_class_name(e: &AnyError) -> Option<&'static str> {
   deno_core::error::get_custom_error_class(e)
+    .or_else(|| e.downcast_ref::<node::BlocklistError>().map(node::get_blocklist_error))
+    .or_else(|| e.downcast_ref::<node::FsError>().map(node::get_fs_error))
     .or_else(|| e.downcast_ref::<NApiError>().map(get_napi_error_class))
     .or_else(|| e.downcast_ref::<WebError>().map(get_web_error_class))
     .or_else(|| {
