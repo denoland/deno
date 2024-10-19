@@ -1067,8 +1067,7 @@ mod deprecated {
     use nix::sys::signal::kill as unix_kill;
     use nix::sys::signal::Signal;
     use nix::unistd::Pid;
-    let sig =
-      Signal::try_from(signo).map_err(ProcessError::Errno)?;
+    let sig = Signal::try_from(signo).map_err(ProcessError::Errno)?;
     unix_kill(Pid::from_raw(pid), Some(sig)).map_err(ProcessError::Errno)
   }
 
