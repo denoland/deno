@@ -214,9 +214,10 @@ pub enum ProcessError {
   Which(which::Error),
   #[error("Child process has already terminated.")]
   ChildProcessAlreadyTerminated,
+  #[error("Invalid pid")]
+  InvalidPid,
   #[error(transparent)]
   Signal(#[from] SignalError),
-
   #[error("Missing cmd")]
   MissingCmd, // only for Deno.run
 }
@@ -1072,7 +1073,7 @@ mod deprecated {
   }
 
   #[cfg(not(unix))]
-  pub fn kill(pid: i32, signal: &str) -> Result<(), AnyError> {
+  pub fn kill(pid: i32, signal: &str) -> Result<(), ProcessError> {
     use std::io::Error;
     use std::io::ErrorKind::NotFound;
     use winapi::shared::minwindef::DWORD;
@@ -1086,9 +1087,9 @@ mod deprecated {
     use winapi::um::winnt::PROCESS_TERMINATE;
 
     if !matches!(signal, "SIGKILL" | "SIGTERM") {
-      Err(type_error(format!("Invalid signal: {signal}")))
+      Err(SignalError::InvalidSignalStr(signal.to_string()).into())
     } else if pid <= 0 {
-      Err(type_error("Invalid pid"))
+      Err(ProcessError::InvalidPid)
     } else {
       let handle =
         // SAFETY: winapi call
@@ -1127,7 +1128,6 @@ mod deprecated {
       .borrow_mut::<PermissionsContainer>()
       .check_run_all(&api_name)
       .map_err(ProcessError::Permission)?;
-    kill(pid, &signal)?;
-    Ok(())
+    kill(pid, &signal)
   }
 }

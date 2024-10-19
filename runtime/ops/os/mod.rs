@@ -80,7 +80,7 @@ pub enum OsError {
   EnvEmptyKey,
   #[error("Key contains invalid characters: {0:?}")]
   EnvInvalidKey(String),
-  #[error("Key contains invalid characters: {0:?}")]
+  #[error("Value contains invalid characters: {0:?}")]
   EnvInvalidValue(String),
   #[error(transparent)]
   Var(#[from] env::VarError),
@@ -122,7 +122,7 @@ fn op_set_env(
     return Err(OsError::EnvInvalidKey(key.to_string()));
   }
   if value.contains('\0') {
-    return Err(OsError::EnvInvalidValue(key.to_string()));
+    return Err(OsError::EnvInvalidValue(value.to_string()));
   }
   env::set_var(key, value);
   Ok(())
