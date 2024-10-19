@@ -902,6 +902,7 @@ fn get_process_error(error: &ProcessError) -> &'static str {
     ProcessError::ChildProcessAlreadyTerminated => "TypeError",
     ProcessError::Signal(e) => get_signal_error(e),
     ProcessError::MissingCmd => "Error",
+    ProcessError::Errno(e) => get_io_error_class(&(*e).into()),
   }
 }
 
