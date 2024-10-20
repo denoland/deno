@@ -221,7 +221,7 @@ quote = "1"
 syn = { version = "2", features = ["full", "extra-traits"] }
 
 # unix
-nix = "=0.26.2"
+nix = "=0.27.1"
 
 # windows deps
 junction = "=0.2.0"
