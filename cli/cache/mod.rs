@@ -14,8 +14,6 @@ use crate::util::fs::atomic_write_file_with_retries;
 use crate::util::fs::atomic_write_file_with_retries_and_fs;
 use crate::util::fs::AtomicWriteFileFsAdapter;
 use crate::util::path::specifier_has_extension;
-use crate::util::text_encoding::arc_str_to_bytes;
-use crate::util::text_encoding::from_utf8_lossy_owned;
 
 use deno_ast::MediaType;
 use deno_core::futures;
@@ -60,7 +58,7 @@ pub use fast_check::FastCheckCache;
 pub use incremental::IncrementalCache;
 pub use module_info::ModuleInfoCache;
 pub use node::NodeAnalysisCache;
-pub use parsed_source::EsmOrCjsChecker;
+pub use parsed_source::CliContentIsEsmAnalyzer;
 pub use parsed_source::LazyGraphSourceParser;
 pub use parsed_source::ParsedSourceCache;
 
@@ -188,7 +186,6 @@ pub struct FetchCacherOptions {
 /// a concise interface to the DENO_DIR when building module graphs.
 pub struct FetchCacher {
   pub file_header_overrides: HashMap<ModuleSpecifier, HashMap<String, String>>,
-  esm_or_cjs_checker: Arc<EsmOrCjsChecker>,
   file_fetcher: Arc<FileFetcher>,
   global_http_cache: Arc<GlobalHttpCache>,
   node_resolver: Arc<CliNodeResolver>,
@@ -202,7 +199,6 @@ pub struct FetchCacher {
 
 impl FetchCacher {
   pub fn new(
-    esm_or_cjs_checker: Arc<EsmOrCjsChecker>,
     file_fetcher: Arc<FileFetcher>,
     global_http_cache: Arc<GlobalHttpCache>,
     node_resolver: Arc<CliNodeResolver>,
@@ -212,7 +208,6 @@ impl FetchCacher {
   ) -> Self {
     Self {
       file_fetcher,
-      esm_or_cjs_checker,
       global_http_cache,
       node_resolver,
       npm_resolver,
@@ -297,42 +292,24 @@ impl Loader for FetchCacher {
       }
 
       if self.unstable_detect_cjs && specifier_has_extension(specifier, "js") {
-        if let Ok(Some(pkg_json)) =
-          self.node_resolver.get_closest_package_json(specifier)
-        {
-          if pkg_json.typ == "commonjs" {
-            if let Ok(path) = specifier.to_file_path() {
-              if let Ok(bytes) = std::fs::read(&path) {
-                let text: Arc<str> = from_utf8_lossy_owned(bytes).into();
-                let is_es_module = match self.esm_or_cjs_checker.is_esm(
-                  specifier,
-                  text.clone(),
-                  MediaType::JavaScript,
-                ) {
-                  Ok(value) => value,
-                  Err(err) => {
-                    return Box::pin(futures::future::ready(Err(err.into())));
-                  }
-                };
-                if !is_es_module {
-                  self.node_resolver.mark_cjs_resolution(specifier.clone());
-                  return Box::pin(futures::future::ready(Ok(Some(
-                    LoadResponse::External {
-                      specifier: specifier.clone(),
-                    },
-                  ))));
-                } else {
-                  return Box::pin(futures::future::ready(Ok(Some(
-                    LoadResponse::Module {
-                      specifier: specifier.clone(),
-                      content: arc_str_to_bytes(text),
-                      maybe_headers: None,
-                    },
-                  ))));
-                }
-              }
+        let resolution =
+          match self.node_resolver.url_to_node_resolution(specifier.clone()) {
+            Ok(resolution) => resolution,
+            Err(err) => {
+              return Box::pin(futures::future::ready(Err(err.into())));
             }
+          };
+        match resolution {
+          node_resolver::NodeResolution::CommonJs(specifier) => {
+            self.node_resolver.mark_cjs_resolution(specifier.clone());
+            return Box::pin(futures::future::ready(Ok(Some(
+              LoadResponse::External {
+                specifier: specifier,
+              },
+            ))));
           }
+          node_resolver::NodeResolution::Esm(_) => {}
+          node_resolver::NodeResolution::BuiltIn(_) => {}
         }
       }
     }

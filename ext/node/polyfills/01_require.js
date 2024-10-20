@@ -12,6 +12,7 @@ import {
   op_require_init_paths,
   op_require_is_deno_dir_package,
   op_require_is_request_relative,
+  op_require_module_format,
   op_require_node_module_paths,
   op_require_package_imports_resolve,
   op_require_path_basename,
@@ -19,7 +20,6 @@ import {
   op_require_path_is_absolute,
   op_require_path_resolve,
   op_require_proxy_path,
-  op_require_read_closest_package_json,
   op_require_read_file,
   op_require_read_package_scope,
   op_require_real_path,
@@ -1068,15 +1068,10 @@ Module._extensions[".js"] = function (module, filename) {
   const content = op_require_read_file(filename);
 
   let format;
-  if (StringPrototypeEndsWith(filename, ".js")) {
-    const pkg = op_require_read_closest_package_json(filename);
-    if (pkg?.type === "module") {
-      format = "module";
-    } else if (pkg?.type === "commonjs") {
-      format = "commonjs";
-    }
-  } else if (StringPrototypeEndsWith(filename, ".cjs")) {
+  if (StringPrototypeEndsWith(filename, ".cjs")) {
     format = "commonjs";
+  } else {
+    format = op_require_module_format(filename);
   }
 
   module._compile(content, filename, format);
