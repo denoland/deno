@@ -35,7 +35,7 @@ lazy-regex.workspace = true
 libc.workspace = true
 lsp-types.workspace = true
 monch.workspace = true
-nix.workspace = true
+nix = { workspace = true, features = ["fs", "term", "signal"] }
 once_cell.workspace = true
 os_pipe.workspace = true
 parking_lot.workspace = true
