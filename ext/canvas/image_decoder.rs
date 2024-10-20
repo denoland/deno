@@ -27,13 +27,18 @@ use image::ImageError;
 // https://source.chromium.org/chromium/chromium/src/+/bdbc054a6cabbef991904b5df9066259505cc686:third_party/blink/renderer/platform/image-decoders/image_decoder.h;l=175-189
 //
 
+/// A trait for converting a reader into an image decoder.  
+/// This trait is used to abstract over the different image decoders and
+/// provide thin helpers to handle errors for the runtime.
 pub(crate) trait ImageDecoderFromReader<'a, R: BufRead + Seek> {
+  /// Create a new image decoder from a reader.
   fn to_decoder(
     reader: R,
     error_fn: fn(ImageError) -> AnyError,
   ) -> Result<Self, AnyError>
   where
     Self: Sized;
+  /// Convert the image decoder into an intermediate image(DynamicImage).
   fn to_intermediate_image(
     self,
     error_fn: fn(ImageError) -> AnyError,
