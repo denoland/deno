@@ -49,8 +49,6 @@ mod impl_ {
 
 #[cfg(windows)]
 mod impl_ {
-  use super::*;
-  use deno_core::error::type_error;
   use winapi::shared::minwindef::DWORD;
   use winapi::shared::minwindef::FALSE;
   use winapi::shared::ntdef::NULL;
