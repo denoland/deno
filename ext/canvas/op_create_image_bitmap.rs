@@ -103,7 +103,7 @@ fn decode_bitmap_data(
                 image_decoding_error,
               )?;
             let orientation = decoder.orientation()?;
-            let icc_profile = decoder.get_icc_profile();
+            let icc_profile = decoder.icc_profile()?;
             (
               decoder.to_intermediate_image(image_decoding_error)?,
               orientation,
@@ -117,7 +117,7 @@ fn decode_bitmap_data(
                 image_decoding_error,
               )?;
             let orientation = decoder.orientation()?;
-            let icc_profile = decoder.get_icc_profile();
+            let icc_profile = decoder.icc_profile()?;
             (
               decoder.to_intermediate_image(image_decoding_error)?,
               orientation,
@@ -131,7 +131,7 @@ fn decode_bitmap_data(
                 image_decoding_error,
               )?;
             let orientation = decoder.orientation()?;
-            let icc_profile = decoder.get_icc_profile();
+            let icc_profile = decoder.icc_profile()?;
             (
               decoder.to_intermediate_image(image_decoding_error)?,
               orientation,
@@ -145,7 +145,7 @@ fn decode_bitmap_data(
                 image_decoding_error,
               )?;
             let orientation = decoder.orientation()?;
-            let icc_profile = decoder.get_icc_profile();
+            let icc_profile = decoder.icc_profile()?;
             (
               decoder.to_intermediate_image(image_decoding_error)?,
               orientation,
@@ -159,7 +159,7 @@ fn decode_bitmap_data(
                 image_decoding_error,
               )?;
             let orientation = decoder.orientation()?;
-            let icc_profile = decoder.get_icc_profile();
+            let icc_profile = decoder.icc_profile()?;
             (
               decoder.to_intermediate_image(image_decoding_error)?,
               orientation,
@@ -173,7 +173,7 @@ fn decode_bitmap_data(
                 image_decoding_error,
               )?;
             let orientation = decoder.orientation()?;
-            let icc_profile = decoder.get_icc_profile();
+            let icc_profile = decoder.icc_profile()?;
             (
               decoder.to_intermediate_image(image_decoding_error)?,
               orientation,

@@ -13,7 +13,6 @@ use image::codecs::jpeg::JpegDecoder;
 use image::codecs::png::PngDecoder;
 use image::codecs::webp::WebPDecoder;
 use image::DynamicImage;
-use image::ImageDecoder;
 use image::ImageError;
 
 //
@@ -39,7 +38,6 @@ pub(crate) trait ImageDecoderFromReader<'a, R: BufRead + Seek> {
     self,
     error_fn: fn(ImageError) -> AnyError,
   ) -> Result<DynamicImage, AnyError>;
-  fn get_icc_profile(&mut self) -> Option<Vec<u8>>;
 }
 
 pub(crate) type ImageDecoderFromReaderType<'a> = BufReader<Cursor<&'a [u8]>>;
@@ -66,12 +64,6 @@ macro_rules! impl_image_decoder_from_reader {
         match DynamicImage::from_decoder(self) {
           Ok(image) => Ok(image),
           Err(err) => Err(error_fn(err)),
-        }
-      }
-      fn get_icc_profile(&mut self) -> Option<Vec<u8>> {
-        match self.icc_profile() {
-          Ok(profile) => profile,
-          Err(_) => None,
         }
       }
     }
