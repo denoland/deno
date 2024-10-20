@@ -102,7 +102,7 @@ export function serialize(value: any) {
 export function deserialize(buffer: Buffer | ArrayBufferView | DataView) {
   if (!isArrayBufferView(buffer)) {
     throw new TypeError(
-      "buffer must be a TypedArray or a DataView",
+      "Cannot deserialize: 'buffer' must be a 'TypedArray' or a 'DataView'",
     );
   }
   const der = new DefaultDeserializer(buffer);
@@ -141,7 +141,7 @@ export class Serializer {
   writeRawBytes(source: ArrayBufferView): void {
     if (!isArrayBufferView(source)) {
       throw new TypeError(
-        "source must be a TypedArray or a DataView",
+        "Cannot write bytes: 'source' must be a 'TypedArray' or a 'DataView'",
       );
     }
     op_v8_write_raw_bytes(this[kHandle], source);
@@ -169,7 +169,7 @@ export class Deserializer {
   constructor(buffer: ArrayBufferView) {
     if (!isArrayBufferView(buffer)) {
       throw new TypeError(
-        "buffer must be a TypedArray or a DataView",
+        "Cannot construct 'Deserializer': 'buffer' must be a 'TypedArray' or a 'DataView'",
       );
     }
     this.buffer = buffer;
