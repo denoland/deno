@@ -1010,6 +1010,7 @@ mod node {
 
 pub fn get_error_class_name(e: &AnyError) -> Option<&'static str> {
   deno_core::error::get_custom_error_class(e)
+    .or_else(|| e.downcast_ref::<FsError>().map(get_fs_error))
     .or_else(|| {
       e.downcast_ref::<node::BlocklistError>()
         .map(node::get_blocklist_error)

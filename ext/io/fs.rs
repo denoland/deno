@@ -35,14 +35,7 @@ impl std::fmt::Display for FsError {
   }
 }
 
-impl std::error::Error for FsError {
-  fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
-    match &self {
-      FsError::Io(err) => Some(err),
-      _ => None,
-    }
-  }
-}
+impl std::error::Error for FsError {}
 
 impl FsError {
   pub fn kind(&self) -> io::ErrorKind {
