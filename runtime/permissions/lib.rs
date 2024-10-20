@@ -1171,17 +1171,21 @@ pub enum RunQueryDescriptor {
 }
 
 #[derive(Debug, thiserror::Error)]
-#[error("failed resolving cwd: {0}")]
-pub struct RunQueryDescriptorParseError(#[source] std::io::Error);
+pub enum PathResolveError {
+  #[error("failed resolving cwd: {0}")]
+  CwdResolve(#[source] std::io::Error),
+  #[error("Empty path is not allowed")]
+  EmptyPath,
+}
 
 impl RunQueryDescriptor {
-  pub fn parse(requested: &str) -> Result<RunQueryDescriptor, RunQueryDescriptorParseError> {
+  pub fn parse(requested: &str) -> Result<RunQueryDescriptor, PathResolveError> {
     if is_path(requested) {
       let path = PathBuf::from(requested);
       let resolved = if path.is_absolute() {
         normalize_path(path)
       } else {
-        let cwd = std::env::current_dir().map_err(RunQueryDescriptorParseError)?;
+        let cwd = std::env::current_dir().map_err(PathResolveError::CwdResolve)?;
         normalize_path(cwd.join(path))
       };
       Ok(RunQueryDescriptor::Path {
@@ -2331,7 +2335,7 @@ impl PermissionsContainer {
   }
 
   #[inline(always)]
-  pub fn check_read_all(&self, api_name: &str) -> Result<(), AnyError> {
+  pub fn check_read_all(&self, api_name: &str) -> Result<(), PermissionDeniedError> {
     self.inner.lock().read.check_all(Some(api_name))
   }
 
@@ -2635,7 +2639,7 @@ impl PermissionsContainer {
 
   #[must_use = "the resolved return value to mitigate time-of-check to time-of-use issues"]
   #[inline(always)]
-  pub fn check_ffi_partial_no_path(&mut self) -> Result<(), AnyError> {
+  pub fn check_ffi_partial_no_path(&mut self) -> Result<(), PermissionDeniedError> {
     let mut inner = self.inner.lock();
     let inner = &mut inner.ffi;
     if inner.is_allow_all() {
@@ -2668,7 +2672,7 @@ impl PermissionsContainer {
   pub fn query_read(
     &self,
     path: Option<&str>,
-  ) -> Result<PermissionState, AnyError> {
+  ) -> Result<PermissionState, PathResolveError> {
     let inner = self.inner.lock();
     let permission = &inner.read;
     if permission.is_allow_all() {
@@ -2678,7 +2682,7 @@ impl PermissionsContainer {
       permission.query(
         path
           .map(|path| {
-            Result::<_, AnyError>::Ok(
+            Ok::<_, PathResolveError>(
               self.descriptor_parser.parse_path_query(path)?.into_read(),
             )
           })
@@ -2692,7 +2696,7 @@ impl PermissionsContainer {
   pub fn query_write(
     &self,
     path: Option<&str>,
-  ) -> Result<PermissionState, AnyError> {
+  ) -> Result<PermissionState, PathResolveError> {
     let inner = self.inner.lock();
     let permission = &inner.write;
     if permission.is_allow_all() {
@@ -2702,7 +2706,7 @@ impl PermissionsContainer {
       permission.query(
         path
           .map(|path| {
-            Result::<_, AnyError>::Ok(
+            Ok::<_, PathResolveError>(
               self.descriptor_parser.parse_path_query(path)?.into_write(),
             )
           })
@@ -2787,7 +2791,7 @@ impl PermissionsContainer {
   pub fn query_ffi(
     &self,
     path: Option<&str>,
-  ) -> Result<PermissionState, AnyError> {
+  ) -> Result<PermissionState, PathResolveError> {
     let inner = self.inner.lock();
     let permission = &inner.ffi;
     if permission.is_allow_all() {
@@ -2797,7 +2801,7 @@ impl PermissionsContainer {
       permission.query(
         path
           .map(|path| {
-            Result::<_, AnyError>::Ok(
+            Ok::<_, PathResolveError>(
               self.descriptor_parser.parse_path_query(path)?.into_ffi(),
             )
           })
@@ -2813,12 +2817,12 @@ impl PermissionsContainer {
   pub fn revoke_read(
     &self,
     path: Option<&str>,
-  ) -> Result<PermissionState, AnyError> {
+  ) -> Result<PermissionState, PathResolveError> {
     Ok(
       self.inner.lock().read.revoke(
         path
           .map(|path| {
-            Result::<_, AnyError>::Ok(
+            Ok::<_, PathResolveError>(
               self.descriptor_parser.parse_path_query(path)?.into_read(),
             )
           })
@@ -2832,12 +2836,12 @@ impl PermissionsContainer {
   pub fn revoke_write(
     &self,
     path: Option<&str>,
-  ) -> Result<PermissionState, AnyError> {
+  ) -> Result<PermissionState, PathResolveError> {
     Ok(
       self.inner.lock().write.revoke(
         path
           .map(|path| {
-            Result::<_, AnyError>::Ok(
+            Ok::<_, PathResolveError>(
               self.descriptor_parser.parse_path_query(path)?.into_write(),
             )
           })
@@ -2902,12 +2906,12 @@ impl PermissionsContainer {
   pub fn revoke_ffi(
     &self,
     path: Option<&str>,
-  ) -> Result<PermissionState, AnyError> {
+  ) -> Result<PermissionState, PathResolveError> {
     Ok(
       self.inner.lock().ffi.revoke(
         path
           .map(|path| {
-            Result::<_, AnyError>::Ok(
+            Ok::<_, PathResolveError>(
               self.descriptor_parser.parse_path_query(path)?.into_ffi(),
             )
           })
@@ -2923,12 +2927,12 @@ impl PermissionsContainer {
   pub fn request_read(
     &self,
     path: Option<&str>,
-  ) -> Result<PermissionState, AnyError> {
+  ) -> Result<PermissionState, PathResolveError> {
     Ok(
       self.inner.lock().read.request(
         path
           .map(|path| {
-            Result::<_, AnyError>::Ok(
+            Ok::<_, PathResolveError>(
               self.descriptor_parser.parse_path_query(path)?.into_read(),
             )
           })
@@ -2942,12 +2946,12 @@ impl PermissionsContainer {
   pub fn request_write(
     &self,
     path: Option<&str>,
-  ) -> Result<PermissionState, AnyError> {
+  ) -> Result<PermissionState, PathResolveError> {
     Ok(
       self.inner.lock().write.request(
         path
           .map(|path| {
-            Result::<_, AnyError>::Ok(
+            Ok::<_, PathResolveError>(
               self.descriptor_parser.parse_path_query(path)?.into_write(),
             )
           })
@@ -3012,12 +3016,12 @@ impl PermissionsContainer {
   pub fn request_ffi(
     &self,
     path: Option<&str>,
-  ) -> Result<PermissionState, AnyError> {
+  ) -> Result<PermissionState, PathResolveError> {
     Ok(
       self.inner.lock().ffi.request(
         path
           .map(|path| {
-            Result::<_, AnyError>::Ok(
+            Ok::<_, PathResolveError>(
               self.descriptor_parser.parse_path_query(path)?.into_ffi(),
             )
           })
@@ -3317,12 +3321,12 @@ pub trait PermissionDescriptorParser: Debug + Send + Sync {
   fn parse_read_descriptor(
     &self,
     text: &str,
-  ) -> Result<ReadDescriptor, AnyError>;
+  ) -> Result<ReadDescriptor, PathResolveError>;
 
   fn parse_write_descriptor(
     &self,
     text: &str,
-  ) -> Result<WriteDescriptor, AnyError>;
+  ) -> Result<WriteDescriptor, PathResolveError>;
 
   fn parse_net_descriptor(&self, text: &str)
     -> Result<NetDescriptor, AnyError>;
@@ -3363,14 +3367,14 @@ pub trait PermissionDescriptorParser: Debug + Send + Sync {
   ) -> Result<DenyRunDescriptor, AnyError>;
 
   fn parse_ffi_descriptor(&self, text: &str)
-    -> Result<FfiDescriptor, AnyError>;
+    -> Result<FfiDescriptor, PathResolveError>;
 
   // queries
 
   fn parse_path_query(
     &self,
     path: &str,
-  ) -> Result<PathQueryDescriptor, AnyError>;
+  ) -> Result<PathQueryDescriptor, PathResolveError>;
 
   fn parse_run_query(
     &self,

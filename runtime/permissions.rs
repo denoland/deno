@@ -7,7 +7,8 @@ use deno_core::anyhow::bail;
 use deno_core::anyhow::Context;
 use deno_core::error::AnyError;
 use deno_path_util::normalize_path;
-use deno_permissions::AllowRunDescriptor;
+use deno_permissions::{AllowRunDescriptor};
+use deno_permissions::{PathResolveError};
 use deno_permissions::AllowRunDescriptorParseResult;
 use deno_permissions::DenyRunDescriptor;
 use deno_permissions::EnvDescriptor;
@@ -30,9 +31,9 @@ impl RuntimePermissionDescriptorParser {
     Self { fs }
   }
 
-  fn resolve_from_cwd(&self, path: &str) -> Result<PathBuf, AnyError> {
+  fn resolve_from_cwd(&self, path: &str) -> Result<PathBuf, PathResolveError> {
     if path.is_empty() {
-      bail!("Empty path is not allowed");
+      return Err(PathResolveError::EmptyPath);
     }
     let path = Path::new(path);
     if path.is_absolute() {
@@ -43,12 +44,11 @@ impl RuntimePermissionDescriptorParser {
     }
   }
 
-  fn resolve_cwd(&self) -> Result<PathBuf, AnyError> {
+  fn resolve_cwd(&self) -> Result<PathBuf, PathResolveError> {
     self
       .fs
       .cwd()
-      .map_err(|e| e.into_io_error())
-      .context("failed resolving cwd")
+      .map_err(|e| PathResolveError::CwdResolve(e.into_io_error()))
   }
 }
 
@@ -58,14 +58,14 @@ impl deno_permissions::PermissionDescriptorParser
   fn parse_read_descriptor(
     &self,
     text: &str,
-  ) -> Result<ReadDescriptor, AnyError> {
+  ) -> Result<ReadDescriptor, PathResolveError> {
     Ok(ReadDescriptor(self.resolve_from_cwd(text)?))
   }
 
   fn parse_write_descriptor(
     &self,
     text: &str,
-  ) -> Result<WriteDescriptor, AnyError> {
+  ) -> Result<WriteDescriptor, PathResolveError> {
     Ok(WriteDescriptor(self.resolve_from_cwd(text)?))
   }
 
@@ -122,7 +122,7 @@ impl deno_permissions::PermissionDescriptorParser
   fn parse_ffi_descriptor(
     &self,
     text: &str,
-  ) -> Result<deno_permissions::FfiDescriptor, AnyError> {
+  ) -> Result<FfiDescriptor, PathResolveError> {
     Ok(FfiDescriptor(self.resolve_from_cwd(text)?))
   }
 
@@ -131,7 +131,7 @@ impl deno_permissions::PermissionDescriptorParser
   fn parse_path_query(
     &self,
     path: &str,
-  ) -> Result<PathQueryDescriptor, AnyError> {
+  ) -> Result<PathQueryDescriptor, PathResolveError> {
     Ok(PathQueryDescriptor {
       resolved: self.resolve_from_cwd(path)?,
       requested: path.to_string(),
