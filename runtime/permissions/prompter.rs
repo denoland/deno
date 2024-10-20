@@ -1,6 +1,5 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
-use deno_core::error::AnyError;
 use deno_core::parking_lot::Mutex;
 use deno_terminal::colors;
 use once_cell::sync::Lazy;
@@ -96,12 +95,21 @@ pub trait PermissionPrompter: Send + Sync {
   ) -> PromptResponse;
 }
 
+#[derive(Debug, thiserror::Error)]
+pub enum PrompterError {
+  #[cfg(not(unix))]
+  #[error("{0}")]
+  Io(#[from] std::io::Error),
+  #[error(transparent)]
+  Other(#[from] deno_core::error::AnyError),
+}
+
 pub struct TtyPrompter;
 #[cfg(unix)]
 fn clear_stdin(
   _stdin_lock: &mut StdinLock,
   _stderr_lock: &mut StderrLock,
-) -> Result<(), AnyError> {
+) -> Result<(), PrompterError> {
   use deno_core::anyhow::bail;
   use std::mem::MaybeUninit;
 
@@ -117,7 +125,10 @@ fn clear_stdin(
     loop {
       let r = libc::tcflush(STDIN_FD, libc::TCIFLUSH);
       if r != 0 {
-        bail!("clear_stdin failed (tcflush)");
+        return Err(
+          deno_core::error::generic_error("clear_stdin failed (tcflush)")
+            .into(),
+        );
       }
 
       // Initialize timeout for select to be 100ms
@@ -137,7 +148,9 @@ fn clear_stdin(
 
       // Check if select returned an error
       if r < 0 {
-        bail!("clear_stdin failed (select)");
+        return Err(deno_core::error::generic_error(
+          "clear_stdin failed (select)",
+        ));
       }
 
       // Check if select returned due to timeout (stdin is quiescent)
@@ -156,8 +169,7 @@ fn clear_stdin(
 fn clear_stdin(
   stdin_lock: &mut StdinLock,
   stderr_lock: &mut StderrLock,
-) -> Result<(), AnyError> {
-  use deno_core::anyhow::bail;
+) -> Result<(), PrompterError> {
   use winapi::shared::minwindef::TRUE;
   use winapi::shared::minwindef::UINT;
   use winapi::shared::minwindef::WORD;
@@ -194,18 +206,22 @@ fn clear_stdin(
 
   return Ok(());
 
-  unsafe fn flush_input_buffer(stdin: HANDLE) -> Result<(), AnyError> {
+  unsafe fn flush_input_buffer(
+    stdin: HANDLE,
+  ) -> Result<(), deno_core::error::AnyError> {
     let success = FlushConsoleInputBuffer(stdin);
     if success != TRUE {
-      bail!(
+      return Err(deno_core::error::generic_error(format!(
         "Could not flush the console input buffer: {}",
         std::io::Error::last_os_error()
-      )
+      )));
     }
     Ok(())
   }
 
-  unsafe fn emulate_enter_key_press(stdin: HANDLE) -> Result<(), AnyError> {
+  unsafe fn emulate_enter_key_press(
+    stdin: HANDLE,
+  ) -> Result<(), deno_core::error::AnyError> {
     // https://github.com/libuv/libuv/blob/a39009a5a9252a566ca0704d02df8dabc4ce328f/src/win/tty.c#L1121-L1131
     let mut input_record: INPUT_RECORD = std::mem::zeroed();
     input_record.EventType = KEY_EVENT;
@@ -220,34 +236,37 @@ fn clear_stdin(
     let success =
       WriteConsoleInputW(stdin, &input_record, 1, &mut record_written);
     if success != TRUE {
-      bail!(
+      return Err(deno_core::error::generic_error(format!(
         "Could not emulate enter key press: {}",
         std::io::Error::last_os_error()
-      );
+      )));
     }
     Ok(())
   }
 
-  unsafe fn is_input_buffer_empty(stdin: HANDLE) -> Result<bool, AnyError> {
+  unsafe fn is_input_buffer_empty(
+    stdin: HANDLE,
+  ) -> Result<bool, deno_core::error::AnyError> {
     let mut buffer = Vec::with_capacity(1);
     let mut events_read = 0;
     let success =
       PeekConsoleInputW(stdin, buffer.as_mut_ptr(), 1, &mut events_read);
     if success != TRUE {
-      bail!(
+      return Err(deno_core::error::generic_error(format!(
         "Could not peek the console input buffer: {}",
         std::io::Error::last_os_error()
-      )
+      )));
     }
     Ok(events_read == 0)
   }
 
-  fn move_cursor_up(stderr_lock: &mut StderrLock) -> Result<(), AnyError> {
-    write!(stderr_lock, "\x1B[1A")?;
-    Ok(())
+  fn move_cursor_up(
+    stderr_lock: &mut StderrLock,
+  ) -> Result<(), std::io::Error> {
+    write!(stderr_lock, "\x1B[1A")
   }
 
-  fn read_stdin_line(stdin_lock: &mut StdinLock) -> Result<(), AnyError> {
+  fn read_stdin_line(stdin_lock: &mut StdinLock) -> Result<(), std::io::Error> {
     let mut input = String::new();
     stdin_lock.read_line(&mut input)?;
     Ok(())

@@ -72,14 +72,14 @@ impl deno_permissions::PermissionDescriptorParser
   fn parse_net_descriptor(
     &self,
     text: &str,
-  ) -> Result<NetDescriptor, AnyError> {
+  ) -> Result<NetDescriptor, deno_permissions::NetDescriptorParseError> {
     NetDescriptor::parse(text)
   }
 
   fn parse_import_descriptor(
     &self,
     text: &str,
-  ) -> Result<ImportDescriptor, AnyError> {
+  ) -> Result<ImportDescriptor, deno_permissions::NetDescriptorParseError> {
     ImportDescriptor::parse(text)
   }
 
