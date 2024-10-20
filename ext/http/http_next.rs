@@ -746,7 +746,7 @@ pub fn op_http_set_response_body_text(
       if !response_parts.headers.contains_key(CONTENT_TYPE) {
         response_parts.headers.append(
           CONTENT_TYPE,
-          HeaderValue::from_static("text/plain; charset=utf-8"),
+          HeaderValue::from_static("text/plain;charset=UTF-8"),
         );
       }
     }
