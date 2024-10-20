@@ -898,7 +898,7 @@ fn lock_redirects() {
     .run()
     .assert_matches_text(concat!(
       "Download http://localhost:4545/echo.ts\n",
-      "Download http://localhost:4260/@denotest/esm-basic\n",
+      "Download http://localhost:4260/@denotest%2fesm-basic\n",
       "Download http://localhost:4260/@denotest/esm-basic/1.0.0.tgz\n",
       "Hi, there",
     ));

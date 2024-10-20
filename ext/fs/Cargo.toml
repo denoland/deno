@@ -28,9 +28,10 @@ libc.workspace = true
 rand.workspace = true
 rayon = "1.8.0"
 serde.workspace = true
+thiserror.workspace = true
 
 [target.'cfg(unix)'.dependencies]
-nix.workspace = true
+nix = { workspace = true, features = ["user"] }
 
 [target.'cfg(windows)'.dependencies]
 winapi = { workspace = true, features = ["winbase"] }
