@@ -24,57 +24,57 @@ Deno.test(
       () => {
         Deno.addSignalListener("SIGHUP", () => {});
       },
-      Error + "SIGHUP",
-      msg,
+      Error,
+      msg + "SIGHUP",
     );
     assertThrows(
       () => {
         Deno.addSignalListener("SIGIO", () => {});
       },
-      Error + "SIGIO",
-      msg,
+      Error,
+      msg + "SIGIO",
     );
     assertThrows(
       () => {
         Deno.addSignalListener("SIGPIPE", () => {});
       },
-      Error + "SIGPIPE",
-      msg,
+      Error,
+      msg + "SIGPIPE",
     );
     assertThrows(
       () => {
         Deno.addSignalListener("SIGQUIT", () => {});
       },
-      Error + "SIGQUIT",
-      msg,
+      Error,
+      msg + "SIGQUIT",
     );
     assertThrows(
       () => {
         Deno.addSignalListener("SIGTERM", () => {});
       },
-      Error + "SIGTERM",
-      msg,
+      Error,
+      msg + "SIGTERM",
     );
     assertThrows(
       () => {
         Deno.addSignalListener("SIGUSR1", () => {});
       },
-      Error + "SIGUSR1",
-      msg,
+      Error,
+      msg + "SIGUSR1",
     );
     assertThrows(
       () => {
         Deno.addSignalListener("SIGUSR2", () => {});
       },
-      Error + "SIGUSR2",
-      msg,
+      Error,
+      msg + "SIGUSR2",
     );
     assertThrows(
       () => {
         Deno.addSignalListener("SIGWINCH", () => {});
       },
-      Error + "SIGWINCH",
-      msg,
+      Error,
+      msg + "SIGWINCH",
     );
     assertThrows(
       () => Deno.addSignalListener("SIGKILL", () => {}),
