@@ -303,9 +303,7 @@ impl Loader for FetchCacher {
           node_resolver::NodeResolution::CommonJs(specifier) => {
             self.node_resolver.mark_cjs_resolution(specifier.clone());
             return Box::pin(futures::future::ready(Ok(Some(
-              LoadResponse::External {
-                specifier: specifier,
-              },
+              LoadResponse::External { specifier },
             ))));
           }
           node_resolver::NodeResolution::Esm(_) => {}
