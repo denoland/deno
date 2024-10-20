@@ -16,7 +16,9 @@ use image::codecs::png::PngDecoder;
 use image::codecs::webp::WebPDecoder;
 use image::imageops::overlay;
 use image::imageops::FilterType;
+use image::metadata::Orientation;
 use image::DynamicImage;
+use image::ImageDecoder;
 use image::ImageError;
 use image::RgbaImage;
 
@@ -72,7 +74,8 @@ enum MimeType {
   Webp,
 }
 
-type DecodeBitmapDataReturn = (DynamicImage, u32, u32, Option<Vec<u8>>);
+type DecodeBitmapDataReturn =
+  (DynamicImage, u32, u32, Option<Orientation>, Option<Vec<u8>>);
 
 fn decode_bitmap_data(
   buf: &[u8],
@@ -81,104 +84,117 @@ fn decode_bitmap_data(
   image_bitmap_source: &ImageBitmapSource,
   mime_type: MimeType,
 ) -> Result<DecodeBitmapDataReturn, AnyError> {
-  let (image, width, height, icc_profile) = match image_bitmap_source {
-    ImageBitmapSource::Blob => {
-      fn image_decoding_error(error: ImageError) -> AnyError {
-        DOMExceptionInvalidStateError::new(&image_error_message(
-          "decoding",
-          &error.to_string(),
-        ))
-        .into()
+  let (image, width, height, orientation, icc_profile) =
+    match image_bitmap_source {
+      ImageBitmapSource::Blob => {
+        fn image_decoding_error(error: ImageError) -> AnyError {
+          DOMExceptionInvalidStateError::new(&image_error_message(
+            "decoding",
+            &error.to_string(),
+          ))
+          .into()
+        }
+        let (image, orientation, icc_profile) = match mime_type {
+          // Should we support the "image/apng" MIME type here?
+          MimeType::Png => {
+            let mut decoder: PngDecoder<ImageDecoderFromReaderType> =
+              ImageDecoderFromReader::to_decoder(
+                BufReader::new(Cursor::new(buf)),
+                image_decoding_error,
+              )?;
+            let orientation = decoder.orientation()?;
+            let icc_profile = decoder.get_icc_profile();
+            (
+              decoder.to_intermediate_image(image_decoding_error)?,
+              orientation,
+              icc_profile,
+            )
+          }
+          MimeType::Jpeg => {
+            let mut decoder: JpegDecoder<ImageDecoderFromReaderType> =
+              ImageDecoderFromReader::to_decoder(
+                BufReader::new(Cursor::new(buf)),
+                image_decoding_error,
+              )?;
+            let orientation = decoder.orientation()?;
+            let icc_profile = decoder.get_icc_profile();
+            (
+              decoder.to_intermediate_image(image_decoding_error)?,
+              orientation,
+              icc_profile,
+            )
+          }
+          MimeType::Gif => {
+            let mut decoder: GifDecoder<ImageDecoderFromReaderType> =
+              ImageDecoderFromReader::to_decoder(
+                BufReader::new(Cursor::new(buf)),
+                image_decoding_error,
+              )?;
+            let orientation = decoder.orientation()?;
+            let icc_profile = decoder.get_icc_profile();
+            (
+              decoder.to_intermediate_image(image_decoding_error)?,
+              orientation,
+              icc_profile,
+            )
+          }
+          MimeType::Bmp => {
+            let mut decoder: BmpDecoder<ImageDecoderFromReaderType> =
+              ImageDecoderFromReader::to_decoder(
+                BufReader::new(Cursor::new(buf)),
+                image_decoding_error,
+              )?;
+            let orientation = decoder.orientation()?;
+            let icc_profile = decoder.get_icc_profile();
+            (
+              decoder.to_intermediate_image(image_decoding_error)?,
+              orientation,
+              icc_profile,
+            )
+          }
+          MimeType::Ico => {
+            let mut decoder: IcoDecoder<ImageDecoderFromReaderType> =
+              ImageDecoderFromReader::to_decoder(
+                BufReader::new(Cursor::new(buf)),
+                image_decoding_error,
+              )?;
+            let orientation = decoder.orientation()?;
+            let icc_profile = decoder.get_icc_profile();
+            (
+              decoder.to_intermediate_image(image_decoding_error)?,
+              orientation,
+              icc_profile,
+            )
+          }
+          MimeType::Webp => {
+            let mut decoder: WebPDecoder<ImageDecoderFromReaderType> =
+              ImageDecoderFromReader::to_decoder(
+                BufReader::new(Cursor::new(buf)),
+                image_decoding_error,
+              )?;
+            let orientation = decoder.orientation()?;
+            let icc_profile = decoder.get_icc_profile();
+            (
+              decoder.to_intermediate_image(image_decoding_error)?,
+              orientation,
+              icc_profile,
+            )
+          }
+          // This pattern is unreachable due to current block is already checked by the ImageBitmapSource above.
+          MimeType::NoMatch => unreachable!(),
+        };
+
+        let width = image.width();
+        let height = image.height();
+
+        (image, width, height, Some(orientation), icc_profile)
       }
-      let (image, icc_profile) = match mime_type {
-        // Should we support the "image/apng" MIME type here?
-        MimeType::Png => {
-          let mut decoder: PngDecoder<ImageDecoderFromReaderType> =
-            ImageDecoderFromReader::to_decoder(
-              BufReader::new(Cursor::new(buf)),
-              image_decoding_error,
-            )?;
-          let icc_profile = decoder.get_icc_profile();
-          (
-            decoder.to_intermediate_image(image_decoding_error)?,
-            icc_profile,
-          )
-        }
-        MimeType::Jpeg => {
-          let mut decoder: JpegDecoder<ImageDecoderFromReaderType> =
-            ImageDecoderFromReader::to_decoder(
-              BufReader::new(Cursor::new(buf)),
-              image_decoding_error,
-            )?;
-          let icc_profile = decoder.get_icc_profile();
-          (
-            decoder.to_intermediate_image(image_decoding_error)?,
-            icc_profile,
-          )
-        }
-        MimeType::Gif => {
-          let mut decoder: GifDecoder<ImageDecoderFromReaderType> =
-            ImageDecoderFromReader::to_decoder(
-              BufReader::new(Cursor::new(buf)),
-              image_decoding_error,
-            )?;
-          let icc_profile = decoder.get_icc_profile();
-          (
-            decoder.to_intermediate_image(image_decoding_error)?,
-            icc_profile,
-          )
-        }
-        MimeType::Bmp => {
-          let mut decoder: BmpDecoder<ImageDecoderFromReaderType> =
-            ImageDecoderFromReader::to_decoder(
-              BufReader::new(Cursor::new(buf)),
-              image_decoding_error,
-            )?;
-          let icc_profile = decoder.get_icc_profile();
-          (
-            decoder.to_intermediate_image(image_decoding_error)?,
-            icc_profile,
-          )
-        }
-        MimeType::Ico => {
-          let mut decoder: IcoDecoder<ImageDecoderFromReaderType> =
-            ImageDecoderFromReader::to_decoder(
-              BufReader::new(Cursor::new(buf)),
-              image_decoding_error,
-            )?;
-          let icc_profile = decoder.get_icc_profile();
-          (
-            decoder.to_intermediate_image(image_decoding_error)?,
-            icc_profile,
-          )
-        }
-        MimeType::Webp => {
-          let mut decoder: WebPDecoder<ImageDecoderFromReaderType> =
-            ImageDecoderFromReader::to_decoder(
-              BufReader::new(Cursor::new(buf)),
-              image_decoding_error,
-            )?;
-          let icc_profile = decoder.get_icc_profile();
-          (
-            decoder.to_intermediate_image(image_decoding_error)?,
-            icc_profile,
-          )
-        }
-        // This pattern is unreachable due to current block is already checked by the ImageBitmapSource above.
-        MimeType::NoMatch => unreachable!(),
-      };
-
-      let width = image.width();
-      let height = image.height();
-
-      (image, width, height, icc_profile)
-    }
-    ImageBitmapSource::ImageData => {
-      // > 4.12.5.1.15 Pixel manipulation
-      // > imagedata.data
-      // >   Returns the one-dimensional array containing the data in RGBA order, as integers in the range 0 to 255.
-      // https://html.spec.whatwg.org/multipage/canvas.html#pixel-manipulation
-      let image = match RgbaImage::from_raw(width, height, buf.into()) {
+      ImageBitmapSource::ImageData => {
+        // > 4.12.5.1.15 Pixel manipulation
+        // > imagedata.data
+        // >   Returns the one-dimensional array containing the data in RGBA order, as integers in the range 0 to 255.
+        // https://html.spec.whatwg.org/multipage/canvas.html#pixel-manipulation
+        let image = match RgbaImage::from_raw(width, height, buf.into()) {
         Some(image) => image.into(),
         None => {
           return Err(type_error(image_error_message(
@@ -188,11 +204,11 @@ fn decode_bitmap_data(
         }
       };
 
-      (image, width, height, None)
-    }
-  };
+        (image, width, height, None, None)
+      }
+    };
 
-  Ok((image, width, height, icc_profile))
+  Ok((image, width, height, orientation, icc_profile))
 }
 
 /// According to the spec, it's not clear how to handle the color space conversion.
@@ -400,7 +416,7 @@ pub(super) fn op_create_image_bitmap(
   );
 
   // 6. Switch on image:
-  let (image, width, height, icc_profile) =
+  let (image, width, height, orientation, icc_profile) =
     decode_bitmap_data(&buf, width, height, &image_bitmap_source, mime_type)?;
 
   // crop bitmap data
@@ -480,27 +496,29 @@ pub(super) fn op_create_image_bitmap(
   };
   // should use resize_exact
   // https://github.com/image-rs/image/issues/1220#issuecomment-632060015
-  let image = image.resize_exact(output_width, output_height, filter_type);
+  let mut image = image.resize_exact(output_width, output_height, filter_type);
 
   // 8.
-  // issues for imageOrientation
-  // https://github.com/whatwg/html/issues/8085
-  // https://github.com/whatwg/html/issues/7210
-  // https://github.com/whatwg/html/issues/8118
-  let image = if image_orientation == ImageOrientation::FlipY {
-    image.flipv()
-  } else {
-    // TODO(Hajime-san): If the EXIF ​​contains image orientation information, decode the image in the appropriate orientation.
-    // The image create is expected to release this feature soon.
-    // https://github.com/image-rs/image/blob/bd0f7451a367de7ae3d898dcf1e96e9d0a1c4fa1/CHANGES.md#version-0253
-    // https://github.com/image-rs/image/issues/1958
-    // https://github.com/image-rs/image/pull/2299
-    // https://github.com/image-rs/image/pull/2328
-    // if image_bitmap_source == ImageBitmapSource::Blob {
-    //   image.apply_orientation()
-    // } else {
-    image
-    // }
+  let image = match image_bitmap_source {
+    ImageBitmapSource::Blob => {
+      // Note: According to browser behavior and wpt results, if Exif contains image orientation,
+      // it applies the rotation from it before following the value of imageOrientation.
+      // This is not stated in the spec but in MDN currently.
+      // https://github.com/mdn/content/pull/34366
+
+      // SAFETY: The orientation is always Some if the image is from a Blob.
+      let orientation = orientation.unwrap();
+      DynamicImage::apply_orientation(&mut image, orientation);
+
+      match image_orientation {
+        ImageOrientation::FlipY => image.flipv(),
+        ImageOrientation::FromImage => image,
+      }
+    }
+    ImageBitmapSource::ImageData => match image_orientation {
+      ImageOrientation::FlipY => image.flipv(),
+      ImageOrientation::FromImage => image,
+    },
   };
 
   // 9.

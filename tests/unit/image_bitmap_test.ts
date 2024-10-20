@@ -1,6 +1,6 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
-import { assertEquals, assertNotEquals, assertRejects } from "./test_util.ts";
+import { assertEquals, assertRejects } from "./test_util.ts";
 
 const prefix = "tests/testdata/image";
 
@@ -112,9 +112,7 @@ Deno.test("imageOrientation", async (t) => {
       START,
       END,
     );
-    // FIXME: When the implementation is fixed, fix this to assertEquals
-    // However, in the case of jpg images, numerical errors may occur.
-    assertNotEquals(targetPixel, new Uint8Array([255, 1, 0]));
+    assertEquals(targetPixel, new Uint8Array([253, 0, 0]));
   });
   // reference:
   // https://github.com/web-platform-tests/wpt/blob/a1f4bbf4c6e1a9a861a145a34cd097ea260b5a49/html/canvas/element/manual/imagebitmap/createImageBitmap-exif-orientation.html#L55
@@ -127,9 +125,7 @@ Deno.test("imageOrientation", async (t) => {
       START,
       END,
     );
-    // FIXME: When the implementation is fixed, fix this to assertEquals
-    // However, in the case of jpg images, numerical errors may occur.
-    assertNotEquals(targetPixel, new Uint8Array([254, 128, 129]));
+    assertEquals(targetPixel, new Uint8Array([253, 127, 127]));
   });
 });
 
