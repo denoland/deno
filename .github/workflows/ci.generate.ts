@@ -61,7 +61,7 @@ const prCacheKeyPrefix =
 // Note that you may need to add more version to the `apt-get remove` line below if you change this
 const llvmVersion = 19;
 const installPkgsCommand =
-  `sudo apt-get install --no-install-recommends clang-${llvmVersion} lld-${llvmVersion} clang-tools-${llvmVersion} clang-format-${llvmVersion} clang-tidy-${llvmVersion} libc6-dev`;
+  `sudo apt-get install --no-install-recommends clang-${llvmVersion} lld-${llvmVersion} clang-tools-${llvmVersion} clang-format-${llvmVersion} clang-tidy-${llvmVersion} build-essential`;
 const sysRootStep = {
   name: "Set up incremental LTO and sysroot build",
   run: `# Setting up sysroot
