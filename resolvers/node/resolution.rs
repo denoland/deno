@@ -130,6 +130,11 @@ impl NodeResolution {
   }
 }
 
+pub trait ContentIsEsmAnalyzer: std::fmt::Debug + Send + Sync {
+  /// Returns whether the content of the specified module specifier is ESM.
+  fn analyze_content_is_esm(&self, specifier: &Url) -> Result<bool, AnyError>;
+}
+
 #[allow(clippy::disallowed_types)]
 pub type NodeResolverRc<TEnv> = crate::sync::MaybeArc<NodeResolver<TEnv>>;
 
@@ -137,11 +142,20 @@ pub type NodeResolverRc<TEnv> = crate::sync::MaybeArc<NodeResolver<TEnv>>;
 pub struct NodeResolver<TEnv: NodeResolverEnv> {
   env: TEnv,
   npm_resolver: NpmResolverRc,
+  content_is_esm_analyzer: Option<Box<dyn ContentIsEsmAnalyzer>>,
 }
 
 impl<TEnv: NodeResolverEnv> NodeResolver<TEnv> {
-  pub fn new(env: TEnv, npm_resolver: NpmResolverRc) -> Self {
-    Self { env, npm_resolver }
+  pub fn new(
+    env: TEnv,
+    npm_resolver: NpmResolverRc,
+    content_is_esm_analyzer: Option<Box<dyn ContentIsEsmAnalyzer>>,
+  ) -> Self {
+    Self {
+      env,
+      npm_resolver,
+      content_is_esm_analyzer,
+    }
   }
 
   pub fn in_npm_package(&self, specifier: &Url) -> bool {
@@ -406,14 +420,31 @@ impl<TEnv: NodeResolverEnv> NodeResolver<TEnv> {
     &self,
     url: Url,
   ) -> Result<NodeResolution, UrlToNodeResolutionError> {
-    let url_str = url.as_str().to_lowercase();
+    let url_str = url.path().to_lowercase();
     if url_str.starts_with("http") || url_str.ends_with(".json") {
       Ok(NodeResolution::Esm(url))
     } else if url_str.ends_with(".js") || url_str.ends_with(".d.ts") {
       let maybe_package_config = self.get_closest_package_json(&url)?;
       match maybe_package_config {
         Some(c) if c.typ == "module" => Ok(NodeResolution::Esm(url)),
-        Some(_) => Ok(NodeResolution::CommonJs(url)),
+        Some(c) => {
+          if self.in_npm_package(&url) {
+            Ok(NodeResolution::CommonJs(url))
+          } else if c.typ == "commonjs" {
+            if let Some(analyzer) = &self.content_is_esm_analyzer {
+              let is_esm =
+                analyzer.analyze_content_is_esm(&url).unwrap_or(true);
+              match is_esm {
+                true => Ok(NodeResolution::Esm(url)),
+                false => Ok(NodeResolution::CommonJs(url)),
+              }
+            } else {
+              Ok(NodeResolution::Esm(url))
+            }
+          } else {
+            Ok(NodeResolution::Esm(url))
+          }
+        }
         None => Ok(NodeResolution::Esm(url)),
       }
     } else if url_str.ends_with(".mjs") || url_str.ends_with(".d.mts") {

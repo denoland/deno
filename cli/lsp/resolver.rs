@@ -521,6 +521,7 @@ fn create_node_resolver(
   let node_resolver_inner = Arc::new(NodeResolver::new(
     deno_runtime::deno_node::DenoFsNodeResolverEnv::new(fs.clone()),
     npm_resolver.clone().into_npm_resolver(),
+    None,
   ));
   Some(Arc::new(CliNodeResolver::new(
     CJS_RESOLUTIONS.clone(),

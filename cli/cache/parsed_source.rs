@@ -7,12 +7,15 @@ use deno_ast::MediaType;
 use deno_ast::ModuleSpecifier;
 use deno_ast::ParseDiagnostic;
 use deno_ast::ParsedSource;
+use deno_core::error::AnyError;
 use deno_core::parking_lot::Mutex;
 use deno_graph::CapturingModuleParser;
 use deno_graph::DefaultModuleParser;
 use deno_graph::ModuleParser;
 use deno_graph::ParseOptions;
 use deno_graph::ParsedSourceStore;
+use deno_runtime::deno_fs::FileSystem;
+use node_resolver::ContentIsEsmAnalyzer;
 
 /// Lazily parses JS/TS sources from a `deno_graph::ModuleGraph` given
 /// a `ParsedSourceCache`. Note that deno_graph doesn't necessarily cause
@@ -47,7 +50,7 @@ impl<'a> LazyGraphSourceParser<'a> {
   }
 }
 
-#[derive(Default)]
+#[derive(Default, Debug)]
 pub struct ParsedSourceCache {
   sources: Mutex<HashMap<ModuleSpecifier, ParsedSource>>,
 }
@@ -151,13 +154,19 @@ impl deno_graph::ParsedSourceStore for ParsedSourceCache {
   }
 }
 
-pub struct EsmOrCjsChecker {
+#[derive(Debug)]
+pub struct CliContentIsEsmAnalyzer {
+  fs: Arc<dyn FileSystem>,
   parsed_source_cache: Arc<ParsedSourceCache>,
 }
 
-impl EsmOrCjsChecker {
-  pub fn new(parsed_source_cache: Arc<ParsedSourceCache>) -> Self {
+impl CliContentIsEsmAnalyzer {
+  pub fn new(
+    fs: Arc<dyn FileSystem>,
+    parsed_source_cache: Arc<ParsedSourceCache>,
+  ) -> Self {
     Self {
+      fs,
       parsed_source_cache,
     }
   }
@@ -187,5 +196,17 @@ impl EsmOrCjsChecker {
       }
     };
     Ok(source.is_module())
+  }
+}
+
+impl ContentIsEsmAnalyzer for CliContentIsEsmAnalyzer {
+  fn analyze_content_is_esm(
+    &self,
+    specifier: &ModuleSpecifier,
+  ) -> Result<bool, AnyError> {
+    let file_path = deno_path_util::url_to_file_path(specifier)?;
+    let content: Arc<str> =
+      self.fs.read_text_file_lossy_sync(&file_path, None)?.into();
+    Ok(self.is_esm(specifier, content, MediaType::from_specifier(specifier))?)
   }
 }

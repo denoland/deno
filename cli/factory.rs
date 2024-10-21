@@ -10,11 +10,11 @@ use crate::args::NpmInstallDepsProvider;
 use crate::args::StorageKeyResolver;
 use crate::args::TsConfigType;
 use crate::cache::Caches;
+use crate::cache::CliContentIsEsmAnalyzer;
 use crate::cache::CodeCache;
 use crate::cache::DenoDir;
 use crate::cache::DenoDirProvider;
 use crate::cache::EmitCache;
-use crate::cache::EsmOrCjsChecker;
 use crate::cache::GlobalHttpCache;
 use crate::cache::HttpCache;
 use crate::cache::LocalHttpCache;
@@ -172,7 +172,6 @@ struct CliFactoryServices {
   http_client_provider: Deferred<Arc<HttpClientProvider>>,
   emit_cache: Deferred<Arc<EmitCache>>,
   emitter: Deferred<Arc<Emitter>>,
-  esm_or_cjs_checker: Deferred<Arc<EsmOrCjsChecker>>,
   fs: Deferred<Arc<dyn deno_fs::FileSystem>>,
   main_graph_container: Deferred<Arc<MainModuleGraphContainer>>,
   maybe_inspector_server: Deferred<Option<Arc<InspectorServer>>>,
@@ -298,12 +297,6 @@ impl CliFactory {
       .services
       .text_only_progress_bar
       .get_or_init(|| ProgressBar::new(ProgressBarStyle::TextOnly))
-  }
-
-  pub fn esm_or_cjs_checker(&self) -> &Arc<EsmOrCjsChecker> {
-    self.services.esm_or_cjs_checker.get_or_init(|| {
-      Arc::new(EsmOrCjsChecker::new(self.parsed_source_cache().clone()))
-    })
   }
 
   pub fn global_http_cache(&self) -> Result<&Arc<GlobalHttpCache>, AnyError> {
@@ -565,6 +558,14 @@ impl CliFactory {
           Ok(Arc::new(NodeResolver::new(
             DenoFsNodeResolverEnv::new(self.fs().clone()),
             self.npm_resolver().await?.clone().into_npm_resolver(),
+            if self.cli_options()?.unstable_detect_cjs() {
+              Some(Box::new(CliContentIsEsmAnalyzer::new(
+                self.fs().clone(),
+                self.parsed_source_cache().clone(),
+              )))
+            } else {
+              None
+            },
           )))
         }
         .boxed_local(),
@@ -628,7 +629,6 @@ impl CliFactory {
         Ok(Arc::new(ModuleGraphBuilder::new(
           cli_options.clone(),
           self.caches()?.clone(),
-          self.esm_or_cjs_checker().clone(),
           self.fs().clone(),
           self.resolver().await?.clone(),
           self.cli_node_resolver().await?.clone(),

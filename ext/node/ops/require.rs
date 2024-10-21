@@ -1,5 +1,6 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
+use deno_core::anyhow::anyhow;
 use deno_core::anyhow::Context;
 use deno_core::error::generic_error;
 use deno_core::error::AnyError;
@@ -191,17 +192,19 @@ pub fn op_require_resolve_deno_dir(
   state: &mut OpState,
   #[string] request: String,
   #[string] parent_filename: String,
-) -> Option<String> {
+) -> Result<Option<String>, AnyError> {
   let resolver = state.borrow::<NpmResolverRc>();
-  resolver
-    .resolve_package_folder_from_package(
-      &request,
-      &ModuleSpecifier::from_file_path(&parent_filename).unwrap_or_else(|_| {
-        panic!("Url::from_file_path: [{:?}]", parent_filename)
-      }),
-    )
-    .ok()
-    .map(|p| p.to_string_lossy().into_owned())
+  Ok(
+    resolver
+      .resolve_package_folder_from_package(
+        &request,
+        &ModuleSpecifier::from_file_path(&parent_filename).map_err(|_| {
+          anyhow!("Url::from_file_path: [{:?}]", parent_filename)
+        })?,
+      )
+      .ok()
+      .map(|p| p.to_string_lossy().into_owned()),
+  )
 }
 
 #[op2(fast)]
@@ -521,20 +524,23 @@ where
 }
 
 #[op2]
-#[serde]
-pub fn op_require_read_closest_package_json<P>(
+#[string]
+pub fn op_require_module_format<P>(
   state: &mut OpState,
   #[string] filename: String,
-) -> Result<Option<PackageJsonRc>, AnyError>
+) -> Result<&'static str, AnyError>
 where
   P: NodePermissions + 'static,
 {
   let filename = PathBuf::from(filename);
-  // permissions: allow reading the closest package.json files
+  let url = ModuleSpecifier::from_file_path(&filename)
+    .map_err(|_| anyhow!("Url::from_file_path: [{:?}]", filename))?;
   let node_resolver = state.borrow::<NodeResolverRc>().clone();
-  node_resolver
-    .get_closest_package_json_from_path(&filename)
-    .map_err(AnyError::from)
+  match node_resolver.url_to_node_resolution(url)? {
+    node_resolver::NodeResolution::Esm(_) => Ok("module"),
+    node_resolver::NodeResolution::CommonJs(_)
+    | node_resolver::NodeResolution::BuiltIn(_) => Ok("commonjs"),
+  }
 }
 
 #[op2]
