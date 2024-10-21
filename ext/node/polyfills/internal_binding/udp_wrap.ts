@@ -33,6 +33,7 @@ import {
   providerType,
 } from "ext:deno_node/internal_binding/async_wrap.ts";
 import { GetAddrInfoReqWrap } from "ext:deno_node/internal_binding/cares_wrap.ts";
+import { os } from "ext:deno_node/internal_binding/constants.ts";
 import { HandleWrap } from "ext:deno_node/internal_binding/handle_wrap.ts";
 import { ownerSymbol } from "ext:deno_node/internal_binding/symbols.ts";
 import { codeMap, errorMap } from "ext:deno_node/internal_binding/uv.ts";
@@ -52,6 +53,8 @@ type MessageType = string | Uint8Array | Buffer | DataView;
 
 const AF_INET = 2;
 const AF_INET6 = 10;
+
+const { UV_UDP_REUSEADDR } = os;
 
 const UDP_DGRAM_MAXSIZE = 64 * 1024;
 
@@ -86,6 +89,8 @@ export class UDP extends HandleWrap {
   #recvBufferSize = UDP_DGRAM_MAXSIZE;
   #sendBufferSize = UDP_DGRAM_MAXSIZE;
 
+  #leaveMembership?: () => void;
+
   onmessage!: (
     nread: number,
     handle: UDP,
@@ -111,8 +116,14 @@ export class UDP extends HandleWrap {
     super(providerType.UDPWRAP);
   }
 
-  addMembership(_multicastAddress: string, _interfaceAddress?: string): number {
-    notImplemented("udp.UDP.prototype.addMembership");
+  addMembership(multicastAddress: string, interfaceAddress?: string): number {
+    if (this.#family === "IPv6") {
+      this.#listener?.joinMulticastV6(multicastAddress, interfaceAddress);
+    } else if (this.#family === "IPv4") {
+      this.#listener?.joinMulticastV4(multicastAddress, interfaceAddress);
+    }
+
+    return 0;
   }
 
   addSourceSpecificMembership(
@@ -195,10 +206,15 @@ export class UDP extends HandleWrap {
   }
 
   dropMembership(
-    _multicastAddress: string,
-    _interfaceAddress?: string,
+    multicastAddress: string,
+    interfaceAddress?: string,
   ): number {
-    notImplemented("udp.UDP.prototype.dropMembership");
+    if (this.#family === "IPv6") {
+      this.#listener?.dropMulticastV6(multicastAddress, interfaceAddress);
+    } else if (this.#family === "IPv4") {
+      this.#listener?.dropMulticastV4(multicastAddress, interfaceAddress);
+    }
+    return 0;
   }
 
   dropSourceSpecificMembership(
@@ -300,7 +316,8 @@ export class UDP extends HandleWrap {
   }
 
   setBroadcast(_bool: 0 | 1): number {
-    notImplemented("udp.UDP.prototype.setBroadcast");
+    this.#listener?.setBroadcast(_bool === 1);
+    return 0;
   }
 
   setMulticastInterface(_interfaceAddress: string): number {
@@ -324,12 +341,13 @@ export class UDP extends HandleWrap {
     this.#unrefed = true;
   }
 
-  #doBind(ip: string, port: number, _flags: number, family: number): number {
+  #doBind(ip: string, port: number, flags: number, family: number): number {
     // TODO(cmorten): use flags to inform socket reuse etc.
     const listenOptions = {
       port,
       hostname: ip,
       transport: "udp" as const,
+      reuseAddress: (flags & UV_UDP_REUSEADDR) === UV_UDP_REUSEADDR,
     };
 
     let listener;

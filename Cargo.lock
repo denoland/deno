@@ -1798,6 +1798,7 @@ dependencies = [
  "deno_core",
  "deno_permissions",
  "deno_tls",
+ "libc",
  "pin-project",
  "rustls-tokio-stream",
  "serde",
