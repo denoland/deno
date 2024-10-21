@@ -7,9 +7,6 @@ use std::net::Ipv4Addr;
 use std::net::Ipv6Addr;
 use std::net::SocketAddr;
 
-use deno_core::anyhow::anyhow;
-use deno_core::anyhow::bail;
-use deno_core::error::AnyError;
 use deno_core::op2;
 use deno_core::OpState;
 
@@ -27,13 +24,25 @@ impl deno_core::GarbageCollected for BlockListResource {}
 #[derive(Serialize)]
 struct SocketAddressSerialization(String, String);
 
+#[derive(Debug, thiserror::Error)]
+pub enum BlocklistError {
+  #[error("{0}")]
+  AddrParse(#[from] std::net::AddrParseError),
+  #[error("{0}")]
+  IpNetwork(#[from] ipnetwork::IpNetworkError),
+  #[error("Invalid address")]
+  InvalidAddress,
+  #[error("IP version mismatch between start and end addresses")]
+  IpVersionMismatch,
+}
+
 #[op2(fast)]
 pub fn op_socket_address_parse(
   state: &mut OpState,
   #[string] addr: &str,
   #[smi] port: u16,
   #[string] family: &str,
-) -> Result<bool, AnyError> {
+) -> Result<bool, BlocklistError> {
   let ip = addr.parse::<IpAddr>()?;
   let parsed: SocketAddr = SocketAddr::new(ip, port);
   let parsed_ip_str = parsed.ip().to_string();
@@ -52,7 +61,7 @@ pub fn op_socket_address_parse(
       Ok(false)
     }
   } else {
-    Err(anyhow!("Invalid address"))
+    Err(BlocklistError::InvalidAddress)
   }
 }
 
@@ -60,8 +69,8 @@ pub fn op_socket_address_parse(
 #[serde]
 pub fn op_socket_address_get_serialization(
   state: &mut OpState,
-) -> Result<SocketAddressSerialization, AnyError> {
-  Ok(state.take::<SocketAddressSerialization>())
+) -> SocketAddressSerialization {
+  state.take::<SocketAddressSerialization>()
 }
 
 #[op2]
@@ -77,7 +86,7 @@ pub fn op_blocklist_new() -> BlockListResource {
 pub fn op_blocklist_add_address(
   #[cppgc] wrap: &BlockListResource,
   #[string] addr: &str,
-) -> Result<(), AnyError> {
+) -> Result<(), BlocklistError> {
   wrap.blocklist.borrow_mut().add_address(addr)
 }
 
@@ -86,7 +95,7 @@ pub fn op_blocklist_add_range(
   #[cppgc] wrap: &BlockListResource,
   #[string] start: &str,
   #[string] end: &str,
-) -> Result<bool, AnyError> {
+) -> Result<bool, BlocklistError> {
   wrap.blocklist.borrow_mut().add_range(start, end)
 }
 
@@ -95,7 +104,7 @@ pub fn op_blocklist_add_subnet(
   #[cppgc] wrap: &BlockListResource,
   #[string] addr: &str,
   #[smi] prefix: u8,
-) -> Result<(), AnyError> {
+) -> Result<(), BlocklistError> {
   wrap.blocklist.borrow_mut().add_subnet(addr, prefix)
 }
 
@@ -104,7 +113,7 @@ pub fn op_blocklist_check(
   #[cppgc] wrap: &BlockListResource,
   #[string] addr: &str,
   #[string] r#type: &str,
-) -> Result<bool, AnyError> {
+) -> Result<bool, BlocklistError> {
   wrap.blocklist.borrow().check(addr, r#type)
 }
 
@@ -123,7 +132,7 @@ impl BlockList {
     &mut self,
     addr: IpAddr,
     prefix: Option<u8>,
-  ) -> Result<(), AnyError> {
+  ) -> Result<(), BlocklistError> {
     match addr {
       IpAddr::V4(addr) => {
         let ipv4_prefix = prefix.unwrap_or(32);
@@ -154,7 +163,7 @@ impl BlockList {
     Ok(())
   }
 
-  pub fn add_address(&mut self, address: &str) -> Result<(), AnyError> {
+  pub fn add_address(&mut self, address: &str) -> Result<(), BlocklistError> {
     let ip: IpAddr = address.parse()?;
     self.map_addr_add_network(ip, None)?;
     Ok(())
@@ -164,7 +173,7 @@ impl BlockList {
     &mut self,
     start: &str,
     end: &str,
-  ) -> Result<bool, AnyError> {
+  ) -> Result<bool, BlocklistError> {
     let start_ip: IpAddr = start.parse()?;
     let end_ip: IpAddr = end.parse()?;
 
@@ -193,25 +202,33 @@ impl BlockList {
           self.map_addr_add_network(IpAddr::V6(addr), None)?;
         }
       }
-      _ => bail!("IP version mismatch between start and end addresses"),
+      _ => return Err(BlocklistError::IpVersionMismatch),
     }
     Ok(true)
   }
 
-  pub fn add_subnet(&mut self, addr: &str, prefix: u8) -> Result<(), AnyError> {
+  pub fn add_subnet(
+    &mut self,
+    addr: &str,
+    prefix: u8,
+  ) -> Result<(), BlocklistError> {
     let ip: IpAddr = addr.parse()?;
     self.map_addr_add_network(ip, Some(prefix))?;
     Ok(())
   }
 
-  pub fn check(&self, addr: &str, r#type: &str) -> Result<bool, AnyError> {
+  pub fn check(
+    &self,
+    addr: &str,
+    r#type: &str,
+  ) -> Result<bool, BlocklistError> {
     let addr: IpAddr = addr.parse()?;
     let family = r#type.to_lowercase();
     if family == "ipv4" && addr.is_ipv4() || family == "ipv6" && addr.is_ipv6()
     {
       Ok(self.rules.iter().any(|net| net.contains(addr)))
     } else {
-      Err(anyhow!("Invalid address"))
+      Err(BlocklistError::InvalidAddress)
     }
   }
 }
