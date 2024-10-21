@@ -55,7 +55,7 @@ where
   let mut str = String::new();
   while let Some(t) = next_line(stderr_lines).await {
     let t = util::strip_ansi_codes(&t);
-    if t.starts_with("Watcher File change detected") {
+    if t.starts_with("Watcher Restarting! File change detected") {
       continue;
     }
     if t.starts_with("Watcher") {
