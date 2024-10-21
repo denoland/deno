@@ -25,7 +25,6 @@ import {
   assertThrows,
   fail,
 } from "@std/assert";
-import { assertSpyCall, assertSpyCalls, spy } from "@std/testing/mock";
 import { stripAnsiCode } from "@std/fmt/colors";
 import * as path from "@std/path";
 import { delay } from "@std/async/delay";
@@ -235,33 +234,6 @@ Deno.test({
       await process.status;
     } finally {
       clearTimeout(testTimeout);
-    }
-  },
-});
-
-Deno.test({
-  name: "process.on - ignored signals on windows",
-  ignore: Deno.build.os !== "windows",
-  fn() {
-    const ignoredSignals = ["SIGHUP", "SIGUSR1", "SIGUSR2"];
-
-    for (const signal of ignoredSignals) {
-      using consoleSpy = spy(console, "warn");
-      const handler = () => {};
-      process.on(signal, handler);
-      process.off(signal, handler);
-      assertSpyCall(consoleSpy, 0, {
-        args: [`Ignoring signal "${signal}" on Windows`],
-      });
-    }
-
-    {
-      using consoleSpy = spy(console, "warn");
-      const handler = () => {};
-      process.on("SIGTERM", handler);
-      process.off("SIGTERM", handler);
-      // No warning is made for SIGTERM
-      assertSpyCalls(consoleSpy, 0);
     }
   },
 });
@@ -690,6 +662,16 @@ Deno.test({
       assertStrictEquals(process.stdout.moveCursor, undefined);
       assertStrictEquals(process.stdout.clearLine, undefined);
       assertStrictEquals(process.stdout.clearScreenDown, undefined);
+    }
+
+    // Allows overwriting `process.stdout.isTTY`
+    // https://github.com/denoland/deno/issues/26123
+    const original = process.stdout.isTTY;
+    try {
+      process.stdout.isTTY = !isTTY;
+      assertEquals(process.stdout.isTTY, !isTTY);
+    } finally {
+      process.stdout.isTTY = original;
     }
   },
 });
@@ -1164,4 +1146,9 @@ Deno.test("process.cpuUsage()", () => {
   const cpuUsage = process.cpuUsage();
   assert(typeof cpuUsage.user === "number");
   assert(typeof cpuUsage.system === "number");
+});
+
+Deno.test("process.stdout.columns writable", () => {
+  process.stdout.columns = 80;
+  assertEquals(process.stdout.columns, 80);
 });

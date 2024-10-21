@@ -1,5 +1,3 @@
-modules.export = {
+module.exports = {
   value: 42
 };
-
-console.log('index.js', modules.export.value);
