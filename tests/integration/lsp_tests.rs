@@ -6778,6 +6778,117 @@ fn lsp_code_actions_imports_dts() {
 }
 
 #[test]
+fn lsp_code_actions_import_map_remap() {
+  let context = TestContextBuilder::new().use_temp_cwd().build();
+  let temp_dir = context.temp_dir();
+  temp_dir.write(
+    "deno.json",
+    json!({
+      "imports": {
+        "foo": "./foo.ts",
+        "bar": "./bar.ts",
+      },
+    })
+    .to_string(),
+  );
+  temp_dir.write("foo.ts", "");
+  temp_dir.write("bar.ts", "");
+  let mut client = context.new_lsp_command().build();
+  client.initialize_default();
+  let diagnostics = client.did_open(json!({
+    "textDocument": {
+      "uri": temp_dir.url().join("file.ts").unwrap(),
+      "languageId": "typescript",
+      "version": 1,
+      "text": r#"
+        import "./foo.ts";
+        import type {} from "./bar.ts";
+      "#,
+    }
+  }));
+  let res = client.write_request(
+    "textDocument/codeAction",
+    json!({
+      "textDocument": { "uri": temp_dir.url().join("file.ts").unwrap() },
+      "range": {
+        "start": { "line": 0, "character": 0 },
+        "end": { "line": 3, "character": 0 },
+      },
+      "context": {
+        "diagnostics": diagnostics.all(),
+        "only": ["quickfix"],
+      },
+    }),
+  );
+  assert_eq!(
+    res,
+    json!([
+      {
+        "title": "Update \"./foo.ts\" to \"foo\" to use import map.",
+        "kind": "quickfix",
+        "diagnostics": [
+          {
+            "range": {
+              "start": { "line": 1, "character": 15 },
+              "end": { "line": 1, "character": 25 },
+            },
+            "severity": 4,
+            "code": "import-map-remap",
+            "source": "deno",
+            "message": "The import specifier can be remapped to \"foo\" which will resolve it via the active import map.",
+            "data": { "from": "./foo.ts", "to": "foo" },
+          },
+        ],
+        "edit": {
+          "changes": {
+            temp_dir.url().join("file.ts").unwrap(): [
+              {
+                "range": {
+                  "start": { "line": 1, "character": 15 },
+                  "end": { "line": 1, "character": 25 },
+                },
+                "newText": "\"foo\"",
+              },
+            ],
+          },
+        },
+      },
+      {
+        "title": "Update \"./bar.ts\" to \"bar\" to use import map.",
+        "kind": "quickfix",
+        "diagnostics": [
+          {
+            "range": {
+              "start": { "line": 2, "character": 28 },
+              "end": { "line": 2, "character": 38 },
+            },
+            "severity": 4,
+            "code": "import-map-remap",
+            "source": "deno",
+            "message": "The import specifier can be remapped to \"bar\" which will resolve it via the active import map.",
+            "data": { "from": "./bar.ts", "to": "bar" },
+          },
+        ],
+        "edit": {
+          "changes": {
+            temp_dir.url().join("file.ts").unwrap(): [
+              {
+                "range": {
+                  "start": { "line": 2, "character": 28 },
+                  "end": { "line": 2, "character": 38 },
+                },
+                "newText": "\"bar\"",
+              },
+            ],
+          },
+        },
+      },
+    ]),
+  );
+  client.shutdown();
+}
+
+#[test]
 fn lsp_code_actions_refactor() {
   let context = TestContextBuilder::new().use_temp_cwd().build();
   let mut client = context.new_lsp_command().build();

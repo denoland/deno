@@ -1499,7 +1499,11 @@ fn diagnose_dependency(
     .data_for_specifier(referrer_doc.file_referrer().unwrap_or(referrer))
     .and_then(|d| d.resolver.maybe_import_map());
   if let Some(import_map) = import_map {
-    if let Resolution::Ok(resolved) = &dependency.maybe_code {
+    let resolved = dependency
+      .maybe_code
+      .ok()
+      .or_else(|| dependency.maybe_type.ok());
+    if let Some(resolved) = resolved {
       if let Some(to) = import_map.lookup(&resolved.specifier, referrer) {
         if dependency_key != to {
           diagnostics.push(
