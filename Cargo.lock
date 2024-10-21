@@ -1209,7 +1209,7 @@ dependencies = [
  "hyper-util",
  "import_map",
  "indexmap",
- "jsonc-parser 0.26.0",
+ "jsonc-parser",
  "junction",
  "lazy-regex",
  "libc",
@@ -1391,9 +1391,9 @@ dependencies = [
 
 [[package]]
 name = "deno_config"
-version = "0.37.1"
+version = "0.37.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "3cb7a1723676fba5964f8d7441d8b53748f9e74d6d4241be7de9730da021859a"
+checksum = "5900bfb37538d83b19ba0b157cdc785770e38422ee4632411e3bd3d90ac0f537"
 dependencies = [
  "anyhow",
  "deno_package_json",
@@ -1403,7 +1403,7 @@ dependencies = [
  "ignore",
  "import_map",
  "indexmap",
- "jsonc-parser 0.23.0",
+ "jsonc-parser",
  "log",
  "percent-encoding",
  "phf",
@@ -2562,27 +2562,27 @@ dependencies = [
 
 [[package]]
 name = "dprint-plugin-json"
-version = "0.19.3"
+version = "0.19.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "a19f4a9f2f548b2098b8ec597d7bb40af133b6e9a3187c1d3c4caa101b8c93c3"
+checksum = "57f91e594559b450b7c5d6a0ba9f3f9fe951c1ea371168f7c95973da3fdbd85a"
 dependencies = [
  "anyhow",
  "dprint-core",
  "dprint-core-macros",
- "jsonc-parser 0.23.0",
+ "jsonc-parser",
  "serde",
  "text_lines",
 ]
 
 [[package]]
 name = "dprint-plugin-jupyter"
-version = "0.1.3"
+version = "0.1.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "c67b0e54b552a4775c221b44ed33be918c400bd8041d1f044f947fbb01025cc0"
+checksum = "d0d20684e37b3824e2bc917cfcb14e2cdf88398eef507335d839cbd78172bfee"
 dependencies = [
  "anyhow",
  "dprint-core",
- "jsonc-parser 0.23.0",
+ "jsonc-parser",
  "serde",
  "serde_json",
 ]
@@ -4029,15 +4029,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "29c15563dc2726973df627357ce0c9ddddbea194836909d655df6a75d2cf296d"
 dependencies = [
  "wasm-bindgen",
-]
-
-[[package]]
-name = "jsonc-parser"
-version = "0.23.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "7725c320caac8c21d8228c1d055af27a995d371f78cc763073d3e068323641b5"
-dependencies = [
- "serde_json",
 ]
 
 [[package]]
@@ -7167,7 +7158,7 @@ dependencies = [
  "http-body-util",
  "hyper 1.4.1",
  "hyper-util",
- "jsonc-parser 0.26.0",
+ "jsonc-parser",
  "lazy-regex",
  "libc",
  "lsp-types",
