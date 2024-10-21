@@ -400,9 +400,7 @@ jobs:
         run: deno run --allow-write --allow-read --allow-run=git ./tests/node_compat/runner/setup.ts --check
       - name: Echo paths
         run: |-
-          find /lib -name "crtbeginS.o"
           find /usr/lib -name "crtbeginS.o"
-          find /lib -name "crtendS.o"
           find /usr/lib -name "crtbeginS.o"
       - name: Build debug
         if: '!(matrix.skip) && (matrix.job == ''test'' && matrix.profile == ''debug'')'
