@@ -402,6 +402,8 @@ jobs:
         if: '!(matrix.skip) && (matrix.job == ''test'' && matrix.profile == ''debug'')'
         run: |-
           df -h
+          find /usr/lib -name "crtbeginS.o"
+          fidn /usr/lib -name "crtendS.o"
           cargo build --locked --all-targets
           df -h
         env:
