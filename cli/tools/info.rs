@@ -11,12 +11,14 @@ use deno_core::anyhow::bail;
 use deno_core::error::AnyError;
 use deno_core::resolve_url_or_path;
 use deno_core::serde_json;
+use deno_core::url;
 use deno_graph::Dependency;
 use deno_graph::GraphKind;
 use deno_graph::Module;
 use deno_graph::ModuleError;
 use deno_graph::ModuleGraph;
 use deno_graph::Resolution;
+use deno_npm::npm_rc::ResolvedNpmRc;
 use deno_npm::resolution::NpmResolutionSnapshot;
 use deno_npm::NpmPackageId;
 use deno_npm::NpmResolutionPackage;
@@ -47,20 +49,23 @@ pub async fn info(
     let module_graph_creator = factory.module_graph_creator().await?;
     let npm_resolver = factory.npm_resolver().await?;
     let maybe_lockfile = cli_options.maybe_lockfile();
+    let npmrc = cli_options.npmrc();
     let resolver = factory.workspace_resolver().await?;
 
-    let maybe_import_specifier =
-      if let Some(import_map) = resolver.maybe_import_map() {
-        if let Ok(imports_specifier) =
-          import_map.resolve(&specifier, import_map.base_url())
-        {
-          Some(imports_specifier)
-        } else {
-          None
-        }
+    let cwd_url =
+      url::Url::from_directory_path(cli_options.initial_cwd()).unwrap();
+
+    let maybe_import_specifier = if let Some(import_map) =
+      resolver.maybe_import_map()
+    {
+      if let Ok(imports_specifier) = import_map.resolve(&specifier, &cwd_url) {
+        Some(imports_specifier)
       } else {
         None
-      };
+      }
+    } else {
+      None
+    };
 
     let specifier = match maybe_import_specifier {
       Some(specifier) => specifier,
@@ -88,7 +93,8 @@ pub async fn info(
           JSON_SCHEMA_VERSION.into(),
         );
       }
-      add_npm_packages_to_json(&mut json_graph, npm_resolver.as_ref());
+
+      add_npm_packages_to_json(&mut json_graph, npm_resolver.as_ref(), npmrc);
       display::write_json_to_stdout(&json_graph)?;
     } else {
       let mut output = String::new();
@@ -185,6 +191,7 @@ fn print_cache_info(
 fn add_npm_packages_to_json(
   json: &mut serde_json::Value,
   npm_resolver: &dyn CliNpmResolver,
+  npmrc: &ResolvedNpmRc,
 ) {
   let Some(npm_resolver) = npm_resolver.as_managed() else {
     return; // does not include byonm to deno info's output
@@ -195,45 +202,28 @@ fn add_npm_packages_to_json(
   let json = json.as_object_mut().unwrap();
   let modules = json.get_mut("modules").and_then(|m| m.as_array_mut());
   if let Some(modules) = modules {
-    if modules.len() == 1
-      && modules[0].get("kind").and_then(|k| k.as_str()) == Some("npm")
-    {
-      // If there is only one module and it's "external", then that means
-      // someone provided an npm specifier as a cli argument. In this case,
-      // we want to show which npm package the cli argument resolved to.
-      let module = &mut modules[0];
-      let maybe_package = module
-        .get("specifier")
-        .and_then(|k| k.as_str())
-        .and_then(|specifier| NpmPackageNvReference::from_str(specifier).ok())
-        .and_then(|package_ref| {
-          snapshot
-            .resolve_package_from_deno_module(package_ref.nv())
-            .ok()
-        });
-      if let Some(pkg) = maybe_package {
-        if let Some(module) = module.as_object_mut() {
-          module
-            .insert("npmPackage".to_string(), pkg.id.as_serialized().into());
-        }
-      }
-    } else {
-      // Filter out npm package references from the modules and instead
-      // have them only listed as dependencies. This is done because various
-      // npm specifiers modules in the graph are really just unresolved
-      // references. So there could be listed multiple npm specifiers
-      // that would resolve to a single npm package.
-      for i in (0..modules.len()).rev() {
-        if matches!(
-          modules[i].get("kind").and_then(|k| k.as_str()),
-          Some("npm") | Some("external")
-        ) {
-          modules.remove(i);
-        }
-      }
-    }
-
     for module in modules.iter_mut() {
+      if matches!(module.get("kind").and_then(|k| k.as_str()), Some("npm")) {
+        // If there is only one module and it's "external", then that means
+        // someone provided an npm specifier as a cli argument. In this case,
+        // we want to show which npm package the cli argument resolved to.
+        let maybe_package = module
+          .get("specifier")
+          .and_then(|k| k.as_str())
+          .and_then(|specifier| NpmPackageNvReference::from_str(specifier).ok())
+          .and_then(|package_ref| {
+            snapshot
+              .resolve_package_from_deno_module(package_ref.nv())
+              .ok()
+          });
+        if let Some(pkg) = maybe_package {
+          if let Some(module) = module.as_object_mut() {
+            module
+              .insert("npmPackage".to_string(), pkg.id.as_serialized().into());
+          }
+        }
+      }
+
       let dependencies = module
         .get_mut("dependencies")
         .and_then(|d| d.as_array_mut());
@@ -265,7 +255,7 @@ fn add_npm_packages_to_json(
   let mut json_packages = serde_json::Map::with_capacity(sorted_packages.len());
   for pkg in sorted_packages {
     let mut kv = serde_json::Map::new();
-    kv.insert("name".to_string(), pkg.id.nv.name.to_string().into());
+    kv.insert("name".to_string(), pkg.id.nv.name.clone().into());
     kv.insert("version".to_string(), pkg.id.nv.version.to_string().into());
     let mut deps = pkg.dependencies.values().collect::<Vec<_>>();
     deps.sort();
@@ -274,6 +264,8 @@ fn add_npm_packages_to_json(
       .map(|id| serde_json::Value::String(id.as_serialized()))
       .collect::<Vec<_>>();
     kv.insert("dependencies".to_string(), deps.into());
+    let registry_url = npmrc.get_registry_url(&pkg.id.nv.name);
+    kv.insert("registryUrl".to_string(), registry_url.to_string().into());
 
     json_packages.insert(pkg.id.as_serialized(), kv.into());
   }

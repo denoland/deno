@@ -6,10 +6,7 @@ use aes_kw::KekAes256;
 
 use base64::prelude::BASE64_URL_SAFE_NO_PAD;
 use base64::Engine;
-use deno_core::error::custom_error;
 use deno_core::error::not_supported;
-use deno_core::error::type_error;
-use deno_core::error::AnyError;
 use deno_core::op2;
 use deno_core::ToJsBuffer;
 
@@ -17,7 +14,6 @@ use deno_core::unsync::spawn_blocking;
 use deno_core::JsBuffer;
 use deno_core::OpState;
 use serde::Deserialize;
-use shared::operation_error;
 
 use p256::elliptic_curve::sec1::FromEncodedPoint;
 use p256::pkcs8::DecodePrivateKey;
@@ -67,15 +63,24 @@ mod x25519;
 mod x448;
 
 pub use crate::decrypt::op_crypto_decrypt;
+pub use crate::decrypt::DecryptError;
+pub use crate::ed25519::Ed25519Error;
 pub use crate::encrypt::op_crypto_encrypt;
+pub use crate::encrypt::EncryptError;
 pub use crate::export_key::op_crypto_export_key;
+pub use crate::export_key::ExportKeyError;
 pub use crate::generate_key::op_crypto_generate_key;
+pub use crate::generate_key::GenerateKeyError;
 pub use crate::import_key::op_crypto_import_key;
+pub use crate::import_key::ImportKeyError;
 use crate::key::Algorithm;
 use crate::key::CryptoHash;
 use crate::key::CryptoNamedCurve;
 use crate::key::HkdfOutput;
+pub use crate::shared::SharedError;
 use crate::shared::V8RawKeyData;
+pub use crate::x25519::X25519Error;
+pub use crate::x448::X448Error;
 
 deno_core::extension!(deno_crypto,
   deps = [ deno_webidl, deno_web ],
@@ -127,11 +132,63 @@ deno_core::extension!(deno_crypto,
   },
 );
 
+#[derive(Debug, thiserror::Error)]
+pub enum Error {
+  #[error(transparent)]
+  General(#[from] SharedError),
+  #[error(transparent)]
+  JoinError(#[from] tokio::task::JoinError),
+  #[error(transparent)]
+  Der(#[from] rsa::pkcs1::der::Error),
+  #[error("Missing argument hash")]
+  MissingArgumentHash,
+  #[error("Missing argument saltLength")]
+  MissingArgumentSaltLength,
+  #[error("unsupported algorithm")]
+  UnsupportedAlgorithm,
+  #[error(transparent)]
+  KeyRejected(#[from] ring::error::KeyRejected),
+  #[error(transparent)]
+  RSA(#[from] rsa::Error),
+  #[error(transparent)]
+  Pkcs1(#[from] rsa::pkcs1::Error),
+  #[error(transparent)]
+  Unspecified(#[from] ring::error::Unspecified),
+  #[error("Invalid key format")]
+  InvalidKeyFormat,
+  #[error(transparent)]
+  P256Ecdsa(#[from] p256::ecdsa::Error),
+  #[error("Unexpected error decoding private key")]
+  DecodePrivateKey,
+  #[error("Missing argument publicKey")]
+  MissingArgumentPublicKey,
+  #[error("Missing argument namedCurve")]
+  MissingArgumentNamedCurve,
+  #[error("Missing argument info")]
+  MissingArgumentInfo,
+  #[error("The length provided for HKDF is too large")]
+  HKDFLengthTooLarge,
+  #[error(transparent)]
+  Base64Decode(#[from] base64::DecodeError),
+  #[error("Data must be multiple of 8 bytes")]
+  DataInvalidSize,
+  #[error("Invalid key length")]
+  InvalidKeyLength,
+  #[error("encryption error")]
+  EncryptionError,
+  #[error("decryption error - integrity check failed")]
+  DecryptionError,
+  #[error("The ArrayBufferView's byte length ({0}) exceeds the number of bytes of entropy available via this API (65536)")]
+  ArrayBufferViewLengthExceeded(usize),
+  #[error(transparent)]
+  Other(deno_core::error::AnyError),
+}
+
 #[op2]
 #[serde]
 pub fn op_crypto_base64url_decode(
   #[string] data: String,
-) -> Result<ToJsBuffer, AnyError> {
+) -> Result<ToJsBuffer, Error> {
   let data: Vec<u8> = BASE64_URL_SAFE_NO_PAD.decode(data)?;
   Ok(data.into())
 }
@@ -147,12 +204,9 @@ pub fn op_crypto_base64url_encode(#[buffer] data: JsBuffer) -> String {
 pub fn op_crypto_get_random_values(
   state: &mut OpState,
   #[buffer] out: &mut [u8],
-) -> Result<(), AnyError> {
+) -> Result<(), Error> {
   if out.len() > 65536 {
-    return Err(
-      deno_web::DomExceptionQuotaExceededError::new(&format!("The ArrayBufferView's byte length ({}) exceeds the number of bytes of entropy available via this API (65536)", out.len()))
-        .into(),
-    );
+    return Err(Error::ArrayBufferViewLengthExceeded(out.len()));
   }
 
   let maybe_seeded_rng = state.try_borrow_mut::<StdRng>();
@@ -204,7 +258,7 @@ pub struct SignArg {
 pub async fn op_crypto_sign_key(
   #[serde] args: SignArg,
   #[buffer] zero_copy: JsBuffer,
-) -> Result<ToJsBuffer, AnyError> {
+) -> Result<ToJsBuffer, Error> {
   deno_core::unsync::spawn_blocking(move || {
     let data = &*zero_copy;
     let algorithm = args.algorithm;
@@ -213,10 +267,7 @@ pub async fn op_crypto_sign_key(
       Algorithm::RsassaPkcs1v15 => {
         use rsa::pkcs1v15::SigningKey;
         let private_key = RsaPrivateKey::from_pkcs1_der(&args.key.data)?;
-        match args
-          .hash
-          .ok_or_else(|| type_error("Missing argument hash".to_string()))?
-        {
+        match args.hash.ok_or_else(|| Error::MissingArgumentHash)? {
           CryptoHash::Sha1 => {
             let signing_key = SigningKey::<Sha1>::new(private_key);
             signing_key.sign(data)
@@ -239,15 +290,13 @@ pub async fn op_crypto_sign_key(
       Algorithm::RsaPss => {
         let private_key = RsaPrivateKey::from_pkcs1_der(&args.key.data)?;
 
-        let salt_len = args.salt_length.ok_or_else(|| {
-          type_error("Missing argument saltLength".to_string())
-        })? as usize;
+        let salt_len = args
+          .salt_length
+          .ok_or_else(|| Error::MissingArgumentSaltLength)?
+          as usize;
 
         let mut rng = OsRng;
-        match args
-          .hash
-          .ok_or_else(|| type_error("Missing argument hash".to_string()))?
-        {
+        match args.hash.ok_or_else(|| Error::MissingArgumentHash)? {
           CryptoHash::Sha1 => {
             let signing_key = Pss::new_with_salt::<Sha1>(salt_len);
             let hashed = Sha1::digest(data);
@@ -272,8 +321,10 @@ pub async fn op_crypto_sign_key(
         .to_vec()
       }
       Algorithm::Ecdsa => {
-        let curve: &EcdsaSigningAlgorithm =
-          args.named_curve.ok_or_else(not_supported)?.into();
+        let curve: &EcdsaSigningAlgorithm = args
+          .named_curve
+          .ok_or_else(|| Error::Other(not_supported()))?
+          .into();
 
         let rng = RingRand::SystemRandom::new();
         let key_pair = EcdsaKeyPair::from_pkcs8(curve, &args.key.data, &rng)?;
@@ -282,7 +333,7 @@ pub async fn op_crypto_sign_key(
         if let Some(hash) = args.hash {
           match hash {
             CryptoHash::Sha256 | CryptoHash::Sha384 => (),
-            _ => return Err(type_error("Unsupported algorithm")),
+            _ => return Err(Error::UnsupportedAlgorithm),
           }
         };
 
@@ -292,14 +343,17 @@ pub async fn op_crypto_sign_key(
         signature.as_ref().to_vec()
       }
       Algorithm::Hmac => {
-        let hash: HmacAlgorithm = args.hash.ok_or_else(not_supported)?.into();
+        let hash: HmacAlgorithm = args
+          .hash
+          .ok_or_else(|| Error::Other(not_supported()))?
+          .into();
 
         let key = HmacKey::new(hash, &args.key.data);
 
         let signature = ring::hmac::sign(&key, data);
         signature.as_ref().to_vec()
       }
-      _ => return Err(type_error("Unsupported algorithm".to_string())),
+      _ => return Err(Error::UnsupportedAlgorithm),
     };
 
     Ok(signature.into())
@@ -322,7 +376,7 @@ pub struct VerifyArg {
 pub async fn op_crypto_verify_key(
   #[serde] args: VerifyArg,
   #[buffer] zero_copy: JsBuffer,
-) -> Result<bool, AnyError> {
+) -> Result<bool, Error> {
   deno_core::unsync::spawn_blocking(move || {
     let data = &*zero_copy;
     let algorithm = args.algorithm;
@@ -333,10 +387,7 @@ pub async fn op_crypto_verify_key(
         use rsa::pkcs1v15::VerifyingKey;
         let public_key = read_rsa_public_key(args.key)?;
         let signature: Signature = args.signature.as_ref().try_into()?;
-        match args
-          .hash
-          .ok_or_else(|| type_error("Missing argument hash".to_string()))?
-        {
+        match args.hash.ok_or_else(|| Error::MissingArgumentHash)? {
           CryptoHash::Sha1 => {
             let verifying_key = VerifyingKey::<Sha1>::new(public_key);
             verifying_key.verify(data, &signature).is_ok()
@@ -359,14 +410,12 @@ pub async fn op_crypto_verify_key(
         let public_key = read_rsa_public_key(args.key)?;
         let signature = args.signature.as_ref();
 
-        let salt_len = args.salt_length.ok_or_else(|| {
-          type_error("Missing argument saltLength".to_string())
-        })? as usize;
+        let salt_len = args
+          .salt_length
+          .ok_or_else(|| Error::MissingArgumentSaltLength)?
+          as usize;
 
-        match args
-          .hash
-          .ok_or_else(|| type_error("Missing argument hash".to_string()))?
-        {
+        match args.hash.ok_or_else(|| Error::MissingArgumentHash)? {
           CryptoHash::Sha1 => {
             let pss = Pss::new_with_salt::<Sha1>(salt_len);
             let hashed = Sha1::digest(data);
@@ -390,15 +439,22 @@ pub async fn op_crypto_verify_key(
         }
       }
       Algorithm::Hmac => {
-        let hash: HmacAlgorithm = args.hash.ok_or_else(not_supported)?.into();
+        let hash: HmacAlgorithm = args
+          .hash
+          .ok_or_else(|| Error::Other(not_supported()))?
+          .into();
         let key = HmacKey::new(hash, &args.key.data);
         ring::hmac::verify(&key, data, &args.signature).is_ok()
       }
       Algorithm::Ecdsa => {
-        let signing_alg: &EcdsaSigningAlgorithm =
-          args.named_curve.ok_or_else(not_supported)?.into();
-        let verify_alg: &EcdsaVerificationAlgorithm =
-          args.named_curve.ok_or_else(not_supported)?.into();
+        let signing_alg: &EcdsaSigningAlgorithm = args
+          .named_curve
+          .ok_or_else(|| Error::Other(not_supported()))?
+          .into();
+        let verify_alg: &EcdsaVerificationAlgorithm = args
+          .named_curve
+          .ok_or_else(|| Error::Other(not_supported()))?
+          .into();
 
         let private_key;
 
@@ -411,7 +467,7 @@ pub async fn op_crypto_verify_key(
             private_key.public_key().as_ref()
           }
           KeyType::Public => &*args.key.data,
-          _ => return Err(type_error("Invalid Key format".to_string())),
+          _ => return Err(Error::InvalidKeyFormat),
         };
 
         let public_key =
@@ -419,7 +475,7 @@ pub async fn op_crypto_verify_key(
 
         public_key.verify(data, &args.signature).is_ok()
       }
-      _ => return Err(type_error("Unsupported algorithm".to_string())),
+      _ => return Err(Error::UnsupportedAlgorithm),
     };
 
     Ok(verification)
@@ -447,70 +503,68 @@ pub struct DeriveKeyArg {
 pub async fn op_crypto_derive_bits(
   #[serde] args: DeriveKeyArg,
   #[buffer] zero_copy: Option<JsBuffer>,
-) -> Result<ToJsBuffer, AnyError> {
+) -> Result<ToJsBuffer, Error> {
   deno_core::unsync::spawn_blocking(move || {
     let algorithm = args.algorithm;
     match algorithm {
       Algorithm::Pbkdf2 => {
-        let zero_copy = zero_copy.ok_or_else(not_supported)?;
+        let zero_copy =
+          zero_copy.ok_or_else(|| Error::Other(not_supported()))?;
         let salt = &*zero_copy;
         // The caller must validate these cases.
         assert!(args.length > 0);
         assert!(args.length % 8 == 0);
 
-        let algorithm = match args.hash.ok_or_else(not_supported)? {
-          CryptoHash::Sha1 => pbkdf2::PBKDF2_HMAC_SHA1,
-          CryptoHash::Sha256 => pbkdf2::PBKDF2_HMAC_SHA256,
-          CryptoHash::Sha384 => pbkdf2::PBKDF2_HMAC_SHA384,
-          CryptoHash::Sha512 => pbkdf2::PBKDF2_HMAC_SHA512,
-        };
+        let algorithm =
+          match args.hash.ok_or_else(|| Error::Other(not_supported()))? {
+            CryptoHash::Sha1 => pbkdf2::PBKDF2_HMAC_SHA1,
+            CryptoHash::Sha256 => pbkdf2::PBKDF2_HMAC_SHA256,
+            CryptoHash::Sha384 => pbkdf2::PBKDF2_HMAC_SHA384,
+            CryptoHash::Sha512 => pbkdf2::PBKDF2_HMAC_SHA512,
+          };
 
         // This will never panic. We have already checked length earlier.
-        let iterations =
-          NonZeroU32::new(args.iterations.ok_or_else(not_supported)?).unwrap();
+        let iterations = NonZeroU32::new(
+          args
+            .iterations
+            .ok_or_else(|| Error::Other(not_supported()))?,
+        )
+        .unwrap();
         let secret = args.key.data;
         let mut out = vec![0; args.length / 8];
         pbkdf2::derive(algorithm, iterations, salt, &secret, &mut out);
         Ok(out.into())
       }
       Algorithm::Ecdh => {
-        let named_curve = args.named_curve.ok_or_else(|| {
-          type_error("Missing argument namedCurve".to_string())
-        })?;
+        let named_curve = args
+          .named_curve
+          .ok_or_else(|| Error::MissingArgumentNamedCurve)?;
 
         let public_key = args
           .public_key
-          .ok_or_else(|| type_error("Missing argument publicKey"))?;
+          .ok_or_else(|| Error::MissingArgumentPublicKey)?;
 
         match named_curve {
           CryptoNamedCurve::P256 => {
             let secret_key = p256::SecretKey::from_pkcs8_der(&args.key.data)
-              .map_err(|_| {
-                type_error("Unexpected error decoding private key")
-              })?;
+              .map_err(|_| Error::DecodePrivateKey)?;
 
             let public_key = match public_key.r#type {
               KeyType::Private => {
                 p256::SecretKey::from_pkcs8_der(&public_key.data)
-                  .map_err(|_| {
-                    type_error("Unexpected error decoding private key")
-                  })?
+                  .map_err(|_| Error::DecodePrivateKey)?
                   .public_key()
               }
               KeyType::Public => {
                 let point = p256::EncodedPoint::from_bytes(public_key.data)
-                  .map_err(|_| {
-                    type_error("Unexpected error decoding private key")
-                  })?;
+                  .map_err(|_| Error::DecodePrivateKey)?;
 
                 let pk = p256::PublicKey::from_encoded_point(&point);
                 // pk is a constant time Option.
                 if pk.is_some().into() {
                   pk.unwrap()
                 } else {
-                  return Err(type_error(
-                    "Unexpected error decoding private key",
-                  ));
+                  return Err(Error::DecodePrivateKey);
                 }
               }
               _ => unreachable!(),
@@ -526,32 +580,24 @@ pub async fn op_crypto_derive_bits(
           }
           CryptoNamedCurve::P384 => {
             let secret_key = p384::SecretKey::from_pkcs8_der(&args.key.data)
-              .map_err(|_| {
-                type_error("Unexpected error decoding private key")
-              })?;
+              .map_err(|_| Error::DecodePrivateKey)?;
 
             let public_key = match public_key.r#type {
               KeyType::Private => {
                 p384::SecretKey::from_pkcs8_der(&public_key.data)
-                  .map_err(|_| {
-                    type_error("Unexpected error decoding private key")
-                  })?
+                  .map_err(|_| Error::DecodePrivateKey)?
                   .public_key()
               }
               KeyType::Public => {
                 let point = p384::EncodedPoint::from_bytes(public_key.data)
-                  .map_err(|_| {
-                    type_error("Unexpected error decoding private key")
-                  })?;
+                  .map_err(|_| Error::DecodePrivateKey)?;
 
                 let pk = p384::PublicKey::from_encoded_point(&point);
                 // pk is a constant time Option.
                 if pk.is_some().into() {
                   pk.unwrap()
                 } else {
-                  return Err(type_error(
-                    "Unexpected error decoding private key",
-                  ));
+                  return Err(Error::DecodePrivateKey);
                 }
               }
               _ => unreachable!(),
@@ -568,18 +614,18 @@ pub async fn op_crypto_derive_bits(
         }
       }
       Algorithm::Hkdf => {
-        let zero_copy = zero_copy.ok_or_else(not_supported)?;
+        let zero_copy =
+          zero_copy.ok_or_else(|| Error::Other(not_supported()))?;
         let salt = &*zero_copy;
-        let algorithm = match args.hash.ok_or_else(not_supported)? {
-          CryptoHash::Sha1 => hkdf::HKDF_SHA1_FOR_LEGACY_USE_ONLY,
-          CryptoHash::Sha256 => hkdf::HKDF_SHA256,
-          CryptoHash::Sha384 => hkdf::HKDF_SHA384,
-          CryptoHash::Sha512 => hkdf::HKDF_SHA512,
-        };
+        let algorithm =
+          match args.hash.ok_or_else(|| Error::Other(not_supported()))? {
+            CryptoHash::Sha1 => hkdf::HKDF_SHA1_FOR_LEGACY_USE_ONLY,
+            CryptoHash::Sha256 => hkdf::HKDF_SHA256,
+            CryptoHash::Sha384 => hkdf::HKDF_SHA384,
+            CryptoHash::Sha512 => hkdf::HKDF_SHA512,
+          };
 
-        let info = args
-          .info
-          .ok_or_else(|| type_error("Missing argument info".to_string()))?;
+        let info = args.info.ok_or_else(|| Error::MissingArgumentInfo)?;
         // IKM
         let secret = args.key.data;
         // L
@@ -588,23 +634,20 @@ pub async fn op_crypto_derive_bits(
         let salt = hkdf::Salt::new(algorithm, salt);
         let prk = salt.extract(&secret);
         let info = &[&*info];
-        let okm = prk.expand(info, HkdfOutput(length)).map_err(|_e| {
-          custom_error(
-            "DOMExceptionOperationError",
-            "The length provided for HKDF is too large",
-          )
-        })?;
+        let okm = prk
+          .expand(info, HkdfOutput(length))
+          .map_err(|_e| Error::HKDFLengthTooLarge)?;
         let mut r = vec![0u8; length];
         okm.fill(&mut r)?;
         Ok(r.into())
       }
-      _ => Err(type_error("Unsupported algorithm".to_string())),
+      _ => Err(Error::UnsupportedAlgorithm),
     }
   })
   .await?
 }
 
-fn read_rsa_public_key(key_data: KeyData) -> Result<RsaPublicKey, AnyError> {
+fn read_rsa_public_key(key_data: KeyData) -> Result<RsaPublicKey, Error> {
   let public_key = match key_data.r#type {
     KeyType::Private => {
       RsaPrivateKey::from_pkcs1_der(&key_data.data)?.to_public_key()
@@ -617,7 +660,7 @@ fn read_rsa_public_key(key_data: KeyData) -> Result<RsaPublicKey, AnyError> {
 
 #[op2]
 #[string]
-pub fn op_crypto_random_uuid(state: &mut OpState) -> Result<String, AnyError> {
+pub fn op_crypto_random_uuid(state: &mut OpState) -> Result<String, Error> {
   let maybe_seeded_rng = state.try_borrow_mut::<StdRng>();
   let uuid = if let Some(seeded_rng) = maybe_seeded_rng {
     let mut bytes = [0u8; 16];
@@ -638,7 +681,7 @@ pub fn op_crypto_random_uuid(state: &mut OpState) -> Result<String, AnyError> {
 pub async fn op_crypto_subtle_digest(
   #[serde] algorithm: CryptoHash,
   #[buffer] data: JsBuffer,
-) -> Result<ToJsBuffer, AnyError> {
+) -> Result<ToJsBuffer, Error> {
   let output = spawn_blocking(move || {
     digest::digest(algorithm.into(), &data)
       .as_ref()
@@ -662,7 +705,7 @@ pub struct WrapUnwrapKeyArg {
 pub fn op_crypto_wrap_key(
   #[serde] args: WrapUnwrapKeyArg,
   #[buffer] data: JsBuffer,
-) -> Result<ToJsBuffer, AnyError> {
+) -> Result<ToJsBuffer, Error> {
   let algorithm = args.algorithm;
 
   match algorithm {
@@ -670,20 +713,20 @@ pub fn op_crypto_wrap_key(
       let key = args.key.as_secret_key()?;
 
       if data.len() % 8 != 0 {
-        return Err(type_error("Data must be multiple of 8 bytes"));
+        return Err(Error::DataInvalidSize);
       }
 
       let wrapped_key = match key.len() {
         16 => KekAes128::new(key.into()).wrap_vec(&data),
         24 => KekAes192::new(key.into()).wrap_vec(&data),
         32 => KekAes256::new(key.into()).wrap_vec(&data),
-        _ => return Err(type_error("Invalid key length")),
+        _ => return Err(Error::InvalidKeyLength),
       }
-      .map_err(|_| operation_error("encryption error"))?;
+      .map_err(|_| Error::EncryptionError)?;
 
       Ok(wrapped_key.into())
     }
-    _ => Err(type_error("Unsupported algorithm")),
+    _ => Err(Error::UnsupportedAlgorithm),
   }
 }
 
@@ -692,29 +735,27 @@ pub fn op_crypto_wrap_key(
 pub fn op_crypto_unwrap_key(
   #[serde] args: WrapUnwrapKeyArg,
   #[buffer] data: JsBuffer,
-) -> Result<ToJsBuffer, AnyError> {
+) -> Result<ToJsBuffer, Error> {
   let algorithm = args.algorithm;
   match algorithm {
     Algorithm::AesKw => {
       let key = args.key.as_secret_key()?;
 
       if data.len() % 8 != 0 {
-        return Err(type_error("Data must be multiple of 8 bytes"));
+        return Err(Error::DataInvalidSize);
       }
 
       let unwrapped_key = match key.len() {
         16 => KekAes128::new(key.into()).unwrap_vec(&data),
         24 => KekAes192::new(key.into()).unwrap_vec(&data),
         32 => KekAes256::new(key.into()).unwrap_vec(&data),
-        _ => return Err(type_error("Invalid key length")),
+        _ => return Err(Error::InvalidKeyLength),
       }
-      .map_err(|_| {
-        operation_error("decryption error - integrity check failed")
-      })?;
+      .map_err(|_| Error::DecryptionError)?;
 
       Ok(unwrapped_key.into())
     }
-    _ => Err(type_error("Unsupported algorithm")),
+    _ => Err(Error::UnsupportedAlgorithm),
   }
 }
 

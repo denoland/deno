@@ -2,6 +2,11 @@ name: cargo_publish
 
 on: workflow_dispatch
 
+# Ensures only one publish is running at a time
+concurrency:
+  group: ${{ github.workflow }}
+  cancel-in-progress: true
+
 jobs:
   build:
     name: cargo publish
