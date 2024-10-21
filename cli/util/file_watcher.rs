@@ -287,10 +287,14 @@ where
         .clone_from(&received_changed_paths);
       let excluded_paths = &exclude_set_cloned;
       let received_changed_paths_cloned = received_changed_paths.clone();
-      let is_excluded_file_changed = received_changed_paths_cloned
-        .unwrap()
-        .iter()
-        .any(|path| excluded_paths.matches_path(path));
+      let is_excluded_file_changed =
+        received_changed_paths_cloned.unwrap().iter().any(|path| {
+          excluded_paths.matches_path(path)
+            || excluded_paths.inner().iter().any(|excluded_path| {
+              excluded_path.base_path().unwrap().is_dir()
+                && path.starts_with(excluded_path.base_path().unwrap())
+            })
+        });
       // skip restart when the changed path is from the excluded set
       if !is_excluded_file_changed {
         match *watcher_.restart_mode.lock() {
