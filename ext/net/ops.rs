@@ -280,7 +280,7 @@ pub async fn op_net_join_multi_v6_udp(
           .encode_utf16()
           .chain(std::iter::once(0))
           .collect();
-        windows::Win32::NetworkManagement::IpHelper::if_nametoindex(
+        windows_sys::Win32::NetworkManagement::IpHelper::if_nametoindex(
           wide_interface_name.as_ptr(),
         )
       }
