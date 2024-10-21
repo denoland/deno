@@ -509,12 +509,12 @@ async fn create_npm_resolver(
 fn create_node_resolver(
   npm_resolver: Option<&Arc<dyn CliNpmResolver>>,
 ) -> Option<Arc<CliNodeResolver>> {
-  use once_cell::sync::Lazy;
+  use std::sync::LazyLock;
 
   // it's not ideal to share this across all scopes and to
   // never clear it, but it's fine for the time being
-  static CJS_RESOLUTIONS: Lazy<Arc<CjsResolutionStore>> =
-    Lazy::new(Default::default);
+  static CJS_RESOLUTIONS: LazyLock<Arc<CjsResolutionStore>> =
+    LazyLock::new(Default::default);
 
   let npm_resolver = npm_resolver?;
   let fs = Arc::new(deno_fs::RealFs);
