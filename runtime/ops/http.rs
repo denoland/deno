@@ -34,7 +34,7 @@ fn op_http_start(
     let (read_half, write_half) = resource.into_inner();
     let tcp_stream = read_half.reunite(write_half)?;
     let addr = tcp_stream.local_addr()?;
-    return http_create_conn_resource(state, tcp_stream, addr, "http");
+    return Ok(http_create_conn_resource(state, tcp_stream, addr, "http"));
   }
 
   if let Ok(resource_rc) = state
@@ -49,7 +49,7 @@ fn op_http_start(
     let (read_half, write_half) = resource.into_inner();
     let tls_stream = read_half.unsplit(write_half);
     let addr = tls_stream.local_addr()?;
-    return http_create_conn_resource(state, tls_stream, addr, "https");
+    return Ok(http_create_conn_resource(state, tls_stream, addr, "https"));
   }
 
   #[cfg(unix)]
@@ -65,7 +65,12 @@ fn op_http_start(
     let (read_half, write_half) = resource.into_inner();
     let unix_stream = read_half.reunite(write_half)?;
     let addr = unix_stream.local_addr()?;
-    return http_create_conn_resource(state, unix_stream, addr, "http+unix");
+    return Ok(http_create_conn_resource(
+      state,
+      unix_stream,
+      addr,
+      "http+unix",
+    ));
   }
 
   Err(bad_resource_id())

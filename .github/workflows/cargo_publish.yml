@@ -2,6 +2,11 @@ name: cargo_publish
 
 on: workflow_dispatch
 
+# Ensures only one publish is running at a time
+concurrency:
+  group: ${{ github.workflow }}
+  cancel-in-progress: true
+
 jobs:
   build:
     name: cargo publish
@@ -31,12 +36,6 @@ jobs:
         uses: denoland/setup-deno@v1
         with:
           deno-version: v1.x
-
-      - name: Install protoc
-        uses: arduino/setup-protoc@v3
-        with:
-          version: '21.12'
-          repo-token: '${{ secrets.GITHUB_TOKEN }}'
 
       - name: Publish
         env:

@@ -35,11 +35,13 @@ use std::sync::Arc;
 
 pub mod prompter;
 use prompter::permission_prompt;
-use prompter::PromptResponse;
 use prompter::PERMISSION_EMOJI;
 
 pub use prompter::set_prompt_callbacks;
+pub use prompter::set_prompter;
+pub use prompter::PermissionPrompter;
 pub use prompter::PromptCallback;
+pub use prompter::PromptResponse;
 
 /// Fast exit from permission check routines if this permission
 /// is in the "fully-granted" state.
@@ -475,6 +477,9 @@ impl<TQuery: QueryDescriptor> UnaryPermission<TQuery> {
     }
     if state != PermissionState::Prompt {
       return state;
+    }
+    if !self.prompt {
+      return PermissionState::Denied;
     }
     let mut message = String::with_capacity(40);
     message.push_str(&format!("{} access", TQuery::flag_name()));
@@ -2282,6 +2287,11 @@ impl PermissionsContainer {
     self.inner.lock().read.check_all(Some(api_name))
   }
 
+  #[inline(always)]
+  pub fn query_read_all(&self) -> bool {
+    self.inner.lock().read.query(None) == PermissionState::Granted
+  }
+
   #[must_use = "the resolved return value to mitigate time-of-check to time-of-use issues"]
   #[inline(always)]
   pub fn check_write(
@@ -2611,8 +2621,13 @@ impl PermissionsContainer {
     &self,
     path: Option<&str>,
   ) -> Result<PermissionState, AnyError> {
+    let inner = self.inner.lock();
+    let permission = &inner.read;
+    if permission.is_allow_all() {
+      return Ok(PermissionState::Granted);
+    }
     Ok(
-      self.inner.lock().read.query(
+      permission.query(
         path
           .map(|path| {
             Result::<_, AnyError>::Ok(
@@ -2630,8 +2645,13 @@ impl PermissionsContainer {
     &self,
     path: Option<&str>,
   ) -> Result<PermissionState, AnyError> {
+    let inner = self.inner.lock();
+    let permission = &inner.write;
+    if permission.is_allow_all() {
+      return Ok(PermissionState::Granted);
+    }
     Ok(
-      self.inner.lock().write.query(
+      permission.query(
         path
           .map(|path| {
             Result::<_, AnyError>::Ok(
@@ -2649,8 +2669,13 @@ impl PermissionsContainer {
     &self,
     host: Option<&str>,
   ) -> Result<PermissionState, AnyError> {
+    let inner = self.inner.lock();
+    let permission = &inner.net;
+    if permission.is_allow_all() {
+      return Ok(PermissionState::Granted);
+    }
     Ok(
-      self.inner.lock().net.query(
+      permission.query(
         match host {
           None => None,
           Some(h) => Some(self.descriptor_parser.parse_net_descriptor(h)?),
@@ -2662,7 +2687,12 @@ impl PermissionsContainer {
 
   #[inline(always)]
   pub fn query_env(&self, var: Option<&str>) -> PermissionState {
-    self.inner.lock().env.query(var)
+    let inner = self.inner.lock();
+    let permission = &inner.env;
+    if permission.is_allow_all() {
+      return PermissionState::Granted;
+    }
+    permission.query(var)
   }
 
   #[inline(always)]
@@ -2670,8 +2700,13 @@ impl PermissionsContainer {
     &self,
     kind: Option<&str>,
   ) -> Result<PermissionState, AnyError> {
+    let inner = self.inner.lock();
+    let permission = &inner.sys;
+    if permission.is_allow_all() {
+      return Ok(PermissionState::Granted);
+    }
     Ok(
-      self.inner.lock().sys.query(
+      permission.query(
         kind
           .map(|kind| self.descriptor_parser.parse_sys_descriptor(kind))
           .transpose()?
@@ -2685,8 +2720,13 @@ impl PermissionsContainer {
     &self,
     cmd: Option<&str>,
   ) -> Result<PermissionState, AnyError> {
+    let inner = self.inner.lock();
+    let permission = &inner.run;
+    if permission.is_allow_all() {
+      return Ok(PermissionState::Granted);
+    }
     Ok(
-      self.inner.lock().run.query(
+      permission.query(
         cmd
           .map(|request| self.descriptor_parser.parse_run_query(request))
           .transpose()?
@@ -2700,8 +2740,13 @@ impl PermissionsContainer {
     &self,
     path: Option<&str>,
   ) -> Result<PermissionState, AnyError> {
+    let inner = self.inner.lock();
+    let permission = &inner.ffi;
+    if permission.is_allow_all() {
+      return Ok(PermissionState::Granted);
+    }
     Ok(
-      self.inner.lock().ffi.query(
+      permission.query(
         path
           .map(|path| {
             Result::<_, AnyError>::Ok(
@@ -3906,7 +3951,8 @@ mod tests {
   fn test_request() {
     set_prompter(Box::new(TestPrompter));
     let parser = TestPermissionDescriptorParser;
-    let mut perms: Permissions = Permissions::none_without_prompt();
+    let mut perms: Permissions = Permissions::none_with_prompt();
+    let mut perms_no_prompt: Permissions = Permissions::none_without_prompt();
     let read_query =
       |path: &str| parser.parse_path_query(path).unwrap().into_read();
     let write_query =
@@ -3955,6 +4001,7 @@ mod tests {
       assert_eq!(perms.run.query(None), PermissionState::Prompt);
       prompt_value.set(false);
       assert_eq!(perms.run.request(Some(&run_query)), PermissionState::Granted);
+      assert_eq!(perms_no_prompt.read.request(Some(&read_query("/foo"))), PermissionState::Denied);
     };
   }
 

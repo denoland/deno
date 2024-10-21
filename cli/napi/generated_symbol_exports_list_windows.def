@@ -153,3 +153,10 @@ EXPORTS
   node_api_post_finalizer
   napi_add_async_cleanup_hook
   napi_remove_async_cleanup_hook
+  uv_mutex_init
+  uv_mutex_lock
+  uv_mutex_unlock
+  uv_mutex_destroy
+  uv_async_init
+  uv_async_send
+  uv_close

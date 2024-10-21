@@ -130,8 +130,10 @@ impl NpmConfig {
   fn add(&mut self, selected: SelectedPackage, dev: bool) {
     let (name, version) = package_json_dependency_entry(selected);
     if dev {
+      self.dependencies.swap_remove(&name);
       self.dev_dependencies.insert(name, version);
     } else {
+      self.dev_dependencies.swap_remove(&name);
       self.dependencies.insert(name, version);
     }
   }
@@ -361,7 +363,14 @@ fn package_json_dependency_entry(
   selected: SelectedPackage,
 ) -> (String, String) {
   if let Some(npm_package) = selected.package_name.strip_prefix("npm:") {
-    (npm_package.into(), selected.version_req)
+    if selected.import_name == npm_package {
+      (npm_package.into(), selected.version_req)
+    } else {
+      (
+        selected.import_name,
+        format!("npm:{}@{}", npm_package, selected.version_req),
+      )
+    }
   } else if let Some(jsr_package) = selected.package_name.strip_prefix("jsr:") {
     let jsr_package = jsr_package.strip_prefix('@').unwrap_or(jsr_package);
     let scope_replaced = jsr_package.replace('/', "__");
@@ -391,14 +400,17 @@ impl std::fmt::Display for AddCommandName {
 
 fn load_configs(
   flags: &Arc<Flags>,
+  has_jsr_specifiers: impl FnOnce() -> bool,
 ) -> Result<(CliFactory, Option<NpmConfig>, Option<DenoConfig>), AnyError> {
   let cli_factory = CliFactory::from_flags(flags.clone());
   let options = cli_factory.cli_options()?;
   let npm_config = NpmConfig::from_options(options)?;
   let (cli_factory, deno_config) = match DenoConfig::from_options(options)? {
     Some(config) => (cli_factory, Some(config)),
-    None if npm_config.is_some() => (cli_factory, None),
-    None => {
+    None if npm_config.is_some() && !has_jsr_specifiers() => {
+      (cli_factory, None)
+    }
+    _ => {
       let factory = create_deno_json(flags, options)?;
       let options = factory.cli_options()?.clone();
       (
@@ -418,7 +430,9 @@ pub async fn add(
   add_flags: AddFlags,
   cmd_name: AddCommandName,
 ) -> Result<(), AnyError> {
-  let (cli_factory, npm_config, deno_config) = load_configs(&flags)?;
+  let (cli_factory, npm_config, deno_config) = load_configs(&flags, || {
+    add_flags.packages.iter().any(|s| s.starts_with("jsr:"))
+  })?;
   let mut npm_config = ConfigUpdater::maybe_new(npm_config).await?;
   let mut deno_config = ConfigUpdater::maybe_new(deno_config).await?;
 
@@ -456,7 +470,7 @@ pub async fn add(
   let mut package_reqs = Vec::with_capacity(add_flags.packages.len());
 
   for entry_text in add_flags.packages.iter() {
-    let req = AddPackageReq::parse(entry_text).with_context(|| {
+    let req = AddRmPackageReq::parse(entry_text).with_context(|| {
       format!("Failed to parse package required: {}", entry_text)
     })?;
 
@@ -558,12 +572,7 @@ pub async fn add(
     result.context("Failed to update configuration file")?;
   }
 
-  // clear the previously cached package.json from memory before reloading it
-  node_resolver::PackageJsonThreadLocalCache::clear();
-  // make a new CliFactory to pick up the updated config file
-  let cli_factory = CliFactory::from_flags(flags);
-  // cache deps
-  cache_deps::cache_top_level_deps(&cli_factory, Some(jsr_resolver)).await?;
+  npm_install_after_modification(flags, Some(jsr_resolver)).await?;
 
   Ok(())
 }
@@ -587,10 +596,10 @@ enum PackageAndVersion {
 async fn find_package_and_select_version_for_req(
   jsr_resolver: Arc<JsrFetchResolver>,
   npm_resolver: Arc<NpmFetchResolver>,
-  add_package_req: AddPackageReq,
+  add_package_req: AddRmPackageReq,
 ) -> Result<PackageAndVersion, AnyError> {
   match add_package_req.value {
-    AddPackageReqValue::Jsr(req) => {
+    AddRmPackageReqValue::Jsr(req) => {
       let jsr_prefixed_name = format!("jsr:{}", &req.name);
       let Some(nv) = jsr_resolver.req_to_nv(&req).await else {
         if npm_resolver.req_to_nv(&req).await.is_some() {
@@ -608,9 +617,11 @@ async fn find_package_and_select_version_for_req(
         });
       };
       let range_symbol = if req.version_req.version_text().starts_with('~') {
-        '~'
+        "~"
+      } else if req.version_req.version_text() == nv.version.to_string() {
+        ""
       } else {
-        '^'
+        "^"
       };
       Ok(PackageAndVersion::Selected(SelectedPackage {
         import_name: add_package_req.alias,
@@ -619,7 +630,7 @@ async fn find_package_and_select_version_for_req(
         selected_version: nv.version.to_string(),
       }))
     }
-    AddPackageReqValue::Npm(req) => {
+    AddRmPackageReqValue::Npm(req) => {
       let npm_prefixed_name = format!("npm:{}", &req.name);
       let Some(nv) = npm_resolver.req_to_nv(&req).await else {
         return Ok(PackageAndVersion::NotFound {
@@ -628,11 +639,15 @@ async fn find_package_and_select_version_for_req(
           package_req: req,
         });
       };
+
       let range_symbol = if req.version_req.version_text().starts_with('~') {
-        '~'
+        "~"
+      } else if req.version_req.version_text() == nv.version.to_string() {
+        ""
       } else {
-        '^'
+        "^"
       };
+
       Ok(PackageAndVersion::Selected(SelectedPackage {
         import_name: add_package_req.alias,
         package_name: npm_prefixed_name,
@@ -644,18 +659,18 @@ async fn find_package_and_select_version_for_req(
 }
 
 #[derive(Debug, PartialEq, Eq)]
-enum AddPackageReqValue {
+enum AddRmPackageReqValue {
   Jsr(PackageReq),
   Npm(PackageReq),
 }
 
 #[derive(Debug, PartialEq, Eq)]
-struct AddPackageReq {
+struct AddRmPackageReq {
   alias: String,
-  value: AddPackageReqValue,
+  value: AddRmPackageReqValue,
 }
 
-impl AddPackageReq {
+impl AddRmPackageReq {
   pub fn parse(entry_text: &str) -> Result<Result<Self, PackageReq>, AnyError> {
     enum Prefix {
       Jsr,
@@ -710,9 +725,9 @@ impl AddPackageReq {
         let req_ref =
           JsrPackageReqReference::from_str(&format!("jsr:{}", entry_text))?;
         let package_req = req_ref.into_inner().req;
-        Ok(Ok(AddPackageReq {
+        Ok(Ok(AddRmPackageReq {
           alias: maybe_alias.unwrap_or_else(|| package_req.name.to_string()),
-          value: AddPackageReqValue::Jsr(package_req),
+          value: AddRmPackageReqValue::Jsr(package_req),
         }))
       }
       Prefix::Npm => {
@@ -730,9 +745,9 @@ impl AddPackageReq {
             deno_semver::RangeSetOrTag::Tag("latest".into()),
           );
         }
-        Ok(Ok(AddPackageReq {
+        Ok(Ok(AddRmPackageReq {
           alias: maybe_alias.unwrap_or_else(|| package_req.name.to_string()),
-          value: AddPackageReqValue::Npm(package_req),
+          value: AddRmPackageReqValue::Npm(package_req),
         }))
       }
     }
@@ -744,6 +759,9 @@ fn generate_imports(mut packages_to_version: Vec<(String, String)>) -> String {
   let mut contents = vec![];
   let len = packages_to_version.len();
   for (index, (package, version)) in packages_to_version.iter().enumerate() {
+    if index == 0 {
+      contents.push(String::new()); // force a newline at the start
+    }
     // TODO(bartlomieju): fix it, once we start support specifying version on the cli
     contents.push(format!("\"{}\": \"{}\"", package, version));
     if index != len - 1 {
@@ -757,7 +775,7 @@ pub async fn remove(
   flags: Arc<Flags>,
   remove_flags: RemoveFlags,
 ) -> Result<(), AnyError> {
-  let (_, npm_config, deno_config) = load_configs(&flags)?;
+  let (_, npm_config, deno_config) = load_configs(&flags, || false)?;
 
   let mut configs = [
     ConfigUpdater::maybe_new(npm_config).await?,
@@ -767,12 +785,28 @@ pub async fn remove(
   let mut removed_packages = vec![];
 
   for package in &remove_flags.packages {
-    let mut removed = false;
+    let req = AddRmPackageReq::parse(package).with_context(|| {
+      format!("Failed to parse package required: {}", package)
+    })?;
+    let mut parsed_pkg_name = None;
     for config in configs.iter_mut().flatten() {
-      removed |= config.remove(package);
+      match &req {
+        Ok(rm_pkg) => {
+          if config.remove(&rm_pkg.alias) && parsed_pkg_name.is_none() {
+            parsed_pkg_name = Some(rm_pkg.alias.clone());
+          }
+        }
+        Err(pkg) => {
+          // An alias or a package name without registry/version
+          // constraints. Try to remove the package anyway.
+          if config.remove(&pkg.name) && parsed_pkg_name.is_none() {
+            parsed_pkg_name = Some(pkg.name.clone());
+          }
+        }
+      }
     }
-    if removed {
-      removed_packages.push(package.clone());
+    if let Some(pkg) = parsed_pkg_name {
+      removed_packages.push(pkg);
     }
   }
 
@@ -786,11 +820,29 @@ pub async fn remove(
       config.commit().await?;
     }
 
-    // Update deno.lock
-    node_resolver::PackageJsonThreadLocalCache::clear();
-    let cli_factory = CliFactory::from_flags(flags);
-    cache_deps::cache_top_level_deps(&cli_factory, None).await?;
+    npm_install_after_modification(flags, None).await?;
   }
+
+  Ok(())
+}
+
+async fn npm_install_after_modification(
+  flags: Arc<Flags>,
+  // explicitly provided to prevent redownloading
+  jsr_resolver: Option<Arc<crate::jsr::JsrFetchResolver>>,
+) -> Result<(), AnyError> {
+  // clear the previously cached package.json from memory before reloading it
+  node_resolver::PackageJsonThreadLocalCache::clear();
+
+  // make a new CliFactory to pick up the updated config file
+  let cli_factory = CliFactory::from_flags(flags);
+  // surface any errors in the package.json
+  let npm_resolver = cli_factory.npm_resolver().await?;
+  if let Some(npm_resolver) = npm_resolver.as_managed() {
+    npm_resolver.ensure_no_pkg_json_dep_errors()?;
+  }
+  // npm install
+  cache_deps::cache_top_level_deps(&cli_factory, jsr_resolver).await?;
 
   Ok(())
 }
@@ -883,48 +935,52 @@ mod test {
   #[test]
   fn test_parse_add_package_req() {
     assert_eq!(
-      AddPackageReq::parse("jsr:foo").unwrap().unwrap(),
-      AddPackageReq {
+      AddRmPackageReq::parse("jsr:foo").unwrap().unwrap(),
+      AddRmPackageReq {
         alias: "foo".to_string(),
-        value: AddPackageReqValue::Jsr(PackageReq::from_str("foo").unwrap())
+        value: AddRmPackageReqValue::Jsr(PackageReq::from_str("foo").unwrap())
       }
     );
     assert_eq!(
-      AddPackageReq::parse("alias@jsr:foo").unwrap().unwrap(),
-      AddPackageReq {
+      AddRmPackageReq::parse("alias@jsr:foo").unwrap().unwrap(),
+      AddRmPackageReq {
         alias: "alias".to_string(),
-        value: AddPackageReqValue::Jsr(PackageReq::from_str("foo").unwrap())
+        value: AddRmPackageReqValue::Jsr(PackageReq::from_str("foo").unwrap())
       }
     );
     assert_eq!(
-      AddPackageReq::parse("@alias/pkg@npm:foo").unwrap().unwrap(),
-      AddPackageReq {
+      AddRmPackageReq::parse("@alias/pkg@npm:foo")
+        .unwrap()
+        .unwrap(),
+      AddRmPackageReq {
         alias: "@alias/pkg".to_string(),
-        value: AddPackageReqValue::Npm(
+        value: AddRmPackageReqValue::Npm(
           PackageReq::from_str("foo@latest").unwrap()
         )
       }
     );
     assert_eq!(
-      AddPackageReq::parse("@alias/pkg@jsr:foo").unwrap().unwrap(),
-      AddPackageReq {
+      AddRmPackageReq::parse("@alias/pkg@jsr:foo")
+        .unwrap()
+        .unwrap(),
+      AddRmPackageReq {
         alias: "@alias/pkg".to_string(),
-        value: AddPackageReqValue::Jsr(PackageReq::from_str("foo").unwrap())
+        value: AddRmPackageReqValue::Jsr(PackageReq::from_str("foo").unwrap())
       }
     );
     assert_eq!(
-      AddPackageReq::parse("alias@jsr:foo@^1.5.0")
+      AddRmPackageReq::parse("alias@jsr:foo@^1.5.0")
         .unwrap()
         .unwrap(),
-      AddPackageReq {
+      AddRmPackageReq {
         alias: "alias".to_string(),
-        value: AddPackageReqValue::Jsr(
+        value: AddRmPackageReqValue::Jsr(
           PackageReq::from_str("foo@^1.5.0").unwrap()
         )
       }
     );
     assert_eq!(
-      AddPackageReq::parse("@scope/pkg@tag")
+      AddRmPackageReq::parse("@scope/pkg@tag")
         .unwrap()
         .unwrap_err()
         .to_string(),

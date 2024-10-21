@@ -2,7 +2,7 @@
 
 [package]
 name = "deno_url"
-version = "0.168.0"
+version = "0.173.0"
 authors.workspace = true
 edition.workspace = true
 license.workspace = true
@@ -15,6 +15,7 @@ path = "lib.rs"
 
 [dependencies]
 deno_core.workspace = true
+thiserror.workspace = true
 urlpattern = "0.3.0"
 
 [dev-dependencies]

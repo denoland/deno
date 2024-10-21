@@ -333,7 +333,7 @@ impl FileFetcher {
         )
       })?;
 
-    let bytes = blob.read_all().await?;
+    let bytes = blob.read_all().await;
     let headers =
       HashMap::from([("content-type".to_string(), blob.media_type.clone())]);
 

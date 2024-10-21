@@ -1050,6 +1050,191 @@ fn lsp_workspace_enable_paths_no_workspace_configuration() {
 }
 
 #[test]
+fn lsp_did_refresh_deno_configuration_tree_notification() {
+  let context = TestContextBuilder::new().use_temp_cwd().build();
+  let temp_dir = context.temp_dir();
+  temp_dir.create_dir_all("workspace/member1");
+  temp_dir.create_dir_all("workspace/member2");
+  temp_dir.create_dir_all("non_workspace1");
+  temp_dir.create_dir_all("non_workspace2");
+  temp_dir.write(
+    "workspace/deno.json",
+    json!({
+      "workspace": [
+        "member1",
+        "member2",
+      ],
+    })
+    .to_string(),
+  );
+  temp_dir.write("workspace/member1/deno.json", json!({}).to_string());
+  temp_dir.write("workspace/member1/package.json", json!({}).to_string());
+  temp_dir.write("workspace/member2/package.json", json!({}).to_string());
+  temp_dir.write("non_workspace1/deno.json", json!({}).to_string());
+  let mut client = context.new_lsp_command().build();
+  client.initialize_default();
+  let res = client
+    .read_notification_with_method::<Value>(
+      "deno/didRefreshDenoConfigurationTree",
+    )
+    .unwrap();
+  assert_eq!(
+    res,
+    json!({
+      "data": [
+        {
+          "scopeUri": temp_dir.url().join("non_workspace1/").unwrap(),
+          "workspaceRootScopeUri": null,
+          "denoJson": {
+            "uri": temp_dir.url().join("non_workspace1/deno.json").unwrap(),
+          },
+          "packageJson": null,
+        },
+        {
+          "scopeUri": temp_dir.url().join("workspace/").unwrap(),
+          "workspaceRootScopeUri": null,
+          "denoJson": {
+            "uri": temp_dir.url().join("workspace/deno.json").unwrap(),
+          },
+          "packageJson": null,
+        },
+        {
+          "scopeUri": temp_dir.url().join("workspace/member1/").unwrap(),
+          "workspaceRootScopeUri": temp_dir.url().join("workspace/").unwrap(),
+          "denoJson": {
+            "uri": temp_dir.url().join("workspace/member1/deno.json").unwrap(),
+          },
+          "packageJson": {
+            "uri": temp_dir.url().join("workspace/member1/package.json").unwrap(),
+          },
+        },
+        {
+          "scopeUri": temp_dir.url().join("workspace/member2/").unwrap(),
+          "workspaceRootScopeUri": temp_dir.url().join("workspace/").unwrap(),
+          "denoJson": null,
+          "packageJson": {
+            "uri": temp_dir.url().join("workspace/member2/package.json").unwrap(),
+          },
+        },
+      ],
+    }),
+  );
+  temp_dir.write("non_workspace2/deno.json", json!({}).to_string());
+  client.did_change_watched_files(json!({
+    "changes": [{
+      "uri": temp_dir.url().join("non_workspace2/deno.json").unwrap(),
+      "type": 1,
+    }],
+  }));
+  let res = client
+    .read_notification_with_method::<Value>(
+      "deno/didRefreshDenoConfigurationTree",
+    )
+    .unwrap();
+  assert_eq!(
+    res,
+    json!({
+      "data": [
+        {
+          "scopeUri": temp_dir.url().join("non_workspace1/").unwrap(),
+          "workspaceRootScopeUri": null,
+          "denoJson": {
+            "uri": temp_dir.url().join("non_workspace1/deno.json").unwrap(),
+          },
+          "packageJson": null,
+        },
+        {
+          "scopeUri": temp_dir.url().join("non_workspace2/").unwrap(),
+          "workspaceRootScopeUri": null,
+          "denoJson": {
+            "uri": temp_dir.url().join("non_workspace2/deno.json").unwrap(),
+          },
+          "packageJson": null,
+        },
+        {
+          "scopeUri": temp_dir.url().join("workspace/").unwrap(),
+          "workspaceRootScopeUri": null,
+          "denoJson": {
+            "uri": temp_dir.url().join("workspace/deno.json").unwrap(),
+          },
+          "packageJson": null,
+        },
+        {
+          "scopeUri": temp_dir.url().join("workspace/member1/").unwrap(),
+          "workspaceRootScopeUri": temp_dir.url().join("workspace/").unwrap(),
+          "denoJson": {
+            "uri": temp_dir.url().join("workspace/member1/deno.json").unwrap(),
+          },
+          "packageJson": {
+            "uri": temp_dir.url().join("workspace/member1/package.json").unwrap(),
+          },
+        },
+        {
+          "scopeUri": temp_dir.url().join("workspace/member2/").unwrap(),
+          "workspaceRootScopeUri": temp_dir.url().join("workspace/").unwrap(),
+          "denoJson": null,
+          "packageJson": {
+            "uri": temp_dir.url().join("workspace/member2/package.json").unwrap(),
+          },
+        },
+      ],
+    }),
+  );
+  client.change_configuration(json!({
+    "deno": {
+      "disablePaths": ["non_workspace1"],
+    },
+  }));
+  let res = client
+    .read_notification_with_method::<Value>(
+      "deno/didRefreshDenoConfigurationTree",
+    )
+    .unwrap();
+  assert_eq!(
+    res,
+    json!({
+      "data": [
+        {
+          "scopeUri": temp_dir.url().join("non_workspace2/").unwrap(),
+          "workspaceRootScopeUri": null,
+          "denoJson": {
+            "uri": temp_dir.url().join("non_workspace2/deno.json").unwrap(),
+          },
+          "packageJson": null,
+        },
+        {
+          "scopeUri": temp_dir.url().join("workspace/").unwrap(),
+          "workspaceRootScopeUri": null,
+          "denoJson": {
+            "uri": temp_dir.url().join("workspace/deno.json").unwrap(),
+          },
+          "packageJson": null,
+        },
+        {
+          "scopeUri": temp_dir.url().join("workspace/member1/").unwrap(),
+          "workspaceRootScopeUri": temp_dir.url().join("workspace/").unwrap(),
+          "denoJson": {
+            "uri": temp_dir.url().join("workspace/member1/deno.json").unwrap(),
+          },
+          "packageJson": {
+            "uri": temp_dir.url().join("workspace/member1/package.json").unwrap(),
+          },
+        },
+        {
+          "scopeUri": temp_dir.url().join("workspace/member2/").unwrap(),
+          "workspaceRootScopeUri": temp_dir.url().join("workspace/").unwrap(),
+          "denoJson": null,
+          "packageJson": {
+            "uri": temp_dir.url().join("workspace/member2/package.json").unwrap(),
+          },
+        },
+      ],
+    }),
+  );
+  client.shutdown();
+}
+
+#[test]
 fn lsp_did_change_deno_configuration_notification() {
   let context = TestContextBuilder::new().use_temp_cwd().build();
   let temp_dir = context.temp_dir();
@@ -1342,6 +1527,7 @@ fn lsp_import_map_import_completions() {
         "/#/": "./src/",
         "fs": "https://example.com/fs/index.js",
         "std/": "https://example.com/std@0.123.0/",
+        "lib/": "./lib/",
       },
       "scopes": {
         "file:///": {
@@ -1364,17 +1550,18 @@ fn lsp_import_map_import_completions() {
       "uri": uri,
       "languageId": "typescript",
       "version": 1,
-      "text": "import * as a from \"/~/b.ts\";\nimport * as b from \"\""
-    }
+      "text": r#"
+        import * as b from "";
+        import * as b from "/~/";
+        import * as b from "lib/";
+      "#,
+    },
   }));
 
   let res = client.get_completion(
     &uri,
-    (1, 20),
-    json!({
-      "triggerKind": 2,
-      "triggerCharacter": "\""
-    }),
+    (1, 28),
+    json!({ "triggerKind": 2, "triggerCharacter": "\"" }),
   );
   assert_eq!(
     json!(res),
@@ -1410,6 +1597,13 @@ fn lsp_import_map_import_completions() {
           "insertText": "std",
           "commitCharacters": ["\"", "'"],
         }, {
+          "label": "lib",
+          "kind": 19,
+          "detail": "(import map)",
+          "sortText": "lib",
+          "insertText": "lib",
+          "commitCharacters": ["\"", "'"],
+        }, {
           "label": "fs",
           "kind": 17,
           "detail": "(import map)",
@@ -1435,32 +1629,10 @@ fn lsp_import_map_import_completions() {
     })
   );
 
-  client.write_notification(
-    "textDocument/didChange",
-    json!({
-      "textDocument": {
-        "uri": uri,
-        "version": 2
-      },
-      "contentChanges": [
-        {
-          "range": {
-            "start": { "line": 1, "character": 20 },
-            "end": { "line": 1, "character": 20 }
-          },
-          "text": "/~/"
-        }
-      ]
-    }),
-  );
-
   let res = client.get_completion(
-    uri,
-    (1, 23),
-    json!({
-      "triggerKind": 2,
-      "triggerCharacter": "/"
-    }),
+    &uri,
+    (2, 31),
+    json!({ "triggerKind": 2, "triggerCharacter": "/" }),
   );
   assert_eq!(
     json!(res),
@@ -1475,15 +1647,44 @@ fn lsp_import_map_import_completions() {
           "filterText": "/~/b.ts",
           "textEdit": {
             "range": {
-              "start": { "line": 1, "character": 20 },
-              "end": { "line": 1, "character": 23 }
+              "start": { "line": 2, "character": 28 },
+              "end": { "line": 2, "character": 31 },
             },
-            "newText": "/~/b.ts"
+            "newText": "/~/b.ts",
           },
           "commitCharacters": ["\"", "'"],
-        }
-      ]
-    })
+        },
+      ],
+    }),
+  );
+
+  let res = client.get_completion(
+    &uri,
+    (3, 32),
+    json!({ "triggerKind": 2, "triggerCharacter": "/" }),
+  );
+  assert_eq!(
+    json!(res),
+    json!({
+      "isIncomplete": false,
+      "items": [
+        {
+          "label": "b.ts",
+          "kind": 17,
+          "detail": "(local)",
+          "sortText": "1",
+          "filterText": "lib/b.ts",
+          "textEdit": {
+            "range": {
+              "start": { "line": 3, "character": 28 },
+              "end": { "line": 3, "character": 32 },
+            },
+            "newText": "lib/b.ts",
+          },
+          "commitCharacters": ["\"", "'"],
+        },
+      ],
+    }),
   );
 
   client.shutdown();
@@ -8504,6 +8705,74 @@ fn lsp_completions_auto_import_and_quick_fix_with_import_map() {
   client.shutdown();
 }
 
+// Regression test for https://github.com/denoland/deno/issues/25775.
+#[test]
+fn lsp_quick_fix_missing_import_exclude_bare_node_builtins() {
+  let context = TestContextBuilder::new()
+    .use_http_server()
+    .use_temp_cwd()
+    .add_npm_env_vars()
+    .build();
+  let temp_dir = context.temp_dir();
+  temp_dir.write(
+    "package.json",
+    json!({
+      "dependencies": {
+        "@types/node": "*",
+      },
+    })
+    .to_string(),
+  );
+  context.run_npm("install");
+  let mut client = context.new_lsp_command().build();
+  client.initialize_default();
+  let diagnostics = client.did_open(json!({
+    "textDocument": {
+      "uri": temp_dir.url().join("file.ts").unwrap(),
+      "languageId": "typescript",
+      "version": 1,
+      // Include node:buffer import to ensure @types/node is in the dep graph.
+      "text": "import \"node:buffer\";\nassert();\n",
+    },
+  }));
+  let diagnostic = diagnostics
+    .all()
+    .into_iter()
+    .find(|d| d.message == "Cannot find name 'assert'.")
+    .unwrap();
+  let res = client.write_request(
+    "textDocument/codeAction",
+    json!({
+      "textDocument": {
+        "uri": temp_dir.url().join("file.ts").unwrap(),
+      },
+      "range": {
+        "start": { "line": 1, "character": 0 },
+        "end": { "line": 1, "character": 6 },
+      },
+      "context": {
+        "diagnostics": [&diagnostic],
+        "only": ["quickfix"],
+      },
+    }),
+  );
+  let code_actions =
+    serde_json::from_value::<Vec<lsp::CodeAction>>(res).unwrap();
+  let titles = code_actions
+    .iter()
+    .map(|a| a.title.clone())
+    .collect::<Vec<_>>();
+  assert_eq!(
+    json!(titles),
+    json!([
+      "Add import from \"node:assert\"",
+      "Add import from \"node:console\"",
+      "Add missing function declaration 'assert'",
+    ]),
+  );
+  client.shutdown();
+}
+
 #[test]
 fn lsp_completions_snippet() {
   let context = TestContextBuilder::new().use_temp_cwd().build();
@@ -9319,14 +9588,15 @@ fn lsp_auto_discover_registry() {
       "triggerCharacter": "@"
     }),
   );
-  let (method, res) = client.read_notification();
-  assert_eq!(method, "deno/registryState");
+  let res = client
+    .read_notification_with_method::<Value>("deno/registryState")
+    .unwrap();
   assert_eq!(
     res,
-    Some(json!({
+    json!({
       "origin": "http://localhost:4545",
       "suggestions": true,
-    }))
+    }),
   );
   client.shutdown();
 }
@@ -10033,7 +10303,6 @@ fn lsp_diagnostics_refresh_dependents() {
   assert_eq!(json!(diagnostics.all()), json!([])); // no diagnostics now
 
   client.shutdown();
-  assert_eq!(client.queue_len(), 0);
 }
 
 // Regression test for https://github.com/denoland/deno/issues/10897.

@@ -44,6 +44,7 @@ use std::cmp::Ordering;
 use std::collections::HashMap;
 use std::collections::HashSet;
 use std::path::Path;
+use text_lines::LineAndColumnIndex;
 use tower_lsp::lsp_types as lsp;
 use tower_lsp::lsp_types::Position;
 use tower_lsp::lsp_types::Range;
@@ -228,6 +229,7 @@ pub struct TsResponseImportMapper<'a> {
   documents: &'a Documents,
   maybe_import_map: Option<&'a ImportMap>,
   resolver: &'a LspResolver,
+  file_referrer: ModuleSpecifier,
 }
 
 impl<'a> TsResponseImportMapper<'a> {
@@ -235,11 +237,13 @@ impl<'a> TsResponseImportMapper<'a> {
     documents: &'a Documents,
     maybe_import_map: Option<&'a ImportMap>,
     resolver: &'a LspResolver,
+    file_referrer: &ModuleSpecifier,
   ) -> Self {
     Self {
       documents,
       maybe_import_map,
       resolver,
+      file_referrer: file_referrer.clone(),
     }
   }
 
@@ -260,8 +264,6 @@ impl<'a> TsResponseImportMapper<'a> {
       }
     }
 
-    let file_referrer = self.documents.get_file_referrer(referrer);
-
     if let Some(jsr_path) = specifier.as_str().strip_prefix(jsr_url().as_str())
     {
       let mut segments = jsr_path.split('/');
@@ -276,7 +278,7 @@ impl<'a> TsResponseImportMapper<'a> {
       let export = self.resolver.jsr_lookup_export_for_path(
         &nv,
         &path,
-        file_referrer.as_deref(),
+        Some(&self.file_referrer),
       )?;
       let sub_path = (export != ".").then_some(export);
       let mut req = None;
@@ -302,7 +304,7 @@ impl<'a> TsResponseImportMapper<'a> {
       req = req.or_else(|| {
         self
           .resolver
-          .jsr_lookup_req_for_nv(&nv, file_referrer.as_deref())
+          .jsr_lookup_req_for_nv(&nv, Some(&self.file_referrer))
       });
       let spec_str = if let Some(req) = req {
         let req_ref = PackageReqReference { req, sub_path };
@@ -332,7 +334,7 @@ impl<'a> TsResponseImportMapper<'a> {
 
     if let Some(npm_resolver) = self
       .resolver
-      .maybe_managed_npm_resolver(file_referrer.as_deref())
+      .maybe_managed_npm_resolver(Some(&self.file_referrer))
     {
       if npm_resolver.in_npm_package(specifier) {
         if let Ok(Some(pkg_id)) =
@@ -468,6 +470,26 @@ impl<'a> TsResponseImportMapper<'a> {
     }
     None
   }
+
+  pub fn is_valid_import(
+    &self,
+    specifier_text: &str,
+    referrer: &ModuleSpecifier,
+  ) -> bool {
+    self
+      .resolver
+      .as_graph_resolver(Some(&self.file_referrer))
+      .resolve(
+        specifier_text,
+        &deno_graph::Range {
+          specifier: referrer.clone(),
+          start: deno_graph::Position::zeroed(),
+          end: deno_graph::Position::zeroed(),
+        },
+        deno_graph::source::ResolutionMode::Types,
+      )
+      .is_ok()
+  }
 }
 
 fn try_reverse_map_package_json_exports(
@@ -580,7 +602,7 @@ fn fix_ts_import_action(
   referrer: &ModuleSpecifier,
   action: &tsc::CodeFixAction,
   import_mapper: &TsResponseImportMapper,
-) -> Result<tsc::CodeFixAction, AnyError> {
+) -> Result<Option<tsc::CodeFixAction>, AnyError> {
   if matches!(
     action.fix_name.as_str(),
     "import" | "fixMissingFunctionDeclaration"
@@ -623,19 +645,21 @@ fn fix_ts_import_action(
           })
           .collect();
 
-        return Ok(tsc::CodeFixAction {
+        return Ok(Some(tsc::CodeFixAction {
           description,
           changes,
           commands: None,
           fix_name: action.fix_name.clone(),
           fix_id: None,
           fix_all_description: None,
-        });
+        }));
+      } else if !import_mapper.is_valid_import(specifier, referrer) {
+        return Ok(None);
       }
     }
   }
 
-  Ok(action.clone())
+  Ok(Some(action.clone()))
 }
 
 /// Determines if two TypeScript diagnostic codes are effectively equivalent.
@@ -976,11 +1000,14 @@ impl CodeActionCollection {
         "The action returned from TypeScript is unsupported.",
       ));
     }
-    let action = fix_ts_import_action(
+    let Some(action) = fix_ts_import_action(
       specifier,
       action,
       &language_server.get_ts_response_import_mapper(specifier),
-    )?;
+    )?
+    else {
+      return Ok(());
+    };
     let edit = ts_changes_to_edit(&action.changes, language_server)?;
     let code_action = lsp::CodeAction {
       title: action.description.clone(),
@@ -1161,6 +1188,34 @@ impl CodeActionCollection {
     range: &lsp::Range,
     language_server: &language_server::Inner,
   ) {
+    fn import_start_from_specifier(
+      document: &Document,
+      import: &deno_graph::Import,
+    ) -> Option<LineAndColumnIndex> {
+      // find the top level statement that contains the specifier
+      let parsed_source = document.maybe_parsed_source()?.as_ref().ok()?;
+      let text_info = parsed_source.text_info_lazy();
+      let specifier_range = SourceRange::new(
+        text_info.loc_to_source_pos(LineAndColumnIndex {
+          line_index: import.specifier_range.start.line,
+          column_index: import.specifier_range.start.character,
+        }),
+        text_info.loc_to_source_pos(LineAndColumnIndex {
+          line_index: import.specifier_range.end.line,
+          column_index: import.specifier_range.end.character,
+        }),
+      );
+
+      match parsed_source.program_ref() {
+        deno_ast::swc::ast::Program::Module(module) => module
+          .body
+          .iter()
+          .find(|i| i.range().contains(&specifier_range))
+          .map(|i| text_info.line_and_column_index(i.range().start)),
+        deno_ast::swc::ast::Program::Script(_) => None,
+      }
+    }
+
     async fn deno_types_for_npm_action(
       document: &Document,
       range: &lsp::Range,
@@ -1181,14 +1236,15 @@ impl CodeActionCollection {
         range.end.line as usize,
         range.end.character as usize,
       );
-      let import_range = dependency.imports.iter().find_map(|i| {
+      let import_start = dependency.imports.iter().find_map(|i| {
         if json!(i.kind) != json!("es") && json!(i.kind) != json!("tsType") {
           return None;
         }
         if !i.specifier_range.includes(&position) {
           return None;
         }
-        i.full_range.as_ref()
+
+        import_start_from_specifier(document, i)
       })?;
       let referrer = document.specifier();
       let file_referrer = document.file_referrer();
@@ -1275,8 +1331,8 @@ impl CodeActionCollection {
         .specifier_to_uri(referrer, file_referrer)
         .ok()?;
       let position = lsp::Position {
-        line: import_range.start.line as u32,
-        character: import_range.start.character as u32,
+        line: import_start.line_index as u32,
+        character: import_start.column_index as u32,
       };
       let new_text = format!(
         "{}// @deno-types=\"{}\"\n",
