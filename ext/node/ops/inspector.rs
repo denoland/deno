@@ -1,3 +1,5 @@
+// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
+
 use deno_core::anyhow::Error;
 use deno_core::error::generic_error;
 use deno_core::futures::channel::mpsc;
@@ -22,6 +24,13 @@ pub fn op_inspector_close() {
   // TODO: hook up to InspectorServer
 }
 
+#[op2]
+#[string]
+pub fn op_inspector_url() -> Option<String> {
+  // TODO: hook up to InspectorServer
+  None
+}
+
 #[op2(fast)]
 pub fn op_inspector_wait(state: &OpState) -> bool {
   match state.try_borrow::<Rc<RefCell<JsRuntimeInspector>>>() {
@@ -35,6 +44,14 @@ pub fn op_inspector_wait(state: &OpState) -> bool {
   }
 }
 
+#[op2(fast)]
+pub fn op_inspector_emit_protocol_event(
+  #[string] _event_name: String,
+  #[string] _params: String,
+) {
+  // TODO: inspector channel & protocol notifications
+}
+
 struct JSInspectorSession {
   tx: RefCell<Option<mpsc::UnboundedSender<String>>>,
   rx: RefCell<mpsc::UnboundedReceiver<InspectorMsg>>,
@@ -44,7 +61,7 @@ impl GarbageCollected for JSInspectorSession {}
 
 #[op2]
 #[cppgc]
-pub fn op_inspector_connect<'s>(
+pub fn op_inspector_connect(
   state: &mut OpState,
   connect_to_main_thread: bool,
 ) -> Result<JSInspectorSession, Error> {
@@ -76,6 +93,7 @@ pub fn op_inspector_dispatch(
   }
 }
 
+#[allow(clippy::await_holding_refcell_ref)]
 #[op2(async)]
 #[string]
 pub async fn op_inspector_receive(

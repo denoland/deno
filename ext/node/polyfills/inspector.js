@@ -3,15 +3,17 @@
 
 import process from "node:process";
 import { EventEmitter } from "node:events";
-import { core, primordials } from "ext:core/mod.js";
+import { primordials } from "ext:core/mod.js";
 import {
   op_get_extras_binding_object,
   op_inspector_close,
   op_inspector_connect,
   op_inspector_disconnect,
   op_inspector_dispatch,
+  op_inspector_emit_protocol_event,
   op_inspector_open,
   op_inspector_receive,
+  op_inspector_url,
   op_inspector_wait,
 } from "ext:core/ops";
 import {
@@ -136,8 +138,8 @@ class Session extends EventEmitter {
     }
     op_inspector_disconnect(this.#connection);
     this.#connection = null;
-    const remainingCallbacks = this.#messageCallbacks.values();
-    for (const callback of remainingCallbacks) {
+    // deno-lint-ignore prefer-primordials
+    for (const callback of this.#messageCallbacks.values()) {
       process.nextTick(callback, new ERR_INSPECTOR_CLOSED());
     }
     this.#messageCallbacks.clear();
@@ -183,14 +185,12 @@ function waitForDebugger() {
   }
 }
 
-function emitProtocolEvent() {}
-
 function broadcastToFrontend(eventName, params) {
   validateString(eventName, "eventName");
   if (params) {
     validateObject(params, "params");
   }
-  emitProtocolEvent(eventName, JSONStringify(params ?? {}));
+  op_inspector_emit_protocol_event(eventName, JSONStringify(params ?? {}));
 }
 
 const Network = {
