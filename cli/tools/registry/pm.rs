@@ -723,6 +723,10 @@ async fn npm_install_after_modification(
   // npm install
   cache_deps::cache_top_level_deps(&cli_factory, jsr_resolver).await?;
 
+  if let Some(lockfile) = cli_factory.cli_options()?.maybe_lockfile() {
+    lockfile.write_if_changed()?;
+  }
+
   Ok(())
 }
 
