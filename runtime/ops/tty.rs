@@ -2,7 +2,6 @@
 
 use std::io::Error;
 
-use deno_core::error::AnyError;
 use deno_core::op2;
 use deno_core::OpState;
 use rustyline::config::Configurer;
@@ -64,6 +63,19 @@ deno_core::extension!(
   },
 );
 
+#[derive(Debug, thiserror::Error)]
+pub enum TtyError {
+  #[error(transparent)]
+  Resource(deno_core::error::AnyError),
+  #[error("{0}")]
+  Io(#[from] std::io::Error),
+  #[cfg(unix)]
+  #[error(transparent)]
+  Nix(nix::Error),
+  #[error(transparent)]
+  Other(deno_core::error::AnyError),
+}
+
 // ref: <https://learn.microsoft.com/en-us/windows/console/setconsolemode>
 #[cfg(windows)]
 const COOKED_MODE: DWORD =
@@ -90,8 +102,11 @@ fn op_set_raw(
   rid: u32,
   is_raw: bool,
   cbreak: bool,
-) -> Result<(), AnyError> {
-  let handle_or_fd = state.resource_table.get_fd(rid)?;
+) -> Result<(), TtyError> {
+  let handle_or_fd = state
+    .resource_table
+    .get_fd(rid)
+    .map_err(TtyError::Resource)?;
 
   // From https://github.com/kkawakam/rustyline/blob/master/src/tty/windows.rs
   // and https://github.com/kkawakam/rustyline/blob/master/src/tty/unix.rs
@@ -107,7 +122,7 @@ fn op_set_raw(
     let handle = handle_or_fd;
 
     if cbreak {
-      return Err(deno_core::error::not_supported());
+      return Err(TtyError::Other(deno_core::error::not_supported()));
     }
 
     let mut original_mode: DWORD = 0;
@@ -115,7 +130,7 @@ fn op_set_raw(
     if unsafe { consoleapi::GetConsoleMode(handle, &mut original_mode) }
       == FALSE
     {
-      return Err(Error::last_os_error().into());
+      return Err(TtyError::Io(Error::last_os_error()));
     }
 
     let new_mode = if is_raw {
@@ -185,7 +200,7 @@ fn op_set_raw(
           winapi::um::wincon::WriteConsoleInputW(handle, &record, 1, &mut 0)
         } == FALSE
         {
-          return Err(Error::last_os_error().into());
+          return Err(TtyError::Io(Error::last_os_error()));
         }
 
         /* Wait for read thread to acknowledge the cancellation to ensure that nothing
@@ -199,7 +214,7 @@ fn op_set_raw(
 
     // SAFETY: winapi call
     if unsafe { consoleapi::SetConsoleMode(handle, new_mode) } == FALSE {
-      return Err(Error::last_os_error().into());
+      return Err(TtyError::Io(Error::last_os_error()));
     }
 
     Ok(())
@@ -252,7 +267,8 @@ fn op_set_raw(
         Some(mode) => mode,
         None => {
           // Save original mode.
-          let original_mode = termios::tcgetattr(raw_fd)?;
+          let original_mode =
+            termios::tcgetattr(raw_fd).map_err(TtyError::Nix)?;
           tty_mode_store.set(rid, original_mode.clone());
           original_mode
         }
@@ -274,11 +290,13 @@ fn op_set_raw(
       }
       raw.control_chars[termios::SpecialCharacterIndices::VMIN as usize] = 1;
       raw.control_chars[termios::SpecialCharacterIndices::VTIME as usize] = 0;
-      termios::tcsetattr(raw_fd, termios::SetArg::TCSADRAIN, &raw)?;
+      termios::tcsetattr(raw_fd, termios::SetArg::TCSADRAIN, &raw)
+        .map_err(TtyError::Nix)?;
     } else {
       // Try restore saved mode.
       if let Some(mode) = tty_mode_store.take(rid) {
-        termios::tcsetattr(raw_fd, termios::SetArg::TCSADRAIN, &mode)?;
+        termios::tcsetattr(raw_fd, termios::SetArg::TCSADRAIN, &mode)
+          .map_err(TtyError::Nix)?;
       }
     }
 
@@ -290,13 +308,16 @@ fn op_set_raw(
 fn op_console_size(
   state: &mut OpState,
   #[buffer] result: &mut [u32],
-) -> Result<(), AnyError> {
+) -> Result<(), TtyError> {
   fn check_console_size(
     state: &mut OpState,
     result: &mut [u32],
     rid: u32,
-  ) -> Result<(), AnyError> {
-    let fd = state.resource_table.get_fd(rid)?;
+  ) -> Result<(), TtyError> {
+    let fd = state
+      .resource_table
+      .get_fd(rid)
+      .map_err(TtyError::Resource)?;
     let size = console_size_from_fd(fd)?;
     result[0] = size.cols;
     result[1] = size.rows;
@@ -419,7 +440,7 @@ mod tests {
 pub fn op_read_line_prompt(
   #[string] prompt_text: &str,
   #[string] default_value: &str,
-) -> Result<Option<String>, AnyError> {
+) -> Result<Option<String>, ReadlineError> {
   let mut editor = Editor::<(), rustyline::history::DefaultHistory>::new()
     .expect("Failed to create editor.");
 
@@ -439,6 +460,6 @@ pub fn op_read_line_prompt(
       Ok(None)
     }
     Err(ReadlineError::Eof) => Ok(None),
-    Err(err) => Err(err.into()),
+    Err(err) => Err(err),
   }
 }

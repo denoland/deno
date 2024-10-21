@@ -1,6 +1,5 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
-use deno_core::error::AnyError;
 use deno_core::op2;
 use deno_core::ModuleSpecifier;
 use deno_core::OpState;
@@ -16,10 +15,9 @@ deno_core::extension!(
 
 #[op2]
 #[string]
-fn op_main_module(state: &mut OpState) -> Result<String, AnyError> {
+fn op_main_module(state: &mut OpState) -> String {
   let main_url = state.borrow::<ModuleSpecifier>();
-  let main_path = main_url.to_string();
-  Ok(main_path)
+  main_url.to_string()
 }
 
 /// This is an op instead of being done at initialization time because

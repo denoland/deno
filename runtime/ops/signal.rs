@@ -1,6 +1,4 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
-use deno_core::error::type_error;
-use deno_core::error::AnyError;
 use deno_core::op2;
 use deno_core::AsyncRefCell;
 use deno_core::CancelFuture;
@@ -45,6 +43,42 @@ deno_core::extension!(
     }
   }
 );
+
+#[derive(Debug, thiserror::Error)]
+pub enum SignalError {
+  #[cfg(any(
+    target_os = "android",
+    target_os = "linux",
+    target_os = "openbsd",
+    target_os = "openbsd",
+    target_os = "macos",
+    target_os = "solaris",
+    target_os = "illumos"
+  ))]
+  #[error("Invalid signal: {0}")]
+  InvalidSignalStr(String),
+  #[cfg(any(
+    target_os = "android",
+    target_os = "linux",
+    target_os = "openbsd",
+    target_os = "openbsd",
+    target_os = "macos",
+    target_os = "solaris",
+    target_os = "illumos"
+  ))]
+  #[error("Invalid signal: {0}")]
+  InvalidSignalInt(libc::c_int),
+  #[cfg(target_os = "windows")]
+  #[error("Windows only supports ctrl-c (SIGINT) and ctrl-break (SIGBREAK), but got {0}")]
+  InvalidSignalStr(String),
+  #[cfg(target_os = "windows")]
+  #[error("Windows only supports ctrl-c (SIGINT) and ctrl-break (SIGBREAK), but got {0}")]
+  InvalidSignalInt(libc::c_int),
+  #[error("Binding to signal '{0}' is not allowed")]
+  SignalNotAllowed(String),
+  #[error("{0}")]
+  Io(#[from] std::io::Error),
+}
 
 #[cfg(unix)]
 #[derive(Default)]
@@ -153,18 +187,18 @@ macro_rules! first_literal {
   };
 }
 macro_rules! signal_dict {
-  ($error_msg:expr, $(($number:literal, $($name:literal)|+)),*) => {
-    pub fn signal_str_to_int(s: &str) -> Result<libc::c_int, AnyError> {
+  ($(($number:literal, $($name:literal)|+)),*) => {
+    pub fn signal_str_to_int(s: &str) -> Result<libc::c_int, SignalError> {
       match s {
         $($($name)|* => Ok($number),)*
-        _ => Err(type_error($error_msg(s))),
+        _ => Err(SignalError::InvalidSignalStr(s.to_string())),
       }
     }
 
-    pub fn signal_int_to_str(s: libc::c_int) -> Result<&'static str, AnyError> {
+    pub fn signal_int_to_str(s: libc::c_int) -> Result<&'static str, SignalError> {
       match s {
         $($number => Ok(first_literal!($($name),+)),)*
-        _ => Err(type_error($error_msg(s))),
+        _ => Err(SignalError::InvalidSignalInt(s)),
       }
     }
   }
@@ -172,7 +206,6 @@ macro_rules! signal_dict {
 
 #[cfg(target_os = "freebsd")]
 signal_dict!(
-  |s| { format!("Invalid signal : {}", s) },
   (1, "SIGHUP"),
   (2, "SIGINT"),
   (3, "SIGQUIT"),
@@ -210,7 +243,6 @@ signal_dict!(
 
 #[cfg(target_os = "openbsd")]
 signal_dict!(
-  |s| { format!("Invalid signal : {}", s) },
   (1, "SIGHUP"),
   (2, "SIGINT"),
   (3, "SIGQUIT"),
@@ -246,7 +278,6 @@ signal_dict!(
 
 #[cfg(any(target_os = "android", target_os = "linux"))]
 signal_dict!(
-  |s| { format!("Invalid signal : {s}") },
   (1, "SIGHUP"),
   (2, "SIGINT"),
   (3, "SIGQUIT"),
@@ -282,7 +313,6 @@ signal_dict!(
 
 #[cfg(target_os = "macos")]
 signal_dict!(
-  |s| { format!("Invalid signal : {s}") },
   (1, "SIGHUP"),
   (2, "SIGINT"),
   (3, "SIGQUIT"),
@@ -318,7 +348,6 @@ signal_dict!(
 
 #[cfg(any(target_os = "solaris", target_os = "illumos"))]
 signal_dict!(
-  |s| { format!("Invalid signal : {s}") },
   (1, "SIGHUP"),
   (2, "SIGINT"),
   (3, "SIGQUIT"),
@@ -362,11 +391,7 @@ signal_dict!(
 );
 
 #[cfg(target_os = "windows")]
-signal_dict!(
-  |_| { "Windows only supports ctrl-c (SIGINT) and ctrl-break (SIGBREAK)." },
-  (2, "SIGINT"),
-  (21, "SIGBREAK")
-);
+signal_dict!((2, "SIGINT"), (21, "SIGBREAK"));
 
 #[cfg(unix)]
 #[op2(fast)]
@@ -374,12 +399,10 @@ signal_dict!(
 fn op_signal_bind(
   state: &mut OpState,
   #[string] sig: &str,
-) -> Result<ResourceId, AnyError> {
+) -> Result<ResourceId, SignalError> {
   let signo = signal_str_to_int(sig)?;
   if signal_hook_registry::FORBIDDEN.contains(&signo) {
-    return Err(type_error(format!(
-      "Binding to signal '{sig}' is not allowed",
-    )));
+    return Err(SignalError::SignalNotAllowed(sig.to_string()));
   }
 
   let signal = AsyncRefCell::new(signal(SignalKind::from_raw(signo))?);
@@ -413,7 +436,7 @@ fn op_signal_bind(
 fn op_signal_bind(
   state: &mut OpState,
   #[string] sig: &str,
-) -> Result<ResourceId, AnyError> {
+) -> Result<ResourceId, SignalError> {
   let signo = signal_str_to_int(sig)?;
   let resource = SignalStreamResource {
     signal: AsyncRefCell::new(match signo {
@@ -437,7 +460,7 @@ fn op_signal_bind(
 async fn op_signal_poll(
   state: Rc<RefCell<OpState>>,
   #[smi] rid: ResourceId,
-) -> Result<bool, AnyError> {
+) -> Result<bool, deno_core::error::AnyError> {
   let resource = state
     .borrow_mut()
     .resource_table
@@ -456,7 +479,7 @@ async fn op_signal_poll(
 pub fn op_signal_unbind(
   state: &mut OpState,
   #[smi] rid: ResourceId,
-) -> Result<(), AnyError> {
+) -> Result<(), deno_core::error::AnyError> {
   let resource = state.resource_table.take::<SignalStreamResource>(rid)?;
 
   #[cfg(unix)]

@@ -166,7 +166,10 @@ pub struct WebWorkerInternalHandle {
 
 impl WebWorkerInternalHandle {
   /// Post WorkerEvent to parent as a worker
-  pub fn post_event(&self, event: WorkerControlEvent) -> Result<(), AnyError> {
+  pub fn post_event(
+    &self,
+    event: WorkerControlEvent,
+  ) -> Result<(), mpsc::TrySendError<WorkerControlEvent>> {
     let mut sender = self.sender.clone();
     // If the channel is closed,
     // the worker must have terminated but the termination message has not yet been received.
@@ -176,8 +179,7 @@ impl WebWorkerInternalHandle {
       self.has_terminated.store(true, Ordering::SeqCst);
       return Ok(());
     }
-    sender.try_send(event)?;
-    Ok(())
+    sender.try_send(event)
   }
 
   /// Check if this worker is terminated or being terminated
@@ -263,11 +265,9 @@ impl WebWorkerHandle {
   /// Get the WorkerEvent with lock
   /// Return error if more than one listener tries to get event
   #[allow(clippy::await_holding_refcell_ref)] // TODO(ry) remove!
-  pub async fn get_control_event(
-    &self,
-  ) -> Result<Option<WorkerControlEvent>, AnyError> {
+  pub async fn get_control_event(&self) -> Option<WorkerControlEvent> {
     let mut receiver = self.receiver.borrow_mut();
-    Ok(receiver.next().await)
+    receiver.next().await
   }
 
   /// Terminate the worker

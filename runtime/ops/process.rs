@@ -1,8 +1,5 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
-use deno_core::anyhow::Context;
-use deno_core::error::type_error;
-use deno_core::error::AnyError;
 use deno_core::op2;
 use deno_core::serde_json;
 use deno_core::AsyncMutFuture;
@@ -35,6 +32,7 @@ use tokio::process::Command;
 #[cfg(windows)]
 use std::os::windows::process::CommandExt;
 
+use crate::ops::signal::SignalError;
 #[cfg(unix)]
 use std::os::unix::prelude::ExitStatusExt;
 #[cfg(unix)]
@@ -105,11 +103,12 @@ impl StdioOrRid {
   pub fn as_stdio(
     &self,
     state: &mut OpState,
-  ) -> Result<std::process::Stdio, AnyError> {
+  ) -> Result<std::process::Stdio, ProcessError> {
     match &self {
       StdioOrRid::Stdio(val) => Ok(val.as_stdio()),
       StdioOrRid::Rid(rid) => {
         FileResource::with_file(state, *rid, |file| Ok(file.as_stdio()?))
+          .map_err(ProcessError::Resource)
       }
     }
   }
@@ -191,6 +190,39 @@ pub struct SpawnArgs {
   needs_npm_process_state: bool,
 }
 
+#[derive(Debug, thiserror::Error)]
+pub enum ProcessError {
+  #[error("Failed to spawn '{command}': {error}")]
+  SpawnFailed {
+    command: String,
+    #[source]
+    error: Box<ProcessError>,
+  },
+  #[error("{0}")]
+  Io(#[from] std::io::Error),
+  #[cfg(unix)]
+  #[error(transparent)]
+  Nix(nix::Error),
+  #[error("failed resolving cwd: {0}")]
+  FailedResolvingCwd(#[source] std::io::Error),
+  #[error(transparent)]
+  Permission(deno_core::error::AnyError),
+  #[error(transparent)]
+  Resource(deno_core::error::AnyError),
+  #[error(transparent)]
+  BorrowMut(std::cell::BorrowMutError),
+  #[error(transparent)]
+  Which(which::Error),
+  #[error("Child process has already terminated.")]
+  ChildProcessAlreadyTerminated,
+  #[error("Invalid pid")]
+  InvalidPid,
+  #[error(transparent)]
+  Signal(#[from] SignalError),
+  #[error("Missing cmd")]
+  MissingCmd, // only for Deno.run
+}
+
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ChildStdio {
@@ -208,7 +240,7 @@ pub struct ChildStatus {
 }
 
 impl TryFrom<ExitStatus> for ChildStatus {
-  type Error = AnyError;
+  type Error = SignalError;
 
   fn try_from(status: ExitStatus) -> Result<Self, Self::Error> {
     let code = status.code();
@@ -259,7 +291,7 @@ type CreateCommand = (
 
 pub fn npm_process_state_tempfile(
   contents: &[u8],
-) -> Result<deno_io::RawIoHandle, AnyError> {
+) -> Result<deno_io::RawIoHandle, std::io::Error> {
   let mut temp_file = tempfile::tempfile()?;
   temp_file.write_all(contents)?;
   let handle = temp_file.into_raw_io_handle();
@@ -301,7 +333,7 @@ fn create_command(
   state: &mut OpState,
   mut args: SpawnArgs,
   api_name: &str,
-) -> Result<CreateCommand, AnyError> {
+) -> Result<CreateCommand, ProcessError> {
   let maybe_npm_process_state = if args.needs_npm_process_state {
     let provider = state.borrow::<NpmProcessStateProviderRc>();
     let process_state = provider.get_npm_process_state();
@@ -505,7 +537,7 @@ fn spawn_child(
   ipc_pipe_rid: Option<ResourceId>,
   extra_pipe_rids: Vec<Option<ResourceId>>,
   detached: bool,
-) -> Result<Child, AnyError> {
+) -> Result<Child, ProcessError> {
   let mut command = tokio::process::Command::from(command);
   // TODO(@crowlkats): allow detaching processes.
   //  currently deno will orphan a process when exiting with an error or Deno.exit()
@@ -554,10 +586,10 @@ fn spawn_child(
         }
       }
 
-      return Err(AnyError::from(err).context(format!(
-        "Failed to spawn '{}'",
-        command.get_program().to_string_lossy()
-      )));
+      return Err(ProcessError::SpawnFailed {
+        command: command.get_program().to_string_lossy().to_string(),
+        error: Box::new(err.into()),
+      });
     }
   };
 
@@ -600,11 +632,19 @@ fn compute_run_cmd_and_check_permissions(
   arg_clear_env: bool,
   state: &mut OpState,
   api_name: &str,
-) -> Result<(PathBuf, RunEnv), AnyError> {
-  let run_env = compute_run_env(arg_cwd, arg_envs, arg_clear_env)
-    .with_context(|| format!("Failed to spawn '{}'", arg_cmd))?;
-  let cmd = resolve_cmd(arg_cmd, &run_env)
-    .with_context(|| format!("Failed to spawn '{}'", arg_cmd))?;
+) -> Result<(PathBuf, RunEnv), ProcessError> {
+  let run_env =
+    compute_run_env(arg_cwd, arg_envs, arg_clear_env).map_err(|e| {
+      ProcessError::SpawnFailed {
+        command: arg_cmd.to_string(),
+        error: Box::new(e),
+      }
+    })?;
+  let cmd =
+    resolve_cmd(arg_cmd, &run_env).map_err(|e| ProcessError::SpawnFailed {
+      command: arg_cmd.to_string(),
+      error: Box::new(e),
+    })?;
   check_run_permission(
     state,
     &RunQueryDescriptor::Path {
@@ -613,7 +653,8 @@ fn compute_run_cmd_and_check_permissions(
     },
     &run_env,
     api_name,
-  )?;
+  )
+  .map_err(ProcessError::Permission)?;
   Ok((cmd, run_env))
 }
 
@@ -631,9 +672,10 @@ fn compute_run_env(
   arg_cwd: Option<&str>,
   arg_envs: &[(String, String)],
   arg_clear_env: bool,
-) -> Result<RunEnv, AnyError> {
+) -> Result<RunEnv, ProcessError> {
   #[allow(clippy::disallowed_methods)]
-  let cwd = std::env::current_dir().context("failed resolving cwd")?;
+  let cwd =
+    std::env::current_dir().map_err(ProcessError::FailedResolvingCwd)?;
   let cwd = arg_cwd
     .map(|cwd_arg| resolve_path(cwd_arg, &cwd))
     .unwrap_or(cwd);
@@ -670,7 +712,7 @@ fn compute_run_env(
   Ok(RunEnv { envs, cwd })
 }
 
-fn resolve_cmd(cmd: &str, env: &RunEnv) -> Result<PathBuf, AnyError> {
+fn resolve_cmd(cmd: &str, env: &RunEnv) -> Result<PathBuf, ProcessError> {
   let is_path = cmd.contains('/');
   #[cfg(windows)]
   let is_path = is_path || cmd.contains('\\') || Path::new(&cmd).is_absolute();
@@ -683,7 +725,7 @@ fn resolve_cmd(cmd: &str, env: &RunEnv) -> Result<PathBuf, AnyError> {
       Err(which::Error::CannotFindBinaryPath) => {
         Err(std::io::Error::from(std::io::ErrorKind::NotFound).into())
       }
-      Err(err) => Err(err.into()),
+      Err(err) => Err(ProcessError::Which(err)),
     }
   }
 }
@@ -697,7 +739,7 @@ fn check_run_permission(
   cmd: &RunQueryDescriptor,
   run_env: &RunEnv,
   api_name: &str,
-) -> Result<(), AnyError> {
+) -> Result<(), deno_core::error::AnyError> {
   let permissions = state.borrow_mut::<PermissionsContainer>();
   if !permissions.query_run_all(api_name) {
     // error the same on all platforms
@@ -754,7 +796,7 @@ fn op_spawn_child(
   state: &mut OpState,
   #[serde] args: SpawnArgs,
   #[string] api_name: String,
-) -> Result<Child, AnyError> {
+) -> Result<Child, ProcessError> {
   let detached = args.detached;
   let (command, pipe_rid, extra_pipe_rids, handles_to_close) =
     create_command(state, args, &api_name)?;
@@ -771,16 +813,23 @@ fn op_spawn_child(
 async fn op_spawn_wait(
   state: Rc<RefCell<OpState>>,
   #[smi] rid: ResourceId,
-) -> Result<ChildStatus, AnyError> {
+) -> Result<ChildStatus, ProcessError> {
   let resource = state
     .borrow_mut()
     .resource_table
-    .get::<ChildResource>(rid)?;
-  let result = resource.0.try_borrow_mut()?.wait().await?.try_into();
+    .get::<ChildResource>(rid)
+    .map_err(ProcessError::Resource)?;
+  let result = resource
+    .0
+    .try_borrow_mut()
+    .map_err(ProcessError::BorrowMut)?
+    .wait()
+    .await?
+    .try_into()?;
   if let Ok(resource) = state.borrow_mut().resource_table.take_any(rid) {
     resource.close();
   }
-  result
+  Ok(result)
 }
 
 #[op2]
@@ -788,16 +837,14 @@ async fn op_spawn_wait(
 fn op_spawn_sync(
   state: &mut OpState,
   #[serde] args: SpawnArgs,
-) -> Result<SpawnOutput, AnyError> {
+) -> Result<SpawnOutput, ProcessError> {
   let stdout = matches!(args.stdio.stdout, StdioOrRid::Stdio(Stdio::Piped));
   let stderr = matches!(args.stdio.stderr, StdioOrRid::Stdio(Stdio::Piped));
   let (mut command, _, _, _) =
     create_command(state, args, "Deno.Command().outputSync()")?;
-  let output = command.output().with_context(|| {
-    format!(
-      "Failed to spawn '{}'",
-      command.get_program().to_string_lossy()
-    )
+  let output = command.output().map_err(|e| ProcessError::SpawnFailed {
+    command: command.get_program().to_string_lossy().to_string(),
+    error: Box::new(e.into()),
   })?;
 
   Ok(SpawnOutput {
@@ -820,17 +867,15 @@ fn op_spawn_kill(
   state: &mut OpState,
   #[smi] rid: ResourceId,
   #[string] signal: String,
-) -> Result<(), AnyError> {
+) -> Result<(), ProcessError> {
   if let Ok(child_resource) = state.resource_table.get::<ChildResource>(rid) {
     deprecated::kill(child_resource.1 as i32, &signal)?;
     return Ok(());
   }
-  Err(type_error("Child process has already terminated."))
+  Err(ProcessError::ChildProcessAlreadyTerminated)
 }
 
 mod deprecated {
-  use deno_core::anyhow;
-
   use super::*;
 
   #[derive(Deserialize)]
@@ -876,9 +921,9 @@ mod deprecated {
   pub fn op_run(
     state: &mut OpState,
     #[serde] run_args: RunArgs,
-  ) -> Result<RunInfo, AnyError> {
+  ) -> Result<RunInfo, ProcessError> {
     let args = run_args.cmd;
-    let cmd = args.first().ok_or_else(|| anyhow::anyhow!("Missing cmd"))?;
+    let cmd = args.first().ok_or(ProcessError::MissingCmd)?;
     let (cmd, run_env) = compute_run_cmd_and_check_permissions(
       cmd,
       run_args.cwd.as_deref(),
@@ -990,11 +1035,12 @@ mod deprecated {
   pub async fn op_run_status(
     state: Rc<RefCell<OpState>>,
     #[smi] rid: ResourceId,
-  ) -> Result<ProcessStatus, AnyError> {
+  ) -> Result<ProcessStatus, ProcessError> {
     let resource = state
       .borrow_mut()
       .resource_table
-      .get::<ChildResource>(rid)?;
+      .get::<ChildResource>(rid)
+      .map_err(ProcessError::Resource)?;
     let mut child = resource.borrow_mut().await;
     let run_status = child.wait().await?;
     let code = run_status.code();
@@ -1017,17 +1063,17 @@ mod deprecated {
   }
 
   #[cfg(unix)]
-  pub fn kill(pid: i32, signal: &str) -> Result<(), AnyError> {
+  pub fn kill(pid: i32, signal: &str) -> Result<(), ProcessError> {
     let signo = super::super::signal::signal_str_to_int(signal)?;
     use nix::sys::signal::kill as unix_kill;
     use nix::sys::signal::Signal;
     use nix::unistd::Pid;
-    let sig = Signal::try_from(signo)?;
-    unix_kill(Pid::from_raw(pid), Option::Some(sig)).map_err(AnyError::from)
+    let sig = Signal::try_from(signo).map_err(ProcessError::Nix)?;
+    unix_kill(Pid::from_raw(pid), Some(sig)).map_err(ProcessError::Nix)
   }
 
   #[cfg(not(unix))]
-  pub fn kill(pid: i32, signal: &str) -> Result<(), AnyError> {
+  pub fn kill(pid: i32, signal: &str) -> Result<(), ProcessError> {
     use std::io::Error;
     use std::io::ErrorKind::NotFound;
     use winapi::shared::minwindef::DWORD;
@@ -1041,9 +1087,9 @@ mod deprecated {
     use winapi::um::winnt::PROCESS_TERMINATE;
 
     if !matches!(signal, "SIGKILL" | "SIGTERM") {
-      Err(type_error(format!("Invalid signal: {signal}")))
+      Err(SignalError::InvalidSignalStr(signal.to_string()).into())
     } else if pid <= 0 {
-      Err(type_error("Invalid pid"))
+      Err(ProcessError::InvalidPid)
     } else {
       let handle =
         // SAFETY: winapi call
@@ -1077,11 +1123,11 @@ mod deprecated {
     #[smi] pid: i32,
     #[string] signal: String,
     #[string] api_name: String,
-  ) -> Result<(), AnyError> {
+  ) -> Result<(), ProcessError> {
     state
       .borrow_mut::<PermissionsContainer>()
-      .check_run_all(&api_name)?;
-    kill(pid, &signal)?;
-    Ok(())
+      .check_run_all(&api_name)
+      .map_err(ProcessError::Permission)?;
+    kill(pid, &signal)
   }
 }
