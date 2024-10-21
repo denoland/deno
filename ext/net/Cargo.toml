@@ -17,7 +17,6 @@ path = "lib.rs"
 deno_core.workspace = true
 deno_permissions.workspace = true
 deno_tls.workspace = true
-libc.workspace = true
 pin-project.workspace = true
 rustls-tokio-stream.workspace = true
 serde.workspace = true
@@ -26,3 +25,9 @@ thiserror.workspace = true
 tokio.workspace = true
 trust-dns-proto = "0.23"
 trust-dns-resolver = { version = "0.23", features = ["tokio-runtime", "serde-config"] }
+
+[target.'cfg(unix)'.dependencies]
+libc.workspace = true
+
+[target.'cfg(windows)'.dependencies]
+windows-sys.workspace = true

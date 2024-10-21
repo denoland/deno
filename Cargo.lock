@@ -1807,6 +1807,7 @@ dependencies = [
  "tokio",
  "trust-dns-proto",
  "trust-dns-resolver",
+ "windows-sys 0.52.0",
 ]
 
 [[package]]

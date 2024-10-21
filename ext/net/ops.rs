@@ -261,15 +261,34 @@ pub async fn op_net_join_multi_v6_udp(
     0
   } else {
     let interface_name = parts[1];
-    let c_interface_name = std::ffi::CString::new(interface_name)
-      .map_err(|_| NetError::NoResolvedAddress)?;
 
     // SAFETY:
     // The interface name is constructed using safe interfaces, and dropped once c_interface_name
     // goes out of scope. `if_nametoindex` will consume any valid NULL terminated string and return
     // either the interface index or an errno, according to
     // https://man7.org/linux/man-pages/man3/if_nametoindex.3.html.
-    unsafe { libc::if_nametoindex(c_interface_name.as_ptr()) }
+    unsafe {
+      #[cfg(unix)]
+      {
+        let c_interface_name = std::ffi::CString::new(interface_name)
+          .map_err(|_| NetError::NoResolvedAddress)?;
+        libc::if_nametoindex(c_interface_name.as_ptr())
+      }
+      #[cfg(windows)]
+      {
+        let wide_interface_name: Vec<u16> = interface_name
+          .encode_utf16()
+          .chain(std::iter::once(0))
+          .collect();
+        windows::Win32::NetworkManagement::IpHelper::if_nametoindex(
+          wide_interface_name.as_ptr(),
+        )
+      }
+      #[cfg(not(any(unix, windows)))]
+      {
+        0
+      }
+    }
   };
 
   socket.join_multicast_v6(&addr, scope_id)?;
