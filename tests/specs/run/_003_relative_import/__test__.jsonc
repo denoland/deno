@@ -1,0 +1,4 @@
+{
+  "args": "run --quiet --reload 003_relative_import.ts",
+  "output": "003_relative_import.ts.out"
+}

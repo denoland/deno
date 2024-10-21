@@ -1,0 +1,7 @@
+{
+  "compilerOptions": {
+    "jsx": "precompile",
+    "jsxImportSource": "jsx-precompile",
+    "jsxPrecompileSkipElements": ["a", "img"]
+  }
+}

@@ -1,0 +1,5 @@
+{
+  "args": "run --quiet --reload --allow-import=localhost:4545 permissions_remote_remote.ts",
+  "output": "permissions_remote_remote.ts.out",
+  "exitCode": 1
+}

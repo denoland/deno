@@ -1,0 +1,4 @@
+{
+  "args": "run --reload --config config/tsconfig.json --check config/main.ts",
+  "output": "config/main.out"
+}

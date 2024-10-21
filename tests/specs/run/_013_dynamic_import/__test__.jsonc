@@ -1,0 +1,4 @@
+{
+  "args": "run --quiet --reload --allow-read 013_dynamic_import.ts",
+  "output": "013_dynamic_import.ts.out"
+}

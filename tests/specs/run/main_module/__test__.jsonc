@@ -1,0 +1,4 @@
+{
+  "args": "run --quiet --reload main_module/main.ts",
+  "output": "main_module/main.out"
+}

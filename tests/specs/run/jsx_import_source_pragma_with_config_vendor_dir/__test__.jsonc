@@ -1,0 +1,4 @@
+{
+  "args": "run --allow-import --reload --config jsx/deno-jsx.jsonc --no-lock --vendor jsx_import_source_pragma.tsx",
+  "output": "jsx_import_source.out"
+}

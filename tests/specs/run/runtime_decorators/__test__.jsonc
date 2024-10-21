@@ -1,0 +1,4 @@
+{
+  "args": "run --quiet --reload --no-check decorators/experimental/runtime/main.ts",
+  "output": "decorators/experimental/runtime/main.out"
+}

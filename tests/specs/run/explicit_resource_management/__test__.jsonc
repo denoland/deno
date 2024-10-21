@@ -1,0 +1,4 @@
+{
+  "args": "run --quiet --check explicit_resource_management/main.ts",
+  "output": "explicit_resource_management/main.out"
+}

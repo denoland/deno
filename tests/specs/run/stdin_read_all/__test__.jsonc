@@ -1,0 +1,5 @@
+{
+  "args": "run --quiet stdin_read_all.ts",
+  "output": "stdin_read_all.out",
+  "input": "01234567890123456789012345678901234567890123456789"
+}

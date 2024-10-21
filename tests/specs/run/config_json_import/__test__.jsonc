@@ -1,0 +1,4 @@
+{
+  "args": "run --quiet -c deno-jsx.json config_json_import.ts",
+  "output": "config_json_import.ts.out"
+}

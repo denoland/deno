@@ -1,0 +1,5 @@
+{
+  "args": "run -A 077_fetch_empty.ts",
+  "output": "077_fetch_empty.ts.out",
+  "exitCode": 1
+}

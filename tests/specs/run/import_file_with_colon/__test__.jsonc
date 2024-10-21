@@ -1,0 +1,4 @@
+{
+  "args": "run --allow-import --quiet --reload import_file_with_colon.ts",
+  "output": "import_file_with_colon.ts.out"
+}

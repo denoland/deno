@@ -1,0 +1,4 @@
+{
+  "args": "run --quiet --reload 025_reload_js_type_error.js",
+  "output": "025_reload_js_type_error.js.out"
+}

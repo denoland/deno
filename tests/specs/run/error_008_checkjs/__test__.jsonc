@@ -1,0 +1,5 @@
+{
+  "args": "run --reload error_008_checkjs.js",
+  "output": "error_008_checkjs.js.out",
+  "exitCode": 1
+}

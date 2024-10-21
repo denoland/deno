@@ -1,0 +1,4 @@
+{
+  "args": "run --reload type_definitions.ts",
+  "output": "type_definitions.ts.out"
+}

@@ -1,0 +1,4 @@
+{
+  "args": "run --reload --allow-import 019_media_types.ts",
+  "output": "019_media_types.ts.out"
+}

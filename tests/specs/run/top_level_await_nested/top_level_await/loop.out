@@ -1,0 +1,5 @@
+loading [WILDCARD]a.js
+loaded [Module: null prototype] { default: [class Foo] }
+loading [WILDCARD]b.js
+loaded [Module: null prototype] { default: [class Bar] }
+all loaded

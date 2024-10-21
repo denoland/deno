@@ -1,0 +1,4 @@
+{
+  "args": "run --allow-import --quiet --reload --import-map=import_meta/importmap.json import_meta/main.ts",
+  "output": "import_meta/main.out"
+}

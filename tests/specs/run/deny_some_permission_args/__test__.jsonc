@@ -1,0 +1,4 @@
+{
+  "args": "run --allow-env --deny-env=FOO --allow-read --deny-read=/foo --allow-write --deny-write=/foo --allow-ffi --deny-ffi=/foo --allow-run --deny-run=foo --allow-sys --deny-sys=hostname --allow-net --deny-net=127.0.0.1 deny_some_permission_args.js",
+  "output": "deny_some_permission_args.out"
+}

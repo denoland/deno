@@ -1,0 +1,5 @@
+{
+  "args": "run --allow-read static_error.ts",
+  "output": "static_error.out",
+  "exitCode": 1
+}

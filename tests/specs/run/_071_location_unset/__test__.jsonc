@@ -1,0 +1,4 @@
+{
+  "args": "run 071_location_unset.ts",
+  "output": "071_location_unset.ts.out"
+}

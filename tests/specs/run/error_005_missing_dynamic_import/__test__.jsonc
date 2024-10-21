@@ -1,0 +1,5 @@
+{
+  "args": "run --reload --allow-read --quiet error_005_missing_dynamic_import.ts",
+  "output": "error_005_missing_dynamic_import.ts.out",
+  "exitCode": 1
+}

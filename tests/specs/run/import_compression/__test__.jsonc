@@ -1,0 +1,4 @@
+{
+  "args": "run --allow-import --quiet --reload --allow-net import_compression/main.ts",
+  "output": "import_compression/main.out"
+}

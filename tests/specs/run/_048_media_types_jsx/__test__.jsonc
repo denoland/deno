@@ -1,0 +1,4 @@
+{
+  "args": "run  --reload --allow-import 048_media_types_jsx.ts",
+  "output": "048_media_types_jsx.ts.out"
+}

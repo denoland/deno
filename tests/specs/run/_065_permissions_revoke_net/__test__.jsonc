@@ -1,0 +1,4 @@
+{
+  "args": "run --allow-net 065_permissions_revoke_net.ts",
+  "output": "065_permissions_revoke_net.ts.out"
+}

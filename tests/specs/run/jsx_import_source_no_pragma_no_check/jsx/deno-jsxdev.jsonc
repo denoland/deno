@@ -1,0 +1,6 @@
+{
+  "compilerOptions": {
+    "jsx": "react-jsxdev",
+    "jsxImportSource": "http://localhost:4545/jsx"
+  }
+}
