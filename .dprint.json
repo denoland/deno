@@ -65,7 +65,9 @@
     "tests/wpt/runner/expectation.json",
     "tests/wpt/runner/manifest.json",
     "tests/wpt/suite",
-    "third_party"
+    "third_party",
+    "tests/specs/run/shebang_with_json_imports_tsc",
+    "tests/specs/run/shebang_with_json_imports_swc"
   ],
   "plugins": [
     "https://plugins.dprint.dev/typescript-0.93.0.wasm",
