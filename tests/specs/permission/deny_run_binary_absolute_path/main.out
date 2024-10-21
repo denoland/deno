@@ -1,0 +1,8 @@
+NotCapable: Requires run access to "deno", run again with the --allow-run flag
+    at [WILDCARD] {
+  name: "NotCapable"
+}
+NotCapable: Requires run access to "[WILDLINE]", run again with the --allow-run flag
+    at [WILDCARD] {
+  name: "NotCapable"
+}

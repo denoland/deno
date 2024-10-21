@@ -6,6 +6,7 @@
 #![allow(unused_imports)]
 
 use deno_ast::MediaType;
+use deno_cache_dir::npm::NpmCacheDir;
 use deno_config::workspace::MappedResolution;
 use deno_config::workspace::MappedResolutionError;
 use deno_config::workspace::ResolverWorkspaceJsrPackage;
@@ -32,6 +33,8 @@ use deno_runtime::deno_permissions::Permissions;
 use deno_runtime::deno_permissions::PermissionsContainer;
 use deno_runtime::deno_tls::rustls::RootCertStore;
 use deno_runtime::deno_tls::RootCertStoreProvider;
+use deno_runtime::deno_web::BlobStore;
+use deno_runtime::permissions::RuntimePermissionDescriptorParser;
 use deno_runtime::WorkerExecutionMode;
 use deno_runtime::WorkerLogLevel;
 use deno_semver::npm::NpmPackageReqReference;
@@ -53,15 +56,16 @@ use crate::args::StorageKeyResolver;
 use crate::cache::Caches;
 use crate::cache::DenoDirProvider;
 use crate::cache::NodeAnalysisCache;
+use crate::cache::RealDenoCacheEnv;
 use crate::http_util::HttpClientProvider;
 use crate::node::CliCjsCodeAnalyzer;
 use crate::npm::create_cli_npm_resolver;
-use crate::npm::CliNpmResolverByonmCreateOptions;
+use crate::npm::CliByonmNpmResolverCreateOptions;
 use crate::npm::CliNpmResolverCreateOptions;
 use crate::npm::CliNpmResolverManagedCreateOptions;
 use crate::npm::CliNpmResolverManagedSnapshotOption;
-use crate::npm::NpmCacheDir;
 use crate::resolver::CjsResolutionStore;
+use crate::resolver::CliDenoResolverFs;
 use crate::resolver::CliNodeResolver;
 use crate::resolver::NpmModuleLoader;
 use crate::util::progress_bar::ProgressBar;
@@ -128,8 +132,6 @@ struct SharedModuleLoaderState {
 #[derive(Clone)]
 struct EmbeddedModuleLoader {
   shared: Arc<SharedModuleLoaderState>,
-  root_permissions: PermissionsContainer,
-  dynamic_permissions: PermissionsContainer,
 }
 
 pub const MODULE_NOT_FOUND: &str = "Module not found";
@@ -400,28 +402,23 @@ struct StandaloneModuleLoaderFactory {
 impl ModuleLoaderFactory for StandaloneModuleLoaderFactory {
   fn create_for_main(
     &self,
-    root_permissions: PermissionsContainer,
-    dynamic_permissions: PermissionsContainer,
+    _root_permissions: PermissionsContainer,
   ) -> ModuleLoaderAndSourceMapGetter {
     ModuleLoaderAndSourceMapGetter {
       module_loader: Rc::new(EmbeddedModuleLoader {
         shared: self.shared.clone(),
-        root_permissions,
-        dynamic_permissions,
       }),
     }
   }
 
   fn create_for_worker(
     &self,
-    root_permissions: PermissionsContainer,
-    dynamic_permissions: PermissionsContainer,
+    _parent_permissions: PermissionsContainer,
+    _permissions: PermissionsContainer,
   ) -> ModuleLoaderAndSourceMapGetter {
     ModuleLoaderAndSourceMapGetter {
       module_loader: Rc::new(EmbeddedModuleLoader {
         shared: self.shared.clone(),
-        root_permissions,
-        dynamic_permissions,
       }),
     }
   }
@@ -449,7 +446,6 @@ pub async fn run(
   let current_exe_path = std::env::current_exe().unwrap();
   let current_exe_name =
     current_exe_path.file_name().unwrap().to_string_lossy();
-  let maybe_cwd = std::env::current_dir().ok();
   let deno_dir_provider = Arc::new(DenoDirProvider::new(None));
   let root_cert_store_provider = Arc::new(StandaloneRootCertStoreProvider {
     ca_stores: metadata.ca_stores,
@@ -470,6 +466,7 @@ pub async fn run(
   let main_module = root_dir_url.join(&metadata.entrypoint_key).unwrap();
   let root_node_modules_path = root_path.join("node_modules");
   let npm_cache_dir = NpmCacheDir::new(
+    &RealDenoCacheEnv,
     root_node_modules_path.clone(),
     vec![npm_registry_url.clone()],
   );
@@ -534,8 +531,8 @@ pub async fn run(
       let fs = Arc::new(DenoCompileFileSystem::new(vfs))
         as Arc<dyn deno_fs::FileSystem>;
       let npm_resolver = create_cli_npm_resolver(
-        CliNpmResolverCreateOptions::Byonm(CliNpmResolverByonmCreateOptions {
-          fs: fs.clone(),
+        CliNpmResolverCreateOptions::Byonm(CliByonmNpmResolverCreateOptions {
+          fs: CliDenoResolverFs(fs.clone()),
           root_node_modules_dir,
         }),
       )
@@ -579,8 +576,18 @@ pub async fn run(
   let cjs_resolutions = Arc::new(CjsResolutionStore::default());
   let cache_db = Caches::new(deno_dir_provider.clone());
   let node_analysis_cache = NodeAnalysisCache::new(cache_db.node_analysis_db());
-  let cjs_esm_code_analyzer =
-    CliCjsCodeAnalyzer::new(node_analysis_cache, fs.clone());
+  let cli_node_resolver = Arc::new(CliNodeResolver::new(
+    cjs_resolutions.clone(),
+    fs.clone(),
+    node_resolver.clone(),
+    npm_resolver.clone(),
+  ));
+  let cjs_esm_code_analyzer = CliCjsCodeAnalyzer::new(
+    node_analysis_cache,
+    fs.clone(),
+    cli_node_resolver.clone(),
+    None,
+  );
   let node_code_translator = Arc::new(NodeCodeTranslator::new(
     cjs_esm_code_analyzer,
     deno_runtime::deno_node::DenoFsNodeResolverEnv::new(fs.clone()),
@@ -636,12 +643,6 @@ pub async fn run(
       metadata.workspace_resolver.pkg_json_resolution,
     )
   };
-  let cli_node_resolver = Arc::new(CliNodeResolver::new(
-    cjs_resolutions.clone(),
-    fs.clone(),
-    node_resolver.clone(),
-    npm_resolver.clone(),
-  ));
   let module_loader_factory = StandaloneModuleLoaderFactory {
     shared: Arc::new(SharedModuleLoaderState {
       eszip: WorkspaceEszip {
@@ -651,7 +652,7 @@ pub async fn run(
       workspace_resolver,
       node_resolver: cli_node_resolver.clone(),
       npm_module_loader: Arc::new(NpmModuleLoader::new(
-        cjs_resolutions,
+        cjs_resolutions.clone(),
         node_code_translator,
         fs.clone(),
         cli_node_resolver,
@@ -661,7 +662,7 @@ pub async fn run(
 
   let permissions = {
     let mut permissions =
-      metadata.permissions.to_options(maybe_cwd.as_deref())?;
+      metadata.permissions.to_options(/* cli_arg_urls */ &[]);
     // if running with an npm vfs, grant read access to it
     if let Some(vfs_root) = maybe_vfs_root {
       match &mut permissions.allow_read {
@@ -669,25 +670,24 @@ pub async fn run(
           // do nothing, already granted
         }
         Some(vec) => {
-          vec.push(vfs_root);
+          vec.push(vfs_root.to_string_lossy().to_string());
         }
         None => {
-          permissions.allow_read = Some(vec![vfs_root]);
+          permissions.allow_read =
+            Some(vec![vfs_root.to_string_lossy().to_string()]);
         }
       }
     }
 
-    PermissionsContainer::new(Permissions::from_options(&permissions)?)
+    let desc_parser =
+      Arc::new(RuntimePermissionDescriptorParser::new(fs.clone()));
+    let permissions =
+      Permissions::from_options(desc_parser.as_ref(), &permissions)?;
+    PermissionsContainer::new(desc_parser, permissions)
   };
   let feature_checker = Arc::new({
     let mut checker = FeatureChecker::default();
     checker.set_exit_cb(Box::new(crate::unstable_exit_cb));
-    // TODO(bartlomieju): enable, once we deprecate `--unstable` in favor
-    // of granular --unstable-* flags.
-    // feature_checker.set_warn_cb(Box::new(crate::unstable_warn_cb));
-    if metadata.unstable_config.legacy_flag_enabled {
-      checker.enable_legacy_unstable();
-    }
     for feature in metadata.unstable_config.features {
       // `metadata` is valid for the whole lifetime of the program, so we
       // can leak the string here.
@@ -696,20 +696,22 @@ pub async fn run(
     checker
   });
   let worker_factory = CliMainWorkerFactory::new(
-    StorageKeyResolver::empty(),
-    crate::args::DenoSubcommand::Run(Default::default()),
-    npm_resolver,
-    node_resolver,
-    Default::default(),
-    Box::new(module_loader_factory),
-    root_cert_store_provider,
+    Arc::new(BlobStore::default()),
+    cjs_resolutions,
+    // Code cache is not supported for standalone binary yet.
+    None,
+    feature_checker,
     fs,
     None,
     None,
     None,
-    feature_checker,
-    // Code cache is not supported for standalone binary yet.
-    None,
+    Box::new(module_loader_factory),
+    node_resolver,
+    npm_resolver,
+    root_cert_store_provider,
+    permissions,
+    StorageKeyResolver::empty(),
+    crate::args::DenoSubcommand::Run(Default::default()),
     CliMainWorkerOptions {
       argv: metadata.argv,
       log_level: WorkerLogLevel::Info,
@@ -733,22 +735,22 @@ pub async fn run(
       seed: metadata.seed,
       unsafely_ignore_certificate_errors: metadata
         .unsafely_ignore_certificate_errors,
-      unstable: metadata.unstable_config.legacy_flag_enabled,
       create_hmr_runner: None,
       create_coverage_collector: None,
       node_ipc: None,
       serve_port: None,
       serve_host: None,
+      unstable_detect_cjs: metadata.unstable_config.detect_cjs,
     },
   );
 
   // Initialize v8 once from the main thread.
   v8_set_flags(construct_v8_flags(&[], &metadata.v8_flags, vec![]));
-  // TODO(bartlomieju): remove last argument in Deno 2.
+  // TODO(bartlomieju): remove last argument once Deploy no longer needs it
   deno_core::JsRuntime::init_platform(None, true);
 
   let mut worker = worker_factory
-    .create_main_worker(WorkerExecutionMode::Run, main_module, permissions)
+    .create_main_worker(WorkerExecutionMode::Run, main_module)
     .await?;
 
   let exit_code = worker.run().await?;

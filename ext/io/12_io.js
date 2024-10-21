@@ -4,7 +4,7 @@
 // Documentation liberally lifted from them too.
 // Thank you! We love Go! <3
 
-import { core, internals, primordials } from "ext:core/mod.js";
+import { core, primordials } from "ext:core/mod.js";
 import { op_set_raw } from "ext:core/ops";
 const {
   Uint8Array,
@@ -121,11 +121,6 @@ class Stdin {
   }
 
   get rid() {
-    internals.warnOnDeprecatedApi(
-      "Deno.stdin.rid",
-      new Error().stack,
-      "Use `Deno.stdin` instance methods instead.",
-    );
     return this.#rid;
   }
 
@@ -186,11 +181,6 @@ class Stdout {
   }
 
   get rid() {
-    internals.warnOnDeprecatedApi(
-      "Deno.stdout.rid",
-      new Error().stack,
-      "Use `Deno.stdout` instance methods instead.",
-    );
     return this.#rid;
   }
 
@@ -226,11 +216,6 @@ class Stderr {
   }
 
   get rid() {
-    internals.warnOnDeprecatedApi(
-      "Deno.stderr.rid",
-      new Error().stack,
-      "Use `Deno.stderr` instance methods instead.",
-    );
     return this.#rid;
   }
 

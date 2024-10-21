@@ -45,6 +45,7 @@ use crate::colors;
 use crate::factory::CliFactory;
 use crate::graph_util::ModuleGraphCreator;
 use crate::tools::fmt::run_parallelized;
+use crate::util::display;
 use crate::util::file_watcher;
 use crate::util::fs::canonicalize_path;
 use crate::util::path::is_script_ext;
@@ -59,6 +60,8 @@ pub use linter::CliLinterOptions;
 pub use rules::collect_no_slow_type_diagnostics;
 pub use rules::ConfiguredRules;
 pub use rules::LintRuleProvider;
+
+const JSON_SCHEMA_VERSION: u8 = 1;
 
 static STDIN_FILE_NAME: &str = "$deno$stdin.ts";
 
@@ -114,6 +117,7 @@ pub async fn lint(
           for paths_with_options in paths_with_options_batches {
             linter
               .lint_files(
+                cli_options,
                 paths_with_options.options,
                 lint_config.clone(),
                 paths_with_options.dir,
@@ -152,7 +156,7 @@ pub async fn lint(
           start_dir.maybe_deno_json().map(|c| c.as_ref()),
         )?;
       let mut file_path = cli_options.initial_cwd().join(STDIN_FILE_NAME);
-      if let Some(ext) = &lint_flags.ext {
+      if let Some(ext) = cli_options.ext_flag() {
         file_path.set_extension(ext);
       }
       let r = lint_stdin(&file_path, lint_rules, deno_lint_config);
@@ -176,6 +180,7 @@ pub async fn lint(
       for paths_with_options in paths_with_options_batches {
         linter
           .lint_files(
+            cli_options,
             paths_with_options.options,
             deno_lint_config.clone(),
             paths_with_options.dir,
@@ -261,6 +266,7 @@ impl WorkspaceLinter {
 
   pub async fn lint_files(
     &mut self,
+    cli_options: &Arc<CliOptions>,
     lint_options: LintOptions,
     lint_config: LintConfig,
     member_dir: WorkspaceDirectory,
@@ -345,6 +351,7 @@ impl WorkspaceLinter {
       let reporter_lock = self.reporter_lock.clone();
       let maybe_incremental_cache = maybe_incremental_cache.clone();
       let linter = linter.clone();
+      let cli_options = cli_options.clone();
       async move {
         run_parallelized(paths, {
           move |file_path| {
@@ -358,7 +365,11 @@ impl WorkspaceLinter {
               }
             }
 
-            let r = linter.lint_file(&file_path, file_text);
+            let r = linter.lint_file(
+              &file_path,
+              file_text,
+              cli_options.ext_flag().as_deref(),
+            );
             if let Ok((file_source, file_diagnostics)) = &r {
               if let Some(incremental_cache) = &maybe_incremental_cache {
                 if file_diagnostics.is_empty() {
@@ -418,11 +429,14 @@ fn collect_lint_files(
   cli_options: &CliOptions,
   files: FilePatterns,
 ) -> Result<Vec<PathBuf>, AnyError> {
-  FileCollector::new(|e| is_script_ext(e.path))
-    .ignore_git_folder()
-    .ignore_node_modules()
-    .set_vendor_folder(cli_options.vendor_dir_path().map(ToOwned::to_owned))
-    .collect_file_patterns(&deno_config::fs::RealDenoConfigFs, files)
+  FileCollector::new(|e| {
+    is_script_ext(e.path)
+      || (e.path.extension().is_none() && cli_options.ext_flag().is_some())
+  })
+  .ignore_git_folder()
+  .ignore_node_modules()
+  .set_vendor_folder(cli_options.vendor_dir_path().map(ToOwned::to_owned))
+  .collect_file_patterns(&deno_config::fs::RealDenoConfigFs, files)
 }
 
 #[allow(clippy::print_stdout)]
@@ -440,18 +454,20 @@ pub fn print_rules_list(json: bool, maybe_rules_tags: Option<Vec<String>>) {
     .rules;
 
   if json {
-    let json_rules: Vec<serde_json::Value> = lint_rules
-      .iter()
-      .map(|rule| {
-        serde_json::json!({
-          "code": rule.code(),
-          "tags": rule.tags(),
-          "docs": rule.docs(),
+    let json_output = serde_json::json!({
+      "version": JSON_SCHEMA_VERSION,
+      "rules": lint_rules
+        .iter()
+        .map(|rule| {
+          serde_json::json!({
+            "code": rule.code(),
+            "tags": rule.tags(),
+            "docs": rule.docs(),
+          })
         })
-      })
-      .collect();
-    let json_str = serde_json::to_string_pretty(&json_rules).unwrap();
-    println!("{json_str}");
+        .collect::<Vec<serde_json::Value>>(),
+    });
+    display::write_json_to_stdout(&json_output).unwrap();
   } else {
     // The rules should still be printed even if `--quiet` option is enabled,
     // so use `println!` here instead of `info!`.
@@ -492,7 +508,7 @@ fn lint_stdin(
   });
 
   linter
-    .lint_file(file_path, deno_ast::strip_bom(source_code))
+    .lint_file(file_path, deno_ast::strip_bom(source_code), None)
     .map_err(AnyError::from)
 }
 

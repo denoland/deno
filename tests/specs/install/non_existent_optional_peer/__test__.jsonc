@@ -1,0 +1,11 @@
+// test imitates what crossws 0.2.4 has https://www.npmjs.com/package/crossws/v/0.2.4
+// where uWebSockets.js is an optional peer dep, but doesn't exist on npm
+{
+  "tempDir": true,
+  "steps": [
+    {
+      "args": "install",
+      "output": "install.out"
+    }
+  ]
+}

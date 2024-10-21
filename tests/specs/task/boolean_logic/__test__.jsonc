@@ -1,0 +1,4 @@
+{
+  "args": "task -q --config deno.json boolean_logic",
+  "output": "task_boolean_logic.out"
+}

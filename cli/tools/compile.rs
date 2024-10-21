@@ -54,6 +54,16 @@ pub async fn compile(
     );
   }
 
+  if cli_options.unstable_detect_cjs() {
+    log::warn!(
+      concat!(
+        "{} --unstable-detect-cjs is not properly supported in deno compile. ",
+        "The compiled executable may encounter runtime errors.",
+      ),
+      crate::colors::yellow("Warning"),
+    );
+  }
+
   let output_path = resolve_compile_executable_output_path(
     http_client,
     &compile_flags,
@@ -135,7 +145,7 @@ pub async fn compile(
       file,
       eszip,
       root_dir_url,
-      &module_specifier,
+      module_specifier,
       &compile_flags,
       cli_options,
     )

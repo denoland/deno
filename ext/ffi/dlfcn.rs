@@ -1,14 +1,11 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
-use crate::check_unstable;
 use crate::ir::out_buffer_as_ptr;
 use crate::symbol::NativeType;
 use crate::symbol::Symbol;
 use crate::turbocall;
 use crate::turbocall::Turbocall;
 use crate::FfiPermissions;
-use deno_core::error::generic_error;
-use deno_core::error::AnyError;
 use deno_core::op2;
 use deno_core::v8;
 use deno_core::GarbageCollected;
@@ -20,8 +17,23 @@ use serde_value::ValueDeserializer;
 use std::borrow::Cow;
 use std::collections::HashMap;
 use std::ffi::c_void;
-use std::path::PathBuf;
 use std::rc::Rc;
+
+#[derive(Debug, thiserror::Error)]
+pub enum DlfcnError {
+  #[error("Failed to register symbol {symbol}: {error}")]
+  RegisterSymbol {
+    symbol: String,
+    #[source]
+    error: dlopen2::Error,
+  },
+  #[error(transparent)]
+  Dlopen(#[from] dlopen2::Error),
+  #[error(transparent)]
+  Permission(deno_core::error::AnyError),
+  #[error(transparent)]
+  Other(deno_core::error::AnyError),
+}
 
 pub struct DynamicLibraryResource {
   lib: Library,
@@ -39,7 +51,7 @@ impl Resource for DynamicLibraryResource {
 }
 
 impl DynamicLibraryResource {
-  pub fn get_static(&self, symbol: String) -> Result<*mut c_void, AnyError> {
+  pub fn get_static(&self, symbol: String) -> Result<*mut c_void, DlfcnError> {
     // By default, Err returned by this function does not tell
     // which symbol wasn't exported. So we'll modify the error
     // message to include the name of symbol.
@@ -47,9 +59,7 @@ impl DynamicLibraryResource {
     // SAFETY: The obtained T symbol is the size of a pointer.
     match unsafe { self.lib.symbol::<*mut c_void>(&symbol) } {
       Ok(value) => Ok(Ok(value)),
-      Err(err) => Err(generic_error(format!(
-        "Failed to register symbol {symbol}: {err}"
-      ))),
+      Err(error) => Err(DlfcnError::RegisterSymbol { symbol, error }),
     }?
   }
 }
@@ -118,20 +128,19 @@ pub fn op_ffi_load<'scope, FP>(
   scope: &mut v8::HandleScope<'scope>,
   state: &mut OpState,
   #[serde] args: FfiLoadArgs,
-) -> Result<v8::Local<'scope, v8::Value>, AnyError>
+) -> Result<v8::Local<'scope, v8::Value>, DlfcnError>
 where
   FP: FfiPermissions + 'static,
 {
-  let path = args.path;
-
-  check_unstable(state, "Deno.dlopen");
   let permissions = state.borrow_mut::<FP>();
-  permissions.check_partial(Some(&PathBuf::from(&path)))?;
+  let path = permissions
+    .check_partial_with_path(&args.path)
+    .map_err(DlfcnError::Permission)?;
 
   let lib = Library::open(&path).map_err(|e| {
     dlopen2::Error::OpeningLibraryError(std::io::Error::new(
       std::io::ErrorKind::Other,
-      format_error(e, path),
+      format_error(e, &path),
     ))
   })?;
   let mut resource = DynamicLibraryResource {
@@ -157,15 +166,16 @@ where
           // SAFETY: The obtained T symbol is the size of a pointer.
           match unsafe { resource.lib.symbol::<*const c_void>(symbol) } {
             Ok(value) => Ok(value),
-            Err(err) => if foreign_fn.optional {
+            Err(error) => if foreign_fn.optional {
               let null: v8::Local<v8::Value> = v8::null(scope).into();
               let func_key = v8::String::new(scope, &symbol_key).unwrap();
               obj.set(scope, func_key.into(), null);
               break 'register_symbol;
             } else {
-              Err(generic_error(format!(
-                "Failed to register symbol {symbol}: {err}"
-              )))
+              Err(DlfcnError::RegisterSymbol {
+                symbol: symbol.to_owned(),
+                error,
+              })
             },
           }?;
 
@@ -176,8 +186,13 @@ where
             .clone()
             .into_iter()
             .map(libffi::middle::Type::try_from)
-            .collect::<Result<Vec<_>, _>>()?,
-          foreign_fn.result.clone().try_into()?,
+            .collect::<Result<Vec<_>, _>>()
+            .map_err(DlfcnError::Other)?,
+          foreign_fn
+            .result
+            .clone()
+            .try_into()
+            .map_err(DlfcnError::Other)?,
         );
 
         let func_key = v8::String::new(scope, &symbol_key).unwrap();
@@ -292,7 +307,10 @@ fn sync_fn_impl<'s>(
 
 // `path` is only used on Windows.
 #[allow(unused_variables)]
-pub(crate) fn format_error(e: dlopen2::Error, path: String) -> String {
+pub(crate) fn format_error(
+  e: dlopen2::Error,
+  path: &std::path::Path,
+) -> String {
   match e {
     #[cfg(target_os = "windows")]
     // This calls FormatMessageW with library path
@@ -302,7 +320,6 @@ pub(crate) fn format_error(e: dlopen2::Error, path: String) -> String {
     //
     // https://github.com/denoland/deno/issues/11632
     dlopen2::Error::OpeningLibraryError(e) => {
-      use std::ffi::OsStr;
       use std::os::windows::ffi::OsStrExt;
       use winapi::shared::minwindef::DWORD;
       use winapi::shared::winerror::ERROR_INSUFFICIENT_BUFFER;
@@ -326,7 +343,8 @@ pub(crate) fn format_error(e: dlopen2::Error, path: String) -> String {
 
       let mut buf = vec![0; 500];
 
-      let path = OsStr::new(&path)
+      let path = path
+        .as_os_str()
         .encode_wide()
         .chain(Some(0))
         .collect::<Vec<_>>();
@@ -386,7 +404,7 @@ mod tests {
       std::io::Error::from_raw_os_error(0x000000C1),
     );
     assert_eq!(
-      format_error(err, "foo.dll".to_string()),
+      format_error(err, &std::path::PathBuf::from("foo.dll")),
       "foo.dll is not a valid Win32 application.\r\n".to_string(),
     );
   }

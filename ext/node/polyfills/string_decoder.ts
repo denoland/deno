@@ -403,6 +403,7 @@ StringDecoder.prototype.text = function text(
 
 ObjectDefineProperties(StringDecoder.prototype, {
   lastNeed: {
+    __proto__: null,
     configurable: true,
     enumerable: true,
     get(this: StringDecoder): number {
@@ -410,6 +411,7 @@ ObjectDefineProperties(StringDecoder.prototype, {
     },
   },
   lastTotal: {
+    __proto__: null,
     configurable: true,
     enumerable: true,
     get(this: StringDecoder): number {

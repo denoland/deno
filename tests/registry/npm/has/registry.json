@@ -1,1 +1,76 @@
-{"_id":"has","_rev":"28-a7978fcc3beffd13dd518b65fdb20142","name":"has","description":"Object.prototype.hasOwnProperty.call shortcut","dist-tags":{"latest":"1.0.3"},"versions":{"0.0.1":{"name":"has","description":"Object.prototype.hasOwnProperty.call shortcut","version":"0.0.1","homepage":"https://github.com/tarruda/has","author":{"name":"Thiago de Arruda","email":"tpadilha84@gmail.com"},"repository":{"type":"git","url":"git://github.com/tarruda/has.git"},"bugs":{"url":"https://github.com/tarruda/has/issues"},"licenses":[{"type":"MIT","url":"https://github.com/tarruda/has/blob/master/LICENSE-MIT"}],"main":"./src/index","devDependencies":{"chai":"~1.7.2","grunt":"~0.4.1","grunt-contrib-watch":"~0.5.3","grunt-mocha-debug":"~0.0.6","grunt-exec-jshint":"~0.0.0","grunt-release":"~0.5.1","grunt-newer":"~0.5.4"},"engines":{"node":">= 0.8.0"},"_id":"has@0.0.1","dist":{"shasum":"66639c14eaf559f139da2be0e438910ef3fd5b1b","tarball":"http://localhost:4260/has/has-0.0.1.tgz","integrity":"sha512-Ulo9uG05SN7r55LqJxpU84yWzVPfJGv+GZSaEnm5mKO/jtwV5KODce9bPEDJh1uoYGJpsy5pKi4dQOdDSFzCvw==","signatures":[{"keyid":"SHA256:jl3bwswu80PjjokCgh0o2w5c2U4LhQAE57gj9cz1kzA","sig":"MEUCIQDfgu84CAfHIBVCPe26sam0TSBJ85TxQTylJ60gIU80NgIgf47PIcgnILXdcQJnGDT+j5EpCT2kN392mwWhJQz21gg="}]},"_from":".","_npmVersion":"1.3.8","_npmUser":{"name":"tarruda","email":"tpadilha84@gmail.com"},"maintainers":[{"name":"tarruda","email":"tpadilha84@gmail.com"}],"directories":{}},"1.0.0":{"name":"has","description":"Object.prototype.hasOwnProperty.call shortcut","version":"1.0.0","homepage":"https://github.com/tarruda/has","author":{"name":"Thiago de Arruda","email":"tpadilha84@gmail.com"},"repository":{"type":"git","url":"git://github.com/tarruda/has.git"},"bugs":{"url":"https://github.com/tarruda/has/issues"},"licenses":[{"type":"MIT","url":"https://github.com/tarruda/has/blob/master/LICENSE-MIT"}],"main":"./src/index","devDependencies":{"chai":"~1.7.2","mocha":"^1.21.4"},"engines":{"node":">= 0.8.0"},"scripts":{"test":"node_modules/mocha/bin/mocha"},"gitHead":"3113c5ff93ec8befffd9cf23c4dbab7a9d429c20","_id":"has@1.0.0","_shasum":"56c6582d23b40f3a5458f68ba79bc6c4bef203b3","_from":".","_npmVersion":"1.4.28","_npmUser":{"name":"tarruda","email":"tpadilha84@gmail.com"},"maintainers":[{"name":"tarruda","email":"tpadilha84@gmail.com"}],"dist":{"shasum":"56c6582d23b40f3a5458f68ba79bc6c4bef203b3","tarball":"http://localhost:4260/has/has-1.0.0.tgz","integrity":"sha512-pZW9uw/9635RZCMUO1nIiZ8Ue8fJP6GlegyXWsFmqp1asx44TMS+K+ffoKnhdFt/piqIpvHG1h6qXmyVEiXCfg==","signatures":[{"keyid":"SHA256:jl3bwswu80PjjokCgh0o2w5c2U4LhQAE57gj9cz1kzA","sig":"MEQCIFCoV79Swa7ogDk0FPLZ8kwt4fygO2aUdChkivfxg5juAiAjZm1GE4R6dpMqLcAafe1QcBaMYvhuK5jkjQfoULHq/A=="}]},"directories":{}},"1.0.1":{"name":"has","description":"Object.prototype.hasOwnProperty.call shortcut","version":"1.0.1","homepage":"https://github.com/tarruda/has","author":{"name":"Thiago de Arruda","email":"tpadilha84@gmail.com"},"repository":{"type":"git","url":"git://github.com/tarruda/has.git"},"bugs":{"url":"https://github.com/tarruda/has/issues"},"licenses":[{"type":"MIT","url":"https://github.com/tarruda/has/blob/master/LICENSE-MIT"}],"main":"./src/index","dependencies":{"function-bind":"^1.0.2"},"devDependencies":{"chai":"~1.7.2","mocha":"^1.21.4"},"engines":{"node":">= 0.8.0"},"scripts":{"test":"node_modules/mocha/bin/mocha"},"gitHead":"535c5c8ed1dc255c9e223829e702548dd514d2a5","_id":"has@1.0.1","_shasum":"8461733f538b0837c9361e39a9ab9e9704dc2f28","_from":".","_npmVersion":"2.11.0","_nodeVersion":"2.2.1","_npmUser":{"name":"tarruda","email":"tpadilha84@gmail.com"},"dist":{"shasum":"8461733f538b0837c9361e39a9ab9e9704dc2f28","tarball":"http://localhost:4260/has/has-1.0.1.tgz","integrity":"sha512-8wpov6mGFPJ/SYWGQIFo6t0yuNWoO9MkSq3flX8LhiGmbIUhDETp9knPMcIm0Xig1ybWsw6gq2w0gCz1JHD+Qw==","signatures":[{"keyid":"SHA256:jl3bwswu80PjjokCgh0o2w5c2U4LhQAE57gj9cz1kzA","sig":"MEUCIGwsArRhXrhj+qjKhTjYer8IcOloz5NSf90mKsSbjDTCAiEAikyzkXCsz1Xr2d+L0/QJVYD+vLNZUGu/gQpngIRstPM="}]},"maintainers":[{"name":"tarruda","email":"tpadilha84@gmail.com"}],"directories":{}},"1.0.2":{"name":"has","description":"Object.prototype.hasOwnProperty.call shortcut","version":"1.0.2","homepage":"https://github.com/tarruda/has","author":{"name":"Thiago de Arruda","email":"tpadilha84@gmail.com"},"contributors":[{"name":"Jordan Harband","email":"ljharb@gmail.com","url":"http://ljharb.codes"}],"repository":{"type":"git","url":"git://github.com/tarruda/has.git"},"bugs":{"url":"https://github.com/tarruda/has/issues"},"license":"MIT","licenses":[{"type":"MIT","url":"https://github.com/tarruda/has/blob/master/LICENSE-MIT"}],"main":"./src","dependencies":{"function-bind":"^1.1.1"},"devDependencies":{"@ljharb/eslint-config":"^12.2.1","eslint":"^4.19.1","tape":"^4.9.0"},"engines":{"node":">= 0.4.0"},"scripts":{"lint":"eslint .","pretest":"npm run lint","test":"tape test"},"gitHead":"5becaf997373b548e790e8c5ec0b718e20da6097","_id":"has@1.0.2","_npmVersion":"6.1.0","_nodeVersion":"10.3.0","_npmUser":{"name":"ljharb","email":"ljharb@gmail.com"},"dist":{"integrity":"sha512-D5/WxwX+SrGfs/fiQn34RAoIZkCLJBDEfBWS1kmTI6G/1mtjhxTBiIiJi8EsKhwaQqKqj7lpKOi3i69tg3P+OQ==","shasum":"1a64bfe4b52e67fb87b9822503d97c019fb6ba42","tarball":"http://localhost:4260/has/has-1.0.2.tgz","fileCount":6,"unpackedSize":2854,"npm-signature":"-----BEGIN PGP SIGNATURE-----\r\nVersion: OpenPGP.js v3.0.4\r\nComment: https://openpgpjs.org\r\n\r\nwsFcBAEBCAAQBQJbEwZkCRA9TVsSAnZWagAALQAP+wSiRGrAWvCQnVLAKjxZ\nYQebEuC2gpCQX1p/eG0RGxdRC+rC1+LOG2CJR41wtMtXXIcnC6wrXb2TnHMw\nyHMqSyQIjRxVAmR2CPOlh36FXAp9efcgPKyTAfXEw0/3iZMjJ0jcZCbaDckQ\ngLFB0fkv1T0uzudvjUqXVbSXihMe17qi3/vXQbQNtnrFkHfGLstp+cdXN33+\nh0Hwv6FsE+tdfRM2q2xhYzIvDbDQ3mGCe0nsMYj3nRFoSOsAnftsOrZnIGr0\n4VuFxe66oYGaokH/GI/JR9AikEj9iEizknW4TB3d9KDSHtfVbsHeptDQ/CdA\nXUpyKlALK0VZvHGC+lKQsllCb4D1uJ6isnoqL3rV20/v1X1tjKIm9/P1tBsB\nKGS7mMlR+vSFzB8iGNhYVvE5p7Du5FXJElGI8qj0AjCaCbvech30WbHyIJlx\n26/ywIE5/m+HJ+wnFAUDW3VQWakzZDPqhyc0GVo+yCixxjLGv++UslsdSncn\nx9g0k5l5bGQ2SCn8XbZRCG/jHm+bdD0NOjqvaE7bu7RvGPfniqZDpH6TzJmI\nlb55w8iPpR+GZ5vhypDdpQBT//ty33rNHb+Q9U4e9ZHnQNnwK15WaImfE7J5\nxfmA+8JRj3FBiMGpKU++NHOtI9Y+aK+CqCmVwlhlkpZT0z6oQphcsl2gqe4F\nuujs\r\n=q25B\r\n-----END PGP SIGNATURE-----\r\n","signatures":[{"keyid":"SHA256:jl3bwswu80PjjokCgh0o2w5c2U4LhQAE57gj9cz1kzA","sig":"MEQCIFVCO11i1G9/dgjkto0mkv30OIZOjyqKhV8oPKebk69aAiAipxVf8Vs0ptvMfLEdGwLLLc7iQxf6hreeLjoOsrhRgg=="}]},"maintainers":[{"name":"tarruda","email":"tpadilha84@gmail.com"}],"directories":{},"_npmOperationalInternal":{"host":"s3://npm-registry-packages","tmp":"tmp/has_1.0.2_1527973476308_0.8578208238940064"},"_hasShrinkwrap":false},"1.0.3":{"name":"has","description":"Object.prototype.hasOwnProperty.call shortcut","version":"1.0.3","homepage":"https://github.com/tarruda/has","author":{"name":"Thiago de Arruda","email":"tpadilha84@gmail.com"},"contributors":[{"name":"Jordan Harband","email":"ljharb@gmail.com","url":"http://ljharb.codes"}],"repository":{"type":"git","url":"git://github.com/tarruda/has.git"},"bugs":{"url":"https://github.com/tarruda/has/issues"},"license":"MIT","licenses":[{"type":"MIT","url":"https://github.com/tarruda/has/blob/master/LICENSE-MIT"}],"main":"./src","dependencies":{"function-bind":"^1.1.1"},"devDependencies":{"@ljharb/eslint-config":"^12.2.1","eslint":"^4.19.1","tape":"^4.9.0"},"engines":{"node":">= 0.4.0"},"scripts":{"lint":"eslint .","pretest":"npm run lint","test":"tape test"},"gitHead":"4edf96f2dec87ad6b6e68482e8f6d7c8eb7e07e6","_id":"has@1.0.3","_npmVersion":"6.1.0","_nodeVersion":"10.3.0","_npmUser":{"name":"ljharb","email":"ljharb@gmail.com"},"dist":{"integrity":"sha512-f2dvO0VU6Oej7RkWJGrehjbzMAjFp5/VKPp5tTpWIV4JHHZK1/BxbFRtf/siA2SWTe09caDmVtYYzWEIbBS4zw==","shasum":"722d7cbfc1f6aa8241f16dd814e011e1f41e8796","tarball":"http://localhost:4260/has/has-1.0.3.tgz","fileCount":5,"unpackedSize":2770,"npm-signature":"-----BEGIN PGP SIGNATURE-----\r\nVersion: OpenPGP.js v3.0.4\r\nComment: https://openpgpjs.org\r\n\r\nwsFcBAEBCAAQBQJbFWeCCRA9TVsSAnZWagAAGqoP/3/GpNmBbr2IzYG0v9Rg\n0jDcyA0p95I8Tc1GbOsB0YWMY+VMs5I3tggHG4yjB8OskeR7GyItfcZpe9b5\nEGNr2Yq/eOKI602MTnWzHaAczxF887EVcXDISg1qDlzjTYWFMNms5jDxH6OT\nKD0SLHE1qRCASPxNZsJLoxT/dPaVfRC5QMIz8msEaI+qUu8p54cO0/DSLSlT\n5kCGKA5CfbfIODAmyvddsKgOW0at16XJ97f+qHhrI5q6HoYdM2jcLzPXxPiw\nSgPKXICus5TjFvRdBoOXa2diz9urPjQGzVsGoKs8W0Z9EeoxpiJInVRN1Hec\nabW1NzLvINbuFcG1I/CvNVXKGKwIafKg25ba/T/PHa/5rHY2+S4Y9Mj0SLFv\n8V7HWSQMGaG86kZjH9vgd7MPP39lBZXw5msjftiRVxiDiZYutbGzBymwHcYd\nzPVrzCfdNg9o2OsG8mjIBGntCwz9/Yrx7npK9mP97nZQ4EDDoDoCga5efkMP\nmT02Vru1cCdHOfRnM/tlr4Onf0umRhgzUfsbjdSsrGapGCTeVvBvnm6XKznZ\nw9HWfGyNaZiT1J0/pmnRMwxEp/xcKMaAOa1c2pisTGpjkbQloGQx77IwfBiO\nAVBfV3yBDWCgutiwEb4zg0RPPjlS1RCJDMzg+CsXT1u9H6St8MUtuBikkNr4\ndlxV\r\n=Dlp+\r\n-----END PGP SIGNATURE-----\r\n","signatures":[{"keyid":"SHA256:jl3bwswu80PjjokCgh0o2w5c2U4LhQAE57gj9cz1kzA","sig":"MEYCIQDi2aj8+sqrebhyEkv7F23LOzXMTe0zUrFZqtxhj4ubhQIhAM8njQhxRA7zu5nYQHE3+EN4rJa5+9EpwlJiBeEkLn54"}]},"maintainers":[{"name":"tarruda","email":"tpadilha84@gmail.com"}],"directories":{},"_npmOperationalInternal":{"host":"s3://npm-registry-packages","tmp":"tmp/has_1.0.3_1528129409940_0.08921093934264301"},"_hasShrinkwrap":false}},"readme":"# has\n\n> Object.prototype.hasOwnProperty.call shortcut\n\n## Installation\n\n```sh\nnpm install --save has\n```\n\n## Usage\n\n```js\nvar has = require('has');\n\nhas({}, 'hasOwnProperty'); // false\nhas(Object.prototype, 'hasOwnProperty'); // true\n```\n","maintainers":[{"email":"tpadilha84@gmail.com","name":"tarruda"},{"email":"ljharb@gmail.com","name":"ljharb"}],"time":{"modified":"2022-11-08T10:38:33.269Z","created":"2013-10-08T00:54:01.609Z","0.0.1":"2013-10-08T00:54:07.309Z","1.0.0":"2014-10-07T18:41:58.615Z","1.0.1":"2015-07-24T08:49:30.633Z","1.0.2":"2018-06-02T21:04:36.393Z","1.0.3":"2018-06-04T16:23:29.998Z"},"author":{"name":"Thiago de Arruda","email":"tpadilha84@gmail.com"},"repository":{"type":"git","url":"git://github.com/tarruda/has.git"},"users":{"getify":true,"bradleymeck":true,"akiva":true,"rsp":true,"nickeltobias":true,"tobiasnickel":true,"ahmed-dinar":true,"maximusx":true,"tjfwalker":true,"iori20091101":true},"homepage":"https://github.com/tarruda/has","bugs":{"url":"https://github.com/tarruda/has/issues"},"readmeFilename":"README.md","contributors":[{"name":"Jordan Harband","email":"ljharb@gmail.com","url":"http://ljharb.codes"}],"license":"MIT"}
+{
+  "name": "has",
+  "description": "Object.prototype.hasOwnProperty.call shortcut",
+  "dist-tags": {
+    "latest": "1.0.3"
+  },
+  "versions": {
+    "1.0.3": {
+      "name": "has",
+      "description": "Object.prototype.hasOwnProperty.call shortcut",
+      "version": "1.0.3",
+      "author": {
+        "name": "Thiago de Arruda",
+        "email": "tpadilha84@gmail.com"
+      },
+      "repository": {
+        "type": "git",
+        "url": "git://github.com/tarruda/has.git"
+      },
+      "bugs": {
+        "url": "https://github.com/tarruda/has/issues"
+      },
+      "license": "MIT",
+      "licenses": [
+        {
+          "type": "MIT",
+          "url": "https://github.com/tarruda/has/blob/master/LICENSE-MIT"
+        }
+      ],
+      "main": "./src",
+      "dependencies": {
+        "function-bind": "^1.1.1"
+      },
+      "devDependencies": {
+        "@ljharb/eslint-config": "^12.2.1",
+        "eslint": "^4.19.1",
+        "tape": "^4.9.0"
+      },
+      "engines": {
+        "node": ">= 0.4.0"
+      },
+      "scripts": {
+        "lint": "eslint .",
+        "pretest": "npm run lint",
+        "test": "tape test"
+      },
+      "gitHead": "4edf96f2dec87ad6b6e68482e8f6d7c8eb7e07e6",
+      "_id": "has@1.0.3",
+      "_npmVersion": "6.1.0",
+      "_nodeVersion": "10.3.0",
+      "dist": {
+        "integrity": "sha512-f2dvO0VU6Oej7RkWJGrehjbzMAjFp5/VKPp5tTpWIV4JHHZK1/BxbFRtf/siA2SWTe09caDmVtYYzWEIbBS4zw==",
+        "shasum": "722d7cbfc1f6aa8241f16dd814e011e1f41e8796",
+        "tarball": "http://localhost:4260/has/has-1.0.3.tgz",
+        "fileCount": 5,
+        "unpackedSize": 2770
+      },
+      "directories": {},
+      "_hasShrinkwrap": false
+    }
+  },
+  "author": {
+    "name": "Thiago de Arruda",
+    "email": "tpadilha84@gmail.com"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git://github.com/tarruda/has.git"
+  },
+  "homepage": "https://github.com/tarruda/has",
+  "bugs": {
+    "url": "https://github.com/tarruda/has/issues"
+  },
+  "readmeFilename": "README.md",
+  "license": "MIT"
+}

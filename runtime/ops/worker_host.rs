@@ -10,6 +10,7 @@ use crate::web_worker::WorkerControlEvent;
 use crate::web_worker::WorkerId;
 use crate::web_worker::WorkerMetadata;
 use crate::worker::FormatJsErrorFn;
+use deno_core::error::custom_error;
 use deno_core::error::AnyError;
 use deno_core::op2;
 use deno_core::serde::Deserialize;
@@ -17,7 +18,6 @@ use deno_core::CancelFuture;
 use deno_core::CancelHandle;
 use deno_core::ModuleSpecifier;
 use deno_core::OpState;
-use deno_permissions::create_child_permissions;
 use deno_permissions::ChildPermissionsArg;
 use deno_permissions::PermissionsContainer;
 use deno_web::deserialize_js_transferables;
@@ -137,12 +137,10 @@ fn op_create_worker(
   let worker_type = args.worker_type;
   if let WebWorkerType::Classic = worker_type {
     if let TestingFeaturesEnabled(false) = state.borrow() {
-      return Err(
-        deno_webstorage::DomExceptionNotSupportedError::new(
-          "Classic workers are not supported.",
-        )
-        .into(),
-      );
+      return Err(custom_error(
+        "DOMExceptionNotSupportedError",
+        "Classic workers are not supported.",
+      ));
     }
   }
 
@@ -156,10 +154,7 @@ fn op_create_worker(
   let parent_permissions = state.borrow_mut::<PermissionsContainer>();
   let worker_permissions = if let Some(child_permissions_arg) = args.permissions
   {
-    let mut parent_permissions = parent_permissions.0.lock();
-    let perms =
-      create_child_permissions(&mut parent_permissions, child_permissions_arg)?;
-    PermissionsContainer::new(perms)
+    parent_permissions.create_child_permissions(child_permissions_arg)?
   } else {
     parent_permissions.clone()
   };
@@ -364,7 +359,7 @@ async fn op_host_recv_message(
       }
       Ok(ret)
     }
-    Ok(Err(err)) => Err(err),
+    Ok(Err(err)) => Err(err.into()),
     Err(_) => {
       // The worker was terminated.
       Ok(None)

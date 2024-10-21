@@ -1,0 +1,11 @@
+Check [WILDCARD]/main.ts
+running 1 test from ./main.ts
+check values ...
+------- output -------
+import.meta.main: false
+import.meta.url: [WILDCARD]/main.ts
+----- output end -----
+check values ... ok ([WILDCARD])
+
+ok | 1 passed | 0 failed ([WILDCARD])
+

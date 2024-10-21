@@ -13,7 +13,6 @@ mod ts {
   use deno_core::error::AnyError;
   use deno_core::op2;
   use deno_core::OpState;
-  use deno_runtime::deno_node::SUPPORTED_BUILTIN_NODE_MODULES;
   use serde::Serialize;
   use std::collections::HashMap;
   use std::io::Write;
@@ -25,7 +24,6 @@ mod ts {
   struct BuildInfoResponse {
     build_specifier: String,
     libs: Vec<String>,
-    node_built_in_module_names: Vec<String>,
   }
 
   #[op2]
@@ -37,14 +35,9 @@ mod ts {
       .iter()
       .map(|s| s.to_string())
       .collect();
-    let node_built_in_module_names = SUPPORTED_BUILTIN_NODE_MODULES
-      .iter()
-      .map(|s| s.to_string())
-      .collect();
     BuildInfoResponse {
       build_specifier,
       libs: build_libs,
-      node_built_in_module_names,
     }
   }
 
@@ -243,6 +236,7 @@ mod ts {
       "esnext.decorators",
       "esnext.disposable",
       "esnext.intl",
+      "esnext.iterator",
       "esnext.object",
       "esnext.promise",
       "esnext.regexp",
@@ -393,6 +387,8 @@ fn main() {
         "Missing symbols list! Generate using tools/napi/generate_symbols_lists.js",
     );
 
+  println!("cargo:rustc-rerun-if-changed={}", symbols_path.display());
+
   #[cfg(target_os = "windows")]
   println!(
     "cargo:rustc-link-arg-bin=deno=/DEF:{}",
@@ -446,7 +442,7 @@ fn main() {
   );
 
   let ts_version = ts::version();
-  debug_assert_eq!(ts_version, "5.5.2"); // bump this assertion when it changes
+  debug_assert_eq!(ts_version, "5.6.2"); // bump this assertion when it changes
   println!("cargo:rustc-env=TS_VERSION={}", ts_version);
   println!("cargo:rerun-if-env-changed=TS_VERSION");
 

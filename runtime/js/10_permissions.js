@@ -95,7 +95,7 @@ class PermissionStatus extends EventTarget {
    */
   constructor(status = null, key = null) {
     if (key != illegalConstructorKey) {
-      throw new TypeError("Illegal constructor.");
+      throw new TypeError("Illegal constructor");
     }
     super();
     this.#status = status;
@@ -194,7 +194,7 @@ function formDescriptor(desc) {
 class Permissions {
   constructor(key = null) {
     if (key != illegalConstructorKey) {
-      throw new TypeError("Illegal constructor.");
+      throw new TypeError("Illegal constructor");
     }
   }
 
@@ -209,7 +209,7 @@ class Permissions {
   querySync(desc) {
     if (!isValidDescriptor(desc)) {
       throw new TypeError(
-        `The provided value "${desc?.name}" is not a valid permission name.`,
+        `The provided value "${desc?.name}" is not a valid permission name`,
       );
     }
 
@@ -230,7 +230,7 @@ class Permissions {
   revokeSync(desc) {
     if (!isValidDescriptor(desc)) {
       throw new TypeError(
-        `The provided value "${desc?.name}" is not a valid permission name.`,
+        `The provided value "${desc?.name}" is not a valid permission name`,
       );
     }
 
@@ -269,7 +269,13 @@ function serializePermissions(permissions) {
   if (typeof permissions == "object" && permissions != null) {
     const serializedPermissions = { __proto__: null };
     for (
-      const key of new SafeArrayIterator(["read", "write", "run", "ffi"])
+      const key of new SafeArrayIterator([
+        "read",
+        "write",
+        "run",
+        "ffi",
+        "import",
+      ])
     ) {
       if (ArrayIsArray(permissions[key])) {
         serializedPermissions[key] = ArrayPrototypeMap(

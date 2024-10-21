@@ -10,7 +10,7 @@ import {
 } from "ext:deno_node/internal/primordials.mjs";
 import assert from "ext:deno_node/internal/assert.mjs";
 import * as net from "node:net";
-import { createSecureContext } from "ext:deno_node/_tls_common.ts";
+import { createSecureContext } from "node:_tls_common";
 import { kStreamBaseField } from "ext:deno_node/internal_binding/stream_wrap.ts";
 import { connResetException } from "ext:deno_node/internal/errors.ts";
 import { emitWarning } from "node:process";

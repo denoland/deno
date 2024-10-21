@@ -6,11 +6,11 @@
   },
   "tests": {
     "env_arg": {
-      "args": "run --allow-run=echo env_arg.ts",
+      "args": "run --allow-run=curl env_arg.ts",
       "output": "env_arg.out"
     },
     "set_with_allow_env": {
-      "args": "run --allow-run=echo --allow-env set_with_allow_env.ts",
+      "args": "run --allow-run=curl --allow-env set_with_allow_env.ts",
       "output": "set_with_allow_env.out"
     }
   }

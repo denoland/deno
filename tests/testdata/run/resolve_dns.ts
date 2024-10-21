@@ -67,7 +67,7 @@ try {
   // @ts-ignore testing invalid overloads
   await Deno.resolveDns("example.com", "SSHFP", nameServer);
 } catch (e) {
-  console.log(e.message);
+  console.log((e as Error).message);
 }
 
 try {
@@ -78,7 +78,7 @@ try {
     signal: ac.signal,
   });
 } catch (e) {
-  console.log(e.name);
+  console.log((e as Error).name);
 }
 
 try {
@@ -89,5 +89,5 @@ try {
     signal: ac.signal,
   });
 } catch (e) {
-  console.log(e.name);
+  console.log((e as Error).name);
 }

@@ -1,0 +1,1 @@
+new BroadcastChannel("hello");

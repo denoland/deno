@@ -7,12 +7,9 @@ import tty from "node:tty";
 import process from "node:process";
 
 Deno.test("[node/tty isatty] returns true when fd is a tty, false otherwise", () => {
-  assert(Deno.stdin.isTerminal() === isatty(Deno.stdin.rid));
-  assert(Deno.stdout.isTerminal() === isatty(Deno.stdout.rid));
-  assert(Deno.stderr.isTerminal() === isatty(Deno.stderr.rid));
-
-  using file = Deno.openSync("README.md");
-  assert(!isatty(file.rid));
+  assert(Deno.stdin.isTerminal() === isatty((Deno as any).stdin.rid));
+  assert(Deno.stdout.isTerminal() === isatty((Deno as any).stdout.rid));
+  assert(Deno.stderr.isTerminal() === isatty((Deno as any).stderr.rid));
 });
 
 Deno.test("[node/tty isatty] returns false for irrelevant values", () => {

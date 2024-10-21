@@ -5,7 +5,7 @@ for await (const conn of listener) {
 }
 
 function handleConn(conn: Deno.Conn) {
-  const httpConn = Deno.serveHttp(conn);
+  const httpConn = (Deno as any).serveHttp(conn);
   for await (const event of httpConn) {
     event.respondWith(new Response("html", { status: 200 }));
   }

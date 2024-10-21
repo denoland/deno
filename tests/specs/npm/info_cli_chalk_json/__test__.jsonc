@@ -1,0 +1,5 @@
+{
+  "args": "info --quiet --json npm:chalk@4",
+  "output": "info/chalk_json.out",
+  "exitCode": 0
+}

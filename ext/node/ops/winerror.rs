@@ -66,6 +66,7 @@ pub fn op_node_sys_to_uv_error(err: i32) -> String {
     ERROR_INVALID_PARAMETER => "EINVAL",
     WSAEINVAL => "EINVAL",
     WSAEPFNOSUPPORT => "EINVAL",
+    ERROR_NOT_A_REPARSE_POINT => "EINVAL",
     ERROR_BEGINNING_OF_MEDIA => "EIO",
     ERROR_BUS_RESET => "EIO",
     ERROR_CRC => "EIO",

@@ -8,14 +8,14 @@
 /// <reference lib="deno.cache" />
 
 /** @category Platform */
-declare interface WindowEventMap {
+interface WindowEventMap {
   "error": ErrorEvent;
   "unhandledrejection": PromiseRejectionEvent;
   "rejectionhandled": PromiseRejectionEvent;
 }
 
 /** @category Platform */
-declare interface Window extends EventTarget {
+interface Window extends EventTarget {
   readonly window: Window & typeof globalThis;
   readonly self: Window & typeof globalThis;
   onerror: ((this: Window, ev: ErrorEvent) => any) | null;
@@ -105,7 +105,7 @@ declare var sessionStorage: Storage;
 declare var caches: CacheStorage;
 
 /** @category Platform */
-declare interface Navigator {
+interface Navigator {
   readonly gpu: GPU;
   readonly hardwareConcurrency: number;
   readonly userAgent: string;
@@ -221,7 +221,7 @@ declare function removeEventListener(
  *
  * @category Platform
  */
-declare interface Location {
+interface Location {
   /** Returns a DOMStringList object listing the origins of the ancestor
    * browsing contexts, from the parent browsing context to the top-level
    * browsing context.

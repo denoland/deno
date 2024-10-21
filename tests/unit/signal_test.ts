@@ -209,7 +209,6 @@ Deno.test(
     const { code } = await new Deno.Command(Deno.execPath(), {
       args: [
         "eval",
-        "--unstable",
         "Deno.addSignalListener('SIGINT', () => {})",
       ],
     }).output();

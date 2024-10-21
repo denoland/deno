@@ -3,7 +3,8 @@
   "steps": [
     {
       "args": "run main.ts",
-      "output": ""
+      "output": "main.out",
+      "exitCode": 1
     },
     {
       "args": "lint main.ts",

@@ -1,5 +1,6 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 //! This mod provides DenoError to unify errors across Deno.
+use color_print::cstr;
 use deno_core::error::format_frame;
 use deno_core::error::JsError;
 use deno_terminal::colors::cyan;
@@ -18,6 +19,54 @@ struct ErrorReference<'a> {
 struct IndexedErrorReference<'a> {
   reference: ErrorReference<'a>,
   index: usize,
+}
+
+#[derive(Debug)]
+enum FixSuggestionKind {
+  Info,
+  Hint,
+}
+
+#[derive(Debug)]
+enum FixSuggestionMessage<'a> {
+  Single(&'a str),
+  Multiline(&'a [&'a str]),
+}
+
+#[derive(Debug)]
+pub struct FixSuggestion<'a> {
+  kind: FixSuggestionKind,
+  message: FixSuggestionMessage<'a>,
+}
+
+impl<'a> FixSuggestion<'a> {
+  pub fn info(message: &'a str) -> Self {
+    Self {
+      kind: FixSuggestionKind::Info,
+      message: FixSuggestionMessage::Single(message),
+    }
+  }
+
+  pub fn info_multiline(messages: &'a [&'a str]) -> Self {
+    Self {
+      kind: FixSuggestionKind::Info,
+      message: FixSuggestionMessage::Multiline(messages),
+    }
+  }
+
+  pub fn hint(message: &'a str) -> Self {
+    Self {
+      kind: FixSuggestionKind::Hint,
+      message: FixSuggestionMessage::Single(message),
+    }
+  }
+
+  pub fn hint_multiline(messages: &'a [&'a str]) -> Self {
+    Self {
+      kind: FixSuggestionKind::Hint,
+      message: FixSuggestionMessage::Multiline(messages),
+    }
+  }
 }
 
 struct AnsiColors;
@@ -129,6 +178,7 @@ fn format_aggregated_error(
         index: nested_circular_reference_index,
       }),
       false,
+      vec![],
     );
 
     for line in error_string.trim_start_matches("Uncaught ").lines() {
@@ -143,6 +193,7 @@ fn format_js_error_inner(
   js_error: &JsError,
   circular: Option<IndexedErrorReference>,
   include_source_code: bool,
+  suggestions: Vec<FixSuggestion>,
 ) -> String {
   let mut s = String::new();
 
@@ -190,7 +241,7 @@ fn format_js_error_inner(
     let error_string = if is_caused_by_circular {
       cyan(format!("[Circular *{}]", circular.unwrap().index)).to_string()
     } else {
-      format_js_error_inner(cause, circular, false)
+      format_js_error_inner(cause, circular, false, vec![])
     };
 
     write!(
@@ -200,7 +251,143 @@ fn format_js_error_inner(
     )
     .unwrap();
   }
+  if !suggestions.is_empty() {
+    write!(s, "\n\n").unwrap();
+    for (index, suggestion) in suggestions.iter().enumerate() {
+      write!(s, "    ").unwrap();
+      match suggestion.kind {
+        FixSuggestionKind::Hint => write!(s, "{} ", cyan("hint:")).unwrap(),
+        FixSuggestionKind::Info => write!(s, "{} ", yellow("info:")).unwrap(),
+      };
+      match suggestion.message {
+        FixSuggestionMessage::Single(msg) => {
+          write!(s, "{}", msg).unwrap();
+        }
+        FixSuggestionMessage::Multiline(messages) => {
+          for (idx, message) in messages.iter().enumerate() {
+            if idx != 0 {
+              writeln!(s).unwrap();
+              write!(s, "          ").unwrap();
+            }
+            write!(s, "{}", message).unwrap();
+          }
+        }
+      }
+
+      if index != (suggestions.len() - 1) {
+        writeln!(s).unwrap();
+      }
+    }
+  }
+
   s
+}
+
+fn get_suggestions_for_terminal_errors(e: &JsError) -> Vec<FixSuggestion> {
+  if let Some(msg) = &e.message {
+    if msg.contains("module is not defined")
+      || msg.contains("exports is not defined")
+      || msg.contains("require is not defined")
+    {
+      return vec![
+        FixSuggestion::info_multiline(&[
+          cstr!("Deno supports CommonJS modules in <u>.cjs</> files, or when there's a <u>package.json</>"),
+          cstr!("with <i>\"type\": \"commonjs\"</> option and <i>--unstable-detect-cjs</> flag is used.")
+        ]),
+        FixSuggestion::hint_multiline(&[
+          "Rewrite this module to ESM,",
+          cstr!("or change the file extension to <u>.cjs</u>,"),
+          cstr!("or add <u>package.json</> next to the file with <i>\"type\": \"commonjs\"</> option"),
+          cstr!("and pass <i>--unstable-detect-cjs</> flag."),
+        ]),
+        FixSuggestion::hint("See https://docs.deno.com/go/commonjs for details"),
+      ];
+    } else if msg.contains("openKv is not a function") {
+      return vec![
+        FixSuggestion::info("Deno.openKv() is an unstable API."),
+        FixSuggestion::hint(
+          "Run again with `--unstable-kv` flag to enable this API.",
+        ),
+      ];
+    } else if msg.contains("cron is not a function") {
+      return vec![
+        FixSuggestion::info("Deno.cron() is an unstable API."),
+        FixSuggestion::hint(
+          "Run again with `--unstable-cron` flag to enable this API.",
+        ),
+      ];
+    } else if msg.contains("WebSocketStream is not defined") {
+      return vec![
+        FixSuggestion::info("new WebSocketStream() is an unstable API."),
+        FixSuggestion::hint(
+          "Run again with `--unstable-net` flag to enable this API.",
+        ),
+      ];
+    } else if msg.contains("Temporal is not defined") {
+      return vec![
+        FixSuggestion::info("Temporal is an unstable API."),
+        FixSuggestion::hint(
+          "Run again with `--unstable-temporal` flag to enable this API.",
+        ),
+      ];
+    } else if msg.contains("BroadcastChannel is not defined") {
+      return vec![
+        FixSuggestion::info("BroadcastChannel is an unstable API."),
+        FixSuggestion::hint(
+          "Run again with `--unstable-broadcast-channel` flag to enable this API.",
+        ),
+      ];
+    } else if msg.contains("window is not defined") {
+      return vec![
+        FixSuggestion::info("window global is not available in Deno 2."),
+        FixSuggestion::hint("Replace `window` with `globalThis`."),
+      ];
+    } else if msg.contains("UnsafeWindowSurface is not a constructor") {
+      return vec![
+        FixSuggestion::info("Deno.UnsafeWindowSurface is an unstable API."),
+        FixSuggestion::hint(
+          "Run again with `--unstable-webgpu` flag to enable this API.",
+        ),
+      ];
+    // Try to capture errors like:
+    // ```
+    // Uncaught Error: Cannot find module '../build/Release/canvas.node'
+    // Require stack:
+    // - /.../deno/npm/registry.npmjs.org/canvas/2.11.2/lib/bindings.js
+    // - /.../.cache/deno/npm/registry.npmjs.org/canvas/2.11.2/lib/canvas.js
+    // ```
+    } else if msg.contains("Cannot find module")
+      && msg.contains("Require stack")
+      && msg.contains(".node'")
+    {
+      return vec![
+        FixSuggestion::info_multiline(
+          &[
+            "Trying to execute an npm package using Node-API addons,",
+            "these packages require local `node_modules` directory to be present."
+          ]
+        ),
+        FixSuggestion::hint_multiline(
+          &[
+            "Add `\"nodeModulesDir\": \"auto\" option to `deno.json`, and then run",
+            "`deno install --allow-scripts=npm:<package> --entrypoint <script>` to setup `node_modules` directory."
+          ]
+        )
+      ];
+    } else if msg.contains("document is not defined") {
+      return vec![
+        FixSuggestion::info(cstr!(
+          "<u>document</> global is not available in Deno."
+        )),
+        FixSuggestion::hint_multiline(&[
+          cstr!("Use a library like <u>happy-dom</>, <u>deno_dom</>, <u>linkedom</> or <u>JSDom</>"),
+          cstr!("and setup the <u>document</> global according to the library documentation."),
+        ]),
+      ];
+    }
+  }
+
+  vec![]
 }
 
 /// Format a [`JsError`] for terminal output.
@@ -210,8 +397,8 @@ pub fn format_js_error(js_error: &JsError) -> String {
       reference,
       index: 1,
     });
-
-  format_js_error_inner(js_error, circular, true)
+  let suggestions = get_suggestions_for_terminal_errors(js_error);
+  format_js_error_inner(js_error, circular, true, suggestions)
 }
 
 #[cfg(test)]

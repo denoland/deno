@@ -1,36 +1,41 @@
-// Testing the following (but with `deno` instead of `echo`):
-// | `deno run --allow-run=echo`         | `which path == "/usr/bin/echo"` at startup | `which path != "/usr/bin/echo"` at startup |
-// |-------------------------------------|--------------------------------------------|--------------------------------------------|
-// | **`Deno.Command("echo")`**          | ✅                                          | ✅                                         |
-// | **`Deno.Command("/usr/bin/echo")`** | ✅                                          | ❌                                         |
+// Testing the following:
+// | `deno run --allow-run=binary`         | `which path == "/usr/bin/binary"` at startup | `which path != "/usr/bin/binary"` at startup |
+// |---------------------------------------|----------------------------------------------|--------------------------------------------|
+// | **`Deno.Command("binary")`**          | :white_check_mark:                                          | :white_check_mark:                                         |
+// | **`Deno.Command("/usr/bin/binary")`** | :white_check_mark:                                          | :x:                                         |
+// | `deno run --allow-run=/usr/bin/binary | `which path == "/usr/bin/binary"` at runtime | `which path != "/usr/bin/binary"` at runtime |
+// |---------------------------------------|----------------------------------------------|--------------------------------------------|
+// | **`Deno.Command("binary")`**          | :white_check_mark:                                          | :x:                                         |
+// | **`Deno.Command("/usr/bin/binary")`** | :white_check_mark:                                          | :white_check_mark:                                         |
 
-// | `deno run --allow-run=/usr/bin/echo | `which path == "/usr/bin/echo"` at runtime | `which path != "/usr/bin/echo"` at runtime |
-// |-------------------------------------|--------------------------------------------|--------------------------------------------|
-// | **`Deno.Command("echo")`**          | ✅                                          | ❌                                         |
-// | **`Deno.Command("/usr/bin/echo")`** | ✅                                          | ✅                                         |
+const binaryName = Deno.build.os === "windows" ? "binary.exe" : "binary";
+const pathSep = Deno.build.os === "windows" ? "\\" : "/";
+const cwd = Deno.cwd();
+const execPathParent = `${Deno.cwd()}${pathSep}sub`;
+const execPath = `${execPathParent}${pathSep}${binaryName}`;
 
-const execPath = Deno.execPath();
-const execPathParent = execPath.replace(/[/\\][^/\\]+$/, "");
+Deno.mkdirSync(execPathParent);
+Deno.copyFileSync(Deno.execPath(), execPath);
 
 const testUrl = `data:application/typescript;base64,${
   btoa(`
-  console.error(await Deno.permissions.query({ name: "run", command: "deno" }));
+  console.error(await Deno.permissions.query({ name: "run", command: "binary" }));
   console.error(await Deno.permissions.query({ name: "run", command: "${
     execPath.replaceAll("\\", "\\\\")
   }" }));
   Deno.env.set("PATH", "");
-  console.error(await Deno.permissions.query({ name: "run", command: "deno" }));
+  console.error(await Deno.permissions.query({ name: "run", command: "binary" }));
   console.error(await Deno.permissions.query({ name: "run", command: "${
     execPath.replaceAll("\\", "\\\\")
   }" }));
 `)
 }`;
 
-const process1 = await new Deno.Command(Deno.execPath(), {
+await new Deno.Command(Deno.execPath(), {
   args: [
     "run",
     "--allow-env",
-    "--allow-run=deno",
+    "--allow-run=binary",
     testUrl,
   ],
   stdout: "inherit",
@@ -44,7 +49,7 @@ await new Deno.Command(Deno.execPath(), {
   args: [
     "run",
     "--allow-env",
-    "--allow-run=deno",
+    "--allow-run=binary",
     testUrl,
   ],
   stderr: "inherit",

@@ -1,0 +1,5 @@
+{
+  "args": "lint --ignore=./",
+  "output": "lint.out",
+  "exitCode": 1
+}

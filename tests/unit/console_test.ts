@@ -1162,7 +1162,7 @@ Deno.test(function consoleTestWithIntegerFormatSpecifier() {
   assertEquals(stringify("%i"), "%i");
   assertEquals(stringify("%i", 42.0), "42");
   assertEquals(stringify("%i", 42), "42");
-  assertEquals(stringify("%i", "42"), "NaN");
+  assertEquals(stringify("%i", "42"), "42");
   assertEquals(stringify("%i", 1.5), "1");
   assertEquals(stringify("%i", -0.5), "0");
   assertEquals(stringify("%i", ""), "NaN");
@@ -1172,7 +1172,7 @@ Deno.test(function consoleTestWithIntegerFormatSpecifier() {
   assertEquals(stringify("%d", 12345678901234567890123), "1");
   assertEquals(
     stringify("%i", 12345678901234567890123n),
-    "12345678901234567890123n",
+    "1.2345678901234568e+22",
   );
 });
 
@@ -1180,13 +1180,13 @@ Deno.test(function consoleTestWithFloatFormatSpecifier() {
   assertEquals(stringify("%f"), "%f");
   assertEquals(stringify("%f", 42.0), "42");
   assertEquals(stringify("%f", 42), "42");
-  assertEquals(stringify("%f", "42"), "NaN");
+  assertEquals(stringify("%f", "42"), "42");
   assertEquals(stringify("%f", 1.5), "1.5");
   assertEquals(stringify("%f", -0.5), "-0.5");
   assertEquals(stringify("%f", Math.PI), "3.141592653589793");
   assertEquals(stringify("%f", ""), "NaN");
   assertEquals(stringify("%f", Symbol("foo")), "NaN");
-  assertEquals(stringify("%f", 5n), "NaN");
+  assertEquals(stringify("%f", 5n), "5");
   assertEquals(stringify("%f %f", 42, 43), "42 43");
   assertEquals(stringify("%f %f", 42), "42 %f");
 });
@@ -1891,6 +1891,40 @@ Deno.test(function consoleLogShouldNotThrowErrorWhenInputIsProxiedTypedArray() {
     const proxiedUint8Array = new Proxy(new Uint8Array([1, 2]), {});
     console.log(proxiedUint8Array);
     assertEquals(stripAnsiCode(out.toString()), "Uint8Array(2) [ 1, 2 ]\n");
+  });
+});
+
+Deno.test(function consoleLogWhenCauseIsAssignedShouldNotPrintCauseTwice() {
+  mockConsole((console, out) => {
+    const typeError = new TypeError("Type incorrect");
+    const syntaxError = new SyntaxError("Improper syntax");
+    typeError.cause = syntaxError;
+    console.log(typeError);
+    const result = stripAnsiCode(out.toString());
+    // Filter out stack trace lines, keeping only the first line and the cause line
+    const filteredOutput = result
+      .split("\n")
+      .filter((line) => !line.trim().startsWith("at"))
+      .join("\n");
+
+    const expectedResult =
+      "TypeError: Type incorrect\nCaused by SyntaxError: Improper syntax\n";
+    assertEquals(filteredOutput.trim(), expectedResult.trim());
+  });
+});
+
+Deno.test(function consoleLogCauseNotFilteredOnNonError() {
+  mockConsole((console, out) => {
+    const foo = {
+      a: 1,
+      b: 2,
+      cause: 3,
+    };
+    console.log(foo);
+
+    const result = stripAnsiCode(out.toString());
+    const expected = "{ a: 1, b: 2, cause: 3 }\n";
+    assertEquals(result.trim(), expected.trim());
   });
 });
 

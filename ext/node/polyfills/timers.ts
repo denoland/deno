@@ -33,6 +33,7 @@ export function setTimeout(
 }
 
 ObjectDefineProperty(setTimeout, promisify.custom, {
+  __proto__: null,
   value: (timeout: number, ...args: unknown[]) => {
     return new Promise((cb) =>
       setTimeout(cb, timeout, ...new SafeArrayIterator(args))
@@ -88,6 +89,22 @@ export function clearImmediate(immediate: Immediate) {
   clearTimeout_(immediate._immediateId);
 }
 
+export const promises = {
+  setTimeout: promisify(setTimeout),
+  setImmediate: promisify(setImmediate),
+  setInterval: promisify(setInterval),
+};
+
+promises.scheduler = {
+  async wait(
+    delay: number,
+    options?: { signal?: AbortSignal },
+  ): Promise<void> {
+    return await promises.setTimeout(delay, undefined, options);
+  },
+  yield: promises.setImmediate,
+};
+
 export default {
   setTimeout,
   clearTimeout,
@@ -96,4 +113,5 @@ export default {
   setImmediate,
   setUnrefTimeout,
   clearImmediate,
+  promises,
 };

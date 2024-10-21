@@ -242,7 +242,7 @@ export class Cipheriv extends Transform implements Cipher {
   ): Buffer | string {
     // TODO(kt3k): throw ERR_INVALID_ARG_TYPE if data is not string, Buffer, or ArrayBufferView
     let buf = data;
-    if (typeof data === "string" && typeof inputEncoding === "string") {
+    if (typeof data === "string") {
       buf = Buffer.from(data, inputEncoding);
     }
 
@@ -306,6 +306,10 @@ class BlockModeCache {
     this.cache = this.cache.subarray(len);
     return out;
   }
+
+  set lastChunkIsNonZero(value: boolean) {
+    this.#lastChunkIsNonZero = value;
+  }
 }
 
 export class Decipheriv extends Transform implements Cipher {
@@ -338,7 +342,7 @@ export class Decipheriv extends Transform implements Cipher {
       },
       ...options,
     });
-    this.#cache = new BlockModeCache(true);
+    this.#cache = new BlockModeCache(this.#autoPadding);
     this.#context = op_node_create_decipheriv(cipher, toU8(key), toU8(iv));
     this.#needsBlockCache =
       !(cipher == "aes-128-gcm" || cipher == "aes-256-gcm");
@@ -386,6 +390,7 @@ export class Decipheriv extends Transform implements Cipher {
 
   setAutoPadding(autoPadding?: boolean): this {
     this.#autoPadding = Boolean(autoPadding);
+    this.#cache.lastChunkIsNonZero = this.#autoPadding;
     return this;
   }
 
@@ -396,7 +401,7 @@ export class Decipheriv extends Transform implements Cipher {
   ): Buffer | string {
     // TODO(kt3k): throw ERR_INVALID_ARG_TYPE if data is not string, Buffer, or ArrayBufferView
     let buf = data;
-    if (typeof data === "string" && typeof inputEncoding === "string") {
+    if (typeof data === "string") {
       buf = Buffer.from(data, inputEncoding);
     }
 

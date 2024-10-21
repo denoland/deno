@@ -12,14 +12,15 @@ use super::language_server::StateSnapshot;
 use super::performance::Performance;
 use super::tsc;
 use super::tsc::TsServer;
+use super::urls::uri_parse_unencoded;
 use super::urls::url_to_uri;
 use super::urls::LspUrlMap;
 
 use crate::graph_util;
 use crate::graph_util::enhanced_resolution_error_message;
 use crate::lsp::lsp_custom::DiagnosticBatchNotificationParams;
-use crate::resolver::SloppyImportsResolution;
-use crate::resolver::SloppyImportsResolver;
+use crate::resolver::CliSloppyImportsResolver;
+use crate::resolver::SloppyImportsCachedFs;
 use crate::tools::lint::CliLinter;
 use crate::tools::lint::CliLinterOptions;
 use crate::tools::lint::LintRuleProvider;
@@ -39,11 +40,12 @@ use deno_core::unsync::spawn_blocking;
 use deno_core::unsync::JoinHandle;
 use deno_core::url::Url;
 use deno_core::ModuleSpecifier;
-use deno_graph::source::ResolutionMode;
 use deno_graph::source::ResolveError;
 use deno_graph::Resolution;
 use deno_graph::ResolutionError;
 use deno_graph::SpecifierError;
+use deno_resolver::sloppy_imports::SloppyImportsResolution;
+use deno_resolver::sloppy_imports::SloppyImportsResolutionMode;
 use deno_runtime::deno_fs;
 use deno_runtime::deno_node;
 use deno_runtime::tokio_util::create_basic_runtime;
@@ -53,11 +55,9 @@ use deno_semver::package::PackageReq;
 use import_map::ImportMap;
 use import_map::ImportMapError;
 use log::error;
-use lsp_types::Uri;
 use std::collections::HashMap;
 use std::collections::HashSet;
 use std::path::PathBuf;
-use std::str::FromStr;
 use std::sync::atomic::AtomicUsize;
 use std::sync::Arc;
 use std::thread;
@@ -738,7 +738,7 @@ fn to_lsp_related_information(
         if let (Some(file_name), Some(start), Some(end)) =
           (&ri.file_name, &ri.start, &ri.end)
         {
-          let uri = Uri::from_str(file_name).unwrap();
+          let uri = uri_parse_unencoded(file_name).unwrap();
           Some(lsp::DiagnosticRelatedInformation {
             location: lsp::Location {
               uri,
@@ -1264,7 +1264,9 @@ impl DenoDiagnostic {
       Self::NotInstalledJsr(pkg_req, specifier) => (lsp::DiagnosticSeverity::ERROR, format!("JSR package \"{pkg_req}\" is not installed or doesn't exist."), Some(json!({ "specifier": specifier }))),
       Self::NotInstalledNpm(pkg_req, specifier) => (lsp::DiagnosticSeverity::ERROR, format!("NPM package \"{pkg_req}\" is not installed or doesn't exist."), Some(json!({ "specifier": specifier }))),
       Self::NoLocal(specifier) => {
-        let maybe_sloppy_resolution = SloppyImportsResolver::new(Arc::new(deno_fs::RealFs)).resolve(specifier, ResolutionMode::Execution);
+        let maybe_sloppy_resolution = CliSloppyImportsResolver::new(
+          SloppyImportsCachedFs::new(Arc::new(deno_fs::RealFs))
+        ).resolve(specifier, SloppyImportsResolutionMode::Execution);
         let data = maybe_sloppy_resolution.as_ref().map(|res| {
           json!({
             "specifier": specifier,
@@ -1515,17 +1517,19 @@ fn diagnose_dependency(
   let import_ranges: Vec<_> = dependency
     .imports
     .iter()
-    .map(|i| documents::to_lsp_range(&i.range))
+    .map(|i| documents::to_lsp_range(&i.specifier_range))
     .collect();
   // TODO(nayeemrmn): This is a crude way of detecting `@deno-types` which has
   // a different specifier and therefore needs a separate call to
   // `diagnose_resolution()`. It would be much cleaner if that were modelled as
   // a separate dependency: https://github.com/denoland/deno_graph/issues/247.
   let is_types_deno_types = !dependency.maybe_type.is_none()
-    && !dependency
-      .imports
-      .iter()
-      .any(|i| dependency.maybe_type.includes(&i.range.start).is_some());
+    && !dependency.imports.iter().any(|i| {
+      dependency
+        .maybe_type
+        .includes(&i.specifier_range.start)
+        .is_some()
+    });
 
   diagnostics.extend(
     diagnose_resolution(

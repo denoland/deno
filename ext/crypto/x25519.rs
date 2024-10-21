@@ -1,8 +1,6 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
 use curve25519_dalek::montgomery::MontgomeryPoint;
-use deno_core::error::custom_error;
-use deno_core::error::AnyError;
 use deno_core::op2;
 use deno_core::ToJsBuffer;
 use elliptic_curve::pkcs8::PrivateKeyInfo;
@@ -12,6 +10,14 @@ use rand::RngCore;
 use spki::der::asn1::BitString;
 use spki::der::Decode;
 use spki::der::Encode;
+
+#[derive(Debug, thiserror::Error)]
+pub enum X25519Error {
+  #[error("Failed to export key")]
+  FailedExport,
+  #[error(transparent)]
+  Der(#[from] spki::der::Error),
+}
 
 #[op2(fast)]
 pub fn op_crypto_generate_x25519_keypair(
@@ -47,10 +53,10 @@ pub fn op_crypto_derive_bits_x25519(
   let sh_sec = x25519_dalek::x25519(k, u);
   let point = MontgomeryPoint(sh_sec);
   if point.ct_eq(&MONTGOMERY_IDENTITY).unwrap_u8() == 1 {
-    return false;
+    return true;
   }
   secret.copy_from_slice(&sh_sec);
-  true
+  false
 }
 
 // id-X25519 OBJECT IDENTIFIER ::= { 1 3 101 110 }
@@ -113,7 +119,7 @@ pub fn op_crypto_import_pkcs8_x25519(
 #[serde]
 pub fn op_crypto_export_spki_x25519(
   #[buffer] pubkey: &[u8],
-) -> Result<ToJsBuffer, AnyError> {
+) -> Result<ToJsBuffer, X25519Error> {
   let key_info = spki::SubjectPublicKeyInfo {
     algorithm: spki::AlgorithmIdentifierRef {
       // id-X25519
@@ -125,9 +131,7 @@ pub fn op_crypto_export_spki_x25519(
   Ok(
     key_info
       .to_der()
-      .map_err(|_| {
-        custom_error("DOMExceptionOperationError", "Failed to export key")
-      })?
+      .map_err(|_| X25519Error::FailedExport)?
       .into(),
   )
 }
@@ -136,7 +140,7 @@ pub fn op_crypto_export_spki_x25519(
 #[serde]
 pub fn op_crypto_export_pkcs8_x25519(
   #[buffer] pkey: &[u8],
-) -> Result<ToJsBuffer, AnyError> {
+) -> Result<ToJsBuffer, X25519Error> {
   use rsa::pkcs1::der::Encode;
 
   // This should probably use OneAsymmetricKey instead

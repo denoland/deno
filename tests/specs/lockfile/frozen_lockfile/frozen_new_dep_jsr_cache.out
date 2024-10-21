@@ -1,4 +1,4 @@
-error: The lockfile is out of date. Run `deno cache --frozen=false`, `deno install --frozen=false`, or rerun with `--frozen=false` to update it.
+error: The lockfile is out of date. Run `deno install --frozen=false`, or rerun with `--frozen=false` to update it.
 changes:
  4 | -    "jsr:@denotest/add@1": "1.0.0"
  5 | -  },
