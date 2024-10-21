@@ -286,7 +286,7 @@ jobs:
           cat /sysroot/.env
           . /sysroot/.env
 
-          export RUSTFLAGS="$RUSTFLAGS -C link-arg=-L/sysroot/usr/lib/gcc/x86_64-linux-gnu"
+          export RUSTFLAGS="$RUSTFLAGS -C link-arg=-L/sysroot/usr/lib/gcc/x86_64-linux-gnu -C link-arg=-L/usr/lib/gcc/x86_64-linux-gnu"
 
           # Important notes:
           #   1. -ldl seems to be required to avoid a failure in FFI tests. This flag seems
