@@ -1,0 +1,4 @@
+{
+  "args": "run before_unload.js",
+  "output": "before_unload.js.out"
+}
