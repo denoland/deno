@@ -2,7 +2,7 @@
 
 [package]
 name = "deno_crypto"
-version = "0.186.0"
+version = "0.187.0"
 authors.workspace = true
 edition.workspace = true
 license.workspace = true
@@ -41,5 +41,7 @@ sha1.workspace = true
 sha2.workspace = true
 signature.workspace = true
 spki.workspace = true
+thiserror.workspace = true
+tokio.workspace = true
 uuid.workspace = true
 x25519-dalek = "2.0.0"

@@ -4,6 +4,7 @@ use std::sync::Arc;
 
 use crate::web_worker::WebWorkerInternalHandle;
 use crate::web_worker::WebWorkerType;
+use deno_core::error::custom_error;
 use deno_core::error::type_error;
 use deno_core::error::AnyError;
 use deno_core::futures::StreamExt;
@@ -12,7 +13,6 @@ use deno_core::url::Url;
 use deno_core::OpState;
 use deno_fetch::data_url::DataUrl;
 use deno_web::BlobStore;
-use deno_websocket::DomExceptionNetworkError;
 use http_body_util::BodyExt;
 use hyper::body::Bytes;
 use serde::Deserialize;
@@ -134,7 +134,7 @@ pub fn op_worker_sync_fetch(
 
                 let mime_type = mime_type_essence(&blob.media_type);
 
-                let body = blob.read_all().await?;
+                let body = blob.read_all().await;
 
                 (Bytes::from(body), Some(mime_type), script)
               }
@@ -151,17 +151,16 @@ pub fn op_worker_sync_fetch(
               match mime_type.as_deref() {
                 Some("application/javascript" | "text/javascript") => {}
                 Some(mime_type) => {
-                  return Err(
-                    DomExceptionNetworkError {
-                      msg: format!("Invalid MIME type {mime_type:?}."),
-                    }
-                    .into(),
-                  )
+                  return Err(custom_error(
+                    "DOMExceptionNetworkError",
+                    format!("Invalid MIME type {mime_type:?}."),
+                  ))
                 }
                 None => {
-                  return Err(
-                    DomExceptionNetworkError::new("Missing MIME type.").into(),
-                  )
+                  return Err(custom_error(
+                    "DOMExceptionNetworkError",
+                    "Missing MIME type.",
+                  ))
                 }
               }
             }
