@@ -1,9 +1,6 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 // Copyright Joyent and Node contributors. All rights reserved. MIT license.
 
-// TODO(petamoriken): enable prefer-primordials for node polyfills
-// deno-lint-ignore-file prefer-primordials
-
 import { notImplemented } from "ext:deno_node/_utils.ts";
 import { urlToHttpOptions } from "ext:deno_node/internal/url.ts";
 import {
@@ -17,6 +14,14 @@ import { type ServerHandler, ServerImpl as HttpServer } from "node:http";
 import { validateObject } from "ext:deno_node/internal/validators.mjs";
 import { kEmptyObject } from "ext:deno_node/internal/util.mjs";
 import { Buffer } from "node:buffer";
+import { primordials } from "ext:core/mod.js";
+const {
+  ArrayPrototypeShift,
+  ArrayPrototypeUnshift,
+  ArrayIsArray,
+  ObjectPrototypeIsPrototypeOf,
+  ObjectAssign,
+} = primordials;
 
 export class Server extends HttpServer {
   constructor(opts, requestListener?: ServerHandler) {
@@ -29,11 +34,11 @@ export class Server extends HttpServer {
       validateObject(opts, "options");
     }
 
-    if (opts.cert && Array.isArray(opts.cert)) {
+    if (opts.cert && ArrayIsArray(opts.cert)) {
       notImplemented("https.Server.opts.cert array type");
     }
 
-    if (opts.key && Array.isArray(opts.key)) {
+    if (opts.key && ArrayIsArray(opts.key)) {
       notImplemented("https.Server.opts.key array type");
     }
 
@@ -42,10 +47,12 @@ export class Server extends HttpServer {
 
   _additionalServeOptions() {
     return {
-      cert: this._opts.cert instanceof Buffer
+      cert: ObjectPrototypeIsPrototypeOf(Buffer, this._opts.cert)
+        // deno-lint-ignore prefer-primordials
         ? this._opts.cert.toString()
         : this._opts.cert,
-      key: this._opts.key instanceof Buffer
+      key: ObjectPrototypeIsPrototypeOf(Buffer, this._opts.key)
+        // deno-lint-ignore prefer-primordials
         ? this._opts.key.toString()
         : this._opts.key,
     };
@@ -159,18 +166,18 @@ export function request(...args: any[]) {
   let options = {};
 
   if (typeof args[0] === "string") {
-    const urlStr = args.shift();
+    const urlStr = ArrayPrototypeShift(args);
     options = urlToHttpOptions(new URL(urlStr));
-  } else if (args[0] instanceof URL) {
-    options = urlToHttpOptions(args.shift());
+  } else if (ObjectPrototypeIsPrototypeOf(URL, args[0])) {
+    options = urlToHttpOptions(ArrayPrototypeShift(args));
   }
 
   if (args[0] && typeof args[0] !== "function") {
-    Object.assign(options, args.shift());
+    ObjectAssign(options, ArrayPrototypeShift(args));
   }
 
   options._defaultAgent = globalAgent;
-  args.unshift(options);
+  ArrayPrototypeUnshift(args, options);
 
   return new HttpsClientRequest(args[0], args[1]);
 }
