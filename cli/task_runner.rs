@@ -250,8 +250,12 @@ pub struct NodeCommand;
 impl ShellCommand for NodeCommand {
   fn execute(
     &self,
-    context: ShellCommandContext,
+    mut context: ShellCommandContext,
   ) -> LocalBoxFuture<'static, ExecuteResult> {
+    context.state.apply_env_var(
+      "npm_config_user_agent",
+      &crate::npm::get_npm_config_user_agent(),
+    );
     // run with deno if it's a simple invocation, fall back to node
     // if there are extra flags
     let mut args = Vec::with_capacity(context.args.len());
@@ -276,10 +280,7 @@ impl ShellCommand for NodeCommand {
     args.extend(context.args.iter().cloned());
 
     let mut state = context.state;
-    state.apply_env_var(
-      "npm_config_user_agent",
-      &crate::npm::get_npm_config_user_agent(),
-    );
+
     state.apply_env_var(USE_PKG_JSON_HIDDEN_ENV_VAR_NAME, "1");
     ExecutableCommand::new("deno".to_string(), std::env::current_exe().unwrap())
       .execute(ShellCommandContext {
