@@ -124,7 +124,6 @@ pub struct CliMainWorkerOptions {
   pub serve_host: Option<String>,
   pub unstable_detect_cjs: bool,
 }
-
 struct SharedWorkerState {
   blob_store: Arc<BlobStore>,
   broadcast_channel: InMemoryBroadcastChannel,
