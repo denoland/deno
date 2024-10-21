@@ -46,6 +46,11 @@ brew install deno
 choco install deno
 ```
 
+[WinGet](https://winstall.app/apps/DenoLand.Deno) (Windows):
+```powershell
+winget install --id=DenoLand.Deno
+```
+
 ### Build and install from source
 
 Complete instructions for building Deno from source can be found in the manual
