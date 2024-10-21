@@ -322,6 +322,15 @@ jobs:
           CC=/usr/bin/clang-19
           CFLAGS=-flto=thin $CFLAGS
           " > $GITHUB_ENV
+
+      - name: Echo gcc lib
+        if: '!(matrix.skip) && (matrix.os == ''linux'')'
+        run: |-
+          echo "gcc lib"
+          ls -l /sysroot/usr/lib/gcc/
+          echo "----------------"
+          ls -l /sysroot/usr/lib/gcc/x86_64-linux-gnu
+          echo "----------------"
       - name: Remove macOS cURL --ipv4 flag
         run: |-
           curl --version
