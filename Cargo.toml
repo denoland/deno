@@ -137,7 +137,7 @@ hyper-util = { version = "=0.1.7", features = ["tokio", "client", "client-legacy
 hyper_v014 = { package = "hyper", version = "0.14.26", features = ["runtime", "http1"] }
 indexmap = { version = "2", features = ["serde"] }
 ipnet = "2.3"
-jsonc-parser = { version = "=0.23.0", features = ["serde"] }
+jsonc-parser = { version = "=0.26.0", features = ["serde"] }
 lazy-regex = "3"
 libc = "0.2.126"
 libz-sys = { version = "1.1.20", default-features = false }

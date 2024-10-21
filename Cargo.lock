@@ -1209,7 +1209,7 @@ dependencies = [
  "hyper-util",
  "import_map",
  "indexmap",
- "jsonc-parser",
+ "jsonc-parser 0.26.0",
  "junction",
  "lazy-regex",
  "libc",
@@ -1265,7 +1265,6 @@ dependencies = [
  "winapi",
  "windows-sys 0.52.0",
  "winres",
- "yoke",
  "zeromq",
  "zip",
  "zstd",
@@ -1404,7 +1403,7 @@ dependencies = [
  "ignore",
  "import_map",
  "indexmap",
- "jsonc-parser",
+ "jsonc-parser 0.23.0",
  "log",
  "percent-encoding",
  "phf",
@@ -2570,7 +2569,7 @@ dependencies = [
  "anyhow",
  "dprint-core",
  "dprint-core-macros",
- "jsonc-parser",
+ "jsonc-parser 0.23.0",
  "serde",
  "text_lines",
 ]
@@ -2583,7 +2582,7 @@ checksum = "c67b0e54b552a4775c221b44ed33be918c400bd8041d1f044f947fbb01025cc0"
 dependencies = [
  "anyhow",
  "dprint-core",
- "jsonc-parser",
+ "jsonc-parser 0.23.0",
  "serde",
  "serde_json",
 ]
@@ -4037,6 +4036,15 @@ name = "jsonc-parser"
 version = "0.23.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "7725c320caac8c21d8228c1d055af27a995d371f78cc763073d3e068323641b5"
+dependencies = [
+ "serde_json",
+]
+
+[[package]]
+name = "jsonc-parser"
+version = "0.26.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "0600d6a0361200299ef0c64cc5f1b910705cb397dd44250ad924f396a78725bf"
 dependencies = [
  "serde_json",
 ]
@@ -7159,7 +7167,7 @@ dependencies = [
  "http-body-util",
  "hyper 1.4.1",
  "hyper-util",
- "jsonc-parser",
+ "jsonc-parser 0.26.0",
  "lazy-regex",
  "libc",
  "lsp-types",
