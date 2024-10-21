@@ -460,7 +460,8 @@ Deno.test("[node/http] send request with non-chunked body", async () => {
   let requestHeaders: Headers;
   let requestBody = "";
 
-  const hostname = "localhost";
+  // TODO(kt3k): This should be "localhost" when we implemented happy-eyeballs for node:net
+  const hostname = "127.0.0.1";
   const port = 4505;
 
   const handler = async (req: Request) => {
@@ -499,7 +500,6 @@ Deno.test("[node/http] send request with non-chunked body", async () => {
     assert(socket.writable);
     assert(socket.readable);
     socket.setKeepAlive();
-    socket.destroy();
     socket.setTimeout(100);
   });
   req.write("hello ");
@@ -518,7 +518,8 @@ Deno.test("[node/http] send request with chunked body", async () => {
   let requestHeaders: Headers;
   let requestBody = "";
 
-  const hostname = "localhost";
+  // TODO(kt3k): This should be "localhost" when we implemented happy-eyeballs for node:net
+  const hostname = "127.0.0.1";
   const port = 4505;
 
   const handler = async (req: Request) => {
@@ -565,7 +566,8 @@ Deno.test("[node/http] send request with chunked body as default", async () => {
   let requestHeaders: Headers;
   let requestBody = "";
 
-  const hostname = "localhost";
+  // TODO(kt3k): This should be "localhost" when we implemented happy-eyeballs for node:net
+  const hostname = "127.0.0.1";
   const port = 4505;
 
   const handler = async (req: Request) => {
@@ -671,7 +673,8 @@ Deno.test("[node/http] ClientRequest handle non-string headers", async () => {
   // deno-lint-ignore no-explicit-any
   let headers: any;
   const { promise, resolve, reject } = Promise.withResolvers<void>();
-  const req = http.request("http://localhost:4545/echo_server", {
+  // TODO(kt3k): This should be "localhost" when we implemented happy-eyeballs for node:net
+  const req = http.request("http://127.0.0.1:4545/echo_server", {
     method: "POST",
     headers: { 1: 2 },
   }, (resp) => {
@@ -689,7 +692,7 @@ Deno.test("[node/http] ClientRequest handle non-string headers", async () => {
   assertEquals(headers!["1"], "2");
 });
 
-Deno.test("[node/http] ClientRequest uses HTTP/1.1", async () => {
+Deno.test("[node/https] ClientRequest uses HTTP/1.1", async () => {
   let body = "";
   const { promise, resolve, reject } = Promise.withResolvers<void>();
   const req = https.request("https://localhost:5545/http_version", {
@@ -714,7 +717,8 @@ Deno.test("[node/http] ClientRequest setTimeout", async () => {
   let body = "";
   const { promise, resolve, reject } = Promise.withResolvers<void>();
   const timer = setTimeout(() => reject("timed out"), 50000);
-  const req = http.request("http://localhost:4545/http_version", (resp) => {
+  // TODO(kt3k): This should be "localhost" when we implemented happy-eyeballs for node:net
+  const req = http.request("http://127.0.0.1:4545/http_version", (resp) => {
     resp.on("data", (chunk) => {
       body += chunk;
     });
@@ -735,7 +739,8 @@ Deno.test("[node/http] ClientRequest setNoDelay", async () => {
   let body = "";
   const { promise, resolve, reject } = Promise.withResolvers<void>();
   const timer = setTimeout(() => reject("timed out"), 50000);
-  const req = http.request("http://localhost:4545/http_version", (resp) => {
+  // TODO(kt3k): This should be "localhost" when we implemented happy-eyeballs for node:net
+  const req = http.request("http://127.0.0.1:4545/http_version", (resp) => {
     resp.on("data", (chunk) => {
       body += chunk;
     });
@@ -755,7 +760,8 @@ Deno.test("[node/http] ClientRequest setNoDelay", async () => {
 Deno.test("[node/http] ClientRequest PATCH", async () => {
   let body = "";
   const { promise, resolve, reject } = Promise.withResolvers<void>();
-  const req = http.request("http://localhost:4545/echo_server", {
+  // TODO(kt3k): This should be "localhost" when we implemented happy-eyeballs for node:net
+  const req = http.request("http://127.0.0.1:4545/echo_server", {
     method: "PATCH",
   }, (resp) => {
     resp.on("data", (chunk) => {
@@ -777,7 +783,8 @@ Deno.test("[node/http] ClientRequest PATCH", async () => {
 Deno.test("[node/http] ClientRequest PUT", async () => {
   let body = "";
   const { promise, resolve, reject } = Promise.withResolvers<void>();
-  const req = http.request("http://localhost:4545/echo_server", {
+  // TODO(kt3k): This should be "localhost" when we implemented happy-eyeballs for node:net
+  const req = http.request("http://127.0.0.1:4545/echo_server", {
     method: "PUT",
   }, (resp) => {
     resp.on("data", (chunk) => {
@@ -800,8 +807,10 @@ Deno.test("[node/http] ClientRequest search params", async () => {
   let body = "";
   const { promise, resolve, reject } = Promise.withResolvers<void>();
   const req = http.request({
-    host: "localhost:4545",
-    path: "search_params?foo=bar",
+    // TODO(kt3k): This should be "localhost" when we implemented happy-eyeballs for node:net
+    host: "127.0.0.1",
+    port: 4545,
+    path: "/search_params?foo=bar",
   }, (resp) => {
     resp.on("data", (chunk) => {
       body += chunk;
@@ -925,7 +934,8 @@ Deno.test(
     let body = "";
 
     const request = http.request(
-      "http://localhost:5928/",
+      // TODO(kt3k): This should be "localhost" when we implemented happy-eyeballs for node:net
+      "http://127.0.0.1:5928/",
       (resp) => {
         resp.on("data", (chunk) => {
           body += chunk;
@@ -993,12 +1003,13 @@ Deno.test(
     );
     const { promise, resolve, reject } = Promise.withResolvers<void>();
 
-    const request = http.request("http://localhost:5929/");
+    // TODO(kt3k): This should be "localhost" when we implemented happy-eyeballs for node:net
+    const request = http.request("http://127.0.0.1:5929/");
     request.on("error", reject);
     request.on("close", () => {});
     request.end();
     setTimeout(() => {
-      request.destroy(new Error());
+      request.destroy();
       resolve();
     }, 100);
 
@@ -1011,10 +1022,17 @@ Deno.test(
 
 Deno.test(
   "[node/http] client destroy before sending request should not error",
-  () => {
+  async () => {
+    const { resolve, promise } = Promise.withResolvers<void>();
+    // TODO(kt3k): This should be "localhost" when we implemented happy-eyeballs for node:net
     const request = http.request("http://localhost:5929/");
     // Calling this would throw
     request.destroy();
+    request.on("error", (e) => {
+      assertEquals(e.message, "socket hang up");
+      resolve();
+    });
+    await promise;
   },
 );
 
@@ -1022,17 +1040,23 @@ Deno.test(
   "[node/http] destroyed requests should not be sent",
   async () => {
     let receivedRequest = false;
-    const server = Deno.serve(() => {
+    const ac = new AbortController();
+    const server = Deno.serve({ signal: ac.signal }, () => {
       receivedRequest = true;
       return new Response(null);
     });
+    let receivedError = null;
     const request = http.request(`http://localhost:${server.addr.port}/`);
     request.destroy();
     request.end("hello");
-
+    request.on("error", (err) => {
+      receivedError = err;
+      ac.abort();
+    });
     await new Promise((r) => setTimeout(r, 500));
+    assert(receivedError!.message.includes("socket hang up"));
     assertEquals(receivedRequest, false);
-    await server.shutdown();
+    await server.finished;
   },
 );
 
@@ -1369,6 +1393,7 @@ Deno.test("[node/http] client closing a streaming request doesn't terminate serv
   let interval: number;
   let uploadedData = "";
   let requestError: Error | null = null;
+  const deferred1 = Promise.withResolvers<void>();
   const server = http.createServer((req, res) => {
     res.writeHead(200, { "Content-Type": "text/plain" });
     interval = setInterval(() => {
@@ -1381,13 +1406,13 @@ Deno.test("[node/http] client closing a streaming request doesn't terminate serv
       clearInterval(interval);
     });
     req.on("error", (err) => {
+      deferred1.resolve();
       requestError = err;
       clearInterval(interval);
       res.end();
     });
   });
 
-  const deferred1 = Promise.withResolvers<void>();
   server.listen(0, () => {
     // deno-lint-ignore no-explicit-any
     const port = (server.address() as any).port;
@@ -1417,9 +1442,6 @@ Deno.test("[node/http] client closing a streaming request doesn't terminate serv
 
         if (sentChunks >= 3) {
           client.destroy();
-          setTimeout(() => {
-            deferred1.resolve();
-          }, 40);
         } else {
           setTimeout(writeChunk, 10);
         }
@@ -1559,7 +1581,8 @@ Deno.test("[node/http] ClientRequest PUT subarray", async () => {
   const payload = buffer.subarray(6, 11);
   let body = "";
   const { promise, resolve, reject } = Promise.withResolvers<void>();
-  const req = http.request("http://localhost:4545/echo_server", {
+  // TODO(kt3k): This should be "localhost" when we implemented happy-eyeballs for node:net
+  const req = http.request("http://127.0.0.1:4545/echo_server", {
     method: "PUT",
   }, (resp) => {
     resp.on("data", (chunk) => {
@@ -1599,7 +1622,8 @@ Deno.test("[node/http] ClientRequest content-disposition header works", async ()
   let body = "";
   let headers = {} as http.IncomingHttpHeaders;
   const { promise, resolve, reject } = Promise.withResolvers<void>();
-  const req = http.request("http://localhost:4545/echo_server", {
+  // TODO(kt3k): This should be "localhost" when we implemented happy-eyeballs for node:net
+  const req = http.request("http://127.0.0.1:4545/echo_server", {
     method: "PUT",
     headers: {
       "content-disposition": "attachment",
@@ -1625,7 +1649,8 @@ Deno.test("[node/http] In ClientRequest, option.hostname has precedence over opt
   const responseReceived = Promise.withResolvers<void>();
 
   new http.ClientRequest({
-    hostname: "localhost",
+    // TODO(kt3k): This should be "localhost" when we implemented happy-eyeballs for node:net
+    hostname: "127.0.0.1",
     host: "invalid-hostname.test",
     port: 4545,
     path: "/http_version",
