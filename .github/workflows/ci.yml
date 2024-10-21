@@ -398,12 +398,16 @@ jobs:
       - name: node_compat/setup.ts --check
         if: '!(matrix.skip) && (matrix.job == ''lint'' && matrix.os == ''linux'')'
         run: deno run --allow-write --allow-read --allow-run=git ./tests/node_compat/runner/setup.ts --check
+      - name: Echo paths
+        run: |-
+          find /lib -name "crtbeginS.o"
+          find /usr/lib -name "crtbeginS.o"
+          find /lib -name "crtendS.o"
+          find /usr/lib -name "crtbeginS.o"
       - name: Build debug
         if: '!(matrix.skip) && (matrix.job == ''test'' && matrix.profile == ''debug'')'
         run: |-
           df -h
-          find /usr/lib -name "crtbeginS.o"
-          fidn /usr/lib -name "crtendS.o"
           cargo build --locked --all-targets
           df -h
         env:
