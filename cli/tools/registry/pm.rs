@@ -187,17 +187,20 @@ impl ConfigUpdater {
         }
       }
       ConfigKind::PackageJson => {
-        let dep = self
-          .root_object
-          .object_value("dependencies")
-          .and_then(|deps| deps.get(package));
-        let dev_dep = self
-          .root_object
-          .object_value("devDependencies")
-          .and_then(|deps| deps.get(package));
-        let removed = dep.is_some() || dev_dep.is_some();
-        dep.map(remove_prop_and_maybe_parent_prop);
-        dev_dep.map(remove_prop_and_maybe_parent_prop);
+        let deps = [
+          self
+            .root_object
+            .object_value("dependencies")
+            .and_then(|deps| deps.get(package)),
+          self
+            .root_object
+            .object_value("devDependencies")
+            .and_then(|deps| deps.get(package)),
+        ];
+        let removed = deps.iter().any(|d| d.is_some());
+        for dep in deps.into_iter().flatten() {
+          remove_prop_and_maybe_parent_prop(dep);
+        }
         removed
       }
     };
