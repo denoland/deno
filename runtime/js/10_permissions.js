@@ -269,7 +269,13 @@ function serializePermissions(permissions) {
   if (typeof permissions == "object" && permissions != null) {
     const serializedPermissions = { __proto__: null };
     for (
-      const key of new SafeArrayIterator(["read", "write", "run", "ffi"])
+      const key of new SafeArrayIterator([
+        "read",
+        "write",
+        "run",
+        "ffi",
+        "import",
+      ])
     ) {
       if (ArrayIsArray(permissions[key])) {
         serializedPermissions[key] = ArrayPrototypeMap(

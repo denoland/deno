@@ -1,11 +1,13 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
-import { assert, assertEquals, assertThrows } from "@std/assert";
+/// <reference lib="deno.ns" />
+import { assert, assertEquals, assertRejects, assertThrows } from "@std/assert";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import {
   closeSync,
   constants,
+  copyFileSync,
   createWriteStream,
   existsSync,
   lstatSync,
@@ -20,6 +22,7 @@ import {
 } from "node:fs";
 import {
   constants as fsPromiseConstants,
+  copyFile,
   cp,
   FileHandle,
   open,
@@ -211,4 +214,22 @@ Deno.test("[node/fs] readSync works", () => {
   const bytesRead = readSync(fd!, buf);
   assertEquals(bytesRead, 12);
   closeSync(fd!);
+});
+
+Deno.test("[node/fs] copyFile COPYFILE_EXCL works", async () => {
+  const dir = mkdtempSync(join(tmpdir(), "foo-"));
+  const src = join(dir, "src.txt");
+  const dest = join(dir, "dest.txt");
+  await writeFile(src, "");
+  await copyFile(src, dest, fsPromiseConstants.COPYFILE_EXCL);
+  assert(existsSync(dest));
+  await assertRejects(() =>
+    copyFile(src, dest, fsPromiseConstants.COPYFILE_EXCL)
+  );
+  const dest2 = join(dir, "dest2.txt");
+  copyFileSync(src, dest2, fsPromiseConstants.COPYFILE_EXCL);
+  assert(existsSync(dest2));
+  assertThrows(() =>
+    copyFileSync(src, dest2, fsPromiseConstants.COPYFILE_EXCL)
+  );
 });

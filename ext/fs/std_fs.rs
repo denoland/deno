@@ -929,7 +929,7 @@ fn exists(path: &Path) -> bool {
 }
 
 fn realpath(path: &Path) -> FsResult<PathBuf> {
-  Ok(deno_core::strip_unc_prefix(path.canonicalize()?))
+  Ok(deno_path_util::strip_unc_prefix(path.canonicalize()?))
 }
 
 fn read_dir(path: &Path) -> FsResult<Vec<FsDirEntry>> {
