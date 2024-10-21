@@ -215,7 +215,12 @@ pub async fn uninstall(
   } else {
     get_installer_root()?
   };
-  let installation_dir = root.join("bin");
+
+  let installation_dir = if !root.ends_with("bin") {
+    root.join("bin")
+  } else {
+    root
+  };
 
   // ensure directory exists
   if let Ok(metadata) = fs::metadata(&installation_dir) {
