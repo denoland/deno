@@ -420,7 +420,7 @@ jobs:
         if: '!(matrix.skip) && (matrix.job == ''test'' && matrix.profile == ''debug'')'
         run: |-
           df -h
-          cargo build --locked --all-targets
+          cargo build -vv --locked --all-targets
           df -h
         env:
           CARGO_PROFILE_DEV_DEBUG: 0
