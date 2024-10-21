@@ -57,6 +57,8 @@ Following ops are provided, which can be accessed through `Deno.ops`:
 - op_net_leave_multi_v6_udp
 - op_net_set_multi_loopback_udp
 - op_net_set_multi_ttl_udp
+- op_net_set_broadcast_udp,
+- op_net_set_ttl_udp,
 - op_net_accept_tcp
 - op_net_connect_tcp
 - op_net_listen_tcp

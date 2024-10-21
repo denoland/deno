@@ -17,6 +17,7 @@ path = "lib.rs"
 deno_core.workspace = true
 deno_permissions.workspace = true
 deno_tls.workspace = true
+libc.workspace = true
 pin-project.workspace = true
 rustls-tokio-stream.workspace = true
 serde.workspace = true
