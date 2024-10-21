@@ -245,7 +245,7 @@ pub async fn op_net_join_multi_v6_udp(
   state: Rc<RefCell<OpState>>,
   #[smi] rid: ResourceId,
   #[string] address: String,
-  #[smi] multi_interface: u32,
+  #[string] multi_interface: String,
 ) -> Result<(), NetError> {
   let resource = state
     .borrow_mut()
@@ -256,7 +256,16 @@ pub async fn op_net_join_multi_v6_udp(
 
   let addr = Ipv6Addr::from_str(address.as_str())?;
 
-  socket.join_multicast_v6(&addr, multi_interface)?;
+  let parts: Vec<&str> = multi_interface.split('%').collect();
+  let scope_id = if parts.len() != 2 {
+    0
+  } else {
+    let interface_name = parts[1];
+    let c_interface_name = std::ffi::CString::new(interface_name).map_err(|_| NetError::NoResolvedAddress)?;
+    unsafe { libc::if_nametoindex(c_interface_name.as_ptr()) }
+  };
+
+  socket.join_multicast_v6(&addr, scope_id)?;
 
   Ok(())
 }
@@ -305,6 +314,23 @@ pub async fn op_net_leave_multi_v6_udp(
 }
 
 #[op2(async)]
+pub async fn op_net_set_broadcast_udp(
+  state: Rc<RefCell<OpState>>,
+  #[smi] rid: ResourceId,
+  broadcast: bool,
+) -> Result<(), NetError> {
+  let resource = state
+    .borrow_mut()
+    .resource_table
+    .get::<UdpSocketResource>(rid)
+    .map_err(|_| NetError::SocketClosed)?;
+  let socket = RcRef::map(&resource, |r| &r.socket).borrow().await;
+  socket.set_broadcast(broadcast)?;
+
+  Ok(())
+}
+
+#[op2(async)]
 pub async fn op_net_set_multi_loopback_udp(
   state: Rc<RefCell<OpState>>,
   #[smi] rid: ResourceId,
@@ -341,6 +367,24 @@ pub async fn op_net_set_multi_ttl_udp(
   let socket = RcRef::map(&resource, |r| &r.socket).borrow().await;
 
   socket.set_multicast_ttl_v4(ttl)?;
+
+  Ok(())
+}
+
+#[op2(async)]
+pub async fn op_net_set_ttl_udp(
+  state: Rc<RefCell<OpState>>,
+  #[smi] rid: ResourceId,
+  #[smi] ttl: u32,
+) -> Result<(), NetError> {
+  let resource = state
+    .borrow_mut()
+    .resource_table
+    .get::<UdpSocketResource>(rid)
+    .map_err(|_| NetError::SocketClosed)?;
+  let socket = RcRef::map(&resource, |r| &r.socket).borrow().await;
+
+  socket.set_ttl(ttl)?;
 
   Ok(())
 }
