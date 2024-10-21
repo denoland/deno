@@ -215,7 +215,12 @@ pub async fn uninstall(
   } else {
     get_installer_root()?
   };
-  let installation_dir = root.join("bin");
+
+  let installation_dir = if !root.ends_with("bin") {
+    root.join("bin")
+  } else {
+    root
+  };
 
   // ensure directory exists
   if let Ok(metadata) = fs::metadata(&installation_dir) {
@@ -433,7 +438,12 @@ async fn resolve_shim_data(
   } else {
     get_installer_root()?
   };
-  let installation_dir = root.join("bin");
+
+  let installation_dir = if !root.ends_with("bin") {
+    root.join("bin")
+  } else {
+    root
+  };
 
   // Check if module_url is remote
   let module_url = resolve_url_or_path(&install_flags_global.module_url, &cwd)?;
