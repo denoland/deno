@@ -283,9 +283,10 @@ jobs:
 
           # Load the sysroot's env vars
           echo "sysroot env:"
-          echo 'export RUSTFLAGS="$RUSTFLAGS link-arg=-L/sysroot/lib/gcc/`uname -m`"' >> /sysroot/.env
           cat /sysroot/.env
           . /sysroot/.env
+
+          export RUSTFLAGS="$RUSTFLAGS link-arg=-L/sysroot/lib/gcc/`uname -m`"
 
           # Important notes:
           #   1. -ldl seems to be required to avoid a failure in FFI tests. This flag seems
@@ -325,7 +326,7 @@ jobs:
           " > $GITHUB_ENV
 
       - name: Echo gcc lib
-        if: '!(matrix.skip) && (matrix.os == ''linux'')'
+        if: '!(matrix.skip) && (matrix.use_sysroot)'
         run: |-
           echo "gcc lib"
           ls -l /sysroot/usr/lib/gcc
