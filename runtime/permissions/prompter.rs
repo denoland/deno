@@ -110,7 +110,6 @@ fn clear_stdin(
   _stdin_lock: &mut StdinLock,
   _stderr_lock: &mut StderrLock,
 ) -> Result<(), PrompterError> {
-  use deno_core::anyhow::bail;
   use std::mem::MaybeUninit;
 
   const STDIN_FD: i32 = 0;
@@ -148,9 +147,9 @@ fn clear_stdin(
 
       // Check if select returned an error
       if r < 0 {
-        return Err(deno_core::error::generic_error(
+        return Err(PrompterError::Other(deno_core::error::generic_error(
           "clear_stdin failed (select)",
-        ));
+        )));
       }
 
       // Check if select returned due to timeout (stdin is quiescent)
