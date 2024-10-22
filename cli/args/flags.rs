@@ -3387,8 +3387,7 @@ fn permission_args(app: Command, requires: Option<&'static str>) -> Command {
           .value_name("IP_OR_HOSTNAME")
           .help("Allow network access. Optionally specify allowed IP addresses and host names, with ports as necessary")
           .value_parser(flags_net::validator)
-          .hide(true)
-          ;
+          .hide(true);
         if let Some(requires) = requires {
           arg = arg.requires(requires)
         }
@@ -11051,7 +11050,7 @@ mod tests {
       "script.ts"
     ]);
     assert_eq!(
-      r.unwrap_err().to_string(),
+      dbg!(r.unwrap_err()).to_string(),
       "error: invalid value 'https://example.com': URLs are not supported, only domains and ips"
     );
   }
