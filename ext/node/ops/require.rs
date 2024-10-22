@@ -22,7 +22,7 @@ use std::path::PathBuf;
 use std::rc::Rc;
 
 use crate::NodePermissions;
-use crate::NodeRequireResolverRc;
+use crate::NodeRequireLoaderRc;
 use crate::NodeResolverRc;
 use crate::NpmResolverRc;
 
@@ -34,9 +34,9 @@ fn ensure_read_permission<'a, P>(
 where
   P: NodePermissions + 'static,
 {
-  let resolver = state.borrow::<NodeRequireResolverRc>().clone();
+  let loader = state.borrow::<NodeRequireLoaderRc>().clone();
   let permissions = state.borrow_mut::<P>();
-  resolver.ensure_read_permission(permissions, file_path)
+  loader.ensure_read_permission(permissions, file_path)
 }
 
 #[op2]
@@ -445,9 +445,10 @@ where
   P: NodePermissions + 'static,
 {
   let file_path = PathBuf::from(file_path);
+  // todo(dsherret): there's multiple borrows to NodeRequireLoaderRc here
   let file_path = ensure_read_permission::<P>(state, &file_path)?;
-  let fs = state.borrow::<FileSystemRc>();
-  Ok(fs.read_text_file_lossy_sync(&file_path, None)?)
+  let loader = state.borrow::<NodeRequireLoaderRc>();
+  Ok(loader.load_text_file_lossy(&file_path)?)
 }
 
 #[op2]

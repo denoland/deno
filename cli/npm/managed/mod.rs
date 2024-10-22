@@ -24,7 +24,6 @@ use deno_npm::NpmSystemInfo;
 use deno_runtime::colors;
 use deno_runtime::deno_fs::FileSystem;
 use deno_runtime::deno_node::NodePermissions;
-use deno_runtime::deno_node::NodeRequireResolver;
 use deno_runtime::ops::process::NpmProcessStateProvider;
 use deno_semver::package::PackageNv;
 use deno_semver::package::PackageReq;
@@ -593,16 +592,6 @@ impl NpmResolver for ManagedCliNpmResolver {
   }
 }
 
-impl NodeRequireResolver for ManagedCliNpmResolver {
-  fn ensure_read_permission<'a>(
-    &self,
-    permissions: &mut dyn NodePermissions,
-    path: &'a Path,
-  ) -> Result<Cow<'a, Path>, AnyError> {
-    self.fs_resolver.ensure_read_permission(permissions, path)
-  }
-}
-
 impl NpmProcessStateProvider for ManagedCliNpmResolver {
   fn get_npm_process_state(&self) -> String {
     npm_process_state(
@@ -614,10 +603,6 @@ impl NpmProcessStateProvider for ManagedCliNpmResolver {
 
 impl CliNpmResolver for ManagedCliNpmResolver {
   fn into_npm_resolver(self: Arc<Self>) -> Arc<dyn NpmResolver> {
-    self
-  }
-
-  fn into_require_resolver(self: Arc<Self>) -> Arc<dyn NodeRequireResolver> {
     self
   }
 
@@ -679,6 +664,14 @@ impl CliNpmResolver for ManagedCliNpmResolver {
     self
       .resolve_pkg_folder_from_pkg_id(&pkg_id)
       .map_err(ResolvePkgFolderFromDenoReqError::Managed)
+  }
+
+  fn ensure_read_permission<'a>(
+    &self,
+    permissions: &mut dyn NodePermissions,
+    path: &'a Path,
+  ) -> Result<Cow<'a, Path>, AnyError> {
+    self.fs_resolver.ensure_read_permission(permissions, path)
   }
 
   fn check_state_hash(&self) -> Option<u64> {

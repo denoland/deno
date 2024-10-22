@@ -34,6 +34,7 @@ use crate::node::CliCjsCodeAnalyzer;
 use crate::node::CliNodeCodeTranslator;
 use crate::npm::create_cli_npm_resolver;
 use crate::npm::CliByonmNpmResolverCreateOptions;
+use crate::npm::CliNodeRequireLoader;
 use crate::npm::CliNpmResolver;
 use crate::npm::CliNpmResolverCreateOptions;
 use crate::npm::CliNpmResolverManagedCreateOptions;
@@ -790,9 +791,9 @@ impl CliFactory {
     &self,
   ) -> Result<CliMainWorkerFactory, AnyError> {
     let cli_options = self.cli_options()?;
+    let fs = self.fs();
     let node_resolver = self.node_resolver().await?;
     let npm_resolver = self.npm_resolver().await?;
-    let fs = self.fs();
     let cli_node_resolver = self.cli_node_resolver().await?;
     let cli_npm_resolver = self.npm_resolver().await?.clone();
     let maybe_file_watcher_communicator = if cli_options.has_hmr() {
@@ -810,7 +811,7 @@ impl CliFactory {
         None
       },
       self.feature_checker()?.clone(),
-      self.fs().clone(),
+      fs.clone(),
       maybe_file_watcher_communicator,
       self.maybe_inspector_server()?.clone(),
       cli_options.maybe_lockfile().cloned(),
@@ -822,6 +823,7 @@ impl CliFactory {
           None
         },
         self.emitter()?.clone(),
+        fs.clone(),
         self.main_module_graph_container().await?.clone(),
         self.module_load_preparer().await?.clone(),
         cli_node_resolver.clone(),

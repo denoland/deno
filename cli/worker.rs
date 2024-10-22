@@ -23,6 +23,8 @@ use deno_runtime::deno_broadcast_channel::InMemoryBroadcastChannel;
 use deno_runtime::deno_fs;
 use deno_runtime::deno_node;
 use deno_runtime::deno_node::NodeExtInitServices;
+use deno_runtime::deno_node::NodeRequireLoader;
+use deno_runtime::deno_node::NodeRequireLoaderRc;
 use deno_runtime::deno_node::NodeResolver;
 use deno_runtime::deno_permissions::PermissionsContainer;
 use deno_runtime::deno_tls::RootCertStoreProvider;
@@ -58,21 +60,22 @@ use crate::util::file_watcher::WatcherRestartMode;
 use crate::util::path::specifier_has_extension;
 use crate::version;
 
-pub struct ModuleLoaderAndSourceMapGetter {
+pub struct CreateModuleLoaderResult {
   pub module_loader: Rc<dyn ModuleLoader>,
+  pub node_require_loader: Rc<dyn NodeRequireLoader>,
 }
 
 pub trait ModuleLoaderFactory: Send + Sync {
   fn create_for_main(
     &self,
     root_permissions: PermissionsContainer,
-  ) -> ModuleLoaderAndSourceMapGetter;
+  ) -> CreateModuleLoaderResult;
 
   fn create_for_worker(
     &self,
     parent_permissions: PermissionsContainer,
     permissions: PermissionsContainer,
-  ) -> ModuleLoaderAndSourceMapGetter;
+  ) -> CreateModuleLoaderResult;
 }
 
 #[async_trait::async_trait(?Send)]
@@ -148,9 +151,12 @@ struct SharedWorkerState {
 }
 
 impl SharedWorkerState {
-  pub fn create_node_init_services(&self) -> NodeExtInitServices {
+  pub fn create_node_init_services(
+    &self,
+    node_require_loader: NodeRequireLoaderRc,
+  ) -> NodeExtInitServices {
     NodeExtInitServices {
-      node_require_resolver: self.npm_resolver.clone().into_require_resolver(),
+      node_require_loader: node_require_loader,
       node_resolver: self.node_resolver.clone(),
       npm_resolver: self.npm_resolver.clone().into_npm_resolver(),
     }
@@ -492,7 +498,10 @@ impl CliMainWorkerFactory {
     stdio: deno_runtime::deno_io::Stdio,
   ) -> Result<CliMainWorker, AnyError> {
     let shared = &self.shared;
-    let ModuleLoaderAndSourceMapGetter { module_loader } = shared
+    let CreateModuleLoaderResult {
+      module_loader,
+      node_require_loader,
+    } = shared
       .module_loader_factory
       .create_for_main(permissions.clone());
     let (main_module, is_main_cjs) = if let Ok(package_ref) =
@@ -597,7 +606,9 @@ impl CliMainWorkerFactory {
       root_cert_store_provider: Some(shared.root_cert_store_provider.clone()),
       module_loader,
       fs: shared.fs.clone(),
-      node_services: Some(shared.create_node_init_services()),
+      node_services: Some(
+        shared.create_node_init_services(node_require_loader),
+      ),
       npm_process_state_provider: Some(shared.npm_process_state_provider()),
       blob_store: shared.blob_store.clone(),
       broadcast_channel: shared.broadcast_channel.clone(),
@@ -761,11 +772,13 @@ fn create_web_worker_callback(
   Arc::new(move |args| {
     let maybe_inspector_server = shared.maybe_inspector_server.clone();
 
-    let ModuleLoaderAndSourceMapGetter { module_loader } =
-      shared.module_loader_factory.create_for_worker(
-        args.parent_permissions.clone(),
-        args.permissions.clone(),
-      );
+    let CreateModuleLoaderResult {
+      module_loader,
+      node_require_loader,
+    } = shared.module_loader_factory.create_for_worker(
+      args.parent_permissions.clone(),
+      args.permissions.clone(),
+    );
     let create_web_worker_cb =
       create_web_worker_callback(shared.clone(), stdio.clone());
 
@@ -795,7 +808,9 @@ fn create_web_worker_callback(
       root_cert_store_provider: Some(shared.root_cert_store_provider.clone()),
       module_loader,
       fs: shared.fs.clone(),
-      node_services: Some(shared.create_node_init_services()),
+      node_services: Some(
+        shared.create_node_init_services(node_require_loader),
+      ),
       blob_store: shared.blob_store.clone(),
       broadcast_channel: shared.broadcast_channel.clone(),
       shared_array_buffer_store: Some(shared.shared_array_buffer_store.clone()),

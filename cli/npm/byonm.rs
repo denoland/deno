@@ -11,7 +11,7 @@ use deno_core::url::Url;
 use deno_resolver::npm::ByonmNpmResolver;
 use deno_resolver::npm::ByonmNpmResolverCreateOptions;
 use deno_runtime::deno_node::NodePermissions;
-use deno_runtime::deno_node::NodeRequireResolver;
+use deno_runtime::deno_node::NodeRequireLoader;
 use deno_runtime::ops::process::NpmProcessStateProvider;
 use deno_semver::package::PackageReq;
 use node_resolver::NpmResolver;
@@ -32,23 +32,6 @@ pub type CliByonmNpmResolver = ByonmNpmResolver<CliDenoResolverFs>;
 #[derive(Debug)]
 struct CliByonmWrapper(Arc<CliByonmNpmResolver>);
 
-impl NodeRequireResolver for CliByonmWrapper {
-  fn ensure_read_permission<'a>(
-    &self,
-    permissions: &mut dyn NodePermissions,
-    path: &'a Path,
-  ) -> Result<Cow<'a, Path>, AnyError> {
-    if !path
-      .components()
-      .any(|c| c.as_os_str().to_ascii_lowercase() == "node_modules")
-    {
-      permissions.check_read_path(path)
-    } else {
-      Ok(Cow::Borrowed(path))
-    }
-  }
-}
-
 impl NpmProcessStateProvider for CliByonmWrapper {
   fn get_npm_process_state(&self) -> String {
     serde_json::to_string(&NpmProcessState {
@@ -65,10 +48,6 @@ impl NpmProcessStateProvider for CliByonmWrapper {
 impl CliNpmResolver for CliByonmNpmResolver {
   fn into_npm_resolver(self: Arc<Self>) -> Arc<dyn NpmResolver> {
     self
-  }
-
-  fn into_require_resolver(self: Arc<Self>) -> Arc<dyn NodeRequireResolver> {
-    Arc::new(CliByonmWrapper(self))
   }
 
   fn into_process_state_provider(
@@ -98,6 +77,21 @@ impl CliNpmResolver for CliByonmNpmResolver {
       self, req, referrer,
     )
     .map_err(ResolvePkgFolderFromDenoReqError::Byonm)
+  }
+
+  fn ensure_read_permission<'a>(
+    &self,
+    permissions: &mut dyn NodePermissions,
+    path: &'a Path,
+  ) -> Result<Cow<'a, Path>, AnyError> {
+    if !path
+      .components()
+      .any(|c| c.as_os_str().to_ascii_lowercase() == "node_modules")
+    {
+      permissions.check_read_path(path)
+    } else {
+      Ok(Cow::Borrowed(path))
+    }
   }
 
   fn check_state_hash(&self) -> Option<u64> {

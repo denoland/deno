@@ -331,3 +331,4 @@ opt-level = 3
 deno_graph = { path = "../deno_graph" }
 deno_ast = { path = "../deno_ast" }
 deno_doc = { path = "../deno_doc" }
+eszip = { path = "../eszip" }

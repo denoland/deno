@@ -23,6 +23,7 @@ use crate::graph_container::ModuleGraphUpdatePermit;
 use crate::graph_util::CreateGraphOptions;
 use crate::graph_util::ModuleGraphBuilder;
 use crate::node;
+use crate::npm::CliNodeRequireLoader;
 use crate::npm::CliNpmResolver;
 use crate::resolver::CliGraphResolver;
 use crate::resolver::CliNodeResolver;
@@ -33,7 +34,7 @@ use crate::tools::check::TypeChecker;
 use crate::util::progress_bar::ProgressBar;
 use crate::util::text_encoding::code_without_source_map;
 use crate::util::text_encoding::source_map_from_code;
-use crate::worker::ModuleLoaderAndSourceMapGetter;
+use crate::worker::CreateModuleLoaderResult;
 use crate::worker::ModuleLoaderFactory;
 use deno_ast::MediaType;
 use deno_core::anyhow::anyhow;
@@ -63,6 +64,7 @@ use deno_graph::Module;
 use deno_graph::ModuleGraph;
 use deno_graph::Resolution;
 use deno_runtime::code_cache;
+use deno_runtime::deno_fs::FileSystem;
 use deno_runtime::deno_node::create_host_defined_options;
 use deno_runtime::deno_permissions::PermissionsContainer;
 use deno_semver::npm::NpmPackageReqReference;
@@ -201,6 +203,7 @@ struct SharedCliModuleLoaderState {
   is_repl: bool,
   code_cache: Option<Arc<CodeCache>>,
   emitter: Arc<Emitter>,
+  fs: Arc<dyn FileSystem>,
   main_module_graph_container: Arc<MainModuleGraphContainer>,
   module_load_preparer: Arc<ModuleLoadPreparer>,
   node_resolver: Arc<CliNodeResolver>,
@@ -220,6 +223,7 @@ impl CliModuleLoaderFactory {
     options: &CliOptions,
     code_cache: Option<Arc<CodeCache>>,
     emitter: Arc<Emitter>,
+    fs: Arc<dyn FileSystem>,
     main_module_graph_container: Arc<MainModuleGraphContainer>,
     module_load_preparer: Arc<ModuleLoadPreparer>,
     node_resolver: Arc<CliNodeResolver>,
@@ -241,6 +245,7 @@ impl CliModuleLoaderFactory {
         ),
         code_cache,
         emitter,
+        fs,
         main_module_graph_container,
         module_load_preparer,
         node_resolver,
@@ -259,19 +264,25 @@ impl CliModuleLoaderFactory {
     is_worker: bool,
     parent_permissions: PermissionsContainer,
     permissions: PermissionsContainer,
-  ) -> ModuleLoaderAndSourceMapGetter {
-    let loader = Rc::new(CliModuleLoader(Rc::new(CliModuleLoaderInner {
-      lib,
-      is_worker,
-      parent_permissions,
-      permissions,
-      graph_container,
-      emitter: self.shared.emitter.clone(),
-      parsed_source_cache: self.shared.parsed_source_cache.clone(),
-      shared: self.shared.clone(),
-    })));
-    ModuleLoaderAndSourceMapGetter {
-      module_loader: loader,
+  ) -> CreateModuleLoaderResult {
+    let module_loader =
+      Rc::new(CliModuleLoader(Rc::new(CliModuleLoaderInner {
+        lib,
+        is_worker,
+        parent_permissions,
+        permissions,
+        graph_container,
+        emitter: self.shared.emitter.clone(),
+        parsed_source_cache: self.shared.parsed_source_cache.clone(),
+        shared: self.shared.clone(),
+      })));
+    let node_require_loader = Rc::new(CliNodeRequireLoader::new(
+      self.shared.fs.clone(),
+      self.shared.npm_resolver.clone(),
+    ));
+    CreateModuleLoaderResult {
+      module_loader,
+      node_require_loader,
     }
   }
 }
@@ -280,7 +291,7 @@ impl ModuleLoaderFactory for CliModuleLoaderFactory {
   fn create_for_main(
     &self,
     root_permissions: PermissionsContainer,
-  ) -> ModuleLoaderAndSourceMapGetter {
+  ) -> CreateModuleLoaderResult {
     self.create_with_lib(
       (*self.shared.main_module_graph_container).clone(),
       self.shared.lib_window,
@@ -294,7 +305,7 @@ impl ModuleLoaderFactory for CliModuleLoaderFactory {
     &self,
     parent_permissions: PermissionsContainer,
     permissions: PermissionsContainer,
-  ) -> ModuleLoaderAndSourceMapGetter {
+  ) -> CreateModuleLoaderResult {
     self.create_with_lib(
       // create a fresh module graph for the worker
       WorkerModuleGraphContainer::new(Arc::new(ModuleGraph::new(

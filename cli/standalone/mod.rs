@@ -28,6 +28,7 @@ use deno_npm::npm_rc::ResolvedNpmRc;
 use deno_package_json::PackageJsonDepValue;
 use deno_runtime::deno_fs;
 use deno_runtime::deno_node::create_host_defined_options;
+use deno_runtime::deno_node::NodeRequireLoader;
 use deno_runtime::deno_node::NodeResolver;
 use deno_runtime::deno_permissions::Permissions;
 use deno_runtime::deno_permissions::PermissionsContainer;
@@ -61,6 +62,8 @@ use crate::http_util::HttpClientProvider;
 use crate::node::CliCjsCodeAnalyzer;
 use crate::npm::create_cli_npm_resolver;
 use crate::npm::CliByonmNpmResolverCreateOptions;
+use crate::npm::CliNodeRequireLoader;
+use crate::npm::CliNpmResolver;
 use crate::npm::CliNpmResolverCreateOptions;
 use crate::npm::CliNpmResolverManagedCreateOptions;
 use crate::npm::CliNpmResolverManagedSnapshotOption;
@@ -73,7 +76,7 @@ use crate::util::progress_bar::ProgressBarStyle;
 use crate::util::v8::construct_v8_flags;
 use crate::worker::CliMainWorkerFactory;
 use crate::worker::CliMainWorkerOptions;
-use crate::worker::ModuleLoaderAndSourceMapGetter;
+use crate::worker::CreateModuleLoaderResult;
 use crate::worker::ModuleLoaderFactory;
 
 pub mod binary;
@@ -123,15 +126,23 @@ impl WorkspaceEszip {
 }
 
 struct SharedModuleLoaderState {
+  fs: Arc<dyn deno_fs::FileSystem>,
   eszip: WorkspaceEszip,
-  workspace_resolver: WorkspaceResolver,
   node_resolver: Arc<CliNodeResolver>,
   npm_module_loader: Arc<NpmModuleLoader>,
+  npm_resolver: Arc<dyn CliNpmResolver>,
+  workspace_resolver: WorkspaceResolver,
 }
 
 #[derive(Clone)]
 struct EmbeddedModuleLoader {
   shared: Arc<SharedModuleLoaderState>,
+}
+
+impl std::fmt::Debug for EmbeddedModuleLoader {
+  fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+    f.debug_struct("EmbeddedModuleLoader").finish()
+  }
 }
 
 pub const MODULE_NOT_FOUND: &str = "Module not found";
@@ -382,6 +393,39 @@ impl ModuleLoader for EmbeddedModuleLoader {
   }
 }
 
+impl NodeRequireLoader for EmbeddedModuleLoader {
+  fn ensure_read_permission<'a>(
+    &self,
+    permissions: &mut dyn deno_runtime::deno_node::NodePermissions,
+    path: &'a std::path::Path,
+  ) -> Result<Cow<'a, std::path::Path>, AnyError> {
+    self
+      .shared
+      .npm_resolver
+      .ensure_read_permission(permissions, path)
+  }
+
+  fn load_text_file_lossy(
+    &self,
+    path: &std::path::Path,
+  ) -> Result<String, AnyError> {
+    eprintln!("Reading: {}", path.display());
+    if let Ok(url) = deno_path_util::url_from_file_path(&path) {
+      eprintln!("Looking at: {}", url);
+      if let Some(module) = self.shared.eszip.get_module(&url) {
+        eprintln!("FOUND");
+        let source = module.inner.get_source_if_ready_sync()?;
+        eprintln!("YES");
+        // todo(THIS PR): do not clone if not necessary
+        return Ok(String::from_utf8_lossy(&source).into_owned());
+      }
+      eprintln!("NOPE 2");
+    }
+    eprintln!("NOPE");
+    Ok(self.shared.fs.read_text_file_lossy_sync(path, None)?)
+  }
+}
+
 fn arc_u8_to_arc_str(
   arc_u8: Arc<[u8]>,
 ) -> Result<Arc<str>, std::str::Utf8Error> {
@@ -399,28 +443,32 @@ struct StandaloneModuleLoaderFactory {
   shared: Arc<SharedModuleLoaderState>,
 }
 
+impl StandaloneModuleLoaderFactory {
+  pub fn create_result(&self) -> CreateModuleLoaderResult {
+    let loader = Rc::new(EmbeddedModuleLoader {
+      shared: self.shared.clone(),
+    });
+    CreateModuleLoaderResult {
+      module_loader: loader.clone(),
+      node_require_loader: loader,
+    }
+  }
+}
+
 impl ModuleLoaderFactory for StandaloneModuleLoaderFactory {
   fn create_for_main(
     &self,
     _root_permissions: PermissionsContainer,
-  ) -> ModuleLoaderAndSourceMapGetter {
-    ModuleLoaderAndSourceMapGetter {
-      module_loader: Rc::new(EmbeddedModuleLoader {
-        shared: self.shared.clone(),
-      }),
-    }
+  ) -> CreateModuleLoaderResult {
+    self.create_result()
   }
 
   fn create_for_worker(
     &self,
     _parent_permissions: PermissionsContainer,
     _permissions: PermissionsContainer,
-  ) -> ModuleLoaderAndSourceMapGetter {
-    ModuleLoaderAndSourceMapGetter {
-      module_loader: Rc::new(EmbeddedModuleLoader {
-        shared: self.shared.clone(),
-      }),
-    }
+  ) -> CreateModuleLoaderResult {
+    self.create_result()
   }
 }
 
@@ -645,11 +693,11 @@ pub async fn run(
   };
   let module_loader_factory = StandaloneModuleLoaderFactory {
     shared: Arc::new(SharedModuleLoaderState {
+      fs: fs.clone(),
       eszip: WorkspaceEszip {
         eszip,
         root_dir_url,
       },
-      workspace_resolver,
       node_resolver: cli_node_resolver.clone(),
       npm_module_loader: Arc::new(NpmModuleLoader::new(
         cjs_resolutions.clone(),
@@ -657,6 +705,8 @@ pub async fn run(
         fs.clone(),
         cli_node_resolver,
       )),
+      npm_resolver: npm_resolver.clone(),
+      workspace_resolver,
     }),
   };
 

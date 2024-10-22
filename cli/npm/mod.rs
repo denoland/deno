@@ -4,6 +4,7 @@ mod byonm;
 mod common;
 mod managed;
 
+use std::borrow::Cow;
 use std::path::Path;
 use std::path::PathBuf;
 use std::sync::Arc;
@@ -15,7 +16,9 @@ use deno_core::serde_json;
 use deno_npm::registry::NpmPackageInfo;
 use deno_resolver::npm::ByonmNpmResolver;
 use deno_resolver::npm::ByonmResolvePkgFolderFromDenoReqError;
-use deno_runtime::deno_node::NodeRequireResolver;
+use deno_runtime::deno_fs::FileSystem;
+use deno_runtime::deno_node::NodePermissions;
+use deno_runtime::deno_node::NodeRequireLoader;
 use deno_runtime::ops::process::NpmProcessStateProvider;
 use deno_semver::package::PackageNv;
 use deno_semver::package::PackageReq;
@@ -74,7 +77,6 @@ pub enum InnerCliNpmResolverRef<'a> {
 
 pub trait CliNpmResolver: NpmResolver {
   fn into_npm_resolver(self: Arc<Self>) -> Arc<dyn NpmResolver>;
-  fn into_require_resolver(self: Arc<Self>) -> Arc<dyn NodeRequireResolver>;
   fn into_process_state_provider(
     self: Arc<Self>,
   ) -> Arc<dyn NpmProcessStateProvider>;
@@ -104,6 +106,12 @@ pub trait CliNpmResolver: NpmResolver {
     req: &PackageReq,
     referrer: &ModuleSpecifier,
   ) -> Result<PathBuf, ResolvePkgFolderFromDenoReqError>;
+
+  fn ensure_read_permission<'a>(
+    &self,
+    permissions: &mut dyn NodePermissions,
+    path: &'a Path,
+  ) -> Result<Cow<'a, Path>, AnyError>;
 
   /// Returns a hash returning the state of the npm resolver
   /// or `None` if the state currently can't be determined.
@@ -170,5 +178,34 @@ impl NpmFetchResolver {
     let info = fetch_package_info().await.map(Arc::new);
     self.info_by_name.insert(name.to_string(), info.clone());
     info
+  }
+}
+
+#[derive(Debug)]
+pub struct CliNodeRequireLoader {
+  fs: Arc<dyn FileSystem>,
+  npm_resolver: Arc<dyn CliNpmResolver>,
+}
+
+impl CliNodeRequireLoader {
+  pub fn new(
+    fs: Arc<dyn FileSystem>,
+    npm_resolver: Arc<dyn CliNpmResolver>,
+  ) -> Self {
+    Self { fs, npm_resolver }
+  }
+}
+
+impl NodeRequireLoader for CliNodeRequireLoader {
+  fn ensure_read_permission<'a>(
+    &self,
+    permissions: &mut dyn deno_runtime::deno_node::NodePermissions,
+    path: &'a Path,
+  ) -> Result<std::borrow::Cow<'a, Path>, AnyError> {
+    self.npm_resolver.ensure_read_permission(permissions, path)
+  }
+
+  fn load_text_file_lossy(&self, path: &Path) -> Result<String, AnyError> {
+    Ok(self.fs.read_text_file_lossy_sync(path, None)?)
   }
 }

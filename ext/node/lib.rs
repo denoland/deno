@@ -125,16 +125,17 @@ impl NodePermissions for deno_permissions::PermissionsContainer {
 }
 
 #[allow(clippy::disallowed_types)]
-pub type NodeRequireResolverRc =
-  deno_fs::sync::MaybeArc<dyn NodeRequireResolver>;
+pub type NodeRequireLoaderRc = std::rc::Rc<dyn NodeRequireLoader>;
 
-pub trait NodeRequireResolver: std::fmt::Debug + MaybeSend + MaybeSync {
+pub trait NodeRequireLoader: std::fmt::Debug + MaybeSend + MaybeSync {
   #[must_use = "the resolved return value to mitigate time-of-check to time-of-use issues"]
   fn ensure_read_permission<'a>(
     &self,
     permissions: &mut dyn NodePermissions,
     path: &'a Path,
   ) -> Result<Cow<'a, Path>, AnyError>;
+
+  fn load_text_file_lossy(&self, path: &Path) -> Result<String, AnyError>;
 }
 
 pub static NODE_ENV_VAR_ALLOWLIST: Lazy<HashSet<String>> = Lazy::new(|| {
@@ -152,8 +153,9 @@ fn op_node_build_os() -> String {
   env!("TARGET").split('-').nth(2).unwrap().to_string()
 }
 
+#[derive(Debug, Clone)]
 pub struct NodeExtInitServices {
-  pub node_require_resolver: NodeRequireResolverRc,
+  pub node_require_loader: NodeRequireLoaderRc,
   pub node_resolver: NodeResolverRc,
   pub npm_resolver: NpmResolverRc,
 }
@@ -639,7 +641,7 @@ deno_core::extension!(deno_node,
     state.put(options.fs.clone());
 
     if let Some(init) = &options.maybe_init {
-      state.put(init.node_require_resolver.clone());
+      state.put(init.node_require_loader.clone());
       state.put(init.node_resolver.clone());
       state.put(init.npm_resolver.clone());
     }
