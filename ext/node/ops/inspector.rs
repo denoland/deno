@@ -7,8 +7,8 @@ use deno_core::op2;
 use deno_core::v8;
 use deno_core::GarbageCollected;
 use deno_core::InspectorSessionKind;
+use deno_core::InspectorSessionOptions;
 use deno_core::JsRuntimeInspector;
-use deno_core::LocalInspectorSessionOptions;
 use deno_core::OpState;
 use std::cell::RefCell;
 use std::rc::Rc;
@@ -79,8 +79,10 @@ pub fn op_inspector_connect<'s>(
     .borrow_mut();
 
   let tx = inspector.create_raw_session(
-    LocalInspectorSessionOptions {
-      kind: InspectorSessionKind::NonBlocking,
+    InspectorSessionOptions {
+      kind: InspectorSessionKind::NonBlocking {
+        wait_for_disconnect: false,
+      },
     },
     // The inspector connection does not keep the event loop alive but
     // when the inspector sends a message to the frontend, the JS that
