@@ -308,34 +308,6 @@ impl InitializeParamsBuilder {
     self
   }
 
-  pub fn enable_inlay_hints(&mut self) -> &mut Self {
-    let options = self.initialization_options_mut();
-    options.insert(
-      "inlayHints".to_string(),
-      json!({
-        "parameterNames": {
-          "enabled": "all"
-        },
-        "parameterTypes": {
-          "enabled": true
-        },
-        "variableTypes": {
-          "enabled": true
-        },
-        "propertyDeclarationTypes": {
-          "enabled": true
-        },
-        "functionLikeReturnTypes": {
-          "enabled": true
-        },
-        "enumMemberValues": {
-          "enabled": true
-        }
-      }),
-    );
-    self
-  }
-
   pub fn disable_testing_api(&mut self) -> &mut Self {
     let obj = self
       .params

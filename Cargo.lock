@@ -769,7 +769,7 @@ dependencies = [
  "http-body-util",
  "hyper 1.4.1",
  "hyper-util",
- "nix 0.26.2",
+ "nix",
  "once_cell",
  "os_pipe",
  "pretty_assertions",
@@ -1223,7 +1223,7 @@ dependencies = [
  "memmem",
  "monch",
  "napi_sym",
- "nix 0.26.2",
+ "nix",
  "node_resolver",
  "notify",
  "once_cell",
@@ -1265,7 +1265,6 @@ dependencies = [
  "winapi",
  "windows-sys 0.52.0",
  "winres",
- "yoke",
  "zeromq",
  "zip",
  "zstd",
@@ -1392,9 +1391,9 @@ dependencies = [
 
 [[package]]
 name = "deno_config"
-version = "0.37.1"
+version = "0.37.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "3cb7a1723676fba5964f8d7441d8b53748f9e74d6d4241be7de9730da021859a"
+checksum = "5900bfb37538d83b19ba0b157cdc785770e38422ee4632411e3bd3d90ac0f537"
 dependencies = [
  "anyhow",
  "deno_package_json",
@@ -1438,7 +1437,7 @@ dependencies = [
  "deno_unsync",
  "futures",
  "libc",
- "memoffset 0.9.1",
+ "memoffset",
  "parking_lot",
  "percent-encoding",
  "pin-project",
@@ -1599,7 +1598,7 @@ dependencies = [
  "filetime",
  "junction",
  "libc",
- "nix 0.26.2",
+ "nix",
  "rand",
  "rayon",
  "serde",
@@ -2036,7 +2035,7 @@ dependencies = [
  "libc",
  "log",
  "netif",
- "nix 0.26.2",
+ "nix",
  "node_resolver",
  "notify",
  "ntapi",
@@ -2049,6 +2048,7 @@ dependencies = [
  "signal-hook-registry",
  "tempfile",
  "test_server",
+ "thiserror",
  "tokio",
  "tokio-metrics",
  "twox-hash",
@@ -2060,9 +2060,9 @@ dependencies = [
 
 [[package]]
 name = "deno_semver"
-version = "0.5.14"
+version = "0.5.16"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "670fec7ef309384e23c2a90ac5d2d9d91a776d225306c75f5cdd28cf6cc8a59f"
+checksum = "c957c6a57c38b7dde2315df0da0ec228911e56a74f185b108a488d0401841a67"
 dependencies = [
  "monch",
  "once_cell",
@@ -2564,9 +2564,9 @@ dependencies = [
 
 [[package]]
 name = "dprint-plugin-json"
-version = "0.19.3"
+version = "0.19.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "a19f4a9f2f548b2098b8ec597d7bb40af133b6e9a3187c1d3c4caa101b8c93c3"
+checksum = "57f91e594559b450b7c5d6a0ba9f3f9fe951c1ea371168f7c95973da3fdbd85a"
 dependencies = [
  "anyhow",
  "dprint-core",
@@ -2578,9 +2578,9 @@ dependencies = [
 
 [[package]]
 name = "dprint-plugin-jupyter"
-version = "0.1.3"
+version = "0.1.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "c67b0e54b552a4775c221b44ed33be918c400bd8041d1f044f947fbb01025cc0"
+checksum = "d0d20684e37b3824e2bc917cfcb14e2cdf88398eef507335d839cbd78172bfee"
 dependencies = [
  "anyhow",
  "dprint-core",
@@ -4035,9 +4035,9 @@ dependencies = [
 
 [[package]]
 name = "jsonc-parser"
-version = "0.23.0"
+version = "0.26.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "7725c320caac8c21d8228c1d055af27a995d371f78cc763073d3e068323641b5"
+checksum = "57c78ad024523b61a2f20b1cad47413dd24db744a15d3d1b7276e69d1bee106c"
 dependencies = [
  "serde_json",
 ]
@@ -4400,15 +4400,6 @@ checksum = "a64a92489e2744ce060c349162be1c5f33c6969234104dbd99ddb5feb08b8c15"
 
 [[package]]
 name = "memoffset"
-version = "0.7.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "5de893c32cde5f383baa4c04c5d6dbdd735cfd4a794b0debdb2bb1b421da5ff4"
-dependencies = [
- "autocfg",
-]
-
-[[package]]
-name = "memoffset"
 version = "0.9.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "488016bfae457b036d996092f6cb448677611ce4449e970ceaf42695203f218a"
@@ -4562,20 +4553,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "77a5d83df9f36fe23f0c3648c6bbb8b0298bb5f1939c8f2704431371f4b84d43"
 dependencies = [
  "smallvec",
-]
-
-[[package]]
-name = "nix"
-version = "0.26.2"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "bfdda3d196821d6af13126e40375cdf7da646a96114af134d5f417a9a1dc8e1a"
-dependencies = [
- "bitflags 1.3.2",
- "cfg-if",
- "libc",
- "memoffset 0.7.1",
- "pin-utils",
- "static_assertions",
 ]
 
 [[package]]
@@ -5777,7 +5754,7 @@ checksum = "32a58fa8a7ccff2aec4f39cc45bf5f985cec7125ab271cf681c279fd00192b49"
 dependencies = [
  "countme",
  "hashbrown",
- "memoffset 0.9.1",
+ "memoffset",
  "rustc-hash 1.1.0",
  "text-size",
 ]
@@ -5985,7 +5962,7 @@ dependencies = [
  "libc",
  "log",
  "memchr",
- "nix 0.27.1",
+ "nix",
  "radix_trie",
  "unicode-segmentation",
  "unicode-width",
@@ -7188,7 +7165,7 @@ dependencies = [
  "libc",
  "lsp-types",
  "monch",
- "nix 0.26.2",
+ "nix",
  "once_cell",
  "os_pipe",
  "parking_lot",
