@@ -2653,6 +2653,7 @@ const HSL_PATTERN = new SafeRegExp(
 );
 
 function parseCssColor(colorString) {
+  colorString = colorString.toLowerCase();
   if (colorKeywords.has(colorString)) {
     colorString = colorKeywords.get(colorString);
   }
