@@ -9,6 +9,14 @@
 //!   Diagnostics are compile-time type errors, whereas JsErrors are runtime
 //!   exceptions.
 
+use crate::ops::fs_events::FsEventsError;
+use crate::ops::http::HttpStartError;
+use crate::ops::os::OsError;
+use crate::ops::process::ProcessError;
+use crate::ops::signal::SignalError;
+use crate::ops::tty::TtyError;
+use crate::ops::web_worker::SyncFetchError;
+use crate::ops::worker_host::CreateWorkerError;
 use deno_broadcast_channel::BroadcastChannelError;
 use deno_cache::CacheError;
 use deno_canvas::CanvasError;
@@ -49,6 +57,7 @@ use deno_web::WebError;
 use deno_websocket::HandshakeError;
 use deno_websocket::WebsocketError;
 use deno_webstorage::WebStorageError;
+use rustyline::error::ReadlineError;
 use std::env;
 use std::error::Error;
 use std::io;
@@ -806,6 +815,102 @@ fn get_net_map_error(error: &deno_net::io::MapError) -> &'static str {
   }
 }
 
+fn get_create_worker_error(error: &CreateWorkerError) -> &'static str {
+  match error {
+    CreateWorkerError::ClassicWorkers => "DOMExceptionNotSupportedError",
+    CreateWorkerError::Permission(e) => {
+      get_error_class_name(e).unwrap_or("Error")
+    }
+    CreateWorkerError::ModuleResolution(e) => {
+      get_module_resolution_error_class(e)
+    }
+    CreateWorkerError::Io(e) => get_io_error_class(e),
+    CreateWorkerError::MessagePort(e) => get_web_message_port_error_class(e),
+  }
+}
+
+fn get_tty_error(error: &TtyError) -> &'static str {
+  match error {
+    TtyError::Resource(e) | TtyError::Other(e) => {
+      get_error_class_name(e).unwrap_or("Error")
+    }
+    TtyError::Io(e) => get_io_error_class(e),
+    #[cfg(unix)]
+    TtyError::Nix(e) => get_nix_error_class(e),
+  }
+}
+
+fn get_readline_error(error: &ReadlineError) -> &'static str {
+  match error {
+    ReadlineError::Io(e) => get_io_error_class(e),
+    ReadlineError::Eof => "Error",
+    ReadlineError::Interrupted => "Error",
+    #[cfg(unix)]
+    ReadlineError::Errno(e) => get_nix_error_class(e),
+    ReadlineError::WindowResized => "Error",
+    #[cfg(windows)]
+    ReadlineError::Decode(_) => "Error",
+    #[cfg(windows)]
+    ReadlineError::SystemError(_) => "Error",
+    _ => "Error",
+  }
+}
+
+fn get_signal_error(error: &SignalError) -> &'static str {
+  match error {
+    SignalError::InvalidSignalStr(_) => "TypeError",
+    SignalError::InvalidSignalInt(_) => "TypeError",
+    SignalError::SignalNotAllowed(_) => "TypeError",
+    SignalError::Io(e) => get_io_error_class(e),
+  }
+}
+
+fn get_fs_events_error(error: &FsEventsError) -> &'static str {
+  match error {
+    FsEventsError::Resource(e) | FsEventsError::Permission(e) => {
+      get_error_class_name(e).unwrap_or("Error")
+    }
+    FsEventsError::Notify(e) => get_notify_error_class(e),
+    FsEventsError::Canceled(e) => {
+      let io_err: io::Error = e.to_owned().into();
+      get_io_error_class(&io_err)
+    }
+  }
+}
+
+fn get_http_start_error(error: &HttpStartError) -> &'static str {
+  match error {
+    HttpStartError::TcpStreamInUse => "Busy",
+    HttpStartError::TlsStreamInUse => "Busy",
+    HttpStartError::UnixSocketInUse => "Busy",
+    HttpStartError::ReuniteTcp(_) => "Error",
+    #[cfg(unix)]
+    HttpStartError::ReuniteUnix(_) => "Error",
+    HttpStartError::Io(e) => get_io_error_class(e),
+    HttpStartError::Other(e) => get_error_class_name(e).unwrap_or("Error"),
+  }
+}
+
+fn get_process_error(error: &ProcessError) -> &'static str {
+  match error {
+    ProcessError::SpawnFailed { error, .. } => get_process_error(error),
+    ProcessError::FailedResolvingCwd(e) | ProcessError::Io(e) => {
+      get_io_error_class(e)
+    }
+    ProcessError::Permission(e) | ProcessError::Resource(e) => {
+      get_error_class_name(e).unwrap_or("Error")
+    }
+    ProcessError::BorrowMut(_) => "Error",
+    ProcessError::Which(_) => "Error",
+    ProcessError::ChildProcessAlreadyTerminated => "TypeError",
+    ProcessError::Signal(e) => get_signal_error(e),
+    ProcessError::MissingCmd => "Error",
+    ProcessError::InvalidPid => "TypeError",
+    #[cfg(unix)]
+    ProcessError::Nix(e) => get_nix_error_class(e),
+  }
+}
+
 fn get_http_error(error: &HttpError) -> &'static str {
   match error {
     HttpError::Canceled(e) => {
@@ -859,10 +964,50 @@ fn get_websocket_upgrade_error(error: &WebSocketUpgradeError) -> &'static str {
   }
 }
 
+fn get_os_error(error: &OsError) -> &'static str {
+  match error {
+    OsError::Permission(e) => get_error_class_name(e).unwrap_or("Error"),
+    OsError::InvalidUtf8(_) => "InvalidData",
+    OsError::EnvEmptyKey => "TypeError",
+    OsError::EnvInvalidKey(_) => "TypeError",
+    OsError::EnvInvalidValue(_) => "TypeError",
+    OsError::Io(e) => get_io_error_class(e),
+    OsError::Var(e) => get_env_var_error_class(e),
+  }
+}
+
+fn get_sync_fetch_error(error: &SyncFetchError) -> &'static str {
+  match error {
+    SyncFetchError::BlobUrlsNotSupportedInContext => "TypeError",
+    SyncFetchError::Io(e) => get_io_error_class(e),
+    SyncFetchError::InvalidScriptUrl => "TypeError",
+    SyncFetchError::InvalidStatusCode(_) => "TypeError",
+    SyncFetchError::ClassicScriptSchemeUnsupportedInWorkers(_) => "TypeError",
+    SyncFetchError::InvalidUri(_) => "Error",
+    SyncFetchError::InvalidMimeType(_) => "DOMExceptionNetworkError",
+    SyncFetchError::MissingMimeType => "DOMExceptionNetworkError",
+    SyncFetchError::Fetch(e) => get_fetch_error(e),
+    SyncFetchError::Join(_) => "Error",
+    SyncFetchError::Other(e) => get_error_class_name(e).unwrap_or("Error"),
+  }
+}
+
 pub fn get_error_class_name(e: &AnyError) -> Option<&'static str> {
   deno_core::error::get_custom_error_class(e)
     .or_else(|| e.downcast_ref::<NApiError>().map(get_napi_error_class))
     .or_else(|| e.downcast_ref::<WebError>().map(get_web_error_class))
+    .or_else(|| {
+      e.downcast_ref::<CreateWorkerError>()
+        .map(get_create_worker_error)
+    })
+    .or_else(|| e.downcast_ref::<TtyError>().map(get_tty_error))
+    .or_else(|| e.downcast_ref::<ReadlineError>().map(get_readline_error))
+    .or_else(|| e.downcast_ref::<SignalError>().map(get_signal_error))
+    .or_else(|| e.downcast_ref::<FsEventsError>().map(get_fs_events_error))
+    .or_else(|| e.downcast_ref::<HttpStartError>().map(get_http_start_error))
+    .or_else(|| e.downcast_ref::<ProcessError>().map(get_process_error))
+    .or_else(|| e.downcast_ref::<OsError>().map(get_os_error))
+    .or_else(|| e.downcast_ref::<SyncFetchError>().map(get_sync_fetch_error))
     .or_else(|| {
       e.downcast_ref::<CompressionError>()
         .map(get_web_compression_error_class)
