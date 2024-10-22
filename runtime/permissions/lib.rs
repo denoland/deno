@@ -808,11 +808,11 @@ pub enum Host {
 #[derive(Debug, thiserror::Error)]
 pub enum HostParseError {
   #[error("invalid IPv6 address: '{0}'")]
-  InvalidIpv6(String), // URIError
+  InvalidIpv6(String),
   #[error("invalid host: '{0}'")]
-  InvalidHost(String), // URIError
+  InvalidHost(String),
   #[error("invalid empty host: '{0}'")]
-  InvalidEmptyHost(String), // URIError
+  InvalidEmptyHost(String),
   #[error("invalid host '{host}': {error}")]
   Fqdn {
     #[source]
@@ -925,21 +925,13 @@ impl QueryDescriptor for NetDescriptor {
 #[derive(Debug, thiserror::Error)]
 pub enum NetDescriptorParseError {
   #[error("invalid value '{0}': URLs are not supported, only domains and ips")]
-  Url(String), // URIError
+  Url(String),
   #[error("invalid IPv6 address in '{hostname}': '{ip}'")]
-  InvalidIpv6 {
-    // URIError
-    hostname: String,
-    ip: String,
-  },
+  InvalidIpv6 { hostname: String, ip: String },
   #[error("invalid port in '{hostname}': '{port}'")]
-  InvalidPort {
-    // URIError
-    hostname: String,
-    port: String,
-  },
+  InvalidPort { hostname: String, port: String },
   #[error("invalid host: '{0}'")]
-  InvalidHost(String), // URIError
+  InvalidHost(String),
   #[error("invalid empty port in '{0}'")]
   EmptyPort(String),
   #[error("ipv6 addresses must be enclosed in square brackets: '{0}'")]
@@ -951,7 +943,7 @@ pub enum NetDescriptorParseError {
 #[derive(Debug, thiserror::Error)]
 pub enum NetDescriptorFromUrlParseError {
   #[error("Missing host in url: '{0}'")]
-  MissingHost(Url), // TypeError
+  MissingHost(Url),
   #[error("{0}")]
   Host(#[from] HostParseError),
 }
@@ -2182,7 +2174,7 @@ pub enum CheckSpecifierKind {
 #[derive(Debug, thiserror::Error)]
 pub enum ChildPermissionError {
   #[error("Can't escalate parent thread permissions")]
-  Escalation, // NotCapable
+  Escalation,
   #[error("{0}")]
   PathResolve(#[from] PathResolveError),
   #[error("{0}")]

@@ -12,7 +12,8 @@
 use crate::ops::fs_events::FsEventsError;
 use crate::ops::http::HttpStartError;
 use crate::ops::os::OsError;
-use crate::ops::process::ProcessError;
+use crate::ops::permissions::PermissionError;
+use crate::ops::process::{CheckRunPermissionError, ProcessError};
 use crate::ops::signal::SignalError;
 use crate::ops::tty::TtyError;
 use crate::ops::web_worker::SyncFetchError;
@@ -48,7 +49,11 @@ use deno_kv::KvError;
 use deno_kv::KvMutationError;
 use deno_napi::NApiError;
 use deno_net::ops::NetError;
+use deno_permissions::{ChildPermissionError, NetDescriptorFromUrlParseError};
+use deno_permissions::PathResolveError;
 use deno_permissions::PermissionCheckError;
+use deno_permissions::RunDescriptorParseError;
+use deno_permissions::SysDescriptorParseError;
 use deno_tls::TlsError;
 use deno_web::BlobError;
 use deno_web::CompressionError;
@@ -64,14 +69,50 @@ use std::error::Error;
 use std::io;
 use std::sync::Arc;
 
-fn get_permission_error_class(e: &PermissionCheckError) -> &'static str {
+fn get_run_descriptor_parse_error(e: &RunDescriptorParseError) -> &'static str {
+  match e {
+    RunDescriptorParseError::Which(_) => "Error",
+    RunDescriptorParseError::PathResolve(e) => get_path_resolve_error(e),
+    RunDescriptorParseError::EmptyRunQuery => "Error",
+  }}
+
+fn get_sys_descriptor_parse_error(e: &SysDescriptorParseError) -> &'static str {
+  match e {
+    SysDescriptorParseError::InvalidKind(_) => "TypeError",
+    SysDescriptorParseError::Empty => "Error",
+  }
+}
+
+fn get_path_resolve_error(e: &PathResolveError) -> &'static str {
+  match e {
+    PathResolveError::CwdResolve(e) => get_io_error_class(e),
+    PathResolveError::EmptyPath => "Error",
+  }
+}
+
+fn get_permission_error_class(e: &PermissionError) -> &'static str {
+  match e {
+    PermissionError::InvalidPermissionName(_) => "ReferenceError",
+    PermissionError::PathResolve(e) => get_path_resolve_error(e),
+    PermissionError::NetDescriptorParse(_) => "URIError",
+    PermissionError::SysDescriptorParse(e) => get_sys_descriptor_parse_error(e),
+    PermissionError::RunDescriptorParse(e) => get_run_descriptor_parse_error(e),
+  }
+}
+
+fn get_permission_check_error_class(e: &PermissionCheckError) -> &'static str {
   match e {
     PermissionCheckError::PermissionDenied(_) => "NotCapable",
     PermissionCheckError::InvalidFilePath(_) => "URIError",
-    PermissionCheckError::NetDescriptorForUrlParse(_) => {}
-    PermissionCheckError::SysDescriptorParse(_) => {}
-    PermissionCheckError::PathResolve(_) => {}
-    PermissionCheckError::HostParse(_) => {}
+    PermissionCheckError::NetDescriptorForUrlParse(e) => match e {
+      NetDescriptorFromUrlParseError::MissingHost(_) => "TypeError",
+      NetDescriptorFromUrlParseError::Host(_) => "URIError",
+    },
+    PermissionCheckError::SysDescriptorParse(e) => {
+      get_sys_descriptor_parse_error(e)
+    }
+    PermissionCheckError::PathResolve(e) => get_path_resolve_error(e),
+    PermissionCheckError::HostParse(_) => "URIError",
   }
 }
 
@@ -457,7 +498,7 @@ fn get_napi_error_class(e: &NApiError) -> &'static str {
     NApiError::InvalidPath
     | NApiError::LibLoading(_)
     | NApiError::ModuleNotFound(_) => "TypeError",
-    NApiError::Permission(e) => get_permission_error_class(e),
+    NApiError::Permission(e) => get_permission_check_error_class(e),
   }
 }
 
@@ -535,7 +576,7 @@ fn get_ffi_repr_error_class(e: &ReprError) -> &'static str {
     ReprError::InvalidF32 => "TypeError",
     ReprError::InvalidF64 => "TypeError",
     ReprError::InvalidPointer => "TypeError",
-    ReprError::Permission(e) => get_permission_error_class(e),
+    ReprError::Permission(e) => get_permission_check_error_class(e),
   }
 }
 
@@ -543,7 +584,7 @@ fn get_ffi_dlfcn_error_class(e: &DlfcnError) -> &'static str {
   match e {
     DlfcnError::RegisterSymbol { .. } => "Error",
     DlfcnError::Dlopen(_) => "Error",
-    DlfcnError::Permission(e) => get_permission_error_class(e),
+    DlfcnError::Permission(e) => get_permission_check_error_class(e),
     DlfcnError::Other(e) => get_error_class_name(e).unwrap_or("Error"),
   }
 }
@@ -561,7 +602,7 @@ fn get_ffi_callback_error_class(e: &CallbackError) -> &'static str {
   match e {
     CallbackError::Resource(e) => get_error_class_name(e).unwrap_or("Error"),
     CallbackError::Other(e) => get_error_class_name(e).unwrap_or("Error"),
-    CallbackError::Permission(e) => get_permission_error_class(e),
+    CallbackError::Permission(e) => get_permission_check_error_class(e),
   }
 }
 
@@ -570,7 +611,7 @@ fn get_ffi_call_error_class(e: &CallError) -> &'static str {
     CallError::IR(_) => "TypeError",
     CallError::NonblockingCallFailure(_) => "Error",
     CallError::InvalidSymbol(_) => "TypeError",
-    CallError::Permission(e) => get_permission_error_class(e),
+    CallError::Permission(e) => get_permission_check_error_class(e),
     CallError::Callback(e) => get_ffi_callback_error_class(e),
     CallError::Resource(e) => get_error_class_name(e).unwrap_or("Error"),
   }
@@ -647,7 +688,7 @@ fn get_broadcast_channel_error(error: &BroadcastChannelError) -> &'static str {
 fn get_fetch_error(error: &FetchError) -> &'static str {
   match error {
     FetchError::Resource(e) => get_error_class_name(e).unwrap_or("Error"),
-    FetchError::Permission(e) => get_permission_error_class(e),
+    FetchError::Permission(e) => get_permission_check_error_class(e),
     FetchError::NetworkError => "TypeError",
     FetchError::FsNotGet(_) => "TypeError",
     FetchError::InvalidUrl(_) => "TypeError",
@@ -682,7 +723,7 @@ fn get_http_client_create_error(error: &HttpClientCreateError) -> &'static str {
 fn get_websocket_error(error: &WebsocketError) -> &'static str {
   match error {
     WebsocketError::Resource(e) => get_error_class_name(e).unwrap_or("Error"),
-    WebsocketError::Permission(e) => get_permission_error_class(e),
+    WebsocketError::Permission(e) => get_permission_check_error_class(e),
     WebsocketError::Url(e) => get_url_parse_error_class(e),
     WebsocketError::Io(e) => get_io_error_class(e),
     WebsocketError::WebSocket(_) => "TypeError",
@@ -724,7 +765,7 @@ fn get_fs_error(error: &FsOpsError) -> &'static str {
       FsError::NotSupported => "NotSupported",
       FsError::NotCapable(_) => "NotCapable",
     },
-    FsOpsError::Permission(e) => get_permission_error_class(e),
+    FsOpsError::Permission(e) => get_permission_check_error_class(e),
     FsOpsError::Resource(e) | FsOpsError::Other(e) => {
       get_error_class_name(e).unwrap_or("Error")
     }
@@ -797,7 +838,7 @@ fn get_net_error(error: &NetError) -> &'static str {
     NetError::RootCertStore(e) | NetError::Resource(e) => {
       get_error_class_name(e).unwrap_or("Error")
     }
-    NetError::Permission(e) => get_permission_error_class(e),
+    NetError::Permission(e) => get_permission_check_error_class(e),
     NetError::NoResolvedAddress => "Error",
     NetError::AddrParse(_) => "Error",
     NetError::Map(e) => get_net_map_error(e),
@@ -831,8 +872,13 @@ fn get_net_map_error(error: &deno_net::io::MapError) -> &'static str {
 fn get_create_worker_error(error: &CreateWorkerError) -> &'static str {
   match error {
     CreateWorkerError::ClassicWorkers => "DOMExceptionNotSupportedError",
-    CreateWorkerError::Permission(e) => {
-      get_error_class_name(e).unwrap_or("Error")
+    CreateWorkerError::Permission(e) => match e {
+      ChildPermissionError::Escalation => "NotCapable",
+      ChildPermissionError::PathResolve(e) => get_path_resolve_error(e),
+      ChildPermissionError::NetDescriptorParse(_) => "URIError",
+      ChildPermissionError::EnvDescriptorParse(_) => "Error",
+      ChildPermissionError::SysDescriptorParse(e) => get_sys_descriptor_parse_error(e),
+      ChildPermissionError::RunDescriptorParse(e) => get_run_descriptor_parse_error(e),
     }
     CreateWorkerError::ModuleResolution(e) => {
       get_module_resolution_error_class(e)
@@ -880,9 +926,8 @@ fn get_signal_error(error: &SignalError) -> &'static str {
 
 fn get_fs_events_error(error: &FsEventsError) -> &'static str {
   match error {
-    FsEventsError::Resource(e) | FsEventsError::Permission(e) => {
-      get_error_class_name(e).unwrap_or("Error")
-    }
+    FsEventsError::Resource(e) => get_error_class_name(e).unwrap_or("Error"),
+    FsEventsError::Permission(e) => get_permission_check_error_class(e),
     FsEventsError::Notify(e) => get_notify_error_class(e),
     FsEventsError::Canceled(e) => {
       let io_err: io::Error = e.to_owned().into();
@@ -910,9 +955,8 @@ fn get_process_error(error: &ProcessError) -> &'static str {
     ProcessError::FailedResolvingCwd(e) | ProcessError::Io(e) => {
       get_io_error_class(e)
     }
-    ProcessError::Permission(e) | ProcessError::Resource(e) => {
-      get_error_class_name(e).unwrap_or("Error")
-    }
+    ProcessError::Permission(e) => get_permission_check_error_class(e),
+    ProcessError::Resource(e) => get_error_class_name(e).unwrap_or("Error"),
     ProcessError::BorrowMut(_) => "Error",
     ProcessError::Which(_) => "Error",
     ProcessError::ChildProcessAlreadyTerminated => "TypeError",
@@ -921,6 +965,10 @@ fn get_process_error(error: &ProcessError) -> &'static str {
     ProcessError::InvalidPid => "TypeError",
     #[cfg(unix)]
     ProcessError::Nix(e) => get_nix_error_class(e),
+    ProcessError::RunPermission(e) => match e {
+      CheckRunPermissionError::Permission(e) => get_permission_check_error_class(e),
+      CheckRunPermissionError::Other(e) => get_error_class_name(e).unwrap_or("Error"),
+    }
   }
 }
 
@@ -979,7 +1027,7 @@ fn get_websocket_upgrade_error(error: &WebSocketUpgradeError) -> &'static str {
 
 fn get_os_error(error: &OsError) -> &'static str {
   match error {
-    OsError::Permission(e) => get_error_class_name(e).unwrap_or("Error"),
+    OsError::Permission(e) => get_permission_check_error_class(e),
     OsError::InvalidUtf8(_) => "InvalidData",
     OsError::EnvEmptyKey => "TypeError",
     OsError::EnvInvalidKey(_) => "TypeError",
@@ -1009,6 +1057,10 @@ pub fn get_error_class_name(e: &AnyError) -> Option<&'static str> {
   deno_core::error::get_custom_error_class(e)
     .or_else(|| {
       e.downcast_ref::<PermissionCheckError>()
+        .map(get_permission_check_error_class)
+    })
+    .or_else(|| {
+      e.downcast_ref::<PermissionError>()
         .map(get_permission_error_class)
     })
     .or_else(|| e.downcast_ref::<NApiError>().map(get_napi_error_class))

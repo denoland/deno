@@ -137,7 +137,7 @@ impl RegistryReadPermissionChecker {
       }
     }
 
-    permissions.check_read_path(path)
+    permissions.check_read_path(path).map_err(Into::into)
   }
 }
 

@@ -42,7 +42,7 @@ impl NodeRequireResolver for CliByonmWrapper {
       .components()
       .any(|c| c.as_os_str().to_ascii_lowercase() == "node_modules")
     {
-      permissions.check_read_path(path)
+      permissions.check_read_path(path).map_err(Into::into)
     } else {
       Ok(Cow::Borrowed(path))
     }
