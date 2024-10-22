@@ -153,11 +153,15 @@ export class TLSSocket extends net.Socket {
       handle.afterConnect = async (req: any, status: number) => {
         try {
           const conn = await Deno.startTls(handle[kStreamBaseField], options);
-          const hs = await conn.handshake();
-          if (hs.alpnProtocol) {
-            tlssock.alpnProtocol = hs.alpnProtocol;
-          } else {
-            tlssock.alpnProtocol = false;
+          try {
+            const hs = await conn.handshake();
+            if (hs.alpnProtocol) {
+              tlssock.alpnProtocol = hs.alpnProtocol;
+            } else {
+              tlssock.alpnProtocol = false;
+            }
+          } catch {
+            // Don't interrupt "secure" event if handshake fails
           }
           handle[kStreamBaseField] = conn;
           tlssock.emit("secure");
