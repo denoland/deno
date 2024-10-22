@@ -963,6 +963,11 @@ impl Inner {
       .tree
       .refresh(&self.config.settings, &self.workspace_files, &file_fetcher)
       .await;
+    self
+      .client
+      .send_did_refresh_deno_configuration_tree_notification(
+        self.config.tree.to_did_refresh_params(),
+      );
     for config_file in self.config.tree.config_files() {
       (|| {
         let compiler_options = config_file.to_compiler_options().ok()?.options;
@@ -3807,7 +3812,7 @@ impl Inner {
     let maybe_inlay_hints = maybe_inlay_hints.map(|hints| {
       hints
         .iter()
-        .map(|hint| hint.to_lsp(line_index.clone()))
+        .map(|hint| hint.to_lsp(line_index.clone(), self))
         .collect()
     });
     self.performance.measure(mark);

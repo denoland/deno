@@ -66,14 +66,19 @@ export function createWritableStdioStream(writer, name, warmup = false) {
 
   // We cannot call `writer?.isTerminal()` eagerly here
   let getIsTTY = () => writer?.isTerminal();
+  const getColumns = () =>
+    stream._columns ||
+    (writer?.isTerminal() ? Deno.consoleSize?.().columns : undefined);
 
   ObjectDefineProperties(stream, {
     columns: {
       __proto__: null,
       enumerable: true,
       configurable: true,
-      get: () =>
-        writer?.isTerminal() ? Deno.consoleSize?.().columns : undefined,
+      get: () => getColumns(),
+      set: (value) => {
+        stream._columns = value;
+      },
     },
     rows: {
       __proto__: null,

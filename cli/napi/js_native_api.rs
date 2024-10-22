@@ -264,6 +264,16 @@ fn napi_define_class<'s>(
       Err(status) => return status,
     };
 
+    let mut accessor_property = v8::PropertyAttribute::NONE;
+
+    if p.attributes & napi_enumerable == 0 {
+      accessor_property = accessor_property | v8::PropertyAttribute::DONT_ENUM;
+    }
+    if p.attributes & napi_configurable == 0 {
+      accessor_property =
+        accessor_property | v8::PropertyAttribute::DONT_DELETE;
+    }
+
     if p.getter.is_some() || p.setter.is_some() {
       let getter = p.getter.map(|g| {
         create_function_template(&mut env.scope(), env_ptr, None, g, p.data)
@@ -271,8 +281,6 @@ fn napi_define_class<'s>(
       let setter = p.setter.map(|s| {
         create_function_template(&mut env.scope(), env_ptr, None, s, p.data)
       });
-
-      let mut accessor_property = v8::PropertyAttribute::NONE;
       if getter.is_some()
         && setter.is_some()
         && (p.attributes & napi_writable) == 0
@@ -280,15 +288,6 @@ fn napi_define_class<'s>(
         accessor_property =
           accessor_property | v8::PropertyAttribute::READ_ONLY;
       }
-      if p.attributes & napi_enumerable == 0 {
-        accessor_property =
-          accessor_property | v8::PropertyAttribute::DONT_ENUM;
-      }
-      if p.attributes & napi_configurable == 0 {
-        accessor_property =
-          accessor_property | v8::PropertyAttribute::DONT_DELETE;
-      }
-
       let proto = tpl.prototype_template(&mut env.scope());
       proto.set_accessor_property(name, getter, setter, accessor_property);
     } else if let Some(method) = p.method {
@@ -300,10 +299,14 @@ fn napi_define_class<'s>(
         p.data,
       );
       let proto = tpl.prototype_template(&mut env.scope());
-      proto.set(name, function.into());
+      proto.set_with_attr(name, function.into(), accessor_property);
     } else {
       let proto = tpl.prototype_template(&mut env.scope());
-      proto.set(name, p.value.unwrap().into());
+      if (p.attributes & napi_writable) == 0 {
+        accessor_property =
+          accessor_property | v8::PropertyAttribute::READ_ONLY;
+      }
+      proto.set_with_attr(name, p.value.unwrap().into(), accessor_property);
     }
   }
 
@@ -1694,15 +1697,14 @@ fn napi_get_new_target(
 }
 
 #[napi_sym]
-fn napi_call_function(
-  env_ptr: *mut Env,
-  recv: napi_value,
-  func: napi_value,
+fn napi_call_function<'s>(
+  env: &'s mut Env,
+  recv: napi_value<'s>,
+  func: napi_value<'s>,
   argc: usize,
-  argv: *const napi_value,
-  result: *mut napi_value,
+  argv: *const napi_value<'s>,
+  result: *mut napi_value<'s>,
 ) -> napi_status {
-  let env = check_env!(env_ptr);
   check_arg!(env, recv);
   let args = if argc > 0 {
     check_arg!(env, argv);
@@ -1716,11 +1718,11 @@ fn napi_call_function(
   let Some(func) =
     func.and_then(|f| v8::Local::<v8::Function>::try_from(f).ok())
   else {
-    return napi_set_last_error(env, napi_function_expected);
+    return napi_function_expected;
   };
 
   let Some(v) = func.call(&mut env.scope(), recv.unwrap(), args) else {
-    return napi_set_last_error(env_ptr, napi_generic_failure);
+    return napi_generic_failure;
   };
 
   if !result.is_null() {
@@ -1729,7 +1731,7 @@ fn napi_call_function(
     }
   }
 
-  return napi_clear_last_error(env_ptr);
+  napi_ok
 }
 
 #[napi_sym]

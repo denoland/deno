@@ -1,6 +1,5 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
-use deno_core::error::AnyError;
 use deno_core::parking_lot::Mutex;
 use deno_core::AsyncRefCell;
 use deno_core::CancelFuture;
@@ -36,7 +35,7 @@ deno_core::extension!(
 );
 
 struct FsEventsResource {
-  receiver: AsyncRefCell<mpsc::Receiver<Result<FsEvent, AnyError>>>,
+  receiver: AsyncRefCell<mpsc::Receiver<Result<FsEvent, NotifyError>>>,
   cancel: CancelHandle,
 }
 
@@ -92,7 +91,7 @@ impl From<NotifyEvent> for FsEvent {
   }
 }
 
-type WatchSender = (Vec<String>, mpsc::Sender<Result<FsEvent, AnyError>>);
+type WatchSender = (Vec<String>, mpsc::Sender<Result<FsEvent, NotifyError>>);
 
 struct WatcherState {
   senders: Arc<Mutex<Vec<WatchSender>>>,
@@ -110,11 +109,23 @@ fn starts_with_canonicalized(path: &Path, prefix: &str) -> bool {
   }
 }
 
+#[derive(Debug, thiserror::Error)]
+pub enum FsEventsError {
+  #[error(transparent)]
+  Resource(deno_core::error::AnyError),
+  #[error(transparent)]
+  Permission(deno_core::error::AnyError),
+  #[error(transparent)]
+  Notify(#[from] NotifyError),
+  #[error(transparent)]
+  Canceled(#[from] deno_core::Canceled),
+}
+
 fn start_watcher(
   state: &mut OpState,
   paths: Vec<String>,
-  sender: mpsc::Sender<Result<FsEvent, AnyError>>,
-) -> Result<(), AnyError> {
+  sender: mpsc::Sender<Result<FsEvent, NotifyError>>,
+) -> Result<(), FsEventsError> {
   if let Some(watcher) = state.try_borrow_mut::<WatcherState>() {
     watcher.senders.lock().push((paths, sender));
     return Ok(());
@@ -125,7 +136,7 @@ fn start_watcher(
   let sender_clone = senders.clone();
   let watcher: RecommendedWatcher = Watcher::new(
     move |res: Result<NotifyEvent, NotifyError>| {
-      let res2 = res.map(FsEvent::from).map_err(AnyError::from);
+      let res2 = res.map(FsEvent::from).map_err(FsEventsError::Notify);
       for (paths, sender) in sender_clone.lock().iter() {
         // Ignore result, if send failed it means that watcher was already closed,
         // but not all messages have been flushed.
@@ -157,8 +168,8 @@ fn op_fs_events_open(
   state: &mut OpState,
   recursive: bool,
   #[serde] paths: Vec<String>,
-) -> Result<ResourceId, AnyError> {
-  let (sender, receiver) = mpsc::channel::<Result<FsEvent, AnyError>>(16);
+) -> Result<ResourceId, FsEventsError> {
+  let (sender, receiver) = mpsc::channel::<Result<FsEvent, NotifyError>>(16);
 
   start_watcher(state, paths.clone(), sender)?;
 
@@ -170,7 +181,8 @@ fn op_fs_events_open(
   for path in &paths {
     let path = state
       .borrow_mut::<PermissionsContainer>()
-      .check_read(path, "Deno.watchFs()")?;
+      .check_read(path, "Deno.watchFs()")
+      .map_err(FsEventsError::Permission)?;
 
     let watcher = state.borrow_mut::<WatcherState>();
     watcher.watcher.watch(&path, recursive_mode)?;
@@ -188,14 +200,18 @@ fn op_fs_events_open(
 async fn op_fs_events_poll(
   state: Rc<RefCell<OpState>>,
   #[smi] rid: ResourceId,
-) -> Result<Option<FsEvent>, AnyError> {
-  let resource = state.borrow().resource_table.get::<FsEventsResource>(rid)?;
+) -> Result<Option<FsEvent>, FsEventsError> {
+  let resource = state
+    .borrow()
+    .resource_table
+    .get::<FsEventsResource>(rid)
+    .map_err(FsEventsError::Resource)?;
   let mut receiver = RcRef::map(&resource, |r| &r.receiver).borrow_mut().await;
   let cancel = RcRef::map(resource, |r| &r.cancel);
   let maybe_result = receiver.recv().or_cancel(cancel).await?;
   match maybe_result {
     Some(Ok(value)) => Ok(Some(value)),
-    Some(Err(err)) => Err(err),
+    Some(Err(err)) => Err(FsEventsError::Notify(err)),
     None => Ok(None),
   }
 }

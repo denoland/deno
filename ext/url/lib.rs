@@ -15,6 +15,8 @@ use std::path::PathBuf;
 use crate::urlpattern::op_urlpattern_parse;
 use crate::urlpattern::op_urlpattern_process_match_input;
 
+pub use urlpattern::UrlPatternError;
+
 deno_core::extension!(
   deno_url,
   deps = [deno_webidl],
