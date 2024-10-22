@@ -5,101 +5,101 @@ Deno.test(
   { ignore: Deno.build.os !== "windows" },
   function signalsNotImplemented() {
     const msg =
-      "Windows only supports ctrl-c (SIGINT) and ctrl-break (SIGBREAK).";
+      "Windows only supports ctrl-c (SIGINT) and ctrl-break (SIGBREAK), but got ";
     assertThrows(
       () => {
         Deno.addSignalListener("SIGALRM", () => {});
       },
       Error,
-      msg,
+      msg + "SIGALRM",
     );
     assertThrows(
       () => {
         Deno.addSignalListener("SIGCHLD", () => {});
       },
       Error,
-      msg,
+      msg + "SIGCHLD",
     );
     assertThrows(
       () => {
         Deno.addSignalListener("SIGHUP", () => {});
       },
       Error,
-      msg,
+      msg + "SIGHUP",
     );
     assertThrows(
       () => {
         Deno.addSignalListener("SIGIO", () => {});
       },
       Error,
-      msg,
+      msg + "SIGIO",
     );
     assertThrows(
       () => {
         Deno.addSignalListener("SIGPIPE", () => {});
       },
       Error,
-      msg,
+      msg + "SIGPIPE",
     );
     assertThrows(
       () => {
         Deno.addSignalListener("SIGQUIT", () => {});
       },
       Error,
-      msg,
+      msg + "SIGQUIT",
     );
     assertThrows(
       () => {
         Deno.addSignalListener("SIGTERM", () => {});
       },
       Error,
-      msg,
+      msg + "SIGTERM",
     );
     assertThrows(
       () => {
         Deno.addSignalListener("SIGUSR1", () => {});
       },
       Error,
-      msg,
+      msg + "SIGUSR1",
     );
     assertThrows(
       () => {
         Deno.addSignalListener("SIGUSR2", () => {});
       },
       Error,
-      msg,
+      msg + "SIGUSR2",
     );
     assertThrows(
       () => {
         Deno.addSignalListener("SIGWINCH", () => {});
       },
       Error,
-      msg,
+      msg + "SIGWINCH",
     );
     assertThrows(
       () => Deno.addSignalListener("SIGKILL", () => {}),
       Error,
-      msg,
+      msg + "SIGKILL",
     );
     assertThrows(
       () => Deno.addSignalListener("SIGSTOP", () => {}),
       Error,
-      msg,
+      msg + "SIGSTOP",
     );
     assertThrows(
       () => Deno.addSignalListener("SIGILL", () => {}),
       Error,
-      msg,
+      msg + "SIGILL",
     );
     assertThrows(
       () => Deno.addSignalListener("SIGFPE", () => {}),
       Error,
-      msg,
+      msg + "SIGFPE",
     );
     assertThrows(
       () => Deno.addSignalListener("SIGSEGV", () => {}),
       Error,
-      msg,
+      msg + "SIGSEGV",
     );
   },
 );
