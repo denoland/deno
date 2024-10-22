@@ -5,6 +5,8 @@
 #![allow(dead_code)]
 #![allow(unused_imports)]
 
+use binary::StandaloneData;
+use binary::StandaloneModules;
 use deno_ast::MediaType;
 use deno_cache_dir::npm::NpmCacheDir;
 use deno_config::workspace::MappedResolution;
@@ -38,7 +40,6 @@ use deno_runtime::permissions::RuntimePermissionDescriptorParser;
 use deno_runtime::WorkerExecutionMode;
 use deno_runtime::WorkerLogLevel;
 use deno_semver::npm::NpmPackageReqReference;
-use eszip::EszipRelativeFileBaseUrl;
 use import_map::parse_from_json;
 use node_resolver::analyze::NodeCodeTranslator;
 use node_resolver::NodeResolutionMode;
@@ -84,46 +85,11 @@ pub use binary::extract_standalone;
 pub use binary::is_standalone_binary;
 pub use binary::DenoCompileBinaryWriter;
 
-use self::binary::load_npm_vfs;
 use self::binary::Metadata;
 use self::file_system::DenoCompileFileSystem;
 
-struct WorkspaceEszipModule {
-  specifier: ModuleSpecifier,
-  inner: eszip::Module,
-}
-
-struct WorkspaceEszip {
-  eszip: eszip::EszipV2,
-  root_dir_url: Arc<ModuleSpecifier>,
-}
-
-impl WorkspaceEszip {
-  pub fn get_module(
-    &self,
-    specifier: &ModuleSpecifier,
-  ) -> Option<WorkspaceEszipModule> {
-    if specifier.scheme() == "file" {
-      let specifier_key = EszipRelativeFileBaseUrl::new(&self.root_dir_url)
-        .specifier_key(specifier);
-      let module = self.eszip.get_module(&specifier_key)?;
-      let specifier = self.root_dir_url.join(&module.specifier).unwrap();
-      Some(WorkspaceEszipModule {
-        specifier,
-        inner: module,
-      })
-    } else {
-      let module = self.eszip.get_module(specifier.as_str())?;
-      Some(WorkspaceEszipModule {
-        specifier: ModuleSpecifier::parse(&module.specifier).unwrap(),
-        inner: module,
-      })
-    }
-  }
-}
-
 struct SharedModuleLoaderState {
-  eszip: WorkspaceEszip,
+  modules: StandaloneModules,
   workspace_resolver: WorkspaceResolver,
   node_resolver: Arc<CliNodeResolver>,
   npm_module_loader: Arc<NpmModuleLoader>,
@@ -249,8 +215,10 @@ impl ModuleLoader for EmbeddedModuleLoader {
         }
 
         if specifier.scheme() == "jsr" {
-          if let Some(module) = self.shared.eszip.get_module(&specifier) {
-            return Ok(module.specifier);
+          if let Some(specifier) =
+            self.shared.modules.resolve_specifier(&specifier)?
+          {
+            return Ok(specifier.clone());
           }
         }
 
@@ -345,54 +313,54 @@ impl ModuleLoader for EmbeddedModuleLoader {
       );
     }
 
-    let Some(module) = self.shared.eszip.get_module(original_specifier) else {
-      return deno_core::ModuleLoadResponse::Sync(Err(type_error(format!(
-        "{MODULE_NOT_FOUND}: {}",
-        original_specifier
-      ))));
-    };
-    let original_specifier = original_specifier.clone();
-
-    deno_core::ModuleLoadResponse::Async(
-      async move {
-        let code = module.inner.source().await.ok_or_else(|| {
-          type_error(format!("Module not found: {}", original_specifier))
-        })?;
-        let code = arc_u8_to_arc_str(code)
-          .map_err(|_| type_error("Module source is not utf-8"))?;
-        Ok(deno_core::ModuleSource::new_with_redirect(
-          match module.inner.kind {
-            eszip::ModuleKind::JavaScript => ModuleType::JavaScript,
-            eszip::ModuleKind::Json => ModuleType::Json,
-            eszip::ModuleKind::Jsonc => {
-              return Err(type_error("jsonc modules not supported"))
-            }
-            eszip::ModuleKind::OpaqueData => {
-              unreachable!();
-            }
-          },
-          ModuleSourceCode::String(code.into()),
-          &original_specifier,
-          &module.specifier,
-          None,
+    match self.shared.modules.read(original_specifier) {
+      Ok(Some(module)) => {
+        return deno_core::ModuleLoadResponse::Sync(Ok(
+          deno_core::ModuleSource::new_with_redirect(
+            match module.media_type {
+              MediaType::JavaScript
+              | MediaType::Jsx
+              | MediaType::Mjs
+              | MediaType::Cjs
+              | MediaType::TypeScript
+              | MediaType::Mts
+              | MediaType::Cts
+              | MediaType::Dts
+              | MediaType::Dmts
+              | MediaType::Dcts
+              | MediaType::Tsx => ModuleType::JavaScript,
+              MediaType::Json => ModuleType::Json,
+              MediaType::Wasm => ModuleType::Wasm,
+              MediaType::TsBuildInfo
+              | MediaType::SourceMap
+              | MediaType::Unknown => {
+                unreachable!();
+              }
+            },
+            ModuleSourceCode::Bytes(match module.data {
+              Cow::Borrowed(d) => d.into(),
+              Cow::Owned(d) => d.into_boxed_slice().into(),
+            }),
+            &original_specifier,
+            &module.specifier,
+            None,
+          ),
         ))
       }
-      .boxed_local(),
-    )
+      Ok(None) => {
+        return deno_core::ModuleLoadResponse::Sync(Err(type_error(format!(
+          "{MODULE_NOT_FOUND}: {}",
+          original_specifier
+        ))));
+      }
+      Err(err) => {
+        return deno_core::ModuleLoadResponse::Sync(Err(type_error(format!(
+          "{:?}",
+          err
+        ))));
+      }
+    }
   }
-}
-
-fn arc_u8_to_arc_str(
-  arc_u8: Arc<[u8]>,
-) -> Result<Arc<str>, std::str::Utf8Error> {
-  // Check that the string is valid UTF-8.
-  std::str::from_utf8(&arc_u8)?;
-  // SAFETY: the string is valid UTF-8, and the layout Arc<[u8]> is the same as
-  // Arc<str>. This is proven by the From<Arc<str>> impl for Arc<[u8]> from the
-  // standard library.
-  Ok(unsafe {
-    std::mem::transmute::<std::sync::Arc<[u8]>, std::sync::Arc<str>>(arc_u8)
-  })
 }
 
 struct StandaloneModuleLoaderFactory {
@@ -439,13 +407,15 @@ impl RootCertStoreProvider for StandaloneRootCertStoreProvider {
   }
 }
 
-pub async fn run(
-  mut eszip: eszip::EszipV2,
-  metadata: Metadata,
-) -> Result<i32, AnyError> {
-  let current_exe_path = std::env::current_exe().unwrap();
-  let current_exe_name =
-    current_exe_path.file_name().unwrap().to_string_lossy();
+pub async fn run(data: StandaloneData) -> Result<i32, AnyError> {
+  let StandaloneData {
+    fs,
+    metadata,
+    modules,
+    npm_snapshot,
+    root_path,
+    vfs,
+  } = data;
   let deno_dir_provider = Arc::new(DenoDirProvider::new(None));
   let root_cert_store_provider = Arc::new(StandaloneRootCertStoreProvider {
     ca_stores: metadata.ca_stores,
@@ -459,8 +429,6 @@ pub async fn run(
   ));
   // use a dummy npm registry url
   let npm_registry_url = ModuleSpecifier::parse("https://localhost/").unwrap();
-  let root_path =
-    std::env::temp_dir().join(format!("deno-compile-{}", current_exe_name));
   let root_dir_url =
     Arc::new(ModuleSpecifier::from_directory_path(&root_path).unwrap());
   let main_module = root_dir_url.join(&metadata.entrypoint_key).unwrap();
@@ -472,21 +440,11 @@ pub async fn run(
   );
   let npm_global_cache_dir = npm_cache_dir.get_cache_location();
   let cache_setting = CacheSetting::Only;
-  let (fs, npm_resolver, maybe_vfs_root) = match metadata.node_modules {
+  let (fs, npm_resolver) = match metadata.node_modules {
     Some(binary::NodeModules::Managed { node_modules_dir }) => {
-      // this will always have a snapshot
-      let snapshot = eszip.take_npm_snapshot().unwrap();
-      let vfs_root_dir_path = if node_modules_dir.is_some() {
-        root_path.clone()
-      } else {
-        npm_cache_dir.root_dir().to_owned()
-      };
-      let vfs = load_npm_vfs(vfs_root_dir_path.clone())
-        .context("Failed to load npm vfs.")?;
+      let snapshot = npm_snapshot.unwrap();
       let maybe_node_modules_path = node_modules_dir
-        .map(|node_modules_dir| vfs_root_dir_path.join(node_modules_dir));
-      let fs = Arc::new(DenoCompileFileSystem::new(vfs))
-        as Arc<dyn deno_fs::FileSystem>;
+        .map(|node_modules_dir| root_path.join(node_modules_dir));
       let npm_resolver =
         create_cli_npm_resolver(CliNpmResolverCreateOptions::Managed(
           CliNpmResolverManagedCreateOptions {
@@ -518,18 +476,13 @@ pub async fn run(
           },
         ))
         .await?;
-      (fs, npm_resolver, Some(vfs_root_dir_path))
+      (fs, npm_resolver)
     }
     Some(binary::NodeModules::Byonm {
       root_node_modules_dir,
     }) => {
-      let vfs_root_dir_path = root_path.clone();
-      let vfs = load_npm_vfs(vfs_root_dir_path.clone())
-        .context("Failed to load vfs.")?;
       let root_node_modules_dir =
         root_node_modules_dir.map(|p| vfs.root().join(p));
-      let fs = Arc::new(DenoCompileFileSystem::new(vfs))
-        as Arc<dyn deno_fs::FileSystem>;
       let npm_resolver = create_cli_npm_resolver(
         CliNpmResolverCreateOptions::Byonm(CliByonmNpmResolverCreateOptions {
           fs: CliDenoResolverFs(fs.clone()),
@@ -537,7 +490,7 @@ pub async fn run(
         }),
       )
       .await?;
-      (fs, npm_resolver, Some(vfs_root_dir_path))
+      (fs, npm_resolver)
     }
     None => {
       let fs = Arc::new(deno_fs::RealFs) as Arc<dyn deno_fs::FileSystem>;
@@ -564,7 +517,7 @@ pub async fn run(
           },
         ))
         .await?;
-      (fs, npm_resolver, None)
+      (fs, npm_resolver)
     }
   };
 
@@ -645,10 +598,7 @@ pub async fn run(
   };
   let module_loader_factory = StandaloneModuleLoaderFactory {
     shared: Arc::new(SharedModuleLoaderState {
-      eszip: WorkspaceEszip {
-        eszip,
-        root_dir_url,
-      },
+      modules,
       workspace_resolver,
       node_resolver: cli_node_resolver.clone(),
       npm_module_loader: Arc::new(NpmModuleLoader::new(
@@ -663,19 +613,17 @@ pub async fn run(
   let permissions = {
     let mut permissions =
       metadata.permissions.to_options(/* cli_arg_urls */ &[]);
-    // if running with an npm vfs, grant read access to it
-    if let Some(vfs_root) = maybe_vfs_root {
-      match &mut permissions.allow_read {
-        Some(vec) if vec.is_empty() => {
-          // do nothing, already granted
-        }
-        Some(vec) => {
-          vec.push(vfs_root.to_string_lossy().to_string());
-        }
-        None => {
-          permissions.allow_read =
-            Some(vec![vfs_root.to_string_lossy().to_string()]);
-        }
+    // grant read access to the vfs
+    match &mut permissions.allow_read {
+      Some(vec) if vec.is_empty() => {
+        // do nothing, already granted
+      }
+      Some(vec) => {
+        vec.push(root_path.to_string_lossy().to_string());
+      }
+      None => {
+        permissions.allow_read =
+          Some(vec![root_path.to_string_lossy().to_string()]);
       }
     }
 

@@ -7,6 +7,7 @@ use std::fs::File;
 use std::io::Read;
 use std::io::Seek;
 use std::io::SeekFrom;
+use std::ops::Range;
 use std::path::Path;
 use std::path::PathBuf;
 use std::rc::Rc;
@@ -119,7 +120,7 @@ impl VfsBuilder {
                 // inline the symlink and make the target file
                 let file_bytes = std::fs::read(&target)
                   .with_context(|| format!("Reading {}", path.display()))?;
-                self.add_file(&path, file_bytes)?;
+                self.add_file_with_data(&path, file_bytes)?;
               } else {
                 log::warn!(
                   "{} Symlink target is outside '{}'. Excluding symlink at '{}' with target '{}'.",
@@ -197,10 +198,14 @@ impl VfsBuilder {
   ) -> Result<(), AnyError> {
     let file_bytes = std::fs::read(path)
       .with_context(|| format!("Reading {}", path.display()))?;
-    self.add_file(path, file_bytes)
+    self.add_file_with_data(path, file_bytes)
   }
 
-  fn add_file(&mut self, path: &Path, data: Vec<u8>) -> Result<(), AnyError> {
+  pub fn add_file_with_data(
+    &mut self,
+    path: &Path,
+    data: Vec<u8>,
+  ) -> Result<(), AnyError> {
     log::debug!("Adding file '{}'", path.display());
     let checksum = util::checksum::gen(&[&data]);
     let offset = if let Some(offset) = self.file_offsets.get(&checksum) {
@@ -751,14 +756,14 @@ impl deno_io::fs::File for FileBackedVfsFile {
 
 #[derive(Debug)]
 pub struct FileBackedVfs {
-  file: Mutex<Vec<u8>>,
+  vfs_data: Cow<'static, [u8]>,
   fs_root: VfsRoot,
 }
 
 impl FileBackedVfs {
-  pub fn new(file: Vec<u8>, fs_root: VfsRoot) -> Self {
+  pub fn new(data: Cow<'static, [u8]>, fs_root: VfsRoot) -> Self {
     Self {
-      file: Mutex::new(file),
+      vfs_data: data,
       fs_root,
     }
   }
@@ -827,10 +832,15 @@ impl FileBackedVfs {
     Ok(path)
   }
 
-  pub fn read_file_all(&self, file: &VirtualFile) -> std::io::Result<Vec<u8>> {
-    let mut buf = vec![0; file.len as usize];
-    self.read_file(file, 0, &mut buf)?;
-    Ok(buf)
+  pub fn read_file_all(
+    &self,
+    file: &VirtualFile,
+  ) -> std::io::Result<Cow<'static, [u8]>> {
+    let read_range = self.get_read_range(file, 0, file.len)?;
+    match &self.vfs_data {
+      Cow::Borrowed(data) => Ok(Cow::Borrowed(&data[read_range])),
+      Cow::Owned(data) => Ok(Cow::Owned(data[read_range].to_vec())),
+    }
   }
 
   pub fn read_file(
@@ -839,18 +849,27 @@ impl FileBackedVfs {
     pos: u64,
     buf: &mut [u8],
   ) -> std::io::Result<usize> {
-    let data = self.file.lock();
+    let read_range = self.get_read_range(file, pos, buf.len() as u64)?;
+    buf.copy_from_slice(&self.vfs_data[read_range]);
+    Ok(buf.len())
+  }
+
+  fn get_read_range(
+    &self,
+    file: &VirtualFile,
+    pos: u64,
+    len: u64,
+  ) -> std::io::Result<Range<usize>> {
+    let data = &self.vfs_data;
     let start = self.fs_root.start_file_offset + file.offset + pos;
-    let end = start + buf.len() as u64;
+    let end = start + len;
     if end > data.len() as u64 {
       return Err(std::io::Error::new(
         std::io::ErrorKind::UnexpectedEof,
         "unexpected EOF",
       ));
     }
-
-    buf.copy_from_slice(&data[start as usize..end as usize]);
-    Ok(buf.len())
+    Ok(start as usize..end as usize)
   }
 
   pub fn dir_entry(&self, path: &Path) -> std::io::Result<&VirtualDirectory> {
@@ -888,7 +907,7 @@ mod test {
   #[track_caller]
   fn read_file(vfs: &FileBackedVfs, path: &Path) -> String {
     let file = vfs.file_entry(path).unwrap();
-    String::from_utf8(vfs.read_file_all(file).unwrap()).unwrap()
+    String::from_utf8(vfs.read_file_all(file).unwrap().into_owned()).unwrap()
   }
 
   #[test]
@@ -901,20 +920,20 @@ mod test {
     let src_path = src_path.to_path_buf();
     let mut builder = VfsBuilder::new(src_path.clone()).unwrap();
     builder
-      .add_file(&src_path.join("a.txt"), "data".into())
+      .add_file_with_data(&src_path.join("a.txt"), "data".into())
       .unwrap();
     builder
-      .add_file(&src_path.join("b.txt"), "data".into())
+      .add_file_with_data(&src_path.join("b.txt"), "data".into())
       .unwrap();
     assert_eq!(builder.files.len(), 1); // because duplicate data
     builder
-      .add_file(&src_path.join("c.txt"), "c".into())
+      .add_file_with_data(&src_path.join("c.txt"), "c".into())
       .unwrap();
     builder
-      .add_file(&src_path.join("sub_dir").join("d.txt"), "d".into())
+      .add_file_with_data(&src_path.join("sub_dir").join("d.txt"), "d".into())
       .unwrap();
     builder
-      .add_file(&src_path.join("e.txt"), "e".into())
+      .add_file_with_data(&src_path.join("e.txt"), "e".into())
       .unwrap();
     builder
       .add_symlink(
@@ -1031,7 +1050,7 @@ mod test {
     (
       dest_path.to_path_buf(),
       FileBackedVfs::new(
-        data,
+        Cow::Owned(data),
         VfsRoot {
           dir: root_dir,
           root_path: dest_path.to_path_buf(),
@@ -1082,7 +1101,7 @@ mod test {
     let temp_path = temp_dir.path().canonicalize();
     let mut builder = VfsBuilder::new(temp_path.to_path_buf()).unwrap();
     builder
-      .add_file(
+      .add_file_with_data(
         temp_path.join("a.txt").as_path(),
         "0123456789".to_string().into_bytes(),
       )

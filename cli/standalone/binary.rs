@@ -9,14 +9,18 @@ use std::ffi::OsString;
 use std::fs;
 use std::fs::File;
 use std::future::Future;
+use std::io::ErrorKind;
 use std::io::Read;
 use std::io::Seek;
 use std::io::SeekFrom;
 use std::io::Write;
+use std::ops::Range;
 use std::path::Path;
 use std::path::PathBuf;
 use std::process::Command;
+use std::sync::Arc;
 
+use deno_ast::MediaType;
 use deno_ast::ModuleSpecifier;
 use deno_config::workspace::PackageJsonDepResolution;
 use deno_config::workspace::ResolverWorkspaceJsrPackage;
@@ -30,13 +34,21 @@ use deno_core::futures::AsyncReadExt;
 use deno_core::futures::AsyncSeekExt;
 use deno_core::serde_json;
 use deno_core::url::Url;
+use deno_graph::source::RealFileSystem;
+use deno_graph::ModuleGraph;
+use deno_npm::resolution::SerializedNpmResolutionSnapshot;
+use deno_npm::resolution::SerializedNpmResolutionSnapshotPackage;
+use deno_npm::resolution::ValidSerializedNpmResolutionSnapshot;
+use deno_npm::NpmPackageId;
 use deno_npm::NpmSystemInfo;
+use deno_runtime::deno_fs;
+use deno_runtime::deno_fs::FileSystem;
+use deno_runtime::deno_fs::RealFs;
 use deno_runtime::deno_node::PackageJson;
 use deno_semver::npm::NpmVersionReqParseError;
 use deno_semver::package::PackageReq;
 use deno_semver::Version;
 use deno_semver::VersionReqSpecifierParseError;
-use eszip::EszipRelativeFileBaseUrl;
 use indexmap::IndexMap;
 use log::Level;
 use serde::Deserialize;
@@ -60,10 +72,57 @@ use crate::util::fs::canonicalize_path_maybe_not_exists;
 use crate::util::progress_bar::ProgressBar;
 use crate::util::progress_bar::ProgressBarStyle;
 
+use super::file_system::DenoCompileFileSystem;
 use super::virtual_fs::FileBackedVfs;
 use super::virtual_fs::VfsBuilder;
 use super::virtual_fs::VfsRoot;
 use super::virtual_fs::VirtualDirectory;
+
+/// A URL that can be designated as the base for relative URLs.
+///
+/// After creation, this URL may be used to get the key for a
+/// module in the binary.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub struct StandaloneRelativeFileBaseUrl<'a>(&'a Url);
+
+impl<'a> From<&'a Url> for StandaloneRelativeFileBaseUrl<'a> {
+  fn from(url: &'a Url) -> Self {
+    Self(url)
+  }
+}
+
+impl<'a> StandaloneRelativeFileBaseUrl<'a> {
+  pub fn new(url: &'a Url) -> Self {
+    debug_assert_eq!(url.scheme(), "file");
+    Self(url)
+  }
+
+  /// Gets the module map key of the provided specifier.
+  ///
+  /// * Descendant file specifiers will be made relative to the base.
+  /// * Non-descendant file specifiers will stay as-is (absolute).
+  /// * Non-file specifiers will stay as-is.
+  pub fn specifier_key<'b>(&self, target: &'b Url) -> Cow<'b, str> {
+    if target.scheme() != "file" {
+      return Cow::Borrowed(target.as_str());
+    }
+
+    match self.0.make_relative(target) {
+      Some(relative) => {
+        if relative.starts_with("../") {
+          Cow::Borrowed(target.as_str())
+        } else {
+          Cow::Owned(relative)
+        }
+      }
+      None => Cow::Borrowed(target.as_str()),
+    }
+  }
+
+  pub fn inner(&self) -> &Url {
+    self.0
+  }
+}
 
 const MAGIC_TRAILER: &[u8; 8] = b"d3n0l4nd";
 
@@ -120,70 +179,45 @@ pub struct Metadata {
   pub unstable_config: UnstableConfig,
 }
 
-pub fn load_npm_vfs(root_dir_path: PathBuf) -> Result<FileBackedVfs, AnyError> {
-  let data = libsui::find_section("d3n0l4nd").unwrap();
-
-  // We do the first part sync so it can complete quickly
-  let trailer: [u8; TRAILER_SIZE] = data[0..TRAILER_SIZE].try_into().unwrap();
-  let trailer = match Trailer::parse(&trailer)? {
-    None => panic!("Could not find trailer"),
-    Some(trailer) => trailer,
-  };
-  let data = &data[TRAILER_SIZE..];
-
-  let vfs_data =
-    &data[trailer.npm_vfs_pos as usize..trailer.npm_files_pos as usize];
-  let mut dir: VirtualDirectory = serde_json::from_slice(vfs_data)?;
-
-  // align the name of the directory with the root dir
-  dir.name = root_dir_path
-    .file_name()
-    .unwrap()
-    .to_string_lossy()
-    .to_string();
-
-  let fs_root = VfsRoot {
-    dir,
-    root_path: root_dir_path,
-    start_file_offset: trailer.npm_files_pos,
-  };
-  Ok(FileBackedVfs::new(data.to_vec(), fs_root))
-}
-
 fn write_binary_bytes(
   mut file_writer: File,
   original_bin: Vec<u8>,
   metadata: &Metadata,
-  eszip: eszip::EszipV2,
-  npm_vfs: Option<&VirtualDirectory>,
-  npm_files: &Vec<Vec<u8>>,
+  npm_snapshot: Option<SerializedNpmResolutionSnapshot>,
+  remote_modules_store: &RemoteModulesStoreBuilder,
+  vfs: VfsBuilder,
   compile_flags: &CompileFlags,
 ) -> Result<(), AnyError> {
   let metadata = serde_json::to_string(metadata)?.as_bytes().to_vec();
-  let npm_vfs = serde_json::to_string(&npm_vfs)?.as_bytes().to_vec();
-  let eszip_archive = eszip.into_bytes();
+  let npm_snapshot =
+    npm_snapshot.map(serialize_npm_snapshot).unwrap_or_default();
+  let (vfs, vfs_files) = vfs.into_dir_and_files();
+  let vfs = serde_json::to_string(&vfs)?.as_bytes().to_vec();
 
   let mut writer = Vec::new();
 
   // write the trailer, which includes the positions
   // of the data blocks in the file
   writer.write_all(&{
-    let metadata_pos = eszip_archive.len() as u64;
-    let npm_vfs_pos = metadata_pos + (metadata.len() as u64);
-    let npm_files_pos = npm_vfs_pos + (npm_vfs.len() as u64);
+    let npm_snapshot_pos = metadata.len() as u64;
+    let remote_modules_pos = npm_snapshot_pos + (npm_snapshot.len() as u64);
+    let vfs_pos = remote_modules_pos + remote_modules_store.total_len();
+    let files_pos = vfs_pos + (vfs.len() as u64);
     Trailer {
-      eszip_pos: 0,
-      metadata_pos,
-      npm_vfs_pos,
-      npm_files_pos,
+      metadata_pos: 0,
+      npm_snapshot_pos,
+      remote_modules_pos,
+      vfs_pos,
+      files_pos,
     }
     .as_bytes()
   })?;
 
-  writer.write_all(&eszip_archive)?;
   writer.write_all(&metadata)?;
-  writer.write_all(&npm_vfs)?;
-  for file in npm_files {
+  writer.write_all(&npm_snapshot)?;
+  remote_modules_store.write(&mut writer)?;
+  writer.write_all(&vfs)?;
+  for file in &vfs_files {
     writer.write_all(file)?;
   }
 
@@ -221,6 +255,64 @@ pub fn is_standalone_binary(exe_path: &Path) -> bool {
     || libsui::utils::is_macho(&data)
 }
 
+pub struct StandaloneData {
+  pub fs: Arc<dyn deno_fs::FileSystem>,
+  pub metadata: Metadata,
+  pub modules: StandaloneModules,
+  pub npm_snapshot: Option<ValidSerializedNpmResolutionSnapshot>,
+  pub root_path: PathBuf,
+  pub vfs: Arc<FileBackedVfs>,
+}
+
+pub struct RemoteModuleData<'a> {
+  pub specifier: &'a ModuleSpecifier,
+  pub media_type: MediaType,
+  pub data: Cow<'static, [u8]>,
+}
+
+pub struct StandaloneModules {
+  remote_modules: RemoteModulesStore,
+  vfs: Arc<FileBackedVfs>,
+}
+
+impl StandaloneModules {
+  pub fn resolve_specifier<'a>(
+    &'a self,
+    specifier: &'a ModuleSpecifier,
+  ) -> Result<Option<&'a ModuleSpecifier>, AnyError> {
+    if specifier.scheme() == "file" {
+      return Ok(Some(specifier));
+    } else {
+      self.remote_modules.resolve_specifier(specifier)
+    }
+  }
+
+  // todo(THIS PR): don't return Option?
+  pub fn read<'a>(
+    &'a self,
+    specifier: &'a ModuleSpecifier,
+  ) -> Result<Option<RemoteModuleData<'a>>, AnyError> {
+    if specifier.scheme() == "file" {
+      let path = deno_path_util::url_to_file_path(specifier)?;
+      let bytes = match self.vfs.file_entry(&path) {
+        Ok(entry) => self.vfs.read_file_all(entry)?,
+        Err(err) if err.kind() == ErrorKind::NotFound => {
+          let bytes = RealFs.read_file_sync(&path, None)?;
+          Cow::Owned(bytes)
+        }
+        Err(err) => return Err(err.into()),
+      };
+      Ok(Some(RemoteModuleData {
+        media_type: MediaType::from_specifier(specifier),
+        specifier,
+        data: bytes,
+      }))
+    } else {
+      self.remote_modules.read(specifier)
+    }
+  }
+}
+
 /// This function will try to run this binary as a standalone binary
 /// produced by `deno compile`. It determines if this is a standalone
 /// binary by skipping over the trailer width at the end of the file,
@@ -228,10 +320,7 @@ pub fn is_standalone_binary(exe_path: &Path) -> bool {
 /// the bundle is executed. If not, this function exits with `Ok(None)`.
 pub fn extract_standalone(
   cli_args: Cow<Vec<OsString>>,
-) -> Result<
-  Option<impl Future<Output = Result<(Metadata, eszip::EszipV2), AnyError>>>,
-  AnyError,
-> {
+) -> Result<Option<StandaloneData>, AnyError> {
   let Some(data) = libsui::find_section("d3n0l4nd") else {
     return Ok(None);
   };
@@ -241,44 +330,68 @@ pub fn extract_standalone(
     None => return Ok(None),
     Some(trailer) => trailer,
   };
+  let data = &data[TRAILER_SIZE..];
 
+  let root_path = {
+    let current_exe_path = std::env::current_exe().unwrap();
+    let current_exe_name =
+      current_exe_path.file_name().unwrap().to_string_lossy();
+    std::env::temp_dir().join(format!("deno-compile-{}", current_exe_name))
+  };
   let cli_args = cli_args.into_owned();
-  // If we have an eszip, read it out
-  Ok(Some(async move {
-    let bufreader =
-      deno_core::futures::io::BufReader::new(&data[TRAILER_SIZE..]);
+  let mut metadata: Metadata =
+    serde_json::from_slice(&data[trailer.metadata_range()])
+      .context("failed reading metadata")?;
+  metadata.argv.reserve(cli_args.len() - 1);
+  for arg in cli_args.into_iter().skip(1) {
+    metadata.argv.push(arg.into_string().unwrap());
+  }
+  let remote_modules =
+    RemoteModulesStore::build(&data[trailer.remote_modules_range()])?;
+  let npm_snapshot_bytes = &data[trailer.npm_snapshot_range()];
+  let npm_snapshot = if npm_snapshot_bytes.is_empty() {
+    None
+  } else {
+    Some(deserialize_npm_snapshot(npm_snapshot_bytes)?)
+  };
+  let vfs = {
+    let vfs_data = &data[trailer.vfs_range()];
+    let mut dir: VirtualDirectory =
+      serde_json::from_slice(vfs_data).context("failed reading vfs data")?;
 
-    let (eszip, loader) = eszip::EszipV2::parse(bufreader)
-      .await
-      .context("Failed to parse eszip header")?;
+    // align the name of the directory with the root dir
+    dir.name = root_path.file_name().unwrap().to_string_lossy().to_string();
 
-    let bufreader = loader.await.context("Failed to parse eszip archive")?;
-
-    let mut metadata = String::new();
-
-    bufreader
-      .take(trailer.metadata_len())
-      .read_to_string(&mut metadata)
-      .await
-      .context("Failed to read metadata from the current executable")?;
-
-    let mut metadata: Metadata = serde_json::from_str(&metadata).unwrap();
-    metadata.argv.reserve(cli_args.len() - 1);
-    for arg in cli_args.into_iter().skip(1) {
-      metadata.argv.push(arg.into_string().unwrap());
-    }
-
-    Ok((metadata, eszip))
+    let fs_root = VfsRoot {
+      dir,
+      root_path: root_path.clone(),
+      start_file_offset: trailer.files_pos,
+    };
+    Arc::new(FileBackedVfs::new(Cow::Borrowed(data), fs_root))
+  };
+  let fs: Arc<dyn deno_fs::FileSystem> =
+    Arc::new(DenoCompileFileSystem::new(vfs.clone()));
+  Ok(Some(StandaloneData {
+    fs,
+    metadata,
+    modules: StandaloneModules {
+      remote_modules,
+      vfs: vfs.clone(),
+    },
+    npm_snapshot,
+    root_path,
+    vfs,
   }))
 }
 
 const TRAILER_SIZE: usize = std::mem::size_of::<Trailer>() + 8; // 8 bytes for the magic trailer string
 
 struct Trailer {
-  eszip_pos: u64,
   metadata_pos: u64,
-  npm_vfs_pos: u64,
-  npm_files_pos: u64,
+  npm_snapshot_pos: u64,
+  remote_modules_pos: u64,
+  vfs_pos: u64,
+  files_pos: u64,
 }
 
 impl Trailer {
@@ -288,37 +401,50 @@ impl Trailer {
       return Ok(None);
     }
 
-    let (eszip_archive_pos, rest) = rest.split_at(8);
     let (metadata_pos, rest) = rest.split_at(8);
-    let (npm_vfs_pos, npm_files_pos) = rest.split_at(8);
-    let eszip_archive_pos = u64_from_bytes(eszip_archive_pos)?;
-    let metadata_pos = u64_from_bytes(metadata_pos)?;
-    let npm_vfs_pos = u64_from_bytes(npm_vfs_pos)?;
-    let npm_files_pos = u64_from_bytes(npm_files_pos)?;
+    let (npm_snapshot_pos, rest) = rest.split_at(8);
+    let (remote_modules_pos, rest) = rest.split_at(8);
+    let (vfs_pos, files_pos) = rest.split_at(8);
     Ok(Some(Trailer {
-      eszip_pos: eszip_archive_pos,
-      metadata_pos,
-      npm_vfs_pos,
-      npm_files_pos,
+      metadata_pos: u64_from_bytes(metadata_pos)?,
+      npm_snapshot_pos: u64_from_bytes(npm_snapshot_pos)?,
+      remote_modules_pos: u64_from_bytes(remote_modules_pos)?,
+      vfs_pos: u64_from_bytes(vfs_pos)?,
+      files_pos: u64_from_bytes(files_pos)?,
     }))
   }
 
   pub fn metadata_len(&self) -> u64 {
-    self.npm_vfs_pos - self.metadata_pos
+    self.npm_snapshot_pos - self.metadata_pos
   }
 
-  pub fn npm_vfs_len(&self) -> u64 {
-    self.npm_files_pos - self.npm_vfs_pos
+  pub fn metadata_range(&self) -> Range<usize> {
+    self.metadata_pos as usize..self.npm_snapshot_pos as usize
+  }
+
+  pub fn npm_snapshot_range(&self) -> Range<usize> {
+    self.npm_snapshot_pos as usize..self.remote_modules_pos as usize
+  }
+
+  pub fn remote_modules_range(&self) -> Range<usize> {
+    self.remote_modules_pos as usize..self.vfs_pos as usize
+  }
+
+  pub fn vfs_range(&self) -> Range<usize> {
+    self.vfs_pos as usize..self.files_pos as usize
   }
 
   pub fn as_bytes(&self) -> Vec<u8> {
     let mut trailer = MAGIC_TRAILER.to_vec();
-    trailer.write_all(&self.eszip_pos.to_be_bytes()).unwrap();
     trailer.write_all(&self.metadata_pos.to_be_bytes()).unwrap();
-    trailer.write_all(&self.npm_vfs_pos.to_be_bytes()).unwrap();
     trailer
-      .write_all(&self.npm_files_pos.to_be_bytes())
+      .write_all(&self.npm_snapshot_pos.to_be_bytes())
       .unwrap();
+    trailer
+      .write_all(&self.remote_modules_pos.to_be_bytes())
+      .unwrap();
+    trailer.write_all(&self.vfs_pos.to_be_bytes()).unwrap();
+    trailer.write_all(&self.files_pos.to_be_bytes()).unwrap();
     trailer
   }
 }
@@ -362,8 +488,8 @@ impl<'a> DenoCompileBinaryWriter<'a> {
   pub async fn write_bin(
     &self,
     writer: File,
-    eszip: eszip::EszipV2,
-    root_dir_url: EszipRelativeFileBaseUrl<'_>,
+    graph: &ModuleGraph,
+    root_dir_url: StandaloneRelativeFileBaseUrl<'_>,
     entrypoint: &ModuleSpecifier,
     compile_flags: &CompileFlags,
     cli_options: &CliOptions,
@@ -393,7 +519,7 @@ impl<'a> DenoCompileBinaryWriter<'a> {
     self.write_standalone_binary(
       writer,
       original_binary,
-      eszip,
+      graph,
       root_dir_url,
       entrypoint,
       cli_options,
@@ -497,8 +623,8 @@ impl<'a> DenoCompileBinaryWriter<'a> {
     &self,
     writer: File,
     original_bin: Vec<u8>,
-    mut eszip: eszip::EszipV2,
-    root_dir_url: EszipRelativeFileBaseUrl<'_>,
+    graph: &ModuleGraph,
+    root_dir_url: StandaloneRelativeFileBaseUrl<'_>,
     entrypoint: &ModuleSpecifier,
     cli_options: &CliOptions,
     compile_flags: &CompileFlags,
@@ -512,19 +638,17 @@ impl<'a> DenoCompileBinaryWriter<'a> {
       None => None,
     };
     let root_path = root_dir_url.inner().to_file_path().unwrap();
-    let (npm_vfs, npm_files, node_modules) = match self.npm_resolver.as_inner()
+    let (maybe_npm_vfs, node_modules, npm_snapshot) = match self
+      .npm_resolver
+      .as_inner()
     {
       InnerCliNpmResolverRef::Managed(managed) => {
         let snapshot =
           managed.serialized_valid_snapshot_for_system(&self.npm_system_info);
         if !snapshot.as_serialized().packages.is_empty() {
-          let (root_dir, files) = self
-            .build_vfs(&root_path, cli_options)?
-            .into_dir_and_files();
-          eszip.add_npm_snapshot(snapshot);
+          let npm_vfs_builder = self.build_npm_vfs(&root_path, cli_options)?;
           (
-            Some(root_dir),
-            files,
+            Some(npm_vfs_builder),
             Some(NodeModules::Managed {
               node_modules_dir: self.npm_resolver.root_node_modules_path().map(
                 |path| {
@@ -536,18 +660,16 @@ impl<'a> DenoCompileBinaryWriter<'a> {
                 },
               ),
             }),
+            Some(snapshot),
           )
         } else {
-          (None, Vec::new(), None)
+          (None, None, None)
         }
       }
       InnerCliNpmResolverRef::Byonm(resolver) => {
-        let (root_dir, files) = self
-          .build_vfs(&root_path, cli_options)?
-          .into_dir_and_files();
+        let npm_vfs_builder = VfsBuilder::new(root_path.clone())?;
         (
-          Some(root_dir),
-          files,
+          Some(npm_vfs_builder),
           Some(NodeModules::Byonm {
             root_node_modules_dir: resolver.root_node_modules_path().map(
               |node_modules_dir| {
@@ -560,9 +682,43 @@ impl<'a> DenoCompileBinaryWriter<'a> {
               },
             ),
           }),
+          None,
         )
       }
     };
+    let mut vfs = if let Some(npm_vfs) = maybe_npm_vfs {
+      // todo: probably need to modify this a bit
+      npm_vfs
+    } else {
+      VfsBuilder::new(root_path.clone())?
+    };
+    let mut remote_modules_store = RemoteModulesStoreBuilder::default();
+    for module in graph.modules() {
+      if module.specifier().scheme() == "file" {
+        let file_path = deno_path_util::url_to_file_path(module.specifier())?;
+        vfs.add_file_with_data(
+          &file_path,
+          match module.source() {
+            Some(source) => source.as_bytes().to_vec(),
+            None => Vec::new(),
+          },
+        )?;
+      } else if let Some(source) = module.source() {
+        let media_type = match module {
+          deno_graph::Module::Js(m) => m.media_type,
+          deno_graph::Module::Json(m) => m.media_type,
+          deno_graph::Module::Npm(_)
+          | deno_graph::Module::Node(_)
+          | deno_graph::Module::External(_) => MediaType::Unknown,
+        };
+        remote_modules_store.add(
+          module.specifier(),
+          media_type,
+          source.as_bytes().to_vec(),
+        );
+      }
+    }
+    remote_modules_store.add_redirects(&graph.redirects);
 
     let env_vars_from_env_file = match cli_options.env_file_name() {
       Some(env_filename) => {
@@ -636,14 +792,14 @@ impl<'a> DenoCompileBinaryWriter<'a> {
       writer,
       original_bin,
       &metadata,
-      eszip,
-      npm_vfs.as_ref(),
-      &npm_files,
+      npm_snapshot.map(|s| s.into_serialized()),
+      &remote_modules_store,
+      vfs,
       compile_flags,
     )
   }
 
-  fn build_vfs(
+  fn build_npm_vfs(
     &self,
     root_path: &Path,
     cli_options: &CliOptions,
@@ -754,6 +910,235 @@ impl<'a> DenoCompileBinaryWriter<'a> {
   }
 }
 
+enum RemoteModulesStoreSpecifierValue {
+  Data(usize),
+  Redirect(ModuleSpecifier),
+}
+
+pub struct RemoteModulesStore {
+  specifiers: HashMap<ModuleSpecifier, RemoteModulesStoreSpecifierValue>,
+  files_data: &'static [u8],
+}
+
+impl RemoteModulesStore {
+  pub fn build(data: &'static [u8]) -> Result<Self, AnyError> {
+    fn read_specifier(
+      input: &[u8],
+    ) -> Result<(&[u8], (ModuleSpecifier, u64)), AnyError> {
+      let (input, specifier) = read_string_lossy(input)?;
+      let specifier = ModuleSpecifier::parse(&specifier)?;
+      let (input, offset) = read_u64(input)?;
+      Ok((input, (specifier, offset)))
+    }
+
+    fn read_redirect(
+      input: &[u8],
+    ) -> Result<(&[u8], (ModuleSpecifier, ModuleSpecifier)), AnyError> {
+      let (input, from) = read_string_lossy(input)?;
+      let from = ModuleSpecifier::parse(&from)?;
+      let (input, to) = read_string_lossy(input)?;
+      let to = ModuleSpecifier::parse(&to)?;
+      Ok((input, (from, to)))
+    }
+
+    fn read_headers(
+      input: &[u8],
+    ) -> Result<
+      (
+        &[u8],
+        HashMap<ModuleSpecifier, RemoteModulesStoreSpecifierValue>,
+      ),
+      AnyError,
+    > {
+      let (input, specifiers_len) = read_u32_as_usize(input)?;
+      let (mut input, redirects_len) = read_u32_as_usize(input)?;
+      let mut specifiers =
+        HashMap::with_capacity(specifiers_len + redirects_len);
+      for _ in 0..specifiers_len {
+        let (current_input, (specifier, offset)) = read_specifier(input)?;
+        input = current_input;
+        specifiers.insert(
+          specifier,
+          RemoteModulesStoreSpecifierValue::Data(offset as usize),
+        );
+      }
+
+      for _ in 0..redirects_len {
+        let (current_input, (from, to)) = read_redirect(input)?;
+        input = current_input;
+        specifiers.insert(from, RemoteModulesStoreSpecifierValue::Redirect(to));
+      }
+
+      Ok((input, specifiers))
+    }
+
+    let (files_data, specifiers) = read_headers(data)?;
+
+    Ok(Self {
+      specifiers,
+      files_data,
+    })
+  }
+
+  pub fn resolve_specifier<'a>(
+    &'a self,
+    specifier: &'a ModuleSpecifier,
+  ) -> Result<Option<&'a ModuleSpecifier>, AnyError> {
+    let mut count = 0;
+    let mut current = specifier;
+    loop {
+      if count > 10 {
+        bail!("Too many redirects resolving '{}'", specifier);
+      }
+      match self.specifiers.get(current) {
+        Some(RemoteModulesStoreSpecifierValue::Redirect(to)) => {
+          current = to;
+          count += 1;
+        }
+        Some(RemoteModulesStoreSpecifierValue::Data(_)) => {
+          return Ok(Some(current));
+        }
+        None => {
+          return Ok(None);
+        }
+      }
+    }
+  }
+
+  pub fn read<'a>(
+    &'a self,
+    specifier: &'a ModuleSpecifier,
+  ) -> Result<Option<RemoteModuleData<'a>>, AnyError> {
+    let mut count = 0;
+    let mut current = specifier;
+    loop {
+      if count > 10 {
+        bail!("Too many redirects resolving '{}'", specifier);
+      }
+      match self.specifiers.get(current) {
+        Some(RemoteModulesStoreSpecifierValue::Redirect(to)) => {
+          current = to;
+          count += 1;
+        }
+        Some(RemoteModulesStoreSpecifierValue::Data(offset)) => {
+          let files_data = &self.files_data[*offset..];
+          let media_type = deserialize_media_type(files_data[0])?;
+          let (input, len) = read_u64(&files_data[1..])?;
+          let data = &input[..len as usize];
+          return Ok(Some(RemoteModuleData {
+            specifier,
+            media_type,
+            data: Cow::Borrowed(data),
+          }));
+        }
+        None => {
+          return Ok(None);
+        }
+      }
+    }
+  }
+}
+
+// todo(THIS PR): make this better
+fn serialize_media_type(media_type: MediaType) -> u8 {
+  match media_type {
+    MediaType::JavaScript => 0,
+    MediaType::Jsx => 1,
+    MediaType::Mjs => 2,
+    MediaType::Cjs => 3,
+    MediaType::TypeScript => 4,
+    MediaType::Mts => 5,
+    MediaType::Cts => 6,
+    MediaType::Dts => 7,
+    MediaType::Dmts => 8,
+    MediaType::Dcts => 9,
+    MediaType::Tsx => 10,
+    MediaType::Json => 11,
+    MediaType::Wasm => 12,
+    MediaType::TsBuildInfo => 13,
+    MediaType::SourceMap => 14,
+    MediaType::Unknown => 15,
+  }
+}
+
+fn deserialize_media_type(value: u8) -> Result<MediaType, AnyError> {
+  match value {
+    0 => Ok(MediaType::JavaScript),
+    1 => Ok(MediaType::Jsx),
+    2 => Ok(MediaType::Mjs),
+    3 => Ok(MediaType::Cjs),
+    4 => Ok(MediaType::TypeScript),
+    5 => Ok(MediaType::Mts),
+    6 => Ok(MediaType::Cts),
+    7 => Ok(MediaType::Dts),
+    8 => Ok(MediaType::Dmts),
+    9 => Ok(MediaType::Dcts),
+    10 => Ok(MediaType::Tsx),
+    11 => Ok(MediaType::Json),
+    12 => Ok(MediaType::Wasm),
+    13 => Ok(MediaType::TsBuildInfo),
+    14 => Ok(MediaType::SourceMap),
+    15 => Ok(MediaType::Unknown),
+    _ => bail!("Unknown media type value: {}", value),
+  }
+}
+
+#[derive(Default)]
+struct RemoteModulesStoreBuilder {
+  specifiers: Vec<(String, u64)>,
+  data: Vec<(MediaType, Vec<u8>)>,
+  specifiers_byte_len: u64,
+  data_byte_len: u64,
+  redirects: Vec<(String, String)>,
+  redirects_len: u64,
+}
+
+impl RemoteModulesStoreBuilder {
+  pub fn add(&mut self, specifier: &Url, media_type: MediaType, data: Vec<u8>) {
+    let specifier = specifier.to_string();
+    self.specifiers_byte_len += 4 + specifier.len() as u64 + 8;
+    self.specifiers.push((specifier, self.data_byte_len));
+    self.data_byte_len += 1 + 8 + data.len() as u64;
+    self.data.push((media_type, data));
+  }
+
+  pub fn add_redirects(&mut self, redirects: &BTreeMap<Url, Url>) {
+    self.redirects.reserve(redirects.len());
+    for (from, to) in redirects {
+      let from = from.to_string();
+      let to = to.to_string();
+      self.redirects_len += (4 + from.len() + 4 + to.len()) as u64;
+      self.redirects.push((from, to));
+    }
+  }
+
+  pub fn total_len(&self) -> u64 {
+    4 + 4 + self.specifiers_byte_len + self.redirects_len + self.data_byte_len
+  }
+
+  pub fn write(&self, writer: &mut dyn Write) -> Result<(), AnyError> {
+    writer.write_all(&(self.specifiers.len() as u32).to_be_bytes())?;
+    writer.write_all(&(self.redirects.len() as u32).to_be_bytes())?;
+    for (specifier, offset) in &self.specifiers {
+      writer.write_all(&(specifier.len() as u32).to_be_bytes())?;
+      writer.write_all(specifier.as_bytes())?;
+      writer.write_all(&offset.to_be_bytes())?;
+    }
+    for (from, to) in &self.redirects {
+      writer.write_all(&(from.len() as u32).to_be_bytes())?;
+      writer.write_all(from.as_bytes())?;
+      writer.write_all(&(to.len() as u32).to_be_bytes())?;
+      writer.write_all(to.as_bytes())?;
+    }
+    for (media_type, data) in &self.data {
+      writer.write_all(&[serialize_media_type(*media_type)])?;
+      writer.write_all(&(data.len() as u32).to_be_bytes())?;
+      writer.write_all(data)?;
+    }
+    Ok(())
+  }
+}
+
 /// This function returns the environment variables specified
 /// in the passed environment file.
 fn get_file_env_vars(
@@ -806,4 +1191,154 @@ fn set_windows_binary_to_gui(bin: &mut [u8]) -> Result<(), AnyError> {
   bin[(subsystem_start)..(subsystem_start + 2)]
     .copy_from_slice(&subsystem.to_le_bytes());
   Ok(())
+}
+
+fn serialize_npm_snapshot(
+  mut snapshot: SerializedNpmResolutionSnapshot,
+) -> Vec<u8> {
+  fn append_string(bytes: &mut Vec<u8>, string: &str) {
+    let len = string.len() as u32;
+    bytes.extend_from_slice(&len.to_be_bytes());
+    bytes.extend_from_slice(string.as_bytes());
+  }
+
+  snapshot.packages.sort_by(|a, b| a.id.cmp(&b.id)); // determinism
+  let ids_to_stored_ids = snapshot
+    .packages
+    .iter()
+    .enumerate()
+    .map(|(i, pkg)| (&pkg.id, i as u32))
+    .collect::<HashMap<_, _>>();
+
+  let mut root_packages: Vec<_> = snapshot.root_packages.iter().collect();
+  root_packages.sort();
+  let mut bytes = Vec::new();
+
+  bytes.extend(&(snapshot.packages.len() as u32).to_be_bytes());
+  for pkg in &snapshot.packages {
+    append_string(&mut bytes, &pkg.id.as_serialized());
+  }
+
+  bytes.extend(&(root_packages.len() as u32).to_be_bytes());
+  for (req, id) in root_packages {
+    append_string(&mut bytes, &req.to_string());
+    let id = ids_to_stored_ids.get(&id).unwrap();
+    bytes.extend_from_slice(&id.to_be_bytes());
+  }
+
+  for pkg in &snapshot.packages {
+    let deps_len = pkg.dependencies.len() as u32;
+    bytes.extend_from_slice(&deps_len.to_be_bytes());
+    let mut deps: Vec<_> = pkg.dependencies.iter().collect();
+    deps.sort();
+    for (req, id) in deps {
+      append_string(&mut bytes, req);
+      let id = ids_to_stored_ids.get(&id).unwrap();
+      bytes.extend_from_slice(&id.to_be_bytes());
+    }
+  }
+
+  bytes
+}
+
+fn deserialize_npm_snapshot(
+  data: &[u8],
+) -> Result<ValidSerializedNpmResolutionSnapshot, AnyError> {
+  fn read_root_package(
+    data: &[u8],
+  ) -> Result<(&[u8], (PackageReq, usize)), AnyError> {
+    let (data, req) = read_string_lossy(data)?;
+    let req = PackageReq::from_str(&req)?;
+    let (data, id) = read_u32_as_usize(data)?;
+    Ok((data, (req, id)))
+  }
+
+  let (mut data, packages_len) = read_u32_as_usize(data)?;
+
+  // get a hashmap of all the npm package ids to their serialized ids
+  let mut data_ids_to_npm_ids = Vec::with_capacity(packages_len);
+  for _ in 0..packages_len {
+    let (current_data, id) = read_string_lossy(data)?;
+    data = current_data;
+    let id = NpmPackageId::from_serialized(&id)?;
+    data_ids_to_npm_ids.push(id);
+  }
+
+  let (mut data, root_packages_len) = read_u32_as_usize(data)?;
+  let mut root_packages = HashMap::with_capacity(root_packages_len);
+  for _ in 0..root_packages_len {
+    let (current_data, (req, id)) = read_root_package(data)?;
+    data = current_data;
+    root_packages.insert(req, data_ids_to_npm_ids[id].clone());
+  }
+
+  let mut packages = Vec::with_capacity(packages_len);
+  for _ in 0..packages_len {
+    let (current_data, id) = read_u32_as_usize(data)?;
+    data = current_data;
+    let id = data_ids_to_npm_ids[id].clone();
+    let (current_data, deps_len) = read_u32_as_usize(data)?;
+    data = current_data;
+    let mut dependencies = HashMap::with_capacity(deps_len);
+    for _ in 0..deps_len {
+      let (current_data, req) = read_string_lossy(data)?;
+      data = current_data;
+      let (current_data, id) = read_u32_as_usize(data)?;
+      data = current_data;
+      // todo(THIS PR): handle when id >= data_ids_to_npm_ids.len()
+      dependencies.insert(req.into_owned(), data_ids_to_npm_ids[id].clone());
+    }
+
+    packages.push(SerializedNpmResolutionSnapshotPackage {
+      id: id,
+      system: Default::default(),
+      dist: Default::default(),
+      dependencies,
+      optional_dependencies: Default::default(),
+      bin: None,
+      scripts: Default::default(),
+      deprecated: Default::default(),
+    });
+  }
+
+  if !data.is_empty() {
+    bail!("Unexpected data left over");
+  }
+
+  Ok(
+    SerializedNpmResolutionSnapshot {
+      packages,
+      root_packages,
+    }
+    // this is ok because we have already verified that all the
+    // identifiers found in the snapshot are valid via the
+    // npm package id -> npm package id mapping
+    .into_valid_unsafe(),
+  )
+}
+
+fn read_string_lossy(data: &[u8]) -> Result<(&[u8], Cow<str>), AnyError> {
+  let (data, str_len) = read_u32_as_usize(data)?;
+  if data.len() < str_len {
+    bail!("Unexpected end of data");
+  }
+  Ok((data, String::from_utf8_lossy(&data[..str_len])))
+}
+
+fn read_u32_as_usize(data: &[u8]) -> Result<(&[u8], usize), AnyError> {
+  if data.len() < 4 {
+    bail!("Unexpected end of data");
+  }
+  let (len_bytes, rest) = data.split_at(4);
+  let len = u32::from_be_bytes(len_bytes.try_into()?);
+  Ok((rest, len as usize))
+}
+
+fn read_u64(data: &[u8]) -> Result<(&[u8], u64), AnyError> {
+  if data.len() < 8 {
+    bail!("Unexpected end of data");
+  }
+  let (len_bytes, rest) = data.split_at(8);
+  let len = u64::from_be_bytes(len_bytes.try_into()?);
+  Ok((rest, len))
 }
