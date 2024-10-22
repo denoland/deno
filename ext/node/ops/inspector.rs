@@ -3,10 +3,9 @@
 use deno_core::anyhow::Error;
 use deno_core::error::generic_error;
 use deno_core::futures::channel::mpsc;
-use deno_core::futures::StreamExt;
 use deno_core::op2;
+use deno_core::v8;
 use deno_core::GarbageCollected;
-use deno_core::InspectorMsg;
 use deno_core::InspectorSessionKind;
 use deno_core::JsRuntimeInspector;
 use deno_core::LocalInspectorSessionOptions;
@@ -54,32 +53,58 @@ pub fn op_inspector_emit_protocol_event(
 
 struct JSInspectorSession {
   tx: RefCell<Option<mpsc::UnboundedSender<String>>>,
-  rx: RefCell<mpsc::UnboundedReceiver<InspectorMsg>>,
 }
 
 impl GarbageCollected for JSInspectorSession {}
 
 #[op2]
 #[cppgc]
-pub fn op_inspector_connect(
+pub fn op_inspector_connect<'s>(
+  isolate: *mut v8::Isolate,
+  scope: &mut v8::HandleScope<'s>,
   state: &mut OpState,
   connect_to_main_thread: bool,
+  callback: v8::Local<'s, v8::Function>,
 ) -> Result<JSInspectorSession, Error> {
   if connect_to_main_thread {
     return Err(generic_error("connectToMainThread not supported"));
   }
 
+  let context = scope.get_current_context();
+  let context = v8::Global::new(scope, context);
+  let callback = v8::Global::new(scope, callback);
+
   let inspector = state
     .borrow::<Rc<RefCell<JsRuntimeInspector>>>()
     .borrow_mut();
-  let session = inspector.create_local_session(LocalInspectorSessionOptions {
-    kind: InspectorSessionKind::NonBlocking,
-  });
-  let (tx, rx) = session.split();
+
+  let tx = inspector.create_raw_session(
+    LocalInspectorSessionOptions {
+      kind: InspectorSessionKind::NonBlocking,
+    },
+    // The inspector connection does not keep the event loop alive but
+    // when the inspector sends a message to the frontend, the JS that
+    // that runs may keep the event loop alive so we have to call back
+    // synchronously, instead of using the usual LocalInspectorSession
+    // UnboundedReceiver<InspectorMsg> API.
+    Box::new(move |message| {
+      // SAFETY: This function is called directly by the inspector, so
+      //   1) The isolate is still valid
+      //   2) We are on the same thread as the Isolate
+      let scope = unsafe { &mut v8::CallbackScope::new(&mut *isolate) };
+      let context = v8::Local::new(scope, context.clone());
+      let scope = &mut v8::ContextScope::new(scope, context);
+      let scope = &mut v8::TryCatch::new(scope);
+      let recv = v8::undefined(scope);
+      if let Some(message) = v8::String::new(scope, &message.content) {
+        let callback = v8::Local::new(scope, callback.clone());
+        callback.call(scope, recv.into(), &[message.into()]);
+      }
+    }),
+  );
 
   Ok(JSInspectorSession {
     tx: RefCell::new(Some(tx)),
-    rx: RefCell::new(rx),
   })
 }
 
@@ -91,15 +116,6 @@ pub fn op_inspector_dispatch(
   if let Some(tx) = &*session.tx.borrow() {
     let _ = tx.unbounded_send(message);
   }
-}
-
-#[allow(clippy::await_holding_refcell_ref)]
-#[op2(async)]
-#[string]
-pub async fn op_inspector_receive(
-  #[cppgc] session: &JSInspectorSession,
-) -> Option<String> {
-  session.rx.borrow_mut().next().await.map(|m| m.content)
 }
 
 #[op2(fast)]

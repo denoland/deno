@@ -12,7 +12,6 @@ import {
   op_inspector_dispatch,
   op_inspector_emit_protocol_event,
   op_inspector_open,
-  op_inspector_receive,
   op_inspector_url,
   op_inspector_wait,
 } from "ext:core/ops";
@@ -49,15 +48,7 @@ class Session extends EventEmitter {
     if (this.#connection) {
       throw new ERR_INSPECTOR_ALREADY_CONNECTED("The inspector session");
     }
-    const connection = op_inspector_connect(false);
-    this.#connection = connection;
-    (async () => {
-      while (true) {
-        const message = await op_inspector_receive(connection);
-        if (!message) break;
-        this.#onMessage(message);
-      }
-    })();
+    this.#connection = op_inspector_connect(false, (m) => this.#onMessage(m));
   }
 
   connectToMainThread() {
@@ -67,15 +58,7 @@ class Session extends EventEmitter {
     if (this.#connection) {
       throw new ERR_INSPECTOR_ALREADY_CONNECTED("The inspector session");
     }
-    const connection = op_inspector_connect(true);
-    this.#connection = connection;
-    (async () => {
-      while (true) {
-        const message = await op_inspector_receive(connection);
-        if (!message) break;
-        this.#onMessage(message);
-      }
-    })();
+    this.#connection = op_inspector_connect(true, (m) => this.#onMessage(m));
   }
 
   #onMessage(message) {
