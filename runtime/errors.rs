@@ -13,7 +13,8 @@ use crate::ops::fs_events::FsEventsError;
 use crate::ops::http::HttpStartError;
 use crate::ops::os::OsError;
 use crate::ops::permissions::PermissionError;
-use crate::ops::process::{CheckRunPermissionError, ProcessError};
+use crate::ops::process::CheckRunPermissionError;
+use crate::ops::process::ProcessError;
 use crate::ops::signal::SignalError;
 use crate::ops::tty::TtyError;
 use crate::ops::web_worker::SyncFetchError;
@@ -49,7 +50,8 @@ use deno_kv::KvError;
 use deno_kv::KvMutationError;
 use deno_napi::NApiError;
 use deno_net::ops::NetError;
-use deno_permissions::{ChildPermissionError, NetDescriptorFromUrlParseError};
+use deno_permissions::ChildPermissionError;
+use deno_permissions::NetDescriptorFromUrlParseError;
 use deno_permissions::PathResolveError;
 use deno_permissions::PermissionCheckError;
 use deno_permissions::RunDescriptorParseError;
@@ -74,7 +76,8 @@ fn get_run_descriptor_parse_error(e: &RunDescriptorParseError) -> &'static str {
     RunDescriptorParseError::Which(_) => "Error",
     RunDescriptorParseError::PathResolve(e) => get_path_resolve_error(e),
     RunDescriptorParseError::EmptyRunQuery => "Error",
-  }}
+  }
+}
 
 fn get_sys_descriptor_parse_error(e: &SysDescriptorParseError) -> &'static str {
   match e {
@@ -877,9 +880,13 @@ fn get_create_worker_error(error: &CreateWorkerError) -> &'static str {
       ChildPermissionError::PathResolve(e) => get_path_resolve_error(e),
       ChildPermissionError::NetDescriptorParse(_) => "URIError",
       ChildPermissionError::EnvDescriptorParse(_) => "Error",
-      ChildPermissionError::SysDescriptorParse(e) => get_sys_descriptor_parse_error(e),
-      ChildPermissionError::RunDescriptorParse(e) => get_run_descriptor_parse_error(e),
-    }
+      ChildPermissionError::SysDescriptorParse(e) => {
+        get_sys_descriptor_parse_error(e)
+      }
+      ChildPermissionError::RunDescriptorParse(e) => {
+        get_run_descriptor_parse_error(e)
+      }
+    },
     CreateWorkerError::ModuleResolution(e) => {
       get_module_resolution_error_class(e)
     }
@@ -966,9 +973,13 @@ fn get_process_error(error: &ProcessError) -> &'static str {
     #[cfg(unix)]
     ProcessError::Nix(e) => get_nix_error_class(e),
     ProcessError::RunPermission(e) => match e {
-      CheckRunPermissionError::Permission(e) => get_permission_check_error_class(e),
-      CheckRunPermissionError::Other(e) => get_error_class_name(e).unwrap_or("Error"),
-    }
+      CheckRunPermissionError::Permission(e) => {
+        get_permission_check_error_class(e)
+      }
+      CheckRunPermissionError::Other(e) => {
+        get_error_class_name(e).unwrap_or("Error")
+      }
+    },
   }
 }
 
