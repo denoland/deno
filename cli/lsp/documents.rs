@@ -272,7 +272,7 @@ fn get_maybe_test_module_fut(
       parsed_source.specifier().clone(),
       parsed_source.text_info_lazy().clone(),
     );
-    parsed_source.module().visit_with(&mut collector);
+    parsed_source.program().visit_with(&mut collector);
     Arc::new(collector.take())
   })
   .map(Result::ok)
