@@ -82,7 +82,7 @@ pub enum NetError {
   #[error("Another accept task is ongoing")]
   AcceptTaskOngoing,
   #[error("{0}")]
-  Permission(deno_core::error::AnyError),
+  Permission(#[from] deno_permissions::PermissionCheckError),
   #[error("{0}")]
   Resource(deno_core::error::AnyError),
   #[error("No resolved address found")]
@@ -195,12 +195,10 @@ where
 {
   {
     let mut s = state.borrow_mut();
-    s.borrow_mut::<NP>()
-      .check_net(
-        &(&addr.hostname, Some(addr.port)),
-        "Deno.DatagramConn.send()",
-      )
-      .map_err(NetError::Permission)?;
+    s.borrow_mut::<NP>().check_net(
+      &(&addr.hostname, Some(addr.port)),
+      "Deno.DatagramConn.send()",
+    )?;
   }
   let addr = resolve_addr(&addr.hostname, addr.port)
     .await?
@@ -369,8 +367,7 @@ where
     let mut state_ = state.borrow_mut();
     state_
       .borrow_mut::<NP>()
-      .check_net(&(&addr.hostname, Some(addr.port)), "Deno.connect()")
-      .map_err(NetError::Permission)?;
+      .check_net(&(&addr.hostname, Some(addr.port)), "Deno.connect()")?;
   }
 
   let addr = resolve_addr(&addr.hostname, addr.port)
@@ -420,8 +417,7 @@ where
   }
   state
     .borrow_mut::<NP>()
-    .check_net(&(&addr.hostname, Some(addr.port)), "Deno.listen()")
-    .map_err(NetError::Permission)?;
+    .check_net(&(&addr.hostname, Some(addr.port)), "Deno.listen()")?;
   let addr = resolve_addr_sync(&addr.hostname, addr.port)?
     .next()
     .ok_or_else(|| NetError::NoResolvedAddress)?;
@@ -449,8 +445,7 @@ where
 {
   state
     .borrow_mut::<NP>()
-    .check_net(&(&addr.hostname, Some(addr.port)), "Deno.listenDatagram()")
-    .map_err(NetError::Permission)?;
+    .check_net(&(&addr.hostname, Some(addr.port)), "Deno.listenDatagram()")?;
   let addr = resolve_addr_sync(&addr.hostname, addr.port)?
     .next()
     .ok_or_else(|| NetError::NoResolvedAddress)?;
@@ -647,9 +642,7 @@ where
       let socker_addr = &ns.socket_addr;
       let ip = socker_addr.ip().to_string();
       let port = socker_addr.port();
-      perm
-        .check_net(&(ip, Some(port)), "Deno.resolveDns()")
-        .map_err(NetError::Permission)?;
+      perm.check_net(&(ip, Some(port)), "Deno.resolveDns()")?;
     }
   }
 

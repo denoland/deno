@@ -40,6 +40,7 @@ use deno_kv::KvError;
 use deno_kv::KvMutationError;
 use deno_napi::NApiError;
 use deno_net::ops::NetError;
+use deno_permissions::PermissionCheckError;
 use deno_tls::TlsError;
 use deno_web::BlobError;
 use deno_web::CompressionError;
@@ -53,6 +54,17 @@ use std::env;
 use std::error::Error;
 use std::io;
 use std::sync::Arc;
+
+fn get_permission_error_class(e: &PermissionCheckError) -> &'static str {
+  match e {
+    PermissionCheckError::PermissionDenied(_) => "NotCapable",
+    PermissionCheckError::InvalidFilePath(_) => "URIError",
+    PermissionCheckError::NetDescriptorForUrlParse(_) => {}
+    PermissionCheckError::SysDescriptorParse(_) => {}
+    PermissionCheckError::PathResolve(_) => {}
+    PermissionCheckError::HostParse(_) => {}
+  }
+}
 
 fn get_dlopen_error_class(error: &dlopen2::Error) -> &'static str {
   use dlopen2::Error::*;
@@ -436,7 +448,7 @@ fn get_napi_error_class(e: &NApiError) -> &'static str {
     NApiError::InvalidPath
     | NApiError::LibLoading(_)
     | NApiError::ModuleNotFound(_) => "TypeError",
-    NApiError::Permission(e) => get_error_class_name(e).unwrap_or("Error"),
+    NApiError::Permission(e) => get_permission_error_class(e),
   }
 }
 
@@ -514,7 +526,7 @@ fn get_ffi_repr_error_class(e: &ReprError) -> &'static str {
     ReprError::InvalidF32 => "TypeError",
     ReprError::InvalidF64 => "TypeError",
     ReprError::InvalidPointer => "TypeError",
-    ReprError::Permission(e) => get_error_class_name(e).unwrap_or("Error"),
+    ReprError::Permission(e) => get_permission_error_class(e),
   }
 }
 
@@ -522,7 +534,7 @@ fn get_ffi_dlfcn_error_class(e: &DlfcnError) -> &'static str {
   match e {
     DlfcnError::RegisterSymbol { .. } => "Error",
     DlfcnError::Dlopen(_) => "Error",
-    DlfcnError::Permission(e) => get_error_class_name(e).unwrap_or("Error"),
+    DlfcnError::Permission(e) => get_permission_error_class(e),
     DlfcnError::Other(e) => get_error_class_name(e).unwrap_or("Error"),
   }
 }
@@ -540,7 +552,7 @@ fn get_ffi_callback_error_class(e: &CallbackError) -> &'static str {
   match e {
     CallbackError::Resource(e) => get_error_class_name(e).unwrap_or("Error"),
     CallbackError::Other(e) => get_error_class_name(e).unwrap_or("Error"),
-    CallbackError::Permission(e) => get_error_class_name(e).unwrap_or("Error"),
+    CallbackError::Permission(e) => get_permission_error_class(e),
   }
 }
 
@@ -549,8 +561,9 @@ fn get_ffi_call_error_class(e: &CallError) -> &'static str {
     CallError::IR(_) => "TypeError",
     CallError::NonblockingCallFailure(_) => "Error",
     CallError::InvalidSymbol(_) => "TypeError",
-    CallError::Permission(e) => get_error_class_name(e).unwrap_or("Error"),
+    CallError::Permission(e) => get_permission_error_class(e),
     CallError::Callback(e) => get_ffi_callback_error_class(e),
+    CallError::Resource(e) => get_error_class_name(e).unwrap_or("Error"),
   }
 }
 
@@ -624,9 +637,8 @@ fn get_broadcast_channel_error(error: &BroadcastChannelError) -> &'static str {
 
 fn get_fetch_error(error: &FetchError) -> &'static str {
   match error {
-    FetchError::Resource(e) | FetchError::Permission(e) => {
-      get_error_class_name(e).unwrap_or("Error")
-    }
+    FetchError::Resource(e) => get_error_class_name(e).unwrap_or("Error"),
+    FetchError::Permission(e) => get_permission_error_class(e),
     FetchError::NetworkError => "TypeError",
     FetchError::FsNotGet(_) => "TypeError",
     FetchError::InvalidUrl(_) => "TypeError",
@@ -660,9 +672,8 @@ fn get_http_client_create_error(error: &HttpClientCreateError) -> &'static str {
 
 fn get_websocket_error(error: &WebsocketError) -> &'static str {
   match error {
-    WebsocketError::Permission(e) | WebsocketError::Resource(e) => {
-      get_error_class_name(e).unwrap_or("Error")
-    }
+    WebsocketError::Resource(e) => get_error_class_name(e).unwrap_or("Error"),
+    WebsocketError::Permission(e) => get_permission_error_class(e),
     WebsocketError::Url(e) => get_url_parse_error_class(e),
     WebsocketError::Io(e) => get_io_error_class(e),
     WebsocketError::WebSocket(_) => "TypeError",
@@ -704,9 +715,10 @@ fn get_fs_error(error: &FsOpsError) -> &'static str {
       FsError::NotSupported => "NotSupported",
       FsError::NotCapable(_) => "NotCapable",
     },
-    FsOpsError::Permission(e)
-    | FsOpsError::Resource(e)
-    | FsOpsError::Other(e) => get_error_class_name(e).unwrap_or("Error"),
+    FsOpsError::Permission(e) => get_permission_error_class(e),
+    FsOpsError::Resource(e) | FsOpsError::Other(e) => {
+      get_error_class_name(e).unwrap_or("Error")
+    }
     FsOpsError::InvalidUtf8(_) => "InvalidData",
     FsOpsError::StripPrefix(_) => "Error",
     FsOpsError::Canceled(e) => {
@@ -773,9 +785,10 @@ fn get_net_error(error: &NetError) -> &'static str {
     NetError::SocketBusy => "Busy",
     NetError::Io(e) => get_io_error_class(e),
     NetError::AcceptTaskOngoing => "Busy",
-    NetError::RootCertStore(e)
-    | NetError::Permission(e)
-    | NetError::Resource(e) => get_error_class_name(e).unwrap_or("Error"),
+    NetError::RootCertStore(e) | NetError::Resource(e) => {
+      get_error_class_name(e).unwrap_or("Error")
+    }
+    NetError::Permission(e) => get_permission_error_class(e),
     NetError::NoResolvedAddress => "Error",
     NetError::AddrParse(_) => "Error",
     NetError::Map(e) => get_net_map_error(e),
@@ -861,6 +874,10 @@ fn get_websocket_upgrade_error(error: &WebSocketUpgradeError) -> &'static str {
 
 pub fn get_error_class_name(e: &AnyError) -> Option<&'static str> {
   deno_core::error::get_custom_error_class(e)
+    .or_else(|| {
+      e.downcast_ref::<PermissionCheckError>()
+        .map(get_permission_error_class)
+    })
     .or_else(|| e.downcast_ref::<NApiError>().map(get_napi_error_class))
     .or_else(|| e.downcast_ref::<WebError>().map(get_web_error_class))
     .or_else(|| {

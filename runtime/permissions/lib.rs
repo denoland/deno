@@ -40,12 +40,11 @@ pub use prompter::PromptResponse;
 #[derive(Debug, thiserror::Error)]
 #[error("Requires {access}, {}", format_permission_error(.name))]
 pub struct PermissionDeniedError {
-  // NotCapable
   access: String,
-  name: String,
+  name: &'static str,
 }
 
-fn format_permission_error(name: &str) -> String {
+fn format_permission_error(name: &'static str) -> String {
   if is_standalone() {
     format!("specify the required permissions during compilation using `deno compile --allow-{name}`")
   } else {
@@ -114,7 +113,10 @@ impl From<bool> for AllowPartial {
 
 impl PermissionState {
   #[inline(always)]
-  fn log_perm_access(name: &str, info: impl FnOnce() -> Option<String>) {
+  fn log_perm_access(
+    name: &'static str,
+    info: impl FnOnce() -> Option<String>,
+  ) {
     // Eliminates log overhead (when logging is disabled),
     // log_enabled!(Debug) check in a hot path still has overhead
     // TODO(AaronO): generalize or upstream this optimization
@@ -130,7 +132,10 @@ impl PermissionState {
     }
   }
 
-  fn fmt_access(name: &str, info: impl FnOnce() -> Option<String>) -> String {
+  fn fmt_access(
+    name: &'static str,
+    info: impl FnOnce() -> Option<String>,
+  ) -> String {
     format!(
       "{} access{}",
       name,
@@ -139,12 +144,12 @@ impl PermissionState {
   }
 
   fn error(
-    name: &str,
+    name: &'static str,
     info: impl FnOnce() -> Option<String>,
   ) -> PermissionDeniedError {
     PermissionDeniedError {
       access: Self::fmt_access(name, info),
-      name: name.to_string(),
+      name,
     }
   }
 
@@ -152,7 +157,7 @@ impl PermissionState {
   #[inline]
   fn check(
     self,
-    name: &str,
+    name: &'static str,
     api_name: Option<&str>,
     info: Option<&str>,
     prompt: bool,
@@ -163,7 +168,7 @@ impl PermissionState {
   #[inline]
   fn check2(
     self,
-    name: &str,
+    name: &'static str,
     api_name: Option<&str>,
     info: impl Fn() -> Option<String>,
     prompt: bool,
@@ -2191,39 +2196,19 @@ pub enum ChildPermissionError {
 }
 
 #[derive(Debug, thiserror::Error)]
-pub enum CheckSpecifierError {
+pub enum PermissionCheckError {
+  #[error("{0}")]
+  PermissionDenied(#[from] PermissionDeniedError),
   #[error("Invalid file path.\n  Specifier: {0}")]
-  InvalidFilePath(Url), // URIError
-  #[error("{0}")]
-  PermissionDenied(#[from] PermissionDeniedError),
-  #[error("{0}")]
-  NetDescriptorFromUrlParse(#[from] NetDescriptorFromUrlParseError),
-}
-
-#[derive(Debug, thiserror::Error)]
-pub enum PathResolvePermissionError {
-  #[error("{0}")]
-  PermissionDenied(#[from] PermissionDeniedError),
-  #[error("{0}")]
-  PathResolve(#[from] PathResolveError),
-}
-
-#[derive(Debug, thiserror::Error)]
-pub enum CheckNetError {
-  #[error("{0}")]
-  PermissionDenied(#[from] PermissionDeniedError),
-  #[error("{0}")]
-  HostParse(#[from] HostParseError),
+  InvalidFilePath(Url),
   #[error("{0}")]
   NetDescriptorForUrlParse(#[from] NetDescriptorFromUrlParseError),
-}
-
-#[derive(Debug, thiserror::Error)]
-pub enum CheckSysError {
   #[error("{0}")]
-  PermissionDenied(#[from] PermissionDeniedError),
+  SysDescriptorParse(#[from] SysDescriptorParseError),
   #[error("{0}")]
-  HostParse(#[from] SysDescriptorParseError),
+  PathResolve(#[from] PathResolveError),
+  #[error("{0}")]
+  HostParse(#[from] HostParseError),
 }
 
 /// Wrapper struct for `Permissions` that can be shared across threads.
@@ -2373,7 +2358,7 @@ impl PermissionsContainer {
     &self,
     specifier: &ModuleSpecifier,
     kind: CheckSpecifierKind,
-  ) -> Result<(), CheckSpecifierError> {
+  ) -> Result<(), PermissionCheckError> {
     let mut inner = self.inner.lock();
     match specifier.scheme() {
       "file" => {
@@ -2392,9 +2377,9 @@ impl PermissionsContainer {
               .into_read(),
               Some("import()"),
             )
-            .map_err(CheckSpecifierError::PermissionDenied),
+            .map_err(PermissionCheckError::PermissionDenied),
           Err(_) => {
-            Err(CheckSpecifierError::InvalidFilePath(specifier.clone()))
+            Err(PermissionCheckError::InvalidFilePath(specifier.clone()))
           }
         }
       }
@@ -2420,7 +2405,7 @@ impl PermissionsContainer {
     &self,
     path: &str,
     api_name: &str,
-  ) -> Result<PathBuf, PathResolvePermissionError> {
+  ) -> Result<PathBuf, PermissionCheckError> {
     self.check_read_with_api_name(path, Some(api_name))
   }
 
@@ -2430,7 +2415,7 @@ impl PermissionsContainer {
     &self,
     path: &str,
     api_name: Option<&str>,
-  ) -> Result<PathBuf, PathResolvePermissionError> {
+  ) -> Result<PathBuf, PermissionCheckError> {
     let mut inner = self.inner.lock();
     let inner = &mut inner.read;
     if inner.is_allow_all() {
@@ -2448,7 +2433,7 @@ impl PermissionsContainer {
     &self,
     path: &'a Path,
     api_name: Option<&str>,
-  ) -> Result<Cow<'a, Path>, PermissionDeniedError> {
+  ) -> Result<Cow<'a, Path>, PermissionCheckError> {
     let mut inner = self.inner.lock();
     let inner = &mut inner.read;
     if inner.is_allow_all() {
@@ -2472,7 +2457,7 @@ impl PermissionsContainer {
     path: &Path,
     display: &str,
     api_name: &str,
-  ) -> Result<(), PermissionDeniedError> {
+  ) -> Result<(), PermissionCheckError> {
     let mut inner = self.inner.lock();
     let inner = &mut inner.read;
     skip_check_if_is_permission_fully_granted!(inner);
@@ -2483,15 +2468,17 @@ impl PermissionsContainer {
       }
       .into_read(),
       Some(api_name),
-    )
+    )?;
+    Ok(())
   }
 
   #[inline(always)]
   pub fn check_read_all(
     &self,
     api_name: &str,
-  ) -> Result<(), PermissionDeniedError> {
-    self.inner.lock().read.check_all(Some(api_name))
+  ) -> Result<(), PermissionCheckError> {
+    self.inner.lock().read.check_all(Some(api_name))?;
+    Ok(())
   }
 
   #[inline(always)]
@@ -2505,7 +2492,7 @@ impl PermissionsContainer {
     &self,
     path: &str,
     api_name: &str,
-  ) -> Result<PathBuf, PathResolvePermissionError> {
+  ) -> Result<PathBuf, PermissionCheckError> {
     self.check_write_with_api_name(path, Some(api_name))
   }
 
@@ -2515,7 +2502,7 @@ impl PermissionsContainer {
     &self,
     path: &str,
     api_name: Option<&str>,
-  ) -> Result<PathBuf, PathResolvePermissionError> {
+  ) -> Result<PathBuf, PermissionCheckError> {
     let mut inner = self.inner.lock();
     let inner = &mut inner.write;
     if inner.is_allow_all() {
@@ -2533,7 +2520,7 @@ impl PermissionsContainer {
     &self,
     path: &'a Path,
     api_name: &str,
-  ) -> Result<Cow<'a, Path>, PermissionDeniedError> {
+  ) -> Result<Cow<'a, Path>, PermissionCheckError> {
     let mut inner = self.inner.lock();
     let inner = &mut inner.write;
     if inner.is_allow_all() {
@@ -2553,8 +2540,9 @@ impl PermissionsContainer {
   pub fn check_write_all(
     &self,
     api_name: &str,
-  ) -> Result<(), PermissionDeniedError> {
-    self.inner.lock().write.check_all(Some(api_name))
+  ) -> Result<(), PermissionCheckError> {
+    self.inner.lock().write.check_all(Some(api_name))?;
+    Ok(())
   }
 
   /// As `check_write()`, but permission error messages will anonymize the path
@@ -2565,7 +2553,7 @@ impl PermissionsContainer {
     path: &Path,
     display: &str,
     api_name: &str,
-  ) -> Result<(), PermissionDeniedError> {
+  ) -> Result<(), PermissionCheckError> {
     let mut inner = self.inner.lock();
     let inner = &mut inner.write;
     skip_check_if_is_permission_fully_granted!(inner);
@@ -2576,7 +2564,8 @@ impl PermissionsContainer {
       }
       .into_write(),
       Some(api_name),
-    )
+    )?;
+    Ok(())
   }
 
   #[inline(always)]
@@ -2584,7 +2573,7 @@ impl PermissionsContainer {
     &mut self,
     path: &str,
     api_name: &str,
-  ) -> Result<PathBuf, PathResolvePermissionError> {
+  ) -> Result<PathBuf, PermissionCheckError> {
     let mut inner = self.inner.lock();
     let inner = &mut inner.write;
     if inner.is_allow_all() {
@@ -2601,16 +2590,18 @@ impl PermissionsContainer {
     &mut self,
     cmd: &RunQueryDescriptor,
     api_name: &str,
-  ) -> Result<(), PermissionDeniedError> {
-    self.inner.lock().run.check(cmd, Some(api_name))
+  ) -> Result<(), PermissionCheckError> {
+    self.inner.lock().run.check(cmd, Some(api_name))?;
+    Ok(())
   }
 
   #[inline(always)]
   pub fn check_run_all(
     &mut self,
     api_name: &str,
-  ) -> Result<(), PermissionDeniedError> {
-    self.inner.lock().run.check_all(Some(api_name))
+  ) -> Result<(), PermissionCheckError> {
+    self.inner.lock().run.check_all(Some(api_name))?;
+    Ok(())
   }
 
   #[inline(always)]
@@ -2623,7 +2614,7 @@ impl PermissionsContainer {
     &self,
     kind: &str,
     api_name: &str,
-  ) -> Result<(), CheckSysError> {
+  ) -> Result<(), PermissionCheckError> {
     self.inner.lock().sys.check(
       &self.descriptor_parser.parse_sys_descriptor(kind)?,
       Some(api_name),
@@ -2632,23 +2623,27 @@ impl PermissionsContainer {
   }
 
   #[inline(always)]
-  pub fn check_env(&mut self, var: &str) -> Result<(), PermissionDeniedError> {
-    self.inner.lock().env.check(var, None)
+  pub fn check_env(&mut self, var: &str) -> Result<(), PermissionCheckError> {
+    self.inner.lock().env.check(var, None)?;
+    Ok(())
   }
 
   #[inline(always)]
-  pub fn check_env_all(&mut self) -> Result<(), PermissionDeniedError> {
-    self.inner.lock().env.check_all()
+  pub fn check_env_all(&mut self) -> Result<(), PermissionCheckError> {
+    self.inner.lock().env.check_all()?;
+    Ok(())
   }
 
   #[inline(always)]
-  pub fn check_sys_all(&mut self) -> Result<(), PermissionDeniedError> {
-    self.inner.lock().sys.check_all()
+  pub fn check_sys_all(&mut self) -> Result<(), PermissionCheckError> {
+    self.inner.lock().sys.check_all()?;
+    Ok(())
   }
 
   #[inline(always)]
-  pub fn check_ffi_all(&mut self) -> Result<(), PermissionDeniedError> {
-    self.inner.lock().ffi.check_all()
+  pub fn check_ffi_all(&mut self) -> Result<(), PermissionCheckError> {
+    self.inner.lock().ffi.check_all()?;
+    Ok(())
   }
 
   /// This checks to see if the allow-all flag was passed, not whether all
@@ -2656,8 +2651,9 @@ impl PermissionsContainer {
   #[inline(always)]
   pub fn check_was_allow_all_flag_passed(
     &mut self,
-  ) -> Result<(), PermissionDeniedError> {
-    self.inner.lock().all.check()
+  ) -> Result<(), PermissionCheckError> {
+    self.inner.lock().all.check()?;
+    Ok(())
   }
 
   /// Checks special file access, returning the failed permission type if
@@ -2769,7 +2765,7 @@ impl PermissionsContainer {
     &mut self,
     url: &Url,
     api_name: &str,
-  ) -> Result<(), CheckNetError> {
+  ) -> Result<(), PermissionCheckError> {
     let mut inner = self.inner.lock();
     if inner.net.is_allow_all() {
       return Ok(());
@@ -2784,7 +2780,7 @@ impl PermissionsContainer {
     &mut self,
     host: &(T, Option<u16>),
     api_name: &str,
-  ) -> Result<(), CheckNetError> {
+  ) -> Result<(), PermissionCheckError> {
     let mut inner = self.inner.lock();
     let inner = &mut inner.net;
     skip_check_if_is_permission_fully_granted!(inner);
@@ -2798,7 +2794,7 @@ impl PermissionsContainer {
   pub fn check_ffi(
     &mut self,
     path: &str,
-  ) -> Result<PathBuf, PathResolvePermissionError> {
+  ) -> Result<PathBuf, PermissionCheckError> {
     let mut inner = self.inner.lock();
     let inner = &mut inner.ffi;
     if inner.is_allow_all() {
@@ -2814,14 +2810,13 @@ impl PermissionsContainer {
   #[inline(always)]
   pub fn check_ffi_partial_no_path(
     &mut self,
-  ) -> Result<(), PermissionDeniedError> {
+  ) -> Result<(), PermissionCheckError> {
     let mut inner = self.inner.lock();
     let inner = &mut inner.ffi;
-    if inner.is_allow_all() {
-      Ok(())
-    } else {
-      inner.check_partial(None)
+    if !inner.is_allow_all() {
+      inner.check_partial(None)?;
     }
+    Ok(())
   }
 
   #[must_use = "the resolved return value to mitigate time-of-check to time-of-use issues"]
@@ -2829,7 +2824,7 @@ impl PermissionsContainer {
   pub fn check_ffi_partial_with_path(
     &mut self,
     path: &str,
-  ) -> Result<PathBuf, PathResolvePermissionError> {
+  ) -> Result<PathBuf, PermissionCheckError> {
     let mut inner = self.inner.lock();
     let inner = &mut inner.ffi;
     if inner.is_allow_all() {
