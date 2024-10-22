@@ -1,5 +1,6 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 //! This mod provides DenoError to unify errors across Deno.
+use color_print::cformat;
 use color_print::cstr;
 use deno_core::error::format_frame;
 use deno_core::error::JsError;
@@ -276,7 +277,7 @@ fn format_js_error_inner(
       match suggestion.message {
         FixSuggestionMessage::Single(msg) => {
           if matches!(suggestion.kind, FixSuggestionKind::Docs) {
-            write!(s, "{}", colors::underline(msg)).unwrap();
+            write!(s, "{}", cformat!("<u>{}</>", msg)).unwrap();
           } else {
             write!(s, "{}", msg).unwrap();
           }
