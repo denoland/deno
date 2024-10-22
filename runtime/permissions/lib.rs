@@ -3667,8 +3667,8 @@ mod tests {
     fn parse_run_query(
       &self,
       requested: &str,
-    ) -> Result<RunQueryDescriptor, PathResolveError> {
-      RunQueryDescriptor::parse(requested)
+    ) -> Result<RunQueryDescriptor, RunDescriptorParseError> {
+      RunQueryDescriptor::parse(requested).map_err(Into::into)
     }
   }
 
@@ -4776,13 +4776,12 @@ mod tests {
         .lock()
         .clone(),
       Permissions {
-        env: Permissions::new_unary(Some(HashSet::new()), None, false).unwrap(),
+        env: Permissions::new_unary(Some(HashSet::new()), None, false),
         net: Permissions::new_unary(
           Some(HashSet::from([NetDescriptor::parse("foo").unwrap()])),
           None,
           false
-        )
-        .unwrap(),
+        ),
         ..Permissions::none_without_prompt()
       }
     );

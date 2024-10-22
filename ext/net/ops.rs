@@ -827,6 +827,7 @@ mod tests {
   use deno_core::futures::FutureExt;
   use deno_core::JsRuntime;
   use deno_core::RuntimeOptions;
+  use deno_permissions::PermissionCheckError;
   use socket2::SockRef;
   use std::net::Ipv4Addr;
   use std::net::Ipv6Addr;
@@ -1034,7 +1035,7 @@ mod tests {
       &mut self,
       _host: &(T, Option<u16>),
       _api_name: &str,
-    ) -> Result<(), deno_core::error::AnyError> {
+    ) -> Result<(), PermissionCheckError> {
       Ok(())
     }
 
@@ -1042,7 +1043,7 @@ mod tests {
       &mut self,
       p: &str,
       _api_name: &str,
-    ) -> Result<PathBuf, deno_core::error::AnyError> {
+    ) -> Result<PathBuf, PermissionCheckError> {
       Ok(PathBuf::from(p))
     }
 
@@ -1050,7 +1051,7 @@ mod tests {
       &mut self,
       p: &str,
       _api_name: &str,
-    ) -> Result<PathBuf, deno_core::error::AnyError> {
+    ) -> Result<PathBuf, PermissionCheckError> {
       Ok(PathBuf::from(p))
     }
 
@@ -1058,7 +1059,7 @@ mod tests {
       &mut self,
       p: &'a Path,
       _api_name: &str,
-    ) -> Result<Cow<'a, Path>, deno_core::error::AnyError> {
+    ) -> Result<Cow<'a, Path>, PermissionCheckError> {
       Ok(Cow::Borrowed(p))
     }
   }
