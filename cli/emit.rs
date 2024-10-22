@@ -317,7 +317,7 @@ fn ensure_no_import_assertion(
     deno_core::anyhow::anyhow!("{}", msg)
   }
 
-  let Some(module) = parsed_source.program_ref().as_module() else {
+  let deno_ast::ProgramRef::Module(module) = parsed_source.program_ref() else {
     return Ok(());
   };
 

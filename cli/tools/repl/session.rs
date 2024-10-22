@@ -641,6 +641,7 @@ impl ReplSession {
           jsx_fragment_factory: self.jsx.frag_factory.clone(),
           jsx_import_source: self.jsx.import_source.clone(),
           var_decl_imports: true,
+          verbatim_module_syntax: false,
         },
         &deno_ast::EmitOptions {
           source_map: deno_ast::SourceMapOption::None,

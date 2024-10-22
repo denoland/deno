@@ -1206,14 +1206,11 @@ impl CodeActionCollection {
         }),
       );
 
-      match parsed_source.program_ref() {
-        deno_ast::swc::ast::Program::Module(module) => module
-          .body
-          .iter()
-          .find(|i| i.range().contains(&specifier_range))
-          .map(|i| text_info.line_and_column_index(i.range().start)),
-        deno_ast::swc::ast::Program::Script(_) => None,
-      }
+      parsed_source
+        .program_ref()
+        .body()
+        .find(|i| i.range().contains(&specifier_range))
+        .map(|i| text_info.line_and_column_index(i.range().start))
     }
 
     async fn deno_types_for_npm_action(

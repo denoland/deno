@@ -200,6 +200,8 @@ pub fn ts_config_to_transpile_and_emit_options(
       precompile_jsx_dynamic_props: None,
       transform_jsx,
       var_decl_imports: false,
+      // todo(dsherret): support verbatim_module_syntax here properly
+      verbatim_module_syntax: false,
     },
     deno_ast::EmitOptions {
       inline_sources: options.inline_sources,

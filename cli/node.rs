@@ -132,18 +132,11 @@ impl CliCjsCodeAnalyzer {
               maybe_syntax: None,
             })
           })?;
-        if parsed_source.is_script() {
+        if parsed_source.is_script() || media_type == MediaType::Cjs {
           let analysis = parsed_source.analyze_cjs();
           Ok(CliCjsAnalysis::Cjs {
             exports: analysis.exports,
             reexports: analysis.reexports,
-          })
-        } else if media_type == MediaType::Cjs {
-          // FIXME: `deno_ast` should internally handle MediaType::Cjs implying that
-          // the result must never be Esm
-          Ok(CliCjsAnalysis::Cjs {
-            exports: vec![],
-            reexports: vec![],
           })
         } else {
           Ok(CliCjsAnalysis::Esm)
