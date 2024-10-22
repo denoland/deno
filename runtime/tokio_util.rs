@@ -44,6 +44,8 @@ pub fn create_basic_runtime() -> tokio::runtime::Runtime {
     // The default value is 512, which is an unhelpfully large thread pool. We
     // don't ever want to have more than a couple dozen threads.
     .max_blocking_threads(if cfg!(windows) {
+      // on windows, tokio uses blocking tasks for child process IO, make sure
+      // we have enough available threads for other tasks to run
       4 * std::thread::available_parallelism()
         .map(|n| n.get())
         .unwrap_or(8)
