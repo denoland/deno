@@ -871,6 +871,12 @@ itest!(error_local_static_import_from_remote_js {
   output: "run/error_local_static_import_from_remote.js.out",
 });
 
+itest!(import_meta {
+  args: "run --allow-import --quiet --reload --import-map=run/import_meta/importmap.json run/import_meta/main.ts",
+  output: "run/import_meta/main.out",
+  http_server: true,
+});
+
 itest!(no_check_remote {
   args: "run --allow-import --quiet --reload --no-check=remote run/no_check_remote.ts",
   output: "run/no_check_remote.ts.enabled.out",
