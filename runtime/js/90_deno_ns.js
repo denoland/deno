@@ -29,8 +29,6 @@ import * as kv from "ext:deno_kv/01_db.ts";
 import * as cron from "ext:deno_cron/01_cron.ts";
 import * as webgpuSurface from "ext:deno_webgpu/02_surface.js";
 
-const ffi = await import("ext:deno_ffi/00_ffi.js").catch(() => ({}));
-
 const denoNs = {
   Process: process.Process,
   run: process.run,
@@ -125,11 +123,11 @@ const denoNs = {
   uid: os.uid,
   Command: process.Command,
   ChildProcess: process.ChildProcess,
-  dlopen: ffi.dlopen,
-  UnsafeCallback: ffi.UnsafeCallback,
-  UnsafePointer: ffi.UnsafePointer,
-  UnsafePointerView: ffi.UnsafePointerView,
-  UnsafeFnPointer: ffi.UnsafeFnPointer,
+  dlopen: null,
+  UnsafeCallback: null,
+  UnsafePointer: null,
+  UnsafePointerView: null,
+  UnsafeFnPointer: null,
   umask: fs.umask,
   HttpClient: httpClient.HttpClient,
   createHttpClient: httpClient.createHttpClient,
