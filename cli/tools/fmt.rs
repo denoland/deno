@@ -978,6 +978,7 @@ fn get_resolved_malva_config(
     single_line_top_level_declarations: false,
     selector_override_comment_directive: "deno-fmt-selector-override".into(),
     ignore_comment_directive: "deno-fmt-ignore".into(),
+    ignore_file_comment_directive: "deno-fmt-ignore-file".into(),
   };
 
   FormatOptions {
@@ -1036,6 +1037,7 @@ fn get_resolved_markup_fmt_config(
     svelte_directive_shorthand: Some(true),
     astro_attr_shorthand: Some(true),
     ignore_comment_directive: "deno-fmt-ignore".into(),
+    ignore_file_comment_directive: "deno-fmt-ignore-file".into(),
   };
 
   FormatOptions {
