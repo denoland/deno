@@ -184,7 +184,7 @@ impl VfsBuilder {
   }
 
   pub fn add_file_at_path(&mut self, path: &Path) -> Result<(), AnyError> {
-    let canonicalized_target_path = canonicalize_path(&path)?;
+    let canonicalized_target_path = canonicalize_path(path)?;
     let target_components: Vec<_> = path.components().collect();
     let mut current_root_path = self.root_path.clone();
 
