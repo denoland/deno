@@ -77,8 +77,8 @@ use crate::util::progress_bar::ProgressBarStyle;
 use super::file_system::DenoCompileFileSystem;
 use super::serialization::deserialize_binary_data_section;
 use super::serialization::serialize_binary_data_section;
+use super::serialization::DenoCompileModuleData;
 use super::serialization::DeserializedDataSection;
-use super::serialization::RemoteModuleData;
 use super::serialization::RemoteModulesStore;
 use super::serialization::RemoteModulesStoreBuilder;
 use super::virtual_fs::FileBackedVfs;
@@ -260,7 +260,7 @@ impl StandaloneModules {
   pub fn read<'a>(
     &'a self,
     specifier: &'a ModuleSpecifier,
-  ) -> Result<Option<RemoteModuleData<'a>>, AnyError> {
+  ) -> Result<Option<DenoCompileModuleData<'a>>, AnyError> {
     if specifier.scheme() == "file" {
       let path = deno_path_util::url_to_file_path(specifier)?;
       let bytes = match self.vfs.file_entry(&path) {
@@ -277,7 +277,7 @@ impl StandaloneModules {
         }
         Err(err) => return Err(err.into()),
       };
-      Ok(Some(RemoteModuleData {
+      Ok(Some(DenoCompileModuleData {
         media_type: MediaType::from_specifier(specifier),
         specifier,
         data: bytes,

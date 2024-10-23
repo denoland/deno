@@ -11,6 +11,9 @@ use deno_core::anyhow::Context;
 use deno_core::error::AnyError;
 use deno_core::serde_json;
 use deno_core::url::Url;
+use deno_core::FastString;
+use deno_core::ModuleSourceCode;
+use deno_core::ModuleType;
 use deno_npm::resolution::SerializedNpmResolutionSnapshot;
 use deno_npm::resolution::SerializedNpmResolutionSnapshotPackage;
 use deno_npm::resolution::ValidSerializedNpmResolutionSnapshot;
@@ -209,10 +212,53 @@ impl RemoteModulesStoreBuilder {
   }
 }
 
-pub struct RemoteModuleData<'a> {
+pub struct DenoCompileModuleData<'a> {
   pub specifier: &'a Url,
   pub media_type: MediaType,
   pub data: Cow<'static, [u8]>,
+}
+
+impl<'a> DenoCompileModuleData<'a> {
+  pub fn into_for_v8(self) -> (&'a Url, ModuleType, ModuleSourceCode) {
+    fn into_bytes(data: Cow<'static, [u8]>) -> ModuleSourceCode {
+      ModuleSourceCode::Bytes(match data {
+        Cow::Borrowed(d) => d.into(),
+        Cow::Owned(d) => d.into_boxed_slice().into(),
+      })
+    }
+
+    fn into_string_unsafe(data: Cow<'static, [u8]>) -> ModuleSourceCode {
+      match data {
+        Cow::Borrowed(d) => ModuleSourceCode::String(unsafe {
+          FastString::from_static(std::str::from_utf8_unchecked(d))
+        }),
+        Cow::Owned(d) => ModuleSourceCode::Bytes(d.into_boxed_slice().into()),
+      }
+    }
+
+    let (media_type, source) = match self.media_type {
+      MediaType::JavaScript
+      | MediaType::Jsx
+      | MediaType::Mjs
+      | MediaType::Cjs
+      | MediaType::TypeScript
+      | MediaType::Mts
+      | MediaType::Cts
+      | MediaType::Dts
+      | MediaType::Dmts
+      | MediaType::Dcts
+      | MediaType::Tsx => {
+        (ModuleType::JavaScript, into_string_unsafe(self.data))
+      }
+      MediaType::Json => (ModuleType::Json, into_string_unsafe(self.data)),
+      MediaType::Wasm => (ModuleType::Wasm, into_bytes(self.data)),
+      // just assume javascript if we made it here
+      MediaType::TsBuildInfo | MediaType::SourceMap | MediaType::Unknown => {
+        (ModuleType::JavaScript, into_bytes(self.data))
+      }
+    };
+    (self.specifier, media_type, source)
+  }
 }
 
 enum RemoteModulesStoreSpecifierValue {
@@ -305,7 +351,7 @@ impl RemoteModulesStore {
   pub fn read<'a>(
     &'a self,
     specifier: &'a Url,
-  ) -> Result<Option<RemoteModuleData<'a>>, AnyError> {
+  ) -> Result<Option<DenoCompileModuleData<'a>>, AnyError> {
     let mut count = 0;
     let mut current = specifier;
     loop {
@@ -323,7 +369,7 @@ impl RemoteModulesStore {
           let media_type = deserialize_media_type(media_type_byte[0])?;
           let (input, len) = read_u64(input)?;
           let (_input, data) = read_bytes(input, len as usize)?;
-          return Ok(Some(RemoteModuleData {
+          return Ok(Some(DenoCompileModuleData {
             specifier,
             media_type,
             data: Cow::Borrowed(data),
