@@ -13,7 +13,7 @@ use deno_core::SourceMapData;
 use std::path::Path;
 
 #[cfg(not(feature = "ffi"))]
-extension!(deno_ffi, esm = ["js/00_ffi.js"]);
+extension!(deno_ffi, esm = ["00_ffi.js"]);
 
 extension!(runtime,
   deps = [
