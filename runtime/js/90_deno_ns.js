@@ -10,7 +10,6 @@ import {
 import * as timers from "ext:deno_web/02_timers.js";
 import * as httpClient from "ext:deno_fetch/22_http_client.js";
 import * as console from "ext:deno_console/01_console.js";
-import * as ffi from "ext:deno_ffi/00_ffi.js";
 import * as net from "ext:deno_net/01_net.js";
 import * as tls from "ext:deno_net/02_tls.js";
 import * as serve from "ext:deno_http/00_serve.ts";
@@ -29,6 +28,8 @@ import * as tty from "ext:runtime/40_tty.js";
 import * as kv from "ext:deno_kv/01_db.ts";
 import * as cron from "ext:deno_cron/01_cron.ts";
 import * as webgpuSurface from "ext:deno_webgpu/02_surface.js";
+
+const ffi = await import("ext:deno_ffi/00_ffi.js").catch(() => ({}));
 
 const denoNs = {
   Process: process.Process,
@@ -169,7 +170,7 @@ denoNsUnstableById[unstableIds.kv] = {
 denoNsUnstableById[unstableIds.net] = {
   listenDatagram: net.createListenDatagram(
     op_net_listen_udp,
-    op_net_listen_unixpacket,
+    op_net_listen_unixpacket
   ),
 };
 

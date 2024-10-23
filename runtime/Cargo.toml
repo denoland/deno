@@ -10,6 +10,7 @@ repository.workspace = true
 description = "Provides the deno runtime library"
 
 [features]
+default = ["ffi"]
 # "fake" feature that allows to generate docs on docs.rs
 docsrs = []
 # A feature that allows excluding `./js/99_main.js` from the exported extension.
@@ -27,6 +28,8 @@ hmr = ["include_js_files_for_snapshotting"]
 # conditionally exclude the runtime source transpilation logic, and add an
 # assertion that a snapshot is provided.
 only_snapshotted_js_sources = ["include_js_files_for_snapshotting"]
+# enable the FFI API
+ffi = ["deno_ffi"]
 
 [lints.rust]
 unexpected_cfgs = { level = "warn", check-cfg = ['cfg(tokio_unstable)'] }
@@ -49,7 +52,7 @@ deno_core.workspace = true
 deno_cron.workspace = true
 deno_crypto.workspace = true
 deno_fetch.workspace = true
-deno_ffi.workspace = true
+deno_ffi = { workspace = true, optional = true }
 deno_fs = { workspace = true, features = ["sync_fs"] }
 deno_http.workspace = true
 deno_io.workspace = true
@@ -80,7 +83,7 @@ deno_core.workspace = true
 deno_cron.workspace = true
 deno_crypto.workspace = true
 deno_fetch.workspace = true
-deno_ffi.workspace = true
+deno_ffi = { workspace = true, optional = true }
 deno_fs = { workspace = true, features = ["sync_fs"] }
 deno_http.workspace = true
 deno_io.workspace = true
@@ -108,7 +111,13 @@ http.workspace = true
 http-body-util.workspace = true
 hyper.workspace = true
 hyper-util.workspace = true
-hyper_v014 = { workspace = true, features = ["server", "stream", "http1", "http2", "runtime"] }
+hyper_v014 = { workspace = true, features = [
+  "server",
+  "stream",
+  "http1",
+  "http2",
+  "runtime",
+] }
 libc.workspace = true
 log.workspace = true
 netif = "0.1.6"
@@ -130,7 +139,19 @@ uuid.workspace = true
 which.workspace = true
 
 [target.'cfg(windows)'.dependencies]
-winapi = { workspace = true, features = ["commapi", "knownfolders", "mswsock", "objbase", "psapi", "shlobj", "tlhelp32", "winbase", "winerror", "winuser", "winsock2"] }
+winapi = { workspace = true, features = [
+  "commapi",
+  "knownfolders",
+  "mswsock",
+  "objbase",
+  "psapi",
+  "shlobj",
+  "tlhelp32",
+  "winbase",
+  "winerror",
+  "winuser",
+  "winsock2",
+] }
 ntapi = "0.4.0"
 windows-sys.workspace = true
 
