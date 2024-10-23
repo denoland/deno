@@ -161,7 +161,8 @@ export class TLSSocket extends net.Socket {
               tlssock.alpnProtocol = false;
             }
           } catch {
-            // Don't interrupt "secure" event if handshake fails
+            // Don't interrupt "secure" event to let the first read/write
+            // operation emit the error.
           }
           handle[kStreamBaseField] = conn;
           tlssock.emit("secure");
