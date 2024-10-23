@@ -12,6 +12,9 @@ use deno_core::ModuleName;
 use deno_core::SourceMapData;
 use std::path::Path;
 
+#[cfg(not(feature = "ffi"))]
+extension!(deno_ffi, esm = ["js/00_ffi.js"]);
+
 extension!(runtime,
   deps = [
     deno_webidl,
@@ -26,6 +29,7 @@ extension!(runtime,
     deno_crypto,
     deno_broadcast_channel,
     deno_node,
+    deno_ffi,
     deno_net,
     deno_napi,
     deno_http,
