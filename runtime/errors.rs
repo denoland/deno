@@ -33,9 +33,17 @@ use deno_crypto::ImportKeyError;
 use deno_fetch::FetchError;
 use deno_fetch::HttpClientCreateError;
 #[cfg(feature = "ffi")]
-use deno_ffi::{
-  CallError, CallbackError, DlfcnError, IRError, ReprError, StaticError,
-};
+use deno_ffi::CallError;
+#[cfg(feature = "ffi")]
+use deno_ffi::CallbackError;
+#[cfg(feature = "ffi")]
+use deno_ffi::DlfcnError;
+#[cfg(feature = "ffi")]
+use deno_ffi::IRError;
+#[cfg(feature = "ffi")]
+use deno_ffi::ReprError;
+#[cfg(feature = "ffi")]
+use deno_ffi::StaticError;
 use deno_fs::FsOpsError;
 use deno_http::HttpError;
 use deno_http::HttpNextError;

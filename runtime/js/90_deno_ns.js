@@ -169,7 +169,7 @@ denoNsUnstableById[unstableIds.kv] = {
 denoNsUnstableById[unstableIds.net] = {
   listenDatagram: net.createListenDatagram(
     op_net_listen_udp,
-    op_net_listen_unixpacket
+    op_net_listen_unixpacket,
   ),
 };
 
