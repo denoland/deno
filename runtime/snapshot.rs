@@ -281,6 +281,8 @@ pub fn create_runtime_snapshot(
     ),
     #[cfg(feature = "ffi")]
     deno_ffi::deno_ffi::init_ops_and_esm::<Permissions>(),
+    #[cfg(not(feature = "ffi"))]
+    crate::shared::deno_ffi::init_ops_and_esm(),
     deno_net::deno_net::init_ops_and_esm::<Permissions>(None, None),
     deno_tls::deno_tls::init_ops_and_esm(),
     deno_kv::deno_kv::init_ops_and_esm(
