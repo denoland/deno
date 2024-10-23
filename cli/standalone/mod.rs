@@ -79,6 +79,7 @@ use crate::worker::ModuleLoaderFactory;
 
 pub mod binary;
 mod file_system;
+mod serialization;
 mod virtual_fs;
 
 pub use binary::extract_standalone;
@@ -314,51 +315,42 @@ impl ModuleLoader for EmbeddedModuleLoader {
     }
 
     match self.shared.modules.read(original_specifier) {
-      Ok(Some(module)) => {
-        return deno_core::ModuleLoadResponse::Sync(Ok(
-          deno_core::ModuleSource::new_with_redirect(
-            match module.media_type {
-              MediaType::JavaScript
-              | MediaType::Jsx
-              | MediaType::Mjs
-              | MediaType::Cjs
-              | MediaType::TypeScript
-              | MediaType::Mts
-              | MediaType::Cts
-              | MediaType::Dts
-              | MediaType::Dmts
-              | MediaType::Dcts
-              | MediaType::Tsx => ModuleType::JavaScript,
-              MediaType::Json => ModuleType::Json,
-              MediaType::Wasm => ModuleType::Wasm,
-              MediaType::TsBuildInfo
-              | MediaType::SourceMap
-              | MediaType::Unknown => {
-                unreachable!();
-              }
-            },
-            ModuleSourceCode::Bytes(match module.data {
-              Cow::Borrowed(d) => d.into(),
-              Cow::Owned(d) => d.into_boxed_slice().into(),
-            }),
-            &original_specifier,
-            &module.specifier,
-            None,
-          ),
-        ))
-      }
-      Ok(None) => {
-        return deno_core::ModuleLoadResponse::Sync(Err(type_error(format!(
-          "{MODULE_NOT_FOUND}: {}",
-          original_specifier
-        ))));
-      }
-      Err(err) => {
-        return deno_core::ModuleLoadResponse::Sync(Err(type_error(format!(
-          "{:?}",
-          err
-        ))));
-      }
+      Ok(Some(module)) => deno_core::ModuleLoadResponse::Sync(Ok(
+        deno_core::ModuleSource::new_with_redirect(
+          match module.media_type {
+            MediaType::JavaScript
+            | MediaType::Jsx
+            | MediaType::Mjs
+            | MediaType::Cjs
+            | MediaType::TypeScript
+            | MediaType::Mts
+            | MediaType::Cts
+            | MediaType::Dts
+            | MediaType::Dmts
+            | MediaType::Dcts
+            | MediaType::Tsx => ModuleType::JavaScript,
+            MediaType::Json => ModuleType::Json,
+            MediaType::Wasm => ModuleType::Wasm,
+            // just assume javascript if we made it here
+            MediaType::TsBuildInfo
+            | MediaType::SourceMap
+            | MediaType::Unknown => ModuleType::JavaScript,
+          },
+          ModuleSourceCode::Bytes(match module.data {
+            Cow::Borrowed(d) => d.into(),
+            Cow::Owned(d) => d.into_boxed_slice().into(),
+          }),
+          original_specifier,
+          module.specifier,
+          None,
+        ),
+      )),
+      Ok(None) => deno_core::ModuleLoadResponse::Sync(Err(type_error(
+        format!("{MODULE_NOT_FOUND}: {}", original_specifier),
+      ))),
+      Err(err) => deno_core::ModuleLoadResponse::Sync(Err(type_error(
+        format!("{:?}", err),
+      ))),
     }
   }
 }

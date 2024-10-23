@@ -103,6 +103,8 @@ pub fn arc_str_to_bytes(arc_str: Arc<str>) -> Arc<[u8]> {
   unsafe { Arc::from_raw(raw as *const [u8]) }
 }
 
+/// Converts an `Arc<u8>` to an `Arc<str>` if able.
+#[allow(dead_code)]
 pub fn arc_u8_to_arc_str(
   arc_u8: Arc<[u8]>,
 ) -> Result<Arc<str>, std::str::Utf8Error> {

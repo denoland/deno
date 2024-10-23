@@ -44,6 +44,7 @@ use deno_npm::NpmSystemInfo;
 use deno_runtime::deno_fs;
 use deno_runtime::deno_fs::FileSystem;
 use deno_runtime::deno_fs::RealFs;
+use deno_runtime::deno_io::fs::FsError;
 use deno_runtime::deno_node::PackageJson;
 use deno_semver::npm::NpmVersionReqParseError;
 use deno_semver::package::PackageReq;
@@ -61,6 +62,7 @@ use crate::args::NpmInstallDepsProvider;
 use crate::args::PermissionFlags;
 use crate::args::UnstableConfig;
 use crate::cache::DenoDir;
+use crate::emit::Emitter;
 use crate::file_fetcher::FileFetcher;
 use crate::http_util::HttpClientProvider;
 use crate::npm::CliNpmResolver;
@@ -73,6 +75,12 @@ use crate::util::progress_bar::ProgressBar;
 use crate::util::progress_bar::ProgressBarStyle;
 
 use super::file_system::DenoCompileFileSystem;
+use super::serialization::deserialize_binary_data_section;
+use super::serialization::serialize_binary_data_section;
+use super::serialization::DeserializedDataSection;
+use super::serialization::RemoteModuleData;
+use super::serialization::RemoteModulesStore;
+use super::serialization::RemoteModulesStoreBuilder;
 use super::virtual_fs::FileBackedVfs;
 use super::virtual_fs::VfsBuilder;
 use super::virtual_fs::VfsRoot;
@@ -123,8 +131,6 @@ impl<'a> StandaloneRelativeFileBaseUrl<'a> {
     self.0
   }
 }
-
-const MAGIC_TRAILER: &[u8; 8] = b"d3n0l4nd";
 
 #[derive(Deserialize, Serialize)]
 pub enum NodeModules {
@@ -184,48 +190,18 @@ fn write_binary_bytes(
   original_bin: Vec<u8>,
   metadata: &Metadata,
   npm_snapshot: Option<SerializedNpmResolutionSnapshot>,
-  remote_modules_store: &RemoteModulesStoreBuilder,
+  remote_modules: &RemoteModulesStoreBuilder,
   vfs: VfsBuilder,
   compile_flags: &CompileFlags,
 ) -> Result<(), AnyError> {
-  let metadata = serde_json::to_string(metadata)?.as_bytes().to_vec();
-  let npm_snapshot =
-    npm_snapshot.map(serialize_npm_snapshot).unwrap_or_default();
-  let (vfs, vfs_files) = vfs.into_dir_and_files();
-  let vfs = serde_json::to_string(&vfs)?.as_bytes().to_vec();
-
-  let mut writer = Vec::new();
-
-  // write the trailer, which includes the positions
-  // of the data blocks in the file
-  writer.write_all(&{
-    let npm_snapshot_pos = metadata.len() as u64;
-    let remote_modules_pos = npm_snapshot_pos + (npm_snapshot.len() as u64);
-    let vfs_pos = remote_modules_pos + remote_modules_store.total_len();
-    let files_pos = vfs_pos + (vfs.len() as u64);
-    Trailer {
-      metadata_pos: 0,
-      npm_snapshot_pos,
-      remote_modules_pos,
-      vfs_pos,
-      files_pos,
-    }
-    .as_bytes()
-  })?;
-
-  writer.write_all(&metadata)?;
-  writer.write_all(&npm_snapshot)?;
-  remote_modules_store.write(&mut writer)?;
-  writer.write_all(&vfs)?;
-  for file in &vfs_files {
-    writer.write_all(file)?;
-  }
+  let data_section_bytes =
+    serialize_binary_data_section(metadata, npm_snapshot, remote_modules, vfs)?;
 
   let target = compile_flags.resolve_target();
   if target.contains("linux") {
     libsui::Elf::new(&original_bin).append(
       "d3n0l4nd",
-      &writer,
+      &data_section_bytes,
       &mut file_writer,
     )?;
   } else if target.contains("windows") {
@@ -235,11 +211,11 @@ fn write_binary_bytes(
       pe = pe.set_icon(&icon)?;
     }
 
-    pe.write_resource("d3n0l4nd", writer)?
+    pe.write_resource("d3n0l4nd", data_section_bytes)?
       .build(&mut file_writer)?;
   } else if target.contains("darwin") {
     libsui::Macho::from(original_bin)?
-      .write_section("d3n0l4nd", writer)?
+      .write_section("d3n0l4nd", data_section_bytes)?
       .build_and_sign(&mut file_writer)?;
   }
   Ok(())
@@ -264,12 +240,6 @@ pub struct StandaloneData {
   pub vfs: Arc<FileBackedVfs>,
 }
 
-pub struct RemoteModuleData<'a> {
-  pub specifier: &'a ModuleSpecifier,
-  pub media_type: MediaType,
-  pub data: Cow<'static, [u8]>,
-}
-
 pub struct StandaloneModules {
   remote_modules: RemoteModulesStore,
   vfs: Arc<FileBackedVfs>,
@@ -281,13 +251,12 @@ impl StandaloneModules {
     specifier: &'a ModuleSpecifier,
   ) -> Result<Option<&'a ModuleSpecifier>, AnyError> {
     if specifier.scheme() == "file" {
-      return Ok(Some(specifier));
+      Ok(Some(specifier))
     } else {
       self.remote_modules.resolve_specifier(specifier)
     }
   }
 
-  // todo(THIS PR): don't return Option?
   pub fn read<'a>(
     &'a self,
     specifier: &'a ModuleSpecifier,
@@ -297,7 +266,13 @@ impl StandaloneModules {
       let bytes = match self.vfs.file_entry(&path) {
         Ok(entry) => self.vfs.read_file_all(entry)?,
         Err(err) if err.kind() == ErrorKind::NotFound => {
-          let bytes = RealFs.read_file_sync(&path, None)?;
+          let bytes = match RealFs.read_file_sync(&path, None) {
+            Ok(bytes) => bytes,
+            Err(FsError::Io(err)) if err.kind() == ErrorKind::NotFound => {
+              return Ok(None)
+            }
+            Err(err) => return Err(err.into()),
+          };
           Cow::Owned(bytes)
         }
         Err(err) => return Err(err.into()),
@@ -325,12 +300,16 @@ pub fn extract_standalone(
     return Ok(None);
   };
 
-  // We do the first part sync so it can complete quickly
-  let trailer = match Trailer::parse(&data[0..TRAILER_SIZE])? {
+  let DeserializedDataSection {
+    mut metadata,
+    npm_snapshot,
+    remote_modules,
+    mut vfs_dir,
+    vfs_files_data,
+  } = match deserialize_binary_data_section(data)? {
+    Some(data_section) => data_section,
     None => return Ok(None),
-    Some(trailer) => trailer,
   };
-  let data = &data[TRAILER_SIZE..];
 
   let root_path = {
     let current_exe_path = std::env::current_exe().unwrap();
@@ -339,35 +318,20 @@ pub fn extract_standalone(
     std::env::temp_dir().join(format!("deno-compile-{}", current_exe_name))
   };
   let cli_args = cli_args.into_owned();
-  let mut metadata: Metadata =
-    serde_json::from_slice(&data[trailer.metadata_range()])
-      .context("failed reading metadata")?;
   metadata.argv.reserve(cli_args.len() - 1);
   for arg in cli_args.into_iter().skip(1) {
     metadata.argv.push(arg.into_string().unwrap());
   }
-  let remote_modules =
-    RemoteModulesStore::build(&data[trailer.remote_modules_range()])?;
-  let npm_snapshot_bytes = &data[trailer.npm_snapshot_range()];
-  let npm_snapshot = if npm_snapshot_bytes.is_empty() {
-    None
-  } else {
-    Some(deserialize_npm_snapshot(npm_snapshot_bytes)?)
-  };
   let vfs = {
-    let vfs_data = &data[trailer.vfs_range()];
-    let mut dir: VirtualDirectory =
-      serde_json::from_slice(vfs_data).context("failed reading vfs data")?;
-
     // align the name of the directory with the root dir
-    dir.name = root_path.file_name().unwrap().to_string_lossy().to_string();
+    vfs_dir.name = root_path.file_name().unwrap().to_string_lossy().to_string();
 
     let fs_root = VfsRoot {
-      dir,
+      dir: vfs_dir,
       root_path: root_path.clone(),
-      start_file_offset: trailer.files_pos,
+      start_file_offset: 0,
     };
-    Arc::new(FileBackedVfs::new(Cow::Borrowed(data), fs_root))
+    Arc::new(FileBackedVfs::new(Cow::Borrowed(vfs_files_data), fs_root))
   };
   let fs: Arc<dyn deno_fs::FileSystem> =
     Arc::new(DenoCompileFileSystem::new(vfs.clone()));
@@ -384,71 +348,6 @@ pub fn extract_standalone(
   }))
 }
 
-const TRAILER_SIZE: usize = std::mem::size_of::<Trailer>() + 8; // 8 bytes for the magic trailer string
-
-struct Trailer {
-  metadata_pos: u64,
-  npm_snapshot_pos: u64,
-  remote_modules_pos: u64,
-  vfs_pos: u64,
-  files_pos: u64,
-}
-
-impl Trailer {
-  pub fn parse(trailer: &[u8]) -> Result<Option<Trailer>, AnyError> {
-    let (magic_trailer, rest) = trailer.split_at(8);
-    if magic_trailer != MAGIC_TRAILER {
-      return Ok(None);
-    }
-
-    let (metadata_pos, rest) = rest.split_at(8);
-    let (npm_snapshot_pos, rest) = rest.split_at(8);
-    let (remote_modules_pos, rest) = rest.split_at(8);
-    let (vfs_pos, files_pos) = rest.split_at(8);
-    Ok(Some(Trailer {
-      metadata_pos: u64_from_bytes(metadata_pos)?,
-      npm_snapshot_pos: u64_from_bytes(npm_snapshot_pos)?,
-      remote_modules_pos: u64_from_bytes(remote_modules_pos)?,
-      vfs_pos: u64_from_bytes(vfs_pos)?,
-      files_pos: u64_from_bytes(files_pos)?,
-    }))
-  }
-
-  pub fn metadata_len(&self) -> u64 {
-    self.npm_snapshot_pos - self.metadata_pos
-  }
-
-  pub fn metadata_range(&self) -> Range<usize> {
-    self.metadata_pos as usize..self.npm_snapshot_pos as usize
-  }
-
-  pub fn npm_snapshot_range(&self) -> Range<usize> {
-    self.npm_snapshot_pos as usize..self.remote_modules_pos as usize
-  }
-
-  pub fn remote_modules_range(&self) -> Range<usize> {
-    self.remote_modules_pos as usize..self.vfs_pos as usize
-  }
-
-  pub fn vfs_range(&self) -> Range<usize> {
-    self.vfs_pos as usize..self.files_pos as usize
-  }
-
-  pub fn as_bytes(&self) -> Vec<u8> {
-    let mut trailer = MAGIC_TRAILER.to_vec();
-    trailer.write_all(&self.metadata_pos.to_be_bytes()).unwrap();
-    trailer
-      .write_all(&self.npm_snapshot_pos.to_be_bytes())
-      .unwrap();
-    trailer
-      .write_all(&self.remote_modules_pos.to_be_bytes())
-      .unwrap();
-    trailer.write_all(&self.vfs_pos.to_be_bytes()).unwrap();
-    trailer.write_all(&self.files_pos.to_be_bytes()).unwrap();
-    trailer
-  }
-}
-
 fn u64_from_bytes(arr: &[u8]) -> Result<u64, AnyError> {
   let fixed_arr: &[u8; 8] = arr
     .try_into()
@@ -458,6 +357,7 @@ fn u64_from_bytes(arr: &[u8]) -> Result<u64, AnyError> {
 
 pub struct DenoCompileBinaryWriter<'a> {
   deno_dir: &'a DenoDir,
+  emitter: &'a Emitter,
   file_fetcher: &'a FileFetcher,
   http_client_provider: &'a HttpClientProvider,
   npm_resolver: &'a dyn CliNpmResolver,
@@ -469,6 +369,7 @@ impl<'a> DenoCompileBinaryWriter<'a> {
   #[allow(clippy::too_many_arguments)]
   pub fn new(
     deno_dir: &'a DenoDir,
+    emitter: &'a Emitter,
     file_fetcher: &'a FileFetcher,
     http_client_provider: &'a HttpClientProvider,
     npm_resolver: &'a dyn CliNpmResolver,
@@ -477,6 +378,7 @@ impl<'a> DenoCompileBinaryWriter<'a> {
   ) -> Self {
     Self {
       deno_dir,
+      emitter,
       file_fetcher,
       http_client_provider,
       npm_resolver,
@@ -516,15 +418,17 @@ impl<'a> DenoCompileBinaryWriter<'a> {
         )
       }
     }
-    self.write_standalone_binary(
-      writer,
-      original_binary,
-      graph,
-      root_dir_url,
-      entrypoint,
-      cli_options,
-      compile_flags,
-    )
+    self
+      .write_standalone_binary(
+        writer,
+        original_binary,
+        graph,
+        root_dir_url,
+        entrypoint,
+        cli_options,
+        compile_flags,
+      )
+      .await
   }
 
   async fn get_base_binary(
@@ -619,7 +523,7 @@ impl<'a> DenoCompileBinaryWriter<'a> {
   /// This functions creates a standalone deno binary by appending a bundle
   /// and magic trailer to the currently executing binary.
   #[allow(clippy::too_many_arguments)]
-  fn write_standalone_binary(
+  async fn write_standalone_binary(
     &self,
     writer: File,
     original_bin: Vec<u8>,
@@ -694,28 +598,46 @@ impl<'a> DenoCompileBinaryWriter<'a> {
     };
     let mut remote_modules_store = RemoteModulesStoreBuilder::default();
     for module in graph.modules() {
+      let (maybe_source, media_type) = match module {
+        deno_graph::Module::Js(m) => {
+          // todo(https://github.com/denoland/deno_media_type/pull/12): use is_emittable()
+          let is_emittable = matches!(
+            m.media_type,
+            MediaType::TypeScript
+              | MediaType::Mts
+              | MediaType::Cts
+              | MediaType::Jsx
+              | MediaType::Tsx
+          );
+          let source = if is_emittable {
+            let source = self
+              .emitter
+              .emit_parsed_source(&m.specifier, m.media_type, &m.source)
+              .await?;
+            source.to_vec()
+          } else {
+            m.source.as_bytes().to_vec()
+          };
+          (Some(source), m.media_type)
+        }
+        deno_graph::Module::Json(m) => {
+          (Some(m.source.as_bytes().to_vec()), m.media_type)
+        }
+        deno_graph::Module::Npm(_)
+        | deno_graph::Module::Node(_)
+        | deno_graph::Module::External(_) => (None, MediaType::Unknown),
+      };
       if module.specifier().scheme() == "file" {
         let file_path = deno_path_util::url_to_file_path(module.specifier())?;
         vfs.add_file_with_data(
           &file_path,
-          match module.source() {
-            Some(source) => source.as_bytes().to_vec(),
-            None => Vec::new(),
+          match maybe_source {
+            Some(source) => source,
+            None => RealFs.read_file_sync(&file_path, None)?,
           },
         )?;
-      } else if let Some(source) = module.source() {
-        let media_type = match module {
-          deno_graph::Module::Js(m) => m.media_type,
-          deno_graph::Module::Json(m) => m.media_type,
-          deno_graph::Module::Npm(_)
-          | deno_graph::Module::Node(_)
-          | deno_graph::Module::External(_) => MediaType::Unknown,
-        };
-        remote_modules_store.add(
-          module.specifier(),
-          media_type,
-          source.as_bytes().to_vec(),
-        );
+      } else if let Some(source) = maybe_source {
+        remote_modules_store.add(module.specifier(), media_type, source);
       }
     }
     remote_modules_store.add_redirects(&graph.redirects);
@@ -910,235 +832,6 @@ impl<'a> DenoCompileBinaryWriter<'a> {
   }
 }
 
-enum RemoteModulesStoreSpecifierValue {
-  Data(usize),
-  Redirect(ModuleSpecifier),
-}
-
-pub struct RemoteModulesStore {
-  specifiers: HashMap<ModuleSpecifier, RemoteModulesStoreSpecifierValue>,
-  files_data: &'static [u8],
-}
-
-impl RemoteModulesStore {
-  pub fn build(data: &'static [u8]) -> Result<Self, AnyError> {
-    fn read_specifier(
-      input: &[u8],
-    ) -> Result<(&[u8], (ModuleSpecifier, u64)), AnyError> {
-      let (input, specifier) = read_string_lossy(input)?;
-      let specifier = ModuleSpecifier::parse(&specifier)?;
-      let (input, offset) = read_u64(input)?;
-      Ok((input, (specifier, offset)))
-    }
-
-    fn read_redirect(
-      input: &[u8],
-    ) -> Result<(&[u8], (ModuleSpecifier, ModuleSpecifier)), AnyError> {
-      let (input, from) = read_string_lossy(input)?;
-      let from = ModuleSpecifier::parse(&from)?;
-      let (input, to) = read_string_lossy(input)?;
-      let to = ModuleSpecifier::parse(&to)?;
-      Ok((input, (from, to)))
-    }
-
-    fn read_headers(
-      input: &[u8],
-    ) -> Result<
-      (
-        &[u8],
-        HashMap<ModuleSpecifier, RemoteModulesStoreSpecifierValue>,
-      ),
-      AnyError,
-    > {
-      let (input, specifiers_len) = read_u32_as_usize(input)?;
-      let (mut input, redirects_len) = read_u32_as_usize(input)?;
-      let mut specifiers =
-        HashMap::with_capacity(specifiers_len + redirects_len);
-      for _ in 0..specifiers_len {
-        let (current_input, (specifier, offset)) = read_specifier(input)?;
-        input = current_input;
-        specifiers.insert(
-          specifier,
-          RemoteModulesStoreSpecifierValue::Data(offset as usize),
-        );
-      }
-
-      for _ in 0..redirects_len {
-        let (current_input, (from, to)) = read_redirect(input)?;
-        input = current_input;
-        specifiers.insert(from, RemoteModulesStoreSpecifierValue::Redirect(to));
-      }
-
-      Ok((input, specifiers))
-    }
-
-    let (files_data, specifiers) = read_headers(data)?;
-
-    Ok(Self {
-      specifiers,
-      files_data,
-    })
-  }
-
-  pub fn resolve_specifier<'a>(
-    &'a self,
-    specifier: &'a ModuleSpecifier,
-  ) -> Result<Option<&'a ModuleSpecifier>, AnyError> {
-    let mut count = 0;
-    let mut current = specifier;
-    loop {
-      if count > 10 {
-        bail!("Too many redirects resolving '{}'", specifier);
-      }
-      match self.specifiers.get(current) {
-        Some(RemoteModulesStoreSpecifierValue::Redirect(to)) => {
-          current = to;
-          count += 1;
-        }
-        Some(RemoteModulesStoreSpecifierValue::Data(_)) => {
-          return Ok(Some(current));
-        }
-        None => {
-          return Ok(None);
-        }
-      }
-    }
-  }
-
-  pub fn read<'a>(
-    &'a self,
-    specifier: &'a ModuleSpecifier,
-  ) -> Result<Option<RemoteModuleData<'a>>, AnyError> {
-    let mut count = 0;
-    let mut current = specifier;
-    loop {
-      if count > 10 {
-        bail!("Too many redirects resolving '{}'", specifier);
-      }
-      match self.specifiers.get(current) {
-        Some(RemoteModulesStoreSpecifierValue::Redirect(to)) => {
-          current = to;
-          count += 1;
-        }
-        Some(RemoteModulesStoreSpecifierValue::Data(offset)) => {
-          let files_data = &self.files_data[*offset..];
-          let media_type = deserialize_media_type(files_data[0])?;
-          let (input, len) = read_u64(&files_data[1..])?;
-          let data = &input[..len as usize];
-          return Ok(Some(RemoteModuleData {
-            specifier,
-            media_type,
-            data: Cow::Borrowed(data),
-          }));
-        }
-        None => {
-          return Ok(None);
-        }
-      }
-    }
-  }
-}
-
-// todo(THIS PR): make this better
-fn serialize_media_type(media_type: MediaType) -> u8 {
-  match media_type {
-    MediaType::JavaScript => 0,
-    MediaType::Jsx => 1,
-    MediaType::Mjs => 2,
-    MediaType::Cjs => 3,
-    MediaType::TypeScript => 4,
-    MediaType::Mts => 5,
-    MediaType::Cts => 6,
-    MediaType::Dts => 7,
-    MediaType::Dmts => 8,
-    MediaType::Dcts => 9,
-    MediaType::Tsx => 10,
-    MediaType::Json => 11,
-    MediaType::Wasm => 12,
-    MediaType::TsBuildInfo => 13,
-    MediaType::SourceMap => 14,
-    MediaType::Unknown => 15,
-  }
-}
-
-fn deserialize_media_type(value: u8) -> Result<MediaType, AnyError> {
-  match value {
-    0 => Ok(MediaType::JavaScript),
-    1 => Ok(MediaType::Jsx),
-    2 => Ok(MediaType::Mjs),
-    3 => Ok(MediaType::Cjs),
-    4 => Ok(MediaType::TypeScript),
-    5 => Ok(MediaType::Mts),
-    6 => Ok(MediaType::Cts),
-    7 => Ok(MediaType::Dts),
-    8 => Ok(MediaType::Dmts),
-    9 => Ok(MediaType::Dcts),
-    10 => Ok(MediaType::Tsx),
-    11 => Ok(MediaType::Json),
-    12 => Ok(MediaType::Wasm),
-    13 => Ok(MediaType::TsBuildInfo),
-    14 => Ok(MediaType::SourceMap),
-    15 => Ok(MediaType::Unknown),
-    _ => bail!("Unknown media type value: {}", value),
-  }
-}
-
-#[derive(Default)]
-struct RemoteModulesStoreBuilder {
-  specifiers: Vec<(String, u64)>,
-  data: Vec<(MediaType, Vec<u8>)>,
-  specifiers_byte_len: u64,
-  data_byte_len: u64,
-  redirects: Vec<(String, String)>,
-  redirects_len: u64,
-}
-
-impl RemoteModulesStoreBuilder {
-  pub fn add(&mut self, specifier: &Url, media_type: MediaType, data: Vec<u8>) {
-    let specifier = specifier.to_string();
-    self.specifiers_byte_len += 4 + specifier.len() as u64 + 8;
-    self.specifiers.push((specifier, self.data_byte_len));
-    self.data_byte_len += 1 + 8 + data.len() as u64;
-    self.data.push((media_type, data));
-  }
-
-  pub fn add_redirects(&mut self, redirects: &BTreeMap<Url, Url>) {
-    self.redirects.reserve(redirects.len());
-    for (from, to) in redirects {
-      let from = from.to_string();
-      let to = to.to_string();
-      self.redirects_len += (4 + from.len() + 4 + to.len()) as u64;
-      self.redirects.push((from, to));
-    }
-  }
-
-  pub fn total_len(&self) -> u64 {
-    4 + 4 + self.specifiers_byte_len + self.redirects_len + self.data_byte_len
-  }
-
-  pub fn write(&self, writer: &mut dyn Write) -> Result<(), AnyError> {
-    writer.write_all(&(self.specifiers.len() as u32).to_be_bytes())?;
-    writer.write_all(&(self.redirects.len() as u32).to_be_bytes())?;
-    for (specifier, offset) in &self.specifiers {
-      writer.write_all(&(specifier.len() as u32).to_be_bytes())?;
-      writer.write_all(specifier.as_bytes())?;
-      writer.write_all(&offset.to_be_bytes())?;
-    }
-    for (from, to) in &self.redirects {
-      writer.write_all(&(from.len() as u32).to_be_bytes())?;
-      writer.write_all(from.as_bytes())?;
-      writer.write_all(&(to.len() as u32).to_be_bytes())?;
-      writer.write_all(to.as_bytes())?;
-    }
-    for (media_type, data) in &self.data {
-      writer.write_all(&[serialize_media_type(*media_type)])?;
-      writer.write_all(&(data.len() as u32).to_be_bytes())?;
-      writer.write_all(data)?;
-    }
-    Ok(())
-  }
-}
-
 /// This function returns the environment variables specified
 /// in the passed environment file.
 fn get_file_env_vars(
@@ -1191,154 +884,4 @@ fn set_windows_binary_to_gui(bin: &mut [u8]) -> Result<(), AnyError> {
   bin[(subsystem_start)..(subsystem_start + 2)]
     .copy_from_slice(&subsystem.to_le_bytes());
   Ok(())
-}
-
-fn serialize_npm_snapshot(
-  mut snapshot: SerializedNpmResolutionSnapshot,
-) -> Vec<u8> {
-  fn append_string(bytes: &mut Vec<u8>, string: &str) {
-    let len = string.len() as u32;
-    bytes.extend_from_slice(&len.to_be_bytes());
-    bytes.extend_from_slice(string.as_bytes());
-  }
-
-  snapshot.packages.sort_by(|a, b| a.id.cmp(&b.id)); // determinism
-  let ids_to_stored_ids = snapshot
-    .packages
-    .iter()
-    .enumerate()
-    .map(|(i, pkg)| (&pkg.id, i as u32))
-    .collect::<HashMap<_, _>>();
-
-  let mut root_packages: Vec<_> = snapshot.root_packages.iter().collect();
-  root_packages.sort();
-  let mut bytes = Vec::new();
-
-  bytes.extend(&(snapshot.packages.len() as u32).to_be_bytes());
-  for pkg in &snapshot.packages {
-    append_string(&mut bytes, &pkg.id.as_serialized());
-  }
-
-  bytes.extend(&(root_packages.len() as u32).to_be_bytes());
-  for (req, id) in root_packages {
-    append_string(&mut bytes, &req.to_string());
-    let id = ids_to_stored_ids.get(&id).unwrap();
-    bytes.extend_from_slice(&id.to_be_bytes());
-  }
-
-  for pkg in &snapshot.packages {
-    let deps_len = pkg.dependencies.len() as u32;
-    bytes.extend_from_slice(&deps_len.to_be_bytes());
-    let mut deps: Vec<_> = pkg.dependencies.iter().collect();
-    deps.sort();
-    for (req, id) in deps {
-      append_string(&mut bytes, req);
-      let id = ids_to_stored_ids.get(&id).unwrap();
-      bytes.extend_from_slice(&id.to_be_bytes());
-    }
-  }
-
-  bytes
-}
-
-fn deserialize_npm_snapshot(
-  data: &[u8],
-) -> Result<ValidSerializedNpmResolutionSnapshot, AnyError> {
-  fn read_root_package(
-    data: &[u8],
-  ) -> Result<(&[u8], (PackageReq, usize)), AnyError> {
-    let (data, req) = read_string_lossy(data)?;
-    let req = PackageReq::from_str(&req)?;
-    let (data, id) = read_u32_as_usize(data)?;
-    Ok((data, (req, id)))
-  }
-
-  let (mut data, packages_len) = read_u32_as_usize(data)?;
-
-  // get a hashmap of all the npm package ids to their serialized ids
-  let mut data_ids_to_npm_ids = Vec::with_capacity(packages_len);
-  for _ in 0..packages_len {
-    let (current_data, id) = read_string_lossy(data)?;
-    data = current_data;
-    let id = NpmPackageId::from_serialized(&id)?;
-    data_ids_to_npm_ids.push(id);
-  }
-
-  let (mut data, root_packages_len) = read_u32_as_usize(data)?;
-  let mut root_packages = HashMap::with_capacity(root_packages_len);
-  for _ in 0..root_packages_len {
-    let (current_data, (req, id)) = read_root_package(data)?;
-    data = current_data;
-    root_packages.insert(req, data_ids_to_npm_ids[id].clone());
-  }
-
-  let mut packages = Vec::with_capacity(packages_len);
-  for _ in 0..packages_len {
-    let (current_data, id) = read_u32_as_usize(data)?;
-    data = current_data;
-    let id = data_ids_to_npm_ids[id].clone();
-    let (current_data, deps_len) = read_u32_as_usize(data)?;
-    data = current_data;
-    let mut dependencies = HashMap::with_capacity(deps_len);
-    for _ in 0..deps_len {
-      let (current_data, req) = read_string_lossy(data)?;
-      data = current_data;
-      let (current_data, id) = read_u32_as_usize(data)?;
-      data = current_data;
-      // todo(THIS PR): handle when id >= data_ids_to_npm_ids.len()
-      dependencies.insert(req.into_owned(), data_ids_to_npm_ids[id].clone());
-    }
-
-    packages.push(SerializedNpmResolutionSnapshotPackage {
-      id: id,
-      system: Default::default(),
-      dist: Default::default(),
-      dependencies,
-      optional_dependencies: Default::default(),
-      bin: None,
-      scripts: Default::default(),
-      deprecated: Default::default(),
-    });
-  }
-
-  if !data.is_empty() {
-    bail!("Unexpected data left over");
-  }
-
-  Ok(
-    SerializedNpmResolutionSnapshot {
-      packages,
-      root_packages,
-    }
-    // this is ok because we have already verified that all the
-    // identifiers found in the snapshot are valid via the
-    // npm package id -> npm package id mapping
-    .into_valid_unsafe(),
-  )
-}
-
-fn read_string_lossy(data: &[u8]) -> Result<(&[u8], Cow<str>), AnyError> {
-  let (data, str_len) = read_u32_as_usize(data)?;
-  if data.len() < str_len {
-    bail!("Unexpected end of data");
-  }
-  Ok((data, String::from_utf8_lossy(&data[..str_len])))
-}
-
-fn read_u32_as_usize(data: &[u8]) -> Result<(&[u8], usize), AnyError> {
-  if data.len() < 4 {
-    bail!("Unexpected end of data");
-  }
-  let (len_bytes, rest) = data.split_at(4);
-  let len = u32::from_be_bytes(len_bytes.try_into()?);
-  Ok((rest, len as usize))
-}
-
-fn read_u64(data: &[u8]) -> Result<(&[u8], u64), AnyError> {
-  if data.len() < 8 {
-    bail!("Unexpected end of data");
-  }
-  let (len_bytes, rest) = data.split_at(8);
-  let len = u64::from_be_bytes(len_bytes.try_into()?);
-  Ok((rest, len))
 }
