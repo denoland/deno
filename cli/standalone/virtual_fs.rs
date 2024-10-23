@@ -184,11 +184,39 @@ impl VfsBuilder {
   }
 
   pub fn add_file_at_path(&mut self, path: &Path) -> Result<(), AnyError> {
-    let target_path = canonicalize_path(path)?;
-    if target_path != path {
-      self.add_symlink(path, &target_path)?;
+    let canonicalized_target_path = canonicalize_path(&path)?;
+    let target_components: Vec<_> = path.components().collect();
+    let mut current_root_path = self.root_path.clone();
+
+    // Handle symlink (single/nested) in root path
+    if target_components.len() > 2 {
+      let mut current_component_path =
+        PathBuf::from(target_components[0].as_os_str());
+
+      for target_component in &target_components[1..target_components.len() - 1]
+      {
+        let canonicalized_root = canonicalize_path(&current_root_path)?;
+
+        if current_component_path == canonicalized_root {
+          current_component_path.push(target_component);
+          current_component_path = canonicalize_path(&current_component_path)?;
+          current_root_path = current_component_path.clone();
+          self.root_path = current_root_path.clone();
+        } else {
+          current_component_path.push(target_component);
+          current_component_path = canonicalize_path(&current_component_path)?;
+        }
+      }
     }
-    self.add_file_at_path_not_symlink(&target_path)
+
+    // Add symlink if target path isn't in the current root path
+    if canonicalized_target_path != path
+      && !canonicalized_target_path.starts_with(&self.root_path)
+    {
+      self.add_symlink(path, &canonicalized_target_path)?;
+    }
+
+    self.add_file_at_path_not_symlink(&canonicalized_target_path)
   }
 
   pub fn add_file_at_path_not_symlink(
