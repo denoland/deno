@@ -164,7 +164,6 @@ impl NpmFetchResolver {
     }
     let fetch_package_info = || async {
       let info_url = get_package_url(&self.npmrc, name);
-      println!("GET INFO: {:#?}", info_url);
       let file_fetcher = self.file_fetcher.clone();
       // spawn due to the lsp's `Send` requirement
       let file = deno_core::unsync::spawn(async move {
