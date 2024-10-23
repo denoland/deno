@@ -277,7 +277,7 @@ pub async fn op_net_join_multi_v6_udp(
       #[cfg(windows)]
       {
         windows_sys::Win32::NetworkManagement::IpHelper::if_nametoindex(
-          c_interface_name.as_ptr() as windows_sys::Win32::Foundation::PCSTR,
+          c_interface_name.as_ptr() as windows_sys::core::PCSTR,
         )
       }
       #[cfg(not(any(unix, windows)))]
