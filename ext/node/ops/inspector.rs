@@ -1,5 +1,6 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
+use crate::NodePermissions;
 use deno_core::anyhow::Error;
 use deno_core::error::generic_error;
 use deno_core::futures::channel::mpsc;
@@ -14,8 +15,35 @@ use std::cell::RefCell;
 use std::rc::Rc;
 
 #[op2(fast)]
-pub fn op_inspector_open() {
+pub fn op_inspector_enabled() -> bool {
   // TODO: hook up to InspectorServer
+  false
+}
+
+#[op2]
+pub fn op_inspector_open<P>(
+  _state: &mut OpState,
+  _port: Option<u16>,
+  #[string] _host: Option<String>,
+) -> Result<(), Error>
+where
+  P: NodePermissions + 'static,
+{
+  // TODO: hook up to InspectorServer
+  /*
+  let server = state.borrow_mut::<InspectorServer>();
+  if let Some(host) = host {
+    server.set_host(host);
+  }
+  if let Some(port) = port {
+    server.set_port(port);
+  }
+  state
+    .borrow_mut::<P>()
+    .check_net((server.host(), Some(server.port())), "inspector.open")?;
+  */
+
+  Ok(())
 }
 
 #[op2(fast)]
@@ -59,13 +87,20 @@ impl GarbageCollected for JSInspectorSession {}
 
 #[op2]
 #[cppgc]
-pub fn op_inspector_connect<'s>(
+pub fn op_inspector_connect<'s, P>(
   isolate: *mut v8::Isolate,
   scope: &mut v8::HandleScope<'s>,
   state: &mut OpState,
   connect_to_main_thread: bool,
   callback: v8::Local<'s, v8::Function>,
-) -> Result<JSInspectorSession, Error> {
+) -> Result<JSInspectorSession, Error>
+where
+  P: NodePermissions + 'static,
+{
+  state
+    .borrow_mut::<P>()
+    .check_sys("inspector", "inspector.Session.connect")?;
+
   if connect_to_main_thread {
     return Err(generic_error("connectToMainThread not supported"));
   }

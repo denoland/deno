@@ -11,6 +11,7 @@ import {
   op_inspector_disconnect,
   op_inspector_dispatch,
   op_inspector_emit_protocol_event,
+  op_inspector_enabled,
   op_inspector_open,
   op_inspector_url,
   op_inspector_wait,
@@ -131,7 +132,7 @@ class Session extends EventEmitter {
 }
 
 function open(port, host, wait) {
-  if (isEnabled()) {
+  if (op_inspector_enabled()) {
     throw new ERR_INSPECTOR_ALREADY_ACTIVATED();
   }
   // inspectorOpen() currently does not typecheck its arguments and adding
@@ -140,6 +141,13 @@ function open(port, host, wait) {
   // causing an integer overflow otherwise, so we at least need to prevent that.
   if (isUint32(port)) {
     validateInt32(port, "port", 0, 65535);
+  } else {
+    // equiv of handling args[0]->IsUint32()
+    port = undefined;
+  }
+  if (typeof host !== "string") {
+    // equiv of handling args[1]->IsString()
+    host = undefined;
   }
   op_inspector_open(port, host);
   if (wait) {
