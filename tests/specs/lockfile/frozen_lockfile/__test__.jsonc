@@ -183,6 +183,19 @@
           "exitCode": 1
         }
       ]
+    },
+    "check_subcommand": {
+      "steps": [
+        {
+          "args": "check --frozen=true add.ts",
+          "output": "[WILDCARD]The lockfile is out of date[WILDCARD]",
+          "exitCode": 1
+        },
+        {
+          "args": "check --frozen=false add.ts",
+          "output": "[WILDCARD]Check [WILDCARD]add.ts\n"
+        }
+      ]
     }
   }
 }

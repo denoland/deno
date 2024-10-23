@@ -2041,6 +2041,7 @@ dependencies = [
  "percent-encoding",
  "regex",
  "rustyline",
+ "same-file",
  "serde",
  "signal-hook",
  "signal-hook-registry",
