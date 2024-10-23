@@ -68,6 +68,25 @@ impl VfsBuilder {
     })
   }
 
+  pub fn set_new_root_path(
+    &mut self,
+    root_path: PathBuf,
+  ) -> Result<(), AnyError> {
+    self.root_path = canonicalize_path(&root_path)?;
+    self.root_dir = VirtualDirectory {
+      name: self
+        .root_path
+        .file_stem()
+        .map(|s| s.to_string_lossy().into_owned())
+        .unwrap_or("root".to_string()),
+      entries: vec![VfsEntry::Dir(VirtualDirectory {
+        name: std::mem::take(&mut self.root_dir.name),
+        entries: std::mem::take(&mut self.root_dir.entries),
+      })],
+    };
+    Ok(())
+  }
+
   pub fn with_root_dir<R>(
     &mut self,
     with_root: impl FnOnce(&mut VirtualDirectory) -> R,

@@ -407,7 +407,7 @@ pub async fn run(data: StandaloneData) -> Result<i32, AnyError> {
   let root_dir_url =
     Arc::new(ModuleSpecifier::from_directory_path(&root_path).unwrap());
   let main_module = root_dir_url.join(&metadata.entrypoint_key).unwrap();
-  let root_node_modules_path = root_path.join("node_modules");
+  let root_node_modules_path = root_path.join(".deno_compile_node_modules");
   let npm_cache_dir = NpmCacheDir::new(
     &RealDenoCacheEnv,
     root_node_modules_path.clone(),

@@ -571,7 +571,7 @@ impl<'a> DenoCompileBinaryWriter<'a> {
         }
       }
       InnerCliNpmResolverRef::Byonm(resolver) => {
-        let npm_vfs_builder = VfsBuilder::new(root_path.clone())?;
+        let npm_vfs_builder = self.build_npm_vfs(&root_path, cli_options)?;
         (
           Some(npm_vfs_builder),
           Some(NodeModules::Byonm {
@@ -591,7 +591,6 @@ impl<'a> DenoCompileBinaryWriter<'a> {
       }
     };
     let mut vfs = if let Some(npm_vfs) = maybe_npm_vfs {
-      // todo: probably need to modify this a bit
       npm_vfs
     } else {
       VfsBuilder::new(root_path.clone())?
@@ -742,8 +741,8 @@ impl<'a> DenoCompileBinaryWriter<'a> {
         } else {
           // DO NOT include the user's registry url as it may contain credentials,
           // but also don't make this dependent on the registry url
-          let root_path = npm_resolver.global_cache_root_folder();
-          let mut builder = VfsBuilder::new(root_path)?;
+          let global_cache_root_path = npm_resolver.global_cache_root_folder();
+          let mut builder = VfsBuilder::new(global_cache_root_path)?;
           let mut packages =
             npm_resolver.all_system_packages(&self.npm_system_info);
           packages.sort_by(|a, b| a.id.cmp(&b.id)); // determinism
@@ -753,12 +752,12 @@ impl<'a> DenoCompileBinaryWriter<'a> {
             builder.add_dir_recursive(&folder)?;
           }
 
-          // Flatten all the registries folders into a single "node_modules/localhost" folder
+          // Flatten all the registries folders into a single ".deno_compile_node_modules/localhost" folder
           // that will be used by denort when loading the npm cache. This avoids us exposing
           // the user's private registry information and means we don't have to bother
           // serializing all the different registry config into the binary.
           builder.with_root_dir(|root_dir| {
-            root_dir.name = "node_modules".to_string();
+            root_dir.name = ".deno_compile_node_modules".to_string();
             let mut new_entries = Vec::with_capacity(root_dir.entries.len());
             let mut localhost_entries = IndexMap::new();
             for entry in std::mem::take(&mut root_dir.entries) {
@@ -792,6 +791,8 @@ impl<'a> DenoCompileBinaryWriter<'a> {
             new_entries.sort_by(|a, b| a.name().cmp(b.name()));
             root_dir.entries = new_entries;
           });
+
+          builder.set_new_root_path(root_path.to_path_buf())?;
 
           Ok(builder)
         }

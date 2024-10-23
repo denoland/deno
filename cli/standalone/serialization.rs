@@ -229,9 +229,10 @@ impl<'a> DenoCompileModuleData<'a> {
 
     fn into_string_unsafe(data: Cow<'static, [u8]>) -> ModuleSourceCode {
       match data {
-        Cow::Borrowed(d) => ModuleSourceCode::String(unsafe {
-          FastString::from_static(std::str::from_utf8_unchecked(d))
-        }),
+        Cow::Borrowed(d) => ModuleSourceCode::String(
+          // SAFETY: we know this is a valid utf8 string
+          unsafe { FastString::from_static(std::str::from_utf8_unchecked(d)) },
+        ),
         Cow::Owned(d) => ModuleSourceCode::Bytes(d.into_boxed_slice().into()),
       }
     }
@@ -440,6 +441,7 @@ fn deserialize_npm_snapshot(
     Ok((input, id))
   }
 
+  #[allow(clippy::needless_lifetimes)] // clippy bug
   fn parse_root_package<'a>(
     id_to_npm_id: &'a impl Fn(usize) -> Result<NpmPackageId, AnyError>,
   ) -> impl Fn(&[u8]) -> Result<(&[u8], (PackageReq, NpmPackageId)), AnyError> + 'a
@@ -452,6 +454,7 @@ fn deserialize_npm_snapshot(
     }
   }
 
+  #[allow(clippy::needless_lifetimes)] // clippy bug
   fn parse_package_dep<'a>(
     id_to_npm_id: &'a impl Fn(usize) -> Result<NpmPackageId, AnyError>,
   ) -> impl Fn(&[u8]) -> Result<(&[u8], (String, NpmPackageId)), AnyError> + 'a
