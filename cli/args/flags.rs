@@ -1178,7 +1178,7 @@ static DENO_HELP: &str = cstr!(
 
   <y>Dependency management:</>
     <g>add</>          Add dependencies
-                  <p(245)>deno add @std/assert  |  deno add npm:express</>
+                  <p(245)>deno add jsr:@std/assert  |  deno add npm:express</>
     <g>install</>      Install script as an executable
     <g>uninstall</>    Uninstall a script previously installed with deno install
     <g>remove</>       Remove dependencies from the configuration file
@@ -1856,6 +1856,7 @@ Unless --reload is specified, this command will not re-download already cached d
             .required_unless_present("help")
             .value_hint(ValueHint::FilePath),
         )
+        .arg(frozen_lockfile_arg())
         .arg(allow_import_arg())
       }
     )
@@ -4373,6 +4374,7 @@ fn check_parse(
   flags.type_check_mode = TypeCheckMode::Local;
   compile_args_without_check_parse(flags, matches)?;
   unstable_args_parse(flags, matches, UnstableArgsConfig::ResolutionAndRuntime);
+  frozen_lockfile_arg_parse(flags, matches);
   let files = matches.remove_many::<String>("file").unwrap().collect();
   if matches.get_flag("all") || matches.get_flag("remote") {
     flags.type_check_mode = TypeCheckMode::All;

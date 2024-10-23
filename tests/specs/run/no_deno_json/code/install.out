@@ -1,6 +1,6 @@
 [UNORDERED_START]
-Download http://localhost:4260/@denotest/check-error
-Download http://localhost:4260/@denotest/cjs-default-export
+Download http://localhost:4260/@denotest%2fcheck-error
+Download http://localhost:4260/@denotest%2fcjs-default-export
 Download http://localhost:4260/chalk
 Download http://localhost:4260/ansi-styles
 Download http://localhost:4260/supports-color

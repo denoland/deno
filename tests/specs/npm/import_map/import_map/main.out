@@ -1,6 +1,6 @@
 [UNORDERED_START]
 Download http://localhost:4260/chalk
-Download http://localhost:4260/@denotest/dual-cjs-esm
+Download http://localhost:4260/@denotest%2fdual-cjs-esm
 [UNORDERED_END]
 [UNORDERED_START]
 Download http://localhost:4260/@denotest/dual-cjs-esm/1.0.0.tgz
