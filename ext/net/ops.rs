@@ -261,6 +261,8 @@ pub async fn op_net_join_multi_v6_udp(
     0
   } else {
     let interface_name = parts[1];
+    let c_interface_name = std::ffi::CString::new(interface_name)
+      .map_err(|_| NetError::NoResolvedAddress)?;
 
     // SAFETY:
     // The interface name is constructed using safe interfaces, and dropped once c_interface_name
@@ -270,18 +272,12 @@ pub async fn op_net_join_multi_v6_udp(
     unsafe {
       #[cfg(unix)]
       {
-        let c_interface_name = std::ffi::CString::new(interface_name)
-          .map_err(|_| NetError::NoResolvedAddress)?;
         libc::if_nametoindex(c_interface_name.as_ptr())
       }
       #[cfg(windows)]
       {
-        let wide_interface_name: Vec<u16> = interface_name
-          .encode_utf16()
-          .chain(std::iter::once(0))
-          .collect();
         windows_sys::Win32::NetworkManagement::IpHelper::if_nametoindex(
-          wide_interface_name.as_ptr(),
+          c_interface_name.as_ptr() as windows_sys::Win32::Foundation::PCSTR,
         )
       }
       #[cfg(not(any(unix, windows)))]
