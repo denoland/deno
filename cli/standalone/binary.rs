@@ -312,9 +312,13 @@ pub fn extract_standalone(
   };
 
   let root_path = {
-    let current_exe_path = std::env::current_exe().unwrap();
-    let current_exe_name =
-      current_exe_path.file_name().unwrap().to_string_lossy();
+    let maybe_current_exe = std::env::current_exe().ok();
+    let current_exe_name = maybe_current_exe
+      .as_ref()
+      .and_then(|p| p.file_name())
+      .map(|p| p.to_string_lossy())
+      // should never happen
+      .unwrap_or_else(|| Cow::Borrowed("binary"));
     std::env::temp_dir().join(format!("deno-compile-{}", current_exe_name))
   };
   let cli_args = cli_args.into_owned();

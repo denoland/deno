@@ -475,7 +475,7 @@ pub async fn run(data: StandaloneData) -> Result<i32, AnyError> {
             // this is only used for installing packages, which isn't necessary with deno compile
             NpmInstallDepsProvider::empty(),
           ),
-          // Packages from different registries are already inlined in the ESZip,
+          // Packages from different registries are already inlined in the binary,
           // so no need to create actual `.npmrc` configuration.
           npmrc: create_default_npmrc(),
           lifecycle_scripts: Default::default(),
