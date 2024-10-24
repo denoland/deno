@@ -103,7 +103,8 @@ impl VfsBuilder {
       } else if file_type.is_symlink() {
         match util::fs::canonicalize_path(&path) {
           Ok(target) => {
-            if let Err(StripRootError { .. }) = self.add_symlink(&path, &target)
+            if let Err(AnyError { .. }) =
+              self.resolve_symlinks_in_path(&path, &target)
             {
               if target.is_file() {
                 // this may change behavior, so warn the user about it
