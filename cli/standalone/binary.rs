@@ -54,7 +54,6 @@ use indexmap::IndexMap;
 use log::Level;
 use serde::Deserialize;
 use serde::Serialize;
-use windows_sys::Wdk::System;
 
 use crate::args::CaData;
 use crate::args::CliOptions;
