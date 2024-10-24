@@ -228,6 +228,9 @@ impl<'a> DenoCompileModuleData<'a> {
     }
 
     fn into_string_unsafe(data: Cow<'static, [u8]>) -> ModuleSourceCode {
+      // todo(https://github.com/denoland/deno_core/pull/943): store whether
+      // the string is ascii or not ahead of time so we can avoid the is_ascii()
+      // check in FastString::from_static
       match data {
         Cow::Borrowed(d) => ModuleSourceCode::String(
           // SAFETY: we know this is a valid utf8 string

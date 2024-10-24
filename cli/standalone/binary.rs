@@ -597,6 +597,9 @@ impl<'a> DenoCompileBinaryWriter<'a> {
     };
     let mut remote_modules_store = RemoteModulesStoreBuilder::default();
     for module in graph.modules() {
+      if module.specifier().scheme() == "data" {
+        continue; // don't store data urls as an entry as they're in the code
+      }
       let (maybe_source, media_type) = match module {
         deno_graph::Module::Js(m) => {
           // todo(https://github.com/denoland/deno_media_type/pull/12): use is_emittable()
