@@ -531,6 +531,7 @@
           "detect-cjs",
           "ffi",
           "fs",
+          "fmt-component",
           "http",
           "kv",
           "net",
