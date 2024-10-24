@@ -1,6 +1,5 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
-use deno_core::error::AnyError;
 use deno_core::op2;
 use deno_core::OpState;
 use deno_core::ResourceHandle;
@@ -22,7 +21,7 @@ enum HandleType {
 pub fn op_node_guess_handle_type(
   state: &mut OpState,
   rid: u32,
-) -> Result<u32, AnyError> {
+) -> Result<u32, deno_core::error::AnyError> {
   let handle = state.resource_table.get_handle(rid)?;
 
   let handle_type = match handle {
