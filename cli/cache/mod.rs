@@ -378,6 +378,7 @@ impl Loader for FetchCacher {
             } else {
               FetchPermissionsOptionRef::DynamicContainer(&permissions)
             },
+            maybe_auth: None,
             maybe_accept: None,
             maybe_cache_setting: maybe_cache_setting.as_ref(),
           },

@@ -367,10 +367,14 @@ pub async fn add(
     Default::default(),
     None,
   );
+
+  let npmrc = cli_factory.cli_options().unwrap().npmrc();
+
   deps_file_fetcher.set_download_log_level(log::Level::Trace);
   let deps_file_fetcher = Arc::new(deps_file_fetcher);
   let jsr_resolver = Arc::new(JsrFetchResolver::new(deps_file_fetcher.clone()));
-  let npm_resolver = Arc::new(NpmFetchResolver::new(deps_file_fetcher));
+  let npm_resolver =
+    Arc::new(NpmFetchResolver::new(deps_file_fetcher, npmrc.clone()));
 
   let mut selected_packages = Vec::with_capacity(add_flags.packages.len());
   let mut package_reqs = Vec::with_capacity(add_flags.packages.len());
