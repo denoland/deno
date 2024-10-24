@@ -2,18 +2,10 @@
 
 use deno_core::ModuleSpecifier;
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum CodeCacheType {
   EsModule,
   Script,
-}
-
-impl CodeCacheType {
-  pub fn as_str(&self) -> &str {
-    match self {
-      Self::EsModule => "esmodule",
-      Self::Script => "script",
-    }
-  }
 }
 
 pub trait CodeCache: Send + Sync {
@@ -23,6 +15,7 @@ pub trait CodeCache: Send + Sync {
     code_cache_type: CodeCacheType,
     source_hash: u64,
   ) -> Option<Vec<u8>>;
+
   fn set_sync(
     &self,
     specifier: ModuleSpecifier,
