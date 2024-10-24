@@ -198,7 +198,6 @@ fn json_body(value: serde_json::Value) -> UnsyncBoxBody<Bytes, Infallible> {
 
 /// Benchmark server that just serves "hello world" responses.
 async fn hyper_hello(port: u16) {
-  println!("hyper hello");
   let addr = SocketAddr::from(([127, 0, 0, 1], port));
   let handler = move |_: Request<hyper::body::Incoming>| async move {
     Ok::<_, anyhow::Error>(Response::new(UnsyncBoxBody::new(
@@ -342,7 +341,10 @@ async fn get_tcp_listener_stream(
     .collect::<Vec<_>>();
 
   // Eye catcher for HttpServerCount
-  println!("ready: {name} on {:?}", addresses);
+  #[allow(clippy::print_stdout)]
+  {
+    println!("ready: {name} on {:?}", addresses);
+  }
 
   futures::stream::select_all(listeners)
 }
@@ -358,7 +360,10 @@ async fn run_tls_client_auth_server(port: u16) {
   while let Some(Ok(mut tls_stream)) = tls.next().await {
     tokio::spawn(async move {
       let Ok(handshake) = tls_stream.handshake().await else {
-        eprintln!("Failed to handshake");
+        #[allow(clippy::print_stderr)]
+        {
+          eprintln!("Failed to handshake");
+        }
         return;
       };
       // We only need to check for the presence of client certificates
@@ -405,7 +410,6 @@ async fn absolute_redirect(
       .collect();
 
     if let Some(url) = query_params.get("redirect_to") {
-      println!("URL: {url:?}");
       let redirect = redirect_resp(url.to_owned());
       return Ok(redirect);
     }
@@ -413,7 +417,6 @@ async fn absolute_redirect(
 
   if path.starts_with("/REDIRECT") {
     let url = &req.uri().path()[9..];
-    println!("URL: {url:?}");
     let redirect = redirect_resp(url.to_string());
     return Ok(redirect);
   }
@@ -1357,6 +1360,7 @@ async fn wrap_client_auth_https_server(port: u16) {
       // here. Rusttls ensures that they are valid and signed by the CA.
       match handshake.has_peer_certificates {
         true => { yield Ok(tls); },
+        #[allow(clippy::print_stderr)]
         false => { eprintln!("https_client_auth: no valid client certificate"); },
       };
     }

@@ -1,8 +1,5 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
-#![allow(clippy::print_stdout)]
-#![allow(clippy::print_stderr)]
-
 use std::collections::HashMap;
 use std::env;
 use std::io::Write;
@@ -302,7 +299,10 @@ async fn get_tcp_listener_stream(
     .collect::<Vec<_>>();
 
   // Eye catcher for HttpServerCount
-  println!("ready: {name} on {:?}", addresses);
+  #[allow(clippy::print_stdout)]
+  {
+    println!("ready: {name} on {:?}", addresses);
+  }
 
   futures::stream::select_all(listeners)
 }
@@ -345,7 +345,10 @@ struct HttpServerStarter {
 
 impl Default for HttpServerStarter {
   fn default() -> Self {
-    println!("test_server starting...");
+    #[allow(clippy::print_stdout)]
+    {
+      println!("test_server starting...");
+    }
     let mut test_server = Command::new(test_server_path())
       .current_dir(testdata_path())
       .stdout(Stdio::piped())
@@ -360,7 +363,6 @@ impl Default for HttpServerStarter {
     let mut ready_count = 0;
     for maybe_line in lines {
       if let Ok(line) = maybe_line {
-        eprintln!("LINE: {}", line);
         if line.starts_with("ready:") {
           ready_count += 1;
         }
@@ -480,6 +482,7 @@ pub fn run_collect(
   } = prog.wait_with_output().expect("failed to wait on child");
   let stdout = String::from_utf8(stdout).unwrap();
   let stderr = String::from_utf8(stderr).unwrap();
+  #[allow(clippy::print_stderr)]
   if expect_success != status.success() {
     eprintln!("stdout: <<<{stdout}>>>");
     eprintln!("stderr: <<<{stderr}>>>");
@@ -540,6 +543,7 @@ pub fn run_and_collect_output_with_args(
   } = deno.wait_with_output().expect("failed to wait on child");
   let stdout = String::from_utf8(stdout).unwrap();
   let stderr = String::from_utf8(stderr).unwrap();
+  #[allow(clippy::print_stderr)]
   if expect_success != status.success() {
     eprintln!("stdout: <<<{stdout}>>>");
     eprintln!("stderr: <<<{stderr}>>>");
@@ -564,6 +568,7 @@ pub fn deno_cmd_with_deno_dir(deno_dir: &TempDir) -> TestCommandBuilder {
     .env("JSR_URL", jsr_registry_unset_url())
 }
 
+#[allow(clippy::print_stdout)]
 pub fn run_powershell_script_file(
   script_file_path: &str,
   args: Vec<&str>,
@@ -655,6 +660,7 @@ impl<'a> CheckOutputIntegrationTest<'a> {
 }
 
 pub fn wildcard_match(pattern: &str, text: &str) -> bool {
+  #[allow(clippy::print_stderr)]
   match wildcard_match_detailed(pattern, text) {
     WildcardMatchResult::Success => true,
     WildcardMatchResult::Fail(debug_output) => {
