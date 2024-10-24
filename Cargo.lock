@@ -1265,7 +1265,6 @@ dependencies = [
  "winapi",
  "windows-sys 0.52.0",
  "winres",
- "yoke",
  "zeromq",
  "zip",
  "zstd",
@@ -1392,9 +1391,9 @@ dependencies = [
 
 [[package]]
 name = "deno_config"
-version = "0.37.1"
+version = "0.37.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "3cb7a1723676fba5964f8d7441d8b53748f9e74d6d4241be7de9730da021859a"
+checksum = "5900bfb37538d83b19ba0b157cdc785770e38422ee4632411e3bd3d90ac0f537"
 dependencies = [
  "anyhow",
  "deno_package_json",
@@ -1578,6 +1577,7 @@ dependencies = [
  "libffi",
  "libffi-sys",
  "log",
+ "num-bigint",
  "serde",
  "serde-value",
  "serde_json",
@@ -2043,11 +2043,13 @@ dependencies = [
  "percent-encoding",
  "regex",
  "rustyline",
+ "same-file",
  "serde",
  "signal-hook",
  "signal-hook-registry",
  "tempfile",
  "test_server",
+ "thiserror",
  "tokio",
  "tokio-metrics",
  "twox-hash",
@@ -2059,9 +2061,9 @@ dependencies = [
 
 [[package]]
 name = "deno_semver"
-version = "0.5.14"
+version = "0.5.16"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "670fec7ef309384e23c2a90ac5d2d9d91a776d225306c75f5cdd28cf6cc8a59f"
+checksum = "c957c6a57c38b7dde2315df0da0ec228911e56a74f185b108a488d0401841a67"
 dependencies = [
  "monch",
  "once_cell",
@@ -2563,9 +2565,9 @@ dependencies = [
 
 [[package]]
 name = "dprint-plugin-json"
-version = "0.19.3"
+version = "0.19.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "a19f4a9f2f548b2098b8ec597d7bb40af133b6e9a3187c1d3c4caa101b8c93c3"
+checksum = "57f91e594559b450b7c5d6a0ba9f3f9fe951c1ea371168f7c95973da3fdbd85a"
 dependencies = [
  "anyhow",
  "dprint-core",
@@ -2577,9 +2579,9 @@ dependencies = [
 
 [[package]]
 name = "dprint-plugin-jupyter"
-version = "0.1.3"
+version = "0.1.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "c67b0e54b552a4775c221b44ed33be918c400bd8041d1f044f947fbb01025cc0"
+checksum = "d0d20684e37b3824e2bc917cfcb14e2cdf88398eef507335d839cbd78172bfee"
 dependencies = [
  "anyhow",
  "dprint-core",
@@ -4034,9 +4036,9 @@ dependencies = [
 
 [[package]]
 name = "jsonc-parser"
-version = "0.23.0"
+version = "0.26.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "7725c320caac8c21d8228c1d055af27a995d371f78cc763073d3e068323641b5"
+checksum = "57c78ad024523b61a2f20b1cad47413dd24db744a15d3d1b7276e69d1bee106c"
 dependencies = [
  "serde_json",
 ]
@@ -4327,9 +4329,9 @@ dependencies = [
 
 [[package]]
 name = "malva"
-version = "0.10.1"
+version = "0.11.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "484beda6e5d775ed06a8ec0fce79e51d39f49d834ed2a29da3f437079321804f"
+checksum = "1c67b97ed99f56b86fa3c010843441f1fcdb71884bab96b8551bb3d1e7c6d529"
 dependencies = [
  "aho-corasick",
  "itertools 0.13.0",
@@ -4340,9 +4342,9 @@ dependencies = [
 
 [[package]]
 name = "markup_fmt"
-version = "0.13.1"
+version = "0.14.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "9dab5ae899659fbe5c8835b2c8ca8d3e357974a3e454138925b404004973361f"
+checksum = "3f15d7b24ae4ea9b87279bc0696462a4fb6c2168847f2cc162a2da05fe1a0f61"
 dependencies = [
  "aho-corasick",
  "css_dataset",

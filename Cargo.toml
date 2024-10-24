@@ -55,7 +55,7 @@ deno_npm = "=0.25.4"
 deno_path_util = "=0.2.1"
 deno_permissions = { version = "0.33.0", path = "./runtime/permissions" }
 deno_runtime = { version = "0.182.0", path = "./runtime" }
-deno_semver = "=0.5.14"
+deno_semver = "=0.5.16"
 deno_terminal = "0.2.0"
 napi_sym = { version = "0.103.0", path = "./cli/napi/sym" }
 test_util = { package = "test_server", path = "./tests/util/server" }
@@ -137,7 +137,7 @@ hyper-util = { version = "=0.1.7", features = ["tokio", "client", "client-legacy
 hyper_v014 = { package = "hyper", version = "0.14.26", features = ["runtime", "http1"] }
 indexmap = { version = "2", features = ["serde"] }
 ipnet = "2.3"
-jsonc-parser = { version = "=0.23.0", features = ["serde"] }
+jsonc-parser = { version = "=0.26.1", features = ["serde"] }
 lazy-regex = "3"
 libc = "0.2.126"
 libz-sys = { version = "1.1.20", default-features = false }
@@ -187,7 +187,7 @@ tar = "=0.4.40"
 tempfile = "3.4.0"
 termcolor = "1.1.3"
 thiserror = "1.0.61"
-tokio = { version = "=1.36.0", features = ["full"] }
+tokio = { version = "1.36.0", features = ["full"] }
 tokio-metrics = { version = "0.3.0", features = ["rt"] }
 tokio-rustls = { version = "0.26.0", default-features = false, features = ["ring", "tls12"] }
 tokio-socks = "0.5.1"

@@ -117,10 +117,12 @@ once_cell.workspace = true
 percent-encoding.workspace = true
 regex.workspace = true
 rustyline = { workspace = true, features = ["custom-bindings"] }
+same-file = "1.0.6"
 serde.workspace = true
 signal-hook = "0.3.17"
 signal-hook-registry = "1.4.0"
 tempfile.workspace = true
+thiserror.workspace = true
 tokio.workspace = true
 tokio-metrics.workspace = true
 twox-hash.workspace = true
