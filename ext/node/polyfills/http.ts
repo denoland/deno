@@ -51,6 +51,7 @@ import { urlToHttpOptions } from "ext:deno_node/internal/url.ts";
 import { kEmptyObject } from "ext:deno_node/internal/util.mjs";
 import { constants, TCP } from "ext:deno_node/internal_binding/tcp_wrap.ts";
 import { notImplemented, warnNotImplemented } from "ext:deno_node/_utils.ts";
+import { isWindows } from "ext:deno_node/_util/os.ts";
 import {
   connResetException,
   ERR_HTTP_HEADERS_SENT,
@@ -67,13 +68,13 @@ import { headersEntries } from "ext:deno_fetch/20_headers.js";
 import { timerId } from "ext:deno_web/03_abort_signal.js";
 import { clearTimeout as webClearTimeout } from "ext:deno_web/02_timers.js";
 import { resourceForReadableStream } from "ext:deno_web/06_streams.js";
-import { TcpConn } from "ext:deno_net/01_net.js";
+import { UpgradedConn } from "ext:deno_net/01_net.js";
 import { STATUS_CODES } from "node:_http_server";
 import { methods as METHODS } from "node:_http_common";
 import { deprecate } from "node:util";
 
 const { internalRidSymbol } = core;
-const { ArrayIsArray } = primordials;
+const { ArrayIsArray, StringPrototypeToLowerCase } = primordials;
 
 type Chunk = string | Buffer | Uint8Array;
 
@@ -518,7 +519,7 @@ class ClientRequest extends OutgoingMessage {
           );
           assert(typeof res.remoteAddrIp !== "undefined");
           assert(typeof res.remoteAddrIp !== "undefined");
-          const conn = new TcpConn(
+          const conn = new UpgradedConn(
             upgradeRid,
             {
               transport: "tcp",
@@ -1353,7 +1354,7 @@ ServerResponse.prototype.setHeader = function (
   if (Array.isArray(value)) {
     this._hasNonStringHeaders = true;
   }
-  this._headers[name] = value;
+  this._headers[StringPrototypeToLowerCase(name)] = value;
   return this;
 };
 
@@ -1362,15 +1363,16 @@ ServerResponse.prototype.appendHeader = function (
   name: string,
   value: string | string[],
 ) {
-  if (this._headers[name] === undefined) {
+  const key = StringPrototypeToLowerCase(name);
+  if (this._headers[key] === undefined) {
     if (Array.isArray(value)) this._hasNonStringHeaders = true;
-    this._headers[name] = value;
+    this._headers[key] = value;
   } else {
     this._hasNonStringHeaders = true;
-    if (!Array.isArray(this._headers[name])) {
-      this._headers[name] = [this._headers[name]];
+    if (!Array.isArray(this._headers[key])) {
+      this._headers[key] = [this._headers[key]];
     }
-    const header = this._headers[name];
+    const header = this._headers[key];
     if (Array.isArray(value)) {
       header.push(...value);
     } else {
@@ -1384,14 +1386,14 @@ ServerResponse.prototype.getHeader = function (
   this: ServerResponse,
   name: string,
 ) {
-  return this._headers[name];
+  return this._headers[StringPrototypeToLowerCase(name)];
 };
 
 ServerResponse.prototype.removeHeader = function (
   this: ServerResponse,
   name: string,
 ) {
-  delete this._headers[name];
+  delete this._headers[StringPrototypeToLowerCase(name)];
 };
 
 ServerResponse.prototype.getHeaderNames = function (this: ServerResponse) {
@@ -1710,9 +1712,8 @@ export class ServerImpl extends EventEmitter {
       port = options.port | 0;
     }
 
-    // TODO(bnoordhuis) Node prefers [::] when host is omitted,
-    // we on the other hand default to 0.0.0.0.
-    let hostname = options.host ?? "0.0.0.0";
+    // Use 0.0.0.0 for Windows, and [::] for other platforms.
+    let hostname = options.host ?? (isWindows ? "0.0.0.0" : "[::]");
     if (hostname == "localhost") {
       hostname = "127.0.0.1";
     }

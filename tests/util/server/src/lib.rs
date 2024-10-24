@@ -307,7 +307,7 @@ async fn get_tcp_listener_stream(
   futures::stream::select_all(listeners)
 }
 
-pub const TEST_SERVERS_COUNT: usize = 30;
+pub const TEST_SERVERS_COUNT: usize = 32;
 
 #[derive(Default)]
 struct HttpServerCount {
@@ -360,6 +360,7 @@ impl Default for HttpServerStarter {
     let mut ready_count = 0;
     for maybe_line in lines {
       if let Ok(line) = maybe_line {
+        eprintln!("LINE: {}", line);
         if line.starts_with("ready:") {
           ready_count += 1;
         }

@@ -322,10 +322,14 @@ Deno.test("[node/http] IncomingRequest socket has remoteAddress + remotePort", a
     // deno-lint-ignore no-explicit-any
     const port = (server.address() as any).port;
     const res = await fetch(
-      `http://127.0.0.1:${port}/`,
+      `http://localhost:${port}/`,
     );
     await res.arrayBuffer();
-    assertEquals(remoteAddress, "127.0.0.1");
+    if (Deno.build.os === "windows") {
+      assertEquals(remoteAddress, "127.0.0.1");
+    } else {
+      assertEquals(remoteAddress, "::1");
+    }
     assertEquals(typeof remotePort, "number");
     server.close(() => resolve());
   });
@@ -1138,6 +1142,34 @@ Deno.test("[node/http] ServerResponse appendHeader set-cookie", async () => {
     const { port } = server.address() as { port: number };
     const res = await fetch(`http://localhost:${port}`);
     assertEquals(res.headers.getSetCookie(), ["a=b", "c=d"]);
+    assertEquals(await res.text(), "Hello World");
+    server.close(() => {
+      resolve();
+    });
+  });
+
+  await promise;
+});
+
+Deno.test("[node/http] ServerResponse header names case insensitive", async () => {
+  const { promise, resolve } = Promise.withResolvers<void>();
+  const server = http.createServer((_req, res) => {
+    res.setHeader("Content-Length", "12345");
+    res.removeHeader("content-length");
+    assertEquals(res.getHeader("Content-Length"), undefined);
+    assert(!res.hasHeader("Content-Length"));
+    res.appendHeader("content-length", "12345");
+    res.removeHeader("Content-Length");
+    assertEquals(res.getHeader("content-length"), undefined);
+    assert(!res.hasHeader("content-length"));
+    res.end("Hello World");
+  });
+
+  server.listen(async () => {
+    const { port } = server.address() as { port: number };
+    const res = await fetch(`http://localhost:${port}`);
+    assertEquals(res.headers.get("Content-Length"), null);
+    assertEquals(res.headers.get("content-length"), null);
     assertEquals(await res.text(), "Hello World");
     server.close(() => {
       resolve();

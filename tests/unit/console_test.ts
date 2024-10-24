@@ -1227,6 +1227,7 @@ Deno.test(function consoleParseCssColor() {
   assertEquals(parseCssColor("inherit"), null);
   assertEquals(parseCssColor("black"), [0, 0, 0]);
   assertEquals(parseCssColor("darkmagenta"), [139, 0, 139]);
+  assertEquals(parseCssColor("darkMaGenta"), [139, 0, 139]);
   assertEquals(parseCssColor("slateblue"), [106, 90, 205]);
   assertEquals(parseCssColor("#ffaa00"), [255, 170, 0]);
   assertEquals(parseCssColor("#ffAA00"), [255, 170, 0]);
