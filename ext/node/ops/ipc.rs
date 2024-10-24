@@ -216,10 +216,17 @@ mod impl_ {
       queue_ok.set_index(scope, 0, v);
     }
     Ok(async move {
-      stream.clone().write_msg_bytes(&serialized).await?;
+      let cancel = stream.cancel.clone();
+      let result = stream
+        .clone()
+        .write_msg_bytes(&serialized)
+        .or_cancel(cancel)
+        .await;
+      // adjust count even on error
       stream
         .queued_bytes
         .fetch_sub(serialized.len(), std::sync::atomic::Ordering::Relaxed);
+      let _ = result??;
       Ok(())
     })
   }
