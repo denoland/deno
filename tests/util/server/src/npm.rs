@@ -103,7 +103,6 @@ impl TestNpmRegistry {
   }
 
   pub fn root_dir(&self) -> PathRef {
-    eprintln!("root {}", self.local_path);
     tests_path().join("registry").join(&self.local_path)
   }
 
@@ -120,7 +119,6 @@ impl TestNpmRegistry {
   }
 
   pub fn registry_file(&self, name: &str) -> Result<Option<Vec<u8>>> {
-    eprintln!("registry file {}", name);
     self.get_package_property(name, |p| p.registry_file.as_bytes().to_vec())
   }
 
@@ -138,7 +136,6 @@ impl TestNpmRegistry {
     package_name: &str,
     func: impl FnOnce(&CustomNpmPackage) -> TResult,
   ) -> Result<Option<TResult>> {
-    eprintln!("get package property {}", package_name);
     // it's ok if multiple threads race here as they will do the same work twice
     if !self.cache.lock().contains_key(package_name) {
       match get_npm_package(&self.hostname, &self.local_path, package_name)? {
@@ -155,7 +152,6 @@ impl TestNpmRegistry {
     &self,
     uri_path: &'s str,
   ) -> Option<(&'s str, &'s str)> {
-    eprintln!("GEETT {}", uri_path);
     let prefix1 = format!("/{}/", DENOTEST_SCOPE_NAME);
     let prefix2 = format!("/{}%2f", DENOTEST_SCOPE_NAME);
 
@@ -198,10 +194,6 @@ fn get_npm_package(
   local_path: &str,
   package_name: &str,
 ) -> Result<Option<CustomNpmPackage>> {
-  eprintln!(
-    "get npm package {} {} {}",
-    registry_hostname, local_path, package_name
-  );
   let registry_hostname = if package_name == "@denotest/tarballs-privateserver2"
   {
     "http://localhost:4262"

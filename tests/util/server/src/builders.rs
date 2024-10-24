@@ -78,6 +78,7 @@ impl DiagnosticLogger {
         logger.write_all(text.as_ref().as_bytes()).unwrap();
         logger.write_all(b"\n").unwrap();
       }
+      #[allow(clippy::print_stderr)]
       None => eprintln!("{}", text.as_ref()),
     }
   }

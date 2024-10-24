@@ -61,7 +61,10 @@ impl Pty {
     if is_windows && *IS_CI {
       // the pty tests don't really start up on the windows CI for some reason
       // so ignore them for now
-      eprintln!("Ignoring windows CI.");
+      #[allow(clippy::print_stderr)]
+      {
+        eprintln!("Ignoring windows CI.");
+      }
       false
     } else {
       true
@@ -250,11 +253,14 @@ impl Pty {
     }
 
     let text = self.next_text();
-    eprintln!(
-      "------ Start Full Text ------\n{:?}\n------- End Full Text -------",
-      String::from_utf8_lossy(&self.read_bytes)
-    );
-    eprintln!("Next text: {:?}", text);
+    #[allow(clippy::print_stderr)]
+    {
+      eprintln!(
+        "------ Start Full Text ------\n{:?}\n------- End Full Text -------",
+        String::from_utf8_lossy(&self.read_bytes)
+      );
+      eprintln!("Next text: {:?}", text);
+    }
 
     false
   }
