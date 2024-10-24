@@ -27,7 +27,7 @@ enum CodeCacheStrategy {
   SubsequentRun(SubsequentRunCodeCacheStrategy),
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct DenoCompileCodeCacheEntry {
   pub source_hash: u64,
   pub data: Vec<u8>,
@@ -80,6 +80,9 @@ impl CodeCache for DenoCompileCodeCache {
     match &self.strategy {
       CodeCacheStrategy::FirstRun(strategy) => {
         if !strategy.is_finished.is_raised() {
+          // we keep track of how many times the cache is requested
+          // then serialize the cache when we get that number of
+          // "set" calls
           strategy.data.lock().add_count += 1;
         }
         None
@@ -264,6 +267,18 @@ fn deserialize(
   file_path: &Path,
   cache_key: &str,
 ) -> Result<HashMap<String, DenoCompileCodeCacheEntry>, AnyError> {
+  // it's very important to use this below so that a corrupt cache file
+  // doesn't cause a memory allocation error
+  fn new_vec_sized<T: Clone>(
+    capacity: usize,
+    default_value: T,
+  ) -> Result<Vec<T>, AnyError> {
+    let mut vec = Vec::new();
+    vec.try_reserve(capacity)?;
+    vec.resize(capacity, default_value);
+    Ok(vec)
+  }
+
   let cache_file = std::fs::File::open(file_path)?;
   let mut reader = BufReader::new(cache_file);
   let mut header_bytes = vec![0; cache_key.len() + 4];
@@ -276,9 +291,7 @@ fn deserialize(
     u32::from_le_bytes(header_bytes[cache_key.len()..].try_into()?) as usize;
   // read the lengths for each entry found in the file
   let entry_len_bytes_capacity = len * 8;
-  let mut entry_len_bytes = Vec::new();
-  entry_len_bytes.try_reserve(entry_len_bytes_capacity)?;
-  entry_len_bytes.resize(entry_len_bytes_capacity, 0);
+  let mut entry_len_bytes = new_vec_sized(entry_len_bytes_capacity, 0)?;
   reader.read_exact(&mut entry_len_bytes)?;
   let mut lengths = Vec::new();
   lengths.try_reserve(len)?;
@@ -292,10 +305,7 @@ fn deserialize(
   let mut map = HashMap::new();
   map.try_reserve(len)?;
   for len in lengths {
-    let mut buffer = Vec::new();
-    buffer.try_reserve(len)?;
-    buffer.resize(len, 0);
-
+    let mut buffer = new_vec_sized(len, 0)?;
     reader.read_exact(&mut buffer)?;
     let entry_data_hash_start_pos = buffer.len() - 8;
     let expected_entry_data_hash =
@@ -330,4 +340,60 @@ fn deserialize(
   }
 
   Ok(map)
+}
+
+#[cfg(test)]
+mod test {
+  use test_util::TempDir;
+
+  use super::*;
+  use std::fs::File;
+
+  #[test]
+  fn serialize_deserialize() {
+    let temp_dir = TempDir::new();
+    let cache_key = "cache_key";
+    let cache = {
+      let mut cache = HashMap::new();
+      cache.insert(
+        "specifier1".to_string(),
+        DenoCompileCodeCacheEntry {
+          source_hash: 1,
+          data: vec![1, 2, 3],
+        },
+      );
+      cache.insert(
+        "specifier2".to_string(),
+        DenoCompileCodeCacheEntry {
+          source_hash: 2,
+          data: vec![4, 5, 6],
+        },
+      );
+      cache
+    };
+    let file_path = temp_dir.path().join("cache.bin").to_path_buf();
+    serialize(&file_path, cache_key, &cache).unwrap();
+    let deserialized = deserialize(&file_path, cache_key).unwrap();
+    assert_eq!(cache, deserialized);
+  }
+
+  #[test]
+  fn serialize_deserialize_empty() {
+    let temp_dir = TempDir::new();
+    let cache_key = "cache_key";
+    let cache = HashMap::new();
+    let file_path = temp_dir.path().join("cache.bin").to_path_buf();
+    serialize(&file_path, cache_key, &cache).unwrap();
+    let deserialized = deserialize(&file_path, cache_key).unwrap();
+    assert_eq!(cache, deserialized);
+  }
+
+  #[test]
+  fn serialize_deserialize_corrupt() {
+    let temp_dir = TempDir::new();
+    let file_path = temp_dir.path().join("cache.bin").to_path_buf();
+    std::fs::write(&file_path, b"corrupttestingtestingtesting").unwrap();
+    let err = deserialize(&file_path, "cache-key").unwrap_err();
+    assert_eq!(err.to_string(), "Cache key mismatch");
+  }
 }
