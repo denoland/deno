@@ -89,10 +89,6 @@ pub async fn cache_top_level_deps(
 
     while let Some(info_future) = info_futures.next().await {
       if let Some((specifier, info)) = info_future {
-        if info.export(".").is_some() {
-          roots.push(specifier.clone());
-          continue;
-        }
         let exports = info.exports();
         for (k, _) in exports {
           if let Ok(spec) = specifier.join(k) {

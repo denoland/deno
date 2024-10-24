@@ -9,10 +9,10 @@ use super::util::napi_set_last_error;
 use super::util::SendPtr;
 use crate::check_arg;
 use crate::check_env;
+use crate::*;
 use deno_core::parking_lot::Condvar;
 use deno_core::parking_lot::Mutex;
 use deno_core::V8CrossThreadTaskSpawner;
-use deno_runtime::deno_napi::*;
 use napi_sym::napi_sym;
 use std::sync::atomic::AtomicBool;
 use std::sync::atomic::AtomicU8;
@@ -488,7 +488,7 @@ impl AsyncWork {
 }
 
 #[napi_sym]
-fn napi_create_async_work(
+pub(crate) fn napi_create_async_work(
   env: *mut Env,
   async_resource: napi_value,
   async_resource_name: napi_value,
@@ -537,7 +537,10 @@ fn napi_create_async_work(
 }
 
 #[napi_sym]
-fn napi_delete_async_work(env: *mut Env, work: napi_async_work) -> napi_status {
+pub(crate) fn napi_delete_async_work(
+  env: *mut Env,
+  work: napi_async_work,
+) -> napi_status {
   let env = check_env!(env);
   check_arg!(env, work);
 
@@ -560,7 +563,10 @@ fn napi_get_uv_event_loop(
 }
 
 #[napi_sym]
-fn napi_queue_async_work(env: *mut Env, work: napi_async_work) -> napi_status {
+pub(crate) fn napi_queue_async_work(
+  env: *mut Env,
+  work: napi_async_work,
+) -> napi_status {
   let env = check_env!(env);
   check_arg!(env, work);
 
@@ -897,7 +903,7 @@ fn napi_create_threadsafe_function(
   };
   let resource_name = resource_name.to_rust_string_lossy(&mut env.scope());
 
-  let mut tsfn = Box::new(TsFn {
+  let tsfn = Box::new(TsFn {
     env,
     func,
     max_queue_size,
