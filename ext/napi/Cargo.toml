@@ -16,5 +16,14 @@ path = "lib.rs"
 [dependencies]
 deno_core.workspace = true
 deno_permissions.workspace = true
+libc.workspace = true
 libloading = { version = "0.7" }
+log.workspace = true
+napi_sym.workspace = true
 thiserror.workspace = true
+
+[target.'cfg(windows)'.dependencies]
+windows-sys.workspace = true
+
+[dev-dependencies]
+libuv-sys-lite = "=1.48.2"
