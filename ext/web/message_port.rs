@@ -4,8 +4,6 @@ use std::borrow::Cow;
 use std::cell::RefCell;
 use std::rc::Rc;
 
-use deno_core::error::type_error;
-use deno_core::error::AnyError;
 use deno_core::op2;
 
 use deno_core::CancelFuture;
@@ -22,6 +20,20 @@ use tokio::sync::mpsc::error::TryRecvError;
 use tokio::sync::mpsc::unbounded_channel;
 use tokio::sync::mpsc::UnboundedReceiver;
 use tokio::sync::mpsc::UnboundedSender;
+
+#[derive(Debug, thiserror::Error)]
+pub enum MessagePortError {
+  #[error("Invalid message port transfer")]
+  InvalidTransfer,
+  #[error("Message port is not ready for transfer")]
+  NotReady,
+  #[error("Can not transfer self message port")]
+  TransferSelf,
+  #[error(transparent)]
+  Canceled(#[from] deno_core::Canceled),
+  #[error(transparent)]
+  Resource(deno_core::error::AnyError),
+}
 
 pub enum Transferable {
   MessagePort(MessagePort),
@@ -40,7 +52,7 @@ impl MessagePort {
     &self,
     state: &mut OpState,
     data: JsMessageData,
-  ) -> Result<(), AnyError> {
+  ) -> Result<(), MessagePortError> {
     let transferables =
       deserialize_js_transferables(state, data.transferables)?;
 
@@ -56,7 +68,7 @@ impl MessagePort {
   pub async fn recv(
     &self,
     state: Rc<RefCell<OpState>>,
-  ) -> Result<Option<JsMessageData>, AnyError> {
+  ) -> Result<Option<JsMessageData>, MessagePortError> {
     let rx = &self.rx;
 
     let maybe_data = poll_fn(|cx| {
@@ -147,7 +159,7 @@ pub enum JsTransferable {
 pub fn deserialize_js_transferables(
   state: &mut OpState,
   js_transferables: Vec<JsTransferable>,
-) -> Result<Vec<Transferable>, AnyError> {
+) -> Result<Vec<Transferable>, MessagePortError> {
   let mut transferables = Vec::with_capacity(js_transferables.len());
   for js_transferable in js_transferables {
     match js_transferable {
@@ -155,10 +167,10 @@ pub fn deserialize_js_transferables(
         let resource = state
           .resource_table
           .take::<MessagePortResource>(id)
-          .map_err(|_| type_error("Invalid message port transfer"))?;
+          .map_err(|_| MessagePortError::InvalidTransfer)?;
         resource.cancel.cancel();
-        let resource = Rc::try_unwrap(resource)
-          .map_err(|_| type_error("Message port is not ready for transfer"))?;
+        let resource =
+          Rc::try_unwrap(resource).map_err(|_| MessagePortError::NotReady)?;
         transferables.push(Transferable::MessagePort(resource.port));
       }
       JsTransferable::ArrayBuffer(id) => {
@@ -202,16 +214,19 @@ pub fn op_message_port_post_message(
   state: &mut OpState,
   #[smi] rid: ResourceId,
   #[serde] data: JsMessageData,
-) -> Result<(), AnyError> {
+) -> Result<(), MessagePortError> {
   for js_transferable in &data.transferables {
     if let JsTransferable::MessagePort(id) = js_transferable {
       if *id == rid {
-        return Err(type_error("Can not transfer self message port"));
+        return Err(MessagePortError::TransferSelf);
       }
     }
   }
 
-  let resource = state.resource_table.get::<MessagePortResource>(rid)?;
+  let resource = state
+    .resource_table
+    .get::<MessagePortResource>(rid)
+    .map_err(MessagePortError::Resource)?;
   resource.port.send(state, data)
 }
 
@@ -220,7 +235,7 @@ pub fn op_message_port_post_message(
 pub async fn op_message_port_recv_message(
   state: Rc<RefCell<OpState>>,
   #[smi] rid: ResourceId,
-) -> Result<Option<JsMessageData>, AnyError> {
+) -> Result<Option<JsMessageData>, MessagePortError> {
   let resource = {
     let state = state.borrow();
     match state.resource_table.get::<MessagePortResource>(rid) {
@@ -237,9 +252,11 @@ pub async fn op_message_port_recv_message(
 pub fn op_message_port_recv_message_sync(
   state: &mut OpState, // Rc<RefCell<OpState>>,
   #[smi] rid: ResourceId,
-) -> Result<Option<JsMessageData>, AnyError> {
-  let resource = state.resource_table.get::<MessagePortResource>(rid)?;
-  resource.cancel.cancel();
+) -> Result<Option<JsMessageData>, MessagePortError> {
+  let resource = state
+    .resource_table
+    .get::<MessagePortResource>(rid)
+    .map_err(MessagePortError::Resource)?;
   let mut rx = resource.port.rx.borrow_mut();
 
   match rx.try_recv() {

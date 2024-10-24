@@ -50,9 +50,12 @@ use std::sync::Arc;
 use tower_lsp::lsp_types as lsp;
 
 use super::logging::lsp_log;
+use super::lsp_custom;
+use super::urls::url_to_uri;
 use crate::args::discover_npmrc_from_workspace;
 use crate::args::has_flag_env_var;
 use crate::args::CliLockfile;
+use crate::args::CliLockfileReadFromPathOptions;
 use crate::args::ConfigFile;
 use crate::args::LintFlags;
 use crate::args::LintOptions;
@@ -1715,14 +1718,14 @@ impl ConfigTree {
       .unwrap_or_else(|| Arc::new(FmtConfig::new_with_base(PathBuf::from("/"))))
   }
 
-  /// Returns (scope_uri, type).
+  /// Returns (scope_url, type).
   pub fn watched_file_type(
     &self,
     specifier: &ModuleSpecifier,
   ) -> Option<(&ModuleSpecifier, ConfigWatchedFileType)> {
-    for (scope_uri, data) in self.scopes.iter() {
+    for (scope_url, data) in self.scopes.iter() {
       if let Some(typ) = data.watched_files.get(specifier) {
-        return Some((scope_uri, *typ));
+        return Some((scope_url, *typ));
       }
     }
     None
@@ -1744,6 +1747,46 @@ impl ConfigTree {
       .scopes
       .values()
       .any(|data| data.watched_files.contains_key(specifier))
+  }
+
+  pub fn to_did_refresh_params(
+    &self,
+  ) -> lsp_custom::DidRefreshDenoConfigurationTreeNotificationParams {
+    let data = self
+      .scopes
+      .values()
+      .filter_map(|data| {
+        let workspace_root_scope_uri =
+          Some(data.member_dir.workspace.root_dir())
+            .filter(|s| *s != data.member_dir.dir_url())
+            .and_then(|s| url_to_uri(s).ok());
+        Some(lsp_custom::DenoConfigurationData {
+          scope_uri: url_to_uri(&data.scope).ok()?,
+          deno_json: data.maybe_deno_json().and_then(|c| {
+            if workspace_root_scope_uri.is_some()
+              && Some(&c.specifier)
+                == data
+                  .member_dir
+                  .workspace
+                  .root_deno_json()
+                  .map(|c| &c.specifier)
+            {
+              return None;
+            }
+            Some(lsp::TextDocumentIdentifier {
+              uri: url_to_uri(&c.specifier).ok()?,
+            })
+          }),
+          package_json: data.maybe_pkg_json().and_then(|p| {
+            Some(lsp::TextDocumentIdentifier {
+              uri: url_to_uri(&p.specifier()).ok()?,
+            })
+          }),
+          workspace_root_scope_uri,
+        })
+      })
+      .collect();
+    lsp_custom::DidRefreshDenoConfigurationTreeNotificationParams { data }
   }
 
   pub async fn refresh(
@@ -1931,7 +1974,11 @@ fn resolve_lockfile_from_path(
   lockfile_path: PathBuf,
   frozen: bool,
 ) -> Option<CliLockfile> {
-  match CliLockfile::read_from_path(lockfile_path, frozen) {
+  match CliLockfile::read_from_path(CliLockfileReadFromPathOptions {
+    file_path: lockfile_path,
+    frozen,
+    skip_write: false,
+  }) {
     Ok(value) => {
       if value.filename.exists() {
         if let Ok(specifier) = ModuleSpecifier::from_file_path(&value.filename)

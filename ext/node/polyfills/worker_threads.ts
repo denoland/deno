@@ -302,8 +302,8 @@ class NodeWorker extends EventEmitter {
     if (this.#status !== "TERMINATED") {
       this.#status = "TERMINATED";
       op_host_terminate_worker(this.#id);
+      this.emit("exit", 0);
     }
-    this.emit("exit", 0);
     return PromiseResolve(0);
   }
 
@@ -422,7 +422,11 @@ internals.__initWorkerThreads = (
 
     parentPort.once = function (this: ParentPort, name, listener) {
       // deno-lint-ignore no-explicit-any
-      const _listener = (ev: any) => listener(ev.data);
+      const _listener = (ev: any) => {
+        const message = ev.data;
+        patchMessagePortIfFound(message);
+        return listener(message);
+      };
       listeners.set(listener, _listener);
       this.addEventListener(name, _listener);
       return this;
@@ -494,7 +498,9 @@ export function receiveMessageOnPort(port: MessagePort): object | undefined {
   port[MessagePortReceiveMessageOnPortSymbol] = true;
   const data = op_message_port_recv_message_sync(port[MessagePortIdSymbol]);
   if (data === null) return undefined;
-  return { message: deserializeJsMessageData(data)[0] };
+  const message = deserializeJsMessageData(data)[0];
+  patchMessagePortIfFound(message);
+  return { message };
 }
 
 class NodeMessageChannel {

@@ -6,7 +6,16 @@ pub mod error;
 mod image_decoder;
 mod image_ops;
 mod op_create_image_bitmap;
+use image::ColorType;
 use op_create_image_bitmap::op_create_image_bitmap;
+
+#[derive(Debug, thiserror::Error)]
+pub enum CanvasError {
+  #[error("Color type '{0:?}' not supported")]
+  UnsupportedColorType(ColorType),
+  #[error(transparent)]
+  Image(#[from] image::ImageError),
+}
 
 deno_core::extension!(
   deno_canvas,
