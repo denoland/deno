@@ -213,7 +213,7 @@ Deno.test("tls.connect() throws InvalidData when there's error in certificate", 
       host: "localhost",
       port: 4557,
     });
-
+    conn.on("data", () => {});
     conn.on("error", (err) => {
       console.log(err);
     });
