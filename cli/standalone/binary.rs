@@ -628,13 +628,17 @@ impl<'a> DenoCompileBinaryWriter<'a> {
       };
       if module.specifier().scheme() == "file" {
         let file_path = deno_path_util::url_to_file_path(module.specifier())?;
-        vfs.add_file_with_data(
-          &file_path,
-          match maybe_source {
-            Some(source) => source,
-            None => RealFs.read_file_sync(&file_path, None)?,
-          },
-        )?;
+        vfs
+          .add_file_with_data(
+            &file_path,
+            match maybe_source {
+              Some(source) => source,
+              None => RealFs.read_file_sync(&file_path, None)?,
+            },
+          )
+          .with_context(|| {
+            format!("Failed adding '{}'", file_path.display())
+          })?;
       } else if let Some(source) = maybe_source {
         remote_modules_store.add(module.specifier(), media_type, source);
       }

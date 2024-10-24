@@ -55,6 +55,7 @@ use crate::args::CacheSetting;
 use crate::args::NpmInstallDepsProvider;
 use crate::args::StorageKeyResolver;
 use crate::cache::Caches;
+use crate::cache::DenoCacheEnvFsAdapter;
 use crate::cache::DenoDirProvider;
 use crate::cache::NodeAnalysisCache;
 use crate::cache::RealDenoCacheEnv;
@@ -407,92 +408,80 @@ pub async fn run(data: StandaloneData) -> Result<i32, AnyError> {
   let root_dir_url =
     Arc::new(ModuleSpecifier::from_directory_path(&root_path).unwrap());
   let main_module = root_dir_url.join(&metadata.entrypoint_key).unwrap();
-  let root_node_modules_path = root_path.join(".deno_compile_node_modules");
-  let npm_cache_dir = NpmCacheDir::new(
-    &RealDenoCacheEnv,
-    root_node_modules_path.clone(),
-    vec![npm_registry_url.clone()],
-  );
-  let npm_global_cache_dir = npm_cache_dir.get_cache_location();
+  let npm_global_cache_dir = root_path.join(".deno_compile_node_modules");
   let cache_setting = CacheSetting::Only;
-  let (fs, npm_resolver) = match metadata.node_modules {
+  let npm_resolver = match metadata.node_modules {
     Some(binary::NodeModules::Managed { node_modules_dir }) => {
       let snapshot = npm_snapshot.unwrap();
       let maybe_node_modules_path = node_modules_dir
         .map(|node_modules_dir| root_path.join(node_modules_dir));
-      let npm_resolver =
-        create_cli_npm_resolver(CliNpmResolverCreateOptions::Managed(
-          CliNpmResolverManagedCreateOptions {
-            snapshot: CliNpmResolverManagedSnapshotOption::Specified(Some(
-              snapshot,
-            )),
-            maybe_lockfile: None,
-            fs: fs.clone(),
-            http_client_provider: http_client_provider.clone(),
-            npm_global_cache_dir,
-            cache_setting,
-            text_only_progress_bar: progress_bar,
-            maybe_node_modules_path,
-            npm_system_info: Default::default(),
-            npm_install_deps_provider: Arc::new(
-              // this is only used for installing packages, which isn't necessary with deno compile
-              NpmInstallDepsProvider::empty(),
-            ),
-            // create an npmrc that uses the fake npm_registry_url to resolve packages
-            npmrc: Arc::new(ResolvedNpmRc {
-              default_config: deno_npm::npm_rc::RegistryConfigWithUrl {
-                registry_url: npm_registry_url.clone(),
-                config: Default::default(),
-              },
-              scopes: Default::default(),
-              registry_configs: Default::default(),
-            }),
-            lifecycle_scripts: Default::default(),
-          },
-        ))
-        .await?;
-      (fs, npm_resolver)
+      create_cli_npm_resolver(CliNpmResolverCreateOptions::Managed(
+        CliNpmResolverManagedCreateOptions {
+          snapshot: CliNpmResolverManagedSnapshotOption::Specified(Some(
+            snapshot,
+          )),
+          maybe_lockfile: None,
+          fs: fs.clone(),
+          http_client_provider: http_client_provider.clone(),
+          npm_global_cache_dir,
+          cache_setting,
+          text_only_progress_bar: progress_bar,
+          maybe_node_modules_path,
+          npm_system_info: Default::default(),
+          npm_install_deps_provider: Arc::new(
+            // this is only used for installing packages, which isn't necessary with deno compile
+            NpmInstallDepsProvider::empty(),
+          ),
+          // create an npmrc that uses the fake npm_registry_url to resolve packages
+          npmrc: Arc::new(ResolvedNpmRc {
+            default_config: deno_npm::npm_rc::RegistryConfigWithUrl {
+              registry_url: npm_registry_url.clone(),
+              config: Default::default(),
+            },
+            scopes: Default::default(),
+            registry_configs: Default::default(),
+          }),
+          lifecycle_scripts: Default::default(),
+        },
+      ))
+      .await?
     }
     Some(binary::NodeModules::Byonm {
       root_node_modules_dir,
     }) => {
       let root_node_modules_dir =
         root_node_modules_dir.map(|p| vfs.root().join(p));
-      let npm_resolver = create_cli_npm_resolver(
-        CliNpmResolverCreateOptions::Byonm(CliByonmNpmResolverCreateOptions {
+      create_cli_npm_resolver(CliNpmResolverCreateOptions::Byonm(
+        CliByonmNpmResolverCreateOptions {
           fs: CliDenoResolverFs(fs.clone()),
           root_node_modules_dir,
-        }),
-      )
-      .await?;
-      (fs, npm_resolver)
+        },
+      ))
+      .await?
     }
     None => {
-      let fs = Arc::new(deno_fs::RealFs) as Arc<dyn deno_fs::FileSystem>;
-      let npm_resolver =
-        create_cli_npm_resolver(CliNpmResolverCreateOptions::Managed(
-          CliNpmResolverManagedCreateOptions {
-            snapshot: CliNpmResolverManagedSnapshotOption::Specified(None),
-            maybe_lockfile: None,
-            fs: fs.clone(),
-            http_client_provider: http_client_provider.clone(),
-            npm_global_cache_dir,
-            cache_setting,
-            text_only_progress_bar: progress_bar,
-            maybe_node_modules_path: None,
-            npm_system_info: Default::default(),
-            npm_install_deps_provider: Arc::new(
-              // this is only used for installing packages, which isn't necessary with deno compile
-              NpmInstallDepsProvider::empty(),
-            ),
-            // Packages from different registries are already inlined in the ESZip,
-            // so no need to create actual `.npmrc` configuration.
-            npmrc: create_default_npmrc(),
-            lifecycle_scripts: Default::default(),
-          },
-        ))
-        .await?;
-      (fs, npm_resolver)
+      create_cli_npm_resolver(CliNpmResolverCreateOptions::Managed(
+        CliNpmResolverManagedCreateOptions {
+          snapshot: CliNpmResolverManagedSnapshotOption::Specified(None),
+          maybe_lockfile: None,
+          fs: fs.clone(),
+          http_client_provider: http_client_provider.clone(),
+          npm_global_cache_dir,
+          cache_setting,
+          text_only_progress_bar: progress_bar,
+          maybe_node_modules_path: None,
+          npm_system_info: Default::default(),
+          npm_install_deps_provider: Arc::new(
+            // this is only used for installing packages, which isn't necessary with deno compile
+            NpmInstallDepsProvider::empty(),
+          ),
+          // Packages from different registries are already inlined in the ESZip,
+          // so no need to create actual `.npmrc` configuration.
+          npmrc: create_default_npmrc(),
+          lifecycle_scripts: Default::default(),
+        },
+      ))
+      .await?
     }
   };
 

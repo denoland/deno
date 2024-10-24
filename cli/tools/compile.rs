@@ -134,7 +134,10 @@ pub async fn compile(
     )
     .await
     .with_context(|| {
-      format!("Writing temporary file '{}'", temp_path.display())
+      format!(
+        "Writing deno compile executable to temporary file '{}'",
+        temp_path.display()
+      )
     });
 
   // set it as executable

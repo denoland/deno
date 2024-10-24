@@ -72,7 +72,8 @@ impl VfsBuilder {
     &mut self,
     root_path: PathBuf,
   ) -> Result<(), AnyError> {
-    self.root_path = canonicalize_path(&root_path)?;
+    let root_path = canonicalize_path(&root_path)?;
+    self.root_path = root_path;
     self.root_dir = VirtualDirectory {
       name: self
         .root_path
@@ -139,7 +140,7 @@ impl VfsBuilder {
                 // inline the symlink and make the target file
                 let file_bytes = std::fs::read(&target)
                   .with_context(|| format!("Reading {}", path.display()))?;
-                self.add_file_with_data(&path, file_bytes)?;
+                self.add_file_with_data_inner(&path, file_bytes)?;
               } else {
                 log::warn!(
                   "{} Symlink target is outside '{}'. Excluding symlink at '{}' with target '{}'.",
@@ -211,16 +212,28 @@ impl VfsBuilder {
     self.add_file_at_path_not_symlink(&target_path)
   }
 
-  pub fn add_file_at_path_not_symlink(
+  fn add_file_at_path_not_symlink(
     &mut self,
     path: &Path,
   ) -> Result<(), AnyError> {
     let file_bytes = std::fs::read(path)
       .with_context(|| format!("Reading {}", path.display()))?;
-    self.add_file_with_data(path, file_bytes)
+    self.add_file_with_data_inner(path, file_bytes)
   }
 
   pub fn add_file_with_data(
+    &mut self,
+    path: &Path,
+    data: Vec<u8>,
+  ) -> Result<(), AnyError> {
+    let target_path = canonicalize_path(path)?;
+    if target_path != path {
+      self.add_symlink(path, &target_path)?;
+    }
+    self.add_file_with_data_inner(&target_path, data)
+  }
+
+  fn add_file_with_data_inner(
     &mut self,
     path: &Path,
     data: Vec<u8>,
@@ -273,8 +286,15 @@ impl VfsBuilder {
       path.display(),
       target.display()
     );
-    let dest = self.path_relative_root(target)?;
-    if dest == self.path_relative_root(path)? {
+    let relative_target = self.path_relative_root(target)?;
+    let relative_path = match self.path_relative_root(path) {
+      Ok(path) => path,
+      Err(StripRootError { .. }) => {
+        // ignore if the original path is outside the root directory
+        return Ok(());
+      }
+    };
+    if relative_target == relative_path {
       // it's the same, ignore
       return Ok(());
     }
@@ -287,7 +307,7 @@ impl VfsBuilder {
           insert_index,
           VfsEntry::Symlink(VirtualSymlink {
             name: name.to_string(),
-            dest_parts: dest
+            dest_parts: relative_target
               .components()
               .map(|c| c.as_os_str().to_string_lossy().to_string())
               .collect::<Vec<_>>(),
@@ -939,20 +959,23 @@ mod test {
     let src_path = src_path.to_path_buf();
     let mut builder = VfsBuilder::new(src_path.clone()).unwrap();
     builder
-      .add_file_with_data(&src_path.join("a.txt"), "data".into())
+      .add_file_with_data_inner(&src_path.join("a.txt"), "data".into())
       .unwrap();
     builder
-      .add_file_with_data(&src_path.join("b.txt"), "data".into())
+      .add_file_with_data_inner(&src_path.join("b.txt"), "data".into())
       .unwrap();
     assert_eq!(builder.files.len(), 1); // because duplicate data
     builder
-      .add_file_with_data(&src_path.join("c.txt"), "c".into())
+      .add_file_with_data_inner(&src_path.join("c.txt"), "c".into())
       .unwrap();
     builder
-      .add_file_with_data(&src_path.join("sub_dir").join("d.txt"), "d".into())
+      .add_file_with_data_inner(
+        &src_path.join("sub_dir").join("d.txt"),
+        "d".into(),
+      )
       .unwrap();
     builder
-      .add_file_with_data(&src_path.join("e.txt"), "e".into())
+      .add_file_with_data_inner(&src_path.join("e.txt"), "e".into())
       .unwrap();
     builder
       .add_symlink(
@@ -1120,7 +1143,7 @@ mod test {
     let temp_path = temp_dir.path().canonicalize();
     let mut builder = VfsBuilder::new(temp_path.to_path_buf()).unwrap();
     builder
-      .add_file_with_data(
+      .add_file_with_data_inner(
         temp_path.join("a.txt").as_path(),
         "0123456789".to_string().into_bytes(),
       )
