@@ -2189,17 +2189,17 @@ pub enum ChildPermissionError {
 
 #[derive(Debug, thiserror::Error)]
 pub enum PermissionCheckError {
-  #[error("{0}")]
+  #[error(transparent)]
   PermissionDenied(#[from] PermissionDeniedError),
   #[error("Invalid file path.\n  Specifier: {0}")]
   InvalidFilePath(Url),
-  #[error("{0}")]
+  #[error(transparent)]
   NetDescriptorForUrlParse(#[from] NetDescriptorFromUrlParseError),
-  #[error("{0}")]
+  #[error(transparent)]
   SysDescriptorParse(#[from] SysDescriptorParseError),
-  #[error("{0}")]
+  #[error(transparent)]
   PathResolve(#[from] PathResolveError),
-  #[error("{0}")]
+  #[error(transparent)]
   HostParse(#[from] HostParseError),
 }
 

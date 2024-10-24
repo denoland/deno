@@ -1041,8 +1041,9 @@ fn get_fs_error(e: &FsError) -> &'static str {
 }
 
 mod node {
-  use super::{get_error_class_name, get_permission_check_error_class};
+  use super::get_error_class_name;
   use super::get_io_error_class;
+  use super::get_permission_check_error_class;
   use super::get_serde_json_error_class;
   use super::get_url_parse_error_class;
   pub use deno_node::ops::blocklist::BlocklistError;

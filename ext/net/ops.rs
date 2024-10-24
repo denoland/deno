@@ -81,7 +81,7 @@ pub enum NetError {
   Io(#[from] std::io::Error),
   #[error("Another accept task is ongoing")]
   AcceptTaskOngoing,
-  #[error("{0}")]
+  #[error(transparent)]
   Permission(#[from] deno_permissions::PermissionCheckError),
   #[error("{0}")]
   Resource(deno_core::error::AnyError),

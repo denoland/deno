@@ -737,7 +737,7 @@ fn resolve_path(path: &str, cwd: &Path) -> PathBuf {
 
 #[derive(Debug, thiserror::Error)]
 pub enum CheckRunPermissionError {
-  #[error("{0}")]
+  #[error(transparent)]
   Permission(#[from] deno_permissions::PermissionCheckError),
   #[error("{0}")]
   Other(deno_core::error::AnyError),

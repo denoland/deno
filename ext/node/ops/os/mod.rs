@@ -27,9 +27,7 @@ where
 {
   {
     let permissions = state.borrow_mut::<P>();
-    permissions
-      .check_sys("getPriority", "node:os.getPriority()")
-      ?;
+    permissions.check_sys("getPriority", "node:os.getPriority()")?;
   }
 
   priority::get_priority(pid).map_err(OsError::Priority)
@@ -46,9 +44,7 @@ where
 {
   {
     let permissions = state.borrow_mut::<P>();
-    permissions
-      .check_sys("setPriority", "node:os.setPriority()")
-      ?;
+    permissions.check_sys("setPriority", "node:os.setPriority()")?;
   }
 
   priority::set_priority(pid, priority).map_err(OsError::Priority)
@@ -120,9 +116,7 @@ where
 {
   {
     let permissions = state.borrow_mut::<P>();
-    permissions
-      .check_sys("cpus", "node:os.cpus()")
-      ?;
+    permissions.check_sys("cpus", "node:os.cpus()")?;
   }
 
   cpus::cpu_info().ok_or(OsError::FailedToGetCpuInfo)
