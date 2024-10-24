@@ -28,7 +28,7 @@ impl CliNpmSearchApi {
   pub fn new(file_fetcher: Arc<FileFetcher>) -> Self {
     let resolver = NpmFetchResolver::new(
       file_fetcher.clone(),
-      Arc::new(NpmRc::default().as_resolved(&npm_registry_url()).unwrap()),
+      Arc::new(NpmRc::default().as_resolved(npm_registry_url()).unwrap()),
     );
     Self {
       file_fetcher,
