@@ -103,10 +103,6 @@ impl TestNpmRegistry {
   }
 
   pub fn root_dir(&self) -> PathRef {
-    #[allow(clippy::print_stderr)]
-    {
-      eprintln!("root {}", self.local_path);
-    }
     tests_path().join("registry").join(&self.local_path)
   }
 
@@ -123,10 +119,6 @@ impl TestNpmRegistry {
   }
 
   pub fn registry_file(&self, name: &str) -> Result<Option<Vec<u8>>> {
-    #[allow(clippy::print_stderr)]
-    {
-      eprintln!("registry file {}", name);
-    }
     self.get_package_property(name, |p| p.registry_file.as_bytes().to_vec())
   }
 
