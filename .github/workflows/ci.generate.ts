@@ -193,7 +193,7 @@ const installNodeStep = {
 };
 const installDenoStep = {
   name: "Install Deno",
-  uses: "denoland/setup-deno@v1",
+  uses: "denoland/setup-deno@v2",
   with: { "deno-version": "v1.x" },
 };
 

@@ -233,3 +233,14 @@ Deno.test("[node/fs] copyFile COPYFILE_EXCL works", async () => {
     copyFileSync(src, dest2, fsPromiseConstants.COPYFILE_EXCL)
   );
 });
+
+Deno.test("[node/fs] statSync throws ENOENT for invalid path containing colon in it", () => {
+  // deno-lint-ignore no-explicit-any
+  const err: any = assertThrows(() => {
+    // Note: Deno.stat throws ERROR_INVALID_NAME (os error 123) instead of
+    // ERROR_FILE_NOT_FOUND (os error 2) on windows. This case checks that
+    // ERROR_INVALID_NAME is mapped to ENOENT correctly on node compat layer.
+    statSync("jsr:@std/assert");
+  });
+  assertEquals(err.code, "ENOENT");
+});
