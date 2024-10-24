@@ -360,15 +360,17 @@ function _afterConnect(
 
     socket._unrefTimer();
 
+    const connectListeners = socket.listenerCount("connect");
+    const readyListeners = socket.listenerCount("ready");
+    const dataListeners = socket.listenerCount("data");
+
     socket.emit("connect");
     socket.emit("ready");
 
     // Note: This is Deno specific logic
     // If there's no listener for the connect, ready, data event,
     // we delay the first read. This is necessary for http.request to work properly.
-    const connectListeners = socket.listenerCount("connect");
-    const readyListeners = socket.listenerCount("ready");
-    const dataListeners = socket.listenerCount("data");
+    // See https://github.com/denoland/deno/pull/25470#issuecomment-2435077722
     if (connectListeners === 0 && readyListeners === 0 && dataListeners === 0) {
       return;
     }
