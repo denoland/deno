@@ -22,6 +22,8 @@ pub enum CanvasError {
   #[error("Cannot decode image '{0}'")]
   InvalidImage(String),
   #[error(transparent)]
+  Lcms(#[from] lcms2::Error),
+  #[error(transparent)]
   /// This error will be mapped to TypeError.
   Image(#[from] image::ImageError),
 }

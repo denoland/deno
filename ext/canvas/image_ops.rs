@@ -365,14 +365,12 @@ where
     &output_icc_profile,
     pixel_format,
     output_icc_profile.header_rendering_intent(),
-  );
+  )
+  .map_err(CanvasError::Lcms)
+  .unwrap();
 
   for (x, y, mut pixel) in image.pixels() {
-    let pixel = match transformer {
-      Ok(ref transformer) => pixel.transform_color_profile(transformer),
-      // This arm will reach when the ffi call fails.
-      Err(_) => pixel,
-    };
+    let pixel = pixel.transform_color_profile(&transformer);
 
     out.put_pixel(x, y, pixel);
   }

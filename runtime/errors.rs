@@ -603,6 +603,7 @@ fn get_canvas_error(e: &CanvasError) -> &'static str {
   match e {
     CanvasError::UnsupportedColorType(_) => "TypeError",
     CanvasError::InvalidImage(_) => "DOMExceptionInvalidStateError",
+    CanvasError::Lcms(_) => "TypeError",
     CanvasError::Image(_) => "TypeError",
   }
 }
