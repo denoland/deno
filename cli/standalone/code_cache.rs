@@ -38,9 +38,9 @@ pub struct DenoCompileCodeCache {
 }
 
 impl DenoCompileCodeCache {
-  pub fn new(file_path: PathBuf, cache_key: String) -> Self {
+  pub fn new(file_path: PathBuf, cache_key: u64) -> Self {
     // attempt to deserialize the cache data
-    match deserialize(&file_path, &cache_key) {
+    match deserialize(&file_path, cache_key) {
       Ok(data) => {
         log::debug!("Loaded {} code cache entries", data.len());
         Self {
@@ -167,7 +167,7 @@ struct FirstRunCodeCacheData {
 }
 
 struct FirstRunCodeCacheStrategy {
-  cache_key: String,
+  cache_key: u64,
   file_path: PathBuf,
   is_finished: AtomicFlag,
   data: Mutex<FirstRunCodeCacheData>,
@@ -180,7 +180,7 @@ impl FirstRunCodeCacheStrategy {
   ) {
     let count = cache_data.len();
     let temp_file = get_atomic_file_path(&self.file_path);
-    match serialize(&temp_file, &self.cache_key, cache_data) {
+    match serialize(&temp_file, self.cache_key, cache_data) {
       Ok(()) => {
         if let Err(err) = std::fs::rename(&temp_file, &self.file_path) {
           log::debug!("Failed to rename code cache: {}", err);
@@ -229,7 +229,7 @@ impl SubsequentRunCodeCacheStrategy {
 ///   - <u64: entry data hash>
 fn serialize(
   file_path: &Path,
-  cache_key: &str,
+  cache_key: u64,
   cache: &HashMap<String, DenoCompileCodeCacheEntry>,
 ) -> Result<(), AnyError> {
   let cache_file = std::fs::OpenOptions::new()
@@ -239,7 +239,7 @@ fn serialize(
     .open(file_path)?;
   let mut writer = BufWriter::new(cache_file);
   // header
-  writer.write_all(cache_key.as_bytes())?;
+  writer.write_all(&cache_key.to_le_bytes())?;
   writer.write_all(&(cache.len() as u32).to_le_bytes())?;
   // lengths of each entry
   for (specifier, entry) in cache {
@@ -265,7 +265,7 @@ fn serialize(
 
 fn deserialize(
   file_path: &Path,
-  cache_key: &str,
+  expected_cache_key: u64,
 ) -> Result<HashMap<String, DenoCompileCodeCacheEntry>, AnyError> {
   // it's very important to use this below so that a corrupt cache file
   // doesn't cause a memory allocation error
@@ -281,14 +281,14 @@ fn deserialize(
 
   let cache_file = std::fs::File::open(file_path)?;
   let mut reader = BufReader::new(cache_file);
-  let mut header_bytes = vec![0; cache_key.len() + 4];
+  let mut header_bytes = vec![0; 8 + 4];
   reader.read_exact(&mut header_bytes)?;
-  if &header_bytes[..cache_key.len()] != cache_key.as_bytes() {
+  let actual_cache_key = u64::from_le_bytes(header_bytes[..8].try_into()?);
+  if actual_cache_key != expected_cache_key {
     // cache bust
     bail!("Cache key mismatch");
   }
-  let len =
-    u32::from_le_bytes(header_bytes[cache_key.len()..].try_into()?) as usize;
+  let len = u32::from_le_bytes(header_bytes[8..].try_into()?) as usize;
   // read the lengths for each entry found in the file
   let entry_len_bytes_capacity = len * 8;
   let mut entry_len_bytes = new_vec_sized(entry_len_bytes_capacity, 0)?;
@@ -352,7 +352,7 @@ mod test {
   #[test]
   fn serialize_deserialize() {
     let temp_dir = TempDir::new();
-    let cache_key = "cache_key";
+    let cache_key = 123456;
     let cache = {
       let mut cache = HashMap::new();
       cache.insert(
@@ -380,7 +380,7 @@ mod test {
   #[test]
   fn serialize_deserialize_empty() {
     let temp_dir = TempDir::new();
-    let cache_key = "cache_key";
+    let cache_key = 1234;
     let cache = HashMap::new();
     let file_path = temp_dir.path().join("cache.bin").to_path_buf();
     serialize(&file_path, cache_key, &cache).unwrap();
@@ -393,7 +393,65 @@ mod test {
     let temp_dir = TempDir::new();
     let file_path = temp_dir.path().join("cache.bin").to_path_buf();
     std::fs::write(&file_path, b"corrupttestingtestingtesting").unwrap();
-    let err = deserialize(&file_path, "cache-key").unwrap_err();
+    let err = deserialize(&file_path, 1234).unwrap_err();
     assert_eq!(err.to_string(), "Cache key mismatch");
+  }
+
+  #[test]
+  fn code_cache() {
+    let temp_dir = TempDir::new();
+    let file_path = temp_dir.path().join("cache.bin").to_path_buf();
+    let url1 = ModuleSpecifier::parse("https://deno.land/example1.js").unwrap();
+    let url2 = ModuleSpecifier::parse("https://deno.land/example2.js").unwrap();
+    // first run
+    {
+      let code_cache = DenoCompileCodeCache::new(file_path.clone(), 1234);
+      assert!(code_cache
+        .get_sync(&url1, CodeCacheType::EsModule, 0)
+        .is_none());
+      assert!(code_cache
+        .get_sync(&url2, CodeCacheType::EsModule, 1)
+        .is_none());
+      code_cache.set_sync(url1.clone(), CodeCacheType::EsModule, 0, &[1, 2, 3]);
+      assert!(!file_path.exists());
+      code_cache.set_sync(url2.clone(), CodeCacheType::EsModule, 1, &[2, 1, 3]);
+      assert!(file_path.exists()); // now the new code cache exists
+    }
+    // second run
+    {
+      let code_cache = DenoCompileCodeCache::new(file_path.clone(), 1234);
+      let result1 = code_cache
+        .get_sync(&url1, CodeCacheType::EsModule, 0)
+        .unwrap();
+      let result2 = code_cache
+        .get_sync(&url2, CodeCacheType::EsModule, 1)
+        .unwrap();
+      assert_eq!(result1, vec![1, 2, 3]);
+      assert_eq!(result2, vec![2, 1, 3]);
+    }
+
+    // new cache key first run
+    {
+      let code_cache = DenoCompileCodeCache::new(file_path.clone(), 54321);
+      assert!(code_cache
+        .get_sync(&url1, CodeCacheType::EsModule, 0)
+        .is_none());
+      assert!(code_cache
+        .get_sync(&url2, CodeCacheType::EsModule, 1)
+        .is_none());
+      code_cache.set_sync(url1.clone(), CodeCacheType::EsModule, 0, &[2, 2, 3]);
+      code_cache.set_sync(url2.clone(), CodeCacheType::EsModule, 1, &[3, 2, 3]);
+    }
+    // new cache key second run
+    {
+      let code_cache = DenoCompileCodeCache::new(file_path.clone(), 54321);
+      let result1 = code_cache
+        .get_sync(&url1, CodeCacheType::EsModule, 0)
+        .unwrap();
+      assert_eq!(result1, vec![2, 2, 3]);
+      assert!(code_cache
+        .get_sync(&url2, CodeCacheType::EsModule, 5) // different hash will cause none
+        .is_none());
+    }
   }
 }

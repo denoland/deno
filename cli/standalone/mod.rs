@@ -620,7 +620,7 @@ pub async fn run(data: StandaloneData) -> Result<i32, AnyError> {
       "{}.cache",
       root_path.file_name().unwrap().to_string_lossy()
     )),
-    metadata.cache_key,
+    metadata.code_cache_key,
   ));
   let module_loader_factory = StandaloneModuleLoaderFactory {
     shared: Arc::new(SharedModuleLoaderState {
