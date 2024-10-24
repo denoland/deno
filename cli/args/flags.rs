@@ -10001,6 +10001,7 @@ mod tests {
           include: vec![]
         }),
         type_check_mode: TypeCheckMode::Local,
+        code_cache_enabled: true,
         ..Flags::default()
       }
     );
@@ -10009,7 +10010,7 @@ mod tests {
   #[test]
   fn compile_with_flags() {
     #[rustfmt::skip]
-    let r = flags_from_vec(svec!["deno", "compile", "--import-map", "import_map.json", "--no-remote", "--config", "tsconfig.json", "--no-check", "--unsafely-ignore-certificate-errors", "--reload", "--lock", "lock.json", "--cert", "example.crt", "--cached-only", "--location", "https:foo", "--allow-read", "--allow-net", "--v8-flags=--help", "--seed", "1", "--no-terminal", "--icon", "favicon.ico", "--output", "colors", "--env=.example.env", "https://examples.deno.land/color-logging.ts", "foo", "bar", "-p", "8080"]);
+    let r = flags_from_vec(svec!["deno", "compile", "--import-map", "import_map.json", "--no-code-cache", "--no-remote", "--config", "tsconfig.json", "--no-check", "--unsafely-ignore-certificate-errors", "--reload", "--lock", "lock.json", "--cert", "example.crt", "--cached-only", "--location", "https:foo", "--allow-read", "--allow-net", "--v8-flags=--help", "--seed", "1", "--no-terminal", "--icon", "favicon.ico", "--output", "colors", "--env=.example.env", "https://examples.deno.land/color-logging.ts", "foo", "bar", "-p", "8080"]);
     assert_eq!(
       r.unwrap(),
       Flags {
@@ -10025,6 +10026,7 @@ mod tests {
         }),
         import_map_path: Some("import_map.json".to_string()),
         no_remote: true,
+        code_cache_enabled: false,
         config_flag: ConfigFlag::Path("tsconfig.json".to_owned()),
         type_check_mode: TypeCheckMode::None,
         reload: true,
