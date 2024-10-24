@@ -1196,7 +1196,6 @@ dependencies = [
  "dprint-plugin-markdown",
  "dprint-plugin-typescript",
  "env_logger",
- "eszip",
  "fancy-regex",
  "faster-hex",
  "flate2",
@@ -2896,29 +2895,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "31ae425815400e5ed474178a7a22e275a9687086a12ca63ec793ff292d8fdae8"
 
 [[package]]
-name = "eszip"
-version = "0.79.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "8eb55c89bdde75a3826a79d49c9d847623ae7fbdb2695b542982982da990d33e"
-dependencies = [
- "anyhow",
- "async-trait",
- "base64 0.21.7",
- "deno_ast",
- "deno_graph",
- "deno_npm",
- "deno_semver",
- "futures",
- "hashlink 0.8.4",
- "indexmap",
- "serde",
- "serde_json",
- "sha2",
- "thiserror",
- "url",
-]
-
-[[package]]
 name = "fallible-iterator"
 version = "0.3.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -3527,15 +3503,6 @@ checksum = "e5274423e17b7c9fc20b6e7e208532f9b19825d82dfd615708b70edd83df41f1"
 dependencies = [
  "ahash",
  "allocator-api2",
-]
-
-[[package]]
-name = "hashlink"
-version = "0.8.4"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "e8094feaf31ff591f651a2664fb9cfd92bba7a60ce3197265e9482ebe753c8f7"
-dependencies = [
- "hashbrown",
 ]
 
 [[package]]
@@ -5815,7 +5782,7 @@ dependencies = [
  "bitflags 2.6.0",
  "fallible-iterator",
  "fallible-streaming-iterator",
- "hashlink 0.9.1",
+ "hashlink",
  "libsqlite3-sys",
  "smallvec",
 ]
