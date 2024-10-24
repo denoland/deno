@@ -8,6 +8,7 @@ pub use deno_core;
 pub use deno_cron;
 pub use deno_crypto;
 pub use deno_fetch;
+#[cfg(feature = "ffi")]
 pub use deno_ffi;
 pub use deno_fs;
 pub use deno_http;
@@ -69,6 +70,7 @@ pub static UNSTABLE_GRANULAR_FLAGS: &[UnstableGranularFlag] = &[
     show_in_help: true,
     id: 2,
   },
+  #[cfg(feature = "ffi")]
   UnstableGranularFlag {
     name: deno_ffi::UNSTABLE_FEATURE_NAME,
     help_text: "Enable unstable FFI APIs",
