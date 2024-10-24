@@ -5471,7 +5471,8 @@ fn import_map_arg_parse(flags: &mut Flags, matches: &mut ArgMatches) {
 }
 
 fn env_file_arg_parse(flags: &mut Flags, matches: &mut ArgMatches) {
-  flags.env_file = matches.get_many::<String>("env-file")
+  flags.env_file = matches
+    .get_many::<String>("env-file")
     .map(|values| values.cloned().collect());
 }
 
@@ -8249,7 +8250,6 @@ mod tests {
       }
     );
   }
-
 
   #[test]
   fn cache_multiple() {
