@@ -18,6 +18,7 @@ use crate::PathRef;
 
 pub const DENOTEST_SCOPE_NAME: &str = "@denotest";
 pub const DENOTEST2_SCOPE_NAME: &str = "@denotest2";
+pub const DENOTEST3_SCOPE_NAME: &str = "@denotest3";
 
 pub static PUBLIC_TEST_NPM_REGISTRY: Lazy<TestNpmRegistry> = Lazy::new(|| {
   TestNpmRegistry::new(
@@ -51,6 +52,18 @@ pub static PRIVATE_TEST_NPM_REGISTRY_2: Lazy<TestNpmRegistry> =
         crate::servers::PRIVATE_NPM_REGISTRY_2_PORT
       ),
       "npm-private2",
+    )
+  });
+
+pub static PRIVATE_TEST_NPM_REGISTRY_3: Lazy<TestNpmRegistry> =
+  Lazy::new(|| {
+    TestNpmRegistry::new(
+      NpmRegistryKind::Private,
+      &format!(
+        "http://localhost:{}",
+        crate::servers::PRIVATE_NPM_REGISTRY_3_PORT
+      ),
+      "npm-private3",
     )
   });
 
@@ -90,6 +103,7 @@ impl TestNpmRegistry {
   }
 
   pub fn root_dir(&self) -> PathRef {
+    eprintln!("root {}", self.local_path);
     tests_path().join("registry").join(&self.local_path)
   }
 
@@ -106,6 +120,7 @@ impl TestNpmRegistry {
   }
 
   pub fn registry_file(&self, name: &str) -> Result<Option<Vec<u8>>> {
+    eprintln!("registry file {}", name);
     self.get_package_property(name, |p| p.registry_file.as_bytes().to_vec())
   }
 
@@ -123,6 +138,7 @@ impl TestNpmRegistry {
     package_name: &str,
     func: impl FnOnce(&CustomNpmPackage) -> TResult,
   ) -> Result<Option<TResult>> {
+    eprintln!("get package property {}", package_name);
     // it's ok if multiple threads race here as they will do the same work twice
     if !self.cache.lock().contains_key(package_name) {
       match get_npm_package(&self.hostname, &self.local_path, package_name)? {
@@ -139,6 +155,7 @@ impl TestNpmRegistry {
     &self,
     uri_path: &'s str,
   ) -> Option<(&'s str, &'s str)> {
+    eprintln!("GEETT {}", uri_path);
     let prefix1 = format!("/{}/", DENOTEST_SCOPE_NAME);
     let prefix2 = format!("/{}%2f", DENOTEST_SCOPE_NAME);
 
@@ -161,6 +178,17 @@ impl TestNpmRegistry {
       return Some((DENOTEST2_SCOPE_NAME, package_name_with_path));
     }
 
+    let prefix1 = format!("/{}/", DENOTEST3_SCOPE_NAME);
+    let prefix2 = format!("/{}%2f", DENOTEST3_SCOPE_NAME);
+
+    let maybe_package_name_with_path = uri_path
+      .strip_prefix(&prefix1)
+      .or_else(|| uri_path.strip_prefix(&prefix2));
+
+    if let Some(package_name_with_path) = maybe_package_name_with_path {
+      return Some((DENOTEST3_SCOPE_NAME, package_name_with_path));
+    }
+
     None
   }
 }
@@ -170,6 +198,10 @@ fn get_npm_package(
   local_path: &str,
   package_name: &str,
 ) -> Result<Option<CustomNpmPackage>> {
+  eprintln!(
+    "get npm package {} {} {}",
+    registry_hostname, local_path, package_name
+  );
   let registry_hostname = if package_name == "@denotest/tarballs-privateserver2"
   {
     "http://localhost:4262"
