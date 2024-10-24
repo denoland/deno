@@ -134,7 +134,7 @@ impl CodeCache for DenoCompileCodeCache {
           }
         };
         if let Some(cache_data) = &data_to_serialize {
-          strategy.write_cache_data(&cache_data);
+          strategy.write_cache_data(cache_data);
         }
       }
       CodeCacheStrategy::SubsequentRun(_) => {
