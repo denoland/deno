@@ -246,6 +246,14 @@ fn serialize(
     .write(true)
     .open(file_path)?;
   let mut writer = BufWriter::new(cache_file);
+  serialize_with_writer(&mut writer, cache_key, cache)
+}
+
+fn serialize_with_writer<T: Write>(
+  writer: &mut BufWriter<T>,
+  cache_key: u64,
+  cache: &HashMap<CodeCacheKey, DenoCompileCodeCacheEntry>,
+) -> Result<(), AnyError> {
   // header
   writer.write_all(&cache_key.to_le_bytes())?;
   writer.write_all(&(cache.len() as u32).to_le_bytes())?;
@@ -280,6 +288,15 @@ fn deserialize(
   file_path: &Path,
   expected_cache_key: u64,
 ) -> Result<HashMap<CodeCacheKey, DenoCompileCodeCacheEntry>, AnyError> {
+  let cache_file = std::fs::File::open(file_path)?;
+  let mut reader = BufReader::new(cache_file);
+  deserialize_with_reader(&mut reader, expected_cache_key)
+}
+
+fn deserialize_with_reader<T: Read>(
+  reader: &mut BufReader<T>,
+  expected_cache_key: u64,
+) -> Result<HashMap<CodeCacheKey, DenoCompileCodeCacheEntry>, AnyError> {
   // it's very important to use this below so that a corrupt cache file
   // doesn't cause a memory allocation error
   fn new_vec_sized<T: Clone>(
@@ -292,8 +309,13 @@ fn deserialize(
     Ok(vec)
   }
 
-  let cache_file = std::fs::File::open(file_path)?;
-  let mut reader = BufReader::new(cache_file);
+  fn try_subtract(a: usize, b: usize) -> Result<usize, AnyError> {
+    if a < b {
+      bail!("Integer underflow");
+    }
+    Ok(a - b)
+  }
+
   let mut header_bytes = vec![0; 8 + 4];
   reader.read_exact(&mut header_bytes)?;
   let actual_cache_key = u64::from_le_bytes(header_bytes[..8].try_into()?);
@@ -320,22 +342,22 @@ fn deserialize(
   for len in lengths {
     let mut buffer = new_vec_sized(len, 0)?;
     reader.read_exact(&mut buffer)?;
-    let entry_data_hash_start_pos = buffer.len() - 8;
+    let entry_data_hash_start_pos = try_subtract(buffer.len(), 8)?;
     let expected_entry_data_hash =
       u64::from_le_bytes(buffer[entry_data_hash_start_pos..].try_into()?);
-    let source_hash_start_pos = entry_data_hash_start_pos - 8;
+    let source_hash_start_pos = try_subtract(entry_data_hash_start_pos, 8)?;
     let source_hash = u64::from_le_bytes(
       buffer[source_hash_start_pos..entry_data_hash_start_pos].try_into()?,
     );
-    let specifier_end_pos = source_hash_start_pos - 4;
+    let specifier_end_pos = try_subtract(source_hash_start_pos, 4)?;
     let specifier_len = u32::from_le_bytes(
       buffer[specifier_end_pos..source_hash_start_pos].try_into()?,
     ) as usize;
-    let specifier_start_pos = specifier_end_pos - specifier_len;
+    let specifier_start_pos = try_subtract(specifier_end_pos, specifier_len)?;
     let specifier = String::from_utf8(
       buffer[specifier_start_pos..specifier_end_pos].to_vec(),
     )?;
-    let code_cache_type_pos = specifier_start_pos - 1;
+    let code_cache_type_pos = try_subtract(specifier_start_pos, 1)?;
     let code_cache_type = match buffer[code_cache_type_pos] {
       0 => CodeCacheType::EsModule,
       1 => CodeCacheType::Script,
@@ -370,7 +392,6 @@ mod test {
 
   #[test]
   fn serialize_deserialize() {
-    let temp_dir = TempDir::new();
     let cache_key = 123456;
     let cache = {
       let mut cache = HashMap::new();
@@ -397,29 +418,33 @@ mod test {
       );
       cache
     };
-    let file_path = temp_dir.path().join("cache.bin").to_path_buf();
-    serialize(&file_path, cache_key, &cache).unwrap();
-    let deserialized = deserialize(&file_path, cache_key).unwrap();
+    let mut buffer = Vec::new();
+    serialize_with_writer(&mut BufWriter::new(&mut buffer), cache_key, &cache)
+      .unwrap();
+    let deserialized =
+      deserialize_with_reader(&mut BufReader::new(&buffer[..]), cache_key)
+        .unwrap();
     assert_eq!(cache, deserialized);
   }
 
   #[test]
   fn serialize_deserialize_empty() {
-    let temp_dir = TempDir::new();
     let cache_key = 1234;
     let cache = HashMap::new();
-    let file_path = temp_dir.path().join("cache.bin").to_path_buf();
-    serialize(&file_path, cache_key, &cache).unwrap();
-    let deserialized = deserialize(&file_path, cache_key).unwrap();
+    let mut buffer = Vec::new();
+    serialize_with_writer(&mut BufWriter::new(&mut buffer), cache_key, &cache)
+      .unwrap();
+    let deserialized =
+      deserialize_with_reader(&mut BufReader::new(&buffer[..]), cache_key)
+        .unwrap();
     assert_eq!(cache, deserialized);
   }
 
   #[test]
   fn serialize_deserialize_corrupt() {
-    let temp_dir = TempDir::new();
-    let file_path = temp_dir.path().join("cache.bin").to_path_buf();
-    std::fs::write(&file_path, b"corrupttestingtestingtesting").unwrap();
-    let err = deserialize(&file_path, 1234).unwrap_err();
+    let buffer = "corrupttestingtestingtesting".as_bytes().to_vec();
+    let err = deserialize_with_reader(&mut BufReader::new(&buffer[..]), 1234)
+      .unwrap_err();
     assert_eq!(err.to_string(), "Cache key mismatch");
   }
 
