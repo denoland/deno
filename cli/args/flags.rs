@@ -1921,6 +1921,7 @@ On the first invocation with deno will download the proper binary and cache it i
           ])
           .help_heading(COMPILE_HEADING),
       )
+      .arg(no_code_cache_arg())
       .arg(
         Arg::new("no-terminal")
           .long("no-terminal")
@@ -4411,6 +4412,8 @@ fn compile_parse(
     None => vec![],
   };
   ext_arg_parse(flags, matches);
+
+  flags.code_cache_enabled = !matches.get_flag("no-code-cache");
 
   flags.subcommand = DenoSubcommand::Compile(CompileFlags {
     source_file,

@@ -74,7 +74,7 @@ impl CodeCache for DenoCompileCodeCache {
   fn get_sync(
     &self,
     specifier: &ModuleSpecifier,
-    _code_cache_type: CodeCacheType,
+    code_cache_type: CodeCacheType,
     source_hash: u64,
   ) -> Option<Vec<u8>> {
     match &self.strategy {
@@ -91,7 +91,7 @@ impl CodeCache for DenoCompileCodeCache {
         if strategy.is_finished.is_raised() {
           return None;
         }
-        strategy.take_from_cache(specifier, source_hash)
+        strategy.take_from_cache(specifier, code_cache_type, source_hash)
       }
     }
   }
@@ -99,7 +99,7 @@ impl CodeCache for DenoCompileCodeCache {
   fn set_sync(
     &self,
     specifier: ModuleSpecifier,
-    _code_cache_type: CodeCacheType,
+    code_cache_type: CodeCacheType,
     source_hash: u64,
     bytes: &[u8],
   ) {
@@ -112,7 +112,7 @@ impl CodeCache for DenoCompileCodeCache {
         let data_to_serialize = {
           let mut data = strategy.data.lock();
           data.cache.insert(
-            specifier.to_string(),
+            (specifier.to_string(), code_cache_type),
             DenoCompileCodeCacheEntry {
               source_hash,
               data: bytes.to_vec(),
@@ -161,8 +161,10 @@ impl CliCodeCache for DenoCompileCodeCache {
   }
 }
 
+type CodeCacheKey = (String, CodeCacheType);
+
 struct FirstRunCodeCacheData {
-  cache: HashMap<String, DenoCompileCodeCacheEntry>,
+  cache: HashMap<CodeCacheKey, DenoCompileCodeCacheEntry>,
   add_count: usize,
 }
 
@@ -176,7 +178,7 @@ struct FirstRunCodeCacheStrategy {
 impl FirstRunCodeCacheStrategy {
   fn write_cache_data(
     &self,
-    cache_data: &HashMap<String, DenoCompileCodeCacheEntry>,
+    cache_data: &HashMap<CodeCacheKey, DenoCompileCodeCacheEntry>,
   ) {
     let count = cache_data.len();
     let temp_file = get_atomic_file_path(&self.file_path);
@@ -198,19 +200,24 @@ impl FirstRunCodeCacheStrategy {
 
 struct SubsequentRunCodeCacheStrategy {
   is_finished: AtomicFlag,
-  data: Mutex<HashMap<String, DenoCompileCodeCacheEntry>>,
+  data: Mutex<HashMap<CodeCacheKey, DenoCompileCodeCacheEntry>>,
 }
 
 impl SubsequentRunCodeCacheStrategy {
   fn take_from_cache(
     &self,
     specifier: &ModuleSpecifier,
+    code_cache_type: CodeCacheType,
     source_hash: u64,
   ) -> Option<Vec<u8>> {
     let mut data = self.data.lock();
-    let entry = data.remove(specifier.as_str())?;
+    // todo(dsherret): how to avoid the clone here?
+    let entry = data.remove(&(specifier.to_string(), code_cache_type))?;
     if entry.source_hash != source_hash {
       return None;
+    }
+    if data.is_empty() {
+      self.is_finished.raise();
     }
     Some(entry.data)
   }
@@ -224,13 +231,14 @@ impl SubsequentRunCodeCacheStrategy {
 /// - <[entry]>
 ///   - <[u8]: entry data>
 ///   - <String: specifier>
+///   - <u8>: code cache type
 ///   - <u32: specifier length>
 ///   - <u64: source hash>
 ///   - <u64: entry data hash>
 fn serialize(
   file_path: &Path,
   cache_key: u64,
-  cache: &HashMap<String, DenoCompileCodeCacheEntry>,
+  cache: &HashMap<CodeCacheKey, DenoCompileCodeCacheEntry>,
 ) -> Result<(), AnyError> {
   let cache_file = std::fs::OpenOptions::new()
     .create(true)
@@ -242,13 +250,18 @@ fn serialize(
   writer.write_all(&cache_key.to_le_bytes())?;
   writer.write_all(&(cache.len() as u32).to_le_bytes())?;
   // lengths of each entry
-  for (specifier, entry) in cache {
-    let len: u64 = entry.data.len() as u64 + specifier.len() as u64 + 4 + 8 + 8;
+  for ((specifier, _), entry) in cache {
+    let len: u64 =
+      entry.data.len() as u64 + specifier.len() as u64 + 1 + 4 + 8 + 8;
     writer.write_all(&len.to_le_bytes())?;
   }
   // entries
-  for (specifier, entry) in cache {
+  for ((specifier, code_cache_type), entry) in cache {
     writer.write_all(&entry.data)?;
+    writer.write_all(&[match code_cache_type {
+      CodeCacheType::EsModule => 0,
+      CodeCacheType::Script => 1,
+    }])?;
     writer.write_all(specifier.as_bytes())?;
     writer.write_all(&(specifier.len() as u32).to_le_bytes())?;
     writer.write_all(&entry.source_hash.to_le_bytes())?;
@@ -266,7 +279,7 @@ fn serialize(
 fn deserialize(
   file_path: &Path,
   expected_cache_key: u64,
-) -> Result<HashMap<String, DenoCompileCodeCacheEntry>, AnyError> {
+) -> Result<HashMap<CodeCacheKey, DenoCompileCodeCacheEntry>, AnyError> {
   // it's very important to use this below so that a corrupt cache file
   // doesn't cause a memory allocation error
   fn new_vec_sized<T: Clone>(
@@ -322,7 +335,13 @@ fn deserialize(
     let specifier = String::from_utf8(
       buffer[specifier_start_pos..specifier_end_pos].to_vec(),
     )?;
-    buffer.truncate(specifier_start_pos);
+    let code_cache_type_pos = specifier_start_pos - 1;
+    let code_cache_type = match buffer[code_cache_type_pos] {
+      0 => CodeCacheType::EsModule,
+      1 => CodeCacheType::Script,
+      _ => bail!("Invalid code cache type"),
+    };
+    buffer.truncate(code_cache_type_pos);
     let actual_entry_data_hash: u64 =
       FastInsecureHasher::new_without_deno_version()
         .write(&buffer)
@@ -331,7 +350,7 @@ fn deserialize(
       bail!("Hash mismatch.")
     }
     map.insert(
-      specifier,
+      (specifier, code_cache_type),
       DenoCompileCodeCacheEntry {
         source_hash,
         data: buffer,
@@ -356,17 +375,24 @@ mod test {
     let cache = {
       let mut cache = HashMap::new();
       cache.insert(
-        "specifier1".to_string(),
+        ("specifier1".to_string(), CodeCacheType::EsModule),
         DenoCompileCodeCacheEntry {
           source_hash: 1,
           data: vec![1, 2, 3],
         },
       );
       cache.insert(
-        "specifier2".to_string(),
+        ("specifier2".to_string(), CodeCacheType::EsModule),
         DenoCompileCodeCacheEntry {
           source_hash: 2,
           data: vec![4, 5, 6],
+        },
+      );
+      cache.insert(
+        ("specifier2".to_string(), CodeCacheType::Script),
+        DenoCompileCodeCacheEntry {
+          source_hash: 2,
+          data: vec![6, 5, 1],
         },
       );
       cache
@@ -412,20 +438,26 @@ mod test {
       assert!(code_cache
         .get_sync(&url2, CodeCacheType::EsModule, 1)
         .is_none());
+      assert!(code_cache.enabled());
       code_cache.set_sync(url1.clone(), CodeCacheType::EsModule, 0, &[1, 2, 3]);
+      assert!(code_cache.enabled());
       assert!(!file_path.exists());
       code_cache.set_sync(url2.clone(), CodeCacheType::EsModule, 1, &[2, 1, 3]);
       assert!(file_path.exists()); // now the new code cache exists
+      assert!(!code_cache.enabled()); // no longer enabled
     }
     // second run
     {
       let code_cache = DenoCompileCodeCache::new(file_path.clone(), 1234);
+      assert!(code_cache.enabled());
       let result1 = code_cache
         .get_sync(&url1, CodeCacheType::EsModule, 0)
         .unwrap();
+      assert!(code_cache.enabled());
       let result2 = code_cache
         .get_sync(&url2, CodeCacheType::EsModule, 1)
         .unwrap();
+      assert!(!code_cache.enabled()); // no longer enabled
       assert_eq!(result1, vec![1, 2, 3]);
       assert_eq!(result2, vec![2, 1, 3]);
     }

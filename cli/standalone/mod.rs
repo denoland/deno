@@ -101,7 +101,7 @@ struct SharedModuleLoaderState {
   workspace_resolver: WorkspaceResolver,
   node_resolver: Arc<CliNodeResolver>,
   npm_module_loader: Arc<NpmModuleLoader>,
-  code_cache: Arc<dyn CliCodeCache>,
+  code_cache: Option<Arc<dyn CliCodeCache>>,
 }
 
 impl SharedModuleLoaderState {
@@ -110,14 +110,17 @@ impl SharedModuleLoaderState {
     specifier: &ModuleSpecifier,
     source: &[u8],
   ) -> Option<SourceCodeCacheInfo> {
-    if !self.code_cache.enabled() {
+    let Some(code_cache) = &self.code_cache else {
+      return None;
+    };
+    if !code_cache.enabled() {
       return None;
     }
     // deno version is already included in the root cache key
     let hash = FastInsecureHasher::new_without_deno_version()
       .write_hashable(source)
       .finish();
-    let data = self.code_cache.get_sync(
+    let data = code_cache.get_sync(
       specifier,
       deno_runtime::code_cache::CodeCacheType::EsModule,
       hash,
@@ -382,14 +385,16 @@ impl ModuleLoader for EmbeddedModuleLoader {
     &self,
     specifier: ModuleSpecifier,
     source_hash: u64,
-    code_cache: &[u8],
+    code_cache_data: &[u8],
   ) -> LocalBoxFuture<'static, ()> {
-    self.shared.code_cache.set_sync(
-      specifier,
-      deno_runtime::code_cache::CodeCacheType::EsModule,
-      source_hash,
-      code_cache,
-    );
+    if let Some(code_cache) = &self.shared.code_cache {
+      code_cache.set_sync(
+        specifier,
+        deno_runtime::code_cache::CodeCacheType::EsModule,
+        source_hash,
+        code_cache_data,
+      );
+    }
     std::future::ready(()).boxed_local()
   }
 }
@@ -615,13 +620,19 @@ pub async fn run(data: StandaloneData) -> Result<i32, AnyError> {
       metadata.workspace_resolver.pkg_json_resolution,
     )
   };
-  let code_cache = Arc::new(DenoCompileCodeCache::new(
-    root_path.with_file_name(format!(
-      "{}.cache",
-      root_path.file_name().unwrap().to_string_lossy()
-    )),
-    metadata.code_cache_key,
-  ));
+  let code_cache = match metadata.code_cache_key {
+    Some(code_cache_key) => Some(Arc::new(DenoCompileCodeCache::new(
+      root_path.with_file_name(format!(
+        "{}.cache",
+        root_path.file_name().unwrap().to_string_lossy()
+      )),
+      code_cache_key,
+    )) as Arc<dyn CliCodeCache>),
+    None => {
+      log::debug!("Code cache disabled.");
+      None
+    }
+  };
   let module_loader_factory = StandaloneModuleLoaderFactory {
     shared: Arc::new(SharedModuleLoaderState {
       modules,
@@ -673,7 +684,7 @@ pub async fn run(data: StandaloneData) -> Result<i32, AnyError> {
   let worker_factory = CliMainWorkerFactory::new(
     Arc::new(BlobStore::default()),
     cjs_resolutions,
-    Some(code_cache),
+    code_cache,
     feature_checker,
     fs,
     None,

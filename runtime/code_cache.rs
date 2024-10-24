@@ -2,6 +2,7 @@
 
 use deno_core::ModuleSpecifier;
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum CodeCacheType {
   EsModule,
   Script,
