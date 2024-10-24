@@ -356,6 +356,5 @@ Deno.test("[util] styleText()", () => {
 
 Deno.test("[util] styleText() with array of formats", () => {
   const colored = util.styleText(["red", "green"], "error");
-  console.log(JSON.stringify(colored));
   assertEquals(colored, "\x1b[32m\x1b[31merror\x1b[39m\x1b[39m");
 });
