@@ -615,7 +615,7 @@ class ClientRequest extends OutgoingMessage {
         _destroy(req, err || req[kError]);
       } else {
         // Note: this code is specific to deno to initiate a request.
-        socket.on("connect", () => {
+        const onConnect = () => {
           // Flush the internal buffers once socket is ready.
           // Note: the order is important, as the headers flush
           // sets up the request.
@@ -623,11 +623,14 @@ class ClientRequest extends OutgoingMessage {
           this.once("requestReady", () => {
             this._flushBuffer();
           });
-        });
+        };
         this.socket = socket;
         this.emit("socket", socket);
-        // tickOnSocket(req, socket);
-        // req._flush();
+        if (socket.readyState === "opening") {
+          socket.on("connect", onConnect);
+        } else {
+          onConnect();
+        }
       }
     });
   }

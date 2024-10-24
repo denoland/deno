@@ -363,6 +363,16 @@ function _afterConnect(
     socket.emit("connect");
     socket.emit("ready");
 
+    // Note: This is Deno specific logic
+    // If there's no listener for the connect, ready, data event,
+    // we delay the first read. This is necessary for http.request to work properly.
+    const connectListeners = socket.listenerCount("connect");
+    const readyListeners = socket.listenerCount("ready");
+    const dataListeners = socket.listenerCount("data");
+    if (connectListeners === 0 && readyListeners === 0 && dataListeners === 0) {
+      return;
+    }
+
     // Start the first read, or get an immediate EOF.
     // this doesn't actually consume any bytes, because len=0.
     if (readable && !socket.isPaused()) {
