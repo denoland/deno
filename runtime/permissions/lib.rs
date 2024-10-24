@@ -4549,7 +4549,6 @@ mod tests {
         None,
         false,
       )
-      .unwrap()
     };
 
     prompt_value.set(true);
