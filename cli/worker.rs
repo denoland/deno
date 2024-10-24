@@ -82,6 +82,15 @@ pub trait HmrRunner: Send + Sync {
   async fn run(&mut self) -> Result<(), AnyError>;
 }
 
+pub trait CliCodeCache: code_cache::CodeCache {
+  /// Gets if the code cache is still enabled.
+  fn enabled(&self) -> bool {
+    true
+  }
+
+  fn as_code_cache(self: Arc<Self>) -> Arc<dyn code_cache::CodeCache>;
+}
+
 #[async_trait::async_trait(?Send)]
 pub trait CoverageCollector: Send + Sync {
   async fn start_collecting(&mut self) -> Result<(), AnyError>;
@@ -129,7 +138,7 @@ struct SharedWorkerState {
   blob_store: Arc<BlobStore>,
   broadcast_channel: InMemoryBroadcastChannel,
   cjs_resolution_store: Arc<CjsResolutionStore>,
-  code_cache: Option<Arc<dyn code_cache::CodeCache>>,
+  code_cache: Option<Arc<dyn CliCodeCache>>,
   compiled_wasm_module_store: CompiledWasmModuleStore,
   feature_checker: Arc<FeatureChecker>,
   fs: Arc<dyn deno_fs::FileSystem>,
@@ -427,7 +436,7 @@ impl CliMainWorkerFactory {
   pub fn new(
     blob_store: Arc<BlobStore>,
     cjs_resolution_store: Arc<CjsResolutionStore>,
-    code_cache: Option<Arc<dyn code_cache::CodeCache>>,
+    code_cache: Option<Arc<dyn CliCodeCache>>,
     feature_checker: Arc<FeatureChecker>,
     fs: Arc<dyn deno_fs::FileSystem>,
     maybe_file_watcher_communicator: Option<Arc<WatcherCommunicator>>,
@@ -607,7 +616,7 @@ impl CliMainWorkerFactory {
       ),
       feature_checker,
       permissions,
-      v8_code_cache: shared.code_cache.clone(),
+      v8_code_cache: shared.code_cache.clone().map(|c| c.as_code_cache()),
     };
     let options = WorkerOptions {
       bootstrap: BootstrapOptions {

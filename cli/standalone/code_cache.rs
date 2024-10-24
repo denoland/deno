@@ -8,6 +8,7 @@ use std::io::Read;
 use std::io::Write;
 use std::path::Path;
 use std::path::PathBuf;
+use std::sync::Arc;
 
 use deno_ast::ModuleSpecifier;
 use deno_core::anyhow::bail;
@@ -19,37 +20,11 @@ use deno_runtime::code_cache::CodeCacheType;
 
 use crate::cache::FastInsecureHasher;
 use crate::util::path::get_atomic_file_path;
+use crate::worker::CliCodeCache;
 
-struct MutableData {
-  cache: HashMap<String, DenoCompileCodeCacheEntry>,
-  modified: bool,
-  add_count: usize,
-}
-
-impl MutableData {
-  fn take_from_cache(
-    &mut self,
-    specifier: &ModuleSpecifier,
-    source_hash: u64,
-  ) -> Option<Vec<u8>> {
-    let entry = self.cache.remove(specifier.as_str())?;
-    if entry.source_hash != source_hash {
-      return None;
-    }
-    Some(entry.data)
-  }
-
-  fn take_cache_data(
-    &mut self,
-  ) -> Option<HashMap<String, DenoCompileCodeCacheEntry>> {
-    // always purge this from memory
-    let cache_data = std::mem::take(&mut self.cache);
-
-    if !self.modified {
-      return None;
-    }
-    Some(cache_data)
-  }
+enum CodeCacheStrategy {
+  FirstRun(FirstRunCodeCacheStrategy),
+  SubsequentRun(SubsequentRunCodeCacheStrategy),
 }
 
 #[derive(Debug, Clone)]
@@ -59,44 +34,155 @@ pub struct DenoCompileCodeCacheEntry {
 }
 
 pub struct DenoCompileCodeCache {
-  cache_key: String,
-  file_path: PathBuf,
-  finished: AtomicFlag,
-  data: Mutex<MutableData>,
+  strategy: CodeCacheStrategy,
 }
 
 impl DenoCompileCodeCache {
   pub fn new(file_path: PathBuf, cache_key: String) -> Self {
     // attempt to deserialize the cache data
-    let cache = match deserialize(&file_path, &cache_key) {
-      Ok(cache) => cache,
-      Err(err) => {
-        log::debug!("Failed to deserialize code cache: {}", err);
-        HashMap::new()
+    match deserialize(&file_path, &cache_key) {
+      Ok(data) => {
+        log::debug!("Loaded {} code cache entries", data.len());
+        Self {
+          strategy: CodeCacheStrategy::SubsequentRun(
+            SubsequentRunCodeCacheStrategy {
+              is_finished: AtomicFlag::lowered(),
+              data: Mutex::new(data),
+            },
+          ),
+        }
       }
-    };
+      Err(err) => {
+        log::debug!("Failed to deserialize code cache: {:#}", err);
+        Self {
+          strategy: CodeCacheStrategy::FirstRun(FirstRunCodeCacheStrategy {
+            cache_key,
+            file_path,
+            is_finished: AtomicFlag::lowered(),
+            data: Mutex::new(FirstRunCodeCacheData {
+              cache: HashMap::new(),
+              add_count: 0,
+            }),
+          }),
+        }
+      }
+    }
+  }
+}
 
-    Self {
-      cache_key,
-      file_path,
-      finished: AtomicFlag::lowered(),
-      data: Mutex::new(MutableData {
-        cache,
-        modified: false,
-        add_count: 0,
-      }),
+impl CodeCache for DenoCompileCodeCache {
+  fn get_sync(
+    &self,
+    specifier: &ModuleSpecifier,
+    _code_cache_type: CodeCacheType,
+    source_hash: u64,
+  ) -> Option<Vec<u8>> {
+    match &self.strategy {
+      CodeCacheStrategy::FirstRun(strategy) => {
+        if !strategy.is_finished.is_raised() {
+          strategy.data.lock().add_count += 1;
+        }
+        None
+      }
+      CodeCacheStrategy::SubsequentRun(strategy) => {
+        if strategy.is_finished.is_raised() {
+          return None;
+        }
+        strategy.take_from_cache(specifier, source_hash)
+      }
     }
   }
 
+  fn set_sync(
+    &self,
+    specifier: ModuleSpecifier,
+    _code_cache_type: CodeCacheType,
+    source_hash: u64,
+    bytes: &[u8],
+  ) {
+    match &self.strategy {
+      CodeCacheStrategy::FirstRun(strategy) => {
+        if strategy.is_finished.is_raised() {
+          return;
+        }
+
+        let data_to_serialize = {
+          let mut data = strategy.data.lock();
+          data.cache.insert(
+            specifier.to_string(),
+            DenoCompileCodeCacheEntry {
+              source_hash,
+              data: bytes.to_vec(),
+            },
+          );
+          if data.add_count != 0 {
+            data.add_count -= 1;
+          }
+          if data.add_count == 0 {
+            // don't allow using the cache anymore
+            strategy.is_finished.raise();
+            if data.cache.is_empty() {
+              None
+            } else {
+              Some(std::mem::take(&mut data.cache))
+            }
+          } else {
+            None
+          }
+        };
+        if let Some(cache_data) = &data_to_serialize {
+          strategy.write_cache_data(&cache_data);
+        }
+      }
+      CodeCacheStrategy::SubsequentRun(_) => {
+        // do nothing
+      }
+    }
+  }
+}
+
+impl CliCodeCache for DenoCompileCodeCache {
+  fn enabled(&self) -> bool {
+    match &self.strategy {
+      CodeCacheStrategy::FirstRun(strategy) => {
+        !strategy.is_finished.is_raised()
+      }
+      CodeCacheStrategy::SubsequentRun(strategy) => {
+        !strategy.is_finished.is_raised()
+      }
+    }
+  }
+
+  fn as_code_cache(self: Arc<Self>) -> Arc<dyn CodeCache> {
+    self
+  }
+}
+
+struct FirstRunCodeCacheData {
+  cache: HashMap<String, DenoCompileCodeCacheEntry>,
+  add_count: usize,
+}
+
+struct FirstRunCodeCacheStrategy {
+  cache_key: String,
+  file_path: PathBuf,
+  is_finished: AtomicFlag,
+  data: Mutex<FirstRunCodeCacheData>,
+}
+
+impl FirstRunCodeCacheStrategy {
   fn write_cache_data(
     &self,
     cache_data: &HashMap<String, DenoCompileCodeCacheEntry>,
   ) {
+    let count = cache_data.len();
     let temp_file = get_atomic_file_path(&self.file_path);
     match serialize(&temp_file, &self.cache_key, cache_data) {
       Ok(()) => {
         if let Err(err) = std::fs::rename(&temp_file, &self.file_path) {
           log::debug!("Failed to rename code cache: {}", err);
+        } else {
+          log::debug!("Serialized {} code cache entries", count);
         }
       }
       Err(err) => {
@@ -107,64 +193,23 @@ impl DenoCompileCodeCache {
   }
 }
 
-impl CodeCache for DenoCompileCodeCache {
-  fn get_sync(
+struct SubsequentRunCodeCacheStrategy {
+  is_finished: AtomicFlag,
+  data: Mutex<HashMap<String, DenoCompileCodeCacheEntry>>,
+}
+
+impl SubsequentRunCodeCacheStrategy {
+  fn take_from_cache(
     &self,
     specifier: &ModuleSpecifier,
-    code_cache_type: CodeCacheType,
     source_hash: u64,
   ) -> Option<Vec<u8>> {
-    if self.finished.is_raised() {
+    let mut data = self.data.lock();
+    let entry = data.remove(specifier.as_str())?;
+    if entry.source_hash != source_hash {
       return None;
     }
-    let mut data = self.data.lock();
-    match data.take_from_cache(specifier, source_hash) {
-      Some(data) => Some(data),
-      None => {
-        data.add_count += 1;
-        None
-      }
-    }
-  }
-
-  fn set_sync(
-    &self,
-    specifier: ModuleSpecifier,
-    code_cache_type: CodeCacheType,
-    source_hash: u64,
-    bytes: &[u8],
-  ) {
-    if self.finished.is_raised() {
-      return;
-    }
-    let data_to_serialize = {
-      let mut data = self.data.lock();
-      data.cache.insert(
-        specifier.to_string(),
-        DenoCompileCodeCacheEntry {
-          source_hash,
-          data: bytes.to_vec(),
-        },
-      );
-      data.modified = true;
-      if data.add_count != 0 {
-        data.add_count -= 1;
-      }
-      if data.add_count == 0 {
-        // don't allow using the cache anymore
-        self.finished.raise();
-        data.take_cache_data()
-      } else {
-        None
-      }
-    };
-    if let Some(cache_data) = &data_to_serialize {
-      self.write_cache_data(&cache_data);
-    }
-  }
-
-  fn enabled(&self) -> bool {
-    !self.finished.is_raised()
+    Some(entry.data)
   }
 }
 

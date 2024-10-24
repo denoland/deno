@@ -77,6 +77,7 @@ use crate::resolver::NpmModuleLoader;
 use crate::util::progress_bar::ProgressBar;
 use crate::util::progress_bar::ProgressBarStyle;
 use crate::util::v8::construct_v8_flags;
+use crate::worker::CliCodeCache;
 use crate::worker::CliMainWorkerFactory;
 use crate::worker::CliMainWorkerOptions;
 use crate::worker::ModuleLoaderAndSourceMapGetter;
@@ -100,7 +101,7 @@ struct SharedModuleLoaderState {
   workspace_resolver: WorkspaceResolver,
   node_resolver: Arc<CliNodeResolver>,
   npm_module_loader: Arc<NpmModuleLoader>,
-  code_cache: Arc<dyn deno_runtime::code_cache::CodeCache>,
+  code_cache: Arc<dyn CliCodeCache>,
 }
 
 impl SharedModuleLoaderState {

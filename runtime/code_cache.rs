@@ -14,6 +14,7 @@ pub trait CodeCache: Send + Sync {
     code_cache_type: CodeCacheType,
     source_hash: u64,
   ) -> Option<Vec<u8>>;
+
   fn set_sync(
     &self,
     specifier: ModuleSpecifier,
@@ -21,9 +22,4 @@ pub trait CodeCache: Send + Sync {
     source_hash: u64,
     data: &[u8],
   );
-
-  /// Gets if the code cache is still enabled.
-  fn enabled(&self) -> bool {
-    true
-  }
 }
