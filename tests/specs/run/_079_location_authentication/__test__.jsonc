@@ -1,0 +1,4 @@
+{
+  "args": "run --location https://foo:bar@baz/qux 079_location_authentication.ts",
+  "output": "079_location_authentication.ts.out"
+}

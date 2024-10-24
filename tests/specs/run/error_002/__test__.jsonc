@@ -1,0 +1,5 @@
+{
+  "args": "run --reload error_002.ts",
+  "output": "error_002.ts.out",
+  "exitCode": 1
+}

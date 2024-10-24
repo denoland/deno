@@ -1,0 +1,5 @@
+{
+  "args": "run error_018_hide_long_source_js.js",
+  "output": "error_018_hide_long_source_js.js.out",
+  "exitCode": 1
+}

@@ -1,0 +1,4 @@
+{
+  "args": "run webstorage/serialization.ts",
+  "output": "webstorage/serialization.ts.out"
+}

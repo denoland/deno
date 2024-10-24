@@ -1,0 +1,5 @@
+{
+  "args": "run --quiet --allow-import --reload --check=all no_check_remote.ts",
+  "output": "no_check_remote.ts.disabled.out",
+  "exitCode": 1
+}

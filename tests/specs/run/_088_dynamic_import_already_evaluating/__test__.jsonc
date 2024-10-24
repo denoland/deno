@@ -1,0 +1,4 @@
+{
+  "args": "run --allow-read 088_dynamic_import_already_evaluating.ts",
+  "output": "088_dynamic_import_already_evaluating.ts.out"
+}

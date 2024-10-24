@@ -1,0 +1,4 @@
+{
+  "args": "run --quiet event_listener_error_handled.ts",
+  "output": "event_listener_error_handled.ts.out"
+}

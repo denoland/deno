@@ -1,0 +1,5 @@
+{
+  "args": "run --quiet --reload --allow-read 044_bad_resource.ts",
+  "output": "044_bad_resource.ts.out",
+  "exitCode": 1
+}

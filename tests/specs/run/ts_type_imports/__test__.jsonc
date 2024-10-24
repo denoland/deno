@@ -1,0 +1,5 @@
+{
+  "args": "run --reload --check ts_type_imports.ts",
+  "output": "ts_type_imports.ts.out",
+  "exitCode": 1
+}

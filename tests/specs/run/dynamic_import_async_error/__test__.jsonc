@@ -1,0 +1,4 @@
+{
+  "args": "run --allow-read dynamic_import_async_error/main.ts",
+  "output": "dynamic_import_async_error/main.out"
+}

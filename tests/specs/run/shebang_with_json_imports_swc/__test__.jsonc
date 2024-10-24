@@ -1,0 +1,5 @@
+{
+  "args": "run --quiet --no-check json_with_shebang.ts",
+  "output": "json_with_shebang.ts.out",
+  "exitCode": 1
+}

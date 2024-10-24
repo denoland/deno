@@ -1,0 +1,4 @@
+{
+  "args": "run --quiet --reload --allow-read --unstable-kv unstable_kv.js",
+  "output": "unstable_kv.enabled.out"
+}

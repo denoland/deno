@@ -1,0 +1,4 @@
+{
+  "args": "run --quiet --reload weakref.ts",
+  "output": "weakref.ts.out"
+}

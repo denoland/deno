@@ -1,0 +1,4 @@
+{
+  "args": "run --deny-env --deny-read --deny-write --deny-ffi --deny-run --deny-sys --deny-net deny_all_permission_args.js",
+  "output": "deny_all_permission_args.out"
+}
