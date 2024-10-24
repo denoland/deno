@@ -220,7 +220,7 @@ impl VfsBuilder {
     if canonicalized_target_path != path
       && !canonicalized_target_path.starts_with(&self.root_path)
     {
-      self.add_symlink(path, &canonicalized_target_path)?;
+      self.add_symlink(path, canonicalized_target_path)?;
     }
 
     Ok(())
