@@ -5,6 +5,22 @@
 #![allow(clippy::undocumented_unsafe_blocks)]
 #![deny(clippy::missing_safety_doc)]
 
+//! Symbols to be exported are now defined in this JSON file.
+//! The `#[napi_sym]` macro checks for missing entries and panics.
+//!
+//! `./tools/napi/generate_symbols_list.js` is used to generate the LINK `cli/exports.def` on Windows,
+//! which is also checked into git.
+//!
+//! To add a new napi function:
+//! 1. Place `#[napi_sym]` on top of your implementation.
+//! 2. Add the function's identifier to this JSON list.
+//! 3. Finally, run `tools/napi/generate_symbols_list.js` to update `ext/napi/generated_symbol_exports_list_*.def`.
+
+pub mod js_native_api;
+pub mod node_api;
+pub mod util;
+pub mod uv;
+
 use core::ptr::NonNull;
 use deno_core::op2;
 use deno_core::parking_lot::RwLock;
@@ -630,4 +646,31 @@ where
   std::mem::forget(library);
 
   Ok(exports)
+}
+
+#[allow(clippy::print_stdout)]
+pub fn print_linker_flags(name: &str) {
+  let symbols_path =
+    include_str!(concat!(env!("OUT_DIR"), "/napi_symbol_path.txt"));
+
+  #[cfg(target_os = "windows")]
+  println!("cargo:rustc-link-arg-bin={name}=/DEF:{}", symbols_path);
+
+  #[cfg(target_os = "macos")]
+  println!(
+    "cargo:rustc-link-arg-bin={name}=-Wl,-exported_symbols_list,{}",
+    symbols_path,
+  );
+
+  #[cfg(target_os = "linux")]
+  println!(
+    "cargo:rustc-link-arg-bin={name}=-Wl,--export-dynamic-symbol-list={}",
+    symbols_path,
+  );
+
+  #[cfg(target_os = "android")]
+  println!(
+    "cargo:rustc-link-arg-bin={name}=-Wl,--export-dynamic-symbol-list={}",
+    symbols_path,
+  );
 }
