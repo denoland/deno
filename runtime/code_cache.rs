@@ -7,15 +7,6 @@ pub enum CodeCacheType {
   Script,
 }
 
-impl CodeCacheType {
-  pub fn as_str(&self) -> &str {
-    match self {
-      Self::EsModule => "esmodule",
-      Self::Script => "script",
-    }
-  }
-}
-
 pub trait CodeCache: Send + Sync {
   fn get_sync(
     &self,
@@ -30,4 +21,9 @@ pub trait CodeCache: Send + Sync {
     source_hash: u64,
     data: &[u8],
   );
+
+  /// Gets if the code cache is still enabled.
+  fn enabled(&self) -> bool {
+    true
+  }
 }

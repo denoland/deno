@@ -54,6 +54,7 @@ use indexmap::IndexMap;
 use log::Level;
 use serde::Deserialize;
 use serde::Serialize;
+use windows_sys::Wdk::System;
 
 use crate::args::CaData;
 use crate::args::CliOptions;
@@ -171,6 +172,9 @@ pub struct SerializedWorkspaceResolver {
 pub struct Metadata {
   pub argv: Vec<String>,
   pub seed: Option<u64>,
+  /// A randomly generated value that is used as the cache key for this
+  /// compilation.
+  pub cache_key: String,
   pub permissions: PermissionFlags,
   pub location: Option<Url>,
   pub v8_flags: Vec<String>,
@@ -656,6 +660,11 @@ impl<'a> DenoCompileBinaryWriter<'a> {
     let metadata = Metadata {
       argv: compile_flags.args.clone(),
       seed: cli_options.seed(),
+      cache_key: std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap()
+        .as_nanos()
+        .to_string(),
       location: cli_options.location_flag().clone(),
       permissions: cli_options.permission_flags().clone(),
       v8_flags: cli_options.v8_flags().clone(),
