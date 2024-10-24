@@ -2,20 +2,20 @@
   "tempDir": true,
   "steps": [{
     "if": "unix",
-    "args": "compile --output main --no-code-cache --log-level=debug main.ts",
+    "args": "compile --output no_code_cache --no-code-cache --log-level=debug main.ts",
     "output": "[WILDCARD]"
   }, {
     "if": "unix",
-    "commandName": "./main",
+    "commandName": "./no_code_cache",
     "args": [],
     "output": "main.out"
   }, {
     "if": "windows",
-    "args": "compile --output main.exe --no-code-cache --log-level=debug main.ts",
+    "args": "compile --output no_code_cache.exe --no-code-cache --log-level=debug main.ts",
     "output": "[WILDCARD]"
   }, {
     "if": "windows",
-    "commandName": "./main.exe",
+    "commandName": "./no_code_cache.exe",
     "args": [],
     "output": "main.out"
   }]

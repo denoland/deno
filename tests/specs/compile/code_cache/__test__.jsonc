@@ -2,30 +2,30 @@
   "tempDir": true,
   "steps": [{
     "if": "unix",
-    "args": "compile --output main --log-level=debug main.ts",
+    "args": "compile --output using_code_cache --log-level=debug main.ts",
     "output": "[WILDCARD]"
   }, {
     "if": "unix",
-    "commandName": "./main",
+    "commandName": "./using_code_cache",
     "args": [],
     "output": "first_run.out"
   }, {
     "if": "unix",
-    "commandName": "./main",
+    "commandName": "./using_code_cache",
     "args": [],
     "output": "second_run.out"
   }, {
     "if": "windows",
-    "args": "compile --output main.exe --log-level=debug main.ts",
+    "args": "compile --output using_code_cache.exe --log-level=debug main.ts",
     "output": "[WILDCARD]"
   }, {
     "if": "windows",
-    "commandName": "./main.exe",
+    "commandName": "./using_code_cache.exe",
     "args": [],
     "output": "first_run.out"
   }, {
     "if": "windows",
-    "commandName": "./main.exe",
+    "commandName": "./using_code_cache.exe",
     "args": [],
     "output": "second_run.out"
   }]
