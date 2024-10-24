@@ -867,21 +867,25 @@ fn get_net_map_error(error: &deno_net::io::MapError) -> &'static str {
   }
 }
 
+fn get_child_permission_error(e: &ChildPermissionError) -> &'static str {
+  match e {
+    ChildPermissionError::Escalation => "NotCapable",
+    ChildPermissionError::PathResolve(e) => get_path_resolve_error(e),
+    ChildPermissionError::NetDescriptorParse(_) => "URIError",
+    ChildPermissionError::EnvDescriptorParse(_) => "Error",
+    ChildPermissionError::SysDescriptorParse(e) => {
+      get_sys_descriptor_parse_error(e)
+    }
+    ChildPermissionError::RunDescriptorParse(e) => {
+      get_run_descriptor_parse_error(e)
+    }
+  }
+}
+
 fn get_create_worker_error(error: &CreateWorkerError) -> &'static str {
   match error {
     CreateWorkerError::ClassicWorkers => "DOMExceptionNotSupportedError",
-    CreateWorkerError::Permission(e) => match e {
-      ChildPermissionError::Escalation => "NotCapable",
-      ChildPermissionError::PathResolve(e) => get_path_resolve_error(e),
-      ChildPermissionError::NetDescriptorParse(_) => "URIError",
-      ChildPermissionError::EnvDescriptorParse(_) => "Error",
-      ChildPermissionError::SysDescriptorParse(e) => {
-        get_sys_descriptor_parse_error(e)
-      }
-      ChildPermissionError::RunDescriptorParse(e) => {
-        get_run_descriptor_parse_error(e)
-      }
-    },
+    CreateWorkerError::Permission(e) => get_child_permission_error(e),
     CreateWorkerError::ModuleResolution(e) => {
       get_module_resolution_error_class(e)
     }
@@ -1216,6 +1220,10 @@ fn get_sync_fetch_error(error: &SyncFetchError) -> &'static str {
 
 pub fn get_error_class_name(e: &AnyError) -> Option<&'static str> {
   deno_core::error::get_custom_error_class(e)
+    .or_else(|| {
+      e.downcast_ref::<ChildPermissionError>()
+        .map(get_child_permission_error)
+    })
     .or_else(|| {
       e.downcast_ref::<PermissionCheckError>()
         .map(get_permission_check_error_class)
