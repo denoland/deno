@@ -226,7 +226,7 @@ mod impl_ {
       stream
         .queued_bytes
         .fetch_sub(serialized.len(), std::sync::atomic::Ordering::Relaxed);
-      let _ = result??;
+      result??;
       Ok(())
     })
   }
