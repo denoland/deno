@@ -348,13 +348,6 @@ pub fn extract_standalone(
   }))
 }
 
-fn u64_from_bytes(arr: &[u8]) -> Result<u64, AnyError> {
-  let fixed_arr: &[u8; 8] = arr
-    .try_into()
-    .context("Failed to convert the buffer into a fixed-size array")?;
-  Ok(u64::from_be_bytes(*fixed_arr))
-}
-
 pub struct DenoCompileBinaryWriter<'a> {
   deno_dir: &'a DenoDir,
   emitter: &'a Emitter,

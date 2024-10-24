@@ -42,7 +42,7 @@ pub fn serialize_binary_data_section(
   vfs: VfsBuilder,
 ) -> Result<Vec<u8>, AnyError> {
   fn write_bytes_with_len(bytes: &mut Vec<u8>, data: &[u8]) {
-    bytes.extend_from_slice(&(data.len() as u64).to_be_bytes());
+    bytes.extend_from_slice(&(data.len() as u64).to_le_bytes());
     bytes.extend_from_slice(data);
   }
 
@@ -63,11 +63,11 @@ pub fn serialize_binary_data_section(
   // 3. Remote modules
   {
     let update_index = bytes.len();
-    bytes.extend_from_slice(&(0_u64).to_be_bytes());
+    bytes.extend_from_slice(&(0_u64).to_le_bytes());
     let start_index = bytes.len();
     remote_modules.write(&mut bytes)?;
     let length = bytes.len() - start_index;
-    let length_bytes = (length as u64).to_be_bytes();
+    let length_bytes = (length as u64).to_le_bytes();
     bytes[update_index..update_index + length_bytes.len()]
       .copy_from_slice(&length_bytes);
   }
@@ -77,7 +77,7 @@ pub fn serialize_binary_data_section(
     let vfs = serde_json::to_string(&vfs)?;
     write_bytes_with_len(&mut bytes, vfs.as_bytes());
     let vfs_bytes_len = vfs_files.iter().map(|f| f.len() as u64).sum::<u64>();
-    bytes.extend_from_slice(&vfs_bytes_len.to_be_bytes());
+    bytes.extend_from_slice(&vfs_bytes_len.to_le_bytes());
     for file in &vfs_files {
       bytes.extend_from_slice(file);
     }
@@ -190,22 +190,22 @@ impl RemoteModulesStoreBuilder {
   }
 
   fn write(&self, writer: &mut dyn Write) -> Result<(), AnyError> {
-    writer.write_all(&(self.specifiers.len() as u32).to_be_bytes())?;
-    writer.write_all(&(self.redirects.len() as u32).to_be_bytes())?;
+    writer.write_all(&(self.specifiers.len() as u32).to_le_bytes())?;
+    writer.write_all(&(self.redirects.len() as u32).to_le_bytes())?;
     for (specifier, offset) in &self.specifiers {
-      writer.write_all(&(specifier.len() as u32).to_be_bytes())?;
+      writer.write_all(&(specifier.len() as u32).to_le_bytes())?;
       writer.write_all(specifier.as_bytes())?;
-      writer.write_all(&offset.to_be_bytes())?;
+      writer.write_all(&offset.to_le_bytes())?;
     }
     for (from, to) in &self.redirects {
-      writer.write_all(&(from.len() as u32).to_be_bytes())?;
+      writer.write_all(&(from.len() as u32).to_le_bytes())?;
       writer.write_all(from.as_bytes())?;
-      writer.write_all(&(to.len() as u32).to_be_bytes())?;
+      writer.write_all(&(to.len() as u32).to_le_bytes())?;
       writer.write_all(to.as_bytes())?;
     }
     for (media_type, data) in &self.data {
       writer.write_all(&[serialize_media_type(*media_type)])?;
-      writer.write_all(&(data.len() as u64).to_be_bytes())?;
+      writer.write_all(&(data.len() as u64).to_le_bytes())?;
       writer.write_all(data)?;
     }
     Ok(())
@@ -392,7 +392,7 @@ fn serialize_npm_snapshot(
 ) -> Vec<u8> {
   fn append_string(bytes: &mut Vec<u8>, string: &str) {
     let len = string.len() as u32;
-    bytes.extend_from_slice(&len.to_be_bytes());
+    bytes.extend_from_slice(&len.to_le_bytes());
     bytes.extend_from_slice(string.as_bytes());
   }
 
@@ -408,27 +408,27 @@ fn serialize_npm_snapshot(
   root_packages.sort();
   let mut bytes = Vec::new();
 
-  bytes.extend_from_slice(&(snapshot.packages.len() as u32).to_be_bytes());
+  bytes.extend_from_slice(&(snapshot.packages.len() as u32).to_le_bytes());
   for pkg in &snapshot.packages {
     append_string(&mut bytes, &pkg.id.as_serialized());
   }
 
-  bytes.extend_from_slice(&(root_packages.len() as u32).to_be_bytes());
+  bytes.extend_from_slice(&(root_packages.len() as u32).to_le_bytes());
   for (req, id) in root_packages {
     append_string(&mut bytes, &req.to_string());
     let id = ids_to_stored_ids.get(&id).unwrap();
-    bytes.extend_from_slice(&id.to_be_bytes());
+    bytes.extend_from_slice(&id.to_le_bytes());
   }
 
   for pkg in &snapshot.packages {
     let deps_len = pkg.dependencies.len() as u32;
-    bytes.extend_from_slice(&deps_len.to_be_bytes());
+    bytes.extend_from_slice(&deps_len.to_le_bytes());
     let mut deps: Vec<_> = pkg.dependencies.iter().collect();
     deps.sort();
     for (req, id) in deps {
       append_string(&mut bytes, req);
       let id = ids_to_stored_ids.get(&id).unwrap();
-      bytes.extend_from_slice(&id.to_be_bytes());
+      bytes.extend_from_slice(&id.to_le_bytes());
     }
   }
 
@@ -631,12 +631,12 @@ fn read_string_lossy(input: &[u8]) -> Result<(&[u8], Cow<str>), AnyError> {
 
 fn read_u32_as_usize(input: &[u8]) -> Result<(&[u8], usize), AnyError> {
   let (input, len_bytes) = read_bytes(input, 4)?;
-  let len = u32::from_be_bytes(len_bytes.try_into()?);
+  let len = u32::from_le_bytes(len_bytes.try_into()?);
   Ok((input, len as usize))
 }
 
 fn read_u64(input: &[u8]) -> Result<(&[u8], u64), AnyError> {
   let (input, len_bytes) = read_bytes(input, 8)?;
-  let len = u64::from_be_bytes(len_bytes.try_into()?);
+  let len = u64::from_le_bytes(len_bytes.try_into()?);
   Ok((input, len))
 }
