@@ -602,7 +602,8 @@ pub fn get_cron_error_class(e: &CronError) -> &'static str {
 fn get_canvas_error(e: &CanvasError) -> &'static str {
   match e {
     CanvasError::UnsupportedColorType(_) => "TypeError",
-    CanvasError::Image(_) => "Error",
+    CanvasError::InvalidImage(_) => "DOMExceptionInvalidStateError",
+    CanvasError::Image(_) => "TypeError",
   }
 }
 

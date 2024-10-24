@@ -2,8 +2,6 @@
 
 use bytemuck::cast_slice;
 use bytemuck::cast_slice_mut;
-use deno_core::error::type_error;
-use deno_core::error::AnyError;
 use image::ColorType;
 use image::DynamicImage;
 use image::GenericImageView;
@@ -21,14 +19,7 @@ use lcms2::Transform;
 use num_traits::NumCast;
 use num_traits::SaturatingMul;
 
-use crate::error::image_error_message;
-
-/// Image formats that is 32-bit depth are not supported currently due to the following reasons:
-/// - e.g. OpenEXR, it's not covered by the spec.
-/// - JPEG XL supported by WebKit, but it cannot be called a standard today.  
-///   https://github.com/whatwg/mimesniff/issues/143
-const NOT_SUPPORTED_BIT_DEPTH: &str =
-  "The 32-bit depth image format is not supported.";
+use crate::CanvasError;
 
 pub(crate) trait PremultiplyAlpha {
   fn premultiply_alpha(&self) -> Self;
@@ -99,7 +90,7 @@ where
 /// Premultiply the alpha channel of the image.
 pub(crate) fn premultiply_alpha(
   image: DynamicImage,
-) -> Result<DynamicImage, AnyError> {
+) -> Result<DynamicImage, CanvasError> {
   match image {
     DynamicImage::ImageLumaA8(image) => {
       Ok(process_premultiply_alpha(&image).into())
@@ -113,11 +104,11 @@ pub(crate) fn premultiply_alpha(
     DynamicImage::ImageRgba16(image) => {
       Ok(process_premultiply_alpha(&image).into())
     }
-    DynamicImage::ImageRgb32F(_) | DynamicImage::ImageRgba32F(_) => {
-      Err(type_error(image_error_message(
-        "processing premultiply alpha",
-        NOT_SUPPORTED_BIT_DEPTH,
-      )))
+    DynamicImage::ImageRgb32F(_) => {
+      Err(CanvasError::UnsupportedColorType(image.color()))
+    }
+    DynamicImage::ImageRgba32F(_) => {
+      Err(CanvasError::UnsupportedColorType(image.color()))
     }
     // If the image does not have an alpha channel, return the image as is.
     _ => Ok(image),
@@ -230,7 +221,7 @@ where
 /// Invert the premultiplied alpha channel of the image.
 pub(crate) fn unpremultiply_alpha(
   image: DynamicImage,
-) -> Result<DynamicImage, AnyError> {
+) -> Result<DynamicImage, CanvasError> {
   match image {
     DynamicImage::ImageLumaA8(image) => Ok(if is_premultiplied_alpha(&image) {
       process_unpremultiply_alpha(&image).into()
@@ -254,11 +245,11 @@ pub(crate) fn unpremultiply_alpha(
     } else {
       image.into()
     }),
-    DynamicImage::ImageRgb32F(_) | DynamicImage::ImageRgba32F(_) => {
-      Err(type_error(image_error_message(
-        "processing un-premultiply alpha",
-        NOT_SUPPORTED_BIT_DEPTH,
-      )))
+    DynamicImage::ImageRgb32F(_) => {
+      Err(CanvasError::UnsupportedColorType(image.color()))
+    }
+    DynamicImage::ImageRgba32F(_) => {
+      Err(CanvasError::UnsupportedColorType(image.color()))
     }
     // If the image does not have an alpha channel, return the image as is.
     _ => Ok(image),
@@ -366,7 +357,7 @@ where
     ColorType::Rgb16 => PixelFormat::RGB_16,
     ColorType::Rgba8 => PixelFormat::RGBA_8,
     ColorType::Rgba16 => PixelFormat::RGBA_16,
-    _ => unreachable!("{}", NOT_SUPPORTED_BIT_DEPTH),
+    _ => unreachable!("{}", CanvasError::UnsupportedColorType(color)),
   };
   let transformer = Transform::new(
     &input_icc_profile,
@@ -393,7 +384,7 @@ where
 pub(crate) fn to_srgb_from_icc_profile(
   image: DynamicImage,
   icc_profile: Option<Vec<u8>>,
-) -> Result<DynamicImage, AnyError> {
+) -> Result<DynamicImage, CanvasError> {
   match icc_profile {
     // If there is no color profile information, return the image as is.
     None => Ok(image),
@@ -476,10 +467,13 @@ pub(crate) fn to_srgb_from_icc_profile(
             )
             .into(),
           ),
-          _ => Err(type_error(image_error_message(
-            "processing un-premultiply alpha",
-            NOT_SUPPORTED_BIT_DEPTH,
-          ))),
+          DynamicImage::ImageRgb32F(_) => {
+            Err(CanvasError::UnsupportedColorType(image.color()))
+          }
+          DynamicImage::ImageRgba32F(_) => {
+            Err(CanvasError::UnsupportedColorType(image.color()))
+          }
+          _ => Err(CanvasError::UnsupportedColorType(image.color())),
         }
       }
     },
@@ -635,7 +629,7 @@ pub(crate) fn to_srgb_from_icc_profile(
 // }
 
 // /// Convert the color space of the image from sRGB to Display-P3.
-// fn srgb_to_display_p3(image: DynamicImage) -> Result<DynamicImage, AnyError> {
+// fn srgb_to_display_p3(image: DynamicImage) -> Result<DynamicImage, CanvasError> {
 //   match image {
 //     // The conversion of the lumincance color types to the display-p3 color space is meaningless.
 //     DynamicImage::ImageLuma8(_)

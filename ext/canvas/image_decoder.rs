@@ -5,7 +5,6 @@ use std::io::BufReader;
 use std::io::Cursor;
 use std::io::Seek;
 
-use deno_core::error::AnyError;
 use image::codecs::bmp::BmpDecoder;
 use image::codecs::gif::GifDecoder;
 use image::codecs::ico::IcoDecoder;
@@ -14,6 +13,8 @@ use image::codecs::png::PngDecoder;
 use image::codecs::webp::WebPDecoder;
 use image::DynamicImage;
 use image::ImageError;
+
+use crate::CanvasError;
 
 //
 // About the animated image
@@ -34,15 +35,15 @@ pub(crate) trait ImageDecoderFromReader<'a, R: BufRead + Seek> {
   /// Create a new image decoder from a reader.
   fn to_decoder(
     reader: R,
-    error_fn: fn(ImageError) -> AnyError,
-  ) -> Result<Self, AnyError>
+    error_fn: fn(ImageError) -> CanvasError,
+  ) -> Result<Self, CanvasError>
   where
     Self: Sized;
   /// Convert the image decoder into an intermediate image(DynamicImage).
   fn to_intermediate_image(
     self,
-    error_fn: fn(ImageError) -> AnyError,
-  ) -> Result<DynamicImage, AnyError>;
+    error_fn: fn(ImageError) -> CanvasError,
+  ) -> Result<DynamicImage, CanvasError>;
 }
 
 pub(crate) type ImageDecoderFromReaderType<'a> = BufReader<Cursor<&'a [u8]>>;
@@ -52,8 +53,8 @@ macro_rules! impl_image_decoder_from_reader {
     impl<'a, R: BufRead + Seek> ImageDecoderFromReader<'a, R> for $decoder {
       fn to_decoder(
         reader: R,
-        error_fn: fn(ImageError) -> AnyError,
-      ) -> Result<Self, AnyError>
+        error_fn: fn(ImageError) -> CanvasError,
+      ) -> Result<Self, CanvasError>
       where
         Self: Sized,
       {
@@ -64,8 +65,8 @@ macro_rules! impl_image_decoder_from_reader {
       }
       fn to_intermediate_image(
         self,
-        error_fn: fn(ImageError) -> AnyError,
-      ) -> Result<DynamicImage, AnyError> {
+        error_fn: fn(ImageError) -> CanvasError,
+      ) -> Result<DynamicImage, CanvasError> {
         match DynamicImage::from_decoder(self) {
           Ok(image) => Ok(image),
           Err(err) => Err(error_fn(err)),

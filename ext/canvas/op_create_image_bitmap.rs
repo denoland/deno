@@ -3,8 +3,6 @@
 use std::io::BufReader;
 use std::io::Cursor;
 
-use deno_core::error::type_error;
-use deno_core::error::AnyError;
 use deno_core::op2;
 use deno_core::JsBuffer;
 use deno_core::ToJsBuffer;
@@ -22,13 +20,12 @@ use image::ImageDecoder;
 use image::ImageError;
 use image::RgbaImage;
 
-use crate::error::image_error_message;
-use crate::error::DOMExceptionInvalidStateError;
 use crate::image_decoder::ImageDecoderFromReader;
 use crate::image_decoder::ImageDecoderFromReaderType;
 use crate::image_ops::premultiply_alpha as process_premultiply_alpha;
 use crate::image_ops::to_srgb_from_icc_profile;
 use crate::image_ops::unpremultiply_alpha;
+use crate::CanvasError;
 
 #[derive(Debug, PartialEq)]
 enum ImageBitmapSource {
@@ -83,16 +80,12 @@ fn decode_bitmap_data(
   height: u32,
   image_bitmap_source: &ImageBitmapSource,
   mime_type: MimeType,
-) -> Result<DecodeBitmapDataReturn, AnyError> {
+) -> Result<DecodeBitmapDataReturn, CanvasError> {
   let (image, width, height, orientation, icc_profile) =
     match image_bitmap_source {
       ImageBitmapSource::Blob => {
-        fn image_decoding_error(error: ImageError) -> AnyError {
-          DOMExceptionInvalidStateError::new(&image_error_message(
-            "decoding",
-            &error.to_string(),
-          ))
-          .into()
+        fn image_decoding_error(error: ImageError) -> CanvasError {
+          CanvasError::InvalidImage(error.to_string())
         }
         let (image, orientation, icc_profile) = match mime_type {
           // Should we support the "image/apng" MIME type here?
@@ -197,10 +190,9 @@ fn decode_bitmap_data(
         let image = match RgbaImage::from_raw(width, height, buf.into()) {
         Some(image) => image.into(),
         None => {
-          return Err(type_error(image_error_message(
-            "decoding",
-            "The Chunk Data is not big enough with the specified width and height.",
-          )))
+          return Err(CanvasError::InvalidImage(
+            "The Chunk Data is not big enough with the specified width and height.".to_string()
+          ))
         }
       };
 
@@ -229,7 +221,7 @@ fn apply_color_space_conversion(
   image: DynamicImage,
   icc_profile: Option<Vec<u8>>,
   color_space_conversion: &ColorSpaceConversion,
-) -> Result<DynamicImage, AnyError> {
+) -> Result<DynamicImage, CanvasError> {
   match color_space_conversion {
     // return the decoded image as is.
     ColorSpaceConversion::None => Ok(image),
@@ -243,7 +235,7 @@ fn apply_premultiply_alpha(
   image: DynamicImage,
   image_bitmap_source: &ImageBitmapSource,
   premultiply_alpha: &PremultiplyAlpha,
-) -> Result<DynamicImage, AnyError> {
+) -> Result<DynamicImage, CanvasError> {
   match premultiply_alpha {
     // 1.
     PremultiplyAlpha::Default => Ok(image),
@@ -386,7 +378,7 @@ pub(super) fn op_create_image_bitmap(
   resize_quality: u8,
   image_bitmap_source: u8,
   mime_type: u8,
-) -> Result<(ToJsBuffer, u32, u32), AnyError> {
+) -> Result<(ToJsBuffer, u32, u32), CanvasError> {
   let ParsedArgs {
     resize_width,
     resize_height,

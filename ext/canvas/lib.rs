@@ -2,7 +2,6 @@
 
 use std::path::PathBuf;
 
-pub mod error;
 mod image_decoder;
 mod image_ops;
 mod op_create_image_bitmap;
@@ -11,9 +10,19 @@ use op_create_image_bitmap::op_create_image_bitmap;
 
 #[derive(Debug, thiserror::Error)]
 pub enum CanvasError {
-  #[error("Color type '{0:?}' not supported")]
+  /// Image formats that is 32-bit depth are not supported currently due to the following reasons:
+  /// - e.g. OpenEXR, it's not covered by the spec.
+  /// - JPEG XL supported by WebKit, but it cannot be called a standard today.  
+  ///   https://github.com/whatwg/mimesniff/issues/143
+  ///
+  /// This error will be mapped to TypeError.
+  #[error("Unsupported color type and bit depth: '{0:?}'")]
   UnsupportedColorType(ColorType),
+  /// This error will be mapped to DOMExceptionInvalidStateError.
+  #[error("Cannot decode image '{0}'")]
+  InvalidImage(String),
   #[error(transparent)]
+  /// This error will be mapped to TypeError.
   Image(#[from] image::ImageError),
 }
 
