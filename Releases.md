@@ -8,11 +8,8 @@ https://github.com/denoland/deno_install
 
 ### 2.0.3 / 2024.10.25
 
-- Revert "ci: use self-hosted mac arm runner (#26366)" (#26408)
-- Revert "fix(runtime): send ws ping frames from inspector server (#263…
-  (#26513)
 - feat(lsp): interactive inlay hints (#26382)
-- feat: support node-api in denort (#26389)
+- fix: support node-api in denort (#26389)
 - fix(check): support `--frozen` on deno check (#26479)
 - fix(cli): increase size of blocking task threadpool on windows (#26465)
 - fix(config): schemas for lint rule and tag autocompletion (#26515)
