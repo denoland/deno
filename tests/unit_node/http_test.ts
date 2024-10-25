@@ -1009,7 +1009,7 @@ Deno.test(
     request.on("close", () => {});
     request.end();
     setTimeout(() => {
-      request.destroy();
+      request.destroy(new Error());
       resolve();
     }, 100);
 
@@ -1024,7 +1024,6 @@ Deno.test(
   "[node/http] client destroy before sending request should not error",
   async () => {
     const { resolve, promise } = Promise.withResolvers<void>();
-    // TODO(kt3k): This should be "localhost" when we implemented happy-eyeballs for node:net
     const request = http.request("http://localhost:5929/");
     // Calling this would throw
     request.destroy();
