@@ -781,6 +781,7 @@ export class Socket extends Duplex {
   _host: string | null = null;
   // deno-lint-ignore no-explicit-any
   _parent: any = null;
+  _isNpmAgent = false;
 
   constructor(options: SocketOptions | number) {
     if (typeof options === "number") {
@@ -799,6 +800,19 @@ export class Socket extends Duplex {
     options.decodeStrings = false;
 
     super(options);
+
+    // Note: If the socket is created from @npmcli/agent, the 'socket' event
+    // on ClientRequest object happens after 'connect' event on Socket object.
+    // That swaps the sequence of op_node_http_request_with_conn() call and
+    // initial socket read. That causes op_node_http_request_with_conn() not
+    // working.
+    // To avoid the above situation, we detect the socket created from
+    // @npmcli/agent and pause the socket (and also skips the startTls call
+    // if it's TLSSocket)
+    this._isNpmAgent = new Error().stack?.includes("@npmcli/agent") || false;
+    if (this._isNpmAgent) {
+      this.pause();
+    }
 
     if (options.handle) {
       this._handle = options.handle;
