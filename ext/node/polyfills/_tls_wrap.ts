@@ -152,6 +152,8 @@ export class TLSSocket extends net.Socket {
       const afterConnect = handle.afterConnect;
       handle.afterConnect = async (req: any, status: number) => {
         if (tlssock._isNpmAgent) {
+          // skips the TLS handshake for @npmcli/agent as it's handled by
+          // onSocket handler of ClientRequest object.
           tlssock.emit("secure");
           tlssock.removeListener("end", onConnectEnd);
           return afterConnect.call(handle, req, status);
