@@ -1,12 +1,10 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 //! This mod provides DenoError to unify errors across Deno.
+use color_print::cformat;
 use color_print::cstr;
 use deno_core::error::format_frame;
 use deno_core::error::JsError;
-use deno_terminal::colors::cyan;
-use deno_terminal::colors::italic_bold;
-use deno_terminal::colors::red;
-use deno_terminal::colors::yellow;
+use deno_terminal::colors;
 use std::fmt::Write as _;
 
 #[derive(Debug, Clone)]
@@ -25,6 +23,7 @@ struct IndexedErrorReference<'a> {
 enum FixSuggestionKind {
   Info,
   Hint,
+  Docs,
 }
 
 #[derive(Debug)]
@@ -67,6 +66,13 @@ impl<'a> FixSuggestion<'a> {
       message: FixSuggestionMessage::Multiline(messages),
     }
   }
+
+  pub fn docs(url: &'a str) -> Self {
+    Self {
+      kind: FixSuggestionKind::Docs,
+      message: FixSuggestionMessage::Single(url),
+    }
+  }
 }
 
 struct AnsiColors;
@@ -79,10 +85,10 @@ impl deno_core::error::ErrorFormat for AnsiColors {
     use deno_core::error::ErrorElement::*;
     match element {
       Anonymous | NativeFrame | FileName | EvalOrigin => {
-        cyan(s).to_string().into()
+        colors::cyan(s).to_string().into()
       }
-      LineNumber | ColumnNumber => yellow(s).to_string().into(),
-      FunctionName | PromiseAll => italic_bold(s).to_string().into(),
+      LineNumber | ColumnNumber => colors::yellow(s).to_string().into(),
+      FunctionName | PromiseAll => colors::italic_bold(s).to_string().into(),
     }
   }
 }
@@ -115,7 +121,7 @@ fn format_maybe_source_line(
   if column_number as usize > source_line.len() {
     return format!(
       "\n{} Couldn't format source line: Column {} is out of bounds (source may have changed at runtime)",
-      yellow("Warning"), column_number,
+      colors::yellow("Warning"), column_number,
     );
   }
 
@@ -128,9 +134,9 @@ fn format_maybe_source_line(
   }
   s.push('^');
   let color_underline = if is_error {
-    red(&s).to_string()
+    colors::red(&s).to_string()
   } else {
-    cyan(&s).to_string()
+    colors::cyan(&s).to_string()
   };
 
   let indent = format!("{:indent$}", "", indent = level);
@@ -201,7 +207,8 @@ fn format_js_error_inner(
 
   if let Some(circular) = &circular {
     if js_error.is_same_error(circular.reference.to) {
-      write!(s, " {}", cyan(format!("<ref *{}>", circular.index))).unwrap();
+      write!(s, " {}", colors::cyan(format!("<ref *{}>", circular.index)))
+        .unwrap();
     }
   }
 
@@ -239,7 +246,8 @@ fn format_js_error_inner(
       .unwrap_or(false);
 
     let error_string = if is_caused_by_circular {
-      cyan(format!("[Circular *{}]", circular.unwrap().index)).to_string()
+      colors::cyan(format!("[Circular *{}]", circular.unwrap().index))
+        .to_string()
     } else {
       format_js_error_inner(cause, circular, false, vec![])
     };
@@ -256,12 +264,23 @@ fn format_js_error_inner(
     for (index, suggestion) in suggestions.iter().enumerate() {
       write!(s, "    ").unwrap();
       match suggestion.kind {
-        FixSuggestionKind::Hint => write!(s, "{} ", cyan("hint:")).unwrap(),
-        FixSuggestionKind::Info => write!(s, "{} ", yellow("info:")).unwrap(),
+        FixSuggestionKind::Hint => {
+          write!(s, "{} ", colors::cyan("hint:")).unwrap()
+        }
+        FixSuggestionKind::Info => {
+          write!(s, "{} ", colors::yellow("info:")).unwrap()
+        }
+        FixSuggestionKind::Docs => {
+          write!(s, "{} ", colors::green("docs:")).unwrap()
+        }
       };
       match suggestion.message {
         FixSuggestionMessage::Single(msg) => {
-          write!(s, "{}", msg).unwrap();
+          if matches!(suggestion.kind, FixSuggestionKind::Docs) {
+            write!(s, "{}", cformat!("<u>{}</>", msg)).unwrap();
+          } else {
+            write!(s, "{}", msg).unwrap();
+          }
         }
         FixSuggestionMessage::Multiline(messages) => {
           for (idx, message) in messages.iter().enumerate() {
@@ -300,7 +319,7 @@ fn get_suggestions_for_terminal_errors(e: &JsError) -> Vec<FixSuggestion> {
           cstr!("or add <u>package.json</> next to the file with <i>\"type\": \"commonjs\"</> option"),
           cstr!("and pass <i>--unstable-detect-cjs</> flag."),
         ]),
-        FixSuggestion::hint("See https://docs.deno.com/go/commonjs for details"),
+        FixSuggestion::docs("https://docs.deno.com/go/commonjs"),
       ];
     } else if msg.contains("openKv is not a function") {
       return vec![

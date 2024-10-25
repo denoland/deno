@@ -2,7 +2,7 @@
 
 [package]
 name = "deno"
-version = "2.0.2"
+version = "2.0.3"
 authors.workspace = true
 default-run = "deno"
 edition.workspace = true
@@ -84,9 +84,7 @@ deno_runtime = { workspace = true, features = ["include_js_files_for_snapshottin
 deno_semver.workspace = true
 deno_task_shell = "=0.18.1"
 deno_terminal.workspace = true
-eszip = "=0.79.1"
 libsui = "0.4.0"
-napi_sym.workspace = true
 node_resolver.workspace = true
 
 anstream = "0.6.14"
@@ -130,8 +128,8 @@ libc.workspace = true
 libz-sys.workspace = true
 log = { workspace = true, features = ["serde"] }
 lsp-types.workspace = true
-malva = "=0.10.1"
-markup_fmt = "=0.13.1"
+malva = "=0.11.0"
+markup_fmt = "=0.14.0"
 memmem.workspace = true
 monch.workspace = true
 notify.workspace = true
@@ -175,14 +173,12 @@ zstd.workspace = true
 [target.'cfg(windows)'.dependencies]
 junction.workspace = true
 winapi = { workspace = true, features = ["knownfolders", "mswsock", "objbase", "shlobj", "tlhelp32", "winbase", "winerror", "winsock2"] }
-windows-sys.workspace = true
 
 [target.'cfg(unix)'.dependencies]
 nix.workspace = true
 
 [dev-dependencies]
 deno_bench_util.workspace = true
-libuv-sys-lite = "=1.48.2"
 pretty_assertions.workspace = true
 test_util.workspace = true
 

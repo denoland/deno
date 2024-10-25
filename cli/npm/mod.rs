@@ -9,10 +9,12 @@ use std::path::Path;
 use std::path::PathBuf;
 use std::sync::Arc;
 
+use common::maybe_auth_header_for_npm_registry;
 use dashmap::DashMap;
 use deno_ast::ModuleSpecifier;
 use deno_core::error::AnyError;
 use deno_core::serde_json;
+use deno_npm::npm_rc::ResolvedNpmRc;
 use deno_npm::registry::NpmPackageInfo;
 use deno_resolver::npm::ByonmNpmResolver;
 use deno_resolver::npm::ByonmResolvePkgFolderFromDenoReqError;
@@ -22,10 +24,10 @@ use deno_runtime::deno_node::NodeRequireLoader;
 use deno_runtime::ops::process::NpmProcessStateProvider;
 use deno_semver::package::PackageNv;
 use deno_semver::package::PackageReq;
+use managed::cache::registry_info::get_package_url;
 use node_resolver::NpmResolver;
 use thiserror::Error;
 
-use crate::args::npm_registry_url;
 use crate::file_fetcher::FileFetcher;
 
 pub use self::byonm::CliByonmNpmResolver;
@@ -123,14 +125,19 @@ pub struct NpmFetchResolver {
   nv_by_req: DashMap<PackageReq, Option<PackageNv>>,
   info_by_name: DashMap<String, Option<Arc<NpmPackageInfo>>>,
   file_fetcher: Arc<FileFetcher>,
+  npmrc: Arc<ResolvedNpmRc>,
 }
 
 impl NpmFetchResolver {
-  pub fn new(file_fetcher: Arc<FileFetcher>) -> Self {
+  pub fn new(
+    file_fetcher: Arc<FileFetcher>,
+    npmrc: Arc<ResolvedNpmRc>,
+  ) -> Self {
     Self {
       nv_by_req: Default::default(),
       info_by_name: Default::default(),
       file_fetcher,
+      npmrc,
     }
   }
 
@@ -165,11 +172,21 @@ impl NpmFetchResolver {
       return info.value().clone();
     }
     let fetch_package_info = || async {
-      let info_url = npm_registry_url().join(name).ok()?;
+      let info_url = get_package_url(&self.npmrc, name);
       let file_fetcher = self.file_fetcher.clone();
+      let registry_config = self.npmrc.get_registry_config(name);
+      // TODO(bartlomieju): this should error out, not use `.ok()`.
+      let maybe_auth_header =
+        maybe_auth_header_for_npm_registry(registry_config).ok()?;
       // spawn due to the lsp's `Send` requirement
       let file = deno_core::unsync::spawn(async move {
-        file_fetcher.fetch_bypass_permissions(&info_url).await.ok()
+        file_fetcher
+          .fetch_bypass_permissions_with_maybe_auth(
+            &info_url,
+            maybe_auth_header,
+          )
+          .await
+          .ok()
       })
       .await
       .ok()??;

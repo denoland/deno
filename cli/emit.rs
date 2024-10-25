@@ -60,6 +60,7 @@ impl Emitter {
         continue;
       };
 
+      // todo(https://github.com/denoland/deno_media_type/pull/12): use is_emittable()
       let is_emittable = matches!(
         module.media_type,
         MediaType::TypeScript

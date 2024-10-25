@@ -580,6 +580,7 @@ fn discover_npmrc(
     let resolved = npmrc
       .as_resolved(npm_registry_url())
       .context("Failed to resolve .npmrc options")?;
+    log::debug!(".npmrc found at: '{}'", path.display());
     Ok(Arc::new(resolved))
   }
 
@@ -965,6 +966,9 @@ impl CliOptions {
     match self.sub_command() {
       DenoSubcommand::Cache(_) => GraphKind::All,
       DenoSubcommand::Check(_) => GraphKind::TypesOnly,
+      DenoSubcommand::Install(InstallFlags {
+        kind: InstallKind::Local(_),
+      }) => GraphKind::All,
       _ => self.type_check_mode().as_graph_kind(),
     }
   }
