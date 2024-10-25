@@ -1972,6 +1972,7 @@ dependencies = [
  "once_cell",
  "percent-encoding",
  "serde",
+ "thiserror",
  "which 4.4.2",
  "winapi",
 ]

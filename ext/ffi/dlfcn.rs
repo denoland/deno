@@ -30,7 +30,7 @@ pub enum DlfcnError {
   #[error(transparent)]
   Dlopen(#[from] dlopen2::Error),
   #[error(transparent)]
-  Permission(deno_core::error::AnyError),
+  Permission(#[from] deno_permissions::PermissionCheckError),
   #[error(transparent)]
   Other(deno_core::error::AnyError),
 }
@@ -133,9 +133,7 @@ where
   FP: FfiPermissions + 'static,
 {
   let permissions = state.borrow_mut::<FP>();
-  let path = permissions
-    .check_partial_with_path(&args.path)
-    .map_err(DlfcnError::Permission)?;
+  let path = permissions.check_partial_with_path(&args.path)?;
 
   let lib = Library::open(&path).map_err(|e| {
     dlopen2::Error::OpeningLibraryError(std::io::Error::new(

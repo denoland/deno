@@ -78,9 +78,7 @@ where
 
   {
     let permissions = state.borrow_mut::<P>();
-    permissions
-      .check_net_url(&url, "ClientRequest")
-      .map_err(FetchError::Permission)?;
+    permissions.check_net_url(&url, "ClientRequest")?;
   }
 
   let mut header_map = HeaderMap::new();

@@ -39,6 +39,7 @@ use deno_core::OpState;
 use deno_core::RcRef;
 use deno_core::Resource;
 use deno_core::ResourceId;
+use deno_permissions::PermissionCheckError;
 use deno_tls::rustls::RootCertStore;
 use deno_tls::Proxy;
 use deno_tls::RootCertStoreProvider;
@@ -149,7 +150,7 @@ pub enum FetchError {
   #[error(transparent)]
   Resource(deno_core::error::AnyError),
   #[error(transparent)]
-  Permission(deno_core::error::AnyError),
+  Permission(#[from] PermissionCheckError),
   #[error("NetworkError when attempting to fetch resource")]
   NetworkError,
   #[error("Fetching files only supports the GET method: received {0}")]
@@ -346,13 +347,13 @@ pub trait FetchPermissions {
     &mut self,
     url: &Url,
     api_name: &str,
-  ) -> Result<(), deno_core::error::AnyError>;
+  ) -> Result<(), PermissionCheckError>;
   #[must_use = "the resolved return value to mitigate time-of-check to time-of-use issues"]
   fn check_read<'a>(
     &mut self,
     p: &'a Path,
     api_name: &str,
-  ) -> Result<Cow<'a, Path>, deno_core::error::AnyError>;
+  ) -> Result<Cow<'a, Path>, PermissionCheckError>;
 }
 
 impl FetchPermissions for deno_permissions::PermissionsContainer {
@@ -361,7 +362,7 @@ impl FetchPermissions for deno_permissions::PermissionsContainer {
     &mut self,
     url: &Url,
     api_name: &str,
-  ) -> Result<(), deno_core::error::AnyError> {
+  ) -> Result<(), PermissionCheckError> {
     deno_permissions::PermissionsContainer::check_net_url(self, url, api_name)
   }
 
@@ -370,7 +371,7 @@ impl FetchPermissions for deno_permissions::PermissionsContainer {
     &mut self,
     path: &'a Path,
     api_name: &str,
-  ) -> Result<Cow<'a, Path>, deno_core::error::AnyError> {
+  ) -> Result<Cow<'a, Path>, PermissionCheckError> {
     deno_permissions::PermissionsContainer::check_read_path(
       self,
       path,
@@ -414,9 +415,7 @@ where
     "file" => {
       let path = url.to_file_path().map_err(|_| FetchError::NetworkError)?;
       let permissions = state.borrow_mut::<FP>();
-      let path = permissions
-        .check_read(&path, "fetch()")
-        .map_err(FetchError::Permission)?;
+      let path = permissions.check_read(&path, "fetch()")?;
       let url = match path {
         Cow::Owned(path) => Url::from_file_path(path).unwrap(),
         Cow::Borrowed(_) => url,
@@ -442,9 +441,7 @@ where
     }
     "http" | "https" => {
       let permissions = state.borrow_mut::<FP>();
-      permissions
-        .check_net_url(&url, "fetch()")
-        .map_err(FetchError::Resource)?;
+      permissions.check_net_url(&url, "fetch()")?;
 
       let maybe_authority = extract_authority(&mut url);
       let uri = url
@@ -863,9 +860,7 @@ where
   if let Some(proxy) = args.proxy.clone() {
     let permissions = state.borrow_mut::<FP>();
     let url = Url::parse(&proxy.url)?;
-    permissions
-      .check_net_url(&url, "Deno.createHttpClient()")
-      .map_err(FetchError::Permission)?;
+    permissions.check_net_url(&url, "Deno.createHttpClient()")?;
   }
 
   let options = state.borrow::<Options>();
