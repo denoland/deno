@@ -563,11 +563,21 @@ impl<TGraphContainer: ModuleGraphContainer>
           media_type,
         }))
       }
+      Some(CodeOrDeferredEmit::Cjs {
+        specifier,
+        is_cts,
+        source,
+      }) => {
+        // let transpile_result = match is_cts {
+        //   true => String::from_utf8(self.emitter.emit_parsed_source(specifier, MediaType::Cts, source).await?.into_bytes())?,
+        //   false =>
+        // }
+      }
       None => Ok(None),
     }
   }
 
-  fn load_prepared_module_sync(
+  fn load_prepared_module_for_source_map_sync(
     &self,
     specifier: &ModuleSpecifier,
   ) -> Result<Option<ModuleCodeStringSource>, AnyError> {
@@ -592,6 +602,16 @@ impl<TGraphContainer: ModuleGraphContainer>
           found_url: specifier.clone(),
           media_type,
         }))
+      }
+      Some(CodeOrDeferredEmit::Cjs {
+        specifier,
+        is_cts,
+        source,
+      }) => {
+        // todo(dsherret): to make this work, we should probably just
+        // rely on the CJS export cache. At the moment this is hard because
+        // cjs export analysis is only async
+        Ok(None)
       }
       None => Ok(None),
     }
@@ -627,15 +647,20 @@ impl<TGraphContainer: ModuleGraphContainer>
         let code: ModuleCodeString = match media_type {
           MediaType::JavaScript
           | MediaType::Unknown
-          | MediaType::Cjs
           | MediaType::Mjs
           | MediaType::Json => source.clone().into(),
           MediaType::Dts | MediaType::Dcts | MediaType::Dmts => {
             Default::default()
           }
+          MediaType::Cjs | MediaType::Cts => {
+            return Ok(Some(CodeOrDeferredEmit::Cjs {
+              specifier,
+              is_cts: media_type == MediaType::Cts,
+              source,
+            }));
+          }
           MediaType::TypeScript
           | MediaType::Mts
-          | MediaType::Cts
           | MediaType::Jsx
           | MediaType::Tsx => {
             return Ok(Some(CodeOrDeferredEmit::DeferredEmit {
@@ -673,6 +698,11 @@ enum CodeOrDeferredEmit<'a> {
   DeferredEmit {
     specifier: &'a ModuleSpecifier,
     media_type: MediaType,
+    source: &'a Arc<str>,
+  },
+  Cjs {
+    specifier: &'a ModuleSpecifier,
+    is_cts: bool,
     source: &'a Arc<str>,
   },
 }
@@ -836,7 +866,10 @@ impl<TGraphContainer: ModuleGraphContainer> ModuleLoader
       "wasm" | "file" | "http" | "https" | "data" | "blob" => (),
       _ => return None,
     }
-    let source = self.0.load_prepared_module_sync(&specifier).ok()??;
+    let source = self
+      .0
+      .load_prepared_module_for_source_map_sync(&specifier)
+      .ok()??;
     source_map_from_code(source.code.as_bytes())
   }
 
