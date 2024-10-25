@@ -360,20 +360,8 @@ function _afterConnect(
 
     socket._unrefTimer();
 
-    const connectListeners = socket.listenerCount("connect");
-    const readyListeners = socket.listenerCount("ready");
-    const dataListeners = socket.listenerCount("data");
-
     socket.emit("connect");
     socket.emit("ready");
-
-    // Note: This is Deno specific logic
-    // If there's no listener for the connect, ready, data event,
-    // we delay the first read. This is necessary for http.request to work properly.
-    // See https://github.com/denoland/deno/pull/25470#issuecomment-2435077722
-    if (connectListeners === 0 && readyListeners === 0 && dataListeners === 0) {
-      return;
-    }
 
     // Start the first read, or get an immediate EOF.
     // this doesn't actually consume any bytes, because len=0.
@@ -1597,6 +1585,15 @@ export function connect(...args: unknown[]) {
   const options = normalized[0] as Partial<NetConnectOptions>;
   debug("createConnection", normalized);
   const socket = new Socket(options);
+
+  // If it's called from @npmcli/agent, 'connect' event on Socket happens
+  // before 'socket' event on ClientRequst, and that causes initial read
+  // happening before op_node_http_request_with_conn(), and http reqeust
+  // doesn't work. The below pause() call prevent that initial read for
+  // @npmcli/agent.
+  if (new Error().stack?.includes("@npmcli/agent")) {
+    socket.pause();
+  }
 
   if (netClientSocketChannel.hasSubscribers) {
     netClientSocketChannel.publish({
