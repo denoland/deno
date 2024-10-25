@@ -1342,7 +1342,7 @@ impl ConfigData {
     }
 
     // todo(dsherret): cache this so we don't load this so many times
-    let npmrc = discover_npmrc_from_workspace(&member_dir.workspace)
+    let npmrc = discover_npmrc_from_workspace(&member_dir.workspace, None)
       .inspect(|(_, path)| {
         if let Some(path) = path {
           lsp_log!("  Resolved .npmrc: \"{}\"", path.display());

@@ -518,6 +518,7 @@ fn resolve_lint_rules_options(
 
 pub fn discover_npmrc_from_workspace(
   workspace: &Workspace,
+  cwd: Option<&PathBuf>,
 ) -> Result<(Arc<ResolvedNpmRc>, Option<PathBuf>), AnyError> {
   let root_folder = workspace.root_folder_configs();
   discover_npmrc(
@@ -529,6 +530,7 @@ pub fn discover_npmrc_from_workspace(
         None
       }
     }),
+    cwd,
   )
 }
 
@@ -540,6 +542,7 @@ pub fn discover_npmrc_from_workspace(
 fn discover_npmrc(
   maybe_package_json_path: Option<PathBuf>,
   maybe_deno_json_path: Option<PathBuf>,
+  cwd: Option<&PathBuf>,
 ) -> Result<(Arc<ResolvedNpmRc>, Option<PathBuf>), AnyError> {
   const NPMRC_NAME: &str = ".npmrc";
 
@@ -583,7 +586,7 @@ fn discover_npmrc(
   }
 
   // 1. Try `.npmrc` next to `package.json`
-  if let Some(package_json_path) = maybe_package_json_path {
+  if let Some(package_json_path) = &maybe_package_json_path {
     if let Some(package_json_dir) = package_json_path.parent() {
       if let Some((source, path)) = try_to_read_npmrc(package_json_dir)? {
         return try_to_parse_npmrc(source, &path).map(|r| (r, Some(path)));
@@ -592,7 +595,7 @@ fn discover_npmrc(
   }
 
   // 2. Try `.npmrc` next to `deno.json(c)`
-  if let Some(deno_json_path) = maybe_deno_json_path {
+  if let Some(deno_json_path) = &maybe_deno_json_path {
     if let Some(deno_json_dir) = deno_json_path.parent() {
       if let Some((source, path)) = try_to_read_npmrc(deno_json_dir)? {
         return try_to_parse_npmrc(source, &path).map(|r| (r, Some(path)));
@@ -600,9 +603,18 @@ fn discover_npmrc(
     }
   }
 
+  // 3. Try `.npmrc` in cwd if no package.json or deno.json(c) was found
+  if let Some(cwd) = cwd {
+    if maybe_package_json_path.is_none() && maybe_deno_json_path.is_none() {
+      if let Some((source, path)) = try_to_read_npmrc(&cwd)? {
+        return try_to_parse_npmrc(source, &path).map(|r| (r, Some(path)));
+      }
+    }
+  }
+
   // TODO(bartlomieju): update to read both files - one in the project root and one and
   // home dir and then merge them.
-  // 3. Try `.npmrc` in the user's home directory
+  // 4. Try `.npmrc` in the user's home directory
   if let Some(home_dir) = cache::home_dir() {
     match try_to_read_npmrc(&home_dir) {
       Ok(Some((source, path))) => {
@@ -924,7 +936,8 @@ impl CliOptions {
       log::warn!("{} {}", colors::yellow("Warning"), diagnostic);
     }
 
-    let (npmrc, _) = discover_npmrc_from_workspace(&start_dir.workspace)?;
+    let (npmrc, _) =
+      discover_npmrc_from_workspace(&start_dir.workspace, Some(&initial_cwd))?;
 
     let maybe_lock_file = CliLockfile::discover(&flags, &start_dir.workspace)?;
 

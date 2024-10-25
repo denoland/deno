@@ -1,0 +1,14 @@
+{
+  "tempDir": true,
+  "tests": {
+    "run_script_with_npm_with_no_project": {
+      "args": "run -A main.js",
+      "output": "main.out"
+    },
+
+    "run_npm_with_no_project": {
+      "args": "run -A npm:@denotest/bin deno",
+      "output": "direct.out"
+    }
+  }
+}
