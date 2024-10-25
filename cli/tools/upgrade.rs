@@ -972,10 +972,11 @@ fn check_windows_access_denied_error(
 
 #[cfg(windows)]
 fn kill_running_deno_lsp_processes() {
+  // limit this to `deno lsp` invocations to avoid killing important programs someone might be running
   let _ = Command::new("powershell")
     .args(&[
         "-Command",
-        "Get-Process | Where-Object { $_.ProcessName -eq 'deno' -and $_.CommandLine -match 'lsp' } | Stop-Process -Force",
+        "Get-Process | Where-Object { $_.ProcessName -eq 'deno' -and ($_.CommandLine -split ' ')[1] -eq 'lsp' } | Stop-Process -Force",
     ])
     .output();
 }
