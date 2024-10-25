@@ -3758,7 +3758,8 @@ fn env_file_arg() -> Arg {
     .help(cstr!(
       "Load environment variables from local file
   <p(245)>Only the first environment variable with a given key is used.
-  Existing process environment variables are not overwritten.</>"
+  Existing process environment variables are not overwritten, so if variables with the same names already exist in the environment, their values will be preserved.
+  Where multiple declarations for the same environment variable exist in your .env file, the first one encountered is applied. This is determined by the order of the files you pass as arguments.</>"
     ))
     .value_hint(ValueHint::FilePath)
     .default_missing_value(".env")
