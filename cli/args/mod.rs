@@ -606,7 +606,7 @@ fn discover_npmrc(
   // 3. Try `.npmrc` in cwd if no package.json or deno.json(c) was found
   if let Some(cwd) = cwd {
     if maybe_package_json_path.is_none() && maybe_deno_json_path.is_none() {
-      if let Some((source, path)) = try_to_read_npmrc(&cwd)? {
+      if let Some((source, path)) = try_to_read_npmrc(cwd)? {
         return try_to_parse_npmrc(source, &path).map(|r| (r, Some(path)));
       }
     }
