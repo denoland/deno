@@ -9,6 +9,7 @@ use deno_core::OpState;
 use deno_fs::FileSystemRc;
 use deno_package_json::PackageJsonRc;
 use deno_path_util::normalize_path;
+use deno_path_util::url_to_file_path;
 use node_resolver::NodeModuleKind;
 use node_resolver::NodeResolutionMode;
 use node_resolver::REQUIRE_CONDITIONS;
@@ -54,10 +55,12 @@ pub enum RequireError {
   PackageImportsResolve(
     #[from] node_resolver::errors::PackageImportsResolveError,
   ),
-  #[error("failed to convert '{0}' to file path")]
-  FilePathConversion(Url),
+  #[error(transparent)]
+  FilePathConversion(#[from] deno_path_util::UrlToFilePathError),
   #[error(transparent)]
   Fs(#[from] deno_io::fs::FsError),
+  #[error(transparent)]
+  ReadModule(deno_core::error::AnyError),
   #[error("Unable to get CWD: {0}")]
   UnableToGetCwd(deno_io::fs::FsError),
 }
@@ -477,7 +480,9 @@ where
   let file_path = ensure_read_permission::<P>(state, &file_path)
     .map_err(RequireError::Permission)?;
   let loader = state.borrow::<NodeRequireLoaderRc>();
-  Ok(loader.load_text_file_lossy(&file_path)?)
+  loader
+    .load_text_file_lossy(&file_path)
+    .map_err(RequireError::ReadModule)
 }
 
 #[op2]
@@ -635,13 +640,6 @@ pub fn op_require_break_on_next_statement(state: Rc<RefCell<OpState>>) {
 fn url_to_file_path_string(url: &Url) -> Result<String, RequireError> {
   let file_path = url_to_file_path(url)?;
   Ok(file_path.to_string_lossy().into_owned())
-}
-
-fn url_to_file_path(url: &Url) -> Result<PathBuf, RequireError> {
-  match url.to_file_path() {
-    Ok(file_path) => Ok(file_path),
-    Err(()) => Err(RequireError::FilePathConversion(url.clone())),
-  }
 }
 
 #[op2(fast)]

@@ -94,6 +94,7 @@ use self::binary::Metadata;
 use self::file_system::DenoCompileFileSystem;
 
 struct SharedModuleLoaderState {
+  fs: Arc<dyn deno_fs::FileSystem>,
   modules: StandaloneModules,
   node_resolver: Arc<CliNodeResolver>,
   npm_module_loader: Arc<NpmModuleLoader>,
@@ -365,19 +366,6 @@ impl NodeRequireLoader for EmbeddedModuleLoader {
     &self,
     path: &std::path::Path,
   ) -> Result<String, AnyError> {
-    eprintln!("Reading: {}", path.display());
-    if let Ok(url) = deno_path_util::url_from_file_path(&path) {
-      eprintln!("Looking at: {}", url);
-      if let Some(module) = self.shared.eszip.get_module(&url) {
-        eprintln!("FOUND");
-        let source = module.inner.get_source_if_ready_sync()?;
-        eprintln!("YES");
-        // todo(THIS PR): do not clone if not necessary
-        return Ok(String::from_utf8_lossy(&source).into_owned());
-      }
-      eprintln!("NOPE 2");
-    }
-    eprintln!("NOPE");
     Ok(self.shared.fs.read_text_file_lossy_sync(path, None)?)
   }
 }
@@ -609,6 +597,7 @@ pub async fn run(data: StandaloneData) -> Result<i32, AnyError> {
   };
   let module_loader_factory = StandaloneModuleLoaderFactory {
     shared: Arc::new(SharedModuleLoaderState {
+      fs: fs.clone(),
       modules,
       node_resolver: cli_node_resolver.clone(),
       npm_module_loader: Arc::new(NpmModuleLoader::new(
