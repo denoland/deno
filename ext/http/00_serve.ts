@@ -31,6 +31,7 @@ import {
 const {
   ArrayPrototypePush,
   ObjectHasOwn,
+  ReflectHas,
   ObjectPrototypeIsPrototypeOf,
   PromisePrototypeCatch,
   PromisePrototypeThen,
@@ -503,10 +504,14 @@ function mapToCallback(context, callback, onError) {
       innerRequest = new InnerRequest(req, context);
       const request = fromInnerRequest(innerRequest, "immutable");
       innerRequest.request = request;
-      response = await callback(
+      response = callback(
         request,
         new ServeHandlerInfo(innerRequest),
       );
+
+      if (typeof response === "object" && ReflectHas(response, "then")) {
+        response = await response;
+      }
 
       // Throwing Error if the handler return value is not a Response class
       if (!ObjectPrototypeIsPrototypeOf(ResponsePrototype, response)) {
