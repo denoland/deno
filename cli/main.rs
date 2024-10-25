@@ -128,8 +128,8 @@ async fn run_subcommand(flags: Arc<Flags>) -> Result<i32, AnyError> {
     DenoSubcommand::Check(check_flags) => spawn_subcommand(async move {
       tools::check::check(flags, check_flags).await
     }),
-    DenoSubcommand::Clean => spawn_subcommand(async move {
-      tools::clean::clean()
+    DenoSubcommand::Clean(clean_flags) => spawn_subcommand(async move {
+      tools::clean::clean(clean_flags)
     }),
     DenoSubcommand::Compile(compile_flags) => spawn_subcommand(async {
       tools::compile::compile(flags, compile_flags).await

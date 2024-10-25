@@ -4,6 +4,7 @@ use deno_core::anyhow::Context;
 use deno_core::error::AnyError;
 use std::path::Path;
 
+use crate::args::CleanFlags;
 use crate::cache::DenoDir;
 use crate::colors;
 use crate::display;
@@ -27,7 +28,7 @@ impl CleanState {
   }
 }
 
-pub fn clean() -> Result<(), AnyError> {
+pub fn clean(clean_flags: CleanFlags) -> Result<(), AnyError> {
   let deno_dir = DenoDir::new(None)?;
   if deno_dir.root.exists() {
     let no_of_files = walkdir::WalkDir::new(&deno_dir.root).into_iter().count();
@@ -45,36 +46,54 @@ pub fn clean() -> Result<(), AnyError> {
       .progress_guard
       .set_total_size(no_of_files.try_into().unwrap());
 
-    rm_rf(&mut state, &deno_dir.root)?;
+    rm_rf(&mut state, &deno_dir.root, clean_flags.size)?;
 
     // Drop the guard so that progress bar disappears.
     drop(state.progress_guard);
 
-    log::info!(
-      "{} {} {}",
-      colors::green("Removed"),
-      deno_dir.root.display(),
-      colors::gray(&format!(
-        "({} files, {})",
-        state.files_removed + state.dirs_removed,
-        display::human_size(state.bytes_removed as f64)
-      ))
-    );
+    if !clean_flags.size {
+      log::info!(
+        "{} {} {}",
+        colors::green("Removed"),
+        deno_dir.root.display(),
+        colors::gray(&format!(
+          "({} files, {})",
+          state.files_removed + state.dirs_removed,
+          display::human_size(state.bytes_removed as f64)
+        ))
+      );
+    } else {
+      log::info!(
+        "Cache size {} {}",
+        deno_dir.root.display(),
+        colors::gray(&format!(
+          "({} files, {})",
+          state.files_removed + state.dirs_removed,
+          display::human_size(state.bytes_removed as f64)
+        ))
+      );
+    }
   }
 
   Ok(())
 }
 
-fn rm_rf(state: &mut CleanState, path: &Path) -> Result<(), AnyError> {
+fn rm_rf(
+  state: &mut CleanState,
+  path: &Path,
+  dry_run: bool,
+) -> Result<(), AnyError> {
   for entry in walkdir::WalkDir::new(path).contents_first(true) {
     let entry = entry?;
 
     if entry.file_type().is_dir() {
       state.dirs_removed += 1;
       state.update_progress();
-      std::fs::remove_dir_all(entry.path())?;
+      if !dry_run {
+        std::fs::remove_dir_all(entry.path())?;
+      }
     } else {
-      remove_file(state, entry.path(), entry.metadata().ok())?;
+      remove_file(state, entry.path(), entry.metadata().ok(), dry_run)?;
     }
   }
 
@@ -85,13 +104,17 @@ fn remove_file(
   state: &mut CleanState,
   path: &Path,
   meta: Option<std::fs::Metadata>,
+  dry_run: bool,
 ) -> Result<(), AnyError> {
   if let Some(meta) = meta {
     state.bytes_removed += meta.len();
   }
   state.files_removed += 1;
   state.update_progress();
-  std::fs::remove_file(path)
-    .with_context(|| format!("Failed to remove file: {}", path.display()))?;
+  if !dry_run {
+    std::fs::remove_file(path)
+      .with_context(|| format!("Failed to remove file: {}", path.display()))?;
+  }
+
   Ok(())
 }

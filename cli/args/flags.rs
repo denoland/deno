@@ -117,6 +117,11 @@ pub struct CheckFlags {
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
+pub struct CleanFlags {
+  pub size: bool,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
 pub struct CompileFlags {
   pub source_file: String,
   pub output: Option<String>,
@@ -441,7 +446,7 @@ pub enum DenoSubcommand {
   Bundle,
   Cache(CacheFlags),
   Check(CheckFlags),
-  Clean,
+  Clean(CleanFlags),
   Compile(CompileFlags),
   Completions(CompletionsFlags),
   Coverage(CoverageFlags),
@@ -1806,6 +1811,14 @@ fn clean_subcommand() -> Command {
     cstr!("Remove the cache directory (<c>$DENO_DIR</>)"),
     UnstableArgsConfig::None,
   )
+  .defer(|cmd| {
+    cmd.arg(
+      Arg::new("size")
+        .long("size")
+        .help("Show current cache size")
+        .action(ArgAction::SetTrue),
+    )
+  })
 }
 
 fn check_subcommand() -> Command {
@@ -4388,8 +4401,10 @@ fn check_parse(
   Ok(())
 }
 
-fn clean_parse(flags: &mut Flags, _matches: &mut ArgMatches) {
-  flags.subcommand = DenoSubcommand::Clean;
+fn clean_parse(flags: &mut Flags, matches: &mut ArgMatches) {
+  let size = matches.get_flag("size");
+
+  flags.subcommand = DenoSubcommand::Clean(CleanFlags { size });
 }
 
 fn compile_parse(
