@@ -514,9 +514,7 @@ Object.defineProperties(
           this._headerSent = true;
         }
 
-        if (this._headerSent) {
-          return this._writeRaw(data, encoding, callback);
-        }
+        return this._writeRaw(data, encoding, callback);
       } else {
         this.outputData.push({ data, encoding, callback });
       }
