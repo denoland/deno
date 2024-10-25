@@ -5955,7 +5955,7 @@ fn lsp_jsr_code_action_missing_declaration() {
                       "character": 6,
                     },
                   },
-                  "newText": "import type { ReturnType } from \"jsr:@denotest/types-file/types\";\n",
+                  "newText": "import { ReturnType } from \"jsr:@denotest/types-file/types\";\n",
                 },
                 {
                   "range": {
@@ -6469,6 +6469,16 @@ fn lsp_code_actions_imports() {
   let context = TestContextBuilder::new().use_temp_cwd().build();
   let mut client = context.new_lsp_command().build();
   client.initialize_default();
+  client.change_configuration(json!({
+    "deno": {
+      "enable": true,
+    },
+    "typescript": {
+      "preferences": {
+        "preferTypeOnlyAutoImports": true,
+      },
+    },
+  }));
   client.did_open(json!({
       "textDocument": {
         "uri": "file:///a/file00.ts",
@@ -6768,7 +6778,7 @@ fn lsp_code_actions_imports_dts() {
               "start": { "line": 0, "character": 0 },
               "end": { "line": 0, "character": 0 },
             },
-            "newText": "import type { SomeType } from \"./decl.d.ts\";\n",
+            "newText": "import { SomeType } from \"./decl.d.ts\";\n",
           }],
         }],
       },
@@ -7199,7 +7209,7 @@ fn lsp_code_actions_imports_respects_fmt_config() {
               "start": { "line": 0, "character": 0 },
               "end": { "line": 0, "character": 0 }
             },
-            "newText": "import type { DuckConfigOptions } from './file01.ts'\n"
+            "newText": "import { DuckConfigOptions } from './file01.ts'\n"
           }]
         }]
       }
@@ -7252,7 +7262,7 @@ fn lsp_code_actions_imports_respects_fmt_config() {
               "start": { "line": 0, "character": 0 },
               "end": { "line": 0, "character": 0 }
             },
-            "newText": "import type { DuckConfigOptions } from './file01.ts'\n"
+            "newText": "import { DuckConfigOptions } from './file01.ts'\n"
           }]
         }]
       },
@@ -7352,7 +7362,7 @@ fn lsp_quote_style_from_workspace_settings() {
               "start": { "line": 0, "character": 0 },
               "end": { "line": 0, "character": 0 },
             },
-            "newText": "import type { DuckConfigOptions } from './file01.ts';\n",
+            "newText": "import { DuckConfigOptions } from './file01.ts';\n",
           }],
         }],
       },
@@ -7396,7 +7406,7 @@ fn lsp_quote_style_from_workspace_settings() {
               "start": { "line": 0, "character": 0 },
               "end": { "line": 0, "character": 0 },
             },
-            "newText": "import type { DuckConfigOptions } from \"./file01.ts\";\n",
+            "newText": "import { DuckConfigOptions } from \"./file01.ts\";\n",
           }],
         }],
       },

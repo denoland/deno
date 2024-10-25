@@ -1280,6 +1280,8 @@ dependencies = [
 [[package]]
 name = "deno_ast"
 version = "0.42.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "b2b9d03b1bbeeecdac54367f075d572131736d06c5be3bc49037855bc5ab1bbb"
 dependencies = [
  "base64 0.21.7",
  "deno_media_type",
@@ -1505,6 +1507,8 @@ dependencies = [
 [[package]]
 name = "deno_doc"
 version = "0.154.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "17e204e45b0d79750880114e37b34abe19ad0710d8435a8da8f23a528fe98de4"
 dependencies = [
  "anyhow",
  "cfg-if",
@@ -1602,7 +1606,9 @@ dependencies = [
 
 [[package]]
 name = "deno_graph"
-version = "0.83.3"
+version = "0.83.4"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "5bd20bc0780071989c622cbfd5d4fb2e4fd05a247ccd7f791f13c8d2c3792228"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -3999,9 +4005,9 @@ dependencies = [
 
 [[package]]
 name = "jsonc-parser"
-version = "0.26.1"
+version = "0.26.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "57c78ad024523b61a2f20b1cad47413dd24db744a15d3d1b7276e69d1bee106c"
+checksum = "b558af6b49fd918e970471374e7a798b2c9bbcda624a210ffa3901ee5614bc8e"
 dependencies = [
  "serde_json",
 ]
