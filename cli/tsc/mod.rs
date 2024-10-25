@@ -700,7 +700,7 @@ fn op_resolve_inner(
         ) {
           Ok(maybe_result) => maybe_result,
           Err(
-            ResolveNonGraphSpecifierTypesError::ResolvePkgFolderFromDenoReq(
+            err @ ResolveNonGraphSpecifierTypesError::ResolvePkgFolderFromDenoReq(
               ResolvePkgFolderFromDenoReqError::Managed(_),
             ),
           ) => {
