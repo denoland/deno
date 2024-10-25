@@ -29,7 +29,9 @@ export default function randomInt(
   cb?: (err: Error | null, n?: number) => void,
 ): number | void {
   if (typeof max === "number" && typeof min === "number") {
-    [max, min] = [min, max];
+    const temp = max;
+    max = min;
+    min = temp;
   }
   if (min === undefined) min = 0;
   else if (typeof min === "function") {
