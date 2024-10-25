@@ -1,3 +1,8 @@
+/**
+ * @module
+ * Complex module
+ */
+
 // This entire interface should be completely ignored by the coverage tool.
 export interface Complex {
   // These comments should be ignored.
@@ -19,6 +24,7 @@ function dependency(
   bar: string,
   baz: string,
 ): Complex {
+  // inline comment in tested function
   return {
     foo,
     bar,
@@ -34,6 +40,9 @@ export function complex(
   bar: string,
   baz: string,
 ): Complex {
+  /*
+   * block comment in tested function
+   */
   return dependency(
     foo,
     bar,
@@ -48,6 +57,7 @@ export function unused(
   bar: string,
   baz: string,
 ): Complex {
+  // inline comment in untested function
   return complex(
     foo,
     bar,
@@ -62,6 +72,9 @@ export const π = Math.PI;
 // And same applies for this one, this one is unused and will show up in
 // lacking coverage.
 export function ƒ(): number {
+  /*
+   * block comment in untested function
+   */
   return (
     0
   );
