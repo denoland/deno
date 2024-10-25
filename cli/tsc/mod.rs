@@ -5,6 +5,7 @@ use crate::args::TypeCheckMode;
 use crate::cache::FastInsecureHasher;
 use crate::node;
 use crate::npm::CliNpmResolver;
+use crate::npm::ResolvePkgFolderFromDenoReqError;
 use crate::util::checksum;
 use crate::util::path::mapped_specifier_for_tsc;
 
@@ -35,6 +36,7 @@ use deno_runtime::deno_node::NodeResolver;
 use deno_semver::npm::NpmPackageReqReference;
 use node_resolver::errors::NodeJsErrorCode;
 use node_resolver::errors::NodeJsErrorCoded;
+use node_resolver::errors::ResolvePkgSubpathFromDenoModuleError;
 use node_resolver::NodeModuleKind;
 use node_resolver::NodeResolution;
 use node_resolver::NodeResolutionMode;
@@ -45,6 +47,7 @@ use std::fmt;
 use std::path::Path;
 use std::path::PathBuf;
 use std::sync::Arc;
+use thiserror::Error;
 
 mod diagnostics;
 
@@ -688,12 +691,30 @@ fn op_resolve_inner(
       Some(ResolutionResolved { specifier, .. }) => {
         resolve_graph_specifier_types(specifier, &referrer, state)?
       }
-      _ => resolve_non_graph_specifier_types(
-        &specifier,
-        &referrer,
-        referrer_kind,
-        state,
-      )?,
+      _ => {
+        match resolve_non_graph_specifier_types(
+          &specifier,
+          &referrer,
+          referrer_kind,
+          state,
+        ) {
+          Ok(maybe_result) => maybe_result,
+          Err(
+            ResolveNonGraphSpecifierTypesError::ResolvePkgFolderFromDenoReq(
+              ResolvePkgFolderFromDenoReqError::Managed(err),
+            ),
+          ) => {
+            // it's most likely requesting the jsxImportSource, which isn't loaded
+            // into the graph when not using jsx, so just ignore this error
+            if specifier.ends_with("/jsx-runtime") {
+              None
+            } else {
+              return Err(err.into());
+            }
+          }
+          Err(err) => return Err(err.into()),
+        }
+      }
     };
     let result = match maybe_result {
       Some((specifier, media_type)) => {
@@ -818,12 +839,23 @@ fn resolve_graph_specifier_types(
   }
 }
 
+#[derive(Debug, Error)]
+enum ResolveNonGraphSpecifierTypesError {
+  #[error(transparent)]
+  ResolvePkgFolderFromDenoReq(#[from] ResolvePkgFolderFromDenoReqError),
+  #[error(transparent)]
+  ResolvePkgSubpathFromDenoModule(#[from] ResolvePkgSubpathFromDenoModuleError),
+}
+
 fn resolve_non_graph_specifier_types(
   raw_specifier: &str,
   referrer: &ModuleSpecifier,
   referrer_kind: NodeModuleKind,
   state: &State,
-) -> Result<Option<(ModuleSpecifier, MediaType)>, AnyError> {
+) -> Result<
+  Option<(ModuleSpecifier, MediaType)>,
+  ResolveNonGraphSpecifierTypesError,
+> {
   let npm = match state.maybe_npm.as_ref() {
     Some(npm) => npm,
     None => return Ok(None), // we only support non-graph types for npm packages
