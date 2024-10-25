@@ -579,6 +579,10 @@ pub async fn upgrade(
 
   let output_exe_path =
     full_path_output_flag.as_ref().unwrap_or(&current_exe_path);
+
+  #[cfg(windows)]
+  kill_running_deno_lsp_processes();
+
   let output_result = if *output_exe_path == current_exe_path {
     replace_exe(&new_exe_path, output_exe_path)
   } else {
@@ -964,6 +968,16 @@ fn check_windows_access_denied_error(
       output_exe_path.display(),
     )
   })
+}
+
+#[cfg(windows)]
+fn kill_running_deno_lsp_processes() {
+  let _ = Command::new("powershell")
+    .args(&[
+        "-Command",
+        "Get-Process | Where-Object { $_.ProcessName -eq 'deno' -and $_.CommandLine -match 'lsp' } | Stop-Process -Force",
+    ])
+    .output();
 }
 
 fn set_exe_permissions(
