@@ -19,6 +19,7 @@ use deno_graph::Module;
 use deno_graph::ModuleGraph;
 use std::sync::Arc;
 
+#[derive(Debug)]
 pub struct Emitter {
   emit_cache: Arc<EmitCache>,
   parsed_source_cache: Arc<ParsedSourceCache>,

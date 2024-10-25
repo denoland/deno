@@ -47,7 +47,7 @@ impl<'a> LazyGraphSourceParser<'a> {
   }
 }
 
-#[derive(Default)]
+#[derive(Debug, Default)]
 pub struct ParsedSourceCache {
   sources: Mutex<HashMap<ModuleSpecifier, ParsedSource>>,
 }

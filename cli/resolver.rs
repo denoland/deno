@@ -368,7 +368,6 @@ impl NpmModuleLoader {
 
   pub fn if_in_npm_package(&self, specifier: &ModuleSpecifier) -> bool {
     self.node_resolver.in_npm_package(specifier)
-      || self.cjs_resolutions.is_known_cjs(specifier)
   }
 
   pub async fn load(
@@ -445,7 +444,9 @@ impl CjsResolutionStore {
       return false;
     }
 
-    specifier_has_extension(specifier, "cjs") || self.0.contains(specifier)
+    specifier_has_extension(specifier, "cjs")
+      || specifier_has_extension(specifier, "cts")
+      || self.0.contains(specifier)
   }
 
   pub fn insert(&self, specifier: ModuleSpecifier) {

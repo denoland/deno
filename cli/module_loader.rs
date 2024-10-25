@@ -282,6 +282,7 @@ impl CliModuleLoaderFactory {
         shared: self.shared.clone(),
       })));
     let node_require_loader = Rc::new(CliNodeRequireLoader::new(
+      self.shared.emitter.clone(),
       self.shared.fs.clone(),
       self.shared.npm_resolver.clone(),
     ));
@@ -566,13 +567,31 @@ impl<TGraphContainer: ModuleGraphContainer>
       }
       Some(CodeOrDeferredEmit::Cjs {
         specifier,
-        is_cts,
+        media_type,
         source,
       }) => {
-        // let transpile_result = match is_cts {
-        //   true => String::from_utf8(self.emitter.emit_parsed_source(specifier, MediaType::Cts, source).await?.into_bytes())?,
-        //   false =>
-        // }
+        let js_source = match media_type {
+          MediaType::Cts => {
+            self
+              .emitter
+              .emit_parsed_source(specifier, MediaType::Cts, source)
+              .await?
+          }
+          MediaType::Cjs => source.to_string(),
+          _ => unreachable!(),
+        };
+        let text = self
+          .node_code_translator
+          .translate_cjs_to_esm(specifier, Some(js_source))
+          .await?;
+        // at this point, we no longer need the parsed source in memory, so free it
+        self.parsed_source_cache.free(specifier);
+
+        Ok(Some(ModuleCodeStringSource {
+          code: ModuleSourceCode::String(text.into()),
+          found_url: specifier.clone(),
+          media_type,
+        }))
       }
       None => Ok(None),
     }
@@ -605,11 +624,9 @@ impl<TGraphContainer: ModuleGraphContainer>
           media_type,
         }))
       }
-      Some(CodeOrDeferredEmit::Cjs {
-        specifier,
-        is_cts,
-        source,
-      }) => {
+      Some(CodeOrDeferredEmit::Cjs { .. }) => {
+        self.parsed_source_cache.free(specifier);
+
         // todo(dsherret): to make this work, we should probably just
         // rely on the CJS export cache. At the moment this is hard because
         // cjs export analysis is only async
@@ -657,7 +674,7 @@ impl<TGraphContainer: ModuleGraphContainer>
           MediaType::Cjs | MediaType::Cts => {
             return Ok(Some(CodeOrDeferredEmit::Cjs {
               specifier,
-              is_cts: media_type == MediaType::Cts,
+              media_type: *media_type,
               source,
             }));
           }
@@ -704,7 +721,7 @@ enum CodeOrDeferredEmit<'a> {
   },
   Cjs {
     specifier: &'a ModuleSpecifier,
-    is_cts: bool,
+    media_type: MediaType,
     source: &'a Arc<str>,
   },
 }

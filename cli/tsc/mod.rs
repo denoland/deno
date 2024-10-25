@@ -560,6 +560,9 @@ fn op_load_inner(
       match module {
         Module::Js(module) => {
           media_type = module.media_type;
+          if matches!(media_type, MediaType::Cjs | MediaType::Cts) {
+            is_cjs = true;
+          }
           let source = module
             .fast_check_module()
             .map(|m| &*m.source)

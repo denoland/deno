@@ -11,6 +11,7 @@ use std::sync::Arc;
 
 use common::maybe_auth_header_for_npm_registry;
 use dashmap::DashMap;
+use deno_ast::MediaType;
 use deno_ast::ModuleSpecifier;
 use deno_core::error::AnyError;
 use deno_core::serde_json;
@@ -28,6 +29,7 @@ use managed::cache::registry_info::get_package_url;
 use node_resolver::NpmResolver;
 use thiserror::Error;
 
+use crate::emit::Emitter;
 use crate::file_fetcher::FileFetcher;
 
 pub use self::byonm::CliByonmNpmResolver;
@@ -200,16 +202,22 @@ impl NpmFetchResolver {
 
 #[derive(Debug)]
 pub struct CliNodeRequireLoader {
+  emitter: Arc<Emitter>,
   fs: Arc<dyn FileSystem>,
   npm_resolver: Arc<dyn CliNpmResolver>,
 }
 
 impl CliNodeRequireLoader {
   pub fn new(
+    emitter: Arc<Emitter>,
     fs: Arc<dyn FileSystem>,
     npm_resolver: Arc<dyn CliNpmResolver>,
   ) -> Self {
-    Self { fs, npm_resolver }
+    Self {
+      emitter,
+      fs,
+      npm_resolver,
+    }
   }
 }
 
@@ -223,6 +231,16 @@ impl NodeRequireLoader for CliNodeRequireLoader {
   }
 
   fn load_text_file_lossy(&self, path: &Path) -> Result<String, AnyError> {
-    Ok(self.fs.read_text_file_lossy_sync(path, None)?)
+    // todo(dsherret): use the preloaded module from the graph if available
+    let specifier = deno_path_util::url_from_file_path(&path)?;
+    let media_type = MediaType::from_specifier(&specifier);
+    let text = self.fs.read_text_file_lossy_sync(path, None)?;
+    if media_type == MediaType::Cts {
+      self
+        .emitter
+        .emit_parsed_source_sync(&specifier, media_type, &text.into())
+    } else {
+      Ok(text)
+    }
   }
 }
