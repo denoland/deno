@@ -13,7 +13,6 @@ use deno_core::error::AnyError;
 use deno_core::futures::stream::FuturesUnordered;
 use deno_core::futures::FutureExt;
 use deno_core::futures::StreamExt;
-use deno_core::ModuleCodeBytes;
 use deno_core::ModuleSpecifier;
 use deno_graph::MediaType;
 use deno_graph::Module;
@@ -94,7 +93,7 @@ impl Emitter {
     &self,
     specifier: &ModuleSpecifier,
     source: &str,
-  ) -> Option<Vec<u8>> {
+  ) -> Option<String> {
     let source_hash = self.get_source_hash(source);
     self.emit_cache.get_emit_code(specifier, source_hash)
   }
@@ -104,7 +103,7 @@ impl Emitter {
     specifier: &ModuleSpecifier,
     media_type: MediaType,
     source: &Arc<str>,
-  ) -> Result<ModuleCodeBytes, AnyError> {
+  ) -> Result<String, AnyError> {
     // Note: keep this in sync with the sync version below
     let helper = EmitParsedSourceHelper(self);
     match helper.pre_emit_parsed_source(specifier, source) {
@@ -143,7 +142,7 @@ impl Emitter {
     specifier: &ModuleSpecifier,
     media_type: MediaType,
     source: &Arc<str>,
-  ) -> Result<ModuleCodeBytes, AnyError> {
+  ) -> Result<String, AnyError> {
     // Note: keep this in sync with the async version above
     let helper = EmitParsedSourceHelper(self);
     match helper.pre_emit_parsed_source(specifier, source) {
@@ -227,7 +226,7 @@ impl Emitter {
 }
 
 enum PreEmitResult {
-  Cached(ModuleCodeBytes),
+  Cached(String),
   NotCached { source_hash: u64 },
 }
 
@@ -245,7 +244,7 @@ impl<'a> EmitParsedSourceHelper<'a> {
     if let Some(emit_code) =
       self.0.emit_cache.get_emit_code(specifier, source_hash)
     {
-      PreEmitResult::Cached(emit_code.into_boxed_slice().into())
+      PreEmitResult::Cached(emit_code)
     } else {
       PreEmitResult::NotCached { source_hash }
     }
@@ -272,7 +271,7 @@ impl<'a> EmitParsedSourceHelper<'a> {
     specifier: &ModuleSpecifier,
     transpile_result: TranspileResult,
     source_hash: u64,
-  ) -> ModuleCodeBytes {
+  ) -> String {
     let transpiled_source = match transpile_result {
       TranspileResult::Owned(source) => source,
       TranspileResult::Cloned(source) => {
@@ -286,7 +285,9 @@ impl<'a> EmitParsedSourceHelper<'a> {
       source_hash,
       &transpiled_source.source,
     );
-    transpiled_source.source.into_boxed_slice().into()
+    // todo(https://github.com/denoland/deno_ast/issues/282): move to deno_ast
+    // SAFETY: This is fine because swc is working off of Strings
+    unsafe { String::from_utf8_unchecked(transpiled_source.source) }
   }
 }
 
