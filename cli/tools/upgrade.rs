@@ -984,15 +984,14 @@ fn kill_running_deno_lsp_processes() {
   let _ = Command::new("powershell.exe")
     .args([
       "-Command",
-      r#"Get-WmiObject Win32_Process |
-          Where-Object {
-              $_.Name -eq 'deno.exe' -and
-              $_.CommandLine -match '^(?:\"[^\"]+\"|\S+)\s+lsp\b'
-          } | ForEach-Object {
-           if ($_.Terminate()) {
-             Write-Host 'Terminated:' $_.ProcessId
-           }
-        }"#,
+      r#"Get-WmiObject Win32_Process | Where-Object {
+    $_.Name -eq 'deno.exe' -and
+    $_.CommandLine -match '^(?:\"[^\"]+\"|\S+)\s+lsp\b'
+} | ForEach-Object {
+  if ($_.Terminate()) {
+    Write-Host 'Terminated:' $_.ProcessId
+  }
+}"#,
     ])
     .stdout(get_pipe())
     .stderr(get_pipe())
