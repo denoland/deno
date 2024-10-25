@@ -66,24 +66,41 @@ impl FileFlags {
     &self,
     base: &Path,
   ) -> Result<FilePatterns, AnyError> {
-    Ok(FilePatterns {
-      include: if self.include.is_empty() {
+    let include = if self.include.is_empty() {
+      None
+    } else {
+      let mut unique_patterns = Vec::new();
+      for pattern in &self.include {
+        if pattern != "." && !unique_patterns.contains(pattern) {
+          unique_patterns.push(pattern.clone());
+        }
+      }
+
+      let path_or_pattern_set =
+        PathOrPatternSet::from_include_relative_path_or_patterns(
+          base,
+          &unique_patterns,
+        )?;
+
+      if path_or_pattern_set.inner().is_empty() {
         None
       } else {
-        Some(PathOrPatternSet::from_include_relative_path_or_patterns(
-          base,
-          &self.include,
-        )?)
-      },
-      exclude: PathOrPatternSet::from_exclude_relative_path_or_patterns(
-        base,
-        &self.ignore,
-      )?,
+        Some(path_or_pattern_set)
+      }
+    };
+
+    let exclude = PathOrPatternSet::from_exclude_relative_path_or_patterns(
+      base,
+      &self.ignore,
+    )?;
+
+    Ok(FilePatterns {
+      include,
+      exclude,
       base: base.to_path_buf(),
     })
   }
 }
-
 #[derive(Clone, Debug, Default, Eq, PartialEq)]
 pub struct AddFlags {
   pub packages: Vec<String>,
@@ -11156,5 +11173,80 @@ Usage: deno repl [OPTIONS] [-- [ARGS]...]\n"
         flags_from_vec(svec!["deno", "run", "--allow-all", flag, "foo.ts"]);
       assert!(r.is_err());
     }
+  }
+
+  #[test]
+  fn test_include_paths_are_not_mapped_to_base_if_included() {
+    let base = PathBuf::from("/base");
+    let file_flags = FileFlags {
+      include: vec![
+        String::from("."),
+        String::from("/base/path/to/file"),
+        String::from("relative/path1"),
+        String::from("relative/path2"),
+      ],
+      ignore: vec![],
+    };
+
+    let result = file_flags.as_file_patterns(&base);
+    assert!(result.is_ok());
+
+    let patterns = result.unwrap();
+    assert!(patterns.include.is_some());
+    assert_eq!(patterns.base, Path::new("/base"));
+
+    let include_patterns = patterns.include.unwrap();
+    assert!(include_patterns.matches_path(Path::new("/base/path/to/file")));
+    assert!(include_patterns.matches_path(Path::new("/base/relative/path1")));
+    assert!(include_patterns.matches_path(Path::new("/base/relative/path2")));
+    assert_eq!(include_patterns.matches_path(Path::new("/base")), false);
+  }
+
+  #[test]
+  fn test_include_paths_deduplicated() {
+    let base = PathBuf::from("/base");
+    let file_flags = FileFlags {
+      include: vec![
+        String::from("/base/path/to/file1"),
+        String::from("/base/path/to/file1"),
+        String::from("relative/path1"),
+        String::from("relative/path1"),
+      ],
+      ignore: vec![],
+    };
+
+    let result = file_flags.as_file_patterns(&base);
+    assert!(result.is_ok());
+
+    let patterns = result.unwrap();
+    let len = patterns.clone().include.iter().len() + 1;
+    assert!(patterns.include.is_some());
+    assert_eq!(patterns.base, Path::new("/base"));
+
+    let include_patterns = patterns.include.unwrap();
+    assert!(include_patterns.matches_path(Path::new("/base/path/to/file1")));
+    assert!(include_patterns.matches_path(Path::new("/base/relative/path1")));
+    assert_eq!(include_patterns.matches_path(Path::new("/base")), false);
+    assert_eq!(len, 2);
+  }
+
+  #[test]
+  fn test_include_does_not_contain_base_with_dot() {
+    let base = PathBuf::from("/base");
+    let file_flags = FileFlags {
+      include: vec![String::from("."), String::from("/base/path/file")],
+      ignore: vec![],
+    };
+
+    let result = file_flags.as_file_patterns(&base);
+    assert!(result.is_ok());
+
+    let patterns = result.unwrap();
+    assert!(patterns.include.is_some());
+    assert_eq!(patterns.base, Path::new("/base"));
+
+    let include_patterns = patterns.include.unwrap();
+    assert!(include_patterns.matches_path(Path::new("/base/path/file")));
+    assert_eq!(include_patterns.matches_path(Path::new("/base")), false);
   }
 }
