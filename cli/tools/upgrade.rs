@@ -973,11 +973,29 @@ fn check_windows_access_denied_error(
 #[cfg(windows)]
 fn kill_running_deno_lsp_processes() {
   // limit this to `deno lsp` invocations to avoid killing important programs someone might be running
-  let _ = Command::new("powershell")
+  let is_debug = log::log_enabled!(log::Level::Debug);
+  let get_pipe = || {
+    if is_debug {
+      std::process::Stdio::inherit()
+    } else {
+      std::process::Stdio::null()
+    }
+  };
+  let _ = Command::new("powershell.exe")
     .args([
-        "-Command",
-        "Get-Process | Where-Object { $_.ProcessName -eq 'deno' -and ($_.CommandLine -split ' ')[1] -eq 'lsp' } | Stop-Process -Force",
+      "-Command",
+      r#"Get-WmiObject Win32_Process |
+          Where-Object {
+              $_.Name -eq 'deno.exe' -and
+              $_.CommandLine -match '^(?:\"[^\"]+\"|\S+)\s+lsp\b'
+          } | ForEach-Object {
+           if ($_.Terminate()) {
+             Write-Host 'Terminated:' $_.ProcessId
+           }
+        }"#,
     ])
+    .stdout(get_pipe())
+    .stderr(get_pipe())
     .output();
 }
 
