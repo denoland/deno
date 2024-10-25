@@ -439,6 +439,8 @@ pub struct LanguagePreferences {
   pub use_aliases_for_renames: bool,
   #[serde(default)]
   pub quote_style: QuoteStyle,
+  #[serde(default)]
+  pub prefer_type_only_auto_imports: bool,
 }
 
 impl Default for LanguagePreferences {
@@ -449,6 +451,7 @@ impl Default for LanguagePreferences {
       auto_import_file_exclude_patterns: vec![],
       use_aliases_for_renames: true,
       quote_style: Default::default(),
+      prefer_type_only_auto_imports: false,
     }
   }
 }
@@ -2251,6 +2254,7 @@ mod tests {
             auto_import_file_exclude_patterns: vec![],
             use_aliases_for_renames: true,
             quote_style: QuoteStyle::Auto,
+            prefer_type_only_auto_imports: false,
           },
           suggest: CompletionSettings {
             complete_function_calls: false,
@@ -2296,6 +2300,7 @@ mod tests {
             auto_import_file_exclude_patterns: vec![],
             use_aliases_for_renames: true,
             quote_style: QuoteStyle::Auto,
+            prefer_type_only_auto_imports: false,
           },
           suggest: CompletionSettings {
             complete_function_calls: false,
