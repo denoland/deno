@@ -532,12 +532,16 @@ where
     return Ok(None);
   };
 
-  let referrer = Url::from_file_path(parent_path).unwrap();
+  let referrer = if parent_path.is_empty() {
+    None
+  } else {
+    Some(Url::from_file_path(parent_path).unwrap())
+  };
   let r = node_resolver.package_exports_resolve(
     &pkg.path,
     &format!(".{expansion}"),
     exports,
-    Some(&referrer),
+    referrer.as_ref(),
     NodeModuleKind::Cjs,
     REQUIRE_CONDITIONS,
     NodeResolutionMode::Execution,
