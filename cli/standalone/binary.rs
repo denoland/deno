@@ -613,7 +613,7 @@ impl<'a> DenoCompileBinaryWriter<'a> {
               .emitter
               .emit_parsed_source(&m.specifier, m.media_type, &m.source)
               .await?;
-            source.to_vec()
+            source.into_bytes()
           } else {
             m.source.as_bytes().to_vec()
           };
