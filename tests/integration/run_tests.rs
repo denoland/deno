@@ -755,6 +755,11 @@ itest!(env_file_missing {
   output: "run/env_file_missing.out",
 });
 
+itest!(env_file_multiple {
+  args: "run --env=env --env=env_one --env=env_two --allow-env run/multiple_env_file.ts",
+  output: "run/multiple_env_file.out",
+});
+
 itest!(_091_use_define_for_class_fields {
   args: "run --check run/091_use_define_for_class_fields.ts",
   output: "run/091_use_define_for_class_fields.ts.out",
