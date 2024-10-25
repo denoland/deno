@@ -664,12 +664,6 @@ class ClientRequest extends OutgoingMessage {
     }
     const finish = async () => {
       try {
-        // console.log(
-        //   "finish(): outputData:",
-        //   this.outputData.length,
-        //   "pendingWrites",
-        //   this.pendingWrites,
-        // );
         await this._bodyWriter.ready;
         await this._bodyWriter?.close();
       } catch {
