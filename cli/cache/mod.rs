@@ -287,15 +287,6 @@ impl Loader for FetchCacher {
         }
       }
 
-      // make local CJS modules external to the graph
-      if specifier_has_extension(specifier, "cjs") {
-        return Box::pin(futures::future::ready(Ok(Some(
-          LoadResponse::External {
-            specifier: specifier.clone(),
-          },
-        ))));
-      }
-
       if self.unstable_detect_cjs && specifier_has_extension(specifier, "js") {
         if let Ok(Some(pkg_json)) =
           self.node_resolver.get_closest_package_json(specifier)
