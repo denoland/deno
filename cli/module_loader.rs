@@ -23,6 +23,7 @@ use crate::graph_container::ModuleGraphUpdatePermit;
 use crate::graph_util::CreateGraphOptions;
 use crate::graph_util::ModuleGraphBuilder;
 use crate::node;
+use crate::node::CliNodeCodeTranslator;
 use crate::npm::CliNodeRequireLoader;
 use crate::npm::CliNpmResolver;
 use crate::resolver::CliGraphResolver;
@@ -206,6 +207,7 @@ struct SharedCliModuleLoaderState {
   fs: Arc<dyn FileSystem>,
   main_module_graph_container: Arc<MainModuleGraphContainer>,
   module_load_preparer: Arc<ModuleLoadPreparer>,
+  node_code_translator: Arc<CliNodeCodeTranslator>,
   node_resolver: Arc<CliNodeResolver>,
   npm_resolver: Arc<dyn CliNpmResolver>,
   npm_module_loader: NpmModuleLoader,
@@ -226,6 +228,7 @@ impl CliModuleLoaderFactory {
     fs: Arc<dyn FileSystem>,
     main_module_graph_container: Arc<MainModuleGraphContainer>,
     module_load_preparer: Arc<ModuleLoadPreparer>,
+    node_code_translator: Arc<CliNodeCodeTranslator>,
     node_resolver: Arc<CliNodeResolver>,
     npm_resolver: Arc<dyn CliNpmResolver>,
     npm_module_loader: NpmModuleLoader,
@@ -248,6 +251,7 @@ impl CliModuleLoaderFactory {
         fs,
         main_module_graph_container,
         module_load_preparer,
+        node_code_translator,
         node_resolver,
         npm_resolver,
         npm_module_loader,
@@ -272,6 +276,7 @@ impl CliModuleLoaderFactory {
         parent_permissions,
         permissions,
         graph_container,
+        node_code_translator: self.shared.node_code_translator.clone(),
         emitter: self.shared.emitter.clone(),
         parsed_source_cache: self.shared.parsed_source_cache.clone(),
         shared: self.shared.clone(),
@@ -329,6 +334,7 @@ struct CliModuleLoaderInner<TGraphContainer: ModuleGraphContainer> {
   permissions: PermissionsContainer,
   shared: Arc<SharedCliModuleLoaderState>,
   emitter: Arc<Emitter>,
+  node_code_translator: Arc<CliNodeCodeTranslator>,
   parsed_source_cache: Arc<ParsedSourceCache>,
   graph_container: TGraphContainer,
 }

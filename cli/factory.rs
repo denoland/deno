@@ -802,6 +802,7 @@ impl CliFactory {
     } else {
       None
     };
+    let node_code_translator = self.node_code_translator().await?;
 
     Ok(CliMainWorkerFactory::new(
       self.blob_store().clone(),
@@ -827,11 +828,12 @@ impl CliFactory {
         fs.clone(),
         self.main_module_graph_container().await?.clone(),
         self.module_load_preparer().await?.clone(),
+        node_code_translator.clone(),
         cli_node_resolver.clone(),
         cli_npm_resolver.clone(),
         NpmModuleLoader::new(
           self.cjs_resolutions().clone(),
-          self.node_code_translator().await?.clone(),
+          node_code_translator.clone(),
           fs.clone(),
           cli_node_resolver.clone(),
         ),
