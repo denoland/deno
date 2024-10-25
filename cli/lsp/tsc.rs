@@ -4952,6 +4952,8 @@ pub struct UserPreferences {
   pub auto_import_file_exclude_patterns: Option<Vec<String>>,
   #[serde(skip_serializing_if = "Option::is_none")]
   pub interactive_inlay_hints: Option<bool>,
+  #[serde(skip_serializing_if = "Option::is_none")]
+  pub prefer_type_only_auto_imports: Option<bool>,
 }
 
 impl UserPreferences {
@@ -5074,6 +5076,9 @@ impl UserPreferences {
       } else {
         Some(language_settings.preferences.quote_style)
       },
+      prefer_type_only_auto_imports: Some(
+        language_settings.preferences.prefer_type_only_auto_imports,
+      ),
       ..base_preferences
     }
   }
@@ -6215,7 +6220,7 @@ mod tests {
     let change = changes.text_changes.first().unwrap();
     assert_eq!(
       change.new_text,
-      "import type { someLongVariable } from './b.ts'\n"
+      "import { someLongVariable } from './b.ts'\n"
     );
   }
 
