@@ -701,7 +701,7 @@ fn op_resolve_inner(
           Ok(maybe_result) => maybe_result,
           Err(
             ResolveNonGraphSpecifierTypesError::ResolvePkgFolderFromDenoReq(
-              ResolvePkgFolderFromDenoReqError::Managed(err),
+              ResolvePkgFolderFromDenoReqError::Managed(_),
             ),
           ) => {
             // it's most likely requesting the jsxImportSource, which isn't loaded
