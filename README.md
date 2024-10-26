@@ -47,6 +47,7 @@ choco install deno
 ```
 
 [WinGet](https://winstall.app/apps/DenoLand.Deno) (Windows):
+
 ```powershell
 winget install --id=DenoLand.Deno
 ```
